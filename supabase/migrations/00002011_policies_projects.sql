@@ -562,11 +562,18 @@ SELECT TO anon USING (
     AND deleted_at IS NULL
 );
 
+-- Who created the row is not enough: the creator must also belong to the library the row names.
+-- Without the second arm any signed-in user could plant a link ("Invoice.pdf" → anywhere) into another
+-- team's library, where every member would see it as their own team's file — verified by execution
+-- before it was closed. files.fn_owns_library is the write-side twin of fn_can_read's ownership arms.
 CREATE POLICY "Users can insert own files" ON files.items FOR
 INSERT
     TO authenticated
 WITH
-    CHECK (owner_user_id = auth.uid ());
+    CHECK (
+        owner_user_id = auth.uid ()
+        AND files.fn_owns_library (owner_type, owner_entity_id)
+    );
 
 -- The WITH CHECK arm is EXPLICIT, not corrective. Postgres substitutes an UPDATE policy's `USING`
 -- expression for its `WITH CHECK` when none is written, so the shipped USING-only policy DID already
@@ -579,7 +586,10 @@ WITH
 CREATE POLICY "Users can update own files" ON files.items FOR
 UPDATE TO authenticated USING (owner_user_id = auth.uid ())
 WITH
-    CHECK (owner_user_id = auth.uid ());
+    CHECK (
+        owner_user_id = auth.uid ()
+        AND files.fn_owns_library (owner_type, owner_entity_id)
+    );
 
 CREATE POLICY "Users can delete own files" ON files.items FOR DELETE TO authenticated USING (owner_user_id = auth.uid ());
 
@@ -601,14 +611,20 @@ CREATE POLICY "Users can insert own folders" ON files.folders FOR
 INSERT
     TO authenticated
 WITH
-    CHECK (owner_user_id = auth.uid ());
+    CHECK (
+        owner_user_id = auth.uid ()
+        AND files.fn_owns_library (owner_type, owner_entity_id)
+    );
 
 -- Same WITH CHECK discipline as files.items: the post-image must still belong to the caller, so a
 -- folder cannot be re-parented INTO another tenant's tree or donated out of this one.
 CREATE POLICY "Users can update own folders" ON files.folders FOR
 UPDATE TO authenticated USING (owner_user_id = auth.uid ())
 WITH
-    CHECK (owner_user_id = auth.uid ());
+    CHECK (
+        owner_user_id = auth.uid ()
+        AND files.fn_owns_library (owner_type, owner_entity_id)
+    );
 
 CREATE POLICY "Users can delete own folders" ON files.folders FOR DELETE TO authenticated USING (owner_user_id = auth.uid ());
 

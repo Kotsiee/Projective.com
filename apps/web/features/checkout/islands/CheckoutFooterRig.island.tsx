@@ -20,7 +20,7 @@ import {
 	notifyBasketChanged,
 	session,
 } from "../core/basket-state.ts";
-import { useCheckoutSeamPassive } from "../core/checkout-seam.ts";
+import { useCheckoutContextPassive } from "../core/checkout-context.ts";
 import type { BasketItem, MoneyView } from "../types/checkout-types.ts";
 
 /**
@@ -135,7 +135,7 @@ interface RigAction {
 export default function CheckoutFooterRig(props: CheckoutFooterRigProps): JSX.Element {
 	const busy = useSignal(false);
 
-	useCheckoutSeamPassive({
+	useCheckoutContextPassive({
 		basketId: props.basketId,
 		owner: props.owner,
 		display: props.display,

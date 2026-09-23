@@ -1,6 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { RevokeConnectionSchema } from "@projective/types/integrations";
-import { asAuthenticatedContext } from "@projective/types/auth";
+import { readActor } from "@web/utils/api-session.ts";
 import { toFieldErrors, toFilesResponse } from "@features/files/core/respond.ts";
 import { IntegrationsBackendService } from "@server/services/integrations/IntegrationsBackendService.ts";
 
@@ -38,11 +38,6 @@ export const handler = define.handlers({
 			);
 		}
 
-		const context = asAuthenticatedContext(ctx.state.userContext);
-		return toFilesResponse(
-			await IntegrationsBackendService.revokeConnection(parsed.data, {
-				userId: context.userId ?? "",
-			}),
-		);
+		return toFilesResponse(await IntegrationsBackendService.revokeConnection(parsed.data, readActor(ctx)));
 	},
 });

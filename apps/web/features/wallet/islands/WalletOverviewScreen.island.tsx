@@ -16,7 +16,7 @@ import {
 	resetOnRefetch,
 	walletError,
 } from "../core/wallet-state.ts";
-import { applyRead, useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
+import { applyRead, useWalletRefresh, useWalletSync } from "../core/wallet-sync.ts";
 import type {
 	MethodsView,
 	WalletOverview,
@@ -67,7 +67,7 @@ export default function WalletOverviewScreen(props: WalletOverviewScreenProps): 
 			resetOnRefetch();
 		});
 	};
-	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
+	useWalletSync({ display: props.display, wallet: props.wallet });
 	useWalletRefresh(refetch);
 
 	const o = overview.value;

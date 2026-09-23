@@ -1,6 +1,6 @@
 import { IntegrationsBackendService } from "@server/services/integrations/IntegrationsBackendService.ts";
 import type { ConnectionsView } from "@projective/types/integrations";
-import type { FilesSim } from "../types/file-types.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
  * integrations-ssr — the server-only bootstrap for the Settings → Integrations console's first paint.
@@ -15,11 +15,9 @@ import type { FilesSim } from "../types/file-types.ts";
  * live under `features/files/`, and a second feature folder holding one resolver would be a directory
  * rather than a boundary.
  *
- * Like every sibling resolver it degrades to a coherent EMPTY projection rather than throwing. A
- * settings page that 500s because the provider catalogue was briefly unavailable is a worse failure
- * than one that renders "nothing connected" and lets the island's own read correct it — and the empty
- * value below is a real, complete {@link ConnectionsView}, so nothing downstream has to null-check its
- * way through a partial payload.
+ * A read that FAILED is reported as a failure (`error`) beside a complete, empty projection — never
+ * as "nothing connected" alone, which would be a false claim about the person's accounts. The empty
+ * value is still a real {@link ConnectionsView}, so nothing downstream null-checks a partial payload.
  *
  * **A degraded read must never read as a positive capability claim.** `hasCalendar` /
  * `hasConferencing` / `activeConferencingProvider` all fall to their negative values, because a
@@ -37,19 +35,22 @@ const EMPTY_CONNECTIONS: Readonly<ConnectionsView> = Object.freeze({
 	activeConferencingProvider: null,
 });
 
+/** The console's first paint: the payload, or why it could not be read. */
+export interface ConnectionsRead {
+	view: ConnectionsView;
+	error: string | null;
+}
+
 /**
- * Resolve the Settings → Integrations payload for a user.
- *
- * `userId` comes from the caller's hydrated session context and is never accepted from the request:
- * a connection is a stored authorization to act at a third party on someone's behalf, so a
- * request-supplied user would let a caller enumerate whose accounts are linked. An empty id resolves
- * to no connections rather than to somebody else's.
+ * Resolve the Settings → Integrations payload for the signed-in person. The actor comes from the
+ * session and never from the request: a connection is a stored authorization to act at a third party
+ * on someone's behalf, so a request-supplied user would let a caller enumerate whose accounts are
+ * linked.
  */
-export async function resolveConnections(
-	userId: string,
-	sim?: FilesSim,
-): Promise<ConnectionsView> {
-	const res = await IntegrationsBackendService.connections({ userId, sim });
-	return res.ok && res.data ? res.data : { ...EMPTY_CONNECTIONS };
+export async function resolveConnections(actor: ReadActor): Promise<ConnectionsRead> {
+	const res = await IntegrationsBackendService.connections(actor);
+	return res.ok && res.data
+		? { view: res.data, error: null }
+		: { view: { ...EMPTY_CONNECTIONS }, error: res.message ?? "Your connections couldn't be loaded just now." };
 }
 // #endregion

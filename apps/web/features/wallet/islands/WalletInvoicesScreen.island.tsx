@@ -7,7 +7,7 @@ import { Money } from "../components/Money.tsx";
 import { CapsRoster } from "../components/CapsRoster.tsx";
 import { WalletService } from "../core/WalletService.ts";
 import { currentWalletContext, walletError } from "../core/wallet-state.ts";
-import { applyRead, useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
+import { applyRead, useWalletRefresh, useWalletSync } from "../core/wallet-sync.ts";
 import type { InvoicesView } from "../types/wallet-types.ts";
 
 /**
@@ -32,7 +32,7 @@ export default function WalletInvoicesScreen(props: WalletInvoicesScreenProps): 
 			view.value = d.invoices;
 		});
 	};
-	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
+	useWalletSync({ display: props.display, wallet: props.wallet });
 	useWalletRefresh(refetch);
 
 	const v = view.value;

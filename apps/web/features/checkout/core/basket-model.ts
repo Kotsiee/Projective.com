@@ -2,25 +2,14 @@ import type { UserContext } from "@projective/types/auth";
 import { itemKindMeta } from "@projective/types/finance";
 import type {
 	BasketItem,
-	BasketOwnerScope,
-	BasketSim,
-	BillingContextKind,
-	BuyerDetailsState,
 	CheckoutContext,
 	CheckoutPreselect,
 	CheckoutView,
-	ConferencingChoice,
-	FulfilmentMix,
-	InvoicingMode,
-	PaymentOfferPreset,
-	SavedCardState,
-	SpendLimitState,
-	WalletCoverage,
 } from "../types/checkout-types.ts";
 
 /**
  * basket-model — the pure, presentation-agnostic helpers the `/basket` + `/checkout` islands, routes and
- * SSR resolvers share: the URL ⇄ {@link CheckoutContext} mapping, the simulation-param serialiser, the
+ * SSR resolvers share: the URL ⇄ {@link CheckoutContext} mapping, the read-context serialiser, the
  * surface vocabulary, and — the one that matters most — the SINGLE resolver for where a basket line
  * points.
  *
@@ -256,12 +245,6 @@ export function defaultOwnerParam(context: UserContext): string {
 	}
 }
 
-/** The scope kind an `owner` param names (`team:northwind` → `team`). */
-export function ownerScopeOf(owner: string | null | undefined): BasketOwnerScope {
-	if (!owner) return "personal";
-	const scope = owner.split(":")[0];
-	return scope === "team" || scope === "business" || scope === "organisation" ? scope : "personal";
-}
 // #endregion
 
 // #region URL ⇄ context
@@ -292,10 +275,9 @@ export function contextFrom(sp: URLSearchParams, context: UserContext): Checkout
 /**
  * Serialise a read context into the `/api/basket|checkout|cards` query string.
  *
- * The four original simulation knobs keep their plain names (`persona`, `workspaceRole`, `kyb`,
- * `acting`) because those are already the published route contract; the four added for this surface
- * carry the `sim*` prefix of the newer `WorkspaceSim` precedent. The mixed vocabulary is flagged in
- * `basket-query.ts` rather than silently unified.
+ * Scope only — which basket, whose money, which display currency, which deep link — plus the device's
+ * payment capabilities, which are facts about the browser rather than about the buyer. Nothing here
+ * changes what the server answers about the account: that is read live, as the signed-in caller.
  */
 export function buildCheckoutQuery(ctx: CheckoutContext): string {
 	const qs = new URLSearchParams();
@@ -304,24 +286,10 @@ export function buildCheckoutQuery(ctx: CheckoutContext): string {
 	if (ctx.display) qs.set("display", ctx.display);
 	if (ctx.projectId) qs.set("project_id", ctx.projectId);
 	if (ctx.serviceId) qs.set("service_id", ctx.serviceId);
-	const s = ctx.sim;
-	if (s?.persona) qs.set("persona", s.persona);
-	if (s?.workspaceRole) qs.set("workspaceRole", s.workspaceRole);
-	if (s?.kyb) qs.set("kyb", s.kyb);
-	if (s?.actingContext !== undefined) qs.set("acting", s.actingContext ? "1" : "0");
-	if (s?.ownerScope) qs.set("simOwnerScope", s.ownerScope);
-	if (s?.providers) qs.set("simProviders", s.providers);
-	if (s?.walletCover) qs.set("simWalletCover", s.walletCover);
-	if (s?.cards) qs.set("simCards", s.cards);
-	if (s?.googlePay !== undefined) qs.set("googlePay", s.googlePay ? "1" : "0");
-	if (s?.applePay !== undefined) qs.set("applePay", s.applePay ? "1" : "0");
-	if (s?.paypalEnabled !== undefined) qs.set("paypal", s.paypalEnabled ? "1" : "0");
-	if (s?.details) qs.set("simDetails", s.details);
-	if (s?.billing) qs.set("simBilling", s.billing);
-	if (s?.invoicing) qs.set("simInvoicing", s.invoicing);
-	if (s?.spendLimit) qs.set("simSpendLimit", s.spendLimit);
-	if (s?.fulfilment) qs.set("simFulfilment", s.fulfilment);
-	if (s?.conferencing) qs.set("simConferencing", s.conferencing);
+	const d = ctx.device;
+	if (d?.googlePay !== undefined) qs.set("googlePay", d.googlePay ? "1" : "0");
+	if (d?.applePay !== undefined) qs.set("applePay", d.applePay ? "1" : "0");
+	if (d?.paypalEnabled !== undefined) qs.set("paypal", d.paypalEnabled ? "1" : "0");
 	if (ctx.provider) qs.set("provider", ctx.provider);
 	if (ctx.contribute !== undefined) qs.set("contribute", ctx.contribute ? "1" : "0");
 	return qs.toString();
@@ -329,97 +297,19 @@ export function buildCheckoutQuery(ctx: CheckoutContext): string {
 
 /**
  * Fold the read context into a MUTATION body, so the basket a write answers with reflects the same
- * scope and simulation the read used.
- *
- * Without this a simulated business basket would accept a write and hand back the personal one — the
- * fat service's `basketQueryFromBody` reads exactly these keys for that reason.
+ * scope the read used — without it a write on a team basket would hand back the personal one. The fat
+ * service's `basketQueryFromBody` reads exactly these keys for that reason.
  */
 export function withContext<T extends Record<string, unknown>>(
 	payload: T,
 	ctx: CheckoutContext,
 ): T & Record<string, unknown> {
-	const s = ctx.sim;
 	return {
 		...payload,
 		...(ctx.owner && ctx.owner !== "personal" ? { owner: ctx.owner } : {}),
 		...(ctx.display ? { display: ctx.display } : {}),
-		...(s?.persona ? { persona: s.persona } : {}),
-		...(s?.workspaceRole ? { workspaceRole: s.workspaceRole } : {}),
-		...(s?.kyb ? { kyb: s.kyb } : {}),
-		...(s?.actingContext !== undefined ? { acting: s.actingContext } : {}),
-		...(s?.ownerScope ? { simOwnerScope: s.ownerScope } : {}),
-		...(s?.providers ? { simProviders: s.providers } : {}),
-		...(s?.walletCover ? { simWalletCover: s.walletCover } : {}),
-		...(s?.cards ? { simCards: s.cards } : {}),
-		...(s?.details ? { simDetails: s.details } : {}),
-		...(s?.billing ? { simBilling: s.billing } : {}),
-		...(s?.invoicing ? { simInvoicing: s.invoicing } : {}),
-		...(s?.spendLimit ? { simSpendLimit: s.spendLimit } : {}),
-		...(s?.fulfilment ? { simFulfilment: s.fulfilment } : {}),
-		...(s?.conferencing ? { simConferencing: s.conferencing } : {}),
 		...(ctx.provider ? { provider: ctx.provider } : {}),
 		...(ctx.contribute !== undefined ? { contribute: ctx.contribute } : {}),
 	};
-}
-
-/**
- * Parse the simulation knobs back OUT of a query string.
- *
- * The server has its own validating parser (`parseBasketSim`); this one exists so a client surface can
- * read a shared/bookmarked simulated URL and seed its controls from it instead of silently rendering a
- * different world from the one the link described.
- */
-export function simFromParams(sp: URLSearchParams): BasketSim | undefined {
-	const sim: BasketSim = {};
-	const owner = oneOf<BasketOwnerScope>(sp.get("simOwnerScope"), [
-		"personal",
-		"team",
-		"business",
-		"organisation",
-	]);
-	if (owner) sim.ownerScope = owner;
-	const providers = oneOf<PaymentOfferPreset>(sp.get("simProviders"), [
-		"all",
-		"no_wallet",
-		"card_only",
-		"invoice",
-	]);
-	if (providers) sim.providers = providers;
-	const cover = oneOf<WalletCoverage>(sp.get("simWalletCover"), ["covers", "shortfall"]);
-	if (cover) sim.walletCover = cover;
-	const cards = oneOf<SavedCardState>(sp.get("simCards"), ["seeded", "none", "expired"]);
-	if (cards) sim.cards = cards;
-	const details = oneOf<BuyerDetailsState>(sp.get("simDetails"), ["saved", "missing"]);
-	if (details) sim.details = details;
-	const billing = oneOf<BillingContextKind>(sp.get("simBilling"), ["personal", "business"]);
-	if (billing) sim.billing = billing;
-	const invoicing = oneOf<InvoicingMode>(sp.get("simInvoicing"), [
-		"per_transaction",
-		"intervaled_monthly",
-	]);
-	if (invoicing) sim.invoicing = invoicing;
-	const spendLimit = oneOf<SpendLimitState>(sp.get("simSpendLimit"), ["within", "over"]);
-	if (spendLimit) sim.spendLimit = spendLimit;
-	const fulfilment = oneOf<FulfilmentMix>(sp.get("simFulfilment"), [
-		"mixed",
-		"products",
-		"tickets",
-		"sessions",
-		"pending",
-	]);
-	if (fulfilment) sim.fulfilment = fulfilment;
-	const conferencing = oneOf<ConferencingChoice>(sp.get("simConferencing"), [
-		"zoom",
-		"google",
-		"microsoft_teams",
-		"none",
-	]);
-	if (conferencing) sim.conferencing = conferencing;
-	return Object.keys(sim).length > 0 ? sim : undefined;
-}
-
-/** Narrow a raw param to a member of `allowed`, else `undefined`. */
-function oneOf<T extends string>(raw: string | null, allowed: readonly T[]): T | undefined {
-	return raw !== null && (allowed as readonly string[]).includes(raw) ? raw as T : undefined;
 }
 // #endregion

@@ -1,7 +1,6 @@
 import { page } from "fresh";
 import { define } from "@web/utils/state.ts";
-import { asAuthenticatedContext } from "@projective/types/auth";
-import { simFromParams } from "@projective/types/files";
+import { readActor } from "@web/utils/api-session.ts";
 import { resolveConnections } from "@web/features/files/core/integrations-ssr.ts";
 import { IntegrationsService } from "@web/features/files/core/IntegrationsService.ts";
 import IntegrationsConsole from "@web/features/files/islands/IntegrationsConsole.island.tsx";
@@ -11,11 +10,10 @@ import IntegrationsConsole from "@web/features/files/islands/IntegrationsConsole
  * `ConnectionsView` shape.
  *
  * Thin controller: resolve the acting user from the SESSION, resolve the payload through the fat
- * service, hand it to the island. The guest bounce is the `(dashboard)` middleware's job, and there is
- * no capability gate here — the Dev Context Switcher is a CLIENT seam the server cannot see, so a
- * capability bounce would make every dev axis inert (Decision #53(b)). RLS under the caller's JWT is
- * the real gate; `integrations.user_connections` is read through `v_my_connections`, the definer view
- * that physically cannot project a token column.
+ * service, hand it to the island — with the reason when it could not be read, so an outage is never
+ * shown as "nothing connected". The guest bounce is the `(dashboard)` middleware's job; RLS under the
+ * caller's JWT is the real gate, and `integrations.user_connections` is read through
+ * `v_my_connections`, the definer view that physically cannot project a token column.
  *
  * **The user is never a parameter.** A connection is a stored authorization to act at a third party
  * on someone's behalf, so accepting a `userId` from the query would let a caller enumerate whose
@@ -38,18 +36,13 @@ import IntegrationsConsole from "@web/features/files/islands/IntegrationsConsole
  */
 export const handler = define.handlers({
 	async GET(ctx) {
-		const context = asAuthenticatedContext(ctx.state.userContext);
-		const view = await resolveConnections(
-			context.userId ?? "",
-			// Parsed from the QUERY, never from the client seam the server cannot see — so a developer who
-			// arrives on a `sim*` URL sees the simulated connection state in the first byte.
-			simFromParams(ctx.url.searchParams),
-		);
+		const { view, error } = await resolveConnections(readActor(ctx));
 
 		ctx.state.title = "Integrations · Settings · Projective";
 
 		return page({
 			view,
+			error,
 			returnTo: ctx.url.pathname,
 			outcome: IntegrationsService.completionFrom(ctx.url),
 		});
@@ -60,6 +53,7 @@ export default define.page<typeof handler>(function IntegrationsSettingsPage({ d
 	return (
 		<IntegrationsConsole
 			initial={data.view}
+			initialError={data.error}
 			returnTo={data.returnTo}
 			outcome={data.outcome}
 		/>

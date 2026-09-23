@@ -185,7 +185,10 @@ export function buildGrid(query: SlotQuery, source: GridSource, request: GridReq
 	// The rail starts at the requested day or the notice floor, whichever is later — a rail that pages
 	// back to yesterday offers times that were never bookable.
 	const requestedFrom = query.from ?? noticeFloor;
-	const railStart = zonedMidnight(Math.max(requestedFrom, zonedMidnight(noticeFloor, viewerTz)), viewerTz);
+	const railStart = zonedMidnight(
+		Math.max(requestedFrom, zonedMidnight(noticeFloor, viewerTz)),
+		viewerTz,
+	);
 	const todayKey = dayKeyInZone(now, viewerTz);
 
 	const days: RailDay[] = [];

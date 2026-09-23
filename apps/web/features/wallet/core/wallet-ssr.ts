@@ -1,6 +1,9 @@
 import type { UserContext } from "@projective/types/auth";
+import { toDisplayCurrency } from "@projective/types/finance";
+import type { ReadActor } from "@server/services/read-actor.ts";
+import type { ServiceResult } from "@server/services/ServiceResult.ts";
 import { WalletBackendService } from "@server/services/finance/WalletBackendService.ts";
-import { toActivityRange, walletQueryFrom } from "./wallet-model.ts";
+import { defaultWalletParam, toActivityRange, walletParam, walletQueryFrom } from "./wallet-model.ts";
 import type {
 	AccessView,
 	ActivityView,
@@ -16,191 +19,158 @@ import type {
 
 /**
  * wallet-ssr — the server-only bootstraps for the Wallet surface's first paint. They call the fat
- * {@link WalletBackendService} directly (no HTTP hop) so the overview / deep pages + the lane ship their
- * first byte resolved from the active context's wallet; the islands then refine via the thin
- * {@link WalletService}. Mirror `resolveCataloguePage` / `resolveProjectsFeed`. Never imported by an
- * island.
+ * {@link WalletBackendService} directly (no HTTP hop), as the signed-in viewer, so the overview, the
+ * deep pages and the lane / header / footer bands ship their first byte resolved from the live
+ * wallet; the islands then refine via the thin `WalletService`. Never imported by an island.
  *
- * The chrome-only display currency defaults to the wallet's own until the live user-preferences read is
- * wired (the pref lives in `org.user_preferences`, not the chrome JWT — flagged); the dev currency axis
- * overrides it client-side (the island refetches). Simulation knobs are absent on the first byte (the
- * server never sees the client dev seam) and applied on the island's first refetch.
+ * Every resolver answers a {@link WalletRead}: the data, or the reason it could not be read. A failed
+ * read is never papered over with an empty wallet — £0.00 drawn where a balance could not be read is
+ * a false statement about someone's money — so the caller renders the failure instead.
  */
 
-/** Everything the Overview page + the lane need without a client round-trip. */
+/** A first-paint read: the projection, or why it could not be produced. */
+export type WalletRead<T> = { ok: true; data: T } | { ok: false; message: string };
+
+/** Everything the Overview page, the lane and the header band share. */
 export interface WalletOverviewBootstrap {
 	overview: WalletOverview;
 	switcher: WalletSwitcher;
 }
 
-/** Resolve the Overview hub + the wallet switcher for the request. */
-export function resolveWalletOverview(context: UserContext, url: URL): WalletOverviewBootstrap {
-	const query = walletQueryFrom(url.searchParams, context);
-	const ov = WalletBackendService.overview(query);
-	const sw = WalletBackendService.switcher(query);
-	return {
-		overview: ov.ok && ov.data ? ov.data.overview : EMPTY_OVERVIEW,
-		switcher: sw.ok && sw.data ? sw.data.switcher : EMPTY_SWITCHER,
-	};
+// #region Request-scoped memo
+/**
+ * One read per kind per request, however many regions ask.
+ *
+ * The page handler, the lane, the header band and the footer rig each need the overview; resolving it
+ * four times would read the viewer's wallets four times for one page. Keyed on the `URL` OBJECT (the
+ * `calendar-slots` precedent): Fresh hands the handler and every resolver in one request the same
+ * instance and a new request a new one, so an entry cannot outlive the request that made it — which
+ * matters here more than anywhere, because a wallet read after a transfer must see the transfer. The
+ * stored value is the PROMISE, so the three bands, resolved concurrently, share one read in flight.
+ */
+const READS = new WeakMap<URL, Map<string, Promise<unknown>>>();
+
+function once<T>(url: URL, actor: ReadActor, kind: string, run: () => Promise<T>): Promise<T> {
+	let reads = READS.get(url);
+	if (!reads) {
+		reads = new Map();
+		READS.set(url, reads);
+	}
+	const key = `${kind}|${actor.userId}|${actor.contextId}`;
+	const hit = reads.get(key) as Promise<T> | undefined;
+	if (hit) return hit;
+	const promise = run();
+	reads.set(key, promise);
+	return promise;
 }
 
-/** Resolve just the wallet switcher (the lane slot). */
-export function resolveWalletSwitcher(context: UserContext, url: URL): WalletSwitcher {
-	const sw = WalletBackendService.switcher(walletQueryFrom(url.searchParams, context));
-	return sw.ok && sw.data ? sw.data.switcher : EMPTY_SWITCHER;
+/** Fold a service result into a {@link WalletRead}. */
+function toRead<T, U>(res: ServiceResult<T>, pick: (data: T) => U): WalletRead<U> {
+	if (res.ok && res.data) return { ok: true, data: pick(res.data) };
+	return {
+		ok: false,
+		message: res.message ?? "We couldn't reach your wallet just now. Try again in a moment.",
+	};
+}
+// #endregion
+
+// #region Resolvers
+/** The Overview hub + the wallet switcher, from one resolution of the viewer's wallets. */
+export function resolveWalletOverview(
+	context: UserContext,
+	url: URL,
+	actor: ReadActor,
+): Promise<WalletRead<WalletOverviewBootstrap>> {
+	return once(url, actor, "overview", async () => {
+		const res = await WalletBackendService.overviewWithSwitcher(walletQueryFrom(url.searchParams, context), actor);
+		return toRead(res, (d): WalletOverviewBootstrap => ({ overview: d.overview, switcher: d.switcher }));
+	});
+}
+
+/** The wallet a page shows and the currency it is drawn in, as its islands thread them into refetches. */
+export interface WalletFrame {
+	/** The `?w=` param of the wallet the server RESOLVED (a vault the viewer has left falls back). */
+	wallet: string;
+	/** The currency the service drew the page in: `?display=`, else the viewer's preference. */
+	display: string;
 }
 
 /**
- * Resolve the display currency for the first paint: an explicit `?display=` override, else the active
- * wallet's own currency (so a EUR vault paints in EUR without a client refetch). The dev currency axis
- * overrides it client-side. Threaded into every deep page so the island seeds the matching currency.
+ * The frame a page threads into its island, read off the switcher so SSR and every later refetch ask
+ * for the same wallet in the same currency. When the wallet could not be read, the request's own
+ * answers stand in — they only label the failure notice.
  */
-export function resolveDisplayCurrency(context: UserContext, url: URL): string {
-	const explicit = url.searchParams.get("display");
-	if (explicit) return explicit.toUpperCase();
-	const sw = WalletBackendService.switcher(walletQueryFrom(url.searchParams, context));
-	return sw.ok && sw.data ? sw.data.switcher.active.available.currency : "GBP";
+export async function resolveWalletFrame(context: UserContext, url: URL, actor: ReadActor): Promise<WalletFrame> {
+	const read = await resolveWalletOverview(context, url, actor);
+	if (read.ok) {
+		const active = read.data.switcher.active;
+		return { wallet: walletParam(active.scope, active.id), display: active.available.currency };
+	}
+	return {
+		wallet: url.searchParams.get("w") ?? defaultWalletParam(context),
+		display: toDisplayCurrency(url.searchParams.get("display") ?? context.displayCurrency),
+	};
 }
 
-/** Resolve the initial transactions page. */
-export function resolveTransactions(context: UserContext, url: URL): { page: TransactionPage } {
-	const query = walletQueryFrom(url.searchParams, context);
-	const params: TransactionListParams = { limit: 40 };
-	const res = WalletBackendService.transactions(query, params);
-	return { page: res.ok && res.data ? res.data.page : EMPTY_TXN_PAGE };
+/** The first page of the ledger. */
+export function resolveTransactions(
+	context: UserContext,
+	url: URL,
+	actor: ReadActor,
+): Promise<WalletRead<TransactionPage>> {
+	return once(url, actor, "transactions", async () => {
+		const params: TransactionListParams = { limit: 40 };
+		const res = await WalletBackendService.transactions(walletQueryFrom(url.searchParams, context), params, actor);
+		return toRead(res, (d) => d.page);
+	});
 }
 
-/** Resolve the initial Activity projection. */
-export function resolveActivity(context: UserContext, url: URL): ActivityView {
-	const query = walletQueryFrom(url.searchParams, context);
-	const range = toActivityRange(url.searchParams.get("range"));
-	const res = WalletBackendService.activity(query, range);
-	return res.ok && res.data ? res.data.activity : EMPTY_ACTIVITY;
+/** The Activity projection over the requested range. */
+export function resolveActivity(context: UserContext, url: URL, actor: ReadActor): Promise<WalletRead<ActivityView>> {
+	return once(url, actor, "activity", async () => {
+		const range = toActivityRange(url.searchParams.get("range"));
+		const res = await WalletBackendService.activity(walletQueryFrom(url.searchParams, context), range, actor);
+		return toRead(res, (d) => d.activity);
+	});
 }
 
-/** Resolve the Payouts projection. */
-export function resolvePayouts(context: UserContext, url: URL): PayoutsView {
-	const res = WalletBackendService.payouts(walletQueryFrom(url.searchParams, context));
-	return res.ok && res.data ? res.data.payouts : EMPTY_PAYOUTS;
+/** The Payouts projection. */
+export function resolvePayouts(context: UserContext, url: URL, actor: ReadActor): Promise<WalletRead<PayoutsView>> {
+	return once(url, actor, "payouts", async () => {
+		const res = await WalletBackendService.payouts(walletQueryFrom(url.searchParams, context), actor);
+		return toRead(res, (d) => d.payouts);
+	});
 }
 
-/** Resolve the Funding projection. */
-export function resolveFunding(context: UserContext, url: URL): FundingView {
-	const res = WalletBackendService.funding(walletQueryFrom(url.searchParams, context));
-	return res.ok && res.data ? res.data.funding : { sources: [], rules: [], balance: ZERO_MONEY };
+/** The Funding projection. */
+export function resolveFunding(context: UserContext, url: URL, actor: ReadActor): Promise<WalletRead<FundingView>> {
+	return once(url, actor, "funding", async () => {
+		const res = await WalletBackendService.funding(walletQueryFrom(url.searchParams, context), actor);
+		return toRead(res, (d) => d.funding);
+	});
 }
 
-/** Resolve the Methods projection. */
-export function resolveMethods(context: UserContext, url: URL): MethodsView {
-	const res = WalletBackendService.methods(walletQueryFrom(url.searchParams, context));
-	return res.ok && res.data ? res.data.methods : { methods: [] };
+/** The Methods projection (also the footer rig's drawers' instruments). */
+export function resolveMethods(context: UserContext, url: URL, actor: ReadActor): Promise<WalletRead<MethodsView>> {
+	return once(url, actor, "methods", async () => {
+		const res = await WalletBackendService.methods(walletQueryFrom(url.searchParams, context), actor);
+		return toRead(res, (d) => d.methods);
+	});
 }
 
-/** Resolve the Invoices projection. */
-export function resolveInvoices(context: UserContext, url: URL): InvoicesView {
-	const res = WalletBackendService.invoices(walletQueryFrom(url.searchParams, context));
-	return res.ok && res.data
-		? res.data.invoices
-		: { current: null, statements: [], bills: [], caps: [] };
+/** The Invoices projection. */
+export function resolveInvoices(context: UserContext, url: URL, actor: ReadActor): Promise<WalletRead<InvoicesView>> {
+	return once(url, actor, "invoices", async () => {
+		const res = await WalletBackendService.invoices(walletQueryFrom(url.searchParams, context), actor);
+		return toRead(res, (d) => d.invoices);
+	});
 }
 
-/** Resolve the Access projection. */
-export function resolveAccess(context: UserContext, url: URL): AccessView {
-	const res = WalletBackendService.access(walletQueryFrom(url.searchParams, context));
-	return res.ok && res.data
-		? res.data.access
-		: { members: [], caps: [], approvals: [], audit: [], viewerCapabilities: ["view"] };
+/** The Access projection. */
+export function resolveAccess(context: UserContext, url: URL, actor: ReadActor): Promise<WalletRead<AccessView>> {
+	return once(url, actor, "access", async () => {
+		const res = await WalletBackendService.access(walletQueryFrom(url.searchParams, context), actor);
+		return toRead(res, (d) => d.access);
+	});
 }
-
-// #region Empty fallbacks (a degraded but coherent first paint)
-const ZERO_MONEY = { minor: 0, currency: "GBP", display: "£0.00", origin: null };
-const EMPTY_VERIFICATION = {
-	subject: "freelancer" as const,
-	kycStatus: "verified" as const,
-	tier: 2,
-	payoutReady: true,
-	canWithdraw: true,
-	canEarn: true,
-	prompt: null,
-	href: null,
-};
-const EMPTY_REF = {
-	scope: "personal" as const,
-	id: "",
-	handle: null,
-	name: "Wallet",
-	avatar: null,
-	role: null,
-	available: ZERO_MONEY,
-};
-const EMPTY_OVERVIEW: WalletOverview = {
-	ref: EMPTY_REF,
-	variant: "personal",
-	balances: {
-		currency: "GBP",
-		availableCents: 0,
-		lockedCents: 0,
-		pendingCents: 0,
-		onHoldCents: 0,
-		lifetimeCents: 0,
-	},
-	available: ZERO_MONEY,
-	locked: ZERO_MONEY,
-	pending: ZERO_MONEY,
-	onHold: ZERO_MONEY,
-	lifetime: ZERO_MONEY,
-	capital: ZERO_MONEY,
-	lockedStageCount: 0,
-	heldCaseCount: 0,
-	incoming: [],
-	flow: [],
-	flowRange: "90d",
-	recent: [],
-	quickActions: [],
-	capabilities: ["view"],
-	verification: EMPTY_VERIFICATION,
-	standing: null,
-	personal: null,
-	team: null,
-	business: null,
-};
-const EMPTY_SWITCHER: WalletSwitcher = {
-	active: EMPTY_REF,
-	accounts: [EMPTY_REF],
-	aggregate: { ...EMPTY_REF, scope: "aggregate", name: "All accounts" },
-};
-const EMPTY_TXN_PAGE: TransactionPage = {
-	items: [],
-	hasMore: false,
-	nextCursor: null,
-	total: 0,
-	projects: [],
-};
-const EMPTY_ACTIVITY: ActivityView = {
-	range: "90d",
-	flow: [],
-	byCategory: [],
-	byProject: [],
-	totalIn: ZERO_MONEY,
-	totalOut: ZERO_MONEY,
-	net: ZERO_MONEY,
-	lockedCapital: null,
-	projectedIncome: null,
-	burnDown: null,
-};
-const EMPTY_PAYOUTS: PayoutsView = {
-	schedule: {
-		mode: "manual",
-		destinationLabel: null,
-		threshold: null,
-		instant: false,
-		nextRunLabel: null,
-	},
-	destinations: [],
-	incomeSmoother: null,
-	instantAvailable: ZERO_MONEY,
-	instantFeeLabel: "",
-	history: [],
-	verification: EMPTY_VERIFICATION,
-};
 // #endregion

@@ -18,6 +18,17 @@ the three subject tables and INSERT/UPDATE/DELETE on the child tables to `authen
 Team membership reuses `org.is_active_team_member`, the helper every other team-scoped policy keys
 on.
 
+## The console writes through functions that run under these policies
+
+The seller console does not write these tables row by row: `catalogue.create_listing`,
+`save_listing` and `set_listing_status` ([Functions.md](Functions.md)) change a listing and its
+product or service blueprint in one transaction. They are `SECURITY INVOKER`, so the policies above
+remain the gate — the functions add the rules a row-level policy cannot express (a service needs a
+freelancer profile; a listing publishes only with a title, a price and an image) and check each
+subject UPDATE's row count, because an UPDATE RLS refuses matches nothing rather than raising. The
+one definer, `get_listing_sales`, reads the buyers' order lines for the caller's own listings only.
+All four are `EXECUTE`-granted to `authenticated` and `service_role`, never `anon`.
+
 ## Derived columns are not the owner's to write
 
 The owner's UPDATE policy reaches every column of their row, including the ones the platform

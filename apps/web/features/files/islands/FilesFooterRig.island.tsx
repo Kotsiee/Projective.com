@@ -10,8 +10,9 @@ import { filesZoom } from "@web/features/projects/core/view-state.ts";
 import { SourceMark } from "../components/file-hub-glyphs.tsx";
 import UploadDrawer from "./UploadDrawer.island.tsx";
 import { FilesService } from "../core/FilesService.ts";
+import { IntegrationsService } from "../core/IntegrationsService.ts";
+import { providerSource } from "../core/asset-model.ts";
 import { postFiles } from "../core/api.ts";
-import { simFromSeam } from "../core/files-seam.ts";
 import { openUploadDrawer, uploadDrawerOpen } from "../core/upload-drawer-state.ts";
 import {
 	commitFiles,
@@ -112,12 +113,12 @@ const ACTIONS: readonly ActionSpec[] = [
 ];
 
 /** The storage connectors a drive can be mounted from, in the order the tree lists them. */
-const DRIVE_PROVIDERS: readonly { slug: string; source: AssetSource }[] = [
-	{ slug: "google_drive", source: "google_drive" },
-	{ slug: "dropbox", source: "dropbox" },
-	{ slug: "frameio", source: "frameio" },
-	{ slug: "s3", source: "s3" },
-];
+/** One storage provider this account can connect right now, as the catalogue describes it. */
+interface DriveOffer {
+	slug: string;
+	label: string;
+	source: AssetSource;
+}
 
 /** A client-minted queue key. `randomUUID` needs a secure context, so there is a plain fallback. */
 function queueKey(): string {
@@ -144,11 +145,46 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 	const linkOpen = useSignal(false);
 	const linkUrl = useSignal("");
 	const driveOpen = useSignal(false);
+	/**
+	 * What "Connect a drive" can offer: `null` until the catalogue has answered, then the enabled
+	 * storage providers not already connected, plus whether the catalogue offers ANY — an empty list
+	 * means "all connected" or "none offered", and the dialog must not say one when the other is true.
+	 */
+	const drives = useSignal<{ offers: DriveOffer[]; anyOffered: boolean } | null>(null);
 	/** The last action's outcome, shown inside the dialog that produced it. Never swallowed. */
 	const notice = useSignal<string | null>(null);
 	const busy = useSignal(false);
 
 	useEffect(() => filesZoom.restoreZoom(), []);
+
+	// Read on OPEN, not on mount: the rig renders on every /files route, and reading someone's stored
+	// authorizations to fill a dialog they may never open is a request nobody asked for.
+	useEffect(() => {
+		if (!driveOpen.value || drives.value) return;
+		let cancelled = false;
+		void (async () => {
+			const res = await IntegrationsService.connections();
+			if (cancelled) return;
+			if (!res.ok || !res.data) {
+				notice.value = res.message ?? "The drives you can connect could not be loaded.";
+				return;
+			}
+			const connected = new Set(
+				res.data.connections.filter((c) => c.status !== "revoked" && c.status !== "disconnected")
+					.map((c) => c.providerSlug),
+			);
+			const storage = res.data.providers.filter((p) => p.isEnabled && p.capabilities.includes("storage"));
+			drives.value = {
+				anyOffered: storage.length > 0,
+				offers: storage.filter((p) => !connected.has(p.slug))
+					.sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label))
+					.map((p) => ({ slug: p.slug, label: p.label, source: providerSource(p.slug) })),
+			};
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [driveOpen.value]);
 
 	const available = useComputed(() => ACTIONS.filter((a) => (readOnly.value ? !a.writes : true)));
 
@@ -236,7 +272,7 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 			folderId: folderId.value,
 			ownerType: props.ownerType,
 			ownerId: props.ownerId,
-		}, simFromSeam());
+		});
 		busy.value = false;
 		if (res.ok) {
 			linkUrl.value = "";
@@ -552,23 +588,35 @@ export default function FilesFooterRig(props: FilesFooterRigProps): JSX.Element 
 					Connecting is a separate permission from signing in — signing in with Google grants no
 					access to your Drive. A connected drive is browsable here and stays read-only.
 				</p>
-				<div class="fh-rig__providers">
-					{DRIVE_PROVIDERS.map((p) => (
-						<button
-							key={p.slug}
-							type="button"
-							class="fh-rig__provider"
-							disabled={busy.value}
-							onClick={() => void connect(p.slug)}
-						>
-							<span class="fh-rig__provider-mark" aria-hidden="true">
-								<SourceMark source={p.source} size={20} />
-							</span>
-							<span class="fh-rig__provider-label">{sourceLabel(p.source)}</span>
-							<Icon name="chevron-right" class="fh-rig__provider-caret" />
-						</button>
-					))}
-				</div>
+				{drives.value && drives.value.offers.length > 0
+					? (
+						<div class="fh-rig__providers">
+							{drives.value.offers.map((p) => (
+								<button
+									key={p.slug}
+									type="button"
+									class="fh-rig__provider"
+									disabled={busy.value}
+									onClick={() => void connect(p.slug)}
+								>
+									<span class="fh-rig__provider-mark" aria-hidden="true">
+										<SourceMark source={p.source} size={20} />
+									</span>
+									<span class="fh-rig__provider-label">{p.label}</span>
+									<Icon name="chevron-right" class="fh-rig__provider-caret" />
+								</button>
+							))}
+						</div>
+					)
+					: (
+						<p class="fh-rig__hint" role="status">
+							{drives.value === null
+								? notice.value ? null : "Loading the drives you can connect…"
+								: drives.value.anyOffered
+								? "Every drive this account can connect is already connected."
+								: "No drives can be connected yet."}
+						</p>
+					)}
 				{notice.value && <p class="fh-rig__error" role="status">{notice.value}</p>}
 			</Dialog>
 

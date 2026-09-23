@@ -280,6 +280,11 @@ library on every upload is the kind of cost that only shows up once a tenant is 
 `bytes_used` is `bigint` — the honest unit for a byte total. The quota it is checked against is in
 **mebibytes**; the conversion happens once, in `files.fn_check_storage_quota`.
 
+It counts stored bytes **and in-flight reservations**: a `pending_upload` / `scanning` row counts at
+its declared size (the quota gate charges a promotion only the delta), while a `quarantined` / `error`
+row — whose bytes were never kept — does not. See
+[Functions.md](Functions.md#-filesfn_recompute_usagep_owner_type-filesowner_kind-p_owner_id-uuid).
+
 ---
 
 ## 🚩 Refactor Notes & Suggestions

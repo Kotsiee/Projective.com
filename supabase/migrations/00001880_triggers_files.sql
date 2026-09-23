@@ -21,10 +21,11 @@ CREATE TRIGGER trg_files_folders_touch
 -- (a hub-native upload that becomes a mounted reference stops consuming our bytes), and
 -- `owner_type` / `owner_entity_id` decide WHOSE rollup it counts against. Narrowing the list back
 -- to two columns would let a re-owned or re-sourced asset stay charged to the wrong principal
--- until the next unrelated write happened to fire the trigger.
+-- until the next unrelated write happened to fire the trigger. `status` is on the list because a
+-- refusal writes nothing else, and it is what releases the refused upload's reservation.
 CREATE TRIGGER trg_files_items_usage
     AFTER INSERT
-        OR UPDATE OF size_bytes, deleted_at, source, owner_type, owner_entity_id
+        OR UPDATE OF size_bytes, deleted_at, source, owner_type, owner_entity_id, status
         OR DELETE
     ON files.items
     FOR EACH ROW EXECUTE FUNCTION files.fn_usage_trigger ();

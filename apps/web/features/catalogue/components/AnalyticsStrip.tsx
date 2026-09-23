@@ -1,27 +1,35 @@
 import type { JSX } from "preact";
-import { type AnalyticsPeriod, analyticsPeriod } from "../core/catalogue-state.ts";
 import { Icon } from "@projective/ui/icons";
 import { StarGlyph } from "./catalogue-glyphs.tsx";
-import type { CatalogueStats, CatalogueTypeFilter } from "../types/catalogue-types.ts";
+import { halfOverHalf } from "../core/catalogue-model.ts";
+import type {
+	CataloguePeriod,
+	CatalogueStats,
+	CatalogueTypeFilter,
+} from "../types/catalogue-types.ts";
 
 /**
  * AnalyticsStrip — the console's KPI row: five stat tiles following the dataviz stat-tile contract
  * (sentence-case label · auto-compact value · optional signed delta · text in text tokens, direction in
- * `--success`/`--danger`). The window it reports over comes from the header band's period switch
- * (the shared `analyticsPeriod` signal, matching `/wallet`, whose header band owns its 30/60/90 range).
+ * `--success`/`--danger`). The window the figures cover is the one the SERVER counted them over
+ * (`stats.period`), chosen by the header band's period switch — never scaled here: a thirty-day total
+ * multiplied by a quarter is not a seven-day total, it is a guess printed as a fact.
  *
- * Two things it deliberately no longer does.
+ * Three things it deliberately does not do.
  *
- * **It no longer asserts a number it cannot support.** The strip rolls up the seller's whole catalogue
+ * **It does not assert a number it cannot support.** The strip rolls up the seller's whole catalogue
  * within the active *type* segment — a scope they chose and stay in — but a *search* is a lookup, not a
- * scope, so the figures do not follow it. Previously that was silent, and "9 active listings" could sit
- * directly above a body reading "0 listings". Now the block names its own scope, and says so out loud
- * whenever a search has narrowed the list beneath it.
+ * scope, so the figures do not follow it. The block names its own scope, and says so out loud whenever
+ * a search has narrowed the list beneath it. Views are a lifetime counter, so that tile says "all time"
+ * rather than borrowing the window's heading.
  *
- * **It no longer draws a sparkline.** The line was 96×22, unlabelled, with no axis and no scale, and
- * its entire information content — first point versus last — was already printed as the delta beside
- * it. Two marks for one fact is decoration; removing it also gave the block back 22px per tile, which
- * is what let it stop eating 29% of a mobile viewport.
+ * **It does not invent a trend.** The delta compares the later half of the window's weekly revenue
+ * with the earlier half, and is withheld when the earlier half sold nothing — a rise from zero has no
+ * percentage, and printing one (the old first-bucket formula divided by 1 in that case) produced
+ * figures in the tens of thousands.
+ *
+ * **It does not draw a sparkline.** The line was 96×22, unlabelled, with no axis and no scale, and its
+ * entire information content was already printed as the delta beside it.
  */
 
 export interface AnalyticsStripProps {
@@ -32,8 +40,7 @@ export interface AnalyticsStripProps {
 	narrowed?: boolean;
 }
 
-const PERIOD_FACTOR: Record<AnalyticsPeriod, number> = { "7d": 0.25, "30d": 1, "90d": 3 };
-const PERIOD_LABEL: Record<AnalyticsPeriod, string> = {
+const PERIOD_LABEL: Record<CataloguePeriod, string> = {
 	"7d": "7 days",
 	"30d": "30 days",
 	"90d": "90 days",
@@ -46,20 +53,6 @@ function compact(n: number): string {
 	return n.toLocaleString("en-US");
 }
 
-/** Compact currency (whole-dollar; $12.9K / $4.2M above 10k). */
-function compactMoney(n: number): string {
-	if (n >= 10_000) return `$${compact(n)}`;
-	return `$${Math.round(n).toLocaleString("en-US")}`;
-}
-
-/** The signed period-over-period delta derived from the trend series' shape (first → last). */
-function trendDelta(trend: number[]): number | null {
-	if (trend.length < 2) return null;
-	const first = trend[0] || 1;
-	const last = trend[trend.length - 1];
-	return Math.round(((last - first) / first) * 100);
-}
-
 /** What the figures cover, in the seller's own words. */
 function scopeLabel(type: CatalogueTypeFilter): string {
 	return type === "service"
@@ -70,17 +63,12 @@ function scopeLabel(type: CatalogueTypeFilter): string {
 }
 
 export function AnalyticsStrip({ stats, type, narrowed }: AnalyticsStripProps): JSX.Element {
-	const period = analyticsPeriod.value;
-	const factor = PERIOD_FACTOR[period];
-	const views = Math.round(stats.views30d * factor);
-	const orders = Math.round(stats.orders * factor);
-	const revenue = Math.round(stats.revenue * factor);
-	const delta = trendDelta(stats.trend);
+	const delta = halfOverHalf(stats.trend);
 
 	return (
 		<section class="cat-analytics" aria-label="Catalogue analytics">
 			<h2 class="cat-analytics__scope">
-				Last {PERIOD_LABEL[period]} across {scopeLabel(type)}
+				Last {PERIOD_LABEL[stats.period]} across {scopeLabel(type)}
 				{narrowed && (
 					<span class="cat-analytics__disclaim">
 						{" "}— not affected by your search
@@ -101,9 +89,14 @@ export function AnalyticsStrip({ stats, type, narrowed }: AnalyticsStripProps): 
 					value={compact(stats.activeListings)}
 					caption={`of ${stats.totalListings} not archived`}
 				/>
-				<StatTile label="Views" value={compact(views)} delta={delta} />
-				<StatTile label="Orders & bookings" value={compact(orders)} />
-				<StatTile label="Revenue" value={compactMoney(revenue)} delta={delta} />
+				<StatTile label="Views" value={compact(stats.views)} caption="All time" />
+				<StatTile label="Orders & bookings" value={compact(stats.orders)} />
+				<StatTile
+					label="Revenue"
+					value={stats.revenueLabel || "—"}
+					delta={delta}
+					caption={delta == null ? undefined : "Second half vs first half"}
+				/>
 				<StatTile
 					label="Avg rating"
 					value={stats.avgRating > 0 ? stats.avgRating.toFixed(1) : "—"}

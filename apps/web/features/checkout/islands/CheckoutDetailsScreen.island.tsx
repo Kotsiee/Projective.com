@@ -6,11 +6,10 @@ import { missingBuyerFields } from "@projective/types/finance";
 import { Button } from "@projective/ui/fields";
 import { Message } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
-import { CheckoutService } from "../core/CheckoutService.ts";
 import { basketHref, checkoutStepHref } from "../core/basket-model.ts";
 import { currentCheckoutContext } from "../core/basket-state.ts";
 import { includedNow } from "../core/checkout-model.ts";
-import { useCheckoutSeam } from "../core/checkout-seam.ts";
+import { useCheckoutContext } from "../core/checkout-context.ts";
 import {
 	applyRead,
 	billingContextKind,
@@ -119,7 +118,6 @@ export default function CheckoutDetailsScreen(props: CheckoutDetailsScreenProps)
 	const contexts = useSignal(session.billingContexts);
 	const invoicing = useSignal(session.invoicing);
 	const saving = useSignal(false);
-	const reading = useSignal(false);
 	const saved = useSignal(false);
 
 	// #region Shared state
@@ -145,36 +143,12 @@ export default function CheckoutDetailsScreen(props: CheckoutDetailsScreenProps)
 	// #endregion
 
 	// #region Reads
-	/**
-	 * Re-read the session — after a dev-seam change, or after the contribution offer is answered.
-	 *
-	 * An in-flight edit is never overwritten: a developer flipping an axis mid-form, or a buyer
-	 * ticking the contribution box halfway through the address, would otherwise lose what they had
-	 * typed, and the corrected record would look like the form silently reverting.
-	 */
-	const readSession = useCallback(async (contribute?: boolean): Promise<void> => {
-		reading.value = true;
-		const res = await CheckoutService.session({
-			...currentCheckoutContext(),
-			contribute: contribute ?? contributionOptedIn.peek(),
-		});
-		reading.value = false;
-		applyRead(res, (data) => {
-			view.value = data.session;
-			contexts.value = data.session.billingContexts;
-			invoicing.value = data.session.invoicing;
-			buyerDetails.value = data.session.buyer;
-			if (!draftIsDirty(draft)) seedDetailsDraft(draft, data.session.buyer);
-		});
-	}, []);
-
-	useCheckoutSeam({
+	useCheckoutContext({
 		basketId: session.basketId || null,
 		owner,
 		display,
 		projectId: session.preselect.projectId,
 		serviceId: session.preselect.serviceId,
-		onRefetch: () => void readSession(),
 	});
 	// #endregion
 
@@ -362,7 +336,7 @@ export default function CheckoutDetailsScreen(props: CheckoutDetailsScreenProps)
 						// payment method they have not picked.
 						contribution={null}
 						optedIn={contributionOptedIn}
-						reading={reading.value}
+						reading={false}
 						onToggleContribution={() => {}}
 						basketHref={basketHref(projection.basketId || null, owner)}
 					>

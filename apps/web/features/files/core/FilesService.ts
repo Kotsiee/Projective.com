@@ -21,8 +21,6 @@ import {
 	type DownloadGuard,
 	type DownloadHistoryPage,
 	type DownloadVia,
-	type FileScope,
-	type FilesSim,
 	type LinkAttach,
 	LinkAttachSchema,
 	type MoveAssets,
@@ -35,7 +33,6 @@ import {
 	SetVisibilitySchema,
 	type ShareLink,
 	type ShareResolution,
-	simToQuery,
 	type StorageQuota,
 	type UploadComplete,
 	UploadCompleteSchema,
@@ -70,16 +67,10 @@ import type { FilesResult } from "../types/results.ts";
  * answer.** No method here takes an `actorId`: `downloadGuard` and `recordDownload` take an actor on
  * the FAT side and the thin route supplies it from the session, because a client-supplied one would
  * let anyone write a download into someone else's ledger or ask whether somebody else had taken a
- * copy. The same rule now covers every mutation — `uploadInit`, `attachLink` and `createFolder` still
- * carry an `ownerType`/`ownerId`, but the route derives the acting principal from
- * `ctx.state.userContext` and the fat service decides which library the write actually lands in (see
- * `@server/services/files/acting-principal.ts`). So a payload owner is a destination the caller is
- * asking for, and being refused it is a normal outcome this client must be able to render.
- *
- * **The simulation overlay travels as query params, not as a body field.** The Dev Context Switcher
- * is a client seam the server cannot see, and every axis it exposes changes data the SERVER produced,
- * so the overlay has to reach the fat service on the request itself (see `files-seam.ts` and the
- * `/wallet` precedent, Decision #55).
+ * copy. The same rule covers every mutation — `uploadInit`, `attachLink` and `createFolder` still
+ * carry an `ownerType`/`ownerId`, but the route acts as the session and the fat service writes only
+ * into the library that context owns. So a payload owner is a destination the caller is asking for,
+ * and being refused it is a normal outcome this client must be able to render.
  */
 
 // #region Query building
@@ -108,23 +99,6 @@ export function buildListQuery(params: AssetListParams): string {
 	return qs.toString();
 }
 
-/**
- * Append a simulation overlay to a query string that already has at least one param.
- *
- * The SSOT's `simToQuery` returns a **leading `&`** by design, so it composes onto an existing query
- * without the caller having to remember a separator — the alternative silently concatenates onto the
- * previous param the one time somebody forgets.
- */
-function withSim(query: string, sim?: FilesSim): string {
-	return `${query}${simToQuery(sim)}`;
-}
-
-/** The same overlay for a POST, where there may be no other param to hang it off. */
-function simQuery(sim?: FilesSim): string {
-	const q = simToQuery(sim);
-	return q ? `?${q.slice(1)}` : "";
-}
-
 /** A synchronous validation failure, shaped exactly like a route's 422 so callers branch once. */
 function invalid<T>(
 	error: {
@@ -142,44 +116,35 @@ export const FilesService = {
 	 * List one location: the assets, the child folders, the breadcrumb trail, the location's
 	 * `readOnly` fact and — on a `hub` read — the owner's allowance, in one round trip.
 	 */
-	list(params: AssetListParams, sim?: FilesSim): Promise<FilesResult<AssetListPage>> {
+	list(params: AssetListParams): Promise<FilesResult<AssetListPage>> {
 		const parsed = AssetListParamsSchema.safeParse(params);
 		if (!parsed.success) {
 			return Promise.resolve(invalid(parsed.error, "That file query is not valid."));
 		}
-		return getFiles<AssetListPage>(`/api/files/list?${withSim(buildListQuery(parsed.data), sim)}`);
+		return getFiles<AssetListPage>(`/api/files/list?${buildListQuery(parsed.data)}`);
 	},
 
-	/** The navigation tree for a scope — the library, the mounted engagements and the drives. */
-	tree(params: {
-		scope: FileScope;
-		subjectId?: string | null;
-		ownerType: AssetOwnerType;
-		ownerId: string;
-	}, sim?: FilesSim): Promise<FilesResult<AssetTreeNode[]>> {
-		const qs = new URLSearchParams({
-			scope: params.scope,
-			ownerType: params.ownerType,
-			ownerId: params.ownerId,
-		});
-		if (params.subjectId) qs.set("subjectId", params.subjectId);
-		return getFiles<AssetTreeNode[]>(`/api/files/tree?${withSim(qs.toString(), sim)}`);
+	/**
+	 * The navigation tree — the acting library, the mounted engagements and the drives. Whose tree it is
+	 * comes from the session, so nothing is sent.
+	 */
+	tree(): Promise<FilesResult<AssetTreeNode[]>> {
+		return getFiles<AssetTreeNode[]>("/api/files/tree");
 	},
 
 	/** One asset's full row (the preview modal's deep link, and a refresh after a mutation). */
-	item(id: string, sim?: FilesSim): Promise<FilesResult<AssetItem>> {
+	item(id: string): Promise<FilesResult<AssetItem>> {
 		const qs = new URLSearchParams({ id });
-		return getFiles<AssetItem>(`/api/files/item?${withSim(qs.toString(), sim)}`);
+		return getFiles<AssetItem>(`/api/files/item?${qs.toString()}`);
 	},
 
-	/** A principal's resolved storage allowance (the meter, the nudge and the upload pre-flight). */
-	quota(
-		ownerType: AssetOwnerType,
-		ownerId: string,
-		sim?: FilesSim,
-	): Promise<FilesResult<StorageQuota>> {
-		const qs = new URLSearchParams({ ownerType, ownerId });
-		return getFiles<StorageQuota>(`/api/files/quota?${withSim(qs.toString(), sim)}`);
+	/**
+	 * A library's storage allowance (the meter, the nudge and the upload pre-flight) — the acting
+	 * library's when no owner is named; naming any other is refused.
+	 */
+	quota(ownerType?: AssetOwnerType, ownerId?: string): Promise<FilesResult<StorageQuota>> {
+		const qs = ownerType && ownerId ? `?${new URLSearchParams({ ownerType, ownerId })}` : "";
+		return getFiles<StorageQuota>(`/api/files/quota${qs}`);
 	},
 	// #endregion
 
@@ -191,21 +156,21 @@ export const FilesService = {
 	 *
 	 * Verdicts come back positionally aligned with `input.fingerprints`.
 	 */
-	dedupCheck(input: DedupCheck, sim?: FilesSim): Promise<FilesResult<DedupVerdict[]>> {
+	dedupCheck(input: DedupCheck): Promise<FilesResult<DedupVerdict[]>> {
 		const parsed = DedupCheckSchema.safeParse(input);
 		if (!parsed.success) {
 			return Promise.resolve(invalid(parsed.error, "That duplicate check is not valid."));
 		}
-		return postFiles<DedupVerdict[]>(`/api/files/dedup${simQuery(sim)}`, parsed.data);
+		return postFiles<DedupVerdict[]>("/api/files/dedup", parsed.data);
 	},
 
 	/** Step 1 — declare the incoming file and receive a scoped, short-lived signed-URL ticket. */
-	uploadInit(input: UploadInit, sim?: FilesSim): Promise<FilesResult<UploadTicket>> {
+	uploadInit(input: UploadInit): Promise<FilesResult<UploadTicket>> {
 		const parsed = UploadInitSchema.safeParse(input);
 		if (!parsed.success) {
 			return Promise.resolve(invalid(parsed.error, "That upload could not be started."));
 		}
-		return postFiles<UploadTicket>(`/api/files/upload-init${simQuery(sim)}`, parsed.data);
+		return postFiles<UploadTicket>("/api/files/upload-init", parsed.data);
 	},
 
 	/**
@@ -230,12 +195,12 @@ export const FilesService = {
 	 * resolve the host and refuse loopback / link-local / private ranges before it fetches the page
 	 * for a title and favicon, because an unguarded ingest fetch is a textbook SSRF.
 	 */
-	attachLink(input: LinkAttach, sim?: FilesSim): Promise<FilesResult<AssetItem>> {
+	attachLink(input: LinkAttach): Promise<FilesResult<AssetItem>> {
 		const parsed = LinkAttachSchema.safeParse(input);
 		if (!parsed.success) {
 			return Promise.resolve(invalid(parsed.error, "That link could not be attached."));
 		}
-		return postFiles<AssetItem>(`/api/files/link${simQuery(sim)}`, parsed.data);
+		return postFiles<AssetItem>("/api/files/link", parsed.data);
 	},
 	// #endregion
 
@@ -328,19 +293,10 @@ export const FilesService = {
 	 * identical answer**, because a distinguishable failure confirms that a slug was real — the only
 	 * bit an enumeration attack needs. A caller here must therefore treat every non-`ok` resolution as
 	 * the same outcome and must never render which one it was.
-	 *
-	 * `userRef` is the opaque, server-minted per-recipient reference carried on the share URL. It is
-	 * never a handle, a user id or an email — a share URL gets forwarded and pasted into public
-	 * places, and personal data must never travel in a query string (root CLAUDE.md §Privacy).
 	 */
-	resolveShare(
-		slug: string,
-		userRef?: string | null,
-		sim?: FilesSim,
-	): Promise<FilesResult<ShareResolution>> {
+	resolveShare(slug: string): Promise<FilesResult<ShareResolution>> {
 		const qs = new URLSearchParams({ slug });
-		if (userRef) qs.set("u", userRef);
-		return getFiles<ShareResolution>(`/api/files/share-resolve?${withSim(qs.toString(), sim)}`);
+		return getFiles<ShareResolution>(`/api/files/share-resolve?${qs.toString()}`);
 	},
 	// #endregion
 

@@ -1,5 +1,5 @@
 import { computed, signal } from "@preact/signals";
-import type { FundState, LedgerLine, WalletAction, WalletSim } from "../types/wallet-types.ts";
+import type { FundState, LedgerLine, WalletAction, WalletScope } from "../types/wallet-types.ts";
 import type { WalletContext } from "./WalletService.ts";
 
 /**
@@ -8,22 +8,20 @@ import type { WalletContext } from "./WalletService.ts";
  * and the action modals (mounted once, opened from the lane / overview / deep pages). The documented
  * module-level-signal coordination pattern (mirrors `catalogue-state` / the projects footer↔body bridge).
  *
- * The active wallet param + display currency + dev-simulation knobs are the shared read context every
- * service call threads ({@link currentWalletContext}); they are seeded from SSR and then tracked live
- * (the display currency + sim change with the Dev Context Switcher, driving a refetch).
+ * The active wallet param + display currency are the shared read context every service call threads
+ * ({@link currentWalletContext}); they are seeded from SSR and then tracked live (the header band's
+ * currency toggle changes the display currency and drives a refetch).
  */
 
-// #region Shared read context (wallet · display currency · dev simulation)
-/** The active wallet param (`personal` · `team:northwind` · `aggregate`). */
+// #region Shared read context (wallet · display currency)
+/** The active wallet param (`personal` · `team:{id}` · `aggregate`). */
 export const activeWallet = signal<string>("personal");
-/** The viewer's display currency (base default; the dev currency axis or a future pref override it). */
+/** The currency the surface's figures are drawn in (the server resolved it for the first paint). */
 export const displayCurrency = signal<string>("GBP");
-/** The live dev-simulation knobs (read from the seam by the lane island; `undefined` when inert). */
-export const devSim = signal<WalletSim | undefined>(undefined);
 
 /** Build the {@link WalletContext} every `WalletService` call threads from the current signals. */
 export function currentWalletContext(): WalletContext {
-	return { wallet: activeWallet.value, display: displayCurrency.value, sim: devSim.value };
+	return { wallet: activeWallet.value, display: displayCurrency.value };
 }
 
 /** Seed the shared context from SSR props (called once on the lane's mount). */
@@ -89,21 +87,14 @@ export function notifyWalletChanged(): void {
 }
 
 /**
- * Fold the live dev-simulation knobs into a mutation payload so the refreshed overview the server returns
- * reflects the simulated role/KYC/fund-mix (the action route reads these from the body). A no-op in
- * production (the seam is never active), so a real payload is untouched.
+ * A fresh key for ONE attempt at a money movement. The server records the first request under it and
+ * answers a repeat with what that request did, so a retry after a dropped response cannot move the
+ * money twice. A new composition gets a new key; "Try again" on the same one reuses it.
  */
-export function withSim<T extends Record<string, unknown>>(payload: T): T {
-	const s = devSim.value;
-	if (!s) return payload;
-	return {
-		...payload,
-		...(s.vaultRole ? { vaultRole: s.vaultRole } : {}),
-		...(s.kyc ? { kyc: s.kyc } : {}),
-		...(s.smoother ? { smoother: s.smoother } : {}),
-		...(s.fundMix ? { fundMix: s.fundMix } : {}),
-		...(s.standing ? { standing: s.standing } : {}),
-	} as T;
+export function newAttemptKey(): string {
+	const bytes = new Uint8Array(16);
+	crypto.getRandomValues(bytes);
+	return `mv-${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
 }
 // #endregion
 
@@ -151,17 +142,32 @@ export const drawerLine = signal<LedgerLine | null>(null);
 /** Whether the parked mini-wallet (a `DraggablePopover`) is open. */
 export const popoutOpen = signal<boolean>(false);
 
+/** A wallet as a mutation names it. */
+export interface MoveEnd {
+	scope: WalletScope;
+	id: string;
+}
+
 /** A money-movement flow in progress: which step, and the composed input awaiting confirmation. */
 export interface MoveFlowState {
 	kind: "transfer" | "withdraw" | "top_up" | "fund_escrow" | "distribute";
 	step: "confirm" | "pending" | "done" | "error";
-	/** The server-formatted amount, echoed verbatim into the confirm button (RULE O-2). */
+	/** The formatted amount in the wallet's OWN currency, echoed into the confirm button (RULE O-2). */
 	amountDisplay: string;
+	/** The amount in the wallet's own currency — a movement is never a conversion. */
 	amountMinor: number;
 	currency: string;
+	/** The wallet the money leaves. */
+	from: MoveEnd;
+	/** The wallet it arrives in (a transfer only). */
+	to: MoveEnd | null;
+	/** The stage whose escrow is being funded (fund escrow only). */
+	stageId: string | null;
 	fromLabel: string;
 	toLabel: string;
 	note: string | null;
+	/** Held for the life of this composition, so a retry answers instead of moving the money twice. */
+	idempotencyKey: string;
 	/** Server message on success/failure — never composed client-side. */
 	message: string | null;
 	/** Recipient count, for the Distribute confirmation and its live-region announcement. */

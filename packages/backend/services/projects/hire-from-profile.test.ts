@@ -89,6 +89,10 @@ function primePipelineListing(): void {
 			verification_tier: null,
 			language_codes: [],
 			delivered_count: 0,
+			showcase_bucket: null,
+			showcase_path: null,
+			standing_level: 1,
+			standing_label: "New",
 		}],
 		listings: [{
 			id: "00000000-0000-4000-8000-0000000000c1",

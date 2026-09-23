@@ -8,7 +8,7 @@ import { Money } from "../components/Money.tsx";
 import { buildCategoryBars, buildProjectBars } from "../core/category-chart.ts";
 import { WalletService } from "../core/WalletService.ts";
 import { currentWalletContext, flowPeriod, walletError } from "../core/wallet-state.ts";
-import { applyRead, useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
+import { applyRead, useWalletRefresh, useWalletSync } from "../core/wallet-sync.ts";
 import { styleVars } from "@ui/core/style.ts";
 import type { ActivityView } from "../types/wallet-types.ts";
 
@@ -36,7 +36,7 @@ export default function WalletActivityScreen(props: WalletActivityScreenProps): 
 			activity.value = d.activity;
 		});
 	};
-	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
+	useWalletSync({ display: props.display, wallet: props.wallet });
 	useWalletRefresh(refetch);
 
 	const a = activity.value;

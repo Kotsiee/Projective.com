@@ -372,9 +372,13 @@ function tierOf(row: ProfileRow | undefined): ProfileTier | null {
 function sellerFor(catalog: Catalog, item: ExploreItem): EntitySeller {
 	const row = catalog.profileByHandle.get(item.owner.handle);
 	if (!row) return { headline: "", tier: null, standing: null };
-	// No Standing is computed yet (`org.entity_standing` is empty until the recompute sweep runs), so
-	// the rung is absent rather than a default a seller never earned.
-	return { headline: (row.headline ?? "").slice(0, 160), tier: tierOf(row), standing: null };
+	// The rung comes from the public directory row, under the profile's own rule: a seller with no
+	// computed standing reads as "New", and a buyer has none.
+	const level = Number(row.standing_level);
+	const standing = Number.isInteger(level) && level >= 1 && level <= 5 && row.standing_label
+		? { level, label: row.standing_label.slice(0, 40) }
+		: null;
+	return { headline: (row.headline ?? "").slice(0, 160), tier: tierOf(row), standing };
 }
 
 // #endregion

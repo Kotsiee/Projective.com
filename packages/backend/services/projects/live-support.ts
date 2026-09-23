@@ -4,6 +4,7 @@ import { fetchPartyRows, partyRowsWithAvatars } from "../profile/party-cards.ts"
 import type { ReadActor } from "../read-actor.ts";
 import type { ProjectStatus } from "@projective/types/projects";
 import { isSlug } from "@projective/types/slugs";
+import { clamp, clampOr } from "../../core/text.ts";
 
 /**
  * live-support — the plumbing every live read in this domain shares, and the single place each
@@ -153,16 +154,8 @@ export async function resolveChannelRef(
 	return UUID_RE.test(ref) ? ref : null;
 }
 
-export function clamp(value: string | null | undefined, max: number): string {
-	if (!value) return "";
-	return value.length <= max ? value : value.slice(0, max);
-}
-
-/** Clamp, falling back to `fallback` when the result would be empty. For `min(1)` fields. */
-export function clampOr(value: string | null | undefined, max: number, fallback: string): string {
-	const out = clamp(value, max).trim();
-	return out.length > 0 ? out : fallback;
-}
+/** The string bounds, re-exported from their one home so every projects importer keeps its path. */
+export { clamp, clampOr };
 
 // #endregion
 

@@ -5,17 +5,16 @@ import "../styles/calendar-page.css";
 import { Calendar } from "@projective/ui/calendar";
 import type { CalendarComposeRequest, CalendarRange } from "@projective/ui/calendar";
 import { Message } from "@projective/ui/feedback";
-import type {
-	CalendarEvent,
-	CalendarEventKind,
-	SchedulePage,
-	SchedulingSim,
-} from "@projective/types/scheduling";
+import type { CalendarEvent, CalendarEventKind, SchedulePage } from "@projective/types/scheduling";
 import { EventModal } from "../components/EventModal.tsx";
 import { renderCalendarSource } from "../components/provider-marks.tsx";
 import { blankEvent, type EventMode, eventStack } from "../core/event-view.ts";
-import { type EventAccess, readDevSeam, resolveEventAccess } from "../core/event-access.ts";
-import { simFromSeam, subscribeSchedulingSim } from "../core/scheduling-seam.ts";
+import {
+	type EventAccess,
+	readDevSeam,
+	resolveEventAccess,
+	subscribeDevSeam,
+} from "../core/event-access.ts";
 import { ScheduleService } from "../core/ScheduleService.ts";
 
 /** What a schedule surface can create. */
@@ -58,22 +57,20 @@ export default function ScheduleView(props: ScheduleViewProps): JSX.Element {
 	// A schedule page is somebody else's: the viewer is on the buying side of it unless the dev seam
 	// says otherwise, which is exactly what `viewerIsClient: true` means to the access resolver.
 	const access = useSignal<EventAccess>(resolveEventAccess({ viewerIsClient: true }, null));
-	const sim = useSignal<SchedulingSim | undefined>(undefined);
 	/** A refetch that failed. Held so the stale page on screen is never passed off as the new one. */
 	const loadError = useSignal<string | null>(null);
 
 	/**
-	 * Pull the page fresh under whatever simulation is active.
+	 * Pull the page fresh.
 	 *
-	 * A failure is SURFACED rather than dropped. The refetch is what a dev-seam change is — the axes
-	 * are server-derived — so discarding a failed one silently left the previous persona's seating on
-	 * screen under the new persona's label, which is the one outcome a simulation must never produce.
+	 * A failure is SURFACED rather than dropped: a stale page left on screen with no word of the failure
+	 * reads as the current one.
 	 */
-	async function load(next: SchedulingSim | undefined): Promise<void> {
+	async function load(): Promise<void> {
 		const res = props.scope === "availability" && props.handle
-			? await ScheduleService.availability(props.handle, next)
+			? await ScheduleService.availability(props.handle)
 			: props.entityId
-			? await ScheduleService.schedule(props.entityId, next)
+			? await ScheduleService.schedule(props.entityId)
 			: null;
 		if (res && res.ok && res.data) {
 			loadError.value = null;
@@ -89,24 +86,12 @@ export default function ScheduleView(props: ScheduleViewProps): JSX.Element {
 			access.value = resolveEventAccess({ viewerIsClient: true }, readDevSeam());
 		};
 		apply();
-		// A seam change moves data the server produced, so it is a refetch and not a re-render.
-		return subscribeSchedulingSim((next) => {
-			sim.value = next;
-			apply();
-			void load(next);
-		});
+		return subscribeDevSeam(apply);
 	}, []);
 
+	// A page the server could not paint (a failed read, not a missing schedule) gets one retry on mount.
 	useEffect(() => {
-		if (props.initial) {
-			const first = simFromSeam();
-			if (first) {
-				sim.value = first;
-				void load(first);
-			}
-			return;
-		}
-		void load(sim.value);
+		if (!props.initial) void load();
 	}, []);
 
 	useEffect(() => () => eventStack.close(), []);
@@ -191,7 +176,6 @@ export default function ScheduleView(props: ScheduleViewProps): JSX.Element {
 							scope: props.scope,
 							handle: props.handle,
 							entityId: props.entityId,
-							sim: sim.value,
 						}}
 						createKinds={CREATE_KINDS}
 						canBook={p.viewerCanBook}

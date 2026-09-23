@@ -20,9 +20,31 @@
  */
 
 import { PRODUCTS, SERVICES } from "./corpus.ts";
-import { ago, ahead, enumArr, HEADER, id, insert, jsonb, localAt, minutesOf, q, uuidFor } from "./sql.ts";
-import { entity, party, persona, walletIdFor, type World } from "./resolve.ts";
-import { BASKETS, CARDS, ORDERS, PAYOUTS, TOPUPS } from "./world.ts";
+import {
+	ago,
+	ahead,
+	enumArr,
+	HEADER,
+	id,
+	insert,
+	jsonb,
+	localAt,
+	minutesOf,
+	q,
+	splitName,
+	uuidFor,
+} from "./sql.ts";
+import { entity, party, persona, type ResolvedPersona, walletIdFor, type World } from "./resolve.ts";
+import {
+	BASKETS,
+	type BasketLineSpec,
+	BUYER_DETAILS,
+	CARDS,
+	ORDERS,
+	PAYOUTS,
+	PROMO_CODES,
+	TOPUPS,
+} from "./world.ts";
 import { SCHEDULES } from "./schedules.ts";
 
 
@@ -51,14 +73,156 @@ interface LedgerEvent {
 	order: number;
 }
 
+/** The platform fee, rounded half-up to the minor unit — the SSOT's `platformFeeFor` and the wallet
+ * checkout's arithmetic, so a seeded sale and a live one are charged the same way. */
 function fee(amount: number): number {
-	return Math.floor((amount * PLATFORM_FEE_BP) / 10000);
+	return Math.floor((amount * PLATFORM_FEE_BP + 5000) / 10000);
 }
 
 function priceMinorOf(item: { priceMinor?: number; price?: string }): number {
 	if (typeof item.priceMinor === "number") return item.priceMinor;
 	const n = Number(String(item.price ?? "").replace(/[^0-9.]/g, ""));
 	return Number.isFinite(n) && n > 0 ? Math.round(n * 100) : 0;
+}
+
+/** The delivery model a service basket line's kind requires — the live basket refuses a mismatch. */
+const MODEL_FOR_KIND: Record<Exclude<BasketLineSpec["kind"], "digital_product">, string> = {
+	one_off_service: "one_off",
+	single_service_task: "direct_deliverable",
+	service_session: "session",
+	course_group_session: "group_session",
+};
+
+/**
+ * One `finance.basket_items` row. The unit price is the snapshot the app writes on add, priced by the
+ * same rule the live basket re-prices with (`unitPriceOf`): a session at its session price, a group
+ * session per seat, anything else at the listing price. A session is booked at a wall-clock time in
+ * the buyer's own zone.
+ */
+function basketLineRow(
+	world: World,
+	owner: string,
+	basketId: string,
+	buyer: ResolvedPersona,
+	line: BasketLineSpec,
+	position: number,
+): string[] {
+	const key = `${owner}:${line.item}`;
+	let title: string;
+	let subtitle: string;
+	let itemId: string;
+	let price: number;
+	let currency: string;
+	let scheduled = "NULL";
+	let timezone = "NULL";
+	let seats = "NULL";
+	let email = "NULL";
+	if (line.kind === "digital_product") {
+		const product = PRODUCTS.find((x) => x.key === line.item);
+		if (!product) throw new Error(`world: basket line ${key} names unknown product`);
+		title = product.title;
+		subtitle = "Instant download";
+		itemId = world.productId(line.item);
+		price = priceMinorOf(product);
+		currency = product.currency;
+		email = q(buyer.email);
+	} else {
+		const service = SERVICES.find((x) => x.key === line.item);
+		if (!service) throw new Error(`world: basket line ${key} names unknown service`);
+		if (service.model !== MODEL_FOR_KIND[line.kind]) {
+			throw new Error(`world: basket line ${key} is a ${line.kind}, but the service is ${service.model}`);
+		}
+		title = service.title;
+		itemId = world.serviceId(line.item);
+		currency = service.currency;
+		const session = service.sessionPriceMinor ?? service.priceMinor;
+		switch (line.kind) {
+			case "service_session":
+				price = session;
+				subtitle = `${service.sessionMinutes ?? 60}-minute session`;
+				break;
+			case "course_group_session":
+				price = session * (line.seats ?? 1);
+				subtitle = `${line.seats ?? 1} seats · group session`;
+				seats = String(line.seats ?? 1);
+				break;
+			case "single_service_task":
+				price = service.priceMinor;
+				subtitle = "Direct deliverable";
+				break;
+			default:
+				price = service.priceMinor;
+				subtitle = "One-off service";
+		}
+		if (line.kind === "service_session" || line.kind === "course_group_session") {
+			if (!line.at) throw new Error(`world: basket line ${key} books a session with no time`);
+			const [week, day, time] = line.at;
+			scheduled = localAt(buyer.timezone, week, day, minutesOf(time));
+			timezone = q(buyer.timezone);
+		}
+	}
+	return [
+		id(uuidFor("basket_item", key)),
+		id(basketId),
+		q(line.kind),
+		id(itemId),
+		q(title),
+		q(subtitle),
+		String(price),
+		q(currency),
+		"1",
+		line.saved ? "true" : "false",
+		String(position),
+		scheduled,
+		timezone,
+		seats,
+		email,
+		ago(1 + position),
+	];
+}
+
+/** One `finance.buyer_details` row — the personal record of a person, or an entity's company record. */
+function buyerDetailsRow(world: World, d: (typeof BUYER_DETAILS)[number]): string[] {
+	const who = party(world, d.owner);
+	const buyer = persona(world, d.buyer);
+	const name = splitName(buyer.name);
+	const entityOwner = who.kind === "user" ? null : who.entity;
+	if (entityOwner && !d.company) throw new Error(`world: ${d.owner}'s buyer details name no company`);
+	const ownerType = entityOwner ? who.kind : "user";
+	const ownerId = entityOwner ? entityOwner.entityId : buyer.userId;
+	const a = d.address;
+	const personal = (value: string | null) => (entityOwner ? "NULL" : q(value));
+	const business = (value: string | null) => (entityOwner ? q(value) : "NULL");
+	return [
+		id(uuidFor("buyer_details", d.owner)),
+		q(entityOwner ? `${ownerType}:${ownerId}` : "personal"),
+		q(entityOwner ? "business" : "personal"),
+		q(ownerType),
+		id(ownerId),
+		q(name.first),
+		q(name.last),
+		q(buyer.email),
+		q(entityOwner ? "" : buyer.name),
+		q(entityOwner ? "" : d.phone),
+		personal(buyer.email),
+		personal(a.line1),
+		personal(a.city),
+		personal(a.state ?? null),
+		personal(a.postcode),
+		personal(a.country),
+		business(d.company?.name ?? null),
+		business(d.company?.registration ?? null),
+		business(d.company?.taxId ?? null),
+		business(d.company?.email ?? null),
+		business(d.phone),
+		business(a.line1),
+		business(a.city),
+		business(a.state ?? null),
+		business(a.postcode),
+		business(a.country),
+		ago(3),
+		ago(3),
+	];
 }
 
 export function emitFinance(world: World): string {
@@ -197,7 +361,9 @@ export function emitFinance(world: World): string {
 				String(platformFee),
 				"0",
 				"'USD'",
-				q(released ? "released" : "funded"),
+				// `held` is what `fn_hold_ticket_escrow` writes and the only status `fn_release_ticket_escrow`
+				// releases; the column's `'funded'` default would leave a seeded escrow unreleasable.
+				q(released ? "released" : "held"),
 				ago(fundedDaysAgo),
 			]);
 
@@ -872,34 +1038,78 @@ export function emitFinance(world: World): string {
 		),
 	);
 
+	// Promotional codes come before the baskets that apply them. A code is read only through
+	// `finance.resolve_promo_code` (the table is definer-only), so these rows are the whole book.
+	out.push(
+		insert(
+			"finance.promo_codes",
+			[
+				"id",
+				"code",
+				"label",
+				"kind",
+				"value_bp",
+				"value_minor",
+				"currency",
+				"starts_at",
+				"expires_at",
+				"max_redemptions",
+				"redemption_count",
+				"deactivated_at",
+			],
+			PROMO_CODES.map((p) => [
+				id(uuidFor("promo_code", p.code)),
+				q(p.code),
+				q(p.label),
+				q(p.kind),
+				p.kind === "percent" ? String(p.value) : "NULL",
+				p.kind === "flat" ? String(p.value) : "NULL",
+				p.kind === "flat" ? "'USD'" : "NULL",
+				p.startsDaysAgo === undefined ? "NULL" : ago(p.startsDaysAgo),
+				p.expiresInDays === undefined
+					? "NULL"
+					: p.expiresInDays < 0
+					? ago(-p.expiresInDays)
+					: ahead(p.expiresInDays),
+				p.maxRedemptions === undefined ? "NULL" : String(p.maxRedemptions),
+				String(p.redeemed ?? 0),
+				p.deactivatedDaysAgo === undefined ? "NULL" : ago(p.deactivatedDaysAgo),
+			]),
+		),
+	);
+
 	const basketRows: string[][] = [];
 	const basketItemRows: string[][] = [];
 	for (const b of BASKETS) {
 		const who = party(world, b.owner);
 		const ownerType = who.kind === "user" ? "user" : who.kind;
 		const ownerId = who.kind === "user" ? who.persona.userId : who.entity.entityId;
+		if (who.kind !== "user" && !b.buyer) {
+			throw new Error(`world: ${b.owner}'s basket names no member who is buying`);
+		}
+		const buyer = who.kind === "user" ? who.persona : persona(world, b.buyer!);
+		if (b.promo && !PROMO_CODES.some((p) => p.code === b.promo)) {
+			throw new Error(`world: ${b.owner}'s basket applies unknown promo code "${b.promo}"`);
+		}
 		const basketId = uuidFor("basket", b.owner);
-		basketRows.push([id(basketId), q(ownerType), id(ownerId), "'Main Basket'", "true"]);
-		b.products.forEach((corpusId, i) => {
-			const product = PRODUCTS.find((x) => x.key === corpusId);
-			if (!product) throw new Error(`world: basket names unknown product "${corpusId}"`);
-			basketItemRows.push([
-				id(uuidFor("basket_item", `${b.owner}:${corpusId}`)),
-				id(basketId),
-				"'digital_product'",
-				id(world.productId(corpusId)),
-				q(product.title),
-				"'Instant download'",
-				String(priceMinorOf(product)),
-				"'USD'",
-				"1",
-				String(i),
-				ago(1 + i),
-			]);
-		});
+		basketRows.push([
+			id(basketId),
+			q(ownerType),
+			id(ownerId),
+			"'Main Basket'",
+			"true",
+			q(b.promo ?? null),
+		]);
+		b.lines.forEach((line, i) =>
+			basketItemRows.push(basketLineRow(world, b.owner, basketId, buyer, line, i))
+		);
 	}
 	out.push(
-		insert("finance.baskets", ["id", "owner_type", "owner_id", "name", "is_default"], basketRows),
+		insert(
+			"finance.baskets",
+			["id", "owner_type", "owner_id", "name", "is_default", "promo_code"],
+			basketRows,
+		),
 	);
 	out.push(
 		insert(
@@ -914,10 +1124,55 @@ export function emitFinance(world: World): string {
 				"unit_price_minor",
 				"currency",
 				"quantity",
+				"saved_for_later",
 				"position",
+				"scheduled_at",
+				"timezone",
+				"seats",
+				"destination_email",
 				"created_at",
 			],
 			basketItemRows,
+		),
+	);
+
+	// Saved delivery + billing records, keyed exactly as the checkout writes them: a person's under
+	// `context_id = 'personal'`, an entity's under `{kind}:{id}`.
+	out.push(
+		insert(
+			"finance.buyer_details",
+			[
+				"id",
+				"context_id",
+				"context_kind",
+				"owner_type",
+				"owner_id",
+				"delivery_first_name",
+				"delivery_last_name",
+				"delivery_email",
+				"personal_name",
+				"personal_phone",
+				"personal_email",
+				"personal_address_line_1",
+				"personal_address_city",
+				"personal_address_state",
+				"personal_address_postcode",
+				"personal_address_country",
+				"business_company_name",
+				"business_registration_number",
+				"business_tax_id",
+				"business_corporate_email",
+				"business_phone",
+				"business_address_line_1",
+				"business_address_city",
+				"business_address_state",
+				"business_address_postcode",
+				"business_address_country",
+				"created_at",
+				"updated_at",
+			],
+			BUYER_DETAILS.map((d) => buyerDetailsRow(world, d)),
+			"(owner_type, owner_id, context_id)",
 		),
 	);
 	// #endregion

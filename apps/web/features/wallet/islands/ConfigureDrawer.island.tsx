@@ -10,9 +10,10 @@ import {
 	actionTarget,
 	activeAction,
 	closeWalletAction,
-	currentWalletContext,
+	displayCurrency,
 	notifyWalletChanged,
 } from "../core/wallet-state.ts";
+import { toMinorUnits } from "../types/wallet-types.ts";
 import type {
 	MoneyView,
 	PaymentMethodView,
@@ -99,13 +100,15 @@ export default function ConfigureDrawer(props: ConfigureDrawerProps): JSX.Elemen
 
 	if (!action || !CONFIG_ACTIONS.has(action)) return null;
 
-	const ctx = currentWalletContext();
+	const display = displayCurrency.value || undefined;
 	const target = actionTarget.value ?? { scope: "personal", contextId: "" };
-	const currency = props.available.currency;
+	// Every amount set here is in the wallet's OWN currency (the origin of a converted view): a payout
+	// threshold or a spend request on a USD vault is a dollar figure whatever the page is drawn in.
+	const currency = (props.available.origin?.currency ?? props.available.currency).toUpperCase();
 	const base = {
 		scope: target.scope as never,
 		contextId: target.contextId,
-		display: ctx.display ?? undefined,
+		display,
 	};
 
 	const fundingMethods = props.methods.filter((m) => m.methodRole !== "payout");
@@ -124,7 +127,7 @@ export default function ConfigureDrawer(props: ConfigureDrawerProps): JSX.Elemen
 	const commit = async () => {
 		busy.value = true;
 		error.value = null;
-		const minor = Math.round(amount.value * 100);
+		const minor = toMinorUnits(amount.value, currency) ?? 0;
 		const res = action === "new_recurring"
 			? await WalletService.addRecurring({
 				...base,
@@ -161,7 +164,7 @@ export default function ConfigureDrawer(props: ConfigureDrawerProps): JSX.Elemen
 			: await WalletService.enrolSmoother({
 				targetMonthlyMinor: minor,
 				currency,
-				display: ctx.display ?? undefined,
+				display,
 			});
 
 		busy.value = false;

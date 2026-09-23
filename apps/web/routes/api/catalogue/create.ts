@@ -1,4 +1,5 @@
 import { define } from "@web/utils/state.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import { CreateListingInputSchema } from "@projective/types/catalogue";
 import { toCatalogueResponse, toFieldErrors } from "@features/catalogue/core/respond.ts";
 import { CatalogueBackendService } from "@server/services/catalogue/CatalogueBackendService.ts";
@@ -6,10 +7,9 @@ import { CatalogueBackendService } from "@server/services/catalogue/CatalogueBac
 /**
  * `POST /api/catalogue/create` — thin route: Zod-validate the Create-Listing payload (title + kind, plus
  * a delivery model for services), map issues to field errors, then delegate to the fat
- * {@link CatalogueBackendService.create}. No server capability guard — the Dev Context Switcher must be
- * able to create as a simulated seller (seller-ness is chrome + deferred RLS + mutation policies, the
- * live-path TODO). Returns the optimistic Draft so the client routes to `/catalogue/[id]`. Persistence is
- * stubbed (a session store) until `CATALOGUE_BACKEND_LIVE` lands.
+ * {@link CatalogueBackendService.create}, which creates the draft and its product or service blueprint
+ * in one transaction as the signed-in seller (`catalogue.create_listing`; only a freelancer can sell a
+ * service). Returns the draft so the client routes to `/catalogue/[id]`.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -25,6 +25,6 @@ export const handler = define.handlers({
 				{ status: 422 },
 			);
 		}
-		return toCatalogueResponse(CatalogueBackendService.create(parsed.data));
+		return toCatalogueResponse(await CatalogueBackendService.create(parsed.data, readActor(ctx)));
 	},
 });

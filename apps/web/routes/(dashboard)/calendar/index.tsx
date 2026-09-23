@@ -1,8 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { page } from "fresh";
-import { schedulingSimFromParams } from "@projective/types/scheduling";
-import { resolvePersonalCalendar } from "@features/calendar/core/calendar-ssr.ts";
-import { viewerFromState } from "@features/calendar/core/viewer.ts";
+import { calendarAgendaFor } from "@features/calendar/core/calendar-slots.tsx";
+import { readActor } from "@web/utils/api-session.ts";
 import CalendarWorkspace from "@features/calendar/islands/CalendarWorkspace.island.tsx";
 
 /**
@@ -13,13 +12,13 @@ import CalendarWorkspace from "@features/calendar/islands/CalendarWorkspace.isla
  * are the header band's; every action is the footer band's. All three are resolved per-URL in
  * `(dashboard)/_layout.tsx` through `calendar-slots.tsx`, so the correct chrome ships in the first
  * byte rather than appearing after hydration.
+ *
+ * The agenda is read AS the signed-in person, under RLS, through the same per-request read the three
+ * bands use, so the grid and the chrome around it are one answer rather than two.
  */
 export const handler = define.handlers({
-	GET(ctx) {
-		const { page: agenda } = resolvePersonalCalendar(
-			viewerFromState(ctx.state),
-			schedulingSimFromParams(ctx.url.searchParams),
-		);
+	async GET(ctx) {
+		const agenda = await calendarAgendaFor(ctx.url, readActor(ctx));
 		ctx.state.title = "Calendar · Projective";
 		return page({ agenda });
 	},

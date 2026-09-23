@@ -168,27 +168,59 @@ authenticated USING (
         )
     );
 
+-- A schedule's owner manages the entries on their own calendar. A PROJECT's events have no client write
+-- path: this policy used to admit any participant of the engagement, which let one member move a
+-- meeting's `starts_at` straight through PostgREST — skipping the 12-hour lockout, the host-approval
+-- gate and the majority rule the reschedule negotiation exists to apply — or hard-delete it with its
+-- roster and history (root CLAUDE.md §5). A project event now moves only when the scheduling service
+-- closes a round (`scheduling.close_reschedule_round`, service role). The `project_id IS NULL` guard
+-- is on BOTH halves so a schedule owner cannot re-anchor their own entry onto somebody's engagement.
 CREATE POLICY "Manage scheduling events" ON scheduling.events FOR ALL TO authenticated USING (
-    (
-        schedule_id IS NOT NULL
-        AND scheduling.fn_can_manage_schedule (schedule_id)
-    )
-    OR (
-        project_id IS NOT NULL
-        AND projects.has_project_access (project_id)
-    )
+    schedule_id IS NOT NULL
+    AND project_id IS NULL
+    AND scheduling.fn_can_manage_schedule (schedule_id)
 )
 WITH
     CHECK (
-        (
-            schedule_id IS NOT NULL
-            AND scheduling.fn_can_manage_schedule (schedule_id)
-        )
-        OR (
-            project_id IS NOT NULL
-            AND projects.has_project_access (project_id)
+        schedule_id IS NOT NULL
+        AND project_id IS NULL
+        AND scheduling.fn_can_manage_schedule (schedule_id)
+    );
+
+-- Event coordination — read by the event's parties (scheduling.fn_can_see_event_coordination), and
+-- written ONLY by the scheduling service as the service role, after the SSOT's rules have run. There
+-- is deliberately no client write policy on any of the six: a negotiation's rules (the 12-hour
+-- lockout, who may put a slot on the ballot, one vote per attendee per round, the majority) have one
+-- implementation, and a direct write through PostgREST would bypass every one of them.
+CREATE POLICY "Parties view event attendees" ON scheduling.event_attendees FOR
+SELECT TO authenticated USING (scheduling.fn_can_see_event_coordination (event_id));
+
+CREATE POLICY "Parties view event reschedules" ON scheduling.event_reschedules FOR
+SELECT TO authenticated USING (scheduling.fn_can_see_event_coordination (event_id));
+
+CREATE POLICY "Parties view reschedule proposals" ON scheduling.reschedule_proposals FOR
+SELECT TO authenticated USING (
+        EXISTS (
+            SELECT 1 FROM scheduling.event_reschedules r
+            WHERE r.id = reschedule_id
+              AND scheduling.fn_can_see_event_coordination (r.event_id)
         )
     );
+
+CREATE POLICY "Parties view proposal votes" ON scheduling.proposal_votes FOR
+SELECT TO authenticated USING (
+        EXISTS (
+            SELECT 1 FROM scheduling.event_reschedules r
+            WHERE r.id = reschedule_id
+              AND scheduling.fn_can_see_event_coordination (r.event_id)
+        )
+    );
+
+CREATE POLICY "Parties view event history" ON scheduling.event_history FOR
+SELECT TO authenticated USING (scheduling.fn_can_see_event_coordination (event_id));
+
+CREATE POLICY "Parties view event attachments" ON scheduling.event_attachments FOR
+SELECT TO authenticated USING (scheduling.fn_can_see_event_coordination (event_id));
 
 
 -- --- from 20260724103000_scheduling_discovery_calls.sql ---

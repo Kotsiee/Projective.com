@@ -1,5 +1,6 @@
 import { define } from "@web/utils/state.ts";
-import { AssetListParamsSchema, simFromParams } from "@projective/types/files";
+import { AssetListParamsSchema } from "@projective/types/files";
+import { readActor } from "@web/utils/api-session.ts";
 import { toFilesResponse } from "@features/files/core/respond.ts";
 import { FilesBackendService } from "@server/services/files/FilesBackendService.ts";
 import type {
@@ -17,30 +18,14 @@ import type {
  * &visibility=&query=&cursor=&limit=` — the thin route for one scope read.
  *
  * Parses the query against literal allow-lists, re-validates the whole shape through the Zod SSOT
- * ({@link AssetListParamsSchema}), reads the developer simulation overlay from its own `sim*` params
- * ({@link simFromParams}), then delegates to the fat {@link FilesBackendService.list} — which answers
- * with the assets, the child folders, the breadcrumb trail, the location's `readOnly` fact and (on a
- * `hub` read) the owner's allowance in one payload. Islands never reach the backend; they fetch this
- * through the dumb `FilesService`.
+ * ({@link AssetListParamsSchema}), then delegates to the fat {@link FilesBackendService.list} — which
+ * answers with the assets, the child folders, the breadcrumb trail, the location's `readOnly` fact and
+ * (on a `hub` read) the owner's allowance in one payload. Islands never reach the backend; they fetch
+ * this through the dumb `FilesService`.
  *
- * **No server-side capability guard, and — stated plainly — no other gate in front of this read
- * today.** The Dev Context Switcher is a CLIENT seam the server cannot see, so a capability bounce
- * here would make every dev axis inert (Decision #53(b)). That is a deliberate choice about
- * CAPABILITY. It is not a claim that something else is guarding the route, and the two are worth
- * keeping apart:
- *
- * * `/api/files/*` is NOT inside the `(dashboard)` route group, so that group's guest bounce
- *   (`routes/(dashboard)/_middleware.ts`) never runs for it. The only middleware in the path is the
- *   global one, which hydrates `ctx.state.userContext` and bounces nobody.
- * * With `FILES_BACKEND_LIVE` off there is no RLS either, because nothing here reaches Postgres — the
- *   deterministic fixtures answer every caller identically, signed in or not.
- *
- * So the honest statement is: **this read is currently open, and it exposes a fixture corpus rather
- * than anybody's data.** RLS under the caller's JWT becomes the real gate when the gate flips, and it
- * is the ONLY thing that will bound a scope read — which is why the fat service's live branch is
- * written as a query under the caller's token rather than a service-role one. The routes that carry
- * IDENTITY rather than a filter (`./download-guard.ts`, `./download-record.ts`, and every mutation)
- * already read the session today and never accept an actor or an owner from the request.
+ * The read runs under the caller's own session, so RLS decides whose files it can see; the library it
+ * reads is the one the acting context owns, never one named in the query. A `share` read needs no
+ * session — the slug is the credential. Signed out, everything else answers 401.
  *
  * An unrecognised filter value is DROPPED rather than failing the read: a stale bookmark carrying a
  * retired kind should show the library, not an error page. Only a malformed scope — the one param the
@@ -149,6 +134,6 @@ export const handler = define.handlers({
 			});
 		}
 
-		return toFilesResponse(await FilesBackendService.list(parsed.data, simFromParams(sp)));
+		return toFilesResponse(await FilesBackendService.list(parsed.data, readActor(ctx)));
 	},
 });

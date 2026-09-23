@@ -1,7 +1,6 @@
 import type { SchedulingViewer } from "@projective/types/scheduling";
 import { ANONYMOUS_VIEWER } from "@projective/types/scheduling";
 import type { State } from "@web/utils/state.ts";
-import type { UserContext } from "@projective/types/auth";
 
 /**
  * Resolve WHO IS ASKING for a scheduling read or write, from the request's own state.
@@ -14,30 +13,13 @@ import type { UserContext } from "@projective/types/auth";
  * this shape.
  *
  * `isAuthenticated` is the site-wide skeleton presence check (root CLAUDE.md §8 Decision #14), so
- * this governs only what is SHOWN. RLS remains the real gate once the live path lands.
+ * this governs only what is SHOWN on the PUBLIC scheduling reads (a profile's availability, a
+ * listing's schedule) — the private calendar reads and the coordination writes are resolved from the
+ * session as a `ReadActor` instead, and run under RLS.
  */
 export function viewerFromState(state: State): SchedulingViewer {
 	if (!state.isAuthenticated) return ANONYMOUS_VIEWER;
 	return signedIn(state.userContext?.handle ?? state.handle ?? null);
-}
-
-/**
- * The same resolution for the layout's slot resolvers, which are handed a {@link UserContext} rather
- * than the request state.
- *
- * Kept here beside {@link viewerFromState} so ONE module owns how a viewer is named — the two used
- * to normalise the handle in separate copies of the same three lines, which is how the bands and the
- * body would eventually come to disagree about who is asking.
- *
- * The discriminators still differ by necessity — the state has `isAuthenticated`, a context has only
- * its chrome `role` — and they can diverge for one request: an authenticated caller whose JWT failed
- * to decode degrades to `GUEST_CONTEXT`. That divergence is cosmetic rather than a privacy
- * difference, because seating is by IDENTITY: a context that produced no handle is seated nowhere by
- * `resolveSeat` whichever way it was labelled, so the withheld projection is what both paths get.
- */
-export function viewerFromContext(context: UserContext): SchedulingViewer {
-	if (context.role === "guest") return ANONYMOUS_VIEWER;
-	return signedIn(context.handle);
 }
 
 /**

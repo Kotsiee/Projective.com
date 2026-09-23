@@ -30,7 +30,7 @@ Each domain below gets its own folder with up to four files: `Tables.md`, `Polic
 | Domain         | Tables | Policies | Functions | Notes                                                                                              |
 | :------------- | :----: | :------: | :-------: | :------------------------------------------------------------------------------------------------- |
 | `analytics`    |   ✅   |    ✅    |    ✅     | Event substrate + daily rollups (`fn_emit`), 2026-07-24                                            |
-| `catalogue`    |   ✅   |    ✅    |    ✅     | Seller publication layer (products, articles, listings); read live by discovery, 2026-09-23         |
+| `catalogue`    |   ✅   |    ✅    |    ✅     | Seller publication layer (products, articles, listings); read live by discovery and the seller console, written through the console doors (`00001170`), 2026-09-23 |
 | `comms`        |   ✅   |    ✅    |    ✅     | Messaging + the 2026-07-24 Notification Engine                                                     |
 | `files`        |   ✅   |    ✅    |    ✅     | Asset management, 2026-08-04; the media pipeline, renditions + WebP tiers (`item_variants`), 2026-09-23. Plus [Storage.md](files/Storage.md) |
 | `finance`      |   ✅   |    ✅    |    ✅     | Wallets/escrow/ledger + the 2026-07-23 Wallet & Finance foundation                                 |

@@ -600,7 +600,7 @@ interface StageContext {
 }
 
 /** A stage's resolved scheduled window — the pair {@link BoardStageRef} carries. */
-interface StageWindow {
+export interface StageWindow {
 	startAt: string | null;
 	endAt: string | null;
 }
@@ -613,6 +613,33 @@ function instantOf(raw: string | null | undefined): number | null {
 	const ms = Date.parse(raw);
 	return Number.isFinite(ms) ? ms : null;
 }
+
+/**
+ * The `projects.project_stages` columns {@link stageWindows} reads — exported with it so another
+ * surface that needs a stage's due date (the calendar) selects exactly these and resolves them by the
+ * SAME rule rather than a second reading of the six columns.
+ */
+export const STAGE_WINDOW_COLUMNS = [
+	"id",
+	"fixed_start_date",
+	"start_dependency_stage_id",
+	"start_dependency_lag_days",
+	"file_duration_mode",
+	"file_duration_days",
+	"file_due_date",
+].join(", ");
+
+/** The slice of a stage row {@link stageWindows} needs. */
+export type StageWindowRow = Pick<
+	StageRow,
+	| "id"
+	| "fixed_start_date"
+	| "start_dependency_stage_id"
+	| "start_dependency_lag_days"
+	| "file_duration_mode"
+	| "file_duration_days"
+	| "file_due_date"
+>;
 
 /**
  * Resolve every stage's scheduled window from the six scheduling columns.
@@ -629,10 +656,10 @@ function instantOf(raw: string | null | undefined): number | null {
  * the stages in it stay unresolved, which is the honest answer to a schedule that depends on
  * itself).
  */
-function stageWindows(rows: readonly StageRow[]): Map<string, StageWindow> {
+export function stageWindows(rows: readonly StageWindowRow[]): Map<string, StageWindow> {
 	const starts = new Map<string, number | null>();
 	const ends = new Map<string, number | null>();
-	const endFor = (row: StageRow, start: number | null): number | null => {
+	const endFor = (row: StageWindowRow, start: number | null): number | null => {
 		const due = instantOf(row.file_due_date);
 		const days = intAtLeastZero(row.file_duration_days);
 		switch (row.file_duration_mode) {

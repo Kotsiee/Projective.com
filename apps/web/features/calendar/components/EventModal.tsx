@@ -365,8 +365,10 @@ export function EventModal(props: EventModalProps): JSX.Element {
 
 	// A host is going by definition — they are running it — so the answer controls belong to the seats
 	// that were invited. They also disappear once the thing has happened: an RSVP is a statement about
-	// attending, and it cannot be made in the past tense.
-	const canRsvp = !!seat && seat.role !== "host" && live.state !== "passed";
+	// attending, and it cannot be made in the past tense. A discovery call is answered by accepting or
+	// declining the CALL (its own lifecycle, `scheduling.discovery_calls`), never by an RSVP on the
+	// calendar entry that mirrors it, so its seats get no answer controls here.
+	const canRsvp = !!seat && seat.role !== "host" && live.state !== "passed" && !event.callId;
 
 	return (
 		<BodyPortal>

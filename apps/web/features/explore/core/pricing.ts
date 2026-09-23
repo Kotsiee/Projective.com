@@ -1,3 +1,4 @@
+import { toMinorUnits } from "@projective/types/finance";
 import type { ProfileItem, ServiceItem } from "../types/explore-types.ts";
 
 /**
@@ -80,19 +81,22 @@ export function servicePriceParts(
 	item: ServiceItem,
 ): { from: PriceAmount; to: PriceAmount | null; unit?: string } | null {
 	const currency = item.currency ?? "USD";
+	// The per-unit prices are MAJOR units; scaling them by the currency's own exponent (never a fixed
+	// `× 100`) is what keeps a yen or a dinar price from being a hundredfold or tenfold wrong.
+	const minor = (major: number): number => toMinorUnits(major, currency) ?? 0;
 
 	if (item.serviceType === "Pipeline" && item.ticketPrice) {
 		return {
-			from: { minor: Math.round(item.ticketPrice * PIPELINE_LOW) * 100, currency },
-			to: { minor: Math.round(item.ticketPrice * PIPELINE_HIGH) * 100, currency },
+			from: { minor: minor(item.ticketPrice * PIPELINE_LOW), currency },
+			to: { minor: minor(item.ticketPrice * PIPELINE_HIGH), currency },
 			unit: "ticket",
 		};
 	}
 	if (item.serviceType === "Session" && item.sessionPrice) {
-		return { from: { minor: item.sessionPrice * 100, currency }, to: null, unit: "session" };
+		return { from: { minor: minor(item.sessionPrice), currency }, to: null, unit: "session" };
 	}
 	if (item.serviceType === "Group Session" && item.sessionPrice) {
-		return { from: { minor: item.sessionPrice * 100, currency }, to: null, unit: "seat" };
+		return { from: { minor: minor(item.sessionPrice), currency }, to: null, unit: "seat" };
 	}
 	if (typeof item.priceMinor === "number") {
 		return { from: { minor: item.priceMinor, currency }, to: null };

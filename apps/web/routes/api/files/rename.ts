@@ -2,7 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { RenameAssetSchema } from "@projective/types/files";
 import { toFieldErrors, toFilesResponse } from "@features/files/core/respond.ts";
 import { FilesBackendService } from "@server/services/files/FilesBackendService.ts";
-import { actorFromContext } from "@server/services/files/acting-principal.ts";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * `POST /api/files/rename` — rename one asset.
@@ -12,11 +12,10 @@ import { actorFromContext } from "@server/services/files/acting-principal.ts";
  * type. A read-only row (a mounted channel attachment, a connected-drive object) is refused there with
  * a 403, because `canManage` is an authority decision the server owns.
  *
- * **The acting principal comes from the SESSION.** The row's own `canManage` remains the authority —
- * a mounted channel attachment is read-only for everyone — but the service now knows who is asking,
- * which is what an ownership predicate needs the day `FILES_BACKEND_LIVE` goes on.
+ * **The acting principal comes from the SESSION**, and only the person who created a file may rename
+ * it — the same predicate the `files.items` UPDATE policy enforces.
  *
- * No server-side capability guard (Decision #53(b)) — see `./list.ts`.
+ * Runs under the caller's own session: RLS is the gate, and the library is the acting context's.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -29,7 +28,7 @@ export const handler = define.handlers({
 			);
 		}
 		return toFilesResponse(
-			await FilesBackendService.rename(parsed.data, actorFromContext(ctx.state.userContext)),
+			await FilesBackendService.rename(parsed.data, readActor(ctx)),
 		);
 	},
 });

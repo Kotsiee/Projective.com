@@ -2,7 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { RevokeShareSchema } from "@projective/types/files";
 import { toFieldErrors, toFilesResponse } from "@features/files/core/respond.ts";
 import { FilesBackendService } from "@server/services/files/FilesBackendService.ts";
-import { actorFromContext } from "@server/services/files/acting-principal.ts";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * `POST /api/files/share-revoke` — revoke a share link. Terminal: re-sharing mints a NEW slug, so a
@@ -19,7 +19,7 @@ import { actorFromContext } from "@server/services/files/acting-principal.ts";
  * an unknown slug: a 403 here would confirm the slug is real, which is the bit the 200 above exists to
  * withhold.
  *
- * No server-side capability guard (Decision #53(b)) — see `./list.ts`.
+ * Runs under the caller's own session: RLS is the gate, and the library is the acting context's.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -36,7 +36,7 @@ export const handler = define.handlers({
 			);
 		}
 		return toFilesResponse(
-			await FilesBackendService.revokeShare(parsed.data, actorFromContext(ctx.state.userContext)),
+			await FilesBackendService.revokeShare(parsed.data, readActor(ctx)),
 		);
 	},
 });

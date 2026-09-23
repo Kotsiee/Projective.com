@@ -24,7 +24,7 @@ import { AssetFolderSchema } from "../files/folders.ts";
  * drive must return the SAME row shape the hub already renders, or the picker needs a second card
  * family and the two drift. That is why the files domain keeps its own local vocabularies for anything
  * it would otherwise reach back for: `ExternalRef.providerSlug` is a bounded string rather than
- * `ProviderSlug`, and `FilesSim.connectionState` restates `connection_status` member for member.
+ * `ProviderSlug`.
  * Closing that edge would be the TDZ crash class recorded in Decision #49, not a style problem.
  *
  * @module

@@ -1,15 +1,13 @@
 import type { JSX } from "preact";
 import type { Signal } from "@preact/signals";
 import { useSignal } from "@preact/signals";
-import { useCallback, useEffect } from "preact/hooks";
+import { useCallback, useEffect, useRef } from "preact/hooks";
 import "../styles/checkout.css";
 import { Icon } from "@projective/ui/icons";
 import { Drawer, Message } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
-import { readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
 import { type BasketPayload, BasketService } from "../core/BasketService.ts";
 import { basketHref, checkoutHref, isCheckoutPath } from "../core/basket-model.ts";
-import { checkoutSim } from "../core/checkout-seam.ts";
 import {
 	activeLines,
 	activeOwner,
@@ -22,7 +20,6 @@ import {
 	chosenCardId,
 	chosenProvider,
 	currentCheckoutContext,
-	devSim,
 	endLineWrite,
 	isSelected,
 	promo as promoSignal,
@@ -96,15 +93,27 @@ export default function BasketDrawer(props: BasketDrawerProps): JSX.Element {
 		phase.value = landed ? "ready" : "error";
 	}, []);
 
-	// #region Scope, simulation and refresh wiring
+	// #region Scope and refresh wiring
+	const lastOwner = useRef<string | null>(null);
 	useEffect(() => {
-		// Mirror the dev seam so the first read already carries the simulated axes; inert in production.
-		devSim.value = checkoutSim(readDevSeam());
-
 		// `/basket` and `/checkout` own their scope (they resolve `?owner=` server-side and seed it
 		// themselves). Everywhere else the shell's context is the only scope there is.
 		const path = globalThis.location?.pathname ?? "";
 		if (!isCheckoutPath(path) && owner) activeOwner.value = owner;
+
+		/**
+		 * A changed owner re-scopes WHOSE money this is, which invalidates the composition wholesale: the
+		 * chosen provider and card belong to the previous principal, and the attempt key must not survive
+		 * a change to what is being bought (the SSOT's own rule). The first run is not a change.
+		 */
+		const rescoped = lastOwner.current !== null && lastOwner.current !== owner;
+		lastOwner.current = owner;
+		if (rescoped && !isCheckoutPath(path)) {
+			chosenProvider.value = null;
+			chosenCardId.value = null;
+			resetAttempt();
+			void load();
+		}
 
 		/*
 		 * Skip the read when a surface has already painted a basket into the store — the header dot and
@@ -119,29 +128,11 @@ export default function BasketDrawer(props: BasketDrawerProps): JSX.Element {
 		 * scope (the comment above already says so), so the drawer reads what the page published instead
 		 * of racing it for a different answer.
 		 */
-		if (basketSignal.value === null && !isCheckoutPath(path)) void load();
-
-		/**
-		 * A persona flip re-scopes WHOSE money this is, which invalidates the composition wholesale: the
-		 * chosen provider and card belong to the previous principal, and the attempt key must not
-		 * survive a change to what is being bought (the SSOT's own rule). The basket id is deliberately
-		 * left alone — the fat service resolves a foreign id to the new scope's default basket, so
-		 * clearing it here would only race the page body for the same answer.
-		 */
-		const stopSeam = subscribeDevSeam((seam) => {
-			devSim.value = checkoutSim(seam);
-			chosenProvider.value = null;
-			chosenCardId.value = null;
-			resetAttempt();
-			void load();
-		});
+		if (!rescoped && basketSignal.value === null && !isCheckoutPath(path)) void load();
 
 		const onRefresh = () => void load();
 		globalThis.addEventListener?.(BASKET_REFRESH_EVENT, onRefresh);
-		return () => {
-			stopSeam();
-			globalThis.removeEventListener?.(BASKET_REFRESH_EVENT, onRefresh);
-		};
+		return () => globalThis.removeEventListener?.(BASKET_REFRESH_EVENT, onRefresh);
 	}, [owner, load]);
 
 	// Opening always re-reads: the basket may have changed in another tab, and a stale peek at what is

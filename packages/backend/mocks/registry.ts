@@ -169,11 +169,11 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		domain: "catalogue",
 		label: "Seller catalogue",
 		gate: "CATALOGUE_BACKEND_LIVE",
-		liveImplemented: false,
-		modules: ["services/catalogue/catalogue-fixtures.ts"],
-		schemas: ["catalogue"],
+		liveImplemented: true,
+		modules: [],
+		schemas: ["catalogue", "marketplace"],
 		description:
-			"The seller's product and service listings plus the create/update/publish write path. The only domain whose target schema does not exist in supabase/migrations/ at all.",
+			"LIVE. The seller's own listings read under the catalogue policies (live-catalogue); sales from catalogue.get_listing_sales; create/update/publish through catalogue.create_listing / save_listing / set_listing_status, which keep each listing and its product or service blueprint in step in one transaction.",
 	},
 	newsletter: {
 		domain: "newsletter",
@@ -189,14 +189,11 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		domain: "finance",
 		label: "Wallet, basket & checkout",
 		gate: "FINANCE_BACKEND_LIVE",
-		liveImplemented: false,
-		modules: [
-			"services/finance/wallet-fixtures.ts",
-			"services/finance/fx-fixtures.ts",
-		],
-		schemas: ["finance"],
+		liveImplemented: true,
+		modules: [],
+		schemas: ["finance", "projects", "org"],
 		description:
-			"PARTLY LIVE. The basket, saved cards, buyer details, the checkout session and orders read and write finance.* as the signed-in caller (live-basket, live-cards, live-buyer, live-orders, commerce-owner); currency conversion reads finance.fx_rates (FxService.ts). Placing an order is refused until a payment path exists. Still fixtures: the /wallet balance projection and money moves — fx-fixtures.ts survives only as the rate table wallet-fixtures converts with.",
+			"LIVE. The basket, saved cards, buyer details, the checkout session and orders read and write finance.* as the signed-in caller (live-basket, live-cards, live-buyer, live-orders, commerce-owner); a checkout is paid from the Projective wallet (finance.place_wallet_order). The /wallet surface reads balances, ledger, escrow, payouts, methods, invoices and vault governance live (wallet-scope, wallet-ledger, live-wallet, wallet-standing) and moves money through finance.transfer_funds / distribute_vault and projects.fund_stage (wallet-actions). Card, device-wallet, PayPal, top-up, withdrawal, recurring-deposit and Income-Smoother paths need a payment processor and are refused with that reason. Currency conversion reads finance.fx_rates (FxService.ts).",
 	},
 	workspace: {
 		domain: "workspace",
@@ -212,39 +209,31 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		domain: "files",
 		label: "Asset hub",
 		gate: "FILES_BACKEND_LIVE",
-		liveImplemented: false,
-		modules: [
-			"services/files/assets-fixtures.ts",
-			"services/files/quota-fixtures.ts",
-			"services/files/share-fixtures.ts",
-		],
+		liveImplemented: true,
+		modules: [],
 		schemas: ["files", "storage"],
 		description:
-			"The /files hub: the asset library, folder tree, storage quota metering and anonymous share links.",
+			"LIVE. The /files hub read under the caller's own session (live-library): the acting library, its folder tree, mounted project files, the storage allowance (files.get_storage_quota), the quarantine upload pipeline (live-uploads), share links and the download ledger (files.fn_record_download); private bytes are served through /api/files/object/[id].",
 	},
 	integrations: {
 		domain: "integrations",
 		label: "Connectors & plugins",
 		gate: "INTEGRATIONS_BACKEND_LIVE",
-		liveImplemented: false,
-		modules: ["services/integrations/connections-fixtures.ts"],
+		liveImplemented: true,
+		modules: [],
 		schemas: ["integrations"],
 		description:
-			"The connector catalogue, a user's drive connections and the OAuth consent handshake. Separate from files on purpose: a live path here spends someone else's credential at a third party.",
+			"LIVE. The provider catalogue and the caller's connections (v_my_connections). Connecting, browsing and mounting refuse in words: no provider is enabled and no OAuth client or vault key is configured in this deployment.",
 	},
 	scheduling: {
 		domain: "scheduling",
 		label: "Calendar & booking",
 		gate: "PROJECTS_BACKEND_LIVE",
-		liveImplemented: false,
-		modules: [
-			"services/scheduling/calendar-fixtures.ts",
-			"services/scheduling/personal-fixtures.ts",
-			"services/scheduling/coordination-fixtures.ts",
-		],
+		liveImplemented: true,
+		modules: [],
 		schemas: ["scheduling"],
 		description:
-			"PARTLY LIVE. A provider's public availability, a session listing's schedule and every bookable slot grid read scheduling.* ungated (live-slots.ts, live-schedule-page.ts, slot-grid.ts). Still fixtures: the project/channel calendar, the personal /calendar agenda and reschedule coordination.",
+			"LIVE. Public reads (a provider's availability, a session listing's schedule, every bookable slot grid) read scheduling.* through the anonymous client; the project/channel calendar, the personal /calendar agenda and RSVP/reschedule coordination read as the signed-in user (live-calendar.ts) and write through the service role after the SSOT's rules (coordination-plan.ts, live-coordination-writes.ts, scheduling.close_reschedule_round).",
 	},
 	shell: {
 		domain: "shell",

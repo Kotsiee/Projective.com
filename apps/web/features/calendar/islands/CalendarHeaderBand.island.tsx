@@ -11,6 +11,7 @@ import { ProviderMark } from "../components/provider-marks.tsx";
 import {
 	availabilityOpen,
 	calendarFocus,
+	focusedAt,
 	calendarPage,
 	calendarQuery,
 	calendarView,
@@ -61,7 +62,7 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 
 	// Derived here, from the engine's own matrix, so the trail is right in the FIRST byte. Reading a
 	// value the grid published left it empty at SSR and flipping to the real week on hydration.
-	const period = periodLabelFor(calendarView.value, calendarFocus.value, tz);
+	const period = periodLabelFor(calendarView.value, focusedAt(page), tz);
 
 	/**
 	 * Move the focused instant by one period.
@@ -73,7 +74,7 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 	 */
 	function step(delta: number): void {
 		const view = calendarView.value;
-		const from = calendarFocus.value;
+		const from = focusedAt(page);
 		calendarFocus.value = view === "day"
 			? calendarTime.addZonedDays(from, delta, tz)
 			// A Gantt step is a week: its axis is continuous, and a month jump would leap past the

@@ -349,12 +349,32 @@ export const SpendingCapViewSchema = z.object({
 });
 export type SpendingCapView = z.infer<typeof SpendingCapViewSchema>;
 
+/**
+ * An assigned stage waiting for its escrow — what "Fund escrow" can fund. The amount is the stage's
+ * own requirement (its assigned, unpaid tickets at their agreed prices), never a figure the buyer
+ * types: funding commits exactly what the work was priced at.
+ */
+export const FundableStageSchema = z.object({
+	/** The project's `prj-…` slug (the canonical `/projects/{slug}` address). */
+	projectId: z.string().max(64),
+	projectTitle: z.string().max(160),
+	/** The stage's row id — what the funding call names. */
+	stageId: z.string().max(64),
+	stageName: z.string().max(120),
+	amount: MoneyViewSchema,
+	/** How many assigned, unpaid tickets the funding covers. */
+	ticketCount: z.number().int().min(0),
+});
+export type FundableStage = z.infer<typeof FundableStageSchema>;
+
 /** Overview extras for a business wallet. */
 export const BusinessExtrasSchema = z.object({
 	burnDown: BudgetBurnSchema,
 	caps: z.array(SpendingCapViewSchema),
 	invoicesDue: z.number().int().min(0),
 	invoicesDueAmount: MoneyViewSchema.nullable(),
+	/** Stages the viewer may fund from this wallet right now; empty when none is waiting. */
+	fundable: z.array(FundableStageSchema).max(40).default([]),
 });
 export type BusinessExtras = z.infer<typeof BusinessExtrasSchema>;
 // #endregion
@@ -484,6 +504,14 @@ export const WalletOverviewSchema = z.object({
 	flowRange: FlowRange,
 	recent: z.array(LedgerLineSchema).max(8),
 	quickActions: z.array(WalletAction).max(10),
+	/**
+	 * Offered actions that cannot run in this environment, each with the reason — shown locked with the
+	 * sentence rather than removed (the viewer holds the capability; what is missing is not theirs to
+	 * fix) and refused server-side regardless. A payment processor, for example, is what a top-up or a
+	 * withdrawal needs and what this deployment may not have.
+	 */
+	unavailable: z.array(z.object({ action: WalletAction, reason: z.string().max(200) })).max(10)
+		.default([]),
 	capabilities: z.array(VaultCapability),
 	verification: WalletVerificationSchema,
 	/**
@@ -798,7 +826,16 @@ export const WithdrawInputSchema = z.object({
 });
 export type WithdrawInput = z.infer<typeof WithdrawInputSchema>;
 
-/** Move funds between two of the viewer's wallets. */
+/**
+ * A client-minted key held for the life of ONE attempt at a money movement, so a retried request
+ * answers with what the first one did instead of moving the money twice.
+ */
+const attemptKey = z.string().min(8).max(120);
+
+/**
+ * Move funds between two of the viewer's wallets. The amount is in the SOURCE wallet's own currency —
+ * a transfer is never a conversion, and both wallets must hold the same currency.
+ */
 export const TransferInputSchema = z.object({
 	fromScope: WalletScope,
 	fromId: z.string().max(64),
@@ -808,18 +845,27 @@ export const TransferInputSchema = z.object({
 	currency,
 	note: z.string().max(200).nullable(),
 	display: currency.optional(),
+	idempotencyKey: attemptKey,
 });
 export type TransferInput = z.infer<typeof TransferInputSchema>;
 
-/** Distribute a team vault's Available balance per the active split ruleset. */
+/**
+ * Distribute part of a team vault to its members by their agreed stakes. The amount is in the vault's
+ * own currency.
+ */
 export const DistributeInputSchema = z.object({
 	...targetShape,
 	amountMinor: minorUnitsPositive,
 	currency,
+	idempotencyKey: attemptKey,
 });
 export type DistributeInput = z.infer<typeof DistributeInputSchema>;
 
-/** Fund an escrow on a stage from the wallet. */
+/**
+ * Fund an assigned stage's escrow from the wallet. `amountMinor` + `currency` are the stage's
+ * requirement as the buyer was SHOWN it (a {@link FundableStage}); the server refuses when the stage
+ * would now commit a different figure, rather than committing one nobody confirmed.
+ */
 export const FundEscrowInputSchema = z.object({
 	...targetShape,
 	stageId: z.string().max(64),
@@ -1024,44 +1070,17 @@ export function walletVariant(scope: WalletScope): WalletVariant {
 }
 // #endregion
 
-// #region Read query + dev simulation knobs (shared server read shapes)
-/** The KYC state the Dev Context Switcher can simulate. `payout_setup` = verified but no payout method. */
-export type SimKyc = "verified" | "unverified" | "payout_setup";
-/** The Income-Smoother state the switcher can simulate (`auto` follows the store). */
-export type SimSmoother = "auto" | "ineligible" | "eligible" | "enrolled";
-/** The fund-state mix the switcher can simulate (surface locked / pending / disputed balances). */
-export type SimFundMix = "normal" | "locked" | "pending" | "dispute";
+// #region Read query (shared server read shape)
 /**
- * The Standing rung the switcher can simulate (`auto` derives it from the subject). `stage_floor`
- * is the honest edge case the gauge must render: the score gate is cleared but the completed-stage
- * volume floor is not, so the rung has NOT advanced (finance-model.md §16.3).
+ * A resolved wallet read query: which wallet, and in which display currency. Who is asking is the
+ * signed-in caller — the service reads everything as them, so nothing about the viewer travels here.
  */
-export type SimStanding = "auto" | "l1" | "l2" | "l3" | "l4" | "l5" | "stage_floor";
-
-/**
- * The fixture-shaping simulation knobs the Dev Context Switcher drives (dev-only; ignored on the live
- * path). Passed as query params the island refetches with — the server never reads the client seam.
- */
-export interface WalletSim {
-	vaultRole?: VaultRole;
-	kyc?: SimKyc;
-	smoother?: SimSmoother;
-	fundMix?: SimFundMix;
-	standing?: SimStanding;
-}
-
-/** A resolved wallet read query: which wallet, in which display currency, for whom, under which sim. */
 export interface WalletQuery {
 	/** `personal` · `team:{id}` · `business:{id}` · `organisation:{id}` · `aggregate`; null → active. */
 	wallet?: string | null;
-	/** The viewer's display currency (from prefs or the dev axis); defaults to the wallet's own. */
+	/** An explicit display currency (the page's `?display=`); wins over the viewer's preference. */
 	display?: string | null;
-	/** The acting user's `@handle` (the personal wallet owner). */
-	viewerHandle?: string | null;
-	/** The acting user's id. */
-	viewerId?: string | null;
-	/** Whether the acting user offers services (freelancer) — decides the personal face's subject. */
-	isFreelancer?: boolean;
-	sim?: WalletSim;
+	/** The viewer's preferred display currency (their account setting); used when none is explicit. */
+	viewerCurrency?: string | null;
 }
 // #endregion

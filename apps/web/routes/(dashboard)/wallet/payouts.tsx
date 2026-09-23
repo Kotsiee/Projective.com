@@ -1,22 +1,26 @@
 import { page } from "fresh";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { define } from "@web/utils/state.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import WalletPayoutsScreen from "@features/wallet/islands/WalletPayoutsScreen.island.tsx";
-import { resolveDisplayCurrency, resolvePayouts } from "@features/wallet/core/wallet-ssr.ts";
-import { defaultWalletParam } from "@features/wallet/core/wallet-model.ts";
+import WalletUnavailable from "@features/wallet/islands/WalletUnavailable.island.tsx";
+import { resolvePayouts, resolveWalletFrame } from "@features/wallet/core/wallet-ssr.ts";
 
 /** `/wallet/payouts` — payout schedule, destinations, Income Smoother, instant payout, history. */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const context = asAuthenticatedContext(ctx.state.userContext);
-		const payouts = resolvePayouts(context, ctx.url);
-		const wallet = ctx.url.searchParams.get("w") ?? defaultWalletParam(context);
-		const display = resolveDisplayCurrency(context, ctx.url);
+		const actor = readActor(ctx);
+		const [read, frame] = await Promise.all([
+			resolvePayouts(context, ctx.url, actor),
+			resolveWalletFrame(context, ctx.url, actor),
+		]);
 		ctx.state.title = "Payouts · Wallet";
-		return page({ payouts, wallet, display });
+		return page({ read, ...frame }, read.ok ? undefined : { status: 503 });
 	},
 });
 
 export default define.page<typeof handler>(function PayoutsPage({ data }) {
-	return <WalletPayoutsScreen initial={data.payouts} wallet={data.wallet} display={data.display} />;
+	if (!data.read.ok) return <WalletUnavailable title="Payouts" message={data.read.message} />;
+	return <WalletPayoutsScreen initial={data.read.data} wallet={data.wallet} display={data.display} />;
 });

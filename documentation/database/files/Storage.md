@@ -239,6 +239,27 @@ end to end. `packages/backend/services/media/library.ts` runs it:
    is removed. A storage or pipeline failure puts the row back to `pending_upload` so a retry can
    finish it; nothing half-written is left behind.
 
+**The `/files` hub runs the same pipeline for any kind of file**
+(`POST /api/files/upload-init` → the signed `PUT` → `POST /api/files/upload-complete`,
+`packages/backend/services/files/live-uploads.ts`). The differences are only in what "usable" means:
+any file the sniff does not identify as a program is admitted (a document, an archive, a model), only
+a picture the pipeline can decode gets tiers and a measured envelope, and the server replaces the
+client's fingerprint with its own full SHA-256 of the bytes on promotion. The destination is the
+library the upload was declared into — `personal/users/{user_id}/library/{asset_id}/…` for a person,
+`workspace/{entity_id}/library/{asset_id}/…` for a team, business or organisation the caller is an
+active member of.
+
+A row that never completes (`pending_upload`) or was refused (`quarantined` / `error`) is never
+listed, matched as a duplicate or served: every read of the hub, the tree, a share and the download
+ledger admits `status = 'uploaded'` only (a link row is written `uploaded` too).
+
+**Private bytes are served through `/api/files/object/[id]`** (`live-objects.ts`), never by a URL on
+a row: the route re-checks the caller's read (`fn_can_read`, or a live share slug passed as `?share=`),
+then answers `302` to a **300-second** signed URL — `?tier=sm|md|lg` picks an image tier,
+`?download=1` asks for an attachment. Markup and any other type a browser would execute is always
+served as a download, whatever was asked. Every refusal is a bodiless `404`, so an id that exists and
+an id that does not look the same to someone who may read neither.
+
 A **rendition** (`POST /api/profile/{handle}/media`) is cut server-side from the library ORIGINAL
 with the shared crop model (`@projective/types/files` `crop.ts`, the same arithmetic the browser
 editor previews), re-encoded as a fresh WebP — which also strips EXIF and anything a polyglot could
@@ -350,9 +371,15 @@ an island can classify identically for instant UI.
 
 ## 🚧 Deferred / live-path TODOs
 
-- **AV-scan promotion is modelled, not wired.** `files.items.target_bucket` / `target_path` describe
-  the quarantine → destination move, but the Edge Function that scans and promotes clean files is
-  not yet implemented.
+- **There is no malware scanner.** Promotion out of quarantine is wired, in-process, as the service
+  role (`live-uploads.ts`, `media/library.ts`) — but `scanning` is only the magic-byte sniff that
+  refuses programs and executable markup. A real AV scan belongs between the sniff and the promote.
+  `files.items.target_bucket` / `target_path` still describe a move nothing writes.
+- **Abandoned uploads are never swept.** A `pending_upload` row whose browser went away before the
+  `PUT` finished keeps its quarantine row (and any partial object) and **reserves its declared size**
+  in `files.storage_usage` (see [Functions.md](Functions.md)). Harmless while
+  `storage_quota_enforced` is `false`; before it is flipped, a sweep that marks stale declarations
+  `error` (which releases the reservation) and deletes their quarantine objects is required.
 - **Image transformation is off.** `[storage.image_transformation]` is commented out in
   `supabase/config.toml`; enable it (imgproxy) before relying on server-side avatar/thumbnail
   resizing.

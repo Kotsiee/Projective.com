@@ -56,7 +56,7 @@ export const handler = define.handlers({
 		// badly" from "no such link", and the second of those is the fact worth hiding.
 		if (!slug) return notFound();
 
-		const result = await FilesBackendService.resolveShare(slug, sp.get("u"));
+		const result = await FilesBackendService.resolveShare(slug);
 		if (!result.ok || !result.data || result.data.state !== "ok") return notFound();
 
 		const body: FilesResult<ShareResolution> = { ok: true, data: result.data };

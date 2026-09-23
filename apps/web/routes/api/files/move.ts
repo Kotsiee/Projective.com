@@ -2,7 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { MoveAssetsSchema } from "@projective/types/files";
 import { toFieldErrors, toFilesResponse } from "@features/files/core/respond.ts";
 import { FilesBackendService } from "@server/services/files/FilesBackendService.ts";
-import { actorFromContext } from "@server/services/files/acting-principal.ts";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * `POST /api/files/move` — move assets into a folder. `targetFolderId: null` moves them to the library
@@ -18,7 +18,7 @@ import { actorFromContext } from "@server/services/files/acting-principal.ts";
  * caller actually holds. A move that trusted ids alone could relocate rows into somebody else's filing
  * system, and the owner of those rows would have no event to notice.
  *
- * No server-side capability guard (Decision #53(b)) — see `./list.ts`.
+ * Runs under the caller's own session: RLS is the gate, and the library is the acting context's.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -35,7 +35,7 @@ export const handler = define.handlers({
 			);
 		}
 		return toFilesResponse(
-			await FilesBackendService.move(parsed.data, actorFromContext(ctx.state.userContext)),
+			await FilesBackendService.move(parsed.data, readActor(ctx)),
 		);
 	},
 });

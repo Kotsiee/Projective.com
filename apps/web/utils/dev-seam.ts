@@ -85,33 +85,6 @@ export type DevSubmissionState = "draft" | "submitted" | "approved" | "revision_
 export type DevProjectOnboarding = "auto" | "none" | "first_stage" | "all_stages";
 
 /**
- * The vault capability role the Context Switcher can simulate for `/wallet` (task §Dev-axes) — the coarse
- * role a shared-wallet member holds, which the capability gating of every money control rolls up from
- * (Owner ⊇ Admin ⊇ PM ⊇ Member).
- */
-export type DevWalletVaultRole = "owner" | "admin" | "pm" | "member";
-/**
- * The finance-verification state the Context Switcher can simulate for `/wallet` — drives the KYC-locked
- * earn/withdraw states: `verified` (payout-ready), `unverified` (no ID → earning/withdrawal locked), or
- * `payout_setup` (KYC-verified but no payout method wired → withdrawal locked).
- */
-export type DevWalletKyc = "verified" | "unverified" | "payout_setup";
-/** The Income-Smoother state the Context Switcher can simulate for `/wallet` (ineligible / eligible / enrolled). */
-export type DevWalletSmoother = "ineligible" | "eligible" | "enrolled";
-/**
- * The fund-state mix the Context Switcher can simulate for `/wallet` — which of the three-state balance
- * projection's states carry a balance (`normal` baseline · extra `locked` escrow · extra `pending`
- * clearing · extra `dispute`/on-hold), so every balance state is reachable at runtime.
- */
-export type DevWalletFundMix = "normal" | "locked" | "pending" | "dispute";
-/**
- * The earned Standing rung the Context Switcher can simulate for `/wallet` — drives the Standing gauge
- * and its marketplace-commission taper (8% -> 6.5%). `auto` derives the rung from the subject;
- * `stage_floor` is the honest edge case where the score gate is cleared but the completed-stage volume
- * floor is not, so the rung has NOT advanced (finance-model.md 16.3).
- */
-export type DevWalletStanding = "auto" | "l1" | "l2" | "l3" | "l4" | "l5" | "stage_floor";
-/**
  * The entity kind the Context Switcher can simulate for `/teams` and `/businesses` — a **Team is a
  * Freelancer with multiple members**, a **Business is a Client with multiple members**, so this axis
  * selects which side of the market the whole console is parameterised to.
@@ -151,155 +124,8 @@ export type DevRosterState = "populated" | "empty" | "single";
  */
 export type DevMicPermission = "auto" | "prompt" | "granted" | "denied" | "unsupported";
 
-/** The display currency the Context Switcher can simulate (drives the server-side conversion + Intl formatting). */
-export type DevDisplayCurrency = "GBP" | "USD" | "EUR";
 /** The document layout direction the Context Switcher can simulate (RtL/LtR verification, independent of language). */
 export type DevLayoutDirection = "ltr" | "rtl" | "auto";
-
-/**
- * The connected cloud-storage provider the Context Switcher can simulate for `/files` and the Asset
- * Picker. `none` is the honest default — most accounts have connected nothing, and a picker that
- * only ever renders with a drive attached hides its own empty state from the developer.
- */
-export type DevStorageProvider = "none" | "google_drive" | "dropbox" | "frameio" | "s3";
-
-/**
- * The lifecycle state of that simulated connection. `degraded` and `expired` are the two that matter
- * and are hardest to reach for real: a token that still authenticates but has lost a scope, and one
- * that has lapsed entirely. Both must degrade the browser to a re-consent prompt rather than an
- * empty folder, which is indistinguishable from "this drive has no files" unless you can see it.
- */
-export type DevConnectionState = "disconnected" | "pending" | "active" | "degraded" | "expired";
-
-/**
- * The simulated storage-quota position. Drives the meter, the warning copy and the upload gate.
- * `unlimited` is a genuinely different rendering (no meter fill, no remaining figure) rather than a
- * very large number, so it needs its own value; `exceeded` is reachable only here, because reaching
- * it for real means uploading 25 GB.
- */
-export type DevStorageQuota = "empty" | "healthy" | "near_limit" | "exceeded" | "unlimited";
-
-/** The simulated privacy scope of the asset in view (drives the share control + the scope pip). */
-export type DevAssetVisibility = "private" | "link" | "public";
-
-/**
- * The simulated verdict of the link-safety scan. `blocked` must be exercisable without sourcing an
- * actually-malicious URL, which is the whole reason this axis exists.
- */
-export type DevLinkScan = "pending" | "safe" | "suspicious" | "blocked";
-
-/** The simulated dedup verdict returned for the next upload (drives the duplicate-resolution panel). */
-export type DevDedupState = "none" | "exact_duplicate" | "name_collision";
-
-/**
- * The principal whose basket `/basket` and `/checkout` are spending from.
- *
- * A distinct axis rather than a reuse of {@link DevWorkspaceKind} + {@link DevSeamState.actingContext}:
- * that pair is `team | business` crossed with a boolean, so an **organisation** basket — the one scope
- * with no vault in the wallet cast, and therefore the one whose payment offer differs most — is
- * unreachable through it.
- */
-export type DevBasketOwner = "personal" | "team" | "business" | "organisation";
-
-/**
- * A preset over the checkout's payment offer. It moves the INPUTS the SSOT's `availableProviders` is
- * evaluated against, never its verdict, so each preset still exercises the real eligibility rules:
- * `no_wallet` empties the Projective balance, `card_only` withdraws the wallet and both device wallets,
- * and `invoice` lifts the account to the KYB tier invoicing is gated on.
- */
-export type DevPaymentProviders = "all" | "no_wallet" | "card_only" | "invoice";
-
-/**
- * Whether the buyer already has complete saved delivery + billing details.
- *
- * The axis that makes the Details step's AUTO-SKIP reachable. Without it a developer can only ever
- * see one of the two branches — and the one they cannot see is the branch that silently sends a
- * buyer past a form, which is precisely the branch worth being able to inspect.
- */
-export type DevBuyerDetails = "saved" | "missing";
-
-/** Which billing identity the Details form opens on — a natural person or a company. */
-export type DevBillingContext = "personal" | "business";
-
-/**
- * The acting entity's invoicing mode (`org.business_profiles.invoicing_mode`).
- *
- * A real column with a real CHECK, not a new concept: `intervaled_monthly` is what the brief calls
- * "Intervaled Monthly Invoicing", and `finance.invoices.invoice_type` already carries the matching
- * `consolidated_monthly`.
- */
-export type DevInvoicingMode = "per_transaction" | "intervaled_monthly";
-
-/**
- * Whether this purchase clears the acting member's spending limit.
- *
- * `over` reaches the `needs_approval` verdict without having to construct a basket that happens to
- * cross a seeded cap — the state whose whole point is that it offers a route forward rather than a
- * refusal.
- */
-export type DevSpendLimit = "within" | "over";
-
-/**
- * Which fulfilment routes the confirmation hub has to render.
- *
- * The four routes look nothing alike — a download button, a project deep link, a calendar export, and
- * an honest "not ready yet" — so a mix that only ever contains one of them leaves three untested.
- */
-export type DevFulfilmentMix = "mixed" | "products" | "tickets" | "sessions" | "pending";
-
-/** Which conferencing provider a booked session's join link resolves to. */
-export type DevConferencing = "zoom" | "google" | "microsoft_teams" | "none";
-
-/**
- * Where the acting viewer sits on the calendar event they open — the axis every control in the Event
- * Modal is gated on.
- *
- * `non_party` is the reason this exists: it is the only way to reach the WITHHELD projection
- * (`@projective/types/scheduling` `./privacy.ts` strips the roster, the room, the money and the
- * negotiation from a stranger) at runtime, because the alternative is signing out — and a signed-out
- * developer cannot open the authenticated calendars at all. `auto` defers to the surface's own
- * seating: a project's delivery side hosts its calendar, a public availability page never does.
- */
-export type DevEventSeat = "auto" | "host" | "attendee" | "non_party";
-
-/**
- * The acting seat's own answer to the event. `pending` is a real state and not the absence of one —
- * "has not answered yet" and "said no" read differently to a host deciding whether a session is
- * viable — so it is offered rather than folded into the default.
- */
-export type DevEventRsvp = "auto" | "accepted" | "tentative" | "rejected" | "pending";
-
-/**
- * The reschedule negotiation state to force. Mirrors the SSOT's `RescheduleStatus` so the switcher
- * cannot offer a state the service is unable to produce.
- *
- * The MODE is deliberately not on this axis: a negotiation is settled by a vote or by the
- * counterparty according to how many people are on the arrangement, which is what the existing
- * `serviceType` axis (1-1 session ⁄ group session) already moves.
- */
-export type DevEventReschedule =
-	| "auto"
-	| "none"
-	| "collecting"
-	| "awaiting_counterparty"
-	| "voting"
-	| "resolved"
-	| "lapsed"
-	| "withdrawn";
-
-/**
- * Whether the acting wallet covers the resolved total or falls short of it. Expressed as a
- * RELATIONSHIP rather than a figure because a fixed balance covers one basket and not another — an
- * axis that set a number would be inert on half the baskets it was pointed at.
- */
-export type DevWalletCoverage = "covers" | "shortfall";
-
-/**
- * The shape of the account's saved-card wallet. `expired` is cards-on-file-none-chargeable, which is a
- * different state with a different remedy from `none` (add a card vs replace one) and is otherwise only
- * reachable on the one personal scope that happens to seed an expired card.
- */
-export type DevSavedCards = "seeded" | "none" | "expired";
 
 /** The DOM event the Context Switcher dispatches whenever the active override changes. */
 export const DEV_SEAM_EVENT = "pj:devcontext";
@@ -340,16 +166,6 @@ export interface DevSeamState {
 	messagingRole: DevMessagingRole;
 	/** The simulated microphone permission for the chat composer's voice memo. */
 	micPermission: DevMicPermission;
-	/** The simulated `/wallet` vault capability role (Owner/Admin/PM/member). */
-	walletVaultRole: DevWalletVaultRole;
-	/** The simulated `/wallet` finance-verification (KYC) state. */
-	walletKyc: DevWalletKyc;
-	/** The simulated `/wallet` Income-Smoother state. */
-	walletSmoother: DevWalletSmoother;
-	/** The simulated `/wallet` fund-state mix (which balance states carry a balance). */
-	walletFundMix: DevWalletFundMix;
-	/** The simulated earned Standing rung driving the `/wallet` Standing gauge + commission taper. */
-	walletStanding: DevWalletStanding;
 	/** The simulated entity kind for the `/teams` · `/businesses` console. */
 	workspaceKind: DevWorkspaceKind;
 	/** The simulated role the viewer holds inside the acting entity (incl. `non_member`). */
@@ -362,48 +178,8 @@ export interface DevSeamState {
 	actingContext: boolean;
 	/** The simulated roster shape (populated / empty / a single one-person entity). */
 	rosterState: DevRosterState;
-	/** The simulated display currency (drives the server conversion + Intl formatting). */
-	displayCurrency: DevDisplayCurrency;
 	/** The simulated document layout direction (RtL/LtR). */
 	layoutDirection: DevLayoutDirection;
-	/** The simulated connected cloud-storage provider for `/files` + the Asset Picker. */
-	storageProvider: DevStorageProvider;
-	/** The lifecycle state of that simulated connection. */
-	connectionState: DevConnectionState;
-	/** The simulated storage-quota position (meter, warnings, upload gate). */
-	storageQuota: DevStorageQuota;
-	/** The simulated privacy scope of the asset in view. */
-	assetVisibility: DevAssetVisibility;
-	/** The simulated link-safety verdict for a link attachment. */
-	linkScan: DevLinkScan;
-	/** The simulated dedup verdict for the next upload. */
-	dedupState: DevDedupState;
-	/** The simulated principal whose basket `/basket` + `/checkout` spend from. */
-	basketOwner: DevBasketOwner;
-	/** The simulated payment-offer preset for `/checkout`. */
-	paymentProviders: DevPaymentProviders;
-	/** Whether the simulated wallet covers the checkout total or falls short of it. */
-	walletCoverage: DevWalletCoverage;
-	/** The simulated saved-card wallet shape. */
-	savedCards: DevSavedCards;
-	/** Whether the buyer's saved details are complete — drives the Details step's auto-skip. */
-	buyerDetails: DevBuyerDetails;
-	/** The billing identity the Details form opens on. */
-	billingContext: DevBillingContext;
-	/** The acting entity's invoicing mode. */
-	invoicingMode: DevInvoicingMode;
-	/** Whether this purchase clears the acting member's spending limit. */
-	spendLimit: DevSpendLimit;
-	/** Which fulfilment routes the confirmation hub renders. */
-	fulfilmentMix: DevFulfilmentMix;
-	/** Which conferencing provider a booked session resolves to. */
-	conferencing: DevConferencing;
-	/** Where the acting viewer sits on the calendar event they open (host / attendee / stranger). */
-	eventSeat: DevEventSeat;
-	/** The acting seat's own answer to that event. */
-	eventRsvp: DevEventRsvp;
-	/** The reschedule negotiation state the event opens in. */
-	eventReschedule: DevEventReschedule;
 }
 // #endregion
 
@@ -490,19 +266,6 @@ const PROJECT_ONBOARDINGS: readonly DevProjectOnboarding[] = [
 	"first_stage",
 	"all_stages",
 ];
-const WALLET_VAULT_ROLES: readonly DevWalletVaultRole[] = ["owner", "admin", "pm", "member"];
-const WALLET_KYCS: readonly DevWalletKyc[] = ["verified", "unverified", "payout_setup"];
-const WALLET_SMOOTHERS: readonly DevWalletSmoother[] = ["ineligible", "eligible", "enrolled"];
-const WALLET_FUND_MIXES: readonly DevWalletFundMix[] = ["normal", "locked", "pending", "dispute"];
-const WALLET_STANDINGS: readonly DevWalletStanding[] = [
-	"auto",
-	"l1",
-	"l2",
-	"l3",
-	"l4",
-	"l5",
-	"stage_floor",
-];
 const WORKSPACE_KINDS: readonly DevWorkspaceKind[] = ["team", "business"];
 const WORKSPACE_ROLES: readonly DevWorkspaceRole[] = [
 	"owner",
@@ -518,76 +281,7 @@ const WORKSPACE_VERIFICATIONS: readonly DevWorkspaceVerification[] = [
 	"verified",
 ];
 const ROSTER_STATES: readonly DevRosterState[] = ["populated", "empty", "single"];
-const DISPLAY_CURRENCIES: readonly DevDisplayCurrency[] = ["GBP", "USD", "EUR"];
 const LAYOUT_DIRECTIONS: readonly DevLayoutDirection[] = ["ltr", "rtl", "auto"];
-const STORAGE_PROVIDERS: readonly DevStorageProvider[] = [
-	"none",
-	"google_drive",
-	"dropbox",
-	"frameio",
-	"s3",
-];
-const CONNECTION_STATES: readonly DevConnectionState[] = [
-	"disconnected",
-	"pending",
-	"active",
-	"degraded",
-	"expired",
-];
-const STORAGE_QUOTAS: readonly DevStorageQuota[] = [
-	"empty",
-	"healthy",
-	"near_limit",
-	"exceeded",
-	"unlimited",
-];
-const ASSET_VISIBILITIES: readonly DevAssetVisibility[] = ["private", "link", "public"];
-const LINK_SCANS: readonly DevLinkScan[] = ["pending", "safe", "suspicious", "blocked"];
-const DEDUP_STATES: readonly DevDedupState[] = ["none", "exact_duplicate", "name_collision"];
-const BASKET_OWNERS: readonly DevBasketOwner[] = [
-	"personal",
-	"team",
-	"business",
-	"organisation",
-];
-const PAYMENT_PROVIDERS: readonly DevPaymentProviders[] = [
-	"all",
-	"no_wallet",
-	"card_only",
-	"invoice",
-];
-const BUYER_DETAILS: readonly DevBuyerDetails[] = ["saved", "missing"];
-const BILLING_CONTEXTS: readonly DevBillingContext[] = ["personal", "business"];
-const INVOICING_MODES: readonly DevInvoicingMode[] = ["per_transaction", "intervaled_monthly"];
-const SPEND_LIMITS: readonly DevSpendLimit[] = ["within", "over"];
-const FULFILMENT_MIXES: readonly DevFulfilmentMix[] = [
-	"mixed",
-	"products",
-	"tickets",
-	"sessions",
-	"pending",
-];
-const CONFERENCING: readonly DevConferencing[] = ["zoom", "google", "microsoft_teams", "none"];
-const EVENT_SEATS: readonly DevEventSeat[] = ["auto", "host", "attendee", "non_party"];
-const EVENT_RSVPS: readonly DevEventRsvp[] = [
-	"auto",
-	"accepted",
-	"tentative",
-	"rejected",
-	"pending",
-];
-const EVENT_RESCHEDULES: readonly DevEventReschedule[] = [
-	"auto",
-	"none",
-	"collecting",
-	"awaiting_counterparty",
-	"voting",
-	"resolved",
-	"lapsed",
-	"withdrawn",
-];
-const WALLET_COVERAGES: readonly DevWalletCoverage[] = ["covers", "shortfall"];
-const SAVED_CARDS: readonly DevSavedCards[] = ["seeded", "none", "expired"];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */
 function coerce<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -626,11 +320,6 @@ export function readDevSeam(): DevSeamState | null {
 		pendingInvites: ds.devPendingInvites !== "false",
 		messagingRole: coerce(ds.devMessagingRole, MESSAGING_ROLES, "freelancer"),
 		micPermission: coerce(ds.devMicPermission, MIC_PERMISSIONS, "auto"),
-		walletVaultRole: coerce(ds.devWalletRole, WALLET_VAULT_ROLES, "admin"),
-		walletKyc: coerce(ds.devWalletKyc, WALLET_KYCS, "verified"),
-		walletSmoother: coerce(ds.devWalletSmoother, WALLET_SMOOTHERS, "enrolled"),
-		walletFundMix: coerce(ds.devWalletFundMix, WALLET_FUND_MIXES, "normal"),
-		walletStanding: coerce(ds.devWalletStanding, WALLET_STANDINGS, "auto"),
 		workspaceKind: coerce(ds.devWorkspaceKind, WORKSPACE_KINDS, "team"),
 		workspaceRole: coerce(ds.devWorkspaceRole, WORKSPACE_ROLES, "admin"),
 		membershipState: coerce(ds.devMembershipState, MEMBERSHIP_STATES, "active"),
@@ -641,27 +330,7 @@ export function readDevSeam(): DevSeamState | null {
 		),
 		actingContext: ds.devActingContext === "true",
 		rosterState: coerce(ds.devRosterState, ROSTER_STATES, "populated"),
-		displayCurrency: coerce(ds.devDisplayCurrency, DISPLAY_CURRENCIES, "GBP"),
 		layoutDirection: coerce(ds.devDirection, LAYOUT_DIRECTIONS, "ltr"),
-		storageProvider: coerce(ds.devStorageProvider, STORAGE_PROVIDERS, "none"),
-		connectionState: coerce(ds.devConnectionState, CONNECTION_STATES, "disconnected"),
-		storageQuota: coerce(ds.devStorageQuota, STORAGE_QUOTAS, "healthy"),
-		assetVisibility: coerce(ds.devAssetVisibility, ASSET_VISIBILITIES, "private"),
-		linkScan: coerce(ds.devLinkScan, LINK_SCANS, "safe"),
-		dedupState: coerce(ds.devDedupState, DEDUP_STATES, "none"),
-		basketOwner: coerce(ds.devBasketOwner, BASKET_OWNERS, "personal"),
-		paymentProviders: coerce(ds.devPaymentProviders, PAYMENT_PROVIDERS, "all"),
-		walletCoverage: coerce(ds.devWalletCoverage, WALLET_COVERAGES, "covers"),
-		savedCards: coerce(ds.devSavedCards, SAVED_CARDS, "seeded"),
-		buyerDetails: coerce(ds.devBuyerDetails, BUYER_DETAILS, "missing"),
-		billingContext: coerce(ds.devBillingContext, BILLING_CONTEXTS, "personal"),
-		invoicingMode: coerce(ds.devInvoicingMode, INVOICING_MODES, "per_transaction"),
-		spendLimit: coerce(ds.devSpendLimit, SPEND_LIMITS, "within"),
-		fulfilmentMix: coerce(ds.devFulfilmentMix, FULFILMENT_MIXES, "mixed"),
-		conferencing: coerce(ds.devConferencing, CONFERENCING, "zoom"),
-		eventSeat: coerce(ds.devEventSeat, EVENT_SEATS, "auto"),
-		eventRsvp: coerce(ds.devEventRsvp, EVENT_RSVPS, "auto"),
-		eventReschedule: coerce(ds.devEventReschedule, EVENT_RESCHEDULES, "auto"),
 	};
 }
 

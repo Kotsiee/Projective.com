@@ -1,5 +1,5 @@
 import { getWallet, postWallet } from "./api.ts";
-import { buildSimQuery } from "./wallet-model.ts";
+import { buildWalletQuery } from "./wallet-model.ts";
 import type { WalletResult } from "../types/results.ts";
 import type {
 	AccessView,
@@ -23,7 +23,6 @@ import type {
 	TransferInput,
 	WalletActionResult,
 	WalletOverview,
-	WalletSim,
 	WalletSwitcher,
 	WithdrawInput,
 } from "../types/wallet-types.ts";
@@ -38,15 +37,14 @@ import type {
  * them).
  */
 
-/** The shared client context every call threads (the active wallet, display currency, dev simulation). */
+/** The shared client context every call threads (the active wallet and the display currency). */
 export interface WalletContext {
 	wallet: string | null;
 	display: string | null;
-	sim?: WalletSim;
 }
 
 function qs(ctx: WalletContext, extra?: Record<string, string>): string {
-	const base = buildSimQuery(ctx);
+	const base = buildWalletQuery(ctx);
 	const params = new URLSearchParams(base);
 	if (extra) { for (const [k, v] of Object.entries(extra)) if (v) params.set(k, v); }
 	const s = params.toString();

@@ -9,7 +9,7 @@ import { CheckoutStepper } from "../components/CheckoutStepper.tsx";
 import { type CheckoutStep, checkoutStepHref, isFocusStep } from "../core/basket-model.ts";
 import { basketSearch, notifyBasketChanged } from "../core/basket-state.ts";
 import { reachedStep, seedStep } from "../core/checkout-state.ts";
-import { useCheckoutSeamPassive } from "../core/checkout-seam.ts";
+import { useCheckoutContextPassive } from "../core/checkout-context.ts";
 import type { BasketSummary, CheckoutOwner } from "../types/checkout-types.ts";
 
 /**
@@ -118,7 +118,7 @@ export default function CheckoutStepperBand(props: CheckoutStepperBandProps): JS
 	 */
 	const mounted = useSignal(false);
 
-	useCheckoutSeamPassive({
+	useCheckoutContextPassive({
 		basketId: props.basketId,
 		owner: props.ownerParam,
 		display: props.display,

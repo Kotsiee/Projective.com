@@ -25,7 +25,7 @@ Deno.test("photoSlug normalises both call conventions and is idempotent", () => 
 
 Deno.test("mockAvatar reproduces the 96px face crop verbatim (13 former call sites)", () => {
 	// projects/detail-fixtures.ts:27 FACE, projects/fixtures.ts:27, members-fixtures.ts:38,
-	// messaging/conversation-fixtures.ts:25, scheduling/coordination-fixtures.ts:60,
+	// messaging/conversation-fixtures.ts:25,
 	// workspace/workspace-fixtures.ts:108 face(), finance/{basket,wallet}-fixtures.ts, …
 	assertEquals(
 		mockAvatar("photo-1487412720507-e7ab37603c6f"),

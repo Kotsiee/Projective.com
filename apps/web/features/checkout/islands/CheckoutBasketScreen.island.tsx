@@ -34,7 +34,7 @@ import {
 	lists as listsSignal,
 	seedStep,
 } from "../core/checkout-state.ts";
-import { useCheckoutSeam } from "../core/checkout-seam.ts";
+import { useCheckoutContext } from "../core/checkout-context.ts";
 import {
 	BasketCategorySection,
 	categoriesOf,
@@ -200,11 +200,10 @@ export default function CheckoutBasketScreen(props: CheckoutBasketScreenProps): 
 		contributionOptedIn.value = props.processingOffer?.optedIn ?? false;
 	}, [initial]);
 
-	useCheckoutSeam({
+	useCheckoutContext({
 		basketId: initial.basket.id || null,
 		owner: initial.owner,
 		display: initial.display,
-		onRefetch: () => void reload(),
 	});
 
 	useEffect(() => {

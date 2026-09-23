@@ -22,8 +22,7 @@ import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { QuotaMeter } from "../components/QuotaMeter.tsx";
 import { NodeMark } from "../components/file-hub-glyphs.tsx";
 import { FilesService } from "../core/FilesService.ts";
-import { simFromSeam, subscribeFilesSim } from "../core/files-seam.ts";
-import { ancestorKeys, assetHref, pathKey } from "../core/asset-model.ts";
+import { ancestorKeys, assetHref, pathKey, rootChildren, rootFileCount } from "../core/asset-model.ts";
 import {
 	commitFiles,
 	currentPath,
@@ -206,13 +205,7 @@ export default function FilesLane(props: FilesLaneProps): JSX.Element {
 	async function load(): Promise<void> {
 		if (!props.ownerId) return;
 		loadingTree.value = true;
-		const sim = simFromSeam();
-		const res = await FilesService.tree({
-			scope: props.scope,
-			subjectId: props.subjectId,
-			ownerType: props.ownerType,
-			ownerId: props.ownerId,
-		}, sim);
+		const res = await FilesService.tree();
 		if (res.ok && res.data) {
 			tree.value = res.data;
 			treeError.value = null;
@@ -224,7 +217,7 @@ export default function FilesLane(props: FilesLaneProps): JSX.Element {
 		// The allowance is a `hub` fact. A mount and a share consume none, and writing a `null` from a
 		// drive read would blank a meter the body had correctly filled.
 		if (props.scope !== "hub") return;
-		const q = await FilesService.quota(props.ownerType, props.ownerId, sim);
+		const q = await FilesService.quota();
 		if (q.ok && q.data) quota.value = q.data;
 	}
 
@@ -247,9 +240,6 @@ export default function FilesLane(props: FilesLaneProps): JSX.Element {
 		} catch { /* no DOM — non-fatal */ }
 
 		void load();
-		// Every dev axis on this surface changes data the SERVER produced, so a seam change must REFETCH;
-		// re-rendering would relabel the same rows and look like the switcher was broken.
-		return subscribeFilesSim(() => void load());
 	}, []);
 	// #endregion
 
@@ -305,6 +295,9 @@ export default function FilesLane(props: FilesLaneProps): JSX.Element {
 		sectioned.value.library.length + sectioned.value.mounted.length + sectioned.value.drives.length
 	);
 
+	/** The library's top-level nodes, as the root row's children (see {@link rootChildren}). */
+	const library = useComputed(() => rootChildren(sectioned.value.library));
+
 	// A search that matched deep in the tree must SHOW its matches, so a live query force-opens every
 	// surviving branch. Done in an EFFECT rather than while rendering: writing a signal during render
 	// re-enters the same render, and `expanded` is the very signal TreeNav writes back to.
@@ -313,7 +306,7 @@ export default function FilesLane(props: FilesLaneProps): JSX.Element {
 		const open = new Set(expanded.value);
 		open.add(ROOT_KEY);
 		const b = sectioned.value;
-		allKeys([...b.library, ...b.mounted, ...b.drives], [], open);
+		allKeys([...library.value, ...b.mounted, ...b.drives], [], open);
 		// Only ever a widening, so it cannot fight the person's own collapse mid-search.
 		if (open.size !== expanded.value.size) expanded.value = open;
 	}, [q.value, tree.value]);
@@ -322,19 +315,19 @@ export default function FilesLane(props: FilesLaneProps): JSX.Element {
 
 	/** The library section leads with a synthetic root row, so there is always one click back to the top. */
 	function nodesFor(key: SectionKey): TreeNavNode[] {
-		const nodes = sectioned.value[key].map((n) => toNavNode(n, []));
-		if (key !== "library") return nodes;
+		if (key !== "library") return sectioned.value[key].map((n) => toNavNode(n, []));
 		return [{
 			key: ROOT_KEY,
 			label: props.ownerLabel,
 			icon: <Icon name="folder" />,
-			children: nodes,
+			count: rootFileCount(sectioned.value.library),
+			children: library.value.map((n) => toNavNode(n, [])),
 		}];
 	}
 	// #endregion
 
 	/** The top-level library folders the collapsed rail offers as direct jumps. */
-	const railFolders = useComputed(() => sectioned.value.library.slice(0, 7));
+	const railFolders = useComputed(() => library.value.slice(0, 7));
 
 	return (
 		<div class="fh-lanewrap">

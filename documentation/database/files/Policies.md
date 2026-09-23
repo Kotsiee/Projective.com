@@ -12,10 +12,10 @@ policies: [`00002017`](../../../supabase/migrations/00002017_policies_storage.sq
 
 ---
 
-## ⚠️ Two pre-existing holes this pass closed
+## ⚠️ Three pre-existing holes this pass closed
 
-Both were **live**, both predate the asset-management work, and neither was a scoping bug in one
-branch — in each case there was no scoping at all. They are recorded here rather than quietly fixed
+All were **live** and all predate the asset-management work. The first two were not scoping bugs in
+one branch — in each there was no scoping at all; the third checked the wrong fact. They are recorded here rather than quietly fixed
 because the shape of each is worth recognising again elsewhere.
 
 ### 1. `files.items` `SELECT` was `USING (true)` for every signed-in user
@@ -64,6 +64,19 @@ comment beside each `files` table rather than a bare list.
 `RLS` is now enabled on all five `files` tables (`items`, `folders`, `share_links`,
 `download_events`, `storage_usage`), and `folders` has the full four-policy set below.
 
+### 3. A signed-in user could file things into a library they do not belong to
+
+The `items` and `folders` INSERT policies checked `owner_user_id = auth.uid()` — who **created** the
+row — and never whether the creator belonged to the library the row names. Verified by execution
+(2026-09-23): a freelancer with no connection to Atelier Nova could insert a folder, or a link
+labelled anything, with `owner_type = 'team'` and Atelier Nova's id, and every Atelier Nova member
+would see it in their team library as their own team's file. A link row carries no bytes, so the
+pipeline guard never saw it.
+
+Both INSERT and both UPDATE `WITH CHECK`s now also require
+[`files.fn_owns_library(owner_type, owner_entity_id)`](Functions.md#-filesfn_owns_libraryp_owner_type-filesowner_kind-p_owner_entity_id-uuid--boolean):
+a personal row names no entity, and an entity row needs active membership of the entity it names.
+
 ---
 
 **Both fail silently in the safe direction.** A caller that relied on reading a foreign row now gets
@@ -79,8 +92,8 @@ behaviour differ only in row count.
 | :------- | :-------------- | :---------------------------------------------------------- |
 | `SELECT` | `authenticated` | `files.fn_can_read(id)` — see [Functions.md](Functions.md)  |
 | `SELECT` | `anon`          | `visibility = 'public' AND deleted_at IS NULL`              |
-| `INSERT` | `authenticated` | `WITH CHECK (owner_user_id = auth.uid())`                   |
-| `UPDATE` | `authenticated` | `USING` **and** `WITH CHECK` `(owner_user_id = auth.uid())` |
+| `INSERT` | `authenticated` | `WITH CHECK (owner_user_id = auth.uid() AND files.fn_owns_library(owner_type, owner_entity_id))` |
+| `UPDATE` | `authenticated` | `USING (owner_user_id = auth.uid())` · `WITH CHECK` the INSERT predicate |
 | `DELETE` | `authenticated` | `owner_user_id = auth.uid()`                                |
 
 **The `UPDATE` `WITH CHECK` arm is new.** The shipped policy had `USING` only, and an `UPDATE`
@@ -115,8 +128,9 @@ storage-object rules, because every row here names a stored object.
 
 ## `files.folders`
 
-Same INSERT/UPDATE/DELETE shape as `files.items` (including the `WITH CHECK` arm, so a folder cannot
-be re-parented **into** another tenant's tree). `SELECT` mirrors `fn_can_read`'s ownership arms
+Same INSERT/UPDATE/DELETE shape as `files.items` (including the `WITH CHECK` arm and its
+`fn_owns_library` clause, so a folder can be neither created in nor re-parented **into** another
+tenant's tree). `SELECT` mirrors `fn_can_read`'s ownership arms
 inline — creator, `public`, or active member of the owning team / business / organisation. Folders
 carry no project-mount case: a mounted connector directory is reached through its connection, and a
 project's tree is the channel tree, not a folder.
@@ -229,10 +243,13 @@ client that could write it could write itself unlimited storage.
 | `EXECUTE ON files.get_public_media`     | `00002510` | To `anon` + `authenticated`: returns only world-readable refs.   |
 | `REVOKE` on `fn_public_media_ref` · `fn_guard_pipeline_columns` | `00002510` | Reached only through definers / as a trigger.       |
 | `REVOKE TRUNCATE … SCHEMA files`        | `00002500` | From `anon` + `authenticated`, and from default privileges. TRUNCATE is not row-level, so RLS never bounded it. |
+| `EXECUTE ON files.fn_owns_library`      | `00002510` | To `anon` + `authenticated` + svc: it is called by the write policies themselves. |
+| `EXECUTE ON files.get_storage_quota`    | `00002510` | To `authenticated` + svc, `REVOKE`d from `PUBLIC`/`anon`; it authorises its own caller. |
+| `EXECUTE ON files.fn_record_download`   | `00002510` | To the **service role only** — a download is a server observation. |
 
-`files.fn_can_read` is deliberately left executable by `PUBLIC`: it **is** the `SELECT` policy on
-`files.items`, and a policy expression runs as the invoking role — revoking it would deny every
-read.
+`files.fn_can_read` and `files.fn_owns_library` are deliberately left executable by `PUBLIC`: they
+**are** the `SELECT` and write policies on `files.items`, and a policy expression runs as the invoking
+role — revoking either would deny every read or every write.
 
 ---
 

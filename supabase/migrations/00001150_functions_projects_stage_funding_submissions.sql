@@ -254,9 +254,23 @@ DECLARE
     v_escrow uuid;
     v_funded int := 0;
     v_total bigint := 0;
+    v_payer uuid;
 BEGIN
     IF NOT projects.has_project_access(p_project_id) THEN
         RAISE EXCEPTION 'Not authorized for this project.' USING ERRCODE = '42501';
+    END IF;
+
+    -- Funding moves the CLIENT's money into escrow, so project access is not enough: a freelancer on
+    -- the project has access too. The caller must be able to spend from the paying business's wallet —
+    -- the same capability the business checkout asks for.
+    SELECT p.client_business_id INTO v_payer FROM projects.projects p WHERE p.id = p_project_id;
+    IF v_payer IS NULL THEN
+        RAISE EXCEPTION 'This project has no paying business, so its stages cannot be funded.'
+            USING ERRCODE = 'PS501';
+    END IF;
+    IF NOT finance.fn_owner_capability('business', v_payer, 'spend'::finance.vault_capability) THEN
+        RAISE EXCEPTION 'Only a member who can spend from the client''s wallet can fund this stage.'
+            USING ERRCODE = '42501';
     END IF;
 
     SELECT ps.status, ps.name, p.currency

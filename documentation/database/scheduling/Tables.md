@@ -101,7 +101,7 @@ One positioned calendar entry — the persisted backing for the `CalendarEvent` 
 | `project_id` · `channel_id`       | uuid                      | Project anchor → `projects.projects` (CASCADE) · `comms.project_channels` (SET NULL). |
 | `kind`                            | `scheduling.event_kind`   | Mirrors `CalendarEventKind` value-for-value.                                          |
 | `status`                          | `scheduling.event_status` | Mirrors `CalendarEventStatus`.                                                        |
-| `title` · `starts_at` · `ends_at` | text · timestamptz        | `CHECK ends_at > starts_at`.                                                          |
+| `title` · `starts_at` · `ends_at` | text · timestamptz        | `ck_event_span`: `ends_at >= starts_at` — equal is a deadline, a point in time.       |
 | `all_day` · `is_masked`           | boolean                   | `is_masked` → render `status` only, never `title`.                                    |
 | `accent`                          | text                      | A CSS custom-property **name** (`--primary`), never a literal colour.                 |
 | `location` · `meta` · `href`      | text                      | Presentational.                                                                       |
@@ -116,6 +116,89 @@ One positioned calendar entry — the persisted backing for the `CalendarEvent` 
 > ⚠️ **A discovery call is not a new `kind`.** It is projected as a `booking`. A tenth kind would
 > break the shipped calendar engine's exhaustive `Record<CalendarEventKind, …>` label/accent maps,
 > turning a data change into a design-system change (root `CLAUDE.md` §3).
+
+---
+
+## 2b. Event coordination (`00000022`, FK in `00000031`)
+
+`scheduling.events` positions an occurrence on a grid; these six tables record the negotiation
+around it — who is coming, how a time gets moved, what has happened to it, and what was attached.
+They are the persisted backing for the `@projective/types/scheduling` `coordination.ts` shapes
+(`EventAttendee`, `EventReschedule`, `RescheduleProposal`, `EventHistoryEntry`).
+
+**Read by the parties, written only by the service.** Every one of them is readable through
+`scheduling.fn_can_see_event_coordination` ([Functions.md](Functions.md) §9) and carries **no client
+write policy**: the 12-hour lockout, who may put a slot on the ballot, one vote per attendee per
+round and the majority rule have one implementation
+(`packages/backend/services/scheduling/coordination-plan.ts` over the SSOT's pure predicates), and a
+direct PostgREST write would bypass every one of them. The scheduling service writes as the service
+role after those rules have run (`live-coordination-writes.ts`).
+
+### `scheduling.event_attendees`
+
+| Column         | Type                       | Notes                                                                                           |
+| :------------- | :------------------------- | :---------------------------------------------------------------------------------------------- |
+| `id`           | uuid                       | PK — the key a vote and a per-attendee write address.                                           |
+| `event_id`     | uuid                       | → `events` (CASCADE).                                                                           |
+| `user_id`      | uuid                       | → `org.users_public` (SET NULL). Nullable, so an invitee with no account is still a seat.       |
+| `role`         | `scheduling.attendee_role` | `host` · `participant` · `optional`.                                                            |
+| `response`     | `scheduling.rsvp_response` | `pending` is a real answer ("has not replied"), not the absence of one.                         |
+| `responded_at` | timestamptz                | `ck_attendee_pending_unanswered`: `pending` ⇒ `NULL`, so clearing an answer clears its instant. |
+| `note`         | text                       | ≤ 280.                                                                                          |
+| UNIQUE         | —                          | `(event_id, user_id)` — a registered user holds one seat, so cannot vote twice.                 |
+
+`isViewer` is deliberately not a column: it is a fact about who is ASKING, resolved per request by
+identity (`live-calendar.ts` seats a reader where `user_id = auth.uid()`).
+
+### `scheduling.event_reschedules`
+
+One ROUND of a negotiation. `round` counts from **zero**; `resolved`, `lapsed` and `withdrawn` all
+end a round, and a fresh proposal opens round `n + 1` with an empty ballot, which is what stops a
+withdrawn round becoming a dead end.
+
+| Column                            | Type               | Notes                                                                                              |
+| :-------------------------------- | :----------------- | :------------------------------------------------------------------------------------------------- |
+| `event_id` · `round`              | uuid · integer     | UNIQUE together (`uq_reschedule_round`).                                                           |
+| `mode`                            | text               | `counterparty` (two people) · `vote` (three or more) — a property of the head count, never chosen. |
+| `status`                          | text               | `none` · `collecting` · `awaiting_counterparty` · `voting` · `resolved` · `lapsed` · `withdrawn`.  |
+| `opened_by_user_id` · `opened_at` | uuid · timestamptz | `ck_reschedule_opened`: only `none` has no opening instant.                                        |
+| `resolves_at`                     | timestamptz        | Stamped server-side from `voteResolvesAt`; `NULL` once `withdrawn`.                                |
+| `resolved_proposal_id`            | uuid               | `ck_reschedule_resolved_names_winner`: set **iff** `resolved`. FK below.                           |
+
+**The winner's FK is composite, in `00000031_tables_fk_scheduling.sql`.** `reschedule_proposals`
+references this table back, so the pair is circular and the constraint lives in the trailing FK file
+(root `CLAUDE.md` §1): `(resolved_proposal_id, id) → reschedule_proposals (id, reschedule_id)`. A
+single-column key would prove the winner is _a_ proposal; the composite one proves it is a proposal
+**on this round**.
+
+### `scheduling.reschedule_proposals`
+
+A slot offered on a round. `ck_proposal_span` (`ends_at > starts_at`, strict — a replacement meeting
+is not an instant), `ck_proposal_role` (`host` · `attendee`), `ck_proposal_host_preapproved` (a
+host's own slot is on the ballot on arrival; an attendee's waits for the host's approval),
+`uq_proposal_slot` (the same slot twice would split the vote), and
+`uq_proposal_in_reschedule (id, reschedule_id)` — the target the composite FKs point at.
+
+### `scheduling.proposal_votes`
+
+One ballot. `reschedule_id` is denormalised so
+`uq_one_vote_per_attendee_per_round
+(reschedule_id, attendee_id)` can hold the rule — one vote per
+attendee per NEGOTIATION, not per slot — and the composite FK
+`(proposal_id, reschedule_id) → reschedule_proposals (id, reschedule_id)` makes the copy
+unfalsifiable. Immutable once cast (no `updated_at`).
+
+### `scheduling.event_history`
+
+The append-only log (`kind`: `created` · `edited` · `rescheduled` · `proposal` · `vote` · `rsvp` ·
+`attachment` · `meeting_link` · `cancelled`). `actor_user_id` → `auth.users` (SET NULL) — `NULL` is
+the honest actor for a vote that closed on its own deadline. `target_id` is a flat id (a proposal,
+an attendee), never a path. `unread` is deliberately not a column: it is a fact about a reader, so
+the live read reports every line as read until a per-viewer marker exists.
+
+### `scheduling.event_attachments`
+
+A JOIN onto `files.items` (CASCADE), not a copy — one asset, one owner, many anchors.
 
 ---
 
@@ -147,12 +230,12 @@ The provider's booking configuration, one row per schedule (PK is `schedule_id`)
 
 The conferencing platforms a host OFFERS for a call, in their preferred order (Decision #108).
 
-| Column          | Type        | Notes                                                                |
-| :-------------- | :---------- | :------------------------------------------------------------------- |
-| `schedule_id`   | uuid        | FK → `scheduling.schedules` (CASCADE). PK with `provider_slug`.       |
-| `provider_slug` | text        | FK → `integrations.providers` (CASCADE). A slug naming no provider is |
-|                 |             | unrepresentable, which is why this is a table and not a `text[]`.    |
-| `position`      | smallint    | NOT NULL `DEFAULT 0`, `CHECK >= 0`. The host's preference order.      |
+| Column          | Type     | Notes                                                                 |
+| :-------------- | :------- | :-------------------------------------------------------------------- |
+| `schedule_id`   | uuid     | FK → `scheduling.schedules` (CASCADE). PK with `provider_slug`.       |
+| `provider_slug` | text     | FK → `integrations.providers` (CASCADE). A slug naming no provider is |
+|                 |          | unrepresentable, which is why this is a table and not a `text[]`.     |
+| `position`      | smallint | NOT NULL `DEFAULT 0`, `CHECK >= 0`. The host's preference order.      |
 
 An **allow-list, not the truth about what can be minted**: a row offers nothing unless the host also
 holds an ACTIVE `integrations.user_connections` row for that provider carrying the `conferencing`
@@ -172,7 +255,7 @@ The booking record.
 | Parties      | `host_schedule_id` · `host_user_id` · `requester_user_id` (`CHECK` host ≠ requester)                                                                                                 |
 | Kind/state   | `call_type` (`courtesy`/`paid`) · `status` (see [the lifecycle](#the-discovery-call-lifecycle))                                                                                      |
 | Slots        | `proposed_start`/`_end` (kept after a reschedule) · `confirmed_start`/`_end` (null until confirmed) · `requester_timezone`                                                           |
-| Intent       | `agenda` · `service_blueprint_id` → `marketplace.service_blueprints` (SET NULL) — the listing the call was booked ABOUT, or NULL for a call booked from the seller's profile      |
+| Intent       | `agenda` · `service_blueprint_id` → `marketplace.service_blueprints` (SET NULL) — the listing the call was booked ABOUT, or NULL for a call booked from the seller's profile         |
 | Conferencing | `provider_slug` · `connection_id` · `meeting_url` · `meeting_external_id`                                                                                                            |
 | Calendar     | `event_id` → `scheduling.events` (SET NULL)                                                                                                                                          |
 | Money        | `fee_amount_minor` · `fee_currency` · `payment_ref` · `escrow_id` · `refund_amount_minor` · `penalty_amount_minor`                                                                   |

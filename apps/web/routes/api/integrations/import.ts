@@ -3,7 +3,7 @@ import { z } from "zod";
 import { AssetOwnerType } from "@projective/types/files";
 import { toFieldErrors, toFilesResponse } from "@features/files/core/respond.ts";
 import { IntegrationsBackendService } from "@server/services/integrations/IntegrationsBackendService.ts";
-import { actorFromContext } from "@server/services/files/acting-principal.ts";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * `POST /api/integrations/import` — mount a connected drive object into the `/files` hub.
@@ -65,10 +65,7 @@ export const handler = define.handlers({
 		}
 
 		return toFilesResponse(
-			await IntegrationsBackendService.importAsset(
-				parsed.data,
-				actorFromContext(ctx.state.userContext),
-			),
+			await IntegrationsBackendService.importAsset(parsed.data, readActor(ctx)),
 		);
 	},
 });

@@ -1,5 +1,6 @@
 import type { ComponentChildren } from "preact";
 import type { UserContext } from "@projective/types/auth";
+import type { ReadActor } from "@server/services/read-actor.ts";
 import CatalogueViewControlRig from "../islands/CatalogueViewControlRig.island.tsx";
 import ListingActionRig from "../islands/ListingActionRig.island.tsx";
 import { resolveListing } from "./catalogue-ssr.ts";
@@ -16,12 +17,17 @@ import { resolveListing } from "./catalogue-ssr.ts";
  *
  * Composed after the projects/messaging footer resolvers so exactly one owns the band per URL.
  */
-export function catalogueFooterFor(url: URL, _context: UserContext): ComponentChildren {
+export async function catalogueFooterFor(
+	url: URL,
+	_context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
 	const segs = url.pathname.split("/").filter(Boolean); // ["catalogue", id?]
 	if (segs[0] !== "catalogue") return null;
 
 	if (segs.length >= 2) {
-		const listing = resolveListing(segs[1]);
+		// The same read the page and the header band make — one query through the request memo.
+		const { listing } = await resolveListing(segs[1], url, actor);
 		if (!listing) return null;
 		return <ListingActionRig status={listing.status} />;
 	}

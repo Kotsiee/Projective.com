@@ -12,7 +12,7 @@ import {
 	ledgerSearch,
 	walletError,
 } from "../core/wallet-state.ts";
-import { applyRead, useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
+import { applyRead, useWalletRefresh, useWalletSync } from "../core/wallet-sync.ts";
 import type { TransactionPage } from "../types/wallet-types.ts";
 
 /**
@@ -47,7 +47,7 @@ export default function WalletTransactionsScreen(
 			page.value = d.page;
 		});
 	};
-	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
+	useWalletSync({ display: props.display, wallet: props.wallet });
 	useWalletRefresh(refetch);
 
 	const p = page.value;

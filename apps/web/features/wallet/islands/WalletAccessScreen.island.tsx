@@ -11,7 +11,7 @@ import { GrantedMark, NotGrantedMark } from "../core/glyphs.tsx";
 import { WalletService } from "../core/WalletService.ts";
 import { can } from "../core/capability.ts";
 import { currentWalletContext, notifyWalletChanged, walletError } from "../core/wallet-state.ts";
-import { applyRead, useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
+import { applyRead, useWalletRefresh, useWalletSync } from "../core/wallet-sync.ts";
 import type {
 	AccessView,
 	VaultCapability,
@@ -65,7 +65,7 @@ export default function WalletAccessScreen(props: WalletAccessScreenProps): JSX.
 			view.value = d.access;
 		});
 	};
-	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
+	useWalletSync({ display: props.display, wallet: props.wallet });
 	useWalletRefresh(refetch);
 
 	const a = view.value;
@@ -100,12 +100,18 @@ export default function WalletAccessScreen(props: WalletAccessScreenProps): JSX.
 			contextId: target.wallet?.split(":")[1] ?? "",
 			approvalId: id,
 			decision,
+			display: target.display ?? undefined,
 		});
 		busy.value = null;
 		if (res.ok) {
 			notifyWalletChanged();
 			await refetch();
+			return;
 		}
+		// The server names the refusal (someone else decided it first, it expired, you requested it
+		// yourself); saying nothing would leave the row looking decided when it is not.
+		walletError.value = res.message ?? Object.values(res.errors ?? {})[0] ??
+			"That decision didn't save. Nothing has changed.";
 	};
 
 	return (

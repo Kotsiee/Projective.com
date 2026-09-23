@@ -1,8 +1,8 @@
 import { define } from "@web/utils/state.ts";
-import { DedupCheckSchema, simFromParams } from "@projective/types/files";
+import { DedupCheckSchema } from "@projective/types/files";
 import { toFieldErrors, toFilesResponse } from "@features/files/core/respond.ts";
 import { FilesBackendService } from "@server/services/files/FilesBackendService.ts";
-import { actorFromContext } from "@server/services/files/acting-principal.ts";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * `POST /api/files/dedup` — the thin route for the pre-flight duplicate check.
@@ -21,7 +21,7 @@ import { actorFromContext } from "@server/services/files/acting-principal.ts";
  * that accepted a target owner would answer "does this exact file exist in that person's library?" —
  * a content-addressed read of a library the caller may not hold.
  *
- * No server-side capability guard (Decision #53(b)) — see `./list.ts`.
+ * Runs under the caller's own session: RLS is the gate, and the library is the acting context's.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -38,11 +38,7 @@ export const handler = define.handlers({
 			);
 		}
 		return toFilesResponse(
-			await FilesBackendService.dedupCheck(
-				parsed.data,
-				actorFromContext(ctx.state.userContext),
-				simFromParams(ctx.url.searchParams),
-			),
+			await FilesBackendService.dedupCheck(parsed.data, readActor(ctx)),
 		);
 	},
 });

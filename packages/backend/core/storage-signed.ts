@@ -76,6 +76,23 @@ export async function signedReadUrls(
 	return out;
 }
 
+/**
+ * One signed READ URL for an object, optionally as an attachment saved under `download` — the private
+ * object route's redirect target. Short-lived by design: the route is the stable address and mints a
+ * fresh one per request. `null` when storage refuses (a missing object, a bucket that is gone).
+ */
+export async function signedObjectUrl(
+	bucket: string,
+	path: string,
+	expiresInSeconds: number,
+	download?: string | null,
+): Promise<string | null> {
+	const { data, error } = await getServiceClient().storage.from(bucket)
+		.createSignedUrl(path, expiresInSeconds, download ? { download } : undefined);
+	if (error || !data?.signedUrl) return null;
+	return publicise(data.signedUrl);
+}
+
 // #endregion
 
 // #region Object I/O

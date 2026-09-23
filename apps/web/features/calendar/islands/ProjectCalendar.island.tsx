@@ -5,18 +5,17 @@ import "../styles/calendar-page.css";
 import { Calendar } from "@projective/ui/calendar";
 import type { CalendarComposeRequest } from "@projective/ui/calendar";
 import { Message } from "@projective/ui/feedback";
-import type {
-	CalendarEvent,
-	CalendarEventKind,
-	CalendarPage,
-	SchedulingSim,
-} from "@projective/types/scheduling";
+import type { CalendarEvent, CalendarEventKind, CalendarPage } from "@projective/types/scheduling";
 import { EventModal } from "../components/EventModal.tsx";
 import { renderCalendarSource } from "../components/provider-marks.tsx";
 import { CalendarConnectAction } from "../components/CalendarConnectAction.tsx";
 import { blankEvent, type EventMode, eventStack } from "../core/event-view.ts";
-import { type EventAccess, readDevSeam, resolveEventAccess } from "../core/event-access.ts";
-import { simFromSeam, subscribeSchedulingSim } from "../core/scheduling-seam.ts";
+import {
+	type EventAccess,
+	readDevSeam,
+	resolveEventAccess,
+	subscribeDevSeam,
+} from "../core/event-access.ts";
 import { ScheduleService } from "../core/ScheduleService.ts";
 
 /** What a project calendar can create. A booking is taken, not authored, so it is not offered here. */
@@ -35,9 +34,9 @@ const CREATE_KINDS: { value: CalendarEventKind; label: string }[] = [
  * syncs · sessions), renders the reusable `@projective/ui/calendar` engine, and opens the
  * {@link EventModal} from the grid's selection actions.
  *
- * Dumb: it fetches only through the thin {@link ScheduleService}. It refetches on a dev-seam change
- * because those axes are SERVER-derived (who is seated, what they answered, which negotiation is
- * live) — a re-render alone would show the same data with a different label on it.
+ * Dumb: it fetches only through the thin {@link ScheduleService}, and every fact on the grid — who is
+ * seated, what they answered, which negotiation is open — is read from the database as the signed-in
+ * reader. The dev seam only moves the persona-level ACCESS labels, which are presentation.
  *
  * Created and edited entries are session-local; the RSVP and reschedule writes are real round trips
  * to the fat service, which owns every rule.
@@ -59,19 +58,17 @@ export default function ProjectCalendar(props: ProjectCalendarProps): JSX.Elemen
 	const access = useSignal<EventAccess>(
 		resolveEventAccess({ viewerIsClient: props.initial?.viewerIsClient ?? true }, null),
 	);
-	const sim = useSignal<SchedulingSim | undefined>(undefined);
 	/** A refetch that failed. Held so the stale page on screen is never passed off as the new one. */
 	const loadError = useSignal<string | null>(null);
 
 	/**
-	 * Pull the page fresh under whatever simulation is active.
+	 * Pull the page fresh.
 	 *
-	 * A failure is SURFACED rather than dropped. The refetch is what a dev-seam change is — the axes
-	 * are server-derived — so discarding a failed one silently left the previous persona's seating on
-	 * screen under the new persona's label, which is the one outcome a simulation must never produce.
+	 * A failure is SURFACED rather than dropped: a stale page left on screen with no word of the failure
+	 * reads as the current one.
 	 */
-	async function load(next: SchedulingSim | undefined): Promise<void> {
-		const res = await ScheduleService.calendar(props.projectId, props.channelId, next);
+	async function load(): Promise<void> {
+		const res = await ScheduleService.calendar(props.projectId, props.channelId);
 		if (res.ok && res.data) {
 			loadError.value = null;
 			page.value = res.data.page;
@@ -90,26 +87,12 @@ export default function ProjectCalendar(props: ProjectCalendarProps): JSX.Elemen
 			);
 		};
 		apply();
-		// A seam change moves data the server produced, so it is a refetch and not a re-render.
-		return subscribeSchedulingSim((next) => {
-			sim.value = next;
-			apply();
-			void load(next);
-		});
+		return subscribeDevSeam(apply);
 	}, []);
 
+	// A page the server could not paint (a failed read, not a missing project) gets one retry on mount.
 	useEffect(() => {
-		if (props.initial) {
-			// SSR paints the un-simulated page; if an override is already active on first mount, pull the
-			// simulated one so the developer is not looking at somebody else's seating.
-			const first = simFromSeam();
-			if (first) {
-				sim.value = first;
-				void load(first);
-			}
-			return;
-		}
-		void load(sim.value);
+		if (!props.initial) void load();
 	}, []);
 
 	// Discard the chain when the page goes, so a later visit never inherits a stale frame.
@@ -225,7 +208,6 @@ export default function ProjectCalendar(props: ProjectCalendarProps): JSX.Elemen
 							scope: p.channelId ? "channel" : "project",
 							projectId: p.projectId,
 							channelId: p.channelId,
-							sim: sim.value,
 						}}
 						createKinds={CREATE_KINDS}
 						canBook={false}

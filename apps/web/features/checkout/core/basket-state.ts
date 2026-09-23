@@ -4,12 +4,12 @@ import type {
 	AppliedPromo,
 	Basket,
 	BasketItem,
-	BasketSim,
 	BasketSummary,
 	CheckoutContext,
 	CheckoutResult,
 	CheckoutSessionContext,
 	PaymentProvider,
+	DeviceCapabilities,
 	SavedCard,
 } from "../types/checkout-types.ts";
 import type { CheckoutResponse } from "../types/results.ts";
@@ -35,15 +35,13 @@ import {
  * because an optimistically re-totalled basket would state a price the server never agreed to.
  */
 
-// #region Shared read context (basket · owner · display currency · dev simulation)
+// #region Shared read context (basket · owner · display currency · device)
 /** The basket currently open; `null` resolves the acting account's default. */
 export const activeBasketId = signal<string | null>(null);
 /** The acting owner scope (`personal` · `team:northwind` · …). */
 export const activeOwner = signal<string>("personal");
 /** The viewer's display currency — every figure is formatted server-side in this. */
 export const displayCurrency = signal<string>("GBP");
-/** The live dev-simulation knobs, mirrored from the seam; `undefined` in production and when inert. */
-export const devSim = signal<BasketSim | undefined>(undefined);
 /** The `?project_id=` narrowing a checkout was opened with. */
 export const preselectProjectId = signal<string | null>(null);
 /** The `?service_id=` narrowing a checkout was opened with. */
@@ -57,8 +55,29 @@ export function currentCheckoutContext(): CheckoutContext {
 		display: displayCurrency.value,
 		projectId: preselectProjectId.value,
 		serviceId: preselectServiceId.value,
-		sim: devSim.value,
+		device: deviceWallets(),
 	};
+}
+
+/**
+ * What this device can actually pay with.
+ *
+ * Apple Pay announces itself synchronously through `ApplePaySession`, so it is reported honestly.
+ * **Google Pay cannot**: determining availability requires Google's own `pay.js`, which this platform
+ * does not load, so nothing is claimed about it — the field is left absent. Reporting an unknown
+ * capability as `true` would offer a route that fails at the last step; as `false`, it would hide one
+ * that works.
+ */
+export function deviceWallets(): DeviceCapabilities {
+	const session = (globalThis as Record<string, unknown>).ApplePaySession as
+		| { canMakePayments?: () => boolean }
+		| undefined;
+	if (!session) return { applePay: false };
+	try {
+		return { applePay: session.canMakePayments?.() === true };
+	} catch {
+		return { applePay: false };
+	}
 }
 
 /**

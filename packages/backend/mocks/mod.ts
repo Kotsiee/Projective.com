@@ -64,28 +64,7 @@ export * as messagingSettingsMocks from "../services/messaging/settings-fixtures
 export * as conversationWorkspaceMocks from "../services/messaging/workspace-fixtures.ts";
 // #endregion
 
-// #region Catalogue
-export * as catalogueMocks from "../services/catalogue/catalogue-fixtures.ts";
-// #endregion
-
-// #region Finance
-export * as walletMocks from "../services/finance/wallet-fixtures.ts";
-export * as fxMocks from "../services/finance/fx-fixtures.ts";
-// #endregion
-
 // #region Teams & businesses
 export * as workspaceMocks from "../services/workspace/workspace-fixtures.ts";
 // #endregion
 
-// #region Assets & connectors
-export * as assetMocks from "../services/files/assets-fixtures.ts";
-export * as quotaMocks from "../services/files/quota-fixtures.ts";
-export * as shareMocks from "../services/files/share-fixtures.ts";
-export * as connectionMocks from "../services/integrations/connections-fixtures.ts";
-// #endregion
-
-// #region Scheduling
-export * as calendarMocks from "../services/scheduling/calendar-fixtures.ts";
-export * as personalScheduleMocks from "../services/scheduling/personal-fixtures.ts";
-export * as coordinationMocks from "../services/scheduling/coordination-fixtures.ts";
-// #endregion

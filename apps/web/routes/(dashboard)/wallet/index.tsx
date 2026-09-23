@@ -1,9 +1,10 @@
 import { page } from "fresh";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { define } from "@web/utils/state.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import WalletOverviewScreen from "@features/wallet/islands/WalletOverviewScreen.island.tsx";
-import { resolveMethods, resolveWalletOverview } from "@features/wallet/core/wallet-ssr.ts";
-import { defaultWalletParam } from "@features/wallet/core/wallet-model.ts";
+import WalletUnavailable from "@features/wallet/islands/WalletUnavailable.island.tsx";
+import { resolveMethods, resolveWalletFrame, resolveWalletOverview } from "@features/wallet/core/wallet-ssr.ts";
 
 /**
  * `/wallet` — the context-scoped Wallet overview hub. Thin controller: the guest bounce is the
@@ -12,26 +13,31 @@ import { defaultWalletParam } from "@features/wallet/core/wallet-model.ts";
  *
  * The overview, the switcher and the saved payment methods are resolved together because the hero
  * band needs all three in its first paint — the balance identity, the account it belongs to, and the
- * card deck beside it. No hard capability guard: the wallet is chrome plus deferred `finance.*` RLS,
- * like every sibling read.
+ * card deck beside it. Everything is read as the signed-in viewer; `finance.*` RLS is the gate.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const context = asAuthenticatedContext(ctx.state.userContext);
-		const { overview, switcher } = resolveWalletOverview(context, ctx.url);
-		const methods = resolveMethods(context, ctx.url);
-		const wallet = ctx.url.searchParams.get("w") ?? defaultWalletParam(context);
-		const display = ctx.url.searchParams.get("display") ?? overview.available.currency;
+		const actor = readActor(ctx);
+		const [read, methods, frame] = await Promise.all([
+			resolveWalletOverview(context, ctx.url, actor),
+			resolveMethods(context, ctx.url, actor),
+			resolveWalletFrame(context, ctx.url, actor),
+		]);
 		ctx.state.title = "Wallet · Projective";
-		return page({ overview, switcher, methods, wallet, display });
+		return page(
+			{ read, methods: methods.ok ? methods.data : { methods: [] }, ...frame },
+			read.ok ? undefined : { status: 503 },
+		);
 	},
 });
 
 export default define.page<typeof handler>(function WalletPage({ data }) {
+	if (!data.read.ok) return <WalletUnavailable title="Wallet" message={data.read.message} />;
 	return (
 		<WalletOverviewScreen
-			initial={data.overview}
-			switcher={data.switcher}
+			initial={data.read.data.overview}
+			switcher={data.read.data.switcher}
 			methods={data.methods}
 			wallet={data.wallet}
 			display={data.display}

@@ -1020,7 +1020,8 @@ BEGIN
                 USING ERRCODE = 'PD422';
         END IF;
         IF v_line.owner_user_id = v_uid AND v_line.owner_team_id IS NULL THEN
-            RAISE EXCEPTION 'You can''t buy your own listing' USING ERRCODE = 'PD422';
+            RAISE EXCEPTION 'You can''t buy your own listing — remove % to pay for the rest', v_line.title
+                USING ERRCODE = 'PU422';
         END IF;
         -- The price the buyer was shown, per line, in the listing's own currency. A listing repriced
         -- between the page and the payment refuses rather than charging a figure nobody saw.
@@ -1207,10 +1208,335 @@ $$;
 
 COMMENT ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text) IS
 'Pay for the submitted basket lines from the caller''s Projective wallet, atomically: re-price every
-line from the catalogue against the unit price the buyer was shown, re-validate the promo code they saw,
-debit the wallet, credit each seller
-net of the 5% platform fee, write the order and its lines, consume the basket lines. Digital products
-only (services and sessions need escrow, which requires a project stage). Idempotent on the key.
-Refusal SQLSTATEs: 42501 not allowed · PK403 verification · PC409 basket/price changed · PD422 a line
-needs attention · PS501 not payable here · PF402 wallet · PA403 spend limit/approval.';
+line from the catalogue against the unit price the buyer was shown, re-validate the promo code they saw
+applied (none sent → none applied), debit the wallet, credit each seller net of the 5% platform fee,
+write the order and its lines, consume the basket lines. Digital products only (services and sessions
+need escrow, which requires a project stage). Idempotent on the key. Refusal SQLSTATEs: 42501 not
+allowed · PK403 verification · PB404 basket gone · PC409 basket/price/promo changed · PD422 a line needs
+a delivery address · PU422 your own listing · PS501 not payable here · PF402 wallet · PA403 spend
+limit/approval · 22023 bad attempt key.';
+-- #endregion
+
+-- #region 12. Wallet movements — transfers, team distributions, spend decisions (2026-09-23)
+-- The wallet surface's money moves that need no external processor. Each is a definer because the
+-- ledger primitives it calls (`fn_wallet_debit` / `fn_wallet_credit`) check nothing about who is
+-- asking; each therefore checks the caller itself — the capability on the wallet money leaves, and
+-- membership of the wallet it lands in. Top-ups, withdrawals, recurring deposits and the Income
+-- Smoother all need a payment processor and are deliberately NOT here: the application says so
+-- rather than recording money that did not move.
+--
+-- Every movement is idempotent on a caller-minted attempt key (`finance.idempotency_keys`), scoped to
+-- the caller and to the request it was first used for, so a retried request answers with what it
+-- already did and a key cannot be replayed against a different movement.
+
+-- Move money between two of the caller's OWN wallets: their personal wallet and the vaults they
+-- belong to. Money leaves a personal wallet only for its owner and a vault only for a member who may
+-- withdraw from it; it lands only in a wallet the caller already belongs to, so a transfer can never
+-- be a payment to somebody else. Same currency only — a transfer is not a conversion.
+CREATE OR REPLACE FUNCTION finance.transfer_funds(
+    p_from_wallet uuid,
+    p_to_wallet uuid,
+    p_amount bigint,
+    p_note text,
+    p_idempotency_key text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = finance, org, security, public
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_scope text;
+    v_hash text;
+    v_prior finance.idempotency_keys;
+    v_from finance.wallets;
+    v_to finance.wallets;
+    v_note text := NULLIF(pg_catalog.btrim(COALESCE(p_note, '')), '');
+    v_result jsonb;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to move money' USING ERRCODE = '42501';
+    END IF;
+    IF p_amount IS NULL OR p_amount <= 0 THEN
+        RAISE EXCEPTION 'Enter an amount to transfer' USING ERRCODE = '22023';
+    END IF;
+    IF p_from_wallet IS NULL OR p_to_wallet IS NULL OR p_from_wallet = p_to_wallet THEN
+        RAISE EXCEPTION 'Choose a different wallet to transfer to' USING ERRCODE = '22023';
+    END IF;
+    IF p_idempotency_key IS NULL OR pg_catalog.length(p_idempotency_key) < 8
+       OR pg_catalog.length(p_idempotency_key) > 120 THEN
+        RAISE EXCEPTION 'A transfer needs an attempt key between 8 and 120 characters' USING ERRCODE = '22023';
+    END IF;
+
+    v_scope := 'transfer:' || v_uid::text;
+    v_hash := pg_catalog.md5(pg_catalog.concat_ws('|', p_from_wallet, p_to_wallet, p_amount));
+    SELECT * INTO v_prior FROM finance.idempotency_keys WHERE key = p_idempotency_key;
+    IF FOUND THEN
+        IF v_prior.scope <> v_scope OR v_prior.request_hash <> v_hash THEN
+            RAISE EXCEPTION 'That attempt key was used for a different request' USING ERRCODE = '22023';
+        END IF;
+        RETURN v_prior.response || pg_catalog.jsonb_build_object('replayed', true);
+    END IF;
+
+    -- Both rows locked in id order, so two transfers crossing each other cannot deadlock.
+    PERFORM 1 FROM finance.wallets WHERE id IN (p_from_wallet, p_to_wallet) ORDER BY id FOR UPDATE;
+    SELECT * INTO v_from FROM finance.wallets WHERE id = p_from_wallet;
+    SELECT * INTO v_to FROM finance.wallets WHERE id = p_to_wallet;
+    IF v_from.id IS NULL OR v_to.id IS NULL THEN
+        RAISE EXCEPTION 'That wallet no longer exists' USING ERRCODE = 'PB404';
+    END IF;
+
+    IF NOT (
+        (v_from.owner_type IN ('user', 'freelancer') AND v_from.owner_id = v_uid)
+        OR (v_from.owner_type IN ('team', 'business', 'organisation')
+            AND finance.fn_has_vault_capability (v_from.id, v_uid, 'withdraw'::finance.vault_capability))
+    ) THEN
+        RAISE EXCEPTION 'You can''t move money out of that wallet' USING ERRCODE = '42501';
+    END IF;
+    IF NOT (
+        (v_to.owner_type IN ('user', 'freelancer') AND v_to.owner_id = v_uid)
+        OR (v_to.owner_type IN ('team', 'business', 'organisation')
+            AND finance.fn_owner_visible (v_to.owner_type, v_to.owner_id))
+    ) THEN
+        RAISE EXCEPTION 'You can only transfer between your own wallets' USING ERRCODE = '42501';
+    END IF;
+    IF v_from.currency <> v_to.currency THEN
+        RAISE EXCEPTION 'Both wallets must hold % — a transfer is not a currency conversion', v_from.currency
+            USING ERRCODE = 'PX409';
+    END IF;
+    -- Operating a pooled business wallet is gated on KYB (finance-model.md §KYC/KYB Gating); a team
+    -- vault is not subject to it.
+    IF v_from.owner_type = 'business' AND NOT finance.fn_business_kyb_verified (v_from.owner_id) THEN
+        RAISE EXCEPTION 'Complete business verification (KYB) to move money out of this account'
+            USING ERRCODE = 'PK403';
+    END IF;
+    IF v_from.owner_type IN ('team', 'business', 'organisation')
+       AND NOT finance.fn_check_spending_limit (v_from.id, v_uid, p_amount) THEN
+        RAISE EXCEPTION 'That is over your spending limit on this account' USING ERRCODE = 'PA403';
+    END IF;
+    IF v_from.balance_cents < p_amount THEN
+        RAISE EXCEPTION 'That wallet doesn''t hold enough for this transfer' USING ERRCODE = 'PF402';
+    END IF;
+
+    -- Each side's ledger line points at the OTHER wallet, so either reader can say where it went.
+    PERFORM finance.fn_wallet_debit (v_from.owner_id, v_from.owner_type, v_from.currency, p_amount,
+        'transfer_out', 'wallets', v_to.id);
+    PERFORM finance.fn_wallet_credit (v_to.owner_id, v_to.owner_type, v_to.currency, p_amount,
+        'transfer_in', 'wallets', v_from.id);
+
+    IF v_from.owner_type IN ('team', 'business', 'organisation') THEN
+        INSERT INTO finance.ledger_audit (wallet_id, actor_user_id, action, amount_cents, currency, ref_table, ref_id, metadata)
+        VALUES (v_from.id, v_uid, 'withdraw', p_amount, v_from.currency, 'wallets', v_to.id,
+                pg_catalog.jsonb_build_object('kind', 'transfer_out', 'note', v_note));
+    END IF;
+    IF v_to.owner_type IN ('team', 'business', 'organisation') THEN
+        INSERT INTO finance.ledger_audit (wallet_id, actor_user_id, action, amount_cents, currency, ref_table, ref_id, metadata)
+        VALUES (v_to.id, v_uid, 'add_funds', p_amount, v_to.currency, 'wallets', v_from.id,
+                pg_catalog.jsonb_build_object('kind', 'transfer_in', 'note', v_note));
+    END IF;
+
+    v_result := pg_catalog.jsonb_build_object(
+        'amount_minor', p_amount, 'currency', v_from.currency,
+        'from_wallet', v_from.id, 'to_wallet', v_to.id, 'replayed', false
+    );
+    INSERT INTO finance.idempotency_keys (key, scope, request_hash, status, response, expires_at)
+    VALUES (p_idempotency_key, v_scope, v_hash, 'succeeded', v_result, pg_catalog.now() + interval '7 days');
+    RETURN v_result;
+END;
+$$;
+
+COMMENT ON FUNCTION finance.transfer_funds(uuid, uuid, bigint, text, text) IS
+'Move money between two of the caller''s own wallets (their personal wallet and the vaults they belong
+to), same currency only. Leaving a vault needs the withdraw capability, business KYB and the member''s
+spending limit; landing needs membership. Idempotent on the attempt key. Refusals: 42501 not allowed ·
+22023 bad input or key · PB404 wallet gone · PX409 different currencies · PK403 KYB · PA403 spending
+limit · PF402 not enough.';
+
+-- Distribute part of a TEAM vault to its members by their agreed stakes
+-- (`finance.contribution_agreements.percent_bp`, active members only). Each share is floored to the
+-- minor unit; whatever does not divide — and any stake the agreement leaves unallocated — stays in the
+-- vault, so the vault is debited by exactly what was paid out. Needs the distribute capability. A
+-- held stake is paid like any other: `held` only protects it from the split rebalancer.
+CREATE OR REPLACE FUNCTION finance.distribute_vault(
+    p_wallet uuid,
+    p_amount bigint,
+    p_idempotency_key text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = finance, org, security, public
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_scope text;
+    v_hash text;
+    v_prior finance.idempotency_keys;
+    v_vault finance.wallets;
+    v_dist uuid := gen_random_uuid();
+    m record;
+    v_share bigint;
+    v_paid bigint := 0;
+    v_shares jsonb := '[]'::jsonb;
+    v_member_type text;
+    v_result jsonb;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to move money' USING ERRCODE = '42501';
+    END IF;
+    IF p_amount IS NULL OR p_amount <= 0 THEN
+        RAISE EXCEPTION 'Enter an amount to distribute' USING ERRCODE = '22023';
+    END IF;
+    IF p_idempotency_key IS NULL OR pg_catalog.length(p_idempotency_key) < 8
+       OR pg_catalog.length(p_idempotency_key) > 120 THEN
+        RAISE EXCEPTION 'A distribution needs an attempt key between 8 and 120 characters' USING ERRCODE = '22023';
+    END IF;
+
+    v_scope := 'distribute:' || v_uid::text;
+    v_hash := pg_catalog.md5(pg_catalog.concat_ws('|', p_wallet, p_amount));
+    SELECT * INTO v_prior FROM finance.idempotency_keys WHERE key = p_idempotency_key;
+    IF FOUND THEN
+        IF v_prior.scope <> v_scope OR v_prior.request_hash <> v_hash THEN
+            RAISE EXCEPTION 'That attempt key was used for a different request' USING ERRCODE = '22023';
+        END IF;
+        RETURN v_prior.response || pg_catalog.jsonb_build_object('replayed', true);
+    END IF;
+
+    SELECT * INTO v_vault FROM finance.wallets WHERE id = p_wallet FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'That wallet no longer exists' USING ERRCODE = 'PB404';
+    END IF;
+    IF v_vault.owner_type <> 'team' THEN
+        RAISE EXCEPTION 'Only a team vault distributes to its members' USING ERRCODE = '22023';
+    END IF;
+    IF NOT finance.fn_has_vault_capability (v_vault.id, v_uid, 'distribute'::finance.vault_capability) THEN
+        RAISE EXCEPTION 'Only a member who may distribute can pay out this vault' USING ERRCODE = '42501';
+    END IF;
+    IF v_vault.balance_cents < p_amount THEN
+        RAISE EXCEPTION 'The vault doesn''t hold enough for this distribution' USING ERRCODE = 'PF402';
+    END IF;
+
+    FOR m IN
+        SELECT ca.member_user_id, ca.percent_bp, up.username
+          FROM finance.contribution_agreements ca
+          JOIN org.team_members tm
+            ON tm.team_id = ca.team_id AND tm.user_id = ca.member_user_id AND tm.status = 'active'
+          LEFT JOIN org.users_public up ON up.user_id = ca.member_user_id
+         WHERE ca.team_id = v_vault.owner_id AND ca.percent_bp > 0
+         ORDER BY ca.percent_bp DESC, ca.member_user_id
+    LOOP
+        v_share := (p_amount * m.percent_bp) / 10000;
+        CONTINUE WHEN v_share <= 0;
+        -- A member's personal wallet in the vault's currency; one is created if they have none, because
+        -- `fn_wallet_credit` is a silent no-op on a missing wallet and a share must never vanish.
+        SELECT w.owner_type INTO v_member_type
+          FROM finance.wallets w
+         WHERE w.owner_id = m.member_user_id AND w.currency = v_vault.currency
+           AND w.owner_type IN ('freelancer', 'user')
+         ORDER BY (w.owner_type = 'freelancer') DESC
+         LIMIT 1;
+        v_member_type := COALESCE(v_member_type, 'freelancer');
+        INSERT INTO finance.wallets (owner_type, owner_id, currency)
+        VALUES (v_member_type, m.member_user_id, v_vault.currency)
+        ON CONFLICT (owner_type, owner_id, currency) DO NOTHING;
+        PERFORM finance.fn_wallet_credit (m.member_user_id, v_member_type, v_vault.currency, v_share,
+            'team_distribution', 'team_distribution', v_dist);
+        v_paid := v_paid + v_share;
+        v_shares := v_shares || pg_catalog.jsonb_build_object(
+            'member_user_id', m.member_user_id, 'handle', m.username,
+            'amount_minor', v_share, 'percent_bp', m.percent_bp
+        );
+    END LOOP;
+
+    IF pg_catalog.jsonb_array_length(v_shares) = 0 THEN
+        RAISE EXCEPTION 'Agree how this team splits its income before distributing' USING ERRCODE = 'PD422';
+    END IF;
+
+    PERFORM finance.fn_wallet_debit (v_vault.owner_id, 'team', v_vault.currency, v_paid,
+        'team_distribution', 'team_distribution', v_dist);
+    INSERT INTO finance.ledger_audit (wallet_id, actor_user_id, action, amount_cents, currency, ref_table, ref_id, metadata)
+    VALUES (v_vault.id, v_uid, 'distribute', v_paid, v_vault.currency, 'team_distribution', v_dist,
+            pg_catalog.jsonb_build_object('requested_minor', p_amount, 'shares', v_shares));
+
+    v_result := pg_catalog.jsonb_build_object(
+        'distribution_id', v_dist, 'distributed_minor', v_paid, 'requested_minor', p_amount,
+        'currency', v_vault.currency, 'shares', v_shares, 'replayed', false
+    );
+    INSERT INTO finance.idempotency_keys (key, scope, request_hash, status, response, expires_at)
+    VALUES (p_idempotency_key, v_scope, v_hash, 'succeeded', v_result, pg_catalog.now() + interval '7 days');
+    RETURN v_result;
+END;
+$$;
+
+COMMENT ON FUNCTION finance.distribute_vault(uuid, bigint, text) IS
+'Pay part of a team vault out to its active members by their agreed stakes (contribution_agreements),
+flooring each share; what does not divide stays in the vault, which is debited by exactly what was paid.
+Needs the distribute capability. Idempotent on the attempt key. Refusals: 42501 · 22023 · PB404 ·
+PF402 not enough · PD422 no split agreed.';
+
+-- Decide a queued over-cap spend request. The decider must be an admin of the account
+-- (`manage_members`) and not the person who asked — approving one's own over-cap spend would make the
+-- cap decorative. A request past its expiry is marked expired rather than decided.
+CREATE OR REPLACE FUNCTION finance.decide_spend_approval(p_approval uuid, p_decision text)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = finance, org, security, public
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_row finance.spend_approvals;
+    v_status finance.approval_status;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to decide spend requests' USING ERRCODE = '42501';
+    END IF;
+    IF p_decision IS NULL OR p_decision NOT IN ('approve', 'reject') THEN
+        RAISE EXCEPTION 'A decision is approve or reject' USING ERRCODE = '22023';
+    END IF;
+
+    SELECT * INTO v_row FROM finance.spend_approvals WHERE id = p_approval FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'That request no longer exists' USING ERRCODE = 'PB404';
+    END IF;
+    IF v_row.requested_by = v_uid THEN
+        RAISE EXCEPTION 'You can''t decide your own spend request' USING ERRCODE = '42501';
+    END IF;
+    IF NOT finance.fn_has_vault_capability (v_row.wallet_id, v_uid, 'manage_members'::finance.vault_capability) THEN
+        RAISE EXCEPTION 'Only an admin of this account can decide spend requests' USING ERRCODE = '42501';
+    END IF;
+    IF v_row.status <> 'pending'::finance.approval_status THEN
+        RAISE EXCEPTION 'That request has already been decided' USING ERRCODE = 'PC409';
+    END IF;
+
+    IF v_row.expires_at IS NOT NULL AND v_row.expires_at <= pg_catalog.now() THEN
+        v_status := 'expired';
+        UPDATE finance.spend_approvals SET status = v_status WHERE id = v_row.id;
+    ELSE
+        v_status := CASE p_decision WHEN 'approve' THEN 'approved' ELSE 'rejected' END::finance.approval_status;
+        UPDATE finance.spend_approvals
+           SET status = v_status, approver_user_id = v_uid, decided_at = pg_catalog.now()
+         WHERE id = v_row.id;
+        PERFORM comms.fn_notify (
+            v_row.requested_by,
+            CASE v_status WHEN 'approved' THEN 'spend.approved' ELSE 'spend.rejected' END,
+            CASE v_status WHEN 'approved' THEN 'Spend request approved' ELSE 'Spend request declined' END,
+            pg_catalog.left(v_row.reason, 200),
+            'spend_approvals',
+            v_row.id
+        );
+    END IF;
+
+    RETURN pg_catalog.jsonb_build_object('id', v_row.id, 'status', v_status);
+END;
+$$;
+
+COMMENT ON FUNCTION finance.decide_spend_approval(uuid, text) IS
+'Approve or reject a pending over-cap spend request. The decider needs manage_members on the account and
+may not be the requester; an expired request is marked expired. Notifies the requester. Refusals:
+42501 · 22023 · PB404 · PC409 already decided.';
 -- #endregion

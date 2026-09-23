@@ -68,7 +68,7 @@ const SHARE_HEADERS: Readonly<Record<string, string>> = Object.freeze({
 export const handler = define.handlers({
 	async GET(ctx) {
 		const slug = ctx.params.slug ?? "";
-		const resolution = await resolveShare(slug, ctx.url.searchParams.get("u"));
+		const resolution = await resolveShare(slug);
 		const asset = resolution.state === "ok" ? resolution.asset : null;
 
 		ctx.state.title = asset

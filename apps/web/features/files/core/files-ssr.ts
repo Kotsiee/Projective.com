@@ -1,38 +1,27 @@
 import { FilesBackendService } from "@server/services/files/FilesBackendService.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 import type {
-	AssetItem,
 	AssetListPage,
 	AssetListParams,
-	AssetOwnerType,
 	AssetTreeNode,
-	FileScope,
-	FilesSim,
 	ShareResolution,
-	StorageQuota,
 } from "../types/file-types.ts";
 
 /**
  * files-ssr — the server-only bootstraps for the `/files` surface's first paint.
  *
- * They call the fat {@link FilesBackendService} DIRECTLY (no HTTP hop), so the lane, the header band,
- * the body and the footer rig all ship resolved in the initial byte; the islands then refine through
- * the thin `FilesService`. Mirrors `resolveCataloguePage` / `resolveWalletOverview`. **Never imported
- * by an island** — the import edge is what keeps the Supabase-touching half out of the client bundle.
+ * They call the fat {@link FilesBackendService} DIRECTLY (no HTTP hop), as the signed-in person, so
+ * the body ships its first location resolved in the initial byte; the islands then refine through the
+ * thin `FilesService`. **Never imported by an island** — the import edge is what keeps the
+ * Supabase-touching half out of the client bundle.
  *
- * Every resolver degrades to a coherent empty projection rather than throwing. A first paint that
- * 500s because a folder was renamed is a worse failure than a first paint that shows an empty library
- * and lets the island's refetch correct it — and the empty shapes below are real, complete values, so
- * nothing downstream has to null-check its way through a partial page.
+ * A read that FAILED is reported as a failure (`error`) beside a complete, read-only empty page —
+ * never as an empty library alone, which would be a false claim about someone's files.
  *
  * **Nothing here writes `files-state`.** Those signals are module-level and therefore per-PROCESS on
  * the server; a write during SSR would leak one request's library into the next person's first paint.
  * These functions return values, the route passes them as PROPS, and the body seeds the signals on
  * mount in the browser.
- *
- * The simulation overlay is threaded through because a developer arriving on a `sim*` URL should see
- * the simulated projection in the FIRST byte rather than after a client refetch — otherwise every
- * axis appears to flicker through the real data on the way to the one being exercised. The server
- * parses it from the query string (`simFromParams`), never from the client seam, which it cannot see.
  */
 
 // #region Listing
@@ -41,9 +30,13 @@ export interface FilesBootstrap {
 	page: AssetListPage;
 	/** The navigation tree for the lane — a separate read, because it spans every scope. */
 	tree: AssetTreeNode[];
+	/** Why the location could not be read, or `null`. */
+	error: string | null;
+	/** The HTTP status the page answers with: 200, 404 for a folder that is not there, else the failure's. */
+	status: number;
 }
 
-/** A complete, renderable empty page for a scope that resolved to nothing. */
+/** A complete, renderable empty page for a location that could not be read. */
 function emptyPage(params: AssetListParams): AssetListPage {
 	return {
 		scope: params.scope,
@@ -63,65 +56,26 @@ function emptyPage(params: AssetListParams): AssetListPage {
 	};
 }
 
-/** Resolve one location's page (assets, folders, crumbs, `readOnly`, and the hub's allowance). */
-export async function resolveFilesPage(
-	params: AssetListParams,
-	sim?: FilesSim,
-): Promise<AssetListPage> {
-	const res = await FilesBackendService.list(params, sim);
-	return res.ok && res.data ? res.data : emptyPage(params);
-}
-
-/** Resolve the lane's navigation tree. */
-export async function resolveFilesTree(params: {
-	scope: FileScope;
-	subjectId?: string | null;
-	ownerType: AssetOwnerType;
-	ownerId: string;
-}): Promise<AssetTreeNode[]> {
-	const res = await FilesBackendService.tree(params);
-	return res.ok && res.data ? res.data : [];
-}
-
 /**
- * Resolve the page AND the tree for a first paint.
- *
- * Both reads are issued together rather than sequentially: they are independent, and awaiting the
- * tree behind the page would add its latency to every navigation for no ordering benefit.
+ * Resolve the page AND the tree for a first paint. Issued together: they are independent, and
+ * awaiting the tree behind the page would add its latency to every navigation.
  */
 export async function resolveFilesBootstrap(
 	params: AssetListParams,
-	owner: { ownerType: AssetOwnerType; ownerId: string },
-	sim?: FilesSim,
+	actor: ReadActor,
 ): Promise<FilesBootstrap> {
 	const [page, tree] = await Promise.all([
-		resolveFilesPage(params, sim),
-		resolveFilesTree({
-			scope: params.scope,
-			subjectId: params.subjectId ?? null,
-			ownerType: owner.ownerType,
-			ownerId: owner.ownerId,
-		}),
+		FilesBackendService.list(params, actor),
+		FilesBackendService.tree(actor),
 	]);
-	return { page, tree };
-}
-// #endregion
-
-// #region Single reads
-/** Resolve one asset's row (a deep-linked preview), or `null`. */
-export async function resolveAsset(id: string): Promise<AssetItem | null> {
-	const res = await FilesBackendService.item(id);
-	return res.ok && res.data ? res.data : null;
-}
-
-/** Resolve a principal's storage allowance for the meter's first paint, or `null` when unavailable. */
-export async function resolveQuota(
-	ownerType: AssetOwnerType,
-	ownerId: string,
-	sim?: FilesSim,
-): Promise<StorageQuota | null> {
-	const res = await FilesBackendService.quota({ ownerType, ownerId, sim });
-	return res.ok && res.data ? res.data : null;
+	return {
+		page: page.ok && page.data ? page.data : emptyPage(params),
+		tree: tree.ok && tree.data ? tree.data : [],
+		error: page.ok ? null : page.status === 404
+			? "That folder doesn't exist — it may have been moved or deleted."
+			: page.message ?? "Your files couldn't be loaded just now.",
+		status: page.ok ? 200 : page.status ?? 503,
+	};
 }
 // #endregion
 
@@ -129,17 +83,12 @@ export async function resolveQuota(
 /**
  * Resolve a share slug for the public `/share/[slug]` route.
  *
- * **Every failure state is collapsed to `not_found` here, before it can reach a template.** The
- * service distinguishes not-found from expired from revoked from exhausted so it can log and meter
- * them; telling an anonymous caller which one it was confirms that a slug existed, and that is the
- * single bit an enumeration attack is probing for. Collapsing at the SSR boundary — rather than
- * asking every template to remember — is what makes the leak unreachable rather than merely avoided.
+ * **Every failure state is collapsed to `not_found` here, before it can reach a template.** Telling an
+ * anonymous caller that a link expired rather than that there is no such link confirms a link
+ * existed, which is the single bit an enumeration attack is probing for.
  */
-export async function resolveShare(
-	slug: string,
-	userRef?: string | null,
-): Promise<ShareResolution> {
-	const res = await FilesBackendService.resolveShare(slug, userRef ?? null);
+export async function resolveShare(slug: string): Promise<ShareResolution> {
+	const res = await FilesBackendService.resolveShare(slug);
 	if (!res.ok || !res.data) return { state: "not_found" };
 	return res.data.state === "ok" ? res.data : { state: "not_found" };
 }

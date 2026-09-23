@@ -1,6 +1,7 @@
 import { signal } from "@preact/signals";
 import type {
 	CatalogueKind,
+	CataloguePeriod,
 	CatalogueSort,
 	CatalogueSortDir,
 	ListingStatus,
@@ -49,8 +50,11 @@ export function openCreate(kind?: CatalogueKind, model?: ServiceType): void {
  */
 export const consoleQuery = signal<string>("");
 
-/** The analytics window the KPI strip reports over (header band → the `AnalyticsStrip` in the body). */
-export type AnalyticsPeriod = "7d" | "30d" | "90d";
+/**
+ * The analytics window the KPI strip reports over (header band → the body, which refetches: the server
+ * counts sales for the window chosen).
+ */
+export type AnalyticsPeriod = CataloguePeriod;
 export const analyticsPeriod = signal<AnalyticsPeriod>("30d");
 // #endregion
 

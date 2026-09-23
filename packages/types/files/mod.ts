@@ -16,9 +16,6 @@
  *     ({@link ./dedup.ts}), the ledger of who took a copy ({@link ./downloads.ts}), and the
  *     init/ticket/complete handshake plus every mutation that writes it ({@link ./upload.ts}).
  *
- * {@link ./sim.ts} carries the Dev Context Switcher overlay these reads are simulated with — a
- * developer-only query-param seam that grants no access.
- *
  * The projects domain NARROWS this model rather than forking it (`projects/files.ts` re-expresses
  * `FileItemSchema` as `AssetItemSchema` with message provenance re-mandated), so the dependency edge
  * runs projects → files and never back.
@@ -38,7 +35,6 @@ export * from "./sharing.ts";
 export * from "./dedup.ts";
 export * from "./downloads.ts";
 export * from "./upload.ts";
-export * from "./sim.ts";
 export * from "./variants.ts";
 export * from "./crop.ts";
 export * from "./sniff.ts";

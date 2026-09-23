@@ -47,11 +47,9 @@ import {
 	type AssetVisibility,
 	type FileSortDir,
 	type FileSortKey,
-	type FilesSim,
 } from "../types/file-types.ts";
 import { FilesService } from "../core/FilesService.ts";
 import { assetHref, shapeFolderAsNode } from "../core/asset-model.ts";
-import { simFromSeam, subscribeFilesSim } from "../core/files-seam.ts";
 import {
 	appendPage,
 	applyError,
@@ -142,6 +140,8 @@ import { InspectPanel } from "../components/InspectPanel.tsx";
 export interface FilesHubProps {
 	/** The SSR-resolved location — assets, folders, crumbs, `readOnly`, and the hub's allowance. */
 	initial: AssetListPage;
+	/** Why the first read failed, or `null` — the body opens in its error state rather than empty. */
+	initialError?: string | null;
 	/** The SSR-resolved navigation tree for the scope (the lane draws it; the body seeds it). */
 	tree: AssetTreeNode[];
 	/** The path segments the URL addressed; `[]` is the scope root. */
@@ -390,7 +390,6 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 	const tailError = useSignal<string | null>(null);
 
 	const reqId = useRef(0);
-	const simRef = useRef<FilesSim | undefined>(undefined);
 	const workspaceRef = useRef<HTMLDivElement>(null);
 	// #endregion
 
@@ -429,7 +428,7 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 		const my = ++reqId.current;
 		tailError.value = null;
 		beginLoad();
-		const res = await FilesService.list(listParams(null), simRef.current);
+		const res = await FilesService.list(listParams(null));
 		if (my !== reqId.current) return;
 		if (res.ok && res.data) applyPage(res.data);
 		else applyError(res.message ?? "Those files could not be loaded.");
@@ -443,7 +442,7 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 		) return;
 		const my = reqId.current;
 		loadingMore.value = true;
-		const res = await FilesService.list(listParams(nextCursor.value), simRef.current);
+		const res = await FilesService.list(listParams(nextCursor.value));
 		loadingMore.value = false;
 		// A location change during the request supersedes this page entirely — appending it would mix
 		// two folders' contents into one grid.
@@ -614,19 +613,12 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 		channelId.value = null;
 		tree.value = initialTree;
 		applyPage({ ...initial, tree: initialTree });
+		if (props.initialError) applyError(props.initialError);
 		tableSortKey.value = sortKey.value;
 		tableSortDir.value = sortDir.value;
 
 		// Every other region asks for a read through here, so there is one fetch path.
 		filesCommit.value = () => void reload();
-
-		simRef.current = simFromSeam();
-		const unsubscribe = subscribeFilesSim((sim) => {
-			simRef.current = sim;
-			// The axes are SERVER-derived, so a re-render would only relabel the same rows — the read has
-			// to happen again for the simulated projection to exist at all.
-			void reload();
-		});
 
 		const onPop = () => {
 			const next = globalThis.location.pathname
@@ -648,7 +640,6 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 		globalThis.addEventListener("popstate", onPop);
 
 		return () => {
-			unsubscribe();
 			globalThis.removeEventListener("popstate", onPop);
 			filesCommit.value = null;
 			// Module-level signals outlive this island, so a later navigation into another scope would

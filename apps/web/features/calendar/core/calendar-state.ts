@@ -32,23 +32,6 @@ export const calendarPage = signal<SchedulePage | null>(null);
 // #endregion
 
 // #region Navigation
-/**
- * The instant this surface treats as "now" — the week it opens on, and the clock the event modal
- * measures "Upcoming in 3 hours" / "Passed" and the reschedule lockout against.
- *
- * ⚠️ It is the SERVER's reference clock, hardcoded. The personal agenda is still derived against
- * the fixtures' fixed clock (`derive.ts` `NOW`), so the client's "now" has to be that instant or the
- * surface contradicts itself: `Date.now()` here would put "Passed" beside an open ballot the server
- * had just attached, which is worse than a stale week. One clock for the whole temporal frame.
- *
- * Every page now carries that instant as `SchedulePage.now`, and the project calendar and the public
- * schedule surfaces read it from there. This hub cannot yet, because four hydration roots read
- * {@link calendarFocus} and three of them render before the body island has a page to take it from —
- * so the constant stays until the personal agenda is read live, at which point every region seeds
- * from the page's `now` and this is deleted.
- */
-export const CALENDAR_REFERENCE = Date.parse("2026-07-17T16:20:00Z");
-
 /** Day · Week · Month. Owned by the middle-nav FOOTER rig, which renders at every width. */
 export const calendarView = signal<CalendarViewMode>("week");
 
@@ -97,8 +80,28 @@ export function persistCalendarView(view: CalendarViewMode): void {
 	} catch { /* no-op */ }
 }
 
-/** The focused instant. Written by the mini-month, the header's trail, and the grid's own scroll. */
-export const calendarFocus = signal<number>(CALENDAR_REFERENCE);
+/**
+ * The focused instant the reader has MOVED to — written by the mini-month, the header's trail and the
+ * grid's own scroll — or `0` until they have moved at all. Read it through {@link focusedAt}.
+ *
+ * It starts at zero rather than at a clock reading because this module is also imported during SSR,
+ * where module state is shared by every request the process renders: a signal seeded from one
+ * request's clock would open the next reader on the previous reader's week.
+ */
+export const calendarFocus = signal<number>(0);
+
+/**
+ * The instant the surface is focused on: the reader's own position once they have moved it, else the
+ * page's own `now` — the server's clock at the moment it read the agenda.
+ *
+ * Every region reads this with the page it was handed, so the lane, both bands and the grid open on
+ * the SAME instant in the first byte and again on hydration (the page is the same object on both
+ * sides), and the event modal measures "Upcoming in 3 hours" against the same clock the server used
+ * to decide what is open. `Date.now()` is reached only when there is no page at all.
+ */
+export function focusedAt(page: SchedulePage | null | undefined): number {
+	return calendarFocus.value || page?.now || Date.now();
+}
 
 /**
  * Which period the header band prints.

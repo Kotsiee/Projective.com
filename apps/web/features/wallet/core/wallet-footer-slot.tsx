@@ -1,10 +1,10 @@
 import type { ComponentChildren } from "preact";
 import type { UserContext } from "@projective/types/auth";
+import type { ReadActor } from "@server/services/read-actor.ts";
 import WalletFooterRig from "../islands/WalletFooterRig.island.tsx";
 import { resolveMethods, resolveWalletOverview } from "./wallet-ssr.ts";
-import { defaultWalletParam } from "./wallet-model.ts";
+import { walletParam } from "./wallet-model.ts";
 import { viewOf } from "./capability.ts";
-import { walletVariant } from "../types/wallet-types.ts";
 
 /**
  * wallet-footer-slot — the middle-nav FOOTER band on EVERY `/wallet*` route.
@@ -28,27 +28,36 @@ import { walletVariant } from "../types/wallet-types.ts";
  * Server-only. Composed last, after the projects/messaging/catalogue footer resolvers, so exactly
  * one owns the band per URL.
  */
-export function walletFooterFor(url: URL, context: UserContext): ComponentChildren {
+export async function walletFooterFor(
+	url: URL,
+	context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
 	if (!url.pathname.startsWith("/wallet")) return null;
 
-	const { overview, switcher } = resolveWalletOverview(context, url);
-	const methods = resolveMethods(context, url);
-	const wallet = url.searchParams.get("w") ?? defaultWalletParam(context);
+	const [read, methods] = await Promise.all([
+		resolveWalletOverview(context, url, actor),
+		resolveMethods(context, url, actor),
+	]);
+	// No wallet, no actions: a rig drawn over a wallet that could not be read would offer to move money
+	// out of a balance nobody has seen.
+	if (!read.ok) return null;
+	const { overview, switcher } = read.data;
 
 	return (
 		<WalletFooterRig
 			view={viewOf(url.pathname)}
-			variant={walletVariant(overview.ref.scope)}
-			scope={wallet}
+			scope={walletParam(switcher.active.scope, switcher.active.id)}
 			quickActions={overview.quickActions}
-			capabilities={overview.capabilities}
+			unavailable={overview.unavailable}
 			verification={overview.verification}
 			accounts={switcher.accounts}
 			activeAccount={overview.ref}
 			available={overview.available}
-			methods={methods.methods}
+			methods={methods.ok ? methods.data.methods : []}
 			team={overview.team}
 			personal={overview.personal}
+			business={overview.business}
 		/>
 	);
 }

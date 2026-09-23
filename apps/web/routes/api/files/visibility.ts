@@ -2,7 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { SetVisibilitySchema } from "@projective/types/files";
 import { toFieldErrors, toFilesResponse } from "@features/files/core/respond.ts";
 import { FilesBackendService } from "@server/services/files/FilesBackendService.ts";
-import { actorFromContext } from "@server/services/files/acting-principal.ts";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * `POST /api/files/visibility` — change the privacy scope of assets and folders in ONE request.
@@ -19,7 +19,7 @@ import { actorFromContext } from "@server/services/files/acting-principal.ts";
  * **The acting principal comes from the SESSION.** De-escalation is the one action here that narrows
  * access other surfaces already depend on, so who asked for it is not an optional fact.
  *
- * No server-side capability guard (Decision #53(b)) — see `./list.ts`.
+ * Runs under the caller's own session: RLS is the gate, and the library is the acting context's.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -36,7 +36,7 @@ export const handler = define.handlers({
 			);
 		}
 		return toFilesResponse(
-			await FilesBackendService.setVisibility(parsed.data, actorFromContext(ctx.state.userContext)),
+			await FilesBackendService.setVisibility(parsed.data, readActor(ctx)),
 		);
 	},
 });

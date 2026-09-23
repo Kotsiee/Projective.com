@@ -3,7 +3,12 @@ import { ConferencingProviderSchema, type PublicCallOffer } from "@projective/ty
 import type { ProfileOwnerType } from "@projective/types/profile";
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
-import { type CallRow, CALL_COLUMNS, scheduleOwnerType, toCallSettings } from "./live-owner-availability.ts";
+import {
+	CALL_COLUMNS,
+	type CallRow,
+	scheduleOwnerType,
+	toCallSettings,
+} from "./live-owner-availability.ts";
 
 /**
  * live-call-offer — a profile owner's PUBLIC discovery-call offer, read live from their published
@@ -55,7 +60,8 @@ export async function readPublicCallOffer(
 		if (call.error || platforms.error) return undefined;
 		if (!call.data) return null;
 		const settings = toCallSettings(call.data as CallRow);
-		const priced = settings.paidEnabled && settings.feeAmountMinor !== null && settings.feeAmountMinor > 0 &&
+		const priced = settings.paidEnabled && settings.feeAmountMinor !== null &&
+			settings.feeAmountMinor > 0 &&
 			settings.feeCurrency !== null;
 		if (!settings.acceptsCalls || (!settings.courtesyEnabled && !priced)) return null;
 		return {
@@ -91,7 +97,9 @@ export async function fetchPublicCallOffer(
 ): Promise<PublicCallOffer | null | undefined> {
 	try {
 		const client = canReadLive(actor) ? getUserClient(actor.accessToken) : getAnonClient();
-		const { data, error } = await client.schema("org").rpc("get_profile_owner", { p_handle: handle });
+		const { data, error } = await client.schema("org").rpc("get_profile_owner", {
+			p_handle: handle,
+		});
 		if (error) return undefined;
 		const owner = data as { owner_type: ProfileOwnerType; owner_id: string } | null;
 		if (!owner) return null;

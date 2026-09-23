@@ -7,7 +7,7 @@ import { InputText, SortControl } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { AssetBreadcrumbs } from "../components/AssetBreadcrumbs.tsx";
 import { SourceMark } from "../components/file-hub-glyphs.tsx";
-import { assetHref, breadcrumbsFor, scopeLabel } from "../core/asset-model.ts";
+import { assetHref, breadcrumbsFor, rootChildren, scopeLabel } from "../core/asset-model.ts";
 import {
 	clearFilesFilters,
 	commitFiles,
@@ -171,7 +171,7 @@ export default function FilesHeaderBand(props: FilesHeaderBandProps): JSX.Elemen
 		crumbs.value.length > 0 ? crumbs.value : breadcrumbsFor(props.segments, {
 			base: props.base,
 			rootLabel: props.ownerLabel,
-			tree: tree.value,
+			tree: rootChildren(tree.value),
 		})
 	);
 
@@ -216,7 +216,7 @@ export default function FilesHeaderBand(props: FilesHeaderBandProps): JSX.Elemen
 							<Icon name="folder" class="fh-headerband__menu-glyph" />
 							{props.ownerLabel}
 						</button>
-						{tree.value.map((node) => (
+						{rootChildren(tree.value).map((node) => (
 							<button
 								key={node.segment}
 								type="button"

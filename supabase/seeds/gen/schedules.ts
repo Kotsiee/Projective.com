@@ -336,3 +336,194 @@ export const DISCOVERY_CALLS: DiscoveryCallSpec[] = [
 	},
 ];
 // #endregion
+
+// #region Project meetings
+/**
+ * A meeting on an engagement's own calendar (`scheduling.events.project_id`), with its roster and —
+ * where there is one — the open attempt to move it.
+ *
+ * Every roster is people who really are on the engagement: the client's owner and business members,
+ * the freelancer or team seated on the stage. Rooms are either still to be minted (`pending`) or a
+ * named place with no link: a seeded meeting URL would be a link to nowhere.
+ *
+ * The two negotiations are the two branches the calendar's reschedule surface has: a group meeting
+ * settled by a vote (Meridian — three people, so `rescheduleModeFor` says vote), and a 1-on-1 settled
+ * by the other party accepting a slot (Atlas). Both sit next week, so a reset on any day leaves them
+ * outside the 12-hour lockout with the vote's deadline still ahead.
+ */
+export interface ProjectMeetingSpec {
+	key: string;
+	/** A `world.ts` project key. */
+	project: string;
+	/** The stage whose room it belongs to, or none for the whole engagement. */
+	stage?: string;
+	title: string;
+	tz: string;
+	at: WeekSlot;
+	minutes: number;
+	meeting: {
+		provider: "google" | "zoom" | "microsoft_teams" | "custom";
+		label: string;
+		details?: string;
+		/** The room is still to be created — nothing to join yet. */
+		pending?: boolean;
+	};
+	/** Persona key of the organiser, seated as the `host`. */
+	host: string;
+	attendees: Array<{
+		who: string;
+		role?: "participant" | "optional";
+		response: "accepted" | "rejected" | "tentative" | "pending";
+		note?: string;
+		/** When they answered; omitted for `pending` (the schema keeps an unanswered row undated). */
+		respondedHoursAgo?: number;
+	}>;
+	createdDaysAgo: number;
+	reschedule?: {
+		mode: "vote" | "counterparty";
+		status: "voting" | "awaiting_counterparty";
+		openedHoursAgo: number;
+		/** A slot offered by the host is on the ballot at once; one offered by an attendee awaits approval. */
+		proposals: Array<{ by: string; at: WeekSlot; minutes: number; hoursAgo: number; note?: string }>;
+		votes?: Array<{ who: string; proposal: number; hoursAgo: number }>;
+	};
+}
+
+export const PROJECT_MEETINGS: ProjectMeetingSpec[] = [
+	{
+		key: "helia-readout",
+		project: "helia-wallet",
+		stage: "s1",
+		title: "Research readout",
+		tz: "Europe/London",
+		at: { week: -1, day: 3, time: "10:00" },
+		minutes: 60,
+		meeting: { provider: "custom", label: "In person", details: "Helia office, 3rd floor — Thames room" },
+		host: "hannah",
+		attendees: [
+			{ who: "maris", response: "accepted", respondedHoursAgo: 190 },
+			{ who: "priya", role: "optional", response: "accepted", respondedHoursAgo: 170 },
+		],
+		createdDaysAgo: 12,
+	},
+	{
+		key: "helia-flows",
+		project: "helia-wallet",
+		stage: "s1",
+		title: "Flows walkthrough",
+		tz: "Europe/London",
+		at: { week: 1, day: 1, time: "10:00" },
+		minutes: 45,
+		meeting: { provider: "google", label: "Google Meet", pending: true },
+		host: "hannah",
+		attendees: [
+			{ who: "maris", response: "accepted", respondedHoursAgo: 20 },
+			{ who: "priya", response: "tentative", note: "Might join a few minutes late.", respondedHoursAgo: 6 },
+		],
+		createdDaysAgo: 2,
+	},
+	{
+		key: "meridian-crit",
+		project: "meridian-ds",
+		stage: "s2",
+		title: "Design system crit",
+		tz: "Europe/London",
+		at: { week: 1, day: 2, time: "11:00" },
+		minutes: 60,
+		meeting: { provider: "custom", label: "In person", details: "Helia office, 3rd floor — Thames room" },
+		host: "hannah",
+		attendees: [
+			{ who: "maris", response: "pending" },
+			{ who: "priya", response: "accepted", respondedHoursAgo: 30 },
+		],
+		createdDaysAgo: 4,
+		reschedule: {
+			mode: "vote",
+			status: "voting",
+			openedHoursAgo: 26,
+			proposals: [
+				{ by: "hannah", at: { week: 1, day: 3, time: "15:00" }, minutes: 60, hoursAgo: 26 },
+				{ by: "hannah", at: { week: 2, day: 0, time: "10:00" }, minutes: 60, hoursAgo: 26 },
+				{
+					by: "maris",
+					at: { week: 1, day: 4, time: "11:00" },
+					minutes: 60,
+					hoursAgo: 20,
+					note: "Friday morning works best for the component walkthrough.",
+				},
+			],
+			votes: [{ who: "priya", proposal: 0, hoursAgo: 5 }],
+		},
+	},
+	{
+		key: "atlas-demo",
+		project: "atlas-analytics",
+		stage: "s2",
+		title: "Sprint demo",
+		tz: "America/Toronto",
+		at: { week: 1, day: 3, time: "11:00" },
+		minutes: 45,
+		meeting: { provider: "zoom", label: "Zoom", pending: true },
+		host: "daniel",
+		attendees: [{ who: "kwame", response: "pending" }],
+		createdDaysAgo: 3,
+		reschedule: {
+			mode: "counterparty",
+			status: "awaiting_counterparty",
+			openedHoursAgo: 8,
+			proposals: [
+				{
+					by: "daniel",
+					at: { week: 2, day: 1, time: "11:00" },
+					minutes: 45,
+					hoursAgo: 8,
+					note: "Our data team is out on Thursday — could we push to the Tuesday after?",
+				},
+			],
+		},
+	},
+	{
+		key: "noor-kickoff",
+		project: "noor-site",
+		stage: "s1",
+		title: "Kick-off call",
+		tz: "Asia/Dubai",
+		at: { week: 1, day: 0, time: "13:00" },
+		minutes: 30,
+		meeting: { provider: "google", label: "Google Meet", pending: true },
+		host: "noor",
+		attendees: [
+			{ who: "juno", response: "tentative", note: "Running five minutes late from another call.", respondedHoursAgo: 14 },
+		],
+		createdDaysAgo: 1,
+	},
+	{
+		key: "verdant-moodboard",
+		project: "verdant-brand",
+		stage: "s1",
+		title: "Moodboard review",
+		tz: "Europe/London",
+		at: { week: 1, day: 1, time: "15:00" },
+		minutes: 45,
+		meeting: { provider: "custom", label: "Studio", details: "Nova studio, Lisbon — or dial in on request" },
+		host: "priya",
+		attendees: [
+			{ who: "ines", response: "accepted", respondedHoursAgo: 40 },
+			{ who: "lena", role: "optional", response: "pending" },
+		],
+		createdDaysAgo: 5,
+	},
+];
+
+/**
+ * Stage deadlines — the `file_due_date` a stage with a `fixed_deadline` owes its work by, in the
+ * client's zone. Keyed `project:stage`.
+ */
+export const STAGE_DEADLINES: Record<string, { tz: string; at: WeekSlot }> = {
+	"helia-wallet:s1": { tz: "Europe/London", at: { week: 1, day: 4, time: "17:00" } },
+	"meridian-ds:s2": { tz: "Europe/London", at: { week: 2, day: 3, time: "17:00" } },
+	"atlas-analytics:s2": { tz: "America/Toronto", at: { week: 2, day: 0, time: "17:00" } },
+	"noor-site:s1": { tz: "Asia/Dubai", at: { week: 2, day: 2, time: "17:00" } },
+	"verdant-brand:s1": { tz: "Europe/London", at: { week: 1, day: 4, time: "12:00" } },
+};
+// #endregion

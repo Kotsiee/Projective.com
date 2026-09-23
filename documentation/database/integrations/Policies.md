@@ -46,6 +46,17 @@ risk the split prevents. **Column security here is structural** — the client-f
 view that cannot name the secret columns — rather than a policy a later edit could weaken. The token
 vault (`connection_secrets`) is a step further: it has no view either.
 
+### Revocation is the one write a person drives today
+
+`IntegrationsBackendService.revokeConnection` proves ownership by reading the connection through
+`v_my_connections` **under the caller's own session** (someone else's connection and a missing one
+both answer `404`), then, as the service role: deletes the `connection_secrets` row, sets the
+connection `revoked` with `revoked_at`, and appends a `connection_audit` line (`action = 'revoked'`).
+The audit line is written after the revocation and never undoes it — the credential is already gone,
+and reporting a failure then would send the person to retry something that succeeded. Verified by
+execution (2026-09-23). Connecting (`start` / `complete`), browsing and mounting refuse in words in
+this deployment: every provider row is `is_enabled = false`, and no OAuth client or KMS key exists.
+
 ## 👁 `v_my_connections` — the safe connection projection
 
 A **non-`security_invoker`** view: it runs as its owner (so it can read the un-policied base table)

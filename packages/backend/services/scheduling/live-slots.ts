@@ -1,6 +1,12 @@
 import type { SupabaseClient } from "supabaseClient";
 import { getAnonClient } from "../../core/supabase.ts";
-import { DEFAULT_GRID_RULES, type GridBand, type GridRules, type GridSource, type Span } from "./slot-grid.ts";
+import {
+	DEFAULT_GRID_RULES,
+	type GridBand,
+	type GridRules,
+	type GridSource,
+	type Span,
+} from "./slot-grid.ts";
 
 /**
  * live-slots — a provider's published schedule, read as the input the slot grid is built from.

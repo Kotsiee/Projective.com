@@ -12,6 +12,7 @@ import { ListingTable } from "../components/ListingTable.tsx";
 import { CatalogueIcon, PlusIcon, RetryIcon } from "../components/catalogue-glyphs.tsx";
 import { CatalogueService } from "../core/CatalogueService.ts";
 import {
+	analyticsPeriod,
 	consoleBusy,
 	consoleError,
 	consoleQuery,
@@ -54,6 +55,8 @@ import type {
 // #region Props + constants
 export interface CatalogueScreenProps {
 	initial: CataloguePage;
+	/** Why the first page could not be read, or null — painted as the error state, never as "empty". */
+	initialError?: string | null;
 	type: CatalogueTypeFilter;
 	initialSort: CatalogueSort;
 	initialSearch: string;
@@ -74,6 +77,9 @@ export default function CatalogueScreen(props: CatalogueScreenProps): JSX.Elemen
 	const hasMore = useSignal<boolean>(props.initial.hasMore);
 	const loadingMore = useSignal(false);
 	const notice = useSignal<string | null>(null);
+	// The server's first read failed: shown until a read succeeds. Held locally rather than written into
+	// the shared `consoleError` during render, which would race the header band's own read of it.
+	const ssrError = useSignal<string | null>(props.initialError ?? null);
 
 	const reqId = useRef(0);
 	const searchTimer = useRef<number | null>(null);
@@ -81,6 +87,7 @@ export default function CatalogueScreen(props: CatalogueScreenProps): JSX.Elemen
 	// Each watcher swallows its own first run — see the priming effect below.
 	const searchPrimed = useRef(true);
 	const sortPrimed = useRef(true);
+	const periodPrimed = useRef(true);
 	// #endregion
 
 	// #region Fetch
@@ -90,6 +97,7 @@ export default function CatalogueScreen(props: CatalogueScreenProps): JSX.Elemen
 			search: consoleQuery.value || undefined,
 			sort: consoleSort.value,
 			dir: consoleSortDir.value,
+			period: analyticsPeriod.value,
 			cursor: cur,
 			limit: 60,
 		};
@@ -115,6 +123,7 @@ export default function CatalogueScreen(props: CatalogueScreenProps): JSX.Elemen
 		}
 
 		consoleError.value = null;
+		ssrError.value = null;
 		const page = res.data.page;
 		items.value = page.items;
 		cursor.value = page.nextCursor;
@@ -182,6 +191,20 @@ export default function CatalogueScreen(props: CatalogueScreenProps): JSX.Elemen
 		};
 	});
 
+	/**
+	 * Immediate — the reporting window is a scope for the KPI strip, counted by the server for the
+	 * window chosen. The strip used to scale one 30-day figure up and down, which printed sales nobody
+	 * made; a new window is a new read.
+	 */
+	useSignalEffect(() => {
+		analyticsPeriod.value; // subscribe
+		if (periodPrimed.current) {
+			periodPrimed.current = false;
+			return;
+		}
+		void reload();
+	});
+
 	/** Immediate — a sort choice is one deliberate act, not a stream of keystrokes. */
 	useSignalEffect(() => {
 		consoleSort.value; // subscribe
@@ -245,7 +268,7 @@ export default function CatalogueScreen(props: CatalogueScreenProps): JSX.Elemen
 	useCtrlWheelZoom(workspaceRef, catalogueZoom);
 
 	const busy = consoleBusy.value;
-	const failed = consoleError.value;
+	const failed = consoleError.value ?? ssrError.value;
 	const isEmpty = items.value.length === 0;
 	const filtered = consoleQuery.value.trim().length > 0;
 

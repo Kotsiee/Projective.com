@@ -21,7 +21,6 @@ import { QuotaMeter } from "../components/QuotaMeter.tsx";
 import { DuplicatePrompt } from "../components/DuplicatePrompt.tsx";
 import { FilesService } from "../core/FilesService.ts";
 import { awaitExtraction, extractMetadata } from "../core/media/extract.ts";
-import { simFromSeam, subscribeFilesSim } from "../core/files-seam.ts";
 import { uploadDrawerOpen } from "../core/upload-drawer-state.ts";
 import {
 	createFingerprinter,
@@ -47,7 +46,6 @@ import {
 	DEDUP_BATCH_MAX,
 	type DedupVerdict,
 	type DuplicateResolution,
-	type FilesSim,
 	type StorageQuota,
 	type UploadPhase,
 	type UploadTask,
@@ -175,20 +173,6 @@ type PutOutcome =
 	| { kind: "ok"; etag: string | null }
 	| { kind: "aborted" }
 	| { kind: "error"; message: string };
-
-/**
- * Whether this ticket names a real upload target.
- *
- * While `FILES_BACKEND_LIVE` is off the fat service mints `signedUrl: "#stub-upload"` — a FRAGMENT,
- * which resolves against the current page, so a PUT at it would reach a Fresh route that does not
- * answer `PUT` and every stubbed upload would end in `error`. The whole surface is stub-first and
- * meant to be exercisable with the gate off, so a fragment ticket skips the transfer and finalises
- * the row instead. It is checked structurally rather than by string, because that is the property
- * that matters: an address with no origin and no path is not somewhere bytes can go.
- */
-function isStubTicket(ticket: UploadTicket): boolean {
-	return ticket.signedUrl.startsWith("#");
-}
 // #endregion
 
 // #region Pure helpers
@@ -331,7 +315,6 @@ export default function UploadDrawer(props: UploadDrawerProps): JSX.Element {
 	const claimed = useRef(new Set<string>());
 	/** Whether a drain is already running; a second one would double-start the same batch. */
 	const draining = useRef(false);
-	const simRef = useRef<FilesSim | undefined>(undefined);
 	// #endregion
 
 	// #region Queue access
@@ -433,7 +416,7 @@ export default function UploadDrawer(props: UploadDrawerProps): JSX.Element {
 			fingerprints,
 			names,
 			folderId: batched[0].folderId,
-		}, simRef.current);
+		});
 
 		if (res.ok && res.data) {
 			const verdicts = res.data;
@@ -468,10 +451,6 @@ export default function UploadDrawer(props: UploadDrawerProps): JSX.Element {
 		id: string,
 		onProgress: (fraction: number) => void,
 	): Promise<PutOutcome> {
-		// No bytes are moved, and none are claimed to have been: the row goes on to `finalising` with
-		// an indeterminate track rather than a fabricated 100%. See {@link isStubTicket}.
-		if (isStubTicket(ticket)) return Promise.resolve({ kind: "ok", etag: null });
-
 		const request = newUploadRequest();
 		if (!request) return putViaFetch(file, ticket);
 
@@ -603,7 +582,7 @@ export default function UploadDrawer(props: UploadDrawerProps): JSX.Element {
 			ownerType,
 			ownerId,
 			visibility: UPLOAD_VISIBILITY,
-		}, simRef.current);
+		});
 
 		if (!init.ok || !init.data) {
 			patchUpload(id, {
@@ -810,7 +789,7 @@ export default function UploadDrawer(props: UploadDrawerProps): JSX.Element {
 	// #region Allowance
 	/** Re-read the allowance. A failure keeps the last known figures and says the read failed. */
 	async function refreshQuota(): Promise<void> {
-		const res = await FilesService.quota(ownerType, ownerId, simRef.current);
+		const res = await FilesService.quota(ownerType, ownerId);
 		if (res.ok && res.data) {
 			allowance.value = res.data;
 			quotaNote.value = null;
@@ -822,14 +801,6 @@ export default function UploadDrawer(props: UploadDrawerProps): JSX.Element {
 
 	// #region Mount
 	useEffect(() => {
-		simRef.current = simFromSeam();
-		const unsubscribe = subscribeFilesSim((sim) => {
-			simRef.current = sim;
-			// The allowance is SERVER-derived, so a simulated band only exists once it is asked for
-			// again — a re-render would relabel the same figures.
-			void refreshQuota();
-		});
-
 		/**
 		 * Leaving mid-upload loses the transfer, so the browser asks first. Deliberately gated on
 		 * ACTIVE uploads: a queue of finished rows is a record, not work in progress, and prompting
@@ -846,7 +817,6 @@ export default function UploadDrawer(props: UploadDrawerProps): JSX.Element {
 		globalThis.addEventListener("beforeunload", guardUnload);
 
 		return () => {
-			unsubscribe();
 			globalThis.removeEventListener("beforeunload", guardUnload);
 			releaseFingerprinter();
 		};

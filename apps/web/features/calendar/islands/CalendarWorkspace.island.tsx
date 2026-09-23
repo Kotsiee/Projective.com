@@ -6,12 +6,7 @@ import "../styles/calendar-chrome.css";
 import { Calendar } from "@projective/ui/calendar";
 import { Message } from "@projective/ui/feedback";
 import type { CalendarComposeRequest, CalendarRange } from "@projective/ui/calendar";
-import type {
-	CalendarEvent,
-	CalendarEventKind,
-	SchedulePage,
-	SchedulingSim,
-} from "@projective/types/scheduling";
+import type { CalendarEvent, CalendarEventKind, SchedulePage } from "@projective/types/scheduling";
 import { LocalKeys } from "@web/utils/storage-keys.ts";
 import { EventModal } from "../components/EventModal.tsx";
 import { renderCalendarSource } from "../components/provider-marks.tsx";
@@ -21,16 +16,16 @@ import {
 	type EventAccess,
 	readDevSeam,
 	resolveEventAccess,
+	subscribeDevSeam,
 } from "../core/event-access.ts";
-import { simFromSeam, subscribeSchedulingSim } from "../core/scheduling-seam.ts";
 import { ScheduleService } from "../core/ScheduleService.ts";
 import { frameProbe } from "../core/frame-cost.ts";
 import {
-	CALENDAR_REFERENCE,
 	calendarFocus,
 	calendarPage,
 	calendarView,
 	createRequest,
+	focusedAt,
 	importedEvents,
 	persistCalendarView,
 	restoreCalendarView,
@@ -55,9 +50,9 @@ const CREATE_KINDS: { value: CalendarEventKind; label: string }[] = [
  * occurrence borrowed from an engagement where the viewer is the client and the honest word is "You
  * pay". Every other calendar surface has one answer because it IS one engagement; this one does not.
  *
- * `viewerIsHost` is the server's own per-event answer, derived from the owning engagement's
- * `viewerIsClient` and then refined by identity (`withCoordination` → `resolveSeat`), which is
- * exactly the fact needed and is already on the event. It is absent on an entry the viewer is not a
+ * `viewerIsHost` is the server's own per-event answer — whether the reader holds the event's host
+ * seat, by identity (`live-calendar.ts`) — which is exactly the fact needed and is already on the
+ * event. It is absent on an entry the viewer is not a
  * party to and on a draft — and the privacy projection withholds `pricing` from a non-party, so
  * there is no figure to mislabel there; the honest answer is that we have not been told, and neither
  * seat is claimed.
@@ -106,7 +101,6 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 	const compose = useSignal<CalendarComposeRequest | null>(null);
 	/** The developer persona override, tracked so a flip moves the surface without a reload. */
 	const seam = useSignal<DevSeamState | null>(null);
-	const sim = useSignal<SchedulingSim | undefined>(undefined);
 	const loadError = useSignal<string | null>(null);
 
 	/** Publish for the lane and the bands. One reader, one refetch, one answer. */
@@ -117,12 +111,11 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 	}
 
 	/**
-	 * A failure is SURFACED rather than dropped. The refetch is what a dev-seam change is — the axes
-	 * are server-derived — so discarding a failed one silently left the previous persona's seating on
-	 * screen under the new persona's label, which is the one outcome a simulation must never produce.
+	 * A failure is SURFACED rather than dropped: a stale agenda left on screen with no word of the
+	 * failure reads as the current one.
 	 */
-	async function load(next: SchedulingSim | undefined): Promise<void> {
-		const res = await ScheduleService.personal(next);
+	async function load(): Promise<void> {
+		const res = await ScheduleService.personal();
 		if (res.ok && res.data) {
 			loadError.value = null;
 			publish(res.data.page);
@@ -141,17 +134,9 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 			seam.value = readDevSeam();
 		};
 		apply();
-		const first = simFromSeam();
-		if (first) {
-			sim.value = first;
-			void load(first);
-		} else if (!props.initial) void load(undefined);
-		// A seam change moves data the SERVER produced, so it is a refetch and not a re-render.
-		return subscribeSchedulingSim((next) => {
-			sim.value = next;
-			apply();
-			void load(next);
-		});
+		// An agenda the server could not paint gets one retry on mount.
+		if (!props.initial) void load();
+		return subscribeDevSeam(apply);
 	}, []);
 
 	// The page is a module signal shared with three other trees, so it has to be released when this
@@ -180,7 +165,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 	/** A band asked for a blank entry (the lane footer's ＋ New event, or the rig's). */
 	useEffect(() => {
 		if (createRequest.value === 0) return;
-		const start = calendarFocus.value;
+		const start = focusedAt(page.value);
 		const blank = blankEvent({ start, end: start + 3_600_000 }, "sync");
 		draft.value = blank;
 		eventStack.open("event", blank.id, { mode: "create" });
@@ -240,7 +225,7 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 				availability={p.availability}
 				timezone={p.timezone}
 				view={calendarView.value}
-				focus={calendarFocus.value}
+				focus={focusedAt(p)}
 				hideSidePanel
 				hideHeader
 				canCreate
@@ -290,9 +275,9 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 						event={framed}
 						tz={p.timezone}
 						hour12
-						nowMs={CALENDAR_REFERENCE}
+						nowMs={p.now}
 						access={access}
-						target={{ scope: "personal", sim: sim.value }}
+						target={{ scope: "personal" }}
 						createKinds={CREATE_KINDS}
 						canBook={false}
 						onClose={close}

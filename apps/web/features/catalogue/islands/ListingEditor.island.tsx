@@ -37,7 +37,6 @@ import {
 	type UpdateListingInput,
 } from "../types/catalogue-types.ts";
 import { Icon } from "@projective/ui/icons";
-import { MOCK_SAMPLE_MEDIA } from "@web/utils/mock-assets.ts";
 
 /**
  * ListingEditor — the manage page BODY: the rich editor form (left) beside a LIVE preview rendering
@@ -63,7 +62,6 @@ const SAVE_DEBOUNCE_MS = 800;
 /** The Asset Picker routing key for listing media — one editor is open at a time. */
 const MEDIA_PICKER_ID = "catalogue-media";
 const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
-const SAMPLE_MEDIA = MOCK_SAMPLE_MEDIA;
 
 const num = (s: string): number => Number(s.replace(/[^0-9.]/g, "")) || 0;
 const numOrNull = (s: string): number | null => {
@@ -179,7 +177,12 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 			delivery: delivery.value,
 			pricing: pricing.value,
 			availability: availability.value,
-			price: resolveListingPricing({ kind: initial.kind, serviceType: st, pricing: pricing.value }),
+			price: resolveListingPricing({
+				kind: initial.kind,
+				serviceType: st,
+				pricing: pricing.value,
+				currency: initial.currency,
+			}),
 		};
 	});
 
@@ -286,12 +289,14 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 	 *
 	 * A picked asset contributes its URL, so the media list stays one flat array of image sources and
 	 * the live preview keeps rendering the REAL `ServiceCard`/`ProductCard` with no second code path.
+	 * The full image, not its thumbnail: a listing's gallery shows it at full size, and the save maps a
+	 * stored object's address back to its file so the listing keeps pointing at the asset itself.
 	 * `addMedia` already refuses a duplicate, so picking the same image twice is a no-op rather than a
 	 * second cover candidate.
 	 */
 	function addLibraryMedia(assets: AssetItem[]): void {
 		for (const asset of assets) {
-			const url = asset.thumbnailUrl ?? asset.url;
+			const url = asset.url && asset.url !== "#" ? asset.url : asset.thumbnailUrl;
 			if (url && url !== "#") addMedia(url);
 		}
 	}
@@ -430,12 +435,6 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 										multiple: true,
 									})}
 							/>
-							<Button
-								variant="text"
-								size="sm"
-								label="Add sample"
-								onClick={() => addMedia(SAMPLE_MEDIA[media.value.length % SAMPLE_MEDIA.length])}
-							/>
 						</div>
 					</section>
 
@@ -443,7 +442,7 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 						<h2 class="cat-form__h">Pricing</h2>
 						{showFixed && (
 							<label class="cat-field">
-								<span class="cat-field__label">Price ($)</span>
+								<span class="cat-field__label">Price ({initial.currency})</span>
 								<InputText
 									value={amount}
 									onValueChange={touch}
@@ -456,7 +455,7 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 						)}
 						{showPipeline && (
 							<label class="cat-field">
-								<span class="cat-field__label">Ticket price ($)</span>
+								<span class="cat-field__label">Ticket price ({initial.currency})</span>
 								<InputText
 									value={ticket}
 									onValueChange={touch}
@@ -471,7 +470,7 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 						{showSession && (
 							<div class="cat-field-row">
 								<label class="cat-field">
-									<span class="cat-field__label">Session price ($)</span>
+									<span class="cat-field__label">Session price ({initial.currency})</span>
 									<InputText
 										value={session}
 										onValueChange={touch}
@@ -511,7 +510,7 @@ export default function ListingEditor({ initial }: ListingEditorProps): JSX.Elem
 									<p class="cat-field__hint">Rounds included in every stage at no extra cost.</p>
 								</label>
 								<label class="cat-field">
-									<span class="cat-field__label">Extra revision ($)</span>
+									<span class="cat-field__label">Extra revision ({initial.currency})</span>
 									<InputText
 										value={extraRevision}
 										onValueChange={touch}

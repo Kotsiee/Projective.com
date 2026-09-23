@@ -181,7 +181,7 @@ start at `0`, a boolean at `false`, and anything else (text, a timestamp, an enu
 | `trg_teams_derived`              | `org.teams`                      | `rating_average`, `rating_count`, `active_project_count`, `total_project_count`, `service_count`, `product_count`, `current_workload_intensity` |
 | `trg_wallet_pots_derived` (`00001830`)   | `finance.wallet_pots`   | `balance_cents` |
 | `trg_deposit_rules_derived` (`00001830`) | `finance.deposit_rules` | `failure_count`, `last_error` |
-| `trg_basket_items_derived` (`00001830`)  | `finance.basket_items`  | `purchased_at` — only checkout marks a line purchased |
+| `trg_basket_items_derived` (`00001830`)  | `finance.basket_items`  | `purchased_at`, `discount_amount_minor`, `discount_code`, `original_price_minor` — only checkout marks a line purchased, and only a definer discounts one |
 
 A column a client must never set **at all**, not even on insert, belongs here. A column a client may
 set once and never change (a row's parties, its owner) belongs in `fn_guard_immutable_columns`.

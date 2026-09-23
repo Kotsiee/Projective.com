@@ -2,17 +2,19 @@ import type { JSX } from "preact";
 import "../styles/wallet.css";
 import { Alert, Dialog } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
+import { Icon } from "@projective/ui/icons";
 import { WalletService } from "../core/WalletService.ts";
+import { viewHref } from "../core/capability.ts";
 import {
+	activeWallet,
 	closeWalletAction,
+	displayCurrency,
+	type MoveFlowState,
 	moveFlow,
 	notifyWalletChanged,
-	parseActiveTarget,
-	withSim,
 } from "../core/wallet-state.ts";
-import { displayCurrency } from "../core/wallet-state.ts";
-import type { WalletScope } from "../types/wallet-types.ts";
-import { Icon } from "@projective/ui/icons";
+import type { WalletActionResult } from "../types/wallet-types.ts";
+import type { WalletResult } from "../types/results.ts";
 
 /**
  * ConfirmMoveModal — the last step before money moves, and the only modal on this surface.
@@ -26,9 +28,91 @@ import { Icon } from "@projective/ui/icons";
  * modal's body and never destroys the drawer — losing a composed transfer because the network
  * blinked is how a user learns not to trust the surface.
  *
- * The confirm button carries the exact server-formatted amount (RULE O-2): a button reading
- * "Confirm" asks the user to remember what they typed; one reading "Transfer £2,400.00" does not.
+ * "Try again" re-sends under the SAME idempotency key the composition was given, so a retry after a
+ * response that never arrived answers with what the first request did rather than moving the money a
+ * second time.
+ *
+ * The confirm button carries the exact amount (RULE O-2): a button reading "Confirm" asks the user to
+ * remember what they typed; one reading "Transfer $2,400.00" does not.
  */
+
+/** Send the composed movement to the service that performs it. */
+function send(flow: MoveFlowState): Promise<WalletResult<{ result: WalletActionResult }>> {
+	const display = displayCurrency.value || undefined;
+	const target = { scope: flow.from.scope, contextId: flow.from.id, display };
+	switch (flow.kind) {
+		case "transfer":
+			return WalletService.transfer({
+				fromScope: flow.from.scope,
+				fromId: flow.from.id,
+				toScope: flow.to?.scope ?? "personal",
+				toId: flow.to?.id ?? "",
+				amountMinor: flow.amountMinor,
+				currency: flow.currency,
+				note: flow.note,
+				display,
+				idempotencyKey: flow.idempotencyKey,
+			});
+		case "distribute":
+			return WalletService.distribute({
+				...target,
+				amountMinor: flow.amountMinor,
+				currency: flow.currency,
+				idempotencyKey: flow.idempotencyKey,
+			});
+		case "fund_escrow":
+			return WalletService.fundEscrow({
+				...target,
+				stageId: flow.stageId ?? "",
+				amountMinor: flow.amountMinor,
+				currency: flow.currency,
+			});
+		case "withdraw":
+			return WalletService.withdraw({
+				...target,
+				amountMinor: flow.amountMinor,
+				currency: flow.currency,
+				destinationId: null,
+				instant: false,
+			});
+		case "top_up":
+			return WalletService.topUp({
+				...target,
+				amountMinor: flow.amountMinor,
+				currency: flow.currency,
+				methodId: null,
+			});
+	}
+}
+
+/** What the commit button says, amount included. */
+function verbOf(flow: MoveFlowState): string {
+	switch (flow.kind) {
+		case "distribute":
+			return `Distribute ${flow.amountDisplay}${flow.recipients > 0 ? ` to ${flow.recipients} members` : ""}`;
+		case "withdraw":
+			return `Withdraw ${flow.amountDisplay}`;
+		case "top_up":
+			return `Top up ${flow.amountDisplay}`;
+		case "fund_escrow":
+			return `Fund ${flow.amountDisplay}`;
+		case "transfer":
+			return `Transfer ${flow.amountDisplay}`;
+	}
+}
+
+/** The consequence stated before the commit — accurate to what the server will do. */
+function warningOf(flow: MoveFlowState): string {
+	switch (flow.kind) {
+		case "distribute":
+			return "Distributions cannot be reversed. Each member is credited immediately, by their agreed share.";
+		case "fund_escrow":
+			return "The amount moves from this wallet into escrow for the stage, and is released to the freelancer when their work is approved.";
+		default:
+			return "This cannot be reversed once confirmed.";
+	}
+}
+
 export default function ConfirmMoveModal(): JSX.Element | null {
 	const flow = moveFlow.value;
 	if (!flow) return null;
@@ -40,73 +124,34 @@ export default function ConfirmMoveModal(): JSX.Element | null {
 
 	const commit = async () => {
 		moveFlow.value = { ...flow, step: "pending" };
-		const target = parseActiveTarget();
-		// `parseActiveTarget` returns the scope as a plain string; the mutation payloads are typed on
-		// the `WalletScope` union, and the parse can only ever yield one of its members.
-		const scope = target.scope as WalletScope;
-		const base = {
-			scope,
-			contextId: target.contextId,
-			amountMinor: flow.amountMinor,
-			currency: flow.currency,
-			display: displayCurrency.value,
-		};
-
-		const res = flow.kind === "transfer"
-			? await WalletService.transfer(withSim({
-				fromScope: scope,
-				fromId: target.contextId,
-				toScope: "personal",
-				toId: "",
-				amountMinor: flow.amountMinor,
-				currency: flow.currency,
-				note: flow.note,
-				display: displayCurrency.value,
-			}))
-			: flow.kind === "distribute"
-			? await WalletService.distribute(withSim(base))
-			: flow.kind === "withdraw"
-			? await WalletService.withdraw(withSim({ ...base, destinationId: null, instant: false }))
-			: await WalletService.topUp(withSim({ ...base, methodId: null }));
-
-		if (res.ok) {
+		const res = await send(flow).catch(() => null);
+		if (res?.ok) {
 			moveFlow.value = { ...flow, step: "done", message: res.data?.result?.message ?? null };
 			notifyWalletChanged();
-		} else {
-			moveFlow.value = {
-				...flow,
-				step: "error",
-				message: res.message ?? "That didn't go through.",
-			};
+			return;
 		}
+		moveFlow.value = {
+			...flow,
+			step: "error",
+			message: res?.message ?? Object.values(res?.errors ?? {})[0] ??
+				"We couldn't confirm this went through. Check the wallet's balance before trying again.",
+		};
 	};
 
-	const verb = flow.kind === "distribute"
-		? `Distribute ${flow.amountDisplay}${
-			flow.recipients > 0 ? ` to ${flow.recipients} members` : ""
-		}`
-		: flow.kind === "withdraw"
-		? `Withdraw ${flow.amountDisplay}`
-		: flow.kind === "top_up"
-		? `Top up ${flow.amountDisplay}`
-		: `Transfer ${flow.amountDisplay}`;
-
-	// The action row goes through Dialog's `footer` slot, NOT children. As a child it landed inside the
-	// scrolling body, so on a short viewport the irreversible commit — "Withdraw £X" — scrolled out of
-	// sight while the amount above it stayed visible. The slot is a sibling of the scroll region.
 	/*
-	 * The shared `Button`, not a local `.wlt-btn` class. Variant is interaction weight, not styling
-	 * (§B.8.1), and this overlay gets exactly one `filled`: the commit. Back and View transaction are
-	 * `text` — the escape hatch and a navigation, neither of which is what this dialog is asking.
+	 * The action row goes through Dialog's `footer` slot, NOT children. As a child it landed inside the
+	 * scrolling body, so on a short viewport the irreversible commit scrolled out of sight while the
+	 * amount above it stayed visible. The slot is a sibling of the scroll region.
+	 *
+	 * The shared `Button`, not a local class. Variant is interaction weight, not styling (§B.8.1), and
+	 * this overlay gets exactly one `filled`: the commit. Back and View transaction are `text` — the
+	 * escape hatch and a navigation, neither of which is what this dialog is asking.
 	 */
 	const foot = flow.step === "done"
 		? (
 			<>
-				{
-					/* A navigation, so an anchor and a link — not a button wearing an href. It keeps
-			    middle-click, open-in-new-tab and the browser's own affordances. */
-				}
-				<a class="wlt-link" href="/wallet/transactions">View transaction</a>
+				{/* A navigation, so an anchor and a link — not a button wearing an href. */}
+				<a class="wlt-link" href={viewHref("transactions", activeWallet.value)}>View transaction</a>
 				<Button variant="filled" label="Done" onClick={close} />
 			</>
 		)
@@ -122,7 +167,7 @@ export default function ConfirmMoveModal(): JSX.Element | null {
 				/>
 				<Button
 					variant="filled"
-					label={flow.step === "pending" ? "Sending…" : flow.step === "error" ? "Try again" : verb}
+					label={flow.step === "pending" ? "Sending…" : flow.step === "error" ? "Try again" : verbOf(flow)}
 					disabled={flow.step === "pending"}
 					onClick={() => void commit()}
 				/>
@@ -146,9 +191,7 @@ export default function ConfirmMoveModal(): JSX.Element | null {
 						<div class="wlt-modal__done" role="status" aria-live="polite">
 							<Icon name="check" class="wlt-modal__check" />
 							<p class="wlt-modal__figure">{flow.amountDisplay}</p>
-							<p class="wlt-modal__warn">
-								{flow.message ?? `Sent to ${flow.toLabel}.`}
-							</p>
+							<p class="wlt-modal__warn">{flow.message ?? `Sent to ${flow.toLabel}.`}</p>
 						</div>
 					</div>
 				)
@@ -173,15 +216,9 @@ export default function ConfirmMoveModal(): JSX.Element | null {
 							)}
 						</dl>
 
-						<p class="wlt-modal__warn">
-							{flow.kind === "distribute"
-								? "Distributions cannot be reversed. Recipients are credited immediately and clear after 7 days."
-								: "This cannot be reversed once confirmed."}
-						</p>
+						<p class="wlt-modal__warn">{warningOf(flow)}</p>
 
-						{flow.step === "error" && flow.message && (
-							<Alert severity="danger">{flow.message}</Alert>
-						)}
+						{flow.step === "error" && flow.message && <Alert severity="danger">{flow.message}</Alert>}
 					</div>
 				)}
 		</Dialog>

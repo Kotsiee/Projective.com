@@ -2,7 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { UploadCompleteSchema } from "@projective/types/files";
 import { toFieldErrors, toFilesResponse } from "@features/files/core/respond.ts";
 import { FilesBackendService } from "@server/services/files/FilesBackendService.ts";
-import { actorFromContext } from "@server/services/files/acting-principal.ts";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * `POST /api/files/upload-complete` — step 3 of the upload handshake: the object landed, so the row
@@ -18,7 +18,7 @@ import { actorFromContext } from "@server/services/files/acting-principal.ts";
  * **The acting principal comes from the SESSION**, so finalising an upload can be bounded to the row the
  * caller started rather than to any id that parses.
  *
- * No server-side capability guard (Decision #53(b)) — see `./list.ts`.
+ * Runs under the caller's own session: RLS is the gate, and the library is the acting context's.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -37,7 +37,7 @@ export const handler = define.handlers({
 		return toFilesResponse(
 			await FilesBackendService.uploadComplete(
 				parsed.data,
-				actorFromContext(ctx.state.userContext),
+				readActor(ctx),
 			),
 		);
 	},

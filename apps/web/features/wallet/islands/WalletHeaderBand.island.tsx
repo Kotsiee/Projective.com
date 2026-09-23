@@ -1,10 +1,11 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
-import { useRef } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import "../styles/wallet.css";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { InputText, Select, SelectButton } from "@projective/ui/fields";
 import { Avatar } from "@projective/ui/display";
+import { DISPLAY_CURRENCIES } from "@projective/types/finance";
 import {
 	AccessGlyph,
 	ActivityGlyph,
@@ -114,7 +115,16 @@ export default function WalletHeaderBand(props: WalletHeaderBandProps): JSX.Elem
 	const filterRef = useRef<HTMLButtonElement>(null);
 	const sectionsRef = useRef<HTMLButtonElement>(null);
 
-	const currencies = props.currencies ?? ["GBP", "USD", "EUR"];
+	// The first render is the server's: until this island has copied its own `display` into the shared
+	// signal, the signal still holds its module default, which would paint the wrong currency for a frame.
+	const synced = useSignal(false);
+	useEffect(() => {
+		displayCurrency.value = props.display;
+		synced.value = true;
+	}, [props.display]);
+	const shown = synced.value ? displayCurrency.value : props.display;
+
+	const currencies = props.currencies ?? DISPLAY_CURRENCIES.map((c) => c.code);
 	const badge = props.account.scope === "aggregate" ? "All accounts" : VARIANT_BADGE[props.variant];
 	const sections = laneItemsFor(props.variant, props.capabilities, props.scope);
 	const current = sections.find((s) => s.view === props.view);
@@ -154,7 +164,7 @@ export default function WalletHeaderBand(props: WalletHeaderBandProps): JSX.Elem
 								key={s.view}
 								class="wlt-headerband__menu-item"
 								role="menuitem"
-								href={viewHref(s.view, props.scope, props.display)}
+								href={viewHref(s.view, props.scope, shown)}
 								aria-current={s.view === props.view ? "page" : undefined}
 							>
 								<span class="wlt-headerband__menu-glyph" aria-hidden="true">
@@ -278,7 +288,7 @@ export default function WalletHeaderBand(props: WalletHeaderBandProps): JSX.Elem
 				<span class="wlt-headerband__currency">
 					<Select
 						options={currencies.map((c) => ({ label: c, value: c }))}
-						value={displayCurrency.value || props.display}
+						value={shown}
 						aria-label="Display currency"
 						onValueChange={(v) => {
 							if (typeof v === "string") {

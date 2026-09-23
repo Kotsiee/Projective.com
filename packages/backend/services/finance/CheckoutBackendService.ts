@@ -264,10 +264,42 @@ function blockersFor(
 	return blockers.slice(0, 20);
 }
 
+/**
+ * What this environment can actually settle, applied over the SSOT's account-level offer.
+ *
+ * A processor-backed route (a card, a device wallet, PayPal) is refused with the processor reason
+ * whatever the account rules said — including when they would have said "add a card", which would
+ * send the buyer to a control that refuses them next. Invoicing keeps an account-level refusal (it is
+ * true and says who invoicing is for) and otherwise states that it is not wired here, because an
+ * invoiced order needs the monthly statement run that settles it.
+ */
+function settleableHere(offer: ProviderAvailability[]): ProviderAvailability[] {
+	return offer.map((entry) => {
+		if (PROCESSOR_ROUTES.has(entry.provider) && !PROCESSOR_CONNECTED) {
+			return { ...entry, available: false, reason: PROCESSOR_REASON };
+		}
+		if (entry.provider === "invoice" && entry.available) {
+			return { ...entry, available: false, reason: INVOICE_REASON };
+		}
+		return entry;
+	});
+}
+
+const PROCESSOR_ROUTES: ReadonlySet<ProviderAvailability["provider"]> = new Set([
+	"card",
+	"google_pay",
+	"apple_pay",
+	"paypal",
+]);
+const PROCESSOR_REASON =
+	"Needs a payment processor, which isn't connected in this environment — pay from your Projective wallet.";
+const INVOICE_REASON =
+	"Invoiced payments aren't available in this environment yet — pay from your Projective wallet.";
+
 /** The provider offer for a resolved checkout at a given total. */
 function offerFor(resolved: Resolved, totalMinor: number, query: BasketQuery): ProviderAvailability[] {
 	const caps = PROCESSOR_CONNECTED ? query.capabilities : undefined;
-	return availableProviders({
+	return settleableHere(availableProviders({
 		ownerType: resolved.owner.ownerType,
 		actingIsMember: resolved.owner.actingIsMember,
 		walletAvailableMinor: resolved.walletMinor,
@@ -278,7 +310,7 @@ function offerFor(resolved: Resolved, totalMinor: number, query: BasketQuery): P
 		verificationTier: resolved.owner.verificationTier,
 		deviceWallets: { googlePay: caps?.googlePay === true, applePay: caps?.applePay === true },
 		paypalEnabled: caps?.paypalEnabled === true,
-	});
+	}));
 }
 
 /** Resolve the shared inputs every entry point needs. `null` for a caller who cannot be identified. */
@@ -506,8 +538,18 @@ export class CheckoutBackendService {
 	): Promise<ServiceResult<{ result: CheckoutResult }>> {
 		type Out = { result: CheckoutResult };
 		return guarded("create", async () => {
+			if (!canReadLive(actor)) return SIGNED_OUT as ServiceResult<Out>;
+			// A retry after a dropped response carries the key of an attempt that may already have been
+			// paid — and by then its lines are consumed, so every check below would refuse it as "your
+			// basket changed" while the money had moved. The key is answered FIRST.
+			const prior = await placedOrderFor(input.idempotencyKey, actor.accessToken);
+			if (prior) {
+				const result = succeeded(prior);
+				return ok({ result }, { message: result.message });
+			}
+
 			const resolved = await resolve({ ...query, basketId: input.basketId }, actor);
-			if (!resolved || !canReadLive(actor)) return SIGNED_OUT as ServiceResult<Out>;
+			if (!resolved) return SIGNED_OUT as ServiceResult<Out>;
 			const { owner, money, view } = resolved;
 			const refusal = (message: string, blockers: CheckoutBlocker[]): ServiceResult<Out> =>
 				ok({ result: failed(message, blockers, money) }, { message });
@@ -546,9 +588,8 @@ export class CheckoutBackendService {
 			if (blocking.length > 0) return refusal(blocking[0].message, blocking);
 
 			if (input.provider !== "wallet") {
-				const message = input.provider === "invoice"
-					? "Invoiced payments aren't available in this environment yet — pay from your Projective wallet instead."
-					: "Card and device payments need a payment processor, which isn't connected in this environment — pay from your Projective wallet instead.";
+				const offered = providers.find((p) => p.provider === input.provider);
+				const message = offered?.reason ?? PROCESSOR_REASON;
 				return refusal(message, [blocker("no_provider", message)]);
 			}
 			const wallet = providers.find((p) => p.provider === "wallet");
@@ -609,34 +650,8 @@ export class CheckoutBackendService {
 				return refusal(message, [blocker(code, message)]);
 			}
 
-			const placed = data as {
-				order_id: string;
-				reference: string;
-				charged_minor: number;
-				currency: string;
-				replayed: boolean;
-			};
-			const charged: MoneyView = {
-				minor: placed.charged_minor,
-				currency: placed.currency,
-				display: formatMoney(placed.charged_minor, placed.currency, DEFAULT_LOCALE),
-				origin: null,
-			};
-			const message = placed.replayed
-				? `This payment was already made — order ${placed.reference}.`
-				: `Paid ${charged.display} from your Projective wallet.`;
-			return ok({
-				result: {
-					status: "succeeded",
-					orderId: placed.order_id,
-					charged,
-					nextActionUrl: null,
-					message,
-					blockers: [],
-					walletDelta: { ...charged, minor: -charged.minor, display: `-${charged.display}` },
-					at: new Date().toISOString(),
-				},
-			}, { message });
+			const result = succeeded(data as PlacedOrder);
+			return ok({ result }, { message: result.message });
 		});
 	}
 }
@@ -652,10 +667,66 @@ const BLOCKER_FOR_SQLSTATE: Record<string, CheckoutBlocker["code"]> = {
 	PC409: "price_changed",
 	PB404: "price_changed",
 	PD422: "missing_email",
+	PU422: "unavailable_item",
 	PS501: "no_provider",
 	PF402: "insufficient_funds",
 	PA403: "spend_limit",
 };
+
+/** What `finance.place_wallet_order` answers with — and what a replayed key is re-read as. */
+interface PlacedOrder {
+	order_id: string;
+	reference: string;
+	charged_minor: number;
+	currency: string;
+	replayed: boolean;
+}
+
+/**
+ * The order an attempt key already placed, read as the caller. `null` when none — including when the
+ * key belongs to an order the caller cannot see, which the payment function itself then refuses.
+ */
+async function placedOrderFor(key: string, accessToken: string): Promise<PlacedOrder | null> {
+	const { data, error } = await getUserClient(accessToken).schema("finance").from("orders")
+		.select("id, reference, charged_minor, currency")
+		.eq("idempotency_key", key)
+		.maybeSingle();
+	if (error) throw new Error(`finance.orders replay read failed: ${error.message}`);
+	if (!data) return null;
+	const row = data as { id: string; reference: string; charged_minor: number | string; currency: string };
+	return {
+		order_id: row.id,
+		reference: row.reference,
+		charged_minor: Number(row.charged_minor),
+		currency: row.currency,
+		replayed: true,
+	};
+}
+
+/**
+ * A completed wallet payment. The charge is stated in the currency the wallet actually moved — the
+ * listing's own — never re-converted: a receipt quotes what happened, not what it would cost today.
+ */
+function succeeded(placed: PlacedOrder): CheckoutResult {
+	const charged: MoneyView = {
+		minor: placed.charged_minor,
+		currency: placed.currency,
+		display: formatMoney(placed.charged_minor, placed.currency, DEFAULT_LOCALE),
+		origin: null,
+	};
+	return {
+		status: "succeeded",
+		orderId: placed.order_id,
+		charged,
+		nextActionUrl: null,
+		message: placed.replayed
+			? `This payment was already made — order ${placed.reference}.`
+			: `Paid ${charged.display} from your Projective wallet.`,
+		blockers: [],
+		walletDelta: { ...charged, minor: -charged.minor, display: `-${charged.display}` },
+		at: new Date().toISOString(),
+	};
+}
 
 /** A promo code compared the way the database stores it: trimmed, upper-cased, absent when blank. */
 function normaliseCode(code: string | null | undefined): string | null {

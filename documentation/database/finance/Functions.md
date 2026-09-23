@@ -92,13 +92,22 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
 These are the client-facing Finance-tab actions; they call the `finance.*` engine above. The
 business finance dashboard reads through **`org.get_business_finance`** (`0309`).
 
+**`projects.fund_stage` spends the client's money, so it checks the payer, not just project
+access** (2026-09-23, `00001150`). Project access alone admitted every participant — a hired
+freelancer could fund the client's escrow from the client's wallet. It now resolves the payer
+from `projects.projects.client_business_id` (NULL → `PS501`: an individual client has no escrow
+path, #56(a)) and requires `finance.fn_owner_capability('business', payer, 'spend')`, else `42501`
+("Only a member who can spend from the client's wallet can fund this stage."). The KYB gate on
+funding (Decision #54(e)) is **not** added here — that behavioural change still needs sign-off.
+
 ## Deferred (documented target, not yet implemented)
 
 The additive foundation defines the **data + gates** for these flows; the `SECURITY DEFINER` write
 RPCs that operate them are the live-path TODO (behind the eventual `FINANCE_BACKEND_LIVE`-style
 gate): recurring-deposit runner, payout-schedule runner + Instant Payout, Income-Smoother
-allocation, tax-pot auto-set-aside, vault-permission grant/revoke, spend-approval decision, the
-pending-release (7-day-window) sweep, monthly statement generation, and the FX-rate ingestion job.
+allocation, tax-pot auto-set-aside, vault-permission grant/revoke, the pending-release
+(7-day-window) sweep, monthly statement generation, and the FX-rate ingestion job. (The spend-approval
+decision landed as `finance.decide_spend_approval` — see [§ Wallet movements](#-wallet-movements-00001210-12).)
 
 ---
 
@@ -357,3 +366,178 @@ left to the `balance_cents >= 0` CHECK, so the caller gets a legible refusal.
 	"to": { "…": "same shape" }
 }
 ```
+
+## 🛒 Commerce doors (`00001210`)
+
+The checkout reads and writes facts that live on tables with four different read postures —
+`org.business_profiles` has no client SELECT policy at all, and `finance.promo_codes` is definer-only
+because it is the platform's whole marketing book. Rather than read them with the service-role key,
+the web server goes through five `SECURITY DEFINER` doors, each of which re-authorises the caller
+itself and answers for nothing it was not asked about. `EXECUTE` is `authenticated` only
+([Policies.md § Function privileges](Policies.md#-function-privileges-2026-09-23)).
+
+### `finance.get_purchase_owner(p_owner_type, p_owner_id)` → jsonb · `finance.list_purchase_owners()` → jsonb
+
+The checkout identity of one purchase owner, and every identity the caller may buy or bill as
+(themselves first, then each team, business and organisation they own or are an **active** member
+of). Both return the one shape the internal builder `finance.fn_purchase_owner_json` produces, so the
+application maps it once:
+
+`owner_type · owner_id · name · handle · avatar_bucket · avatar_path · is_member · can_spend ·
+kyb_status · currency · invoicing_mode · billing_day · billing · person · departments`
+
+| Owner kind     | Who gets an answer                    | What a non-member sees                                   |
+| :------------- | :------------------------------------ | :------------------------------------------------------- |
+| `user`         | the person themselves (or admin)      | `NULL` — a person answers only about themselves          |
+| `team`         | anyone                                | the public face (name, handle, avatar); no billing facts |
+| `business`     | anyone                                | the public face; KYB, currency, invoicing and `billing` are `NULL` |
+| `organisation` | members only                          | `NULL` — not even that the id exists                     |
+
+`can_spend` is `fn_can_manage_basket`, so "may pay from this account" has one answer in the schema.
+`person` (first/last name, primary email, city, country) is filled for the caller's own identity only
+and is what the Details form pre-fills delivery from. An anonymous caller gets `NULL` / `[]`.
+`fn_purchase_owner_json` itself is callable by neither client role: it answers for whatever owner it
+is handed, so only the two doors above — which pass it the caller's own context — may reach it.
+
+### `finance.resolve_promo_code(p_code)` → jsonb
+
+What **one** code is worth, for the signed-in buyer who typed it:
+`{ found, code, label, kind, value_bp, value_minor, currency, valid, reason }`. `reason` is the
+buyer-facing refusal sentence (unknown · no longer active · not active yet · expired on _date_ · fully
+redeemed), decided here once so the basket and the checkout cannot word the same refusal two ways.
+It never lists codes and never redeems one — `redemption_count` moves only in `place_wallet_order`.
+
+The saving itself is computed by the application against the lines (a percent of what is left after
+creator discounts; a flat saving only where every eligible line is priced in the code's currency),
+because it depends on the basket, not the code.
+
+### `finance.set_invoicing_terms(p_owner_type, p_owner_id, p_mode, p_billing_day)` → jsonb
+
+The one door that changes `org.business_profiles.invoicing_mode` / `billing_day` (the table has no
+client write policy). Business owners only; `p_mode` ∈ `per_transaction` · `intervaled_monthly`;
+`p_billing_day` 1–28 or `NULL` to keep the current day. Requires `manage_billing` via
+`fn_owner_capability`; the monthly mode additionally requires the business to be KYB-verified, the
+same gate the checkout's `invoice` provider applies. Returns `{ invoicing_mode, billing_day }`.
+
+### `finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key)` → jsonb
+
+Pays for the submitted basket lines from the caller's Projective wallet, in **one transaction**:
+
+1. **Idempotency first.** An order already carrying `p_idempotency_key` is returned with
+   `replayed: true` and nothing is charged. A key belonging to an order the caller cannot see is
+   refused (`42501`).
+2. **The basket** is locked `FOR UPDATE`; the caller needs `fn_can_manage_basket`; a business or
+   organisation payer must be KYB-verified (`PK403`).
+3. **The lines are exactly the submitted ones** — live, selected, not parked, not purchased — or the
+   call refuses (`PC409`). A basket changed in another tab cannot widen or narrow the charge.
+4. **Every line is re-priced from the catalogue.** Digital products only (`PS501` otherwise — a
+   service or session needs escrow, which requires a project stage and a business payer, root
+   CLAUDE.md §8 #56(a)); the listing must still be published; its currency must be `p_currency`; it
+   needs a delivery address (`PD422`); a buyer cannot buy their own listing (`PU422`); and
+   `p_units ->> line_id` — the unit price the buyer was **shown**, in the listing's own currency — must
+   equal the catalogue price now (`PC409`). The stored basket snapshot is never charged.
+5. **The promo the buyer saw applied.** `p_promo_code` `NULL` → no promo, whatever code sits on the
+   basket (a code the page refused applies nothing here either). Non-null → it must still be the
+   basket's code, still valid, and applicable (a flat code only in its own currency) — or `PC409`.
+6. **The wallet** in `p_currency` is locked (a personal owner's `user` and `freelancer` wallets are
+   interchangeable) and must cover the net (`PF402`). A shared payer additionally clears its approval
+   threshold and the member's spending limit (`PA403`).
+7. **Money moves through the ledger primitives**: `fn_wallet_debit(… 'order_payment', 'orders', id)`
+   on the buyer; per line, a pro-rata share of the promo (the remainder on the last line, so shares
+   sum exactly), the 5% fee on what was actually paid for that line, and
+   `fn_wallet_credit(… 'product_sale', 'orders', id)` of the rest to the seller — the owning team's
+   wallet for a team listing, else the person's `freelancer`/`user` wallet. A seller with no wallet in
+   the currency gets one first, because `fn_wallet_credit` is a silent no-op on a missing wallet.
+8. **The record**: `finance.orders` (status `confirmed`, provider `wallet`, reference
+   `PJ-YYYY-XXXXXX`, `platform_fee_minor` the summed per-line fees), one `finance.order_lines` row per
+   line (fulfilment `download`, the first manifest entry's name, size and format, the licence), each
+   basket line stamped `purchased_at`, the basket's promo cleared, the code's `redemption_count`
+   incremented when it saved anything.
+
+Returns `{ order_id, reference, status, charged_minor, currency, replayed }` — the charge in the
+currency the wallet actually moved, never re-converted.
+
+| SQLSTATE | Meaning                                        | Checkout blocker        |
+| :------- | :--------------------------------------------- | :---------------------- |
+| `42501`  | not signed in / may not spend / key not yours  | `not_authorised`        |
+| `PK403`  | the paying business is not KYB-verified        | `verification_required` |
+| `PB404`  | the basket no longer exists                    | `price_changed`         |
+| `PC409`  | the basket, a price or the promo changed       | `price_changed`         |
+| `PD422`  | a line needs a delivery address                | `missing_email`         |
+| `PU422`  | the buyer's own listing                        | `unavailable_item`      |
+| `PS501`  | a line the wallet cannot settle here           | `no_provider`           |
+| `PF402`  | no wallet in the currency, or not enough in it | `insufficient_funds`    |
+| `PA403`  | approval threshold or spending limit           | `spend_limit`           |
+| `22023`  | a malformed attempt key                        | —                       |
+
+> **Flagged, not decided.** The fee is the documented 5% (Decision #2) as a constant, while
+> `security.platform_params.platform_fee_bp` — which governs escrow releases — is seeded `0`
+> (#68(b)). The fee is retained rather than credited anywhere, because the platform's Fee Collection
+> wallet is not materialised (#54(i)). And a sale credits the seller's **Available** balance:
+> `finance.pending_releases` is keyed to an escrow, which a product sale does not have, so the 7-day
+> pending window (#54(c)) cannot hold it yet.
+
+## 💸 Wallet movements (`00001210` §12)
+
+The `/wallet` surface's money moves that need **no external processor**. Top-ups, withdrawals,
+recurring deposits, adding a payment method and the Income Smoother all need a payment or payout
+processor and are deliberately not here — the application refuses them with that reason rather than
+recording money that did not move. Each function below is a definer because the ledger primitives it
+calls (`fn_wallet_debit` / `fn_wallet_credit`) check nothing about the caller, so each authorises the
+caller itself. `EXECUTE` is granted to `authenticated` only.
+
+Transfers and distributions are **idempotent on a caller-minted attempt key** (8–120 characters,
+stored in `finance.idempotency_keys` for 7 days), scoped to the caller and hashed with the request:
+a repeat of the same request returns the first result with `replayed: true`; the same key sent with a
+different request is refused (`22023`).
+
+### `finance.transfer_funds(p_from_wallet, p_to_wallet, p_amount, p_note, p_idempotency_key)` → jsonb
+
+Moves money between two of the caller's **own** wallets — their personal wallet and the vaults they
+belong to — so a transfer can never be a payment to somebody else. Both rows are locked in id order
+(two crossing transfers cannot deadlock). Money leaves a personal wallet only for its owner and a vault
+only for a member holding `withdraw`; it lands only in the caller's own personal wallet or a vault they
+are a member of (`fn_owner_visible`). Same currency only (`PX409` — a transfer is not a conversion). A
+business source must be KYB-verified (`PK403`); a vault source must clear the member's spending limit
+(`PA403`) and hold the amount (`PF402`). The ledger lines are `transfer_out` / `transfer_in`, each
+pointing at the OTHER wallet (`ref_table = 'wallets'`), and a vault on either side gets a
+`finance.ledger_audit` row carrying the note. Returns `{ amount_minor, currency, from_wallet,
+to_wallet, replayed }`.
+
+### `finance.distribute_vault(p_wallet, p_amount, p_idempotency_key)` → jsonb
+
+Pays part of a **team** vault out to its active members by their agreed stakes
+(`finance.contribution_agreements.percent_bp`) — a held stake is paid like any other (`held` only
+protects it from the split rebalancer). Each share is floored to the minor unit; whatever does not
+divide, and any stake the agreement leaves unallocated, stays in the vault, which is debited by exactly
+what was paid. Needs `distribute`; the vault must hold the amount (`PF402`); a team with no agreed
+split is refused (`PD422`). A member with no wallet in the vault's currency gets one first (the credit
+primitive is a silent no-op on a missing wallet). Every line carries `reason = 'team_distribution'`
+and the distribution's id; the audit row records the requested amount and each share. Returns
+`{ distribution_id, distributed_minor, requested_minor, currency, shares[], replayed }`.
+
+### `finance.decide_spend_approval(p_approval, p_decision)` → jsonb
+
+Approves or rejects a pending over-cap `finance.spend_approvals` request. The decider needs
+`manage_members` on the account and may not be the requester — approving one's own over-cap spend
+would make the cap decorative (`42501`). A request already decided is `PC409`; one past its
+`expires_at` is marked `expired` instead of decided. A decision notifies the requester through
+`comms.fn_notify` (`spend.approved` / `spend.rejected`). Returns `{ id, status }`.
+
+| SQLSTATE | Meaning                                                  |
+| :------- | :------------------------------------------------------- |
+| `42501`  | not signed in, or not allowed on that wallet / request   |
+| `22023`  | bad amount, wallet pair, decision or attempt key         |
+| `PB404`  | the wallet or request no longer exists                   |
+| `PX409`  | the two wallets hold different currencies               |
+| `PK403`  | the paying business is not KYB-verified                  |
+| `PA403`  | over the member's spending limit                         |
+| `PF402`  | the wallet doesn't hold enough                           |
+| `PD422`  | the team has no agreed split                             |
+| `PC409`  | the spend request was already decided                    |
+
+> **Flagged, not decided.** A distribution follows the stakes as agreed, with no platform fee and no
+> vault retention taken at distribution time — the documented 5% fee → vault cut → stakes model
+> (finance-model §5) applies when income ARRIVES, and the release functions do not yet apply it
+> either (`fn_split_team_payout` credits members by `percent_bp` with no vault cut). The wallet's
+> split preview states the documented model; which one is authoritative needs a decision.

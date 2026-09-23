@@ -1,6 +1,6 @@
-import type { LaneTabOption } from "@projective/ui/navigation";
 import type { ProductItem, ServiceItem } from "@projective/types/explore";
 import type { UserContext } from "@projective/types/auth";
+import { toMinorUnits } from "@projective/types/finance";
 import type {
 	CatalogueSort,
 	CatalogueTypeFilter,
@@ -68,8 +68,13 @@ export const STATUS_SECTIONS: readonly { status: ListingStatus; label: string }[
 // #endregion
 
 // #region Vocabularies
-/** The console + lane type segments. */
-export const TYPE_TABS: readonly LaneTabOption<CatalogueTypeFilter>[] = [
+/**
+ * The console + lane type segments. Declared as the plain `{ value, label }` shape the lane's
+ * `LaneTabs` takes rather than importing its type: that import drags the navigation package's
+ * stylesheets into this module's graph, and this module is meant to be importable anywhere —
+ * a test included.
+ */
+export const TYPE_TABS: readonly { value: CatalogueTypeFilter; label: string }[] = [
 	{ value: "all", label: "All" },
 	{ value: "product", label: "Products" },
 	{ value: "service", label: "Services" },
@@ -137,6 +142,24 @@ export function toTypeFilter(raw: string | null): CatalogueTypeFilter {
 }
 // #endregion
 
+// #region KPI trend
+/**
+ * The signed change between the earlier and the later half of a window's weekly series, or `null`
+ * when there is no base to compare against — fewer than two weeks, or nothing in the earlier half. A
+ * rise from zero has no percentage, and inventing one (dividing by 1 instead) is how a seller's first
+ * sale came to read as a 49,900% jump. An odd-length series leaves its middle week out of both halves
+ * rather than counting it twice.
+ */
+export function halfOverHalf(trend: readonly number[]): number | null {
+	const half = Math.floor(trend.length / 2);
+	if (half < 1) return null;
+	const earlier = trend.slice(0, half).reduce((s, n) => s + n, 0);
+	const later = trend.slice(trend.length - half).reduce((s, n) => s + n, 0);
+	if (earlier <= 0) return null;
+	return Math.round(((later - earlier) / earlier) * 100);
+}
+// #endregion
+
 // #region Live-preview item builder
 /**
  * Reconstruct a discovery {@link ServiceItem}/{@link ProductItem} from an edited listing so the manage
@@ -144,8 +167,16 @@ export function toTypeFilter(raw: string | null): CatalogueTypeFilter {
  * the pricing pair, delivery, category, serviceType) — the rest are inert placeholders required by the
  * discovery schema (`skills`/`summary`/`createdAt`). The pricing display string is the already-resolved
  * projection (`detail.price.display`), so the card's fixed-price fallback matches the console + `/view`.
+ *
+ * The listing's `currency` and its fixed price as integer minor units travel too: the cards render
+ * money through `MoneyView` from those two fields, and without them a pound or euro listing previewed
+ * as dollars — the card's own default — while the console beside it said otherwise.
  */
 export function buildPreviewItem(detail: ListingDetail): ServiceItem | ProductItem {
+	const currency = detail.currency;
+	const priceMinor = detail.pricing.amount > 0
+		? toMinorUnits(detail.pricing.amount, currency) ?? undefined
+		: undefined;
 	const rating = detail.metrics.avgRating > 0
 		? { asHelper: { value: detail.metrics.avgRating, count: detail.metrics.ratingCount } }
 		: undefined;
@@ -167,6 +198,8 @@ export function buildPreviewItem(detail: ListingDetail): ServiceItem | ProductIt
 			serviceType: detail.serviceType ?? "One-Off",
 			ticketPrice: detail.pricing.ticketPrice ?? undefined,
 			sessionPrice: detail.pricing.sessionPrice ?? undefined,
+			priceMinor,
+			currency,
 			rating,
 		};
 	}
@@ -183,6 +216,8 @@ export function buildPreviewItem(detail: ListingDetail): ServiceItem | ProductIt
 		price: detail.price.display,
 		category: detail.category || "product",
 		span: 2,
+		priceMinor,
+		currency,
 		rating,
 	};
 }

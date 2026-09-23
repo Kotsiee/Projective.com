@@ -143,12 +143,17 @@ Deno.test("reachesDatabase is independent of the gate and reports the honest sta
 		assert(auth.isLive);
 		assert(auth.reachesDatabase, "auth has a real GoTrue path");
 
-		const catalogue = resolveDataSource("catalogue");
-		assert(catalogue.isLive, "the gate resolves live");
-		assertFalse(
-			catalogue.reachesDatabase,
-			"but CatalogueBackendService has no Supabase call, so it still serves fixtures",
-		);
+		// Any domain whose gate resolves live while its service has no database path yet. Chosen from the
+		// registry rather than named, because naming one breaks this test the day that domain goes live.
+		const pending = MOCK_DOMAINS.find((d) => !MOCK_REGISTRY[d].liveImplemented);
+		if (pending) {
+			const report = resolveDataSource(pending);
+			assert(report.isLive, "the gate resolves live");
+			assertFalse(
+				report.reachesDatabase,
+				`but ${pending} has no Supabase path, so it still serves fixtures`,
+			);
+		}
 	});
 });
 

@@ -37,6 +37,12 @@ $$;
 -- momentarily expensive. It counts ONLY what we actually store — `source = 'supabase'`, not soft
 -- deleted — because a mounted Drive file consumes the provider's quota and a link consumes none.
 --
+-- An upload still in flight (`pending_upload`, `scanning`) COUNTS at its declared size: that is a
+-- reservation, and fn_check_storage_quota depends on it — it charges a promotion only the DELTA
+-- between declared and measured size, so parallel declarations must each see the others. A refused
+-- or failed upload (`quarantined`, `error`) holds no bytes and releases its reservation; counting
+-- it would let a rejected file eat the allowance forever.
+--
 -- SECURITY DEFINER: it runs from an AFTER trigger and must see every row of the owner's library,
 -- including rows the acting user cannot read.
 CREATE OR REPLACE FUNCTION files.fn_recompute_usage (
@@ -62,6 +68,7 @@ BEGIN
     WHERE i.owner_type = p_owner_type
       AND COALESCE(i.owner_entity_id, i.owner_user_id) = p_owner_id
       AND i.source = 'supabase'::files.file_source
+      AND i.status NOT IN ('quarantined'::files.file_status, 'error'::files.file_status)
       AND i.deleted_at IS NULL;
 
     INSERT INTO files.storage_usage (owner_type, owner_id, bytes_used, item_count, recomputed_at)
@@ -211,8 +218,10 @@ DECLARE
     v_projected bigint;
 BEGIN
     -- Only stored bytes count. A mounted connector file is metered by its provider and a link has
-    -- no bytes, so neither can ever exhaust our quota.
-    IF NEW.source <> 'supabase'::files.file_source OR NEW.deleted_at IS NOT NULL THEN
+    -- no bytes, so neither can ever exhaust our quota — and neither can a refused or failed upload,
+    -- which fn_recompute_usage has already released. The gate and the rollup must agree on this set.
+    IF NEW.source <> 'supabase'::files.file_source OR NEW.deleted_at IS NOT NULL
+       OR NEW.status IN ('quarantined'::files.file_status, 'error'::files.file_status) THEN
         RETURN NEW;
     END IF;
 
@@ -248,8 +257,10 @@ BEGIN
     WHERE u.owner_type = NEW.owner_type AND u.owner_id = v_owner_id;
     v_used := COALESCE(v_used, 0);
 
-    -- On UPDATE only the DELTA is new capacity; on INSERT the whole file is.
-    IF TG_OP = 'UPDATE' THEN
+    -- On UPDATE only the DELTA is new capacity, because the old size is already in the rollup; on
+    -- INSERT the whole file is — and so it is for a row the rollup had released.
+    IF TG_OP = 'UPDATE'
+       AND OLD.status NOT IN ('quarantined'::files.file_status, 'error'::files.file_status) THEN
         v_projected := v_used + (NEW.size_bytes - COALESCE(OLD.size_bytes, 0));
     ELSE
         v_projected := v_used + NEW.size_bytes;
@@ -514,6 +525,191 @@ BEGIN
             MESSAGE = 'files: an asset''s bytes and processing state are written by the upload pipeline only';
     END IF;
     RETURN NEW;
+END;
+$$;
+-- #endregion
+
+-- #region 8. files.fn_owns_library — may the caller file things into this library?
+-- The WRITE-side twin of fn_can_read's ownership arms, for the items/folders INSERT and UPDATE
+-- policies. Those policies long checked only `owner_user_id = auth.uid()` — who CREATED the row — and
+-- never whether the creator belonged to the library they filed it into, so any signed-in user could
+-- plant a link ("Invoice.pdf" → anywhere) or a folder into another team's library and every member of
+-- that team would see it as their own team's file. Verified by execution before this was written.
+--
+-- A personal row names no entity; an entity row needs ACTIVE membership of the entity it names. The
+-- membership helpers are definer functions the policies already call, so this stays INVOKER.
+CREATE OR REPLACE FUNCTION files.fn_owns_library (
+    p_owner_type files.owner_kind,
+    p_owner_entity_id uuid
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT CASE p_owner_type
+        WHEN 'user'::files.owner_kind THEN p_owner_entity_id IS NULL
+        WHEN 'team'::files.owner_kind THEN
+            p_owner_entity_id IS NOT NULL AND org.is_active_team_member (p_owner_entity_id)
+        WHEN 'business'::files.owner_kind THEN
+            p_owner_entity_id IS NOT NULL AND org.is_active_business_member (p_owner_entity_id)
+        WHEN 'organisation'::files.owner_kind THEN
+            p_owner_entity_id IS NOT NULL AND org.is_organisation_member (p_owner_entity_id)
+        ELSE false
+    END;
+$$;
+-- #endregion
+
+-- #region 9. files.get_storage_quota — one principal's allowance, for the principal only
+-- Everything the storage meter shows, in one round trip: the effective limit (plan × standing ×
+-- grants, through finance.fn_effective_limit — so the ladder lives in one place), the bytes the
+-- usage rollup measured, the plan it came from, whether a grant raised it, and whether the cap is
+-- enforced at all.
+--
+-- A definer because the resolver and the plan tables are not the caller's to read — and therefore it
+-- authorises first: the caller must BE the user, or an active member of the entity, whose allowance
+-- they ask for. An allowance is a fact about someone's subscription and not public.
+--
+-- `limit_mib` NULL means unlimited (the fn_effective_limit convention). Refusals: 42501.
+CREATE OR REPLACE FUNCTION files.get_storage_quota (
+    p_owner_type files.owner_kind,
+    p_owner_id uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid ();
+    v_subject text := p_owner_type::text;
+    v_plan uuid;
+    v_code text;
+    v_limit integer;
+    v_used bigint;
+    v_count integer;
+    v_grant boolean;
+    v_enforced boolean;
+BEGIN
+    IF v_uid IS NULL OR p_owner_id IS NULL THEN
+        RAISE EXCEPTION 'Sign in to read a storage allowance' USING ERRCODE = '42501';
+    END IF;
+    IF NOT (
+        (p_owner_type = 'user'::files.owner_kind AND p_owner_id = v_uid)
+        OR (p_owner_type = 'team'::files.owner_kind AND org.is_active_team_member (p_owner_id))
+        OR (p_owner_type = 'business'::files.owner_kind AND org.is_active_business_member (p_owner_id))
+        OR (p_owner_type = 'organisation'::files.owner_kind AND org.is_organisation_member (p_owner_id))
+    ) THEN
+        RAISE EXCEPTION 'That allowance isn''t yours to read' USING ERRCODE = '42501';
+    END IF;
+
+    v_plan := finance.fn_active_plan (v_subject, p_owner_id);
+    SELECT p.code INTO v_code FROM finance.plans p WHERE p.id = v_plan;
+    v_limit := finance.fn_effective_limit (v_subject, p_owner_id, 'storage_megabytes'::finance.entitlement_key);
+
+    SELECT EXISTS (
+        SELECT 1 FROM finance.entitlement_grants g
+        WHERE g.subject_type = v_subject
+          AND g.subject_id = p_owner_id
+          AND g.entitlement_key = 'storage_megabytes'::finance.entitlement_key
+          AND g.starts_at <= now ()
+          AND (g.expires_at IS NULL OR g.expires_at > now ())
+    ) INTO v_grant;
+
+    SELECT u.bytes_used, u.item_count INTO v_used, v_count
+    FROM files.storage_usage u
+    WHERE u.owner_type = p_owner_type AND u.owner_id = p_owner_id;
+
+    SELECT (p.value #>> '{}')::boolean INTO v_enforced
+    FROM security.platform_params p
+    WHERE p.key = 'storage_quota_enforced';
+
+    RETURN jsonb_build_object(
+        'limit_mib', v_limit,
+        'used_bytes', COALESCE(v_used, 0),
+        'item_count', COALESCE(v_count, 0),
+        'plan_code', v_code,
+        'from_grant', COALESCE(v_grant, false),
+        'enforced', COALESCE(v_enforced, false)
+    );
+END;
+$$;
+-- #endregion
+
+-- #region 10. files.fn_record_download — the download ledger's only writer
+-- Appends one download and bumps the counters it moves, in ONE transaction. For a share download the
+-- link's own count is bumped FIRST and only while the link is still live and under its limit — a
+-- single guarded UPDATE, so a link with one download left cannot serve two to concurrent requests —
+-- and the link must actually reach the file (the file itself, or a folder the file sits in).
+--
+-- Service role only: the server calls this after it has decided the caller may read the file, and
+-- `p_actor` is the identity the SESSION evidenced. "This was downloaded" is a server observation, never
+-- a claim a browser makes (the table carries no client INSERT policy for the same reason).
+--
+-- Only a SETTLED file (`status = 'uploaded'`; a link is written so too) can be downloaded: a pending,
+-- refused or failed upload has no bytes, and recording a download of one would write a false ledger
+-- line and spend a share link's allowance on nothing.
+-- Refusals: PS404 the link is not live or does not reach the file · PB404 no such file.
+CREATE OR REPLACE FUNCTION files.fn_record_download (
+    p_item_id uuid,
+    p_actor uuid,
+    p_device text,
+    p_via files.download_via,
+    p_share_slug text
+)
+RETURNS files.download_events
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_event files.download_events;
+    v_target uuid;
+    v_folder uuid;
+BEGIN
+    -- Checked before the share's count moves, so a refusal here never costs the link a download.
+    IF NOT EXISTS (
+        SELECT 1 FROM files.items i
+        WHERE i.id = p_item_id AND i.deleted_at IS NULL AND i.status = 'uploaded'::files.file_status
+    ) THEN
+        RAISE EXCEPTION 'No such file' USING ERRCODE = 'PB404';
+    END IF;
+
+    IF p_share_slug IS NOT NULL THEN
+        UPDATE files.share_links s
+           SET download_count = s.download_count + 1
+         WHERE s.slug = p_share_slug
+           AND s.revoked_at IS NULL
+           AND (s.expires_at IS NULL OR s.expires_at > now ())
+           AND (s.download_limit IS NULL OR s.download_count < s.download_limit)
+        RETURNING s.item_id, s.folder_id INTO v_target, v_folder;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'That link is no longer available' USING ERRCODE = 'PS404';
+        END IF;
+        IF NOT (
+            v_target = p_item_id
+            OR (v_folder IS NOT NULL AND EXISTS (
+                SELECT 1 FROM files.items i
+                WHERE i.id = p_item_id AND i.folder_id = v_folder AND i.deleted_at IS NULL
+            ))
+        ) THEN
+            RAISE EXCEPTION 'That link does not reach this file' USING ERRCODE = 'PS404';
+        END IF;
+    END IF;
+
+    UPDATE files.items i
+       SET download_count = i.download_count + 1
+     WHERE i.id = p_item_id AND i.deleted_at IS NULL;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'No such file' USING ERRCODE = 'PB404';
+    END IF;
+
+    INSERT INTO files.download_events (item_id, actor_user_id, device_fingerprint, via, share_slug)
+    VALUES (p_item_id, p_actor, NULLIF (p_device, ''), p_via, p_share_slug)
+    RETURNING * INTO v_event;
+    RETURN v_event;
 END;
 $$;
 -- #endregion

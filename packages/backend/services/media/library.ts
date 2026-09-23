@@ -153,7 +153,7 @@ function mediaFacts(metadata: unknown): { width: number; height: number; duratio
 }
 
 /** The envelope written to `files.items.metadata` for a still the pipeline decoded. */
-function imageEnvelope(result: ImageJobResult): AssetMetadata {
+export function imageEnvelope(result: ImageJobResult): AssetMetadata {
 	return {
 		version: ASSET_METADATA_VERSION as 1,
 		source: "server",
@@ -503,7 +503,7 @@ async function ingest(bytes: Uint8Array, mime: string): Promise<ImageJobResult> 
 }
 
 /** Upload encoded tiers beside `path`, returning the rows to record; throws when storage refuses. */
-async function writeTiers(
+export async function writeTiers(
 	bucket: string,
 	path: string,
 	tiers: Record<VariantTier, EncodedImage>,

@@ -31,7 +31,9 @@ import type { ProfileOwnerType } from "@projective/types/profile";
  * The schedule owner a profile owner maps to. An individual is ONE schedule (`user`) whatever their
  * freelancer flag, so switching it can never strand a second calendar.
  */
-export function scheduleOwnerType(type: ProfileOwnerType): "user" | "team" | "business" | "organisation" {
+export function scheduleOwnerType(
+	type: ProfileOwnerType,
+): "user" | "team" | "business" | "organisation" {
 	return type;
 }
 
@@ -149,7 +151,12 @@ export async function fetchOwnerAvailability(
 		if (rules.error || call.error) return undefined;
 		const bands: OwnerBand[] = ((rules.data ?? []) as RuleRow[])
 			.filter((r) => r.is_active)
-			.map((r) => ({ weekday: r.weekday, startMinute: r.start_minute, endMinute: r.end_minute, kind: r.kind }));
+			.map((r) => ({
+				weekday: r.weekday,
+				startMinute: r.start_minute,
+				endMinute: r.end_minute,
+				kind: r.kind,
+			}));
 		return {
 			timezone: schedule.timezone,
 			published: schedule.is_published,

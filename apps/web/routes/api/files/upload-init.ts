@@ -2,7 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { UploadInitSchema } from "@projective/types/files";
 import { toFieldErrors, toFilesResponse } from "@features/files/core/respond.ts";
 import { FilesBackendService } from "@server/services/files/FilesBackendService.ts";
-import { actorFromContext } from "@server/services/files/acting-principal.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import type { ServiceResult } from "@server/services/ServiceResult.ts";
 import type { UploadTicket } from "@projective/types/files";
 
@@ -24,7 +24,7 @@ import type { UploadTicket } from "@projective/types/files";
  * ticket's `signedUrl` with the headers it returned; streaming a 500 MB body through a Deno handler
  * would occupy a request worker for minutes and buy nothing.
  *
- * No server-side capability guard (Decision #53(b)) — see `./list.ts`.
+ * Runs under the caller's own session: RLS is the gate, and the library is the acting context's.
  */
 
 // #region Quota-denial telemetry
@@ -59,7 +59,7 @@ export const handler = define.handlers({
 
 		const result = await FilesBackendService.uploadInit(
 			parsed.data,
-			actorFromContext(ctx.state.userContext),
+			readActor(ctx),
 		);
 
 		if (isQuotaDenial(result)) {

@@ -14,8 +14,6 @@ import {
 import {
 	type AssetItem,
 	type AssetOwnerType,
-	type FilesSim,
-	simToQuery,
 } from "../types/file-types.ts";
 import type { FilesResult } from "../types/results.ts";
 
@@ -39,8 +37,7 @@ import type { FilesResult } from "../types/results.ts";
  * a connection is a stored authorization to act at a third party on someone's behalf, so a
  * client-supplied user would let a caller enumerate whose accounts are linked. The routes resolve the
  * acting principal from the session. `importAsset` does carry an `owner`, and that is a REQUEST to
- * file the object into that library which the fat service authorises — never the answer (see
- * `@server/services/files/acting-principal.ts`).
+ * file the object into that library which the fat service authorises — never the answer.
  *
  * **No token has a shape anywhere in this file, and none can.** {@link UserConnection} mirrors
  * `integrations.v_my_connections`, the definer view that physically cannot project a token column, and
@@ -51,17 +48,6 @@ import type { FilesResult } from "../types/results.ts";
  */
 
 // #region Query building
-
-/** Append the developer simulation overlay to an existing query string (the SSOT emits a leading `&`). */
-function withSim(query: string, sim?: FilesSim): string {
-	return `${query}${simToQuery(sim)}`;
-}
-
-/** The same overlay where there may be no other param to hang it off. */
-function simQuery(sim?: FilesSim): string {
-	const q = simToQuery(sim);
-	return q ? `?${q.slice(1)}` : "";
-}
 
 /** A synchronous validation failure, shaped exactly like a route's 422 so callers branch once. */
 function invalid<T>(
@@ -99,8 +85,8 @@ export const IntegrationsService = {
 	 * conferencing are two axes, not one chip set — a user may sync a Google calendar and host on Zoom,
 	 * and collapsing them would make a booking surface assume the calendar provider can mint a room.
 	 */
-	connections(sim?: FilesSim): Promise<FilesResult<ConnectionsView>> {
-		return getFiles<ConnectionsView>(`/api/integrations/connections${simQuery(sim)}`);
+	connections(): Promise<FilesResult<ConnectionsView>> {
+		return getFiles<ConnectionsView>("/api/integrations/connections");
 	},
 
 	// #endregion
@@ -190,7 +176,7 @@ export const IntegrationsService = {
 	 * have no folder objects at all (S3). `cursor` is the PROVIDER's opaque continuation token and must
 	 * be echoed back verbatim; a connector that pages by token cannot be resumed from an id we invented.
 	 */
-	browse(params: DriveBrowseParams, sim?: FilesSim): Promise<FilesResult<DriveBrowsePage>> {
+	browse(params: DriveBrowseParams): Promise<FilesResult<DriveBrowsePage>> {
 		const parsed = DriveBrowseParamsSchema.safeParse(params);
 		if (!parsed.success) {
 			return Promise.resolve(invalid(parsed.error, "That drive query is not valid."));
@@ -200,9 +186,7 @@ export const IntegrationsService = {
 		if (parsed.data.path) qs.set("path", parsed.data.path);
 		if (parsed.data.cursor) qs.set("cursor", parsed.data.cursor);
 		if (parsed.data.limit) qs.set("limit", String(parsed.data.limit));
-		return getFiles<DriveBrowsePage>(
-			`/api/integrations/browse?${withSim(qs.toString(), sim)}`,
-		);
+		return getFiles<DriveBrowsePage>(`/api/integrations/browse?${qs.toString()}`);
 	},
 
 	/**

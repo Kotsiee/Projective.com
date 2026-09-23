@@ -1,24 +1,26 @@
 import { page } from "fresh";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { define } from "@web/utils/state.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import WalletActivityScreen from "@features/wallet/islands/WalletActivityScreen.island.tsx";
-import { resolveActivity, resolveDisplayCurrency } from "@features/wallet/core/wallet-ssr.ts";
-import { defaultWalletParam } from "@features/wallet/core/wallet-model.ts";
+import WalletUnavailable from "@features/wallet/islands/WalletUnavailable.island.tsx";
+import { resolveActivity, resolveWalletFrame } from "@features/wallet/core/wallet-ssr.ts";
 
 /** `/wallet/activity` — the cashflow / burn-down charts. Thin controller; the island refines client-side. */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const context = asAuthenticatedContext(ctx.state.userContext);
-		const activity = resolveActivity(context, ctx.url);
-		const wallet = ctx.url.searchParams.get("w") ?? defaultWalletParam(context);
-		const display = resolveDisplayCurrency(context, ctx.url);
+		const actor = readActor(ctx);
+		const [read, frame] = await Promise.all([
+			resolveActivity(context, ctx.url, actor),
+			resolveWalletFrame(context, ctx.url, actor),
+		]);
 		ctx.state.title = "Activity · Wallet";
-		return page({ activity, wallet, display });
+		return page({ read, ...frame }, read.ok ? undefined : { status: 503 });
 	},
 });
 
 export default define.page<typeof handler>(function ActivityPage({ data }) {
-	return (
-		<WalletActivityScreen initial={data.activity} wallet={data.wallet} display={data.display} />
-	);
+	if (!data.read.ok) return <WalletUnavailable title="Activity" message={data.read.message} />;
+	return <WalletActivityScreen initial={data.read.data} wallet={data.wallet} display={data.display} />;
 });

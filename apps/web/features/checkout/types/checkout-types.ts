@@ -8,8 +8,8 @@
  * a field the server stopped sending. The re-export exists so a feature file imports one path instead
  * of four, exactly as `wallet/types/wallet-types.ts` does.
  *
- * What IS declared here is feature-local and has no server counterpart: the client's mirror of the
- * simulation axes, the SSR bootstraps, and the small vocabulary the lane and bands navigate by.
+ * What IS declared here is feature-local and has no server counterpart: the device capabilities a
+ * request reports, the SSR bootstraps, and the small vocabulary the lane and bands navigate by.
  */
 
 // #region SSOT re-exports (never redeclared)
@@ -73,81 +73,35 @@ export type {
 	TaxBreakdown,
 } from "@projective/types/finance";
 export type { BusinessBilling } from "@projective/types/finance";
-
-// Re-exporting a type does not bind it in THIS module's scope, and the two below are referenced by
-// the `BasketSim` mirror further down — so they are imported as well as re-exported.
-import type { BillingContextKind, InvoicingMode } from "@projective/types/finance";
 // #endregion
 
-// #region Simulation axes (the CLIENT mirror of `@server/services/finance/basket-query.ts`)
+// #region Device capabilities
 /**
- * The client's mirror of the fat service's `BasketSim`.
+ * What this device and deployment can pay with — capability reports, never a simulation of the buyer.
  *
- * It is restated rather than imported because `packages/backend` is a SERVER workspace member and an
- * island may not reach into it (root CLAUDE.md §2) — the two sides share the query-string CONTRACT,
- * never a module, exactly as the dev seam's read and write sides do. Every member is optional, so an
- * un-simulated request is byte-identical to one from before this seam existed.
+ * They travel as query params so the server's provider offer can consult them. While no payment
+ * processor is connected the server refuses every processor-backed route regardless, so these decide
+ * nothing today; they are sent because they are true, and because the day a processor is connected
+ * the offer must not have to be re-plumbed to learn them.
  */
-export interface BasketSim {
-	/** Mirrors `DevPersona` — decides whether a personal basket spends as `user` or `freelancer`. */
-	persona?: "client" | "freelancer" | "team" | "business";
-	/** Mirrors `DevWorkspaceRole` — `non_member` is what reaches the individual-on-entity refusal. */
-	workspaceRole?: "owner" | "admin" | "lead" | "member" | "non_member";
-	/** Mirrors `DevWorkspaceVerification` — anything but `verified` blocks an entity checkout. */
-	kyb?: "unverified" | "kyb_pending" | "verified";
-	/** Whether the session is acting AS the entity rather than personally. */
-	actingContext?: boolean;
-	/** Which principal's basket is being spent from (`simOwnerScope`). */
-	ownerScope?: BasketOwnerScope;
-	/** The payment-offer preset (`simProviders`). */
-	providers?: PaymentOfferPreset;
-	/** The wallet's position against the resolved total (`simWalletCover`). */
-	walletCover?: WalletCoverage;
-	/** The saved-card wallet's shape (`simCards`). */
-	cards?: SavedCardState;
-	/** Whether this browser offers Google Pay — a real capability sniff, not a simulation. */
+export interface DeviceCapabilities {
+	/**
+	 * Whether this browser offers Google Pay. Left ABSENT: availability can only be determined with
+	 * Google's own `pay.js`, which this platform does not load, and an unknown capability is not
+	 * reported as either answer.
+	 */
 	googlePay?: boolean;
-	/** Whether this device offers Apple Pay — a real capability sniff, not a simulation. */
+	/** Whether this device offers Apple Pay (`ApplePaySession.canMakePayments()`). */
 	applePay?: boolean;
-	/** Whether PayPal is configured for this deployment — deployment config, not a simulation. */
+	/** Whether PayPal is configured for this deployment. */
 	paypalEnabled?: boolean;
-	/** Whether the buyer's saved details are complete (`simDetails`) — drives the Details auto-skip. */
-	details?: BuyerDetailsState;
-	/** Which billing identity the Details form opens on (`simBilling`). */
-	billing?: BillingContextKind;
-	/** The acting entity's invoicing mode (`simInvoicing`). */
-	invoicing?: InvoicingMode;
-	/** Whether this purchase clears the acting member's spending limit (`simSpendLimit`). */
-	spendLimit?: SpendLimitState;
-	/** Which fulfilment routes the confirmation hub renders (`simFulfilment`). */
-	fulfilment?: FulfilmentMix;
-	/** Which conferencing provider a booked session resolves to (`simConferencing`). */
-	conferencing?: ConferencingChoice;
 }
-
-/** Whether the buyer already has complete saved delivery + billing details. */
-export type BuyerDetailsState = "saved" | "missing";
-/** Whether this purchase clears the acting member's spending limit. */
-export type SpendLimitState = "within" | "over";
-/** Which fulfilment routes the confirmation hub has to render. */
-export type FulfilmentMix = "mixed" | "products" | "tickets" | "sessions" | "pending";
-/** Which conferencing provider a booked session's join link resolves to. */
-export type ConferencingChoice = "zoom" | "google" | "microsoft_teams" | "none";
-
-/** Which principal's money a basket spends. */
-export type BasketOwnerScope = "personal" | "team" | "business" | "organisation";
-/** A preset over the checkout's payment offer, applied as INPUTS to the SSOT eligibility rules. */
-export type PaymentOfferPreset = "all" | "no_wallet" | "card_only" | "invoice";
-/** Whether the acting wallet covers the resolved total, or falls short of it. */
-export type WalletCoverage = "covers" | "shortfall";
-/** The shape of the account's saved-card wallet. */
-export type SavedCardState = "seeded" | "none" | "expired";
 // #endregion
 
 // #region Read context
 /**
  * The shared read context every `BasketService` / `CheckoutService` / `CardsService` call threads: which
- * basket, whose money, in which currency, narrowed to which deep link, under which simulation.
+ * basket, whose money, in which currency, narrowed to which deep link, from which device.
  *
  * Mirrors `WalletContext`. It is the client half of the query string the fat service's `basketQueryFrom`
  * parses, so the two are one contract read from both ends.
@@ -163,8 +117,8 @@ export interface CheckoutContext {
 	projectId?: string | null;
 	/** `?service_id=` narrowing — a checkout scoped to one service's lines. */
 	serviceId?: string | null;
-	/** The live dev-simulation knobs; `undefined` in production and whenever no override is active. */
-	sim?: BasketSim;
+	/** What this device can pay with — see {@link DeviceCapabilities}. */
+	device?: DeviceCapabilities;
 	/**
 	 * The payment route the buyer has selected, when they have. Read server-side only to decide
 	 * whether the gateway-contribution offer applies — a wallet or invoice payment touches no card

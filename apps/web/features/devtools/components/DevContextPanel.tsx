@@ -4,44 +4,19 @@ import type { UserContext } from "@projective/types/auth";
 import {
 	ACCOUNT_TYPES,
 	applyDevContext,
-	DEV_ASSET_VISIBILITIES,
-	DEV_BASKET_OWNERS,
-	DEV_BILLING_CONTEXTS,
-	DEV_BUYER_DETAILS,
-	DEV_CONFERENCING,
-	DEV_CONNECTION_STATES,
-	DEV_DEDUP_STATES,
-	DEV_DISPLAY_CURRENCIES,
-	DEV_EVENT_RESCHEDULES,
-	DEV_EVENT_RSVPS,
-	DEV_EVENT_SEATS,
-	DEV_FULFILMENT_MIXES,
-	DEV_INVOICING_MODES,
 	DEV_LAYOUT_DIRECTIONS,
-	DEV_LINK_SCANS,
 	DEV_MEMBER_ROLES,
 	DEV_MEMBERSHIP_STATES,
 	DEV_MESSAGING_ROLES,
 	DEV_MIC_PERMISSIONS,
-	DEV_PAYMENT_PROVIDERS,
 	DEV_PROJECT_ONBOARDINGS,
 	DEV_PROJECT_TYPES,
 	DEV_ROLES,
 	DEV_ROSTER_STATES,
-	DEV_SAVED_CARDS,
 	DEV_SERVICE_TYPES,
 	DEV_SESSION_BOOKINGS,
-	DEV_SPEND_LIMITS,
 	DEV_STAGE_ASSIGNMENTS,
-	DEV_STORAGE_PROVIDERS,
-	DEV_STORAGE_QUOTAS,
 	DEV_SUBMISSION_STATES,
-	DEV_WALLET_COVERAGES,
-	DEV_WALLET_FUND_MIXES,
-	DEV_WALLET_KYCS,
-	DEV_WALLET_SMOOTHERS,
-	DEV_WALLET_STANDINGS,
-	DEV_WALLET_VAULT_ROLES,
 	DEV_WORKSPACE_KINDS,
 	DEV_WORKSPACE_ROLES,
 	DEV_WORKSPACE_VERIFICATIONS,
@@ -470,67 +445,7 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 					</div>
 				</Field>
 
-				<div class="dev-ctx__grouphead">Wallet / Finance</div>
-
-				<Field label="Vault role" hint="capability">
-					<Segment
-						name="Vault role"
-						options={DEV_WALLET_VAULT_ROLES}
-						value={o.walletVaultRole}
-						disabled={!o.enabled}
-						onChange={(walletVaultRole) => patchDevContext({ walletVaultRole })}
-					/>
-				</Field>
-
-				<Field label="Verification" hint="KYC state">
-					<Segment
-						name="Verification"
-						options={DEV_WALLET_KYCS}
-						value={o.walletKyc}
-						disabled={!o.enabled}
-						onChange={(walletKyc) => patchDevContext({ walletKyc })}
-					/>
-				</Field>
-
-				<Field label="Income Smoother" hint="eligibility">
-					<Segment
-						name="Income Smoother"
-						options={DEV_WALLET_SMOOTHERS}
-						value={o.walletSmoother}
-						disabled={!o.enabled}
-						onChange={(walletSmoother) => patchDevContext({ walletSmoother })}
-					/>
-				</Field>
-
-				<Field label="Fund states" hint="balance mix">
-					<Segment
-						name="Fund states"
-						options={DEV_WALLET_FUND_MIXES}
-						value={o.walletFundMix}
-						disabled={!o.enabled}
-						onChange={(walletFundMix) => patchDevContext({ walletFundMix })}
-					/>
-				</Field>
-
-				<Field label="Standing" hint="earned rung">
-					<Segment
-						name="Standing"
-						options={DEV_WALLET_STANDINGS}
-						value={o.walletStanding}
-						disabled={!o.enabled}
-						onChange={(walletStanding) => patchDevContext({ walletStanding })}
-					/>
-				</Field>
-
-				<Field label="Display currency" hint="Intl format">
-					<Segment
-						name="Display currency"
-						options={DEV_DISPLAY_CURRENCIES}
-						value={o.displayCurrency}
-						disabled={!o.enabled}
-						onChange={(displayCurrency) => patchDevContext({ displayCurrency })}
-					/>
-				</Field>
+				<div class="dev-ctx__grouphead">Presentation</div>
 
 				<Field label="Direction" hint="LtR / RtL">
 					<Segment
@@ -544,208 +459,7 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 			</div>
 
 			<div class="dev-ctx__group">
-				<div class="dev-ctx__grouphead">Files / Storage</div>
-
-				<Field label="Cloud provider" hint="connected drive">
-					<Segment
-						name="Cloud provider"
-						options={DEV_STORAGE_PROVIDERS}
-						value={o.storageProvider}
-						disabled={!o.enabled}
-						onChange={(storageProvider) => patchDevContext({ storageProvider })}
-					/>
-				</Field>
-
-				<Field label="Connection" hint="token lifecycle">
-					<Segment
-						name="Connection"
-						options={DEV_CONNECTION_STATES}
-						value={o.connectionState}
-						disabled={!o.enabled}
-						onChange={(connectionState) => patchDevContext({ connectionState })}
-					/>
-				</Field>
-
-				<Field label="Storage quota" hint="usage position">
-					<Segment
-						name="Storage quota"
-						options={DEV_STORAGE_QUOTAS}
-						value={o.storageQuota}
-						disabled={!o.enabled}
-						onChange={(storageQuota) => patchDevContext({ storageQuota })}
-					/>
-				</Field>
-
-				<Field label="Asset scope" hint="privacy">
-					<Segment
-						name="Asset scope"
-						options={DEV_ASSET_VISIBILITIES}
-						value={o.assetVisibility}
-						disabled={!o.enabled}
-						onChange={(assetVisibility) => patchDevContext({ assetVisibility })}
-					/>
-				</Field>
-
-				<Field label="Link scan" hint="safety verdict">
-					<Segment
-						name="Link scan"
-						options={DEV_LINK_SCANS}
-						value={o.linkScan}
-						disabled={!o.enabled}
-						onChange={(linkScan) => patchDevContext({ linkScan })}
-					/>
-				</Field>
-
-				<Field label="Next upload" hint="dedup verdict">
-					<Segment
-						name="Next upload"
-						options={DEV_DEDUP_STATES}
-						value={o.dedupState}
-						disabled={!o.enabled}
-						onChange={(dedupState) => patchDevContext({ dedupState })}
-					/>
-				</Field>
-			</div>
-
-			<div class="dev-ctx__group">
-				<div class="dev-ctx__grouphead">Checkout</div>
-
-				<Field label="Basket scope" hint="whose money">
-					<Segment
-						name="Basket scope"
-						options={DEV_BASKET_OWNERS}
-						value={o.basketOwner}
-						disabled={!o.enabled}
-						onChange={(basketOwner) => patchDevContext({ basketOwner })}
-					/>
-				</Field>
-
-				<Field label="Saved details" hint="Details auto-skip">
-					<Segment
-						name="Saved details"
-						options={DEV_BUYER_DETAILS}
-						value={o.buyerDetails}
-						disabled={!o.enabled}
-						onChange={(buyerDetails) => patchDevContext({ buyerDetails })}
-					/>
-				</Field>
-
-				<Field label="Billing identity" hint="person / company">
-					<Segment
-						name="Billing identity"
-						options={DEV_BILLING_CONTEXTS}
-						value={o.billingContext}
-						disabled={!o.enabled}
-						onChange={(billingContext) => patchDevContext({ billingContext })}
-					/>
-				</Field>
-
-				<Field label="Invoicing" hint="business only">
-					<Segment
-						name="Invoicing"
-						options={DEV_INVOICING_MODES}
-						value={o.invoicingMode}
-						disabled={!o.enabled || o.billingContext !== "business"}
-						onChange={(invoicingMode) => patchDevContext({ invoicingMode })}
-					/>
-				</Field>
-
-				<Field label="Payment offer" hint="provider preset">
-					<Segment
-						name="Payment offer"
-						options={DEV_PAYMENT_PROVIDERS}
-						value={o.paymentProviders}
-						disabled={!o.enabled}
-						onChange={(paymentProviders) => patchDevContext({ paymentProviders })}
-					/>
-				</Field>
-
-				<Field label="Wallet position" hint="against the total">
-					<Segment
-						name="Wallet position"
-						options={DEV_WALLET_COVERAGES}
-						value={o.walletCoverage}
-						disabled={!o.enabled}
-						onChange={(walletCoverage) => patchDevContext({ walletCoverage })}
-					/>
-				</Field>
-
-				<Field label="Saved cards" hint="cards on file">
-					<Segment
-						name="Saved cards"
-						options={DEV_SAVED_CARDS}
-						value={o.savedCards}
-						disabled={!o.enabled}
-						onChange={(savedCards) => patchDevContext({ savedCards })}
-					/>
-				</Field>
-
-				<Field label="Spending limit" hint="needs approval">
-					<Segment
-						name="Spending limit"
-						options={DEV_SPEND_LIMITS}
-						value={o.spendLimit}
-						disabled={!o.enabled}
-						onChange={(spendLimit) => patchDevContext({ spendLimit })}
-					/>
-				</Field>
-
-				<Field label="Fulfilment mix" hint="confirmation routes">
-					<Segment
-						name="Fulfilment mix"
-						options={DEV_FULFILMENT_MIXES}
-						value={o.fulfilmentMix}
-						disabled={!o.enabled}
-						onChange={(fulfilmentMix) => patchDevContext({ fulfilmentMix })}
-					/>
-				</Field>
-
-				<Field label="Conferencing" hint="session join link">
-					<Segment
-						name="Conferencing"
-						options={DEV_CONFERENCING}
-						value={o.conferencing}
-						disabled={!o.enabled ||
-							(o.fulfilmentMix !== "mixed" && o.fulfilmentMix !== "sessions")}
-						onChange={(conferencing) => patchDevContext({ conferencing })}
-					/>
-				</Field>
-
-				{
-					/* Calendar & Events — the Event Modal's four gates. The 1-on-1 ⁄ group axis is NOT
-				    repeated here: "Service type" above already discriminates the three engagement
-				    archetypes, and a second near-duplicate control would only make it ambiguous which
-				    one wins. */
-				}
-				<Field label="Event seat" hint="host / attendee / stranger">
-					<Segment
-						name="Event seat"
-						options={DEV_EVENT_SEATS}
-						value={o.eventSeat}
-						disabled={!o.enabled}
-						onChange={(eventSeat) => patchDevContext({ eventSeat })}
-					/>
-				</Field>
-
-				<Field label="Your RSVP" hint="the acting seat's answer">
-					<Segment
-						name="Your RSVP"
-						options={DEV_EVENT_RSVPS}
-						value={o.eventRsvp}
-						disabled={!o.enabled || o.eventSeat === "non_party"}
-						onChange={(eventRsvp) => patchDevContext({ eventRsvp })}
-					/>
-				</Field>
-
-				<Field label="Reschedule" hint="negotiation state">
-					<Segment
-						name="Reschedule"
-						options={DEV_EVENT_RESCHEDULES}
-						value={o.eventReschedule}
-						disabled={!o.enabled || o.eventSeat === "non_party"}
-						onChange={(eventReschedule) => patchDevContext({ eventReschedule })}
-					/>
-				</Field>
+				<div class="dev-ctx__grouphead">Money</div>
 
 				{
 					/* Ungated by the master switch on purpose: the debugger reads LIVE balances, so it is

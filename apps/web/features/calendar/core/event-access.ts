@@ -1,4 +1,9 @@
-import { type DevSeamState, personaCapabilities, readDevSeam } from "@web/utils/dev-seam.ts";
+import {
+	type DevSeamState,
+	personaCapabilities,
+	readDevSeam,
+	subscribeDevSeam,
+} from "@web/utils/dev-seam.ts";
 
 /**
  * event-access — the pure, shipping-safe model that resolves what the acting viewer may DO with a
@@ -49,6 +54,6 @@ export function resolveEventAccess(
 	return { isClient: caps.isClient, isFreelancer: caps.isFreelancer };
 }
 
-export { readDevSeam };
+export { readDevSeam, subscribeDevSeam };
 export type { DevSeamState };
 // #endregion

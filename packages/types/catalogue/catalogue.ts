@@ -13,12 +13,11 @@ export { ServiceType } from "../explore/items.ts";
  *
  * This is the platform's FIRST write-oriented thin/fat surface: the read projections a seller browses
  * (the listing LIST + a single listing's editable detail + light analytics) plus the mutation payloads
- * that create / update / publish a listing. Like the other domains it is a READ+WRITE projection over
- * fixtures today — the fat {@link CatalogueBackendService} DERIVES the seller's catalogue from the
- * discovery corpus (re-owned to the acting seller) while `CATALOGUE_BACKEND_LIVE` is off, and stub
- * mutations echo an optimistic entity into an in-module session store; the RLS-scoped `catalogue.*`
- * tables + mutation policies are the deferred live path, slotting in behind the same gate with zero
- * shape churn.
+ * that create / update / publish a listing. The fat `CatalogueBackendService` reads the seller's own
+ * `catalogue.listings` under RLS and writes through the `catalogue.create_listing` /
+ * `save_listing` / `set_listing_status` doors, which keep each listing and its product or service
+ * blueprint in step in one transaction. A listing's address is its subject's slug (`svc-…`/`prd-…`),
+ * the same one its public `/view/[id]` page uses.
  *
  * Pricing is NOT forked: the service delivery model reuses {@link ServiceType}, the display projection
  * reuses {@link EntityPricingSchema} (from the Entity View domain), and the numeric per-unit prices are
@@ -61,28 +60,43 @@ export type CatalogueSort = z.infer<typeof CatalogueSort>;
 /** Sort direction (the `SortControl` asc/desc toggle). */
 export const CatalogueSortDir = z.enum(["asc", "desc"]);
 export type CatalogueSortDir = z.infer<typeof CatalogueSortDir>;
+
+/**
+ * The window the console's KPI strip reports sales over. The figures are COUNTED for the window from
+ * completed orders — never a 30-day figure scaled up or down, which would print a number nobody sold.
+ */
+export const CataloguePeriod = z.enum(["7d", "30d", "90d"]);
+export type CataloguePeriod = z.infer<typeof CataloguePeriod>;
+
+/** The days a {@link CataloguePeriod} spans. */
+export function periodDays(period: CataloguePeriod): number {
+	return period === "7d" ? 7 : period === "90d" ? 90 : 30;
+}
 // #endregion
 
 // #region Metrics (light inline analytics)
 /**
  * The light per-listing analytics shown inline on the owner card + rolled up into the console's KPI
- * strip. Deliberately shallow — a few counters plus a small `trend` sparkline series — the deep
- * analytics dashboard is a separate future surface (the console links out to it, it is not built here).
+ * strip. Deliberately shallow — a few counters — the deep analytics dashboard is a separate future
+ * surface (the console links out to it, it is not built here).
  */
 export const ListingMetricsSchema = z.object({
-	/** Listing views in the trailing 30 days. */
-	views30d: z.number().int().min(0),
-	/** Completed orders (products) / bookings (sessions) / engagements (projects) to date. */
+	/**
+	 * Lifetime views — the listing's own counter. There is no per-day view record, so this is never
+	 * presented as a figure for a window.
+	 */
+	views: z.number().int().min(0),
+	/** Completed orders and bookings (confirmed or invoiced) to date. */
 	orders: z.number().int().min(0),
-	/** Gross revenue attributed to this listing (whole currency units). */
+	/** Gross from those orders, in the listing's own currency (whole units). */
 	revenue: z.number().min(0),
 	/** Pre-formatted revenue label ("$1,240") so SSR and the client render identically. */
-	revenueLabel: z.string().max(20),
+	revenueLabel: z.string().max(24),
 	/** Average review score (0–5); `0` when there are no reviews yet. */
 	avgRating: z.number().min(0).max(5),
 	/** Number of reviews behind {@link avgRating}. */
 	ratingCount: z.number().int().min(0),
-	/** A short sparkline series (recent weekly views) — the inline trend chip. */
+	/** Reserved for a per-listing series; empty until one is recorded. */
 	trend: z.array(z.number()).max(24),
 });
 export type ListingMetrics = z.infer<typeof ListingMetricsSchema>;
@@ -105,6 +119,8 @@ export const ListingSummarySchema = z.object({
 	title: z.string().min(1).max(200),
 	category: z.string().max(80),
 	status: ListingStatus,
+	/** The ISO-4217 currency the listing is priced (and charged) in. */
+	currency: z.string().regex(/^[A-Z]{3}$/).default("USD"),
 	/** Cover thumbnail (the first media asset); `null` → the card renders a kind glyph. */
 	cover: z.string().max(600).nullable(),
 	/** The resolved display price block (fixed / pipeline range / per-session). */
@@ -222,6 +238,8 @@ export const CatalogueListParamsSchema = z.object({
 	search: z.string().max(160).optional(),
 	sort: CatalogueSort.optional(),
 	dir: CatalogueSortDir.optional(),
+	/** The window the KPI strip's sales figures cover (default `30d`). */
+	period: CataloguePeriod.optional(),
 	/** Icon-only quick filters — needs-attention / promoted / best-selling. */
 	needsAttention: z.boolean().optional(),
 	promoted: z.boolean().optional(),
@@ -237,12 +255,17 @@ export const CatalogueStatsSchema = z.object({
 	activeListings: z.number().int().min(0),
 	/** Every non-archived listing. */
 	totalListings: z.number().int().min(0),
-	views30d: z.number().int().min(0),
+	/** Lifetime views across the listings (a counter — never a windowed figure). */
+	views: z.number().int().min(0),
+	/** The window {@link orders}, {@link revenue} and {@link trend} were counted over. */
+	period: CataloguePeriod.default("30d"),
+	/** Completed orders and bookings inside the window. */
 	orders: z.number().int().min(0),
+	/** Their gross in the viewer's display currency (whole units) — converted only when mixed. */
 	revenue: z.number().min(0),
-	revenueLabel: z.string().max(20),
+	revenueLabel: z.string().max(24),
 	avgRating: z.number().min(0).max(5),
-	/** Aggregate weekly-views sparkline. */
+	/** Weekly gross across the window, oldest first (whole units) — the delta beside the revenue tile. */
 	trend: z.array(z.number()).max(24),
 });
 export type CatalogueStats = z.infer<typeof CatalogueStatsSchema>;
@@ -326,41 +349,60 @@ export type PublishListingInput = z.infer<typeof PublishListingInputSchema>;
 const PIPELINE_LOW = 0.5;
 const PIPELINE_HIGH = 2.0;
 
-/** `$1,240` — deterministic thousands grouping (no `toLocaleString`, so SSR == the client refetch). */
-export function money(n: number): string {
+/**
+ * `$1,240` / `£1,240` — a whole-unit price in its own currency. A fixed `en-US` locale, so the server
+ * render and the client refetch print the same string; an unknown code falls back to `GBP 1,240` rather
+ * than borrowing another currency's symbol.
+ */
+export function money(n: number, currency = "USD"): string {
 	const r = Math.round(n);
-	return `$${r.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
+	try {
+		return new Intl.NumberFormat("en-US", {
+			style: "currency",
+			currency: currency.toUpperCase(),
+			maximumFractionDigits: 0,
+			minimumFractionDigits: 0,
+		}).format(r);
+	} catch {
+		return `${currency.toUpperCase()} ${r.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
+	}
 }
 
 /**
  * Resolve a listing's display price projection from its editable pricing config. Mirrors the Entity
  * View `servicePricing` helper (Decision #41/#45) so a catalogue card and the public `/view/[id]` show
  * the SAME figure: a **Pipeline** renders a 0.5×–2.0× per-ticket range, a **Session** `$X / session`, a
- * **Group Session** `$X / seat`, everything else the fixed `amount`. Pure — used by the fixtures, the
- * console list, and the manage-page preview.
+ * **Group Session** `$X / seat`, everything else the fixed `amount` — each in the listing's currency.
+ * Pure — used by the console list and the manage-page preview.
  */
 export function resolveListingPricing(
-	input: { kind: CatalogueKind; serviceType: ServiceType | null; pricing: ListingPricing },
+	input: {
+		kind: CatalogueKind;
+		serviceType: ServiceType | null;
+		pricing: ListingPricing;
+		currency?: string;
+	},
 ): z.infer<typeof EntityPricingSchema> {
 	const { kind, serviceType, pricing } = input;
+	const currency = input.currency ?? "USD";
 	if (kind === "service" && serviceType === "Pipeline" && pricing.ticketPrice) {
 		const lo = Math.round(pricing.ticketPrice * PIPELINE_LOW);
 		const hi = Math.round(pricing.ticketPrice * PIPELINE_HIGH);
 		return {
 			mode: "pipeline",
-			display: `${money(lo)} – ${money(hi)}`,
+			display: `${money(lo, currency)} – ${money(hi, currency)}`,
 			caption: "per ticket",
 			min: lo,
 			max: hi,
 		};
 	}
 	if (kind === "service" && serviceType === "Session" && pricing.sessionPrice) {
-		return { mode: "session", display: money(pricing.sessionPrice), caption: "per session" };
+		return { mode: "session", display: money(pricing.sessionPrice, currency), caption: "per session" };
 	}
 	if (kind === "service" && serviceType === "Group Session" && pricing.sessionPrice) {
-		return { mode: "session", display: money(pricing.sessionPrice), caption: "per seat" };
+		return { mode: "session", display: money(pricing.sessionPrice, currency), caption: "per seat" };
 	}
-	if (pricing.amount > 0) return { mode: "fixed", display: money(pricing.amount) };
+	if (pricing.amount > 0) return { mode: "fixed", display: money(pricing.amount, currency) };
 	return { mode: "quote", display: "Set a price" };
 }
 

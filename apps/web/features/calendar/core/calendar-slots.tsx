@@ -1,12 +1,11 @@
 import type { ComponentChildren } from "preact";
 import type { UserContext } from "@projective/types/auth";
 import type { SchedulePage } from "@projective/types/scheduling";
-import { schedulingSimFromParams } from "@projective/types/scheduling";
+import type { ReadActor } from "@server/services/read-actor.ts";
 import CalendarLane from "../islands/CalendarLane.island.tsx";
 import CalendarHeaderBand from "../islands/CalendarHeaderBand.island.tsx";
 import CalendarFooterRig from "../islands/CalendarFooterRig.island.tsx";
 import { resolvePersonalCalendar } from "./calendar-ssr.ts";
-import { viewerFromContext } from "./viewer.ts";
 
 /**
  * calendar-slots — the three URL-keyed resolvers that give `/calendar` its lane and its two bands.
@@ -14,19 +13,12 @@ import { viewerFromContext } from "./viewer.ts";
  * The shell renders ABOVE the route, so a page cannot register a band; the correct chrome has to be
  * decided from the URL and shipped in the first byte, which is what every sibling surface does
  * (`walletLaneFor`, `filesHeaderFor`, `basketFooterFor`). Composed in
- * `routes/(dashboard)/_layout.tsx`.
- *
- * All three are SYNCHRONOUS, because their return value goes straight into the render tree and
- * Preact cannot render a promise. That is affordable here in a way it was not for `/files`:
- * `ScheduleBackendService.personalCalendar` is a synchronous fixture read, so the lane and the bands
- * paint their first frame with the same data the grid has rather than seeding from the URL and
- * fetching on mount.
+ * `routes/(dashboard)/_layout.tsx`, which awaits them.
  *
  * The three of them share ONE read per request. The layout calls them from three separate `??`
- * chains, so there is no single call site to thread a result through — but this page is not the
- * cheap per-project read the pattern was written for: it is the UNION of every engagement the
- * account is on, ~320 events, each one carrying a full coordination derivation and its zoned `Intl`
- * placement. Resolving it once per region was that work four times over for one page view.
+ * chains, so there is no single call site to thread a result through — and the agenda is the UNION
+ * of every engagement the account is on, read as them under RLS, so resolving it once per region
+ * would be that work three times over (four, with the page body) for one page view.
  *
  * Server-only (they reach `@server/services`); never imported by an island.
  */
@@ -41,44 +33,62 @@ function isCalendar(url: URL): boolean {
  *
  * Keyed on the `URL` OBJECT, not on its href: Fresh hands every resolver in one render the same
  * instance, and a different request is a different instance, so the entry cannot outlive the request
- * that made it and a `WeakMap` lets it be collected with the URL. That matters because the read is
- * only deterministic WITHIN a request — `withCoordination` consults the fixture mutation store, so
- * an RSVP written between two page views must produce a different answer, and an href-keyed cache
- * would happily serve the older one.
+ * that made it and a `WeakMap` lets it be collected with the URL. An href-keyed cache would serve one
+ * request's agenda to the next — including after an RSVP written between the two page views.
  *
- * The viewer is folded into the stored key rather than the map key: it is the other input the read
- * depends on, and if a future layout ever resolved two viewers against one URL, the mismatch must
- * miss rather than answer with the wrong person's calendar.
+ * It stores the PROMISE, so the three resolvers the layout starts together in one `Promise.all` wait
+ * on a single read rather than racing three. The reader's identity is folded into the stored key:
+ * it is the other input the read depends on, and if a layout ever resolved two readers against one
+ * URL, the mismatch must miss rather than answer with the wrong person's calendar.
  */
-const PAGE_CACHE = new WeakMap<URL, { key: string; page: SchedulePage | null }>();
+const PAGE_CACHE = new WeakMap<URL, { key: string; page: Promise<SchedulePage | null> }>();
 
-function resolveOnce(url: URL, context: UserContext): SchedulePage | null {
-	const viewer = viewerFromContext(context);
-	const key = `${viewer.authenticated}|${viewer.handle ?? ""}|${url.search}`;
+function resolveOnce(url: URL, actor: ReadActor): Promise<SchedulePage | null> {
+	const key = `${actor.userId}|${actor.contextId}`;
 	const hit = PAGE_CACHE.get(url);
 	if (hit && hit.key === key) return hit.page;
-	const { page } = resolvePersonalCalendar(viewer, schedulingSimFromParams(url.searchParams));
+	const page = resolvePersonalCalendar(actor).then((r) => r.page);
 	PAGE_CACHE.set(url, { key, page });
 	return page;
 }
 
 /** The lane: mini-month · search · kind filters, over an Events ⁄ Availability tab pair. */
-export function calendarLaneFor(url: URL, context: UserContext): ComponentChildren {
+export async function calendarLaneFor(
+	url: URL,
+	_context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
 	if (!isCalendar(url)) return null;
-	return <CalendarLane initial={resolveOnce(url, context)} />;
+	return <CalendarLane initial={await resolveOnce(url, actor)} />;
 }
 
 /** The header band: identity · the period trail · search · the filter entry. */
-export function calendarHeaderFor(url: URL, context: UserContext): ComponentChildren {
+export async function calendarHeaderFor(
+	url: URL,
+	_context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
 	if (!isCalendar(url)) return null;
-	return <CalendarHeaderBand initial={resolveOnce(url, context)} />;
+	return <CalendarHeaderBand initial={await resolveOnce(url, actor)} />;
 }
 
 /** The footer band: the view switch, Export · Import · Connect · New event, and the action layer. */
-export function calendarFooterFor(url: URL, context: UserContext): ComponentChildren {
+export async function calendarFooterFor(
+	url: URL,
+	_context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
 	if (!isCalendar(url)) return null;
 	// A same-origin PATH, not a URL: the consent's `returnTo` is validated server-side and an
 	// absolute one is refused, because an attacker-chosen return target turns a consent screen into
 	// an open redirect wearing this domain's credibility.
-	return <CalendarFooterRig initial={resolveOnce(url, context)} returnTo="/calendar" />;
+	return <CalendarFooterRig initial={await resolveOnce(url, actor)} returnTo="/calendar" />;
+}
+
+/**
+ * The agenda for the `/calendar` page BODY, from the same per-request read the three bands use — so
+ * the grid and the chrome around it cannot disagree about what is on the week.
+ */
+export function calendarAgendaFor(url: URL, actor: ReadActor): Promise<SchedulePage | null> {
+	return resolveOnce(url, actor);
 }

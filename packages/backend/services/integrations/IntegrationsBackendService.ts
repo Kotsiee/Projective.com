@@ -1,10 +1,4 @@
-import type { AssetItem, AssetOwnerType, FilesSim } from "@projective/types/files";
-import {
-	type AssetOwnerRef,
-	authoriseOwner,
-	type FilesActor,
-	fixtureOwner,
-} from "../files/acting-principal.ts";
+import type { AssetItem } from "@projective/types/files";
 import type {
 	ConnectionsView,
 	DriveBrowsePage,
@@ -16,83 +10,239 @@ import type {
 } from "@projective/types/integrations";
 import { connectionIsRecoverable, connectionSupports } from "@projective/types/integrations";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
-import { isIntegrationsBackendLive } from "../../core/supabase.ts";
-import * as fx from "./connections-fixtures.ts";
-import { createGoogleDriveAdapter } from "./adapters/GoogleDriveAdapter.ts";
-import { createDropboxAdapter } from "./adapters/DropboxAdapter.ts";
-import { createFrameIoAdapter } from "./adapters/FrameIoAdapter.ts";
-import { createS3Adapter } from "./adapters/S3Adapter.ts";
-import type { StorageAdapter, StorageAdapterFactory } from "./adapters/StorageAdapter.ts";
-import { importExternalAsset } from "../files/assets-fixtures.ts";
+import { getAnonClient, getServiceClient, getUserClient } from "../../core/supabase.ts";
+import { canReadLive, type ReadActor } from "../read-actor.ts";
+import { mayFileInto } from "../files/live-library.ts";
 
 /**
  * IntegrationsBackendService — the FAT half of the connector subsystem: the provider catalogue, a
- * user's stored authorizations, the consent handshake, browsing a connected drive, and importing one of
+ * user's stored authorizations, the consent handshake, browsing a connected drive, and mounting one of
  * its objects into the `/files` hub.
  *
- * Gated by {@link isIntegrationsBackendLive} (`INTEGRATIONS_BACKEND_LIVE`, default off). It is a
- * SEPARATE gate from `FILES_BACKEND_LIVE` on purpose: the two surfaces share a screen but not a trust
- * model. A live files backend touches only our own storage under the caller's RLS; a live integrations
- * backend makes outbound calls to a third party carrying somebody's stored credential. One flag would
- * mean enabling the hub silently enables that.
+ * The catalogue and the caller's connections are read LIVE — the providers table (public reference
+ * data) and `integrations.v_my_connections`, the definer view that physically cannot project a token
+ * column, so no credential can reach a response even by mistake.
  *
- * **Every method forks on that gate as its first statement**, including the two that reach an adapter.
- * {@link browse} and {@link importAsset} are the sharpest cases: an adapter call is the moment a
- * request leaves this process carrying a credential, so the branch that decides whether it may has to
- * be visible at the call site rather than trusted to exist four files away. Each LIVE branch names the
- * work it will do and falls back to the fixtures with zero shape churn.
+ * Connecting is where this deployment stops, and it says so rather than pretending: a consent needs a
+ * provider's OAuth client registered in the environment and the token vault's envelope key
+ * (`./token-vault.ts`, which refuses to seal until one is configured). No provider is enabled in the
+ * catalogue today, so {@link startConnection} answers that the provider is not available, and browsing
+ * or mounting — which would carry a stored credential out of the process — answers that connected
+ * drives are not available here. A refusal in words is the honest state; a simulated drive is not.
  *
- * ### Three rules this service exists to hold
+ * ### Rules this service holds
  *
- * **Authentication ≠ authorization.** The Google OAuth in `features/auth/` is SIGN-IN — GoTrue owns it
- * and retains no third-party API token. Everything here is a separate, additional consent: a long-lived
- * API grant the platform stores to read a drive or a free/busy window. The two flows and their token
- * stores are never conflated, and a user who signed in with Google has granted this service nothing.
+ * **Authentication ≠ authorization.** Google sign-in (GoTrue) retains no API token; a connection here
+ * is a separate, additional consent, and signing in grants this service nothing.
  *
- * **Every data touch is capability-scoped.** A connection's `grantedKinds` may be NARROWER than the
- * provider's `capabilities` — a user can grant `calendar` and withhold `storage` at the same vendor —
- * so authority is checked against what was granted, never against what the vendor can do.
+ * **Every data touch is capability-scoped** — against what the connection GRANTED, never against what
+ * the vendor can do.
  *
- * **No token ever crosses this boundary.** {@link UserConnection} mirrors
- * `integrations.v_my_connections`, the definer view that physically cannot project a token column.
- * Credentials are reached only through `./token-vault.ts`, service-role, and are held for the duration
- * of one adapter call.
+ * **No token ever crosses this boundary.** Connections are read through the view; secrets are reached
+ * only through the vault, service-role, for the duration of one adapter call.
  *
- * ### Scope flagged (surface, do not silently resolve)
- *
- * Connections are **per-user**, with no owner axis — the freelancer-workspace scope. A team or business
- * SHARED drive connection would need an owner dimension on `integrations.user_connections` and a
- * membership predicate on its policies; entity drives are out of scope here and deferred (Decision #59).
+ * Connections are per-user, with no owner axis (Decision #59): a team's shared drive is out of scope.
  */
+
+type Actor = ReadActor & { accessToken: string };
+
+const SIGNED_OUT = "Sign in to manage your connections.";
+const UNREACHABLE = "We couldn't reach your connections just now. Try again in a moment.";
+
+// #region Projections
+
+interface ProviderRow {
+	slug: string;
+	label: string;
+	category: IntegrationProvider["category"];
+	capabilities: IntegrationProvider["capabilities"];
+	auth_scheme: IntegrationProvider["authScheme"];
+	is_enabled: boolean;
+	is_beta: boolean;
+	broker: IntegrationProvider["broker"];
+	supports_webhooks: boolean;
+	default_scopes: string[];
+	docs_url: string | null;
+	icon_url: string | null;
+	sort_order: number;
+	created_at: string;
+}
+
+const PROVIDER_COLUMNS =
+	"slug, label, category, capabilities, auth_scheme, is_enabled, is_beta, broker, supports_webhooks, default_scopes, docs_url, icon_url, sort_order, created_at";
+
+function toProvider(row: ProviderRow): IntegrationProvider {
+	return {
+		slug: row.slug as IntegrationProvider["slug"],
+		label: row.label,
+		category: row.category,
+		capabilities: row.capabilities ?? [],
+		authScheme: row.auth_scheme,
+		isEnabled: row.is_enabled,
+		isBeta: row.is_beta,
+		broker: row.broker,
+		supportsWebhooks: row.supports_webhooks,
+		defaultScopes: row.default_scopes ?? [],
+		docsUrl: row.docs_url,
+		iconUrl: row.icon_url,
+		sortOrder: row.sort_order,
+		createdAt: row.created_at,
+	};
+}
+
+interface ConnectionRow {
+	id: string;
+	user_id: string;
+	provider_slug: string;
+	provider_label: string | null;
+	provider_category: UserConnection["providerCategory"];
+	provider_capabilities: UserConnection["providerCapabilities"];
+	status: UserConnection["status"];
+	granted_kinds: UserConnection["grantedKinds"] | null;
+	granted_scopes: string[] | null;
+	sync_direction: UserConnection["syncDirection"];
+	external_account_id: string | null;
+	external_account_label: string | null;
+	config: Record<string, unknown> | null;
+	token_expires_at: string | null;
+	last_synced_at: string | null;
+	last_error: string | null;
+	error_count: number | null;
+	connected_at: string | null;
+	revoked_at: string | null;
+	created_at: string;
+	updated_at: string;
+}
+
+/** Only flat, non-secret scalars survive into `config` (the schema's own contract). */
+function flatConfig(raw: Record<string, unknown> | null): UserConnection["config"] {
+	if (!raw) return null;
+	const out: Record<string, string | number | boolean> = {};
+	for (const [k, v] of Object.entries(raw)) {
+		if (typeof v === "string") out[k.slice(0, 80)] = v.slice(0, 600);
+		else if (typeof v === "number" || typeof v === "boolean") out[k.slice(0, 80)] = v;
+	}
+	return Object.keys(out).length > 0 ? out : null;
+}
+
+function toConnection(row: ConnectionRow): UserConnection {
+	return {
+		id: row.id,
+		userId: row.user_id,
+		providerSlug: row.provider_slug as UserConnection["providerSlug"],
+		providerLabel: (row.provider_label ?? row.provider_slug).slice(0, 60),
+		providerCategory: row.provider_category,
+		providerCapabilities: row.provider_capabilities ?? [],
+		status: row.status,
+		grantedKinds: row.granted_kinds ?? [],
+		grantedScopes: row.granted_scopes ?? [],
+		syncDirection: row.sync_direction,
+		externalAccountId: row.external_account_id,
+		externalAccountLabel: row.external_account_label,
+		tokenExpiresAt: row.token_expires_at,
+		lastSyncedAt: row.last_synced_at,
+		lastError: row.last_error ? row.last_error.slice(0, 500) : null,
+		errorCount: row.error_count ?? 0,
+		config: flatConfig(row.config),
+		connectedAt: row.connected_at,
+		revokedAt: row.revoked_at,
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
+	};
+}
+
+// #endregion
+
+// #region Reads
+
+async function readProviders(): Promise<IntegrationProvider[]> {
+	const { data, error } = await getAnonClient().schema("integrations").from("providers")
+		.select(PROVIDER_COLUMNS).order("sort_order").order("slug");
+	if (error) throw new Error(`integrations.providers read failed: ${error.message}`);
+	return ((data ?? []) as unknown as ProviderRow[]).map(toProvider);
+}
+
+async function readConnections(actor: Actor): Promise<UserConnection[]> {
+	const { data, error } = await getUserClient(actor.accessToken).schema("integrations")
+		.from("v_my_connections").select("*").order("created_at", { ascending: false });
+	if (error) throw new Error(`integrations.v_my_connections read failed: ${error.message}`);
+	return ((data ?? []) as unknown as ConnectionRow[]).map(toConnection);
+}
+
+/** One of the caller's own connections, or `null` — the view is what scopes it to them. */
+async function ownConnection(actor: Actor, id: string): Promise<UserConnection | null> {
+	const { data, error } = await getUserClient(actor.accessToken).schema("integrations")
+		.from("v_my_connections").select("*").eq("id", id).maybeSingle();
+	if (error) {
+		if (error.code === "22P02") return null;
+		throw new Error(`integrations.v_my_connections read failed: ${error.message}`);
+	}
+	return data ? toConnection(data as unknown as ConnectionRow) : null;
+}
+
+/** The storage checks browsing and mounting share: the caller's connection, granted for files, healthy. */
+async function storageConnection(actor: Actor, connectionId: string): Promise<ServiceResult<UserConnection>> {
+	const connection = await ownConnection(actor, connectionId);
+	// Someone else's connection and a missing one answer alike, so an id cannot be probed.
+	if (!connection) return fail(404, { message: "No such connection." }) as ServiceResult<UserConnection>;
+	if (!connection.grantedKinds.includes("storage")) {
+		return fail(403, { message: `${connection.providerLabel} isn't connected for files.` }) as ServiceResult<
+			UserConnection
+		>;
+	}
+	if (!connectionSupports(connection, "storage")) {
+		return fail(409, {
+			message: connectionIsRecoverable(connection.status)
+				? `${connection.providerLabel} needs reconnecting.`
+				: `${connection.providerLabel} needs to be connected again.`,
+			errors: { connection: connection.status },
+		}) as ServiceResult<UserConnection>;
+	}
+	return ok(connection);
+}
+
+// #endregion
+
+async function signedIn<T>(label: string, actor: ReadActor, run: (a: Actor) => Promise<ServiceResult<T>>) {
+	if (!canReadLive(actor)) return fail(401, { message: SIGNED_OUT }) as ServiceResult<T>;
+	try {
+		return await run(actor);
+	} catch (error) {
+		console.error(`[integrations:${label}]`, error instanceof Error ? error.message : error);
+		return fail(503, { message: UNREACHABLE }) as ServiceResult<T>;
+	}
+}
+
 export class IntegrationsBackendService {
 	// #region Catalogue + connections
 
-	/** The public provider catalogue — non-sensitive rows, sort-ordered. */
+	/** The public provider catalogue — reference data, sort-ordered. */
 	static async providers(): Promise<ServiceResult<IntegrationProvider[]>> {
-		if (!isIntegrationsBackendLive()) return await Promise.resolve(ok(fx.listProviders()));
-		// LIVE: `SELECT … FROM integrations.providers WHERE is_enabled ORDER BY sort_order` — the
-		// catalogue is DATA, so adding a connector stays a seed row. Not yet implemented; fall back to
-		// the fixtures with zero shape churn.
-		return await Promise.resolve(ok(fx.listProviders()));
+		try {
+			return ok(await readProviders());
+		} catch (error) {
+			console.error("[integrations:providers]", error instanceof Error ? error.message : error);
+			return fail(503, { message: UNREACHABLE }) as ServiceResult<IntegrationProvider[]>;
+		}
 	}
 
 	/**
 	 * The Settings → Integrations payload: the catalogue, the caller's own connections, and the two
-	 * capability convenience projections.
-	 *
-	 * `hasCalendar` and `hasConferencing` are resolved SEPARATELY because calendar sync and conferencing
-	 * are two axes, not one chip set — a user may sync a Google calendar and host on Zoom, and collapsing
-	 * them would make the booking flow assume the calendar provider can also mint a room.
+	 * capability projections — resolved SEPARATELY, because calendar sync and conferencing are two axes
+	 * (a user may sync a Google calendar and host on Zoom).
 	 */
-	static async connections(params: {
-		userId: string;
-		sim?: FilesSim;
-	}): Promise<ServiceResult<ConnectionsView>> {
-		if (!isIntegrationsBackendLive()) return await Promise.resolve(connectionsView(params));
-		// LIVE: the catalogue read above, plus `SELECT * FROM integrations.v_my_connections` — the
-		// definer view that physically cannot project a token column, so no secret can reach the
-		// response even by mistake. Not yet implemented; fall back to the fixtures.
-		return await Promise.resolve(connectionsView(params));
+	static connections(actor: ReadActor): Promise<ServiceResult<ConnectionsView>> {
+		return signedIn("connections", actor, async (a) => {
+			const [providers, rows] = await Promise.all([readProviders(), readConnections(a)]);
+			const conferencing = rows.find((c) => c.status === "active" && c.grantedKinds.includes("conferencing"));
+			return ok({
+				providers,
+				connections: rows,
+				hasCalendar: rows.some((c) => c.status === "active" && c.grantedKinds.includes("calendar")),
+				hasConferencing: !!conferencing,
+				activeConferencingProvider: conferencing?.providerSlug ?? null,
+			});
+		});
 	}
 
 	// #endregion
@@ -100,343 +250,119 @@ export class IntegrationsBackendService {
 	// #region Consent handshake
 
 	/**
-	 * Begin an OAuth consent. Returns the provider authorize URL and the opaque `state` binding it.
-	 *
-	 * `state` is the CSRF binding for the whole round trip: the callback arrives as an unauthenticated
-	 * request from the provider's redirect, so a callback carrying a state we never issued is refused
-	 * outright. `returnTo` is validated as a SAME-ORIGIN PATH server-side and never echoed back raw — an
-	 * attacker-chosen return URL turns a consent screen into an open redirect that borrows our domain's
-	 * credibility.
-	 *
-	 * A provider whose `authScheme` is `aws_sigv4` has no authorization server at all, so it is refused
-	 * here rather than sent to a URL that does not exist: S3 connects through a credential form, and
-	 * presenting that as a consent screen would misdescribe what the user is handing over.
+	 * Begin an OAuth consent. Refused, in words, for a provider this deployment does not offer: every
+	 * catalogue row is disabled until its OAuth client and the vault's envelope key are configured, and
+	 * sending someone to an authorize screen that cannot complete would waste their consent.
 	 */
-	static async startConnection(
+	static startConnection(
 		input: StartConnection,
-		params: { userId: string },
+		actor: ReadActor,
 	): Promise<ServiceResult<{ state: string; authorizeUrl: string; expiresAt: string }>> {
-		if (!isIntegrationsBackendLive()) {
-			return await Promise.resolve(beginConsentFlow(input, params, false));
-		}
-		// LIVE: mint the `state` into `integrations` alongside the PKCE verifier and the validated
-		// `returnTo`, then build the provider's real authorize endpoint with `scope` from `grantedKinds`
-		// (defaulting to `defaultScopes`) and `redirect_uri` from APP_URL. Not yet implemented; fall back
-		// to the fixtures, which mint the same `state` and withhold only the outbound URL.
-		return await Promise.resolve(beginConsentFlow(input, params, true));
+		return signedIn("start", actor, async () => {
+			const provider = (await readProviders()).find((p) => p.slug === input.providerSlug);
+			if (!provider) return fail(404, { message: "No such provider." }) as ServiceResult<never>;
+			if (provider.authScheme === "aws_sigv4") {
+				return fail(422, {
+					message: `${provider.label} connects with an access key, not a consent screen.`,
+					errors: { providerSlug: "Use the credential form for this provider." },
+				}) as ServiceResult<never>;
+			}
+			if (!provider.isEnabled) {
+				return fail(409, { message: `${provider.label} isn't available to connect yet.` }) as ServiceResult<never>;
+			}
+			return fail(503, {
+				message: `Connecting ${provider.label} isn't set up in this environment yet.`,
+			}) as ServiceResult<never>;
+		});
 	}
 
 	/**
-	 * Complete a consent: exchange the code, seal the token, and move the connection to `active`.
-	 *
-	 * The `state` is single-use — a replayed callback must not authorise a second time. The exchanged
-	 * token goes STRAIGHT into `./token-vault.ts` and is never returned, logged or attached to the
-	 * result: the caller receives a connection row, which by construction cannot carry one.
+	 * Complete a consent. No consent can be in flight in this deployment ({@link startConnection}
+	 * issues none), so a callback is always one we never started — refused, never activated.
 	 */
-	static async completeConnection(input: {
-		state: string;
-		code: string;
-	}): Promise<ServiceResult<UserConnection>> {
-		if (!isIntegrationsBackendLive()) return await Promise.resolve(activateFromConsent(input));
-		// LIVE: exchange `code` at the provider's token endpoint → `seal()` the access + refresh tokens
-		// into `integrations.connection_secrets` under the active `key_id` → upsert the connection row →
-		// register a webhook subscription where supported, recording its `expires_at` so the renewal cron
-		// can keep it alive (an unrenewed channel stops delivering silently). Not yet implemented; fall
-		// back to the fixtures, which consume the same single-use `state` and exchange nothing.
-		return await Promise.resolve(activateFromConsent(input));
+	static completeConnection(_input: { state: string; code: string }): Promise<ServiceResult<UserConnection>> {
+		return Promise.resolve(
+			fail(400, { message: "That connection request wasn't recognised. Start it again from Settings." }) as ServiceResult<
+				UserConnection
+			>,
+		);
 	}
 
 	/**
-	 * Revoke a stored authorization. Terminal — reconnecting requires fresh consent.
-	 *
-	 * The live path also deletes the `connection_secrets` row AND calls the provider's own revocation
-	 * endpoint. Leaving a token valid at the far end after the user asked us to forget it is the one
-	 * failure they would never find out about.
+	 * Revoke a stored authorization — terminal. The secret row goes first, so a failure part-way still
+	 * leaves the platform holding no token; the view proves the connection is the caller's before the
+	 * service role touches anything.
 	 */
-	static async revokeConnection(
-		input: RevokeConnection,
-		params: { userId: string },
-	): Promise<ServiceResult<{ revoked: boolean }>> {
-		if (!isIntegrationsBackendLive()) return await Promise.resolve(dropConnection(input, params));
-		// LIVE: delete the `integrations.connection_secrets` row, POST the provider's own revocation
-		// endpoint, and move the connection to `revoked` — in that order, so a failure at the far end
-		// still leaves us holding no token. Not yet implemented; fall back to the fixtures.
-		return await Promise.resolve(dropConnection(input, params));
+	static revokeConnection(input: RevokeConnection, actor: ReadActor): Promise<ServiceResult<{ revoked: boolean }>> {
+		return signedIn("revoke", actor, async (a) => {
+			const connection = await ownConnection(a, input.connectionId);
+			if (!connection) return fail(404, { message: "No such connection." }) as ServiceResult<{ revoked: boolean }>;
+			if (connection.status === "revoked") return ok({ revoked: false }, { message: "That connection is already closed." });
+			const service = getServiceClient().schema("integrations");
+			const secrets = await service.from("connection_secrets").delete().eq("connection_id", connection.id);
+			if (secrets.error) throw new Error(`integrations.connection_secrets delete failed: ${secrets.error.message}`);
+			const now = new Date().toISOString();
+			const revoked = await service.from("user_connections")
+				.update({ status: "revoked", revoked_at: now, updated_at: now })
+				.eq("id", connection.id).eq("user_id", a.userId);
+			if (revoked.error) throw new Error(`integrations.user_connections update failed: ${revoked.error.message}`);
+			// The owner's lifecycle trail. Written after the revocation, and never allowed to undo it: the
+			// credential is already gone, and reporting a failure now would send the person to retry a
+			// revocation that succeeded.
+			const audit = await service.from("connection_audit").insert({
+				connection_id: connection.id,
+				user_id: a.userId,
+				provider_slug: connection.providerSlug,
+				action: "revoked",
+				detail: "Revoked by the account owner.",
+			});
+			if (audit.error) console.error("[integrations:revoke] audit line not written:", audit.error.message);
+			return ok({ revoked: true }, { message: "Connection revoked." });
+		});
 	}
 
 	// #endregion
 
-	// #region Browsing + import
+	// #region Browsing + mounting
 
 	/**
-	 * Browse one level of a connected drive, projected into the SAME row shapes the `/files` hub renders.
-	 *
-	 * Returning `AssetItem` / `AssetFolder` rather than a connector row is the point: the picker, grid,
-	 * table and preview modal are literally the same components for a mounted Drive file and a hub-native
-	 * upload, so the two cannot drift apart in how they are drawn.
-	 *
-	 * Paging is the PROVIDER's — `nextCursor` is their opaque token echoed back verbatim, because a
-	 * connector that pages by continuation token cannot be resumed from an id we invented.
-	 *
-	 * **The gate is checked HERE, not only inside the adapter.** This is the boundary at which a request
-	 * would leave the process carrying somebody's stored credential, so the decision to allow that has to
-	 * be readable at the call site — an adapter that gates its own `list` protects nothing the day a
-	 * fifth adapter forgets to.
+	 * Browse one level of a connected drive. The caller's own storage-granted connection is checked
+	 * first; the provider call itself would carry a stored credential out of the process, and no
+	 * adapter can hold one in this deployment, so it answers that plainly.
 	 */
-	static async browse(
-		params: DriveBrowseParams,
-		opts?: { userId?: string; sim?: FilesSim },
-	): Promise<ServiceResult<DriveBrowsePage>> {
-		if (!isIntegrationsBackendLive()) return await listDrive(params, opts);
-		// LIVE: resolve the connection from `integrations.v_my_connections`, unseal its token through
-		// `./token-vault.ts` for the duration of THIS call only, and hand the adapter a real
-		// `accessToken`. Not yet implemented; fall back to the stub corpora, which reach no network.
-		return await listDrive(params, opts);
+	static browse(params: DriveBrowseParams, actor: ReadActor): Promise<ServiceResult<DriveBrowsePage>> {
+		return signedIn("browse", actor, async (a) => {
+			const checked = await storageConnection(a, params.connectionId);
+			if (!checked.ok) return checked as unknown as ServiceResult<DriveBrowsePage>;
+			return fail(503, {
+				message: `Browsing ${checked.data!.providerLabel} isn't available in this environment yet.`,
+			}) as ServiceResult<DriveBrowsePage>;
+		});
 	}
+
 	/**
-	 * Mount a connected object into the hub.
-	 *
-	 * **This copies no bytes.** The hub stores a REFERENCE — the row carries `source !== "supabase"`, its
-	 * `external` back-reference, and a size counted against the PROVIDER's quota, never ours. Copying
-	 * instead would double every large file, charge the user for storage they already pay someone else
-	 * for, and immediately fork the two copies the first time either side is edited.
-	 *
-	 * The imported row is read-only for the same reason the drive section is: the hub exists so a person
-	 * can find and attach what they already have, not so it becomes a second write path into someone
-	 * else's system of record.
-	 *
-	 * **Two authorities have to agree, and they are different questions.** The CONNECTION must belong to
-	 * the caller and carry a `storage` grant — that is what makes reading the remote object legitimate —
-	 * and the destination LIBRARY must be one the session evidences, which is what stops a mount from
-	 * filing someone else's Drive object into a team's hub. Checking only the first is how a read
-	 * permission quietly becomes a write one.
+	 * Mount a connected object into the acting library — a REFERENCE, never a copy. Two authorities must
+	 * agree: the connection must be the caller's and granted for files, and the destination library must
+	 * be the one the session acts for.
 	 */
-	static async importAsset(input: {
+	static importAsset(input: {
 		connectionId: string;
 		externalFileId: string;
 		folderId: string | null;
-		ownerType: AssetOwnerType;
+		ownerType: "user" | "team" | "business" | "organisation";
 		ownerId: string;
-	}, actor: FilesActor): Promise<ServiceResult<AssetItem>> {
-		if (!isIntegrationsBackendLive()) return await mountAsset(input, fixtureOwner(actor), null);
-		// LIVE: the same two checks, then an insert into `files.items` with `source = <provider>` and the
-		// `external` back-reference — no bytes and no quota consumption. Not yet implemented; fall back
-		// to the fixtures.
-		const owner = authoriseOwner(actor, { ownerType: input.ownerType, ownerId: input.ownerId });
-		if (!owner) {
-			return await Promise.resolve(fail(403, { message: "You can't add files to that library." }));
-		}
-		return await mountAsset(input, owner, actor.userId);
+	}, actor: ReadActor): Promise<ServiceResult<AssetItem>> {
+		return signedIn("import", actor, async (a) => {
+			if (!mayFileInto(a, { ownerType: input.ownerType, ownerId: input.ownerId })) {
+				return fail(403, { message: "You can't add files to that library." }) as ServiceResult<AssetItem>;
+			}
+			const checked = await storageConnection(a, input.connectionId);
+			if (!checked.ok) return checked as unknown as ServiceResult<AssetItem>;
+			return fail(503, {
+				message: `Adding files from ${checked.data!.providerLabel} isn't available in this environment yet.`,
+			}) as ServiceResult<AssetItem>;
+		});
 	}
 
 	// #endregion
 }
-
-// #region Fixture-backed bodies
-//
-// Each is the stub answer for one method, extracted so the method itself is a gate fork and nothing
-// else — the same shape as `../files/FilesBackendService.ts`.
-
-/** The Settings → Integrations payload. */
-function connectionsView(
-	params: { userId: string; sim?: FilesSim },
-): ServiceResult<ConnectionsView> {
-	const rows = fx.withOverrides(fx.listConnections(params.userId, params.sim));
-	return ok({
-		providers: fx.listProviders(),
-		connections: rows,
-		hasCalendar: rows.some((c) => c.status === "active" && c.grantedKinds.includes("calendar")),
-		hasConferencing: rows.some((c) =>
-			c.status === "active" && c.grantedKinds.includes("conferencing")
-		),
-		activeConferencingProvider: rows.find(
-			(c) => c.status === "active" && c.grantedKinds.includes("conferencing"),
-		)?.providerSlug ?? null,
-	});
-}
-
-/**
- * Mint the consent `state` and answer with the authorize URL.
- *
- * `live` decides only whether an OUTBOUND url is handed back: with the gate off the state is still
- * minted and still single-use, so the whole round trip is exercisable without anything leaving the
- * process.
- */
-function beginConsentFlow(
-	input: StartConnection,
-	params: { userId: string },
-	live: boolean,
-): ServiceResult<{ state: string; authorizeUrl: string; expiresAt: string }> {
-	const provider = fx.findProvider(input.providerSlug);
-	if (!provider) return fail(404, { message: "No such provider." });
-	if (!provider.isEnabled) return fail(409, { message: `${provider.label} is not available.` });
-	if (provider.authScheme === "aws_sigv4") {
-		return fail(422, {
-			message: `${provider.label} connects with an access key, not a consent screen.`,
-			errors: { providerSlug: "Use the credential form for this provider." },
-		});
-	}
-
-	const state = fx.beginConsent(params.userId, provider.slug, input.returnTo ?? null);
-	return ok({
-		state,
-		authorizeUrl: live
-			? `/api/integrations/authorize/${provider.slug}?state=${encodeURIComponent(state)}`
-			: "#stub-consent",
-		expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
-	});
-}
-
-/** Consume a single-use consent `state` and activate its connection. */
-function activateFromConsent(
-	input: { state: string; code: string },
-): ServiceResult<UserConnection> {
-	const pending = fx.consumeConsent(input.state);
-	if (!pending) {
-		// Deliberately not "expired" vs "unknown": the callback is unauthenticated, and a
-		// distinguishable answer tells a prober which states exist.
-		return fail(400, { message: "That consent could not be completed." });
-	}
-	const connection = fx.activateConnection(pending.slug);
-	if (!connection) return fail(404, { message: "No such provider." });
-	return ok(connection, { message: `${connection.providerLabel} connected.` });
-}
-
-/** Revoke one stored authorization the caller holds. */
-function dropConnection(
-	input: RevokeConnection,
-	params: { userId: string },
-): ServiceResult<{ revoked: boolean }> {
-	const connection = fx.findConnection(input.connectionId);
-	if (!connection || connection.userId !== params.userId) {
-		return fail(404, { message: "No such connection." });
-	}
-	const revoked = fx.revokeConnectionRow(input.connectionId);
-	return ok({ revoked }, {
-		message: revoked ? "Connection revoked." : "That connection is already closed.",
-	});
-}
-
-/** List one level of a connected drive through its adapter. */
-async function listDrive(
-	params: DriveBrowseParams,
-	opts?: { userId?: string; sim?: FilesSim },
-): Promise<ServiceResult<DriveBrowsePage>> {
-	const connection = fx.findConnection(params.connectionId, opts?.sim);
-	if (!connection) return fail(404, { message: "No such connection." });
-	if (opts?.userId && connection.userId !== opts.userId) {
-		return fail(404, { message: "No such connection." });
-	}
-
-	// Authority is checked against what was GRANTED, never against what the vendor can do: a user
-	// may hold a calendar grant at a provider whose catalogue row also advertises storage. The
-	// check goes through the SSOT's own `connectionSupports` rather than a local condition, so the
-	// definition of "may act" cannot diverge between this service and the settings surface.
-	if (!connection.grantedKinds.includes("storage")) {
-		return fail(403, { message: `${connection.providerLabel} isn't connected for files.` });
-	}
-	if (!connectionSupports(connection, "storage")) {
-		return fail(409, {
-			// `recoverable` is the axis the copy branches on, not the status name: a `degraded` or
-			// `expired` grant is refreshable, so the surface offers reconnect. A `revoked` one is
-			// terminal — offering reconnect would imply a stored grant that no longer exists, and the
-			// retry would fail with nothing to explain it.
-			message: connectionIsRecoverable(connection.status)
-				? `${connection.providerLabel} needs reconnecting.`
-				: `${connection.providerLabel} needs to be connected again.`,
-			errors: { connection: connection.status },
-		});
-	}
-
-	const adapter = adapterFor(connection);
-	if (!adapter) return fail(422, { message: "That provider can't be browsed." });
-
-	const limit = Math.min(200, Math.max(1, params.limit ?? 60));
-	const listing = await adapter.list(
-		{ folderId: params.folderId ?? null, path: params.path ?? null },
-		params.cursor ?? null,
-		limit,
-	);
-	return ok({
-		entries: listing.entries,
-		folders: listing.folders,
-		hasMore: listing.hasMore,
-		nextCursor: listing.nextCursor,
-	});
-}
-
-/**
- * Mount one remote object into `owner`'s library as a reference row.
- *
- * `requireUserId` is the caller the connection must belong to, or `null` to skip that check. It is only
- * ever passed on the live path: every fixture connection belongs to the one fixture viewer, so
- * comparing a real session id against it would refuse every stubbed import and prove nothing. A
- * mismatch answers 404 rather than 403, matching {@link listDrive}, so the response cannot be used to
- * confirm that a connection id exists.
- */
-async function mountAsset(
-	input: {
-		connectionId: string;
-		externalFileId: string;
-		folderId: string | null;
-	},
-	owner: AssetOwnerRef,
-	requireUserId: string | null,
-): Promise<ServiceResult<AssetItem>> {
-	const connection = fx.findConnection(input.connectionId);
-	if (!connection) return fail(404, { message: "No such connection." });
-	if (requireUserId !== null && connection.userId !== requireUserId) {
-		return fail(404, { message: "No such connection." });
-	}
-	if (!connection.grantedKinds.includes("storage")) {
-		return fail(403, { message: `${connection.providerLabel} isn't connected for files.` });
-	}
-
-	const adapter = adapterFor(connection);
-	if (!adapter) return fail(422, { message: "That provider can't be browsed." });
-
-	const remote = await adapter.metadata(input.externalFileId);
-	if (!remote) return fail(404, { message: "That file is no longer available." });
-
-	const mounted = importExternalAsset({
-		...remote,
-		folderId: input.folderId,
-		ownerType: owner.ownerType,
-		ownerId: owner.ownerId,
-		canManage: false,
-	});
-	return ok(mounted, { status: 201, message: `Added from ${connection.providerLabel}.` });
-}
-
-// #endregion
-
-// #region Adapter registry
-
-/**
- * The storage adapters, keyed by provider slug.
- *
- * A registry rather than a switch so adding a connector is one entry plus one file — the same reason
- * the provider catalogue is a data table and not an enum. A slug with no adapter is a provider that
- * advertises `storage` and cannot serve it, which is a configuration error the caller must see rather
- * than a silent empty listing.
- */
-const ADAPTERS: Readonly<Record<string, StorageAdapterFactory>> = {
-	google_drive: createGoogleDriveAdapter,
-	dropbox: createDropboxAdapter,
-	frameio: createFrameIoAdapter,
-	s3: createS3Adapter,
-};
-
-/**
- * Construct the adapter for a connection.
- *
- * `accessToken` is `null` here and must STAY null while the gate is off — the live path resolves it
- * through `./token-vault.ts` under the service role, holds it for one request, and never logs it.
- */
-function adapterFor(connection: UserConnection): StorageAdapter | null {
-	const factory = ADAPTERS[connection.providerSlug];
-	if (!factory) return null;
-	return factory({ connection, accessToken: null });
-}
-
-// #endregion

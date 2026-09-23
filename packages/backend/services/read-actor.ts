@@ -18,9 +18,8 @@ import type { CacheTenant } from "../core/cache.ts";
  *
  * Nothing here is parsed from a request body or query string. The route resolves an actor from the
  * session cookie the middleware already hydrated and hands it in; a client that sends
- * `?userId=someone-else` is sending a value with no reader. This mirrors
- * `services/files/acting-principal.ts`, which established the pattern for the asset hub, and is why
- * both modules keep the identity type deliberately narrow — three facts plus a token, not the whole
+ * `?userId=someone-else` is sending a value with no reader. The identity type is deliberately
+ * narrow — three facts plus a token, not the whole
  * {@link UserContext}, so a service cannot quietly branch on a chrome field like `isFreelancer` and
  * turn an identity decision into a capability one.
  *

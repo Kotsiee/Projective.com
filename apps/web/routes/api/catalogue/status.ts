@@ -1,14 +1,14 @@
 import { define } from "@web/utils/state.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import { SetListingStatusInputSchema } from "@projective/types/catalogue";
 import { toCatalogueResponse, toFieldErrors } from "@features/catalogue/core/respond.ts";
 import { CatalogueBackendService } from "@server/services/catalogue/CatalogueBackendService.ts";
 
 /**
  * `POST /api/catalogue/status` — thin route: Zod-validate the Set-Status payload, then delegate to the
- * fat {@link CatalogueBackendService.setStatus} (publish / pause / archive / restore). No server
- * capability guard (Dev Context Switcher reachability; seller-ness is chrome + deferred RLS). A
- * `published` transition runs the publish gate server-side (title + a price + ≥1 media) and comes back
- * as a `422` with the missing pieces when unmet — defence in depth over the client-side gate.
+ * fat {@link CatalogueBackendService.setStatus} (publish / pause / archive / restore), as the seller who
+ * created the listing. A `published` transition runs the publish gate in the database (title + a price +
+ * ≥1 image) and comes back as a `422` naming what is missing — the same gate the page shows.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -20,6 +20,6 @@ export const handler = define.handlers({
 				{ status: 422 },
 			);
 		}
-		return toCatalogueResponse(CatalogueBackendService.setStatus(parsed.data));
+		return toCatalogueResponse(await CatalogueBackendService.setStatus(parsed.data, readActor(ctx)));
 	},
 });

@@ -7,87 +7,94 @@ import type {
 	UpdateListingInput,
 } from "@projective/types/catalogue";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
-import { isCatalogueBackendLive } from "../../core/supabase.ts";
+import { canReadLive, type ReadActor } from "../read-actor.ts";
+import { invalidateCatalog } from "../explore/live-catalog.ts";
 import {
 	createListing,
-	findListing,
+	listingDetail,
 	listListings,
 	setListingStatus,
 	updateListing,
-} from "./catalogue-fixtures.ts";
+} from "./live-catalogue.ts";
 
 /**
  * CatalogueBackendService — the FAT half of the seller-side Catalogue surface (`/catalogue` +
- * `/catalogue/[id]`), and the platform's FIRST write-oriented fat service (thin-routes / fat-services,
- * root CLAUDE.md §10 / SYSTEM_ARCHITECTURE §Backend Services). It owns the listing LIST read, a single
- * listing's editable detail, and the create / update / publish (setStatus) mutations — each returning a
- * transport-agnostic {@link ServiceResult}. The thin `/api/catalogue/*` routes parse + Zod-validate +
- * seller-guard + delegate here; islands never reach it.
+ * `/catalogue/[id]`), and the platform's first write-oriented fat service. It owns the listing LIST
+ * read, a single listing's editable detail, and the create / update / publish mutations — each
+ * returning a transport-agnostic {@link ServiceResult}. The thin `/api/catalogue/*` routes parse +
+ * Zod-validate + delegate here; islands never reach it.
  *
- * Gated by {@link isCatalogueBackendLive} (`CATALOGUE_BACKEND_LIVE`, default off): until the RLS-scoped
- * `catalogue.*` tables + mutation policies land, reads answer from the deterministic fixtures and writes
- * mutate an in-module session store (so create→edit→publish is fully exercisable, granting no
- * persistence). The LIVE branch is a documented placeholder that currently falls back to the same store
- * with zero shape churn (the projections are already the Zod SSOT), exactly like the read-only services.
+ * Everything runs LIVE as the signed-in seller (`live-catalogue`): reads under the catalogue policies,
+ * writes through the `catalogue.*` doors that keep a listing and its product or service blueprint in
+ * step. A guest gets a 401 and an unexpected failure a 503 — never a sample catalogue.
  */
-export class CatalogueBackendService {
-	/** A filtered, sorted, paged page of the acting seller's listings + the rolled-up KPI stats. */
-	static list(params: CatalogueListParams): ServiceResult<{ page: CataloguePage }> {
-		if (!isCatalogueBackendLive()) return ok({ page: listListings(params) });
-		// LIVE: read RLS-scoped `catalogue.listings` — not yet implemented; fall back to fixtures.
-		return ok({ page: listListings(params) });
-	}
 
-	/** A single listing's full editable detail (the manage page). */
-	static detail(id: string): ServiceResult<{ listing: ListingDetail }> {
-		const listing = findListing(id);
-		if (!listing) return fail(404, { message: "No such listing." });
-		return ok({ listing });
-	}
+type Result<T> = ServiceResult<T>;
 
-	/**
-	 * Create a Draft listing from the modal's minimal fields (title + kind + delivery model). Returns the
-	 * optimistic draft so the client can route straight to `/catalogue/[id]` for the deep edit.
-	 */
-	static create(input: CreateListingInput): ServiceResult<{ listing: ListingDetail }> {
-		const listing = createListing(input);
-		return ok({ listing }, { status: 201, message: "Draft created." });
-	}
+const SIGNED_OUT = fail(401, { message: "Sign in to manage your catalogue." });
+const UNREACHABLE = fail(503, { message: "We couldn't reach your catalogue just now. Try again in a moment." });
 
-	/** Persist an editable patch over a listing (autosave / manual save). */
-	static update(patch: UpdateListingInput): ServiceResult<{ listing: ListingDetail }> {
-		const listing = updateListing(patch);
-		if (!listing) return fail(404, { message: "No such listing." });
-		return ok({ listing }, { message: "Saved." });
-	}
+/**
+ * A successful write can change what discovery shows — a publish, a pause, or a save to a listing that
+ * is already live — so the public catalogue's process-wide cache is dropped rather than left to expire.
+ * Without it a seller who publishes and opens their listing is told it does not exist for up to the
+ * cache's TTL.
+ */
+function published<T>(result: Result<T>): Result<T> {
+	if (result.ok) invalidateCatalog();
+	return result;
+}
 
-	/**
-	 * Transition a listing's lifecycle state (publish / pause / archive / restore). A publish enforces
-	 * the publish gate (title + a price + ≥1 media) and returns a 422 with the missing pieces when unmet.
-	 */
-	static setStatus(input: SetListingStatusInput): ServiceResult<{ listing: ListingDetail }> {
-		const { detail, blocked } = setListingStatus(input);
-		if (blocked) {
-			return fail(422, {
-				message: `Add ${blocked.join(", ")} before publishing.`,
-				errors: { publish: blocked.join(", ") },
-			});
-		}
-		if (!detail) return fail(404, { message: "No such listing." });
-		return ok({ listing: detail }, { message: statusMessage(input.status) });
+async function guarded<T>(
+	label: string,
+	actor: ReadActor,
+	run: (actor: ReadActor & { accessToken: string }) => Promise<Result<T>>,
+): Promise<Result<T>> {
+	if (!canReadLive(actor)) return SIGNED_OUT as Result<T>;
+	try {
+		return await run(actor);
+	} catch (error) {
+		console.error(`[catalogue:${label}]`, error instanceof Error ? error.message : error);
+		return UNREACHABLE as Result<T>;
 	}
 }
 
-/** A friendly confirmation for a completed status transition. */
-function statusMessage(status: SetListingStatusInput["status"]): string {
-	switch (status) {
-		case "published":
-			return "Listing published.";
-		case "paused":
-			return "Listing paused.";
-		case "archived":
-			return "Listing archived.";
-		case "draft":
-			return "Listing moved to drafts.";
+export class CatalogueBackendService {
+	/**
+	 * A filtered, sorted, paged page of the acting seller's listings + the KPI roll-up for the chosen
+	 * window. `display` is the viewer's display currency — used only when their sales span currencies.
+	 */
+	static list(
+		params: CatalogueListParams,
+		actor: ReadActor,
+		display: string,
+	): Promise<Result<{ page: CataloguePage }>> {
+		return guarded("list", actor, async (a) => ok({ page: await listListings(params, a, display) }));
+	}
+
+	/** A single listing's full editable detail (the manage page), addressed by its `svc-`/`prd-` slug. */
+	static detail(id: string, actor: ReadActor): Promise<Result<{ listing: ListingDetail }>> {
+		return guarded("detail", actor, async (a) => {
+			const listing = await listingDetail(id, a);
+			return listing ? ok({ listing }) : fail(404, { message: "No such listing." }) as Result<{ listing: ListingDetail }>;
+		});
+	}
+
+	/** Create a Draft listing from the modal's minimal fields; the client routes to `/catalogue/[id]`. */
+	static create(input: CreateListingInput, actor: ReadActor): Promise<Result<{ listing: ListingDetail }>> {
+		return guarded("create", actor, (a) => createListing(input, a));
+	}
+
+	/** Persist an editable patch over a listing (autosave / manual save). */
+	static update(patch: UpdateListingInput, actor: ReadActor): Promise<Result<{ listing: ListingDetail }>> {
+		return guarded("update", actor, async (a) => published(await updateListing(patch, a)));
+	}
+
+	/**
+	 * Transition a listing's lifecycle state (publish / pause / archive / restore). Publishing enforces
+	 * the gate (title + a price + ≥1 image) in the database and answers 422 with what is missing.
+	 */
+	static setStatus(input: SetListingStatusInput, actor: ReadActor): Promise<Result<{ listing: ListingDetail }>> {
+		return guarded("status", actor, async (a) => published(await setListingStatus(input, a)));
 	}
 }

@@ -28,7 +28,7 @@ import {
 	currentCheckoutContext,
 } from "../core/basket-state.ts";
 import { activeListId, lists as listsSignal } from "../core/checkout-state.ts";
-import { useCheckoutSeamPassive } from "../core/checkout-seam.ts";
+import { useCheckoutContextPassive } from "../core/checkout-context.ts";
 import type {
 	BasketListEntry,
 	BasketLists,
@@ -96,7 +96,7 @@ export default function BasketListLane(props: BasketListLaneProps): JSX.Element 
 
 	// The lane renders shared state but owns no fetch: the body is the single reader, so a passive
 	// mirror keeps the two from racing for the same basket.
-	useCheckoutSeamPassive({
+	useCheckoutContextPassive({
 		basketId: props.activeBasketId,
 		owner: props.owner,
 		display: props.display,

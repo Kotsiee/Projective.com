@@ -474,6 +474,7 @@ may only add trailing columns):
 | `language_codes`                    | Upper-cased codes from `org.user_languages`, native first; `'{}'` for businesses and teams (a code is never guessed from a name). |
 | `delivered_count`                   | Completed `projects.stage_assignments` for the freelancer or the team; 0 for a business.            |
 | `showcase_bucket` / `showcase_path` | _(appended 2026-09-23)_ Showcase **slot 1** — the profile's primary thumbnail — as a storage object: the `org.profile_showcase_items` row at position 1, joined to a live, `public` file. The discovery card leads with it and falls back to the banner (`live-catalog.ts`); NULL when the slot is empty. |
+| `standing_level` / `standing_label` | _(appended 2026-09-23)_ A SELLER's earned Standing rung (a freelancer or a team) from `org.entity_standing` joined to `org.standing_levels`. `org.entity_standing` is readable only by a signed-in caller, so this is how a guest sees the rung a listing and a card print. Same rule as `org.get_public_profile`: a seller with no computed row reads as level 1 ("New"); a buyer-only account and a business carry NULL. |
 
 ---
 

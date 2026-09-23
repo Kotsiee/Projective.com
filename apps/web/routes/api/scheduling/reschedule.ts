@@ -1,7 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { RescheduleInputSchema } from "@projective/types/scheduling";
 import { toFieldErrors, toSchedulingResponse } from "@features/calendar/core/respond.ts";
-import { viewerFromState } from "@features/calendar/core/viewer.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import { ScheduleBackendService } from "@server/services/scheduling/ScheduleBackendService.ts";
 
 /**
@@ -39,7 +39,7 @@ export const handler = define.handlers({
 		}
 
 		return toSchedulingResponse(
-			ScheduleBackendService.reschedule(parsed.data, viewerFromState(ctx.state)),
+			await ScheduleBackendService.reschedule(parsed.data, readActor(ctx)),
 		);
 	},
 });

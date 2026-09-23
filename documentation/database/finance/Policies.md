@@ -139,7 +139,7 @@ policies. (RLS enabled with zero policies is default-deny and is a _bug_, not a 
 | Table                  | SELECT                                                            | Write                                                                   |
 | :--------------------- | :---------------------------------------------------------------- | :---------------------------------------------------------------------- |
 | `finance.baskets`      | `fn_owner_visible(owner_type, owner_id)` — any member may see it. | `FOR ALL`, `fn_can_manage_basket(owner_type, owner_id)` — needs `spend` if shared. |
-| `finance.basket_items` | `EXISTS` over the parent basket with `fn_owner_visible`.          | `FOR ALL`, `EXISTS` over the parent basket with `fn_can_manage_basket`. `purchased_at` guarded (`trg_basket_items_derived`) — only checkout marks a line purchased. |
+| `finance.basket_items` | `EXISTS` over the parent basket with `fn_owner_visible`.          | `FOR ALL`, `EXISTS` over the parent basket with `fn_can_manage_basket`. `purchased_at` and the creator-discount columns guarded (`trg_basket_items_derived`) — only checkout marks a line purchased, and only a definer puts a discount on one. |
 | `finance.saved_cards`  | `fn_owner_visible(owner_type, owner_id)`.                         | UPDATE + DELETE, `fn_owner_capability(…, 'manage_billing')` — mirrors `payment_methods`. No INSERT (the processor saves a card); display columns immutable (`trg_saved_cards_immutable`). |
 
 > **A basket line's PRICE is not guarded, deliberately.** The basket service writes it as the
@@ -206,7 +206,7 @@ the post-image. The finance tables a client may write therefore carry column gua
 | `trg_deposit_rules_derived`      | `deposit_rules`   | `failure_count`, `last_error` — the scheduler's record                 |
 | `trg_payment_methods_immutable`  | `payment_methods` | owner, role, provider, external ref, brand, last4, status              |
 | `trg_saved_cards_immutable`      | `saved_cards`     | owner, instrument refs, brand, last4, expiry, cardholder, BIN, creator |
-| `trg_basket_items_derived`       | `basket_items`    | `purchased_at` — only checkout marks a line purchased                  |
+| `trg_basket_items_derived`       | `basket_items`    | `purchased_at`, `discount_amount_minor`, `discount_code`, `original_price_minor` — only checkout marks a line purchased; a buyer who could write their own discount could zero their own line |
 
 All refuse with `42501` for `anon` / `authenticated`; definer functions and the service role pass.
 
@@ -234,8 +234,18 @@ wallet with any amount. So (`00002510`):
 - **`authenticated` keeps exactly** the predicates the policies call (`fn_owner_visible`,
   `fn_can_view_wallet`, `fn_has_vault_capability`, `fn_can_manage_basket`, `fn_can_move_wallet_funds`,
   `fn_owner_capability` — a policy expression runs as the invoking role, so these must stay
-  executable), the two public resolvers (`fn_audience_for`, `fn_subject_standing_level`), and the
-  param-gated `simulate_wallet_transaction`.
+  executable), the two public resolvers (`fn_audience_for`, `fn_subject_standing_level`), the
+  param-gated `simulate_wallet_transaction`, the five commerce doors — `get_purchase_owner`,
+  `list_purchase_owners`, `resolve_promo_code`, `set_invoicing_terms`, `place_wallet_order`
+  ([Functions.md § Commerce doors](Functions.md#-commerce-doors-00001210)) — and the three wallet
+  movements, `transfer_funds`, `distribute_vault`, `decide_spend_approval`
+  ([Functions.md § Wallet movements](Functions.md#-wallet-movements-00001210-12)). Each checks the
+  caller itself; none takes a subject it does not re-authorise.
+- **`fn_purchase_owner_json` is internal** — it builds the owner projection for the two owner doors and
+  is callable by neither client role, because it answers for whatever owner it is handed.
+- **`simulate_wallet_transaction` is revoked from `service_role` explicitly**, AFTER the blanket
+  service-role grant in the same file: that grant would otherwise hand it back, and a context with no
+  `auth.uid()` is exactly what gate 2 below refuses.
 
 ## 🧪 `finance.simulate_wallet_transaction` — the param-gated simulator
 

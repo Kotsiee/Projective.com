@@ -1,7 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { RsvpInputSchema } from "@projective/types/scheduling";
 import { toFieldErrors, toSchedulingResponse } from "@features/calendar/core/respond.ts";
-import { viewerFromState } from "@features/calendar/core/viewer.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import { ScheduleBackendService } from "@server/services/scheduling/ScheduleBackendService.ts";
 
 /**
@@ -15,8 +15,8 @@ import { ScheduleBackendService } from "@server/services/scheduling/ScheduleBack
  * The signed-in guard is here rather than a route group because `/api/scheduling/*` also serves the
  * PUBLIC availability and entity-schedule reads, which a signed-out visitor must keep. Answering an
  * invitation is an act by an identified person, so the write half needs the check the reads do not.
- * `ctx.state.isAuthenticated` is a skeleton presence check (Decision #14); RLS remains the real gate
- * once the live path lands.
+ * `ctx.state.isAuthenticated` is a skeleton presence check (Decision #14); the service re-reads the
+ * event as the caller under RLS before it writes anything.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -38,7 +38,7 @@ export const handler = define.handlers({
 		}
 
 		return toSchedulingResponse(
-			ScheduleBackendService.respond(parsed.data, viewerFromState(ctx.state)),
+			await ScheduleBackendService.respond(parsed.data, readActor(ctx)),
 		);
 	},
 });

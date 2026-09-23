@@ -265,7 +265,11 @@ no-ops.
 
 ### `projects.review_submission(...)` / `projects.approve_stage(...)` / `projects.fund_stage(...)`
 
-Client-side adjudication and funding. Guarded by `can_review_project`.
+Client-side adjudication and funding. Guarded by `can_review_project`. `fund_stage` additionally
+spends the CLIENT's money, so it resolves the payer from `client_business_id` (NULL → `PS501`: an
+individual client has no escrow path) and requires that business's `spend` capability
+(`finance.fn_owner_capability`) — project access alone would let a hired freelancer fund the client's
+escrow from the client's wallet ([finance/Functions.md](../finance/Functions.md#stage-level-wrappers-in-projects-invoke-this-engine--migration-0305)).
 
 ---
 

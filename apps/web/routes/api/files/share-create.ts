@@ -2,7 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { CreateShareSchema } from "@projective/types/files";
 import { toFieldErrors, toFilesResponse } from "@features/files/core/respond.ts";
 import { FilesBackendService } from "@server/services/files/FilesBackendService.ts";
-import { actorFromContext } from "@server/services/files/acting-principal.ts";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * `POST /api/files/share-create` — mint a read-only capability URL over exactly one asset or one
@@ -21,7 +21,7 @@ import { actorFromContext } from "@server/services/files/acting-principal.ts";
  * for a team is still attributable to whoever pressed the button — that is the fact an owner needs when
  * a URL turns up somewhere it should not have.
  *
- * No server-side capability guard (Decision #53(b)) — see `./list.ts`.
+ * Runs under the caller's own session: RLS is the gate, and the library is the acting context's.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -38,7 +38,7 @@ export const handler = define.handlers({
 			);
 		}
 		return toFilesResponse(
-			await FilesBackendService.createShare(parsed.data, actorFromContext(ctx.state.userContext)),
+			await FilesBackendService.createShare(parsed.data, readActor(ctx)),
 		);
 	},
 });

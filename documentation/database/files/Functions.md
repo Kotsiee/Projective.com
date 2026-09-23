@@ -9,13 +9,13 @@ triggers that bind them).
 Before the asset-management pass the `files` schema had **zero** functions — no touch trigger, no
 read predicate, no quota gate, no usage rollup. Every access rule therefore had to be written as a
 raw predicate inline in each policy, which is precisely how a read rule and a share route drift
-apart. **There are now ten**, plus one `finance` branch that reads this schema.
+apart. **There are now thirteen**, plus one `finance` branch that reads this schema.
 
 Every function pins `SET search_path = ''` and fully qualifies every identifier. `SECURITY DEFINER`
 is used **only** where a function must read a table the caller cannot: the membership tables, the
 item row itself, or `security.platform_params`.
 
-## The ten
+## The thirteen
 
 | Function                               | Kind       | Definer | Reachable by                    | Purpose                                                     |
 | :------------------------------------- | :--------- | :------ | :------------------------------ | :---------------------------------------------------------- |
@@ -29,6 +29,9 @@ item row itself, or `security.platform_params`.
 | `fn_public_media_ref(uuid) → jsonb`    | `STABLE`   | ✅      | `service_role` (+ definers)     | One PUBLIC stored image as a storage reference + its tiers. |
 | `get_public_media(uuid[]) → TABLE`     | `STABLE`   | ✅      | `anon` · `authenticated` · svc  | The batch door onto `fn_public_media_ref` (≤ 500 ids).      |
 | `fn_guard_pipeline_columns()`          | trigger    | —       | trigger only (`REVOKE`d)        | Only the server may claim an asset was processed.           |
+| `fn_owns_library(owner_kind, uuid)`    | `STABLE`   | —       | `PUBLIC` (it **is** the policy) | The WRITE twin of `fn_can_read`'s ownership arms.           |
+| `get_storage_quota(owner_kind, uuid)`  | `STABLE`   | ✅      | `authenticated` · svc           | One principal's allowance, for that principal only.         |
+| `fn_record_download(…)`                | `VOLATILE` | ✅      | `service_role`                  | The download ledger's only writer.                          |
 
 Grants are in [`00002510`](../../../supabase/migrations/00002510_permissions_function_grants.sql);
 the reasoning for each `REVOKE` / `GRANT` is in [Policies.md](Policies.md#grants).
@@ -39,7 +42,7 @@ the reasoning for each `REVOKE` / `GRANT` is in [Policies.md](Policies.md#grants
 | :------------------------ | :------------------------------------------------------------------------------------------------ | :----------------------- |
 | `trg_files_items_touch`   | `BEFORE UPDATE ON files.items`                                                                    | `fn_touch_updated_at`    |
 | `trg_files_folders_touch` | `BEFORE UPDATE ON files.folders`                                                                  | `fn_touch_updated_at`    |
-| `trg_files_items_usage`   | `AFTER INSERT OR UPDATE OF size_bytes, deleted_at, source, owner_type, owner_entity_id OR DELETE` | `fn_usage_trigger`       |
+| `trg_files_items_usage`   | `AFTER INSERT OR UPDATE OF size_bytes, deleted_at, source, owner_type, owner_entity_id, status OR DELETE` | `fn_usage_trigger`       |
 | `trg_files_items_quota`   | `BEFORE INSERT OR UPDATE OF size_bytes ON files.items`                                            | `fn_check_storage_quota` |
 | `trg_files_items_guard_pipeline` | `BEFORE INSERT OR UPDATE ON files.items` — before the quota gate, so a forged row is refused for what it claims rather than metered for what it weighs | `fn_guard_pipeline_columns` |
 
@@ -48,6 +51,8 @@ the reasoning for each `REVOKE` / `GRANT` is in [Policies.md](Policies.md#grants
 > reference stops consuming our bytes), and `owner_type` / `owner_entity_id` decide **whose** rollup
 > it counts against. Narrowing the list back to two columns would leave a re-owned or re-sourced
 > asset charged to the wrong principal until some unrelated write happened to fire the trigger.
+> `status` is on it because a refused upload writes **nothing else** — the transition into
+> `quarantined` / `error` is what releases the refused upload's reservation.
 
 ---
 
@@ -72,6 +77,12 @@ Recomputes one owner's stored-byte total from scratch and upserts `files.storage
   momentarily expensive.
 - Counts **only what we actually store**: `source = 'supabase'` and `deleted_at IS NULL`. A mounted
   Drive/Dropbox/S3/Frame.io file consumes the **provider's** quota; a `link` consumes none.
+- **An in-flight upload reserves; a refused one releases.** A `pending_upload` / `scanning` row
+  counts at its **declared** size — `fn_check_storage_quota` charges a promotion only the delta
+  between declared and measured size, so parallel declarations must each see the others. A
+  `quarantined` or `error` row holds no bytes and is **excluded**; counting it would let a rejected
+  file consume the allowance forever. (Verified by execution: a 5 MB declaration reserves 5 MB, and
+  a status-only refusal returns the rollup to its baseline.)
 - Definer because it runs from an `AFTER` trigger and must see every row of the owner's library,
   including rows the acting user cannot read.
 
@@ -123,14 +134,16 @@ returns `false` — a malformed anchor is not an authorization.
 > it starts **refusing uploads** on a live tenant and is a deliberate human decision, never a side
 > effect of running a migration.
 
-- Returns immediately for `source <> 'supabase'` (mounted and link assets cost us nothing) and for a
-  soft-deleted row.
+- Returns immediately for `source <> 'supabase'` (mounted and link assets cost us nothing), for a
+  soft-deleted row, and for a `quarantined` / `error` row — the rollup does not count those, and the
+  gate and the rollup must agree on what counts, or a refusal could itself be refused for quota.
 - Resolves the ceiling through `finance.fn_effective_limit(..., 'storage_megabytes')`, so plan ×
   standing × grant resolution and the `NULL = unlimited` convention live in one place.
 - **Units.** The entitlement is **mebibytes**; the rollup is **bytes**. The conversion happens here,
   once, and nowhere else. `plan_entitlements.limit_value` is `integer` and 25 GB in bytes is
   26,843,545,600 — an int4 overflow — so the ladder is never denominated in bytes anywhere.
-- On `UPDATE` only the **delta** counts as new capacity; on `INSERT` the whole file does.
+- On `UPDATE` only the **delta** counts as new capacity (the old size is already in the rollup); on
+  `INSERT` the whole file does — and so does an `UPDATE` of a row the rollup had released.
 - Raises `check_violation` when exceeded.
 
 **Known limit, inherited from the same design:** once enforcement is on, the `RAISE` aborts the
@@ -285,6 +298,61 @@ scan, and every reader that trusts "uploaded" would serve it. So the columns tha
 The media pipeline that DOES write those columns is `packages/backend/services/media/` (quarantine
 claim → magic-byte sniff → decode → WebP tiers → promote), running as the service role; see
 [Storage.md](Storage.md#the-upload-pipeline).
+
+---
+
+## 🏷 `files.fn_owns_library(p_owner_type files.owner_kind, p_owner_entity_id uuid) → boolean`
+
+`STABLE` · `LANGUAGE sql` · not definer. The **write** twin of `fn_can_read`'s ownership arms, called
+by the `items` / `folders` INSERT and UPDATE policies' `WITH CHECK`:
+
+| `owner_type`   | Passes when                                                       |
+| :------------- | :---------------------------------------------------------------- |
+| `user`         | `owner_entity_id IS NULL` (a personal row names no entity)        |
+| `team`         | the entity is set and `org.is_active_team_member(entity)`         |
+| `business`     | the entity is set and `org.is_active_business_member(entity)`     |
+| `organisation` | the entity is set and `org.is_organisation_member(entity)`        |
+
+Those policies used to check only `owner_user_id = auth.uid()` — who **created** the row — and never
+whether the creator belonged to the library they filed it into. Verified by execution before it was
+closed: any signed-in user could plant a link or a folder in another team's library, where every
+member would see it as their own team's file. Not definer: the membership helpers already are.
+
+## 📏 `files.get_storage_quota(p_owner_type files.owner_kind, p_owner_id uuid) → jsonb`
+
+`STABLE` · `SECURITY DEFINER` · `EXECUTE` to `authenticated`, `service_role` (**not** `anon`).
+
+Everything the storage meter shows, in one round trip:
+
+```json
+{ "limit_mib": 153600, "used_bytes": 589012, "item_count": 16,
+  "plan_code": "individual_pro", "from_grant": false, "enforced": false }
+```
+
+The limit comes from `finance.fn_effective_limit(…, 'storage_megabytes')` (plan × standing × grants,
+so the ladder lives in one place) and `limit_mib: null` means unlimited. `used_bytes` is the
+`storage_usage` rollup, never a live `sum()`. Definer because the resolver and the plan tables are not
+the caller's to read — so it **authorises first**: the caller must be the user, or an active member of
+the entity, whose allowance they ask for (`42501` otherwise). An allowance is a fact about someone's
+subscription, not public.
+
+## 🧾 `files.fn_record_download(p_item_id, p_actor, p_device, p_via, p_share_slug) → files.download_events`
+
+`VOLATILE` · `SECURITY DEFINER` · `EXECUTE` to **`service_role` only**.
+
+Appends one download and moves the counters it moves, in one transaction:
+
+1. **Settled files only.** A `pending_upload`, `quarantined` or `error` row has no bytes; refused with
+   `PB404` **before** any count moves, so a refusal never spends a share link's allowance.
+2. **A share download is counted against its link first**, by one guarded `UPDATE` that only succeeds
+   while the link is unrevoked, unexpired and under its `download_limit` — so a link with one
+   download left cannot serve two concurrent requests. The link must also reach the file (the file
+   itself, or the folder it sits in). `PS404` otherwise.
+3. Bumps `items.download_count` and inserts the ledger row.
+
+`p_actor` is the identity the **session** evidenced, supplied by the server after it has decided the
+caller may read the file. "This was downloaded" is a server observation, never a browser's claim — the
+table carries no client INSERT policy for the same reason.
 
 ---
 

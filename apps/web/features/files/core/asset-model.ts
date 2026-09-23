@@ -112,6 +112,23 @@ export function nodeAt(
 	return found;
 }
 
+/**
+ * The nodes that hang directly under a host's own root row.
+ *
+ * The server's tree carries the library's `root` node beside the mounted and drive roots. Every host
+ * draws its own root row (the one click back to the top), so that row IS the library root and the root
+ * node's children are lifted into its place. Wrapping the node instead draws the library twice, and
+ * addresses every folder beneath it as `/files/root/…`, a folder that does not exist.
+ */
+export function rootChildren(tree: readonly AssetTreeNode[]): AssetTreeNode[] {
+	return tree.flatMap((node) => node.nodeKind === "root" ? node.children : [node]);
+}
+
+/** The library root's own file count, when the tree carries one: the host root row's muted count. */
+export function rootFileCount(tree: readonly AssetTreeNode[]): number | undefined {
+	return tree.find((node) => node.nodeKind === "root")?.fileCount;
+}
+
 /** The direct child nodes of the node at `segments` (or the roots at the scope root). */
 export function childNodesAt(
 	tree: readonly AssetTreeNode[],
@@ -246,6 +263,22 @@ export function sourceGlyphKey(source: AssetSource): AssetSourceGlyph {
 			return "amazon-s3";
 		case "link":
 			return "link";
+	}
+}
+
+/**
+ * The storage source a connector provider's catalogue slug corresponds to, for its brand mark. A slug
+ * with no storage source of its own (a calendar, a CRM) falls back to the library's mark.
+ */
+export function providerSource(slug: string): AssetSource {
+	switch (slug) {
+		case "google_drive":
+		case "dropbox":
+		case "frameio":
+		case "s3":
+			return slug;
+		default:
+			return "supabase";
 	}
 }
 // #endregion

@@ -1,22 +1,26 @@
 import { page } from "fresh";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { define } from "@web/utils/state.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import WalletMethodsScreen from "@features/wallet/islands/WalletMethodsScreen.island.tsx";
-import { resolveDisplayCurrency, resolveMethods } from "@features/wallet/core/wallet-ssr.ts";
-import { defaultWalletParam } from "@features/wallet/core/wallet-model.ts";
+import WalletUnavailable from "@features/wallet/islands/WalletUnavailable.island.tsx";
+import { resolveMethods, resolveWalletFrame } from "@features/wallet/core/wallet-ssr.ts";
 
 /** `/wallet/methods` — cards/banks tagged spend/earn/both, with defaults. Stripe-hosted card entry. */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const context = asAuthenticatedContext(ctx.state.userContext);
-		const methods = resolveMethods(context, ctx.url);
-		const wallet = ctx.url.searchParams.get("w") ?? defaultWalletParam(context);
-		const display = resolveDisplayCurrency(context, ctx.url);
+		const actor = readActor(ctx);
+		const [read, frame] = await Promise.all([
+			resolveMethods(context, ctx.url, actor),
+			resolveWalletFrame(context, ctx.url, actor),
+		]);
 		ctx.state.title = "Methods · Wallet";
-		return page({ methods, wallet, display });
+		return page({ read, ...frame }, read.ok ? undefined : { status: 503 });
 	},
 });
 
 export default define.page<typeof handler>(function MethodsPage({ data }) {
-	return <WalletMethodsScreen initial={data.methods} wallet={data.wallet} display={data.display} />;
+	if (!data.read.ok) return <WalletUnavailable title="Methods" message={data.read.message} />;
+	return <WalletMethodsScreen initial={data.read.data} wallet={data.wallet} display={data.display} />;
 });

@@ -585,7 +585,7 @@ export async function fetchProjectRows(
  * widening it to the public marketplace. Under-reporting a hire is a visible, reportable emptiness;
  * over-reporting fills someone's workspace with strangers' work.
  */
-async function fetchInvolvedProjectIds(
+export async function fetchInvolvedProjectIds(
 	db: SupabaseClient,
 	actor: ReadActor,
 ): Promise<string[]> {

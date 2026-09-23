@@ -1,5 +1,5 @@
 import { define } from "@web/utils/state.ts";
-import { asAuthenticatedContext } from "@projective/types/auth";
+import { readActor } from "@web/utils/api-session.ts";
 import { toFilesResponse } from "@features/files/core/respond.ts";
 import { FilesBackendService } from "@server/services/files/FilesBackendService.ts";
 
@@ -22,7 +22,7 @@ import { FilesBackendService } from "@server/services/files/FilesBackendService.
  * This is answered SERVER-side because `localStorage` cannot answer it: that store is per-browser, is
  * wiped, and is wrong the moment the same person opens the asset on their phone.
  *
- * No server-side capability guard (Decision #53(b)) — see `./list.ts`.
+ * Runs under the caller's own session: RLS is the gate, and the library is the acting context's.
  */
 export const handler = define.handlers({
 	async GET(ctx) {
@@ -32,13 +32,6 @@ export const handler = define.handlers({
 			return Response.json({ ok: false, message: "Missing file id." }, { status: 400 });
 		}
 
-		const context = asAuthenticatedContext(ctx.state.userContext);
-		return toFilesResponse(
-			await FilesBackendService.downloadGuard({
-				assetId,
-				actorId: context.userId ?? "",
-				deviceFingerprint: sp.get("device"),
-			}),
-		);
+		return toFilesResponse(await FilesBackendService.downloadGuard(assetId, readActor(ctx)));
 	},
 });

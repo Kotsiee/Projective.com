@@ -37,8 +37,7 @@ import { FileKindIcon } from "@web/features/projects/components/file-glyphs.tsx"
 
 import { FilesService } from "../core/FilesService.ts";
 import { IntegrationsService } from "../core/IntegrationsService.ts";
-import { simFromSeam, subscribeFilesSim } from "../core/files-seam.ts";
-import { breadcrumbsFor, pathKey } from "../core/asset-model.ts";
+import { breadcrumbsFor, pathKey, providerSource, rootChildren } from "../core/asset-model.ts";
 import { fingerprintFile } from "../core/fingerprint.ts";
 import { awaitExtraction, extractMetadata } from "../core/media/extract.ts";
 import {
@@ -68,7 +67,6 @@ import {
 	type FileCategory,
 	FileKind,
 	type FileScope,
-	type FilesSim,
 	formatMib,
 	MIB,
 	type StorageQuota,
@@ -399,7 +397,8 @@ function visibleTreeRows(
 			if (node.children.length > 0 && expanded.has(key)) walk(node.children, path);
 		}
 	};
-	walk(tree, []);
+	// The same top level AssetTree draws, or every drop target lands one row off the row it names.
+	walk(rootChildren(tree), []);
 	return rows;
 }
 // #endregion
@@ -661,7 +660,6 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 	const myUploads = useSignal<string[]>([]);
 
 	const reqId = useRef(0);
-	const simRef = useRef<FilesSim | undefined>(undefined);
 	const debounceRef = useRef<number | null>(null);
 	const viewerRef = useRef<string>("");
 	const restoreRef = useRef<{ ids: string[]; anchor: string | null } | null>(null);
@@ -797,7 +795,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 		const my = ++reqId.current;
 		loading.value = true;
 		error.value = null;
-		const res = await FilesService.list(listParams(null), simRef.current);
+		const res = await FilesService.list(listParams(null));
 		if (my !== reqId.current) return;
 		loading.value = false;
 		if (res.ok && res.data) {
@@ -822,7 +820,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 		if (loading.value || !hasMore.value || !cursor.value) return;
 		const my = reqId.current;
 		loading.value = true;
-		const res = await FilesService.list(listParams(cursor.value), simRef.current);
+		const res = await FilesService.list(listParams(cursor.value));
 		if (my !== reqId.current) return;
 		loading.value = false;
 		if (res.ok && res.data) {
@@ -851,12 +849,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 		if (!viewerRef.current || loc.scope === "drive") return;
 		const key = `${loc.scope}:${loc.subjectId ?? ""}`;
 		if (treeKeyRef.current === key) return;
-		const res = await FilesService.tree({
-			scope: loc.scope,
-			subjectId: loc.subjectId,
-			ownerType: "user",
-			ownerId: viewerRef.current,
-		}, simRef.current);
+		const res = await FilesService.tree();
 		// A failed tree leaves the previous one standing rather than blanking navigation; the grid is
 		// still a complete way around (folder cards drill down, the trail climbs back out).
 		if (res.ok && res.data) {
@@ -867,7 +860,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 
 	/** The caller's connected storage accounts, for the drives source. */
 	async function loadDrives(): Promise<void> {
-		const res = await IntegrationsService.connections(simRef.current);
+		const res = await IntegrationsService.connections();
 		if (res.ok && res.data) {
 			drives.value = res.data.connections
 				.filter((c) => c.providerCapabilities.includes("storage") && c.status === "active")
@@ -1132,7 +1125,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 			folderId: null,
 			ownerType: "user",
 			ownerId: viewerRef.current,
-		}, simRef.current);
+		});
 		busy.value = false;
 		if (res.ok && res.data) {
 			linkUrl.value = "";
@@ -1203,7 +1196,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 			// Private is the only non-surprising default. Attaching elevates it where the destination
 			// requires it (a channel, a public listing); nothing here silently widens access.
 			visibility: "private",
-		}, simRef.current);
+		});
 
 		if (!init.ok || !init.data) {
 			patchUpload(id, {
@@ -1332,33 +1325,8 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 	// #endregion
 
 	// #region Mount
-	/**
-	 * The seam subscription's way back into the CURRENT render's `reload`.
-	 *
-	 * The subscription is registered once and lives for the island's lifetime, so the closure it
-	 * captured is the first render's — and `reload` reads `accept` and `scope`, which are PROPS and
-	 * therefore not signals. Without this indirection a dev-axis change would re-read the location with
-	 * whatever restriction the host was passing when the picker first mounted.
-	 */
-	const reloadRef = useRef<() => void>(() => {});
-	reloadRef.current = () => {
-		if (isOpen) void reload();
-	};
-
-	useEffect(() => {
-		simRef.current = simFromSeam();
-		const unsubscribe = subscribeFilesSim((sim) => {
-			simRef.current = sim;
-			// The axes are SERVER-derived, so re-rendering would only relabel the same rows — the read
-			// has to happen again for the simulated projection to exist at all. The tree is a server
-			// projection too, so its cache key is retired alongside the listing.
-			treeKeyRef.current = "";
-			reloadRef.current();
-		});
-		return () => {
-			unsubscribe();
-			if (debounceRef.current !== null) clearTimeout(debounceRef.current);
-		};
+	useEffect(() => () => {
+		if (debounceRef.current !== null) clearTimeout(debounceRef.current);
 	}, []);
 
 	/**
@@ -2018,22 +1986,6 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 }
 
 // #region Vocabulary
-/** Map a connector slug onto the storage source its brand mark is registered under. */
-function providerSource(slug: string): AssetSource {
-	switch (slug) {
-		case "google_drive":
-			return "google_drive";
-		case "dropbox":
-			return "dropbox";
-		case "frameio":
-			return "frameio";
-		case "s3":
-			return "s3";
-		default:
-			return "supabase";
-	}
-}
-
 /**
  * One upload row's state, in words.
  *

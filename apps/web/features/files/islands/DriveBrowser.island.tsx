@@ -25,7 +25,6 @@ import {
 
 import { FileKindIcon } from "@web/features/projects/components/file-glyphs.tsx";
 import { IntegrationsService } from "../core/IntegrationsService.ts";
-import { simFromSeam, subscribeFilesSim } from "../core/files-seam.ts";
 import { offlineOr } from "@web/utils/use-offline-stall.ts";
 import {
 	type AssetFolder,
@@ -33,7 +32,6 @@ import {
 	type AssetOwnerType,
 	type AssetSource,
 	consumesQuota,
-	type FilesSim,
 	sourceLabel,
 } from "../types/file-types.ts";
 import {
@@ -198,7 +196,6 @@ export default function DriveBrowser(props: DriveBrowserProps): JSX.Element | nu
 
 	const panelRef = useRef<HTMLDivElement>(null);
 	const reqId = useRef(0);
-	const simRef = useRef<FilesSim | undefined>(undefined);
 
 	const rootId = useId(undefined, "drv");
 	const titleId = `${rootId}-title`;
@@ -241,7 +238,7 @@ export default function DriveBrowser(props: DriveBrowserProps): JSX.Element | nu
 			connectionId,
 			folderId: at,
 			limit: PAGE_LIMIT,
-		}, simRef.current);
+		});
 		if (my !== reqId.current) return;
 		loading.value = false;
 		if (res.ok && res.data) {
@@ -272,7 +269,7 @@ export default function DriveBrowser(props: DriveBrowserProps): JSX.Element | nu
 			folderId: level?.folderId ?? null,
 			cursor: cursor.value,
 			limit: PAGE_LIMIT,
-		}, simRef.current);
+		});
 		if (my !== reqId.current) return;
 		loading.value = false;
 		if (res.ok && res.data) {
@@ -456,22 +453,6 @@ export default function DriveBrowser(props: DriveBrowserProps): JSX.Element | nu
 	// #endregion
 
 	// #region Mount
-	useEffect(() => {
-		simRef.current = simFromSeam();
-		const unsubscribe = subscribeFilesSim((sim) => {
-			simRef.current = sim;
-			// The connection-state axis is SERVER-derived, so a re-render would relabel the same rows
-			// rather than reach the state being simulated — the read has to happen again.
-			//
-			// The location is `peek`ed off the signal rather than read from the render closure: this
-			// effect is mounted once, so a captured `level` would be the one from the first render and
-			// the refetch would re-read the drive root however deep the person had navigated.
-			const connectionId = activeId.peek();
-			if (connectionId) void readLevel(connectionId, trail.peek().at(-1)?.folderId ?? null);
-		});
-		return unsubscribe;
-	}, []);
-
 	/**
 	 * Start clean each time the browser opens.
 	 *

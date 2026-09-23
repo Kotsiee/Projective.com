@@ -8,13 +8,17 @@ import type {
 /**
  * capability — who may operate which money control, and how a blocked control is presented.
  *
- * Two gates that behave DIFFERENTLY, and conflating them is the mistake this module exists to
+ * Three gates that behave DIFFERENTLY, and conflating them is the mistake this module exists to
  * prevent (BUILD CONTRACT §9):
  *
  *  - **Capability** → **absence**. A `member` on a team vault has no business seeing a Distribute
- *    button at all; showing it disabled advertises a power they will never have on this vault.
+ *    button at all; showing it disabled advertises a power they will never have on this vault. The
+ *    SERVER decides this — an action it does not offer is never drawn.
  *  - **Verification** → **disablement with a reason**. The viewer *does* hold the capability; a
  *    process step is outstanding. Removing the control hides the path; locking it teaches the path.
+ *  - **Availability** → **disablement with a reason**. The viewer holds the capability and nothing is
+ *    outstanding on their side, but the action cannot run here (no payment processor, nothing waiting
+ *    to be funded). It is drawn locked with the server's sentence, never silently missing.
  *
  * Chrome only. The server re-checks every mutation and RLS is the real gate — these helpers decide
  * what is drawn, never what is permitted.
@@ -25,20 +29,6 @@ import type {
 export function can(caps: readonly VaultCapability[], cap: VaultCapability): boolean {
 	return caps.includes(cap);
 }
-
-/** The capability each money action requires. */
-const REQUIRES: Record<WalletAction, VaultCapability> = {
-	top_up: "add_funds",
-	withdraw: "withdraw",
-	transfer: "withdraw",
-	distribute: "distribute",
-	fund_escrow: "spend",
-	new_recurring: "add_funds",
-	add_method: "add_funds",
-	set_payout: "withdraw",
-	request_spend: "view",
-	enrol_smoother: "withdraw",
-};
 
 /** The actions that additionally require a payout-ready identity (money LEAVING the platform). */
 const NEEDS_PAYOUT: ReadonlySet<WalletAction> = new Set([
@@ -53,7 +43,7 @@ const NEEDS_PAYOUT: ReadonlySet<WalletAction> = new Set([
 export interface ResolvedAction {
 	action: WalletAction;
 	label: string;
-	/** Present but locked behind an outstanding verification step — rendered, never removed. */
+	/** Present but locked — behind a verification step, or unable to run here. Rendered, never removed. */
 	locked: boolean;
 	/** The prompt a locked action's nudge carries; `null` when unlocked. */
 	prompt: string | null;
@@ -76,40 +66,31 @@ export const ACTION_LABEL: Record<WalletAction, string> = {
 };
 
 /**
- * Resolve the server's offered actions against the viewer's capabilities and verification state.
+ * Resolve the server's offered actions into what the rig draws.
  *
- * The server already gated `quickActions`; this re-applies the capability filter client-side so a
- * dev-seam role flip re-draws the rig without a refetch, and layers the verification lock on top.
- * A `member` who cannot spend is offered `request_spend` in place of the spend actions, so the
- * governance path stays visible rather than the surface simply going quiet.
+ * The server already applied the capability gate, so everything it offers is drawn. An action it also
+ * listed as unavailable is locked with the server's reason — that is a fact about this environment,
+ * and it outranks the verification nudge, because finishing verification would not make it run. An
+ * action that sends money off the platform is otherwise locked behind a payout-ready identity.
  */
 export function actionsFor(
 	offered: readonly WalletAction[],
-	caps: readonly VaultCapability[],
+	unavailable: readonly { action: WalletAction; reason: string }[],
 	verification: WalletVerification,
-	variant: WalletVariant,
 ): ResolvedAction[] {
-	const out: ResolvedAction[] = [];
-	for (const action of offered) {
-		if (action === "distribute" && variant !== "team") continue;
-		if (action === "request_spend") {
-			// Only meaningful on a shared vault, and only for someone who cannot already spend.
-			if (variant === "personal" || can(caps, "spend")) continue;
-			out.push({ action, label: ACTION_LABEL[action], locked: false, prompt: null, href: null });
-			continue;
-		}
-		if (!can(caps, REQUIRES[action])) continue;
-
+	const blocked = new Map(unavailable.map((u) => [u.action, u.reason] as const));
+	return offered.map((action) => {
+		const reason = blocked.get(action);
+		if (reason) return { action, label: ACTION_LABEL[action], locked: true, prompt: reason, href: null };
 		const locked = NEEDS_PAYOUT.has(action) && !verification.canWithdraw;
-		out.push({
+		return {
 			action,
 			label: ACTION_LABEL[action],
 			locked,
 			prompt: locked ? verification.prompt : null,
 			href: locked ? verification.href : null,
-		});
-	}
-	return out;
+		};
+	});
 }
 // #endregion
 

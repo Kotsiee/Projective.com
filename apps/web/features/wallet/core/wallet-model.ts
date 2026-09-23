@@ -2,24 +2,19 @@ import type { UserContext } from "@projective/types/auth";
 import type {
 	ActivityRange,
 	FundState,
-	SimFundMix,
-	SimKyc,
-	SimSmoother,
-	SimStanding,
 	TxnCategory,
 	VaultCapability,
 	WalletAction,
 	WalletQuery,
 	WalletScope,
-	WalletSim,
 	WalletVariant,
 } from "../types/wallet-types.ts";
 
 /**
  * wallet-model — the pure, presentation-agnostic helpers the Wallet islands, routes, and SSR resolvers
- * share: the deep-page vocabulary + hrefs, the URL ⇄ {@link WalletQuery} mapping, the dev-seam
- * simulation-param parsing, and the small display-metadata maps (fund states, categories, actions). No
- * state, no DOM — safe to import anywhere (client or server).
+ * share: the deep-page vocabulary + hrefs, the URL ⇄ {@link WalletQuery} mapping, and the small
+ * display-metadata maps (fund states, categories, actions). No state, no DOM — safe to import anywhere
+ * (client or server).
  */
 
 // #region Deep-page vocabulary
@@ -128,72 +123,24 @@ export function defaultWalletParam(context: UserContext): string {
 }
 // #endregion
 
-// #region Simulation params (dev seam ⇄ query string)
-const KYC_VALUES: readonly SimKyc[] = ["verified", "unverified", "payout_setup"];
-const SMOOTHER_VALUES: readonly SimSmoother[] = ["auto", "ineligible", "eligible", "enrolled"];
-const FUNDMIX_VALUES: readonly SimFundMix[] = ["normal", "locked", "pending", "dispute"];
-const STANDING_VALUES: readonly SimStanding[] = [
-	"auto",
-	"l1",
-	"l2",
-	"l3",
-	"l4",
-	"l5",
-	"stage_floor",
-];
-const ROLE_VALUES = ["owner", "admin", "pm", "member"] as const;
-
-/** Parse the dev-simulation knobs from a query string (routes read these; islands write them). */
-export function parseSim(sp: URLSearchParams): WalletSim | undefined {
-	const sim: WalletSim = {};
-	const role = sp.get("vaultRole");
-	if (role && (ROLE_VALUES as readonly string[]).includes(role)) {
-		sim.vaultRole = role as WalletSim["vaultRole"];
-	}
-	const kyc = sp.get("kyc");
-	if (kyc && (KYC_VALUES as readonly string[]).includes(kyc)) sim.kyc = kyc as SimKyc;
-	const smoother = sp.get("smoother");
-	if (smoother && (SMOOTHER_VALUES as readonly string[]).includes(smoother)) {
-		sim.smoother = smoother as SimSmoother;
-	}
-	const fundMix = sp.get("fundMix");
-	if (fundMix && (FUNDMIX_VALUES as readonly string[]).includes(fundMix)) {
-		sim.fundMix = fundMix as SimFundMix;
-	}
-	const standing = sp.get("standing");
-	if (standing && (STANDING_VALUES as readonly string[]).includes(standing)) {
-		sim.standing = standing as SimStanding;
-	}
-	return Object.keys(sim).length > 0 ? sim : undefined;
-}
-
-/** Serialise the client-side simulation + display state into a `/api/wallet/*` query string. */
-export function buildSimQuery(opts: {
-	wallet?: string | null;
-	display?: string | null;
-	sim?: WalletSim;
-}): string {
+// #region Read query (URL ⇄ query string)
+/** Serialise the client's wallet + display state into a `/api/wallet/*` query string. */
+export function buildWalletQuery(opts: { wallet?: string | null; display?: string | null }): string {
 	const qs = new URLSearchParams();
 	if (opts.wallet && opts.wallet !== "personal") qs.set("w", opts.wallet);
 	if (opts.display) qs.set("display", opts.display);
-	const s = opts.sim;
-	if (s?.vaultRole) qs.set("vaultRole", s.vaultRole);
-	if (s?.kyc) qs.set("kyc", s.kyc);
-	if (s?.smoother) qs.set("smoother", s.smoother);
-	if (s?.fundMix) qs.set("fundMix", s.fundMix);
-	if (s?.standing) qs.set("standing", s.standing);
 	return qs.toString();
 }
 
-/** Build the fat-service {@link WalletQuery} from a request's URL + acting context (server-side). */
+/**
+ * Build the fat-service {@link WalletQuery} from a request's URL + acting context (server-side). Who is
+ * asking is not part of it: the service reads everything as the signed-in caller.
+ */
 export function walletQueryFrom(sp: URLSearchParams, context: UserContext): WalletQuery {
 	return {
 		wallet: sp.get("w") ?? defaultWalletParam(context),
 		display: sp.get("display"),
-		viewerHandle: context.handle,
-		viewerId: context.userId,
-		isFreelancer: context.isFreelancer,
-		sim: parseSim(sp),
+		viewerCurrency: context.displayCurrency ?? null,
 	};
 }
 

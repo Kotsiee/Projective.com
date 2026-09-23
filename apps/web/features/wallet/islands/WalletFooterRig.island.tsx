@@ -28,14 +28,13 @@ import MoneyMoveDrawer from "./MoneyMoveDrawer.island.tsx";
 import ConfigureDrawer from "./ConfigureDrawer.island.tsx";
 import ConfirmMoveModal from "./ConfirmMoveModal.island.tsx";
 import type {
+	BusinessExtras,
 	MoneyView,
 	PaymentMethodView,
 	PersonalExtras,
 	TeamExtras,
-	VaultCapability,
 	WalletAction,
 	WalletRef,
-	WalletVariant,
 	WalletVerification,
 } from "../types/wallet-types.ts";
 
@@ -70,10 +69,11 @@ import type {
  */
 export interface WalletFooterRigProps {
 	view: WalletView;
-	variant: WalletVariant;
 	scope: string;
+	/** What the server offers this viewer on this wallet (the capability gate is already applied). */
 	quickActions: WalletAction[];
-	capabilities: VaultCapability[];
+	/** Offered actions that cannot run here, each with the reason — drawn locked, never removed. */
+	unavailable: { action: WalletAction; reason: string }[];
 	verification: WalletVerification;
 	/** The action layer's data. The rig owns the layer because the rig is what opens it. */
 	accounts: WalletRef[];
@@ -82,6 +82,7 @@ export interface WalletFooterRigProps {
 	methods: PaymentMethodView[];
 	team: TeamExtras | null;
 	personal: PersonalExtras | null;
+	business: BusinessExtras | null;
 }
 
 const ACTION_GLYPH: Record<WalletAction, JSX.Element> = {
@@ -120,13 +121,19 @@ const VIEW_ACTION: Partial<Record<WalletView, WalletAction>> = {
 /** How many actions the inline cluster holds. The remainder are reachable in the menu, which holds all. */
 const INLINE_SLOTS = 5;
 
-/** Move the view's own action to the front without disturbing the rest of the server's order. */
+/**
+ * Order the cluster: actions that can run first (the view's own leading them), locked ones after. The
+ * leading slot takes the single filled weight, and a filled button that refuses its press is the
+ * loudest control on the band promising the one thing the band cannot do — so a locked action never
+ * leads, however central it is to the page.
+ */
 function orderForView(actions: ResolvedAction[], view: WalletView): ResolvedAction[] {
 	const lead = VIEW_ACTION[view];
-	if (!lead) return actions;
-	const i = actions.findIndex((a) => a.action === lead);
-	if (i <= 0) return actions;
-	return [actions[i], ...actions.slice(0, i), ...actions.slice(i + 1)];
+	const open = actions.filter((a) => !a.locked);
+	const locked = actions.filter((a) => a.locked);
+	const i = lead ? open.findIndex((a) => a.action === lead) : -1;
+	const ordered = i > 0 ? [open[i], ...open.slice(0, i), ...open.slice(i + 1)] : open;
+	return [...ordered, ...locked];
 }
 
 export default function WalletFooterRig(props: WalletFooterRigProps): JSX.Element {
@@ -139,7 +146,7 @@ export default function WalletFooterRig(props: WalletFooterRigProps): JSX.Elemen
 	useEffect(() => walletZoom.restoreZoom(), []);
 
 	const actions = orderForView(
-		actionsFor(props.quickActions, props.capabilities, props.verification, props.variant),
+		actionsFor(props.quickActions, props.unavailable, props.verification),
 		props.view,
 	);
 	const hasTable = TABLE_VIEWS.has(props.view);
@@ -168,7 +175,7 @@ export default function WalletFooterRig(props: WalletFooterRigProps): JSX.Elemen
 			<button
 				type="button"
 				class="wlt-footerrig__action"
-				data-variant={i === 0 && !inMenu ? "primary" : "tonal"}
+				data-variant={i === 0 && !inMenu && !a.locked ? "primary" : "tonal"}
 				data-locked={a.locked ? "true" : "false"}
 				aria-disabled={a.locked ? "true" : undefined}
 				aria-label={a.label}
@@ -280,6 +287,7 @@ export default function WalletFooterRig(props: WalletFooterRigProps): JSX.Elemen
 						available={props.available}
 						methods={props.methods}
 						team={props.team}
+						business={props.business}
 						activeAccount={props.activeAccount}
 					/>
 					<ConfigureDrawer

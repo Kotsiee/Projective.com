@@ -30,6 +30,7 @@ import {
 	availabilityOpen,
 	CALENDAR_VIEWS,
 	calendarFocus,
+	focusedAt,
 	calendarPage,
 	calendarQuery,
 	calendarView,
@@ -166,7 +167,7 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 	 * Stepping the mini-map browses ahead without moving the grid — the same separation the engine's
 	 * own side panel makes. Collapsing the two would make every glance at next month a navigation.
 	 */
-	const monthMs = useSignal<number>(calendarFocus.peek());
+	const monthMs = useSignal<number>(calendarFocus.peek() || props.initial?.now || Date.now());
 	/**
 	 * Which panel the tab strip is showing.
 	 *
@@ -187,7 +188,7 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 
 	// A pick, a nav step or a scroll that lands in another month brings the mini-map with it.
 	useEffect(() => {
-		monthMs.value = calendarFocus.value;
+		if (calendarFocus.value) monthMs.value = calendarFocus.value;
 	}, [calendarFocus.value]);
 
 	const setCollapsed = (next: boolean) => {
@@ -211,7 +212,7 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 	 * the reader's own position instead, which is what makes it a companion to the grid rather than a
 	 * second, competing agenda.
 	 */
-	const from = calendarFocus.value;
+	const from = focusedAt(page);
 	const upcoming = shown
 		.filter((e) => e.end > from && e.start < from + UPCOMING_WINDOW_MS)
 		.sort((a, b) => a.start - b.start)
@@ -303,7 +304,7 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 				<LaneHead class="cal-lane__head">
 					<MiniMonth
 						monthMs={monthMs.value}
-						focusMs={calendarFocus.value}
+						focusMs={focusedAt(page)}
 						tz={tz}
 						view={calendarView.value}
 						todayMs={todayMs.value}

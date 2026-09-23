@@ -220,6 +220,14 @@ authenticated;
 GRANT
 EXECUTE ON FUNCTION scheduling.fn_is_call_party (uuid) TO authenticated;
 
+-- The coordination policies' predicate: a policy expression runs as the invoking role, so
+-- `authenticated` must hold it. Not granted to anon — coordination has no anonymous reader.
+REVOKE ALL ON FUNCTION scheduling.fn_can_see_event_coordination (uuid) FROM public, anon;
+
+GRANT
+EXECUTE ON FUNCTION scheduling.fn_can_see_event_coordination (uuid) TO authenticated,
+service_role;
+
 
 -- --- from 20260724104000_scheduling_booking_engine.sql ---
 
@@ -376,10 +384,20 @@ GRANT EXECUTE ON FUNCTION finance.resolve_promo_code(text) TO authenticated;
 -- mode, on KYB verification.
 GRANT EXECUTE ON FUNCTION finance.set_invoicing_terms(text, uuid, text, integer) TO authenticated;
 
--- Paying a basket from the wallet (00001210 §11). The ONE money-moving function a client may call:
--- it authorises the caller itself (fn_can_manage_basket, KYB, spend limit), re-prices every line, and
+-- Paying a basket from the wallet (00001210 §11). A money-moving function a client may call: it
+-- authorises the caller itself (fn_can_manage_basket, KYB, spend limit), re-prices every line, and
 -- moves money only through the service-role primitives it calls as its owner.
 GRANT EXECUTE ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text) TO authenticated;
+
+-- The wallet's own movements (00001210 §12) — the same posture: each checks the caller's capability on
+-- the wallet money leaves and membership of the wallet it lands in, then moves money only through the
+-- primitives it calls as its owner. Deciding a spend request moves nothing; it is gated on
+-- manage_members and refuses the requester.
+GRANT EXECUTE ON FUNCTION finance.transfer_funds(uuid, uuid, bigint, text, text) TO authenticated;
+
+GRANT EXECUTE ON FUNCTION finance.distribute_vault(uuid, bigint, text) TO authenticated;
+
+GRANT EXECUTE ON FUNCTION finance.decide_spend_approval(uuid, text) TO authenticated;
 
 
 -- --- finance: no function is an API endpoint by default (the move off fixtures, 2026-09-23) ---
@@ -544,6 +562,18 @@ GRANT EXECUTE ON FUNCTION files.get_public_media(uuid[]) TO anon, authenticated,
 
 REVOKE ALL ON FUNCTION files.fn_guard_pipeline_columns() FROM public;
 
+-- files.fn_owns_library is a POLICY predicate (the items/folders INSERT and UPDATE checks), so like
+-- fn_can_read it must stay executable by the roles those policies run as.
+GRANT EXECUTE ON FUNCTION files.fn_owns_library(files.owner_kind, uuid) TO anon, authenticated, service_role;
+
+-- The storage meter's one door: it authorises the caller against the principal inside.
+REVOKE ALL ON FUNCTION files.get_storage_quota(files.owner_kind, uuid) FROM public, anon;
+GRANT EXECUTE ON FUNCTION files.get_storage_quota(files.owner_kind, uuid) TO authenticated, service_role;
+
+-- The download ledger is written by the server only, after it has decided the caller may read the file.
+REVOKE ALL ON FUNCTION files.fn_record_download(uuid, uuid, text, files.download_via, text) FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION files.fn_record_download(uuid, uuid, text, files.download_via, text) TO service_role;
+
 -- The owner's Availability editor (00001510). INVOKER: the scheduling policies are the gate.
 REVOKE ALL ON FUNCTION scheduling.save_owner_availability(scheduling.owner_type, uuid, jsonb) FROM public, anon;
 
@@ -552,6 +582,12 @@ GRANT EXECUTE ON FUNCTION scheduling.save_owner_availability(scheduling.owner_ty
 -- The booking reads and the one call-request write (00001520). `fn_schedule_host` is internal to the
 -- definer functions; the free/busy read is public for a published schedule; a call request needs a
 -- signed-in requester.
+-- Closing a reschedule round moves an event. The rules that decide WHETHER it may are applied by the
+-- scheduling service before it calls this, so a client able to call it directly could skip every one.
+REVOKE ALL ON FUNCTION scheduling.close_reschedule_round(uuid, text, uuid, uuid, text, text) FROM public, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION scheduling.close_reschedule_round(uuid, text, uuid, uuid, text, text) TO service_role;
+
 REVOKE ALL ON FUNCTION scheduling.fn_schedule_host(uuid) FROM public, anon, authenticated;
 
 GRANT EXECUTE ON FUNCTION scheduling.fn_schedule_host(uuid) TO service_role;
@@ -563,3 +599,22 @@ GRANT EXECUTE ON FUNCTION scheduling.get_free_busy(uuid, timestamptz, timestampt
 REVOKE ALL ON FUNCTION scheduling.request_discovery_call(uuid, scheduling.call_type, timestamptz, timestamptz, text, text, text, uuid) FROM public, anon;
 
 GRANT EXECUTE ON FUNCTION scheduling.request_discovery_call(uuid, scheduling.call_type, timestamptz, timestamptz, text, text, text, uuid) TO authenticated, service_role;
+
+-- The seller console's write doors (00001170). INVOKER: the catalogue and marketplace policies are the
+-- gate, so a caller can only ever create, edit or publish their own listing. The sales read is a
+-- definer scoped to the caller's own listings inside its WHERE.
+REVOKE ALL ON FUNCTION catalogue.create_listing(text, text, text, uuid) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION catalogue.create_listing(text, text, text, uuid) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION catalogue.save_listing(uuid, jsonb) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION catalogue.save_listing(uuid, jsonb) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION catalogue.set_listing_status(uuid, text) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION catalogue.set_listing_status(uuid, text) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION catalogue.get_listing_sales(uuid[], timestamptz) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION catalogue.get_listing_sales(uuid[], timestamptz) TO authenticated, service_role;

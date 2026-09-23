@@ -92,7 +92,7 @@ export function ListingCard({ listing, href, onAction }: ListingCardProps): JSX.
 				<div class="cat-card__metrics" aria-label="Listing metrics">
 					<span class="cat-card__stat">
 						<EyeIcon size={14} />
-						{listing.metrics.views30d}
+						{listing.metrics.views}
 					</span>
 					<span class="cat-card__stat">
 						<BoxIcon size={13} />

@@ -3,6 +3,7 @@
  * skills, languages, preferences and verification cases.
  */
 
+import { isDisplayCurrency } from "@projective/types/finance";
 import { ago, arr, HEADER, id, insert, jsonb, q, splitName, uuidFor } from "./sql.ts";
 import type { World } from "./resolve.ts";
 import { SKILLS } from "./world.ts";
@@ -191,7 +192,14 @@ export function emitIdentities(world: World): string {
 	);
 
 	// The users_public trigger already seeded a default preferences row; this only sets the
-	// persona's display currency and locale on top of it.
+	// persona's display currency and locale on top of it. A currency the product cannot display falls
+	// back silently at read time — a seeded persona that asks for one would render in GBP with nothing
+	// saying why — so it is refused here instead.
+	for (const p of personas) {
+		if (p.displayCurrency && !isDisplayCurrency(p.displayCurrency)) {
+			throw new Error(`world: ${p.handle}'s display currency ${p.displayCurrency} is not offerable`);
+		}
+	}
 	out.push(
 		"INSERT INTO org.user_preferences (user_id, preferred_display_currency, locale, theme)\nVALUES",
 	);

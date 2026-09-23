@@ -162,6 +162,43 @@ export function bucketMeta(bucket: StorageBucket): BucketMeta {
 
 // #endregion
 
+// #region The private-object route
+
+/**
+ * The same-origin route that serves an object from a PRIVATE bucket: it checks the caller may read the
+ * asset (RLS, or a live share link), mints a short-lived signed URL and redirects to it.
+ *
+ * A private object has no stable public address — a signed URL expires, so storing or server-rendering
+ * one would ship a link that stops working. This route is the stable address instead, and it is the one
+ * place the read decision and the signing meet.
+ */
+export const FILE_OBJECT_ROUTE = "/api/files/object";
+
+/** The rendition sizes the object route can serve in place of the original (images only). */
+export const FILE_OBJECT_TIERS = ["sm", "md", "lg"] as const;
+export type FileObjectTier = typeof FILE_OBJECT_TIERS[number];
+
+/**
+ * The object route's address for one asset.
+ *
+ * `tier` asks for a WebP rendition when the pipeline wrote one (the route falls back to the original
+ * when it did not); `download` asks for an attachment disposition; `share` is the slug a share-link
+ * recipient reached the asset through, which is what authorises an anonymous read.
+ */
+export function fileObjectHref(
+	assetId: string,
+	opts: { tier?: FileObjectTier; download?: boolean; share?: string | null } = {},
+): string {
+	const q = new URLSearchParams();
+	if (opts.tier) q.set("tier", opts.tier);
+	if (opts.download) q.set("download", "1");
+	if (opts.share) q.set("share", opts.share);
+	const qs = q.toString();
+	return `${FILE_OBJECT_ROUTE}/${encodeURIComponent(assetId)}${qs ? `?${qs}` : ""}`;
+}
+
+// #endregion
+
 // #region Location shape + helpers
 
 /** A resolved storage location: the bucket plus the object path WITHIN it (no leading slash). */

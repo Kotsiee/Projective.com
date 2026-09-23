@@ -1,6 +1,5 @@
 import { define } from "@web/utils/state.ts";
-import { simFromParams } from "@projective/types/files";
-import { asAuthenticatedContext } from "@projective/types/auth";
+import { readActor } from "@web/utils/api-session.ts";
 import { toFilesResponse } from "@features/files/core/respond.ts";
 import { IntegrationsBackendService } from "@server/services/integrations/IntegrationsBackendService.ts";
 
@@ -26,12 +25,6 @@ import { IntegrationsBackendService } from "@server/services/integrations/Integr
  */
 export const handler = define.handlers({
 	async GET(ctx) {
-		const context = asAuthenticatedContext(ctx.state.userContext);
-		return toFilesResponse(
-			await IntegrationsBackendService.connections({
-				userId: context.userId ?? "",
-				sim: simFromParams(ctx.url.searchParams),
-			}),
-		);
+		return toFilesResponse(await IntegrationsBackendService.connections(readActor(ctx)));
 	},
 });

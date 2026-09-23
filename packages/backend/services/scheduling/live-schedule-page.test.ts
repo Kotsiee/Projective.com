@@ -121,7 +121,9 @@ Deno.test("public schedule — every commitment is a bare busy span, and nothing
 	}
 
 	const body = JSON.stringify(page);
-	for (const secret of ["roster", "meeting", "pricing", "joinUrl", "reschedule", "history", "Surgery"]) {
+	for (
+		const secret of ["roster", "meeting", "pricing", "joinUrl", "reschedule", "history", "Surgery"]
+	) {
 		assertStrictEquals(body.includes(secret), false, `the public page contains ${secret}`);
 	}
 });

@@ -1,7 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { DriveBrowseParamsSchema } from "@projective/types/integrations";
-import { simFromParams } from "@projective/types/files";
-import { asAuthenticatedContext } from "@projective/types/auth";
+import { readActor } from "@web/utils/api-session.ts";
 import { toFilesResponse } from "@features/files/core/respond.ts";
 import { IntegrationsBackendService } from "@server/services/integrations/IntegrationsBackendService.ts";
 
@@ -48,12 +47,6 @@ export const handler = define.handlers({
 			});
 		}
 
-		const context = asAuthenticatedContext(ctx.state.userContext);
-		return toFilesResponse(
-			await IntegrationsBackendService.browse(parsed.data, {
-				userId: context.userId ?? "",
-				sim: simFromParams(sp),
-			}),
-		);
+		return toFilesResponse(await IntegrationsBackendService.browse(parsed.data, readActor(ctx)));
 	},
 });

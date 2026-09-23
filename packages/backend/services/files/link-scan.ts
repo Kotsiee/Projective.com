@@ -1,16 +1,17 @@
-import type { LinkAttachment, LinkScanStatus } from "@projective/types/files";
-import { isFilesBackendLive } from "../../core/supabase.ts";
+import type { LinkAttachment } from "@projective/types/files";
 
 /**
  * files link-scan — resolving a pasted URL into the {@link LinkAttachment} the hub stores: its
  * registrable domain, its page title, a RE-HOSTED favicon, and a safety verdict.
  *
- * **This is the most dangerous code path in the asset hub, and none of it runs yet.** Ingesting a link
- * means the SERVER fetches a URL a stranger chose. That is a server-side request forgery primitive by
- * construction, and every guard below exists because the naive version of this function is an
- * unauthenticated read of the platform's own private network. The real code path is written out so the
- * requirements are auditable; the outbound fetch is gated behind {@link isFilesBackendLive} and, until
- * that flips, {@link resolveLinkPreview} answers from a deterministic stub that touches no network.
+ * **This is the most dangerous code path in the asset hub, and its outbound half is not built.**
+ * Ingesting a link means the SERVER fetches a URL a stranger chose. That is a server-side request
+ * forgery primitive by construction, and every guard below exists because the naive version of this
+ * function is an unauthenticated read of the platform's own private network. The requirements are
+ * written out so they are auditable; until the fetch is implemented against them,
+ * {@link resolveLinkPreview} makes NO request — it applies the address guards, takes a title from the
+ * URL itself, stores no favicon, and records the link as never scanned (`pending`) rather than
+ * asserting a verdict nobody computed.
  *
  * ### What the live path MUST do before it fetches anything
  *
@@ -170,39 +171,6 @@ export function domainOf(raw: string): string {
 
 // #endregion
 
-// #region Favicon re-hosting
-
-/**
- * The public URL a re-hosted favicon is served from.
- *
- * The object itself lives in the `public_assets` bucket under the platform's own owner anchor — a
- * favicon belongs to no user, and filing it under the pasting user's prefix would make deleting their
- * account break every other person's link cards.
- */
-export function faviconPublicUrl(domain: string): string {
-	return `/storage/v1/object/public/public_assets/favicons/${domain}.png`;
-}
-
-/**
- * Fetch an origin's favicon and copy it into `public_assets`, returning the platform URL.
- *
- * Stub-first: with the gate off it returns the destination URL WITHOUT fetching anything, so the card
- * renders while no request leaves the process. The live implementation applies every guard in the module
- * note plus {@link MAX_FAVICON_BYTES} and an image-MIME allowlist, and re-encodes rather than storing
- * the origin's bytes verbatim — an SVG favicon is a script-execution vector in a bucket that is served
- * world-readable.
- */
-export async function rehostFavicon(domain: string): Promise<string | null> {
-	if (!isFilesBackendLive()) return faviconPublicUrl(domain);
-	// LIVE: resolve → guard → fetch (≤ MAX_FAVICON_BYTES, image MIME only) → re-encode → upload to
-	// `public_assets/favicons/{domain}.png` with the service-role client → return the public URL.
-	// Not yet implemented; fall back to the destination URL so a link card still renders.
-	await Promise.resolve();
-	return faviconPublicUrl(domain);
-}
-
-// #endregion
-
 // #region Preview resolution
 
 /** What a link ingest concluded, before it is stored on an asset row. */
@@ -210,20 +178,6 @@ export interface LinkPreview extends LinkAttachment {
 	/** Why the scan reached its verdict — kept for the audit trail, never rendered to a recipient. */
 	reason: string | null;
 }
-
-/**
- * Deterministic stub verdicts, so the surface can be exercised without a reputation feed.
- *
- * Keyed on the domain rather than hashed, because the states that matter are the ones a developer needs
- * to reach ON PURPOSE — a hash-derived verdict makes "show me the blocked card" a hunt.
- */
-const STUB_VERDICTS: ReadonlyArray<
-	{ match: RegExp; status: LinkScanStatus; reason: string | null }
-> = [
-	{ match: /(^|\.)known-phishing\./, status: "blocked", reason: "Listed by the reputation feed." },
-	{ match: /(^|\.)free-asset-mirror\./, status: "suspicious", reason: "Newly registered domain." },
-	{ match: /(^|\.)intranet\./, status: "unscannable", reason: "Origin refused inspection." },
-];
 
 /**
  * Resolve a pasted URL into the attachment facet the hub stores.
@@ -236,29 +190,11 @@ export async function resolveLinkPreview(raw: string): Promise<LinkPreview | nul
 	const domain = domainOf(raw);
 	if (!domain) return null;
 
-	if (!isFilesBackendLive()) {
-		const verdict = STUB_VERDICTS.find((v) => v.match.test(domain));
-		const status: LinkScanStatus = verdict?.status ?? "safe";
-		return {
-			url: raw,
-			domain,
-			// Falls back to the domain when no title is available — a card headed by a bare URL is worse
-			// than one headed by the site it points at.
-			title: titleFromUrl(raw, domain),
-			description: null,
-			faviconUrl: status === "blocked" ? null : await rehostFavicon(domain),
-			scanStatus: status,
-			scannedAt: new Date("2026-07-17T16:20:00Z").toISOString(),
-			reason: verdict?.reason ?? null,
-		};
-	}
-
-	// LIVE: resolve DNS → refuse any forbidden address → connect to the PINNED address with the original
-	// Host header, `credentials: "omit"`, `redirect: "manual"`, `AbortSignal.timeout(FETCH_TIMEOUT_MS)` →
-	// read at most MAX_RESPONSE_BYTES from the stream → parse `<title>` / OpenGraph → check the URL
-	// against the reputation feed (key from the environment, never inlined) → re-host the favicon.
-	// Each redirect (≤ MAX_REDIRECTS) repeats every step from the top.
-	// Not yet implemented; degrade to `pending` rather than asserting a verdict that was never computed.
+	// The fetch is not built (see the module note): resolve DNS → refuse any forbidden address → connect
+	// to the PINNED address with the original Host header, `credentials: "omit"`, `redirect: "manual"`,
+	// `AbortSignal.timeout(FETCH_TIMEOUT_MS)` → read at most MAX_RESPONSE_BYTES → parse `<title>` /
+	// OpenGraph → check the reputation feed (key from the environment, never inlined) → re-host the
+	// favicon into `public_assets`. Until then the link is stored as never scanned.
 	await Promise.resolve();
 	return {
 		url: raw,

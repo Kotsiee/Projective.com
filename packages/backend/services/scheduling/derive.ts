@@ -183,7 +183,7 @@ export function tzFor(seed: number): string {
  * omit it would let a block claim it exists only in Google.
  *
  * ⚠️ Every member must be a provider the CONNECTOR CATALOGUE declares a `calendar` capability for
- * (`integrations.providers`, mirrored by `services/integrations/connections-fixtures.ts`). The pool
+ * (`integrations.providers`). The pool
  * used to include `outlook` and `apple`, which that catalogue does not carry at all — so the grid
  * drew Outlook and Apple provenance across the page while the Connect Calendar dialog, filtering the
  * very same catalogue on `capabilities.includes("calendar")`, told the reader neither is a calendar

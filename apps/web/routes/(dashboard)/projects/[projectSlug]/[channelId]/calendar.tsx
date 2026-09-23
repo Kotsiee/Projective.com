@@ -1,6 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { resolveCalendarPage } from "@web/features/calendar/core/calendar-ssr.ts";
-import { viewerFromState } from "@web/features/calendar/core/viewer.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import ProjectCalendar from "@web/features/calendar/islands/ProjectCalendar.island.tsx";
 
 /**
@@ -10,9 +10,9 @@ import ProjectCalendar from "@web/features/calendar/islands/ProjectCalendar.isla
  * HTTP hop) and hands it to the {@link ProjectCalendar} island. The channel header (with the active
  * Calendar tab) + the Project Details lane are mounted by the shell; this route renders only the body.
  */
-export default define.page(function ChannelCalendarPage(ctx) {
+export default define.page(async function ChannelCalendarPage(ctx) {
 	const { projectSlug: projectId, channelId } = ctx.params;
-	const { page } = resolveCalendarPage(projectId, channelId, viewerFromState(ctx.state));
+	const { page } = await resolveCalendarPage(projectId, channelId, readActor(ctx));
 	return (
 		<ProjectCalendar scope="channel" projectId={projectId} channelId={channelId} initial={page} />
 	);

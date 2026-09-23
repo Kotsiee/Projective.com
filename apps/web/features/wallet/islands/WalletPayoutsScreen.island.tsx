@@ -8,7 +8,7 @@ import { VerificationGate } from "../components/VerificationGate.tsx";
 import { Money } from "../components/Money.tsx";
 import { WalletService } from "../core/WalletService.ts";
 import { currentWalletContext, walletError } from "../core/wallet-state.ts";
-import { applyRead, useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
+import { applyRead, useWalletRefresh, useWalletSync } from "../core/wallet-sync.ts";
 import type { PayoutsView } from "../types/wallet-types.ts";
 
 /**
@@ -51,7 +51,7 @@ export default function WalletPayoutsScreen(props: WalletPayoutsScreenProps): JS
 			view.value = d.payouts;
 		});
 	};
-	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
+	useWalletSync({ display: props.display, wallet: props.wallet });
 	useWalletRefresh(refetch);
 
 	const p = view.value;

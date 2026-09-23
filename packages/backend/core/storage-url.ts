@@ -95,4 +95,26 @@ export function objectUrlOf(ref: StoredObjectRef | null | undefined): string | n
 	return ref ? publicObjectUrl(ref.bucket_id, ref.storage_path) : null;
 }
 
+/**
+ * The inverse of {@link publicObjectUrl}: the `{ bucket, path }` a public object URL of THIS project
+ * names, or `null` for anything else — another host, a private bucket, a URL of any other shape. It is
+ * how a URL a page hands back (a picked gallery image) becomes a stored-file reference again, so the
+ * row keeps pointing at the file rather than at one rendering of its address.
+ */
+export function parsePublicObjectUrl(url: string | null | undefined): { bucket: string; path: string } | null {
+	const base = storagePublicBase();
+	if (!url || !base) return null;
+	const prefix = `${base}/storage/v1/object/public/`;
+	if (!url.startsWith(prefix)) return null;
+	const rest = url.slice(prefix.length).split(/[?#]/)[0];
+	const [bucket, ...segments] = rest.split("/");
+	if (!isPublicBucket(bucket) || segments.length === 0) return null;
+	try {
+		const path = segments.map((s) => decodeURIComponent(s)).join("/");
+		return path ? { bucket, path } : null;
+	} catch {
+		return null;
+	}
+}
+
 // #endregion

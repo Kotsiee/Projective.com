@@ -390,6 +390,21 @@ ALTER TABLE integrations.plugin_audit ENABLE ROW LEVEL SECURITY;
 -- schedule therefore leaks its SHAPE (when someone is free) but never its CONTENT.
 ALTER TABLE scheduling.events ENABLE ROW LEVEL SECURITY;
 
+-- The event coordination tables (00000022). All six shipped with RLS off and no grant beyond the
+-- owner, so nothing could read a roster or a ballot — they carry names, RSVPs and votes, and are read
+-- by an event's parties only (scheduling.fn_can_see_event_coordination; policies in 00002015).
+ALTER TABLE scheduling.event_attendees ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE scheduling.event_reschedules ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE scheduling.reschedule_proposals ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE scheduling.proposal_votes ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE scheduling.event_history ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE scheduling.event_attachments ENABLE ROW LEVEL SECURITY;
+
 
 -- --- from 20260724103000_scheduling_discovery_calls.sql ---
 

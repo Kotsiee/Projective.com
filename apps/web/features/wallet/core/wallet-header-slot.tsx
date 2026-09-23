@@ -1,9 +1,10 @@
 import type { ComponentChildren } from "preact";
 import type { UserContext } from "@projective/types/auth";
+import type { ReadActor } from "@server/services/read-actor.ts";
 import WalletHeaderBand from "../islands/WalletHeaderBand.island.tsx";
-import { resolveDisplayCurrency, resolveWalletOverview } from "./wallet-ssr.ts";
+import { resolveWalletOverview } from "./wallet-ssr.ts";
 import { viewOf } from "./capability.ts";
-import { defaultWalletParam } from "./wallet-model.ts";
+import { walletParam } from "./wallet-model.ts";
 import { walletVariant } from "../types/wallet-types.ts";
 
 /**
@@ -23,12 +24,18 @@ import { walletVariant } from "../types/wallet-types.ts";
  * Composed last in `middleNavHeaderFor`, after the projects/messaging resolvers, so exactly one
  * owns the band per URL. Server-only — never imported by an island.
  */
-export function walletHeaderFor(url: URL, context: UserContext): ComponentChildren {
+export async function walletHeaderFor(
+	url: URL,
+	context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
 	if (!url.pathname.startsWith("/wallet")) return null;
 
-	const { overview, switcher } = resolveWalletOverview(context, url);
-	const display = resolveDisplayCurrency(context, url);
-	const wallet = url.searchParams.get("w") ?? defaultWalletParam(context);
+	const read = await resolveWalletOverview(context, url, actor);
+	if (!read.ok) return null;
+	const { overview, switcher } = read.data;
+	const display = switcher.active.available.currency;
+	const wallet = walletParam(switcher.active.scope, switcher.active.id);
 
 	return (
 		<WalletHeaderBand

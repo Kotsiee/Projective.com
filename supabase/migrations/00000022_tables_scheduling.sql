@@ -198,8 +198,9 @@ CREATE TABLE scheduling.event_reschedules (
     -- from a clock they separately own.
     resolves_at timestamptz,
     -- The slot that carried. No inline FK: scheduling.reschedule_proposals references this table
-    -- back, so the pair is genuinely circular and the constraint belongs in a trailing
-    -- 0000###_tables_fk_*.sql file (root CLAUDE.md §1). Flagged for the integrator.
+    -- back, so the pair is genuinely circular and the constraint lives in the trailing
+    -- 00000031_tables_fk_scheduling.sql (root CLAUDE.md §1) — a COMPOSITE key there, so the winner is
+    -- provably a proposal on this round and not merely a proposal somewhere.
     resolved_proposal_id uuid,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),

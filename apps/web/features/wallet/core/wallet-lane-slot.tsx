@@ -1,8 +1,9 @@
 import type { ComponentChildren } from "preact";
 import type { UserContext } from "@projective/types/auth";
+import type { ReadActor } from "@server/services/read-actor.ts";
 import WalletLane from "../islands/WalletLane.island.tsx";
 import { resolveWalletOverview } from "./wallet-ssr.ts";
-import { defaultWalletParam } from "./wallet-model.ts";
+import { walletParam } from "./wallet-model.ts";
 import { walletVariant } from "../types/wallet-types.ts";
 
 /**
@@ -12,14 +13,20 @@ import { walletVariant } from "../types/wallet-types.ts";
  * governance, and both are decided by **absence, not disablement**, so the lane cannot be painted
  * without knowing the viewer's capabilities and verification state in the first byte.
  *
+ * The active wallet is the one the server RESOLVED, not the one the URL asked for: a `?w=` naming a
+ * vault the viewer has since left falls back to their own wallet, and the lane must point at what the
+ * page is actually showing. When the wallet cannot be read the lane is withheld — the page says why.
+ *
  * Server-only (reaches `@server/services`); never imported by an island.
  */
-export function walletLaneFor(url: URL, context: UserContext): ComponentChildren {
+export async function walletLaneFor(url: URL, context: UserContext, actor: ReadActor): Promise<ComponentChildren> {
 	if (!url.pathname.startsWith("/wallet")) return null;
 
-	const { overview, switcher } = resolveWalletOverview(context, url);
-	const wallet = url.searchParams.get("w") ?? defaultWalletParam(context);
-	const display = url.searchParams.get("display") ?? switcher.active.available.currency ?? "GBP";
+	const read = await resolveWalletOverview(context, url, actor);
+	if (!read.ok) return null;
+	const { overview, switcher } = read.data;
+	const wallet = walletParam(switcher.active.scope, switcher.active.id);
+	const display = switcher.active.available.currency;
 
 	return (
 		<WalletLane

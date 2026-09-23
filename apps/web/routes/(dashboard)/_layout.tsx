@@ -125,10 +125,10 @@ async function middleNavFooterFor(
 		timelineFooterFor(url, context) ??
 		(await projectFooterFor(url, context, actor)) ??
 		(await conversationFooterFor(url, context, actor)) ??
-		catalogueFooterFor(url, context) ??
-		walletFooterFor(url, context) ?? workspaceFooterFor(url, context) ??
+		(await catalogueFooterFor(url, context, actor)) ??
+		(await walletFooterFor(url, context, actor)) ?? workspaceFooterFor(url, context) ??
 		filesFooterFor(url, context) ?? (await basketFooterFor(url, context, actor)) ??
-		calendarFooterFor(url, context);
+		(await calendarFooterFor(url, context, actor));
 }
 
 /**
@@ -144,10 +144,10 @@ async function middleNavHeaderFor(
 	return await channelHeaderFor(url, context, actor) ??
 		(await projectHeaderFor(url, context, actor)) ??
 		(await conversationHeaderFor(url, context, actor)) ??
-		catalogueHeaderFor(url, context) ??
-		walletHeaderFor(url, context) ?? workspaceHeaderFor(url, context) ??
+		(await catalogueHeaderFor(url, context, actor)) ??
+		(await walletHeaderFor(url, context, actor)) ?? workspaceHeaderFor(url, context) ??
 		filesHeaderFor(url, context) ?? (await basketHeaderFor(url, context, actor)) ??
-		calendarHeaderFor(url, context);
+		(await calendarHeaderFor(url, context, actor));
 }
 
 /**
@@ -173,17 +173,17 @@ async function laneFor(
 
 	// The personal agenda (`/calendar`): the mini-month, what is coming, and the availability manager.
 	if (url.pathname === "/calendar" || url.pathname.startsWith("/calendar/")) {
-		return calendarLaneFor(url, context);
+		return await calendarLaneFor(url, context, actor);
 	}
 
 	// The global inbox: ONE conversation-list lane on the `/messages` root and beside an open one alike.
 	if (url.pathname.startsWith("/messages")) return await messagesLaneFor(url, context, actor);
 
 	// The seller Catalogue (`/catalogue`) hosts its navigation lane (status sections · filters · ＋ New).
-	if (url.pathname.startsWith("/catalogue")) return catalogueLaneFor(url, context);
+	if (url.pathname.startsWith("/catalogue")) return await catalogueLaneFor(url, context, actor);
 
 	// The Wallet (`/wallet`) hosts its finance lane (account switcher + capability-gated sub-nav).
-	if (url.pathname.startsWith("/wallet")) return walletLaneFor(url, context);
+	if (url.pathname.startsWith("/wallet")) return await walletLaneFor(url, context, actor);
 
 	// The multi-member entity console (`/teams`, `/businesses`) hosts either the entity roster or, inside
 	// one entity, that entity's capability-filtered management rail.

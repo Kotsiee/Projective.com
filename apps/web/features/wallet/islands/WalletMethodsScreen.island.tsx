@@ -6,7 +6,7 @@ import { Band, EmptyBand, PageHead, WalletErrorBand } from "../components/band-p
 import { PaymentCard } from "../components/PaymentCard.tsx";
 import { WalletService } from "../core/WalletService.ts";
 import { activeMethodId, currentWalletContext, walletError } from "../core/wallet-state.ts";
-import { applyRead, useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
+import { applyRead, useWalletRefresh, useWalletSync } from "../core/wallet-sync.ts";
 import type { MethodsView } from "../types/wallet-types.ts";
 
 /**
@@ -33,7 +33,7 @@ export default function WalletMethodsScreen(props: WalletMethodsScreenProps): JS
 			view.value = d.methods;
 		});
 	};
-	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
+	useWalletSync({ display: props.display, wallet: props.wallet });
 	useWalletRefresh(refetch);
 
 	const m = view.value.methods;

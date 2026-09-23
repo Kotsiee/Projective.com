@@ -28,6 +28,7 @@ export function buildListQuery(params: CatalogueListParams): string {
 	if (params.search) qs.set("search", params.search);
 	if (params.sort) qs.set("sort", params.sort);
 	if (params.dir) qs.set("dir", params.dir);
+	if (params.period) qs.set("period", params.period);
 	if (params.needsAttention) qs.set("attention", "1");
 	if (params.promoted) qs.set("promoted", "1");
 	if (params.cursor) qs.set("cursor", params.cursor);

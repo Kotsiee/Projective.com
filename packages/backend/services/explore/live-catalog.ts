@@ -92,6 +92,12 @@ export interface ProfileRow {
 	 */
 	showcase_bucket: string | null;
 	showcase_path: string | null;
+	/**
+	 * A seller's earned Standing rung (a freelancer or a team) — level 1 "New" until one is computed;
+	 * `null` for a buyer, which has no seller standing.
+	 */
+	standing_level: number | null;
+	standing_label: string | null;
 }
 
 interface ListingRow {
@@ -400,7 +406,7 @@ async function readCatalog(): Promise<Catalog> {
 		await Promise
 			.all([
 				db.schema("org").from("profiles_index").select(
-					"entity_id, entity_type, handle, name, headline, languages, location, city, rating_as_client, reviews_as_client, rating_as_freelancer, reviews_as_freelancer, active_project_count, total_project_count, member_count, listed, avatar_bucket, avatar_path, banner_bucket, banner_path, verified, skills, workload, joined_at, verification_tier, language_codes, delivered_count, showcase_bucket, showcase_path",
+					"entity_id, entity_type, handle, name, headline, languages, location, city, rating_as_client, reviews_as_client, rating_as_freelancer, reviews_as_freelancer, active_project_count, total_project_count, member_count, listed, avatar_bucket, avatar_path, banner_bucket, banner_path, verified, skills, workload, joined_at, verification_tier, language_codes, delivered_count, showcase_bucket, showcase_path, standing_level, standing_label",
 				),
 				db.schema("catalogue").from("listings").select(
 					"id, owner_user_id, owner_team_id, kind, service_blueprint_id, product_id, title, description_text, category, delivery_label, amount_cents, currency, ticket_price_cents, session_price_cents, seats_per_session, free_revisions, extra_revision_price_cents, promoted, published_at, created_at",

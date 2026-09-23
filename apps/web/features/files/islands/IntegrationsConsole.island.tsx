@@ -1,6 +1,5 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
-import { useEffect, useRef } from "preact/hooks";
 
 // #region Stylesheet carrier
 import "../styles/integrations-console.css";
@@ -21,8 +20,6 @@ import {
 	type UserConnection,
 } from "@projective/types/integrations";
 import { IntegrationsService } from "../core/IntegrationsService.ts";
-import { simFromSeam, subscribeFilesSim } from "../core/files-seam.ts";
-import type { FilesSim } from "../types/file-types.ts";
 
 /**
  * IntegrationsConsole — Settings → Integrations: what this account has authorized at other services,
@@ -67,6 +64,8 @@ import type { FilesSim } from "../types/file-types.ts";
 export interface IntegrationsConsoleProps {
 	/** The SSR-resolved payload — the catalogue, the caller's connections, the capability projections. */
 	initial: ConnectionsView;
+	/** Why the first read failed, or `null` — shown beside the (empty) payload rather than hidden by it. */
+	initialError?: string | null;
 	/**
 	 * The path a consent round trip returns to. Threaded from the route rather than read from
 	 * `location` so the FIRST connect works identically before hydration settles.
@@ -157,27 +156,20 @@ export default function IntegrationsConsole(props: IntegrationsConsoleProps): JS
 	const view = useSignal<ConnectionsView>(initial);
 	/** A refresh or a revoke is in flight. */
 	const busy = useSignal(false);
-	const error = useSignal<string | null>(null);
+	const error = useSignal<string | null>(props.initialError ?? null);
 	/** The connection a disconnect has been asked about; `null` closes the confirm. */
 	const pendingRevoke = useSignal<UserConnection | null>(null);
 	const confirmOpen = useSignal(false);
 	/** The provider slug a consent is being started for — disables just that row's button. */
 	const starting = useSignal<string | null>(null);
 
-	/**
-	 * The developer simulation overlay.
-	 *
-	 * A `ref`, not a signal: it is read inside callbacks and never rendered, and a signal read during
-	 * a later render would subscribe this component to a value that changes nothing about its output.
-	 */
-	const simRef = useRef<FilesSim | undefined>(undefined);
 	// #endregion
 
 	// #region Reads
 	/** Re-read the payload. Never silent: a failure is reported beside the data it failed to refresh. */
 	async function refresh(): Promise<void> {
 		busy.value = true;
-		const res = await IntegrationsService.connections(simRef.current);
+		const res = await IntegrationsService.connections();
 		busy.value = false;
 		if (res.ok && res.data) {
 			view.value = res.data;
@@ -189,15 +181,6 @@ export default function IntegrationsConsole(props: IntegrationsConsoleProps): JS
 		}
 	}
 
-	useEffect(() => {
-		simRef.current = simFromSeam();
-		const unsubscribe = subscribeFilesSim((sim) => {
-			simRef.current = sim;
-			// The connection-state axis is SERVER-derived, so a re-render would only relabel the same rows.
-			void refresh();
-		});
-		return unsubscribe;
-	}, []);
 	// #endregion
 
 	// #region Actions
@@ -257,6 +240,12 @@ export default function IntegrationsConsole(props: IntegrationsConsoleProps): JS
 		.filter((p) => p.isEnabled && !connectedSlugs.has(p.slug))
 		.slice()
 		.sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label));
+	/**
+	 * Whether ANY provider can be connected here. An empty "Available" list means two different things —
+	 * everything offered is already connected, or nothing is offered at all — and saying the first when
+	 * the second is true tells a person with no connections that they have them all.
+	 */
+	const anyOffered = view.value.providers.some((p) => p.isEnabled);
 
 	const target = pendingRevoke.value;
 	// #endregion
@@ -401,7 +390,9 @@ export default function IntegrationsConsole(props: IntegrationsConsoleProps): JS
 				{available.length === 0
 					? (
 						<p class="ints__empty" role="status">
-							Everything available is already connected.
+							{anyOffered
+								? "Everything available is already connected."
+								: "No outside services can be connected yet."}
 						</p>
 					)
 					: (

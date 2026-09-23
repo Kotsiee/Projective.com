@@ -7,12 +7,10 @@ import { Dialog, Message } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
 import { PaymentCard } from "@projective/ui/display";
 import { isCheckoutEligible, resolveCardArt } from "@projective/types/finance";
-import { readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
 import { BasketService } from "../core/BasketService.ts";
 import { CheckoutService } from "../core/CheckoutService.ts";
 import { checkoutHref } from "../core/basket-model.ts";
 import { CardChooser } from "../components/PaymentChoice.tsx";
-import { checkoutSim } from "../core/checkout-seam.ts";
 import {
 	activeBasketId,
 	activeOwner,
@@ -22,7 +20,6 @@ import {
 	chosenCardId,
 	chosenProvider,
 	currentCheckoutContext,
-	devSim,
 	lastResult,
 	newAttemptKey,
 	notifyBasketChanged,
@@ -154,18 +151,6 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 		if (buyNowOpen.value) void prepare();
 	}, [elected, buyNowOpen.value, buyNowTarget.value?.itemId, prepare]);
 
-	// A persona flip re-scopes whose money this is, so the whole quote is re-taken; inert in production.
-	useEffect(() => {
-		if (!elected) return;
-		devSim.value = checkoutSim(readDevSeam());
-		return subscribeDevSeam((seam) => {
-			devSim.value = checkoutSim(seam);
-			chosenProvider.value = null;
-			chosenCardId.value = null;
-			resetAttempt();
-			if (buyNowOpen.value) void prepare();
-		});
-	}, [elected, prepare]);
 	// #endregion
 
 	// #region Confirm

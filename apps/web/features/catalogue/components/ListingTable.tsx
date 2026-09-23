@@ -161,7 +161,7 @@ export function ListingTable(props: ListingTableProps): JSX.Element {
 							</span>
 
 							<span class="cat-td cat-td--num" role="cell" data-col="views">
-								{l.metrics.views30d}
+								{l.metrics.views}
 							</span>
 
 							<span class="cat-td cat-td--num" role="cell" data-col="orders">

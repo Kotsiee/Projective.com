@@ -1,5 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
+import { readActor } from "@web/utils/api-session.ts";
 import {
 	FundState,
 	TransactionDirection,
@@ -19,7 +20,7 @@ import type { TransactionListParams } from "@projective/types/finance";
  * the dumb `WalletService`.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const context = asAuthenticatedContext(ctx.state.userContext);
 		const sp = ctx.url.searchParams;
 		const limitRaw = sp.get("limit");
@@ -52,7 +53,7 @@ export const handler = define.handlers({
 		const params = parsed.success ? parsed.data : { limit: 40 };
 
 		return toWalletResponse(
-			WalletBackendService.transactions(walletQueryFrom(sp, context), params),
+			await WalletBackendService.transactions(walletQueryFrom(sp, context), params, readActor(ctx)),
 		);
 	},
 });

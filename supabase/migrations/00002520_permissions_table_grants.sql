@@ -302,6 +302,22 @@ DELETE ON TABLE scheduling.events TO authenticated;
 
 GRANT ALL ON TABLE scheduling.events TO service_role;
 
+-- Event coordination: read by the event's parties under RLS, written only by the service role (see
+-- the policies in 00002015 for why there is no client write path).
+GRANT SELECT ON TABLE scheduling.event_attendees,
+scheduling.event_reschedules,
+scheduling.reschedule_proposals,
+scheduling.proposal_votes,
+scheduling.event_history,
+scheduling.event_attachments TO authenticated;
+
+GRANT ALL ON TABLE scheduling.event_attendees,
+scheduling.event_reschedules,
+scheduling.reschedule_proposals,
+scheduling.proposal_votes,
+scheduling.event_history,
+scheduling.event_attachments TO service_role;
+
 
 -- --- from 20260724103000_scheduling_discovery_calls.sql ---
 

@@ -2,7 +2,6 @@ import { z } from "zod";
 import { AssetItemSchema } from "../files/assets.ts";
 import { PublicCallOfferSchema } from "./calls.ts";
 import { EventMeetingSchema } from "./meeting.ts";
-import { SchedulingSimSchema } from "./sim.ts";
 import {
 	EventAttendeeSchema,
 	EventHistoryEntrySchema,
@@ -336,11 +335,12 @@ export type ScheduleParams = z.infer<typeof ScheduleParamsSchema>;
 /**
  * Which surface, and which event on it, a write targets.
  *
- * A calendar event id is only unique WITHIN the page that derived it (`sync-{stageId}`, `av-{week}`),
- * so a mutation carries its scope and the server re-resolves the event through the very same reader
- * the page was drawn from. That is deliberate: the alternative — trusting a bare id — would let a
- * caller address an event the reader would never have shown them, and every rule below is evaluated
- * against the event's own start time.
+ * A mutation carries its scope and the server re-resolves the event through the very same reader
+ * the page was drawn from, as the signed-in caller. That is deliberate: the alternative — trusting a
+ * bare id — would let a caller address an event the reader would never have shown them, and every
+ * rule below is evaluated against the event's own start time. Only a persisted `scheduling.events`
+ * row (a uuid) can be answered or rescheduled; a derived entry — a stage due date (`due-…`), a
+ * ticket deadline (`ticket-…`), a call (`call-…`) — has no roster to answer on.
  */
 export const SchedulingTargetSchema = z.object({
 	scope: CalendarScope,
@@ -352,15 +352,6 @@ export const SchedulingTargetSchema = z.object({
 	/** Required for `schedule`. */
 	entityId: z.string().max(120).optional(),
 	eventId: z.string().min(1).max(120),
-	/**
-	 * The developer simulation overlay the surface was reading under, echoed back on the write.
-	 *
-	 * A write re-resolves its event through the very same reader that drew the page (see the doc note
-	 * above), so it has to be handed the same overlay — otherwise a viewer simulating an `attendee`
-	 * seat votes against an event the server re-derives with nobody seated on it, and every action
-	 * refuses for a reason the developer cannot see. Ignored entirely on the live path.
-	 */
-	sim: SchedulingSimSchema.optional(),
 });
 export type SchedulingTarget = z.infer<typeof SchedulingTargetSchema>;
 

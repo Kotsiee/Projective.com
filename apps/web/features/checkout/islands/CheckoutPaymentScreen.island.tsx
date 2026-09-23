@@ -35,7 +35,7 @@ import {
 	resultTitle,
 	routeGatesFor,
 } from "../core/checkout-model.ts";
-import { useCheckoutSeam } from "../core/checkout-seam.ts";
+import { useCheckoutContext } from "../core/checkout-context.ts";
 import { Amount } from "../components/Amount.tsx";
 import { CheckoutBlockers } from "../components/CheckoutBlockers.tsx";
 import { CheckoutContractBanner } from "../components/CheckoutContractBanner.tsx";
@@ -170,13 +170,12 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 		if (chosenCardId.value === null) chosenCardId.value = props.defaultCardId;
 	}, [initial, props.defaultCardId]);
 
-	useCheckoutSeam({
+	useCheckoutContext({
 		basketId: initial.session.basketId || null,
 		owner: initial.owner,
 		display: initial.display,
 		projectId: initial.session.preselect.projectId,
 		serviceId: initial.session.preselect.serviceId,
-		onRefetch: () => void reload(),
 	});
 
 	useEffect(() => {

@@ -2,7 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { DeleteAssetsSchema } from "@projective/types/files";
 import { toFieldErrors, toFilesResponse } from "@features/files/core/respond.ts";
 import { FilesBackendService } from "@server/services/files/FilesBackendService.ts";
-import { actorFromContext } from "@server/services/files/acting-principal.ts";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * `POST /api/files/delete` — delete assets.
@@ -19,7 +19,7 @@ import { actorFromContext } from "@server/services/files/acting-principal.ts";
  * **The acting principal comes from the SESSION**, so the soft-delete can be bounded to rows the caller
  * owns rather than to whichever ids a payload happens to name.
  *
- * No server-side capability guard (Decision #53(b)) — see `./list.ts`.
+ * Runs under the caller's own session: RLS is the gate, and the library is the acting context's.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -36,7 +36,7 @@ export const handler = define.handlers({
 			);
 		}
 		return toFilesResponse(
-			await FilesBackendService.remove(parsed.data, actorFromContext(ctx.state.userContext)),
+			await FilesBackendService.remove(parsed.data, readActor(ctx)),
 		);
 	},
 });

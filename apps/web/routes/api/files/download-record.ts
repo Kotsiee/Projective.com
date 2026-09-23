@@ -1,6 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { DownloadEventSchema } from "@projective/types/files";
-import { asAuthenticatedContext } from "@projective/types/auth";
+import { readActor } from "@web/utils/api-session.ts";
 import { toFieldErrors, toFilesResponse } from "@features/files/core/respond.ts";
 import { FilesBackendService } from "@server/services/files/FilesBackendService.ts";
 
@@ -21,7 +21,7 @@ import { FilesBackendService } from "@server/services/files/FilesBackendService.
  * the ledger exists for needs it: an owner wants to know a person took a copy, not where they were
  * standing. Abuse metering is a separate, short-retention concern and belongs at the edge.
  *
- * No server-side capability guard (Decision #53(b)) — see `./list.ts`.
+ * Runs under the caller's own session: RLS is the gate, and the library is the acting context's.
  */
 
 // #region Payload
@@ -60,15 +60,13 @@ export const handler = define.handlers({
 			);
 		}
 
-		const context = asAuthenticatedContext(ctx.state.userContext);
 		return toFilesResponse(
 			await FilesBackendService.recordDownload({
 				assetId: parsed.data.assetId,
-				actorId: context.userId ?? "",
 				deviceFingerprint: parsed.data.deviceFingerprint,
 				via: parsed.data.via,
 				shareSlug: parsed.data.shareSlug,
-			}),
+			}, readActor(ctx)),
 		);
 	},
 });

@@ -451,7 +451,9 @@ export function rescheduleView(
 		open: gate(() => {
 			if (closed) return no("vote_closed");
 			if (!isHost) return no("not_permitted");
-			if (mode === "vote" ? !canOpenVote(proposals) : proposals.length === 0) {
+			// A 1-on-1 needs one slot ON THE BALLOT, not merely one on the table: an attendee's slot the
+			// host has not approved cannot be put to the counterparty to accept.
+			if (mode === "vote" ? !canOpenVote(proposals) : ballotProposals(proposals).length === 0) {
 				return no("not_enough_proposals");
 			}
 			if (mode === "vote" && !voteIsOpen(nowMs, proposals)) return no("vote_closed");

@@ -19,7 +19,6 @@ import { Message, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 
 import { FilesService } from "../core/FilesService.ts";
-import { simFromSeam } from "../core/files-seam.ts";
 import {
 	type AssetFolder,
 	type AssetItem,
@@ -299,7 +298,7 @@ export default function ShareDialog(props: ShareDialogProps): JSX.Element | null
 		if (subject.shareSlug && subject.kind === "asset") {
 			const target = subject.shareSlug;
 			void (async () => {
-				const res = await FilesService.resolveShare(target, null, simFromSeam());
+				const res = await FilesService.resolveShare(target);
 				// A later open supersedes this answer entirely.
 				if (slug.value !== target) return;
 				linkLive.value = res.ok && res.data?.state === "ok";

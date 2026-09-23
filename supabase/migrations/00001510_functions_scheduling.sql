@@ -172,6 +172,132 @@ $$;
 
 -- #endregion
 
+-- #region 6b. Event coordination party predicate
+-- Who may read an event's coordination: its roster, its reschedule rounds with their proposals and
+-- votes, its history and its attachments. A policy that merely inherited the EVENT's visibility would
+-- publish a roster wherever the event is visible — and a published schedule's busy blocks are visible
+-- to anonymous visitors. So coordination has its own, narrower audience:
+--
+--   · someone seated on the roster;
+--   · whoever manages the schedule the event is anchored to (fn_can_manage_schedule);
+--   · a participant of the engagement it belongs to (projects.has_project_access) — a project's own
+--     meetings are the whole team's business.
+--
+-- SECURITY DEFINER so the roster lookup does not recurse into event_attendees' own policy, which calls
+-- this function.
+CREATE OR REPLACE FUNCTION scheduling.fn_can_see_event_coordination (p_event_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE((
+        SELECT EXISTS (
+                SELECT 1 FROM scheduling.event_attendees a
+                WHERE a.event_id = e.id AND a.user_id = auth.uid ()
+            )
+            OR (e.schedule_id IS NOT NULL AND scheduling.fn_can_manage_schedule (e.schedule_id))
+            OR (e.project_id IS NOT NULL AND projects.has_project_access (e.project_id))
+        FROM scheduling.events e
+        WHERE e.id = p_event_id
+    ), false);
+$$;
+
+-- #endregion
+
+-- #region 6c. Closing a reschedule round
+-- The one transition in the negotiation that moves TWO rows — the round comes to rest, and when it
+-- carried, the event itself moves to the winning slot — so it is one function rather than two
+-- PostgREST writes. Done as two, a failure between them leaves a round that says "moved to Thursday"
+-- beside an event that is still on Tuesday, and nothing afterwards can tell which of the two to
+-- believe.
+--
+-- The RULES are not here. Whether a vote has carried, whether a counterparty may confirm, whether the
+-- deadline has arrived — those are the pure predicates in `@projective/types/scheduling`
+-- (`settleVote`, `majorityProposal`, `canReschedule`), applied by the scheduling service before it
+-- calls this. What this function owns is the part a rule cannot: that the round is still open when it
+-- is closed (so a second reader settling the same vote a moment later is a no-op, not a second move),
+-- that the winner belongs to THIS round, and that the round, the event and the log line land
+-- together or not at all.
+--
+-- Returns the new history line's id, or NULL when the round was already closed — the caller treats
+-- NULL as "somebody else got there first" and re-reads.
+--
+-- INVOKER and service-role only (00002510): there is no client write path into coordination at all.
+CREATE OR REPLACE FUNCTION scheduling.close_reschedule_round (
+    p_reschedule_id uuid,
+    p_status text,
+    p_resolved_proposal_id uuid,
+    p_actor uuid,
+    p_summary text,
+    p_detail text
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+    v_event uuid;
+    v_start timestamptz;
+    v_end timestamptz;
+    v_line uuid;
+BEGIN
+    IF p_status NOT IN ('resolved', 'lapsed') THEN
+        RAISE EXCEPTION 'close_reschedule_round: % is not an ending', p_status USING ERRCODE = '22023';
+    END IF;
+    IF p_status = 'resolved' AND p_resolved_proposal_id IS NULL THEN
+        RAISE EXCEPTION 'close_reschedule_round: a resolved round names its winner' USING ERRCODE = '22023';
+    END IF;
+
+    IF p_status = 'resolved' THEN
+        SELECT p.starts_at, p.ends_at INTO v_start, v_end
+        FROM scheduling.reschedule_proposals p
+        WHERE p.id = p_resolved_proposal_id AND p.reschedule_id = p_reschedule_id;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'close_reschedule_round: proposal % is not on round %',
+                p_resolved_proposal_id, p_reschedule_id USING ERRCODE = '22023';
+        END IF;
+    END IF;
+
+    UPDATE scheduling.event_reschedules
+    SET status = p_status,
+        resolved_proposal_id = CASE WHEN p_status = 'resolved' THEN p_resolved_proposal_id END,
+        updated_at = now()
+    WHERE id = p_reschedule_id
+      AND status IN ('collecting', 'awaiting_counterparty', 'voting')
+    RETURNING event_id INTO v_event;
+
+    IF NOT FOUND THEN
+        RETURN NULL;
+    END IF;
+
+    IF p_status = 'resolved' THEN
+        UPDATE scheduling.events SET starts_at = v_start, ends_at = v_end WHERE id = v_event;
+    END IF;
+
+    INSERT INTO scheduling.event_history (event_id, kind, actor_user_id, summary, detail, target_id)
+    VALUES (
+        v_event,
+        CASE WHEN p_status = 'resolved' THEN 'rescheduled' ELSE 'vote' END,
+        p_actor,
+        p_summary,
+        p_detail,
+        p_resolved_proposal_id::text
+    )
+    RETURNING id INTO v_line;
+
+    RETURN v_line;
+END;
+$$;
+
+COMMENT ON FUNCTION scheduling.close_reschedule_round(uuid, text, uuid, uuid, text, text) IS
+    'Close an open reschedule round (resolved | lapsed) atomically: the round, the event move and the '
+    'history line together. NULL when the round was already closed. Service role only.';
+
+-- #endregion
+
 -- #region 2. Timezone-aware primitives
 -- Minutes from LOCAL midnight in the given IANA zone. `AT TIME ZONE` converts the timestamptz to
 -- wall-clock time in that zone, so DST is handled by Postgres rather than by hand.

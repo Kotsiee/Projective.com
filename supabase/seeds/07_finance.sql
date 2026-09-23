@@ -43,14 +43,14 @@ ALTER TABLE finance.wallets ENABLE TRIGGER trg_seed_business_wallet;
 
 INSERT INTO finance.escrows (id, project_stage_id, ticket_id, payer_business_id, payee_type, payee_id, amount_cents, platform_fee_cents, deadline_bonus_cents, currency, status, created_at)
 VALUES
-  ('d4e6f3c4-8a98-4bf1-a851-bea6553126b3', 'faa19a6c-a1b2-4453-a0a6-bf02a933dd81', '1d760dab-1897-4fce-a303-8ae991eebddc', 'edb582e0-25d2-48a3-a0db-4a96f1d1a8d1', 'freelancer', '6ce1906f-caab-4708-a19e-df3d8960666e', 800000, 0, 0, 'USD', 'funded', now() - interval '144 hours'),
+  ('d4e6f3c4-8a98-4bf1-a851-bea6553126b3', 'faa19a6c-a1b2-4453-a0a6-bf02a933dd81', '1d760dab-1897-4fce-a303-8ae991eebddc', 'edb582e0-25d2-48a3-a0db-4a96f1d1a8d1', 'freelancer', '6ce1906f-caab-4708-a19e-df3d8960666e', 800000, 0, 0, 'USD', 'held', now() - interval '144 hours'),
   ('7ab53d6b-7835-40b0-abeb-02d52985e95a', '2a5614e5-7032-4b5c-a46f-12ebe434fde2', 'c25e3602-bb8d-438d-a7f5-bf78680d33b3', '4cfa4f66-9aa2-496b-a93d-994caac019c1', 'team', 'edc2d943-8062-426a-a6f2-29fdc6b4363c', 1500000, 75000, 0, 'USD', 'released', now() - interval '960 hours'),
   ('7bb53efe-7b35-4569-a8ea-fe1c2885e7c7', '2a5614e5-7032-4b5c-a46f-12ebe434fde2', 'c15e346f-b88d-4ed4-aaf5-c431690d3546', '4cfa4f66-9aa2-496b-a93d-994caac019c1', 'team', 'edc2d943-8062-426a-a6f2-29fdc6b4363c', 1500000, 75000, 0, 'USD', 'released', now() - interval '912 hours'),
-  ('7cb54091-7a35-43d6-a9ea-ffaf2785e634', '2756102c-7332-4015-a56f-147ee334fc4f', 'c05e32dc-b98d-4067-a9f5-c29e6a0d36d9', '4cfa4f66-9aa2-496b-a93d-994caac019c1', 'team', 'edc2d943-8062-426a-a6f2-29fdc6b4363c', 2250000, 0, 0, 'USD', 'funded', now() - interval '216 hours'),
-  ('7db54224-7d35-488f-a6ea-faf62685e4a1', '2756102c-7332-4015-a56f-147ee334fc4f', 'bf5e3149-b68d-4bae-acf5-c7576b0d386c', '4cfa4f66-9aa2-496b-a93d-994caac019c1', 'team', 'edc2d943-8062-426a-a6f2-29fdc6b4363c', 2250000, 0, 0, 'USD', 'funded', now() - interval '288 hours'),
-  ('f4b59a61-5919-471e-a302-dcf3d93812d8', '1df76187-f9b7-4c96-abc4-cd4dc4f456b4', '8911b6f0-9deb-42bb-a79c-6516d6f4cbb9', 'edb582e0-25d2-48a3-a0db-4a96f1d1a8d1', 'team', '213dc9f8-3ad7-4f35-ac4b-baa674bf48b3', 3200000, 0, 0, 'USD', 'funded', now() - interval '264 hours'),
+  ('7cb54091-7a35-43d6-a9ea-ffaf2785e634', '2756102c-7332-4015-a56f-147ee334fc4f', 'c05e32dc-b98d-4067-a9f5-c29e6a0d36d9', '4cfa4f66-9aa2-496b-a93d-994caac019c1', 'team', 'edc2d943-8062-426a-a6f2-29fdc6b4363c', 2250000, 0, 0, 'USD', 'held', now() - interval '216 hours'),
+  ('7db54224-7d35-488f-a6ea-faf62685e4a1', '2756102c-7332-4015-a56f-147ee334fc4f', 'bf5e3149-b68d-4bae-acf5-c7576b0d386c', '4cfa4f66-9aa2-496b-a93d-994caac019c1', 'team', 'edc2d943-8062-426a-a6f2-29fdc6b4363c', 2250000, 0, 0, 'USD', 'held', now() - interval '288 hours'),
+  ('f4b59a61-5919-471e-a302-dcf3d93812d8', '1df76187-f9b7-4c96-abc4-cd4dc4f456b4', '8911b6f0-9deb-42bb-a79c-6516d6f4cbb9', 'edb582e0-25d2-48a3-a0db-4a96f1d1a8d1', 'team', '213dc9f8-3ad7-4f35-ac4b-baa674bf48b3', 3200000, 0, 0, 'USD', 'held', now() - interval '264 hours'),
   ('2be31aa8-1878-4317-a6c0-339e4810b70d', '8ca74d22-728b-47ff-a528-acf449954ed9', '837b9e05-7625-47a6-af74-f3cf32089c80', 'edb582e0-25d2-48a3-a0db-4a96f1d1a8d1', 'freelancer', '6ce1906f-caab-4708-a19e-df3d8960666e', 1400000, 70000, 0, 'USD', 'released', now() - interval '672 hours'),
-  ('2ee31f61-1978-44aa-a5c0-320b4510b254', '8ba74b8f-738b-4992-a828-b1ad46954a20', '807b994c-7525-4613-a074-f5623508a139', 'edb582e0-25d2-48a3-a0db-4a96f1d1a8d1', 'freelancer', '6ce1906f-caab-4708-a19e-df3d8960666e', 2200000, 0, 0, 'USD', 'funded', now() - interval '192 hours')
+  ('2ee31f61-1978-44aa-a5c0-320b4510b254', '8ba74b8f-738b-4992-a828-b1ad46954a20', '807b994c-7525-4613-a074-f5623508a139', 'edb582e0-25d2-48a3-a0db-4a96f1d1a8d1', 'freelancer', '6ce1906f-caab-4708-a19e-df3d8960666e', 2200000, 0, 0, 'USD', 'held', now() - interval '192 hours')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO finance.payout_splits (id, escrow_id, member_user_id, amount_cents, currency, created_at)
@@ -235,18 +235,38 @@ VALUES
   ('5ef78e48-82c9-4b09-a88c-4082b75ba803', '66a7308b-df0d-47c2-a2b5-69955963d7cc', 'escrow', '2ee31f61-1978-44aa-a5c0-320b4510b254', 'Button, field and layout primitives — Core components', 2200000, 'USD')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO finance.baskets (id, owner_type, owner_id, name, is_default)
+INSERT INTO finance.promo_codes (id, code, label, kind, value_bp, value_minor, currency, starts_at, expires_at, max_redemptions, redemption_count, deactivated_at)
 VALUES
-  ('1f76aaed-6fb2-4d22-a33b-f4cb8a6141f0', 'user', '1fee216e-a637-4619-a90a-4ae03bb1ed8b', 'Main Basket', true),
-  ('e472d4f3-d09e-4848-a0a8-b53d16724b72', 'user', '2bdebf14-f7dc-40af-acd8-fe22cb9916fd', 'Main Basket', true)
+  ('ff9bb60f-5c9a-4716-aca7-f3991373bd98', 'WELCOME10', 'WELCOME10 · 10% off', 'percent', 1000, NULL, NULL, NULL, NULL, NULL, 0, NULL),
+  ('14a6ae82-1dd1-4ec5-ad04-bca80a1243fb', 'STUDIO20', 'STUDIO20 · $20 off', 'flat', NULL, 2000, 'USD', now() - interval '480 hours', now() + interval '960 hours', NULL, 0, NULL),
+  ('570dc14d-dc7b-4c7a-a565-ff8f5edeccd4', 'SPRING15', 'SPRING15 · 15% off', 'percent', 1500, NULL, NULL, now() - interval '2880 hours', now() - interval '720 hours', NULL, 0, NULL),
+  ('c7d0b413-3225-4e34-a261-9cb9e4c99472', 'FOUNDERS50', 'FOUNDERS50 · 50% off for our first fifty buyers', 'percent', 5000, NULL, NULL, now() - interval '4800 hours', NULL, 50, 50, NULL),
+  ('fe0bc05f-c1dc-4b62-ac1e-aae9c3ddb33c', 'BETA5', 'BETA5 · $5 off', 'flat', NULL, 500, 'USD', now() - interval '7200 hours', NULL, NULL, 0, now() - interval '2160 hours')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO finance.basket_items (id, basket_id, item_type, item_id, title, subtitle, unit_price_minor, currency, quantity, position, created_at)
+INSERT INTO finance.baskets (id, owner_type, owner_id, name, is_default, promo_code)
 VALUES
-  ('2868e6c1-09d1-4906-a605-5db3ad29b1b0', '1f76aaed-6fb2-4d22-a33b-f4cb8a6141f0', 'digital_product', '75f0ec2a-da94-4f9b-a36c-1b2044191021', 'Motion primitives', 'Instant download', 4900, 'USD', 1, 0, now() - interval '24 hours'),
-  ('52c36e0d-5c59-4fc4-a2eb-841b6b117b02', 'e472d4f3-d09e-4848-a0a8-b53d16724b72', 'digital_product', 'c31e9aa2-a1ea-4495-a471-7598b963bb23', 'Grain — Lightroom pack', 'Instant download', 2400, 'USD', 1, 0, now() - interval '24 hours'),
-  ('b0b924f9-b493-4e78-aefe-bb476f94b206', 'e472d4f3-d09e-4848-a0a8-b53d16724b72', 'digital_product', '60842026-267e-4fb1-ab6f-776cd8f6585f', 'Dashboard blocks', 'Instant download', 6500, 'USD', 1, 1, now() - interval '48 hours')
+  ('1f76aaed-6fb2-4d22-a33b-f4cb8a6141f0', 'user', '1fee216e-a637-4619-a90a-4ae03bb1ed8b', 'Main Basket', true, NULL),
+  ('e472d4f3-d09e-4848-a0a8-b53d16724b72', 'user', '2bdebf14-f7dc-40af-acd8-fe22cb9916fd', 'Main Basket', true, 'WELCOME10'),
+  ('55ed9bd6-ec5d-4937-a473-6140d634d1e9', 'business', 'edb582e0-25d2-48a3-a0db-4a96f1d1a8d1', 'Main Basket', true, NULL)
 ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO finance.basket_items (id, basket_id, item_type, item_id, title, subtitle, unit_price_minor, currency, quantity, saved_for_later, position, scheduled_at, timezone, seats, destination_email, created_at)
+VALUES
+  ('2868e6c1-09d1-4906-a605-5db3ad29b1b0', '1f76aaed-6fb2-4d22-a33b-f4cb8a6141f0', 'digital_product', '75f0ec2a-da94-4f9b-a36c-1b2044191021', 'Motion primitives', 'Instant download', 4900, 'USD', 1, false, 0, NULL, NULL, NULL, 'noor@projective.dev', now() - interval '24 hours'),
+  ('37ba09f9-c609-4d90-a91f-72079cf3ab3e', '1f76aaed-6fb2-4d22-a33b-f4cb8a6141f0', 'service_session', 'eaff7484-81fb-46d3-adb1-42da56453eb9', 'Live portfolio review', '60-minute session', 18000, 'USD', 1, false, 1, ((date_trunc('week', now() AT TIME ZONE 'Asia/Dubai') + interval '8 days' + interval '900 minutes') AT TIME ZONE 'Asia/Dubai'), 'Asia/Dubai', NULL, NULL, now() - interval '48 hours'),
+  ('449fa1ab-6a10-4f96-ae00-7d01ce18ca8c', '1f76aaed-6fb2-4d22-a33b-f4cb8a6141f0', 'one_off_service', '56b1183a-92e4-4f4d-a30e-1e983a201c6b', 'Landing page in a week', 'One-off service', 240000, 'USD', 1, true, 2, NULL, NULL, NULL, NULL, now() - interval '72 hours'),
+  ('52c36e0d-5c59-4fc4-a2eb-841b6b117b02', 'e472d4f3-d09e-4848-a0a8-b53d16724b72', 'digital_product', 'c31e9aa2-a1ea-4495-a471-7598b963bb23', 'Grain — Lightroom pack', 'Instant download', 2400, 'USD', 1, false, 0, NULL, NULL, NULL, 'theo@projective.dev', now() - interval '24 hours'),
+  ('b0b924f9-b493-4e78-aefe-bb476f94b206', 'e472d4f3-d09e-4848-a0a8-b53d16724b72', 'digital_product', '60842026-267e-4fb1-ab6f-776cd8f6585f', 'Dashboard blocks', 'Instant download', 6500, 'USD', 1, false, 1, NULL, NULL, NULL, 'theo@projective.dev', now() - interval '48 hours'),
+  ('675206df-33f5-45f6-ad7e-cd516acf5ec0', '55ed9bd6-ec5d-4937-a473-6140d634d1e9', 'single_service_task', '7b1b3f95-50bb-4b14-a1fa-457bd622993a', 'Packaging art direction', 'Direct deliverable', 190000, 'USD', 1, false, 0, NULL, NULL, NULL, NULL, now() - interval '24 hours'),
+  ('4b300591-0b9d-4d98-a813-afab948909ca', '55ed9bd6-ec5d-4937-a473-6140d634d1e9', 'course_group_session', '40d68e27-474f-4b56-a37e-1605cbc3fdb4', 'Design systems workshop', '3 seats · group session', 27000, 'USD', 1, false, 1, ((date_trunc('week', now() AT TIME ZONE 'Europe/London') + interval '17 days' + interval '840 minutes') AT TIME ZONE 'Europe/London'), 'Europe/London', 3, NULL, now() - interval '48 hours')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO finance.buyer_details (id, context_id, context_kind, owner_type, owner_id, delivery_first_name, delivery_last_name, delivery_email, personal_name, personal_phone, personal_email, personal_address_line_1, personal_address_city, personal_address_state, personal_address_postcode, personal_address_country, business_company_name, business_registration_number, business_tax_id, business_corporate_email, business_phone, business_address_line_1, business_address_city, business_address_state, business_address_postcode, business_address_country, created_at, updated_at)
+VALUES
+  ('cd65b30f-a324-46d6-a6fe-b14515f77b7c', 'personal', 'personal', 'user', '1fee216e-a637-4619-a90a-4ae03bb1ed8b', 'Noor', 'Haddad', 'noor@projective.dev', 'Noor Haddad', '+971 50 123 4567', 'noor@projective.dev', 'Villa 12, Al Wasl Road', 'Dubai', NULL, '00000', 'United Arab Emirates', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, now() - interval '72 hours', now() - interval '72 hours'),
+  ('7be54cc4-8176-4b7b-a85f-ed3e0af71785', 'business:edb582e0-25d2-48a3-a0db-4a96f1d1a8d1', 'business', 'business', 'edb582e0-25d2-48a3-a0db-4a96f1d1a8d1', 'Hannah', 'Cole', 'hannahcole@projective.dev', '', '', NULL, NULL, NULL, NULL, NULL, NULL, 'Helia Finance Ltd', '13572468', 'GB 284 3715 62', 'accounts@heliafinance.dev', '+44 20 7946 0321', '41 Old Street', 'London', NULL, 'EC1V 9AE', 'United Kingdom', now() - interval '72 hours', now() - interval '72 hours')
+ON CONFLICT (owner_type, owner_id, context_id) DO NOTHING;
 
 INSERT INTO finance.subscriptions (id, profile_id, subject_type, subject_id, plan_id, state, billing_interval, current_period_start, current_period_end, price_cents, currency, provider_ref, started_at)
 VALUES

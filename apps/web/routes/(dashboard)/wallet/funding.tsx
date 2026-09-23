@@ -1,22 +1,26 @@
 import { page } from "fresh";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { define } from "@web/utils/state.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import WalletFundingScreen from "@features/wallet/islands/WalletFundingScreen.island.tsx";
-import { resolveDisplayCurrency, resolveFunding } from "@features/wallet/core/wallet-ssr.ts";
-import { defaultWalletParam } from "@features/wallet/core/wallet-model.ts";
+import WalletUnavailable from "@features/wallet/islands/WalletUnavailable.island.tsx";
+import { resolveFunding, resolveWalletFrame } from "@features/wallet/core/wallet-ssr.ts";
 
 /** `/wallet/funding` — funding sources + recurring auto-deposit rules + top-up. */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const context = asAuthenticatedContext(ctx.state.userContext);
-		const funding = resolveFunding(context, ctx.url);
-		const wallet = ctx.url.searchParams.get("w") ?? defaultWalletParam(context);
-		const display = resolveDisplayCurrency(context, ctx.url);
+		const actor = readActor(ctx);
+		const [read, frame] = await Promise.all([
+			resolveFunding(context, ctx.url, actor),
+			resolveWalletFrame(context, ctx.url, actor),
+		]);
 		ctx.state.title = "Funding · Wallet";
-		return page({ funding, wallet, display });
+		return page({ read, ...frame }, read.ok ? undefined : { status: 503 });
 	},
 });
 
 export default define.page<typeof handler>(function FundingPage({ data }) {
-	return <WalletFundingScreen initial={data.funding} wallet={data.wallet} display={data.display} />;
+	if (!data.read.ok) return <WalletUnavailable title="Funding" message={data.read.message} />;
+	return <WalletFundingScreen initial={data.read.data} wallet={data.wallet} display={data.display} />;
 });

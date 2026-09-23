@@ -3,8 +3,8 @@
 The booking engine. Every predicate is pure and `STABLE`, so **the same function backs the
 pre-flight "is this slot bookable?" check the UI makes and the hard gate the trigger applies at
 INSERT** — the rules cannot drift between the two. Added 2026-07-24 by migrations `20260724100000`,
-`20260724102000` and `20260724104000`; the public free/busy read and the discovery-call request
-door (§7) by `00001520_functions_scheduling_free_busy.sql`.
+`20260724102000` and `20260724104000`; the public free/busy read and the discovery-call request door
+(§7) by `00001520_functions_scheduling_free_busy.sql`.
 
 > Why in the database at all: the booking rules protect a person's calendar and (for a paid call)
 > their money, so they are enforced where RLS is — not only in a service.
@@ -161,10 +161,10 @@ knobs live with every other tunable rather than in a new config surface.
 
 ## 7. Public reads and the request door (`00001520`)
 
-The booking surfaces — a listing's Book modal, the discovery-call handshake, `/[handle]/availability`
-and a session listing's schedule — read a provider's **published** schedule as the anonymous client,
-so a guest and a member are answered identically. Three functions make that possible without
-widening any policy.
+The booking surfaces — a listing's Book modal, the discovery-call handshake,
+`/[handle]/availability` and a session listing's schedule — read a provider's **published** schedule
+as the anonymous client, so a guest and a member are answered identically. Three functions make that
+possible without widening any policy.
 
 ### `scheduling.fn_schedule_host(schedule) → uuid`
 
@@ -180,15 +180,15 @@ The occupied spans on a schedule inside a window: every non-`cancelled` event th
 `availability` block, plus every discovery call still `proposed` or `confirmed`. **Spans only** — no
 title, no id, no kind — so a visitor learns that a time is taken and nothing about by whom or for
 what (`PRODUCT_SPEC.md` §The Proactive Calendar, Part 1.4). Answers for a **published** schedule, or
-one the caller may already view (`fn_can_view_schedule`); for anything else it returns no rows rather
-than raising. The window is clamped to **120 days** so it cannot page through a provider's history in
-one call. `SECURITY DEFINER`, because `scheduling.events` itself stays private (see
+one the caller may already view (`fn_can_view_schedule`); for anything else it returns no rows
+rather than raising. The window is clamped to **120 days** so it cannot page through a provider's
+history in one call. `SECURITY DEFINER`, because `scheduling.events` itself stays private (see
 [Policies.md](Policies.md)); `EXECUTE` to `anon`, `authenticated`, `service_role`.
 
 The app turns these spans into the slot grid in `packages/backend/services/scheduling/slot-grid.ts`,
 which applies the **same** buffer geometry as `fn_slot_is_free` (§3) — a busy span blocks any slot
-within `before + after` minutes of either edge, and a blackout blocks on the raw span — so a slot the
-grid offers is a slot the gate accepts.
+within `before + after` minutes of either edge, and a blackout blocks on the raw span — so a slot
+the grid offers is a slot the gate accepts.
 
 ### `scheduling.request_discovery_call(schedule, call_type, starts_at, ends_at, agenda?, requester_timezone?, provider_slug?, service_blueprint_id?) → jsonb`
 
@@ -206,8 +206,8 @@ a platform and (optionally) the listing the call is about; everything else is de
 - the **status** is `proposed`, or `confirmed` (with `confirmed_*` stamped) when `auto_confirm`.
 
 The slot itself — call window, notice, horizon, free time, weekly cap, cooldown — is judged by the
-existing BEFORE INSERT gate (`fn_enforce_call_request`, §5), which fires because the insert runs with
-the caller's `auth.uid()`. The host is then told through the notification engine
+existing BEFORE INSERT gate (`fn_enforce_call_request`, §5), which fires because the insert runs
+with the caller's `auth.uid()`. The host is then told through the notification engine
 (`comms.fn_notify`, type `availability.booking_request`), which never raises and routes by the
 host's own preferences. Returns `{ id, status }`.
 
@@ -237,31 +237,77 @@ schedule (timezone + published), its weekly bands, and the discovery-call settin
 land together: a timezone saved without the bands it is expressed in re-times every band. So this is
 **one call, one transaction**.
 
-**`SECURITY INVOKER`, on purpose.** The existing policies ("Manage own schedule", "Manage availability
-rules", "Manage call settings") already decide who may write, through `scheduling.fn_owner_manages`.
-This function adds atomicity, not authority; the explicit `fn_owner_manages` check at the top only
-turns a silent zero-row write into a named refusal. Granted to `authenticated` and `service_role`.
+**`SECURITY INVOKER`, on purpose.** The existing policies ("Manage own schedule", "Manage
+availability rules", "Manage call settings") already decide who may write, through
+`scheduling.fn_owner_manages`. This function adds atomicity, not authority; the explicit
+`fn_owner_manages` check at the top only turns a silent zero-row write into a named refusal. Granted
+to `authenticated` and `service_role`.
 
 An individual's schedule is `owner_type = 'user'` — **one schedule per human**, whatever their
 freelancer flag — so turning freelancer on or off can never strand a second calendar.
 
-| Payload key | Effect                                                                                                                                                                                                      |
-| :---------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `timezone`  | Required (`timezone: choose a time zone`). Upserts `scheduling.schedules`.                                                                                                                                |
-| `published` | Whether the schedule is readable by visitors (default `false`).                                                                                                                                             |
-| `rules`     | **Replaces** the weekly bands: `[{kind, weekday, start_minute, end_minute}]`, at most 42 (six a day). A band needs a day and an end after its start. Two overlapping bands of the same kind on the same weekday are **refused**, not merged — the editor cannot draw one, so receiving one means the request did not come from it. |
+| Payload key | Effect                                                                                                                                                                                                                                                                                                                                                   |
+| :---------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timezone`  | Required (`timezone: choose a time zone`). Upserts `scheduling.schedules`.                                                                                                                                                                                                                                                                               |
+| `published` | Whether the schedule is readable by visitors (default `false`).                                                                                                                                                                                                                                                                                          |
+| `rules`     | **Replaces** the weekly bands: `[{kind, weekday, start_minute, end_minute}]`, at most 42 (six a day). A band needs a day and an end after its start. Two overlapping bands of the same kind on the same weekday are **refused**, not merged — the editor cannot draw one, so receiving one means the request did not come from it.                       |
 | `call`      | Optional; absent leaves the call settings as they are. Upserts `scheduling.call_settings`: `accepts_calls`, the courtesy half (`courtesy_enabled`, duration, weekly cap, cooldown), the paid half (`paid_enabled`, duration, `fee_amount_minor` + `fee_currency`), buffers, `min_notice_minutes`, `max_advance_days`, `auto_confirm`, `agenda_required`. |
 
 Refusals are `42501` for the caller (`auth: sign in to edit availability`,
-`owner: you cannot edit this schedule`) and `22023` with a `<field>: <reason>` message for the input,
-like `org.save_profile`. Returns `{ok, schedule_id}`.
+`owner: you cannot edit this schedule`) and `22023` with a `<field>: <reason>` message for the
+input, like `org.save_profile`. Returns `{ok, schedule_id}`.
 
 The caller-side wrapper is `packages/backend/services/scheduling/live-owner-availability.ts`
 (`saveOwnerAvailability`). Two refusals happen before the database is asked: the Zod SSOT
 (`@projective/types/scheduling` `owner-availability.ts`) refuses a paid call with no fee and two
-overlapping hours on one day, and `ProfileBackendService.saveAvailability` refuses call settings for a
-profile that cannot take calls (a buyer). The public side reads the same rows through
+overlapping hours on one day, and `ProfileBackendService.saveAvailability` refuses call settings for
+a profile that cannot take calls (a buyer). The public side reads the same rows through
 `live-call-offer.ts` (`readPublicCallOffer`), which requires a published schedule.
+
+---
+
+## 9. Event coordination (`00001510`)
+
+### `scheduling.fn_can_see_event_coordination(event) → boolean`
+
+The one read predicate behind all six coordination tables' SELECT policies. True for someone seated
+on the roster, whoever manages the schedule the event is anchored to (`fn_can_manage_schedule`), or
+a participant of the engagement it belongs to (`projects.has_project_access`). `SECURITY DEFINER` so
+the roster lookup does not recurse into `event_attendees`' own policy, which calls it. `EXECUTE` to
+`authenticated` and `service_role`. See the flagged disclosure note in [Policies.md](Policies.md).
+
+### `scheduling.close_reschedule_round(round, status, resolved_proposal, actor, summary, detail) → uuid`
+
+The one transition in the negotiation that moves **two** rows — the round comes to rest and, when it
+carried, the event itself moves to the winning slot — so it is one function rather than two
+PostgREST writes. Done as two, a failure between them leaves a round saying "moved to Thursday"
+beside an event still on Tuesday, with nothing afterwards able to tell which to believe.
+
+| Argument                 | Meaning                                                                                     |
+| :----------------------- | :------------------------------------------------------------------------------------------ |
+| `p_status`               | `resolved` or `lapsed` only (anything else → `22023`).                                      |
+| `p_resolved_proposal_id` | Required for `resolved`, and must be a proposal on **this** round (else `22023`).           |
+| `p_actor`                | The acting user, or `NULL` for a vote that closed on its own (deadline or full electorate). |
+| `p_summary` · `p_detail` | The history line.                                                                           |
+
+It updates the round **conditioned on it still being open** (`collecting` · `awaiting_counterparty`
+· `voting`) and returns `NULL` when it was not — so two readers settling the same vote a moment
+apart produce one move, and the caller treats `NULL` as "somebody else got there first" and
+re-reads. On success it moves `events.starts_at` / `ends_at` (for `resolved`) and appends one
+`event_history` line (`rescheduled` for `resolved`, `vote` for `lapsed`, `target_id` = the
+proposal), returning its id.
+
+**The rules are not here.** Whether a vote has carried, whether a counterparty may confirm, whether
+the deadline has arrived are the pure predicates in `@projective/types/scheduling` (`settleVote`,
+`majorityProposal`, `canReschedule`), applied by `coordination-plan.ts` before this is called. This
+function owns only what a rule cannot: that the round is still open when it is closed, that the
+winner belongs to it, and that the round, the event and the log line land together.
+
+`SECURITY INVOKER`; `EXECUTE` to `service_role` only (`00002510`) — there is no client write path
+into coordination. Settlement is **lazy**: the service calls it on the read path when `settleVote`
+finds a decided vote (the deadline has passed, or every eligible voter has answered), and on the
+write path when a ballot or a counterparty's confirmation ends the round. There is no sweep yet (see
+below).
 
 ---
 
@@ -275,3 +321,7 @@ profile that cannot take calls (a buyer). The public side reads the same rows th
   audit action (`link_generated`) exist; the Edge Function does not.
 - **Paid-call settlement** — blocked on the flagged `finance.escrows` shape question. See
   [Tables.md](Tables.md).
+- **A reschedule-settlement sweep** — a vote whose deadline passes while nobody opens the calendar
+  is settled the next time anybody reads it (`settleVote` on the read path), so the event's position
+  in the database is correct only once somebody has looked. Notifications that should fire at the
+  deadline need a scheduled caller of `close_reschedule_round`; none exists.

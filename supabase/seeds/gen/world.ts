@@ -243,7 +243,9 @@ export const PERSONAS: Persona[] = [
 		interests: ["packaging", "branding", "retail"],
 		skills: [],
 		avatar: "profile_5.jpg",
-		displayCurrency: "BRL",
+		// BRL is not an offerable display currency (`DISPLAY_CURRENCIES`); a Brazilian buyer on an
+		// international marketplace pricing in dollars reads dollars.
+		displayCurrency: "USD",
 		joinedDaysAgo: 140,
 	},
 	{
@@ -406,7 +408,8 @@ export const PERSONAS: Persona[] = [
 		workload: 50,
 		kyc: "verified",
 		payoutReady: true,
-		displayCurrency: "PLN",
+		// PLN is not an offerable display currency (`DISPLAY_CURRENCIES`); EUR is the nearest that is.
+		displayCurrency: "EUR",
 		joinedDaysAgo: 180,
 	},
 	{
@@ -1931,10 +1934,139 @@ export const ORDERS: OrderSpec[] = [
 	},
 ];
 
-/** Basket lines a buyer has not checked out yet. */
-export const BASKETS: Array<{ owner: string; products: string[] }> = [
-	{ owner: "noor", products: ["pr-motion-primitives"] },
-	{ owner: "theo", products: ["pr-grain-lightroom-pack", "pr-dashboard-blocks"] },
+/** One unpurchased basket line. `item` is a corpus listing key. */
+export interface BasketLineSpec {
+	kind:
+		| "digital_product"
+		| "one_off_service"
+		| "single_service_task"
+		| "service_session"
+		| "course_group_session";
+	item: string;
+	/** Parked on the saved-for-later list rather than in the active basket. */
+	saved?: boolean;
+	/** A booked session's start, as `[week, day, "HH:MM"]` in the BUYER's zone (see `localAt`). */
+	at?: [week: number, day: number, time: string];
+	/** Seats on a group session. */
+	seats?: number;
+}
+
+/**
+ * Basket lines a buyer has not checked out yet — one basket per owner, which may be a person or an
+ * entity (a business basket spends from its vault, written by the member named in `buyer`). A product
+ * line carries the buyer's email as its delivery address, because that is what the app's add path
+ * writes by default. `promo` is a code the buyer has already applied (see {@link PROMO_CODES}).
+ */
+export const BASKETS: Array<{ owner: string; buyer?: string; promo?: string; lines: BasketLineSpec[] }> = [
+	{
+		owner: "noor",
+		lines: [
+			{ kind: "digital_product", item: "pr-motion-primitives" },
+			{ kind: "service_session", item: "sv-portfolio-review-session", at: [1, 1, "15:00"] },
+			{ kind: "one_off_service", item: "sv-landing-page-in-a-week", saved: true },
+		],
+	},
+	{
+		owner: "theo",
+		promo: "WELCOME10",
+		lines: [
+			{ kind: "digital_product", item: "pr-grain-lightroom-pack" },
+			{ kind: "digital_product", item: "pr-dashboard-blocks" },
+		],
+	},
+	{
+		owner: "helia",
+		buyer: "hannah",
+		lines: [
+			{ kind: "single_service_task", item: "sv-packaging-art-direction" },
+			{ kind: "course_group_session", item: "sv-design-systems-workshop", at: [2, 3, "14:00"], seats: 3 },
+		],
+	},
+];
+
+/**
+ * Platform promotional codes, one per state a buyer can meet: redeemable (percent and flat), expired,
+ * fully redeemed and withdrawn. Windows are relative to the reset, so "expired" stays expired.
+ */
+export const PROMO_CODES: Array<{
+	code: string;
+	label: string;
+	kind: "percent" | "flat";
+	/** Basis points for a percent code; minor units (USD) for a flat one. */
+	value: number;
+	startsDaysAgo?: number;
+	/** Days until expiry; negative = already expired. */
+	expiresInDays?: number;
+	maxRedemptions?: number;
+	redeemed?: number;
+	deactivatedDaysAgo?: number;
+}> = [
+	{ code: "WELCOME10", label: "WELCOME10 · 10% off", kind: "percent", value: 1000 },
+	{
+		code: "STUDIO20",
+		label: "STUDIO20 · $20 off",
+		kind: "flat",
+		value: 2000,
+		startsDaysAgo: 20,
+		expiresInDays: 40,
+	},
+	{
+		code: "SPRING15",
+		label: "SPRING15 · 15% off",
+		kind: "percent",
+		value: 1500,
+		startsDaysAgo: 120,
+		expiresInDays: -30,
+	},
+	{
+		code: "FOUNDERS50",
+		label: "FOUNDERS50 · 50% off for our first fifty buyers",
+		kind: "percent",
+		value: 5000,
+		startsDaysAgo: 200,
+		maxRedemptions: 50,
+		redeemed: 50,
+	},
+	{
+		code: "BETA5",
+		label: "BETA5 · $5 off",
+		kind: "flat",
+		value: 500,
+		startsDaysAgo: 300,
+		deactivatedDaysAgo: 90,
+	},
+];
+
+/**
+ * Saved delivery + billing details — the record the checkout's Details step pre-fills and that lets a
+ * buyer skip it. Some buyers have one and some deliberately do not: a first-time buyer meets the form.
+ * `owner` is a person (personal record) or an entity (its company record, written by `buyer`).
+ */
+export const BUYER_DETAILS: Array<{
+	owner: string;
+	buyer: string;
+	phone: string;
+	address: { line1: string; city: string; postcode: string; country: string; state?: string };
+	company?: { name: string; registration: string; taxId: string; email: string };
+}> = [
+	{
+		owner: "noor",
+		buyer: "noor",
+		phone: "+971 50 123 4567",
+		address: { line1: "Villa 12, Al Wasl Road", city: "Dubai", postcode: "00000", country: "United Arab Emirates" },
+	},
+	{
+		owner: "helia",
+		buyer: "hannah",
+		phone: "+44 20 7946 0321",
+		address: { line1: "41 Old Street", city: "London", postcode: "EC1V 9AE", country: "United Kingdom" },
+		company: {
+			name: "Helia Finance Ltd",
+			registration: "13572468",
+			taxId: "GB 284 3715 62",
+			email: "accounts@heliafinance.dev",
+		},
+	},
 ];
 
 /** Card on file per buyer (personal or business): `[brand, last4, expMonth, expYear, holder]`. */

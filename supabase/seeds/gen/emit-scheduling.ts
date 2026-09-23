@@ -17,6 +17,8 @@ import { type Lookup, party, persona, type World } from "./resolve.ts";
 import {
 	type Band,
 	DISCOVERY_CALLS,
+	PROJECT_MEETINGS,
+	type ProjectMeetingSpec,
 	type ScheduleSpec,
 	SCHEDULES,
 	type WeekSlot,
@@ -302,7 +304,269 @@ export function emitScheduling(world: World): string {
 	));
 	// #endregion
 
+	out.push(emitProjectMeetings(world));
+
 	// A trailing marker, so a partial run is visible in the reset log.
-	out.push(`-- scheduling: ${resolved.length} schedules, ${bandRows.length} bands, ${callRows.length} calls.\n`);
+	out.push(
+		`-- scheduling: ${resolved.length} schedules, ${bandRows.length} bands, ${callRows.length} calls, ${PROJECT_MEETINGS.length} project meetings.\n`,
+	);
 	return out.join("\n");
 }
+
+// #region Project meetings
+const WEEKDAY_NAME = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+/** "Thu 15:00" — how a slot reads in a history line, in the meeting's own zone. */
+function slotLabel(slot: WeekSlot): string {
+	return `${WEEKDAY_NAME[slot.day]} ${slot.time}`;
+}
+
+/** Order two slots in one zone: weeks, then days, then the wall-clock time. */
+function slotKey(slot: WeekSlot): number {
+	return (slot.week * 7 + slot.day) * 1440 + minutesOf(slot.time);
+}
+
+const RSVP_SUMMARY: Record<string, string> = {
+	accepted: "Marked Going",
+	rejected: "Marked Not going",
+	tentative: "Marked Maybe",
+};
+
+type HistoryLine = (
+	kind: string,
+	actor: string | null,
+	summary: string,
+	detail: string | null,
+	target: string | null,
+	when: string,
+) => void;
+
+/**
+ * The engagements' own meetings: the event rows, their rosters, the open negotiations with their
+ * ballots and votes, and the history each has accumulated. Seeded as the table owner, so the
+ * coordination tables' service-role-only write path is not in the way.
+ */
+function emitProjectMeetings(world: World): string {
+	const events: string[][] = [];
+	const attendees: string[][] = [];
+	const reschedules: string[][] = [];
+	const proposals: string[][] = [];
+	const votes: string[][] = [];
+	const history: string[][] = [];
+
+	for (const m of PROJECT_MEETINGS) {
+		const project = world.projects.get(m.project);
+		if (!project) throw new Error(`schedules: meeting "${m.key}" names unknown project "${m.project}"`);
+		const stageIndex = m.stage ? project.stages.findIndex((s) => s.key === m.stage) : -1;
+		if (m.stage && stageIndex < 0) {
+			throw new Error(`schedules: meeting "${m.key}" names unknown stage "${m.stage}"`);
+		}
+		const channelId = project.channelsByKey.get(m.stage ?? "general") ?? null;
+		const meta = stageIndex >= 0 ? `Stage ${stageIndex + 1} · ${project.stages[stageIndex].name}` : project.title;
+		const eventId = uuidFor("project_event", m.key);
+		const host = persona(world, m.host);
+		const created = `now() - interval '${m.createdDaysAgo * 24} hours'`;
+
+		events.push([
+			id(eventId),
+			id(project.projectId),
+			id(channelId),
+			"'sync'::scheduling.event_kind",
+			"'confirmed'::scheduling.event_status",
+			q(m.title),
+			at(m.tz, m.at),
+			at(m.tz, m.at, m.minutes),
+			q(m.meeting.provider),
+			q(m.meeting.label),
+			q(m.meeting.details ?? null),
+			m.meeting.pending ? "true" : "false",
+			q(meta),
+			id(host.userId),
+			created,
+		]);
+
+		const line: HistoryLine = (kind, actor, summary, detail, target, when) =>
+			history.push([
+				id(uuidFor("event_history", `${m.key}:${history.length}`)),
+				id(eventId),
+				q(kind),
+				id(actor),
+				q(summary),
+				q(detail),
+				q(target),
+				when,
+			]);
+
+		// The organiser is seated as the host and never "responded": they called the meeting.
+		const seats = new Map<string, string>();
+		const hostSeat = uuidFor("event_attendee", `${m.key}:${m.host}`);
+		seats.set(m.host, hostSeat);
+		attendees.push([
+			id(hostSeat),
+			id(eventId),
+			id(host.userId),
+			"'host'::scheduling.attendee_role",
+			"'accepted'::scheduling.rsvp_response",
+			"NULL",
+			"NULL",
+			created,
+		]);
+		line("created", host.userId, `Scheduled ${m.title}`, null, null, created);
+
+		for (const a of m.attendees) {
+			const who = persona(world, a.who);
+			const seat = uuidFor("event_attendee", `${m.key}:${a.who}`);
+			seats.set(a.who, seat);
+			const answered = a.response !== "pending" && a.respondedHoursAgo !== undefined
+				? `now() - interval '${a.respondedHoursAgo} hours'`
+				: null;
+			attendees.push([
+				id(seat),
+				id(eventId),
+				id(who.userId),
+				`${q(a.role ?? "participant")}::scheduling.attendee_role`,
+				`${q(a.response)}::scheduling.rsvp_response`,
+				answered ?? "NULL",
+				q(a.note ?? null),
+				created,
+			]);
+			if (answered) line("rsvp", who.userId, RSVP_SUMMARY[a.response], a.note ?? null, seat, answered);
+		}
+
+		if (m.reschedule) emitNegotiation(world, m, eventId, seats, reschedules, proposals, votes, line);
+	}
+
+	return [
+		insert(
+			"scheduling.events",
+			[
+				"id",
+				"project_id",
+				"channel_id",
+				"kind",
+				"status",
+				"title",
+				"starts_at",
+				"ends_at",
+				"meeting_provider",
+				"meeting_provider_label",
+				"meeting_details",
+				"meeting_pending",
+				"meta",
+				"created_by",
+				"created_at",
+			],
+			events,
+		),
+		insert(
+			"scheduling.event_attendees",
+			["id", "event_id", "user_id", "role", "response", "responded_at", "note", "created_at"],
+			attendees,
+		),
+		insert(
+			"scheduling.event_reschedules",
+			[
+				"id",
+				"event_id",
+				"round",
+				"mode",
+				"status",
+				"opened_by_user_id",
+				"opened_at",
+				"resolves_at",
+				"resolved_proposal_id",
+			],
+			reschedules,
+		),
+		insert(
+			"scheduling.reschedule_proposals",
+			[
+				"id",
+				"reschedule_id",
+				"starts_at",
+				"ends_at",
+				"proposed_by_user_id",
+				"proposed_by_role",
+				"proposed_at",
+				"approved",
+				"note",
+			],
+			proposals,
+		),
+		insert("scheduling.proposal_votes", ["id", "reschedule_id", "proposal_id", "attendee_id", "cast_at"], votes),
+		insert(
+			"scheduling.event_history",
+			["id", "event_id", "kind", "actor_user_id", "summary", "detail", "target_id", "occurred_at"],
+			history,
+		),
+	].join("\n");
+}
+
+/** One open negotiation: its round row, the slots on (and waiting for) the ballot, and the votes cast. */
+function emitNegotiation(
+	world: World,
+	m: ProjectMeetingSpec,
+	eventId: string,
+	seats: Map<string, string>,
+	reschedules: string[][],
+	proposals: string[][],
+	votes: string[][],
+	line: HistoryLine,
+): void {
+	const r = m.reschedule!;
+	const rescheduleId = uuidFor("event_reschedule", `${m.key}:0`);
+	const opener = persona(world, m.host);
+	const ballot = r.proposals.filter((p) => p.by === m.host);
+	// A vote closes 12 hours before the earliest slot ON THE BALLOT (`voteResolvesAt`); a slot still
+	// waiting for approval does not count, and a 1-on-1 has no deadline at all.
+	const earliest = ballot.slice().sort((a, b) => slotKey(a.at) - slotKey(b.at))[0];
+	const resolvesAt = r.mode === "vote" && earliest ? `${at(m.tz, earliest.at)} - interval '12 hours'` : "NULL";
+	reschedules.push([
+		id(rescheduleId),
+		id(eventId),
+		"0",
+		q(r.mode),
+		q(r.status),
+		id(opener.userId),
+		`now() - interval '${r.openedHoursAgo} hours'`,
+		resolvesAt,
+		"NULL",
+	]);
+
+	const proposalIds: string[] = [];
+	r.proposals.forEach((p, i) => {
+		const by = persona(world, p.by);
+		const role = p.by === m.host ? "host" : "attendee";
+		const proposalId = uuidFor("reschedule_proposal", `${m.key}:0:${i}`);
+		proposalIds.push(proposalId);
+		const when = `now() - interval '${p.hoursAgo} hours'`;
+		proposals.push([
+			id(proposalId),
+			id(rescheduleId),
+			at(m.tz, p.at),
+			at(m.tz, p.at, p.minutes),
+			id(by.userId),
+			q(role),
+			when,
+			role === "host" ? "true" : "false",
+			q(p.note ?? null),
+		]);
+		line("proposal", by.userId, `Proposed ${slotLabel(p.at)}`, p.note ?? null, proposalId, when);
+	});
+
+	for (const v of r.votes ?? []) {
+		const who = persona(world, v.who);
+		const seat = seats.get(v.who);
+		if (!seat) throw new Error(`schedules: "${v.who}" votes on "${m.key}" without a seat`);
+		const when = `now() - interval '${v.hoursAgo} hours'`;
+		votes.push([
+			id(uuidFor("proposal_vote", `${m.key}:0:${v.who}`)),
+			id(rescheduleId),
+			id(proposalIds[v.proposal]),
+			id(seat),
+			when,
+		]);
+		line("vote", who.userId, `Voted for ${slotLabel(r.proposals[v.proposal].at)}`, null, proposalIds[v.proposal], when);
+	}
+}
+// #endregion

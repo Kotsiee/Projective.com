@@ -1,10 +1,6 @@
 import { ScheduleBackendService } from "@server/services/scheduling/ScheduleBackendService.ts";
-import type {
-	CalendarPage,
-	SchedulePage,
-	SchedulingSim,
-	SchedulingViewer,
-} from "@projective/types/scheduling";
+import type { ReadActor } from "@server/services/read-actor.ts";
+import type { CalendarPage, SchedulePage, SchedulingViewer } from "@projective/types/scheduling";
 import { ANONYMOUS_VIEWER } from "@projective/types/scheduling";
 
 /**
@@ -13,10 +9,15 @@ import { ANONYMOUS_VIEWER } from "@projective/types/scheduling";
  * `initial` prop. Islands never import these (they use the thin `ScheduleService`); this module is
  * server-only (it reaches the backend).
  *
- * Each resolver takes the request's {@link SchedulingViewer} (build it with `viewerFromState`), because
- * the SSR payload is serialised into an island prop and shipped to the browser — so it is a response
- * body like any other and must be projected for its reader. It defaults to nobody: a route that
- * forgets ships the public projection, not somebody's roster.
+ * The two PRIVATE reads — an engagement's calendar and the personal agenda — take the request's
+ * {@link ReadActor} (build it with `readActor(ctx)`): they are read AS that person, under RLS, and the
+ * service projects every event for them on the way out. The two PUBLIC reads take a
+ * {@link SchedulingViewer} (build it with `viewerFromState`) because what they disclose is
+ * world-readable by policy; it defaults to nobody, so a route that forgets ships the public
+ * projection, not somebody's roster.
+ *
+ * A private read that fails (no session, a project the reader may not see, the database unreachable)
+ * resolves to `page: null`, and the island renders its own empty or unavailable state from that.
  */
 
 export interface CalendarBootstrap {
@@ -26,30 +27,27 @@ export interface ScheduleBootstrap {
 	page: SchedulePage | null;
 }
 
-/** The project / channel calendar page (channelId omitted → whole project). */
-export function resolveCalendarPage(
+/** The project / channel calendar page (channelId omitted → whole project), read as the actor. */
+export async function resolveCalendarPage(
 	projectId: string,
-	channelId?: string | null,
-	viewer: SchedulingViewer = ANONYMOUS_VIEWER,
-): CalendarBootstrap {
-	const res = ScheduleBackendService.projectCalendar(
+	channelId: string | null | undefined,
+	actor: ReadActor,
+): Promise<CalendarBootstrap> {
+	const res = await ScheduleBackendService.projectCalendar(
 		{ projectId, channelId: channelId ?? null },
-		viewer,
+		actor,
 	);
 	return { page: res.ok && res.data ? res.data.page : null };
 }
 
 /**
- * The acting account's own agenda for the `/calendar` hub.
+ * The acting account's own agenda for the `/calendar` hub, read as the actor.
  *
- * There is no `null` branch: an account always has a calendar, so the resolver returns a page
- * rather than a bootstrap that a route then has to decide what to do with.
+ * `null` means the agenda could not be read at all (no session, the database unreachable) — never
+ * that the account has nothing on: an empty week is a page with no events in it.
  */
-export function resolvePersonalCalendar(
-	viewer: SchedulingViewer = ANONYMOUS_VIEWER,
-	sim?: SchedulingSim,
-): ScheduleBootstrap {
-	const res = ScheduleBackendService.personalCalendar(viewer, sim);
+export async function resolvePersonalCalendar(actor: ReadActor): Promise<ScheduleBootstrap> {
+	const res = await ScheduleBackendService.personalCalendar(actor);
 	return { page: res.ok && res.data ? res.data.page : null };
 }
 

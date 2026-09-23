@@ -4,7 +4,7 @@ import { TreeNav, type TreeNavNode } from "@projective/ui/navigation";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import "../styles/files-hub.css";
-import { pathKey } from "../core/asset-model.ts";
+import { pathKey, rootChildren } from "../core/asset-model.ts";
 import type { AssetTreeNode } from "../types/file-types.ts";
 import { NodeMark } from "./file-hub-glyphs.tsx";
 
@@ -142,7 +142,8 @@ export function assetTreeTargets(
 	parentPath: string[] = [],
 ): AssetTreeTarget[] {
 	const out: AssetTreeTarget[] = [];
-	for (const node of tree) {
+	// At the top the host's own root row stands in for the library's root node (see `rootChildren`).
+	for (const node of parentPath.length === 0 ? rootChildren(tree) : tree) {
 		const path = [...parentPath, node.segment];
 		out.push({
 			key: pathKey(path),
@@ -165,7 +166,7 @@ export function AssetTree(props: AssetTreeProps): JSX.Element {
 		label: rootLabel,
 		icon: <NodeMark nodeKind="root" />,
 		count: rootCount,
-		children: tree.map((node) => toNavNode(node, [])),
+		children: rootChildren(tree).map((node) => toNavNode(node, [])),
 	};
 
 	const selectedKey = currentPath.length === 0 ? ROOT_KEY : pathKey(currentPath);

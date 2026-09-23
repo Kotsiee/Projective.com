@@ -85,18 +85,50 @@ bare `(starts_at, ends_at)` spans for a published schedule — never a title, an
 policy above is not widened to serve the grid: the rows stay private, and only their occupancy is
 public.
 
-`Manage scheduling events` mirrors the same two anchors with `fn_can_manage_schedule` /
-`has_project_access`.
+`Manage scheduling events` covers **only a schedule owner's own entries**:
+
+```sql
+CREATE POLICY "Manage scheduling events" ON scheduling.events FOR ALL TO authenticated
+USING      (schedule_id IS NOT NULL AND project_id IS NULL AND scheduling.fn_can_manage_schedule (schedule_id))
+WITH CHECK (schedule_id IS NOT NULL AND project_id IS NULL AND scheduling.fn_can_manage_schedule (schedule_id));
+```
+
+A **project's** events have no client write path. The policy used to admit any participant of the
+engagement (`has_project_access`), which let one member move a meeting's `starts_at` straight
+through PostgREST — skipping the 12-hour lockout, the host-approval gate and the majority rule the
+reschedule negotiation exists to apply — or hard-delete it together with its roster and history
+(root `CLAUDE.md` §5). A project event now moves only when the scheduling service closes a round
+through `scheduling.close_reschedule_round` ([Functions.md](Functions.md) §9), as the service role.
+The `project_id IS NULL` guard sits on **both** halves so a schedule owner cannot re-anchor their
+own entry onto somebody else's engagement.
+
+## 🤝 Event coordination (`00000022`)
+
+`event_attendees`, `event_reschedules`, `reschedule_proposals`, `proposal_votes`, `event_history`
+and `event_attachments` are each readable by `authenticated` through one predicate,
+`scheduling.fn_can_see_event_coordination (event_id)` (proposals and votes reach it through their
+round), and carry **no write policy at all** — `GRANT SELECT` to `authenticated`, `ALL` to
+`service_role` only (`00002520`). Every write is the scheduling service's, as the service role,
+after the SSOT's rules have run; a client write policy would be a second, weaker implementation of
+the negotiation.
+
+> ⚠️ **Flagged, not resolved: the database discloses more than the service does.** The predicate
+> admits any participant of the engagement (`has_project_access`), and so does the `events` SELECT
+> policy — so a project member who is **not on a meeting's roster** can read its `meeting_url`,
+> passcode fields, roster, negotiation and log directly through PostgREST, while the service's
+> privacy projection (`redactEventForViewer`, by seat) withholds them. Narrowing the predicate to
+> "seated, or the schedule's manager" is a product decision about whether a project's meetings are
+> the whole team's business; recorded here rather than made in passing.
 
 ## 📞 Discovery calls (`20260724103000`)
 
-| Table             | SELECT                                                 | Write                                                                                              |
-| :---------------- | :----------------------------------------------------- | :------------------------------------------------------------------------------------------------- |
-| `call_settings`   | `anon` when the schedule is published, else owner side | `fn_can_manage_schedule` (ALL)                                                                     |
+| Table             | SELECT                                                                | Write                                                                                                               |
+| :---------------- | :-------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------ |
+| `call_settings`   | `anon` when the schedule is published, else owner side                | `fn_can_manage_schedule` (ALL)                                                                                      |
 | `call_platforms`  | Same as `call_settings` — a booker picks a platform BEFORE signing in | `fn_can_manage_schedule` (ALL). Discloses only which providers are offered; never a connection, token or account id |
-| `discovery_calls` | Host **or** requester **or** admin — never `anon`      | **No client `INSERT` policy** — `scheduling.request_discovery_call` is the only door; `UPDATE` by either party |
-| `call_attendance` | `fn_is_call_party`                                     | None — webhooks write as service-role                                                              |
-| `call_audit`      | `fn_is_call_party`                                     | None — the audit trigger writes it                                                                 |
+| `discovery_calls` | Host **or** requester **or** admin — never `anon`                     | **No client `INSERT` policy** — `scheduling.request_discovery_call` is the only door; `UPDATE` by either party      |
+| `call_attendance` | `fn_is_call_party`                                                    | None — webhooks write as service-role                                                                               |
+| `call_audit`      | `fn_is_call_party`                                                    | None — the audit trigger writes it                                                                                  |
 
 `call_settings` is visitor-readable on purpose: someone must be able to learn **whether** calls are
 offered, **how long** they run, and **what a paid one costs** before signing in. The private fields
@@ -116,10 +148,10 @@ rest from the schedule and its settings.
 Everything about the SLOT — call windows, minimum notice, booking horizon, buffers, weekly caps,
 per-requester cooldowns, whether calls are offered at all — is still enforced by the **BEFORE
 INSERT** trigger `scheduling.fn_enforce_call_request`, which fires inside the function because the
-insert runs with the caller's `auth.uid()`. A `WITH CHECK` expression cannot express that much logic,
-and a trigger cannot be skipped by the function that performs the insert — so the request door and
-any future client path are held to the same gate. The same applies to the legal-transition matrix on
-UPDATE (`fn_enforce_call_transition`).
+insert runs with the caller's `auth.uid()`. A `WITH CHECK` expression cannot express that much
+logic, and a trigger cannot be skipped by the function that performs the insert — so the request
+door and any future client path are held to the same gate. The same applies to the legal-transition
+matrix on UPDATE (`fn_enforce_call_transition`).
 
 Both triggers **skip enforcement when `auth.uid()` is NULL** — a service-role caller (webhook,
 sweep, backfill) owns the rules in its own layer. The triggers guard the _client_ path.

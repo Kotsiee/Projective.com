@@ -260,10 +260,14 @@ function icsPathFor(orderId: string, lineId: string): string {
 	);
 }
 
-/** Why a line has nothing to open yet, in the buyer's own terms. */
-function pendingNoteFor(line: LineRow, natural: FulfilmentKind): string {
+/**
+ * Why a line has nothing to open yet, in the buyer's own terms — and only what is true. A download is
+ * pending because no file is attached to the purchase; nothing will email the buyer when that changes,
+ * so the note does not promise it.
+ */
+function pendingNoteFor(natural: FulfilmentKind): string {
 	if (natural === "session") return "We'll confirm the time with the seller shortly.";
-	if (natural === "download") return "Your files are being prepared — we'll email you when they're ready.";
+	if (natural === "download") return "The seller hasn't attached the files yet — they'll appear here once they do.";
 	return "Starts once the seller opens the workspace.";
 }
 
@@ -348,7 +352,7 @@ function toLine(line: LineRow, order: OrderRow, ctx: LineContext): OrderLine {
 	return {
 		...draft,
 		fulfilment: resolved,
-		pendingNote: resolved === "pending" ? pendingNoteFor(line, natural) : null,
+		pendingNote: resolved === "pending" ? pendingNoteFor(natural) : null,
 	};
 }
 

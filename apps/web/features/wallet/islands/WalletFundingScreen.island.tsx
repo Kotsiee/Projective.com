@@ -5,7 +5,7 @@ import { Band, BandHead, EmptyBand, PageHead, WalletErrorBand } from "../compone
 import { Money } from "../components/Money.tsx";
 import { WalletService } from "../core/WalletService.ts";
 import { currentWalletContext, walletError } from "../core/wallet-state.ts";
-import { applyRead, useWalletRefresh, useWalletSeam } from "../core/wallet-seam.ts";
+import { applyRead, useWalletRefresh, useWalletSync } from "../core/wallet-sync.ts";
 import type { FundingView } from "../types/wallet-types.ts";
 
 /**
@@ -32,7 +32,7 @@ export default function WalletFundingScreen(props: WalletFundingScreenProps): JS
 			view.value = d.funding;
 		});
 	};
-	useWalletSeam({ display: props.display, wallet: props.wallet, onRefetch: refetch });
+	useWalletSync({ display: props.display, wallet: props.wallet });
 	useWalletRefresh(refetch);
 
 	const f = view.value;

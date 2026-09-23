@@ -36,6 +36,12 @@ FROM org.business_members bm
 -- themselves `public` project a path, so an avatar pointed at a private object renders as absent
 -- rather than as a path a visitor cannot load.
 --
+-- The earned Standing rung (`standing_level` / `standing_label`) is a public fact of a SELLER — the
+-- listing, the card and the profile header print it — but `org.entity_standing` is readable only by a
+-- signed-in caller, so a guest could never see it through the table. It is projected here, under the
+-- same rule as `org.get_public_profile`: a seller with no computed row yet reads as level 1 ("New"),
+-- the rung every seller starts on, and a buyer-only entity carries none at all.
+--
 -- Columns are APPENDED after the original set, never reordered: `CREATE OR REPLACE VIEW` may only add
 -- trailing columns, so reordering would make this file unappliable over a database that already has
 -- the view.
@@ -103,9 +109,15 @@ u.active_project_count,
     -- only ever holds a public showcase RENDITION (org.save_showcase), and a live one is re-checked
     -- here so a retired rendition can never become a card's picture.
     fs.bucket_id as showcase_bucket,
-    fs.storage_path as showcase_path
+    fs.storage_path as showcase_path,
+    -- A freelancer's earned rung; NULL for a buyer-only account, which has no seller standing.
+    sl.level as standing_level,
+    sl.label::text as standing_label
 FROM org.users_public u
     LEFT JOIN org.freelancer_profiles f ON u.user_id = f.user_id
+    LEFT JOIN org.entity_standing es ON u.is_freelancer
+        AND es.subject_type = 'freelancer'::org.standing_subject AND es.subject_id = u.user_id
+    LEFT JOIN org.standing_levels sl ON u.is_freelancer AND sl.level = COALESCE(es.level, 1)
     LEFT JOIN files.items fa ON fa.id = u.avatar_file_id AND fa.visibility = 'public' AND fa.deleted_at IS NULL
     LEFT JOIN files.items fb ON fb.id = u.banner_file_id AND fb.visibility = 'public' AND fb.deleted_at IS NULL
     LEFT JOIN org.profile_showcase_items si ON si.owner_type = 'user' AND si.owner_id = u.user_id AND si.position = 1
@@ -164,7 +176,10 @@ b.active_project_count,
     -- A business buys; it has no delivered work of its own.
     0 as delivered_count,
     fs.bucket_id as showcase_bucket,
-    fs.storage_path as showcase_path
+    fs.storage_path as showcase_path,
+    -- A business buys, so it has no seller standing.
+    NULL::smallint as standing_level,
+    NULL::text as standing_label
 FROM org.business_profiles b
     LEFT JOIN files.items fa ON fa.id = b.logo_file_id AND fa.visibility = 'public' AND fa.deleted_at IS NULL
     LEFT JOIN files.items fb ON fb.id = b.banner_file_id AND fb.visibility = 'public' AND fb.deleted_at IS NULL
@@ -220,8 +235,12 @@ t.active_project_count,
     (SELECT COUNT(*)::int FROM projects.stage_assignments sa
       WHERE sa.team_id = t.id AND sa.status = 'completed') as delivered_count,
     fs.bucket_id as showcase_bucket,
-    fs.storage_path as showcase_path
+    fs.storage_path as showcase_path,
+    sl.level as standing_level,
+    sl.label::text as standing_label
 FROM org.teams t
+    LEFT JOIN org.entity_standing es ON es.subject_type = 'team'::org.standing_subject AND es.subject_id = t.id
+    LEFT JOIN org.standing_levels sl ON sl.level = COALESCE(es.level, 1)
     LEFT JOIN files.items fa ON fa.id = t.avatar_file_id AND fa.visibility = 'public' AND fa.deleted_at IS NULL
     LEFT JOIN files.items fb ON fb.id = t.banner_file_id AND fb.visibility = 'public' AND fb.deleted_at IS NULL
     LEFT JOIN org.profile_showcase_items si ON si.owner_type = 'team' AND si.owner_id = t.id AND si.position = 1

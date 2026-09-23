@@ -66,8 +66,9 @@ enabled = true
 # 2 businesses, 7 projects, reviews, wallets, orders, messages, notifications). The app reads all of
 # it live; nothing in the app ships a copy of this data. Their
 # NUMBERS are the dependency order — identities, then the image assets they wear, then entities,
-# listings, projects, money, messages, and last the search index that projects them all
-# (09_search.sql is hand-written SQL over the earlier files). A lexicographic glob sorts them into
+# listings, projects, money, messages, the search index that projects them all, and last each
+# seller's Standing (09_search.sql and 11_standing.sql are hand-written SQL over the earlier files,
+# carrying no data of their own). A lexicographic glob sorts them into
 # exactly that order. Every seeded account signs in as <username>@projective.dev / password123.
 #
 # This is a glob rather than a single `seed.sql` of `\ir` includes because the CLI executes seed

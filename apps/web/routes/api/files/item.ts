@@ -1,5 +1,5 @@
 import { define } from "@web/utils/state.ts";
-import { simFromParams } from "@projective/types/files";
+import { readActor } from "@web/utils/api-session.ts";
 import { toFilesResponse } from "@features/files/core/respond.ts";
 import { FilesBackendService } from "@server/services/files/FilesBackendService.ts";
 
@@ -13,7 +13,7 @@ import { FilesBackendService } from "@server/services/files/FilesBackendService.
  * matter of product rule, not of ownership arithmetic), and `downloadedByViewer` cannot be answered
  * from `localStorage` at all. This route adds nothing to either.
  *
- * No server-side capability guard (Decision #53(b)) — see `./list.ts`.
+ * Runs under the caller's own session: RLS is the gate, and the library is the acting context's.
  */
 export const handler = define.handlers({
 	async GET(ctx) {
@@ -21,6 +21,6 @@ export const handler = define.handlers({
 		if (!id) {
 			return Response.json({ ok: false, message: "Missing file id." }, { status: 400 });
 		}
-		return toFilesResponse(await FilesBackendService.item(id, simFromParams(ctx.url.searchParams)));
+		return toFilesResponse(await FilesBackendService.item(id, readActor(ctx)));
 	},
 });

@@ -7,7 +7,6 @@ import { Icon } from "@projective/ui/icons";
 import type { ConnectionsView, UserConnection } from "@projective/types/integrations";
 import { connectionIsRecoverable } from "@projective/types/integrations";
 import { IntegrationsService } from "@web/features/files/core/IntegrationsService.ts";
-import { simFromSeam as filesSimFromSeam } from "@web/features/files/core/files-seam.ts";
 import {
 	providerConsent,
 	providerStatusSentence,
@@ -57,12 +56,7 @@ export function ConnectCalendarDialog(props: ConnectCalendarDialogProps): JSX.El
 		if (!props.open.value || view.value) return;
 		let cancelled = false;
 		void (async () => {
-			// The connector subsystem's own dev axis (`connectionState`) travels with the read. It is
-			// the FILES seam because the connections domain belongs to `/files` — reading it here is
-			// what lets a developer reach the degraded, expired and revoked branches of this dialog
-			// without revoking a real grant. In production the seam tree-shakes out and this is
-			// `undefined`, so the request is byte-identical to one from before it existed.
-			const res = await IntegrationsService.connections(filesSimFromSeam());
+			const res = await IntegrationsService.connections();
 			if (cancelled) return;
 			if (res.ok && res.data) view.value = res.data;
 			else notice.value = res.message ?? "Your connected calendars could not be loaded.";
@@ -102,6 +96,8 @@ export function ConnectCalendarDialog(props: ConnectCalendarDialogProps): JSX.El
 		)
 		.slice()
 		.sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label));
+	/** Whether the catalogue offers ANY calendar — an empty list is "all connected" OR "none offered". */
+	const anyOffered = (data?.providers ?? []).some((p) => p.isEnabled && p.capabilities.includes("calendar"));
 
 	return (
 		<Dialog visible={props.open} header="Connect a calendar" width="28rem">
@@ -156,9 +152,11 @@ export function ConnectCalendarDialog(props: ConnectCalendarDialogProps): JSX.El
 				{available.length === 0
 					? (
 						<p class="cal-connect__empty" role="status">
-							{data
+							{!data
+								? notice.value ? null : "Loading the calendars you can connect…"
+								: anyOffered
 								? "Every calendar this account can connect is already connected."
-								: "Loading the calendars you can connect…"}
+								: "No calendars can be connected yet."}
 						</p>
 					)
 					: (

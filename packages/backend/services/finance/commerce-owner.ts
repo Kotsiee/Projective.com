@@ -4,7 +4,6 @@ import { publicObjectUrl } from "../../core/storage-url.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { FxService } from "./FxService.ts";
 import type { MoneyProjector } from "./commerce-money.ts";
-import type { BasketQuery } from "./basket-query.ts";
 
 /**
  * commerce-owner — WHOSE money a basket, a saved card or a checkout spends, and what the platform
@@ -105,6 +104,17 @@ interface OwnerJson {
 // #endregion
 
 // #region Owner param
+/**
+ * What an owner read needs from its request: which account (`owner`), and which currency to show it in
+ * — an explicit `?display=` first, the viewer's preference second. A basket query and a wallet query
+ * both satisfy it.
+ */
+export interface OwnerQuery {
+	owner?: string | null;
+	display?: string | null;
+	viewerCurrency?: string | null;
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The owner a request names, before anything has been checked. */
@@ -232,7 +242,7 @@ function toOwner(json: OwnerJson, display: string): ResolvedOwner | null {
  * The display currency for a read: an explicit `?display=` first, then the account's own currency,
  * then the viewer's preference — each narrowed to a currency the FX engine can actually price.
  */
-function displayFor(query: BasketQuery, ownerCurrency: string | null): string {
+function displayFor(query: OwnerQuery, ownerCurrency: string | null): string {
 	return FxService.supportedCurrency(
 		query.display || ownerCurrency || query.viewerCurrency || null,
 	);
@@ -251,7 +261,7 @@ function displayFor(query: BasketQuery, ownerCurrency: string | null): string {
  * the surface can say why the account is closed to them rather than silently switching accounts.
  */
 export async function resolveOwner(
-	query: BasketQuery,
+	query: OwnerQuery,
 	actor: ReadActor,
 ): Promise<ResolvedOwner | null> {
 	if (!canReadLive(actor)) return null;
@@ -278,7 +288,7 @@ export async function resolveOwner(
  * Every identity the caller may buy or bill as — themselves first, then each team, business and
  * organisation they own or actively belong to. The Details step's billing-identity switcher.
  */
-export async function listOwners(query: BasketQuery, actor: ReadActor): Promise<ResolvedOwner[]> {
+export async function listOwners(query: OwnerQuery, actor: ReadActor): Promise<ResolvedOwner[]> {
 	if (!canReadLive(actor)) return [];
 	const { data, error } = await getUserClient(actor.accessToken).schema("finance").rpc(
 		"list_purchase_owners",

@@ -2,7 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { LinkAttachSchema } from "@projective/types/files";
 import { toFieldErrors, toFilesResponse } from "@features/files/core/respond.ts";
 import { FilesBackendService } from "@server/services/files/FilesBackendService.ts";
-import { actorFromContext } from "@server/services/files/acting-principal.ts";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * `POST /api/files/link` — store a web link as a first-class asset.
@@ -21,7 +21,7 @@ import { actorFromContext } from "@server/services/files/acting-principal.ts";
  * `@server/services/files/link-scan.ts` and run before anything is fetched. This route adds no guard
  * of its own precisely because a second, weaker copy of that check is how the real one gets bypassed.
  *
- * No server-side capability guard (Decision #53(b)) — see `./list.ts`.
+ * Runs under the caller's own session: RLS is the gate, and the library is the acting context's.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -38,7 +38,7 @@ export const handler = define.handlers({
 			);
 		}
 		return toFilesResponse(
-			await FilesBackendService.attachLink(parsed.data, actorFromContext(ctx.state.userContext)),
+			await FilesBackendService.attachLink(parsed.data, readActor(ctx)),
 		);
 	},
 });

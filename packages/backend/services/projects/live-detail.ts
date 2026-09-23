@@ -259,7 +259,16 @@ function resolveViewerIsClient(
 ): boolean {
 	if (actor.userId.length > 0 && actor.userId === ownerUserId) return true;
 	const own = participants.find((row) => row.profile_id === actor.userId);
-	return !!own && CLIENT_SIDE_ROLES.has(own.role.trim().toLowerCase());
+	return isClientSideRole(own?.role);
+}
+
+/**
+ * Whether a participant role puts its holder on the CLIENT side of a hire — the one rule
+ * {@link resolveViewerIsClient} applies, exported so another surface of the same engagement (its
+ * calendar) cannot come to disagree about which side of the table a person sits on.
+ */
+export function isClientSideRole(role: string | null | undefined): boolean {
+	return !!role && CLIENT_SIDE_ROLES.has(role.trim().toLowerCase());
 }
 
 /**
