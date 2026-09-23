@@ -250,6 +250,23 @@ One-off projects are essentially single-ticket Pipelines designed for a specific
 
 [Image of a Gantt chart timeline for project management]
 
+**A Task is the one-off with no milestones** (2026-09-23). One deliverable for one price, held to
+exactly one stage and one ticket (`fn_enforce_structure_variation`), so it has **no Timeline and no
+Calendar**: a Gantt of it would be a single bar, and a calendar of it would be its due date. Its
+navigation is simplified to match:
+
+- **One conversation.** A Task's discussion lives in its stage's room, reached from a single
+  **Discussion** view link. There is no channel tree to switch between, and the room is headed as
+  the Task's discussion rather than as a stage.
+- **A project lane for the work, not for channels.** The middle-nav lane shows what a Task's reader
+  checks: an **overview** (status · due date · owner), its **task lists** (the ticket's checklist and
+  its delivery steps, with a switcher between lists and an "open only" filter — read-only, because
+  completion is claimed at submission), and its **members**, the person holding the ticket marked
+  as assigned.
+- **The absent views answer, they do not 404.** A request for a Task's `timeline` or `calendar`
+  (project- or channel-level) is sent to the page it would have been a view of — the project, or the
+  room — so an old link still lands somewhere useful.
+
 ##### 2. Pipelines (The "Engine")
 
 Pipelines are designed for high-volume, recurring, or complex multi-part work.
@@ -2105,10 +2122,10 @@ fire for the same person on a device that genuinely does not have the file.
 |               |                           | `finance`                | Project budget/costs                                                                           |
 |               |                           | `settings`               | Project configuration                                                                          |
 |               |                           | `team`                   | Project-specific members                                                                       |
-|               |                           | `timeline`               | Timeline / Gantt — the stage run on a time axis (one lane per stage: scheduled window, dated tickets, dependency links). The One-Off project's board view. |
-|               |                           | `calendar`               | Project dates                                                                                  |
+|               |                           | `timeline`               | Timeline / Gantt — the stage run on a time axis (one lane per stage: scheduled window, dated tickets, dependency links). The One-Off project's board view. **Not on a Task** — 303 → the project. |
+|               |                           | `calendar`               | Project dates — **not on a Task** (303 → the project)                                                                                  |
 |               |                           | `[channel id]/index`     | In-project channel/DM conversation (`/projects/[project id]/[channel id]`; §Unified Messaging) |
-|               |                           | `[channel id]/timeline`  | One stage's Gantt — its window, then a lane per ticket (the channel header's Timeline tab, gated like Tasks) |
+|               |                           | `[channel id]/timeline`  | One stage's Gantt — its window, then a lane per ticket (the channel header's Timeline tab, gated like Tasks; **not on a Task** — 303 → the room) |
 |               |                           | `[stage id]/index`       | Specific stage view                                                                            |
 |               |                           | `[stage id]/review`      | Stage approval/review                                                                          |
 |               |                           | `[stage id]/files`       | Stage-specific files                                                                           |

@@ -10,6 +10,7 @@ import {
 	DEFAULT_PROJECT_RULES,
 	hasStages,
 	isFlatOneOff,
+	isTaskProject,
 	liveVisibilityFor,
 	lockedStagePriceIds,
 	ONBOARDED_ASSIGNMENT_EXCLUDED,
@@ -713,6 +714,22 @@ Deno.test("a stored shape the selector cannot write still reads as a type", () =
 	// so the caller has to handle the absence rather than being handed a wrong word.
 	assertEquals(projectTypeOf("session", "single_stage"), null);
 	assertEquals(projectTypeOf("session", "standard"), null);
+});
+
+Deno.test("a Task is exactly the stored pairs that read as one", () => {
+	// Every surface that simplifies itself for a Task asks this one question, so it must agree with
+	// `projectTypeOf` on every pair — including the legacy `single_stage` one-off, which reads as a Task
+	// in the settings selector and would otherwise keep a Task's lane on one screen and not the next.
+	assert(isTaskProject("one_off", "single_task"));
+	assert(isTaskProject("one_off", "single_stage"));
+	assertFalse(isTaskProject("one_off", "one_off"), "a one-off WITH milestones has a timeline");
+	assertFalse(isTaskProject("pipeline", "single_stage"), "a flat pipeline is still a pipeline");
+	assertFalse(isTaskProject("pipeline", "standard"));
+	assertFalse(isTaskProject("session", "single_stage"), "a session is never a Task");
+	for (const type of ProjectTypeChoice.options) {
+		const { format, structure } = columnsForProjectType(type);
+		assertEquals(isTaskProject(format, structure), type === "task", `${type} round trip`);
+	}
 });
 
 Deno.test("every type has a label and a hint", () => {

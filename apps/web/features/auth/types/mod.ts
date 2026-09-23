@@ -101,6 +101,12 @@ export interface AuthResult {
 	 */
 	email?: string;
 	/**
+	 * Whether a new account's confirmation email left, returned by `/api/auth/join` with
+	 * `requiresVerification`. `true` opens `/verify` on the resend countdown; `false` opens it with
+	 * Resend available at once and says the send failed.
+	 */
+	verificationSent?: boolean;
+	/**
 	 * Email-confirmation state, polled by `/verify`. `true` once the account's `email_verified`
 	 * (app-owned `org.user_emails.verified_at`) has flipped — the page then auto-logs the user in.
 	 */

@@ -7,12 +7,11 @@ import { CheckIcon, WarnIcon } from "../components/icons.tsx";
 import { useOtpInput } from "../hooks/useOtpInput.ts";
 import { AuthService } from "../core/AuthService.ts";
 import { safeRedirect } from "../core/redirect.ts";
+import { resendDeadline } from "../core/resend-cooldown.ts";
 import { readStored, removeStored, SessionKeys, writeStored } from "@web/utils/storage-keys.ts";
 
 /** How often the verification-status listener polls while the user waits (ms). */
 const POLL_INTERVAL_MS = 4000;
-/** Resend throttle window (seconds). */
-const RESEND_COOLDOWN_S = 30;
 
 /**
  * VerifyForm — email confirmation with two parallel paths that share one screen:
@@ -25,12 +24,21 @@ const RESEND_COOLDOWN_S = 30;
  *     users who'd rather type the code than open the link.
  *
  * The pending email + resend cooldown persist to `sessionStorage` (see {@link SessionKeys}) so a hard
- * refresh doesn't lose the countdown or the address being confirmed.
+ * refresh doesn't lose the countdown or the address being confirmed. A fresh signup arrives with the
+ * cooldown already armed by the join form, because its code was sent on submit; `sendFailed` marks the
+ * one arrival where it was not, and opens with Resend available.
  */
-export default function VerifyForm({ redirectTo, email }: { redirectTo: string; email?: string }) {
+export default function VerifyForm(
+	{ redirectTo, email, sendFailed = false }: {
+		redirectTo: string;
+		email?: string;
+		sendFailed?: boolean;
+	},
+) {
 	const otp = useOtpInput(6);
 	const submitting = useSignal(false);
 	const error = useSignal<string | null>(null);
+	const unsent = useSignal(sendFailed);
 	const cooldown = useSignal(0);
 	const lastTried = useSignal("");
 	/** Flipped by either path on success — freezes polling and shows the "you're in" transition. */
@@ -117,8 +125,9 @@ export default function VerifyForm({ redirectTo, email }: { redirectTo: string; 
 
 	function resend() {
 		if (cooldown.value > 0) return;
+		unsent.value = false;
 		void AuthService.resend({ email });
-		startCooldown(Date.now() + RESEND_COOLDOWN_S * 1000);
+		startCooldown(resendDeadline(Date.now()));
 	}
 
 	if (verified.value) {
@@ -135,7 +144,15 @@ export default function VerifyForm({ redirectTo, email }: { redirectTo: string; 
 		<>
 			<AuthHeading
 				title="Check your email"
-				subtitle={email
+				subtitle={unsent.value
+					? (
+						<>
+							Your account is ready — we just need to confirm{" "}
+							{email ? <strong>{email}</strong> : "your email"}. Send yourself a code below, then
+							enter it here.
+						</>
+					)
+					: email
 					? (
 						<>
 							We sent a 6-digit code to{" "}
@@ -145,6 +162,15 @@ export default function VerifyForm({ redirectTo, email }: { redirectTo: string; 
 					)
 					: "Enter the 6-digit code we emailed you, or tap the link in the email to confirm automatically."}
 			/>
+
+			{unsent.value
+				? (
+					<div class="auth-banner auth-banner--error" role="alert">
+						<span class="auth-banner__icon">{WarnIcon()}</span>
+						<span>We couldn't send your code just now. Use Resend code below to try again.</span>
+					</div>
+				)
+				: null}
 
 			{error.value
 				? (

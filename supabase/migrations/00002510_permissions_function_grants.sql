@@ -563,3 +563,12 @@ GRANT EXECUTE ON FUNCTION scheduling.get_free_busy(uuid, timestamptz, timestampt
 REVOKE ALL ON FUNCTION scheduling.request_discovery_call(uuid, scheduling.call_type, timestamptz, timestamptz, text, text, text, uuid) FROM public, anon;
 
 GRANT EXECUTE ON FUNCTION scheduling.request_discovery_call(uuid, scheduling.call_type, timestamptz, timestamptz, text, text, text, uuid) TO authenticated, service_role;
+
+
+-- --- the Project Details sidebar's Teams group (00001100: get_viewer_hired_teams) ---
+--
+-- Answers only about the caller's own team memberships, so it needs a signed-in caller; a guest has
+-- no `auth.uid()` and would only ever read zero rows.
+REVOKE ALL ON FUNCTION projects.get_viewer_hired_teams(uuid) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION projects.get_viewer_hired_teams(uuid) TO authenticated;

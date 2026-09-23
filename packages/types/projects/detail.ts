@@ -7,6 +7,7 @@ import {
 	ProjectStatus,
 	ProjectViewerRole,
 } from "./summary.ts";
+import { ProjectStructure } from "./setup.ts";
 
 /**
  * projects.detail — the Zod SSOT for the RICH single-engagement projection the Project Details
@@ -109,9 +110,11 @@ export const StageChannelSchema = z.object({
 export type StageChannel = z.infer<typeof StageChannelSchema>;
 
 /**
- * A team the viewer belongs to WITHIN this project. A viewer can belong to more than one assigned
- * team, and a team can be assigned to more than one stage — so the group carries the assigned-stage
- * labels and one channel per assignment (each channel's `sublabel` names its stage).
+ * A HIRED team the viewer is an active member of WITHIN this project — never a team they are merely
+ * invited to, and never the client side's own rooms. A viewer can belong to more than one hired team,
+ * and a team can hold more than one stage — so the group carries the assigned-stage labels and one
+ * channel per provisioned talent room (each channel's `sublabel` names its stage). `channels` may be
+ * empty: the membership is the fact, and a room nobody has opened yet is not the read's to invent.
  */
 export const TeamChannelSchema = z.object({
 	teamId: z.string().min(1).max(80),
@@ -127,8 +130,8 @@ export type TeamChannel = z.infer<typeof TeamChannelSchema>;
 /**
  * A direct-message thread with another party in the engagement. `chatId` is the unified global DM id,
  * so opening it here or from `/messages` shows the same history. `hasProjectContext` marks a DM that
- * already carries messages authored inside this project (drives the project accent tag + enables the
- * "This project only" filter).
+ * already carries messages sent inside this project — only those appear in the project's Private
+ * Messages group (see {@link conditionalChannelGroups}).
  */
 export const DmChannelSchema = z.object({
 	chatId: z.string().min(1).max(80),
@@ -167,6 +170,33 @@ export const ProjectChannelsSchema = z.object({
 	dms: z.array(DmChannelSchema),
 });
 export type ProjectChannels = z.infer<typeof ProjectChannelsSchema>;
+
+/** The two channel-tree groups that exist only when the viewer has something in them. */
+export interface ConditionalChannelGroups {
+	/** Hired teams the viewer is an active member of — each holding at least one stage. */
+	teams: TeamChannel[];
+	/** Threads with project members that carry messages sent inside this project. */
+	dms: DmChannel[];
+}
+
+/**
+ * The rows the Teams and Private Messages groups would draw. An EMPTY list means the group is not
+ * rendered at all — no header and no empty note — because an empty "Teams" group asserts a
+ * relationship to the project that the viewer does not have.
+ *
+ * Membership is decided by the server (see {@link TeamChannelSchema}); this only drops a team that
+ * holds no stage, which is not a hire. A thread without `hasProjectContext` belongs to the global
+ * inbox, not to this engagement's lane. Every lane that draws either group reads this, so the channel
+ * tree and the group-session tree cannot disagree about when a group exists.
+ */
+export function conditionalChannelGroups(
+	channels: Pick<ProjectChannels, "teams" | "dms">,
+): ConditionalChannelGroups {
+	return {
+		teams: channels.teams.filter((team) => team.assignedStages.length > 0),
+		dms: channels.dms.filter((dm) => dm.hasProjectContext),
+	};
+}
 // #endregion
 
 // #region Members
@@ -187,6 +217,13 @@ export const ProjectDetailSchema = z.object({
 	title: z.string().min(1).max(160),
 	kind: EngagementKind,
 	format: ProjectFormat,
+	/**
+	 * `projects.structure_variation` — the second axis of the engagement's type.
+	 *
+	 * Carried because `format` alone cannot tell a Task from a milestone one-off: both are `one_off`,
+	 * and they render different lanes, view links and channel tabs (`isTaskProject`).
+	 */
+	structure: ProjectStructure,
 	status: ProjectStatus,
 	/** Human type badge (e.g. "Brand Identity", "Web App"). */
 	typeLabel: z.string().min(1).max(60),

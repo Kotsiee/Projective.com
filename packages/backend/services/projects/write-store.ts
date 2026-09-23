@@ -753,6 +753,7 @@ export function createdDetail(ref: string, actor?: ReadActor): ProjectDetail | n
 		// which only an instantiated blueprint carries.
 		kind: "project",
 		format: setup.format,
+		structure: setup.structure,
 		status: setup.status,
 		typeLabel: TYPE_LABELS[setup.format],
 		description: flattenRichText(setup.description).slice(0, 2000),

@@ -18,8 +18,8 @@ import {
  *
  * ## What the draft is allowed to override, and what it is not
  *
- * Only the fields the setup form actually edits: the title, the description, the engagement format
- * and the stage list. Everything else — the owner, the client, the roster, the teams, the DMs, the
+ * Only the fields the setup form actually edits: the title, the description, the engagement type
+ * (format and structure) and the stage list. Everything else — the owner, the client, the roster, the teams, the DMs, the
  * viewer's own role — is the server's answer and stays the server's answer, because nothing on the
  * form can change it and overlaying it would be inventing a value.
  *
@@ -200,7 +200,14 @@ export function projectSidebarProjection(
 			 * which is the defect `@projective/types/richtext` exists to remove.
 			 */
 			description: flattenRichText(setup.description),
+			/*
+			 * Both halves of the type, never one: the form's type selector writes them as a pair, and
+			 * folding the format alone would read a Task switched to One-off (format unchanged, structure
+			 * `single_task` → `one_off`) as still a Task — the lane keeping a Task's body, and its view
+			 * links, for an engagement the owner has just said has milestones.
+			 */
 			format: setup.format,
+			structure: setup.structure,
 			channels: {
 				...detail.channels,
 				stages: stages.map((row) => row.channel).filter((c): c is StageChannel => c !== null),

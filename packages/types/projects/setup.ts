@@ -897,6 +897,23 @@ export function projectTypeOf(
 }
 
 /**
+ * Whether a stored engagement is a Task — one deliverable, one price, no stages.
+ *
+ * The question every surface that simplifies itself for a Task asks: the lane that swaps its channel
+ * tree for an overview, the view links and channel tabs that drop Timeline and Calendar, and the routes
+ * that refuse those two views. One predicate over {@link projectTypeOf} rather than a structure test at
+ * each site, so a legacy `single_stage` one-off — which reads as a Task everywhere else — cannot be a
+ * Task on one surface and a milestone one-off on the next.
+ *
+ * A Task has no time axis to draw. `fn_enforce_structure_variation` holds a `single_task` project to
+ * exactly one stage and one ticket, so a Gantt of it is one bar on one lane and a calendar of it is its
+ * due date — neither says anything the overview does not say better.
+ */
+export function isTaskProject(format: ProjectFormat, structure: ProjectStructure): boolean {
+	return projectTypeOf(format, structure) === "task";
+}
+
+/**
  * The columns a type writes — the ONE place the three choices become two axes.
  *
  * Routed through {@link createFormatToColumns} rather than returning literals, so the settings

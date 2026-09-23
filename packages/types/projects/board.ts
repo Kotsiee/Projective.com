@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ContextType } from "../auth/mod.ts";
 import { ProjectFormat, ProjectPartySchema, ProjectStatus } from "./summary.ts";
+import { ProjectStructure } from "./setup.ts";
 import { StageActivity } from "./detail.ts";
 import { FileItemSchema } from "./files.ts";
 import { SubmissionTreeNodeSchema } from "./submissions.ts";
@@ -820,6 +821,11 @@ export const BoardPageSchema = z.object({
 	projectId: z.string().min(1).max(120),
 	channelId: z.string().max(120).nullable(),
 	format: ProjectFormat,
+	/**
+	 * `projects.structure_variation` — with {@link format}, what tells a Task from a milestone one-off.
+	 * Read by the ticket modal, which offers no Timeline tab on a Task (`isTaskProject`).
+	 */
+	structure: ProjectStructure.default("standard"),
 	/** Pre-resolved board label (e.g. "Pipeline") so SSR + the client render identically. */
 	title: z.string().min(1).max(60),
 	/** The active grouping (project board). */

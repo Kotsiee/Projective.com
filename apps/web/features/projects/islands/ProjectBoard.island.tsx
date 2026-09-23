@@ -61,6 +61,7 @@ import { TicketView } from "../components/ticket/TicketView.tsx";
 import { SubmissionReviewModal } from "../components/SubmissionReviewModal.tsx";
 import { newTicketCard, reconcileCard, ticketCommitPayload } from "../core/ticket-model.ts";
 import {
+	boardHasTimeline,
 	filesAtPath,
 	firstUnitUnder,
 	reviewForPath,
@@ -851,6 +852,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 						workspaceLabel={initial?.workspaceLabel ?? "Personal"}
 						clientMembers={initial?.clientMembers ?? []}
 						projectId={props.projectId}
+						hasTimeline={initial ? boardHasTimeline(initial) : true}
 						onClose={() => {
 							composing.value = null;
 							ticketStack.close();

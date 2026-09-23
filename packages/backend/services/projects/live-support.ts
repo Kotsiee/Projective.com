@@ -2,7 +2,7 @@ import type { SupabaseClient } from "supabaseClient";
 import { getUserClient } from "../../core/supabase.ts";
 import { fetchPartyRows, partyRowsWithAvatars } from "../profile/party-cards.ts";
 import type { ReadActor } from "../read-actor.ts";
-import type { ProjectStatus } from "@projective/types/projects";
+import { type ProjectStatus, ProjectStructure } from "@projective/types/projects";
 import { isSlug } from "@projective/types/slugs";
 
 /**
@@ -337,6 +337,19 @@ export function toStageProjectStatus(raw: string | null | undefined): ProjectSta
 			// mid-delivery, which is the more damaging way to be wrong.
 			return "active";
 	}
+}
+
+/**
+ * `projects.projects.structure_variation` → the Zod `ProjectStructure`.
+ *
+ * The two vocabularies agree member for member, so this is a guard rather than a mapping. An
+ * unrecognised value reads as `standard`, the column's own default — and deliberately NOT as a Task:
+ * a Task strips the lane of its channel tree and the tabs of Timeline and Calendar, so guessing one
+ * would hide surfaces an engagement may well have, where guessing `standard` only keeps them.
+ */
+export function toProjectStructure(raw: string | null | undefined): ProjectStructure {
+	const parsed = ProjectStructure.safeParse(raw);
+	return parsed.success ? parsed.data : "standard";
 }
 
 /** The `stage_status` members that mean the work is delivered. See {@link toStageProjectStatus}. */

@@ -1,6 +1,8 @@
 import type { JSX } from "preact";
 import type { ProjectDetail, ProjectFormat } from "../types/projects-types.ts";
 import { IconShell } from "@projective/ui/icons";
+import { ChatIcon } from "./channel-glyphs.tsx";
+import { isTaskDetail, taskDiscussionOf } from "../core/task-project.ts";
 
 /**
  * Project Details sidebar glyphs — minimal 1em `currentColor` stroke icons for the deep single-project
@@ -218,6 +220,12 @@ export interface ProjectViewLink {
 	icon: JSX.Element;
 	/** Sub-path segment after `/projects/{slug}` (`""` for the Details root). */
 	seg: string;
+	/**
+	 * Whether the link stays current on every page BENEATH it, not only on its own. True for a Task's
+	 * Discussion, whose room has its own tabs (Files, Members, …): a reader on the room's Files view is
+	 * still in the discussion, and the link going dark there would say they had left it.
+	 */
+	prefix?: boolean;
 }
 
 /**
@@ -245,6 +253,7 @@ export function projectViewLinks(
 	sessionKind: "none" | "normal" | "group" = "none",
 ): ProjectViewLink[] {
 	const isSession = sessionKind === "normal" || sessionKind === "group";
+	if (!isSession && isTaskDetail(detail)) return taskViewLinks(detail);
 	const board = isSession
 		? { label: "Calendar", icon: CalendarIcon }
 		: boardView(detail.format, detail.kind);
@@ -275,6 +284,54 @@ export function projectViewLinks(
 	// segment fell through to the `[channelId]` dynamic route; `resolveChannelMeta` returned null, both
 	// frame bands resolved to nothing, and the page rendered the general channel's chat transcript with
 	// no tabs and no composer. Restore it together with the route, not before.
+	return links;
+}
+
+/**
+ * How a view link marks the reader's current place: `page` when the path IS the link's own, `true`
+ * when it is a page beneath a {@link ProjectViewLink.prefix} link (the section rather than the page),
+ * `null` otherwise. One rule for the expanded footer and the collapsed rail, so the two presentations
+ * of one link set cannot disagree about where the reader is.
+ */
+export function viewLinkCurrent(
+	currentPath: string,
+	base: string,
+	link: Pick<ProjectViewLink, "seg" | "prefix">,
+): "page" | "true" | null {
+	const href = link.seg ? `${base}/${link.seg}` : base;
+	if (currentPath === href || currentPath === `${href}/`) return "page";
+	if (link.prefix && currentPath.startsWith(`${href}/`)) return "true";
+	return null;
+}
+
+/**
+ * A Task's view links: Details · Discussion · Members · Submissions · Attachments.
+ *
+ * No Board entry, because a Task's board would be a timeline of one bar (the `one_off` default) and its
+ * one ticket is reached from the lane's task section instead. In its place, the Task's single
+ * conversation — the channel tree that used to lead to it is not rendered on a Task, so this link is
+ * the way in, and it sits second so it is the last to fold away on a narrow lane. Absent when the Task
+ * has no room a link could reach ({@link taskDiscussionOf}), rather than a link to nowhere.
+ */
+function taskViewLinks(detail: ProjectDetail): ProjectViewLink[] {
+	const discussion = taskDiscussionOf(detail);
+	const links: ProjectViewLink[] = [
+		{ key: "details", label: "Details", icon: DetailsIcon, seg: "" },
+	];
+	if (discussion) {
+		links.push({
+			key: "discussion",
+			label: "Discussion",
+			icon: ChatIcon,
+			seg: discussion.ref,
+			prefix: true,
+		});
+	}
+	links.push(
+		{ key: "members", label: "Members", icon: MembersIcon, seg: "members" },
+		{ key: "submissions", label: "Submissions", icon: SubmissionsIcon, seg: "submissions" },
+		{ key: "attachments", label: "Attachments", icon: AttachmentsIcon, seg: "attachments" },
+	);
 	return links;
 }
 // #endregion

@@ -2,9 +2,15 @@ import { cloneElement, type JSX } from "preact";
 import { Avatar } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
-import { BackIcon, projectViewLinks } from "./detail-glyphs.tsx";
+import {
+	BackIcon,
+	type ProjectViewLink,
+	projectViewLinks,
+	viewLinkCurrent,
+} from "./detail-glyphs.tsx";
 import { PlusIcon } from "./glyphs.tsx";
 import { profileHref } from "../core/routing.ts";
+import { isTaskDetail } from "../core/task-project.ts";
 import type { ProjectDetail } from "../types/projects-types.ts";
 
 /**
@@ -46,23 +52,28 @@ export function ProjectRail(
 	// A project leads with its owner, a service with its client; fall back to the owner.
 	const lead = (detail.kind === "service" ? detail.client : detail.owner) ?? detail.owner;
 
-	const hrefFor = (seg: string) => (seg ? `${base}/${seg}` : base);
-	const isActive = (seg: string) =>
-		seg ? currentPath === hrefFor(seg) : currentPath === base || currentPath === `${base}/`;
+	// A Task is held to one stage (`fn_enforce_structure_variation`), so offering it "Add stage" would be
+	// a control whose every use the database refuses.
+	const canAddStage = detail.viewerIsClient && !isSession && !isTaskDetail(detail);
 
-	const link = (key: string, label: string, icon: JSX.Element, seg: string): JSX.Element => (
-		<Tooltip key={key} content={label} placement="right">
-			<a
-				class="proj-railbtn"
-				href={hrefFor(seg)}
-				data-active={isActive(seg) ? "true" : undefined}
-				aria-current={isActive(seg) ? "page" : undefined}
-				aria-label={label}
-			>
-				{cloneElement(icon)}
-			</a>
-		</Tooltip>
-	);
+	const hrefFor = (seg: string) => (seg ? `${base}/${seg}` : base);
+
+	const link = (l: ProjectViewLink): JSX.Element => {
+		const current = viewLinkCurrent(currentPath, base, l);
+		return (
+			<Tooltip key={l.key} content={l.label} placement="right">
+				<a
+					class="proj-railbtn"
+					href={hrefFor(l.seg)}
+					data-active={current ? "true" : undefined}
+					aria-current={current ?? undefined}
+					aria-label={l.label}
+				>
+					{cloneElement(l.icon)}
+				</a>
+			</Tooltip>
+		);
+	};
 
 	return (
 		<nav class="proj-detail__rail" aria-label="Project navigation">
@@ -103,11 +114,11 @@ export function ProjectRail(
 						</Tooltip>
 					)}
 
-				{topLinks.map((l) => link(l.key, l.label, l.icon, l.seg))}
+				{topLinks.map(link)}
 			</div>
 
 			<div class="proj-detail__rail-group proj-detail__rail-group--bottom">
-				{detail.viewerIsClient && !isSession && (
+				{canAddStage && (
 					<Tooltip content="Add stage" placement="right">
 						<button
 							type="button"

@@ -1,6 +1,7 @@
 import type { ChannelKind, ProjectDetail } from "../types/projects-types.ts";
 import { findStageChannel } from "@projective/types/projects";
 import { isSession, type SessionKind } from "./session-model.ts";
+import { isTaskDetail, TASK_ABSENT_VIEWS } from "./task-project.ts";
 
 /**
  * channel-view — the pure, DOM-free model behind a project channel/chat view
@@ -82,6 +83,12 @@ export interface ChannelTabAccess {
 	 * seat that can rewrite them is not the same seat that can approve a submission.
 	 */
 	canConfigure: boolean;
+	/**
+	 * Whether the engagement is a Task (`isTaskDetail`). A Task has no Timeline and no Calendar
+	 * (`TASK_ABSENT_VIEWS`) — one bar on one lane, and the window of a stage it does not have — so both
+	 * tabs are absent whatever else is true, and the routes behind them refuse on the same set.
+	 */
+	isTask: boolean;
 }
 
 /**
@@ -99,6 +106,7 @@ export interface ChannelTabAccess {
  *   the same way a pipeline stage's are. What that tab edits is the engagement's terms, which exist
  *   on every archetype; what Tasks and Submissions edit is deliverable flow, which a session has none
  *   of.
+ * - On a **Task**, `Timeline` and `Calendar` are absent outright (see {@link ChannelTabAccess.isTask}).
  *
  * Absence, not refusal, for the viewer who may not configure: a tab rendered and disabled advertises
  * a capability and then withholds it, and the route behind it refuses independently anyway
@@ -111,6 +119,7 @@ export function visibleChannelTabKeys(access: ChannelTabAccess): string[] {
 		(access.isReviewer || (access.isFreelancer && access.stageAssigned));
 
 	return CHANNEL_TABS.filter((t) => {
+		if (access.isTask && TASK_ABSENT_VIEWS.has(t.key)) return false;
 		if (t.key === "calendar") return session;
 		if (t.key === "details") return access.channelKind === "stage" && access.canConfigure;
 		if (stageGated.has(t.key)) return showStageTabs;
@@ -186,12 +195,17 @@ export function resolveChannelMeta(detail: ProjectDetail, ref: string): ChannelM
 	// `import.meta.env`, which exists only under Vite.
 	const stage = findStageChannel(stages, ref);
 	if (stage) {
+		// A Task's one stage IS the Task — the reader never configured it as a stage and the setup form
+		// shows no stage list — so its room is headed as the Task's discussion rather than as "Delivery ·
+		// Stage", a name for machinery the Task does not expose. It stays `kind: "stage"`, because that is
+		// what the room is and what its Tasks and Submissions tabs are gated on.
+		const task = isTaskDetail(detail);
 		return {
 			ref,
 			channelId: stage.id,
 			stageId: stage.stageId,
-			title: stage.name,
-			sub: `${detail.title} · Stage`,
+			title: task ? detail.title : stage.name,
+			sub: task ? "Task discussion" : `${detail.title} · Stage`,
 			kind: "stage",
 		};
 	}

@@ -3,7 +3,7 @@ import { useEffect, useRef } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
-import { type ProjectViewLink, projectViewLinks } from "./detail-glyphs.tsx";
+import { type ProjectViewLink, projectViewLinks, viewLinkCurrent } from "./detail-glyphs.tsx";
 import { KebabIcon } from "./glyphs.tsx";
 import { fitViewNav } from "../core/viewnav-fit.ts";
 import type { ProjectDetail } from "../types/projects-types.ts";
@@ -207,9 +207,8 @@ export function ProjectViewNav(
 	const menu: ProjectViewLink[] = links.slice(visibleCount);
 
 	const hrefFor = (seg: string) => (seg ? `${base}/${seg}` : base);
-	const isActive = (seg: string) =>
-		seg ? currentPath === hrefFor(seg) : currentPath === base || currentPath === `${base}/`;
-	const menuActive = menu.some((l) => isActive(l.seg));
+	const current = (link: ProjectViewLink) => viewLinkCurrent(currentPath, base, link);
+	const menuActive = menu.some((l) => current(l) !== null);
 
 	return (
 		<nav class="proj-viewnav" aria-label="Project views" ref={navRef}>
@@ -233,8 +232,8 @@ export function ProjectViewNav(
 						<a
 							class="proj-viewnav__btn"
 							href={hrefFor(link.seg)}
-							data-active={isActive(link.seg) ? "true" : undefined}
-							aria-current={isActive(link.seg) ? "page" : undefined}
+							data-active={current(link) ? "true" : undefined}
+							aria-current={current(link) ?? undefined}
 							aria-label={link.label}
 						>
 							<span class="proj-viewnav__icon" aria-hidden="true">{link.icon}</span>
@@ -274,8 +273,8 @@ export function ProjectViewNav(
 									role="menuitem"
 									class="proj-cardmenu__item"
 									href={hrefFor(link.seg)}
-									data-active={isActive(link.seg) ? "true" : undefined}
-									aria-current={isActive(link.seg) ? "page" : undefined}
+									data-active={current(link) ? "true" : undefined}
+									aria-current={current(link) ?? undefined}
 								>
 									<span class="proj-cardmenu__icon" aria-hidden="true">{link.icon}</span>
 									<span class="proj-cardmenu__label">{link.label}</span>

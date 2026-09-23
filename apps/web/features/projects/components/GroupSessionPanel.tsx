@@ -6,6 +6,7 @@ import { DmIcon, HashIcon } from "./detail-glyphs.tsx";
 import { ContinuationIcon, LevelsIcon, OverlapIcon, PollIcon } from "./session-glyphs.tsx";
 import { channelHref } from "../core/chat-context.ts";
 import type { GroupSessionData, SubGroup } from "../core/session-model.ts";
+import { conditionalChannelGroups } from "@projective/types/projects";
 import type { ProjectDetail } from "../types/projects-types.ts";
 
 /**
@@ -15,7 +16,8 @@ import type { ProjectDetail } from "../types/projects-types.ts";
  *   - **General** — the main course chat & announcements;
  *   - **Sub-groups** — proficiency levels / breakout tracks (each with a level tag + an overlapping-
  *     schedule indicator when its live slot clashes with another);
- *   - **Private messages** — 1-1 threads with individual cohort members.
+ *   - **Private messages** — 1-1 threads with individual cohort members, rendered only once one of
+ *     them carries messages sent inside this engagement (the channel tree's rule).
  *
  * Above the tree it surfaces the cohort dynamics the group format needs: the viewer's active sub-group
  * tags, a live **reschedule-vote** alert (`Reschedule Proposal Voted: 8/12 Accepted`), and a primary
@@ -62,8 +64,8 @@ function SubGroupRow({ group, slug }: { group: SubGroup; slug: string }): JSX.El
 export function GroupSessionPanel(
 	{ detail, data, openGroups, onToggleGroup, onContinuation }: GroupSessionPanelProps,
 ): JSX.Element {
-	const { general, dms } = detail.channels;
-	const projectDms = dms.filter((d) => d.hasProjectContext);
+	const { general } = detail.channels;
+	const { dms: projectDms } = conditionalChannelGroups(detail.channels);
 	const joined = data.subGroups.filter((g) => g.joined);
 	const votePct = data.vote.total > 0
 		? Math.round((data.vote.accepted / data.vote.total) * 100)
@@ -142,18 +144,18 @@ export function GroupSessionPanel(
 					{data.subGroups.map((g) => <SubGroupRow key={g.id} group={g} slug={detail.slug} />)}
 				</AccordionGroup>
 
-				<AccordionGroup
-					id="dms"
-					icon={DmIcon}
-					label="Private Messages"
-					open={open("dms")}
-					onToggle={() => onToggleGroup("dms")}
-					hasUnread={projectDms.some((d) => d.unread)}
-				>
-					{projectDms.length === 0
-						? <p class="proj-chan-empty">No cohort messages yet.</p>
-						: projectDms.map((dm) => <DmRow key={dm.chatId} dm={dm} slug={detail.slug} />)}
-				</AccordionGroup>
+				{projectDms.length > 0 && (
+					<AccordionGroup
+						id="dms"
+						icon={DmIcon}
+						label="Private Messages"
+						open={open("dms")}
+						onToggle={() => onToggleGroup("dms")}
+						hasUnread={projectDms.some((d) => d.unread)}
+					>
+						{projectDms.map((dm) => <DmRow key={dm.chatId} dm={dm} slug={detail.slug} />)}
+					</AccordionGroup>
+				)}
 			</LaneSections>
 
 			{/* 1-1 Continuation Request — unlocks once the preset sessions end */}

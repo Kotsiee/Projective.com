@@ -7,6 +7,7 @@ import {
 	buildBoardColumns,
 	type FileItem,
 	formatTicketMoney,
+	isTaskProject,
 	type ProjectDetail,
 	type ProjectParty,
 	type StageAssignmentMode,
@@ -1065,6 +1066,25 @@ function boardTitle(detail: ProjectDetail, kind: "project" | "stage"): string {
 // #endregion
 
 // #region Public builder
+/**
+ * The corpus cards for an engagement — every derived ticket, or a Task's ONE.
+ *
+ * `fn_enforce_structure_variation` holds a `single_task` project to exactly one ticket, so a Task
+ * whose board carried the generator's dozen would be a stub the database could never have produced —
+ * and the lane, which reads a Task's task lists off its one ticket, would have to choose among
+ * cards that cannot coexist. The claimed stage ticket is kept, so the Task reads as work under way.
+ *
+ * The ONE place the fixture board decides which cards exist: the board read and the deep-link walker
+ * both call it, so a ticket the walker resolves is always a ticket the board then contains.
+ */
+function corpusCards(detail: ProjectDetail): BoardCard[] {
+	const cards = buildCards(detail);
+	if (!isTaskProject(detail.format, detail.structure)) return cards;
+	const staged = cards.filter((card) => card.stageId !== null && !card.frozen);
+	const kept = staged.find((card) => card.claimed) ?? staged[0] ?? cards[0];
+	return kept ? [kept] : [];
+}
+
 /** Resolve a board page for the params, or `null` when the project doesn't exist (→ 404). */
 export function findBoardPage(params: BoardListParams): BoardPage | null {
 	const detail = findProjectDetail(params.projectId);
@@ -1074,7 +1094,7 @@ export function findBoardPage(params: BoardListParams): BoardPage | null {
 	const kind: "project" | "stage" = channelId ? "stage" : "project";
 	const view: BoardView = params.view ?? "stages";
 
-	const all = buildCards(detail);
+	const all = corpusCards(detail);
 	let cards = all;
 	if (kind === "stage") {
 		const stage = findStageChannel(detail.channels.stages, channelId);
@@ -1134,6 +1154,7 @@ export function findBoardPage(params: BoardListParams): BoardPage | null {
 		projectId: params.projectId,
 		channelId,
 		format: detail.format,
+		structure: detail.structure,
 		title: boardTitle(detail, kind),
 		view,
 		viewerIsClient: detail.viewerIsClient,
@@ -1167,7 +1188,7 @@ export function findTicketProjectSlug(ticketSlug: string): string | null {
 	for (const row of allProjects()) {
 		const detail = findProjectDetail(row.slug);
 		if (!detail) continue;
-		if (buildCards(detail).some((card) => card.slug === ticketSlug)) return row.slug;
+		if (corpusCards(detail).some((card) => card.slug === ticketSlug)) return row.slug;
 	}
 	return null;
 }

@@ -4,6 +4,7 @@ import ChannelHeader, { type ChannelDetailInfo } from "../islands/ChannelHeader.
 import { activeTabOf, resolveChannelMeta, visibleChannelTabKeys } from "./channel-view.ts";
 import { resolveSessionKind } from "./session-model.ts";
 import { resolveProjectDetail } from "./detail-ssr.ts";
+import { isTaskDetail } from "./task-project.ts";
 import type { ChannelMeta } from "./channel-view.ts";
 import type { ProjectDetail, ProjectStatus } from "../types/projects-types.ts";
 import type { ReadActor } from "@server/services/read-actor.ts";
@@ -79,7 +80,8 @@ function buildDetailInfo(detail: ProjectDetail, meta: ChannelMeta): ChannelDetai
 		: 0;
 
 	return {
-		kindLabel: KIND_LABEL.stage,
+		// A Task's stage room is the Task's discussion, and the drawer says what the header says.
+		kindLabel: isTaskDetail(detail) ? "Task" : KIND_LABEL.stage,
 		statusLabel: STATUS_LABEL[status],
 		deadlineLabel: status === "completed" ? undefined : DEADLINE_POOL[h % DEADLINE_POOL.length],
 		progress: { done, total },
@@ -126,6 +128,7 @@ export async function channelHeaderFor(
 	// decoded from the access token and is the same claim the shell gates on. Neither grants ACCESS on
 	// its own — the route below re-asks, and RLS is the real gate.
 	const canConfigure = detail.viewerIsClient || context.role === "admin";
+	const isTask = isTaskDetail(detail);
 	const visibleTabs = visibleChannelTabKeys({
 		channelKind: meta.kind,
 		sessionKind,
@@ -133,6 +136,7 @@ export async function channelHeaderFor(
 		isFreelancer: !isReviewer,
 		stageAssigned: true,
 		canConfigure,
+		isTask,
 	});
 
 	return (
@@ -145,6 +149,7 @@ export async function channelHeaderFor(
 			viewerIsClient={detail.viewerIsClient}
 			canConfigure={canConfigure}
 			sessionKind={sessionKind}
+			isTask={isTask}
 			detailInfo={buildDetailInfo(detail, meta)}
 		/>
 	);

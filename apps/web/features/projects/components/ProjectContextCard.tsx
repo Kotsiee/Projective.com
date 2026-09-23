@@ -1,9 +1,21 @@
 import type { JSX } from "preact";
 import { Avatar } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
+import { Icon } from "@projective/ui/icons";
 import { boardView } from "./detail-glyphs.tsx";
 import { profileHref } from "../core/routing.ts";
+import { isTaskDetail } from "../core/task-project.ts";
 import type { ProjectDetail } from "../types/projects-types.ts";
+
+/**
+ * The type the lone glyph names. A Task is a `one_off`, which {@link boardView} calls a Timeline — true
+ * of a milestone one-off and false of a Task, which has no timeline at all — so it is named for what it
+ * is, with the glyph the create menu offers it under.
+ */
+function typeMark(detail: ProjectDetail): { label: string; icon: JSX.Element } {
+	if (isTaskDetail(detail)) return { label: "Task", icon: <Icon name="ticket" /> };
+	return boardView(detail.format, detail.kind);
+}
 
 /**
  * ProjectContextCard — the card-LESS identity header of the Project Details sidebar. It no longer sits
@@ -29,7 +41,7 @@ export function ProjectContextCard({ detail }: ProjectContextCardProps): JSX.Ele
 	// header always has an identity even for a client-less internal draft.
 	const lead = (isService ? detail.client : detail.owner) ?? detail.owner;
 	const detailsHref = `/projects/${detail.slug}`;
-	const board = boardView(detail.format, detail.kind);
+	const board = typeMark(detail);
 	const typeTip = `${board.label} ${isService ? "service" : "project"}`;
 
 	return (

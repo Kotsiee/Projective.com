@@ -17,7 +17,7 @@ import type { BoardCard, BoardPage } from "../../types/projects-types.ts";
 import { TicketView } from "./TicketView.tsx";
 import { BoardService } from "../../core/BoardService.ts";
 import { reconcileCard, ticketCommitPayload } from "../../core/ticket-model.ts";
-import { ticketSubmissionHref } from "../../core/ticket-view.ts";
+import { boardHasTimeline, ticketSubmissionHref } from "../../core/ticket-view.ts";
 import {
 	type BoardAccess,
 	readDevSeam,
@@ -92,6 +92,7 @@ export function TicketStandalone(props: TicketStandaloneProps): JSX.Element {
 			workspaceLabel={page.workspaceLabel}
 			clientMembers={page.clientMembers}
 			projectId={page.projectId}
+			hasTimeline={boardHasTimeline(page)}
 			onClose={onClose}
 			onSubmit={(next) => void commit(next)}
 			onOpenSubmission={(path) => {

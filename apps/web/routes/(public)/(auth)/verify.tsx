@@ -17,6 +17,7 @@ export const handler = define.handlers({
 		return page({
 			redirectTo: readRedirect(ctx.url.searchParams),
 			email: ctx.url.searchParams.get("email") ?? undefined,
+			sendFailed: ctx.url.searchParams.get("sent") === "0",
 		});
 	},
 });
@@ -24,7 +25,7 @@ export const handler = define.handlers({
 export default define.page<typeof handler>(function VerifyRoute({ data }) {
 	return (
 		<AuthShell aside={<SceneAside variant="verify" />}>
-			<VerifyForm redirectTo={data.redirectTo} email={data.email} />
+			<VerifyForm redirectTo={data.redirectTo} email={data.email} sendFailed={data.sendFailed} />
 		</AuthShell>
 	);
 });

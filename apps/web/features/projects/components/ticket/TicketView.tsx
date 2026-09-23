@@ -114,6 +114,11 @@ export interface TicketViewProps {
 	 * a fixture corpus passes that corpus's pinned clock; absent → the real clock.
 	 */
 	now?: number;
+	/**
+	 * Whether the engagement has a time axis for the Timeline tab to draw — `boardHasTimeline(page)`.
+	 * False on a Task, whose one stage would make the tab a single bar. Absent → the tab is offered.
+	 */
+	hasTimeline?: boolean;
 	onClose: () => void;
 	/** Commit the working copy — creates the ticket, or saves the changes to an existing one. */
 	onSubmit: (card: BoardCard) => void;
@@ -178,7 +183,8 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 	useFrameScroll(ticketStack, uid, `scroll:${tab.value}`, bodyRef);
 
 	const card = draft.value;
-	const tabs = ticketTabs(card, mode);
+	const hasTimeline = props.hasTimeline !== false;
+	const tabs = ticketTabs(card, mode, hasTimeline);
 	const totals = ticketTotals(card);
 	const gate = ticketGate(card, totals);
 	const money = ticketMoney(card);
@@ -512,7 +518,7 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 											/>
 										)
 										: null}
-									{tab.value === "timeline"
+									{tab.value === "timeline" && hasTimeline
 										? (
 											<TicketTimelineTab
 												card={card}
