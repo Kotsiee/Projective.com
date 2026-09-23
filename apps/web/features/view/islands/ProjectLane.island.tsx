@@ -19,7 +19,7 @@ import {
 import { ProjectCtaRig } from "../components/ProjectCtaRig.tsx";
 import { sellerBadges } from "../core/view-model.ts";
 import {
-	PROJECT_CURRENCY,
+	projectCurrency,
 	projectLaneRows,
 	projectTicketPrice,
 } from "../core/project-view-model.ts";
@@ -103,7 +103,7 @@ export default function ProjectLane(
 
 					<LaneStages
 						stages={project.stages}
-						currency={PROJECT_CURRENCY}
+						currency={projectCurrency(project)}
 						label="Project stages"
 					/>
 

@@ -29,8 +29,8 @@ import {
 	type ProjectStage,
 	type ProjectStageStatus,
 	type ProjectViewExtra,
-	revisionAllowanceKind,
 	type ReviewSummary,
+	revisionAllowanceKind,
 	type ServiceItem,
 	type ServiceModel,
 	type ServiceRole,
@@ -45,6 +45,7 @@ import {
 } from "@projective/types/explore";
 import { IntakeFieldSchema } from "@projective/types/services";
 import type { VerificationTier as ProfileTier } from "@projective/types/profile";
+import { toMajorUnits, toMinorUnits } from "@projective/types/finance";
 
 /**
  * live-view — the composed `/view/[id]` page, built from Postgres.
@@ -60,13 +61,28 @@ import type { VerificationTier as ProfileTier } from "@projective/types/profile"
 
 // #region Formatting primitives
 
+/**
+ * A MAJOR-unit amount as the display string, through the currency's own exponent. The corpus carries
+ * major units on its numeric price fields (`ticketPrice`, `sessionPrice`, a stage's `TicketPrice`), and
+ * `displayPrice` takes minor units — the bridge is `toMinorUnits`, never `× 100`, which reads a ¥5,000
+ * ticket as ¥500,000.
+ */
+function displayMajor(amount: number, currency: string): string {
+	return displayPrice(toMinorUnits(amount, currency) ?? 0, currency);
+}
+
+/** Minor units → major units in `currency` (0 for an absent amount). */
+function majorOf(cents: number | null | undefined, currency: string): number {
+	return toMajorUnits(cents ?? 0, currency) ?? 0;
+}
+
 /** A per-ticket price: fixed when `min === max`, else a range. Major units in, label pre-formatted. */
 function ticketPrice(min: number, max: number, currency: string, unit = " / ticket"): TicketPrice {
 	const lo = Math.round(min);
 	const hi = Math.round(max);
 	const label = lo === hi
-		? `${displayPrice(lo * 100, currency)}${unit}`
-		: `${displayPrice(lo * 100, currency)} – ${displayPrice(hi * 100, currency)}${unit}`;
+		? `${displayMajor(lo, currency)}${unit}`
+		: `${displayMajor(lo, currency)} – ${displayMajor(hi, currency)}${unit}`;
 	return { min: lo, max: hi, label };
 }
 
@@ -128,7 +144,7 @@ function pricingFor(item: ExploreItem): EntityPricing {
 				const max = Math.round(item.ticketPrice * PIPELINE_HIGH);
 				return {
 					mode: "pipeline",
-					display: `${displayPrice(min * 100, currency)} – ${displayPrice(max * 100, currency)}`,
+					display: `${displayMajor(min, currency)} – ${displayMajor(max, currency)}`,
 					caption: "Per ticket · scales with workload intensity",
 					min,
 					max,
@@ -137,14 +153,14 @@ function pricingFor(item: ExploreItem): EntityPricing {
 			if (item.serviceType === "Session" && item.sessionPrice) {
 				return {
 					mode: "session",
-					display: `${displayPrice(item.sessionPrice * 100, currency)} / session`,
+					display: `${displayMajor(item.sessionPrice, currency)} / session`,
 					caption: "Billed per booked session",
 				};
 			}
 			if (item.serviceType === "Group Session" && item.sessionPrice) {
 				return {
 					mode: "session",
-					display: `${displayPrice(item.sessionPrice * 100, currency)} / seat`,
+					display: `${displayMajor(item.sessionPrice, currency)} / seat`,
 					caption: "Per attendee seat · booked per session",
 				};
 			}
@@ -157,13 +173,11 @@ function pricingFor(item: ExploreItem): EntityPricing {
 			return { mode: "fixed", display: item.price, caption: "One-time purchase" };
 		case "freelancers": {
 			const low = item.servicePrices?.length ? lowestActivePrice(item.servicePrices) : null;
-			return low === null
-				? { mode: "quote", display: "Contact for pricing" }
-				: {
-					mode: "quote",
-					display: `from ${displayPrice(low * 100, "USD")}`,
-					caption: "Across active services",
-				};
+			return low === null ? { mode: "quote", display: "Contact for pricing" } : {
+				mode: "quote",
+				display: `from ${displayMajor(low, "USD")}`,
+				caption: "Across active services",
+			};
 		}
 		case "projects":
 			return item.budget
@@ -227,7 +241,11 @@ function trustFor(item: ExploreItem): TrustFact[] {
 	facts.push({
 		icon: "seller",
 		label: "Seller",
-		value: topRated ? "Top Rated · verified" : item.owner.verified ? "Verified seller" : "Active seller",
+		value: topRated
+			? "Top Rated · verified"
+			: item.owner.verified
+			? "Verified seller"
+			: "Active seller",
 	});
 	if (item.type === "services" || item.type === "projects") {
 		facts.push({ icon: "escrow", label: "Protection", value: "Funds held in escrow" });
@@ -406,7 +424,7 @@ function serviceViewFor(catalog: Catalog, item: ServiceItem): ServiceViewExtra |
 	const template = parseStoredList(BlueprintStageSchema, bp.stage_template);
 	const stages: ProjectStage[] = showcaseStages
 		? template.map((st, i) => {
-			const standard = (st.priceCents ?? 0) / 100;
+			const standard = majorOf(st.priceCents, currency);
 			const price = st.priceCents === undefined
 				? { min: 0, max: 0, label: "Priced on scope" }
 				: isPipeline
@@ -517,7 +535,12 @@ function productViewFor(
 	if (!pr) return undefined;
 	const format = viewFormatOf(pr.format, pr.category, item.title);
 	const files: ProductFile[] = parseStoredList(ProductManifestEntrySchema, pr.file_manifest).map(
-		(f) => ({ extension: f.extension, label: f.label, bytes: f.bytes, sizeLabel: byteLabel(f.bytes) }),
+		(f) => ({
+			extension: f.extension,
+			label: f.label,
+			bytes: f.bytes,
+			sizeLabel: byteLabel(f.bytes),
+		}),
 	);
 	const payloadBytes = files.reduce((sum, f) => sum + f.bytes, 0);
 	const cover = catalog.galleryById.get(item.id)?.[0];
@@ -592,7 +615,10 @@ function articleViewFor(
 /** The stored stage status as the stage-flow treatment. */
 function stageStatus(status: string): ProjectStageStatus {
 	if (status === "approved" || status === "paid") return "completed";
-	if (status === "in_progress" || status === "assigned" || status === "submitted" || status === "revisions") {
+	if (
+		status === "in_progress" || status === "assigned" || status === "submitted" ||
+		status === "revisions"
+	) {
 		return "active";
 	}
 	return "upcoming";
@@ -611,9 +637,9 @@ function projectViewFor(
 	const flow: ProjectStage[] = stages.map((s, i) => {
 		const stageRoles = roles.filter((r) => r.project_stage_id === s.id);
 		const openSeatRows = seats.filter((o) => o.project_stage_id === s.id && o.status !== "filled");
-		const unit = (s.unit_price_cents ?? 0) / 100;
+		const unit = majorOf(s.unit_price_cents, currency);
 		const roleList: StageRole[] = stageRoles.map((r) => {
-			const each = (r.budget_amount_cents ?? s.unit_price_cents ?? 0) / 100;
+			const each = majorOf(r.budget_amount_cents ?? s.unit_price_cents, currency);
 			return {
 				name: r.role_title,
 				openSeats: Math.max(1, r.quantity ?? 1),
@@ -627,8 +653,12 @@ function projectViewFor(
 		const seatsTotal = Math.max(openSeats, s.seat_count ?? s.seat_limit ?? openSeats);
 		const seatPrice = openSeatRows.length
 			? ticketPrice(
-				Math.min(...openSeatRows.map((o) => (o.budget_min_cents ?? s.unit_price_cents ?? 0) / 100)),
-				Math.max(...openSeatRows.map((o) => (o.budget_max_cents ?? s.unit_price_cents ?? 0) / 100)),
+				Math.min(
+					...openSeatRows.map((o) => majorOf(o.budget_min_cents ?? s.unit_price_cents, currency)),
+				),
+				Math.max(
+					...openSeatRows.map((o) => majorOf(o.budget_max_cents ?? s.unit_price_cents, currency)),
+				),
 				currency,
 			)
 			: ticketPrice(unit, unit, currency);
@@ -646,7 +676,9 @@ function projectViewFor(
 			description: s.description_text ?? "",
 			status: stageStatus(s.status),
 			seatKind,
-			seatSummary: seatKind === "seats" ? openSeatRows[0]?.description_of_need ?? undefined : undefined,
+			seatSummary: seatKind === "seats"
+				? openSeatRows[0]?.description_of_need ?? undefined
+				: undefined,
 			openSeats,
 			seatsTotal,
 			seatsFilled: Math.max(0, seatsTotal - openSeats),
@@ -668,14 +700,19 @@ function projectViewFor(
 		)
 		: { min: 0, max: 0, label: "Priced per stage" };
 	const classification = item.classification;
-	const current = flow.find((s) => s.status === "active") ?? flow.find((s) => s.status === "upcoming");
+	const current = flow.find((s) => s.status === "active") ??
+		flow.find((s) => s.status === "upcoming");
 	const metrics: ProjectMetric[] = [
 		{ icon: "type", label: "Type", value: classification === "pipeline" ? "Pipeline" : "One-Off" },
 		{ icon: "stages", label: "Stages", value: String(flow.length) },
 		{ icon: "seats", label: "Open seats", value: String(openSeats) },
 	];
-	if (projectTicket.max > 0) metrics.push({ icon: "ticket", label: "Ticket", value: projectTicket.label });
-	if (item.roles.length) metrics.push({ icon: "roles", label: "Roles", value: String(item.roles.length) });
+	if (projectTicket.max > 0) {
+		metrics.push({ icon: "ticket", label: "Ticket", value: projectTicket.label });
+	}
+	if (item.roles.length) {
+		metrics.push({ icon: "roles", label: "Roles", value: String(item.roles.length) });
+	}
 
 	return {
 		banner: owner ? publicObjectUrl(owner.banner_bucket, owner.banner_path) ?? "" : "",
@@ -685,7 +722,7 @@ function projectViewFor(
 		classificationLabel: classification === "pipeline" ? "Pipeline" : "One-Off",
 		stage: classification === "pipeline" ? current?.name : undefined,
 		stages: flow,
-		finance: { ticketPrice: projectTicket, openSeats, totalSeats },
+		finance: { ticketPrice: projectTicket, openSeats, totalSeats, currency },
 		metrics,
 	};
 }

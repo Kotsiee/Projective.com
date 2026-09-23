@@ -38,6 +38,7 @@ import {
 } from "@projective/types/projects";
 import { flattenRichText } from "@projective/types/richtext";
 import { mintSlug } from "@projective/types/slugs";
+import { toMajorUnits } from "@projective/types/finance";
 import type { ReadActor } from "../read-actor.ts";
 
 /**
@@ -893,7 +894,7 @@ function formatCreatedBudget(budget: ProjectSetup["budget"]): string | null {
 			style: "currency",
 			currency: budget.currency,
 			maximumFractionDigits: 0,
-		}).format(budget.amountCents / 100);
+		}).format(toMajorUnits(budget.amountCents, budget.currency) ?? 0);
 	} catch {
 		// An unknown currency code throws rather than degrading. No label beats a wrong one.
 		return null;
@@ -1223,7 +1224,12 @@ export function overlayMemberRoster(
 		const removed = bucket.removed.get(slug);
 		const invites = [...fresh, ...page.invites]
 			.map((invite) =>
-				applyInviteOverlay(invite, overlays?.get(invite.id), removed, options.keepDismissed === true)
+				applyInviteOverlay(
+					invite,
+					overlays?.get(invite.id),
+					removed,
+					options.keepDismissed === true,
+				)
 			)
 			.filter((invite): invite is MemberInvite => invite !== null);
 		out = { ...out, invites };
@@ -1267,7 +1273,10 @@ export function overlayMemberRoster(
 			);
 			// Unassigned from the routed stage: they no longer have access to THIS stage's roster.
 			if (stageChannel && out.stageId && mark.has(out.stageId)) return [];
-			return [{ ...row, assignedStages: row.assignedStages.filter((name) => !lostNames.has(name)) }];
+			return [{
+				...row,
+				assignedStages: row.assignedStages.filter((name) => !lostNames.has(name)),
+			}];
 		});
 	}
 

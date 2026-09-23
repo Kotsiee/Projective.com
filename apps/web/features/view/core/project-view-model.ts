@@ -1,4 +1,5 @@
 import type { EntityView, ProjectViewExtra } from "@projective/types/explore";
+import { toMinorUnits } from "@projective/types/finance";
 import type { PriceAmount } from "@features/explore/core/pricing.ts";
 import type { LaneLedgerRow } from "../components/lane-parts.tsx";
 
@@ -15,12 +16,17 @@ import type { LaneLedgerRow } from "../components/lane-parts.tsx";
 /**
  * The currency a project's ticket prices are quoted in.
  *
- * `TicketPrice.min`/`max` are MAJOR units in the listing's own currency, and a project carries no
- * `currency` field of its own — the corpus prices every brief in USD. The fallback is the SAME one
+ * `TicketPrice.min`/`max` are MAJOR units in the project's own currency, which the live read carries as
+ * `finance.currency`. This constant is only the fallback for a payload without one — the SAME fallback
  * `StageProgressLedger` applies, so the lane figure and the stage ledger cannot label one number two
  * ways.
  */
 export const PROJECT_CURRENCY = "USD";
+
+/** The currency this project's ticket prices are quoted in. */
+export function projectCurrency(project: ProjectViewExtra): string {
+	return project.finance.currency ?? PROJECT_CURRENCY;
+}
 // #endregion
 
 // #region Headline price
@@ -40,7 +46,10 @@ export function projectTicketPrice(
 	const hasFigure = Number.isFinite(ticketPrice.min) && ticketPrice.min > 0;
 	return {
 		amount: hasFigure
-			? { minor: Math.round(ticketPrice.min * 100), currency: PROJECT_CURRENCY }
+			? {
+				minor: toMinorUnits(ticketPrice.min, projectCurrency(project)) ?? 0,
+				currency: projectCurrency(project),
+			}
 			: null,
 		fallback: ticketPrice.label || "Price on application",
 		unit: "ticket",

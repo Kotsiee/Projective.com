@@ -5,7 +5,7 @@ import { MetaLine, Section, SellerLine, SpecLedger } from "./entity-view-parts.t
 import { StageProgressLedger } from "./StageProgressLedger.tsx";
 import { inlineMetaFor } from "../core/entity-archetype.ts";
 import {
-	PROJECT_CURRENCY,
+	projectCurrency,
 	projectDetailRows,
 	projectRoles,
 	projectStagesHeading,
@@ -119,7 +119,7 @@ export function ProjectBody(
 						stages={project.stages}
 						hideOrdinals={isOneOff && project.stages.length === 1}
 						showSeats
-						currency={PROJECT_CURRENCY}
+						currency={projectCurrency(project)}
 					/>
 				</Section>
 			)}

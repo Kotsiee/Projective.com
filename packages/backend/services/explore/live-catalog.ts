@@ -15,6 +15,7 @@ import type {
 	SkillRef,
 } from "@projective/types/explore";
 import type { ImagePlaceholder } from "@projective/types/files";
+import { currencyExponent, toMajorUnits } from "@projective/types/finance";
 
 /**
  * live-catalog — the discovery corpus, read from Postgres.
@@ -544,9 +545,14 @@ function num(value: number | string | null | undefined): number {
 	return Number.isFinite(n) ? n : 0;
 }
 
-/** Minor units → major units for the corpus's major-unit numeric fields (`ticketPrice`, …). */
-function major(cents: number | null | undefined): number | undefined {
-	return cents === null || cents === undefined ? undefined : cents / 100;
+/**
+ * Minor units → major units for the corpus's major-unit numeric fields (`ticketPrice`, …), through the
+ * currency's own exponent — a JPY listing's `5000` is ¥5,000, not ¥50.
+ */
+function major(cents: number | null | undefined, currency: string): number | undefined {
+	return cents === null || cents === undefined
+		? undefined
+		: toMajorUnits(cents, currency) ?? undefined;
 }
 
 /**
@@ -555,16 +561,18 @@ function major(cents: number | null | undefined): number | undefined {
  * surfaces not yet on `MoneyView`; the structured `priceMinor` + `currency` travel beside it.
  */
 export function displayPrice(cents: number, currency: string): string {
-	const whole = cents % 100 === 0;
+	const exponent = currencyExponent(currency);
+	const whole = cents % 10 ** exponent === 0;
+	const amount = toMajorUnits(cents, currency) ?? 0;
 	try {
 		return new Intl.NumberFormat("en-US", {
 			style: "currency",
 			currency,
-			minimumFractionDigits: whole ? 0 : 2,
-			maximumFractionDigits: whole ? 0 : 2,
-		}).format(cents / 100);
+			minimumFractionDigits: whole ? 0 : exponent,
+			maximumFractionDigits: whole ? 0 : exponent,
+		}).format(amount);
 	} catch {
-		return `${(cents / 100).toFixed(whole ? 0 : 2)} ${currency}`;
+		return `${amount.toFixed(whole ? 0 : exponent)} ${currency}`;
 	}
 }
 
@@ -750,10 +758,13 @@ export function assemble(input: Inputs): Catalog {
 				delivery: l.delivery_label,
 				category: l.category,
 				serviceType,
-				ticketPrice: major(bp.ticket_price_cents ?? l.ticket_price_cents),
-				sessionPrice: major(bp.session_price_cents ?? l.session_price_cents),
+				ticketPrice: major(bp.ticket_price_cents ?? l.ticket_price_cents, l.currency),
+				sessionPrice: major(bp.session_price_cents ?? l.session_price_cents, l.currency),
 				freeRevisions: bp.free_revisions ?? l.free_revisions ?? undefined,
-				extraRevisionPrice: major(bp.extra_revision_price_cents ?? l.extra_revision_price_cents),
+				extraRevisionPrice: major(
+					bp.extra_revision_price_cents ?? l.extra_revision_price_cents,
+					l.currency,
+				),
 				priceMinor: l.amount_cents,
 				currency: l.currency,
 				rating: helperRating(bp.rating_average, bp.rating_count),
@@ -767,7 +778,7 @@ export function assemble(input: Inputs): Catalog {
 				? item.ticketPrice
 				: serviceType === "Session" || serviceType === "Group Session"
 				? item.sessionPrice
-				: l.amount_cents / 100;
+				: major(l.amount_cents, l.currency);
 			if (unit !== undefined) {
 				const list = servicePricesByOwner.get(ownerKey) ?? [];
 				list.push(unit);

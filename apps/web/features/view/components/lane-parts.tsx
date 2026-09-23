@@ -8,6 +8,7 @@ import type { CardSignal } from "@features/explore/core/card-signals.ts";
 import type { PriceAmount } from "@features/explore/core/pricing.ts";
 import { type ProjectStage, revisionAllowanceKind } from "@projective/types/explore";
 import type { ExploreItem } from "@projective/types/explore";
+import { toMinorUnits } from "@projective/types/finance";
 import { PriceOrigin } from "./entity-view-parts.tsx";
 import { jumpToStage } from "../core/view-state.ts";
 
@@ -214,7 +215,7 @@ export function LaneStages(
 						<span class="evp-stages__name">{s.name}</span>
 						<span class="evp-stages__price">
 							<MoneyView
-								minor={Math.round(s.price.min * 100)}
+								minor={toMinorUnits(s.price.min, currency) ?? 0}
 								currency={currency}
 								size="micro"
 								hideOrigin

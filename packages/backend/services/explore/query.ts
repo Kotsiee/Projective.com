@@ -1,5 +1,6 @@
 import { parsePriceMajor, PIPELINE_LOW } from "./pricing.ts";
 import { peekCatalog } from "./live-catalog.ts";
+import { toMajorUnits } from "@projective/types/finance";
 import type {
 	ExploreEntity,
 	ExploreItem,
@@ -74,10 +75,14 @@ function priceValue(item: ExploreItem): number {
 		if (
 			(item.serviceType === "Session" || item.serviceType === "Group Session") && item.sessionPrice
 		) return item.sessionPrice;
-		return item.priceMinor !== undefined ? item.priceMinor / 100 : parsePriceMajor(item.price);
+		return item.priceMinor !== undefined
+			? toMajorUnits(item.priceMinor, item.currency ?? "USD") ?? 0
+			: parsePriceMajor(item.price);
 	}
 	if (item.type === "products") {
-		return item.priceMinor !== undefined ? item.priceMinor / 100 : parsePriceMajor(item.price);
+		return item.priceMinor !== undefined
+			? toMajorUnits(item.priceMinor, item.currency ?? "USD") ?? 0
+			: parsePriceMajor(item.price);
 	}
 	if (item.type === "freelancers" && item.servicePrices?.length) {
 		return lowestActivePrice(item.servicePrices) ?? 0;

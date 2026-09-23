@@ -12,6 +12,7 @@ import { announce, closeBookingPanel, currentOffer, openPanel } from "../core/bo
 import type { StageFundingScope } from "@projective/types/services";
 import type { ServiceBookingOffer } from "@projective/types/services";
 import type { ProjectStage } from "@projective/types/explore";
+import { toMinorUnits } from "@projective/types/finance";
 
 /**
  * ScopeBriefModal — the **Continue** panel for the two scoped formats.
@@ -304,7 +305,7 @@ function ScopeOption(
 /**
  * A stage's price.
  *
- * `Math.round(min * 100)` and the threaded currency, matching `StageProgressLedger` exactly — the
+ * `toMinorUnits(min, currency)` and the threaded currency, matching `StageProgressLedger` exactly — the
  * listing body and this modal describe the same stages, and two conversions of one figure is how they
  * come to quote different numbers on one screen. `TicketPrice` carries major units and no currency of
  * its own (it is a display shape, not a money shape), so the currency has to come from the listing and
@@ -316,7 +317,7 @@ function ScopeOption(
 function StagePrice({ stage, currency }: { stage: ProjectStage; currency?: string }): JSX.Element {
 	return (
 		<MoneyView
-			minor={Math.round(stage.price.min * 100)}
+			minor={toMinorUnits(stage.price.min, currency ?? "USD") ?? 0}
 			currency={currency ?? "USD"}
 			size="micro"
 			hideOrigin

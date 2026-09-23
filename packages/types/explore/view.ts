@@ -271,6 +271,12 @@ export const ProjectFinanceSchema = z.object({
 	/** Aggregate open vs total seats across every stage. */
 	openSeats: z.number(),
 	totalSeats: z.number(),
+	/**
+	 * The ISO-4217 currency {@link ticketPrice} (and every stage's `TicketPrice`) is quoted in — the
+	 * project's own `projects.projects.currency`. Optional so an older payload still parses; absent
+	 * means USD. Without it a JPY brief's ¥5,000 ticket reads as $5,000.
+	 */
+	currency: z.string().min(3).max(3).optional(),
 });
 export type ProjectFinance = z.infer<typeof ProjectFinanceSchema>;
 

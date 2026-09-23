@@ -2,6 +2,7 @@ import type { ComponentChildren, JSX } from "preact";
 import { ProgressiveImage } from "@projective/ui/display/image";
 import { MoneyView } from "@projective/ui/display/money";
 import type { EntityView } from "@projective/types/explore";
+import { toMinorUnits } from "@projective/types/finance";
 import {
 	type EntityArchetype,
 	inlineMetaFor,
@@ -124,7 +125,7 @@ function ArchetypeScope(
 							label: stage.name,
 							value: (
 								<MoneyView
-									minor={Math.round(stage.price.min * 100)}
+									minor={toMinorUnits(stage.price.min, currency) ?? 0}
 									currency={currency}
 									size="micro"
 									hideOrigin

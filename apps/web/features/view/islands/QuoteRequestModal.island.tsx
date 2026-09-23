@@ -9,6 +9,7 @@ import { useCtaFeedback } from "../core/cta-feedback.ts";
 import { BookingService } from "../core/BookingService.ts";
 import { announce, closeBookingPanel, currentOffer, openPanel } from "../core/booking-state.ts";
 import type { ServiceBookingOffer } from "@projective/types/services";
+import { toMinorUnits } from "@projective/types/finance";
 
 /**
  * QuoteRequestModal — the Contact menu's **Request a custom quote**.
@@ -66,7 +67,7 @@ export default function QuoteRequestModal(
 		/*
 		 * Parse the budget into integer MINOR units here, once.
 		 *
-		 * `Math.round(major * 100)` rather than a float: money in this platform is integer minor units
+		 * `toMinorUnits` rather than a float or `× 100`: money in this platform is integer minor units
 		 * everywhere, and a value that arrives as 49.99 and is stored as 4998.9999999 is the classic way
 		 * a currency ends up a penny short at the third handoff. An unparseable entry is refused rather
 		 * than coerced to zero — "£0" is a real offer and a very different one from "I did not say".
@@ -79,7 +80,7 @@ export default function QuoteRequestModal(
 				error.value = "That budget could not be read. Use a plain number.";
 				return false;
 			}
-			budgetMinor = Math.round(major * 100);
+			budgetMinor = toMinorUnits(major, currency) ?? undefined;
 		}
 		error.value = null;
 

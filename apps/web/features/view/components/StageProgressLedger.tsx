@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { Icon } from "@projective/ui/icons";
 import { MoneyView } from "@projective/ui/display/money";
+import { toMinorUnits } from "@projective/types/finance";
 import {
 	type ProjectStage,
 	revisionAllowanceKind,
@@ -160,7 +161,7 @@ export function StageProgressLedger(
 								}
 								<span class="evp-track__price">
 									<MoneyView
-										minor={Math.round(stage.price.min * 100)}
+										minor={toMinorUnits(stage.price.min, currency ?? "USD") ?? 0}
 										currency={currency ?? "USD"}
 										size="key"
 										hideOrigin
@@ -259,7 +260,7 @@ function StageRevisionLine(
 	const kind = revisionAllowanceKind(revisions);
 	const price = (
 		<MoneyView
-			minor={Math.round(revisions.extraPrice.min * 100)}
+			minor={toMinorUnits(revisions.extraPrice.min, currency ?? "USD") ?? 0}
 			currency={currency ?? "USD"}
 			size="micro"
 			hideOrigin
