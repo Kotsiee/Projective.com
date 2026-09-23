@@ -432,9 +432,9 @@ async function gatherConversations(
 /**
  * A picker row for a user id and its (possibly absent) profile row.
  *
- * `avatar` is always null — `org.users_public.avatar_file_id` is a file id, not a URL (see
- * `live-contacts`). The handle is DROPPED rather than truncated past the schema bound: it is an
- * address, and a shortened one points at somebody else.
+ * `avatar` is the photo {@link fetchParties} resolved, or `null` for the initials. The handle is
+ * DROPPED rather than truncated past the schema bound: it is an address, and a shortened one points
+ * at somebody else.
  */
 function toContact(userId: string, row: PartyRow | undefined): MessagingContact | null {
 	const id = clamp(userId, ID_MAX);
@@ -444,7 +444,7 @@ function toContact(userId: string, row: PartyRow | undefined): MessagingContact 
 	return {
 		id,
 		name: clampOr(party.name, NAME_MAX, "Unknown"),
-		avatar: null,
+		avatar: party.avatar,
 		handle: handle.length > 0 && handle.length <= HANDLE_MAX ? handle : null,
 		context: null,
 		relation: "dm",
@@ -494,10 +494,13 @@ async function searchDirectory(
 		.neq("user_id", actor.userId)
 		.limit(SEARCH_LIMIT * 2);
 	if (error) return [];
+	const rows = ((data ?? []) as PartyRow[]).filter((row) => !exclude.has(row.user_id));
+	// The filter above ran on names alone; the photos come through the identity door, and a row the
+	// door could not resolve keeps its plain columns rather than dropping out of the answer.
+	const withPhotos = await fetchParties(actor, rows.map((row) => row.user_id));
 	const out: MessagingContact[] = [];
-	for (const row of (data ?? []) as PartyRow[]) {
-		if (exclude.has(row.user_id)) continue;
-		const contact = toContact(row.user_id, row);
+	for (const row of rows) {
+		const contact = toContact(row.user_id, withPhotos.get(row.user_id) ?? row);
 		if (!contact || !contactMatches(contact, q)) continue;
 		out.push(contact);
 	}

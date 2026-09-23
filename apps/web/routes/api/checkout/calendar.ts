@@ -2,6 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { OrderBackendService } from "@server/services/finance/OrderBackendService.ts";
 import { basketQueryFrom } from "@server/services/finance/basket-query.ts";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * `GET /api/checkout/calendar?order=&line=` — the `.ics` file for one booked line of one order.
@@ -26,7 +27,7 @@ import { basketQueryFrom } from "@server/services/finance/basket-query.ts";
  * seller, a time and a join link, so an id in a URL must not be enough to read one.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const context = asAuthenticatedContext(ctx.state.userContext);
 		const sp = ctx.url.searchParams;
 		const orderId = sp.get("order");
@@ -38,10 +39,10 @@ export const handler = define.handlers({
 			});
 		}
 
-		const result = OrderBackendService.ics(orderId, lineId, {
+		const result = await OrderBackendService.ics(orderId, lineId, {
 			...basketQueryFrom(sp, context),
 			orderId,
-		});
+		}, readActor(ctx));
 		if (!result.ok || !result.data) {
 			return new Response(result.message ?? "That booking doesn't have a calendar entry.", {
 				status: result.status,

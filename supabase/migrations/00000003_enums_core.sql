@@ -131,5 +131,7 @@ CREATE TYPE search.profile_entity_type AS ENUM ('user', 'freelancer', 'business'
 -- #endregion
 
 -- #region reviews
-CREATE TYPE reviews.review_target_type AS ENUM ('user', 'freelancer', 'business', 'team', 'service_blueprint');
+-- `product` reviews a digital product (`catalogue.products`). A product is bought sight-unseen and its
+-- card and /view page both print a rating, which until this member existed could only ever be absent.
+CREATE TYPE reviews.review_target_type AS ENUM ('user', 'freelancer', 'business', 'team', 'service_blueprint', 'product');
 -- #endregion

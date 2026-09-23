@@ -5,6 +5,7 @@ import {
 	type SignInIntent,
 } from "@features/auth/core/sign-in-prompt.ts";
 import { requestShare } from "@web/features/share/core/share-request.ts";
+import { ProfileService } from "./ProfileService.ts";
 import type { HireProject } from "./profile-model.ts";
 import {
 	consultOpen,
@@ -34,19 +35,37 @@ import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
  */
 
 // #region Viewer
-/** The two facts every gated action needs. */
+/** The facts every gated action needs. */
 export interface RigViewer {
 	/** Whether the viewer is signed in — a guest's press opens the sign-in prompt instead. */
 	authed: boolean;
 	/** The profile's display name, for the prompt's sentence and the announcements. */
 	name: string;
+	/** The profile's `@handle` — the address every write is made to. */
+	handle: string;
+	/**
+	 * The OWNER previewing their own profile: the rig renders exactly as a visitor's, and a press
+	 * explains what it does for visitors instead of acting on the owner's own account.
+	 */
+	preview?: boolean;
+	/** Whether the viewer follows the profile, as the server answered it. */
+	follows?: boolean;
 }
 
+/** What a previewing owner is told when they press a visitor's control. */
+export const PREVIEW_NOTE =
+	"You're previewing your profile as visitors see it. Visitors use this control to reach you.";
+
 /**
- * Intercept a guest's account-bound press with the sign-in prompt. `true` when it was intercepted
- * and the caller must do nothing else.
+ * Intercept a press that must not act: a previewing owner's (explained in the live region) and a
+ * guest's account-bound one (the sign-in prompt). `true` when it was intercepted and the caller must
+ * do nothing else.
  */
 export function gate(viewer: RigViewer, intent: SignInIntent): boolean {
+	if (viewer.preview) {
+		announce(PREVIEW_NOTE, NOTE_TTL_MS);
+		return true;
+	}
 	if (viewer.authed) return false;
 	requestSignIn({ intent, returnTo: currentPath(), subject: viewer.name });
 	return true;
@@ -114,14 +133,23 @@ export function openWizard(viewer: RigViewer): void {
 
 const CELEBRATE_MS = 700;
 let celebrateTimer: ReturnType<typeof setTimeout> | undefined;
+let followInFlight = false;
+
+/** Whether the viewer follows the profile — the client's change, else the server's answer. */
+export function isFollowing(viewer: Pick<RigViewer, "follows">): boolean {
+	return following.value ?? !!viewer.follows;
+}
 
 /**
- * Toggle the follow. Optimistic and session-local pending the follow write path; a follow (never
- * an unfollow) plays the shared acknowledgement for {@link CELEBRATE_MS}.
+ * Toggle the follow. Optimistic — the control flips at once — and then written; a refused or failed
+ * write puts it back and says why. A follow (never an unfollow) plays the shared acknowledgement for
+ * {@link CELEBRATE_MS}. A second press while the first is in flight is ignored rather than queued, so
+ * a double-click cannot race two opposite writes.
  */
 export function toggleFollow(viewer: RigViewer): void {
-	if (gate(viewer, "follow")) return;
-	const next = !following.value;
+	if (gate(viewer, "follow") || followInFlight) return;
+	const previous = isFollowing(viewer);
+	const next = !previous;
 	following.value = next;
 	announce(next ? `Following ${viewer.name}` : `Unfollowed ${viewer.name}`);
 	clearTimeout(celebrateTimer);
@@ -131,6 +159,17 @@ export function toggleFollow(viewer: RigViewer): void {
 			followCelebrating.value = false;
 		}, CELEBRATE_MS);
 	}
+	followInFlight = true;
+	void ProfileService.follow(viewer.handle, next).then((res) => {
+		followInFlight = false;
+		if (res.ok && res.data) {
+			following.value = res.data.follows;
+			return;
+		}
+		following.value = previous;
+		followCelebrating.value = false;
+		announce(res.message ?? "That didn't save. Try again.", NOTE_TTL_MS);
+	});
 }
 
 /**

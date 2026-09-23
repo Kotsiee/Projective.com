@@ -19,12 +19,12 @@
  * `contribution_agreements.percent_bp`, dust to the vault.
  */
 
-import { exploreMocks } from "../../../packages/backend/mocks/mod.ts";
-import { ago, ahead, enumArr, HEADER, id, insert, jsonb, q, uuidFor } from "./sql.ts";
+import { PRODUCTS, SERVICES } from "./corpus.ts";
+import { ago, ahead, enumArr, HEADER, id, insert, jsonb, localAt, minutesOf, q, uuidFor } from "./sql.ts";
 import { entity, party, persona, walletIdFor, type World } from "./resolve.ts";
 import { BASKETS, CARDS, ORDERS, PAYOUTS, TOPUPS } from "./world.ts";
+import { SCHEDULES } from "./schedules.ts";
 
-const { PRODUCTS, SERVICES } = exploreMocks;
 
 const PLATFORM_FEE_BP = 500;
 const VAULT_BP = 1000;
@@ -292,12 +292,23 @@ export function emitFinance(world: World): string {
 	// Orders: card-charged unless `fromWallet`; sellers are credited net of the platform fee.
 	const orderRows: string[][] = [];
 	const orderLineRows: string[][] = [];
+	/** The seller's first conferencing platform, from the schedule they publish (`schedules.ts`). */
+	const sellerPlatform = (principal: { entityKey?: string; accountUserId: string }) => {
+		const ownerKey = principal.entityKey ??
+			[...world.personas.values()].find((p) => p.userId === principal.accountUserId)?.key;
+		return SCHEDULES.find((s) => s.owner === ownerKey)?.call?.platforms[0] ?? null;
+	};
+	/** The zone a seller keeps their schedule in: their team's, or their own. */
+	const sellerTimezone = (principal: { entityKey?: string; accountUserId: string }) =>
+		principal.entityKey
+			? entity(world, principal.entityKey).timezone
+			: [...world.personas.values()].find((p) => p.userId === principal.accountUserId)?.timezone ?? "UTC";
 	const sellerOf = (corpusId: string) => {
 		const item = corpusId.startsWith("pr-")
-			? PRODUCTS.find((x) => x.id === corpusId)
-			: SERVICES.find((x) => x.id === corpusId);
+			? PRODUCTS.find((x) => x.key === corpusId)
+			: SERVICES.find((x) => x.key === corpusId);
 		if (!item) throw new Error(`world: order names unknown listing "${corpusId}"`);
-		const principal = world.principals.get(item.owner.handle)!;
+		const principal = world.principals.get(item.owner)!;
 		return { item, principal, isService: corpusId.startsWith("sv-") };
 	};
 	ORDERS.forEach((o, oi) => {
@@ -311,12 +322,12 @@ export function emitFinance(world: World): string {
 			const { item, principal, isService } = sellerOf(corpusId);
 			const price = priceMinorOf(item);
 			subtotal += price;
-			const service = isService ? SERVICES.find((s) => s.id === corpusId)! : null;
+			const service = isService ? SERVICES.find((s) => s.key === corpusId)! : null;
 			const itemType = !isService
 				? "digital_product"
-				: service!.serviceType === "Session"
+				: service!.model === "session"
 				? "service_session"
-				: service!.serviceType === "Direct Deliverable"
+				: service!.model === "direct_deliverable"
 				? "single_service_task"
 				: "one_off_service";
 			const fulfilment = !isService
@@ -339,12 +350,19 @@ export function emitFinance(world: World): string {
 				!isService ? String(18_400_000 + li * 2_100_000) : "NULL",
 				!isService ? "'zip'" : "NULL",
 				!isService ? "'standard'" : "NULL",
-				o.scheduledInDays !== undefined && fulfilment === "session"
-					? ahead(o.scheduledInDays)
+				o.scheduledAt !== undefined && fulfilment === "session"
+					// The sitting in the SELLER's zone — the same instant their schedule holds for it.
+					? localAt(
+						sellerTimezone(principal),
+						o.scheduledAt.week,
+						o.scheduledAt.day,
+						minutesOf(o.scheduledAt.time),
+					)
 					: "NULL",
-				o.scheduledInDays !== undefined && fulfilment === "session" ? q(placedBy.timezone) : "NULL",
-				fulfilment === "session" ? "60" : "NULL",
-				fulfilment === "session" ? "'google'" : "NULL",
+				o.scheduledAt !== undefined && fulfilment === "session" ? q(placedBy.timezone) : "NULL",
+				fulfilment === "session" ? String(service!.sessionMinutes ?? 60) : "NULL",
+				// The room is on a platform the seller actually offers, from their own schedule.
+				fulfilment === "session" ? q(sellerPlatform(principal)) : "NULL",
 				String(li),
 			]);
 
@@ -863,7 +881,7 @@ export function emitFinance(world: World): string {
 		const basketId = uuidFor("basket", b.owner);
 		basketRows.push([id(basketId), q(ownerType), id(ownerId), "'Main Basket'", "true"]);
 		b.products.forEach((corpusId, i) => {
-			const product = PRODUCTS.find((x) => x.id === corpusId);
+			const product = PRODUCTS.find((x) => x.key === corpusId);
 			if (!product) throw new Error(`world: basket names unknown product "${corpusId}"`);
 			basketItemRows.push([
 				id(uuidFor("basket_item", `${b.owner}:${corpusId}`)),

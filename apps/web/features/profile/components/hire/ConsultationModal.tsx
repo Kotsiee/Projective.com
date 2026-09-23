@@ -14,7 +14,6 @@ import type {
 import { addDaysInZone, bandsForDay, findSlot, firstOpenDay } from "@projective/types/scheduling";
 import { CONFERENCING_LABEL } from "@projective/types/scheduling";
 import { BookingService } from "@features/view/core/BookingService.ts";
-import { bookingSim } from "@features/view/core/booking-seam.ts";
 import { DateRail } from "@features/view/components/DateRail.tsx";
 import { SlotPicker } from "@features/view/components/SlotPicker.tsx";
 import { focusFirstRefused, focusSuccessAction } from "./IntakeFields.tsx";
@@ -145,7 +144,7 @@ export default function ConsultationModal(
 			from: from ?? undefined,
 			days: WINDOW_DAYS,
 			callType: callType.value,
-		}, bookingSim());
+		});
 		loading.value = false;
 		if (!res.ok || !res.data) {
 			error.value = res.message ?? "Could not load availability.";
@@ -310,7 +309,7 @@ export default function ConsultationModal(
 			platform: platform.value ?? undefined,
 			timezone: viewerZone(),
 			agenda: agenda.value.trim() || undefined,
-		}, bookingSim());
+		});
 		sending.value = false;
 		if (!res.ok || !res.data) {
 			error.value = res.message ?? "Could not request that call.";

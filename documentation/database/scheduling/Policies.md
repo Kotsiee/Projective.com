@@ -79,6 +79,12 @@ its free/busy **overlay** kinds to the world. A `sync`, `milestone`, `deadline` 
 same schedule stays private. Project-anchored rows simply reuse the pre-existing
 `projects.has_project_access` gate — no second authority is invented.
 
+A booking grid still needs to know WHEN those private rows occupy the calendar. It learns that
+through `scheduling.get_free_busy` ([Functions.md](Functions.md) §7), a definer read that returns
+bare `(starts_at, ends_at)` spans for a published schedule — never a title, an id or a kind. So the
+policy above is not widened to serve the grid: the rows stay private, and only their occupancy is
+public.
+
 `Manage scheduling events` mirrors the same two anchors with `fn_can_manage_schedule` /
 `has_project_access`.
 
@@ -88,7 +94,7 @@ same schedule stays private. Project-anchored rows simply reuse the pre-existing
 | :---------------- | :----------------------------------------------------- | :------------------------------------------------------------------------------------------------- |
 | `call_settings`   | `anon` when the schedule is published, else owner side | `fn_can_manage_schedule` (ALL)                                                                     |
 | `call_platforms`  | Same as `call_settings` — a booker picks a platform BEFORE signing in | `fn_can_manage_schedule` (ALL). Discloses only which providers are offered; never a connection, token or account id |
-| `discovery_calls` | Host **or** requester **or** admin — never `anon`      | `INSERT` as self (`requester_user_id = auth.uid()`, `status='proposed'`); `UPDATE` by either party |
+| `discovery_calls` | Host **or** requester **or** admin — never `anon`      | **No client `INSERT` policy** — `scheduling.request_discovery_call` is the only door; `UPDATE` by either party |
 | `call_attendance` | `fn_is_call_party`                                     | None — webhooks write as service-role                                                              |
 | `call_audit`      | `fn_is_call_party`                                     | None — the audit trigger writes it                                                                 |
 
@@ -97,14 +103,23 @@ offered, **how long** they run, and **what a paid one costs** before signing in.
 — caps, cooldowns, buffers — are excluded at the projection layer (`PublicCallOfferSchema` in
 `packages/types/scheduling/calls.ts`), not by a second policy.
 
-### Why the booking rules are in a trigger, not the policy
+### Why there is no insert policy, and why the rules are in a trigger
 
-The insert policy checks only _"you are requesting as yourself, in the `proposed` state."_
-Everything else — call windows, minimum notice, booking horizon, buffers, weekly caps, per-requester
-cooldowns, whether calls are offered at all — is enforced by the **BEFORE INSERT** trigger
-`scheduling.fn_enforce_call_request`. A `WITH CHECK` expression cannot express that much logic, and
-putting it in a trigger means a hand-rolled PostgREST insert cannot bypass the gate either. The same
-applies to the legal-transition matrix on UPDATE (`fn_enforce_call_transition`).
+There used to be one: _"you are requesting as yourself, in the `proposed` state."_ It was removed
+(`00002015`) because it proved identity and nothing else — the requester wrote every OTHER column of
+the row too, so they chose the host the request notifies, the fee a paid call is charged at, and the
+meeting link the host would click. A request now goes through `scheduling.request_discovery_call`
+([Functions.md](Functions.md) §7), a definer function that takes only what is the requester's to say
+(the schedule, the flavour, the time, an agenda, a platform from the host's list) and derives the
+rest from the schedule and its settings.
+
+Everything about the SLOT — call windows, minimum notice, booking horizon, buffers, weekly caps,
+per-requester cooldowns, whether calls are offered at all — is still enforced by the **BEFORE
+INSERT** trigger `scheduling.fn_enforce_call_request`, which fires inside the function because the
+insert runs with the caller's `auth.uid()`. A `WITH CHECK` expression cannot express that much logic,
+and a trigger cannot be skipped by the function that performs the insert — so the request door and
+any future client path are held to the same gate. The same applies to the legal-transition matrix on
+UPDATE (`fn_enforce_call_transition`).
 
 Both triggers **skip enforcement when `auth.uid()` is NULL** — a service-role caller (webhook,
 sweep, backfill) owns the rules in its own layer. The triggers guard the _client_ path.

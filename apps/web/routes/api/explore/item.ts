@@ -7,11 +7,11 @@ import { ExploreBackendService } from "@server/services/explore/ExploreBackendSe
  * service (404 when unknown). Backs the detail drawer's client refresh and any deep-link prefetch.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const id = ctx.url.searchParams.get("id");
 		if (!id) {
 			return Response.json({ ok: false, message: "Missing item id." }, { status: 400 });
 		}
-		return toExploreResponse(ExploreBackendService.item(id));
+		return toExploreResponse(await ExploreBackendService.item(id));
 	},
 });

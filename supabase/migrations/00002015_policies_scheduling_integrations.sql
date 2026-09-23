@@ -233,12 +233,10 @@ SELECT TO authenticated USING (
         OR security.is_admin ()
     );
 
-CREATE POLICY "Request a discovery call" ON scheduling.discovery_calls FOR INSERT TO authenticated
-WITH
-    CHECK (
-        requester_user_id = auth.uid ()
-        AND status = 'proposed'::scheduling.call_status
-    );
+-- NO client INSERT policy. A discovery call is requested through `scheduling.request_discovery_call`
+-- (00001520), which derives the host, the fee and the status from the schedule. The policy this
+-- replaces let the requester write every column — the host the call notifies, the fee a paid call
+-- charges, the meeting link the host would click — while checking only that they named themselves.
 
 CREATE POLICY "Update own discovery calls" ON scheduling.discovery_calls FOR
 UPDATE TO authenticated USING (

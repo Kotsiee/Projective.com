@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 import EntityStickyHeader from "../islands/EntityStickyHeader.island.tsx";
-import { resolveViewPage } from "./view-ssr.ts";
+import { peekViewPage } from "./view-ssr.ts";
 import { resolveArchetype } from "./entity-archetype.ts";
 import type { HrefContext } from "@features/explore/core/routing.ts";
 import type { UserContext } from "@projective/types/auth";
@@ -43,7 +43,7 @@ export function viewHeaderFor(
 	}
 	if (!id || !ctx) return null;
 
-	const { view } = resolveViewPage(id);
+	const { view } = peekViewPage(id);
 	if (!view) return null;
 
 	const archetype = resolveArchetype(view);

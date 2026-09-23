@@ -47,3 +47,4 @@ export * from "./rows.ts";
 export * from "./calls.ts";
 export * from "./booking.ts";
 export * from "./ics.ts";
+export * from "./owner-availability.ts";

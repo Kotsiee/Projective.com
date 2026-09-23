@@ -5,10 +5,9 @@ import type { ProfileView } from "../types/profile-types.ts";
 
 /**
  * ProfileCalendarHead — the one-line identity strip above the full-page availability calendar
- * (`/[handle]/availability`). The profile itself no longer links here (Decision #96 stripped the
- * availability toggle, the clock and the presence pip from the layout), but the route still resolves
- * for anyone holding its address, and a calendar with no name on it answers nobody's question. It
- * carries a way back and whose calendar this is, and nothing else.
+ * (`/[handle]/availability`, reached from the context bar's "Full calendar" link). The page has no
+ * profile chrome, and a calendar with no name on it answers nobody's question, so this carries a way
+ * back and whose calendar this is, and nothing else.
  */
 export function ProfileCalendarHead({ profile }: { profile: ProfileView }): JSX.Element {
 	return (

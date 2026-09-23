@@ -2,6 +2,8 @@ import { page } from "fresh";
 import { define } from "@web/utils/state.ts";
 import { EntityViewPage } from "@features/view/components/EntityViewPage.tsx";
 import { resolveViewPage } from "@features/view/core/view-ssr.ts";
+import { resolveEntityCommerce } from "@features/view/core/booking-ssr.ts";
+import { viewerFromState } from "@features/calendar/core/viewer.ts";
 
 /**
  * `/[handle]/view/[item_id]?type=[entity_type]` — the profile-scoped Entity View page. This is the
@@ -11,17 +13,25 @@ import { resolveViewPage } from "@features/view/core/view-ssr.ts";
  * Its session-schedule leaf lives alongside as `[item]/schedule.tsx`.
  */
 export const handler = define.handlers({
-	GET(ctx) {
-		const { view } = resolveViewPage(ctx.params.item);
+	async GET(ctx) {
+		const { view, status } = await resolveViewPage(ctx.params.item);
 		ctx.state.title = view ? `${view.item.title} · ${ctx.params.handle}` : "Not found · Projective";
 		if (view) ctx.state.description = view.item.summary;
+		const commerce = view
+			? await resolveEntityCommerce(view, {
+				context: ctx.state.userContext,
+				handle: ctx.params.handle,
+				viewer: viewerFromState(ctx.state),
+			})
+			: { offer: null, schedule: null };
 		return page({
 			view,
+			unavailable: status >= 500,
 			handle: ctx.params.handle,
 			authed: !!ctx.state.isAuthenticated,
-			context: ctx.state.userContext,
-			href: ctx.url.href,
-		});
+			offer: commerce.offer,
+			schedule: commerce.schedule,
+		}, { status: view ? 200 : status });
 	},
 });
 
@@ -29,10 +39,11 @@ export default define.page<typeof handler>(function ProfileEntityViewPage({ data
 	return (
 		<EntityViewPage
 			view={data.view}
+			unavailable={data.unavailable}
 			ctx={{ scope: "profile", handle: data.handle }}
 			authed={data.authed}
-			context={data.context}
-			url={new URL(data.href)}
+			offer={data.offer}
+			schedule={data.schedule}
 		/>
 	);
 });

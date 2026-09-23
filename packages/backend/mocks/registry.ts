@@ -103,14 +103,11 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		domain: "explore",
 		label: "Discovery & entity view",
 		gate: "EXPLORE_BACKEND_LIVE",
-		liveImplemented: false,
-		modules: [
-			"services/explore/fixtures.ts",
-			"services/explore/view-fixtures.ts",
-		],
-		schemas: ["search", "marketplace", "org", "reviews"],
+		liveImplemented: true,
+		modules: [],
+		schemas: ["search", "marketplace", "catalogue", "org", "projects", "reviews", "files"],
 		description:
-			"The discovery corpus: freelancers, users, teams, businesses, services, projects, products, articles and sponsored slots, plus the /view/[id] entity projection.",
+			"The discovery catalogue (services, products, articles, public projects, listed profiles, paid placements) and the /view/[id] entity projection, read live through the anon client by services/explore/live-catalog.ts and live-view.ts. services/explore/fixtures.ts survives only as a dependency of other domains' fixtures and leaves with them.",
 	},
 	profile: {
 		domain: "profile",
@@ -195,15 +192,11 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		liveImplemented: false,
 		modules: [
 			"services/finance/wallet-fixtures.ts",
-			"services/finance/basket-fixtures.ts",
-			"services/finance/cards-fixtures.ts",
-			"services/finance/order-fixtures.ts",
-			"services/finance/buyer-fixtures.ts",
 			"services/finance/fx-fixtures.ts",
 		],
 		schemas: ["finance"],
 		description:
-			"The /wallet three-state balance projection and money moves, the basket, saved cards, buyer delivery and billing details, orders, and the FX rate floor.",
+			"PARTLY LIVE. The basket, saved cards, buyer details, the checkout session and orders read and write finance.* as the signed-in caller (live-basket, live-cards, live-buyer, live-orders, commerce-owner); currency conversion reads finance.fx_rates (FxService.ts). Placing an order is refused until a payment path exists. Still fixtures: the /wallet balance projection and money moves — fx-fixtures.ts survives only as the rate table wallet-fixtures converts with.",
 	},
 	workspace: {
 		domain: "workspace",
@@ -246,15 +239,12 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		liveImplemented: false,
 		modules: [
 			"services/scheduling/calendar-fixtures.ts",
-			"services/scheduling/availability-fixtures.ts",
-			"services/scheduling/schedule-fixtures.ts",
 			"services/scheduling/personal-fixtures.ts",
 			"services/scheduling/coordination-fixtures.ts",
-			"services/scheduling/slot-fixtures.ts",
 		],
 		schemas: ["scheduling"],
 		description:
-			"Calendars, availability windows, personal schedules, reschedule coordination and bookable slot grids. Each read rides its CALLER's own domain gate rather than owning one, so this row names the most common of them.",
+			"PARTLY LIVE. A provider's public availability, a session listing's schedule and every bookable slot grid read scheduling.* ungated (live-slots.ts, live-schedule-page.ts, slot-grid.ts). Still fixtures: the project/channel calendar, the personal /calendar agenda and reschedule coordination.",
 	},
 	shell: {
 		domain: "shell",
@@ -270,11 +260,11 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		domain: "marketing",
 		label: "Marketing landing",
 		gate: "EXPLORE_BACKEND_LIVE",
-		liveImplemented: false,
-		modules: ["apps/web/features/marketing/core/landing-data.ts"],
-		schemas: ["search", "marketplace"],
+		liveImplemented: true,
+		modules: [],
+		schemas: ["search", "marketplace", "catalogue", "reviews"],
 		description:
-			"The public landing showcase carousels. App-side for the same island-boundary reason as the shell.",
+			"The public landing: showcase sections from the live home feed, real reviews as testimonials, and the hero's running totals from search.platform_stats (ExploreBackendService.landing()).",
 	},
 });
 

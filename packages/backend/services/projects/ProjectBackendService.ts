@@ -109,7 +109,18 @@ import { findSubmissionPage } from "./submissions-fixtures.ts";
 import { BOARD_FIXTURE_NOW, findBoardPage, findTicketProjectSlug } from "./board-fixtures.ts";
 import { findMemberRoster } from "./members-fixtures.ts";
 import { archiveDraft, getDraft, instantiateDraft, sweepStaleDrafts } from "./draft-store.ts";
-import { buildViewPage } from "../explore/view-fixtures.ts";
+import { composeLoadedViewPage } from "../explore/live-view.ts";
+
+/**
+ * The listing's composed page, from the catalogue snapshot `findItem` resolved it from a line
+ * earlier — so the booking flow reads exactly the intake, session format and stage template the page
+ * rendered. The throw is unreachable: `findItem` only returns an item when that snapshot exists.
+ */
+function buildViewPage(item: ExploreItem): EntityView {
+	const view = composeLoadedViewPage(item);
+	if (!view) throw new Error("explore catalogue snapshot vanished between two reads");
+	return view;
+}
 import { findItem } from "../explore/query.ts";
 import type {
 	ArchiveDraftInput,
@@ -138,7 +149,7 @@ import {
 import { intakeRefusal, normaliseIntakeAnswers } from "@projective/types/services";
 import { plainTextToHtml } from "@projective/types/richtext";
 import { toMinorUnits } from "@projective/types/finance";
-import type { EntityView, ServiceItem } from "@projective/types/explore";
+import type { EntityView, ExploreItem, ServiceItem } from "@projective/types/explore";
 import { ProfileBackendService } from "../profile/ProfileBackendService.ts";
 import type {
 	ArchiveProject,
@@ -1432,7 +1443,7 @@ export class ProjectBackendService {
 		 * the list checked here is the list the client saw. An unresolvable seller is a 404 rather than
 		 * an unchecked invitation — there is nobody to invite.
 		 */
-		const sellerRead = ProfileBackendService.overview(`@${handle}`);
+		const sellerRead = await ProfileBackendService.overview(`@${handle}`, actor);
 		if (!sellerRead.ok || !sellerRead.data) {
 			return fail(404, { message: `No profile found for "@${handle}".` });
 		}

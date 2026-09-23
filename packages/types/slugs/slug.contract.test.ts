@@ -61,6 +61,20 @@ const SLUGGED_TABLES = [
 		unique: "tickets_slug_key",
 		file: "supabase/migrations/00000015_tables_projects.sql",
 	},
+	{
+		entity: "product" as const,
+		table: "catalogue.products",
+		constraint: "ck_products_slug_shape",
+		unique: "products_slug_key",
+		file: "supabase/migrations/00000023_tables_catalogue.sql",
+	},
+	{
+		entity: "article" as const,
+		table: "catalogue.articles",
+		constraint: "ck_articles_slug_shape",
+		unique: "articles_slug_key",
+		file: "supabase/migrations/00000023_tables_catalogue.sql",
+	},
 ];
 
 // #region The minter

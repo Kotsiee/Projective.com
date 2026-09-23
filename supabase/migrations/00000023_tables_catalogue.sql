@@ -58,6 +58,15 @@ CREATE TABLE catalogue.products (
     owner_user_id uuid NOT NULL,
     owner_team_id uuid,
 
+    -- The product's public address — `/view/prd-…` — on the same contract as every other slug:
+    -- opaque, derived from nothing, minted by `security.fn_slug_guard('prd')` when an insert supplies
+    -- none, and refused on any later update. A product is renamed to reposition it far more often than
+    -- a project is, which is exactly the edit a title-derived address would not survive.
+    --
+    -- NOT NULL with NO DEFAULT: the trigger fills it before the NOT NULL is checked, and a DEFAULT
+    -- would be a second minter to keep in step with the first (`slug.contract.test.ts`).
+    slug text NOT NULL,
+
     title text NOT NULL,
     -- Rich body plus the flattened text used for search and card blurbs, mirroring the
     -- description/description_text pairing every other publishable table in this database uses.
@@ -80,6 +89,12 @@ CREATE TABLE catalogue.products (
     -- authored by the seller as one document, read back whole, and never queried by member.
     file_manifest jsonb NOT NULL DEFAULT '[]'::jsonb,
     compatibility jsonb NOT NULL DEFAULT '[]'::jsonb,
+    -- The specification ledger the /view product template prints (`ProductSpecSchema`): an ordered
+    -- [{ label, value }] the seller declares — dimensions, sample rate, poly count, frame rate. A
+    -- product is bought sight-unseen, so these rows ARE the offer; they are stored as the seller wrote
+    -- them rather than derived, because a ledger re-derived from the category would state facts about
+    -- the file that nobody measured.
+    specs jsonb NOT NULL DEFAULT '[]'::jsonb,
 
     -- Masonry cell weight (1 short .. 3 tall), carried from ProductItemSchema.span. Presentation, but
     -- SELLER-AUTHORED presentation, so it belongs on the row rather than being re-derived per render
@@ -93,6 +108,12 @@ CREATE TABLE catalogue.products (
     updated_at timestamptz NOT NULL DEFAULT now(),
 
     CONSTRAINT products_pkey PRIMARY KEY (id),
+    CONSTRAINT products_slug_key UNIQUE (slug),
+    -- The exact shape `security.mint_slug('prd')` produces, and nothing else.
+    CONSTRAINT ck_products_slug_shape CHECK (slug ~ '^prd-[23456789abcdefghjkmnopqrstuvwxyz]{10}$'),
+    CONSTRAINT ck_products_specs_shape CHECK (
+        jsonb_typeof(specs) = 'array' AND jsonb_array_length(specs) <= 24
+    ),
     CONSTRAINT products_owner_user_fkey FOREIGN KEY (owner_user_id) REFERENCES org.users_public(user_id) ON DELETE CASCADE,
     CONSTRAINT products_owner_team_fkey FOREIGN KEY (owner_team_id) REFERENCES org.teams(id) ON DELETE SET NULL
 );
@@ -106,7 +127,11 @@ CREATE TABLE catalogue.articles (
     owner_user_id uuid NOT NULL,
     owner_team_id uuid,
 
-    slug text NOT NULL UNIQUE,
+    -- The article's public address — `/view/art-…` — minted by `security.fn_slug_guard('art')` and
+    -- permanent. It used to be free text (the seed wrote the discovery corpus id into it), which made a
+    -- title-shaped address storable and therefore renameable in practice; the CHECK below refuses any
+    -- shape the minter does not produce.
+    slug text NOT NULL,
     title text NOT NULL,
     topic text NOT NULL DEFAULT ''::text,
     summary text NOT NULL DEFAULT ''::text,
@@ -126,6 +151,9 @@ CREATE TABLE catalogue.articles (
     updated_at timestamptz NOT NULL DEFAULT now(),
 
     CONSTRAINT articles_pkey PRIMARY KEY (id),
+    CONSTRAINT articles_slug_key UNIQUE (slug),
+    -- The exact shape `security.mint_slug('art')` produces, and nothing else.
+    CONSTRAINT ck_articles_slug_shape CHECK (slug ~ '^art-[23456789abcdefghjkmnopqrstuvwxyz]{10}$'),
     CONSTRAINT articles_owner_user_fkey FOREIGN KEY (owner_user_id) REFERENCES org.users_public(user_id) ON DELETE CASCADE,
     CONSTRAINT articles_owner_team_fkey FOREIGN KEY (owner_team_id) REFERENCES org.teams(id) ON DELETE SET NULL,
     CONSTRAINT articles_cover_fkey FOREIGN KEY (cover_file_id) REFERENCES files.items(id) ON DELETE SET NULL,

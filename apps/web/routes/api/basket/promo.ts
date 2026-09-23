@@ -8,6 +8,7 @@ import {
 } from "@features/checkout/core/respond.ts";
 import { BasketBackendService } from "@server/services/finance/BasketBackendService.ts";
 import { basketQueryFromBody } from "@server/services/finance/basket-query.ts";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * `POST /api/basket/promo` — attach a promotional code to a whole basket, or clear it with
@@ -18,9 +19,8 @@ import { basketQueryFromBody } from "@server/services/finance/basket-query.ts";
  * credit. A refused code still comes back as a resolved `promo` carrying its reason — the surface must
  * be able to say *why* it did not apply, not merely fail to change the total.
  *
- * Thin: parse + Zod-validate + resolve the acting context + delegate. No server capability guard — the
- * Dev Context Switcher must reach every persona; the fat service enforces the member gate and the
- * deferred `finance.*` RLS is the real gate.
+ * Thin: parse + Zod-validate + resolve the acting context and session + delegate. The fat service
+ * writes as the signed-in caller, so `finance.*` RLS and its spend predicate are the gate.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -30,9 +30,10 @@ export const handler = define.handlers({
 		const parsed = ApplyPromoCodeSchema.safeParse(raw);
 		if (!parsed.success) return invalidPayload(parsed.error);
 		return toCheckoutResponse(
-			BasketBackendService.applyPromo(
+			await BasketBackendService.applyPromo(
 				parsed.data,
 				basketQueryFromBody(raw as Record<string, unknown>, context),
+				readActor(ctx),
 			),
 		);
 	},

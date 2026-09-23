@@ -1,6 +1,7 @@
 import { page } from "fresh";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { define } from "@web/utils/state.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import CheckoutConfirmationScreen from "@features/checkout/islands/CheckoutConfirmationScreen.island.tsx";
 import { resolveOrder } from "@features/checkout/core/checkout-ssr.ts";
 
@@ -30,9 +31,9 @@ import { resolveOrder } from "@features/checkout/core/checkout-ssr.ts";
  * to a redirect that silently never fired.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const context = asAuthenticatedContext(ctx.state.userContext);
-		const orderPage = resolveOrder(context, ctx.url);
+		const orderPage = await resolveOrder(context, ctx.url, readActor(ctx));
 		ctx.state.title = orderPage
 			? `Order ${orderPage.order.reference} · Projective`
 			: "Order confirmation · Projective";

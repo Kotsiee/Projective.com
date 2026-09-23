@@ -135,3 +135,107 @@ read helpers are granted to `authenticated`.
 > project tables — recomputing a composite inside a stage-approval transaction would couple money
 > movement to reputation math. `standing_demotion_grace_days` (default 30) is reserved for the
 > anti-flapping guard on demotions.
+
+---
+
+## 👤 The public profile (`00001040`)
+
+**Migration:**
+[`00001040_functions_org_profiles.sql`](../../../supabase/migrations/00001040_functions_org_profiles.sql)
+· **Grants:** [`00002510`](../../../supabase/migrations/00002510_permissions_function_grants.sql).
+
+`/[handle]` resolves one of four entity kinds — an individual (`org.users_public`), a team, a business
+or an organisation — and paints the same page for all of them. Everything it reads and writes comes
+through the definer functions below, and that is the security model, not a convenience: the entity
+rows hold far more than a visitor may see (`users_public.dob`, a business's billing email, a team's
+payout model) and RLS is ROW-level, so any policy that admits a visitor to a row admits them to every
+column on it. These functions project only the public facts and decide visibility themselves. On the
+write side, `org.users_public` and `org.freelancer_profiles` carry counters, ratings, KYC state and
+capability flags beside the handful of owner-editable fields, and a row-level UPDATE policy cannot
+tell `headline` from `rating_average` — so their client write policies are gone
+([Policies.md](Policies.md)) and `org.save_profile` is the one door.
+
+The owner vocabulary everywhere is `'user' · 'team' · 'business' · 'organisation'`. Every function
+pins `SET search_path = ''`. Every function returns **raw facts** (a bio document, skill labels,
+language codes, storage **references**); the fat service maps them onto the `ProfileView` Zod SSOT, so
+labels, tiers and URLs are decided once, in TypeScript
+(`packages/backend/services/profile/live-profile.ts`).
+
+### Predicates
+
+| Function                                   | Grant                     | Answers                                                                                                                                                                                                                                                                                                               |
+| :----------------------------------------- | :------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fn_profile_manages(owner_type, owner_id)` | revoked from every client | May the caller EDIT this profile? A user their own; a team its owner or a team lead; a business its owner; an organisation its owner or an admin member; a platform admin any. Deliberately narrower than membership.                                                                                                   |
+| `can_manage_profile(owner_type, owner_id)` | `authenticated`           | The same predicate as an RPC, so the fat service can refuse an unauthorised media upload **before** it spends a decode on it.                                                                                                                                                                                         |
+| `fn_profile_visible(owner_type, owner_id)` | `anon` · `authenticated`  | May the caller SEE it? Whoever manages it, plus: a `public`/`unlisted` individual; an `active` team that is `public`/`unlisted`, or its active member; an `active` business or its member; an `active` organisation or its member. It is also the SELECT predicate on the profile ledgers (education, experience, languages, certifications, showcase, settings). |
+| `fn_resolve_profile(handle)`               | revoked from every client | `@handle` → `(owner_type, owner_id)`. Leading `@`s and case are ignored. The four namespaces are separate `UNIQUE` columns, so the tie-break is fixed: a person, then a team, a business, an organisation. It ignores visibility, which is why it is internal.                                                         |
+
+### Reads (`anon` · `authenticated`)
+
+Every read answers **`NULL` for an unknown handle and for a profile the caller may not see alike**,
+so a private profile's existence is never disclosed by a different answer. The fat service maps
+`NULL` to 404 and a failed call to 503: "we could not ask" is never rendered as "nobody is here".
+
+| Function                             | Returns                                                                                                                                                                                                                                                                                                                  |
+| :----------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `get_profile_owner(handle)`          | `{owner_type, owner_id}` — the cheap resolution the scheduling readers use to find an owner's schedule without the whole document.                                                                                                                                                                                       |
+| `get_profile_view(handle)`           | The whole profile chrome in one call: identity, avatar and banner references, the showcase (slot order, alt, references), the context-bar facts, the metrics strip and earned Standing, the owner's presentation switches, the seller's hire intake, and the **viewer's** relationship to the profile (owner, follows). |
+| `get_profile_experience(handle)`     | Career, education and certifications (individuals only).                                                                                                                                                                                                                                                                 |
+| `get_profile_reviews(handle, limit)` | The latest reviews of the profile (default 60), each with its author's card.                                                                                                                                                                                                                                              |
+| `get_profile_roster(handle)`         | A team's, business's or organisation's members.                                                                                                                                                                                                                                                                          |
+| `get_profile_portfolio(handle)`      | The "Selected work" pieces with their cover references; a piece with no picture is omitted, never drawn empty.                                                                                                                                                                                                          |
+| `get_profile_past_projects(handle)`  | Up to 24 **completed** projects the profile posted or delivered on (a delivery assignment that was not declined, cancelled or never funded), only where the project is `public` **and** its `portfolio_display_rights = 'allowed'`, newest first.                                                                        |
+
+### `org.get_party_cards(p_user_ids uuid[])` — the identity door for every other surface
+
+`STABLE` · `SECURITY DEFINER` · granted to `authenticated` (not `anon`). Returns
+`(user_id, username, first_name, last_name, is_freelancer, avatar)` for at most **500** ids, where
+`avatar` is `files.fn_public_media_ref(avatar_file_id)`. It is the one place a person's display facts
+are resolved for any surface that shows OTHER people — project rosters and feeds, message senders,
+contact pickers, the nav's own account button — so an avatar change reaches every one of them on its
+next read instead of living in a dozen copies, and it is the one door that reads other people's
+`users_public` rows without exposing `dob` and the rest.
+
+Wrapped caller-side by `packages/backend/services/profile/party-cards.ts` (`fetchPartyCards` /
+`fetchPartyRows`, chunked to the 500 cap). Every party reader in `projects/` and `messaging/` resolves
+through it, and falls back to names alone if it cannot be read. PL/pgSQL rather than SQL so its body
+resolves `files.fn_public_media_ref` at run time — that function is created later, in `00001160`.
+
+### The owner write path (`authenticated`)
+
+All three are `VOLATILE` · `SECURITY DEFINER` and check `org.fn_profile_manages` first
+(`owner: you cannot edit this profile`). They raise **`22023` with a `<field>: <reason>` message**, so
+the fat service pins each refusal to the input that caused it. The friendly validation is the
+route's (Zod); these re-check every hard limit, because a definer function is the last thing between
+a crafted request and the row.
+
+- **`org.save_profile(owner_type, owner_id, patch jsonb) → jsonb`** — one transaction. `patch`
+  carries only the sections being changed (an absent key is untouched); list sections REPLACE the
+  whole list.
+  - Individual: `first_name` / `last_name`, `headline` (≤ 160), `story` (≤ 4,000), location,
+    `timezone` (checked against the server's zone list), `visibility` (`public` / `unlisted` /
+    `private`), `languages` (≤ 12, a 2–3 letter code and a proficiency each), `skills` (≤ 15, 1–40
+    characters), `experience` (≤ 30), `education` (≤ 20), `certifications` (≤ 20, https-only links;
+    `verified` is preserved on an unchanged row and **cleared** when the name or issuer changes).
+  - Team: `name` (≤ 80), headline, story, `visibility` (`public` / `unlisted` / `invite_only`).
+  - Business: name, headline, story, city, country, timezone.
+  - Organisation: trading name, city, country.
+  - Every kind: `settings` (`allow_avatar_expand`, `show_location`, `show_local_time`), upserted into
+    `org.profile_settings`.
+- **`org.set_profile_avatar(owner_type, owner_id, file_id) → jsonb`** — points the profile photo at
+  a new **avatar rendition**. It re-checks the file rather than trusting where the id came from: a
+  live, public, `uploaded` row with `purpose = 'avatar'` in the `avatars` bucket, owned by this
+  profile's owner (`file: not a processed profile photo for this profile`). It writes
+  `users_public.avatar_file_id`, `teams.avatar_file_id`, or the business's or organisation's
+  `logo_file_id`, and retires the previous rendition (a soft delete — it leaves every listing, and its
+  bytes stay). Returns `{ok, file_id, previous}`.
+- **`org.save_showcase(owner_type, owner_id, slots jsonb) → jsonb`** — replaces the whole six-slot
+  grid (`[{position, file_id, alt}]`; an absent slot is emptied). Each file must be a live, public
+  `showcase` rendition of this owner, and **slot 1 must be an image** — it is the thumbnail every card
+  of the profile leads with. Renditions that drop out of the grid are retired.
+
+> **The derived- and identity-column guards** that stop a client writing `org.teams` /
+> `org.organisations` ratings, counters, plan, ownership, verification, handle or media ids directly
+> are `security.fn_guard_derived_columns` / `fn_guard_immutable_columns`, bound in `00001895` — see
+> [`../security/Functions.md`](../security/Functions.md). These functions pass them because a
+> definer's `current_user` is its owner.

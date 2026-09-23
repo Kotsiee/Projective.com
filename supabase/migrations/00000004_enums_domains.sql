@@ -361,6 +361,19 @@ CREATE TYPE files.owner_kind AS ENUM ('user', 'team', 'business', 'organisation'
 -- files.download_events row. `share` is the anonymous share-slug path (the only one an
 -- unauthenticated actor can reach), which is why the two are never collapsed into one flag.
 CREATE TYPE files.download_via AS ENUM ('hub', 'share', 'picker', 'preview', 'api');
+
+-- `asset_purpose` — what an asset is FOR. `library` is a hub-native asset a person uploaded and can
+-- pick again from the media picker. The other members are RENDITIONS: a copy the media pipeline cut
+-- from a library asset for exactly one public surface (the profile photo, one showcase slot) —
+-- cropped, re-encoded and written into a public bucket with its WebP tiers. A rendition is never
+-- listed as a library asset: it is the answer to "what does the profile show", not a file anyone
+-- chose to keep, and listing it would put a second copy of every avatar in the picker.
+CREATE TYPE files.asset_purpose AS ENUM ('library', 'avatar', 'showcase');
+
+-- `variant_tier` — the derived WebP sizes the pipeline writes beside an image (or beside a video, as
+-- its poster stills). Three tiers rather than a width list so a reader asks for a ROLE — a card
+-- thumbnail, a hero, a full-screen view — and the pipeline decides the pixels per purpose.
+CREATE TYPE files.variant_tier AS ENUM ('sm', 'md', 'lg');
 -- #endregion
 
 -- #region catalogue

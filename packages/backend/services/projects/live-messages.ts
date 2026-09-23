@@ -285,7 +285,7 @@ function messageSender(userId: string, row: PartyRow | undefined): MessageSender
 	return {
 		id: party.id,
 		name: clampOr(party.name, SENDER_NAME_MAX, "Unknown"),
-		avatar: null,
+		avatar: party.avatar,
 		handle,
 	};
 }

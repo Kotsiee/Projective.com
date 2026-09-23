@@ -617,12 +617,18 @@
  * `var()`: an unresolvable custom property invalidates the whole declaration at computed-value time,
  * which would collapse the rail to a single stacked column inside a fixed-height box.
  *
- * The height is reserved so a late-decoding thumbnail cannot shift the display above it.
+ * The height is reserved so a late-decoding thumbnail cannot shift the display above it — and the ROW
+ * is pinned to it (`grid-template-rows`), because a reserved container height does not constrain an
+ * `auto` grid row: the row sizes to its content, and a thumbnail's content is a photograph whose
+ * height follows its width. With five or more images the slots are narrow enough that no photograph
+ * outgrew the rail; with two, each slot is half the column wide, the row grew to the photograph's
+ * height and the rail spilled over the stage flow beneath it.
  */
 .evp-canvas__strip {
     flex: none;
     display: grid;
     grid-template-columns: repeat(var(--evp-rail-n, 4), minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1fr);
     gap: var(--space-2);
     block-size: var(--evp-rail-h);
 }

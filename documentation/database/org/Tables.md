@@ -10,17 +10,30 @@ profiles (freelancer and business), team structures, skill taxonomies, and cross
 Public-facing profile data mirrored from `auth.users`. This ensures that sensitive internal auth
 data remains isolated while providing a searchable directory for the platform.
 
-| Column        | Type | Notes                                      |
-| :------------ | :--- | :----------------------------------------- |
-| `user_id`     | uuid | PK, FK → `auth.users.id`.                  |
-| `username`    | text | Unique platform handle.                    |
-| `first_name`  | text | User's legal/given name.                   |
-| `last_name`   | text | User's family name.                        |
-| `avatar_url`  | text | Reference to storage object.               |
-| `headline`    | text | Short professional tagline.                |
-| `description` | text | Long-form professional summary.            |
-| `visibility`  | text | Defaults to `unlisted`.                    |
-| `dob`         | date | Date of birth for verification/compliance. |
+| Column                                   | Type    | Notes                                                                                                                                                  |
+| :--------------------------------------- | :------ | :----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `user_id`                                | uuid    | PK, FK → `auth.users.id`.                                                                                                                              |
+| `username`                               | text    | Unique platform handle — the `@handle` (lower-cased index `idx_users_public_username_lower`).                                                          |
+| `first_name` / `last_name`               | text    | Nullable.                                                                                                                                              |
+| `avatar_file_id` / `banner_file_id`      | uuid    | FK → `files.items.id`, `ON DELETE SET NULL`. The avatar is an `avatar` RENDITION, set only by `org.set_profile_avatar`; read through `files.fn_public_media_ref`. |
+| `headline`                               | text    | `NOT NULL DEFAULT ''`.                                                                                                                                 |
+| `bio`                                    | jsonb   | The story, as `{"text": …}`.                                                                                                                           |
+| `city` / `country` / `timezone`          | text    | The location line and the live local clock; `city` nullable so "never stated" stays distinct from "cleared".                                          |
+| `languages`                              | text[]  | `NOT NULL DEFAULT '{}'`.                                                                                                                               |
+| `dob`                                    | date    | `NOT NULL`. Never projected to anyone but its owner.                                                                                                   |
+| `visibility`                             | text    | `NOT NULL DEFAULT 'public'`, `CHECK IN ('public','unlisted','private')` (`users_public_visibility_check`) — see below.                                 |
+| `interests`                              | text[]  | Discovery signal.                                                                                                                                      |
+| `rating_*` · `*_project_count` · `service_count` · `product_count` | numeric/int | Platform-computed; written only by definer triggers.                                                                          |
+| `is_freelancer` · `has_business` · `has_team` · `is_operator`      | boolean     | Capability flags; written only by definer RPCs.                                                                                |
+
+**`visibility` is a closed vocabulary** because three readers branch on it: the public directory view
+(`org.profiles_index` lists `public`, resolves `unlisted` by handle, omits the rest), the profile
+read (`org.get_profile_view` answers `private` to its owner alone) and the owner's settings control.
+Free text here let a typo silently hide a profile from everyone. The one predicate every read asks is
+`org.fn_profile_visible` ([Functions.md](Functions.md#-the-public-profile-00001040)).
+
+**There is no client write policy** — see [Policies.md](Policies.md#orgusers_public). Owner edits go
+through `org.save_profile`, which names every column it touches.
 
 ### `org.freelancer_profiles`
 
@@ -133,12 +146,90 @@ Centralized metadata for files associated with profiles or portfolios.
 
 ### `org.portfolios`
 
-Freelancer work samples.
+Freelancer work samples — the profile's "Selected work" masonry.
 
-| Column                  | Type | Notes                                        |
-| :---------------------- | :--- | :------------------------------------------- |
-| `freelancer_profile_id` | uuid | FK → `org.freelancer_profiles.id`.           |
-| `attachment_id`         | uuid | FK → `org.attachments.id` for proof of work. |
+| Column                   | Type    | Notes                                                                                                                               |
+| :----------------------- | :------ | :---------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                     | uuid    | PK.                                                                                                                                 |
+| `user_id`                | uuid    | FK → `org.freelancer_profiles.user_id`, `ON DELETE CASCADE`.                                                                        |
+| `title` / `description`  | text    | `NOT NULL`.                                                                                                                         |
+| `cover_file_id`          | uuid    | FK → `files.items.id`, `ON DELETE SET NULL`. The piece's picture as an asset reference, read with its WebP tiers.                  |
+| `cover_url`              | text    | Predates the asset layer; kept for older rows. A piece with neither picture is left out of the read, never drawn as an empty tile. |
+| `client_name` / `category` | text  | The two captions a tile carries besides its title; both optional (undisclosed work names no client).                              |
+| `attachment_id`          | uuid    | Legacy proof-of-work link.                                                                                                          |
+| `is_public`              | boolean | `NOT NULL DEFAULT true`.                                                                                                            |
+| `sort_order`             | integer | `NOT NULL DEFAULT 0`. Index `idx_portfolios_user (user_id, sort_order)`.                                                           |
+
+RLS is on with **no policy** — every read is `org.get_profile_portfolio` (definer).
+
+---
+
+## 🪪 Profile presentation (`/[handle]`)
+
+The owner vocabulary on the two presentation tables is polymorphic — `'user' · 'team' · 'business' ·
+'organisation'`, the `org.profile_follows` one — because an individual is ONE owner however their
+profile renders. A polymorphic target cannot carry a foreign key, so **every write goes through a
+definer RPC** (`org.save_showcase` / `org.save_profile`) that checks the owner exists and that the
+caller manages it; none of the three tables below has a client write policy. Reads follow the
+profile: a row is visible exactly when `org.fn_profile_visible(owner)` is true.
+
+### `org.profile_showcase_items`
+
+One row per filled showcase slot. Six slots; **slot 1 is the primary still** — the thumbnail every
+explore card, search result and public listing of this profile leads with (projected as
+`org.profiles_index.showcase_bucket` / `showcase_path`, below) — so it must be an image (a card
+cannot lead with a video). That rule needs the file's MIME type, which a `CHECK` cannot read, so
+`org.save_showcase` enforces it.
+
+| Column                    | Type        | Notes                                                                                                   |
+| :------------------------ | :---------- | :------------------------------------------------------------------------------------------------------ |
+| `id`                      | uuid        | PK.                                                                                                     |
+| `owner_type` / `owner_id` | text / uuid | The polymorphic owner; `CHECK` on the four owner kinds.                                                 |
+| `position`                | smallint    | `CHECK (position BETWEEN 1 AND 6)`; `UNIQUE (owner_type, owner_id, position)`.                          |
+| `file_id`                 | uuid        | FK → `files.items.id`, `ON DELETE CASCADE` — a **showcase rendition**, never the library original.     |
+| `alt`                     | text        | `NOT NULL DEFAULT ''`, ≤ 200 chars; an empty string reads back as "{name} — work", never `alt=""`.       |
+| `created_by`              | uuid        | FK → `auth.users.id` — who placed it (a team lead, say, rather than the team's owner).                  |
+| `created_at` / `updated_at` | timestamptz |                                                                                                       |
+
+Zod mirrors (`@projective/types/profile`): the read is `ProfileShowcaseItemSchema` (`profile.ts`),
+the write is `ShowcaseSlotSchema` / `SaveShowcaseSchema` (`edit.ts`).
+
+### `org.profile_settings`
+
+The owner's presentation switches. One row per profile, created on first save; an **absent row
+reads as the column defaults**, so a profile nobody has configured behaves exactly like one whose
+owner accepted every default. Each column is read by exactly one surface — a switch with no reader is
+not allowed here (root `CLAUDE.md` §3 gate 11).
+
+| Column                    | Type        | Default | Read by                                                                              |
+| :------------------------ | :---------- | :------ | :----------------------------------------------------------------------------------- |
+| `owner_type` / `owner_id` | text / uuid | —       | PK `(owner_type, owner_id)`.                                                         |
+| `allow_avatar_expand`     | boolean     | `false` | The hero: visitors may open the profile photo full size. Off by default — a larger copy of someone's face is theirs to offer. |
+| `show_location`           | boolean     | `true`  | The context bar's "City, Country" line.                                              |
+| `show_local_time`         | boolean     | `true`  | The live local clock beside the availability badge.                                  |
+
+Zod mirror: `ProfileSettingsSchema` (`@projective/types/profile`).
+
+### `org.certifications`
+
+A professional certification on an individual's Experience section.
+
+| Column                        | Type        | Notes                                                                                     |
+| :---------------------------- | :---------- | :---------------------------------------------------------------------------------------- |
+| `id`                          | uuid        | PK.                                                                                       |
+| `user_id`                     | uuid        | FK → `org.users_public.user_id`, `ON DELETE CASCADE`.                                     |
+| `name` / `issuer`             | text        | `NOT NULL`.                                                                               |
+| `issued_year` / `expires_year`| text        | Years as text, like education/experience — a date column would invent a month and a day. |
+| `credential_url`              | text        | `CHECK` https-only: it renders as a link on a public profile.                             |
+| `verified` / `verified_at`    | boolean / timestamptz | A **platform** claim; `CHECK (NOT verified OR verified_at IS NOT NULL)`.        |
+| `logo_file_id`                | uuid        | FK → `files.items.id`, `ON DELETE SET NULL`.                                              |
+| `sort_order`                  | integer     | Index `idx_certifications_user (user_id, sort_order)`.                                    |
+
+`verified` is the only reason the row may carry the trust crest, and it is never client-writable:
+`org.save_profile` preserves it on an unchanged row and **clears it the moment the name or issuer is
+edited**, because a verification describes the credential that was checked, not whatever the row
+says now. Zod mirrors: `CertificationEntrySchema` (`tabs.ts`, the read) and `CertificationEditSchema`
+(`edit.ts`, the write).
 
 ### `org.profile_links`
 
@@ -346,6 +437,43 @@ CREATE TYPE org.create_category   AS ENUM ('create', 'run', 'educate', 'advise',
 CREATE TYPE org.streak_kind       AS ENUM ('on_time_delivery', 'fast_response', 'dispute_free', 'client_repeat');
 CREATE TYPE org.achievement_tier  AS ENUM ('milestone', 'bronze', 'silver', 'gold', 'designation');
 ```
+
+---
+
+## 🔎 `org.profiles_index` — the public profile directory (view)
+
+Migration [`00003001_views_profiles_business.sql`](../../../supabase/migrations/00003001_views_profiles_business.sql).
+Every card, owner attribution and profile header a visitor sees is read from this view — the
+discovery catalogue (`packages/backend/services/explore/live-catalog.ts`) reads it with the anon
+client.
+
+It is a VIEW rather than a policy set because RLS is row-level: a policy that let a visitor see a
+user's row would let them see every column on it, including `users_public.dob` and a business's
+billing details. The view runs as its owner and projects only public facts — the column-level
+answer.
+
+**Visibility is the view's own job.** Users appear when `visibility IN ('public','unlisted')`,
+businesses when `status = 'active'`, teams when `status = 'active'` and public or unlisted; anything
+else is absent. `listed` separates the two: `public` rows are ranked and shown by discovery,
+`unlisted` rows resolve by handle (the profile page) but are never listed.
+
+Columns appended on 2026-09-22 (after the original set, never reordered — `CREATE OR REPLACE VIEW`
+may only add trailing columns):
+
+| Column                              | Meaning                                                                                              |
+| :---------------------------------- | :--------------------------------------------------------------------------------------------------- |
+| `listed`                            | Shown by discovery (public), versus reachable by handle only (unlisted).                             |
+| `city`                              | The location line's city.                                                                            |
+| `avatar_bucket` / `avatar_path`     | The avatar's storage object — only for a file that is itself `public`. Never a URL: the URL is a deployment fact built by `packages/backend/core/storage-url.ts`. |
+| `banner_bucket` / `banner_path`     | Same, for the banner.                                                                               |
+| `verified`                          | The verified crest.                                                                                  |
+| `skills`                            | `org.skills` slugs.                                                                                  |
+| `workload`                          | Current workload intensity (the card's capacity meter).                                              |
+| `joined_at`                         |                                                                                                      |
+| `verification_tier`                 | Users: their KYC tier once verified; businesses: 3 when KYB-verified; teams: NULL.                  |
+| `language_codes`                    | Upper-cased codes from `org.user_languages`, native first; `'{}'` for businesses and teams (a code is never guessed from a name). |
+| `delivered_count`                   | Completed `projects.stage_assignments` for the freelancer or the team; 0 for a business.            |
+| `showcase_bucket` / `showcase_path` | _(appended 2026-09-23)_ Showcase **slot 1** — the profile's primary thumbnail — as a storage object: the `org.profile_showcase_items` row at position 1, joined to a live, `public` file. The discovery card leads with it and falls back to the banner (`live-catalog.ts`); NULL when the slot is empty. |
 
 ---
 

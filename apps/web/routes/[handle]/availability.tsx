@@ -13,18 +13,21 @@ import ScheduleView from "@web/features/calendar/islands/ScheduleView.island.tsx
  * the profile chrome (header · tabs) comes from the shared `[handle]/_layout.tsx`.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const profile = ctx.state.profile;
 		ctx.state.title = profile
 			? `Availability · ${profile.name} · Projective`
 			: "Availability · Projective";
-		return page();
+		// Read live in the handler: the schedule comes from Postgres, and a page component cannot await.
+		const { page: schedule } = profile
+			? await resolveAvailabilityPage(profile.handle, viewerFromState(ctx.state))
+			: { page: null };
+		return page({ schedule });
 	},
 });
 
-export default define.page(function ProfileAvailabilityPage(ctx) {
+export default define.page<typeof handler>(function ProfileAvailabilityPage(ctx) {
 	const profile = ctx.state.profile;
 	if (!profile) return null;
-	const { page: schedule } = resolveAvailabilityPage(profile.handle, viewerFromState(ctx.state));
-	return <ScheduleView scope="availability" handle={profile.handle} initial={schedule} fullPage />;
+	return <ScheduleView scope="availability" handle={profile.handle} initial={ctx.data.schedule} fullPage />;
 });

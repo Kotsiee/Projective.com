@@ -20,7 +20,6 @@ import {
 import { ExploreService } from "@features/explore/core/ExploreService.ts";
 import { serviceStartingPrice } from "@features/explore/core/pricing.ts";
 import { BookingService } from "@features/view/core/BookingService.ts";
-import { bookingSim } from "@features/view/core/booking-seam.ts";
 import { DateRail } from "@features/view/components/DateRail.tsx";
 import { SlotPicker } from "@features/view/components/SlotPicker.tsx";
 import { EntityPreview } from "@features/view/components/EntityPreview.tsx";
@@ -134,7 +133,7 @@ export default function ServiceDetailModal(
 		offer.value = null;
 		const [viewRead, offerRead] = await Promise.all([
 			ExploreService.view(id),
-			BookingService.offer(id, { handle, sim: bookingSim() }),
+			BookingService.offer(id, { handle }),
 		]);
 		if (service.value?.id !== id) return; // another listing was picked meanwhile
 		loading.value = false;
@@ -162,7 +161,7 @@ export default function ServiceDetailModal(
 			timezone: viewerZone(),
 			from: from ?? undefined,
 			days: WINDOW_DAYS,
-		}, bookingSim());
+		});
 		gridLoading.value = false;
 		if (!res.ok || !res.data) {
 			error.value = res.message ?? "Could not load availability.";
@@ -287,7 +286,7 @@ export default function ServiceDetailModal(
 						note: message.value.trim() || undefined,
 						seats: o.format === "cohort" ? seats.value : 1,
 						answers: answers.value,
-					}, bookingSim());
+					});
 					if (!res.ok || !res.data) {
 						error.value = res.message ?? "Could not hold that time.";
 						// Somebody may have taken the slot: re-read rather than keep a stale grid on screen.

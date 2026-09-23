@@ -202,18 +202,22 @@ export function scheduleHref(item: BasketItem): string | null {
 
 /**
  * Where a stage-routed line goes to choose or review its stage — the canonical project channel
- * namespace `/projects/[projectId]/[channelId]`.
+ * namespace `/projects/[projectSlug]/[stageSlug]`, which resolves a `stg-` segment to the stage's own
+ * room (Decision #93). The basket answers a line's stage as that slug.
  *
- * **Flagged:** the second segment is a CHANNEL id in that namespace, and a basket line carries a STAGE
- * id. They coincide in the current fixtures (a stage channel is addressed by its stage segment), but a
- * live path that diverges must map stage → channel here rather than at each call site. `null` when the
- * line is not stage-routed or its project is unknown.
+ * The project is the line's BOARD: a project ticket's own project, or — for a service ticket — the
+ * buyer's engagement instantiated from that listing, which the basket names as `boardProjectId`.
+ * `null` when the line is not stage-routed or its project is unknown.
  */
 export function stageHref(item: BasketItem): string | null {
 	if (!item.stageId) return null;
-	const projectId = typeof item.metadata.projectId === "string" ? item.metadata.projectId : null;
-	if (!projectId) return null;
-	return `/projects/${encodeURIComponent(projectId)}/${encodeURIComponent(item.stageId)}`;
+	const board = typeof item.metadata.boardProjectId === "string"
+		? item.metadata.boardProjectId
+		: typeof item.metadata.projectId === "string"
+		? item.metadata.projectId
+		: null;
+	if (!board) return null;
+	return `/projects/${encodeURIComponent(board)}/${encodeURIComponent(item.stageId)}`;
 }
 
 /** Strip a leading `@` so a handle is never double-prefixed in a URL. */

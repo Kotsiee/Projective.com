@@ -8,8 +8,8 @@ import { ExploreBackendService } from "@server/services/explore/ExploreBackendSe
  * the curated "Related" search terms shown beneath the results header.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const params = parseExploreParams(ctx.url.searchParams);
-		return toExploreResponse(ExploreBackendService.related(params));
+		return toExploreResponse(await ExploreBackendService.related(params));
 	},
 });

@@ -39,6 +39,16 @@ import { CloseIcon } from "./glyphs.tsx";
  *  - **Invited freelancer** — CONTEXTUAL, and read-only: rendered only when the modal was opened
  *    from a seller's profile, where the answer is already settled by the page it was opened from.
  *
+ * # One form, two pacings
+ *
+ * The `/projects` lane opens it as a single screen, because its create menu has already settled the
+ * type on the way in. A client arriving from a seller's profile gets the same fields SPLIT in two —
+ * the type on its own screen, then the details ({@link ProjectCreateModalProps.flow}) — because
+ * nothing on that page has chosen a type for them, and which of the three kinds of engagement this
+ * is changes what every field after it means. The fields, the payload, the keyboard rule and the
+ * refusal handling are identical either way; only the pacing differs, which is what keeps a Task
+ * minted from a profile the same row as a Task minted from the lane.
+ *
  * Currency and the baseline price are deliberately NOT here. Neither blocks a coherent draft, both
  * are decisions about money that deserve the workspace's own Advanced options, and asking for a
  * figure before the brief is written is asking somebody to price work they have not described. The
@@ -102,6 +112,15 @@ export interface ProjectCreateModalProps {
 	scopeId: string;
 	/** Present only when opened from a `/[handle]` profile — renders the invited-freelancer row. */
 	seller?: CreateModalSeller;
+	/**
+	 * How the form is PACED — see the module docblock.
+	 *
+	 * `"single"` (the default) puts every field on one screen. `"stepped"` asks for the type first and
+	 * the details second, and in that mode nothing is pre-selected: {@link initialType} is read only
+	 * as the fallback for where focus lands if the reader steps Back before picking anything, because
+	 * a first step arriving with an answer already filled in is a default the client never chose.
+	 */
+	flow?: "single" | "stepped";
 	onClose: () => void;
 	/**
 	 * Called with the created project's **slug** once the write succeeds — never the uuid, which no
@@ -123,19 +142,47 @@ const FIELD_KEYS: ReadonlySet<string> = new Set<FieldKey>(["title", "description
 
 /** Mount once; drive it with `open`. */
 export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element | null {
-	const { open, initialType, defaultCurrency, scopeId, seller, onClose, onCreated } = props;
+	const {
+		open,
+		initialType,
+		defaultCurrency,
+		scopeId,
+		seller,
+		flow = "single",
+		onClose,
+		onCreated,
+	} = props;
+	const stepped = flow === "stepped";
 
 	const { mounted, state } = usePresence(open);
 	const stack = useOverlayStack({ active: mounted, lockScroll: true, layer: "modal" });
 	const panelRef = useRef<HTMLDivElement>(null);
 	const titleFieldRef = useRef<HTMLDivElement>(null);
-	useFocusTrap({ active: mounted, containerRef: panelRef, initialFocusRef: titleFieldRef });
+	const cardsRef = useRef<HTMLDivElement>(null);
+	/*
+	 * Focus enters on the first thing the reader is being asked for: the type cards in `stepped`, the
+	 * name in `single`. The trap treats a non-focusable ref as a SCOPE and focuses its first tabbable
+	 * descendant, so pointing at either wrapper is enough — and `stepped` never changes for the life
+	 * of a mount, so the ref this resolves to is stable.
+	 */
+	useFocusTrap({
+		active: mounted,
+		containerRef: panelRef,
+		initialFocusRef: stepped ? cardsRef : titleFieldRef,
+	});
 	useDismiss({ open: mounted, onDismiss: onClose, panelRef, closeOnOutside: false });
 
 	// #region Form state
+	/** Which screen `stepped` is on. Pinned at 2 in `single`, where both halves render at once. */
+	const step = useSignal<1 | 2>(stepped ? 1 : 2);
 	const title = useSignal("");
 	const brief = useSignal("");
-	const type = useSignal<ProjectTypeChoice>(initialType);
+	/**
+	 * Null only on a `stepped` first visit: the type step opens NEUTRAL, so the reader's press is the
+	 * answer rather than the confirmation of one already made for them. Non-null everywhere a payload
+	 * is built, because step 2 is only reachable by picking.
+	 */
+	const type = useSignal<ProjectTypeChoice | null>(stepped ? null : initialType);
 
 	/**
 	 * Per-field interaction state. A field rests on the neutral border and only shows an error once it
@@ -155,15 +202,16 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 	// the next attempt.
 	useEffect(() => {
 		if (!open) return;
+		step.value = stepped ? 1 : 2;
 		title.value = "";
 		brief.value = "";
-		type.value = initialType;
+		type.value = stepped ? null : initialType;
 		touched.value = {};
 		focused.value = null;
 		fieldErrors.value = {};
 		submitting.value = false;
 		formError.value = null;
-	}, [open, initialType]);
+	}, [open, initialType, stepped]);
 
 	/** The title's own verdict, independent of whether it has been shown yet. */
 	const titleVerdict = useComputed<FieldStatus>(() => {
@@ -175,6 +223,8 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 	if (!mounted) return null;
 
 	const picked = type.value;
+	/** The type screen — `stepped`'s first step, and never rendered at all in `single`. */
+	const onTypeStep = stepped && step.value === 1;
 
 	// #region Field plumbing
 	const markTouched = (key: FieldKey) => {
@@ -226,9 +276,36 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 		clearFieldError("description");
 	};
 
+	const focusTitleField = () => {
+		titleFieldRef.current?.querySelector<HTMLInputElement>("input")?.focus();
+	};
+
 	const pickType = (next: ProjectTypeChoice) => {
 		type.value = next;
 		clearFieldError("format");
+		if (!stepped) return;
+		/*
+		 * A choice-only step advances on the choice: the press IS the answer, and a Continue button
+		 * under three cards asks the reader to confirm something they have already said.
+		 *
+		 * The focus move is deferred by a macrotask, because the field it moves to does not exist until
+		 * this render commits — and a step that advances while focus sits on a card no longer in the
+		 * document drops a keyboard reader at the top of the dialog. A frame would be worse still:
+		 * `requestAnimationFrame` never fires in a hidden or unpainted tab, and entering a form must
+		 * not depend on one that may never arrive.
+		 */
+		step.value = 2;
+		setTimeout(focusTitleField, 0);
+	};
+
+	/** Back to the type step, with focus on the card that was chosen (or the first, if none was). */
+	const stepBack = () => {
+		step.value = 1;
+		const chosen = type.value;
+		setTimeout(() => {
+			const selector = chosen ? `[data-type="${chosen}"]` : ".pjc__type";
+			panelRef.current?.querySelector<HTMLButtonElement>(selector)?.focus();
+		}, 0);
 	};
 
 	/**
@@ -255,12 +332,8 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 		panelRef.current?.querySelector<HTMLButtonElement>(`[data-type="${next}"]`)?.focus();
 	};
 
-	const focusTitle = () => {
-		titleFieldRef.current?.querySelector<HTMLInputElement>("input")?.focus();
-	};
-
-	const buildPayload = (): CreateProject => {
-		const [format, hasStages] = createInputForType(picked);
+	const buildPayload = (chosen: ProjectTypeChoice): CreateProject => {
+		const [format, hasStages] = createInputForType(chosen);
 		return {
 			title: title.value.trim(),
 			format,
@@ -277,15 +350,19 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 
 	const submit = async () => {
 		if (submitting.value) return; // a double-press must not post twice
+		// Unreachable from the interface — the primary is not rendered on the type step — but a payload
+		// cannot be built without it, so the guard states the invariant rather than assuming it.
+		const chosen = type.value;
+		if (!chosen) return;
 		if (titleVerdict.value !== "default") {
 			touched.value = { ...touched.value, title: true };
-			focusTitle();
+			focusTitleField();
 			return;
 		}
 		submitting.value = true;
 		formError.value = null;
 		fieldErrors.value = {};
-		const res = await ProjectSidebarService.create(buildPayload());
+		const res = await ProjectSidebarService.create(buildPayload(chosen));
 		submitting.value = false;
 		if (res.ok && res.data) {
 			onCreated(res.data.slug);
@@ -310,11 +387,18 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 	};
 	// #endregion
 
-	const blocked = titleError !== null || formError.value !== null;
-	const note = formError.value ?? titleError ??
-		(seller
-			? `A draft. Finish the setup on its page, then bring ${seller.name} in from the roster.`
-			: "You can add the stages, the pricing and the rules straight after this.");
+	const blocked = !onTypeStep && (titleError !== null || formError.value !== null);
+	const note = onTypeStep
+		? "You can change the type later in the project's settings."
+		: (formError.value ?? titleError ??
+			(seller
+				? `A draft. Finish the setup on its page, then bring ${seller.name} in from the roster.`
+				: "You can add the stages, the pricing and the rules straight after this."));
+
+	/** The heading names what is being made, once the reader has said what it is. */
+	const heading = stepped && !onTypeStep && picked
+		? `New ${PROJECT_TYPE_LABEL[picked].toLowerCase()}`
+		: "New project";
 
 	return (
 		<BodyPortal>
@@ -339,116 +423,178 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 					onPointerDownCapture={formPointerDown}
 				>
 					<header class="pjc__top">
-						<h2 class="pjc__heading">New project</h2>
+						<div class="pjc__title">
+							<h2 class="pjc__heading">{heading}</h2>
+							{stepped && (
+								<p class="pjc__step" aria-live="polite">
+									{onTypeStep ? "Step 1 of 2 · Choose a type" : "Step 2 of 2 · Name it"}
+								</p>
+							)}
+						</div>
 						<button type="button" class="pjc__close" aria-label="Close" onClick={onClose}>
 							{CloseIcon}
 						</button>
 					</header>
 
 					<div class="pjc__body">
-						<div ref={titleFieldRef} {...fieldProps("title")}>
-							<label class="pjc__label" for={TITLE_ID}>Project name</label>
-							<InputText
-								id={TITLE_ID}
-								value={title}
-								onValueChange={onTitleChange}
-								placeholder="e.g. Helia wallet redesign"
-								block
-								maxLength={TITLE_MAX}
-								required
-								status={titleStatus}
-							/>
-							{titleError && <p class="pjc__hint pjc__hint--error">{titleError}</p>}
-						</div>
-
-						<div {...fieldProps("description")}>
-							<label class="pjc__label" for={BRIEF_ID}>
-								Description
-								<span class="pjc__optional">Optional</span>
-							</label>
-							<Textarea
-								id={BRIEF_ID}
-								value={brief}
-								onValueChange={onBriefChange}
-								placeholder="What needs doing, and what does finished look like?"
-								rows={3}
-								maxRows={7}
-								autoResize
-								maxLength={BRIEF_MAX}
-								status={statusOf("description")}
-								fluid
-							/>
-							<p class="pjc__hint">
-								{fieldErrors.value.description ??
-									"A line or two is plenty — the full brief comes next."}
-							</p>
-						</div>
-
-						<div class="pjc__field">
-							<span class="pjc__label" id={TYPE_LABEL_ID}>Project type</span>
-							<div
-								class="pjc__types"
-								role="radiogroup"
-								aria-labelledby={TYPE_LABEL_ID}
-								aria-describedby={TYPE_HINT_ID}
-							>
-								{TYPE_CARDS.map((value, index) => {
-									const active = value === picked;
-									return (
+						{
+							/*
+							 * The type step. Plain buttons in a `group`, NOT a radiogroup, and the distinction is
+							 * load-bearing: a radiogroup's selection follows focus, so arrowing across the cards
+							 * would advance the step on every key — and the shared Enter rule treats an
+							 * already-chosen radio as "move to the next control", which on the card the reader
+							 * just stepped Back to would be a dead press. As buttons, Enter and Space are the
+							 * browser's own activation, and activation is exactly what this step means.
+							 */
+						}
+						{onTypeStep && (
+							<>
+								<p class="pjc__lead">
+									{seller
+										? `What kind of work are you bringing ${seller.name} into?`
+										: "What kind of work is this?"}
+								</p>
+								<div
+									ref={cardsRef}
+									class="pjc__types pjc__types--list"
+									role="group"
+									aria-label="Project type"
+								>
+									{TYPE_CARDS.map((value) => (
 										<button
 											key={value}
 											type="button"
-											role="radio"
-											aria-checked={active}
 											data-type={value}
-											class="pjc__type"
-											// Roving tabindex: one stop for the whole group, on the chosen card, so Tab
-											// steps past the control rather than through it.
-											tabIndex={active ? 0 : -1}
+											class="pjc__type pjc__type--row"
+											aria-current={value === picked ? "true" : undefined}
 											onClick={() => pickType(value)}
-											onKeyDown={(e) => onCardKeyDown(e, index)}
 										>
 											<span class="pjc__type-glyph" aria-hidden="true">
-												<Icon name={TYPE_ICON[value]} size="lg" />
+												<Icon name={TYPE_ICON[value]} size="xl" />
 											</span>
-											<span class="pjc__type-label">{PROJECT_TYPE_LABEL[value]}</span>
+											<span class="pjc__type-text">
+												<span class="pjc__type-label">{PROJECT_TYPE_LABEL[value]}</span>
+												<span class="pjc__type-hint">{PROJECT_TYPE_HINT[value]}</span>
+											</span>
 										</button>
-									);
-								})}
-							</div>
-							<p class="pjc__hint" id={TYPE_HINT_ID}>
-								{fieldErrors.value.format ?? PROJECT_TYPE_HINT[picked]}
-							</p>
-						</div>
-
-						{
-							/*
-							 * The invited freelancer is CONTEXT, not a control: the modal was opened from this
-							 * person's profile, so there is no choice left to offer and a picker would only
-							 * invite the client to contradict the page they came from. It is rendered read-only
-							 * for the same reason the checkout prints what you are buying — the commitment
-							 * being made should be legible at the moment it is made.
-							 */
-						}
-						{seller && (
-							<div class="pjc__field">
-								<span class="pjc__label" id={INVITE_ID}>Invited freelancer</span>
-								<div class="pjc__invitee" aria-labelledby={INVITE_ID}>
-									<Avatar
-										image={seller.avatar ?? undefined}
-										label={seller.name}
-										shape="circle"
-										size="sm"
-									/>
-									<span class="pjc__invitee-text">
-										<span class="pjc__invitee-name">{seller.name}</span>
-										<span class="pjc__invitee-handle">{seller.handle}</span>
-									</span>
+									))}
 								</div>
-								<p class="pjc__hint">
-									They are invited from the project's roster once it has a scope and a price.
-								</p>
-							</div>
+								{fieldErrors.value.format && (
+									<p class="pjc__hint pjc__hint--error">{fieldErrors.value.format}</p>
+								)}
+							</>
+						)}
+
+						{!onTypeStep && (
+							<>
+								<div ref={titleFieldRef} {...fieldProps("title")}>
+									<label class="pjc__label" for={TITLE_ID}>Project name</label>
+									<InputText
+										id={TITLE_ID}
+										value={title}
+										onValueChange={onTitleChange}
+										placeholder="e.g. Helia wallet redesign"
+										block
+										maxLength={TITLE_MAX}
+										required
+										status={titleStatus}
+									/>
+									{titleError && <p class="pjc__hint pjc__hint--error">{titleError}</p>}
+								</div>
+
+								<div {...fieldProps("description")}>
+									<label class="pjc__label" for={BRIEF_ID}>
+										Description
+										<span class="pjc__optional">Optional</span>
+									</label>
+									<Textarea
+										id={BRIEF_ID}
+										value={brief}
+										onValueChange={onBriefChange}
+										placeholder="What needs doing, and what does finished look like?"
+										rows={3}
+										maxRows={7}
+										autoResize
+										maxLength={BRIEF_MAX}
+										status={statusOf("description")}
+										fluid
+									/>
+									<p class="pjc__hint">
+										{fieldErrors.value.description ??
+											"A line or two is plenty — the full brief comes next."}
+									</p>
+								</div>
+
+								{!stepped && (
+									<div class="pjc__field">
+										<span class="pjc__label" id={TYPE_LABEL_ID}>Project type</span>
+										<div
+											class="pjc__types"
+											role="radiogroup"
+											aria-labelledby={TYPE_LABEL_ID}
+											aria-describedby={TYPE_HINT_ID}
+										>
+											{TYPE_CARDS.map((value, index) => {
+												const active = value === picked;
+												return (
+													<button
+														key={value}
+														type="button"
+														role="radio"
+														aria-checked={active}
+														data-type={value}
+														class="pjc__type"
+														// Roving tabindex: one stop for the whole group, on the chosen card, so Tab
+														// steps past the control rather than through it.
+														tabIndex={active ? 0 : -1}
+														onClick={() => pickType(value)}
+														onKeyDown={(e) => onCardKeyDown(e, index)}
+													>
+														<span class="pjc__type-glyph" aria-hidden="true">
+															<Icon name={TYPE_ICON[value]} size="lg" />
+														</span>
+														<span class="pjc__type-label">{PROJECT_TYPE_LABEL[value]}</span>
+													</button>
+												);
+											})}
+										</div>
+										<p class="pjc__hint" id={TYPE_HINT_ID}>
+											{fieldErrors.value.format ??
+												PROJECT_TYPE_HINT[picked ?? initialType]}
+										</p>
+									</div>
+								)}
+
+								{
+									/*
+									 * The invited freelancer is CONTEXT, not a control: the modal was opened from this
+									 * person's profile, so there is no choice left to offer and a picker would only
+									 * invite the client to contradict the page they came from. It is rendered read-only
+									 * for the same reason the checkout prints what you are buying — the commitment
+									 * being made should be legible at the moment it is made.
+									 */
+								}
+								{seller && (
+									<div class="pjc__field">
+										<span class="pjc__label" id={INVITE_ID}>Invited freelancer</span>
+										<div class="pjc__invitee" aria-labelledby={INVITE_ID}>
+											<Avatar
+												image={seller.avatar ?? undefined}
+												label={seller.name}
+												shape="circle"
+												size="sm"
+											/>
+											<span class="pjc__invitee-text">
+												<span class="pjc__invitee-name">{seller.name}</span>
+												<span class="pjc__invitee-handle">{seller.handle}</span>
+											</span>
+										</div>
+										<p class="pjc__hint">
+											They are invited from the project's roster once it has a scope and a price.
+										</p>
+									</div>
+								)}
+							</>
 						)}
 					</div>
 
@@ -457,15 +603,26 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 							{note}
 						</p>
 						<div class="pjc__actions">
-							<Button variant="text" label="Cancel" onClick={onClose} />
-							<Button
-								variant="filled"
-								severity="primary"
-								label={submitting.value ? "Creating…" : "Create project"}
-								loading={submitting.value}
-								disabled={submitting.value}
-								onClick={submit}
-							/>
+							{stepped && !onTypeStep
+								? <Button variant="text" label="Back" onClick={stepBack} />
+								: <Button variant="text" label="Cancel" onClick={onClose} />}
+							{
+								/*
+								 * Absent on the type step rather than disabled: there is nothing to create yet, and a
+								 * control that renders and refuses advertises a capability it does not have. The
+								 * cards ARE this step's action.
+								 */
+							}
+							{!onTypeStep && (
+								<Button
+									variant="filled"
+									severity="primary"
+									label={submitting.value ? "Creating…" : "Create project"}
+									loading={submitting.value}
+									disabled={submitting.value}
+									onClick={submit}
+								/>
+							)}
 						</div>
 					</footer>
 				</div>

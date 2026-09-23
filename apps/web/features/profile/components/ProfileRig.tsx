@@ -11,6 +11,7 @@ import { HireMenu } from "./hire/HireMenu.tsx";
 import { type HireProject, rigFor } from "../core/profile-model.ts";
 import {
 	gate,
+	isFollowing as followsNow,
 	noteOpener,
 	openMessage,
 	openWizard,
@@ -21,13 +22,7 @@ import {
 	shareProfile,
 	toggleFollow,
 } from "../core/rig-actions.ts";
-import {
-	addMenuOpen,
-	followCelebrating,
-	following,
-	hireMenuOpen,
-	rigStatus,
-} from "../core/profile-state.ts";
+import { addMenuOpen, followCelebrating, hireMenuOpen, rigStatus } from "../core/profile-state.ts";
 import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
 
 /**
@@ -64,6 +59,11 @@ export interface ProfileRigProps {
 	profile: ProfileView;
 	/** Whether the viewer owns this profile (swaps the rig for Settings + Share). */
 	canEdit: boolean;
+	/**
+	 * The owner PREVIEWING their own profile: the visitor's rig renders, and a press explains what it
+	 * does for visitors instead of acting (`core/rig-actions.ts` `gate`).
+	 */
+	preview?: boolean;
 	/** Whether the viewer is signed in — a guest's account-bound presses open the sign-in prompt. */
 	authed: boolean;
 	/** The seller's active listings — the Hire popover's rows. */
@@ -82,7 +82,13 @@ const BURST_DOTS = 6;
 
 export function ProfileRig(props: ProfileRigProps): JSX.Element {
 	const { profile, canEdit, authed, services, consultation, hireProjects, variant } = props;
-	const viewer: RigViewer = { authed, name: profile.name };
+	const viewer: RigViewer = {
+		authed,
+		name: profile.name,
+		handle: profile.handle,
+		preview: props.preview,
+		follows: profile.viewer?.follows,
+	};
 	const compact = variant === "band";
 	const size = compact ? "sm" : "md";
 	/**
@@ -109,7 +115,7 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 		offersConsultation: consultation !== null,
 		authed,
 	});
-	const isFollowing = following.value;
+	const isFollowing = followsNow(viewer);
 	const celebrating = followCelebrating.value;
 	const followLabel = isFollowing ? `Following ${profile.name}` : `Follow ${profile.name}`;
 	const followText = isFollowing ? "Following" : "Follow";
@@ -256,6 +262,7 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 										aria-expanded={api.expanded ? "true" : "false"}
 										aria-controls={api.panelId}
 										onClick={(e) => {
+											if (gate(viewer, "hire")) return;
 											noteOpener(e.currentTarget);
 											api.toggle();
 										}}

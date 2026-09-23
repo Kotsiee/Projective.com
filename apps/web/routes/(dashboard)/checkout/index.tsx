@@ -1,6 +1,7 @@
 import { page } from "fresh";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { define } from "@web/utils/state.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import CheckoutBasketScreen from "@features/checkout/islands/CheckoutBasketScreen.island.tsx";
 import { resolveBasket, resolveCheckoutSession } from "@features/checkout/core/checkout-ssr.ts";
 
@@ -33,10 +34,13 @@ import { resolveBasket, resolveCheckoutSession } from "@features/checkout/core/c
  * redirect that silently never fired.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const context = asAuthenticatedContext(ctx.state.userContext);
-		const bootstrap = resolveBasket(context, ctx.url);
-		const { session } = resolveCheckoutSession(context, ctx.url);
+		const actor = readActor(ctx);
+		const [bootstrap, { session }] = await Promise.all([
+			resolveBasket(context, ctx.url, actor),
+			resolveCheckoutSession(context, ctx.url, actor),
+		]);
 		ctx.state.title = "Basket · Projective";
 		return page({ bootstrap, processingOffer: session.processingOffer });
 	},

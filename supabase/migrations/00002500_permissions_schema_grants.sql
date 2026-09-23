@@ -291,3 +291,53 @@ GRANT USAGE ON SCHEMA integrations TO service_role;
 -- --- from 20260724110000_analytics_event_substrate.sql ---
 
 GRANT USAGE ON SCHEMA analytics TO authenticated;
+
+
+-- --- the move off fixtures (2026-09-22): discovery reads the database ---
+--
+-- `catalogue` shipped with no privileges at all. Usage for all three roles: a signed-out visitor
+-- browses published listings exactly as a signed-in one does, and every row-level decision is made
+-- by the policies in 00002020 — usage on the schema grants nothing by itself.
+GRANT USAGE ON SCHEMA catalogue TO anon, authenticated, service_role;
+
+-- `finance` is exposed to PostgREST under RLS (Decision #68(a), lifted 2026-09-23 with the product
+-- owner's approval). Usage grants nothing by itself — and nothing broad follows it: every table a
+-- client role reaches is named in 00002520 with the narrowest privilege it needs, has RLS on
+-- (00002001) and is filtered by the policies in 00002013; the tables with no grant (promo codes,
+-- idempotency keys, ratings, the reconciliation view) stay reachable only through SECURITY DEFINER
+-- functions and the service role. The functions matter as much as the tables: Postgres grants
+-- EXECUTE to PUBLIC by default, and with usage granted the ledger primitives would be callable over
+-- the API — 00002510 revokes them before anything can reach them. `anon` reads one table, the FX floor.
+GRANT USAGE ON SCHEMA finance TO anon, authenticated, service_role;
+
+-- Guests read PUBLIC projects. Nine `FOR SELECT TO public` policies in 00002011 were written for
+-- exactly this visitor (`status = 'active' AND visibility = 'public'`) and were unreachable, because
+-- `anon` had no usage on the schema (Decision #85(e)). Usage alone still grants nothing — the
+-- table-level SELECTs in 00002520 name the handful of tables a public project page reads, and no
+-- write privilege reaches `anon` here.
+GRANT USAGE ON SCHEMA projects TO anon;
+
+-- TRUNCATE is not row-level, so RLS does not bound it (Decision #83). `marketplace` and `reviews` are
+-- `GRANT ALL` to both client roles, which included TRUNCATE; exposing both to PostgREST is what makes
+-- that worth closing. PostgREST never issues TRUNCATE, so this is defence in depth — but it is the
+-- only thing between a leaked session and an empty review table if anything else ever does.
+REVOKE TRUNCATE ON ALL TABLES IN SCHEMA marketplace FROM anon, authenticated;
+
+REVOKE TRUNCATE ON ALL TABLES IN SCHEMA reviews FROM anon, authenticated;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA marketplace REVOKE TRUNCATE ON TABLES FROM anon, authenticated;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA reviews REVOKE TRUNCATE ON TABLES FROM anon, authenticated;
+
+-- The same for `org` and `files` (2026-09-23), the two schemas the public profile and its media
+-- pipeline live in. Both are `GRANT ALL` above — `org` to `anon` as well — so every profile table,
+-- including the showcase, the privacy switches and the certifications, and every media row and WebP
+-- tier, could be emptied by a caller RLS would not let read a single row of it. The service role and
+-- the definer functions are unaffected; nothing in the application truncates as a client.
+REVOKE TRUNCATE ON ALL TABLES IN SCHEMA org FROM anon, authenticated;
+
+REVOKE TRUNCATE ON ALL TABLES IN SCHEMA files FROM anon, authenticated;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA org REVOKE TRUNCATE ON TABLES FROM anon, authenticated;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA files REVOKE TRUNCATE ON TABLES FROM anon, authenticated;

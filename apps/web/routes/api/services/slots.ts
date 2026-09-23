@@ -1,8 +1,8 @@
 import { define } from "@web/utils/state.ts";
 import { SlotQuerySchema } from "@projective/types/scheduling";
-import { serviceSimFromParams } from "@projective/types/services";
 import { BookingBackendService } from "@server/services/booking/BookingBackendService.ts";
 import { invalidPayload, toBookingResponse } from "@features/view/core/respond.ts";
+import { warmCatalog } from "@server/services/explore/live-catalog.ts";
 
 /**
  * `GET /api/services/slots?subjectId=&purpose=&timezone=&from=&days=&callType=` — the bookable slot
@@ -23,7 +23,9 @@ import { invalidPayload, toBookingResponse } from "@features/view/core/respond.t
  * before deciding to sign up. Booking one is what requires an account.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
+		// The service below resolves the listing synchronously from the loaded catalogue.
+		await warmCatalog();
 		const p = ctx.url.searchParams;
 		const parsed = SlotQuerySchema.safeParse({
 			subjectId: p.get("subjectId") ?? "",
@@ -38,8 +40,6 @@ export const handler = define.handlers({
 		});
 		if (!parsed.success) return invalidPayload(parsed.error);
 
-		return toBookingResponse(
-			BookingBackendService.slots(parsed.data, serviceSimFromParams(p)),
-		);
+		return toBookingResponse(await BookingBackendService.slots(parsed.data));
 	},
 });

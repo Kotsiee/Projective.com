@@ -1,8 +1,9 @@
 import { define } from "@web/utils/state.ts";
-import { ContactActionInputSchema, serviceSimFromParams } from "@projective/types/services";
+import { ContactActionInputSchema } from "@projective/types/services";
 import { BookingBackendService } from "@server/services/booking/BookingBackendService.ts";
 import { bookingActorFrom } from "@features/view/core/booking-actor.ts";
 import { invalidPayload, toBookingResponse } from "@features/view/core/respond.ts";
+import { warmCatalog } from "@server/services/explore/live-catalog.ts";
 
 /**
  * `POST /api/services/contact-action` — one route for all three Contact Me actions: book a discovery
@@ -19,16 +20,12 @@ import { invalidPayload, toBookingResponse } from "@features/view/core/respond.t
  */
 export const handler = define.handlers({
 	async POST(ctx) {
+		// The service below resolves the listing synchronously from the loaded catalogue.
+		await warmCatalog();
 		const raw = await ctx.req.json().catch(() => null);
 		const parsed = ContactActionInputSchema.safeParse(raw);
 		if (!parsed.success) return invalidPayload(parsed.error);
 
-		return toBookingResponse(
-			BookingBackendService.contact(
-				parsed.data,
-				bookingActorFrom(ctx.state),
-				serviceSimFromParams(ctx.url.searchParams),
-			),
-		);
+		return toBookingResponse(await BookingBackendService.contact(parsed.data, bookingActorFrom(ctx)));
 	},
 });

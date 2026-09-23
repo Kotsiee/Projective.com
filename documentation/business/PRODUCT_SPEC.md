@@ -426,7 +426,7 @@ a fact that fits none of the four does not get a tab, it gets a line in the cont
 the action rig · three inline metrics — the rating, completed stages, and the earned Standing rung
 (with delivered volume, when disclosed) — beside the **showcase**: a raised 16:10 frame carrying
 ONE primary still (the thumbnail every card and preview of the profile leads with, so it is never a
-video) and up to four further slides, each a still or a full-length video. The showcase advances
+video) and up to five further slides — six slots in all — each a still or a full-length video. The showcase advances
 on its own — a still dwells, a video plays through and then holds its last frame for the same
 dwell so it can be replayed before it moves on — and it holds while the visitor's pointer or focus
 is on it; a viewer who asked for reduced motion sees nothing move by itself. A video slide carries
@@ -437,12 +437,10 @@ turn on, and a slide the carousel returns to starts silent again. A centred rail
 the bottom edge (‹ · one dot per slide, the active one a pill · ›) pages it by pointer, keyboard
 (the arrows move between the dots, Enter selects) or a swipe. When no showcase is uploaded the hero
 collapses to a single typography-first column; it never renders an empty frame, because an empty
-frame is a placeholder and a placeholder is an invitation nobody asked for. **The owner edits the
-photo where it is:** the avatar itself is the control — an "Edit profile photo" overlay on hover
-or focus — and it opens a two-column editor: a circular crop over the picture (drag to pan,
-Ctrl + scroll to zoom, plus a zoom slider, a rotation dial and X ⁄ Y offsets) that can never show
-empty space inside the circle, beside the two places a new picture comes from — this device, or
-the person's own file library. The rig depends on what the entity
+frame is a placeholder and a placeholder is an invitation nobody asked for. **A visitor may open the
+profile photo full size only when the owner has allowed it** (a privacy switch, off by default: a
+larger copy of someone's face is theirs to offer); otherwise the avatar is a picture, not a control.
+The rig depends on what the entity
 IS: a **seller** (freelancer · team) carries two conversion controls — **Hire** and **Add to
 project** — with Message and Follow folded into compact icon-only secondaries beside them; a
 **buyer** (client · business · organisation) cannot be hired, so **Message** stays its primary with
@@ -494,9 +492,9 @@ grayscale for the same reason: a logo strip in six brand palettes competes with 
 meant to vouch for.
 
 **The context bar opens with the entity's own words.** A one-line headline over the story, both
-written by the owner and edited in place on the same click-to-edit idiom — and never filled in
-by the platform: a profile with no headline yet shows the owner a prompt to write one and shows a
-visitor nothing, because a sentence the platform wrote reads as one the person wrote.
+written by the owner — and never filled in by the platform: a profile with no headline shows a
+visitor nothing, because a sentence the platform wrote reads as one the person wrote. The location
+line and the live local clock each render only while the owner's privacy switches allow them.
 
 **Availability and the at-a-glance facts live in the context bar — derived, never asserted.** A
 seller who has published working hours gets an availability block: the weekly schedule ("Mon–Fri ·
@@ -511,6 +509,50 @@ courtesy discovery call the seller actually offers), and an estimated project sp
 starting rate across the seller's listings, resolved through the same rule the service cards print.
 A fact that is unmeasured or absent is omitted whole; nothing on the bar is inferred from a
 neighbouring signal.
+
+**The owner manages the profile from three views of it.** When the person looking at a profile is
+the one who manages it — the individual, a team's owner or lead, a business's owner, an
+organisation's owner or admin — an owner header sits above the page with three tabs, each its own
+address:
+
+- **Preview** (`/[handle]`) is the profile exactly as a visitor sees it. Nothing on it is editable,
+  and its conversion controls say they are inert here rather than acting on the owner's own account.
+- **Edit Profile & Settings** (`/[handle]/edit`) is one vertically stacked page of collapsible
+  sections that mirror the preview's structure, every field a persistently editable input: the
+  photo and the six-slot showcase, the name, headline and story, location and time zone, skills,
+  languages, career history, education and certifications, and the privacy and display switches —
+  who can see the profile (public · unlisted · private), whether visitors may open the photo full
+  size, whether the location line and the local clock show. A certification the platform has
+  verified loses that verification the moment its name or issuer is edited, because the check
+  described the credential that was checked. Changes are saved together (with an unsaved-changes
+  warning and Ctrl + S), and a refused field is marked where it is.
+- **Availability** (`/[handle]/edit/availability`) sets the weekly working hours (per-day start and
+  end times, several bands a day), the time zone, whether the schedule is published, and — for a
+  seller — the discovery-call terms: whether calls are taken, a free courtesy call and ⁄ or a paid
+  one with its duration and fee, and the booking rules (buffers, minimum notice, how far ahead,
+  automatic confirmation, whether a reason is required). Everything the public profile says about
+  availability is derived from what is saved here.
+
+**The showcase is a six-slot grid, and slot 1 is the profile's face.** In the editor each empty slot
+is a dashed placeholder and each filled one offers replace and remove on hover or focus (removal is
+confirmed). **Slot 1 is the primary thumbnail** every explore card, search result and public listing
+of the profile leads with, so it takes a still only; the other five take stills or videos. Choosing
+media for a slot or for the photo opens one **media selection modal**: the person's own library of
+uploaded images (and videos, filterable, where the target accepts them), newest first, beside an
+upload; then a cropper fixed to the target's shape — 1:1 for the photo, 16:10 for a showcase slot —
+with pan, zoom and rotation that can never leave empty space in the frame, a **Reset** back to the
+default crop before saving, and alternative text. The crop is applied by the platform to the
+original, never by the browser to a preview.
+
+**Nothing a person uploads is published until it has been checked.** Every upload lands in a
+quarantine first; the platform confirms from the bytes themselves what the file is — never from its
+name or declared type — refuses anything that is not a picture or a video it can read (a disguised
+script is kept out and its bytes discarded), and only then admits it to the person's private
+library with smaller copies for every screen size. What a profile shows publicly is always a fresh
+copy the platform cut and re-encoded, so no location data from a camera or anything smuggled inside a
+file ever reaches a visitor. A new profile photo reaches every place that shows the person — the
+navigation bar, profile cards, project rosters and feeds, message senders — on their next load, and
+the tab it was changed in updates at once.
 
 **Every retired address still resolves.** The eleven legacy tabs (`services` · `products` ·
 `projects` · `portfolio` · `education` · `articles` · `teams` · `businesses` · `members` ·
@@ -2086,7 +2128,9 @@ fire for the same person on a device that genuinely does not have the file.
 |               |                           | `experience`             | Career history · education · verified certifications (individuals only)                        |
 |               |                           | `reviews`                | Verified client and peer reviews                                                               |
 |               |                           | `posts`                  | Published articles and updates                                                                 |
-|               |                           | `availability`           | Full-page availability calendar (no profile chrome; no longer linked from the profile)         |
+|               |                           | `availability`           | Full-page availability calendar (no profile chrome; linked as "Full calendar" from the context bar's availability block) |
+|               |                           | `edit`                   | **Owner only.** Edit Profile & Settings — collapsible inline sections, the six-slot showcase + photo with the media selection & crop modal, privacy and display switches (§The Public Profile) |
+|               |                           | `edit/availability`      | **Owner only.** Working hours, time zone, publishing and discovery-call terms                  |
 |               |                           | _retired_                | `services` · `products` · `projects` · `portfolio` · `teams` · `businesses` · `members` · `departments` · `about` · `education` · `articles` — each 308s into its consolidated section |
 |               | `/share/[slug]`           |                          | Share-link resolution. Renders the asset for a holder of the opaque slug; every dead state (missing / expired / revoked / exhausted) returns an identical 404 |
 |               | `/help/[...article path]` | `index`                  | Documentation / Help center                                                                    |

@@ -1,5 +1,5 @@
 import { define } from "@web/utils/state.ts";
-import { asAuthenticatedContext, type UserContext } from "@projective/types/auth";
+import { asAuthenticatedContext } from "@projective/types/auth";
 import { SaveBuyerDetailsSchema } from "@projective/types/finance";
 import {
 	invalidPayload,
@@ -8,13 +8,13 @@ import {
 } from "@features/checkout/core/respond.ts";
 import { CheckoutBackendService } from "@server/services/finance/CheckoutBackendService.ts";
 import { basketQueryFrom, basketQueryFromBody } from "@server/services/finance/basket-query.ts";
+import { readActor, type SessionContext } from "@web/utils/api-session.ts";
 
 /**
  * `/api/checkout/details` — the buyer's delivery + billing record.
  *
- * `GET ?owner=&display=&persona=&workspaceRole=&kyb=&acting=&simDetails=&simBilling=&simInvoicing=`
- * returns the saved record for the active billing identity, every identity the viewer may bill
- * through, and the monthly-invoicing offer for the active one.
+ * `GET ?owner=&display=` returns the saved record for the paying account, every identity the viewer
+ * may bill through, and the monthly-invoicing offer for the paying account.
  *
  * The save answers with the record AND the refreshed checkout session, because saving is what clears
  * the `missing_details` blocker: a response carrying only the record would leave the caller holding a
@@ -26,38 +26,35 @@ import { basketQueryFrom, basketQueryFromBody } from "@server/services/finance/b
  * `DELETE` and no `PUT`, and forking a second `fetch` path for one endpoint would be a worse trade
  * than answering to a second verb here. Both delegate to the same handler.
  *
- * Thin: parse + Zod-validate + resolve the acting context + delegate to the fat
- * {@link CheckoutBackendService}. No server capability guard — the fat service enforces the member
- * gate (a non-member may not rewrite an entity's billing identity) and the deferred `finance.*` RLS
- * is the real gate, consistent with every sibling `/api/*` route.
+ * Thin: parse + Zod-validate + resolve the acting context and session + delegate to the fat
+ * {@link CheckoutBackendService}, which writes as the signed-in caller — `finance.buyer_details` RLS
+ * (the account's spend predicate) is the gate.
  */
 
-/** The slice of a request context the save path reads — structural, so both verbs share one body. */
-interface SaveContext {
-	req: Request;
-	state: { userContext?: UserContext };
-}
-
 /** Validate and persist the whole record. Shared verbatim by `PUT` and its `POST` alias. */
-async function saveDetails(ctx: SaveContext): Promise<Response> {
+async function saveDetails(ctx: SessionContext): Promise<Response> {
 	const context = asAuthenticatedContext(ctx.state.userContext);
 	const raw = await ctx.req.json().catch(() => null);
 	if (raw === null || typeof raw !== "object") return malformedBody();
 	const parsed = SaveBuyerDetailsSchema.safeParse(raw);
 	if (!parsed.success) return invalidPayload(parsed.error);
 	return toCheckoutResponse(
-		CheckoutBackendService.saveDetails(
+		await CheckoutBackendService.saveDetails(
 			parsed.data,
 			basketQueryFromBody(raw as Record<string, unknown>, context),
+			readActor(ctx),
 		),
 	);
 }
 
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const context = asAuthenticatedContext(ctx.state.userContext);
 		return toCheckoutResponse(
-			CheckoutBackendService.details(basketQueryFrom(ctx.url.searchParams, context)),
+			await CheckoutBackendService.details(
+				basketQueryFrom(ctx.url.searchParams, context),
+				readActor(ctx),
+			),
 		);
 	},
 

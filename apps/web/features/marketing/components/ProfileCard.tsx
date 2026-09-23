@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { Avatar, ProgressiveImage, RatingStars } from "@projective/ui/display";
+import { VerifiedBadge } from "@features/explore/components/VerifiedBadge.tsx";
 import { type ProfileShowcase, routes } from "../core/landing-data.ts";
 
 /**
@@ -8,18 +9,19 @@ import { type ProfileShowcase, routes } from "../core/landing-data.ts";
  * Renders the CANONICAL profile card (`.ex-card--profile`, defined once in
  * `features/explore/styles/explore.css` and `@import`ed by `landing.css`) rather than a parallel
  * `.lp-profile` block: a masked cover, the circular avatar centred on its lower edge, the centred name
- * and `@handle`, the craft headline, a quiet metadata line, and a rating/rate foot.
+ * and `@handle`, the craft headline, a quiet metadata line, and a rating ⁄ delivery foot.
  *
- * Two divergences from the old `.lp-profile` are deliberate. The skills `Tag` cluster is gone — the
- * discovery cards dropped skill rows to the detail view in the lean pass, and a landing card showing a
- * band the search feed does not is history, not a difference in the entity. And the rating is the
- * shared {@link RatingStars} in its single-glyph `compact` form rather than a bespoke primary-coloured
- * star, so one rating treatment reads across every surface.
+ * The rating is the shared {@link RatingStars} in its single-glyph `compact` form, and only when the
+ * profile has been reviewed — an unreviewed helper shows their delivery count in that slot instead,
+ * never an invented score.
  *
  * The whole card is one route action; zero client JS, hydration lives in the parent carousel island.
  */
 export function ProfileCard({ profile }: { profile: ProfileShowcase }): JSX.Element {
-	const isTeam = profile.kind === "team";
+	const meta = profile.kind === "team"
+		? ["Team", profile.members ? `${profile.members} people` : null]
+		: ["Freelancer"];
+	const facts = meta.filter((s): s is string => !!s);
 	return (
 		<article class="ex-card ex-card--profile" data-ambient-src={profile.cover}>
 			<a
@@ -28,12 +30,18 @@ export function ProfileCard({ profile }: { profile: ProfileShowcase }): JSX.Elem
 				aria-label={`${profile.name} — ${profile.craft}`}
 			/>
 			<div class="ex-pcard__banner">
-				<ProgressiveImage class="ex-pcard__cover" src={profile.cover} loading="lazy" />
+				<ProgressiveImage
+					class="ex-pcard__cover"
+					src={profile.cover}
+					placeholder={profile.coverPlaceholder}
+					loading="lazy"
+				/>
 			</div>
 			<div class="ex-pcard__body">
 				<div class="ex-pcard__identity">
 					<Avatar
 						image={profile.avatar}
+						placeholder={profile.avatarPlaceholder}
 						label={profile.name}
 						alt=""
 						size="xl"
@@ -42,6 +50,7 @@ export function ProfileCard({ profile }: { profile: ProfileShowcase }): JSX.Elem
 					/>
 					<span class="ex-pcard__name">
 						<span class="ex-pcard__nametext">{profile.name}</span>
+						{profile.verified && <VerifiedBadge size="md" />}
 					</span>
 					<span class="ex-pcard__handle">{profile.handle}</span>
 				</div>
@@ -49,26 +58,46 @@ export function ProfileCard({ profile }: { profile: ProfileShowcase }): JSX.Elem
 				<p class="ex-pcard__headline">{profile.craft}</p>
 
 				<p class="ex-pcard__meta">
-					{isTeam && profile.members
-						? `${isTeam ? "Team" : "Freelancer"} • ${profile.members} people`
-						: "Freelancer"}
+					{facts.map((fact, i) => (
+						<span class="ex-pcard__metaitem" key={fact}>
+							{i > 0 && (
+								<>
+									{" "}
+									<span class="ex-pcard__dot" aria-hidden="true">·</span>
+									{" "}
+								</>
+							)}
+							{fact}
+						</span>
+					))}
 				</p>
 
 				<div class="ex-pcard__foot">
-					<RatingStars
-						value={profile.rating}
-						size="sm"
-						compact
-						label={`Rated ${profile.rating.toFixed(1)} out of 5`}
-					/>
+					{profile.rating
+						? (
+							<RatingStars
+								value={profile.rating.value}
+								count={profile.rating.count}
+								size="sm"
+								compact
+								label={`Rated ${
+									profile.rating.value.toFixed(1)
+								} out of 5 from ${profile.rating.count} reviews`}
+							/>
+						)
+						: <span class="ex-muted">{profile.delivered} delivered</span>}
 					<ul class="ex-pcard__metrics" role="list">
-						<li class="ex-pcard__metric">
-							<span class="ex-pcard__metric-value">{profile.delivered}</span>{" "}
-							<span class="ex-pcard__metric-label">delivered</span>
-						</li>
-						<li class="ex-pcard__metric">
-							<span class="ex-pcard__metric-value">{profile.rate}</span>
-						</li>
+						{profile.rating && (
+							<li class="ex-pcard__metric">
+								<span class="ex-pcard__metric-value">{profile.delivered}</span>{" "}
+								<span class="ex-pcard__metric-label">delivered</span>
+							</li>
+						)}
+						{profile.rate && (
+							<li class="ex-pcard__metric">
+								<span class="ex-pcard__metric-value">{profile.rate}</span>
+							</li>
+						)}
 					</ul>
 				</div>
 			</div>

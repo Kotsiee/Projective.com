@@ -41,3 +41,12 @@ CREATE TRIGGER trg_files_items_quota
     BEFORE INSERT OR UPDATE OF size_bytes ON files.items
     FOR EACH ROW EXECUTE FUNCTION files.fn_check_storage_quota ();
 -- #endregion
+
+-- #region pipeline-column guard
+-- BEFORE, and on every INSERT/UPDATE: see files.fn_guard_pipeline_columns (00001160) for what a
+-- client may and may not write. It must run before the quota gate so a forged row is refused for
+-- what it claims, not metered for what it weighs.
+CREATE TRIGGER trg_files_items_guard_pipeline
+    BEFORE INSERT OR UPDATE ON files.items
+    FOR EACH ROW EXECUTE FUNCTION files.fn_guard_pipeline_columns ();
+-- #endregion

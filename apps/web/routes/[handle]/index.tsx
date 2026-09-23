@@ -3,7 +3,7 @@ import { define } from "@web/utils/state.ts";
 import type { ProfileTabPayload } from "@projective/types/profile";
 import { resolveProfileTab } from "@features/profile/core/profile-ssr.ts";
 import { ProfileTabContent } from "@features/profile/components/ProfileTabContent.tsx";
-import { isOwnProfile } from "@features/profile/core/profile-model.ts";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * `/[handle]` — the profile index, which IS the Work section (root CLAUDE.md §8 Decision #96). The
@@ -14,13 +14,13 @@ import { isOwnProfile } from "@features/profile/core/profile-model.ts";
  * `[handle]/_middleware.ts` onto `ctx.state.profile`.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const profile = ctx.state.profile;
 		ctx.state.title = profile
 			? `${profile.name} (${profile.handle}) · Projective`
 			: "Profile · Projective";
 		if (profile) ctx.state.description = profile.headline;
-		const payload = profile ? resolveProfileTab(profile.handle, "work") : null;
+		const payload = profile ? await resolveProfileTab(profile.handle, "work", readActor(ctx)) : null;
 		return page({ payload });
 	},
 });
@@ -34,7 +34,7 @@ export default define.page<typeof handler>(function ProfileHomePage(ctx) {
 			profile={profile}
 			tab="work"
 			payload={payload}
-			canEdit={isOwnProfile(profile, ctx.state.userContext)}
+			canEdit={false}
 			authed={!!ctx.state.isAuthenticated}
 		/>
 	);

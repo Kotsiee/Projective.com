@@ -500,7 +500,7 @@ function boardParty(row: PartyRow | undefined | null): ProjectParty {
 	const base = partyOf(row);
 	return {
 		name: clampOr(base.name, 120, "Unknown"),
-		avatar: null,
+		avatar: base.avatar,
 		handle: base.handle ? clamp(base.handle, 40) : null,
 	};
 }

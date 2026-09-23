@@ -25,6 +25,9 @@
 
 -- #region quarantine — virus-scan landing zone (own upload only)
 
+-- The path's first segment is the uploader's own id — the anchor the bucket is documented to key on
+-- and the prefix the upload pipeline mints (`{user_id}/{asset_id}/{name}`). Without it a user could
+-- write objects under another user's prefix.
 CREATE POLICY "Authenticated users can upload to quarantine" ON storage.objects FOR
 INSERT
     TO authenticated
@@ -32,6 +35,7 @@ WITH
     CHECK (
         bucket_id = 'quarantine'
         AND auth.uid () = owner
+        AND (storage.foldername (name)) [1] = auth.uid ()::text
     );
 
 CREATE POLICY "Users can read their own quarantine files" ON storage.objects FOR
@@ -280,20 +284,46 @@ WITH
 -- #endregion
 
 
--- #region avatars — profile/team/business/org branding: public read; owner write
+-- #region avatars — profile/team/business/org branding: public read; SERVICE-ROLE write
+--
+-- Deliberately NO authenticated write policy (2026-09-22). Every object in this bucket is served to
+-- the whole internet, so every object must have been through the quarantine scan and the media
+-- pipeline — which writes here as the service role. The old "Owners can write their branding
+-- assets" policy let any signed-in user PUT an arbitrary, unscanned file straight into a public
+-- bucket over the Storage API, bypassing both.
 
 CREATE POLICY "Avatars are viewable by everyone" ON storage.objects FOR
 SELECT TO public USING (bucket_id = 'avatars');
 
-CREATE POLICY "Owners can write their branding assets" ON storage.objects FOR ALL TO authenticated USING (
-    bucket_id = 'avatars'
-    AND auth.uid () = owner
-)
-WITH
-    CHECK (
-        bucket_id = 'avatars'
-        AND auth.uid () = owner
-    );
+-- #endregion
+
+
+-- #region showcase — profile showcase stills + videos: public read; SERVICE-ROLE write
+-- The same contract as `avatars`, for the same reason: the media pipeline is the only writer.
+
+CREATE POLICY "Showcase media is viewable by everyone" ON storage.objects FOR
+SELECT TO public USING (bucket_id = 'showcase');
+
+-- #endregion
+
+
+-- #region files.item_variants — the WebP tiers the pipeline wrote beside an asset
+-- Placed with the storage policies because every row here describes a stored object. The read rule
+-- is the parent asset's, through the one predicate the files.items policy also uses, so a tier can
+-- never be readable when its original is not. No write policy: the pipeline writes as the service
+-- role. RLS is enabled HERE, beside the policies — 00002001 does not list this table.
+ALTER TABLE files.item_variants ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Variants follow their asset" ON files.item_variants FOR
+SELECT TO authenticated USING (files.fn_can_read (item_id));
+
+CREATE POLICY "Public variants are viewable by everyone" ON files.item_variants FOR
+SELECT TO anon USING (
+    EXISTS (
+        SELECT 1 FROM files.items i
+        WHERE i.id = item_id AND i.visibility = 'public'::files.file_visibility AND i.deleted_at IS NULL
+    )
+);
 
 -- #endregion
 

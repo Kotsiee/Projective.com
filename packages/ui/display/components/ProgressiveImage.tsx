@@ -24,6 +24,13 @@ export interface ImagePlaceholder {
 export interface ProgressiveImageProps {
 	/** The image. An empty or absent source renders the fallback from the first byte. */
 	src?: string | null;
+	/**
+	 * Width-described candidates (`url 480w, url 1280w`) so the browser fetches the smallest size
+	 * that fills the frame. `src` stays the fallback for a browser that ignores it.
+	 */
+	srcset?: string;
+	/** The layout width the image renders at, for choosing between `srcset` candidates. */
+	sizes?: string;
 	/** Alt text. Empty (the default) for a decorative image beside its own caption. */
 	alt?: string;
 	/** The preview painted beneath the picture; see {@link ImagePlaceholder}. */
@@ -83,6 +90,8 @@ export interface ProgressiveImageProps {
 export function ProgressiveImage(props: ProgressiveImageProps): JSX.Element {
 	const {
 		src,
+		srcset,
+		sizes,
 		alt = "",
 		placeholder,
 		fit = "cover",
@@ -121,6 +130,8 @@ export function ProgressiveImage(props: ProgressiveImageProps): JSX.Element {
 					<img
 						class={cx("ui-pimg__img", imgClass)}
 						src={source}
+						srcset={srcset || undefined}
+						sizes={srcset ? sizes : undefined}
 						alt={alt}
 						loading={loading}
 						decoding={decoding}

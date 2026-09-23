@@ -4,9 +4,9 @@ import "@features/explore/styles/explore.css";
 import "@features/explore/styles/explore-results.css";
 import "../styles/entity-view.css";
 import type { EntityView } from "@projective/types/explore";
-import { resolveSchedulePage } from "@web/features/calendar/core/calendar-ssr.ts";
+import type { SchedulePage } from "@projective/types/scheduling";
+import type { ServiceBookingOffer } from "@projective/types/services";
 import type { HrefContext } from "@features/explore/core/routing.ts";
-import type { UserContext } from "@projective/types/auth";
 import EntityCanvas from "../islands/EntityCanvas.island.tsx";
 import EntityBuyBar from "../islands/EntityBuyBar.island.tsx";
 import EntityLane from "../islands/EntityLane.island.tsx";
@@ -31,7 +31,6 @@ import {
 	SpecLedger,
 } from "./entity-view-parts.tsx";
 import { headlinePriceFor } from "../core/view-pricing.ts";
-import { resolveBookingOffer } from "../core/booking-ssr.ts";
 import {
 	type EntityArchetype,
 	firstNameOf,
@@ -104,16 +103,25 @@ export interface EntityViewPageProps {
 	view: EntityView | undefined;
 	ctx?: HrefContext;
 	authed?: boolean;
-	/** The acting viewer's chrome context, for resolving the booking offer server-side. */
-	context?: UserContext;
-	/** The request URL, carrying any developer simulation overlay. */
-	url?: URL;
+	/**
+	 * The booking offer, resolved by the ROUTE (`resolveEntityCommerce`) — `null` for a project, which
+	 * is applied to rather than bought, and for a listing whose offer could not be resolved.
+	 */
+	offer?: ServiceBookingOffer | null;
+	/** The provider's public schedule for a session listing, resolved by the route; `null` otherwise. */
+	schedule?: SchedulePage | null;
+	/**
+	 * The listing could not be READ (the marketplace was unreachable), as opposed to not existing.
+	 * The two are different pages for a reader: one says the link is dead, the other says try again.
+	 */
+	unavailable?: boolean;
 }
 
 export function EntityViewPage(
-	{ view, ctx = { scope: "explore" }, authed = false, context, url }: EntityViewPageProps,
+	{ view, ctx = { scope: "explore" }, authed = false, offer = null, schedule = null, unavailable = false }:
+		EntityViewPageProps,
 ): JSX.Element {
-	if (!view) return <NotFound ctx={ctx} />;
+	if (!view) return <NotFound ctx={ctx} unavailable={unavailable} />;
 
 	const archetype = resolveArchetype(view);
 
@@ -135,13 +143,6 @@ export function EntityViewPage(
 	 * in it — the roster, join URL and per-occurrence earnings are withheld from every non-party.
 	 */
 	const scheduled = showsScheduler(archetype);
-	const schedule = scheduled ? resolveSchedulePage(item.id).page : null;
-	// A project is applied to, never booked or bought, so it resolves no booking offer at all.
-	const offer = isProject ? null : resolveBookingOffer(item.id, {
-		context,
-		handle: ctx.scope === "profile" ? ctx.handle : null,
-		url,
-	});
 	/*
 	 * A frame with no media column: the hero takes both content tracks. A session's artefact is the
 	 * full-width scheduler stage, and a project has no gallery at all — its identity is the client's
@@ -547,20 +548,24 @@ function TeamRoles({ view }: { view: EntityView }): JSX.Element | null {
  * it the one state that most needs a working next action would ship with zero rules in the CSSOM for
  * its own call to action.
  */
-function NotFound({ ctx }: { ctx: HrefContext }): JSX.Element {
+function NotFound(
+	{ ctx, unavailable }: { ctx: HrefContext; unavailable: boolean },
+): JSX.Element {
 	return (
 		<div class="evp evp--empty">
 			<ViewStyleAnchor />
 			<BackLink ctx={ctx} placement="page" />
 			<EmptyState
-				title="Item not found"
-				description="This item may have been removed, or the link is out of date. Explore live work to find something similar."
+				title={unavailable ? "We couldn't load this listing" : "Item not found"}
+				description={unavailable
+					? "The marketplace didn't respond just now. Your link is fine — try again in a moment."
+					: "This item may have been removed, or the link is out of date. Explore live work to find something similar."}
 				actions={
 					<a
 						class="ui-button ui-button--primary ui-button--filled ui-button--size-md ui-button--rounded"
-						href="/explore"
+						href={unavailable ? "" : "/explore"}
 					>
-						<span class="ui-button__label">Explore Projective</span>
+						<span class="ui-button__label">{unavailable ? "Try again" : "Explore Projective"}</span>
 					</a>
 				}
 			/>

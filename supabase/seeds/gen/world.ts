@@ -20,6 +20,8 @@
  * rather than a snapshot that ages out of the "last 30 days" views.
  */
 
+import { FERN_REVIEW_SLOT, type WeekSlot } from "./schedules.ts";
+
 // #region Personas
 export type PersonaRole = "freelancer" | "client" | "operator";
 export type KycState = "verified" | "pending" | "unverified";
@@ -1848,8 +1850,8 @@ export interface OrderSpec {
 	status: "confirmed" | "processing" | "refunded";
 	/** Paid from the buyer's wallet/vault rather than the card on file. */
 	fromWallet?: boolean;
-	/** A session order: when the seat is booked for, in days from now. */
-	scheduledInDays?: number;
+	/** A session order: when the sitting is booked for, in the SELLER's zone (see `schedules.ts`). */
+	scheduledAt?: WeekSlot;
 }
 
 export const ORDERS: OrderSpec[] = [
@@ -1925,7 +1927,7 @@ export const ORDERS: OrderSpec[] = [
 		daysAgo: 3,
 		cardLast4: "5556",
 		status: "confirmed",
-		scheduledInDays: 5,
+		scheduledAt: FERN_REVIEW_SLOT(),
 	},
 ];
 

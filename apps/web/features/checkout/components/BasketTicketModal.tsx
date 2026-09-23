@@ -51,7 +51,7 @@ export interface BasketTicketModalProps {
  *
  * `boardProjectId` first, because it is the only one of the three that names a BOARD. The other two
  * name the purchasable the line was bought from, which is the same id on the live path and a different
- * corpus in fixtures — see `boardSlugFor` in `basket-fixtures.ts`. Preferring the explicit key means
+ * corpus in the retired fixtures. Preferring the explicit key means
  * the live path can simply stop stamping it and the fallbacks take over unchanged.
  */
 function engagementIdOf(item: BasketItem): string {

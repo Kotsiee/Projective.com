@@ -1,16 +1,14 @@
 import type { AvailabilityRule } from "@projective/types/scheduling";
 
 /**
- * scheduling hours — the PURE weekly working-hours derivation shared by every fixture that has to
- * agree about when a seller is at their desk: the `/[handle]/availability` calendar
- * (`availability-fixtures.ts`), and the profile projection's `hours` (`profile-fixtures.ts`), which
- * the `/[handle]` context bar summarises into a schedule line and a live "Available now ⁄ Away" badge.
+ * scheduling hours — the PURE weekly working-hours derivation the profile FIXTURES still use for a
+ * seller's `hours` (`profile-fixtures.ts`), which the `/[handle]` context bar summarises into a
+ * schedule line and a live "Available now ⁄ Away" badge.
  *
- * It lives in its own module, with no import beyond the type, because the availability fixtures
- * import the profile fixtures — so the profile fixtures importing THEM would be a cycle, and a cycle
- * in a module whose corpus builds at import time is the TDZ crash class of Decision #49, not a style
- * problem. Both callers seed it identically (`hash(profile.handle)` from `derive.ts`), which is what
- * makes the calendar's bands and the profile's summary one fact rather than two.
+ * TRANSITIONAL. The `/[handle]/availability` calendar no longer derives anything: it reads the
+ * provider's published bands from `scheduling.availability_rules` (`live-schedule-page.ts`). Once the
+ * profile projection reads the same rows, the context bar and the calendar are one fact again and
+ * this module goes.
  */
 
 /**

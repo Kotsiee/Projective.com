@@ -9,7 +9,6 @@ import { SlotPicker } from "../components/SlotPicker.tsx";
 import { CtaButton } from "../components/CtaButton.tsx";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
 import { BookingService } from "../core/BookingService.ts";
-import { bookingSim } from "../core/booking-seam.ts";
 import { announce, closeBookingPanel, currentOffer, openPanel } from "../core/booking-state.ts";
 import type { SlotGrid, SlotPurpose } from "@projective/types/scheduling";
 import { addDaysInZone, firstOpenDay } from "@projective/types/scheduling";
@@ -106,7 +105,7 @@ export default function SessionBookingModal({ offer: ssrOffer }: SessionBookingM
 			timezone: viewerZone(),
 			from: from ?? undefined,
 			days: WINDOW_DAYS,
-		}, bookingSim());
+		});
 		loading.value = false;
 		if (!res.ok || !res.data) {
 			error.value = res.message ?? "Could not load availability.";
@@ -200,7 +199,7 @@ export default function SessionBookingModal({ offer: ssrOffer }: SessionBookingM
 				callType: callType.value,
 				timezone: viewerZone(),
 				agenda: note.value.trim() || undefined,
-			}, bookingSim());
+			});
 			if (!res.ok || !res.data) {
 				error.value = res.message ?? "Could not request that call.";
 				// A refusal is usually somebody else taking the slot, so the honest response is a fresh
@@ -223,9 +222,9 @@ export default function SessionBookingModal({ offer: ssrOffer }: SessionBookingM
 			note: note.value.trim() || undefined,
 			seats: offer.value.format === "cohort" ? seats.value : 1,
 			answers: {},
-		}, bookingSim());
+		});
 		if (!res.ok || !res.data) {
-			error.value = res.message ?? "Could not hold that time.";
+			error.value = res.message ?? "Could not add that time to your basket.";
 			if (res.errors?.slotId || res.errors?.slotIds) void loadGrid(windowFrom.value);
 			return false;
 		}
@@ -265,7 +264,7 @@ export default function SessionBookingModal({ offer: ssrOffer }: SessionBookingM
 					</div>
 					<CtaButton
 						label={isCall.value ? "Request call" : confirmLabel(offer.value)}
-						settledLabel={isCall.value ? "Requested" : "Held"}
+						settledLabel={isCall.value ? "Requested" : "Selected"}
 						phase={cta.phase}
 						disabled={selectedSlots.value.length === 0 || loading.value}
 						icon={<Icon name="calendar" size="sm" aria-hidden />}
@@ -387,9 +386,15 @@ function bookHeader(offer: ServiceBookingOffer): string {
 	}
 }
 
-/** The confirm button's label. */
-function confirmLabel(offer: ServiceBookingOffer): string {
-	return offer.format === "cohort" ? "Reserve seat" : "Hold this time";
+/**
+ * The confirm button's label.
+ *
+ * It names the step the press actually takes. Nothing is held when it is pressed: the time goes into
+ * the basket and is confirmed by paying, so "Hold this time" or "Reserve seat" would promise a claim
+ * on the calendar that somebody else's checkout can still take first.
+ */
+function confirmLabel(_offer: ServiceBookingOffer): string {
+	return "Continue to checkout";
 }
 
 /**

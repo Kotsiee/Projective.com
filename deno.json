@@ -7,6 +7,7 @@
 		"./apps/web"
 	],
 	"nodeModulesDir": "auto",
+	"$comment:media": "@jsquash/{jpeg,png,webp} + omggif are the server-side media pipeline (packages/backend/services/media): the Squoosh codecs (mozjpeg, libpng, libwebp) compiled to WASM decode and encode, and omggif (pure JS) reads a GIF's first frame. All WASM/JS, so they run with read permission alone and unchanged under `deno serve`, Deno Deploy and Supabase Edge Functions. Two alternatives were tried and rejected: native `sharp` does not load under Deno's npm resolution, and `imagescript`'s npm build loads a platform-specific `.node` binary at import time (needs --allow-ffi). Licences: Apache-2.0 (@jsquash/*), MIT (omggif). Loaded ONLY inside the pipeline Worker, never into the Vite SSR bundle.",
 	"imports": {
 		"@fresh/plugin-vite": "jsr:@fresh/plugin-vite@^1",
 		"@ui/": "./packages/ui/",
@@ -26,6 +27,10 @@
 		"d3-time": "npm:d3-time@^3.1.0",
 		"djwt": "jsr:@zaubrik/djwt@^3.0.2",
 		"fresh": "jsr:@fresh/core@^2.2.2",
+		"@jsquash/jpeg": "npm:@jsquash/jpeg@^1.6.0",
+		"@jsquash/png": "npm:@jsquash/png@^3.1.1",
+		"@jsquash/webp": "npm:@jsquash/webp@^1.5.0",
+		"omggif": "npm:omggif@^1.0.10",
 		"marked": "npm:marked@^17.0.5",
 		"pixi.js": "npm:pixi.js@^8.17.1",
 		"preact": "npm:preact@^10.29.0",

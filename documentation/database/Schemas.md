@@ -22,6 +22,8 @@ The following schemas are initialized to isolate data by business domain:
 | **`analytics`**    | Event logging and pre-calculated daily rollups.                                                                                                                                                                                  |
 | **`integrations`** | The connector + plugin substrate: third-party OAuth connections (calendar/storage/dev…) with a KMS token vault, sync + webhook machinery, and the plugin ecosystem (registry, versions, extension points, scoped installations). |
 | **`scheduling`**   | Availability (working hours, call windows, blackouts), calendar events, and discovery/courtesy calls.                                                                                                                            |
+| **`catalogue`**    | The seller publication layer: digital products, articles, and the listings (with galleries, skills, tags, availability and collections) that put a service or product up for sale.                                               |
+| **`reviews`**      | Every review on the platform — of a person as a client or a seller, a team, a business, a service or a product — and the trigger that keeps each target's rating in step.                                                        |
 
 ---
 

@@ -39,9 +39,11 @@ combination unrepresentable.
 | `files.owner_kind`       | `user` · `team` · `business` · `organisation`                        |
 | `files.download_via`     | `hub` · `share` · `picker` · `preview` · `api`                       |
 | `files.file_category`    | the 28 `FileCategory` literals (pre-existing)                        |
+| `files.asset_purpose`    | `library` · `avatar` · `showcase`                                    |
+| `files.variant_tier`     | `sm` · `md` · `lg`                                                   |
 
-Each mirrors a Zod enum in `@projective/types/files` (`assets.ts`) **member-for-member, in the same
-order**. `owner_kind` deliberately omits the `freelancer` pseudo-owner that `scheduling.owner_type`
+Each mirrors a Zod enum in `@projective/types/files` (`assets.ts`; the last two in `variants.ts` as
+`AssetPurpose` / `VariantTier`) **member-for-member, in the same order**. `owner_kind` deliberately omits the `freelancer` pseudo-owner that `scheduling.owner_type`
 carries: a freelancer's bytes are their user's bytes, and a second quota key for the same human
 would double-count.
 
@@ -130,6 +132,8 @@ database entry and the actual Supabase Storage object.
 | `external_file_id` / `external_parent_id` / `external_web_url` / `external_etag`    | text                                   | Mounted-connector provenance. `external_etag` is the provider's change token, so a delta sync can tell "unchanged" from "not re-read".                                                                                                                             |
 | `link_url` / `link_domain` / `link_title` / `link_description` / `link_favicon_url` | text                                   | Link assets (`source = 'link'`).                                                                                                                                                                                                                                   |
 | `link_scan_status` / `link_scanned_at`                                              | `files.link_scan_status` / timestamptz | NULL until the safety pipeline has run **at all** — distinct from `pending` (queued) and `unscannable` (reached for, refused inspection).                                                                                                                          |
+| `purpose`                                                                           | `files.asset_purpose`                  | `NOT NULL DEFAULT 'library'`. `library` is an upload a person can pick again from the media picker; `avatar` / `showcase` are **renditions** — a cropped, re-encoded copy the media pipeline cut from a library asset for one public surface. A rendition is never listed in the picker. |
+| `derived_from_id`                                                                   | uuid                                   | FK → `files.items.id`, `ON DELETE SET NULL`: the library asset a rendition was cut from. SET NULL because a rendition must outlive its source — deleting the original must not blank the profile photo everyone is looking at.                                    |
 | `share_slug`                                                                        | text                                   | UNIQUE; minted by `files.fn_mint_share_slug`. NULL while private.                                                                                                                                                                                                  |
 | `download_count`                                                                    | integer                                | `NOT NULL DEFAULT 0`.                                                                                                                                                                                                                                              |
 | `deleted_at`                                                                        | timestamptz                            | Soft delete.                                                                                                                                                                                                                                                       |
@@ -176,6 +180,54 @@ CREATE TABLE files.items (
 The full DDL is in
 [`00000010_tables_files.sql`](../../../supabase/migrations/00000010_tables_files.sql) — this file
 does not restate it verbatim.
+
+**The bytes and their processing are the server's.** `files.fn_guard_pipeline_columns`
+(`BEFORE INSERT OR UPDATE`, see [Functions.md](Functions.md#-filesfn_guard_pipeline_columns)) refuses
+a client write that would claim processing it never went through: a client INSERT must be a
+`library` row with no `derived_from_id`, and a stored upload must start `pending_upload` in
+`quarantine`; a client UPDATE may not change `status`, `bucket_id`, `storage_path`,
+`target_bucket`/`target_path`, `mime_type`, `size_bytes`, `metadata`, `content_hash`/`hash_algo`,
+`source`, `purpose` or `derived_from_id`. The presentational columns the hub edits — name, folder,
+visibility, star, archive flag, soft-delete stamp — stay the owner's.
+
+**Indexes (`00004011`):** `idx_files_items_library` — `(owner_user_id, created_at DESC)` partial on
+live `library` rows, exactly what the media picker lists; `idx_files_items_derived_from` —
+`derived_from_id`, partial on non-null (the FK's cascade check and the pipeline's reuse probe).
+
+---
+
+## 🖼 `files.item_variants`
+
+The derived WebP tiers the media pipeline writes beside an image, or beside a video as its poster
+stills — one row per stored object. A table rather than a jsonb key on `files.items` for the same
+reason `files.items` exists: every row names a stored object, and the `(bucket_id, storage_path)`
+uniqueness that stops two rows claiming one object is a constraint, not a convention a jsonb blob
+can hold.
+
+| Column         | Type                 | Notes                                                               |
+| :------------- | :------------------- | :------------------------------------------------------------------ |
+| `item_id`      | uuid                 | FK → `files.items.id`, `ON DELETE CASCADE`. PK part 1.              |
+| `tier`         | `files.variant_tier` | `sm` · `md` · `lg`. PK part 2.                                      |
+| `bucket_id`    | text                 | Where the tier lives (the parent's bucket).                         |
+| `storage_path` | text                 | The tier's object name. `UNIQUE (bucket_id, storage_path)`.         |
+| `mime_type`    | text                 | `NOT NULL DEFAULT 'image/webp'`.                                    |
+| `width`        | integer              | The tier's real pixels — `CHECK (width > 0 AND height > 0)`.        |
+| `height`       | integer              |                                                                     |
+| `size_bytes`   | bigint               | `CHECK (size_bytes >= 0)`.                                          |
+| `created_at`   | timestamptz          |                                                                     |
+
+The pixels per tier are decided per purpose by `TIER_LONG_EDGE` in `@projective/types/files`
+(`variants.ts`) — library 320 / 1280 / 2560, avatar 96 / 256 / 1024 (square), showcase 480 / 1280 /
+2400 on the long edge — so a reader never assumes a width: it reads it here, which is also what a
+`srcset` needs. **A tier is never an upscale**: a source smaller than a target is written at its own
+size, so every processed image carries all three and a reader never needs a "tier missing" branch.
+An image with **no** rows here (a seeded asset, one that predates the pipeline) is read at its
+original object.
+
+Written by the **service role only** (the pipeline runs server-side after the quarantine scan);
+read through the parent's predicate — see [Policies.md](Policies.md#filesitem_variants). Variant bytes
+are platform overhead and are deliberately **not** metered: `files.fn_recompute_usage` sums
+`files.items` only.
 
 ---
 

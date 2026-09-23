@@ -53,7 +53,12 @@ CREATE TABLE org.users_public (
     -- Folded (20260709120000): Client / Operator Mode flag gating the Businesses nav space.
     is_operator boolean NOT NULL DEFAULT false,
     CONSTRAINT users_public_pkey PRIMARY KEY (user_id),
-    CONSTRAINT users_public_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+    CONSTRAINT users_public_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+    -- The profile's reach, and a closed vocabulary because three readers branch on it: the public
+    -- directory view (org.profiles_index lists `public`, resolves `unlisted` by handle, omits the
+    -- rest), the profile read (org.get_profile_view answers `private` to its owner alone) and the
+    -- owner's settings control. Free text here let a typo silently hide a profile from everyone.
+    CONSTRAINT users_public_visibility_check CHECK (visibility IN ('public', 'unlisted', 'private'))
 );
 
 CREATE TABLE org.user_emails (
@@ -313,6 +318,16 @@ CREATE TABLE org.portfolios (
     cover_url text,
     attachment_id uuid,
     is_public boolean NOT NULL DEFAULT true,
+    -- The piece's picture as an asset reference — the profile's "Selected work" masonry reads its
+    -- public rendition and WebP tiers through files.fn_public_media_ref. `cover_url` predates the
+    -- asset layer and is kept for rows written before it; a piece with neither is not drawable and
+    -- the read leaves it out rather than painting an empty tile.
+    cover_file_id uuid REFERENCES files.items (id) ON DELETE SET NULL,
+    -- The two captions a tile carries besides its title. Both optional: undisclosed work names no
+    -- client, and a piece need not be filed under a category to be shown.
+    client_name text,
+    category text,
+    sort_order integer NOT NULL DEFAULT 0,
     created_at timestamp
     with
         time zone NOT NULL DEFAULT now(),
@@ -448,6 +463,96 @@ CREATE TABLE org.profile_follows (
         follower_user_id,
         target_entity_type,
         target_entity_id
+    )
+);
+
+-- A professional certification on an individual's Experience section. `verified` is a PLATFORM
+-- claim — the credential was checked against its issuer — and is the only reason the row may carry
+-- the trust crest. It is never client-writable: org.save_profile preserves it on an unchanged row
+-- and CLEARS it the moment the name or issuer is edited, because a verification describes the
+-- credential that was checked, not whatever the row says now.
+CREATE TABLE org.certifications (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    user_id uuid NOT NULL,
+    name text NOT NULL,
+    issuer text NOT NULL,
+    -- Text for the same reason education/experience years are text: a credential is stated as a
+    -- year, and a date column would invent a month and a day the profile never renders.
+    issued_year text NOT NULL,
+    expires_year text,
+    -- The issuer's public verification page, when one exists. https-only: it renders as a link on a
+    -- public profile, and a `javascript:` or plaintext URL there is a trap for every visitor.
+    credential_url text,
+    verified boolean NOT NULL DEFAULT false,
+    verified_at timestamptz,
+    logo_file_id uuid REFERENCES files.items (id) ON DELETE SET NULL,
+    sort_order integer NOT NULL DEFAULT 0,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT certifications_pkey PRIMARY KEY (id),
+    CONSTRAINT certifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE CASCADE,
+    CONSTRAINT certifications_verified_at_check CHECK (NOT verified OR verified_at IS NOT NULL),
+    CONSTRAINT certifications_url_check CHECK (
+        credential_url IS NULL OR credential_url ~* '^https://[^\s]+$'
+    )
+);
+-- #endregion
+
+-- #region Profile presentation — the showcase grid and the owner's privacy switches
+-- The polymorphic owner vocabulary below ('user' · 'team' · 'business' · 'organisation') is the
+-- org.profile_follows one, for the same reason: an individual is ONE row in org.users_public however
+-- their profile renders, and a per-kind discriminator would let one person own two showcases. There
+-- is no FK on (owner_type, owner_id) — a polymorphic target cannot carry one — so every WRITE goes
+-- through a definer RPC (org.save_showcase / org.save_profile) that checks the owner exists and that
+-- the caller manages it. Neither table has a client write policy.
+
+-- One row per filled showcase slot. Six slots, and slot 1 is special: it is the PRIMARY still — the
+-- thumbnail every explore card, search result and public listing of this profile leads with — so it
+-- must be an image (a card cannot lead with a video). That rule needs the file's MIME type, which a
+-- CHECK cannot read, so org.save_showcase enforces it.
+--
+-- `file_id` points at a SHOWCASE RENDITION (files.items.purpose = 'showcase'), never at the
+-- library asset it was cut from: the rendition is the public, cropped copy with its WebP tiers, and
+-- the library original stays private. ON DELETE CASCADE because a slot with no media is not a slot.
+CREATE TABLE org.profile_showcase_items (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    owner_type text NOT NULL,
+    owner_id uuid NOT NULL,
+    position smallint NOT NULL,
+    file_id uuid NOT NULL REFERENCES files.items (id) ON DELETE CASCADE,
+    -- The slide's alternative text. NOT NULL DEFAULT '' so the reader never branches on a null;
+    -- the read falls back to "{name} — work" for an empty string rather than rendering alt="".
+    alt text NOT NULL DEFAULT '',
+    created_by uuid NOT NULL REFERENCES auth.users (id),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT profile_showcase_items_pkey PRIMARY KEY (id),
+    CONSTRAINT profile_showcase_items_owner_type_check CHECK (
+        owner_type IN ('user', 'team', 'business', 'organisation')
+    ),
+    CONSTRAINT profile_showcase_items_position_check CHECK (position BETWEEN 1 AND 6),
+    CONSTRAINT profile_showcase_items_alt_check CHECK (char_length(alt) <= 200),
+    CONSTRAINT profile_showcase_items_slot_unique UNIQUE (owner_type, owner_id, position)
+);
+
+-- The owner's presentation switches. One row per profile, created on first save; an ABSENT row
+-- reads as the column defaults, so a profile nobody has configured behaves exactly like one whose
+-- owner accepted every default. Each column is read by exactly one surface, and a switch with no
+-- reader is not allowed here (root CLAUDE.md §3 gate 11 — a control that renders must do something).
+CREATE TABLE org.profile_settings (
+    owner_type text NOT NULL,
+    owner_id uuid NOT NULL,
+    -- Visitors may open the profile photo full size. OFF by default: a larger copy of someone's face
+    -- is theirs to offer, not the platform's to assume.
+    allow_avatar_expand boolean NOT NULL DEFAULT false,
+    -- The "City, Country" line in the context bar.
+    show_location boolean NOT NULL DEFAULT true,
+    -- The live local clock beside the availability badge.
+    show_local_time boolean NOT NULL DEFAULT true,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT profile_settings_pkey PRIMARY KEY (owner_type, owner_id),
+    CONSTRAINT profile_settings_owner_type_check CHECK (
+        owner_type IN ('user', 'team', 'business', 'organisation')
     )
 );
 -- #endregion

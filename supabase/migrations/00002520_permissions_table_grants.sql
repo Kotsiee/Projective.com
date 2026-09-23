@@ -70,7 +70,9 @@ GRANT ALL ON search.search_weights TO service_role;
 
 -- --- from 20260723090000_finance_currency_fx.sql ---
 
-GRANT SELECT ON TABLE finance.fx_rates TO authenticated;
+-- `anon` too: the FX floor is public reference data that SSR reads to convert a price for a
+-- signed-out visitor (Decision #69). The only `finance` table `anon` holds a privilege on.
+GRANT SELECT ON TABLE finance.fx_rates TO anon, authenticated;
 
 GRANT ALL ON TABLE finance.fx_rates TO service_role;
 
@@ -84,7 +86,9 @@ GRANT ALL ON TABLE finance.verification_cases TO service_role;
 
 -- --- from 20260723092000_finance_payment_methods_money_movement.sql ---
 
-GRANT SELECT, INSERT, UPDATE ON TABLE finance.payment_methods TO authenticated;
+-- No INSERT: a payment method is created by the processor's setup handshake (service role), the only
+-- party that can say an instrument exists. The owner may relabel one or change the default.
+GRANT SELECT, UPDATE ON TABLE finance.payment_methods TO authenticated;
 
 GRANT ALL ON TABLE finance.payment_methods TO service_role;
 
@@ -96,7 +100,8 @@ GRANT SELECT, INSERT, UPDATE ON TABLE finance.payout_schedules TO authenticated;
 
 GRANT ALL ON TABLE finance.payout_schedules TO service_role;
 
-GRANT SELECT, INSERT, UPDATE ON TABLE finance.income_smoothing TO authenticated;
+-- SELECT only: enrolment is an eligibility decision made server-side (see the policy in 00002013).
+GRANT SELECT ON TABLE finance.income_smoothing TO authenticated;
 
 GRANT ALL ON TABLE finance.income_smoothing TO service_role;
 
@@ -442,9 +447,53 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE finance.basket_items TO authentica
 
 GRANT ALL ON TABLE finance.basket_items TO service_role;
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE finance.saved_cards TO authenticated;
+-- No INSERT: a card is saved by the processor's handshake. DELETE stays — removing a saved card is
+-- the owner's call, and a saved card has never moved money.
+GRANT SELECT, UPDATE, DELETE ON TABLE finance.saved_cards TO authenticated;
 
 GRANT ALL ON TABLE finance.saved_cards TO service_role;
+
+
+-- --- finance: the ledger and commerce tables (the move off fixtures, 2026-09-23) ---
+-- The schema is exposed to PostgREST (00002500). Every client grant here is SELECT: money moves only
+-- through SECURITY DEFINER functions, so no client role holds a write on the ledger, an order, an
+-- invoice or a payout. `buyer_details` is the one exception, the buyer's own form. `promo_codes` and
+-- `ratings` get no client grant at all (see 00002001) — only the service role and definer functions.
+
+GRANT SELECT ON TABLE finance.wallets TO authenticated;
+
+GRANT SELECT ON TABLE finance.transactions TO authenticated;
+
+GRANT SELECT ON TABLE finance.payouts TO authenticated;
+
+GRANT SELECT ON TABLE finance.payout_accounts TO authenticated;
+
+GRANT SELECT ON TABLE finance.orders TO authenticated;
+
+GRANT SELECT ON TABLE finance.order_lines TO authenticated;
+
+GRANT SELECT ON TABLE finance.invoices TO authenticated;
+
+GRANT SELECT ON TABLE finance.invoice_line_items TO authenticated;
+
+GRANT SELECT ON TABLE finance.disputes TO authenticated;
+
+GRANT SELECT ON TABLE finance.dispute_messages TO authenticated;
+
+GRANT SELECT ON TABLE finance.contribution_agreements TO authenticated;
+
+GRANT SELECT ON TABLE finance.payout_splits TO authenticated;
+
+GRANT SELECT ON TABLE finance.spending_limits TO authenticated;
+
+GRANT SELECT, INSERT, UPDATE ON TABLE finance.buyer_details TO authenticated;
+
+GRANT ALL ON TABLE finance.wallets, finance.transactions, finance.payouts, finance.payout_accounts,
+    finance.orders, finance.order_lines, finance.invoices, finance.invoice_line_items,
+    finance.disputes, finance.dispute_messages, finance.contribution_agreements,
+    finance.payout_splits, finance.spending_limits, finance.buyer_details, finance.promo_codes,
+    finance.ratings
+TO service_role;
 
 
 -- --- files: asset management (anon reach for the public tier) ---
@@ -465,3 +514,38 @@ GRANT SELECT ON TABLE files.items TO anon;
 -- schema-wide GRANT in 00002500 — deliberately not restated here. What keeps the audit and rollup
 -- tables safe is not a narrower grant, it is that RLS is on and no INSERT/UPDATE policy exists for
 -- them (00002011): the write path is the SECURITY DEFINER trigger and the fat backend, full stop.
+
+
+-- --- catalogue: the seller publication layer (discovery reads it live, 2026-09-22) ---
+--
+-- SELECT to both client roles on every table; row-level visibility is 00002020's job ("published is
+-- public, everything else is its owner's"). Writes go to `authenticated` only, and only the verbs the
+-- policies grant a meaning to: INSERT/UPDATE on the three subject tables (no DELETE — a listing is
+-- archived, never hard-deleted, root CLAUDE.md §5), and the full set on the child and junction
+-- tables, where removing a tag or reordering a gallery IS a delete.
+GRANT SELECT ON ALL TABLES IN SCHEMA catalogue TO anon, authenticated;
+
+GRANT INSERT, UPDATE ON catalogue.listings, catalogue.products, catalogue.articles TO authenticated;
+
+GRANT INSERT, UPDATE, DELETE ON catalogue.listing_media,
+catalogue.listing_skills,
+catalogue.listing_tags,
+catalogue.listing_availability,
+catalogue.collections,
+catalogue.collection_listings TO authenticated;
+
+GRANT ALL ON ALL TABLES IN SCHEMA catalogue TO service_role;
+
+
+-- --- projects: what a signed-out visitor may read about a PUBLIC project ---
+--
+-- Exactly the tables the public project page and the discovery card read, and SELECT only. Each is
+-- already governed by a `TO public` policy scoped to `status = 'active' AND visibility = 'public'`
+-- (00002011), except `project_required_skills`, whose public policy lands beside this grant. Nothing
+-- about a project's tickets, money, members or messages is reachable from here.
+GRANT SELECT ON projects.projects,
+projects.project_stages,
+projects.stage_staffing_roles,
+projects.stage_open_seats,
+projects.stage_open_seat_skills,
+projects.project_required_skills TO anon;

@@ -1,7 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { toSchedulingResponse } from "@features/calendar/core/respond.ts";
 import { viewerFromState } from "@features/calendar/core/viewer.ts";
-import { schedulingSimFromParams } from "@projective/types/scheduling";
 import { ScheduleBackendService } from "@server/services/scheduling/ScheduleBackendService.ts";
 
 /**
@@ -15,17 +14,13 @@ import { ScheduleBackendService } from "@server/services/scheduling/ScheduleBack
  * and the host's earnings from anyone who is not a party to an event.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const handle = ctx.url.searchParams.get("handle");
 		if (!handle) {
 			return Response.json({ ok: false, message: "Missing handle." }, { status: 400 });
 		}
 		return toSchedulingResponse(
-			ScheduleBackendService.availability(
-				{ handle },
-				viewerFromState(ctx.state),
-				schedulingSimFromParams(ctx.url.searchParams),
-			),
+			await ScheduleBackendService.availability({ handle }, viewerFromState(ctx.state)),
 		);
 	},
 });

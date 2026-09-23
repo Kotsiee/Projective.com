@@ -77,6 +77,56 @@ export interface SearchPayload {
 	facets?: Facet[];
 }
 
+/**
+ * A REAL review, quoted on the landing page. Every field is read from the review and its author's
+ * public profile — nothing is paraphrased, and a quote is never attributed to anyone but the person
+ * who wrote it.
+ */
+export interface Testimonial {
+	id: string;
+	/** The review's own words. */
+	quote: string;
+	/** The review's own title. */
+	title: string;
+	rating: number;
+	/** `client`: a buyer on the work they received. `freelancer`: a seller on a client they served. */
+	voice: "client" | "freelancer";
+	author: import("./items.ts").ExploreOwner;
+	/** The author's headline, as their profile states it. */
+	role: string;
+}
+
+/**
+ * The platform's running totals — the landing hero's proof points, as AGGREGATES only. Read from a
+ * definer view that projects counts and a sum and nothing a visitor could use to identify a row.
+ */
+export interface PlatformStats {
+	/** Listed freelancers and teams — people a visitor could hire today. */
+	helpers: number;
+	/** Stages delivered and signed off. */
+	stagesDelivered: number;
+	/** Projects running or completed. */
+	projectsLive: number;
+	/** Money released to sellers, in minor units of {@link PlatformStats.paidOutCurrency}. */
+	paidOutMinor: number;
+	paidOutCurrency: string;
+}
+
+/**
+ * Everything the public landing page renders, resolved in one server call. The home feed is the
+ * payload's spine — without it there is nothing to show — while the quotes and the running totals are
+ * garnish: when either read fails the page still renders, with that part simply absent.
+ */
+export interface LandingPayload {
+	home: HomeFeed;
+	/** Real reviews worth quoting; empty when there are none or the read failed. */
+	testimonials: Testimonial[];
+	/** The running totals, or `null` when they could not be read. */
+	stats: PlatformStats | null;
+	/** The hero's backdrop — the platform's own public asset, or `null` when it is not uploaded. */
+	heroImage: string | null;
+}
+
 /** The composed Home discovery feed (State A first paint): sections keyed by format + reserved promos. */
 export interface HomeFeed {
 	users: ProfileItem[];

@@ -11,11 +11,11 @@ import { ExploreBackendService } from "@server/services/explore/ExploreBackendSe
  * for SSR first paint.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const params = parseExploreParams(ctx.url.searchParams);
 		const offsetRaw = Number(ctx.url.searchParams.get("offset"));
 		const limitRaw = Number(ctx.url.searchParams.get("limit"));
-		return toExploreResponse(ExploreBackendService.search({
+		return toExploreResponse(await ExploreBackendService.search({
 			params,
 			offset: Number.isFinite(offsetRaw) ? offsetRaw : 0,
 			limit: Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : undefined,

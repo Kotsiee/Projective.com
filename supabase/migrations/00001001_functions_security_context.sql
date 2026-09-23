@@ -281,3 +281,115 @@ REVOKE ALL ON FUNCTION security.mint_slug(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION security.fn_slug_guard() FROM PUBLIC;
 
 -- #endregion
+
+-- #region Derived-column guard
+-- A rating, a review count, a view or order counter is DERIVED: a definer trigger or function
+-- computes it from rows the owner does not control (`reviews.recalculate_entity_rating` for the
+-- ratings). The owner's own-row UPDATE policy still reaches those columns, so without this a seller
+-- could PATCH their listing to `rating_average = 5, rating_count = 900` through the API and every
+-- card, ranking and search score would repeat it.
+--
+-- The guard refuses a CLIENT write to any column named in the trigger's arguments. "Client" is the
+-- role executing the statement: PostgREST runs a request as `anon` or `authenticated`, while a
+-- `SECURITY DEFINER` function runs its statements as its owner and the service role as
+-- `service_role` — so the rating trigger, the seed and server-side jobs pass untouched, and nothing
+-- that legitimately maintains these columns needs to know the guard exists. This is why the function
+-- is deliberately NOT `SECURITY DEFINER`: as a definer it would read its own owner as the caller
+-- and wave every client write through.
+--
+-- UPDATE: the column may not change. INSERT: the column may only start EMPTY — zero for a counter,
+-- an average or a balance, false for a flag, null for a server-stamped time — because a new row
+-- claiming 900 reviews, a pot holding £10,000 or an item "purchased" yesterday is the same forgery
+-- arriving by the other door. A write that restates the current value (PostgREST PATCHing a whole
+-- row back) passes, because nothing moved.
+--
+-- Raises `42501` (insufficient_privilege): the write is refused for who is making it, not for what
+-- it contains.
+CREATE OR REPLACE FUNCTION security.fn_guard_derived_columns()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+DECLARE
+    v_col text;
+    v_new jsonb;
+    v_old jsonb;
+BEGIN
+    IF current_user NOT IN ('anon', 'authenticated') THEN
+        RETURN NEW;
+    END IF;
+
+    v_new := to_jsonb(NEW);
+    v_old := CASE WHEN TG_OP = 'UPDATE' THEN to_jsonb(OLD) ELSE NULL END;
+
+    FOREACH v_col IN ARRAY TG_ARGV LOOP
+        IF TG_OP = 'UPDATE' THEN
+            IF v_new -> v_col IS DISTINCT FROM v_old -> v_col THEN
+                RAISE EXCEPTION '%.% is derived and cannot be written directly', TG_TABLE_NAME, v_col
+                    USING ERRCODE = '42501';
+            END IF;
+        -- On INSERT a derived column must start EMPTY: null, zero or false. Judged by the JSON type
+        -- rather than by casting, so a derived timestamp (`purchased_at`) is refused with this message
+        -- instead of failing a numeric cast.
+        ELSIF jsonb_typeof(v_new -> v_col) = 'number' THEN
+            IF (v_new ->> v_col)::numeric <> 0 THEN
+                RAISE EXCEPTION '%.% is derived and must start at zero', TG_TABLE_NAME, v_col
+                    USING ERRCODE = '42501';
+            END IF;
+        ELSIF jsonb_typeof(v_new -> v_col) = 'boolean' THEN
+            IF (v_new ->> v_col)::boolean THEN
+                RAISE EXCEPTION '%.% is derived and must start false', TG_TABLE_NAME, v_col
+                    USING ERRCODE = '42501';
+            END IF;
+        ELSIF COALESCE(jsonb_typeof(v_new -> v_col), 'null') <> 'null' THEN
+            RAISE EXCEPTION '%.% is derived and must start empty', TG_TABLE_NAME, v_col
+                USING ERRCODE = '42501';
+        END IF;
+    END LOOP;
+
+    RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION security.fn_guard_derived_columns() IS
+'BEFORE INSERT OR UPDATE trigger: refuses an anon/authenticated write to the derived columns named in its arguments (ratings, counts, balances, server-stamped times). An INSERT may only start them empty — null, zero or false; an UPDATE may not change them. Definer functions, the service role and the seed pass.';
+
+REVOKE ALL ON FUNCTION security.fn_guard_derived_columns() FROM PUBLIC;
+
+-- The same idea for IDENTITY columns: who a row is between, and what it is about. A policy's
+-- `WITH CHECK` sees only the post-image, so "either party may update this" cannot also say "but not
+-- the parties themselves" — a host could rewrite `requester_user_id` and drop a request into a
+-- stranger's inbox as though they had sent it. This refuses a client UPDATE that changes any named
+-- column, of any type; inserts are the policy's job and pass untouched.
+CREATE OR REPLACE FUNCTION security.fn_guard_immutable_columns()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+DECLARE
+    v_col text;
+    v_new jsonb;
+    v_old jsonb;
+BEGIN
+    IF TG_OP <> 'UPDATE' OR current_user NOT IN ('anon', 'authenticated') THEN
+        RETURN NEW;
+    END IF;
+
+    v_new := to_jsonb(NEW);
+    v_old := to_jsonb(OLD);
+    FOREACH v_col IN ARRAY TG_ARGV LOOP
+        IF v_new -> v_col IS DISTINCT FROM v_old -> v_col THEN
+            RAISE EXCEPTION '%.% cannot be changed once written', TG_TABLE_NAME, v_col
+                USING ERRCODE = '42501';
+        END IF;
+    END LOOP;
+
+    RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION security.fn_guard_immutable_columns() IS
+'BEFORE UPDATE trigger: refuses an anon/authenticated UPDATE that changes any column named in its arguments (the parties and subject of a row). Definer functions and the service role pass.';
+
+REVOKE ALL ON FUNCTION security.fn_guard_immutable_columns() FROM PUBLIC;
+-- #endregion

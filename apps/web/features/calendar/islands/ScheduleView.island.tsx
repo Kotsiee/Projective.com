@@ -18,9 +18,6 @@ import { type EventAccess, readDevSeam, resolveEventAccess } from "../core/event
 import { simFromSeam, subscribeSchedulingSim } from "../core/scheduling-seam.ts";
 import { ScheduleService } from "../core/ScheduleService.ts";
 
-/** Reference focus instant — matches the fixtures' fixed clock so the schedule opens on the seeded week. */
-const FOCUS = Date.parse("2026-07-17T16:20:00Z");
-
 /** What a schedule surface can create. */
 const CREATE_KINDS: { value: CalendarEventKind; label: string }[] = [
 	{ value: "session", label: "Session" },
@@ -152,7 +149,9 @@ export default function ScheduleView(props: ScheduleViewProps): JSX.Element {
 				availability={p.availability}
 				timezone={p.timezone}
 				view="week"
-				focus={FOCUS}
+				// The server's instant, not the client's clock: the SSR paint and the hydrated grid open
+				// on the same week, and "Passed" means what the server meant by it.
+				focus={p.now}
 				title={p.subtitle ?? p.title}
 				canCreate={p.viewerCanBook}
 				renderSource={renderCalendarSource}
@@ -186,7 +185,7 @@ export default function ScheduleView(props: ScheduleViewProps): JSX.Element {
 						event={framed}
 						tz={p.timezone}
 						hour12
-						nowMs={FOCUS}
+						nowMs={p.now}
 						access={access.value}
 						target={{
 							scope: props.scope,

@@ -1,23 +1,80 @@
 import type { JSX } from "preact";
+import type { PlatformStats } from "@projective/types/explore";
 import HeroParticles from "../islands/HeroParticles.island.tsx";
 import SearchBar from "../islands/SearchBar.island.tsx";
-import { unsplash } from "../core/landing-data.ts";
 import { vars } from "../core/style.ts";
+
+// #region Stats
+/** One proof point, already formatted for display. */
+interface HeroStat {
+	label: string;
+	value: string;
+}
+
+/** Counts below ten thousand read in full (`3,812`); above it, compactly (`19K`). */
+function formatCount(n: number): string {
+	return n >= 10_000
+		? new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n)
+		: n.toLocaleString("en-US");
+}
+
+/**
+ * A minor-unit total as compact money (`$18.2K`). The exponent comes from `Intl` itself, so a
+ * zero-decimal currency is not divided by a hundred it never had.
+ */
+function formatMoney(minor: number, currency: string): string {
+	const digits = new Intl.NumberFormat("en-US", { style: "currency", currency })
+		.resolvedOptions().maximumFractionDigits ?? 2;
+	return new Intl.NumberFormat("en-US", {
+		style: "currency",
+		currency,
+		notation: "compact",
+		maximumFractionDigits: 1,
+	}).format(minor / 10 ** digits);
+}
+
+/**
+ * The hero's proof points, read from the platform's running totals. A figure that is still zero is
+ * left out rather than printed — "$0 paid out" is true on a new deployment and says nothing a visitor
+ * can use — and when none has moved yet the row is not rendered at all.
+ */
+function heroStats(stats: PlatformStats | null): HeroStat[] {
+	if (!stats) return [];
+	const out: HeroStat[] = [];
+	if (stats.paidOutMinor > 0) {
+		out.push({
+			label: "Paid out safely",
+			value: formatMoney(stats.paidOutMinor, stats.paidOutCurrency),
+		});
+	}
+	if (stats.helpers > 0) {
+		out.push({ label: "Helpers ready to go", value: formatCount(stats.helpers) });
+	}
+	if (stats.projectsLive > 0) {
+		out.push({ label: "Projects under way", value: formatCount(stats.projectsLive) });
+	}
+	return out;
+}
+// #endregion
 
 /**
  * Hero — the full-window opening act, sized to exactly the viewport minus the floating header. A
  * photographic backdrop under a tonal scrim, the hero-scoped particle field (island), and a centered,
  * search-forward composition: the multi-weight headline still carries the primary AIO terms in real
- * semantic markup, but the primary action is now the prominent shared {@link SearchBar} (hero variant).
+ * semantic markup, but the primary action is the prominent shared {@link SearchBar} (hero variant).
+ *
+ * The backdrop is the platform's own public asset in storage; when it is not uploaded the hero keeps
+ * its scrim and particle field on the plain surface. The stats are the platform's real running totals.
  */
-const HERO_BG = unsplash("1522071820081-009f0129c71c", 1920, 1280);
-
-export function Hero(): JSX.Element {
+export function Hero(
+	{ image, stats }: { image: string | null; stats: PlatformStats | null },
+): JSX.Element {
+	const proof = heroStats(stats);
 	return (
 		<section class="lp-hero" aria-labelledby="lp-hero-title">
 			<div
 				class="lp-hero__bg"
-				style={vars({ "--lp-hero-img": `url("${HERO_BG}")` })}
+				style={vars({ "--lp-hero-img": image ? `url("${image}")` : "none" })}
 				aria-hidden="true"
 			/>
 			<div class="lp-hero__scrim" aria-hidden="true" />
@@ -49,20 +106,16 @@ export function Hero(): JSX.Element {
 
 				<SearchBar variant="hero" />
 
-				<dl class="lp-hero__stats">
-					<div class="lp-hero__stat">
-						<dt>Paid out safely</dt>
-						<dd>$4.2M</dd>
-					</div>
-					<div class="lp-hero__stat">
-						<dt>Helpers ready to go</dt>
-						<dd>3,800+</dd>
-					</div>
-					<div class="lp-hero__stat">
-						<dt>Happy projects</dt>
-						<dd>19k</dd>
-					</div>
-				</dl>
+				{proof.length > 0 && (
+					<dl class="lp-hero__stats">
+						{proof.map((s) => (
+							<div class="lp-hero__stat" key={s.label}>
+								<dt>{s.label}</dt>
+								<dd>{s.value}</dd>
+							</div>
+						))}
+					</dl>
+				)}
 			</div>
 
 			<a class="lp-hero__scroll" href="#how-it-works" aria-label="Scroll to explore">

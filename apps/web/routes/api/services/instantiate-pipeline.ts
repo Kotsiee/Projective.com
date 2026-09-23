@@ -3,6 +3,7 @@ import { InstantiateServiceInputSchema } from "@projective/types/services";
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
 import { bookingActorFrom } from "@features/view/core/booking-actor.ts";
 import { invalidPayload, toBookingResponse } from "@features/view/core/respond.ts";
+import { warmCatalog } from "@server/services/explore/live-catalog.ts";
 
 /**
  * `POST /api/services/instantiate-pipeline` — copy a Pipeline service template into the acting
@@ -24,11 +25,13 @@ import { invalidPayload, toBookingResponse } from "@features/view/core/respond.t
  */
 export const handler = define.handlers({
 	async POST(ctx) {
+		// The service below resolves the listing synchronously from the loaded catalogue.
+		await warmCatalog();
 		const raw = await ctx.req.json().catch(() => null);
 		const parsed = InstantiateServiceInputSchema.safeParse(raw);
 		if (!parsed.success) return invalidPayload(parsed.error);
 
-		const actor = bookingActorFrom(ctx.state);
+		const actor = bookingActorFrom(ctx);
 		if (!actor.userId) {
 			return Response.json(
 				{ ok: false, message: "Sign in to add this to your projects." },

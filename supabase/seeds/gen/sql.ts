@@ -100,6 +100,29 @@ export function ahead(days: number): string {
 	return `now() + interval '${hours} hours'`;
 }
 
+/**
+ * A wall-clock instant in a zone, placed relative to the CURRENT week: `week` weeks from this week's
+ * Monday (0 = this week, 1 = next, -1 = last), `day` days after that Monday (0 = Mon … 6 = Sun), at
+ * `minute` minutes past local midnight.
+ *
+ * Resolved by Postgres at seed time, so a seeded "Tuesday 14:00 in London" is Tuesday 14:00 in London
+ * whatever day the reset runs — which is what lets a seeded booking land INSIDE the provider's call
+ * window rather than at whatever hour `now() + n days` happens to be. Adding whole days to a local
+ * `timestamp` (no zone) is wall-clock arithmetic, so a DST change between now and then cannot shift it.
+ */
+export function localAt(tz: string, week: number, day: number, minute: number): string {
+	const days = week * 7 + day;
+	return `((date_trunc('week', now() AT TIME ZONE ${q(tz)}) + interval '${days} days' + interval '${minute} minutes') AT TIME ZONE ${
+		q(tz)
+	})`;
+}
+
+/** `HH:MM` → minutes past midnight. */
+export function minutesOf(hhmm: string): number {
+	const [h, m] = hhmm.split(":").map(Number);
+	return h * 60 + m;
+}
+
 /** Split a display name into first/last. */
 export function splitName(name: string): { first: string; last: string } {
 	const parts = name.trim().split(/\s+/);

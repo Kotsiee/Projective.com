@@ -23,7 +23,7 @@ export const handler = define.handlers({
 		const parsed = ArchiveDraftInputSchema.safeParse(raw);
 		if (!parsed.success) return invalidPayload(parsed.error);
 
-		const actor = bookingActorFrom(ctx.state);
+		const actor = bookingActorFrom(ctx);
 		if (!actor.userId) {
 			return Response.json({ ok: false, message: "Sign in to manage your drafts." }, { status: 401 });
 		}

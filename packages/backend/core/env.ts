@@ -35,6 +35,16 @@ export interface ServerEnv {
 	appUrl: string;
 	/** Supabase project URL. */
 	supabaseUrl: string | undefined;
+	/**
+	 * The Supabase origin a BROWSER reaches — the host every public storage URL is built on.
+	 *
+	 * Usually identical to {@link supabaseUrl} and defaulted to it, but a distinct fact: the server may
+	 * reach the project over an address the browser cannot use (a container hostname, an internal
+	 * load balancer), and on a local stack `127.0.0.1` and `localhost` are not interchangeable for
+	 * every browser and web filter. A URL built on the server's address would render as a broken image
+	 * for exactly the reader who can least diagnose why. Read from `SUPABASE_PUBLIC_URL`.
+	 */
+	supabasePublicUrl: string | undefined;
 	/** Supabase anon (publishable) key — RLS-scoped, used with a user's JWT. */
 	supabaseAnonKey: string | undefined;
 	/** Supabase service-role key — bypasses RLS; server-only, never sent to the client. */
@@ -169,6 +179,7 @@ export function serverEnv(): ServerEnv {
 		appEnv: firstEnv("DENO_ENV") ?? "development",
 		appUrl: firstEnv("APP_URL") ?? "http://localhost:3000",
 		supabaseUrl: firstEnv("SUPABASE_URL"),
+		supabasePublicUrl: firstEnv("SUPABASE_PUBLIC_URL", "SUPABASE_URL"),
 		supabaseAnonKey: firstEnv("SUPABASE_ANON_KEY"),
 		supabaseServiceRoleKey: firstEnv("SUPABASE_SERVICE_ROLE_KEY"),
 		useMocks: (firstEnv("USE_MOCKS", "VITE_USE_MOCKS") ?? "false").toLowerCase() === "true",

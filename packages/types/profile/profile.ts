@@ -105,6 +105,11 @@ export type ProfileLocation = z.infer<typeof ProfileLocationSchema>;
 export const ProfileShowcaseItemSchema = z.object({
 	kind: z.enum(["video", "image"]),
 	src: z.string(),
+	/**
+	 * Width-described candidates across the stored WebP tiers (`url 480w, url 1280w, …`) — an image
+	 * slide only. Absent when the asset has one size, where `src` is the only candidate there is.
+	 */
+	srcset: z.string().optional(),
 	/** The still a video draws before playback (and the only frame a reduced-motion viewer sees). */
 	poster: z.string().optional(),
 	alt: z.string(),
@@ -113,8 +118,11 @@ export const ProfileShowcaseItemSchema = z.object({
 });
 export type ProfileShowcaseItem = z.infer<typeof ProfileShowcaseItemSchema>;
 
+/** The number of showcase slots — slot 1 is the primary still, slots 2–6 the extras. */
+export const SHOWCASE_SLOTS = 6;
+
 /** The most extra slides a showcase may carry beyond its primary image. */
-export const SHOWCASE_EXTRA_MAX = 4;
+export const SHOWCASE_EXTRA_MAX = SHOWCASE_SLOTS - 1;
 
 /**
  * The hero's showcase — the carousel that fills the hero's second column: ONE primary image (the
@@ -183,6 +191,38 @@ export const ProfileHoursSchema = z.object({
 export type ProfileHours = z.infer<typeof ProfileHoursSchema>;
 
 /**
+ * The owner's presentation switches (`org.profile_settings`). Each one is read by exactly one
+ * surface; an absent row reads as {@link DEFAULT_PROFILE_SETTINGS}.
+ */
+export const ProfileSettingsSchema = z.object({
+	/** Visitors may open the profile photo full size. OFF by default — the owner's to offer. */
+	allowAvatarExpand: z.boolean(),
+	/** Show the "City, Country" line in the context bar. */
+	showLocation: z.boolean(),
+	/** Show the live local clock beside the availability badge. */
+	showLocalTime: z.boolean(),
+});
+export type ProfileSettings = z.infer<typeof ProfileSettingsSchema>;
+
+/** The switches a profile nobody has configured behaves as — the table's column defaults. */
+export const DEFAULT_PROFILE_SETTINGS: ProfileSettings = {
+	allowAvatarExpand: false,
+	showLocation: true,
+	showLocalTime: true,
+};
+
+/**
+ * Who can reach a profile (`org.users_public.visibility`): `public` is listed in discovery,
+ * `unlisted` resolves by its link but is never listed, `private` is visible to its owner alone.
+ */
+export const ProfileVisibility = z.enum(["public", "unlisted", "private"]);
+export type ProfileVisibility = z.infer<typeof ProfileVisibility>;
+
+/** The polymorphic owner of a profile — the `org.profile_follows` vocabulary. */
+export const ProfileOwnerType = z.enum(["user", "team", "business", "organisation"]);
+export type ProfileOwnerType = z.infer<typeof ProfileOwnerType>;
+
+/**
  * Per-tab item counts — feed the tab-bar count chips + the "empty tab" gate. All optional so a kind
  * that never has a given tab simply omits it.
  */
@@ -228,7 +268,7 @@ export const ProfileViewSchema = z.object({
 	 * still borrows a profile's cover for header parity (Decision #43).
 	 */
 	banner: z.string(),
-	/** The hero showcase carousel (a primary image + up to four slides); `null` collapses the hero to one column. */
+	/** The hero showcase carousel (a primary image + up to five slides); `null` collapses the hero to one column. */
 	showcase: ProfileShowcaseSchema.nullable(),
 	/** The hero's inline metrics strip. */
 	stats: ProfileStatsSchema,
@@ -307,6 +347,28 @@ export const ProfileViewSchema = z.object({
 	userId: z.string(),
 	/** Per-tab counts. */
 	metrics: ProfileMetricsSchema,
+	/**
+	 * The profile photo at FULL size — what the expansion modal opens, when the owner allows it
+	 * (`settings.allowAvatarExpand`). Absent when there is no photo.
+	 */
+	avatarFull: z.string().optional(),
+	/** The owner's presentation switches; absent reads as {@link DEFAULT_PROFILE_SETTINGS}. */
+	settings: ProfileSettingsSchema.optional(),
+	/** The profile's reach — only an individual carries all three states. */
+	visibility: ProfileVisibility.optional(),
+	/** The polymorphic owner, which every owner write is addressed to. */
+	owner: z.object({ type: ProfileOwnerType, id: z.string() }).optional(),
+	/**
+	 * The VIEWER's relationship to the profile, as the database decided it under the viewer's own
+	 * verified session — never inferred from the unverified chrome token. `isOwner` unlocks the
+	 * owner sub-nav and the edit routes; `follows` seeds the Follow control.
+	 */
+	viewer: z.object({ isOwner: z.boolean(), follows: z.boolean() }).optional(),
 });
 export type ProfileView = z.infer<typeof ProfileViewSchema>;
+
+/** The effective switches of a profile — its own, or the defaults when it has none. */
+export function settingsOf(profile: Pick<ProfileView, "settings">): ProfileSettings {
+	return profile.settings ?? DEFAULT_PROFILE_SETTINGS;
+}
 // #endregion

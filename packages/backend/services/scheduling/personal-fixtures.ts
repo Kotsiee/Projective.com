@@ -171,5 +171,6 @@ export function findPersonalCalendarPage(
 			blackouts: personalBlackouts(),
 		},
 		events,
+		now: NOW,
 	};
 }

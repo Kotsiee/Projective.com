@@ -53,20 +53,20 @@ export function resolvePersonalCalendar(
 	return { page: res.ok && res.data ? res.data.page : null };
 }
 
-/** A `@handle`'s availability schedule page. */
-export function resolveAvailabilityPage(
+/** A `@handle`'s availability schedule page, read live from their published schedule. */
+export async function resolveAvailabilityPage(
 	handle: string,
 	viewer: SchedulingViewer = ANONYMOUS_VIEWER,
-): ScheduleBootstrap {
-	const res = ScheduleBackendService.availability({ handle }, viewer);
+): Promise<ScheduleBootstrap> {
+	const res = await ScheduleBackendService.availability({ handle }, viewer);
 	return { page: res.ok && res.data ? res.data.page : null };
 }
 
-/** A session-based entity's schedule page. */
-export function resolveSchedulePage(
+/** A session listing's schedule page, read live from its provider's published schedule. */
+export async function resolveSchedulePage(
 	entityId: string,
 	viewer: SchedulingViewer = ANONYMOUS_VIEWER,
-): ScheduleBootstrap {
-	const res = ScheduleBackendService.entitySchedule({ entityId }, viewer);
+): Promise<ScheduleBootstrap> {
+	const res = await ScheduleBackendService.entitySchedule({ entityId }, viewer);
 	return { page: res.ok && res.data ? res.data.page : null };
 }

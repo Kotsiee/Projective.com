@@ -5,14 +5,9 @@ import { Avatar } from "@projective/ui/display";
 import { Toast, Tooltip, useToast } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import type { PublicCallOffer } from "@projective/types/scheduling";
-import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
-import { openPicker } from "@web/features/files/core/files-state.ts";
-import type { AssetItem } from "@web/features/files/types/file-types.ts";
 import SignInPrompt from "@features/auth/islands/SignInPrompt.island.tsx";
 import { MigratingBack } from "@features/shell/components/MigratingBack.tsx";
 import { EXPLORE_FALLBACK } from "@features/explore/core/explore-history.ts";
-import { BookingService } from "@features/view/core/BookingService.ts";
-import { useBookingSeam } from "@features/view/core/booking-seam.ts";
 // The service modal's preview renders the `/view` page's own parts and the booking modals reuse its
 // date rail + slot picker, so both sheets must ride THIS island's bundle (§C.1 — a sheet reached only
 // through a server component never ships). `explore.css` carries the `.ex-status` rules the seller
@@ -22,7 +17,7 @@ import "@features/view/styles/entity-view.css";
 import "@features/view/styles/service-booking.css";
 import "../styles/profile.css";
 import "../styles/profile-hire.css";
-import { AvatarEditor } from "../components/AvatarEditor.tsx";
+import { AvatarLightbox } from "../components/AvatarLightbox.tsx";
 import { ProfileMetrics } from "../components/ProfileMetrics.tsx";
 import { ProfileRig } from "../components/ProfileRig.tsx";
 import { ProfileShowcase } from "../components/ProfileShowcase.tsx";
@@ -36,19 +31,16 @@ import { announce, NOTE_TTL_MS } from "../core/rig-actions.ts";
 import {
 	addMenuOpen,
 	consultOpen,
-	editedAvatar,
-	editedShowcase,
 	hireMenuOpen,
-	liveConsultation,
 	pickedProject,
 	pickedService,
 	wizardOpen,
 } from "../core/profile-state.ts";
-import { withPrimaryImage } from "../core/showcase-model.ts";
 import { useMigratingHeader } from "@features/shell/hooks/useMigratingHeader.ts";
 import { useReducedMotion } from "../hooks/useReducedMotion.ts";
 import { useReturnFocus } from "../hooks/useReturnFocus.ts";
 import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
+import { settingsOf } from "@projective/types/profile";
 import ProfileMessagePopover from "./ProfileMessagePopover.island.tsx";
 
 /**
@@ -84,23 +76,26 @@ import ProfileMessagePopover from "./ProfileMessagePopover.island.tsx";
  * one a guest never learns exists), but its press opens the prompt in place of the listings
  * popover; the modals a member reaches through that popover gate their own primaries the same way.
  *
- * # The consultation offer follows the developer seam
+ * # The owner sees the visitor's page
  *
- * The SSR paint carries the server's call offer; the `callOffer` axis of the Dev Context Switcher
- * is a CLIENT seam the server never saw, so the hero re-reads the offer through
- * `/api/services/call-offer` whenever the seam changes (the `BookingPanels` precedent) and writes
- * the answer to the shared `liveConsultation` signal, so BOTH rigs' consultation rows appear or
- * withdraw with it — no reload.
+ * The profile itself is never edited in place: the owner edits at `/[handle]/edit`, and on the
+ * public route they are PREVIEWING — the page renders exactly as a visitor's, rig and all, and a
+ * press on a visitor's control explains what it does rather than acting on their own account
+ * (`preview`, `core/rig-actions.ts`).
  *
- * An owner changes the profile photo through the {@link AvatarEditor} — the avatar itself is the
- * trigger — and the showcase's primary still through the Asset Picker; each edit lands in a shared
- * `edited*` signal so any other island drawing the same image agrees. Optimistic and session-local,
- * pending the profile write path.
+ * # The full-size photo is the owner's to offer
+ *
+ * When the owner has allowed it (`settings.allowAvatarExpand`), the avatar is a button that opens
+ * the {@link AvatarLightbox} at the photo's large rendition; otherwise it is a plain image — no
+ * dead control implying a larger picture exists.
  */
 export interface ProfileHeroProps {
 	profile: ProfileView;
-	/** Whether the viewer owns this profile (swaps the rig for Settings ⁄ Share + the image pickers). */
-	canEdit: boolean;
+	/**
+	 * The OWNER is previewing their own profile: the page renders as a visitor's, and the visitor's
+	 * controls explain themselves instead of acting.
+	 */
+	preview: boolean;
 	/** Whether the viewer is signed in — a guest's account-bound presses open the sign-in prompt. */
 	authed: boolean;
 	/** The seller's active listings — the Hire popover's rows. */
@@ -117,19 +112,15 @@ export interface ProfileHeroProps {
 	scopeId: string;
 }
 
-const PICKER_ID = "profile-image";
-
 export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
-	const { profile, canEdit, authed, services, spend, hireProjects, defaultCurrency, scopeId } =
+	const { profile, preview, authed, services, spend, hireProjects, defaultCurrency, scopeId } =
 		props;
-	const avatar = editedAvatar.value ?? profile.avatar;
-	const showcase = withPrimaryImage(
-		profile.showcase,
-		editedShowcase.value,
-		`${profile.name} — showcase`,
-	);
+	const avatar = profile.avatar;
+	const showcase = profile.showcase;
 	const bareHandle = profile.handle.replace(/^@+/, "");
-	const editorOpen = useSignal(false);
+	/** The full-size photo, when the owner offers it and there is one to show. */
+	const expandable = settingsOf(profile).allowAvatarExpand && !!profile.avatarFull && !!avatar;
+	const lightboxOpen = useSignal(false);
 	/**
 	 * The toast stack the assignment flow reports into. Mounted lazily and only when no other island
 	 * has put one up: every `<Toast>` renders the SAME module-level list, so a second stack at another
@@ -137,10 +128,7 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 	 */
 	const toastMounted = useSignal(false);
 	const toast = useToast();
-	/** The live call offer — the server's until the developer seam re-reads it. */
-	const consultation = liveConsultation.value === undefined
-		? props.consultation
-		: liveConsultation.value;
+	const consultation = props.consultation;
 	const rigHost = useRef<HTMLDivElement>(null);
 
 	/**
@@ -158,16 +146,6 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 
 	const reduced = useReducedMotion();
 
-	// Re-read the call offer when the Dev Context Switcher's `callOffer` axis changes. Inert in
-	// production (`useBookingSeam` never fires there); a seam flip re-resolves the SAME derivation the
-	// server used, so the consultation row appears or withdraws without a reload — in both rigs.
-	useBookingSeam((sim) => {
-		void (async () => {
-			const res = await BookingService.callOffer(bareHandle, sim);
-			if (res.ok && res.data) liveConsultation.value = res.data.callOffer;
-		})();
-	});
-
 	// The shared flow signals are module-level; leaving the page must not strand a modal open for
 	// the next profile this tab renders.
 	useEffect(() => () => {
@@ -177,7 +155,6 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 		wizardOpen.value = false;
 		hireMenuOpen.value = false;
 		addMenuOpen.value = false;
-		liveConsultation.value = undefined;
 	}, []);
 
 	/**
@@ -190,26 +167,6 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 		try {
 			globalThis.location.assign(`/projects/${slug}`);
 		} catch { /* no `location` — non-fatal, the modal simply closes */ }
-	}
-
-	function chooseShowcase(): void {
-		openPicker({
-			requesterId: PICKER_ID,
-			title: "Choose a showcase image",
-			kinds: ["image"],
-			multiple: false,
-		});
-	}
-
-	function applyShowcase(assets: AssetItem[]): void {
-		const picked = assets[0];
-		if (picked) editedShowcase.value = picked.url;
-	}
-
-	function applyAvatar(url: string, note: string | null): void {
-		editedAvatar.value = url;
-		if (note) announce(note, NOTE_TTL_MS);
-		else announce("Profile photo updated");
 	}
 
 	function ensureToastStack(): void {
@@ -244,7 +201,7 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 	}
 
 	const tier = TIER_META[profile.tier];
-	const seller = !canEdit && isSellerKind(profile.kind);
+	const seller = !preview && isSellerKind(profile.kind);
 
 	return (
 		<>
@@ -263,36 +220,30 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 					/>
 
 					<div class="pf-hero__avatarwrap">
-						{canEdit
+						{expandable
 							? (
-								// The avatar IS the control: the overlay names what pressing it does, and it
-								// is shown on hover and on focus so a keyboard user sees the same promise.
 								<button
 									type="button"
-									class="pf-hero__avatarbtn"
-									aria-label="Edit profile photo"
+									class="pf-hero__avatarbtn pf-hero__avatarbtn--expand"
+									aria-label={`View ${profile.name}'s profile photo`}
 									aria-haspopup="dialog"
-									aria-expanded={editorOpen.value ? "true" : "false"}
-									onClick={() => (editorOpen.value = true)}
+									aria-expanded={lightboxOpen.value ? "true" : "false"}
+									onClick={() => (lightboxOpen.value = true)}
 								>
 									<Avatar
 										image={avatar}
-										placeholder={avatar === profile.avatar ? profile.avatarPlaceholder : undefined}
+										placeholder={profile.avatarPlaceholder}
 										label={profile.name}
 										size={72}
 										shape="circle"
 										class="pf-hero__avatar"
 									/>
-									<span class="pf-hero__avataredit" aria-hidden="true">
-										<Icon name="edit" size="sm" />
-										<span class="pf-hero__avataredit-label">Edit photo</span>
-									</span>
 								</button>
 							)
 							: (
 								<Avatar
 									image={avatar}
-									placeholder={avatar === profile.avatar ? profile.avatarPlaceholder : undefined}
+									placeholder={profile.avatarPlaceholder}
 									label={profile.name}
 									size={72}
 									shape="circle"
@@ -329,7 +280,8 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 					<div ref={rigHost} class="pf-hero__rigslot">
 						<ProfileRig
 							profile={profile}
-							canEdit={canEdit}
+							canEdit={false}
+							preview={preview}
 							authed={authed}
 							services={services}
 							consultation={consultation}
@@ -345,25 +297,11 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 				{showcase && (
 					<div class="pf-hero__showcase">
 						<ProfileShowcase showcase={showcase} name={profile.name} reduced={reduced} />
-						{canEdit && (
-							<span class="pf-hero__imgslot pf-hero__imgslot--showcase">
-								<Tooltip content="Change showcase image" placement="left">
-									<button
-										type="button"
-										class="pf-hero__imgbtn"
-										aria-label="Change showcase image"
-										onClick={chooseShowcase}
-									>
-										<Icon name="image" size="xs" />
-									</button>
-								</Tooltip>
-							</span>
-						)}
 					</div>
 				)}
 			</header>
 
-			{!canEdit && authed && <ProfileMessagePopover profile={profile} />}
+			{!preview && authed && <ProfileMessagePopover profile={profile} />}
 			{seller && (
 				<>
 					<ServiceDetailModal
@@ -393,18 +331,30 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 					)}
 					{authed && (
 						/*
-						 * The SAME modal `/projects` mints from, with one extra field: the seller whose page
-						 * this is. A profile-side create used to run its own two-step wizard collecting its own
-						 * field set, which is how the two surfaces came to disagree about what a Task is — the
-						 * wizard had one and the lane did not.
+						 * The SAME modal `/projects` mints from — one component, one payload, one set of
+						 * refusals — paced as TWO STEPS here and one screen there.
 						 *
-						 * It redirects rather than assigning, and that is a product rule rather than a
+						 * The pacing is not a style choice. The lane opens this from a create menu that has
+						 * already named a type, so its reader arrives with that decision made; a reader on a
+						 * seller's page has made no such decision, and which of the three kinds of engagement
+						 * this is changes what the name, the brief and every later setting mean. So the type
+						 * gets a screen of its own, with room for the sentence that distinguishes it, and the
+						 * details follow.
+						 *
+						 * What it must NOT be is a second implementation. That is what shipped before, and the
+						 * two surfaces drifted into disagreeing about what a Task is: the profile wizard had
+						 * one and the lane did not, so the same product arrived in two shapes depending on
+						 * which page the client happened to start from.
+						 *
+						 * It still redirects rather than assigning, which is a product rule and not a
 						 * shortcut: a seller cannot be attached to an engagement with no scope and no price,
 						 * so the modal's job is to reach the workspace where those are decided. The invited
 						 * freelancer row says who is waiting at the other end of it.
 						 */
 						<ProjectCreateModal
 							open={wizardOpen.value}
+							flow="stepped"
+							// Read only as the Back-focus fallback: `stepped` opens with nothing chosen.
 							initialType="pipeline"
 							defaultCurrency={defaultCurrency}
 							scopeId={scopeId}
@@ -419,14 +369,13 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 					)}
 				</>
 			)}
-			{!canEdit && !authed && <SignInPrompt />}
-			{canEdit && <AssetPicker requesterId={PICKER_ID} onPick={applyShowcase} />}
-			{canEdit && (
-				<AvatarEditor
-					open={editorOpen}
-					source={avatar}
+			{!authed && <SignInPrompt />}
+			{expandable && profile.avatarFull && (
+				<AvatarLightbox
+					open={lightboxOpen}
+					src={profile.avatarFull}
+					placeholder={profile.avatarPlaceholder}
 					name={profile.name}
-					onSave={applyAvatar}
 				/>
 			)}
 		</>

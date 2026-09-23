@@ -19,7 +19,7 @@ const MAX_IDS = 24;
  * the service omits it — so the only failures are malformed requests.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const raw = ctx.url.searchParams.get("ids");
 		const ids = (raw ?? "").split(",").map((id) => id.trim()).filter(Boolean);
 		if (ids.length === 0) {
@@ -31,6 +31,6 @@ export const handler = define.handlers({
 				{ status: 400 },
 			);
 		}
-		return toExploreResponse(ExploreBackendService.items(ids));
+		return toExploreResponse(await ExploreBackendService.items(ids));
 	},
 });

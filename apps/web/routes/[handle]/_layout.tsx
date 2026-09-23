@@ -13,6 +13,7 @@ import { ProfileContextBar } from "@features/profile/components/ProfileContextBa
 import { ProfileServicesSection } from "@features/profile/components/ProfileServicesSection.tsx";
 import { ProfileProductsSection } from "@features/profile/components/ProfileProductsSection.tsx";
 import { ProfileCalendarHead } from "@features/profile/components/ProfileCalendarHead.tsx";
+import { OwnerNav, type OwnerNavTab } from "@features/profile/components/OwnerNav.tsx";
 import {
 	viewLaneFor,
 	viewLaneOptionsFor,
@@ -32,7 +33,6 @@ import {
 	activeTabOf,
 	defaultTabFor,
 	estimatedSpendFor,
-	isOwnProfile,
 	isSellerKind,
 	TABS_ANCHOR,
 } from "@features/profile/core/profile-model.ts";
@@ -62,6 +62,15 @@ import {
  * (`/[handle]/view/[id]`, which resolves ITS lane from the URL like the public `/view/[id]`) and the
  * full-page availability calendar (`/[handle]/availability`, which fills the content region and gets
  * only a one-line identity strip with a way back).
+ *
+ * # The owner's three views
+ *
+ * When the DATABASE says the viewer owns the profile (`profile.viewer.isOwner`, read under their own
+ * session — never the unverified chrome token), an {@link OwnerNav} sits above the page with three
+ * tabs: **Preview** (the public page, rendered exactly as a visitor sees it — the rig explains
+ * itself rather than acting), **Edit profile & settings** (`/[handle]/edit`) and **Availability**
+ * (`/[handle]/edit/availability`). The two edit routes render only the owner nav and their own body;
+ * their pages refuse anyone who is not the owner.
  */
 export default define.page(async function ProfileLayout(ctx) {
 	const profile = ctx.state.profile;
@@ -120,22 +129,27 @@ export default define.page(async function ProfileLayout(ctx) {
 		);
 	};
 
-	// Reserved route word / unresolved handle → a calm not-found (no profile chrome).
+	// Reserved route word / unresolved or hidden handle → a calm not-found (no profile chrome). A
+	// profile that could not be READ is a different fact and says so.
 	if (!profile) {
+		const down = ctx.state.profileStatus === 503;
 		return shell(
 			<div class="pf pf-notfound">
 				{/* No profile island mounts on this branch, so the sheet needs its own carrier. */}
 				<ProfileStyleAnchor />
-				<h1 class="pf-notfound__title">Profile not found</h1>
+				<h1 class="pf-notfound__title">{down ? "Profile unavailable" : "Profile not found"}</h1>
 				<p class="pf-notfound__note">
-					“/{handleParam}” isn’t a profile on Projective.
+					{down
+						? "Profiles can't be loaded right now. Try again in a moment."
+						: `“/${handleParam}” isn’t a profile on Projective.`}
 				</p>
 				<a class="pf-notfound__link" href="/explore">Explore Projective</a>
 			</div>,
 		);
 	}
 
-	const canEdit = isOwnProfile(profile, context);
+	/** The database's answer, under the viewer's own session — never the chrome token. */
+	const owner = profile.viewer?.isOwner === true;
 	const segments = path.split("/").filter(Boolean);
 
 	// The profile-scoped Entity View page renders its own layout: mount the item's own action lane
@@ -162,11 +176,30 @@ export default define.page(async function ProfileLayout(ctx) {
 		return shell(<ctx.Component />, { lane: lane ?? undefined, header });
 	}
 
+	// The owner's edit surfaces: the owner nav and the page's own body, no profile chrome. The pages
+	// themselves refuse a non-owner (a redirect from their handler), so this branch never paints an
+	// editor around somebody else's profile.
+	if (segments[1] === "edit") {
+		const tab: OwnerNavTab = segments[2] === "availability" ? "availability" : "edit";
+		return shell(
+			<div class="pf-scope pf-scope--edit">
+				{/* The owner nav is server-rendered; the sheet it needs rides this anchor even when the
+				    page below it (a refusal note) mounts no island. */}
+				<ProfileStyleAnchor />
+				{owner && <OwnerNav handle={profile.handle} active={tab} />}
+				<ctx.Component />
+			</div>,
+		);
+	}
+
 	// The Availability calendar fills the content region; it gets a one-line identity strip so the
 	// page still says whose calendar it is and carries a way back to the profile.
 	if (segments[1] === "availability") {
 		return shell(
 			<div class="pf-scope pf-scope--calendar">
+				{/* The calendar and its identity strip are server-rendered here, so the profile sheet
+				    needs a carrier of its own on this branch (the island-carrier rule, Decision #39). */}
+				<ProfileStyleAnchor />
 				<ProfileCalendarHead profile={profile} />
 				<ctx.Component />
 			</div>,
@@ -176,23 +209,27 @@ export default define.page(async function ProfileLayout(ctx) {
 
 	// The active section highlighted in the tab bar — the URL segment, or Work on the bare index.
 	const active = activeTabOf(path) ?? defaultTabFor(profile.kind);
-	const services = resolveProfileServices(profile.handle);
-	// The products render beneath the services on every section, so they are resolved here too.
-	const products = resolveProfileProducts(profile.handle);
+	// The listings render on every section, so they are resolved here, together.
+	const [services, products] = await Promise.all([
+		resolveProfileServices(profile.handle),
+		resolveProfileProducts(profile.handle),
+	]);
 	const seller = isSellerKind(profile.kind);
-	// A seller's call offer feeds the Hire popover's consultation row; a buyer entity takes none.
-	const consultation = seller && !canEdit ? resolveConsultationOffer(profile.handle) : null;
+	const actor = readActor(ctx);
+	// A seller's call offer feeds the Hire popover's consultation row (and the owner's preview shows
+	// the row their visitors see); a buyer entity takes none.
+	const consultation = seller ? await resolveConsultationOffer(profile, actor) : null;
 	// Only a signed-in VISITOR of a seller can add them to a project, so only that viewer pays for
 	// the read.
-	const hireProjects = authed && !canEdit && seller
-		? await resolveHireProjects(readActor(ctx), profile.handle)
+	const hireProjects = authed && !owner && seller
+		? await resolveHireProjects(actor, profile.handle)
 		: [];
 	// The migrated sticky header — resolved HERE, from the same reads the hero takes, so the band's
 	// rig and the hero's rig are hydrated from one answer and cannot offer different controls.
 	const stickyHeader = (
 		<ProfileStickyHeader
 			profile={profile}
-			canEdit={canEdit}
+			preview={owner}
 			authed={authed}
 			services={services}
 			consultation={consultation}
@@ -201,19 +238,20 @@ export default define.page(async function ProfileLayout(ctx) {
 	);
 	return shell(
 		<div class="pf-scope">
+			{owner && <OwnerNav handle={profile.handle} active="preview" />}
 			<div class="pf">
 				<ProfileHero
 					profile={profile}
 					services={services}
 					consultation={consultation}
 					spend={estimatedSpendFor(services)}
-					canEdit={canEdit}
+					preview={owner}
 					authed={authed}
 					hireProjects={hireProjects}
 					defaultCurrency={toDisplayCurrency(context?.displayCurrency)}
 					scopeId={context?.contextId ?? ""}
 				/>
-				<ProfileContextBar profile={profile} canEdit={canEdit} />
+				<ProfileContextBar profile={profile} />
 				<ProfileServicesSection services={services} authed={authed} />
 				<ProfileProductsSection products={products} authed={authed} />
 				<section id={TABS_ANCHOR} class="pf-sections" aria-label="Profile sections">

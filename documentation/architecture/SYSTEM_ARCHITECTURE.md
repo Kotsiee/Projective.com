@@ -1105,6 +1105,54 @@ resolver, so they cannot quote different numbers (§8 Decision #45).
 are computed by the service and rendered as given — a client that derives them re-derives them
 differently the moment a fixture changes.
 
+### The Public Profile — live reads, one write door, and the media pipeline
+
+`/[handle]` is **live-only** (2026-09-23): there is no fixture profile and no backend gate. The fat
+`ProfileBackendService` (`@server/services/profile/`) reads through the `org.get_profile_*` definer
+functions and writes through `org.save_profile` / `org.set_profile_avatar` / `org.save_showcase`
+(see `database/org/Functions.md`), under the caller's own JWT. Three rules shape it:
+
+- **The database decides visibility and ownership.** Every read answers `NULL` for an unknown
+  handle and for a hidden one alike (404 either way, so a private profile's existence is never
+  disclosed), and a failed read is a **503**, never an empty profile — `undefined` means "could not
+  ask", `null` means "asked, and there is nothing you may see". The owner views are gated on the
+  read's `viewer.isOwner`, never on the unverified chrome token, and the `edit` routes guard in
+  `define.handlers`.
+- **Raw facts in, presentation out.** The SQL returns storage references and codes; the mapping to
+  the `ProfileView` Zod SSOT (labels, Standing tiers, URLs, `srcset`) happens once, in TypeScript.
+  URLs are built in exactly one place (`core/storage-url.ts`), because a URL is a deployment fact.
+- **A person's picture has one door.** Every surface that shows OTHER people — project rosters and
+  feeds, message senders, contact pickers, the nav's account button — resolves names and avatars
+  through `org.get_party_cards` (`profile/party-cards.ts`), so a new avatar reaches all of them on
+  their next read. The open tab updates at once through a `pj:avatar-changed` window event
+  (`apps/web/utils/avatar-sync.ts`), which the nav's account island listens for.
+
+**The media pipeline** (`@server/services/media/`) is the only way bytes reach a public bucket:
+
+1. **Quarantine.** The browser declares an upload (`files.items` at `pending_upload` in
+   `quarantine`, the only shape `files.fn_guard_pipeline_columns` lets a client write) and PUTs the
+   bytes to a signed URL under its own id prefix.
+2. **Validate.** The service role claims the row (`pending_upload → scanning`, one winner), then
+   **sniffs the magic bytes** — the declared type and extension are never trusted — and refuses and
+   deletes anything that is not a picture or video it can read (`quarantined` for an executable or
+   markup file, `error` otherwise).
+3. **Decode + tier in a Worker pool** (`image-worker.ts`, `image-codec.ts`): decoding is itself the
+   proof the file is the picture it claims to be; three WebP tiers are written per the SSOT's
+   `TIER_LONG_EDGE`, never upscaled, with a BlurHash and colour summary for the placeholder. A video
+   is never decoded server-side: the browser extracts its poster still, which is sniffed and tiered
+   like any image.
+4. **Admit** the original to the owner's private library (`personal/users/{id}/library/{asset}/…`),
+   write `files.item_variants`, mark `uploaded`, delete the quarantine object. A pipeline or storage
+   failure resets the row so a retry can finish it.
+5. **Renditions.** Placing an image on the profile cuts a **rendition** server-side from the library
+   ORIGINAL with the shared crop model (`@projective/types/files` `crop.ts` — the same arithmetic the
+   browser previews), re-encodes it (which also strips EXIF and anything a polyglot could carry) and
+   writes it with its tiers to the public `avatars` or `showcase` bucket, where only the service role
+   may write. The attach RPC then re-checks that the rendition belongs to the profile's owner.
+
+Gaps, stated: there is no third-party **malware** scan yet (the checks are a content sniff and a
+full decode), and variant bytes are not metered against the owner's storage quota.
+
 ### Sessions & Google OAuth
 
 - **Session cookies.** A successful sign-in (password grant, verified email OTP) returns the GoTrue
@@ -1222,12 +1270,15 @@ combined with `pgvector`.
 All file uploads follow a "Quarantine-First" protocol to protect the platform from malware and
 viruses.
 
-1. **Ingestion:** Files are initially uploaded to a `quarantine` bucket via the Supabase client.
-2. **Scanning:** An Edge Function is triggered by the upload event. It scans the file for malware
-   using a security provider API.
-3. **Sanitization:** - **Clean:** If the file passes, the Edge Function moves it to the permanent
-   destination bucket (e.g., `avatars`, `project-files`) and updates the database record.
-   - **Infected:** If flagged, the file is deleted immediately, and a security log is generated.
+1. **Ingestion:** Files are initially uploaded to a `quarantine` bucket via a signed upload URL,
+   under the uploader's own id prefix.
+2. **Validation:** The fat media service (service role) claims the row, sniffs the magic bytes and
+   fully decodes the file (see §Backend Services → The Public Profile). A third-party **malware**
+   scan by a security provider is the planned addition to this step and is not yet wired.
+3. **Promotion:** A file that passes is admitted to its destination (a person's private library in
+   `personal`, with its WebP tiers) and the database record is updated; a public copy only ever
+   reaches `avatars` / `showcase` as a pipeline-cut rendition. A file that fails is deleted from
+   quarantine and its row marked `quarantined` (a hostile file) or `error`.
 
 ### Edge Functions & Webhooks
 
@@ -1799,6 +1850,9 @@ APP_URL=http://localhost:8000
 
 # Supabase (Database & Auth)
 SUPABASE_URL=XXXX-XXXX
+# Optional: the origin a browser reaches Supabase on, when it differs from SUPABASE_URL. Every public
+# storage URL (avatars, banners, listing covers) is built from it (`core/storage-url.ts`).
+SUPABASE_PUBLIC_URL=XXXX-XXXX
 SUPABASE_ANON_KEY=XXXX-XXXX
 SUPABASE_SERVICE_ROLE_KEY=XXXX-XXXX
 

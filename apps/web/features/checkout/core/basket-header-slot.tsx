@@ -3,6 +3,7 @@ import type { UserContext } from "@projective/types/auth";
 import CheckoutStepperBand from "../islands/CheckoutStepperBand.island.tsx";
 import { checkoutStepOf, isCheckoutPath } from "./basket-model.ts";
 import { resolveCheckoutSession } from "./checkout-ssr.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
  * basket-header-slot — the middle-nav HEADER band on **every** checkout route, all four steps.
@@ -24,10 +25,14 @@ import { resolveCheckoutSession } from "./checkout-ssr.ts";
  * Composed after the projects/messaging/catalogue/wallet resolvers in `middleNavHeaderFor`, so exactly
  * one owns the band per URL. Server-only — never imported by an island.
  */
-export function basketHeaderFor(url: URL, context: UserContext): ComponentChildren {
+export async function basketHeaderFor(
+	url: URL,
+	context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
 	if (!isCheckoutPath(url.pathname)) return null;
 
-	const { session, baskets, owner, display } = resolveCheckoutSession(context, url);
+	const { session, baskets, owner, display } = await resolveCheckoutSession(context, url, actor);
 	const basketId = session.basketId || null;
 	// The open basket's name lives on its summary row, not on the session. A degraded read has no
 	// summaries at all, so the band names the surface rather than inventing a basket.

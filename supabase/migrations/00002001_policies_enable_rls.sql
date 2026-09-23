@@ -467,3 +467,87 @@ ALTER TABLE finance.baskets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE finance.basket_items ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE finance.saved_cards ENABLE ROW LEVEL SECURITY;
+
+
+-- --- finance: the ledger and commerce tables that shipped without RLS ---
+-- Twelve tables — the wallets and their ledger, orders, invoices, payouts, buyer details, disputes,
+-- promo codes and ratings — had RLS OFF. Nothing leaked, because `finance` granted no schema usage and
+-- none of them carried a table privilege; but the schema is now exposed to PostgREST (00002500, the
+-- move off fixtures, 2026-09-23), and RLS is what every table a client role can reach must have.
+-- Ten get real SELECT policies in 00002013. `promo_codes` and `ratings` deliberately get none and no
+-- client grant: a list of promo codes IS the leak, and nothing reads `ratings` — both are reachable
+-- only through definer functions and the service role.
+
+ALTER TABLE finance.wallets ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE finance.transactions ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE finance.payouts ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE finance.payout_accounts ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE finance.orders ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE finance.order_lines ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE finance.invoices ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE finance.buyer_details ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE finance.disputes ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE finance.dispute_messages ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE finance.promo_codes ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE finance.ratings ENABLE ROW LEVEL SECURITY;
+
+
+-- --- marketplace: the two tables that shipped without RLS ---
+-- Both carry `GRANT ALL ... TO anon, authenticated` (00002500, the schema-wide marketplace grant), so
+-- with RLS off every row was readable AND writable by a signed-out caller the moment `marketplace`
+-- was exposed to PostgREST — a paid-placement ledger anyone could extend, and every buyer's quote
+-- request readable by every other buyer. Latent only because the schema was never exposed; exposing it
+-- (2026-09-22, the move off fixtures) is what made closing it mandatory. Policies: 00002018.
+
+ALTER TABLE marketplace.promoted_placements ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE marketplace.quote_requests ENABLE ROW LEVEL SECURITY;
+
+
+-- --- catalogue: the seller publication layer ---
+-- The schema shipped with its tables and nothing else — no RLS, no policies, no grants — so it was
+-- unreadable rather than open. Its security layer lands with its first live reader. Policies:
+-- 00002020_policies_catalogue.sql.
+
+ALTER TABLE catalogue.products ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE catalogue.articles ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE catalogue.listings ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE catalogue.listing_media ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE catalogue.listing_skills ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE catalogue.listing_tags ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE catalogue.listing_availability ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE catalogue.collections ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE catalogue.collection_listings ENABLE ROW LEVEL SECURITY;
+
+
+-- --- org: the three profile tables that shipped without RLS ---
+-- All three carry the schema-wide `GRANT ALL ... TO anon, authenticated` (00002500) and `org` is
+-- exposed to PostgREST, so with RLS off anyone — signed in or not — could insert, rewrite or delete
+-- any person's education, experience and languages (Decision #102(a)). Enabled here as default-deny;
+-- their read/write policies are the profile domain's (00002010), and the public profile reads them
+-- through a definer RPC, so nothing that renders today depends on a client-role read.
+
+ALTER TABLE org.education_entries ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE org.experience_entries ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE org.user_languages ENABLE ROW LEVEL SECURITY;

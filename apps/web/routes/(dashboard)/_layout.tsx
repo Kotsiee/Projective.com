@@ -127,7 +127,7 @@ async function middleNavFooterFor(
 		(await conversationFooterFor(url, context, actor)) ??
 		catalogueFooterFor(url, context) ??
 		walletFooterFor(url, context) ?? workspaceFooterFor(url, context) ??
-		filesFooterFor(url, context) ?? basketFooterFor(url, context) ??
+		filesFooterFor(url, context) ?? (await basketFooterFor(url, context, actor)) ??
 		calendarFooterFor(url, context);
 }
 
@@ -146,7 +146,7 @@ async function middleNavHeaderFor(
 		(await conversationHeaderFor(url, context, actor)) ??
 		catalogueHeaderFor(url, context) ??
 		walletHeaderFor(url, context) ?? workspaceHeaderFor(url, context) ??
-		filesHeaderFor(url, context) ?? basketHeaderFor(url, context) ??
+		filesHeaderFor(url, context) ?? (await basketHeaderFor(url, context, actor)) ??
 		calendarHeaderFor(url, context);
 }
 
@@ -168,7 +168,7 @@ async function laneFor(
 
 	// The basket + checkout: one lane across both steps, so a buyer can change basket mid-payment.
 	if (url.pathname.startsWith("/basket") || url.pathname.startsWith("/checkout")) {
-		return basketLaneFor(url, context);
+		return await basketLaneFor(url, context, actor);
 	}
 
 	// The personal agenda (`/calendar`): the mini-month, what is coming, and the availability manager.

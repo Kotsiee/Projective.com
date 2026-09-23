@@ -362,7 +362,7 @@ function chunk<T>(values: readonly T[], size: number): T[][] {
 /**
  * A {@link MessageSender} from a party row, with this projection's own bounds applied.
  *
- * `senderOf` owns the SHAPE (and the reasons `avatar` is always null); the clamping happens here
+ * `senderOf` owns the SHAPE (and where the photo comes from); the clamping happens here
  * because the bounds are per-projection — `MessageSender.name` is `max(120)` and `handle` is
  * `max(40)`, while a sibling projection of the same person carries different ones. Applying them at
  * the mapping boundary is the truncation contract: a 200-character display name must not fail a page.
@@ -372,7 +372,7 @@ function senderFrom(userId: string, row: PartyRow | undefined): MessageSender {
 	return {
 		id: clampOr(base.id, 80, userId),
 		name: clampOr(base.name, 120, "Unknown"),
-		avatar: null,
+		avatar: base.avatar,
 		handle: base.handle ? clamp(base.handle, 40) : null,
 	};
 }
@@ -538,6 +538,8 @@ interface Node {
 	kind: SubmissionNodeKind;
 	label: string;
 	sublabel: string | null;
+	/** The submitter's photo on a `submitter` node; `null` everywhere else. */
+	avatar: string | null;
 	handle: string | null;
 	status: SubmissionStatus | null;
 	files: FileItem[];
@@ -567,9 +569,8 @@ function recCount(node: Node): number {
 }
 
 /**
- * The wire shape. `avatar` is always null: `org.users_public.avatar_file_id` is a FK into
- * `files.items`, not a URL, so a served path cannot be composed here — the tree draws the initials
- * fallback instead, which is what a null already means to it.
+ * The wire shape. `avatar` is the submitter's photo on a `submitter` node and `null` on the rest —
+ * the tree draws the initials fallback for a null, which is what it already means to it.
  */
 function toWire(node: Node): SubmissionTreeNode {
 	return {
@@ -577,7 +578,7 @@ function toWire(node: Node): SubmissionTreeNode {
 		kind: node.kind,
 		label: node.label,
 		sublabel: node.sublabel,
-		avatar: null,
+		avatar: node.avatar,
 		handle: node.handle,
 		status: node.status,
 		fileCount: recCount(node),
@@ -1049,6 +1050,7 @@ function buildUnitNode(row: SubmissionRow, stage: StageRow, ctx: BuildContext): 
 		sublabel: ctx.projectScope
 			? (clamp(stage.name, 200) || null)
 			: (named.kind === "ticket" ? "Ticket" : null),
+		avatar: null,
 		handle: null,
 		status,
 		files,
@@ -1083,6 +1085,7 @@ function buildSubmitterNode(
 		kind: "submitter",
 		label: submitter.name,
 		sublabel: "Freelancer",
+		avatar: submitter.avatar,
 		handle: submitter.handle,
 		status: null,
 		files: [],
@@ -1272,6 +1275,7 @@ export async function fetchSubmissionPage(
 				kind: "stage",
 				label: clampOr(stage.name, 200, "Stage"),
 				sublabel: clamp(toStageProjectStatus(stage.status), 200),
+				avatar: null,
 				handle: null,
 				status: null,
 				files: [],

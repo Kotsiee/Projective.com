@@ -152,3 +152,68 @@ The triggers themselves are declared together in `00001890_triggers_slugs.sql` �
 table, adjacent on purpose. A table added without one fails loudly against `NOT NULL`; a trigger
 given the **wrong prefix** would mint valid-looking addresses in another table's namespace, which is
 the failure keeping the five declarations side by side is meant to make visible.
+
+## Column guards (2026-09-23)
+
+Two `BEFORE` trigger functions in [`00001001_functions_security_context.sql`](../../../supabase/migrations/00001001_functions_security_context.sql),
+attached by [`00001895_triggers_derived_columns.sql`](../../../supabase/migrations/00001895_triggers_derived_columns.sql).
+Both are deliberately **not** `SECURITY DEFINER`: they decide by `current_user`, the role executing
+the statement. PostgREST runs a request as `anon` or `authenticated`; a definer function runs its
+statements as its owner and the service role as `service_role` — so the rating trigger, the seed and
+server-side jobs pass, and only a client write is judged. `EXECUTE` is revoked from `PUBLIC`.
+
+### `security.fn_guard_derived_columns()` — trigger arguments: column names
+
+`BEFORE INSERT OR UPDATE`. Refuses (`42501`) a client UPDATE that changes any named column, and a
+client INSERT that does not start it **empty**. For the values the platform computes and the
+owner's own-row policy would otherwise reach — a seller PATCHing their listing to
+`rating_count = 900`, a member inserting a savings pot that already holds money.
+
+"Empty" is decided by the value's JSON type, so one guard covers every column shape: a number must
+start at `0`, a boolean at `false`, and anything else (text, a timestamp, an enum, a uuid) at
+`NULL`.
+
+| Trigger                          | Table                            | Guarded columns                                            |
+| :------------------------------- | :------------------------------- | :--------------------------------------------------------- |
+| `trg_service_blueprints_derived` | `marketplace.service_blueprints` | `rating_average`, `rating_count`                           |
+| `trg_products_derived`           | `catalogue.products`             | `rating_average`, `rating_count`                           |
+| `trg_listings_derived`           | `catalogue.listings`             | `rating_average`, `rating_count`, `view_count`, `order_count` |
+| `trg_teams_derived`              | `org.teams`                      | `rating_average`, `rating_count`, `active_project_count`, `total_project_count`, `service_count`, `product_count`, `current_workload_intensity` |
+| `trg_wallet_pots_derived` (`00001830`)   | `finance.wallet_pots`   | `balance_cents` |
+| `trg_deposit_rules_derived` (`00001830`) | `finance.deposit_rules` | `failure_count`, `last_error` |
+| `trg_basket_items_derived` (`00001830`)  | `finance.basket_items`  | `purchased_at` — only checkout marks a line purchased |
+
+A column a client must never set **at all**, not even on insert, belongs here. A column a client may
+set once and never change (a row's parties, its owner) belongs in `fn_guard_immutable_columns`.
+
+### `security.fn_guard_immutable_columns()` — trigger arguments: column names
+
+`BEFORE UPDATE`. Refuses (`42501`) a client UPDATE that changes any named column, of any type — the
+parties and subject of a row, which a policy cannot protect because it sees only the post-image.
+
+| Trigger                      | Table                        | Guarded columns                                    |
+| :--------------------------- | :--------------------------- | :------------------------------------------------- |
+| `trg_quote_requests_parties` | `marketplace.quote_requests` | `requester_user_id`, `host_user_id`, `blueprint_id` |
+| `trg_teams_immutable`        | `org.teams`                  | `owner_user_id`, `treasury_wallet_id`, `subscription_tier`, `member_limit`, `slug`, `avatar_file_id`, `banner_file_id` |
+| `trg_organisations_immutable` | `org.organisations`         | `owner_user_id`, `status`, `verification_level`, `handle`, `logo_file_id` |
+| `trg_wallet_pots_immutable` (`00001830`)     | `finance.wallet_pots`     | `wallet_id`, `currency` |
+| `trg_payment_methods_immutable` (`00001830`) | `finance.payment_methods` | `owner_type`, `owner_id`, `method_role`, `provider`, `external_ref`, `brand`, `last4`, `status` |
+| `trg_saved_cards_immutable` (`00001830`)     | `finance.saved_cards`     | the owner, the instrument references, brand, last four, expiry, cardholder, BIN and creator |
+
+The finance guards are attached in `00001830_triggers_finance.sql` beside that schema's other
+triggers, and the full write posture they complete is in
+[`../finance/Policies.md`](../finance/Policies.md#-column-guards-2026-09-23).
+
+**The `org` audit (2026-09-23).** `org.users_public`, `org.freelancer_profiles` and
+`org.business_profiles` carry no client write policy, so nothing reaches them but a definer and no
+guard is needed. `org.teams` and `org.organisations` keep owner (and, for an organisation, admin)
+UPDATE policies, so both are guarded. Every writer of the guarded columns was checked and is
+`SECURITY DEFINER` — `reviews.recalculate_entity_rating`, `projects.update_entity_project_counts`,
+`projects.fn_sync_workload_intensity`, `org.create_team`, `org.save_profile`,
+`org.set_profile_avatar`, and `public.create_organisation` (service role) — so no `INVOKER` trigger
+maintains any of them on a client's behalf and the guards refuse only the client. Verified by
+execution against the running database, as `authenticated`: a rename still succeeds, `save_profile`
+still succeeds, and a forged rating, a counter, a plan tier, a member cap, a handle, an ownership
+change (including an organisation admin naming themselves owner), a verification level, a status
+and a borrowed picture are each refused with `42501`. The two client INSERT policies that would have
+let those columns be set at birth were removed in the same change (`org/Policies.md`).

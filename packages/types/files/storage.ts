@@ -34,6 +34,7 @@ export const StorageBucket = z.enum([
 	"avatars",
 	"catalogue",
 	"workspace",
+	"showcase",
 ]);
 export type StorageBucket = z.infer<typeof StorageBucket>;
 
@@ -144,6 +145,13 @@ export const BUCKETS: Readonly<Record<StorageBucket, BucketMeta>> = {
 		allowedMime: null,
 		anchor: "entity_id",
 		purpose: "Entity-owned (team / business / organisation) library assets for the /files hub.",
+	},
+	showcase: {
+		access: "public",
+		maxBytes: 50 * MiB,
+		allowedMime: [...IMAGE_MIME, "video/mp4", "video/webm", "video/quicktime"],
+		anchor: "entity_id",
+		purpose: "Profile showcase stills and videos — written only by the media pipeline.",
 	},
 };
 
@@ -319,6 +327,34 @@ export function publicAssetLocation(
 	...segments: Array<string | number>
 ): StorageLocation {
 	return { bucket: "public_assets", path: join(ownerId, ...segments) };
+}
+
+/**
+ * Where the media pipeline keeps a person's LIBRARY original once it has left quarantine:
+ * `personal/users/{userId}/library/{assetId}/{filename}`. The asset id is its own directory so the
+ * WebP tiers (`files/variants.ts` `variantObjectPath`) sit beside the original without a name clash.
+ */
+export function libraryLocation(
+	userId: string,
+	assetId: string,
+	filename: string,
+): StorageLocation {
+	return personalLocation(userId, "library", assetId, filename);
+}
+
+/**
+ * Where a public RENDITION lives — the cropped copy cut for one surface:
+ * `{bucket}/{ownerId}/{surface}/{renditionId}/{filename}`, anchored on the OWNING entity (a user, or
+ * the team / business / organisation whose profile it is) exactly as the seeded branding assets
+ * are. `avatars` for the profile photo, `showcase` for a showcase slot.
+ */
+export function renditionLocation(
+	bucket: "avatars" | "showcase",
+	ownerId: string,
+	renditionId: string,
+	filename: string,
+): StorageLocation {
+	return { bucket, path: join(ownerId, bucket === "avatars" ? "avatar" : "showcase", renditionId, filename) };
 }
 
 // #endregion

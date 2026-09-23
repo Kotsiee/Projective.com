@@ -12,11 +12,11 @@ import { ExploreBackendService } from "@server/services/explore/ExploreBackendSe
  * they would see on the full page cannot disagree. Guest-reachable, like the page it mirrors.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const id = ctx.url.searchParams.get("id");
 		if (!id) {
 			return Response.json({ ok: false, message: "Missing item id." }, { status: 400 });
 		}
-		return toExploreResponse(ExploreBackendService.viewPage(id));
+		return toExploreResponse(await ExploreBackendService.viewPage(id));
 	},
 });

@@ -1,32 +1,19 @@
-import {
-	ARTICLES,
-	BUSINESSES,
-	CTAS,
-	FREELANCERS,
-	HELP_ARTICLES,
-	PRODUCTS,
-	PROJECTS,
-	SERVICES,
-	SPONSORED,
-	TEAMS,
-	USERS,
-} from "./fixtures.ts";
 import { parsePriceMajor, PIPELINE_LOW } from "./pricing.ts";
-import { findReownedListing } from "../profile/profile-fixtures.ts";
+import { peekCatalog } from "./live-catalog.ts";
 import type {
 	ExploreEntity,
 	ExploreItem,
 	ExploreParams,
-	HomeFeed,
 	ResultGroup,
 } from "@projective/types/explore";
 
 /**
  * Explore — pure discovery selectors (server side).
  *
- * The in-memory query behind {@link ExploreBackendService}: filter + sort the corpus, fold it into the
- * merged Search-Results sections, look items up, and page a stub pool for the infinite feed. Pure and
- * deterministic (no RNG, SSR/resume-safe) so it swaps cleanly for the ranking service later.
+ * The query behind {@link ExploreBackendService}: filter + sort a corpus, fold it into the merged
+ * Search-Results sections, and derive the related-terms row. PURE over the list it is handed — the
+ * list itself is the live catalogue (`./live-catalog.ts`), loaded once per TTL and shared by every
+ * discovery surface. Deterministic (no RNG, SSR/resume-safe).
  */
 
 // #region Derived pricing (numeric — for sorting/filtering)
@@ -49,55 +36,7 @@ export function lowestActivePrice(prices: number[]): number | null {
 }
 // #endregion
 
-// #region Corpus
-/** Every item across every entity — the corpus `getResults` queries. */
-export function allItems(): ExploreItem[] {
-	return [
-		...USERS,
-		...FREELANCERS,
-		...TEAMS,
-		...BUSINESSES,
-		...SERVICES,
-		...PROJECTS,
-		...PRODUCTS,
-		...ARTICLES,
-	];
-}
-
-/**
- * The Home discovery feed — sections keyed by format, plus the reserved promos.
- *
- * The format sections stay in fixture declaration order (that ordering is editorial — a curated
- * shelf), while `recommended` is genuinely ranked, through the same {@link rankRecommended} the
- * search path's default sort uses. Two orderings of the same corpus is the point: a shelf and a
- * ranking answer different questions, and collapsing them would make one of the two a lie.
- */
-export function homeFeed(): HomeFeed {
-	return {
-		users: USERS,
-		freelancers: FREELANCERS,
-		teams: TEAMS,
-		businesses: BUSINESSES,
-		services: SERVICES,
-		projects: PROJECTS,
-		products: PRODUCTS,
-		articles: ARTICLES,
-		sponsored: SPONSORED,
-		helpArticles: HELP_ARTICLES,
-		ctas: CTAS,
-		recommended: {
-			services: rankRecommended(SERVICES),
-			products: rankRecommended(PRODUCTS),
-			projects: rankRecommended(PROJECTS),
-			// "People who can help" is Home's own existing precedent for the talent scope — the same
-			// freelancers-and-teams fold `CATEGORY_TYPES.freelancers` applies on the search path.
-			people: rankRecommended([...FREELANCERS, ...TEAMS]),
-		},
-	};
-}
-// #endregion
-
-// #region Query
+// #region Ranking
 /** The best rating track available on an item (helper preferred) — used by the "Top rated" sort. */
 function topScore(item: ExploreItem): number {
 	return Math.max(item.rating?.asHelper?.value ?? 0, item.rating?.asClient?.value ?? 0);
@@ -106,11 +45,10 @@ function topScore(item: ExploreItem): number {
 /**
  * The `recommended` ordering: verified owners first, then by best rating track.
  *
- * A marketplace-wide quality heuristic, not a personalisation — nothing here reads a viewer, because
- * neither this module nor {@link homeFeed} is given one. Exported so the Home feed's Recommended
- * lists and a `?sort=recommended` search rank through one comparator: two copies of "what we put
- * forward" would eventually disagree, and the disagreement would show up as the same corpus ordered
- * two ways on two surfaces a reader moves between in one click.
+ * A marketplace-wide quality heuristic, not a personalisation — nothing here reads a viewer. Exported
+ * so the Home feed's Recommended lists and a `?sort=recommended` search rank through one comparator:
+ * two copies of "what we put forward" would eventually disagree, and the disagreement would show up
+ * as the same corpus ordered two ways on two surfaces a reader moves between in one click.
  */
 export function compareRecommended(a: ExploreItem, b: ExploreItem): number {
 	return (Number(b.owner.verified ?? false) - Number(a.owner.verified ?? false)) ||
@@ -119,27 +57,27 @@ export function compareRecommended(a: ExploreItem, b: ExploreItem): number {
 
 /**
  * Rank a list by {@link compareRecommended}, returning a copy. Generic over the element type so a
- * caller holding a narrowed list (`ServiceItem[]`, `ProfileItem[]`) gets that type back rather than
- * a widened `ExploreItem[]` it would then have to re-narrow.
+ * caller holding a narrowed list (`ServiceItem[]`, `ProfileItem[]`) gets that type back.
  */
 export function rankRecommended<T extends ExploreItem>(items: readonly T[]): T[] {
 	return [...items].sort(compareRecommended);
 }
+// #endregion
 
+// #region Query
 /** Parse a leading price out of a formatted string / derived floor for the "price" sort. */
 function priceValue(item: ExploreItem): number {
 	if (item.type === "services") {
 		// Sort a pipeline by its low-intensity ticket floor (0.5×) and a session by its per-session
 		// price, so the range/unit pricing shown on the card orders consistently.
 		if (item.serviceType === "Pipeline" && item.ticketPrice) return item.ticketPrice * PIPELINE_LOW;
-		// Session (per-session) and Group Session (per-seat) both order by their per-slot price.
 		if (
 			(item.serviceType === "Session" || item.serviceType === "Group Session") && item.sessionPrice
 		) return item.sessionPrice;
-		return parsePriceMajor(item.price);
+		return item.priceMinor !== undefined ? item.priceMinor / 100 : parsePriceMajor(item.price);
 	}
 	if (item.type === "products") {
-		return parsePriceMajor(item.price);
+		return item.priceMinor !== undefined ? item.priceMinor / 100 : parsePriceMajor(item.price);
 	}
 	if (item.type === "freelancers" && item.servicePrices?.length) {
 		return lowestActivePrice(item.servicePrices) ?? 0;
@@ -181,8 +119,7 @@ function rangeBounds(values: string[] | undefined): [number, number] | null {
 
 /**
  * Sibling entity types folded into a merged scope. "Freelancers & Teams" and "People & Businesses"
- * are single split-talent scopes, so those tokens match both members (the narrower `teams` /
- * `businesses` tokens stay singular).
+ * are single split-talent scopes, so those tokens match both members.
  */
 const CATEGORY_TYPES: Partial<Record<ExploreParams["category"], ExploreEntity[]>> = {
 	freelancers: ["freelancers", "teams"],
@@ -203,17 +140,18 @@ function matchesQuery(item: ExploreItem, q: string): boolean {
 		item.owner.handle,
 		item.summary,
 		...item.skills.map((s) => s.label),
+		"category" in item ? String(item.category) : "",
 	].join(" ").toLowerCase();
 	return q.toLowerCase().split(/\s+/).every((term) => hay.includes(term));
 }
 
 /**
- * The in-memory discovery query. Filters the corpus by free-text `q` and top-level `category`, then
- * applies the adaptive facet filters and the `sort`. The seam for the real ranking service.
+ * The discovery query. Filters the corpus by free-text `q` and top-level `category`, then applies the
+ * adaptive facet filters and the `sort`.
  */
-export function getResults(params: ExploreParams): ExploreItem[] {
+export function getResults(corpus: readonly ExploreItem[], params: ExploreParams): ExploreItem[] {
 	const category = params.category;
-	let items = allItems().filter((it) => inCategory(it, category) && matchesQuery(it, params.q));
+	let items = corpus.filter((it) => inCategory(it, category) && matchesQuery(it, params.q));
 
 	const skillFacet = params.filters.skill ?? params.filters.roles;
 	if (skillFacet?.length) {
@@ -230,14 +168,8 @@ export function getResults(params: ExploreParams): ExploreItem[] {
 	}
 	const modelFacet = params.filters.model;
 	if (modelFacet?.length) {
-		// Delivery model is a `ServiceItem` field, not a category — "Session" and "Group Session" are
-		// how a service is DELIVERED, so a Sessions chip is this facet rather than a top-level scope.
-		//
-		// Note the shape: unlike `cat`/`stage`, which drop everything outside the one entity they
-		// describe, this leaves non-services untouched. Within `category=services` the two readings are
-		// identical, so the difference only bites when a `model` value survives a category switch in the
-		// URL — where dropping every project on a projects query would be an empty page the reader has
-		// no way to explain. A facet that cannot apply should be inert, not destructive.
+		// Delivery model is a `ServiceItem` field, not a category. Non-services are left untouched: a
+		// `model` value surviving a category switch in the URL must not empty a projects page.
 		items = items.filter((it) => it.type !== "services" || modelFacet.includes(it.serviceType));
 	}
 	const stageFacet = params.filters.stage;
@@ -318,29 +250,6 @@ export function groupResults(items: ExploreItem[]): ResultGroup[] {
 		.filter((g) => g.items.length > 0);
 }
 
-/** Look up a single item by id — the standalone `/view/[id]` + detail-drawer source. */
-export function findItem(id: string): ExploreItem | undefined {
-	// The corpus first; then a profile-scoped copy (`sv-{handle}-{i}`), which the profile's own
-	// derivation resolves to the item its card showed. Without the fallback every listing opened
-	// FROM a profile 404'd (Decision #106(b)).
-	return allItems().find((it) => it.id === id) ?? findReownedListing(id);
-}
-
-/**
- * Expand a small result set into a larger deterministically-varied pool for the isolated unified feed,
- * so window-scrolled virtualization + infinite loading have real volume. Cycles base items with
- * suffixed ids (stable, no RNG). A no-op when the base already meets `target`.
- */
-export function expandItems(items: ExploreItem[], target: number): ExploreItem[] {
-	if (items.length === 0 || items.length >= target) return items;
-	const out: ExploreItem[] = [];
-	for (let i = 0; i < target; i++) {
-		const base = items[i % items.length];
-		out.push(i < items.length ? base : { ...base, id: `${base.id}-x${i}` });
-	}
-	return out;
-}
-
 /** Classify a freelancer's utilisation into a load band (drives the workload meter copy/severity). */
 export function workloadBand(
 	level: number,
@@ -352,23 +261,52 @@ export function workloadBand(
 // #endregion
 
 // #region Related
-/** Curated "related" search terms per scope — the stub behind the results header's related row. */
-const RELATED_BY_CATEGORY: Record<string, string[]> = {
-	all: ["Brand refresh", "Realtime backend", "AI product design", "Pitch deck", "Webflow build"],
-	freelancers: ["Product design", "Frontend", "3D & motion", "Brand systems", "Content"],
-	teams: ["Brand studio", "Product team", "Content crew", "Full-stack studio"],
-	businesses: ["Fintech", "Commerce", "Media", "SaaS"],
-	services: ["Brand identity", "Landing page", "Design system", "Launch film", "MVP build"],
-	projects: ["Wallet redesign", "Analytics platform", "Mobile app", "Design system"],
-	products: ["UI kits", "Templates", "Presets", "Icons", "3D scenes"],
-	articles: ["Hiring a team", "Escrow explained", "Getting started", "Paying by stage"],
-	users: ["Creative direction", "Founders", "Advisors"],
-};
-
-/** Related search suggestions for the results header. Curated per scope, de-duped against the query. */
-export function relatedSearches(params: ExploreParams, limit = 6): string[] {
-	const base = RELATED_BY_CATEGORY[params.category] ?? RELATED_BY_CATEGORY.all;
+/**
+ * The results header's "Related" row — the categories and skills most common among what is actually
+ * listed in this scope, most frequent first, with the current query removed.
+ *
+ * Derived from the corpus rather than curated, so a related term always leads somewhere: a curated
+ * list suggests searches the marketplace may have nothing for, and a suggestion that returns zero
+ * results teaches a reader to stop trusting the row.
+ */
+export function relatedSearches(
+	corpus: readonly ExploreItem[],
+	params: ExploreParams,
+	limit = 6,
+): string[] {
 	const q = params.q.trim().toLowerCase();
-	return base.filter((t) => t.toLowerCase() !== q).slice(0, limit);
+	const counts = new Map<string, { label: string; n: number }>();
+	const bump = (raw: string) => {
+		const label = raw.trim();
+		const key = label.toLowerCase();
+		if (!label || key === q) return;
+		const entry = counts.get(key);
+		if (entry) entry.n++;
+		else counts.set(key, { label: label[0].toUpperCase() + label.slice(1), n: 1 });
+	};
+	for (const it of corpus) {
+		if (!inCategory(it, params.category)) continue;
+		if ("category" in it && typeof it.category === "string") bump(it.category);
+		for (const s of it.skills) bump(s.label);
+	}
+	return [...counts.values()]
+		.sort((a, b) => b.n - a.n || a.label.localeCompare(b.label))
+		.slice(0, limit)
+		.map((e) => e.label);
+}
+// #endregion
+
+// #region Synchronous bridge (transitional)
+/**
+ * Resolve an item id against the most recently LOADED catalogue, synchronously.
+ *
+ * TRANSITIONAL. It exists for the booking and pipeline-instantiation resolvers, which still resolve a
+ * listing id synchronously against the snapshot; this function goes when they read the catalogue the
+ * way every other async caller does — `await loadCatalog()` and `catalog.byId`. Returns `undefined`
+ * when no catalogue has been loaded in this process yet, which is why the routes that reach it warm
+ * the catalogue first.
+ */
+export function findItem(id: string): ExploreItem | undefined {
+	return peekCatalog()?.byId.get(id);
 }
 // #endregion

@@ -60,7 +60,10 @@
     display: block;
 }
 
-/* The owner's control: the avatar wrapped in a circular button, nothing added at rest. */
+/*
+ * The visitor's control, rendered only when the owner allows the photo to be opened full size: the
+ * avatar wrapped in a circular button, nothing added at rest but the zoom cursor that says so.
+ */
 .pf-hero__avatarbtn {
     position: relative;
     display: inline-flex;
@@ -70,7 +73,7 @@
     border-radius: var(--radius-full);
     background: transparent;
     color: inherit;
-    cursor: pointer;
+    cursor: zoom-in;
     overflow: clip;
     transform: scale(1);
     transition: transform var(--dur-fast) var(--ease-standard);
@@ -86,55 +89,13 @@
     box-shadow: none;
 }
 
-/* The overlay: a scrim over the photograph naming what a press does. Hidden until hover/focus. */
-.pf-hero__avataredit {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-1);
-    border-radius: inherit;
-    background: color-mix(in srgb, var(--scrim) 58%, transparent);
-    color: var(--on-scrim);
-    opacity: 0;
-    transition: opacity var(--dur-fast) var(--ease-standard);
-    pointer-events: none;
-}
-
-.pf-hero__avataredit-label {
-    font-size: var(--text-2xs);
-    font-weight: var(--fw-medium);
-    line-height: 1;
-    letter-spacing: var(--tracking-normal);
-    text-align: center;
-}
-
-.pf-hero__avatarbtn:hover .pf-hero__avataredit,
-.pf-hero__avatarbtn:focus-visible .pf-hero__avataredit,
-.pf-hero__avatarbtn[aria-expanded="true"] .pf-hero__avataredit {
-    opacity: 1;
-}
-
-/* No hover to reveal the overlay on a touch surface: a permanent small edit badge says the same. */
-@media (hover: none) {
-    .pf-hero__avataredit {
-        inset: auto 0 0 auto;
-        inline-size: 1.5rem;
-        block-size: 1.5rem;
-        border-radius: var(--radius-full);
-        opacity: 1;
-    }
-
-    .pf-hero__avataredit-label {
-        display: none;
-    }
-
-    .pf-hero__avataredit .ui-icon {
-        inline-size: var(--icon-2xs);
-        block-size: var(--icon-2xs);
-    }
+/* The full-size photo: a square frame the large rendition fills, reserved before it loads. */
+.pf-avatarbox__frame {
+    aspect-ratio: 1;
+    inline-size: 100%;
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+    overflow: clip;
 }
 
 .pf-hero__name {
@@ -289,73 +250,18 @@
 
 /* #endregion */
 
-/* #region Owner showcase picker */
-.pf-hero__imgslot {
-    position: absolute;
-    inset-block-start: var(--space-3);
-    inset-inline-end: var(--space-3);
-    display: flex;
-}
-
-.pf-hero__imgbtn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: 2rem;
-    block-size: 2rem;
-    padding: 0;
-    border: var(--hairline-strong);
-    border-radius: var(--radius-full);
-    background: var(--surface);
-    color: var(--text-secondary);
-    cursor: pointer;
-    transform: scale(1);
-    transition: background-color var(--dur-fast) var(--ease-standard),
-        color var(--dur-fast) var(--ease-standard),
-        transform var(--dur-fast) var(--ease-standard);
-}
-
-.pf-hero__imgbtn:hover {
-    background: var(--surface-2);
-    color: var(--on-surface);
-}
-
-.pf-hero__imgbtn:active {
-    transform: scale(var(--btn-press-scale-icon));
-    transition-duration: var(--dur-press);
-}
-
-.pf-hero__imgbtn:focus-visible {
-    outline: none;
-    box-shadow: var(--focus-ring-shadow);
-}
-
-/* #endregion */
-
 /* #region Motion */
 @media (prefers-reduced-motion: reduce) {
-    .pf-hero__imgbtn,
-    .pf-hero__imgbtn:active,
     .pf-hero__avatarbtn,
     .pf-hero__avatarbtn:active {
         transform: none;
         transition: none;
     }
-
-    .pf-hero__avataredit {
-        transition: none;
-    }
 }
 
-:root[data-motion="reduced"] .pf-hero__imgbtn,
-:root[data-motion="reduced"] .pf-hero__imgbtn:active,
 :root[data-motion="reduced"] .pf-hero__avatarbtn,
 :root[data-motion="reduced"] .pf-hero__avatarbtn:active {
     transform: none;
-    transition: none;
-}
-
-:root[data-motion="reduced"] .pf-hero__avataredit {
     transition: none;
 }
 

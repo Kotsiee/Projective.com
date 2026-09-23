@@ -1,0 +1,418 @@
+/*
+ * profile-media — the Media Selection & Crop dialog: the cropper (or a video's preview) on the left,
+ * the person's media library and Upload on the right.
+ *
+ * BODY-PORTALLED. The `Dialog` projects its panel into `document.body`, outside `.pf`, so nothing
+ * here may read a `--pf-*` token — it would silently fall back (the `--wlt-*` lesson, Decision #60).
+ * Global tokens only.
+ *
+ * The stage shows the crop box with a margin of context around it: the picture sits under a WINDOW
+ * whose enormous box-shadow is the scrim, so the box reads as the result and the surround as
+ * context, with no `backdrop-filter` at all. While the pointer is down the scrim thins so the whole
+ * picture can be judged. The picture's transform is written by script and NEVER transitioned: it
+ * encodes the crop, and a value arriving through a transition would draw a crop the state does not
+ * describe (the Decision #60 class).
+ */
+
+/* #region Dialog */
+.ui-dialog__panel.pf-mediadlg {
+    max-inline-size: var(--overlay-w-xl);
+    inline-size: min(64rem, calc(100vw - var(--space-6)));
+}
+
+/* The container the grid below is queried against — a container cannot query itself. */
+.pf-mediascope {
+    container-type: inline-size;
+    min-inline-size: 0;
+}
+
+.pf-media {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(16rem, 1fr);
+    gap: var(--space-7);
+    align-items: start;
+    min-inline-size: 0;
+}
+
+@container (max-width: 44rem) {
+    .pf-media {
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--space-6);
+    }
+}
+
+/* #endregion */
+
+/* #region The selected item */
+.pf-media__edit {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-4);
+    min-inline-size: 0;
+}
+
+.pf-media__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    min-block-size: 16rem;
+    padding: var(--space-6);
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.pf-media__empty-icon {
+    color: var(--text-secondary);
+}
+
+.pf-media__empty-text {
+    margin: 0;
+    max-inline-size: 22rem;
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal, 1.5);
+}
+
+.pf-media__stage {
+    position: relative;
+    inline-size: 100%;
+    min-block-size: 8rem;
+    overflow: clip;
+    border-radius: var(--radius-lg);
+    background: var(--surface-1);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    isolation: isolate;
+}
+
+.pf-media__stage--avatar {
+    max-inline-size: 24rem;
+    margin-inline: auto;
+}
+
+.pf-media__stage[data-dragging="true"] {
+    cursor: grabbing;
+}
+
+.pf-media__stage:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+/* The picture: centred by its own margins, then transformed about its centre by script. */
+.pf-media__img {
+    position: absolute;
+    inset-block-start: 50%;
+    left: 50%;
+    max-inline-size: none;
+    max-block-size: none;
+    transform-origin: center;
+    will-change: transform;
+    pointer-events: none;
+}
+
+/*
+ * The crop box: a window whose shadow is the scrim over everything outside it. Physical `left`
+ * above and a symmetric inset here, because the crop geometry is not a writing-direction fact.
+ */
+.pf-media__window {
+    position: absolute;
+    z-index: 1;
+    border-radius: var(--radius-base);
+    box-shadow:
+        0 0 0 100vmax color-mix(in srgb, var(--scrim) 58%, transparent),
+        inset 0 0 0 1px color-mix(in srgb, var(--on-scrim) 70%, transparent);
+    transition: box-shadow var(--dur-fast) var(--ease-standard);
+    pointer-events: none;
+}
+
+.pf-media__stage--avatar .pf-media__window {
+    border-radius: var(--radius-full);
+}
+
+.pf-media__stage[data-dragging="true"] .pf-media__window {
+    box-shadow:
+        0 0 0 100vmax color-mix(in srgb, var(--scrim) 24%, transparent),
+        inset 0 0 0 1px color-mix(in srgb, var(--on-scrim) 70%, transparent);
+}
+
+.pf-media__video {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.pf-media__videoel {
+    display: block;
+    inline-size: 100%;
+    max-block-size: 24rem;
+    border-radius: var(--radius-lg);
+    background: var(--scrim);
+}
+
+.pf-media__hint {
+    margin: 0;
+    font-size: var(--text-xs);
+    line-height: var(--leading-snug, 1.35);
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.pf-media__controls {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-inline-size: 0;
+}
+
+.pf-media__row {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-3);
+    min-inline-size: 0;
+}
+
+.pf-media__row--dial {
+    grid-template-columns: 4.5rem auto minmax(0, 1fr);
+}
+
+.pf-media__label {
+    font-size: var(--text-xs);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-snug, 1.35);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.pf-media__slider {
+    min-inline-size: 0;
+}
+
+.pf-media__value {
+    min-inline-size: 3.5rem;
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+    color: var(--on-surface);
+    text-align: end;
+}
+
+.pf-media__dial {
+    justify-self: start;
+}
+
+.ui-button.pf-media__reset {
+    justify-self: end;
+}
+
+.pf-media__alt {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+/* #endregion */
+
+/* #region The library */
+.pf-media__library {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-inline-size: 0;
+}
+
+.pf-media__bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    min-inline-size: 0;
+}
+
+.pf-media__h {
+    margin: 0;
+    font-size: var(--text-xs);
+    font-weight: var(--fw-semibold);
+    line-height: var(--leading-snug, 1.35);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.pf-media__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+    gap: var(--space-2);
+    max-block-size: 22rem;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+}
+
+.pf-media__cell {
+    display: flex;
+    min-inline-size: 0;
+}
+
+/* A tile is a control: a full border, the selected state on its border and a tint — never colour alone. */
+.pf-media__tile {
+    position: relative;
+    display: block;
+    inline-size: 100%;
+    aspect-ratio: 1;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: var(--radius-base);
+    background: var(--surface-1);
+    overflow: clip;
+    cursor: pointer;
+    transform: scale(1);
+    transition: border-color var(--dur-fast) var(--ease-standard),
+        transform var(--dur-fast) var(--ease-standard);
+}
+
+.pf-media__tile:hover {
+    border-color: var(--outline);
+}
+
+.pf-media__tile[aria-pressed="true"] {
+    border-color: var(--on-surface);
+}
+
+.pf-media__tile:active {
+    transform: scale(var(--btn-press-scale-icon));
+    transition-duration: var(--dur-press);
+}
+
+.pf-media__tile:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring-shadow);
+}
+
+.pf-media__tilemark {
+    position: absolute;
+    inset-block-end: var(--space-1);
+    inset-inline-end: var(--space-1);
+    display: inline-flex;
+    padding: var(--space-1);
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--scrim) 58%, transparent);
+    color: var(--on-scrim);
+}
+
+.pf-media__uploads {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.pf-media__uploadrow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 8rem);
+    align-items: center;
+    gap: var(--space-3);
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+.pf-media__uploadrow[data-state="error"] {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.pf-media__uploadname {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: var(--on-surface);
+}
+
+.pf-media__uploaderr {
+    color: var(--danger);
+}
+
+/* A progress meter is geometry that encodes a fact: set directly, never transitioned. */
+.pf-media__uploadmeter {
+    display: block;
+    block-size: 0.25rem;
+    border-radius: var(--radius-full);
+    background: var(--surface-2);
+    overflow: clip;
+}
+
+.pf-media__uploadfill {
+    display: block;
+    block-size: 100%;
+    background: var(--on-surface);
+}
+
+.pf-media__note {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal, 1.5);
+    color: var(--text-secondary);
+}
+
+.pf-media__error {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: var(--leading-normal, 1.5);
+    color: var(--danger);
+}
+
+.ui-button.pf-media__more {
+    align-self: center;
+}
+
+/* #endregion */
+
+/* #region Footer */
+.ui-button.pf-media__ghost {
+    --btn-accent: var(--on-surface);
+}
+
+/* The primary commits — inverted ink on the page's surface, the profile's own CTA idiom. */
+.ui-button.pf-media__save {
+    --btn-accent: var(--on-surface);
+    --btn-on: var(--surface);
+    --btn-mix-hover: 88%;
+    --btn-mix-active: 80%;
+    --btn-shade: var(--surface);
+}
+
+/* #endregion */
+
+/* #region Motion */
+@media (prefers-reduced-motion: reduce) {
+    .pf-media__window {
+        transition: none;
+    }
+
+    .pf-media__tile,
+    .pf-media__tile:active {
+        transform: none;
+        transition: none;
+    }
+}
+
+:root[data-motion="reduced"] .pf-media__window {
+    transition: none;
+}
+
+:root[data-motion="reduced"] .pf-media__tile,
+:root[data-motion="reduced"] .pf-media__tile:active {
+    transform: none;
+    transition: none;
+}
+
+/* #endregion */

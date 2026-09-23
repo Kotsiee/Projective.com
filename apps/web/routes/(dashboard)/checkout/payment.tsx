@@ -2,6 +2,7 @@ import { page } from "fresh";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { buyerDetailsComplete } from "@projective/types/finance";
 import { define } from "@web/utils/state.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import CheckoutPaymentScreen from "@features/checkout/islands/CheckoutPaymentScreen.island.tsx";
 import { checkoutStepHref, preselectFrom } from "@features/checkout/core/basket-model.ts";
 import { resolveCards, resolveCheckoutSession } from "@features/checkout/core/checkout-ssr.ts";
@@ -33,9 +34,10 @@ import { resolveCards, resolveCheckoutSession } from "@features/checkout/core/ch
  * deferred `finance.*` RLS is the real gate.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const context = asAuthenticatedContext(ctx.state.userContext);
-		const bootstrap = resolveCheckoutSession(context, ctx.url);
+		const actor = readActor(ctx);
+		const bootstrap = await resolveCheckoutSession(context, ctx.url, actor);
 
 		if (!buyerDetailsComplete(bootstrap.session.buyer)) {
 			const sp = ctx.url.searchParams;
@@ -48,7 +50,7 @@ export const handler = define.handlers({
 			return new Response(null, { status: 302, headers: { location } });
 		}
 
-		const { cards, defaultCardId } = resolveCards(context, ctx.url);
+		const { cards, defaultCardId } = await resolveCards(context, ctx.url, actor);
 		ctx.state.title = "Payment · Projective";
 		return page({ bootstrap, cards, defaultCardId });
 	},

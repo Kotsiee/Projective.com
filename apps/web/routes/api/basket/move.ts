@@ -8,6 +8,7 @@ import {
 } from "@features/checkout/core/respond.ts";
 import { BasketBackendService } from "@server/services/finance/BasketBackendService.ts";
 import { basketQueryFromBody } from "@server/services/finance/basket-query.ts";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * `POST /api/basket/move` — move a line between baskets, reorder it, and/or park it into
@@ -15,10 +16,9 @@ import { basketQueryFromBody } from "@server/services/finance/basket-query.ts";
  * account's default basket.
  *
  * Nothing is removed by a move: parking a line leaves it in its basket, it just stops queueing for
- * payment (root CLAUDE.md §5). Thin: parse + Zod-validate + resolve the acting context + delegate to
- * the fat {@link BasketBackendService}. No server capability guard — the Dev Context Switcher must reach
- * every persona; the fat service enforces the member gate and the deferred `finance.*` RLS is the real
- * gate.
+ * payment (root CLAUDE.md §5). Thin: parse + Zod-validate + resolve the acting context and session +
+ * delegate to the fat {@link BasketBackendService}, which writes as the signed-in caller — `finance.*`
+ * RLS and its spend predicate are the gate.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -28,9 +28,10 @@ export const handler = define.handlers({
 		const parsed = MoveBasketItemSchema.safeParse(raw);
 		if (!parsed.success) return invalidPayload(parsed.error);
 		return toCheckoutResponse(
-			BasketBackendService.moveItem(
+			await BasketBackendService.moveItem(
 				parsed.data,
 				basketQueryFromBody(raw as Record<string, unknown>, context),
+				readActor(ctx),
 			),
 		);
 	},

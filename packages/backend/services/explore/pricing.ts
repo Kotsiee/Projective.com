@@ -6,7 +6,7 @@ import type { ExploreItem } from "@projective/types/explore";
  * The discovery corpus stores a price as a **formatted display string** (`"$4,800"`) plus, for the
  * models that are billed per unit, a numeric `ticketPrice` / `sessionPrice`. Three consumers need the
  * NUMBER behind that presentation — the sort key ({@link ExploreItem} ordering in `query.ts`), the
- * `/view/[id]` price block (`view-fixtures.ts`), and now a basket line's unit price — so the
+ * `/view/[id]` price block (`live-view.ts`), and now a basket line's unit price — so the
  * multipliers and the parser live here exactly once. A second copy is how a pipeline comes to be
  * bracketed `0.5×–2.0×` on the card and something else in the basket, and only one of those is what
  * the buyer is charged (root CLAUDE.md §8 Decision #45 keeps these in parity).

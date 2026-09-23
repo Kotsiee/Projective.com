@@ -54,6 +54,12 @@ export interface State {
 	 * meta rail) and every tab sub-route read one projection. `null` for a reserved/unresolved handle.
 	 */
 	profile?: ProfileView | null;
+	/**
+	 * Why `profile` is `null`: `404` for a handle that names nothing the viewer may see, `503` when the
+	 * profile could not be read at all — the page then says the database is unavailable rather than
+	 * claiming the profile does not exist.
+	 */
+	profileStatus?: 200 | 404 | 503;
 }
 
 /** The typed `define` helper (`define.page` · `define.handlers` · `define.middleware`). */

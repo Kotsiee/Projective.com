@@ -10,7 +10,9 @@ import {
 	HIRE_RATE_LIMIT_MESSAGE,
 } from "@projective/types/projects";
 import type { ReadActor } from "../read-actor.ts";
+import { assemble, type CatalogInputs, primeCatalogForTesting } from "../explore/live-catalog.ts";
 import type { CreateProject, HireInvitation, ProjectFeedParams } from "@projective/types/projects";
+import { JUNO_HIRE_INTAKE, stubProfileOverview } from "../profile/test-doubles.ts";
 
 /**
  * hire-from-profile_test — the reads a profile's Add-to-project and Hire flows depend on, exercised
@@ -30,6 +32,14 @@ import type { CreateProject, HireInvitation, ProjectFeedParams } from "@projecti
 
 // #region Fixtures
 /**
+ * The seller's profile is a LIVE read (`org.get_profile_view`), and these tests run without a
+ * database. The one fact the hire flow takes from it — the seller's own intake — is supplied by a
+ * test double for `@juno`: one required question, `scope`. Every other handle is a profile that does
+ * not exist.
+ */
+stubProfileOverview({ juno: { hireIntake: JUNO_HIRE_INTAKE } });
+
+/**
  * An acting identity shaped the way `actorFrom` shapes a personal one: `contextId` IS the user id.
  * The instantiate path carries no ReadActor (its route passes `{ userId }` and the workspace rides
  * the payload), so the service RECONSTRUCTS the write-store owner from those two — and a test actor
@@ -40,6 +50,112 @@ function actorOf(userId: string, contextId = userId): ReadActor {
 }
 const ALICE = actorOf("u-alice");
 const BOB = actorOf("u-bob");
+
+/**
+ * The published Pipeline listing "Add to projects" instantiates. The listing resolver reads the live
+ * catalogue snapshot, so the test installs one built from the same row shapes the database read
+ * produces — four priced stages in USD, owned by a listed freelancer.
+ */
+const PIPELINE_SLUG = "svc-2x4y6z8b9c";
+function primePipelineListing(): void {
+	const juno = "00000000-0000-4000-8000-0000000000a1";
+	const blueprint = "00000000-0000-4000-8000-0000000000b1";
+	const inputs: CatalogInputs = {
+		profiles: [{
+			entity_id: juno,
+			entity_type: "freelancer",
+			handle: "juno",
+			name: "Juno Park",
+			headline: "Frontend engineering",
+			languages: null,
+			location: null,
+			city: null,
+			rating_as_client: null,
+			reviews_as_client: 0,
+			rating_as_freelancer: null,
+			reviews_as_freelancer: 0,
+			active_project_count: 0,
+			total_project_count: 0,
+			member_count: null,
+			listed: true,
+			avatar_bucket: null,
+			avatar_path: null,
+			banner_bucket: null,
+			banner_path: null,
+			verified: false,
+			skills: [],
+			workload: 0,
+			joined_at: "2026-01-01T00:00:00Z",
+			verification_tier: null,
+			language_codes: [],
+			delivered_count: 0,
+		}],
+		listings: [{
+			id: "00000000-0000-4000-8000-0000000000c1",
+			owner_user_id: juno,
+			owner_team_id: null,
+			kind: "service",
+			service_blueprint_id: blueprint,
+			product_id: null,
+			title: "Marketing site build",
+			description_text: "A staged build of a marketing site.",
+			category: "web",
+			delivery_label: "4-week delivery",
+			amount_cents: 480_000,
+			currency: "USD",
+			ticket_price_cents: 60_000,
+			session_price_cents: null,
+			seats_per_session: null,
+			free_revisions: 2,
+			extra_revision_price_cents: null,
+			promoted: false,
+			published_at: "2026-09-01T00:00:00Z",
+			created_at: "2026-09-01T00:00:00Z",
+		}],
+		blueprints: [{
+			id: blueprint,
+			slug: PIPELINE_SLUG,
+			owner_type: "freelancer",
+			owner_team_id: null,
+			freelancer_profile_id: juno,
+			delivery_model: "pipeline",
+			price_cents: 480_000,
+			ticket_price_cents: 60_000,
+			session_price_cents: null,
+			currency: "USD",
+			free_revisions: 2,
+			extra_revision_price_cents: null,
+			max_seats_per_cohort: 1,
+			intake_fields: [],
+			stage_template: ["Discovery", "Design", "Build", "Launch"].map((name, i) => ({
+				name,
+				description: `${name} stage.`,
+				deliverables: [],
+				priceCents: 40_000 + i * 20_000,
+				skills: [],
+			})),
+			team_roles: [],
+			deliverables: [],
+			session_minutes: null,
+			session_count: null,
+			rating_average: 0,
+			rating_count: 0,
+		}],
+		products: [],
+		articles: [],
+		projects: [],
+		stages: [],
+		roles: [],
+		seats: [],
+		media: [],
+		files: [],
+		listingSkills: [],
+		requiredSkills: [],
+		skillRows: [],
+		placements: [],
+	};
+	primeCatalogForTesting(assemble(inputs));
+}
 
 function payloadOf(
 	overrides: Partial<z.input<typeof CreateProjectSchema>> = {},
@@ -185,8 +301,9 @@ Deno.test("a created draft's roster is invisible to another viewer", async () =>
 Deno.test("Add-to-projects mints a draft the feed, the detail and the hire brief all resolve", () => {
 	resetWriteStore();
 	resetDraftStore();
+	primePipelineListing();
 	const added = ProjectBackendService.instantiateService(
-		{ serviceId: "sv-juno-0", idempotencyKey: "probe-key-1", workspaceId: null },
+		{ serviceId: PIPELINE_SLUG, idempotencyKey: "probe-key-1", workspaceId: null },
 		{ userId: ALICE.userId },
 	);
 	assert(added.ok && added.data, added.message);
@@ -219,12 +336,13 @@ Deno.test("Add-to-projects mints a draft the feed, the detail and the hire brief
 Deno.test("a repeat instantiation returns the same draft and mints no second project", async () => {
 	resetWriteStore();
 	resetDraftStore();
+	primePipelineListing();
 	const first = ProjectBackendService.instantiateService(
-		{ serviceId: "sv-juno-0", idempotencyKey: "probe-key-1", workspaceId: null },
+		{ serviceId: PIPELINE_SLUG, idempotencyKey: "probe-key-1", workspaceId: null },
 		{ userId: ALICE.userId },
 	);
 	const again = ProjectBackendService.instantiateService(
-		{ serviceId: "sv-juno-0", idempotencyKey: "probe-key-1", workspaceId: null },
+		{ serviceId: PIPELINE_SLUG, idempotencyKey: "probe-key-1", workspaceId: null },
 		{ userId: ALICE.userId },
 	);
 	assert(first.ok && first.data && again.ok && again.data);
@@ -238,8 +356,9 @@ Deno.test("a repeat instantiation returns the same draft and mints no second pro
 Deno.test("archiving an instantiated draft removes it from the feed", async () => {
 	resetWriteStore();
 	resetDraftStore();
+	primePipelineListing();
 	const added = ProjectBackendService.instantiateService(
-		{ serviceId: "sv-juno-0", idempotencyKey: "probe-key-2", workspaceId: null },
+		{ serviceId: PIPELINE_SLUG, idempotencyKey: "probe-key-2", workspaceId: null },
 		{ userId: ALICE.userId },
 	);
 	assert(added.ok && added.data);

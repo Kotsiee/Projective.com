@@ -152,6 +152,21 @@ CREATE TABLE files.items (
   link_scanned_at timestamp with time zone,
   -- #endregion
 
+  -- #region Renditions (the media pipeline)
+  -- What the asset is FOR (files.asset_purpose). `library` is an upload a person can pick again; the
+  -- other purposes are RENDITIONS — a cropped, re-encoded copy the pipeline cut from a library asset
+  -- for one public surface. `derived_from_id` names that source. ON DELETE SET NULL because a
+  -- rendition must outlive its source: deleting the original from the library must not blank the
+  -- profile photo everyone is looking at. Nothing is hard-deleted anyway (root CLAUDE.md §5), so the
+  -- SET NULL only ever fires for an administrative purge.
+  --
+  -- Both columns are PIPELINE-OWNED: files.fn_guard_pipeline_columns (00001160) refuses a client
+  -- that tries to write either directly, so "this row is a processed rendition" is a claim only the
+  -- server can make.
+  purpose files.asset_purpose NOT NULL DEFAULT 'library',
+  derived_from_id uuid REFERENCES files.items (id) ON DELETE SET NULL,
+  -- #endregion
+
   -- The opaque, server-minted share token (files.fn_mint_share_slug). NULL while private.
   share_slug text,
   download_count integer NOT NULL DEFAULT 0,
@@ -183,6 +198,41 @@ CREATE TABLE files.items (
   CONSTRAINT items_owner_entity_check CHECK (
       owner_type = 'user' OR owner_entity_id IS NOT NULL
   )
+);
+-- #endregion
+
+-- #region files.item_variants — the derived WebP tiers
+-- One row per derived object the media pipeline wrote beside an asset: the `sm` / `md` / `lg` WebP
+-- re-encodes of an image, or of a video's poster still. A table rather than a jsonb key on
+-- files.items for the same reason files.items exists at all: every row here names a STORED OBJECT,
+-- and the (bucket_id, storage_path) uniqueness that stops two rows claiming one object is a
+-- constraint, not a convention a jsonb blob can hold.
+--
+-- The pixels per tier are decided by the pipeline per purpose (an avatar's `lg` is 1024 square, a
+-- showcase's is 2400 on its long edge — `TIER_LONG_EDGE` in @projective/types/files), so readers
+-- never assume a width — they read it here, which is also what a `srcset` needs. A tier is never an UPSCALE: when the source is smaller than a tier's target the
+-- tier is written at the source's own size, so every processed image carries all three and a reader
+-- can ask for any tier without a fallback branch. An image with NO rows here (a seeded asset, one
+-- that predates the pipeline) is read at its original object.
+--
+-- Written by the SERVICE ROLE only (the pipeline runs server-side after the quarantine scan): there
+-- is no client write policy, and the RLS read predicate is the parent item's (files.fn_can_read).
+-- Variant bytes are platform-generated overhead and are deliberately NOT metered against the owner's
+-- storage quota — files.fn_recompute_usage sums files.items only.
+CREATE TABLE files.item_variants (
+    item_id uuid NOT NULL REFERENCES files.items (id) ON DELETE CASCADE,
+    tier files.variant_tier NOT NULL,
+    bucket_id text NOT NULL,
+    storage_path text NOT NULL,
+    mime_type text NOT NULL DEFAULT 'image/webp',
+    width integer NOT NULL,
+    height integer NOT NULL,
+    size_bytes bigint NOT NULL,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT item_variants_pkey PRIMARY KEY (item_id, tier),
+    CONSTRAINT item_variants_object_unique UNIQUE (bucket_id, storage_path),
+    CONSTRAINT item_variants_dims_check CHECK (width > 0 AND height > 0),
+    CONSTRAINT item_variants_size_check CHECK (size_bytes >= 0)
 );
 -- #endregion
 

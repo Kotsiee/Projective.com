@@ -9,6 +9,7 @@
 --   - catalogue/{seller_id}/...           - messages/{thread_id}/...
 --   - invoices/{owner_id}/...             - verification/{subject_id}/...
 --   - personal/{user_id}/...              - workspace/{entity_id}/...
+--   - showcase/{entity_id}/...
 --
 -- Additive per root CLAUDE.md §1: buckets are inserted ON CONFLICT DO NOTHING and never dropped.
 -- Byte sizes: 5 MiB = 5242880 · 10 MiB = 10485760 · 20 MiB = 20971520 · 50 MiB = 52428800.
@@ -134,6 +135,21 @@ VALUES (
         true,
         10485760,
         ARRAY['image/png', 'image/jpeg', 'image/webp', 'image/gif']
+    ) ON CONFLICT (id) DO NOTHING;
+
+-- A profile's showcase: the six-slot hero carousel — stills AND full-length videos, which is why it
+-- is not `avatars` (images only, 5 MiB). Public read; written ONLY by the media pipeline (service
+-- role) after the quarantine scan — see 00002017. Anchored like `avatars`: `{entity_id}/...`.
+-- 50 MiB is the platform's global object ceiling (config.toml [storage] file_size_limit), so a
+-- larger bucket limit would be unenforceable anyway.
+INSERT INTO
+    storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+        'showcase',
+        'showcase',
+        true,
+        52428800,
+        ARRAY['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'video/mp4', 'video/webm', 'video/quicktime']
     ) ON CONFLICT (id) DO NOTHING;
 
 -- #endregion

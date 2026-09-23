@@ -4,7 +4,6 @@ import { Icon } from "@projective/ui/icons";
 import { CtaButton, CtaLink } from "./CtaButton.tsx";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
 import { BookingService } from "../core/BookingService.ts";
-import { bookingSim } from "../core/booking-seam.ts";
 import { announce, applyOffer, currentOffer, openBookingPanel } from "../core/booking-state.ts";
 import ContactPopover from "../islands/ContactPopover.island.tsx";
 import type { BookingActionKind, ServiceBookingOffer } from "@projective/types/services";
@@ -123,7 +122,7 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 				);
 				// Re-read so BOTH regions flip to "Open project" together. Patching the local offer would
 				// leave whichever region did not perform the write showing the old verb.
-				const fresh = await BookingService.offer(offer.value.subjectId, { sim: bookingSim() });
+				const fresh = await BookingService.offer(offer.value.subjectId);
 				if (fresh.ok && fresh.data) applyOffer(fresh.data.offer);
 				return true;
 			}
@@ -155,7 +154,7 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 		}
 		announce("Draft archived.");
 		confirmArchive.value = false;
-		const fresh = await BookingService.offer(offer.value.subjectId, { sim: bookingSim() });
+		const fresh = await BookingService.offer(offer.value.subjectId);
 		if (fresh.ok && fresh.data) applyOffer(fresh.data.offer);
 		return true;
 	}

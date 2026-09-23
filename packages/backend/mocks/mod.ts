@@ -5,8 +5,8 @@
  *
  * A flat `export *` over thirty-three fixture modules does not compile here, and the reason is worth
  * recording because it is the same reason the corpus needed consolidating at all: the modules were
- * written independently and reuse names. `MutationOutcome` is declared by both
- * `finance/basket-fixtures.ts` and `finance/wallet-fixtures.ts` with different shapes;
+ * written independently and reuse names. `MutationOutcome` was declared by two
+ * finance fixture modules with different shapes;
  * `messaging/workspace-fixtures.ts` and `workspace/workspace-fixtures.ts` share a filename;
  * `findMessagePage` exists in the projects corpus and `findConversationMessagePage` in the messaging
  * one. Namespacing keeps every symbol reachable without renaming a single export, so nothing that
@@ -28,9 +28,9 @@
  * {@link ./registry.ts} — the inventory — imports nothing: listing what exists must not cost what
  * loading it costs. Ask `registry.ts` what is there; ask this module for the data.
  *
- * The app-side mock modules (`shell/core/nav-fixtures.ts`, `marketing/core/landing-data.ts`) are
- * deliberately absent. They are listed in the registry but cannot be re-exported here, because they
- * live on island import paths and root CLAUDE.md §2 forbids an island reaching this package.
+ * The app-side mock module (`shell/core/nav-fixtures.ts`) is deliberately absent. It is listed in
+ * the registry but cannot be re-exported here, because it lives on island import paths and root
+ * CLAUDE.md §2 forbids an island reaching this package.
  */
 
 // #region Inventory & shared asset builders
@@ -40,7 +40,6 @@ export * from "./registry.ts";
 
 // #region Discovery
 export * as exploreMocks from "../services/explore/fixtures.ts";
-export * as exploreViewMocks from "../services/explore/view-fixtures.ts";
 // #endregion
 
 // #region Profiles
@@ -71,10 +70,6 @@ export * as catalogueMocks from "../services/catalogue/catalogue-fixtures.ts";
 
 // #region Finance
 export * as walletMocks from "../services/finance/wallet-fixtures.ts";
-export * as basketMocks from "../services/finance/basket-fixtures.ts";
-export * as cardMocks from "../services/finance/cards-fixtures.ts";
-export * as orderMocks from "../services/finance/order-fixtures.ts";
-export * as buyerMocks from "../services/finance/buyer-fixtures.ts";
 export * as fxMocks from "../services/finance/fx-fixtures.ts";
 // #endregion
 
@@ -91,9 +86,6 @@ export * as connectionMocks from "../services/integrations/connections-fixtures.
 
 // #region Scheduling
 export * as calendarMocks from "../services/scheduling/calendar-fixtures.ts";
-export * as availabilityMocks from "../services/scheduling/availability-fixtures.ts";
-export * as scheduleMocks from "../services/scheduling/schedule-fixtures.ts";
 export * as personalScheduleMocks from "../services/scheduling/personal-fixtures.ts";
 export * as coordinationMocks from "../services/scheduling/coordination-fixtures.ts";
-export * as slotMocks from "../services/scheduling/slot-fixtures.ts";
 // #endregion

@@ -367,3 +367,153 @@ BEGIN
 END;
 $$;
 -- #endregion
+
+-- #region 6. files.fn_public_media_ref — one stored image, as a public reference with its tiers
+-- The projection every public surface reads an image through: where the original lives, what is
+-- known about it before it loads (dimensions, BlurHash, average colour) and the WebP tiers the
+-- media pipeline wrote beside it (files.item_variants). NULL for anything that is not PUBLIC, not
+-- live, not stored by us, or not yet through the pipeline — so a caller renders the honest absence
+-- (an initials avatar, no slide) rather than a URL a visitor cannot load.
+--
+-- Storage REFS, never URLs: the URL is a deployment fact (the public storage host) and is built
+-- once, in packages/backend/core/storage-url.ts.
+--
+-- SECURITY DEFINER because the caller may be anonymous and the item row is not theirs to read; the
+-- visibility test above is what makes that safe — nothing it returns is not already world-readable.
+CREATE OR REPLACE FUNCTION files.fn_public_media_ref (p_item_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_item files.items%ROWTYPE;
+    v_media jsonb;
+BEGIN
+    IF p_item_id IS NULL THEN
+        RETURN NULL;
+    END IF;
+    SELECT * INTO v_item FROM files.items i WHERE i.id = p_item_id;
+    IF NOT FOUND
+       OR v_item.deleted_at IS NOT NULL
+       OR v_item.visibility <> 'public'::files.file_visibility
+       OR v_item.source <> 'supabase'::files.file_source
+       OR v_item.status <> 'uploaded'::files.file_status THEN
+        RETURN NULL;
+    END IF;
+
+    v_media := v_item.metadata -> 'media';
+    RETURN jsonb_build_object(
+        'id', v_item.id,
+        'bucket', v_item.bucket_id,
+        'path', v_item.storage_path,
+        'mime', v_item.mime_type,
+        'purpose', v_item.purpose,
+        -- Numbers are read defensively: metadata is a client-extracted document on older rows, and
+        -- one malformed value must cost that field, not the whole profile read.
+        'width', CASE WHEN (v_media ->> 'width') ~ '^[0-9]{1,6}$' THEN (v_media ->> 'width')::integer END,
+        'height', CASE WHEN (v_media ->> 'height') ~ '^[0-9]{1,6}$' THEN (v_media ->> 'height')::integer END,
+        'duration_ms', CASE WHEN (v_media ->> 'durationMs') ~ '^[0-9]{1,10}$' THEN (v_media ->> 'durationMs')::bigint END,
+        'blurhash', v_media ->> 'blurhash',
+        'color', v_media -> 'colors' ->> 'average',
+        'variants', COALESCE((
+            SELECT jsonb_object_agg(
+                v.tier::text,
+                jsonb_build_object(
+                    'bucket', v.bucket_id,
+                    'path', v.storage_path,
+                    'width', v.width,
+                    'height', v.height,
+                    'mime', v.mime_type
+                )
+            )
+            FROM files.item_variants v
+            WHERE v.item_id = v_item.id
+        ), '{}'::jsonb)
+    );
+END;
+$$;
+
+-- The batch door onto fn_public_media_ref, for readers that hold file ids rather than a profile
+-- (a roster, a message list). Capped at 500 ids per call; ids that resolve to nothing public come
+-- back with a NULL ref so a caller can tell "asked and absent" from "never asked".
+CREATE OR REPLACE FUNCTION files.get_public_media (p_ids uuid[])
+RETURNS TABLE (id uuid, ref jsonb)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT x.item_id, files.fn_public_media_ref (x.item_id)
+    FROM (
+        SELECT DISTINCT u.item_id
+        FROM unnest(p_ids[1:500]) AS u (item_id)
+        WHERE u.item_id IS NOT NULL
+    ) x;
+END;
+$$;
+-- #endregion
+
+-- #region 7. files.fn_guard_pipeline_columns — only the server may claim "processed"
+-- BEFORE INSERT OR UPDATE on files.items.
+--
+-- The row-level policies let an owner write their own rows, and a row-level policy cannot tell a
+-- rename from a forgery: without this, an owner could INSERT a row that says `status = 'uploaded'`,
+-- `bucket_id = 'avatars'`, `purpose = 'avatar'` for an object that never went through the quarantine
+-- scan, and every reader that trusts "uploaded" would serve it. So the columns that describe the
+-- BYTES and their processing belong to the server: the upload pipeline (service role) and the
+-- definer functions (whose current_user is their owner) pass; the two roles PostgREST runs a
+-- client's request as do not.
+--
+-- What a client may still do, deliberately: DECLARE an upload (a `pending_upload` row in
+-- `quarantine`), attach a link (no bytes), and edit the presentational columns the hub edits — the
+-- name, folder, visibility, star, archive flag and soft-delete stamp.
+CREATE OR REPLACE FUNCTION files.fn_guard_pipeline_columns ()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    IF current_user NOT IN ('authenticated', 'anon') THEN
+        RETURN NEW;
+    END IF;
+
+    IF TG_OP = 'INSERT' THEN
+        IF NEW.purpose <> 'library'::files.asset_purpose OR NEW.derived_from_id IS NOT NULL THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'files: renditions are written by the media pipeline only';
+        END IF;
+        IF NEW.source = 'supabase'::files.file_source
+           AND (NEW.status <> 'pending_upload'::files.file_status OR NEW.bucket_id <> 'quarantine') THEN
+            RAISE EXCEPTION USING
+                ERRCODE = '42501',
+                MESSAGE = 'files: an upload starts pending in quarantine; only the upload pipeline promotes it';
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    IF NEW.status IS DISTINCT FROM OLD.status
+       OR NEW.bucket_id IS DISTINCT FROM OLD.bucket_id
+       OR NEW.storage_path IS DISTINCT FROM OLD.storage_path
+       OR NEW.target_bucket IS DISTINCT FROM OLD.target_bucket
+       OR NEW.target_path IS DISTINCT FROM OLD.target_path
+       OR NEW.mime_type IS DISTINCT FROM OLD.mime_type
+       OR NEW.size_bytes IS DISTINCT FROM OLD.size_bytes
+       OR NEW.metadata IS DISTINCT FROM OLD.metadata
+       OR NEW.content_hash IS DISTINCT FROM OLD.content_hash
+       OR NEW.hash_algo IS DISTINCT FROM OLD.hash_algo
+       OR NEW.source IS DISTINCT FROM OLD.source
+       OR NEW.purpose IS DISTINCT FROM OLD.purpose
+       OR NEW.derived_from_id IS DISTINCT FROM OLD.derived_from_id THEN
+        RAISE EXCEPTION USING
+            ERRCODE = '42501',
+            MESSAGE = 'files: an asset''s bytes and processing state are written by the upload pipeline only';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+-- #endregion

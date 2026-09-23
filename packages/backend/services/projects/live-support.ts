@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "supabaseClient";
 import { getUserClient } from "../../core/supabase.ts";
+import { fetchPartyRows, partyRowsWithAvatars } from "../profile/party-cards.ts";
 import type { ReadActor } from "../read-actor.ts";
 import type { ProjectStatus } from "@projective/types/projects";
 import { isSlug } from "@projective/types/slugs";
@@ -173,9 +174,18 @@ export interface PartyRow {
 	username: string;
 	first_name: string | null;
 	last_name: string | null;
+	/**
+	 * The profile photo at its `sm` tier, when the row came through `org.get_party_cards` — the one
+	 * door that resolves a person's picture, so a new photo reaches every roster on its next read.
+	 */
+	avatar?: string | null;
 }
 
-/** The `org.users_public` columns a display party needs. There is no `display_name` or `avatar_url`. */
+/**
+ * The `org.users_public` columns a display party needs when the identity door cannot be read. There
+ * is no `display_name` or `avatar_url` column — the photo is a file reference only
+ * `org.get_party_cards` resolves.
+ */
 export const PARTY_COLUMNS = "user_id, username, first_name, last_name";
 
 /**
@@ -199,35 +209,35 @@ export function partyName(row: PartyRow | undefined | null): string {
  * The shape shared by `ProjectParty`, `MessageSender` and `AssetActor` — three near-identical person
  * projections that differ only in whether they carry an `id`.
  *
- * `avatar` is always `null`. `org.users_public.avatar_file_id` is a FK into `files.items`, not a
- * URL, and composing a served path from it belongs to the files domain behind its own gate. A
- * guessed path renders as a broken image on every row, which is worse than the initials fallback
- * the `Avatar` component already draws.
+ * `avatar` is the photo's public rendition as `org.get_party_cards` resolved it, or `null` — the
+ * `Avatar` component then draws initials. Never a guessed path: a URL composed without the files
+ * domain's own projection renders as a broken image on every row.
  */
 export function partyOf(row: PartyRow | undefined | null): {
 	name: string;
-	avatar: null;
+	avatar: string | null;
 	handle: string | null;
 } {
-	return { name: partyName(row), avatar: null, handle: row?.username ?? null };
+	return { name: partyName(row), avatar: row?.avatar ?? null, handle: row?.username ?? null };
 }
 
 /** {@link partyOf} plus the `id` that `MessageSender` and `AssetActor` additionally require. */
 export function senderOf(userId: string, row: PartyRow | undefined | null): {
 	id: string;
 	name: string;
-	avatar: null;
+	avatar: string | null;
 	handle: string | null;
 } {
 	return { id: userId, ...partyOf(row) };
 }
 
 /**
- * Resolve display parties for a set of user ids.
+ * Resolve display parties for a set of user ids — names and photos, through `org.get_party_cards`.
  *
  * A failure or a partial result is NOT an error: every consumer degrades a missing id to the
  * "Unknown" placeholder, and a page that renders with one unnamed person is strictly better than a
- * page that 500s because one public profile row was withheld.
+ * page that 500s because one public profile row was withheld. When the identity door itself cannot
+ * be read, the plain column read still names everybody; only the photos are lost.
  */
 export async function fetchParties(
 	actor: ReadActor & { accessToken: string },
@@ -236,6 +246,10 @@ export async function fetchParties(
 	const out = new Map<string, PartyRow>();
 	const unique = [...new Set(userIds.filter((id): id is string => !!id && id.length > 0))];
 	if (unique.length === 0) return out;
+	// The identity door first: names AND the photo, for anyone the caller may see.
+	const cards = await fetchPartyRows(getUserClient(actor.accessToken), unique);
+	if (cards) return partyRowsWithAvatars(cards);
+	// The door could not be read — names alone, so rosters still say who is who.
 	const { data, error } = await orgDb(actor)
 		.from("users_public")
 		.select(PARTY_COLUMNS)

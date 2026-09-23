@@ -96,6 +96,31 @@ CREATE TABLE marketplace.service_blueprints (
     -- in one place. Answers never live here: they travel on the purchase (`finance.basket_items.metadata`
     -- under `answers`) or the invitation (`projects.project_invitations.answers`), keyed by field id.
     intake_fields jsonb NOT NULL DEFAULT '[]'::jsonb,
+    -- THE STAGE TEMPLATE a Pipeline or One-Off service is delivered through — the showcase the /view
+    -- service template renders and the stages "Add to projects" instantiates (Decision #80). An
+    -- ORDERED array of `BlueprintStage` objects (`@projective/types/explore` `stored.ts` — name,
+    -- description, deliverables, turnaround, the stage's price in minor units, skill labels), owned by
+    -- that Zod SSOT and validated by every reader.
+    --
+    -- A jsonb DOCUMENT, not a child table, for the reason `intake_fields` is one: the seller authors
+    -- the sequence as one unit and every reader takes it whole. Empty is meaningful — a Direct
+    -- Deliverable or a Session has no stages, and a Pipeline whose seller has not written any is a
+    -- listing the showcase simply omits rather than one it fills with invented phases.
+    stage_template jsonb NOT NULL DEFAULT '[]'::jsonb,
+    -- A Direct Deliverable's TEAM: the named roles the engagement staffs (`ServiceRole` — name,
+    -- summary, skill labels, headcount). Seller-declared, for the same reason the stage template is.
+    team_roles jsonb NOT NULL DEFAULT '[]'::jsonb,
+    -- What the buyer receives, as the seller states it: the "what you get" list on the listing page.
+    -- For a staged service the stage template's per-stage deliverables are the fuller answer; this is
+    -- the flat list a Direct Deliverable, a Session or a stage-less listing prints.
+    deliverables text[] NOT NULL DEFAULT '{}'::text[],
+    -- A Session's fixed sitting length and, for a set-session block, how many sittings one purchase
+    -- commits to (`PRODUCT_SPEC.md` §Why Sessions are Fixed — the buyer never chooses the length).
+    -- NULL on every non-session model, where a duration or a count would be meaningless rather than
+    -- zero, and NULL on a session whose seller has not stated one — the booking layer then says so
+    -- instead of assuming an hour.
+    session_minutes integer CHECK (session_minutes IS NULL OR session_minutes BETWEEN 5 AND 600),
+    session_count integer CHECK (session_count IS NULL OR session_count BETWEEN 1 AND 52),
     is_published boolean NOT NULL DEFAULT false,
     rating_average numeric(3,2) DEFAULT 0.0,
     rating_count integer DEFAULT 0,
@@ -114,6 +139,14 @@ CREATE TABLE marketplace.service_blueprints (
     CONSTRAINT service_blueprints_cover_fkey FOREIGN KEY (cover_file_id) REFERENCES files.items(id) ON DELETE SET NULL,
     CONSTRAINT ck_service_blueprints_intake_shape CHECK (
         jsonb_typeof(intake_fields) = 'array' AND jsonb_array_length(intake_fields) <= 12
+    ),
+    -- Refuse only what no reader could interpret — a non-array, or more entries than the SSOT allows.
+    -- The element shape is validated in one place, the Zod SSOT, rather than restated here.
+    CONSTRAINT ck_service_blueprints_stage_template_shape CHECK (
+        jsonb_typeof(stage_template) = 'array' AND jsonb_array_length(stage_template) <= 12
+    ),
+    CONSTRAINT ck_service_blueprints_team_roles_shape CHECK (
+        jsonb_typeof(team_roles) = 'array' AND jsonb_array_length(team_roles) <= 12
     ),
     -- The discriminator and the team reference must agree. Storing both without this constraint is
     -- how a row comes to say "team-owned" while pointing at no team, which a reader can only resolve

@@ -1,10 +1,14 @@
 import { ProfileBackendService } from "@server/services/profile/ProfileBackendService.ts";
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
-import { BookingBackendService } from "@server/services/booking/BookingBackendService.ts";
 import type { ReadActor } from "@server/services/read-actor.ts";
-import type { ProfileTab, ProfileTabPayload, ProfileView } from "@projective/types/profile";
+import type {
+	ProfileEditModel,
+	ProfileTab,
+	ProfileTabPayload,
+	ProfileView,
+} from "@projective/types/profile";
 import type { ProductItem, ServiceItem } from "@projective/types/explore";
-import type { PublicCallOffer } from "@projective/types/scheduling";
+import type { OwnerAvailability, PublicCallOffer } from "@projective/types/scheduling";
 import { DEFAULT_PROJECT_PARAMS } from "@features/projects/core/projects-state.ts";
 import { type HireProject, hireProjectsFrom } from "./profile-model.ts";
 
@@ -13,47 +17,65 @@ import { type HireProject, hireProjectsFrom } from "./profile-model.ts";
  * profile's first byte straight from the fat {@link ProfileBackendService} (no HTTP hop — exactly as
  * the projects feed / detail SSR their first paint). Never imported by an island (it reaches
  * `@server/services`); islands refine via the thin `ProfileService`.
+ *
+ * Every read is made AS the viewer ({@link ReadActor}): the database decides what they may see and
+ * whether they own the profile, so the owner chrome is unlocked by the database's answer, never by
+ * the unverified chrome token.
  */
 
-/** Resolve the profile header/overview projection for a `@handle`, or `null` (reserved/unresolved). */
-export function resolveProfile(handle: string): ProfileView | null {
-	const res = ProfileBackendService.overview(handle);
-	return res.ok && res.data ? res.data.profile : null;
+/** A profile read's outcome: the projection, or why there is none. */
+export interface ProfileResolution {
+	profile: ProfileView | null;
+	/** `404` for a handle that names nothing the viewer may see; `503` when it could not be read. */
+	status: 200 | 404 | 503;
 }
 
-/** Resolve one profile tab's payload for SSR, or `null` when the handle didn't resolve. */
-export function resolveProfileTab(handle: string, tab: ProfileTab): ProfileTabPayload | null {
-	const res = ProfileBackendService.tab(handle, tab);
+/** Resolve the profile header/overview projection for a `@handle`, as the viewer may see it. */
+export async function resolveProfile(handle: string, actor: ReadActor): Promise<ProfileResolution> {
+	const res = await ProfileBackendService.overview(handle, actor);
+	if (res.ok && res.data) return { profile: res.data.profile, status: 200 };
+	return { profile: null, status: res.status === 503 ? 503 : 404 };
+}
+
+/** Resolve one profile section's payload for SSR, or `null` when it could not be read. */
+export async function resolveProfileTab(
+	handle: string,
+	tab: ProfileTab,
+	actor: ReadActor,
+): Promise<ProfileTabPayload | null> {
+	const res = await ProfileBackendService.tab(handle, tab, actor);
 	return res.ok && res.data ? res.data.payload : null;
 }
 
 /**
  * Resolve the profile's active service listings for SSR — the Services row above the section tabs
- * and the context bar's spend floor. `[]` when the handle didn't resolve or the entity sells nothing.
+ * and the context bar's spend floor. `[]` when the entity sells nothing or they could not be read.
  */
-export function resolveProfileServices(handle: string): ServiceItem[] {
-	const res = ProfileBackendService.services(handle);
+export async function resolveProfileServices(handle: string): Promise<ServiceItem[]> {
+	const res = await ProfileBackendService.services(handle);
 	return res.ok && res.data ? res.data.services : [];
 }
 
 /**
  * Resolve a profile's digital products for the layout's Products masonry — the region directly
- * beneath Services, on every section. Empty for a buyer entity or an unresolved handle (the layout
- * already 404s the latter through the overview read).
+ * beneath Services, on every section.
  */
-export function resolveProfileProducts(handle: string): ProductItem[] {
-	const res = ProfileBackendService.products(handle);
+export async function resolveProfileProducts(handle: string): Promise<ProductItem[]> {
+	const res = await ProfileBackendService.products(handle);
 	return res.ok && res.data ? res.data.products : [];
 }
 
 /**
  * Resolve a seller's public call offer for SSR — the Hire popover's "Book consultation" row and the
- * consultation modal it opens. `null` when the entity takes no calls (the row is then absent, never
- * disabled — the capability does not exist). The SAME derivation the listing's Contact menu reads,
- * so the profile cannot advertise a free call beside a listing whose menu offers only a paid one.
+ * consultation modal it opens. Read live from the owner's published schedule, the SAME reader the
+ * listing Contact menu and the slot grid use, so the three cannot disagree. `null` when they take no
+ * calls (the row is then absent, never disabled).
  */
-export function resolveConsultationOffer(handle: string): PublicCallOffer | null {
-	const res = BookingBackendService.callOffer(handle);
+export async function resolveConsultationOffer(
+	profile: ProfileView,
+	actor: ReadActor,
+): Promise<PublicCallOffer | null> {
+	const res = await ProfileBackendService.callOffer(profile, actor);
 	return res.ok && res.data ? res.data.callOffer : null;
 }
 
@@ -89,4 +111,24 @@ export async function resolveHireProjects(
 		ProjectBackendService.hireCooldowns(handle, actor),
 	]);
 	return res.ok && res.data ? hireProjectsFrom(res.data.items, cooldowns) : [];
+}
+
+/** The owner editor's seed — `null` with the status when the viewer may not edit this profile. */
+export async function resolveEditModel(
+	handle: string,
+	actor: ReadActor,
+): Promise<{ model: ProfileEditModel | null; status: number }> {
+	const res = await ProfileBackendService.editModel(handle, actor);
+	return res.ok && res.data ? { model: res.data.model, status: 200 } : { model: null, status: res.status };
+}
+
+/** The owner's schedule + call settings for the Availability editor. */
+export async function resolveOwnerAvailability(
+	handle: string,
+	actor: ReadActor,
+): Promise<{ availability: OwnerAvailability | null; takesCalls: boolean; status: number }> {
+	const res = await ProfileBackendService.availability(handle, actor);
+	return res.ok && res.data
+		? { availability: res.data.availability, takesCalls: res.data.takesCalls, status: 200 }
+		: { availability: null, takesCalls: false, status: res.status };
 }

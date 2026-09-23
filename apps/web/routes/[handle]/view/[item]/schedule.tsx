@@ -6,6 +6,7 @@ import { resolveSchedulePage } from "@web/features/calendar/core/calendar-ssr.ts
 import { viewerFromState } from "@web/features/calendar/core/viewer.ts";
 import ScheduleView from "@web/features/calendar/islands/ScheduleView.island.tsx";
 import ViewStyleAnchor from "@web/features/view/islands/ViewStyleAnchor.island.tsx";
+import { warmCatalog } from "@server/services/explore/live-catalog.ts";
 
 /**
  * `/[handle]/view/[item]/schedule` — the profile-scoped session-schedule leaf: the entity's recurring
@@ -16,8 +17,10 @@ import ViewStyleAnchor from "@web/features/view/islands/ViewStyleAnchor.island.t
  * "Book a session" CTA for Session-format services.
  */
 export const handler = define.handlers({
-	GET(ctx) {
-		const { page: schedule } = resolveSchedulePage(ctx.params.item, viewerFromState(ctx.state));
+	async GET(ctx) {
+		// The service below resolves the listing synchronously from the loaded catalogue.
+		await warmCatalog();
+		const { page: schedule } = await resolveSchedulePage(ctx.params.item, viewerFromState(ctx.state));
 		ctx.state.title = schedule
 			? `${schedule.title} · Schedule · Projective`
 			: "Schedule · Projective";

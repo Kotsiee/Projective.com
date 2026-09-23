@@ -3,7 +3,8 @@
 The booking engine. Every predicate is pure and `STABLE`, so **the same function backs the
 pre-flight "is this slot bookable?" check the UI makes and the hard gate the trigger applies at
 INSERT** — the rules cannot drift between the two. Added 2026-07-24 by migrations `20260724100000`,
-`20260724102000` and `20260724104000`.
+`20260724102000` and `20260724104000`; the public free/busy read and the discovery-call request
+door (§7) by `00001520_functions_scheduling_free_busy.sql`.
 
 > Why in the database at all: the booking rules protect a person's calendar and (for a paid call)
 > their money, so they are enforced where RLS is — not only in a service.
@@ -155,6 +156,112 @@ knobs live with every other tunable rather than in a new config surface.
 > `finance-model.md` §4 (50%) vs `PRODUCT_SPEC.md` §Sessions (full forfeit) conflict is already
 > logged and is deliberately **not** resolved in SQL — the per-call `refund_amount_minor` /
 > `penalty_amount_minor` columns record whichever outcome a human ratifies.
+
+---
+
+## 7. Public reads and the request door (`00001520`)
+
+The booking surfaces — a listing's Book modal, the discovery-call handshake, `/[handle]/availability`
+and a session listing's schedule — read a provider's **published** schedule as the anonymous client,
+so a guest and a member are answered identically. Three functions make that possible without
+widening any policy.
+
+### `scheduling.fn_schedule_host(schedule) → uuid`
+
+The accountable **person** a schedule belongs to: the individual for a `user`/`freelancer` schedule,
+and the `owner_user_id` of the team, business or organisation otherwise. A discovery call names a
+host user (it is a meeting between two people), so a team's calls are hosted by whoever answers for
+the team. `SECURITY DEFINER`; **`EXECUTE` is `service_role` only** — it is an internal resolver for
+the request door below, not something a client needs to call.
+
+### `scheduling.get_free_busy(schedule, from, to) → TABLE(starts_at, ends_at)`
+
+The occupied spans on a schedule inside a window: every non-`cancelled` event that is not itself an
+`availability` block, plus every discovery call still `proposed` or `confirmed`. **Spans only** — no
+title, no id, no kind — so a visitor learns that a time is taken and nothing about by whom or for
+what (`PRODUCT_SPEC.md` §The Proactive Calendar, Part 1.4). Answers for a **published** schedule, or
+one the caller may already view (`fn_can_view_schedule`); for anything else it returns no rows rather
+than raising. The window is clamped to **120 days** so it cannot page through a provider's history in
+one call. `SECURITY DEFINER`, because `scheduling.events` itself stays private (see
+[Policies.md](Policies.md)); `EXECUTE` to `anon`, `authenticated`, `service_role`.
+
+The app turns these spans into the slot grid in `packages/backend/services/scheduling/slot-grid.ts`,
+which applies the **same** buffer geometry as `fn_slot_is_free` (§3) — a busy span blocks any slot
+within `before + after` minutes of either edge, and a blackout blocks on the raw span — so a slot the
+grid offers is a slot the gate accepts.
+
+### `scheduling.request_discovery_call(schedule, call_type, starts_at, ends_at, agenda?, requester_timezone?, provider_slug?, service_blueprint_id?) → jsonb`
+
+**The only way a client requests a discovery call.** The direct `INSERT` policy is gone (see
+[Policies.md](Policies.md)): it let the requester write every column of the row — the host it
+notifies, the fee, the meeting link the host would click — none of which are the requester's to
+choose. The caller now supplies the schedule, the flavour, the time, an agenda, their own timezone,
+a platform and (optionally) the listing the call is about; everything else is derived:
+
+- the **host** is `fn_schedule_host(schedule)`, never a caller's claim;
+- a paid call's **fee** is the host's configured `fee_amount_minor` / `fee_currency`;
+- the **platform** must be one of the host's `call_platforms`, and is required when they list any;
+- the **listing** must be a published blueprint the host (or the host's team) sells;
+- an **agenda** is demanded when `agenda_required`;
+- the **status** is `proposed`, or `confirmed` (with `confirmed_*` stamped) when `auto_confirm`.
+
+The slot itself — call window, notice, horizon, free time, weekly cap, cooldown — is judged by the
+existing BEFORE INSERT gate (`fn_enforce_call_request`, §5), which fires because the insert runs with
+the caller's `auth.uid()`. The host is then told through the notification engine
+(`comms.fn_notify`, type `availability.booking_request`), which never raises and routes by the
+host's own preferences. Returns `{ id, status }`.
+
+A refusal raises `check_violation` with the message `Discovery call refused: <reason>`, where the
+reason is either one of the gate codes in §4 or one of these:
+
+| Code                   | Cause                                                        |
+| :--------------------- | :----------------------------------------------------------- |
+| `not_signed_in`        | No `auth.uid()`.                                             |
+| `calls_not_offered`    | The schedule is unpublished, has no host, or takes no calls. |
+| `self_booking`         | The requester is the host.                                   |
+| `agenda_required`      | The host requires an agenda and none was given.              |
+| `platform_not_offered` | The platform is not on the host's list.                      |
+| `platform_required`    | The host lists platforms and none was chosen.                |
+| `listing_mismatch`     | The listing is unpublished or not the host's to sell.        |
+
+`EXECUTE` to `authenticated` and `service_role`; revoked from `anon` and `PUBLIC`.
+
+---
+
+## 8. The owner's Availability editor (`00001510`)
+
+### `scheduling.save_owner_availability(owner_type, owner_id, payload jsonb) → jsonb`
+
+The profile owner's Availability surface (`/[handle]/edit/availability`) writes three tables — the
+schedule (timezone + published), its weekly bands, and the discovery-call settings — and they must
+land together: a timezone saved without the bands it is expressed in re-times every band. So this is
+**one call, one transaction**.
+
+**`SECURITY INVOKER`, on purpose.** The existing policies ("Manage own schedule", "Manage availability
+rules", "Manage call settings") already decide who may write, through `scheduling.fn_owner_manages`.
+This function adds atomicity, not authority; the explicit `fn_owner_manages` check at the top only
+turns a silent zero-row write into a named refusal. Granted to `authenticated` and `service_role`.
+
+An individual's schedule is `owner_type = 'user'` — **one schedule per human**, whatever their
+freelancer flag — so turning freelancer on or off can never strand a second calendar.
+
+| Payload key | Effect                                                                                                                                                                                                      |
+| :---------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timezone`  | Required (`timezone: choose a time zone`). Upserts `scheduling.schedules`.                                                                                                                                |
+| `published` | Whether the schedule is readable by visitors (default `false`).                                                                                                                                             |
+| `rules`     | **Replaces** the weekly bands: `[{kind, weekday, start_minute, end_minute}]`, at most 42 (six a day). A band needs a day and an end after its start. Two overlapping bands of the same kind on the same weekday are **refused**, not merged — the editor cannot draw one, so receiving one means the request did not come from it. |
+| `call`      | Optional; absent leaves the call settings as they are. Upserts `scheduling.call_settings`: `accepts_calls`, the courtesy half (`courtesy_enabled`, duration, weekly cap, cooldown), the paid half (`paid_enabled`, duration, `fee_amount_minor` + `fee_currency`), buffers, `min_notice_minutes`, `max_advance_days`, `auto_confirm`, `agenda_required`. |
+
+Refusals are `42501` for the caller (`auth: sign in to edit availability`,
+`owner: you cannot edit this schedule`) and `22023` with a `<field>: <reason>` message for the input,
+like `org.save_profile`. Returns `{ok, schedule_id}`.
+
+The caller-side wrapper is `packages/backend/services/scheduling/live-owner-availability.ts`
+(`saveOwnerAvailability`). Two refusals happen before the database is asked: the Zod SSOT
+(`@projective/types/scheduling` `owner-availability.ts`) refuses a paid call with no fee and two
+overlapping hours on one day, and `ProfileBackendService.saveAvailability` refuses call settings for a
+profile that cannot take calls (a buyer). The public side reads the same rows through
+`live-call-offer.ts` (`readPublicCallOffer`), which requires a published schedule.
 
 ---
 

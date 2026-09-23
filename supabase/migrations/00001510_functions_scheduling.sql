@@ -613,3 +613,146 @@ BEGIN
     RETURN NEW;
 END;
 $$;
+
+-- #region 9. scheduling.save_owner_availability — the owner's Availability editor, in one call
+-- The profile owner's Availability surface (`/[handle]/edit/availability`) writes three tables — the
+-- schedule (timezone + published), its weekly bands, and the discovery-call settings — and they
+-- must land together: a timezone saved without the bands it is expressed in re-times every band.
+-- So this is ONE function call, which is one transaction.
+--
+-- SECURITY INVOKER on purpose. The existing policies ("Manage own schedule", "Manage availability
+-- rules", "Manage call settings") already decide who may write, via scheduling.fn_owner_manages;
+-- this adds atomicity, not authority. The explicit fn_owner_manages check up front only turns a
+-- silent zero-row write into a named refusal.
+--
+-- An individual's schedule is `owner_type = 'user'` — ONE schedule per human, whatever their
+-- freelancer flag — so turning freelancer on or off can never strand a second calendar.
+--
+-- `rules` REPLACES the weekly bands. Overlapping bands of the same kind on the same weekday are
+-- refused rather than merged: the editor offers no way to draw one, so receiving one means the
+-- request did not come from it. `call` is optional; absent leaves the call settings as they are.
+-- Errors are SQLSTATE 22023 with `<field>: <reason>` messages, like org.save_profile.
+CREATE OR REPLACE FUNCTION scheduling.save_owner_availability (
+    p_owner_type scheduling.owner_type,
+    p_owner_id uuid,
+    p_payload jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+    v_payload jsonb := COALESCE(p_payload, '{}'::jsonb);
+    v_tz text := NULLIF(btrim(COALESCE(p_payload ->> 'timezone', '')), '');
+    v_schedule uuid;
+    v_rule jsonb;
+    v_call jsonb := p_payload -> 'call';
+    v_i integer := 0;
+BEGIN
+    IF auth.uid () IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in to edit availability';
+    END IF;
+    IF NOT scheduling.fn_owner_manages (p_owner_type, p_owner_id) THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'owner: you cannot edit this schedule';
+    END IF;
+    IF v_tz IS NULL OR NOT EXISTS (SELECT 1 FROM pg_catalog.pg_timezone_names z WHERE z.name = v_tz) THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'timezone: choose a time zone';
+    END IF;
+
+    INSERT INTO scheduling.schedules AS s (owner_type, owner_id, timezone, is_published)
+    VALUES (p_owner_type, p_owner_id, v_tz, COALESCE((v_payload ->> 'published')::boolean, false))
+    ON CONFLICT (owner_type, owner_id) DO UPDATE SET
+        timezone = EXCLUDED.timezone,
+        is_published = EXCLUDED.is_published,
+        updated_at = now()
+    RETURNING s.id INTO v_schedule;
+
+    IF v_payload ? 'rules' THEN
+        IF jsonb_typeof(v_payload -> 'rules') <> 'array' OR jsonb_array_length(v_payload -> 'rules') > 42 THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'rules: up to six bands per day';
+        END IF;
+        DELETE FROM scheduling.availability_rules r WHERE r.schedule_id = v_schedule;
+        FOR v_rule IN SELECT * FROM jsonb_array_elements(v_payload -> 'rules') LOOP
+            IF COALESCE(v_rule ->> 'weekday', '') !~ '^[0-6]$'
+               OR COALESCE(v_rule ->> 'start_minute', '') !~ '^[0-9]{1,4}$'
+               OR COALESCE(v_rule ->> 'end_minute', '') !~ '^[0-9]{1,4}$'
+               OR (v_rule ->> 'start_minute')::integer > 1439
+               OR (v_rule ->> 'end_minute')::integer > 1440
+               OR (v_rule ->> 'end_minute')::integer <= (v_rule ->> 'start_minute')::integer
+               OR COALESCE(v_rule ->> 'kind', 'working_hours') NOT IN ('working_hours', 'call_window') THEN
+                RAISE EXCEPTION USING ERRCODE = '22023',
+                    MESSAGE = format('rules.%s: a band needs a day and an end after its start', v_i);
+            END IF;
+            INSERT INTO scheduling.availability_rules (schedule_id, kind, weekday, start_minute, end_minute)
+            VALUES (
+                v_schedule,
+                COALESCE(v_rule ->> 'kind', 'working_hours')::scheduling.availability_kind,
+                (v_rule ->> 'weekday')::smallint,
+                (v_rule ->> 'start_minute')::integer,
+                (v_rule ->> 'end_minute')::integer
+            );
+            v_i := v_i + 1;
+        END LOOP;
+
+        IF EXISTS (
+            SELECT 1
+            FROM scheduling.availability_rules a
+            JOIN scheduling.availability_rules b
+              ON b.schedule_id = a.schedule_id AND b.kind = a.kind AND b.weekday = a.weekday
+             AND b.id <> a.id
+             AND a.start_minute < b.end_minute AND b.start_minute < a.end_minute
+            WHERE a.schedule_id = v_schedule
+        ) THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'rules: two bands on the same day overlap';
+        END IF;
+    END IF;
+
+    IF v_call IS NOT NULL AND jsonb_typeof(v_call) = 'object' THEN
+        INSERT INTO scheduling.call_settings AS c (
+            schedule_id, accepts_calls, courtesy_enabled, courtesy_duration_minutes, courtesy_max_per_week,
+            courtesy_cooldown_days, paid_enabled, paid_duration_minutes, fee_amount_minor, fee_currency,
+            buffer_before_minutes, buffer_after_minutes, min_notice_minutes, max_advance_days,
+            auto_confirm, agenda_required
+        ) VALUES (
+            v_schedule,
+            COALESCE((v_call ->> 'accepts_calls')::boolean, false),
+            COALESCE((v_call ->> 'courtesy_enabled')::boolean, false),
+            COALESCE((v_call ->> 'courtesy_duration_minutes')::integer, 15),
+            COALESCE((v_call ->> 'courtesy_max_per_week')::integer, 0),
+            COALESCE((v_call ->> 'courtesy_cooldown_days')::integer, 0),
+            COALESCE((v_call ->> 'paid_enabled')::boolean, false),
+            COALESCE((v_call ->> 'paid_duration_minutes')::integer, 30),
+            NULLIF(v_call ->> 'fee_amount_minor', '')::bigint,
+            upper(NULLIF(v_call ->> 'fee_currency', '')),
+            COALESCE((v_call ->> 'buffer_before_minutes')::integer, 0),
+            COALESCE((v_call ->> 'buffer_after_minutes')::integer, 10),
+            COALESCE((v_call ->> 'min_notice_minutes')::integer, 720),
+            COALESCE((v_call ->> 'max_advance_days')::integer, 60),
+            COALESCE((v_call ->> 'auto_confirm')::boolean, false),
+            COALESCE((v_call ->> 'agenda_required')::boolean, true)
+        )
+        ON CONFLICT (schedule_id) DO UPDATE SET
+            accepts_calls = EXCLUDED.accepts_calls,
+            courtesy_enabled = EXCLUDED.courtesy_enabled,
+            courtesy_duration_minutes = EXCLUDED.courtesy_duration_minutes,
+            courtesy_max_per_week = EXCLUDED.courtesy_max_per_week,
+            courtesy_cooldown_days = EXCLUDED.courtesy_cooldown_days,
+            paid_enabled = EXCLUDED.paid_enabled,
+            paid_duration_minutes = EXCLUDED.paid_duration_minutes,
+            fee_amount_minor = EXCLUDED.fee_amount_minor,
+            fee_currency = EXCLUDED.fee_currency,
+            buffer_before_minutes = EXCLUDED.buffer_before_minutes,
+            buffer_after_minutes = EXCLUDED.buffer_after_minutes,
+            min_notice_minutes = EXCLUDED.min_notice_minutes,
+            max_advance_days = EXCLUDED.max_advance_days,
+            auto_confirm = EXCLUDED.auto_confirm,
+            agenda_required = EXCLUDED.agenda_required,
+            updated_at = now();
+    END IF;
+
+    RETURN jsonb_build_object('ok', true, 'schedule_id', v_schedule);
+END;
+$$;
+-- #endregion

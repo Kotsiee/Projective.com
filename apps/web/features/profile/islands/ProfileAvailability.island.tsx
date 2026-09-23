@@ -22,6 +22,8 @@ export interface ProfileAvailabilityProps {
 	hours: ProfileHours;
 	/** The full calendar's address (`/[handle]/availability`), or `null` when there is none to link. */
 	calendarHref: string | null;
+	/** Show the owner's live local clock — their own switch (`settings.showLocalTime`). */
+	showClock?: boolean;
 }
 
 function pad(n: number): string {
@@ -29,7 +31,7 @@ function pad(n: number): string {
 }
 
 export default function ProfileAvailability(
-	{ hours, calendarHref }: ProfileAvailabilityProps,
+	{ hours, calendarHref, showClock = true }: ProfileAvailabilityProps,
 ): JSX.Element {
 	const now = useMinuteClock();
 
@@ -46,10 +48,14 @@ export default function ProfileAvailability(
 					<span class="pf-avail__dot" aria-hidden="true" />
 					{state.available ? "Available now" : "Away"}
 				</span>
-				<span class="pf-avail__sep" aria-hidden="true">·</span>
-				<span class="pf-avail__clock">
-					<time dateTime={timeAttr}>{timeLabel}</time> local time
-				</span>
+				{showClock && (
+					<>
+						<span class="pf-avail__sep" aria-hidden="true">·</span>
+						<span class="pf-avail__clock">
+							<time dateTime={timeAttr}>{timeLabel}</time> local time
+						</span>
+					</>
+				)}
 			</p>
 			{state.nextLabel && <p class="pf-avail__next">{state.nextLabel}</p>}
 			{lines.length > 0 && (

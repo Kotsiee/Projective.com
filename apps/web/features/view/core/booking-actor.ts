@@ -1,4 +1,5 @@
-import type { State } from "@web/utils/state.ts";
+import type { SessionContext } from "@web/utils/api-session.ts";
+import { readCookies, SB_ACCESS_COOKIE } from "@web/utils/auth-cookies.ts";
 import type { UserContext } from "@projective/types/auth";
 import type { BookingActor } from "@server/services/booking/BookingBackendService.ts";
 import { ANONYMOUS_ACTOR } from "@server/services/booking/BookingBackendService.ts";
@@ -15,10 +16,15 @@ import { ANONYMOUS_ACTOR } from "@server/services/booking/BookingBackendService.
  * the surface OFFERS. RLS remains the real gate once the live paths land, and every fat method refuses
  * a `userId` of `null` on its own account rather than trusting the caller to have checked.
  */
-export function bookingActorFrom(state: State): BookingActor {
+export function bookingActorFrom(request: SessionContext): BookingActor {
+	const { state } = request;
 	if (!state.isAuthenticated) return ANONYMOUS_ACTOR;
 	const ctx = state.userContext;
 	return {
+		// The token every live write is made with. `ctx.state` first — a session the dashboard guard
+		// just renewed lives there while the request's cookie is still the stale one — then the cookie,
+		// because `/api/*` sits outside that guard and never has it set (`api-session.ts`).
+		accessToken: state.accessToken ?? readCookies(request.req)[SB_ACCESS_COOKIE] ?? null,
 		// The chrome context's user id, bare. `null` when the JWT failed to decode, which degrades to
 		// the anonymous refusal rather than to a partially-identified write.
 		userId: ctx?.userId ?? null,

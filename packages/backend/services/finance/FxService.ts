@@ -8,17 +8,7 @@ import {
 	resolveRate,
 	toDisplayCurrency,
 } from "@projective/types/finance";
-import {
-	getServiceClient,
-	isFinanceBackendLive,
-	isSupabaseConfigured,
-} from "../../core/supabase.ts";
-import {
-	FX_FIXTURE_AS_OF,
-	FX_FIXTURE_BASE,
-	FX_FIXTURE_PROVIDER,
-	FX_FIXTURE_RATES,
-} from "./fx-fixtures.ts";
+import { getAnonClient, isSupabaseConfigured } from "../../core/supabase.ts";
 
 /**
  * FxService — the FAT currency-conversion engine. The **only** thing on the platform that turns one
@@ -43,11 +33,19 @@ import {
  *
  * ## Failing
  *
- * No method here throws and no method returns "no answer". A failed live read degrades to the seeded
- * fixture table; an unresolvable pair returns the **origin amount unchanged** with `converted:
- * false`. That last one is the load-bearing choice: the alternative — assuming a rate of 1, or
- * relabelling an amount with a symbol it was not priced in — turns a missing number into a WRONG
- * one, which is the only FX failure a reader cannot detect.
+ * No method here throws and no method returns "no answer". A failed read yields a table that knows
+ * only its own base, and every pair against it is unresolvable — so, like any unresolvable pair, it
+ * returns the **origin amount unchanged** with `converted: false`. That is the load-bearing choice:
+ * the alternative — assuming a rate of 1, or relabelling an amount with a symbol it was not priced in
+ * — turns a missing number into a WRONG one, which is the only FX failure a reader cannot detect. A
+ * failed read is never cached, so the next request tries the database again.
+ *
+ * ## The source
+ *
+ * `finance.fx_rates`, read as `anon`: the rates are public reference data (the policy is `USING
+ * (true)` for `anon` and `authenticated`), and SSR converts a price for a signed-out visitor exactly
+ * as for a signed-in one. The migrations seed a floor for every offerable currency, so a fresh
+ * database always has an answer; a live provider's observations land beside it and win by `as_of`.
  */
 
 // #region Cache
@@ -139,42 +137,49 @@ function isStale(asOf: string, now: number): boolean {
 	return Number.isNaN(observed) ? true : now - observed > STALE_AFTER_MS;
 }
 
-/** The seeded fixture table for a base — the stub answer and the live path's failure floor. */
-function fixtureTable(base: string, now: number): FxRateTable {
-	const target = base.toUpperCase();
-	const rates: Record<string, number> = { ...FX_FIXTURE_RATES };
-
-	// The fixtures are quoted against the platform base. For any other base, re-quote the whole table
-	// through it once here rather than making every caller triangulate — one division per pair, done
-	// in a single place, so a re-based table and a natively-based one round identically.
-	if (target !== FX_FIXTURE_BASE) {
-		const pivot = FX_FIXTURE_RATES[target];
-		if (typeof pivot === "number" && pivot > 0) {
-			for (const [code, rate] of Object.entries(FX_FIXTURE_RATES)) rates[code] = rate / pivot;
-		}
-	}
-	rates[target] = 1;
-
+/**
+ * The table to answer with when the database could not be read: it knows only its own base, so every
+ * pair against it is unresolvable and every amount stays in the currency it was priced in. Never
+ * cached, and disclosed as stale.
+ */
+function unavailableTable(base: string, now: number): FxRateTable {
 	return {
-		base: target,
-		rates,
-		asOf: FX_FIXTURE_AS_OF,
-		provider: FX_FIXTURE_PROVIDER,
-		stale: isStale(FX_FIXTURE_AS_OF, now),
+		base,
+		rates: { [base]: 1 },
+		asOf: new Date(now).toISOString(),
+		provider: "unavailable",
+		stale: true,
 	};
 }
 
 /**
- * Read the newest observation per quote for `base` from `finance.fx_rates`.
+ * Re-quote a table from its own base into `target`, through one pivot.
  *
- * Uses the service-role client deliberately: FX rates are public reference data (the RLS policy is
- * `USING (true)` for `authenticated`), but this read happens in SSR for signed-out visitors too, and
- * an anonymous viewer must still see prices in their chosen currency. Returns `null` — never throws —
- * on any failure, so the caller falls back to the fixture floor.
+ * The rates are observed against the platform base. For any other base the whole table is re-quoted
+ * once, here, rather than making every caller triangulate — one division per pair, done in a single
+ * place, so a re-based table and a natively-based one round identically. A target the table does not
+ * quote cannot be re-based honestly, so it gets the table that knows only itself.
  */
-async function readLiveTable(base: string, now: number): Promise<FxRateTable | null> {
+function rebase(table: FxRateTable, target: string, now: number): FxRateTable {
+	if (target === table.base) return table;
+	const pivot = table.rates[target];
+	if (typeof pivot !== "number" || pivot <= 0) return unavailableTable(target, now);
+	const rates: Record<string, number> = {};
+	for (const [code, rate] of Object.entries(table.rates)) rates[code] = rate / pivot;
+	rates[target] = 1;
+	return { ...table, base: target, rates };
+}
+
+/**
+ * Read the newest observation per quote against the PLATFORM base from `finance.fx_rates`.
+ *
+ * Read as `anon`: the rates are public reference data, and SSR reads them for signed-out visitors
+ * too. Returns `null` — never throws — on any failure.
+ */
+async function readLiveTable(now: number): Promise<FxRateTable | null> {
+	const base = PLATFORM_BASE_CURRENCY;
 	try {
-		const { data, error } = await getServiceClient()
+		const { data, error } = await getAnonClient()
 			.schema("finance")
 			.from("fx_rates")
 			.select("base,quote,rate,as_of,provider")
@@ -206,7 +211,7 @@ async function readLiveTable(base: string, now: number): Promise<FxRateTable | n
 		return {
 			base,
 			rates,
-			asOf: newest || FX_FIXTURE_AS_OF,
+			asOf: newest,
 			provider: provider || "unknown",
 			stale: isStale(newest, now),
 		};
@@ -220,9 +225,9 @@ export class FxService {
 	/**
 	 * The current rate table for `base` (defaults to the platform base), cached for 15 minutes.
 	 *
-	 * Total: a live read that fails, returns nothing, or is gated off yields the seeded fixture table
-	 * rather than an error, so a caller never has to branch on "did FX work" — only on whether an
-	 * individual pair resolved.
+	 * Total: a read that fails yields a table that converts nothing rather than an error, so a caller
+	 * never has to branch on "did FX work" — only on whether an individual pair resolved. That table is
+	 * not cached: a database that comes back is read on the very next request.
 	 */
 	static async rates(base: string = PLATFORM_BASE_CURRENCY): Promise<FxRateTable> {
 		const code = (base || PLATFORM_BASE_CURRENCY).toUpperCase();
@@ -231,10 +236,10 @@ export class FxService {
 		const cached = await readCache(code, now);
 		if (cached) return cached;
 
-		const table =
-			(isFinanceBackendLive() && isSupabaseConfigured() ? await readLiveTable(code, now) : null) ??
-				fixtureTable(code, now);
+		const live = isSupabaseConfigured() ? await readLiveTable(now) : null;
+		if (!live) return unavailableTable(code, now);
 
+		const table = rebase(live, code, now);
 		await writeCache(code, table, now);
 		return table;
 	}

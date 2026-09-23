@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "supabaseClient";
+import { getUserClient } from "../../core/supabase.ts";
+import { fetchPublicMedia, mediaUrl } from "../files/public-media.ts";
 import type { ReadActor } from "../read-actor.ts";
 import type {
 	ChannelKind,
@@ -141,11 +143,23 @@ interface AssignmentRow {
 	status: string;
 }
 
-/** A resolved `org.business_profiles` row — the two columns a party projection needs. */
+/** A resolved `org.business_profiles` row — the columns a party projection needs. */
 interface BusinessRow {
 	name: string;
 	slug: string;
+	/** `logo_file_id` — resolved to a URL by {@link fetchMarks}, never composed here. */
+	logoFileId: string | null;
 }
+
+/** A resolved `org.teams` row. */
+interface TeamRow {
+	name: string;
+	/** `avatar_file_id` — resolved to a URL by {@link fetchMarks}. */
+	avatarFileId: string | null;
+}
+
+/** The longest avatar URL a party projection carries; a longer one is dropped, never truncated. */
+const MARK_URL_MAX = 400;
 
 // #endregion
 
@@ -424,10 +438,9 @@ function buildStageChannels(
  * {@link UNNAMED_CLIENT}. Degrading a name costs specificity; degrading membership would cost the
  * reader a room.
  *
- * `avatar` is always `null`, for the same reason every party's is: `org.teams.avatar_file_id` and
- * `org.business_profiles.logo_file_id` are foreign keys into `files.items`, not URLs, and composing a
- * served path from one belongs to the files domain behind its own gate. A guessed path renders as a
- * broken image; a null renders as the initials the `Avatar` component already draws.
+ * `avatar` is the owning team's avatar or the business's logo as {@link fetchMarks} resolved it —
+ * `null` for the two unnamed literal groups and for any entity without a public mark, which renders
+ * as the initials the `Avatar` component already draws.
  */
 function buildTeamChannels(
 	privateRooms: readonly ChannelRow[],
@@ -436,6 +449,7 @@ function buildTeamChannels(
 	teamNames: ReadonlyMap<string, string>,
 	clientBusinessId: string | null,
 	businessNames: ReadonlyMap<string, string>,
+	marks: ReadonlyMap<string, string>,
 ): TeamChannel[] {
 	const groups = new Map<string, TeamChannel>();
 
@@ -464,7 +478,7 @@ function buildTeamChannels(
 			group = {
 				teamId: clampOr(key, 80, UNNAMED_TEAM),
 				teamName: clampOr(label, 120, UNNAMED_TEAM),
-				avatar: null,
+				avatar: marks.get(key) ?? null,
 				assignedStages: [],
 				channels: [],
 			};
@@ -595,21 +609,57 @@ async function fetchTeamByStage(
 	return byStage;
 }
 
-/** Human names for a set of `org.teams` ids. Degrades to empty — the caller falls back to a generic label. */
-async function fetchTeamNames(
+/** `org.teams` rows for a set of ids. Degrades to empty — the caller falls back to a generic label. */
+async function fetchTeams(
 	actor: ReadActor & { accessToken: string },
 	teamIds: readonly string[],
-): Promise<Map<string, string>> {
-	const names = new Map<string, string>();
+): Promise<Map<string, TeamRow>> {
+	const out = new Map<string, TeamRow>();
 	const unique = [...new Set(teamIds)];
-	if (unique.length === 0) return names;
+	if (unique.length === 0) return out;
 
-	const { data, error } = await orgDb(actor).from("teams").select("id, name").in("id", unique);
-	if (error) return names;
-	for (const row of (data ?? []) as { id: string; name: string | null }[]) {
-		if (row.name?.trim()) names.set(row.id, row.name.trim());
+	const { data, error } = await orgDb(actor)
+		.from("teams")
+		.select("id, name, avatar_file_id")
+		.in("id", unique);
+	if (error) return out;
+	for (
+		const row of (data ?? []) as { id: string; name: string | null; avatar_file_id: string | null }[]
+	) {
+		out.set(row.id, { name: row.name?.trim() ?? "", avatarFileId: row.avatar_file_id });
 	}
-	return names;
+	return out;
+}
+
+/**
+ * Entity id → public mark URL for the teams and businesses on this engagement, in ONE
+ * `files.get_public_media` round trip. A mark that is not public, or not there, is simply absent —
+ * the group then draws its initials. Never throws: a failed lookup costs pictures, not the sidebar.
+ */
+async function fetchMarks(
+	actor: ReadActor & { accessToken: string },
+	teams: ReadonlyMap<string, TeamRow>,
+	businesses: ReadonlyMap<string, BusinessRow>,
+): Promise<Map<string, string>> {
+	const byFile = new Map<string, string[]>();
+	const note = (entityId: string, fileId: string | null) => {
+		if (!fileId) return;
+		const list = byFile.get(fileId) ?? [];
+		list.push(entityId);
+		byFile.set(fileId, list);
+	};
+	for (const [id, row] of teams) note(id, row.avatarFileId);
+	for (const [id, row] of businesses) note(id, row.logoFileId);
+
+	const marks = new Map<string, string>();
+	if (byFile.size === 0) return marks;
+	const media = await fetchPublicMedia(getUserClient(actor.accessToken), [...byFile.keys()]);
+	for (const [fileId, ref] of media) {
+		const url = mediaUrl(ref, "sm");
+		if (!url || url.length > MARK_URL_MAX) continue;
+		for (const entityId of byFile.get(fileId) ?? []) marks.set(entityId, url);
+	}
+	return marks;
 }
 
 /**
@@ -628,11 +678,22 @@ async function fetchBusinesses(
 
 	const { data, error } = await orgDb(actor)
 		.from("business_profiles")
-		.select("id, name, slug")
+		.select("id, name, slug, logo_file_id")
 		.in("id", unique);
 	if (error) return out;
-	for (const row of (data ?? []) as { id: string; name: string | null; slug: string | null }[]) {
-		out.set(row.id, { name: row.name?.trim() ?? "", slug: row.slug?.trim() ?? "" });
+	for (
+		const row of (data ?? []) as {
+			id: string;
+			name: string | null;
+			slug: string | null;
+			logo_file_id: string | null;
+		}[]
+	) {
+		out.set(row.id, {
+			name: row.name?.trim() ?? "",
+			slug: row.slug?.trim() ?? "",
+			logoFileId: row.logo_file_id,
+		});
 	}
 	return out;
 }
@@ -653,13 +714,14 @@ async function fetchBusinesses(
 function clientPartyOf(
 	clientBusinessId: string | null,
 	businesses: ReadonlyMap<string, BusinessRow>,
+	marks: ReadonlyMap<string, string>,
 ): ProjectParty | null {
 	if (!clientBusinessId) return null;
 	const row = businesses.get(clientBusinessId);
 	if (!row || !row.name) return null;
 	return {
 		name: clampOr(row.name, 120, UNNAMED_CLIENT),
-		avatar: null,
+		avatar: marks.get(clientBusinessId) ?? null,
 		handle: row.slug ? clamp(row.slug, 40) : null,
 	};
 }
@@ -681,6 +743,7 @@ function buildMembers(
 	participants: readonly ParticipantRow[],
 	parties: ReadonlyMap<string, PartyRow>,
 	businesses: ReadonlyMap<string, BusinessRow>,
+	marks: ReadonlyMap<string, string>,
 ): ProjectMember[] {
 	const out: ProjectMember[] = [];
 	const seen = new Set<string>();
@@ -701,7 +764,7 @@ function buildMembers(
 				// "Unknown" for the same reason `partyOf` uses it: the name is `min(1)`, so a withheld
 				// row has to be spelled rather than passed through as empty.
 				name: clampOr(business?.name, 120, "Unknown"),
-				avatar: null,
+				avatar: marks.get(row.profile_id) ?? null,
 				handle: business?.slug ? clamp(business.slug, 40) : null,
 			};
 		} else {
@@ -741,7 +804,8 @@ function buildMembers(
  * - **`starred` is always `false`**, inherited from the summary: there is no `project_stars` table.
  * - **Every channel's `unread` is `false`** — there is no per-viewer read watermark for a project
  *   channel; see `NO_UNREAD_SIGNAL`.
- * - **Every avatar is `null`** — the `org` avatar columns are file ids, not URLs.
+ * - **Avatars are resolved, never composed** — a person's through `org.get_party_cards`, a team's or
+ *   a business's through `files.get_public_media`; an entity without a public mark stays `null`.
  *
  * ## Two fields whose live meaning differs from the fixtures', stated rather than smoothed over
  *
@@ -786,8 +850,8 @@ export async function fetchProjectDetail(
 	// stage→team map exists, and that map needs the stage ids the first wave returned.
 	const teamByStage = await fetchTeamByStage(db, stages.map((stage) => stage.id));
 
-	const [teamNames, businesses, parties] = await Promise.all([
-		fetchTeamNames(actor, [...teamByStage.values()]),
+	const [teams, businesses, parties] = await Promise.all([
+		fetchTeams(actor, [...teamByStage.values()]),
 		fetchBusinesses(actor, [
 			clientBusinessId ?? "",
 			...participants.filter((row) => row.profile_type === "business").map((r) => r.profile_id),
@@ -798,6 +862,11 @@ export async function fetchProjectDetail(
 		),
 	]);
 
+	// A third wave, and only when a team or a business has a mark to resolve.
+	const marks = await fetchMarks(actor, teams, businesses);
+
+	const teamNames = new Map<string, string>();
+	for (const [id, row] of teams) if (row.name) teamNames.set(id, row.name);
 	const businessNames = new Map<string, string>();
 	for (const [id, row] of businesses) if (row.name) businessNames.set(id, row.name);
 
@@ -818,9 +887,9 @@ export async function fetchProjectDetail(
 		scopeLabel: summary.scopeLabel,
 		starred: summary.starred,
 		owner: summary.owner,
-		client: clientPartyOf(clientBusinessId, businesses),
+		client: clientPartyOf(clientBusinessId, businesses, marks),
 		bannerImage: null,
-		members: buildMembers(summary, ownerUserId, participants, parties, businesses),
+		members: buildMembers(summary, ownerUserId, participants, parties, businesses, marks),
 		channels: {
 			general: general.map((row) => toProjectChannel(row, "general", null)),
 			stages: buildStageChannels(stages, stageAll),
@@ -831,6 +900,7 @@ export async function fetchProjectDetail(
 				teamNames,
 				clientBusinessId,
 				businessNames,
+				marks,
 			),
 			// See the docblock: a DM thread has no reproducible unified id on the live path.
 			dms: [],

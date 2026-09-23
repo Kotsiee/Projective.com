@@ -12,7 +12,7 @@ import { ExploreBackendService } from "@server/services/explore/ExploreBackendSe
  * fixtures directly.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const params = parseExploreParams(ctx.url.searchParams);
 		const authed = ctx.state.isAuthenticated ?? false;
 
@@ -20,14 +20,14 @@ export const handler = define.handlers({
 			const label = params.q || params.category;
 			ctx.state.title = `${label} · Explore · Projective`;
 			ctx.state.description = `Search results for ${label} on Projective.`;
-			const res = ExploreBackendService.search({ params });
+			const res = await ExploreBackendService.search({ params });
 			return page({ params, initial: res.ok ? res.data : undefined, home: undefined, authed });
 		}
 
 		ctx.state.title = "Explore · Projective";
 		ctx.state.description =
 			"Discover freelancers, teams, services, projects, products, and guides on Projective.";
-		const res = ExploreBackendService.home();
+		const res = await ExploreBackendService.home();
 		return page({ params, initial: undefined, home: res.ok ? res.data : undefined, authed });
 	},
 });

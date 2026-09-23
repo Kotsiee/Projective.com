@@ -11,13 +11,9 @@ definitions, and RPC/function signatures — which `brain2.md` deliberately does
 [Schemas.md](Schemas.md) is the top-level ERD-adjacent reference: the `CREATE SCHEMA` statements and
 every custom enum type with its literal values.
 
-> ⚠️ **Flagged drift (surface, do not silently resolve).** [Schemas.md](Schemas.md) has always
-> listed **11** schemas, but `0001_init_schemas.sql` actually creates **12** — it also creates
-> `reviews`, which the doc's table and its "Initialization SQL" block both omit, and for which there
-> is no folder here. `scheduling` (migration `20260724100000`) was added to both the table and the
-> SQL block on 2026-07-24, so the documented set is now 12 of the 13 real schemas. Reconciling
-> `reviews` — document it, or confirm it is dead and remove it from the init migration — needs a
-> human (root `CLAUDE.md` §8).
+> **Resolved drift (2026-09-23).** `reviews` — created by the init migration but never documented
+> (Decision #56(e)) — is live: the discovery surfaces read it, so it now has a folder here, as does
+> `catalogue` (the seller publication layer, `00000023`). Both are listed in [Schemas.md](Schemas.md).
 
 ## Development seed
 
@@ -34,19 +30,21 @@ Each domain below gets its own folder with up to four files: `Tables.md`, `Polic
 | Domain         | Tables | Policies | Functions | Notes                                                                                              |
 | :------------- | :----: | :------: | :-------: | :------------------------------------------------------------------------------------------------- |
 | `analytics`    |   ✅   |    ✅    |    ✅     | Event substrate + daily rollups (`fn_emit`), 2026-07-24                                            |
+| `catalogue`    |   ✅   |    ✅    |    ✅     | Seller publication layer (products, articles, listings); read live by discovery, 2026-09-23         |
 | `comms`        |   ✅   |    ✅    |    ✅     | Messaging + the 2026-07-24 Notification Engine                                                     |
-| `files`        |   ✅   |    ✅    |    ✅     | Asset management, 2026-08-04. Plus [Storage.md](files/Storage.md) (10-bucket storage architecture) |
+| `files`        |   ✅   |    ✅    |    ✅     | Asset management, 2026-08-04; the media pipeline, renditions + WebP tiers (`item_variants`), 2026-09-23. Plus [Storage.md](files/Storage.md) |
 | `finance`      |   ✅   |    ✅    |    ✅     | Wallets/escrow/ledger + the 2026-07-23 Wallet & Finance foundation                                 |
 | `integrations` |   ✅   |    ✅    |    ✅     | Connector + plugin substrate (token vault, sync/webhooks, plugin ecosystem), redesigned 2026-07-25 |
-| `marketplace`  |   —    |    —     |     —     | Not yet documented                                                                                 |
+| `marketplace`  |   ◐    |    ◐     |     —     | Blueprints (address, intake, stage template), paid placements, quote requests — partial           |
 | `ops`          |   —    |    —     |     —     | Not yet documented                                                                                 |
-| `org`          |   ✅   |    ✅    |    ✅     | Identity/teams/orgs + the 2026-07-24 Standing & progression ladder                                 |
+| `org`          |   ✅   |    ✅    |    ✅     | Identity/teams/orgs, the 2026-07-24 Standing ladder, and the live public profile (showcase, settings, certifications, definer read/write door), 2026-09-23 |
 | `projects`     |   ✅   |    —     |     —     |                                                                                                    |
+| `reviews`      |   ✅   |    ✅    |    ✅     | One table, two reputation tracks; no client write path yet, 2026-09-23                             |
 | `scheduling`   |   ✅   |    ✅    |    ✅     | Availability, calendar events & discovery calls, 2026-07-24                                        |
-| `search`       |   —    |    —     |     —     | Not yet documented                                                                                 |
+| `search`       |   ◐    |    —     |     —     | `platform_stats` documented; the index tables are not yet                                          |
 | `security`     |   ✅   |    —     |     —     |                                                                                                    |
 
-✅ = populated with real schema detail. `—` = stub file stamped `_Not yet documented._` — this is an
+✅ = populated with real schema detail. ◐ = the sections a recent change touched are documented, the rest is not. `—` = stub file stamped `_Not yet documented._` — this is an
 intentional placeholder, not a deletion or accident. `comms/`, `files/`, `finance/`, `integrations/`
 and `scheduling/` have populated `Functions.md` (the notification engine; the asset hub's read
 predicate, quota gate, usage rollup and share resolver; the escrow engine + the Wallet & Finance

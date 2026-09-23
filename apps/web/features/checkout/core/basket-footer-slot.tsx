@@ -3,6 +3,7 @@ import type { UserContext } from "@projective/types/auth";
 import CheckoutFooterRig from "../islands/CheckoutFooterRig.island.tsx";
 import { checkoutStepOf, isCheckoutPath, isFocusStep } from "./basket-model.ts";
 import { resolveBasket, resolveCheckoutSession } from "./checkout-ssr.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
  * basket-footer-slot — the middle-nav FOOTER band on the checkout's two NON-committing steps.
@@ -33,7 +34,11 @@ import { resolveBasket, resolveCheckoutSession } from "./checkout-ssr.ts";
  * Composed after the wallet/workspace/files footer resolvers in `middleNavFooterFor`, so exactly one
  * owns the band per URL. Server-only — never imported by an island.
  */
-export function basketFooterFor(url: URL, context: UserContext): ComponentChildren {
+export async function basketFooterFor(
+	url: URL,
+	context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
 	if (!isCheckoutPath(url.pathname)) return null;
 
 	const step = checkoutStepOf(url.pathname);
@@ -42,7 +47,7 @@ export function basketFooterFor(url: URL, context: UserContext): ComponentChildr
 	if (isFocusStep(step)) return null;
 
 	if (step === "basket") {
-		const { basket, owner, display } = resolveBasket(context, url);
+		const { basket, owner, display } = await resolveBasket(context, url, actor);
 		return (
 			<CheckoutFooterRig
 				step={step}
@@ -55,7 +60,7 @@ export function basketFooterFor(url: URL, context: UserContext): ComponentChildr
 		);
 	}
 
-	const { session, owner, display } = resolveCheckoutSession(context, url);
+	const { session, owner, display } = await resolveCheckoutSession(context, url, actor);
 	return (
 		<CheckoutFooterRig
 			step="confirmation"

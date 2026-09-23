@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "supabaseClient";
 import { getUserClient } from "../../core/supabase.ts";
+import { fetchPartyRows, partyRowsWithAvatars } from "../profile/party-cards.ts";
 import type { ReadActor } from "../read-actor.ts";
 import type {
 	EngagementKind,
@@ -141,6 +142,8 @@ interface OwnerRow {
 	username: string;
 	first_name: string | null;
 	last_name: string | null;
+	/** The photo's `sm` rendition, when read through `org.get_party_cards`. */
+	avatar?: string | null;
 }
 
 /** One `projects.projects` row as selected by {@link SUMMARY_COLUMNS}. */
@@ -271,7 +274,7 @@ function partyOf(owner: OwnerRow | null): ProjectSummary["owner"] {
 		.join(" ");
 	return {
 		name: composed || owner.username.trim() || "Unknown",
-		avatar: null,
+		avatar: owner.avatar ?? null,
 		handle: owner.username,
 	};
 }
@@ -476,6 +479,9 @@ async function fetchParties(
 	const parties = new Map<string, OwnerRow>();
 	const unique = [...new Set(userIds)].filter((id) => id.length > 0);
 	if (unique.length === 0) return parties;
+
+	const cards = await fetchPartyRows(getUserClient(actor.accessToken), unique);
+	if (cards) return partyRowsWithAvatars(cards);
 
 	const { data, error } = await orgClient(actor)
 		.from("users_public")

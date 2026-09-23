@@ -82,6 +82,8 @@ export const SLUG_PREFIXES = {
 	service: "svc",
 	session: "ssn",
 	ticket: "tkt",
+	product: "prd",
+	article: "art",
 } as const;
 
 /** An entity addressed by a prefixed slug. */

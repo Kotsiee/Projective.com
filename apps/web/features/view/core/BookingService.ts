@@ -15,10 +15,8 @@ import type {
 	PipelineDraft,
 	ServiceBookingOffer,
 	ServiceBriefInput,
-	ServiceSim,
 	SessionBookingInput,
 } from "@projective/types/services";
-import { serviceSimToQuery } from "@projective/types/services";
 
 /**
  * BookingService — the THIN client service every conversion CTA on a listing page talks to.
@@ -28,28 +26,21 @@ import { serviceSimToQuery } from "@projective/types/services";
  * `errors.<field>` naming the control that refused it, and the surface renders the server's own
  * sentence rather than re-deriving one. That is the islands-are-dumb boundary, and it is what lets the
  * same modal serve four booking flows without knowing any of their rules.
- *
- * Every method takes the optional developer simulation overlay, which travels as `sim*` query params.
- * In production it is always `undefined` (the seam tree-shakes out), so a request is byte-identical to
- * one from before the seam existed.
  */
 export const BookingService = {
 	/**
 	 * Re-read the resolved offer.
 	 *
-	 * The listing page SSRs this, so the island only calls it when something the server could not have
-	 * seen has changed — a dev-seam flip, or a write that moved the offer (instantiating a pipeline
-	 * flips the primary to "Open Project →").
+	 * The listing page SSRs this, so the island only calls it when a write moved the offer
+	 * (instantiating a pipeline flips the primary to "Open Project →").
 	 */
 	offer(
 		subjectId: string,
-		opts: { handle?: string | null; sim?: ServiceSim } = {},
+		opts: { handle?: string | null } = {},
 	): Promise<BookingResult<{ offer: ServiceBookingOffer }>> {
 		const qs = new URLSearchParams({ subjectId });
 		if (opts.handle) qs.set("handle", opts.handle);
-		return getBooking<{ offer: ServiceBookingOffer }>(
-			`/api/services/offer?${qs.toString()}${serviceSimToQuery(opts.sim)}`,
-		);
+		return getBooking<{ offer: ServiceBookingOffer }>(`/api/services/offer?${qs.toString()}`);
 	},
 
 	/**
@@ -57,14 +48,9 @@ export const BookingService = {
 	 * consultation" row from, and the consultation modal its durations, fee, agenda rule and
 	 * platforms. `null` data when the provider takes no calls.
 	 */
-	callOffer(
-		handle: string,
-		sim?: ServiceSim,
-	): Promise<BookingResult<{ callOffer: PublicCallOffer | null }>> {
+	callOffer(handle: string): Promise<BookingResult<{ callOffer: PublicCallOffer | null }>> {
 		const qs = new URLSearchParams({ handle });
-		return getBooking<{ callOffer: PublicCallOffer | null }>(
-			`/api/services/call-offer?${qs.toString()}${serviceSimToQuery(sim)}`,
-		);
+		return getBooking<{ callOffer: PublicCallOffer | null }>(`/api/services/call-offer?${qs.toString()}`);
 	},
 
 	/**
@@ -84,27 +70,18 @@ export const BookingService = {
 			/** A discovery call's flavour — decides the grid's slot length. */
 			callType?: CallType;
 		},
-		sim?: ServiceSim,
 	): Promise<BookingResult<{ grid: SlotGrid }>> {
 		const qs = new URLSearchParams({ subjectId: params.subjectId, purpose: params.purpose });
 		if (params.timezone) qs.set("timezone", params.timezone);
 		if (params.from !== undefined) qs.set("from", String(params.from));
 		if (params.days !== undefined) qs.set("days", String(params.days));
 		if (params.callType) qs.set("callType", params.callType);
-		return getBooking<{ grid: SlotGrid }>(
-			`/api/services/slots?${qs.toString()}${serviceSimToQuery(sim)}`,
-		);
+		return getBooking<{ grid: SlotGrid }>(`/api/services/slots?${qs.toString()}`);
 	},
 
 	/** Reserve the chosen slot(s) and stage the booking for checkout. */
-	bookSession(
-		input: SessionBookingInput,
-		sim?: ServiceSim,
-	): Promise<BookingResult<{ outcome: BookingOutcome }>> {
-		return postBooking<{ outcome: BookingOutcome }>(
-			`/api/services/book-session${queryOnly(sim)}`,
-			input,
-		);
+	bookSession(input: SessionBookingInput): Promise<BookingResult<{ outcome: BookingOutcome }>> {
+		return postBooking<{ outcome: BookingOutcome }>("/api/services/book-session", input);
 	},
 
 	/** Stage a scoped engagement (One-Off / Single Task) for checkout. */
@@ -113,14 +90,8 @@ export const BookingService = {
 	},
 
 	/** Perform a Contact Me action — a discovery call, a question, or a custom quote. */
-	contact(
-		input: ContactActionInput,
-		sim?: ServiceSim,
-	): Promise<BookingResult<{ result: ContactActionResult }>> {
-		return postBooking<{ result: ContactActionResult }>(
-			`/api/services/contact-action${queryOnly(sim)}`,
-			input,
-		);
+	contact(input: ContactActionInput): Promise<BookingResult<{ result: ContactActionResult }>> {
+		return postBooking<{ result: ContactActionResult }>("/api/services/contact-action", input);
 	},
 
 	/** Instantiate a pipeline template into the acting client's workspace as a draft project. */
@@ -138,15 +109,3 @@ export const BookingService = {
 		return postBooking<{ draft: PipelineDraft }>("/api/services/archive-draft", input);
 	},
 };
-
-/**
- * The simulation overlay as a standalone query string.
- *
- * {@link serviceSimToQuery} emits a LEADING `&` because every READ call site appends it to a URL that
- * already carries a scope param. A POST has no other param, so the separator has to be flipped — and
- * doing it here rather than at three call sites is what stops one of them shipping `?&simCallOffer=`.
- */
-function queryOnly(sim?: ServiceSim): string {
-	const q = serviceSimToQuery(sim);
-	return q ? `?${q.slice(1)}` : "";
-}

@@ -54,6 +54,8 @@ Parenthesized folders group routes **without** adding a URL segment:
 | top-level dynamic       | `[handle]/index.tsx`                                         | `/:handle` (the profile **Work** section — the index IS the default tab; `/:handle/work` 308s here)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | profile tabs            | `[handle]/[tab].tsx`                                         | `/:handle/:tab` (the three non-index sections — `experience` · `reviews` · `posts`; Experience is gated to individuals. Every RETIRED segment answers **308** into its consolidated section: `services` · `products` · `projects` · `portfolio` · `teams` · `businesses` · `members` · `departments` · `about` → `/:handle`; `education` → `/:handle/experience`; `articles` → `/:handle/posts` — root CLAUDE.md §8 Decision #96)                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | profile static          | `[handle]/availability.tsx`                                  | `/:handle/availability` (FULL-PAGE Availability calendar — its OWN layout, NOT the profile chrome; `_layout` special-cases the `availability` segment to a one-line identity strip + the calendar. **No profile chrome links here since Decision #96** (the availability toggle, clock and presence pip were stripped); the route stays resolvable for anyone holding its address. A static sibling wins over `[tab]`)                                                                                                                                                                                                                                                                                                                                                                                               |
+| profile owner editor    | `[handle]/edit/index.tsx`                                    | `/:handle/edit` (**owner-only** — Edit Profile & Settings: collapsible inline sections mirroring the preview, the six-slot showcase grid + avatar with the media picker/cropper, privacy switches. The guard is in `define.handlers`: a guest → 303 `/login?redirectTo=…`, a non-owner → 303 to the profile; ownership is the DATABASE's answer (`viewer.isOwner` from `org.get_profile_view`), never the unverified chrome token) |
+| profile owner availability | `[handle]/edit/availability.tsx`                          | `/:handle/edit/availability` (**owner-only**, same guard — working hours, time zone, publishing, and discovery-call terms for a seller; one save → `scheduling.save_owner_availability`) |
 | profile item view       | `[handle]/view/[item]/index.tsx`                             | `/:handle/view/:id` (profile-scoped Explore item viewer; was the flat `view/[item].tsx`, now a dir to host the schedule leaf)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | profile entity schedule | `[handle]/view/[item]/schedule.tsx`                          | `/:handle/view/:id/schedule` (profile-scoped session schedule; `_layout` special-cases the `view` → `schedule` segment to a full-page calendar, bypassing the profile chrome, mirroring `availability`)                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | entity view (public)    | `(public)/view/[entity]/index.tsx`                           | `/view/:id` (public Explore item viewer; was the flat `view/[entity].tsx`, now a dir to host the schedule leaf)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -312,16 +314,45 @@ why the denylist is not merely a duplicate of the route table:
 Both are enforced through the one SSOT guard (`isReservedHandle`), so a future "claim your handle"
 flow validating against it inherits both without knowing why either is listed.
 
+### The owner's three views of their own profile
+
+A profile's owner sees an owner header above the page with three tabs, each a real address rather
+than island state (the Preview ⇄ Details precedent of the project workspace): **Preview**
+(`/:handle` — exactly what a visitor sees, with the conversion controls inert and saying so),
+**Edit Profile & Settings** (`/:handle/edit`) and **Availability** (`/:handle/edit/availability`).
+`OwnerNav` renders them as anchors with `aria-current`. Both `edit` routes guard in
+`define.handlers` (a redirect returned from a page component is dead code in Fresh 2) and decide
+ownership from the live read's `viewer.isOwner`.
+
+### Profile and media API
+
+| Route                                      | Methods                  | Purpose                                                                                                   |
+| :----------------------------------------- | :----------------------- | :-------------------------------------------------------------------------------------------------------- |
+| `/api/profile/[handle]`                    | `GET · HEAD · OPTIONS`   | The profile overview / a section payload (`?tab=`), through the shared read-endpoint factory (ETag, 304). |
+| `/api/profile/[handle]/save`               | `POST`                   | Owner edits → `org.save_profile`; answers the fresh edit model. Refusals are field-keyed 422s.            |
+| `/api/profile/[handle]/media`              | `POST`                   | Cut an avatar or showcase rendition from a library asset (crop in source pixels) and attach it.          |
+| `/api/profile/[handle]/showcase`           | `PUT`                    | Reorder / empty showcase slots → `org.save_showcase`.                                                     |
+| `/api/profile/[handle]/availability`       | `GET` (`no-store`) · `PUT` | The owner's schedule, weekly hours and call terms → `scheduling.save_owner_availability`.               |
+| `/api/profile/[handle]/follow`             | `POST {follow}`          | Follow / unfollow as the caller (idempotent; following yourself is refused).                              |
+| `/api/media/library`                       | `GET` (`no-store`)       | The caller's own library images and videos, newest first, keyset-paged.                                   |
+| `/api/media/upload-init`                   | `POST`                   | Declare an upload: a `pending_upload` row in `quarantine` + a signed upload URL.                         |
+| `/api/media/upload-complete`               | `POST`                   | Run the pipeline: claim → sniff → decode → WebP tiers → admit (see `database/files/Storage.md`).         |
+
+`/api/profile/*` and `/api/media/*` are thin: HTTP parsing, Zod (`@projective/types/profile`,
+`@projective/types/files`), then `ProfileBackendService` / `MediaBackendService`.
+
 The reserved-word denylist is **implemented** as the SSOT const + guard
 **`RESERVED_HANDLES`/`isReservedHandle`** in
 [`@projective/types/profile`](../../packages/types/profile/reserved.ts) (root `CLAUDE.md` §8
 Decision #36). It is the second line of defence beyond Fresh's static-route precedence: it stops a
 **bare** word with no static route (`/availability`, `/files`) from being fabricated into a profile,
-and it is the rule a future "claim your handle" flow must validate against. Both the fat
-`ProfileBackendService` (which fabricates the stub profile → returns 404 for a reserved word) and
-the `routes/[handle]/_middleware.ts` (which resolves the profile onto `ctx.state.profile`, `null`
-for a reserved/unresolved handle → the shared layout paints a calm not-found, no profile chrome)
-read this one list, so the two never drift.
+and it is the rule a future "claim your handle" flow must validate against. The fat
+`ProfileBackendService` refuses a reserved word before it asks the database (404), and
+`routes/[handle]/_middleware.ts` resolves the live profile onto `ctx.state.profile` with its outcome
+on `ctx.state.profileStatus` — `200`, `404` for a reserved, unknown or hidden handle (the three are
+deliberately indistinguishable), or `503` when the database could not be asked — so the shared
+layout paints a calm not-found or an honest "try again", never a fabricated profile. (Profiles are
+live-only since 2026-09-23; there is no stub profile to fabricate.)
 
 ## Thin controllers / fat services
 

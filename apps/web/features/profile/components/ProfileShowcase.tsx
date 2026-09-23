@@ -410,6 +410,9 @@ function Slide(props: SlideProps): JSX.Element {
 					<ProgressiveImage
 						class="pf-showcase__media"
 						src={item.src}
+						srcset={item.srcset}
+						// The showcase column: about half the page on a desktop, the full width on a phone.
+						sizes="(min-width: 64rem) 55vw, 100vw"
 						alt={item.alt}
 						placeholder={item.placeholder}
 						loading={index === 0 ? "eager" : "lazy"}

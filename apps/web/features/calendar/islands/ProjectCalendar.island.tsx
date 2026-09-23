@@ -19,9 +19,6 @@ import { type EventAccess, readDevSeam, resolveEventAccess } from "../core/event
 import { simFromSeam, subscribeSchedulingSim } from "../core/scheduling-seam.ts";
 import { ScheduleService } from "../core/ScheduleService.ts";
 
-/** Reference focus instant — matches the fixtures' fixed clock so the calendar opens on the seeded week. */
-const FOCUS = Date.parse("2026-07-17T16:20:00Z");
-
 /** What a project calendar can create. A booking is taken, not authored, so it is not offered here. */
 const CREATE_KINDS: { value: CalendarEventKind; label: string }[] = [
 	{ value: "sync", label: "Meeting" },
@@ -163,7 +160,7 @@ export default function ProjectCalendar(props: ProjectCalendarProps): JSX.Elemen
 				events={events.value}
 				timezone={p.timezone}
 				view="week"
-				focus={FOCUS}
+				focus={p.now}
 				title={p.title}
 				canCreate={p.canCreate}
 				renderSource={renderCalendarSource}
@@ -222,7 +219,7 @@ export default function ProjectCalendar(props: ProjectCalendarProps): JSX.Elemen
 						event={framed}
 						tz={p.timezone}
 						hour12
-						nowMs={FOCUS}
+						nowMs={p.now}
 						access={access.value}
 						target={{
 							scope: p.channelId ? "channel" : "project",

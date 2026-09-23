@@ -1,14 +1,13 @@
 /**
- * generate.ts — emit `supabase/seeds/*.sql` AND `supabase/seed-assets/**` from the mock corpus plus
- * the hand-authored development world (`gen/world.ts`).
+ * generate.ts — emit `supabase/seeds/*.sql` AND `supabase/seed-assets/**` from the seed-only listing
+ * corpus (`gen/corpus.ts`) plus the hand-authored development world (`gen/world.ts`).
  *
- * ## Why the seed is generated rather than hand-written
+ * ## The database is the only copy of this data
  *
- * The seed and the fixtures describe the same world. Written separately they drift, and the drift is
- * invisible: a developer running `supabase db reset` sees a plausible database that simply disagrees
- * with what the app renders when its gates are off. Deriving the SQL from
- * `@projective/backend/mocks` makes that impossible by construction — the same `SERVICES` array
- * produces both the card on `/explore` and the row in `marketplace.service_blueprints`.
+ * The app reads the marketplace LIVE — `/explore`, `/view/[id]`, the landing page — so the rows
+ * this script writes are what every surface renders. There is no second, in-app copy for them to
+ * drift from. `gen/corpus.ts` is the listings as authored content (titles, stage templates, product
+ * manifests, article bodies); nothing outside `supabase/seeds/` imports it.
  *
  * What the corpus does NOT describe — memberships, hiring, tickets, money, messages, notifications —
  * is declared once in `gen/world.ts` by key, and resolved to ids here, so a relationship that names
@@ -49,7 +48,9 @@ import { emitComms } from "./gen/emit-comms.ts";
 import { emitEntities } from "./gen/emit-entities.ts";
 import { emitFinance } from "./gen/emit-finance.ts";
 import { emitIdentities } from "./gen/emit-identities.ts";
+import { emitProfiles } from "./gen/emit-profiles.ts";
 import { emitProjects } from "./gen/emit-projects.ts";
+import { emitScheduling } from "./gen/emit-scheduling.ts";
 import { buildWorld } from "./gen/resolve.ts";
 
 const world = await buildWorld();
@@ -64,6 +65,8 @@ const files: Array<[string, string]> = [
 	["06_projects.sql", emitProjects(world)],
 	["07_finance.sql", emitFinance(world)],
 	["08_comms.sql", emitComms(world)],
+	["08_scheduling.sql", emitScheduling(world)],
+	["10_profiles.sql", emitProfiles(world)],
 ];
 
 const dir = new URL(".", import.meta.url);
@@ -85,6 +88,22 @@ try {
 }
 let copied = 0;
 for (const asset of world.assets) {
+	const target = new URL(`${asset.bucket}/${asset.path}`, assetsRoot);
+	await Deno.mkdir(new URL(".", target), { recursive: true });
+	await Deno.copyFile(new URL(asset.source, imagesRoot), target);
+	copied++;
+}
+
+/**
+ * The platform's OWN imagery — marketing chrome that belongs to no person, team or business, so it
+ * has no `files.items` row (that table's ownership model is a user's library) and lives under the
+ * `platform/` prefix of the public bucket. The app builds its URL from bucket + path like every other
+ * public object, so the landing page carries no external hotlink.
+ */
+const PLATFORM_ASSETS: Array<{ source: string; bucket: string; path: string }> = [
+	{ source: "banner_6.webp", bucket: "public_assets", path: "platform/marketing/hero.webp" },
+];
+for (const asset of PLATFORM_ASSETS) {
 	const target = new URL(`${asset.bucket}/${asset.path}`, assetsRoot);
 	await Deno.mkdir(new URL(".", target), { recursive: true });
 	await Deno.copyFile(new URL(asset.source, imagesRoot), target);

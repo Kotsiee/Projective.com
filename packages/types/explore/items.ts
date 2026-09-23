@@ -258,6 +258,13 @@ export const ProjectItemSchema = z.object({
 	classification: ProjectClassification,
 	roles: z.array(z.string()),
 	phases: z.array(z.string()),
+	/**
+	 * A picture to frame the brief with — the CLIENT's banner (or the poster's, when a person posted it
+	 * for themselves), never a picture of the work: a brief has no media of its own. Optional, and
+	 * absent when the client has no banner, so a surface that frames a brief falls back to its tint.
+	 * The discovery card does not render it; the landing showcase and the project view do.
+	 */
+	cover: z.string().optional(),
 });
 export type ProjectItem = z.infer<typeof ProjectItemSchema>;
 

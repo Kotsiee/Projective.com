@@ -5,9 +5,12 @@ import { type ProjectShowcase, routes } from "../core/landing-data.ts";
 import { vars } from "../core/style.ts";
 
 /**
- * ProjectCard — an open pipeline in the high-contrast projects grid. The card is the route action
- * (anchor → project board). Surfaces the budget, the current lifecycle stage, the roles being hired,
- * and staged delivery progress (library {@link ProgressBar}). Zero client JS.
+ * ProjectCard — an open project in the high-contrast projects grid. The card is the route action
+ * (anchor → the project's public view). Surfaces the budget, the current stage, the roles being hired,
+ * and how far through its stage plan the project is (library {@link ProgressBar}). Zero client JS.
+ *
+ * The cover is the client's banner; a project whose client has none shows the tonal band alone, and
+ * a project that states no budget shows no figure — the card never invents either.
  *
  * This is the ONE landing card that deliberately keeps its own `.lp-*` presentation while services,
  * products and profiles moved onto the canonical `.ex-card` contract. The difference is the entity's,
@@ -20,13 +23,13 @@ export function ProjectCard({ project }: { project: ProjectShowcase }): JSX.Elem
 		<a
 			class="lp-card lp-project"
 			href={routes.project(project.slug)}
-			style={vars({ "--lp-cover": `url("${project.thumb}")` })}
-			aria-label={`${project.title} for ${project.org} — ${project.budget}`}
+			style={vars({ "--lp-cover": project.thumb ? `url("${project.thumb}")` : "none" })}
+			aria-label={[project.title, `for ${project.org}`, project.budget].filter(Boolean).join(" — ")}
 		>
 			<div class="lp-project__media" aria-hidden="true" />
 			<div class="lp-project__body">
 				<div class="lp-project__head">
-					<span class="lp-project__stage">{project.stage}</span>
+					{project.stage && <span class="lp-project__stage">{project.stage}</span>}
 					<span class="lp-project__org">{project.org}</span>
 				</div>
 				<h3 class="lp-project__title">{project.title}</h3>
@@ -34,7 +37,7 @@ export function ProjectCard({ project }: { project: ProjectShowcase }): JSX.Elem
 					{project.roles.map((r) => <Tag key={r} value={r} variant="outlined" rounded />)}
 				</div>
 				<div class="lp-project__meter">
-					<ProgressBar value={project.progress} aria-label="Delivery progress" />
+					<ProgressBar value={project.progress} aria-label="Progress through the stage plan" />
 				</div>
 				{
 					/* No trailing "Open board →" pseudo-button: the whole card is already the anchor, so it
@@ -43,7 +46,11 @@ export function ProjectCard({ project }: { project: ProjectShowcase }): JSX.Elem
 				}
 				<div class="lp-project__foot">
 					<span class="lp-project__budget">{project.budget}</span>
-					<span class="lp-project__stagecount">{project.roles.length} roles open</span>
+					{project.roles.length > 0 && (
+						<span class="lp-project__stagecount">
+							{project.roles.length} {project.roles.length === 1 ? "role" : "roles"} open
+						</span>
+					)}
 				</div>
 			</div>
 		</a>

@@ -40,3 +40,6 @@ GRANT SELECT ON finance.v_wallet_reconciliation TO service_role;
 -- #region analytics
 GRANT SELECT ON analytics.v_unregistered_events TO service_role;
 -- #endregion
+
+-- The landing hero's aggregates (00003004) — public by design, four numbers and a currency.
+GRANT SELECT ON search.platform_stats TO anon, authenticated;

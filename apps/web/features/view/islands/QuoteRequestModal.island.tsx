@@ -7,7 +7,6 @@ import "../styles/service-booking.css";
 import { CtaButton } from "../components/CtaButton.tsx";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
 import { BookingService } from "../core/BookingService.ts";
-import { bookingSim } from "../core/booking-seam.ts";
 import { announce, closeBookingPanel, currentOffer, openPanel } from "../core/booking-state.ts";
 import type { ServiceBookingOffer } from "@projective/types/services";
 
@@ -92,7 +91,7 @@ export default function QuoteRequestModal(
 			budgetMinor,
 			currency: budgetMinor === undefined ? undefined : currency,
 			timeline: timeline.value.trim() || undefined,
-		}, bookingSim());
+		});
 		if (!res.ok || !res.data) {
 			error.value = res.message ?? "Could not send that request.";
 			return false;

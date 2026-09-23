@@ -55,9 +55,10 @@ import type {
  *
  * That table has none of the columns a display name suggests: no `display_name`, no `handle`, no
  * `avatar_url`. The real columns are `username` / `first_name` / `last_name` / `avatar_file_id`, and
- * the last is a FK into `files.items` rather than a URL — so every `avatar` this module returns is
- * `null` and the `Avatar` component draws its initials fallback. A guessed served path would render
- * as a broken image on every row.
+ * the last is a FK into `files.items` rather than a URL — so the photo comes through
+ * `org.get_party_cards`, the one door that turns it into a public rendition, and a person without
+ * one returns `null` for the `Avatar` component's initials. A guessed served path would render as a
+ * broken image on every row.
  */
 
 // #region Constants
@@ -190,7 +191,7 @@ function toContact(userId: string, row: PartyRow | undefined): MessagingContact 
 	return {
 		id,
 		name: clampOr(party.name, NAME_MAX, "Unknown"),
-		avatar: null,
+		avatar: party.avatar,
 		handle: handle.length > 0 && handle.length <= HANDLE_MAX ? handle : null,
 		context: null,
 		relation: NO_ENGAGEMENT_RELATION,

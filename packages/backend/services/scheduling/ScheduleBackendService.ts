@@ -1,9 +1,5 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
-import {
-	isExploreBackendLive,
-	isProfileBackendLive,
-	isProjectsBackendLive,
-} from "../../core/supabase.ts";
+import { isProjectsBackendLive } from "../../core/supabase.ts";
 import { isReservedHandle } from "@projective/types/profile";
 import type {
 	AvailabilityParams,
@@ -47,10 +43,12 @@ import {
 } from "@projective/types/scheduling";
 import { calendarSurfaceKey, findCalendarPage } from "./calendar-fixtures.ts";
 import { findPersonalCalendarPage } from "./personal-fixtures.ts";
-import { availabilitySurfaceKey, findAvailabilityPage } from "./availability-fixtures.ts";
-import { findSchedulePage, scheduleSurfaceKey } from "./schedule-fixtures.ts";
 import { overlayKey, writeRescheduleOverlay, writeRsvpOverlay } from "./coordination-fixtures.ts";
-import { buildSlotGrid, resolveCustomStart, type SlotGridInput } from "./slot-fixtures.ts";
+import { buildGrid, type GridRequest, judgeCustomStart } from "./slot-grid.ts";
+import { type BandKind, readGridSource, type ScheduleOwner } from "./live-slots.ts";
+import { readSchedulePage } from "./live-schedule-page.ts";
+import { type Catalog, loadCatalog } from "../explore/live-catalog.ts";
+import { getAnonClient } from "../../core/supabase.ts";
 import { NOW } from "./derive.ts";
 
 /**
@@ -62,11 +60,13 @@ import { NOW } from "./derive.ts";
  * and map the returned {@link ServiceResult} to a `Response`; the calendar routes call these directly
  * for SSR first paint. Islands never reach this — they `fetch` the routes via `ScheduleService`.
  *
- * **No new env gate.** Each read rides its OWN domain's existing switch (matching where the source data
- * lives): the project calendar behind {@link isProjectsBackendLive}, availability behind
- * {@link isProfileBackendLive}, an entity schedule behind {@link isExploreBackendLive}. All default off,
- * so the app answers from deterministic fixtures until the RLS-scoped `scheduling.*` reads + external-
- * calendar sync land behind the same gates with zero shape churn.
+ * **Two different footings.** The PUBLIC reads — a profile's availability, a session listing's
+ * schedule, and every bookable slot grid — read the seeded `scheduling.*` tables ungated, through the
+ * anonymous client (`live-schedule-page.ts`, `live-slots.ts`): what they disclose is world-readable by
+ * policy, so a guest and a member are answered identically. The PRIVATE reads — the project calendar
+ * and the personal agenda — and the coordination writes still answer from deterministic fixtures
+ * (the project calendar behind {@link isProjectsBackendLive}) until they are read as the signed-in
+ * user in the scheduling pass.
  *
  * **Every method takes a {@link SchedulingViewer}, and every response passes through the privacy
  * projection.** Two of the three reads are guest-reachable public pages, so "who is asking" is a
@@ -137,18 +137,16 @@ function resolveTarget(target: SchedulingTarget, viewer: SchedulingViewer): Reso
 			)?.events ?? [];
 			break;
 		}
-		case "availability": {
-			if (!target.handle || isReservedHandle(target.handle)) return null;
-			surfaceKey = availabilitySurfaceKey(target.handle);
-			events = findAvailabilityPage(target.handle, viewer, sim)?.events ?? [];
-			break;
-		}
-		case "schedule": {
-			if (!target.entityId) return null;
-			surfaceKey = scheduleSurfaceKey(target.entityId);
-			events = findSchedulePage(target.entityId, viewer, sim)?.events ?? [];
-			break;
-		}
+		case "availability":
+		case "schedule":
+			/*
+			 * A public schedule carries nothing a visitor can answer or move. It is read from the
+			 * provider's published `scheduling.*` rows, and every commitment on it is a bare busy span
+			 * with no title, no roster and no negotiation — so there is no event here to resolve. An RSVP
+			 * or a reschedule is made on the event's OWN surface (the project calendar, the personal
+			 * agenda), where the reader is seated as a party.
+			 */
+			return null;
 		case "personal": {
 			/*
 			 * The personal agenda OWNS nothing. Every entry on it is borrowed from the engagement that
@@ -247,50 +245,65 @@ export class ScheduleBackendService {
 	}
 
 	/**
-	 * A `@handle`'s public availability schedule (`/[handle]/availability`): weekly working hours,
-	 * timezone, blackout dates, and privacy-masked bookable/busy blocks (plus any public group sessions).
-	 * `404` for a reserved or unresolved handle.
+	 * A `@handle`'s public availability (`/[handle]/availability`): their published working hours and
+	 * call windows, their time off, and masked busy blocks — read live from `scheduling.*`
+	 * (`live-schedule-page.ts`). `404` for a reserved or unknown handle, and for a profile that has
+	 * published no schedule (there is nothing to show, and "no availability" would be a claim).
 	 */
-	static availability(
+	static async availability(
 		params: AvailabilityParams,
-		viewer: SchedulingViewer = ANONYMOUS_VIEWER,
-		sim?: SchedulingSim,
-	): ServiceResult<{ page: SchedulePage }> {
+		_viewer: SchedulingViewer = ANONYMOUS_VIEWER,
+		now: number = Date.now(),
+	): Promise<ServiceResult<{ page: SchedulePage }>> {
 		if (isReservedHandle(params.handle)) {
 			return fail(404, { message: `"${params.handle}" is a reserved route, not a profile.` });
 		}
-		if (!isProfileBackendLive()) {
-			const page = findAvailabilityPage(params.handle, viewer, sim);
-			if (!page) return fail(404, { message: `No profile found for "${params.handle}".` });
-			return ok({ page: projectPage(page, viewer) });
-		}
-		// LIVE: read the RLS-scoped `scheduling.*` availability tables (not yet implemented) — fall back to
-		// the fixture projection so behaviour is preserved until that path lands.
-		const page = findAvailabilityPage(params.handle, viewer, sim);
-		if (!page) return fail(404, { message: `No profile found for "${params.handle}".` });
-		return ok({ page: projectPage(page, viewer) });
+		const handle = params.handle.replace(/^@+/, "");
+		const owner = await profileOwnerOf(handle);
+		if (owner === undefined) return scheduleUnavailable();
+		if (!owner) return fail(404, { message: `No profile found for "${params.handle}".` });
+		const page = await readSchedulePage(owner, {
+			scope: "availability",
+			title: "Availability",
+			subtitle: null,
+			ownerHandle: `@${handle}`,
+			viewerCanBook: false,
+			now,
+		}, pageWindow(now));
+		if (page === undefined) return scheduleUnavailable();
+		if (!page) return fail(404, { message: `@${handle} has not published their availability.` });
+		// A slot opens a booking only where there is something to book: a discovery call.
+		return ok({ page: { ...page, viewerCanBook: page.callOffer !== undefined } });
 	}
 
 	/**
-	 * A session-based entity's public schedule (`/view/[entity]/schedule`): the recurring class/session
-	 * slots + attendee counts + bookable 1:1 windows for the viewed explore item. `404` for an unresolved
-	 * entity.
+	 * A session listing's public schedule (`/view/[entity]/schedule` and the listing page's scheduler
+	 * stage): the provider's published working hours, time off and masked busy blocks. `404` for an
+	 * unknown listing, or one whose provider has published no schedule.
 	 */
-	static entitySchedule(
+	static async entitySchedule(
 		params: ScheduleParams,
-		viewer: SchedulingViewer = ANONYMOUS_VIEWER,
-		sim?: SchedulingSim,
-	): ServiceResult<{ page: SchedulePage }> {
-		if (!isExploreBackendLive()) {
-			const page = findSchedulePage(params.entityId, viewer, sim);
-			if (!page) return fail(404, { message: `No item found for id "${params.entityId}".` });
-			return ok({ page: projectPage(page, viewer) });
+		_viewer: SchedulingViewer = ANONYMOUS_VIEWER,
+		now: number = Date.now(),
+	): Promise<ServiceResult<{ page: SchedulePage }>> {
+		const catalog = await loadCatalog().catch(() => null);
+		if (!catalog) return scheduleUnavailable();
+		const item = catalog.byId.get(params.entityId);
+		const owner = item ? listingScheduleOwner(catalog, item.id) : null;
+		if (!item || !owner) return fail(404, { message: `No item found for id "${params.entityId}".` });
+		const page = await readSchedulePage(owner, {
+			scope: "schedule",
+			title: item.title,
+			subtitle: `With ${item.owner.name}`,
+			ownerHandle: item.owner.handle,
+			viewerCanBook: true,
+			now,
+		}, pageWindow(now));
+		if (page === undefined) return scheduleUnavailable();
+		if (!page) {
+			return fail(404, { message: `${item.owner.name} has not published a schedule for this listing.` });
 		}
-		// LIVE: read the RLS-scoped `scheduling.*` + discovery graph (not yet implemented) — fall back to
-		// the fixture projection so behaviour is preserved until that path lands.
-		const page = findSchedulePage(params.entityId, viewer, sim);
-		if (!page) return fail(404, { message: `No item found for id "${params.entityId}".` });
-		return ok({ page: projectPage(page, viewer) });
+		return ok({ page });
 	}
 
 	/**
@@ -541,63 +554,41 @@ export class ScheduleBackendService {
 	 * The **bookable slot grid** behind a session listing's Book modal and the discovery-call
 	 * handshake: a window of days in the VIEWER's zone, and the offerable start times inside each.
 	 *
-	 * It is derived from the very same {@link SchedulePage} the public schedule surface renders, so a
-	 * buyer who reads a free hour on the listing's calendar is offered that hour in the picker. Two
-	 * derivations of one provider's availability is precisely how those two views come to disagree,
-	 * and the disagreement is invisible until somebody books.
+	 * Built from the provider's PUBLISHED schedule — its bands of the given kind, its blackouts, its
+	 * booking guards and its busy time (`live-slots.ts`) — by the pure builder in `slot-grid.ts`, which
+	 * applies the same four rules the database's booking gate does. So a slot this grid offers is a slot
+	 * the write accepts, and the grid a guest sees is the grid a member sees.
 	 *
 	 * **The grid discloses no more than the public schedule already does.** It reports that a time is
-	 * free or spoken for, never who has it — the `masked` projection of §Part 1.4 — so it is safe on a
-	 * guest-reachable listing page. Cohort occurrences report a seat COUNT, which is the one figure a
-	 * public group session may show precisely because it names nobody.
-	 *
-	 * `handle` grids ride {@link isProfileBackendLive} (the availability corpus); listing grids ride
-	 * {@link isExploreBackendLive}. Neither is a new gate: this read is a projection of data those two
-	 * already own.
+	 * free or spoken for, never who has it; busy time arrives as bare spans.
 	 */
-	static slots(
+	static async slots(
 		query: SlotQuery,
-		input: Omit<SlotGridInput, "page" | "purpose" | "subjectId">,
-		viewer: SchedulingViewer = ANONYMOUS_VIEWER,
-		sim?: SchedulingSim,
-	): ServiceResult<{ grid: SlotGrid }> {
-		const page = query.purpose === "discovery_call"
-			? findAvailabilityPage(query.subjectId, viewer, sim)
-			: findSchedulePage(query.subjectId, viewer, sim);
-		if (!page) {
-			return fail(404, {
-				message: query.purpose === "discovery_call"
-					? `No profile found for "${query.subjectId}".`
-					: `No item found for id "${query.subjectId}".`,
-			});
-		}
-		return ok({
-			grid: buildSlotGrid(query, {
-				...input,
-				page,
-				purpose: query.purpose,
-				subjectId: query.subjectId,
-			}),
-		});
+		input: SlotGridRequest,
+		target: SlotTarget,
+		now: number = Date.now(),
+	): Promise<ServiceResult<{ grid: SlotGrid }>> {
+		const source = await readGridSource(target.owner, target.kind, gridWindow(query, now));
+		if (!source) return scheduleUnavailable();
+		return ok({ grid: buildGrid(query, source, gridRequest(query, input, now)) });
 	}
 
 	/**
 	 * Re-resolve one slot through the same reader the grid was drawn from, and answer whether it can
 	 * still be taken.
 	 *
-	 * Every write path calls this rather than trusting the instants a caller sends. That is the
-	 * {@link SchedulingTarget} rule applied to bookings, and it is load-bearing for the same reason: a
-	 * caller who supplies their own start time can address a slot outside the provider's call windows,
-	 * inside their blackout, or one somebody else already holds — none of which the reader would ever
-	 * have offered them.
+	 * Every write path calls this rather than trusting the instants a caller sends: a caller who
+	 * supplies their own start time can otherwise address a slot outside the provider's bands, inside
+	 * their blackout, or one somebody else already holds — none of which the reader would ever offer.
 	 */
-	static resolveSlot(
+	static async resolveSlot(
 		query: SlotQuery,
-		input: Omit<SlotGridInput, "page" | "purpose" | "subjectId">,
+		input: SlotGridRequest,
+		target: SlotTarget,
 		slotId: string,
-		viewer: SchedulingViewer = ANONYMOUS_VIEWER,
-	): ServiceResult<{ slot: BookableSlot; grid: SlotGrid }> {
-		const read = ScheduleBackendService.slots(query, input, viewer);
+		now: number = Date.now(),
+	): Promise<ServiceResult<{ slot: BookableSlot; grid: SlotGrid }>> {
+		const read = await ScheduleBackendService.slots(query, input, target, now);
 		if (!read.ok || !read.data) return fail(read.status, { message: read.message });
 		const grid = read.data.grid;
 		const slot = findSlot(grid, slotId);
@@ -618,41 +609,20 @@ export class ScheduleBackendService {
 	}
 
 	/**
-	 * Resolve a CUSTOM start — a time the grid's cadence did not land on — through the same reader
-	 * that drew the grid, and answer the slot it would occupy or why it cannot.
-	 *
-	 * The custom-start control exists because a buyer's "2:20 works for me" is a legitimate answer
-	 * the enumerated slots cannot express; what makes it safe is that this is the ONLY thing that can
-	 * say yes to it. The start plus the flavour's duration must fit an open band, clear the notice
-	 * floor and the horizon, avoid every blackout, and — with the provider's private buffers either
-	 * side — not overlap a slot somebody already holds. The client's pre-flight checks the public
-	 * half; a start it lets through can still be refused here, and never the other way round.
-	 *
-	 * The refusal is field-keyed to `startsAt` rather than `slotId`, so a modal pins it to the time
-	 * control the buyer typed into rather than to a slot list they did not use.
+	 * Resolve a CUSTOM start — a time the grid's cadence did not land on — through the same reader,
+	 * and answer the slot it would occupy or why it cannot. The refusal is field-keyed to `startsAt`,
+	 * so a modal pins it to the time control the buyer typed into.
 	 */
-	static resolveCustomStart(
+	static async resolveCustomStart(
 		query: SlotQuery,
-		input: Omit<SlotGridInput, "page" | "purpose" | "subjectId">,
+		input: SlotGridRequest,
+		target: SlotTarget,
 		startsAt: number,
-		viewer: SchedulingViewer = ANONYMOUS_VIEWER,
-	): ServiceResult<{ slot: BookableSlot }> {
-		const page = query.purpose === "discovery_call"
-			? findAvailabilityPage(query.subjectId, viewer)
-			: findSchedulePage(query.subjectId, viewer);
-		if (!page) {
-			return fail(404, {
-				message: query.purpose === "discovery_call"
-					? `No profile found for "${query.subjectId}".`
-					: `No item found for id "${query.subjectId}".`,
-			});
-		}
-		const resolved = resolveCustomStart(query, {
-			...input,
-			page,
-			purpose: query.purpose,
-			subjectId: query.subjectId,
-		}, startsAt);
+		now: number = Date.now(),
+	): Promise<ServiceResult<{ slot: BookableSlot }>> {
+		const source = await readGridSource(target.owner, target.kind, gridWindow(query, now));
+		if (!source) return scheduleUnavailable();
+		const resolved = judgeCustomStart(query, source, gridRequest(query, input, now), startsAt);
 		if ("reason" in resolved) {
 			return fail(409, {
 				message: SLOT_REFUSAL_COPY[resolved.reason] ?? "That time is not available.",
@@ -662,6 +632,80 @@ export class ScheduleBackendService {
 		return ok({ slot: resolved.slot });
 	}
 }
+
+// #region Slot grid plumbing
+/** What a booking asks the grid for — the listing's (or the call flavour's) own parameters. */
+export interface SlotGridRequest {
+	/** The block size — `1` everywhere except a set-session package. */
+	sessionCount: number;
+	/** Each slot's length. Provider-set; never buyer-chosen. */
+	durationMinutes: number;
+	/** Cohort capacity per occurrence, or `null` for a one-to-one grid. */
+	seatsPerSession: number | null;
+}
+
+/** Whose schedule the grid is drawn from, and which of its bands a booking lands in. */
+export interface SlotTarget {
+	owner: ScheduleOwner;
+	kind: BandKind;
+}
+
+function gridRequest(query: SlotQuery, input: SlotGridRequest, now: number): GridRequest {
+	return { ...input, purpose: query.purpose, subjectId: query.subjectId, now };
+}
+
+/**
+ * The window of busy time and blackouts a grid needs: the rail plus a day of padding either side (the
+ * builder walks provider-local days one wider than the viewer's rail).
+ */
+function gridWindow(query: SlotQuery, now: number): { from: number; to: number } {
+	const DAY = 86_400_000;
+	const start = Math.max(query.from ?? now, now);
+	return { from: Math.min(start, now) - 2 * DAY, to: start + (query.days + 3) * DAY };
+}
+
+/** A public schedule page's window: a fortnight back (recent context) and three months ahead. */
+function pageWindow(now: number): { from: number; to: number } {
+	const DAY = 86_400_000;
+	return { from: now - 14 * DAY, to: now + 90 * DAY };
+}
+
+/**
+ * The owner a `@handle` names, through `org.get_profile_owner` (a private profile resolves to nobody).
+ * `undefined` when the database could not answer.
+ */
+async function profileOwnerOf(handle: string): Promise<ScheduleOwner | null | undefined> {
+	try {
+		const { data, error } = await getAnonClient().schema("org").rpc("get_profile_owner", { p_handle: handle });
+		if (error) return undefined;
+		const owner = data as { owner_type: ScheduleOwner["type"]; owner_id: string } | null;
+		return owner ? { type: owner.owner_type, id: owner.owner_id } : null;
+	} catch {
+		return undefined;
+	}
+}
+
+/** The schedule a listing books into: its team's when team-owned, else its seller's. */
+function listingScheduleOwner(catalog: Catalog, itemId: string): ScheduleOwner | null {
+	const blueprint = catalog.blueprintBySlug.get(itemId);
+	if (blueprint) {
+		return blueprint.owner_team_id
+			? { type: "team", id: blueprint.owner_team_id }
+			: { type: "user", id: blueprint.freelancer_profile_id };
+	}
+	const product = catalog.productBySlug.get(itemId);
+	if (product) {
+		return product.owner_team_id
+			? { type: "team", id: product.owner_team_id }
+			: { type: "user", id: product.owner_user_id };
+	}
+	return null;
+}
+
+function scheduleUnavailable<T>(): ServiceResult<T> {
+	return fail(503, { message: "The provider's schedule could not be read. Please try again." });
+}
+// #endregion
 
 /**
  * The sentence a refused slot is explained with.

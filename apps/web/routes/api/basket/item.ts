@@ -12,6 +12,7 @@ import {
 } from "@features/checkout/core/respond.ts";
 import { BasketBackendService } from "@server/services/finance/BasketBackendService.ts";
 import { basketQueryFromBody } from "@server/services/finance/basket-query.ts";
+import { readActor } from "@web/utils/api-session.ts";
 
 /**
  * `/api/basket/item` — one basket line.
@@ -22,11 +23,10 @@ import { basketQueryFromBody } from "@server/services/finance/basket-query.ts";
  *   address, booked slot, routed stage or seats.
  * - `DELETE` — remove a line ({@link RemoveBasketItemSchema}); soft server-side, nothing is destroyed.
  *
- * Thin: parse + Zod-validate (mapping issues to field errors) + resolve the acting context + delegate.
- * Every response is the SAME shape a `GET /api/basket` returns, so the client replaces its state
- * wholesale rather than patching a total by hand. No server capability guard — the Dev Context Switcher
- * must reach every persona; the fat service enforces the member gate and the deferred `finance.*` RLS
- * is the real gate.
+ * Thin: parse + Zod-validate (mapping issues to field errors) + resolve the acting context and session
+ * + delegate. Every response is the SAME shape a `GET /api/basket` returns, so the client replaces its
+ * state wholesale rather than patching a total by hand. The fat service writes as the signed-in
+ * caller, so `finance.*` RLS and its spend predicate are the gate.
  */
 
 /** Read + shape a JSON body, tolerating a DELETE that carries its id in the query string instead. */
@@ -45,9 +45,10 @@ export const handler = define.handlers({
 		const parsed = AddBasketItemSchema.safeParse(raw);
 		if (!parsed.success) return invalidPayload(parsed.error);
 		return toCheckoutResponse(
-			BasketBackendService.addItem(
+			await BasketBackendService.addItem(
 				parsed.data,
 				basketQueryFromBody(raw as Record<string, unknown>, context),
+				readActor(ctx),
 			),
 		);
 	},
@@ -59,9 +60,10 @@ export const handler = define.handlers({
 		const parsed = UpdateBasketItemSchema.safeParse(raw);
 		if (!parsed.success) return invalidPayload(parsed.error);
 		return toCheckoutResponse(
-			BasketBackendService.updateItem(
+			await BasketBackendService.updateItem(
 				parsed.data,
 				basketQueryFromBody(raw as Record<string, unknown>, context),
+				readActor(ctx),
 			),
 		);
 	},
@@ -73,7 +75,11 @@ export const handler = define.handlers({
 		const parsed = RemoveBasketItemSchema.safeParse(raw);
 		if (!parsed.success) return invalidPayload(parsed.error);
 		return toCheckoutResponse(
-			BasketBackendService.removeItem(parsed.data, basketQueryFromBody(raw, context)),
+			await BasketBackendService.removeItem(
+				parsed.data,
+				basketQueryFromBody(raw, context),
+				readActor(ctx),
+			),
 		);
 	},
 });

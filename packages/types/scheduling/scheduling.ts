@@ -253,6 +253,18 @@ export const CalendarScope = z.enum([
 export type CalendarScope = z.infer<typeof CalendarScope>;
 
 /**
+ * The instant a page was resolved against, in epoch ms — stamped by the SERVER on every page it builds.
+ *
+ * It is the week a calendar opens on and the clock its "Upcoming in 3 hours" / "Passed" labels and the
+ * reschedule lockout are measured by. It travels on the payload rather than being read from the
+ * client's clock because three things have to agree on one "now": the SSR paint, the hydrated island,
+ * and every state the server derived (an open ballot, a slot inside the notice window). A client
+ * clock disagrees with the first by however long the page took to arrive, and a page derived against
+ * a pinned reference clock by months.
+ */
+export const PageInstantSchema = z.number().int().nonnegative();
+
+/**
  * The project / channel calendar page (`/projects/[id]/calendar`, `/projects/[id]/[channel]/calendar`):
  * task deadlines, review milestones, and scheduled stage syncs derived from the engagement.
  */
@@ -268,6 +280,8 @@ export const CalendarPageSchema = z.object({
 	/** Whether the viewer may create entries by clicking / dragging the grid. */
 	canCreate: z.boolean(),
 	events: z.array(CalendarEventSchema),
+	/** The instant this page was resolved against. See {@link PageInstantSchema}. */
+	now: PageInstantSchema,
 });
 export type CalendarPage = z.infer<typeof CalendarPageSchema>;
 
@@ -293,6 +307,8 @@ export const SchedulePageSchema = z.object({
 	 * takes no calls, which is also the default for every pre-existing payload.
 	 */
 	callOffer: PublicCallOfferSchema.optional(),
+	/** The instant this page was resolved against. See {@link PageInstantSchema}. */
+	now: PageInstantSchema,
 });
 export type SchedulePage = z.infer<typeof SchedulePageSchema>;
 

@@ -1060,3 +1060,21 @@ CREATE POLICY "Owner detaches project references" ON projects.project_attachment
             AND p.owner_user_id = auth.uid ()
     )
 );
+
+-- --- project_required_skills: the public half ---
+--
+-- A PUBLIC, ACTIVE project advertises the skills it is recruiting for — that list is the whole point
+-- of publishing it. The participant policy above answers "may I see the project I work on"; this one
+-- answers "may a visitor see what an open project is asking for", with the same predicate every other
+-- public project table uses, so a draft's requirements stay as private as the draft.
+CREATE POLICY "Public projects advertise their required skills" ON projects.project_required_skills FOR
+SELECT TO anon, authenticated USING (
+        EXISTS (
+            SELECT 1
+            FROM projects.projects p
+            WHERE
+                p.id = project_required_skills.project_id
+                AND p.status = 'active'::project_status
+                AND p.visibility = 'public'::visibility
+        )
+    );

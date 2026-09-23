@@ -62,14 +62,36 @@
 	padding: var(--space-4) var(--space-4) var(--space-3);
 	border-block-end: var(--hairline);
 }
-.pjc__heading {
+.pjc__title {
 	flex: 1 1 auto;
+	min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.pjc__heading {
 	margin: 0;
 	font-size: var(--text-lg);
 	font-weight: var(--fw-medium);
 	line-height: var(--leading-snug);
 	color: var(--on-surface);
 }
+/*
+ * "Step 1 of 2 · Choose a type" — the Meta register (§A.4): the smallest step, uppercase, tracked
+ * out, and carried by size and case rather than by weight, so it recedes beneath the heading it sits
+ * under without competing with the body for the next level down.
+ */
+.pjc__step {
+	margin: 0;
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+}
+
 .pjc__close {
 	flex: none;
 	display: inline-flex;
@@ -112,6 +134,13 @@
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-5);
+}
+
+.pjc__lead {
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
 }
 
 .pjc__field {
@@ -179,6 +208,16 @@
 	}
 }
 
+/*
+ * On its own step a type card gets its whole sentence, which means a row rather than a column: three
+ * hints side by side inside a `--overlay-w-md` panel is ~165px each, which is a column of broken
+ * words. Stacked, the same three read at any width and need no reflow on a phone.
+ */
+.pjc__types--list {
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--space-3);
+}
+
 .pjc__type {
 	display: flex;
 	flex-direction: column;
@@ -216,7 +255,8 @@
  * §A.1.1 holds to AA rather than AAA. A tint leaves the label on `--on-surface` — 17:1 in light,
  * 14.9:1 in dark — and lets the CONTOUR carry the state, which is the channel with room to spare.
  */
-.pjc__type[aria-checked="true"] {
+.pjc__type[aria-checked="true"],
+.pjc__type[aria-current="true"] {
 	border-color: var(--primary);
 	background: color-mix(in srgb, var(--primary) var(--tint-subtle), transparent);
 }
@@ -235,7 +275,8 @@
 	transition: color var(--dur-fast) var(--ease-standard);
 }
 
-.pjc__type[aria-checked="true"] .pjc__type-glyph {
+.pjc__type[aria-checked="true"] .pjc__type-glyph,
+.pjc__type[aria-current="true"] .pjc__type-glyph {
 	color: var(--primary);
 }
 
@@ -243,6 +284,26 @@
 	font-size: var(--text-sm);
 	font-weight: var(--fw-medium);
 	line-height: var(--leading-snug);
+}
+
+.pjc__type--row {
+	flex-direction: row;
+	align-items: center;
+	gap: var(--space-4);
+	padding: var(--space-4);
+}
+
+.pjc__type-text {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.pjc__type-hint {
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
 }
 
 @media (prefers-reduced-motion: reduce) {

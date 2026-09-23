@@ -1,7 +1,7 @@
 import type { ComponentChildren } from "preact";
 import { resolveArchetype } from "./entity-archetype.ts";
 import ArticleTocLane from "../islands/ArticleTocLane.island.tsx";
-import { resolveViewPage } from "./view-ssr.ts";
+import { peekViewPage } from "./view-ssr.ts";
 import type { HrefContext } from "@features/explore/core/routing.ts";
 import type { UserContext } from "@projective/types/auth";
 import { LocalKeys } from "@web/utils/storage-keys.ts";
@@ -55,7 +55,7 @@ export function viewLaneFor(
 	const target = targetOf(url);
 	if (!target) return null;
 
-	const { view } = resolveViewPage(target.id);
+	const { view } = peekViewPage(target.id);
 	if (!view) return null;
 
 	// An article's lane is its table of contents — real navigation, and it stays a shell lane.
@@ -84,7 +84,7 @@ export function viewLaneFor(
 export function viewOwnsLaneSlot(url: URL): boolean {
 	const target = targetOf(url);
 	if (!target) return false;
-	return !!resolveViewPage(target.id).view;
+	return !!peekViewPage(target.id).view;
 }
 
 /**
@@ -108,7 +108,7 @@ export function viewLaneOptionsFor(
 ): { initial: number; min?: number; max?: number; storageKey: string } | undefined {
 	const target = targetOf(url);
 	if (!target) return undefined;
-	const { view } = resolveViewPage(target.id);
+	const { view } = peekViewPage(target.id);
 	if (!view || resolveArchetype(view) !== "article") return undefined;
 	return { initial: 328, storageKey: LocalKeys.VIEW_LANE_WIDTH };
 }

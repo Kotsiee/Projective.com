@@ -144,6 +144,30 @@
 	outline: none;
 	border-radius: var(--radius-xs);
 }
+
+/*
+ * The one line that stands where the live listings would be when the marketplace cannot be read.
+ * Unboxed body text (§B.4): a failed read is information, not a panel, and the two links are the
+ * whole of what a reader can do about it.
+ */
+.lp-notice {
+	padding-block: var(--space-7);
+}
+
+.lp-notice__text {
+	margin: 0;
+	max-inline-size: var(--measure);
+	margin-inline: auto;
+	text-align: center;
+	font-size: var(--text-base);
+	color: var(--text-secondary);
+}
+
+.lp-notice__link {
+	color: var(--on-surface);
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+}
 /* #endregion */
 
 /* #region Hero */

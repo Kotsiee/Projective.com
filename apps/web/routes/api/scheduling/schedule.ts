@@ -1,7 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { toSchedulingResponse } from "@features/calendar/core/respond.ts";
 import { viewerFromState } from "@features/calendar/core/viewer.ts";
-import { schedulingSimFromParams } from "@projective/types/scheduling";
+import { warmCatalog } from "@server/services/explore/live-catalog.ts";
 import { ScheduleBackendService } from "@server/services/scheduling/ScheduleBackendService.ts";
 
 /**
@@ -13,17 +13,15 @@ import { ScheduleBackendService } from "@server/services/scheduling/ScheduleBack
  * COUNT (§Part 1.4) and never the people in those seats.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
+		// The listing is resolved from the loaded discovery catalogue.
+		await warmCatalog();
 		const entityId = ctx.url.searchParams.get("entityId");
 		if (!entityId) {
 			return Response.json({ ok: false, message: "Missing entityId." }, { status: 400 });
 		}
 		return toSchedulingResponse(
-			ScheduleBackendService.entitySchedule(
-				{ entityId },
-				viewerFromState(ctx.state),
-				schedulingSimFromParams(ctx.url.searchParams),
-			),
+			await ScheduleBackendService.entitySchedule({ entityId }, viewerFromState(ctx.state)),
 		);
 	},
 });

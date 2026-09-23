@@ -85,3 +85,17 @@ CREATE INDEX IF NOT EXISTS idx_files_share_links_item
     WHERE item_id IS NOT NULL;
 
 -- #endregion
+
+-- #region Renditions + the media picker's library read
+-- The media picker lists a person's own LIBRARY images and videos, newest first — renditions
+-- (purpose <> 'library') are the pipeline's copies and never appear there. Partial on live library
+-- rows so the index covers exactly what the picker can return.
+CREATE INDEX IF NOT EXISTS idx_files_items_library
+    ON files.items (owner_user_id, created_at DESC)
+    WHERE purpose = 'library'::files.asset_purpose AND deleted_at IS NULL;
+
+-- "What was cut from this asset?" — the FK's cascade check, and the pipeline's reuse probe.
+CREATE INDEX IF NOT EXISTS idx_files_items_derived_from
+    ON files.items (derived_from_id)
+    WHERE derived_from_id IS NOT NULL;
+-- #endregion

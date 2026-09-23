@@ -249,5 +249,6 @@ export function findCalendarPage(
 				sim,
 			})
 		),
+		now: NOW,
 	};
 }

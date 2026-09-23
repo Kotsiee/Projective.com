@@ -5,7 +5,6 @@ import { Avatar } from "@projective/ui/display";
 import { Icon } from "@projective/ui/icons";
 import "../styles/service-booking.css";
 import { BookingService } from "../core/BookingService.ts";
-import { bookingSim } from "../core/booking-seam.ts";
 import { announce, currentOffer, openBookingPanel } from "../core/booking-state.ts";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
 import type { ContactActionKind, ServiceBookingOffer } from "@projective/types/services";
@@ -112,7 +111,7 @@ export default function ContactPopover(
 			handle: contact.value.handle,
 			subjectId: contact.value.subjectId,
 			message,
-		}, bookingSim());
+		});
 		if (!res.ok || !res.data) {
 			// The draft is deliberately KEPT on failure. A composer that eats what somebody typed is
 			// worse than one that refuses to open.

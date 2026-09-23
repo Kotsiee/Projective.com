@@ -36,17 +36,16 @@ export const calendarPage = signal<SchedulePage | null>(null);
  * The instant this surface treats as "now" — the week it opens on, and the clock the event modal
  * measures "Upcoming in 3 hours" / "Passed" and the reschedule lockout against.
  *
- * ⚠️ It is the SERVER's reference clock, hardcoded, because the payload has no field to carry it.
- * `ScheduleBackendService` derives every live-status and negotiation state against the fixtures'
- * fixed clock (`derive.ts` `NOW`), so the client's "now" has to be the same instant or the surface
- * contradicts itself: `Date.now()` here would put "Passed" beside an open ballot the server had just
- * attached, which is worse than a stale week. One clock for the whole temporal frame, or none.
+ * ⚠️ It is the SERVER's reference clock, hardcoded. The personal agenda is still derived against
+ * the fixtures' fixed clock (`derive.ts` `NOW`), so the client's "now" has to be that instant or the
+ * surface contradicts itself: `Date.now()` here would put "Passed" beside an open ballot the server
+ * had just attached, which is worse than a stale week. One clock for the whole temporal frame.
  *
- * The honest fix is a server-stamped field on the payload — `SchedulePage.now` (or `generatedAt`) —
- * at which point this constant is deleted and every reader takes the server's instant, on the
- * fixtures AND on the live path. That is a `@projective/types/scheduling` change and is recorded
- * rather than half-applied here. The two older calendar surfaces hold the same constant for the
- * same reason (`ProjectCalendar.island.tsx`, `ScheduleView.island.tsx`).
+ * Every page now carries that instant as `SchedulePage.now`, and the project calendar and the public
+ * schedule surfaces read it from there. This hub cannot yet, because four hydration roots read
+ * {@link calendarFocus} and three of them render before the body island has a page to take it from —
+ * so the constant stays until the personal agenda is read live, at which point every region seeds
+ * from the page's `now` and this is deleted.
  */
 export const CALENDAR_REFERENCE = Date.parse("2026-07-17T16:20:00Z");
 

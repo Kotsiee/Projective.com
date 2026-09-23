@@ -3,3 +3,4 @@ export * from "./items.ts";
 export * from "./discovery.ts";
 export * from "./facets.ts";
 export * from "./view.ts";
+export * from "./stored.ts";

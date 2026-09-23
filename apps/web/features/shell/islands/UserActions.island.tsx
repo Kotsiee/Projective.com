@@ -28,6 +28,7 @@ import { DISPLAY_CURRENCIES } from "@projective/types/finance";
 import { useEffectiveContext } from "@web/features/shell/core/effective-context.ts";
 import { AuthService } from "@web/features/auth/core/AuthService.ts";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
+import { onAvatarChanged } from "@web/utils/avatar-sync.ts";
 
 // #region Popover sub-views + presence model
 /** The states the account popover's `ui-popover__content` can render (task §2 + the currency picker). */
@@ -148,6 +149,14 @@ export default function UserActions(
 			alive = false;
 		};
 	}, []);
+
+	// A profile photo changed on THIS page (the owner's editor broadcasts it): show the new face now
+	// rather than on the next navigation.
+	useEffect(() =>
+		onAvatarChanged(({ userId, url }) => {
+			const current = account.peek();
+			if (current && current.userId === userId) account.value = { ...current, avatar: url };
+		}), []);
 
 	// Live effective context (SSR base → DEV Context Switcher override). Every capability-gated surface
 	// below — the Create menu, the role badge, the Become-a-Freelancer CTA, the context switcher's

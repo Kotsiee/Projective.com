@@ -26,7 +26,8 @@ build storage paths through it rather than hardcoding bucket ids or path strings
 | `invoices`      | Private     | 20 MiB · pdf     | `{owner_id}`       | Wallet statements / invoices / receipts.                                              |
 | `verification`  | **Service** | 20 MiB · img,pdf | `{subject_id}`     | KYC / KYB identity documents — service-role only.                                     |
 | `public_assets` | Public      | 10 MiB · img     | `{owner_id}`       | Misc public assets (general/legacy).                                                  |
-| `avatars`       | Public      | 5 MiB · img      | `{entity_id}`      | Profile / team / business / org branding.                                             |
+| `avatars`       | Public      | 5 MiB · img      | `{entity_id}`      | Profile photos (user / team / business / org). **Service-role write only.**           |
+| `showcase`      | Public      | 50 MiB · img,vid | `{entity_id}`      | A profile's six-slot showcase — stills and full-length videos. **Service-role write.** |
 | `catalogue`     | Public      | 10 MiB · img     | `{seller_id}`      | Marketplace storefront media (products, service showcase).                            |
 
 ---
@@ -35,14 +36,40 @@ build storage paths through it rather than hardcoding bucket ids or path strings
 
 ### `avatars` (Public)
 
-Profile branding, edge-cached. Public read; the owning entity writes its own prefix.
+Profile photos, edge-cached. Public read; **written only by the media pipeline** (service role) —
+there is deliberately no `authenticated` write policy (2026-09-22). Every object here is served to
+the whole internet, so every object must have been through the quarantine scan and re-encoded by the
+pipeline; the former "Owners can write their branding assets" policy let any signed-in user PUT an
+arbitrary, unscanned file straight into a public bucket over the Storage API.
 
 ```text
 avatars/
-├── users/[user_id]/{avatar|banner}.webp
-├── teams/[team_id]/{avatar|banner}.webp
-├── businesses/[business_id]/{logo|banner}.webp
-└── organisations/[org_id]/{logo|banner}.webp
+└── [entity_id]/                          -- the user, team, business or organisation it belongs to
+    ├── avatar/[rendition_id]/
+    │   ├── full.webp                     -- the cropped 1:1 rendition (≤ 2048 px)
+    │   └── {sm|md|lg}.webp               -- 96 / 256 / 1024 px tiers (files.item_variants)
+    └── avatar.{jpg|webp|…}               -- a seeded development photo (no tiers)
+```
+
+A rendition is written by `renditionLocation("avatars", ownerId, renditionId, name)`. (The older
+`avatarLocation(entity, entityId, name)` builder emits `{entity}/{entity_id}/…`, which does **not**
+put the anchor first; nothing calls it.)
+
+### `showcase` (Public)
+
+A profile's six-slot showcase — the hero carousel, and slot 1 as the thumbnail every card of the
+profile leads with. Stills **and** full-length videos, which is why it is not `avatars` (images
+only, 5 MiB). Public read (`"Showcase media is viewable by everyone"`); written only by the media
+pipeline, exactly like `avatars`. 50 MiB is the platform's global object ceiling, so a larger bucket
+limit would be unenforceable.
+
+```text
+showcase/
+└── [entity_id]/
+    └── showcase/[rendition_id]/
+        ├── full.webp                     -- a still, cropped to 16:10 (≤ 3200 px)
+        ├── video.{mp4|webm|mov}          -- a video slot keeps its bytes as uploaded
+        └── {sm|md|lg}.webp               -- 480 / 1280 / 2400 px tiers (a video's are its poster)
 ```
 
 ### `catalogue` (Public)
@@ -98,9 +125,15 @@ Owner-only storage for work-in-progress and non-project drafts.
 ```text
 personal/
 └── users/[user_id]/
+    ├── library/[asset_id]/               -- the media library: an admitted upload's ORIGINAL…
+    │   ├── [name].{jpg|png|webp|mp4|…}
+    │   └── {sm|md|lg}.webp               -- …and its WebP tiers (a video's are its poster)
     ├── drafts/{messages|projects|templates}/[draft_id]/file.xyz
     └── templates/[template_id]/bundle.zip
 ```
+
+The library original stays **private**: what a profile shows publicly is a rendition cut from it
+into `avatars` or `showcase`, never the original itself.
 
 ### `workspace` (Private)
 
@@ -173,13 +206,44 @@ verification/
 ### `quarantine` (Restricted)
 
 The entry point for **all** user uploads. Files are moved to their target bucket only after passing
-system checks (AV scan + MIME validation).
+system checks (AV scan + MIME validation). The INSERT policy checks the path's first segment against
+`auth.uid()` as well as `owner`, so a user cannot write under another user's prefix.
 
 ```text
 quarantine/
 └── [user_id]/
     └── [upload_session_id]/original_file.xyz
 ```
+
+#### The upload pipeline
+
+The media library (`/[handle]/edit` → the media picker → `/api/media/*`) is the first surface wired
+end to end. `packages/backend/services/media/library.ts` runs it:
+
+1. **Declare** (`POST /api/media/upload-init`, the caller's own session): a `files.items` row at
+   `status = 'pending_upload'`, `bucket_id = 'quarantine'`, `purpose = 'library'` — the only shape
+   `files.fn_guard_pipeline_columns` lets a client insert — and a signed upload URL for
+   `quarantine/{user_id}/{asset_id}/{name}` (`x-upsert: false`). Size and type are refused up front
+   against `LIBRARY_IMAGE_MAX_BYTES` (25 MiB) / `LIBRARY_VIDEO_MAX_BYTES` (50 MiB).
+2. **Claim** (`POST /api/media/upload-complete`): the caller's session proves the row is theirs, then
+   the service role moves it `pending_upload → scanning` with a conditional update — exactly one
+   completion can win.
+3. **Sniff**: the first bytes are matched against magic numbers (`sniffBytes`), never the declared
+   type or extension. An executable or markup file (an SVG named `.jpg`, say) is marked
+   `quarantined` and its object deleted; anything else unusable is `error`.
+4. **Decode + tier**: the picture is decoded in a Worker (decoding IS the proof it is the picture it
+   claims to be) and the three WebP tiers are encoded, never upscaled. A video's tiers are its
+   poster still, which the browser extracts and sends; the server never decodes video.
+5. **Admit**: the original moves to `personal/users/{user_id}/library/{asset_id}/…`, the tiers beside
+   it, `files.item_variants` rows are written, the row becomes `uploaded`, and the quarantine object
+   is removed. A storage or pipeline failure puts the row back to `pending_upload` so a retry can
+   finish it; nothing half-written is left behind.
+
+A **rendition** (`POST /api/profile/{handle}/media`) is cut server-side from the library ORIGINAL
+with the shared crop model (`@projective/types/files` `crop.ts`, the same arithmetic the browser
+editor previews), re-encoded as a fresh WebP — which also strips EXIF and anything a polyglot could
+smuggle — and written to `avatars` or `showcase` with its tiers. It is then attached by
+`org.set_profile_avatar` / `org.save_showcase`, which check that the file is the owner's own.
 
 ---
 

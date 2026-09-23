@@ -4,6 +4,11 @@ import { resetWriteStore } from "./write-store.ts";
 import { findProjectDetail } from "./detail-fixtures.ts";
 import { CreateProjectSchema } from "@projective/types/projects";
 import type { ReadActor } from "../read-actor.ts";
+import { JUNO_HIRE_INTAKE, stubProfileOverview } from "../profile/test-doubles.ts";
+
+// The seller's profile is a LIVE read; these tests run without a database, so `@juno` — the seller
+// the hire-driven cases invite — is supplied by a test double with the intake the hires answer.
+stubProfileOverview({ juno: { hireIntake: JUNO_HIRE_INTAKE } });
 
 /**
  * invite-lifecycle_test — the client's management of the invitations they sent, exercised through the

@@ -8,8 +8,6 @@ import {
 	DEV_BASKET_OWNERS,
 	DEV_BILLING_CONTEXTS,
 	DEV_BUYER_DETAILS,
-	DEV_CALL_OFFERS,
-	DEV_COHORT_CAPACITIES,
 	DEV_CONFERENCING,
 	DEV_CONNECTION_STATES,
 	DEV_DEDUP_STATES,
@@ -26,7 +24,6 @@ import {
 	DEV_MESSAGING_ROLES,
 	DEV_MIC_PERMISSIONS,
 	DEV_PAYMENT_PROVIDERS,
-	DEV_PIPELINE_DRAFTS,
 	DEV_PROJECT_ONBOARDINGS,
 	DEV_PROJECT_TYPES,
 	DEV_ROLES,
@@ -34,7 +31,6 @@ import {
 	DEV_SAVED_CARDS,
 	DEV_SERVICE_TYPES,
 	DEV_SESSION_BOOKINGS,
-	DEV_SLOT_AVAILABILITIES,
 	DEV_SPEND_LIMITS,
 	DEV_STAGE_ASSIGNMENTS,
 	DEV_STORAGE_PROVIDERS,
@@ -392,48 +388,6 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.micPermission}
 						disabled={!o.enabled}
 						onChange={(micPermission) => patchDevContext({ micPermission })}
-					/>
-				</Field>
-
-				<div class="dev-ctx__grouphead">Service booking</div>
-
-				<Field label="Discovery calls" hint="Contact Me menu">
-					<Segment
-						name="Discovery calls"
-						options={DEV_CALL_OFFERS}
-						value={o.callOffer}
-						disabled={!o.enabled}
-						onChange={(callOffer) => patchDevContext({ callOffer })}
-					/>
-				</Field>
-
-				<Field label="Cohort seats" hint="capacity gate">
-					<Segment
-						name="Cohort seats"
-						options={DEV_COHORT_CAPACITIES}
-						value={o.cohortCapacity}
-						disabled={!o.enabled}
-						onChange={(cohortCapacity) => patchDevContext({ cohortCapacity })}
-					/>
-				</Field>
-
-				<Field label="Pipeline draft" hint="Add ⇄ Open project">
-					<Segment
-						name="Pipeline draft"
-						options={DEV_PIPELINE_DRAFTS}
-						value={o.pipelineDraft}
-						disabled={!o.enabled}
-						onChange={(pipelineDraft) => patchDevContext({ pipelineDraft })}
-					/>
-				</Field>
-
-				<Field label="Availability" hint="slot picker">
-					<Segment
-						name="Availability"
-						options={DEV_SLOT_AVAILABILITIES}
-						value={o.slotAvailability}
-						disabled={!o.enabled}
-						onChange={(slotAvailability) => patchDevContext({ slotAvailability })}
 					/>
 				</Field>
 

@@ -103,6 +103,14 @@
     min-inline-size: 0;
 }
 
+/* A plain fact line — meta register, never a pill (§B.11). */
+.pf-context__place {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug, 1.35);
+    color: var(--text-secondary);
+}
+
 .pf-tags {
     display: flex;
     flex-wrap: wrap;

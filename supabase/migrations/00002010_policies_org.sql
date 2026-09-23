@@ -12,20 +12,16 @@ SELECT TO public USING (
         auth.role () = 'authenticated'
     );
 
-CREATE POLICY "Users can create their own profile" ON org.users_public FOR
-INSERT
-    TO public
-WITH
-    CHECK (
-        user_id = auth.uid ()
-        OR security.is_admin ()
-    );
-
-CREATE POLICY "Users can update their own profile" ON org.users_public FOR
-UPDATE TO public USING (
-    user_id = auth.uid ()
-    OR security.is_admin ()
-);
+-- NO client INSERT or UPDATE policy on org.users_public, deliberately (2026-09-22). The row carries
+-- the handful of fields an owner edits (name, headline, story, location, visibility) beside columns
+-- nobody may set about themselves — `rating_average`/`rating_count`, the project counters,
+-- `is_freelancer`/`is_operator`/`has_team`/`has_business`, `dob` — and a row-level policy cannot
+-- tell one column from another: "Users can update their own profile" let any signed-in user PATCH
+-- their own rating to 5.00 over PostgREST. Every legitimate writer is already a SECURITY DEFINER
+-- function (provision_user_profile / complete_onboarding / enable_freelancer_profile /
+-- set_operator_mode / create_team / create_business, the rating and counter triggers), and profile
+-- edits go through org.save_profile, which names every column it touches. With no write policy the
+-- table is default-deny to a client, which is the whole point.
 
 CREATE POLICY "Users can view their own emails" ON org.user_emails FOR
 SELECT TO public USING (
@@ -68,14 +64,10 @@ SELECT TO public USING (
         OR security.is_admin ()
     );
 
-CREATE POLICY "Users can create teams" ON org.teams FOR
-INSERT
-    TO public
-WITH
-    CHECK (
-        owner_user_id = auth.uid ()
-        OR security.is_admin ()
-    );
+-- NO client INSERT policy on org.teams (2026-09-23). A team is created by org.create_team (definer),
+-- which also opens its treasury wallet; a raw client INSERT skipped that and could set
+-- `subscription_tier`, `member_limit` and `treasury_wallet_id` at birth, where the UPDATE-only
+-- immutability guard (00001895) cannot reach.
 
 CREATE POLICY "Team owners can update their teams" ON org.teams FOR
 UPDATE TO public USING (
@@ -97,20 +89,12 @@ SELECT TO public USING (
         OR security.is_admin ()
     );
 
-CREATE POLICY "Users can create their own freelancer profile" ON org.freelancer_profiles FOR
-INSERT
-    TO public
-WITH
-    CHECK (
-        user_id = auth.uid ()
-        OR security.is_admin ()
-    );
-
-CREATE POLICY "Users can update their own freelancer profile" ON org.freelancer_profiles FOR
-UPDATE TO public USING (
-    user_id = auth.uid ()
-    OR security.is_admin ()
-);
+-- NO client INSERT or UPDATE policy here either, for the org.users_public reason and with higher
+-- stakes: this row holds `kyc_status`, `kyc_tier`, `payout_ready` and `max_workload_intensity` —
+-- the payout-readiness gate and the capacity cap — beside the one field an owner edits (`skills`,
+-- written through org.save_profile). The old UPDATE policy let a freelancer mark themselves
+-- KYC-verified and payout-ready over PostgREST. The row is created by enable_freelancer_profile /
+-- provision_user_profile (definers) and maintained by definer triggers.
 
 
 -- --- from 0211_business.sql ---
@@ -224,12 +208,10 @@ SELECT TO public USING (
         OR security.is_admin ()
     );
 
--- Any authenticated user may create an organisation they own.
-CREATE POLICY "Users can create organisations they own" ON org.organisations FOR
-INSERT
-    TO public
-WITH
-    CHECK (owner_user_id = auth.uid ());
+-- NO client INSERT policy on org.organisations (2026-09-23). An organisation is provisioned by
+-- public.create_organisation (service role) with its owner membership in the same transaction; a raw
+-- client INSERT could set `verification_level` and `status` at birth, where the UPDATE-only
+-- immutability guard (00001895) cannot reach.
 
 -- Owner or admin members may update.
 CREATE POLICY "Owners and admins can update the organisation" ON org.organisations FOR
@@ -340,3 +322,41 @@ WITH
 CREATE POLICY "Users unfollow their own follows" ON org.profile_follows FOR DELETE TO authenticated USING (
     follower_user_id = auth.uid ()
 );
+
+
+-- =============================================================================
+-- PROFILE DETAIL — the Experience ledger, languages, the showcase and the owner's switches
+--
+-- org.education_entries, org.experience_entries and org.user_languages were created with RLS OFF
+-- under 00002500's `GRANT ALL ... TO anon, authenticated` (Decision #102(a)) — anyone, signed in or
+-- not, could rewrite anyone's career history. RLS is now on (00002001 for those three; below, until
+-- that list settles, for the three new tables — ENABLE is idempotent, so the duplication is
+-- harmless).
+--
+-- READ follows the profile: a row is visible exactly when its profile is (org.fn_profile_visible —
+-- public/unlisted, or the caller manages it). WRITE has no client policy at all: org.save_profile
+-- and org.save_showcase are the only writers, because they validate what a policy cannot (a year's
+-- shape, an https-only credential link, that slot 1 is an image, that a certification keeps its
+-- platform verification only while its name and issuer are unchanged).
+-- =============================================================================
+ALTER TABLE org.certifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE org.profile_showcase_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE org.profile_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Education follows its profile" ON org.education_entries FOR
+SELECT TO authenticated, anon USING (org.fn_profile_visible ('user', user_id));
+
+CREATE POLICY "Experience follows its profile" ON org.experience_entries FOR
+SELECT TO authenticated, anon USING (org.fn_profile_visible ('user', user_id));
+
+CREATE POLICY "Languages follow their profile" ON org.user_languages FOR
+SELECT TO authenticated, anon USING (org.fn_profile_visible ('user', user_id));
+
+CREATE POLICY "Certifications follow their profile" ON org.certifications FOR
+SELECT TO authenticated, anon USING (org.fn_profile_visible ('user', user_id));
+
+CREATE POLICY "Showcase follows its profile" ON org.profile_showcase_items FOR
+SELECT TO authenticated, anon USING (org.fn_profile_visible (owner_type, owner_id));
+
+CREATE POLICY "Profile settings follow their profile" ON org.profile_settings FOR
+SELECT TO authenticated, anon USING (org.fn_profile_visible (owner_type, owner_id));

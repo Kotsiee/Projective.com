@@ -101,9 +101,12 @@ REVOKE EXECUTE ON FUNCTION public.custom_access_token_hook(jsonb) FROM authentic
 
 -- --- from 20260723091000_finance_verification_kyc.sql ---
 
-GRANT EXECUTE ON FUNCTION finance.fn_freelancer_payout_ready(uuid) TO authenticated;
+-- Service role only. Both take ANY subject id, and once `finance` is exposed to PostgREST (00002500)
+-- a client grant would let any signed-in account ask whether any other person has cleared KYC or any
+-- business KYB. Nothing in the database calls them as a client: every caller is SECURITY DEFINER.
+GRANT EXECUTE ON FUNCTION finance.fn_freelancer_payout_ready(uuid) TO service_role;
 
-GRANT EXECUTE ON FUNCTION finance.fn_business_kyb_verified(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.fn_business_kyb_verified(uuid) TO service_role;
 
 
 -- --- from 20260723092000_finance_payment_methods_money_movement.sql ---
@@ -299,21 +302,27 @@ GRANT EXECUTE ON FUNCTION org.fn_record_mastery(org.standing_subject, uuid, org.
 
 -- --- from 20260724113000_entitlements_allowances_enforcement.sql ---
 
+-- The pure mapping and the Standing rung stay client-callable: the rung is shown publicly on a
+-- profile, and the mapping discloses nothing. The rest are SERVICE ROLE ONLY. Each takes ANY subject,
+-- and with `finance` exposed to PostgREST (00002500) a client grant would hand any signed-in account
+-- another subject's plan, usage counters, allowance and — worst — negotiated commission and platform
+-- fee. Nothing in the database calls them as a client (every caller is SECURITY DEFINER); a surface
+-- that needs the viewer's OWN figures should get a self-scoped wrapper, not a subject argument.
 GRANT EXECUTE ON FUNCTION finance.fn_audience_for(text) TO authenticated;
 
-GRANT EXECUTE ON FUNCTION finance.fn_active_plan(text, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.fn_active_plan(text, uuid) TO service_role;
 
 GRANT EXECUTE ON FUNCTION finance.fn_subject_standing_level(text, uuid) TO authenticated;
 
-GRANT EXECUTE ON FUNCTION finance.fn_effective_limit(text, uuid, finance.entitlement_key) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.fn_effective_limit(text, uuid, finance.entitlement_key) TO service_role;
 
-GRANT EXECUTE ON FUNCTION finance.fn_has_entitlement(text, uuid, finance.entitlement_key) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.fn_has_entitlement(text, uuid, finance.entitlement_key) TO service_role;
 
-GRANT EXECUTE ON FUNCTION finance.fn_effective_commission_bp(text, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.fn_effective_commission_bp(text, uuid) TO service_role;
 
-GRANT EXECUTE ON FUNCTION finance.fn_effective_platform_fee_bp(text, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.fn_effective_platform_fee_bp(text, uuid) TO service_role;
 
-GRANT EXECUTE ON FUNCTION finance.fn_current_allowance(text, uuid, finance.entitlement_key) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.fn_current_allowance(text, uuid, finance.entitlement_key) TO service_role;
 
 REVOKE ALL ON FUNCTION finance.fn_consume_allowance(text, uuid, integer, finance.entitlement_key, text, text, uuid) FROM public;
 
@@ -323,9 +332,9 @@ GRANT EXECUTE ON FUNCTION finance.fn_consume_allowance(text, uuid, integer, fina
 
 GRANT EXECUTE ON FUNCTION finance.fn_refund_allowance(text, uuid, integer, finance.entitlement_key, text, text, uuid) TO service_role;
 
-GRANT EXECUTE ON FUNCTION finance.fn_footprint_usage(text, uuid, finance.entitlement_key) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.fn_footprint_usage(text, uuid, finance.entitlement_key) TO service_role;
 
-GRANT EXECUTE ON FUNCTION finance.fn_footprint_remaining(text, uuid, finance.entitlement_key) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.fn_footprint_remaining(text, uuid, finance.entitlement_key) TO service_role;
 
 
 -- --- finance: basket, wishlist & saved cards ---
@@ -347,6 +356,76 @@ GRANT EXECUTE ON FUNCTION finance.fn_can_move_wallet_funds(uuid) TO authenticate
 REVOKE ALL ON FUNCTION finance.simulate_wallet_transaction(uuid, uuid, bigint, text, text) FROM public;
 
 GRANT EXECUTE ON FUNCTION finance.simulate_wallet_transaction(uuid, uuid, bigint, text, text) TO authenticated;
+
+-- The owner-capability predicate the payout-schedule, payment-method and saved-card policies call
+-- (00002013). A policy expression runs as the invoking role, so it must be executable by it.
+GRANT EXECUTE ON FUNCTION finance.fn_owner_capability(text, uuid, finance.vault_capability) TO authenticated;
+
+-- The checkout's identity read (00001210 §8). Both answer only about the caller and the entities the
+-- caller is a member of. `fn_purchase_owner_json` is their shared body and is NOT granted: a definer
+-- calls it as its owner, and exposing it would let a client skip the anonymous-caller guard.
+GRANT EXECUTE ON FUNCTION finance.get_purchase_owner(text, uuid) TO authenticated;
+
+GRANT EXECUTE ON FUNCTION finance.list_purchase_owners() TO authenticated;
+
+-- One typed code's worth (00001210 §9). The table itself stays unreadable: this answers for the one
+-- code the buyer typed and never lists the book.
+GRANT EXECUTE ON FUNCTION finance.resolve_promo_code(text) TO authenticated;
+
+-- A business's invoicing terms (00001210 §10) — gated inside on manage_billing and, for the monthly
+-- mode, on KYB verification.
+GRANT EXECUTE ON FUNCTION finance.set_invoicing_terms(text, uuid, text, integer) TO authenticated;
+
+-- Paying a basket from the wallet (00001210 §11). The ONE money-moving function a client may call:
+-- it authorises the caller itself (fn_can_manage_basket, KYB, spend limit), re-prices every line, and
+-- moves money only through the service-role primitives it calls as its owner.
+GRANT EXECUTE ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text) TO authenticated;
+
+
+-- --- finance: no function is an API endpoint by default (the move off fixtures, 2026-09-23) ---
+-- `finance` now has schema usage (00002500), and Postgres grants EXECUTE on every function to PUBLIC
+-- by default. Until now nothing could reach them, because nobody had usage on the schema; from here
+-- that default would make every finance function callable over the API. The dangerous ones are the
+-- ledger and escrow PRIMITIVES — they move money and check nothing about who is asking, because the
+-- guarded doors that call them (projects.fund_stage, complete_ticket, approve_stage, the claim path…)
+-- do the checking and run them as their owner. Reachable directly, `rpc/fn_wallet_credit` would credit
+-- any wallet with any amount.
+--
+-- So EXECUTE is revoked from PUBLIC and `anon` on EVERY finance function, and on future ones. The
+-- explicit grants to `authenticated` above survive that: they are the predicates the RLS policies call
+-- and the two public resolvers. Every SQL caller of a primitive is SECURITY DEFINER, so none of this
+-- changes anything that works today. The service role — the backend's trusted door — keeps them all.
+REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA finance FROM PUBLIC, anon;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA finance REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA finance TO service_role;
+
+-- …except the simulator, whose EXECUTE belongs to `authenticated` alone (the region above explains
+-- why): the blanket grant just handed it to the service role, so take that back here.
+REVOKE EXECUTE ON FUNCTION finance.simulate_wallet_transaction(uuid, uuid, bigint, text, text) FROM service_role;
+
+-- Stated per primitive as well, so no client role can be found holding one even if a broad grant to
+-- `authenticated` ever lands above this line.
+REVOKE ALL ON FUNCTION finance.fn_wallet_credit(uuid, text, text, bigint, text, text, uuid) FROM authenticated;
+
+REVOKE ALL ON FUNCTION finance.fn_wallet_debit(uuid, text, text, bigint, text, text, uuid) FROM authenticated;
+
+REVOKE ALL ON FUNCTION finance.fn_hold_ticket_escrow(uuid) FROM authenticated;
+
+REVOKE ALL ON FUNCTION finance.fn_release_ticket_escrow(uuid) FROM authenticated;
+
+REVOKE ALL ON FUNCTION finance.fn_refund_ticket_escrow(uuid) FROM authenticated;
+
+REVOKE ALL ON FUNCTION finance.fn_fair_exit_release(uuid, integer) FROM authenticated;
+
+REVOKE ALL ON FUNCTION finance.fn_split_team_payout(uuid, uuid, bigint, text) FROM authenticated;
+
+REVOKE ALL ON FUNCTION finance.fn_generate_consolidated_invoice(uuid, timestamptz, timestamptz) FROM authenticated;
+
+REVOKE ALL ON FUNCTION finance.fn_check_spending_limit(uuid, uuid, bigint) FROM authenticated;
+
+REVOKE ALL ON FUNCTION finance.fn_seed_business_wallet() FROM authenticated;
 
 
 -- --- files: asset management ---
@@ -403,3 +482,84 @@ GRANT EXECUTE ON FUNCTION comms.add_dm_thread_members(uuid, uuid[]) TO authentic
 -- one reachable door is `projects.remove_project_member` (00001130), a DEFINER function whose
 -- owner still executes it after this revoke, and which checks project ownership first.
 REVOKE ALL ON FUNCTION projects.release_ticket_to_backlog(uuid) FROM public, anon, authenticated;
+
+
+-- --- the public profile read + owner write path (00001040) and the media projection (00001160) ---
+--
+-- Internal predicates are revoked from PUBLIC: they are called by the definer functions below (as
+-- their owner) and never need to be reachable as an RPC. org.fn_profile_visible is the exception —
+-- it IS the SELECT policy on the profile detail tables, and a policy expression runs as the
+-- invoking role, so it must stay executable by anon and authenticated (the files.fn_can_read rule).
+
+REVOKE ALL ON FUNCTION org.fn_profile_manages(text, uuid) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION org.fn_resolve_profile(text) FROM public, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION org.fn_profile_visible(text, uuid) TO anon, authenticated, service_role;
+
+-- The reads: a guest reads a public profile exactly as a member does.
+GRANT EXECUTE ON FUNCTION org.get_profile_view(text) TO anon, authenticated, service_role;
+
+GRANT EXECUTE ON FUNCTION org.get_profile_experience(text) TO anon, authenticated, service_role;
+
+GRANT EXECUTE ON FUNCTION org.get_profile_reviews(text, integer) TO anon, authenticated, service_role;
+
+GRANT EXECUTE ON FUNCTION org.get_profile_roster(text) TO anon, authenticated, service_role;
+
+GRANT EXECUTE ON FUNCTION org.get_profile_portfolio(text) TO anon, authenticated, service_role;
+
+GRANT EXECUTE ON FUNCTION org.get_profile_past_projects(text) TO anon, authenticated, service_role;
+
+GRANT EXECUTE ON FUNCTION org.get_profile_owner(text) TO anon, authenticated, service_role;
+
+-- Identity cards are read by signed-in surfaces (rosters, message senders, pickers).
+REVOKE ALL ON FUNCTION org.get_party_cards(uuid[]) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION org.get_party_cards(uuid[]) TO authenticated, service_role;
+
+-- The owner write path: a signed-in caller only; each function checks the caller manages the profile.
+REVOKE ALL ON FUNCTION org.can_manage_profile(text, uuid) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION org.can_manage_profile(text, uuid) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION org.save_profile(text, uuid, jsonb) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION org.save_profile(text, uuid, jsonb) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION org.set_profile_avatar(text, uuid, uuid) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION org.set_profile_avatar(text, uuid, uuid) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION org.save_showcase(text, uuid, jsonb) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION org.save_showcase(text, uuid, jsonb) TO authenticated, service_role;
+
+-- The media projection. The single-item form is internal to the definer reads; the batch form is
+-- the door other readers use, and returns nothing that is not already world-readable.
+REVOKE ALL ON FUNCTION files.fn_public_media_ref(uuid) FROM public, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION files.fn_public_media_ref(uuid) TO service_role;
+
+GRANT EXECUTE ON FUNCTION files.get_public_media(uuid[]) TO anon, authenticated, service_role;
+
+REVOKE ALL ON FUNCTION files.fn_guard_pipeline_columns() FROM public;
+
+-- The owner's Availability editor (00001510). INVOKER: the scheduling policies are the gate.
+REVOKE ALL ON FUNCTION scheduling.save_owner_availability(scheduling.owner_type, uuid, jsonb) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION scheduling.save_owner_availability(scheduling.owner_type, uuid, jsonb) TO authenticated, service_role;
+
+-- The booking reads and the one call-request write (00001520). `fn_schedule_host` is internal to the
+-- definer functions; the free/busy read is public for a published schedule; a call request needs a
+-- signed-in requester.
+REVOKE ALL ON FUNCTION scheduling.fn_schedule_host(uuid) FROM public, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION scheduling.fn_schedule_host(uuid) TO service_role;
+
+REVOKE ALL ON FUNCTION scheduling.get_free_busy(uuid, timestamptz, timestamptz) FROM public;
+
+GRANT EXECUTE ON FUNCTION scheduling.get_free_busy(uuid, timestamptz, timestamptz) TO anon, authenticated, service_role;
+
+REVOKE ALL ON FUNCTION scheduling.request_discovery_call(uuid, scheduling.call_type, timestamptz, timestamptz, text, text, text, uuid) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION scheduling.request_discovery_call(uuid, scheduling.call_type, timestamptz, timestamptz, text, text, text, uuid) TO authenticated, service_role;

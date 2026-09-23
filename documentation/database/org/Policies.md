@@ -23,41 +23,47 @@ layer.
 
 ### `org.users_public`
 
-Controls visibility of basic user identity.
+Controls visibility of basic user identity. **There is no client write policy.**
 
 ```sql
 -- SELECT: Any authenticated user can view public profiles
 CREATE POLICY "Any authenticated user can view public profiles" 
 ON org.users_public FOR SELECT TO public 
 USING (auth.role() = 'authenticated');
-
--- INSERT/UPDATE: Restricted to the user themselves or an admin
-CREATE POLICY "Users can manage their own profile" 
-ON org.users_public FOR ALL TO public 
-USING (user_id = auth.uid() OR security.is_admin());
 ```
+
+The row holds the few fields an owner edits (name, headline, story, location, visibility) beside
+columns nobody may set about themselves — `rating_average`/`rating_count`, the project counters,
+`is_freelancer`/`is_operator`/`has_team`/`has_business`, `dob`, `avatar_file_id`. A row-level
+policy cannot tell one column from another, so the former own-row `FOR ALL` policy let any signed-in
+user PATCH their own rating to 5.00. Every legitimate writer is a `SECURITY DEFINER` function:
+provisioning and onboarding, `org.save_profile` (the profile editor — it names every column it
+touches), `org.set_profile_avatar` (checks the file is the caller's own), and the rating/counter
+triggers. Reading another person's name and photo goes through `org.get_party_cards`.
 
 ### `org.freelancer_profiles`
 
-Protects seller-specific data and professional settings.
+Protects seller-specific data and professional settings. **SELECT only, owner or admin.**
 
 ```sql
--- ALL: Managed by the profile owner or an administrator
-CREATE POLICY "Users can manage their own freelancer profile" 
-ON org.freelancer_profiles FOR ALL TO public 
+CREATE POLICY "Users can view their own freelancer profile"
+ON org.freelancer_profiles FOR SELECT TO public
 USING (user_id = auth.uid() OR security.is_admin());
 ```
 
+No client INSERT or UPDATE policy, for the `users_public` reason with higher stakes: the row holds
+`kyc_status`, `kyc_tier`, `payout_ready` and `max_workload_intensity` — the payout-readiness gate and
+the capacity cap. The former own-row policy let a freelancer mark themselves KYC-verified and
+payout-ready over PostgREST. The row is created and maintained by definers; `skills` and
+`hire_intake` are written through `org.save_profile`.
+
 ### `org.business_profiles`
 
-Ensures businesses are only manageable by their designated owners.
-
-```sql
--- ALL: Only the owner (owner_user_id) or an admin can view/edit/delete
-CREATE POLICY "Users can manage their own business profiles" 
-ON org.business_profiles FOR ALL TO public 
-USING (owner_user_id = auth.uid() OR security.is_admin());
-```
+**RLS is on with no policy at all** — default-deny to every client, reads included. Every read of a
+business goes through a definer (the profile view `org.get_profile_view`, the discovery reads) and
+every write through `org.create_business` / `org.save_profile` / `org.set_profile_avatar`. A
+consequence worth knowing: an RLS-scoped read of `org.business_profiles` returns nothing, so the
+project detail's business parties (`live-detail.ts`) degrade to "Unknown" on the live path.
 
 ### `org.user_emails`
 
@@ -88,11 +94,34 @@ USING (
     OR security.is_admin()
 );
 
--- INSERT/UPDATE/DELETE: Restricted to the team owner or admin
-CREATE POLICY "Team owners can manage their teams" 
-ON org.teams FOR ALL TO public 
+-- UPDATE / DELETE: the team owner or an admin (UPDATE has no WITH CHECK, so Postgres applies the
+-- USING clause to the post-image as well — an owner cannot write another user in as owner)
+CREATE POLICY "Team owners can update their teams"
+ON org.teams FOR UPDATE TO public
+USING (owner_user_id = auth.uid() OR security.is_admin());
+
+CREATE POLICY "Team owners can delete their teams"
+ON org.teams FOR DELETE TO public
 USING (owner_user_id = auth.uid() OR security.is_admin());
 ```
+
+**No client INSERT policy** (2026-09-23). A team is created by `org.create_team` (definer), which
+also opens its treasury wallet; a raw INSERT skipped that and could set `subscription_tier`,
+`member_limit` and `treasury_wallet_id` at birth.
+
+The UPDATE policy cannot tell a rename from a forged rating, so two column guards
+([`security/Functions.md`](../security/Functions.md), trigger file `00001895`) narrow what a client
+UPDATE may change:
+
+- `trg_teams_derived` — `rating_average`, `rating_count`, `active_project_count`,
+  `total_project_count`, `service_count`, `product_count`, `current_workload_intensity` are the
+  platform's arithmetic, never the owner's.
+- `trg_teams_immutable` — `owner_user_id`, `treasury_wallet_id`, `subscription_tier`, `member_limit`
+  (a plan is bought, not PATCHed), `slug` (the `@handle`, shared with people's usernames), and
+  `avatar_file_id` / `banner_file_id` (set through `org.set_profile_avatar`, which checks the file is
+  the team's own).
+
+Name, headline, story, visibility, status and the hire intake stay owner-editable.
 
 ### `org.team_members`
 
@@ -173,16 +202,22 @@ CREATE POLICY "Members can view their organisation"
 ON org.organisations FOR SELECT TO public
 USING (owner_user_id = auth.uid() OR org.is_organisation_member(id) OR security.is_admin());
 
--- INSERT: any authenticated user creating an org they own
-CREATE POLICY "Users can create organisations they own"
-ON org.organisations FOR INSERT TO public
-WITH CHECK (owner_user_id = auth.uid());
-
 -- UPDATE: owner or admin members (or admin)
 CREATE POLICY "Owners and admins can update the organisation"
 ON org.organisations FOR UPDATE TO public
 USING (owner_user_id = auth.uid() OR org.is_organisation_member(id, 'admin') OR security.is_admin());
 ```
+
+**No client INSERT policy** (2026-09-23): an organisation is provisioned by
+`public.create_organisation` (service role) together with its owner membership, and a raw client
+INSERT could set `verification_level` and `status` at birth.
+
+Because the UPDATE policy has no `WITH CHECK`, its `USING` clause judges the post-image too — and an
+ADMIN member satisfies it whatever `owner_user_id` says, so it let an admin write themselves in as
+owner. `trg_organisations_immutable` (trigger file `00001895`) refuses a client UPDATE of
+`owner_user_id`, `status` (which includes `suspended`), `verification_level` (the KYB tier), `handle`
+and `logo_file_id` (set through `org.set_profile_avatar`). The trading name, address and contact
+details stay editable by the owner and admins.
 
 ### `org.organisation_members`
 

@@ -7,8 +7,9 @@
  * only place a dangling reference is cheap to find.
  */
 
-import { exploreMocks } from "../../../packages/backend/mocks/mod.ts";
+import { ARTICLES, PRODUCTS, SERVICES } from "./corpus.ts";
 import { imageSize, mimeOf } from "./images.ts";
+import { PORTFOLIO, SHOWCASES } from "./profiles.ts";
 import { slugFor, uuidFor } from "./sql.ts";
 import {
 	ENTITIES,
@@ -21,7 +22,6 @@ import {
 	SERVICE_COVERS,
 } from "./world.ts";
 
-const { ARTICLES, PRODUCTS, SERVICES } = exploreMocks;
 
 // #region Types
 export interface ResolvedPersona extends Persona {
@@ -49,7 +49,12 @@ export interface Principal {
 
 export interface Asset {
 	id: string;
-	bucket: "avatars" | "catalogue" | "project";
+	bucket: "avatars" | "catalogue" | "project" | "showcase" | "public_assets";
+	/**
+	 * `files.items.purpose`. Absent = `library` (an upload the owner can pick again); `showcase` is a
+	 * rendition the profile hero shows — the only kind the `showcase` bucket holds.
+	 */
+	purpose?: "library" | "showcase";
 	/** Object name inside the bucket — first segment is the RLS anchor. */
 	path: string;
 	/** The file under `test_images/` the bytes come from. */
@@ -109,8 +114,16 @@ export interface World {
 	experienceLogo: Map<string, Asset>;
 	serviceCover: Map<string, Asset>;
 	productCover: Map<string, Asset>;
+	/** Article key → cover asset. */
+	articleCover: Map<string, Asset>;
+	/** `${articleKey}:${test_images filename}` → inline body image asset. */
+	articleImage: Map<string, Asset>;
 	/** submission key (`project:sub`) → deliverable assets. */
 	submissionFiles: Map<string, Asset[]>;
+	/** Persona or entity key → its showcase renditions, slot 1 first (`profiles.ts` `SHOWCASES`). */
+	showcaseSlots: Map<string, Array<{ asset: Asset; alt: string }>>;
+	/** `${personaKey}:${index}` → a "Selected work" piece's cover (`profiles.ts` `PORTFOLIO`). */
+	portfolioCover: Map<string, Asset>;
 	/** Corpus listing id → its database id. */
 	serviceId: (corpusId: string) => string;
 	productId: (corpusId: string) => string;
@@ -245,9 +258,9 @@ export async function buildWorld(): Promise<World> {
 		});
 	}
 	for (const item of [...SERVICES, ...PRODUCTS, ...ARTICLES]) {
-		if (!principals.has(item.owner.handle)) {
+		if (!principals.has(item.owner)) {
 			throw new Error(
-				`world: corpus item "${item.id}" is owned by ${item.owner.handle}, which no persona or entity claims`,
+				`world: corpus item "${item.key}" is owned by ${item.owner}, which no persona or entity claims`,
 			);
 		}
 	}
@@ -261,6 +274,8 @@ export async function buildWorld(): Promise<World> {
 	const experienceLogo = new Map<string, Asset>();
 	const serviceCover = new Map<string, Asset>();
 	const productCover = new Map<string, Asset>();
+	const articleCover = new Map<string, Asset>();
+	const articleImage = new Map<string, Asset>();
 	const submissionFiles = new Map<string, Asset[]>();
 
 	for (const p of personas.values()) {
@@ -348,13 +363,67 @@ export async function buildWorld(): Promise<World> {
 		}
 	}
 
+	// Profile presentation (`profiles.ts`). A showcase slot is laid out exactly as the media pipeline
+	// writes a rendition — `{owner}/showcase/{rendition}/full.{ext}` in the public `showcase` bucket —
+	// so a seeded slot and an uploaded one are indistinguishable to every reader. A portfolio cover is
+	// an ordinary library upload in `public_assets`, which is also what makes it pickable again from the
+	// owner's media library.
+	const showcaseSlots = new Map<string, Array<{ asset: Asset; alt: string }>>();
+	for (const spec of SHOWCASES) {
+		if (spec.slots.length === 0 || spec.slots.length > 6) {
+			throw new Error(`profiles: showcase "${spec.owner}" must have one to six slots`);
+		}
+		const owner = party({ personas, entities }, spec.owner);
+		const ownerId = owner.kind === "user" ? owner.persona.userId : owner.entity.entityId;
+		const slots: Array<{ asset: Asset; alt: string }> = [];
+		for (const [i, slot] of spec.slots.entries()) {
+			const rendition = uuidFor("showcase-rendition", `${spec.owner}:${i + 1}`);
+			const a = await asset({
+				bucket: "showcase",
+				path: `${ownerId}/showcase/${rendition}/full.${extOf(slot.image)}`,
+				source: slot.image,
+				displayName: `${owner.kind === "user" ? owner.persona.name : owner.entity.name} — showcase ${i + 1}`,
+				ownerUserId: owner.kind === "user" ? owner.persona.userId : owner.entity.ownerUserId,
+				ownerType: owner.kind,
+				ownerEntityId: owner.kind === "user" ? null : owner.entity.entityId,
+				visibility: "public",
+				purpose: "showcase",
+				createdDaysAgo: 30 - i,
+			});
+			assets.push(a);
+			slots.push({ asset: a, alt: slot.alt });
+		}
+		showcaseSlots.set(spec.owner, slots);
+	}
+
+	const portfolioCover = new Map<string, Asset>();
+	const pieceIndex = new Map<string, number>();
+	for (const piece of PORTFOLIO) {
+		const p = persona({ personas, entities }, piece.persona);
+		const i = pieceIndex.get(piece.persona) ?? 0;
+		pieceIndex.set(piece.persona, i + 1);
+		const a = await asset({
+			bucket: "public_assets",
+			path: `${p.userId}/portfolio/${i + 1}.${extOf(piece.image)}`,
+			source: piece.image,
+			displayName: `${piece.title} — cover`,
+			ownerUserId: p.userId,
+			ownerType: "user",
+			ownerEntityId: null,
+			visibility: "public",
+			createdDaysAgo: 60 - i * 7,
+		});
+		assets.push(a);
+		portfolioCover.set(`${piece.persona}:${i}`, a);
+	}
+
 	for (const s of SERVICES) {
-		const cover = SERVICE_COVERS[s.id];
+		const cover = SERVICE_COVERS[s.key];
 		if (!cover) continue;
-		const owner = principals.get(s.owner.handle)!;
+		const owner = principals.get(s.owner)!;
 		const a = await asset({
 			bucket: "catalogue",
-			path: `${owner.accountUserId}/services/${s.id}.${extOf(cover)}`,
+			path: `${owner.accountUserId}/services/${s.key}.${extOf(cover)}`,
 			source: cover,
 			displayName: `${s.title} — cover`,
 			ownerUserId: owner.accountUserId,
@@ -364,15 +433,15 @@ export async function buildWorld(): Promise<World> {
 			createdDaysAgo: 90,
 		});
 		assets.push(a);
-		serviceCover.set(s.id, a);
+		serviceCover.set(s.key, a);
 	}
 	for (const p of PRODUCTS) {
-		const cover = PRODUCT_COVERS[p.id];
+		const cover = PRODUCT_COVERS[p.key];
 		if (!cover) continue;
-		const owner = principals.get(p.owner.handle)!;
+		const owner = principals.get(p.owner)!;
 		const a = await asset({
 			bucket: "catalogue",
-			path: `${owner.accountUserId}/products/${p.id}.${extOf(cover)}`,
+			path: `${owner.accountUserId}/products/${p.key}.${extOf(cover)}`,
 			source: cover,
 			displayName: `${p.title} — cover`,
 			ownerUserId: owner.accountUserId,
@@ -382,7 +451,45 @@ export async function buildWorld(): Promise<World> {
 			createdDaysAgo: 80,
 		});
 		assets.push(a);
-		productCover.set(p.id, a);
+		productCover.set(p.key, a);
+	}
+	// Articles: a cover, plus one stored object per distinct inline image — the body references the
+	// OBJECT (bucket + path), never a URL, so the live reader builds the address the same way it builds
+	// every other image on the platform.
+	for (const art of ARTICLES) {
+		const owner = principals.get(art.owner)!;
+		const ownerType = owner.entityId ? owner.kind as "team" | "business" : "user";
+		const cover = await asset({
+			bucket: "catalogue",
+			path: `${owner.accountUserId}/articles/${art.key}/cover.${extOf(art.cover)}`,
+			source: art.cover,
+			displayName: `${art.title} — cover`,
+			ownerUserId: owner.accountUserId,
+			ownerType,
+			ownerEntityId: owner.entityId ?? null,
+			visibility: "public",
+			createdDaysAgo: 40,
+		});
+		assets.push(cover);
+		articleCover.set(art.key, cover);
+		for (const block of art.blocks) {
+			if (block.type !== "image") continue;
+			const key = `${art.key}:${block.asset}`;
+			if (articleImage.has(key)) continue;
+			const a = await asset({
+				bucket: "catalogue",
+				path: `${owner.accountUserId}/articles/${art.key}/${block.asset}`,
+				source: block.asset,
+				displayName: block.alt ?? art.title,
+				ownerUserId: owner.accountUserId,
+				ownerType,
+				ownerEntityId: owner.entityId ?? null,
+				visibility: "public",
+				createdDaysAgo: 40,
+			});
+			assets.push(a);
+			articleImage.set(key, a);
+		}
 	}
 
 	// Projects.
@@ -470,7 +577,11 @@ export async function buildWorld(): Promise<World> {
 		experienceLogo,
 		serviceCover,
 		productCover,
+		articleCover,
+		articleImage,
 		submissionFiles,
+		showcaseSlots,
+		portfolioCover,
 		serviceId: (cid) => uuidFor("service", cid),
 		productId: (cid) => uuidFor("product", cid),
 		articleId: (cid) => uuidFor("article", cid),

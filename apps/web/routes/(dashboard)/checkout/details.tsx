@@ -4,6 +4,7 @@ import { canSkipDetails } from "@projective/types/finance";
 import { CheckoutBackendService } from "@server/services/finance/CheckoutBackendService.ts";
 import { basketQueryFrom } from "@server/services/finance/basket-query.ts";
 import { define } from "@web/utils/state.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import CheckoutDetailsScreen from "@features/checkout/islands/CheckoutDetailsScreen.island.tsx";
 import { checkoutStepHref } from "@features/checkout/core/basket-model.ts";
 import { resolveCheckoutSession } from "@features/checkout/core/checkout-ssr.ts";
@@ -43,9 +44,10 @@ import type { DetailsDepartments } from "@features/checkout/core/details-draft.t
  * Switcher's personas unreachable, since the server never sees the client seam.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const context = asAuthenticatedContext(ctx.state.userContext);
-		const bootstrap = resolveCheckoutSession(context, ctx.url);
+		const actor = readActor(ctx);
+		const bootstrap = await resolveCheckoutSession(context, ctx.url, actor);
 
 		const editing = ctx.url.searchParams.has("edit");
 		if (!editing && canSkipDetails(bootstrap.session)) {
@@ -64,14 +66,12 @@ export const handler = define.handlers({
 		 * entity's fact rather than the buyer's. An identity with none yields an empty list, which the
 		 * form renders as absence — an entity with no departments is a real state, not a blank field.
 		 *
-		 * Read through the fat service rather than from the fixture module. This route previously
-		 * imported `departmentsFor` from `buyer-fixtures.ts` directly — the only place in the app that
-		 * did — which compiled and rendered correctly while bypassing `isFinanceBackendLive()`
-		 * entirely, so this one field would have kept serving fixtures after the finance backend went
-		 * live and `USE_MOCKS` could never have reached it.
+		 * Read through the fat service, as the signed-in caller: an organisation's departments are
+		 * visible to its members only.
 		 */
-		const resolved = CheckoutBackendService.departments(
+		const resolved = await CheckoutBackendService.departments(
 			basketQueryFrom(ctx.url.searchParams, context),
+			actor,
 		);
 		const departments: DetailsDepartments = resolved.data?.departments ?? {};
 

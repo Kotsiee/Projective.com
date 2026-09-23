@@ -9,13 +9,13 @@ triggers that bind them).
 Before the asset-management pass the `files` schema had **zero** functions — no touch trigger, no
 read predicate, no quota gate, no usage rollup. Every access rule therefore had to be written as a
 raw predicate inline in each policy, which is precisely how a read rule and a share route drift
-apart. **There are now seven**, plus one `finance` branch that reads this schema.
+apart. **There are now ten**, plus one `finance` branch that reads this schema.
 
 Every function pins `SET search_path = ''` and fully qualifies every identifier. `SECURITY DEFINER`
 is used **only** where a function must read a table the caller cannot: the membership tables, the
 item row itself, or `security.platform_params`.
 
-## The seven
+## The ten
 
 | Function                               | Kind       | Definer | Reachable by                    | Purpose                                                     |
 | :------------------------------------- | :--------- | :------ | :------------------------------ | :---------------------------------------------------------- |
@@ -26,6 +26,9 @@ item row itself, or `security.platform_params`.
 | `fn_check_storage_quota()`             | trigger    | ✅      | trigger only (`REVOKE`d)        | The **fail-open** quota gate.                               |
 | `fn_resolve_share(text) → TABLE`       | `STABLE`   | ✅      | `anon` · `authenticated` · svc  | The **only** door from a slug into `share_links`.           |
 | `fn_mint_share_slug() → text`          | `VOLATILE` | —       | `service_role`                  | Mints the opaque capability token.                          |
+| `fn_public_media_ref(uuid) → jsonb`    | `STABLE`   | ✅      | `service_role` (+ definers)     | One PUBLIC stored image as a storage reference + its tiers. |
+| `get_public_media(uuid[]) → TABLE`     | `STABLE`   | ✅      | `anon` · `authenticated` · svc  | The batch door onto `fn_public_media_ref` (≤ 500 ids).      |
+| `fn_guard_pipeline_columns()`          | trigger    | —       | trigger only (`REVOKE`d)        | Only the server may claim an asset was processed.           |
 
 Grants are in [`00002510`](../../../supabase/migrations/00002510_permissions_function_grants.sql);
 the reasoning for each `REVOKE` / `GRANT` is in [Policies.md](Policies.md#grants).
@@ -38,6 +41,7 @@ the reasoning for each `REVOKE` / `GRANT` is in [Policies.md](Policies.md#grants
 | `trg_files_folders_touch` | `BEFORE UPDATE ON files.folders`                                                                  | `fn_touch_updated_at`    |
 | `trg_files_items_usage`   | `AFTER INSERT OR UPDATE OF size_bytes, deleted_at, source, owner_type, owner_entity_id OR DELETE` | `fn_usage_trigger`       |
 | `trg_files_items_quota`   | `BEFORE INSERT OR UPDATE OF size_bytes ON files.items`                                            | `fn_check_storage_quota` |
+| `trg_files_items_guard_pipeline` | `BEFORE INSERT OR UPDATE ON files.items` — before the quota gate, so a forged row is refused for what it claims rather than metered for what it weighs | `fn_guard_pipeline_columns` |
 
 > **The usage trigger's `UPDATE OF` list is deliberately wider than `size_bytes, deleted_at`.**
 > `source` decides whether a row counts **at all** (a hub-native upload that becomes a mounted
@@ -215,6 +219,72 @@ id, the filename or a counter — anything guessable would make revocation meani
 > weaken every other function in the file by example. `gen_random_uuid()` is a `pg_catalog` builtin
 > backed by the same CSPRNG; two of them yield 244 bits, of which 24 bytes (**192 bits**) are taken
 > and base64url-encoded. Strictly more entropy than 128 bits, and portable.
+
+---
+
+## 🖼 `files.fn_public_media_ref(p_item_id uuid) → jsonb`
+
+`STABLE` · `SECURITY DEFINER`. The projection every public surface reads an image through — the
+profile hero, a showcase slide, the nav's account button, a roster row, a message sender.
+
+Returns `NULL` for anything that is not **public**, not **live** (`deleted_at`), not **stored by us**
+(`source = 'supabase'`) or not yet **through the pipeline** (`status = 'uploaded'`), so a caller
+renders the honest absence (an initials avatar, no slide) instead of a URL a visitor cannot load.
+Otherwise:
+
+```json
+{
+  "id": "…", "bucket": "avatars", "path": "{owner}/avatar/{rendition}/full.webp",
+  "mime": "image/webp", "purpose": "avatar",
+  "width": 207, "height": 207, "duration_ms": null,
+  "blurhash": "LKO2?U%2Tw=w]~RBVZRi};RPxuwH", "color": "#8a6f5c",
+  "variants": { "sm": { "bucket": "…", "path": "…/sm.webp", "width": 96, "height": 96, "mime": "image/webp" }, "md": {…}, "lg": {…} }
+}
+```
+
+**Storage REFERENCES, never URLs.** A URL is a deployment fact (the public storage host), built
+once in `packages/backend/core/storage-url.ts`; the database stays portable across environments. The
+numbers are read defensively (`^[0-9]{1,6}$` before the cast) because `metadata` on older rows is a
+client-extracted document and one malformed value must cost that field, not the whole profile read.
+Definer because the caller may be anonymous and the item row is not theirs to read — the
+visibility test is what makes that safe: nothing it returns is not already world-readable. Not
+granted to any client role directly; clients reach it through `get_public_media`, `org.get_party_cards`
+and the profile reads. Its Zod mirror is `MediaRefSchema` (`@projective/types/files`).
+
+## 🗂 `files.get_public_media(p_ids uuid[]) → TABLE(id uuid, ref jsonb)`
+
+`STABLE` · `SECURITY DEFINER` · granted to `anon`, `authenticated`, `service_role`. The batch door
+for readers that hold file ids rather than a profile — a project roster resolving team and business
+marks, for instance. De-duplicates, drops NULLs and reads at most **500** ids per call
+(`p_ids[1:500]`); an id that resolves to nothing public comes back with a `NULL` ref, so a caller
+can tell "asked and absent" from "never asked". `packages/backend/services/files/public-media.ts`
+(`fetchPublicMedia`) is its one caller-side wrapper and never throws — a failed lookup costs
+pictures, not the page.
+
+## 🛂 `files.fn_guard_pipeline_columns()`
+
+`RETURNS trigger` · not definer · bound `BEFORE INSERT OR UPDATE ON files.items`
+(`trg_files_items_guard_pipeline`).
+
+The row-level policies let an owner write their own rows, and a row-level policy cannot tell a
+rename from a forgery: without this an owner could INSERT a row saying `status = 'uploaded'`,
+`bucket_id = 'avatars'`, `purpose = 'avatar'` for an object that never went through the quarantine
+scan, and every reader that trusts "uploaded" would serve it. So the columns that describe the
+**bytes and their processing** belong to the server. It decides by `current_user` — `anon` and
+`authenticated` are judged; the service role (the upload pipeline) and definer functions pass.
+
+- **INSERT:** a client row must be `purpose = 'library'` with no `derived_from_id`
+  (`42501` "renditions are written by the media pipeline only"), and a `supabase`-sourced row must
+  start `pending_upload` in `quarantine` (`42501` "an upload starts pending in quarantine"). A link
+  (no bytes) is unaffected.
+- **UPDATE:** a client may not change `status`, `bucket_id`, `storage_path`, `target_bucket`,
+  `target_path`, `mime_type`, `size_bytes`, `metadata`, `content_hash`, `hash_algo`, `source`,
+  `purpose` or `derived_from_id` (`42501`). The presentational columns — name, folder, visibility,
+  star, archive flag, soft-delete stamp — stay editable.
+
+The media pipeline that DOES write those columns is `packages/backend/services/media/` (quarantine
+claim → magic-byte sniff → decode → WebP tiers → promote), running as the service role; see
+[Storage.md](Storage.md#the-upload-pipeline).
 
 ---
 

@@ -47,3 +47,16 @@ DROP TRIGGER IF EXISTS trg_tickets_slug ON projects.tickets;
 CREATE TRIGGER trg_tickets_slug
     BEFORE INSERT OR UPDATE ON projects.tickets
     FOR EACH ROW EXECUTE FUNCTION security.fn_slug_guard('tkt');
+
+-- The discovery corpus's two remaining public entities (`/view/prd-…`, `/view/art-…`). Before these,
+-- a product had no address of its own and an article's slug was free text the seed filled with a
+-- corpus id — so the only way to link either was by uuid, which is the shape Decision #88 retired.
+DROP TRIGGER IF EXISTS trg_products_slug ON catalogue.products;
+CREATE TRIGGER trg_products_slug
+    BEFORE INSERT OR UPDATE ON catalogue.products
+    FOR EACH ROW EXECUTE FUNCTION security.fn_slug_guard('prd');
+
+DROP TRIGGER IF EXISTS trg_articles_slug ON catalogue.articles;
+CREATE TRIGGER trg_articles_slug
+    BEFORE INSERT OR UPDATE ON catalogue.articles
+    FOR EACH ROW EXECUTE FUNCTION security.fn_slug_guard('art');

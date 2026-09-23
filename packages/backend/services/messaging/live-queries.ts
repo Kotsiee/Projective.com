@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "supabaseClient";
 import { getUserClient } from "../../core/supabase.ts";
+import { fetchPartyRows, partyRowsWithAvatars } from "../profile/party-cards.ts";
 import type { ReadActor } from "../read-actor.ts";
 import type {
 	ConversationKind,
@@ -137,6 +138,8 @@ export interface PartyRow {
 	username: string;
 	first_name: string | null;
 	last_name: string | null;
+	/** The photo's `sm` rendition, when read through `org.get_party_cards`; else absent. */
+	avatar?: string | null;
 }
 
 // #endregion
@@ -245,6 +248,8 @@ export async function fetchParties(
 	const out = new Map<string, PartyRow>();
 	const unique = [...new Set(userIds)].filter((id) => id.length > 0);
 	if (unique.length === 0) return out;
+	const cards = await fetchPartyRows(getUserClient(actor.accessToken), unique);
+	if (cards) return partyRowsWithAvatars(cards);
 	const { data, error } = await orgClient(actor)
 		.from("users_public")
 		.select("user_id, username, first_name, last_name")
@@ -287,7 +292,8 @@ export interface ConversationContext {
  * so deriving a thread-level relation from them would mean "this conversation is about the service
  * someone mentioned once".
  *
- * `avatar` is `null` throughout: `org.users_public.avatar_file_id` is a file id, not a URL.
+ * Participants carry their photo as `org.get_party_cards` resolved it. A DM's own `avatar` is the
+ * counterparty's photo; a group has no single face, so it stays `null` and draws its initials.
  */
 export function toConversationSummary(
 	row: ThreadRow,
@@ -300,7 +306,7 @@ export function toConversationSummary(
 	const others = ctx.otherIds.map((id) => ({
 		id,
 		name: partyName(ctx.parties.get(id)),
-		avatar: null,
+		avatar: ctx.parties.get(id)?.avatar ?? null,
 		handle: ctx.parties.get(id)?.username ?? null,
 		roleLabel: null,
 		// No presence column exists in either schema. `online` is required, so it is false — the
@@ -324,7 +330,8 @@ export function toConversationSummary(
 		// A group's own name; a DM's title is the counterparty, because storing a copy of their name
 		// on the thread would go stale the moment they renamed themselves (the column's own comment).
 		title: clamp(row.title, 160) || others[0]?.name || "Conversation",
-		avatar: null,
+		// A DM is drawn with the counterparty's photo; a group has no single face.
+		avatar: kind === "dm" ? others[0]?.avatar ?? null : null,
 		participants: others,
 		preview,
 		lastActivityLabel: activityLabel(lastAt, ctx.now),
@@ -594,7 +601,7 @@ export function toChatMessage(
 		sender: {
 			id: row.sender_user_id,
 			name: partyName(party),
-			avatar: null,
+			avatar: party?.avatar ?? null,
 			handle: party?.username ?? null,
 		},
 		isOwn: row.sender_user_id === viewerId,

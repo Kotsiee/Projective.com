@@ -3,8 +3,8 @@ import { define } from "@web/utils/state.ts";
 import { ProfileTab, type ProfileTabPayload } from "@projective/types/profile";
 import { resolveProfileTab } from "@features/profile/core/profile-ssr.ts";
 import { ProfileTabContent } from "@features/profile/components/ProfileTabContent.tsx";
+import { readActor } from "@web/utils/api-session.ts";
 import {
-	isOwnProfile,
 	legacyTabTarget,
 	parseReviewStance,
 	type ReviewStance,
@@ -27,7 +27,7 @@ import {
  * rather than 301 because the method is preserved and the mapping is permanent; nothing POSTs here.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
 		const profile = ctx.state.profile;
 		const segment = ctx.params.tab;
 
@@ -56,7 +56,7 @@ export const handler = define.handlers({
 			// profile is a missing page too, and must not answer 200 with a "not found" body.
 			return page({ tab: null, payload: null }, { status: 404 });
 		}
-		const payload = resolveProfileTab(profile.handle, tab);
+		const payload = await resolveProfileTab(profile.handle, tab, readActor(ctx));
 		ctx.state.title = `${TAB_LABEL[tab]} · ${profile.name} · Projective`;
 		// Reviews carries its stance filter in `?as=` so a filtered view is shareable; SSR honours it.
 		const reviewStance = parseReviewStance(ctx.url.searchParams.get("as"));
@@ -79,7 +79,7 @@ export default define.page<typeof handler>(function ProfileTabPage(ctx) {
 			profile={profile}
 			tab={tab}
 			payload={payload}
-			canEdit={isOwnProfile(profile, ctx.state.userContext)}
+			canEdit={false}
 			authed={!!ctx.state.isAuthenticated}
 			reviewStance={reviewStance}
 		/>

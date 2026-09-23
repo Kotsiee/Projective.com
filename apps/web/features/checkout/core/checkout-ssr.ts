@@ -5,6 +5,7 @@ import { CheckoutBackendService } from "@server/services/finance/CheckoutBackend
 import { CardsBackendService } from "@server/services/finance/CardsBackendService.ts";
 import { OrderBackendService } from "@server/services/finance/OrderBackendService.ts";
 import { basketQueryFrom } from "@server/services/finance/basket-query.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 import { defaultOwnerParam } from "./basket-model.ts";
 import type {
 	BasketBootstrap,
@@ -24,13 +25,10 @@ import type {
  * first byte already resolved against the acting account's basket; the islands then refine through the
  * thin `BasketService` / `CheckoutService`. Mirrors `wallet-ssr` / `catalogue-ssr`.
  *
- * Every resolver is SYNCHRONOUS, which is not incidental: the slot resolvers in
- * `(dashboard)/_layout.tsx` are synchronous functions whose return value goes straight into the render
- * tree, and Preact cannot render a promise. The fat basket services are synchronous today, so the lane
- * can be painted with real data rather than fetching its own (the compromise `/files` had to make).
- *
- * Simulation knobs are ABSENT on the first byte — the server never sees the client dev seam — and are
- * applied on the island's first refetch. Never imported by an island.
+ * Every resolver is ASYNC and takes the session's `ReadActor`: the fat services read the live
+ * `finance.*` tables as the signed-in caller, so the identity is part of the question. Route handlers
+ * and the `(dashboard)/_layout.tsx` slot resolvers await them before rendering. Never imported by an
+ * island.
  */
 
 /** Resolve the acting owner scope for a request: an explicit `?owner=`, else the active context's. */
@@ -45,10 +43,14 @@ export function resolveOwnerParam(context: UserContext, url: URL): string {
  * complete surface with its empty state — a blank region would read as a broken page, and on a basket
  * that means "your items are gone".
  */
-export function resolveBasket(context: UserContext, url: URL): BasketBootstrap {
+export async function resolveBasket(
+	context: UserContext,
+	url: URL,
+	actor: ReadActor,
+): Promise<BasketBootstrap> {
 	const query = basketQueryFrom(url.searchParams, context);
 	const owner = resolveOwnerParam(context, url);
-	const res = BasketBackendService.get(query);
+	const res = await BasketBackendService.get(query, actor);
 	if (!res.ok || !res.data) {
 		const display = (url.searchParams.get("display") ?? "GBP").toUpperCase();
 		return { basket: emptyBasket(display), baskets: [], promo: null, owner, display };
@@ -63,8 +65,12 @@ export function resolveBasket(context: UserContext, url: URL): BasketBootstrap {
 }
 
 /** Resolve just the account's basket list — the lane's switcher on a `/checkout` route. */
-export function resolveBasketSummaries(context: UserContext, url: URL): BasketBootstrap["baskets"] {
-	const res = BasketBackendService.list(basketQueryFrom(url.searchParams, context));
+export async function resolveBasketSummaries(
+	context: UserContext,
+	url: URL,
+	actor: ReadActor,
+): Promise<BasketBootstrap["baskets"]> {
+	const res = await BasketBackendService.list(basketQueryFrom(url.searchParams, context), actor);
 	return res.ok && res.data ? res.data.baskets : [];
 }
 
@@ -74,11 +80,17 @@ export function resolveBasketSummaries(context: UserContext, url: URL): BasketBo
  * A failed session degrades to an EMPTY projection carrying a single `empty` blocker, because the one
  * thing a checkout must never do is render a Pay control it cannot explain the state of.
  */
-export function resolveCheckoutSession(context: UserContext, url: URL): CheckoutBootstrap {
+export async function resolveCheckoutSession(
+	context: UserContext,
+	url: URL,
+	actor: ReadActor,
+): Promise<CheckoutBootstrap> {
 	const query = basketQueryFrom(url.searchParams, context);
 	const owner = resolveOwnerParam(context, url);
-	const baskets = resolveBasketSummaries(context, url);
-	const res = CheckoutBackendService.session(query);
+	const [baskets, res] = await Promise.all([
+		resolveBasketSummaries(context, url, actor),
+		CheckoutBackendService.session(query, actor),
+	]);
 	if (!res.ok || !res.data) {
 		const display = (url.searchParams.get("display") ?? "GBP").toUpperCase();
 		return { session: emptySession(display), baskets, owner, display };
@@ -95,10 +107,14 @@ export function resolveCheckoutSession(context: UserContext, url: URL): Checkout
  * A failed read degrades to an EMPTY model rather than to nothing: the lane still renders, with its
  * own empty state, instead of a blank column that reads as a broken page.
  */
-export function resolveBasketLists(context: UserContext, url: URL): BasketLists {
+export async function resolveBasketLists(
+	context: UserContext,
+	url: URL,
+	actor: ReadActor,
+): Promise<BasketLists> {
 	const sp = url.searchParams;
 	const activeId = sp.get("list") ?? sp.get("basketId") ?? sp.get("basket");
-	const res = BasketBackendService.lists(basketQueryFrom(sp, context), activeId);
+	const res = await BasketBackendService.lists(basketQueryFrom(sp, context), actor, activeId);
 	if (!res.ok || !res.data) {
 		const display = (sp.get("display") ?? "GBP").toUpperCase();
 		return {
@@ -121,11 +137,12 @@ export function resolveBasketLists(context: UserContext, url: URL): BasketLists 
  * `buyerDetailsComplete` refuses a record with no `savedAt`, so a degraded read can only ever send a
  * buyer TO the form — never past it, which would deliver an order to details nobody confirmed.
  */
-export function resolveBuyerDetails(
+export async function resolveBuyerDetails(
 	context: UserContext,
 	url: URL,
-): { buyer: BuyerDetails; billingContexts: BillingContext[]; invoicing: MonthlyInvoicing } {
-	const res = CheckoutBackendService.details(basketQueryFrom(url.searchParams, context));
+	actor: ReadActor,
+): Promise<{ buyer: BuyerDetails; billingContexts: BillingContext[]; invoicing: MonthlyInvoicing }> {
+	const res = await CheckoutBackendService.details(basketQueryFrom(url.searchParams, context), actor);
 	if (!res.ok || !res.data) {
 		const display = (url.searchParams.get("display") ?? "GBP").toUpperCase();
 		const session = emptySession(display);
@@ -142,21 +159,26 @@ export function resolveBuyerDetails(
  * deliberately NOT a degraded empty order: an order shape filled with zeroes is a receipt, and a
  * receipt for a purchase that did not happen is the one thing this surface must never render.
  */
-export function resolveOrder(context: UserContext, url: URL): OrderPage | null {
+export async function resolveOrder(
+	context: UserContext,
+	url: URL,
+	actor: ReadActor,
+): Promise<OrderPage | null> {
 	const sp = url.searchParams;
-	const res = OrderBackendService.get({
+	const res = await OrderBackendService.get({
 		...basketQueryFrom(sp, context),
 		orderId: sp.get("order"),
-	});
+	}, actor);
 	return res.ok && res.data ? res.data.page : null;
 }
 
 /** Resolve the acting account's saved cards (the checkout's instrument picker). */
-export function resolveCards(
+export async function resolveCards(
 	context: UserContext,
 	url: URL,
-): { cards: SavedCard[]; defaultCardId: string | null } {
-	const res = CardsBackendService.list(basketQueryFrom(url.searchParams, context));
+	actor: ReadActor,
+): Promise<{ cards: SavedCard[]; defaultCardId: string | null }> {
+	const res = await CardsBackendService.list(basketQueryFrom(url.searchParams, context), actor);
 	return res.ok && res.data
 		? { cards: res.data.cards, defaultCardId: res.data.defaultCardId }
 		: { cards: [], defaultCardId: null };

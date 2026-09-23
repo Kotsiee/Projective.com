@@ -3,7 +3,6 @@ import { ProgressiveImage } from "@projective/ui/display";
 import { productMediaAspect } from "@projective/types/explore";
 import { profileHref } from "@features/explore/core/routing.ts";
 import { vars } from "../core/style.ts";
-import { ownerForHandle } from "../core/showcase-owner.ts";
 import { type ProductShowcase } from "../core/landing-data.ts";
 
 /** The synthetic geometry the image attributes reserve before its bytes arrive (the work-tile rule). */
@@ -17,15 +16,14 @@ const GEOMETRY_WIDTH = 1000;
  * `.lp-product` block, so the landing masonry and the search masonry are the same object: a prominent
  * picture with a compact, muted title · owner · category · price beneath it.
  *
- * The landing corpus carries no measured cover, so the tile's ratio is the `span`-derived one through
- * the SAME `productMediaAspect` the discovery card calls — the fallback branch of one rule, never a
- * second rule — and it is clamped into the same showcase band.
+ * The tile's ratio comes from the SAME `productMediaAspect` the discovery card calls — the cover's
+ * measured dimensions when the upload recorded them, the `span`-derived crop otherwise — clamped into
+ * the same showcase band.
  *
  * Zero client JS.
  */
 export function ProductCard({ product }: { product: ProductShowcase }): JSX.Element {
-	const owner = ownerForHandle(product.makerHandle);
-	const aspect = productMediaAspect({ span: product.span, mediaMeta: undefined });
+	const aspect = productMediaAspect({ span: product.span, mediaMeta: product.mediaMeta });
 	const height = Math.max(1, Math.round(GEOMETRY_WIDTH / aspect.ratio));
 	return (
 		<article
@@ -37,11 +35,12 @@ export function ProductCard({ product }: { product: ProductShowcase }): JSX.Elem
 			<a
 				class="ex-card__link"
 				href={`/view/${product.slug}?type=products`}
-				aria-label={`${product.title} by ${product.maker} — ${product.price}`}
+				aria-label={`${product.title} by ${product.owner.name} — ${product.price}`}
 			/>
 			<div class="ex-media ex-media--product">
 				<ProgressiveImage
 					src={product.thumb}
+					placeholder={product.thumbPlaceholder}
 					alt=""
 					width={GEOMETRY_WIDTH}
 					height={height}
@@ -51,7 +50,9 @@ export function ProductCard({ product }: { product: ProductShowcase }): JSX.Elem
 			<div class="ex-prod">
 				<h3 class="ex-prod__title">{product.title}</h3>
 				<p class="ex-prod__meta">
-					<a class="ex-prod__owner" href={profileHref(owner.handle)}>{product.maker}</a>
+					<a class="ex-prod__owner" href={profileHref(product.owner.handle)}>
+						{product.owner.name}
+					</a>
 					<span class="ex-prod__sep" aria-hidden="true">·</span>
 					<span class="ex-prod__kind">{product.category}</span>
 				</p>

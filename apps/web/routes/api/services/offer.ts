@@ -1,8 +1,8 @@
 import { define } from "@web/utils/state.ts";
-import { serviceSimFromParams } from "@projective/types/services";
 import { BookingBackendService } from "@server/services/booking/BookingBackendService.ts";
 import { bookingActorFrom } from "@features/view/core/booking-actor.ts";
 import { toBookingResponse } from "@features/view/core/respond.ts";
+import { warmCatalog } from "@server/services/explore/live-catalog.ts";
 
 /**
  * `GET /api/services/offer?subjectId=&handle=` — the resolved commercial offer for one listing and
@@ -10,7 +10,7 @@ import { toBookingResponse } from "@features/view/core/respond.ts";
  * whether this buyer already has a draft.
  *
  * Thin: guard the required id, resolve WHO IS ASKING from the session state (never from the query),
- * parse the developer simulation overlay, then delegate.
+ * then delegate.
  *
  * **Public and guest-reachable.** The listing page is SEO-facing, so an unauthenticated caller gets a
  * real offer with `requiresSignIn` set — not a 401. Refusing here would leave a guest looking at a
@@ -18,15 +18,16 @@ import { toBookingResponse } from "@features/view/core/respond.ts";
  * require an account, and each of them refuses on its own behalf.
  */
 export const handler = define.handlers({
-	GET(ctx) {
+	async GET(ctx) {
+		// The service below resolves the listing synchronously from the loaded catalogue.
+		await warmCatalog();
 		const subjectId = ctx.url.searchParams.get("subjectId");
 		if (!subjectId) {
 			return Response.json({ ok: false, message: "Missing subjectId." }, { status: 400 });
 		}
 		return toBookingResponse(
-			BookingBackendService.offer(subjectId, bookingActorFrom(ctx.state), {
+			await BookingBackendService.offer(subjectId, bookingActorFrom(ctx), {
 				handle: ctx.url.searchParams.get("handle"),
-				sim: serviceSimFromParams(ctx.url.searchParams),
 			}),
 		);
 	},

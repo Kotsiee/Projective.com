@@ -94,6 +94,25 @@ both.
 hub's list queries ever need it, the owner-scoped arms are index-backed
 (`idx_files_items_owner_entity`, `idx_files_items_owner_category`).
 
+**What the INSERT/UPDATE policies cannot say, a trigger does.** A row-level policy cannot tell a
+rename from a forgery, so an owner's own-row write could otherwise claim processing it never went
+through — `status = 'uploaded'`, a public bucket, `purpose = 'avatar'`. `files.fn_guard_pipeline_columns`
+(`BEFORE INSERT OR UPDATE`) refuses exactly those columns to `anon`/`authenticated`; see
+[Functions.md](Functions.md#-filesfn_guard_pipeline_columns).
+
+## `files.item_variants`
+
+| Command  | Role            | Predicate                                                                              |
+| :------- | :-------------- | :------------------------------------------------------------------------------------- |
+| `SELECT` | `authenticated` | `files.fn_can_read(item_id)` — the parent asset's own read predicate                   |
+| `SELECT` | `anon`          | the parent is `visibility = 'public'` and not deleted                                  |
+| write    | —               | **none** — the media pipeline writes as the service role                               |
+
+A tier can never be readable when its original is not, because the read is the parent's through the
+same predicate the `files.items` policy uses. RLS is enabled beside these policies in
+[`00002017`](../../../supabase/migrations/00002017_policies_storage.sql), which also holds the
+storage-object rules, because every row here names a stored object.
+
 ## `files.folders`
 
 Same INSERT/UPDATE/DELETE shape as `files.items` (including the `WITH CHECK` arm, so a folder cannot
@@ -207,6 +226,9 @@ client that could write it could write itself unlimited storage.
 | `SELECT ON files.items TO anon`         | `00002520` | The schema's **only** anon table grant — the `public` tier.      |
 | `EXECUTE ON files.fn_resolve_share`     | `00002510` | To `anon`; the one visitor door into `share_links`.              |
 | `REVOKE` on the four internal functions | `00002510` | `fn_recompute_usage`, the two trigger fns, `fn_mint_share_slug`. |
+| `EXECUTE ON files.get_public_media`     | `00002510` | To `anon` + `authenticated`: returns only world-readable refs.   |
+| `REVOKE` on `fn_public_media_ref` · `fn_guard_pipeline_columns` | `00002510` | Reached only through definers / as a trigger.       |
+| `REVOKE TRUNCATE … SCHEMA files`        | `00002500` | From `anon` + `authenticated`, and from default privileges. TRUNCATE is not row-level, so RLS never bounded it. |
 
 `files.fn_can_read` is deliberately left executable by `PUBLIC`: it **is** the `SELECT` policy on
 `files.items`, and a policy expression runs as the invoking role — revoking it would deny every
@@ -233,5 +255,20 @@ uploader may destroy one).
 
 Full predicate, path convention and the metering consequence:
 [Storage.md → `workspace`](Storage.md#workspace-private).
+
+## `storage.objects` — the public profile buckets (`avatars`, `showcase`) and `quarantine`
+
+- **`avatars` and `showcase` have public `SELECT` and no client write policy at all** (2026-09-22).
+  Everything in them is served to the whole internet, so everything in them must have been through
+  the quarantine scan and re-encoded by the media pipeline, which writes as the service role. The
+  former `avatars` policy "Owners can write their branding assets" (`FOR ALL TO authenticated`) let
+  any signed-in user PUT an arbitrary, unscanned file straight into a public bucket, bypassing both.
+- **`quarantine`'s INSERT policy now anchors the path**:
+  `(storage.foldername(name))[1] = auth.uid()::text` beside `auth.uid() = owner`, so a user cannot
+  write objects under another user's prefix.
+
+> Still open, flagged rather than changed: `catalogue` and `public_assets` keep owner write policies
+> on public buckets, so an owner can still place an unscanned file there directly. Closing them needs
+> their upload paths moved onto the pipeline first.
 
 See also [Tables.md](Tables.md) · [Functions.md](Functions.md) · [Storage.md](Storage.md).

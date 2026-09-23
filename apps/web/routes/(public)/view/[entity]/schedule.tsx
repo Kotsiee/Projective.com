@@ -6,6 +6,7 @@ import { resolveSchedulePage } from "@web/features/calendar/core/calendar-ssr.ts
 import { viewerFromState } from "@web/features/calendar/core/viewer.ts";
 import ScheduleView from "@web/features/calendar/islands/ScheduleView.island.tsx";
 import ViewStyleAnchor from "@web/features/view/islands/ViewStyleAnchor.island.tsx";
+import { warmCatalog } from "@server/services/explore/live-catalog.ts";
 
 /**
  * `/view/[entity]/schedule` — the session-based service schedule view: the entity's recurring
@@ -15,8 +16,10 @@ import ViewStyleAnchor from "@web/features/view/islands/ViewStyleAnchor.island.t
  * {@link ScheduleView} island. `[entity]` is the item id (matching the sibling viewer).
  */
 export const handler = define.handlers({
-	GET(ctx) {
-		const { page: schedule } = resolveSchedulePage(ctx.params.entity, viewerFromState(ctx.state));
+	async GET(ctx) {
+		// The service below resolves the listing synchronously from the loaded catalogue.
+		await warmCatalog();
+		const { page: schedule } = await resolveSchedulePage(ctx.params.entity, viewerFromState(ctx.state));
 		ctx.state.title = schedule
 			? `${schedule.title} · Schedule · Projective`
 			: "Schedule · Projective";

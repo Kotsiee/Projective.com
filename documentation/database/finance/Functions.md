@@ -1,10 +1,17 @@
 # finance Schema: Functions
 
-The `finance` engine is **ticket-centric** and exposed only through `SECURITY DEFINER` wrappers —
-the schema stays off the PostgREST allow-list, so clients never call `finance.*` directly. The
-client-facing, **stage-level** actions live in the `projects`/`org` schemas and invoke this engine
-internally (see [`../projects/Functions.md`](../projects/Functions.md) once populated, and
+The `finance` engine is **ticket-centric**. Money moves only through `SECURITY DEFINER` functions:
+the client-facing, **stage-level** actions live in the `projects`/`org` schemas and invoke this
+engine internally (see [`../projects/Functions.md`](../projects/Functions.md) once populated, and
 [`../org/Functions.md`](../org/Functions.md) for `org.get_business_finance`).
+
+Since 2026-09-23 the schema **is** on the PostgREST allow-list, so the signed-in user reads their
+wallets, ledger, orders and baskets directly, under RLS ([Policies.md](Policies.md)). That made
+`EXECUTE` a real boundary: **no finance function is callable over the API by default**. `PUBLIC`
+and `anon` hold `EXECUTE` on none of them, the ledger and escrow primitives below are service-role
+only, and `authenticated` holds exactly the predicates the policies call plus the param-gated
+simulator — the full list is in
+[Policies.md § Function privileges](Policies.md#-function-privileges-2026-09-23).
 
 All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
 
@@ -48,10 +55,24 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
 - **`finance.fn_has_vault_capability(wallet_id, user_id, cap)`** → boolean (`20260723093000`) — the
   in-DB vault-capability gate (`manage_members` implies all). Intended for future money-movement
   RPCs.
+- **`finance.fn_owner_capability(owner_type, owner_id, cap)`** → boolean (`00001210`, 2026-09-23) —
+  the **owner**-keyed form of the vault gate, for tables that belong to a principal rather than a
+  wallet (`payment_methods`, `saved_cards`, `payout_schedules`). Admin, or self for a personal owner
+  (`user`/`freelancer`), or — for a shared owner — `fn_owner_visible` **and** `cap` on one of that
+  owner's wallets. It exists because bare membership (`fn_owner_visible`) had been the write rule
+  on those tables, letting any member of an entity re-route its payouts or manage its cards.
+  ⚠️ **Fails closed** like `fn_can_manage_basket`: a shared owner with no wallet has nobody who
+  holds the capability.
 - **`finance.fn_freelancer_payout_ready(user_id)`** → boolean (`20260723091000`) — true only when
   the freelancer is KYC-`verified` AND `payout_ready`. **The onboarding gate.**
 - **`finance.fn_business_kyb_verified(business_id)`** → boolean — true when the business is
   KYB-`verified` (required to operate the pooled Business Wallet).
+
+> **Two kinds of predicate, two grants.** The visibility and capability predicates answer a
+> question about the CALLER and are what the RLS policies are made of, so `authenticated` must hold
+> them. The KYC/KYB pair take ANY subject id and answer about somebody else, so they are
+> **`service_role` only** — a client grant would let any signed-in account ask whether any other
+> person has cleared KYC.
 
 > ⚠️ **Enforcement wiring flagged (root `CLAUDE.md` §8):** these gating predicates are provided but
 > are **not** yet wired into the existing money-movement functions (`projects.claim_ticket`,
@@ -137,7 +158,8 @@ Both are mirrored by pure TypeScript twins in `packages/types/finance/entitlemen
   â€” opens or rolls the weekly period (`date_trunc('week', now())`), snapshotting `granted_units`
   with its `base_units` / `standing_bonus_units` provenance so a mid-week upgrade or promotion is an
   explicit new grant rather than a silent drift. Also applies the lazy buffer drip. Emits
-  `allowance.period_rolled` / `allowance.buffer_replenished`. Granted to `authenticated` (read own).
+  `allowance.period_rolled` / `allowance.buffer_replenished`. **`service_role` only** — it takes any subject, so a client grant would disclose other people's
+  allowances; a self-scoped wrapper is how a viewer should see their own.
 - **`finance.fn_consume_allowance(subject, units, key, reason, ref_table, ref_id) â†’ boolean`** â€”
   spends units. Requires **both** weekly headroom and a buffer token, so a week's allowance can
   never be dumped into one hour of spam. Emits `allowance.consumed` on success and

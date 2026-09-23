@@ -123,9 +123,9 @@ function responseTimeLabel(minutes: number): string {
 }
 
 /**
- * The published weekly hours for a seller — the SAME bands `/[handle]/availability` paints, seeded
- * exactly as `availability-fixtures.ts` seeds them (the derive hash of the `@handle`), narrowed to
- * the `working_hours` kind. A buyer entity publishes none.
+ * A stand-in seller's weekly hours, derived from the `@handle` hash and narrowed to the
+ * `working_hours` kind. A buyer entity publishes none. Fixture-only: the live profile reads the
+ * owner's real `scheduling.availability_rules` through `org.get_profile_view`.
  */
 function hoursFor(kind: ProfileKind, handle: string, timezone: string): ProfileView["hours"] {
 	if (kind !== "freelancer" && kind !== "team") return null;

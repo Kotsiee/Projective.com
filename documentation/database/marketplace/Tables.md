@@ -51,3 +51,39 @@ against the list on the way in, so the modal's gate and the server's cannot drif
 The seller-side EDITOR for this column is the catalogue console (`ListingDetail.intake` /
 `UpdateListingInput.intake`); see [`../../flows/ServiceCreation.md`](../../flows/ServiceCreation.md)
 for what that surface must write.
+
+## `marketplace.service_blueprints` — what the listing page shows
+
+The listing page (`/view/svc-…`) and every discovery card read these columns live
+(`packages/backend/services/explore/live-catalog.ts` + `live-view.ts`). Each is seller-declared; an
+empty value means the seller has not stated it, and the page omits that part rather than inventing
+it.
+
+| Column            | Type             | Notes                                                                                                   |
+| :---------------- | :--------------- | :------------------------------------------------------------------------------------------------------ |
+| `stage_template`  | jsonb            | NOT NULL `DEFAULT '[]'`. An ordered array of `BlueprintStage` (`@projective/types/explore` `stored.ts`: name, description, deliverables, turnaround, `priceCents`, skills). The stages a Pipeline or One-Off is delivered through — the showcase the view renders and what "Add to projects" instantiates. `ck_service_blueprints_stage_template_shape`: array, ≤ 12. |
+| `team_roles`      | jsonb            | NOT NULL `DEFAULT '[]'`. A Direct Deliverable's named roles (`BlueprintTeamRole`: name, summary, skills, count). Array, ≤ 12. |
+| `deliverables`    | text[]           | NOT NULL `DEFAULT '{}'`. The flat "what you get" list for a Direct Deliverable, a Session or a stage-less listing. |
+| `session_minutes` | integer, 5–600   | A Session's fixed sitting length. NULL on every non-session model, and NULL on a session whose seller has not stated one — the booking layer then says so instead of assuming an hour. |
+| `session_count`   | integer, 1–52    | For a set-session block, how many sittings one purchase commits to.                                     |
+| `rating_average` / `rating_count` | numeric / integer | **Derived** from `reviews.entity_reviews` (`reviews.recalculate_entity_rating`). A client write is refused by `trg_service_blueprints_derived` (`security.fn_guard_derived_columns`). |
+
+## `marketplace.promoted_placements` — the paid-placement ledger
+
+One row per paid promotion: `sponsor_user_id`, the promoted `entity_type`
+(`service` · `product` · `freelancer` · `team` · `project`) and `entity_id`, the `surface`
+(`explore_home` · `explore_results` · `view_rail`), the flight window `starts_at` → `ends_at`
+(`ends_at > starts_at`), an optional `cancelled_at` inside the window, and `spend_cents` + `currency`.
+
+A card renders the "AD" disclosure only when an ACTIVE placement exists for it
+(`cancelled_at IS NULL AND starts_at <= now() < ends_at`) — `catalogue.listings.promoted` alone buys
+nothing. The seed writes one placement per sponsored corpus listing (a 30-day window starting a week
+ago).
+
+## `marketplace.quote_requests` — "Request a custom quote"
+
+A buyer (`requester_user_id`) describes a `scope` against a published blueprint (`blueprint_id`) and
+its seller (`host_user_id`), with an optional soft budget (`budget_cents` requires `currency`) and a
+free-text `timeline`. `status`: `sent` · `answered` (requires `answered_at`) · `withdrawn`. Nothing is
+reserved, charged or escrowed. The parties and the blueprint cannot change once written
+(`trg_quote_requests_parties`, `security.fn_guard_immutable_columns`).

@@ -11,15 +11,12 @@ import {
 	registerBookingHost,
 	seedOffer,
 } from "../core/booking-state.ts";
-import { useBookingSeam } from "../core/booking-seam.ts";
-import { BookingService } from "../core/BookingService.ts";
-import { applyOffer } from "../core/booking-state.ts";
 import type { ServiceBookingOffer } from "@projective/types/services";
 import type { ProjectStage } from "@projective/types/explore";
 
 /**
  * BookingPanels — the single mount point for every booking overlay on a listing page, and the one
- * place the shared offer is seeded and kept fresh.
+ * place the shared offer is seeded.
  *
  * # Why a host election
  *
@@ -61,24 +58,6 @@ export default function BookingPanels(
 	seedOffer(offer);
 
 	useEffect(() => registerBookingHost(host), [host]);
-
-	/*
-	 * Re-read the offer when the dev seam changes.
-	 *
-	 * Every axis it carries changes data the SERVER produced — how many cohort seats are left, whether
-	 * this seller takes calls, whether this buyer has a draft — so a client-side read of the seam would
-	 * move nothing. The overlay travels as query params and the fat service applies it, which is why
-	 * this is a refetch rather than a re-render.
-	 *
-	 * Only the elected host does it: two hosts refetching one offer is two requests for one answer.
-	 */
-	useBookingSeam((sim) => {
-		if (bookingHost.value !== host) return;
-		void (async () => {
-			const res = await BookingService.offer(offer.subjectId, { sim });
-			if (res.ok && res.data) applyOffer(res.data.offer);
-		})();
-	});
 
 	const elected = useComputed(() => bookingHost.value === host);
 	if (!elected.value) return null;

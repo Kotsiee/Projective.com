@@ -7,8 +7,8 @@ import type {
 	CheckoutSessionContext,
 	CheckoutTotals,
 	CreateCheckout,
+	MoneyView,
 	MonthlyInvoicing,
-	PaymentProvider,
 	ProviderAvailability,
 	SaveBuyerDetails,
 	SavedCard,
@@ -19,61 +19,81 @@ import {
 	buyerDetailsComplete,
 	checkoutRequirements,
 	checkoutTotals,
+	DEFAULT_LOCALE,
+	formatMoney,
 	isCheckoutEligible,
 	itemKindMeta,
 	missingBuyerFields,
 	PLATFORM_FEE_BP,
 } from "@projective/types/finance";
+import { getUserClient } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
-import { isFinanceBackendLive } from "../../core/supabase.ts";
+import { canReadLive, type ReadActor } from "../read-actor.ts";
 import type { BasketQuery } from "./basket-query.ts";
-import * as fx from "./basket-fixtures.ts";
-import * as buyer from "./buyer-fixtures.ts";
-import { recordOrder } from "./order-fixtures.ts";
-import { defaultCardId, findCard, listCards } from "./cards-fixtures.ts";
+import type { MoneyProjector } from "./commerce-money.ts";
+import { listOwners, type ResolvedOwner, walletAvailableMinor } from "./commerce-owner.ts";
+import { type BasketView, promoMinorFor, readBasket } from "./live-basket.ts";
+import { defaultCardOf, listCards } from "./live-cards.ts";
+import {
+	billingContextsFor,
+	buyerDetailsFor,
+	departmentsOf,
+	processingOfferFor,
+	saveBuyerDetails,
+	spendLimitFor,
+} from "./live-buyer.ts";
 
 /**
  * CheckoutBackendService — the FAT half of the payment surface: the whole server projection the
- * checkout page renders ({@link session}) and the charge itself ({@link create}), each returning a
- * transport-agnostic {@link ServiceResult}.
+ * checkout page renders ({@link session}), the Details step's record ({@link details},
+ * {@link saveDetails}), and the charge itself ({@link create}), each returning a transport-agnostic
+ * {@link ServiceResult}.
+ *
+ * Everything reads LIVE as the signed-in caller: the basket (`live-basket`), the paying account and
+ * its wallet (`commerce-owner`), its saved cards (`live-cards`), the buyer's saved details and the
+ * member's spending limit (`live-buyer`).
  *
  * **Every total on this platform is computed by the SSOT's one arithmetic path.** `checkoutTotals`
  * (which itself runs `basketSubtotal` → `applyDiscounts` → `platformFeeFor`) returns integer minor
- * units; this service's only job with them is to wrap them into `MoneyView`s with a server-rendered
- * display string. There is deliberately no second subtotal, no second fee calculation and no second
- * eligibility rule anywhere in this module — a second implementation is how two surfaces come to round
- * a fee differently and only one of them is what the buyer is charged.
+ * units; this service's only job with them is to wrap them into `MoneyView`s. There is deliberately no
+ * second subtotal, no second fee calculation and no second eligibility rule anywhere in this module.
  *
  * **The provider offer is a pure function of the context, and a refused provider is never hidden.**
  * `availableProviders` returns all six in enum order, each with `available` and a human-readable
- * `reason`, so an individual attempting to spend a business's money sees *why* every route is closed
- * rather than an empty payment section. The three rules it binds — an individual may not purchase on an
- * entity's behalf; an entity may only spend from its Projective wallet or a verified business card;
- * invoicing requires KYB Level 3 — are the SSOT's, applied here against the resolved owner.
- *
- * **{@link create} is idempotent and re-verifies the price.** A retried submit, a double-click or a
- * reconnect after a dropped response replays the stored outcome for the same `idempotencyKey` instead
- * of charging twice; and the client-supplied `expectedTotalMinor` is checked against a freshly computed
- * total, refusing on mismatch — a client-supplied total the server accepts blindly is a price-tampering
- * hole.
- *
- * Gated by {@link isFinanceBackendLive} (`FINANCE_BACKEND_LIVE`, default off): until the RLS-scoped
- * `finance.*` money functions, the Stripe PaymentIntent path and the idempotency ledger are wired, the
- * session answers from the basket fixtures and a charge mutates the in-module session store (fully
- * exercisable, no persistence, no money moved).
+ * `reason`, applied here against the resolved owner.
  */
 
+// #region Payment processor
+/**
+ * Whether a card payment processor is connected to this deployment.
+ *
+ * None is: there is no processor integration, so a card, a device wallet or PayPal cannot actually be
+ * charged here. The device-wallet and PayPal capabilities the client reports are therefore not passed
+ * through — offering Google Pay on a checkout that cannot take it would be a control that does
+ * nothing (root CLAUDE.md §3 gate 11). The provider rules still run; they are simply told the truth.
+ */
+const PROCESSOR_CONNECTED = false;
+
+/**
+ * The purchase kinds the wallet can settle in one transaction (`finance.place_wallet_order`). Every
+ * other kind is paid into escrow against a project stage, which a basket line does not carry.
+ */
+const WALLET_SETTLES: ReadonlySet<BasketItem["itemType"]> = new Set(["digital_product"]);
+// #endregion
+
 // #region Session
-/** Where a checkout's non-money display facts come from, resolved once and shared by both entry points. */
+/** Where a checkout's facts come from, resolved once and shared by every entry point. */
 interface Resolved {
-	owner: fx.ResolvedOwner;
+	view: BasketView;
+	owner: ResolvedOwner;
+	money: MoneyProjector;
 	items: BasketItem[];
 	cards: SavedCard[];
 	walletMinor: number;
 	basketId: string;
 }
 
-/** Narrow a basket's lines to what a checkout is paying for: active lines, then the deep-link. */
+/** Narrow a basket's lines to what a checkout is paying for: active lines, then the deep link. */
 function narrow(
 	items: readonly BasketItem[],
 	projectId: string | null,
@@ -91,37 +111,30 @@ function narrow(
 function toTotals(
 	items: readonly BasketItem[],
 	promoMinor: number,
-	display: string,
+	money: MoneyProjector,
 	processingContributionMinor = 0,
 ): CheckoutTotals {
 	const t = checkoutTotals({ items, promoDiscountMinor: promoMinor, processingContributionMinor });
-	const money = (minor: number) => fx.money(minor, display);
 	return {
-		subtotal: money(t.subtotalMinor),
-		creatorDiscounts: money(t.creatorDiscountMinor),
-		promoDiscount: money(t.promoDiscountMinor),
-		net: money(t.netMinor),
-		platformFee: money(t.platformFeeMinor),
+		subtotal: money.derived(t.subtotalMinor),
+		creatorDiscounts: money.derived(t.creatorDiscountMinor),
+		promoDiscount: money.derived(t.promoDiscountMinor),
+		net: money.derived(t.netMinor),
+		platformFee: money.derived(t.platformFeeMinor),
 		platformFeeBp: t.platformFeeBp,
 		platformFeeMode: t.feeMode,
-		taxes: money(t.taxMinor),
+		taxes: money.derived(t.taxMinor),
 		// No tax engine has been wired, so no tax is asserted. A fabricated rate would look
 		// authoritative and be wrong; the SSOT takes tax as an INPUT for exactly this reason.
 		taxNote: null,
-		processingContribution: money(t.processingContributionMinor),
-		total: money(t.totalMinor),
+		processingContribution: money.derived(t.processingContributionMinor),
+		total: money.derived(t.totalMinor),
 	};
 }
 
-/**
- * The two account-level gates that are resolved AFTER the total exists, so they cannot be computed
- * inside {@link blockersFor} itself.
- *
- * Both are optional because the earliest refusal path — a submission with nothing eligible in it —
- * runs before either has been resolved, and the true reason there is `empty`.
- */
+/** The two account-level gates resolved AFTER the total exists. */
 interface CheckoutGate {
-	/** The buyer's saved delivery + billing record for the active identity. */
+	/** The buyer's saved delivery + billing record for the paying account. */
 	buyer?: BuyerDetails;
 	/** How the acting member's spending limit bears on this basket's total. */
 	spendLimit?: SpendLimitBlock;
@@ -132,7 +145,7 @@ interface CheckoutGate {
  * name the line responsible; account-level ones carry `itemId: null`.
  */
 function blockersFor(
-	resolved: Resolved,
+	resolved: Pick<Resolved, "owner" | "items">,
 	providers: readonly ProviderAvailability[],
 	gate: CheckoutGate = {},
 ): CheckoutBlocker[] {
@@ -143,7 +156,7 @@ function blockersFor(
 		blockers.push({
 			code: "not_authorised",
 			message:
-				"Only a member of this account can pay from it. Switch to your personal account to buy this yourself.",
+				"Only a member who can spend from this account can pay from it. Switch to your personal account to buy this yourself.",
 			itemId: null,
 		});
 	}
@@ -171,6 +184,16 @@ function blockersFor(
 
 	for (const item of eligible) {
 		const meta = itemKindMeta(item.itemType);
+		// Said before Pay rather than refused at it: the one provider that can settle here is the wallet,
+		// and it pays for digital products only — every other kind escrows against a project stage and
+		// a business payer (Decision #56(a)), which a basket line does not have.
+		if (!WALLET_SETTLES.has(item.itemType)) {
+			blockers.push({
+				code: "no_provider",
+				message: `${item.title} can't be paid for here yet — only digital products can. Save it for later to pay for the rest.`,
+				itemId: item.id,
+			});
+		}
 		if (meta.needsEmail && !item.destinationEmail) {
 			blockers.push({
 				code: "missing_email",
@@ -194,28 +217,19 @@ function blockersFor(
 		}
 	}
 
-	// The mirror of `canSkipDetails`. A session that may not SKIP the Details step must also refuse
-	// Pay, or a deep link straight to `/checkout/payment` becomes a way around the form — and one
-	// predicate governs both directions, so the redirect and the refusal can never disagree.
+	// The mirror of `canSkipDetails`: a session that may not SKIP the Details step must also refuse
+	// Pay, or a deep link straight to `/checkout/payment` becomes a way around the form.
 	if (eligible.length > 0 && gate.buyer && !buyerDetailsComplete(gate.buyer)) {
 		const missing = missingBuyerFields(gate.buyer);
 		blockers.push({
 			code: "missing_details",
-			// A record whose fields are all filled but which was never SAVED is a genuinely different
-			// state from an incomplete one — it is pre-fill the buyer has not yet looked at — so it asks
-			// for confirmation rather than naming a field that is not actually missing.
 			message: missing.length > 0
-				? `Add your delivery and billing details to continue — ${
-					missing[0].label
-				} is still missing.`
+				? `Add your delivery and billing details to continue — ${missing[0].label} is still missing.`
 				: "Confirm your delivery and billing details to continue.",
 			itemId: null,
 		});
 	}
 
-	// `needs_approval` blocks payment too, but it is not a wall: the verdict carries its own sentence
-	// and the session carries the route forward, so the surface offers the request rather than a dead
-	// end. Re-deriving the ceiling here would be a fourth view of a rule that already has three.
 	if (gate.spendLimit?.applies && gate.spendLimit.verdict !== "allowed") {
 		blockers.push({
 			code: "spend_limit",
@@ -227,9 +241,8 @@ function blockersFor(
 		});
 	}
 
-	// KYB gates OPERATING a pooled entity wallet (finance-model.md §KYC/KYB Gating). The SSOT's
-	// provider function gates only `invoice` on KYB, so the broader gate is expressed here as a
-	// blocker rather than by forking that function.
+	// KYB gates OPERATING a pooled business wallet (finance-model.md §KYC/KYB Gating). A team is not
+	// subject to it, and its `kybStatus` is `null` for exactly that reason.
 	if (owner.isEntity && owner.kybStatus !== null && owner.kybStatus !== "verified") {
 		blockers.push({
 			code: "verification_required",
@@ -240,9 +253,7 @@ function blockersFor(
 		});
 	}
 
-	if (
-		eligible.length > 0 && owner.actingIsMember && !providers.some((p) => p.available)
-	) {
+	if (eligible.length > 0 && owner.actingIsMember && !providers.some((p) => p.available)) {
 		blockers.push({
 			code: "no_provider",
 			message: "No payment method is available for this account right now.",
@@ -253,12 +264,46 @@ function blockersFor(
 	return blockers.slice(0, 20);
 }
 
+/** The provider offer for a resolved checkout at a given total. */
+function offerFor(resolved: Resolved, totalMinor: number, query: BasketQuery): ProviderAvailability[] {
+	const caps = PROCESSOR_CONNECTED ? query.capabilities : undefined;
+	return availableProviders({
+		ownerType: resolved.owner.ownerType,
+		actingIsMember: resolved.owner.actingIsMember,
+		walletAvailableMinor: resolved.walletMinor,
+		totalMinor,
+		currency: resolved.money.display,
+		savedCards: resolved.cards,
+		kybStatus: resolved.owner.kybStatus,
+		verificationTier: resolved.owner.verificationTier,
+		deviceWallets: { googlePay: caps?.googlePay === true, applePay: caps?.applePay === true },
+		paypalEnabled: caps?.paypalEnabled === true,
+	});
+}
+
+/** Resolve the shared inputs every entry point needs. `null` for a caller who cannot be identified. */
+async function resolve(query: BasketQuery, actor: ReadActor): Promise<Resolved | null> {
+	const read = await readBasket(query, actor);
+	if (!read.ok) return null;
+	const view = read.value;
+	const [cards, walletMinor] = await Promise.all([
+		listCards(view.owner, actor),
+		walletAvailableMinor(view.owner, view.money, actor),
+	]);
+	return {
+		view,
+		owner: view.owner,
+		money: view.money,
+		basketId: view.basket.id,
+		items: narrow(view.basket.items, query.projectId ?? null, query.serviceId ?? null),
+		cards,
+		walletMinor,
+	};
+}
+
 /**
- * The Details step's payload — one record, every identity that record could belong to, and the
- * monthly-invoicing offer for the active one.
- *
- * `invoicing` is the active record's own `invoicing` block rather than a second resolution of it, so
- * the form's control and the record it edits can never disagree about which mode is set.
+ * The Details step's payload — one record, every identity it could be billed through, and the
+ * monthly-invoicing offer for the paying account.
  */
 export interface DetailsPayload {
 	buyer: BuyerDetails;
@@ -266,68 +311,34 @@ export interface DetailsPayload {
 	invoicing: MonthlyInvoicing;
 }
 
-/** Resolve the Details payload for a query. */
-function detailsFor(query: BasketQuery): DetailsPayload {
-	const owner = fx.resolveOwner(query);
-	const record = buyer.buyerDetailsFor(owner, query);
+async function detailsFor(
+	owner: ResolvedOwner,
+	query: BasketQuery,
+	actor: ReadActor,
+): Promise<DetailsPayload> {
+	const owners = await listOwners(query, actor);
+	const self = owners.find((o) => !o.isEntity) ?? null;
+	const buyer = await buyerDetailsFor(owner, actor, owner.display, self);
 	return {
-		buyer: record,
-		billingContexts: buyer.billingContextsFor(owner, query),
-		invoicing: record.invoicing,
+		buyer,
+		billingContexts: await billingContextsFor(owners, actor, owner.display),
+		invoicing: buyer.invoicing,
 	};
 }
 
-/** Resolve the shared inputs both entry points need. */
-function resolve(query: BasketQuery): Resolved {
-	const owner = fx.resolveOwner(query);
-	const basket = fx.basketFor(owner, query.basketId);
-	return {
-		owner,
-		basketId: basket.id,
-		items: narrow(basket.items, query.projectId ?? null, query.serviceId ?? null),
-		cards: listCards(owner, query.sim?.cards),
-		walletMinor: fx.walletAvailableMinor(owner, query),
-	};
-}
+const SIGNED_OUT = fail(401, { message: "Sign in to check out." });
+const UNREACHABLE = fail(503, {
+	message: "We couldn't reach your checkout just now. Try again in a moment.",
+});
 
-/**
- * Build the provider offer for a resolved checkout at a given total.
- *
- * The simulated preset moves the **inputs** `availableProviders` is evaluated against — never its
- * verdict. Overriding the verdict would put a second copy of the eligibility rules in the codebase,
- * and the whole point of the preset is to exercise the real ones from an angle a developer cannot
- * otherwise reach: `invoice` lifts the account to the KYB tier the SSOT gates invoicing on, and
- * `card_only` withdraws the wallet and both device wallets so the card path is the only one left
- * standing — each still refused, or offered, by the same function every real request runs through.
- */
-function offerFor(resolved: Resolved, totalMinor: number, sim: BasketQuery["sim"]) {
-	const preset = sim?.providers;
-	const deviceWallets = preset === "all"
-		? { googlePay: true, applePay: true }
-		: preset === "card_only" || preset === "no_wallet" || preset === "invoice"
-		? { googlePay: false, applePay: false }
-		: { googlePay: sim?.googlePay, applePay: sim?.applePay };
-	const paypalEnabled = preset === "all"
-		? true
-		: preset === "card_only" || preset === "invoice"
-		? false
-		: sim?.paypalEnabled;
-	const invoiceable = preset === "invoice" || preset === "all";
-
-	return availableProviders({
-		ownerType: resolved.owner.ownerType,
-		actingIsMember: resolved.owner.actingIsMember,
-		walletAvailableMinor: preset === "no_wallet" || preset === "card_only"
-			? 0
-			: resolved.walletMinor,
-		totalMinor,
-		currency: resolved.owner.display,
-		savedCards: resolved.cards,
-		kybStatus: invoiceable ? "verified" : resolved.owner.kybStatus,
-		verificationTier: invoiceable ? 3 : resolved.owner.verificationTier,
-		deviceWallets,
-		paypalEnabled,
-	});
+/** Run a checkout read; any unexpected failure is a 503, never a throw into the route. */
+async function guarded<T>(label: string, run: () => Promise<ServiceResult<T>>): Promise<ServiceResult<T>> {
+	try {
+		return await run();
+	} catch (error) {
+		console.error(`[checkout:${label}]`, error instanceof Error ? error.message : error);
+		return UNREACHABLE as ServiceResult<T>;
+	}
 }
 // #endregion
 
@@ -336,475 +347,340 @@ export class CheckoutBackendService {
 	 * The checkout page's entire server projection — which account is paying, which lines are being paid
 	 * for, what each provider costs the buyer in eligibility, what the wallet covers, the totals, and
 	 * everything currently blocking Pay.
-	 *
-	 * Takes the SSOT's `CheckoutQuery` widened with the viewer identity the fixtures scope on; a bare
-	 * `CheckoutQuery` is still assignable, so the published signature holds.
 	 */
-	static session(query: BasketQuery): ServiceResult<{ session: CheckoutSessionContext }> {
-		if (isFinanceBackendLive()) {
-			// LIVE: read the basket + saved cards + wallet balance under the caller's JWT, then apply the
-			// SAME SSOT arithmetic and provider rules — not yet implemented; fall back to fixtures.
-		}
-		const resolved = resolve(query);
-		const { owner, items } = resolved;
-		const promo = fx.resolvePromo(
-			fx.activePromoCode(owner, query.basketId),
-			items,
-			owner.display,
-		);
-		const buyerRecord = buyer.buyerDetailsFor(owner, query);
-		// The contribution is resolved in two passes on purpose: its amount is a function of the
-		// charge, and the charge is a function of the contribution. The first pass prices the goods,
-		// the second adds the opted-in contribution — so the figure the checkbox advertises and the
-		// figure the buyer is charged are the same number, computed once each.
-		const goods = toTotals(items, fx.promoMinorFor(promo), owner.display);
-		const processingOffer = buyer.processingOfferFor(
-			goods.total.minor,
-			owner.display,
-			query.provider ?? null,
-			query.processingContribution === true,
-		);
-		const totals = toTotals(
-			items,
-			fx.promoMinorFor(promo),
-			owner.display,
-			processingOffer.optedIn ? processingOffer.amount.minor : 0,
-		);
-		// The coverage axis is relative to the TOTAL, so it can only be applied once the total exists —
-		// and it must be applied before the offer, or the wallet provider would be judged against a
-		// balance the surface is about to contradict.
-		const walletMinor = fx.simWalletMinor(resolved.walletMinor, totals.total.minor, query.sim);
-		const covered: Resolved = { ...resolved, walletMinor };
-		const providers = offerFor(covered, totals.total.minor, query.sim);
-		const shortfall = Math.max(totals.total.minor - walletMinor, 0);
-		const requirements = checkoutRequirements(items);
-		const spendLimit = buyer.spendLimitFor(owner, totals.total.minor, query);
+	static session(
+		query: BasketQuery,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ session: CheckoutSessionContext }>> {
+		return guarded("session", async () => {
+			const resolved = await resolve(query, actor);
+			if (!resolved) return SIGNED_OUT as ServiceResult<{ session: CheckoutSessionContext }>;
+			const { owner, items, money, view } = resolved;
 
-		return ok({
-			session: {
-				basketId: resolved.basketId,
-				owner: {
-					ownerType: owner.ownerType,
-					ownerId: owner.ownerId,
-					name: owner.name,
-					handle: owner.handle,
-					avatar: owner.avatar,
-					actingIsMember: owner.actingIsMember,
-				},
-				currency: owner.display,
-				// Read off the converted prices themselves, so the rate the buyer is quoted and the
-				// figures they are charged cannot come from two different tables.
-				settlement: fx.settlementFor(items, owner.display),
+			const promo = await view.resolvePromo(view.promoCode, items);
+			const processingOffer = processingOfferFor(money);
+			const totals = toTotals(
 				items,
-				groups: fx.buildGroups(items, owner.display),
-				preselect: {
-					projectId: query.projectId ?? null,
-					serviceId: query.serviceId ?? null,
+				promoMinorFor(promo),
+				money,
+				processingOffer.optedIn ? processingOffer.amount.minor : 0,
+			);
+			const providers = offerFor(resolved, totals.total.minor, query);
+			const shortfall = Math.max(totals.total.minor - resolved.walletMinor, 0);
+			const requirements = checkoutRequirements(items);
+			const [details, spendLimit] = await Promise.all([
+				detailsFor(owner, query, actor),
+				spendLimitFor(owner, totals.total.minor, money, actor),
+			]);
+
+			return ok({
+				session: {
+					basketId: resolved.basketId,
+					owner: {
+						ownerType: owner.ownerType,
+						ownerId: owner.ownerId,
+						name: owner.name.slice(0, 120),
+						handle: owner.isEntity && owner.handle ? owner.handle.slice(0, 40) : null,
+						avatar: owner.avatar,
+						actingIsMember: owner.actingIsMember,
+					},
+					currency: money.display,
+					// Read off the converted prices themselves, so the rate the buyer is quoted and the
+					// figures they are charged cannot come from two different tables.
+					settlement: money.settlementFor(items.map((item) => item.unitPrice)),
+					items,
+					groups: view.groupsFor(items),
+					preselect: {
+						projectId: query.projectId ?? null,
+						serviceId: query.serviceId ?? null,
+					},
+					provider: null,
+					providers,
+					wallet: {
+						available: money.derived(resolved.walletMinor),
+						shortfall: money.derived(shortfall),
+						covers: shortfall === 0,
+					},
+					savedCards: resolved.cards,
+					defaultCardId: defaultCardOf(resolved.cards, owner),
+					promo,
+					totals,
+					requiresEmail: requirements.requiresEmail,
+					requiresSchedule: requirements.requiresSchedule,
+					requiresStage: requirements.requiresStage,
+					blockers: blockersFor(resolved, providers, { buyer: details.buyer, spendLimit }),
+					buyer: details.buyer,
+					billingContexts: details.billingContexts,
+					invoicing: details.invoicing,
+					processingOffer,
+					spendLimit,
 				},
-				// The buyer has not chosen yet — the surface selects from `providers`.
-				provider: null,
-				providers,
-				wallet: {
-					available: fx.money(walletMinor, owner.display),
-					shortfall: fx.money(shortfall, owner.display),
-					covers: shortfall === 0,
-				},
-				savedCards: resolved.cards,
-				defaultCardId: defaultCardId(owner, query.sim?.cards),
-				promo,
-				totals,
-				requiresEmail: requirements.requiresEmail,
-				requiresSchedule: requirements.requiresSchedule,
-				requiresStage: requirements.requiresStage,
-				blockers: blockersFor(covered, providers, { buyer: buyerRecord, spendLimit }),
-				buyer: buyerRecord,
-				billingContexts: buyer.billingContextsFor(owner, query),
-				invoicing: buyerRecord.invoicing,
-				processingOffer,
-				spendLimit,
-			},
+			});
 		});
 	}
 
 	/**
-	 * The Details step's read: the buyer's saved record for the active billing identity, every identity
-	 * they may bill through, and the monthly-invoicing offer for the active one.
-	 *
-	 * The same three values {@link session} already carries. They are exposed separately so the Details
-	 * page can refresh them after a save without re-resolving a whole checkout — and both paths read
-	 * the ONE record, so the answer that decided the auto-skip is the answer that prints on the
-	 * invoice.
+	 * The Details step's read: the buyer's saved record for the paying account, every identity they may
+	 * bill through, and the monthly-invoicing offer — the same three values {@link session} carries.
 	 */
-	static details(query: BasketQuery): ServiceResult<DetailsPayload> {
-		if (isFinanceBackendLive()) {
-			// LIVE: read the buyer record + the entities the viewer may bill through under the caller's
-			// JWT (RLS scopes it) — not yet implemented; fall back to fixtures.
-		}
-		return ok(detailsFor(query));
+	static details(query: BasketQuery, actor: ReadActor): Promise<ServiceResult<DetailsPayload>> {
+		return guarded("details", async () => {
+			const read = await readBasket(query, actor);
+			if (!read.ok) return SIGNED_OUT as ServiceResult<DetailsPayload>;
+			return ok(await detailsFor(read.value.owner, query, actor));
+		});
 	}
 
 	/**
-	 * The selectable spend departments for each billing identity the viewer may bill through.
-	 *
-	 * This exists because `/checkout/details` was reaching into `buyer-fixtures.ts` DIRECTLY — the only
-	 * place in the app where a route imported a fixture module instead of calling its fat service. That
-	 * import compiled and rendered correctly, which is exactly why it mattered: it bypassed
-	 * `isFinanceBackendLive()` entirely, so the page would have kept serving fixture departments after
-	 * the finance backend went live, and `USE_MOCKS` could never have reached it either.
-	 *
-	 * Keyed by billing-identity id rather than returned as a flat list: a buyer with two billable
-	 * identities has two different department sets, and the form needs to switch between them without a
-	 * second round trip.
-	 *
-	 * An entity that declares no departments yields an empty array, which is a real answer — "this
-	 * organisation does not break spend down by department" — and not a missing one.
+	 * The selectable spend departments for each billing identity the viewer may bill through, keyed by
+	 * identity so the form can switch between them without a second round trip. An account that
+	 * declares no departments yields an empty array — a real answer, not a missing one.
 	 */
 	static departments(
 		query: BasketQuery,
-	): ServiceResult<{ departments: Record<string, readonly { id: string; label: string }[]> }> {
-		if (isFinanceBackendLive()) {
-			// LIVE: read `org.organisations.departments` for every entity the caller may bill through,
-			// under their own JWT so RLS scopes it — not yet implemented; fall back to fixtures.
-		}
-		const { billingContexts } = detailsFor(query);
-		return ok({
-			departments: Object.fromEntries(
-				billingContexts.map((entry) => [entry.id, buyer.departmentsFor(entry.id)]),
-			),
+		actor: ReadActor,
+	): Promise<ServiceResult<{ departments: Record<string, readonly { id: string; label: string }[]> }>> {
+		return guarded("departments", async () => {
+			const owners = await listOwners(query, actor);
+			if (owners.length === 0) {
+				return SIGNED_OUT as ServiceResult<
+					{ departments: Record<string, readonly { id: string; label: string }[]> }
+				>;
+			}
+			return ok({
+				departments: Object.fromEntries(
+					owners.filter((o) => o.isMember).map((owner) => [owner.key, departmentsOf(owner)]),
+				),
+			});
 		});
 	}
 
 	/**
-	 * Save the buyer's delivery + billing details for the active identity.
-	 *
-	 * Returns the refreshed record AND the whole checkout session, deliberately: saving is what clears
-	 * the `missing_details` blocker, so a save that answered with the record alone would leave the
-	 * caller holding a stale gate and needing a second round trip to discover it had opened.
+	 * Save the buyer's delivery + billing details for the paying account. Returns the refreshed record
+	 * AND the whole checkout session, because saving is what clears the `missing_details` blocker.
 	 */
 	static saveDetails(
 		input: SaveBuyerDetails,
 		query: BasketQuery,
-	): ServiceResult<DetailsPayload & { session: CheckoutSessionContext }> {
-		if (isFinanceBackendLive()) {
-			// LIVE: upsert the buyer record under the caller's JWT — not yet implemented; fall back to
-			// the in-module store.
-		}
-		const owner = fx.resolveOwner(query);
-		if (owner.isEntity && !owner.actingIsMember) {
-			return fail(403, {
-				message:
-					"Only a member of this account can change its billing details. Switch to your personal account to buy this yourself.",
+		actor: ReadActor,
+	): Promise<ServiceResult<DetailsPayload & { session: CheckoutSessionContext }>> {
+		type Out = DetailsPayload & { session: CheckoutSessionContext };
+		return guarded("save-details", async () => {
+			const read = await readBasket(query, actor);
+			if (!read.ok) return SIGNED_OUT as ServiceResult<Out>;
+			const owner = read.value.owner;
+			const saved = await saveBuyerDetails(owner, input, actor);
+			if (!saved.ok) return fail(saved.status, { message: saved.message }) as ServiceResult<Out>;
+			const session = await CheckoutBackendService.session(query, actor);
+			if (!session.ok || !session.data) {
+				// The save DID land, and a caller told otherwise would re-submit it.
+				return fail(500, {
+					message:
+						"Your details were saved, but we couldn't refresh the checkout. Reload to continue.",
+				}) as ServiceResult<Out>;
+			}
+			return ok({ ...(await detailsFor(owner, query, actor)), session: session.data.session }, {
+				message: "Details saved.",
 			});
-		}
-		buyer.saveBuyerDetails(owner, input, query);
-		const session = CheckoutBackendService.session(query);
-		if (!session.ok || !session.data) {
-			// Unreachable over the fixtures, and deliberately not papered over with a fabricated empty
-			// session: the save DID land, and a caller told otherwise would re-submit it.
-			return fail(500, {
-				message:
-					"Your details were saved, but we couldn't refresh the checkout. Reload to continue.",
-			});
-		}
-		return ok({ ...detailsFor(query), session: session.data.session }, {
-			message: "Details saved.",
 		});
 	}
 
 	/**
-	 * Charge a checkout.
+	 * Charge a checkout — from the Projective wallet, the one provider that can settle here.
 	 *
-	 * Idempotent on `idempotencyKey`: the first attempt's outcome is stored and replayed verbatim for
-	 * any repeat, so a double-click or a retried request after a dropped response cannot charge twice.
-	 * The submitted `expectedTotalMinor` and `currency` are re-verified against a freshly computed total
-	 * before anything moves.
+	 * Every check the checkout page shows is re-run against the SUBMITTED lines (a line left out of
+	 * this payment must not block it), then the display total the buyer was shown is compared with a
+	 * fresh computation — a client-supplied total accepted blindly is a price-tampering hole. The money
+	 * then moves in ONE database transaction (`finance.place_wallet_order`), which re-prices each line
+	 * against the unit price the buyer saw, re-validates the promo code, debits the wallet, credits the
+	 * sellers, writes the order and consumes the lines. It is idempotent on `idempotencyKey`: a retried
+	 * submit answers with the order it already placed.
+	 *
+	 * Card, device wallets and PayPal need a payment processor, which is not connected here; they are
+	 * refused with that reason rather than recorded as paid.
 	 */
 	static create(
 		input: CreateCheckout,
 		query: BasketQuery,
-	): ServiceResult<{ result: CheckoutResult }> {
-		const replay = IDEMPOTENT.get(input.idempotencyKey);
-		if (replay) {
-			return ok({ result: replay }, {
-				message: "This payment was already processed — showing the original outcome.",
+		actor: ReadActor,
+	): Promise<ServiceResult<{ result: CheckoutResult }>> {
+		type Out = { result: CheckoutResult };
+		return guarded("create", async () => {
+			const resolved = await resolve({ ...query, basketId: input.basketId }, actor);
+			if (!resolved || !canReadLive(actor)) return SIGNED_OUT as ServiceResult<Out>;
+			const { owner, money, view } = resolved;
+			const refusal = (message: string, blockers: CheckoutBlocker[]): ServiceResult<Out> =>
+				ok({ result: failed(message, blockers, money) }, { message });
+			const blocker = (code: CheckoutBlocker["code"], message: string): CheckoutBlocker => ({
+				code,
+				message,
+				itemId: null,
 			});
-		}
-		const result = charge(input, query);
-		IDEMPOTENT.set(input.idempotencyKey, result);
-		return ok({ result }, { message: result.message });
+
+			if (!ownerMatches(input, owner)) {
+				return refusal("You can't pay from that account in this session. Switch to it and try again.", [
+					blocker("not_authorised", "This checkout was submitted for a different account than the one you're acting as."),
+				]);
+			}
+
+			const wanted = new Set(input.itemIds);
+			const chosen = resolved.items.filter((item) => wanted.has(item.id));
+			const eligible = chosen.filter(isCheckoutEligible);
+			if (eligible.length === 0 || eligible.length !== wanted.size) {
+				const blockers = blockersFor({ owner, items: chosen }, []);
+				return refusal(
+					blockers[0]?.message ?? "Your basket changed while you were paying — review it and try again.",
+					blockers.length > 0 ? blockers : [blocker("price_changed", "Your basket changed while you were paying.")],
+				);
+			}
+
+			const promo = await view.resolvePromo(view.promoCode, eligible);
+			const totals = toTotals(eligible, promoMinorFor(promo), money, 0);
+			const priced: Resolved = { ...resolved, items: eligible };
+			const providers = offerFor(priced, totals.total.minor, query);
+			const [details, spendLimit] = await Promise.all([
+				detailsFor(owner, query, actor),
+				spendLimitFor(owner, totals.total.minor, money, actor),
+			]);
+			const blocking = blockersFor(priced, providers, { buyer: details.buyer, spendLimit });
+			if (blocking.length > 0) return refusal(blocking[0].message, blocking);
+
+			if (input.provider !== "wallet") {
+				const message = input.provider === "invoice"
+					? "Invoiced payments aren't available in this environment yet — pay from your Projective wallet instead."
+					: "Card and device payments need a payment processor, which isn't connected in this environment — pay from your Projective wallet instead.";
+				return refusal(message, [blocker("no_provider", message)]);
+			}
+			const wallet = providers.find((p) => p.provider === "wallet");
+			if (!wallet?.available) {
+				const message = wallet?.reason ?? "Your Projective wallet can't pay for this order.";
+				return refusal(message, [blocker("insufficient_funds", message)]);
+			}
+
+			// The display figures the buyer confirmed, re-verified against a fresh computation.
+			if (input.currency.toUpperCase() !== money.display) {
+				const message = `This basket is priced in ${money.display}, not ${input.currency.toUpperCase()}. Reload and try again.`;
+				return refusal(message, [blocker("price_changed", message)]);
+			}
+			if ((input.processingContributionMinor ?? 0) > 0) {
+				const message = "The optional contribution isn't available for this payment. Review the total and try again.";
+				return refusal(message, [blocker("price_changed", message)]);
+			}
+			if (input.expectedTotalMinor !== totals.total.minor) {
+				const message = `The price changed while you were paying — it's now ${totals.total.display}. Review the total and try again.`;
+				return refusal(message, [blocker("price_changed", message)]);
+			}
+			// The code the buyer saw APPLIED — a refused code on the basket applies nothing and is not sent.
+			const appliedCode = promo?.valid ? promo.code : null;
+			if (normaliseCode(input.promoCode) !== normaliseCode(appliedCode)) {
+				const message = "Your promo code changed while you were paying. Review the total and try again.";
+				return refusal(message, [blocker("price_changed", message)]);
+			}
+
+			// The unit price each line was shown in, in the listing's OWN currency — what the database
+			// compares with the catalogue before any money moves. One currency per charge.
+			const units: Record<string, number> = {};
+			let chargeCurrency: string | null = null;
+			for (const item of eligible) {
+				const currency = (item.unitPrice.origin?.currency ?? item.unitPrice.currency).toUpperCase();
+				if (chargeCurrency !== null && chargeCurrency !== currency) {
+					const message = "This basket mixes currencies. Pay for each currency separately.";
+					return refusal(message, [blocker("price_changed", message)]);
+				}
+				chargeCurrency = currency;
+				units[item.id] = item.unitPrice.origin?.minor ?? item.unitPrice.minor;
+			}
+
+			const { data, error } = await getUserClient(actor.accessToken).schema("finance").rpc(
+				"place_wallet_order",
+				{
+					p_basket_id: resolved.basketId,
+					p_item_ids: eligible.map((item) => item.id),
+					p_currency: chargeCurrency,
+					p_units: units,
+					p_promo_code: appliedCode,
+					p_idempotency_key: input.idempotencyKey,
+				},
+			);
+			if (error) {
+				const code = BLOCKER_FOR_SQLSTATE[error.code ?? ""];
+				if (!code) throw new Error(`finance.place_wallet_order failed: ${error.message}`);
+				const message = error.message.slice(0, 200);
+				return refusal(message, [blocker(code, message)]);
+			}
+
+			const placed = data as {
+				order_id: string;
+				reference: string;
+				charged_minor: number;
+				currency: string;
+				replayed: boolean;
+			};
+			const charged: MoneyView = {
+				minor: placed.charged_minor,
+				currency: placed.currency,
+				display: formatMoney(placed.charged_minor, placed.currency, DEFAULT_LOCALE),
+				origin: null,
+			};
+			const message = placed.replayed
+				? `This payment was already made — order ${placed.reference}.`
+				: `Paid ${charged.display} from your Projective wallet.`;
+			return ok({
+				result: {
+					status: "succeeded",
+					orderId: placed.order_id,
+					charged,
+					nextActionUrl: null,
+					message,
+					blockers: [],
+					walletDelta: { ...charged, minor: -charged.minor, display: `-${charged.display}` },
+					at: new Date().toISOString(),
+				},
+			}, { message });
+		});
 	}
 }
 
 // #region Charging
-/** The idempotency ledger — one stored outcome per client-minted key, replayed on any repeat. */
-const IDEMPOTENT = new Map<string, CheckoutResult>();
+/**
+ * The blocker a wallet-order refusal maps to, by the SQLSTATE `finance.place_wallet_order` raises —
+ * so the surface explains a refusal the same way whether the app or the database caught it.
+ */
+const BLOCKER_FOR_SQLSTATE: Record<string, CheckoutBlocker["code"]> = {
+	"42501": "not_authorised",
+	PK403: "verification_required",
+	PC409: "price_changed",
+	PB404: "price_changed",
+	PD422: "missing_email",
+	PS501: "no_provider",
+	PF402: "insufficient_funds",
+	PA403: "spend_limit",
+};
 
-/** A refusal outcome carrying its blockers. */
-function refuse(
-	message: string,
-	blockers: CheckoutBlocker[],
-	display: string,
-): CheckoutResult {
-	return {
-		status: "failed",
-		orderId: null,
-		charged: fx.money(0, display),
-		nextActionUrl: null,
-		message,
-		blockers,
-		walletDelta: null,
-		at: new Date(fx.referenceNow()).toISOString(),
-	};
+/** A promo code compared the way the database stores it: trimmed, upper-cased, absent when blank. */
+function normaliseCode(code: string | null | undefined): string | null {
+	const trimmed = code?.trim().toUpperCase() ?? "";
+	return trimmed.length > 0 ? trimmed : null;
 }
 
-/**
- * Whether the submitted owner is the account this request may actually spend from. The personal scope
- * accepts either `user` or `freelancer` — the same human, labelled by capability — while an entity must
- * match exactly.
- */
-function ownerMatches(input: CreateCheckout, owner: fx.ResolvedOwner): boolean {
+/** Whether the submitted owner is the account this request may spend from. */
+function ownerMatches(input: CreateCheckout, owner: ResolvedOwner): boolean {
 	if (input.ownerId !== owner.ownerId) return false;
 	if (owner.isEntity) return input.ownerType === owner.ownerType;
 	return input.ownerType === "user" || input.ownerType === "freelancer";
 }
 
-/**
- * The outcome status + wording a provider produces on a submission that got this far.
- *
- * The return type deliberately EXCLUDES `failed`: every failure leaves through {@link refuse} above,
- * so a submission that reaches here has produced an order in one of the three live states — and
- * saying so in the type is what lets {@link recordOrder} take the status without re-checking it.
- */
-function outcomeFor(
-	provider: PaymentProvider,
-	totalMinor: number,
-	display: string,
-): {
-	status: Exclude<CheckoutResult["status"], "failed">;
-	message: string;
-	nextActionUrl: string | null;
-} {
-	const amount = fx.money(totalMinor, display).display;
-	switch (provider) {
-		case "paypal":
-			return {
-				status: "requires_action",
-				message: `Approve ${amount} with PayPal to finish this purchase.`,
-				nextActionUrl: "https://www.paypal.com/checkoutnow?token=XXXX-XXXX",
-			};
-		case "invoice":
-			return {
-				status: "pending",
-				message: `Invoice raised for ${amount}. It's due on your usual terms.`,
-				nextActionUrl: null,
-			};
-		default:
-			return { status: "succeeded", message: `Paid ${amount}.`, nextActionUrl: null };
-	}
-}
-
-/**
- * Which legal identity the invoice is made out to.
- *
- * `billingContextId` names an identity the buyer selected on the Details step; it is honoured only
- * when it is one the viewer may actually bill through, because it arrives in a request body and an
- * unchecked one would let a submitted string decide whose company registration prints on a document.
- * Anything unrecognised falls back to the active record's own kind.
- */
-function billedToKindFor(
-	owner: fx.ResolvedOwner,
-	record: BuyerDetails,
-	input: CreateCheckout,
-	query: BasketQuery,
-): BillingContext["kind"] {
-	if (!input.billingContextId) return record.contextKind;
-	const chosen = buyer.billingContextsFor(owner, query).find((c) =>
-		c.id === input.billingContextId
-	);
-	return chosen?.kind ?? record.contextKind;
-}
-
-/** Run one checkout attempt. Pure of transport; every refusal names what to fix. */
-function charge(input: CreateCheckout, query: BasketQuery): CheckoutResult {
-	const resolved = resolve({ ...query, basketId: input.basketId });
-	const { owner } = resolved;
-	const display = owner.display;
-
-	if (!ownerMatches(input, owner)) {
-		return refuse(
-			"You can't pay from that account in this session. Switch to it and try again.",
-			[{
-				code: "not_authorised",
-				message:
-					"This checkout was submitted for a different account than the one you're acting as.",
-				itemId: null,
-			}],
-			display,
-		);
-	}
-
-	const wanted = new Set(input.itemIds);
-	const chosen = resolved.items.filter((item) => wanted.has(item.id));
-	const eligible = chosen.filter(isCheckoutEligible);
-
-	// Blockers are computed against the SUBMITTED lines, not the whole basket: a line the buyer left
-	// out of this payment must not block it.
-	const scoped: Resolved = { ...resolved, items: chosen };
-	if (eligible.length === 0) {
-		return refuse(
-			"None of those items can be paid for right now.",
-			blockersFor(scoped, []),
-			display,
-		);
-	}
-
-	const promo = fx.resolvePromo(input.promoCode, eligible, display);
-	const promoMinor = fx.promoMinorFor(promo);
-
-	// #region The voluntary contribution (the highest-risk figure in this function)
-	// It is resolved in the SAME two passes `session` uses — the offer is a function of the charge and
-	// the charge is a function of the offer — because the total the buyer was shown INCLUDED it. A
-	// server that recomputed without it would land exactly one contribution below `expectedTotalMinor`
-	// and refuse with `price_changed`, on every contributed payment, for a reason nothing on the
-	// surface could explain.
-	const goods = toTotals(eligible, promoMinor, display);
-	const contribution = Math.max(input.processingContributionMinor ?? 0, 0);
-	const offered = buyer.processingOfferFor(
-		goods.total.minor,
-		display,
-		input.provider,
-		contribution > 0,
-	);
-	if (contribution > 0 && (!offered.offered || contribution !== offered.amount.minor)) {
-		// The contribution is voluntary, not arbitrary: it may only ever be the amount that was
-		// actually offered. Accepting any other figure would let a submitted number decide what a buyer
-		// is charged, which is the same hole `expectedTotalMinor` is re-verified to close.
-		const message =
-			"The optional contribution changed while you were paying. Review the total and try again.";
-		return refuse(message, [{ code: "price_changed", message, itemId: null }], display);
-	}
-	const totals = toTotals(eligible, promoMinor, display, contribution);
-	// #endregion
-
-	// Same ordering as `session`: the coverage axis is relative to the total, so the wallet is settled
-	// before the offer is built — otherwise a charge could be judged against a balance the checkout
-	// page had already shown differently.
-	const walletMinor = fx.simWalletMinor(scoped.walletMinor, totals.total.minor, query.sim);
-	const priced: Resolved = { ...scoped, items: eligible, walletMinor };
-	const providers = offerFor(priced, totals.total.minor, query.sim);
-
-	const buyerRecord = buyer.buyerDetailsFor(owner, query);
-	const blocking = blockersFor(priced, providers, {
-		buyer: buyerRecord,
-		spendLimit: buyer.spendLimitFor(owner, totals.total.minor, query),
-	});
-	if (blocking.length > 0) {
-		return refuse(blocking[0].message, blocking, display);
-	}
-
-	// #region Provider + instrument
-	const offer = providers.find((p) => p.provider === input.provider);
-	if (!offer || !offer.available) {
-		const code = input.provider === "wallet" ? "insufficient_funds" : "no_provider";
-		return refuse(
-			offer?.reason ?? "That payment method isn't available for this account.",
-			[{
-				code,
-				message: offer?.reason ?? "That payment method isn't available for this account.",
-				itemId: null,
-			}],
-			display,
-		);
-	}
-	if (input.provider === "card") {
-		if (!input.cardId) {
-			return refuse("Choose a card to pay with.", [{
-				code: "no_provider",
-				message: "Choose a card to pay with.",
-				itemId: null,
-			}], display);
-		}
-		const card = findCard(owner, input.cardId, query.sim?.cards);
-		if (!card) {
-			return refuse("That card is no longer on file. Choose another one.", [{
-				code: "no_provider",
-				message: "That card is no longer on file. Choose another one.",
-				itemId: null,
-			}], display);
-		}
-		if (card.isExpired) {
-			return refuse("That card has expired. Choose another one or add a new card.", [{
-				code: "no_provider",
-				message: "That card has expired. Choose another one or add a new card.",
-				itemId: null,
-			}], display);
-		}
-		if (owner.isEntity && !card.isBusinessCard) {
-			return refuse(
-				"A business purchase must be paid from the business wallet or a business card.",
-				[{
-					code: "not_authorised",
-					message: "A personal card can't pay for a business purchase.",
-					itemId: null,
-				}],
-				display,
-			);
-		}
-	}
-	// #endregion
-
-	// #region Price re-verification (the anti-tampering check)
-	// Both stale-basket refusals carry a `price_changed` blocker as well as a message. A surface that
-	// explains a refusal by rendering `blockers` would otherwise show nothing on the two refusals a
-	// buyer is most likely to hit — the reason would exist only in a field that surface never reads.
-	if (input.currency.toUpperCase() !== display.toUpperCase()) {
-		const message =
-			`This basket is priced in ${display}, not ${input.currency.toUpperCase()}. Reload and try again.`;
-		return refuse(message, [{ code: "price_changed", message, itemId: null }], display);
-	}
-	if (input.expectedTotalMinor !== totals.total.minor) {
-		const message =
-			`The price changed while you were paying — it's now ${totals.total.display}. Review the total and try again.`;
-		return refuse(message, [{ code: "price_changed", message, itemId: null }], display);
-	}
-	// #endregion
-
-	const outcome = outcomeFor(input.provider, totals.total.minor, display);
-	if (outcome.status === "succeeded") {
-		fx.markPurchased(owner, resolved.basketId, eligible.map((i) => i.id));
-	}
-
-	// The order is written HERE and read back by `OrderBackendService` — `orderId` stops being the
-	// permanently-null field it has always been (Decision #68, flagged item (g)). Every non-failed
-	// outcome produces one: `requires_action` and `invoiced` are real order states, and a buyer bounced
-	// to PayPal or billed on a monthly statement still needs a record to come back to. The id derives
-	// from the attempt key, so the idempotent replay above names the same order rather than a second
-	// one for a single payment.
-	const orderId = recordOrder({
-		owner,
-		basketId: resolved.basketId,
-		items: eligible,
-		totals,
-		status: outcome.status,
-		message: outcome.message,
-		provider: input.provider,
-		cardId: input.cardId,
-		idempotencyKey: input.idempotencyKey,
-		buyer: buyerRecord,
-		billedToKind: billedToKindFor(owner, buyerRecord, input, query),
-	});
-
+/** A refusal outcome carrying its blockers. */
+function failed(message: string, blockers: CheckoutBlocker[], money: MoneyProjector): CheckoutResult {
 	return {
-		status: outcome.status,
-		orderId,
-		charged: fx.money(outcome.status === "succeeded" ? totals.total.minor : 0, display),
-		nextActionUrl: outcome.nextActionUrl,
-		message: outcome.message,
-		blockers: [],
-		walletDelta: input.provider === "wallet" && outcome.status === "succeeded"
-			? fx.money(-totals.total.minor, display)
-			: null,
-		at: new Date(fx.referenceNow()).toISOString(),
+		status: "failed",
+		orderId: null,
+		charged: money.derived(0),
+		nextActionUrl: null,
+		message: message.slice(0, 200),
+		blockers: blockers.slice(0, 20),
+		walletDelta: null,
+		at: new Date().toISOString(),
 	};
 }
 // #endregion

@@ -21,9 +21,9 @@ import { ENTITY_META } from "../components/profile-glyphs.tsx";
 import { availabilityAt, localTimeLabel, wallClockAt } from "../core/hours.ts";
 import { type HireProject, reviewsHref } from "../core/profile-model.ts";
 import { headerCondensed } from "@features/shell/core/migrating-header.ts";
-import { editedAvatar, liveConsultation } from "../core/profile-state.ts";
 import { useMinuteClock } from "../hooks/useMinuteClock.ts";
 import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
+import { settingsOf } from "@projective/types/profile";
 
 /**
  * ProfileStickyHeader — the condensed profile identity that MIGRATES into the shell's header slot
@@ -55,12 +55,13 @@ import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
  * modals are mounted on, so a listing picked here opens the modal a listing picked there would.
  *
  * The badge and the clock are NOT a live region — the context bar's block already announces the
- * change of state, and a second `role="status"` would read it twice.
+ * change of state, and a second `role="status"` would read it twice. The local clock follows the
+ * owner's own switch (`settings.showLocalTime`), exactly as the context bar's does.
  */
 export interface ProfileStickyHeaderProps {
 	profile: ProfileView;
-	/** Whether the viewer owns this profile (the rig becomes Settings + Share). */
-	canEdit: boolean;
+	/** The owner previewing their own profile — the visitor's rig, explained instead of acting. */
+	preview: boolean;
 	/** Whether the viewer is signed in. */
 	authed: boolean;
 	/** The seller's active listings — the Hire popover's rows. */
@@ -76,12 +77,10 @@ function pad(n: number): string {
 }
 
 export default function ProfileStickyHeader(props: ProfileStickyHeaderProps): JSX.Element {
-	const { profile, canEdit, authed, services, hireProjects } = props;
+	const { profile, preview, authed, services, hireProjects, consultation } = props;
 	const condensed = headerCondensed.value;
-	const avatar = editedAvatar.value ?? profile.avatar;
-	const consultation = liveConsultation.value === undefined
-		? props.consultation
-		: liveConsultation.value;
+	const avatar = profile.avatar;
+	const showClock = settingsOf(profile).showLocalTime;
 	const hours = profile.hours && profile.hours.rules.length > 0 ? profile.hours : null;
 	const now = useMinuteClock();
 	const rating = profile.rating.asHelper ?? profile.rating.asClient;
@@ -106,7 +105,7 @@ export default function ProfileStickyHeader(props: ProfileStickyHeaderProps): JS
 			<div class="pf-band__id">
 				<Avatar
 					image={avatar}
-					placeholder={avatar === profile.avatar ? profile.avatarPlaceholder : undefined}
+					placeholder={profile.avatarPlaceholder}
 					label={profile.name}
 					size={28}
 					shape="circle"
@@ -128,10 +127,14 @@ export default function ProfileStickyHeader(props: ProfileStickyHeaderProps): JS
 					<span class="pf-band__avail" data-state={state.available ? "available" : "away"}>
 						<span class="pf-band__pip" aria-hidden="true" />
 						<span class="pf-band__availtext">{state.available ? "Available now" : "Away"}</span>
-						<span class="pf-band__sep" aria-hidden="true">·</span>
-						<span class="pf-band__clock">
-							<time dateTime={timeAttr}>{timeLabel}</time> local
-						</span>
+						{showClock && (
+							<>
+								<span class="pf-band__sep" aria-hidden="true">·</span>
+								<span class="pf-band__clock">
+									<time dateTime={timeAttr}>{timeLabel}</time> local
+								</span>
+							</>
+						)}
 					</span>
 				)}
 				{rating && rating.count > 0 && (
@@ -151,7 +154,8 @@ export default function ProfileStickyHeader(props: ProfileStickyHeaderProps): JS
 
 			<ProfileRig
 				profile={profile}
-				canEdit={canEdit}
+				canEdit={false}
+				preview={preview}
 				authed={authed}
 				services={services}
 				consultation={consultation}

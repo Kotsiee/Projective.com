@@ -95,3 +95,33 @@ FROM analytics.events e
 LEFT JOIN analytics.event_catalogue c ON c.name = e.name
 WHERE c.name IS NULL
 GROUP BY e.name, e.domain;
+
+
+-- --- search.platform_stats: the landing hero's proof points ---
+--
+-- The public landing page states what the marketplace has DONE — how many people are ready to hire,
+-- how much work has been signed off, how much money has reached sellers. Those facts live in tables a
+-- visitor may not read (`finance.payouts` is not even usable by `anon`), so this definer view answers
+-- them as AGGREGATES only: four numbers and a currency, one row, nothing a visitor could use to find
+-- or identify a single person, project or payout.
+--
+-- It replaces three figures the landing page used to hardcode ("$4.2M", "3,800+", "19k"), which were
+-- claims about a marketplace that did not exist. A small real number is the honest one.
+--
+-- `paid_out_minor` sums payouts that actually settled, in the platform's base currency. A payout in
+-- another currency is left out rather than converted at an arbitrary rate; the figure is labelled
+-- with its currency so it is never read as a total of everything.
+--
+-- Placed in `search` because that schema is exposed to PostgREST and granted to `anon` for exactly
+-- this kind of public, read-only projection.
+CREATE OR REPLACE VIEW search.platform_stats AS
+SELECT
+    (SELECT COUNT(*)::int FROM org.profiles_index
+      WHERE listed AND entity_type IN ('freelancer', 'team')) AS helpers,
+    (SELECT COUNT(*)::int FROM projects.stage_assignments
+      WHERE status = 'completed') AS stages_delivered,
+    (SELECT COUNT(*)::int FROM projects.projects
+      WHERE status IN ('active'::project_status, 'completed'::project_status)) AS projects_live,
+    (SELECT COALESCE(SUM(amount_cents), 0)::bigint FROM finance.payouts
+      WHERE status = 'paid'::finance.payout_status AND currency = 'USD') AS paid_out_minor,
+    'USD'::text AS paid_out_currency;

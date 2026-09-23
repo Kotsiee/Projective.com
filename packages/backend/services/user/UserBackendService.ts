@@ -9,6 +9,7 @@ import {
 	type UserPreferencesUpdate,
 } from "@projective/types/org";
 import { toDisplayCurrency } from "@projective/types/finance";
+import { fetchPartyCards } from "../profile/party-cards.ts";
 
 /**
  * UserBackendService — the FAT server-side service for the **acting user's own account**.
@@ -119,22 +120,25 @@ export class UserBackendService {
 			return fail(401, { message: "You need to be signed in to view your account." });
 		}
 
-		const live = await UserBackendService.liveIdentity(input.accessToken);
-		const preferences = resolvePreferences(
-			await UserBackendService.livePreferences(context.userId, input.accessToken),
-			context,
-		);
+		const [live, card, prefs] = await Promise.all([
+			UserBackendService.liveIdentity(input.accessToken),
+			UserBackendService.profileCard(context.userId, input.accessToken),
+			UserBackendService.livePreferences(context.userId, input.accessToken),
+		]);
+		const preferences = resolvePreferences(prefs, context);
 
 		const badge = resolveAccountRole(context);
 		const handle = context.handle;
-		const name = live.name ?? (handle ? `@${handle}` : "Your account");
+		// The PROFILE is the identity people see — its photo and name win over the sign-in provider's,
+		// which is what makes a new profile photo reach the account button on the next read.
+		const name = card?.name ?? live.name ?? (handle ? `@${handle}` : "Your account");
 
 		const user: CurrentUser = {
 			userId: context.userId,
 			handle,
 			name,
 			email: live.email ?? "",
-			avatar: live.avatar ?? null,
+			avatar: card?.avatar ?? live.avatar ?? null,
 			role: badge.role,
 			roleLabel: badge.label,
 			// The actor owns this request, so they are online by definition.
@@ -265,6 +269,29 @@ export class UserBackendService {
 				.select("locale,preferred_display_currency,layout_direction")
 				.maybeSingle();
 			return error ? null : (data as PreferencesRow | null);
+		} catch {
+			return null;
+		}
+	}
+
+	/**
+	 * The acting user's own public identity card — their profile name and the photo's small tier —
+	 * through the one batch door every other surface reads people by (`org.get_party_cards`). `null`
+	 * when it cannot be read or the account has no profile yet, so the caller falls through to the
+	 * sign-in provider's identity.
+	 */
+	private static async profileCard(
+		userId: string,
+		accessToken?: string,
+	): Promise<{ name: string | null; avatar: string | null } | null> {
+		if (!accessToken) return null;
+		try {
+			const cards = await fetchPartyCards(getUserClient(accessToken), [userId]);
+			const card = cards.get(userId);
+			if (!card) return null;
+			// `cardName` falls back to the username; only a composed name is a name worth showing here.
+			const composed = card.name !== card.username && card.name !== "Unknown" ? card.name : null;
+			return { name: composed, avatar: card.avatar };
 		} catch {
 			return null;
 		}
