@@ -2,6 +2,7 @@ import { createModalStack } from "@projective/ui/overlay";
 import type { IconName } from "@projective/ui/icons";
 import type {
 	BoardCard,
+	BoardPage,
 	BoardStageRef,
 	FileItem,
 	SubmissionReview,
@@ -11,6 +12,7 @@ import type {
 import {
 	executionBands,
 	formatTicketMoney,
+	isTaskProject,
 	stageCostCents,
 	ticketSpentCents,
 	workloadIntensity,
@@ -113,8 +115,16 @@ export type TicketMode = "create" | "view";
  * archives of things that have happened, and nothing has happened to a ticket that does not exist
  * yet — an empty archive on a new ticket would not be reporting emptiness, it would be inviting the
  * reader to wonder what they had missed.
+ *
+ * The Timeline tab is the other exception, and it is decided by the ENGAGEMENT rather than the ticket:
+ * a Task's ticket has one stage, so its timeline would be one bar beside the ticket's own due date.
+ * See {@link boardHasTimeline}.
  */
-export function ticketTabs(card: BoardCard, mode: TicketMode = "view"): TicketTabSpec[] {
+export function ticketTabs(
+	card: BoardCard,
+	mode: TicketMode = "view",
+	hasTimeline = true,
+): TicketTabSpec[] {
 	const tabs: TicketTabSpec[] = [
 		{ key: "details", label: "Details", icon: "document", count: null, iconOnly: false },
 	];
@@ -129,10 +139,20 @@ export function ticketTabs(card: BoardCard, mode: TicketMode = "view"): TicketTa
 	}
 	tabs.push(
 		{ key: "stages", label: "Stages", icon: "stages", count: card.stages.length, iconOnly: false },
+	);
+	if (hasTimeline) {
 		// The same stages on a time axis: which of them is scheduled when, and where the ticket's own
 		// claim-to-deadline sits against them. Present in create mode too — a stage's window is a fact
 		// about the stage, and choosing stages is when a client wants to see one.
-		{ key: "timeline", label: "Timeline", icon: "timeline", count: null, iconOnly: false },
+		tabs.push({
+			key: "timeline",
+			label: "Timeline",
+			icon: "timeline",
+			count: null,
+			iconOnly: false,
+		});
+	}
+	tabs.push(
 		{ key: "finances", label: "Finances", icon: "wallet", count: null, iconOnly: false },
 		{
 			key: "attachments",
@@ -146,6 +166,15 @@ export function ticketTabs(card: BoardCard, mode: TicketMode = "view"): TicketTa
 		tabs.push({ key: "history", label: "History", icon: "history", count: null, iconOnly: true });
 	}
 	return tabs;
+}
+
+/**
+ * Whether the tickets on a board get a Timeline tab — false exactly on a Task, which has no time axis
+ * to draw (`isTaskProject`). Asked of the BOARD, because the ticket alone cannot say which engagement
+ * type it belongs to, and every host that mounts the modal already holds the board it came from.
+ */
+export function boardHasTimeline(page: Pick<BoardPage, "format" | "structure">): boolean {
+	return !isTaskProject(page.format, page.structure);
 }
 
 /**

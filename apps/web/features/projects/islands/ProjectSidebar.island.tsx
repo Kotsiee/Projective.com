@@ -2,12 +2,14 @@ import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import type { JSX } from "preact";
 import "../styles/project-sidebar.css";
+import "../styles/task-lane.css";
 import { SidebarHeader, type SidebarMenuAction } from "../components/SidebarHeader.tsx";
 import { ProjectContextCard } from "../components/ProjectContextCard.tsx";
 import { type ChannelFilterKey, ChannelQuickFilters } from "../components/ChannelQuickFilters.tsx";
 import { ChannelTree } from "../components/ChannelTree.tsx";
 import { NormalSessionPanel } from "../components/NormalSessionPanel.tsx";
 import { GroupSessionPanel } from "../components/GroupSessionPanel.tsx";
+import { TaskLanePanel } from "../components/task-lane/TaskLanePanel.tsx";
 import { ProjectViewNav } from "../components/ProjectViewNav.tsx";
 import { ProjectRail } from "../components/ProjectRail.tsx";
 import { CreateStageModal } from "../components/CreateStageModal.tsx";
@@ -27,15 +29,23 @@ import { activeChannelIdOf } from "../core/chat-context.ts";
 import { projectSidebarProjection } from "../core/sidebar-overlay.ts";
 import { setupBaseline, setupCommitEpoch, setupDraft } from "../core/setup-store.ts";
 import { ProjectSidebarService } from "../core/ProjectSidebarService.ts";
+import { isTaskDetail } from "../core/task-project.ts";
+import { buildTaskLane, type TaskLane } from "../core/task-lane.ts";
 import type { ProjectDetail } from "../types/projects-types.ts";
 
-/** SSR default open-set — the highest-traffic groups (General + Stages/Sub-groups) lead expanded. */
+/**
+ * SSR default open-set — the highest-traffic groups (General + Stages/Sub-groups) lead expanded, and a
+ * Task's three sections all do: each is a short summary, and a Task's lane has nothing else in it.
+ */
 const DEFAULT_GROUPS: Record<string, boolean> = {
 	general: true,
 	stages: true,
 	subgroups: true,
 	teams: false,
 	dms: false,
+	"task-overview": true,
+	"task-lists": true,
+	"task-members": true,
 };
 
 /**
@@ -57,6 +67,11 @@ const DEFAULT_GROUPS: Record<string, boolean> = {
  *     session widget + session counter + shared-resources links + General channels (no stage tree).
  *   - **Group session** (`group`) — {@link GroupSessionPanel}: General + Sub-groups + Private-messages
  *     tree, cohort vote alert, and a 1-1 continuation CTA.
+ *   - **Task** (a standard engagement whose type is Task) — {@link TaskLanePanel}: overview, task lists
+ *     and members in place of the channel tree. A Task has one conversation, reached through the
+ *     Discussion view link, so a navigator over conversations would have nothing to switch between.
+ *     Keyed on the engagement with the draft folded on, so switching an unsaved form's type swaps the
+ *     body live; a session archetype still wins, so the dev switcher can simulate one on any row.
  *
  * Both presentations are rendered; CSS reveals exactly one, so no client width-observer is needed and
  * the collapse toggles are deterministic (the footer always collapses, the rail always expands).
@@ -93,6 +108,12 @@ export interface ProjectSidebarProps {
 	 * it live from the dev Context Switcher after hydration, so the first byte matches the real format.
 	 */
 	sessionKind?: SessionKind;
+	/**
+	 * A Task's lane projection — its ticket, due date and task lists — resolved server-side from the
+	 * board read. `null` for every other engagement (they draw a channel tree, not this), and rebuilt
+	 * empty on the client when an unsaved setup form turns a non-Task into one.
+	 */
+	taskLane?: TaskLane | null;
 }
 
 export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element {
@@ -335,6 +356,16 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 								openGroups={openGroups.value}
 								onToggleGroup={toggleGroup}
 								onContinuation={() => go(calendarHref)}
+							/>
+						)
+						: isTaskDetail(view)
+						? (
+							<TaskLanePanel
+								detail={view}
+								lane={props.taskLane ?? buildTaskLane(view, null)}
+								path={currentPath.value}
+								openGroups={openGroups.value}
+								onToggleGroup={toggleGroup}
 							/>
 						)
 						: (

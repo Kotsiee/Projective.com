@@ -5,7 +5,7 @@ import { BoardService } from "@features/projects/core/BoardService.ts";
 import { ticketStack } from "@features/projects/core/ticket-view.ts";
 import { TicketView } from "@features/projects/components/ticket/TicketView.tsx";
 import type { BoardCard, BoardPage } from "@features/projects/types/projects-types.ts";
-import { ticketSubmissionHref } from "@features/projects/core/ticket-view.ts";
+import { boardHasTimeline, ticketSubmissionHref } from "@features/projects/core/ticket-view.ts";
 import type { BasketItem } from "../types/checkout-types.ts";
 
 /**
@@ -190,6 +190,7 @@ export function BasketTicketModal(props: BasketTicketModalProps): JSX.Element | 
 			workspaceLabel={resolved.workspaceLabel}
 			clientMembers={resolved.clientMembers}
 			projectId={resolved.projectId}
+			hasTimeline={boardHasTimeline(resolved)}
 			onClose={props.onClose}
 			// Inert: a read-only frame has nothing to commit. Kept as no-ops rather than omitted so the
 			// component's contract is satisfied without a cast.

@@ -9,23 +9,28 @@ import { StageStatusIcon } from "./StageStatusIcon.tsx";
 import type { ChannelFilterKey } from "./ChannelQuickFilters.tsx";
 import { channelHref } from "../core/chat-context.ts";
 import type { SidebarStageRow } from "../core/sidebar-overlay.ts";
+import { conditionalChannelGroups } from "@projective/types/projects";
 import type { DmChannel, ProjectChannel, ProjectDetail } from "../types/projects-types.ts";
 
 /**
- * ChannelTree — the four-group communication accordion of the Project Details sidebar: General,
- * Stages, Teams, and Private Messages. Each group collapses/expands independently. Every channel row
- * is a real anchor into the project at `/projects/{slug}/{channelId}` (see {@link channelHref}), so
- * the conversation opens in-context; the channel's unified `chatId` remains the shared thread identity
- * the destination page loads (PRODUCT_SPEC §Unified Messaging).
+ * ChannelTree — the communication accordion of the Project Details sidebar: General, Stages, and —
+ * only when the viewer has something in them — Teams and Private Messages. Each group collapses/expands
+ * independently. Every channel row is a real anchor into the project at `/projects/{slug}/{channelId}`
+ * (see {@link channelHref}), so the conversation opens in-context; the channel's unified `chatId`
+ * remains the shared thread identity the destination page loads (PRODUCT_SPEC §Unified Messaging).
  *
  * Group specifics:
  *   - **Stages**: the client/creator gets an inline "＋" to open Create New Stage (gated on
  *     `viewerIsClient`, re-derived server-side); each stage shows a tiny icon-only
  *     {@link StageStatusIcon} for its actionable state (new ticket / revision / stage-join request).
- *   - **Teams**: a team can be assigned to several stages (sub-labelled rows), and the viewer can be
- *     in several teams — both render cleanly.
- *   - **Private Messages**: only project members the viewer has already messaged appear here (no
- *     global inbox, no scope switch).
+ *   - **Teams**: rendered only for a member of a team the engagement hired
+ *     ({@link conditionalChannelGroups}). A team can hold several stages and the viewer can be on
+ *     several teams; a team whose room nobody has opened yet still shows who it is and what it holds.
+ *   - **Private Messages**: rendered only when the viewer has a thread with a project member that
+ *     carries messages sent inside this project.
+ *
+ * The two conditional groups are decided by the SSR-resolved projection, so there is no loading window
+ * in which either can flash in and then disappear.
  */
 
 // #region Accordion group shell
@@ -229,10 +234,9 @@ export function ChannelTree(
 	{ detail, stages, openGroups, onToggleGroup, onCreateStage, filters, activeChannelId }:
 		ChannelTreeProps,
 ): JSX.Element {
-	const { general, teams, dms } = detail.channels;
+	const { general } = detail.channels;
+	const { teams, dms } = conditionalChannelGroups(detail.channels);
 	const slug = detail.slug;
-	// Only project members the viewer has already messaged appear in the DM list.
-	const projectDms = dms.filter((d) => d.hasProjectContext);
 
 	// #region Quick-filter application (OR-combined; an active row narrows the tree to its matches)
 	const filtering = filters.length > 0;
@@ -255,10 +259,13 @@ export function ChannelTree(
 
 	const fGeneral = general.filter(matchChannel);
 	const fStages = stages.filter(matchStage);
-	const fTeams = teams
-		.map((t) => ({ ...t, channels: t.channels.filter(matchChannel) }))
-		.filter((t) => t.channels.length > 0);
-	const fDms = projectDms.filter(matchDm);
+	// Unfiltered, a team stays even with no room yet; filtered, it stays only for a matching room.
+	const fTeams = filtering
+		? teams
+			.map((t) => ({ ...t, channels: t.channels.filter(matchChannel) }))
+			.filter((t) => t.channels.length > 0)
+		: teams;
+	const fDms = dms.filter(matchDm);
 
 	// A group shows if we're not filtering (so empty groups keep their own note) or it has matches.
 	// When filtering, force the group open so its matches are revealed regardless of the saved state.
@@ -323,8 +330,8 @@ export function ChannelTree(
 				</AccordionGroup>
 			)}
 
-			{/* 3 — Teams (a team may span several stages; the viewer may be in several teams) */}
-			{show(fTeams.length) && (
+			{/* 3 — Teams: only for a member of a hired team */}
+			{fTeams.length > 0 && (
 				<AccordionGroup
 					id="teams"
 					icon={TeamsIcon}
@@ -333,23 +340,21 @@ export function ChannelTree(
 					onToggle={() => onToggleGroup("teams")}
 					hasUnread={teams.some((t) => anyUnread(t.channels))}
 				>
-					{fTeams.length === 0
-						? <p class="proj-chan-empty">You're not on a team in this project.</p>
-						: fTeams.map((team) => (
-							<div key={team.teamId} class="proj-team">
-								<div class="proj-team__head">
-									<Avatar
-										image={team.avatar ?? undefined}
-										label={team.teamName}
-										size={20}
-										shape="circle"
-									/>
-									<span class="proj-team__name">{team.teamName}</span>
-									{team.assignedStages.length > 0 && (
-										<span class="proj-team__stages">{team.assignedStages.join(" · ")}</span>
-									)}
-								</div>
-								{team.channels.map((c) => (
+					{fTeams.map((team) => (
+						<div key={team.teamId} class="proj-team">
+							<div class="proj-team__head">
+								<Avatar
+									image={team.avatar ?? undefined}
+									label={team.teamName}
+									size={20}
+									shape="circle"
+								/>
+								<span class="proj-team__name">{team.teamName}</span>
+								<span class="proj-team__stages">{team.assignedStages.join(" · ")}</span>
+							</div>
+							{team.channels.length === 0
+								? <p class="proj-chan-empty">No team channel yet.</p>
+								: team.channels.map((c) => (
 									<ChannelRow
 										key={c.id}
 										channel={c}
@@ -357,26 +362,24 @@ export function ChannelTree(
 										activeChannelId={activeChannelId}
 									/>
 								))}
-							</div>
-						))}
+						</div>
+					))}
 				</AccordionGroup>
 			)}
 
-			{/* 4 — Private Messages (project members the viewer has messaged) */}
-			{show(fDms.length) && (
+			{/* 4 — Private Messages: only once a thread with a member carries project messages */}
+			{fDms.length > 0 && (
 				<AccordionGroup
 					id="dms"
 					icon={DmIcon}
 					label="Private Messages"
 					open={groupOpen("dms")}
 					onToggle={() => onToggleGroup("dms")}
-					hasUnread={anyUnread(projectDms)}
+					hasUnread={anyUnread(dms)}
 				>
-					{fDms.length === 0
-						? <p class="proj-chan-empty">No project messages yet.</p>
-						: fDms.map((dm) => (
-							<DmRow key={dm.chatId} dm={dm} slug={slug} activeChannelId={activeChannelId} />
-						))}
+					{fDms.map((dm) => (
+						<DmRow key={dm.chatId} dm={dm} slug={slug} activeChannelId={activeChannelId} />
+					))}
 				</AccordionGroup>
 			)}
 		</LaneSections>

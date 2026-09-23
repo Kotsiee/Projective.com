@@ -209,6 +209,12 @@ export interface AuthPayload {
 	 * somebody who already holds the account's credentials.
 	 */
 	email?: string;
+	/**
+	 * Whether the confirmation email was dispatched when a new account was provisioned. `false`
+	 * means the account exists but GoTrue refused the send, so `/verify` must offer Resend at once
+	 * rather than open on a countdown for a code that never left.
+	 */
+	verificationSent?: boolean;
 }
 // #endregion
 
@@ -224,19 +230,29 @@ export class AuthBackendService {
 	 *  - **Individual, email/password** — admin-create the `auth.users` identity with the onboarding
 	 *    metadata; the `on_auth_user_created` trigger (migration 0304) provisions `org.users_public`,
 	 *    the email row, the persona profile, session context, and the audit entry. Email unconfirmed →
-	 *    `requiresVerification: true`.
+	 *    the confirmation email is dispatched, then `requiresVerification: true`.
 	 *  - **Individual, OAuth completion** — the caller is already authenticated (they OAuth'd, landed
 	 *    profile-less on `/join`), so provision in-context via the `complete_onboarding` RPC. OAuth
 	 *    email is pre-verified → `requiresVerification: false`.
 	 *  - **Organisation** — admin-create the owner identity, then insert the org + owner membership
-	 *    atomically via the `create_organisation` RPC (migrations 0314/0315). Email unconfirmed →
-	 *    `requiresVerification: true`.
+	 *    atomically via the `create_organisation` RPC (migrations 0314/0315). Email unconfirmed → the
+	 *    confirmation email is dispatched, then `requiresVerification: true`.
 	 *
-	 * Stub path (default): reports `requiresVerification: true` without touching Supabase.
+	 * The admin create sends no mail of its own, so both unconfirmed paths dispatch explicitly through
+	 * {@link dispatchConfirmation}. A refused send does not fail the signup — the account already
+	 * exists, and a retry would only meet "already registered" — it is reported as
+	 * `verificationSent: false` so `/verify` offers Resend immediately.
+	 *
+	 * Stub path (default): reports `requiresVerification: true` and a simulated send without touching
+	 * Supabase.
 	 */
 	static async provisionAccount(input: ProvisionAccountInput): Promise<ServiceResult<AuthPayload>> {
 		if (!isAuthBackendLive()) {
-			return ok({ requiresVerification: true, redirectTo: input.redirectTo });
+			return ok({
+				requiresVerification: true,
+				verificationSent: true,
+				redirectTo: input.redirectTo,
+			});
 		}
 
 		try {
@@ -263,7 +279,11 @@ export class AuthBackendService {
 						message: rpcError.message ?? "We couldn't create the organisation.",
 					});
 				}
-				return ok({ requiresVerification: true, redirectTo: input.redirectTo });
+				return ok({
+					requiresVerification: true,
+					verificationSent: await AuthBackendService.dispatchConfirmation(input.corporateEmail),
+					redirectTo: input.redirectTo,
+				});
 			}
 
 			// Individual — build the profile metadata the 0304 provisioning reads.
@@ -304,7 +324,11 @@ export class AuthBackendService {
 			// Corporate-domain signal: if this address belongs to a registered organisation's domain,
 			// alert that org so it can invite/approve the colleague. Best-effort — never blocks signup.
 			await AuthBackendService.alertOrganisationsForDomain(input.email, created.user.id);
-			return ok({ requiresVerification: true, redirectTo: input.redirectTo });
+			return ok({
+				requiresVerification: true,
+				verificationSent: await AuthBackendService.dispatchConfirmation(input.email),
+				redirectTo: input.redirectTo,
+			});
 		} catch (e) {
 			return fail(500, {
 				message: e instanceof Error ? e.message : "Account provisioning failed.",
@@ -553,16 +577,31 @@ export class AuthBackendService {
 		return ok({ verified: false, redirectTo: input.redirectTo });
 	}
 
-	/** Re-issue the verification email. Live: GoTrue resend. Stub/anti-enumeration: always succeeds. */
+	/**
+	 * Re-issue the verification email. Live: GoTrue resend. Always reports success whatever the send
+	 * did — a distinct refusal (e.g. GoTrue's per-user frequency limit) exists only for a real
+	 * account, so surfacing it would make this endpoint an account-enumeration oracle.
+	 */
 	static async resendVerification(input: { email?: string }): Promise<ServiceResult<AuthPayload>> {
 		if (isAuthBackendLive() && input.email) {
-			try {
-				await getAnonClient().auth.resend({ type: "signup", email: input.email });
-			} catch {
-				// Swallow — always report success (anti-enumeration; the client throttles anyway).
-			}
+			await AuthBackendService.dispatchConfirmation(input.email);
 		}
 		return ok({});
+	}
+
+	/**
+	 * Send the signup confirmation email (the 6-digit code) for an unconfirmed account through GoTrue's
+	 * mailer. The admin `createUser` that provisions accounts never sends mail — only GoTrue's public
+	 * endpoints do — so this is the one door every confirmation email leaves through. supabase-js
+	 * RETURNS a refused send as `{ error }` rather than throwing, so the result is read, not assumed.
+	 */
+	private static async dispatchConfirmation(email: string): Promise<boolean> {
+		try {
+			const { error } = await getAnonClient().auth.resend({ type: "signup", email });
+			return !error;
+		} catch {
+			return false;
+		}
 	}
 	// #endregion
 

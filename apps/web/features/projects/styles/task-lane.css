@@ -1,0 +1,316 @@
+.task-lane {
+	gap: var(--space-2);
+}
+
+.task-lane__note {
+	margin: 0;
+	padding: var(--space-1) var(--space-2);
+	font-size: var(--text-xs);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+}
+
+.task-lane__count {
+	font-variant-numeric: tabular-nums;
+}
+
+.task-lane__actions {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+}
+
+.task-lane__action {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.6rem;
+	block-size: 1.6rem;
+	font-size: var(--icon-sm);
+	color: var(--text-secondary);
+	text-decoration: none;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-full);
+	cursor: pointer;
+	transform: scale(1);
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.task-lane__action:hover {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.task-lane__action:active {
+	transform: scale(var(--btn-press-scale-icon));
+	transition-duration: var(--dur-press);
+}
+
+.task-lane__action[data-on="true"] {
+	color: var(--primary);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+}
+
+.task-lane__action[data-on="true"] svg {
+	fill: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.task-lane__action:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+.task-lane__facts {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+	padding: var(--space-1) var(--space-2);
+}
+
+.task-lane__fact {
+	display: grid;
+	grid-template-columns: 4.5rem minmax(0, 1fr);
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.task-lane__term {
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+
+.task-lane__def {
+	min-inline-size: 0;
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+}
+
+.task-lane__due {
+	font-variant-numeric: tabular-nums;
+}
+
+.task-lane__none {
+	color: var(--text-secondary);
+}
+
+.task-lane__status {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-weight: var(--fw-medium);
+}
+
+.task-lane__status-dot {
+	inline-size: 0.5rem;
+	block-size: 0.5rem;
+	border-radius: var(--radius-full);
+	background: var(--on-surface-variant);
+}
+
+.task-lane__status[data-status="active"] .task-lane__status-dot {
+	background: var(--success);
+}
+
+.task-lane__status[data-status="on_hold"] .task-lane__status-dot {
+	background: var(--warning);
+}
+
+.task-lane__status[data-status="completed"] .task-lane__status-dot {
+	background: var(--primary);
+}
+
+.task-lane__status[data-status="cancelled"] .task-lane__status-dot {
+	background: var(--danger);
+}
+
+.task-lane__party {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	max-inline-size: 100%;
+	color: var(--on-surface);
+	text-decoration: none;
+}
+
+.task-lane__party-name {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--text-sm);
+}
+
+.task-lane__party--link:hover .task-lane__party-name {
+	text-decoration: underline;
+	text-underline-offset: 0.15em;
+}
+
+.task-lane__party--link:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+.task-lane__people {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+	padding: var(--space-1) var(--space-2);
+	list-style: none;
+}
+
+.task-lane__person {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.task-lane__role {
+	flex: none;
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+
+.task-lane__more {
+	display: inline-block;
+	padding: var(--space-1) var(--space-2);
+	font-size: var(--text-xs);
+	color: var(--primary);
+	text-decoration: none;
+}
+
+.task-lane__more:hover {
+	text-decoration: underline;
+	text-underline-offset: 0.15em;
+}
+
+.task-lane__more:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+.task-lane__tasks {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding-block-end: var(--space-1);
+}
+
+.task-lane__ticket {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	padding: var(--space-2);
+	color: var(--on-surface);
+	text-decoration: none;
+	border-radius: var(--radius-sm);
+}
+
+.task-lane__ticket--link {
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.task-lane__ticket--link:hover {
+	background: var(--surface-2);
+}
+
+.task-lane__ticket--link:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+.task-lane__ticket-title {
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+}
+
+.task-lane__ticket-meta {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1);
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+
+.task-lane__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.task-lane__listhead {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-2);
+	margin: 0;
+	padding-inline: var(--space-2);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	color: var(--text-secondary);
+}
+
+.task-lane__items {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0 var(--space-2);
+	list-style: none;
+}
+
+.task-lane__item {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+}
+
+.task-lane__item[data-done="true"] .task-lane__text {
+	color: var(--text-secondary);
+}
+
+.task-lane__mark {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1rem;
+	block-size: 1rem;
+	margin-block-start: 0.1em;
+	border-radius: var(--radius-xs);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+}
+
+.task-lane__item[data-done="true"] .task-lane__mark {
+	color: var(--success);
+	background: color-mix(in srgb, var(--success) var(--tint-soft), transparent);
+}
+
+.task-lane__text {
+	min-inline-size: 0;
+	overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.task-lane__action:active {
+		transform: none;
+	}
+}
+
+[data-motion="reduced"] .task-lane__action:active {
+	transform: none;
+}

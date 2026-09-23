@@ -113,6 +113,11 @@ export interface ChannelHeaderProps {
 	canConfigure: boolean;
 	/** The SSR-resolved service archetype baseline — re-resolved live from the seam after hydration. */
 	sessionKind: SessionKind;
+	/**
+	 * Whether the engagement is a Task — a stored fact, not a seam axis, so it is carried as-is into the
+	 * live recompute and a persona flip can never bring back the Timeline or Calendar tab.
+	 */
+	isTask: boolean;
 	/** The resolved summary for the details drawer. */
 	detailInfo: ChannelDetailInfo;
 }
@@ -185,11 +190,12 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 				// `isReviewer` is which side of the market the viewer is simulating, and a simulated
 				// freelancer must lose a tab that edits the terms they would be working under.
 				canConfigure: canConfigure && viewer.isReviewer,
+				isTask: props.isTask,
 			});
 		};
 		recompute();
 		return watchDevSeam(recompute);
-	}, [meta.kind, viewerIsClient, canConfigure, props.sessionKind]);
+	}, [meta.kind, viewerIsClient, canConfigure, props.sessionKind, props.isTask]);
 
 	// Layer the persisted star/mute/pin preference on after hydration (never during SSR).
 	useEffect(() => {
@@ -239,7 +245,7 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 	}
 
 	const isStage = meta.kind === "stage";
-	const detailsLabel = isStage ? "Stage details" : "Channel details";
+	const detailsLabel = props.isTask ? "Task details" : isStage ? "Stage details" : "Channel details";
 
 	return (
 		<header class="chan-header">

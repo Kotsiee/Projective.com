@@ -46,6 +46,8 @@ import { mockAvatar } from "../../mocks/assets.ts";
 // #region Scopes (the workspaces the acting account belongs to)
 /** The acting account's own personal/freelancer space id (stands in for the user id). */
 export const PERSONAL_ID = "u_ahmed";
+/** The acting account's `@handle` — how a derived roster recognises the viewer's own seat. */
+export const ACTOR_HANDLE = "ahmed";
 /** Northwind Studio — a freelancer-side Team the actor is a member of. */
 export const TEAM_NORTHWIND = "t_northwind";
 /** Monarch Labs — a client-side Business the actor administers. */
@@ -471,7 +473,7 @@ export function allScopes(): readonly ScopeOption[] {
 			id: PERSONAL_ID,
 			type: "personal",
 			label: "Personal",
-			handle: "ahmed",
+			handle: ACTOR_HANDLE,
 			role: "owner",
 			count: 0,
 		},

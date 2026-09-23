@@ -23,6 +23,7 @@ import { COUNTRIES, EMPLOYEE_TIERS, INDUSTRIES } from "../core/options.ts";
 import { PURPOSES, SKILLS } from "../core/onboarding-data.ts";
 import { AuthService } from "../core/AuthService.ts";
 import { safeRedirect, withRedirect } from "../core/redirect.ts";
+import { armResendCooldown } from "../core/resend-cooldown.ts";
 
 /**
  * StepForm — the right column of the onboarding experience: the active step's controls (built from
@@ -718,12 +719,17 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 			return;
 		}
 		const dest = safeRedirect(result.redirectTo, store.redirectTo);
+		if (store.isOAuth || !result.requiresVerification) {
+			globalThis.location.href = dest;
+			return;
+		}
 		const email = store.isOrg.value ? store.corpEmail.value.trim() : store.email.value.trim();
-		globalThis.location.href = store.isOAuth
-			? dest
-			: result.requiresVerification
-			? withRedirect(`/verify?email=${encodeURIComponent(email)}`, dest)
-			: dest;
+		if (result.verificationSent === true) armResendCooldown();
+		const failed = result.verificationSent === false ? "&sent=0" : "";
+		globalThis.location.href = withRedirect(
+			`/verify?email=${encodeURIComponent(email)}${failed}`,
+			dest,
+		);
 	}
 
 	/**

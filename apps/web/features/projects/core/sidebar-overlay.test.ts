@@ -57,6 +57,7 @@ function detailOf(stages: StageChannel[]): ProjectDetail {
 		title: "Server Title",
 		kind: "project",
 		format: "pipeline",
+		structure: "standard",
 		status: "active",
 		typeLabel: "Brand Identity",
 		description: "The stored plain description.",
@@ -148,7 +149,22 @@ Deno.test("title, description and format follow the draft", () => {
 
 	assertEquals(p.detail.title, "Helia Wallet");
 	assertEquals(p.detail.format, "one_off");
+	assertEquals(p.detail.structure, "one_off");
 	assertEquals(p.detail.description, "Draft scope.");
+});
+
+Deno.test("both halves of the type follow the draft, so a Task made One-off stops being one", () => {
+	// The format alone cannot tell them apart — both are `one_off` — so folding only the format would
+	// leave the lane drawing a Task's body for an engagement the owner has just given milestones.
+	const task = { ...detailOf([]), format: "one_off", structure: "single_task" } as ProjectDetail;
+	const p = projectSidebarProjection(task, setupOf({ format: "one_off", structure: "one_off" }));
+	assertEquals(p.detail.structure, "one_off");
+
+	const back = projectSidebarProjection(
+		detailOf([]),
+		setupOf({ format: "one_off", structure: "single_task", stages: [] }),
+	);
+	assertEquals(back.detail.structure, "single_task");
 });
 
 Deno.test("an emptied title falls back rather than collapsing to nothing", () => {

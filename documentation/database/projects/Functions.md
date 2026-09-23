@@ -15,6 +15,25 @@ The four `SECURITY DEFINER` helpers every policy and RPC in this domain leans on
 [Policies.md](Policies.md#the-predicates-everything-is-built-on): `has_project_access`,
 `has_stage_access`, `can_review_project`, `is_protected_phase`.
 
+### `projects.get_viewer_hired_teams(p_project_id uuid) → TABLE (team_id uuid, project_stage_id uuid)`
+
+One row per stage of the project held by a team the **caller** is an active member of
+(`org.team_members.status = 'active'`), through a live `assignee_type = 'team'` assignment. `SECURITY
+DEFINER`, `STABLE`, `search_path = ''`; `EXECUTE` to `authenticated` only (revoked from `public` and
+`anon`). Defined in `00001100`.
+
+It drives the Project Details sidebar's **Teams** group, which renders only for a member of a hired
+team. A definer is required because the two facts sit behind policies that never meet for this caller:
+`stage_assignments` is readable by the owner (or on an active public project) alone, so a team member
+on a private engagement cannot see which team holds a stage, while their own `team_members` rows are
+readable to them. It discloses nothing the caller cannot already reach — each row names a team they
+belong to and a stage whose talent room `comms.can_access_scope` already admits them to.
+
+"Live" excludes `released`, `cancelled` and `declined`, **exactly** the set `comms.can_access_scope`
+excludes, so the group and the room it links to cannot disagree; a completed stage keeps its team.
+An unanswered invitation is not an assignment and never appears.
+`packages/types/projects/hired-teams.contract.test.ts` fails if the two status lists diverge.
+
 ---
 
 ## Creation

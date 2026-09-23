@@ -19,6 +19,7 @@ import { serverEnv } from "../../core/env.ts";
 import { findProject } from "./query.ts";
 import { findProjectDetail } from "./detail-fixtures.ts";
 import { findBoardPage } from "./board-fixtures.ts";
+import { fixtureStructureOf } from "./structure-fixtures.ts";
 
 /**
  * projects setup fixtures — the owner's editable configuration, derived from the existing corpus.
@@ -64,53 +65,15 @@ function pick<T>(list: readonly T[], seed: string): T {
 
 // #region Structure
 /**
- * The finer shape within a format.
- *
- * A straight mapping with no inference. It would be easy to read "a one-off with no stages" as a
- * Direct Deliverable and set `single_task`, and it would be wrong: that also describes a one-off
- * whose owner has simply not added a stage yet, and the two answers put a DIFFERENT required step on
- * the ladder (`roles` instead of `stages`), so the guess would tell such an owner to go and staff
- * roles the form does not render for them.
- */
-const STRUCTURE_FOR_FORMAT: Record<ProjectFormat, ProjectStructure> = {
-	pipeline: "standard",
-	one_off: "one_off",
-	session: "single_stage",
-};
-
-/**
- * The engagements this corpus DECLARES to be Direct Deliverables.
- *
- * `ProjectSummary` carries no structure — it is a feed projection, and which sections a setup form
- * renders is not a feed concern — while `projects.projects.structure_variation` carries it on the live
- * path. Rather than widen the feed shape for one surface, the fixtures name the rows the same way the
- * profile corpus names its organisations: an explicit set, so the branch is reachable and reachable
- * for a stated reason.
- *
- * It matters that this is a declaration and not a derivation. `single_task` swaps the ladder's
- * required step from `stages` to `roles` and swaps the form's whole staffing section with it, so a
- * heuristic that guessed wrong would show an owner a section their engagement does not have and hold
- * their publish gate against it.
- */
-const DIRECT_DELIVERABLE_SLUGS: ReadonlySet<string> = new Set(["prj-cujw52gg3p"]);
-
-/** The structure for a row: its format's shape, unless the corpus declares it a Direct Deliverable. */
-function structureOf(slug: string, format: ProjectFormat): ProjectStructure {
-	if (format === "one_off" && DIRECT_DELIVERABLE_SLUGS.has(slug)) return "single_task";
-	return STRUCTURE_FOR_FORMAT[format];
-}
-
-/**
  * 1-1 versus group, for a session engagement.
  *
- * Read from a structural fact rather than seeded from the slug: a group session is the one that
- * organises its cohort into sub-groups, so the presence of team channels IS the distinction. A hash
- * would answer the same question with a coin toss, and the sidebar renders a genuinely different
- * panel on each branch (root CLAUDE.md §8 Decision #48).
+ * Read from a structural fact rather than seeded from the slug: a session a workspace buys enrols a
+ * cohort, while one a person books for themselves is 1-1. The Teams channel group is NOT that fact —
+ * it lists hired teams the viewer belongs to, and a cohort's sub-groups are not hired teams.
  */
 function sessionKindOf(format: ProjectFormat, detail: ProjectDetail): ProjectSessionKind {
 	if (format !== "session") return "none";
-	return detail.channels.teams.length > 0 ? "group" : "normal";
+	return detail.scopeType === "personal" ? "normal" : "group";
 }
 // #endregion
 
@@ -456,7 +419,7 @@ export function findProjectSetup(projectKey: string): ProjectSetup | null {
 	// fixtures are slug-keyed, and passing a uuid through would resolve a different (or no) pipeline
 	// than the one this project's own stage list is built from.
 	const board = findBoardPage({ projectId: row.slug, view: "stages" });
-	const structure = structureOf(row.slug, row.format);
+	const structure = fixtureStructureOf(row.slug, row.format);
 
 	return reconcileSetup({
 		id: row.id,

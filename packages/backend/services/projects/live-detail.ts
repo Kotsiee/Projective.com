@@ -24,6 +24,7 @@ import {
 	partyOf,
 	projectsDb,
 	toMemberRole,
+	toProjectStructure,
 	toStageProjectStatus,
 } from "./live-support.ts";
 import { fetchProjectBySlug } from "./live-queries.ts";
@@ -79,10 +80,11 @@ import { fetchProjectBySlug } from "./live-queries.ts";
  *
  * `projects.project_participants` and `projects.stage_assignments`, by contrast, are readable only by
  * the project OWNER or on an `active` + `public` project (`00002011_policies_projects.sql`). A hired
- * freelancer on a private engagement therefore reads an EMPTY roster and empty assignments — not an
- * error, just nothing — so the members list degrades to the owner alone and team groups lose their
- * names. That is the same missing-policy gap the feed read records in
- * `documentation/architecture/READ_API_FINDINGS.md`, seen from a second angle.
+ * freelancer on a private engagement therefore reads an EMPTY roster — not an error, just nothing —
+ * so the members list degrades to the owner alone. That is the same missing-policy gap the feed read
+ * records in `documentation/architecture/READ_API_FINDINGS.md`, seen from a second angle. The Teams
+ * group does not depend on it: which hired teams the viewer is on comes from
+ * `projects.get_viewer_hired_teams`, which answers for the caller's own memberships only.
  */
 
 // #region Row shapes
@@ -92,6 +94,7 @@ interface DetailRow {
 	owner_user_id: string;
 	description_text: string | null;
 	client_business_id: string | null;
+	structure_variation: string | null;
 }
 
 /** One `projects.project_stages` row, reduced to what the stage tree renders. */
@@ -130,17 +133,14 @@ interface ChannelRow {
 }
 
 /**
- * One `projects.stage_assignments` row.
+ * One `projects.get_viewer_hired_teams` row: a stage held by a team the viewer is an active member of.
  *
- * The only evidence anywhere of WHICH team a `team_private` stage room belongs to:
- * `comms.project_channels` has a `stage_id` and a `visibility` and no team column at all, so a talent
- * room can only be attributed to a team by asking which team holds the stage.
+ * It is also how a `team_private` room is attributed to a team: `comms.project_channels` has a
+ * `stage_id` and a `visibility` and no team column at all.
  */
-interface AssignmentRow {
+interface HiredTeamRow {
+	team_id: string;
 	project_stage_id: string;
-	assignee_type: string;
-	team_id: string | null;
-	status: string;
 }
 
 /** A resolved `org.business_profiles` row — the columns a party projection needs. */
@@ -175,15 +175,6 @@ const MARK_URL_MAX = 400;
  */
 const VIS_TEAM_PRIVATE = "team_private";
 const VIS_BUSINESS_PRIVATE = "business_private";
-
-/**
- * `projects.stage_assignments.status` values that mean the assignment is no longer live.
- *
- * The column is free text with no CHECK; this set mirrors the exclusion list `comms.can_access_scope`
- * and `projects.has_stage_access` both spell out, so an assignment that no longer grants access to a
- * talent room also no longer names the team that room belongs to.
- */
-const DEAD_ASSIGNMENT: ReadonlySet<string> = new Set(["released", "cancelled", "declined"]);
 
 /**
  * The participant roles that put a seat on the CLIENT side of a hire. See {@link resolveViewerIsClient}.
@@ -426,80 +417,45 @@ function buildStageChannels(
 }
 
 /**
- * The Teams group: the private stage rooms, grouped by the party that owns them.
+ * The Teams group: one entry per hired team the viewer is an active member of, carrying the stages it
+ * holds and the talent rooms of those stages that have been provisioned.
  *
- * ## Why client-side rooms are in here too
+ * Built from the viewer's MEMBERSHIPS, not from the rooms. A room is provisioned lazily and says
+ * nothing about teams — a solo freelancer's talent room and a team's look identical — so a group per
+ * room would both miss a hired team whose room nobody has opened and invent a "team" around a
+ * freelancer working alone. Client-side (`business_private`) rooms therefore have no group here.
  *
- * The group's name says "Teams" and its schema field says `teamId`, but the tree has four groups and a
- * `business_private` room fits none of the other three: it is not project-wide (General), it is not a
- * stage's shared room (Stages), and it is not a person-to-person thread (DMs). The alternative to
- * widening this group is dropping those rooms, which would leave a client-side viewer with a room they
- * are allowed into and no way to reach it from the sidebar. So the group is read as "a private
- * sub-project room, grouped by the party that owns it" — the talent side's team, or the client side's
- * business — and both render identically: a name, a mark, the stages they cover, and their rooms.
- *
- * ## Grouping never depends on a lookup that may be withheld
- *
- * The groups are built from the CHANNELS, which RLS has already narrowed to what this viewer may
- * enter. `projects.stage_assignments` and the `org` name tables only ever supply the LABEL. So when
- * those reads come back empty — which they do for any non-owner on a private project, since the
- * assignment policy is owner-or-public — the rooms still appear, under {@link UNNAMED_TEAM} or
- * {@link UNNAMED_CLIENT}. Degrading a name costs specificity; degrading membership would cost the
- * reader a room.
- *
- * `avatar` is the owning team's avatar or the business's logo as {@link fetchMarks} resolved it —
- * `null` for the two unnamed literal groups and for any entity without a public mark, which renders
- * as the initials the `Avatar` component already draws.
+ * `avatar` is the team's mark as {@link fetchMarks} resolved it, or `null` for the initials fallback.
  */
 function buildTeamChannels(
+	hired: ReadonlyMap<string, readonly string[]>,
 	privateRooms: readonly ChannelRow[],
 	stageNames: ReadonlyMap<string, string>,
-	teamByStage: ReadonlyMap<string, string>,
 	teamNames: ReadonlyMap<string, string>,
-	clientBusinessId: string | null,
-	businessNames: ReadonlyMap<string, string>,
 	marks: ReadonlyMap<string, string>,
 ): TeamChannel[] {
-	const groups = new Map<string, TeamChannel>();
+	const talentRooms = privateRooms.filter((room) => room.visibility === VIS_TEAM_PRIVATE);
+	const out: TeamChannel[] = [];
 
-	for (const room of privateRooms) {
-		const stageId = room.stage_id ?? "";
-		const stageName = stageNames.get(stageId) ?? null;
-
-		let key: string;
-		let label: string;
-		if (room.visibility === VIS_BUSINESS_PRIVATE) {
-			// The paying business owns every client-side room in the project, so one group covers them
-			// all. Keyed on a literal when the project has no business — a personal client is still the
-			// client side, and the owner reaches these rooms via `projects.can_review_project`.
-			key = clientBusinessId ?? "client";
-			label = (clientBusinessId ? businessNames.get(clientBusinessId) : null) ?? UNNAMED_CLIENT;
-		} else {
-			const teamId = teamByStage.get(stageId) ?? null;
-			// A stage held by an individual freelancer rather than a team has a live talent room and no
-			// team behind it, so those rooms collect under one unnamed group rather than vanishing.
-			key = teamId ?? "team";
-			label = (teamId ? teamNames.get(teamId) : null) ?? UNNAMED_TEAM;
+	for (const [teamId, stageIds] of hired) {
+		const held = new Set(stageIds);
+		const assignedStages: string[] = [];
+		for (const stageId of stageIds) {
+			const name = stageNames.get(stageId);
+			if (name && !assignedStages.includes(name)) assignedStages.push(clamp(name, 120));
 		}
-
-		let group = groups.get(key);
-		if (!group) {
-			group = {
-				teamId: clampOr(key, 80, UNNAMED_TEAM),
-				teamName: clampOr(label, 120, UNNAMED_TEAM),
-				avatar: marks.get(key) ?? null,
-				assignedStages: [],
-				channels: [],
-			};
-			groups.set(key, group);
-		}
-		if (stageName && !group.assignedStages.includes(stageName)) {
-			group.assignedStages.push(clamp(stageName, 120));
-		}
-		group.channels.push(toProjectChannel(room, "team", stageName));
+		out.push({
+			teamId: clampOr(teamId, 80, UNNAMED_TEAM),
+			teamName: clampOr(teamNames.get(teamId), 120, UNNAMED_TEAM),
+			avatar: marks.get(teamId) ?? null,
+			assignedStages,
+			channels: talentRooms
+				.filter((room) => room.stage_id !== null && held.has(room.stage_id))
+				.map((room) => toProjectChannel(room, "team", stageNames.get(room.stage_id ?? "") ?? null)),
+		});
 	}
 
-	return [...groups.values()];
+	return out;
 }
 
 // #endregion
@@ -521,7 +477,7 @@ function buildTeamChannels(
 async function fetchDetailRow(db: SupabaseClient, projectKey: string): Promise<DetailRow | null> {
 	const { data, error } = await db
 		.from("projects")
-		.select("owner_user_id, description_text, client_business_id")
+		.select("owner_user_id, description_text, client_business_id, structure_variation")
 		.eq("slug", projectKey)
 		.maybeSingle();
 	if (error || !data) return null;
@@ -589,33 +545,26 @@ async function fetchChannels(
 }
 
 /**
- * Which team holds each stage, for naming the talent-side rooms.
+ * The hired teams the viewer is an active member of: team id → the stages it holds, in pipeline order.
  *
- * Only live team assignments count — the exclusion list mirrors `comms.can_access_scope`, so a team
- * whose assignment was released no longer labels the room its former members can no longer open.
- * Degrades to empty; the rooms survive unnamed.
+ * Degrades to empty, which omits the Teams group — a read that failed has not shown the viewer to be
+ * on a hired team, and an empty group would claim a relationship nobody established.
  */
-async function fetchTeamByStage(
+async function fetchViewerHiredTeams(
 	db: SupabaseClient,
-	stageIds: readonly string[],
-): Promise<Map<string, string>> {
-	const byStage = new Map<string, string>();
-	if (stageIds.length === 0) return byStage;
+	projectId: string,
+): Promise<Map<string, string[]>> {
+	const byTeam = new Map<string, string[]>();
+	const { data, error } = await db.rpc("get_viewer_hired_teams", { p_project_id: projectId });
+	if (error) return byTeam;
 
-	const { data, error } = await db
-		.from("stage_assignments")
-		.select("project_stage_id, assignee_type, team_id, status")
-		.in("project_stage_id", stageIds as string[]);
-	if (error) return byStage;
-
-	for (const row of (data ?? []) as unknown as AssignmentRow[]) {
-		if (row.assignee_type !== "team" || !row.team_id) continue;
-		if (DEAD_ASSIGNMENT.has(row.status)) continue;
-		// First live assignment wins. A stage re-assigned between teams keeps the room attributed to
-		// whichever assignment is still open, and a duplicate is not a decision this read arbitrates.
-		if (!byStage.has(row.project_stage_id)) byStage.set(row.project_stage_id, row.team_id);
+	for (const row of (data ?? []) as HiredTeamRow[]) {
+		if (!row.team_id || !row.project_stage_id) continue;
+		const stages = byTeam.get(row.team_id) ?? [];
+		if (!stages.includes(row.project_stage_id)) stages.push(row.project_stage_id);
+		byTeam.set(row.team_id, stages);
 	}
-	return byStage;
+	return byTeam;
 }
 
 /** `org.teams` rows for a set of ids. Degrades to empty — the caller falls back to a generic label. */
@@ -806,8 +755,9 @@ function buildMembers(
  * - **`channels.dms` is always empty.** A DM channel's `chatId` is the unified thread id the global
  *   inbox opens, and the sidebar routes a DM row by that value. There is no `chatId` column anywhere,
  *   and `comms.dm_threads.id` is a v4 uuid — so the fixtures' `dm-{handle}` convention cannot be
- *   reproduced, and a synthesised id would not round-trip to any primary key. An empty group is a
- *   group the reader can see is empty; a group of links that resolve to nothing is not.
+ *   reproduced, and a synthesised id would not round-trip to any primary key. Nothing writes
+ *   `comms.dm_messages.project_id` either, and the project chat route reads project rooms only — so
+ *   the Private Messages group is simply not drawn on this path, rather than drawn with dead links.
  * - **`bannerImage` is always `null`.** No banner column exists on `projects.projects`, and the
  *   service blueprint that would carry one lives in `marketplace`, which PostgREST does not expose.
  * - **`starred` is always `false`**, inherited from the summary: there is no `project_stars` table.
@@ -838,13 +788,14 @@ export async function fetchProjectDetail(
 	if (!summary) return null;
 
 	const db = projectsDb(actor);
-	// Four independent reads over one project. Issued together because none depends on another's
-	// result, and awaiting them in series would add all four latencies to every sidebar render.
-	const [detailRow, stages, participants, channelRows] = await Promise.all([
+	// Five independent reads over one project. Issued together because none depends on another's
+	// result, and awaiting them in series would add all five latencies to every sidebar render.
+	const [detailRow, stages, participants, channelRows, hired] = await Promise.all([
 		fetchDetailRow(db, slug),
 		fetchStages(db, summary.id),
 		fetchParticipants(db, summary.id),
 		fetchChannels(actor, summary.id),
+		fetchViewerHiredTeams(db, summary.id),
 	]);
 
 	const { general, stageAll, privateRooms } = partitionChannels(channelRows);
@@ -855,12 +806,9 @@ export async function fetchProjectDetail(
 	});
 
 	const clientBusinessId = detailRow?.client_business_id ?? null;
-	// A second wave rather than part of the first: the team names cannot be asked for until the
-	// stage→team map exists, and that map needs the stage ids the first wave returned.
-	const teamByStage = await fetchTeamByStage(db, stages.map((stage) => stage.id));
 
 	const [teams, businesses, parties] = await Promise.all([
-		fetchTeams(actor, [...teamByStage.values()]),
+		fetchTeams(actor, [...hired.keys()]),
 		fetchBusinesses(actor, [
 			clientBusinessId ?? "",
 			...participants.filter((row) => row.profile_type === "business").map((r) => r.profile_id),
@@ -876,8 +824,6 @@ export async function fetchProjectDetail(
 
 	const teamNames = new Map<string, string>();
 	for (const [id, row] of teams) if (row.name) teamNames.set(id, row.name);
-	const businessNames = new Map<string, string>();
-	for (const [id, row] of businesses) if (row.name) businessNames.set(id, row.name);
 
 	const ownerUserId = detailRow?.owner_user_id ?? "";
 
@@ -887,6 +833,7 @@ export async function fetchProjectDetail(
 		title: summary.title,
 		kind: summary.kind,
 		format: summary.format,
+		structure: toProjectStructure(detailRow?.structure_variation),
 		status: summary.status,
 		typeLabel: typeLabelFor(summary),
 		description: clamp(detailRow?.description_text, 2000),
@@ -902,15 +849,7 @@ export async function fetchProjectDetail(
 		channels: {
 			general: general.map((row) => toProjectChannel(row, "general", null)),
 			stages: buildStageChannels(stages, stageAll),
-			teams: buildTeamChannels(
-				privateRooms,
-				stageNames,
-				teamByStage,
-				teamNames,
-				clientBusinessId,
-				businessNames,
-				marks,
-			),
+			teams: buildTeamChannels(hired, privateRooms, stageNames, teamNames, marks),
 			// See the docblock: a DM thread has no reproducible unified id on the live path.
 			dms: [],
 		},

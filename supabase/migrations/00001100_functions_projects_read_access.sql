@@ -1212,6 +1212,33 @@ BEGIN
 END;
 $$;
 
+-- The teams the CALLER is an active member of that hold a live assignment on a stage of this project,
+-- one row per (team, stage). It is the only way a hired team's own members learn their team is on a
+-- private engagement: `projects.stage_assignments` is readable by the owner (or on an active public
+-- project) alone, while a member can read their own `org.team_members` rows. Nothing is disclosed that
+-- the caller cannot already reach — every row names a team they belong to and a stage whose talent
+-- room `comms.can_access_scope` already admits them to. "Live" is that gate's definition exactly, so
+-- the sidebar's Teams group and the room it links to never disagree; an unanswered invitation is not
+-- an assignment, so it never appears here.
+CREATE OR REPLACE FUNCTION projects.get_viewer_hired_teams(p_project_id uuid)
+RETURNS TABLE (team_id uuid, project_stage_id uuid)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT sa.team_id, sa.project_stage_id
+    FROM projects.stage_assignments sa
+    JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+    JOIN org.team_members tm ON tm.team_id = sa.team_id
+    WHERE ps.project_id = p_project_id
+        AND sa.assignee_type = 'team'
+        AND sa.status NOT IN ('released', 'cancelled', 'declined')
+        AND tm.user_id = auth.uid()
+        AND tm.status = 'active'
+    ORDER BY ps.sort_order, sa.created_at;
+$$;
+
 -- TRUE while the project is still in its protected phase (before the Projective Unlock). Defaults to
 -- TRUE for an unknown project id so the filter fails safe (masks) rather than open.
 CREATE OR REPLACE FUNCTION projects.is_protected_phase(p_project_id uuid)

@@ -1,16 +1,19 @@
-import type {
-	DmChannel,
-	ProjectChannel,
-	ProjectDetail,
-	ProjectMember,
-	ProjectParty,
-	ProjectSummary,
-	ProjectViewerRole,
-	StageChannel,
-	TeamChannel,
+import {
+	type DmChannel,
+	isTaskProject,
+	type ProjectChannel,
+	type ProjectDetail,
+	type ProjectMember,
+	type ProjectParty,
+	type ProjectStructure,
+	type ProjectSummary,
+	type ProjectViewerRole,
+	type StageChannel,
+	type TeamChannel,
 } from "@projective/types/projects";
-import { allProjects } from "./fixtures.ts";
+import { ACTOR_HANDLE, allProjects } from "./fixtures.ts";
 import { matchesProjectKey } from "./project-identity.ts";
+import { fixtureStructureOf } from "./structure-fixtures.ts";
 import { SLUG_ALPHABET, SLUG_BODY_LENGTH, SLUG_PREFIXES } from "@projective/types/slugs";
 import { mockAvatar, mockCover } from "../../mocks/assets.ts";
 
@@ -172,9 +175,17 @@ function stageActivityFor(
 	return null;
 }
 
-/** One stage + its stage-scoped channel per stage, statuses derived from progress. */
-function stageChannels(row: ProjectSummary): StageChannel[] {
-	const total = Math.min(
+/**
+ * One stage + its stage-scoped channel per stage, statuses derived from progress.
+ *
+ * A Task takes exactly ONE, named "Delivery" — the invariant `fn_enforce_structure_variation` holds a
+ * `single_task` row to, and the name `projects.create_project` gives the implicit stage. The general
+ * two-stage floor below would otherwise hand the stub a Task with a stage run the database refuses to
+ * store, and the lane would draw a single-channel project from a corpus row that has two.
+ */
+function stageChannels(row: ProjectSummary, structure: ProjectStructure): StageChannel[] {
+	const task = isTaskProject(row.format, structure);
+	const total = task ? 1 : Math.min(
 		STAGE_NAMES.length,
 		Math.max(2, row.totalStages ?? (row.format === "session" ? 3 : 4)),
 	);
@@ -182,7 +193,7 @@ function stageChannels(row: ProjectSummary): StageChannel[] {
 	const out: StageChannel[] = [];
 	for (let i = 0; i < total; i++) {
 		const status = i < done ? "completed" : i === done ? "active" : "draft";
-		const name = STAGE_NAMES[i] ?? `Stage ${i + 1}`;
+		const name = task ? "Delivery" : STAGE_NAMES[i] ?? `Stage ${i + 1}`;
 		out.push({
 			id: `stage-${i}`,
 			// A REAL `stg-…` address, not `stage-${i}`. The route resolves a stage by this, so a fixture
@@ -211,73 +222,65 @@ function stageChannels(row: ProjectSummary): StageChannel[] {
 }
 
 /**
- * The teams the viewer belongs to within the engagement. Covers the two shapes the sidebar must
- * render cleanly: a single team assigned to several stages (organisation/team scope), and several
- * teams each on a stage (business scope). Personal/freelancer work has no assigned teams.
+ * The hired team the viewer is on, if any. In this corpus that is a team-scope engagement past draft
+ * with a client on the other side: Northwind Studio — the freelancer-side team the actor belongs to —
+ * was hired onto it. Business and organisation scopes are the buying side and personal work has no
+ * team, so those never have a Teams group.
  */
 function teamChannels(row: ProjectSummary, stages: StageChannel[]): TeamChannel[] {
-	if (row.scopeType === "personal") return [];
+	if (row.scopeType !== "team" || !row.counterparty || row.status === "draft") return [];
 	const seed = hash(row.slug);
-	const stageName = (i: number) => stages[Math.min(i, stages.length - 1)]?.name ?? `Stage ${i + 1}`;
+	const held = [...new Set([0, Math.min(1, stages.length - 1)])];
+	const stageName = (i: number) => stages[i]?.name ?? `Stage ${i + 1}`;
 
-	const chan = (team: string, stageIdx: number): ProjectChannel => ({
-		id: `team-${team}-${stageIdx}`,
-		chatId: `chan-${row.slug}-team-${team}-${stageIdx}`,
+	const chan = (stageIdx: number): ProjectChannel => ({
+		id: `team-core-${stageIdx}`,
+		chatId: `chan-${row.slug}-team-core-${stageIdx}`,
 		name: `${stageName(stageIdx)} Team`,
 		kind: "team",
 		sublabel: stageName(stageIdx),
 		unread: row.unread && stageIdx === Math.min(row.completedStages ?? 0, stages.length - 1),
 	});
 
-	if (row.scopeType === "business") {
-		// Multiple teams, each assigned to one stage.
-		return [
-			{
-				teamId: `${row.slug}-team-design`,
-				teamName: "Design Guild",
-				avatar: CAST[seed % CAST.length].avatar,
-				assignedStages: [stageName(1)],
-				channels: [chan("design", 1)],
-			},
-			{
-				teamId: `${row.slug}-team-eng`,
-				teamName: "Platform Team",
-				avatar: CAST[(seed + 1) % CAST.length].avatar,
-				assignedStages: [stageName(2)],
-				channels: [chan("eng", 2)],
-			},
-		];
-	}
-
-	// team / organisation scope: one team assigned to multiple stages.
 	return [
 		{
 			teamId: row.scopeId,
 			teamName: row.scopeLabel,
 			avatar: row.owner.avatar ?? CAST[seed % CAST.length].avatar,
-			assignedStages: [stageName(0), stageName(1)],
-			channels: [chan("core", 0), chan("core", 1)],
+			assignedStages: held.map(stageName),
+			channels: held.map(chan),
 		},
 	];
 }
 
 /**
- * The viewer's DM threads with people in the engagement. `chatId` is the unified `dm-{handle}` id —
- * identical to the same person's thread on the global messages page — so history is shared.
+ * The viewer's DM threads with the other people on the roster. `chatId` is the unified `dm-{handle}`
+ * id — identical to that person's thread on the global messages page — so history is shared.
+ *
+ * Only the thread with the counterparty carries project messages, and only when the viewer holds the
+ * relationship: past draft, and in a seat other than a plain `member`, who reaches the client through
+ * the shared rooms instead. Every other thread exists but was never used for this engagement.
  */
 function dmChannels(row: ProjectSummary): DmChannel[] {
-	const seed = hash(row.slug);
-	const people: ProjectParty[] = [];
-	if (row.counterparty) people.push(row.counterparty);
-	for (const p of pick(CAST, 2, seed)) people.push(p);
+	const counterHandle = row.counterparty?.handle ?? null;
+	const holdsRelationship = row.status !== "draft" && row.viewerRole !== "member";
+	const seen = new Set<string>();
+	const out: DmChannel[] = [];
 
-	return people.map((party, i) => ({
-		chatId: `dm-${party.handle ?? party.name.toLowerCase().replace(/\s+/g, "-")}`,
-		party,
-		unread: row.unread && i === 0,
-		// The counterparty and the first teammate already have project-scoped messages.
-		hasProjectContext: i < 2,
-	}));
+	for (const { party } of membersOf(row)) {
+		if (party.handle === ACTOR_HANDLE) continue;
+		const chatId = `dm-${party.handle ?? party.name.toLowerCase().replace(/\s+/g, "-")}`;
+		if (seen.has(chatId)) continue;
+		seen.add(chatId);
+		const isCounterparty = counterHandle !== null && party.handle === counterHandle;
+		out.push({
+			chatId,
+			party,
+			unread: row.unread && isCounterparty,
+			hasProjectContext: isCounterparty && holdsRelationship,
+		});
+	}
+	return out;
 }
 // #endregion
 
@@ -316,13 +319,15 @@ function viewerIsClient(row: ProjectSummary): boolean {
 // #region Public builder
 /** Build the full {@link ProjectDetail} for a summary row (the stub read path). */
 function buildDetail(row: ProjectSummary): ProjectDetail {
-	const stages = stageChannels(row);
+	const structure = fixtureStructureOf(row.slug, row.format);
+	const stages = stageChannels(row, structure);
 	return {
 		id: row.id,
 		slug: row.slug,
 		title: row.title,
 		kind: row.kind,
 		format: row.format,
+		structure,
 		status: row.status,
 		typeLabel: typeLabelFor(row),
 		description: describe(row),

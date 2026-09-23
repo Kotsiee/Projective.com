@@ -12,6 +12,7 @@ import {
 	countsAsOnboarded,
 	formatTicketMoney,
 	type ProjectParty,
+	type ProjectStructure,
 	providerVisibleCards,
 	type StageAssignmentMode,
 	stageCostCents,
@@ -35,6 +36,7 @@ import {
 	type PartyRow,
 	projectsDb,
 	toMemberRole,
+	toProjectStructure,
 	toStageProjectStatus,
 	toTicketStatus,
 } from "./live-support.ts";
@@ -1348,26 +1350,35 @@ function matches(card: BoardCard, params: BoardListParams): boolean {
 
 // #region Secondary reads
 
+/** The two `projects.projects` facts the board needs that `ProjectSummary` does not carry. */
+interface ProjectFacts {
+	currency: string;
+	structure: ProjectStructure;
+}
+
 /**
- * The engagement's currency, for the money labels.
+ * The engagement's currency, for the money labels, and its structure, for the ticket modal's tabs.
  *
  * A second, single-row read of `projects.projects` rather than a widening of
- * {@link fetchProjectBySlug}: `ProjectSummary` does not carry a currency, that projection is
- * another module's contract, and a board that renders a GBP engagement's tickets with a dollar sign
- * is a money error rather than a cosmetic one.
+ * {@link fetchProjectBySlug}: `ProjectSummary` carries neither, that projection is another module's
+ * contract, and a board that renders a GBP engagement's tickets with a dollar sign is a money error
+ * rather than a cosmetic one. The structure rides the same row so a Task costs no extra round trip.
  *
- * Degrades to `"USD"` — the column's own NOT NULL default — rather than throwing. A failed currency
- * lookup should cost a symbol, not a page.
+ * Degrades rather than throwing — `"USD"`, the column's own NOT NULL default, and `standard`, which
+ * keeps every tab (see {@link toProjectStructure}). A failed lookup should cost a symbol, not a page.
  */
-async function fetchCurrency(db: SupabaseClient, projectId: string): Promise<string> {
+async function fetchProjectFacts(db: SupabaseClient, projectId: string): Promise<ProjectFacts> {
 	const { data, error } = await db
 		.from("projects")
-		.select("currency")
+		.select("currency, structure_variation")
 		.eq("id", projectId)
 		.maybeSingle();
-	if (error || !data) return "USD";
-	const currency = (data as { currency: string | null }).currency;
-	return currency && currency.length === 3 ? currency.toUpperCase() : "USD";
+	if (error || !data) return { currency: "USD", structure: "standard" };
+	const row = data as { currency: string | null; structure_variation: string | null };
+	return {
+		currency: row.currency && row.currency.length === 3 ? row.currency.toUpperCase() : "USD",
+		structure: toProjectStructure(row.structure_variation),
+	};
 }
 
 /**
@@ -1534,8 +1545,8 @@ export async function fetchBoardPage(
 	const db = projectsDb(actor);
 
 	// Wave 2 — everything keyed on the project id.
-	const [currency, stageRows, ticketRows] = await Promise.all([
-		fetchCurrency(db, summary.id),
+	const [{ currency, structure }, stageRows, ticketRows] = await Promise.all([
+		fetchProjectFacts(db, summary.id),
 		fetchStages(db, summary.id),
 		fetchTickets(db, summary.id),
 	]);
@@ -1719,6 +1730,7 @@ export async function fetchBoardPage(
 		projectId: clamp(params.projectId, 120),
 		channelId: params.channelId ? clamp(params.channelId, 120) : null,
 		format: summary.format,
+		structure,
 		title: boardTitle(kind, summary.kind, summary.format),
 		view,
 		viewerIsClient,
