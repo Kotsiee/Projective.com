@@ -21,6 +21,7 @@ import {
 	isRescheduleClosed,
 	majorityProposal,
 	rescheduleModeFor,
+	roundHasRoom,
 	settleVote,
 	viewerAttendee,
 	voteIsOpen,
@@ -206,6 +207,9 @@ export function planReschedule(
 			// Rule 1 applies to the slot being OFFERED as well as the event being moved: a slot three hours
 			// away would open a ballot whose own deadline had already passed.
 			if (!canReschedule(now, input.start)) return refuse(422, "proposal_inside_lockout");
+			// A full round refuses every slot, so the cap is asked before whether THIS slot is a duplicate.
+			// A closed round is exempt: the proposal opens the next round with an empty ballot.
+			if (!roundHasRoom(before)) return refuse(409, "ballot_full");
 			// A slot identical to one already on this round would split the vote for a single time.
 			if (
 				!closed &&

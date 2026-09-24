@@ -7,7 +7,11 @@ import type {
 	RescheduleProposal,
 	SchedulingViewer,
 } from "@projective/types/scheduling";
-import { ANONYMOUS_VIEWER, voteResolvesAt } from "@projective/types/scheduling";
+import {
+	ANONYMOUS_VIEWER,
+	RESCHEDULE_PROPOSALS_MAX,
+	voteResolvesAt,
+} from "@projective/types/scheduling";
 import {
 	emptyReschedule,
 	type PlanRefusal,
@@ -264,6 +268,74 @@ Deno.test("reschedule — the same time twice in one round is refused rather tha
 	);
 	assertEquals(r.status, 409);
 	assert(r.errors?.start);
+});
+
+Deno.test("reschedule — a full round refuses every further slot; a closed one starts afresh", () => {
+	// Twelve slots, one day apart, all well clear of the lockout — and one still waiting on the host,
+	// because the cap counts what is on the TABLE, not only what is on the ballot.
+	const twelve = Array.from(
+		{ length: RESCHEDULE_PROPOSALS_MAX },
+		(_, i) => proposal(`p${i}`, 96 + i * 24, i === 5 ? { approved: false, role: "attendee" } : {}),
+	);
+	const full: EventReschedule = {
+		...emptyReschedule("vote"),
+		status: "collecting",
+		proposals: twelve,
+	};
+	const fresh = input("propose", { start: NOW + 500 * HOUR, end: NOW + 501 * HOUR });
+
+	const r = refused(
+		planReschedule(
+			event({ roster: groupRoster("h"), asHost: true, reschedule: full }),
+			fresh,
+			NOW,
+			MEMBER,
+		),
+	);
+	assertEquals(r.reason, "ballot_full");
+	assertEquals(r.status, 409);
+
+	// An attendee meets the same wall — their slot would only wait on approval, but it would still
+	// occupy a place the table does not have.
+	assertEquals(
+		refused(
+			planReschedule(
+				event({ roster: groupRoster("a2"), reschedule: full }),
+				fresh,
+				NOW,
+				MEMBER,
+			),
+		).reason,
+		"ballot_full",
+	);
+
+	// The cap is asked before the duplicate check: a full round is full whatever slot is offered.
+	assertEquals(
+		refused(
+			planReschedule(
+				event({ roster: groupRoster("h"), asHost: true, reschedule: full }),
+				input("propose", { start: twelve[0].start, end: twelve[0].end }),
+				NOW,
+				MEMBER,
+			),
+		).reason,
+		"ballot_full",
+	);
+
+	// A withdrawn round of twelve is succeeded, not extended — round 1 starts with one slot.
+	const closedRound = planReschedule(
+		event({
+			roster: groupRoster("h"),
+			asHost: true,
+			reschedule: { ...full, status: "withdrawn" },
+		}),
+		fresh,
+		NOW,
+		MEMBER,
+	);
+	assert(closedRound.ok);
+	assertEquals(closedRound.next.round, 1);
+	assertEquals(closedRound.next.proposals.length, 1);
 });
 // #endregion
 

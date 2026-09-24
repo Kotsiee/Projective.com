@@ -177,7 +177,9 @@ A slot offered on a round. `ck_proposal_span` (`ends_at > starts_at`, strict —
 is not an instant), `ck_proposal_role` (`host` · `attendee`), `ck_proposal_host_preapproved` (a
 host's own slot is on the ballot on arrival; an attendee's waits for the host's approval),
 `uq_proposal_slot` (the same slot twice would split the vote), and
-`uq_proposal_in_reschedule (id, reschedule_id)` — the target the composite FKs point at.
+`uq_proposal_in_reschedule (id, reschedule_id)` — the target the composite FKs point at. At most
+twelve rows per round (`RESCHEDULE_PROPOSALS_MAX`), enforced by the `trg_cap_reschedule_proposals`
+trigger ([Functions §9](Functions.md)) — a CHECK cannot count sibling rows.
 
 ### `scheduling.proposal_votes`
 

@@ -74,6 +74,19 @@ export const VOTE_RESOLUTION_LEAD_MS = VOTE_RESOLUTION_LEAD_HOURS * HOUR_MS;
  * a vote — it is an announcement, and putting it to a cohort implies a choice they do not have.
  */
 export const MIN_VOTE_PROPOSALS = 2;
+
+/**
+ * The most slots one round may hold, approved or not.
+ *
+ * The same figure is enforced in THREE places, and they must move together:
+ * {@link EventRescheduleSchema}'s `proposals` array, the planner's `ballot_full` refusal, and the
+ * `scheduling.fn_cap_reschedule_proposals` trigger (`00001510`), which counts under a row lock so two
+ * concurrent offers cannot both take the last place. A contract test reads the migration and pins the
+ * SQL literal to this constant. A cap that existed in only one of them is how a thirteenth slot came to
+ * be stored and then silently dropped by the read, where re-offering it answered "already proposed"
+ * for a time nobody could see.
+ */
+export const RESCHEDULE_PROPOSALS_MAX = 12;
 // #endregion
 
 // #region Party identity
@@ -269,6 +282,20 @@ export function isRescheduleClosed(status: RescheduleStatus): boolean {
 	return CLOSED_STATUSES.includes(status);
 }
 
+/**
+ * Does this round have room for one more slot ({@link RESCHEDULE_PROPOSALS_MAX})?
+ *
+ * A closed round always does, because a slot offered on it opens the NEXT round with an empty ballot.
+ * Pass the SETTLED negotiation ({@link settleVote}): a vote whose deadline has passed is closed even
+ * while its stored status still reads `voting`, and judging room on the stale status refuses, as
+ * `ballot_full`, a slot the server would accept as the next round. The planner and the Event Modal
+ * both call this, so the cap has one implementation on each side of the wire.
+ */
+export function roundHasRoom(reschedule: EventReschedule): boolean {
+	return isRescheduleClosed(reschedule.status) ||
+		reschedule.proposals.length < RESCHEDULE_PROPOSALS_MAX;
+}
+
 /** The open (or most recent) attempt to move an event. */
 export const EventRescheduleSchema = z.object({
 	mode: RescheduleMode,
@@ -276,7 +303,7 @@ export const EventRescheduleSchema = z.object({
 	openedBy: SchedulingPartySchema.nullable(),
 	/** Epoch ms (UTC) the negotiation opened; `null` when {@link RescheduleStatus} is `none`. */
 	openedAt: z.number().int().nullable(),
-	proposals: z.array(RescheduleProposalSchema).max(12).default([]),
+	proposals: z.array(RescheduleProposalSchema).max(RESCHEDULE_PROPOSALS_MAX).default([]),
 	/**
 	 * Epoch ms (UTC) the vote closes — {@link VOTE_RESOLUTION_LEAD_HOURS} before the EARLIEST slot on
 	 * the ballot. Server-stamped from {@link voteResolvesAt} so SSR and the hydrated island agree on
@@ -326,6 +353,7 @@ export const RescheduleRefusalReason = z.enum([
 	"no_majority",
 	"not_permitted",
 	"duplicate_vote",
+	"ballot_full",
 ]);
 export type RescheduleRefusalReason = z.infer<typeof RescheduleRefusalReason>;
 
@@ -342,6 +370,8 @@ export const RESCHEDULE_REFUSAL_COPY: Record<RescheduleRefusalReason, string> = 
 	no_majority: "No time has a majority yet.",
 	not_permitted: "You can't make that change.",
 	duplicate_vote: "You've already voted.",
+	ballot_full:
+		`This round already has ${RESCHEDULE_PROPOSALS_MAX} times on the table — no more can be offered until it closes.`,
 };
 // #endregion
 

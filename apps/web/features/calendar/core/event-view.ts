@@ -23,6 +23,8 @@ import {
 	RESCHEDULE_REFUSAL_COPY,
 	rescheduleLockoutAt,
 	rescheduleModeFor,
+	roundHasRoom,
+	settleVote,
 	viewerAttendee,
 	voteIsOpen,
 	voteOf,
@@ -398,11 +400,14 @@ export function rescheduleView(
 	nowMs: number,
 ): RescheduleView {
 	const roster = event.roster ?? [];
-	const negotiation = event.reschedule;
+	const voters = eligibleVoterCount(roster);
+	// Settled first, exactly as the server's planner does before it judges anything: a modal left open
+	// past a vote's deadline must not keep treating a question that has finished being asked as live —
+	// it would refuse a new slot as `ballot_full` that the server would accept as the next round.
+	const negotiation = event.reschedule ? settleVote(nowMs, event.reschedule, voters) : undefined;
 	const mode: RescheduleMode = negotiation?.mode ?? rescheduleModeFor(roster.length);
 	const proposals = negotiation?.proposals ?? [];
 	const ballot = ballotProposals(proposals);
-	const voters = eligibleVoterCount(roster);
 	const me = viewerAttendee(roster);
 	const isHost = event.viewerIsHost === true;
 	const status: RescheduleStatus = negotiation?.status ?? "none";
@@ -446,7 +451,7 @@ export function rescheduleView(
 		 * event being moved and again to the slot being offered — so the candidate is judged by
 		 * {@link proposalGate} at the point the surface actually has one.
 		 */
-		propose: gate(() => OK),
+		propose: gate(() => negotiation && !roundHasRoom(negotiation) ? no("ballot_full") : OK),
 
 		open: gate(() => {
 			if (closed) return no("vote_closed");

@@ -20,6 +20,7 @@ import type {
 import {
 	eligibleVoterCount,
 	MEETING_PROVIDER_LABEL,
+	RESCHEDULE_PROPOSALS_MAX,
 	rescheduleModeFor,
 	settleVote,
 } from "@projective/types/scheduling";
@@ -643,7 +644,10 @@ function toReschedule(
 		status: round.status,
 		openedBy: round.opened_by_user_id ? partyFor(ctx, round.opened_by_user_id) : null,
 		openedAt: ms(round.opened_at),
-		proposals: proposals.slice(0, 12),
+		// A defensive bound only: the planner refuses a slot past the cap and the
+		// `fn_cap_reschedule_proposals` trigger refuses the row, so a round can no longer hold more. It
+		// stays so a round written before the trigger existed still parses.
+		proposals: proposals.slice(0, RESCHEDULE_PROPOSALS_MAX),
 		resolvesAt: ms(round.resolves_at),
 		resolvedProposalId: round.resolved_proposal_id,
 		round: round.round,

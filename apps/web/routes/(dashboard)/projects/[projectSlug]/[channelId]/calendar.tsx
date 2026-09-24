@@ -31,7 +31,7 @@ export default define.page<typeof handler>(async function ChannelCalendarPage(ct
 			scope="channel"
 			projectId={projectId}
 			channelId={channelId}
-			initial={initial}
+			initial={page}
 		/>
 	);
 });

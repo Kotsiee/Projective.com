@@ -241,6 +241,17 @@ export async function writeReschedule(
 					errors: { start: "That time has already been proposed." },
 				};
 			}
+			// `fn_cap_reschedule_proposals` counts under a lock on the round, so this is the race the
+			// planner could not see: two offers made against the same eleven-slot round, one of which took
+			// the last place first.
+			if (inserted.error?.code === "23514") {
+				return {
+					ok: false,
+					status: 409,
+					reason: "ballot_full",
+					message: RESCHEDULE_REFUSAL_COPY.ballot_full,
+				};
+			}
 			if (inserted.error || !inserted.data) {
 				return failed("recording a proposal", inserted.error?.message ?? "no row");
 			}

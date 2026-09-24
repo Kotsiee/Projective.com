@@ -989,6 +989,9 @@ EXECUTE ON FUNCTION scheduling.close_reschedule_round (
     text
 ) TO service_role;
 
+-- The ballot cap is a trigger function (00001510 §6d); nobody calls it, so nobody is granted it.
+REVOKE ALL ON FUNCTION scheduling.fn_cap_reschedule_proposals () FROM public, anon, authenticated;
+
 REVOKE ALL ON FUNCTION scheduling.fn_schedule_host (uuid)
 FROM public, anon, authenticated;
 

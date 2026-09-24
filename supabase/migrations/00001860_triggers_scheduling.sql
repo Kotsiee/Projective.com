@@ -37,3 +37,8 @@ CREATE OR REPLACE TRIGGER trg_log_call_event
     AFTER INSERT OR UPDATE ON scheduling.discovery_calls
     FOR EACH ROW EXECUTE FUNCTION scheduling.fn_log_call_event ();
 
+-- At most RESCHEDULE_PROPOSALS_MAX slots per round (00001510 §6d).
+CREATE OR REPLACE TRIGGER trg_cap_reschedule_proposals
+    BEFORE INSERT ON scheduling.reschedule_proposals
+    FOR EACH ROW EXECUTE FUNCTION scheduling.fn_cap_reschedule_proposals ();
+

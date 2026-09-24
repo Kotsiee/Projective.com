@@ -309,6 +309,29 @@ finds a decided vote (the deadline has passed, or every eligible voter has answe
 write path when a ballot or a counterparty's confirmation ends the round. There is no sweep yet (see
 below).
 
+### `scheduling.fn_cap_reschedule_proposals()` → trigger (`trg_cap_reschedule_proposals`)
+
+`BEFORE INSERT` on `reschedule_proposals` (trigger in `00001860`). A round holds at most **twelve**
+slots, approved or not — `RESCHEDULE_PROPOSALS_MAX` in `@projective/types/scheduling`, which
+`coordination.contract.test.ts` pins to the SQL literal. The thirteenth raises `23514`
+(`check_violation`), which the write path answers as a 409 `ballot_full`.
+
+The same cap is enforced three times on purpose: the Zod `proposals` array, the planner's
+`ballot_full` refusal (asked before the duplicate-slot check, so a full round is full whatever is
+offered), and this trigger. The trigger is what makes it true of the TABLE rather than of one code
+path: before it existed a thirteenth slot was stored, dropped by the read's twelve-slot bound, and
+then answered "already proposed" when offered again — a time nobody could see and nobody could
+offer.
+
+The count runs under `SELECT … FOR UPDATE` on the parent `event_reschedules` row, so two offers
+made against an eleven-slot round at once cannot both count eleven: the second waits for the first
+to commit and its count (a fresh snapshot under `READ COMMITTED`) then includes it. `SECURITY
+DEFINER` with `search_path = ''`, so the lock does not depend on the writer holding `UPDATE` on the
+parent; it only reads and locks. `EXECUTE` revoked from `public` · `anon` · `authenticated`
+(`00002510`) — a trigger function is never called directly.
+
+A closed round is not capped by this: the next `propose` opens round `n + 1` with an empty ballot.
+
 ---
 
 ## Not yet implemented (deferred, deliberately)

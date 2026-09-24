@@ -273,11 +273,15 @@ column for them.** Their canonical definitions are the enum + doc listed:
 > session — the same "one row, many attempts" discipline the call's counter expresses, kept per round
 > in `EventReschedule.round`.
 >
-> **Three named caps govern it, and they are policy, not implementation details** (pinned by unit
+> **Four named caps govern it, and they are policy, not implementation details** (pinned by unit
 > test in `coordination_test.ts`): `RESCHEDULE_LOCKOUT_HOURS = 12` — inside it nothing moves, because
 > the other party has arranged their day around the slot; `VOTE_RESOLUTION_LEAD_HOURS = 12` — a vote
 > closes that far before the EARLIEST slot on the ballot, so a ballot can never elect a time that has
-> itself become unmovable; `MIN_VOTE_PROPOSALS = 2` — one option is an announcement, not a vote.
+> itself become unmovable; `MIN_VOTE_PROPOSALS = 2` — one option is an announcement, not a vote;
+> `RESCHEDULE_PROPOSALS_MAX = 12` — a round holds at most twelve slots, approved or not, and a
+> thirteenth is refused (`ballot_full`) until the round closes. The last is also held by the database
+> (`scheduling.fn_cap_reschedule_proposals`, pinned to the constant by `coordination.contract.test.ts`),
+> because a cap the table did not hold let a slot be stored that no reader would show.
 >
 > **A change of time needs a MAJORITY, not a plurality** (`PRODUCT_SPEC.md` §The Proactive Calendar).
 > The threshold is strictly more than half of everyone ENTITLED to vote — the roster minus the host,

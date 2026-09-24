@@ -298,6 +298,51 @@ COMMENT ON FUNCTION scheduling.close_reschedule_round(uuid, text, uuid, uuid, te
 
 -- #endregion
 
+-- #region 6d. Capping a round's ballot
+-- A round holds at most twelve slots, approved or not: RESCHEDULE_PROPOSALS_MAX in
+-- `@projective/types/scheduling`, which `coordination.contract.test.ts` pins to the literal below.
+-- The planner already refuses a thirteenth (`ballot_full`); this makes the cap true of the TABLE
+-- rather than of one code path. Without it a thirteenth slot was stored, dropped by the read's
+-- `proposals.slice(0, 12)`, and then answered "already proposed" when offered again — a time
+-- nobody could see and nobody could offer.
+--
+-- The count runs under a lock on the round's own row, so two offers made at once against an
+-- eleven-slot round cannot both count eleven and both take the last place: the second waits for the
+-- first to commit, and its count (a fresh snapshot under READ COMMITTED) then includes it.
+--
+-- DEFINER so the invariant does not depend on which role is writing — `FOR UPDATE` needs UPDATE on
+-- the parent, which a future writer might hold under a policy the lock would then have to satisfy.
+-- It only reads and locks; a trigger function cannot be called directly.
+CREATE OR REPLACE FUNCTION scheduling.fn_cap_reschedule_proposals()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_count integer;
+BEGIN
+    PERFORM 1 FROM scheduling.event_reschedules WHERE id = NEW.reschedule_id FOR UPDATE;
+
+    SELECT count(*) INTO v_count
+    FROM scheduling.reschedule_proposals
+    WHERE reschedule_id = NEW.reschedule_id;
+
+    IF v_count >= 12 THEN
+        RAISE EXCEPTION 'reschedule round % already holds % proposals', NEW.reschedule_id, v_count
+            USING ERRCODE = 'check_violation';
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION scheduling.fn_cap_reschedule_proposals() IS
+    'BEFORE INSERT on reschedule_proposals: refuse a thirteenth slot on one round (23514), counted '
+    'under a lock on the round so concurrent offers cannot both take the last place.';
+
+-- #endregion
+
 -- #region 2. Timezone-aware primitives
 -- Minutes from LOCAL midnight in the given IANA zone. `AT TIME ZONE` converts the timestamptz to
 -- wall-clock time in that zone, so DST is handled by Postgres rather than by hand.

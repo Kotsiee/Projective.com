@@ -56,7 +56,9 @@ Deno.test("the Teams predicate requires the same active team membership the gate
 Deno.test("the Teams predicate is a pinned-path definer reachable by signed-in callers only", () => {
 	assertStringIncludes(predicate, "SECURITY DEFINER");
 	assertStringIncludes(predicate, "SET search_path = ''");
-	const grants = read(GRANTS_SQL);
+	// Whitespace-normalised: the SQL formatter reflows a grant across lines and spaces the argument list
+	// off the name (`fn (uuid)`), and the rule under test is the grant, not its layout.
+	const grants = read(GRANTS_SQL).replace(/\s+/g, " ").replace(/ \(/g, "(");
 	assertStringIncludes(
 		grants,
 		"REVOKE ALL ON FUNCTION projects.get_viewer_hired_teams(uuid) FROM public, anon;",

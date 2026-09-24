@@ -16,8 +16,10 @@ import {
 	type ProposalVote,
 	RESCHEDULE_LOCKOUT_HOURS,
 	RESCHEDULE_LOCKOUT_MS,
+	RESCHEDULE_PROPOSALS_MAX,
 	rescheduleLockoutAt,
 	type RescheduleProposal,
+	roundHasRoom,
 	type RsvpResponse,
 	rsvpTally,
 	type SchedulingParty,
@@ -584,6 +586,33 @@ Deno.test("isRescheduleClosed — the three endings close a round, the four live
 	assertFalse(isRescheduleClosed("collecting"));
 	assertFalse(isRescheduleClosed("awaiting_counterparty"));
 	assertFalse(isRescheduleClosed("voting"));
+});
+
+Deno.test("roundHasRoom — a live round holds twelve slots and not thirteen; a closed one always has room", () => {
+	const slots = (n: number) =>
+		Array.from({ length: n }, (_, i) => proposal({ id: `p${i}`, start: NOW + (48 + i * 24) * HOUR }));
+
+	assert(roundHasRoom(voting(slots(RESCHEDULE_PROPOSALS_MAX - 1))));
+	assertFalse(roundHasRoom(voting(slots(RESCHEDULE_PROPOSALS_MAX))));
+	// The next slot on a closed round opens round n + 1 with an empty ballot, whatever the old one held.
+	assert(roundHasRoom({ ...voting(slots(RESCHEDULE_PROPOSALS_MAX)), status: "withdrawn" }));
+	assert(roundHasRoom({ ...voting(slots(RESCHEDULE_PROPOSALS_MAX)), status: "lapsed" }));
+});
+
+Deno.test("roundHasRoom — read on the SETTLED round, a full vote past its deadline has room again", () => {
+	// The stored status still says `voting` once the deadline passes; only settling it says the round
+	// has closed. Judged on the stale status, the Event Modal refused as `ballot_full` a slot the
+	// server — which settles before acting — would accept as the next round.
+	const full = voting(
+		Array.from(
+			{ length: RESCHEDULE_PROPOSALS_MAX },
+			(_, i) => proposal({ id: `p${i}`, start: NOW + (48 + i * 24) * HOUR }),
+		),
+	);
+	const deadline = voteResolvesAt(full.proposals)!;
+	assertFalse(roundHasRoom(full), "unsettled, it reads as a live, full round");
+	assertFalse(roundHasRoom(settleVote(deadline - 1, full, 4)), "before the deadline it is still live");
+	assert(roundHasRoom(settleVote(deadline, full, 4)), "at the deadline it lapses, and has room");
 });
 // #endregion
 
