@@ -2,19 +2,20 @@ import type { JSX } from "preact";
 import { useRef } from "preact/hooks";
 import { useComputed, useSignal } from "@preact/signals";
 import "../styles/workspace.css";
-import { Popover, Tooltip } from "@projective/ui/feedback";
+import { ConfirmDialog, Popover, Tooltip } from "@projective/ui/feedback";
 import {
 	kindCopy,
+	workspaceBase,
 	type WorkspaceDetail,
 	workspaceHref,
 	type WorkspaceKind,
 } from "@projective/types/workspace";
+import { WorkspaceService } from "../core/WorkspaceService.ts";
 import { moduleFor, type ModuleKey } from "../core/module-registry.tsx";
 import { type ModuleTab, moduleTabsFor, toModuleTab } from "../core/workspace-model.ts";
 import { EntityMark } from "../components/EntityMark.tsx";
 import {
 	ArchiveGlyph,
-	BellGlyph,
 	cloneGlyph,
 	ExitGlyph,
 	KebabGlyph,
@@ -56,10 +57,17 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 	const mod = moduleFor(module);
 	const menuOpen = useSignal(false);
 	const menuRef = useRef<HTMLButtonElement | null>(null);
+	const confirmArchive = useSignal(false);
+	const archiving = useSignal(false);
+	const archiveError = useSignal<string | null>(null);
+	const self = workspace.members.find((m) => m.id === workspace.viewerMemberId);
+	const isOwner = self?.rolePreset === "owner";
+	const canArchive = workspace.viewerCapabilities.includes("archive_entity") &&
+		workspace.status !== "archived";
 
 	const tabs = useComputed<ModuleTab[]>(() => moduleTabsFor(module, kind));
 	const activeView = useComputed(() => toModuleTab(module, kind, props.view ?? null));
-	const base = workspaceHref(kind, workspace.id, module);
+	const base = workspaceHref(kind, workspace.handle, module);
 
 	/** Copy the entity's public address. Fails silently — a clipboard refusal is not worth a dialog. */
 	async function copyLink(): Promise<void> {
@@ -71,6 +79,23 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 		menuOpen.value = false;
 	}
 
+	/**
+	 * Archive the entity. Nothing is deleted — it leaves the active roster and stays restorable from the
+	 * Archived tab, which is where the reader lands once it is done.
+	 */
+	async function archive(): Promise<void> {
+		archiving.value = true;
+		archiveError.value = null;
+		const res = await WorkspaceService.update({ kind, id: workspace.id, status: "archived" });
+		archiving.value = false;
+		if (!res.ok) {
+			archiveError.value = res.message ??
+				`Couldn't archive ${workspace.name}. Nothing was changed.`;
+			return;
+		}
+		globalThis.location.assign(`${workspaceBase(kind)}?tab=archived`);
+	}
+
 	return (
 		<div class="wsp-headerband" data-kind={kind}>
 			<h2 class="wsp-headerband__name">{mod?.label ?? copy.Noun}</h2>
@@ -78,7 +103,7 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 			<span class="wsp-headerband__divider" aria-hidden="true" />
 
 			{/* The compact identity: whose workspace this is, always visible, never a guess. */}
-			<a class="wsp-headerband__identity" href={workspaceHref(kind, workspace.id)}>
+			<a class="wsp-headerband__identity" href={workspaceHref(kind, workspace.handle)}>
 				<EntityMark
 					kind={kind}
 					name={workspace.name}
@@ -123,16 +148,6 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 			<span class="wsp-footerrig__spacer" />
 
 			<div class="wsp-headerband__controls">
-				<Tooltip content="Notification settings" placement="bottom">
-					<a
-						class="wsp-headerband__icon"
-						href={workspaceHref(kind, workspace.id, "settings")}
-						aria-label="Notification settings"
-					>
-						{cloneGlyph(BellGlyph)}
-					</a>
-				</Tooltip>
-
 				<Popover
 					open={menuOpen}
 					targetRef={menuRef}
@@ -148,17 +163,34 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 						<span class="wsp-footerrig__glyph" aria-hidden="true">{cloneGlyph(LinkGlyph)}</span>
 						Copy link
 					</button>
-					<a class="wsp-footerrig__action" href={workspaceHref(kind, workspace.id, "members")}>
+					{
+						/* Leaving is offered on the viewer's own row in Members; the owner hands the seat over there
+						   first, so the one entry reads as what it will actually do. */
+					}
+					<a class="wsp-footerrig__action" href={workspaceHref(kind, workspace.handle, "members")}>
 						<span class="wsp-footerrig__glyph" aria-hidden="true">{cloneGlyph(ExitGlyph)}</span>
-						Leave {copy.noun}
+						{isOwner ? "Hand over ownership…" : `Leave ${copy.noun}…`}
 					</a>
-					<a class="wsp-footerrig__action" href={workspaceHref(kind, workspace.id, "settings")}>
-						<span class="wsp-footerrig__glyph" aria-hidden="true">{cloneGlyph(ArchiveGlyph)}</span>
-						Archive…
-					</a>
-					<p class="wsp-headerband__panel-note">
-						Nothing is ever deleted — archiving hides it and keeps the record.
-					</p>
+					{canArchive && (
+						<button
+							type="button"
+							class="wsp-footerrig__action"
+							onClick={() => {
+								menuOpen.value = false;
+								confirmArchive.value = true;
+							}}
+						>
+							<span class="wsp-footerrig__glyph" aria-hidden="true">
+								{cloneGlyph(ArchiveGlyph)}
+							</span>
+							Archive…
+						</button>
+					)}
+					{canArchive && (
+						<p class="wsp-headerband__panel-note">
+							Nothing is ever deleted — archiving hides it and keeps the record.
+						</p>
+					)}
 				</Popover>
 
 				<Tooltip content={`${copy.Noun} actions`} placement="bottom">
@@ -177,6 +209,20 @@ export default function WorkspaceHeaderBand(props: WorkspaceHeaderBandProps): JS
 					</button>
 				</Tooltip>
 			</div>
+
+			{archiveError.value && (
+				<p class="wsp-headerband__panel-note" role="alert">{archiveError.value}</p>
+			)}
+
+			<ConfirmDialog
+				visible={confirmArchive}
+				header={`Archive ${workspace.name}?`}
+				message={`It leaves your active ${copy.plural} and stops taking new work. Nothing is deleted — you can restore it from the Archived tab.`}
+				acceptLabel={archiving.value ? "Archiving…" : "Archive"}
+				rejectLabel="Keep it"
+				acceptSeverity="danger"
+				onAccept={() => void archive()}
+			/>
 		</div>
 	);
 }

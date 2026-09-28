@@ -72,6 +72,12 @@ projects).
 | `kyb_status`       | `finance.kyc_status` | **Additive (`20260723091000`).** `unverified` (default) → `verified`. **Required to OPERATE the pooled Business Wallet.** |
 | `kyb_verified_at`  | timestamptz          | **Additive.** When KYB was granted.                                                                                       |
 | `kyb_provider_ref` | text                 | **Additive.** Stripe Connect account id (placeholder; **no PII**).                                                        |
+| `slug`             | text                 | The business's `@handle` — one namespace with people, teams and organisations (see `org.fn_handle_refusal`, [Functions.md](Functions.md#-the-workspace-console-00001020)). The console is addressed by it (`/businesses/[businessHandle]`). |
+| `status`           | text                 | `CHECK IN ('draft','active','archived')` (`business_profiles_status_check`). Created `draft` by `org.create_workspace`; moved only by `org.set_workspace_status`. |
+
+> A business is created by **`org.create_workspace`** (Decision #122) — never a client INSERT, and
+> the retired `org.create_business` no longer exists. Its members, roles and invitations are the
+> tables in [§ Workspace membership](#-workspace-membership-teams--businesses) below.
 
 > KYB verification for **businesses** is the new `kyb_*` cache here; **organisations** keep their
 > own `org.organisation_verification_level` (migration 0314). Reconciles with the tiered KYC/KYB
@@ -85,13 +91,24 @@ projects).
 
 Micro-agencies or collaborative units.
 
-| Column          | Type | Notes                                       |
-| :-------------- | :--- | :------------------------------------------ |
-| `id`            | uuid | PK.                                         |
-| `owner_user_id` | uuid | FK → `auth.users.id` (Ultimate controller). |
-| `slug`          | text | UNIQUE, used for team URLs.                 |
-| `payout_model`  | text | Internal distribution logic.                |
-| `hire_intake`   | jsonb | NOT NULL `DEFAULT '[]'`. Same shape and CHECK as `org.freelancer_profiles.hire_intake` (`ck_teams_hire_intake_shape`). |
+| Column               | Type  | Notes                                                                                                                                       |
+| :------------------- | :---- | :------------------------------------------------------------------------------------------------------------------------------------------ |
+| `id`                 | uuid  | PK.                                                                                                                                         |
+| `owner_user_id`      | uuid  | FK → `auth.users.id`. The ONE owner; moves only by `org.transfer_workspace_ownership`, and always holds the owner-preset seat (see below). |
+| `name`               | text  | 2–80 characters (`org.create_workspace` / `org.update_workspace`).                                                                          |
+| `slug`               | text  | UNIQUE — the team's `@handle`, in the one handle namespace; the console is addressed by it (`/teams/[teamHandle]`).                        |
+| `status`             | text  | `CHECK IN ('draft','active','archived')`, default `draft`. Moved only by `org.set_workspace_status`.                                         |
+| `subscription_tier`  | text  | The team's plan tier. **Guarded** (`trg_teams_immutable`) — a plan is bought, never PATCHed.                                                |
+| `treasury_wallet_id` | uuid  | The team's wallet, set by `org.create_workspace` (and by the seed). Guarded.                                                                |
+| `payout_model`       | text  | Internal distribution logic.                                                                                                                |
+| `hire_intake`        | jsonb | NOT NULL `DEFAULT '[]'`. Same shape and CHECK as `org.freelancer_profiles.hire_intake` (`ck_teams_hire_intake_shape`).                     |
+
+> **No `member_limit` column** (removed 2026-09-28). A team's seat cap is the `team_seats`
+> entitlement of its plan (`finance.fn_effective_limit`, enforced by `org.fn_assert_seat`); a second
+> stored answer (5, against the free plan's 4) is how the two had drifted apart.
+>
+> **No client write policy** since 2026-09-28 — a team is created, renamed, published/archived and
+> handed on only through the workspace RPCs ([Policies.md](Policies.md#orgteams)).
 
 > **`hire_intake`** (Decision #108) is what a client answers when adding this seller to a project
 > FROM THE PROFILE — the Project Assignment modal — as opposed to buying one of its listings, whose
@@ -101,17 +118,113 @@ Micro-agencies or collaborative units.
 > too (Decision #61). The seller-side editor is a settings surface that does not exist yet — see
 > [`../../flows/ServiceCreation.md`](../../flows/ServiceCreation.md).
 
-### `org.team_members`
+---
 
-Join table mapping users to teams with specific roles.
+## 👥 Workspace membership (teams & businesses)
 
-| Column    | Type | Notes                              |
-| :-------- | :--- | :--------------------------------- |
-| `id`      | uuid | PK.                                |
-| `team_id` | uuid | FK → `org.teams.id`.               |
-| `user_id` | uuid | FK → `auth.users.id`.              |
-| `role`    | text | e.g., `owner`, `admin`, `member`.  |
-| `status`  | text | e.g., `active`, `invited`, `left`. |
+Migration [`00000011_tables_org.sql`](../../../supabase/migrations/00000011_tables_org.sql), reshaped
+2026-09-28 for the Teams & Businesses console (root `CLAUDE.md` §8 Decision #122). Zod SSOT:
+`@projective/types/workspace` (`members.ts`, `common.ts`). A team (seller side) and a business
+(buyer side) are ONE architecture parameterised by kind (Decision #61), so the two role tables and
+the two member tables are **column-for-column twins** — one roles editor and one SQL twin
+([Functions.md](Functions.md#-the-workspace-console-00001020)) serve both.
+
+**The permission engine is three layers**: a preset role → a custom role → per-member overrides,
+resolved as `role ∪ granted − revoked`, intersected with what the kind renders. The vocabulary of
+every layer is the one enum **`org.workspace_capability`** (`00000004`). The two older per-kind enums
+`org.team_permission` / `org.business_permission` were **retired** (`00000003`): nothing read them and
+they could not express a custom role.
+
+No table in this section has a client write policy ([Policies.md](Policies.md)); every change is a
+`SECURITY DEFINER` workspace RPC.
+
+### `org.team_roles` / `org.business_roles`
+
+A role an entity grants its members — layers 1 and 2. The two tables are identical but for the
+parent key (`team_id` / `business_id`) and the preset vocabulary: a team offers `owner · admin ·
+lead · member`; a business has **no `lead`** (seat-binding is seller-side authority).
+
+| Column          | Type                         | Notes                                                                                                                                                                  |
+| :-------------- | :--------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`            | uuid                         | PK. `UNIQUE (id, team_id)` / `(id, business_id)` — the target of the composite FKs below, so a role can only be held in, or offered by, its own entity.                |
+| `name`          | text                         | `NOT NULL`. (The business table's former `title` column is renamed `name`, matching the team table.) Unique per entity among live roles, case-insensitively (index). |
+| `summary`       | text                         | `NOT NULL DEFAULT ''` — the one-line remit every consumer renders.                                                                                                     |
+| `preset`        | text                         | `NULL` for a CUSTOM role, else the preset it IS. `CHECK` on the kind's preset vocabulary. At most one row per preset per entity (index).                            |
+| `base_preset`   | text                         | `NOT NULL DEFAULT 'member'` — the preset this role RANKS as (what "may this person manage that one" compares). Never `owner` on a custom role.                      |
+| `capabilities`  | `org.workspace_capability[]` | A custom role's own list. A PRESET row stores **none** — its bundle is `org.fn_preset_capabilities(preset, kind)`, so a stale row cannot drift from the definition.  |
+| `archived_at`   | timestamptz                  | A retired custom role (nothing is hard-deleted). An archived role is refused as the target of any new membership or invitation, and frees its name.                  |
+| `created_at` / `updated_at` | timestamptz      |                                                                                                                                                                        |
+
+**Shape CHECK** (`ck_team_role_shape` / `ck_business_role_shape`): a preset row has
+`base_preset = preset`, `capabilities = '{}'` and is never archived; a custom row has
+`base_preset <> 'owner'` — **a custom role can never rank as owner**; ownership moves only by
+transfer. Retired: the `permissions org.*_permission[]` and `is_system boolean` columns (a preset IS
+the system role now) and team's `UNIQUE (team_id, name)` (replaced by the partial name index, which
+lets an archived role free its name).
+
+Every entity is created with its preset rows by `org.fn_seed_preset_roles`: **Owner** · **Admin** ·
+(team only) **Lead** · **Member**, each with a fixed one-line summary.
+
+### `org.team_members` / `org.business_members`
+
+One row per person per entity (`UNIQUE (team_id, user_id)` / `(business_id, user_id)`); a former
+member is **reactivated**, never inserted twice.
+
+| Column                                          | Type                         | Notes                                                                                                                                                                                                    |
+| :---------------------------------------------- | :--------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                                            | uuid                         | PK — the **member id** every console write addresses.                                                                                                                                                    |
+| `team_id` / `business_id`                       | uuid                         | FK → the entity.                                                                                                                                                                                         |
+| `user_id`                                       | uuid                         | FK → `auth.users.id`.                                                                                                                                                                                    |
+| `role_id`                                       | uuid                         | `NOT NULL`. The role row held — a preset or a custom role of THIS entity: composite FK `(role_id, team_id) → team_roles (id, team_id)` (and the business twin), `ON DELETE RESTRICT`.                   |
+| `role`                                          | text                         | The PRESET the member ranks as — **derived** from the role row's `base_preset` by `org.fn_member_role_sync` on every write, so every SQL predicate reading `role` agrees with the role held. `CHECK` on the kind's preset vocabulary. |
+| `status`                                        | text                         | `CHECK IN ('active','left')`. A departure is a status, never a `DELETE`; an invitation is a row in `org.org_invitations`, **not** a member state (the former `invited` state is gone). |
+| `left_at`                                       | timestamptz                  | `ck_*_member_left`: set exactly when `status = 'left'`.                                                                                                                                                  |
+| `invited_by`                                    | uuid                         | FK → `auth.users.id` (`ON DELETE SET NULL` on the business table). Written by the acceptance RPC.                                                                                                       |
+| `granted_capabilities` / `revoked_capabilities` | `org.workspace_capability[]` | Layer 3 — per-member overrides, stored SEPARATELY so the roster can show provenance ("+ granted" / "− revoked") and a later role edit keeps flowing to members who never overrode anything.            |
+| `title`                                         | text                         | Job title on the roster card / org chart (≤ 80 through the RPC). Per membership, not per user.                                                                                                          |
+| `reports_to`                                    | uuid                         | The org-chart edge — FK → the same table's `id`, `ON DELETE SET NULL`. A FK cannot forbid a cycle; `org.update_workspace_member` walks the chain and refuses one.                                     |
+| `joined_at` / `created_at`                      | timestamptz                  |                                                                                                                                                                                                          |
+
+Retired: `org.team_members.default_split_share` — a member's payout share lives ONLY in
+`finance.contribution_agreements.percent_bp`, the one place the money functions read it.
+
+**Cross-row invariants** (indexes, `00004001`, because a row-level CHECK cannot span rows):
+`uq_team_members_one_owner` / `uq_business_members_one_owner` — exactly one ACTIVE owner-preset seat
+per entity (not deferrable, which is why the transfer RPC demotes the outgoing owner before seating
+the successor); plus `org.fn_member_role_sync` refuses an owner-preset seat for anyone but the
+entity's `owner_user_id`, refuses the owner holding any other role, and refuses the owner leaving.
+
+### `org.org_invitations`
+
+A workspace invitation — **named people only**. It addresses one person (`target_user_id`, with
+`target_handle` kept so the queue can still render who was invited after an account is gone) or one
+address (`target_email`). Join requests and share links were **cut** (product decision 2026-09-28):
+the table's own `org_invitations_target_identity_check` forbids an addressee-less row, and nothing
+could redeem one.
+
+| Column                                  | Type        | Notes                                                                                                                                                                                               |
+| :-------------------------------------- | :---------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `inviter_user_id`                       | uuid        | FK → `auth.users.id`.                                                                                                                                                                               |
+| `target_email` / `target_handle` / `target_user_id` | text / text / uuid | The addressee (see above).                                                                                                                                                     |
+| `team_id` / `business_id`               | uuid        | Exactly one (`check_invitation_target`).                                                                                                                                                            |
+| `team_role_id` / `business_role_id`     | uuid        | The role OFFERED, as a real FK into the inviting entity's own role table (`(team_role_id, team_id) → team_roles (id, team_id)`, `ON DELETE RESTRICT`, and the business twin). `ck_org_invitation_role`: the role column of the entity's kind is set, the other is `NULL`. Replaces the loosely-coupled `role_id`, which could point at another entity's role. |
+| `token`                                 | text        | `UNIQUE` — the accept capability; re-minted on resend.                                                                                                                                              |
+| `note`                                  | text        | Optional sender message (≤ 400 through the RPC).                                                                                                                                                    |
+| `status`                                | text        | `CHECK IN ('pending','accepted','declined','revoked')` (`ck_org_invitation_status`). **Expiry is derived from `expires_at`, never a status**, so a lapsed row stays resendable.                     |
+| `expires_at`                            | timestamptz | `now() + 14 days` on create and on every resend. `NULL` = does not expire.                                                                                                                         |
+| `responded_at`                          | timestamptz | When the invitee accepted or declined.                                                                                                                                                              |
+| `revoked_at` / `revoked_by`             | timestamptz / uuid | When, and by whom (FK → `auth.users.id`, `ON DELETE SET NULL`), the inviting side withdrew it.                                                                                               |
+
+`ck_org_invitation_lifecycle` pins the timestamps to the status: `pending` → neither stamp;
+`accepted` / `declined` → `responded_at` only; `revoked` → `revoked_at` only. Indexes (`00004001`):
+`uq_org_invitations_pending_user` / `uq_org_invitations_pending_email` — at most ONE pending
+invitation per entity per person or per address (a double-press cannot stack offers; the RPC maps the
+violation to "they already have a pending invitation"); the invitee inbox
+(`idx_org_invitations_target_user`) and the two per-kind queue indexes. The former non-unique
+`idx_org_invitations_token` is dropped as redundant with the `UNIQUE` on `token`.
+
+RLS is on with **no client policy** — the token IS the accept capability, so every read and write is
+a definer ([Policies.md](Policies.md#orgorg_invitations)).
 
 ---
 
@@ -282,8 +395,9 @@ Per-user preferences (one row per user, seeded by the `org.seed_user_preferences
 Added in `supabase/migrations/0314_organisations.sql`; Zod SSOT in
 `packages/types/org/organisations.ts`. An **Organisation** is a corporate **client/buyer** entity —
 it registers only to hire/buy and **cannot offer services**. It is deliberately **distinct** from
-`org.business_profiles` (the seller-side entity above): different table, different purpose, no
-service/product surface. Multi-tenancy is a membership join table, **not** a `users.organisation_id`
+`org.business_profiles` (also buyer-side — a Client with multiple members, root `CLAUDE.md` §8
+Decision #61; the distinction is scale and structure, not side of market): different table,
+different purpose, no service/product surface. Multi-tenancy is a membership join table, **not** a `users.organisation_id`
 column, because a user can belong to several organisations.
 
 ### `org.organisations`
@@ -484,8 +598,9 @@ may only add trailing columns):
   duplicated across `users_public`, `freelancer_profiles`, and `business_profiles`.
   - _Suggestion_: Move shared attributes to `users_public` and only keep persona-specific data in
     the profiles.
-- **Team Roles**: The `org.team_roles` table uses `jsonb` for permissions. Ensure the Deno backend
-  has a strict TypeScript interface to validate these structures during team operations.
+- **Team Roles**: resolved 2026-09-28 — `org.team_roles` / `org.business_roles` store an
+  `org.workspace_capability[]` (a real enum array, not `jsonb`), and the preset bundles are an SQL
+  twin of `PRESET_GRANTS` pinned by `packages/types/workspace/workspace.contract.test.ts`.
 - **Email Management**: `org.user_emails` allows for secondary emails but the auth linkage remains
   strictly on the primary `auth.users` record.
   - `verified_at` is the app-owned mirror of GoTrue's `auth.users.email_confirmed_at`. Because the

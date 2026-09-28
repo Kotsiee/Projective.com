@@ -19,7 +19,7 @@ SELECT TO public USING (
 -- tell one column from another: "Users can update their own profile" let any signed-in user PATCH
 -- their own rating to 5.00 over PostgREST. Every legitimate writer is already a SECURITY DEFINER
 -- function (provision_user_profile / complete_onboarding / enable_freelancer_profile /
--- set_operator_mode / create_team / create_business, the rating and counter triggers), and profile
+-- set_operator_mode / create_workspace, the rating and counter triggers), and profile
 -- edits go through org.save_profile, which names every column it touches. With no write policy the
 -- table is default-deny to a client, which is the whole point.
 
@@ -64,21 +64,12 @@ SELECT TO public USING (
         OR security.is_admin ()
     );
 
--- NO client INSERT policy on org.teams (2026-09-23). A team is created by org.create_team (definer),
--- which also opens its treasury wallet; a raw client INSERT skipped that and could set
--- `subscription_tier`, `member_limit` and `treasury_wallet_id` at birth, where the UPDATE-only
--- immutability guard (00001895) cannot reach.
-
-CREATE POLICY "Team owners can update their teams" ON org.teams FOR
-UPDATE TO public USING (
-    owner_user_id = auth.uid ()
-    OR security.is_admin ()
-);
-
-CREATE POLICY "Team owners can delete their teams" ON org.teams FOR DELETE TO public USING (
-    owner_user_id = auth.uid ()
-    OR security.is_admin ()
-);
+-- NO client INSERT, UPDATE or DELETE policy on org.teams (2026-09-28). A team is created by
+-- org.create_workspace, renamed by org.update_workspace, published or archived by
+-- org.set_workspace_status and handed on by org.transfer_workspace_ownership — each a definer that
+-- checks the caller's workspace capability (org.fn_member_can). The owner-only UPDATE policy this
+-- replaces let an owner rewrite any column the guards did not name, and the DELETE policy let one
+-- hard-delete a team with money held in escrow for it (root CLAUDE.md §5: nothing is hard-deleted).
 
 
 -- --- from 0210_freelancers.sql ---
@@ -105,31 +96,19 @@ SELECT TO authenticated USING (
         OR security.is_admin ()
     );
 
-CREATE POLICY "Owners can manage members" ON org.business_members FOR ALL TO authenticated USING (
-    EXISTS (
-        SELECT 1
-        FROM org.business_profiles
-        WHERE
-            id = business_id
-            AND owner_user_id = auth.uid ()
-    )
-    OR security.is_admin ()
-);
+-- NO client write policy on org.business_members or org.business_roles (2026-09-28). The roster and
+-- its roles change only through the workspace RPCs (org.invite_workspace_member,
+-- org.respond_to_workspace_invitation, org.update_workspace_member, org.transfer_workspace_ownership,
+-- org.upsert_workspace_role, org.archive_workspace_role), which enforce the three-layer permission
+-- model — rank, "never grant what you lack", the single owner — and re-project the vault. The FOR ALL
+-- policies these replace let an owner INSERT a second owner, and let a member DELETE themselves while
+-- keeping every vault grant they held.
 
 CREATE POLICY "Members can view business roles" ON org.business_roles FOR
 SELECT TO authenticated USING (
         org.is_active_business_member (business_id)
     );
 
-CREATE POLICY "Owners can manage business roles" ON org.business_roles FOR ALL TO authenticated USING (
-    EXISTS (
-        SELECT 1
-        FROM org.business_profiles
-        WHERE
-            id = business_id
-            AND owner_user_id = auth.uid ()
-    )
-);
 
 
 -- --- from 0212_team_memberships.sql ---
@@ -141,44 +120,17 @@ SELECT TO public USING (
         OR security.is_admin ()
     );
 
-CREATE POLICY "Team owners can add members" ON org.team_members FOR
-INSERT
-    TO public
-WITH
-    CHECK (
-        EXISTS (
-            SELECT 1
-            FROM org.teams t
-            WHERE
-                t.id = team_id
-                AND t.owner_user_id = auth.uid ()
-        )
+-- Team roles are read by every active member (the matrix, the role picker). Like the business
+-- roster, neither table has a client write policy: see the business note above.
+CREATE POLICY "Members can view team roles" ON org.team_roles FOR
+SELECT TO authenticated USING (
+        org.is_active_team_member (team_id)
         OR security.is_admin ()
     );
 
-CREATE POLICY "Team owners can update members" ON org.team_members FOR
-UPDATE TO public USING (
-    EXISTS (
-        SELECT 1
-        FROM org.teams t
-        WHERE
-            t.id = team_id
-            AND t.owner_user_id = auth.uid ()
-    )
-    OR security.is_admin ()
-);
-
-CREATE POLICY "Team owners can remove members or members can leave" ON org.team_members FOR DELETE TO public USING (
-    user_id = auth.uid ()
-    OR EXISTS (
-        SELECT 1
-        FROM org.teams t
-        WHERE
-            t.id = team_id
-            AND t.owner_user_id = auth.uid ()
-    )
-    OR security.is_admin ()
-);
+-- NO client write policy on org.team_members (2026-09-28). The INSERT policy let an owner add anybody
+-- — without an invitation, at any role, past the seat cap; the DELETE policy let a member hard-delete
+-- themselves and keep their payout stake, so every later release kept paying them.
 
 
 -- --- from 0213_user_preferences.sql ---
@@ -229,33 +181,10 @@ SELECT TO public USING (
         OR security.is_admin ()
     );
 
--- The owner seeds their own owner-membership at creation; owners/admins add others thereafter.
-CREATE POLICY "Admins manage membership" ON org.organisation_members FOR
-INSERT
-    TO public
-WITH
-    CHECK (
-        org.is_organisation_member (organisation_id, 'admin')
-        OR EXISTS (
-            SELECT 1
-            FROM org.organisations o
-            WHERE
-                o.id = organisation_id
-                AND o.owner_user_id = auth.uid ()
-        )
-        OR security.is_admin ()
-    );
-
-CREATE POLICY "Admins update membership" ON org.organisation_members FOR
-UPDATE TO public USING (
-    org.is_organisation_member (organisation_id, 'admin')
-    OR security.is_admin ()
-);
-
-CREATE POLICY "Admins remove membership" ON org.organisation_members FOR DELETE TO public USING (
-    org.is_organisation_member (organisation_id, 'admin')
-    OR security.is_admin ()
-);
+-- NO client write policy on org.organisation_members (2026-09-28). An organisation's owner membership
+-- is written by public.create_organisation (service role). The policies this replaces let an admin
+-- UPDATE any row to role `owner` — including their own — and hard-DELETE the owner. Nothing in the
+-- app writes the table today; organisation roster management will get definer RPCs of its own.
 
 
 -- =============================================================================

@@ -1,6 +1,11 @@
 -- Views: org profiles index + business staff (from 0301, 0302)
 
-CREATE OR REPLACE VIEW org.view_business_staff AS
+-- The staff of the businesses the CALLER belongs to. security_invoker (2026-09-28): as a definer view
+-- it read past every policy and handed any signed-in user every business member's primary email;
+-- under the caller's own rights the roster is their own businesses' (org.business_members policy) and
+-- an email is only ever their own (org.user_emails policy).
+CREATE OR REPLACE VIEW org.view_business_staff
+WITH (security_invoker = true) AS
 SELECT
     bm.business_id,
     bm.user_id,

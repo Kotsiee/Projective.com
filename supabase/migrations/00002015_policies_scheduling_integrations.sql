@@ -10,7 +10,7 @@
 CREATE POLICY "View published or own schedule" ON scheduling.schedules FOR
 SELECT TO anon,
 authenticated USING (
-        is_published
+        scheduling.fn_schedule_is_public (id)
         OR scheduling.fn_owner_visible (owner_type, owner_id)
     );
 
@@ -37,11 +37,12 @@ WITH
         scheduling.fn_can_manage_schedule (schedule_id)
     );
 
+-- Blackout rows are the schedule's own members' only: a visitor reads a published schedule's spans
+-- through scheduling.get_public_blackouts, which masks a label its owner did not make public — a row
+-- policy cannot hide one column, and this one used to hand a visitor the private label too.
 CREATE POLICY "View blackout dates" ON scheduling.blackout_dates FOR
-SELECT TO anon,
-authenticated USING (
-        scheduling.fn_schedule_is_public (schedule_id)
-        OR scheduling.fn_can_view_schedule (schedule_id)
+SELECT TO authenticated USING (
+        scheduling.fn_can_view_schedule (schedule_id)
     );
 
 CREATE POLICY "Manage blackout dates" ON scheduling.blackout_dates FOR ALL TO authenticated USING (
@@ -146,26 +147,23 @@ SELECT TO authenticated USING (
 
 -- --- from 20260724102000_scheduling_events.sql ---
 
+-- Who may see an event ROW: the schedule's own members, the engagement's participants (a project's
+-- meetings are on its calendar), and anyone seated on it. NOT a visitor of a published schedule
+-- (2026-09-28): the arm that admitted one exposed every column of every busy block — the private
+-- titles, `created_by`, the external-calendar provenance — which get_free_busy exists to reduce to
+-- bare spans. The room (url, passcode, details) is withheld at the COLUMN level from every client
+-- role (00002520) and read by a party through scheduling.get_event_rooms.
 CREATE POLICY "View scheduling events" ON scheduling.events FOR
-SELECT TO anon,
-authenticated USING (
+SELECT TO authenticated USING (
         (
             schedule_id IS NOT NULL
             AND scheduling.fn_can_view_schedule (schedule_id)
         )
         OR (
-            schedule_id IS NOT NULL
-            AND scheduling.fn_schedule_is_public (schedule_id)
-            AND kind IN (
-                'availability'::scheduling.event_kind,
-                'busy'::scheduling.event_kind,
-                'holiday'::scheduling.event_kind
-            )
-        )
-        OR (
             project_id IS NOT NULL
             AND projects.has_project_access (project_id)
         )
+        OR scheduling.fn_is_event_attendee (id)
     );
 
 -- A schedule's owner manages the entries on their own calendar. A PROJECT's events have no client write
@@ -270,18 +268,13 @@ SELECT TO authenticated USING (
 -- replaces let the requester write every column — the host the call notifies, the fee a paid call
 -- charges, the meeting link the host would click — while checking only that they named themselves.
 
-CREATE POLICY "Update own discovery calls" ON scheduling.discovery_calls FOR
-UPDATE TO authenticated USING (
-    host_user_id = auth.uid ()
-    OR requester_user_id = auth.uid ()
-    OR security.is_admin ()
-)
-WITH
-    CHECK (
-        host_user_id = auth.uid ()
-        OR requester_user_id = auth.uid ()
-        OR security.is_admin ()
-    );
+-- NO client UPDATE policy either (2026-09-28). The one that stood here checked only that the caller
+-- was a party, on both halves, and the transition trigger returns early when the status is unchanged
+-- — so either party could rewrite any column of a call: a paid fee down to 1, a paid call into a free
+-- one past the courtesy caps, the host's meeting link, times inside the notice window or outside every
+-- call window, the host's own no-show; and, by re-pointing `host_schedule_id`, a busy span onto an
+-- unrelated provider's free/busy. Nothing in the app wrote through it. Answering, rescheduling and
+-- cancelling a call will each be a definer RPC that names who may make which move.
 
 CREATE POLICY "View call attendance" ON scheduling.call_attendance FOR
 SELECT TO authenticated USING (

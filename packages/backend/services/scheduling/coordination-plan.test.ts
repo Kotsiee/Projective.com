@@ -33,6 +33,8 @@ const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 /** A fixed instant every test measures from. */
 const NOW = Date.UTC(2026, 8, 23, 12, 0, 0);
+/** Where {@link event} puts the meeting unless told otherwise — the start its vote deadline is capped by. */
+const EVENT_START = NOW + 72 * HOUR;
 
 const MEMBER: SchedulingViewer = { authenticated: true, handle: null };
 
@@ -369,7 +371,7 @@ Deno.test("reschedule — the vote gate refuses one slot and admits two", () => 
 	const plan = planReschedule(ev(two), input("open"), NOW, MEMBER);
 	assert(plan.ok);
 	assertEquals(plan.next.status, "voting");
-	assertEquals(plan.next.resolvesAt, voteResolvesAt(two.proposals));
+	assertEquals(plan.next.resolvesAt, voteResolvesAt(two.proposals, EVENT_START));
 
 	// Only the host opens a vote.
 	const asAttendee = event({ roster: groupRoster("a1"), reschedule: two });
@@ -379,7 +381,11 @@ Deno.test("reschedule — the vote gate refuses one slot and admits two", () => 
 	);
 
 	// And an open vote is not re-opened.
-	const voting = { ...two, status: "voting" as const, resolvesAt: voteResolvesAt(two.proposals) };
+	const voting = {
+		...two,
+		status: "voting" as const,
+		resolvesAt: voteResolvesAt(two.proposals, EVENT_START),
+	};
 	assertEquals(refused(planReschedule(ev(voting), input("open"), NOW, MEMBER)).status, 409);
 });
 
@@ -429,7 +435,7 @@ function votingRound(votes: Record<string, string[]>): EventReschedule {
 		status: "voting",
 		round: 1,
 		proposals,
-		resolvesAt: voteResolvesAt(proposals),
+		resolvesAt: voteResolvesAt(proposals, EVENT_START),
 	};
 }
 
@@ -604,5 +610,126 @@ Deno.test("reschedule — withdrawing is recoverable: proposing again opens a ne
 		refused(planReschedule(host(emptyReschedule("vote")), input("withdraw"), NOW, MEMBER)).status,
 		409,
 	);
+});
+// #endregion
+
+// #region Stale slots, and who accepts a 1-on-1
+function oneOnOne(
+	status: EventReschedule["status"],
+	proposals: RescheduleProposal[],
+	viewer: "h" | "c",
+): CalendarEvent {
+	return event({
+		roster: [seat("h", "host", viewer === "h"), seat("c", "participant", viewer === "c")],
+		asHost: viewer === "h",
+		reschedule: { ...emptyReschedule("counterparty"), status, round: 1, proposals },
+	});
+}
+
+Deno.test("reschedule — a 1-on-1 slot is not accepted before the host has put it", () => {
+	const r = refused(
+		planReschedule(
+			oneOnOne("collecting", [proposal("p1", 96)], "c"),
+			input("confirm", { proposalId: "p1" }),
+			NOW,
+			MEMBER,
+		),
+	);
+	assertEquals(r.reason, "not_offered");
+	assertEquals(r.status, 409);
+});
+
+Deno.test("reschedule — the host accepts an attendee's time directly; the attendee cannot", () => {
+	const theirs = proposal("c1", 96, { approved: false, role: "attendee" });
+	const plan = planReschedule(
+		oneOnOne("collecting", [theirs], "h"),
+		input("confirm", { proposalId: "c1" }),
+		NOW,
+		MEMBER,
+	);
+	assert(plan.ok);
+	assertEquals(plan.next.status, "resolved");
+	assertEquals(plan.next.resolvedProposalId, "c1");
+	assert(plan.step.kind === "confirm");
+
+	assertEquals(
+		refused(
+			planReschedule(
+				oneOnOne("collecting", [theirs], "c"),
+				input("confirm", { proposalId: "c1" }),
+				NOW,
+				MEMBER,
+			),
+		).reason,
+		"not_permitted",
+	);
+});
+
+Deno.test("reschedule — a slot that has drifted inside its lockout cannot be accepted", () => {
+	// Offered days ago, still waiting: the meeting itself is 72 hours out, but the slot is 6.
+	const r = refused(
+		planReschedule(
+			oneOnOne("awaiting_counterparty", [proposal("p1", 6)], "c"),
+			input("confirm", { proposalId: "p1" }),
+			NOW,
+			MEMBER,
+		),
+	);
+	assertEquals(r.reason, "slot_inside_lockout");
+	assertEquals(r.status, 409);
+});
+
+Deno.test("reschedule — a 1-on-1 is not put to the attendee on stale options alone", () => {
+	assertEquals(
+		refused(
+			planReschedule(
+				oneOnOne("collecting", [proposal("p1", 6), proposal("p2", -3)], "h"),
+				input("open"),
+				NOW,
+				MEMBER,
+			),
+		).reason,
+		"not_enough_proposals",
+	);
+});
+
+Deno.test("reschedule — a stale attendee slot is not approved onto a live vote", () => {
+	const r: EventReschedule = {
+		...votingRound({}),
+		proposals: [
+			...votingRound({}).proposals,
+			proposal("c1", 6, { approved: false, role: "attendee" }),
+		],
+	};
+	const refusal = refused(
+		planReschedule(
+			event({ roster: groupRoster("h"), asHost: true, reschedule: r }),
+			input("approve", { proposalId: "c1" }),
+			NOW,
+			MEMBER,
+		),
+	);
+	// Approved, it would have become the earliest option and pulled the deadline into the past.
+	assertEquals(refusal.reason, "slot_inside_lockout");
+	assertEquals(refusal.status, 409);
+});
+
+Deno.test("reschedule — a vote on later slots closes at the meeting's own lockout", () => {
+	const collecting: EventReschedule = {
+		...emptyReschedule("vote"),
+		status: "collecting",
+		round: 1,
+		proposals: [proposal("p1", 96), proposal("p2", 120)],
+	};
+	const plan = planReschedule(
+		event({ roster: groupRoster("h"), asHost: true, reschedule: collecting, startsInHours: 24 }),
+		input("open"),
+		NOW,
+		MEMBER,
+	);
+	assert(plan.ok);
+	assertEquals(plan.next.status, "voting");
+	// The ballot alone would say NOW + 84h — two and a half days after the meeting has happened.
+	assertEquals(plan.next.resolvesAt, NOW + 12 * HOUR);
 });
 // #endregion

@@ -243,6 +243,29 @@ BEGIN
 END;
 $$;
 
+-- A published schedule's blackout SPANS for a visitor, with each label only where its owner made it
+-- public (`label_is_public`), else "Unavailable". The table itself is readable by the schedule's own
+-- members only (00002015): as a row policy it could not mask one column, so a visitor used to read
+-- "Travelling" on a span its owner had marked private.
+CREATE OR REPLACE FUNCTION scheduling.get_public_blackouts (
+    p_schedule uuid, p_from timestamptz, p_to timestamptz
+)
+RETURNS TABLE (id uuid, starts_at timestamptz, ends_at timestamptz, label text)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT b.id, b.starts_at, b.ends_at,
+           CASE WHEN b.label_is_public OR scheduling.fn_can_view_schedule (b.schedule_id) THEN b.label ELSE 'Unavailable' END
+      FROM scheduling.blackout_dates b
+     WHERE b.schedule_id = p_schedule
+       AND (scheduling.fn_schedule_is_public (p_schedule) OR scheduling.fn_can_view_schedule (p_schedule))
+       AND b.ends_at > p_from
+       AND b.starts_at < LEAST(p_to, p_from + interval '400 days')
+     ORDER BY b.starts_at, b.id;
+$$;
+
 COMMENT ON FUNCTION scheduling.request_discovery_call(uuid, scheduling.call_type, timestamptz, timestamptz, text, text, text, uuid) IS
 'The only way a client requests a discovery call. Derives the host, the fee and the status from the schedule; the BEFORE INSERT gate judges the slot. Raises check_violation "Discovery call refused: <reason>".';
 -- #endregion

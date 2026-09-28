@@ -5,7 +5,41 @@ CREATE INDEX idx_business_members_user ON org.business_members (user_id);
 CREATE INDEX idx_team_roles_team ON org.team_roles (team_id);
 CREATE INDEX idx_team_members_user ON org.team_members (user_id);
 CREATE INDEX idx_user_bookmarks_lookup ON org.user_bookmarks (user_id, entity_type);
-CREATE INDEX idx_org_invitations_token ON org.org_invitations (token);
+-- (No separate token index: `token` is UNIQUE, which is already an index.)
+
+-- #region Workspace membership invariants (Decision #122)
+-- These are the constraints a row-level CHECK cannot state, because each one spans rows.
+
+-- Exactly one active owner per entity. Not deferrable (a partial unique index never is), which is why
+-- org.transfer_workspace_ownership demotes the outgoing owner BEFORE seating the successor.
+CREATE UNIQUE INDEX uq_team_members_one_owner ON org.team_members (team_id) WHERE role = 'owner' AND status = 'active';
+CREATE UNIQUE INDEX uq_business_members_one_owner ON org.business_members (business_id) WHERE role = 'owner' AND status = 'active';
+
+-- Each preset exists once per entity, and a live role's name is unique within it (case-insensitively;
+-- an archived role frees its name).
+CREATE UNIQUE INDEX uq_team_roles_preset ON org.team_roles (team_id, preset) WHERE preset IS NOT NULL;
+CREATE UNIQUE INDEX uq_business_roles_preset ON org.business_roles (business_id, preset) WHERE preset IS NOT NULL;
+CREATE UNIQUE INDEX uq_team_roles_name ON org.team_roles (team_id, lower(name)) WHERE archived_at IS NULL;
+CREATE UNIQUE INDEX uq_business_roles_name ON org.business_roles (business_id, lower(name)) WHERE archived_at IS NULL;
+
+-- A person or an address has at most one PENDING invitation to an entity, so a double-press or a
+-- re-send cannot stack offers. The RPC maps the violation to "they already have a pending invitation".
+CREATE UNIQUE INDEX uq_org_invitations_pending_user ON org.org_invitations (COALESCE(team_id, business_id), target_user_id)
+    WHERE status = 'pending' AND target_user_id IS NOT NULL;
+CREATE UNIQUE INDEX uq_org_invitations_pending_email ON org.org_invitations (COALESCE(team_id, business_id), lower(target_email))
+    WHERE status = 'pending' AND target_email IS NOT NULL;
+
+-- The invitee's inbox and the entity's queue.
+CREATE INDEX idx_org_invitations_target_user ON org.org_invitations (target_user_id) WHERE status = 'pending';
+CREATE INDEX idx_org_invitations_team ON org.org_invitations (team_id) WHERE team_id IS NOT NULL;
+CREATE INDEX idx_org_invitations_business ON org.org_invitations (business_id) WHERE business_id IS NOT NULL;
+
+-- Foreign keys a role archive or a manager removal has to scan.
+CREATE INDEX idx_team_members_role ON org.team_members (role_id);
+CREATE INDEX idx_business_members_role ON org.business_members (role_id);
+CREATE INDEX idx_team_members_reports_to ON org.team_members (reports_to) WHERE reports_to IS NOT NULL;
+CREATE INDEX idx_business_members_reports_to ON org.business_members (reports_to) WHERE reports_to IS NOT NULL;
+-- #endregion
 
 CREATE INDEX idx_organisations_owner ON org.organisations (owner_user_id);
 CREATE INDEX idx_organisations_handle ON org.organisations (lower(handle));

@@ -78,7 +78,10 @@ CREATE TYPE finance.deposit_interval AS ENUM ('weekly', 'monthly');
 CREATE TYPE finance.payout_mode      AS ENUM ('manual', 'scheduled_weekly', 'scheduled_monthly', 'threshold');
 CREATE TYPE finance.pot_purpose      AS ENUM ('tax', 'savings', 'goal', 'general');
 -- Vault governance
-CREATE TYPE finance.vault_capability AS ENUM ('view', 'add_funds', 'spend', 'distribute', 'withdraw', 'manage_members', 'manage_billing');
+-- `approve_spend` added 2026-09-28 (Decision #122): deciding an over-limit spend request is its own
+-- grant, because `manage_members` also carries `withdraw`. The whole array is a PROJECTION of
+-- org.workspace_capability (org.fn_sync_vault_permissions), never hand-maintained.
+CREATE TYPE finance.vault_capability AS ENUM ('view', 'add_funds', 'spend', 'distribute', 'withdraw', 'manage_members', 'manage_billing', 'approve_spend');
 CREATE TYPE finance.split_rule_type  AS ENUM ('co_op', 'finders_fee', 'benevolent_dictator');
 CREATE TYPE finance.approval_status  AS ENUM ('pending', 'approved', 'rejected', 'expired');
 CREATE TYPE finance.vault_action     AS ENUM ('add_funds', 'spend', 'distribute', 'withdraw', 'transfer');
@@ -89,6 +92,25 @@ CREATE TYPE finance.chargeback_status AS ENUM ('opened', 'under_review', 'won', 
 
 -- i18n preference (org schema, migration 20260723090000)
 CREATE TYPE org.layout_direction    AS ENUM ('ltr', 'rtl', 'auto');
+```
+
+### Workspace permissions (teams & businesses — `00000004`, Decision #122)
+
+```sql
+-- The ONE authority vocabulary of the Teams & Businesses console: role capability lists, the
+-- per-member granted/revoked overrides and the TypeScript SSOT (@projective/types/workspace
+-- WorkspaceCapability, same order). Each kind renders a subset (org.fn_kind_capabilities).
+CREATE TYPE org.workspace_capability AS ENUM (
+    'invite_members', 'remove_members', 'manage_roles',
+    'edit_profile', 'manage_settings',
+    'bind_seat', 'manage_projects', 'publish_listings',
+    'purchase', 'hire',
+    'contribute_funds', 'spend_funds', 'withdraw_funds', 'manage_finances', 'approve_spend',
+    'view_analytics', 'view_audit',
+    'archive_entity'
+);
+-- RETIRED 2026-09-28 (00000003): org.team_permission and org.business_permission — two per-kind
+-- vocabularies nothing read, which could not express a custom role.
 ```
 
 ### Notification Engine (schema-scoped, migrations `20260724090000`–`20260724094000`)

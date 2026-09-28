@@ -18,11 +18,11 @@ import { VerificationState } from "./common.ts";
 
 // #region Team — money in, then split
 /**
- * How a released payout divides. `equal` and `by_role` are computed server-side from the roster;
- * `custom` honours each member's `shareBp`. Modelled as a template rather than a boolean so a team can
- * change policy without rewriting every member's share.
+ * How the current split reads. It is DERIVED, never stored: `equal` when every unheld active stake is
+ * the same within one basis point, `custom` otherwise. (A `by_role` model had no stored definition and
+ * was removed.)
  */
-export const SplitModel = z.enum(["equal", "by_role", "custom"]);
+export const SplitModel = z.enum(["equal", "custom"]);
 export type SplitModel = z.infer<typeof SplitModel>;
 
 /** One member's slice of the split bar. */
@@ -43,7 +43,10 @@ export const SplitStakeSchema = z.object({
 });
 export type SplitStake = z.infer<typeof SplitStakeSchema>;
 
-/** A named, reusable split template (`finance.split_rules` is the eventual live backing). */
+/**
+ * A split the editor can apply in one step. Nothing stores templates; the server offers the team's
+ * current split and a computed even split, so the editor's quick-apply is honest about both.
+ */
 export const SplitTemplateSchema = z.object({
 	id: z.string().max(64),
 	name: z.string().min(1).max(64),
@@ -60,16 +63,19 @@ export const TeamPayoutPolicySchema = z.object({
 	stakes: z.array(SplitStakeSchema),
 	templates: z.array(SplitTemplateSchema),
 	/**
-	 * The release this projection is priced against — so the editor shows real consequences ("Ravi
-	 * receives £412.50 of the next release") rather than abstract percentages.
+	 * The release this projection is priced against — the team's oldest escrow still held, so the
+	 * editor shows real consequences ("Ravi receives £412.50 of the next release") rather than abstract
+	 * percentages. `null` when nothing is held: no release is coming, and none is invented.
 	 */
-	projectedRelease: MoneyViewSchema,
+	projectedRelease: MoneyViewSchema.nullable(),
 	/** Platform fee already deducted from {@link projectedRelease} (server-computed, display only). */
-	platformFee: MoneyViewSchema,
-	/** Who may request a withdrawal — member ids. */
+	platformFee: MoneyViewSchema.nullable(),
+	/** The vault's cut of every release, in basis points, taken before the members' split. */
+	vaultBp: z.number().int().min(0).max(10_000),
+	/** What the vault keeps of the projected release — its cut plus the rounding dust. */
+	vaultCut: MoneyViewSchema.nullable(),
+	/** Who may withdraw from the vault — member ids. */
 	withdrawApprovers: z.array(z.string().max(64)),
-	/** Whether releases distribute automatically or wait for a manual push. */
-	autoDistribute: z.boolean(),
 });
 export type TeamPayoutPolicy = z.infer<typeof TeamPayoutPolicySchema>;
 
@@ -135,16 +141,20 @@ export function rebalanceSplit(
 // #endregion
 
 // #region Business — money in from members, out as purchases
-/** A single attributable movement into or out of the pooled wallet. */
+/** A single movement into or out of the pooled wallet. */
 export const PoolEntrySchema = z.object({
 	id: z.string().max(64),
 	/** `contribution` funds the pool; `spend` draws from it. */
 	kind: z.enum(["contribution", "spend"]),
-	/** Who did it — a pooled wallet without attribution is a dispute waiting to happen (brief §8). */
-	memberId: z.string().max(64),
-	handle: z.string().max(40),
-	name: z.string().max(120),
-	avatar: z.string().max(400),
+	/**
+	 * Who did it. A contribution is always attributed (`finance.ledger_audit`); a spend is attributed
+	 * only when the money path recorded an actor, and `null` — rendered as the business itself — when it
+	 * did not, rather than guessed.
+	 */
+	memberId: z.string().max(64).nullable(),
+	handle: z.string().max(40).nullable(),
+	name: z.string().max(120).nullable(),
+	avatar: z.string().max(400).nullable(),
 	amount: MoneyViewSchema,
 	/** What it was for ("Aurora rebrand — stage 2"). */
 	reason: z.string().max(160),
@@ -164,7 +174,7 @@ export const SpendRequestSchema = z.object({
 	avatar: z.string().max(400),
 	amount: MoneyViewSchema,
 	reason: z.string().max(160),
-	state: z.enum(["pending", "approved", "declined"]),
+	state: z.enum(["pending", "approved", "declined", "expired"]),
 	raisedAt: z.string().max(40),
 	/** Who must decide — resolved names, so the requester sees a person not an id. */
 	approvers: z.array(z.string().max(120)),
@@ -197,8 +207,10 @@ export type SpendLimit = z.infer<typeof SpendLimitSchema>;
 
 /** The business's spend policy — the buyer-side editor's whole state. */
 export const BusinessSpendPolicySchema = z.object({
+	/** The wallet currency this policy governs (a threshold and a limit are amounts in ONE currency). */
+	currency: z.string().regex(/^[A-Z]{3}$/),
 	/** Spend at or above this needs an approval. `null` disables the ladder entirely. */
-	approvalThresholdMinor: z.number().int().min(0).nullable(),
+	approvalThresholdMinor: z.number().int().min(1).nullable(),
 	approvalThreshold: MoneyViewSchema.nullable(),
 	/** Member ids who may approve. */
 	approverIds: z.array(z.string().max(64)),

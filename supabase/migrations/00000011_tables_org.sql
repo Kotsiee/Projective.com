@@ -185,7 +185,9 @@ CREATE TABLE org.teams (
     bio jsonb NOT NULL DEFAULT '{}'::jsonb,
     visibility text NOT NULL DEFAULT 'invite_only'::text,
     subscription_tier text NOT NULL DEFAULT 'free'::text,
-    member_limit int NOT NULL DEFAULT 5,
+    -- No `member_limit` column: a team's seat cap is the `team_seats` entitlement of its plan
+    -- (finance.fn_effective_limit), and a second stored answer (5 against the free plan's 4) is how
+    -- the two drifted apart.
     payout_model text NOT NULL DEFAULT 'manager_discretion'::text,
     default_payout_settings jsonb DEFAULT '{}'::jsonb,
     treasury_wallet_id uuid,
@@ -215,30 +217,62 @@ CREATE TABLE org.teams (
     CONSTRAINT teams_status_check CHECK (status IN ('draft', 'active', 'archived'))
 );
 
+-- A role an entity grants its members — layers 1 and 2 of the permission engine
+-- (@projective/types/workspace members.ts). The twin on the seller side is org.team_roles; the two
+-- are column-for-column the same shape so one roles editor and one SQL twin serve both.
+--
+-- A PRESET row (`preset` set) is a read-only bundle whose capabilities are NOT stored: they are
+-- org.fn_preset_capabilities(preset, kind), the SQL twin of PRESET_GRANTS, so a stale row can never
+-- drift from the definition. A CUSTOM row (`preset` NULL) stores its own capability list and names
+-- the preset it RANKS as (`base_preset`), which is what "may this person manage that one" compares.
+-- A custom role can never rank as owner: ownership moves only by transfer.
 CREATE TABLE org.business_roles (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
     business_id uuid NOT NULL,
-    title text NOT NULL,
+    name text NOT NULL,
     -- One-line remit rendered under the role name in the matrix, the role picker and the invite
     -- preview. NOT NULL DEFAULT '' rather than nullable because every consumer renders it
     -- unconditionally: an unwritten summary is the empty string, never a null to branch on.
     summary text NOT NULL DEFAULT '',
-    permissions org.business_permission[] NOT NULL DEFAULT '{}',
-    -- Mirrors org.team_roles.is_system on the buyer side: a PRESET role is a read-only bundle the
-    -- matrix refuses to edit (the escape hatch is "duplicate to a custom role"). The distinction has
-    -- to be storable on both kinds or the one shared roles editor cannot enforce it symmetrically.
-    is_system boolean NOT NULL DEFAULT false,
+    preset text,
+    base_preset text NOT NULL DEFAULT 'member',
+    capabilities org.workspace_capability[] NOT NULL DEFAULT '{}',
+    -- Nothing is hard-deleted (root CLAUDE.md §5): a retired custom role is archived, and refused as
+    -- the target of any new membership or invitation.
+    archived_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
 
     CONSTRAINT business_roles_pkey PRIMARY KEY (id),
-    CONSTRAINT business_roles_business_id_fkey FOREIGN KEY (business_id) REFERENCES org.business_profiles(id) ON DELETE CASCADE
+    CONSTRAINT business_roles_business_id_fkey FOREIGN KEY (business_id) REFERENCES org.business_profiles(id) ON DELETE CASCADE,
+    -- Target of the composite FKs from business_members and org_invitations: a role can only be held
+    -- in, or offered by, the business it belongs to.
+    CONSTRAINT uq_business_role_in_business UNIQUE (id, business_id),
+    -- A business roster has no `lead` (that is seller-side seat-binding authority).
+    CONSTRAINT ck_business_role_preset CHECK (preset IS NULL OR preset IN ('owner', 'admin', 'member')),
+    CONSTRAINT ck_business_role_base CHECK (base_preset IN ('owner', 'admin', 'member')),
+    CONSTRAINT ck_business_role_shape CHECK (
+        (preset IS NOT NULL AND base_preset = preset AND capabilities = '{}' AND archived_at IS NULL)
+        OR (preset IS NULL AND base_preset <> 'owner')
+    )
 );
 
 CREATE TABLE org.business_members (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
     business_id uuid NOT NULL,
     user_id uuid NOT NULL,
+    -- The role row the member holds (a preset or a custom role of THIS business — the composite FK
+    -- below makes another business's role unrepresentable).
+    role_id uuid NOT NULL,
+    -- The PRESET the member ranks as: the role row's `base_preset`, kept in step by
+    -- org.fn_member_role_sync so every SQL predicate that reads `role` (is_team_lead, the access-token
+    -- hook) agrees with the role the member actually holds.
     role text NOT NULL DEFAULT 'member'::text,
+    -- `active` or `left`. A departure is a status, never a DELETE (root CLAUDE.md §5); an invitation
+    -- is a row in org.org_invitations, not a member state.
     status text NOT NULL DEFAULT 'active'::text,
+    invited_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
+    left_at timestamptz,
     -- Layer 3 of the three-layer permission model (preset role -> custom role -> per-member
     -- override). The effective set is `role union granted minus revoked`, so the two arrays are
     -- stored SEPARATELY rather than as one materialised result: the roster renders the PROVENANCE of
@@ -256,13 +290,21 @@ CREATE TABLE org.business_members (
     -- A FK cannot forbid a cycle; detecting one stays the application's job.
     reports_to uuid,
     joined_at timestamp with time zone NOT NULL DEFAULT now(),
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
     CONSTRAINT business_memberships_pkey PRIMARY KEY (id),
     CONSTRAINT business_memberships_business_id_fkey FOREIGN KEY (business_id) REFERENCES org.business_profiles(id),
     CONSTRAINT business_memberships_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+    CONSTRAINT business_memberships_role_fkey FOREIGN KEY (role_id, business_id)
+        REFERENCES org.business_roles (id, business_id) ON DELETE RESTRICT,
+    CONSTRAINT ck_business_member_role CHECK (role IN ('owner', 'admin', 'member')),
+    CONSTRAINT ck_business_member_status CHECK (status IN ('active', 'left')),
+    CONSTRAINT ck_business_member_left CHECK ((status = 'left') = (left_at IS NOT NULL)),
     CONSTRAINT business_memberships_reports_to_fkey FOREIGN KEY (reports_to) REFERENCES org.business_members(id) ON DELETE SET NULL,
     CONSTRAINT business_memberships_unique_user_per_business UNIQUE (business_id, user_id)
 );
 
+-- The seller-side twin of org.business_roles — see there for the preset/custom shape. A team offers
+-- the extra `lead` preset (the authority to bind the team to a seat).
 CREATE TABLE org.team_roles (
 	id uuid NOT NULL DEFAULT gen_random_uuid(),
 	team_id uuid NOT NULL REFERENCES org.teams (id) ON DELETE CASCADE,
@@ -271,22 +313,34 @@ CREATE TABLE org.team_roles (
 	-- preview. NOT NULL DEFAULT '' rather than nullable because every consumer renders it
 	-- unconditionally: an unwritten summary is the empty string, never a null to branch on.
 	summary text NOT NULL DEFAULT '',
-	permissions org.team_permission[] NOT NULL DEFAULT '{}'::org.team_permission[],
-	is_system boolean NOT NULL DEFAULT false,
+	preset text,
+	base_preset text NOT NULL DEFAULT 'member',
+	capabilities org.workspace_capability[] NOT NULL DEFAULT '{}',
+	archived_at timestamptz,
 	created_at timestamp with time zone NOT NULL DEFAULT now(),
 	updated_at timestamp with time zone NOT NULL DEFAULT now(),
 	CONSTRAINT team_roles_pkey PRIMARY KEY (id),
-	CONSTRAINT unique_team_role_name UNIQUE (team_id, name)
+	CONSTRAINT uq_team_role_in_team UNIQUE (id, team_id),
+	CONSTRAINT ck_team_role_preset CHECK (preset IS NULL OR preset IN ('owner', 'admin', 'lead', 'member')),
+	CONSTRAINT ck_team_role_base CHECK (base_preset IN ('owner', 'admin', 'lead', 'member')),
+	CONSTRAINT ck_team_role_shape CHECK (
+		(preset IS NOT NULL AND base_preset = preset AND capabilities = '{}' AND archived_at IS NULL)
+		OR (preset IS NULL AND base_preset <> 'owner')
+	)
 );
 
 CREATE TABLE org.team_members (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
     team_id uuid NOT NULL,
     user_id uuid NOT NULL,
+    -- The role row held (see org.business_members for the role_id / role pair). A member's payout
+    -- share is NOT here: it is finance.contribution_agreements.percent_bp, the one place the money
+    -- functions read it (a `default_split_share` column used to hold a second copy).
+    role_id uuid NOT NULL,
     role text NOT NULL DEFAULT 'member'::text,
     status text NOT NULL DEFAULT 'active'::text,
-    default_split_share numeric(5,2),
     invited_by uuid,
+    left_at timestamptz,
     -- Layer 3 of the three-layer permission model. See the identical pair on org.business_members
     -- for why granted and revoked are kept apart instead of being flattened into one set; the
     -- capability vocabulary is shared across both kinds so the matrix, the union that resolves an
@@ -307,6 +361,11 @@ CREATE TABLE org.team_members (
     CONSTRAINT team_memberships_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
     CONSTRAINT team_memberships_inviter_fkey FOREIGN KEY (invited_by) REFERENCES auth.users(id),
     CONSTRAINT team_memberships_reports_to_fkey FOREIGN KEY (reports_to) REFERENCES org.team_members(id) ON DELETE SET NULL,
+    CONSTRAINT team_memberships_role_fkey FOREIGN KEY (role_id, team_id)
+        REFERENCES org.team_roles (id, team_id) ON DELETE RESTRICT,
+    CONSTRAINT ck_team_member_role CHECK (role IN ('owner', 'admin', 'lead', 'member')),
+    CONSTRAINT ck_team_member_status CHECK (status IN ('active', 'left')),
+    CONSTRAINT ck_team_member_left CHECK ((status = 'left') = (left_at IS NOT NULL)),
     CONSTRAINT team_memberships_unique_user_per_team UNIQUE (team_id, user_id)
 );
 
@@ -572,18 +631,40 @@ CREATE TABLE org.org_invitations (
 	target_user_id uuid REFERENCES auth.users (id) ON DELETE CASCADE,
 	team_id uuid REFERENCES org.teams (id) ON DELETE CASCADE,
 	business_id uuid REFERENCES org.business_profiles (id) ON DELETE CASCADE,
-	role_id uuid NOT NULL, /* Intentionally loosely coupled to support either team or business roles */
+	-- The role offered, as a real foreign key into the inviting entity's own role table. One column
+	-- per kind because a single uuid could not be proven to belong to the entity that offers it (the
+	-- old loosely-coupled `role_id` could point at another entity's role).
+	team_role_id uuid,
+	business_role_id uuid,
 	token text NOT NULL UNIQUE,
 	-- Free-text message from the sender, shown on the invite-queue row. Nullable because most
 	-- invitations carry none, and an empty string would read on the row as an emptied note.
 	note text,
+	-- pending → accepted | declined (the invitee) | revoked (the inviting side). Expiry is DERIVED
+	-- from `expires_at`, never stored as a status, so a lapsed row stays resendable.
 	status text NOT NULL DEFAULT 'pending'::text,
-	-- When the invitation stops being acceptable. NULL means it does not expire, which is a real
-	-- state (a direct invitation) and not an unset value; a share link sets one. Lapsed rows are
+	-- When the invitation stops being acceptable. NULL means it does not expire. Lapsed rows are
 	-- never deleted -- the queue keeps rendering them so they can be resent.
 	expires_at timestamptz,
+	responded_at timestamptz,
+	revoked_at timestamptz,
+	revoked_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
 	created_at timestamp with time zone NOT NULL DEFAULT now(),
 	CONSTRAINT org_invitations_pkey PRIMARY KEY (id),
+	CONSTRAINT org_invitations_team_role_fkey FOREIGN KEY (team_role_id, team_id)
+		REFERENCES org.team_roles (id, team_id) ON DELETE RESTRICT,
+	CONSTRAINT org_invitations_business_role_fkey FOREIGN KEY (business_role_id, business_id)
+		REFERENCES org.business_roles (id, business_id) ON DELETE RESTRICT,
+	CONSTRAINT ck_org_invitation_role CHECK (
+		(team_id IS NOT NULL) = (team_role_id IS NOT NULL)
+		AND (business_id IS NOT NULL) = (business_role_id IS NOT NULL)
+	),
+	CONSTRAINT ck_org_invitation_status CHECK (status IN ('pending', 'accepted', 'declined', 'revoked')),
+	CONSTRAINT ck_org_invitation_lifecycle CHECK (
+		(status = 'pending' AND responded_at IS NULL AND revoked_at IS NULL)
+		OR (status IN ('accepted', 'declined') AND responded_at IS NOT NULL AND revoked_at IS NULL)
+		OR (status = 'revoked' AND revoked_at IS NOT NULL AND responded_at IS NULL)
+	),
 	CONSTRAINT check_invitation_target CHECK (
 		(team_id IS NOT NULL AND business_id IS NULL) OR
 		(team_id IS NULL AND business_id IS NOT NULL)

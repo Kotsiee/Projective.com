@@ -85,6 +85,48 @@
 	color: var(--on-surface);
 }
 
+/*
+ * A native select in a workspace form (role, reporting line, successor, base preset) or toolbar (member
+ * sort). It takes the field contract's geometry and state tokens, so a picker reads like every other field
+ * — the icon-button class these once borrowed drew them 28px wide with their value clipped away.
+ */
+.wsp-select {
+	inline-size: 100%;
+	max-inline-size: var(--wsp-field);
+	block-size: var(--fld-h-md);
+	padding-inline: var(--fld-px-md);
+	border: var(--fld-bw) solid var(--fld-rest-bd);
+	border-radius: var(--fld-r-md);
+	background: var(--fld-rest-bg);
+	color: var(--fld-rest-fg);
+	font: inherit;
+	font-size: var(--fld-fs-md);
+	cursor: pointer;
+}
+
+.wsp-select:hover:not(:disabled) {
+	border-color: var(--fld-hover-bd);
+}
+
+.wsp-select:focus-visible {
+	outline: none;
+	border-color: var(--fld-focus-bd);
+	box-shadow: var(--fld-focus-glow);
+}
+
+.wsp-select:disabled {
+	opacity: var(--fld-disabled-alpha);
+	cursor: not-allowed;
+}
+
+/* The toolbar size: sits in a row of small controls, so it takes its own width rather than the row's. */
+.wsp-select--compact {
+	inline-size: auto;
+	block-size: var(--fld-h-sm);
+	padding-inline: var(--fld-px-sm);
+	font-size: var(--fld-fs-sm);
+}
+
 .wsp-people__body {
 	inline-size: 100%;
 	min-inline-size: 0;
@@ -1005,10 +1047,6 @@ does anything (§B.4 — the fill is the separator). */
 	line-height: 0;
 }
 
-.wsp-invites__item[data-direction="request"] .wsp-invites__dir {
-	color: var(--wsp-kind);
-}
-
 .wsp-invites__body {
 	display: flex;
 	flex-direction: column;
@@ -1060,30 +1098,6 @@ does anything (§B.4 — the fill is the separator). */
 	flex: none;
 }
 
-/* The share link. A copy control plus its expiry — never a bare URL the reader has to select. */
-.wsp-invites__linkrow {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	flex-wrap: wrap;
-}
-
-.wsp-invites__linkfield {
-	flex: 1 1 18rem;
-	min-inline-size: 0;
-	max-inline-size: var(--wsp-field);
-}
-
-.wsp-invites__copy {
-	flex: none;
-}
-
-.wsp-invites__linknote {
-	margin: 0;
-	flex: 1 1 100%;
-	font-size: var(--wsp-fs-micro);
-	color: var(--text-secondary);
-}
 /* #endregion */
 
 /* #region Invite form */

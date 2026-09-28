@@ -24,21 +24,16 @@ import {
 	DEV_SEAM_EVENT,
 	type DevLayoutDirection,
 	type DevMemberRole,
-	type DevMembershipState,
 	type DevMessagingRole,
 	type DevMicPermission,
 	type DevPersona,
 	type DevProjectOnboarding,
 	type DevProjectType,
-	type DevRosterState,
 	type DevSeamRole,
 	type DevServiceType,
 	type DevSessionBookingStatus,
 	type DevStageAssignment,
 	type DevSubmissionState,
-	type DevWorkspaceKind,
-	type DevWorkspaceRole,
-	type DevWorkspaceVerification,
 	personaCapabilities,
 } from "@web/utils/dev-seam.ts";
 
@@ -140,25 +135,6 @@ export interface DevOverrides {
 	 * asks the real device; nothing here fabricates audio.
 	 */
 	micPermission: DevMicPermission;
-	/**
-	 * Simulated entity kind for the `/teams` · `/businesses` console. A Team is a Freelancer with
-	 * several members; a Business is a Client with several members — so this one axis re-parameterises
-	 * the whole surface, including which capability columns and modules exist at all.
-	 */
-	workspaceKind: DevWorkspaceKind;
-	/**
-	 * Simulated role inside the acting entity. `non_member` is deliberately reachable: it is the only
-	 * way to exercise the "does not belong here" path, which must redirect rather than dead-end.
-	 */
-	workspaceRole: DevWorkspaceRole;
-	/** Simulated membership state — `invited` and `requested` route to opposite actions. */
-	membershipState: DevMembershipState;
-	/** Simulated entity verification — drives the locked-but-actionable KYC/KYB gate. */
-	workspaceVerification: DevWorkspaceVerification;
-	/** Whether the session is simulated as ACTING as the entity rather than personally. */
-	actingContext: boolean;
-	/** Simulated roster shape — reaches the selling empty state and the one-person-team pre-state. */
-	rosterState: DevRosterState;
 	/** Simulated document layout direction (LtR/RtL) — verifies the whole surface mirrors under `dir="rtl"`. */
 	layoutDirection: DevLayoutDirection;
 }
@@ -190,12 +166,6 @@ export const DEV_DEFAULTS: DevOverrides = {
 	hasPendingInvites: true,
 	messagingRole: "freelancer",
 	micPermission: "auto",
-	workspaceKind: "team",
-	workspaceRole: "admin",
-	membershipState: "active",
-	workspaceVerification: "verified",
-	actingContext: false,
-	rosterState: "populated",
 	layoutDirection: "ltr",
 };
 
@@ -285,49 +255,12 @@ export const DEV_MIC_PERMISSIONS: ReadonlyArray<DevOption<DevMicPermission>> = [
 	{ value: "unsupported", label: "No support" },
 ];
 
-/** Entity-kind options for the workspace console. */
-export const DEV_WORKSPACE_KINDS: ReadonlyArray<DevOption<DevWorkspaceKind>> = [
-	{ value: "team", label: "Team" },
-	{ value: "business", label: "Business" },
-];
-
-/** Role-inside-the-entity options, most privileged first. */
-export const DEV_WORKSPACE_ROLES: ReadonlyArray<DevOption<DevWorkspaceRole>> = [
-	{ value: "owner", label: "Owner" },
-	{ value: "admin", label: "Admin" },
-	{ value: "lead", label: "Lead" },
-	{ value: "member", label: "Member" },
-	{ value: "non_member", label: "Not a member" },
-];
-
-/** Membership-state options. */
-export const DEV_MEMBERSHIP_STATES: ReadonlyArray<DevOption<DevMembershipState>> = [
-	{ value: "active", label: "Active" },
-	{ value: "invited", label: "Invited" },
-	{ value: "requested", label: "Requested" },
-];
-
-/** Entity verification options (KYC for a team, KYB for a business). */
-export const DEV_WORKSPACE_VERIFICATIONS: ReadonlyArray<DevOption<DevWorkspaceVerification>> = [
-	{ value: "verified", label: "Verified" },
-	{ value: "kyb_pending", label: "Pending" },
-	{ value: "unverified", label: "Unverified" },
-];
-
-/** Roster-shape options. */
-export const DEV_ROSTER_STATES: ReadonlyArray<DevOption<DevRosterState>> = [
-	{ value: "populated", label: "Populated" },
-	{ value: "single", label: "One-person" },
-	{ value: "empty", label: "Empty" },
-];
-
 /** Layout-direction options in display order (LtR/RtL). */
 export const DEV_LAYOUT_DIRECTIONS: ReadonlyArray<DevOption<DevLayoutDirection>> = [
 	{ value: "ltr", label: "LtR" },
 	{ value: "rtl", label: "RtL" },
 	{ value: "auto", label: "Auto" },
 ];
-
 
 // #endregion
 
@@ -388,12 +321,6 @@ function reflect(next: DevOverrides): void {
 		root.dataset.devPendingInvites = String(next.hasPendingInvites);
 		root.dataset.devMessagingRole = next.messagingRole;
 		root.dataset.devMicPermission = next.micPermission;
-		root.dataset.devWorkspaceKind = next.workspaceKind;
-		root.dataset.devWorkspaceRole = next.workspaceRole;
-		root.dataset.devMembershipState = next.membershipState;
-		root.dataset.devWorkspaceVerification = next.workspaceVerification;
-		root.dataset.devActingContext = String(next.actingContext);
-		root.dataset.devRosterState = next.rosterState;
 		root.dataset.devDirection = next.layoutDirection;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
 		// properties everywhere mean the shell and every surface mirror to the opposite edge.
@@ -417,12 +344,6 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devPendingInvites;
 		delete root.dataset.devMessagingRole;
 		delete root.dataset.devMicPermission;
-		delete root.dataset.devWorkspaceKind;
-		delete root.dataset.devWorkspaceRole;
-		delete root.dataset.devMembershipState;
-		delete root.dataset.devWorkspaceVerification;
-		delete root.dataset.devActingContext;
-		delete root.dataset.devRosterState;
 		delete root.dataset.devDirection;
 		// Restore the document's natural direction (the pref-driven default, LtR here).
 		root.removeAttribute("dir");

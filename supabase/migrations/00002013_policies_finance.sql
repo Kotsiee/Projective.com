@@ -94,18 +94,10 @@ SELECT TO authenticated USING (org.is_active_team_member (team_id) OR security.i
 CREATE POLICY "View wallet spend approvals" ON finance.spend_approvals FOR
 SELECT TO authenticated USING (finance.fn_can_view_wallet (wallet_id));
 
--- A request is born undecided. Without the state pins a member could insert a request already
--- `approved`, naming anyone as the approver — the approval an entity's spend rules exist to require.
--- Deciding is a separate, capability-checked act and holds no client UPDATE grant at all.
-CREATE POLICY "Request a spend approval" ON finance.spend_approvals FOR
-INSERT TO authenticated
-WITH CHECK (
-    requested_by = auth.uid ()
-    AND finance.fn_can_view_wallet (wallet_id)
-    AND status = 'pending'
-    AND approver_user_id IS NULL
-    AND decided_at IS NULL
-);
+-- NO client INSERT policy (2026-09-28). A request is filed by finance.request_spend_approval, which
+-- requires the `spend` capability on the wallet, refuses a spend that needs no approval, and sets the
+-- currency (the wallet's) and the expiry itself. The policy it replaces let anybody who could merely
+-- SEE a wallet file a request in any currency with any expiry. Deciding is decide_spend_approval.
 
 CREATE POLICY "View wallet ledger audit" ON finance.ledger_audit FOR
 SELECT TO authenticated USING (finance.fn_can_view_wallet (wallet_id));

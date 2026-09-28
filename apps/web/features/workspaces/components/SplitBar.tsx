@@ -52,6 +52,12 @@ export interface SplitBarProps {
 	changedIds?: readonly string[];
 	/** Read-only: a viewer without `manage_finances`, or a policy locked pending verification. */
 	readOnly?: boolean;
+	/**
+	 * Whether each stake's `projected` figure prices a real held release. `false` when nothing is held:
+	 * the figures are then zero by construction, and announcing "£0.00 of the next release" would state a
+	 * release that is not coming.
+	 */
+	priced?: boolean;
 }
 // #endregion
 
@@ -270,7 +276,9 @@ export function SplitBar(props: SplitBarProps): JSX.Element {
 					const percent = pct(stake.shareBp);
 					const lift = lifts.get(stake.memberId);
 					const locked = lockedAt(stakes, index);
-					const priced = changed.has(stake.memberId) ? null : stake.projected.display;
+					const priced = props.priced === false || changed.has(stake.memberId)
+						? null
+						: stake.projected.display;
 
 					return (
 						<div

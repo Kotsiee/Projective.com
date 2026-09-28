@@ -15,6 +15,23 @@ The four `SECURITY DEFINER` helpers every policy and RPC in this domain leans on
 [Policies.md](Policies.md#the-predicates-everything-is-built-on): `has_project_access`,
 `has_stage_access`, `can_review_project`, `is_protected_phase`.
 
+### `projects.has_project_access(_project_id uuid) → boolean`
+
+Defined in `00001100`. True for, in order: the project's owner (`owner_user_id`); a freelancer
+participant (`project_participants`, `profile_type = 'freelancer'`); the owner of a participating
+business (`profile_type = 'business'`); a freelancer holding a stage assignment on the project; an
+active member (`org.team_members.status = 'active'`) of a team holding a stage assignment.
+
+**The two assignment arms count only a live assignment** (since 2026-09-28): a row whose
+`stage_assignments.status` is `declined`, `cancelled` or `released` no longer grants the engagement
+— the same set `comms.can_access_scope` excludes (and `get_viewer_hired_teams` below). Before that
+they counted ANY assignment row whatever its status, so a freelancer who turned a stage down, or a
+member removed from one (Decision #116), kept reading the project and every surface keyed on this
+predicate indefinitely — including every project meeting's room and roster on `scheduling.events`,
+while `comms.has_channel_access` already refused them the meeting's own chat room. The two
+participant arms carry no status test: a `project_participants` row grants access for as long as it
+exists, which is why a whole-project removal deletes it (see `remove_project_member` below).
+
 ### `projects.get_viewer_hired_teams(p_project_id uuid) → TABLE (team_id uuid, project_stage_id uuid)`
 
 One row per stage of the project held by a team the **caller** is an active member of
@@ -401,8 +418,10 @@ side). Applies `PRODUCT_SPEC.md` §Freelancer Removal Mid-Ticket: every ticket t
 the scope — `claimed`, `in_progress` or `in_review` — goes through `projects.release_ticket_to_backlog`
 (escrow released to them in full, ticket back to New), their held `stage_assignments` in scope become
 `released`, the accepted invitations the removal undoes gain `dismissed_at` (their acceptance kept as
-history), and a whole-project removal deletes the `project_participants` row — the only thing
-`has_project_access` reads, and therefore the only way access is actually withdrawn. Logs
+history), and a whole-project removal deletes the `project_participants` row — which the
+participant arms of `has_project_access` read with no status test, so deleting it is what withdraws
+access. (The released assignments stopped granting access on their own on 2026-09-28; a
+stage-scoped removal leaves the participant row, and with it project access.) Logs
 `member_removed` / `member_unassigned`. Returns the counts it APPLIED (`claimed_tickets`,
 `submitted_tickets`, `started_stages`) so the confirmation the client saw can be read back against
 what happened. `EXECUTE` → `authenticated`.

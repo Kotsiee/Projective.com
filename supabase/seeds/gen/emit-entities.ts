@@ -7,51 +7,30 @@ import { ago, ahead, arr, enumArr, HEADER, id, insert, jsonb, num, q, uuidFor } 
 import { persona, project, type World } from "./resolve.ts";
 import { BOOKMARKS, FOLLOWS } from "./world.ts";
 
-const TEAM_ROLES: Array<[name: string, perms: string[]]> = [
-	["Owner", [
-		"manage_profile",
-		"manage_portfolio",
-		"manage_members",
-		"manage_roles",
-		"manage_services",
-		"manage_projects",
-		"send_messages",
-		"manage_finances",
-	]],
-	["Lead", ["manage_portfolio", "manage_services", "manage_projects", "send_messages"]],
-	["Admin", [
-		"manage_profile",
-		"manage_portfolio",
-		"manage_members",
-		"manage_services",
-		"manage_projects",
-		"send_messages",
-	]],
-	["Member", ["send_messages"]],
+/**
+ * The preset roles every entity is created with (org.fn_seed_preset_roles). A preset row stores NO
+ * capabilities — they are org.fn_preset_capabilities(preset, kind), the SQL twin of @projective/types
+ * workspace PRESET_GRANTS — so the seed writes only the name, the one-line remit and the preset.
+ */
+const PRESETS: Array<[preset: string, name: string, summary: string]> = [
+	["owner", "Owner", "Full authority, including archiving and transferring ownership."],
+	["admin", "Admin", "Runs the roster, the money and the settings — everything but archiving."],
+	["lead", "Lead", "Binds the team to seats and runs delivery, without restructuring the roster."],
+	["member", "Member", "Does the work and sees how the entity is performing."],
 ];
-
-const BUSINESS_ROLES: Array<[title: string, perms: string[]]> = [
-	["Owner", [
-		"manage_profile",
-		"manage_members",
-		"manage_roles",
-		"manage_hiring",
-		"manage_projects",
-		"manage_billing",
-		"manage_escrow",
-	]],
-	["Admin", [
-		"manage_profile",
-		"manage_members",
-		"manage_hiring",
-		"manage_projects",
-		"manage_escrow",
-	]],
-	["Member", ["manage_projects"]],
-];
+/** A business roster has no `lead` (seat-binding is seller-side authority). */
+const BUSINESS_PRESETS = PRESETS.filter(([preset]) => preset !== "lead");
 
 export function teamRoleId(teamKey: string, role: string): string {
 	return uuidFor("team_role", `${teamKey}:${role.toLowerCase()}`);
+}
+
+export function businessRoleId(businessKey: string, role: string): string {
+	return uuidFor("business_role", `${businessKey}:${role.toLowerCase()}`);
+}
+
+function memberId(kind: "team" | "business", entityKey: string, personaKey: string): string {
+	return uuidFor(kind === "team" ? "team_member" : "business_member", `${entityKey}:${personaKey}`);
 }
 
 export function emitEntities(world: World): string {
@@ -80,7 +59,6 @@ export function emitEntities(world: World): string {
 				"bio",
 				"visibility",
 				"subscription_tier",
-				"member_limit",
 				"payout_model",
 				"current_workload_intensity",
 				"available_since",
@@ -98,7 +76,6 @@ export function emitEntities(world: World): string {
 				jsonb({ text: t.bio }),
 				"'public'",
 				q(t.teamPlan ? "pro" : "free"),
-				t.teamPlan ? "15" : "5",
 				"'split_rules'",
 				"30",
 				ago(Math.min(t.createdDaysAgo, 14)),
@@ -111,15 +88,15 @@ export function emitEntities(world: World): string {
 	out.push(
 		insert(
 			"org.team_roles",
-			["id", "team_id", "name", "summary", "permissions", "is_system"],
+			["id", "team_id", "name", "summary", "preset", "base_preset"],
 			teams.flatMap((t) =>
-				TEAM_ROLES.map(([name, perms]) => [
-					id(teamRoleId(t.key, name)),
+				PRESETS.map(([preset, name, summary]) => [
+					id(teamRoleId(t.key, preset)),
 					id(t.entityId),
 					q(name),
-					q(`${name} of ${t.name}`),
-					enumArr(perms, "org.team_permission"),
-					"true",
+					q(summary),
+					q(preset),
+					q(preset),
 				])
 			),
 		),
@@ -132,11 +109,12 @@ export function emitEntities(world: World): string {
 				"id",
 				"team_id",
 				"user_id",
+				"role_id",
 				"role",
 				"status",
-				"default_split_share",
 				"invited_by",
 				"title",
+				"granted_capabilities",
 				"joined_at",
 				"created_at",
 			],
@@ -144,14 +122,15 @@ export function emitEntities(world: World): string {
 				t.members.map((m) => {
 					const p = persona(world, m.persona);
 					return [
-						id(uuidFor("team_member", `${t.key}:${m.persona}`)),
+						id(memberId("team", t.key, m.persona)),
 						id(t.entityId),
 						id(p.userId),
+						id(teamRoleId(t.key, m.role)),
 						q(m.role),
 						"'active'",
-						m.splitBp !== undefined ? (m.splitBp / 100).toFixed(2) : "NULL",
 						m.role === "owner" ? "NULL" : id(t.ownerUserId),
 						q(m.title),
+						enumArr(m.granted ?? [], "org.workspace_capability"),
 						ago(m.joinedDaysAgo),
 						ago(m.joinedDaysAgo),
 					];
@@ -171,7 +150,9 @@ export function emitEntities(world: World): string {
 					id(t.entityId),
 					id(persona(world, m.persona).userId),
 					String(m.splitBp),
-					String(m.role === "owner"),
+					// Nobody's stake starts held: `held` is a choice made in the split editor, not a
+					// privilege of the owner.
+					"false",
 				])
 			),
 			"(team_id, member_user_id)",
@@ -251,15 +232,15 @@ export function emitEntities(world: World): string {
 	out.push(
 		insert(
 			"org.business_roles",
-			["id", "business_id", "title", "summary", "permissions", "is_system"],
+			["id", "business_id", "name", "summary", "preset", "base_preset"],
 			businesses.flatMap((b) =>
-				BUSINESS_ROLES.map(([title, perms]) => [
-					id(uuidFor("business_role", `${b.key}:${title.toLowerCase()}`)),
+				BUSINESS_PRESETS.map(([preset, name, summary]) => [
+					id(businessRoleId(b.key, preset)),
 					id(b.entityId),
-					q(title),
-					q(`${title} of ${b.name}`),
-					enumArr(perms, "org.business_permission"),
-					"true",
+					q(name),
+					q(summary),
+					q(preset),
+					q(preset),
 				])
 			),
 		),
@@ -268,21 +249,51 @@ export function emitEntities(world: World): string {
 	out.push(
 		insert(
 			"org.business_members",
-			["id", "business_id", "user_id", "role", "status", "title", "joined_at"],
+			[
+				"id",
+				"business_id",
+				"user_id",
+				"role_id",
+				"role",
+				"status",
+				"invited_by",
+				"title",
+				"granted_capabilities",
+				"joined_at",
+				"created_at",
+			],
 			businesses.flatMap((b) =>
 				b.members.map((m) => [
-					id(uuidFor("business_member", `${b.key}:${m.persona}`)),
+					id(memberId("business", b.key, m.persona)),
 					id(b.entityId),
 					id(persona(world, m.persona).userId),
+					id(businessRoleId(b.key, m.role)),
 					q(m.role),
 					"'active'",
+					m.role === "owner" ? "NULL" : id(b.ownerUserId),
 					q(m.title),
+					enumArr(m.granted ?? [], "org.workspace_capability"),
+					ago(m.joinedDaysAgo),
 					ago(m.joinedDaysAgo),
 				])
 			),
 			"(business_id, user_id)",
 		),
 	);
+
+	// The org chart, written after both rosters exist (an edge points at a MEMBERSHIP row).
+	for (const e of [...teams, ...businesses]) {
+		for (const m of e.members) {
+			if (!m.reportsTo) continue;
+			const table = e.kind === "team" ? "org.team_members" : "org.business_members";
+			out.push(
+				`UPDATE ${table} SET reports_to = ${id(memberId(e.kind, e.key, m.reportsTo))} WHERE id = ${
+					id(memberId(e.kind, e.key, m.persona))
+				};`,
+			);
+		}
+	}
+	out.push("");
 
 	out.push(
 		insert(
@@ -328,7 +339,8 @@ export function emitEntities(world: World): string {
 				"target_handle",
 				"team_id",
 				"business_id",
-				"role_id",
+				"team_role_id",
+				"business_role_id",
 				"token",
 				"note",
 				"status",
@@ -338,7 +350,6 @@ export function emitEntities(world: World): string {
 			[...world.entities.values()].flatMap((e) =>
 				(e.pendingInvites ?? []).map((inv) => {
 					const target = persona(world, inv.persona);
-					const roleName = inv.role === "admin" ? "Admin" : "Member";
 					return [
 						id(uuidFor("org_invitation", `${e.key}:${inv.persona}`)),
 						id(e.ownerUserId),
@@ -346,11 +357,8 @@ export function emitEntities(world: World): string {
 						q(target.handle),
 						e.kind === "team" ? id(e.entityId) : "NULL",
 						e.kind === "business" ? id(e.entityId) : "NULL",
-						id(
-							e.kind === "team"
-								? teamRoleId(e.key, roleName)
-								: uuidFor("business_role", `${e.key}:${roleName.toLowerCase()}`),
-						),
+						e.kind === "team" ? id(teamRoleId(e.key, inv.role)) : "NULL",
+						e.kind === "business" ? id(businessRoleId(e.key, inv.role)) : "NULL",
 						q(uuidFor("org_invitation_token", `${e.key}:${inv.persona}`)),
 						q(inv.note),
 						"'pending'",

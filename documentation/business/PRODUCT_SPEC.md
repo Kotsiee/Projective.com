@@ -844,16 +844,16 @@ Designed for organizations managing multiple projects and teams.
   this shared pool to fund Escrow tickets.
 - **Hierarchy Controls:** Owners can set "Spending Caps" for Project Managers to prevent
   unauthorized budget depletion.
-- **Analytics:** Provides a macro-view of organizational burn-rate across all departments. The
-  `org.get_business_finance` wrapper reads live balances, transaction lines and escrow allocations
-  directly from the ledger. Its former `/dashboard` overview page has been retired in favour of the
-  persona-adaptive `/home` engagement feed; the dedicated business finance surface is being
-  re-homed.
-- **Opening Platform Credit (MVP demo path):** On creation every Business Wallet is seeded with a
-  one-time promotional platform credit so the internal-wallet flow is exercisable end-to-end — a
-  business can fund a Stage (debiting the credit into Escrow) and watch the hold/release move real
-  ledger lines without an external top-up. This is a demo-path grant, distinct from any future
-  real-money funding, and is recorded as a normal `demo_opening_credit` ledger entry.
+- **Analytics:** Provides a macro-view of organizational burn-rate across all departments, read
+  under the member's own RLS by the wallet surface and summarised on the business console
+  (`/businesses/[businessHandle]`). (The former `org.get_business_finance` wrapper and its
+  `/dashboard` page are retired — Decision #122.)
+- **No minted money.** A Business Wallet starts at zero and its balance is only ever the sum of real
+  movements (top-ups, releases, transfers). The former **Opening Platform Credit** — a one-time
+  `demo_opening_credit` of 2,500,000 minor units granted to every new business wallet, in whatever
+  currency it was opened in — was **removed 2026-09-28** (root `CLAUDE.md` §8 Decision #122): it put
+  spendable funds nobody had paid in into every business, in every currency. The development seed
+  opens each seeded business with a dated owner top-up instead (`documentation/database/Seed.md`).
 
 ##### Team Wallets (The Distribution Hub)
 
@@ -1195,10 +1195,12 @@ This model allows for **Elastic Squads**:
   per-ticket bonuses within the same stage.
 - **Team Participation:** A "Team" can claim multiple seats within a stage, or a single seat if they
   are acting as a single unit (with internal payment splitting handled by their Team Wallet).
-- **Team-Lead Application Authority:** Only a **Team Lead** (the team owner, or a member holding a
-  `lead`/`admin` role) may submit an application on behalf of a team — an ordinary member cannot
-  bind the team to a seat. An individual freelancer may only apply as themselves. (Enforced by
-  `org.is_team_lead` inside `projects.apply_to_seat`.)
+- **Team-Lead Application Authority:** Only a member holding the team's **`bind_seat`** capability
+  may submit an application on behalf of a team — the owner, admin and lead presets carry it, and a
+  custom role or a per-member grant may — so an ordinary member cannot bind the team to a seat. An
+  individual freelancer may only apply as themselves. (Enforced by `org.is_team_lead`, which since
+  2026-09-28 asks the workspace permission engine for `bind_seat` rather than a role-name list,
+  inside `projects.apply_to_seat`.)
 
 ---
 

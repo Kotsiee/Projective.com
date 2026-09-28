@@ -3,7 +3,7 @@ import { useComputed, useSignal } from "@preact/signals";
 import "../styles/workspace.css";
 import { Drawer, Tooltip } from "@projective/ui/feedback";
 import { Avatar } from "@projective/ui/display";
-import { Button } from "@projective/ui/fields";
+import { Button, InputText } from "@projective/ui/fields";
 import {
 	CAPABILITY_LABEL,
 	CONSEQUENTIAL,
@@ -62,8 +62,28 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 	const draftRoleId = useSignal<string | null>(null);
 	/** Pending override edits, keyed by capability: `true` grant, `false` revoke, absent = baseline. */
 	const draftOverrides = useSignal<Record<string, boolean | undefined>>({});
+	/** Pending title, or `null` while the saved title stands. */
+	const draftTitle = useSignal<string | null>(null);
+	/** Pending reporting line (a member id, or `""` for nobody), or `null` while the saved one stands. */
+	const draftReportsTo = useSignal<string | null>(null);
 	const saving = useSignal(false);
 	const error = useSignal<string | null>(null);
+
+	/**
+	 * Roles a member may be moved to: never the owner seat (it moves only by transfer), and never one that
+	 * carries a permission the viewer does not hold — the database refuses both. Their current role stays
+	 * listed so the picker always shows where they stand.
+	 */
+	const viewerHolds = new Set(ws.viewerCapabilities);
+	const assignable = ws.roles.filter((r) =>
+		r.id === member.roleId ||
+		(r.basePreset !== "owner" && r.capabilities.every((c) => viewerHolds.has(c)))
+	);
+	/**
+	 * Who they may report to: any other active member. Choosing someone who reports (directly or not) to
+	 * this member would close a loop; the database refuses that with a sentence, which is shown here.
+	 */
+	const managers = ws.members.filter((m) => m.state === "active" && m.id !== member.id);
 
 	const effectiveRoleId = useComputed(() => draftRoleId.value ?? member.roleId);
 
@@ -94,9 +114,19 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 
 	const manageable = actor ? mayManageMember(actor, member, ws.kind) : false;
 	const lastOwner = isLastOwner(member, ws.members);
-	const dirty = useComputed(() =>
-		draftRoleId.value !== null || Object.keys(draftOverrides.value).length > 0
+	const titleChanged = useComputed(() =>
+		draftTitle.value !== null && draftTitle.value.trim() !== (member.title ?? "")
 	);
+	const reportsChanged = useComputed(() =>
+		draftReportsTo.value !== null && draftReportsTo.value !== (member.reportsTo ?? "")
+	);
+	const overridesChanged = useComputed(() => Object.keys(draftOverrides.value).length > 0);
+	const dirty = useComputed(() =>
+		draftRoleId.value !== null || overridesChanged.value || titleChanged.value ||
+		reportsChanged.value
+	);
+	/** Whether the viewer may edit this person at all — their own row and the owner's never are. */
+	const editable = props.canManage && manageable;
 
 	/** Toggle one capability between baseline, granted and revoked. */
 	function cycle(facet: PermissionFacet): void {
@@ -125,21 +155,28 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 			if (f.override === "revoke") revoked.push(f.capability);
 		}
 
+		// Only what changed is sent: the patch is keyed, and a key present is a change.
 		const res = await WorkspaceService.updateMember({
+			kind: ws.kind,
 			workspaceId: ws.id,
 			memberId: member.id,
 			roleId: draftRoleId.value ?? undefined,
-			granted,
-			revoked,
+			granted: overridesChanged.value || draftRoleId.value !== null ? granted : undefined,
+			revoked: overridesChanged.value || draftRoleId.value !== null ? revoked : undefined,
+			title: titleChanged.value ? (draftTitle.value?.trim() || null) : undefined,
+			reportsTo: reportsChanged.value ? (draftReportsTo.value || null) : undefined,
 		});
 		saving.value = false;
 		if (!res.ok || !res.data) {
-			error.value = res.message ?? "Could not save those permissions.";
+			error.value = res.errors?.title ?? res.errors?.reportsTo ?? res.errors?.roleId ??
+				res.errors?.granted ?? res.message ?? "Could not save those changes.";
 			return;
 		}
 		draftRoleId.value = null;
 		draftOverrides.value = {};
-		props.onUpdated(res.data.workspace);
+		draftTitle.value = null;
+		draftReportsTo.value = null;
+		props.onUpdated(res.data);
 		props.onClose();
 	}
 
@@ -243,22 +280,63 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 					it — the overrides below stay.
 				</p>
 				<select
-					class="wsp-people__view"
+					class="wsp-select"
 					aria-label="Role"
-					disabled={!props.canManage || !manageable}
+					disabled={!editable}
 					value={effectiveRoleId.value}
 					onChange={(e) => {
 						draftRoleId.value = (e.target as HTMLSelectElement).value;
 						error.value = null;
 					}}
 				>
-					{ws.roles.map((r) => (
+					{/* The owner's own row shows its seat; the seat itself is never offered to anyone else. */}
+					{(editable ? assignable : ws.roles).map((r) => (
 						<option key={r.id} value={r.id}>
 							{r.name}
 							{r.preset ? "" : " (custom)"}
 						</option>
 					))}
 				</select>
+			</section>
+			{/* #endregion */}
+
+			{/* #region Place in the entity — title and reporting line */}
+			<section class="wsp-mdrawer__section">
+				<h3 class="wsp-mdrawer__section-title">Title and reporting line</h3>
+				<p class="wsp-mdrawer__section-note">
+					What they do here, and who they report to — the edge the org chart draws.
+				</p>
+				<div class="wsp-inviteform__field">
+					<label class="wsp-inviteform__label" for={`wsp-title-${member.id}`}>Title</label>
+					<InputText
+						id={`wsp-title-${member.id}`}
+						value={draftTitle.value ?? member.title ?? ""}
+						onValueChange={(v) => {
+							draftTitle.value = v;
+							error.value = null;
+						}}
+						placeholder="Design lead"
+						maxLength={80}
+						disabled={!editable}
+						block
+					/>
+				</div>
+				<div class="wsp-inviteform__field">
+					<label class="wsp-inviteform__label" for={`wsp-reports-${member.id}`}>Reports to</label>
+					<select
+						id={`wsp-reports-${member.id}`}
+						class="wsp-select"
+						disabled={!editable}
+						value={draftReportsTo.value ?? member.reportsTo ?? ""}
+						onChange={(e) => {
+							draftReportsTo.value = (e.target as HTMLSelectElement).value;
+							error.value = null;
+						}}
+					>
+						<option value="">Nobody — top of the chart</option>
+						{managers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+					</select>
+				</div>
 			</section>
 			{/* #endregion */}
 
@@ -294,16 +372,19 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 					? (
 						<p class="wsp-mdrawer__lastowner">
 							<span class="wsp-mdrawer__lastowner-text">
-								They are the last owner of this{" "}
-								{copy.noun}. Ownership has to go somewhere before they can leave.
+								{member.isSelf
+									? `You own this ${copy.noun}. Ownership has to move to another member before you can step back.`
+									: `${member.name} owns this ${copy.noun}. Only they can hand ownership over.`}
 							</span>
-							<button
-								type="button"
-								class="wsp-mdrawer__lastowner-link"
-								onClick={() => props.onTransfer(member)}
-							>
-								Transfer ownership…
-							</button>
+							{member.isSelf && (
+								<button
+									type="button"
+									class="wsp-mdrawer__lastowner-link"
+									onClick={() => props.onTransfer(member)}
+								>
+									Transfer ownership…
+								</button>
+							)}
 						</p>
 					)
 					: (
@@ -320,7 +401,7 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 				<Button variant="text" label="Close" onClick={props.onClose} />
 				<Button
 					variant="filled"
-					label={saving.value ? "Saving…" : "Save permissions"}
+					label={saving.value ? "Saving…" : "Save changes"}
 					disabled={!dirty.value || saving.value}
 					onClick={save}
 				/>

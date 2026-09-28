@@ -1,41 +1,30 @@
 import { define } from "@web/utils/state.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import { CreateWorkspaceInputSchema } from "@projective/types/workspace";
-import { toFieldErrors, toWorkspaceResponse } from "@features/workspaces/core/respond.ts";
-import { resolveRequestContext } from "@web/utils/user-context.ts";
+import {
+	guestRefusal,
+	invalidPayload,
+	toWorkspaceResponse,
+} from "@features/workspaces/core/respond.ts";
+import { canReadLive } from "@server/services/read-actor.ts";
 import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBackendService.ts";
 
 /**
- * `POST /api/workspace/create` — thin route: Zod-validate the Draft-First payload (kind + name + handle,
- * optional logo), map issues to field errors, then delegate to the fat
- * {@link WorkspaceBackendService.create} with the viewer as the new entity's owner.
- *
- * Resolves the roster SUMMARY, not a full console projection: the caller's next move is to navigate into
- * the entity, whose route resolves its own detail server-side, so shipping the whole console here would
- * be paid for twice. A `201` on success.
+ * `POST /api/workspace/create` — thin route: refuse a guest, Zod-validate the Draft-First payload (kind +
+ * name + handle), then delegate to the fat {@link WorkspaceBackendService.create}, which creates the
+ * entity with the caller as its owner. A `201` with `{ id, kind, handle }` — the caller navigates into
+ * the new console, which is addressed by its handle and resolves its own detail.
  *
  * The handle is re-validated server-side even though the form probes `/api/workspace/handle` first — the
  * probe is an affordance, not a lock, and two people can pass it for the same handle in the same second.
- *
- * **No server-side capability guard** — a plan/ownership cap is the service's decision (it refuses with
- * a human reason the roster renders), and the Dev Context Switcher must be able to create as a simulated
- * persona. Deferred RLS on the live path is the real gate, matching every sibling `/api/*` mutation.
+ * The plan's creation cap is the database's decision, refused with a human reason.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
-		const raw = await ctx.req.json().catch(() => null);
-		const parsed = CreateWorkspaceInputSchema.safeParse(raw);
-		if (!parsed.success) {
-			return Response.json(
-				{
-					ok: false,
-					message: "Check the highlighted fields.",
-					errors: toFieldErrors(parsed.error),
-				},
-				{ status: 422 },
-			);
-		}
-
-		const viewer = ctx.state.userContext ?? resolveRequestContext(ctx.req);
-		return toWorkspaceResponse(WorkspaceBackendService.create(parsed.data, viewer));
+		const actor = readActor(ctx);
+		if (!canReadLive(actor)) return guestRefusal();
+		const parsed = CreateWorkspaceInputSchema.safeParse(await ctx.req.json().catch(() => null));
+		if (!parsed.success) return invalidPayload(parsed.error);
+		return toWorkspaceResponse(await WorkspaceBackendService.create(parsed.data, actor));
 	},
 });

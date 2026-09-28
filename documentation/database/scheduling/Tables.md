@@ -44,7 +44,7 @@ One owner-level header. Everything below it is expressed in **this row's timezon
 | `id`                   | uuid                    | PK.                                                                                          |
 | `owner_type`           | `scheduling.owner_type` | `user` / `freelancer` / `team` / `business` / `organisation` — mirrors `wallets.owner_type`. |
 | `owner_id`             | uuid                    | The owning entity.                                                                           |
-| `timezone`             | text                    | IANA id, default `Europe/London`. Every minute-of-day column resolves in this zone.          |
+| `timezone`             | text                    | IANA id, default `Europe/London`. Every minute-of-day column resolves in this zone. Must be a name in `pg_catalog.pg_timezone_names` — `trg_check_schedule_timezone` (BEFORE INSERT / UPDATE OF `timezone`, every role) refuses anything else with `22023` `timezone: not a recognised time zone`. |
 | `is_published`         | boolean                 | Whether `/[handle]/availability` renders to a visitor at all. Default `false`.               |
 | `mask_external_events` | boolean                 | When true a synced block shows only its status label, never its title. Default `true`.       |
 | UNIQUE                 | —                       | `(owner_type, owner_id)`.                                                                    |
@@ -68,7 +68,10 @@ with "interrupt me".
 
 > ⚠️ **A band cannot cross local midnight** (that CHECK). A provider taking calls 23:00–01:00
 > expresses it as two bands, and a call must fit inside one. Deliberate: midnight-spanning bands
-> would materially complicate every downstream free/busy query for a case no surface needs yet.
+> would materially complicate every downstream free/busy query for a case no surface needs yet. A
+> band may still END at midnight (`end_minute = 1440`), and since 2026-09-28 the booking gate
+> accepts a slot that ends exactly there (`fn_band_covers`, [Functions.md](Functions.md) §3) — the
+> slot grid (`slot-grid.ts`) had always offered a slot ending at 24:00, and the gate refused it.
 
 ### `scheduling.blackout_dates`
 
@@ -81,10 +84,13 @@ An absolute span overriding every band beneath it.
 | `label`                 | text        | Owner-authored, default `'Unavailable'`.      |
 | `label_is_public`       | boolean     | Default `false` — see the privacy note below. |
 
-> **Privacy.** A published schedule's blackout **spans** are readable by `anon` (a visitor must see
-> the gaps), but a label can be intimate ("Surgery", "Bereavement"). `label_is_public` defaults to
-> false and a reader that is not `fn_can_view_schedule` must render the generic `Unavailable`
-> string, never `label`.
+> **Privacy.** A published schedule's blackout **spans** are public (a visitor must see the gaps),
+> but a label can be intimate ("Surgery", "Bereavement"), so `label_is_public` defaults to false.
+> Since 2026-09-28 the rows themselves are readable by the schedule's own members only, and a visitor
+> reads the spans through `scheduling.get_public_blackouts` ([Functions.md](Functions.md) §7), which
+> returns `label` where `label_is_public` (or the caller may view the schedule) and the generic
+> `Unavailable` otherwise. Before that the mask was a render-time convention, and a guest reading
+> the table through PostgREST received the private label. See [Policies.md](Policies.md).
 
 ---
 
@@ -105,6 +111,8 @@ One positioned calendar entry — the persisted backing for the `CalendarEvent` 
 | `all_day` · `is_masked`           | boolean                   | `is_masked` → render `status` only, never `title`.                                    |
 | `accent`                          | text                      | A CSS custom-property **name** (`--primary`), never a literal colour.                 |
 | `location` · `meta` · `href`      | text                      | Presentational.                                                                       |
+| `meeting_provider` · `meeting_provider_label` · `meeting_pending` | text · text · boolean | The online room's provider (a slug, or `custom`; deliberately no FK), its display label, and "still to be minted". Readable wherever the row is. |
+| `meeting_url` · `meeting_passcode` · `meeting_details` | text      | **The room.** Withheld from every client role at the COLUMN level (`00002520`, since 2026-09-28): a party — the creator, or someone seated — reads them through `scheduling.get_event_rooms`. See [Policies.md](Policies.md). |
 | `attendee_count` · `capacity`     | integer                   | Group-session counters (`CHECK >= 0`).                                                |
 | `source_connection_id`            | uuid                      | → `integrations.user_connections` (SET NULL) when mirrored in.                        |
 | `external_event_id`               | text                      | The provider's own id.                                                                |
@@ -116,6 +124,13 @@ One positioned calendar entry — the persisted backing for the `CalendarEvent` 
 > ⚠️ **A discovery call is not a new `kind`.** It is projected as a `booking`. A tenth kind would
 > break the shipped calendar engine's exhaustive `Record<CalendarEventKind, …>` label/accent maps,
 > turning a data change into a design-system change (root `CLAUDE.md` §3).
+
+**A rostered event moves only through its negotiation.** `trg_guard_rostered_event` (BEFORE UPDATE
+OR DELETE, since 2026-09-28) refuses a **client** role (`anon` / `authenticated`) deleting an event
+that has any `event_attendees` row, or changing its `starts_at`, `ends_at`, `status` or
+`schedule_id` (`55000`) — so a schedule owner cannot step round the 12-hour lockout and the
+majority rule, or cascade a roster, its rounds and its log away (root `CLAUDE.md` §5). The service
+role is not refused. See [Functions.md](Functions.md) §9.
 
 ---
 
@@ -162,7 +177,7 @@ withdrawn round becoming a dead end.
 | `mode`                            | text               | `counterparty` (two people) · `vote` (three or more) — a property of the head count, never chosen. |
 | `status`                          | text               | `none` · `collecting` · `awaiting_counterparty` · `voting` · `resolved` · `lapsed` · `withdrawn`.  |
 | `opened_by_user_id` · `opened_at` | uuid · timestamptz | `ck_reschedule_opened`: only `none` has no opening instant.                                        |
-| `resolves_at`                     | timestamptz        | Stamped server-side from `voteResolvesAt`; `NULL` once `withdrawn`.                                |
+| `resolves_at`                     | timestamptz        | The vote deadline, capped at the event's own lockout; maintained by trigger. `NULL` once `withdrawn`. |
 | `resolved_proposal_id`            | uuid               | `ck_reschedule_resolved_names_winner`: set **iff** `resolved`. FK below.                           |
 
 **The winner's FK is composite, in `00000031_tables_fk_scheduling.sql`.** `reschedule_proposals`
@@ -179,7 +194,15 @@ host's own slot is on the ballot on arrival; an attendee's waits for the host's 
 `uq_proposal_slot` (the same slot twice would split the vote), and
 `uq_proposal_in_reschedule (id, reschedule_id)` — the target the composite FKs point at. At most
 twelve rows per round (`RESCHEDULE_PROPOSALS_MAX`), enforced by the `trg_cap_reschedule_proposals`
-trigger ([Functions §9](Functions.md)) — a CHECK cannot count sibling rows.
+trigger ([Functions §9](Functions.md)) — a CHECK cannot count sibling rows. A row is written, or
+approved, only while its round is open (`trg_guard_reschedule_proposal_write`), and on a live vote
+the same statement re-stamps the round's `resolves_at` (`fn_vote_deadline`). An attendee's slot the
+host ACCEPTED on a 1-on-1 is marked approved as the round closes on it.
+
+> ⚠️ **Still open (2026-09-28):** the twelve slots are shared by every proposer, approved or not, so
+> one attendee can fill a round with unapproved slots and leave the host `ballot_full`; and
+> `ck_proposal_span` asks only `ends_at > starts_at`, so nothing bounds a slot's LENGTH but the
+> latest instant the route accepts (`SLOT_EPOCH_MAX_MS`). See [Functions.md](Functions.md) §9.
 
 ### `scheduling.proposal_votes`
 
@@ -188,7 +211,8 @@ One ballot. `reschedule_id` is denormalised so
 (reschedule_id, attendee_id)` can hold the rule — one vote per
 attendee per NEGOTIATION, not per slot — and the composite FK
 `(proposal_id, reschedule_id) → reschedule_proposals (id, reschedule_id)` makes the copy
-unfalsifiable. Immutable once cast (no `updated_at`).
+unfalsifiable. Immutable once cast (no `updated_at`). Cast only on a round that is `voting`
+(`trg_guard_reschedule_vote_write`, [Functions §9](Functions.md)).
 
 ### `scheduling.event_history`
 
@@ -256,7 +280,7 @@ The booking record.
 | :----------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Parties      | `host_schedule_id` · `host_user_id` · `requester_user_id` (`CHECK` host ≠ requester)                                                                                                 |
 | Kind/state   | `call_type` (`courtesy`/`paid`) · `status` (see [the lifecycle](#the-discovery-call-lifecycle))                                                                                      |
-| Slots        | `proposed_start`/`_end` (kept after a reschedule) · `confirmed_start`/`_end` (null until confirmed) · `requester_timezone`                                                           |
+| Slots        | `proposed_start`/`_end` (kept after a reschedule) · `confirmed_start`/`_end` (null until confirmed, and cleared again by a reschedule) · `requester_timezone`                        |
 | Intent       | `agenda` · `service_blueprint_id` → `marketplace.service_blueprints` (SET NULL) — the listing the call was booked ABOUT, or NULL for a call booked from the seller's profile         |
 | Conferencing | `provider_slug` · `connection_id` · `meeting_url` · `meeting_external_id`                                                                                                            |
 | Calendar     | `event_id` → `scheduling.events` (SET NULL)                                                                                                                                          |
@@ -294,9 +318,18 @@ confirmed → no_show             (no_show_party records who)
 ```
 
 A **reschedule is not a state**: it returns the row to `proposed`, increments `reschedule_count`,
-and appends a `call_audit` line. `declined` / `cancelled` / `completed` / `no_show` / `expired` are
-terminal — nothing is hard-deleted (root `CLAUDE.md` §5). Enforced by
+and appends a `call_audit` line. Leaving `confirmed` for `proposed` also clears `confirmed_at`,
+`confirmed_start` and `confirmed_end` (since 2026-09-28): free/busy, both parties' agendas and the
+booking gate read `COALESCE(confirmed_*, proposed_*)`, so a stale confirmed pair kept the OLD time
+occupied and left the new one bookable by somebody else. `declined` / `cancelled` / `completed` /
+`no_show` / `expired` are terminal — nothing is hard-deleted (root `CLAUDE.md` §5). Enforced by
 `scheduling.fn_enforce_call_transition` and mirrored in `PRODUCT_MANAGEMENT.md` §3.5.
+
+> ⚠️ **Only the first arrow has a client door today.** A client creates a call through
+> `request_discovery_call` (`proposed`, or `confirmed` under `auto_confirm`). The client `UPDATE`
+> policy and grant were removed on 2026-09-28 because either party could rewrite any column of the
+> row ([Policies.md](Policies.md)), and the definer RPCs that are to replace them — each naming who
+> may make which move — do not exist yet, so every later transition is currently service-role only.
 
 ### `scheduling.call_attendance`
 

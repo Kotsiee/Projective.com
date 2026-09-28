@@ -1,19 +1,16 @@
 import { define } from "@web/utils/state.ts";
-import { asAuthenticatedContext } from "@projective/types/auth";
+import { readActor } from "@web/utils/api-session.ts";
 import { rosterBody } from "@features/workspaces/core/workspace-route.tsx";
 
 /**
  * `/teams` — the seller-side roster: every team the viewer owns or belongs to, plus the invitations
- * awaiting them.
+ * awaiting them. Read live, as the signed-in viewer.
  *
- * Thin controller. Authed by the `(dashboard)` middleware; seller-ness is chrome + deferred RLS, NOT a
- * hard server redirect — the client-side Dev Context Switcher must be able to reach this surface as a
- * simulated persona, and the server never sees that seam (consistent with every sibling route).
- *
- * The lane, header band and footer band are resolved separately by the shell's slot resolvers, so this
- * route owns only the body.
+ * Thin controller. Authed by the `(dashboard)` middleware; membership is decided by the database, never
+ * by a chrome flag. The lane, header band and footer band are resolved separately by the shell's slot
+ * resolvers — they share this page's roster read through the request memo in `workspace-ssr`.
  */
-export default define.page(function TeamsPage(ctx) {
+export default define.page(async function TeamsPage(ctx) {
 	ctx.state.title = "Teams";
-	return rosterBody("team", ctx.url, asAuthenticatedContext(ctx.state.userContext));
+	return await rosterBody("team", ctx.url, readActor(ctx));
 });

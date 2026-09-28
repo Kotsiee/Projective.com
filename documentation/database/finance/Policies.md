@@ -28,12 +28,16 @@ function — including the ledger primitives — callable over the API.
   `fn_owner_visible`. Both are `SECURITY DEFINER` so they read the un-policied `finance.wallets`
   without recursion. Reused by every wallet-scoped policy below.
 - **`finance.fn_has_vault_capability(wallet_id, user_id, cap)`** — the in-DB capability gate for
-  future money-movement RPCs (a `manage_members` grant implies every capability).
+  the money-movement RPCs (a `manage_members` grant implies every capability). Since 2026-09-28 it
+  also requires CURRENT membership of the owning team/business, and it is **not executable by any
+  client role** — no policy calls it, and it answers for an arbitrary user id.
 - **`finance.fn_can_manage_basket(owner_type, owner_id)`** — may the caller **write** this owner's
   basket? Composes the two helpers above rather than restating membership: personal owners are
   self-only; a shared owner additionally needs the `spend` vault capability on one of its wallets.
   ⚠️ **Fails closed** — an entity with no wallet or no `vault_permissions` rows has nobody who may
-  write its basket (correct for a spend surface, but vault provisioning must come first).
+  write its basket (correct for a spend surface, but vault provisioning must come first — which it
+  now always does: `org.create_workspace` opens the wallet, and the wallet insert trigger projects
+  the members' grants, since 2026-09-28).
 - **`finance.fn_can_move_wallet_funds(wallet_id)`** — strictly narrower than `fn_can_view_wallet`:
   _seeing_ a balance is ordinary membership, _moving_ it is not. Personal wallet → self only; shared
   wallet → the `spend` capability. Gates `finance.simulate_wallet_transaction`, recurring deposits and
@@ -89,9 +93,9 @@ Writes to `finance.escrows` remain definer-only (`fn_hold_ticket_escrow` /
 | `finance.payout_schedules`   | `fn_owner_visible(owner_type, owner_id)`.                        | `FOR ALL`, `fn_owner_capability(…, 'withdraw')` — decides when money leaves the vault. |
 | `finance.income_smoothing`   | `user_id = auth.uid()` (or admin).                               | **None.** Enrolment is an eligibility decision (earning history, fee), made server-side; a client write let a user set `eligibility_met` and `fee_bp`. |
 | `finance.wallet_pots`        | `fn_can_view_wallet(wallet_id)`.                                 | `FOR ALL`, `fn_can_move_wallet_funds(wallet_id)`. `balance_cents` guarded (`trg_wallet_pots_derived`) — a client could otherwise mint funds into a pot; `wallet_id` / `currency` immutable. |
-| `finance.vault_permissions`  | `fn_can_view_wallet(wallet_id)`.                                 | Grants flow through a `manage_members`-gated definer RPC (deferred) — no INSERT/UPDATE policy. |
-| `finance.split_rules`        | `org.is_active_team_member(team_id)` (or admin).                 | Edits via a `manage_finances`-gated RPC (deferred).                                            |
-| `finance.spend_approvals`    | `fn_can_view_wallet(wallet_id)`.                                 | INSERT (`requested_by = auth.uid()` + can-view-wallet, and born **undecided**: `status = 'pending'`, no approver, no `decided_at` — otherwise a member could insert a request already approved); approve/reject via definer RPC. |
+| `finance.vault_permissions`  | `fn_can_view_wallet(wallet_id)`.                                 | **None, by design** (2026-09-28): the table is a projection of the workspace capabilities, written only by `org.fn_sync_vault_permissions` (called by the workspace RPCs and the wallet insert trigger). |
+| `finance.split_rules`        | `org.is_active_team_member(team_id)` (or admin).                 | Definer only. (The member stakes it resolves into are written by `finance.save_team_split`, `manage_finances`-gated.) |
+| `finance.spend_approvals`    | `fn_can_view_wallet(wallet_id)`.                                 | None — no client INSERT policy and no INSERT grant (2026-09-28). A request is filed by `finance.request_spend_approval` (needs `spend` on the wallet; refuses a spend that needs no approval; the currency is the wallet's and the 7-day expiry is set server-side) and decided by `finance.decide_spend_approval` (`approve_spend`). The `"Request a spend approval"` INSERT policy it replaced let anybody who could see a wallet file a request in any currency with any expiry. |
 | `finance.ledger_audit`       | `fn_can_view_wallet(wallet_id)`.                                 | Definer / service only (append-only, unforgeable).                                             |
 | `finance.pending_releases`   | `fn_can_view_wallet(wallet_id)`.                                 | Definer / service only (window sweep).                                                         |
 | `finance.statements`         | `fn_owner_visible(owner_type, owner_id)`.                        | Definer / service only (statement generator).                                                  |
@@ -185,7 +189,7 @@ policy — except `buyer_details`, the buyer's own form.
 | `finance.buyer_details`           | `fn_owner_visible(owner_type, owner_id)`                                                  | INSERT / UPDATE, `fn_can_manage_basket(owner_type, owner_id)` — the same read/write split as the basket these details check out under |
 | `finance.disputes`                | admin, the opener, or a reader of the escrow (`EXISTS` under "View escrows")              | — |
 | `finance.dispute_messages`        | `EXISTS` over its dispute                                                                  | — |
-| `finance.contribution_agreements` | admin or an active member of the team — each member sees the whole split                   | — |
+| `finance.contribution_agreements` | admin or an active member of the team — each member sees the whole split                   | — (definer: `org.create_workspace`, acceptance, `org.fn_rebalance_departed_stake`, `finance.save_team_split`; total held at 10000 or 0 by a deferred constraint trigger) |
 | `finance.payout_splits`           | the member paid, or a reader of the escrow                                                 | — |
 | `finance.spending_limits`         | `fn_can_view_wallet(wallet_id)` — includes the member it binds                             | — |
 
@@ -221,8 +225,9 @@ wallet with any amount. So (`00002510`):
 - **`EXECUTE` is revoked from `PUBLIC` and `anon` on every finance function**, and from future ones
   (`ALTER DEFAULT PRIVILEGES`). The service role keeps them all.
 - **The primitives are stated per function as well** — `fn_wallet_credit`, `fn_wallet_debit`, the
-  three escrow hold/release/refund functions, `fn_fair_exit_release`, `fn_split_team_payout`,
-  `fn_generate_consolidated_invoice`, `fn_check_spending_limit`, `fn_seed_business_wallet` — so no
+  three escrow hold/release/refund functions, `fn_fair_exit_release`, `fn_split_team_payout` (now the
+  5-arg signature), `fn_generate_consolidated_invoice`, `fn_check_spending_limit` (and, until it was
+  removed 2026-09-28, `fn_seed_business_wallet`) — so no
   client role can be found holding one even if a broad grant lands later. Every SQL caller of them is
   `SECURITY DEFINER`, so revoking them changed nothing that worked.
 - **The subject-taking resolvers moved to the service role** — `fn_freelancer_payout_ready`,
@@ -232,15 +237,20 @@ wallet with any amount. So (`00002510`):
   any signed-in account another person's KYC readiness, plan, usage and negotiated rates. A surface
   that needs the viewer's own figures should get a self-scoped wrapper.
 - **`authenticated` keeps exactly** the predicates the policies call (`fn_owner_visible`,
-  `fn_can_view_wallet`, `fn_has_vault_capability`, `fn_can_manage_basket`, `fn_can_move_wallet_funds`,
-  `fn_owner_capability` — a policy expression runs as the invoking role, so these must stay
-  executable), the two public resolvers (`fn_audience_for`, `fn_subject_standing_level`), the
-  param-gated `simulate_wallet_transaction`, the five commerce doors — `get_purchase_owner`,
+  `fn_can_view_wallet`, `fn_can_manage_basket`, `fn_can_move_wallet_funds`, `fn_owner_capability` —
+  a policy expression runs as the invoking role, so these must stay executable), the two public
+  resolvers (`fn_audience_for`, `fn_subject_standing_level`), the param-gated
+  `simulate_wallet_transaction`, the five commerce doors — `get_purchase_owner`,
   `list_purchase_owners`, `resolve_promo_code`, `set_invoicing_terms`, `place_wallet_order`
-  ([Functions.md § Commerce doors](Functions.md#-commerce-doors-00001210)) — and the three wallet
+  ([Functions.md § Commerce doors](Functions.md#-commerce-doors-00001210)) — the three wallet
   movements, `transfer_funds`, `distribute_vault`, `decide_spend_approval`
-  ([Functions.md § Wallet movements](Functions.md#-wallet-movements-00001210-12)). Each checks the
-  caller itself; none takes a subject it does not re-authorise.
+  ([Functions.md § Wallet movements](Functions.md#-wallet-movements-00001210-12)), and the four
+  workspace money RPCs, `save_team_split`, `preview_team_split`, `save_spend_policy`,
+  `request_spend_approval` ([Functions.md § Workspace money governance](Functions.md#-workspace-money-governance-00001210-13),
+  2026-09-28). Each checks the caller itself; none takes a subject it does not re-authorise.
+- **`fn_has_vault_capability` lost its `authenticated` grant** (2026-09-28): it answers for an
+  arbitrary user id, so exposing it was a capability oracle, and no policy calls it — its callers are
+  the definer predicates and money RPCs, which run it as its owner.
 - **`fn_purchase_owner_json` is internal** — it builds the owner projection for the two owner doors and
   is callable by neither client role, because it answers for whatever owner it is handed.
 - **`simulate_wallet_transaction` is revoked from `service_role` explicitly**, AFTER the blanket

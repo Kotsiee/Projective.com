@@ -5,11 +5,13 @@ import "../styles/workspace.css";
 import { Tooltip } from "@projective/ui/feedback";
 import { InputNumber } from "@projective/ui/fields";
 import { styleVars } from "@ui/core/style.ts";
+import { toMajorUnits, toMinorUnits } from "@projective/types/finance";
 import {
 	type BusinessSpendPolicy,
 	kindCopy,
 	type SpendLimit,
 	type WorkspaceDetail,
+	workspaceHref,
 } from "@projective/types/workspace";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import { policyDirty, publishDetail, saveRequested, saveState } from "../core/workspace-state.ts";
@@ -17,7 +19,6 @@ import { type SpendLimitPatch, SpendLimitRow } from "../components/SpendLimitRow
 import { ApprovalQueue } from "../components/ApprovalQueue.tsx";
 import { ContributionLedger } from "../components/ContributionLedger.tsx";
 import { VerificationLock } from "../components/VerificationLock.tsx";
-import { PolicyAmount } from "../components/PolicyAmount.tsx";
 
 /**
  * SpendPolicyScreen — the business side of money: it comes in from members, then out as purchases.
@@ -51,13 +52,22 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 	const canEdit = held.has("manage_finances");
 	const canApprove = held.has("approve_spend");
 
+	/** The server's latest policy — replaced wholesale by every successful save or decision. */
+	const policy = useSignal<BusinessSpendPolicy>(props.policy);
+	const currency = policy.value.currency;
 	const limits = useSignal<SpendLimit[]>([...props.policy.limits]);
 	const threshold = useSignal<number | null>(props.policy.approvalThresholdMinor);
 	const editingId = useSignal<string | null>(null);
 	const busyId = useSignal<string | null>(null);
 	const error = useSignal<string | null>(null);
 
-	const verified = props.policy.verification === "verified";
+	const verified = policy.value.verification === "verified";
+	/**
+	 * A threshold is at least one minor unit or cleared. Zero is refused rather than coerced: to one reader
+	 * it means "every spend needs approval", to another "off", and quietly picking one would be a guess
+	 * about somebody's money.
+	 */
+	const thresholdInvalid = useComputed(() => threshold.value !== null && threshold.value < 1);
 
 	/**
 	 * The last SAVED state, which is what "unsaved changes" is measured against. A signal rather than
@@ -108,13 +118,20 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 
 	async function save(): Promise<void> {
 		if (!dirty.value) return;
+		if (thresholdInvalid.value) {
+			saveState.value = "error";
+			error.value =
+				"An approval threshold must be more than zero — clear it to turn approvals off.";
+			return;
+		}
 		saveState.value = "saving";
 		error.value = null;
 		const res = await WorkspaceService.updateSpend({
 			workspaceId: ws.id,
+			currency,
 			approvalThresholdMinor: threshold.value,
-			approverIds: props.policy.approverIds,
-			contributorIds: props.policy.contributorIds,
+			approverIds: policy.value.approverIds,
+			contributorIds: policy.value.contributorIds,
 			limits: limits.value.map((l) => ({
 				memberId: l.memberId,
 				canSpend: l.canSpend,
@@ -124,17 +141,19 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 		});
 		if (!res.ok || !res.data) {
 			saveState.value = "error";
-			error.value = res.message ?? "Could not save the spend policy.";
+			error.value = res.errors?.approvalThresholdMinor ?? res.errors?.limits ?? res.message ??
+				"Could not save the spend policy.";
 			return;
 		}
 		saveState.value = "saved";
 		editingId.value = null;
-		publishDetail(res.data.workspace);
+		publishDetail(res.data);
 		// Adopt the server's own projection as the new baseline: the surface stops reporting a change that
 		// has landed, and the envelope meters show the server's recomputed `usedFraction` rather than the
 		// figures the edits were made against.
-		const saved = res.data.workspace.spend;
+		const saved = res.data.spend;
 		if (saved) {
+			policy.value = saved;
 			limits.value = [...saved.limits];
 			threshold.value = saved.approvalThresholdMinor;
 		}
@@ -156,16 +175,19 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 	async function decide(requestId: string, approve: boolean): Promise<void> {
 		busyId.value = requestId;
 		error.value = null;
-		const res = await WorkspaceService.decideSpend(ws.id, requestId, approve);
+		const res = await WorkspaceService.decideSpend({ workspaceId: ws.id, requestId, approve });
 		busyId.value = null;
 		if (!res.ok || !res.data) {
 			error.value = res.message ?? "Could not record that decision.";
 			return;
 		}
-		publishDetail(res.data.workspace);
+		publishDetail(res.data);
+		// The queue re-renders from the server's answer, so a decided request leaves it at once. The
+		// envelopes and the threshold are left as the reader has them — a decision does not touch them.
+		if (res.data.spend) policy.value = { ...res.data.spend };
 	}
 
-	const pendingCount = props.policy.requests.filter((r) => r.state === "pending").length;
+	const pendingCount = policy.value.requests.filter((r) => r.state === "pending").length;
 
 	return (
 		<div class="wsp" data-kind="business">
@@ -191,9 +213,9 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 				}
 				<VerificationLock
 					kind={ws.kind}
-					verification={props.policy.verification}
-					prompt={props.policy.verificationPrompt}
-					href={`/${copy.plural}/${ws.id}/settings`}
+					verification={policy.value.verification}
+					prompt={policy.value.verificationPrompt}
+					href={workspaceHref(ws.kind, ws.handle, "verification")}
 					canManage={held.has("manage_settings")}
 					tone="band"
 				/>
@@ -208,8 +230,9 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 							</div>
 							<div class="wsp-band__body">
 								<ApprovalQueue
-									requests={props.policy.requests}
+									requests={policy.value.requests}
 									canApprove={canApprove && verified}
+									selfMemberId={ws.viewerMemberId}
 									busyId={busyId.value}
 									onDecide={(id, approve) =>
 										void decide(id, approve)}
@@ -228,13 +251,16 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 								<label class="wsp-spend__threshold-field">
 									<span class="wsp-create__label">Approval threshold</span>
 									<InputNumber
-										value={threshold.value === null ? null : threshold.value / 100}
+										value={toMajorUnits(threshold.value, currency)}
 										onValueChange={(v) => {
-											threshold.value = v === null ? null : Math.round(v * 100);
+											threshold.value = toMinorUnits(v, currency);
+											error.value = null;
 										}}
 										mode="currency"
-										currency={props.policy.approvalThreshold?.currency ?? "GBP"}
+										currency={currency}
+										min={0}
 										disabled={!canEdit}
+										status={thresholdInvalid.value ? "invalid" : "default"}
 										aria-label="Approval threshold"
 									/>
 								</label>
@@ -243,7 +269,7 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 									simply refused. Clear the field to let every permitted member spend up to their
 									own limit unattended.
 								</p>
-								{props.policy.approverIds.length === 0 && threshold.value !== null && (
+								{policy.value.approverIds.length === 0 && threshold.value !== null && (
 									<p class="wsp-create__error">
 										Nobody can approve yet — give at least one member the approve-spend permission,
 										or a request would have nowhere to go.
@@ -265,6 +291,7 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 										<SpendLimitRow
 											key={limit.memberId}
 											limit={limit}
+											currency={currency}
 											editable={canEdit}
 											editing={editingId.value === limit.memberId}
 											onToggleEditing={(id) => {
@@ -292,18 +319,11 @@ export default function SpendPolicyScreen(props: SpendPolicyScreenProps): JSX.El
 								content="Every line is attributable to a person — that is what makes a shared wallet auditable"
 								placement="left"
 							>
-								<span class="wsp-band__meta">
-									<PolicyAmount
-										value={props.policy.limits[0]?.spent ??
-											{ minor: 0, currency: "GBP", display: "—", origin: null }}
-										size="micro"
-										muted
-									/>
-								</span>
+								<span class="wsp-band__meta">{currency} wallet</span>
 							</Tooltip>
 						</div>
 						<div class="wsp-band__body">
-							<ContributionLedger entries={props.policy.entries} limit={12} />
+							<ContributionLedger entries={policy.value.entries} owner={ws.name} limit={12} />
 						</div>
 					</div>
 				</section>

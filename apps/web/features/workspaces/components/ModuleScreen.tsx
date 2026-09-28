@@ -1,10 +1,5 @@
 import type { JSX } from "preact";
-import {
-	kindCopy,
-	walletHrefFor,
-	type WorkspaceDetail,
-	workspaceHref,
-} from "@projective/types/workspace";
+import { kindCopy, walletHrefFor, type WorkspaceDetail } from "@projective/types/workspace";
 import { moduleFor, type ModuleKey } from "../core/module-registry.tsx";
 import { ModulePlaceholder } from "./ModulePlaceholder.tsx";
 import WorkspaceOverview from "../islands/WorkspaceOverview.island.tsx";
@@ -39,6 +34,9 @@ export function ModuleScreen(props: ModuleScreenProps): JSX.Element {
 	const { workspace: ws, module } = props;
 	const copy = kindCopy(ws.kind);
 	const mod = moduleFor(module);
+	/** The entity's profile editor — name, story, logo and banner are edited there, through the media pipeline. */
+	const editHref = `/@${ws.handle}/edit`;
+	const canEditProfile = ws.viewerCapabilities.includes("edit_profile");
 
 	switch (module) {
 		case "overview":
@@ -129,9 +127,30 @@ export function ModuleScreen(props: ModuleScreenProps): JSX.Element {
 				<ModulePlaceholder
 					kind={ws.kind}
 					module={mod!}
-					href={`/@${ws.handle}`}
-					linkLabel="Open the public profile"
-					note="Banner, story, skills and reviews are edited on the public profile itself, so there is only ever one version of them."
+					href={editHref}
+					linkLabel="Edit the public profile"
+					note={`Name, story, logo and banner for ${ws.name} are edited on its public profile, so there is only ever one version of them.`}
+				/>
+			);
+		case "settings":
+			return (
+				<ModulePlaceholder
+					kind={ws.kind}
+					module={mod!}
+					href={canEditProfile ? editHref : null}
+					linkLabel="Edit the profile and settings"
+					note={canEditProfile
+						? `Identity, pictures and visibility for ${ws.name} live on its profile editor. Ownership moves from the Members page.`
+						: `Identity, pictures and visibility for ${ws.name} are edited by members who may edit its profile.`}
+				/>
+			);
+		case "verification":
+			return (
+				<ModulePlaceholder
+					kind={ws.kind}
+					module={mod!}
+					note={ws.verificationPrompt ??
+						`${ws.name} is verified — payouts and pooled spending are unlocked.`}
 				/>
 			);
 
@@ -149,11 +168,6 @@ export function ModuleScreen(props: ModuleScreenProps): JSX.Element {
 						permission: () => null,
 						blurb: "",
 					}}
-					note={module === "settings"
-						? `Identity, handle, notification defaults and archiving for ${ws.name}.`
-						: undefined}
-					href={module === "verification" ? workspaceHref(ws.kind, ws.id, "settings") : null}
-					linkLabel={module === "verification" ? "Open settings" : undefined}
 				/>
 			);
 	}

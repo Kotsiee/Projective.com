@@ -21,6 +21,11 @@ export interface ApprovalQueueProps {
 	requests: readonly SpendRequest[];
 	/** Whether the viewer may decide these — drives the presence of the action pair. */
 	canApprove: boolean;
+	/**
+	 * The viewer's member id. Nobody decides their own request — the database refuses it — so on the
+	 * viewer's own rows the pair gives way to the requester's status line.
+	 */
+	selfMemberId?: string;
 	/** The request currently being decided, so its buttons can show progress. */
 	busyId?: string | null;
 	onDecide: (requestId: string, approve: boolean) => void;
@@ -69,7 +74,7 @@ export function ApprovalQueue(props: ApprovalQueueProps): JSX.Element {
 						<PolicyAmount value={req.amount} size="key" srLabel={`Requested by ${req.name}`} />
 					</span>
 
-					{props.canApprove
+					{props.canApprove && req.memberId !== props.selfMemberId
 						? (
 							<div class="wsp-approvals__actions">
 								<Tooltip content="Approve this spend" placement="top">
@@ -129,7 +134,11 @@ export function ApprovalQueue(props: ApprovalQueueProps): JSX.Element {
 						<PolicyAmount value={req.amount} size="body" muted />
 					</span>
 					<span class="wsp-approvals__decided">
-						{req.state === "approved" ? "Approved" : "Declined"}
+						{req.state === "approved"
+							? "Approved"
+							: req.state === "expired"
+							? "Expired"
+							: "Declined"}
 						{req.decidedBy ? ` by ${req.decidedBy}` : ""}
 						{req.decidedAt ? ` · ${req.decidedAt}` : ""}
 					</span>

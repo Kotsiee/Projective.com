@@ -52,6 +52,12 @@ function iso(at: number): string {
 	return new Date(at).toISOString();
 }
 
+/** {@link iso}, or `null` for an instant no date can hold — which `toISOString` would throw on. */
+function isoOrNull(at: number): string | null {
+	const d = new Date(at);
+	return Number.isFinite(d.getTime()) ? d.toISOString() : null;
+}
+
 /** A refusal for a write whose premise changed underneath it. */
 function conflict(): PlanRefusal {
 	return {
@@ -67,6 +73,14 @@ function failed(what: string, message: string): PlanRefusal {
 	return { ok: false, status: 503, message: "That change could not be saved. Please try again." };
 }
 
+/**
+ * Append one history line, dated by the DATABASE's clock (the column default).
+ *
+ * `close_reschedule_round` writes its closing line the same way, from inside Postgres. Dating the lines
+ * this module writes from the application's clock instead put two clocks into one ordered log: a vote
+ * and the round closing on it are milliseconds apart, and an application host running a little ahead
+ * of the database listed the result before the ballot that decided it.
+ */
 async function logLine(
 	eventId: string,
 	kind: string,
@@ -74,7 +88,6 @@ async function logLine(
 	summary: string,
 	detail: string | null,
 	targetId: string | null,
-	at: number,
 ): Promise<void> {
 	const { error } = await sched().from("event_history").insert({
 		event_id: eventId,
@@ -83,7 +96,6 @@ async function logLine(
 		summary: summary.slice(0, 200),
 		detail: detail ? detail.slice(0, 400) : null,
 		target_id: targetId ? targetId.slice(0, 120) : null,
-		occurred_at: iso(at),
 	});
 	// The move has already been made; a log line that could not be written is logged, not rolled back.
 	if (error) console.error("scheduling: history line not written", eventId, error.message);
@@ -132,7 +144,6 @@ export async function writeRsvp(
 			RSVP_SUMMARY[input.response],
 			note,
 			seat.id,
-			now,
 		);
 	}
 	return null;
@@ -140,6 +151,14 @@ export async function writeRsvp(
 // #endregion
 
 // #region Reschedule
+/**
+ * `fn_guard_reschedule_write` (`00001510`) refuses a proposal, an approval or a vote on a round that
+ * is no longer open, under the same row lock the cap counts under. The planner already refused a
+ * closed round; this is the race it could not see — the round closed between the reader's read and
+ * this write.
+ */
+const ROUND_NOT_OPEN = "55000";
+
 /** Update the round, conditioned on the status the plan was made against. */
 async function updateRound(
 	roundId: string,
@@ -157,7 +176,16 @@ async function updateRound(
 	return null;
 }
 
-/** Close the round through the one atomic door (round + event move + log line). */
+/**
+ * Close the round through the one atomic door (round + event move + log line).
+ *
+ * `close_reschedule_round` answers NULL when the round was already closed — ordinarily somebody else
+ * got there first. But a vote is settled by whoever reads it next once it is decided, so the second
+ * closer is often a reader who recorded EXACTLY the outcome this write was about to record: the last
+ * ballot lands, a colleague's page load settles the vote a moment before this request's own close, and
+ * the voter was told "somebody else changed this" about a vote that counted and a result that stands.
+ * So a NULL re-reads the round, and the same ending (the same status, the same winner) is a success.
+ */
 async function closeRound(
 	roundId: string,
 	next: EventReschedule,
@@ -165,19 +193,31 @@ async function closeRound(
 	summary: string,
 	detail: string | null,
 ): Promise<PlanRefusal | null> {
+	const winner = next.status === "resolved" ? next.resolvedProposalId : null;
 	const { data, error } = await getServiceClient().schema("scheduling").rpc(
 		"close_reschedule_round",
 		{
 			p_reschedule_id: roundId,
 			p_status: next.status,
-			p_resolved_proposal_id: next.status === "resolved" ? next.resolvedProposalId : null,
+			p_resolved_proposal_id: winner,
 			p_actor: actorId,
 			p_summary: summary,
 			p_detail: detail,
 		},
 	);
 	if (error) return failed("closing a reschedule round", error.message);
-	return data === null ? conflict() : null;
+	if (data !== null) return null;
+
+	const { data: row, error: readError } = await sched().from("event_reschedules")
+		.select("status, resolved_proposal_id")
+		.eq("id", roundId)
+		.maybeSingle();
+	if (readError) return failed("re-reading a closed reschedule round", readError.message);
+	const closed = row as { status: string; resolved_proposal_id: string | null } | null;
+	if (closed && closed.status === next.status && (closed.resolved_proposal_id ?? null) === winner) {
+		return null;
+	}
+	return conflict();
 }
 
 /**
@@ -186,6 +226,13 @@ async function closeRound(
  * `loaded.roundId` is the latest round's row; a `propose` that opens a new round (the first ever, or
  * one after a closed round) inserts it. Proposal ids in the plan are the database's own uuids for
  * everything already on the ballot, which is what `approve`, `vote` and `confirm` address.
+ *
+ * **One statement per step wherever the step is one fact.** A proposal, an approval and a vote are
+ * each a single row write; the round's deadline follows from them inside the same statement
+ * (`fn_guard_reschedule_write` re-stamps it under the round lock), so no step can commit its row and
+ * then answer 409 because a second, separate deadline write lost a race. The only two-statement step
+ * is a proposal that opens a new round, and everything that could fail it is checked before the
+ * round is inserted.
  */
 export async function writeReschedule(
 	actor: ReadActor,
@@ -193,6 +240,22 @@ export async function writeReschedule(
 	plan: ReschedulePlan,
 	now: number,
 ): Promise<PlanRefusal | null> {
+	// The read decided a vote it could not record. Acting now would be acting on a state the database
+	// does not hold — a proposal would open the next round and leave the decided one `voting` forever
+	// — so the move waits for a read that can write the decision down.
+	if (loaded.unsettled) {
+		console.error(
+			"scheduling: refusing a reschedule move over an unrecorded settlement",
+			loaded.event.id,
+		);
+		return {
+			ok: false,
+			status: 503,
+			message:
+				"This vote has just closed and its result is still being saved. Please try again in a moment.",
+		};
+	}
+
 	const { before, next, step } = plan;
 	const eventId = loaded.event.id;
 	const tz = loaded.tz;
@@ -200,6 +263,19 @@ export async function writeReschedule(
 
 	switch (step.kind) {
 		case "propose": {
+			// Built before anything is written: a slot outside the range a date can hold throws here, and
+			// throwing after the round insert would leave an empty round nobody asked for.
+			const startsAt = isoOrNull(step.start);
+			const endsAt = isoOrNull(step.end);
+			if (!startsAt || !endsAt) {
+				return {
+					ok: false,
+					status: 422,
+					message: "Give the alternative time a start and an end.",
+					errors: { start: "That time is out of range." },
+				};
+			}
+
 			let roundId = loaded.roundId;
 			if (step.newRound || !roundId) {
 				const { data, error } = await sched().from("event_reschedules")
@@ -223,13 +299,12 @@ export async function writeReschedule(
 			const inserted = await sched().from("reschedule_proposals")
 				.insert({
 					reschedule_id: roundId,
-					starts_at: iso(step.start),
-					ends_at: iso(step.end),
+					starts_at: startsAt,
+					ends_at: endsAt,
 					proposed_by_user_id: actor.userId,
 					proposed_by_role: step.role,
 					approved: step.approved,
 					note: step.note,
-					proposed_at: iso(now),
 				})
 				.select("id")
 				.single();
@@ -252,19 +327,11 @@ export async function writeReschedule(
 					message: RESCHEDULE_REFUSAL_COPY.ballot_full,
 				};
 			}
+			if (inserted.error?.code === ROUND_NOT_OPEN) return conflict();
 			if (inserted.error || !inserted.data) {
 				return failed("recording a proposal", inserted.error?.message ?? "no row");
 			}
 			const proposalId = (inserted.data as { id: string }).id;
-
-			// On a LIVE ballot a new host slot can bring the earliest option — and so the deadline —
-			// forward. The deadline is a function of the ballot and is re-stamped with it.
-			if (!step.newRound && loaded.roundId && before.status === "voting") {
-				const refused = await updateRound(roundId, before, {
-					resolves_at: next.resolvesAt === null ? null : iso(next.resolvesAt),
-				}, now);
-				if (refused) return refused;
-			}
 
 			await logLine(
 				eventId,
@@ -273,7 +340,6 @@ export async function writeReschedule(
 				`Proposed ${slotLabel(step.start, tz)}`,
 				step.note ?? (step.approved ? null : "Waiting on the host to approve this time."),
 				proposalId,
-				now,
 			);
 			return null;
 		}
@@ -285,14 +351,9 @@ export async function writeReschedule(
 				.eq("id", step.proposalId)
 				.eq("reschedule_id", loaded.roundId)
 				.select("id");
+			if (error?.code === ROUND_NOT_OPEN) return conflict();
 			if (error) return failed("approving a proposal", error.message);
 			if (!data || data.length === 0) return conflict();
-			if (before.status === "voting") {
-				const refused = await updateRound(loaded.roundId, before, {
-					resolves_at: next.resolvesAt === null ? null : iso(next.resolvesAt),
-				}, now);
-				if (refused) return refused;
-			}
 			const slot = slotOf(step.proposalId);
 			await logLine(
 				eventId,
@@ -301,17 +362,15 @@ export async function writeReschedule(
 				slot ? `Approved ${slotLabel(slot.start, tz)}` : "Approved a proposed time",
 				null,
 				step.proposalId,
-				now,
 			);
 			return null;
 		}
 
 		case "open": {
 			if (!loaded.roundId) return conflict();
-			const refused = await updateRound(loaded.roundId, before, {
-				status: next.status,
-				resolves_at: next.resolvesAt === null ? null : iso(next.resolvesAt),
-			}, now);
+			// The deadline is stamped by the round's own trigger as it turns `voting`, from the ballot it
+			// holds at that instant — not from the ballot this request read.
+			const refused = await updateRound(loaded.roundId, before, { status: next.status }, now);
 			if (refused) return refused;
 			const ballot = next.proposals.filter((p) => p.proposedByRole === "host" || p.approved).length;
 			await logLine(
@@ -325,7 +384,6 @@ export async function writeReschedule(
 					? `Voting closes ${slotLabel(next.resolvesAt, tz)}.`
 					: null,
 				null,
-				now,
 			);
 			return null;
 		}
@@ -336,7 +394,6 @@ export async function writeReschedule(
 				reschedule_id: loaded.roundId,
 				proposal_id: step.proposalId,
 				attendee_id: step.attendeeId,
-				cast_at: iso(now),
 			});
 			if (error?.code === "23505") {
 				return {
@@ -344,6 +401,14 @@ export async function writeReschedule(
 					status: 409,
 					reason: "duplicate_vote",
 					message: RESCHEDULE_REFUSAL_COPY.duplicate_vote,
+				};
+			}
+			if (error?.code === ROUND_NOT_OPEN) {
+				return {
+					ok: false,
+					status: 409,
+					reason: "vote_closed",
+					message: RESCHEDULE_REFUSAL_COPY.vote_closed,
 				};
 			}
 			if (error) return failed("casting a vote", error.message);
@@ -355,7 +420,6 @@ export async function writeReschedule(
 				slot ? `Voted for ${slotLabel(slot.start, tz)}` : "Voted",
 				null,
 				step.proposalId,
-				now,
 			);
 			// The last eligible ballot decides the question there and then; that is nobody's act, so the
 			// closing line carries no actor.
@@ -395,7 +459,7 @@ export async function writeReschedule(
 				.select("id");
 			if (error) return failed("withdrawing a reschedule", error.message);
 			if (!data || data.length === 0) return conflict();
-			await logLine(eventId, "proposal", actor.userId, "Withdrew the reschedule", null, null, now);
+			await logLine(eventId, "proposal", actor.userId, "Withdrew the reschedule", null, null);
 			return null;
 		}
 	}

@@ -462,11 +462,15 @@ BEGIN
               OR (p_subject_type IN ('user', 'freelancer') AND p.owner_user_id = p_subject_id AND p.client_business_id IS NULL)
           );
 
+    -- An ARCHIVED entity no longer occupies a slot: org.create_workspace's refusal tells an owner at
+    -- their limit to "archive one or upgrade", which is only true if archiving frees one.
     ELSIF p_key = 'teams_owned' THEN
-        SELECT count(*) INTO v_count FROM org.teams t WHERE t.owner_user_id = p_subject_id;
+        SELECT count(*) INTO v_count FROM org.teams t
+         WHERE t.owner_user_id = p_subject_id AND t.status <> 'archived';
 
     ELSIF p_key = 'businesses_owned' THEN
-        SELECT count(*) INTO v_count FROM org.business_profiles b WHERE b.owner_user_id = p_subject_id;
+        SELECT count(*) INTO v_count FROM org.business_profiles b
+         WHERE b.owner_user_id = p_subject_id AND b.status <> 'archived';
 
     ELSIF p_key = 'team_seats' THEN
         SELECT count(*) INTO v_count FROM org.team_members m

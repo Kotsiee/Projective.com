@@ -367,6 +367,8 @@ function ProposalRow(props: {
 	const onBallot = isProposalOnBallot(p);
 	const mine = view.myVoteId === p.id;
 	const won = view.resolvedId === p.id;
+	const confirmGate = view.confirmFor(p);
+	const approveGate = view.approveFor(p);
 	// A share of the QUORUM, not of the votes cast — the bar answers "how close is this to carrying",
 	// which is the only question a reader has while a vote is open.
 	const share = view.quorum > 0
@@ -381,7 +383,13 @@ function ProposalRow(props: {
 					<span class="evm-prop__time">{calendarTime.fmtRange(p.start, p.end, tz, hour12)}</span>
 				</span>
 				{won ? <span class="evm-chip" data-tone="success">Chosen</span> : null}
-				{!onBallot ? <span class="evm-chip" data-tone="warning">Needs approval</span> : null}
+				{!onBallot
+					? (
+						<span class="evm-chip" data-tone="warning">
+							{view.mode === "counterparty" ? "Awaiting the host" : "Needs approval"}
+						</span>
+					)
+					: null}
 				{mine ? <span class="evm-chip" data-tone="progress">Your vote</span> : null}
 			</div>
 
@@ -427,19 +435,19 @@ function ProposalRow(props: {
 				: null}
 
 			<div class="evm-prop__acts">
-				{view.mode === "vote" && !onBallot && !isSeatRefusal(view.approve)
+				{view.mode === "vote" && !onBallot && !isSeatRefusal(approveGate)
 					? (
 						<>
 							<Button
 								variant="outlined"
 								size="sm"
-								disabled={!view.approve.allowed || busy}
-								aria-describedby={view.approve.allowed ? undefined : `evm-approve-${p.id}`}
+								disabled={!approveGate.allowed || busy}
+								aria-describedby={approveGate.allowed ? undefined : `evm-approve-${p.id}`}
 								onClick={() => props.onApprove(p.id)}
 							>
 								Put it on the ballot
 							</Button>
-							<Refusal gate={view.approve} id={`evm-approve-${p.id}`} />
+							<Refusal gate={approveGate} id={`evm-approve-${p.id}`} />
 						</>
 					)
 					: null}
@@ -461,36 +469,36 @@ function ProposalRow(props: {
 					)
 					: null}
 
-				{view.mode === "counterparty" && onBallot && !isSeatRefusal(view.confirm)
+				{view.mode === "counterparty" && !isSeatRefusal(confirmGate)
 					? (
 						<>
 							<Button
 								variant="filled"
 								size="sm"
-								disabled={!view.confirm.allowed || busy}
-								aria-describedby={view.confirm.allowed ? undefined : `evm-confirm-${p.id}`}
+								disabled={!confirmGate.allowed || busy}
+								aria-describedby={confirmGate.allowed ? undefined : `evm-confirm-${p.id}`}
 								onClick={() => props.onConfirm(p.id)}
 							>
 								Accept this time
 							</Button>
-							<Refusal gate={view.confirm} id={`evm-confirm-${p.id}`} />
+							<Refusal gate={confirmGate} id={`evm-confirm-${p.id}`} />
 						</>
 					)
 					: null}
 
-				{view.mode === "vote" && view.winnerId === p.id && !isSeatRefusal(view.confirm)
+				{view.mode === "vote" && view.winnerId === p.id && !isSeatRefusal(confirmGate)
 					? (
 						<>
 							<Button
 								variant="filled"
 								size="sm"
-								disabled={!view.confirm.allowed || busy}
-								aria-describedby={view.confirm.allowed ? undefined : `evm-settle-${p.id}`}
+								disabled={!confirmGate.allowed || busy}
+								aria-describedby={confirmGate.allowed ? undefined : `evm-settle-${p.id}`}
 								onClick={() => props.onConfirm(p.id)}
 							>
 								Move the session here
 							</Button>
-							<Refusal gate={view.confirm} id={`evm-settle-${p.id}`} />
+							<Refusal gate={confirmGate} id={`evm-settle-${p.id}`} />
 						</>
 					)
 					: null}

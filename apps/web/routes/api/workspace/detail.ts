@@ -1,51 +1,42 @@
 import { z } from "zod";
 import { define } from "@web/utils/state.ts";
-import { WorkspaceKind } from "@projective/types/workspace";
-import { toFieldErrors, toWorkspaceResponse } from "@features/workspaces/core/respond.ts";
-import { resolveRequestContext } from "@web/utils/user-context.ts";
-import { simFromParams } from "@features/workspaces/core/workspace-seam.ts";
+import { readActor } from "@web/utils/api-session.ts";
+import { defineReadRoute } from "@web/utils/read-endpoint.ts";
+import { type WorkspaceDetail, WorkspaceKind } from "@projective/types/workspace";
+import {
+	guestRefusal,
+	invalidPayload,
+	toWorkspaceBody,
+} from "@features/workspaces/core/respond.ts";
+import { canReadLive } from "@server/services/read-actor.ts";
 import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBackendService.ts";
 
 /**
- * `GET /api/workspace/detail?kind=team|business&id=…` — thin route: validate the kind + id, resolve the
- * acting context, then delegate to the fat {@link WorkspaceBackendService.detail} for the entity's full
- * console projection (roster · roles · invites · money policy · projects · activity · setup checklist ·
- * the viewer's server-resolved effective capabilities).
+ * `GET | HEAD | OPTIONS /api/workspace/detail?kind=team|business&ref=…` — thin route: resolve the acting
+ * reader, refuse a guest, validate the kind + reference, then delegate to the fat
+ * {@link WorkspaceBackendService.detail} for the entity's full console projection.
+ *
+ * `ref` is the entity's handle (its console address) or its row id — the server resolves either.
  *
  * Refusals come straight from the service and are deliberately distinct: `404` for an entity that does
  * not exist, `403` for one the viewer is not a member of. Collapsing them would either leak the
  * existence of private entities or tell a member their own workspace is gone.
- *
- * **No server-side capability guard** — membership is chrome + deferred RLS, and the Dev Context
- * Switcher must be able to reach this surface as a simulated persona (the server never sees that seam).
- * Per-entity authority is the fat service's decision; the RLS-scoped live path is the real gate.
  */
-
-/** The query contract — an object parse so each issue reaches the client keyed to its own field. */
 const QuerySchema = z.object({
 	kind: WorkspaceKind,
-	id: z.string().min(1, "Which workspace?").max(64),
+	ref: z.string().trim().min(1, "Which workspace?").max(64),
 });
 
-export const handler = define.handlers({
-	GET(ctx) {
-		const sp = ctx.url.searchParams;
-		const parsed = QuerySchema.safeParse({ kind: sp.get("kind"), id: sp.get("id") });
-		if (!parsed.success) {
-			return Response.json(
-				{ ok: false, message: "Invalid workspace reference.", errors: toFieldErrors(parsed.error) },
-				{ status: 422 },
-			);
-		}
-
-		const viewer = ctx.state.userContext ?? resolveRequestContext(ctx.req);
-		return toWorkspaceResponse(
-			WorkspaceBackendService.detail(
-				parsed.data.kind,
-				parsed.data.id,
-				viewer,
-				simFromParams(ctx.url.searchParams),
-			),
-		);
-	},
-});
+export const handler = define.handlers(
+	defineReadRoute<WorkspaceDetail>({
+		resolve: (ctx) => {
+			const actor = readActor(ctx);
+			if (!canReadLive(actor)) return guestRefusal();
+			const sp = ctx.url.searchParams;
+			const parsed = QuerySchema.safeParse({ kind: sp.get("kind"), ref: sp.get("ref") });
+			if (!parsed.success) return invalidPayload(parsed.error, "Invalid workspace reference.");
+			return WorkspaceBackendService.detail(parsed.data.kind, parsed.data.ref, actor);
+		},
+		toBody: toWorkspaceBody,
+	}),
+);

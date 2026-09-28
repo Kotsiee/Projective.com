@@ -206,7 +206,10 @@ CREATE TABLE finance.spending_limits (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
     wallet_id uuid NOT NULL REFERENCES finance.wallets (id) ON DELETE CASCADE,
     member_user_id uuid NOT NULL REFERENCES org.users_public (user_id) ON DELETE CASCADE,
-    cap_cents bigint NOT NULL CHECK (cap_cents >= 0),
+    -- NULL means no rolling ceiling (the per-transaction ceiling below may still apply). A row
+    -- rather than an absent row, because "unlimited" is a policy somebody set and nothing is
+    -- hard-deleted to express it.
+    cap_cents bigint CHECK (cap_cents IS NULL OR cap_cents >= 0),
     -- A ceiling on ONE purchase, evaluated independently of the rolling cap above: a member may hold
     -- a healthy monthly allowance and still be barred from spending it all in a single transaction.
     -- Nullable because "no per-transaction ceiling" is a real policy, distinct from a ceiling of 0,

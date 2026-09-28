@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { MoneyViewSchema } from "../finance/wallet.ts";
 import {
-	MembershipState as MembershipStateSim,
 	VerificationState,
 	WorkspaceCapability,
 	WorkspaceKind,
@@ -208,32 +207,36 @@ export type WorkspaceDetail = z.infer<typeof WorkspaceDetailSchema>;
 // #endregion
 
 // #region Mutations
-/** Create — Draft-First: name + handle is the whole form (brief §5). */
+/**
+ * Create — Draft-First: name + handle is the whole form (brief §5). The logo is added afterwards
+ * through the media pipeline (the profile editor), never as a URL a client supplies.
+ */
 export const CreateWorkspaceInputSchema = z.object({
 	kind: WorkspaceKind,
-	name: z.string().min(2, "Give it a name.").max(120),
+	name: z.string().min(2, "Give it a name.").max(80),
 	handle: z.string()
 		.min(3, "Handles are at least 3 characters.")
 		.max(40)
 		.regex(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/, "Lowercase letters, numbers and hyphens only."),
-	/** Optional logo at creation; everything else is completed inside the entity. */
-	avatar: z.string().max(400).optional(),
 });
 export type CreateWorkspaceInput = z.infer<typeof CreateWorkspaceInputSchema>;
 
-/** Update the entity's identity / settings. Every field optional — this is a patch. */
+/**
+ * Update the entity's identity or lifecycle. Every field optional — this is a patch. Pictures are not
+ * here: they move through the media pipeline (`org.set_profile_avatar`), which scans and re-encodes.
+ */
 export const UpdateWorkspaceInputSchema = z.object({
+	kind: WorkspaceKind,
 	id: z.string().max(64),
-	name: z.string().min(2).max(120).optional(),
+	name: z.string().min(2).max(80).optional(),
 	tagline: z.string().max(160).optional(),
-	avatar: z.string().max(400).optional(),
-	banner: z.string().max(400).optional(),
 	status: WorkspaceStatus.optional(),
 });
 export type UpdateWorkspaceInput = z.infer<typeof UpdateWorkspaceInputSchema>;
 
-/** Invite somebody by handle or email, with a role preset. */
+/** Invite somebody by handle or email, to one of the entity's roles. */
 export const InviteMemberInputSchema = z.object({
+	kind: WorkspaceKind,
 	workspaceId: z.string().max(64),
 	/** One of these must be present — checked in {@link inviteTargetOf}. */
 	handle: z.string().max(40).optional(),
@@ -248,49 +251,98 @@ export function inviteTargetOf(input: InviteMemberInput): string | null {
 	return input.handle?.trim() || input.email?.trim() || null;
 }
 
-/** Change a member's role and/or their per-member overrides. */
+/**
+ * Change a member: role, overrides, title, org-chart edge, spend envelope, or removal. Leaving is the
+ * same patch applied to one's own row with `remove: true`.
+ */
 export const UpdateMemberInputSchema = z.object({
+	kind: WorkspaceKind,
 	workspaceId: z.string().max(64),
 	memberId: z.string().max(64),
 	roleId: z.string().max(64).optional(),
 	granted: z.array(WorkspaceCapability).optional(),
 	revoked: z.array(WorkspaceCapability).optional(),
-	/** Business only — the member's spend envelope. */
+	title: z.string().max(80).nullable().optional(),
+	/** The member id this one reports to, or `null` to make them a root. */
+	reportsTo: z.string().max(64).nullable().optional(),
+	/** Business only — the member's spend envelope, in the business's default currency. */
 	spendLimitMinor: z.number().int().min(0).nullable().optional(),
+	perTransactionMinor: z.number().int().min(0).nullable().optional(),
 	canSpend: z.boolean().optional(),
 	/** Remove them from the entity (soft — becomes `left`). */
 	remove: z.boolean().optional(),
 });
 export type UpdateMemberInput = z.infer<typeof UpdateMemberInputSchema>;
 
+/** Hand the owner seat to another active member — one act, never two role edits. */
+export const TransferOwnershipInputSchema = z.object({
+	kind: WorkspaceKind,
+	workspaceId: z.string().max(64),
+	successorMemberId: z.string().max(64),
+	/** Leave the entity in the same act, rather than staying on as an admin. */
+	leave: z.boolean().default(false),
+});
+export type TransferOwnershipInput = z.infer<typeof TransferOwnershipInputSchema>;
+
+/** Revoke or resend a pending invitation (the inviting side's two queue actions). */
+export const InviteActionInputSchema = z.object({
+	kind: WorkspaceKind,
+	workspaceId: z.string().max(64),
+	inviteId: z.string().max(64),
+	action: z.enum(["revoke", "resend"]),
+});
+export type InviteActionInput = z.infer<typeof InviteActionInputSchema>;
+
+/** Accept or decline an invitation addressed to the viewer. */
+export const RespondInviteInputSchema = z.object({
+	inviteId: z.string().max(64),
+	accept: z.boolean(),
+});
+export type RespondInviteInput = z.infer<typeof RespondInviteInputSchema>;
+
 /** Create or edit a custom role. */
 export const UpsertRoleInputSchema = z.object({
+	kind: WorkspaceKind,
 	workspaceId: z.string().max(64),
 	/** Absent when creating. */
 	roleId: z.string().max(64).optional(),
 	name: z.string().min(1).max(48),
 	summary: z.string().max(160).default(""),
 	capabilities: z.array(WorkspaceCapability),
+	/** The preset it ranks as. Never `owner`, and never above the author's own rank (server-checked). */
+	basePreset: WorkspaceRole.exclude(["owner"]).default("member"),
 });
 export type UpsertRoleInput = z.infer<typeof UpsertRoleInputSchema>;
 
-/** Write a team's split policy. Rejected server-side unless the stakes sum to exactly 100%. */
+/** Retire a custom role (archived, never deleted). Refused while anybody holds or is offered it. */
+export const ArchiveRoleInputSchema = z.object({
+	kind: WorkspaceKind,
+	workspaceId: z.string().max(64),
+	roleId: z.string().max(64),
+});
+export type ArchiveRoleInput = z.infer<typeof ArchiveRoleInputSchema>;
+
+/** Write a team's split. Rejected server-side unless the active members' stakes sum to exactly 100%. */
 export const UpdatePayoutInputSchema = z.object({
 	workspaceId: z.string().max(64),
-	model: z.enum(["equal", "by_role", "custom"]).optional(),
 	stakes: z.array(z.object({
 		memberId: z.string().max(64),
 		shareBp: z.number().int().min(0).max(10_000),
 		held: z.boolean().default(false),
-	})).optional(),
-	autoDistribute: z.boolean().optional(),
+	})).min(1),
 });
 export type UpdatePayoutInput = z.infer<typeof UpdatePayoutInputSchema>;
 
-/** Write a business's spend policy. */
+/**
+ * Write a business's spend policy — a patch; a key present is a change. The threshold is at least one
+ * minor unit or `null` (off): `0` would read as "every spend needs approval" to one reader and as
+ * "disabled" to another, so it is not a value this schema admits.
+ */
 export const UpdateSpendInputSchema = z.object({
 	workspaceId: z.string().max(64),
-	approvalThresholdMinor: z.number().int().min(0).nullable().optional(),
+	/** Which of the business's wallets the threshold and limits apply to; the default currency when absent. */
+	currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+	approvalThresholdMinor: z.number().int().min(1).nullable().optional(),
 	approverIds: z.array(z.string().max(64)).optional(),
 	contributorIds: z.array(z.string().max(64)).optional(),
 	limits: z.array(z.object({
@@ -308,39 +360,6 @@ export const SwitchContextInputSchema = z.object({
 	contextId: z.string().max(64).nullable(),
 });
 export type SwitchContextInput = z.infer<typeof SwitchContextInputSchema>;
-
-/**
- * A developer SIMULATION overlay for the workspace reads.
- *
- * The Dev Context Switcher is a CLIENT-side seam (`<html data-dev-*>`), so the server cannot see it —
- * a surface whose data is server-derived must therefore be told what to simulate, which is what this
- * carries. It is passed as query params on the read, exactly like the `/wallet` axes (root CLAUDE.md
- * Decision #55), so every simulatable axis remains reachable at runtime without re-authenticating.
- *
- * It grants **no access**: it only changes what the developer's own request is answered with, and the
- * live path ignores it entirely (RLS remains the real gate). Every field is optional — an absent field
- * means "use the real projection".
- */
-export const WorkspaceSimSchema = z.object({
-	/** Force the viewer's role inside the entity. `non_member` reaches the not-a-member path. */
-	role: z.enum(["owner", "admin", "lead", "member", "non_member"]).optional(),
-	/** Force the membership state. */
-	membership: MembershipStateSim.optional(),
-	/** Force the entity's verification state (drives the locked-but-actionable KYC/KYB gate). */
-	verification: VerificationState.optional(),
-	/** Force the session's acting-as flag. */
-	acting: z.boolean().optional(),
-	/** Force the roster shape, so the empty state and the one-person pre-state are both reachable. */
-	roster: z.enum(["populated", "empty", "single"]).optional(),
-});
-export type WorkspaceSim = z.infer<typeof WorkspaceSimSchema>;
-
-/** Whether a simulation overlay asks for anything at all. */
-export function simIsEmpty(sim: WorkspaceSim | undefined): boolean {
-	if (!sim) return true;
-	return sim.role === undefined && sim.membership === undefined &&
-		sim.verification === undefined && sim.acting === undefined && sim.roster === undefined;
-}
 
 /** The outcome of a handle-availability probe. */
 export const HandleCheckSchema = z.object({
@@ -366,13 +385,17 @@ export function workspaceBase(kind: WorkspaceKind): string {
 	return kind === "team" ? "/teams" : "/businesses";
 }
 
-/** The console href for an entity, optionally deep into a module. */
+/**
+ * The console href for an entity, optionally deep into a module. Consoles are addressed by the
+ * entity's `@handle` (Decision #122) — the same address as its public profile, one namespace — never by
+ * its row id.
+ */
 export function workspaceHref(
 	kind: WorkspaceKind,
-	id: string,
+	handle: string,
 	module?: string,
 ): string {
-	const base = `${workspaceBase(kind)}/${id}`;
+	const base = `${workspaceBase(kind)}/${handle}`;
 	return module && module !== "overview" ? `${base}/${module}` : base;
 }
 

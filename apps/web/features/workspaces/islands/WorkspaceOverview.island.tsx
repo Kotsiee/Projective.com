@@ -164,7 +164,7 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 					kind={detail.kind}
 					verification={detail.verification}
 					prompt={detail.verificationPrompt}
-					href={workspaceHref(detail.kind, detail.id, "verification")}
+					href={workspaceHref(detail.kind, detail.handle, "verification")}
 					canManage={held.has("manage_settings")}
 					tone="band"
 				/>
@@ -209,7 +209,7 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 								{canInvite && (
 									<a
 										class="wsp-propose__link"
-										href={workspaceHref(detail.kind, detail.id, "members")}
+										href={workspaceHref(detail.kind, detail.handle, "members")}
 									>
 										Invite someone
 									</a>
@@ -271,7 +271,7 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 							</h2>
 							<a
 								class="wsp-band__action"
-								href={workspaceHref(detail.kind, detail.id, "projects")}
+								href={workspaceHref(detail.kind, detail.handle, "projects")}
 							>
 								All projects
 							</a>

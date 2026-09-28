@@ -190,8 +190,9 @@ and block taking precedence:
 
 The §3.1 state-machine governs **build Tasks** on the delivery tracker. The 2026-07-23 Wallet &
 Finance foundation, the 2026-07-24 Availability & Discovery Calls foundation, the 2026-07-24
-Notification Engine, the 2026-08-04 Asset Management foundation and the 2026-08-26 Service Booking
-pass add several **product domain lifecycles** — these are **separate** finite state machines that live at the
+Notification Engine, the 2026-08-04 Asset Management foundation, the 2026-08-26 Service Booking
+pass and the 2026-09-28 Teams & Businesses console (root `CLAUDE.md` §8 Decision #122) add several
+**product domain lifecycles** — these are **separate** finite state machines that live at the
 schema/business layer, and they are recorded here **only so nobody mints a bespoke build-board
 column for them.** Their canonical definitions are the enum + doc listed:
 
@@ -202,7 +203,10 @@ column for them.** Their canonical definitions are the enum + doc listed:
 | **Invoice**                | `draft → issued → paid`; `overdue` / `void`                | `finance.invoices.status` · `finance-model.md` §15   |
 | **Statement**              | `draft → issued → final`                                   | `finance.statement_status` · `finance-model.md` §15  |
 | **Dispute**                | `open → under_review → resolved` / `refunded`              | `dispute_status` · `brain.md` §Disputes              |
-| **Spend approval**         | `pending → approved` / `rejected` / `expired`              | `finance.approval_status` · `finance-model.md` §14   |
+| **Spend approval**         | `pending → approved` / `rejected` / `expired`. Filed by `finance.request_spend_approval` only when the spend genuinely needs one (over the per-transaction ceiling, over the remaining cap, or at/above the wallet's threshold), with the wallet's currency and **`expires_at = now() + 7 days`** set by the server; decided by a member holding **`approve_spend`** who is not the requester. `expired` is applied lazily, at the next decision attempt after `expires_at`; the TypeScript projection reads DB `rejected` as `declined` | `finance.approval_status` · `database/finance/Functions.md` § Workspace money governance · `finance-model.md` §14 |
+| **Workspace membership** (team / business seat) | `active → left`. A departure is a status with `left_at`, never a `DELETE`; a former member is **reactivated** by accepting a new invitation, never inserted twice. Exactly **one** active owner per entity, who can never leave or be removed — ownership moves only by **transfer** (`org.transfer_workspace_ownership`), after which the former owner holds the Admin preset or, in the same act, leaves. An invitation is **not** a member state (the former `invited` member status is gone) | `org.team_members` / `org.business_members` `status` (`CHECK IN ('active','left')`) · `packages/types/workspace` `MembershipState` · `database/org/Tables.md` § Workspace membership |
+| **Workspace invitation**   | `pending → accepted` / `declined` (the invitee) / `revoked` (the inviting side). Each has its own timestamp (`responded_at` / `revoked_at`), pinned by `ck_org_invitation_lifecycle`. **14-day expiry, DERIVED from `expires_at`, never a stored status** — a lapsed `pending` row stays in the queue and **resend renews** it (a fresh token and `expires_at = now() + 14 days`); an answered row cannot be resent or revoked. At most one pending invitation per entity per person or per address. Named people only — join requests and share links were cut (2026-09-28) | `org.org_invitations.status` · `packages/types/workspace` `WorkspaceInvite` · `database/org/Functions.md` §12 |
+| **Workspace entity** (team / business) | `draft → active → archived`; restore leaves `archived` for `active` or `draft`. Created `draft` (Draft-First); publishing needs `manage_settings`, archive/restore needs `archive_entity`, and a published entity never returns to `draft`. **Archive is refused while an escrow is held** owed to the team or funded by the business, **or while the team holds a live stage assignment** on an active / on-hold project. Nothing is hard-deleted | `org.teams.status` / `org.business_profiles.status` · `org.set_workspace_status` · `packages/types/workspace` `WorkspaceStatus` |
 | **Chargeback**             | `opened → under_review → won` / `lost` / `refunded`        | `finance.chargeback_status` · `finance-model.md` §15 |
 | **Discovery call**         | `proposed → confirmed → completed`; `declined` / `expired` / `cancelled` / `no_show` | `scheduling.call_status` · `PRODUCT_SPEC.md` §Discovery & Courtesy Calls |
 | **Event reschedule (per round)** | `none → collecting → awaiting_counterparty` \| `voting`; then `resolved` (a time carried) / `lapsed` (asked, no majority) / `withdrawn` (pulled). All three endings are terminal **for that round**; proposing again opens round `n + 1` | `RescheduleStatus` · `packages/types/scheduling/coordination.ts` · `PRODUCT_SPEC.md` §The Proactive Calendar |
@@ -277,7 +281,10 @@ column for them.** Their canonical definitions are the enum + doc listed:
 > test in `coordination_test.ts`): `RESCHEDULE_LOCKOUT_HOURS = 12` — inside it nothing moves, because
 > the other party has arranged their day around the slot; `VOTE_RESOLUTION_LEAD_HOURS = 12` — a vote
 > closes that far before the EARLIEST slot on the ballot, so a ballot can never elect a time that has
-> itself become unmovable; `MIN_VOTE_PROPOSALS = 2` — one option is an announcement, not a vote;
+> itself become unmovable, **or at the event's own lockout if that comes first**, so a vote on slots
+> after the meeting is always decided while the meeting can still be moved (a ballot-only deadline
+> let a round sit `voting` past the meeting and then move a session that had already happened);
+> `MIN_VOTE_PROPOSALS = 2` — one option is an announcement, not a vote;
 > `RESCHEDULE_PROPOSALS_MAX = 12` — a round holds at most twelve slots, approved or not, and a
 > thirteenth is refused (`ballot_full`) until the round closes. The last is also held by the database
 > (`scheduling.fn_cap_reschedule_proposals`, pinned to the constant by `coordination.contract.test.ts`),
@@ -292,6 +299,13 @@ column for them.** Their canonical definitions are the enum + doc listed:
 > null winner. The transition is applied by one pure function (`settleVote`) on every read and before
 > every action, because there is no cron in this layer and a deadline nothing observes is not a
 > deadline.
+>
+> **On a 1-on-1 the party who did NOT offer a time is the one who accepts it**
+> (`counterpartyAcceptRefusal`): the attendee accepts a host's slot once the host has put it to them
+> (`awaiting_counterparty`), and the host accepts an attendee's slot directly, in either open state —
+> the host's acceptance IS the approval that slot would otherwise wait for. Any slot is refused
+> (`slot_inside_lockout`) once it has drifted inside its own notice period while waiting, and a stale
+> attendee slot is never approved onto a live vote, where it would drag the deadline into the past.
 >
 > ⚠️ **Unreconciled with the escrow window, flagged for a human** (root CLAUDE.md §8): the 12-hour
 > reschedule lockout does not line up with §Cancellation & Escrow Protection's 24-hour cancellation

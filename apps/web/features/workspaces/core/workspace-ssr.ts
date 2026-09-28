@@ -1,10 +1,5 @@
-import type { UserContext } from "@projective/types/auth";
-import type {
-	WorkspaceDetail,
-	WorkspaceKind,
-	WorkspaceRoster,
-	WorkspaceSim,
-} from "@projective/types/workspace";
+import type { WorkspaceDetail, WorkspaceKind, WorkspaceRoster } from "@projective/types/workspace";
+import type { ReadActor } from "@server/services/read-actor.ts";
 import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBackendService.ts";
 import {
 	firstModuleFor,
@@ -17,75 +12,90 @@ import {
 /**
  * workspace-ssr — the **server-only** bootstraps for the `/teams` and `/businesses` first paint.
  *
- * These call the fat {@link WorkspaceBackendService} **directly, with no HTTP hop**, so the roster, the
- * console, the lane's nav and the header band all ship in the initial byte; the islands then refine
- * through the thin {@link WorkspaceService}. Mirrors `catalogue/core/catalogue-ssr.ts` and
- * `projects/core/feed-ssr.ts`.
+ * These call the fat {@link WorkspaceBackendService} **directly, with no HTTP hop**, as the signed-in
+ * viewer, so the roster, the console, the lane's nav and the header band all ship in the initial byte;
+ * the islands then refine through the thin `WorkspaceService`. Mirrors `wallet/core/wallet-ssr.ts`.
  *
  * **Never import this from an island.** It reaches `@server/services`, which would drag the backend
  * package into a client bundle and break the islands-are-dumb boundary (root CLAUDE.md §2). The `*-slot`
  * resolvers and route handlers are its only legitimate callers.
  */
 
-// #region Empty projections
+// #region Request-scoped memo
 /**
- * The safe empty roster, minus its kind. A read that fails must still paint a real surface — the roster's
- * empty state is a genuine, designed screen that explains what an entity is and offers to create one, so
- * degrading to it is strictly better than an error page for a viewer who simply has no entities yet.
+ * One read per question per request, however many regions ask.
  *
- * `canCreate` stays `true` on the degraded path: creation is re-validated server-side on submit, and
- * pre-emptively disabling the only action on the screen because a read failed would strand the viewer.
+ * A console page is resolved by its route handler AND by the lane, header and footer slots; without this
+ * the detail would be read from Postgres four times for one page (the roster three times on the index).
+ * Keyed on the `URL` OBJECT, the wallet precedent: Fresh hands the handler and every slot resolver of one
+ * request the same instance and the next request a new one, so an entry can never outlive the request
+ * that made it — which matters, because the read after a mutation must see the mutation. The stored
+ * value is the PROMISE, so the three bands, resolved concurrently, share one read in flight.
  */
-export const EMPTY_ROSTER: Readonly<Omit<WorkspaceRoster, "kind">> = Object.freeze({
-	items: [],
-	invitations: [],
-	actingId: null,
-	canCreate: true,
-	createBlockedReason: null,
-});
+const READS = new WeakMap<URL, Map<string, Promise<unknown>>>();
 
-/** The safe empty roster for a kind. */
-export function emptyRoster(kind: WorkspaceKind): WorkspaceRoster {
-	return { kind, ...EMPTY_ROSTER };
+function once<T>(url: URL, actor: ReadActor, key: string, run: () => Promise<T>): Promise<T> {
+	let reads = READS.get(url);
+	if (!reads) {
+		reads = new Map();
+		READS.set(url, reads);
+	}
+	const slot = `${key}|${actor.userId}|${actor.contextId}`;
+	const hit = reads.get(slot) as Promise<T> | undefined;
+	if (hit) return hit;
+	const promise = run();
+	reads.set(slot, promise);
+	return promise;
 }
 // #endregion
 
 // #region Roster
 /**
- * Resolve the roster index for a kind and viewer.
+ * The outcome of a roster read: the roster, or why it could not be produced.
  *
- * Total by construction: a failed or empty read degrades to {@link emptyRoster} rather than throwing, so
- * the index always renders.
+ * A failed read is NOT folded into an empty roster. "You have no teams yet — create one" drawn for a
+ * member of three teams because the database was unreachable is a false statement about their account;
+ * the page renders the failure instead, and the empty state stays reserved for a roster that is empty.
  */
+export type RosterRead = { ok: true; roster: WorkspaceRoster } | { ok: false; message: string };
+
+/** Resolve the roster index for a kind, as the viewer. Memoized per request. */
 export function resolveRoster(
 	kind: WorkspaceKind,
-	context: UserContext,
-	sim?: WorkspaceSim,
-): WorkspaceRoster {
-	const res = WorkspaceBackendService.roster(kind, context, sim);
-	return res.ok && res.data ? res.data : emptyRoster(kind);
+	actor: ReadActor,
+	url: URL,
+): Promise<RosterRead> {
+	return once(url, actor, `roster:${kind}`, async (): Promise<RosterRead> => {
+		const res = await WorkspaceBackendService.roster(kind, actor);
+		if (res.ok && res.data) return { ok: true, roster: res.data };
+		return {
+			ok: false,
+			message: res.message ?? "We couldn't load your workspaces just now. Try again in a moment.",
+		};
+	});
 }
 // #endregion
 
 // #region Console detail
 /**
- * Resolve one entity's console projection, or `null` when it does not exist or the viewer is not a member.
+ * Resolve one entity's console projection by its handle (or row id), or `null` when it does not exist,
+ * the viewer is not a member, or it could not be read.
  *
  * **`null` deliberately does NOT degrade to an empty detail.** A fabricated console would show a real
- * name, an empty roster and a zeroed wallet to somebody who has no relationship with the entity — which
- * reads as "your team lost its members and its money", the single worst lie this surface could tell. A
- * missing entity is a not-found, and the route must render it as one. The degrade-to-empty pattern is
- * correct for a LIST (nothing to show yet) and wrong for an IDENTITY (this thing is not yours to see).
+ * name, an empty roster and a zeroed wallet — which reads as "your team lost its members and its money",
+ * the single worst lie this surface could tell. Memoized per request.
  */
 export function resolveWorkspaceDetail(
 	kind: WorkspaceKind,
-	id: string,
-	context: UserContext,
-	sim?: WorkspaceSim,
-): WorkspaceDetail | null {
-	if (!id) return null;
-	const res = WorkspaceBackendService.detail(kind, id, context, sim);
-	return res.ok && res.data ? res.data.workspace : null;
+	ref: string,
+	actor: ReadActor,
+	url: URL,
+): Promise<WorkspaceDetail | null> {
+	if (!ref) return Promise.resolve(null);
+	return once(url, actor, `detail:${kind}:${ref.toLowerCase()}`, async () => {
+		const res = await WorkspaceBackendService.detail(kind, ref, actor);
+		return res.ok && res.data ? res.data : null;
+	});
 }
 // #endregion
 
@@ -107,26 +117,19 @@ export interface WorkspaceConsoleBootstrap {
 /**
  * Resolve a console route in one call: the detail, the viewer's visible modules, and the module to render.
  *
- * The correction step is where the **"never 404 a user out of their own workspace"** invariant is actually
- * enforced. Three outcomes, deliberately distinct:
- *
- *   - The requested key is not in the registry → the caller passed `null`/an unknown segment, and the
- *     route should 404: a bad link is a bad link, and silently redirecting it hides a broken URL.
- *   - The key is a real module the viewer may not open → correct to {@link firstModuleFor} and report
- *     `redirectedFrom`, so a member who follows a colleague's link to Roles lands on their own Overview
- *     rather than being told they do not belong here.
- *   - Otherwise → render exactly what was asked for.
- *
+ * The correction step is where the **"never 404 a user out of their own workspace"** invariant is
+ * enforced: a real module the viewer may not open corrects to {@link firstModuleFor} and reports
+ * `redirectedFrom`, so a member following a colleague's link to Roles lands on their own Overview.
  * Returns `null` only when the entity itself did not resolve (see {@link resolveWorkspaceDetail}).
  */
-export function resolveWorkspaceConsole(
+export async function resolveWorkspaceConsole(
 	kind: WorkspaceKind,
-	id: string,
+	ref: string,
 	requested: ModuleKey,
-	context: UserContext,
-	sim?: WorkspaceSim,
-): WorkspaceConsoleBootstrap | null {
-	const workspace = resolveWorkspaceDetail(kind, id, context, sim);
+	actor: ReadActor,
+	url: URL,
+): Promise<WorkspaceConsoleBootstrap | null> {
+	const workspace = await resolveWorkspaceDetail(kind, ref, actor, url);
 	if (!workspace) return null;
 
 	const capabilities = workspace.viewerCapabilities;

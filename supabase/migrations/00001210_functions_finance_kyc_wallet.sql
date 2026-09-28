@@ -88,8 +88,12 @@ AS $$
     );
 $$;
 
--- In-DB capability check. SECURITY DEFINER so future money-movement RPCs can gate on it without RLS
--- recursion. An owner-level member (manage_members) implicitly has every capability.
+-- In-DB capability check. SECURITY DEFINER so money-movement RPCs can gate on it without RLS
+-- recursion. An owner-level member (manage_members) implicitly has every capability. The grant rows
+-- are a projection of the workspace capabilities (org.fn_sync_vault_permissions), and the answer is
+-- additionally conditioned on CURRENT membership of a team or business — so a row that outlived its
+-- member for any reason (a direct write, a sync not yet run) authorises nothing. Internal: it answers
+-- for an arbitrary user, so no client role may call it directly.
 CREATE OR REPLACE FUNCTION finance.fn_has_vault_capability(
     p_wallet uuid, p_user uuid, p_cap finance.vault_capability
 )
@@ -102,10 +106,16 @@ AS $$
     SELECT
         security.is_admin ()
         OR EXISTS (
-            SELECT 1 FROM finance.vault_permissions vp
+            SELECT 1
+            FROM finance.vault_permissions vp
+            JOIN finance.wallets w ON w.id = vp.wallet_id
             WHERE vp.wallet_id = p_wallet
               AND vp.member_user_id = p_user
               AND (p_cap = ANY (vp.capabilities) OR 'manage_members'::finance.vault_capability = ANY (vp.capabilities))
+              AND (
+                  w.owner_type NOT IN ('team', 'business')
+                  OR EXISTS (SELECT 1 FROM org.fn_member_seat (w.owner_type, w.owner_id, p_user))
+              )
         );
 $$;
 
@@ -1477,9 +1487,10 @@ flooring each share; what does not divide stays in the vault, which is debited b
 Needs the distribute capability. Idempotent on the attempt key. Refusals: 42501 · 22023 · PB404 ·
 PF402 not enough · PD422 no split agreed.';
 
--- Decide a queued over-cap spend request. The decider must be an admin of the account
--- (`manage_members`) and not the person who asked — approving one's own over-cap spend would make the
--- cap decorative. A request past its expiry is marked expired rather than decided.
+-- Decide a queued over-cap spend request. The decider must hold `approve_spend` on the account (the
+-- workspace capability of the same name, projected onto the vault — manage_members implies it) and
+-- not be the person who asked: approving one's own over-cap spend would make the cap decorative. A
+-- request past its expiry is marked expired rather than decided.
 CREATE OR REPLACE FUNCTION finance.decide_spend_approval(p_approval uuid, p_decision text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1506,8 +1517,8 @@ BEGIN
     IF v_row.requested_by = v_uid THEN
         RAISE EXCEPTION 'You can''t decide your own spend request' USING ERRCODE = '42501';
     END IF;
-    IF NOT finance.fn_has_vault_capability (v_row.wallet_id, v_uid, 'manage_members'::finance.vault_capability) THEN
-        RAISE EXCEPTION 'Only an admin of this account can decide spend requests' USING ERRCODE = '42501';
+    IF NOT finance.fn_has_vault_capability (v_row.wallet_id, v_uid, 'approve_spend'::finance.vault_capability) THEN
+        RAISE EXCEPTION 'Only a member who approves spend on this account can decide spend requests' USING ERRCODE = '42501';
     END IF;
     IF v_row.status <> 'pending'::finance.approval_status THEN
         RAISE EXCEPTION 'That request has already been decided' USING ERRCODE = 'PC409';
@@ -1536,7 +1547,327 @@ END;
 $$;
 
 COMMENT ON FUNCTION finance.decide_spend_approval(uuid, text) IS
-'Approve or reject a pending over-cap spend request. The decider needs manage_members on the account and
+'Approve or reject a pending over-cap spend request. The decider needs approve_spend on the account and
 may not be the requester; an expired request is marked expired. Notifies the requester. Refusals:
 42501 · 22023 · PB404 · PC409 already decided.';
+-- #endregion
+
+-- #region 13. Workspace money governance — the team split, the business spend policy, spend requests
+-- The write side of the /teams and /businesses Money modules (Decision #122). Authority is the
+-- WORKSPACE capability `manage_finances` (org.fn_member_can), the same answer the console renders
+-- from; the vault projection that the money functions enforce is re-synced after every change.
+
+-- A team's split, replaced whole. `p_stakes` is `[{member_id, share_bp, held}]` over ACTIVE members
+-- and must total exactly 100%; an active member left out is written at 0, a departed member is
+-- zeroed. Nothing is deleted.
+CREATE OR REPLACE FUNCTION finance.save_team_split(p_team_id uuid, p_stakes jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_total bigint := 0;
+    s jsonb;
+    v_member uuid;
+    v_user uuid;
+    v_bp integer;
+    v_seen uuid[] := '{}';
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM org.teams t WHERE t.id = p_team_id) THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'workspace: not found';
+    END IF;
+    IF NOT org.fn_member_can('team', p_team_id, 'manage_finances') THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'stakes: you cannot change how this team splits its income';
+    END IF;
+    IF p_stakes IS NULL OR jsonb_typeof(p_stakes) <> 'array' OR jsonb_array_length(p_stakes) = 0 THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'stakes: give every member a share';
+    END IF;
+
+    -- Validate the whole set before writing any of it.
+    FOR s IN SELECT * FROM jsonb_array_elements(p_stakes) LOOP
+        v_member := NULLIF(s->>'member_id', '')::uuid;
+        v_bp := (s->>'share_bp')::integer;
+        IF v_member IS NULL OR v_bp IS NULL OR v_bp < 0 OR v_bp > 10000 THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'stakes: every share is a whole number of basis points from 0 to 10000';
+        END IF;
+        IF v_member = ANY (v_seen) THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'stakes: a member appears twice';
+        END IF;
+        v_seen := v_seen || v_member;
+        IF NOT EXISTS (SELECT 1 FROM org.team_members m WHERE m.id = v_member AND m.team_id = p_team_id AND m.status = 'active') THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'stakes: every share must belong to an active member';
+        END IF;
+        v_total := v_total + v_bp;
+    END LOOP;
+    IF v_total <> 10000 THEN
+        RAISE EXCEPTION USING ERRCODE = '22023',
+            MESSAGE = 'stakes: the split must total 100% (it is ' || CASE WHEN v_total > 10000 THEN 'over' ELSE 'under' END
+                   || ' by ' || trim_scale(round(abs(v_total - 10000) / 100.0, 2))::text || '%)';
+    END IF;
+
+    -- Every agreement row of the team is rewritten: listed members to their share, everybody else to 0.
+    UPDATE finance.contribution_agreements SET percent_bp = 0, held = false WHERE team_id = p_team_id;
+    FOR s IN SELECT * FROM jsonb_array_elements(p_stakes) LOOP
+        SELECT m.user_id INTO v_user FROM org.team_members m WHERE m.id = (s->>'member_id')::uuid;
+        INSERT INTO finance.contribution_agreements (team_id, member_user_id, percent_bp, held)
+        VALUES (p_team_id, v_user, (s->>'share_bp')::integer, COALESCE((s->>'held')::boolean, false))
+        ON CONFLICT (team_id, member_user_id) DO UPDATE
+            SET percent_bp = EXCLUDED.percent_bp, held = EXCLUDED.held;
+    END LOOP;
+
+    INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
+    VALUES (v_uid, 'team.split_changed', 'org.teams', p_team_id, jsonb_build_object('stakes', p_stakes));
+    RETURN jsonb_build_object('team_id', p_team_id, 'total_bp', v_total);
+END;
+$$;
+
+-- What the team's NEXT release will pay, by the same plan the release runs (fn_team_split_plan). The
+-- honest gross is the team's oldest escrow still held; a team with none has no projection (`gross`
+-- NULL) rather than an invented one.
+CREATE OR REPLACE FUNCTION finance.preview_team_split(p_team_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_escrow record;
+    v_fee_bp integer;
+    v_fee bigint;
+    v_payout bigint;
+BEGIN
+    IF auth.uid() IS NULL OR NOT EXISTS (
+        SELECT 1 FROM org.fn_member_seat('team', p_team_id, auth.uid())
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'workspace: you are not a member of this team';
+    END IF;
+    SELECT e.id, e.amount_cents, COALESCE(e.deadline_bonus_cents, 0) AS bonus, e.currency
+      INTO v_escrow
+      FROM finance.escrows e
+     WHERE e.payee_type = 'team' AND e.payee_id = p_team_id AND e.status = 'held'
+     ORDER BY e.created_at, e.id
+     LIMIT 1;
+    IF v_escrow.id IS NULL THEN
+        RETURN jsonb_build_object('gross_minor', NULL, 'currency', NULL, 'fee_minor', NULL, 'plan',
+            finance.fn_team_split_plan(p_team_id, 0));
+    END IF;
+    SELECT (p.value #>> '{}')::integer INTO v_fee_bp FROM security.platform_params p WHERE p.key = 'platform_fee_bp';
+    v_fee := (v_escrow.amount_cents * COALESCE(v_fee_bp, 0)) / 10000;
+    v_payout := GREATEST(v_escrow.amount_cents + v_escrow.bonus - v_fee, 0);
+    RETURN jsonb_build_object(
+        'escrow_id', v_escrow.id,
+        'gross_minor', v_escrow.amount_cents + v_escrow.bonus,
+        'currency', v_escrow.currency,
+        'fee_minor', v_fee,
+        'plan', finance.fn_team_split_plan(p_team_id, v_payout)
+    );
+END;
+$$;
+
+-- A business's spend policy, as a patch — a key present is a change, so "absent" and "null" stay
+-- distinguishable. Keys:
+--   currency                   which of the business's wallets the threshold and limits apply to
+--                              (default: its default currency);
+--   approval_threshold_minor   NULL disables the threshold (0 is refused: "every spend needs a second
+--                              approver" is expressed with a per-transaction ceiling of 0 instead);
+--   approver_ids / contributor_ids   the members (by member id) who hold `approve_spend` /
+--                              `contribute_funds` — everyone else does not;
+--   limits  [{member_id, can_spend, limit_minor, per_transaction_minor}]
+-- Every change to a member is subject to the same rules as the member drawer: never your own row,
+-- never the owner's, only somebody you outrank, and never a capability you do not hold yourself.
+CREATE OR REPLACE FUNCTION finance.save_spend_policy(p_business_id uuid, p_patch jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_owner uuid;
+    v_currency text;
+    v_wallet uuid;
+    v_actor org.workspace_capability[];
+    v_actor_rank integer;
+    v_threshold bigint;
+    r record;
+    l jsonb;
+    v_want boolean;
+    v_has boolean;
+    v_ids uuid[];
+    v_cap org.workspace_capability;
+    v_key text;
+    v_limit bigint;
+    v_per_tx bigint;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
+    END IF;
+    IF p_patch IS NULL OR jsonb_typeof(p_patch) <> 'object' THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'patch: expected an object';
+    END IF;
+    SELECT b.owner_user_id, upper(COALESCE(NULLIF(p_patch->>'currency', ''), b.default_currency, 'USD'))
+      INTO v_owner, v_currency
+      FROM org.business_profiles b WHERE b.id = p_business_id;
+    IF v_owner IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'workspace: not found';
+    END IF;
+    IF NOT org.fn_member_can('business', p_business_id, 'manage_finances') THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'policy: you cannot change this business''s spend policy';
+    END IF;
+    v_actor := org.fn_member_capabilities('business', p_business_id, v_uid);
+    SELECT s.rank INTO v_actor_rank FROM org.fn_member_seat('business', p_business_id, v_uid) s;
+    v_wallet := finance.fn_ensure_wallet('business', p_business_id, v_currency);
+
+    IF p_patch ? 'approval_threshold_minor' THEN
+        v_threshold := NULLIF(p_patch->>'approval_threshold_minor', '')::bigint;
+        IF v_threshold IS NOT NULL AND v_threshold < 1 THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'approvalThresholdMinor: a threshold is at least one minor unit — clear it to turn approvals off';
+        END IF;
+        UPDATE finance.wallets SET approval_threshold_cents = v_threshold WHERE id = v_wallet;
+    END IF;
+
+    -- Set-valued capability keys: approver_ids → approve_spend, contributor_ids → contribute_funds.
+    FOREACH v_key IN ARRAY ARRAY['approver_ids', 'contributor_ids'] LOOP
+        CONTINUE WHEN NOT (p_patch ? v_key);
+        v_cap := CASE v_key WHEN 'approver_ids' THEN 'approve_spend' ELSE 'contribute_funds' END::org.workspace_capability;
+        SELECT COALESCE(array_agg(x::uuid), '{}') INTO v_ids FROM jsonb_array_elements_text(p_patch->v_key) x;
+        FOR r IN
+            SELECT m.id, m.user_id, org.fn_preset_rank(m.role) AS rank
+              FROM org.business_members m WHERE m.business_id = p_business_id AND m.status = 'active'
+        LOOP
+            -- The owner (who holds everything) and the caller (who cannot edit themselves) are fixed
+            -- points of the set, not members of it: the list names everybody ELSE.
+            CONTINUE WHEN r.user_id = v_owner OR r.user_id = v_uid;
+            v_want := r.id = ANY (v_ids);
+            v_has := v_cap = ANY (org.fn_member_capabilities('business', p_business_id, r.user_id));
+            CONTINUE WHEN v_want = v_has;
+            IF r.rank >= v_actor_rank THEN
+                RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = replace(v_key, '_ids', 'Ids') || ': you cannot change that for this member';
+            END IF;
+            IF v_want AND NOT (v_cap = ANY (v_actor)) THEN
+                RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = replace(v_key, '_ids', 'Ids') || ': you cannot grant a permission you do not hold';
+            END IF;
+            PERFORM org.fn_set_member_capability('business', r.id, v_cap, v_want);
+        END LOOP;
+    END LOOP;
+
+    IF p_patch ? 'limits' THEN
+        FOR l IN SELECT * FROM jsonb_array_elements(p_patch->'limits') LOOP
+            SELECT m.id, m.user_id, org.fn_preset_rank(m.role) AS rank INTO r
+              FROM org.business_members m
+             WHERE m.id = NULLIF(l->>'member_id', '')::uuid AND m.business_id = p_business_id AND m.status = 'active';
+            IF r.id IS NULL THEN
+                RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'limits: every limit must belong to an active member';
+            END IF;
+            IF r.user_id = v_owner OR r.user_id = v_uid OR r.rank >= v_actor_rank THEN
+                RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'limits: you cannot change this member''s limit';
+            END IF;
+            IF l ? 'can_spend' THEN
+                v_want := (l->>'can_spend')::boolean;
+                IF v_want AND NOT ('spend_funds' = ANY (v_actor)) THEN
+                    RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'limits: you cannot grant a permission you do not hold';
+                END IF;
+                PERFORM org.fn_set_member_capability('business', r.id, 'spend_funds', v_want);
+            END IF;
+            IF l ? 'limit_minor' OR l ? 'per_transaction_minor' THEN
+                v_limit := NULLIF(l->>'limit_minor', '')::bigint;
+                v_per_tx := NULLIF(l->>'per_transaction_minor', '')::bigint;
+                IF (v_limit IS NOT NULL AND v_limit < 0) OR (v_per_tx IS NOT NULL AND v_per_tx < 0) THEN
+                    RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'limits: a limit cannot be negative';
+                END IF;
+                INSERT INTO finance.spending_limits (wallet_id, member_user_id, cap_cents, per_transaction_cents)
+                VALUES (v_wallet, r.user_id, v_limit, v_per_tx)
+                ON CONFLICT (wallet_id, member_user_id) DO UPDATE
+                    SET cap_cents = CASE WHEN l ? 'limit_minor' THEN EXCLUDED.cap_cents ELSE finance.spending_limits.cap_cents END,
+                        per_transaction_cents = CASE WHEN l ? 'per_transaction_minor' THEN EXCLUDED.per_transaction_cents ELSE finance.spending_limits.per_transaction_cents END;
+            END IF;
+        END LOOP;
+    END IF;
+
+    PERFORM org.fn_sync_vault_permissions('business', p_business_id, NULL);
+    INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
+    VALUES (v_uid, 'business.spend_policy_changed', 'org.business_profiles', p_business_id,
+            jsonb_build_object('currency', v_currency, 'fields', to_jsonb(ARRAY(SELECT jsonb_object_keys(p_patch)))));
+    RETURN jsonb_build_object('business_id', p_business_id, 'currency', v_currency);
+END;
+$$;
+
+-- Ask for approval of a spend the caller's envelope does not cover. Replaces the client INSERT policy
+-- that let any member who could SEE a wallet file a request in any currency with any expiry: the
+-- requester must hold `spend` on the wallet, the request must genuinely need approval (the SQL twin of
+-- @projective/types/workspace `evaluateSpend` — over the per-transaction ceiling, over the remaining
+-- cap, or at/above the threshold), and the currency and expiry are the server's.
+CREATE OR REPLACE FUNCTION finance.request_spend_approval(
+    p_wallet uuid, p_amount bigint, p_reason text, p_ref_table text DEFAULT NULL, p_ref_id uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_w finance.wallets;
+    v_lim finance.spending_limits;
+    v_reason text := btrim(COALESCE(p_reason, ''));
+    v_needs boolean := false;
+    v_id uuid;
+    v_approver uuid;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
+    END IF;
+    SELECT * INTO v_w FROM finance.wallets WHERE id = p_wallet;
+    IF NOT FOUND OR v_w.owner_type NOT IN ('business', 'team') THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'wallet: not found';
+    END IF;
+    IF NOT finance.fn_has_vault_capability(p_wallet, v_uid, 'spend'::finance.vault_capability) THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'spend: you do not have permission to spend from this account';
+    END IF;
+    IF p_amount IS NULL OR p_amount <= 0 THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'amountMinor: enter an amount';
+    END IF;
+    IF length(v_reason) < 1 OR length(v_reason) > 400 THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'reason: say what it is for, in up to 400 characters';
+    END IF;
+    IF p_ref_table IS NOT NULL AND p_ref_table NOT IN ('projects', 'project_stages', 'tickets', 'basket_items', 'orders') THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'refTable: not something a spend can be for';
+    END IF;
+
+    SELECT * INTO v_lim FROM finance.spending_limits WHERE wallet_id = p_wallet AND member_user_id = v_uid;
+    IF FOUND THEN
+        v_needs := (v_lim.per_transaction_cents IS NOT NULL AND p_amount > v_lim.per_transaction_cents)
+                OR (v_lim.cap_cents IS NOT NULL AND p_amount > v_lim.cap_cents - CASE
+                        WHEN v_lim.period_interval <> 'total' AND v_lim.resets_at IS NOT NULL AND v_lim.resets_at <= now() THEN 0
+                        ELSE v_lim.spent_cents END);
+    END IF;
+    v_needs := v_needs OR (COALESCE(v_w.approval_threshold_cents, 0) > 0 AND p_amount >= v_w.approval_threshold_cents);
+    IF NOT v_needs THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'amountMinor: this spend is within your limits and needs no approval';
+    END IF;
+
+    INSERT INTO finance.spend_approvals (wallet_id, requested_by, amount_cents, currency, reason, ref_table, ref_id, status, expires_at)
+    VALUES (p_wallet, v_uid, p_amount, v_w.currency, v_reason, p_ref_table, p_ref_id, 'pending', now() + interval '7 days')
+    RETURNING id INTO v_id;
+
+    FOR v_approver IN
+        SELECT vp.member_user_id FROM finance.vault_permissions vp
+         WHERE vp.wallet_id = p_wallet AND vp.member_user_id <> v_uid
+           AND ('approve_spend'::finance.vault_capability = ANY (vp.capabilities)
+                OR 'manage_members'::finance.vault_capability = ANY (vp.capabilities))
+    LOOP
+        PERFORM comms.fn_notify(
+            v_approver, 'spend_approval.requested', 'A spend needs your approval', left(v_reason, 200),
+            'spend_approvals', v_id, '{}'::jsonb, v_uid, v_w.owner_type, v_w.owner_id
+        );
+    END LOOP;
+    RETURN jsonb_build_object('id', v_id, 'status', 'pending');
+END;
+$$;
 -- #endregion

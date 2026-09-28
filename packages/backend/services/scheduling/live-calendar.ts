@@ -23,6 +23,7 @@ import {
 	RESCHEDULE_PROPOSALS_MAX,
 	rescheduleModeFor,
 	settleVote,
+	voteResolvesAt,
 } from "@projective/types/scheduling";
 import type { AssetItem } from "@projective/types/files";
 import { countsAsOnboarded } from "@projective/types/projects";
@@ -107,9 +108,6 @@ const EVENT_COLUMNS = [
 	"location",
 	"meeting_provider",
 	"meeting_provider_label",
-	"meeting_url",
-	"meeting_passcode",
-	"meeting_details",
 	"meeting_pending",
 	"meta",
 	"attendee_count",
@@ -135,9 +133,13 @@ interface EventRow {
 	location: string | null;
 	meeting_provider: string | null;
 	meeting_provider_label: string | null;
-	meeting_url: string | null;
-	meeting_passcode: string | null;
-	meeting_details: string | null;
+	/**
+	 * The room is NOT a column the reader may select: it is merged in from `scheduling.get_event_rooms`,
+	 * which answers only for events the reader is a party to (see {@link mergeRooms}).
+	 */
+	meeting_url?: string | null;
+	meeting_passcode?: string | null;
+	meeting_details?: string | null;
 	meeting_pending: boolean;
 	meta: string | null;
 	attendee_count: number | null;
@@ -243,8 +245,15 @@ const HISTORY_CAP = 100;
 /** The most attachments one event carries (`.max(50)`). */
 const ATTACHMENT_CAP = 50;
 
-/** The most events one page reads, so a busy engagement cannot turn one page view into a scan. */
-const EVENT_CAP = 500;
+/** PostgREST's `max_rows` (config.toml): a read past this many rows is silently cut, so every read
+ * that can reach it pages with `.range()` until a short page comes back. */
+const PAGE = 1000;
+
+/** A ceiling on pages per read, so a runaway window cannot turn one page view into a scan. */
+const MAX_PAGES = 20;
+
+/** How many ids one `get_event_rooms` call takes (the function refuses more). */
+const ROOM_CHUNK = 500;
 
 /** Ticket statuses that are no longer anybody's deadline. */
 const DEADLINE_EXCLUDED_TICKETS = new Set(["cancelled", "reported_hidden"]);
@@ -269,20 +278,69 @@ function chunks<T>(list: readonly T[], size = IN_CHUNK): T[][] {
 	return out;
 }
 
-/** Run a `.in()` read over every chunk of `ids`, concatenating the rows. Throws on any failure. */
+/** A PostgREST query that can be paged — every builder `from()` returns. */
+interface Pageable {
+	range(from: number, to: number): PromiseLike<{ data: unknown; error: { message: string } | null }>;
+}
+
+/**
+ * Read EVERY row a query matches, a page at a time. PostgREST cuts any single response at `max_rows`
+ * without saying so, and the rows these reads feed decide who may vote and whether a vote carried, so
+ * a truncated answer is a wrong answer. `build` must return a fresh, deterministically ORDERED query.
+ */
+async function readPaged<T>(build: () => Pageable, what: string): Promise<T[]> {
+	const out: T[] = [];
+	for (let page = 0; page < MAX_PAGES; page++) {
+		const { data, error } = await build().range(page * PAGE, page * PAGE + PAGE - 1);
+		if (error) throw new Error(`${what} read failed: ${error.message}`);
+		const rows = (data ?? []) as T[];
+		out.push(...rows);
+		if (rows.length < PAGE) return out;
+	}
+	throw new Error(`${what} read exceeded ${MAX_PAGES * PAGE} rows`);
+}
+
+/** Run a `.in()` read over every chunk of `ids`, paging each, concatenating the rows. Throws on any failure. */
 async function readIn<T>(
 	ids: readonly string[],
-	read: (chunk: string[]) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+	read: (chunk: string[]) => Pageable,
 	what: string,
 ): Promise<T[]> {
 	if (ids.length === 0) return [];
-	const answers = await Promise.all(chunks(ids).map((chunk) => read(chunk)));
-	const out: T[] = [];
+	const answers = await Promise.all(chunks(ids).map((chunk) => readPaged<T>(() => read(chunk), what)));
+	return answers.flat();
+}
+
+/**
+ * Merge each event's meeting room into its row. The three room columns are withheld from every client
+ * role at the column level; `scheduling.get_event_rooms` returns them only for the events the reader is
+ * a PARTY to (seated, or the creator) — the same people `isEventParty` shows them to — so a member who
+ * may see that a meeting exists no longer holds its link. Only rows that have a provider can have a room.
+ */
+async function mergeRooms(
+	actor: ReadActor & { accessToken: string },
+	rows: readonly EventRow[],
+): Promise<EventRow[]> {
+	const ids = rows.filter((r) => r.meeting_provider).map((r) => r.id);
+	if (ids.length === 0) return [...rows];
+	const answers = await Promise.all(
+		chunks(ids, ROOM_CHUNK).map((chunk) =>
+			db(actor, "scheduling").rpc("get_event_rooms", { p_event_ids: chunk })
+		),
+	);
+	const rooms = new Map<string, { meeting_url: string | null; meeting_passcode: string | null; meeting_details: string | null }>();
 	for (const answer of answers) {
-		if (answer.error) throw new Error(`${what} read failed: ${answer.error.message}`);
-		out.push(...((answer.data ?? []) as T[]));
+		if (answer.error) throw new Error(`scheduling.get_event_rooms failed: ${answer.error.message}`);
+		for (const r of (answer.data ?? []) as Array<{ event_id: string; meeting_url: string | null; meeting_passcode: string | null; meeting_details: string | null }>) {
+			rooms.set(r.event_id, r);
+		}
 	}
-	return out;
+	return rows.map((row) => {
+		const room = rooms.get(row.id);
+		return room
+			? { ...row, meeting_url: room.meeting_url, meeting_passcode: room.meeting_passcode, meeting_details: room.meeting_details }
+			: { ...row, meeting_url: null, meeting_passcode: null, meeting_details: null };
+	});
 }
 
 function ms(iso: string | null | undefined): number | null {
@@ -446,7 +504,8 @@ async function loadCoordination(
 			(ids) =>
 				sched.from("event_attendees")
 					.select("id, event_id, user_id, role, response, responded_at, note, created_at")
-					.in("event_id", ids),
+					.in("event_id", ids)
+					.order("id"),
 			"scheduling.event_attendees",
 		),
 		readIn<RoundRow>(
@@ -456,7 +515,8 @@ async function loadCoordination(
 					.select(
 						"id, event_id, round, mode, status, opened_by_user_id, opened_at, resolves_at, resolved_proposal_id",
 					)
-					.in("event_id", ids),
+					.in("event_id", ids)
+					.order("id"),
 			"scheduling.event_reschedules",
 		),
 		readIn<HistoryRow>(
@@ -465,7 +525,8 @@ async function loadCoordination(
 				sched.from("event_history")
 					.select("id, event_id, kind, actor_user_id, summary, detail, target_id, occurred_at")
 					.in("event_id", ids)
-					.order("occurred_at", { ascending: true }),
+					.order("occurred_at", { ascending: true })
+					.order("id"),
 			"scheduling.event_history",
 		).catch(() => [] as HistoryRow[]),
 		readIn<{ event_id: string; file_id: string }>(
@@ -474,7 +535,8 @@ async function loadCoordination(
 				sched.from("event_attachments")
 					.select("event_id, file_id")
 					.in("event_id", ids)
-					.order("created_at", { ascending: true }),
+					.order("created_at", { ascending: true })
+					.order("file_id"),
 			"scheduling.event_attachments",
 		).catch(() => [] as { event_id: string; file_id: string }[]),
 	]);
@@ -495,7 +557,8 @@ async function loadCoordination(
 						"id, reschedule_id, starts_at, ends_at, proposed_by_user_id, proposed_by_role, proposed_at, approved, note",
 					)
 					.in("reschedule_id", ids)
-					.order("proposed_at", { ascending: true }),
+					.order("proposed_at", { ascending: true })
+					.order("id"),
 			"scheduling.reschedule_proposals",
 		),
 		readIn<VoteRow>(
@@ -504,7 +567,8 @@ async function loadCoordination(
 				sched.from("proposal_votes")
 					.select("reschedule_id, proposal_id, attendee_id, cast_at")
 					.in("reschedule_id", ids)
-					.order("cast_at", { ascending: true }),
+					.order("cast_at", { ascending: true })
+					.order("attendee_id"),
 			"scheduling.proposal_votes",
 		),
 		loadAttachments(actor, attachmentLinks, now),
@@ -538,7 +602,7 @@ async function loadAttachments(
 			[...new Set(links.map((l) => l.file_id))],
 			(ids) =>
 				db(actor, "files").from("items").select(ITEM_COLUMNS).in("id", ids).eq("status", "uploaded")
-					.is("deleted_at", null),
+					.is("deleted_at", null).order("id"),
 			"files.items",
 		);
 	} catch {
@@ -614,6 +678,7 @@ function toReschedule(
 	round: RoundRow,
 	roster: readonly EventAttendee[],
 	ctx: AssemblyContext,
+	eventStartMs: number,
 ): EventReschedule {
 	const seats = new Map(roster.map((a) => [a.id, a]));
 	const votes = ctx.coord.votes.get(round.id) ?? [];
@@ -639,16 +704,24 @@ function toReschedule(
 				};
 			}),
 	}));
+	// A defensive bound only: the planner refuses a slot past the cap and the
+	// `fn_cap_reschedule_proposals` trigger refuses the row, so a round can no longer hold more. It
+	// stays so a round written before the trigger existed still parses.
+	const ballot = proposals.slice(0, RESCHEDULE_PROPOSALS_MAX);
 	return {
 		mode: round.mode,
 		status: round.status,
 		openedBy: round.opened_by_user_id ? partyFor(ctx, round.opened_by_user_id) : null,
 		openedAt: ms(round.opened_at),
-		// A defensive bound only: the planner refuses a slot past the cap and the
-		// `fn_cap_reschedule_proposals` trigger refuses the row, so a round can no longer hold more. It
-		// stays so a round written before the trigger existed still parses.
-		proposals: proposals.slice(0, RESCHEDULE_PROPOSALS_MAX),
-		resolvesAt: ms(round.resolves_at),
+		proposals: ballot,
+		// A LIVE vote's deadline is re-derived from the ballot this read holds rather than trusted from
+		// the stamp: the stamp is maintained by `fn_guard_reschedule_write`, but a deadline shown to a
+		// reader must be the one the settlement below will judge by, and that is the ballot's. A closed
+		// round keeps its stamp — the event has since moved, so re-deriving against the NEW start would
+		// rewrite the instant the decision was taken.
+		resolvesAt: round.mode === "vote" && round.status === "voting"
+			? voteResolvesAt(ballot, eventStartMs)
+			: ms(round.resolves_at),
 		resolvedProposalId: round.resolved_proposal_id,
 		round: round.round,
 	};
@@ -723,9 +796,12 @@ function toCalendarEvent(row: EventRow, ctx: AssemblyContext): CalendarEvent {
 	const meeting = toMeeting(row);
 	if (meeting) event.meeting = meeting;
 	if (roster) {
-		event.roster = roster.slice(0, 200);
+		// The WHOLE roster: seating, party status and the vote's electorate are all decided from it.
+		// It is capped for the wire at the service boundary (privacy.ts `capRosterForWire`), after
+		// settlement, keeping the host's and the reader's own seats.
+		event.roster = roster;
 		event.reschedule = round
-			? toReschedule(round, roster, ctx)
+			? toReschedule(round, roster, ctx, event.start)
 			: emptyReschedule(rescheduleModeFor(roster.length));
 	}
 	const history = ctx.coord.history.get(row.id);
@@ -741,22 +817,27 @@ function toCalendarEvent(row: EventRow, ctx: AssemblyContext): CalendarEvent {
  * Record any vote this read found already decided, and fold the decision into the projection.
  *
  * Returns whether a round was closed by somebody else between this read and the close — the caller
- * then re-reads once, so the page it answers with is the one the database holds.
+ * then re-reads once, so the page it answers with is the one the database holds — and the events
+ * whose decision could NOT be written down. A READ shows those as decided anyway (the decision is the
+ * rule's answer whether or not it was recorded); a WRITE must refuse on them, because the database
+ * still holds the round as `voting`, and a proposal would then open the next round on top of it and
+ * strand a carried vote where no later read could ever find it to record.
  */
 async function settleDecidedVotes(
 	events: CalendarEvent[],
 	rounds: Map<string, RoundRow>,
 	now: number,
 	tz: string,
-): Promise<boolean> {
+): Promise<{ raced: boolean; unrecorded: Set<string> }> {
 	let raced = false;
+	const unrecorded = new Set<string>();
 	for (let i = 0; i < events.length; i++) {
 		const event = events[i];
 		const reschedule = event.reschedule;
 		const round = rounds.get(event.id);
 		if (!reschedule || !round || reschedule.status !== "voting" || !event.roster) continue;
 
-		const settled = settleVote(now, reschedule, eligibleVoterCount(event.roster));
+		const settled = settleVote(now, reschedule, eligibleVoterCount(event.roster), event.start);
 		if (settled.status === reschedule.status) continue;
 
 		const winner = settled.proposals.find((p) => p.id === settled.resolvedProposalId) ?? null;
@@ -785,6 +866,7 @@ async function settleDecidedVotes(
 			// the next read try to record it again.
 			console.error("scheduling: could not record a settled vote", round.id, err);
 			line = undefined;
+			unrecorded.add(event.id);
 		}
 		if (line === null) {
 			raced = true;
@@ -812,7 +894,7 @@ async function settleDecidedVotes(
 		}
 		events[i] = moved;
 	}
-	return raced;
+	return { raced, unrecorded };
 }
 // #endregion
 
@@ -824,7 +906,7 @@ async function readEventsByIds(
 ): Promise<EventRow[]> {
 	return await readIn<EventRow>(
 		ids,
-		(chunk) => db(actor, "scheduling").from("events").select(EVENT_COLUMNS).in("id", chunk),
+		(chunk) => db(actor, "scheduling").from("events").select(EVENT_COLUMNS).in("id", chunk).order("id"),
 		"scheduling.events",
 	);
 }
@@ -842,14 +924,18 @@ async function assemble(
 		rounds: Map<string, RoundRow>;
 		parties: Map<string, PartyRow>;
 		raced: boolean;
+		unrecorded: Set<string>;
 	}
 > {
-	const coord = await loadCoordination(actor, rows.map((r) => r.id), now);
-	const parties = await fetchParties(actor, [...coordinationUserIds(coord, rows), ...extraUserIds]);
+	const [coord, withRooms] = await Promise.all([
+		loadCoordination(actor, rows.map((r) => r.id), now),
+		mergeRooms(actor, rows),
+	]);
+	const parties = await fetchParties(actor, [...coordinationUserIds(coord, withRooms), ...extraUserIds]);
 	const ctx: AssemblyContext = { actorId: actor.userId, tz, parties, coord };
-	const events = rows.map((row) => toCalendarEvent(row, ctx));
-	const raced = await settleDecidedVotes(events, coord.rounds, now, tz);
-	return { events, rounds: coord.rounds, parties, raced };
+	const events = withRooms.map((row) => toCalendarEvent(row, ctx));
+	const { raced, unrecorded } = await settleDecidedVotes(events, coord.rounds, now, tz);
+	return { events, rounds: coord.rounds, parties, raced, unrecorded };
 }
 // #endregion
 
@@ -893,19 +979,15 @@ export async function readProjectCalendar(
 	const [tz, board, eventRows] = await Promise.all([
 		readerZone(actor, own),
 		fetchBoardPage(actor, { projectId: project.slug }),
-		(async () => {
+		readPaged<EventRow>(() => {
 			let q = db(actor, "scheduling").from("events")
 				.select(EVENT_COLUMNS)
 				.eq("project_id", project.id)
 				.gte("ends_at", new Date(now - 180 * DAY_MS).toISOString())
-				.lte("starts_at", new Date(now + 365 * DAY_MS).toISOString())
-				.order("starts_at", { ascending: true })
-				.limit(EVENT_CAP);
+				.lte("starts_at", new Date(now + 365 * DAY_MS).toISOString());
 			if (channelId) q = q.eq("channel_id", channelId);
-			const { data, error } = await q;
-			if (error) throw new Error(`scheduling.events read failed: ${error.message}`);
-			return (data ?? []) as unknown as EventRow[];
-		})(),
+			return q.order("starts_at", { ascending: true }).order("id");
+		}, "scheduling.events"),
 	]);
 	if (!board) return null;
 
@@ -1028,11 +1110,16 @@ async function readInvolvement(actor: ReadActor & { accessToken: string }): Prom
 	for (
 		const row of await readIn<{ project_id: string }>(
 			[...providerStages],
-			(ids) => projects.from("project_stages").select("project_id").in("id", ids),
+			(ids) => projects.from("project_stages").select("project_id").in("id", ids).order("id"),
 			"projects.project_stages",
 		).catch(() => [] as { project_id: string }[])
 	) projectIds.add(row.project_id);
 	return { clientProjects, providerStages, projectIds };
+}
+
+/** {@link readPaged}, shaped like a single PostgREST answer so it sits beside one in a `Promise.all`. */
+async function paged(build: () => Pageable, what: string): Promise<{ data: unknown[]; error: null }> {
+	return { data: await readPaged<unknown>(build, what), error: null };
 }
 
 /**
@@ -1071,12 +1158,18 @@ export async function readPersonalCalendar(
 					.gt("ends_at", from)
 				: Promise.resolve({ data: [], error: null }),
 			own
-				? sched.from("events").select(EVENT_COLUMNS).eq("schedule_id", own.id)
-					.gte("ends_at", from).lte("starts_at", to).limit(EVENT_CAP)
+				? paged(() =>
+					sched.from("events").select(EVENT_COLUMNS).eq("schedule_id", own.id)
+						.gte("ends_at", from).lte("starts_at", to).order("starts_at").order("id"), "scheduling.events")
 				: Promise.resolve({ data: [], error: null }),
-			sched.from("event_attendees").select("event_id").eq("user_id", actor.userId),
-			sched.from("events").select(EVENT_COLUMNS).eq("created_by", actor.userId)
-				.not("project_id", "is", null).gte("ends_at", from).lte("starts_at", to).limit(EVENT_CAP),
+			paged(
+				() => sched.from("event_attendees").select("event_id").eq("user_id", actor.userId).order("event_id"),
+				"scheduling.event_attendees",
+			),
+			paged(() =>
+				sched.from("events").select(EVENT_COLUMNS).eq("created_by", actor.userId)
+					.not("project_id", "is", null).gte("ends_at", from).lte("starts_at", to)
+					.order("starts_at").order("id"), "scheduling.events"),
 			sched.from("discovery_calls")
 				.select(
 					"id, host_user_id, requester_user_id, call_type, status, proposed_start, proposed_end, confirmed_start, confirmed_end, agenda, provider_slug, meeting_url, event_id, fee_amount_minor, fee_currency, proposed_at, responded_at, confirmed_at",
@@ -1137,20 +1230,26 @@ export async function readPersonalCalendar(
 		(ids) =>
 			projects.from("project_stages")
 				.select(`${STAGE_WINDOW_COLUMNS}, project_id, slug, name, status`)
-				.in("project_id", ids),
+				.in("project_id", ids)
+				.order("id"),
 		"projects.project_stages",
 	);
 	const ticketFilters = [`current_assignee_id.eq.${actor.userId}`];
 	if (involvement.clientProjects.size > 0) {
 		ticketFilters.push(`project_id.in.(${[...involvement.clientProjects].join(",")})`);
 	}
-	const tickets = await projects.from("tickets")
-		.select("id, slug, project_id, current_stage_id, title, status, due_date")
-		.or(ticketFilters.join(","))
-		.not("due_date", "is", null)
-		.gte("due_date", from)
-		.lte("due_date", to);
-	if (tickets.error) throw new Error(`projects.tickets read failed: ${tickets.error.message}`);
+	const tickets = await paged(
+		() =>
+			projects.from("tickets")
+				.select("id, slug, project_id, current_stage_id, title, status, due_date")
+				.or(ticketFilters.join(","))
+				.not("due_date", "is", null)
+				.gte("due_date", from)
+				.lte("due_date", to)
+				.order("due_date")
+				.order("id"),
+		"projects.tickets",
+	);
 	const ticketRows = (tickets.data ?? []) as {
 		id: string;
 		slug: string | null;
@@ -1170,7 +1269,7 @@ export async function readPersonalCalendar(
 	for (
 		const ref of await readIn<ProjectRef>(
 			[...projectIds],
-			(ids) => projects.from("projects").select("id, slug, title").in("id", ids),
+			(ids) => projects.from("projects").select("id, slug, title").in("id", ids).order("id"),
 			"projects.projects",
 		)
 	) projectRefs.set(ref.id, ref);
@@ -1385,6 +1484,12 @@ export interface LoadedEvent {
 	event: CalendarEvent;
 	/** The latest reschedule round's row id, or `null` when nobody has asked to move it yet. */
 	roundId: string | null;
+	/**
+	 * The read found the latest round decided but could not record the decision, so the projection
+	 * shows it settled while the row still says `voting`. A reschedule write refuses on this rather
+	 * than acting on a state the database does not hold.
+	 */
+	unsettled: boolean;
 	/** The zone the reader's labels are written in. */
 	tz: string;
 }
@@ -1458,6 +1563,11 @@ export async function readCalendarEvent(
 			href: event.href ?? clamp(`/projects/${meta.slug}/calendar`, 400),
 		};
 	}
-	return { event, roundId: assembled.rounds.get(row.id)?.id ?? null, tz };
+	return {
+		event,
+		roundId: assembled.rounds.get(row.id)?.id ?? null,
+		unsettled: assembled.unrecorded.has(row.id),
+		tz,
+	};
 }
 // #endregion

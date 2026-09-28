@@ -86,44 +86,6 @@
 	flex-wrap: wrap;
 }
 
-/* equal · by role · custom — a template choice, so a team changes policy without rewriting shares. */
-.wsp-split__model {
-	display: inline-flex;
-	align-items: center;
-	gap: 2px;
-	padding: 2px;
-	border-radius: var(--radius-base);
-	background: var(--surface-2);
-}
-
-.wsp-split__modelbtn {
-	padding-inline: var(--space-3);
-	padding-block: var(--space-1);
-	border: none;
-	border-radius: var(--radius-sm);
-	background: none;
-	color: var(--text-secondary);
-	font: inherit;
-	font-size: var(--wsp-fs-body);
-	white-space: nowrap;
-	cursor: pointer;
-}
-
-.wsp-split__modelbtn:hover {
-	color: var(--on-surface);
-}
-
-.wsp-split__modelbtn:focus-visible {
-	outline: none;
-}
-
-.wsp-split__modelbtn[aria-pressed="true"],
-.wsp-split__modelbtn[data-active="true"] {
-	background: var(--surface);
-	color: var(--on-surface);
-	font-weight: 500;
-}
-
 /* The projected release the shares are priced against — the reason the editor shows consequences
 ("Ravi receives £412.50") instead of abstract percentages. */
 .wsp-split__against {
@@ -492,15 +454,9 @@
 	color: var(--wsp-kind-ink);
 }
 
-.wsp-split__auto {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	flex-wrap: wrap;
-	min-inline-size: 0;
-}
-
-.wsp-split__auto-note {
+/* The split's reading and the vault's cut, in one line of running text — it describes the policy, it
+   is not a control, so it is set as prose rather than boxed (§B.11). */
+.wsp-split__vault {
 	margin: 0;
 	max-inline-size: var(--wsp-prose);
 	font-size: var(--wsp-fs-micro);

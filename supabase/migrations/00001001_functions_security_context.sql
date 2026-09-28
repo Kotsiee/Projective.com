@@ -61,9 +61,42 @@ $$;
 
 -- #endregion
 
--- #region 2. Context switches keep the four active slots mutually exclusive
--- Re-declare the profile switcher (migration 0100) with one added line: selecting a
--- freelancer/business profile clears any active organisation, so the slots never conflict.
+-- #region 2. Context switches — the only writers of security.session_context
+-- The acting context is ONE of: personal (every slot NULL), a freelancer profile, a business, a team
+-- or an organisation — ck_session_context_one_slot makes a second slot unrepresentable. Every switch
+-- UPSERTS: a user with no row yet (nothing seeded one) used to UPDATE zero rows, return success and
+-- stay exactly where they were. The table carries a SELECT-only client policy, so these definers are
+-- the only way a context changes, and each re-checks the membership it claims — the access-token hook
+-- then re-checks it again at every mint (00001700), so a context outlives nobody's seat.
+CREATE OR REPLACE FUNCTION security.fn_set_session_context(
+  p_type public.profile_type,
+  p_profile uuid,
+  p_team uuid,
+  p_org uuid,
+  p_audit_entity uuid
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  INSERT INTO security.session_context (
+    user_id, active_profile_type, active_profile_id, active_team_id, active_organisation_id, updated_at
+  ) VALUES (auth.uid(), p_type, p_profile, p_team, p_org, now())
+  ON CONFLICT (user_id) DO UPDATE SET
+    active_profile_type = EXCLUDED.active_profile_type,
+    active_profile_id = EXCLUDED.active_profile_id,
+    active_team_id = EXCLUDED.active_team_id,
+    active_organisation_id = EXCLUDED.active_organisation_id,
+    updated_at = now();
+
+  INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, actor_profile_id, actor_team_id)
+  VALUES (auth.uid(), 'session.switch_context', 'security.session_context', p_audit_entity, p_profile, p_team);
+END;
+$$;
+
+-- A freelancer profile (the caller's own) or a business the caller is an active member of.
 CREATE OR REPLACE FUNCTION security.switch_session_context(
   p_type public.profile_type,
   p_id uuid
@@ -71,81 +104,88 @@ CREATE OR REPLACE FUNCTION security.switch_session_context(
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, security, org
+SET search_path = ''
 AS $$
 BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
+  END IF;
   IF p_type = 'freelancer' THEN
-    IF NOT EXISTS (
-      SELECT 1 FROM org.freelancer_profiles
-      WHERE user_id = auth.uid() AND user_id = p_id
-    ) THEN
-      RAISE EXCEPTION 'Access Denied: You do not have a freelancer profile.';
+    IF NOT EXISTS (SELECT 1 FROM org.freelancer_profiles f WHERE f.user_id = auth.uid() AND f.user_id = p_id) THEN
+      RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'context: you do not have a freelancer profile';
     END IF;
   ELSIF p_type = 'business' THEN
     IF NOT EXISTS (
-      SELECT 1 FROM org.business_members
-      WHERE business_id = p_id
-        AND user_id = auth.uid()
-        AND status = 'active'
+      SELECT 1 FROM org.business_members m
+      JOIN org.business_profiles b ON b.id = m.business_id
+      WHERE m.business_id = p_id AND m.user_id = auth.uid() AND m.status = 'active' AND b.status <> 'archived'
     ) THEN
-      RAISE EXCEPTION 'Access Denied: You are not an active member of this business.';
+      RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'context: you are not an active member of this business';
     END IF;
   ELSE
-    RAISE EXCEPTION 'Invalid profile type';
+    RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'context: choose a freelancer profile or a business';
   END IF;
-
-  UPDATE security.session_context
-  SET
-    active_profile_type = p_type,
-    active_profile_id = p_id,
-    active_team_id = NULL,
-    active_organisation_id = NULL,
-    updated_at = NOW()
-  WHERE user_id = auth.uid();
-
-  INSERT INTO security.audit_logs (
-    user_id, action, entity_table, entity_id, actor_profile_id
-  ) VALUES (
-    auth.uid(), 'session.switch_context', 'security.session_context', auth.uid(), p_id
-  );
+  PERFORM security.fn_set_session_context(p_type, p_id, NULL, NULL, p_id);
 END;
 $$;
 
--- New: switch the acting context to an organisation the caller belongs to (owner or active member).
--- Clears the profile/team slots so the four active slots stay mutually exclusive.
+-- A team the caller is an active member of. The hook always read `active_team_id`; nothing wrote it.
+CREATE OR REPLACE FUNCTION security.switch_team_context(p_team_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM org.team_members m
+    JOIN org.teams t ON t.id = m.team_id
+    WHERE m.team_id = p_team_id AND m.user_id = auth.uid() AND m.status = 'active' AND t.status <> 'archived'
+  ) THEN
+    RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'context: you are not an active member of this team';
+  END IF;
+  PERFORM security.fn_set_session_context(NULL, NULL, p_team_id, NULL, p_team_id);
+END;
+$$;
+
+-- An organisation the caller owns or is an active member of (buyer-only, Decisions #9/#10).
 CREATE OR REPLACE FUNCTION security.switch_organisation_context(p_org_id uuid)
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, security, org
+SET search_path = ''
 AS $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM org.organisations o
-    WHERE o.id = p_org_id AND o.owner_user_id = auth.uid()
-  ) AND NOT EXISTS (
-    SELECT 1 FROM org.organisation_members m
-    WHERE m.organisation_id = p_org_id
-      AND m.user_id = auth.uid()
-      AND m.status = 'active'
-  ) THEN
-    RAISE EXCEPTION 'Access Denied: You are not an active member of this organisation.';
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM org.organisations o WHERE o.id = p_org_id AND o.owner_user_id = auth.uid())
+     AND NOT EXISTS (
+       SELECT 1 FROM org.organisation_members m
+       WHERE m.organisation_id = p_org_id AND m.user_id = auth.uid() AND m.status = 'active'
+     ) THEN
+    RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'context: you are not an active member of this organisation';
+  END IF;
+  PERFORM security.fn_set_session_context(NULL, NULL, NULL, p_org_id, p_org_id);
+END;
+$$;
 
-  UPDATE security.session_context
-  SET
-    active_profile_type = NULL,
-    active_profile_id = NULL,
-    active_team_id = NULL,
-    active_organisation_id = p_org_id,
-    updated_at = NOW()
-  WHERE user_id = auth.uid();
-
-  INSERT INTO security.audit_logs (
-    user_id, action, entity_table, entity_id, actor_profile_id
-  ) VALUES (
-    auth.uid(), 'session.switch_context', 'security.session_context', p_org_id, NULL
-  );
+-- Back to personal, for anybody — including a client with no freelancer profile, who previously had
+-- no way home once they had switched into a business.
+CREATE OR REPLACE FUNCTION security.clear_session_context()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in first';
+  END IF;
+  PERFORM security.fn_set_session_context(NULL, NULL, NULL, NULL, auth.uid());
 END;
 $$;
 

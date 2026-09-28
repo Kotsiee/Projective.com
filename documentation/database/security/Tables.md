@@ -15,8 +15,6 @@ accounts start with no active profile until they create a Business or Team.
 
 | Column                   | Type         | Notes                                                                                                                                                           |
 | :----------------------- | :----------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Column                   | Type         | Notes                                                                                                                                                           |
-| :----------------------- | :----------- | :-----------------------------------------------------------------                                                                                              |
 | `user_id`                | uuid         | PK, FK → `auth.users.id`.                                                                                                                                       |
 | `active_profile_type`    | profile_type | `freelancer` or `business`.                                                                                                                                     |
 | `active_profile_id`      | uuid         | UUID of the active profile.                                                                                                                                     |
@@ -24,10 +22,14 @@ accounts start with no active profile until they create a Business or Team.
 | `active_organisation_id` | uuid         | Optional active organisation (buyer-only entity) context. FK → `org.organisations.id` (added `20260715120000`). Mutually exclusive with the profile/team slots. |
 | `updated_at`             | timestamptz  | Last context switch timestamp.                                                                                                                                  |
 
-The active slots are kept mutually exclusive by the switch RPCs (`security.switch_session_context`
-selects a profile and clears team/organisation; `security.switch_organisation_context` selects an
-organisation and clears profile/team). All four are read back into the JWT by the custom
-access-token hook — see [Functions.md](Functions.md).
+The acting context is ONE of: personal (every slot `NULL`), a freelancer profile, a business, a team
+or an organisation. Since 2026-09-28 this is **structural**, not a convention the switch RPCs keep:
+`ck_session_context_one_slot` allows at most one of `active_profile_id` / `active_team_id` /
+`active_organisation_id`, and requires `active_profile_type` and `active_profile_id` to be set or
+cleared together. The table is **read-only to the client** (SELECT policy + `GRANT SELECT` only): the
+only writers are the `security.switch_*` / `clear_session_context` definers, each of which re-checks
+the membership it claims, and the access-token hook re-checks it again at every mint — see
+[Functions.md](Functions.md). All four slots are read back into the JWT by that hook.
 
 ```sql
 CREATE TABLE security.session_context (
@@ -38,6 +40,10 @@ CREATE TABLE security.session_context (
     active_organisation_id uuid,  -- added 20260715120000; FK → org.organisations(id) ON DELETE SET NULL
     updated_at timestamp with time zone NOT NULL DEFAULT now(),
     CONSTRAINT session_context_pkey PRIMARY KEY (user_id),
+    CONSTRAINT ck_session_context_one_slot CHECK (
+        num_nonnulls (active_profile_id, active_team_id, active_organisation_id) <= 1
+        AND (active_profile_type IS NULL) = (active_profile_id IS NULL)
+    ),
     CONSTRAINT session_context_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id)
 );
 ```

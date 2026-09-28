@@ -11,12 +11,14 @@ import type {
 	RescheduleStatus,
 } from "@projective/types/scheduling";
 import {
+	approvalRefusal,
 	ballotProposals,
+	canOpenCounterparty,
 	canOpenVote,
 	canReschedule,
+	counterpartyAcceptRefusal,
 	eligibleVoterCount,
 	eventLiveStatus,
-	isProposalOnBallot,
 	isRescheduleClosed,
 	leadingProposal,
 	majorityProposal,
@@ -377,9 +379,18 @@ export interface RescheduleView {
 	propose: RescheduleGate;
 	open: RescheduleGate;
 	vote: RescheduleGate;
-	confirm: RescheduleGate;
 	withdraw: RescheduleGate;
-	approve: RescheduleGate;
+	/**
+	 * Whether THIS slot may be accepted (a 1-on-1) or finalised as the carried winner (a vote).
+	 *
+	 * Per slot rather than per round because both answers depend on the slot: on a 1-on-1 the party who
+	 * did NOT offer it is the one who accepts it, and any slot can drift inside its notice period while
+	 * it waits (`counterpartyAcceptRefusal`). A single round-level gate had to pick one answer for
+	 * every row, which is how the host was offered no way at all to accept an attendee's time.
+	 */
+	confirmFor: (proposal: RescheduleProposal) => RescheduleGate;
+	/** Whether the host may put THIS attendee slot on the ballot (`approvalRefusal`). */
+	approveFor: (proposal: RescheduleProposal) => RescheduleGate;
 }
 
 const OK: RescheduleGate = { allowed: true, code: null, reason: null };
@@ -404,7 +415,9 @@ export function rescheduleView(
 	// Settled first, exactly as the server's planner does before it judges anything: a modal left open
 	// past a vote's deadline must not keep treating a question that has finished being asked as live —
 	// it would refuse a new slot as `ballot_full` that the server would accept as the next round.
-	const negotiation = event.reschedule ? settleVote(nowMs, event.reschedule, voters) : undefined;
+	const negotiation = event.reschedule
+		? settleVote(nowMs, event.reschedule, voters, event.start)
+		: undefined;
 	const mode: RescheduleMode = negotiation?.mode ?? rescheduleModeFor(roster.length);
 	const proposals = negotiation?.proposals ?? [];
 	const ballot = ballotProposals(proposals);
@@ -456,12 +469,12 @@ export function rescheduleView(
 		open: gate(() => {
 			if (closed) return no("vote_closed");
 			if (!isHost) return no("not_permitted");
-			// A 1-on-1 needs one slot ON THE BALLOT, not merely one on the table: an attendee's slot the
-			// host has not approved cannot be put to the counterparty to accept.
-			if (mode === "vote" ? !canOpenVote(proposals) : ballotProposals(proposals).length === 0) {
+			// A 1-on-1 needs one slot the HOST offered that can still be taken: an attendee's own slot is
+			// accepted by the host directly, never put back to them.
+			if (mode === "vote" ? !canOpenVote(proposals) : !canOpenCounterparty(nowMs, proposals)) {
 				return no("not_enough_proposals");
 			}
-			if (mode === "vote" && !voteIsOpen(nowMs, proposals)) return no("vote_closed");
+			if (mode === "vote" && !voteIsOpen(nowMs, proposals, event.start)) return no("vote_closed");
 			return OK;
 		}),
 
@@ -469,24 +482,10 @@ export function rescheduleView(
 			if (closed) return no("vote_closed");
 			if (mode !== "vote" || status !== "voting") return no("vote_closed");
 			if (isHost || !me) return no("not_permitted");
-			if (!voteIsOpen(nowMs, proposals)) return no("vote_closed");
+			if (!voteIsOpen(nowMs, proposals, event.start)) return no("vote_closed");
 			if (proposals.some((p) => p.votes.some((v) => v.attendeeId === me.id))) {
 				return no("duplicate_vote");
 			}
-			return OK;
-		}),
-
-		confirm: gate(() => {
-			if (closed) return no("vote_closed");
-			if (mode === "counterparty") {
-				// The party who did NOT offer the time is the one who accepts it.
-				if (isHost) return no("not_permitted");
-				if (!ballot.some(isProposalOnBallot)) return no("proposal_not_approved");
-				return OK;
-			}
-			if (!isHost) return no("not_permitted");
-			if (status !== "voting") return no("vote_closed");
-			if (!winner) return no("no_majority");
 			return OK;
 		}),
 
@@ -496,14 +495,29 @@ export function rescheduleView(
 			return OK;
 		}),
 
-		approve: gate(() => {
-			// The closed check is the SERVICE's blanket one (it precedes every per-action seat test but
-			// `propose`), and it was missing here — so a host looking at an unapproved slot on a lapsed
-			// or resolved round was offered an enabled "Put it on the ballot" that the server refuses
-			// with `vote_closed`. Ordered first for the same reason it is first there.
-			if (closed) return no("vote_closed");
-			return isHost ? OK : no("not_permitted");
-		}),
+		confirmFor: (p) =>
+			gate(() => {
+				if (closed) return no("vote_closed");
+				if (mode === "counterparty") {
+					const refused = counterpartyAcceptRefusal(nowMs, status, p, isHost);
+					return refused ? no(refused) : OK;
+				}
+				if (!isHost) return no("not_permitted");
+				if (status !== "voting") return no("vote_closed");
+				if (!winner || winner.id !== p.id) return no("no_majority");
+				return OK;
+			}),
+
+		// The closed check is the SERVICE's blanket one (it precedes every per-action seat test but
+		// `propose`), so a host looking at an unapproved slot on a lapsed or resolved round is not
+		// offered an enabled "Put it on the ballot" that the server refuses with `vote_closed`.
+		approveFor: (p) =>
+			gate(() => {
+				if (closed) return no("vote_closed");
+				if (!isHost) return no("not_permitted");
+				const stale = approvalRefusal(nowMs, p);
+				return stale ? no(stale) : OK;
+			}),
 	};
 }
 

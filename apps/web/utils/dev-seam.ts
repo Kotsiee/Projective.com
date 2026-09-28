@@ -85,34 +85,6 @@ export type DevSubmissionState = "draft" | "submitted" | "approved" | "revision_
 export type DevProjectOnboarding = "auto" | "none" | "first_stage" | "all_stages";
 
 /**
- * The entity kind the Context Switcher can simulate for `/teams` and `/businesses` — a **Team is a
- * Freelancer with multiple members**, a **Business is a Client with multiple members**, so this axis
- * selects which side of the market the whole console is parameterised to.
- */
-export type DevWorkspaceKind = "team" | "business";
-/**
- * The role the simulated viewer holds inside the acting entity, driving the capability-gated lane nav,
- * the module permission gate, and every row action. `non_member` is included deliberately: it is the
- * only way to exercise the "somebody who does not belong here" path at runtime.
- */
-export type DevWorkspaceRole = "owner" | "admin" | "lead" | "member" | "non_member";
-/**
- * Where the simulated viewer stands relative to the entity. `invited` and `requested` are distinct
- * because they route to opposite actions — one owes them a decision, the other owes us one.
- */
-export type DevMembershipState = "active" | "invited" | "requested";
-/**
- * The entity's verification state — a team verifies its members (KYC) to be paid, a business verifies
- * the company (KYB) to operate its pooled wallet. Drives the locked-but-actionable gate.
- */
-export type DevWorkspaceVerification = "unverified" | "kyb_pending" | "verified";
-/**
- * The shape of the viewer's roster, so the selling empty state and the one-person-team pre-state (legal,
- * but cannot bid) are both reachable without editing fixtures.
- */
-export type DevRosterState = "populated" | "empty" | "single";
-
-/**
  * The microphone permission the Context Switcher can simulate for the chat composer's voice memo.
  * `auto` defers to the real device; the rest reach states that would otherwise need the developer to
  * change real browser settings and reload — a persistent block (`denied`), a browser without
@@ -166,18 +138,6 @@ export interface DevSeamState {
 	messagingRole: DevMessagingRole;
 	/** The simulated microphone permission for the chat composer's voice memo. */
 	micPermission: DevMicPermission;
-	/** The simulated entity kind for the `/teams` · `/businesses` console. */
-	workspaceKind: DevWorkspaceKind;
-	/** The simulated role the viewer holds inside the acting entity (incl. `non_member`). */
-	workspaceRole: DevWorkspaceRole;
-	/** The simulated membership state (active / invited / requested). */
-	membershipState: DevMembershipState;
-	/** The simulated entity verification state (drives the KYC/KYB lock). */
-	workspaceVerification: DevWorkspaceVerification;
-	/** Whether the session is simulated as ACTING as the entity rather than personally. */
-	actingContext: boolean;
-	/** The simulated roster shape (populated / empty / a single one-person entity). */
-	rosterState: DevRosterState;
 	/** The simulated document layout direction (RtL/LtR). */
 	layoutDirection: DevLayoutDirection;
 }
@@ -266,21 +226,6 @@ const PROJECT_ONBOARDINGS: readonly DevProjectOnboarding[] = [
 	"first_stage",
 	"all_stages",
 ];
-const WORKSPACE_KINDS: readonly DevWorkspaceKind[] = ["team", "business"];
-const WORKSPACE_ROLES: readonly DevWorkspaceRole[] = [
-	"owner",
-	"admin",
-	"lead",
-	"member",
-	"non_member",
-];
-const MEMBERSHIP_STATES: readonly DevMembershipState[] = ["active", "invited", "requested"];
-const WORKSPACE_VERIFICATIONS: readonly DevWorkspaceVerification[] = [
-	"unverified",
-	"kyb_pending",
-	"verified",
-];
-const ROSTER_STATES: readonly DevRosterState[] = ["populated", "empty", "single"];
 const LAYOUT_DIRECTIONS: readonly DevLayoutDirection[] = ["ltr", "rtl", "auto"];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */
@@ -320,16 +265,6 @@ export function readDevSeam(): DevSeamState | null {
 		pendingInvites: ds.devPendingInvites !== "false",
 		messagingRole: coerce(ds.devMessagingRole, MESSAGING_ROLES, "freelancer"),
 		micPermission: coerce(ds.devMicPermission, MIC_PERMISSIONS, "auto"),
-		workspaceKind: coerce(ds.devWorkspaceKind, WORKSPACE_KINDS, "team"),
-		workspaceRole: coerce(ds.devWorkspaceRole, WORKSPACE_ROLES, "admin"),
-		membershipState: coerce(ds.devMembershipState, MEMBERSHIP_STATES, "active"),
-		workspaceVerification: coerce(
-			ds.devWorkspaceVerification,
-			WORKSPACE_VERIFICATIONS,
-			"verified",
-		),
-		actingContext: ds.devActingContext === "true",
-		rosterState: coerce(ds.devRosterState, ROSTER_STATES, "populated"),
 		layoutDirection: coerce(ds.devDirection, LAYOUT_DIRECTIONS, "ltr"),
 	};
 }

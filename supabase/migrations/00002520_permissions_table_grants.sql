@@ -18,12 +18,8 @@ GRANT INSERT ON search.query_logs TO authenticated, anon;
 
 -- --- from 0205_security.sql ---
 
-GRANT
-SELECT,
-INSERT
-,
-UPDATE ON
-TABLE security.session_context TO authenticated;
+-- Read-only to the client: every write is a security.switch_* definer.
+GRANT SELECT ON TABLE security.session_context TO authenticated;
 
 GRANT ALL ON TABLE security.session_context TO service_role;
 
@@ -120,7 +116,8 @@ GRANT SELECT ON TABLE finance.split_rules TO authenticated;
 
 GRANT ALL ON TABLE finance.split_rules TO service_role;
 
-GRANT SELECT, INSERT ON TABLE finance.spend_approvals TO authenticated;
+-- Read-only to the client: filing is finance.request_spend_approval, deciding decide_spend_approval.
+GRANT SELECT ON TABLE finance.spend_approvals TO authenticated;
 
 GRANT ALL ON TABLE finance.spend_approvals TO service_role;
 
@@ -292,8 +289,16 @@ GRANT ALL ON TABLE integrations.plugin_audit TO service_role;
 
 -- --- from 20260724102000_scheduling_events.sql ---
 
-GRANT SELECT ON TABLE scheduling.events TO anon,
-authenticated;
+-- Column-level: the meeting ROOM (meeting_url, meeting_passcode, meeting_details) is withheld from
+-- every client role. RLS is row-level, and the rows a member may see (a project's meetings) are not
+-- the rows whose room they may hold; a party reads the room through scheduling.get_event_rooms. anon
+-- reads no event row at all (no policy): a visitor's free/busy is scheduling.get_free_busy.
+GRANT SELECT (
+    id, schedule_id, project_id, channel_id, kind, status, title, starts_at, ends_at, all_day,
+    is_masked, accent, location, meeting_provider, meeting_provider_label, meeting_pending, meta,
+    attendee_count, capacity, href, source_connection_id, external_event_id, source_session_event_id,
+    created_by, created_at, updated_at
+) ON TABLE scheduling.events TO authenticated;
 
 GRANT
 INSERT,
@@ -329,9 +334,9 @@ INSERT,
 UPDATE,
 DELETE ON TABLE scheduling.call_settings TO authenticated;
 
-GRANT SELECT,
-INSERT,
-UPDATE ON TABLE scheduling.discovery_calls TO authenticated;
+-- Read-only to the client: a call is requested by scheduling.request_discovery_call; there is no
+-- client INSERT or UPDATE policy (00002015).
+GRANT SELECT ON TABLE scheduling.discovery_calls TO authenticated;
 
 GRANT SELECT ON TABLE scheduling.call_attendance TO authenticated;
 

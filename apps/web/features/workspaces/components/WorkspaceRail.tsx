@@ -10,6 +10,7 @@ import {
 	type WorkspaceSummary,
 } from "@projective/types/workspace";
 import type { ModuleKey, WorkspaceModule } from "../core/module-registry.tsx";
+import { isWithinPath } from "../core/workspace-model.ts";
 import { cloneGlyph, PlusGlyph } from "../core/workspace-glyphs.tsx";
 import { EntityMark } from "./EntityMark.tsx";
 import { ContextSwitchControl, isActingEntity } from "./ContextSwitchControl.tsx";
@@ -161,7 +162,7 @@ function EntityTop(props: WorkspaceRailProps): JSX.Element {
 	if (!entity) return <div class="wsp-rail__items" />;
 	const modules = props.modules ?? [];
 	const signals = props.signals ?? {};
-	const home = workspaceHref(props.kind, entity.id);
+	const home = workspaceHref(props.kind, entity.handle);
 
 	return (
 		<>
@@ -214,7 +215,7 @@ function EntityTop(props: WorkspaceRailProps): JSX.Element {
 						>
 							<a
 								class="wsp-rail__item"
-								href={workspaceHref(props.kind, entity.id, module.key)}
+								href={workspaceHref(props.kind, entity.handle, module.key)}
 								data-active={active ? "true" : undefined}
 								aria-current={active ? "page" : undefined}
 								aria-label={module.label}
@@ -266,12 +267,12 @@ function IndexTop(props: WorkspaceRailProps): JSX.Element {
 			<div class="wsp-rail__items" role="list">
 				{entities.map((entity) => {
 					const acting = isActingEntity(entity.id, actingId);
-					const active = props.path.startsWith(workspaceHref(props.kind, entity.id));
+					const active = isWithinPath(props.path, workspaceHref(props.kind, entity.handle));
 					return (
 						<Tooltip key={entity.id} content={entity.name} placement="right">
 							<a
 								class="wsp-rail__item"
-								href={workspaceHref(props.kind, entity.id)}
+								href={workspaceHref(props.kind, entity.handle)}
 								data-active={active ? "true" : undefined}
 								aria-current={active ? "page" : undefined}
 								aria-label={acting ? `${entity.name} — acting as this ${copy.noun}` : entity.name}

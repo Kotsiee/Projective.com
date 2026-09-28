@@ -95,11 +95,11 @@ export async function readGridSource(
 				.eq("schedule_id", row.id)
 				.eq("kind", kind)
 				.eq("is_active", true),
-			client.schema("scheduling").from("blackout_dates")
-				.select("starts_at, ends_at")
-				.eq("schedule_id", row.id)
-				.lt("starts_at", toIso)
-				.gt("ends_at", fromIso),
+			client.schema("scheduling").rpc("get_public_blackouts", {
+				p_schedule: row.id,
+				p_from: fromIso,
+				p_to: toIso,
+			}),
 			client.schema("scheduling").from("call_settings")
 				.select("min_notice_minutes, max_advance_days, buffer_before_minutes, buffer_after_minutes")
 				.eq("schedule_id", row.id)

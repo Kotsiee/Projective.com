@@ -64,6 +64,12 @@ export interface WorkspaceRosterProps {
 	kind: WorkspaceKind;
 	/** The SSR-resolved roster, so the first paint already carries the cards. */
 	initial: RosterPage;
+	/**
+	 * Set when the server could not read the roster. The page then says so and offers a retry, instead
+	 * of drawing the selling empty state — "you have no teams yet" is a false statement about somebody
+	 * whose teams merely failed to load.
+	 */
+	initialError?: string | null;
 	/** The partition the URL asked for (`?tab=`). */
 	initialTab?: string | null;
 	/** The free-text filter the URL carried (`?q=`). */
@@ -89,7 +95,12 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 	/** Answers in flight, so a row cannot be double-submitted. */
 	const inFlight = useSignal<ReadonlySet<string>>(new Set());
 	const stripDismissed = useSignal(false);
-	const notice = useSignal<string | null>(null);
+	/** A failure the reader can act on — rendered as an alert with a retry. */
+	const notice = useSignal<string | null>(props.initialError ?? null);
+	/** A confirmation of something that worked — rendered as a quiet status, never as an alert. */
+	const info = useSignal<string | null>(null);
+	/** Whether the roster on screen is a real read; `false` until a failed first read is retried. */
+	const loaded = useSignal(!props.initialError);
 	const refreshing = useSignal(false);
 
 	const { switching, error: switchError, switchTo, exitToPersonal } = useContextSwitch();
@@ -110,7 +121,8 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 	const searching = useComputed(() => search.value.trim().length > 0);
 	/** Nothing at all yet — the only condition that earns the selling empty state. */
 	const firstRun = useComputed(() =>
-		roster.value.items.length === 0 && invites.value.length === 0 && !searching.value
+		loaded.value && roster.value.items.length === 0 && invites.value.length === 0 &&
+		!searching.value
 	);
 	const stripVisible = useComputed(() =>
 		invites.value.length > 0 && (tab.value === "invitations" || !stripDismissed.value)
@@ -142,17 +154,20 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 	// #endregion
 
 	// #region Server reads
-	/** Re-read the roster after a mutation whose response is not itself a roster. */
-	async function refresh(): Promise<void> {
+	/** Re-read the roster after a mutation whose response is not itself a roster. Resolves `true` on success. */
+	async function refresh(): Promise<boolean> {
 		refreshing.value = true;
 		const res = await WorkspaceService.roster(props.kind);
 		refreshing.value = false;
 		if (res.ok && res.data) {
 			roster.value = res.data;
+			answered.value = new Set();
+			loaded.value = true;
 			notice.value = null;
-			return;
+			return true;
 		}
 		notice.value = res.message ?? `Couldn't refresh your ${copy.plural}.`;
+		return false;
 	}
 	// #endregion
 
@@ -160,35 +175,40 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 	async function respond(invite: IncomingInvite, accept: boolean): Promise<void> {
 		if (inFlight.value.has(invite.id)) return;
 		notice.value = null;
+		info.value = null;
 		inFlight.value = withId(inFlight.value, invite.id);
 		// Optimistic: the row leaves at once, because a decision the reader has made should not sit on
 		// screen waiting for a network. It comes back only if the server refuses.
 		answered.value = withId(answered.value, invite.id);
 
-		const res = await WorkspaceService.respondInvite(invite.id, accept);
+		const res = await WorkspaceService.respondInvite({ inviteId: invite.id, accept });
 		inFlight.value = withoutId(inFlight.value, invite.id);
 
-		if (res.ok && res.data) {
-			// Reconcile wholesale: accepting adds an entity to the roster, so the list itself is what
-			// went stale — not just the strip.
-			roster.value = res.data.roster;
-			answered.value = new Set();
+		if (!res.ok) {
+			answered.value = withoutId(answered.value, invite.id);
+			notice.value = res.message ??
+				`Couldn't ${accept ? "accept" : "decline"} the invitation from ${invite.workspaceName}.`;
 			return;
 		}
-		answered.value = withoutId(answered.value, invite.id);
-		notice.value = res.message ??
-			`Couldn't ${accept ? "accept" : "decline"} the invitation from ${invite.workspaceName}.`;
+		// Reconcile wholesale: accepting adds an entity to the roster, so the list itself is what went
+		// stale — not just the strip. The answer carries no roster, so re-read it.
+		if (await refresh()) {
+			info.value = accept
+				? `You joined ${invite.workspaceName}.`
+				: `You declined the invitation from ${invite.workspaceName}.`;
+		}
 	}
 	// #endregion
 
 	// #region Card + row actions
 	async function onAction(action: WorkspaceCardAction, summary: WorkspaceSummary): Promise<void> {
 		notice.value = null;
+		info.value = null;
 		switch (action) {
 			case "act":
 				// Landing inside the entity is the point of switching, so the destination is its console.
 				await switchTo(props.kind, summary.id, {
-					destination: workspaceHref(summary.kind, summary.id),
+					destination: workspaceHref(summary.kind, summary.handle),
 					handle: summary.handle,
 				});
 				return;
@@ -202,21 +222,22 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 				navigate(walletHrefFor(summary.kind, summary.id));
 				return;
 			case "copy":
-				await copyLink(workspaceHref(summary.kind, summary.id), summary.name);
+				await copyLink(workspaceHref(summary.kind, summary.handle), summary.name);
 				return;
 			case "archive":
 			case "restore": {
 				const status = action === "archive" ? "archived" : "active";
-				const res = await WorkspaceService.update({ id: summary.id, status });
+				const res = await WorkspaceService.update({ kind: summary.kind, id: summary.id, status });
 				if (!res.ok) {
 					notice.value = res.message ??
 						`Couldn't ${action} ${summary.name}. Nothing was changed.`;
 					return;
 				}
-				await refresh();
-				notice.value = action === "archive"
-					? `${summary.name} is archived. It is still restorable from the Archived tab.`
-					: `${summary.name} is active again.`;
+				if (await refresh()) {
+					info.value = action === "archive"
+						? `${summary.name} is archived. It is still restorable from the Archived tab.`
+						: `${summary.name} is active again.`;
+				}
 				return;
 			}
 		}
@@ -226,7 +247,7 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 		try {
 			const url = new URL(href, globalThis.location.origin).toString();
 			await globalThis.navigator.clipboard.writeText(url);
-			notice.value = `Link to ${name} copied.`;
+			info.value = `Link to ${name} copied.`;
 		} catch {
 			notice.value = "Couldn't reach the clipboard — copy the address from the URL bar instead.";
 		}
@@ -339,6 +360,14 @@ export default function WorkspaceRoster(props: WorkspaceRosterProps): JSX.Elemen
 									Try again
 								</button>
 							</div>
+						)}
+						{info.value && !notice.value && (
+							<Message
+								class="wsp-error__alert"
+								severity="success"
+								variant="subtle"
+								text={info.value}
+							/>
 						)}
 
 						<div
@@ -455,7 +484,7 @@ function RosterBody(
 		return (
 			<WorkspaceTable
 				items={props.rows}
-				hrefFor={(s) => workspaceHref(s.kind, s.id)}
+				hrefFor={(s) => workspaceHref(s.kind, s.handle)}
 				busy={props.busy}
 				label={label}
 				onAction={props.onAction}
@@ -478,7 +507,7 @@ function RosterBody(
 				<WorkspaceCard
 					key={summary.id}
 					summary={summary}
-					href={workspaceHref(summary.kind, summary.id)}
+					href={workspaceHref(summary.kind, summary.handle)}
 					busy={props.busy}
 					onAction={props.onAction}
 				/>

@@ -10,9 +10,10 @@
 CREATE POLICY "Users can view own session context" ON security.session_context FOR
 SELECT TO authenticated USING (user_id = auth.uid ());
 
-CREATE POLICY "Users can manage own session context" ON security.session_context FOR ALL TO authenticated USING (user_id = auth.uid ())
-WITH
-    CHECK (user_id = auth.uid ());
+-- NO client write policy (2026-09-28). The acting context is written only by the security.switch_*
+-- definers (00001001), each of which re-checks the membership it names. The FOR ALL policy this
+-- replaces let any user write `active_team_id` / `active_profile_id` to ANY entity over PostgREST, and
+-- the access-token hook then stamped that forged context into their JWT for RLS to trust.
 
 -- A subject sees its own penalties; admins see all. Writes are service/definer-only (no policy).
 CREATE POLICY "View own penalties" ON security.penalties FOR

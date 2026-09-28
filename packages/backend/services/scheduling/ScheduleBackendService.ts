@@ -368,13 +368,15 @@ function gridRequest(query: SlotQuery, input: SlotGridRequest, now: number): Gri
 }
 
 /**
- * The window of busy time and blackouts a grid needs: the rail plus a day of padding either side (the
- * builder walks provider-local days one wider than the viewer's rail).
+ * The window of busy time and blackouts a grid needs: the rail plus padding either side (the builder
+ * walks provider-local days one wider than the viewer's rail). Anchored on the page the rail is
+ * SHOWING, never on today: `get_free_busy` answers at most 120 days from its `from`, so a window
+ * starting at today went blind to commitments on any page past ~day 118 and offered taken slots.
  */
 function gridWindow(query: SlotQuery, now: number): { from: number; to: number } {
 	const DAY = 86_400_000;
 	const start = Math.max(query.from ?? now, now);
-	return { from: Math.min(start, now) - 2 * DAY, to: start + (query.days + 3) * DAY };
+	return { from: start - 2 * DAY, to: start + (query.days + 3) * DAY };
 }
 
 /** A public schedule page's window: a fortnight back (recent context) and three months ahead. */

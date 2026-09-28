@@ -693,6 +693,10 @@ BEGIN
     WHERE ps.project_id = _project_id
       AND sa.assignee_type = 'freelancer'
       AND fp.user_id = auth.uid()
+      -- An assignment that was declined, cancelled or released (a removed member — Decision #116) no
+      -- longer grants the engagement: it used to, forever, so a freelancer who turned a stage down kept
+      -- reading every meeting and room of the project. The same set comms.can_access_scope excludes.
+      AND sa.status NOT IN ('declined', 'cancelled', 'released')
   ) THEN
     RETURN true;
   END IF;
@@ -707,6 +711,7 @@ BEGIN
       AND sa.assignee_type = 'team'
       AND tm.user_id = auth.uid()
       AND tm.status = 'active'
+      AND sa.status NOT IN ('declined', 'cancelled', 'released')
   ) THEN
     RETURN true;
   END IF;

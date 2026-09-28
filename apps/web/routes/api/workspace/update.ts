@@ -1,40 +1,30 @@
 import { define } from "@web/utils/state.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import { UpdateWorkspaceInputSchema } from "@projective/types/workspace";
-import { toFieldErrors, toWorkspaceResponse } from "@features/workspaces/core/respond.ts";
-import { resolveRequestContext } from "@web/utils/user-context.ts";
+import {
+	guestRefusal,
+	invalidPayload,
+	toWorkspaceResponse,
+} from "@features/workspaces/core/respond.ts";
+import { canReadLive } from "@server/services/read-actor.ts";
 import { WorkspaceBackendService } from "@server/services/workspace/WorkspaceBackendService.ts";
 
 /**
- * `POST /api/workspace/update` — thin route: Zod-validate the identity/settings patch (name · tagline ·
- * mark · banner · lifecycle status), then delegate to the fat {@link WorkspaceBackendService.update}.
+ * `POST /api/workspace/update` — thin route: refuse a guest, Zod-validate the identity/lifecycle patch
+ * (name · tagline · status), then delegate to the fat {@link WorkspaceBackendService.update}.
  *
- * A patch, not a replace: every field is optional, so a settings panel sends only what changed and can
- * never blank a field it does not render. Archiving goes through `status` — nothing on this surface is
- * hard-deleted (root CLAUDE.md §5), so there is no delete endpoint to omit.
+ * A patch, not a replace: every field is optional, so a caller sends only what changed. Archiving goes
+ * through `status` — nothing on this surface is hard-deleted (root CLAUDE.md §5). Pictures are not here:
+ * they move through the media pipeline on the entity's profile editor (`/@handle/edit`).
  *
- * Resolves the FULL refreshed detail, like every mutation here, so the editor re-seeds from what the
- * server actually stored rather than trusting its optimistic copy.
- *
- * **No server-side capability guard** — `edit_profile` / `manage_settings` / `archive_entity` authority is
- * the fat service's decision (it refuses `403` with the reason), and the Dev Context Switcher must reach
- * the console as a simulated role. Deferred RLS on the live path is the real gate.
+ * Resolves the FULL re-read detail, so the editor re-seeds from what the server actually stored.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
-		const raw = await ctx.req.json().catch(() => null);
-		const parsed = UpdateWorkspaceInputSchema.safeParse(raw);
-		if (!parsed.success) {
-			return Response.json(
-				{
-					ok: false,
-					message: "Check the highlighted fields.",
-					errors: toFieldErrors(parsed.error),
-				},
-				{ status: 422 },
-			);
-		}
-
-		const viewer = ctx.state.userContext ?? resolveRequestContext(ctx.req);
-		return toWorkspaceResponse(WorkspaceBackendService.update(parsed.data, viewer));
+		const actor = readActor(ctx);
+		if (!canReadLive(actor)) return guestRefusal();
+		const parsed = UpdateWorkspaceInputSchema.safeParse(await ctx.req.json().catch(() => null));
+		if (!parsed.success) return invalidPayload(parsed.error);
+		return toWorkspaceResponse(await WorkspaceBackendService.update(parsed.data, actor));
 	},
 });

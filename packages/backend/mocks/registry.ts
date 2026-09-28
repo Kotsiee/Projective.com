@@ -36,7 +36,6 @@ export type BackendGate =
 	| "CATALOGUE_BACKEND_LIVE"
 	| "NEWSLETTER_BACKEND_LIVE"
 	| "FINANCE_BACKEND_LIVE"
-	| "WORKSPACE_BACKEND_LIVE"
 	| "FILES_BACKEND_LIVE"
 	| "INTEGRATIONS_BACKEND_LIVE"
 	| "LOGGING_BACKEND_LIVE";
@@ -51,7 +50,6 @@ export type MockDomain =
 	| "catalogue"
 	| "newsletter"
 	| "finance"
-	| "workspace"
 	| "files"
 	| "integrations"
 	| "scheduling"
@@ -194,16 +192,6 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		schemas: ["finance", "projects", "org"],
 		description:
 			"LIVE. The basket, saved cards, buyer details, the checkout session and orders read and write finance.* as the signed-in caller (live-basket, live-cards, live-buyer, live-orders, commerce-owner); a checkout is paid from the Projective wallet (finance.place_wallet_order). The /wallet surface reads balances, ledger, escrow, payouts, methods, invoices and vault governance live (wallet-scope, wallet-ledger, live-wallet, wallet-standing) and moves money through finance.transfer_funds / distribute_vault and projects.fund_stage (wallet-actions). Card, device-wallet, PayPal, top-up, withdrawal, recurring-deposit and Income-Smoother paths need a payment processor and are refused with that reason. Currency conversion reads finance.fx_rates (FxService.ts).",
-	},
-	workspace: {
-		domain: "workspace",
-		label: "Teams & businesses",
-		gate: "WORKSPACE_BACKEND_LIVE",
-		liveImplemented: false,
-		modules: ["services/workspace/workspace-fixtures.ts"],
-		schemas: ["org", "finance"],
-		description:
-			"The multi-member entity console: roster, three-layer permissions, payout splits and spend governance. Its live path reads tables that already exist.",
 	},
 	files: {
 		domain: "files",

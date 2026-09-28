@@ -44,26 +44,10 @@ CREATE TYPE public.start_trigger_type AS ENUM ('fixed_date', 'on_project_start',
 -- #region org
 CREATE TYPE org.bookmark_entity_type AS ENUM ('project', 'service_blueprint', 'freelancer', 'business', 'team');
 
-CREATE TYPE org.team_permission AS ENUM (
-	'manage_profile',
-	'manage_portfolio',
-	'manage_members',
-	'manage_roles',
-	'manage_services',
-	'manage_projects',
-	'send_messages',
-	'manage_finances'
-);
-
-CREATE TYPE org.business_permission AS ENUM (
-	'manage_profile',
-	'manage_members',
-	'manage_roles',
-	'manage_hiring',
-	'manage_projects',
-	'manage_billing',
-	'manage_escrow'
-);
+-- `org.team_permission` / `org.business_permission` were retired (2026-09-28): two older
+-- per-kind vocabularies that nothing read, and that could not express a custom role. A role's
+-- authority is `org.workspace_capability` (00000004), the same vocabulary as the member overrides
+-- and the TypeScript SSOT, so the three layers of the permission engine speak one language.
 
 CREATE TYPE org.organisation_role AS ENUM ('owner', 'admin', 'member');
 

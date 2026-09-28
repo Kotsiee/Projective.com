@@ -46,52 +46,251 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance;
 
--- Enforce a member's spending cap on a wallet; increments spent_cents when allowed.
+-- A person's own wallet type. People hold `freelancer` wallets when they sell and `user` wallets when
+-- they only buy; the money functions must credit the one the person actually has. An existing wallet
+-- decides (a freelancer wallet wins over a user wallet); with none, a freelancer profile makes it
+-- `freelancer`, anything else `user`.
+CREATE OR REPLACE FUNCTION finance.fn_person_wallet_type(p_user uuid)
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE(
+        (SELECT w.owner_type FROM finance.wallets w
+          WHERE w.owner_id = p_user AND w.owner_type IN ('freelancer', 'user')
+          ORDER BY (w.owner_type = 'freelancer') DESC LIMIT 1),
+        CASE WHEN EXISTS (SELECT 1 FROM org.freelancer_profiles f WHERE f.user_id = p_user) THEN 'freelancer' ELSE 'user' END
+    );
+$$;
+
+-- Make sure an owner holds a wallet in a currency, creating it if not. A credit must never land on a
+-- wallet that does not exist: fn_wallet_credit is a silent no-op then, and the money simply vanishes.
+CREATE OR REPLACE FUNCTION finance.fn_ensure_wallet(p_owner_type text, p_owner_id uuid, p_currency text)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_id uuid;
+BEGIN
+    INSERT INTO finance.wallets (owner_type, owner_id, currency)
+    VALUES (p_owner_type, p_owner_id, upper(p_currency))
+    ON CONFLICT (owner_type, owner_id, currency) DO NOTHING;
+    SELECT w.id INTO v_id FROM finance.wallets w
+     WHERE w.owner_type = p_owner_type AND w.owner_id = p_owner_id AND w.currency = upper(p_currency);
+    RETURN v_id;
+END;
+$$;
+
+-- The team payout plan (finance-model §5) — ONE implementation read by the release
+-- (fn_split_team_payout) and the console's preview (preview_team_split), so what a team is shown it
+-- will receive is what it does receive. Integer arithmetic, floored at every cut:
+--   benevolent_dictator → everything to the vault;
+--   finders_fee         → the finder's fixed cut first, then as co_op on the remainder;
+--   co_op               → the vault's `vault_bp` cut, then each ACTIVE member's `percent_bp` of the
+--                         rest; whatever does not divide (and any stake left unallocated) is dust
+--                         that goes to the vault.
+-- No active rule is a co_op rule with no vault cut.
+CREATE OR REPLACE FUNCTION finance.fn_team_split_plan(p_team_id uuid, p_payout bigint)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_rule record;
+    v_rest bigint;
+    v_finder bigint := 0;
+    v_vault bigint := 0;
+    v_pool bigint;
+    v_paid bigint := 0;
+    v_members jsonb := '[]'::jsonb;
+    m record;
+    v_share bigint;
+BEGIN
+    IF p_payout IS NULL OR p_payout <= 0 THEN
+        RETURN jsonb_build_object('payout_minor', 0, 'rule_type', NULL, 'vault_bp', 0, 'finder_user_id', NULL,
+            'finder_minor', 0, 'vault_minor', 0, 'members', '[]'::jsonb, 'dust_minor', 0, 'vault_total_minor', 0);
+    END IF;
+    SELECT r.rule_type::text AS rule_type, r.vault_bp, r.finder_user_id, COALESCE(r.finder_bp, 0) AS finder_bp
+      INTO v_rule
+      FROM finance.split_rules r WHERE r.team_id = p_team_id AND r.active;
+
+    v_rest := p_payout;
+    IF v_rule.rule_type = 'benevolent_dictator' THEN
+        RETURN jsonb_build_object('payout_minor', p_payout, 'rule_type', v_rule.rule_type, 'vault_bp', 10000,
+            'finder_user_id', NULL, 'finder_minor', 0, 'vault_minor', p_payout, 'members', '[]'::jsonb,
+            'dust_minor', 0, 'vault_total_minor', p_payout);
+    END IF;
+    IF v_rule.rule_type = 'finders_fee' AND v_rule.finder_user_id IS NOT NULL THEN
+        v_finder := (p_payout * v_rule.finder_bp) / 10000;
+        v_rest := p_payout - v_finder;
+    END IF;
+    v_vault := (v_rest * COALESCE(v_rule.vault_bp, 0)) / 10000;
+    v_pool := v_rest - v_vault;
+
+    FOR m IN
+        SELECT ca.member_user_id, ca.percent_bp
+          FROM finance.contribution_agreements ca
+          JOIN org.team_members tm ON tm.team_id = ca.team_id AND tm.user_id = ca.member_user_id AND tm.status = 'active'
+         WHERE ca.team_id = p_team_id AND ca.percent_bp > 0
+         ORDER BY ca.percent_bp DESC, ca.member_user_id
+    LOOP
+        v_share := (v_pool * m.percent_bp) / 10000;
+        v_paid := v_paid + v_share;
+        v_members := v_members || jsonb_build_object('member_user_id', m.member_user_id, 'percent_bp', m.percent_bp, 'amount_minor', v_share);
+    END LOOP;
+
+    RETURN jsonb_build_object(
+        'payout_minor', p_payout,
+        'rule_type', COALESCE(v_rule.rule_type, 'co_op'),
+        'vault_bp', COALESCE(v_rule.vault_bp, 0),
+        'finder_user_id', CASE WHEN v_finder > 0 THEN v_rule.finder_user_id END,
+        'finder_minor', v_finder,
+        'vault_minor', v_vault,
+        'members', v_members,
+        'dust_minor', v_pool - v_paid,
+        'vault_total_minor', v_vault + (v_pool - v_paid)
+    );
+END;
+$$;
+
+-- Pay a team's released escrow out by its plan. Every share is a real credit to a real wallet (a
+-- missing one is created), a `payout_splits` row is written only beside its credit, and the vault is
+-- credited with its cut plus the dust — so the payout is conserved to the minor unit. Rewritten
+-- 2026-09-28 (signed off by the product owner): the previous body credited `user` wallets that
+-- freelancers do not hold, so every share vanished silently, and it ignored the vault cut entirely.
+CREATE OR REPLACE FUNCTION finance.fn_split_team_payout(
+    p_escrow_id uuid, p_team_id uuid, p_payout bigint, p_currency text, p_reason text DEFAULT 'escrow_release'
+) RETURNS void AS $$
+DECLARE
+    v_plan jsonb;
+    m jsonb;
+    v_user uuid;
+    v_amount bigint;
+    v_type text;
+    v_vault bigint;
+BEGIN
+    IF p_payout IS NULL OR p_payout <= 0 THEN
+        RETURN;
+    END IF;
+    v_plan := finance.fn_team_split_plan(p_team_id, p_payout);
+
+    FOR m IN SELECT * FROM jsonb_array_elements(v_plan->'members') LOOP
+        v_user := (m->>'member_user_id')::uuid;
+        v_amount := (m->>'amount_minor')::bigint;
+        CONTINUE WHEN v_amount <= 0;
+        v_type := finance.fn_person_wallet_type(v_user);
+        PERFORM finance.fn_ensure_wallet(v_type, v_user, p_currency);
+        INSERT INTO finance.payout_splits (escrow_id, member_user_id, amount_cents, currency)
+        VALUES (p_escrow_id, v_user, v_amount, p_currency);
+        PERFORM finance.fn_wallet_credit(v_user, v_type, p_currency, v_amount, 'team_split', 'escrows', p_escrow_id);
+    END LOOP;
+
+    IF (v_plan->>'finder_minor')::bigint > 0 THEN
+        v_user := (v_plan->>'finder_user_id')::uuid;
+        v_type := finance.fn_person_wallet_type(v_user);
+        PERFORM finance.fn_ensure_wallet(v_type, v_user, p_currency);
+        INSERT INTO finance.payout_splits (escrow_id, member_user_id, amount_cents, currency)
+        VALUES (p_escrow_id, v_user, (v_plan->>'finder_minor')::bigint, p_currency);
+        PERFORM finance.fn_wallet_credit(v_user, v_type, p_currency, (v_plan->>'finder_minor')::bigint, 'team_finder_fee', 'escrows', p_escrow_id);
+    END IF;
+
+    v_vault := (v_plan->>'vault_total_minor')::bigint;
+    IF v_vault > 0 THEN
+        PERFORM finance.fn_ensure_wallet('team', p_team_id, p_currency);
+        PERFORM finance.fn_wallet_credit(p_team_id, 'team', p_currency, v_vault, p_reason || '_vault_retention', 'escrows', p_escrow_id);
+    END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance;
+
+-- Enforce a member's spending envelope on a wallet, and count the spend against it — atomically. The
+-- row is locked, the period rolled when it has lapsed (weekly/monthly; `total` never resets), the
+-- per-transaction ceiling and the remaining cap checked, and the spend added, in one statement's
+-- worth of locking so two concurrent spends cannot both fit under one cap. A NULL cap is "no ceiling"
+-- (the row may still carry a per-transaction ceiling); no row at all is no envelope. Rewritten
+-- 2026-09-28 (signed off by the product owner): the previous body read then wrote without a lock,
+-- ignored `per_transaction_cents` and `period_interval`, and so counted a lifetime total as the month.
 CREATE OR REPLACE FUNCTION finance.fn_check_spending_limit(
     p_wallet_id uuid, p_member uuid, p_amount bigint
 ) RETURNS boolean AS $$
 DECLARE
-    v_cap bigint;
+    v_row finance.spending_limits;
     v_spent bigint;
+    v_resets timestamptz;
 BEGIN
-    IF p_member IS NULL THEN RETURN true; END IF;
-    SELECT cap_cents, spent_cents INTO v_cap, v_spent
-    FROM finance.spending_limits
-    WHERE wallet_id = p_wallet_id AND member_user_id = p_member;
+    IF p_member IS NULL OR p_wallet_id IS NULL THEN RETURN true; END IF;
+    SELECT * INTO v_row FROM finance.spending_limits
+     WHERE wallet_id = p_wallet_id AND member_user_id = p_member
+     FOR UPDATE;
+    IF NOT FOUND THEN RETURN true; END IF;
 
-    IF v_cap IS NULL THEN RETURN true; END IF;
-    IF v_spent + p_amount > v_cap THEN RETURN false; END IF;
+    v_spent := v_row.spent_cents;
+    v_resets := v_row.resets_at;
+    IF v_row.period_interval <> 'total' AND (v_resets IS NULL OR v_resets <= now()) THEN
+        IF v_resets IS NOT NULL THEN
+            v_spent := 0;
+        END IF;
+        v_resets := CASE v_row.period_interval
+            WHEN 'weekly' THEN date_trunc('week', now()) + interval '1 week'
+            ELSE date_trunc('month', now()) + interval '1 month'
+        END;
+    END IF;
 
-    UPDATE finance.spending_limits SET spent_cents = spent_cents + p_amount
-    WHERE wallet_id = p_wallet_id AND member_user_id = p_member;
+    IF v_row.per_transaction_cents IS NOT NULL AND p_amount > v_row.per_transaction_cents THEN
+        UPDATE finance.spending_limits SET spent_cents = v_spent, resets_at = v_resets WHERE id = v_row.id;
+        RETURN false;
+    END IF;
+    IF v_row.cap_cents IS NOT NULL AND v_spent + p_amount > v_row.cap_cents THEN
+        UPDATE finance.spending_limits SET spent_cents = v_spent, resets_at = v_resets WHERE id = v_row.id;
+        RETURN false;
+    END IF;
+
+    UPDATE finance.spending_limits SET spent_cents = v_spent + p_amount, resets_at = v_resets WHERE id = v_row.id;
     RETURN true;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance;
 
--- Distribute a team payout across the contribution agreement (falls back to the team wallet).
-CREATE OR REPLACE FUNCTION finance.fn_split_team_payout(
-    p_escrow_id uuid, p_team_id uuid, p_payout bigint, p_currency text
-) RETURNS void AS $$
+-- A team's split must always describe the whole payout: the active stakes sum to exactly 100%, or
+-- (a team nobody has agreed a split for yet) to nothing. Deferred to the end of the transaction so a
+-- rebalance may move basis points between rows one statement at a time.
+CREATE OR REPLACE FUNCTION finance.fn_assert_team_split_total()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
 DECLARE
-    m record;
-    v_share bigint;
-    v_found boolean := false;
+    v_total bigint;
 BEGIN
-    FOR m IN
-        SELECT member_user_id, percent_bp FROM finance.contribution_agreements WHERE team_id = p_team_id
-    LOOP
-        v_found := true;
-        v_share := (p_payout * m.percent_bp) / 10000;
-        INSERT INTO finance.payout_splits (escrow_id, member_user_id, amount_cents, currency)
-        VALUES (p_escrow_id, m.member_user_id, v_share, p_currency);
-        PERFORM finance.fn_wallet_credit(m.member_user_id, 'user', p_currency, v_share, 'team_split', 'escrows', p_escrow_id);
-    END LOOP;
-
-    IF NOT v_found THEN
-        PERFORM finance.fn_wallet_credit(p_team_id, 'team', p_currency, p_payout, 'escrow_release', 'escrows', p_escrow_id);
+    SELECT COALESCE(sum(ca.percent_bp), 0) INTO v_total
+      FROM finance.contribution_agreements ca WHERE ca.team_id = NEW.team_id;
+    IF v_total NOT IN (0, 10000) THEN
+        RAISE EXCEPTION USING ERRCODE = '23514',
+            MESSAGE = 'stakes: a team''s split must total 100% (it totals ' || trim_scale(round(v_total / 100.0, 2))::text || '%)';
     END IF;
+    RETURN NULL;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance;
+$$;
+
+-- A new team or business wallet is governed from birth: project the entity's members onto it.
+CREATE OR REPLACE FUNCTION finance.fn_sync_vault_on_wallet()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF NEW.owner_type IN ('team', 'business') THEN
+        PERFORM org.fn_sync_vault_permissions(NEW.owner_type, NEW.owner_id, NULL);
+    END IF;
+    RETURN NULL;
+END;
+$$;
 
 -- Ticket claim -> hold funds in escrow. Skips gracefully when prerequisites are absent
 -- (e.g. individual/non-business client, or no unit price) rather than blocking the claim.
@@ -110,6 +309,7 @@ BEGIN
         t.current_assignee_id AS payee_id,
         COALESCE(t.unit_price_cents, ps.unit_price_cents) AS amount,
         p.client_business_id AS payer,
+        p.owner_user_id AS spender,
         p.currency AS currency
     INTO v
     FROM projects.tickets t
@@ -147,11 +347,14 @@ BEGIN
         RETURN NULL;
     END IF;
 
+    -- The envelope is the SPENDER's: the project owner who commits the business's money. auth.uid()
+    -- here is the freelancer whose claim triggered the hold, who never has an envelope on the payer's
+    -- wallet, so checking them waved every hold through.
     IF NOT finance.fn_check_spending_limit(
         (SELECT id FROM finance.wallets WHERE owner_type = 'business' AND owner_id = v.payer AND currency = COALESCE(v.currency, 'USD')),
-        auth.uid(), v_amount
+        v.spender, v_amount
     ) THEN
-        RAISE EXCEPTION 'Spending cap exceeded for this member on the business wallet.';
+        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'spend: this would exceed the project owner''s spending limit on the business wallet';
     END IF;
 
     INSERT INTO finance.escrows (project_stage_id, ticket_id, payer_business_id, payee_type, payee_id, amount_cents, currency, status)
@@ -296,7 +499,7 @@ BEGIN
         UPDATE finance.escrows SET status = 'released', platform_fee_cents = v_fee WHERE id = r.id;
 
         IF r.payee_type = 'team'::assignment_type THEN
-            PERFORM finance.fn_split_team_payout(r.id, r.payee_id, v_payout, r.currency);
+            PERFORM finance.fn_split_team_payout(r.id, r.payee_id, v_payout, r.currency, 'fair_exit_release');
         ELSE
             PERFORM finance.fn_wallet_credit(r.payee_id, 'freelancer', r.currency, v_payout, 'fair_exit_release', 'escrows', r.id);
         END IF;
@@ -311,44 +514,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects, security, org;
 
--- =============================================================================
--- 0309_business_finance_overview.sql
--- US-008 · Business Administration & Financial Overview
---
--- Exposes the (otherwise hidden) `finance.*` ledger to the business admin dashboard through a small
--- set of SECURITY DEFINER read RPCs in the `org` schema (which IS in the PostgREST allow-list). The
--- dashboard reads live balances, transaction lines and escrow allocations straight from
--- finance.wallets / finance.transactions / finance.escrows — no seed data.
---
--- It also provisions every business wallet with a one-time opening platform credit so the internal
--- -wallet demo path is real: a business can fund a stage (debiting this credit → a live ledger
--- line) and watch escrow hold/release move the numbers. This "opening platform credit" is a
--- documented business rule (see documentation/business/brain.md · Internal Wallet).
--- =============================================================================
-
--- #region 1. Business wallet opening credit (provisioning)
--- Every business wallet is seeded once with a promotional platform credit so the internal-wallet
--- demo (fund → hold → release) has funds to move. Idempotent: only fires when the wallet has no
--- ledger history yet.
-CREATE OR REPLACE FUNCTION finance.fn_seed_business_wallet()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = finance, public
-AS $$
-BEGIN
-    IF NEW.owner_type = 'business'
-       AND NOT EXISTS (SELECT 1 FROM finance.transactions WHERE wallet_id = NEW.id) THEN
-        PERFORM finance.fn_wallet_credit(
-            NEW.owner_id, 'business', NEW.currency, 2500000,
-            'demo_opening_credit', NULL, NULL
-        );
-    END IF;
-    RETURN NEW;
-END;
-$$;
-
--- #endregion
+-- No wallet is minted money. A business wallet used to be credited 2,500,000 minor units in whatever
+-- currency it was opened in (a demo "opening platform credit", fn_seed_business_wallet), so every new
+-- business, in every currency, started with spendable funds nobody had paid in. Removed 2026-09-28: a
+-- wallet's balance is only ever the sum of real movements (top-ups, releases, transfers).
 
 -- #region 2. Finance: refund path for parking auto-release
 -- Distinct from finance.fn_release_ticket_escrow (which PAYS the payee). A parked claim never earned

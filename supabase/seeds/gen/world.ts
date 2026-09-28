@@ -556,10 +556,15 @@ export const SKILLS: Array<[slug: string, label: string]> = [
 // #region Entities (teams + businesses)
 export interface Membership {
 	persona: string;
+	/** The PRESET role held — a row of the entity's own org.team_roles / org.business_roles. */
 	role: "owner" | "admin" | "lead" | "member";
 	title: string;
 	/** Team only: `contribution_agreements.percent_bp` share (sums to 10000 across the team). */
 	splitBp?: number;
+	/** The org-chart edge: the persona key of the member this one reports to. */
+	reportsTo?: string;
+	/** Per-member capability grants on top of the role (layer 3 of the permission model). */
+	granted?: string[];
 	joinedDaysAgo: number;
 }
 
@@ -616,8 +621,22 @@ export const ENTITIES: Entity[] = [
 				splitBp: 5000,
 				joinedDaysAgo: 400,
 			},
-			{ persona: "lena", role: "admin", title: "Research lead", splitBp: 2500, joinedDaysAgo: 200 },
-			{ persona: "aiko", role: "member", title: "Illustrator", splitBp: 2500, joinedDaysAgo: 120 },
+			{
+				persona: "lena",
+				role: "admin",
+				title: "Research lead",
+				splitBp: 2500,
+				reportsTo: "ines",
+				joinedDaysAgo: 200,
+			},
+			{
+				persona: "aiko",
+				role: "member",
+				title: "Illustrator",
+				splitBp: 2500,
+				reportsTo: "lena",
+				joinedDaysAgo: 120,
+			},
 		],
 		avatar: "brandmark_1.webp",
 		banner: "banner_6.webp",
@@ -645,12 +664,20 @@ export const ENTITIES: Entity[] = [
 				splitBp: 4000,
 				joinedDaysAgo: 365,
 			},
-			{ persona: "samuel", role: "lead", title: "Mobile lead", splitBp: 3000, joinedDaysAgo: 220 },
+			{
+				persona: "samuel",
+				role: "lead",
+				title: "Mobile lead",
+				splitBp: 3000,
+				reportsTo: "kwame",
+				joinedDaysAgo: 220,
+			},
 			{
 				persona: "tomasz",
 				role: "member",
 				title: "Backend engineer",
 				splitBp: 3000,
+				reportsTo: "samuel",
 				joinedDaysAgo: 180,
 			},
 		],
@@ -673,7 +700,14 @@ export const ENTITIES: Entity[] = [
 		owner: "saoirse",
 		members: [
 			{ persona: "saoirse", role: "owner", title: "Founder", splitBp: 7000, joinedDaysAgo: 330 },
-			{ persona: "aiko", role: "member", title: "Illustrator", splitBp: 3000, joinedDaysAgo: 150 },
+			{
+				persona: "aiko",
+				role: "member",
+				title: "Illustrator",
+				splitBp: 3000,
+				reportsTo: "saoirse",
+				joinedDaysAgo: 150,
+			},
 		],
 		avatar: "brandmark_3.webp",
 		pendingInvites: [{
@@ -699,8 +733,22 @@ export const ENTITIES: Entity[] = [
 		owner: "priya",
 		members: [
 			{ persona: "priya", role: "owner", title: "Head of Product", joinedDaysAgo: 260 },
-			{ persona: "hannah", role: "admin", title: "Product Manager", joinedDaysAgo: 230 },
+			{
+				persona: "hannah",
+				role: "admin",
+				title: "Product Manager",
+				reportsTo: "priya",
+				joinedDaysAgo: 230,
+			},
 		],
+		// A client invited onto the buyer side: Noor runs her own projects and Helia wants her
+		// commissioning for them too. A product call recorded in Decision #122, not a platform rule.
+		pendingInvites: [{
+			persona: "noor",
+			role: "member",
+			note: "We would love your eye on our design commissions — join us on Helia?",
+			daysAgo: 2,
+		}],
 		avatar: "brandmark_4.jpg",
 		legalName: "Helia Finance Ltd",
 		taxId: "GB 987 6543 21",
@@ -725,7 +773,16 @@ export const ENTITIES: Entity[] = [
 		owner: "daniel",
 		members: [
 			{ persona: "daniel", role: "owner", title: "CTO", joinedDaysAgo: 240 },
-			{ persona: "miguel", role: "member", title: "Design Ops", joinedDaysAgo: 190 },
+			// Miguel holds the plain member role and two per-member grants: he runs Atlas's design
+			// commissions, so he may hire and manage projects without being an admin.
+			{
+				persona: "miguel",
+				role: "member",
+				title: "Design Ops",
+				reportsTo: "daniel",
+				granted: ["hire", "manage_projects"],
+				joinedDaysAgo: 190,
+			},
 		],
 		avatar: "brandmark_5.webp",
 		legalName: "Atlas Labs Inc.",

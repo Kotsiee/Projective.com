@@ -33,11 +33,11 @@ interface RuleRow {
 	kind: "working_hours" | "call_window";
 }
 
+/** One span from `scheduling.get_public_blackouts` — the label already masked by the database. */
 interface BlackoutRow {
 	starts_at: string;
 	ends_at: string;
 	label: string;
-	label_is_public: boolean;
 }
 
 interface SpanRow {
@@ -87,11 +87,13 @@ export async function readSchedulePage(
 				.eq("is_active", true)
 				.order("weekday")
 				.order("start_minute"),
-			client.schema("scheduling").from("blackout_dates")
-				.select("starts_at, ends_at, label, label_is_public")
-				.eq("schedule_id", row.id)
-				.lt("starts_at", toIso)
-				.gt("ends_at", fromIso),
+			// The visitor's blackout read: spans for anyone the schedule is public to, a label only where
+			// its owner made it public. The table itself is the schedule's own members' only.
+			client.schema("scheduling").rpc("get_public_blackouts", {
+				p_schedule: row.id,
+				p_from: fromIso,
+				p_to: toIso,
+			}),
 			client.schema("scheduling").rpc("get_free_busy", {
 				p_schedule: row.id,
 				p_from: fromIso,
@@ -101,10 +103,12 @@ export async function readSchedulePage(
 		]);
 		if (rules.error || blackouts.error || busy.error || callOffer === undefined) return undefined;
 
-		const events: CalendarEvent[] = ((busy.data ?? []) as SpanRow[]).map((span) => {
+		const events: CalendarEvent[] = ((busy.data ?? []) as SpanRow[]).map((span, index) => {
 			const start = Date.parse(span.starts_at);
 			return {
-				id: `busy-${start}`,
+				// Two commitments may begin at the same instant (free/busy is a UNION of events and calls,
+				// and events may overlap), so the position keeps the id unique.
+				id: `busy-${start}-${index}`,
 				title: "Busy",
 				kind: "busy",
 				status: "busy",
@@ -132,8 +136,8 @@ export async function readSchedulePage(
 				blackouts: ((blackouts.data ?? []) as BlackoutRow[]).map((b) => ({
 					start: Date.parse(b.starts_at),
 					end: Date.parse(b.ends_at),
-					// A private label stays private: the span is public, what it is for is not.
-					label: b.label_is_public ? b.label : "Unavailable",
+					// Already "Unavailable" where the owner kept it private — decided in the database.
+					label: b.label,
 				})),
 			},
 			events,

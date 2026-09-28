@@ -19,8 +19,13 @@ CREATE TYPE finance.payout_mode AS ENUM ('manual', 'scheduled_weekly', 'schedule
 
 CREATE TYPE finance.pot_purpose AS ENUM ('tax', 'savings', 'goal', 'general');
 
+-- `approve_spend` decides a queued over-limit spend request. It exists as its own value because the
+-- only alternative, `manage_members`, is the owner-level grant that implies every capability
+-- (withdraw included): making an approver of somebody that way would let them empty the pool.
+-- Vault capabilities are DERIVED from the workspace capabilities (org.fn_sync_vault_permissions).
 CREATE TYPE finance.vault_capability AS ENUM (
-    'view', 'add_funds', 'spend', 'distribute', 'withdraw', 'manage_members', 'manage_billing'
+    'view', 'add_funds', 'spend', 'distribute', 'withdraw', 'manage_members', 'manage_billing',
+    'approve_spend'
 );
 
 CREATE TYPE finance.split_rule_type AS ENUM ('co_op', 'finders_fee', 'benevolent_dictator');

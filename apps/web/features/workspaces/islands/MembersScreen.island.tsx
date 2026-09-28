@@ -1,10 +1,10 @@
 import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
-import { useRef } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import "../styles/workspace.css";
 import { Grid } from "@projective/ui/layout";
 import { InputText } from "@projective/ui/fields";
-import { Message } from "@projective/ui/feedback";
+import { ConfirmDialog, Message } from "@projective/ui/feedback";
 import { styleVars } from "@ui/core/style.ts";
 import {
 	activeMembers,
@@ -13,7 +13,9 @@ import {
 	mayManageMember,
 	type PermissionFacet,
 	permissionFacets,
+	workspaceBase,
 	type WorkspaceDetail,
+	type WorkspaceInvite,
 	type WorkspaceMember,
 } from "@projective/types/workspace";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
@@ -24,7 +26,6 @@ import {
 	filterMembers,
 	MEMBER_SORTS,
 	type MemberSort,
-	partitionInvites,
 	sortMembers,
 } from "../core/workspace-model.ts";
 import {
@@ -35,36 +36,33 @@ import {
 } from "../components/MemberCard.tsx";
 import { MemberTable } from "../components/MemberTable.tsx";
 import { OrgChart } from "../components/OrgChart.tsx";
-import { type InviteAction, InviteQueue, type InviteView } from "../components/InviteQueue.tsx";
+import { type InviteAction, InviteQueue } from "../components/InviteQueue.tsx";
 import MemberDrawer from "./MemberDrawer.island.tsx";
 import InviteModal from "./InviteModal.island.tsx";
 import { OwnershipTransfer } from "../components/OwnershipTransfer.tsx";
 import { cloneGlyph, MembersGlyph } from "../core/workspace-glyphs.tsx";
 
 /**
- * MembersScreen — the roster, its three presentations, and the pending queue.
+ * MembersScreen — the roster, its three presentations, and the outgoing invitation queue.
  *
  * **The three views are one dataset seen three ways**, not three features: cards for scanning people,
  * a table for comparing them, an org chart for reading reporting lines. The switch lives in the footer
  * band (via the `membersView` signal) because it is chrome, so this island only reads it.
  *
  * **Permissions are presented, never recomputed.** `permissionFacets()` and `mayManageMember()` come
- * from the SSOT and the server's `viewerCapabilities` is the input — the whole reason the fat service
- * returns an effective set is that the roster row, the drawer, the matrix and the server guard must
- * give one answer. A second local implementation of `role ∪ granted − revoked` is how a permission UI
- * starts lying.
+ * from the SSOT and the server's `viewerCapabilities` is the input — the roster row, the drawer, the
+ * matrix and the database must give one answer.
  *
- * **A refused action always names a route forward.** The last owner cannot be demoted or removed, so
- * that path opens an ownership TRANSFER rather than showing an error: the user's goal (leave, or hand
- * over) is legitimate, only their chosen mechanism was not.
+ * **A refused action always names a route forward.** The owner's standing changes only by transfer, so
+ * their row offers the transfer (to them) instead of Remove; the viewer's own row offers Leave.
  *
- * Every mutation resolves to a refreshed `WorkspaceDetail` and replaces the whole projection, so a
+ * Every mutation resolves to the re-read `WorkspaceDetail` and replaces the whole projection, so a
  * change the server clamped or refused cannot survive on screen as something the reader believes.
  */
 
 export interface MembersScreenProps {
 	workspace: WorkspaceDetail;
-	/** The resolved `?view=` sub-view — `all` / `pending` / `roles` for members. */
+	/** The resolved `?view=` sub-view — `all` (the roster) or `pending` (the invitation queue). */
 	view?: string | null;
 	/** Which module routed here: `members` or the dedicated `invitations` module. */
 	module?: "members" | "invitations";
@@ -77,15 +75,28 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 	const selected = useSignal<ReadonlySet<string>>(new Set());
 	const busyId = useSignal<string | null>(null);
 	const notice = useSignal<string | null>(null);
+	const info = useSignal<string | null>(null);
 	/** The member whose drawer is open. */
 	const openMember = useSignal<WorkspaceMember | null>(null);
-	/** The member whose removal/demotion needs an ownership transfer first. */
+	/** Set while the owner is handing the owner seat over. */
 	const transferFor = useSignal<WorkspaceMember | null>(null);
+	/** Open while the viewer confirms leaving the entity. */
+	const confirmLeave = useSignal(false);
 	const peopleRef = useRef<HTMLDivElement>(null);
 
 	// `Ctrl`+wheel / pinch over the people collection scales it, the same gesture the roster and the
 	// File Explorer answer. The org-chart override is off this axis, so the gesture never fights it.
 	useCtrlWheelZoom(peopleRef, workspaceZoom);
+
+	// `?invite=1` — the footer band and the lane on modules that do not mount the invite modal link here
+	// with it, so their Invite control lands on the modal rather than on a page the reader must search.
+	useEffect(() => {
+		const url = new URL(globalThis.location.href);
+		if (url.searchParams.get("invite") !== "1") return;
+		url.searchParams.delete("invite");
+		globalThis.history.replaceState(null, "", `${url.pathname}${url.search}`);
+		if (detail.value.viewerCapabilities.includes("invite_members")) openInvite();
+	}, []);
 
 	const ws = detail.value;
 	const copy = kindCopy(ws.kind);
@@ -133,21 +144,34 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 		selected.value = new Set();
 	}
 
+	/** Leave the console for the roster — the viewer is no longer a member of this entity. */
+	function leaveConsole(): void {
+		globalThis.location.assign(workspaceBase(ws.kind));
+	}
+
 	async function removeMember(member: WorkspaceMember): Promise<void> {
 		busyId.value = member.id;
 		notice.value = null;
+		info.value = null;
 		const res = await WorkspaceService.updateMember({
+			kind: ws.kind,
 			workspaceId: ws.id,
 			memberId: member.id,
 			remove: true,
 		});
 		busyId.value = null;
-		if (!res.ok || !res.data) {
-			notice.value = res.message ?? "Could not update that member.";
+		if (!res.ok) {
+			notice.value = res.errors?.member ?? res.message ?? "Could not update that member.";
 			return;
 		}
-		adopt(res.data.workspace);
 		openMember.value = null;
+		// `null` means the caller removed themselves — there is no console left for them to see.
+		if (!res.data) {
+			leaveConsole();
+			return;
+		}
+		adopt(res.data);
+		info.value = member.isSelf ? null : `${member.name} is no longer in ${ws.name}.`;
 	}
 
 	function onAction(action: MemberAction, member: WorkspaceMember): void {
@@ -162,41 +186,43 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 				globalThis.location.assign(`/messages/dm-${member.handle}`);
 				return;
 			case "transfer":
-				transferFor.value = member;
+				// Only the owner can hand the seat over; the menu offers it on their own row alone.
+				if (member.isSelf) transferFor.value = member;
 				return;
-			case "remove": {
-				// The last owner is redirected into a transfer instead of refused — the goal is valid.
-				if (guardsById.value[member.id]?.lastOwner) {
-					transferFor.value = member;
-					return;
-				}
+			case "leave":
+				confirmLeave.value = true;
+				return;
+			case "remove":
 				void removeMember(member);
 				return;
-			}
 		}
 	}
 
-	async function onInviteAction(action: InviteAction, invite: { id: string }): Promise<void> {
+	async function onInviteAction(action: InviteAction, invite: WorkspaceInvite): Promise<void> {
 		busyId.value = invite.id;
 		notice.value = null;
-		// Approving a join request and revoking/declining an invitation are the same shape to the server:
-		// a yes-or-no decision on one pending row. `resend` re-sends and is likewise a positive decision.
-		const accept = action === "approve" || action === "resend";
-		const res = await WorkspaceService.respondInvite(invite.id, accept);
+		info.value = null;
+		const res = await WorkspaceService.inviteAction({
+			kind: ws.kind,
+			workspaceId: ws.id,
+			inviteId: invite.id,
+			action,
+		});
 		busyId.value = null;
-		if (!res.ok) {
-			notice.value = res.message ?? "Could not answer that invitation.";
+		if (!res.ok || !res.data) {
+			notice.value = res.message ??
+				`Could not ${action === "revoke" ? "withdraw" : "resend"} that invitation.`;
 			return;
 		}
-		// The response carries a roster, not a detail, so re-read the console projection for this entity.
-		const fresh = await WorkspaceService.detail(ws.kind, ws.id);
-		if (fresh.ok && fresh.data) adopt(fresh.data.workspace);
+		adopt(res.data);
+		const who = invite.name || invite.email || `@${invite.handle}`;
+		info.value = action === "revoke"
+			? `The invitation to ${who} was withdrawn.`
+			: `The invitation to ${who} was sent again.`;
 	}
 
-	const invites = useComputed(() => partitionInvites(ws.invites));
-	/** How many rows are awaiting somebody's decision, in either direction. */
-	const pendingCount = useComputed(() => invites.value.sent.length + invites.value.requests.length);
-	const inviteView: InviteView = showPending ? "requests" : "sent";
+	/** How many invitations are awaiting an answer. Empty unless the viewer may invite. */
+	const pendingCount = ws.invites.length;
 
 	return (
 		<div class="wsp" data-kind={ws.kind}>
@@ -204,27 +230,25 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 				<section class="wsp-band wsp-band--head" style={styleVars({ "--wsp-i": 0 })}>
 					<div class="wsp-band__inner">
 						<div class="wsp-pagehead">
-							<h1 class="wsp-pagehead__title">
-								{showPending ? "Invitations and requests" : "Members"}
-							</h1>
+							<h1 class="wsp-pagehead__title">{showPending ? "Invitations" : "Members"}</h1>
 							<p class="wsp-pagehead__note">
 								{showPending
-									? "People we have asked to join, and people asking to join us. Two different questions — the direction tells you which."
+									? `People invited to ${ws.name} who have not answered yet. Each invitation lasts 14 days; resending it starts a fresh window.`
 									: `Everyone in ${ws.name}, what they may do, and how loaded they are.`}
 							</p>
 						</div>
 					</div>
 				</section>
 
-				{notice.value && (
+				{(notice.value || info.value) && (
 					<section class="wsp-band wsp-band--plain">
 						<div class="wsp-band__inner">
 							<div class="wsp-error">
 								<Message
 									class="wsp-error__alert"
-									severity="danger"
+									severity={notice.value ? "danger" : "success"}
 									variant="subtle"
-									text={notice.value}
+									text={notice.value ?? info.value ?? ""}
 								/>
 							</div>
 						</div>
@@ -238,7 +262,6 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 								<InviteQueue
 									invites={ws.invites}
 									roles={ws.roles}
-									view={inviteView}
 									canManage={canInvite}
 									busyId={busyId.value}
 									onAction={(a, i) => void onInviteAction(a, i)}
@@ -270,7 +293,7 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 											</span>
 										</label>
 										<select
-											class="wsp-people__view"
+											class="wsp-select wsp-select--compact"
 											aria-label="Sort members"
 											value={sort.value}
 											onChange={(e) => {
@@ -283,12 +306,12 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 										</select>
 									</div>
 
-									{pendingCount.value > 0 && (
+									{pendingCount > 0 && (
 										<p class="wsp-people__group-head">
 											<span class="wsp-people__group-title">
-												{pendingCount.value === 1
-													? "1 person awaiting a decision"
-													: `${pendingCount.value} people awaiting a decision`}
+												{pendingCount === 1
+													? "1 invitation awaiting an answer"
+													: `${pendingCount} invitations awaiting an answer`}
 											</span>
 											<a class="wsp-band__action" href="?view=pending">Review</a>
 										</p>
@@ -386,6 +409,19 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 
 			<InviteModal workspace={ws} onUpdated={adopt} />
 
+			<ConfirmDialog
+				visible={confirmLeave}
+				header={`Leave ${ws.name}?`}
+				message={`You will lose access to ${ws.name} straight away. Your work stays on record — nothing is deleted — and an admin can invite you back.`}
+				acceptLabel={`Leave ${copy.noun}`}
+				rejectLabel="Stay"
+				acceptSeverity="danger"
+				onAccept={() => {
+					const self = actor.value;
+					if (self) void removeMember(self);
+				}}
+			/>
+
 			{transferFor.value && (
 				<OwnershipTransfer
 					workspace={ws}
@@ -395,7 +431,8 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 					}}
 					onTransferred={(next) => {
 						transferFor.value = null;
-						adopt(next);
+						if (next) adopt(next);
+						else leaveConsole();
 					}}
 				/>
 			)}

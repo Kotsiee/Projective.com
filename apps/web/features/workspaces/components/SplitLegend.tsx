@@ -43,6 +43,11 @@ export interface SplitLegendProps {
 	changedIds?: readonly string[];
 	/** Read-only: a viewer without `manage_finances`, or a policy locked pending verification. */
 	readOnly?: boolean;
+	/**
+	 * Whether each stake's `projected` figure prices a real held release. `false` when nothing is held —
+	 * the amount cell then says so instead of printing a zero that reads like a payout.
+	 */
+	priced?: boolean;
 }
 // #endregion
 
@@ -61,7 +66,7 @@ function pct(bp: number): string {
 // #region Component
 /** The per-stake legend: swatch · person · share · projected money · hold. */
 export function SplitLegend(props: SplitLegendProps): JSX.Element {
-	const { stakes, readOnly = false } = props;
+	const { stakes, readOnly = false, priced = true } = props;
 	const changed = new Set(props.changedIds ?? []);
 
 	return (
@@ -70,7 +75,9 @@ export function SplitLegend(props: SplitLegendProps): JSX.Element {
 				const stale = changed.has(stake.memberId);
 				const share = pct(stake.shareBp);
 				// The consequence, spelled out: a percentage is arithmetic, this is what actually happens.
-				const consequence = stale
+				const consequence = !priced
+					? `${stake.name} takes ${share} of each release. No release is held yet.`
+					: stale
 					? `${stake.name} takes ${share} of the next release. ${STALE_NOTE}`
 					: `${stake.name} receives ${stake.projected.display} of the next release${
 						props.releaseLabel ? ` of ${props.releaseLabel}` : ""
@@ -103,13 +110,22 @@ export function SplitLegend(props: SplitLegendProps): JSX.Element {
 						</span>
 						<span class="wsp-split__key-share wsp-num">{share}</span>
 						<span class="wsp-split__key-amount">
-							<PolicyAmount
-								value={stake.projected}
-								size="key"
-								stale={stale}
-								srLabel={consequence}
-							/>
-							{stale && (
+							{priced
+								? (
+									<PolicyAmount
+										value={stake.projected}
+										size="key"
+										stale={stale}
+										srLabel={consequence}
+									/>
+								)
+								: (
+									<span class="wsp-money wsp-money--key wsp-money--muted">
+										<span aria-hidden="true">—</span>
+										<span class="ui-visually-hidden">{consequence}</span>
+									</span>
+								)}
+							{priced && stale && (
 								<Tooltip content={STALE_NOTE} placement="top">
 									<span class="wsp-split__key-stale" aria-hidden="true">{ClockGlyph}</span>
 								</Tooltip>

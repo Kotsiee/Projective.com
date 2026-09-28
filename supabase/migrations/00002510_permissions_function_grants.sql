@@ -4,6 +4,28 @@
 -- Security, RLS & Permissions). Source file noted before each statement group.
 -- =============================================================================
 
+-- #region org — deny by default (2026-09-28)
+-- Postgres grants EXECUTE on every new function to PUBLIC, and `org` is exposed to PostgREST — so
+-- every org function, predicate and internal helper was an RPC anybody could call, `anon` included.
+-- Two of them were holes on their own: org.create_team trusted a caller-supplied owner and ran for a
+-- signed-out caller, and org.get_dashboard_teams answered for any user id it was handed. EXECUTE is now
+-- revoked from every client role on the whole schema, here at the top of the file, and every function
+-- that SHOULD be reachable is granted back by name further down (or in the region at the end). A new
+-- org function is therefore unreachable until somebody decides it should be — the safe default.
+REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA org FROM PUBLIC, anon, authenticated;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA org
+REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
+
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA org TO service_role;
+
+-- The membership predicates ARE the SELECT policies of the org, projects, comms and files tables, and
+-- a policy expression runs as the invoking role — so they stay executable by both client roles.
+GRANT EXECUTE ON FUNCTION org.is_active_team_member (uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION org.is_active_business_member (uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION org.is_organisation_member (uuid, org.organisation_role) TO anon, authenticated;
+-- #endregion
+
 -- --- from 0200_permissions.sql ---
 
 GRANT
@@ -88,18 +110,8 @@ EXECUTE ON FUNCTION public.complete_onboarding (jsonb) TO authenticated;
 
 -- #endregion
 
--- #region 6. Grants — expose the read/update RPCs to authenticated callers.
-GRANT
-EXECUTE ON FUNCTION org.get_business_finance (uuid) TO authenticated;
-
-GRANT
-EXECUTE ON FUNCTION org.get_business_members (uuid) TO authenticated;
-
-GRANT
-EXECUTE ON FUNCTION org.get_business_admin_profile (uuid) TO authenticated;
-
-GRANT
-EXECUTE ON FUNCTION org.update_business (uuid, jsonb) TO authenticated;
+-- (The business finance / members / admin-profile / update RPCs of 0309 were retired 2026-09-28 in
+-- favour of org.get_workspace_detail and org.update_workspace — see the workspace region at the end.)
 
 -- --- from 0311_e7_private_channels_pii_handover.sql ---
 
@@ -165,12 +177,9 @@ EXECUTE ON FUNCTION finance.fn_can_view_wallet (uuid) TO authenticated;
 
 -- --- from 20260723093000_finance_vault_governance.sql ---
 
-GRANT
-EXECUTE ON FUNCTION finance.fn_has_vault_capability (
-    uuid,
-    uuid,
-    finance.vault_capability
-) TO authenticated;
+-- finance.fn_has_vault_capability is NOT granted to any client role (2026-09-28): it answers for an
+-- arbitrary user id, so exposing it was a capability oracle, and no policy calls it — its callers are
+-- the definer predicates and money RPCs, which run it as its owner.
 
 -- --- from 20260724094000_comms_notification_rls_jobs.sql ---
 
@@ -739,7 +748,7 @@ FROM authenticated;
 REVOKE ALL ON FUNCTION finance.fn_fair_exit_release (uuid, integer)
 FROM authenticated;
 
-REVOKE ALL ON FUNCTION finance.fn_split_team_payout (uuid, uuid, bigint, text)
+REVOKE ALL ON FUNCTION finance.fn_split_team_payout (uuid, uuid, bigint, text, text)
 FROM authenticated;
 
 REVOKE ALL ON FUNCTION finance.fn_generate_consolidated_invoice (
@@ -752,8 +761,6 @@ FROM authenticated;
 REVOKE ALL ON FUNCTION finance.fn_check_spending_limit (uuid, uuid, bigint)
 FROM authenticated;
 
-REVOKE ALL ON FUNCTION finance.fn_seed_business_wallet ()
-FROM authenticated;
 
 -- --- files: asset management ---
 -- files.fn_can_read is deliberately left executable by PUBLIC: it IS the SELECT policy on
@@ -991,6 +998,9 @@ EXECUTE ON FUNCTION scheduling.close_reschedule_round (
 
 -- The ballot cap is a trigger function (00001510 §6d); nobody calls it, so nobody is granted it.
 REVOKE ALL ON FUNCTION scheduling.fn_cap_reschedule_proposals () FROM public, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.fn_guard_reschedule_write () FROM public, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.fn_stamp_vote_deadline () FROM public, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.fn_vote_deadline (uuid, timestamptz) FROM public, anon, authenticated;
 
 REVOKE ALL ON FUNCTION scheduling.fn_schedule_host (uuid)
 FROM public, anon, authenticated;
@@ -1076,3 +1086,65 @@ FROM public, anon;
 
 GRANT
 EXECUTE ON FUNCTION projects.get_viewer_hired_teams (uuid) TO authenticated;
+
+-- #region The workspace console (Teams & Businesses, Decision #122)
+-- The write and read doors of /teams and /businesses. Each is a definer that resolves the caller from
+-- auth.uid() and checks the workspace capability it needs (org.fn_member_can) — never a role name —
+-- so all are safe to expose to a signed-in caller and none to a guest. The permission twin, the vault
+-- projection, the handle helpers and the membership trigger function stay internal (service role
+-- only, from the org region at the top).
+GRANT EXECUTE ON FUNCTION org.check_handle (text) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.create_workspace (text, text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.set_workspace_status (text, uuid, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.update_workspace (text, uuid, jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.invite_workspace_member (text, uuid, text, text, uuid, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.respond_to_workspace_invitation (uuid, boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.revoke_workspace_invitation (uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.resend_workspace_invitation (uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.update_workspace_member (text, uuid, jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.transfer_workspace_ownership (text, uuid, uuid, boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.upsert_workspace_role (text, uuid, uuid, text, text, org.workspace_capability[], text) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.archive_workspace_role (text, uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.get_workspace_roster (text) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.get_workspace_detail (text, text) TO authenticated;
+
+-- Money governance (00001210 §13). The finance schema is deny-by-default (above), so each is granted.
+GRANT EXECUTE ON FUNCTION finance.save_team_split (uuid, jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.preview_team_split (uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.save_spend_policy (uuid, jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.request_spend_approval (uuid, bigint, text, text, uuid) TO authenticated;
+
+-- The acting-context switches (00001001). The shared writer they call is NOT reachable: it trusts its
+-- arguments, and every switch re-checks the membership before calling it.
+REVOKE ALL ON FUNCTION security.fn_set_session_context (public.profile_type, uuid, uuid, uuid, uuid)
+FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION security.switch_session_context (public.profile_type, uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION security.switch_team_context (uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION security.switch_organisation_context (uuid) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION security.clear_session_context () FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION security.switch_session_context (public.profile_type, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION security.switch_team_context (uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION security.switch_organisation_context (uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION security.clear_session_context () TO authenticated;
+-- #endregion
+
+-- #region Scheduling privacy doors (2026-09-28)
+-- fn_is_event_attendee IS a SELECT policy arm on scheduling.events (authenticated only — anon reads no
+-- event row), so it stays executable by that role. get_event_rooms answers only for the caller's own
+-- parties; get_public_blackouts is the visitor's blackout read. The two trigger functions are never
+-- called directly.
+REVOKE ALL ON FUNCTION scheduling.fn_is_event_attendee (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION scheduling.fn_is_event_attendee (uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION scheduling.get_event_rooms (uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION scheduling.get_event_rooms (uuid[]) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION scheduling.get_public_blackouts (uuid, timestamptz, timestamptz) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION scheduling.get_public_blackouts (uuid, timestamptz, timestamptz) TO anon, authenticated, service_role;
+-- The guard is INVOKER (it must see the caller's role). EXECUTE on a trigger function is checked
+-- once, at CREATE TRIGGER, against the trigger's creator (see 00001001 §4), so no client role needs it;
+-- but the body runs as the INVOKING role, so the definer roster helper it calls must be executable by
+-- `authenticated` (the only client role that can reach an UPDATE or DELETE on scheduling.events).
+REVOKE ALL ON FUNCTION scheduling.fn_guard_rostered_event () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.fn_event_has_roster (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION scheduling.fn_event_has_roster (uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION scheduling.fn_check_schedule_timezone () FROM PUBLIC, anon, authenticated;
+-- #endregion

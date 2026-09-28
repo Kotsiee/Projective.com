@@ -54,7 +54,7 @@ export type TransactionDirection = z.infer<typeof TransactionDirection>;
  * A row of `finance.transactions` — one immutable movement on a wallet, carrying the running
  * `balanceAfterCents` and (when the movement crossed currencies) the FX snapshot captured at commit.
  * `reason` is a free-text canonical code (`escrow_hold`, `escrow_release`, `escrow_refund`,
- * `fair_exit_refund`, `team_split`, `demo_opening_credit`, `refund`, `chargeback`, …).
+ * `fair_exit_refund`, `team_split`, `refund`, `chargeback`, …).
  */
 export const TransactionSchema = z.object({
 	id: uuid,
@@ -156,8 +156,8 @@ export type FxSnapshot = z.infer<typeof FxSnapshotSchema>;
 
 // #region Balance projection (read model)
 /**
- * The three-state balance projection surfaced to the finance surfaces (mirrors the
- * `org.get_business_finance` balances object): `available` = the wallet's materialised balance;
+ * The three-state balance projection surfaced to the finance surfaces (the wallet read model in
+ * `packages/backend/services/finance/live-wallet.ts`): `available` = the wallet's materialised balance;
  * `locked` = capital in live escrow; `pending` = funds inside the 7-day safety window; `onHold` =
  * contested funds in the Dispute Lockbox. Derived, never stored.
  */

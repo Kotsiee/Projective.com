@@ -128,7 +128,7 @@ async function middleNavFooterFor(
 		(await projectFooterFor(url, context, actor)) ??
 		(await conversationFooterFor(url, context, actor)) ??
 		(await catalogueFooterFor(url, context, actor)) ??
-		(await walletFooterFor(url, context, actor)) ?? workspaceFooterFor(url, context) ??
+		(await walletFooterFor(url, context, actor)) ?? (await workspaceFooterFor(url, actor)) ??
 		filesFooterFor(url, context) ?? (await basketFooterFor(url, context, actor)) ??
 		(await calendarFooterFor(url, context, actor));
 }
@@ -147,7 +147,7 @@ async function middleNavHeaderFor(
 		(await projectHeaderFor(url, context, actor)) ??
 		(await conversationHeaderFor(url, context, actor)) ??
 		(await catalogueHeaderFor(url, context, actor)) ??
-		(await walletHeaderFor(url, context, actor)) ?? workspaceHeaderFor(url, context) ??
+		(await walletHeaderFor(url, context, actor)) ?? (await workspaceHeaderFor(url, actor)) ??
 		filesHeaderFor(url, context) ?? (await basketHeaderFor(url, context, actor)) ??
 		(await calendarHeaderFor(url, context, actor));
 }
@@ -190,7 +190,7 @@ async function laneFor(
 	// The multi-member entity console (`/teams`, `/businesses`) hosts either the entity roster or, inside
 	// one entity, that entity's capability-filtered management rail.
 	if (url.pathname.startsWith("/teams") || url.pathname.startsWith("/businesses")) {
-		return workspaceLaneFor(url, context);
+		return await workspaceLaneFor(url, actor);
 	}
 
 	if (!url.pathname.startsWith("/projects")) return sectionLane();

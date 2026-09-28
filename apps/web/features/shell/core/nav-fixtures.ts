@@ -8,14 +8,19 @@
 import { mockAvatar } from "@web/utils/mock-assets.ts";
 
 // #region Types
-/** A recently-active workspace surfaced under the sidebar's Projects disclosure (YouTube-style). */
+/**
+ * A recently-active project surfaced under the sidebar's Projects disclosure (YouTube-style). Teams and
+ * businesses are NOT listed here: their sidebar entries come from the session's real acting context
+ * (`nav-model`), and the account popover reads the viewer's real memberships through the live roster —
+ * a fixture team would be a link to an entity nobody belongs to.
+ */
 export interface RecentWorkspace {
 	/** Stable id (route slug). */
 	id: string;
 	/** Display name. */
 	label: string;
 	/** Which entity kind this is — drives the leading glyph/tint. */
-	kind: "project" | "team" | "business";
+	kind: "project";
 	/** Destination route. */
 	href: string;
 	/** Owner display name (avatar alt / initials fallback). */
@@ -59,20 +64,6 @@ export interface AccountCapabilities {
 	businessAccountEnabled: boolean;
 }
 
-/** A team/business the user belongs to — a switch target in the account popover's context switcher. */
-export interface MembershipEntry {
-	/** Stable id (also the workspace route slug). */
-	id: string;
-	/** Display name. */
-	name: string;
-	/** `@handle` (context-switch persistence + profile link). */
-	handle: string;
-	/** Entity avatar (Unsplash crop). */
-	avatar: string;
-	/** Short qualifier shown under the name (e.g. role or member count). */
-	detail: string;
-}
-
 /** A row in the header Notifications drawer. */
 export interface NotificationItem {
 	/** Stable id. */
@@ -108,45 +99,12 @@ const RECENT_WORKSPACES: readonly RecentWorkspace[] = [
 		hasUpdate: true,
 	},
 	{
-		id: "northwind",
-		label: "Northwind Studio",
-		kind: "team",
-		href: "/teams/northwind",
-		owner: "Daniel Okafor",
-		ownerAvatar: FACE("photo-1500648767791-00dcc994a43e"),
-	},
-	{
-		id: "monarch-labs",
-		label: "Monarch Labs",
-		kind: "business",
-		href: "/businesses/monarch-labs",
-		owner: "Priya Nair",
-		ownerAvatar: FACE("photo-1438761681033-6461ffad8d80"),
-		hasUpdate: true,
-	},
-	{
 		id: "prj-xmvjo9wga8",
 		label: "Helio App",
 		kind: "project",
 		href: "/projects/prj-xmvjo9wga8",
 		owner: "Theo Marsh",
 		ownerAvatar: FACE("photo-1507003211169-0a1dd7228f2d"),
-	},
-	{
-		id: "atlas-collective",
-		label: "Atlas Collective",
-		kind: "team",
-		href: "/teams/atlas-collective",
-		owner: "Lena Fischer",
-		ownerAvatar: FACE("photo-1544005313-94ddf0286df2"),
-	},
-	{
-		id: "verdant-studio",
-		label: "Verdant Studio",
-		kind: "business",
-		href: "/businesses/verdant-studio",
-		owner: "Ada Whitfield",
-		ownerAvatar: FACE("photo-1487412720507-e7ab37603c6f"),
 	},
 ];
 
@@ -184,42 +142,6 @@ const ACCOUNT_CAPABILITIES: AccountCapabilities = {
 	belongsToBusiness: true,
 	businessAccountEnabled: true,
 };
-
-/** Teams the user belongs to — context-switcher targets. Swap for `/api/context/memberships?kind=team`. */
-const TEAM_MEMBERSHIPS: readonly MembershipEntry[] = [
-	{
-		id: "northwind",
-		name: "Northwind Studio",
-		handle: "northwind",
-		avatar: FACE("photo-1500648767791-00dcc994a43e"),
-		detail: "Admin · 6 members",
-	},
-	{
-		id: "atlas-collective",
-		name: "Atlas Collective",
-		handle: "atlascollective",
-		avatar: FACE("photo-1544005313-94ddf0286df2"),
-		detail: "Member · 12 members",
-	},
-];
-
-/** Businesses the user belongs to — context-switcher targets. Swap for `/api/context/memberships?kind=business`. */
-const BUSINESS_MEMBERSHIPS: readonly MembershipEntry[] = [
-	{
-		id: "monarch-labs",
-		name: "Monarch Labs",
-		handle: "monarchlabs",
-		avatar: FACE("photo-1438761681033-6461ffad8d80"),
-		detail: "Owner",
-	},
-	{
-		id: "verdant-studio",
-		name: "Verdant Studio",
-		handle: "verdantstudio",
-		avatar: FACE("photo-1487412720507-e7ab37603c6f"),
-		detail: "Admin",
-	},
-];
 
 const NOTIFICATIONS: readonly NotificationItem[] = [
 	{
@@ -292,14 +214,9 @@ const NOTIFICATIONS: readonly NotificationItem[] = [
 
 // #endregion
 
-/** Most-recently-active workspaces for the Projects disclosure. Swap for `/api/workspaces/recent`. */
+/** Most-recently-active projects for the Projects disclosure. Swap for `/api/workspaces/recent`. */
 export function getRecentWorkspaces(): readonly RecentWorkspace[] {
 	return RECENT_WORKSPACES;
-}
-
-/** Recent workspaces filtered to a single entity kind — powers the kind-strict sidebar disclosures. */
-export function getWorkspacesByKind(kind: RecentWorkspace["kind"]): readonly RecentWorkspace[] {
-	return RECENT_WORKSPACES.filter((w) => w.kind === kind);
 }
 
 /** Products & services the seller offers, for the "Products & Services" disclosure. Swap for `/api/offerings/recent`. */
@@ -310,16 +227,6 @@ export function getOfferings(): readonly OfferingSublink[] {
 /** The account's standing navigation capabilities. Swap for `/api/account/capabilities`. */
 export function getAccountCapabilities(): AccountCapabilities {
 	return ACCOUNT_CAPABILITIES;
-}
-
-/** Teams the user can switch into. Swap for `/api/context/memberships?kind=team`. */
-export function getTeamMemberships(): readonly MembershipEntry[] {
-	return TEAM_MEMBERSHIPS;
-}
-
-/** Businesses the user can switch into. Swap for `/api/context/memberships?kind=business`. */
-export function getBusinessMemberships(): readonly MembershipEntry[] {
-	return BUSINESS_MEMBERSHIPS;
 }
 
 /** Header notifications. Swap for `/api/notifications`. */

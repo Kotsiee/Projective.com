@@ -134,11 +134,28 @@ function copyDefined<T extends object, K extends keyof T>(src: T, keys: readonly
  * and a privacy guarantee. `sources` stays public on an unmasked event, where it is what the
  * provider filter and the stacked provider marks are built from.
  */
+/** The most seats a roster carries on the wire (`CalendarEventSchema.roster` is `.max(200)`). */
+export const ROSTER_WIRE_MAX = 200;
+
+/**
+ * Cap a roster for the wire, keeping the host's seat and the reader's own. The server decides seating,
+ * party status and a vote's electorate from the WHOLE roster; only the payload is capped — cutting it
+ * before those decisions let a minority carry a large session and dropped seat #201 onwards out of
+ * being a party at all.
+ */
+export function capRosterForWire(event: CalendarEvent): CalendarEvent {
+	const roster = event.roster;
+	if (!roster || roster.length <= ROSTER_WIRE_MAX) return event;
+	const first = roster.filter((a) => a.role === "host" || a.isViewer);
+	const rest = roster.filter((a) => !(a.role === "host" || a.isViewer));
+	return { ...event, roster: [...first, ...rest].slice(0, ROSTER_WIRE_MAX) };
+}
+
 export function redactEventForViewer(
 	event: CalendarEvent,
 	viewer: SchedulingViewer,
 ): CalendarEvent {
-	if (isEventParty(event, viewer)) return event;
+	if (isEventParty(event, viewer)) return capRosterForWire(event);
 	const shown = copyDefined(event, PUBLIC_EVENT_FIELDS);
 	if (shown.masked) delete (shown as { sources?: unknown }).sources;
 	return shown;

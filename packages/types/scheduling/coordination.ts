@@ -306,8 +306,11 @@ export const EventRescheduleSchema = z.object({
 	proposals: z.array(RescheduleProposalSchema).max(RESCHEDULE_PROPOSALS_MAX).default([]),
 	/**
 	 * Epoch ms (UTC) the vote closes — {@link VOTE_RESOLUTION_LEAD_HOURS} before the EARLIEST slot on
-	 * the ballot. Server-stamped from {@link voteResolvesAt} so SSR and the hydrated island agree on
-	 * a deadline rather than each deriving it from a clock they separately own. `null` off a vote.
+	 * the ballot, or the event's own lockout if that comes first ({@link voteResolvesAt}).
+	 * Server-stamped so SSR and the hydrated island agree on a deadline rather than each deriving it
+	 * from a clock they separately own; on a LIVE vote the read re-derives it from the ballot it read,
+	 * so a stamp two concurrent writes raced over can never be what a reader is shown. `null` off a
+	 * vote.
 	 *
 	 * Retained through `resolved` and `lapsed` — it is the instant the decision was taken, which a
 	 * history line and a "closed 3 hours ago" label both read. Cleared on `withdrawn`, because a
@@ -354,6 +357,8 @@ export const RescheduleRefusalReason = z.enum([
 	"not_permitted",
 	"duplicate_vote",
 	"ballot_full",
+	"not_offered",
+	"slot_inside_lockout",
 ]);
 export type RescheduleRefusalReason = z.infer<typeof RescheduleRefusalReason>;
 
@@ -372,6 +377,9 @@ export const RESCHEDULE_REFUSAL_COPY: Record<RescheduleRefusalReason, string> = 
 	duplicate_vote: "You've already voted.",
 	ballot_full:
 		`This round already has ${RESCHEDULE_PROPOSALS_MAX} times on the table — no more can be offered until it closes.`,
+	not_offered: "The host hasn't put this time to you yet.",
+	slot_inside_lockout:
+		`That time is now less than ${RESCHEDULE_LOCKOUT_HOURS} hours away, so it can no longer be agreed.`,
 };
 // #endregion
 
@@ -475,28 +483,107 @@ export function canOpenVote(proposals: readonly RescheduleProposal[]): boolean {
 }
 
 /**
- * When the vote closes: {@link VOTE_RESOLUTION_LEAD_HOURS} before the EARLIEST slot on the ballot —
- * because once the first option's notice period is gone, that option can no longer be chosen, and a
- * ballot that can still elect an unusable time is not a ballot.
+ * When the vote closes: the EARLIER of two instants.
  *
- * `null` when nothing is on the ballot. Note the result may already be in the past, which is a real
- * and renderable state (see {@link voteIsOpen}), not an error.
+ * - {@link VOTE_RESOLUTION_LEAD_HOURS} before the earliest slot on the ballot — once the first
+ *   option's notice period is gone that option can no longer be chosen, and a ballot that can still
+ *   elect an unusable time is not a ballot.
+ * - The event's OWN lockout ({@link rescheduleLockoutAt}). Every slot on a ballot may lie after the
+ *   meeting it would replace — moving Tuesday's crit to next week is the ordinary case — and without
+ *   this cap the vote stayed open past the point where nothing may move the event at all: nobody
+ *   could vote any more (the lockout refuses every action), yet the round sat `voting` until a
+ *   deadline days after the meeting had happened, and the first read after that settled it and moved
+ *   a session that had already taken place. Closing at the lockout means a vote is decided while the
+ *   event is still movable, so the move it makes — however late a reader records it — was a move the
+ *   rules allowed at the instant it was decided.
+ *
+ * Every ballot slot therefore starts at least the lead after the deadline, which is why a vote that
+ * carries never elects a slot inside its own notice period.
+ *
+ * `null` when nothing is on the ballot. The result may already be in the past, which is a real and
+ * renderable state (see {@link voteIsOpen}), not an error. The same formula is maintained in SQL by
+ * `scheduling.fn_vote_deadline` (`00001510`); `coordination.contract.test.ts` pins its literals.
  */
-export function voteResolvesAt(proposals: readonly RescheduleProposal[]): number | null {
+export function voteResolvesAt(
+	proposals: readonly RescheduleProposal[],
+	eventStartMs: number,
+): number | null {
 	const ballot = ballotProposals(proposals);
 	if (ballot.length === 0) return null;
 	let earliest = ballot[0].start;
 	for (const p of ballot) if (p.start < earliest) earliest = p.start;
-	return earliest - VOTE_RESOLUTION_LEAD_MS;
+	return Math.min(earliest - VOTE_RESOLUTION_LEAD_MS, rescheduleLockoutAt(eventStartMs));
 }
 
 /**
  * Is voting still open at `nowMs`? Exclusive at the deadline: the vote resolves AT that instant, so
  * a ballot cast on the stroke of it arrives after the decision.
  */
-export function voteIsOpen(nowMs: number, proposals: readonly RescheduleProposal[]): boolean {
-	const at = voteResolvesAt(proposals);
+export function voteIsOpen(
+	nowMs: number,
+	proposals: readonly RescheduleProposal[],
+	eventStartMs: number,
+): boolean {
+	const at = voteResolvesAt(proposals, eventStartMs);
 	return at !== null && nowMs < at;
+}
+
+/**
+ * Why this seat may not accept this slot on a 1-on-1 (`counterparty`) negotiation — or `null` when
+ * it may.
+ *
+ * **The party who did NOT offer the time is the one who accepts it.** A host's slot is accepted by
+ * the attendee, and only once the host has put it to them (`awaiting_counterparty`) — before that the
+ * host is still composing, and a slot accepted mid-composition was never offered. An attendee's slot
+ * is accepted by the host, in either open state: the host is the scarce calendar, so their acceptance
+ * IS the approval a vote would have needed, and asking them to "approve" and then "open" a question
+ * whose only possible answer is their own would be a dead end (there was no control for it at all).
+ *
+ * Last, the slot itself must still be takeable ({@link canReschedule}): it cleared the lockout when
+ * it was offered, but an offer left unanswered for a day can be accepted into a time four hours away,
+ * or already past, and the event would be moved there.
+ *
+ * Closed rounds are refused before this is asked; the planner and the Event Modal both call it, so the
+ * rule has one implementation on each side of the wire.
+ */
+export function counterpartyAcceptRefusal(
+	nowMs: number,
+	status: RescheduleStatus,
+	proposal: RescheduleProposal,
+	viewerIsHost: boolean,
+): RescheduleRefusalReason | null {
+	const offeredByHost = proposal.proposedByRole === "host";
+	if (offeredByHost === viewerIsHost) return "not_permitted";
+	if (offeredByHost && status !== "awaiting_counterparty") return "not_offered";
+	if (!canReschedule(nowMs, proposal.start)) return "slot_inside_lockout";
+	return null;
+}
+
+/**
+ * Why the host may not put this attendee's slot on the ballot — or `null` when they may.
+ *
+ * A slot that has drifted inside its notice period cannot be chosen, and approving it onto a LIVE
+ * ballot would do worse than nothing: it becomes the earliest option, drags the vote's deadline into
+ * the past, and closes a vote that everybody was still answering.
+ */
+export function approvalRefusal(
+	nowMs: number,
+	proposal: RescheduleProposal,
+): RescheduleRefusalReason | null {
+	return canReschedule(nowMs, proposal.start) ? null : "slot_inside_lockout";
+}
+
+/**
+ * May a 1-on-1 be put to the attendee? It needs at least one slot the HOST offered that is still
+ * takeable — an attendee cannot accept their own slot ({@link counterpartyAcceptRefusal}), so a
+ * question whose only options are theirs, or whose options have all gone stale, has no answer anybody
+ * could give.
+ */
+export function canOpenCounterparty(
+	nowMs: number,
+	proposals: readonly RescheduleProposal[],
+): boolean {
+	return proposals.some((p) => p.proposedByRole === "host" && canReschedule(nowMs, p.start));
 }
 // #endregion
 
@@ -615,8 +702,9 @@ export function voteIsSettleable(
 	nowMs: number,
 	proposals: readonly RescheduleProposal[],
 	eligibleVoters: number,
+	eventStartMs: number,
 ): boolean {
-	if (!voteIsOpen(nowMs, proposals)) return true;
+	if (!voteIsOpen(nowMs, proposals, eventStartMs)) return true;
 	return eligibleVoters > 0 && votesCast(proposals) >= eligibleVoters;
 }
 
@@ -632,14 +720,20 @@ export function voteIsSettleable(
  *
  * A vote that closes with a {@link majorityProposal} is `resolved` and names its winner; one that
  * closes without is `lapsed` and the original time stands.
+ *
+ * `eventStartMs` is the event's CURRENT start — the time being moved — because the deadline is capped
+ * at that event's own lockout ({@link voteResolvesAt}).
  */
 export function settleVote(
 	nowMs: number,
 	reschedule: EventReschedule,
 	eligibleVoters: number,
+	eventStartMs: number,
 ): EventReschedule {
 	if (reschedule.mode !== "vote" || reschedule.status !== "voting") return reschedule;
-	if (!voteIsSettleable(nowMs, reschedule.proposals, eligibleVoters)) return reschedule;
+	if (!voteIsSettleable(nowMs, reschedule.proposals, eligibleVoters, eventStartMs)) {
+		return reschedule;
+	}
 
 	const winner = majorityProposal(reschedule.proposals, eligibleVoters);
 	return winner

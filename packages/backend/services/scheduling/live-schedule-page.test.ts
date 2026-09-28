@@ -76,26 +76,18 @@ function publishedSchedule(overrides: Partial<Answers> = {}): Answers {
 				{ weekday: 1, start_minute: 540, end_minute: 1020, kind: "working_hours" },
 				{ weekday: 1, start_minute: 600, end_minute: 720, kind: "call_window" },
 			],
-			blackout_dates: [
-				{
-					starts_at: "2026-10-05T00:00:00Z",
-					ends_at: "2026-10-07T00:00:00Z",
-					label: "Surgery recovery",
-					label_is_public: false,
-				},
-				{
-					starts_at: "2026-10-12T00:00:00Z",
-					ends_at: "2026-10-13T00:00:00Z",
-					label: "Conference",
-					label_is_public: true,
-				},
-			],
 			call_settings: null,
 			call_platforms: [],
 			...overrides.tables,
 		},
 		rpc: {
 			get_free_busy: [{ starts_at: "2026-09-28T13:00:00Z", ends_at: "2026-09-28T15:00:00Z" }],
+			// What `scheduling.get_public_blackouts` answers a visitor: the private label ("Surgery
+			// recovery") already reduced to "Unavailable" by the database.
+			get_public_blackouts: [
+				{ id: "b-1", starts_at: "2026-10-05T00:00:00Z", ends_at: "2026-10-07T00:00:00Z", label: "Unavailable" },
+				{ id: "b-2", starts_at: "2026-10-12T00:00:00Z", ends_at: "2026-10-13T00:00:00Z", label: "Conference" },
+			],
 			...overrides.rpc,
 		},
 		fail: overrides.fail,
@@ -136,6 +128,24 @@ Deno.test("public schedule — a blackout's span is public, its label only when 
 	assertStrictEquals(page!.availability.blackouts[0].start, Date.parse("2026-10-05T00:00:00Z"));
 });
 
+Deno.test("public schedule — the label mask lives in the database, and a visitor cannot read the table", () => {
+	// The page renders whatever `get_public_blackouts` returns, so the rule that makes it safe is SQL.
+	// Pin it: the function masks an unpublished label, and the table's SELECT policy admits no visitor.
+	const root = new URL("../../../../supabase/migrations/", import.meta.url);
+	const read = (f: string) => Deno.readTextFileSync(new URL(f, root)).replace(/\r\n/g, "\n");
+	const fn = read("00001520_functions_scheduling_free_busy.sql");
+	assert(
+		fn.includes(
+			"CASE WHEN b.label_is_public OR scheduling.fn_can_view_schedule (b.schedule_id) THEN b.label ELSE 'Unavailable' END",
+		),
+		"get_public_blackouts no longer masks a private label",
+	);
+	const policies = read("00002015_policies_scheduling_integrations.sql");
+	const i = policies.indexOf('CREATE POLICY "View blackout dates"');
+	const policy = policies.slice(i, policies.indexOf(";", i));
+	assert(i >= 0 && !/\banon\b/.test(policy), "blackout_dates is readable by a visitor again");
+});
+
 Deno.test("public schedule — working hours and call windows stay two different claims", async () => {
 	const page = await readSchedulePage(OWNER, META, WINDOW, stubClient(publishedSchedule()));
 	assertEquals(page!.availability.rules.map((r) => r.kind), ["working_hours", "call_window"]);
@@ -166,7 +176,7 @@ Deno.test("public schedule — an unpublished schedule is no page at all", async
 });
 
 Deno.test("public schedule — a failed read is reported, never rendered as an empty week", async () => {
-	for (const fail of ["schedules", "availability_rules", "blackout_dates", "get_free_busy"]) {
+	for (const fail of ["schedules", "availability_rules", "get_public_blackouts", "get_free_busy"]) {
 		const page = await readSchedulePage(
 			OWNER,
 			META,

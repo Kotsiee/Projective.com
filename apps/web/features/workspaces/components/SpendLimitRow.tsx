@@ -3,7 +3,7 @@ import { Avatar } from "@projective/ui/display";
 import { InputNumber, ToggleSwitch } from "@projective/ui/fields";
 import { Tooltip } from "@projective/ui/feedback";
 import { styleVars } from "@ui/core/style.ts";
-import { currencyExponent } from "@projective/types/finance";
+import { toMajorUnits, toMinorUnits } from "@projective/types/finance";
 import type { SpendLimit } from "@projective/types/workspace";
 import { PolicyAmount } from "./PolicyAmount.tsx";
 import { DoneGlyph, EditGlyph } from "./policy-glyphs.tsx";
@@ -49,6 +49,11 @@ export interface SpendLimitPatch {
 export interface SpendLimitRowProps {
 	/** The server projection, with `usedFraction` already computed. */
 	limit: SpendLimit;
+	/**
+	 * The currency the policy governs — what a typed ceiling is denominated in. Defaults to the row's own
+	 * `spent` currency, which the server draws in the same wallet currency.
+	 */
+	currency?: string;
 	/** Whether this row is the viewer's own envelope. */
 	isSelf?: boolean;
 	/** Whether the viewer may rewrite envelopes (`manage_finances`). */
@@ -73,23 +78,6 @@ function meterTone(fraction: number): "normal" | "near" | "full" {
 	return "normal";
 }
 
-/**
- * Convert major units typed into a currency field to the integer minor units the wire carries.
- *
- * This is a **unit conversion for entry**, not money arithmetic: no balance, total, split, fee or rate is
- * derived from it, the server re-validates the integer it receives, and every figure this row *displays*
- * outside a form field remains a server-computed `MoneyView`.
- */
-function toMinor(major: number | null, currency: string): number | null {
-	if (major === null || !Number.isFinite(major)) return null;
-	return Math.max(0, Math.round(major * 10 ** currencyExponent(currency)));
-}
-
-/** The inverse, seeding a field from the stored ceiling. */
-function toMajor(minor: number | null, currency: string): number | null {
-	if (minor === null) return null;
-	return minor / 10 ** currencyExponent(currency);
-}
 // #endregion
 
 // #region Component
@@ -103,7 +91,9 @@ function toMajor(minor: number | null, currency: string): number | null {
  */
 export function SpendLimitRow(props: SpendLimitRowProps): JSX.Element {
 	const { limit, editable = false, editing = false, isSelf = false } = props;
-	const currency = limit.spent.currency;
+	// Typed ceilings convert through the finance SSOT's exponent-aware helpers — a unit conversion for
+	// entry, never money arithmetic; every displayed figure stays a server-computed `MoneyView`.
+	const currency = props.currency ?? limit.spent.currency;
 	const tone = meterTone(limit.usedFraction);
 	const unlimited = limit.limitMinor === null;
 	const capId = `wsp-cap-${limit.memberId}`;
@@ -217,14 +207,14 @@ export function SpendLimitRow(props: SpendLimitRowProps): JSX.Element {
 						<label class="wsp-label" for={capId}>Rolling ceiling</label>
 						<InputNumber
 							id={capId}
-							value={toMajor(limit.limitMinor, currency)}
+							value={toMajorUnits(limit.limitMinor, currency)}
 							mode="currency"
 							currency={currency}
 							min={0}
 							step={50}
 							fluid
 							disabled={!limit.canSpend}
-							onValueChange={(next) => emit({ limitMinor: toMinor(next, currency) })}
+							onValueChange={(next) => emit({ limitMinor: toMinorUnits(next, currency) })}
 						/>
 					</div>
 
@@ -232,14 +222,14 @@ export function SpendLimitRow(props: SpendLimitRowProps): JSX.Element {
 						<label class="wsp-label" for={perId}>Per purchase</label>
 						<InputNumber
 							id={perId}
-							value={toMajor(limit.perTransactionMinor, currency)}
+							value={toMajorUnits(limit.perTransactionMinor, currency)}
 							mode="currency"
 							currency={currency}
 							min={0}
 							step={50}
 							fluid
 							disabled={!limit.canSpend}
-							onValueChange={(next) => emit({ perTransactionMinor: toMinor(next, currency) })}
+							onValueChange={(next) => emit({ perTransactionMinor: toMinorUnits(next, currency) })}
 						/>
 					</div>
 

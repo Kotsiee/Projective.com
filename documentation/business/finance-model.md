@@ -341,9 +341,13 @@ stored — only an opaque Stripe reference + safe display fragments (`brand`, `l
 Governs shared wallets (Business / Team / Organisation).
 
 - **Capability grants** (`finance.vault_permissions`, not a single role): `view` · `add_funds` ·
-  `spend` · `distribute` · `withdraw` · `manage_members` · `manage_billing`. Enforced in-DB by
-  `finance.fn_has_vault_capability`. ⚠️ Overlaps `org.business_permission` / `org.team_permission` —
-  reconcile (root `CLAUDE.md` §8), do not fork.
+  `spend` · `distribute` · `withdraw` · `manage_members` · `manage_billing` · `approve_spend`.
+  Enforced in-DB by `finance.fn_has_vault_capability`. **Reconciled 2026-09-28 (Decision #122):** the
+  grants are a PROJECTION of the workspace capabilities (`org.workspace_capability` — contribute →
+  `add_funds`, spend → `spend`, manage finances → `distribute`, withdraw → `withdraw`, approve spend →
+  `approve_spend`, the owner → `manage_members` + `manage_billing`), rewritten on every membership
+  change; the per-kind `org.business_permission` / `org.team_permission` enums are retired. Deciding an
+  over-limit spend needs `approve_spend`, not `manage_members` (which also carries `withdraw`).
 - **Spending caps** (`finance.spending_limits`, existing): per-member `cap_cents` per `weekly` /
   `monthly` / `total` period; `spent_cents` tracked, `fn_check_spending_limit` enforced at hold
   time.

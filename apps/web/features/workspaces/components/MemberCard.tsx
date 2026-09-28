@@ -185,36 +185,6 @@ export function InviteOutIcon(): JSX.Element {
 	);
 }
 
-/** An inbound arrow — they asked us (a join request). */
-export function InviteInIcon(): JSX.Element {
-	return (
-		<Svg>
-			<path d="M20 12H7M11 7.5L6.5 12l4.5 4.5" />
-			<path d="M4 5v14" />
-		</Svg>
-	);
-}
-
-/** A chain link — a shareable invitation URL. */
-export function LinkIcon(): JSX.Element {
-	return (
-		<Svg>
-			<path d="M10.5 13.5a3.5 3.5 0 0 1 0-5l2.2-2.2a3.5 3.5 0 0 1 5 5l-1.2 1.2" />
-			<path d="M13.5 10.5a3.5 3.5 0 0 1 0 5l-2.2 2.2a3.5 3.5 0 0 1-5-5l1.2-1.2" />
-		</Svg>
-	);
-}
-
-/** Overlapping sheets — copy to the clipboard. */
-export function CopyIcon(): JSX.Element {
-	return (
-		<Svg>
-			<rect x="9" y="9" width="11" height="11" rx="2" />
-			<path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" />
-		</Svg>
-	);
-}
-
 /** A cross — decline, revoke, dismiss. */
 export function CrossIcon(): JSX.Element {
 	return (
@@ -224,7 +194,7 @@ export function CrossIcon(): JSX.Element {
 	);
 }
 
-/** A tick in a ring — approve a join request. */
+/** A tick in a ring — approve a spend request. */
 export function ApproveIcon(): JSX.Element {
 	return (
 		<Svg>
@@ -571,14 +541,16 @@ export type MemberAction =
 	| "profile"
 	/** Soft-remove them from the entity. */
 	| "remove"
-	/** Route the last owner to an ownership transfer instead of a dead-end refusal. */
+	/** The viewer leaves the entity themselves (soft — they become `left`). */
+	| "leave"
+	/** The owner hands the owner seat to somebody else. */
 	| "transfer";
 
 /** Whether the viewer may act on a row, and what stands in the way when they may not. */
 export interface MemberGuards {
 	/** `mayManageMember(actor, target, kind)` from the SSOT, resolved by the caller. */
 	manageable: boolean;
-	/** Whether removing or demoting them would leave the entity ownerless. */
+	/** Whether this row is the entity's owner — whose standing changes only by transfer. */
 	lastOwner: boolean;
 }
 
@@ -589,7 +561,7 @@ export function manageBlockedReason(
 ): string | null {
 	if (guards.manageable) return null;
 	return member.isSelf
-		? "You cannot change your own role or membership here."
+		? "You cannot change your own role or permissions."
 		: "You need a higher role than theirs to change their membership.";
 }
 
@@ -598,8 +570,8 @@ export function manageBlockedReason(
  *
  * Every gated item stays **visible and disabled with its reason in a tooltip** rather than vanishing: a
  * control that disappears teaches nothing, and on a permission surface the reader's next question is
- * always "why can't I?". The last owner's Remove is not merely disabled — it re-routes to the ownership
- * transfer, because refusing there would leave an entity nobody can ever hand over.
+ * always "why can't I?". The owner's row offers the ownership transfer instead of Remove — to the owner
+ * themselves, since only they can hand the seat over — and the viewer's own row offers Leave.
  */
 export function MemberActionsMenu(props: {
 	member: WorkspaceMember;
@@ -609,6 +581,9 @@ export function MemberActionsMenu(props: {
 }): JSX.Element {
 	const { member, guards, onAction, class: className } = props;
 	const reason = manageBlockedReason(member, guards);
+	const transferReason = member.isSelf
+		? "Hand the owner seat to another member."
+		: `Only ${member.name} can hand ownership over.`;
 
 	return (
 		<Popover
@@ -664,15 +639,33 @@ export function MemberActionsMenu(props: {
 				</button>
 				{guards.lastOwner
 					? (
-						<button
-							type="button"
-							role="menuitem"
-							class="wsp-menu__item"
-							onClick={() => onAction("transfer", member)}
-						>
-							<CrownIcon />
-							Transfer ownership…
-						</button>
+						<Tooltip content={transferReason}>
+							<button
+								type="button"
+								role="menuitem"
+								class="wsp-menu__item"
+								disabled={!member.isSelf}
+								onClick={() => onAction("transfer", member)}
+							>
+								<CrownIcon />
+								Transfer ownership…
+							</button>
+						</Tooltip>
+					)
+					: member.isSelf
+					? (
+						<Tooltip content="Leave — your work stays on record; nothing is deleted.">
+							<button
+								type="button"
+								role="menuitem"
+								class="wsp-menu__item"
+								data-variant="danger"
+								onClick={() => onAction("leave", member)}
+							>
+								<TrashIcon />
+								Leave
+							</button>
+						</Tooltip>
 					)
 					: (
 						<Tooltip content={reason ?? `Remove ${member.name} from the entity.`}>
@@ -812,13 +805,7 @@ export function MemberCard(props: MemberCardProps): JSX.Element {
 			</div>
 
 			<div class="wsp-mcard__money">
-				<span class="wsp-label">
-					{member.state === "invited"
-						? "Invited"
-						: member.state === "requested"
-						? "Asked"
-						: "Joined"}
-				</span>
+				<span class="wsp-label">Joined</span>
 				<span class="wsp-num">{shortDate(member.joinedAt, referenceYear)}</span>
 			</div>
 

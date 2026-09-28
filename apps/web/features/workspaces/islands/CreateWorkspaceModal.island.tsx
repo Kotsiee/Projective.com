@@ -210,12 +210,13 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 			return;
 		}
 
-		const created = res.data.workspace;
+		const created = res.data;
 		closeCreate();
 		reset();
-		// Land INSIDE the new entity. Deliberately NO automatic context switch: creating a team is not
-		// the same act as beginning to work as it, and the overview offers that as one explicit tap.
-		globalThis.location.assign(workspaceHref(created.kind, created.id));
+		// Land INSIDE the new entity, at its handle — the console's one address. Deliberately NO automatic
+		// context switch: creating a team is not the same act as beginning to work as it, and the overview
+		// offers that as one explicit tap.
+		globalThis.location.assign(workspaceHref(created.kind, created.handle));
 	}
 
 	const verdict = handleState.value;

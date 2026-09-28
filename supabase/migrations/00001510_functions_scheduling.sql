@@ -77,8 +77,10 @@ AS $$
 $$;
 
 -- Is this schedule publicly readable at all? Drives the anonymous/visitor path on
--- `/[handle]/availability` — a visitor may read a PUBLISHED schedule's shape (bands, blackouts) so
--- the booking grid can render, but never an unpublished one.
+-- `/[handle]/availability` — a visitor may read a PUBLISHED schedule's shape (bands, blackout spans,
+-- call terms) so the booking grid can render, but never an unpublished one, and never the schedule of
+-- a profile the reader may not see (a `private` individual, a suspended team): publishing a schedule
+-- does not publish a profile its owner has hidden.
 CREATE OR REPLACE FUNCTION scheduling.fn_schedule_is_public(p_schedule uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -87,7 +89,12 @@ SECURITY DEFINER
 SET search_path = scheduling, public
 AS $$
     SELECT COALESCE((
-        SELECT s.is_published FROM scheduling.schedules s WHERE s.id = p_schedule
+        SELECT s.is_published
+           AND org.fn_profile_visible (
+               CASE WHEN s.owner_type IN ('user', 'freelancer') THEN 'user' ELSE s.owner_type::text END,
+               s.owner_id
+           )
+          FROM scheduling.schedules s WHERE s.id = p_schedule
     ), false);
 $$;
 
@@ -174,14 +181,19 @@ $$;
 
 -- #region 6b. Event coordination party predicate
 -- Who may read an event's coordination: its roster, its reschedule rounds with their proposals and
--- votes, its history and its attachments. A policy that merely inherited the EVENT's visibility would
--- publish a roster wherever the event is visible — and a published schedule's busy blocks are visible
--- to anonymous visitors. So coordination has its own, narrower audience:
+-- votes, its history and its attachments. It is the database half of the per-viewer projection in
+-- @projective/types/scheduling privacy.ts (`isEventParty`), so it names the same people:
 --
 --   · someone seated on the roster;
---   · whoever manages the schedule the event is anchored to (fn_can_manage_schedule);
---   · a participant of the engagement it belongs to (projects.has_project_access) — a project's own
---     meetings are the whole team's business.
+--   · the event's creator (the host of an entry with no host seat);
+--   · whoever manages the schedule the event is anchored to (fn_can_manage_schedule).
+--
+-- NOT every participant of the engagement (2026-09-28). This used to admit anybody with project
+-- access, which made the projection a presentation layer only: a member who was not on a meeting's
+-- roster — or a freelancer who had DECLINED a stage — could read its roster with other people's
+-- private notes, the proposals and who voted for what, and the log, straight through PostgREST. A
+-- project member still sees a meeting's time and title (the events policy); its coordination is its
+-- parties' business.
 --
 -- SECURITY DEFINER so the roster lookup does not recurse into event_attendees' own policy, which calls
 -- this function.
@@ -197,11 +209,55 @@ AS $$
                 SELECT 1 FROM scheduling.event_attendees a
                 WHERE a.event_id = e.id AND a.user_id = auth.uid ()
             )
+            OR e.created_by = auth.uid ()
             OR (e.schedule_id IS NOT NULL AND scheduling.fn_can_manage_schedule (e.schedule_id))
-            OR (e.project_id IS NOT NULL AND projects.has_project_access (e.project_id))
         FROM scheduling.events e
         WHERE e.id = p_event_id
     ), false);
+$$;
+
+-- Is the caller seated on this event? The events policy's roster arm: an attendee of a meeting on
+-- somebody else's schedule could read its coordination but not the event row itself, so the meeting
+-- vanished from their agenda and every RSVP or vote on it answered 404. DEFINER, like the predicate
+-- above, so the lookup does not recurse into event_attendees' policy.
+CREATE OR REPLACE FUNCTION scheduling.fn_is_event_attendee (p_event_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT auth.uid () IS NOT NULL AND EXISTS (
+        SELECT 1 FROM scheduling.event_attendees a
+        WHERE a.event_id = p_event_id AND a.user_id = auth.uid ()
+    );
+$$;
+
+-- The meeting room — join URL, passcode, dial-in details — for the events the caller is a PARTY to
+-- (seated, or the creator), and nothing for any other. These three columns are withheld from every
+-- client role at the column level (00002520), because RLS is row-level: a member of a project may
+-- see that a meeting exists and when, and a meeting link IS the access control for most providers.
+-- The scheduling service reads the rest of the row under the caller's RLS and merges the room from
+-- here, so the projection and the database can no longer disagree about who holds a link.
+CREATE OR REPLACE FUNCTION scheduling.get_event_rooms (p_event_ids uuid[])
+RETURNS TABLE (event_id uuid, meeting_url text, meeting_passcode text, meeting_details text)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT e.id, e.meeting_url, e.meeting_passcode, e.meeting_details
+      FROM scheduling.events e
+     WHERE e.id = ANY (p_event_ids)
+       AND auth.uid () IS NOT NULL
+       AND cardinality(p_event_ids) <= 500
+       AND (
+           e.created_by = auth.uid ()
+           OR EXISTS (
+               SELECT 1 FROM scheduling.event_attendees a
+               WHERE a.event_id = e.id AND a.user_id = auth.uid ()
+           )
+       );
 $$;
 
 -- #endregion
@@ -224,6 +280,16 @@ $$;
 -- Returns the new history line's id, or NULL when the round was already closed — the caller treats
 -- NULL as "somebody else got there first" and re-reads.
 --
+-- The round is LOCKED before anything else is looked at, so the open-status test and the writes that
+-- follow it see one state: the proposal/vote guard (6e) takes the same lock, and a vote arriving
+-- while a reader closes the round now waits and is then refused, rather than landing on a question
+-- that had already been answered.
+--
+-- A 1-on-1 may be closed on an ATTENDEE's slot: the host accepts it directly
+-- (`counterpartyAcceptRefusal`), and that acceptance is the approval such a slot otherwise waits for —
+-- so the winner is marked approved in the same transaction, and a resolved round never names a slot
+-- the table still describes as off the ballot.
+--
 -- INVOKER and service-role only (00002510): there is no client write path into coordination at all.
 CREATE OR REPLACE FUNCTION scheduling.close_reschedule_round (
     p_reschedule_id uuid,
@@ -240,6 +306,7 @@ SET search_path = ''
 AS $$
 DECLARE
     v_event uuid;
+    v_status text;
     v_start timestamptz;
     v_end timestamptz;
     v_line uuid;
@@ -251,6 +318,15 @@ BEGIN
         RAISE EXCEPTION 'close_reschedule_round: a resolved round names its winner' USING ERRCODE = '22023';
     END IF;
 
+    SELECT r.event_id, r.status INTO v_event, v_status
+    FROM scheduling.event_reschedules r
+    WHERE r.id = p_reschedule_id
+    FOR UPDATE;
+
+    IF NOT FOUND OR v_status NOT IN ('collecting', 'awaiting_counterparty', 'voting') THEN
+        RETURN NULL;
+    END IF;
+
     IF p_status = 'resolved' THEN
         SELECT p.starts_at, p.ends_at INTO v_start, v_end
         FROM scheduling.reschedule_proposals p
@@ -259,19 +335,17 @@ BEGIN
             RAISE EXCEPTION 'close_reschedule_round: proposal % is not on round %',
                 p_resolved_proposal_id, p_reschedule_id USING ERRCODE = '22023';
         END IF;
+
+        UPDATE scheduling.reschedule_proposals
+        SET approved = true
+        WHERE id = p_resolved_proposal_id AND NOT approved;
     END IF;
 
     UPDATE scheduling.event_reschedules
     SET status = p_status,
         resolved_proposal_id = CASE WHEN p_status = 'resolved' THEN p_resolved_proposal_id END,
         updated_at = now()
-    WHERE id = p_reschedule_id
-      AND status IN ('collecting', 'awaiting_counterparty', 'voting')
-    RETURNING event_id INTO v_event;
-
-    IF NOT FOUND THEN
-        RETURN NULL;
-    END IF;
+    WHERE id = p_reschedule_id;
 
     IF p_status = 'resolved' THEN
         UPDATE scheduling.events SET starts_at = v_start, ends_at = v_end WHERE id = v_event;
@@ -343,6 +417,124 @@ COMMENT ON FUNCTION scheduling.fn_cap_reschedule_proposals() IS
 
 -- #endregion
 
+-- #region 6e. Guarding a round's writes, and keeping its deadline
+-- The vote deadline, as a function of a round's ballot and the event it would move: the EARLIER of
+-- the earliest ballot slot less VOTE_RESOLUTION_LEAD_HOURS, and the event's own start less
+-- RESCHEDULE_LOCKOUT_HOURS. The same rule as `voteResolvesAt` in `@projective/types/scheduling`;
+-- `coordination.contract.test.ts` pins both literals below to those constants.
+--
+-- The lockout term is what stops a vote outliving the meeting it is about. Every slot on a ballot may
+-- lie after the event (moving Tuesday's crit to next week is the ordinary case), and without it the
+-- round stayed `voting` for days after the event could no longer be moved, until the first read past
+-- that deadline settled it and moved a session that had already taken place.
+--
+-- `p_also` counts one more slot as on the ballot — the row a BEFORE trigger is about to write, which
+-- is not in the table yet (an insert) or not yet approved in it (an approval). NULL when the ballot is
+-- empty, matching the TypeScript. INVOKER: called only from the definer triggers below.
+CREATE OR REPLACE FUNCTION scheduling.fn_vote_deadline(
+    p_reschedule_id uuid,
+    p_also timestamptz DEFAULT NULL
+)
+RETURNS timestamptz
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+    SELECT CASE
+        WHEN b.earliest IS NULL THEN NULL
+        ELSE LEAST(b.earliest - interval '12 hours', e.starts_at - interval '12 hours')
+    END
+    FROM scheduling.event_reschedules r
+    JOIN scheduling.events e ON e.id = r.event_id
+    CROSS JOIN LATERAL (
+        SELECT LEAST(min(p.starts_at), p_also) AS earliest
+        FROM scheduling.reschedule_proposals p
+        WHERE p.reschedule_id = r.id
+          AND (p.proposed_by_role = 'host' OR p.approved)
+    ) b
+    WHERE r.id = p_reschedule_id;
+$$;
+
+COMMENT ON FUNCTION scheduling.fn_vote_deadline(uuid, timestamptz) IS
+    'The vote deadline for a round: LEAST(earliest ballot slot - lead, event start - lockout); NULL '
+    'on an empty ballot. Mirrors voteResolvesAt. Internal to the reschedule triggers.';
+
+-- BEFORE INSERT / UPDATE OF approved on reschedule_proposals, and BEFORE INSERT on proposal_votes.
+--
+-- The planner refuses a move on a closed round, but it plans against a READ, and the round can close
+-- between that read and this write: a host withdraws while an attendee is voting, or a reader settles
+-- a decided vote a moment before somebody else's ballot lands. Without this the vote was stored on a
+-- round that had already been answered — or a proposal on a withdrawn one — and the writer's own
+-- follow-up then failed and reported the whole move as refused while its row stayed committed. So the
+-- round is locked (the same lock the cap and `close_reschedule_round` take) and its status tested
+-- here, in the statement that writes the row: a proposal or approval needs an open round, a vote a
+-- round that is `voting`. Refused as 55000 (object_not_in_prerequisite_state), which the writer
+-- answers with a 409.
+--
+-- On a live vote the deadline is re-stamped in the same statement from the ballot as it will stand,
+-- so a proposal or an approval that brings the earliest option forward cannot commit without its
+-- deadline, and two of them racing cannot leave the stamp computed from the ballot the loser read.
+CREATE OR REPLACE FUNCTION scheduling.fn_guard_reschedule_write()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_status text;
+BEGIN
+    SELECT r.status INTO v_status
+    FROM scheduling.event_reschedules r
+    WHERE r.id = NEW.reschedule_id
+    FOR UPDATE;
+
+    IF TG_TABLE_NAME = 'proposal_votes' THEN
+        IF v_status IS DISTINCT FROM 'voting' THEN
+            RAISE EXCEPTION 'reschedule round % is not taking votes (%)', NEW.reschedule_id, v_status
+                USING ERRCODE = 'object_not_in_prerequisite_state';
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    IF v_status IS NULL OR v_status NOT IN ('collecting', 'awaiting_counterparty', 'voting') THEN
+        RAISE EXCEPTION 'reschedule round % is not open (%)', NEW.reschedule_id, v_status
+            USING ERRCODE = 'object_not_in_prerequisite_state';
+    END IF;
+
+    IF v_status = 'voting' AND (NEW.proposed_by_role = 'host' OR NEW.approved) THEN
+        UPDATE scheduling.event_reschedules
+        SET resolves_at = scheduling.fn_vote_deadline(NEW.reschedule_id, NEW.starts_at)
+        WHERE id = NEW.reschedule_id;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION scheduling.fn_guard_reschedule_write() IS
+    'BEFORE write on reschedule_proposals / proposal_votes: refuse a row on a round that is not open '
+    '(55000) under a lock on the round, and re-stamp a live vote''s deadline in the same statement.';
+
+-- BEFORE UPDATE OF status on event_reschedules, as a round turns `voting`: stamp the deadline from the
+-- ballot it holds at that instant rather than from whatever ballot the opening request read.
+CREATE OR REPLACE FUNCTION scheduling.fn_stamp_vote_deadline()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    NEW.resolves_at := scheduling.fn_vote_deadline(NEW.id);
+    RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION scheduling.fn_stamp_vote_deadline() IS
+    'BEFORE UPDATE OF status on event_reschedules, entering voting: stamp resolves_at from the ballot.';
+
+-- #endregion
+
 -- #region 2. Timezone-aware primitives
 -- Minutes from LOCAL midnight in the given IANA zone. `AT TIME ZONE` converts the timestamptz to
 -- wall-clock time in that zone, so DST is handled by Postgres rather than by hand.
@@ -391,9 +583,17 @@ AS $$
           AND r.kind = p_kind
           AND r.is_active
           AND r.weekday = scheduling.fn_local_weekday (p_starts_at, s.timezone)
-          AND r.weekday = scheduling.fn_local_weekday (p_ends_at, s.timezone)
           AND r.start_minute <= scheduling.fn_local_minute_of_day (p_starts_at, s.timezone)
-          AND r.end_minute   >= scheduling.fn_local_minute_of_day (p_ends_at, s.timezone)
+          AND (
+              (r.weekday = scheduling.fn_local_weekday (p_ends_at, s.timezone)
+               AND r.end_minute >= scheduling.fn_local_minute_of_day (p_ends_at, s.timezone))
+              -- A band that runs to 24:00 covers a slot ending at the NEXT local midnight — minute
+              -- 0 of the following day — which the slot grid offers (slot-grid.ts) and the editor
+              -- allows (end_minute <= 1440).
+              OR (r.end_minute = 1440
+                  AND scheduling.fn_local_minute_of_day (p_ends_at, s.timezone) = 0
+                  AND (p_ends_at AT TIME ZONE s.timezone)::date = (p_starts_at AT TIME ZONE s.timezone)::date + 1)
+          )
     );
 $$;
 
@@ -502,8 +702,11 @@ DECLARE
     v_max      integer;
     v_hosted   integer;
     v_recent   timestamptz;
+    v_tz       text;
+    v_week     timestamptz;
 BEGIN
     SELECT * INTO s FROM scheduling.call_settings WHERE schedule_id = p_schedule;
+    SELECT sc.timezone INTO v_tz FROM scheduling.schedules sc WHERE sc.id = p_schedule;
 
     IF NOT FOUND OR NOT s.accepts_calls THEN
         RETURN 'calls_not_offered';
@@ -561,6 +764,9 @@ BEGIN
     -- Anti-abuse, courtesy calls only. A paid call is self-limiting.
     IF p_type = 'courtesy'::scheduling.call_type THEN
         IF s.courtesy_max_per_week > 0 THEN
+            -- The provider's own week (Monday 00:00 in their time zone), not the database session's
+            -- UTC one: a London call at 00:30 on a Monday belongs to that Monday's week.
+            v_week := date_trunc('week', p_starts_at AT TIME ZONE COALESCE(v_tz, 'UTC')) AT TIME ZONE COALESCE(v_tz, 'UTC');
             SELECT count(*) INTO v_hosted
               FROM scheduling.discovery_calls c
              WHERE c.host_schedule_id = p_schedule
@@ -570,9 +776,8 @@ BEGIN
                    'confirmed'::scheduling.call_status,
                    'completed'::scheduling.call_status
                )
-               -- The ISO week the requested slot falls in, so "max per week" means a real week.
-               AND COALESCE(c.confirmed_start, c.proposed_start) >= date_trunc('week', p_starts_at)
-               AND COALESCE(c.confirmed_start, c.proposed_start) <  date_trunc('week', p_starts_at) + interval '7 days';
+               AND COALESCE(c.confirmed_start, c.proposed_start) >= v_week
+               AND COALESCE(c.confirmed_start, c.proposed_start) <  v_week + interval '7 days';
 
             IF v_hosted >= s.courtesy_max_per_week THEN
                 RETURN 'weekly_courtesy_cap_reached';
@@ -722,9 +927,72 @@ BEGIN
     IF NEW.status = 'proposed'::scheduling.call_status
        AND OLD.status <> 'proposed'::scheduling.call_status THEN
         NEW.reschedule_count := OLD.reschedule_count + 1;
+        -- The agreed slot is released with the agreement: free/busy, both agendas and the booking
+        -- gate read COALESCE(confirmed_*, proposed_*), so a stale confirmed pair kept the OLD time
+        -- occupied and left the new one bookable by somebody else.
         NEW.confirmed_at := NULL;
+        NEW.confirmed_start := NULL;
+        NEW.confirmed_end := NULL;
     END IF;
 
+    RETURN NEW;
+END;
+$$;
+
+-- A rostered event moves only through its negotiation. A schedule owner may manage the entries on
+-- their own calendar directly (the events policy), but once people are SEATED on one the 12-hour
+-- lockout, the host-approval gate and the majority rule are what move it: a direct change of its
+-- time or status is refused, and it is never deleted (root CLAUDE.md §5) — the delete would cascade
+-- the roster, the rounds, the votes and the log away. Client roles only; the scheduling service
+-- (service role, after the SSOT's rules) closes rounds through close_reschedule_round.
+--
+-- INVOKER on purpose: inside a SECURITY DEFINER function `current_user` is the function's owner, so
+-- the client-role test below would never match and the guard would wave everything through. The
+-- roster lookup it needs is the definer helper, so the answer does not depend on the caller's RLS.
+CREATE OR REPLACE FUNCTION scheduling.fn_event_has_roster(p_event_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT EXISTS (SELECT 1 FROM scheduling.event_attendees a WHERE a.event_id = p_event_id);
+$$;
+
+CREATE OR REPLACE FUNCTION scheduling.fn_guard_rostered_event()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    IF current_user NOT IN ('anon', 'authenticated') THEN
+        RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+    END IF;
+    IF scheduling.fn_event_has_roster(OLD.id) THEN
+        IF TG_OP = 'DELETE' THEN
+            RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'event: people are booked on this event — cancel or reschedule it instead';
+        END IF;
+        IF NEW.starts_at IS DISTINCT FROM OLD.starts_at OR NEW.ends_at IS DISTINCT FROM OLD.ends_at
+           OR NEW.status IS DISTINCT FROM OLD.status OR NEW.schedule_id IS DISTINCT FROM OLD.schedule_id THEN
+            RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'event: people are booked on this event — propose a new time instead';
+        END IF;
+    END IF;
+    RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+END;
+$$;
+
+-- A schedule's time zone must be one Postgres knows. save_owner_availability checked it, but a direct
+-- update did not, and an unknown zone made every booking against the schedule raise instead of refusing
+-- with a reason (while the slot grid silently fell back to UTC and kept offering slots).
+CREATE OR REPLACE FUNCTION scheduling.fn_check_schedule_timezone()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_timezone_names z WHERE z.name = NEW.timezone) THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'timezone: not a recognised time zone';
+    END IF;
     RETURN NEW;
 END;
 $$;

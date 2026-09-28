@@ -18,7 +18,7 @@ performance cliff and at worst a recursion error.
 
 | Function                            | True when                                                                                                          |
 | :---------------------------------- | :----------------------------------------------------------------------------------------------------------------- |
-| `projects.has_project_access(uuid)` | Owner · freelancer participant · business participant · stage assignee · active member of an assigned team.        |
+| `projects.has_project_access(uuid)` | Owner · freelancer participant · business participant · stage assignee · active member of an assigned team. An assignment counts only while it is not `declined` / `cancelled` / `released` (since 2026-09-28 — [Functions.md](Functions.md#access-predicates)). |
 | `projects.has_stage_access(uuid)`   | The paying side (owner / active client-business member), or live talent assigned to **that stage**.                |
 | `projects.can_review_project(uuid)` | Owner, or an active member of the paying client business. The "client viewer" authority.                           |
 | `projects.is_protected_phase(uuid)` | The project is before its Projective Unlock. Defaults **true** for an unknown id, so the PII filter fails to mask. |

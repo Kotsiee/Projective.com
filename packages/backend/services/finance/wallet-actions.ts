@@ -25,7 +25,7 @@ import { resolveWalletContext, type WalletAccount, type WalletContext, type Wall
  *
  * The movements that need no external processor move real money through definer functions that
  * authorise the caller themselves (`finance.transfer_funds`, `finance.distribute_vault`,
- * `projects.fund_stage`); the settings write through RLS (`payout_schedules`, `spend_approvals`); and
+ * `projects.fund_stage`, `finance.request_spend_approval`); the payout schedule writes through RLS; and
  * the ones that need a payment or payout processor — top-up, withdrawal, recurring deposit, adding a
  * method, the Income Smoother — are refused with the reason, because recording money that did not
  * move would be worse than not offering it.
@@ -68,6 +68,30 @@ function messageFor(error: { code?: string; message: string }): string {
 
 function refuse(status: number, message: string): Result {
 	return fail(status, { message }) as Result;
+}
+
+/**
+ * A refusal from a governance RPC that raises `<field>: <reason>` (`finance.request_spend_approval`):
+ * `22023` is a validation refusal keyed to its field, `42501` authority, `P0002` a missing wallet.
+ * Anything else is not a sentence for a reader and is answered generically.
+ */
+function governedRefusal(error: { code?: string; message: string }): Result {
+	const match = /^([A-Za-z_]+):\s*([\s\S]+)$/.exec(error.message.trim());
+	const raw = (match ? match[2] : error.message).replace(/\s+/g, " ").trim();
+	const reason = raw ? `${raw[0].toUpperCase()}${raw.slice(1)}${/[.!?]$/.test(raw) ? "" : "."}` : raw;
+	switch (error.code) {
+		case "22023":
+			return fail(422, {
+				message: reason,
+				errors: match && match[1] !== "auth" ? { [match[1]]: reason } : undefined,
+			}) as Result;
+		case "42501":
+			return refuse(match?.[1] === "auth" ? 401 : 403, reason || "You can't request a spend here.");
+		case "P0002":
+			return refuse(404, "That wallet doesn't exist.");
+		default:
+			return refuse(statusFor(error.code), messageFor(error));
+	}
 }
 
 /** The wallet `key` for a scope + id, as the read query names it. */
@@ -257,7 +281,12 @@ export async function setPayout(input: PayoutScheduleInput, query: WalletQuery, 
 	return after(query, actor, account.key, "Payout schedule saved.");
 }
 
-/** Ask an admin to approve a spend over the caller's cap. Born pending (the insert policy enforces it). */
+/**
+ * Ask for approval of a spend the caller's envelope does not cover, through
+ * `finance.request_spend_approval`: the database checks the caller may spend from the wallet at all and
+ * that the spend genuinely needs approval (over the per-transaction ceiling, over the remaining cap, or
+ * at/above the threshold), and sets the currency and the expiry itself.
+ */
 export async function requestSpend(input: SpendRequestInput, query: WalletQuery, actor: ReadActor): Promise<Result> {
 	const resolved = await contextFor(query, actor, keyOf(input.scope, input.contextId));
 	if (isResult(resolved)) return resolved;
@@ -266,15 +295,14 @@ export async function requestSpend(input: SpendRequestInput, query: WalletQuery,
 	const row = rowIn(account, input.currency);
 	if (!row) return refuse(409, `This account holds no ${input.currency.toUpperCase()}.`);
 
-	const { error } = await getUserClient(ctx.actor.accessToken).schema("finance").from("spend_approvals").insert({
-		wallet_id: row.id,
-		requested_by: ctx.viewer.userId,
-		amount_cents: input.amountMinor,
-		currency: row.currency,
-		reason: input.reason,
-		status: "pending",
+	const { error } = await getUserClient(ctx.actor.accessToken).schema("finance").rpc("request_spend_approval", {
+		p_wallet: row.id,
+		p_amount: input.amountMinor,
+		p_reason: input.reason,
+		p_ref_table: null,
+		p_ref_id: null,
 	});
-	if (error) return refuse(error.code === "42501" ? 403 : 422, messageFor(error));
+	if (error) return governedRefusal(error);
 	return after(query, actor, account.key, "Request sent for approval.");
 }
 

@@ -1153,6 +1153,55 @@ functions and writes through `org.save_profile` / `org.set_profile_avatar` / `or
 Gaps, stated: there is no third-party **malware** scan yet (the checks are a content sniff and a
 full decode), and variant bytes are not metered against the owner's storage quota.
 
+### Teams & Businesses — the workspace console (live-only)
+
+`/teams` and `/businesses` are **live-only** since 2026-09-28 (root `CLAUDE.md` §8 Decision #122),
+like the profile: the fixture corpus (`workspace-fixtures.ts`), its six Dev Context Switcher axes and
+the `WORKSPACE_BACKEND_LIVE` gate are gone. The fat `WorkspaceBackendService`
+(`@server/services/workspace/`) is async, takes the caller's `ReadActor`, answers a guest `401`, and
+reaches the database only through definer RPCs under the caller's JWT
+([`../database/org/Functions.md` § The workspace console](../database/org/Functions.md#-the-workspace-console-00001020),
+[`../database/finance/Functions.md` § Workspace money governance](../database/finance/Functions.md#-workspace-money-governance-00001210-13)).
+Every write returns the RE-READ console so an island adopts the server's state. Four rules shape it:
+
+- **One permission engine, two implementations that cannot drift.** The console's authority is
+  three layers — a preset role, a custom role, per-member overrides — resolved as
+  `role ∪ granted − revoked` over the one enum `org.workspace_capability`. `@projective/types/workspace`
+  (`capabilitiesForKind`, `PRESET_GRANTS`, `roleRank`, `effectivePermissions`) decides what the
+  console RENDERS; its SQL twin (`org.fn_kind_capabilities` / `fn_preset_capabilities` /
+  `fn_preset_rank` / `fn_member_capabilities` / `fn_member_can`) decides what the database ALLOWS.
+  `packages/types/workspace/workspace.contract.test.ts` reads the migration and pins the twin to the
+  TypeScript (kind subsets, preset bundles, ranks, the reserved-handle list, the enum order). Every
+  write RPC gates on a capability, never on a role name, and the hard rules — never your own row,
+  only someone you outrank, never grant what you lack, exactly one owner who moves only by transfer —
+  are enforced in SQL, with the islands merely echoing them.
+- **Money authority is a projection, not a second editor.** `finance.vault_permissions` — what every
+  money function enforces — is rewritten from the workspace capabilities by
+  `org.fn_sync_vault_permissions` on every membership, role and override change and on every
+  team/business wallet insert, and `finance.fn_has_vault_capability` additionally requires CURRENT
+  membership. So a removed member cannot keep `withdraw`, and a new entity's owner can spend from
+  birth. Deciding an over-limit spend is its own grant (`approve_spend`), because the owner-level
+  `manage_members` also carries `withdraw`.
+- **Raw facts in, presentation out.** `org.get_workspace_roster` / `get_workspace_detail` return ids,
+  file ids, codes and instants; the fat service maps them onto the Zod SSOT once, resolving people
+  through `org.get_party_cards` (`profile/party-cards.ts`) and pictures through
+  `files.get_public_media` + `core/storage-url.ts`. Balances and ledgers are read under the caller's
+  RLS with the wallet surface's own entity projection, never re-derived.
+- **The acting context is written only by the switch RPCs.** `security.session_context` is
+  SELECT-only to clients; `POST /api/context/switch` → `ContextBackendService` calls
+  `security.switch_session_context` (freelancer | business), `switch_team_context`,
+  `switch_organisation_context` or `clear_session_context` (back to personal), each of which re-checks
+  the membership it names and upserts one slot (`ck_session_context_one_slot` makes a second
+  unrepresentable). The access-token hook re-checks that membership at **every mint** and drops a
+  stale context to personal — the stored context is a preference, never a grant — and the chrome's
+  `role` is `admin` for the owner/admin presets, else `member`. After a switch the caller refreshes
+  the session so the new claims are minted. The `/wallet?w=` scope stays a page-local view filter,
+  distinct from this switch.
+
+Refusals follow one convention: an RPC raises `22023 '<field>: <reason>'`, which the service maps to
+a 422 with `fieldErrors[field]`; `42501` → 403, `P0002` → 404, `23505` / `55000` → 409, `23514` →
+422, anything else → 500 with a generic sentence (the real error is logged).
+
 ### Sessions & Google OAuth
 
 - **Session cookies.** A successful sign-in (password grant, verified email OTP) returns the GoTrue
@@ -1804,10 +1853,17 @@ Courtesy Calls for the business rules and
   bypass the gate. The legal-transition matrix is likewise a trigger, not a policy.
 - **Enforcement skips service-role.** Both triggers no-op when `auth.uid()` is NULL: webhooks,
   sweeps and backfills own the rules in their own layer. The triggers guard the *client* path.
-- **Shape is public, content is not.** A published schedule exposes its bands, blackout **spans**,
-  and free/busy overlay kinds to `anon` — a visitor must see when someone is free to book them —
-  while syncs, milestones and bookings stay private. Blackout **labels** are withheld unless the
-  owner opts in (`label_is_public`), because a policy cannot mask a column.
+- **Shape is public, content is not.** A published schedule exposes its bands, blackout **spans**
+  and occupied **spans** to `anon` — a visitor must see when someone is free to book them — and
+  nothing else about what occupies it. Since 2026-09-28 a visitor reads no `scheduling.events` or
+  `blackout_dates` row at all: occupancy comes only through the definer `scheduling.get_free_busy`
+  (bare start/end pairs) and blackouts through `scheduling.get_public_blackouts`, which masks a
+  label to `Unavailable` unless the owner opted in (`label_is_public`) — because a row policy cannot
+  mask a column, and the one that stood there handed a guest every busy block's title and every
+  private label. A schedule is public only while its owner's profile is visible too
+  (`fn_schedule_is_public`), and an event's meeting room is withheld from every client role at the
+  column level and read by its parties through `scheduling.get_event_rooms`. See
+  [`documentation/database/scheduling/Policies.md`](../database/scheduling/Policies.md).
 - **A discovery call is a `booking`, not a tenth `CalendarEventKind`.** Adding a kind would break
   the shipped calendar engine's exhaustive `Record<CalendarEventKind, …>` maps, turning a data
   change into a design-system change (root `CLAUDE.md` §3).
@@ -1913,7 +1969,8 @@ MESSAGING_BACKEND_LIVE=false
 CATALOGUE_BACKEND_LIVE=false
 LOGGING_BACKEND_LIVE=false
 FINANCE_BACKEND_LIVE=false
-WORKSPACE_BACKEND_LIVE=false
+# (No WORKSPACE_BACKEND_LIVE: the Teams & Businesses console is live-only since 2026-09-28, like the
+# profile — there is no fixture branch left for a gate to choose.)
 FILES_BACKEND_LIVE=false
 INTEGRATIONS_BACKEND_LIVE=false
 ```

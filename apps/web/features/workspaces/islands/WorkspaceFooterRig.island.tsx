@@ -36,14 +36,16 @@ import { cloneGlyph, InviteGlyph, PlusGlyph } from "../core/workspace-glyphs.tsx
 
 export interface WorkspaceFooterRigProps {
 	kind: WorkspaceKind;
-	/** Present on a console route; absent on the roster index. */
-	workspaceId?: string | null;
+	/** The entity's `@handle` — present on a console route; absent on the roster index. */
+	workspaceHandle?: string | null;
 	/** The module being rendered — decides which actions are on offer. */
 	module?: ModuleKey | null;
 	/** Whether the viewer may invite (drives the Invite action's presence, not its disabled state). */
 	canInvite?: boolean;
 	/** Whether the viewer may edit money policy (drives Save's presence). */
 	canManageMoney?: boolean;
+	/** Whether the viewer may open the Settings module (drives the Settings link's presence). */
+	canManageSettings?: boolean;
 	/** Whether the viewer may create another entity of this kind. */
 	canCreate?: boolean;
 }
@@ -77,8 +79,11 @@ function RigButton(
 
 export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.Element {
 	const copy = kindCopy(props.kind);
-	const onRoster = !props.workspaceId;
+	const onRoster = !props.workspaceHandle;
 	const module = props.module ?? null;
+	// The invite modal is mounted by the Members screen, so there the rig opens it in place; everywhere
+	// else it is a link that lands on Members with the modal open, rather than a press that does nothing.
+	const invitesInPlace = module === "members" || module === "invitations";
 	const dirty = policyDirty.value;
 	const state = saveState.value;
 
@@ -146,13 +151,28 @@ export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.
 					/>
 				)}
 
-				{!onRoster && props.canInvite && (
-					<RigButton
-						label="Invite members"
-						glyph={cloneGlyph(InviteGlyph)}
-						onClick={() => openInvite()}
-					/>
-				)}
+				{!onRoster && props.canInvite && (invitesInPlace
+					? (
+						<RigButton
+							label="Invite members"
+							glyph={cloneGlyph(InviteGlyph)}
+							onClick={() => openInvite()}
+						/>
+					)
+					: (
+						<Tooltip content="Invite members" placement="top">
+							<a
+								class="wsp-footerrig__action"
+								aria-label="Invite members"
+								href={`${workspaceHref(props.kind, props.workspaceHandle!, "members")}?invite=1`}
+							>
+								<span class="wsp-footerrig__glyph" aria-hidden="true">
+									{cloneGlyph(InviteGlyph)}
+								</span>
+								<span class="wsp-footerrig__label">Invite members</span>
+							</a>
+						</Tooltip>
+					))}
 
 				{!onRoster && props.canManageMoney &&
 					(module === "payouts" || module === "spend") && (
@@ -175,10 +195,10 @@ export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.
 					</Tooltip>
 				)}
 
-				{!onRoster && props.workspaceId && (
+				{!onRoster && props.workspaceHandle && props.canManageSettings && (
 					<a
 						class="wsp-footerrig__action"
-						href={workspaceHref(props.kind, props.workspaceId, "settings")}
+						href={workspaceHref(props.kind, props.workspaceHandle, "settings")}
 					>
 						<span class="wsp-footerrig__label">Settings</span>
 					</a>

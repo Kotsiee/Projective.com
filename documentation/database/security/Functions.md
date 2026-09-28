@@ -10,20 +10,44 @@ Decisions #16/#17). `security.session_context` holds the acting context; the swi
 the access-token hook copies it into every issued JWT so both Row-Level Security and the web chrome
 read one consistent source.
 
+**The switches are the only writers of `security.session_context`** (rewritten 2026-09-28, migration
+`00001001` §2, root `CLAUDE.md` §8 Decision #122). The table carries a SELECT-only client policy
+([Policies.md](Policies.md)) and `ck_session_context_one_slot` makes a second active slot
+unrepresentable. Every switch is `SECURITY DEFINER`, `SET search_path = ''`, refuses an anonymous
+caller (`42501`), re-checks the membership it claims, and then **UPSERTS** through one shared writer
+— a user with no row yet (nothing had seeded one) used to UPDATE zero rows, return success and stay
+exactly where they were. `EXECUTE` on the four public switches is `authenticated` only (revoked from
+`PUBLIC` and `anon`, `00002510`). Refusals are `42501 'context: …'` / `22023 'context: …'`.
+
+### `security.fn_set_session_context(p_type, p_profile, p_team, p_org, p_audit_entity)` — internal
+
+The shared writer: one upsert of all four slots (so every switch sets the slot it names and clears
+the rest in one statement) plus a `session.switch_context` row in `security.audit_logs`. **Not
+reachable by any client role** — it trusts its arguments, and every switch re-checks membership
+before calling it.
+
 ### `security.switch_session_context(p_type public.profile_type, p_id uuid)`
 
-`SECURITY DEFINER`, granted to `authenticated`. Validates that the caller owns/actively belongs to
-the target freelancer or business profile, then sets it as the active context and **clears the team
-and organisation slots** so the four active slots stay mutually exclusive. Writes a
-`session.switch_context` audit entry. (Migration 0100; extended `20260715120000` to clear
-`active_organisation_id`.)
+A **freelancer** profile (the caller's own — `p_id` must be the caller's user id and a
+`org.freelancer_profiles` row must exist) or a **business** the caller is an ACTIVE member of and
+that is **not archived**. Anything else → `22023` ("choose a freelancer profile or a business").
+
+### `security.switch_team_context(p_team_id uuid)` — new
+
+A **team** the caller is an active member of and that is not archived. The hook always read
+`active_team_id`; before this nothing wrote it (a team switch in the app returned a hard 501).
 
 ### `security.switch_organisation_context(p_org_id uuid)`
 
-`SECURITY DEFINER`, granted to `authenticated`. Validates that the caller is the owner or an active
-member of the organisation (the buyer-only entity, Decisions #9/#10), then sets it as the active
-context and clears the profile/team slots. Writes a `session.switch_context` audit entry. (Migration
-`20260715120000`.)
+An **organisation** the caller owns or is an active member of (the buyer-only entity, Decisions
+#9/#10). (Migration `20260715120000`; rewritten onto the shared writer 2026-09-28.)
+
+### `security.clear_session_context()` — new
+
+Back to **personal** (every slot `NULL`), for anybody — including a client with no freelancer
+profile, who previously had no way home once they had switched into a business (returning to
+personal meant `switch_session_context('freelancer', …)`, which raises without a freelancer
+profile).
 
 ### `security.current_context()`
 
@@ -45,7 +69,10 @@ the token's claims:
    `{ type, id, role, handle, isClient, isFreelancer, onboarded, displayCurrency, locale }` the web
    app decodes for chrome (`@projective/types/auth` `ActiveContextClaim` / `resolveUserContext`).
    `type` is the four-context matrix (`personal` | `team` | `business` | `organisation`); `role`
-   collapses ownership/admin membership to `admin`, else `member`; `isClient`/`isFreelancer` are
+   is `admin` for the owner and admin presets (the member row's derived `role`, maintained by
+   `org.fn_member_role_sync`), else `member` — the chrome's coarse answer, while capability checks
+   ask `org.fn_member_can` (since 2026-09-28; before it read a hard-coded
+   `owner`/`admin`/`manager` role list plus an ownership check); `isClient`/`isFreelancer` are
    resolved authoritatively from `org.users_public.is_freelancer` / `is_operator` and the active
    context. `displayCurrency` + `locale` are read from `org.user_preferences`
    (`preferred_display_currency` / `locale`, defaulting to `GBP` / `en-GB` when no preferences row
@@ -76,6 +103,14 @@ the token's claims:
 > `(fx_rate, fx_base, fx_as_of)` snapshot written on its own `finance.transactions` /
 > `finance.escrows` row. Nothing in this hook — and nothing on any read path — rewrites a ledger
 > amount.
+
+> **A stored context is only a PREFERENCE** (2026-09-28). The hook honours `session_context` only
+> while the membership it names still holds, re-checked at **every mint**: an organisation the user
+> no longer owns or actively belongs to, a team they are no longer an active member of or that is
+> archived, or a business likewise, is dropped — back to personal, raw claims included. So a member
+> removed from a team, or a team archived, stops acting as it at the next token refresh instead of
+> carrying the claim (and the RLS inputs `security.current_context()` reads) until they happen to
+> switch.
 
 `SECURITY DEFINER` (reads org/security tables past RLS), `SET search_path = ''` (fully-qualified
 identifiers, hijack-hardened), and wrapped so it **never raises** — any failure returns the event
@@ -194,7 +229,7 @@ parties and subject of a row, which a policy cannot protect because it sees only
 | Trigger                      | Table                        | Guarded columns                                    |
 | :--------------------------- | :--------------------------- | :------------------------------------------------- |
 | `trg_quote_requests_parties` | `marketplace.quote_requests` | `requester_user_id`, `host_user_id`, `blueprint_id` |
-| `trg_teams_immutable`        | `org.teams`                  | `owner_user_id`, `treasury_wallet_id`, `subscription_tier`, `member_limit`, `slug`, `avatar_file_id`, `banner_file_id` |
+| `trg_teams_immutable`        | `org.teams`                  | `owner_user_id`, `treasury_wallet_id`, `subscription_tier`, `slug`, `avatar_file_id`, `banner_file_id` (`member_limit` left with the column, 2026-09-28) |
 | `trg_organisations_immutable` | `org.organisations`         | `owner_user_id`, `status`, `verification_level`, `handle`, `logo_file_id` |
 | `trg_wallet_pots_immutable` (`00001830`)     | `finance.wallet_pots`     | `wallet_id`, `currency` |
 | `trg_payment_methods_immutable` (`00001830`) | `finance.payment_methods` | `owner_type`, `owner_id`, `method_role`, `provider`, `external_ref`, `brand`, `last4`, `status` |
@@ -204,12 +239,15 @@ The finance guards are attached in `00001830_triggers_finance.sql` beside that s
 triggers, and the full write posture they complete is in
 [`../finance/Policies.md`](../finance/Policies.md#-column-guards-2026-09-23).
 
-**The `org` audit (2026-09-23).** `org.users_public`, `org.freelancer_profiles` and
-`org.business_profiles` carry no client write policy, so nothing reaches them but a definer and no
-guard is needed. `org.teams` and `org.organisations` keep owner (and, for an organisation, admin)
-UPDATE policies, so both are guarded. Every writer of the guarded columns was checked and is
+**The `org` audit (2026-09-23; updated 2026-09-28).** `org.users_public`, `org.freelancer_profiles`,
+`org.business_profiles` and — since 2026-09-28 — `org.teams` carry no client write policy, so
+nothing reaches them but a definer (a team is renamed through `org.update_workspace`, which checks
+`edit_profile`). The team guards stay as **defence in depth**: a future policy that re-opens the
+table must not re-open these columns with it. `org.organisations` keeps its owner/admin UPDATE policy
+and so still genuinely needs its guard. Every writer of the guarded columns was checked and is
 `SECURITY DEFINER` — `reviews.recalculate_entity_rating`, `projects.update_entity_project_counts`,
-`projects.fn_sync_workload_intensity`, `org.create_team`, `org.save_profile`,
+`projects.fn_sync_workload_intensity`, `org.create_workspace` and
+`org.transfer_workspace_ownership` (formerly `org.create_team`), `org.save_profile`,
 `org.set_profile_avatar`, and `public.create_organisation` (service role) — so no `INVOKER` trigger
 maintains any of them on a client's behalf and the guards refuse only the client. Verified by
 execution against the running database, as `authenticated`: a rename still succeeds, `save_profile`

@@ -11,9 +11,11 @@ import type {
 	SchedulingViewer,
 } from "@projective/types/scheduling";
 import {
-	ballotProposals,
+	approvalRefusal,
+	canOpenCounterparty,
 	canOpenVote,
 	canReschedule,
+	counterpartyAcceptRefusal,
 	eligibleVoterCount,
 	eventLiveStatus,
 	isEventParty,
@@ -184,7 +186,10 @@ export function planReschedule(
 		now,
 		event.reschedule ?? emptyReschedule(rescheduleModeFor(roster.length)),
 		voters,
+		event.start,
 	);
+	const deadline = (proposals: readonly RescheduleProposal[]) =>
+		voteResolvesAt(proposals, event.start);
 	const closed = isRescheduleClosed(before.status);
 	if (closed && input.action !== "propose") return refuse(409, "vote_closed");
 
@@ -246,7 +251,7 @@ export function planReschedule(
 				openedBy: carried.openedBy ?? actor,
 				openedAt: carried.openedAt ?? now,
 				// The deadline is a function of the ballot, so a new earliest slot brings it forward.
-				resolvesAt: carried.status === "voting" ? voteResolvesAt(proposals) : carried.resolvesAt,
+				resolvesAt: carried.status === "voting" ? deadline(proposals) : carried.resolvesAt,
 			};
 			return {
 				ok: true,
@@ -271,6 +276,8 @@ export function planReschedule(
 			if (!isHost) return refuse(403, "not_permitted");
 			const target = before.proposals.find((p) => p.id === input.proposalId);
 			if (!target) return refuse(404, "unknown_proposal");
+			const stale = approvalRefusal(now, target);
+			if (stale) return refuse(409, stale);
 			const proposals = before.proposals.map((p) =>
 				p.id === target.id ? { ...p, approved: true } : p
 			);
@@ -281,7 +288,7 @@ export function planReschedule(
 				next: {
 					...before,
 					proposals,
-					resolvesAt: before.status === "voting" ? voteResolvesAt(proposals) : before.resolvesAt,
+					resolvesAt: before.status === "voting" ? deadline(proposals) : before.resolvesAt,
 				},
 				step: { kind: "approve", proposalId: target.id },
 			};
@@ -289,12 +296,13 @@ export function planReschedule(
 
 		case "open": {
 			if (!isHost) return refuse(403, "not_permitted");
-			// Rule 2 — a vote needs two slots on the ballot; a 1-on-1 needs one. On the BALLOT in both
-			// cases: an attendee's slot the host has not approved cannot be put to anybody.
+			// Rule 2 — a vote needs two slots on the ballot; a 1-on-1 needs one slot the HOST offered that
+			// can still be taken. An attendee's own slot is never put back to them to accept — the host
+			// accepts it directly ({@link counterpartyAcceptRefusal}).
 			if (
 				before.mode === "vote"
 					? !canOpenVote(before.proposals)
-					: ballotProposals(before.proposals).length === 0
+					: !canOpenCounterparty(now, before.proposals)
 			) {
 				return refuse(422, "not_enough_proposals");
 			}
@@ -305,14 +313,14 @@ export function planReschedule(
 					message: "This negotiation is already open.",
 				};
 			}
-			if (before.mode === "vote" && !voteIsOpen(now, before.proposals)) {
+			if (before.mode === "vote" && !voteIsOpen(now, before.proposals, event.start)) {
 				return refuse(409, "vote_closed");
 			}
 			const next: EventReschedule = before.mode === "vote"
 				? {
 					...before,
 					status: "voting",
-					resolvesAt: voteResolvesAt(before.proposals),
+					resolvesAt: deadline(before.proposals),
 					openedBy: before.openedBy ?? actor,
 					openedAt: before.openedAt ?? now,
 				}
@@ -334,7 +342,7 @@ export function planReschedule(
 			const target = before.proposals.find((p) => p.id === input.proposalId);
 			if (!target) return refuse(404, "unknown_proposal");
 			if (!isProposalOnBallot(target)) return refuse(409, "proposal_not_approved");
-			if (!voteIsOpen(now, before.proposals)) return refuse(409, "vote_closed");
+			if (!voteIsOpen(now, before.proposals, event.start)) return refuse(409, "vote_closed");
 			if (before.proposals.some((p) => p.votes.some((v) => v.attendeeId === me.id))) {
 				return refuse(409, "duplicate_vote");
 			}
@@ -348,18 +356,19 @@ export function planReschedule(
 				ok: true,
 				before,
 				actor,
-				next: settleVote(now, { ...before, proposals }, voters),
+				next: settleVote(now, { ...before, proposals }, voters, event.start),
 				step: { kind: "vote", proposalId: target.id, attendeeId: me.id },
 			};
 		}
 
 		case "confirm": {
 			if (before.mode === "counterparty") {
-				// The party who did NOT offer the time is the one who accepts it.
-				if (isHost) return refuse(403, "not_permitted");
+				// The party who did NOT offer the time is the one who accepts it — a host's slot only once
+				// it has been put to the attendee, and either slot only while it can still be taken.
 				const target = before.proposals.find((p) => p.id === input.proposalId);
 				if (!target) return refuse(404, "unknown_proposal");
-				if (!isProposalOnBallot(target)) return refuse(409, "proposal_not_approved");
+				const refused = counterpartyAcceptRefusal(now, before.status, target, isHost);
+				if (refused) return refuse(refused === "not_permitted" ? 403 : 409, refused);
 				return {
 					ok: true,
 					before,

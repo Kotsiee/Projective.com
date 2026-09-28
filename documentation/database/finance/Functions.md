@@ -3,7 +3,8 @@
 The `finance` engine is **ticket-centric**. Money moves only through `SECURITY DEFINER` functions:
 the client-facing, **stage-level** actions live in the `projects`/`org` schemas and invoke this
 engine internally (see [`../projects/Functions.md`](../projects/Functions.md) once populated, and
-[`../org/Functions.md`](../org/Functions.md) for `org.get_business_finance`).
+[`../org/Functions.md`](../org/Functions.md) for the workspace console, whose money governance lives
+here in [§ Workspace money governance](#-workspace-money-governance-00001210-13)).
 
 Since 2026-09-23 the schema **is** on the PostgREST allow-list, so the signed-in user reads their
 wallets, ledger, orders and baskets directly, under RLS ([Policies.md](Policies.md)). That made
@@ -23,15 +24,52 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
 - **`finance.fn_wallet_debit(...)`** — the debit counterpart (the `balance_cents >= 0` CHECK
   enforces sufficient funds).
 - **`finance.fn_check_spending_limit(wallet_id, member, amount)`** → boolean — enforces a member's
-  `finance.spending_limits` cap and increments `spent_cents` when allowed.
-- **`finance.fn_split_team_payout(escrow_id, team_id, payout, currency)`** — distributes a team
-  payout across `finance.contribution_agreements` (writing `payout_splits` + crediting each member),
-  falling back to the Team Wallet when no agreement exists.
+  `finance.spending_limits` envelope and counts the spend against it, **atomically** (rewritten
+  2026-09-28, signed off by the product owner): the row is locked `FOR UPDATE`, the period is rolled
+  when lapsed (`weekly` / `monthly` to the next week/month boundary; `total` never resets), the
+  `per_transaction_cents` ceiling and the remaining cap are checked, and the spend is added — so two
+  concurrent spends cannot both fit under one cap. A `NULL` cap is "no ceiling"; no row at all is
+  "no envelope" (true). The previous body read then wrote without a lock, ignored
+  `per_transaction_cents` and `period_interval`, and so counted a lifetime total as the month.
+- **`finance.fn_person_wallet_type(user)`** → text (2026-09-28) — the wallet type a person actually
+  holds: an existing `freelancer` wallet wins over a `user` one; with none, a freelancer profile means
+  `freelancer`, else `user`.
+- **`finance.fn_ensure_wallet(owner_type, owner_id, currency)`** → uuid (2026-09-28) — the owner's
+  wallet in that currency, created if missing. Exists because `fn_wallet_credit` is a silent no-op on
+  a missing wallet, so a credit must never be aimed at one.
+- **`finance.fn_team_split_plan(team_id, payout)`** → jsonb (2026-09-28) — the team payout plan
+  (finance-model §5), **one implementation** read by the release and by the console's preview, so
+  what a team is shown it will receive is what it receives. Integer arithmetic, floored at every cut:
+  `benevolent_dictator` → everything to the vault; `finders_fee` → the finder's fixed cut first, then
+  co-op on the remainder; `co_op` → the vault's `vault_bp`, then each ACTIVE member's `percent_bp` of
+  the rest, and whatever does not divide (or is unallocated) is dust to the vault. No active rule =
+  co-op with no vault cut. Returns `{payout_minor, rule_type, vault_bp, finder_user_id, finder_minor,
+  vault_minor, members:[{member_user_id, percent_bp, amount_minor}], dust_minor, vault_total_minor}`.
+- **`finance.fn_split_team_payout(escrow_id, team_id, payout, currency, reason = 'escrow_release')`**
+  — pays a team's released escrow out by `fn_team_split_plan`. Every member share and the finder's cut
+  is a real credit to the person's real wallet (`fn_person_wallet_type` + `fn_ensure_wallet`), a
+  `payout_splits` row is written only beside its credit, and the team vault is credited its cut plus
+  the dust (`<reason>_vault_retention`) — conserved to the minor unit. **Rewritten 2026-09-28** (signed
+  off by the product owner; new 5-arg signature): the previous body credited `user` wallets that
+  freelancers do not hold, so every share vanished silently, and it ignored the vault cut entirely.
+  `fn_fair_exit_release` now passes `'fair_exit_release'` as the reason.
+- **`finance.fn_assert_team_split_total()`** — trigger function for the deferred constraint trigger
+  `trg_contribution_agreements_total` (`AFTER INSERT OR UPDATE ON finance.contribution_agreements`,
+  `DEFERRABLE INITIALLY DEFERRED`, `00001830`): a team's stakes must total exactly 10000 bp, or 0 (no
+  split agreed yet) — `23514` otherwise. Deferred so a rebalance may move basis points between rows
+  one statement at a time.
+- **`finance.fn_sync_vault_on_wallet()`** — trigger function for `trg_wallets_sync_vault_permissions`
+  (`AFTER INSERT ON finance.wallets`, `00001830`): a new team or business wallet is governed from
+  birth — `org.fn_sync_vault_permissions` projects the entity's members onto it.
 
 ## Escrow lifecycle (migrations `0009`, `0305`, `0310`)
 
 - **`finance.fn_hold_ticket_escrow(ticket_id)`** → escrow id — holds escrow at claim (spending-cap
-  checked; debits the payer business wallet; prefers an accepted team assignment as payee).
+  checked; debits the payer business wallet; prefers an accepted team assignment as payee). The
+  envelope checked is the **SPENDER's — the project owner** (`projects.projects.owner_user_id`) who
+  commits the business's money (fixed 2026-09-28): it used to check `auth.uid()`, which here is the
+  freelancer whose claim triggered the hold and who never has an envelope on the payer's wallet, so
+  every hold was waved through. Over the envelope now raises `55000` (`spend: …`).
 - **`finance.fn_release_ticket_escrow(ticket_id)`** — releases held escrow to the payee, applying
   the canonical **5%** fee (`security.platform_params.platform_fee_bp = 500`, set in `0305`) and
   routing team payees through `fn_split_team_payout`.
@@ -41,8 +79,10 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   the payee `bp` basis-points of the principal (net of fee), refunds the remainder to the client.
 - **`finance.fn_generate_consolidated_invoice(business_id, start, end)`** — consolidates a period's
   released escrows/fees/bonuses into one itemised `consolidated_monthly` invoice.
-- **`finance.fn_seed_business_wallet()`** (`0309`, trigger) — seeds a one-time `demo_opening_credit`
-  on a new business wallet so the internal-wallet demo path has funds to move.
+- ~~`finance.fn_seed_business_wallet()`~~ — **removed 2026-09-28** with its trigger
+  `trg_seed_business_wallet`. It credited every new business wallet 2,500,000 minor units of
+  `demo_opening_credit` in whatever currency it was opened in — spendable funds nobody had paid in. No
+  wallet is minted money; a balance is only ever the sum of real movements.
 
 ## Additive foundation (2026-07-23)
 
@@ -53,8 +93,12 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   policies.
 - **`finance.fn_can_view_wallet(wallet_id)`** → boolean — the wallet-id form.
 - **`finance.fn_has_vault_capability(wallet_id, user_id, cap)`** → boolean (`20260723093000`) — the
-  in-DB vault-capability gate (`manage_members` implies all). Intended for future money-movement
-  RPCs.
+  in-DB vault-capability gate (`manage_members` implies all). Since 2026-09-28 the grant rows are a
+  projection of the workspace capabilities, and the answer is additionally conditioned on **current
+  membership** of the owning team or business (`org.fn_member_seat`) — so a row that outlived its
+  member for any reason (a direct write, a sync not yet run) authorises nothing. **Internal**: no
+  client role may call it (it answers for an arbitrary user id — a capability oracle — and no policy
+  calls it; its callers are definer predicates and money RPCs).
 - **`finance.fn_owner_capability(owner_type, owner_id, cap)`** → boolean (`00001210`, 2026-09-23) —
   the **owner**-keyed form of the vault gate, for tables that belong to a principal rather than a
   wallet (`payment_methods`, `saved_cards`, `payout_schedules`). Admin, or self for a personal owner
@@ -89,8 +133,9 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
 
 `projects.fund_stage`, `projects.approve_stage`, `projects.cancel_stage_fair_exit`,
 `projects.get_stage_finance` — all `SECURITY DEFINER`, guarded by `projects.has_project_access`.
-These are the client-facing Finance-tab actions; they call the `finance.*` engine above. The
-business finance dashboard reads through **`org.get_business_finance`** (`0309`).
+These are the client-facing Finance-tab actions; they call the `finance.*` engine above. (The 0309
+business-dashboard read `org.get_business_finance` was retired 2026-09-28; an entity's balances are
+read under RLS by the wallet surface, and its console reads through `org.get_workspace_detail`.)
 
 **`projects.fund_stage` spends the client's money, so it checks the payer, not just project
 access** (2026-09-23, `00001150`). Project access alone admitted every participant — a hired
@@ -105,9 +150,11 @@ funding (Decision #54(e)) is **not** added here — that behavioural change stil
 The additive foundation defines the **data + gates** for these flows; the `SECURITY DEFINER` write
 RPCs that operate them are the live-path TODO (behind the eventual `FINANCE_BACKEND_LIVE`-style
 gate): recurring-deposit runner, payout-schedule runner + Instant Payout, Income-Smoother
-allocation, tax-pot auto-set-aside, vault-permission grant/revoke, the pending-release
-(7-day-window) sweep, monthly statement generation, and the FX-rate ingestion job. (The spend-approval
-decision landed as `finance.decide_spend_approval` — see [§ Wallet movements](#-wallet-movements-00001210-12).)
+allocation, tax-pot auto-set-aside, the pending-release (7-day-window) sweep, monthly statement
+generation, and the FX-rate ingestion job. (The spend-approval decision landed as
+`finance.decide_spend_approval` — see [§ Wallet movements](#-wallet-movements-00001210-12); vault-
+permission grant/revoke is no longer a separate RPC — the grants are a projection of the workspace
+capabilities, [§ Workspace money governance](#-workspace-money-governance-00001210-13).)
 
 ---
 
@@ -182,7 +229,9 @@ Both are mirrored by pure TypeScript twins in `packages/types/finance/entitlemen
 - **`finance.fn_footprint_usage(subject_type, subject_id, key) â†’ integer`** â€” live counts for
   `active_public_projects` / `business_public_projects` / `team_public_projects` (from
   `projects.projects` where `status IN ('active','on_hold')` **and** `visibility = 'public'`),
-  `teams_owned`, `businesses_owned`, `team_seats`, `organisation_seats`.
+  `teams_owned`, `businesses_owned` (an **archived** entity no longer occupies a slot — the create
+  refusal tells an owner at their limit to "archive one or upgrade", which is only true if it frees one),
+  `team_seats`, `organisation_seats`.
 
   **Drafts are never counted** â€” unlimited private drafting is the baseline promise.
   `published_listings` returns `0` until the `catalogue.*` listing tables land (Decision #53 keeps
@@ -284,7 +333,9 @@ it, never re-derive it.
   **Fails closed**: an entity with no wallet, or with no `vault_permissions` rows, has nobody who
   may write its basket. That is the correct posture for a spend surface — a silent fallback to "any
   member" would make the capability decorative — but vault provisioning must precede shared-basket
-  use.
+  use. (For a team or business it now always does: `org.create_workspace` opens the wallet and the
+  wallet insert trigger projects the grants. The projection covers teams and businesses only — an
+  organisation's vault grants are not written by it.)
 - **`finance.fn_can_move_wallet_funds(wallet_id)`** → boolean — strictly narrower than
   `fn_can_view_wallet`. Personal wallet → owner only; shared wallet → the `spend` capability (which
   admits admin via `fn_has_vault_capability`).
@@ -519,10 +570,14 @@ and the distribution's id; the audit row records the requested amount and each s
 ### `finance.decide_spend_approval(p_approval, p_decision)` → jsonb
 
 Approves or rejects a pending over-cap `finance.spend_approvals` request. The decider needs
-`manage_members` on the account and may not be the requester — approving one's own over-cap spend
-would make the cap decorative (`42501`). A request already decided is `PC409`; one past its
-`expires_at` is marked `expired` instead of decided. A decision notifies the requester through
-`comms.fn_notify` (`spend.approved` / `spend.rejected`). Returns `{ id, status }`.
+**`approve_spend`** on the account (the workspace capability of the same name, projected onto the
+vault; `manage_members` still implies it — changed 2026-09-28 from `manage_members`, which is the
+owner-level grant that also carries `withdraw`, so making someone an approver that way would have
+let them empty the pool) and may not be the requester — approving one's own over-cap spend would make
+the cap decorative (`42501`). A request already decided is `PC409`; one past its `expires_at` is
+marked `expired` instead of decided (expiry is applied lazily, at the next decision attempt — no
+sweep marks it). A decision notifies the requester through `comms.fn_notify` (`spend.approved` /
+`spend.rejected` — both now registered in the catalog, `00005010`). Returns `{ id, status }`.
 
 | SQLSTATE | Meaning                                                  |
 | :------- | :------------------------------------------------------- |
@@ -538,6 +593,71 @@ would make the cap decorative (`42501`). A request already decided is `PC409`; o
 
 > **Flagged, not decided.** A distribution follows the stakes as agreed, with no platform fee and no
 > vault retention taken at distribution time — the documented 5% fee → vault cut → stakes model
-> (finance-model §5) applies when income ARRIVES, and the release functions do not yet apply it
-> either (`fn_split_team_payout` credits members by `percent_bp` with no vault cut). The wallet's
-> split preview states the documented model; which one is authoritative needs a decision.
+> (finance-model §5) applies when income ARRIVES. Since 2026-09-28 the release DOES apply it:
+> `fn_split_team_payout` runs `fn_team_split_plan` (vault cut, finder's fee, stakes, dust to the
+> vault), and `preview_team_split` shows the same plan. What remains open is only whether a later
+> manual `distribute_vault` should re-apply a vault cut to money that already paid one on arrival.
+
+---
+
+## 🏢 Workspace money governance (`00001210` §13)
+
+The write side of the `/teams` and `/businesses` Money modules (root `CLAUDE.md` §8 Decision #122).
+Authority is the WORKSPACE capability `manage_finances` (`org.fn_member_can`) — the same answer the
+console renders from — and the vault projection the money functions enforce is re-synced after every
+change. All four are `SECURITY DEFINER`, `search_path = ''`, `EXECUTE` to `authenticated` only
+(`00002510`), and raise `22023 '<field>: <reason>'` for a bad input (the workspace refusal convention,
+[`../org/Functions.md`](../org/Functions.md#-the-workspace-console-00001020)).
+
+### `finance.save_team_split(p_team_id, p_stakes)` → `{team_id, total_bp}`
+
+Replaces a team's split WHOLE. `p_stakes` is `[{member_id, share_bp, held}]` over ACTIVE members
+(member ids, not user ids), each share a whole number of bp in 0–10000, no member twice, and the set
+must total exactly 10000 (`stakes: the split must total 100% (it is over/under by N%)`). The whole set
+is validated before anything is written; then every agreement row of the team goes to 0 and the listed
+members are written to their share — an active member left out is 0, a departed member zeroed,
+nothing deleted. Needs `manage_finances`. Audits `team.split_changed`.
+
+### `finance.preview_team_split(p_team_id)` → jsonb
+
+What the team's NEXT release will pay, by `fn_team_split_plan`. Any active member may read it. The
+honest gross is the team's **oldest escrow still held** (principal + deadline bonus); the fee is
+`security.platform_params.platform_fee_bp` of the principal. A team with nothing held has no
+projection — `gross_minor`, `currency` and `fee_minor` are `NULL` (never an invented figure) and the
+plan is the zero plan. Returns `{escrow_id?, gross_minor, currency, fee_minor, plan}`.
+
+### `finance.save_spend_policy(p_business_id, p_patch)` → `{business_id, currency}`
+
+A business's spend policy as a PATCH (a key present is a change, so absent ≠ null). Needs
+`manage_finances`. Keys:
+
+| Key                        | Effect                                                                                                                                                               |
+| :------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `currency`                 | Which of the business's wallets the threshold and limits apply to (default: its `default_currency`). The wallet is created if missing (`fn_ensure_wallet`).         |
+| `approval_threshold_minor` | `finance.wallets.approval_threshold_cents`. `NULL` disables it; `0` is refused ("every spend needs a second approver" is a per-transaction ceiling of 0 instead). |
+| `approver_ids`             | The member ids who hold `approve_spend` — everyone else does not.                                                                                                     |
+| `contributor_ids`          | The member ids who hold `contribute_funds` — everyone else does not.                                                                                                  |
+| `limits`                   | `[{member_id, can_spend, limit_minor, per_transaction_minor}]` — `can_spend` moves the `spend_funds` override; the two limits upsert `finance.spending_limits`.    |
+
+Every per-member change obeys the member drawer's rules: never the caller's own row, never the
+owner's (both are fixed points, not members of the lists), only someone the caller **outranks**, and
+never a capability the caller does not hold. Capability moves go through
+`org.fn_set_member_capability`, so "can spend" has one representation. Re-projects the whole vault;
+audits `business.spend_policy_changed`.
+
+### `finance.request_spend_approval(p_wallet, p_amount, p_reason, p_ref_table = NULL, p_ref_id = NULL)` → `{id, status}`
+
+Asks for approval of a spend the caller's envelope does not cover. The wallet must be a business or
+team wallet; the caller needs the `spend` vault capability; `p_amount > 0`; a reason of 1–400
+characters; `p_ref_table` ∈ `projects` · `project_stages` · `tickets` · `basket_items` · `orders`. The
+request must **genuinely need approval** — the SQL twin of `@projective/types/workspace`
+`evaluateSpend`: over the per-transaction ceiling, over the remaining cap (a lapsed period counts as
+nothing spent), or at/above the wallet's threshold — else `22023` ("within your limits and needs no
+approval"). The currency is the wallet's and `expires_at = now() + 7 days` — both the server's, never
+the caller's. Every other member holding `approve_spend` (or `manage_members`) on the wallet is
+notified with `spend_approval.requested`.
+
+It is the ONLY way a request is filed: the client INSERT policy (`"Request a spend approval"`,
+`00002013`) and the `INSERT` table grant to `authenticated` (`00002520`) were removed with it, so a
+direct PostgREST insert is refused and cannot skip the needs-approval check or choose its own
+`currency` and `expires_at`.

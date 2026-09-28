@@ -4,15 +4,13 @@
 -- GENERATED FILE — do not edit by hand. Regenerate with:
 --   deno run --allow-read --allow-write --allow-env supabase/seeds/generate.ts
 --
--- Every balance_after_cents is a computed running balance over a chronologically sorted event list; the generator refuses to emit a ledger that ever goes negative. The business-wallet opening-credit trigger is disabled around the wallet insert and replaced by a dated opening credit so the history reads in order.
+-- Every balance_after_cents is a computed running balance over a chronologically sorted event list; the generator refuses to emit a ledger that ever goes negative. Nothing is minted: every entity balance starts with a dated top-up from its owner, audited in finance.ledger_audit. Vault permissions are not written here — the wallet insert trigger projects them from the workspace roles.
 --
 -- Every insert is ON CONFLICT DO NOTHING and every id is derived deterministically from a natural
 -- key, so this file is idempotent: running it twice, or against a partially-seeded database, is safe.
 -- =============================================================================================
 
 
--- The trigger would credit every business wallet 25,000.00 at now(); the dated opening credit below replaces it.
-ALTER TABLE finance.wallets DISABLE TRIGGER trg_seed_business_wallet;
 INSERT INTO finance.wallets (id, owner_type, owner_id, currency, balance_cents, approval_threshold_cents, created_at)
 VALUES
   ('ef814c58-b670-4eb9-a349-1cde0ca3405f', 'freelancer', '6ce1906f-caab-4708-a19e-df3d8960666e', 'USD', 433610, NULL, now() - interval '10080 hours'),
@@ -39,7 +37,9 @@ VALUES
   ('0bb1d9f1-b826-4bfc-ab8e-26ab3be30616', 'business', '4cfa4f66-9aa2-496b-a93d-994caac019c1', 'USD', 1000000, 500000, now() - interval '5760 hours')
 ON CONFLICT (id) DO NOTHING;
 
-ALTER TABLE finance.wallets ENABLE TRIGGER trg_seed_business_wallet;
+UPDATE org.teams SET treasury_wallet_id = 'ed74da48-3ae7-44c1-a174-5b3a4ccfe0eb' WHERE id = '213dc9f8-3ad7-4f35-ac4b-baa674bf48b3';
+UPDATE org.teams SET treasury_wallet_id = '78297a62-19ca-4e6b-afcb-a91cbaa3504d' WHERE id = 'edc2d943-8062-426a-a6f2-29fdc6b4363c';
+UPDATE org.teams SET treasury_wallet_id = 'ac5e5bb6-036a-4c37-a9d9-8764836875d5' WHERE id = 'a4c25501-0fdd-4abe-a575-ff478daad4fc';
 
 INSERT INTO finance.escrows (id, project_stage_id, ticket_id, payer_business_id, payee_type, payee_id, amount_cents, platform_fee_cents, deadline_bonus_cents, currency, status, created_at)
 VALUES
@@ -104,14 +104,14 @@ VALUES
   ('15600a4a-67c3-4173-afac-830c0aefa7a5', 'ac5e5bb6-036a-4c37-a9d9-8764836875d5', 'credit', 1140, 'USD', 'product_sale_vault_retention', 'order_lines', 'c77a13ff-2426-434e-a7f5-119d71d0f854', 1140, 'available', now() - interval '600 hours' + interval '0 seconds'),
   ('e878a8b8-d9f8-4e73-ac65-5ca6d535af09', 'ac5e5bb6-036a-4c37-a9d9-8764836875d5', 'credit', 275, 'USD', 'product_sale_vault_retention', 'order_lines', '9ee972f3-4d66-41c8-a41d-614d53220442', 1415, 'available', now() - interval '288 hours' + interval '1 seconds'),
   ('fb17403c-a486-4033-a972-6ee252d8d549', 'ac5e5bb6-036a-4c37-a9d9-8764836875d5', 'credit', 1710, 'USD', 'service_sale_vault_retention', 'order_lines', 'd6f84d3b-73e4-47b4-abcb-c35df01ae22e', 3125, 'available', now() - interval '72 hours' + interval '2 seconds'),
-  ('3e736aaa-1ba1-4851-ae4d-8fc4f8de7a1b', '9bc97e73-5ac6-487a-a2a7-1d156c8ac784', 'credit', 2500000, 'USD', 'demo_opening_credit', NULL, NULL, 2500000, 'available', now() - interval '6240 hours' + interval '0 seconds'),
+  ('4474365b-b697-4dc4-a461-6fed9f3cd30e', '9bc97e73-5ac6-487a-a2a7-1d156c8ac784', 'credit', 2500000, 'USD', 'topup', 'payment_methods', 'a56c90b9-18ce-4b60-aac6-3b9f25e463c6', 2500000, 'available', now() - interval '6240 hours' + interval '0 seconds'),
   ('ded389c2-6519-40bb-aa60-c538d3bab759', '9bc97e73-5ac6-487a-a2a7-1d156c8ac784', 'debit', 10300, 'USD', 'order_payment', 'orders', 'c7b2f281-2359-4784-a6bd-1893272f2596', 2489700, 'available', now() - interval '792 hours' + interval '1 seconds'),
   ('2ea1c2a1-837d-4d9c-a85f-d39b2a4debee', '9bc97e73-5ac6-487a-a2a7-1d156c8ac784', 'credit', 6000000, 'USD', 'topup', 'payment_methods', 'a56c90b9-18ce-4b60-aac6-3b9f25e463c6', 8489700, 'available', now() - interval '720 hours' + interval '2 seconds'),
   ('0ef967b9-b1cb-4394-a9a0-fb4f1fe3780a', '9bc97e73-5ac6-487a-a2a7-1d156c8ac784', 'debit', 1400000, 'USD', 'escrow_hold', 'escrows', '2be31aa8-1878-4317-a6c0-339e4810b70d', 7089700, 'locked', now() - interval '672 hours' + interval '3 seconds'),
   ('9a0c919f-14f0-41e6-a15c-2a1d2923fb0c', '9bc97e73-5ac6-487a-a2a7-1d156c8ac784', 'debit', 3200000, 'USD', 'escrow_hold', 'escrows', 'f4b59a61-5919-471e-a302-dcf3d93812d8', 3889700, 'locked', now() - interval '264 hours' + interval '4 seconds'),
   ('023f1f97-b228-4138-af17-d0a9c9554d0a', '9bc97e73-5ac6-487a-a2a7-1d156c8ac784', 'debit', 2200000, 'USD', 'escrow_hold', 'escrows', '2ee31f61-1978-44aa-a5c0-320b4510b254', 1689700, 'locked', now() - interval '192 hours' + interval '5 seconds'),
   ('29d66bfc-94f2-4195-a73f-b12679bcfb6f', '9bc97e73-5ac6-487a-a2a7-1d156c8ac784', 'debit', 800000, 'USD', 'escrow_hold', 'escrows', 'd4e6f3c4-8a98-4bf1-a851-bea6553126b3', 889700, 'locked', now() - interval '144 hours' + interval '6 seconds'),
-  ('7c73bdd7-5d81-481c-a5a0-652d0e0cf3d2', '0bb1d9f1-b826-4bfc-ab8e-26ab3be30616', 'credit', 2500000, 'USD', 'demo_opening_credit', NULL, NULL, 2500000, 'available', now() - interval '5760 hours' + interval '0 seconds'),
+  ('8628a412-185e-405d-a251-79a0a7f6ceab', '0bb1d9f1-b826-4bfc-ab8e-26ab3be30616', 'credit', 2500000, 'USD', 'topup', 'payment_methods', '961d7515-cb55-44bc-a6c5-f0ffd3d32c6e', 2500000, 'available', now() - interval '5760 hours' + interval '0 seconds'),
   ('fd22e83f-7f85-4ed2-a677-c905a0d79258', '0bb1d9f1-b826-4bfc-ab8e-26ab3be30616', 'credit', 6000000, 'USD', 'topup', 'payment_methods', '961d7515-cb55-44bc-a6c5-f0ffd3d32c6e', 8500000, 'available', now() - interval '1056 hours' + interval '1 seconds'),
   ('4e690dab-dc75-4cc6-aab8-ffcda5f155a8', '0bb1d9f1-b826-4bfc-ab8e-26ab3be30616', 'debit', 1500000, 'USD', 'escrow_hold', 'escrows', '7ab53d6b-7835-40b0-abeb-02d52985e95a', 7000000, 'locked', now() - interval '960 hours' + interval '2 seconds'),
   ('e59c020b-a032-4c02-aa29-2575ad293e74', '0bb1d9f1-b826-4bfc-ab8e-26ab3be30616', 'debit', 1500000, 'USD', 'escrow_hold', 'escrows', '7bb53efe-7b35-4569-a8ea-fe1c2885e7c7', 5500000, 'locked', now() - interval '912 hours' + interval '3 seconds'),
@@ -274,22 +274,6 @@ VALUES
   ('89a079d0-7258-44dd-a4fc-287241337697', '213dc9f8-3ad7-4f35-ac4b-baa674bf48b3', 'team', '213dc9f8-3ad7-4f35-ac4b-baa674bf48b3', (SELECT id FROM finance.plans WHERE code = 'team_pro'), 'active', 'monthly', now() - interval '216 hours', now() + interval '504 hours', 2900, 'GBP', 'sub_seed_ateliernova', now() - interval '8880 hours')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO finance.vault_permissions (id, wallet_id, member_user_id, capabilities, granted_by)
-VALUES
-  ('7bda10a6-e1aa-4f0b-a069-618042bee065', 'ed74da48-3ae7-44c1-a174-5b3a4ccfe0eb', '9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d', ARRAY['view', 'add_funds', 'spend', 'distribute', 'withdraw', 'manage_members', 'manage_billing']::finance.vault_capability[], '9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d'),
-  ('b9416c47-3dd1-499e-a643-692d44152544', 'ed74da48-3ae7-44c1-a174-5b3a4ccfe0eb', '3fc3da04-549b-4239-aca3-fa82f713dbaf', ARRAY['view', 'add_funds', 'spend', 'distribute']::finance.vault_capability[], '9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d'),
-  ('71a6bb39-86d8-436c-a270-d94bd9324486', 'ed74da48-3ae7-44c1-a174-5b3a4ccfe0eb', '0dd8da22-3fe7-4449-a6f6-df8cfd5ebfbb', ARRAY['view']::finance.vault_capability[], '9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d'),
-  ('7bdef09f-faec-4f8a-a377-2121bfa09814', '78297a62-19ca-4e6b-afcb-a91cbaa3504d', 'c7173d3f-8b15-4876-afbf-499d17513a44', ARRAY['view', 'add_funds', 'spend', 'distribute', 'withdraw', 'manage_members', 'manage_billing']::finance.vault_capability[], 'c7173d3f-8b15-4876-afbf-499d17513a44'),
-  ('53a9fc8b-7318-464c-a358-e85da26a652e', '78297a62-19ca-4e6b-afcb-a91cbaa3504d', '5b4f5d46-9d9a-4973-a8fd-bfa0b88e72cd', ARRAY['view', 'add_funds', 'spend', 'distribute']::finance.vault_capability[], 'c7173d3f-8b15-4876-afbf-499d17513a44'),
-  ('5ccf6bce-3ff3-40b1-af39-06f827f1048b', '78297a62-19ca-4e6b-afcb-a91cbaa3504d', '2e4274fb-e76b-4640-ad31-c66d7fbea842', ARRAY['view']::finance.vault_capability[], 'c7173d3f-8b15-4876-afbf-499d17513a44'),
-  ('86f77972-dd48-46dd-a495-b7206e041ae3', 'ac5e5bb6-036a-4c37-a9d9-8764836875d5', 'c859a726-490c-4f6d-a184-8984de3994d3', ARRAY['view', 'add_funds', 'spend', 'distribute', 'withdraw', 'manage_members', 'manage_billing']::finance.vault_capability[], 'c859a726-490c-4f6d-a184-8984de3994d3'),
-  ('63d32860-6c80-4e65-a4e6-a882c842eba7', 'ac5e5bb6-036a-4c37-a9d9-8764836875d5', '0dd8da22-3fe7-4449-a6f6-df8cfd5ebfbb', ARRAY['view']::finance.vault_capability[], 'c859a726-490c-4f6d-a184-8984de3994d3'),
-  ('ed0e70c7-6e66-49fe-a589-d56945a079e8', '9bc97e73-5ac6-487a-a2a7-1d156c8ac784', 'de29f2ce-0f36-4db5-a417-4edc88cedf83', ARRAY['view', 'add_funds', 'spend', 'distribute', 'withdraw', 'manage_members', 'manage_billing']::finance.vault_capability[], 'de29f2ce-0f36-4db5-a417-4edc88cedf83'),
-  ('3b0ccd6a-c1dc-4495-aae1-977ca62b994f', '9bc97e73-5ac6-487a-a2a7-1d156c8ac784', '35ce4987-15b3-4c38-a438-2bb9c35df15a', ARRAY['view', 'add_funds', 'spend', 'distribute']::finance.vault_capability[], 'de29f2ce-0f36-4db5-a417-4edc88cedf83'),
-  ('1bb4a173-7f3f-4658-aed4-e10da5f79082', '0bb1d9f1-b826-4bfc-ab8e-26ab3be30616', '292e1827-f189-4f34-ab35-27c9f0320926', ARRAY['view', 'add_funds', 'spend', 'distribute', 'withdraw', 'manage_members', 'manage_billing']::finance.vault_capability[], '292e1827-f189-4f34-ab35-27c9f0320926'),
-  ('53896ecb-292a-43c0-a2a8-6f550243eb7a', '0bb1d9f1-b826-4bfc-ab8e-26ab3be30616', 'b30145ef-f693-439c-a2c4-8b3db32a54a2', ARRAY['view']::finance.vault_capability[], '292e1827-f189-4f34-ab35-27c9f0320926')
-ON CONFLICT (id) DO NOTHING;
-
 INSERT INTO finance.spending_limits (id, wallet_id, member_user_id, cap_cents, per_transaction_cents, period_interval, spent_cents, resets_at)
 VALUES
   ('bcd903dc-049a-43a7-a6da-53b6b500c641', '9bc97e73-5ac6-487a-a2a7-1d156c8ac784', '35ce4987-15b3-4c38-a438-2bb9c35df15a', 2500000, 1000000, 'monthly', 800000, now() + interval '216 hours')
@@ -314,6 +298,8 @@ ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO finance.ledger_audit (id, wallet_id, actor_user_id, action, amount_cents, currency, ref_table, ref_id, metadata, created_at)
 VALUES
-  ('e282312d-3146-4d94-ad9b-f797f8d6c9fe', '9bc97e73-5ac6-487a-a2a7-1d156c8ac784', 'de29f2ce-0f36-4db5-a417-4edc88cedf83', 'add_funds', 6000000, 'USD', 'payment_methods', 'a56c90b9-18ce-4b60-aac6-3b9f25e463c6', '{"note":"Q4 hiring budget"}'::jsonb, now() - interval '720 hours'),
-  ('8a553695-3474-4de4-a7ae-144b6c991422', '0bb1d9f1-b826-4bfc-ab8e-26ab3be30616', '292e1827-f189-4f34-ab35-27c9f0320926', 'add_funds', 6000000, 'USD', 'payment_methods', '961d7515-cb55-44bc-a6c5-f0ffd3d32c6e', '{"note":"Analytics platform build"}'::jsonb, now() - interval '1056 hours')
+  ('6babfe7b-7ce0-4a9e-a722-e84174d68d9c', '9bc97e73-5ac6-487a-a2a7-1d156c8ac784', 'de29f2ce-0f36-4db5-a417-4edc88cedf83', 'add_funds', 2500000, 'USD', 'payment_methods', 'a56c90b9-18ce-4b60-aac6-3b9f25e463c6', '{"note":"Opening deposit"}'::jsonb, now() - interval '6240 hours'),
+  ('e6acb1e6-e67c-4431-a46d-a4d456977227', '9bc97e73-5ac6-487a-a2a7-1d156c8ac784', 'de29f2ce-0f36-4db5-a417-4edc88cedf83', 'add_funds', 6000000, 'USD', 'payment_methods', 'a56c90b9-18ce-4b60-aac6-3b9f25e463c6', '{"note":"Q4 hiring budget"}'::jsonb, now() - interval '720 hours'),
+  ('e8db83a1-440f-44dc-a94b-85bfd7b897da', '0bb1d9f1-b826-4bfc-ab8e-26ab3be30616', '292e1827-f189-4f34-ab35-27c9f0320926', 'add_funds', 2500000, 'USD', 'payment_methods', '961d7515-cb55-44bc-a6c5-f0ffd3d32c6e', '{"note":"Opening deposit"}'::jsonb, now() - interval '5760 hours'),
+  ('daec720d-ebf5-41da-a7b2-f1533bf63680', '0bb1d9f1-b826-4bfc-ab8e-26ab3be30616', '292e1827-f189-4f34-ab35-27c9f0320926', 'add_funds', 6000000, 'USD', 'payment_methods', '961d7515-cb55-44bc-a6c5-f0ffd3d32c6e', '{"note":"Analytics platform build"}'::jsonb, now() - interval '1056 hours')
 ON CONFLICT (id) DO NOTHING;

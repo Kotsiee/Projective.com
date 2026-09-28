@@ -24,7 +24,8 @@
 -- #region 1. Owner predicates + handle resolution
 
 -- May the caller MANAGE this profile — edit its fields, media and settings? An individual owns
--- their own; a team's profile is its owner's or a team lead's; a business's its owner's; an
+-- their own; a team's or a business's is whoever holds `edit_profile` there (the owner and admin
+-- presets, or a custom role that grants it — the workspace permission twin, org.fn_member_can); an
 -- organisation's its owner's or an admin's. Deliberately narrower than membership: a member may
 -- READ an unlisted entity profile, not rewrite it.
 CREATE OR REPLACE FUNCTION org.fn_profile_manages(p_owner_type text, p_owner_id uuid)
@@ -39,10 +40,9 @@ AS $$
         WHEN security.is_admin () THEN true
         WHEN p_owner_type = 'user' THEN p_owner_id = auth.uid ()
         WHEN p_owner_type = 'team' THEN
-            EXISTS (SELECT 1 FROM org.teams t WHERE t.id = p_owner_id AND t.owner_user_id = auth.uid ())
-            OR org.is_team_lead (p_owner_id)
+            org.fn_member_can ('team', p_owner_id, 'edit_profile')
         WHEN p_owner_type = 'business' THEN
-            EXISTS (SELECT 1 FROM org.business_profiles b WHERE b.id = p_owner_id AND b.owner_user_id = auth.uid ())
+            org.fn_member_can ('business', p_owner_id, 'edit_profile')
         WHEN p_owner_type = 'organisation' THEN
             EXISTS (SELECT 1 FROM org.organisations o WHERE o.id = p_owner_id AND o.owner_user_id = auth.uid ())
             OR org.is_organisation_member (p_owner_id, 'admin'::org.organisation_role)
@@ -571,11 +571,12 @@ BEGIN
                 'handle', up.username,
                 'name', NULLIF(btrim(concat_ws(' ', up.first_name, up.last_name)), ''),
                 'avatar', files.fn_public_media_ref (up.avatar_file_id),
-                'role', COALESCE(NULLIF(btrim(tm.title), ''), initcap(tm.role)),
+                'role', COALESCE(NULLIF(btrim(tm.title), ''), r.name),
                 'is_freelancer', up.is_freelancer,
                 'departments', '[]'::jsonb
-            ) ORDER BY (tm.role = 'owner') DESC, tm.joined_at)
+            ) ORDER BY org.fn_preset_rank (tm.role) DESC, tm.joined_at)
             FROM org.team_members tm
+            JOIN org.team_roles r ON r.id = tm.role_id
             JOIN org.users_public up ON up.user_id = tm.user_id
             WHERE tm.team_id = v_id AND tm.status = 'active'
         ), '[]'::jsonb));
@@ -585,11 +586,12 @@ BEGIN
                 'handle', up.username,
                 'name', NULLIF(btrim(concat_ws(' ', up.first_name, up.last_name)), ''),
                 'avatar', files.fn_public_media_ref (up.avatar_file_id),
-                'role', COALESCE(NULLIF(btrim(bm.title), ''), initcap(bm.role)),
+                'role', COALESCE(NULLIF(btrim(bm.title), ''), r.name),
                 'is_freelancer', up.is_freelancer,
                 'departments', '[]'::jsonb
-            ) ORDER BY bm.joined_at)
+            ) ORDER BY org.fn_preset_rank (bm.role) DESC, bm.joined_at)
             FROM org.business_members bm
+            JOIN org.business_roles r ON r.id = bm.role_id
             JOIN org.users_public up ON up.user_id = bm.user_id
             WHERE bm.business_id = v_id AND bm.status = 'active'
         ), '[]'::jsonb));

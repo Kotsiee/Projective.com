@@ -7,7 +7,6 @@
  * recording because it is the same reason the corpus needed consolidating at all: the modules were
  * written independently and reuse names. `MutationOutcome` was declared by two
  * finance fixture modules with different shapes;
- * `messaging/workspace-fixtures.ts` and `workspace/workspace-fixtures.ts` share a filename;
  * `findMessagePage` exists in the projects corpus and `findConversationMessagePage` in the messaging
  * one. Namespacing keeps every symbol reachable without renaming a single export, so nothing that
  * imports a fixture module directly today has to change.
@@ -64,7 +63,4 @@ export * as messagingSettingsMocks from "../services/messaging/settings-fixtures
 export * as conversationWorkspaceMocks from "../services/messaging/workspace-fixtures.ts";
 // #endregion
 
-// #region Teams & businesses
-export * as workspaceMocks from "../services/workspace/workspace-fixtures.ts";
-// #endregion
 

@@ -221,7 +221,7 @@ export const MODULES: readonly WorkspaceModule[] = [
 		glyph: InvitationsGlyph,
 		kinds: BOTH,
 		permission: () => "invite_members",
-		blurb: "Invitations sent, join requests received, and share links.",
+		blurb: "Invitations sent and still waiting for an answer.",
 	},
 
 	// --- Money ------------------------------------------------------------------------------------

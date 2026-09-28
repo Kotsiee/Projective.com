@@ -40,19 +40,19 @@ every persona lands on the authenticated shell directly.
 | `marisdelacroix` | Maris Delacroix | Freelancer (product design lead)       | —                             | KYC verified, Pro plan, 2 funded tickets, 1 released, Income Smoother enrolled, monthly payouts |
 | `renkoda`        | Ren Koda        | Freelancer (3D & motion)               | —                             | Pending invitation from Theo (draft project), sells a product   |
 | `juno`           | Juno Park       | Freelancer (frontend)                  | —                             | KYC pending, pending invitation + pending application, building Noor's site |
-| `noor`           | Noor Haddad     | Client (creative director)             | —                             | Owns an individual project, 2 product orders, basket, unread DM |
+| `noor`           | Noor Haddad     | Client (creative director)             | — (invited to Helia Finance)  | Owns an individual project, 2 product orders, basket, unread DM; a pending Member invitation from Helia |
 | `theo`           | Theo Almeida    | Client (founder)                       | —                             | Draft project with a placeholder invitation, service + product orders |
 | `inesduarte`     | Inês Duarte     | Freelancer, **owns Atelier Nova**      | Atelier Nova (owner)          | Claimed the one-off Verdant ticket, escrow held for the team    |
 | `kwamemensah`    | Kwame Mensah    | Freelancer, **owns North Loop**        | North Loop (owner)            | Two released team escrows, instant payout, threshold schedule   |
 | `saoirsebyrne`   | Saoirse Byrne   | Freelancer, **owns Studio Fern**       | Studio Fern (owner)           | Pending team invite to Chloe, service inquiry thread, auto-response |
-| `priyaraman`     | Priya Raman     | Operator, **owns Helia Finance**       | Helia Finance (owner)         | KYB verified, USD vault with a pending spend approval           |
+| `priyaraman`     | Priya Raman     | Operator, **owns Helia Finance**       | Helia Finance (owner)         | KYB verified, USD vault with a pending spend approval; has invited Noor to Helia |
 | `danielokafor`   | Daniel Okafor   | Operator, **owns Atlas Labs**          | Atlas Labs (owner)            | KYB pending, reviews North Loop, unread submission              |
 | `lenamueller`    | Lena Müller     | Freelancer                             | Atelier Nova (admin)          | Rejected application                                            |
 | `tomaszwojcik`   | Tomasz Wójcik   | Freelancer                             | North Loop (member)           | Completed ticket, team split credit, payout, pending application |
 | `aikotanaka`     | Aiko Tanaka     | Freelancer                             | Atelier Nova + Studio Fern    | Member of two teams                                             |
 | `samuelnkemelu`  | Samuel Nkemelu  | Freelancer                             | North Loop (lead)             | Ticket in review with a revision round, pending invitation      |
 | `hannahcole`     | Hannah Cole     | Operator                               | Helia Finance (admin)         | Runs two projects, spending cap on the vault, unread applications |
-| `miguelsantos`   | Miguel Santos   | Operator                               | Atlas Labs (member)           | Owns the hiring-stage Loop mobile project                       |
+| `miguelsantos`   | Miguel Santos   | Operator                               | Atlas Labs (member)           | Owns the hiring-stage Loop mobile project; plain Member role **plus two per-member grants** (`hire`, `manage_projects`) |
 | `chloewinters`   | Chloe Winters   | Freelancer (new account)               | — (invited to Studio Fern)    | Unverified, pending application, booked a review session        |
 
 ## What is seeded, by file
@@ -61,11 +61,11 @@ every persona lands on the authenticated shell directly.
 | :--------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `01_identities.sql`    | `auth.users` + `auth.identities`, `org.users_public`, emails, preferences (display currency/locale), freelancer profiles (KYC), skills, languages, links, KYC cases |
 | `02_assets.sql`        | One `files.items` row per image (real size, SHA-256, dimensions in a schema-valid `AssetMetadata` envelope); avatar/banner links; education + experience (with employer logos) |
-| `03_entities.sql`      | Teams + businesses (brand marks), system roles, memberships with titles, team contribution splits + split rules, KYB cases, a pending team invitation, follows, bookmarks |
+| `03_entities.sql`      | Teams + businesses (brand marks); each entity's **preset** role rows (Owner · Admin · Lead · Member for a team, no Lead for a business — name, summary, `preset` = `base_preset`, no stored capabilities, exactly what `org.fn_seed_preset_roles` writes); memberships with titles, the held `role_id`, and per-member `granted_capabilities` (Miguel's two); seven `reports_to` org-chart edges (written after both rosters exist — Lena → Inês, Aiko → Lena, Samuel → Kwame, Tomasz → Samuel, Aiko → Saoirse, Hannah → Priya, Miguel → Daniel); team contribution splits (no stake starts `held`) + split rules; KYB cases; two pending invitations (Studio Fern → Chloe, Helia Finance → Noor) addressed through `team_role_id` / `business_role_id`; follows, bookmarks |
 | `04_marketplace.sql`   | Nine service blueprints (all five delivery models, team-owned where the corpus says so) with covers, stage templates (priced per stage), intake questions, team roles, deliverables and session terms |
 | `05_catalogue.sql`     | Products (`prd-…` slugs, format, file manifest, specs, compatibility, licence), articles (`art-…` slugs, block bodies whose images are storage objects, covers), a published listing per product AND per service with its gallery (`file_id`), skills and tags, the listing reviews, and paid placements for the sponsored listings |
 | `06_projects.sql`      | Seven projects with stable `prj-…` slugs, stages, participants, assignments (individual + team), invitations (pending/accepted/declined/placeholder), applications, tickets with history, submissions with deliverable files and a revision chain, starred projects, dual-track reviews |
-| `07_finance.sql`       | Wallets, a **computed** ledger, escrows (funded + released), team payout splits, invoices with line items, orders + lines (products, services, a booked session, a refund), baskets, cards, payment methods, payout accounts/schedules/payouts, subscriptions, vault permissions, a spending cap, a pending spend approval, Income Smoother, pots — plus the checkout's own states (see [§ Checkout states](#checkout-states)) |
+| `07_finance.sql`       | Wallets (and each team's `treasury_wallet_id`), a **computed** ledger, escrows (funded + released), team payout splits, invoices with line items, orders + lines (products, services, a booked session, a refund), baskets, cards, payment methods, payout accounts/schedules/payouts, subscriptions, a spending cap, a pending spend approval, the vault audit trail (`finance.ledger_audit`, **derived** from the ledger — see below), Income Smoother, pots — plus the checkout's own states (see [§ Checkout states](#checkout-states)). **No `finance.vault_permissions` rows are written**: the wallet insert trigger projects them from the workspace roles (`org.fn_sync_vault_permissions`), so the seed cannot disagree with the console about who may spend |
 | `08_comms.sql`         | General + per-stage project channels with messages and participants, DM/group/service-inquiry threads with per-participant read state, 44 catalog-typed notifications (16 unread), auto-responses |
 | `08_scheduling.sql`    | Ten schedules (nine published, Chloe's a draft) in their owners' own timezones: 65 weekly bands (50 `working_hours`, 15 `call_window`), three blackouts (one private label, two public), eight call-settings rows with twelve platforms, eight events (five busy blocks, two syncs, and Chloe's booked review at the same instant as her order line), and four discovery calls — one proposed, two confirmed (one paid) and one completed |
 | `09_search.sql`        | Hand-written projection of everything above into the `search.*` indexes                                                                                  |
@@ -145,9 +145,19 @@ extension, does not know `.avif`, and the storage API refuses `application/octet
 
 - **Ledger.** Every `balance_after_cents` is a running balance over a chronologically sorted event
   list per wallet; the generator refuses to emit if any balance would go negative, and same-day
-  rows are staggered by seconds so `ORDER BY created_at` reproduces the walk. The business-wallet
-  opening-credit trigger is disabled around the wallet insert and replaced by a **dated** opening
-  credit. Platform fee 5%; team income = 10% vault retention + `contribution_agreements` split.
+  rows are staggered by seconds so `ORDER BY created_at` reproduces the walk. **Nothing is minted**:
+  the platform's opening-credit trigger is gone (Decision #122), so each business opens with a real
+  dated `topup` of 2,500,000 minor units from its owner's funding card on the day it was created.
+  Platform fee 5%; team income = 10% vault retention + `contribution_agreements` split.
+- **The vault audit is derived, not typed.** Every `topup` credit to a business or team wallet
+  becomes one `finance.ledger_audit` `add_funds` row attributed to the entity's owner (the opening
+  one noted "Opening deposit", Helia's and Atlas's later ones "Q4 hiring budget" / "Analytics
+  platform build"), so the Money module's contribution ledger and the wallet's transactions cannot
+  disagree.
+- **Roles are presets; rank is derived.** Role rows store no capabilities (a preset's bundle is
+  `org.fn_preset_capabilities`), and every membership row passes through `org.fn_member_role_sync`,
+  which derives `role` from the held role and enforces the one-owner invariant — the seed's own
+  `role` column is overwritten to agree.
 - **Idempotency.** Every id derives from a natural key; every insert is `ON CONFLICT DO NOTHING`,
   except stages and tickets, which use `INSERT … SELECT … WHERE NOT EXISTS` because
   `fn_enforce_structure_variation` is a BEFORE INSERT trigger and would count the duplicate before
@@ -185,9 +195,9 @@ extension, does not know `.avif`, and the storage API refuses `application/octet
 
 - An individual client (Noor, Theo) cannot fund escrow — `finance.escrows.payer_business_id` is
   `NOT NULL` — so Juno's in-progress ticket on Noor's site is `unpaid` (Decision #56(a)).
-- `fn_release_ticket_escrow` credits a `'freelancer'` wallet while `fn_split_team_payout` credits
-  `'user'` wallets; the seed gives each person ONE wallet (`freelancer` for sellers, `user` for
-  everyone else), so a live team split would miss its members until those two functions agree.
+- ~~A live team split would miss its members~~ — **resolved 2026-09-28**: `fn_split_team_payout`
+  now credits the wallet each person actually holds (`finance.fn_person_wallet_type`, creating it if
+  missing), so the seed's one-wallet-per-person layout is paid correctly.
 - Only the PUBLIC scheduling surfaces read the seeded `scheduling.*` rows so far. The project
   calendar and the personal `/calendar` agenda still derive their events in the app, so the busy
   blocks on a provider's public schedule are not yet the same events their own calendar shows.

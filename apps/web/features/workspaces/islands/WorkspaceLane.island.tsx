@@ -43,7 +43,7 @@ import {
 	applyRosterFilters,
 	countLabel,
 	filterRoster,
-	pendingMembers,
+	isWithinPath,
 	type RosterQuickFilter,
 	type RosterTab,
 	rosterTabCounts,
@@ -83,7 +83,7 @@ import { type ModuleSignals, WorkspaceRail } from "../components/WorkspaceRail.t
  * ### The two lanes
  *  - **Index** (`/teams`, `/businesses`) — the viewer's entities as a navigable list, partitioned by
  *    the roster tabs, with the invitations awaiting them.
- *  - **Entity** (`/teams/[id]…`) — one entity's identity, its acting switch, and its module nav.
+ *  - **Entity** (`/teams/[teamHandle]…`) — one entity's identity, its acting switch, and its module nav.
  *
  * They are one island rather than two because they occupy the same shell slot with the same chrome,
  * the same collapse behaviour and the same acting-marker rules. Splitting them would duplicate all
@@ -418,7 +418,7 @@ function IndexLane(props: IndexLaneProps): JSX.Element {
 							kind={props.kind}
 							copy={copy}
 							acting={isActingEntity(entity.id, actingId)}
-							active={props.path.startsWith(workspaceHref(props.kind, entity.id))}
+							active={isWithinPath(props.path, workspaceHref(props.kind, entity.handle))}
 						/>
 					))}
 			</LaneList>
@@ -449,7 +449,7 @@ function EntityRow(
 	return (
 		<a
 			class="wsp-lane__entity"
-			href={workspaceHref(props.kind, entity.id)}
+			href={workspaceHref(props.kind, entity.handle)}
 			data-acting={props.acting ? "true" : undefined}
 			aria-current={props.active ? "page" : undefined}
 		>
@@ -644,13 +644,13 @@ function EntityLane(props: EntityLaneProps): JSX.Element {
 									<div class="wsp-lane__sep" role="separator" />
 									<a
 										class="wsp-lane__entity"
-										href={workspaceHref(props.kind, detail.id, "settings")}
+										href={workspaceHref(props.kind, detail.handle, "settings")}
 										role="menuitem"
 									>
 										<span class="wsp-lane__row-icon">{cloneGlyph(SettingsGlyph)}</span>
 										<span class="wsp-lane__entity-body">
 											<span class="wsp-lane__entity-name">{copy.Noun} settings</span>
-											<span class="wsp-lane__entity-role">Handle, ownership, archiving</span>
+											<span class="wsp-lane__entity-role">Profile, pictures, visibility</span>
 										</span>
 									</a>
 								</>
@@ -666,7 +666,7 @@ function EntityLane(props: EntityLaneProps): JSX.Element {
 					name={detail.name}
 					handle={detail.handle}
 					acting={detail.isActing}
-					destination={workspaceHref(props.kind, detail.id, props.activeModule ?? "overview")}
+					destination={workspaceHref(props.kind, detail.handle, props.activeModule ?? "overview")}
 				/>
 			</LaneHead>
 
@@ -684,7 +684,17 @@ function EntityLane(props: EntityLaneProps): JSX.Element {
 								<LaneIconButton
 									icon={cloneGlyph(InviteGlyph)}
 									label="Invite members"
-									onClick={() => openInvite()}
+									onClick={() => {
+										// The invite modal lives on the Members screen; from any other module the control
+										// lands there with the modal open instead of pressing into nothing.
+										if (props.activeModule === "members" || props.activeModule === "invitations") {
+											openInvite();
+										} else {
+											globalThis.location.assign(
+												`${workspaceHref(props.kind, detail.handle, "members")}?invite=1`,
+											);
+										}
+									}}
 								/>
 							)
 							: undefined}
@@ -704,7 +714,7 @@ function EntityLane(props: EntityLaneProps): JSX.Element {
 								<a
 									key={module.key}
 									class="wsp-lane__row"
-									href={workspaceHref(props.kind, detail.id, module.key)}
+									href={workspaceHref(props.kind, detail.handle, module.key)}
 									data-active={active ? "true" : undefined}
 									aria-current={active ? "page" : undefined}
 								>
@@ -755,7 +765,7 @@ function EntityLane(props: EntityLaneProps): JSX.Element {
 						<Tooltip content={detail.verificationPrompt}>
 							<a
 								class="wsp-lane__verify-link"
-								href={workspaceHref(props.kind, detail.id, "verification")}
+								href={workspaceHref(props.kind, detail.handle, "verification")}
 							>
 								Finish
 							</a>
@@ -803,7 +813,6 @@ function moduleSignals(detail: WorkspaceDetail): ModuleSignals {
 	const out: ModuleSignals = {};
 
 	if (detail.invites.length > 0) out.invitations = { count: detail.invites.length };
-	if (pendingMembers(detail.members).length > 0) out.members = { dot: true };
 
 	const awaitingDecision = detail.spend?.requests.filter((r) => r.state === "pending").length ?? 0;
 	if (awaitingDecision > 0) out.spend = { count: awaitingDecision };

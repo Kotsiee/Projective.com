@@ -1,7 +1,7 @@
 import type { UserContext } from "@projective/types/auth";
 import { PERSONAL_MEMBER_CONTEXT } from "@projective/types/auth";
 import type { IconName } from "./nav-icons.tsx";
-import { getAccountCapabilities, getOfferings, getWorkspacesByKind } from "./nav-fixtures.ts";
+import { getAccountCapabilities, getOfferings, getRecentWorkspaces } from "./nav-fixtures.ts";
 import { isExploreSurface } from "./explore-surface.ts";
 
 /**
@@ -93,9 +93,25 @@ export function globalNav(
 	const showAnalytics = isFreelancer || isTeamCtx || isBusinessCtx || belongsToOrg;
 	// #endregion
 
-	/** Map recent workspaces of one kind into kind-strict disclosure sublinks (owner-avatar led). */
-	const workspaceSublinks = (kind: "project" | "team" | "business"): NavSublink[] =>
-		getWorkspacesByKind(kind).map((w): NavSublink => ({
+	/**
+	 * The Teams / Businesses disclosure: the entity the session is ACTING as, when it is one of this kind —
+	 * the one membership the chrome knows for certain without a read. The full list lives one click away
+	 * on the roster (and in the account popover, which reads it live).
+	 */
+	const actingSublinks = (kind: "team" | "business"): NavSublink[] => {
+		if (contextType !== kind || !context.handle) return [];
+		const href = `${kind === "team" ? "/teams" : "/businesses"}/${context.handle}`;
+		return [{
+			label: `@${context.handle}`,
+			href,
+			icon: kind === "team" ? "teams" : "business",
+			active: isActive(path, href),
+		}];
+	};
+
+	/** Map recent projects into the Projects disclosure's sublinks (owner-avatar led). */
+	const workspaceSublinks = (): NavSublink[] =>
+		getRecentWorkspaces().map((w): NavSublink => ({
 			label: w.label,
 			href: w.href,
 			avatar: w.ownerAvatar,
@@ -150,7 +166,7 @@ export function globalNav(
 			href: "/projects",
 			icon: "briefcase",
 			active: isActive(path, "/projects"),
-			children: workspaceSublinks("project"),
+			children: workspaceSublinks(),
 		},
 		// Calendar — the acting account's own agenda. UNGATED for the same reason Files is:
 		// everyone has a week, whichever side of the market they are on, so this destination carries no
@@ -196,7 +212,7 @@ export function globalNav(
 				href: "/teams",
 				icon: "teams",
 				active: isActive(path, "/teams"),
-				children: workspaceSublinks("team"),
+				children: actingSublinks("team"),
 			}
 			: null,
 		// Businesses — only when a business account is enabled; disclosure is STRICTLY businesses.
@@ -208,7 +224,7 @@ export function globalNav(
 				href: "/businesses",
 				icon: "business",
 				active: isActive(path, "/businesses"),
-				children: workspaceSublinks("business"),
+				children: actingSublinks("business"),
 			}
 			: null,
 		// Analytics — replaces the generic Dashboard; gated to sellers / entity members.

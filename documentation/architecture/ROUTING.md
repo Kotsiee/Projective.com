@@ -12,7 +12,7 @@ Parenthesized folders group routes **without** adding a URL segment:
 | :------------------------ | :------------------------------------------------------------------------------------------- | :---------- |
 | `routes/(public)/`        | Marketing + auth (landing, about, explore, help, view, login/join/…)                         | none        |
 | `routes/(public)/(auth)/` | Auth sub-group (own chrome later)                                                            | none        |
-| `routes/(dashboard)/`     | Authenticated app (home, projects, business, teams, messages, wallet, settings, services, …) | **guarded** |
+| `routes/(dashboard)/`     | Authenticated app (home, projects, businesses, teams, messages, wallet, settings, services, …) | **guarded** |
 | `routes/[handle]/`        | Public profile namespace — users, teams, corporations by `@handle`                           | none        |
 
 ## Special files
@@ -50,6 +50,11 @@ Parenthesized folders group routes **without** adding a URL segment:
 | files hub (deep)        | `(dashboard)/files/[...path].tsx`                            | `/files/*` (any folder, at any depth — a real, deep-linkable, shareable URL the tree, the breadcrumbs and the address bar all address identically; each segment is percent-encoded INDEPENDENTLY, so a folder literally named `a/b` never reads back as the pair `["a","b"]`)                                                                                                                                                                                                                                                                                                                                                |
 | share link              | `(public)/share/[slug].tsx`                                  | `/share/:slug` (the public resolution of a read-only share link — the one files surface a stranger can reach)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | integrations            | `(dashboard)/settings/integrations/index.tsx`                | `/settings/integrations` (the connector console — the caller's stored authorizations, and the catalogue)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| teams roster            | `(dashboard)/teams/index.tsx`                                | `/teams` — the caller's teams (owned first), their pending invitations to teams, and the create entitlement. Read by `org.get_workspace_roster('team')`. |
+| team create             | `(dashboard)/teams/create.tsx`                               | `/teams/create` — the create flow (name + a `@handle` checked live against the ONE handle namespace); the entity is born `draft`. |
+| team console            | `(dashboard)/teams/[teamHandle]/index.tsx`                   | `/teams/:teamHandle` — the console's **Overview**. Addressed by the team's `@handle` (`org.teams.slug`), never its uuid. |
+| team console module     | `(dashboard)/teams/[teamHandle]/[module].tsx`                | `/teams/:teamHandle/:module` — one module of the console (the `ModuleKey` vocabulary of `features/workspaces/core/module-registry.tsx`). Resolved by `consoleOutcome` (`features/workspaces/core/workspace-route.tsx`) in `define.handlers`: a real module the viewer may not open **303s** to the one they can; an unregistered segment 303s to the console root. Membership is the DATABASE's answer — `org.get_workspace_detail` returns `forbidden` for a non-member and discloses nothing else. |
+| business roster / create / console | `(dashboard)/businesses/{index,create}.tsx` · `businesses/[businessHandle]/{index,[module]}.tsx` | `/businesses` · `/businesses/create` · `/businesses/:businessHandle` · `/businesses/:businessHandle/:module` — the buyer-side twin of the four team routes above, addressed by `org.business_profiles.slug`. |
 | `[...path]`             | `(public)/help/[...path].tsx`                                | `/help/*` (catch-all)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | top-level dynamic       | `[handle]/index.tsx`                                         | `/:handle` (the profile **Work** section — the index IS the default tab; `/:handle/work` 308s here)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | profile tabs            | `[handle]/[tab].tsx`                                         | `/:handle/:tab` (the three non-index sections — `experience` · `reviews` · `posts`; Experience is gated to individuals. Every RETIRED segment answers **308** into its consolidated section: `services` · `products` · `projects` · `portfolio` · `teams` · `businesses` · `members` · `departments` · `about` → `/:handle`; `education` → `/:handle/experience`; `articles` → `/:handle/posts` — root CLAUDE.md §8 Decision #96)                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -145,6 +150,16 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   query matching nothing, forever, with no error to log. The CHECK is now `^prj-[…]{10}$` so the two
   namespaces cannot overlap; a malformed segment is a 404 before a round trip, never a thrown
   `22P02`.
+
+- **A team or business console is addressed by its `@handle`.** `:teamHandle` / `:businessHandle`
+  is `org.teams.slug` / `org.business_profiles.slug` — the entity's handle in the ONE namespace it
+  shares with people and organisations (`org.fn_handle_refusal`), so `/teams/north-loop` and
+  `/@north-loop` name the same entity. Builder: `workspaceHref(kind, handle, module?)`
+  (`@projective/types/workspace`; the `overview` module is the bare console URL). The row's uuid does
+  not route; `org.get_workspace_detail` accepts a uuid only so a WRITE (which knows the id) can re-read
+  the console it changed. The plural `/businesses` is canonical (Decision #61). The wallet deep link
+  `/wallet?w=team:{id}` is a page-local VIEW filter, not a context switch — the acting context changes
+  only through `POST /api/context/switch`.
 
 - **A ticket is addressed by `?tkv=<ticket-slug>`, on whatever page the viewer is on.** A ticket
   has no route of its own: its modal (`tkv`, the View Ticket surface) is opened by a QUERY parameter
@@ -348,6 +363,40 @@ ownership from the live read's `viewer.isOwner`.
 
 `/api/profile/*` and `/api/media/*` are thin: HTTP parsing, Zod (`@projective/types/profile`,
 `@projective/types/files`), then `ProfileBackendService` / `MediaBackendService`.
+
+### Workspace (Teams & Businesses) API
+
+Live-only since 2026-09-28 (root `CLAUDE.md` §8 Decision #122): no fixture branch and no backend gate.
+Every route is thin — HTTP parsing, Zod (`@projective/types/workspace`), the acting principal from
+`readActor(ctx)` — then one `WorkspaceBackendService` method, which calls one definer RPC
+([`database/org/Functions.md` § The workspace console](../database/org/Functions.md#-the-workspace-console-00001020)).
+A guest is a 401. Every write answers the RE-READ console (or `null` when the caller removed
+themselves or left in a transfer), so an island adopts the server's state. RPC refusals map
+`22023 '<field>: <reason>'` → 422 with `fieldErrors[field]`, `42501` → 403, `P0002` → 404,
+`23505` / `55000` → 409, `23514` → 422.
+
+| Route                                | Method                | RPC                                                                                     |
+| :----------------------------------- | :-------------------- | :-------------------------------------------------------------------------------------- |
+| `/api/workspace/roster`              | `GET · HEAD · OPTIONS` (`?kind=`) | `org.get_workspace_roster(kind)`                                                        |
+| `/api/workspace/detail`              | `GET · HEAD · OPTIONS` (`?kind=&ref=`) | `org.get_workspace_detail(kind, handle_or_id)`                                          |
+| `/api/workspace/handle`              | `GET`                 | `org.check_handle(handle)` — the create form's probe                                    |
+| `/api/workspace/create`              | `POST`                | `org.create_workspace(kind, name, handle)` → 201                                        |
+| `/api/workspace/update`              | `POST`                | `org.update_workspace` (name, tagline) · `org.set_workspace_status` (publish / archive / restore) |
+| `/api/workspace/invite`              | `POST`                | `org.invite_workspace_member` (by handle **or** email)                                  |
+| `/api/workspace/invite-action`       | `POST`                | `org.revoke_workspace_invitation` · `org.resend_workspace_invitation` (the inviting side) |
+| `/api/workspace/invite-respond`      | `POST`                | `org.respond_to_workspace_invitation` (the invitee)                                     |
+| `/api/workspace/member`              | `POST`                | `org.update_workspace_member` (role, overrides, title, reports-to, spend envelope, remove / leave) |
+| `/api/workspace/transfer-ownership`  | `POST`                | `org.transfer_workspace_ownership`                                                      |
+| `/api/workspace/role`                | `POST`                | `org.upsert_workspace_role`                                                             |
+| `/api/workspace/role-archive`        | `POST`                | `org.archive_workspace_role` — replaces the retired `role-delete` (nothing is hard-deleted) |
+| `/api/workspace/payout`              | `POST`                | `finance.save_team_split`                                                               |
+| `/api/workspace/spend`               | `POST`                | `finance.save_spend_policy`                                                             |
+| `/api/workspace/spend-decide`        | `POST`                | `finance.decide_spend_approval`                                                         |
+| `/api/context/switch`                | `POST`                | `security.switch_session_context` · `switch_team_context` · `switch_organisation_context` · `clear_session_context` |
+
+An over-limit spend REQUEST is not a workspace route: it is filed from the wallet surface through
+`finance.request_spend_approval`. A context switch re-stamps the JWT: the caller then refreshes the session (`/api/auth/refresh`) and
+navigates, because the access-token hook is what turns the stored context into claims.
 
 The reserved-word denylist is **implemented** as the SSOT const + guard
 **`RESERVED_HANDLES`/`isReservedHandle`** in

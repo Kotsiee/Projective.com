@@ -26,9 +26,28 @@ Migrations `20260724090000`–`20260724094000`. Zod SSOT:
 
 ### `comms.notification_types`
 
-The routing matrix **as data**: one row per event key declaring how that event is delivered. 83 keys
-are seeded (money · work · messages · schedule · discovery · account · system · marketing) — the two
-added 2026-09-21 are `invitation.accepted` / `invitation.declined`, the inviter's side of
+The routing matrix **as data**: one row per event key declaring how that event is delivered. 91 keys
+are seeded (money · work · messages · schedule · discovery · account · system · marketing).
+
+**The eight added 2026-09-28 (Teams & Businesses, root `CLAUDE.md` §8 Decision #122)**, each
+emitted by a workspace or money RPC. `spend.approved` / `spend.rejected` were already emitted by
+`finance.decide_spend_approval` before they were seeded, so until now they auto-registered as
+`system`/`medium` at first use — they now route as the money events they are:
+
+| Key                               | Category · urgency · channels              | Mandatory | Emitted by                                                         |
+| :-------------------------------- | :----------------------------------------- | :-------- | :----------------------------------------------------------------- |
+| `spend.approved` / `spend.rejected` | money · high · in_app + email            | yes       | `finance.decide_spend_approval`, to the requester                  |
+| `team.member_removed` / `business.member_removed` | account · medium · in_app + email | yes | `org.update_workspace_member` (`remove`), to the removed member (not on self-leave) |
+| `team.ownership_transferred` / `business.ownership_transferred` | account · high · in_app + email | yes | `org.transfer_workspace_ownership`, to the successor |
+| `business.invite`                 | account · high · in_app + push + email     | no        | `org.invite_workspace_member` / `resend_workspace_invitation`      |
+| `business.member_joined`          | account · low · in_app (1-hour collapse)   | no        | `org.respond_to_workspace_invitation`, to the inviter              |
+
+`team.invite` and `team.member_joined` already existed; their `action_url_template` moved from
+`/settings` to `/teams`, the new business keys point at `/businesses`, and
+`business.permission_changed` (emitted by `org.update_workspace_member`) moved from `/settings` to
+`/businesses`. The RPCs pass an explicit link where they know one (acceptance links the inviter to
+`/{teams|businesses}/{handle}/members`). The two added 2026-09-21 are
+`invitation.accepted` / `invitation.declined`, the inviter's side of
 `stage.invite`, emitted by `projects.fn_apply_invitation_decision` with an explicit slug-addressed
 link (their `action_url_template` is NULL because the router cannot address a project by slug).
 `stage.invite` itself is emitted by `projects.invite_to_project` for BOTH grains — a whole-project

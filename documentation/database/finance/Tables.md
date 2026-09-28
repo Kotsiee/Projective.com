@@ -28,7 +28,9 @@ governance, statements, and idempotency.
   `finance.fund_state`.
 - **Hidden-ledger posture.** Most `finance.*` tables are **definer-only** (RLS enabled, no policy,
   no `authenticated` grant) — reachable only through `SECURITY DEFINER` RPCs
-  (`org.get_business_finance`, the `projects.*` stage wrappers). `finance.escrows` is the exception
+  (the `projects.*` stage wrappers, the workspace console's `finance.save_team_split` /
+  `preview_team_split` / `save_spend_policy`; the former `org.get_business_finance` was retired
+  2026-09-28). `finance.escrows` is the exception
   (explicit `GRANT SELECT` + policy). New user-facing tables below each ship their own RLS policy.
 
 ---
@@ -71,9 +73,18 @@ Append-only per-wallet ledger line with a running balance and (additively) an FX
 | `fx_as_of`            | timestamptz | **Additive.** The `finance.fx_rates.as_of` the rate was snapshotted from.       |
 
 **Canonical `reason` codes:** `escrow_hold`, `escrow_release`, `escrow_refund`, `fair_exit_release`,
-`fair_exit_refund`, `team_split`, `demo_opening_credit`, and the refund/chargeback lines `refund`,
-`chargeback` (negative-direction entries). Refunds and chargebacks are ledger movements, not a
-separate table of amounts (see `finance.chargebacks` for the dispute case they reference).
+`fair_exit_refund`, `team_split`, and the refund/chargeback lines `refund`, `chargeback`
+(negative-direction entries). Refunds and chargebacks are ledger movements, not a separate table of
+amounts (see `finance.chargebacks` for the dispute case they reference). A team release
+(`finance.fn_split_team_payout`, 2026-09-28) also writes `team_finder_fee` (a finder's cut) and
+`<reason>_vault_retention` (the vault's cut plus dust, e.g. `escrow_release_vault_retention` /
+`fair_exit_release_vault_retention`).
+
+> **`demo_opening_credit` is retired** (2026-09-28). A business wallet used to be credited
+> 2,500,000 minor units, in whatever currency it was opened in, by the `trg_seed_business_wallet`
+> trigger — spendable funds nobody had paid in. The trigger and `finance.fn_seed_business_wallet` are
+> gone: a wallet's balance is only ever the sum of real movements. (The development seed now opens
+> each entity wallet with a dated owner `topup` instead — [`../Seed.md`](../Seed.md).)
 
 ### `finance.escrows`
 
@@ -102,8 +113,8 @@ Capital locked against a stage/ticket. Text `status`, values used by the engine:
 | `finance.invoice_line_items`      | Invoice lines; `ref_type` ∈ escrow/bonus/platform_fee/refund/tax.                                                                                                                                                            |
 | `finance.disputes`                | A contested escrow (`escrow_id` FK); `dispute_status` open/under_review/resolved/refunded.                                                                                                                                   |
 | `finance.dispute_messages`        | Threaded dispute conversation.                                                                                                                                                                                               |
-| `finance.spending_limits`         | **Per-member spending CAP** on a pooled wallet: `wallet_id`,`member_user_id`,`cap_cents`,`period_interval` (weekly/monthly/total),`spent_cents`,`resets_at`. This IS the "spending caps" model — formalised, not duplicated. |
-| `finance.contribution_agreements` | Team member's `percent_bp` split share; `(team_id, member_user_id)` UNIQUE.                                                                                                                                                  |
+| `finance.spending_limits`         | **Per-member spending ENVELOPE** on a pooled wallet: `wallet_id`,`member_user_id`,`cap_cents`,`per_transaction_cents`,`period_interval` (weekly/monthly/total),`spent_cents`,`resets_at`. `cap_cents` is **nullable since 2026-09-28** (`CHECK (cap_cents IS NULL OR cap_cents >= 0)`): `NULL` = no rolling ceiling, a policy somebody set — distinct from no row (no envelope) and from `0`. `per_transaction_cents` (nullable) caps one purchase independently of the rolling cap. Enforced atomically by `finance.fn_check_spending_limit`. This IS the "spending caps" model — formalised, not duplicated. |
+| `finance.contribution_agreements` | Team member's `percent_bp` split share (`0–10000`) + `held` (an immovable stake the rebalancer never touches); `(team_id, member_user_id)` UNIQUE. **The ONE home of a member's payout share** (`org.team_members.default_split_share` was removed). A team's stakes total exactly **10000 or 0**, enforced at commit by the deferred constraint trigger `trg_contribution_agreements_total` (`finance.fn_assert_team_split_total`, `23514`). Written by `org.create_workspace` (owner 10000), invitation acceptance (0), `org.fn_rebalance_departed_stake` and `finance.save_team_split`. |
 | `finance.payout_splits`           | The per-member amounts recorded at each team escrow release.                                                                                                                                                                 |
 | `finance.ratings`                 | Post-project ratings (legacy home; the live review surface is the `reviews` schema).                                                                                                                                         |
 | `finance.subscriptions`           | Profile subscription plan/status.                                                                                                                                                                                            |
@@ -194,9 +205,9 @@ fragments (`brand`, `last4`).
 
 | Table                       | Purpose & key columns                                                                                                                                                                                                                                                                                                                           |
 | :-------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `finance.vault_permissions` | Capability **grants** (not a single role) on a shared wallet: `wallet_id`, `member_user_id`, `capabilities finance.vault_capability[]` (view/add_funds/spend/distribute/withdraw/manage_members/manage_billing). `(wallet, member)` UNIQUE. ⚠️ overlaps `org.business_permission`/`org.team_permission` — reconcile (root `CLAUDE.md` §8).      |
-| `finance.split_rules`       | Team smart-split **ruleset template**: `team_id`, `rule_type` (co_op/finders_fee/benevolent_dictator), `vault_bp` (Team Vault cut, taken first), `finder_user_id`+`finder_bp`. Resolves into the per-member `finance.contribution_agreements`. Deterministic remainder rounding: leftover minor unit → Team Vault.                              |
-| `finance.spend_approvals`   | Over-cap / over-threshold second-approver queue: `wallet_id`, `requested_by`, `amount_cents`+`currency`, `status` (pending/approved/rejected/expired), `approver_user_id`.                                                                                                                                                                      |
+| `finance.vault_permissions` | Capability **grants** (not a single role) on a shared wallet: `wallet_id`, `member_user_id`, `capabilities finance.vault_capability[]` (view/add_funds/spend/distribute/withdraw/manage_members/manage_billing/**approve_spend**). `(wallet, member)` UNIQUE. **A PROJECTION since 2026-09-28**, not a hand-maintained authority: rewritten from the workspace capabilities by `org.fn_sync_vault_permissions` on every membership, role and override change and on every team/business wallet insert (the mapping is in [`../org/Functions.md` §7](../org/Functions.md#-the-workspace-console-00001020)). A non-member's row is kept, projected to `'{}'`. This resolves the former overlap flag with the retired `org.business_permission` / `org.team_permission` enums. |
+| `finance.split_rules`       | Team smart-split **ruleset template**: `team_id`, `rule_type` (co_op/finders_fee/benevolent_dictator), `vault_bp` (Team Vault cut, taken first), `finder_user_id`+`finder_bp`. Resolves into the per-member `finance.contribution_agreements`. Deterministic remainder rounding: leftover minor unit → Team Vault. **One ACTIVE rule per team** — `uq_split_rules_team_active` (unique, `WHERE active`; was a plain index), because `finance.fn_team_split_plan` reads "the" rule. No active rule = co-op with no vault cut. |
+| `finance.spend_approvals`   | Over-cap / over-threshold second-approver queue: `wallet_id`, `requested_by`, `amount_cents`+`currency`, `reason`, `ref_table`/`ref_id`, `status` (pending/approved/rejected/expired), `approver_user_id`, `decided_at`, `expires_at`. Filed by `finance.request_spend_approval` (currency = the wallet's, `expires_at = now() + 7 days`), decided by `finance.decide_spend_approval` (needs `approve_spend`). No client INSERT — see [Policies.md](Policies.md). |
 | `finance.ledger_audit`      | Immutable who/when/amount trail for vault money moves: `wallet_id`, `actor_user_id`, `action finance.vault_action` (add_funds/spend/distribute/withdraw/transfer), `amount_cents`+`currency`, `metadata`. ⚠️ overlaps `security.audit_logs` (general) — kept separate for the amount-typed wallet-scoped read; reconcile (root `CLAUDE.md` §8). |
 
 ---

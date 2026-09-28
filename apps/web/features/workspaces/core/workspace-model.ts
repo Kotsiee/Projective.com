@@ -1,9 +1,10 @@
 import type { LaneTabOption } from "@projective/ui/navigation";
+import { isReservedHandle } from "@projective/types/profile";
 import {
 	kindCopy,
 	kindFromPath,
 	roleRank,
-	type WorkspaceInvite,
+	type SplitModel,
 	type WorkspaceKind,
 	type WorkspaceMember,
 	type WorkspaceProject,
@@ -29,14 +30,30 @@ import { isModuleKey, type ModuleKey } from "./module-registry.tsx";
 
 // #region Path parsing
 /**
- * The entity id a workspace URL addresses, or `null` on the roster index.
+ * The entity reference a workspace URL addresses — its `@handle` (the console address) — or `null` on
+ * the roster index.
  *
  * `/teams` → `null` · `/teams/acme` → `"acme"` · `/teams/acme/members` → `"acme"`.
+ *
+ * A reserved segment is NOT an entity: `/teams/create` is the roster with the create modal open, and
+ * `create` is in the shared reserved-handle list precisely so no entity can ever be addressed by it.
+ * Treating it as a reference would ask the database for an entity called "create" on every render of
+ * the create deep link, and paint the index without its footer when that (correctly) found nothing.
  */
-export function workspaceIdOf(pathname: string): string | null {
-	const segments = pathname.split("/").filter(Boolean);
+export function workspaceHandleOf(pathname: string): string | null {
 	if (kindFromPath(pathname) === null) return null;
-	return segments[1] ?? null;
+	const segment = pathname.split("/").filter(Boolean)[1];
+	if (!segment) return null;
+	return isReservedHandle(decodeSegment(segment)) ? null : decodeSegment(segment);
+}
+
+/** Decode one path segment, keeping the raw text when it is not valid percent-encoding. */
+function decodeSegment(segment: string): string {
+	try {
+		return decodeURIComponent(segment);
+	} catch {
+		return segment;
+	}
 }
 
 /**
@@ -45,15 +62,22 @@ export function workspaceIdOf(pathname: string): string | null {
  * An entity URL with no module segment resolves to `overview`, because a bare `/teams/acme` IS the
  * overview rather than an incomplete address. An unrecognised segment resolves to `null` so the route
  * can 404 it honestly instead of silently showing the overview and leaving the reader to wonder why
- * their link went somewhere else. The roster index (`/teams`) also returns `null` — it has no module.
+ * their link went somewhere else. The roster index (`/teams`, `/teams/create`) also returns `null` —
+ * it has no module.
  */
 export function activeModuleOf(pathname: string): ModuleKey | null {
-	const segments = pathname.split("/").filter(Boolean);
-	if (kindFromPath(pathname) === null) return null;
-	if (segments.length < 2) return null;
-	const raw = segments[2];
+	if (workspaceHandleOf(pathname) === null) return null;
+	const raw = pathname.split("/").filter(Boolean)[2];
 	if (raw === undefined) return "overview";
 	return isModuleKey(raw) ? raw : null;
+}
+
+/**
+ * Whether `path` is `base` itself or somewhere beneath it. A bare `startsWith` would count
+ * `/teams/north-loop` as inside `/teams/north`, lighting two entity rows at once.
+ */
+export function isWithinPath(path: string, base: string): boolean {
+	return path === base || path.startsWith(`${base}/`);
 }
 
 /** The entity kind a path addresses (`/teams` → `team`), or `null` off the workspace surface. */
@@ -182,62 +206,19 @@ export interface ModuleTab {
  *
  * Sub-views live in the HEADER, not the body: the body's remit is viewing and selecting data, so a
  * module that partitions its content advertises those partitions in the chrome where every other
- * navigation on the surface already lives. A module absent from this table simply has one view — an
- * empty array is a legitimate answer, not a gap.
+ * navigation on the surface already lives.
+ *
+ * **A module is listed here only when its body actually reads `?view=`.** A tab is a control, and a tab
+ * whose body renders the same thing under every value reaches nothing (root CLAUDE.md §3 gate 11). The
+ * Members module is the one screen that partitions today — the roster and its outgoing invitations —
+ * so it is the only one with tabs; every other module is one view, and an empty array says so.
  */
-export function moduleTabsFor(module: ModuleKey, kind: WorkspaceKind): ModuleTab[] {
+export function moduleTabsFor(module: ModuleKey, _kind: WorkspaceKind): ModuleTab[] {
 	switch (module) {
 		case "members":
 			return [
-				{ value: "all", label: "All" },
-				{ value: "pending", label: "Pending" },
-				{ value: "roles", label: "Roles" },
-			];
-		case "projects":
-			return [
-				{ value: "active", label: "Active" },
-				{ value: "proposals", label: "Proposals" },
-				{ value: "completed", label: "Completed" },
-			];
-		case "invitations":
-			return [
-				{ value: "sent", label: "Sent" },
-				{ value: "requests", label: "Requests" },
-				{ value: "links", label: "Links" },
-			];
-		case "finance":
-			return kind === "team"
-				? [
-					{ value: "summary", label: "Summary" },
-					{ value: "earnings", label: "Earnings" },
-					{ value: "distributions", label: "Distributions" },
-				]
-				: [
-					{ value: "summary", label: "Summary" },
-					{ value: "contributions", label: "Contributions" },
-					{ value: "spending", label: "Spending" },
-				];
-		case "spend":
-			return [
-				{ value: "limits", label: "Limits" },
-				{ value: "requests", label: "Requests" },
-				{ value: "ledger", label: "Ledger" },
-			];
-		case "payouts":
-			return [
-				{ value: "split", label: "Split" },
-				{ value: "templates", label: "Templates" },
-				{ value: "history", label: "History" },
-			];
-		case "roles":
-			return [
-				{ value: "matrix", label: "Matrix" },
-				{ value: "list", label: "Roles" },
-			];
-		case "talent":
-			return [
-				{ value: "bench", label: "Bench" },
-				{ value: "past", label: "Past" },
+				{ value: "all", label: "Members" },
+				{ value: "pending", label: "Invited" },
 			];
 		default:
 			return [];
@@ -277,7 +258,7 @@ export const MEMBER_SORTS: readonly ModuleTab[] = [
 export interface MemberFilter {
 	/** Free text over name, handle and title. */
 	search?: string;
-	/** Restrict to one membership state (`active` · `invited` · `requested` · `left`). */
+	/** Restrict to one membership state (`active` · `left`). */
 	state?: WorkspaceMember["state"];
 	/** Restrict to holders of one role id. */
 	roleId?: string;
@@ -337,22 +318,15 @@ export function sortMembers(
 	return out;
 }
 
-/** Pending decisions on the entity — invitations sent and join requests received, in one queue. */
-export function pendingMembers(members: readonly WorkspaceMember[]): WorkspaceMember[] {
-	return members.filter((m) => m.state === "invited" || m.state === "requested");
-}
-
-/** Split an invite list into the two directions the queue renders with opposite actions. */
-export function partitionInvites(invites: readonly WorkspaceInvite[]): {
-	sent: WorkspaceInvite[];
-	requests: WorkspaceInvite[];
-	links: WorkspaceInvite[];
-} {
-	return {
-		sent: invites.filter((i) => i.direction === "invite" && !i.viaLink),
-		requests: invites.filter((i) => i.direction === "request"),
-		links: invites.filter((i) => i.viaLink),
-	};
+/**
+ * How the current split reads — `equal` when every unheld stake is within one basis point of the others,
+ * `custom` otherwise. The same rule the server derives the policy's `model` by, applied to the stakes on
+ * screen so the label follows an edit before it is saved. Basis-point comparison only; no money.
+ */
+export function splitModelOf(stakes: readonly { shareBp: number; held: boolean }[]): SplitModel {
+	const moving = stakes.filter((s) => !s.held).map((s) => s.shareBp);
+	if (moving.length < 2) return "equal";
+	return Math.max(...moving) - Math.min(...moving) <= 1 ? "equal" : "custom";
 }
 // #endregion
 
@@ -414,16 +388,7 @@ export function availabilityTone(
 
 /** Sentence-case label for a membership state, for a status chip's tooltip. */
 export function membershipLabel(state: WorkspaceMember["state"]): string {
-	switch (state) {
-		case "active":
-			return "Active member";
-		case "invited":
-			return "Invitation sent";
-		case "requested":
-			return "Asked to join";
-		case "left":
-			return "No longer a member";
-	}
+	return state === "active" ? "Active member" : "No longer a member";
 }
 
 /**

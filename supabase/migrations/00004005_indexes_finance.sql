@@ -34,7 +34,9 @@ CREATE INDEX IF NOT EXISTS idx_wallet_pots_wallet ON finance.wallet_pots (wallet
 
 CREATE INDEX IF NOT EXISTS idx_vault_permissions_wallet ON finance.vault_permissions (wallet_id);
 CREATE INDEX IF NOT EXISTS idx_vault_permissions_member ON finance.vault_permissions (member_user_id);
-CREATE INDEX IF NOT EXISTS idx_split_rules_team ON finance.split_rules (team_id) WHERE active;
+-- One ACTIVE split rule per team: the payout plan (finance.fn_team_split_plan) reads "the" rule, and
+-- two active rows would make which one applies an accident of physical order.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_split_rules_team_active ON finance.split_rules (team_id) WHERE active;
 CREATE INDEX IF NOT EXISTS idx_spend_approvals_wallet ON finance.spend_approvals (wallet_id, status);
 CREATE INDEX IF NOT EXISTS idx_ledger_audit_wallet ON finance.ledger_audit (wallet_id, created_at DESC);
 

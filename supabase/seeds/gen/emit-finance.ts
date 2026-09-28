@@ -23,7 +23,6 @@ import { PRODUCTS, SERVICES } from "./corpus.ts";
 import {
 	ago,
 	ahead,
-	enumArr,
 	HEADER,
 	id,
 	insert,
@@ -229,7 +228,7 @@ export function emitFinance(world: World): string {
 	const out: string[] = [
 		HEADER(
 			"07_finance.sql — wallets, ledger, escrows, orders, invoices, payouts and cards",
-			"Every balance_after_cents is a computed running balance over a chronologically sorted event list; the generator refuses to emit a ledger that ever goes negative. The business-wallet opening-credit trigger is disabled around the wallet insert and replaced by a dated opening credit so the history reads in order.",
+			"Every balance_after_cents is a computed running balance over a chronologically sorted event list; the generator refuses to emit a ledger that ever goes negative. Nothing is minted: every entity balance starts with a dated top-up from its owner, audited in finance.ledger_audit. Vault permissions are not written here — the wallet insert trigger projects them from the workspace roles.",
 		),
 	];
 
@@ -255,16 +254,17 @@ export function emitFinance(world: World): string {
 	const push = (key: string, e: Omit<LedgerEvent, "order"> & { order?: number }) =>
 		walletOf(key).events.push({ order: 0, ...e });
 
-	// Opening credits (what the wallet trigger would have minted, dated honestly).
+	// Each business's opening deposit: a real top-up from its owner's funding card on the day it was
+	// created. (No wallet is minted money — the platform's old opening-credit trigger is gone.)
 	for (const e of world.entities.values()) {
 		if (e.kind !== "business") continue;
 		push(e.key, {
 			daysAgo: e.createdDaysAgo,
 			direction: "credit",
 			amount: 2_500_000,
-			reason: "demo_opening_credit",
-			refTable: null,
-			refId: null,
+			reason: "topup",
+			refTable: "payment_methods",
+			refId: uuidFor("payment_method", `${e.key}:funding`),
 			fundState: "available",
 		});
 	}
@@ -711,10 +711,6 @@ export function emitFinance(world: World): string {
 	}
 
 	out.push(
-		"-- The trigger would credit every business wallet 25,000.00 at now(); the dated opening credit below replaces it.",
-	);
-	out.push("ALTER TABLE finance.wallets DISABLE TRIGGER trg_seed_business_wallet;");
-	out.push(
 		insert(
 			"finance.wallets",
 			[
@@ -729,7 +725,12 @@ export function emitFinance(world: World): string {
 			walletRows,
 		),
 	);
-	out.push("ALTER TABLE finance.wallets ENABLE TRIGGER trg_seed_business_wallet;\n");
+	// A team's treasury is its wallet; the column is guarded against client writes, not the seed.
+	for (const e of world.entities.values()) {
+		if (e.kind !== "team") continue;
+		out.push(`UPDATE org.teams SET treasury_wallet_id = ${id(e.walletId)} WHERE id = ${id(e.entityId)};`);
+	}
+	out.push("");
 
 	out.push(
 		insert(
@@ -1237,39 +1238,9 @@ export function emitFinance(world: World): string {
 		),
 	);
 
-	// Vault permissions for every business/team member, and a spend cap on one business admin.
-	const vaultPermRows: string[][] = [];
-	for (const e of world.entities.values()) {
-		for (const m of e.members) {
-			const caps = m.role === "owner"
-				? [
-					"view",
-					"add_funds",
-					"spend",
-					"distribute",
-					"withdraw",
-					"manage_members",
-					"manage_billing",
-				]
-				: m.role === "admin" || m.role === "lead"
-				? ["view", "add_funds", "spend", "distribute"]
-				: ["view"];
-			vaultPermRows.push([
-				id(uuidFor("vault_permission", `${e.key}:${m.persona}`)),
-				id(e.walletId),
-				id(persona(world, m.persona).userId),
-				enumArr(caps, "finance.vault_capability"),
-				id(e.ownerUserId),
-			]);
-		}
-	}
-	out.push(
-		insert(
-			"finance.vault_permissions",
-			["id", "wallet_id", "member_user_id", "capabilities", "granted_by"],
-			vaultPermRows,
-		),
-	);
+	// Vault permissions are NOT written: finance.vault_permissions is a projection of the workspace
+	// roles, written by the wallet insert trigger (org.fn_sync_vault_permissions). A spend cap on one
+	// business admin:
 	out.push(
 		insert(
 			"finance.spending_limits",
@@ -1395,6 +1366,34 @@ export function emitFinance(world: World): string {
 			],
 		),
 	);
+	// The vault audit trail is DERIVED from the ledger: every top-up of a shared wallet is an
+	// `add_funds` attributed to the entity's owner (the only person who funds it in this world), so the
+	// Money module's contribution ledger and the wallet's transactions cannot disagree.
+	const TOPUP_NOTES: Record<string, string> = {
+		helia: "Q4 hiring budget",
+		atlas: "Analytics platform build",
+	};
+	const auditRows: string[][] = [];
+	for (const w of wallets.values()) {
+		if (w.ownerType !== "business" && w.ownerType !== "team") continue;
+		const e = entity(world, w.key);
+		for (const ev of w.events) {
+			if (ev.reason !== "topup" || ev.direction !== "credit") continue;
+			const opening = ev.daysAgo === e.createdDaysAgo;
+			auditRows.push([
+				id(uuidFor("ledger_audit", `${w.key}:topup:${ev.daysAgo}`)),
+				id(w.id),
+				id(e.ownerUserId),
+				"'add_funds'",
+				String(ev.amount),
+				"'USD'",
+				q(ev.refTable),
+				id(ev.refId),
+				jsonb({ note: opening ? "Opening deposit" : (TOPUP_NOTES[w.key] ?? "Top-up") }),
+				ago(ev.daysAgo),
+			]);
+		}
+	}
 	out.push(
 		insert(
 			"finance.ledger_audit",
@@ -1410,32 +1409,7 @@ export function emitFinance(world: World): string {
 				"metadata",
 				"created_at",
 			],
-			[
-				[
-					id(uuidFor("ledger_audit", "helia:topup")),
-					id(entity(world, "helia").walletId),
-					id(persona(world, "priya").userId),
-					"'add_funds'",
-					"6000000",
-					"'USD'",
-					"'payment_methods'",
-					id(uuidFor("payment_method", "helia:funding")),
-					jsonb({ note: "Q4 hiring budget" }),
-					ago(30),
-				],
-				[
-					id(uuidFor("ledger_audit", "atlas:topup")),
-					id(entity(world, "atlas").walletId),
-					id(persona(world, "daniel").userId),
-					"'add_funds'",
-					"6000000",
-					"'USD'",
-					"'payment_methods'",
-					id(uuidFor("payment_method", "atlas:funding")),
-					jsonb({ note: "Analytics platform build" }),
-					ago(44),
-				],
-			],
+			auditRows,
 		),
 	);
 	// #endregion

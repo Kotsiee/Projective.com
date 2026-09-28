@@ -1,3 +1,5 @@
+import type { WorkspaceKind } from "@projective/types/workspace";
+
 /**
  * WorkspaceResult — the client-facing transport envelope for `/api/workspace/*` (and
  * `/api/context/switch`) responses.
@@ -22,4 +24,24 @@ export interface WorkspaceResult<T> {
 	errors?: Record<string, string>;
 	/** The success payload; present when `ok`. */
 	data?: T;
+}
+
+/**
+ * What a successful create answers with — just enough to navigate into the new console, which is
+ * addressed by its handle and resolves its own detail server-side.
+ */
+export interface CreatedWorkspace {
+	id: string;
+	kind: WorkspaceKind;
+	handle: string;
+}
+
+/** What answering an invitation addressed to the viewer resolves to. */
+export interface InviteAnswer {
+	status: "accepted" | "declined";
+	kind: WorkspaceKind;
+	/** The entity's id. */
+	id: string;
+	/** The entity's handle, when the server resolved it — the address of its console. */
+	handle: string | null;
 }

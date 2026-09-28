@@ -18,6 +18,7 @@ GRANT SELECT ON comms.notification_delivery_health TO authenticated;
 -- #endregion
 
 -- #region org
+REVOKE ALL ON org.view_business_staff FROM anon;
 GRANT SELECT ON org.view_business_staff TO authenticated;
 -- #endregion
 

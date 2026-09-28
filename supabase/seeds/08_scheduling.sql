@@ -181,7 +181,7 @@ ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO scheduling.event_reschedules (id, event_id, round, mode, status, opened_by_user_id, opened_at, resolves_at, resolved_proposal_id)
 VALUES
-  ('71865cee-aa85-449b-ac8a-9b2059d57c45', '21ec45e1-f5ea-4a06-a894-f09f5e0e46f4', 0, 'vote', 'voting', '35ce4987-15b3-4c38-a438-2bb9c35df15a', now() - interval '26 hours', ((date_trunc('week', now() AT TIME ZONE 'Europe/London') + interval '10 days' + interval '900 minutes') AT TIME ZONE 'Europe/London') - interval '12 hours', NULL),
+  ('71865cee-aa85-449b-ac8a-9b2059d57c45', '21ec45e1-f5ea-4a06-a894-f09f5e0e46f4', 0, 'vote', 'voting', '35ce4987-15b3-4c38-a438-2bb9c35df15a', now() - interval '26 hours', LEAST(((date_trunc('week', now() AT TIME ZONE 'Europe/London') + interval '10 days' + interval '900 minutes') AT TIME ZONE 'Europe/London') - interval '12 hours', ((date_trunc('week', now() AT TIME ZONE 'Europe/London') + interval '9 days' + interval '660 minutes') AT TIME ZONE 'Europe/London') - interval '12 hours'), NULL),
   ('c75fea3d-b9a2-476e-a170-d3f36ee230e4', '80b06cbc-3a93-470d-ae89-d4e6838c4a5f', 0, 'counterparty', 'awaiting_counterparty', '292e1827-f189-4f34-ab35-27c9f0320926', now() - interval '8 hours', NULL, NULL)
 ON CONFLICT (id) DO NOTHING;
 

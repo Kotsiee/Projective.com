@@ -1,8 +1,11 @@
 import { assert, assertEquals, assertFalse, assertStrictEquals } from "@std/assert";
 import {
+	approvalRefusal,
 	ballotProposals,
+	canOpenCounterparty,
 	canOpenVote,
 	canReschedule,
+	counterpartyAcceptRefusal,
 	eligibleVoterCount,
 	type EventAttendee,
 	EventAttendeeSchema,
@@ -54,6 +57,11 @@ const MINUTE = 60_000;
 const HOUR = 3_600_000;
 /** The scheduling fixtures' reference "now" (`packages/backend/services/scheduling/derive.ts`). */
 const NOW = Date.parse("2026-07-17T16:20:00Z");
+/**
+ * The start of an event far enough out that its own lockout never caps a vote deadline — so the
+ * tests below that are about the BALLOT measure the ballot alone. The cap has tests of its own.
+ */
+const FAR = NOW + 365 * 24 * HOUR;
 
 function party(name: string): SchedulingParty {
 	return { name, avatar: null, handle: name.toLowerCase() };
@@ -102,7 +110,7 @@ function voting(ps: RescheduleProposal[]): EventReschedule {
 		openedBy: party("Ada"),
 		openedAt: NOW - HOUR,
 		proposals: ps,
-		resolvesAt: voteResolvesAt(ps),
+		resolvesAt: voteResolvesAt(ps, FAR),
 		resolvedProposalId: null,
 		round: 0,
 	};
@@ -248,7 +256,7 @@ Deno.test("voteResolvesAt — 12 hours before the EARLIEST slot, not the first l
 		proposal({ id: "h2", start: NOW + 48 * HOUR }),
 		proposal({ id: "h3", start: NOW + 72 * HOUR }),
 	];
-	assertStrictEquals(voteResolvesAt(ps), NOW + 48 * HOUR - 12 * HOUR);
+	assertStrictEquals(voteResolvesAt(ps, FAR), NOW + 48 * HOUR - 12 * HOUR);
 });
 
 Deno.test("voteResolvesAt — an off-ballot slot never sets the deadline", () => {
@@ -262,15 +270,15 @@ Deno.test("voteResolvesAt — an off-ballot slot never sets the deadline", () =>
 			approved: false,
 		}),
 	];
-	assertStrictEquals(voteResolvesAt(ps), NOW + 96 * HOUR - 12 * HOUR);
+	assertStrictEquals(voteResolvesAt(ps, FAR), NOW + 96 * HOUR - 12 * HOUR);
 });
 
 Deno.test("voteResolvesAt — an empty ballot has no deadline", () => {
-	assertStrictEquals(voteResolvesAt([]), null);
+	assertStrictEquals(voteResolvesAt([], FAR), null);
 	assertStrictEquals(
 		voteResolvesAt([
 			proposal({ id: "c1", start: NOW + 48 * HOUR, proposedByRole: "attendee", approved: false }),
-		]),
+		], FAR),
 		null,
 	);
 });
@@ -280,11 +288,11 @@ Deno.test("voteIsOpen — open a minute before the deadline, closed on the strok
 		proposal({ id: "h1", start: NOW + 48 * HOUR }),
 		proposal({ id: "h2", start: NOW + 72 * HOUR }),
 	];
-	const at = voteResolvesAt(ps)!;
-	assert(voteIsOpen(at - MINUTE, ps));
+	const at = voteResolvesAt(ps, FAR)!;
+	assert(voteIsOpen(at - MINUTE, ps, FAR));
 	// Exclusive at the deadline: the vote resolves AT that instant, so a ballot cast on it is late.
-	assertFalse(voteIsOpen(at, ps));
-	assertFalse(voteIsOpen(at + MINUTE, ps));
+	assertFalse(voteIsOpen(at, ps, FAR));
+	assertFalse(voteIsOpen(at + MINUTE, ps, FAR));
 });
 
 Deno.test("voteIsOpen — a ballot whose earliest slot is already inside the window is closed", () => {
@@ -294,12 +302,12 @@ Deno.test("voteIsOpen — a ballot whose earliest slot is already inside the win
 		proposal({ id: "h1", start: NOW + 6 * HOUR }),
 		proposal({ id: "h2", start: NOW + 72 * HOUR }),
 	];
-	assert(voteResolvesAt(ps)! < NOW);
-	assertFalse(voteIsOpen(NOW, ps));
+	assert(voteResolvesAt(ps, FAR)! < NOW);
+	assertFalse(voteIsOpen(NOW, ps, FAR));
 });
 
 Deno.test("voteIsOpen — an empty ballot is never open", () => {
-	assertFalse(voteIsOpen(NOW, []));
+	assertFalse(voteIsOpen(NOW, [], FAR));
 });
 // #endregion
 
@@ -499,11 +507,14 @@ Deno.test("voteIsSettleable — open until the deadline, unless everybody has al
 		proposal({ id: "h2", start: NOW + 72 * HOUR }),
 	];
 	assertFalse(
-		voteIsSettleable(NOW, ps, 4),
+		voteIsSettleable(NOW, ps, 4, FAR),
 		"two of four have answered and the deadline is days away",
 	);
-	assert(voteIsSettleable(NOW, ps, 2), "both eligible voters have answered — nothing can change");
-	assert(voteIsSettleable(voteResolvesAt(ps)!, ps, 4), "the deadline itself closes it");
+	assert(
+		voteIsSettleable(NOW, ps, 2, FAR),
+		"both eligible voters have answered — nothing can change",
+	);
+	assert(voteIsSettleable(voteResolvesAt(ps, FAR)!, ps, 4, FAR), "the deadline itself closes it");
 });
 
 Deno.test("voteIsSettleable — an electorate of nobody settles only on the deadline", () => {
@@ -512,8 +523,8 @@ Deno.test("voteIsSettleable — an electorate of nobody settles only on the dead
 		proposal({ id: "h1", start: NOW + 48 * HOUR }),
 		proposal({ id: "h2", start: NOW + 72 * HOUR }),
 	];
-	assertFalse(voteIsSettleable(NOW, ps, 0));
-	assert(voteIsSettleable(voteResolvesAt(ps)!, ps, 0));
+	assertFalse(voteIsSettleable(NOW, ps, 0, FAR));
+	assert(voteIsSettleable(voteResolvesAt(ps, FAR)!, ps, 0, FAR));
 });
 
 Deno.test("settleVote — a vote that carries resolves and names its winner", () => {
@@ -521,7 +532,7 @@ Deno.test("settleVote — a vote that carries resolves and names its winner", ()
 		proposal({ id: "h1", start: NOW + 48 * HOUR, votes: [vote("a"), vote("b"), vote("c")] }),
 		proposal({ id: "h2", start: NOW + 72 * HOUR, votes: [vote("d")] }),
 	];
-	const settled = settleVote(voteResolvesAt(ps)!, voting(ps), 4);
+	const settled = settleVote(voteResolvesAt(ps, FAR)!, voting(ps), 4, FAR);
 	assertStrictEquals(settled.status, "resolved");
 	assertStrictEquals(settled.resolvedProposalId, "h1");
 });
@@ -533,7 +544,7 @@ Deno.test("settleVote — a vote that closes without a majority LAPSES, it does 
 		proposal({ id: "h1", start: NOW + 48 * HOUR, votes: [vote("a"), vote("b")] }),
 		proposal({ id: "h2", start: NOW + 72 * HOUR, votes: [vote("c"), vote("d")] }),
 	];
-	const settled = settleVote(voteResolvesAt(ps)!, voting(ps), 5);
+	const settled = settleVote(voteResolvesAt(ps, FAR)!, voting(ps), 5, FAR);
 	assertStrictEquals(settled.status, "lapsed");
 	assertStrictEquals(settled.resolvedProposalId, null);
 });
@@ -543,8 +554,8 @@ Deno.test("settleVote — the last eligible ballot settles it before the deadlin
 		proposal({ id: "h1", start: NOW + 48 * HOUR, votes: [vote("a"), vote("b")] }),
 		proposal({ id: "h2", start: NOW + 72 * HOUR, votes: [vote("c")] }),
 	];
-	assert(voteIsOpen(NOW, ps), "the deadline has not arrived");
-	assertStrictEquals(settleVote(NOW, voting(ps), 3).status, "resolved");
+	assert(voteIsOpen(NOW, ps, FAR), "the deadline has not arrived");
+	assertStrictEquals(settleVote(NOW, voting(ps), 3, FAR).status, "resolved");
 });
 
 Deno.test("settleVote — a live vote still worth asking is returned untouched", () => {
@@ -553,7 +564,7 @@ Deno.test("settleVote — a live vote still worth asking is returned untouched",
 		proposal({ id: "h2", start: NOW + 72 * HOUR }),
 	];
 	const open = voting(ps);
-	assertStrictEquals(settleVote(NOW, open, 6), open);
+	assertStrictEquals(settleVote(NOW, open, 6, FAR), open);
 });
 
 Deno.test("settleVote — total and idempotent, so both paths may apply it", () => {
@@ -563,9 +574,9 @@ Deno.test("settleVote — total and idempotent, so both paths may apply it", () 
 		proposal({ id: "h1", start: NOW + 48 * HOUR, votes: [vote("a"), vote("b"), vote("c")] }),
 		proposal({ id: "h2", start: NOW + 72 * HOUR }),
 	];
-	const at = voteResolvesAt(ps)!;
-	const once = settleVote(at, voting(ps), 3);
-	assertEquals(settleVote(at, once, 3), once);
+	const at = voteResolvesAt(ps, FAR)!;
+	const once = settleVote(at, voting(ps), 3, FAR);
+	assertEquals(settleVote(at, once, 3, FAR), once);
 
 	// Not a vote, or not open: returned unchanged rather than mangled.
 	const counterparty: EventReschedule = {
@@ -573,9 +584,9 @@ Deno.test("settleVote — total and idempotent, so both paths may apply it", () 
 		mode: "counterparty",
 		status: "awaiting_counterparty",
 	};
-	assertStrictEquals(settleVote(at, counterparty, 3), counterparty);
+	assertStrictEquals(settleVote(at, counterparty, 3, FAR), counterparty);
 	const collecting: EventReschedule = { ...voting(ps), status: "collecting" };
-	assertStrictEquals(settleVote(at, collecting, 3), collecting);
+	assertStrictEquals(settleVote(at, collecting, 3, FAR), collecting);
 });
 
 Deno.test("isRescheduleClosed — the three endings close a round, the four live states do not", () => {
@@ -590,7 +601,10 @@ Deno.test("isRescheduleClosed — the three endings close a round, the four live
 
 Deno.test("roundHasRoom — a live round holds twelve slots and not thirteen; a closed one always has room", () => {
 	const slots = (n: number) =>
-		Array.from({ length: n }, (_, i) => proposal({ id: `p${i}`, start: NOW + (48 + i * 24) * HOUR }));
+		Array.from(
+			{ length: n },
+			(_, i) => proposal({ id: `p${i}`, start: NOW + (48 + i * 24) * HOUR }),
+		);
 
 	assert(roundHasRoom(voting(slots(RESCHEDULE_PROPOSALS_MAX - 1))));
 	assertFalse(roundHasRoom(voting(slots(RESCHEDULE_PROPOSALS_MAX))));
@@ -609,10 +623,16 @@ Deno.test("roundHasRoom — read on the SETTLED round, a full vote past its dead
 			(_, i) => proposal({ id: `p${i}`, start: NOW + (48 + i * 24) * HOUR }),
 		),
 	);
-	const deadline = voteResolvesAt(full.proposals)!;
+	const deadline = voteResolvesAt(full.proposals, FAR)!;
 	assertFalse(roundHasRoom(full), "unsettled, it reads as a live, full round");
-	assertFalse(roundHasRoom(settleVote(deadline - 1, full, 4)), "before the deadline it is still live");
-	assert(roundHasRoom(settleVote(deadline, full, 4)), "at the deadline it lapses, and has room");
+	assertFalse(
+		roundHasRoom(settleVote(deadline - 1, full, 4, FAR)),
+		"before the deadline it is still live",
+	);
+	assert(
+		roundHasRoom(settleVote(deadline, full, 4, FAR)),
+		"at the deadline it lapses, and has room",
+	);
 });
 // #endregion
 
@@ -630,5 +650,156 @@ Deno.test("EventAttendeeSchema — isViewer defaults to false, never undefined",
 		note: null,
 	});
 	assertStrictEquals(parsed.isViewer, false);
+});
+// #endregion
+
+// #region The deadline respects the event it would move
+Deno.test("voteResolvesAt — capped at the event's own lockout when every slot lies after it", () => {
+	const meeting = NOW + 24 * HOUR;
+	const ps = [
+		proposal({ id: "p1", start: NOW + 96 * HOUR }),
+		proposal({ id: "p2", start: NOW + 120 * HOUR }),
+	];
+	// The ballot alone would keep the vote open until 12 hours before Tuesday-next-week…
+	assertStrictEquals(voteResolvesAt(ps, FAR), NOW + 84 * HOUR);
+	// …but the meeting being moved locks 12 hours before IT starts, which comes first.
+	assertStrictEquals(voteResolvesAt(ps, meeting), rescheduleLockoutAt(meeting));
+	assertStrictEquals(voteResolvesAt(ps, meeting), NOW + 12 * HOUR);
+	// An empty ballot still has no deadline at all, whatever the event.
+	assertStrictEquals(voteResolvesAt([], meeting), null);
+});
+
+Deno.test("settleVote — a vote never outlives the meeting it would move", () => {
+	const meeting = NOW + 24 * HOUR;
+	const ps = [
+		proposal({ id: "p1", start: NOW + 96 * HOUR, votes: [vote("a1")] }),
+		proposal({ id: "p2", start: NOW + 120 * HOUR, votes: [vote("a2")] }),
+	];
+	const live: EventReschedule = { ...voting(ps), resolvesAt: voteResolvesAt(ps, meeting) };
+	const lockout = rescheduleLockoutAt(meeting);
+
+	// Still being asked a millisecond before the meeting's lockout…
+	assertStrictEquals(settleVote(lockout - 1, live, 4, meeting).status, "voting");
+	// …closed at it, with no majority, so the original time stands.
+	assertStrictEquals(settleVote(lockout, live, 4, meeting).status, "lapsed");
+	// The regression: read the day AFTER the meeting took place, the round must already be over. The
+	// ballot-only deadline (NOW + 84h) left it "voting" here, and the next read past that deadline
+	// would have settled it and moved a session that had already happened.
+	assertStrictEquals(settleVote(meeting + 24 * HOUR, live, 4, meeting).status, "lapsed");
+});
+
+Deno.test("settleVote — a majority decided at the meeting's lockout carries to a slot still ahead", () => {
+	const meeting = NOW + 24 * HOUR;
+	const ps = [
+		proposal({ id: "p1", start: NOW + 96 * HOUR, votes: [vote("a1"), vote("a2"), vote("a3")] }),
+		proposal({ id: "p2", start: NOW + 120 * HOUR }),
+	];
+	const settled = settleVote(rescheduleLockoutAt(meeting), voting(ps), 5, meeting);
+	assertStrictEquals(settled.status, "resolved");
+	assertStrictEquals(settled.resolvedProposalId, "p1");
+	// Every ballot slot starts at least the lead after the deadline, so the winner was movable-to at
+	// the instant it was decided.
+	assert(ps[0].start - rescheduleLockoutAt(meeting) >= VOTE_RESOLUTION_LEAD_MS);
+});
+// #endregion
+
+// #region Accepting and approving a slot
+Deno.test("counterpartyAcceptRefusal — the party who did NOT offer the time accepts it", () => {
+	const hostSlot = proposal({ id: "h1", start: NOW + 96 * HOUR });
+	const theirSlot = proposal({
+		id: "c1",
+		start: NOW + 96 * HOUR,
+		proposedByRole: "attendee",
+		approved: false,
+	});
+
+	// A host's slot, put to the attendee: theirs to accept, and nobody else's.
+	assertStrictEquals(
+		counterpartyAcceptRefusal(NOW, "awaiting_counterparty", hostSlot, false),
+		null,
+	);
+	assertStrictEquals(
+		counterpartyAcceptRefusal(NOW, "awaiting_counterparty", hostSlot, true),
+		"not_permitted",
+	);
+	// An attendee's slot is the host's to accept — directly, with no approve-then-open detour, and
+	// whether or not the host has opened anything.
+	assertStrictEquals(counterpartyAcceptRefusal(NOW, "collecting", theirSlot, true), null);
+	assertStrictEquals(
+		counterpartyAcceptRefusal(NOW, "awaiting_counterparty", theirSlot, true),
+		null,
+	);
+	assertStrictEquals(
+		counterpartyAcceptRefusal(NOW, "collecting", theirSlot, false),
+		"not_permitted",
+	);
+});
+
+Deno.test("counterpartyAcceptRefusal — a host's slot is not accepted before it is offered", () => {
+	const hostSlot = proposal({ id: "h1", start: NOW + 96 * HOUR });
+	assertStrictEquals(counterpartyAcceptRefusal(NOW, "collecting", hostSlot, false), "not_offered");
+});
+
+Deno.test("counterpartyAcceptRefusal — a slot that drifted inside its notice period is refused", () => {
+	const at = (h: number) => proposal({ id: `h${h}`, start: NOW + h * HOUR });
+	// Inclusive at the lockout, exactly as canReschedule is.
+	assertStrictEquals(
+		counterpartyAcceptRefusal(NOW, "awaiting_counterparty", at(RESCHEDULE_LOCKOUT_HOURS), false),
+		null,
+	);
+	assertStrictEquals(
+		counterpartyAcceptRefusal(
+			NOW + MINUTE,
+			"awaiting_counterparty",
+			at(RESCHEDULE_LOCKOUT_HOURS),
+			false,
+		),
+		"slot_inside_lockout",
+	);
+	// Already in the past — the event would be moved to a time that has gone.
+	assertStrictEquals(
+		counterpartyAcceptRefusal(NOW, "awaiting_counterparty", at(-2), false),
+		"slot_inside_lockout",
+	);
+	// The seat is judged first: the wrong party is told it is not theirs, not that it is late.
+	assertStrictEquals(
+		counterpartyAcceptRefusal(NOW, "awaiting_counterparty", at(-2), true),
+		"not_permitted",
+	);
+});
+
+Deno.test("approvalRefusal — a stale slot is never put on the ballot", () => {
+	const slot = (h: number) =>
+		proposal({ id: "c", start: NOW + h * HOUR, proposedByRole: "attendee", approved: false });
+	assertStrictEquals(approvalRefusal(NOW, slot(RESCHEDULE_LOCKOUT_HOURS)), null);
+	assertStrictEquals(
+		approvalRefusal(NOW + 1, slot(RESCHEDULE_LOCKOUT_HOURS)),
+		"slot_inside_lockout",
+	);
+	// Approved onto a live ballot it would have become the earliest option and pulled the deadline
+	// into the past, closing a vote everybody was still answering.
+	const ps = [
+		proposal({ id: "p1", start: NOW + 96 * HOUR }),
+		proposal({ id: "p2", start: NOW + 120 * HOUR }),
+		{ ...slot(4), approved: true },
+	];
+	assert(voteResolvesAt(ps, FAR)! < NOW, "which is exactly why the approval is refused");
+});
+
+Deno.test("canOpenCounterparty — needs a slot the HOST offered that can still be taken", () => {
+	const host = (h: number) => proposal({ id: `h${h}`, start: NOW + h * HOUR });
+	const theirs = proposal({
+		id: "c",
+		start: NOW + 96 * HOUR,
+		proposedByRole: "attendee",
+		approved: true,
+	});
+	assertFalse(canOpenCounterparty(NOW, []));
+	// An attendee cannot accept their own slot, so a question made only of theirs has no answer.
+	assertFalse(canOpenCounterparty(NOW, [theirs]));
+	// Every host option gone stale.
+	assertFalse(canOpenCounterparty(NOW, [host(3), host(-5)]));
+	assert(canOpenCounterparty(NOW, [host(3), host(96)]));
+	assert(canOpenCounterparty(NOW, [theirs, host(RESCHEDULE_LOCKOUT_HOURS)]));
 });
 // #endregion

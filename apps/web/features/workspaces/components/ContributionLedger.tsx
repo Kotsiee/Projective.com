@@ -15,10 +15,15 @@ import { cloneGlyph, SpendGlyph, WalletGlyph } from "../core/workspace-glyphs.ts
  *
  * Direction is carried by a GLYPH and the sign, not by colour alone: a red/green ledger is unreadable
  * to a large minority of people and says nothing at all in print.
+ *
+ * A spend the money path recorded no actor for is attributed to the business itself rather than to a
+ * guessed person — an honest "the business paid" beats a confident wrong name.
  */
 
 export interface ContributionLedgerProps {
 	entries: readonly PoolEntry[];
+	/** Who an unattributed movement is shown as — the business's own name. */
+	owner: string;
 	/** Cap the list — the policy page shows a recent window and links onward for the rest. */
 	limit?: number;
 }
@@ -40,6 +45,7 @@ export function ContributionLedger(props: ContributionLedgerProps): JSX.Element 
 		<ul class="wsp-pool" aria-label="Contributions and spending">
 			{entries.map((entry) => {
 				const inbound = entry.kind === "contribution";
+				const who = entry.name ?? props.owner;
 				return (
 					<li class="wsp-pool__item" key={entry.id} data-kind={entry.kind}>
 						<Tooltip
@@ -57,16 +63,16 @@ export function ContributionLedger(props: ContributionLedgerProps): JSX.Element 
 
 						<Avatar
 							class="wsp-pool__avatar"
-							image={entry.avatar}
+							image={entry.avatar ?? undefined}
 							alt=""
-							label={entry.name}
+							label={who}
 							shape="circle"
 							size="sm"
 						/>
 
 						<span class="wsp-pool__body">
 							<span class="wsp-pool__who">
-								<a href={`/@${entry.handle}`}>{entry.name}</a>
+								{entry.handle ? <a href={`/@${entry.handle}`}>{who}</a> : who}
 							</span>
 							<span class="wsp-pool__reason">{entry.reason}</span>
 						</span>
@@ -75,7 +81,7 @@ export function ContributionLedger(props: ContributionLedgerProps): JSX.Element 
 							<PolicyAmount
 								value={entry.amount}
 								size="key"
-								srLabel={`${inbound ? "Contributed" : "Spent"} by ${entry.name}`}
+								srLabel={`${inbound ? "Contributed" : "Spent"} by ${who}`}
 							/>
 						</span>
 

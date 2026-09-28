@@ -82,7 +82,7 @@ export function isActingEntity(id: string, actingId: string | null): boolean {
 // #region Props
 export interface ContextSwitchControlProps {
 	kind: WorkspaceKind;
-	/** The entity's id. */
+	/** The entity's row id — what the session switch binds to. */
 	id: string;
 	/** Display name — the transition state names the DESTINATION, so this is load-bearing copy. */
 	name: string;
@@ -113,7 +113,7 @@ export function ContextSwitchControl(props: ContextSwitchControlProps): JSX.Elem
 
 	const enter = () =>
 		switchTo(props.kind, props.id, {
-			destination: props.destination ?? workspaceHref(props.kind, props.id),
+			destination: props.destination ?? workspaceHref(props.kind, props.handle),
 			handle: props.handle,
 		});
 

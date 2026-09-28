@@ -13,12 +13,15 @@ import { Avatar } from "@projective/ui/display";
 import { dsConfig, toggleMode } from "@projective/ui/system";
 import { NavIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { createMenuOptions, profileLinks } from "@web/features/shell/core/actions-model.ts";
+import { getNotifications } from "@web/features/shell/core/nav-fixtures.ts";
 import {
-	getBusinessMemberships,
-	getNotifications,
-	getTeamMemberships,
-	type MembershipEntry,
-} from "@web/features/shell/core/nav-fixtures.ts";
+	roleLabel as workspaceRoleLabel,
+	workspaceHref,
+	type WorkspaceKind,
+	type WorkspaceSummary,
+} from "@projective/types/workspace";
+import { WorkspaceService } from "@web/features/workspaces/core/WorkspaceService.ts";
+import { useContextSwitch } from "@web/features/workspaces/core/useContextSwitch.ts";
 import BasketDrawer from "@web/features/checkout/islands/BasketDrawer.island.tsx";
 import { basketCount } from "@web/features/checkout/core/basket-state.ts";
 import { defaultOwnerParam, isCheckoutPath } from "@web/features/checkout/core/basket-model.ts";
@@ -126,6 +129,18 @@ export default function UserActions(
 	// about the SAVE, never about what is displayed — the display already changed optimistically.
 	const savingCurrency = useSignal<string | null>(null);
 	const currencySaveFailed = useSignal(false);
+	/**
+	 * The viewer's real teams and businesses, read through the live roster the first time each tab is
+	 * shown — `null` until then. Read lazily because most opens of the popover never visit this view, and
+	 * a membership list that paid for itself on every page load would be the header's slowest part.
+	 */
+	const memberships = useSignal<Record<WorkspaceKind, readonly WorkspaceSummary[] | null>>({
+		team: null,
+		business: null,
+	});
+	const membershipsError = useSignal<string | null>(null);
+	// The acting-context switch: POST /api/context/switch → re-mint the token → hard navigation.
+	const contextSwitch = useContextSwitch();
 
 	// Reset to the main view whenever both account surfaces are closed, so reopening always starts on
 	// the identity screen (never a stale status/context sub-view). Reads only the open signals — never
@@ -253,21 +268,38 @@ export default function UserActions(
 		currencySaveFailed.value = !saved;
 	}
 
+	/** Read the viewer's memberships of one kind, once, through the live roster route. */
+	async function loadMemberships(kind: WorkspaceKind): Promise<void> {
+		if (memberships.peek()[kind] !== null) return;
+		membershipsError.value = null;
+		const res = await WorkspaceService.roster(kind);
+		if (!res.ok || !res.data) {
+			membershipsError.value = res.message ??
+				`Couldn't load your ${kind === "team" ? "teams" : "businesses"} just now.`;
+			return;
+		}
+		// Archived entities are restorable from the roster, but nobody acts as one.
+		const live = res.data.items.filter((item) => item.status !== "archived");
+		memberships.value = { ...memberships.peek(), [kind]: live };
+	}
+
+	// Load the tab's list the first time the switcher shows it.
+	useSignalEffect(() => {
+		if (view.value !== "context") return;
+		void loadMemberships(ctxTab.value === "teams" ? "team" : "business");
+	});
+
 	/**
-	 * Switch the acting context into a team/business (task §2C). Chrome-only stub: it remembers the
-	 * choice and enters that workspace; the authoritative active-context switch is owned server-side by
-	 * the access-token hook — a later pass POSTs `/api/context/switch` here. `onNavigate` closes the
-	 * surface first so the menu isn't left open behind the navigation.
+	 * Switch the acting context into a team/business (task §2C), through the shared hook: the session is
+	 * re-stamped server-side, the token re-minted, then a hard navigation lands on the entity's console.
+	 * The popover stays open while that runs so the busy state is visible rather than a menu that simply
+	 * vanished.
 	 */
-	function switchContext(
-		kind: "team" | "business",
-		entry: MembershipEntry,
-		onNavigate: () => void,
-	): void {
-		writeStored("local", LocalKeys.LAST_ACTIVE_CONTEXT, entry.handle);
-		onNavigate();
-		const base = kind === "team" ? "/teams" : "/businesses";
-		globalThis.location.href = `${base}/${entry.id}`;
+	function switchContext(kind: WorkspaceKind, entry: WorkspaceSummary): void {
+		void contextSwitch.switchTo(kind, entry.id, {
+			destination: workspaceHref(kind, entry.handle),
+			handle: entry.handle,
+		});
 	}
 
 	// #region Sub-view renderers
@@ -509,8 +541,9 @@ export default function UserActions(
 	/** The in-popover context switcher view (task §2C). */
 	const contextView = (onNavigate: () => void): JSX.Element => {
 		const tab = ctxTab.value;
-		const kind = tab === "teams" ? "team" : "business";
-		const memberships = tab === "teams" ? getTeamMemberships() : getBusinessMemberships();
+		const kind: WorkspaceKind = tab === "teams" ? "team" : "business";
+		const list = memberships.value[kind];
+		const switching = contextSwitch.switching.value;
 		const manageHref = tab === "teams" ? "/teams" : "/businesses";
 		const createHref = tab === "teams" ? "/teams/create" : "/businesses/create";
 		const createLabel = tab === "teams" ? "Create New Team" : "Create New Business";
@@ -554,11 +587,17 @@ export default function UserActions(
 					</button>
 				</div>
 
-				<ul class="shell-ctx__list">
-					{memberships.length === 0
+				<ul class="shell-ctx__list" aria-busy={list === null || switching ? "true" : undefined}>
+					{list === null
+						? (
+							<li class="shell-ctx__empty" role="status">
+								{membershipsError.value ?? `Loading your ${tab}…`}
+							</li>
+						)
+						: list.length === 0
 						? <li class="shell-ctx__empty">No {tab} yet.</li>
-						: memberships.map((m) => {
-							const active = activeType === kind && effCtx.handle === m.handle;
+						: list.map((m) => {
+							const active = activeType === kind && effCtx.contextId === m.id;
 							return (
 								<li key={m.id} role="none">
 									<button
@@ -566,12 +605,16 @@ export default function UserActions(
 										class="shell-ctx__item"
 										data-active={active ? "true" : undefined}
 										aria-current={active ? "true" : undefined}
-										onClick={() => switchContext(kind, m, onNavigate)}
+										disabled={active || switching}
+										onClick={() => switchContext(kind, m)}
 									>
-										<Avatar label={m.name} image={m.avatar} size="sm" shape="square" />
+										<Avatar label={m.name} image={m.avatar || undefined} size="sm" shape="square" />
 										<span class="shell-ctx__body">
 											<span class="shell-ctx__name">{m.name}</span>
-											<span class="shell-ctx__detail">{m.detail}</span>
+											<span class="shell-ctx__detail">
+												{workspaceRoleLabel(m.role)} ·{" "}
+												{m.memberCount === 1 ? "1 member" : `${m.memberCount} members`}
+											</span>
 										</span>
 										{active ? <NavIcon name="check" class="shell-ctx__check" /> : null}
 									</button>
@@ -579,6 +622,27 @@ export default function UserActions(
 							);
 						})}
 				</ul>
+
+				{activeType !== "personal" && (
+					<button
+						type="button"
+						class="shell-menu__item"
+						role="menuitem"
+						disabled={switching}
+						onClick={() => void contextSwitch.exitToPersonal()}
+					>
+						<span class="shell-menu__icon">
+							<NavIcon name="user" />
+						</span>
+						<span class="shell-menu__label">Act as yourself</span>
+					</button>
+				)}
+
+				{(switching || contextSwitch.error.value) && (
+					<p class="shell-account__note" role="status" aria-live="polite">
+						{switching ? "Switching…" : contextSwitch.error.value}
+					</p>
+				)}
 
 				<div class="shell-menu__sep" role="separator" />
 				<div class="shell-ctx__foot">

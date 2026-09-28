@@ -355,6 +355,13 @@ export const SchedulingTargetSchema = z.object({
 });
 export type SchedulingTarget = z.infer<typeof SchedulingTargetSchema>;
 
+/**
+ * The latest instant a proposed slot may name: the last millisecond of 9999-12-31 UTC. Past it a
+ * four-digit year no longer holds, `Date#toISOString` switches to the expanded `+yyyyyy` form, and a
+ * slot that far out is never a real meeting.
+ */
+export const SLOT_EPOCH_MAX_MS = 253_402_300_799_999;
+
 /** Set the viewer's own RSVP. A viewer may only ever answer for themselves. */
 export const RsvpInputSchema = SchedulingTargetSchema.extend({
 	response: RsvpResponse,
@@ -371,9 +378,14 @@ export type RsvpInput = z.infer<typeof RsvpInputSchema>;
  */
 export const RescheduleInputSchema = SchedulingTargetSchema.extend({
 	action: RescheduleAction,
-	/** Epoch ms (UTC) of a proposed alternative slot. */
-	start: z.number().int().optional(),
-	end: z.number().int().optional(),
+	/**
+	 * Epoch ms (UTC) of a proposed alternative slot, bounded to the instants a date can hold
+	 * ({@link SLOT_EPOCH_MAX_MS}). Unbounded, a slot in year 300,000 passed every rule — it is
+	 * comfortably outside the lockout — and then threw inside the writer, after the round it was
+	 * opening had already been inserted.
+	 */
+	start: z.number().int().min(0).max(SLOT_EPOCH_MAX_MS).optional(),
+	end: z.number().int().min(0).max(SLOT_EPOCH_MAX_MS).optional(),
 	proposalId: z.string().max(80).optional(),
 	note: z.string().max(280).optional(),
 });

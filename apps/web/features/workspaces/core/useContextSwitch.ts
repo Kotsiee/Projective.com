@@ -56,7 +56,7 @@ import type { SwitchContextInput } from "@projective/types/workspace";
  * ```tsx
  * const { switching, error, switchTo, exitToPersonal } = useContextSwitch();
  * <button disabled={switching.value} aria-busy={switching.value}
- *   onClick={() => switchTo("team", team.id, { destination: `/teams/${team.id}`, handle: team.handle })}>
+ *   onClick={() => switchTo("team", team.id, { destination: `/teams/${team.handle}`, handle: team.handle })}>
  *   {switching.value ? "Switching…" : `Act as ${team.name}`}
  * </button>
  * ```

@@ -11,6 +11,10 @@ import {
 	CONSEQUENTIAL,
 	kindCopy,
 	mayGrant,
+	roleLabel,
+	roleRank,
+	rolesForKind,
+	type UpsertRoleInput,
 	type WorkspaceCapability,
 	type WorkspaceDetail,
 	type WorkspaceRoleDef,
@@ -71,6 +75,22 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 	const composing = useSignal(false);
 	const newName = useSignal("");
 	const seedFrom = useSignal<string | null>(null);
+	/** The preset the new role ranks as — what "may this person manage that one" compares. */
+	const newBase = useSignal<UpsertRoleInput["basePreset"]>("member");
+	/** The role whose archive is in flight, so its control can say so. */
+	const archivingId = useSignal<string | null>(null);
+
+	/**
+	 * The presets a custom role may rank as: never owner (ownership moves only by transfer), `lead` on a
+	 * team only, and never above the author's own rank — the database refuses the rest, so they are not
+	 * offered.
+	 */
+	const basePresets = useComputed(() => {
+		const mine = actor.value ? roleRank(actor.value.rolePreset) : 0;
+		return rolesForKind(ws.kind).filter((r): r is UpsertRoleInput["basePreset"] =>
+			r !== "owner" && roleRank(r) <= mine
+		);
+	});
 
 	const dirty = useComputed(() => Object.keys(draft.value).length > 0);
 
@@ -98,22 +118,23 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 		saving.value = true;
 		error.value = null;
 		const res = await WorkspaceService.upsertRole({
+			kind: ws.kind,
 			workspaceId: ws.id,
 			roleId: role.id,
 			name: role.name,
 			summary: role.summary,
 			capabilities: [...set],
+			basePreset: role.basePreset === "owner" ? "admin" : role.basePreset,
 		});
 		saving.value = false;
 		if (!res.ok || !res.data) {
-			error.value = res.message ?? "Could not save that role.";
+			error.value = res.errors?.capabilities ?? res.message ?? "Could not save that role.";
 			return;
 		}
 		const next = { ...draft.value };
 		delete next[role.id];
 		draft.value = next;
-		detail.value = res.data.workspace;
-		publishDetail(res.data.workspace);
+		adopt(res.data);
 	}
 
 	async function createRole(): Promise<void> {
@@ -126,21 +147,60 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 		saving.value = true;
 		error.value = null;
 		const res = await WorkspaceService.upsertRole({
+			kind: ws.kind,
 			workspaceId: ws.id,
 			name,
 			summary: seed ? `Based on ${seed.name}.` : "",
 			capabilities: seed ? [...seed.capabilities] : [],
+			basePreset: newBase.value,
 		});
 		saving.value = false;
 		if (!res.ok || !res.data) {
-			error.value = res.message ?? "Could not create that role.";
+			error.value = res.errors?.name ?? res.errors?.basePreset ?? res.errors?.capabilities ??
+				res.message ?? "Could not create that role.";
 			return;
 		}
 		composing.value = false;
 		newName.value = "";
 		seedFrom.value = null;
-		detail.value = res.data.workspace;
-		publishDetail(res.data.workspace);
+		newBase.value = "member";
+		adopt(res.data);
+	}
+
+	/** Archive a custom role. Nothing is deleted; a role anybody holds or is offered is refused. */
+	async function archiveRole(role: WorkspaceRoleDef): Promise<void> {
+		archivingId.value = role.id;
+		error.value = null;
+		const res = await WorkspaceService.archiveRole({
+			kind: ws.kind,
+			workspaceId: ws.id,
+			roleId: role.id,
+		});
+		archivingId.value = null;
+		if (!res.ok || !res.data) {
+			error.value = res.errors?.role ?? res.message ?? `Could not archive ${role.name}.`;
+			return;
+		}
+		const next = { ...draft.value };
+		delete next[role.id];
+		draft.value = next;
+		adopt(res.data);
+	}
+
+	/** Replace the projection from a server response and republish it to the bands. */
+	function adopt(next: WorkspaceDetail): void {
+		detail.value = next;
+		publishDetail(next);
+	}
+
+	/** Start a new custom role, optionally as a copy of an existing row. */
+	function compose(seed: WorkspaceRoleDef | null): void {
+		composing.value = true;
+		seedFrom.value = seed?.id ?? null;
+		newName.value = seed ? `${seed.name} copy` : "";
+		// A copy ranks as the row it copies, capped at what the author may create.
+		const wanted = seed ? (seed.basePreset === "owner" ? "admin" : seed.basePreset) : "member";
+		newBase.value = basePresets.value.includes(wanted) ? wanted : "member";
 	}
 
 	/** Arrow-key navigation across the grid; Space toggles the focused cell. */
@@ -294,17 +354,15 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 												<span class="wsp-matrix__actions">
 													{role.preset
 														? (
-															<button
-																type="button"
-																class="wsp-matrix__colbtn"
-																onClick={() => {
-																	composing.value = true;
-																	seedFrom.value = role.id;
-																	newName.value = `${role.name} copy`;
-																}}
-															>
-																Duplicate to custom role
-															</button>
+															canManage && (
+																<button
+																	type="button"
+																	class="wsp-matrix__colbtn"
+																	onClick={() => compose(role)}
+																>
+																	Duplicate to custom role
+																</button>
+															)
 														)
 														: roleDirty
 														? (
@@ -317,7 +375,24 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 																{saving.value ? "Saving…" : "Save"}
 															</button>
 														)
-														: null}
+														: canManage && (
+															<Tooltip
+																content={role.memberCount > 0
+																	? "Move its members to another role before archiving it."
+																	: "Archive this role — it is kept on record, never deleted."}
+																placement="right"
+															>
+																<button
+																	type="button"
+																	class="wsp-matrix__colbtn"
+																	disabled={role.memberCount > 0 ||
+																		archivingId.value === role.id}
+																	onClick={() => void archiveRole(role)}
+																>
+																	{archivingId.value === role.id ? "Archiving…" : "Archive"}
+																</button>
+															</Tooltip>
+														)}
 												</span>
 											</div>
 
@@ -429,6 +504,26 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 														: "It starts with no permissions — tick what it should allow afterwards."}
 												</p>
 											</div>
+											<div class="wsp-roleeditor__field">
+												<label class="wsp-roleeditor__label" for="wsp-role-base">Ranks as</label>
+												<select
+													id="wsp-role-base"
+													class="wsp-select"
+													value={newBase.value}
+													onChange={(e) => {
+														newBase.value = (e.target as HTMLSelectElement)
+															.value as UpsertRoleInput["basePreset"];
+													}}
+												>
+													{basePresets.value.map((p) => (
+														<option key={p} value={p}>{roleLabel(p)}</option>
+													))}
+												</select>
+												<p class="wsp-roleeditor__hint">
+													Who can manage the people holding it — a role never outranks the one you
+													hold.
+												</p>
+											</div>
 											<div class="wsp-roleeditor__actions">
 												<Button
 													variant="text"
@@ -437,6 +532,7 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 														composing.value = false;
 														newName.value = "";
 														seedFrom.value = null;
+														newBase.value = "member";
 													}}
 												/>
 												<Button
@@ -452,9 +548,7 @@ export default function RolesMatrix(props: RolesMatrixProps): JSX.Element {
 										<button
 											type="button"
 											class="wsp-roleeditor__label"
-											onClick={() => {
-												composing.value = true;
-											}}
+											onClick={() => compose(null)}
 										>
 											<span aria-hidden="true">{cloneGlyph(PlusGlyph)}</span>
 											New custom role

@@ -40,20 +40,21 @@ CREATE TRIGGER trg_listings_derived
     );
 
 -- #region org — the profile owners a client can still write
--- `org.users_public`, `org.freelancer_profiles` and `org.business_profiles` carry no client write
--- policy at all, so nothing reaches them but a definer. Two owners remain writable over PostgREST:
--- `org.teams` ("Team owners can update their teams") and `org.organisations` ("Owners and admins can
--- update the organisation"). Their policies are right to let an owner rename a team or edit an
--- address; they were never meant to let one set a rating, buy a plan by PATCHing `subscription_tier`,
--- hand the organisation to themselves as an admin, mark it verified, take somebody else's `@handle`,
--- or point its picture at a file from another person's library.
+-- `org.users_public`, `org.freelancer_profiles`, `org.business_profiles` and (since 2026-09-28)
+-- `org.teams` carry no client write policy at all, so nothing reaches them but a definer — a team is
+-- renamed through org.update_workspace, which checks `edit_profile`. One owner remains writable over
+-- PostgREST: `org.organisations` ("Owners and admins can update the organisation"). Its policy is
+-- right to let an owner edit an address; it was never meant to let one set a rating, hand the
+-- organisation to themselves as an admin, mark it verified, take somebody else's `@handle`, or point
+-- its picture at a file from another person's library. The team guards stay as defence in depth: a
+-- future policy that re-opens the table must not re-open these columns with it.
 --
 -- Audit (2026-09-23) of every writer of the guarded columns — each is SECURITY DEFINER, so inside it
 -- `current_user` is the function's owner and the guards let it through:
 --   rating_average / rating_count      reviews.recalculate_entity_rating            (00001005)
 --   *_project_count                    projects.update_entity_project_counts         (00001100)
 --   current_workload_intensity         projects.fn_sync_workload_intensity           (00001140)
---   owner · treasury · tier · limit    org.create_team                               (00001020)
+--   owner · treasury · tier            org.create_workspace, org.transfer_workspace_ownership (00001020)
 --   avatar · banner · logo             org.set_profile_avatar — checks the file's owner (00001040)
 --   organisation owner · status ·
 --   verification · handle              public.create_organisation (service role)     (00001010)
@@ -72,7 +73,7 @@ DROP TRIGGER IF EXISTS trg_teams_immutable ON org.teams;
 CREATE TRIGGER trg_teams_immutable
     BEFORE UPDATE ON org.teams
     FOR EACH ROW EXECUTE FUNCTION security.fn_guard_immutable_columns(
-        'owner_user_id', 'treasury_wallet_id', 'subscription_tier', 'member_limit', 'slug',
+        'owner_user_id', 'treasury_wallet_id', 'subscription_tier', 'slug',
         'avatar_file_id', 'banner_file_id'
     );
 
@@ -82,4 +83,19 @@ CREATE TRIGGER trg_organisations_immutable
     FOR EACH ROW EXECUTE FUNCTION security.fn_guard_immutable_columns(
         'owner_user_id', 'status', 'verification_level', 'handle', 'logo_file_id'
     );
+-- #endregion
+
+-- #region org — membership integrity
+-- A member's `role` is derived from the role row they hold, and the entity's single owner always holds
+-- the owner seat (org.fn_member_role_sync, 00001020). Every writer — the workspace RPCs, the seed —
+-- passes through it, so the rank every SQL predicate reads cannot disagree with the role held.
+DROP TRIGGER IF EXISTS trg_team_members_role_sync ON org.team_members;
+CREATE TRIGGER trg_team_members_role_sync
+    BEFORE INSERT OR UPDATE ON org.team_members
+    FOR EACH ROW EXECUTE FUNCTION org.fn_member_role_sync();
+
+DROP TRIGGER IF EXISTS trg_business_members_role_sync ON org.business_members;
+CREATE TRIGGER trg_business_members_role_sync
+    BEFORE INSERT OR UPDATE ON org.business_members
+    FOR EACH ROW EXECUTE FUNCTION org.fn_member_role_sync();
 -- #endregion

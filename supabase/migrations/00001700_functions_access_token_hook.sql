@@ -94,8 +94,31 @@ BEGIN
   v_display_currency := COALESCE(v_display_currency, 'GBP');
   v_locale := COALESCE(v_locale, 'en-GB');
 
+  -- A stored context is only a PREFERENCE: it is honoured while the membership it names still holds,
+  -- and dropped (back to personal, raw claims included) the moment it does not — a member removed
+  -- from a team, or a team archived, stops acting as it at the next mint instead of carrying the
+  -- claim until they happen to switch. security.current_context() reads these raw claims for RLS.
+  IF v_org_id IS NOT NULL AND NOT (
+       EXISTS (SELECT 1 FROM org.organisations o WHERE o.id = v_org_id AND o.owner_user_id = v_user_id)
+       OR EXISTS (SELECT 1 FROM org.organisation_members m
+                  WHERE m.organisation_id = v_org_id AND m.user_id = v_user_id AND m.status = 'active')) THEN
+    v_org_id := NULL;
+  END IF;
+  IF v_team_id IS NOT NULL AND NOT EXISTS (
+       SELECT 1 FROM org.team_members tm JOIN org.teams t ON t.id = tm.team_id
+        WHERE tm.team_id = v_team_id AND tm.user_id = v_user_id AND tm.status = 'active' AND t.status <> 'archived') THEN
+    v_team_id := NULL;
+  END IF;
+  IF v_profile_type = 'business' AND NOT EXISTS (
+       SELECT 1 FROM org.business_members bm JOIN org.business_profiles b ON b.id = bm.business_id
+        WHERE bm.business_id = v_profile_id AND bm.user_id = v_user_id AND bm.status = 'active' AND b.status <> 'archived') THEN
+    v_profile_type := NULL;
+    v_profile_id := NULL;
+  END IF;
+
   -- Resolve the four-context matrix (organisation > team > business > personal). role collapses to
-  -- admin when the actor owns the entity or holds an owner/admin membership; else member.
+  -- admin for the owner and admin presets (the member row's derived `role`, org.fn_member_role_sync),
+  -- member otherwise — the chrome's coarse answer; capability checks ask org.fn_member_can.
   IF v_org_id IS NOT NULL THEN
     v_type := 'organisation';
     v_id := v_org_id;
@@ -116,14 +139,10 @@ BEGIN
     v_type := 'team';
     v_id := v_team_id;
     SELECT t.slug INTO v_handle FROM org.teams t WHERE t.id = v_team_id;
-    IF EXISTS (SELECT 1 FROM org.teams t WHERE t.id = v_team_id AND t.owner_user_id = v_user_id) THEN
-      v_role := 'admin';
-    ELSE
-      SELECT CASE WHEN tm.role IN ('owner', 'admin', 'manager') THEN 'admin' ELSE 'member' END
-        INTO v_role
-      FROM org.team_members tm
-      WHERE tm.team_id = v_team_id AND tm.user_id = v_user_id AND tm.status = 'active';
-    END IF;
+    SELECT CASE WHEN tm.role IN ('owner', 'admin') THEN 'admin' ELSE 'member' END
+      INTO v_role
+    FROM org.team_members tm
+    WHERE tm.team_id = v_team_id AND tm.user_id = v_user_id AND tm.status = 'active';
     v_ctx_is_freelancer := v_is_freelancer;
     v_ctx_is_client := v_is_operator OR NOT v_is_freelancer;
 
@@ -131,14 +150,10 @@ BEGIN
     v_type := 'business';
     v_id := v_profile_id;
     SELECT b.slug INTO v_handle FROM org.business_profiles b WHERE b.id = v_profile_id;
-    IF EXISTS (SELECT 1 FROM org.business_profiles b WHERE b.id = v_profile_id AND b.owner_user_id = v_user_id) THEN
-      v_role := 'admin';
-    ELSE
-      SELECT CASE WHEN bm.role IN ('owner', 'admin', 'manager') THEN 'admin' ELSE 'member' END
-        INTO v_role
-      FROM org.business_members bm
-      WHERE bm.business_id = v_profile_id AND bm.user_id = v_user_id AND bm.status = 'active';
-    END IF;
+    SELECT CASE WHEN bm.role IN ('owner', 'admin') THEN 'admin' ELSE 'member' END
+      INTO v_role
+    FROM org.business_members bm
+    WHERE bm.business_id = v_profile_id AND bm.user_id = v_user_id AND bm.status = 'active';
     v_ctx_is_freelancer := v_is_freelancer;
     v_ctx_is_client := v_is_operator OR NOT v_is_freelancer;
 

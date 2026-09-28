@@ -33,9 +33,13 @@ import {
  * `preset: null` and an author-chosen capability list. Both appear side by side in every role picker,
  * which is why they share one schema rather than being a union — a picker should not have to know
  * which kind of role it is offering.
+ *
+ * Every role — preset or custom — is a row of the entity's own `org.team_roles` / `org.business_roles`,
+ * so `id` is that row's id. A preset's capabilities are resolved server-side from
+ * `org.fn_preset_capabilities`, the SQL twin of {@link presetCapabilities}.
  */
 export const WorkspaceRoleDefSchema = z.object({
-	/** Stable id — a preset's id is its {@link WorkspaceRole} value; a custom role gets a slug. */
+	/** The role row's id. */
 	id: z.string().max(64),
 	/** Display name ("Admin", "Purchaser", "Finance"). */
 	name: z.string().min(1).max(48),
@@ -43,6 +47,12 @@ export const WorkspaceRoleDefSchema = z.object({
 	summary: z.string().max(160),
 	/** The preset this row IS, or `null` for a custom role. Presets are read-only. */
 	preset: WorkspaceRole.nullable(),
+	/**
+	 * The preset this role RANKS as — a preset ranks as itself, a custom role as the preset its author
+	 * chose. It is what "may this person manage that one" compares; it can never be `owner` for a custom
+	 * role (ownership moves only by transfer).
+	 */
+	basePreset: WorkspaceRole,
 	/** The capabilities this role grants. */
 	capabilities: z.array(WorkspaceCapability),
 	/** How many members currently hold it — the matrix shows this so a role is never deleted blind. */
@@ -83,9 +93,12 @@ export const WorkspaceMemberSchema = z.object({
 	handle: z.string().max(40),
 	name: z.string().max(120),
 	avatar: z.string().max(400),
-	/** Contact address — shown to admins on the member drawer, used by the invite-by-email path. */
+	/**
+	 * Contact address — the VIEWER'S OWN only. A member's email is not disclosed to the rest of the
+	 * roster (`org.user_emails` is own-rows-only), so every other row carries `null`.
+	 */
 	email: z.string().max(160).nullable(),
-	/** The role id they hold ({@link WorkspaceRoleDef.id}) — a preset value or a custom slug. */
+	/** The role row they hold ({@link WorkspaceRoleDef.id}). */
 	roleId: z.string().max(64),
 	/** The preset this role resolves to, for ranking and guard checks. A custom role reports its base. */
 	rolePreset: WorkspaceRole,
@@ -119,15 +132,15 @@ export const WorkspaceMemberSchema = z.object({
 export type WorkspaceMember = z.infer<typeof WorkspaceMemberSchema>;
 // #endregion
 
-// #region Invitations & requests
+// #region Invitations
 /**
- * A pending invitation (we asked them) or join request (they asked us). One schema, discriminated by
- * {@link direction}, because the inbox renders them in the same list with opposite actions.
+ * A pending invitation this entity has sent. Join requests and shareable links were cut
+ * (Decision #122): an invitation always names one person or one address, and only the invitee can
+ * accept it.
  */
 export const WorkspaceInviteSchema = z.object({
 	id: z.string().max(64),
-	direction: z.enum(["invite", "request"]),
-	/** Who is being invited / who is asking. */
+	/** Who is being invited — empty for an invitation addressed by email to somebody not yet on the platform. */
 	handle: z.string().max(40),
 	name: z.string().max(120),
 	avatar: z.string().max(400),
@@ -139,10 +152,8 @@ export const WorkspaceInviteSchema = z.object({
 	note: z.string().max(400).nullable(),
 	/** Pre-formatted relative time ("2 days ago") — never a client clock. */
 	sentAt: z.string().max(40),
-	/** ISO expiry for a share link, or `null` if it does not expire. */
+	/** ISO expiry (an invitation lapses after 14 days; resending renews it), or `null`. */
 	expiresAt: z.string().max(40).nullable(),
-	/** Set when this invite came from a shareable link rather than a direct address. */
-	viaLink: z.boolean().default(false),
 });
 export type WorkspaceInvite = z.infer<typeof WorkspaceInviteSchema>;
 

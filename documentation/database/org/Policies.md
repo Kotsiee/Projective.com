@@ -10,8 +10,12 @@ These functions are used throughout the policies to provide a clean and consiste
 layer.
 
 - **`security.is_admin()`**: Returns true if the `auth.uid()` exists in `ops.admin_users`.
-- **`org.is_active_team_member(_team_id)`**: Returns true if the `auth.uid()` has an 'active' status
-  in `org.team_members` for the specified team.
+- **`org.is_active_team_member(_team_id)`** / **`org.is_active_business_member(_business_id)`**:
+  `SECURITY DEFINER`; true if `auth.uid()` holds an `active` row in `org.team_members` /
+  `org.business_members` for that entity. These (with `is_organisation_member`) are the only `org`
+  functions `anon` and `authenticated` may still `EXECUTE` besides the named RPCs — a policy
+  expression runs as the invoking role, and `EXECUTE` on the rest of the schema is revoked
+  (`00002510`, 2026-09-28; [Functions.md](Functions.md)).
 - **`org.is_organisation_member(p_org, p_min_role)`**: `SECURITY DEFINER`; returns true if the
   `auth.uid()` is an active member of the organisation at or above `p_min_role`
   (`member`/`admin`/`owner`). Definer context bypasses RLS so the organisation policies below don't
@@ -60,8 +64,10 @@ payout-ready over PostgREST. The row is created and maintained by definers; `ski
 ### `org.business_profiles`
 
 **RLS is on with no policy at all** — default-deny to every client, reads included. Every read of a
-business goes through a definer (the profile view `org.get_profile_view`, the discovery reads) and
-every write through `org.create_business` / `org.save_profile` / `org.set_profile_avatar`. A
+business goes through a definer (the profile view `org.get_profile_view`, the discovery reads, the
+console's `org.get_workspace_detail`) and every write through `org.create_workspace` /
+`org.update_workspace` / `org.set_workspace_status` / `org.transfer_workspace_ownership` /
+`org.save_profile` / `org.set_profile_avatar`. A
 consequence worth knowing: an RLS-scoped read of `org.business_profiles` returns nothing, so the
 project detail's business parties (`live-detail.ts`) degrade to "Unknown" on the live path.
 
@@ -93,73 +99,90 @@ USING (
     OR org.is_active_team_member(id) 
     OR security.is_admin()
 );
-
--- UPDATE / DELETE: the team owner or an admin (UPDATE has no WITH CHECK, so Postgres applies the
--- USING clause to the post-image as well — an owner cannot write another user in as owner)
-CREATE POLICY "Team owners can update their teams"
-ON org.teams FOR UPDATE TO public
-USING (owner_user_id = auth.uid() OR security.is_admin());
-
-CREATE POLICY "Team owners can delete their teams"
-ON org.teams FOR DELETE TO public
-USING (owner_user_id = auth.uid() OR security.is_admin());
 ```
 
-**No client INSERT policy** (2026-09-23). A team is created by `org.create_team` (definer), which
-also opens its treasury wallet; a raw INSERT skipped that and could set `subscription_tier`,
-`member_limit` and `treasury_wallet_id` at birth.
+**No client INSERT, UPDATE or DELETE policy** (2026-09-28, Decision #122). A team is created by
+`org.create_workspace`, renamed by `org.update_workspace`, published or archived by
+`org.set_workspace_status` and handed on by `org.transfer_workspace_ownership` — each a definer that
+checks the caller's workspace capability (`org.fn_member_can`). The owner-only UPDATE policy these
+replace let an owner rewrite any column the guards did not name, and the DELETE policy let an owner
+**hard-delete a team with money held in escrow for it** (root `CLAUDE.md` §5: nothing is
+hard-deleted). The 2026-09-23 note stands: a raw client INSERT could set `subscription_tier` and
+`treasury_wallet_id` at birth, where the UPDATE-only guard cannot reach.
 
-The UPDATE policy cannot tell a rename from a forged rating, so two column guards
-([`security/Functions.md`](../security/Functions.md), trigger file `00001895`) narrow what a client
-UPDATE may change:
+The two column guards ([`security/Functions.md`](../security/Functions.md), trigger file `00001895`)
+stay as **defence in depth**, so a future policy that re-opens the table cannot re-open these columns
+with it:
 
 - `trg_teams_derived` — `rating_average`, `rating_count`, `active_project_count`,
   `total_project_count`, `service_count`, `product_count`, `current_workload_intensity` are the
   platform's arithmetic, never the owner's.
-- `trg_teams_immutable` — `owner_user_id`, `treasury_wallet_id`, `subscription_tier`, `member_limit`
-  (a plan is bought, not PATCHed), `slug` (the `@handle`, shared with people's usernames), and
-  `avatar_file_id` / `banner_file_id` (set through `org.set_profile_avatar`, which checks the file is
-  the team's own).
+- `trg_teams_immutable` — `owner_user_id`, `treasury_wallet_id`, `subscription_tier` (a plan is
+  bought, not PATCHed), `slug` (the `@handle`, shared with people's usernames), and `avatar_file_id` /
+  `banner_file_id` (set through `org.set_profile_avatar`, which checks the file is the team's own).
+  `member_limit` left the list with the column.
 
-Name, headline, story, visibility, status and the hire intake stay owner-editable.
-
-### `org.team_members`
-
-Critical policies for managing team rosters and permissions.
+### `org.team_members` / `org.business_members`
 
 ```sql
--- SELECT: Users see their own rows, and team members see fellow members
-CREATE POLICY "Users can view members of their teams" 
-ON org.team_members FOR SELECT TO public 
-USING (
-    user_id = auth.uid() 
-    OR org.is_active_team_member(team_id) 
-    OR security.is_admin()
-);
+CREATE POLICY "Users can view members of their teams"
+ON org.team_members FOR SELECT TO public
+USING (user_id = auth.uid() OR org.is_active_team_member(team_id) OR security.is_admin());
 
--- INSERT/UPDATE: Restricted to Team Owners or Admins
-CREATE POLICY "Team owners can manage memberships" 
-ON org.team_members FOR ALL TO public 
-USING (
-    EXISTS (
-        SELECT 1 FROM org.teams t 
-        WHERE t.id = team_id AND t.owner_user_id = auth.uid()
-    ) 
-    OR security.is_admin()
-);
-
--- DELETE: Owner can remove members; members can leave
-CREATE POLICY "Team owners can remove members or members can leave" 
-ON org.team_members FOR DELETE TO public 
-USING (
-    user_id = auth.uid() 
-    OR EXISTS (
-        SELECT 1 FROM org.teams t 
-        WHERE t.id = team_id AND t.owner_user_id = auth.uid()
-    ) 
-    OR security.is_admin()
-);
+CREATE POLICY "Members can view business roster"
+ON org.business_members FOR SELECT TO authenticated
+USING (org.is_active_business_member(business_id) OR security.is_admin());
 ```
+
+**SELECT only — no client write policy on either roster** (2026-09-28). A roster changes only through
+the workspace RPCs (`org.invite_workspace_member`, `org.respond_to_workspace_invitation`,
+`org.update_workspace_member`, `org.transfer_workspace_ownership`), which enforce the three-layer
+permission model — rank, "never grant what you lack", the single owner — and re-project the vault.
+What the removed policies allowed: the team INSERT policy let an owner add anybody **without an
+invitation, at any role, past the seat cap**; the team DELETE policy let a member hard-delete
+themselves and **keep their payout stake**, so every later release kept paying them; and the business
+`FOR ALL` policy ("Owners can manage members") let an owner INSERT a second owner and a member DELETE
+themselves while keeping every vault grant they held.
+
+A member's EMAIL is never read from these tables: `org.get_workspace_detail` returns the caller's
+own address only.
+
+### `org.team_roles` / `org.business_roles`
+
+```sql
+CREATE POLICY "Members can view team roles"
+ON org.team_roles FOR SELECT TO authenticated
+USING (org.is_active_team_member(team_id) OR security.is_admin());
+
+CREATE POLICY "Members can view business roles"
+ON org.business_roles FOR SELECT TO authenticated
+USING (org.is_active_business_member(business_id));
+```
+
+Read by every active member (the matrix, the role picker). **No client write policy** on either
+(2026-09-28): roles change through `org.upsert_workspace_role` / `org.archive_workspace_role`. The
+removed `"Owners can manage business roles"` `FOR ALL` policy let an owner write a role row with any
+capability set, bypassing the rank and `mayGrant` checks. `"Members can view team roles"` is new:
+`org.team_roles` had RLS on (`00002001`) and **no policy at all** — default-deny, `200 []` to every
+member. (This file previously showed a `"Team owners manage roles"` policy; no migration ever
+created it.)
+
+### `org.org_invitations`
+
+**RLS is on with NO policy at all — deliberately, and not the default-deny bug** of Decision #57. The
+`token` column IS the accept capability, so any policy wide enough to show a member their entity's
+queue would show them the tokens. Every read and write is a definer: the invitee's inbox is
+`org.get_workspace_roster`'s `invitations`, the entity's outgoing queue is
+`org.get_workspace_detail`'s `invites` (served only to a viewer holding `invite_members`), and the
+writes are `invite_workspace_member` / `respond_to_workspace_invitation` /
+`revoke_workspace_invitation` / `resend_workspace_invitation`.
+
+### `org.view_business_staff` (view)
+
+`security_invoker = true` since 2026-09-28 (`00003001`), and `REVOKE ALL … FROM anon` (`00003005`).
+As a definer view it read past every policy and handed any signed-in user **every business member's
+primary email**; under the caller's own rights the roster is their own businesses'
+(`org.business_members` policy) and an email is only ever their own (`org.user_emails` policy).
 
 ---
 
@@ -170,21 +193,8 @@ USING (
 (Referencing common security patterns in codebase) Access is typically linked to the
 `owner_profile_id` or visibility within a project context.
 
-### `org.team_roles`
-
-Strictly managed by the team hierarchy.
-
-```sql
--- ALL: Managed by team owners
-CREATE POLICY "Team owners manage roles" 
-ON org.team_roles FOR ALL TO public 
-USING (
-    EXISTS (
-        SELECT 1 FROM org.teams t 
-        WHERE t.id = team_id AND t.owner_user_id = auth.uid()
-    )
-);
-```
+(`org.team_roles` is documented with its business twin under
+[§ Team & Membership Policies](#orgteam_roles--orgbusiness_roles).)
 
 ---
 
@@ -221,10 +231,13 @@ details stay editable by the owner and admins.
 
 ### `org.organisation_members`
 
-`SELECT` lets a user see their own row and lets owners/admins see the whole roster;
-`INSERT`/`UPDATE`/ `DELETE` are owner/admin-gated. The `INSERT` policy also allows the org **owner**
-to seed their own owner-membership at creation time (when no members exist yet), via an `EXISTS` on
-`org.organisations.owner_user_id`.
+`SELECT` lets a user see their own row and lets owners/admins see the whole roster.
+
+**No client write policy** (2026-09-28). The owner membership is written by
+`public.create_organisation` (service role). The `INSERT` / `UPDATE` / `DELETE` policies this
+replaces let an admin UPDATE any row to role `owner` — **including their own** — and hard-DELETE the
+owner. Nothing in the app writes the table today; organisation roster management will get definer
+RPCs of its own.
 
 ---
 

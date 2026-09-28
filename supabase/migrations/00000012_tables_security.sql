@@ -67,6 +67,12 @@ CREATE TABLE security.session_context (
         -- Folded (20260715120000): the active organisation (buyer-only) context slot.
         active_organisation_id uuid REFERENCES org.organisations (id) ON DELETE SET NULL,
         CONSTRAINT session_context_pkey PRIMARY KEY (user_id),
+        -- One acting context at a time: personal (every slot NULL), a profile, a team or an
+        -- organisation. A profile slot is the (type, id) pair, set or cleared together.
+        CONSTRAINT ck_session_context_one_slot CHECK (
+            num_nonnulls (active_profile_id, active_team_id, active_organisation_id) <= 1
+            AND (active_profile_type IS NULL) = (active_profile_id IS NULL)
+        ),
         CONSTRAINT session_context_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id),
         CONSTRAINT session_context_user_id_fkey1 FOREIGN KEY (user_id) REFERENCES org.users_public (user_id)
 );

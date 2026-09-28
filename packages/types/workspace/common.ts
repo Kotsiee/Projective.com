@@ -58,7 +58,7 @@ export type WorkspaceRole = z.infer<typeof WorkspaceRole>;
  * us) are deliberately distinct states rather than one "pending" — they route to opposite actions, and
  * collapsing them would make the invitation inbox lie about who owes whom a decision.
  */
-export const MembershipState = z.enum(["active", "invited", "requested", "left"]);
+export const MembershipState = z.enum(["active", "left"]);
 export type MembershipState = z.infer<typeof MembershipState>;
 // #endregion
 

@@ -12,6 +12,7 @@
  * reads the way a real one would.
  */
 
+import { RESCHEDULE_LOCKOUT_HOURS, VOTE_RESOLUTION_LEAD_HOURS } from "@projective/types/scheduling";
 import { HEADER, id, insert, localAt, minutesOf, num, q, uuidFor } from "./sql.ts";
 import { type Lookup, party, persona, type World } from "./resolve.ts";
 import {
@@ -517,10 +518,16 @@ function emitNegotiation(
 	const rescheduleId = uuidFor("event_reschedule", `${m.key}:0`);
 	const opener = persona(world, m.host);
 	const ballot = r.proposals.filter((p) => p.by === m.host);
-	// A vote closes 12 hours before the earliest slot ON THE BALLOT (`voteResolvesAt`); a slot still
-	// waiting for approval does not count, and a 1-on-1 has no deadline at all.
+	// A vote closes at the EARLIER of: the lead before the earliest slot ON THE BALLOT, and the meeting's
+	// own lockout (`voteResolvesAt`). A slot still waiting for approval does not count, and a 1-on-1 has
+	// no deadline at all. `fn_guard_reschedule_write` re-stamps it from the same rule as each proposal
+	// row lands, so this is the value the database would have written anyway.
 	const earliest = ballot.slice().sort((a, b) => slotKey(a.at) - slotKey(b.at))[0];
-	const resolvesAt = r.mode === "vote" && earliest ? `${at(m.tz, earliest.at)} - interval '12 hours'` : "NULL";
+	const resolvesAt = r.mode === "vote" && earliest
+		? `LEAST(${at(m.tz, earliest.at)} - interval '${VOTE_RESOLUTION_LEAD_HOURS} hours', ${
+			at(m.tz, m.at)
+		} - interval '${RESCHEDULE_LOCKOUT_HOURS} hours')`
+		: "NULL";
 	reschedules.push([
 		id(rescheduleId),
 		id(eventId),

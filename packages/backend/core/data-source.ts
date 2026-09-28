@@ -3,9 +3,8 @@
  *
  * ## Why this exists
  *
- * The answer was already computable before this module: thirteen `isXBackendLive()` predicates, each
- * ANDing a per-domain flag with `isSupabaseConfigured()`, one of them living in a different file from
- * the other twelve. What was missing was a way to ask the question WITHOUT knowing which predicate
+ * The answer was already computable before this module: the `isXBackendLive()` predicates, each
+ * ANDing a per-domain flag with `isSupabaseConfigured()`. What was missing was a way to ask the question WITHOUT knowing which predicate
  * governs which surface — which is exactly what a diagnostic, a dev panel, a seed script or a
  * developer trying to work out why a page shows fixture data actually needs.
  *
@@ -19,7 +18,7 @@
  * {@link DataSourceStatus} keeps them distinct:
  *
  *  - `mock:forced` — the master `USE_MOCKS` switch is on. Everything is mocked, deliberately.
- *  - `mock:gate-off` — this domain's own `*_BACKEND_LIVE` flag is false. The default for all thirteen.
+ *  - `mock:gate-off` — this domain's own `*_BACKEND_LIVE` flag is false. The default for every gate.
  *  - `mock:unconfigured` — the flag is on but `SUPABASE_URL`/`SUPABASE_ANON_KEY` are missing, so the
  *    predicate degrades rather than throwing. This is the one that looks like a bug and is not.
  *  - `live` — the predicate passes.
@@ -85,8 +84,6 @@ function gateValue(domain: MockDomain): boolean {
 			return env.newsletterBackendLive;
 		case "FINANCE_BACKEND_LIVE":
 			return env.financeBackendLive;
-		case "WORKSPACE_BACKEND_LIVE":
-			return env.workspaceBackendLive;
 		case "FILES_BACKEND_LIVE":
 			return env.filesBackendLive;
 		case "INTEGRATIONS_BACKEND_LIVE":

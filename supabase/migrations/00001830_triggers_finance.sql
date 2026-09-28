@@ -3,9 +3,17 @@
 -- Consolidated verbatim from: 0309_business_finance_overview.sql, 20260724112000_billing_plans_entitlements.sql
 -- ============================================================================
 
-CREATE TRIGGER trg_seed_business_wallet
+-- A new team or business wallet is governed from birth: the entity's members are projected onto it
+-- (org.fn_sync_vault_permissions), so the vault's authority is never hand-maintained.
+CREATE TRIGGER trg_wallets_sync_vault_permissions
 AFTER INSERT ON finance.wallets
-FOR EACH ROW EXECUTE FUNCTION finance.fn_seed_business_wallet();
+FOR EACH ROW EXECUTE FUNCTION finance.fn_sync_vault_on_wallet();
+
+-- A team's split totals exactly 100% (or nothing) at the end of every transaction that touches it.
+CREATE CONSTRAINT TRIGGER trg_contribution_agreements_total
+AFTER INSERT OR UPDATE ON finance.contribution_agreements
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION finance.fn_assert_team_split_total();
 
 CREATE TRIGGER trg_sync_legacy_subscription_columns
     BEFORE INSERT OR UPDATE ON finance.subscriptions

@@ -37,12 +37,12 @@ Each domain below gets its own folder with up to four files: `Tables.md`, `Polic
 | `integrations` |   ✅   |    ✅    |    ✅     | Connector + plugin substrate (token vault, sync/webhooks, plugin ecosystem), redesigned 2026-07-25 |
 | `marketplace`  |   ◐    |    ◐     |     —     | Blueprints (address, intake, stage template), paid placements, quote requests — partial           |
 | `ops`          |   —    |    —     |     —     | Not yet documented                                                                                 |
-| `org`          |   ✅   |    ✅    |    ✅     | Identity/teams/orgs, the 2026-07-24 Standing ladder, and the live public profile (showcase, settings, certifications, definer read/write door), 2026-09-23 |
+| `org`          |   ✅   |    ✅    |    ✅     | Identity/teams/orgs, the 2026-07-24 Standing ladder, the live public profile (showcase, settings, certifications, definer read/write door), 2026-09-23, and the Teams & Businesses console (roles, members, invitations, the permission twin + vault projection), 2026-09-28 |
 | `projects`     |   ✅   |    —     |     —     |                                                                                                    |
 | `reviews`      |   ✅   |    ✅    |    ✅     | One table, two reputation tracks; no client write path yet, 2026-09-23                             |
 | `scheduling`   |   ✅   |    ✅    |    ✅     | Availability, calendar events & discovery calls, 2026-07-24                                        |
 | `search`       |   ◐    |    —     |     —     | `platform_stats` documented; the index tables are not yet                                          |
-| `security`     |   ✅   |    —     |     —     |                                                                                                    |
+| `security`     |   ✅   |    ◐     |     ◐     | `session_context` (one-slot CHECK, SELECT-only to clients, switch RPCs) and the access-token hook, 2026-09-28; column guards; route slugs |
 
 ✅ = populated with real schema detail. ◐ = the sections a recent change touched are documented, the rest is not. `—` = stub file stamped `_Not yet documented._` — this is an
 intentional placeholder, not a deletion or accident. `comms/`, `files/`, `finance/`, `integrations/`
@@ -55,8 +55,8 @@ foundation; the OAuth capability predicates; the discovery-call booking gate); t
 > unpoliced — and the two were recently shown to diverge.** `files/Policies.md` was a stub while
 > `files.items` carried a live `USING (true)` `SELECT` policy and `files.folders` had no RLS at all
 > (both now closed, both written up in that file). Treat a stub Policies column as _unknown_, and
-> read the migration before assuming a table is safe. `projects/` and `security/` are the two
-> remaining stubs.
+> read the migration before assuming a table is safe. `projects/` is the remaining stub;
+> `security/Policies.md` documents `session_context` only.
 
 ## For Future Agents
 
