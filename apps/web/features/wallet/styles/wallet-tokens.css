@@ -6,11 +6,17 @@
 	--wlt-glow-blur: calc(var(--glass-blur) * 4);
 	--wlt-press-scale-row: 0.99;
 
-	--wlt-hero-indigo: color-mix(in srgb, var(--tertiary) 58%, var(--scrim));
-	--wlt-hero-midnight: color-mix(in srgb, var(--tertiary) 24%, var(--scrim));
-	--wlt-hero-petrol: color-mix(in srgb, var(--primary) 70%, var(--wlt-hero-indigo));
-	--wlt-hero-glow-teal: color-mix(in srgb, var(--primary) 72%, transparent);
-	--wlt-hero-glow-indigo: color-mix(in srgb, var(--tertiary) 60%, transparent);
+	--wlt-aurora-cyan: #06b6d4;
+	--wlt-aurora-cobalt: #2563eb;
+	--wlt-aurora-violet: #8b5cf6;
+	--wlt-aurora-indigo-deep: #1e1145;
+	--wlt-aurora-base: #0b0714;
+
+	/* Mixes with generous alpha curves for clean layering */
+	--wlt-hero-cyan: color-mix(in oklab, var(--wlt-aurora-cyan) 85%, transparent);
+	--wlt-hero-cobalt: color-mix(in oklab, var(--wlt-aurora-cobalt) 60%, transparent);
+	--wlt-hero-violet: color-mix(in oklab, var(--wlt-aurora-violet) 70%, transparent);
+	--wlt-hero-deep: var(--wlt-aurora-indigo-deep);
 
 	--wlt-hero-ink: var(--on-scrim);
 	--wlt-hero-ink-soft: color-mix(in srgb, var(--on-scrim) 84%, transparent);
@@ -29,10 +35,10 @@
 	--wlt-attention-ink: color-mix(in srgb, var(--warning) 62%, var(--on-surface));
 }
 
-:root[data-theme="dark"] {
+/* :root[data-theme="dark"] {
 	--wlt-hero-indigo: color-mix(in srgb, var(--on-tertiary) 88%, var(--scrim));
 	--wlt-hero-midnight: color-mix(in srgb, var(--on-tertiary) 40%, var(--scrim));
 	--wlt-hero-glow-teal: color-mix(in srgb, var(--primary) 48%, transparent);
 	--wlt-hero-glow-indigo: color-mix(in srgb, var(--tertiary) 28%, transparent);
 	--wlt-sheet-shadow: 0 calc(-1 * var(--space-3)) var(--space-7) color-mix(in srgb, var(--scrim) 40%, transparent);
-}
+} */

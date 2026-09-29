@@ -29,9 +29,7 @@
 	flex-direction: column;
 	gap: var(--space-1);
 	padding-block: var(--space-2);
-	/* background: var(--surface-2); */
 	backdrop-filter: none;
-	/* the sidebar is opaque — glass blur belongs to the header layers only */
 	overflow: hidden;
 	transition: inline-size var(--dur-medium) var(--spring-standard);
 }
@@ -49,17 +47,10 @@
 .ui-shell-sidebar__footer {
 	margin-block-start: auto;
 	padding-block-start: var(--space-1);
-	/* The footer — not the button's own margin — pins the toggle. A fixed inline-start pad keeps the
-	toggle's centre on the shared icon axis (32px) at BOTH rail widths: in the 64px collapsed rail an
-	8px pad + 48px block leaves an equal 8px on the right (perfectly centred); in the expanded rail
-	the same 8px pad holds the identical absolute x, so widening the rail never shifts the button —
-	only the dotted divider inside it slides. (A prior `margin-inline:auto` silently failed: auto
-	margins don't centre an inline-flex box.) */
 	display: flex;
 	padding-inline-start: var(--space-2);
 }
 
-/* #region Collapse/expand toggle — labelless custom morphing SVG, pinned bottom-left in the footer */
 .ui-shell-sidebar__toggle {
 	display: inline-flex;
 	align-items: center;

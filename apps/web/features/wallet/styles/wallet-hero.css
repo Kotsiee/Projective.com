@@ -19,10 +19,18 @@
 	border-start-start-radius: var(--frame-radius, 0);
 	overflow: clip;
 	color: var(--wlt-hero-ink);
+
 	background:
-		radial-gradient(130% 85% at 50% 115%, var(--wlt-hero-indigo), transparent 62%),
-		linear-gradient(162deg, var(--wlt-hero-petrol) 0%, var(--wlt-hero-indigo) 58%,
-		var(--wlt-hero-midnight) 100%);
+		/* 1. Top-Left Cyan Accent: Punchy, saturated corner lighting */
+		radial-gradient(110% 90% at 2% 0%, var(--wlt-hero-cyan) 0%, transparent 60%),
+		/* 2. Bottom-Right Violet Glow: Ambient warmth lifting the bottom right */
+		radial-gradient(120% 95% at 98% 100%, var(--wlt-hero-violet) 0%, transparent 65%),
+		/* 3. Center-Left Cobalt Bridge: Fills the dead zone between cyan and violet */
+		radial-gradient(90% 70% at 45% 55%, var(--wlt-hero-cobalt) 0%, transparent 65%),
+		/* 4. Directional Diagonal Wash: Ties the mesh together with a cohesive base gradient */
+		linear-gradient(155deg in oklab, transparent 0%, var(--wlt-hero-deep) 75%),
+		/* 5. Rich Base Canvas: Prevents dropping into pure flat black */
+		var(--wlt-aurora-base);
 }
 
 @media (min-height: 36rem) {
