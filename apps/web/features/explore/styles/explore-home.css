@@ -130,6 +130,16 @@
 	display: none;
 }
 
+.ex-chips__scroller.is-dragging,
+.ex-chips__scroller.is-gliding {
+	scroll-snap-type: none;
+}
+
+.ex-chips__scroller.is-dragging {
+	cursor: grabbing;
+	user-select: none;
+}
+
 .ex-chips__scroller[data-at-start="false"] {
 	--ex-fade-s: var(--ex-fade-w);
 }
@@ -612,12 +622,17 @@
 	display: none;
 }
 
-/* `attachDragScroll` stamps this while a pointer drag is live. Snap and smooth scrolling both fight a
-   1:1 pan, so both come off for the duration. */
-.ex-rail__track.is-dragging {
-	cursor: grabbing;
+/* `attachDragScroll` stamps `is-dragging` for the pan and `is-gliding` for the release fling. Snap and
+   smooth scrolling both fight a scripted scroll, so both stay off until the glide comes to rest. */
+.ex-rail__track.is-dragging,
+.ex-rail__track.is-gliding {
 	scroll-snap-type: none;
 	scroll-behavior: auto;
+}
+
+.ex-rail__track.is-dragging {
+	cursor: grabbing;
+	user-select: none;
 }
 
 /*

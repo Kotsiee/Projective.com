@@ -188,8 +188,8 @@
  */
 
 /* #region Owner badge */
-/* Container (NOT an anchor): profile navigation is bound only to the avatar + handle sub-anchors; the
-   display name is inert text. Sits above the card's stretched link so the sub-anchors stay clickable. */
+/* Container (NOT an anchor) for the profile sub-anchors. Sits above the card's stretched link so the
+   sub-anchors stay clickable. */
 .ex-owner {
 	position: relative;
 	z-index: 2;
@@ -1148,20 +1148,44 @@
 /*
  * The creator row. It sits ABOVE the title and prints the seller's NAME, not their handle: on a
  * marketplace the answer to "who is selling this" is a person or a studio, and a handle is an address.
- * Routing convention is unchanged, the avatar is the anchor and the name is inert text.
+ * The avatar and the name are ONE anchor to the seller's profile; the verified crest sits beside it.
  */
 .ex-owner--creator {
 	display: inline-flex;
 	align-items: center;
-	gap: var(--space-2);
+	gap: var(--space-1);
 	min-inline-size: 0;
 	max-inline-size: 100%;
+}
+
+.ex-owner__link {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	color: inherit;
+	text-decoration: none;
+}
+
+.ex-owner__link:focus-visible {
+	outline: none;
+}
+
+.ex-owner__avatar-wrap {
+	display: inline-flex;
+	flex: none;
+}
+
+.ex-owner--creator .ex-owner__link:hover .ex-owner__name,
+.ex-owner--creator .ex-owner__link:focus-visible .ex-owner__name {
+	color: var(--on-surface);
 }
 
 .ex-owner--creator .ex-owner__name {
 	font-size: var(--text-sm);
 	font-weight: var(--fw-medium);
 	color: var(--on-surface-variant);
+	transition: color var(--dur-fast) var(--ease-standard);
 	min-inline-size: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;

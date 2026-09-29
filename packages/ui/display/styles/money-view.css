@@ -40,6 +40,8 @@
 	white-space: nowrap;
 	font-weight: var(--fw-semibold);
 	line-height: 1.15;
+	direction: ltr;
+	unicode-bidi: isolate;
 }
 
 .ui-money__sign {
@@ -109,6 +111,8 @@
 	color: var(--text-secondary);
 	white-space: nowrap;
 	line-height: 1.15;
+	direction: ltr;
+	unicode-bidi: isolate;
 }
 
 /* #region Type scale

@@ -43,9 +43,9 @@
 		"zod": "npm:zod@^4.3.6"
 	},
 	"tasks": {
-		"$comment:dev": "Two dev modes, one flag. `dev` pins USE_MOCKS=false so the name is a guarantee rather than a hope — it serves whatever each *_BACKEND_LIVE gate in .env allows, which is the database. `dev:mock` pins it true, which overrides every gate at once and serves fixtures. The prefix wins over .env because apps/web/main.ts calls dotenv load({export:true}), and that never overwrites a variable the process already has (verified, not assumed). Deno task shell supports POSIX env prefixes on Windows too, so this needs no cross-env dependency.",
-		"dev": "USE_MOCKS=false vite --port 3000",
-		"dev:mock": "USE_MOCKS=true vite --port 3000",
+		"$comment:dev": "Two dev modes, one flag. `dev` pins USE_MOCKS=false so the name is a guarantee rather than a hope — it serves whatever each *_BACKEND_LIVE gate in .env allows, which is the database. `dev:mock` pins it true, which overrides every gate at once and serves fixtures. The prefix wins over .env because apps/web/main.ts calls dotenv load({export:true}), and that never overwrites a variable the process already has (verified, not assumed). Deno task shell supports POSIX env prefixes on Windows too, so this needs no cross-env dependency. The port is NOT pinned here: vite.config.ts reads `PORT` from the shell, then the untracked `.env.local`, then `.env`, defaulting to 3000 with strictPort, so a machine where 3000 is taken sets `PORT=4000` in `.env.local` and changes nothing for anyone else. A `--port` flag still overrides it.",
+		"dev": "USE_MOCKS=false vite",
+		"dev:mock": "USE_MOCKS=true vite",
 		"$comment:build": "One pass builds everything. The workspace members (packages/types, packages/ui, packages/backend) have NO separate compile step — they are consumed as TypeScript source through the import map, so Vite type-strips and bundles them alongside the app. `vite build` drives both Fresh environments: the client environment emits the island bundles into _fresh/client, the ssr environment emits the route chunks + _fresh/server.js. There is nothing to build before it and nothing to build after it.",
 		"build": "vite build",
 		"preview": "vite preview",

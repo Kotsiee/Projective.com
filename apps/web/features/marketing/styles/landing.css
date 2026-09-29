@@ -498,10 +498,14 @@
 	display: none;
 }
 
-.lp-carousel__track.is-dragging {
-	cursor: grabbing;
+.lp-carousel__track.is-dragging,
+.lp-carousel__track.is-gliding {
 	scroll-behavior: auto;
 	scroll-snap-type: none;
+}
+
+.lp-carousel__track.is-dragging {
+	cursor: grabbing;
 	user-select: none;
 }
 

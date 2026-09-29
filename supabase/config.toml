@@ -176,12 +176,14 @@ objects_path = "./seed-assets/public_assets"
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:3000"
-# A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
+site_url = "http://localhost:3000"
+# URLs auth providers may redirect to after authentication. Globs, so a machine whose dev server runs
+# on another port (PORT in .env.local) signs in without editing this file. The OAuth callback is built
+# from the request's own origin (routes/api/auth/oauth/google.ts), so an exact-port list would send
+# every other port back to site_url.
 additional_redirect_urls = [
-  "http://127.0.0.1:3000/verify",
-  "http://127.0.0.1:3000/reset",
-  "http://127.0.0.1:3000/api/auth/callback"
+  "http://localhost:*/**",
+  "http://127.0.0.1:*/**"
 ]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600

@@ -186,7 +186,6 @@ body {
 .evp-canvas__stage,
 .evp-canvas__code,
 .wsp-chart__card,
-.wlt-deck--expanded .wlt-deck__wrap,
 .vw-lightbox__stage {
 	--scrollbar-track: var(--surface-1);
 }

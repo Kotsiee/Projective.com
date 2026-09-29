@@ -27,9 +27,6 @@ import { messagesLaneFor } from "@web/features/messaging/core/inbox-slots.tsx";
 import { catalogueLaneFor } from "@web/features/catalogue/core/catalogue-lane-slot.tsx";
 import { catalogueFooterFor } from "@web/features/catalogue/core/catalogue-footer-slot.tsx";
 import { catalogueHeaderFor } from "@web/features/catalogue/core/catalogue-header-slot.tsx";
-import { walletLaneFor } from "@web/features/wallet/core/wallet-lane-slot.tsx";
-import { walletFooterFor } from "@web/features/wallet/core/wallet-footer-slot.tsx";
-import { walletHeaderFor } from "@web/features/wallet/core/wallet-header-slot.tsx";
 import { workspaceLaneFor } from "@web/features/workspaces/core/workspace-lane-slot.tsx";
 import { workspaceHeaderFor } from "@web/features/workspaces/core/workspace-header-slot.tsx";
 import { workspaceFooterFor } from "@web/features/workspaces/core/workspace-footer-slot.tsx";
@@ -128,7 +125,7 @@ async function middleNavFooterFor(
 		(await projectFooterFor(url, context, actor)) ??
 		(await conversationFooterFor(url, context, actor)) ??
 		(await catalogueFooterFor(url, context, actor)) ??
-		(await walletFooterFor(url, context, actor)) ?? (await workspaceFooterFor(url, actor)) ??
+		(await workspaceFooterFor(url, actor)) ??
 		filesFooterFor(url, context) ?? (await basketFooterFor(url, context, actor)) ??
 		(await calendarFooterFor(url, context, actor));
 }
@@ -147,7 +144,7 @@ async function middleNavHeaderFor(
 		(await projectHeaderFor(url, context, actor)) ??
 		(await conversationHeaderFor(url, context, actor)) ??
 		(await catalogueHeaderFor(url, context, actor)) ??
-		(await walletHeaderFor(url, context, actor)) ?? (await workspaceHeaderFor(url, actor)) ??
+		(await workspaceHeaderFor(url, actor)) ??
 		filesHeaderFor(url, context) ?? (await basketHeaderFor(url, context, actor)) ??
 		(await calendarHeaderFor(url, context, actor));
 }
@@ -184,8 +181,8 @@ async function laneFor(
 	// The seller Catalogue (`/catalogue`) hosts its navigation lane (status sections · filters · ＋ New).
 	if (url.pathname.startsWith("/catalogue")) return await catalogueLaneFor(url, context, actor);
 
-	// The Wallet (`/wallet`) hosts its finance lane (account switcher + capability-gated sub-nav).
-	if (url.pathname.startsWith("/wallet")) return await walletLaneFor(url, context, actor);
+	// The Wallet (`/wallet`) is a bare canvas: its accounts rail and actions live in the page itself.
+	if (url.pathname === "/wallet" || url.pathname.startsWith("/wallet/")) return null;
 
 	// The multi-member entity console (`/teams`, `/businesses`) hosts either the entity roster or, inside
 	// one entity, that entity's capability-filtered management rail.

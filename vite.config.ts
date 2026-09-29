@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from "npm:vite@7.2.2";
 import { fresh } from "@fresh/plugin-vite";
 import { walkSync } from "jsr:@std/fs@^1/walk";
+import { loadSync } from "jsr:@std/dotenv@^0.225.6";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -8,6 +9,24 @@ import process from "node:process";
 
 // #region Helper Functions
 const ROOT = process.cwd();
+
+/**
+ * The dev server's port: the shell's `PORT`, else `.env.local` (untracked, per machine), else
+ * `.env` (committed), else 3000. Read without exporting, so the app's own `.env` loading in
+ * `apps/web/main.ts` is unaffected. `APP_URL` defaults from the same `PORT`, which keeps auth and
+ * email links on the origin the browser actually reaches.
+ */
+function devServerPort(): number {
+	const raw = process.env.PORT ??
+		loadSync({ envPath: path.join(ROOT, ".env.local") }).PORT ??
+		loadSync({ envPath: path.join(ROOT, ".env") }).PORT;
+	if (raw === undefined) return 3000;
+	const port = Number(raw);
+	if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+		throw new Error(`PORT must be an integer between 1 and 65535, got "${raw}".`);
+	}
+	return port;
+}
 
 /**
  * Every root that may contain an `islands/` directory.
@@ -438,6 +457,10 @@ export default defineConfig(({ mode }) => {
 		],
 
 		server: {
+			port: devServerPort(),
+			// Fail loudly rather than drift to the next free port: the auth callbacks and email links
+			// are built for the configured origin, so a silent 3001 would sign people in to nowhere.
+			strictPort: true,
 			fs: {
 				allow: [ROOT],
 			},

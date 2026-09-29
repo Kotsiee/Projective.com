@@ -855,7 +855,7 @@ in this pass — the catalogue is a read+write projection over fixtures, like `d
 the root `CLAUDE.md` §8 Decision #53.
 
 **`WalletBackendService`** (`services/finance/`) is the context-scoped Wallet & Finance surface
-(`/wallet` + its deep pages + action modals) — the 14th thin/fat read and the finance domain's first
+(`/wallet` — one command-centre page and its action dialogs) — the 14th thin/fat read and the finance domain's first
 WRITE surface, over the finance Zod SSOT (`@projective/types/finance`). Thin `WalletService` (client) →
 `apiFetch` → `/api/wallet/{overview,switcher,transactions,activity,payouts,funding,methods,invoices,
 access,action}` (thin routes = HTTP + Zod + guard, NO server capability gate) → the fat service →
@@ -874,7 +874,8 @@ persistence). **No DB migration** — a read+write projection over fixtures; the
 tables + money functions (the real engine, migrations 0009/0305/0310 + 20260723090000..094000) are the
 deferred live path behind the same gate. The wallet is the **finance face of the active context**
 (Decisions #16/#17): the same route resolves a different wallet via a `?w=scope:id` switcher override.
-Full feature detail is logged in the root `CLAUDE.md` §8 Decision #55.
+Full feature detail is logged in the root `CLAUDE.md` §8 Decision #55; the single-page presentation
+that replaced the deep pages is Decision #122.
 
 ### Asset Management (`/files`) — two services, two gates
 
@@ -1902,7 +1903,8 @@ The application relies on a strict set of environment variables. The canonical s
 ```env
 # Application
 DENO_ENV=development
-APP_URL=http://localhost:8000
+APP_URL=http://localhost:3000   # defaults to http://localhost:$PORT
+PORT=3000                       # dev server port; per-machine overrides go in the untracked .env.local
 
 # Supabase (Database & Auth)
 SUPABASE_URL=XXXX-XXXX

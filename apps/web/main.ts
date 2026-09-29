@@ -9,6 +9,9 @@ import type { State } from "@web/utils/state.ts";
 // where real values arrive via the environment, not a file — is unaffected. (`examplePath` was
 // dropped from `LoadOptions` in @std/dotenv 0.221; the strict `.env.example` check it disabled no
 // longer exists, so passing it is now a type error rather than a no-op.)
+// `.env.local` is the untracked per-machine layer (`PORT`, `APP_URL`); it loads first so it wins, since
+// `export: true` never overwrites. A missing file loads as `{}`.
+await load({ envPath: ".env.local", export: true });
 await load({ export: true });
 
 /**

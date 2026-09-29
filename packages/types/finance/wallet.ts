@@ -563,9 +563,9 @@ export const TransactionPageSchema = z.object({
 export type TransactionPage = z.infer<typeof TransactionPageSchema>;
 // #endregion
 
-// #region Activity page (charts)
-/** The Activity analytics window. */
-export const ActivityRange = z.enum(["30d", "90d", "12m"]);
+// #region Activity (cash flow)
+/** The cash-flow window: a week, a month, a quarter or a year, each summed server-side. */
+export const ActivityRange = z.enum(["7d", "30d", "90d", "12m"]);
 export type ActivityRange = z.infer<typeof ActivityRange>;
 
 /** One category slice of the by-category breakdown. */

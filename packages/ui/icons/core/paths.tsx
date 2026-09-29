@@ -126,6 +126,10 @@ const DIRECTION = {
 	"arrow-right": () => <path d="M4 12h16M14 6l6 6-6 6" />,
 	"arrow-up": () => <path d="M12 20V4M6 10l6-6 6 6" />,
 	"arrow-down": () => <path d="M12 4v16M6 14l6 6 6-6" />,
+	/** Diagonal movement out — value sent on (not `external-link`, which leaves a box). */
+	"arrow-up-right": () => <path d="M7 17L17 7M8.5 7H17v8.5" />,
+	/** Diagonal movement in — the inbound partner of `arrow-up-right`. */
+	"arrow-down-left": () => <path d="M17 7L7 17M15.5 17H7V8.5" />,
 	/** A small solid disclosure marker — the tree/menu triangle, drawn rather than typed. */
 	"caret-right": () => <path d="M10 6.5l5.5 5.5-5.5 5.5z" fill="currentColor" stroke="none" />,
 	/** The open state of {@link DIRECTION["caret-right"]}. */
@@ -255,6 +259,10 @@ const CONTROLS = {
 	),
 	/** Refresh / retry — a closed cycle. */
 	"refresh": () => <path d="M20 12a8 8 0 1 1-2.4-5.7M20 4.5V10h-5.5" />,
+	/** Recurring — two arrows round one loop (not `refresh`, a single retry arc). */
+	"repeat": () => (
+		<path d="M17 3.5l3 3-3 3M4 11.5v-2a3 3 0 0 1 3-3h13M7 20.5l-3-3 3-3M20 12.5v2a3 3 0 0 1-3 3H4" />
+	),
 	/** Switch context — two paths trading places. */
 	"switch": () => <path d="M4 8.5h13M13.5 5l3.5 3.5-3.5 3.5M20 15.5H7M10.5 12L7 15.5l3.5 3.5" />,
 	/** Sign out. */

@@ -9,11 +9,9 @@ import { Icon } from "../../icons/mod.ts";
 /**
  * PaymentCard — a realistic saved-payment-card face with a real 3D flip.
  *
- * **The honesty contract this component inherits.** The app's existing wallet card
- * (`apps/web/features/wallet/components/PaymentCard.tsx`) renders no expiry, no cardholder name and
- * no back face, arguing that "an affordance implying we hold data we do not is worse than an empty
- * space". That component is not wrong and is not superseded — it renders a *payment method*
- * projection which genuinely has no expiry and no holder name.
+ * **The honesty contract this component inherits.** The wallet lists *payment methods* as plain
+ * rows with no expiry, cardholder name or back face, because "an affordance implying we hold data we
+ * do not is worse than an empty space" — a payment-method projection genuinely has neither field.
  *
  * This component renders a *saved card*, and a saved card is a different record. Stripe returns
  * `brand`, `last4`, `exp_month`, `exp_year` and a billing name, and those five fragments are stored;

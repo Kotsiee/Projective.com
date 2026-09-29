@@ -161,6 +161,16 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   `/wallet?w=team:{id}` is a page-local VIEW filter, not a context switch — the acting context changes
   only through `POST /api/context/switch`.
 
+- **The wallet is one page.** `/wallet` is the whole command centre (Decision #122). Its state
+  lives in the query string: `?w=scope:id` selects which wallet is shown (a view filter, never a
+  context switch — builder `walletHref()` in `apps/web/features/wallet/core/wallet-model.ts`),
+  `?flow=week|month|quarter|year` the cash-flow window, `?display=` the currency the figures are
+  drawn in. The seven retired deep pages answer `(dashboard)/wallet/[section].tsx` with a **308**
+  to a section of the one page, keeping `w` and `display`: `transactions` → `#transactions`,
+  `activity` → `#cash-flow`, `payouts` · `funding` · `invoices` · `access` → `#upcoming`,
+  `methods` → `#methods`. Any other `/wallet/<segment>` is a 404. The lane, header band and footer
+  rig are gone: `(dashboard)/_layout.tsx` resolves no slot for `/wallet`.
+
 - **A ticket is addressed by `?tkv=<ticket-slug>`, on whatever page the viewer is on.** A ticket
   has no route of its own: its modal (`tkv`, the View Ticket surface) is opened by a QUERY parameter
   carrying `projects.tickets.slug` — a minted `tkt-` address on the same contract as `prj-`/`stg-`

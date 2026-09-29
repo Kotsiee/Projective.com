@@ -13,9 +13,12 @@ import type { ExploreEntity } from "../types/explore-types.ts";
  *
  * Two modes, and a page may use both:
  *
- * - **Click mode** (no `item`) — a capture-phase listener on the document records any click that
- *   lands inside a card carrying `data-item-id`. Capture phase, because the card's own link handler
- *   may navigate; and `localStorage` is synchronous, so the write completes before the page unloads.
+ * - **Click mode** (no `item`) — a bubble-phase listener on the document records a click on the
+ *   stretched link of a card carrying `data-item-id`. Navigation is the click's DEFAULT action, so it
+ *   happens after bubbling ends, and `localStorage` is synchronous — the write completes before the
+ *   page unloads. Bubble phase rather than capture so that the click a drag-to-scroll track swallows
+ *   (it stops propagation in its own capture listener) never reaches here: flinging past a card is
+ *   not viewing it.
  * - **Page mode** (`item` given) — records the item this page IS, on mount. This is the truer signal:
  *   opening a listing is a stronger statement than clicking past one, and it is also the only way an
  *   item reached by a deep link or a search result ever enters the history.
@@ -43,15 +46,15 @@ export default function ViewHistory({ item }: ViewHistoryProps): JSX.Element | n
 			const id = card?.dataset.itemId;
 			const type = card?.dataset.itemType as ExploreEntity | undefined;
 			if (!id || !type) return;
-			// A click that lands on the card but not on anything that navigates (the whitespace between
-			// the title and the price) is not a view. The card's stretched link and its sub-anchors are
-			// the only things that take the reader anywhere.
-			if (!target.closest("a[href]")) return;
+			// Only the card's own stretched link opens the item. The whitespace between the title and the
+			// price navigates nowhere, and a sub-anchor — the creator's profile, a skill filter — goes
+			// somewhere ELSE, so neither is a view of this item.
+			if (!target.closest("a[href]")?.classList.contains("ex-card__link")) return;
 			recordView({ id, type });
 		};
 
-		document.addEventListener("click", onClick, true);
-		return () => document.removeEventListener("click", onClick, true);
+		document.addEventListener("click", onClick);
+		return () => document.removeEventListener("click", onClick);
 	}, [item?.id]);
 
 	return null;

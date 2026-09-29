@@ -20,6 +20,11 @@ stacked forever. The identity comes from **teal-anchored calm tech**, **asymmetr
 space**, **tonal surface layering instead of borders**, and **fluid, spring-based motion that never
 bounces.**
 
+> **Scoped exception — the `/wallet` hero (Decision #122).** At the product owner's direction the
+> wallet's balance hero is a luminous gradient with a blurred atmospheric glow. It is the only
+> gradient hero in the product, it stays teal-anchored and token-derived (`--primary` into a
+> `--tertiary`-derived indigo — no literal hue), and it licenses no other surface.
+
 [toc]
 
 ---
@@ -407,6 +412,7 @@ independently of language, and the component layer is expected to mirror **for f
 | **Prohibition**     | **No hardcoded physical directions** in component CSS (`left`/`right`, `margin-left`, `text-align: left`, `::before` pinned to a physical edge). Each is a migration target — convert to its logical equivalent. **No app-side per-component direction overrides** (matching the responsive rule, §C.3).                                                                |
 | **Icons/glyphs**    | Direction-agnostic glyphs are untouched; **directional** glyphs (back/forward carets, progress arrows) mirror under RtL via `scale-x` on a `:dir(rtl)` / `[dir="rtl"]` scope, never a swapped asset.                                                                                                                                                                    |
 | **Motion**          | Slide/enter transforms are expressed on the inline axis so they honour direction; reduced-motion (§A.5) still jumps to final.                                                                                                                                                                                                                                           |
+| **Figures**         | A money figure, a card number or any other digit run is **isolated left-to-right** (`direction: ltr; unicode-bidi: isolate`) so its sign, symbol, major and minor parts keep their order in both directions — only its position in the line mirrors. Without it a split figure's flex parts reverse and the bidi algorithm reorders the digits (`£3,414.25` renders `25.3,414£`). `MoneyView` and `PaymentCard` carry this; a hand-built figure must too. |
 
 > This is the **documentation-only contract** for the 2026-07-23 Wallet & Finance / i18n foundation
 > — the DB column + preference exist; the CSS/UI mirroring pass is later work. Architecture side:
@@ -680,6 +686,11 @@ containing block for the overlays it renders.
 
 > **Merge gate.** `backdrop-filter` outside those three cases is not mergeable. Inside them, it must
 > sit on a pseudo-element underlay.
+
+> **Scoped exception — the `/wallet` action pills (Decision #122).** The hero's glass pills
+> (`.wlt-pill`) blur the painted gradient beneath them, which is none of the three cases. They ship
+> at the product owner's direction, on a `::before` underlay, scoped to `.wlt-hero`; the exception
+> does not extend to any other control or surface.
 ### B.5 Fluid Motion Primitives
 
 Motion is **purposeful, fluid, and never bouncy** (reconciling the product spec's "avoid Cascading
@@ -821,6 +832,12 @@ near-synonym from being reused: **`history`** is a clock with the counter-clockw
 what separates an ARCHIVE from `clock` (a time) and `refresh` (a repeat); **`panel-right`** is a
 frame with its trailing column divided, so the glyph says WHERE the companion panel appears rather
 than merely that something toggles — which a chevron cannot.
+
+Three more arrived with the wallet rebuild (Decision #122) for the same reason. **`arrow-up-right`**
+and **`arrow-down-left`** are value leaving and value arriving — diagonal movement with no box,
+because `external-link` (an arrow leaving a box) means navigation, not money. **`repeat`** is two
+arrows round one loop — something that happens again on a schedule — where `refresh` is a single
+arc: do it again, now.
 
 **B.7.2 One grid, one weight.** `viewBox="0 0 24 24"`, artwork inset ≥2 units per side,
 `fill="none"`, `stroke="currentColor"`, round cap and join. `stroke-width` is **not** authored on

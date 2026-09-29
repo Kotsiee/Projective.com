@@ -1,33 +1,6 @@
-/*
- * wallet.css — the Wallet surface's stylesheet BARREL, and nothing else.
- *
- * Token-only, strict BEM (root CLAUDE.md §3 / DESIGN_SYSTEM.md §B). Non-interactive content is
- * separated by spacing + tonal tints + single hairlines (§B.4); full borders only on interactive
- * controls. CSS LOGICAL PROPERTIES ONLY (inline-size, padding-inline, margin-inline, inset-inline,
- * border-*-start) so the whole surface mirrors cleanly under `dir="rtl"` — no physical left/right
- * anywhere.
- *
- * Import order is load-bearing: the local token layer must resolve before any rule reads a
- * `--wlt-*` custom property.
- *
- * Note for anyone diffing this against its history: this file previously carried ~1,760 lines of
- * rules, including `max-inline-size: 1100px; margin-inline: auto` on both `.wallet-overview` and
- * `.wallet-page`. That centred column is the single biggest thing this redesign removes — on this
- * surface a money figure, a chart and a table always get the full content region. The only two
- * max-widths that survive anywhere are `.wlt-prose` (running text) and `.wlt-formfield` (form
- * fields), both declared in `wallet-tokens.css`.
- */
-
 @import "./wallet-tokens.css";
-@import "./wallet-bands.css";
-@import "./wallet-money.css";
 @import "./wallet-hero.css";
-@import "./wallet-card.css";
-@import "./wallet-idcard.css";
-@import "./wallet-chrome.css";
-@import "./wallet-intel.css";
-@import "./wallet-standing.css";
-@import "./wallet-charts.css";
-@import "./wallet-ledger.css";
-@import "./wallet-overlays.css";
-@import "./wallet-states.css";
+@import "./wallet-sheet.css";
+@import "./wallet-accounts.css";
+@import "./wallet-flow.css";
+@import "./wallet-dialogs.css";

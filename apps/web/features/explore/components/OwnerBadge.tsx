@@ -6,11 +6,15 @@ import type { ExploreOwner } from "../types/explore-types.ts";
 
 /**
  * OwnerBadge — the owner attribution present on every explore card: the individual's, team's, or
- * business's avatar/logo + name (+ `@handle`). Profile navigation is bound EXCLUSIVELY to the avatar
- * and the `@handle` — each is its own anchor to the owner's profile — while the display name is inert
- * text (clicking the name never routes). This also keeps the sub-anchors independently clickable and
- * middle-click safe when the badge sits inside a card's stretched link (they stack above it — see
- * explore.css). The verified crest is the shared {@link VerifiedBadge} (tooltip-driven).
+ * business's avatar/logo + name (+ `@handle`). Every anchor is a real `<a href>` to the owner's
+ * profile, stacked above the card's stretched link (see explore.css) so it stays independently
+ * clickable, keyboard-reachable and middle-click safe. The verified crest is the shared
+ * {@link VerifiedBadge} (tooltip-driven) and always sits OUTSIDE an anchor, since it carries its own
+ * tooltip trigger.
+ *
+ * The `creator` variant is ONE anchor spanning the avatar and the display name: two links to one
+ * destination side by side would be two tab stops announcing the same thing. The avatar is hidden
+ * from assistive tech inside it, so the link's accessible name is the visible name alone.
  */
 export function OwnerBadge(
 	{ owner, size = "sm", variant = "full" }: {
@@ -19,8 +23,7 @@ export function OwnerBadge(
 		/**
 		 * `mini` = the compact thumbnail owner-row: a tiny circular avatar + `@handle` only, inline.
 		 * `creator` = the service/product card's creator row: a small avatar + the DISPLAY NAME, so the
-		 * card names a person rather than a handle. Same routing convention as the others — the avatar
-		 * is the anchor, the name is inert text.
+		 * card names a person rather than a handle. The avatar and the name are one anchor together.
 		 */
 		variant?: "full" | "mini" | "creator";
 	},
@@ -47,21 +50,23 @@ export function OwnerBadge(
 	if (variant === "creator") {
 		return (
 			<span class="ex-owner ex-owner--creator">
-				<a class="ex-owner__avatar-link" href={href} aria-label={`${owner.name} — view profile`}>
-					<Avatar
-						image={owner.avatar}
-						placeholder={owner.avatarPlaceholder}
-						label={owner.name}
-						alt=""
-						size="sm"
-						shape={owner.kind === "business" ? "square" : "circle"}
-						class="ex-owner__avatar"
-					/>
+				<a class="ex-owner__link" href={href}>
+					<span class="ex-owner__avatar-wrap" aria-hidden="true">
+						<Avatar
+							image={owner.avatar}
+							placeholder={owner.avatarPlaceholder}
+							label={owner.name}
+							alt=""
+							size="sm"
+							shape={owner.kind === "business" ? "square" : "circle"}
+							class="ex-owner__avatar"
+						/>
+					</span>
+					<span class="ex-owner__name">
+						<span class="ex-owner__nametext">{owner.name}</span>
+					</span>
 				</a>
-				<span class="ex-owner__name">
-					<span class="ex-owner__nametext">{owner.name}</span>
-					{owner.verified && <VerifiedBadge size="sm" />}
-				</span>
+				{owner.verified && <VerifiedBadge size="sm" />}
 			</span>
 		);
 	}

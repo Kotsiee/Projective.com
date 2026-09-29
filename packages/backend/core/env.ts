@@ -163,7 +163,7 @@ export interface ServerEnv {
 export function serverEnv(): ServerEnv {
 	return {
 		appEnv: firstEnv("DENO_ENV") ?? "development",
-		appUrl: firstEnv("APP_URL") ?? "http://localhost:3000",
+		appUrl: firstEnv("APP_URL") ?? `http://localhost:${firstEnv("PORT") ?? "3000"}`,
 		supabaseUrl: firstEnv("SUPABASE_URL"),
 		supabasePublicUrl: firstEnv("SUPABASE_PUBLIC_URL", "SUPABASE_URL"),
 		supabaseAnonKey: firstEnv("SUPABASE_ANON_KEY"),

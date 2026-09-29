@@ -733,8 +733,7 @@ async function businessExtras(
 		});
 	}
 	const invoices = (invoicesRes.data ?? []) as { total_cents: number; currency: string }[];
-	let due = 0;
-	for (const inv of invoices) due += convert(ctx, Number(inv.total_cents) || 0, inv.currency);
+	const due = sumOf(ctx.money, invoices.map((inv) => ({ minor: Number(inv.total_cents) || 0, currency: inv.currency })));
 
 	return {
 		burnDown: {
@@ -747,7 +746,7 @@ async function businessExtras(
 		},
 		caps,
 		invoicesDue: invoices.length,
-		invoicesDueAmount: invoices.length > 0 ? ctx.money.derived(due) : null,
+		invoicesDueAmount: invoices.length > 0 ? due : null,
 		fundable,
 	};
 }
@@ -791,13 +790,15 @@ export async function overviewOf(ctx: WalletContext): Promise<WalletOverview> {
 	const stages = await stageFacts(ctx, [...liveEscrows, ...escrows].map((e) => e.project_stage_id));
 	const incoming: IncomingItem[] = [];
 	if (account.scope !== "business") {
-		for (const e of liveEscrows.slice(0, 8)) {
-			const facts = stages.get(e.project_stage_id);
+		const byStage = new Map<string, EscrowRow[]>();
+		for (const e of liveEscrows) byStage.set(e.project_stage_id, [...(byStage.get(e.project_stage_id) ?? []), e]);
+		for (const [stageId, group] of [...byStage].slice(0, 8)) {
+			const facts = stages.get(stageId);
 			incoming.push({
-				id: `escrow-${e.id}`,
+				id: `escrow-${stageId}`,
 				kind: "escrow_funded",
-				label: clip(facts ? `Escrow funded · ${facts.projectTitle}` : "Escrow funded", 160),
-				amount: money(ctx, escrowValue(account, e), e.currency),
+				label: clip(facts ? `${facts.projectTitle} · ${facts.stageName}` : "Escrow funded", 160),
+				amount: sumOf(ctx.money, group.map((e) => ({ minor: escrowValue(account, e), currency: e.currency }))),
 				state: "locked",
 				clearingLabel: "On active stage",
 				clearingAt: null,
@@ -989,8 +990,8 @@ export async function ledgerCsvOf(ctx: WalletContext): Promise<{ filename: strin
 }
 
 export async function activityOf(ctx: WalletContext, range: ActivityRange): Promise<ActivityView> {
-	const days = range === "30d" ? 30 : range === "90d" ? 90 : 365;
-	const buckets = range === "30d" ? 30 : range === "90d" ? 13 : 12;
+	const days = range === "7d" ? 7 : range === "30d" ? 30 : range === "90d" ? 90 : 365;
+	const buckets = range === "7d" ? 7 : range === "30d" ? 30 : range === "90d" ? 13 : 12;
 	const since = new Date(Date.now() - days * DAY).toISOString();
 	const accounts = ctx.target === "aggregate" ? ctx.accounts : [ctx.target];
 	const rows = await readLedger(ctx, accounts.flatMap(walletIds), { since, limit: LEDGER_WINDOW });

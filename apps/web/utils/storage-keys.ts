@@ -145,7 +145,7 @@ export const LocalKeys = {
 	 * {@link MIDDLE_LANE_WIDTH}.
 	 *
 	 * That one key is shared by every laned surface in the product, so a drag on `/projects` moves the
-	 * lane on `/wallet`, `/messages` and `/view` alike. The entity view's lane is not navigation, it is
+	 * lane on `/messages`, `/files` and `/view` alike. The entity view's lane is not navigation, it is
 	 * the transaction (DESIGN_SYSTEM §D.7), and it needs more room than a channel list — so it ships a
 	 * wider default. Without its own key that default would be silently discarded for any viewer who
 	 * has ever dragged any other lane, because `useSplitter` restores the stored width in preference to
@@ -226,16 +226,6 @@ export const LocalKeys = {
 	 */
 	CATALOGUE_ZOOM: "pj.local.catalogue.zoom",
 	/**
-	 * The Wallet Transactions ledger zoom-driven view density (a `0`–`1` float) — the same list⇄grid
-	 * model as the File Explorer, shared cross-island (the footer View Control Rig ↔ the ledger body).
-	 * Its own key so the ledger density is independent of the file/catalogue density.
-	 */
-	WALLET_ZOOM: "pj.local.wallet.zoom",
-	/** Persisted Wallet Transactions table column widths — a single JSON `Record<columnKey, px>` map. */
-	WALLET_COLUMNS: "pj.local.wallet.columns",
-	/** The Wallet lane's last-selected wallet param (`personal` | `team:{id}` | …) — restored across reloads. */
-	WALLET_ACTIVE: "pj.local.wallet.active",
-	/**
 	 * The workspace console's zoom-driven view density (a `0`–`1` float) — the same list⇄grid model as
 	 * the File Explorer, shared cross-island (the footer rig ↔ the roster / people body). One key across
 	 * `/teams` and `/businesses`: they are one surface parameterised by kind, so a reader who set a
@@ -314,7 +304,7 @@ export const LocalKeys = {
 	/**
 	 * The `/messages` body inbox row density — `"comfortable"` (default, two-line rows with the
 	 * engagement context) or `"compact"`. Owned by the footer band's density control, read by the body.
-	 * Mirrors the Files/Wallet zoom keys: the footer band owns density, the body reads it.
+	 * Mirrors the Files zoom key: the footer band owns density, the body reads it.
 	 */
 	MESSAGES_DENSITY: "pj.local.messages.density",
 	/**

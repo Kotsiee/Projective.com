@@ -1,0 +1,163 @@
+.wlt-flow__periods {
+	flex: none;
+}
+
+.wlt-flow__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.wlt-flow__body[data-loading="true"] {
+	opacity: 0.5;
+}
+
+.wlt-flow__totals {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3) var(--space-6);
+	margin: 0;
+}
+
+.wlt-flow__total {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.wlt-flow__term {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.wlt-flow__figure {
+	margin: 0;
+}
+
+.wlt-flow__figure .ui-money__amount {
+	font-weight: var(--fw-medium);
+}
+
+.wlt-key {
+	flex: none;
+	inline-size: var(--space-3);
+	block-size: var(--space-2);
+	border-radius: var(--radius-xs);
+}
+
+.wlt-key--in {
+	background: var(--wlt-chart-in);
+}
+
+.wlt-key--out {
+	background: var(--wlt-chart-out);
+}
+
+.wlt-chart {
+	margin: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.wlt-chart__plot {
+	position: relative;
+	display: flex;
+	align-items: stretch;
+	gap: var(--space-px);
+	block-size: var(--chart-h-sm);
+	border-radius: var(--radius-base);
+	cursor: default;
+}
+
+.wlt-chart__plot::after {
+	content: "";
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: 50%;
+	border-block-start: var(--hairline);
+	pointer-events: none;
+}
+
+.wlt-chart__col {
+	flex: 1 1 0;
+	min-inline-size: 0;
+	display: grid;
+	grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+	border-radius: var(--radius-xs);
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.wlt-chart__col[data-active="true"] {
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+}
+
+.wlt-chart__up,
+.wlt-chart__down {
+	display: flex;
+	justify-content: center;
+	min-block-size: 0;
+}
+
+.wlt-chart__up {
+	align-items: flex-end;
+}
+
+.wlt-chart__down {
+	align-items: flex-start;
+}
+
+.wlt-chart__bar {
+	inline-size: min(100%, 1.5rem);
+	block-size: max(calc(var(--h) * 100%), var(--hmin));
+}
+
+.wlt-chart__bar--in {
+	background: var(--wlt-chart-in);
+	border-start-start-radius: var(--radius-xs);
+	border-start-end-radius: var(--radius-xs);
+}
+
+.wlt-chart__bar--out {
+	background: var(--wlt-chart-out);
+	border-end-start-radius: var(--radius-xs);
+	border-end-end-radius: var(--radius-xs);
+}
+
+.wlt-chart__scale {
+	display: flex;
+	justify-content: space-between;
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.wlt-chart__readout {
+	margin: 0;
+	min-block-size: 1.5rem;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1) var(--space-4);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.wlt-chart__when {
+	color: var(--on-surface);
+	font-weight: var(--fw-medium);
+}
+
+.wlt-chart__pair {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.wlt-chart__pair .ui-money {
+	color: var(--on-surface);
+}
