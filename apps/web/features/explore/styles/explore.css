@@ -2316,8 +2316,8 @@
 	background: var(--primary);
 	color: var(--on-primary);
 	padding: clamp(1.25rem, 2vw, 1.75rem) clamp(1.25rem, 4vw, 3rem);
-	margin: var(--space-4) var(--ex-pad-x) 0;
-	border-radius: var(--radius-2xl);
+	/* margin: var(--space-4); */
+	border-radius: 0 0 var(--radius-2xl) var(--radius-2xl);
 }
 
 .ex-hero__art {

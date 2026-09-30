@@ -125,29 +125,31 @@ function FlowChart(
 					)
 					: <span class="wlt-chart__hint">Over {periodPhrase(period)}</span>}
 			</p>
-			<table class="ui-visually-hidden">
-				<caption>Money in and out over {periodPhrase(period)}</caption>
-				<thead>
-					<tr>
-						<th scope="col">Period</th>
-						<th scope="col">In</th>
-						<th scope="col">Out</th>
-					</tr>
-				</thead>
-				<tbody>
-					{points.map((p, i) => (
-						<tr key={`${p.label}-${i}`}>
-							<th scope="row">{bucketName(period, p.label)}</th>
-							<td>
-								<MoneyView minor={p.inMinor} currency={currency} size="micro" />
-							</td>
-							<td>
-								<MoneyView minor={p.outMinor} currency={currency} size="micro" />
-							</td>
+			<div class="ui-visually-hidden">
+				<table>
+					<caption>Money in and out over {periodPhrase(period)}</caption>
+					<thead>
+						<tr>
+							<th scope="col">Period</th>
+							<th scope="col">In</th>
+							<th scope="col">Out</th>
 						</tr>
-					))}
-				</tbody>
-			</table>
+					</thead>
+					<tbody>
+						{points.map((p, i) => (
+							<tr key={`${p.label}-${i}`}>
+								<th scope="row">{bucketName(period, p.label)}</th>
+								<td>
+									<MoneyView minor={p.inMinor} currency={currency} size="micro" />
+								</td>
+								<td>
+									<MoneyView minor={p.outMinor} currency={currency} size="micro" />
+								</td>
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
 		</figure>
 	);
 }
