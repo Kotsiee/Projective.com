@@ -361,6 +361,55 @@ function normalizeModuleIds(): Plugin {
 	};
 }
 
+/** A `//# sourceMappingURL=…` (or legacy `//@`) comment on a line of its own. */
+const SOURCE_MAPPING_URL_RE = /^[ \t]*\/\/[#@][ \t]*sourceMappingURL=.*$/gm;
+
+/**
+ * Serves third-party (`node_modules`) scripts in development WITHOUT their published source maps.
+ *
+ * When no plugin claims a module, Vite's dev server reads it from disk and follows its
+ * `sourceMappingURL` comment, then tries to inline every file the map lists. Many packages publish
+ * maps that point at sources they never ship — `stripe` maps each `esm/*.js` to `../src/*.ts` — so
+ * the dev server logs "Sourcemap for … points to missing source files" once per module, dozens of
+ * lines for Stripe alone. `build.sourcemap` cannot silence it: the warning comes from the DEV
+ * transform pipeline, not from Rollup, and there is no Vite option to skip vendor input maps.
+ *
+ * Claiming the load for vendor files and returning the code with the comment stripped and
+ * `map: null` removes the lookup at its source. Deliberately narrow:
+ *  - `apply: "serve"` — `vite build` never reads input maps this way and keeps its own config.
+ *  - only real files under a `node_modules` directory; first-party code (`apps/`, `packages/`)
+ *    keeps Vite's normal loading, so its source maps are untouched.
+ *  - only plain script extensions; CSS, JSON and assets fall through to Vite as before.
+ *
+ * The cost is that a vendor frame in a dev stack trace points at the published JS rather than the
+ * package's original TypeScript — which, for these packages, was never available anyway.
+ */
+function stripVendorSourcemaps(): Plugin {
+	return {
+		name: "projective:strip-vendor-sourcemaps",
+		apply: "serve",
+		enforce: "pre",
+		async load(id) {
+			if (id.startsWith("\0")) return null;
+
+			const file = id.split("?", 1)[0];
+			const normalised = file.replaceAll("\\", "/");
+			if (!normalised.includes("/node_modules/")) return null;
+			if (!/\.(?:m|c)?js$/.test(normalised)) return null;
+
+			let code: string;
+			try {
+				code = await fs.promises.readFile(file, "utf-8");
+			} catch {
+				// Let Vite produce its usual "Failed to load url" error for a genuinely missing file.
+				return null;
+			}
+
+			return { code: code.replace(SOURCE_MAPPING_URL_RE, ""), map: null };
+		},
+	};
+}
+
 /**
  * Works around a duplicate-rename crash in `@fresh/plugin-vite` (1.1.2,
  * `src/plugins/server_entry.ts` → `writeBundle`).
@@ -449,6 +498,7 @@ export default defineConfig(({ mode }) => {
 		plugins: [
 			pinDenoRegistrySpecifiers(),
 			normalizeModuleIds(),
+			stripVendorSourcemaps(),
 			dedupeFreshStaticAssets(),
 			flattenManifestCss(),
 			fresh({
