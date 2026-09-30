@@ -6,7 +6,7 @@ import { toActivityRange, walletQueryFrom } from "@features/wallet/core/wallet-m
 import { WalletBackendService } from "@server/services/finance/WalletBackendService.ts";
 
 /**
- * `GET /api/wallet/activity?range=30d|90d|12m` — thin route: the Activity charts projection (in-vs-out,
+ * `GET /api/wallet/activity?range=7d|30d|90d|180d|12m|5y|all` — thin route: the Activity charts projection (in-vs-out,
  * by-category, by-project, role-specific series) for the active wallet, read as the signed-in viewer.
  */
 export const handler = define.handlers({

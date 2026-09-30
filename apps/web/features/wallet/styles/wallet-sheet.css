@@ -1,3 +1,16 @@
+/*
+ * #region The sheet
+ *
+ * The dashboard sheet slides up over the pinned hero. Its top edge is TRANSLUCENT for its first
+ * `--wlt-sheet-fade`: the sheet's own background starts only below that band, and a `::before` underlay
+ * fills the band with a veil that runs from `--wlt-sheet-veil` to opaque `--surface`, blurring the
+ * gradient beneath it. So the hero's light reads through the sheet's rim and nothing past it — by the
+ * time any content sits on the sheet, the canvas under it is solid.
+ *
+ * The blur is on the underlay, never on the sheet itself: a `backdrop-filter` on the sheet would make
+ * it the containing block for every fixed-position descendant it renders (§B.4.3), and the underlay
+ * ends in a fully opaque stop, so its blur has no edge to show.
+ */
 .wlt-sheet {
 	position: relative;
 	z-index: 1;
@@ -8,9 +21,212 @@
 	padding-inline: var(--wlt-pad-x);
 	border-start-start-radius: var(--radius-container-xl);
 	border-start-end-radius: var(--radius-container-xl);
-	background: var(--surface);
+	/* The opaque body starts a step INSIDE the rim, under the rim's own opaque end: two hard stops at the
+	   same offset leave an anti-aliased, half-transparent pixel row between them, which read as a dark
+	   hairline across the sheet with the hero behind it. */
+	background: linear-gradient(
+		to bottom,
+		transparent calc(var(--wlt-sheet-fade) - var(--space-1)),
+		var(--surface) calc(var(--wlt-sheet-fade) - var(--space-1))
+	);
 	box-shadow: var(--elevation-low-up), var(--wlt-sheet-shadow);
 }
+
+.wlt-sheet::before {
+	content: "";
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline: 0;
+	z-index: -1;
+	block-size: var(--wlt-sheet-fade);
+	border-start-start-radius: inherit;
+	border-start-end-radius: inherit;
+	background: linear-gradient(to bottom, var(--wlt-sheet-veil), var(--surface));
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	pointer-events: none;
+}
+
+/* Without backdrop filtering the veil would be a see-through strip with sharp gradient detail behind
+   it; an opaque rim is the honest fallback. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+	.wlt-sheet::before {
+		background: var(--surface);
+	}
+}
+/* #endregion */
+
+/* #region Every page but the overview: one reading column */
+.wlt-sheet__page {
+	inline-size: min(100%, 56rem);
+	margin-inline: auto;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-7);
+}
+
+.wlt-statements--page {
+	gap: var(--space-7);
+}
+/* #endregion */
+
+/*
+ * #region What the lane carries, moved onto the sheet on a phone
+ *
+ * Below the lane's breakpoint the shell removes the lane, so the page links and the verification gate
+ * move to the top of the sheet. Above it this block is not rendered at all — the lane has them — so a
+ * duty moves and is never drawn twice.
+ */
+.wlt-sheet__lanemoved {
+	display: none;
+}
+
+@media (max-width: 767px) {
+	.wlt-sheet__lanemoved {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-4);
+		inline-size: min(100%, 76rem);
+		margin-inline: auto;
+		margin-block-end: var(--space-6);
+	}
+}
+
+.wlt-pagestrip__list {
+	list-style: none;
+	margin: 0;
+	padding: var(--space-1);
+	display: flex;
+	gap: var(--space-1);
+	overflow-x: auto;
+	border-radius: var(--radius-full);
+	background: var(--surface-1);
+	scrollbar-width: none;
+}
+
+.wlt-pagestrip__list::-webkit-scrollbar {
+	display: none;
+}
+
+.wlt-pagestrip__list > li {
+	flex: 1 0 auto;
+}
+
+.wlt-pagestrip__link {
+	display: grid;
+	place-items: center;
+	min-block-size: 2.25rem;
+	padding-inline: var(--space-3);
+	border-radius: var(--radius-full);
+	color: var(--on-surface-variant);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	text-decoration: none;
+	white-space: nowrap;
+	transform: scale(1);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.wlt-pagestrip__link:hover {
+	color: var(--on-surface);
+}
+
+.wlt-pagestrip__link[aria-current="page"] {
+	background: var(--surface);
+	box-shadow: var(--elevation-low);
+	color: var(--on-surface);
+	font-weight: var(--fw-semibold);
+}
+
+.wlt-pagestrip__link:active {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-press);
+}
+/* #endregion */
+
+/* #region Analytics breakdowns */
+.wlt-breakdown__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.wlt-breakdown__row {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto auto;
+	grid-template-areas:
+		"mark label share amount"
+		"mark track track track";
+	align-items: center;
+	column-gap: var(--space-3);
+	row-gap: var(--space-2);
+	padding-block: var(--space-3);
+	border-block-end: 1px solid var(--hairline-color);
+}
+
+.wlt-breakdown__row:last-child {
+	border-block-end: 0;
+}
+
+.wlt-breakdown__row--plain {
+	grid-template-columns: minmax(0, 1fr) auto;
+	grid-template-areas: "label amount";
+}
+
+.wlt-breakdown__mark {
+	grid-area: mark;
+	display: grid;
+	place-items: center;
+	inline-size: 2.25rem;
+	block-size: 2.25rem;
+	border-radius: 50%;
+	background: var(--surface-1);
+	color: var(--on-surface-variant);
+}
+
+.wlt-breakdown__label {
+	grid-area: label;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--text-md);
+	color: var(--on-surface);
+}
+
+.wlt-breakdown__share {
+	grid-area: share;
+	font-size: var(--text-sm);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.wlt-breakdown__amount {
+	grid-area: amount;
+	justify-self: end;
+}
+
+.wlt-breakdown__track {
+	grid-area: track;
+	block-size: var(--space-1);
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+	overflow: hidden;
+}
+
+.wlt-breakdown__fill {
+	display: block;
+	block-size: 100%;
+	inline-size: calc(var(--share) * 100%);
+	border-radius: inherit;
+	background: var(--primary);
+}
+/* #endregion */
 
 .wlt-sheet__grid {
 	inline-size: min(100%, 76rem);
@@ -40,7 +256,14 @@
 	flex-direction: column;
 	gap: var(--space-3);
 	min-inline-size: 0;
-	scroll-margin-block-start: calc(var(--shell-topbar-h) + var(--space-5));
+	/* Clears the pinned top bar AND the pinned range ruler, so a jump lands the heading in view. */
+	scroll-margin-block-start: calc(var(--shell-topbar-h) + var(--wlt-tool-gap) + var(--wlt-tool-h) +
+		var(--space-4));
+}
+
+/* A heading focused by an in-page jump shows no ring (it is not a control); the scroll is the cue. */
+.wlt-section__title:focus {
+	outline: none;
 }
 
 .wlt-section__head {
@@ -415,12 +638,14 @@
 
 @media (prefers-reduced-motion: reduce) {
 	.wlt-txn:active,
+	.wlt-pagestrip__link:active,
 	.wlt-iconbtn:active:not(:disabled) {
 		transform: none !important;
 	}
 }
 
 :root[data-motion="reduced"] .wlt-txn:active,
+:root[data-motion="reduced"] .wlt-pagestrip__link:active,
 :root[data-motion="reduced"] .wlt-iconbtn:active:not(:disabled) {
 	transform: none !important;
 }

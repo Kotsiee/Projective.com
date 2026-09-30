@@ -33,6 +33,17 @@ export const minorUnitsNonNeg = z.number().int().min(0);
 export const minorUnitsPositive = z.number().int().positive();
 /** Basis points, 0–10000 (0–100%). */
 export const basisPoints = z.number().int().min(0).max(10000);
+
+/**
+ * The five-value OWNER axis every owner-scoped finance table CHECKs — `payment_methods`,
+ * `payout_schedules`, `statements`, `payout_accounts` (`CHECK (owner_type IN (...))`). It is the wallet
+ * owner vocabulary minus the reserved `system`, which only a hidden system wallet may carry: a row of
+ * these tables is always somebody's, so a Zod enum that admitted `system` would accept a payload the
+ * database then refuses. Declared here, in the leaf module, so any finance file can reuse it without
+ * an import cycle.
+ */
+export const FinanceOwnerType = z.enum(["user", "freelancer", "team", "business", "organisation"]);
+export type FinanceOwnerType = z.infer<typeof FinanceOwnerType>;
 // #endregion
 
 // #region Fund states (the three-state balance projection + Dispute Lockbox)

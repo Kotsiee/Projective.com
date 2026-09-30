@@ -70,16 +70,39 @@
 	z-index: var(--z-sticky);
 }
 
+/*
+ * The inverted corner where the rail meets the top bar — the rounded top-inline-start corner of the
+ * content region, drawn by the RAIL rather than by the region. That is what lets a page paint up
+ * behind the glass top bar (the `/wallet` hero) and still show the region's curve at the bar's lower
+ * edge: the rail is pinned and sits above the content, so its corner piece covers whatever runs beneath.
+ *
+ * Drawn as a radial gradient — a transparent disc centred on the piece's far corner, `--surface-2`
+ * beyond it — rather than `corner-shape: scoop`, which only one engine implements; everywhere else a
+ * scoop falls back to an ordinary convex corner and the piece paints a solid block over the content.
+ * Logical placement and a mirrored disc keep it on the region's side of the rail under `dir="rtl"`, and
+ * it takes no pointer events, because the corner it covers is content the reader may be clicking.
+ */
 .ui-app-shell__sidebar::after {
-	content: '';
-	height: var(--radius-container-xl);
-	width: var(--radius-container-xl);
-	background: var(--surface-2);
+	content: "";
 	position: absolute;
-	left: calc(100% - 1px);
-	top: -1px;
-	border-end-end-radius: var(--radius-container-xl);
-	corner-shape: scoop;
+	inset-block-start: -1px;
+	inset-inline-start: calc(100% - 1px);
+	inline-size: var(--radius-container-xl);
+	block-size: var(--radius-container-xl);
+	background: radial-gradient(
+		circle at 100% 100%,
+		transparent calc(var(--radius-container-xl) - 0.5px),
+		var(--surface-2) var(--radius-container-xl)
+	);
+	pointer-events: none;
+}
+
+[dir="rtl"] .ui-app-shell__sidebar::after {
+	background: radial-gradient(
+		circle at 0% 100%,
+		transparent calc(var(--radius-container-xl) - 0.5px),
+		var(--surface-2) var(--radius-container-xl)
+	);
 }
 
 /*
@@ -177,6 +200,12 @@
    beneath the sticky glass header; only the pinned rail is dropped here. */
 @media (max-width: 767px) {
 	.ui-app-shell {
+		/* No rail is rendered, so nothing sits inline-start of the content: every frame, fill and seam
+		   that offsets itself by the rail's width must offset by zero. Left at the desktop value, the
+		   fixed frame fills and the outer "L" started 64px in, drawing a hairline down the page and a
+		   bare strip beside it on every framed route at phone width (Decision #108(e)). Zeroed HERE,
+		   on the shell, because the rail's width is the shell's number — each frame only adds to it. */
+		--shell-sidebar-cur-w: 0px;
 		grid-template-columns: 1fr;
 		grid-template-areas:
 			"topbar"

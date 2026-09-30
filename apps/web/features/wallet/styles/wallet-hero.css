@@ -7,16 +7,44 @@
 	color: var(--on-surface);
 }
 
+/*
+ * #region The hero behind the chrome
+ *
+ * The hero's gradient runs up behind the glass top bar, so the chrome reads as glass over the wallet's
+ * own light rather than as a grey strip above it. The mechanism is a negative
+ * block margin of exactly the chrome's height (`--wlt-hero-lift`) paired with the same amount of extra
+ * top padding: the painted box reaches the viewport top while every control inside it still starts
+ * below the chrome and stays clickable. It remains an ordinary in-flow box in the window's own scroll.
+ *
+ * Two shell frames stand between the hero and the chrome, and both clip their overflow — which would
+ * cut the pulled-up gradient off at the canvas's top edge. They are released on the BLOCK axis only,
+ * and only while they hold the wallet: the inline axis keeps its clip, because a wide rig pushing past
+ * the frame is exactly what that clip exists to contain (middle-nav.css).
+ */
+.ui-shell-frame:has(.wlt-hero) {
+	overflow-x: clip;
+	overflow-y: visible;
+}
+
+/*
+ * How far the hero reaches up behind the pinned chrome — the top bar; the wallet registers no header
+ * band. Its content then starts below a reserved top row, the row the pinned range ruler and the corner
+ * tools share (wallet-tools.css), so neither ever sits on the balance.
+ */
 .wlt-hero {
+	--wlt-hero-lift: var(--shell-topbar-h);
+	--wlt-hero-toprow: calc(var(--wlt-tool-gap) + var(--wlt-tool-h) + var(--space-5));
 	position: relative;
 	z-index: 0;
-	min-block-size: var(--wlt-hero-h);
+	container: wlt-herobox / inline-size;
+	min-block-size: calc(var(--wlt-hero-h) + var(--wlt-hero-lift));
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
-	padding-block: var(--space-6) calc(var(--wlt-sheet-overlap) + var(--space-6));
+	margin-block-start: calc(-1 * var(--wlt-hero-lift));
+	padding-block: calc(var(--wlt-hero-lift) + var(--wlt-hero-toprow)) calc(var(--wlt-sheet-overlap) +
+		var(--space-6));
 	padding-inline: var(--wlt-pad-x);
-	border-start-start-radius: var(--frame-radius, 0);
 	overflow: clip;
 	color: var(--wlt-hero-ink);
 
@@ -33,40 +61,18 @@
 		var(--wlt-aurora-base);
 }
 
+/*
+ * Pinned from the viewport top — its box now starts there — while the sheet slides over it. Only where
+ * the viewport is tall enough for the whole hero: on a shorter one a pinned hero would hold its own
+ * lower half, and the actions in it, permanently out of reach.
+ */
 @media (min-height: 36rem) {
 	.wlt-hero {
 		position: sticky;
-		inset-block-start: var(--shell-topbar-h);
+		inset-block-start: 0;
 	}
 }
-
-.wlt-hero__atmos {
-	position: absolute;
-	inset: 0;
-	pointer-events: none;
-}
-
-.wlt-hero__glow {
-	position: absolute;
-	border-radius: 50%;
-	filter: blur(var(--wlt-glow-blur));
-}
-
-.wlt-hero__glow--teal {
-	inset-block-start: -38%;
-	inset-inline-start: -14%;
-	inline-size: 58%;
-	block-size: 92%;
-	background: var(--wlt-hero-glow-teal);
-}
-
-.wlt-hero__glow--indigo {
-	inset-block-end: -30%;
-	inset-inline-end: -12%;
-	inline-size: 56%;
-	block-size: 86%;
-	background: var(--wlt-hero-glow-indigo);
-}
+/* #endregion */
 
 .wlt-hero__inner {
 	position: relative;
@@ -293,7 +299,7 @@
 	--ui-icon-size: var(--icon-2xs);
 	padding: var(--space-px);
 	border-radius: 50%;
-	background: var(--wlt-hero-midnight);
+	background: var(--wlt-hero-deep);
 	color: var(--wlt-hero-ink);
 	box-sizing: content-box;
 }
@@ -329,6 +335,38 @@
 	font-size: var(--text-sm);
 	line-height: var(--leading-normal);
 	color: var(--wlt-hero-ink-soft);
+}
+
+/*
+ * A compact hero heads every page but the overview: the same aurora and the same top row, sized to the
+ * page's name and its account rather than to a balance and a row of actions.
+ */
+.wlt-hero--compact {
+	min-block-size: calc(var(--wlt-hero-h-compact) + var(--wlt-hero-lift));
+}
+
+.wlt-hero__title {
+	margin: 0;
+	font-size: var(--text-2xl);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-tight);
+	line-height: var(--leading-tight);
+	color: var(--wlt-hero-ink);
+}
+
+.wlt-hero__meta {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	justify-content: center;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--wlt-hero-ink-soft);
+}
+
+.wlt-hero__meta .ui-money {
+	color: var(--wlt-hero-ink);
 }
 
 .wlt-hero__failtitle {

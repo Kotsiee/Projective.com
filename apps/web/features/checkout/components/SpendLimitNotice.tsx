@@ -46,19 +46,21 @@ function LimitFacts(props: { limit: SpendLimitBlock }): JSX.Element {
 			<div class="cko-limit__fact">
 				<dt class="cko-limit__key">Your limit</dt>
 				<dd class="cko-limit__val">
-					<Amount value={limit.cap} size="body" />
+					{limit.cap ? <Amount value={limit.cap} size="body" /> : "No cap"}
 				</dd>
 			</div>
-			<div class="cko-limit__fact">
-				<dt class="cko-limit__key">Left to spend</dt>
-				<dd class="cko-limit__val">
-					<Amount
-						value={limit.remaining}
-						size="body"
-						tone={limit.remaining.minor > 0 ? "default" : "muted"}
-					/>
-				</dd>
-			</div>
+			{limit.remaining && (
+				<div class="cko-limit__fact">
+					<dt class="cko-limit__key">Left to spend</dt>
+					<dd class="cko-limit__val">
+						<Amount
+							value={limit.remaining}
+							size="body"
+							tone={limit.remaining.minor > 0 ? "default" : "muted"}
+						/>
+					</dd>
+				</div>
+			)}
 		</dl>
 	);
 }

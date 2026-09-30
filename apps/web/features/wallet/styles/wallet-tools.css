@@ -1,0 +1,359 @@
+/*
+ * The wallet's two floating controls: the range ruler, pinned under the top bar while the page scrolls
+ * beneath it, and the hero's corner tools (display currency · settings). The ruler floats over both the
+ * aurora and the sheet, so it carries its own glass ground and a slight drop shadow; the tools only ever
+ * sit on the aurora, so they take the hero's glass and ink.
+ */
+
+/* #region The pinned ruler bar */
+/*
+ * A zero-height sticky strip at the head of the page: it takes no room in the flow, and the ruler inside
+ * it overflows downward into the hero's reserved top row (wallet-hero.css), level with the corner tools.
+ * Sticky rather than fixed, so it stays inside the content column beside the lane and never overlaps the
+ * rails. It sits above the sheet so the sheet slides UNDER it.
+ */
+.wlt-rulebar {
+	position: sticky;
+	inset-block-start: calc(var(--shell-topbar-h) + var(--wlt-tool-gap));
+	z-index: 3;
+	flex: none;
+	block-size: 0;
+	container: wlt-rulebar / inline-size;
+	pointer-events: none;
+}
+
+.wlt-rulebar__slot {
+	display: flex;
+	justify-content: center;
+	padding-inline: var(--wlt-pad-x);
+}
+
+/*
+ * Where the ruler and the corner tools would meet, the ruler steps to the start and leaves the corner
+ * clear. The reserve is the tools' own width: narrower once the currency trigger has dropped its code.
+ */
+@container wlt-rulebar (max-width: 44rem) {
+	.wlt-rulebar__slot {
+		justify-content: flex-start;
+		padding-inline-end: calc(var(--wlt-pad-x) + var(--wlt-tools-reserve) + var(--space-2));
+	}
+}
+
+@container wlt-rulebar (max-width: 30rem) {
+	.wlt-rulebar__slot {
+		--wlt-tools-reserve: var(--wlt-tools-reserve-narrow);
+	}
+}
+/* #endregion */
+
+/* #region Range ruler */
+.wlt-ruler {
+	--wlt-ruler-pad: var(--space-1);
+	--wlt-ruler-dir: 1;
+	position: relative;
+	isolation: isolate;
+	display: grid;
+	grid-template-columns: repeat(var(--wlt-ruler-n), minmax(2.25rem, 1fr));
+	flex: none;
+	inline-size: min(100%, 22rem);
+	min-inline-size: calc(var(--wlt-ruler-n) * 2.25rem + 2 * var(--wlt-ruler-pad));
+	block-size: var(--wlt-tool-h);
+	padding: var(--wlt-ruler-pad);
+	border: 1px solid var(--hairline-color);
+	border-radius: var(--radius-full);
+	box-shadow: var(--wlt-ruler-shadow);
+	pointer-events: auto;
+}
+
+/* The ruler's glass ground, on an underlay so the blur never re-bases a fixed overlay (§B.4.3). */
+.wlt-ruler::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -2;
+	border-radius: inherit;
+	background: var(--wlt-ruler-ground);
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+	.wlt-ruler::before {
+		background: var(--surface-2);
+	}
+}
+
+[dir="rtl"] .wlt-ruler {
+	--wlt-ruler-dir: -1;
+}
+
+/*
+ * The sliding thumb — geometry from the checked index alone (every cell is the same width), so it needs
+ * no measurement and mirrors by flipping one sign. Decoration only: the checked cell's own ink says
+ * which window is on.
+ */
+.wlt-ruler__thumb {
+	position: absolute;
+	z-index: -1;
+	inset-block: var(--wlt-ruler-pad);
+	inset-inline-start: var(--wlt-ruler-pad);
+	inline-size: calc((100% - 2 * var(--wlt-ruler-pad)) / var(--wlt-ruler-n));
+	border-radius: var(--radius-full);
+	background: var(--surface);
+	box-shadow: var(--elevation-low);
+	transform: translateX(calc(var(--wlt-ruler-i) * 100% * var(--wlt-ruler-dir)));
+	transition: transform var(--dur-medium) var(--spring-standard);
+}
+
+.wlt-ruler__cell {
+	display: grid;
+	place-items: center;
+	min-inline-size: 0;
+	padding-inline: var(--space-1);
+	border: 0;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--on-surface-variant);
+	font: inherit;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-wide);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+	cursor: pointer;
+	transform: scale(1);
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.wlt-ruler__cell:hover {
+	color: var(--on-surface);
+}
+
+.wlt-ruler__cell[aria-checked="true"] {
+	color: var(--on-surface);
+	font-weight: var(--fw-semibold);
+	cursor: default;
+}
+
+.wlt-ruler__cell:active:not([aria-checked="true"]) {
+	transform: scale(var(--btn-press-scale-icon));
+	transition-duration: var(--dur-press);
+}
+
+@container wlt-rulebar (max-width: 26rem) {
+	.wlt-ruler {
+		grid-template-columns: repeat(var(--wlt-ruler-n), minmax(1.875rem, 1fr));
+		min-inline-size: calc(var(--wlt-ruler-n) * 1.875rem + 2 * var(--wlt-ruler-pad));
+	}
+}
+/* #endregion */
+
+/* #region Hero corner tools */
+.wlt-hero__tools {
+	position: absolute;
+	z-index: 1;
+	inset-block-start: calc(var(--wlt-hero-lift) + var(--wlt-tool-gap));
+	inset-inline-end: var(--wlt-pad-x);
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.wlt-tool {
+	position: relative;
+	isolation: isolate;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-1);
+	block-size: var(--wlt-tool-h);
+	padding: 0;
+	border: 1px solid var(--wlt-glass-edge);
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--wlt-hero-ink);
+	font: inherit;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	text-decoration: none;
+	cursor: pointer;
+	transform: scale(1);
+	transition:
+		border-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.wlt-tool::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	border-radius: inherit;
+	background: var(--wlt-glass-fill);
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.wlt-tool--icon {
+	inline-size: var(--wlt-tool-h);
+}
+
+.wlt-tool--currency {
+	padding-inline: var(--space-3) var(--space-2);
+}
+
+.wlt-tool__symbol,
+.wlt-tool__chevron {
+	color: var(--wlt-hero-ink-soft);
+}
+
+.wlt-tool__code {
+	font-size: var(--text-xs);
+	letter-spacing: var(--tracking-wide);
+	font-variant-numeric: tabular-nums;
+}
+
+@media (hover: hover) {
+	.wlt-tool:hover {
+		border-color: var(--wlt-glass-edge-hover);
+		box-shadow: var(--wlt-pill-lift);
+	}
+
+	.wlt-tool:hover::before {
+		background: var(--wlt-glass-fill-hover);
+	}
+}
+
+.wlt-tool--currency:active {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-press);
+}
+
+.wlt-tool--icon:active {
+	transform: scale(var(--btn-press-scale-icon));
+	transition-duration: var(--dur-press);
+}
+
+/* In a narrow hero the currency keeps its symbol and gives up the code. */
+@container wlt-herobox (max-width: 30rem) {
+	.wlt-tool__code {
+		display: none;
+	}
+}
+/* #endregion */
+
+/* #region The currency list (a glass popover — see wallet-accounts.css `.wlt-glass-pop`) */
+.wlt-currency {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	inline-size: min(18rem, calc(100vw - var(--space-6)));
+}
+
+.wlt-currency__note {
+	margin: 0;
+	padding: var(--space-1) var(--space-2);
+	font-size: var(--text-xs);
+	line-height: var(--leading-normal);
+	color: var(--on-surface-variant);
+}
+
+.wlt-currency__note--warn {
+	color: var(--wlt-attention-ink);
+}
+
+.wlt-currency__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+}
+
+.wlt-currency__item {
+	inline-size: 100%;
+	display: grid;
+	grid-template-columns: 2.25rem auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2);
+	border: 0;
+	border-radius: var(--radius-md);
+	background: transparent;
+	color: var(--on-surface);
+	font: inherit;
+	font-size: var(--text-sm);
+	text-align: start;
+	cursor: pointer;
+	transform: scale(1);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.wlt-currency__item:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+
+.wlt-currency__item:active:not(:disabled) {
+	transform: scale(var(--wlt-press-scale-row));
+	transition-duration: var(--dur-press);
+}
+
+.wlt-currency__item[aria-checked="true"] {
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+}
+
+.wlt-currency__item:disabled {
+	cursor: progress;
+}
+
+.wlt-currency__symbol {
+	color: var(--on-surface-variant);
+	text-align: center;
+}
+
+.wlt-currency__code {
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-wide);
+	font-variant-numeric: tabular-nums;
+}
+
+.wlt-currency__label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--on-surface-variant);
+}
+
+.wlt-currency__check {
+	color: var(--primary);
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.wlt-ruler__thumb {
+		transition: none;
+	}
+
+	.wlt-ruler__cell:active,
+	.wlt-tool:active,
+	.wlt-currency__item:active {
+		transform: none !important;
+	}
+}
+
+:root[data-motion="reduced"] .wlt-ruler__thumb {
+	transition: none;
+}
+
+:root[data-motion="reduced"] .wlt-ruler__cell:active,
+:root[data-motion="reduced"] .wlt-tool:active,
+:root[data-motion="reduced"] .wlt-currency__item:active {
+	transform: none !important;
+}

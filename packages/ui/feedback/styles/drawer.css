@@ -38,6 +38,15 @@
 	border-inline-start: var(--hairline);
 	transform: translateX(100%);
 }
+/* The edges dock LOGICALLY but `translateX` is physical: under `dir="rtl"` a left drawer sits on the
+   right and a right drawer on the left, so each slides out past its own edge by the opposite sign.
+   Without this the closed panel rests on-screen, across the page it should be hidden beyond. */
+[dir="rtl"] .ui-drawer--left {
+	transform: translateX(100%);
+}
+[dir="rtl"] .ui-drawer--right {
+	transform: translateX(-100%);
+}
 .ui-drawer--top,
 .ui-drawer--bottom {
 	inset-inline: 0;

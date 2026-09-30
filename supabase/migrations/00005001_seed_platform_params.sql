@@ -11,8 +11,8 @@ INSERT INTO security.platform_params (key, value, description) VALUES
         'Minutes a claimed ticket may sit idle before auto-release to the backlog.'),
     ('session_payout_hours', '24'::jsonb,
         'Negative-consent window (hours) after a session completes before payout auto-releases.'),
-    ('platform_fee_bp', '0'::jsonb,
-        'Platform service fee in basis points. UNRESOLVED: finance-model.md=5% vs investor-summary.md=10%; set deliberately.'),
+    ('platform_fee_bp', '500'::jsonb,
+        'Platform service fee in basis points: 5% (root CLAUDE.md §8 Decision #2 — finance-model.md is canonical; Stripe processing fees are passed through separately). An admin-approved finance.negotiated_rates row may override it per payer (finance.fn_effective_platform_fee_bp).'),
     ('freelancer_bad_faith_penalty', '0'::jsonb,
         'Discovery-rank penalty severity applied to a freelancer whose report is audited bad-faith.'),
     ('client_no_adjust_penalty', '0'::jsonb,
@@ -55,6 +55,12 @@ ON CONFLICT (key) DO NOTHING;
 INSERT INTO security.platform_params (key, value, description) VALUES
     ('pending_release_days', '7'::jsonb,
         'Length (days) of the post-escrow-release safety window before funds become Available/withdrawable (finance-model.md §7 "Pending" state).')
+ON CONFLICT (key) DO NOTHING;
+
+-- Stripe fiat rails (Decision #125)
+INSERT INTO security.platform_params (key, value, description) VALUES
+    ('identity_sessions_per_day', '5'::jsonb,
+        'How many Stripe Identity checks one freelancer may START in any 24 hours (finance.begin_identity_verification). Every check is billed by the processor, so the ceiling lives in the database rather than in a per-process limiter.')
 ON CONFLICT (key) DO NOTHING;
 
 -- from 20260724094000

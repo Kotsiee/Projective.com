@@ -6,6 +6,7 @@ CREATE INDEX IF NOT EXISTS idx_transactions_wallet_created ON finance.transactio
 CREATE INDEX IF NOT EXISTS idx_escrows_stage ON finance.escrows (project_stage_id);
 CREATE INDEX IF NOT EXISTS idx_escrows_ticket ON finance.escrows (ticket_id);
 CREATE INDEX IF NOT EXISTS idx_escrows_payer_business ON finance.escrows (payer_business_id);
+CREATE INDEX IF NOT EXISTS idx_escrows_payer_user ON finance.escrows (payer_user_id) WHERE payer_user_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_escrows_payee ON finance.escrows (payee_type, payee_id);
 CREATE INDEX IF NOT EXISTS idx_payout_accounts_owner ON finance.payout_accounts (owner_type, owner_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_business ON finance.invoices (
@@ -81,3 +82,25 @@ CREATE INDEX IF NOT EXISTS idx_basket_items_item ON finance.basket_items (item_t
 CREATE INDEX IF NOT EXISTS idx_saved_cards_owner ON finance.saved_cards (owner_type, owner_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_saved_card_default_per_owner
     ON finance.saved_cards (owner_type, owner_id) WHERE is_default;
+
+-- The Stripe fiat rails (Decision #125).
+-- A wallet's card payments, newest first — the ledger's inbound half.
+CREATE INDEX IF NOT EXISTS idx_inbound_payments_wallet
+    ON finance.inbound_payments (wallet_id, created_at DESC);
+-- The escrow-lock payments a stage has had.
+CREATE INDEX IF NOT EXISTS idx_inbound_payments_stage
+    ON finance.inbound_payments (project_stage_id) WHERE project_stage_id IS NOT NULL;
+-- One ACTIVE Stripe payout account per owner. Partial, so a disabled account's history stays beside
+-- its replacement; record_payout_account returns the existing active account rather than racing it.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payout_accounts_owner_active
+    ON finance.payout_accounts (owner_type, owner_id, provider) WHERE status <> 'disabled';
+-- One verification case per provider session: the webhook finds a case by its session id, and two
+-- cases claiming one session would make "which case did Stripe just decide" unanswerable.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_verification_cases_provider_ref
+    ON finance.verification_cases (provider, provider_ref) WHERE provider_ref IS NOT NULL;
+-- One chargeback per processor dispute, and one payout per processor transfer: without them a
+-- redelivered event could not be deduplicated on the processor's own id.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_chargebacks_provider_ref
+    ON finance.chargebacks (provider_ref) WHERE provider_ref IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payouts_provider_ref
+    ON finance.payouts (provider, provider_ref) WHERE provider_ref IS NOT NULL;

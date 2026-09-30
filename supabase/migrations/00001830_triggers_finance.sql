@@ -40,11 +40,13 @@ CREATE TRIGGER trg_wallet_pots_immutable
     EXECUTE FUNCTION security.fn_guard_immutable_columns ('wallet_id', 'currency');
 
 -- A recurring deposit's failure count and last error are the scheduler's record of what happened,
--- not the owner's to reset.
+-- not the owner's to reset. `created_by` is who AUTHORISED the standing charge, stamped only by
+-- finance.create_deposit_rule: a client row starts it empty (and so never runs), because a rule whose
+-- author could be written freely could charge a card in somebody else's name.
 CREATE TRIGGER trg_deposit_rules_derived
     BEFORE INSERT OR UPDATE ON finance.deposit_rules
     FOR EACH ROW
-    EXECUTE FUNCTION security.fn_guard_derived_columns ('failure_count', 'last_error');
+    EXECUTE FUNCTION security.fn_guard_derived_columns ('failure_count', 'last_error', 'created_by');
 
 -- A payment method is created by the processor's setup handshake, which alone can say an instrument
 -- exists and is usable. The owner may relabel it or change which one is the default; the rest is the

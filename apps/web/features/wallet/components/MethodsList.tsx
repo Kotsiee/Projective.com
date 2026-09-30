@@ -3,7 +3,7 @@ import { InlineNotice } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import type { PaymentMethodView } from "../types/wallet-types.ts";
-import type { ResolvedAction } from "../core/wallet-home.ts";
+import { methodName, type ResolvedAction } from "../core/wallet-home.ts";
 import { WalletGlyph } from "./wallet-glyphs.tsx";
 
 /** Props for {@link MethodsList}. */
@@ -22,11 +22,6 @@ const ROLE: Readonly<Record<PaymentMethodView["methodRole"], string>> = {
 	payout: "Getting paid",
 	both: "Paying in and getting paid",
 };
-
-function nameOf(m: PaymentMethodView): string {
-	const base = m.label ?? m.brand ?? m.provider;
-	return m.last4 && !base.includes(m.last4) ? `${base} ·· ${m.last4}` : base;
-}
 
 function defaultsOf(m: PaymentMethodView): string | null {
 	if (m.isDefaultFunding && m.isDefaultPayout) return "Default for both";
@@ -67,7 +62,7 @@ export function MethodsList(props: MethodsListProps): JSX.Element {
 										<WalletGlyph name="card" size="sm" />
 									</span>
 									<span class="wlt-row__body">
-										<span class="wlt-row__title">{nameOf(m)}</span>
+										<span class="wlt-row__title">{methodName(m)}</span>
 										<span class="wlt-row__meta">
 											{[ROLE[m.methodRole], defaults].filter(Boolean).join(" · ")}
 										</span>

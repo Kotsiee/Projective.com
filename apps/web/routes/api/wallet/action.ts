@@ -57,13 +57,13 @@ export const handler = define.handlers({
 			case "top_up": {
 				const p = TopUpInputSchema.safeParse(body);
 				if (!p.success) return invalid(p.error);
-				result = await WalletBackendService.topUp(p.data);
+				result = await WalletBackendService.topUp(p.data, query(p.data.display), actor);
 				break;
 			}
 			case "withdraw": {
 				const p = WithdrawInputSchema.safeParse(body);
 				if (!p.success) return invalid(p.error);
-				result = await WalletBackendService.withdraw(p.data);
+				result = await WalletBackendService.withdraw(p.data, query(p.data.display), actor);
 				break;
 			}
 			case "transfer": {
@@ -87,13 +87,13 @@ export const handler = define.handlers({
 			case "new_recurring": {
 				const p = DepositRuleInputSchema.safeParse(body);
 				if (!p.success) return invalid(p.error);
-				result = await WalletBackendService.addRecurring(p.data);
+				result = await WalletBackendService.addRecurring(p.data, query(p.data.display), actor);
 				break;
 			}
 			case "add_method": {
 				const p = AddMethodInputSchema.safeParse(body);
 				if (!p.success) return invalid(p.error);
-				result = await WalletBackendService.addMethod(p.data);
+				result = await WalletBackendService.addMethod(p.data, query(p.data.display), actor);
 				break;
 			}
 			case "set_payout": {
@@ -117,7 +117,7 @@ export const handler = define.handlers({
 			case "enrol_smoother": {
 				const p = IncomeSmootherEnrolInputSchema.safeParse(body);
 				if (!p.success) return invalid(p.error);
-				result = await WalletBackendService.enrolSmoother(p.data);
+				result = await WalletBackendService.enrolSmoother(p.data, query(p.data.display), actor);
 				break;
 			}
 			default:

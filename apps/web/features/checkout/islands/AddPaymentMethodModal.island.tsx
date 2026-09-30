@@ -1,11 +1,15 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import type { Signal } from "@preact/signals";
+import { useEffect } from "preact/hooks";
 import "../styles/checkout.css";
 import "../styles/checkout-payment.css";
-import { Dialog } from "@projective/ui/feedback";
+import { Alert, Dialog } from "@projective/ui/feedback";
 import { Button, Checkbox, InputText } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
+import type { CardOwnerScope, CardSetupHandoff, CheckoutOwner } from "@projective/types/finance";
+import { StripeElementPanel } from "@features/payments/components/StripeElementPanel.tsx";
+import { PaymentsService } from "@features/payments/core/PaymentsService.ts";
 
 /**
  * AddPaymentMethodModal — attaching a new way to pay, without ever touching a card number.
@@ -13,16 +17,12 @@ import { Icon } from "@projective/ui/icons";
  * ## The custody rule, enforced by construction
  *
  * There is **no PAN field, no expiry field and no CVV field anywhere in this component**, and there
- * is nowhere for one to be added: the payload the platform can send (`SaveCardInput`) has no key to
- * put a number in, and `CardsService`'s own contract says so in as many words. A card is entered
- * into an iframe Stripe serves and this application does not script; what comes back is an opaque
- * payment-method id, and brand/last4/expiry are resolved server-side from Stripe rather than
- * accepted from a client that could mislabel them.
- *
- * That is why the card tab renders a **placeholder region** where the Stripe field will mount rather
- * than a disabled-looking input: an input the buyer can click into, that looks like it wants a card
- * number, is a custody claim — it says "give us your card details" on a surface whose entire design
- * refuses to hold them. A labelled empty frame says the opposite, honestly.
+ * is nowhere for one to be added. A card is entered into Stripe's Payment Element — an iframe Stripe
+ * serves and this application does not script — confirmed as a SetupIntent, and recorded by the server
+ * from Stripe's own answer: brand, last four, expiry and the `pm_…` reference, never a value a client
+ * could mislabel (`POST /api/finance/cards/setup` → the Element → `POST /api/finance/cards/confirm`).
+ * Nothing is typed here that Projective keeps: the card's name on the list is the network and last
+ * four, read from Stripe.
  *
  * ## Two tabs because they are two different arrangements, not two skins
  *
@@ -33,12 +33,11 @@ import { Icon } from "@projective/ui/icons";
  *
  * ## What is honestly refused
  *
- * Neither commit is wired yet: Stripe Elements is not mounted in this build, and bank mandates are
- * arranged with the finance team rather than self-served. Both primaries therefore render
- * **disabled with the reason printed beneath them** — the platform's gate-versus-absence rule
- * (a capability the account does not have is absent; one it is not yet allowed to use is present and
- * locked with the reason attached). The alternative — a button that appears to work and quietly does
- * nothing — is the failure this codebase has already shipped once and fixed.
+ * Bank mandates are arranged with the finance team rather than self-served, so that tab's primary
+ * renders **disabled with the reason printed beneath it** — the gate-versus-absence rule (a capability
+ * the account is not yet allowed to use is present and locked with the reason attached). The card tab
+ * is locked the same way only where cards genuinely cannot be added: the processor is not connected in
+ * this environment, or the paying account is one a card cannot be saved to from here.
  *
  * The panel renders through `Dialog`, which portals to `document.body`: the checkout regions carry
  * `container-type: inline-size`, which makes each of them a containing block for `position: fixed`,
@@ -53,6 +52,12 @@ type MethodTab = "card" | "bank";
 export interface AddPaymentMethodModalProps {
 	/** Controlled visibility, so the payment screen owns when it opens. */
 	open: Signal<boolean>;
+	/** The account paying — the card is saved to IT. */
+	owner: Pick<CheckoutOwner, "ownerType" | "ownerId">;
+	/** Whether cards can be saved in this environment (the server's answer, from the session). */
+	cardsConnected: boolean;
+	/** Called with the new card's id once the server has recorded it. */
+	onSaved: (cardId: string) => void;
 }
 // #endregion
 
@@ -62,14 +67,36 @@ const TABS: readonly { id: MethodTab; label: string; icon: "catalogue" | "buildi
 	{ id: "bank", label: "Bank transfer / Direct Debit", icon: "building" },
 ];
 
+/** Which card owner a checkout account is, or `null` when a card cannot be saved to it from here. */
+function cardScopeOf(ownerType: string): CardOwnerScope | null {
+	if (ownerType === "user" || ownerType === "freelancer") return "personal";
+	if (ownerType === "team" || ownerType === "business") return ownerType;
+	return null;
+}
+
 /** Attach a new payment method to the acting account. */
 export default function AddPaymentMethodModal(props: AddPaymentMethodModalProps): JSX.Element {
 	const { open } = props;
 
 	const tab = useSignal<MethodTab>("card");
-	const cardholder = useSignal<string>("");
 	const makeDefault = useSignal<boolean>(true);
 	const reference = useSignal<string>("");
+	/** `entry` — the Payment Element is on screen for this SetupIntent. */
+	const phase = useSignal<"idle" | "starting" | "entry" | "saving">("idle");
+	const setup = useSignal<CardSetupHandoff | null>(null);
+	const failure = useSignal<string | null>(null);
+
+	const scope = cardScopeOf(props.owner.ownerType);
+	const contextId = scope === "personal" ? null : props.owner.ownerId;
+
+	// A closed modal forgets its attempt: a SetupIntent the buyer walked away from is not resumed.
+	const isOpen = open.value;
+	useEffect(() => {
+		if (isOpen) return;
+		phase.value = "idle";
+		setup.value = null;
+		failure.value = null;
+	}, [isOpen]);
 
 	const panelId = (id: MethodTab) => `cko-addpm-panel-${id}`;
 	const tabId = (id: MethodTab) => `cko-addpm-tab-${id}`;
@@ -81,6 +108,7 @@ export default function AddPaymentMethodModal(props: AddPaymentMethodModalProps)
 	 * one length is a keyboard model that breaks silently.
 	 */
 	const onTabKey = (event: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
+		if (phase.value === "entry" || phase.value === "saving") return;
 		const at = TABS.findIndex((entry) => entry.id === tab.value);
 		let next = at;
 		switch (event.key) {
@@ -108,31 +136,86 @@ export default function AddPaymentMethodModal(props: AddPaymentMethodModalProps)
 		document.getElementById(tabId(chosen.id))?.focus();
 	};
 
-	const gateReason = tab.value === "card"
+	const cardGate = !props.cardsConnected
 		? "Card entry is served by Stripe and isn't connected in this environment yet."
+		: !scope
+		? "Cards can't be added to this account from checkout — pay from its wallet."
+		: null;
+	const gateReason = tab.value === "card"
+		? cardGate
 		: "Bank mandates are set up with the finance team, so this can't be completed here yet.";
 
+	const close = () => {
+		open.value = false;
+	};
+
+	/** Open a SetupIntent for the paying account; the Element takes the card. */
+	const start = async () => {
+		if (!scope) return;
+		phase.value = "starting";
+		failure.value = null;
+		const res = await PaymentsService.createCardSetup({ scope, contextId });
+		if (!res.ok || !res.data) {
+			failure.value = res.message ?? "Couldn't start adding a card. Try again.";
+			phase.value = "idle";
+			return;
+		}
+		setup.value = res.data;
+		phase.value = "entry";
+	};
+
+	/** Stripe confirmed the card; the server re-reads the SetupIntent and records it. */
+	const record = async (setupIntentId: string) => {
+		if (!scope) return;
+		phase.value = "saving";
+		const saved = await PaymentsService.confirmCard({
+			setupIntentId,
+			scope,
+			contextId,
+			makeDefault: makeDefault.value,
+		});
+		if (!saved.ok || !saved.data) {
+			failure.value = saved.message ?? "The card couldn't be saved.";
+			phase.value = "entry";
+			return;
+		}
+		props.onSaved(saved.data.cardId);
+		close();
+	};
+
+	const liveCard = tab.value === "card" && cardGate === null;
 	const footer = (
 		<div class="cko-addpm__foot">
-			<p class="cko-addpm__gate" id="cko-addpm-gate">
-				<Icon name="lock" />
-				<span>{gateReason}</span>
-			</p>
+			{gateReason && (
+				<p class="cko-addpm__gate" id="cko-addpm-gate">
+					<Icon name="lock" />
+					<span>{gateReason}</span>
+				</p>
+			)}
 			<div class="cko-addpm__acts">
-				<Button
-					variant="text"
-					label="Cancel"
-					onClick={() => {
-						open.value = false;
-					}}
-				/>
-				<Button
-					variant="filled"
-					severity="warning"
-					disabled
-					aria-describedby="cko-addpm-gate"
-					label={tab.value === "card" ? "Add card" : "Save bank details"}
-				/>
+				<Button variant="text" label="Cancel" onClick={close} />
+				{!liveCard
+					? (
+						<Button
+							variant="filled"
+							severity="warning"
+							disabled
+							aria-describedby="cko-addpm-gate"
+							label={tab.value === "card" ? "Add card" : "Save bank details"}
+						/>
+					)
+					: phase.value === "entry" || phase.value === "saving"
+					? null
+					: (
+						<Button
+							variant="filled"
+							severity="warning"
+							label="Continue"
+							loading={phase.value === "starting"}
+							disabled={phase.value === "starting"}
+							onClick={() => void start()}
+						/>
+					)}
 			</div>
 		</div>
 	);
@@ -162,6 +245,7 @@ export default function AddPaymentMethodModal(props: AddPaymentMethodModalProps)
 						aria-selected={tab.value === entry.id ? "true" : "false"}
 						aria-controls={panelId(entry.id)}
 						tabIndex={tab.value === entry.id ? 0 : -1}
+						disabled={entry.id !== tab.value && (phase.value === "entry" || phase.value === "saving")}
 						onClick={() => {
 							tab.value = entry.id;
 						}}
@@ -185,47 +269,51 @@ export default function AddPaymentMethodModal(props: AddPaymentMethodModalProps)
 							never sees or stores your card number, and there is nowhere on this page to type one.
 						</p>
 
-						{
-							/*
-							 * The mount point, drawn as an empty labelled frame. `aria-hidden` because it is a
-							 * reserved space rather than content: announcing "card number, blank" would promise a
-							 * field that is not there.
-							 */
-						}
-						<div class="cko-addpm__mount" aria-hidden="true">
-							<span class="cko-addpm__mount-mark">
-								<Icon name="lock" />
-							</span>
-							<span class="cko-addpm__mount-text">Secure card field — provided by Stripe</span>
-						</div>
-						<p class="cko-addpm__mount-note">
-							This is where Stripe's secure field appears once payments are connected.
-						</p>
+						{(phase.value === "entry" || phase.value === "saving") && setup.value
+							? (
+								<StripeElementPanel
+									mode="setup"
+									clientSecret={setup.value.clientSecret}
+									publishableKey={setup.value.publishableKey}
+									submitLabel="Save card"
+									returnPath={typeof globalThis.location !== "undefined"
+										? `${globalThis.location.pathname}${globalThis.location.search}`
+										: "/checkout"}
+									busy={phase.value === "saving"}
+									onOutcome={(outcome) => {
+										if (outcome.ok && setup.value) void record(setup.value.setupIntentId);
+									}}
+								/>
+							)
+							: !liveCard && (
+								<>
+									{
+										/*
+										 * The mount point, drawn as an empty labelled frame while cards cannot be added.
+										 * `aria-hidden` because it is a reserved space rather than content: announcing
+										 * "card number, blank" would promise a field that is not there.
+										 */
+									}
+									<div class="cko-addpm__mount" aria-hidden="true">
+										<span class="cko-addpm__mount-mark">
+											<Icon name="lock" />
+										</span>
+										<span class="cko-addpm__mount-text">Secure card field — provided by Stripe</span>
+									</div>
+								</>
+							)}
 
-						<div class="cko-addpm__field">
-							<label class="cko-addpm__label" for="cko-addpm-name">
-								Name on the card
-							</label>
-							<InputText
-								id="cko-addpm-name"
-								value={cardholder}
-								block
-								autoComplete="cc-name"
-								placeholder="As printed on the card"
-								maxLength={120}
-							/>
-							<p class="cko-addpm__hint">
-								Used only to label the card in your list, so you can tell two apart.
-							</p>
-						</div>
+						{failure.value && <Alert severity="danger">{failure.value}</Alert>}
 
-						<div class="cko-addpm__row">
-							<Checkbox
-								id="cko-addpm-default"
-								value={makeDefault}
-								label="Use this card by default"
-							/>
-						</div>
+						{phase.value !== "entry" && phase.value !== "saving" && (
+							<div class="cko-addpm__row">
+								<Checkbox
+									id="cko-addpm-default"
+									value={makeDefault}
+									label="Use this card by default"
+								/>
+							</div>
+						)}
 					</div>
 				)
 				: (

@@ -4,6 +4,7 @@ import { KycStatus } from "./verification.ts";
 import { FxSnapshotSchema } from "./ledger.ts";
 import { formatMoney, MoneyViewSchema } from "./wallet.ts";
 import { CardBrand } from "./card-art.ts";
+import { CardPaymentHandoffSchema } from "./payments.ts";
 import {
 	AppliedPromoSchema,
 	BasketGroupSchema,
@@ -575,12 +576,15 @@ export const SpendLimitBlockSchema = z.object({
 	verdict: z.enum(["allowed", "needs_approval", "blocked"]),
 	/** The verdict's own sentence, so the surface never invents a reason. `null` when allowed. */
 	reason: z.string().max(200).nullable(),
-	/** `cap_cents` as money. */
-	cap: MoneyViewSchema,
+	/**
+	 * `cap_cents` as money, or `null` when the envelope has NO ceiling — a NULL `cap_cents` is "no cap"
+	 * (finance.fn_check_spending_limit), never a cap of zero (#125(e)).
+	 */
+	cap: MoneyViewSchema.nullable(),
 	/** `spent_cents` in the current window. */
 	spent: MoneyViewSchema,
-	/** What remains before the cap. Zero-valued, never negative. */
-	remaining: MoneyViewSchema,
+	/** What remains before the cap. Zero-valued, never negative; `null` when there is no cap. */
+	remaining: MoneyViewSchema.nullable(),
 	/** `period_interval` as a phrase ("this month"); `null` when the cap is a lifetime total. */
 	periodLabel: z.string().max(60).nullable(),
 	/** Where a `needs_approval` request is raised; `null` otherwise. */
@@ -726,6 +730,11 @@ export const CheckoutSessionContextSchema = z.object({
 	savedCards: z.array(SavedCardSchema).max(24),
 	/** The card pre-selected for a card payment; `null` when none is on file. */
 	defaultCardId: reference.nullable(),
+	/**
+	 * Whether cards can be saved and charged in this environment (the Stripe rails are connected). Drives
+	 * the Add-card form: live when true, rendered-and-locked with the reason when not.
+	 */
+	cardsConnected: z.boolean().default(false),
 	promo: AppliedPromoSchema.nullable(),
 	totals: CheckoutTotalsSchema,
 	/** Whether any line needs a delivery address — drives the adaptive row layout. */
@@ -860,6 +869,11 @@ export const CheckoutResultSchema = z.object({
 	/** The net movement against the wallet, when the wallet was the source; else `null`. */
 	walletDelta: MoneyViewSchema.nullable(),
 	at: timestamp,
+	/**
+	 * The card PaymentIntent to confirm with the Payment Element, on a `requires_action` card checkout.
+	 * The charge tops up the paying wallet; the order is placed from it once the webhook has credited it.
+	 */
+	payment: CardPaymentHandoffSchema.optional(),
 });
 export type CheckoutResult = z.infer<typeof CheckoutResultSchema>;
 // #endregion

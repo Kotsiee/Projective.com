@@ -7,12 +7,14 @@ import {
 	type FlowPeriod,
 	periodRange,
 	toFlowPeriod,
+	type WalletView,
 	walletParam,
 	walletQueryFrom,
 } from "./wallet-model.ts";
 import type {
 	ActivityView,
 	FundingView,
+	InvoicesView,
 	MethodsView,
 	PayoutsView,
 	SpendApprovalView,
@@ -28,11 +30,13 @@ export type WalletRead<T> = { ok: true; data: T } | { ok: false; message: string
 export const LEDGER_PAGE = 20;
 
 /**
- * Everything the command centre paints in its first byte. The overview is required; each other part
- * is its own read that can fail alone, and is `null` where it does not apply (the read-only rollup
- * has no methods, payouts or funding; only a vault has spend approvals).
+ * Everything a wallet page paints in its first byte. The overview is required; each other part is its
+ * own read that can fail alone, and is `null` where it does not apply (the read-only rollup has no
+ * methods, payouts or funding; only a vault has spend approvals; only the invoices page reads invoices).
  */
 export interface WalletHomeData {
+	/** The page these reads were resolved for. */
+	view: WalletView;
 	overview: WalletOverview;
 	switcher: WalletSwitcher;
 	ledger: WalletRead<TransactionPage>;
@@ -42,6 +46,7 @@ export interface WalletHomeData {
 	payouts: WalletRead<PayoutsView> | null;
 	methods: WalletRead<MethodsView> | null;
 	approvals: WalletRead<SpendApprovalView[]> | null;
+	invoices: WalletRead<InvoicesView> | null;
 	/** The `?w=` param of the wallet the server resolved. */
 	wallet: string;
 	/** The currency the figures were drawn in. */
@@ -60,20 +65,22 @@ function vaultScope(param: string | null | undefined): boolean {
 }
 
 /**
- * Resolves the command centre's first paint as the signed-in viewer, running every read in parallel.
- * Fails as a whole only when the overview itself cannot be read.
+ * Resolves a wallet page's first paint as the signed-in viewer, running every read in parallel. Every
+ * page reads the payment data its dialogs need, because the lane's actions open those dialogs on any
+ * wallet page. Fails as a whole only when the overview itself cannot be read.
  */
 export async function resolveWalletHome(
 	context: UserContext,
 	url: URL,
 	actor: ReadActor,
+	view: WalletView = "overview",
 ): Promise<WalletRead<WalletHomeData>> {
 	const query = walletQueryFrom(url.searchParams, context);
 	const period = toFlowPeriod(url.searchParams.get("flow"));
 	const aggregate = query.wallet === "aggregate";
 	const vault = vaultScope(query.wallet);
 
-	const [main, ledger, activity, funding, payouts, methods, access] = await Promise.all([
+	const [main, ledger, activity, funding, payouts, methods, access, invoices] = await Promise.all([
 		WalletBackendService.overviewWithSwitcher(query, actor),
 		WalletBackendService.transactions(query, { limit: LEDGER_PAGE }, actor),
 		WalletBackendService.activity(query, periodRange(period), actor),
@@ -81,6 +88,7 @@ export async function resolveWalletHome(
 		aggregate ? null : WalletBackendService.payouts(query, actor),
 		aggregate ? null : WalletBackendService.methods(query, actor),
 		vault ? WalletBackendService.access(query, actor) : null,
+		view === "invoices" && !aggregate ? WalletBackendService.invoices(query, actor) : null,
 	]);
 
 	if (!main.ok || !main.data) return { ok: false, message: main.message ?? FALLBACK };
@@ -90,6 +98,7 @@ export async function resolveWalletHome(
 	return {
 		ok: true,
 		data: {
+			view,
 			overview,
 			switcher,
 			ledger: toRead(ledger, (d) => d.page),
@@ -101,6 +110,7 @@ export async function resolveWalletHome(
 			approvals: access && active.scope !== "personal"
 				? toRead(access, (d) => d.access.approvals)
 				: null,
+			invoices: invoices ? toRead(invoices, (d) => d.invoices) : null,
 			wallet: walletParam(active.scope, active.id),
 			display: active.available.currency ||
 				toDisplayCurrency(query.display ?? context.displayCurrency),

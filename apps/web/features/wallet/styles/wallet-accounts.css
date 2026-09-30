@@ -3,15 +3,21 @@
 	gap: var(--space-1);
 }
 
+/*
+ * The rail scrolls sideways, which clips BOTH axes — so it carries a margin of padding the cards can
+ * lift and cast their hover shadow into, and gives the same amount back as a negative margin so the
+ * row still lines up with the sections above and below it.
+ */
 .wlt-accounts__rail {
 	list-style: none;
-	margin: 0;
-	padding: var(--space-1) 0;
+	margin: calc(-1 * var(--space-3));
+	padding: var(--space-3);
 	display: flex;
 	gap: var(--space-3);
 	overflow-x: auto;
 	overscroll-behavior-inline: contain;
 	scroll-snap-type: inline mandatory;
+	scroll-padding-inline: var(--space-3);
 	scrollbar-width: none;
 }
 
@@ -24,32 +30,42 @@
 	scroll-snap-align: start;
 }
 
+/*
+ * An account tile follows the card contract (§A.3 · §B.9): a `--surface-1` tonal step, the card rhythm's
+ * padding and radius, and no resting border — the tone is the boundary. A tile that is a link lifts on
+ * hover; the tax pot is static content and does not. The only contour is the current account's, and
+ * only because the tile is a control whose state it names.
+ */
 .wlt-account {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-1);
 	inline-size: 12.5rem;
 	block-size: 100%;
-	padding: var(--space-4);
+	padding: var(--card-pad);
 	border: 1px solid transparent;
-	border-radius: var(--radius-lg);
+	border-radius: var(--card-radius);
 	background: var(--surface-1);
 	color: var(--on-surface);
 	text-decoration: none;
-	transform: scale(1);
+	transform: translateY(0) scale(1);
 	transition:
 		background-color var(--dur-fast) var(--ease-standard),
 		border-color var(--dur-fast) var(--ease-standard),
+		box-shadow var(--dur-fast) var(--ease-standard),
 		transform var(--dur-fast) var(--ease-standard);
 }
 
-a.wlt-account:hover {
-	background: var(--surface-2);
-	border-color: var(--hairline-strong-color);
+@media (hover: hover) {
+	a.wlt-account:hover {
+		transform: translateY(var(--card-hover-lift)) scale(1);
+		box-shadow: var(--elevation-medium);
+	}
 }
 
 a.wlt-account:active {
-	transform: scale(var(--btn-press-scale));
+	transform: translateY(0) scale(var(--btn-press-scale));
+	box-shadow: var(--elevation-low);
 	transition-duration: var(--dur-press);
 }
 
@@ -128,9 +144,47 @@ a.wlt-account:active {
 @container wlt-sheet (max-width: 30rem) {
 	.wlt-account {
 		inline-size: 10.5rem;
-		padding: var(--space-3);
+		padding: var(--card-pad-tight);
 	}
 }
+
+/*
+ * #region Glass popovers — the scope switcher, the More menu and the hero's currency list
+ *
+ * Anchored panels over live content (§B.4.3's floating-panel case): the package panel's opaque fill
+ * gives way to a `--glass-veil-panel` veil blurred on a `::before` underlay — never on the panel, which
+ * would become the containing block for anything fixed it renders. The panel keeps one hairline and a
+ * larger radius; its rows hover as soft pills. Secondary ink on the veil is `--on-surface-variant`,
+ * because `--text-secondary` does not clear a veil's worst-case backdrop.
+ */
+.ui-popover.wlt-glass-pop {
+	background: transparent;
+	border: var(--hairline);
+	border-radius: var(--radius-xl);
+}
+
+.ui-popover.wlt-glass-pop::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	border-radius: inherit;
+	background: color-mix(in srgb, var(--surface) var(--glass-veil-panel), transparent);
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	pointer-events: none;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+	.ui-popover.wlt-glass-pop::before {
+		background: var(--surface);
+	}
+}
+
+.ui-popover.wlt-glass-pop .ui-popover__content {
+	padding: var(--space-2);
+}
+/* #endregion */
 
 .wlt-scope-menu {
 	list-style: none;
@@ -148,7 +202,7 @@ a.wlt-account:active {
 	align-items: center;
 	gap: var(--space-3);
 	padding: var(--space-2);
-	border-radius: var(--radius-base);
+	border-radius: var(--radius-md);
 	color: var(--on-surface);
 	text-decoration: none;
 	transform: scale(1);
@@ -158,7 +212,7 @@ a.wlt-account:active {
 }
 
 .wlt-scope-menu__item:hover {
-	background: var(--surface-1);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .wlt-scope-menu__item:active {
@@ -167,7 +221,7 @@ a.wlt-account:active {
 }
 
 .wlt-scope-menu__item[aria-current="page"] {
-	background: color-mix(in srgb, var(--primary) 8%, transparent);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
 }
 
 .wlt-scope-menu__all {
@@ -176,7 +230,7 @@ a.wlt-account:active {
 	inline-size: 1.75rem;
 	block-size: 1.75rem;
 	border-radius: 50%;
-	background: var(--surface-2);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--on-surface-variant);
 }
 
@@ -200,7 +254,7 @@ a.wlt-account:active {
 
 .wlt-scope-menu__meta {
 	font-size: var(--text-xs);
-	color: var(--text-secondary);
+	color: var(--on-surface-variant);
 }
 
 .wlt-scope-menu__amount {
@@ -224,7 +278,7 @@ a.wlt-account:active {
 	gap: var(--space-3);
 	padding: var(--space-2) var(--space-3);
 	border: 0;
-	border-radius: var(--radius-base);
+	border-radius: var(--radius-md);
 	background: transparent;
 	color: var(--on-surface);
 	font: inherit;
@@ -238,7 +292,7 @@ a.wlt-account:active {
 }
 
 .wlt-menu__item:hover {
-	background: var(--surface-1);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .wlt-menu__item:active {
@@ -247,7 +301,7 @@ a.wlt-account:active {
 }
 
 .wlt-menu__item[data-locked="true"] {
-	color: var(--text-secondary);
+	color: var(--on-surface-variant);
 }
 
 .wlt-menu__icon {
@@ -256,10 +310,11 @@ a.wlt-account:active {
 
 .wlt-menu__lock {
 	margin-inline-start: auto;
-	color: var(--text-secondary);
+	color: var(--on-surface-variant);
 }
 
 @media (prefers-reduced-motion: reduce) {
+	a.wlt-account:hover,
 	a.wlt-account:active,
 	.wlt-scope-menu__item:active,
 	.wlt-menu__item:active {
@@ -267,6 +322,7 @@ a.wlt-account:active {
 	}
 }
 
+:root[data-motion="reduced"] a.wlt-account:hover,
 :root[data-motion="reduced"] a.wlt-account:active,
 :root[data-motion="reduced"] .wlt-scope-menu__item:active,
 :root[data-motion="reduced"] .wlt-menu__item:active {

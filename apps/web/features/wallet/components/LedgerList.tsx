@@ -21,6 +21,11 @@ export interface LedgerListProps {
 	onOpen: (line: LedgerLine) => void;
 	onMore: () => void;
 	onRetry: () => void;
+	/**
+	 * Draw only the newest lines and link to the full ledger instead of paging it here — the overview's
+	 * preview of `/wallet/transactions`.
+	 */
+	preview?: { limit: number; href: string };
 }
 
 const TIME = typeof Intl !== "undefined"
@@ -86,12 +91,22 @@ function LedgerRow(
 
 /** The wallet's movements, newest first, banded Today · Yesterday · Earlier. */
 export function LedgerList(props: LedgerListProps): JSX.Element {
-	const bands = bandLedger(props.lines);
+	const preview = props.preview;
+	const lines = preview ? props.lines.slice(0, preview.limit) : props.lines;
+	const bands = bandLedger(lines);
 	return (
 		<section class="wlt-section wlt-ledger" id="transactions" aria-labelledby="wlt-ledger-title">
 			<header class="wlt-section__head">
-				<h2 id="wlt-ledger-title" class="wlt-section__title">Transactions</h2>
-				{props.exportHref && props.lines.length > 0 && (
+				<h2 id="wlt-ledger-title" class="wlt-section__title">
+					{preview ? "Recent transactions" : "Transactions"}
+				</h2>
+				{preview && props.lines.length > 0 && (
+					<a class="wlt-textlink" href={preview.href}>
+						View all
+						<Icon name="chevron-right" size="xs" class="wlt-mirror" />
+					</a>
+				)}
+				{!preview && props.exportHref && props.lines.length > 0 && (
 					<a class="wlt-textlink" href={props.exportHref} download>
 						<Icon name="download" size="xs" />
 						Download CSV
@@ -119,7 +134,7 @@ export function LedgerList(props: LedgerListProps): JSX.Element {
 					No transactions yet. Money in and out of this wallet will appear here.
 				</p>
 			)}
-			{props.hasMore && !props.error && (
+			{!preview && props.hasMore && !props.error && (
 				<Button
 					variant="outlined"
 					size="sm"

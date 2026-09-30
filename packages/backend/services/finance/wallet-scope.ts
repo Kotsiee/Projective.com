@@ -1,13 +1,12 @@
 import type {
 	KycStatus,
 	MoneyView,
-	VaultCapability,
 	VaultRole,
 	WalletQuery,
 	WalletRef,
 	WalletScope,
 } from "@projective/types/finance";
-import { capabilitiesForRole } from "@projective/types/finance";
+import { VaultCapability } from "@projective/types/finance";
 import { getUserClient } from "../../core/supabase.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { type MoneyProjector, moneyProjector } from "./commerce-money.ts";
@@ -63,6 +62,12 @@ export interface WalletViewer {
 	kycStatus: KycStatus | null;
 	kycTier: number | null;
 	payoutReady: boolean;
+	/**
+	 * Whether they hold a verified Stripe payout account — the destination every withdrawal needs
+	 * (`finance.fn_payout_destination`), whoever they are. A seller's `payoutReady` cache says the same
+	 * for a seller; a buyer has no such cache, so this is read directly.
+	 */
+	hasPayoutAccount: boolean;
 }
 
 /** Everything a wallet read resolves once and hands down. */
@@ -78,7 +83,8 @@ export interface WalletContext {
 // #endregion
 
 // #region Capabilities
-const ALL_CAPABILITIES: readonly VaultCapability[] = capabilitiesForRole("owner");
+/** Every capability — what `manage_members` expands to, exactly as `fn_has_vault_capability` reads it. */
+const ALL_CAPABILITIES: readonly VaultCapability[] = VaultCapability.options;
 
 /** A permission row's capabilities, expanded as `fn_has_vault_capability` reads them. */
 function expand(raw: readonly string[]): VaultCapability[] {
@@ -134,7 +140,7 @@ export async function resolveWalletContext(
 	if (!canReadLive(actor)) return null;
 	const db = getUserClient(actor.accessToken);
 
-	const [owners, walletsRes, permsRes, profileRes] = await Promise.all([
+	const [owners, walletsRes, permsRes, profileRes, payoutRes] = await Promise.all([
 		listOwners({ display: query.display, viewerCurrency: query.viewerCurrency }, actor),
 		db.schema("finance").from("wallets")
 			.select("id, owner_type, owner_id, currency, balance_cents, approval_threshold_cents"),
@@ -145,10 +151,19 @@ export async function resolveWalletContext(
 			.select("kyc_status, kyc_tier, payout_ready")
 			.eq("user_id", actor.userId)
 			.maybeSingle(),
+		// The same person-owned rows `fn_payout_destination` accepts for a person's wallet.
+		db.schema("finance").from("payout_accounts")
+			.select("id")
+			.eq("owner_id", actor.userId)
+			.in("owner_type", ["user", "freelancer"])
+			.eq("provider", "stripe")
+			.eq("status", "verified")
+			.limit(1),
 	]);
 	if (walletsRes.error) throw new Error(`finance.wallets read failed: ${walletsRes.error.message}`);
 	if (permsRes.error) throw new Error(`finance.vault_permissions read failed: ${permsRes.error.message}`);
 	if (profileRes.error) throw new Error(`org.freelancer_profiles read failed: ${profileRes.error.message}`);
+	if (payoutRes.error) throw new Error(`finance.payout_accounts read failed: ${payoutRes.error.message}`);
 
 	const rows = ((walletsRes.data ?? []) as WalletRow[]).map((row) => ({
 		...row,
@@ -213,6 +228,7 @@ export async function resolveWalletContext(
 			kycStatus: (profile?.kyc_status ?? null) as KycStatus | null,
 			kycTier: typeof profile?.kyc_tier === "number" ? profile.kyc_tier : null,
 			payoutReady: profile?.payout_ready === true,
+			hasPayoutAccount: (payoutRes.data ?? []).length > 0,
 		},
 		money: await moneyProjector(display),
 		accounts,

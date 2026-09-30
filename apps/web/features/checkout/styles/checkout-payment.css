@@ -1598,3 +1598,9 @@
 	}
 }
 /* #endregion */
+
+/* The card step of a card checkout (Decision #126): the Payment Element under the outcome line. */
+.cko-result__card {
+	max-inline-size: 32rem;
+	margin-block-start: var(--space-4);
+}

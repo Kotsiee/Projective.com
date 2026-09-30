@@ -1,0 +1,124 @@
+/*
+ * verification — Settings → Verification & payouts.
+ *
+ * A reading surface (§B.4): sections are separated by spacing and type weight, never a four-sided box.
+ * The one filled mark per check is its lifecycle STATUS — the container §B.11.3 reserves for exactly
+ * that — and it carries a word as well as a tone, so no state depends on telling colours apart.
+ *
+ * Token-only, strict BEM, logical properties.
+ */
+
+.vrf {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-8);
+	max-inline-size: 56rem;
+	padding-block: var(--space-6) var(--space-12);
+	padding-inline: var(--space-4);
+}
+
+.vrf__head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.vrf__title {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-2xl);
+	font-weight: var(--fw-semibold);
+}
+
+.vrf__lede,
+.vrf__detail {
+	margin: 0;
+	max-inline-size: 46rem;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: 1.6;
+}
+
+.vrf__banner {
+	inline-size: 100%;
+}
+
+.vrf__group {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.vrf__line {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-3);
+}
+
+.vrf__h {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-md);
+	font-weight: var(--fw-semibold);
+}
+
+.vrf__sub {
+	margin: 0;
+	color: var(--on-surface-variant);
+	font-size: var(--text-xs);
+	letter-spacing: var(--tracking-wide, 0.04em);
+	text-transform: uppercase;
+}
+
+.vrf__status {
+	display: inline-flex;
+	align-items: center;
+	padding-block: var(--space-0-5, 2px);
+	padding-inline: var(--space-2);
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+	color: var(--on-surface);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	white-space: nowrap;
+}
+
+/* The status fills are mixed toward --on-surface so their label always clears AA (the #76 chip rule). */
+.vrf__status[data-tone="success"] {
+	background: color-mix(in srgb, var(--success) 22%, var(--surface));
+}
+.vrf__status[data-tone="warning"] {
+	background: color-mix(in srgb, var(--warning) 22%, var(--surface));
+}
+.vrf__status[data-tone="danger"] {
+	background: color-mix(in srgb, var(--danger) 18%, var(--surface));
+}
+.vrf__status[data-tone="info"] {
+	background: color-mix(in srgb, var(--info) 18%, var(--surface));
+}
+
+.vrf__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	margin-block-start: var(--space-1);
+}
+
+.vrf__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.vrf__row + .vrf__row {
+	padding-block-start: var(--space-6);
+	border-block-start: var(--hairline);
+}
+
+.vrf__foot {
+	margin: 0;
+}

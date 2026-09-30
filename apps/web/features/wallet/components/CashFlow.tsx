@@ -1,12 +1,12 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { InlineNotice } from "@projective/ui/feedback";
-import { SelectButton } from "@projective/ui/fields";
+import { Icon } from "@projective/ui/icons";
 import { MoneyView } from "@projective/ui/display/money";
 import { styleVars } from "@ui/core/style.ts";
 import type { ActivityView, FlowPoint } from "../types/wallet-types.ts";
 import { flowBars } from "../core/wallet-home.ts";
-import { FLOW_PERIODS, type FlowPeriod, periodLabel, periodPhrase } from "../core/wallet-model.ts";
+import { type FlowPeriod, periodPhrase, periodSlicesAreSpans } from "../core/wallet-model.ts";
 
 /** Props for {@link CashFlow}. */
 export interface CashFlowProps {
@@ -14,14 +14,19 @@ export interface CashFlowProps {
 	activity: ActivityView | null;
 	loading: boolean;
 	error: string | null;
-	onPeriod: (period: FlowPeriod) => void;
 	onRetry: () => void;
+	/** The analytics page, linked from the overview's section head. */
+	moreHref?: string;
 }
 
-const PERIOD_OPTIONS = FLOW_PERIODS.map((p) => ({ label: periodLabel(p), value: p }));
-
 function bucketName(period: FlowPeriod, label: string): string {
-	return period === "week" || period === "month" ? label : `From ${label}`;
+	return periodSlicesAreSpans(period) ? `From ${label}` : label;
+}
+
+/** The window phrase as a heading's meta: "Last 3 months", "All time". */
+function windowLabel(period: FlowPeriod): string {
+	const phrase = periodPhrase(period).replace(/^the /, "");
+	return phrase.charAt(0).toUpperCase() + phrase.slice(1);
 }
 
 function FlowChart(
@@ -147,23 +152,26 @@ function FlowChart(
 	);
 }
 
-/** Money in against money out for the chosen window, summed server-side, with its trend. */
+/**
+ * Money in against money out for the chosen window, summed server-side, with its trend. The window is
+ * picked on the pinned range ruler; the heading names it so the section says which span it is showing
+ * wherever the reader scrolled from.
+ */
 export function CashFlow(props: CashFlowProps): JSX.Element {
 	const { activity, period } = props;
 	return (
 		<section class="wlt-section wlt-flow" id="cash-flow" aria-labelledby="wlt-flow-title">
 			<header class="wlt-section__head">
-				<h2 id="wlt-flow-title" class="wlt-section__title">Cash flow</h2>
-				<SelectButton
-					class="wlt-flow__periods"
-					options={PERIOD_OPTIONS}
-					value={period}
-					aria-label="Period"
-					size="sm"
-					onValueChange={(v) => {
-						if (typeof v === "string" && v !== period) props.onPeriod(v as FlowPeriod);
-					}}
-				/>
+				<h2 id="wlt-flow-title" class="wlt-section__title">
+					Cash flow
+					<span class="wlt-section__count">{windowLabel(period)}</span>
+				</h2>
+				{props.moreHref && (
+					<a class="wlt-textlink" href={props.moreHref}>
+						Analytics
+						<Icon name="chevron-right" size="xs" class="wlt-mirror" />
+					</a>
+				)}
 			</header>
 			{activity
 				? (

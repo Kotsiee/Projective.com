@@ -517,6 +517,15 @@ ALTER TABLE finance.promo_codes ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE finance.ratings ENABLE ROW LEVEL SECURITY;
 
+-- The inbound card-payment log (Stripe Phase 1, Decision #125). Read-only to its wallet's readers
+-- (00002013); every write is a finance.* definer function (00001230).
+ALTER TABLE finance.inbound_payments ENABLE ROW LEVEL SECURITY;
+
+-- The processor Customer each owner's saved cards attach to (Decision #126). RLS on with NO policy on
+-- purpose: it is reached only through finance.card_owner_for / record_processor_customer /
+-- claim_due_deposit_rules, which authorise the caller themselves. Not default-deny by accident.
+ALTER TABLE finance.processor_customers ENABLE ROW LEVEL SECURITY;
+
 
 -- --- marketplace: the two tables that shipped without RLS ---
 -- Both carry `GRANT ALL ... TO anon, authenticated` (00002500, the schema-wide marketplace grant), so

@@ -255,22 +255,28 @@ DECLARE
     v_funded int := 0;
     v_total bigint := 0;
     v_payer uuid;
+    v_owner uuid;
+    v_needed bigint;
+    v_available bigint;
 BEGIN
     IF NOT projects.has_project_access(p_project_id) THEN
         RAISE EXCEPTION 'Not authorized for this project.' USING ERRCODE = '42501';
     END IF;
 
     -- Funding moves the CLIENT's money into escrow, so project access is not enough: a freelancer on
-    -- the project has access too. The caller must be able to spend from the paying business's wallet —
-    -- the same capability the business checkout asks for.
-    SELECT p.client_business_id INTO v_payer FROM projects.projects p WHERE p.id = p_project_id;
-    IF v_payer IS NULL THEN
-        RAISE EXCEPTION 'This project has no paying business, so its stages cannot be funded.'
-            USING ERRCODE = 'PS501';
-    END IF;
-    IF NOT finance.fn_owner_capability('business', v_payer, 'spend'::finance.vault_capability) THEN
-        RAISE EXCEPTION 'Only a member who can spend from the client''s wallet can fund this stage.'
-            USING ERRCODE = '42501';
+    -- the project has access too. For a business client the caller must be able to spend from the
+    -- paying business's wallet — the same capability the business checkout asks for. A project with no
+    -- client business is paid for by its owner as an INDIVIDUAL client (PRODUCT_SPEC §Escrow, Wallets &
+    -- Finance #5), and only that owner may fund it, from their own wallet.
+    SELECT p.client_business_id, p.owner_user_id INTO v_payer, v_owner
+      FROM projects.projects p WHERE p.id = p_project_id;
+    IF v_payer IS NOT NULL THEN
+        IF NOT finance.fn_owner_capability('business', v_payer, 'spend'::finance.vault_capability) THEN
+            RAISE EXCEPTION 'Only a member who can spend from the client''s wallet can fund this stage.'
+                USING ERRCODE = '42501';
+        END IF;
+    ELSIF v_owner IS NULL OR v_owner IS DISTINCT FROM auth.uid() THEN
+        RAISE EXCEPTION 'Only the project''s owner can fund this stage.' USING ERRCODE = '42501';
     END IF;
 
     SELECT ps.status, ps.name, p.currency
@@ -286,6 +292,26 @@ BEGIN
     -- AC1: only an assigned stage may be funded.
     IF v_status <> 'assigned'::stage_status THEN
         RAISE EXCEPTION 'Stage must be in the assigned state to fund escrow (current: %).', v_status;
+    END IF;
+
+    -- An individual's hold is skipped per ticket when their wallet cannot cover it, which would leave a
+    -- stage half-funded; so the whole stage is checked against the wallet first, all or nothing.
+    IF v_payer IS NULL THEN
+        SELECT COALESCE(SUM(COALESCE(t2.unit_price_cents, ps2.unit_price_cents)), 0) INTO v_needed
+          FROM projects.tickets t2
+          LEFT JOIN projects.project_stages ps2 ON ps2.id = t2.current_stage_id
+         WHERE t2.current_stage_id = p_stage_id
+           AND t2.current_assignee_id IS NOT NULL
+           AND t2.payment_status = 'unpaid'::payment_status;
+        SELECT w.balance_cents INTO v_available
+          FROM finance.wallets w
+         WHERE w.owner_id = v_owner
+           AND w.owner_type = finance.fn_person_wallet_type(v_owner)
+           AND w.currency = upper(COALESCE(v_currency, 'USD'));
+        IF COALESCE(v_available, 0) < v_needed THEN
+            RAISE EXCEPTION 'Your wallet does not hold enough to fund this stage — pay by card instead.'
+                USING ERRCODE = 'PF402';
+        END IF;
     END IF;
 
     -- Hold escrow for each assigned, not-yet-funded ticket in the stage. fn_hold_ticket_escrow

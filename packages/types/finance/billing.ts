@@ -1,13 +1,13 @@
 import { z } from "zod";
 import {
 	currency,
+	FinanceOwnerType,
 	minorUnits,
 	minorUnitsNonNeg,
 	minorUnitsPositive,
 	timestamp,
 	uuid,
 } from "./common.ts";
-import { WalletOwnerType } from "./ledger.ts";
 
 /**
  * finance billing — invoices, invoice line items, disputes, monthly statements, and chargebacks.
@@ -94,7 +94,7 @@ export type StatementStatus = z.infer<typeof StatementStatus>;
  */
 export const StatementSchema = z.object({
 	id: uuid,
-	ownerType: WalletOwnerType,
+	ownerType: FinanceOwnerType,
 	ownerId: uuid,
 	periodStart: timestamp,
 	periodEnd: timestamp,

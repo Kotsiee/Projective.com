@@ -1,0 +1,35 @@
+{
+	"version": "0.0.1",
+	"configurations": [
+		{
+			"name": "web-wallet",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1] }; $env:PORT = '12974'; deno task dev"
+			],
+			"port": 12974
+		},
+		{
+			"name": "web-stripe",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '12977'; deno task dev"
+			],
+			"port": 12977
+		},
+		{
+			"name": "web-finance",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '12981'; deno task dev"
+			],
+			"port": 12981
+		}
+	]
+}

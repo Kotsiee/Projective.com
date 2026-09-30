@@ -762,6 +762,86 @@ REVOKE ALL ON FUNCTION finance.fn_check_spending_limit (uuid, uuid, bigint)
 FROM authenticated;
 
 
+-- --- finance: the Stripe fiat rails (00001230, Decision #125) ---
+-- USER doors: each authorises the caller with auth.uid() and records a REQUEST — it can never mark
+-- money received, an account payable or an identity verified.
+REVOKE ALL ON FUNCTION finance.begin_card_payment (text, uuid, uuid, uuid, bigint, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.begin_card_payment (text, uuid, uuid, uuid, bigint, text, text) TO authenticated;
+REVOKE ALL ON FUNCTION finance.attach_card_payment (uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.attach_card_payment (uuid, text) TO authenticated;
+REVOKE ALL ON FUNCTION finance.abandon_card_payment (uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.abandon_card_payment (uuid, text) TO authenticated;
+REVOKE ALL ON FUNCTION finance.payout_account_for (text, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.payout_account_for (text, uuid) TO authenticated;
+REVOKE ALL ON FUNCTION finance.record_payout_account (text, uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.record_payout_account (text, uuid, text) TO authenticated;
+REVOKE ALL ON FUNCTION finance.begin_identity_verification () FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.begin_identity_verification () TO authenticated;
+REVOKE ALL ON FUNCTION finance.attach_identity_session (uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.attach_identity_session (uuid, text) TO authenticated;
+REVOKE ALL ON FUNCTION finance.abandon_identity_verification (uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.abandon_identity_verification (uuid, text) TO authenticated;
+
+-- PROCESSOR doors: they apply what Stripe REPORTS, so no client role may call them — a user who could
+-- would be able to announce their own payment settled or their own account verified. Reached only
+-- from the signature-verified webhook and the fat service's own status reads, as service_role.
+REVOKE ALL ON FUNCTION finance.settle_card_payment (text, text, bigint, text, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.settle_card_payment (text, text, bigint, text, boolean) TO service_role;
+REVOKE ALL ON FUNCTION finance.record_card_payment_failure (text, text, text, text, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.record_card_payment_failure (text, text, text, text, boolean) TO service_role;
+REVOKE ALL ON FUNCTION finance.apply_identity_event (text, text, text, text, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.apply_identity_event (text, text, text, text, boolean) TO service_role;
+REVOKE ALL ON FUNCTION finance.sync_payout_account (text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.sync_payout_account (text, text) TO service_role;
+REVOKE ALL ON FUNCTION finance.record_transfer_created (text, text, text, bigint, text, uuid, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.record_transfer_created (text, text, text, bigint, text, uuid, boolean) TO service_role;
+REVOKE ALL ON FUNCTION finance.record_dispute_opened (text, text, text, bigint, text, text, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.record_dispute_opened (text, text, text, bigint, text, text, boolean) TO service_role;
+
+-- Internal helpers: called only from inside the doors above, never over the API.
+REVOKE ALL ON FUNCTION finance.fn_claim_stripe_event (text, text) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_complete_stripe_event (text, jsonb) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_stripe_event_replay (text) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_payout_owner (text, uuid) FROM PUBLIC, anon, authenticated, service_role;
+
+-- --- finance: money movement after the fiat rails (00001240, Decision #126) ---
+-- USER doors: authorise the caller themselves; none can report that money arrived or left.
+REVOKE ALL ON FUNCTION finance.begin_payout (uuid, bigint, text, boolean, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.begin_payout (uuid, bigint, text, boolean, text) TO authenticated;
+REVOKE ALL ON FUNCTION finance.card_owner_for (text, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.card_owner_for (text, uuid) TO authenticated;
+REVOKE ALL ON FUNCTION finance.record_processor_customer (text, uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.record_processor_customer (text, uuid, text) TO authenticated;
+REVOKE ALL ON FUNCTION finance.create_deposit_rule (uuid, bigint, text, finance.deposit_interval, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.create_deposit_rule (uuid, bigint, text, finance.deposit_interval, uuid) TO authenticated;
+REVOKE ALL ON FUNCTION finance.set_income_smoother (text, bigint, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.set_income_smoother (text, bigint, boolean) TO authenticated;
+REVOKE ALL ON FUNCTION finance.my_verification_status () FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.my_verification_status () TO authenticated;
+REVOKE ALL ON FUNCTION finance.ensure_purchase_wallet (text, uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.ensure_purchase_wallet (text, uuid, text) TO authenticated;
+
+-- PROCESSOR doors: service_role only (a client who could call them could announce their own payout
+-- sent, their own chargeback won, or a card saved against somebody else's billing profile).
+REVOKE ALL ON FUNCTION finance.record_dispute_closed (text, text, text, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.record_dispute_closed (text, text, text, boolean) TO service_role;
+REVOKE ALL ON FUNCTION finance.complete_payout (uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.complete_payout (uuid, text) TO service_role;
+REVOKE ALL ON FUNCTION finance.fail_payout (uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.fail_payout (uuid, text) TO service_role;
+REVOKE ALL ON FUNCTION finance.record_saved_card (text, uuid, text, text, text, integer, integer, uuid, boolean) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.record_saved_card (text, uuid, text, text, text, integer, integer, uuid, boolean) TO service_role;
+REVOKE ALL ON FUNCTION finance.claim_due_deposit_rules (integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.claim_due_deposit_rules (integer) TO service_role;
+REVOKE ALL ON FUNCTION finance.bind_scheduled_payment (uuid, text, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.bind_scheduled_payment (uuid, text, text) TO service_role;
+
+-- Internal helpers.
+REVOKE ALL ON FUNCTION finance.fn_payout_destination (finance.wallets) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_escrow_payer_wallet_type (uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_escrow_fee_bp (uuid, uuid) FROM PUBLIC, anon, authenticated;
+
+
 -- --- files: asset management ---
 -- files.fn_can_read is deliberately left executable by PUBLIC: it IS the SELECT policy on
 -- files.items, and a policy expression runs as the invoking role, so revoking it would deny every

@@ -1,0 +1,156 @@
+/*
+ * The four-state allocation meter at the head of the sheet.
+ *
+ * Geometry rules, each load-bearing:
+ * - A segment's width is `flex-grow: var(--wlt-share)` from a zero basis, so the four shares divide
+ *   exactly what is left after the gaps — the segments sum to the whole track, never past it.
+ * - Widths are set directly and NEVER transitioned. A share that animated its width would, in a tab
+ *   whose animation clock is frozen, sit at its starting width — a meter saying the wrong thing.
+ *   Hover only moves `opacity`, which carries no value.
+ * - The 2px seam between segments is the surface showing through (`--space-px` gap), never a stroke:
+ *   a border would add ink that is not data.
+ */
+
+.wlt-alloc {
+	gap: var(--space-3);
+}
+
+/* The meter's heading sits on the sheet's translucent rim, so it takes the ink the veil was computed
+   for rather than `--text-secondary`. */
+.wlt-alloc .wlt-section__title {
+	color: var(--on-surface-variant);
+}
+
+.wlt-alloc__bar {
+	display: flex;
+	gap: var(--space-px);
+	block-size: var(--space-3);
+	border-radius: var(--radius-full);
+	overflow: clip;
+}
+
+.wlt-alloc__bar--empty {
+	background: var(--track-meter);
+}
+
+.wlt-alloc__cell {
+	display: flex;
+	flex: var(--wlt-share) 1 0;
+	min-inline-size: 0;
+}
+
+.wlt-alloc__cell > .ui-tooltip__anchor {
+	display: flex;
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+.wlt-alloc__seg {
+	flex: 1 1 auto;
+	background: var(--wlt-alloc-fill);
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.wlt-alloc__cell[data-state="available"],
+.wlt-alloc__item[data-state="available"] {
+	--wlt-alloc-fill: var(--wlt-fund-available);
+}
+
+.wlt-alloc__cell[data-state="locked"],
+.wlt-alloc__item[data-state="locked"] {
+	--wlt-alloc-fill: var(--wlt-fund-escrow);
+}
+
+.wlt-alloc__cell[data-state="pending"],
+.wlt-alloc__item[data-state="pending"] {
+	--wlt-alloc-fill: var(--wlt-fund-clearing);
+}
+
+.wlt-alloc__cell[data-state="on_hold"],
+.wlt-alloc__item[data-state="on_hold"] {
+	--wlt-alloc-fill: var(--wlt-fund-reserved);
+}
+
+/* Pointing at one state quiets the others, so the segment under the pointer is the one being read. */
+@media (hover: hover) {
+	.wlt-alloc__bar:hover .wlt-alloc__seg {
+		opacity: 0.45;
+	}
+
+	.wlt-alloc__bar .wlt-alloc__cell:hover .wlt-alloc__seg {
+		opacity: 1;
+	}
+}
+
+.wlt-alloc__legend {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2) var(--space-5);
+}
+
+.wlt-alloc__term {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	cursor: default;
+}
+
+.wlt-alloc__dot {
+	flex: none;
+	inline-size: var(--pip-dot);
+	block-size: var(--pip-dot);
+	border-radius: 50%;
+	background: var(--wlt-alloc-fill);
+}
+
+.wlt-alloc__glyph {
+	flex: none;
+	color: var(--wlt-alloc-fill);
+}
+
+.wlt-alloc__label {
+	color: var(--on-surface);
+}
+
+.wlt-alloc__pct {
+	color: var(--on-surface-variant);
+	font-variant-numeric: tabular-nums;
+}
+
+.wlt-alloc__empty {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--on-surface-variant);
+}
+
+.wlt-alloc__tip {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	text-align: start;
+}
+
+.wlt-alloc__tiphead {
+	font-weight: var(--fw-medium);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.wlt-alloc__seg {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .wlt-alloc__seg {
+	transition: none;
+}
+
+@container wlt-sheet (min-width: 60rem) {
+	.wlt-alloc {
+		grid-column: 1 / -1;
+	}
+}

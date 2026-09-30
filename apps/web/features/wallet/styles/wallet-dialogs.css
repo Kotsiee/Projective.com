@@ -218,3 +218,78 @@
 	margin-block-start: var(--space-3);
 	text-align: start;
 }
+
+/* #region Invoices & statements */
+.wlt-statements {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+}
+
+.wlt-statements__group {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.wlt-statements__title {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.wlt-statements__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.wlt-statement {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	column-gap: var(--space-3);
+	padding-block: var(--space-2);
+	border-block-end: var(--hairline);
+}
+
+.wlt-statement:last-child {
+	border-block-end: 0;
+}
+
+.wlt-statement__text {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	min-inline-size: 0;
+}
+
+.wlt-statement__title {
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.wlt-statement__meta {
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+
+.wlt-statement[data-overdue="true"] .wlt-statement__meta {
+	color: var(--wlt-attention-ink);
+}
+
+.wlt-statement__amount {
+	font-size: var(--text-md);
+}
+
+.wlt-statement__status {
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+/* #endregion */

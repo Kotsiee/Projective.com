@@ -907,8 +907,23 @@ To bridge the gap between "Marketplace Speed" and "Corporate Accounting," Busine
 Money enters and leaves the platform through two deliberately asymmetric paths:
 
 - **Clients pay with zero friction (tap-and-pay).** An individual client needs **no ID verification
-  and no wallet** — they pay by card through Stripe (with an optional save-card for reuse). Buying
-  should never require onboarding.
+  and no wallet to set up** — they pay by card through Stripe (with an optional save-card for reuse).
+  Buying should never require onboarding. Behind the scenes a card payment is credited to a wallet the
+  platform opens for the payer automatically (the wallet is the ledger of record), and the purchase or
+  escrow is paid from it — so a card buyer and a wallet buyer are one ledger, and nothing is asked of
+  the buyer to make that true (root `CLAUDE.md` §8 Decision #126).
+- **An individual client funds escrow like a business does.** A project with no client business is
+  funded by its owner — by card, or from their own wallet — and every release, refund and fair-exit
+  split returns money to that person. Only the project's owner may fund it.
+- **Money leaves only to a verified payout account.** Whoever withdraws — freelancer, business or a
+  client taking a refund balance out — needs a Stripe payout account on file (Settings → Verification
+  & payouts). The wallet is debited when the withdrawal starts and credited back if Stripe refuses it.
+- **A lost card dispute is recovered from the payer, not the freelancer.** When a client's bank wins a
+  chargeback, the escrow that card payment funded (if still held) is refunded to the client's wallet
+  and the disputed amount is then taken back from that wallet; whatever the wallet cannot cover is the
+  platform's loss. A won dispute returns the escrow to held. Whether money ALREADY released to a
+  freelancer is clawed back is **not yet decided** — today it is not (flagged in root `CLAUDE.md` §8
+  Decision #126 for a human).
 - **Freelancers must be _payout-ready before they earn_.** Identity verification (KYC) **and** a
   configured payout method are **onboarding gates**: a freelancer cannot land a gig or join a team
   until both are in place. This is the platform's **No Forever-Escrow Guarantee** — because every
@@ -2111,7 +2126,10 @@ fire for the same person on a device that genuinely does not have the file.
 |               |                           | `projects`               | View team projects                                                                             |
 |               |                           | `vault`                  | Shared wallet access                                                                           |
 |               | `/analytics`              | `index`                  | Performance data                                                                               |
-|               | `/wallet`                 | `index`                  | **The command centre — one page.** A balance hero (total · available · in escrow · clearing) with every money action, over a sheet of accounts, cash flow, upcoming obligations, transactions and payment methods. The former deep pages (`transactions`, `activity`, `payouts`, `funding`, `invoices`, `access`, `methods`) **308→** its sections |
+|               | `/wallet`                 | `index`                  | **The command centre.** A balance hero (total · available · in escrow · clearing) with every money action, over a sheet of accounts, cash flow, upcoming obligations, recent transactions and payment methods. A middle-nav lane links the wallet's pages and carries every money action. The retired deep pages `activity` **308→** `analytics`; `payouts`, `funding`, `access`, `methods` **308→** overview sections |
+|               |                           | `transactions`           | The full ledger, newest first, paged, with a CSV export                                         |
+|               |                           | `analytics`              | Cash flow over the window picked on the pinned range ruler, the balance breakdown, and money moved by category and by project |
+|               |                           | `invoices`               | A business vault's bills due, the accruing month and past statements (a non-business wallet is told it is not billed) |
 |               |                           | `create`                 | Setup new wallet                                                                               |
 |               |                           | `[wallet id]`            | View specific wallet — addressed as `?w=scope:id` on `/wallet` (a view filter), never a path segment |
 |               | `/checkout`               | `index`                  | **Step 1 — Basket & lists.** The acting principal's basket plus its named lists (a list is a named basket row, not a separate table). `/basket` **302→** here, query string preserved |

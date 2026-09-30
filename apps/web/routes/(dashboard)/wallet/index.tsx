@@ -6,7 +6,7 @@ import WalletHome from "@features/wallet/islands/WalletHome.island.tsx";
 import { resolveWalletHome } from "@features/wallet/core/wallet-ssr.ts";
 
 /**
- * `/wallet` — the wallet command centre. Resolves the scoped wallet (`?w=`), its display currency
+ * `/wallet` — the wallet overview, the command centre of the wallet's four pages. Resolves the scoped wallet (`?w=`), its display currency
  * (`?display=`) and cash-flow window (`?flow=`) as the signed-in viewer; a 503 when the wallet itself
  * cannot be read.
  */

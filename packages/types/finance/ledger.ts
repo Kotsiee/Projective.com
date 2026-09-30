@@ -40,6 +40,11 @@ export const WalletSchema = z.object({
 	ownerId: uuid,
 	currency,
 	balanceCents: minorUnitsNonNeg,
+	/**
+	 * This vault's own spend-approval threshold. `null` is "no local override" — the platform's
+	 * `vault_approval_threshold_cents` then applies — not an unset field.
+	 */
+	approvalThresholdCents: minorUnitsNonNeg.nullable(),
 	createdAt: timestamp,
 });
 export type Wallet = z.infer<typeof WalletSchema>;
@@ -53,8 +58,9 @@ export type TransactionDirection = z.infer<typeof TransactionDirection>;
 /**
  * A row of `finance.transactions` — one immutable movement on a wallet, carrying the running
  * `balanceAfterCents` and (when the movement crossed currencies) the FX snapshot captured at commit.
- * `reason` is a free-text canonical code (`escrow_hold`, `escrow_release`, `escrow_refund`,
- * `fair_exit_refund`, `team_split`, `refund`, `chargeback`, …).
+ * `reason` is a free-text canonical code (`topup`, `escrow_hold`, `escrow_release`, `escrow_refund`,
+ * `fair_exit_refund`, `team_split`, `refund`, `chargeback`, …). A card top-up settled by the Stripe
+ * webhook is `topup` with `refTable = 'inbound_payments'` (Decision #125).
  */
 export const TransactionSchema = z.object({
 	id: uuid,
@@ -66,6 +72,8 @@ export const TransactionSchema = z.object({
 	refTable: z.string().max(80).nullable(),
 	refId: uuid.nullable(),
 	balanceAfterCents: minorUnits,
+	/** Which pot of capital the amount belongs to — stored (`finance.fund_state`), filtered and sorted on. */
+	fundState: FundState,
 	/** FX rate applied to reach {@link fxBase}, when the movement was converted; else `null`. */
 	fxRate: z.number().nullable(),
 	fxBase: currency.nullable(),
@@ -125,6 +133,8 @@ export const ContributionAgreementSchema = z.object({
 	teamId: uuid,
 	memberUserId: uuid,
 	percentBp: basisPoints,
+	/** An immovable stake the rebalancer never touches. */
+	held: z.boolean(),
 });
 export type ContributionAgreement = z.infer<typeof ContributionAgreementSchema>;
 // #endregion

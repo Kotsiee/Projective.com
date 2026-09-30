@@ -18,7 +18,6 @@ import type {
 	TransactionListParams,
 	TransactionPage,
 	TransferInput,
-	WalletActionResult,
 	WalletOverview,
 	WalletQuery,
 	WalletSwitcher,
@@ -39,6 +38,8 @@ import {
 	transactionsOf,
 } from "./live-wallet.ts";
 import * as actions from "./wallet-actions.ts";
+import { type RenderedDocument, renderInvoicePdf, renderStatementPdf } from "./finance-documents.ts";
+import type { WalletActionOutcome } from "./wallet-actions.ts";
 import { resolveWalletContext, type WalletContext } from "./wallet-scope.ts";
 
 /**
@@ -76,15 +77,15 @@ async function read<T>(
 /** Run a mutation; an unexpected failure is a 503, and nothing is reported as done. */
 async function write(
 	label: string,
-	run: () => Promise<Result<{ result: WalletActionResult }>> | Result<{ result: WalletActionResult }>,
-): Promise<Result<{ result: WalletActionResult }>> {
+	run: () => Promise<Result<{ result: WalletActionOutcome }>> | Result<{ result: WalletActionOutcome }>,
+): Promise<Result<{ result: WalletActionOutcome }>> {
 	try {
 		return await run();
 	} catch (error) {
 		console.error(`[wallet:${label}]`, error instanceof Error ? error.message : error);
 		return fail(503, {
 			message: "We couldn't reach your wallet just now. Check its balance before trying again.",
-		}) as Result<{ result: WalletActionResult }>;
+		}) as Result<{ result: WalletActionOutcome }>;
 	}
 }
 
@@ -161,13 +162,36 @@ export class WalletBackendService {
 		return read("export", query, actor, (ctx) => ledgerCsvOf(ctx));
 	}
 
+	// #region Documents
+	/**
+	 * An invoice or a statement as a PDF, rendered on request from what the caller may read (RLS).
+	 * `404` when it does not exist or is not theirs to see.
+	 */
+	static async documentPdf(
+		kind: "invoice" | "statement",
+		id: string,
+		actor: ReadActor,
+	): Promise<Result<RenderedDocument>> {
+		if (!actor.userId || !actor.accessToken) return SIGNED_OUT as Result<RenderedDocument>;
+		try {
+			const doc = kind === "invoice"
+				? await renderInvoicePdf(actor.accessToken, id)
+				: await renderStatementPdf(actor.accessToken, id);
+			return doc ? ok(doc) : fail(404, { message: `That ${kind} wasn't found.` });
+		} catch (error) {
+			console.error(`[wallet:${kind}-pdf]`, error instanceof Error ? error.message : error);
+			return UNREACHABLE as Result<RenderedDocument>;
+		}
+	}
+	// #endregion
+
 	// #region Mutations
-	static topUp(input: TopUpInput) {
-		return write("top-up", () => actions.topUp(input));
+	static topUp(input: TopUpInput, query: WalletQuery, actor: ReadActor) {
+		return write("top-up", () => actions.topUp(input, query, actor));
 	}
 
-	static withdraw(input: WithdrawInput) {
-		return write("withdraw", () => actions.withdraw(input));
+	static withdraw(input: WithdrawInput, query: WalletQuery, actor: ReadActor) {
+		return write("withdraw", () => actions.withdraw(input, query, actor));
 	}
 
 	static transfer(input: TransferInput, query: WalletQuery, actor: ReadActor) {
@@ -182,12 +206,12 @@ export class WalletBackendService {
 		return write("fund-escrow", () => actions.fundEscrow(input, query, actor));
 	}
 
-	static addRecurring(input: DepositRuleInput) {
-		return write("recurring", () => actions.addRecurring(input));
+	static addRecurring(input: DepositRuleInput, query: WalletQuery, actor: ReadActor) {
+		return write("recurring", () => actions.addRecurring(input, query, actor));
 	}
 
-	static addMethod(input: AddMethodInput) {
-		return write("method", () => actions.addMethod(input));
+	static addMethod(input: AddMethodInput, query: WalletQuery, actor: ReadActor) {
+		return write("method", () => actions.addMethod(input, query, actor));
 	}
 
 	static setPayout(input: PayoutScheduleInput, query: WalletQuery, actor: ReadActor) {
@@ -202,8 +226,8 @@ export class WalletBackendService {
 		return write("spend-decision", () => actions.decideSpend(input, query, actor));
 	}
 
-	static enrolSmoother(input: IncomeSmootherEnrolInput) {
-		return write("smoother", () => actions.enrolSmoother(input));
+	static enrolSmoother(input: IncomeSmootherEnrolInput, query: WalletQuery, actor: ReadActor) {
+		return write("smoother", () => actions.enrolSmoother(input, query, actor));
 	}
 	// #endregion
 }

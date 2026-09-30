@@ -341,7 +341,8 @@ export const SpendingCapViewSchema = z.object({
 	memberName: z.string().max(120),
 	memberHandle: z.string().max(40).nullable(),
 	avatar: z.string().max(600).nullable(),
-	cap: MoneyViewSchema,
+	/** `null` when the envelope has no ceiling (a NULL `cap_cents`) — never a cap of zero. */
+	cap: MoneyViewSchema.nullable(),
 	spent: MoneyViewSchema,
 	interval: SpendingLimitInterval,
 	utilizationBp: basisPoints,
@@ -564,8 +565,11 @@ export type TransactionPage = z.infer<typeof TransactionPageSchema>;
 // #endregion
 
 // #region Activity (cash flow)
-/** The cash-flow window: a week, a month, a quarter or a year, each summed server-side. */
-export const ActivityRange = z.enum(["7d", "30d", "90d", "12m"]);
+/**
+ * The cash-flow window, each summed server-side: a week, a month, a quarter, half a year, a year, five
+ * years, or everything the wallet has recorded (`all`, which starts at the wallet's oldest movement).
+ */
+export const ActivityRange = z.enum(["7d", "30d", "90d", "180d", "12m", "5y", "all"]);
 export type ActivityRange = z.infer<typeof ActivityRange>;
 
 /** One category slice of the by-category breakdown. */
@@ -629,7 +633,8 @@ export type PayoutDestination = z.infer<typeof PayoutDestinationSchema>;
 export const PayoutHistoryRowSchema = z.object({
 	id: z.string().max(64),
 	amount: MoneyViewSchema,
-	status: z.enum(["paid", "in_transit", "failed", "pending"]),
+	/** Member for member with `finance.payout_status` (#125(e): the projection once said `in_transit`, which the table cannot hold, and had no `cancelled`). */
+	status: z.enum(["pending", "paid", "failed", "cancelled"]),
 	destinationLabel: z.string().max(120),
 	at: timestamp,
 	dateLabel: z.string().max(40),
@@ -807,22 +812,32 @@ const targetShape = {
 	display: currency.optional(),
 };
 
-/** Top up the wallet's Available balance from a funding method. */
+/**
+ * Top up the wallet's Available balance by card. The action answers with a PaymentIntent handoff for
+ * the Payment Element (`WalletCardHandoff.payment`); the wallet is credited only when the signed
+ * `payment_intent.succeeded` webhook settles it (Decision #125/#126).
+ */
 export const TopUpInputSchema = z.object({
 	...targetShape,
 	amountMinor: minorUnitsPositive,
 	currency,
 	methodId: z.string().max(64).nullable(),
+	idempotencyKey: z.string().min(8).max(120),
 });
 export type TopUpInput = z.infer<typeof TopUpInputSchema>;
 
-/** Withdraw Available balance to a payout destination (optionally Instant). */
+/**
+ * Withdraw Available balance to the owner's verified Stripe Connect payout account (optionally
+ * Instant — recorded, but no Instant fee is charged while its magnitude is undecided, #55(c)). The
+ * wallet is debited at once and the money leaves as a Stripe Transfer (`finance.begin_payout`).
+ */
 export const WithdrawInputSchema = z.object({
 	...targetShape,
 	amountMinor: minorUnitsPositive,
 	currency,
 	destinationId: z.string().max(64).nullable(),
 	instant: z.boolean(),
+	idempotencyKey: z.string().min(8).max(120),
 });
 export type WithdrawInput = z.infer<typeof WithdrawInputSchema>;
 
@@ -885,16 +900,16 @@ export const DepositRuleInputSchema = z.object({
 export type DepositRuleInput = z.infer<typeof DepositRuleInputSchema>;
 
 /**
- * Register a payment method. Card entry is Stripe-hosted (Elements) — this payload carries only the
- * opaque provider token + safe display fragments, NEVER a card number (finance-model §Payment Methods).
+ * Save a card. The action answers with a SetupIntent handoff (`WalletCardHandoff.setup`); the card is
+ * entered in Stripe's Payment Element and recorded only when the SetupIntent is confirmed — this
+ * payload never carries a card number, a token, or any display fragment (finance-model §Payment
+ * Methods). What is kept is the brand, the last four digits and Stripe's `pm_…` reference, read from
+ * the confirmed SetupIntent — never a name typed here. Funding cards only: a payout destination is the
+ * owner's Connect account.
  */
 export const AddMethodInputSchema = z.object({
 	...targetShape,
-	methodRole: MethodRole,
-	provider: z.string().max(40),
-	/** Opaque Stripe token (a real integration hands this from Elements). */
-	token: z.string().max(200),
-	label: z.string().max(120).nullable(),
+	methodRole: MethodRole.default("funding"),
 });
 export type AddMethodInput = z.infer<typeof AddMethodInputSchema>;
 
@@ -927,11 +942,15 @@ export const SpendDecisionInputSchema = z.object({
 });
 export type SpendDecisionInput = z.infer<typeof SpendDecisionInputSchema>;
 
-/** Enrol in the Income Smoother at a target monthly figure. */
+/**
+ * Enrol in (or, with `enrol: false`, leave) the Income Smoother at a target monthly figure. Eligibility
+ * and the fee are decided by `finance.set_income_smoother`, never by the client.
+ */
 export const IncomeSmootherEnrolInputSchema = z.object({
 	targetMonthlyMinor: minorUnitsPositive,
 	currency,
 	display: currency.optional(),
+	enrol: z.boolean().optional(),
 });
 export type IncomeSmootherEnrolInput = z.infer<typeof IncomeSmootherEnrolInputSchema>;
 
@@ -1047,9 +1066,12 @@ export function capabilitiesForRole(role: VaultRole): VaultCapability[] {
 				"withdraw",
 				"manage_members",
 				"manage_billing",
+				"approve_spend",
 			];
+		// `manage_members` implies every capability in finance.fn_has_vault_capability, approving spends
+		// included — a preset that omitted `approve_spend` could never surface it (#125(e)).
 		case "admin":
-			return ["view", "add_funds", "spend", "distribute", "withdraw", "manage_members"];
+			return ["view", "add_funds", "spend", "distribute", "withdraw", "manage_members", "approve_spend"];
 		case "pm":
 			return ["view", "add_funds", "spend"];
 		case "member":

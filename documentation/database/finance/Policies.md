@@ -53,7 +53,9 @@ function — including the ledger primitives — callable over the API.
 Reachable only through `SECURITY DEFINER` functions and the service role; no client grant.
 
 `finance.promo_codes` (a list of codes **is** the leak — a checkout resolves one code at a time,
-server-side), `finance.ratings` (nothing reads it), `finance.idempotency_keys` (system table), and the
+server-side), `finance.ratings` (nothing reads it), `finance.idempotency_keys` (system table),
+`finance.processor_customers` (the Stripe Customer each owner's cards attach to — reached only through
+`card_owner_for` / `record_processor_customer` / `claim_due_deposit_rules`, Decision #126), and the
 `finance.v_wallet_reconciliation` view (service role only).
 
 > **Changed 2026-09-23.** `wallets`, `transactions`, `payouts`, `payout_accounts`, `orders`,
@@ -71,13 +73,17 @@ server-side), `finance.ratings` (nothing reads it), `finance.idempotency_keys` (
 ## 👁 Escrow visibility (`0205_security.sql`)
 
 ```sql
--- The payee (freelancer/team) and the payer business's active members can view an escrow.
+-- The payee (freelancer/team), the payer business's active members, and an individual payer can view
+-- an escrow.
 CREATE POLICY "View escrows" ON finance.escrows FOR SELECT TO authenticated USING (
     (payee_type = 'freelancer'::assignment_type AND payee_id = auth.uid ())
     OR (payee_type = 'team'::assignment_type AND org.is_active_team_member (payee_id))
-    OR org.is_active_business_member (payer_business_id)
+    OR (payer_business_id IS NOT NULL AND org.is_active_business_member (payer_business_id))
+    OR payer_user_id = auth.uid ()
 );
 ```
+
+The individual-payer arm is Decision #126 (`finance.escrows.payer_user_id`).
 
 Writes to `finance.escrows` remain definer-only (`fn_hold_ticket_escrow` /
 `fn_release_ticket_escrow` / `fn_refund_ticket_escrow` / `fn_fair_exit_release`).
@@ -181,7 +187,8 @@ policy — except `buyer_details`, the buyer's own form.
 | `finance.wallets`                 | `fn_owner_visible(owner_type, owner_id)`                                                  | — |
 | `finance.transactions`            | `fn_can_view_wallet(wallet_id)`                                                           | — |
 | `finance.payouts`                 | `fn_can_view_wallet(wallet_id)`                                                           | — |
-| `finance.payout_accounts`         | `fn_owner_visible(owner_type, owner_id)`                                                  | — |
+| `finance.inbound_payments`        | `fn_can_view_wallet(wallet_id)` — `"View visible inbound payments"`, `00002013` (Decision #125) | — (the Stripe doors, [Functions.md § Stripe fiat rails](Functions.md#-stripe-fiat-rails-00001230-decision-125)) |
+| `finance.payout_accounts`         | `fn_owner_visible(owner_type, owner_id)`                                                  | — (`record_payout_account` / `sync_payout_account`) |
 | `finance.orders`                  | `fn_owner_visible(owner_type, owner_id)` — the buyer, or the members of the buying entity | — |
 | `finance.order_lines`             | `EXISTS` over its order (runs under the order's policy)                                   | — |
 | `finance.invoices`                | admin, the issuer (`issue_from_profile` is a user **or** team id — both tested), or a member of `issue_to_business_id` | — |
@@ -256,6 +263,20 @@ wallet with any amount. So (`00002510`):
 - **`simulate_wallet_transaction` is revoked from `service_role` explicitly**, AFTER the blanket
   service-role grant in the same file: that grant would otherwise hand it back, and a context with no
   `auth.uid()` is exactly what gate 2 below refuses.
+- **The Stripe fiat rails split by door** (`00001230`, Decision #125). The user doors —
+  `begin_card_payment`, `attach_card_payment`, `abandon_card_payment`,
+  `begin_identity_verification`, `attach_identity_session`, `abandon_identity_verification`,
+  `payout_account_for`, `record_payout_account` — go to `authenticated` only, and each authorises the
+  caller itself. The processor doors — `settle_card_payment`, `record_card_payment_failure`,
+  `apply_identity_event`, `sync_payout_account`, `record_transfer_created`, `record_dispute_opened` —
+  are revoked from `PUBLIC`, `anon` **and `authenticated`** and granted to `service_role` alone: they
+  say that money arrived or that a person is verified, facts only the signature-checked webhook may
+  assert. The internal helpers (`fn_claim_stripe_event`, `fn_complete_stripe_event`,
+  `fn_stripe_event_replay`, `fn_payout_owner`) are revoked from every role including `service_role`
+  — only the definer doors call them. `payments.contract.test.ts` reads this file and fails if a
+  processor door is ever granted to a client role.
+- **`finance.inbound_payments`** carries `SELECT` for `authenticated` (bounded by its policy) and
+  `ALL` for `service_role`; no client role holds a write privilege on it (`00002520`).
 
 ## 🧪 `finance.simulate_wallet_transaction` — the param-gated simulator
 

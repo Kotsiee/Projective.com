@@ -470,7 +470,7 @@ export async function spendLimitFor(
 
 	interface LimitRow {
 		wallet_id: string;
-		cap_cents: number | string;
+		cap_cents: number | string | null;
 		per_transaction_cents: number | string | null;
 		spent_cents: number | string;
 		period_interval: string;
@@ -491,7 +491,10 @@ export async function spendLimitFor(
 	const convert = (minor: number | string | null) =>
 		minor === null ? null : money.canConvert(currency) ? money.convertMinor(Number(minor) || 0, currency) : null;
 
-	const capMinor = limit ? convert(limit.cap_cents) ?? 0 : 0;
+	// A NULL cap is "no ceiling" (finance.fn_check_spending_limit), not a cap of zero: reading it as 0
+	// refused every purchase from an uncapped member's envelope (#125(e)).
+	const capped = limit !== null && limit.cap_cents !== null;
+	const capMinor = capped ? convert(limit!.cap_cents) ?? 0 : 0;
 	const spentMinor = limit ? convert(limit.spent_cents) ?? 0 : 0;
 	const remainingMinor = Math.max(capMinor - spentMinor, 0);
 	const threshold = wallet?.approval_threshold_cents !== null && wallet?.approval_threshold_cents !== undefined
@@ -502,7 +505,7 @@ export async function spendLimitFor(
 		totalMinor,
 		{
 			canSpend: owner.actingIsMember,
-			limitMinor: limit ? remainingMinor : null,
+			limitMinor: capped ? remainingMinor : null,
 			perTransactionMinor: limit?.per_transaction_cents != null ? convert(limit.per_transaction_cents) : null,
 		},
 		{
@@ -516,9 +519,9 @@ export async function spendLimitFor(
 		applies: true,
 		verdict: verdict.outcome,
 		reason: verdict.outcome === "allowed" ? null : verdict.reason,
-		cap: money.derived(capMinor),
+		cap: capped ? money.derived(capMinor) : null,
 		spent: money.derived(spentMinor),
-		remaining: money.derived(remainingMinor),
+		remaining: capped ? money.derived(remainingMinor) : null,
 		periodLabel: limit ? PERIOD_LABEL[limit.period_interval] ?? null : null,
 		requestHref: verdict.outcome !== "needs_approval"
 			? null

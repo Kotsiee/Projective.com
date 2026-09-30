@@ -50,6 +50,7 @@ Parenthesized folders group routes **without** adding a URL segment:
 | files hub (deep)        | `(dashboard)/files/[...path].tsx`                            | `/files/*` (any folder, at any depth — a real, deep-linkable, shareable URL the tree, the breadcrumbs and the address bar all address identically; each segment is percent-encoded INDEPENDENTLY, so a folder literally named `a/b` never reads back as the pair `["a","b"]`)                                                                                                                                                                                                                                                                                                                                                |
 | share link              | `(public)/share/[slug].tsx`                                  | `/share/:slug` (the public resolution of a read-only share link — the one files surface a stranger can reach)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | integrations            | `(dashboard)/settings/integrations/index.tsx`                | `/settings/integrations` (the connector console — the caller's stored authorizations, and the catalogue)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| verification            | `(dashboard)/settings/verification.tsx`                      | `/settings/verification` (**Verification & payouts** — the freelancer's Level-2 identity check through Stripe Identity, the Stripe Connect payout account a withdrawal is transferred to, and each client business's Level-3 KYB through Connect onboarding. Every wallet lock about identity or payouts links here. Stripe's hosted pages come back through `/api/finance/connect/{return,refresh}?…&back=settings` and the Identity return, which land here with a one-line notice; the page itself reads `GET /api/finance/verify/status`. Root CLAUDE.md §8 Decision #126) |
 | teams roster            | `(dashboard)/teams/index.tsx`                                | `/teams` — the caller's teams (owned first), their pending invitations to teams, and the create entitlement. Read by `org.get_workspace_roster('team')`. |
 | team create             | `(dashboard)/teams/create.tsx`                               | `/teams/create` — the create flow (name + a `@handle` checked live against the ONE handle namespace); the entity is born `draft`. |
 | team console            | `(dashboard)/teams/[teamHandle]/index.tsx`                   | `/teams/:teamHandle` — the console's **Overview**. Addressed by the team's `@handle` (`org.teams.slug`), never its uuid. |
@@ -161,15 +162,23 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   `/wallet?w=team:{id}` is a page-local VIEW filter, not a context switch — the acting context changes
   only through `POST /api/context/switch`.
 
-- **The wallet is one page.** `/wallet` is the whole command centre (Decision #122). Its state
-  lives in the query string: `?w=scope:id` selects which wallet is shown (a view filter, never a
-  context switch — builder `walletHref()` in `apps/web/features/wallet/core/wallet-model.ts`),
-  `?flow=week|month|quarter|year` the cash-flow window, `?display=` the currency the figures are
-  drawn in. The seven retired deep pages answer `(dashboard)/wallet/[section].tsx` with a **308**
-  to a section of the one page, keeping `w` and `display`: `transactions` → `#transactions`,
-  `activity` → `#cash-flow`, `payouts` · `funding` · `invoices` · `access` → `#upcoming`,
-  `methods` → `#methods`. Any other `/wallet/<segment>` is a 404. The lane, header band and footer
-  rig are gone: `(dashboard)/_layout.tsx` resolves no slot for `/wallet`.
+- **The wallet is four pages over one set of query parameters.** `/wallet` is the overview (the
+  command centre, Decision #122); `/wallet/transactions`, `/wallet/analytics` and `/wallet/invoices`
+  are pages of their own (Decision #124), every one rendered by the same `WalletHome` island so the
+  dialogs the lane opens are hosted wherever the reader is. Their state lives in the query string:
+  `?w=scope:id` selects which wallet is shown (a view filter, never a context switch — builders
+  `walletHref()` and `walletPageHref()` in `apps/web/features/wallet/core/wallet-model.ts`, which keep
+  `w` and `display` on every page link), `?flow=7d|1m|3m|6m|1y|5y|all` the cash-flow window on the two
+  pages that draw one (overview · analytics; set from the pinned range ruler; the pre-ruler names
+  `week|month|quarter|year` still resolve), `?display=` the currency the figures are drawn in. The
+  remaining retired deep pages answer `(dashboard)/wallet/[section].tsx` with a **308**, keeping `w`
+  and `display`: `activity` → `/wallet/analytics`, `payouts` · `funding` · `access` →
+  `/wallet#upcoming`, `methods` → `/wallet#methods`. Any other `/wallet/<segment>` is a 404.
+  `(dashboard)/_layout.tsx` resolves ONE slot for every wallet page — the middle-nav LANE
+  (`walletLaneFor`: page links · the verification gate · the money-action grid, reading the overview
+  itself so it paints in the first byte) — and no header band and no footer rig: the display-currency
+  and settings tools sit in the hero's corner and the range ruler pins inside the page. Below 767px
+  the shell removes the lane, and its page links and gate move to the top of the sheet.
 
 - **A ticket is addressed by `?tkv=<ticket-slug>`, on whatever page the viewer is on.** A ticket
   has no route of its own: its modal (`tkv`, the View Ticket surface) is opened by a QUERY parameter

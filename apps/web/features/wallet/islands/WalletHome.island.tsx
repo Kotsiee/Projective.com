@@ -7,6 +7,7 @@ import { Icon } from "@projective/ui/icons";
 import { type WalletContext, WalletService } from "../core/WalletService.ts";
 import { LEDGER_PAGE, type WalletHomeData, type WalletRead } from "../core/wallet-ssr.ts";
 import {
+	allocationOf,
 	mergeLedger,
 	resolveAction,
 	resolveHeroActions,
@@ -17,12 +18,17 @@ import {
 	buildWalletQuery,
 	DEFAULT_FLOW_PERIOD,
 	type FlowPeriod,
+	hasInvoices,
 	periodRange,
+	viewShowsRuler,
+	type WalletView,
+	walletPageHref,
 } from "../core/wallet-model.ts";
-import { openWalletDialog } from "../core/wallet-state.ts";
+import { openWalletDialog, walletFlowLive, walletOverviewLive } from "../core/wallet-state.ts";
 import type {
 	ActivityView,
 	FundingView,
+	InvoicesView,
 	LedgerLine,
 	MethodsView,
 	PayoutsView,
@@ -38,6 +44,12 @@ import { UpcomingList } from "../components/UpcomingList.tsx";
 import { LedgerList } from "../components/LedgerList.tsx";
 import { MethodsList } from "../components/MethodsList.tsx";
 import { WalletDialogs } from "../components/WalletDialogs.tsx";
+import { AllocationMeter } from "../components/AllocationMeter.tsx";
+import { FlowBreakdown } from "../components/FlowBreakdown.tsx";
+import { InvoicesPanel } from "../components/InvoicesPanel.tsx";
+import { RangeRuler } from "../components/WalletTools.tsx";
+import { VerificationGate } from "../components/VerificationGate.tsx";
+import { WalletPageNav } from "../components/WalletPageNav.tsx";
 
 /** Props for {@link WalletHome}. */
 export interface WalletHomeProps {
@@ -54,6 +66,9 @@ function partOf<T>(read: WalletRead<T> | null): Part<T> | null {
 	return read.ok ? { data: read.data, error: null } : { data: null, error: read.message };
 }
 
+/** Ledger lines the overview previews before linking to the full ledger. */
+const LEDGER_PREVIEW = 6;
+
 function reducedMotion(): boolean {
 	if (typeof document === "undefined") return true;
 	if (document.documentElement.dataset.motion === "reduced") return true;
@@ -64,10 +79,6 @@ function Failure({ message }: { message: string }): JSX.Element {
 	return (
 		<main class="wlt" aria-labelledby="wlt-title">
 			<section class="wlt-hero wlt-hero--failed">
-				<div class="wlt-hero__atmos" aria-hidden="true">
-					<span class="wlt-hero__glow wlt-hero__glow--teal" />
-					<span class="wlt-hero__glow wlt-hero__glow--indigo" />
-				</div>
 				<div class="wlt-hero__inner">
 					<h1 id="wlt-title" class="wlt-hero__failtitle">Wallet</h1>
 					<p class="wlt-hero__note" role="alert">{message}</p>
@@ -111,6 +122,9 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 	const approvals = useSignal<Part<SpendApprovalView[]> | null>(partOf(data.approvals));
 	const sideBusy = useSignal(false);
 
+	const invoices = useSignal<Part<InvoicesView> | null>(partOf(data.invoices));
+	const invoicesBusy = useSignal(false);
+
 	const mounted = useSignal(false);
 	const heroRef = useRef<HTMLElement>(null);
 	const sheetRef = useRef<HTMLDivElement>(null);
@@ -121,13 +135,14 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 	const loadActivity = async (next: FlowPeriod) => {
 		flowBusy.value = true;
 		const res = await WalletService.activity(query(), periodRange(next));
+		if (res.ok && res.data) flows.value = { ...flows.peek(), [next]: res.data.activity };
+		// A slower answer for a window the reader has already left is cached above, but it must not clear
+		// the spinner or set the error of the window they are looking at now.
+		if (period.peek() !== next) return;
 		flowBusy.value = false;
-		if (res.ok && res.data) {
-			flows.value = { ...flows.value, [next]: res.data.activity };
-			flowError.value = null;
-		} else if (period.value === next) {
-			flowError.value = res.message ?? "The cash flow couldn't be loaded.";
-		}
+		flowError.value = res.ok && res.data
+			? null
+			: res.message ?? "The cash flow couldn't be loaded.";
 	};
 
 	const loadLedger = async (reset: boolean) => {
@@ -184,15 +199,26 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 		}
 	};
 
+	const loadInvoices = async () => {
+		invoicesBusy.value = true;
+		const res = await WalletService.invoices(query());
+		invoicesBusy.value = false;
+		invoices.value = res.ok && res.data ? { data: res.data.invoices, error: null } : {
+			data: invoices.value?.data ?? null,
+			error: res.message ?? "Invoices couldn't be loaded.",
+		};
+	};
+
 	const refresh = async (fresh: WalletOverview | null) => {
 		if (fresh) overview.value = fresh;
-		const current = period.value;
+		const current = period.peek();
 		flows.value = {};
 		const [main] = await Promise.all([
 			WalletService.overview(query()),
 			loadLedger(true),
 			loadActivity(current),
 			loadSide(),
+			data.view === "invoices" && invoices.peek() ? loadInvoices() : null,
 		]);
 		if (main.ok && main.data) {
 			overview.value = main.data.overview;
@@ -214,12 +240,23 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 				first = false;
 				return;
 			}
-			if (code && code !== display.value) {
+			if (code && code !== display.peek()) {
 				display.value = code;
+				// A `?display=` link would otherwise reload into the currency the reader just left.
+				const url = new URL(location.href);
+				if (url.searchParams.has("display")) {
+					url.searchParams.set("display", code);
+					history.replaceState(history.state, "", url);
+				}
 				void refresh(null);
 			}
 		});
 	}, []);
+
+	// The lane follows what the page shows, so its actions and gate agree after a money movement.
+	useEffect(() => {
+		walletOverviewLive.value = overview.value;
+	}, [overview.value]);
 
 	useEffect(() => {
 		const hero = heroRef.current;
@@ -238,15 +275,17 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 	// #endregion
 
 	// #region Handlers
-	const choosePeriod = (next: FlowPeriod) => {
+	function choosePeriod(next: FlowPeriod) {
 		period.value = next;
+		walletFlowLive.value = next;
 		flowError.value = null;
+		flowBusy.value = false;
 		const url = new URL(location.href);
 		if (next === DEFAULT_FLOW_PERIOD) url.searchParams.delete("flow");
 		else url.searchParams.set("flow", next);
 		history.replaceState(history.state, "", url);
-		if (!flows.value[next]) void loadActivity(next);
-	};
+		if (!flows.peek()[next]) void loadActivity(next);
+	}
 
 	const openAction = (action: WalletAction, stageId?: string) =>
 		openWalletDialog({ kind: "action", action, stageId });
@@ -255,9 +294,11 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 		if (a.kind === "approval") openWalletDialog({ kind: "approval", approvalId: a.approvalId });
 		else openAction(a.action, a.stageId);
 	};
+
 	// #endregion
 
 	const o = overview.value;
+	const view = data.view;
 	const actions = resolveHeroActions(o);
 	const resolve = (action: WalletAction) => resolveAction(action, o.unavailable, o.verification);
 	const canDecide = o.capabilities.includes("manage_billing") ||
@@ -273,11 +314,49 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 		.filter((m): m is string => !!m);
 	const activity = flows.value[period.value] ?? null;
 	const exportQuery = buildWalletQuery({ wallet: data.wallet, display: display.value });
+	const exportHref = `/api/wallet/export${exportQuery ? `?${exportQuery}` : ""}`;
 	const addMethod = o.quickActions.includes("add_method") ? resolve("add_method") : null;
+	const allocation = allocationOf(o);
+	const pageHref = (target: WalletView) =>
+		walletPageHref(target, data.wallet, display.value, period.value);
+
+	const ledger = (preview: boolean) => (
+		<LedgerList
+			lines={lines.value}
+			hasMore={hasMore.value}
+			loading={ledgerBusy.value}
+			error={ledgerError.value}
+			exportHref={exportHref}
+			mounted={mounted.value}
+			onOpen={(line) => openWalletDialog({ kind: "line", line })}
+			onMore={() => void loadLedger(false)}
+			onRetry={() => void loadLedger(lines.value.length === 0)}
+			preview={preview ? { limit: LEDGER_PREVIEW, href: pageHref("transactions") } : undefined}
+		/>
+	);
+
+	const cashFlow = (linked: boolean) => (
+		<CashFlow
+			period={period.value}
+			activity={activity}
+			loading={flowBusy.value}
+			error={flowError.value}
+			onRetry={() => void loadActivity(period.value)}
+			moreHref={linked ? pageHref("analytics") : undefined}
+		/>
+	);
 
 	return (
-		<main class="wlt" aria-labelledby="wlt-title">
+		<main class="wlt" data-view={view} aria-labelledby="wlt-title">
+			{viewShowsRuler(view) && (
+				<div class="wlt-rulebar">
+					<div class="wlt-rulebar__slot">
+						<RangeRuler value={period.value} onChange={choosePeriod} />
+					</div>
+				</div>
+			)}
 			<WalletHero
+				view={view}
 				overview={o}
 				switcher={switcher.value}
 				actions={actions}
@@ -286,50 +365,74 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 				onAction={(item) => openAction(item.action)}
 			/>
 			<div class="wlt-sheet" ref={sheetRef}>
-				<div class="wlt-sheet__grid" data-methods={methods.value ? "true" : undefined}>
-					<AccountRail
-						switcher={switcher.value}
+				{
+					/* On a phone the shell removes the lane, so its page links and verification gate move to
+					   the top of the sheet — shown there only below the lane's breakpoint, never twice. */
+				}
+				<div class="wlt-sheet__lanemoved">
+					<WalletPageNav
+						variant="strip"
+						view={view}
+						wallet={data.wallet}
 						display={display.value}
-						pot={o.personal?.taxPot ?? null}
-						reducedMotion={reducedMotion}
+						flow={period.value}
+						business={o.business}
 					/>
-					<CashFlow
-						period={period.value}
-						activity={activity}
-						loading={flowBusy.value}
-						error={flowError.value}
-						onPeriod={choosePeriod}
-						onRetry={() => void loadActivity(period.value)}
-					/>
-					<UpcomingList
-						items={upcoming}
-						errors={sideErrors}
-						retrying={sideBusy.value}
-						onAction={onUpcoming}
-						onRetry={() => void loadSide()}
-					/>
-					<LedgerList
-						lines={lines.value}
-						hasMore={hasMore.value}
-						loading={ledgerBusy.value}
-						error={ledgerError.value}
-						exportHref={`/api/wallet/export${exportQuery ? `?${exportQuery}` : ""}`}
-						mounted={mounted.value}
-						onOpen={(line) => openWalletDialog({ kind: "line", line })}
-						onMore={() => void loadLedger(false)}
-						onRetry={() => void loadLedger(lines.value.length === 0)}
-					/>
-					{methods.value && (
-						<MethodsList
-							methods={methods.value.data?.methods ?? []}
-							error={methods.value.error}
+					<VerificationGate overview={o} />
+				</div>
+
+				{view === "overview" && (
+					<div class="wlt-sheet__grid" data-methods={methods.value ? "true" : undefined}>
+						{allocation && <AllocationMeter parts={allocation} />}
+						<AccountRail
+							switcher={switcher.value}
+							display={display.value}
+							pot={o.personal?.taxPot ?? null}
+							reducedMotion={reducedMotion}
+						/>
+						{cashFlow(true)}
+						<UpcomingList
+							items={upcoming}
+							errors={sideErrors}
 							retrying={sideBusy.value}
-							add={addMethod}
-							onAdd={(item) => openAction(item.action)}
+							onAction={onUpcoming}
 							onRetry={() => void loadSide()}
 						/>
-					)}
-				</div>
+						{ledger(true)}
+						{methods.value && (
+							<MethodsList
+								methods={methods.value.data?.methods ?? []}
+								error={methods.value.error}
+								retrying={sideBusy.value}
+								add={addMethod}
+								onAdd={(item) => openAction(item.action)}
+								onRetry={() => void loadSide()}
+							/>
+						)}
+					</div>
+				)}
+
+				{view === "transactions" && <div class="wlt-sheet__page">{ledger(false)}</div>}
+
+				{view === "analytics" && (
+					<div class="wlt-sheet__page wlt-sheet__page--analytics">
+						{cashFlow(false)}
+						{allocation && <AllocationMeter parts={allocation} />}
+						<FlowBreakdown period={period.value} activity={activity} loading={flowBusy.value} />
+					</div>
+				)}
+
+				{view === "invoices" && (
+					<div class="wlt-sheet__page">
+						<InvoicesPanel
+							billed={hasInvoices(o.business)}
+							view={invoices.value?.data ?? null}
+							loading={invoicesBusy.value}
+							error={invoices.value?.error ?? null}
+							onRetry={() => void loadInvoices()}
+						/>
+					</div>
+				)}
 			</div>
 			<WalletDialogs
 				overview={o}
@@ -347,8 +450,10 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 }
 
 /**
- * The `/wallet` command centre: a luminous balance hero under a dashboard sheet of accounts, cash
- * flow, upcoming obligations, transactions and payment methods, with every money action in a dialog.
+ * Every `/wallet` page: a luminous hero under a dashboard sheet, with every money action in a dialog.
+ * The overview's sheet carries accounts, cash flow, upcoming obligations, recent transactions and
+ * payment methods; `/wallet/transactions`, `/wallet/analytics` and `/wallet/invoices` each carry their
+ * own. One island serves all four so the dialogs the lane opens are hosted on whichever page is open.
  */
 export default function WalletHome({ home }: WalletHomeProps): JSX.Element {
 	return home.ok ? <Home data={home.data} /> : <Failure message={home.message} />;

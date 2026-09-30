@@ -7,12 +7,14 @@
 
 -- --- from 0205_security.sql ---
 
--- The payee (freelancer/team) and the payer business's active members can view an escrow.
+-- The payee (freelancer/team), the payer business's active members, and an individual payer can view
+-- an escrow.
 CREATE POLICY "View escrows" ON finance.escrows FOR
 SELECT TO authenticated USING (
         (payee_type = 'freelancer'::assignment_type AND payee_id = auth.uid ())
         OR (payee_type = 'team'::assignment_type AND org.is_active_team_member (payee_id))
-        OR org.is_active_business_member (payer_business_id)
+        OR (payer_business_id IS NOT NULL AND org.is_active_business_member (payer_business_id))
+        OR payer_user_id = auth.uid ()
     );
 
 
@@ -267,4 +269,10 @@ SELECT TO authenticated USING (
 
 -- A spending cap is seen by anyone who may see the wallet it caps, which includes the member it binds.
 CREATE POLICY "View wallet spending limits" ON finance.spending_limits FOR
+SELECT TO authenticated USING (finance.fn_can_view_wallet (wallet_id));
+
+-- A card payment into a wallet is part of that wallet's history, seen by exactly the readers of its
+-- ledger — the same predicate as finance.transactions and finance.payouts (Decision #125). No write
+-- policy: an attempt is started, bound, settled and failed only through the 00001230 definers.
+CREATE POLICY "View visible inbound payments" ON finance.inbound_payments FOR
 SELECT TO authenticated USING (finance.fn_can_view_wallet (wallet_id));

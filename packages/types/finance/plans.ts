@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { basisPoints, currency, minorUnitsNonNeg, timestamp, uuid } from "./common.ts";
+import { basisPoints, currency, minorUnits, minorUnitsNonNeg, timestamp, uuid } from "./common.ts";
 
 /**
  * finance subscriptions — the PAID ladder: the plan catalogue, per-subject subscriptions, their audit
@@ -155,7 +155,8 @@ export const SubscriptionEventSchema = z.object({
 	]),
 	fromPlanId: uuid.nullable(),
 	toPlanId: uuid.nullable(),
-	amountCents: minorUnitsNonNeg.nullable(),
+	/** Signed: a processor credit or proration is negative (the column is unconstrained for that). */
+	amountCents: minorUnits.nullable(),
 	currency: currency.nullable(),
 	providerRef: z.string().max(200).nullable(),
 	reason: z.string().nullable(),

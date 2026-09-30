@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "skills": {
+    "connect-recommend": {
+      "source": "docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "86dedaa64b0b9ced37feb61147f8d571323babc574af9868fdddc96027c3b9bc"
+    },
+    "connect-required-verification-information": {
+      "source": "docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "289e0416bda85f6111d9125674c333ee899fcf88a97a9bfab394f6ee30cd6f5b"
+    },
+    "metronome": {
+      "source": "docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "3a4a4c90fd437077a17265d251eb79007c5fd7ab7ce63a7a83ade867e5e69e3c"
+    },
+    "stripe-best-practices": {
+      "source": "docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "ea0f8fcc6ed3ca1adf9e61a32d184b783fe9d7a502bb1779cda0e0b88a9222b8"
+    },
+    "stripe-directory": {
+      "source": "docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "07ad90a28d62dcaab561413f97603bb9abb31c762c14b303ad7878eb6e2eab6a"
+    },
+    "stripe-docs": {
+      "source": "docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "ee4a51d34f11386fe6c9f991d5b2d32da69c851124a78a01403412bcf87e73d7"
+    },
+    "stripe-projects": {
+      "source": "docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "d5b674901c9eb8b1c21e9d3a22728f9a4e0a8a6e22737ce7c284ff8daa51a765"
+    },
+    "upgrade-stripe": {
+      "source": "docs.stripe.com",
+      "sourceType": "well-known",
+      "computedHash": "22ce9077b7312a8163fa957276c34883477671c037e6fdbc7657b4a724385cfc"
+    }
+  }
+}

@@ -17,7 +17,7 @@ import { MoneyView } from "@projective/ui/display/money";
 import { profileHref } from "@features/projects/core/routing.ts";
 import { type WalletContext, WalletService } from "../core/WalletService.ts";
 import { closeWalletDialog, newAttemptKey, walletDialog } from "../core/wallet-state.ts";
-import { MOVEMENTS, type ResolvedAction } from "../core/wallet-home.ts";
+import { methodName, MOVEMENTS, type ResolvedAction } from "../core/wallet-home.ts";
 import {
 	ACTION_LABEL,
 	categoryLabel,
@@ -40,6 +40,9 @@ import type {
 	WalletSwitcher,
 } from "../types/wallet-types.ts";
 import type { WalletResult } from "../types/results.ts";
+import { incomeSmootherFeeMinor, type WalletCardHandoff } from "@projective/types/finance";
+import { StripeElementPanel } from "@features/payments/components/StripeElementPanel.tsx";
+import { PaymentsService } from "@features/payments/core/PaymentsService.ts";
 import { ActionIcon, CategoryIcon } from "./wallet-glyphs.tsx";
 
 /** The data every wallet dialog draws from. */
@@ -62,7 +65,7 @@ export interface WalletDialogsProps extends WalletDialogData {
 }
 
 type Position = "center" | "bottom";
-type Outcome = WalletResult<{ result: WalletActionResult }>;
+type Outcome = WalletResult<{ result: WalletActionResult & WalletCardHandoff }>;
 type Problems<F extends string> = Partial<Record<F, string>>;
 
 const EXIT_MS = 300;
@@ -122,13 +125,6 @@ function failureOf(res: Outcome | null): string {
 		"We couldn't confirm this went through. Check the balance before trying again.";
 }
 
-function methodName(
-	m: { label: string | null; brand: string | null; provider?: string; last4: string | null },
-): string {
-	const base = m.label ?? m.brand ?? m.provider ?? "Payment method";
-	return m.last4 && !base.includes(m.last4) ? `${base} ·· ${m.last4}` : base;
-}
-
 function refKey(scope: string, id: string): string {
 	return `${scope}:${id}`;
 }
@@ -163,7 +159,7 @@ function LockedDialog(
 			closing={closing}
 			footer={
 				<>
-					{item.fixHref && <a class="wlt-textlink" href={item.fixHref}>Finish verification</a>}
+					{item.fixHref && <a class="wlt-textlink" href={item.fixHref}>{item.fixLabel}</a>}
 					<Button variant="filled" label="Got it" onClick={closing.close} />
 				</>
 			}
@@ -181,15 +177,20 @@ function LockedDialog(
 // #endregion
 
 // #region Movements
-type MoveStep = "compose" | "review" | "sending" | "done" | "error";
+/**
+ * `card` — the Payment Element is on screen for a top-up's PaymentIntent; `settling` — Stripe accepted
+ * the card and the dialog is waiting for the signed webhook to credit the wallet (never assumed).
+ */
+type MoveStep = "compose" | "review" | "sending" | "card" | "settling" | "done" | "error";
 
 const CONSEQUENCE: Readonly<Partial<Record<WalletAction, string>>> = {
 	distribute: "Each member is credited immediately by their agreed share. This can't be reversed.",
 	fund_escrow:
 		"The amount moves into escrow for the stage and is released to the freelancer when their work is approved.",
-	withdraw: "The money leaves the platform for your bank. This can't be reversed.",
+	withdraw:
+		"The money leaves Projective for your payout account, which pays it to your bank. This can't be reversed.",
 	transfer: "The money moves between your wallets straight away. This can't be reversed.",
-	top_up: "The amount is charged to your payment method and added to this wallet.",
+	top_up: "You'll enter a card next. The amount is added to this wallet once the payment clears.",
 };
 
 function MoveDialog(
@@ -211,6 +212,7 @@ function MoveDialog(
 	const note = useSignal("");
 	const problems = useSignal<Problems<"amount" | "to" | "stage">>({});
 	const outcome = useSignal<string | null>(null);
+	const handoff = useSignal<WalletCardHandoff["payment"] | null>(null);
 	const attempt = useRef("");
 	const formRef = useRef<HTMLDivElement>(null);
 
@@ -231,9 +233,6 @@ function MoveDialog(
 		refKey(a.scope, a.id) !== refKey(source.scope, source.id) &&
 		heldIn(a.available).currency === held.currency
 	);
-	const fundingMethods = props.methods.filter((m) =>
-		m.methodRole !== "payout" && m.status === "active"
-	);
 	const members = overview.team?.members ?? [];
 
 	const toLabel = action === "transfer"
@@ -245,11 +244,7 @@ function MoveDialog(
 		: action === "fund_escrow"
 		? (stage ? `${stage.stageName} · ${stage.projectTitle}` : "escrow")
 		: walletName;
-	const fromLabel = action === "top_up"
-		? (fundingMethods.find((m) => m.id === method.value)
-			? methodName(fundingMethods.find((m) => m.id === method.value)!)
-			: "Your default funding method")
-		: walletName;
+	const fromLabel = action === "top_up" ? "A card you enter next" : walletName;
 
 	const review = () => {
 		const found: Problems<"amount" | "to" | "stage"> = {};
@@ -305,13 +300,15 @@ function MoveDialog(
 					currency,
 					destinationId: method.value || null,
 					instant: false,
+					idempotencyKey: attempt.current,
 				});
 			default:
 				return WalletService.topUp({
 					...target,
 					amountMinor: minor,
 					currency,
-					methodId: method.value || null,
+					methodId: null,
+					idempotencyKey: attempt.current,
 				});
 		}
 	};
@@ -319,6 +316,12 @@ function MoveDialog(
 	const commit = async () => {
 		step.value = "sending";
 		const res = await send().catch(() => null);
+		if (res?.ok && action === "top_up" && res.data?.result?.payment) {
+			// Nothing has been charged yet: the card is entered in Stripe's Element next.
+			handoff.value = res.data.result.payment;
+			step.value = "card";
+			return;
+		}
 		if (res?.ok) {
 			outcome.value = res.data?.result?.message ?? res.message ?? null;
 			step.value = "done";
@@ -329,7 +332,28 @@ function MoveDialog(
 		step.value = "error";
 	};
 
-	const verb = `${ACTION_LABEL[action]} ${figure}`;
+	/**
+	 * Stripe accepted the card; the wallet is credited only when the signed webhook settles the payment,
+	 * so wait for THAT, then re-read the wallet. A slow webhook is said out loud, never papered over.
+	 */
+	const settle = async (paymentId: string) => {
+		step.value = "settling";
+		const settled = await PaymentsService.waitForSettlement(paymentId);
+		const fresh = await WalletService.overview(props.query).catch(() => null);
+		if (fresh?.ok && fresh.data) props.onChanged(fresh.data.overview);
+		if (settled === "failed") {
+			outcome.value = "The payment didn't go through. Nothing was added to your wallet.";
+			step.value = "error";
+			return;
+		}
+		outcome.value = settled === "succeeded"
+			? "Added to your wallet."
+			: "Your bank accepted the payment. It will appear in your wallet as soon as it clears.";
+		step.value = "done";
+	};
+
+	// A top-up's review step charges nothing yet — the card is entered next — so it says so.
+	const verb = action === "top_up" ? "Continue to payment" : `${ACTION_LABEL[action]} ${figure}`;
 	const footer = step.value === "compose"
 		? (
 			<>
@@ -339,6 +363,15 @@ function MoveDialog(
 		)
 		: step.value === "done"
 		? <Button variant="filled" label="Done" onClick={closing.close} />
+		: step.value === "card" || step.value === "settling"
+		? (
+			<Button
+				variant="text"
+				label="Cancel"
+				disabled={step.value === "settling"}
+				onClick={closing.close}
+			/>
+		)
 		: (
 			<>
 				<Button
@@ -406,23 +439,6 @@ function MoveDialog(
 									fluid
 									onValueChange={(v) => {
 										destination.value = v;
-									}}
-								/>
-							)}
-						</FormControl>
-					)}
-
-					{action === "top_up" && fundingMethods.length > 0 && (
-						<FormControl label="Pay with">
-							{({ id }) => (
-								<Select
-									id={id}
-									options={fundingMethods.map((m) => ({ label: methodName(m), value: m.id }))}
-									value={method.value}
-									placeholder="Your default funding method"
-									fluid
-									onValueChange={(v) => {
-										method.value = v;
 									}}
 								/>
 							)}
@@ -565,6 +581,29 @@ function MoveDialog(
 				</div>
 			)}
 
+			{step.value === "card" && handoff.value && (
+				<div class="wlt-review">
+					<p class="wlt-dlg__amount">{figure}</p>
+					<StripeElementPanel
+						mode="payment"
+						clientSecret={handoff.value.clientSecret}
+						publishableKey={handoff.value.publishableKey}
+						submitLabel={`Pay ${figure}`}
+						returnPath="/wallet"
+						onOutcome={(result) => {
+							if (result.ok) void settle(handoff.value!.paymentId);
+						}}
+					/>
+				</div>
+			)}
+
+			{step.value === "settling" && (
+				<div class="wlt-review" role="status" aria-live="polite">
+					<p class="wlt-dlg__amount">{figure}</p>
+					<p class="wlt-dlg__lead">Confirming the payment with your bank…</p>
+				</div>
+			)}
+
 			{step.value === "done" && <Done amount={figure} message={outcome.value} />}
 		</Frame>
 	);
@@ -584,12 +623,6 @@ const PAYOUT_MODES = [
 	{ label: "Threshold", value: "threshold" },
 ];
 
-const METHOD_ROLES = [
-	{ label: "Paying in", value: "funding" },
-	{ label: "Getting paid", value: "payout" },
-	{ label: "Both", value: "both" },
-];
-
 function ConfigDialog(
 	props: WalletDialogData & {
 		id: number;
@@ -600,7 +633,9 @@ function ConfigDialog(
 ): JSX.Element {
 	const { overview, action } = props;
 	const closing = useClosing(props.id);
-	const phase = useSignal<"form" | "saving" | "done">("form");
+	/** `card` — the Payment Element is on screen for Add card's SetupIntent. */
+	const phase = useSignal<"form" | "saving" | "card" | "done">("form");
+	const setup = useSignal<WalletCardHandoff["setup"] | null>(null);
 	const schedule = action === "set_payout" ? props.schedule : null;
 	const threshold = schedule?.threshold ? heldIn(schedule.threshold) : null;
 	const amount = useSignal<number | null>(
@@ -608,8 +643,6 @@ function ConfigDialog(
 	);
 	const interval = useSignal("monthly");
 	const source = useSignal("");
-	const role = useSignal("funding");
-	const label = useSignal("");
 	const mode = useSignal<string>(schedule?.mode ?? "scheduled_monthly");
 	const destination = useSignal(
 		props.destinations.find((d) => d.label === schedule?.destinationLabel)?.id ?? "",
@@ -636,6 +669,7 @@ function ConfigDialog(
 		const minor = toMinorUnits(amount.value, currency) ?? 0;
 		const found: Problems<"amount" | "reason"> = {};
 		if (needsAmount && minor <= 0) found.amount = "Enter an amount.";
+		if (action === "new_recurring" && !source.value) found.amount = found.amount ?? "Choose a saved card to charge.";
 		if (action === "request_spend" && !reason.value.trim()) found.reason = "Say what the money is for.";
 		problems.value = found;
 		if (refuse(found, formRef.current)) return;
@@ -651,13 +685,7 @@ function ConfigDialog(
 				sourceMethodId: source.value || null,
 			})
 			: action === "add_method"
-			? await WalletService.addMethod({
-				...base,
-				methodRole: role.value as "funding" | "payout" | "both",
-				provider: "stripe",
-				token: "XXXX-XXXX",
-				label: label.value.trim() || null,
-			})
+			? await WalletService.addMethod({ ...base, methodRole: "funding" })
 			: action === "set_payout"
 			? await WalletService.setPayout({
 				...base,
@@ -675,6 +703,11 @@ function ConfigDialog(
 			})
 			: await WalletService.enrolSmoother({ targetMonthlyMinor: minor, currency, display });
 
+		if (res.ok && action === "add_method" && res.data?.result?.setup) {
+			setup.value = res.data.result.setup;
+			phase.value = "card";
+			return;
+		}
 		if (res.ok) {
 			outcome.value = res.data?.result?.message ?? res.message ?? "Saved.";
 			phase.value = "done";
@@ -686,8 +719,29 @@ function ConfigDialog(
 		phase.value = "form";
 	};
 
+	/** The card was confirmed at Stripe; the server re-reads the SetupIntent and records it. */
+	const recordCard = async (setupIntentId: string) => {
+		phase.value = "saving";
+		const saved = await PaymentsService.confirmCard({
+			setupIntentId,
+			scope: overview.ref.scope === "team" || overview.ref.scope === "business" ? overview.ref.scope : "personal",
+			contextId: overview.ref.scope === "personal" ? null : overview.ref.id,
+		});
+		if (!saved.ok || !saved.data) {
+			failure.value = saved.message ?? "The card couldn't be saved.";
+			phase.value = "card";
+			return;
+		}
+		const fresh = await WalletService.overview(props.query).catch(() => null);
+		if (fresh?.ok && fresh.data) props.onChanged(fresh.data.overview);
+		outcome.value = `${methodName({ label: null, brand: saved.data.brand, last4: saved.data.last4 })} saved.`;
+		phase.value = "done";
+	};
+
 	const footer = phase.value === "done"
 		? <Button variant="filled" label="Done" onClick={closing.close} />
+		: phase.value === "card"
+		? <Button variant="text" label="Cancel" onClick={closing.close} />
 		: (
 			<>
 				<Button
@@ -721,40 +775,30 @@ function ConfigDialog(
 		>
 			{phase.value === "done"
 				? <Done amount={null} message={outcome.value} />
+				: phase.value === "card" && setup.value
+				? (
+					<div class="wlt-form">
+						<StripeElementPanel
+							mode="setup"
+							clientSecret={setup.value.clientSecret}
+							publishableKey={setup.value.publishableKey}
+							submitLabel="Save card"
+							returnPath="/wallet"
+							onOutcome={(result) => {
+								if (result.ok) void recordCard(setup.value!.setupIntentId);
+							}}
+						/>
+						{failure.value && <Alert severity="danger">{failure.value}</Alert>}
+					</div>
+				)
 				: (
 					<div class="wlt-form" ref={formRef}>
 						{action === "add_method" && (
-							<>
-								<FormControl label="Use it for">
-									{({ id }) => (
-										<SelectButton
-											id={id}
-											options={METHOD_ROLES}
-											value={role.value}
-											onValueChange={(v) => {
-												if (typeof v === "string") role.value = v;
-											}}
-										/>
-									)}
-								</FormControl>
-								<FormControl
-									label="Name"
-									hint="Card details are entered with the payment processor, never here."
-								>
-									{({ id, describedBy }) => (
-										<InputText
-											id={id}
-											aria-describedby={describedBy}
-											value={label.value}
-											placeholder="Business card"
-											fluid
-											onValueChange={(v) => {
-												label.value = v;
-											}}
-										/>
-									)}
-								</FormControl>
-							</>
+							<p class="wlt-dlg__lead">
+								Save a card to pay into this wallet and for recurring deposits. You'll enter the card with
+								Stripe on the next step — its details never reach Projective. Payouts go to your payout
+								account, set up under Verification &amp; payouts.
+							</p>
 						)}
 
 						{action === "new_recurring" && (
@@ -771,22 +815,27 @@ function ConfigDialog(
 										/>
 									)}
 								</FormControl>
-								{fundingMethods.length > 0 && (
-									<FormControl label="From">
-										{({ id }) => (
-											<Select
-												id={id}
-												options={fundingMethods.map((m) => ({ label: methodName(m), value: m.id }))}
-												value={source.value}
-												placeholder="Your default funding method"
-												fluid
-												onValueChange={(v) => {
-													source.value = v;
-												}}
-											/>
-										)}
-									</FormControl>
-								)}
+								<FormControl
+									label="Charge"
+									hint={fundingMethods.length === 0
+										? "Save a card first — Add card, in the wallet's actions."
+										: "Charged automatically each time; the first charge is one interval from now."}
+								>
+									{({ id, describedBy }) => (
+										<Select
+											id={id}
+											aria-describedby={describedBy}
+											options={fundingMethods.map((m) => ({ label: methodName(m), value: m.id }))}
+											value={source.value}
+											placeholder="Choose a saved card"
+											disabled={fundingMethods.length === 0}
+											fluid
+											onValueChange={(v) => {
+												source.value = v;
+											}}
+										/>
+									)}
+								</FormControl>
 							</>
 						)}
 
@@ -826,7 +875,11 @@ function ConfigDialog(
 						{action === "enrol_smoother" && smoother && (
 							<p class="wlt-dlg__lead">
 								Earnings are buffered into a steady monthly payout for a{" "}
-								{(smoother.feeBp / 100).toLocaleString("en-GB")}% fee.
+								{(smoother.feeBp / 100).toLocaleString("en-GB")}% fee
+								{(toMinorUnits(amount.value, currency) ?? 0) > 0 &&
+									` — ${
+										formatMoney(incomeSmootherFeeMinor(toMinorUnits(amount.value, currency) ?? 0, smoother.feeBp), currency)
+									} a month at this target`}.
 							</p>
 						)}
 

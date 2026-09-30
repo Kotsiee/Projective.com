@@ -2,12 +2,12 @@ import { z } from "zod";
 import {
 	basisPoints,
 	currency,
+	FinanceOwnerType,
 	minorUnitsNonNeg,
 	minorUnitsPositive,
 	timestamp,
 	uuid,
 } from "./common.ts";
-import { WalletOwnerType } from "./ledger.ts";
 
 /**
  * finance methods & money-movement — payment methods (spend vs earn), recurring deposits, payout
@@ -25,7 +25,7 @@ export type MethodRole = z.infer<typeof MethodRole>;
 /** A row of `finance.payment_methods` — the unified funding + payout registry. */
 export const PaymentMethodSchema = z.object({
 	id: uuid,
-	ownerType: WalletOwnerType,
+	ownerType: FinanceOwnerType,
 	ownerId: uuid,
 	methodRole: MethodRole,
 	provider: z.string().max(40),
@@ -72,7 +72,7 @@ export type PayoutMode = z.infer<typeof PayoutMode>;
 /** A row of `finance.payout_schedules`. `instant` opts into the Instant Payout fee (finance-model.md §1.4). */
 export const PayoutScheduleSchema = z.object({
 	id: uuid,
-	ownerType: WalletOwnerType,
+	ownerType: FinanceOwnerType,
 	ownerId: uuid,
 	mode: PayoutMode,
 	destinationMethodId: uuid.nullable(),

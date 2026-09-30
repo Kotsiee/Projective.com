@@ -22,3 +22,4 @@ export * from "./basket.ts";
 export * from "./buyer.ts";
 export * from "./checkout.ts";
 export * from "./order.ts";
+export * from "./payments.ts";

@@ -5,6 +5,10 @@ import "../styles/checkout.css";
 import "../styles/checkout-payment.css";
 import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
+import { StripeElementPanel } from "@features/payments/components/StripeElementPanel.tsx";
+import { PaymentsService } from "@features/payments/core/PaymentsService.ts";
+import { loadStripe } from "@features/payments/core/stripe-js.ts";
+import type { CardPaymentHandoff } from "@projective/types/finance";
 import { CheckoutService } from "../core/CheckoutService.ts";
 import { basketHref, checkoutStepHref } from "../core/basket-model.ts";
 import {
@@ -357,6 +361,67 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 	}, [reload]);
 
 	/**
+	 * A card checkout, after Stripe accepted the card: the charge tops up the paying wallet, and only the
+	 * signed webhook can say it arrived — so wait for THAT, then place the order from the wallet under a
+	 * fresh attempt key (the card attempt's key belongs to the charge). A payment that has not cleared by
+	 * the end of the wait is said out loud; nothing is ordered on the browser's word.
+	 */
+	const cardSettling = useSignal(false);
+	const finishByCard = useCallback(async (paymentId: string) => {
+		cardSettling.value = true;
+		checkoutError.value = null;
+		const settled = await PaymentsService.waitForSettlement(paymentId);
+		cardSettling.value = false;
+		if (settled !== "succeeded") {
+			checkoutError.value = settled === "failed"
+				? "The card payment didn't go through. Nothing was charged."
+				: "Your bank accepted the payment, but it hasn't reached your wallet yet. Pay from your wallet in a moment to finish.";
+			return;
+		}
+		resetAttempt();
+		expressRoute.value = "wallet";
+		await submit();
+	}, [submit]);
+
+	/**
+	 * A SAVED card was charged on the server. When the bank asks its holder to confirm (3-D Secure),
+	 * Stripe.js answers that in place; either way the order is placed only once the webhook has credited
+	 * the wallet ({@link finishByCard}).
+	 */
+	const continueSavedCard = useCallback(async (payment: CardPaymentHandoff) => {
+		if (payment.confirmation === "authenticate") {
+			cardSettling.value = true;
+			try {
+				const stripe = await loadStripe(payment.publishableKey);
+				const { error } = await stripe.handleNextAction({ clientSecret: payment.clientSecret });
+				if (error) {
+					cardSettling.value = false;
+					checkoutError.value = error.message ?? "Your bank didn't confirm the payment. Nothing was charged.";
+					resetAttempt();
+					return;
+				}
+			} catch (error) {
+				cardSettling.value = false;
+				checkoutError.value = error instanceof Error
+					? error.message
+					: "Your bank's check couldn't be opened. Nothing was charged.";
+				return;
+			}
+		}
+		await finishByCard(payment.paymentId);
+	}, [finishByCard]);
+
+	// A saved-card charge carries on by itself — the buyer already chose the card and confirmed the amount.
+	const continued = useRef<string | null>(null);
+	const pendingPayment = lastResult.value?.status === "requires_action" ? lastResult.value.payment : undefined;
+	useEffect(() => {
+		if (!pendingPayment || pendingPayment.confirmation === "collect") return;
+		if (continued.current === pendingPayment.paymentId) return;
+		continued.current = pendingPayment.paymentId;
+		void continueSavedCard(pendingPayment);
+	}, [pendingPayment?.paymentId]);
+
+	/**
 	 * Open the confirmation rather than charging.
 	 *
 	 * An irreversible payment gets the platform's established confirm grammar (the wallet's), not a
@@ -431,6 +496,28 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 									</li>
 								))}
 							</ul>
+						)}
+
+						{result.status === "requires_action" && result.payment && (
+							<div class="cko-result__card" aria-busy={cardSettling.value}>
+								{cardSettling.value || result.payment.confirmation !== "collect"
+									? <p class="cko-result__message" role="status">Confirming the payment with your bank…</p>
+									: (
+										<StripeElementPanel
+											mode="payment"
+											clientSecret={result.payment.clientSecret}
+											publishableKey={result.payment.publishableKey}
+											submitLabel={`Pay ${result.payment.amount.display}`}
+											returnPath={typeof globalThis.location !== "undefined"
+												? `${globalThis.location.pathname}${globalThis.location.search}`
+												: "/checkout"}
+											busy={submitting.value}
+											onOutcome={(outcome) => {
+												if (outcome.ok && result.payment) void finishByCard(result.payment.paymentId);
+											}}
+										/>
+									)}
+							</div>
 						)}
 
 						<p class="cko-result__actions">
@@ -620,7 +707,15 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 				onConfirm={() => void submit()}
 			/>
 
-			<AddPaymentMethodModal open={addMethodOpen} />
+			<AddPaymentMethodModal
+				open={addMethodOpen}
+				owner={view.owner}
+				cardsConnected={view.cardsConnected}
+				onSaved={(cardId) => {
+					chosenCardId.value = cardId;
+					void reload();
+				}}
+			/>
 		</div>
 	);
 	// #endregion

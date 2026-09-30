@@ -254,6 +254,8 @@ function emptySession(display: string): CheckoutBootstrap["session"] {
 		wallet: { available: zero(display), shortfall: zero(display), covers: false },
 		savedCards: [],
 		defaultCardId: null,
+		// Nothing to pay for, so nothing to add a card for; the populated projection states the truth.
+		cardsConnected: false,
 		promo: null,
 		totals: {
 			subtotal: zero(display),

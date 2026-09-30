@@ -1,6 +1,7 @@
 import { getWallet, postWallet } from "./api.ts";
 import { buildWalletQuery } from "./wallet-model.ts";
 import type { WalletResult } from "../types/results.ts";
+import type { WalletCardHandoff } from "@projective/types/finance";
 import type {
 	AccessView,
 	ActivityRange,
@@ -118,10 +119,11 @@ export const WalletService = {
 	},
 
 	// #region Actions (all POST /api/wallet/action, discriminated by `action`)
-	topUp(input: TopUpInput): Promise<WalletResult<{ result: WalletActionResult }>> {
+	/** Top up by card: answers with the PaymentIntent the Payment Element confirms (`result.payment`). */
+	topUp(input: TopUpInput): Promise<WalletResult<{ result: WalletActionResult & WalletCardHandoff }>> {
 		return postWallet("/api/wallet/action", { action: "top_up", ...input });
 	},
-	withdraw(input: WithdrawInput): Promise<WalletResult<{ result: WalletActionResult }>> {
+	withdraw(input: WithdrawInput): Promise<WalletResult<{ result: WalletActionResult & WalletCardHandoff }>> {
 		return postWallet("/api/wallet/action", { action: "withdraw", ...input });
 	},
 	transfer(input: TransferInput): Promise<WalletResult<{ result: WalletActionResult }>> {
@@ -136,7 +138,8 @@ export const WalletService = {
 	addRecurring(input: DepositRuleInput): Promise<WalletResult<{ result: WalletActionResult }>> {
 		return postWallet("/api/wallet/action", { action: "new_recurring", ...input });
 	},
-	addMethod(input: AddMethodInput): Promise<WalletResult<{ result: WalletActionResult }>> {
+	/** Save a card: answers with the SetupIntent the Payment Element confirms (`result.setup`). */
+	addMethod(input: AddMethodInput): Promise<WalletResult<{ result: WalletActionResult & WalletCardHandoff }>> {
 		return postWallet("/api/wallet/action", { action: "add_method", ...input });
 	},
 	setPayout(input: PayoutScheduleInput): Promise<WalletResult<{ result: WalletActionResult }>> {

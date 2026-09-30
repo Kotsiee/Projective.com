@@ -325,7 +325,8 @@ summary:focus-visible,
  * never matched the blanket in the first place, and a checkbox's or radio's box is a `<span>` beside
  * the input rather than the input itself. What is left is the four `<button>`/`<input>` controls
  * that ARE their own focus target, plus the create modal's type cards, which are a radio group in
- * card clothing.
+ * card clothing, and the wallet's range ruler, which is the select-button's segmented radio group with
+ * a sliding thumb.
  *
  * `!important` for the same reason the elevation restores above use it: it is answering an
  * `!important`, and a specificity fight against a runtime-injected `:root` block is not winnable by
@@ -334,7 +335,8 @@ summary:focus-visible,
 .ui-switch__track:focus-visible,
 .ui-select__filter-input:focus-visible,
 .ui-select-button__option:focus-visible,
-.pjc__type:focus-visible {
+.pjc__type:focus-visible,
+.wlt-ruler__cell:focus-visible {
 	box-shadow: var(--fld-focus-glow) !important;
 }
 

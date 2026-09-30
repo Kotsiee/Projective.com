@@ -157,6 +157,54 @@ export interface ServerEnv {
 	 * would make enabling the hub silently enable outbound calls carrying someone else's token.
 	 */
 	integrationsBackendLive: boolean;
+	/**
+	 * The Stripe secret — or, preferably, RESTRICTED — API key (`sk_…` / `rk_…`), from
+	 * `STRIPE_SECRET_KEY`. Server-only: it can move money, so it is never logged, never echoed in an
+	 * error and never reaches an island.
+	 *
+	 * Read raw here and VALIDATED in `core/stripe.ts`, which treats anything that is not shaped like a
+	 * real key — the `.env.example` placeholder `XXXX-XXXX` included — as absent. A placeholder that
+	 * counted as configured would turn "payments are not connected here" into a stream of
+	 * authentication failures at Stripe.
+	 */
+	stripeSecretKey: string | undefined;
+	/**
+	 * The signing secret of the Stripe webhook endpoint (`whsec_…`), from `STRIPE_WEBHOOK_SECRET`.
+	 * Without it no inbound event can be verified, so none is processed.
+	 */
+	stripeWebhookSecret: string | undefined;
+	/**
+	 * The Stripe publishable key (`pk_…`), from the documented contract name
+	 * `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` (§8 row 11: canonical names only, no aliases).
+	 *
+	 * Publishable by design — it identifies the account to Stripe.js and can move nothing — but it still
+	 * reaches the browser only through a server response (islands never read the environment, root
+	 * CLAUDE.md §2), paired with the client secret of the object it is meant to confirm.
+	 */
+	stripePublishableKey: string | undefined;
+	/**
+	 * DEVELOPMENT-ONLY override of the Stripe API origin, from `STRIPE_API_BASE` — e.g.
+	 * `http://localhost:12111` for `stripe-mock`, which answers every v1 endpoint and validates each
+	 * request against Stripe's OpenAPI spec, so the full payment flow runs locally without an account.
+	 *
+	 * Honoured only for a TEST-mode key outside `DENO_ENV=production` (`core/stripe.ts`): a live key
+	 * pointed at a mock would record charges that never happened.
+	 */
+	stripeApiBase: string | undefined;
+	/**
+	 * The signing secret of the SECOND Stripe endpoint, `POST {APP_URL}/api/finance/webhooks/stripe-v2`,
+	 * from `STRIPE_THIN_WEBHOOK_SECRET` (`whsec_…`). Accounts v2 publishes its events as THIN events on
+	 * an event destination of their own — Stripe will not put them on the snapshot endpoint — so they
+	 * carry their own secret. Absent: the v2 endpoint answers 503 and v1 `account.updated` + the
+	 * onboarding return URL remain the only status sync.
+	 */
+	stripeThinWebhookSecret: string | undefined;
+	/**
+	 * The bearer token the scheduler presents to `POST /api/finance/cron/deposits`, from
+	 * `FINANCE_CRON_SECRET`. The route charges saved cards off-session, so it answers 404 (not 401) to
+	 * anything else — including every request while this is unset or shorter than 32 characters.
+	 */
+	financeCronSecret: string | undefined;
 }
 
 /** Resolve the current server environment from the canonical Environment Variable Contract names. */
@@ -182,5 +230,11 @@ export function serverEnv(): ServerEnv {
 		filesBackendLive: (firstEnv("FILES_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		integrationsBackendLive: (firstEnv("INTEGRATIONS_BACKEND_LIVE") ?? "false").toLowerCase() ===
 			"true",
+		stripeSecretKey: firstEnv("STRIPE_SECRET_KEY"),
+		stripeWebhookSecret: firstEnv("STRIPE_WEBHOOK_SECRET"),
+		stripePublishableKey: firstEnv("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"),
+		stripeApiBase: firstEnv("STRIPE_API_BASE"),
+		stripeThinWebhookSecret: firstEnv("STRIPE_THIN_WEBHOOK_SECRET"),
+		financeCronSecret: firstEnv("FINANCE_CRON_SECRET"),
 	};
 }

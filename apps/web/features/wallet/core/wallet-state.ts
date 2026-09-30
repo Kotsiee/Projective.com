@@ -1,5 +1,32 @@
 import { signal } from "@preact/signals";
-import type { LedgerLine, WalletAction } from "../types/wallet-types.ts";
+import type { LedgerLine, WalletAction, WalletOverview } from "../types/wallet-types.ts";
+import type { FlowPeriod } from "./wallet-model.ts";
+
+/*
+ * Every wallet page is two hydration roots — the middle-nav lane (page links, the verification gate,
+ * the action grid) and the page body (hero, sheet and every dialog) — and these signals are the seam
+ * between them.
+ *
+ * Every one of them is written ONLY from client event handlers and effects, never during a render: a
+ * module signal is shared by every request a server process renders, so a value written while one
+ * viewer's page renders would leak into the next viewer's. Each therefore starts `null`, and a root
+ * reads its own server-resolved prop until the client has said otherwise.
+ */
+
+// #region Lane ⇄ page
+/**
+ * The overview the page body last read, published once it has hydrated and again after every money
+ * movement, so the lane's action grid and verification gate follow what the page shows rather than
+ * the snapshot the lane was server-rendered with.
+ */
+export const walletOverviewLive = signal<WalletOverview | null>(null);
+
+/**
+ * The cash-flow window the reader picked on the pinned ruler, so the lane's page links carry it to the
+ * other page that draws one; `null` until they pick.
+ */
+export const walletFlowLive = signal<FlowPeriod | null>(null);
+// #endregion
 
 /** A dialog the command centre can open. */
 export type WalletDialog =

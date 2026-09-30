@@ -1656,8 +1656,9 @@
  * that face ships Regular and Bold only, and a synthesised light would smear the stroke asymmetry the
  * face exists to provide.
  *
- * The pence follow for free — the component sets `.ui-money--figure .ui-money__minor` to `0.5em`, so a
- * 36px figure gets an 18px raised tail without this surface slicing the string.
+ * The pence follow for free — the component sizes a `figure` step's minor run from `--minor-size`
+ * (0.55em) on the shared baseline, so a 36px figure gets a ~20px tail without this surface slicing the
+ * string.
  */
 .evp-price .evp-price__money .ui-money__amount {
     font-size: var(--text-3xl);

@@ -48,6 +48,7 @@ The tiered vault. One row per `(owner_type, owner_id, currency)`.
 | `owner_id`      | uuid   | The owning entity.                                                       |
 | `currency`      | text   | ISO-4217 origin currency.                                                |
 | `balance_cents` | bigint | **Materialised** Available balance (`CHECK >= 0`).                       |
+| `approval_threshold_cents` | bigint | This vault's own spend-approval threshold; `NULL` = no local override (the platform `vault_approval_threshold_cents` applies). |
 | UNIQUE          | —      | `(owner_type, owner_id, currency)`.                                      |
 
 > **Hidden system wallets** (Escrow Pool, Fee Collection, Dispute Lockbox — `finance-model.md` §6)
@@ -68,11 +69,13 @@ Append-only per-wallet ledger line with a running balance and (additively) an FX
 | `reason`              | text        | Canonical code (see below).                                                     |
 | `ref_table`,`ref_id`  | text,uuid   | Nullable source pointer (usually `escrows`).                                    |
 | `balance_after_cents` | bigint      | Running balance after this line.                                                |
+| `fund_state`          | `finance.fund_state` | Which pot of capital the amount belongs to — STORED (the ledger filters and sorts on it); default `available`. |
 | `fx_rate`             | numeric     | **Additive** (`20260723090000`). Rate applied to reach `fx_base`, if converted. |
 | `fx_base`             | char(3)     | **Additive.** The base currency (usually GBP).                                  |
 | `fx_as_of`            | timestamptz | **Additive.** The `finance.fx_rates.as_of` the rate was snapshotted from.       |
 
-**Canonical `reason` codes:** `escrow_hold`, `escrow_release`, `escrow_refund`, `fair_exit_release`,
+**Canonical `reason` codes:** `topup` (money in — a card payment settled by the Stripe webhook writes
+`topup` with `ref_table = 'inbound_payments'`, Decision #125), `escrow_hold`, `escrow_release`, `escrow_refund`, `fair_exit_release`,
 `fair_exit_refund`, `team_split`, and the refund/chargeback lines `refund`, `chargeback`
 (negative-direction entries). Refunds and chargebacks are ledger movements, not a separate table of
 amounts (see `finance.chargebacks` for the dispute case they reference). A team release
@@ -95,7 +98,8 @@ Capital locked against a stage/ticket. Text `status`, values used by the engine:
 | :----------------------------- | :------------------- | :------------------------------------------------ |
 | `project_stage_id`             | uuid                 | FK → `projects.project_stages` (RESTRICT).        |
 | `ticket_id`                    | uuid                 | FK → `projects.tickets` (SET NULL).               |
-| `payer_business_id`            | uuid                 | FK → `org.business_profiles` (RESTRICT).          |
+| `payer_business_id`            | uuid                 | FK → `org.business_profiles` (RESTRICT). Nullable since Decision #126. |
+| `payer_user_id`                | uuid                 | FK → `org.users_public` (RESTRICT) — an INDIVIDUAL client (a project with no `client_business_id`). **Exactly one** payer column is set (`ck_escrows_one_payer`). Decision #126. |
 | `payee_type`,`payee_id`        | assignment_type,uuid | `freelancer` or `team` payee.                     |
 | `amount_cents`                 | bigint               | Principal (`CHECK > 0`).                          |
 | `platform_fee_cents`           | bigint               | Fee applied at release (0 while held).            |
@@ -108,7 +112,7 @@ Capital locked against a stage/ticket. Text `status`, values used by the engine:
 
 | Table                             | Purpose                                                                                                                                                                                                                      |
 | :-------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `finance.payout_accounts`         | Provider payout destination (Stripe **Connect** account); `(provider, account_id)` UNIQUE. Owner-scoped. See the flagged overlap with the new `finance.payment_methods`.                                                     |
+| `finance.payout_accounts`         | Provider payout destination (Stripe **Connect** account, Accounts v2 Express recipient); `(provider, account_id)` UNIQUE; **one active Stripe account per owner** (`uq_payout_accounts_owner_active`, partial on `status <> 'disabled'`). `owner_type` CHECKs the five-value finance owner axis. `status` ∈ `pending_verification` · `verified` · `restricted` · `disabled` — the v2 `stripe_balance.stripe_transfers` capability mapped by `payoutAccountStatusFor()`, written only by `finance.sync_payout_account` from what Stripe reports; `updated_at` is the last reconciliation. Owner-scoped. Zod `PayoutAccountSchema`. See the flagged overlap with the new `finance.payment_methods`.                                                     |
 | `finance.invoices`                | Per-stage or `consolidated_monthly` invoice; `status` draft/issued/paid/overdue/void; `pdf_file_id` → `files.items`.                                                                                                         |
 | `finance.invoice_line_items`      | Invoice lines; `ref_type` ∈ escrow/bonus/platform_fee/refund/tax.                                                                                                                                                            |
 | `finance.disputes`                | A contested escrow (`escrow_id` FK); `dispute_status` open/under_review/resolved/refunded.                                                                                                                                   |
@@ -218,8 +222,9 @@ fragments (`brand`, `last4`).
 | :-------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `finance.pending_releases`        | One escrow release inside the 7-day safety window: `escrow_id`, `wallet_id`, `amount_cents`+`currency`, `released_at`, `available_at`, `state finance.fund_state`. Makes the "Pending" state first-class.                                                                                                                  |
 | `finance.statements`              | Monthly consolidated statement (30-day window, issued on the 1st): `owner_type`/`owner_id`, `period_start`/`period_end`, `opening`/`closing`/`total_in`/`total_out`/`total_fees` cents, `status` (draft/issued/final), `pdf_file_id`. Complements per-payout `finance.invoices`. `(owner, period_start, currency)` UNIQUE. |
-| `finance.chargebacks`             | The Stripe dispute case a negative ledger line references: `wallet_id`/`transaction_id`/`escrow_id`, `provider_ref`, `amount_cents`+`currency`, `status` (opened/under_review/won/lost/refunded).                                                                                                                          |
-| `finance.idempotency_keys`        | Retries never double-move money: `key` (PK), `scope`, `request_hash`, `status`, `response`, `expires_at`. **Definer-only** (RLS on, no policy).                                                                                                                                                                            |
+| `finance.chargebacks`             | The Stripe dispute case a negative ledger line references: `wallet_id`/`transaction_id`/`escrow_id`, `provider_ref`, `amount_cents`+`currency`, `status` (opened/under_review/won/lost/refunded). **One row per processor dispute** (`uq_chargebacks_provider_ref`, partial). Written by `finance.record_dispute_opened` from the `charge.dispute.created` webhook, which also freezes the escrows the disputed payment funded (`held` → `disputed`). |
+| `finance.idempotency_keys`        | Retries never double-move money: `key` (PK), `scope`, `request_hash`, `status`, `response`, `expires_at`. **Definer-only** (RLS on, no policy). Scopes in use: `transfer:<uid>` / `distribute:<uid>` (wallet movements), `card_payment:<uid>` (a card payment attempt, Decision #125) and `stripe.webhook` (key `stripe:<evt_id>`, one row per processed Stripe event, its `response` holding the outcome — `applied` · `replayed` · `unmatched` · `ignored` — for reconciliation, kept 30 days). |
+| `finance.payouts`                 | One attempt to move money OUT of a wallet: `wallet_id`, `destination_method_id`, `schedule_id`, `amount_cents`+`currency`, `status finance.payout_status` (pending/paid/failed/cancelled), `instant`, `provider`/`provider_ref` (the Stripe Transfer id), `transaction_id` (the ledger debit — `NULL` while in flight and forever on a failure), `failure_reason`, `initiated_at`/`settled_at`. CHECKs: a reason only on a failure; `paid` ⇔ `settled_at`. **One payout per processor transfer** (`uq_payouts_provider_ref`, partial) — `finance.record_transfer_created` binds a `transfer.created` event to the payout its metadata names only when destination, amount and currency agree. Zod `PayoutSchema`. |
 | `finance.v_wallet_reconciliation` | **View.** Internal self-consistency: `balance_cents` vs the running ledger sum → `drift_cents` (must be 0). External Stripe-balance reconciliation is an ops job (`SYSTEM_ARCHITECTURE.md` §Integration Blueprints). Exposed to `service_role` only.                                                                       |
 
 ---
@@ -476,7 +481,19 @@ The buyer-facing **display projection** of a saved payment instrument.
 `finance.chargeback_status`, `finance.plan_audience`, `finance.plan_tier`,
 `finance.billing_interval`, `finance.subscription_state`, `finance.entitlement_kind`,
 `finance.entitlement_scaling`, `finance.entitlement_key`, `finance.purchasable_item_kind`,
-`finance.card_brand`. See [`../Schemas.md`](../Schemas.md) for the global enum registry.
+`finance.card_brand`, `finance.payout_status`, `finance.inbound_payment_status`,
+`finance.order_status`, `finance.fulfilment_kind`. See [`../Schemas.md`](../Schemas.md) for the
+global enum registry.
+
+### `finance.payout_status` and `finance.inbound_payment_status`
+
+`payout_status`: `pending` · `paid` · `failed` · `cancelled` — money leaving (`finance.payouts`).
+
+`inbound_payment_status`: `requires_payment` · `processing` · `succeeded` · `failed` · `canceled` —
+money entering (`finance.inbound_payments`, §10). The spelling follows Stripe's PaymentIntent
+(`canceled`, one `l`) because these are the processor's own states, recorded as received; the
+payout enum's `cancelled` is Projective's word for its own act. Mirrored member-for-member by the
+Zod `InboundPaymentStatus` (`payments.contract.test.ts` reads the migration and fails on drift).
 
 ### `finance.purchasable_item_kind`
 
@@ -508,3 +525,99 @@ A **display** vocabulary — nothing routes money by reading it.
 > `vault` is the internal Projective Vault Card (platform-issued spend against a wallet balance,
 > never a Stripe network card). `unknown` is the mandatory fallback so an unrecognised brand
 > degrades to a neutral fragment instead of failing the write.
+
+---
+
+## 10. Inbound payments — the Stripe fiat rails (Decision #125)
+
+Projective is the **ledger of record**; Stripe is the card rail. A card payment is charged on the
+**platform** account (Separate Charges & Transfers — see root `CLAUDE.md` Decision #125 for why this
+is not a destination charge) and the money it brings in becomes a normal ledger credit to a wallet.
+From there the escrow engine works exactly as it does for wallet-funded money. Zod SSOT:
+`packages/types/finance/payments.ts`. Functions: [Functions.md §Stripe fiat rails](Functions.md).
+
+### `finance.inbound_payments`
+
+One row per **attempt** to move money into a wallet from an external instrument — the twin of
+`finance.payouts`. It exists because nothing else can hold the fact: `finance.transactions` records
+only completed movements, so a started-but-unpaid payment has nowhere to live and a declined one
+would leave no trace; `finance.orders` records basket purchases, not top-ups or escrow funding.
+
+| Column                  | Type                             | Notes                                                                                                                                                                                                                    |
+| :---------------------- | :------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                    | uuid                             | PK.                                                                                                                                                                                                                      |
+| `purpose`               | text                             | `wallet_topup` or `escrow_lock` (CHECK).                                                                                                                                                                                 |
+| `wallet_id`             | uuid                             | NOT NULL. FK → `finance.wallets` (**RESTRICT** — a wallet that has taken money must not take the record of it with it). The payer's own wallet for a top-up; the paying business's for an escrow lock.               |
+| `project_stage_id`      | uuid                             | NULL. FK → `projects.project_stages` (`SET NULL`). Only an `escrow_lock` may name one (one-directional CHECK, because a stage retired later keeps its payment history).                                                 |
+| `amount_cents`          | bigint                           | NOT NULL, `> 0`. What the payer was asked to pay.                                                                                                                                                                        |
+| `currency`              | char(3)                          | NOT NULL, `^[A-Z]{3}$`. Always the receiving wallet's currency.                                                                                                                                                          |
+| `amount_received_cents` | bigint                           | NULL until settlement. What Stripe reports it received — **the ledger is credited with this**, because it is the money that exists.                                                                                      |
+| `status`                | `finance.inbound_payment_status` | NOT NULL `DEFAULT 'requires_payment'`. Moved ONLY by the webhook's processor doors.                                                                                                                                      |
+| `lock_status`           | text                             | `not_applicable` · `pending` · `locked` · `failed`. `not_applicable` ⇔ `wallet_topup` (CHECK).                                                                                                                           |
+| `lock_error`            | text                             | Why a lock failed; allowed only while `lock_status = 'failed'`. A failed lock loses nothing — the money stays in the paying wallet.                                                                                    |
+| `locked_escrow_ids`     | uuid[]                           | NOT NULL `DEFAULT '{}'`. The escrows this payment's lock created, so a chargeback freezes exactly the capital it funded.                                                                                                 |
+| `provider`              | text                             | NOT NULL `DEFAULT 'stripe'`.                                                                                                                                                                                             |
+| `provider_ref`          | text                             | The Stripe PaymentIntent id (`XXXX-XXXX` in docs). Written once by `finance.attach_card_payment`. `(provider, provider_ref)` UNIQUE.                                                                                     |
+| `idempotency_key`       | text                             | NOT NULL UNIQUE. The payer's attempt key — a retry after an unseen timeout resolves to the SAME row, never a second charge. Also registered in `finance.idempotency_keys` (scope `card_payment:<uid>`).                  |
+| `transaction_id`        | uuid                             | NULL. FK → `finance.transactions` (`SET NULL`). The `topup` ledger credit; set only on success (CHECK).                                                                                                                 |
+| `failure_reason`        | text                             | The processor's decline or cancellation code; allowed only while `failed`/`canceled` (CHECK).                                                                                                                           |
+| `livemode`              | boolean                          | NULL until settlement. Whether the settling event came from Stripe's live mode.                                                                                                                                         |
+| `created_by`            | uuid                             | NOT NULL. FK → `auth.users` (RESTRICT). The escrow lock is re-authorised **as this user** at settlement, so a member who lost the right to spend in between cannot have a lock completed on their behalf.              |
+| `created_at`            | timestamptz                      | NOT NULL `DEFAULT now()`.                                                                                                                                                                                                |
+| `updated_at`            | timestamptz                      | NOT NULL `DEFAULT now()`.                                                                                                                                                                                                |
+| `succeeded_at`          | timestamptz                      | Set exactly when `status = 'succeeded'` (bidirectional CHECK — the two are one fact stated twice).                                                                                                                      |
+
+**Indexes:** `idx_inbound_payments_wallet` (`wallet_id, created_at DESC`) and the partial
+`idx_inbound_payments_stage` on `project_stage_id`.
+
+**Access:** RLS on. `authenticated` may SELECT a row whose wallet it may view
+(`finance.fn_can_view_wallet`); **no client role may write** — every write goes through a
+`SECURITY DEFINER` function ([Policies.md](Policies.md)).
+
+> **No PII.** A payment row holds amounts, states, ids and the processor's own codes. The card, the
+> payer's name and the billing address stay with Stripe; `provider_ref` is the pointer to them.
+
+> **⚠️ Individual clients cannot lock escrow by card yet.** `finance.escrows.payer_business_id` is
+> NOT NULL, so `finance.begin_card_payment` refuses an `escrow_lock` on a project with no
+> `client_business_id` (`PS501`). A top-up still works for anyone. Relaxing that column is a change to
+> a protected table and needs human sign-off (inherits Decision #56(a)).
+
+### The Connect payout account (`finance.payout_accounts`, amended in place)
+
+Documented in §1 "Other existing engine tables". Phase 1 made it usable: the status vocabulary is
+now the one Stripe's `stripe_transfers` capability can actually report, `updated_at` records the last
+reconciliation, and one active account per owner is enforced by a partial unique index. The owner is
+resolved by `finance.fn_payout_owner` — a person's own payout owner (`fn_person_wallet_type`) or a
+team they may bill for (`manage_billing`).
+
+### Verification writes (`finance.verification_cases` + `org.freelancer_profiles`)
+
+A Stripe Identity session opens a `verification_cases` row (`kind = 'kyc'`, `tier = 2`,
+`provider = 'stripe_identity'`, `status = 'pending'`) and binds its session id once. Only the signed
+`identity.verification_session.*` webhook moves it: `verified` → the case AND
+`org.freelancer_profiles.kyc_status`/`kyc_tier`/`kyc_verified_at` (a verified subject never
+regresses); `requires_input` → `rejected` with Stripe's error code; `canceled` → `expired`. The
+freelancer's `payout_ready` is recomputed from the payout account, never set by a client.
+
+## 🆕 Decision #126 — money movement after the fiat rails
+
+- **`finance.escrows`** — `payer_business_id` is nullable and `payer_user_id` joined it, with
+  `ck_escrows_one_payer CHECK (num_nonnulls(payer_business_id, payer_user_id) = 1)`. The business FK is
+  unchanged; only its `NOT NULL` moved into the CHECK, on the product owner's instruction (closes
+  #56(a)/#125(b)): an individual client pays with zero friction (PRODUCT_SPEC §Escrow #5). The payer's
+  WALLET is `finance.fn_escrow_payer_wallet_type` — `business`, or the person type they hold.
+- **`finance.inbound_payments.deposit_rule_id`** (FK → `finance.deposit_rules`, SET NULL) — the standing
+  rule that charged a payment off-session; `inbound_payments_rule_only_for_topups` keeps it to top-ups.
+- **`finance.deposit_rules.created_by`** (FK → `auth.users`, SET NULL) — who authorised the standing
+  charge. Stamped only by `finance.create_deposit_rule`; the derived-column guard makes a client row
+  start it empty (and so never run).
+- **`finance.chargebacks.unrecovered_cents`** (≥ 0) — on a LOST dispute, the part of the clawback the
+  payer's wallet could not cover (the platform's loss). `chargebacks_resolved_matches_status` ties
+  `resolved_at` to the three closed states.
+- **`finance.processor_customers`** (new) — one Stripe Customer per finance owner per provider
+  (`uq_processor_customers_owner`, `uq_processor_customers_ref`), the anchor a saved card attaches to.
+  Definer-only (RLS on, no policy, no client grant); no PII, the `cus_…` id only.
+- **`finance.payouts`** — `transaction_id` is now set when the payout BEGINS (the wallet is debited at
+  once, so money in flight cannot be spent twice); a failed payout keeps it and is balanced by a
+  `payout_reversal` credit. `paid` means the Stripe Transfer exists (the money left Projective for the
+  owner's Connect account, which pays the bank on Stripe's schedule).

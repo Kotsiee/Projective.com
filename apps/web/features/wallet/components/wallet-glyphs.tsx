@@ -54,7 +54,7 @@ const ACTION_GLYPH: Readonly<Record<WalletAction, GlyphRef>> = {
 	fund_escrow: { wallet: "escrow" },
 	new_recurring: { registry: "repeat" },
 	add_method: { wallet: "card" },
-	set_payout: { registry: "calendar" },
+	set_payout: { registry: "history" },
 	request_spend: { registry: "hourglass" },
 	enrol_smoother: { wallet: "smooth" },
 };

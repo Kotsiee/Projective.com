@@ -92,6 +92,7 @@
     "npm:quill-delta-to-html@~0.12.1": "0.12.1",
     "npm:quill@^2.0.3": "2.0.3",
     "npm:rollup@^4.55.1": "4.62.2",
+    "npm:stripe@^22.6.2": "22.6.2_@types+node@24.2.0",
     "npm:supabase@*": "2.109.0",
     "npm:supabase@2.109.0": "2.109.0",
     "npm:supabase@^2.105.0": "2.109.0",
@@ -1495,6 +1496,15 @@
     "source-map-js@1.2.1": {
       "integrity": "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA=="
     },
+    "stripe@22.6.2_@types+node@24.2.0": {
+      "integrity": "sha512-PwRE2scocvXqDKPiskMa5vRJEAEkq46W69XyUYmAwrNSLr675lQnfqLwnsndAWizwgihOWw/irLmoFRo3ez7ew==",
+      "dependencies": [
+        "@types/node"
+      ],
+      "optionalPeers": [
+        "@types/node"
+      ]
+    },
     "supabase@2.109.0": {
       "integrity": "sha512-ECT61HUnVMXCAX/1O4Dmj0ifUPCM4AonSYcd/degMGbJdAmgwdquht43cKDp9k1cE15uJKfILjZEQTOSw7Np/w==",
       "dependencies": [
@@ -1695,6 +1705,7 @@
       "npm:preact@^10.29.0",
       "npm:quill-delta-to-html@~0.12.1",
       "npm:quill@^2.0.3",
+      "npm:stripe@^22.6.2",
       "npm:supabase@^2.105.0",
       "npm:vite@7.2.2",
       "npm:zod@^4.3.6"

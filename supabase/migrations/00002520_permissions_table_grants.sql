@@ -516,6 +516,16 @@ GRANT ALL ON TABLE finance.wallets, finance.transactions, finance.payouts, finan
     finance.ratings
 TO service_role;
 
+-- The inbound card-payment log (Stripe Phase 1, Decision #125): SELECT only, filtered by its policy
+-- in 00002013. Started, bound, settled and failed exclusively through the 00001230 definers.
+GRANT SELECT ON TABLE finance.inbound_payments TO authenticated;
+
+GRANT ALL ON TABLE finance.inbound_payments TO service_role;
+
+-- Processor customers (Decision #126): definer-only, so no client grant at all.
+REVOKE ALL ON TABLE finance.processor_customers FROM anon, authenticated;
+GRANT ALL ON TABLE finance.processor_customers TO service_role;
+
 
 -- --- files: asset management (anon reach for the public tier) ---
 -- `anon` already holds USAGE on the `files` schema (00002500) but no table grant, so the anon

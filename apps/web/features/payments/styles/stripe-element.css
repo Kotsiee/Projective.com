@@ -1,0 +1,40 @@
+/*
+ * stripe-element — the frame around Stripe's Payment Element (StripeElementPanel).
+ *
+ * The Element itself is Stripe's iframe, painted from the resolved design tokens through the Appearance
+ * API (core/stripe-js.ts); this sheet only lays out the frame: the mount, the loading line, the
+ * processor note and the confirm button. Token-only, logical properties, no box around static text.
+ */
+
+.pay-element {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.pay-element__mount {
+	min-block-size: 3rem;
+}
+
+.pay-element__loading {
+	margin: 0;
+	color: var(--on-surface-variant);
+	font-size: var(--text-sm);
+}
+
+.pay-element__note {
+	margin: 0;
+	color: var(--on-surface-variant);
+	font-size: var(--text-xs);
+	line-height: var(--leading-normal, 1.5);
+}
+
+.pay-element__submit {
+	align-self: stretch;
+}
+
+@media (min-width: 40rem) {
+	.pay-element__submit {
+		align-self: flex-end;
+	}
+}

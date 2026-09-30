@@ -50,9 +50,11 @@ export function walletQueryFrom(sp: URLSearchParams, context: UserContext): Wall
 	};
 }
 
+const ACTIVITY_RANGES: readonly ActivityRange[] = ["7d", "30d", "90d", "180d", "12m", "5y", "all"];
+
 /** Parses the `/api/wallet/activity` range; absent or unknown stays `90d`, the endpoint's default. */
 export function toActivityRange(raw: string | null): ActivityRange {
-	return raw === "7d" || raw === "30d" || raw === "12m" ? raw : "90d";
+	return ACTIVITY_RANGES.includes(raw as ActivityRange) ? raw as ActivityRange : "90d";
 }
 
 /** The `/wallet` address for a wallet and currency, optionally at a section anchor. */
@@ -66,35 +68,127 @@ export function walletHref(
 }
 // #endregion
 
-// #region Cash-flow period
-/** A cash-flow window as the period control names it. */
-export type FlowPeriod = "week" | "month" | "quarter" | "year";
+// #region Pages
+/**
+ * The wallet's pages. The command centre is `overview`; the ledger, the analytics and a business
+ * vault's invoices each have an address of their own, and every one of them carries `?w=` and
+ * `?display=` so moving between them never changes which wallet or currency the reader is looking at.
+ */
+export type WalletView = "overview" | "transactions" | "analytics" | "invoices";
 
-/** Every period, in control order. */
-export const FLOW_PERIODS: readonly FlowPeriod[] = ["week", "month", "quarter", "year"];
+/** Every wallet page, in navigation order. */
+export const WALLET_VIEWS: readonly WalletView[] = [
+	"overview",
+	"transactions",
+	"analytics",
+	"invoices",
+];
+
+const VIEW_PATH: Readonly<Record<WalletView, string>> = {
+	overview: "/wallet",
+	transactions: "/wallet/transactions",
+	analytics: "/wallet/analytics",
+	invoices: "/wallet/invoices",
+};
+
+const VIEW_LABEL: Readonly<Record<WalletView, string>> = {
+	overview: "Overview",
+	transactions: "Transactions",
+	analytics: "Analytics",
+	invoices: "Invoices & statements",
+};
+
+/** A wallet page's name, as the lane lists it and the page heads itself. */
+export function viewLabel(view: WalletView): string {
+	return VIEW_LABEL[view];
+}
+
+/** The address of a wallet page for a wallet and currency; `flow` is carried where the page reads it. */
+export function walletPageHref(
+	view: WalletView,
+	wallet: string,
+	display?: string | null,
+	flow?: FlowPeriod | null,
+): string {
+	const params = new URLSearchParams(buildWalletQuery({ wallet, display }));
+	if (flow && flow !== DEFAULT_FLOW_PERIOD && viewShowsRuler(view)) params.set("flow", flow);
+	const qs = params.toString();
+	return `${VIEW_PATH[view]}${qs ? `?${qs}` : ""}`;
+}
+
+/** The wallet page a pathname addresses, or `null` when it names none. */
+export function viewOfPath(pathname: string): WalletView | null {
+	const path = pathname.replace(/\/+$/, "") || "/";
+	const found = WALLET_VIEWS.find((view) => VIEW_PATH[view] === path);
+	return found ?? null;
+}
+
+/** Whether a page draws a cash-flow window, and so carries the pinned range ruler. */
+export function viewShowsRuler(view: WalletView): boolean {
+	return view === "overview" || view === "analytics";
+}
+
+/**
+ * Whether a wallet has a page of its own for invoices and statements. Only a business vault is billed
+ * and receives monthly statements; the server answers an empty view for every other wallet.
+ */
+export function hasInvoices(business: unknown): boolean {
+	return business !== null && business !== undefined;
+}
+// #endregion
+
+// #region Cash-flow period
+/**
+ * A cash-flow window as the pinned range ruler names it — and as the page's `?flow=` param
+ * carries it, so a window can be linked and survives a reload.
+ */
+export type FlowPeriod = "7d" | "1m" | "3m" | "6m" | "1y" | "5y" | "all";
+
+/** Every period, in ruler order (shortest window first). */
+export const FLOW_PERIODS: readonly FlowPeriod[] = ["7d", "1m", "3m", "6m", "1y", "5y", "all"];
 
 /** The period the page opens on when `?flow=` names none. */
-export const DEFAULT_FLOW_PERIOD: FlowPeriod = "month";
+export const DEFAULT_FLOW_PERIOD: FlowPeriod = "1m";
 
 const PERIOD_RANGE: Readonly<Record<FlowPeriod, ActivityRange>> = {
-	week: "7d",
-	month: "30d",
-	quarter: "90d",
-	year: "12m",
+	"7d": "7d",
+	"1m": "30d",
+	"3m": "90d",
+	"6m": "180d",
+	"1y": "12m",
+	"5y": "5y",
+	all: "all",
 };
 
 const PERIOD_LABEL: Readonly<Record<FlowPeriod, string>> = {
-	week: "Week",
-	month: "Month",
-	quarter: "Quarter",
-	year: "Year",
+	"7d": "7D",
+	"1m": "1M",
+	"3m": "3M",
+	"6m": "6M",
+	"1y": "1Y",
+	"5y": "5Y",
+	all: "All",
 };
 
 const PERIOD_PHRASE: Readonly<Record<FlowPeriod, string>> = {
-	week: "the last 7 days",
-	month: "the last 30 days",
-	quarter: "the last 90 days",
-	year: "the last 12 months",
+	"7d": "the last 7 days",
+	"1m": "the last 30 days",
+	"3m": "the last 3 months",
+	"6m": "the last 6 months",
+	"1y": "the last 12 months",
+	"5y": "the last 5 years",
+	all: "all time",
+};
+
+/**
+ * The names `?flow=` carried before the ruler, so a bookmarked window still opens on the same span
+ * rather than falling back to the default.
+ */
+const LEGACY_PERIOD: Readonly<Record<string, FlowPeriod>> = {
+	week: "7d",
+	month: "1m",
+	quarter: "3m",
+	year: "1y",
 };
 
 /** The server window a period is summed over. */
@@ -102,19 +196,25 @@ export function periodRange(period: FlowPeriod): ActivityRange {
 	return PERIOD_RANGE[period];
 }
 
-/** The control label for a period. */
+/** The ruler's short label for a period ("7D", "All"). */
 export function periodLabel(period: FlowPeriod): string {
 	return PERIOD_LABEL[period];
 }
 
-/** The window a period covers, phrased for a sentence. */
+/** The window a period covers, phrased for a sentence ("the last 3 months"). */
 export function periodPhrase(period: FlowPeriod): string {
 	return PERIOD_PHRASE[period];
 }
 
-/** Parses the page's `?flow=` param; anything unrecognised is the default period. */
+/** Whether a period's chart slices span more than a day, so a bar is read as "from" its start date. */
+export function periodSlicesAreSpans(period: FlowPeriod): boolean {
+	return period !== "7d" && period !== "1m";
+}
+
+/** Parses the page's `?flow=` param; a pre-ruler name maps across, anything else is the default. */
 export function toFlowPeriod(raw: string | null | undefined): FlowPeriod {
-	return FLOW_PERIODS.includes(raw as FlowPeriod) ? raw as FlowPeriod : DEFAULT_FLOW_PERIOD;
+	if (FLOW_PERIODS.includes(raw as FlowPeriod)) return raw as FlowPeriod;
+	return (raw && LEGACY_PERIOD[raw]) || DEFAULT_FLOW_PERIOD;
 }
 // #endregion
 
@@ -146,7 +246,7 @@ export function fundStateLabel(state: FundState): string {
 		case "pending":
 			return "Clearing";
 		case "on_hold":
-			return "On hold";
+			return "Reserved";
 	}
 }
 

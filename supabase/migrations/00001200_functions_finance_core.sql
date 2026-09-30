@@ -292,8 +292,31 @@ BEGIN
 END;
 $$;
 
--- Ticket claim -> hold funds in escrow. Skips gracefully when prerequisites are absent
--- (e.g. individual/non-business client, or no unit price) rather than blocking the claim.
+-- The wallet an escrow's PAYER funds it from, and is refunded to: the paying business's wallet, or —
+-- for an individual client (no business profile) — that person's own wallet. ONE implementation read
+-- by the hold, every refund and the fair-exit split, so money can only ever return to the kind of
+-- wallet it came from. Exactly one payer column is set (ck_escrows_one_payer).
+CREATE OR REPLACE FUNCTION finance.fn_escrow_payer_wallet_type(p_payer_business_id uuid, p_payer_user_id uuid)
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT CASE
+        WHEN p_payer_business_id IS NOT NULL THEN 'business'
+        ELSE finance.fn_person_wallet_type(p_payer_user_id)
+    END;
+$$;
+
+-- Ticket claim -> hold funds in escrow. Skips gracefully (returns NULL) when prerequisites are absent
+-- — no unit price, no payee, no payer wallet in the project's currency — rather than blocking the
+-- claim. The payer is the project's client business or, when the project has none, its owner as an
+-- INDIVIDUAL client (PRODUCT_SPEC §Escrow, Wallets & Finance #5: an individual client needs no business
+-- profile). A payer wallet that does not exist is a skip, never a hold: fn_wallet_debit is a silent
+-- no-op on a missing wallet, so inserting the escrow first minted held money nobody paid. An individual
+-- whose wallet cannot cover the hold is also skipped (the ticket stays unpaid and is funded by card
+-- instead); a business that cannot cover it still refuses, as before.
 CREATE OR REPLACE FUNCTION finance.fn_hold_ticket_escrow(p_ticket_id uuid)
 RETURNS uuid AS $$
 DECLARE
@@ -303,6 +326,12 @@ DECLARE
     v_team_id uuid;
     v_payee_type assignment_type;
     v_payee_id uuid;
+    v_payer_type text;
+    v_payer_id uuid;
+    v_payer_user uuid;
+    v_currency text;
+    v_wallet uuid;
+    v_balance bigint;
 BEGIN
     SELECT
         t.current_stage_id AS stage_id,
@@ -338,37 +367,79 @@ BEGIN
         v_payee_id := v.payee_id;
     END IF;
 
-    IF v.payer IS NULL OR v.stage_id IS NULL OR v_payee_id IS NULL
+    v_payer_id := COALESCE(v.payer, v.spender);
+    IF v_payer_id IS NULL OR v.stage_id IS NULL OR v_payee_id IS NULL
         OR v_amount IS NULL OR v_amount <= 0 THEN
         RETURN NULL;
     END IF;
+    v_payer_user := CASE WHEN v.payer IS NULL THEN v.spender END;
+    v_payer_type := finance.fn_escrow_payer_wallet_type(v.payer, v_payer_user);
+    v_currency := upper(COALESCE(v.currency, 'USD'));
 
     IF EXISTS (SELECT 1 FROM finance.escrows WHERE ticket_id = p_ticket_id AND status = 'held') THEN
         RETURN NULL;
     END IF;
 
+    SELECT w.id, w.balance_cents INTO v_wallet, v_balance
+      FROM finance.wallets w
+     WHERE w.owner_type = v_payer_type AND w.owner_id = v_payer_id AND w.currency = v_currency;
+    IF v_wallet IS NULL THEN
+        RETURN NULL;
+    END IF;
+    IF v_payer_type <> 'business' AND v_balance < v_amount THEN
+        RETURN NULL;
+    END IF;
+
     -- The envelope is the SPENDER's: the project owner who commits the business's money. auth.uid()
     -- here is the freelancer whose claim triggered the hold, who never has an envelope on the payer's
-    -- wallet, so checking them waved every hold through.
-    IF NOT finance.fn_check_spending_limit(
-        (SELECT id FROM finance.wallets WHERE owner_type = 'business' AND owner_id = v.payer AND currency = COALESCE(v.currency, 'USD')),
-        v.spender, v_amount
-    ) THEN
+    -- wallet, so checking them waved every hold through. An individual's own wallet has no envelope.
+    IF v_payer_type = 'business' AND NOT finance.fn_check_spending_limit(v_wallet, v.spender, v_amount) THEN
         RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'spend: this would exceed the project owner''s spending limit on the business wallet';
     END IF;
 
-    INSERT INTO finance.escrows (project_stage_id, ticket_id, payer_business_id, payee_type, payee_id, amount_cents, currency, status)
-    VALUES (v.stage_id, p_ticket_id, v.payer, v_payee_type, v_payee_id, v_amount, COALESCE(v.currency, 'USD'), 'held')
+    INSERT INTO finance.escrows (
+        project_stage_id, ticket_id, payer_business_id, payer_user_id,
+        payee_type, payee_id, amount_cents, currency, status
+    )
+    VALUES (
+        v.stage_id, p_ticket_id, v.payer, v_payer_user,
+        v_payee_type, v_payee_id, v_amount, v_currency, 'held'
+    )
     RETURNING id INTO v_escrow_id;
 
-    PERFORM finance.fn_wallet_debit(v.payer, 'business', COALESCE(v.currency, 'USD'), v_amount, 'escrow_hold', 'escrows', v_escrow_id);
+    PERFORM finance.fn_wallet_debit(v_payer_id, v_payer_type, v_currency, v_amount, 'escrow_hold', 'escrows', v_escrow_id);
 
     UPDATE projects.tickets SET payment_status = 'escrow_funded'::payment_status WHERE id = p_ticket_id;
     RETURN v_escrow_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects, org, auth;
 
+-- The platform fee rate that governs ONE escrow: its payer's active negotiated rate, else
+-- `security.platform_params.platform_fee_bp` (5%, Decision #2) — via finance.fn_effective_platform_fee_bp,
+-- so a release and a fair-exit split charge the same rate. plpgsql, not sql: the resolver it calls is
+-- declared in a later file (00001220), and a sql body is validated at CREATE.
+CREATE OR REPLACE FUNCTION finance.fn_escrow_fee_bp(p_payer_business_id uuid, p_payer_user_id uuid)
+RETURNS integer
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    RETURN COALESCE(
+        CASE WHEN p_payer_business_id IS NOT NULL
+             THEN finance.fn_effective_platform_fee_bp('business', p_payer_business_id)
+             ELSE finance.fn_effective_platform_fee_bp('user', p_payer_user_id)
+        END,
+        0
+    );
+END;
+$$;
+
 -- Release all held escrow for a ticket to its recorded payee (fee + bonus applied, splits for teams).
+-- An individual payee is credited to the person wallet they actually hold (fn_person_wallet_type),
+-- created if missing: a hardcoded 'freelancer' credit onto a person who holds only a 'user' wallet was
+-- a silent no-op in fn_wallet_credit, and the released money vanished.
 CREATE OR REPLACE FUNCTION finance.fn_release_ticket_escrow(p_ticket_id uuid)
 RETURNS void AS $$
 DECLARE
@@ -377,14 +448,14 @@ DECLARE
     v_fee bigint;
     v_payout bigint;
     v_ticket_status ticket_status;
+    v_payee_wallet text;
 BEGIN
-    SELECT (value #>> '{}')::integer INTO v_fee_bp FROM security.platform_params WHERE key = 'platform_fee_bp';
-    v_fee_bp := COALESCE(v_fee_bp, 0);
     SELECT status INTO v_ticket_status FROM projects.tickets WHERE id = p_ticket_id;
 
     FOR r IN
         SELECT * FROM finance.escrows WHERE ticket_id = p_ticket_id AND status = 'held'
     LOOP
+        v_fee_bp := finance.fn_escrow_fee_bp(r.payer_business_id, r.payer_user_id);
         v_fee := (r.amount_cents * v_fee_bp) / 10000;
         v_payout := r.amount_cents + COALESCE(r.deadline_bonus_cents, 0) - v_fee;
         IF v_payout < 0 THEN v_payout := 0; END IF;
@@ -394,7 +465,9 @@ BEGIN
         IF r.payee_type = 'team'::assignment_type THEN
             PERFORM finance.fn_split_team_payout(r.id, r.payee_id, v_payout, r.currency);
         ELSE
-            PERFORM finance.fn_wallet_credit(r.payee_id, 'freelancer', r.currency, v_payout, 'escrow_release', 'escrows', r.id);
+            v_payee_wallet := finance.fn_person_wallet_type(r.payee_id);
+            PERFORM finance.fn_ensure_wallet(v_payee_wallet, r.payee_id, r.currency);
+            PERFORM finance.fn_wallet_credit(r.payee_id, v_payee_wallet, r.currency, v_payout, 'escrow_release', 'escrows', r.id);
         END IF;
 
         UPDATE projects.tickets
@@ -484,11 +557,11 @@ DECLARE
     v_fee bigint;
     v_payout bigint;
     v_refund bigint;
+    v_payee_wallet text;
+    v_payer_wallet text;
 BEGIN
-    SELECT (value #>> '{}')::integer INTO v_fee_bp FROM security.platform_params WHERE key = 'platform_fee_bp';
-    v_fee_bp := COALESCE(v_fee_bp, 0);
-
     FOR r IN SELECT * FROM finance.escrows WHERE ticket_id = p_ticket_id AND status = 'held' LOOP
+        v_fee_bp := finance.fn_escrow_fee_bp(r.payer_business_id, r.payer_user_id);
         v_share := (r.amount_cents * p_bp) / 10000;          -- earned portion by progress tier
         v_fee := (v_share * v_fee_bp) / 10000;               -- platform fee on the earned portion
         v_payout := v_share - v_fee;
@@ -501,10 +574,14 @@ BEGIN
         IF r.payee_type = 'team'::assignment_type THEN
             PERFORM finance.fn_split_team_payout(r.id, r.payee_id, v_payout, r.currency, 'fair_exit_release');
         ELSE
-            PERFORM finance.fn_wallet_credit(r.payee_id, 'freelancer', r.currency, v_payout, 'fair_exit_release', 'escrows', r.id);
+            v_payee_wallet := finance.fn_person_wallet_type(r.payee_id);
+            PERFORM finance.fn_ensure_wallet(v_payee_wallet, r.payee_id, r.currency);
+            PERFORM finance.fn_wallet_credit(r.payee_id, v_payee_wallet, r.currency, v_payout, 'fair_exit_release', 'escrows', r.id);
         END IF;
 
-        PERFORM finance.fn_wallet_credit(r.payer_business_id, 'business', r.currency, v_refund, 'fair_exit_refund', 'escrows', r.id);
+        v_payer_wallet := finance.fn_escrow_payer_wallet_type(r.payer_business_id, r.payer_user_id);
+        PERFORM finance.fn_ensure_wallet(v_payer_wallet, COALESCE(r.payer_business_id, r.payer_user_id), r.currency);
+        PERFORM finance.fn_wallet_credit(COALESCE(r.payer_business_id, r.payer_user_id), v_payer_wallet, r.currency, v_refund, 'fair_exit_refund', 'escrows', r.id);
 
         UPDATE projects.tickets
         SET total_amount_paid = total_amount_paid + v_payout,
@@ -528,13 +605,16 @@ CREATE OR REPLACE FUNCTION finance.fn_refund_ticket_escrow(p_ticket_id uuid)
 RETURNS void AS $$
 DECLARE
     r record;
+    v_payer_wallet text;
 BEGIN
     FOR r IN
         SELECT * FROM finance.escrows WHERE ticket_id = p_ticket_id AND status = 'held'
     LOOP
         UPDATE finance.escrows SET status = 'refunded' WHERE id = r.id;
+        v_payer_wallet := finance.fn_escrow_payer_wallet_type(r.payer_business_id, r.payer_user_id);
+        PERFORM finance.fn_ensure_wallet(v_payer_wallet, COALESCE(r.payer_business_id, r.payer_user_id), r.currency);
         PERFORM finance.fn_wallet_credit(
-            r.payer_business_id, 'business', r.currency, r.amount_cents,
+            COALESCE(r.payer_business_id, r.payer_user_id), v_payer_wallet, r.currency, r.amount_cents,
             'escrow_refund', 'escrows', r.id
         );
     END LOOP;

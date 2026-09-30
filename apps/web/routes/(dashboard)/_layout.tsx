@@ -42,6 +42,7 @@ import {
 import { filesLaneFor } from "@web/features/files/core/files-lane-slot.tsx";
 import { filesHeaderFor } from "@web/features/files/core/files-header-slot.tsx";
 import { filesFooterFor } from "@web/features/files/core/files-footer-slot.tsx";
+import { walletLaneFor } from "@web/features/wallet/core/wallet-lane-slot.tsx";
 import ProjectsLane from "@web/features/projects/islands/ProjectsLane.island.tsx";
 import ProjectSidebar from "@web/features/projects/islands/ProjectSidebar.island.tsx";
 import ChatPopoutHost from "@web/features/messaging/islands/ChatPopoutHost.island.tsx";
@@ -181,8 +182,11 @@ async function laneFor(
 	// The seller Catalogue (`/catalogue`) hosts its navigation lane (status sections · filters · ＋ New).
 	if (url.pathname.startsWith("/catalogue")) return await catalogueLaneFor(url, context, actor);
 
-	// The Wallet (`/wallet`) is a bare canvas: its accounts rail and actions live in the page itself.
-	if (url.pathname === "/wallet" || url.pathname.startsWith("/wallet/")) return null;
+	// The Wallet (`/wallet*`): its pages, verification gate and money actions. It registers no header band
+	// — the currency and settings tools sit in the hero's corner and the range ruler pins in the page.
+	if (url.pathname === "/wallet" || url.pathname.startsWith("/wallet/")) {
+		return await walletLaneFor(url, context, actor);
+	}
 
 	// The multi-member entity console (`/teams`, `/businesses`) hosts either the entity roster or, inside
 	// one entity, that entity's capability-filtered management rail.

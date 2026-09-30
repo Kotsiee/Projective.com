@@ -84,6 +84,16 @@ export function reasonMeta(reason: string, direction: "credit" | "debit"): Reaso
 			return { category: "deposit", label: "Opening balance", refKind: "deposit" };
 		case "payout":
 			return { category: "payout", label: "Payout to bank", refKind: "payout" };
+		case "payout_reversal":
+			return { category: "refund", label: "Payout returned", refKind: "payout" };
+		case "chargeback":
+			return { category: "refund", label: "Card dispute clawback", refKind: null };
+		case "fair_exit_release":
+			return { category: "earning", label: "Fair-exit release", refKind: "stage" };
+		case "fair_exit_refund":
+			return { category: "refund", label: "Fair-exit refund", refKind: "stage" };
+		case "team_finder_fee":
+			return { category: "earning", label: "Finder's fee", refKind: "stage" };
 		case "instant_payout_fee":
 			return { category: "fee", label: "Instant payout fee", refKind: "fee" };
 		case "platform_fee":
@@ -179,13 +189,14 @@ async function resolveRefs(ctx: WalletContext, rows: readonly TxnRow[]) {
 	const escrows = new Map<string, EscrowFacts>();
 	if (escrowIds.length > 0) {
 		const { data, error } = await db.schema("finance").from("escrows")
-			.select("id, project_stage_id, payer_business_id, payee_type, payee_id")
+			.select("id, project_stage_id, payer_business_id, payer_user_id, payee_type, payee_id")
 			.in("id", escrowIds);
 		if (error) throw new Error(`finance.escrows read failed: ${error.message}`);
 		const escrowRows = (data ?? []) as {
 			id: string;
 			project_stage_id: string;
-			payer_business_id: string;
+			payer_business_id: string | null;
+			payer_user_id: string | null;
 			payee_type: string;
 			payee_id: string;
 		}[];
@@ -193,12 +204,13 @@ async function resolveRefs(ctx: WalletContext, rows: readonly TxnRow[]) {
 		const faces = await counterpartyFaces(ctx, escrowRows);
 		for (const e of escrowRows) {
 			const stage = stages.get(e.project_stage_id);
-			const viewerIsPayer = ctx.accounts.some((a) =>
-				a.scope === "business" && a.id === e.payer_business_id
-			);
+			const viewerIsPayer = e.payer_user_id === ctx.viewer.userId ||
+				ctx.accounts.some((a) => a.scope === "business" && a.id === e.payer_business_id);
 			const face = viewerIsPayer
 				? faces.get(`${e.payee_type}:${e.payee_id}`)
-				: faces.get(`business:${e.payer_business_id}`);
+				: e.payer_business_id
+				? faces.get(`business:${e.payer_business_id}`)
+				: faces.get(`freelancer:${e.payer_user_id}`);
 			escrows.set(e.id, {
 				projectSlug: stage?.projectSlug ?? null,
 				projectTitle: stage?.projectTitle ?? null,
@@ -284,13 +296,23 @@ export async function stageFacts(
 /** Names and handles of the other party on escrow lines: payees for a payer, the payer for a payee. */
 async function counterpartyFaces(
 	ctx: WalletContext,
-	escrows: readonly { payer_business_id: string; payee_type: string; payee_id: string }[],
+	escrows: readonly {
+		payer_business_id: string | null;
+		payer_user_id: string | null;
+		payee_type: string;
+		payee_id: string;
+	}[],
 ): Promise<Map<string, { name: string; handle: string | null }>> {
 	const db = getUserClient(ctx.actor.accessToken);
 	const faces = new Map<string, { name: string; handle: string | null }>();
-	const userIds = [...new Set(escrows.filter((e) => e.payee_type === "freelancer").map((e) => e.payee_id))];
+	const userIds = [
+		...new Set([
+			...escrows.filter((e) => e.payee_type === "freelancer").map((e) => e.payee_id),
+			...escrows.flatMap((e) => (e.payer_user_id ? [e.payer_user_id] : [])),
+		]),
+	];
 	const teamIds = [...new Set(escrows.filter((e) => e.payee_type === "team").map((e) => e.payee_id))];
-	const businessIds = [...new Set(escrows.map((e) => e.payer_business_id))];
+	const businessIds = [...new Set(escrows.flatMap((e) => (e.payer_business_id ? [e.payer_business_id] : [])))];
 
 	if (userIds.length > 0) {
 		const { data } = await db.schema("org").from("users_public")
@@ -459,7 +481,11 @@ export async function ledgerPage(
 // #endregion
 
 // #region Series
-/** In-vs-out over the last `days`, in `buckets` equal slices, in the display currency. */
+/**
+ * In-vs-out over the last `days`, in `buckets` equal slices, in the display currency. A window longer than
+ * a year labels each slice by month and year ("Mar 2024"), because a day-and-month label repeats across
+ * the years such a window spans and stops saying which slice it is.
+ */
 export function flowSeries(
 	ctx: WalletContext,
 	rows: readonly TxnRow[],
@@ -469,8 +495,11 @@ export function flowSeries(
 ): FlowPoint[] {
 	const span = (days * DAY) / buckets;
 	const start = now - days * DAY;
+	const format: Intl.DateTimeFormatOptions = days > 366
+		? { month: "short", year: "numeric", timeZone: "UTC" }
+		: { day: "numeric", month: "short", timeZone: "UTC" };
 	const points: FlowPoint[] = Array.from({ length: buckets }, (_, i) => ({
-		label: new Date(start + i * span).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }),
+		label: new Date(start + i * span).toLocaleDateString("en-GB", format),
 		inMinor: 0,
 		outMinor: 0,
 	}));

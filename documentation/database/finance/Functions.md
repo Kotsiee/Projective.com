@@ -533,7 +533,9 @@ currency the wallet actually moved, never re-converted.
 The `/wallet` surface's money moves that need **no external processor**. Top-ups, withdrawals,
 recurring deposits, adding a payment method and the Income Smoother all need a payment or payout
 processor and are deliberately not here — the application refuses them with that reason rather than
-recording money that did not move. Each function below is a definer because the ledger primitives it
+recording money that did not move. The card top-up and card escrow lock now exist at the database
+and API layer ([💳 Stripe fiat rails](#-stripe-fiat-rails-00001230-decision-125)); the wallet UI does
+not call them yet, so it still refuses. Each function below is a definer because the ledger primitives it
 calls (`fn_wallet_debit` / `fn_wallet_credit`) check nothing about the caller, so each authorises the
 caller itself. `EXECUTE` is granted to `authenticated` only.
 
@@ -661,3 +663,227 @@ It is the ONLY way a request is filed: the client INSERT policy (`"Request a spe
 `00002013`) and the `INSERT` table grant to `authenticated` (`00002520`) were removed with it, so a
 direct PostgREST insert is refused and cannot skip the needs-approval check or choose its own
 `currency` and `expires_at`.
+
+---
+
+## 💳 Stripe fiat rails (`00001230`, Decision #125)
+
+Money entering the platform from a card, the Connect payout account a person or team is paid out
+through, and Stripe Identity. The card is charged on the **platform** account (Separate Charges &
+Transfers); the settled amount becomes an ordinary `topup` credit, and an escrow lock then holds the
+stage's escrow FROM that wallet through `projects.fund_stage` — so there is one escrow engine, not a
+card-specific second one. Every function is `SECURITY DEFINER` with `search_path = ''`.
+
+**Two doors, told apart by who may call them.** A **user door** is `EXECUTE` to `authenticated` only
+and authorises the caller through `auth.uid()`; it can open, bind or abandon an attempt but can never
+say that money arrived. A **processor door** is `EXECUTE` to `service_role` only and is reached
+solely from the signed webhook (`/api/finance/webhooks/stripe`, after `constructEventAsync` has
+verified the signature) — so a client can neither credit a wallet nor verify its own identity. The
+three internal helpers are executable by no role at all (`00002510`).
+
+**Every processor door is idempotent on the Stripe event id.** It first claims `stripe:<evt_id>` in
+`finance.idempotency_keys` (`fn_claim_stripe_event`) in the same transaction as its effect, so a
+redelivered event returns the first outcome (`fn_stripe_event_replay`) and moves nothing. Each returns
+`{ outcome, detail?, … }` with `outcome` ∈ `applied` · `replayed` · `unmatched` · `ignored`; an
+`unmatched` event (no row bound to it, or amounts that disagree) is recorded for reconciliation and
+never guessed at.
+
+### Event bookkeeping (internal)
+
+| Function                                          | Returns | What it does                                                                                                           |
+| :------------------------------------------------ | :------ | :--------------------------------------------------------------------------------------------------------------------- |
+| `finance.fn_claim_stripe_event(event_id, type)`   | boolean | Inserts `stripe:<event_id>` (scope `stripe.webhook`, expiring in 30 days); `false` when the event was already claimed. |
+| `finance.fn_complete_stripe_event(event_id, out)` | jsonb   | Stores the outcome on the claimed key and returns it.                                                                  |
+| `finance.fn_stripe_event_replay(event_id)`        | jsonb   | The stored outcome with `outcome = 'replayed'`. `LANGUAGE sql`.                                                        |
+
+### Card payments — user doors
+
+#### `finance.begin_card_payment(p_purpose, p_wallet_id, p_project_id, p_stage_id, p_expected_amount, p_currency, p_idempotency_key)` → jsonb
+
+Opens (or replays) one `finance.inbound_payments` row and registers the attempt key
+(`card_payment:<uid>`, 7 days, hashed with the request — the same key with a different request is
+`22023`, a key still in flight for another request is `PX409`). A repeat of the same request returns
+the existing row with `replayed: true`.
+
+- **`wallet_topup`** — the caller's own wallet or a vault they may `add_funds` to; the currency must be
+  the wallet's; the amount is the caller's.
+- **`escrow_lock`** — the amount is **never the caller's**: it is the SUM of
+  `COALESCE(ticket.unit_price_cents, stage.unit_price_cents)` over the stage's assigned, unfunded
+  tickets — the rule `projects.fund_stage` escrows by. `p_expected_amount` is only a check: if the
+  stage was re-priced since the payer looked, `PC409` says what it costs now. The caller needs project
+  access and the `spend` capability on the client business's wallet (created on demand); the stage
+  must be `assigned`; `p_wallet_id` must be NULL (the money is paid into the client's wallet).
+
+#### `finance.attach_card_payment(p_payment_id, p_provider_ref)` → jsonb
+
+Binds the PaymentIntent id (`^pi_…`) to the caller's own payment, write-once — a second, different id
+is `PX409`, the same id again is a no-op.
+
+#### `finance.abandon_card_payment(p_payment_id, p_reason)` → jsonb
+
+Closes an attempt Stripe refused to create (`canceled`, and a lock `failed`). Only an unbound
+`requires_payment` row is touched; anything else is returned unchanged, so it can never cancel a
+payment that is already in Stripe's hands.
+
+### Card payments — processor doors
+
+#### `finance.settle_card_payment(p_event_id, p_provider_ref, p_amount_received, p_currency, p_livemode)` → jsonb
+
+`payment_intent.succeeded`. Credits `p_amount_received` — what arrived, not what was asked for — to
+the row's wallet (`reason = 'topup'`, `ref_table = 'inbound_payments'`), marks the row `succeeded`
+and links the ledger line. A settlement in another currency, or of nothing, is `unmatched`, not a
+credit. For an `escrow_lock` it then runs `projects.fund_stage` **as the payer who authorised it**
+(`request.jwt.claim.sub` set to `created_by` for the call, restored after), inside a subtransaction:
+the lock re-checks that person's access and spend right NOW, and a refusal rolls back only the lock —
+the money stays in the wallet and `lock_error` says why. A short arrival fails the lock the same way.
+The escrows it created are recorded in `locked_escrow_ids`. Notifies `escrow.funded` or
+`wallet.topup_succeeded` (with the lock failure spelled out when there was one).
+
+#### `finance.record_card_payment_failure(p_event_id, p_provider_ref, p_status, p_reason, p_livemode)` → jsonb
+
+`payment_intent.payment_failed` (`failed`) and `payment_intent.canceled` (`canceled`). Records the
+state and Stripe's decline code; moves no money. A `failed` intent is **not final** — the payer may
+retry it and a later success still settles — so only `canceled` ends an escrow lock. An event arriving
+after the payment settled changes nothing. Notifies `wallet.topup_failed` on a failure.
+
+### Identity (Stripe Identity)
+
+| Function                                                                                                  | Door      | What it does                                                                                                                                                                                                                                                                                     |
+| :-------------------------------------------------------------------------------------------------------- | :-------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `finance.begin_identity_verification()` → jsonb                                                          | user      | Opens a `verification_cases` row (`kyc`, tier 2, `stripe_identity`, `pending`). Freelancers only (`PK403`); an already-verified person is `PX409`; at most `identity_sessions_per_day` (param, default 5) per 24 h (`PR429`). Leaves the profile's `kyc_status` alone.                          |
+| `finance.attach_identity_session(p_case_id, p_session_ref)` → jsonb                                      | user      | Binds the session id (`^vs_…`) to the caller's own case, write-once (`PX409` on a different id), and mirrors it into `org.freelancer_profiles.identity_provider_ref` unless already verified.                                                                                                   |
+| `finance.abandon_identity_verification(p_case_id, p_note)` → jsonb                                       | user      | Expires an unbound, still-pending case Stripe refused to open.                                                                                                                                                                                                                                   |
+| `finance.apply_identity_event(p_event_id, p_event_type, p_session_ref, p_error_code, p_livemode)` → jsonb | processor | `verified` → case verified, profile `kyc_status = 'verified'`, `kyc_tier = GREATEST(tier, 2)`, `kyc_verified_at`; notifies `account.kyc_verified`. `requires_input` → case `rejected` carrying Stripe's error CODE (never the extracted data); notifies `account.kyc_rejected`. `canceled` → case `expired`. A verified case never regresses on a late or reordered event. |
+
+### Connect payout accounts
+
+| Function                                                                        | Door      | What it does                                                                                                                                                                                                                    |
+| :------------------------------------------------------------------------------ | :-------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `finance.fn_payout_owner(p_scope, p_team_id)` → `TABLE(owner_type, owner_id)`   | internal  | `personal` → the caller's own payout owner (`fn_person_wallet_type`); `team` → the team, only for a member holding `manage_billing`.                                                                                            |
+| `finance.payout_account_for(p_scope, p_team_id)` → jsonb                        | user      | `{ owner_type, owner_id, display_name, contact_email, account, payout_ready }` — the owner, the name Stripe's form greets them with (a person's name or the team's), the CALLER's own sign-in address (Stripe requires a contact email on a v2 recipient account; it is passed to Stripe and never stored in `finance.*`), and their active account if any.                                         |
+| `finance.record_payout_account(p_scope, p_team_id, p_account_id)` → jsonb       | user      | Stores a newly created Connect account id (`^acct_…`) for that owner. An account already recorded for someone else is `PX409`; an existing active account wins, so two tabs cannot give one owner two accounts.               |
+| `finance.sync_payout_account(p_account_id, p_status)` → jsonb                   | processor | Writes the status Stripe reports (`payoutAccountStatusFor()` of the `stripe_transfers` capability) and recomputes the freelancer's `payout_ready` as "has a verified account" — the flag `fn_freelancer_payout_ready` reads. |
+
+### Transfers and disputes
+
+#### `finance.record_transfer_created(p_event_id, p_transfer_ref, p_destination, p_amount, p_currency, p_payout_id, p_livemode)` → jsonb
+
+`transfer.created`. Binds the Transfer id to the `finance.payouts` row its metadata names
+(`projective_payout_id`) only when that payout exists, is unbound, and its amount, currency and the
+destination account's owner all agree; anything else is `unmatched`. Moves no money — the payout's own
+flow owns the ledger debit. Since Decision #126 withdrawals create transfers
+(`finance.begin_payout` → Stripe Transfer → `finance.complete_payout`); this event is also the
+recovery path — a still-`pending` payout it binds is marked `paid`, because the transfer is the fact.
+
+#### `finance.record_dispute_opened(p_event_id, p_dispute_ref, p_provider_ref, p_amount, p_currency, p_reason, p_livemode)` → jsonb
+
+`charge.dispute.created`. Records one `finance.chargebacks` row (deduplicated on the dispute id),
+linked to the disputed payment's wallet, ledger line and — when the payment funded exactly one —
+escrow, and **freezes every still-`held` escrow the payment funded** (`locked_escrow_ids` →
+`disputed`), so capital a chargeback may claw back cannot be released meanwhile. Notifies
+`chargeback.opened`. An unmatched dispute is still recorded, with no link. It writes no ledger line:
+the outcome is `finance.record_dispute_closed`'s (Decision #126).
+
+| SQLSTATE | Meaning (Stripe doors)                                                          |
+| :------- | :------------------------------------------------------------------------------ |
+| `42501`  | not signed in (`sign in …` → HTTP 401), or not allowed (→ 403)                  |
+| `22023`  | a bad field, raised as `field: reason` so the route can pin it                  |
+| `P0002`  | the wallet, stage, payment or verification does not exist (or is not yours)     |
+| `PX409`  | an id already bound elsewhere, an attempt key in flight, or already verified    |
+| `PC409`  | the stage is not ready to fund, or its price changed                            |
+| `PS501`  | the project has no paying business, so a stage cannot be funded by card         |
+| `PK403`  | identity checks are for freelancers                                             |
+| `PR429`  | the daily identity-check limit                                                  |
+
+## 💸 Money movement after the fiat rails (`00001240`, Decision #126)
+
+Same two-door split as `00001230`: USER doors (`authenticated`) authorise the caller through
+`auth.uid()` and can never report that money arrived or left; PROCESSOR doors (`service_role` only,
+pinned by `payments.contract.test.ts`) apply what Stripe reported or the scheduler decided.
+
+### Escrow payer + fee (`00001200`)
+
+- `finance.fn_escrow_payer_wallet_type(payer_business_id, payer_user_id)` — `business`, or the person
+  type the individual payer holds. The ONE answer the hold, every refund and the fair-exit split use.
+- `finance.fn_escrow_fee_bp(payer_business_id, payer_user_id)` — the rate a release charges: the
+  payer's active `finance.negotiated_rates` row via `finance.fn_effective_platform_fee_bp`, else
+  `security.platform_params.platform_fee_bp` (**500 = 5 %**, Decision #2 — was seeded 0).
+- `finance.fn_hold_ticket_escrow` — the payer is the client business, or the project's owner as an
+  individual client. A missing payer wallet is a skip, never a hold (the old body minted held money
+  on a missing wallet); an individual who cannot cover the hold is skipped.
+- `fn_release_ticket_escrow` / `fn_fair_exit_release` — credit an individual payee to the person
+  wallet they hold (created if missing); the old hard-coded `freelancer` credit vanished for a person
+  holding only a `user` wallet.
+- `projects.fund_stage` (`00001150`) and `finance.begin_card_payment` (`00001230`) accept an
+  individual client: only the project's OWNER may fund it; the stage is checked against their wallet
+  all-or-nothing (`PF402` — "pay by card instead").
+
+### Disputes — `finance.record_dispute_closed(p_event_id, p_dispute_ref, p_status, p_livemode)` (processor)
+
+`charge.dispute.closed`. `won` / `warning_closed` → the case is `won` and every escrow the payment funded
+returns from `disputed` to `held`. `lost` → each still-frozen escrow is refunded to the payer's wallet
+(`escrow_refund`, its ticket back to `unpaid`), then the disputed amount is debited from that wallet
+(`chargeback`); what the wallet can no longer cover is `unrecovered_cents` (never a negative balance).
+Idempotent on the event and on the case. An escrow already RELEASED to the freelancer is not clawed
+back from them (flagged — a product decision).
+
+### Withdrawals
+
+- `finance.begin_payout(p_wallet_id, p_amount, p_currency, p_instant, p_idempotency_key)` (user) — a
+  person wallet is self-only, a vault needs `withdraw`; a freelancer wallet needs
+  `fn_freelancer_payout_ready`, a business vault `fn_business_kyb_verified` (`PK403`); a verified
+  payout account (`PA403`); enough balance (`PF402`). Inserts a `pending` payout and DEBITS the wallet
+  (`payout`) at once. Idempotent on the attempt key (scope `payout:<uid>`). No Instant fee is charged
+  (its magnitude is undecided, #55(c)).
+- `finance.complete_payout(p_payout_id, p_transfer_ref)` (processor) — the Transfer exists: `paid`.
+- `finance.fail_payout(p_payout_id, p_reason)` (processor) — Stripe definitively refused: `failed`, and
+  a `payout_reversal` credit returns the money. Only a `pending` payout can fail.
+- `finance.fn_payout_destination(wallet)` (internal) — the owner's verified Connect account.
+
+### Saved cards
+
+- `finance.card_owner_for(p_scope, p_entity_id)` (user) — `personal`, or a team/business the caller
+  holds `manage_billing` on; returns the Customer id (if any), the caller's email (for Stripe, never
+  stored) and a display name.
+- `finance.record_processor_customer(p_scope, p_entity_id, p_customer_ref)` (user) — one Customer per
+  owner; a racing second request gets the first.
+- `finance.record_saved_card(owner_type, owner_id, pm_ref, brand, last4, exp_month, exp_year, created_by,
+  make_default)` (processor) — writes the funding `payment_methods` row and its `saved_cards` display
+  projection, linked; idempotent on (owner, payment method); the first card becomes the default.
+
+### Recurring deposits
+
+- `finance.create_deposit_rule(p_wallet_id, p_amount, p_currency, p_interval, p_source_method_id)` (user)
+  — `add_funds` on the wallet; an ACTIVE Stripe funding card of the wallet's owner or the caller; the
+  wallet's currency; first charge one interval from now; stamps `created_by`.
+- `finance.claim_due_deposit_rules(p_limit)` (processor, the scheduler) — `FOR UPDATE SKIP LOCKED`;
+  re-authorises the author AS THEM; records the run as an inbound payment (key =
+  `deposit:<rule>:<period>`, so a period is charged once); advances past `now()` — missed periods are
+  SKIPPED, never charged in a burst; a rule whose card, author or authority is gone is paused.
+- `finance.bind_scheduled_payment(p_payment_id, p_provider_ref, p_error)` (processor) — binds the
+  off-session PaymentIntent, or fails the run; three consecutive failures pause the rule.
+
+### Income Smoother — `finance.set_income_smoother(p_currency, p_target_monthly_cents, p_enrol)` (user)
+
+Enrolment needs `income_smoother_min_months` distinct months of earnings in the currency and
+`income_smoother_min_volume_cents` of them (`PK403` otherwise); the fee is the current
+`income_smoother_fee_bp`, captured on the row. Leaving is always allowed. The smoothing DISBURSEMENT
+(buffering releases, paying the monthly figure, charging the fee) is not built — so nothing deducts
+the fee yet.
+
+### Verification + checkout
+
+- `finance.my_verification_status()` (user) — the caller's KYC (status, tier, payout readiness, latest
+  case) and the KYB of every business they belong to (`business_profiles` has no client read policy).
+- `finance.ensure_purchase_wallet(p_owner_type, p_owner_id, p_currency)` (user) — the wallet a CARD
+  checkout tops up before paying from it (the person's own, or an entity's with `spend`); created when
+  missing.
+- `finance.fn_payout_owner` gained scope `business` (`manage_billing`), and `finance.sync_payout_account`
+  mirrors a business's verified Connect account onto `org.business_profiles.kyb_status` /
+  `kyb_verified_at` / `kyb_provider_ref` — Connect onboarding IS the Level-3 KYB check.
+
+| SQLSTATE | Meaning (added by `00001240`)                                   |
+| :------- | :-------------------------------------------------------------- |
+| `PA403`  | no verified payout account for this wallet                      |
+| `PF402`  | the wallet does not hold enough                                 |
+| `PK403`  | an earning gate (KYC / KYB) or the Income Smoother's eligibility |

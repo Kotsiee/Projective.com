@@ -9,15 +9,17 @@ import type {
 	SpendRequestInput,
 	TopUpInput,
 	TransferInput,
-	WalletAction,
 	WalletActionResult,
+	WalletCardHandoff,
 	WalletQuery,
 	WithdrawInput,
 } from "@projective/types/finance";
 import { getUserClient } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
-import { fundableStages, overviewOf, PROCESSOR_REASON } from "./live-wallet.ts";
+import { fundableStages, overviewOf } from "./live-wallet.ts";
+import { createDepositRule, setIncomeSmoother } from "./live-payments.ts";
+import { PaymentBackendService } from "./PaymentBackendService.ts";
 import { resolveWalletContext, type WalletAccount, type WalletContext, type WalletRow } from "./wallet-scope.ts";
 
 /**
@@ -25,16 +27,20 @@ import { resolveWalletContext, type WalletAccount, type WalletContext, type Wall
  *
  * The movements that need no external processor move real money through definer functions that
  * authorise the caller themselves (`finance.transfer_funds`, `finance.distribute_vault`,
- * `projects.fund_stage`, `finance.request_spend_approval`); the payout schedule writes through RLS; and
- * the ones that need a payment or payout processor — top-up, withdrawal, recurring deposit, adding a
- * method, the Income Smoother — are refused with the reason, because recording money that did not
- * move would be worse than not offering it.
+ * `projects.fund_stage`, `finance.request_spend_approval`); the payout schedule writes through RLS.
+ * The processor-backed ones go through the Stripe fiat rails (Decision #126): a top-up answers with a
+ * PaymentIntent for the Payment Element (the wallet is credited by the signed webhook, never here), a
+ * withdrawal debits the wallet and sends a Stripe Transfer, adding a card answers with a SetupIntent,
+ * and a recurring deposit / the Income Smoother are recorded by definer doors. Where the processor is
+ * not connected, `PaymentBackendService` answers 503 with the reason.
  *
  * Every success answers with the wallet's refreshed Overview, re-read after the write, so the surface
  * shows what the database now holds rather than an optimistic guess.
  */
 
-type Result = ServiceResult<{ result: WalletActionResult }>;
+/** An action's outcome: the refreshed overview + a note, and for card-backed actions the handoff. */
+export type WalletActionOutcome = WalletActionResult & WalletCardHandoff;
+type Result = ServiceResult<{ result: WalletActionOutcome }>;
 
 // #region Plumbing
 /** HTTP status for a refusal SQLSTATE from the wallet functions. */
@@ -107,17 +113,24 @@ function rowIn(account: WalletAccount, currency: string): WalletRow | null {
 	return account.rows.find((row) => row.currency.toUpperCase() === currency.toUpperCase()) ?? null;
 }
 
-/** Re-read the wallet after a write and answer with its fresh Overview. */
+/** Re-read the wallet after a write and answer with its fresh Overview (plus any handoff). */
 async function after(
 	query: WalletQuery,
 	actor: ReadActor,
 	walletKey: string,
 	message: string,
+	extra: WalletCardHandoff = {},
+	status = 200,
 ): Promise<Result> {
 	const ctx = await resolveWalletContext({ ...query, wallet: walletKey }, actor);
 	if (!ctx) return refuse(401, "Sign in to use your wallet.");
 	const overview = await overviewOf(ctx);
-	return ok({ result: { overview, message } }, { message }) as Result;
+	return ok({ result: { overview, message, ...extra } }, { message, status }) as Result;
+}
+
+/** A fat-service refusal, carried over unchanged. */
+function carried(result: ServiceResult<unknown>): Result {
+	return fail(result.status, { message: result.message, errors: result.errors }) as Result;
 }
 
 /** Guard + resolve the wallet an action targets. */
@@ -136,31 +149,119 @@ function isResult(value: unknown): value is Result {
 	return typeof value === "object" && value !== null && "ok" in value;
 }
 
-/** A processor-backed action: refused with its reason, whoever asks. */
-function needsProcessor(action: WalletAction): Result {
-	return refuse(501, PROCESSOR_REASON[action] ?? "That needs a payment processor, which isn't connected here.");
+/** The owner scope a card or verification is saved for, from a wallet scope. */
+function cardScopeOf(scope: string): "personal" | "team" | "business" | null {
+	return scope === "personal" || scope === "team" || scope === "business" ? scope : null;
 }
 // #endregion
 
-// #region Processor-backed (refused here)
-export function topUp(_input: TopUpInput): Result {
-	return needsProcessor("top_up");
+// #region Processor-backed (Stripe fiat rails, Decision #126)
+/**
+ * Top up by card: answers with the PaymentIntent the Payment Element confirms. Nothing is credited
+ * here — the overview it returns is the wallet as it stands; the signed `payment_intent.succeeded`
+ * webhook credits it, and the surface re-reads the overview once Stripe says the payment went through.
+ */
+export async function topUp(input: TopUpInput, query: WalletQuery, actor: ReadActor): Promise<Result> {
+	const resolved = await contextFor(query, actor, keyOf(input.scope, input.contextId));
+	if (isResult(resolved)) return resolved;
+	const { account } = resolved;
+	const row = rowIn(account, input.currency);
+	if (!row) return refuse(409, `This wallet holds no ${input.currency.toUpperCase()}.`);
+	const intent = await PaymentBackendService.createTopUpIntent({
+		walletId: row.id,
+		amountMinor: input.amountMinor,
+		currency: row.currency.toUpperCase(),
+		idempotencyKey: input.idempotencyKey,
+	}, actor);
+	if (!intent.ok || !intent.data) return carried(intent);
+	return after(query, actor, account.key, "Confirm the payment to add it to this wallet.", {
+		payment: intent.data,
+	}, intent.status);
 }
 
-export function withdraw(_input: WithdrawInput): Result {
-	return needsProcessor("withdraw");
+/** Withdraw to the owner's verified Connect account: the wallet is debited, then a Transfer is sent. */
+export async function withdraw(input: WithdrawInput, query: WalletQuery, actor: ReadActor): Promise<Result> {
+	const resolved = await contextFor(query, actor, keyOf(input.scope, input.contextId));
+	if (isResult(resolved)) return resolved;
+	const { account } = resolved;
+	const row = rowIn(account, input.currency);
+	if (!row) return refuse(409, `This wallet holds no ${input.currency.toUpperCase()}.`);
+	const sent = await PaymentBackendService.withdraw({
+		walletId: row.id,
+		amountMinor: input.amountMinor,
+		currency: row.currency.toUpperCase(),
+		instant: input.instant,
+		idempotencyKey: input.idempotencyKey,
+	}, actor);
+	if (!sent.ok || !sent.data) return carried(sent);
+	const message = sent.data.payout.status === "paid"
+		? "Payout sent to your payout account."
+		: sent.message ?? "Your payout is on its way.";
+	return after(query, actor, account.key, message, { payout: sent.data }, sent.status);
 }
 
-export function addRecurring(_input: DepositRuleInput): Result {
-	return needsProcessor("new_recurring");
+/** Create a standing top-up from a saved card, in the wallet's own currency. */
+export async function addRecurring(input: DepositRuleInput, query: WalletQuery, actor: ReadActor): Promise<Result> {
+	const resolved = await contextFor(query, actor, keyOf(input.scope, input.contextId));
+	if (isResult(resolved)) return resolved;
+	const { ctx, account } = resolved;
+	const row = rowIn(account, input.currency);
+	if (!row) return refuse(409, `This wallet holds no ${input.currency.toUpperCase()}.`);
+	if (!input.sourceMethodId) {
+		return fail(422, {
+			message: "Choose a saved card to charge.",
+			errors: { sourceMethodId: "Choose a saved card to charge." },
+		}) as Result;
+	}
+	const rule = await createDepositRule(ctx.actor.accessToken, {
+		walletId: row.id,
+		amountMinor: input.amountMinor,
+		currency: row.currency.toUpperCase(),
+		interval: input.interval,
+		sourceMethodId: input.sourceMethodId,
+	});
+	if (!rule.ok) {
+		return fail(rule.refusal.status, { message: rule.refusal.message, errors: rule.refusal.errors }) as Result;
+	}
+	return after(query, actor, account.key, "Recurring deposit set up.", {}, 201);
 }
 
-export function addMethod(_input: AddMethodInput): Result {
-	return needsProcessor("add_method");
+/** Save a card: answers with the SetupIntent the Payment Element confirms in `setup` mode. */
+export async function addMethod(input: AddMethodInput, query: WalletQuery, actor: ReadActor): Promise<Result> {
+	const scope = cardScopeOf(input.scope);
+	if (!scope) return refuse(422, "Choose the account the card is for.");
+	if (input.methodRole === "payout") {
+		return refuse(422, "Payouts go to your payout account — set it up from Verification & payouts.");
+	}
+	const setup = await PaymentBackendService.createCardSetup({
+		scope,
+		contextId: scope === "personal" ? null : input.contextId,
+	}, actor);
+	if (!setup.ok || !setup.data) return carried(setup);
+	return after(query, actor, keyOf(input.scope, input.contextId), "Enter the card to save it.", {
+		setup: setup.data,
+	}, 201);
 }
 
-export function enrolSmoother(_input: IncomeSmootherEnrolInput): Result {
-	return needsProcessor("enrol_smoother");
+/** Enrol in (or leave) the Income Smoother — the database decides eligibility and the fee. */
+export async function enrolSmoother(
+	input: IncomeSmootherEnrolInput,
+	query: WalletQuery,
+	actor: ReadActor,
+): Promise<Result> {
+	if (!actor.userId || !actor.accessToken) return refuse(401, "Sign in to use your wallet.");
+	const set = await setIncomeSmoother(actor.accessToken, {
+		currency: input.currency.toUpperCase(),
+		targetMonthlyMinor: input.targetMonthlyMinor,
+		enrol: input.enrol !== false,
+	});
+	if (!set.ok) return fail(set.refusal.status, { message: set.refusal.message, errors: set.refusal.errors }) as Result;
+	return after(
+		query,
+		actor,
+		"personal",
+		set.value.enrolled ? "You're enrolled in the Income Smoother." : "You've left the Income Smoother.",
+	);
 }
 // #endregion
 

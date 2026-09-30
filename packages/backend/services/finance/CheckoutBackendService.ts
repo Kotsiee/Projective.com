@@ -1,3 +1,5 @@
+import { isPaymentsLive } from "../../core/stripe.ts";
+import { PaymentBackendService } from "./PaymentBackendService.ts";
 import type {
 	BasketItem,
 	BillingContext,
@@ -65,14 +67,17 @@ import {
 
 // #region Payment processor
 /**
- * Whether a card payment processor is connected to this deployment.
- *
- * None is: there is no processor integration, so a card, a device wallet or PayPal cannot actually be
- * charged here. The device-wallet and PayPal capabilities the client reports are therefore not passed
- * through — offering Google Pay on a checkout that cannot take it would be a control that does
- * nothing (root CLAUDE.md §3 gate 11). The provider rules still run; they are simply told the truth.
+ * Whether the card processor (the Stripe fiat rails, Decision #125/#126) is connected to this
+ * deployment: `FINANCE_BACKEND_LIVE` AND a well-formed Stripe key. When it is, `card` settles here —
+ * as a top-up of the paying wallet followed by a wallet order (`createCheckoutCardPayment`); Apple Pay
+ * and Google Pay arrive THROUGH the card route's Payment Element, so their own tiles and PayPal stay
+ * refused. The device-wallet and PayPal capabilities the client reports are therefore not passed
+ * through — offering a tile that cannot take the money would be a control that does nothing (root
+ * CLAUDE.md §3 gate 11).
  */
-const PROCESSOR_CONNECTED = false;
+function processorConnected(): boolean {
+	return isPaymentsLive();
+}
 
 /**
  * The purchase kinds the wallet can settle in one transaction (`finance.place_wallet_order`). Every
@@ -273,10 +278,18 @@ function blockersFor(
  * true and says who invoicing is for) and otherwise states that it is not wired here, because an
  * invoiced order needs the monthly statement run that settles it.
  */
-function settleableHere(offer: ProviderAvailability[]): ProviderAvailability[] {
+function settleableHere(offer: ProviderAvailability[], cardBlock: string | null = null): ProviderAvailability[] {
+	const connected = processorConnected();
 	return offer.map((entry) => {
-		if (PROCESSOR_ROUTES.has(entry.provider) && !PROCESSOR_CONNECTED) {
-			return { ...entry, available: false, reason: PROCESSOR_REASON };
+		if (entry.provider === "card" && connected) {
+			return cardBlock && entry.available ? { ...entry, available: false, reason: cardBlock } : entry;
+		}
+		if (PROCESSOR_ROUTES.has(entry.provider)) {
+			return {
+				...entry,
+				available: false,
+				reason: connected && entry.provider !== "paypal" ? EXPRESS_REASON : PROCESSOR_REASON,
+			};
 		}
 		if (entry.provider === "invoice" && entry.available) {
 			return { ...entry, available: false, reason: INVOICE_REASON };
@@ -293,12 +306,42 @@ const PROCESSOR_ROUTES: ReadonlySet<ProviderAvailability["provider"]> = new Set(
 ]);
 const PROCESSOR_REASON =
 	"Needs a payment processor, which isn't connected in this environment — pay from your Projective wallet.";
+const EXPRESS_REASON =
+	"Choose Card — Apple Pay and Google Pay appear inside the card form where your device supports them.";
 const INVOICE_REASON =
 	"Invoiced payments aren't available in this environment yet — pay from your Projective wallet.";
 
-/** The provider offer for a resolved checkout at a given total. */
+/**
+ * Why a card cannot pay while the basket is shown in another currency. A card is charged in the lines'
+ * OWN currency (the order is then paid from the wallet in that currency), and the total the buyer
+ * confirms is the one on screen — so charging a figure they were never shown is not an option.
+ */
+function cardCurrencyReason(chargeCurrency: string): string {
+	return `Cards are charged in ${chargeCurrency} — switch your display currency to ${chargeCurrency} to pay by card, or pay from your wallet.`;
+}
+
+/** The one currency a card would be charged in — every line's own — or null when the lines mix currencies. */
+function chargeCurrencyOf(items: readonly BasketItem[]): string | null {
+	let currency: string | null = null;
+	for (const item of items) {
+		const own = (item.unitPrice.origin?.currency ?? item.unitPrice.currency).toUpperCase();
+		if (currency !== null && currency !== own) return null;
+		currency = own;
+	}
+	return currency;
+}
+
+/**
+ * The provider offer for a resolved checkout at a given total. A card is offered locked, with the
+ * reason, while the basket is displayed in a currency other than the one it would be charged in — the
+ * buyer learns that on the option, not after pressing Pay.
+ */
 function offerFor(resolved: Resolved, totalMinor: number, query: BasketQuery): ProviderAvailability[] {
-	const caps = PROCESSOR_CONNECTED ? query.capabilities : undefined;
+	const caps = processorConnected() ? query.capabilities : undefined;
+	const chargeCurrency = chargeCurrencyOf(resolved.items.filter(isCheckoutEligible));
+	const cardBlock = chargeCurrency && chargeCurrency !== resolved.money.display
+		? cardCurrencyReason(chargeCurrency)
+		: null;
 	return settleableHere(availableProviders({
 		ownerType: resolved.owner.ownerType,
 		actingIsMember: resolved.owner.actingIsMember,
@@ -310,7 +353,7 @@ function offerFor(resolved: Resolved, totalMinor: number, query: BasketQuery): P
 		verificationTier: resolved.owner.verificationTier,
 		deviceWallets: { googlePay: caps?.googlePay === true, applePay: caps?.applePay === true },
 		paypalEnabled: caps?.paypalEnabled === true,
-	}));
+	}), cardBlock);
 }
 
 /** Resolve the shared inputs every entry point needs. `null` for a caller who cannot be identified. */
@@ -435,6 +478,7 @@ export class CheckoutBackendService {
 					},
 					savedCards: resolved.cards,
 					defaultCardId: defaultCardOf(resolved.cards, owner),
+					cardsConnected: processorConnected(),
 					promo,
 					totals,
 					requiresEmail: requirements.requiresEmail,
@@ -528,8 +572,9 @@ export class CheckoutBackendService {
 	 * sellers, writes the order and consumes the lines. It is idempotent on `idempotencyKey`: a retried
 	 * submit answers with the order it already placed.
 	 *
-	 * Card, device wallets and PayPal need a payment processor, which is not connected here; they are
-	 * refused with that reason rather than recorded as paid.
+	 * A CARD answers `requires_action` with a PaymentIntent: the charge tops up the paying wallet, and
+	 * once the signed webhook has credited it the browser places the wallet order (a new attempt key).
+	 * Device wallets arrive inside the card form; their own tiles and PayPal are refused with the reason.
 	 */
 	static create(
 		input: CreateCheckout,
@@ -587,15 +632,17 @@ export class CheckoutBackendService {
 			const blocking = blockersFor(priced, providers, { buyer: details.buyer, spendLimit });
 			if (blocking.length > 0) return refusal(blocking[0].message, blocking);
 
-			if (input.provider !== "wallet") {
+			const byCard = input.provider === "card";
+			if (input.provider !== "wallet" && !byCard) {
 				const offered = providers.find((p) => p.provider === input.provider);
 				const message = offered?.reason ?? PROCESSOR_REASON;
 				return refusal(message, [blocker("no_provider", message)]);
 			}
-			const wallet = providers.find((p) => p.provider === "wallet");
-			if (!wallet?.available) {
-				const message = wallet?.reason ?? "Your Projective wallet can't pay for this order.";
-				return refusal(message, [blocker("insufficient_funds", message)]);
+			const route = providers.find((p) => p.provider === input.provider);
+			if (!route?.available) {
+				const message = route?.reason ??
+					(byCard ? PROCESSOR_REASON : "Your Projective wallet can't pay for this order.");
+				return refusal(message, [blocker(byCard ? "no_provider" : "insufficient_funds", message)]);
 			}
 
 			// The display figures the buyer confirmed, re-verified against a fresh computation.
@@ -630,6 +677,59 @@ export class CheckoutBackendService {
 				}
 				chargeCurrency = currency;
 				units[item.id] = item.unitPrice.origin?.minor ?? item.unitPrice.minor;
+			}
+
+			if (byCard) {
+				// A card is charged in ONE currency; the order is then paid from the wallet in the lines'
+				// own currency. Those must be the same, or the card would be charged a converted figure the
+				// wallet order does not spend.
+				if (chargeCurrency !== money.display) {
+					const message = cardCurrencyReason(chargeCurrency ?? money.display);
+					return refusal(message, [blocker("no_provider", message)]);
+				}
+				// The saved card the buyer chose, re-checked against the owner's OWN list (read as the
+				// caller, so a card id from another account resolves to nothing).
+				const card = input.cardId ? priced.cards.find((c) => c.id === input.cardId) ?? null : null;
+				if (input.cardId && !card) {
+					const message = "That card is no longer on file. Choose another, or add a new one.";
+					return refusal(message, [blocker("no_provider", message)]);
+				}
+				if (card?.isExpired) {
+					const message = "That card has expired. Choose another, or add a new one.";
+					return refusal(message, [blocker("no_provider", message)]);
+				}
+				if (card && owner.isEntity && !card.isBusinessCard) {
+					const message = "This account can only pay with a business card. Choose another card.";
+					return refusal(message, [blocker("no_provider", message)]);
+				}
+				const pay = await PaymentBackendService.createCheckoutCardPayment({
+					ownerType: owner.ownerType,
+					ownerId: owner.ownerId,
+					amountMinor: totals.total.minor,
+					currency: chargeCurrency,
+					// Its own namespace, so the card charge and the wallet order that follows it can never
+					// collide on one attempt key.
+					idempotencyKey: `card-${input.idempotencyKey}`.slice(0, 120),
+					savedCardRef: card?.stripePaymentMethodId ?? null,
+				}, actor);
+				if (!pay.ok || !pay.data) {
+					const message = pay.message ?? PROCESSOR_REASON;
+					return refusal(message, [blocker("no_provider", message)]);
+				}
+				const result: CheckoutResult = {
+					status: "requires_action",
+					orderId: null,
+					charged: money.derived(0),
+					nextActionUrl: null,
+					message: pay.data.confirmation === "collect"
+						? `Confirm your card to pay ${totals.total.display}.`
+						: `Charging your card ${totals.total.display}.`,
+					blockers: [],
+					walletDelta: null,
+					at: new Date().toISOString(),
+					payment: pay.data,
+				};
+				return ok({ result }, { message: result.message, status: 202 });
 			}
 
 			const { data, error } = await getUserClient(actor.accessToken).schema("finance").rpc(

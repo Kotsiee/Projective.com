@@ -434,6 +434,18 @@ CREATE TYPE projects.ticket_priority AS ENUM ('low', 'normal', 'high', 'urgent')
 -- and enum the buyer-visible "your payout failed" row could not be produced.
 CREATE TYPE finance.payout_status AS ENUM ('pending', 'paid', 'failed', 'cancelled');
 
+-- `inbound_payment_status` — the lifecycle of money ENTERING the platform from an external instrument
+-- (finance.inbound_payments), the twin of `payout_status`. Mirrors @projective/types/finance
+-- InboundPaymentStatus, member for member.
+--
+-- `canceled` is spelled the way the payment processor spells it (a PaymentIntent is `canceled`), not
+-- the way `payout_status` spells its own `cancelled`: this vocabulary is written from processor events,
+-- and a translation step between two spellings of one word is where a status silently fails to match.
+-- `succeeded` is written by the signed webhook ONLY — a browser saying "payment confirmed" is a claim.
+CREATE TYPE finance.inbound_payment_status AS ENUM (
+    'requires_payment', 'processing', 'succeeded', 'failed', 'canceled'
+);
+
 -- `order_status` — mirrors @projective/types/finance OrderStatus, member for member.
 --
 -- `awaiting_payment` and `invoiced` are the two that earn their place. The first says the order

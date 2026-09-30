@@ -16,12 +16,17 @@ import {
  *
  * Reuses (does not fork): per-member caps are `finance.spending_limits`; per-member split shares are
  * `finance.contribution_agreements` (see ledger.ts). {@link SplitRuleSchema} adds the RULESET TEMPLATE
- * that resolves into those per-member rows. ⚠️ The capability set overlaps `org.business_permission` /
- * `org.team_permission` — flagged for human reconciliation (root CLAUDE.md §8).
+ * that resolves into those per-member rows. The capability grants are a PROJECTION of the workspace
+ * capabilities (`org.fn_sync_vault_permissions`); the former overlap with the retired
+ * `org.business_permission` / `org.team_permission` enums was resolved by Decision #122.
  */
 
 // #region Vault capability grants
-/** `finance.vault_capability` — a fine-grained money capability on a shared wallet. */
+/**
+ * `finance.vault_capability` — a fine-grained money capability on a shared wallet, member for member
+ * with the Postgres enum. `approve_spend` decides an over-limit spend and is deliberately NOT implied
+ * by `manage_members` (which also carries `withdraw` — an approver who could empty the pool).
+ */
 export const VaultCapability = z.enum([
 	"view",
 	"add_funds",
@@ -30,6 +35,7 @@ export const VaultCapability = z.enum([
 	"withdraw",
 	"manage_members",
 	"manage_billing",
+	"approve_spend",
 ]);
 export type VaultCapability = z.infer<typeof VaultCapability>;
 
@@ -56,7 +62,10 @@ export const SpendingLimitSchema = z.object({
 	id: uuid,
 	walletId: uuid,
 	memberUserId: uuid,
-	capCents: minorUnitsNonNeg,
+	/** The rolling ceiling. `null` = no rolling ceiling — a policy somebody set, distinct from `0`. */
+	capCents: minorUnitsNonNeg.nullable(),
+	/** A ceiling on ONE purchase, independent of the rolling cap. `null` = none. */
+	perTransactionCents: minorUnitsNonNeg.nullable(),
 	periodInterval: SpendingLimitInterval,
 	spentCents: minorUnitsNonNeg,
 	resetsAt: timestamp.nullable(),

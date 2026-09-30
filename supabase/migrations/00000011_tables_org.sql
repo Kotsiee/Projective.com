@@ -113,8 +113,12 @@ CREATE TABLE org.freelancer_profiles (
     max_workload_intensity numeric(6,2),
     -- Folded (20260723091000): freelancer KYC + payout-readiness cache.
     kyc_status finance.kyc_status NOT NULL DEFAULT 'unverified',
-    kyc_tier smallint,
+    -- The same 1-3 ladder as finance.verification_cases.tier (1 Basic · 2 Verified · 3 Business);
+    -- the Stripe Identity webhook raises it to 2 (Decision #125).
+    kyc_tier smallint CHECK (kyc_tier IS NULL OR kyc_tier BETWEEN 1 AND 3),
     kyc_verified_at timestamptz,
+    -- The second half of the earning gate (finance.fn_freelancer_payout_ready): true exactly while the
+    -- person holds a VERIFIED payout account — kept in step by finance.sync_payout_account.
     payout_ready boolean NOT NULL DEFAULT false,
     identity_provider_ref text,   -- Stripe Identity session id (placeholder; no PII)
     -- The seller's HIRE intake (Decision #108): what a client answers when adding this freelancer to

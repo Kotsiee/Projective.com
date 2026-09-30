@@ -61,7 +61,12 @@ CREATE TABLE finance.transactions (
     -- they are written, and the two states that are not ('locked' while in escrow, 'pending' inside
     -- the 7-day release window) are always written by a function that knows which one applies.
     fund_state finance.fund_state NOT NULL DEFAULT 'available',
-    created_at timestamptz NOT NULL DEFAULT now(),
+    -- clock_timestamp(), not now(): several movements are often written in ONE transaction (a card
+    -- settlement credits then holds escrow; a lost dispute refunds then claws back), and now() gives
+    -- them all the transaction's start instant — so a ledger ordered by time fell back to the random
+    -- uuid and printed `balance_after_cents` out of the order it was computed in (#125(e), Decision
+    -- #126). The wall clock keeps the rows in write order.
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     -- Folded (20260723090000): FX snapshot captured at commit (NULL when same-currency).
     -- Immutable once written: a statement/invoice reprints the rate that was actually applied, never
     -- today's. `fx_base` defaults to the platform base so a stamped rate is never orphaned from the
@@ -75,7 +80,13 @@ CREATE TABLE finance.escrows (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
     project_stage_id uuid NOT NULL REFERENCES projects.project_stages (id) ON DELETE RESTRICT,
     ticket_id uuid REFERENCES projects.tickets (id) ON DELETE SET NULL,
-    payer_business_id uuid NOT NULL REFERENCES org.business_profiles (id) ON DELETE RESTRICT,
+    -- The payer is EITHER a client business OR an individual client (a project with no
+    -- client_business_id is paid for by its owner, PRODUCT_SPEC §Escrow, Wallets & Finance #5: an
+    -- individual client needs no business profile). Exactly one is set (ck_escrows_one_payer); the
+    -- business FK is unchanged, only its NOT NULL moved into that CHECK. Relaxed 2026-09-29 on the
+    -- product owner's instruction (root CLAUDE.md §8 Decision #126), closing #56(a) / #125(b).
+    payer_business_id uuid REFERENCES org.business_profiles (id) ON DELETE RESTRICT,
+    payer_user_id uuid REFERENCES org.users_public (user_id) ON DELETE RESTRICT,
     payee_type assignment_type NOT NULL,
     payee_id uuid NOT NULL,
     amount_cents bigint NOT NULL CHECK (amount_cents > 0),
@@ -88,17 +99,27 @@ CREATE TABLE finance.escrows (
     -- Immutable once written — settlement reproduces the escrow at the rate it was funded at.
     fx_rate numeric(20, 10),
     fx_base char(3) DEFAULT 'GBP',
-    fx_as_of timestamptz
+    fx_as_of timestamptz,
+    CONSTRAINT ck_escrows_one_payer CHECK (num_nonnulls (payer_business_id, payer_user_id) = 1)
 );
 
 CREATE TABLE finance.payout_accounts (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
-    owner_type text NOT NULL,
+    owner_type text NOT NULL
+        CHECK (owner_type IN ('user', 'freelancer', 'team', 'business', 'organisation')),
     owner_id uuid NOT NULL,
     provider text NOT NULL,
     account_id text NOT NULL,
-    status text NOT NULL DEFAULT 'pending_verification',
+    -- The account's readiness to RECEIVE transfers. For a Stripe Connect account this is the v2
+    -- recipient capability `stripe_balance.stripe_transfers`, mapped by payoutAccountStatusFor() in
+    -- @projective/types/finance: active → verified, pending → pending_verification, restricted →
+    -- restricted, unsupported → disabled. Written by finance.sync_payout_account from what the
+    -- provider reports — never by the owner, whose word is not evidence of a payable account.
+    status text NOT NULL DEFAULT 'pending_verification'
+        CHECK (status IN ('pending_verification', 'verified', 'restricted', 'disabled')),
     created_at timestamptz NOT NULL DEFAULT now(),
+    -- When the status was last reconciled with the provider.
+    updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT uq_payout_accounts_provider_account UNIQUE (provider, account_id)
 );
 
@@ -311,6 +332,9 @@ CREATE TABLE finance.deposit_rules (
     active boolean NOT NULL DEFAULT true,
     failure_count integer NOT NULL DEFAULT 0,   -- consecutive failed charges (drives dunning / auto-pause)
     last_error text,
+    -- Who authorised the standing charge. Every run is recorded as an inbound payment made BY this
+    -- person (finance.inbound_payments.created_by is NOT NULL), so a rule nobody authorised cannot run.
+    created_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -501,7 +525,15 @@ CREATE TABLE finance.chargebacks (
     reason text,
     opened_at timestamptz NOT NULL DEFAULT now(),
     resolved_at timestamptz,
-    created_at timestamptz NOT NULL DEFAULT now()
+    -- On a LOST dispute, the part of the clawback the payer's wallet could not cover (it had already
+    -- been spent): the platform's loss, recorded rather than forced into a negative balance. 0 until
+    -- the case is lost, and 0 whenever the wallet covered it in full (finance.record_dispute_closed).
+    unrecovered_cents bigint NOT NULL DEFAULT 0 CHECK (unrecovered_cents >= 0),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    -- Resolution and the three closed states are the same fact stated twice.
+    CONSTRAINT chargebacks_resolved_matches_status CHECK (
+        (status IN ('won', 'lost', 'refunded')) = (resolved_at IS NOT NULL)
+    )
 );
 
 CREATE TABLE finance.idempotency_keys (
@@ -977,5 +1009,117 @@ CREATE TABLE finance.buyer_details (
     -- One record per identity per owner. The buyer edits it in place; there is no history here,
     -- because the version that mattered for a given purchase is snapshotted onto the order.
     CONSTRAINT uq_buyer_details_owner_context UNIQUE (owner_type, owner_id, context_id)
+);
+-- #endregion
+
+-- #region Inbound payments (Stripe fiat rails, Phase 1 — Decision #125)
+-- The EXECUTION log for money ENTERING the platform from an external instrument, and the twin of
+-- finance.payouts, which logs money leaving it.
+--
+-- Nothing else can hold this fact. finance.transactions records only COMPLETED movements, so a card
+-- payment that has been started but not paid has nowhere to live, and a DECLINED one moves no money
+-- and would leave no trace at all. finance.orders is the record of a basket purchase, not of a
+-- top-up or an escrow funding. So one row here per attempt: created when the payer asks to pay
+-- (finance.begin_card_payment), bound to the processor's PaymentIntent (attach_card_payment), and
+-- settled ONLY by the signed `payment_intent.succeeded` webhook (settle_card_payment).
+--
+-- The card is charged on the PLATFORM account and the settled amount is credited to `wallet_id`
+-- ('topup'); an `escrow_lock` payment then holds the stage's escrow FROM that wallet, exactly as
+-- projects.fund_stage would. An escrow is always funded from a wallet — that is the model this
+-- table serves, and why the charge is not a destination charge (Decision #125).
+CREATE TABLE finance.inbound_payments (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    purpose text NOT NULL CHECK (purpose IN ('wallet_topup', 'escrow_lock')),
+    -- The wallet the settled money is credited to: the payer's own for a top-up, the paying business's
+    -- for an escrow lock. RESTRICT, not CASCADE: a wallet that has taken money must not take the record
+    -- of that money with it.
+    wallet_id uuid NOT NULL REFERENCES finance.wallets (id) ON DELETE RESTRICT,
+    -- The stage an `escrow_lock` payment funds. SET NULL so a stage retired later keeps the payment
+    -- history; which is also why the rule below is one-directional (a top-up never names a stage).
+    project_stage_id uuid REFERENCES projects.project_stages (id) ON DELETE SET NULL,
+    amount_cents bigint NOT NULL CHECK (amount_cents > 0),
+    currency char(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
+    -- What the processor reports it actually received. NULL until settlement; the ledger is credited
+    -- with THIS figure, because it is the money that exists.
+    amount_received_cents bigint CHECK (amount_received_cents IS NULL OR amount_received_cents >= 0),
+    status finance.inbound_payment_status NOT NULL DEFAULT 'requires_payment',
+    -- For an escrow lock: whether the settled money could be held against the stage. A failed lock
+    -- loses nothing — the money stays in the paying wallet, where the stage can be funded again.
+    lock_status text NOT NULL DEFAULT 'not_applicable'
+        CHECK (lock_status IN ('not_applicable', 'pending', 'locked', 'failed')),
+    lock_error text,
+    -- The escrows this payment's lock created, so a chargeback can freeze exactly the capital it
+    -- funded (Dispute Lockbox) without inferring it from timestamps.
+    locked_escrow_ids uuid[] NOT NULL DEFAULT '{}',
+    provider text NOT NULL DEFAULT 'stripe',
+    provider_ref text,                        -- Stripe PaymentIntent id; XXXX-XXXX in docs
+    -- The payer's attempt key. UNIQUE, so a retry after an unseen timeout resolves to the SAME
+    -- payment rather than a second charge.
+    idempotency_key text NOT NULL UNIQUE,
+    -- The ledger credit this payment produced. NULL until it settles, and NULL forever when it fails.
+    transaction_id uuid REFERENCES finance.transactions (id) ON DELETE SET NULL,
+    failure_reason text,
+    -- Whether the settling event came from the processor's live mode. NULL until settlement.
+    livemode boolean,
+    -- Who asked to pay. The escrow lock is re-authorised as THIS user when the payment settles, so a
+    -- member who lost the right to spend in between cannot have a lock completed on their behalf.
+    created_by uuid NOT NULL REFERENCES auth.users (id) ON DELETE RESTRICT,
+    -- The standing rule that charged this payment off-session (finance.claim_due_deposit_rules), or
+    -- NULL for a payment somebody made in the moment. SET NULL: deleting a rule must not erase the
+    -- history of what it charged.
+    deposit_rule_id uuid REFERENCES finance.deposit_rules (id) ON DELETE SET NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    succeeded_at timestamptz,
+    CONSTRAINT uq_inbound_payments_provider_ref UNIQUE (provider, provider_ref),
+    -- A standing deposit only ever tops a wallet up.
+    CONSTRAINT inbound_payments_rule_only_for_topups CHECK (
+        deposit_rule_id IS NULL OR purpose = 'wallet_topup'
+    ),
+    -- A top-up never names a stage (an escrow lock may lose its stage later, hence one-directional).
+    CONSTRAINT inbound_payments_stage_only_for_locks CHECK (
+        purpose = 'escrow_lock' OR project_stage_id IS NULL
+    ),
+    -- The lock state is meaningful exactly for escrow locks.
+    CONSTRAINT inbound_payments_lock_matches_purpose CHECK (
+        (purpose = 'wallet_topup') = (lock_status = 'not_applicable')
+    ),
+    CONSTRAINT inbound_payments_lock_error_only_when_failed CHECK (
+        lock_error IS NULL OR lock_status = 'failed'
+    ),
+    -- Settlement and the 'succeeded' state are the same fact stated twice, so they may never disagree.
+    CONSTRAINT inbound_payments_succeeded_matches_status CHECK (
+        (status = 'succeeded') = (succeeded_at IS NOT NULL)
+    ),
+    CONSTRAINT inbound_payments_credit_only_when_succeeded CHECK (
+        transaction_id IS NULL OR status = 'succeeded'
+    ),
+    CONSTRAINT inbound_payments_reason_only_when_unpaid CHECK (
+        failure_reason IS NULL OR status IN ('failed', 'canceled')
+    )
+);
+
+COMMENT ON TABLE finance.inbound_payments IS
+'One attempt to move money INTO a wallet from an external instrument (a Stripe PaymentIntent on the
+platform account). Settled only by the signed payment_intent.succeeded webhook, which credits the
+wallet (reason topup) and, for an escrow_lock, holds the stage escrow from it. The twin of
+finance.payouts. Money moves only through the finance.* definer functions; no client role writes here.';
+-- #endregion
+
+-- #region Processor customers — the Stripe Customer a saved card is attached to
+-- A card saved for later (a recurring deposit, a one-click top-up) has to be attached to a Stripe
+-- Customer, and a Customer has to be reused or every saved card lands on a different one. This is the
+-- one place that pairing lives: one Customer per finance owner per provider. No PII: the processor id
+-- only. Definer-only (RLS on, no policy) — written and read through finance.card_owner_for /
+-- finance.record_processor_customer, which authorise the caller themselves.
+CREATE TABLE finance.processor_customers (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    owner_type text NOT NULL CHECK (owner_type IN ('user', 'freelancer', 'business', 'team', 'organisation')),
+    owner_id uuid NOT NULL,
+    provider text NOT NULL DEFAULT 'stripe',
+    customer_ref text NOT NULL,                   -- Stripe Customer id (cus_…); XXXX-XXXX in docs
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_processor_customers_owner UNIQUE (provider, owner_type, owner_id),
+    CONSTRAINT uq_processor_customers_ref UNIQUE (provider, customer_ref)
 );
 -- #endregion

@@ -1,10 +1,22 @@
 :root {
 	--wlt-hero-h: 56vh;
+	--wlt-hero-h-compact: 26vh;
 	--wlt-sheet-overlap: clamp(3.5rem, 9vh, 6.5rem);
 	--wlt-pad-x: clamp(var(--space-4), 4vw, var(--space-7));
 	--wlt-balance-size: clamp(var(--text-3xl), 1.1rem + 3.2vw, 3.75rem);
-	--wlt-glow-blur: calc(var(--glass-blur) * 4);
 	--wlt-press-scale-row: 0.99;
+
+	/*
+	 * The hero's top row: the pinned range ruler and the corner tools share one height and one inset
+	 * below the top bar, and the hero reserves that row before its own content (wallet-hero.css). The
+	 * reserve is how much of the row the corner tools take, so a ruler stepping aside clears them.
+	 */
+	--wlt-tool-h: 2.25rem;
+	--wlt-tool-gap: var(--space-3);
+	--wlt-tools-reserve: 8.5rem;
+	--wlt-tools-reserve-narrow: 6rem;
+	--wlt-ruler-ground: color-mix(in srgb, var(--surface-2) var(--glass-veil-chrome), transparent);
+	--wlt-ruler-shadow: 0 var(--space-1) var(--space-4) color-mix(in srgb, var(--scrim) 14%, transparent);
 
 	--wlt-aurora-cyan: #06b6d4;
 	--wlt-aurora-cobalt: #2563eb;
@@ -27,7 +39,26 @@
 	--wlt-glass-bubble: color-mix(in srgb, var(--on-scrim) 14%, transparent);
 	--wlt-pill-lift: 0 var(--space-2) var(--space-5) color-mix(in srgb, var(--scrim) 30%, transparent);
 
+	/*
+	 * The sheet's translucent upper boundary: the first `--wlt-sheet-fade` of the sheet runs from the
+	 * chrome veil to opaque `--surface`, blurred, so the hero's gradient reads through its top edge and
+	 * the canvas is solid by the time any content sits on it (wallet-sheet.css).
+	 */
+	--wlt-sheet-fade: var(--space-7);
+	--wlt-sheet-veil: color-mix(in srgb, var(--surface) var(--glass-veil-chrome), transparent);
 	--wlt-sheet-shadow: 0 calc(-1 * var(--space-3)) var(--space-7) color-mix(in srgb, var(--scrim) 16%, transparent);
+
+	/*
+	 * The four fund states, as the allocation meter paints them. Spendable is the brand, escrow the
+	 * success ramp (capital that is safe and working), clearing the warning ramp (money not yet
+	 * spendable) and reserved the aurora's violet (money set aside). Each is a mark, never ink: the
+	 * legend's words stay in text tokens and carry the state's name beside its shape.
+	 */
+	--wlt-fund-available: var(--primary);
+	--wlt-fund-escrow: var(--success);
+	--wlt-fund-clearing: var(--warning);
+	--wlt-fund-reserved: var(--wlt-aurora-violet);
+
 	--wlt-credit-ink: color-mix(in srgb, var(--success) 72%, var(--on-surface));
 	--wlt-chart-in: var(--success);
 	--wlt-chart-out: color-mix(in srgb, var(--outline) 60%, var(--surface));
@@ -35,10 +66,7 @@
 	--wlt-attention-ink: color-mix(in srgb, var(--warning) 62%, var(--on-surface));
 }
 
-/* :root[data-theme="dark"] {
-	--wlt-hero-indigo: color-mix(in srgb, var(--on-tertiary) 88%, var(--scrim));
-	--wlt-hero-midnight: color-mix(in srgb, var(--on-tertiary) 40%, var(--scrim));
-	--wlt-hero-glow-teal: color-mix(in srgb, var(--primary) 48%, transparent);
-	--wlt-hero-glow-indigo: color-mix(in srgb, var(--tertiary) 28%, transparent);
+:root[data-theme="dark"] {
+	--wlt-ruler-shadow: 0 var(--space-1) var(--space-4) color-mix(in srgb, var(--scrim) 36%, transparent);
 	--wlt-sheet-shadow: 0 calc(-1 * var(--space-3)) var(--space-7) color-mix(in srgb, var(--scrim) 40%, transparent);
-} */
+}

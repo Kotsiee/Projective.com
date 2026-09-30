@@ -1,3 +1,4 @@
+import { isPaymentsLive } from "../../core/stripe.ts";
 import type {
 	AccessView,
 	ActivityRange,
@@ -78,16 +79,16 @@ import { standingFor } from "./wallet-standing.ts";
 
 // #region Environment
 /**
- * The actions this deployment cannot run, with the sentence the surface shows on them. Each needs an
- * external payment or payout processor; none is connected here, so each is offered locked with its
- * reason and refused server-side regardless (`wallet-actions.ts`).
+ * The actions that need the Stripe fiat rails (Decision #125/#126), with the sentence the surface shows
+ * on them when the processor is NOT connected in this deployment (`FINANCE_BACKEND_LIVE` off, or no
+ * well-formed Stripe key). Where it is connected they run; where it is not, each is offered locked with
+ * its reason and refused server-side regardless (`PaymentBackendService` answers 503).
  */
 export const PROCESSOR_REASON: Readonly<Partial<Record<WalletAction, string>>> = {
 	top_up: "Top-ups need a payment processor, which isn't connected in this environment.",
 	withdraw: "Withdrawals need a payout processor, which isn't connected in this environment.",
 	new_recurring: "Recurring deposits need a payment processor, which isn't connected in this environment.",
 	add_method: "Payment methods are added through the payment processor, which isn't connected in this environment.",
-	enrol_smoother: "The Income Smoother pays out through the payout processor, which isn't connected in this environment.",
 };
 
 const DAY = 86_400_000;
@@ -161,7 +162,9 @@ async function peopleFaces(ctx: WalletContext, userIds: readonly string[]): Prom
 interface EscrowRow {
 	id: string;
 	project_stage_id: string;
-	payer_business_id: string;
+	payer_business_id: string | null;
+	/** An INDIVIDUAL client who paid (Decision #126); exactly one payer column is set. */
+	payer_user_id: string | null;
 	payee_type: string;
 	payee_id: string;
 	amount_cents: number;
@@ -171,13 +174,22 @@ interface EscrowRow {
 	created_at: string;
 }
 
-/** The escrows that bear on an account: held for its work, or funded from its money. */
+/**
+ * The escrows that bear on an account: held for its work, or funded from its money. A person's own
+ * wallet sees both halves — escrows held for their work AND escrows they funded as an individual client
+ * (`payer_user_id`, Decision #126) — or the capital that left their wallet into escrow would vanish from
+ * its total (#125(e)).
+ */
 async function escrowsFor(ctx: WalletContext, account: WalletAccount): Promise<EscrowRow[]> {
 	let q = getUserClient(ctx.actor.accessToken).schema("finance").from("escrows")
-		.select("id, project_stage_id, payer_business_id, payee_type, payee_id, amount_cents, platform_fee_cents, currency, status, created_at");
+		.select(
+			"id, project_stage_id, payer_business_id, payer_user_id, payee_type, payee_id, amount_cents, platform_fee_cents, currency, status, created_at",
+		);
 	switch (account.scope) {
 		case "personal":
-			q = q.eq("payee_type", "freelancer").eq("payee_id", ctx.viewer.userId);
+			q = q.or(
+				`and(payee_type.eq.freelancer,payee_id.eq.${ctx.viewer.userId}),payer_user_id.eq.${ctx.viewer.userId}`,
+			);
 			break;
 		case "team":
 			q = q.eq("payee_type", "team").eq("payee_id", account.id);
@@ -204,7 +216,9 @@ function isLive(e: EscrowRow): boolean {
 
 /** What an escrow is worth to this account: what a payee will receive, or what a payer committed. */
 function escrowValue(account: WalletAccount, e: EscrowRow): number {
-	return account.scope === "business" ? e.amount_cents : Math.max(0, e.amount_cents - e.platform_fee_cents);
+	const paid = account.scope === "business" || (account.scope === "personal" && e.payer_user_id !== null &&
+		!(e.payee_type === "freelancer" && e.payee_id === e.payer_user_id));
+	return paid ? e.amount_cents : Math.max(0, e.amount_cents - e.platform_fee_cents);
 }
 
 interface PendingRow {
@@ -247,20 +261,24 @@ function verificationFor(ctx: WalletContext, account: WalletAccount, variant: Wa
 				: kyb === "pending"
 				? "Business verification (KYB) is in review — this vault opens once it clears"
 				: "Verify your business (KYB) to operate this vault",
-			href: null,
+			href: verified || kyb === "pending" ? null : "/settings/verification",
 		};
 	}
-	// A buyer needs no identity check to pay (tap-and-pay, finance-model §KYC/KYB Gating).
+	// A buyer needs no identity check to pay (tap-and-pay, finance-model §KYC/KYB Gating) — and so gets
+	// no banner. Taking money OUT still needs a verified payout account (`finance.begin_payout` refuses
+	// without one, PA403), so withdrawing is locked until there is one, pointing at where it is set up;
+	// a buyer who never withdraws is never nagged about it.
 	if (!ctx.viewer.isFreelancer) {
+		const hasPayout = ctx.viewer.hasPayoutAccount;
 		return {
 			subject: "client",
 			kycStatus: "verified",
 			tier: 1,
-			payoutReady: true,
-			canWithdraw: true,
+			payoutReady: hasPayout,
+			canWithdraw: hasPayout,
 			canEarn: true,
 			prompt: null,
-			href: null,
+			href: hasPayout ? null : "/settings/verification",
 		};
 	}
 	const kyc = ctx.viewer.kycStatus ?? "unverified";
@@ -279,7 +297,8 @@ function verificationFor(ctx: WalletContext, account: WalletAccount, variant: Wa
 			: !ctx.viewer.payoutReady
 			? "Add a payout method to get paid"
 			: null,
-		href: verified && !ctx.viewer.payoutReady ? "/wallet/payouts" : null,
+		// Both steps — the Level-2 identity check and the payout account — live on one page.
+		href: (verified && ctx.viewer.payoutReady) || kyc === "pending" ? null : "/settings/verification",
 	};
 }
 // #endregion
@@ -317,7 +336,7 @@ function actionsFor(
 
 	const unavailable: { action: WalletAction; reason: string }[] = [];
 	for (const action of offered) {
-		const processor = PROCESSOR_REASON[action];
+		const processor = isPaymentsLive() ? undefined : PROCESSOR_REASON[action];
 		if (processor) {
 			unavailable.push({ action, reason: processor });
 			continue;
@@ -659,7 +678,7 @@ async function spendingCaps(ctx: WalletContext, account: WalletAccount): Promise
 		id: string;
 		wallet_id: string;
 		member_user_id: string;
-		cap_cents: number;
+		cap_cents: number | null;
 		spent_cents: number;
 		period_interval: string;
 		resets_at: string | null;
@@ -667,7 +686,8 @@ async function spendingCaps(ctx: WalletContext, account: WalletAccount): Promise
 	const faces = await peopleFaces(ctx, rows.map((r) => r.member_user_id));
 	return rows.map((r) => {
 		const currency = account.rows.find((w) => w.id === r.wallet_id)?.currency ?? ctx.money.display;
-		const cap = Number(r.cap_cents) || 0;
+		// NULL is "no ceiling", not a cap of zero (#125(e)).
+		const cap = r.cap_cents === null ? null : Number(r.cap_cents) || 0;
 		const spent = Number(r.spent_cents) || 0;
 		const face = faces.get(r.member_user_id);
 		const interval = r.period_interval === "weekly" || r.period_interval === "per_transaction"
@@ -678,10 +698,10 @@ async function spendingCaps(ctx: WalletContext, account: WalletAccount): Promise
 			memberName: clip(face?.name ?? "Member", 120),
 			memberHandle: face?.handle ?? null,
 			avatar: face?.avatar ?? null,
-			cap: money(ctx, cap, currency),
+			cap: cap === null ? null : money(ctx, cap, currency),
 			spent: money(ctx, spent, currency),
 			interval: interval as SpendingCapView["interval"],
-			utilizationBp: cap > 0 ? Math.min(10000, Math.round((spent / cap) * 10000)) : 0,
+			utilizationBp: cap !== null && cap > 0 ? Math.min(10000, Math.round((spent / cap) * 10000)) : 0,
 			resetsLabel: r.resets_at
 				? `Resets ${new Date(r.resets_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })}`
 				: null,
@@ -989,12 +1009,37 @@ export async function ledgerCsvOf(ctx: WalletContext): Promise<{ filename: strin
 	return { filename: `projective-wallet-${who}-${day}.csv`, csv: `${out.join("\r\n")}\r\n` };
 }
 
+/** A bounded cash-flow window: how many days it spans and how many equal slices its chart draws. */
+const ACTIVITY_WINDOW: Readonly<Record<Exclude<ActivityRange, "all">, { days: number; buckets: number }>> = {
+	"7d": { days: 7, buckets: 7 },
+	"30d": { days: 30, buckets: 30 },
+	"90d": { days: 90, buckets: 13 },
+	"180d": { days: 180, buckets: 26 },
+	"12m": { days: 365, buckets: 12 },
+	"5y": { days: 1826, buckets: 20 },
+};
+
+/**
+ * The `all` window, sized to the ledger it covers: from the oldest movement read to today, sliced by day
+ * up to a month, by week up to half a year, by month up to two years, and in twenty equal slices beyond.
+ * A wallet with no movements still draws a week, so the chart has an axis to say "nothing yet" on.
+ */
+function allWindow(rows: readonly { created_at: string }[], now: number): { days: number; buckets: number } {
+	const oldest = rows.length > 0 ? Date.parse(rows[rows.length - 1].created_at) : Number.NaN;
+	const days = Number.isFinite(oldest) ? Math.max(7, Math.ceil((now - oldest) / DAY) + 1) : 7;
+	if (days <= 31) return { days, buckets: days };
+	if (days <= 182) return { days, buckets: Math.ceil(days / 7) };
+	if (days <= 730) return { days, buckets: Math.min(24, Math.ceil(days / 30.44)) };
+	return { days, buckets: 20 };
+}
+
 export async function activityOf(ctx: WalletContext, range: ActivityRange): Promise<ActivityView> {
-	const days = range === "7d" ? 7 : range === "30d" ? 30 : range === "90d" ? 90 : 365;
-	const buckets = range === "7d" ? 7 : range === "30d" ? 30 : range === "90d" ? 13 : 12;
-	const since = new Date(Date.now() - days * DAY).toISOString();
+	const now = Date.now();
+	const bounded = range === "all" ? null : ACTIVITY_WINDOW[range];
+	const since = bounded ? new Date(now - bounded.days * DAY).toISOString() : undefined;
 	const accounts = ctx.target === "aggregate" ? ctx.accounts : [ctx.target];
 	const rows = await readLedger(ctx, accounts.flatMap(walletIds), { since, limit: LEDGER_WINDOW });
+	const { days, buckets } = bounded ?? allWindow(rows, now);
 
 	const projects = new Map<string, string>();
 	const lines = await toLedgerLines(ctx, rows, projects);
@@ -1040,7 +1085,7 @@ export async function activityOf(ctx: WalletContext, range: ActivityRange): Prom
 	}
 	return {
 		range,
-		flow: flowSeries(ctx, rows, days, buckets),
+		flow: flowSeries(ctx, rows, days, buckets, now),
 		byCategory,
 		byProject,
 		totalIn: ctx.money.derived(totalIn),
@@ -1234,7 +1279,7 @@ export async function payoutsOf(ctx: WalletContext): Promise<PayoutsView> {
 	}[]).map((p) => ({
 		id: p.id,
 		amount: money(ctx, Number(p.amount_cents) || 0, p.currency),
-		status: p.status === "cancelled" ? "failed" as const : p.status,
+		status: p.status,
 		destinationLabel: clip(destinations.find((d) => d.id === p.destination_method_id)?.label ?? "Bank account", 120),
 		at: new Date(p.created_at).toISOString(),
 		dateLabel: dateLabel(p.created_at),

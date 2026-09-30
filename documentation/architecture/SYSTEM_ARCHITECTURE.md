@@ -1072,10 +1072,10 @@ bounce would make half the Dev Context Switcher unreachable (the switcher is a c
 cannot see). The ten checkout dev axes travel as validated `sim*` query params (`BasketSim`, parsed by
 `services/finance/basket-query.ts`) and are ignored on the live path.
 
-⚠ **Inherited and unresolved (§8 Decision #68):** `authenticated` has no `USAGE` on the `finance`
-schema, so every finance policy — old and new — is latent and nothing here can be verified against a
-live database; and `platform_fee_bp` is seeded `0` while the SSOT says `500`. Both are money decisions
-awaiting a human, and both are why this surface stays on fixtures behind a gate that defaults off.
+⚠ **Inherited and unresolved (§8 Decision #68(b)):** `platform_fee_bp` is seeded `0` while the SSOT
+says `500` — a money decision awaiting a human. (Decision #68(a), "`authenticated` has no `USAGE` on
+the `finance` schema", is **no longer true**: `00002500` grants it, and the finance policies have been
+live since the 2026-09-23 ledger pass — see `database/finance/Policies.md`.)
 
 ### The Entity View — polymorphic archetype resolution
 
@@ -1436,8 +1436,21 @@ Deno 2.x provides a hardened environment that we strictly configure through perm
 - **Input Validation:** Every API route handler uses Zod schemas from `@projective/types` to parse
   and validate request bodies before calling any Service. This prevents SQL injection and malformed
   data from reaching the logic layer.
-- **Content Security Policy (CSP):** The Fresh application serves a strict CSP header that restricts
-  script execution to trusted domains and the compiled WASM modules.
+- **Content Security Policy (CSP):** every response gets one policy, built by the pure
+  `apps/web/utils/csp.ts` and set by the global `routes/_middleware.ts` (only when the response has
+  none of its own). Third-party origins are exactly the ones a page talks to: **Stripe** —
+  `script-src` `js.stripe.com` + `*.js.stripe.com` (the versioned `dahlia` Stripe.js, loaded on demand
+  by `features/payments/core/stripe-js.ts`, never in every page's head), `frame-src` the same plus
+  `hooks.stripe.com` (the Payment Element and 3-D Secure challenges), `connect-src api.stripe.com`;
+  **Supabase** — the public storage origin (`SUPABASE_PUBLIC_URL`, else `SUPABASE_URL`) on
+  `img-src`/`media-src`/`connect-src`, which is `http://127.0.0.1:54321` locally; and the no-cookie
+  YouTube frame. `object-src 'none'`, `frame-ancestors 'none'`, `base-uri`/`form-action 'self'`, and
+  `upgrade-insecure-requests` outside development. The policy is built on the FIRST request, not at
+  import — the Supabase origin comes from `.env`, which is loaded after the module graph (built at
+  import it silently blocked every local storage image). **`'unsafe-inline'` remains on `script-src`
+  and `style-src`** (Fresh 2's inline bootstrap and the theme pre-paint carry no nonce; the design
+  system writes custom properties through `style`); a nonce-based policy is a separate change
+  (§8 Decision #126).
 - **Secrets Management:** Sensitive keys (Stripe API, AWS keys) are stored in **Supabase Vault** and
   accessed via environment variables in Edge Functions, never hardcoded in the repository.
 
@@ -1557,6 +1570,12 @@ Every money-mutating operation is idempotent: the service presents an operation 
 `finance.idempotency_keys` (paired with Stripe's `Idempotency-Key`), so a retried request or
 redelivered webhook replays the stored result instead of re-executing. This is a hard requirement
 for any code path that moves money.
+
+Three key namespaces share the table (Decision #125): a caller's attempt key for a wallet movement
+(`transfer:<uid>`, `distribute:<uid>` scopes) or a card payment (`card_payment:<uid>` — the same key
+also names the Stripe PaymentIntent, `projective:payment_intent:<payment id>`), and
+`stripe:<evt_id>` (scope `stripe.webhook`) for every processed Stripe event, claimed in the same
+transaction as the event's effects so a delivery that failed half-way is simply processed again.
 
 ---
 
@@ -1698,12 +1717,22 @@ incorrect API flows.
 
 ### 1. Stripe (Financial Engine)
 
-- **Architecture:** We utilize **Stripe Connect Express** for Freelancers and Teams. This offloads
-  KYC/AML compliance to Stripe. The platform owns the **ledger of record** (`finance.wallets` /
-  `finance.transactions` / `finance.escrows` — who is owed what); Stripe owns the **fiat rails**.
-- **Payment Flow:** We use **Destination Charges**. The Client’s credit card is charged
-  (tap-and-pay, no client KYC), funds are held in the platform's Stripe balance (acting as Escrow),
-  and upon approval, the funds are routed to the connected Express account minus the platform fee.
+- **Architecture:** We utilize **Stripe Connect Express** for Freelancers and Teams — in current
+  Stripe terms an **Accounts v2** account with `dashboard: "express"`, the **recipient**
+  configuration (`stripe_balance.stripe_transfers`) and `fees_collector`/`losses_collector:
+  "application"` (never the deprecated v1 `type: "express"`). This offloads KYC/AML compliance to
+  Stripe. The platform owns the **ledger of record** (`finance.wallets` / `finance.transactions` /
+  `finance.escrows` — who is owed what); Stripe owns the **fiat rails**.
+- **Payment Flow:** We use **Separate Charges & Transfers** (§8 Decision #125). The Client's card is
+  charged on the **platform** account (tap-and-pay, no client KYC) with no `transfer_data`; the
+  settled amount is credited to a Projective wallet and held in the platform's Stripe balance (acting
+  as Escrow); on approval the ledger releases it, and payouts move it to the connected Express account
+  as **Transfers** (grouped by `transfer_group`), the 5% fee retained by transferring less. This
+  line previously said **Destination Charges** while describing hold-in-platform-balance behaviour.
+  A destination charge transfers to the connected account the moment the payment succeeds, so it
+  cannot hold escrow until approval, needs the payee at charge time (a stage's payee is known only at
+  claim), and has one destination (a team payout splits across members). **Confirmed by the product
+  owner 2026-09-29** (Decision #125): Separate Charges & Transfers is the pattern.
 - **Identity & readiness (KYC/KYB):** **Stripe Identity** performs the freelancer Level-2 gov-ID /
   liveness check; **Stripe Connect** onboarding performs business KYB. The verdicts are mirrored
   into the app-owned caches (`org.freelancer_profiles.kyc_*`, `org.business_profiles.kyb_*`) and the
@@ -1714,11 +1743,87 @@ incorrect API flows.
   own `Idempotency-Key` header) so a retried webhook or request **never double-moves money**.
 - **FX:** cross-currency commits snapshot the rate used (`finance.fx_rates` → `fx_rate`/`fx_base`/
   `fx_as_of` on the ledger row) so settlement is reproducible; display conversion is read-time only.
-- **Webhooks:** The `PaymentService` must listen to Stripe Webhooks (e.g.,
-  `payment_intent.succeeded`, `transfer.created`, `identity.verification_session.verified`,
-  `charge.dispute.created`) to update the internal `transactions` ledger, verification caches, and
+- **Webhooks:** The `PaymentService` listens on TWO event destinations. The snapshot endpoint
+  (`/api/finance/webhooks/stripe`, `STRIPE_WEBHOOK_SECRET`) takes `payment_intent.*`,
+  `identity.verification_session.*`, `transfer.created`, `charge.dispute.created`/`.closed`,
+  `account.updated` and `setup_intent.succeeded`; the Accounts v2 **thin**-event endpoint
+  (`/api/finance/webhooks/stripe-v2`, `STRIPE_THIN_WEBHOOK_SECRET`) takes the recipient-capability and
+  account-updated events, which carry only an id, so the handler re-reads the account from Stripe before
+  applying anything. Both update the `transactions` ledger, the verification caches and
   `finance.chargebacks`. Reconciliation compares the Stripe balance against the internal escrow pool
   (and `finance.v_wallet_reconciliation` checks ledger self-consistency).
+
+#### 1.1 What is implemented (Phase 1, 2026-09-29 — Decision #125)
+
+| Capability | Thin route | Fat method (`PaymentBackendService`) | Database doors (`00001230`) |
+| :--------- | :--------- | :----------------------------------- | :-------------------------- |
+| Fund a stage's escrow by card (One-Off upfront lock · Pipeline "Buy Now") | `POST /api/finance/escrow/intent` | `createEscrowLockIntent` | `begin_card_payment` · `attach_card_payment` · `abandon_card_payment` |
+| Top a wallet up by card | `POST /api/finance/topup/intent` | `createTopUpIntent` | the same three |
+| Payout account (Connect) onboarding | `POST /api/finance/connect/onboarding` · `GET …/refresh` (Stripe's `refresh_url`) · `GET …/return` (`return_url`) · `GET …/status` | `startConnectOnboarding` · `refreshConnectOnboarding` · `connectStatus` | `payout_account_for` · `record_payout_account` · `sync_payout_account` (service role) |
+| Identity (Level-2 KYC) | `POST /api/finance/identity/session` | `createIdentitySession` | `begin_identity_verification` · `attach_identity_session` · `abandon_identity_verification` |
+| The webhook | `POST /api/finance/webhooks/stripe` | `handleStripeWebhook` | `settle_card_payment` · `record_card_payment_failure` · `apply_identity_event` · `record_transfer_created` · `record_dispute_opened` (service role) |
+
+- **Order of every user-initiated call:** gate (signed in → 401; `FINANCE_BACKEND_LIVE` + a
+  well-formed key → else 503) → **record the request** through a user door (authorised by
+  `auth.uid()`; the escrow amount is computed by the database) → call Stripe with an
+  `Idempotency-Key` derived from that row → **bind** the Stripe object to the row, write-once.
+- **Only the webhook settles.** A card payment becomes money only on the signature-verified
+  `payment_intent.succeeded`, which credits the wallet (`topup`) and — for an escrow lock — runs
+  `projects.fund_stage` **as the payer who authorised it** (`request.jwt.claim.sub` set to the row's
+  `created_by` inside the definer), in a subtransaction: a lock refused at settlement never rolls back
+  the credit.
+- **Every processor door is idempotent on the Stripe event id** (`stripe:<evt>` in
+  `finance.idempotency_keys`, claimed in the same transaction as the effects). Handled events:
+  the four above plus `payment_intent.payment_failed`/`.canceled` and
+  `identity.verification_session.requires_input`/`.canceled`. A test-mode event on a live deployment
+  (or the reverse) is acknowledged and ignored.
+- **Code:** `packages/backend/core/stripe.ts` (lazy client, key-shape validation, webhook
+  verification with Web Crypto) · `services/finance/{PaymentBackendService,live-payments,stripe-rails,stripe-webhook}.ts`
+  · Zod SSOT `@projective/types/finance` (`payments.ts`). SDK `npm:stripe@22`, API version pinned
+  `2026-08-26.dahlia`.
+- **Phase 2** — withdrawals, saved cards, recurring deposits, the Income Smoother, dispute outcomes,
+  thin events, business KYB and the browser surfaces — landed in Decision #126: see §1.2.
+
+#### 1.2 What is implemented (Phase 2, 2026-09-30 — Decision #126)
+
+The same two-door order as §1.1; the new database doors are `00001240_functions_finance_money_movement.sql`
+(documented in `documentation/database/finance/Functions.md` → "Money movement after the fiat rails").
+
+| Capability | Thin route | Fat method | Database doors |
+| :--------- | :--------- | :--------- | :------------- |
+| Withdraw to the payout account | `POST /api/wallet/payouts` (and the wallet's `withdraw` action) | `WalletBackendService.withdraw` → `PaymentBackendService.withdraw` | `begin_payout` (user) · `complete_payout` · `fail_payout` (service role) |
+| Save a card (SetupIntent) | `POST /api/finance/cards/setup` · `POST /api/finance/cards/confirm` (and the wallet's `add_method` action) | `createCardSetup` · `confirmCardSetup` | `card_owner_for` · `record_processor_customer` (user) · `record_saved_card` (service role) |
+| Pay at checkout by card | `POST /api/checkout/create` (`provider: "card"`) → `GET /api/finance/payments/[id]` | `CheckoutBackendService.create` → `createCheckoutCardPayment` | `ensure_purchase_wallet` + the §1.1 card doors, then `place_wallet_order` |
+| Recurring deposits | the wallet's `new_recurring` action · `POST /api/finance/cron/deposits` (bearer `FINANCE_CRON_SECRET`, 404 otherwise) | `processDueDeposits` | `create_deposit_rule` (user) · `claim_due_deposit_rules` · `bind_scheduled_payment` (service role) |
+| Income Smoother enrolment | the wallet's `enrol_smoother` action | `WalletBackendService.enrolSmoother` | `set_income_smoother` (user) |
+| Verification console (`/settings/verification`) | `GET /api/finance/verify/status` · `POST /api/finance/verify/kyc` · `POST /api/finance/verify/kyb` | `verificationStatus` · `createIdentitySession` · `startKybOnboarding` | `my_verification_status` · the §1.1 identity + Connect doors |
+| Dispute outcome | the snapshot webhook (`charge.dispute.closed`) | `handleStripeWebhook` | `record_dispute_closed` (service role) |
+| Connect status sync | both webhooks (`account.updated`; thin v2 events) | `handleStripeWebhook` · `handleStripeThinWebhook` | `sync_payout_account` (service role) |
+| Invoice / statement PDF | `GET /api/finance/invoices/[id]/pdf` · `GET /api/finance/statements/[id]/pdf` | `WalletBackendService.documentPdf` | RLS-scoped reads (`View invoices you are party to`) |
+
+- **A card checkout is a top-up, then a wallet order.** The card is charged into the PAYING account's
+  wallet (created in the charge currency if missing); only once the signed webhook has credited it does
+  the browser place the order from the wallet, under a fresh attempt key. One charge path, one ledger.
+  A saved card is charged in place — confirmed server-side, with a bank's 3-D Secure challenge answered
+  in the browser by Stripe.js `handleNextAction` (`CardPaymentHandoff.confirmation`); a new card is
+  entered through the Add-card form (a SetupIntent), never typed into the checkout. The card is charged
+  in the lines' own currency, so it is offered only while the basket is displayed in that currency (the
+  option carries the reason otherwise).
+- **Withdrawals debit first.** `begin_payout` debits the wallet (`payout`) before the Transfer is
+  created, so money in flight cannot be spent twice; a definitive Stripe refusal credits it back
+  (`payout_reversal`); a transient failure leaves the payout `pending` for `transfer.created` to settle.
+  `paid` means the Transfer exists; Stripe pays the bank on its own schedule.
+- **Individual clients escrow too.** `finance.escrows.payer_user_id` (one payer column set, never two)
+  lets a project with no client business be funded — by card or from the owner's wallet — and every
+  release, refund and fair-exit split returns money to the wallet type the payer holds. Releases charge
+  `platform_fee_bp` (**500 = 5 %**, Decision #2), or the payer's negotiated rate.
+- **A lost dispute** refunds the still-frozen escrows to the payer's wallet, then debits the disputed
+  amount from it (`chargeback`) as far as the balance covers; the rest is `unrecovered_cents` — the
+  platform's loss. A won dispute returns the escrows to `held`.
+- **Not built:** Income Smoother disbursement (enrolment and its fee are recorded; nothing buffers or
+  pays out yet, so no fee is charged), the Instant Payout fee (undecided, #55(c)), clawing a LOST
+  dispute back from escrow already released to a freelancer, passing Stripe's dispute fee on, the
+  scheduled payout-schedule run, stored PDFs (they are rendered per request), and a nonce-based CSP.
 
 ### 2. Conferencing (Session Engine)
 
@@ -1900,6 +2005,14 @@ The application relies on a strict set of environment variables. The canonical s
 > `(value ?? "false").toLowerCase() === "true"` — an `XXXX-XXXX` there is not a redacted secret, it is
 > a value that silently parses as `false` while *looking* configured.
 
+> **Where real values go.** `apps/web/main.ts` loads exactly two files from the repo root —
+> `.env.local` first, then `.env` (`@std/dotenv` `export: true` never overwrites, so the first file
+> and the process environment win). `.env.development` / `.env.production` are **not** loaded by the
+> app. Secrets belong in `.env.local`: `.env`, `.env.development` and `.env.production` are
+> **tracked** in this repository despite `.gitignore` (an ignore rule does not apply to a tracked
+> file — root `CLAUDE.md` §8 Decision #125), so a key written there is committed by the next
+> `git add`.
+
 ```env
 # Application
 DENO_ENV=development
@@ -1946,10 +2059,19 @@ S3_SECRET_ACCESS_KEY=XXXX-XXXX
 # chosen; the key is read at call time and never inlined (files/link-scan.ts).
 LINK_SAFETY_API_KEY=XXXX-XXXX
 
-# Stripe (Finance)
+# Stripe (Finance) — read only by packages/backend/core/stripe.ts; a value not shaped like its key
+# (sk_/rk_, whsec_, pk_) counts as absent, so the placeholder degrades to "not connected here"
 STRIPE_SECRET_KEY=XXXX-XXXX
 STRIPE_WEBHOOK_SECRET=XXXX-XXXX
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=XXXX-XXXX
+# The signing secret of the SECOND event destination, /api/finance/webhooks/stripe-v2 (Accounts v2 thin
+# events). Absent → that endpoint answers 503 and v2 capability changes are picked up by account.updated.
+STRIPE_THIN_WEBHOOK_SECRET=XXXX-XXXX
+# Bearer token (≥ 32 characters) the scheduler presents to POST /api/finance/cron/deposits; anything
+# else — including an unset secret — gets a 404, so the endpoint does not advertise that it exists.
+FINANCE_CRON_SECRET=XXXX-XXXX
+# Optional, development only: stripe-mock origin; ignored for live keys and under DENO_ENV=production
+# STRIPE_API_BASE=http://localhost:12111
 
 # Security
 ENCRYPTION_KEY=XXXX-XXXX # 32-byte hex for Edge Function/Vault encryption

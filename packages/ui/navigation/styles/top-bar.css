@@ -99,6 +99,12 @@
 }
 
 @media (max-width: 767px) {
+    /* The outer frame "L" is a desktop affordance, like the nested frames' own seams (shell-frame.css):
+       a full-width phone column has no inline-start edge to trace. */
+    .ui-shell-topbar__border {
+        display: none;
+    }
+
     .ui-shell-topbar {
         position: sticky;
         inset-block-start: 0;
