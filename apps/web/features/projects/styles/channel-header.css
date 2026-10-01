@@ -397,6 +397,105 @@
 	color: var(--text-secondary);
 }
 
+/* Progress meter — a label row over a thin track; the figure is tabular so it never jitters. */
+.chan-progress {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding-block: var(--space-2);
+}
+
+.chan-progress__head,
+.chan-members__head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-3);
+}
+
+.chan-progress__label,
+.chan-members__label {
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.chan-progress__value,
+.chan-members__count {
+	font-size: var(--text-sm);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.chan-progress__track {
+	display: block;
+	block-size: var(--space-1);
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+	overflow: hidden;
+}
+
+.chan-progress__fill {
+	display: block;
+	block-size: 100%;
+	border-radius: inherit;
+	background: var(--primary);
+}
+
+/* Member roster — avatar + name rows, unboxed (§B.4). */
+.chan-members {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding-block: var(--space-2);
+}
+
+.chan-members__list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.chan-members__item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.chan-members__name {
+	min-inline-size: 0;
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Docked in the middle-nav frame's right panel (`channelPanelFor`): the panel body scrolls, so the
+   aside only pads its content and titles it (the drawer brings its own title bar). */
+.chan-details-panel {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding: var(--space-4) var(--space-5);
+}
+
+.chan-details-panel__title {
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
 /* #endregion */
 
 /* #region Tab body placeholder (per-tab route scaffold) */

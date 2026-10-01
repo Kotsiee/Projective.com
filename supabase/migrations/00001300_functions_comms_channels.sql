@@ -676,6 +676,69 @@ BEGIN
 END;
 $$;
 
+-- Set (or, with NULL, clear) a GROUP's photo. Any participant may: a group's picture is shared
+-- furniture, like its name. The file must be a processed public profile-style rendition the CALLER
+-- owns (the server cut it from the caller's own library, in the `avatars` bucket) — the same proof
+-- org.set_profile_avatar demands, so a client cannot point a thread at somebody else's file. The
+-- photo it replaces is soft-deleted, exactly as a replaced profile photo is.
+CREATE OR REPLACE FUNCTION comms.set_group_photo(
+    p_thread_id uuid,
+    p_file_id uuid
+) RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_me   uuid := auth.uid();
+    v_kind comms.conversation_kind;
+    v_prev uuid;
+BEGIN
+    IF v_me IS NULL THEN
+        RAISE EXCEPTION 'set_group_photo: no acting user' USING ERRCODE = '42501';
+    END IF;
+
+    IF NOT comms.is_dm_participant(p_thread_id) THEN
+        RAISE EXCEPTION 'Not a participant of this conversation' USING ERRCODE = '42501';
+    END IF;
+
+    SELECT t.kind, t.photo_file_id INTO v_kind, v_prev
+    FROM comms.dm_threads t WHERE t.id = p_thread_id
+    FOR UPDATE;
+
+    IF v_kind IS DISTINCT FROM 'group'::comms.conversation_kind THEN
+        RAISE EXCEPTION 'Only a group conversation has its own photo' USING ERRCODE = '22023';
+    END IF;
+
+    IF p_file_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM files.items i
+        WHERE i.id = p_file_id
+          AND i.purpose = 'avatar'::files.asset_purpose
+          AND i.bucket_id = 'avatars'
+          AND i.visibility = 'public'::files.file_visibility
+          AND i.status = 'uploaded'::files.file_status
+          AND i.deleted_at IS NULL
+          AND i.owner_type = 'user'::files.owner_kind
+          AND i.owner_user_id = v_me
+    ) THEN
+        RAISE EXCEPTION 'file: not a processed photo of yours' USING ERRCODE = '22023';
+    END IF;
+
+    UPDATE comms.dm_threads SET photo_file_id = p_file_id WHERE id = p_thread_id;
+
+    IF v_prev IS NOT NULL AND v_prev IS DISTINCT FROM p_file_id THEN
+        UPDATE files.items SET deleted_at = now()
+        WHERE id = v_prev AND purpose = 'avatar'::files.asset_purpose AND deleted_at IS NULL;
+    END IF;
+
+    RETURN jsonb_build_object('ok', true, 'file_id', p_file_id, 'previous', v_prev);
+END;
+$$;
+
+COMMENT ON FUNCTION comms.set_group_photo(uuid, uuid) IS
+'Set or clear (NULL) a group conversation''s photo. Any undeleted participant may; the file must be a processed public avatars-bucket rendition owned by the caller. SECURITY DEFINER because dm_threads carries no client UPDATE policy; the previous photo is soft-deleted.';
+
 COMMENT ON FUNCTION comms.add_dm_thread_members(uuid, uuid[]) IS
 'Add users to a thread the caller participates in; returns the number added (restored self-deletions included). Converts a plain DM with a third participant into a group. SECURITY DEFINER for the same reason as create_group_thread.';
 

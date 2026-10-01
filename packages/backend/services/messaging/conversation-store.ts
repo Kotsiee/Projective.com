@@ -9,7 +9,6 @@ import type { ReadActor } from "../read-actor.ts";
 import { sentConversationCount, writeOwnerOf } from "./write-store.ts";
 import { withStubFolder } from "./folder-store.ts";
 import { inPartition } from "./partition.ts";
-import { mockCover } from "../../mocks/assets.ts";
 
 /**
  * messaging conversation store — the mutable, PER-PROCESS overlay of conversations CREATED while
@@ -47,7 +46,13 @@ let mintCounter = 0;
 /** The pinned corpus clock — a created row is dated against it so labels agree with the corpus. */
 const NOW = Date.parse("2026-07-17T16:20:00Z");
 
-const GROUP_AVATAR = mockCover("photo-1522071820081-009f0129c71c", 96, 96);
+/**
+ * Group photos set in this process, by conversation id (`null` = cleared). Owner-blind: a group's
+ * photo is shared furniture, the same for every member, exactly as `comms.dm_threads.photo_file_id`
+ * is on the live path. The pictures themselves are real renditions in the `avatars` bucket — only
+ * the thread they hang on is a fixture.
+ */
+const groupPhotos = new Map<string, string | null>();
 // #endregion
 
 // #region Helpers
@@ -97,7 +102,8 @@ export function rememberCreatedGroup(
 		kind: "group",
 		relation: "dm",
 		title: name,
-		avatar: GROUP_AVATAR,
+		// A new group has no photo until one is set; the inbox paints the group fallback meanwhile.
+		avatar: null,
 		participants: members.map(participantOf),
 		preview: "",
 		lastActivityLabel: "Now",
@@ -180,11 +186,23 @@ export function addCreatedMembers(
 		...stored,
 		kind: becomesGroup ? "group" : stored.kind,
 		title: becomesGroup ? defaultGroupTitle(participants) : stored.title,
-		avatar: becomesGroup ? GROUP_AVATAR : stored.avatar,
+		avatar: becomesGroup ? null : stored.avatar,
 		participants,
 	};
 	created.set(summary.id, { owner: created.get(base.id)?.owner ?? writeOwnerOf(actor), summary });
 	return { summary, added: fresh.length };
+}
+// #endregion
+
+/** Set (or clear, with `null`) a fixture group's photo for every viewer in this process. */
+export function setStubGroupPhoto(id: string, url: string | null): void {
+	groupPhotos.set(id, url);
+}
+
+/** The summary with a photo set in this process applied — groups only. */
+export function withStubPhoto(c: ConversationSummary): ConversationSummary {
+	if (c.kind !== "group" || !groupPhotos.has(c.id)) return c;
+	return { ...c, avatar: groupPhotos.get(c.id) ?? null };
 }
 // #endregion
 
@@ -232,9 +250,9 @@ export function overlayCreatedConversations(
 	actor: ReadActor | undefined,
 ): ConversationListPage {
 	const owner = writeOwnerOf(actor);
-	const mine = createdConversationsFor(actor)
-		.filter((c) => c.messageCount > 0)
-		.map((c) => withStubFolder(owner, c));
+	// Every conversation this viewer STARTED joins their list at once, empty or not — the live path's
+	// rule (`fetchConversations`): the starter asked for it, so it must not vanish until they write.
+	const mine = createdConversationsFor(actor).map((c) => withStubPhoto(withStubFolder(owner, c)));
 	if (mine.length === 0) return page;
 
 	const q = (params.q ?? "").trim().toLowerCase();

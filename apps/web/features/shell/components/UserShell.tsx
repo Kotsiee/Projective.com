@@ -12,6 +12,7 @@ import {
 } from "@projective/ui/navigation";
 import ShellSidebar from "@web/features/shell/islands/ShellSidebar.island.tsx";
 import MiddleNavSplitter from "@web/features/shell/islands/MiddleNavSplitter.island.tsx";
+import MiddleNavPanel from "@web/features/shell/islands/MiddleNavPanel.island.tsx";
 import NavSearchBar from "@web/features/shell/islands/NavSearchBar.island.tsx";
 import UserActions from "@web/features/shell/islands/UserActions.island.tsx";
 import ShareHost from "@web/features/share/islands/ShareHost.island.tsx";
@@ -77,6 +78,17 @@ export interface UserShellProps {
 	 * to the middle-nav frame); ignored when the canvas renders bare.
 	 */
 	middleNavFooter?: ComponentChildren;
+	/**
+	 * Optional route-configured right panel for the middle-nav frame — mounted as the {@link MiddleNav}
+	 * `panel` column inside the drag-resizable {@link MiddleNavPanel} island: full frame height on the
+	 * inline-end side, so the header and footer bands run only between the lane and the panel and the
+	 * canvas becomes a card rounded on all four corners (DESIGN_SYSTEM.md §D.4). Resolved per route by a
+	 * slot resolver in the layout (a one-to-one conversation's context, a channel's details), exactly
+	 * like the bands. It docks from 1280px and its open state is the shell's shared
+	 * `context-panel-state`; below that the registering surface presents the same content as a drawer.
+	 * Requires the middle-nav frame; withheld in `focus` chrome with the lane.
+	 */
+	middleNavPanel?: ComponentChildren;
 	/**
 	 * Chrome density (DESIGN_SYSTEM.md Part D.6). `full` is the standard L-shell; `focus` is the
 	 * distraction-free mode for a linear, committing flow (checkout's Details and Payment steps).
@@ -151,6 +163,7 @@ export function UserShell(
 		laneOptions,
 		middleNavHeader,
 		middleNavFooter,
+		middleNavPanel,
 		chrome = "full",
 		bodyFooter,
 		children,
@@ -164,6 +177,7 @@ export function UserShell(
 	// `auto minmax(0, 1fr)`, so an absent lane resolves column 1 to 0px and the bands simply start at
 	// the frame's inline edge (measured: `0px 1265px`, header flush at x=0, zero overflow).
 	const activeLane = focus ? undefined : lane;
+	const activePanel = focus ? undefined : middleNavPanel;
 	const framed = activeLane || middleNavHeader || middleNavFooter;
 	return (
 		<>
@@ -191,6 +205,9 @@ export function UserShell(
 								: undefined}
 							header={middleNavHeader}
 							footer={middleNavFooter}
+							panel={activePanel
+								? <MiddleNavPanel>{activePanel}</MiddleNavPanel>
+								: undefined}
 						>
 							{canvas}
 						</MiddleNav>

@@ -11,12 +11,15 @@ import type {
 	ConversationSummary,
 	CreateConversation,
 	CreatedConversation,
+	GroupPhotoInput,
+	GroupPhotoSet,
 	InboxFolder,
 	MessagingContact,
 	MessagingRole,
 	MessagingSettings,
 	RankedContactList,
 	SendConversationMessage,
+	SetGroupPhoto,
 } from "@projective/types/messaging";
 import { dmHandleOf, uniqueContactIds } from "@projective/types/messaging";
 import { maskPii } from "@projective/types/comms";
@@ -64,6 +67,7 @@ import { fetchMessagingSettings } from "./live-settings.ts";
 import { fetchConversationFilePage, fetchConversationRoster } from "./live-workspace.ts";
 import { insertDmMessage } from "./live-writes.ts";
 import { addLiveMembers, createLiveConversation } from "./live-conversation-writes.ts";
+import { renderGroupPhoto, setLiveGroupPhoto } from "./live-group-photo.ts";
 import { fetchRankedContacts } from "./live-suggestions.ts";
 import { findRankedContacts } from "./suggestion-fixtures.ts";
 import {
@@ -71,6 +75,8 @@ import {
 	overlayCreatedConversations,
 	rememberCreatedDm,
 	rememberCreatedGroup,
+	setStubGroupPhoto,
+	withStubPhoto,
 } from "./conversation-store.ts";
 import {
 	appendConversationMessage,
@@ -205,7 +211,7 @@ async function liveConversation(
 /** The viewer's stored stub folders, as a summary mapper. */
 function stubOverlay(actor: ReadActor): (c: ConversationSummary) => ConversationSummary {
 	const owner = writeOwnerOf(actor);
-	return (c) => withStubFolder(owner, c);
+	return (c) => withStubPhoto(withStubFolder(owner, c));
 }
 
 /** Whether a stub conversation falls under a protected engagement (it carries a request). */
@@ -216,6 +222,35 @@ function stubIsProtected(summary: ConversationSummary): boolean {
 }
 
 // #endregion
+
+/**
+ * The fixture path's group photo: the conversation is a fixture, but the picture is real — it is cut
+ * from the caller's own media library into the public bucket (media has no fixture path), then hung
+ * on the fixture group for this process. `null` on success, else the failure to answer with.
+ */
+async function applyStubGroupPhoto(
+	conversationId: string,
+	photo: GroupPhotoInput,
+	actor: ReadActor,
+): Promise<ServiceResult<GroupPhotoSet> | null> {
+	if (!canReadLive(actor)) {
+		return fail(401, { message: "Sign in to use your media library." });
+	}
+	try {
+		const rendered = await renderGroupPhoto(actor, photo);
+		if ("refusal" in rendered) {
+			return fail(rendered.refusal.status, {
+				message: rendered.refusal.message,
+				errors: rendered.refusal.errors,
+			});
+		}
+		setStubGroupPhoto(conversationId, rendered.data.url);
+		return null;
+	} catch (error) {
+		liveFailed("groupPhoto.stub", error);
+		return fail(503, { message: "The photo couldn't be processed right now. Try again." });
+	}
+}
 
 export class MessagingBackendService {
 	/** A filtered, paged page of the viewer's conversations (the inbox sidebar list). */
@@ -551,8 +586,23 @@ export class MessagingBackendService {
 						errors: outcome.refusal.errors,
 					});
 				}
+				let photoApplied: boolean | undefined;
+				if (input.photo && outcome.data.kind === "group") {
+					// The group exists first, so a photo that fails costs the photo, never the group: the
+					// caller opens it and says so, and the photo can be set again from its header.
+					try {
+						const set = await setLiveGroupPhoto(actor, outcome.data.id, input.photo);
+						photoApplied = !!set && "data" in set;
+					} catch (error) {
+						liveFailed("createConversation.photo", error);
+						photoApplied = false;
+					}
+				}
 				invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
-				return ok(outcome.data, { message: "Conversation started." });
+				return ok(
+					photoApplied === undefined ? outcome.data : { ...outcome.data, photoApplied },
+					{ message: "Conversation started." },
+				);
 			} catch (error) {
 				liveFailed("createConversation", error);
 				return fail(502, { message: "That conversation could not be started — please try again." });
@@ -579,8 +629,9 @@ export class MessagingBackendService {
 		} else {
 			const existing = findConversationSummary(`dm-${members[0].handle ?? members[0].id}`);
 			// A thread the corpus does not hold, or holds EMPTY (a profile-corpus person the viewer has never
-			// messaged, synthesised on the fly), is remembered in the store so it can join the inbox list the
-			// moment the first message lands. A corpus thread with messages is reopened as-is.
+			// messaged, synthesised on the fly), is remembered in the store so it joins its starter's inbox list
+			// at once (and anyone else's once it holds a message). A corpus thread with messages is
+			// reopened as-is.
 			summary = existing && existing.messageCount > 0
 				? existing
 				: rememberCreatedDm(actor, members[0]);
@@ -597,10 +648,70 @@ export class MessagingBackendService {
 			messageAccepted = sent.ok;
 		}
 
+		let photoApplied: boolean | undefined;
+		if (input.photo && summary.kind === "group") {
+			photoApplied = await applyStubGroupPhoto(summary.id, input.photo, actor) === null;
+		}
+
 		return ok(
-			{ id: summary.id, kind: summary.kind, created, messageAccepted },
+			{
+				id: summary.id,
+				kind: summary.kind,
+				created,
+				messageAccepted,
+				...(photoApplied === undefined ? {} : { photoApplied }),
+			},
 			{ message: "Conversation started." },
 		);
+	}
+
+	/**
+	 * Set or clear a GROUP conversation's photo (`POST /api/messaging/conversations/[id]/photo`). Any
+	 * member may. The picture is cut server-side from one of the caller's own library stills, the
+	 * same way a profile photo is; `photo: null` removes it and the group falls back to the stand-in.
+	 */
+	static async setGroupPhoto(
+		conversationId: string,
+		input: SetGroupPhoto,
+		actor: ReadActor,
+	): Promise<ServiceResult<GroupPhotoSet>> {
+		if (actor.userId.length === 0) {
+			return fail(401, { message: "Sign in to change a group's photo." });
+		}
+
+		if (isMessagingBackendLive() && canReadLive(actor)) {
+			try {
+				const outcome = await setLiveGroupPhoto(actor, conversationId, input.photo);
+				if (outcome === null) return fail(404, { message: "No such conversation." });
+				if ("refusal" in outcome) {
+					return fail(outcome.refusal.status, {
+						message: outcome.refusal.message,
+						errors: outcome.refusal.errors,
+					});
+				}
+				invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
+				return ok(outcome.data, {
+					message: input.photo ? "Group photo updated." : "Group photo removed.",
+				});
+			} catch (error) {
+				liveFailed("setGroupPhoto", error);
+				return fail(502, { message: "The group photo couldn't be changed — please try again." });
+			}
+		}
+
+		const summary = findConversationSummary(conversationId);
+		if (!summary) return fail(404, { message: "No such conversation." });
+		if (summary.kind !== "group") {
+			return fail(422, { message: "Only a group conversation has its own photo." });
+		}
+		if (!input.photo) {
+			setStubGroupPhoto(conversationId, null);
+			return ok({ id: conversationId, avatar: null }, { message: "Group photo removed." });
+		}
+		const refused = await applyStubGroupPhoto(conversationId, input.photo, actor);
+		if (refused) return refused;
+		const avatar = withStubPhoto(summary).avatar;
+		return ok({ id: conversationId, avatar }, { message: "Group photo updated." });
 	}
 
 	/**

@@ -477,6 +477,9 @@
     /* collapsed-rail square hit-target (icon block) */
     --shell-lane-w: 280px;
     /* middle-nav (Blue) lane default width */
+    --shell-panel-w: 320px;
+    /* middle-nav right panel default width — the first-paint value before `MiddleNavPanel` hoists the
+	   viewer's dragged width; must equal that island's `initial` */
     --shell-lane-rail-w: 56px;
     /*
 	* The middle-nav lane's width once the splitter shuts to its icon rail — the SINGLE statement of

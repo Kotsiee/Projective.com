@@ -746,6 +746,16 @@ context without "ping fatigue."
   a first message to somebody never leaves an empty thread behind a question that failed to
   land. Adding people to a DM converts it into a group; a member who had deleted the conversation
   for themselves is restored by being added back.
+- **When it appears in the list:** a conversation joins its **starter's** inbox list the moment it
+  is created, empty or not — they asked for it, and one that stayed hidden until they wrote in it
+  read as a create that had failed. Everyone it was started **with** sees it once it holds a
+  message, so an empty thread never lands in a stranger's inbox. Opening a conversation directly
+  (by its address) is never gated on either rule — only on being in it.
+- **A group's photo:** a group may carry its own picture, chosen when it is created (beside its
+  name) or later from its header menu — **any member** may set, change or remove it, like the name.
+  It is picked from the member's own media library (or uploaded) and cropped square; the server cuts
+  the published picture from the original. A DM has no photo of its own — its picture is the other
+  person's. A group with no photo shows a stand-in picture (temporarily `test_images/banner_5.jpg`).
 - **Who is offered (the ranked picker):** before the viewer types, the picker suggests people
   ranked by how the viewer knows them, then by the most recent interaction, newest first —
   (1) a **shared team / business / organisation**, (2) a **mutual follow**, (3) somebody the

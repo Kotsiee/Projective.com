@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ConversationKind, MessagingContactSchema } from "./conversations.ts";
+import { CropStateSchema } from "../files/crop.ts";
 
 /**
  * messaging.contacts — the Zod SSOT for the RANKED people picker (New message · New group · Add
@@ -349,10 +350,37 @@ export function interactionLabel(iso: string | null, now: number): string | null
  * message posted in the same act (Decision #79): a create that succeeds and a send that fails would
  * leave an empty thread and a lost question, which is what carrying it here prevents.
  */
+/**
+ * A group's photo, as chosen in the crop dialog: one of the viewer's own media-LIBRARY assets plus the
+ * crop to cut from it (`@projective/types/files` crop model). The server renders the square
+ * rendition from the original, so the client never sends pixels.
+ */
+export const GroupPhotoInputSchema = z.object({
+	sourceAssetId: z.string().uuid(),
+	crop: CropStateSchema.optional(),
+});
+export type GroupPhotoInput = z.infer<typeof GroupPhotoInputSchema>;
+
+/**
+ * `POST /api/messaging/conversations/[id]/photo` — set a group's photo, or clear it with
+ * `photo: null`.
+ */
+export const SetGroupPhotoSchema = z.object({ photo: GroupPhotoInputSchema.nullable() });
+export type SetGroupPhoto = z.infer<typeof SetGroupPhotoSchema>;
+
+/** What a group-photo write returns: the conversation and its picture as now stored (null = none). */
+export const GroupPhotoSetSchema = z.object({
+	id: z.string().min(1).max(120),
+	avatar: z.string().max(400).nullable(),
+});
+export type GroupPhotoSet = z.infer<typeof GroupPhotoSetSchema>;
+
 export const CreateConversationSchema = z.object({
 	contactIds: z.array(z.string().min(1).max(80)).min(1).max(50),
 	groupName: z.string().trim().max(80).optional(),
 	message: z.string().trim().max(4000).optional(),
+	/** A group's photo, applied once the group exists. Ignored for a DM (its picture is the person). */
+	photo: GroupPhotoInputSchema.optional(),
 });
 export type CreateConversation = z.infer<typeof CreateConversationSchema>;
 
@@ -375,6 +403,12 @@ export const CreatedConversationSchema = z.object({
 	kind: ConversationKind,
 	created: z.boolean(),
 	messageAccepted: z.boolean(),
+	/**
+	 * Whether a requested group photo was applied. `false` when one was asked for and failed — the
+	 * group still exists (it is created first), so the caller opens it and says the photo didn't land.
+	 * Absent when no photo was asked for.
+	 */
+	photoApplied: z.boolean().optional(),
 });
 export type CreatedConversation = z.infer<typeof CreatedConversationSchema>;
 

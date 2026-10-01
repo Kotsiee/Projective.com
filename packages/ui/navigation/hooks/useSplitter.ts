@@ -22,6 +22,23 @@ export interface UseSplitterOptions {
 	 * stays portable and event-free by default.
 	 */
 	collapseEventName?: string;
+	/**
+	 * Which edge of the resized element carries the handle. `end` (default) is the lane's trailing
+	 * edge — dragging toward inline-end widens it. `start` is a right-docked panel's leading edge, so
+	 * the drag delta inverts: dragging toward inline-start widens it.
+	 */
+	edge?: "start" | "end";
+	/** Arrow-key resize step (px) for the handle's {@link Splitter.onKeyDown}. */
+	step?: number;
+	/**
+	 * Opt-in drag-to-close. While a drag would take the element below this width (the raw pointer
+	 * width, before the `min` clamp) {@link Splitter.collapsePending} is set, and releasing there calls
+	 * {@link onReleaseCollapse} instead of resizing — the width snaps back to where the drag started, so
+	 * the element reopens at the width it had. Both must be set.
+	 */
+	releaseCollapseAt?: number;
+	/** Called when a drag is released past {@link releaseCollapseAt}. */
+	onReleaseCollapse?: () => void;
 }
 
 export interface Splitter {
@@ -38,6 +55,16 @@ export interface Splitter {
 	onPointerDown: (e: PointerEvent) => void;
 	onPointerMove: (e: PointerEvent) => void;
 	onPointerUp: (e: PointerEvent) => void;
+	/** Abandons a drag (`pointercancel`): keeps the width reached, never collapses. */
+	onPointerCancel: (e: PointerEvent) => void;
+	/** A drag is currently past `releaseCollapseAt` — releasing now closes the element. */
+	collapsePending: Signal<boolean>;
+	/**
+	 * Keyboard resize for a focusable `role="separator"` handle: the arrow keys move the handle by
+	 * `step` (so ArrowLeft widens a `start`-edge panel and narrows an `end`-edge lane), Home/End jump to
+	 * the minimum/maximum. Persisted like a drag.
+	 */
+	onKeyDown: (e: KeyboardEvent) => void;
 }
 
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
@@ -56,7 +83,13 @@ export function useSplitter(opts: UseSplitterOptions = {}): Splitter {
 		collapseBelow = 96,
 		compactMax = 200,
 		collapseEventName,
+		edge = "end",
+		step = 16,
+		releaseCollapseAt,
+		onReleaseCollapse,
 	} = opts;
+	// A `start`-edge handle grows the element as the pointer moves toward inline-start.
+	const sign = edge === "start" ? -1 : 1;
 
 	const restore = (): number => {
 		if (!storageKey || typeof localStorage === "undefined") return initial;
@@ -82,6 +115,7 @@ export function useSplitter(opts: UseSplitterOptions = {}): Splitter {
 		width.value < collapseBelow ? "collapsed" : width.value < compactMax ? "compact" : "full"
 	);
 	const dragging = useSignal(false);
+	const collapsePending = useSignal(false);
 	const drag = useRef({ active: false, startX: 0, startW: 0 });
 	// The width to return to when expanding out of the collapsed rail (last non-collapsed width).
 	const lastExpanded = useRef(width.value >= collapseBelow ? width.value : initial);
@@ -93,12 +127,37 @@ export function useSplitter(opts: UseSplitterOptions = {}): Splitter {
 	};
 	const onPointerMove = (e: PointerEvent) => {
 		if (!drag.current.active) return;
-		width.value = clamp(drag.current.startW + (e.clientX - drag.current.startX), min, max);
+		const raw = drag.current.startW + sign * (e.clientX - drag.current.startX);
+		width.value = clamp(raw, min, max);
+		collapsePending.value = !!onReleaseCollapse && releaseCollapseAt !== undefined &&
+			raw < releaseCollapseAt;
 	};
 	const onPointerUp = () => {
 		if (!drag.current.active) return;
 		drag.current.active = false;
 		dragging.value = false;
+		if (collapsePending.value) {
+			collapsePending.value = false;
+			width.value = drag.current.startW;
+			onReleaseCollapse?.();
+			return;
+		}
+		if (width.value >= collapseBelow) lastExpanded.current = width.value;
+		persist(width.value);
+	};
+	const onPointerCancel = () => {
+		collapsePending.value = false;
+		onPointerUp();
+	};
+	const onKeyDown = (e: KeyboardEvent) => {
+		let next: number;
+		if (e.key === "ArrowLeft") next = width.value - sign * step;
+		else if (e.key === "ArrowRight") next = width.value + sign * step;
+		else if (e.key === "Home") next = min;
+		else if (e.key === "End") next = max;
+		else return;
+		e.preventDefault();
+		width.value = clamp(next, min, max);
 		if (width.value >= collapseBelow) lastExpanded.current = width.value;
 		persist(width.value);
 	};
@@ -124,5 +183,15 @@ export function useSplitter(opts: UseSplitterOptions = {}): Splitter {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [collapseEventName]);
 
-	return { width, mode, dragging, onPointerDown, onPointerMove, onPointerUp };
+	return {
+		width,
+		mode,
+		dragging,
+		onPointerDown,
+		onPointerMove,
+		onPointerUp,
+		onPointerCancel,
+		collapsePending,
+		onKeyDown,
+	};
 }

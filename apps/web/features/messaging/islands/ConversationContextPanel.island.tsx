@@ -1,6 +1,5 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
-import { useEffect, useRef } from "preact/hooks";
 import "../styles/conversation-context.css";
 import { Drawer } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
@@ -12,9 +11,7 @@ import { moveConversation } from "../core/folder-moves.ts";
 import {
 	CONTEXT_PANEL_INFLOW_QUERY,
 	contextDrawerOpen,
-	contextPanelDocked,
-	restoreContextPanel,
-} from "../core/context-panel-state.ts";
+} from "@web/features/shell/core/context-panel-state.ts";
 import type {
 	ContextAction,
 	ContextActionKind,
@@ -23,9 +20,11 @@ import type {
 } from "../types/messaging-types.ts";
 
 /**
- * ConversationContextPanel — the right edge of a DM thread (`/messages/[conversationId]`). From
- * 1280px it stands in the flow beside the thread and collapses from the header's Details toggle;
- * below that it is a slide-over {@link Drawer}. Both present the same {@link ConversationContextDrawer}.
+ * ConversationContextPanel — the right edge of a DM thread (`/messages/[conversationId]`). The layout
+ * registers it as the middle-nav frame's PANEL (`conversationPanelFor`), so from 1280px it docks at full
+ * frame height beside the header, thread and composer — resizable, and opened/closed from the header's
+ * Details toggle through the shell's shared panel state; below that it is a slide-over {@link Drawer}.
+ * Both present the same {@link ConversationContextDrawer}.
  *
  * Runs the rig's actions: answering an invitation also files the thread (Accept → Primary, Decline →
  * Archived); confirming an applicant's seat lands the client where the seat is funded. Every write
@@ -54,19 +53,6 @@ export default function ConversationContextPanel(
 	const error = useSignal<string | null>(null);
 	const loadFailed = useSignal(props.initial === null);
 	const inflow = useMediaQuery(CONTEXT_PANEL_INFLOW_QUERY);
-	const asideRef = useRef<HTMLElement>(null);
-
-	useEffect(() => {
-		restoreContextPanel();
-		const footer = document.querySelector<HTMLElement>(".ui-middle-nav__footer");
-		const aside = asideRef.current;
-		if (!footer || !aside || typeof ResizeObserver === "undefined") return;
-		const sync = () => aside.style.setProperty("--msg-ctx-footer-h", `${footer.offsetHeight}px`);
-		sync();
-		const observer = new ResizeObserver(sync);
-		observer.observe(footer);
-		return () => observer.disconnect();
-	}, []);
 
 	async function reload(): Promise<void> {
 		const res = await MessagingService.context(props.conversationId);
@@ -141,13 +127,7 @@ export default function ConversationContextPanel(
 
 	return (
 		<>
-			<aside
-				ref={asideRef}
-				id={PANEL_ID}
-				class="msg-ctx-panel"
-				data-open={contextPanelDocked.value ? "true" : "false"}
-				aria-label="Conversation details"
-			>
+			<aside id={PANEL_ID} class="msg-ctx-panel" aria-label="Conversation details">
 				{body()}
 			</aside>
 			{!inflow && (

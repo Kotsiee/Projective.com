@@ -4,9 +4,8 @@ import { Tooltip } from "@projective/ui/feedback";
 import { LaneCollapseButton } from "@projective/ui/navigation";
 import { MessagingIcon } from "./messaging-glyphs.tsx";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
-import { conversationHref } from "../core/conversation-model.ts";
+import { conversationFallbackImage, conversationHref } from "../core/conversation-model.ts";
 import type { ConversationSummary } from "../types/messaging-types.ts";
-import { DEFAULT_AVATAR_URL } from "@projective/types/user";
 
 /**
  * MessagesRail — the inbox sidebar's COLLAPSED presentation (a purpose-built icon rail, revealed by CSS
@@ -52,7 +51,7 @@ export function MessagesRail(props: MessagesRailProps): JSX.Element {
 						>
 							<Avatar
 								image={c.avatar ?? undefined}
-								fallbackImage={c.kind === "group" ? undefined : DEFAULT_AVATAR_URL}
+								fallbackImage={conversationFallbackImage(c.kind)}
 								label={c.title}
 								size={34}
 								shape={c.kind === "group" ? "square" : "circle"}

@@ -224,15 +224,19 @@ export async function readMediaState(
 
 // #region Renditions
 
-/** A rendition written to storage + its row, which can be retired again if the profile refuses it. */
-interface Rendition {
+/**
+ * A rendition written to storage + its row, which can be retired again if the profile refuses it.
+ * Exported with {@link writeRendition} / {@link retireRendition} for the other square pictures cut
+ * the same way (a group conversation's photo, `messaging/live-group-photo.ts`).
+ */
+export interface Rendition {
 	id: string;
 	bucket: "avatars" | "showcase";
 	paths: string[];
 }
 
 /** Retire a rendition the profile would not take: soft-delete its row, remove its objects. */
-async function retireRendition(rendition: Rendition): Promise<void> {
+export async function retireRendition(rendition: Rendition): Promise<void> {
 	try {
 		await getServiceClient().schema("files").from("items")
 			.update({ deleted_at: new Date().toISOString() })
@@ -249,13 +253,15 @@ function renditionName(purpose: RenditionPurpose, position: number | undefined):
 /**
  * Cut and store a rendition of `source` for `purpose`. Stills are re-drawn by the pipeline (crop
  * clamped against the decoded pixels, re-encoded WebP, no EXIF); a video is published as uploaded
- * with the poster tiers the library already holds for it.
+ * with the poster tiers the library already holds for it. `displayName` overrides the name the row
+ * carries in the owner's history (default: "Profile photo" / "Showcase slot N").
  */
-async function writeRendition(
+export async function writeRendition(
 	owner: ProfileOwner,
 	actor: ReadActor & { accessToken: string },
 	source: LibrarySource,
 	input: ApplyMedia,
+	displayName?: string,
 ): Promise<Rendition> {
 	const purpose: RenditionPurpose = input.target;
 	const bucket = purpose === "avatar" ? "avatars" as const : "showcase" as const;
@@ -352,7 +358,7 @@ async function writeRendition(
 			owner_entity_id: owner.type === "user" ? null : owner.id,
 			bucket_id: bucket,
 			storage_path: fullPath,
-			display_name: renditionName(purpose, input.position),
+			display_name: displayName ?? renditionName(purpose, input.position),
 			original_name: source.name,
 			mime_type: mime,
 			size_bytes: size,

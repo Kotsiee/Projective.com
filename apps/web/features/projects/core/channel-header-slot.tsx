@@ -1,6 +1,7 @@
 import type { ComponentChildren } from "preact";
 import type { UserContext } from "@projective/types/auth";
-import ChannelHeader, { type ChannelDetailInfo } from "../islands/ChannelHeader.island.tsx";
+import ChannelHeader from "../islands/ChannelHeader.island.tsx";
+import { type ChannelDetailInfo, ChannelDetailsPanel } from "../components/ChannelDetailBody.tsx";
 import { activeTabOf, resolveChannelMeta, visibleChannelTabKeys } from "./channel-view.ts";
 import { resolveSessionKind } from "./session-model.ts";
 import { resolveProjectDetail } from "./detail-ssr.ts";
@@ -151,6 +152,47 @@ export async function channelHeaderFor(
 			sessionKind={sessionKind}
 			isTask={isTask}
 			detailInfo={buildDetailInfo(detail, meta)}
+		/>
+	);
+}
+
+/**
+ * Resolve the middle-nav frame's right PANEL for a request: a channel's {@link ChannelDetailsPanel}
+ * (Task · Stage · Channel details) on its Chat view — the bare `/projects/[projectId]/[channelId]` and
+ * `/chat` — else `null`. Only the Chat view docks it: the board, timeline, files and submissions views
+ * need the canvas's full width, so there the header's Details control keeps its slide-over drawer.
+ * Docks from 1280px (`MiddleNavPanel`); below that the header's drawer presents the same body.
+ */
+export async function channelPanelFor(
+	url: URL,
+	context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
+	const segs = url.pathname.split("/").filter(Boolean); // ["projects", projectId, channelId, ...tab]
+	if (segs[0] !== "projects" || segs.length < 3 || segs[1] === "create") return null;
+
+	const [, projectId, channelId] = segs;
+	const base = `/projects/${projectId}/${channelId}`;
+	if (activeTabOf(url.pathname, base) !== "chat") return null;
+
+	const { detail } = await resolveProjectDetail(projectId, context, actor);
+	if (!detail) return null;
+
+	const meta = resolveChannelMeta(detail, channelId);
+	if (!meta) return null;
+
+	const isStage = meta.kind === "stage";
+	const label = isTaskDetail(detail)
+		? "Task details"
+		: isStage
+		? "Stage details"
+		: "Channel details";
+	return (
+		<ChannelDetailsPanel
+			label={label}
+			title={meta.title}
+			isStage={isStage}
+			info={buildDetailInfo(detail, meta)}
 		/>
 	);
 }

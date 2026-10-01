@@ -14,7 +14,9 @@
     inset-block-start: var(--shell-frame-inset-block, var(--shell-topbar-h));
     inset-inline-start: var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w));
     block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)));
-    inline-size: calc(100% - var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w)));
+    inline-size: calc(
+        100% - var(--shell-frame-inset-inline, var(--shell-sidebar-cur-w)) - var(--shell-panel-cur-w, 0px)
+    );
     border-block-start: var(--hairline);
     border-inline-start: var(--hairline);
     border-start-start-radius: var(--frame-radius);
@@ -31,6 +33,26 @@
     block-size: calc(100% - var(--shell-frame-inset-block, var(--shell-topbar-h)) - var(--shell-midnav-footer-h));
     border-end-start-radius: var(--frame-radius);
     border-block-end: var(--hairline);
+}
+
+/*
+ * With a DOCKED frame panel the canvas no longer reaches the viewport's inline-end edge — it stops at
+ * the panel (`--shell-panel-cur-w`, middle-nav.css) and becomes a card rounded on every exposed corner:
+ * the end corners mirror the start corners (top always; bottom when a footer band sits beneath), and
+ * the end edge carries the same hairline seam the start edge does, coincident with the panel's resize
+ * track. Same breakpoint and `data-open` key as the width gate, so the corners and the width can never
+ * disagree about whether the panel is there.
+ */
+@media (min-width: 1280px) {
+    .ui-middle-nav:has(> .ui-middle-nav__panel .ui-midnav-panel[data-open="true"]) .ui-page-canvas::before {
+        border-inline-end: var(--hairline);
+        border-start-end-radius: var(--frame-radius);
+    }
+
+    .ui-middle-nav:has(> .ui-middle-nav__footer):has(> .ui-middle-nav__panel .ui-midnav-panel[data-open="true"])
+        .ui-page-canvas::before {
+        border-end-end-radius: var(--frame-radius);
+    }
 }
 
 /* Plain content wrapper (renamed from `__scroll` — it no longer scrolls; the window does). Grows with

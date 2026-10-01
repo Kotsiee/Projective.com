@@ -1,15 +1,22 @@
 import type { JSX, RefObject } from "preact";
 import { useSignal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 // Reuse the project channel-header chrome (`.chan-*`) verbatim for a byte-identical look; the island
 // import bundles it onto `/messages` routes (where the projects ChannelHeader island isn't mounted).
 import "@web/features/projects/styles/channel-header.css";
 import "../styles/conversation.css";
 import { Avatar } from "@projective/ui/display";
-import { Popover, Tooltip } from "@projective/ui/feedback";
+import { Popover, Toast, Tooltip, useToast } from "@projective/ui/feedback";
+import { Icon } from "@projective/ui/icons";
+import { MediaCropModal } from "@web/features/profile/components/media/MediaCropModal.tsx";
 import { useMediaQuery } from "@projective/ui/navigation";
 import { MessagingIcon } from "../components/messaging-glyphs.tsx";
-import { CONVERSATION_TABS } from "../core/conversation-model.ts";
+import {
+	CONVERSATION_TABS,
+	conversationFallbackImage,
+	GROUP_PHOTO_FAILED_NOTICE,
+} from "../core/conversation-model.ts";
+import { MessagingService } from "../core/MessagingService.ts";
 import { openPopout } from "../core/popout-state.ts";
 import { openAddMembers } from "../core/messaging-state.ts";
 import {
@@ -17,10 +24,9 @@ import {
 	contextDrawerOpen,
 	contextPanelDocked,
 	toggleContextPanel,
-} from "../core/context-panel-state.ts";
+} from "@web/features/shell/core/context-panel-state.ts";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
-import type { ConversationDetail } from "../types/messaging-types.ts";
-import { DEFAULT_AVATAR_URL } from "@projective/types/user";
+import type { ConversationDetail, GroupPhotoInput } from "../types/messaging-types.ts";
 
 /**
  * ConversationHeader — the contextual header for a `/messages/[conversationId]` view, mounted into the
@@ -77,9 +83,46 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 	const isMuted = useSignal(detail.muted);
 	const menuOpen = useSignal(false);
 	const copied = useSignal(false);
+	const photoOpen = useSignal(false);
+	const toastMounted = useSignal(false);
+	const toast = useToast();
+	const noticeSaid = useRef(false);
+	const isGroup = detail.kind === "group";
 	const hasDetails = detail.kind !== "group" && activeTab === "chat";
 	const docked = useMediaQuery(CONTEXT_PANEL_INFLOW_QUERY);
 	const detailsOpen = docked ? contextPanelDocked.value : contextDrawerOpen.value;
+
+	// The one-shot `?notice=group-photo-failed` a just-created group opens with: say it once, then strip
+	// it (`fClientNav: false`, so Back stays an ordinary navigation — the ProjectNoticeHost rule).
+	useEffect(() => {
+		if (noticeSaid.current) return;
+		const params = new URLSearchParams(location.search);
+		if (params.get("notice") !== GROUP_PHOTO_FAILED_NOTICE) return;
+		noticeSaid.current = true;
+		params.delete("notice");
+		const query = params.toString();
+		const state = history.state && typeof history.state === "object" ? history.state : {};
+		history.replaceState(
+			{ ...state, fClientNav: false },
+			"",
+			`${location.pathname}${query ? `?${query}` : ""}${location.hash}`,
+		);
+		if (!document.querySelector(".ui-toast")) toastMounted.value = true;
+		toast.show({
+			severity: "warning",
+			summary: "Your group was created, but its photo couldn't be set.",
+			detail: "Use Change group photo in the menu to try again.",
+			life: 6000,
+		});
+	}, []);
+
+	/** Apply a group photo (or clear it). A full reload re-renders the lane row and this header. */
+	async function savePhoto(photo: GroupPhotoInput | null): Promise<string | null> {
+		const res = await MessagingService.setGroupPhoto(detail.id, photo);
+		if (!res.ok) return res.message ?? "The group photo couldn't be changed. Try again.";
+		globalThis.location.reload();
+		return null;
+	}
 
 	// Layer the persisted star/mute preference on after hydration.
 	useEffect(() => {
@@ -123,7 +166,7 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 				<span class="chan-header__avatar" aria-hidden="true">
 					<Avatar
 						image={detail.avatar ?? undefined}
-						fallbackImage={detail.kind === "group" ? undefined : DEFAULT_AVATAR_URL}
+						fallbackImage={conversationFallbackImage(detail.kind)}
 						label={detail.title}
 						size={30}
 						shape={detail.kind === "group" ? "square" : "circle"}
@@ -234,6 +277,44 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 								{isMuted.value ? "Unmute conversation" : "Mute conversation"}
 							</span>
 						</button>
+						{isGroup && (
+							<button
+								type="button"
+								role="menuitem"
+								class="chan-menu__item"
+								onClick={() => {
+									menuOpen.value = false;
+									photoOpen.value = true;
+								}}
+							>
+								<span class="chan-menu__icon" aria-hidden="true">
+									<Icon name="image" size="sm" />
+								</span>
+								<span class="chan-menu__label">
+									{detail.avatar ? "Change group photo" : "Add group photo"}
+								</span>
+							</button>
+						)}
+						{isGroup && detail.avatar && (
+							<button
+								type="button"
+								role="menuitem"
+								class="chan-menu__item"
+								onClick={() => {
+									menuOpen.value = false;
+									void savePhoto(null).then((message) => {
+										if (!message) return;
+										if (!document.querySelector(".ui-toast")) toastMounted.value = true;
+										toast.show({ severity: "danger", summary: message, life: 5000 });
+									});
+								}}
+							>
+								<span class="chan-menu__icon" aria-hidden="true">
+									<MessagingIcon name="trash" />
+								</span>
+								<span class="chan-menu__label">Remove group photo</span>
+							</button>
+						)}
 						{detail.canAddMembers && (
 							<button
 								type="button"
@@ -267,6 +348,16 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 					</div>
 				</Popover>
 			</div>
+			{isGroup && (
+				<MediaCropModal
+					open={photoOpen}
+					target="avatar"
+					title="Group photo"
+					saveLabel="Save photo"
+					onSave={(choice) => savePhoto({ sourceAssetId: choice.sourceAssetId, crop: choice.crop })}
+				/>
+			)}
+			{toastMounted.value ? <Toast position="bottom-center" /> : null}
 		</header>
 	);
 }

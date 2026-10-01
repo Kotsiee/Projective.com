@@ -72,11 +72,24 @@ export const ConversationParticipantSchema = z.object({
 export type ConversationParticipant = z.infer<typeof ConversationParticipantSchema>;
 // #endregion
 
+// #region Conversation picture
+/**
+ * The picture shown for a GROUP conversation with no photo of its own, and for one whose photo fails
+ * to load. A DM's picture is a person, so it follows the person rule (`DEFAULT_AVATAR_URL`,
+ * Decision #127) instead. Served from `apps/web/static/test_images/banner_5.jpg`.
+ *
+ * TEMPORARY: a stock image stands in until a designed group default exists — repointing or removing
+ * it is a one-line change here.
+ */
+export const CONVERSATION_PICTURE_FALLBACK_URL = "/test_images/banner_5.jpg";
+// #endregion
+
 // #region Conversation summary (inbox row)
 /**
  * One conversation row in the `/messages` sidebar list. The **visibility rule** (task §2A) is encoded
- * as `messageCount` — a conversation surfaces only when at least one message has been sent
- * (`messageCount > 0`); the backend never returns empty threads, and the client filters defensively.
+ * as `messageCount` — a conversation surfaces in a LIST once at least one message has been sent
+ * (`messageCount > 0`), except to the person who started it, whose list shows it at once (empty).
+ * A direct read of one conversation the viewer is in is never gated on it.
  */
 export const ConversationSummarySchema = z.object({
 	/** Route param + unified thread id (e.g. `dm-mara`, `grp-northwind`). */
@@ -85,7 +98,10 @@ export const ConversationSummarySchema = z.object({
 	relation: ConversationRelation,
 	/** Group name, or the DM counterparty's name. */
 	title: z.string().min(1).max(160),
-	/** Group avatar or the DM party avatar; null → initials fallback. */
+	/**
+	 * The group's own photo, or the DM counterparty's avatar; null → the fallback for its kind
+	 * ({@link CONVERSATION_PICTURE_FALLBACK_URL} for a group, the person default for a DM).
+	 */
 	avatar: z.string().max(400).nullable(),
 	/** The other participants (excluding the acting viewer). */
 	participants: z.array(ConversationParticipantSchema),

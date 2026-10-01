@@ -11,7 +11,6 @@ import {
 	BellIcon,
 	BellOffIcon,
 	CalendarIcon,
-	ClockIcon,
 	DmIcon,
 	HashIcon,
 	InfoIcon,
@@ -26,7 +25,17 @@ import { ChatIcon, FilesIcon, PanelIcon } from "../components/channel-glyphs.tsx
 import { KebabIcon, StarIcon, TicketIcon } from "../components/glyphs.tsx";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import { openPopout } from "@web/features/messaging/core/popout-state.ts";
-import { UserAvatar } from "@web/components/UserAvatar.tsx";
+import { useMediaQuery } from "@projective/ui/navigation";
+import {
+	CONTEXT_PANEL_INFLOW_QUERY,
+	contextPanelDocked,
+	toggleContextPanel,
+} from "@web/features/shell/core/context-panel-state.ts";
+import {
+	CHANNEL_PANEL_ID,
+	ChannelDetailBody,
+	type ChannelDetailInfo,
+} from "../components/ChannelDetailBody.tsx";
 
 /**
  * ChannelHeader — the contextual header for a project channel/chat engagement
@@ -38,8 +47,10 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  * It is an ISLAND for three reasons now: (1) it bundles `channel-header.css` (the codebase bundles feature
  * CSS only through island imports); (2) its tab set live-updates from the dev Context Switcher; and (3)
  * its icon actions are interactive (task §1) — the Star toggle persists a per-channel preference, the
- * kebab opens a contextual menu, and the middle "details" control opens a right-docked Stage Details
- * `Drawer`. Dumb island: no DB/Supabase, no `@server`; the star/mute/pin preferences persist optimistically
+ * kebab opens a contextual menu, and the middle "details" control shows the channel's details — on
+ * the Chat view from 1280px by toggling the middle-nav frame's docked right panel (`channelPanelFor`
+ * registers it, the shell's `context-panel-state` carries the choice), everywhere else by opening a
+ * right slide-over `Drawer` with the same {@link ChannelDetailBody}. Dumb island: no DB/Supabase, no `@server`; the star/mute/pin preferences persist optimistically
  * to `localStorage` until the live backend owns them.
  *
  * The three-region flow is a left identity block (flex 1) · centred underlined view tabs · right icon
@@ -67,24 +78,7 @@ const TAB_ICONS: Record<string, JSX.Element> = {
 };
 // #endregion
 
-// #region Detail info (for the Stage Details / Channel Info drawer)
-/**
- * The resolved summary the details drawer renders — computed server-side by `channelHeaderFor` and
- * threaded as a serializable prop, so the drawer paints the real (SSR-resolved) engagement facts.
- */
-export interface ChannelDetailInfo {
-	/** Human label for the channel group (e.g. "Stage", "General channel", "Direct message"). */
-	kindLabel: string;
-	/** The stage/engagement lifecycle status, when relevant. */
-	statusLabel?: string;
-	/** A pre-formatted deadline label (e.g. "Due Fri · Jul 25"); deterministic, no timezone drift. */
-	deadlineLabel?: string;
-	/** Completed vs total tasks for the progress meter (stage channels only). */
-	progress?: { done: number; total: number };
-	/** The assigned members shown as an avatar stack + count. */
-	members: { name: string; avatar: string | null }[];
-}
-// #endregion
+export type { ChannelDetailInfo } from "../components/ChannelDetailBody.tsx";
 
 export interface ChannelHeaderProps {
 	/** The channel base path — `/projects/{projectId}/{channelId}`. Tab hrefs hang off this. */
@@ -174,6 +168,9 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 	const isMuted = useSignal<boolean>(false);
 	const isPinned = useSignal<boolean>(false);
 	const detailsOpen = useSignal<boolean>(false);
+	// The frame panel exists only on the Chat view (`channelPanelFor`), and docks only from 1280px.
+	const inflow = useMediaQuery(CONTEXT_PANEL_INFLOW_QUERY);
+	const panelDocks = activeTab === "chat" && inflow;
 	const menuOpen = useSignal<boolean>(false);
 	const copied = useSignal<boolean>(false);
 
@@ -243,6 +240,13 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 			href: base,
 		});
 	}
+
+	/** Show the details: toggle the docked frame panel where one stands, else open the drawer. */
+	function showDetails(): void {
+		if (panelDocks) toggleContextPanel();
+		else detailsOpen.value = true;
+	}
+	const detailsShown = panelDocks ? contextPanelDocked.value : detailsOpen.value;
 
 	const isStage = meta.kind === "stage";
 	const detailsLabel = props.isTask
@@ -315,10 +319,12 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 					<button
 						type="button"
 						class="chan-action"
+						data-on={detailsShown ? "true" : undefined}
 						aria-label={detailsLabel}
-						aria-haspopup="dialog"
-						aria-expanded={detailsOpen.value}
-						onClick={() => (detailsOpen.value = true)}
+						aria-haspopup={panelDocks ? undefined : "dialog"}
+						aria-expanded={detailsShown}
+						aria-controls={panelDocks ? CHANNEL_PANEL_ID : undefined}
+						onClick={showDetails}
 					>
 						{cloneElement(PanelIcon)}
 					</button>
@@ -419,8 +425,10 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 							role="menuitem"
 							class="chan-menu__item"
 							onClick={() => {
-								detailsOpen.value = true;
 								menuOpen.value = false;
+								// "Channel info" only ever OPENS — on a docked view it never shuts the panel.
+								if (!panelDocks) detailsOpen.value = true;
+								else if (!contextPanelDocked.value) toggleContextPanel();
 							}}
 						>
 							<span class="chan-menu__icon" aria-hidden="true">{cloneElement(InfoIcon)}</span>
@@ -454,87 +462,3 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 		</header>
 	);
 }
-
-// #region Details drawer body
-function ChannelDetailBody(
-	{ title, isStage, info }: { title: string; isStage: boolean; info: ChannelDetailInfo },
-): JSX.Element {
-	const pct = info.progress && info.progress.total > 0
-		? Math.round((info.progress.done / info.progress.total) * 100)
-		: null;
-
-	return (
-		<div class="chan-details">
-			<dl class="chan-details__list">
-				<div class="chan-details__row">
-					<dt class="chan-details__term">Channel</dt>
-					<dd class="chan-details__def">{info.kindLabel}</dd>
-				</div>
-				{info.statusLabel && (
-					<div class="chan-details__row">
-						<dt class="chan-details__term">Status</dt>
-						<dd class="chan-details__def">{info.statusLabel}</dd>
-					</div>
-				)}
-				{info.deadlineLabel && (
-					<div class="chan-details__row">
-						<dt class="chan-details__term">
-							<span class="chan-details__termicon" aria-hidden="true">
-								{cloneElement(ClockIcon)}
-							</span>
-							Deadline
-						</dt>
-						<dd class="chan-details__def">{info.deadlineLabel}</dd>
-					</div>
-				)}
-			</dl>
-
-			{isStage && pct !== null && (
-				<div class="chan-progress" role="group" aria-label="Stage progress">
-					<div class="chan-progress__head">
-						<span class="chan-progress__label">Progress</span>
-						<span class="chan-progress__value">
-							{info.progress!.done}/{info.progress!.total} tasks · {pct}%
-						</span>
-					</div>
-					<div
-						class="chan-progress__track"
-						role="progressbar"
-						aria-valuenow={pct}
-						aria-valuemin={0}
-						aria-valuemax={100}
-						aria-label={`${title} progress`}
-					>
-						<span class="chan-progress__fill" style={`inline-size:${pct}%`} />
-					</div>
-				</div>
-			)}
-
-			{info.members.length > 0 && (
-				<div class="chan-members">
-					<div class="chan-members__head">
-						<span class="chan-members__label">
-							{isStage ? "Assigned members" : "Members"}
-						</span>
-						<span class="chan-members__count">{info.members.length}</span>
-					</div>
-					<ul class="chan-members__list">
-						{info.members.map((m) => (
-							<li key={m.name} class="chan-members__item">
-								<UserAvatar image={m.avatar ?? undefined} label={m.name} size={26} shape="circle" />
-								<span class="chan-members__name">{m.name}</span>
-							</li>
-						))}
-					</ul>
-				</div>
-			)}
-
-			<p class="chan-details__note">
-				{isStage
-					? "Deadlines, progress, and assignments will sync from the live stage once the backend is connected."
-					: "Channel metadata will sync from the live backend once it is connected."}
-			</p>
-		</div>
-	);
-}
-// #endregion

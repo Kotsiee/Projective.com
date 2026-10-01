@@ -27,6 +27,15 @@ export interface MiddleNavProps {
 	 * omitted the band is not rendered at all — the content fills the frame bottom with no reserved space.
 	 */
 	footer?: ComponentChildren;
+	/**
+	 * Optional configurable **frame panel** — the right-hand context/inspector column. It is the lane's
+	 * mirror on the inline-end side: the footer band runs only BETWEEN the lane and the panel, the
+	 * header band spans over it (so its trailing actions never move) and the panel starts beneath the
+	 * header, and the canvas becomes a card rounded on all four corners between them. Wrap it in the `MiddleNavPanel` island to make it drag-resizable. It docks only from
+	 * 1280px (below that the consumer presents the same content as a drawer); when omitted, closed, or
+	 * undocked, its `auto` column resolves to 0 and the canvas reaches the frame's inline-end edge.
+	 */
+	panel?: ComponentChildren;
 	/** See {@link ShellFrame.flushBottom}. */
 	flushBottom?: boolean;
 	/** Nested content — a PageCanvas (Green). */
@@ -37,14 +46,15 @@ export interface MiddleNavProps {
  * MiddleNav — the Blue zone: a page-level middle navigation lane nested within the Red shell, framing
  * the Green canvas. A `--surface-1` ShellFrame with the exposed-corner curvature.
  *
- * Layout is a three-row grid: the {@link MiddleNavProps.lane} spans all rows on the left (so its own
- * sticky header/footer align into the bands), while the right column splits into the optional
+ * Layout is a three-row, three-column grid: the {@link MiddleNavProps.lane} spans all rows on the left
+ * (so its own sticky header/footer align into the bands) and the optional {@link MiddleNavProps.panel}
+ * spans all rows on the right, while the middle column splits into the optional
  * {@link MiddleNavProps.header} band (row 1), the content canvas (row 2), and the optional
- * {@link MiddleNavProps.footer} band (row 3). An absent band's `auto` row collapses to 0, so the
- * content simply fills that edge (no empty bar).
+ * {@link MiddleNavProps.footer} band (row 3). An absent band's `auto` row — and an absent panel's
+ * `auto` column — collapses to 0, so the content simply fills that edge (no empty bar).
  */
 export function MiddleNav(
-	{ lane, header, footer, flushBottom = true, children }: MiddleNavProps,
+	{ lane, header, footer, panel, flushBottom = true, children }: MiddleNavProps,
 ): JSX.Element {
 	return (
 		<ShellFrame
@@ -54,12 +64,14 @@ export function MiddleNav(
 				"ui-middle-nav",
 				!!header && "ui-middle-nav--has-header",
 				!!footer && "ui-middle-nav--has-footer",
+				!!panel && "ui-middle-nav--has-panel",
 			)}
 		>
 			{lane ? <div class="ui-middle-nav__lane">{lane}</div> : null}
 			{header ? <div class="ui-middle-nav__header">{header}</div> : null}
 			<div class="ui-middle-nav__content">{children}</div>
 			{footer ? <div class="ui-middle-nav__footer">{footer}</div> : null}
+			{panel ? <div class="ui-middle-nav__panel">{panel}</div> : null}
 		</ShellFrame>
 	);
 }

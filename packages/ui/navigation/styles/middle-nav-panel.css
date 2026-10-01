@@ -1,0 +1,126 @@
+/*
+ * MiddleNavPanel — the drag-resizable right panel of the middle-nav frame (Part D.2, §D.4). Width is
+ * driven by `--shell-panel-w`, written inline by `useSplitter` and hoisted onto `.ui-middle-nav` so the
+ * canvas's viewport-fixed surface can stop at the panel's leading edge (page-canvas.css).
+ *
+ * Its placement in the frame (grid column, sticky pin, viewport cap, docking breakpoint) belongs to
+ * `.ui-middle-nav__panel` in middle-nav.css; this file owns only the panel's own box.
+ */
+.ui-midnav-panel {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	inline-size: var(--shell-panel-w, 320px);
+	block-size: 100%;
+	min-block-size: 0;
+	/* A solid ramp tone (§B.9.8) — the same `--surface-1` the frame track shows through the canvas's
+	   rounded corners, so the panel and the track read as one region. */
+	background: var(--surface-1);
+}
+
+/* Closed: the column collapses to nothing and the canvas takes the width back. */
+.ui-midnav-panel[data-open="false"] {
+	display: none;
+}
+
+/*
+ * The panel's own scroll container — independent of the window scroll the canvas flows in, and
+ * `overscroll-behavior: contain` so reaching its end never chains into scrolling the canvas. A flex
+ * column so content that pins its own footer (an action rig) can `flex: 1` down the chain and keep
+ * the rig in view.
+ */
+.ui-midnav-panel__body {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	min-block-size: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
+/*
+ * Resize handle — a transparent hit strip over the panel's LEADING edge. Its affordance mirrors the
+ * lane handle (`.ui-splitter__handle`): a hairline track coincident with the canvas's end seam plus a
+ * centred grab knob, both lighting to `--primary` on hover/focus.
+ */
+.ui-midnav-panel__handle {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 0;
+	z-index: 1;
+	inline-size: 6px;
+	cursor: col-resize;
+	background: transparent;
+	touch-action: none;
+}
+
+.ui-midnav-panel__handle::before {
+	content: "";
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 0;
+	inline-size: 0;
+	border-radius: var(--radius-full);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		inline-size var(--dur-fast) var(--ease-standard);
+}
+
+.ui-midnav-panel__handle::after {
+	content: "";
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline-start: 0;
+	inline-size: 4px;
+	block-size: 2.25rem;
+	transform: translateY(-50%);
+	border-radius: var(--radius-full);
+	background: var(--outline);
+	opacity: 0.5;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		opacity var(--dur-fast) var(--ease-standard);
+}
+
+.ui-midnav-panel__handle:hover::before,
+.ui-midnav-panel__handle:focus-visible::before,
+.ui-midnav-panel[data-dragging="true"] .ui-midnav-panel__handle::before {
+	inline-size: 2px;
+	background: color-mix(in srgb, var(--primary) 55%, transparent);
+}
+
+.ui-midnav-panel__handle:hover::after,
+.ui-midnav-panel__handle:focus-visible::after,
+.ui-midnav-panel[data-dragging="true"] .ui-midnav-panel__handle::after {
+	background: var(--primary);
+	opacity: 1;
+}
+
+.ui-midnav-panel__handle:focus-visible {
+	outline: none;
+}
+
+/* Mid-drag the panel's content must not catch the pointer or start a text selection. */
+.ui-midnav-panel[data-dragging="true"] .ui-midnav-panel__body {
+	pointer-events: none;
+	user-select: none;
+}
+
+/* Drag-to-close armed: releasing now closes the panel, so its content recedes to say so. Opacity is a
+   colour-only change (gate 12 forbids moving the box); the fade is instant under both motion channels
+   because it carries no transition. */
+.ui-midnav-panel[data-collapse-pending="true"] .ui-midnav-panel__body {
+	opacity: var(--minor-fade);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-midnav-panel__handle::before,
+	.ui-midnav-panel__handle::after {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .ui-midnav-panel__handle::before,
+:root[data-motion="reduced"] .ui-midnav-panel__handle::after {
+	transition: none;
+}

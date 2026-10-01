@@ -5,7 +5,7 @@ import { MessagingIcon } from "./messaging-glyphs.tsx";
 import { ConversationMenu } from "./ConversationMenu.tsx";
 import { contextIsOffering, contextLabel, splitPreview } from "../core/inbox-model.ts";
 import type { ConversationSummary, InboxFolder } from "../types/messaging-types.ts";
-import { DEFAULT_AVATAR_URL } from "@projective/types/user";
+import { conversationFallbackImage } from "../core/conversation-model.ts";
 
 /**
  * InboxRow — one conversation in the `/messages` BODY list. The counterpart of {@link ConversationRow}
@@ -56,7 +56,7 @@ export function InboxRow(props: InboxRowProps): JSX.Element {
 				<span class="inbox-row__avatar">
 					<Avatar
 						image={c.avatar ?? undefined}
-						fallbackImage={c.kind === "group" ? undefined : DEFAULT_AVATAR_URL}
+						fallbackImage={conversationFallbackImage(c.kind)}
 						label={c.title}
 						size={compact ? 32 : 40}
 						shape={c.kind === "group" ? "square" : "circle"}

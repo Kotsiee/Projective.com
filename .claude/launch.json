@@ -30,6 +30,16 @@
 				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '12981'; deno task dev"
 			],
 			"port": 12981
+		},
+		{
+			"name": "web-panel",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '12990'; deno task dev:mock --port 12990 --strictPort"
+			],
+			"port": 12990
 		}
 	]
 }

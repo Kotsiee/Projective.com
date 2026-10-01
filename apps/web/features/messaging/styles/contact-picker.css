@@ -92,6 +92,68 @@
 	block-size: var(--icon-sm);
 }
 .msg-picker__search-input,
+/* #region Group photo + name — the photo control leads the name field on one row. */ .msg-picker__identity {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+}
+
+.msg-picker__identity .msg-picker__group-name {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+}
+
+.msg-picker__photo {
+	position: relative;
+	flex: none;
+	display: inline-flex;
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-base);
+	background: none;
+	cursor: pointer;
+	transition: var(--btn-transition-press);
+}
+
+.msg-picker__photo:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.msg-picker__photo:active {
+	transform: scale(var(--btn-press-scale-icon));
+}
+
+/* The "change picture" mark — a small disc on the picture's corner, so the control reads as editable. */
+.msg-picker__photo-badge {
+	position: absolute;
+	inset-block-end: calc(var(--space-1) * -1);
+	inset-inline-end: calc(var(--space-1) * -1);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--space-5);
+	block-size: var(--space-5);
+	border-radius: var(--radius-full);
+	background: var(--surface-3);
+	color: var(--on-surface);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.msg-picker__photo,
+	.msg-picker__photo:active {
+		transform: none;
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .msg-picker__photo,
+:root[data-motion="reduced"] .msg-picker__photo:active {
+	transform: none;
+	transition: none;
+}
+/* #endregion */
+
 .msg-picker__group-name {
 	inline-size: 100%;
 	padding: var(--space-2) var(--space-3);

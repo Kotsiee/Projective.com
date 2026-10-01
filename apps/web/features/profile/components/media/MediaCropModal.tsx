@@ -26,6 +26,9 @@ import {
 import { extractMetadata } from "@web/features/files/core/media/extract.ts";
 import { MediaService, putToTicket } from "../../core/MediaService.ts";
 import { type ProfileMediaState, ProfileService } from "../../core/ProfileService.ts";
+// Imported HERE as well as through `profile.css`, so a host outside the profile (the messaging
+// group-photo picker) ships the dialog's styles with it. Vite includes a module once.
+import "../../styles/profile-media.css";
 
 /**
  * MediaCropModal — the Media Selection & Crop dialog behind every profile image: the profile photo
@@ -45,18 +48,39 @@ import { type ProfileMediaState, ProfileService } from "../../core/ProfileServic
  * shown, not cropped: it is published as uploaded.
  *
  * Every gesture and control writes through `clampCrop`, so the box can never show empty space.
+ *
+ * Outside the profile, a host passes `onSave` instead of `handle`: the dialog then hands back the
+ * chosen still and its crop ({@link MediaCropChoice}) rather than applying it, and the host decides
+ * where the picture goes — a group conversation's photo uses the `avatar` target's 1:1 frame.
  */
 export interface MediaCropModalProps {
 	open: Signal<boolean>;
-	/** The profile's `@handle` — where the result is applied. */
-	handle: string;
+	/** The profile's `@handle` — where the result is applied. Unused when {@link onSave} is given. */
+	handle?: string;
 	target: "avatar" | "showcase";
 	/** The showcase slot (1–6) being filled. */
 	position?: number;
 	/** The slot's current alternative text, when replacing. */
 	initialAlt?: string;
 	/** Called with the profile's media as stored after a successful apply. */
-	onApplied: (state: ProfileMediaState) => void;
+	onApplied?: (state: ProfileMediaState) => void;
+	/**
+	 * Take the choice instead of applying it to a profile. Return a message to keep the dialog open and
+	 * show it beside the Save button, or `null` to close.
+	 */
+	onSave?: (choice: MediaCropChoice) => Promise<string | null>;
+	/** Dialog title override (default: "Profile photo" / "Showcase slot N"). */
+	title?: string;
+	/** Save button label override. */
+	saveLabel?: string;
+}
+
+/** What the dialog hands an `onSave` host: one of the viewer's library stills and its crop. */
+export interface MediaCropChoice {
+	sourceAssetId: string;
+	crop?: CropState;
+	/** A short-lived signed URL of the asset, good for previewing the choice before it is applied. */
+	previewUrl: string;
 }
 
 interface UploadRow {
@@ -337,6 +361,25 @@ export function MediaCropModal(props: MediaCropModalProps): JSX.Element {
 		if (!asset || saving.peek()) return;
 		saving.value = true;
 		saveError.value = null;
+		if (props.onSave) {
+			const message = await props.onSave({
+				sourceAssetId: asset.id,
+				crop: asset.kind === "image" ? crop.peek() : undefined,
+				previewUrl: asset.preview || asset.thumb || asset.src,
+			});
+			saving.value = false;
+			if (message) {
+				saveError.value = message;
+				return;
+			}
+			open.value = false;
+			return;
+		}
+		if (!handle) {
+			saving.value = false;
+			saveError.value = "That couldn't be applied. Try again.";
+			return;
+		}
 		const res = await ProfileService.applyMedia(handle, {
 			target,
 			position: target === "showcase" ? position : undefined,
@@ -349,7 +392,7 @@ export function MediaCropModal(props: MediaCropModalProps): JSX.Element {
 			saveError.value = res.message ?? "That couldn't be applied. Try again.";
 			return;
 		}
-		props.onApplied(res.data);
+		props.onApplied?.(res.data);
 		open.value = false;
 	}
 	// #endregion
@@ -362,7 +405,7 @@ export function MediaCropModal(props: MediaCropModalProps): JSX.Element {
 		: undefined;
 	const changed = crop.value.zoom !== INITIAL_CROP.zoom || crop.value.rotation !== INITIAL_CROP.rotation ||
 		crop.value.cx !== INITIAL_CROP.cx || crop.value.cy !== INITIAL_CROP.cy;
-	const title = target === "avatar" ? "Profile photo" : `Showcase slot ${position ?? 1}`;
+	const title = props.title ?? (target === "avatar" ? "Profile photo" : `Showcase slot ${position ?? 1}`);
 
 	const footer = (
 		<>
@@ -375,7 +418,7 @@ export function MediaCropModal(props: MediaCropModalProps): JSX.Element {
 				loading={saving.value}
 				onClick={() => void save()}
 			>
-				{target === "avatar" ? "Save photo" : "Save to slot"}
+				{props.saveLabel ?? (target === "avatar" ? "Save photo" : "Save to slot")}
 			</Button>
 		</>
 	);

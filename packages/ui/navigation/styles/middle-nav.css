@@ -10,7 +10,7 @@
  *   row 2 (1fr)  — the content canvas.
  *   row 3 (auto) — the footer band (content column only); 0 when no footer is set.
  * The lane occupies column 1 across all three rows; the content occupies column 2 (row 2), the header
- * column 2 (row 1), the footer column 2 (row 3).
+ * column 2 (row 1), the footer column 2 (row 3); the optional panel occupies column 3 across all rows.
  *
  * SCROLL MODEL (DESIGN_SYSTEM.md Part D — native window scroll; Decision #31 REVERSES Decision #30's
  * pinned-frame/internal-scroll model). The frame flows in the document's OWN scroll: the whole shell
@@ -29,10 +29,28 @@
  */
 .ui-middle-nav {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
+    /* lane · canvas column · panel. An absent (or undocked) panel's `auto` track resolves to 0. */
+    grid-template-columns: auto minmax(0, 1fr) auto;
     grid-template-rows: auto 1fr auto;
     min-block-size: 0;
     --shell-frame-inset-inline: calc(var(--shell-sidebar-cur-w) + var(--shell-lane-w));
+    /* How far the canvas's inline-END edge sits from the viewport edge — the docked panel's live width,
+       0 whenever no panel stands in the frame. The inline-end counterpart of the accumulator above. */
+    --shell-panel-cur-w: 0px;
+}
+
+/*
+ * A DOCKED PANEL publishes its width to the canvas.
+ *
+ * Keyed off the panel's own `data-open` (the viewer's toggle) and gated by the docking breakpoint, so
+ * the canvas surface, its end seam and its end corners exist exactly when the panel is on screen.
+ * `--shell-panel-w` is hoisted onto this element by the `MiddleNavPanel` island as it is dragged; the
+ * token default covers the first paint before hydration.
+ */
+@media (min-width: 1280px) {
+    .ui-middle-nav:has(> .ui-middle-nav__panel .ui-midnav-panel[data-open="true"]) {
+        --shell-panel-cur-w: var(--shell-panel-w);
+    }
 }
 
 /*
@@ -94,8 +112,13 @@
  * offset holds it at the viewport top under the native window scroll. Only rendered when a route
  * registers a header, so there is nothing to collapse otherwise (no empty bar).
  */
+/*
+ * The header band spans the canvas column AND the panel column (`2 / -1`), so its trailing actions sit
+ * at the frame's inline-end edge whether or not a panel is docked — opening, closing or dragging the
+ * panel never moves them. With no panel the third track is 0px and the span changes nothing.
+ */
 .ui-middle-nav__header {
-    grid-column: 2;
+    grid-column: 2 / -1;
     grid-row: 1;
     position: sticky;
     inset-block-start: var(--shell-topbar-h);
@@ -149,6 +172,51 @@
     min-inline-size: 0;
     min-block-size: 0;
     overflow: hidden;
+}
+
+/*
+ * The frame PANEL (MiddleNavProps.panel) — the lane's mirror on the inline-end side. It spans all three
+ * rows (or rows 2–3 beneath a header band, which spans over it — see below), so the footer band
+ * (column 2) runs only between the lane and the panel and the panel cuts through the footer band's row
+ * down to the viewport bottom.
+ *
+ * Every geometry choice is the lane's, for the lane's reasons (see `.ui-middle-nav__lane` above):
+ * `sticky` below the top bar so it stays beside the window-scrolled canvas; `max-block-size` as a CAP,
+ * never a definite `block-size`, so a spanning item never bids the `1fr` row up and puts a document
+ * scrollbar on a route that fits; `stretch` so it still fills its area. Its body scrolls internally
+ * (`.ui-midnav-panel__body`), independently of the window.
+ *
+ * It docks only from 1280px. Below that the column would take the canvas's reading width on a laptop,
+ * so the wrapper is removed and the consumer presents the same content as a drawer instead.
+ */
+.ui-middle-nav__panel {
+    grid-column: 3;
+    grid-row: 1 / -1;
+    position: sticky;
+    inset-block-start: var(--shell-topbar-h);
+    z-index: var(--z-raised);
+    align-self: stretch;
+    max-block-size: calc(100dvh - var(--shell-topbar-h));
+    min-inline-size: 0;
+    min-block-size: 0;
+    overflow: hidden;
+}
+
+/*
+ * Under a header band the panel starts BELOW it (the band spans the panel column — see
+ * `.ui-middle-nav__header`), so it pins one band lower and its viewport cap loses the band's height.
+ * It still runs down through the footer band's row to the viewport bottom.
+ */
+.ui-middle-nav--has-header > .ui-middle-nav__panel {
+    grid-row: 2 / -1;
+    inset-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
+    max-block-size: calc(100dvh - var(--shell-topbar-h) - var(--shell-midnav-header-h));
+}
+
+@media (max-width: 1279px) {
+    .ui-middle-nav__panel {
+        display: none;
+    }
 }
 
 /*

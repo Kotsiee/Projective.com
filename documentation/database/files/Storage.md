@@ -26,7 +26,7 @@ build storage paths through it rather than hardcoding bucket ids or path strings
 | `invoices`      | Private     | 20 MiB · pdf     | `{owner_id}`       | Wallet statements / invoices / receipts.                                              |
 | `verification`  | **Service** | 20 MiB · img,pdf | `{subject_id}`     | KYC / KYB identity documents — service-role only.                                     |
 | `public_assets` | Public      | 10 MiB · img     | `{owner_id}`       | Misc public assets (general/legacy).                                                  |
-| `avatars`       | Public      | 5 MiB · img      | `{entity_id}`      | Profile photos (user / team / business / org). **Service-role write only.**           |
+| `avatars`       | Public      | 5 MiB · img      | `{entity_id}`      | Profile photos (user / team / business / org) and group-conversation photos (under the uploader's id). **Service-role write only.** |
 | `showcase`      | Public      | 50 MiB · img,vid | `{entity_id}`      | A profile's six-slot showcase — stills and full-length videos. **Service-role write.** |
 | `catalogue`     | Public      | 10 MiB · img     | `{seller_id}`      | Marketplace storefront media (products, service showcase).                            |
 

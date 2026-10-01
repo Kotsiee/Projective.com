@@ -9,7 +9,7 @@
 --   * comms.device_tokens     += push registration columns                           (091000)
 -- Folded columns (audit gap-close):
 --   * comms.notification_prefs+= read_receipts, show_typing_indicator, sound, auto_responses_enabled
---   * comms.dm_threads        += kind, title
+--   * comms.dm_threads        += kind, title, photo_file_id
 --   * comms.dm_participants   += last_read_at, is_starred, is_archived, is_muted, deleted_at
 --   * comms.dm_participants   += inbox_folder (is_archived now derived from it)
 --   * comms.dm_messages       += pii_masked, pii_categories
@@ -133,6 +133,10 @@ CREATE TABLE comms.dm_threads (
     -- A group's name, which nothing else can supply. NULL for a DM, where the counterparty's own
     -- name is the title — storing a copy there would go stale the moment they rename themselves.
     title text,
+    -- A group's own photo: a processed public rendition in the `avatars` bucket, written only through
+    -- comms.set_group_photo (no client UPDATE policy). NULL for a DM — its picture is the
+    -- counterparty's own, which a copy here would let go stale — and for a group that has none.
+    photo_file_id uuid REFERENCES files.items (id) ON DELETE SET NULL,
     created_by_user_id uuid NOT NULL,
     created_at timestamp
     with

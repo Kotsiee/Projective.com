@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "supabaseClient";
 import { getUserClient } from "../../core/supabase.ts";
 import { fetchPartyRows, partyRowsWithAvatars } from "../profile/party-cards.ts";
+import { fetchPublicMedia, mediaUrl } from "../files/public-media.ts";
 import type { ReadActor } from "../read-actor.ts";
 import {
 	compactActivityLabel,
@@ -88,6 +89,8 @@ interface ThreadRow {
 	id: string;
 	kind: string;
 	title: string | null;
+	/** A group's own photo (`comms.set_group_photo`); null for a DM and for a group with none. */
+	photo_file_id: string | null;
 	created_by_user_id: string;
 	created_at: string;
 }
@@ -286,6 +289,8 @@ export interface ConversationContext {
 	now: number;
 	/** The viewer's own user id, for the "You: " preview prefix. */
 	viewerId: string;
+	/** The group's photo URL, resolved from `photo_file_id` (absent → no photo). */
+	photoUrl?: string | null;
 }
 
 /**
@@ -338,8 +343,13 @@ export function toConversationSummary(
 		// A group's own name; a DM's title is the counterparty, because storing a copy of their name
 		// on the thread would go stale the moment they renamed themselves (the column's own comment).
 		title: clamp(row.title, 160) || others[0]?.name || "Conversation",
-		// A DM is drawn with the counterparty's photo; a group has no single face.
-		avatar: kind === "dm" ? others[0]?.avatar ?? null : null,
+		// A DM is drawn with the counterparty's photo; a group with its OWN photo, when it has one — it
+		// has no single face to borrow.
+		avatar: kind === "dm"
+			? others[0]?.avatar ?? null
+			: kind === "group"
+			? ctx.photoUrl ?? null
+			: null,
 		participants: others,
 		preview,
 		lastActivityLabel: activityLabel(lastAt, ctx.now),
@@ -393,6 +403,33 @@ export async function fetchConversations(
 	actor: ReadActor & { accessToken: string },
 	now: number,
 ): Promise<ConversationSummary[]> {
+	const { summaries, unmeasured, startedByViewer } = await fetchParticipatingConversations(
+		actor,
+		now,
+	);
+	// The visibility rule applied at the source, exactly where the fixture path applies it — before
+	// any partition, filter or sort. A thread surfaces in a LIST once it holds a message, or at once
+	// for the person who STARTED it: they just asked for it, and a conversation that vanished from the
+	// lane until they wrote in it read as one that had failed to start. Everyone else it was started
+	// with still sees it only when there is something in it, so an empty thread never lands in a
+	// stranger's inbox. A thread whose tail could not be READ is exempt: we do not know it is empty,
+	// and a transient failure must not silently delete a conversation from someone's inbox.
+	return summaries.filter((c) =>
+		c.messageCount > 0 || unmeasured.has(c.id) || startedByViewer.has(c.id)
+	);
+}
+
+/**
+ * Every thread the viewer participates in, mapped to the inbox projection, with NO visibility rule —
+ * plus the ids whose message tail could not be read. {@link fetchConversations} gates the inbox list
+ * on it; {@link fetchConversation} deliberately does not (see there).
+ */
+async function fetchParticipatingConversations(
+	actor: ReadActor & { accessToken: string },
+	now: number,
+): Promise<
+	{ summaries: ConversationSummary[]; unmeasured: Set<string>; startedByViewer: Set<string> }
+> {
 	const db = commsClient(actor);
 
 	const { data: mine, error: mineErr } = await db
@@ -403,13 +440,15 @@ export async function fetchConversations(
 
 	if (mineErr) throw new Error(`comms.dm_participants read failed: ${mineErr.message}`);
 	const viewerRows = (mine ?? []) as ParticipantRow[];
-	if (viewerRows.length === 0) return [];
+	if (viewerRows.length === 0) {
+		return { summaries: [], unmeasured: new Set(), startedByViewer: new Set() };
+	}
 
 	const threadIds = viewerRows.map((r) => r.thread_id);
 
 	const [threadsRes, rosterRes, tailRes] = await Promise.all([
 		db.from("dm_threads")
-			.select("id, kind, title, created_by_user_id, created_at")
+			.select("id, kind, title, photo_file_id, created_by_user_id, created_at")
 			.in("id", threadIds),
 		// Identity only. The SELECT policy on `comms.dm_participants` is own-row-only precisely so a
 		// co-participant's private state (`is_muted`, `is_archived`, `deleted_at`, `last_read_at`)
@@ -449,25 +488,28 @@ export async function fetchConversations(
 	}
 
 	const viewerByThread = new Map(viewerRows.map((r) => [r.thread_id, r]));
-	const parties = await fetchParties(actor, [...others.values()].flat());
+	const [parties, photos] = await Promise.all([
+		fetchParties(actor, [...others.values()].flat()),
+		// The group photos in one round trip; `get_public_media` answers only for processed public files.
+		fetchPublicMedia(getUserClient(actor.accessToken), threads.map((t) => t.photo_file_id)),
+	]);
 
-	return threads
-		.map((row) =>
-			toConversationSummary(row, {
-				viewer: viewerByThread.get(row.id),
-				otherIds: others.get(row.id) ?? [],
-				parties,
-				last: newest.get(row.id),
-				messageCount: counts.get(row.id) ?? 0,
-				now,
-				viewerId: actor.userId,
-			})
-		)
-		// The visibility rule (`messageCount > 0`) applied at the source, exactly where the fixture
-		// path applies it — before any partition, filter or sort — so an empty thread never surfaces.
-		// A thread whose tail could not be READ is exempt: we do not know it is empty, and a transient
-		// failure must not silently delete a conversation from someone's inbox.
-		.filter((c) => c.messageCount > 0 || unmeasured.has(c.id));
+	const summaries = threads.map((row) =>
+		toConversationSummary(row, {
+			viewer: viewerByThread.get(row.id),
+			otherIds: others.get(row.id) ?? [],
+			parties,
+			last: newest.get(row.id),
+			messageCount: counts.get(row.id) ?? 0,
+			now,
+			viewerId: actor.userId,
+			photoUrl: row.photo_file_id ? mediaUrl(photos.get(row.photo_file_id), "sm") : null,
+		})
+	);
+	const startedByViewer = new Set(
+		threads.filter((t) => t.created_by_user_id === actor.userId).map((t) => t.id),
+	);
+	return { summaries, unmeasured, startedByViewer };
 }
 
 /**
@@ -740,14 +782,23 @@ async function fetchThreadTail(db: SupabaseClient, threadId: string): Promise<Th
 	return { threadId, newest: rows[0], count: rows.length, measured: true };
 }
 
-/** One conversation by thread id, or `null` when the viewer is not a participant. */
+/**
+ * One conversation by thread id, or `null` when the viewer is not a participant.
+ *
+ * Membership is the ONLY gate here — never the inbox's visibility rule. That rule decides what a
+ * LIST shows (a thread nobody has written in stays out of the inbox), but a thread the viewer is in
+ * and addresses directly exists whether or not it has a message yet. Gating this read on it made a
+ * conversation started from the picker (which opens the thread with no message, then navigates to
+ * its uuid) answer "Conversation not found" on its own page, its context panel 404, and the first
+ * message impossible to send from the view the create had just opened.
+ */
 export async function fetchConversation(
 	actor: ReadActor & { accessToken: string },
 	threadId: string,
 	now: number,
 ): Promise<ConversationSummary | null> {
-	const all = await fetchConversations(actor, now);
-	return all.find((c) => c.id === threadId) ?? null;
+	const { summaries } = await fetchParticipatingConversations(actor, now);
+	return summaries.find((c) => c.id === threadId) ?? null;
 }
 
 /**

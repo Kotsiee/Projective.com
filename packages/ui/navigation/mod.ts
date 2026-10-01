@@ -63,6 +63,7 @@ export {
 
 // #region Islands (interactive — hydrate via app wrappers)
 export { MiddleNavSplitter, type MiddleNavSplitterProps } from "./islands/MiddleNavSplitter.tsx";
+export { MiddleNavPanel, type MiddleNavPanelProps } from "./islands/MiddleNavPanel.tsx";
 export { MobileMenu, type MobileMenuProps } from "./islands/MobileMenu.tsx";
 export { TreeNav, type TreeNavNode, type TreeNavProps } from "./islands/TreeNav.tsx";
 // #endregion

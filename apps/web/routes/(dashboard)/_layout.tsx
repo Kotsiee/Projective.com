@@ -10,7 +10,10 @@ import { resolveProjectDetail } from "@web/features/projects/core/detail-ssr.ts"
 import { resolveSessionKind } from "@web/features/projects/core/session-model.ts";
 import { isTaskDetail } from "@web/features/projects/core/task-project.ts";
 import { resolveTaskLane } from "@web/features/projects/core/task-lane-ssr.ts";
-import { channelHeaderFor } from "@web/features/projects/core/channel-header-slot.tsx";
+import {
+	channelHeaderFor,
+	channelPanelFor,
+} from "@web/features/projects/core/channel-header-slot.tsx";
 import { projectHeaderFor } from "@web/features/projects/core/project-header-slot.tsx";
 import { projectFooterFor } from "@web/features/projects/core/project-footer-slot.tsx";
 import { channelFooterFor } from "@web/features/projects/core/channel-footer-slot.tsx";
@@ -23,6 +26,7 @@ import { boardFooterFor } from "@web/features/projects/core/board-footer-slot.ts
 import { timelineFooterFor } from "@web/features/projects/core/timeline-footer-slot.tsx";
 import { conversationHeaderFor } from "@web/features/messaging/core/conversation-header-slot.tsx";
 import { conversationFooterFor } from "@web/features/messaging/core/conversation-footer-slot.tsx";
+import { conversationPanelFor } from "@web/features/messaging/core/conversation-panel-slot.tsx";
 import { messagesLaneFor } from "@web/features/messaging/core/inbox-slots.tsx";
 import { catalogueLaneFor } from "@web/features/catalogue/core/catalogue-lane-slot.tsx";
 import { catalogueFooterFor } from "@web/features/catalogue/core/catalogue-footer-slot.tsx";
@@ -151,6 +155,21 @@ async function middleNavHeaderFor(
 }
 
 /**
+ * Resolve the middle-nav frame's right panel: a one-to-one conversation's context panel on its Chat
+ * tab, or a project channel's details (Task · Stage · Channel) on its Chat view. Exactly one owns the
+ * single panel slot per URL — the two resolvers test disjoint path roots — and every other route
+ * registers none, so the frame has no panel column.
+ */
+async function middleNavPanelFor(
+	url: URL,
+	context: UserContext,
+	actor: ReadActor,
+): Promise<ComponentChildren> {
+	return await conversationPanelFor(url, context, actor) ??
+		(await channelPanelFor(url, context, actor));
+}
+
+/**
  * Resolve the middle-nav lane for a request: the contextual Project Details sidebar on a specific
  * `/projects/{projectId}`, the projects feed on the `/projects` root, else the default section
  * switcher. The feed lane also hosts the Quick-Init create modal, which is why the header's Create
@@ -246,12 +265,13 @@ export default define.page(async function DashboardLayout(ctx) {
 	// The acting reader, derived from the session the middleware hydrated — never from the URL.
 	const actor = readActor(ctx);
 
-	// Resolved together rather than in series: the three slots are independent, and awaiting each
-	// behind the last would add all three latencies to every dashboard navigation.
-	const [lane, middleNavHeader, middleNavFooter] = await Promise.all([
+	// Resolved together rather than in series: the four slots are independent, and awaiting each
+	// behind the last would add all four latencies to every dashboard navigation.
+	const [lane, middleNavHeader, middleNavFooter, middleNavPanel] = await Promise.all([
 		laneFor(ctx.url, context, actor),
 		middleNavHeaderFor(ctx.url, context, actor),
 		middleNavFooterFor(ctx.url, context, actor),
+		middleNavPanelFor(ctx.url, context, actor),
 	]);
 
 	return (
@@ -263,6 +283,7 @@ export default define.page(async function DashboardLayout(ctx) {
 			lane={lane}
 			middleNavHeader={middleNavHeader}
 			middleNavFooter={middleNavFooter}
+			middleNavPanel={middleNavPanel}
 		>
 			{/* Global floating "Pop Out Chat" host — survives navigations, re-seeds from sessionStorage. */}
 			<ChatPopoutHost path={path} />

@@ -7,6 +7,8 @@ import type {
 	ConversationFolderSet,
 	ConversationListPage,
 	ConversationListParams,
+	GroupPhotoInput,
+	GroupPhotoSet,
 	InboxFolder,
 	MessagePage,
 	MessagingRole,
@@ -131,6 +133,17 @@ export const MessagingService = {
 	},
 
 	/** Move a conversation between the viewer's own folders (Primary · Requests · Archived). */
+	/** Set a group's photo from a library still + crop, or clear it with `null`. */
+	setGroupPhoto(
+		id: string,
+		photo: GroupPhotoInput | null,
+	): Promise<MessagingResult<GroupPhotoSet>> {
+		return postMessaging<GroupPhotoSet>(
+			`/api/messaging/conversations/${encodeURIComponent(id)}/photo`,
+			{ photo },
+		);
+	},
+
 	setFolder(id: string, folder: InboxFolder): Promise<MessagingResult<ConversationFolderSet>> {
 		return postMessaging<ConversationFolderSet>(
 			`/api/messaging/conversations/${encodeURIComponent(id)}/folder`,

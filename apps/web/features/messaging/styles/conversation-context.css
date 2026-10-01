@@ -1,34 +1,10 @@
-.msg-thread {
-	display: flex;
-	flex: 1 0 auto;
-	min-block-size: 0;
-}
-.msg-thread__chat {
+/* Docked, the panel's placement, width, pin and visibility belong to the shell (`MiddleNavPanel`);
+   the aside only fills the panel body so its section list scrolls and its rig stays pinned. */
+.msg-ctx-panel {
 	display: flex;
 	flex-direction: column;
 	flex: 1 1 auto;
-	min-inline-size: 0;
-}
-
-.msg-ctx-panel {
-	display: none;
-}
-@media (min-width: 1280px) {
-	.msg-ctx-panel[data-open="true"] {
-		position: sticky;
-		inset-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h));
-		align-self: flex-start;
-		display: flex;
-		flex-direction: column;
-		flex: none;
-		inline-size: 20rem;
-		block-size: calc(
-			100dvh - var(--shell-topbar-h) - var(--shell-midnav-header-h) -
-			var(--msg-ctx-footer-h, var(--shell-midnav-footer-h))
-		);
-		background: var(--surface-1);
-		border-inline-start: var(--hairline);
-	}
+	min-block-size: 0;
 }
 
 .msg-ctx-drawer .ui-drawer__body {

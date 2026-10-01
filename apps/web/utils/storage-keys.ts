@@ -308,10 +308,14 @@ export const LocalKeys = {
 	 */
 	MESSAGES_DENSITY: "pj.local.messages.density",
 	/**
-	 * Whether the conversation context panel stands open beside the thread from 1280px (`"1"` open |
-	 * `"0"` closed). Read after hydration; below 1280px the panel is a drawer that is never persisted.
+	 * Whether the middle-nav frame's right context panel stands docked from 1280px (`"1"` open | `"0"`
+	 * closed) — one preference for every surface that registers a panel (a conversation's context, a
+	 * channel's details), like the lane width. Read after hydration; below 1280px the panel is a drawer
+	 * that is never persisted.
 	 */
-	CONVERSATION_CONTEXT_PANEL: "pj.local.messages.contextPanel",
+	CONTEXT_PANEL_DOCKED: "pj.local.shell.contextPanel",
+	/** Persisted width (px) of the middle-nav frame's right context panel — restored by `MiddleNavPanel`. */
+	CONTEXT_PANEL_WIDTH: "pj.local.shell.contextPanelWidth",
 	/**
 	 * The Message Settings (auto-responses + notification preferences) — a JSON `MessagingSettings` blob.
 	 * A client-side stub until `MESSAGING_BACKEND_LIVE` owns the write path; read after hydration to

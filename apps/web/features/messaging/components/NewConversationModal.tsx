@@ -5,7 +5,8 @@ import { Dialog } from "@projective/ui/feedback";
 import { ContactPicker } from "./ContactPicker.tsx";
 import { closeContactPicker, contactPicker } from "../core/messaging-state.ts";
 import { ContactsService } from "../core/ContactsService.ts";
-import { conversationHref } from "../core/conversation-model.ts";
+import { conversationHref, GROUP_PHOTO_FAILED_NOTICE } from "../core/conversation-model.ts";
+import type { GroupPhotoInput } from "../types/messaging-types.ts";
 
 /**
  * NewConversationModal — the people-picker modal, mounted once by the inbox sidebar and driven by
@@ -20,7 +21,9 @@ import { conversationHref } from "../core/conversation-model.ts";
  *    `conversationId` and created a brand-new group instead of extending the thread — a control
  *    that appeared to work and did something else.
  *
- * A create navigates into the conversation, where the first message lands. On failure the modal
+ * A create navigates into the conversation, where the first message lands. A group photo travels with
+ * the create; the group is made first, so a photo that fails costs only the photo — the conversation
+ * opens with `?notice=group-photo-failed` and its header says so once. On failure the modal
  * STAYS OPEN and returns the message for the picker to render beside the selection that produced
  * it — closing on a silent no-op left the viewer believing a conversation had been started when
  * none had.
@@ -36,7 +39,11 @@ export function NewConversationModal(): JSX.Element {
 	// rather than on the header ×, which is otherwise first in DOM order.
 	const bodyRef = useRef<HTMLDivElement>(null);
 
-	async function confirm(contactIds: string[], groupName?: string): Promise<string | null> {
+	async function confirm(
+		contactIds: string[],
+		groupName?: string,
+		groupPhoto?: GroupPhotoInput,
+	): Promise<string | null> {
 		if (req?.mode === "add" && req.conversationId) {
 			const res = await ContactsService.addMembers({
 				conversationId: req.conversationId,
@@ -52,12 +59,19 @@ export function NewConversationModal(): JSX.Element {
 			return null;
 		}
 
-		const res = await ContactsService.createConversation({ contactIds, groupName });
+		const res = await ContactsService.createConversation({
+			contactIds,
+			groupName,
+			photo: groupPhoto,
+		});
 		if (!res.ok || !res.data) {
 			return res.message ?? "Couldn't start that conversation. Please try again.";
 		}
 		closeContactPicker();
-		navigate(conversationHref(res.data.id));
+		const href = conversationHref(res.data.id);
+		navigate(
+			res.data.photoApplied === false ? `${href}?notice=${GROUP_PHOTO_FAILED_NOTICE}` : href,
+		);
 		return null;
 	}
 

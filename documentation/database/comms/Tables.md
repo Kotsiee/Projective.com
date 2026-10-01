@@ -234,6 +234,13 @@ silence a security or money-movement email. Lifting sets `lifted_at`; nothing is
 
 Containers for 1:1 or group conversations separate from project work.
 
+| Column               | Type                     | Notes |
+| :------------------- | :----------------------- | :---- |
+| `kind`               | `comms.conversation_kind` | `dm` · `group` · `service_inquiry`. |
+| `title`              | text                     | A group's name; NULL for a DM (the counterparty's own name is the title). |
+| `photo_file_id`      | uuid                     | FK → `files.items.id` `ON DELETE SET NULL`. A **group's** own photo — a processed public `avatars` rendition, written only through `comms.set_group_photo` (no client `UPDATE` policy). NULL for a DM (its picture is the counterparty's) and for a group with none; the inbox then paints the group fallback. |
+| `created_by_user_id` | uuid                     | The starter. The inbox LIST shows an empty thread to its starter only (everyone else once it holds a message). |
+
 ### `comms.dm_participants`
 
 Join table mapping users to threads. Only users in this table can access thread history. Every

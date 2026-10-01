@@ -890,6 +890,10 @@ REVOKE ALL ON FUNCTION comms.add_dm_thread_members(uuid, uuid[]) FROM public, an
 
 GRANT EXECUTE ON FUNCTION comms.add_dm_thread_members(uuid, uuid[]) TO authenticated;
 
+REVOKE ALL ON FUNCTION comms.set_group_photo(uuid, uuid) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION comms.set_group_photo(uuid, uuid) TO authenticated;
+
 -- --- inbox folders + hiring requests (00001300: set_dm_inbox_folder / send_request_message) ---
 
 -- Same footing as the group RPCs above: definer writes into dm_participants / dm_messages, so the

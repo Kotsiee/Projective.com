@@ -105,7 +105,7 @@ they govern). `brain.md`/`brain2.md` are redirect stubs — never write to them.
   `// #endregion` groupings; no meta-comments (`// fixed bug`).
 
 ### §8 Resolved decisions & new-conflict rule
-- 128 logged decisions: index in `documentation/reference/decisions/README.md`. Before touching a
+- 130 logged decisions: index in `documentation/reference/decisions/README.md`. Before touching a
   surface, grep the index for it and read the matching decision file.
 - A **new** contradiction between source docs: do not silently pick a side — flag it, add a row to
   the decision log (newest `decisions-*.md` file + index line), and ask a human.

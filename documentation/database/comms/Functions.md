@@ -215,6 +215,22 @@ phantom id is a stale client, not a request. A blank/whitespace title is stored 
 may be unnamed; the inbox titles it after its members). Raises `22023` when fewer than one other
 person survives resolution.
 
+### `comms.set_group_photo(p_thread_id uuid, p_file_id uuid) → jsonb`
+
+Sets — or, with `NULL`, clears — a **group** thread's `photo_file_id`. `SECURITY DEFINER`,
+`search_path = ''`, `EXECUTE` to `authenticated` only. Any undeleted participant may (a group's
+picture is shared furniture, like its name). Refuses `42501` for a stranger, `22023` for a thread that
+is not `kind = 'group'`, and `22023` unless the file is a processed public rendition the CALLER owns
+(`purpose = 'avatar'`, `bucket_id = 'avatars'`, `visibility = 'public'`, `status = 'uploaded'`, not
+deleted) — the same proof `org.set_profile_avatar` demands, so a client cannot point a thread at
+somebody else's file. The photo it replaces is soft-deleted. Returns `{ ok, file_id, previous }`.
+The rendition itself is cut server-side from the caller's library still
+(`packages/backend/services/messaging/live-group-photo.ts`, reusing the profile's `writeRendition`).
+
+**Verified by execution** inside `BEGIN … ROLLBACK` as real roles: a member sets their own file and
+replaces it (previous soft-deleted); another member clears it; somebody else's file, a DM and a
+stranger are each refused; `anon` holds no `EXECUTE`.
+
 ### `comms.add_dm_thread_members(p_thread_id uuid, p_member_ids uuid[]) → integer`
 
 Adds people to a thread the caller is an **undeleted participant** of (`comms.is_dm_participant`),

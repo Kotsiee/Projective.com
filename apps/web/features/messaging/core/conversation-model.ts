@@ -1,4 +1,6 @@
 import type { UserContext } from "@projective/types/auth";
+import { DEFAULT_AVATAR_URL } from "@projective/types/user";
+import { CONVERSATION_PICTURE_FALLBACK_URL } from "@projective/types/messaging";
 import type {
 	ConversationKind,
 	ConversationRelation,
@@ -20,6 +22,22 @@ export const MESSAGES_ROOT = "/messages";
 /** The route for a conversation: `/messages/{conversationId}`. */
 export function conversationHref(id: string): string {
 	return `${MESSAGES_ROOT}/${encodeURIComponent(id)}`;
+}
+// #endregion
+
+// #region Picture
+/**
+ * The one-shot `?notice=` code a conversation opens with when its group was created but the photo
+ * chosen for it could not be set. The header says so once and strips it.
+ */
+export const GROUP_PHOTO_FAILED_NOTICE = "group-photo-failed";
+
+/**
+ * The image a conversation's picture falls back to when it has none (or it fails to load): a group's
+ * stand-in picture, or — for a DM, whose picture is the counterparty — the person default.
+ */
+export function conversationFallbackImage(kind: ConversationKind): string {
+	return kind === "group" ? CONVERSATION_PICTURE_FALLBACK_URL : DEFAULT_AVATAR_URL;
 }
 // #endregion
 
