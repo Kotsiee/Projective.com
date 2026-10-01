@@ -37,7 +37,6 @@ export function NavItem(
 		>
 			<span class="ui-nav-item__icon" aria-hidden="true">
 				{icon}
-				{dot ? <span class="ui-nav-item__dot" /> : null}
 			</span>
 			<span class="ui-nav-item__label">{label}</span>
 		</a>

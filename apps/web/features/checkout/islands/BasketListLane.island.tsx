@@ -458,11 +458,11 @@ export default function BasketListLane(props: BasketListLaneProps): JSX.Element 
 				})()}
 
 				<div class="bsk-lane__railfoot">
-					<LaneIconButton
+					<LaneCollapseButton
+						collapsed
 						icon={CollapseGlyph}
-						label="Expand lane"
 						tooltipPlacement="right"
-						onClick={() => setCollapsed(false)}
+						onToggle={() => setCollapsed(false)}
 					/>
 				</div>
 			</div>

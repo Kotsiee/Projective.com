@@ -66,25 +66,9 @@
 	background: var(--surface-2);
 }
 .msg-conv[data-active="true"] {
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	background: var(--surface-3);
 }
 
-/*
- * Active needs a channel that is not hue. The tint alone put this row a single low-alpha step away
- * from :hover, which is the one comparison a CVD or greyscale overlay flattens completely — and the
- * font-weight channel is already spoken for by [data-unread], so reusing it would collapse two
- * different meanings onto one mark. The leading bar is the mark the COLLAPSED rail beside it already
- * uses (`.msg-rail__btn--avatar[data-active]`), so expanded and collapsed now agree.
- */
-.msg-conv[data-active="true"]::after {
-	content: "";
-	position: absolute;
-	inset-inline-start: 2px;
-	inset-block: 10px;
-	inline-size: 3px;
-	border-radius: var(--radius-full);
-	background: var(--primary);
-}
 .msg-conv__link {
 	flex: 1;
 	min-inline-size: 0;
@@ -329,19 +313,6 @@
 	background: var(--primary);
 	border: 2px solid var(--surface-1);
 	z-index: 1;
-}
-/*
- * The rail's expand toggle. `--toggle` shipped as a class hook with no rule anywhere in the repo,
- * so the one control that gets the viewer OUT of the collapsed rail looked identical to the eight
- * conversation avatars above it. It now reads as chrome: quieter at rest, and separated from the
- * list by the group's own hairline rather than sitting in it.
- */
-.msg-rail__btn--toggle {
-	color: var(--text-secondary);
-	opacity: 0.8;
-}
-.msg-rail__btn--toggle:hover {
-	opacity: 1;
 }
 /* #endregion */
 

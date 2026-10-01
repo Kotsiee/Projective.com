@@ -149,7 +149,6 @@ export default function ShellSidebarIsland(
 							>
 								{renderSublinkLead(sub)}
 								<span class="ui-sidebar-sublink__text">{sub.label}</span>
-								{sub.dot ? <span class="ui-nav-item__dot" /> : null}
 								{sub.dot ? <span class="ui-visually-hidden">has updates</span> : null}
 							</a>
 						</li>

@@ -819,8 +819,7 @@
 }
 
 .cat-rail__new,
-.cat-rail__item,
-.cat-rail__toggle {
+.cat-rail__item {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -848,15 +847,13 @@
 	background: var(--primary-hover, color-mix(in srgb, var(--primary) 88%, var(--on-surface)));
 }
 
-.cat-rail__item:hover,
-.cat-rail__toggle:hover {
+.cat-rail__item:hover {
 	background: var(--surface-2);
 	color: var(--on-surface);
 }
 
 .cat-rail__new:focus-visible,
-.cat-rail__item:focus-visible,
-.cat-rail__toggle:focus-visible {
+.cat-rail__item:focus-visible {
 	outline: none;
 	box-shadow: none;
 }

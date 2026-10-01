@@ -379,22 +379,31 @@ export interface LaneCollapseButtonProps {
 /**
  * LaneCollapseButton — the lane's collapse/expand control, reusing the global rail's morphing glyph
  * and its divider slide so the two toggles read as the same control at two scales.
+ *
+ * Render it in BOTH presentations (the expanded footer and the collapsed rail): the visible button is
+ * docked to the `.ui-splitter`'s block-end/inline-start corner, so every instance lands on the same
+ * screen coordinates regardless of lane width, density, or an in-flight width transition. The
+ * surrounding slot stays in flow to reserve the button's footprint in its host layout.
  */
 export function LaneCollapseButton(props: LaneCollapseButtonProps): JSX.Element {
 	const label = props.collapsed ? "Expand lane" : "Collapse lane";
 	return (
-		<Tooltip content={label} placement={props.tooltipPlacement ?? "top"}>
-			<button
-				type="button"
-				class="ui-lane-collapse"
-				data-collapsed={props.collapsed ? "true" : undefined}
-				aria-label={label}
-				aria-pressed={props.collapsed}
-				onClick={props.onToggle}
-			>
-				{props.icon}
-			</button>
-		</Tooltip>
+		<span class="ui-lane-collapse-slot">
+			<span class="ui-lane-collapse-dock">
+				<Tooltip content={label} placement={props.tooltipPlacement ?? "top"}>
+					<button
+						type="button"
+						class="ui-lane-collapse"
+						data-collapsed={props.collapsed ? "true" : undefined}
+						aria-label={label}
+						aria-expanded={!props.collapsed}
+						onClick={props.onToggle}
+					>
+						{props.icon}
+					</button>
+				</Tooltip>
+			</span>
+		</span>
 	);
 }
 // #endregion

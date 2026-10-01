@@ -32,13 +32,13 @@
 	overflow: hidden;
 }
 
-.ui-nav-item:hover {
+.ui-nav-item:hover:not(.ui-nav-item--active) {
 	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
 .ui-nav-item--active {
 	background: var(--primary);
-	color: var(--on-surface);
+	color: var(--on-primary);
 }
 
 .ui-nav-item:focus-visible {
@@ -71,32 +71,6 @@
 
 .ui-nav-item--active .ui-nav-item__label {
 	font-weight: 600;
-}
-
-/* Update indicator — a small pulsing dot on the icon corner. A visual color state, never a count
-   (Part D). The visually-hidden sibling text carries the meaning for assistive tech (§B.4). */
-.ui-nav-item__dot {
-	position: absolute;
-	inset-block-start: -1px;
-	inset-inline-end: -1px;
-	inline-size: 8px;
-	block-size: 8px;
-	border-radius: var(--radius-full);
-	background: var(--primary);
-	box-shadow: 0 0 0 2px var(--surface-2);
-	/* ring against the sidebar surface */
-	animation: ui-nav-dot-pulse 2.4s var(--ease-standard) infinite;
-}
-
-@keyframes ui-nav-dot-pulse {
-	0%,
-	100% {
-		opacity: 1;
-	}
-
-	50% {
-		opacity: 0.4;
-	}
 }
 
 /* Collapsed rail: square blocks (--shell-nav-block) with one large centered icon, labels hidden,

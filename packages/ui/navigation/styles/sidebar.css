@@ -185,13 +185,6 @@
 	overflow: hidden;
 }
 
-/* Workspace update-dot sits at the trailing edge of the row, vertically centered (not on an icon). */
-.ui-sidebar-sublink .ui-nav-item__dot {
-	inset-block-start: 50%;
-	inset-inline-end: var(--space-2);
-	transform: translateY(-50%);
-}
-
 .ui-sidebar-sublink:hover {
 	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 	color: var(--on-surface);

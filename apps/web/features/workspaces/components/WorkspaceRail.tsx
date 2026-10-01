@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { Tooltip } from "@projective/ui/feedback";
+import { LaneCollapseButton } from "@projective/ui/navigation";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import {
 	type KindCopy,
@@ -137,18 +138,12 @@ export function WorkspaceRail(props: WorkspaceRailProps): JSX.Element {
 					</>
 				)}
 
-				<Tooltip content="Expand lane" placement="right">
-					<button
-						type="button"
-						class="wsp-rail__toggle"
-						data-collapsed="true"
-						aria-label="Expand lane"
-						aria-pressed="true"
-						onClick={props.onExpand}
-					>
-						<SidebarToggleIcon />
-					</button>
-				</Tooltip>
+				<LaneCollapseButton
+					collapsed
+					icon={<SidebarToggleIcon />}
+					tooltipPlacement="right"
+					onToggle={props.onExpand}
+				/>
 			</div>
 		</nav>
 	);

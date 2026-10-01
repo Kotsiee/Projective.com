@@ -101,8 +101,7 @@
 	margin-block-start: auto;
 }
 
-.cal-rail__item,
-.cal-rail__toggle {
+.cal-rail__item {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -116,14 +115,12 @@
 	cursor: pointer;
 }
 
-.cal-rail__item:hover,
-.cal-rail__toggle:hover {
+.cal-rail__item:hover {
 	background: var(--surface-2);
 	color: var(--on-surface);
 }
 
-.cal-rail__item:focus-visible,
-.cal-rail__toggle:focus-visible {
+.cal-rail__item:focus-visible {
 	outline: none;
 }
 

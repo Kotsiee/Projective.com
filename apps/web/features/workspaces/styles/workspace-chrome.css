@@ -498,8 +498,7 @@ words — a ring colour on its own is not a channel. */
 	overflow-y: auto;
 }
 
-.wsp-rail__item,
-.wsp-rail__toggle {
+.wsp-rail__item {
 	position: relative;
 	display: inline-flex;
 	align-items: center;
@@ -516,8 +515,7 @@ words — a ring colour on its own is not a channel. */
 	cursor: pointer;
 }
 
-.wsp-rail__item:hover,
-.wsp-rail__toggle:hover {
+.wsp-rail__item:hover {
 	background: var(--surface-3);
 	color: var(--on-surface);
 }
@@ -527,8 +525,7 @@ words — a ring colour on its own is not a channel. */
 	color: var(--wsp-kind-ink);
 }
 
-.wsp-rail__item:focus-visible,
-.wsp-rail__toggle:focus-visible {
+.wsp-rail__item:focus-visible {
 	outline: none;
 }
 

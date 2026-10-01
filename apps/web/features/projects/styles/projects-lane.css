@@ -1119,6 +1119,10 @@
 	flex-direction: column;
 }
 
+.ui-splitter[data-mode="collapsed"] .proj-lane .ui-lane-collapse-slot {
+	order: 1;
+}
+
 .ui-splitter[data-mode="collapsed"] .proj-lane__create {
 	padding: 0.5rem;
 }

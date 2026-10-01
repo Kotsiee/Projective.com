@@ -1,5 +1,6 @@
 import type { JSX } from "preact";
 import { Tooltip } from "@projective/ui/feedback";
+import { LaneCollapseButton } from "@projective/ui/navigation";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { CatalogueIcon, KindIcon, PlusIcon } from "./catalogue-glyphs.tsx";
 import type { ListingSummary } from "../types/catalogue-types.ts";
@@ -54,17 +55,12 @@ export function CatalogueRail(
 			</div>
 
 			<div class="cat-rail__bottom">
-				<Tooltip content="Expand lane" placement="right">
-					<button
-						type="button"
-						class="cat-rail__toggle"
-						data-collapsed="true"
-						aria-label="Expand lane"
-						onClick={onExpand}
-					>
-						<SidebarToggleIcon />
-					</button>
-				</Tooltip>
+				<LaneCollapseButton
+					collapsed
+					icon={<SidebarToggleIcon />}
+					tooltipPlacement="right"
+					onToggle={onExpand}
+				/>
 			</div>
 		</div>
 	);

@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { Avatar } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
+import { LaneCollapseButton } from "@projective/ui/navigation";
 import { MessagingIcon } from "./messaging-glyphs.tsx";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { conversationHref } from "../core/conversation-model.ts";
@@ -72,18 +73,12 @@ export function MessagesRail(props: MessagesRailProps): JSX.Element {
 						<MessagingIcon name="settings" />
 					</button>
 				</Tooltip>
-				<Tooltip content="Expand lane" placement="right">
-					<button
-						type="button"
-						class="msg-rail__btn msg-rail__btn--toggle"
-						data-collapsed="true"
-						aria-label="Expand lane"
-						aria-pressed="true"
-						onClick={props.onExpand}
-					>
-						<SidebarToggleIcon />
-					</button>
-				</Tooltip>
+				<LaneCollapseButton
+					collapsed
+					icon={<SidebarToggleIcon />}
+					tooltipPlacement="right"
+					onToggle={props.onExpand}
+				/>
 			</div>
 		</nav>
 	);

@@ -286,16 +286,12 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 							<Icon name="plus" />
 						</button>
 					</Tooltip>
-					<Tooltip content="Expand lane" placement="right">
-						<button
-							type="button"
-							class="cal-rail__toggle"
-							aria-label="Expand lane"
-							onClick={() => setCollapsed(false)}
-						>
-							<SidebarToggleIcon />
-						</button>
-					</Tooltip>
+					<LaneCollapseButton
+						collapsed
+						icon={<SidebarToggleIcon />}
+						tooltipPlacement="right"
+						onToggle={() => setCollapsed(false)}
+					/>
 				</div>
 			</div>
 

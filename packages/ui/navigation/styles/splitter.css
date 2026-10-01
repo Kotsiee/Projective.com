@@ -40,7 +40,7 @@
 	position: relative;
 	flex: 0 0 auto;
 	inline-size: 4px;
-	cursor: col-resize;
+	cursor: copy;
 	background: transparent;
 	touch-action: none;
 }

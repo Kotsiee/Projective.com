@@ -371,16 +371,12 @@ export default function FilesLane(props: FilesLaneProps): JSX.Element {
 							</span>
 						</Tooltip>
 					)}
-					<Tooltip content="Expand lane" placement="right">
-						<button
-							type="button"
-							class="fh-rail__item"
-							aria-label="Expand lane"
-							onClick={() => setLaneCollapsed(false)}
-						>
-							<SidebarToggleIcon />
-						</button>
-					</Tooltip>
+					<LaneCollapseButton
+						collapsed
+						icon={<SidebarToggleIcon />}
+						tooltipPlacement="right"
+						onToggle={() => setLaneCollapsed(false)}
+					/>
 				</div>
 			</div>
 

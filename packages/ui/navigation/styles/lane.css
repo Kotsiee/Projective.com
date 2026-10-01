@@ -374,12 +374,48 @@
 /* #endregion */
 
 /* #region Collapse toggle — reuses the app rail's morphing glyph, scoped to THIS lane's state */
+/*
+ * Stationary by construction. Every instance (expanded footer, collapsed rail) docks to the
+ * `.ui-splitter`'s block-end/inline-start corner — the one point of the lane that neither the width
+ * transition nor the density swap ever moves. The inline inset centres the button on the collapsed
+ * rail (`--shell-lane-rail-w`, a per-lane constant that does not change with the mode), so the
+ * expanded and collapsed toggles share one hitbox and repeated clicks never need the pointer to move.
+ * The slot stays in flow to keep the footprint the host layout was built around.
+ */
+.ui-splitter {
+	--ui-lane-collapse-size: 2rem;
+	--ui-lane-collapse-inset-inline: calc(
+		(var(--shell-lane-rail-w, 56px) - var(--ui-lane-collapse-size)) / 2
+	);
+	--ui-lane-collapse-inset-block: var(--space-3);
+}
+
+.ui-lane-collapse-slot {
+	flex: none;
+	display: inline-block;
+	inline-size: var(--ui-lane-collapse-size);
+	block-size: var(--ui-lane-collapse-size);
+}
+
+.ui-lane-collapse-dock {
+	position: absolute;
+	inset-inline-start: var(--ui-lane-collapse-inset-inline);
+	inset-block-end: var(--ui-lane-collapse-inset-block);
+	z-index: var(--z-raised);
+	display: inline-flex;
+}
+
+.ui-lane-footer:has(> .ui-lane-collapse-slot:first-child) {
+	padding-inline-start: var(--ui-lane-collapse-inset-inline);
+}
+
 .ui-lane-collapse {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	inline-size: 2rem;
-	block-size: 2rem;
+	inline-size: var(--ui-lane-collapse-size, 2rem);
+	block-size: var(--ui-lane-collapse-size, 2rem);
+	padding: 0;
 	color: var(--text-secondary);
 	background: transparent;
 	border: none;
