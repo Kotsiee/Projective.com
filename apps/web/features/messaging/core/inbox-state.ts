@@ -4,8 +4,10 @@ import type {
 	ConversationRelation,
 	ConversationSummary,
 	ConversationView,
+	InboxFolder,
 	MessagingRole,
 } from "../types/messaging-types.ts";
+import { folderOverrides, withFolder } from "./folder-moves.ts";
 
 /**
  * inbox-state — the cross-island signal bridge for the `/messages` ROOT, where the inbox is composed
@@ -21,15 +23,19 @@ import type {
  * use. **The body is the single fetch owner**: every other region writes intent here and the body
  * reacts, so there is exactly one request path and no region can desynchronise from the data.
  *
- * Local per-conversation state (star · archive · mute · soft-delete) also lives here, because both the
- * body rows and the lane counts must reflect an optimistic toggle instantly.
+ * Local per-conversation state (star · mute · soft-delete) also lives here, because both the body rows
+ * and the lane counts must reflect an optimistic toggle instantly. Folder moves are server-backed and
+ * layered on from `folder-moves`.
  */
 
 // #region Query intent (written by lane + header, read by body)
 /** The acting inbox view (freelancer / client / business) — drives the relation facet set. */
 export const inboxRole = signal<MessagingRole>("freelancer");
 
-/** The partition: the whole inbox, or one of its saved slices. */
+/** The inbox folder on screen — Primary · Requests · Archived. */
+export const inboxFolder = signal<InboxFolder>("primary");
+
+/** Within the folder: everything, or only the starred conversations. */
 export const inboxView = signal<ConversationView>("inbox");
 
 /** Unread-only narrowing, applied on top of the partition. */
@@ -82,7 +88,6 @@ export const inboxTotal = signal(0);
 /** Viewer-local overrides layered over the server row. */
 export interface ConvPref {
 	starred?: boolean;
-	archived?: boolean;
 	muted?: boolean;
 	deleted?: boolean;
 }
@@ -99,27 +104,28 @@ export function mergePref(
 	return {
 		...c,
 		starred: p.starred ?? c.starred,
-		archived: p.archived ?? c.archived,
 		muted: p.muted ?? c.muted,
 	};
 }
 
-/** The pref-merged, non-deleted set — the basis for every count and every partition. */
+/** The pref-merged, folder-moved, non-deleted set — the basis for every count and every partition. */
 export const inboxMerged = computed<ConversationSummary[]>(() => {
 	const prefs = inboxPrefs.value;
-	return inboxAll.value.filter((c) => !prefs[c.id]?.deleted).map((c) => mergePref(c, prefs));
+	const moved = folderOverrides.value;
+	return inboxAll.value.filter((c) => !prefs[c.id]?.deleted).map((c) =>
+		withFolder(mergePref(c, prefs), moved)
+	);
 });
 // #endregion
 
 // #region Pure partition / narrowing (shared by the body and the counts)
-/** Slice the merged set by partition. Archived is its own space; the others exclude archived. */
+/** Slice the merged set to one folder, and to its starred conversations when that view is on. */
 export function partitionOf(
 	list: readonly ConversationSummary[],
+	folder: InboxFolder,
 	view: ConversationView,
 ): ConversationSummary[] {
-	if (view === "archived") return list.filter((c) => c.archived);
-	if (view === "starred") return list.filter((c) => c.starred && !c.archived);
-	return list.filter((c) => !c.archived);
+	return list.filter((c) => c.folder === folder && (view !== "starred" || c.starred));
 }
 
 /** Apply the lane's relation facet and the header's unread narrowing to a partition. */
@@ -141,7 +147,7 @@ export function narrow(
  */
 export function visibleConversations(): ConversationSummary[] {
 	return narrow(
-		partitionOf(inboxMerged.value, inboxView.value),
+		partitionOf(inboxMerged.value, inboxFolder.value, inboxView.value),
 		inboxRelation.value,
 		inboxUnreadOnly.value,
 	);

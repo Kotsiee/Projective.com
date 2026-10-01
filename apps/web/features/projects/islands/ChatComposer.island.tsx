@@ -131,6 +131,11 @@ export interface ChatComposerProps {
 	 * payload. Hosts that only care *that* a send happened may ignore the argument.
 	 */
 	onSend?: (payload: ComposerPayload) => void;
+	/**
+	 * Focus the message field once on arrival, for a precise pointer only — on touch it would raise the
+	 * keyboard over the thread being read. Never takes focus the viewer has already placed elsewhere.
+	 */
+	autoFocus?: boolean;
 }
 
 /** The primary site sidebar the Plus popover must never slide under (edge-detection). */
@@ -192,8 +197,15 @@ function voiceStatus(phase: RecorderPhase, durationMs: number): string {
 }
 
 export default function ChatComposer(
-	{ projectId, channelId, scope = "project", notices = "inline", onReady, onSend }:
-		ChatComposerProps,
+	{
+		projectId,
+		channelId,
+		scope = "project",
+		notices = "inline",
+		onReady,
+		onSend,
+		autoFocus = false,
+	}: ChatComposerProps,
 ): JSX.Element {
 	// #region State
 	const text = useSignal("");
@@ -646,6 +658,16 @@ export default function ChatComposer(
 	// this only has to clean up the attachment previews the island itself minted.
 	useEffect(() => () => {
 		for (const a of attachments.value) releasePreview(a);
+	}, []);
+
+	useEffect(() => {
+		if (!autoFocus || !globalThis.matchMedia?.("(pointer: fine)").matches) return;
+		const timer = setTimeout(() => {
+			const active = document.activeElement;
+			if (active && active !== document.body) return;
+			auto.ref.current?.focus({ preventScroll: true });
+		}, 0);
+		return () => clearTimeout(timer);
 	}, []);
 
 	// Expose the imperative handle so an external drop zone (the pop-out popover) can enqueue files.

@@ -1,16 +1,19 @@
-import type {
-	ContactList,
-	ConversationDetail,
-	ConversationListPage,
-	ConversationListParams,
-	ConversationParticipant,
-	ConversationRelation,
-	ConversationSummary,
-	MessagingContact,
+import {
+	compactActivityLabel,
+	type ContactList,
+	type ConversationDetail,
+	type ConversationListPage,
+	type ConversationListParams,
+	type ConversationParticipant,
+	type ConversationRelation,
+	type ConversationSummary,
+	type InboxFolder,
+	type MessagingContact,
 } from "@projective/types/messaging";
 import { mockAvatar, mockCover } from "../../mocks/assets.ts";
 import { findProfile } from "../profile/profile-fixtures.ts";
 import { findCreatedConversation } from "./conversation-store.ts";
+import { inPartition } from "./partition.ts";
 
 /**
  * messaging conversation fixtures — the fat {@link MessagingBackendService}'s in-memory answer for the
@@ -35,6 +38,8 @@ const LENA = FACE("photo-1544005313-94ddf0286df2");
 const OMAR = FACE("photo-1506794778202-cad84cf45f1d");
 const SOFIA = FACE("photo-1534528741775-53994a69daeb");
 const NOAH = FACE("photo-1531427186611-ecfd6d936c79");
+const MARCUS = FACE("photo-1519085360753-af0119f7cbe7");
+const IVY = FACE("photo-1524504388940-b1c1722653e1");
 const GROUP =
 	mockCover("photo-1522071820081-009f0129c71c", 96, 96);
 
@@ -53,6 +58,9 @@ const PRD_UI_KIT = "p_ui_kit";
 // #region Deterministic activity label (declared before the corpus — `ALL` uses it at module init)
 /** Fixed reference "now" (shared with the messaging message fixtures) — no `Date.now()`. */
 const NOW = Date.parse("2026-07-17T16:20:00Z");
+
+/** The instant the corpus is written relative to — the stub path's clock for anything it dates. */
+export const CORPUS_NOW = NOW;
 const DAY = 86_400_000;
 const WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MO = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -111,6 +119,8 @@ interface Seed {
 	updatedAt: string;
 	unread?: boolean;
 	starred?: boolean;
+	/** The viewer's folder; `archived: true` alone implies `archived`. Defaults to Primary. */
+	folder?: InboxFolder;
 	archived?: boolean;
 	muted?: boolean;
 	messageCount: number;
@@ -165,6 +175,33 @@ const SEEDS: readonly Seed[] = [
 		messageCount: 21,
 		serviceId: SVC_MOTION,
 		serviceName: "Motion System",
+	},
+	// —— Requests (a hiring request from somebody the viewer does not follow back) ———————
+	{
+		id: "dm-marcus",
+		kind: "dm",
+		relation: "client",
+		title: "Marcus Reed",
+		avatar: MARCUS,
+		participants: [person("marcus", "Marcus Reed", MARCUS, "marcus", "Prospective client")],
+		preview: "Marcus: Hi Ahmed — I'd love you on the Atlas portal build.",
+		updatedAt: "2026-07-17T13:05:00Z",
+		unread: true,
+		folder: "requests",
+		messageCount: 1,
+	},
+	{
+		id: "dm-ivy",
+		kind: "dm",
+		relation: "dm",
+		title: "Ivy Chen",
+		avatar: IVY,
+		participants: [person("ivy", "Ivy Chen", IVY, "ivy", "Applicant", true)],
+		preview: "Ivy: I've applied for the Documentation site stage.",
+		updatedAt: "2026-07-16T20:40:00Z",
+		unread: true,
+		folder: "requests",
+		messageCount: 1,
 	},
 	// —— Service / product inquiries (inbound prospective clients) ————————————————————
 	{
@@ -334,6 +371,7 @@ const SEEDS: readonly Seed[] = [
 
 /** Materialise a seed into a full {@link ConversationSummary}. */
 function toSummary(seed: Seed): ConversationSummary {
+	const folder: InboxFolder = seed.folder ?? (seed.archived ? "archived" : "primary");
 	return {
 		id: seed.id,
 		kind: seed.kind,
@@ -343,10 +381,12 @@ function toSummary(seed: Seed): ConversationSummary {
 		participants: seed.participants,
 		preview: seed.preview,
 		lastActivityLabel: fmtActivity(Date.parse(seed.updatedAt)),
+		lastActivityShort: compactActivityLabel(seed.updatedAt, NOW),
 		updatedAt: seed.updatedAt,
 		unread: seed.unread ?? false,
 		starred: seed.starred ?? false,
-		archived: seed.archived ?? false,
+		folder,
+		archived: folder === "archived",
 		muted: seed.muted ?? false,
 		messageCount: seed.messageCount,
 		serviceId: seed.serviceId ?? null,
@@ -407,18 +447,19 @@ const DEFAULT_LIMIT = 30;
 
 /**
  * Resolve a filtered, paged, most-recently-active-first page of conversations. Enforces the visibility
- * rule (`messageCount > 0`), the archived/starred partition, unread + free-text + advanced filters, and
- * simple id-cursor paging.
+ * rule (`messageCount > 0`), the folder and archived/starred partition, unread + free-text + advanced
+ * filters, and simple id-cursor paging. `overlay` applies the viewer's own per-conversation state
+ * (their stored folders) BEFORE anything partitions on it.
  */
-export function findConversations(params: ConversationListParams): ConversationListPage {
-	let list = ALL.filter((c) => c.messageCount > 0);
+export function findConversations(
+	params: ConversationListParams,
+	overlay: (c: ConversationSummary) => ConversationSummary = (c) => c,
+): ConversationListPage {
+	let list = ALL.filter((c) => c.messageCount > 0).map(overlay);
 
-	// Partition: an explicit view scopes to it; when omitted the FULL set is returned (incl. archived) so
-	// the client can overlay its local star/archive prefs + view partitioning without a refetch (the
-	// sidebar owns those optimistically until the backend does — task §2A).
-	if (params.view === "archived") list = list.filter((c) => c.archived);
-	else if (params.view === "starred") list = list.filter((c) => c.starred && !c.archived);
-	else if (params.view === "inbox") list = list.filter((c) => !c.archived);
+	// Partition: an explicit folder or view scopes to it; when both are omitted the FULL set is returned
+	// (every folder) so the lane can count each folder and partition locally without a refetch.
+	list = list.filter((c) => inPartition(c, params));
 
 	if (params.unread) list = list.filter((c) => c.unread);
 	if (params.q) list = list.filter((c) => matchesQuery(c, params.q!));
@@ -529,9 +570,11 @@ function synthesizeDm(id: string, contact: MessagingContact): ConversationSummar
 		],
 		preview: "",
 		lastActivityLabel: "Now",
+		lastActivityShort: "now",
 		updatedAt: new Date(NOW).toISOString(),
 		unread: false,
 		starred: false,
+		folder: "primary",
 		archived: false,
 		muted: false,
 		messageCount: 0,
@@ -555,9 +598,11 @@ function synthesizeGroup(id: string): ConversationSummary {
 		participants: [],
 		preview: "",
 		lastActivityLabel: "Now",
+		lastActivityShort: "now",
 		updatedAt: new Date(NOW).toISOString(),
 		unread: false,
 		starred: false,
+		folder: "primary",
 		archived: false,
 		muted: false,
 		messageCount: 0,
@@ -571,9 +616,13 @@ function synthesizeGroup(id: string): ConversationSummary {
 }
 
 /** The single-conversation metadata for the conversation view header + Members tab, or `null`. */
-export function findConversationDetail(id: string): ConversationDetail | null {
-	const c = findConversationSummary(id);
-	if (!c) return null;
+export function findConversationDetail(
+	id: string,
+	overlay: (c: ConversationSummary) => ConversationSummary = (c) => c,
+): ConversationDetail | null {
+	const found = findConversationSummary(id);
+	if (!found) return null;
+	const c = overlay(found);
 	const memberCount = c.participants.length + 1; // + the viewer
 	const sub = c.kind === "group"
 		? `${memberCount} members`
@@ -591,6 +640,7 @@ export function findConversationDetail(id: string): ConversationDetail | null {
 		starred: c.starred,
 		muted: c.muted,
 		archived: c.archived,
+		folder: c.folder,
 		// Anyone may add members to a group; either party of a DM may spin one up (task §2B).
 		canAddMembers: true,
 		serviceId: c.serviceId,

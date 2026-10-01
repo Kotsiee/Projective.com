@@ -14,6 +14,7 @@ export function toProjectsBody<T>(result: ServiceResult<T>): ProjectsResult<T> {
 		ok: result.ok,
 		message: result.message,
 		errors: result.errors,
+		details: result.details,
 		data: result.data,
 	};
 }

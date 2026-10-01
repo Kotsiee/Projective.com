@@ -205,6 +205,12 @@ export interface ServerEnv {
 	 * anything else — including every request while this is unset or shorter than 32 characters.
 	 */
 	financeCronSecret: string | undefined;
+	/**
+	 * The Google Safe Browsing (v4 Lookup) API key a link's reputation is checked against, from
+	 * `LINK_SAFETY_API_KEY`. Server-only. The `XXXX-XXXX` placeholder counts as absent
+	 * (`files/link-reputation.ts`), and an absent key skips the reputation check rather than failing it.
+	 */
+	linkSafetyApiKey: string | undefined;
 }
 
 /** Resolve the current server environment from the canonical Environment Variable Contract names. */
@@ -236,5 +242,6 @@ export function serverEnv(): ServerEnv {
 		stripeApiBase: firstEnv("STRIPE_API_BASE"),
 		stripeThinWebhookSecret: firstEnv("STRIPE_THIN_WEBHOOK_SECRET"),
 		financeCronSecret: firstEnv("FINANCE_CRON_SECRET"),
+		linkSafetyApiKey: firstEnv("LINK_SAFETY_API_KEY"),
 	};
 }

@@ -1,10 +1,10 @@
-import type { JSX, RefObject } from "preact";
+import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { Avatar } from "@projective/ui/display";
-import { Popover } from "@projective/ui/feedback";
 import { MessagingIcon } from "./messaging-glyphs.tsx";
+import { ConversationMenu } from "./ConversationMenu.tsx";
 import { contextIsOffering, contextLabel, splitPreview } from "../core/inbox-model.ts";
-import type { ConversationSummary } from "../types/messaging-types.ts";
+import type { ConversationSummary, InboxFolder } from "../types/messaging-types.ts";
 import { DEFAULT_AVATAR_URL } from "@projective/types/user";
 
 /**
@@ -16,9 +16,10 @@ import { DEFAULT_AVATAR_URL } from "@projective/types/user";
  * instead of clipping at 47%, the engagement context (`serviceName` / `productName` / `entityName`)
  * finally renders, and the state marks get their own trailing column instead of stealing from the text.
  *
- * The row is one anchor with a trailing action cluster as its SIBLING (never nested) — the kebab is
+ * The row is one anchor with a trailing action cluster as its SIBLING (never nested) — the `…` menu is
  * absolutely positioned over the metadata column so it costs the text nothing at rest, and swaps with
- * the timestamp on hover/focus rather than reserving width beside it.
+ * the timestamp on hover/focus rather than reserving width beside it. A coarse pointer cannot hover,
+ * so there the menu takes its own trailing track and stays visible.
  */
 
 // #region Props
@@ -29,14 +30,11 @@ export interface InboxRowProps {
 	/** `compact` drops the context line and the second preview line. */
 	compact: boolean;
 	onToggleStar: (id: string) => void;
-	onToggleArchive: (id: string) => void;
+	onMove: (id: string, folder: InboxFolder) => void;
 	onToggleMute: (id: string) => void;
 	onDelete: (id: string) => void;
 }
 // #endregion
-
-/** The global site sidebar the kebab's menu must never slide under. */
-const SHELL_AVOID = [".ui-app-shell__sidebar"] as const;
 
 export function InboxRow(props: InboxRowProps): JSX.Element {
 	const { conversation: c, href, active, compact } = props;
@@ -97,89 +95,15 @@ export function InboxRow(props: InboxRowProps): JSX.Element {
 				</span>
 			</a>
 
-			<Popover
+			<ConversationMenu
+				conversation={c}
 				open={menuOpen}
-				placement="bottom-end"
-				class="conv-menu-pop"
-				avoid={SHELL_AVOID}
-				trigger={(api) => (
-					<button
-						type="button"
-						ref={api.ref as RefObject<HTMLButtonElement>}
-						class="inbox-row__kebab"
-						data-open={api.expanded ? "true" : undefined}
-						aria-haspopup="menu"
-						aria-label={`Actions for ${c.title}`}
-						aria-expanded={api.expanded}
-						aria-controls={api.panelId}
-						onClick={api.toggle}
-					>
-						<MessagingIcon name="kebab" />
-					</button>
-				)}
-			>
-				<div class="conv-menu" role="menu" aria-label={`Actions for ${c.title}`}>
-					<button
-						type="button"
-						role="menuitemcheckbox"
-						aria-checked={c.starred}
-						class="conv-menu__item"
-						onClick={() => {
-							props.onToggleStar(c.id);
-							menuOpen.value = false;
-						}}
-					>
-						<span class="conv-menu__icon" aria-hidden="true">
-							<MessagingIcon name="star" />
-						</span>
-						<span>{c.starred ? "Remove favourite" : "Favourite"}</span>
-					</button>
-					<button
-						type="button"
-						role="menuitemcheckbox"
-						aria-checked={c.muted}
-						class="conv-menu__item"
-						onClick={() => {
-							props.onToggleMute(c.id);
-							menuOpen.value = false;
-						}}
-					>
-						<span class="conv-menu__icon" aria-hidden="true">
-							<MessagingIcon name="mute" />
-						</span>
-						<span>{c.muted ? "Unmute" : "Mute notifications"}</span>
-					</button>
-					<button
-						type="button"
-						role="menuitem"
-						class="conv-menu__item"
-						onClick={() => {
-							props.onToggleArchive(c.id);
-							menuOpen.value = false;
-						}}
-					>
-						<span class="conv-menu__icon" aria-hidden="true">
-							<MessagingIcon name={c.archived ? "unarchive" : "archive"} />
-						</span>
-						<span>{c.archived ? "Unarchive" : "Archive"}</span>
-					</button>
-					<button
-						type="button"
-						role="menuitem"
-						class="conv-menu__item"
-						data-danger="true"
-						onClick={() => {
-							props.onDelete(c.id);
-							menuOpen.value = false;
-						}}
-					>
-						<span class="conv-menu__icon" aria-hidden="true">
-							<MessagingIcon name="trash" />
-						</span>
-						<span>Delete conversation</span>
-					</button>
-				</div>
-			</Popover>
+				triggerClass="inbox-row__menu"
+				onToggleStar={props.onToggleStar}
+				onToggleMute={props.onToggleMute}
+				onMove={props.onMove}
+				onDelete={props.onDelete}
+			/>
 		</div>
 	);
 }

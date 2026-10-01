@@ -643,15 +643,184 @@ $$;
 
 -- #endregion
 
+-- #region 6b. apply_to_project — the freelancer-led request to a stage (or one of its roles)
+-- `apply_to_seat` covers a posted seat, but the setup wizard writes staffing ROLES and no seats, so
+-- most stages have none to apply to. This is the general door: a freelancer applies, as themselves,
+-- to a stage of a live, discoverable project — naming one of its staffing roles when the stage has
+-- them — and the application waits as `pending` for the owner (`assign_from_application`).
+--
+-- The cover note is held to the protected phase's PII rule before it is stored or quoted, and the
+-- owner is told through the router (`application.received`), whose deep link is the conversation
+-- with the applicant. The fat service then posts the note as the opening DM through
+-- comms.send_request_message, which files it in the owner's Requests folder.
+CREATE OR REPLACE FUNCTION projects.apply_to_project(
+    p_project text,
+    p_stage   text,
+    p_role_id uuid DEFAULT NULL,
+    p_message text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, projects, comms, org, auth
+AS $$
+DECLARE
+    v_actor       uuid := auth.uid();
+    v_project     projects.projects%ROWTYPE;
+    v_stage       projects.project_stages%ROWTYPE;
+    v_role_title  text;
+    v_target_type projects.application_target_type;
+    v_target_id   uuid;
+    v_message     text := NULLIF(btrim(COALESCE(p_message, '')), '');
+    v_app         uuid;
+    v_name        text;
+    v_username    text;
+BEGIN
+    IF v_actor IS NULL THEN
+        RAISE EXCEPTION 'Sign in to apply to a project.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF v_message IS NOT NULL AND char_length(v_message) > 4000 THEN
+        RAISE EXCEPTION 'message: too_long' USING ERRCODE = '22023';
+    END IF;
+
+    SELECT * INTO v_project FROM projects.projects p
+     WHERE p.slug = p_project OR p.id::text = p_project;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Project % not found.', p_project USING ERRCODE = 'no_data_found';
+    END IF;
+    IF v_project.owner_user_id = v_actor THEN
+        RAISE EXCEPTION 'You cannot apply to your own project.' USING ERRCODE = 'check_violation';
+    END IF;
+    IF v_project.status <> 'active' OR v_project.visibility NOT IN ('public', 'unlisted') THEN
+        RAISE EXCEPTION 'This project is not taking applications.' USING ERRCODE = 'check_violation';
+    END IF;
+    -- An accepted application becomes a freelancer stage assignment, whose FK is the freelancer profile.
+    IF NOT EXISTS (SELECT 1 FROM org.freelancer_profiles fp WHERE fp.user_id = v_actor) THEN
+        RAISE EXCEPTION 'Set up your freelancer profile before applying.' USING ERRCODE = 'check_violation';
+    END IF;
+
+    SELECT * INTO v_stage FROM projects.project_stages s
+     WHERE s.project_id = v_project.id AND (s.slug = p_stage OR s.id::text = p_stage);
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'That stage is not part of this project.' USING ERRCODE = 'check_violation';
+    END IF;
+    IF NOT v_stage.hire_trigger_active OR v_stage.status NOT IN ('open', 'assigned', 'in_progress') THEN
+        RAISE EXCEPTION 'This stage is not taking applications.' USING ERRCODE = 'check_violation';
+    END IF;
+
+    IF p_role_id IS NOT NULL THEN
+        SELECT r.role_title INTO v_role_title
+          FROM projects.stage_staffing_roles r
+         WHERE r.id = p_role_id AND r.project_stage_id = v_stage.id AND r.allow_proposals;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'That role is not open to applications.' USING ERRCODE = 'check_violation';
+        END IF;
+        v_target_type := 'role';
+        v_target_id := p_role_id;
+    ELSE
+        v_target_type := 'stage';
+        v_target_id := v_stage.id;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM projects.stage_assignments sa
+         WHERE sa.project_stage_id = v_stage.id
+           AND sa.assignee_type = 'freelancer'
+           AND sa.freelancer_profile_id = v_actor
+           AND sa.status NOT IN ('released', 'cancelled', 'declined', 'completed')
+    ) THEN
+        RAISE EXCEPTION 'You are already on this stage.' USING ERRCODE = 'unique_violation';
+    END IF;
+    IF EXISTS (
+        SELECT 1 FROM projects.project_applications pa
+          JOIN projects.project_application_targets pat ON pat.application_id = pa.id
+         WHERE pa.applicant_user_id = v_actor
+           AND pa.status = 'pending'
+           AND pat.target_type = v_target_type
+           AND pat.target_id = v_target_id
+    ) THEN
+        RAISE EXCEPTION 'You already have a pending application here.' USING ERRCODE = 'unique_violation';
+    END IF;
+
+    IF v_message IS NOT NULL AND projects.is_protected_phase(v_project.id) THEN
+        SELECT m.masked INTO v_message FROM comms.mask_pii(v_message) m;
+    END IF;
+
+    INSERT INTO projects.project_applications
+        (project_id, applicant_user_id, applicant_type, applicant_profile_id, message, status)
+    VALUES
+        (v_project.id, v_actor, 'freelancer', v_actor, v_message, 'pending')
+    RETURNING id INTO v_app;
+
+    INSERT INTO projects.project_application_targets (application_id, target_type, target_id)
+    VALUES (v_app, v_target_type, v_target_id);
+
+    INSERT INTO projects.project_activity (project_id, actor_user_id, kind, payload, entity_table, entity_id)
+    VALUES (
+        v_project.id, v_actor, 'application_submitted',
+        jsonb_build_object('application_id', v_app, 'stage_id', v_stage.id, 'role_id', p_role_id),
+        'projects.project_applications', v_app
+    );
+
+    SELECT NULLIF(trim(coalesce(up.first_name, '') || ' ' || coalesce(up.last_name, '')), ''), up.username
+      INTO v_name, v_username
+      FROM org.users_public up
+     WHERE up.user_id = v_actor;
+
+    PERFORM comms.fn_notify(
+        v_project.owner_user_id,
+        'application.received',
+        format('%s applied to %s', COALESCE(v_name, 'A freelancer'), COALESCE(v_role_title, v_stage.name)),
+        v_project.title || ' · ' || v_stage.name
+            || CASE WHEN v_message IS NOT NULL THEN ' — ' || left(v_message, 140) ELSE '' END,
+        'projects.project_applications',
+        v_app,
+        jsonb_build_object(
+            'project_slug', v_project.slug,
+            'project_title', v_project.title,
+            'stage_id', v_stage.id,
+            'stage_name', v_stage.name,
+            'role_title', v_role_title
+        ),
+        v_actor,
+        'project',
+        v_project.id,
+        NULL,
+        CASE WHEN v_username IS NOT NULL THEN '/messages/dm-' || v_username ELSE NULL END
+    );
+
+    RETURN jsonb_build_object(
+        'id', v_app,
+        'projectId', v_project.id,
+        'projectSlug', v_project.slug,
+        'ownerUserId', v_project.owner_user_id,
+        'stageId', v_stage.id,
+        'roleId', p_role_id,
+        'status', 'pending',
+        'message', v_message
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION projects.apply_to_project(text, text, uuid, text) IS
+'A freelancer applies, as themselves, to a stage (optionally one of its staffing roles) of an active, public or unlisted project. Masks the cover note in the protected phase, records a pending application, and notifies the owner (application.received). Project and stage accept a slug or a uuid.';
+
+REVOKE ALL ON FUNCTION projects.apply_to_project(text, text, uuid, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION projects.apply_to_project(text, text, uuid, text) TO authenticated;
+
+-- #endregion
+
 -- #region 7. assign_from_application — AC4/AC5/AC6 atomic accept → assignment
--- Accepting an application binds the applicant to the seat's stage. The whole body runs in one
--- transaction; a per-assignee advisory xact-lock serialises concurrent accepts of the *same* candidate
--- so the conflict guard + unique index cannot be raced into a double-booking (AC6).
+-- Accepting an application binds the applicant to the target's stage — a posted seat's, a staffing
+-- role's, or the stage itself (`apply_to_project`). The whole body runs in one transaction; a
+-- per-assignee advisory xact-lock serialises concurrent accepts of the *same* candidate so the
+-- conflict guard + unique index cannot be raced into a double-booking (AC6). Only a seat is FILLED
+-- (and its other applicants rejected): a role or a stage can take more than one person.
 CREATE OR REPLACE FUNCTION projects.assign_from_application(p_application_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, projects, org, auth
+SET search_path = public, projects, comms, org, auth
 AS $$
 DECLARE
     v_actor      uuid := auth.uid();
@@ -661,21 +830,29 @@ DECLARE
     v_type       text;
     v_profile    uuid;
     v_app_user   uuid;
+    v_status     projects.application_status;
+    v_target_type projects.application_target_type;
+    v_target_id  uuid;
     v_assignee_type assignment_type;
     v_freelancer uuid;
     v_team       uuid;
     v_assignment uuid;
     v_lock_key   text;
+    v_slug       text;
+    v_title      text;
+    v_stage_name text;
 BEGIN
-    SELECT pa.project_id, pa.applicant_type, pa.applicant_profile_id, pa.applicant_user_id,
-           pat.target_id
-        INTO v_project, v_type, v_profile, v_app_user, v_seat
+    SELECT pa.project_id, pa.applicant_type, pa.applicant_profile_id, pa.applicant_user_id, pa.status,
+           pat.target_type, pat.target_id
+        INTO v_project, v_type, v_profile, v_app_user, v_status, v_target_type, v_target_id
     FROM projects.project_applications pa
-    JOIN projects.project_application_targets pat ON pat.application_id = pa.id AND pat.target_type = 'seat'
-    WHERE pa.id = p_application_id;
+    JOIN projects.project_application_targets pat ON pat.application_id = pa.id
+    WHERE pa.id = p_application_id
+    ORDER BY CASE pat.target_type WHEN 'seat' THEN 0 WHEN 'role' THEN 1 ELSE 2 END
+    LIMIT 1;
 
     IF v_project IS NULL THEN
-        RAISE EXCEPTION 'Seat application % not found.', p_application_id USING ERRCODE = 'no_data_found';
+        RAISE EXCEPTION 'Application % not found.', p_application_id USING ERRCODE = 'no_data_found';
     END IF;
 
     -- Only the paying side may accept an application and bind talent to the stage.
@@ -683,7 +860,22 @@ BEGIN
         RAISE EXCEPTION 'Only the project owner may accept applications.' USING ERRCODE = 'insufficient_privilege';
     END IF;
 
-    SELECT s.project_stage_id INTO v_stage FROM projects.stage_open_seats s WHERE s.id = v_seat;
+    IF v_status <> 'pending' THEN
+        RAISE EXCEPTION 'This application has already been %.', v_status USING ERRCODE = 'check_violation';
+    END IF;
+
+    IF v_target_type = 'seat' THEN
+        v_seat := v_target_id;
+        SELECT s.project_stage_id INTO v_stage FROM projects.stage_open_seats s WHERE s.id = v_seat;
+    ELSIF v_target_type = 'role' THEN
+        SELECT r.project_stage_id INTO v_stage FROM projects.stage_staffing_roles r WHERE r.id = v_target_id;
+    ELSE
+        v_stage := v_target_id;
+    END IF;
+
+    IF v_stage IS NULL THEN
+        RAISE EXCEPTION 'The stage this application named no longer exists.' USING ERRCODE = 'no_data_found';
+    END IF;
 
     v_assignee_type := v_type::assignment_type;
     IF v_assignee_type = 'freelancer' THEN
@@ -720,19 +912,21 @@ BEGIN
         (v_stage, v_assignee_type, v_freelancer, v_team, v_actor, false, 'assigned')
     RETURNING id INTO v_assignment;
 
-    -- Accept this application; auto-reject the other pending applicants for the now-filled seat.
     UPDATE projects.project_applications SET status = 'accepted', updated_at = now()
     WHERE id = p_application_id;
 
-    UPDATE projects.project_applications pa
-    SET status = 'rejected', updated_at = now()
-    FROM projects.project_application_targets pat
-    WHERE pat.application_id = pa.id AND pat.target_type = 'seat' AND pat.target_id = v_seat
-        AND pa.id <> p_application_id AND pa.status = 'pending';
+    -- A seat holds one person: fill it and auto-reject its other pending applicants.
+    IF v_seat IS NOT NULL THEN
+        UPDATE projects.project_applications pa
+        SET status = 'rejected', updated_at = now()
+        FROM projects.project_application_targets pat
+        WHERE pat.application_id = pa.id AND pat.target_type = 'seat' AND pat.target_id = v_seat
+            AND pa.id <> p_application_id AND pa.status = 'pending';
 
-    UPDATE projects.stage_open_seats
-    SET status = 'filled', filled_assignment_id = v_assignment
-    WHERE id = v_seat;
+        UPDATE projects.stage_open_seats
+        SET status = 'filled', filled_assignment_id = v_assignment
+        WHERE id = v_seat;
+    END IF;
 
     -- Enrol the freelancer as a project participant so the roster / access checks pick them up.
     IF v_assignee_type = 'freelancer' THEN
@@ -753,8 +947,28 @@ BEGIN
     VALUES (
         v_project, v_actor, 'seat_assigned',
         jsonb_build_object('application_id', p_application_id, 'seat_id', v_seat, 'stage_id', v_stage,
-                           'assignment_id', v_assignment, 'assignee_type', v_type),
+                           'assignment_id', v_assignment, 'assignee_type', v_type,
+                           'target_type', v_target_type),
         'projects.stage_assignments', v_assignment
+    );
+
+    -- Tell the applicant, through the router; they are a participant now, so the project routes.
+    SELECT p.slug, p.title INTO v_slug, v_title FROM projects.projects p WHERE p.id = v_project;
+    SELECT s.name INTO v_stage_name FROM projects.project_stages s WHERE s.id = v_stage;
+    PERFORM comms.fn_notify(
+        v_app_user,
+        'application.accepted',
+        format('Your application to %s was accepted', COALESCE(v_stage_name, v_title)),
+        v_title || CASE WHEN v_stage_name IS NOT NULL THEN ' · ' || v_stage_name ELSE '' END,
+        'projects.project_applications',
+        p_application_id,
+        jsonb_build_object('project_slug', v_slug, 'project_title', v_title,
+                           'stage_id', v_stage, 'stage_name', v_stage_name),
+        v_actor,
+        'project',
+        v_project,
+        NULL,
+        '/projects/' || v_slug
     );
 
     RAISE LOG '[STAFFING_RPC] assign_from_application ok application=% assignment=% stage=% type=%',
@@ -1027,6 +1241,7 @@ DECLARE
     v_id           uuid;
     v_title        text;
     v_body         text;
+    v_message      text := COALESCE(p_message, '');
 BEGIN
     IF v_actor IS NULL THEN
         RAISE EXCEPTION 'Sign in to invite someone to a project.' USING ERRCODE = 'insufficient_privilege';
@@ -1081,9 +1296,18 @@ BEGIN
         AND i.target_user_id = p_target_user_id
         AND i.status = 'declined';
     IF v_cooldown_end IS NOT NULL AND v_cooldown_end > now() THEN
+        -- DETAIL carries the exact instant (ISO 8601, UTC) so the service can answer with the
+        -- reopening timestamp as well as the sentence.
         RAISE EXCEPTION 'You can invite this freelancer to this project again after %.',
             to_char(v_cooldown_end AT TIME ZONE 'UTC', 'FMDD Mon YYYY')
-            USING ERRCODE = 'check_violation';
+            USING ERRCODE = 'check_violation',
+                  DETAIL = 'reopens_at=' || to_char(v_cooldown_end AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+    END IF;
+
+    -- The intro is the first thing a stranger reads from this client, so it is held to the protected
+    -- phase's PII rule before it is stored, quoted in the notice, or posted as the opening DM.
+    IF v_message <> '' AND projects.is_protected_phase(p_project_id) THEN
+        SELECT m.masked INTO v_message FROM comms.mask_pii(v_message) m;
     END IF;
 
     -- The terms as RECORDED: a stated figure, else the stage's configured rate (the project budget for
@@ -1101,7 +1325,7 @@ BEGIN
             -- RUN time (plpgsql defers resolution) — the function creates cleanly and fails on
             -- its first real call.
             p_project_id, p_stage_id, p_target_user_id, p_role, v_actor, encode(extensions.gen_random_bytes(32), 'hex'),
-            COALESCE(p_message, ''), p_offer_price_cents, COALESCE(p_answers, '{}'::jsonb), v_placeholder,
+            v_message, p_offer_price_cents, COALESCE(p_answers, '{}'::jsonb), v_placeholder,
             'pending', now() + interval '14 days'
         )
         RETURNING id INTO v_id;
@@ -1133,7 +1357,7 @@ BEGIN
         COALESCE(v_stage_name, v_project.title));
     v_body := v_project.title
         || CASE WHEN v_stage_name IS NOT NULL THEN ' · ' || v_stage_name ELSE '' END
-        || CASE WHEN COALESCE(p_message, '') <> '' THEN ' — ' || left(p_message, 140) ELSE '' END;
+        || CASE WHEN v_message <> '' THEN ' — ' || left(v_message, 140) ELSE '' END;
 
     PERFORM comms.fn_notify(
         p_target_user_id,
@@ -1499,5 +1723,192 @@ COMMENT ON FUNCTION projects.remove_project_member(uuid, uuid, uuid) IS
 
 REVOKE ALL ON FUNCTION projects.remove_project_member(uuid, uuid, uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION projects.remove_project_member(uuid, uuid, uuid) TO authenticated;
+
+-- #endregion
+
+-- #region 11. Engagement context — what two people are negotiating, for the conversation drawer
+--
+-- The drawer beside a DM shows the invitations and applications BETWEEN the caller and one other
+-- person, with the brief, the questions answered and the stages being offered. A pending invitee
+-- cannot read a private project under RLS (they are not on it yet), and deciding on an offer means
+-- reading what it is for, so this is a DEFINER read whose whole scope is the pair: every row it
+-- returns names the caller as inviter, invitee, applicant or the applied-to project's owner.
+--
+-- The counterpart's earned Standing rung rides along when they sell (buyers are not gamified —
+-- PRODUCT_SPEC §Buyers are not gamified), read the way org.get_profile_view reads it.
+CREATE OR REPLACE FUNCTION projects.get_engagement_context(p_counterpart uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, projects, org, auth
+AS $$
+DECLARE
+    v_me       uuid := auth.uid();
+    v_projects uuid[];
+BEGIN
+    IF v_me IS NULL THEN
+        RAISE EXCEPTION 'Sign in to read a conversation.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF p_counterpart IS NULL OR p_counterpart = v_me THEN
+        RETURN jsonb_build_object('standing', NULL, 'invitations', '[]'::jsonb,
+                                  'applications', '[]'::jsonb, 'milestones', '[]'::jsonb);
+    END IF;
+
+    SELECT array_agg(DISTINCT x.project_id) INTO v_projects
+    FROM (
+        SELECT i.project_id
+          FROM projects.project_invitations i
+         WHERE i.status <> 'revoked'
+           AND ((i.inviter_user_id = v_me AND i.target_user_id = p_counterpart)
+             OR (i.inviter_user_id = p_counterpart AND i.target_user_id = v_me))
+        UNION
+        SELECT a.project_id
+          FROM projects.project_applications a
+          JOIN projects.projects p ON p.id = a.project_id
+         WHERE a.status <> 'withdrawn'
+           AND ((a.applicant_user_id = v_me AND p.owner_user_id = p_counterpart)
+             OR (a.applicant_user_id = p_counterpart AND p.owner_user_id = v_me))
+    ) x;
+
+    RETURN jsonb_build_object(
+        'standing', (
+            SELECT jsonb_build_object('level', sl.level, 'label', sl.label)
+              FROM org.freelancer_profiles fp
+              JOIN org.standing_levels sl ON sl.level = org.fn_standing_level('freelancer', fp.user_id)
+             WHERE fp.user_id = p_counterpart
+        ),
+        'invitations', COALESCE((
+            SELECT jsonb_agg(q.row ORDER BY q.created_at DESC)
+              FROM (
+                SELECT i.created_at, jsonb_build_object(
+                    'id', i.id,
+                    'direction', CASE WHEN i.inviter_user_id = v_me THEN 'sent' ELSE 'received' END,
+                    'status', i.status,
+                    'projectId', p.id,
+                    'projectSlug', p.slug,
+                    'projectTitle', p.title,
+                    'projectStatus', p.status,
+                    'projectVisibility', p.visibility,
+                    'format', p.format,
+                    'currency', p.currency,
+                    'summary', left(p.description_text, 600),
+                    'stageId', s.id,
+                    'stageSlug', s.slug,
+                    'stageName', s.name,
+                    'stageStatus', s.status,
+                    'offerPriceCents', COALESCE(
+                        i.offer_price_cents,
+                        CASE WHEN i.project_stage_id IS NULL THEN p.budget_amount_cents ELSE s.unit_price_cents END
+                    ),
+                    'placeholder', i.placeholder,
+                    'message', i.message,
+                    'answers', i.answers,
+                    'intake', COALESCE((
+                        SELECT fp.hire_intake FROM org.freelancer_profiles fp WHERE fp.user_id = i.target_user_id
+                    ), '[]'::jsonb),
+                    'createdAt', i.created_at,
+                    'expiresAt', i.expires_at,
+                    'acceptedAt', i.accepted_at,
+                    'declinedAt', i.declined_at,
+                    'assignmentStatus', (
+                        SELECT sa.status FROM projects.stage_assignments sa
+                         WHERE sa.project_stage_id = i.project_stage_id
+                           AND sa.assignee_type = 'freelancer'
+                           AND sa.freelancer_profile_id = i.target_user_id
+                         ORDER BY sa.created_at DESC
+                         LIMIT 1
+                    )
+                ) AS row
+                  FROM projects.project_invitations i
+                  JOIN projects.projects p ON p.id = i.project_id
+                  LEFT JOIN projects.project_stages s ON s.id = i.project_stage_id
+                 WHERE i.status <> 'revoked'
+                   AND ((i.inviter_user_id = v_me AND i.target_user_id = p_counterpart)
+                     OR (i.inviter_user_id = p_counterpart AND i.target_user_id = v_me))
+                 ORDER BY i.created_at DESC
+                 LIMIT 10
+              ) q
+        ), '[]'::jsonb),
+        'applications', COALESCE((
+            SELECT jsonb_agg(q.row ORDER BY q.created_at DESC)
+              FROM (
+                SELECT a.created_at, jsonb_build_object(
+                    'id', a.id,
+                    'direction', CASE WHEN a.applicant_user_id = v_me THEN 'sent' ELSE 'received' END,
+                    'status', a.status,
+                    'projectId', p.id,
+                    'projectSlug', p.slug,
+                    'projectTitle', p.title,
+                    'projectStatus', p.status,
+                    'projectVisibility', p.visibility,
+                    'format', p.format,
+                    'currency', p.currency,
+                    'summary', left(p.description_text, 600),
+                    'stageId', s.id,
+                    'stageSlug', s.slug,
+                    'stageName', s.name,
+                    'stageStatus', s.status,
+                    'roleTitle', r.role_title,
+                    'priceCents', COALESCE(r.budget_amount_cents, s.unit_price_cents),
+                    'message', a.message,
+                    'createdAt', a.created_at,
+                    'assignmentStatus', (
+                        SELECT sa.status FROM projects.stage_assignments sa
+                         WHERE sa.project_stage_id = s.id
+                           AND sa.assignee_type = 'freelancer'
+                           AND sa.freelancer_profile_id = a.applicant_user_id
+                         ORDER BY sa.created_at DESC
+                         LIMIT 1
+                    )
+                ) AS row
+                  FROM projects.project_applications a
+                  JOIN projects.projects p ON p.id = a.project_id
+                  JOIN LATERAL (
+                      SELECT pat.target_type, pat.target_id
+                        FROM projects.project_application_targets pat
+                       WHERE pat.application_id = a.id
+                       ORDER BY CASE pat.target_type WHEN 'seat' THEN 0 WHEN 'role' THEN 1 ELSE 2 END
+                       LIMIT 1
+                  ) t ON true
+                  LEFT JOIN projects.stage_staffing_roles r
+                         ON t.target_type = 'role' AND r.id = t.target_id
+                  LEFT JOIN projects.stage_open_seats so
+                         ON t.target_type = 'seat' AND so.id = t.target_id
+                  LEFT JOIN projects.project_stages s
+                         ON s.id = CASE t.target_type
+                                       WHEN 'stage' THEN t.target_id
+                                       WHEN 'role' THEN r.project_stage_id
+                                       ELSE so.project_stage_id
+                                   END
+                 WHERE a.status <> 'withdrawn'
+                   AND ((a.applicant_user_id = v_me AND p.owner_user_id = p_counterpart)
+                     OR (a.applicant_user_id = p_counterpart AND p.owner_user_id = v_me))
+                 ORDER BY a.created_at DESC
+                 LIMIT 10
+              ) q
+        ), '[]'::jsonb),
+        'milestones', COALESCE((
+            SELECT jsonb_agg(jsonb_build_object(
+                'projectId', s.project_id,
+                'stageId', s.id,
+                'name', s.name,
+                'milestone', s.milestone,
+                'status', s.status,
+                'priceCents', s.unit_price_cents,
+                'sortOrder', s.sort_order
+            ) ORDER BY s.project_id, s.sort_order)
+              FROM projects.project_stages s
+             WHERE s.project_id = ANY (COALESCE(v_projects, '{}'::uuid[]))
+        ), '[]'::jsonb)
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION projects.get_engagement_context(uuid) IS
+'The invitations and applications between the caller and one counterpart (either direction), with the brief, the intake answers, the stages on offer and the counterpart''s seller Standing — the conversation context drawer''s read. Scoped to the pair; DEFINER because a pending invitee cannot read a private project under RLS.';
+
+REVOKE ALL ON FUNCTION projects.get_engagement_context(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION projects.get_engagement_context(uuid) TO authenticated;
 
 -- #endregion

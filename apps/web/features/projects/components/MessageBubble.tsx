@@ -9,6 +9,7 @@ import { MessageActions } from "./MessageActions.tsx";
 import { WonkyStarIcon } from "./chat-glyphs.tsx";
 import { PinIcon } from "./channel-glyphs.tsx";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
+import { MessageLinkPreviews, MessageText } from "@web/features/links/components/MessageLinks.tsx";
 
 /**
  * MessageBubble — one authored message in the feed (task §2/§3). Composes:
@@ -21,8 +22,10 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  *     corner masking (§2): for others the LEFT corners toward the group sharpen; for own the RIGHT.
  *   - **Hover** — reveals the sent time (no layout shift — it is always in the DOM, opacity-toggled) and
  *     the {@link MessageActions} toolbar (absolutely positioned, so it never reflows the feed).
- *   - **Content** — text, a {@link MessageMedia} attachment layout, a {@link MessageAudioPlayer} memo,
- *     an emoji reaction row, and — when favourited — the custom "wonky star" mark on the bubble border.
+ *   - **Content** — text with its links as anchors and a preview row per link ({@link MessageText} ·
+ *     {@link MessageLinkPreviews}), a {@link MessageMedia} attachment layout, a
+ *     {@link MessageAudioPlayer} memo, an emoji reaction row, and — when favourited — the custom
+ *     "wonky star" mark on the bubble border.
  */
 
 export interface MessageBubbleProps {
@@ -87,7 +90,12 @@ export function MessageBubble(props: MessageBubbleProps): JSX.Element {
 				{own && <span class="msg-row__own-time" aria-hidden="true">{m.timeLabel}</span>}
 
 				<div class="msg-bubble" data-own={own ? "true" : undefined} data-pos={row.groupPos}>
-					{hasText && <p class="msg-bubble__text">{m.text}</p>}
+					{hasText && (
+						<p class="msg-bubble__text">
+							<MessageText text={m.text} />
+						</p>
+					)}
+					{hasText && <MessageLinkPreviews text={m.text} />}
 					{m.attachments.length > 0 && <MessageMedia attachments={m.attachments} />}
 					{m.audio && <MessageAudioPlayer audio={m.audio} />}
 					{m.favorited && (

@@ -370,8 +370,12 @@ the project owner, and emits `stage.invite` to the invitee through `comms.fn_not
 transaction. Refuses, in the database's own words: a non-owner (`insufficient_privilege`), a closed
 project, the owner inviting themself, a role the accept path cannot grant, a stage of another project,
 a seat the person already holds, and the **48-day re-invitation cooldown** (`check_violation`, naming
-the date it lifts). A duplicate open seat is re-raised from `uq_project_invitations_open_seat` as a
-readable `unique_violation`.
+the date it lifts in the message and the exact instant in `DETAIL = 'reopens_at=<ISO-8601 UTC>'`, which
+the fat service returns as `details.reopensAt` on its 422). A duplicate open seat is re-raised from
+`uq_project_invitations_open_seat` as a readable `unique_violation`. The intro (`p_message`) is stored
+through `comms.mask_pii` while the project is in its protected phase, so the contact filter cannot be
+skipped by putting a phone number in an invitation; the fat service then posts the same intro into the
+pair's DM through `comms.send_request_message` (Decision #128).
 
 `placeholder` is DERIVED — `status = 'draft'`, or no figure anywhere (`COALESCE(p_offer_price_cents,
 stage unit price | project budget)`) — never accepted from a caller. `token` is minted
@@ -407,8 +411,9 @@ Invites window force an answer that writes exactly the rows a real answer writes
 ### `projects.respond_to_project_invitation(p_invitation_id uuid, p_accept boolean) → jsonb`
 
 The invitee's own door: the row must be addressed to `auth.uid()` (`insufficient_privilege`
-otherwise); delegates to `fn_apply_invitation_decision`. `EXECUTE` → `authenticated`. No application
-surface calls it yet — the freelancer-side accept UI is the deferred half.
+otherwise); delegates to `fn_apply_invitation_decision`. `EXECUTE` → `authenticated`. Reached by
+`POST /api/projects/invites/respond` — the conversation context panel's Accept request / Decline,
+which answers every invitation of one request together (Decision #128).
 
 ### `projects.remove_project_member(p_project_id uuid, p_participant_id uuid, p_stage_id uuid DEFAULT NULL) → jsonb`
 
@@ -425,6 +430,49 @@ stage-scoped removal leaves the participant row, and with it project access.) Lo
 `member_removed` / `member_unassigned`. Returns the counts it APPLIED (`claimed_tickets`,
 `submitted_tickets`, `started_stages`) so the confirmation the client saw can be read back against
 what happened. `EXECUTE` → `authenticated`.
+
+## Applications (`00001130` §6b / §11, Decision #128)
+
+The freelancer-led half of `PRODUCT_SPEC.md` §The Hiring Process ("The Inbound Request").
+
+### `projects.apply_to_project(p_project text, p_stage text, p_role_id uuid DEFAULT NULL, p_message text DEFAULT NULL) → jsonb`
+
+`SECURITY DEFINER`, `EXECUTE` → `authenticated`. The caller applies to one stage (slug or id) of a
+project (slug or id), naming a staffing role where the stage lists them. Refuses, in the database's
+own words: no caller (`insufficient_privilege`), a note over the hire-message limit (`22023`), an
+unknown project (`no_data_found`), the owner's own project, a project that is not `active` and
+`public`/`unlisted`, a caller with no freelancer profile, a stage of another project or one not
+taking applications, a role not open to applications (all `check_violation`), a person already on
+the stage, and a second pending application for the same target (`unique_violation`). Inserts the
+`project_applications` row (`pending`) with its `project_application_targets` row, the cover note
+masked while the project is protected, logs `application_submitted` on `project_activity`, and
+notifies the owner (`application.received`, deep-linked to the applicant's DM). Returns
+`{ id, projectId, projectSlug, ownerUserId, stageId, roleId, status, message }`; the fat service
+then posts the note through `comms.send_request_message` into the owner's Requests.
+
+### `projects.assign_from_application(p_application_id uuid) → jsonb`
+
+The owner confirms an applicant's seat — whatever the application targeted (a stage, a role or an
+open seat). Owner-only (`insufficient_privilege`); anything not `pending` is a `check_violation`
+naming its status. Takes the seat as a `stage_assignments` row (`assigned`), marks the application
+`accepted`, and — for a seat — fills it and marks that seat's other pending applications `rejected`;
+moves an `open` stage to `assigned`, and notifies the applicant (`application.accepted`, deep-linked
+to `/projects/{slug}`). The client lands on funding next — the seat is real once its escrow is.
+
+### `projects.get_engagement_context(p_counterpart uuid) → jsonb`
+
+`SECURITY DEFINER`, `EXECUTE` → `authenticated`. The conversation context panel's one read: between
+the caller and one counterpart, every invitation (bar revoked ones) and application (bar withdrawn
+ones) in either direction, ten each, newest first, with the project's title, slug and visibility, the stage, role, offer and status, the
+intro or cover note, the brief, the target's intake answers and the assignment state; the milestones
+of the projects involved; and the counterpart's Standing (`org.fn_standing_level`) when they sell.
+It reads ONLY rows the caller is a party to — the inviter or invitee, the applicant or the owner.
+
+### `projects.fn_engaged_projects(p_user_id uuid) → TABLE (project_id uuid)`
+
+`00001100`. Every project a user is engaged in — owner, participant, live assignee or team member,
+pending/accepted invitee or applicant. Read by the DM contact filter
+(`comms.fn_dm_protected_project`). **No client role may execute it.**
 
 🚨 **`projects.release_ticket_to_backlog(uuid)` had the default `PUBLIC` EXECUTE and no caller check
 of its own** — any signed-in caller who knew a ticket id could release its escrow and un-claim it (the

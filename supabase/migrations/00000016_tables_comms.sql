@@ -11,6 +11,8 @@
 --   * comms.notification_prefs+= read_receipts, show_typing_indicator, sound, auto_responses_enabled
 --   * comms.dm_threads        += kind, title
 --   * comms.dm_participants   += last_read_at, is_starred, is_archived, is_muted, deleted_at
+--   * comms.dm_participants   += inbox_folder (is_archived now derived from it)
+--   * comms.dm_messages       += pii_masked, pii_categories
 -- New tables (audit gap-close): comms.auto_responses, comms.message_reactions, comms.message_pins,
 --   comms.message_favorites, comms.newsletter_subscriptions.
 -- =============================================================================================
@@ -151,7 +153,13 @@ CREATE TABLE comms.dm_participants (
     -- unread count is messages after this watermark, and a zero timestamp would fake a read.
     last_read_at timestamptz,
     is_starred boolean NOT NULL DEFAULT false,
-    is_archived boolean NOT NULL DEFAULT false,
+    -- Which inbox folder the conversation sits in for THIS participant. A hiring request lands in the
+    -- recipient's 'requests' (comms.send_request_message) and a reply of theirs moves it to 'primary'
+    -- (comms.fn_promote_thread_on_reply). The participant's own moves go through
+    -- comms.set_dm_inbox_folder — there is no client UPDATE policy on this table.
+    inbox_folder text NOT NULL DEFAULT 'primary',
+    -- Derived, so the folder and the flag can never disagree: 'archived' IS a folder.
+    is_archived boolean GENERATED ALWAYS AS (inbox_folder = 'archived') STORED,
     is_muted boolean NOT NULL DEFAULT false,
     -- Soft delete (root CLAUDE.md §5 — nothing is hard-deleted). Kept separate from is_archived
     -- because the inbox row menu offers Archive and Delete as two different intents: folding them
@@ -162,7 +170,8 @@ CREATE TABLE comms.dm_participants (
         time zone NOT NULL DEFAULT now(),
         CONSTRAINT dm_participants_pkey PRIMARY KEY (id),
         CONSTRAINT dm_participants_thread_id_fkey FOREIGN KEY (thread_id) REFERENCES comms.dm_threads (id),
-        CONSTRAINT dm_participants_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public (user_id)
+        CONSTRAINT dm_participants_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public (user_id),
+        CONSTRAINT dm_participants_inbox_folder_check CHECK (inbox_folder IN ('primary', 'requests', 'archived'))
 );
 
 CREATE TABLE comms.dm_messages (
@@ -180,6 +189,10 @@ CREATE TABLE comms.dm_messages (
         deleted_at timestamp
     with
         time zone,
+        -- PII filter state while the thread's engagement is in its protected phase, as on
+        -- comms.project_messages (written by comms.tg_mask_dm_message_pii).
+        pii_masked boolean NOT NULL DEFAULT false,
+        pii_categories text[] NOT NULL DEFAULT '{}'::text[],
         CONSTRAINT dm_messages_pkey PRIMARY KEY (id),
         CONSTRAINT dm_messages_sender_user_id_fkey FOREIGN KEY (sender_user_id) REFERENCES org.users_public (user_id),
         CONSTRAINT dm_messages_thread_id_fkey FOREIGN KEY (thread_id) REFERENCES comms.dm_threads (id)

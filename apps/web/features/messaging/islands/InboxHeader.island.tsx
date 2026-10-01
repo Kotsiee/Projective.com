@@ -3,7 +3,7 @@ import { useComputed, useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import "../styles/inbox.css";
 import { Popover } from "@projective/ui/feedback";
-import { LaneIconButton } from "@projective/ui/navigation";
+import { LaneIconButton, type LaneTabOption, LaneTabs } from "@projective/ui/navigation";
 import { MessagingIcon } from "../components/messaging-glyphs.tsx";
 import { MessagesFilterPanel } from "../components/MessagesFilterPanel.tsx";
 import {
@@ -18,7 +18,9 @@ import {
 	commitInbox,
 	inboxAll,
 	inboxFilter,
+	inboxFolder,
 	inboxLoading,
+	inboxMerged,
 	inboxNarrowed,
 	inboxQuery,
 	inboxRelation,
@@ -28,13 +30,19 @@ import {
 	inboxView,
 	visibleConversations,
 } from "../core/inbox-state.ts";
-import type { MessagingRole } from "../types/messaging-types.ts";
+import {
+	folderUnreadCounts,
+	INBOX_FOLDER_LABELS,
+	INBOX_FOLDERS,
+	type InboxFolder,
+	type MessagingRole,
+} from "../types/messaging-types.ts";
 
 /**
  * InboxHeader — the `/messages` ROOT header band: **identity and global controls**, per the region
  * contract. It carries the surface's name, an honest live count of what the body is showing, the
- * free-text search, and the id-based refinements (service · product · team/business) that are too
- * long to live as lane rows.
+ * free-text search, the id-based refinements (service · product · team/business) that are too long
+ * to live as lane rows, and the folder tabs (Primary · Requests · Archived) the lane carries on desktop.
  *
  * The root had **no header band at all** before this — `conversationHeaderFor` returned `null` off a
  * specific conversation — which is why search and filters had piled into the lane head.
@@ -83,12 +91,27 @@ export default function InboxHeader(props: InboxHeaderProps): JSX.Element {
 		searchTimer.current = setTimeout(commitInbox, SEARCH_SETTLE_MS) as unknown as number;
 	}
 
+	const unreadByFolder = useComputed(() => folderUnreadCounts(inboxMerged.value));
+	const folderTabs = useComputed<LaneTabOption<InboxFolder>[]>(() =>
+		INBOX_FOLDERS.map((f) => {
+			const count = f === "requests" ? unreadByFolder.value.requests : 0;
+			return {
+				value: f,
+				label: INBOX_FOLDER_LABELS[f],
+				dot: count > 0,
+				hint: count > 0 ? `${count} unread` : undefined,
+			};
+		})
+	);
+
 	/** The active scope, said in words, so the header explains the count rather than just printing it. */
 	const scopeLabel = useComputed(() => {
 		const parts: string[] = [];
+		if (inboxFolder.value !== "primary") {
+			parts.push(INBOX_FOLDER_LABELS[inboxFolder.value].toLowerCase());
+		}
 		if (inboxUnreadOnly.value) parts.push("unread");
 		else if (inboxView.value === "starred") parts.push("starred");
-		else if (inboxView.value === "archived") parts.push("archived");
 		if (inboxRelation.value) parts.push(RELATION_LABEL[inboxRelation.value].toLowerCase());
 		return parts.join(" · ");
 	});
@@ -166,6 +189,14 @@ export default function InboxHeader(props: InboxHeaderProps): JSX.Element {
 					</button>
 				)}
 			</div>
+
+			<LaneTabs<InboxFolder>
+				label="Inbox folders"
+				class="inbox-head__folders"
+				value={inboxFolder.value}
+				options={folderTabs.value}
+				onSelect={(next) => (inboxFolder.value = next)}
+			/>
 		</header>
 	);
 }

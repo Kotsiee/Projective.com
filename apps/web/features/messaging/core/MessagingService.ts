@@ -2,9 +2,12 @@ import { getMessaging, postMessaging } from "./api.ts";
 import type {
 	ChatMessage,
 	ContactList,
+	ConversationContext,
 	ConversationDetail,
+	ConversationFolderSet,
 	ConversationListPage,
 	ConversationListParams,
+	InboxFolder,
 	MessagePage,
 	MessagingRole,
 	MessagingSettings,
@@ -26,6 +29,7 @@ export function buildConversationQuery(params: ConversationListParams): string {
 	const qs = new URLSearchParams();
 	if (params.q) qs.set("q", params.q);
 	if (params.view) qs.set("view", params.view);
+	if (params.folder) qs.set("folder", params.folder);
 	if (params.unread) qs.set("unread", "1");
 	if (params.role) qs.set("role", params.role);
 	if (params.cursor) qs.set("cursor", params.cursor);
@@ -124,5 +128,20 @@ export const MessagingService = {
 	 */
 	send(payload: SendConversationMessage): Promise<MessagingResult<{ message: ChatMessage }>> {
 		return postMessaging<{ message: ChatMessage }>("/api/messaging/messages/send", payload);
+	},
+
+	/** Move a conversation between the viewer's own folders (Primary · Requests · Archived). */
+	setFolder(id: string, folder: InboxFolder): Promise<MessagingResult<ConversationFolderSet>> {
+		return postMessaging<ConversationFolderSet>(
+			`/api/messaging/conversations/${encodeURIComponent(id)}/folder`,
+			{ folder },
+		);
+	},
+
+	/** The conversation context drawer's read: the counterpart, the requests, the actions. */
+	context(id: string): Promise<MessagingResult<{ context: ConversationContext }>> {
+		return getMessaging<{ context: ConversationContext }>(
+			`/api/messaging/conversations/${encodeURIComponent(id)}/context`,
+		);
 	},
 };

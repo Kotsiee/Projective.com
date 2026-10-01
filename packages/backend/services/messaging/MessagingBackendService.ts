@@ -2,13 +2,16 @@ import type {
 	AddConversationMembers,
 	ContactList,
 	ContactSuggestionParams,
+	ConversationContext,
 	ConversationDetail,
+	ConversationFolderSet,
 	ConversationListPage,
 	ConversationListParams,
 	ConversationMembersAdded,
 	ConversationSummary,
 	CreateConversation,
 	CreatedConversation,
+	InboxFolder,
 	MessagingContact,
 	MessagingRole,
 	MessagingSettings,
@@ -16,6 +19,7 @@ import type {
 	SendConversationMessage,
 } from "@projective/types/messaging";
 import { dmHandleOf, uniqueContactIds } from "@projective/types/messaging";
+import { maskPii } from "@projective/types/comms";
 import type {
 	ChatMessage,
 	FileListPage,
@@ -34,6 +38,7 @@ import {
 } from "../../core/cache.ts";
 import { canReadLive, type ReadActor, tenantOf } from "../read-actor.ts";
 import {
+	CORPUS_NOW,
 	findContact,
 	findContacts,
 	findConversationDetail,
@@ -75,6 +80,13 @@ import {
 	stubViewerSender,
 	writeOwnerOf,
 } from "./write-store.ts";
+import { promoteStubOnSend, setStubFolder, withStubFolder } from "./folder-store.ts";
+import { inPartition } from "./partition.ts";
+import { resolveThreadRef, virtualSummary } from "./live-threads.ts";
+import { setLiveFolder } from "./live-folders.ts";
+import { postRequestMessage, type RequestPosted } from "./live-requests.ts";
+import { fetchConversationContext } from "./live-context.ts";
+import { findConversationContext } from "./context-fixtures.ts";
 
 /**
  * MessagingBackendService — the FAT half of the global inbox (`/messages`) read layer
@@ -174,6 +186,35 @@ async function liveRead<T>(
 	}
 }
 
+/**
+ * One conversation on the live path, by uuid or by `dm-{handle}`. A handle resolves to the pair's
+ * existing thread, or to a VIRTUAL conversation (the person, no thread) — reading never mints one.
+ * `null` is a genuine miss: an unknown handle, oneself, or a thread the viewer is not in.
+ */
+async function liveConversation(
+	actor: ReadActor & { accessToken: string },
+	id: string,
+	now: number,
+): Promise<ConversationSummary | null> {
+	const ref = await resolveThreadRef(actor, id);
+	if (!ref) return null;
+	if (ref.kind === "virtual") return virtualSummary(id, ref, now);
+	return await fetchConversation(actor, ref.threadId, now);
+}
+
+/** The viewer's stored stub folders, as a summary mapper. */
+function stubOverlay(actor: ReadActor): (c: ConversationSummary) => ConversationSummary {
+	const owner = writeOwnerOf(actor);
+	return (c) => withStubFolder(owner, c);
+}
+
+/** Whether a stub conversation falls under a protected engagement (it carries a request). */
+function stubIsProtected(summary: ConversationSummary): boolean {
+	return findConversationContext(summary, CORPUS_NOW).engagements.some((e) =>
+		e.status === "pending" || e.status === "accepted"
+	);
+}
+
 // #endregion
 
 export class MessagingBackendService {
@@ -184,7 +225,13 @@ export class MessagingBackendService {
 	): Promise<ServiceResult<{ page: ConversationListPage }>> {
 		if (!isMessagingBackendLive() || !canReadLive(actor)) {
 			// Created-this-process conversations join the corpus page once they carry a message.
-			return ok({ page: overlayCreatedConversations(findConversations(params), params, actor) });
+			return ok({
+				page: overlayCreatedConversations(
+					findConversations(params, stubOverlay(actor)),
+					params,
+					actor,
+				),
+			});
 		}
 		try {
 			const key = cacheKey(tenantOf(actor), "messaging.conversations", params);
@@ -196,7 +243,13 @@ export class MessagingBackendService {
 		} catch (error) {
 			liveFailed("conversations", error);
 			// Created-this-process conversations join the corpus page once they carry a message.
-			return ok({ page: overlayCreatedConversations(findConversations(params), params, actor) });
+			return ok({
+				page: overlayCreatedConversations(
+					findConversations(params, stubOverlay(actor)),
+					params,
+					actor,
+				),
+			});
 		}
 	}
 
@@ -211,7 +264,7 @@ export class MessagingBackendService {
 				const summary = await cachedRead(
 					messagingReadCache,
 					key,
-					() => fetchConversation(actor, id, clock()),
+					() => liveConversation(actor, id, clock()),
 				);
 				if (summary) return ok({ detail: toDetail(summary) });
 				// A live miss is a genuine 404 — the viewer is not a participant, or the thread does not
@@ -222,7 +275,7 @@ export class MessagingBackendService {
 				liveFailed("conversation", error);
 			}
 		}
-		const detail = findConversationDetail(id);
+		const detail = findConversationDetail(id, stubOverlay(actor));
 		if (!detail) return fail(404, { message: "No such conversation." });
 		return ok({ detail });
 	}
@@ -236,9 +289,23 @@ export class MessagingBackendService {
 			try {
 				const key = cacheKey(tenantOf(actor), "messaging.messages", params);
 				const page = await cachedRead(messagingReadCache, key, async () => {
+					const ref = await resolveThreadRef(actor, params.conversationId);
+					if (!ref) return null;
+					// A conversation with nobody's message in it yet: the empty feed + composer, never the
+					// fixtures — a fabricated history under a real person's name would be a lie.
+					if (ref.kind === "virtual") {
+						return toMessagePage(
+							params.conversationId,
+							[],
+							new Map(),
+							actor.userId,
+							false,
+							clock(),
+						);
+					}
 					const { rows, parties, hasMore } = await fetchThreadMessages(
 						actor,
-						params.conversationId,
+						ref.threadId,
 						params.before,
 						params.limit,
 					);
@@ -256,6 +323,7 @@ export class MessagingBackendService {
 						interactions,
 					);
 				});
+				if (!page) return fail(404, { message: "No such conversation." });
 				return ok({ page });
 			} catch (error) {
 				liveFailed("messages", error);
@@ -312,8 +380,13 @@ export class MessagingBackendService {
 		const page = findConversationMessagePage({ conversationId: input.conversationId });
 		if (!page) return fail(404, { message: "No such conversation." });
 		const owner = writeOwnerOf(actor);
+		const summary = findConversationSummary(input.conversationId);
+		// The stub twins of the two BEFORE INSERT triggers on comms.dm_messages: the protected phase's
+		// contact filter, and a reply moving the sender's own copy of a request into Primary.
+		const masked = summary && stubIsProtected(summary) ? maskPii(input.text).masked : input.text;
+		if (summary) promoteStubOnSend(owner, summary.id, withStubFolder(owner, summary).folder);
 		const message = buildStubConversationMessage(
-			input,
+			{ ...input, text: masked },
 			stubViewerSender(),
 			sentConversationCount(owner, input.conversationId),
 			Date.now(),
@@ -329,6 +402,92 @@ export class MessagingBackendService {
 			if (contact) rememberCreatedDm(actor, contact);
 		}
 		return ok({ message }, { message: "Message sent." });
+	}
+
+	/**
+	 * Move a conversation between the viewer's own folders (Primary · Requests · Archived) —
+	 * `POST /api/messaging/conversations/[id]/folder`. Live, through `comms.set_dm_inbox_folder`, which
+	 * writes only the caller's own participant row; a conversation with no thread yet has nothing to
+	 * file and is a 404. A thrown write is a 502, never a fall-through to the stub.
+	 */
+	static async setFolder(
+		conversationId: string,
+		folder: InboxFolder,
+		actor: ReadActor,
+	): Promise<ServiceResult<ConversationFolderSet>> {
+		if (actor.userId.length === 0) {
+			return fail(401, { message: "Sign in to organise your conversations." });
+		}
+		if (isMessagingBackendLive() && canReadLive(actor)) {
+			try {
+				const outcome = await setLiveFolder(actor, conversationId, folder);
+				if (outcome === null) return fail(404, { message: "No such conversation." });
+				if ("refusal" in outcome) {
+					return fail(outcome.refusal.status, {
+						message: outcome.refusal.message,
+						errors: outcome.refusal.errors,
+					});
+				}
+				invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
+				return ok(outcome.data, { message: "Conversation moved." });
+			} catch (error) {
+				liveFailed("setFolder", error);
+				return fail(502, { message: "That conversation could not be moved — please try again." });
+			}
+		}
+		if (!findConversationSummary(conversationId)) {
+			return fail(404, { message: "No such conversation." });
+		}
+		setStubFolder(writeOwnerOf(actor), conversationId, folder);
+		return ok({ id: conversationId, folder }, { message: "Conversation moved." });
+	}
+
+	/**
+	 * The conversation context drawer's read: the counterpart of a DM and what the two are
+	 * negotiating, with the actions the viewer may take (`GET /api/messaging/conversations/[id]/context`).
+	 * A group has no counterpart and no engagement context.
+	 */
+	static async context(
+		conversationId: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ context: ConversationContext }>> {
+		if (actor.userId.length === 0) {
+			return fail(401, { message: "Sign in to read a conversation." });
+		}
+		if (isMessagingBackendLive() && canReadLive(actor)) {
+			try {
+				const summary = await liveConversation(actor, conversationId, clock());
+				if (!summary) return fail(404, { message: "No such conversation." });
+				return ok({ context: await fetchConversationContext(actor, summary, clock()) });
+			} catch (error) {
+				liveFailed("context", error);
+				return fail(502, { message: "This conversation's details could not be loaded." });
+			}
+		}
+		const summary = findConversationSummary(conversationId);
+		if (!summary) return fail(404, { message: "No such conversation." });
+		return ok({ context: findConversationContext(summary, CORPUS_NOW) });
+	}
+
+	/**
+	 * Post a hiring request's opening message — an invitation's intro or an application's cover note
+	 * — into the pair's DM, filed in the recipient's Requests folder unless the two follow each other
+	 * (`comms.send_request_message`). The projects service calls this once per request, after the
+	 * invitation or application itself is recorded; the RPC refuses a request with no open engagement.
+	 *
+	 * Live only: the caller passes the recipient's user id and the project's uuid, which only the live
+	 * path has. Returns `null` when the live path is not running.
+	 */
+	static async requestMessage(
+		recipientUserId: string,
+		body: string,
+		projectId: string,
+		actor: ReadActor,
+	): Promise<RequestPosted | null> {
+		if (!isMessagingBackendLive() || !canReadLive(actor)) return null;
+		const posted = await postRequestMessage(actor, recipientUserId, body, projectId);
+		invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
+		return posted;
 	}
 
 	/**
@@ -613,6 +772,7 @@ function toDetail(summary: ConversationSummaryLike): ConversationDetail {
 		starred: summary.starred,
 		muted: summary.muted,
 		archived: summary.archived,
+		folder: summary.folder,
 		// No column governs this. Until the membership-management rules land, a group is treated as
 		// open to the members already in it and a DM as closed — the conservative reading, since
 		// silently widening a two-person thread is the change that cannot be undone.
@@ -644,12 +804,9 @@ function applyConversationParams(
 ): ConversationListPage {
 	let out = [...rows];
 
-	// Only an EXPLICIT "inbox" excludes archived. With `view` unset the full set is returned,
-	// including archived rows, so the client can overlay its optimistic local prefs — the fixture
-	// path's documented behaviour, preserved here so the two agree.
-	if (params.view === "inbox") out = out.filter((c) => !c.archived);
-	else if (params.view === "archived") out = out.filter((c) => c.archived);
-	else if (params.view === "starred") out = out.filter((c) => c.starred);
+	// The folder and partition rule shared with the fixture path (`partition.ts`). With neither set
+	// the full set is returned — every folder — so the lane can count and partition locally.
+	out = out.filter((c) => inPartition(c, params));
 
 	if (params.unread) out = out.filter((c) => c.unread);
 

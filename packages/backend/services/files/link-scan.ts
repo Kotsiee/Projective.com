@@ -1,215 +1,113 @@
-import type { LinkAttachment } from "@projective/types/files";
+import type { LinkAttachment, LinkScanStatus } from "@projective/types/files";
+import { isFilesBackendLive } from "../../core/supabase.ts";
+import { domainOf, isFetchableUrl, urlSuspicion } from "./link-guards.ts";
+import { FETCH_TIMEOUT_MS, guardedFetch, type LinkTransport } from "./link-fetch.ts";
+import { extractPageFacts } from "./link-html.ts";
+import { rehostFavicon } from "./link-favicon.ts";
+import { checkReputation, type Reputation } from "./link-reputation.ts";
+
+export { domainOf, isFetchableUrl, isForbiddenAddress } from "./link-guards.ts";
+export { FETCH_TIMEOUT_MS, MAX_REDIRECTS, MAX_RESPONSE_BYTES } from "./link-fetch.ts";
+export { MAX_FAVICON_BYTES } from "./link-favicon.ts";
 
 /**
- * files link-scan — resolving a pasted URL into the {@link LinkAttachment} the hub stores: its
- * registrable domain, its page title, a RE-HOSTED favicon, and a safety verdict.
+ * files link-scan — the link safety service: what a URL somebody posted IS, before anybody is shown
+ * a preview of it or sent to it. One scan answers both the asset hub's link ingest
+ * ({@link resolveLinkPreview}) and the chat feed's previews (`services/links`).
  *
- * **This is the most dangerous code path in the asset hub, and its outbound half is not built.**
- * Ingesting a link means the SERVER fetches a URL a stranger chose. That is a server-side request
- * forgery primitive by construction, and every guard below exists because the naive version of this
- * function is an unauthenticated read of the platform's own private network. The requirements are
- * written out so they are auditable; until the fetch is implemented against them,
- * {@link resolveLinkPreview} makes NO request — it applies the address guards, takes a title from the
- * URL itself, stores no favicon, and records the link as never scanned (`pending`) rather than
- * asserting a verdict nobody computed.
+ * ## Order of the checks
  *
- * ### What the live path MUST do before it fetches anything
+ * 1. **On its face** (`urlSuspicion`, no I/O): a link into a private or local network, carrying
+ *    credentials, at a bare IP, at a look-alike internationalised name or an unusual port is
+ *    `suspicious`. A private target is never resolved or sent anywhere — it is the reader's own
+ *    network the link is aimed at.
+ * 2. **Reputation** (Google Safe Browsing, `link-reputation.ts`): a listed site is `blocked`.
+ * 3. **The page** (`link-fetch.ts`, every SSRF rule on every hop): a hop the guards refuse is
+ *    `suspicious` — the link leads somewhere the platform will not go; a network that fails is
+ *    `unscannable` — "we could not reach it" is not "we found something"; a page that answers is
+ *    `safe`, with its title, description and a RE-HOSTED icon (`link-favicon.ts`).
  *
- * 1. **`https:` only.** Plaintext lets anyone on the path choose what the platform stores and re-hosts.
- *    The Zod regex on `LinkAttachSchema` is a cheap gate, not the boundary — this is the boundary.
- * 2. **Resolve DNS first and refuse private space.** `https://127.0.0.1/…`,
- *    `https://metadata.internal/…` and `https://169.254.169.254/…` all satisfy an `https:` regex.
- *    Resolve the hostname, then reject loopback, link-local, private, carrier-grade-NAT, unique-local
- *    and unspecified ranges — see {@link isForbiddenAddress}. Refuse on EVERY hop, not just the first:
- *    a public host may 302 straight to `169.254.169.254`, and re-resolving only the original hostname
- *    walks into it.
- * 3. **Pin the resolved address.** Between the DNS check and the connect, a hostile resolver can answer
- *    differently (DNS rebinding). Connect to the address that was CHECKED, carrying the original `Host`
- *    header — never re-resolve the name a second time.
- * 4. **At most {@link MAX_REDIRECTS} redirects,** each re-validated by rules 1–3.
- * 5. **A hard timeout** ({@link FETCH_TIMEOUT_MS}) on the whole operation, via `AbortSignal.timeout`.
- *    A slow-loris origin must not be able to pin a request worker.
- * 6. **A response size cap** ({@link MAX_RESPONSE_BYTES}), enforced by READING THE STREAM and aborting
- *    past the cap. `Content-Length` is attacker-supplied and a chunked response has none at all.
- * 7. **Service-side only, never under the user's JWT.** The fetch carries no Authorization header, no
- *    cookies, and no ambient credential of any kind (`credentials: "omit"`, `redirect: "manual"`).
- * 8. **RE-HOST the favicon into the `public_assets` bucket. Never hotlink it.** A hotlinked
- *    `/favicon.ico` sends every viewer's IP address to a host the link's author chose, which turns
- *    pasting a link into an IP-harvesting primitive. The re-hosted copy is size- and MIME-capped like
- *    any other public object.
+ * Plain `http:` is never fetched (anyone on the path chooses what would be stored), so it is
+ * `unscannable` unless its reputation already blocked it.
  *
- * ### The verdict axis
+ * ## The gate
  *
- * `unscannable` is deliberately distinct from `suspicious`: "we could not reach it" is not "we found
- * something". Collapsing them either cries wolf on every transient timeout or waves through a host that
- * refuses inspection. A `blocked` verdict is the only one that withholds the favicon — a re-hosted image
- * from a known-malicious origin is still an asset we chose to serve.
+ * Every network step sits behind `FILES_BACKEND_LIVE`, as the asset hub's other outbound work does.
+ * With the gate down the scan touches no network: the face-value checks still flag, Google's own
+ * Safe Browsing test host is reported `blocked` so the warning path is exercisable, and anything else
+ * is `safe` with a title read off its path.
+ *
+ * ## Caching
+ *
+ * A verdict is remembered per URL for a while (an hour for safe, a day for flagged, minutes for
+ * unscannable) and concurrent scans of one URL share one promise, so a busy conversation scans a
+ * link once rather than once per reader.
  */
 
-// #region Hardening constants
-
-/** Maximum redirect hops. Each hop is re-validated from scratch. */
-export const MAX_REDIRECTS = 2;
-
-/** Hard ceiling on the whole ingest, in milliseconds. */
-export const FETCH_TIMEOUT_MS = 5_000;
-
-/**
- * Maximum bytes read from an origin. Enforced by reading the stream, never by trusting
- * `Content-Length` — that header is attacker-supplied and a chunked response omits it entirely.
- */
-export const MAX_RESPONSE_BYTES = 512 * 1024;
-
-/** Maximum bytes accepted for a re-hosted favicon. */
-export const MAX_FAVICON_BYTES = 64 * 1024;
-
-/**
- * The reputation feed the live verdict is drawn from.
- *
- * A placeholder per root CLAUDE.md §6 — a real key is never committed, and the provider itself is not
- * yet chosen. Read from the environment at call time, never inlined.
- */
-export const LINK_SAFETY_API_KEY_PLACEHOLDER = "XXXX-XXXX";
-
-// #endregion
-
-// #region Address guards
-
-/** Hostnames that never leave the machine, whatever they resolve to. */
-const LOCAL_NAMES = new Set([
-	"localhost",
-	"localhost.localdomain",
-	"ip6-localhost",
-	"ip6-loopback",
-]);
-
-/**
- * Whether a resolved IP literal is in a range the platform must never fetch from.
- *
- * Covers loopback, link-local (including the `169.254.169.254` cloud metadata endpoint), the three
- * RFC 1918 private ranges, carrier-grade NAT, the unspecified address, and their IPv6 equivalents
- * (unique-local `fc00::/7`, link-local `fe80::/10`, loopback `::1`, and IPv4-mapped forms).
- *
- * Pure and total so it stays testable without a resolver — the live path calls it with EVERY address a
- * hostname resolved to, and refuses if ANY of them is forbidden. Refusing on "any" rather than "all" is
- * deliberate: a hostname that resolves to one public and one private address is a rebinding attempt.
- */
-export function isForbiddenAddress(address: string): boolean {
-	const addr = address.trim().toLowerCase();
-	if (addr === "" || addr === "0.0.0.0" || addr === "::" || addr === "::1") return true;
-
-	// IPv4-mapped IPv6 (`::ffff:127.0.0.1`) — unwrap and re-test, or the guard is trivially bypassed.
-	const mapped = addr.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-	if (mapped) return isForbiddenAddress(mapped[1]);
-
-	const v4 = addr.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-	if (v4) {
-		const [a, b] = [Number(v4[1]), Number(v4[2])];
-		if (a === 0 || a === 10 || a === 127) return true; // unspecified, private, loopback
-		if (a === 169 && b === 254) return true; // link-local + cloud metadata
-		if (a === 172 && b >= 16 && b <= 31) return true; // private
-		if (a === 192 && b === 168) return true; // private
-		if (a === 100 && b >= 64 && b <= 127) return true; // carrier-grade NAT
-		if (a >= 224) return true; // multicast + reserved
-		return false;
-	}
-
-	// IPv6: unique-local `fc00::/7` and link-local `fe80::/10`.
-	if (/^f[cd][0-9a-f]{2}:/.test(addr)) return true;
-	if (/^fe[89ab][0-9a-f]:/.test(addr)) return true;
-	return false;
-}
-
-/**
- * Whether a URL passes the CHEAP, pre-DNS guards: `https:`, no credentials in the authority, no
- * non-standard port, and not a name that never leaves the machine.
- *
- * Passing this is necessary and NOT sufficient — the DNS resolution guard of rule 2 is what actually
- * stops SSRF, and this only avoids paying for a lookup on a URL that was never going to be fetched.
- */
-export function isFetchableUrl(raw: string): boolean {
-	let url: URL;
-	try {
-		url = new URL(raw);
-	} catch {
-		return false;
-	}
-	if (url.protocol !== "https:") return false;
-	// `https://user:pass@host/` would forward a credential the pasting user may not have meant to share.
-	if (url.username !== "" || url.password !== "") return false;
-	if (url.port !== "" && url.port !== "443") return false;
-	const host = url.hostname.toLowerCase();
-	if (LOCAL_NAMES.has(host)) return false;
-	if (host.endsWith(".localhost") || host.endsWith(".internal") || host.endsWith(".local")) {
-		return false;
-	}
-	// A bare IP literal skips DNS entirely, so apply the address guard right here.
-	if (/^[\d.]+$/.test(host) || host.includes(":")) return isFetchableAddressHost(host);
-	return true;
-}
-
-/** Apply {@link isForbiddenAddress} to a hostname that is already an IP literal. */
-function isFetchableAddressHost(host: string): boolean {
-	return !isForbiddenAddress(host.replace(/^\[|\]$/g, ""));
-}
-
-/**
- * The registrable domain shown as a link card's subtitle.
- *
- * Strips a leading `www.` only. It does NOT attempt a public-suffix reduction: `bbc.co.uk` and
- * `user.github.io` are both meaningfully "the site" to a reader, and a naive two-label rule renders the
- * first as `co.uk` and the second as `github.io` — both wrong, one dangerously so, because a phishing
- * subdomain would then display as its victim's brand.
- */
-export function domainOf(raw: string): string {
-	try {
-		return new URL(raw).hostname.toLowerCase().replace(/^www\./, "");
-	} catch {
-		return "";
-	}
-}
-
-// #endregion
-
-// #region Preview resolution
-
-/** What a link ingest concluded, before it is stored on an asset row. */
-export interface LinkPreview extends LinkAttachment {
-	/** Why the scan reached its verdict — kept for the audit trail, never rendered to a recipient. */
+// #region Result
+/** The verdict and facts of one link. A completed scan is never `pending`. */
+export interface LinkScan {
+	url: string;
+	domain: string;
+	verdict: Exclude<LinkScanStatus, "pending">;
+	title: string | null;
+	description: string | null;
+	/** Re-hosted in `public_assets`; null when there was no usable icon or the link was not safe. */
+	faviconUrl: string | null;
+	/** Why the verdict is what it is, in one sentence; null for a plain safe link. */
 	reason: string | null;
+	scannedAt: string;
 }
 
-/**
- * Resolve a pasted URL into the attachment facet the hub stores.
- *
- * Refuses before it resolves anything when the URL fails the cheap guards — the caller maps that to a
- * 422, and a refusal is always cheaper than a fetch that should not have happened.
- */
-export async function resolveLinkPreview(raw: string): Promise<LinkPreview | null> {
-	if (!isFetchableUrl(raw)) return null;
-	const domain = domainOf(raw);
-	if (!domain) return null;
+/** Seams for tests; production passes none. */
+export interface ScanDeps {
+	live?: boolean;
+	transport?: LinkTransport;
+	reputation?: (url: string) => Promise<Reputation>;
+	rehost?: (iconUrl: string, deadline: number) => Promise<string | null>;
+	now?: () => number;
+}
+// #endregion
 
-	// The fetch is not built (see the module note): resolve DNS → refuse any forbidden address → connect
-	// to the PINNED address with the original Host header, `credentials: "omit"`, `redirect: "manual"`,
-	// `AbortSignal.timeout(FETCH_TIMEOUT_MS)` → read at most MAX_RESPONSE_BYTES → parse `<title>` /
-	// OpenGraph → check the reputation feed (key from the environment, never inlined) → re-host the
-	// favicon into `public_assets`. Until then the link is stored as never scanned.
-	await Promise.resolve();
-	return {
-		url: raw,
-		domain,
-		title: titleFromUrl(raw, domain),
-		description: null,
-		faviconUrl: null,
-		scanStatus: "pending",
-		scannedAt: null,
-		reason: null,
-	};
+// #region Cache
+const CACHE_MAX = 1_000;
+const TTL_MS: Record<LinkScan["verdict"], number> = {
+	safe: 60 * 60_000,
+	suspicious: 24 * 60 * 60_000,
+	blocked: 24 * 60 * 60_000,
+	unscannable: 10 * 60_000,
+};
+const cache = new Map<string, { scan: LinkScan; expires: number }>();
+const inflight = new Map<string, Promise<LinkScan>>();
+
+function remember(scan: LinkScan, now: number): LinkScan {
+	cache.delete(scan.url);
+	cache.set(scan.url, { scan, expires: now + TTL_MS[scan.verdict] });
+	while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value!);
+	return scan;
 }
 
+/** A remembered verdict that is still fresh, without scanning. */
+export function cachedScan(url: string, now: number = Date.now()): LinkScan | null {
+	const hit = cache.get(url);
+	if (!hit) return null;
+	if (hit.expires <= now) {
+		cache.delete(url);
+		return null;
+	}
+	return hit.scan;
+}
+
+/** Forget every remembered verdict (tests). */
+export function clearScanCache(): void {
+	cache.clear();
+	inflight.clear();
+}
+// #endregion
+
+// #region Scan
 /** A readable title from a URL's last path segment, falling back to the domain. */
-function titleFromUrl(raw: string, domain: string): string {
+export function titleFromUrl(raw: string, domain: string): string {
 	try {
 		const segments = new URL(raw).pathname.split("/").filter(Boolean);
 		const last = segments[segments.length - 1];
@@ -222,4 +120,160 @@ function titleFromUrl(raw: string, domain: string): string {
 	}
 }
 
+/** Google's published Safe Browsing test host — flagged even with the gate down. */
+const TEST_THREAT_HOST = "testsafebrowsing.appspot.com";
+
+function result(
+	url: string,
+	verdict: LinkScan["verdict"],
+	now: number,
+	extra: Partial<Pick<LinkScan, "title" | "description" | "faviconUrl" | "reason">> = {},
+): LinkScan {
+	return {
+		url,
+		domain: domainOf(url),
+		verdict,
+		title: extra.title ?? null,
+		description: extra.description ?? null,
+		faviconUrl: extra.faviconUrl ?? null,
+		reason: extra.reason ?? null,
+		scannedAt: new Date(now).toISOString(),
+	};
+}
+
+async function runScan(url: string, deps: ScanDeps): Promise<LinkScan> {
+	const now = deps.now ?? Date.now;
+	const started = now();
+	const live = deps.live ?? isFilesBackendLive();
+	const domain = domainOf(url);
+	if (!domain) {
+		return result(url, "unscannable", started, {
+			reason: "That is not a link the platform can read.",
+		});
+	}
+
+	const suspicion = urlSuspicion(url);
+	if (suspicion && (suspicion.code === "private_target" || suspicion.code === "credentials")) {
+		return result(url, "suspicious", started, { reason: suspicion.reason });
+	}
+
+	if (!live) {
+		if (domain === TEST_THREAT_HOST) {
+			return result(url, "blocked", started, {
+				reason: "Google Safe Browsing lists this site for malware.",
+			});
+		}
+		if (suspicion) return result(url, "suspicious", started, { reason: suspicion.reason });
+		if (!url.startsWith("https:")) {
+			return result(url, "unscannable", started, {
+				reason: "This link is not secure (http), so it was not opened.",
+			});
+		}
+		return result(url, "safe", started, { title: titleFromUrl(url, domain) });
+	}
+
+	const deadline = started + FETCH_TIMEOUT_MS;
+	const fetchable = !suspicion && isFetchableUrl(url);
+	const [reputation, fetched] = await Promise.all([
+		(deps.reputation ?? checkReputation)(url),
+		fetchable ? guardedFetch(url, { deadline, transport: deps.transport }) : Promise.resolve(null),
+	]);
+
+	if (reputation.status === "listed") {
+		return result(url, "blocked", now(), {
+			reason: `Google Safe Browsing lists this site for ${reputation.threat}.`,
+		});
+	}
+	if (suspicion) return result(url, "suspicious", now(), { reason: suspicion.reason });
+	if (!fetched) {
+		return result(url, "unscannable", now(), {
+			reason: "This link is not secure (http), so it was not opened.",
+		});
+	}
+	if (!fetched.ok) {
+		return result(url, fetched.failure.kind === "refused" ? "suspicious" : "unscannable", now(), {
+			reason: fetched.failure.reason,
+		});
+	}
+
+	const page = fetched.page;
+	if (page.status >= 400) {
+		return result(url, "unscannable", now(), { reason: `The page answered ${page.status}.` });
+	}
+	const type = (page.headers.get("content-type") ?? "").toLowerCase();
+	const isHtml = type.includes("text/html") || type.includes("application/xhtml+xml");
+	const facts = isHtml
+		? extractPageFacts(new TextDecoder("utf-8", { fatal: false }).decode(page.body), page.url)
+		: {
+			title: titleFromUrl(page.url, domain),
+			description: null,
+			iconUrl: new URL("/favicon.ico", page.url).href,
+		};
+
+	let faviconUrl: string | null = null;
+	if (facts.iconUrl && deadline - now() > 250) {
+		try {
+			faviconUrl = await (deps.rehost ?? ((icon, d) => rehostFavicon(icon, d, deps.transport)))(
+				facts.iconUrl,
+				deadline,
+			);
+		} catch {
+			faviconUrl = null;
+		}
+	}
+	return result(url, "safe", now(), {
+		title: facts.title ?? titleFromUrl(url, domain),
+		description: facts.description,
+		faviconUrl,
+	});
+}
+
+/**
+ * Scan one link — or answer from a fresh cached verdict. Never throws; a scan that fails on the
+ * platform's side is `unscannable`, never `safe`.
+ */
+export async function scanLink(url: string, deps: ScanDeps = {}): Promise<LinkScan> {
+	const now = (deps.now ?? Date.now)();
+	const hit = cachedScan(url, now);
+	if (hit) return hit;
+	const pending = inflight.get(url);
+	if (pending) return await pending;
+
+	const run = runScan(url, deps)
+		.catch(() => result(url, "unscannable", now, { reason: "The link could not be checked." }))
+		.then((scan) => remember(scan, now))
+		.finally(() => inflight.delete(url));
+	inflight.set(url, run);
+	return await run;
+}
+// #endregion
+
+// #region Asset-hub ingest
+/** What a link ingest concluded, before it is stored on an asset row. */
+export interface LinkPreview extends LinkAttachment {
+	/** Why the scan reached its verdict — kept for the audit trail, never rendered to a recipient. */
+	reason: string | null;
+}
+
+/**
+ * Resolve a pasted URL into the attachment facet the hub stores. Refuses (null → 422) before any
+ * work when the URL fails the cheap guards; otherwise the stored facet is the scan's, with the
+ * favicon withheld unless the link came back safe.
+ */
+export async function resolveLinkPreview(raw: string): Promise<LinkPreview | null> {
+	if (!isFetchableUrl(raw)) return null;
+	const domain = domainOf(raw);
+	if (!domain) return null;
+	const scan = await scanLink(raw);
+	return {
+		url: raw,
+		domain,
+		title: scan.title ?? titleFromUrl(raw, domain),
+		description: scan.verdict === "safe" ? scan.description : null,
+		faviconUrl: scan.verdict === "safe" ? scan.faviconUrl : null,
+		scanStatus: scan.verdict,
+		scannedAt: scan.scannedAt,
+		reason: scan.reason,
+	};
+}
 // #endregion

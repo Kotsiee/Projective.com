@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { InboxFolder } from "./folders.ts";
 
 /**
  * messaging.conversations — the Zod SSOT for the global inbox (`/messages`) READ projections: the
@@ -92,13 +93,17 @@ export const ConversationSummarySchema = z.object({
 	preview: z.string().max(200),
 	/** Pre-formatted last-activity label, e.g. "2:30 PM" / "Yesterday" / "Mon, Jul 14". */
 	lastActivityLabel: z.string().max(24),
+	/** The compact label the row's action slot shows (`now` · `5m` · `3h` · `2d` · `3w` · `1y`). */
+	lastActivityShort: z.string().max(8),
 	/** ISO last-activity timestamp — the default `recent` sort key. */
 	updatedAt: z.string(),
 	/** Unseen activity — a pulsing dot, never a count (DESIGN_SYSTEM.md Part D). */
 	unread: z.boolean(),
 	/** Whether the viewer starred (favourited) this conversation. */
 	starred: z.boolean(),
-	/** Whether the viewer archived this conversation (hidden from the default inbox view). */
+	/** The viewer's inbox folder for this conversation (`comms.dm_participants.inbox_folder`). */
+	folder: InboxFolder,
+	/** `folder === "archived"` — kept as its own field for the readers that ask it directly. */
 	archived: z.boolean(),
 	/** Whether the viewer muted this conversation's notifications. */
 	muted: z.boolean(),
@@ -135,6 +140,8 @@ export const ConversationDetailSchema = z.object({
 	starred: z.boolean(),
 	muted: z.boolean(),
 	archived: z.boolean(),
+	/** The viewer's inbox folder for this conversation. */
+	folder: InboxFolder,
 	/**
 	 * Whether the viewer may add members (converting a DM → group, task §2B). Re-derived server-side —
 	 * anyone may add to a group they belong to; a DM's two parties may invite others to spin up a group.
@@ -187,6 +194,8 @@ export const ConversationListParamsSchema = z.object({
 	q: z.string().max(200).optional(),
 	/** Which partition — the default `inbox` excludes archived; `starred`/`archived` scope to those. */
 	view: ConversationView.optional(),
+	/** Only conversations in this folder of the viewer's (absent → every folder). */
+	folder: InboxFolder.optional(),
 	/** Only conversations with unseen activity. */
 	unread: z.boolean().optional(),
 	/** The acting view (freelancer/client/business) — selects the default relation universe. */

@@ -12,6 +12,12 @@
 export type FieldErrors = Record<string, string>;
 
 /**
+ * Machine-readable facts about a refusal that a sentence cannot carry — e.g. `{ reopensAt }` on a
+ * cooldown, `{ retryAt }` on a rate limit — as ISO strings or scalars.
+ */
+export type FailureDetails = Record<string, string | number | boolean | null>;
+
+/**
  * The GoTrue tokens a successful sign-in yields. Carried on the envelope (NOT in `data`) so the thin
  * route mints HttpOnly session cookies from them and they never reach the JSON body.
  */
@@ -34,6 +40,8 @@ export interface ServiceResult<T> {
 	message?: string;
 	/** Field-keyed validation errors (typically with a 422). */
 	errors?: FieldErrors;
+	/** Structured facts about a failure (see {@link FailureDetails}). */
+	details?: FailureDetails;
 	/** When present, the route mints session cookies from these tokens (kept out of the JSON body). */
 	session?: SessionTokens;
 }
@@ -55,7 +63,7 @@ export function ok<T>(
 /** Build a failure result. */
 export function fail<T = never>(
 	status: number,
-	opts: { message?: string; errors?: FieldErrors },
+	opts: { message?: string; errors?: FieldErrors; details?: FailureDetails },
 ): ServiceResult<T> {
-	return { ok: false, status, message: opts.message, errors: opts.errors };
+	return { ok: false, status, message: opts.message, errors: opts.errors, details: opts.details };
 }

@@ -236,7 +236,22 @@ Containers for 1:1 or group conversations separate from project work.
 
 ### `comms.dm_participants`
 
-Join table mapping users to threads. Only users in this table can access thread history.
+Join table mapping users to threads. Only users in this table can access thread history. Every
+per-viewer state lives HERE, on the participant row, because two people in one conversation read,
+star, mute and file it independently.
+
+| Column         | Type        | Notes |
+| :------------- | :---------- | :---- |
+| `last_read_at` | timestamptz | NULL = never opened (distinct from "opened, read nothing"). |
+| `is_starred`   | boolean     | |
+| `inbox_folder` | text        | `'primary'` (default) · `'requests'` · `'archived'` — `dm_participants_inbox_folder_check`. A hiring request files the recipient's row in `requests` (`comms.send_request_message`); their own reply moves it to `primary` (`comms.fn_promote_thread_on_reply`); the participant's moves go through `comms.set_dm_inbox_folder` (no client `UPDATE` policy). |
+| `is_archived`  | boolean     | **GENERATED** `(inbox_folder = 'archived') STORED` — the folder and the flag cannot disagree. |
+| `is_muted`     | boolean     | |
+| `deleted_at`   | timestamptz | Soft delete for this participant only; separate from Archive on purpose. |
+
+Indexes (`00004006`): `idx_dm_participants_folder (user_id, inbox_folder)` — the folder tabs;
+`idx_dm_participants_thread_user (thread_id, user_id)` — the per-message participant lookups the
+two `BEFORE INSERT` triggers on `dm_messages` make.
 
 ### `comms.dm_messages`
 
@@ -245,9 +260,15 @@ The individual message entries for DMs.
 | Column            | Type    | Notes                       |
 | :---------------- | :------ | :-------------------------- |
 | `thread_id`       | uuid    | FK → `comms.dm_threads.id`. |
-| `sender_user_id`  | uuid    | FK → `auth.users.id`.       |
-| `body`            | text    | Message content.            |
+| `sender_user_id`  | uuid    | FK → `org.users_public.user_id`. |
+| `project_id`      | uuid    | The project a request message is about (`comms.send_request_message`); read by the PII filter. |
+| `body`            | text    | Message content — stored masked while the pair's engagement is protected. |
 | `has_attachments` | boolean | Flag for UI optimization.   |
+| `pii_masked`      | boolean | Set by `comms.tg_mask_dm_message_pii` when the body was masked. |
+| `pii_categories`  | text[]  | Which contact categories were masked (`email` · `phone` · `payment_link` · `handle`). |
+
+Index (`00004006`): `idx_dm_messages_thread_recent (thread_id, created_at DESC)` — the latest page
+of a thread and its preview row.
 
 ---
 

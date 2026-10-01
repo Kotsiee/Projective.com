@@ -890,6 +890,24 @@ REVOKE ALL ON FUNCTION comms.add_dm_thread_members(uuid, uuid[]) FROM public, an
 
 GRANT EXECUTE ON FUNCTION comms.add_dm_thread_members(uuid, uuid[]) TO authenticated;
 
+-- --- inbox folders + hiring requests (00001300: set_dm_inbox_folder / send_request_message) ---
+
+-- Same footing as the group RPCs above: definer writes into dm_participants / dm_messages, so the
+-- EXECUTE grant is the access decision, and each function re-checks auth.uid() itself.
+REVOKE ALL ON FUNCTION comms.set_dm_inbox_folder(uuid, text) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION comms.set_dm_inbox_folder(uuid, text) TO authenticated;
+
+REVOKE ALL ON FUNCTION comms.send_request_message(uuid, text, uuid) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION comms.send_request_message(uuid, text, uuid) TO authenticated;
+
+-- The DM PII filter's two lookups answer "which projects is this OTHER person party to" — a question
+-- no client should be able to ask about anyone. Reached only from the definer trigger.
+REVOKE ALL ON FUNCTION comms.fn_dm_protected_project(uuid, uuid, uuid) FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION projects.fn_engaged_projects(uuid) FROM public, anon, authenticated;
+
 -- --- freelancer removal (00001120: release_ticket_to_backlog) ---
 
 -- 🚨 `projects.release_ticket_to_backlog` is SECURITY DEFINER, releases a ticket's held escrow to

@@ -7,6 +7,8 @@ import type {
 } from "@projective/types/messaging";
 import type { ReadActor } from "../read-actor.ts";
 import { sentConversationCount, writeOwnerOf } from "./write-store.ts";
+import { withStubFolder } from "./folder-store.ts";
+import { inPartition } from "./partition.ts";
 import { mockCover } from "../../mocks/assets.ts";
 
 /**
@@ -99,9 +101,11 @@ export function rememberCreatedGroup(
 		participants: members.map(participantOf),
 		preview: "",
 		lastActivityLabel: "Now",
+		lastActivityShort: "now",
 		updatedAt: new Date(NOW).toISOString(),
 		unread: false,
 		starred: false,
+		folder: "primary",
 		archived: false,
 		muted: false,
 		messageCount: 0,
@@ -136,9 +140,11 @@ export function rememberCreatedDm(
 		participants: [participantOf(contact)],
 		preview: "",
 		lastActivityLabel: "Now",
+		lastActivityShort: "now",
 		updatedAt: new Date(NOW).toISOString(),
 		unread: false,
 		starred: false,
+		folder: "primary",
 		archived: false,
 		muted: false,
 		messageCount: 0,
@@ -225,14 +231,15 @@ export function overlayCreatedConversations(
 	params: ConversationListParams,
 	actor: ReadActor | undefined,
 ): ConversationListPage {
-	const mine = createdConversationsFor(actor).filter((c) => c.messageCount > 0);
+	const owner = writeOwnerOf(actor);
+	const mine = createdConversationsFor(actor)
+		.filter((c) => c.messageCount > 0)
+		.map((c) => withStubFolder(owner, c));
 	if (mine.length === 0) return page;
 
 	const q = (params.q ?? "").trim().toLowerCase();
 	const eligible = mine.filter((c) => {
-		if (params.view === "archived") return c.archived;
-		if (params.view === "starred") return c.starred && !c.archived;
-		if (params.view === "inbox" && c.archived) return false;
+		if (!inPartition(c, params)) return false;
 		if (params.unread && !c.unread) return false;
 		if (
 			q && !(c.title.toLowerCase().includes(q) ||

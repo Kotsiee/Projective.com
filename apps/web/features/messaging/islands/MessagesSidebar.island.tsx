@@ -7,6 +7,7 @@ import { Popover } from "@projective/ui/feedback";
 import {
 	LaneBar,
 	LaneCollapseButton,
+	LaneCreateButton,
 	LaneEmpty,
 	LaneFooter,
 	LaneFooterActions,
@@ -14,6 +15,8 @@ import {
 	LaneIconButton,
 	LaneList,
 	LaneSearch,
+	type LaneTabOption,
+	LaneTabs,
 	type LaneToggleOption,
 	LaneToggleRow,
 } from "@projective/ui/navigation";
@@ -33,6 +36,7 @@ import { NewConversationModal } from "../components/NewConversationModal.tsx";
 import { MessageSettingsModal } from "../components/MessageSettingsModal.tsx";
 import { MessagingService } from "../core/MessagingService.ts";
 import { conversationHref } from "../core/conversation-model.ts";
+import { folderOverrides, moveConversation, withFolder } from "../core/folder-moves.ts";
 import { openNewConversation, settingsModalOpen } from "../core/messaging-state.ts";
 import { liveMessagingRole, readDevSeam, subscribeDevSeam } from "../core/messaging-view.ts";
 import {
@@ -41,13 +45,17 @@ import {
 	productOptions,
 	serviceOptions,
 } from "../core/conversation-filters.ts";
-import type {
-	ConversationFilter,
-	ConversationListPage,
-	ConversationSummary,
-	ConversationView,
-	MessagingRole,
-	MessagingSettings,
+import {
+	type ConversationFilter,
+	type ConversationListPage,
+	type ConversationSummary,
+	type ConversationView,
+	folderUnreadCounts,
+	INBOX_FOLDER_LABELS,
+	INBOX_FOLDERS,
+	InboxFolder,
+	type MessagingRole,
+	type MessagingSettings,
 } from "../types/messaging-types.ts";
 
 /**
@@ -64,11 +72,11 @@ import type {
  * same components the `/projects` lane composes. Parity is therefore structural (one source of truth),
  * not a visual copy: a change to lane chrome lands on both surfaces at once.
  *
- * THIN: first paint from SSR; search + advanced facets refine through the API (`MessagingService`); the
- * conversation-state actions (Favourite · Archive · Soft-delete) + the Starred/Archived/Unread
- * partition are overlaid CLIENT-side from a persisted per-conversation preference map, so they reflect
- * instantly without a refetch. The advanced-filter SET is role-specific and live-updates from the Dev
- * Context Switcher's `messagingRole` axis.
+ * THIN: first paint from SSR; search + advanced facets refine through the API (`MessagingService`).
+ * The folder tabs (Primary · Requests · Archived) partition the loaded set client-side; a folder move
+ * is optimistic and confirmed by the server (`folder-moves`). Favourite · Mute · Soft-delete stay a
+ * persisted per-conversation preference overlay. The advanced-filter SET is role-specific and
+ * live-updates from the Dev Context Switcher's `messagingRole` axis.
  */
 
 // #region Props
@@ -85,7 +93,6 @@ export interface MessagesSidebarProps {
 /** Local per-conversation state overrides. */
 interface ConvPref {
 	starred?: boolean;
-	archived?: boolean;
 	muted?: boolean;
 	deleted?: boolean;
 }
@@ -104,12 +111,10 @@ const SHELL_AVOID = [".ui-app-shell__sidebar"] as const;
  */
 const SKELETON_DELAY_MS = 180;
 
-/** The inbox partitions — subtle icon toggles (a single-select `ui-lane-toggles` row) rather than a
- * prominent underline tab strip, matching the non-freelancer `/projects` sidebar chrome (§B.6). */
+/** Within a folder: everything, or only what the viewer starred (a single-select icon toggle row). */
 const VIEW_TOGGLES: readonly LaneToggleOption<ConversationView>[] = [
 	{ key: "inbox", label: "All", icon: <MessagingIcon name="inbox" /> },
 	{ key: "starred", label: "Starred", icon: <MessagingIcon name="star" /> },
-	{ key: "archived", label: "Archived", icon: <MessagingIcon name="archive" /> },
 ];
 
 /**
@@ -143,6 +148,7 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 	// The unfiltered full set — the source for the advanced-filter option lists (services/products/…).
 	const optionSource = useSignal<ConversationSummary[]>(props.initial.conversations);
 	const prefs = useSignal<Record<string, ConvPref>>({});
+	const folder = useSignal<InboxFolder>("primary");
 	const view = useSignal<ConversationView>("inbox");
 	const q = useSignal("");
 	const unread = useSignal(false);
@@ -197,7 +203,13 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 		writeStored(
 			"local",
 			LocalKeys.MESSAGES_FILTERS,
-			JSON.stringify({ q: q.value, view: view.value, unread: unread.value, filter: filter.value }),
+			JSON.stringify({
+				q: q.value,
+				folder: folder.value,
+				view: view.value,
+				unread: unread.value,
+				filter: filter.value,
+			}),
 		);
 	}
 
@@ -223,12 +235,16 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 			try {
 				const saved = JSON.parse(rawFilters) as {
 					q?: string;
+					folder?: unknown;
 					view?: ConversationView;
 					unread?: boolean;
 					filter?: ConversationFilter;
 				};
 				if (saved.q) q.value = saved.q;
-				if (saved.view) view.value = saved.view;
+				const savedFolder = InboxFolder.safeParse(saved.folder);
+				if (savedFolder.success) folder.value = savedFolder.data;
+				if (saved.view === "archived") folder.value = "archived";
+				else if (saved.view) view.value = saved.view;
 				if (saved.unread) unread.value = saved.unread;
 				if (saved.filter) filter.value = saved.filter;
 			} catch { /* ignore */ }
@@ -254,26 +270,38 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 	}, []);
 	// #endregion
 
-	// #region Derived (merge prefs → partition by view → apply quick filters)
-	const displayed = useComputed<ConversationSummary[]>(() => {
+	// #region Derived (merge prefs + folder moves → folder → view → quick filters)
+	const merged = useComputed<ConversationSummary[]>(() => {
 		const p = prefs.value;
-		const merged = serverList.value
+		const moved = folderOverrides.value;
+		return serverList.value
 			.filter((c) => !p[c.id]?.deleted)
-			.map((c) => ({
-				...c,
-				starred: p[c.id]?.starred ?? c.starred,
-				archived: p[c.id]?.archived ?? c.archived,
-				muted: p[c.id]?.muted ?? c.muted,
-			}));
-		const v = view.value;
-		const partitioned = v === "archived"
-			? merged.filter((c) => c.archived)
-			: v === "starred"
-			? merged.filter((c) => c.starred && !c.archived)
-			: merged.filter((c) => !c.archived);
-		// The quick-filter row narrows the partition further (each toggle is an AND on the visible set).
-		return partitioned.filter((c) => !unread.value || c.unread);
+			.map((c) =>
+				withFolder({
+					...c,
+					starred: p[c.id]?.starred ?? c.starred,
+					muted: p[c.id]?.muted ?? c.muted,
+				}, moved)
+			);
 	});
+	const displayed = useComputed<ConversationSummary[]>(() =>
+		merged.value.filter((c) =>
+			c.folder === folder.value && (view.value !== "starred" || c.starred) &&
+			(!unread.value || c.unread)
+		)
+	);
+	const unreadByFolder = useComputed(() => folderUnreadCounts(merged.value));
+	const folderTabs = useComputed<LaneTabOption<InboxFolder>[]>(() =>
+		INBOX_FOLDERS.map((f) => {
+			const count = f === "requests" ? unreadByFolder.value.requests : 0;
+			return {
+				value: f,
+				label: INBOX_FOLDER_LABELS[f],
+				dot: count > 0,
+				hint: count > 0 ? `${count} unread` : undefined,
+			};
+		})
+	);
 
 	const services = useComputed(() => serviceOptions(optionSource.value));
 	const products = useComputed(() => productOptions(optionSource.value));
@@ -321,9 +349,11 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 		const c = serverList.value.find((x) => x.id === id);
 		updatePref(id, { starred: !mergedFlag(id, "starred", c?.starred ?? false) });
 	}
-	function toggleArchive(id: string): void {
-		const c = serverList.value.find((x) => x.id === id);
-		updatePref(id, { archived: !mergedFlag(id, "archived", c?.archived ?? false) });
+	async function move(id: string, to: InboxFolder): Promise<void> {
+		const from = merged.value.find((x) => x.id === id)?.folder;
+		if (!from || from === to) return;
+		const refused = await moveConversation(id, from, to);
+		if (refused) error.value = refused;
 	}
 	function del(id: string): void {
 		updatePref(id, { deleted: true });
@@ -346,12 +376,14 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 		} catch { /* SSR / no window — non-fatal */ }
 	}
 
-	const emptyNote = view.value === "archived"
-		? "Conversations you archive are kept here."
+	const emptyNote = q.value || filterCount.value > 0 || activeQuick.value.length > 0
+		? "Try clearing a filter or widening your search."
 		: view.value === "starred"
 		? "Star a conversation to pin it here."
-		: q.value || filterCount.value > 0 || activeQuick.value.length > 0
-		? "Try clearing a filter or widening your search."
+		: folder.value === "archived"
+		? "Conversations you archive are kept here."
+		: folder.value === "requests"
+		? "Messages from people you haven't worked with yet wait here until you reply."
 		: "Conversations you start or receive will appear here.";
 
 	return (
@@ -368,6 +400,17 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 			{/* Expanded stack. */}
 			<div class="msg-sidebar__full">
 				<LaneHead>
+					<LaneTabs<InboxFolder>
+						label="Inbox folders"
+						class="msg-sidebar__folders"
+						value={folder.value}
+						options={folderTabs.value}
+						onSelect={(next) => {
+							folder.value = next;
+							persistFilters();
+						}}
+					/>
+
 					<LaneBar>
 						<LaneSearch
 							value={q.value}
@@ -422,7 +465,10 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 						label="Inbox views"
 						options={VIEW_TOGGLES}
 						active={[view.value]}
-						onToggle={(next) => (view.value = next)}
+						onToggle={(next) => {
+							view.value = next;
+							persistFilters();
+						}}
 						trailing={{
 							label: "Quick filters",
 							options: QUICK_TOGGLES,
@@ -469,7 +515,7 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 									href={conversationHref(c.id)}
 									active={activeId === c.id}
 									onToggleStar={toggleStar}
-									onToggleArchive={toggleArchive}
+									onMove={(id, to) => void move(id, to)}
 									onDelete={del}
 								/>
 							))
@@ -489,11 +535,9 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 							tooltipPlacement="top"
 							onClick={() => (settingsModalOpen.value = true)}
 						/>
-						<LaneIconButton
-							icon={<MessagingIcon name="compose" />}
+						<LaneCreateButton
 							label="New message"
-							tooltipPlacement="top"
-							accent
+							icon={<MessagingIcon name="compose" />}
 							onClick={() => openNewConversation()}
 						/>
 					</LaneFooterActions>

@@ -14,7 +14,6 @@
 	background: color-mix(in srgb, var(--surface-2) var(--glass-veil-chrome), transparent);
 	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
 	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	/* Pinned to the bottom edge, so it casts up onto the content passing beneath it. */
 	box-shadow: var(--elevation-low-up);
 	border-block-start: var(--hairline);
 }

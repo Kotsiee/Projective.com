@@ -160,6 +160,11 @@ zone degrades to UTC instead of aborting the run for every other user.
 | `on_users_public_created_notification_prefs` | `org.users_public`    | `comms.seed_notification_prefs()`  |
 | `on_notification_created_dispatch`           | `comms.notifications` | `comms.fn_dispatch_notification()` |
 | `trg_*_touch`                                | every engine table    | `comms.fn_touch_updated_at()`      |
+| `trg_dm_messages_mask_pii`                   | `comms.dm_messages`   | `comms.tg_mask_dm_message_pii()`   |
+| `trg_dm_messages_promote_on_reply`           | `comms.dm_messages`   | `comms.fn_promote_thread_on_reply()` |
+
+Both `dm_messages` triggers are `BEFORE INSERT` (`00001840`) and are documented under
+§Inbox folders, hiring requests & the DM contact filter below.
 
 `seed_notification_prefs` mirrors `org.seed_user_preferences` (Decision #47) — a focused
 `AFTER INSERT` trigger under a **separate name**, so the existing `on_users_public_created` trigger
@@ -225,3 +230,54 @@ named group with three participants; a blank title → `NULL`; the DM lookup no 
 group that holds both people, and idempotent; a third person converting a DM to a group with a
 repeat adding nobody; a self-deletion restored; a phantom uuid dropped; a stranger refused; `anon`
 holding no `EXECUTE` on either.
+
+## Inbox folders, hiring requests & the DM contact filter (`00001300` / `00001840`, Decision #128)
+
+The folder is a column of the PARTICIPANT row (`comms.dm_participants.inbox_folder`, see Tables),
+so these doors write only the caller's own row — or, for a request, file both rows once, when the
+request opens the thread. The TypeScript twins of both rules are `folderAfterSend` /
+`requestRouting` in `packages/types/messaging/folders.ts`, pinned to this SQL by
+`folders.test.ts`.
+
+### `comms.set_dm_inbox_folder(p_thread_id uuid, p_folder text) → text`
+
+`SECURITY DEFINER`, `EXECUTE` to `authenticated`. Moves the caller's own undeleted participant row
+to `primary` / `requests` / `archived` and returns the folder. Raises `42501` for a caller who is
+not a participant (or not signed in) and `22023 'folder: not_a_folder'` for anything else.
+
+### `comms.send_request_message(p_recipient uuid, p_body text, p_project_id uuid) → jsonb`
+
+`SECURITY DEFINER`, `EXECUTE` to `authenticated`. Posts a hiring request's opening message — an
+invitation's intro or an application's cover note — into the pair's DM. It refuses (`42501`) unless
+an OPEN invitation or a PENDING application on `p_project_id` stands between the caller and the
+recipient, so it cannot be used to cold-message anybody; the body is required and at most 4,000
+characters. It finds the pair's non-group thread or creates one, restores a participant row the
+recipient had deleted, and — only when the request OPENS the thread (created, empty, or restored
+from the recipient's deletion) — files it: the recipient's row in `requests` unless the two follow
+each other (`org.profile_follows` both ways), the sender's in `primary`. An existing conversation is
+never re-filed. The message is inserted with `project_id`, so the contact filter applies to it.
+Returns `{ thread_id, message_id, opened, routed_to }`.
+
+### `comms.fn_promote_thread_on_reply()` — trigger
+
+`BEFORE INSERT ON comms.dm_messages`. A reply accepts a request: the SENDER's own row moves
+`requests → primary`. No other participant's folder is touched, so a requester's follow-ups can
+never pull a thread out of the recipient's Requests, and a reply into an archived thread leaves it
+archived.
+
+### `comms.tg_mask_dm_message_pii()` · `comms.fn_dm_protected_project(thread, sender, project) → uuid`
+
+`BEFORE INSERT ON comms.dm_messages`. Applies `comms.mask_pii` to the body — the same rules as the
+stage-message filter (PRODUCT_SPEC §3 "Handover") — when the message falls under a protected
+engagement: the project the message names, while its handover is locked, or else a protected (`draft` / `active` /
+`on_hold`, handover not unlocked) project the sender and the thread's other participant are both
+engaged in (`projects.fn_engaged_projects`: owner, participant, live assignee or team member,
+pending/accepted invitee or applicant). Sets `pii_masked` / `pii_categories`. The helper and
+`projects.fn_engaged_projects` are executable by NO client role — only the definer trigger reaches
+them. `packages/types/comms/pii.ts` is the TypeScript twin, pinned to `comms.mask_pii`'s patterns by
+`pii.contract.test.ts`.
+
+**Verified by execution** inside `BEGIN … ROLLBACK` against the local Postgres as real roles: the
+request routing with and without a mutual follow, an existing thread never re-filed, a deleted row
+restored and re-filed, the reply promotion for the sender only, the folder door's two refusals, the
+cold-message refusal, masking in a protected pair's DM and none in an unrelated one.

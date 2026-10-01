@@ -7,10 +7,17 @@ import "@web/features/projects/styles/channel-header.css";
 import "../styles/conversation.css";
 import { Avatar } from "@projective/ui/display";
 import { Popover, Tooltip } from "@projective/ui/feedback";
+import { useMediaQuery } from "@projective/ui/navigation";
 import { MessagingIcon } from "../components/messaging-glyphs.tsx";
 import { CONVERSATION_TABS } from "../core/conversation-model.ts";
 import { openPopout } from "../core/popout-state.ts";
 import { openAddMembers } from "../core/messaging-state.ts";
+import {
+	CONTEXT_PANEL_INFLOW_QUERY,
+	contextDrawerOpen,
+	contextPanelDocked,
+	toggleContextPanel,
+} from "../core/context-panel-state.ts";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import type { ConversationDetail } from "../types/messaging-types.ts";
 import { DEFAULT_AVATAR_URL } from "@projective/types/user";
@@ -21,7 +28,8 @@ import { DEFAULT_AVATAR_URL } from "@projective/types/user";
  * the `.chan-header` chrome for a byte-identical look). It STRICTLY MIRRORS the channel layout but with
  * ONLY the Chat · Files · Members tabs (task §2C). Its right-side actions (task §1 / §2): Star · a
  * **Pop Out Chat** button (opens the floating draggable popover) · a kebab (Mute · Add members ·
- * Copy link). Dumb island: star/mute persist optimistically to `localStorage`.
+ * Copy link). On a one-to-one conversation's Chat tab a Details toggle opens the context panel.
+ * Dumb island: star/mute persist optimistically to `localStorage`.
  */
 
 // #region Tab icons
@@ -69,6 +77,9 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 	const isMuted = useSignal(detail.muted);
 	const menuOpen = useSignal(false);
 	const copied = useSignal(false);
+	const hasDetails = detail.kind !== "group" && activeTab === "chat";
+	const docked = useMediaQuery(CONTEXT_PANEL_INFLOW_QUERY);
+	const detailsOpen = docked ? contextPanelDocked.value : contextDrawerOpen.value;
 
 	// Layer the persisted star/mute preference on after hydration.
 	useEffect(() => {
@@ -157,6 +168,22 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 				>
 					<MessagingIcon name="star" />
 				</button>
+
+				{hasDetails && (
+					<Tooltip content="Details" placement="bottom">
+						<button
+							type="button"
+							class="chan-action"
+							data-on={detailsOpen ? "true" : undefined}
+							aria-label="Conversation details"
+							aria-expanded={detailsOpen}
+							aria-controls={docked ? "msg-ctx-panel" : undefined}
+							onClick={toggleContextPanel}
+						>
+							<MessagingIcon name="details" />
+						</button>
+					</Tooltip>
+				)}
 
 				<Tooltip content="Pop out chat" placement="bottom">
 					<button

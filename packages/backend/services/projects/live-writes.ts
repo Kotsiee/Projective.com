@@ -47,7 +47,7 @@ import {
 } from "@projective/types/projects";
 import { flattenRichText, plainTextToHtml } from "@projective/types/richtext";
 import type { SupabaseClient } from "supabaseClient";
-import type { FieldErrors } from "../ServiceResult.ts";
+import type { FailureDetails, FieldErrors } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
 import {
 	clamp,
@@ -803,6 +803,7 @@ export interface WriteRefusal {
 	status: number;
 	message: string;
 	errors?: FieldErrors;
+	details?: FailureDetails;
 }
 
 /**

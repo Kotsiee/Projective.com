@@ -236,9 +236,33 @@ function buildMessage(
 	};
 }
 
+/**
+ * A request is ONE message until it is answered — the intro or cover note that opened it. These two
+ * also carry a safe link and a flagged one, so the link previews are reachable from the fixtures.
+ */
+const REQUEST_OPENERS: Record<string, string> = {
+	"dm-marcus":
+		"Hi Ahmed — I'd love you on the Atlas portal build. The brief is in the invite, and our current site is at https://example.com/atlas-portal for reference.",
+	"dm-ivy":
+		"Hi! I've applied for the Documentation site stage. My case study is at https://example.com/case-studies/design-system-docs — the old portfolio mirror is https://testsafebrowsing.appspot.com/s/phishing.html if that one is slow.",
+};
+
 function buildPool(c: ConversationSummary): ChatMessage[] {
 	const seed = hash(c.id);
 	const others = sendersOf(c);
+	const opener = REQUEST_OPENERS[c.id];
+	if (opener) {
+		return [
+			buildMessage(
+				{ from: { other: 0 }, text: opener },
+				0,
+				Date.parse(c.updatedAt),
+				c.id,
+				others,
+				seed,
+			),
+		];
+	}
 	const beats = [...fillerBeats(seed, others.length), ...SHOWCASE];
 
 	const gaps = beats.map((b) => (b.gapMin ?? 3) * MIN);

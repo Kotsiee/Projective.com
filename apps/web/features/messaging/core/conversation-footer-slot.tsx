@@ -48,6 +48,7 @@ export async function conversationFooterFor(
 			scope="conversation"
 			projectId={conversationId}
 			channelId={conversationId}
+			autoFocus
 		/>
 	);
 }

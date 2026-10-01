@@ -17,6 +17,7 @@ import {
 	type NavSublink,
 } from "@web/features/shell/core/nav-model.ts";
 import { useEffectiveContext } from "@web/features/shell/core/effective-context.ts";
+import { isEditableTarget, isToggleSidebarShortcut } from "@web/features/shell/core/shortcuts.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 export interface ShellSidebarIslandProps {
@@ -39,6 +40,9 @@ export interface ShellSidebarIslandProps {
  * circular avatar, Products & Services / Teams / Businesses → kind-strict lists). The collapse/expand
  * control is a labelless custom morphing SVG pinned bottom-left. Composes the package's presentational
  * `ShellSidebar` frame.
+ *
+ * Ctrl+B / Cmd+B toggles the rail from anywhere except while typing (fields, editable regions, the
+ * rich-text editor keep the chord).
  *
  * The roster is computed **in the island** via {@link globalNav} off a live {@link useEffectiveContext}
  * so it matches SSR on hydration (same inputs) yet re-gates instantly when the DEV Context Switcher
@@ -76,6 +80,17 @@ export default function ShellSidebarIsland(
 		writeStored("local", LocalKeys.SIDEBAR_COLLAPSED, next ? "1" : "0");
 		document.documentElement.dataset.sidebar = next ? "collapsed" : "expanded";
 	};
+
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (!isToggleSidebarShortcut(e)) return;
+			if (isEditableTarget(e.target instanceof Element ? e.target : null)) return;
+			e.preventDefault();
+			toggleCollapsed();
+		};
+		globalThis.addEventListener("keydown", onKey);
+		return () => globalThis.removeEventListener("keydown", onKey);
+	}, []);
 
 	const toggleGroup = (key: string) => {
 		const set = new Set(openGroups.value);

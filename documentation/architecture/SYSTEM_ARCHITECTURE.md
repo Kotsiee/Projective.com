@@ -823,6 +823,33 @@ the inviter cannot resolve for another user under RLS) and carries neither the c
 message, so a live insert would record a success the row does not describe — flagged for a schema
 decision rather than papered over.
 
+**Inbox folders, hiring requests and the context panel (Decision #128).** A conversation's folder
+(`primary` · `requests` · `archived`) is the VIEWER's: it lives on `comms.dm_participants`, and every
+read projects it as `ConversationSummary.folder` (with `archived` derived from it). The lane
+partitions the loaded set by folder client-side; a move is optimistic (`folder-moves.ts`) and
+confirmed by `MessagingBackendService.setFolder` → `comms.set_dm_inbox_folder`. A hiring request's
+message — an invitation's intro, an application's cover note — is posted by the PROJECTS service
+after the request is recorded, through `MessagingBackendService.requestMessage` →
+`comms.send_request_message` (live) or the stub `sendMessage` (fixtures); the folder routing and the
+reply promotion are database rules (`comms.fn_promote_thread_on_reply`), mirrored for the stub by
+`folderAfterSend` / `requestRouting` and a per-process folder store. The context panel reads
+`MessagingBackendService.context` → `projects.get_engagement_context`, and `context-model.ts`
+DERIVES the actions server-side, so a control renders only when its write would be accepted. The
+stub corpus is frozen at one instant (`CORPUS_NOW`), and everything the stub dates — labels, request
+expiry, the protected-phase check — reads that clock rather than `Date.now()`. A live `dm-{handle}`
+with no thread yet resolves to a VIRTUAL conversation (an empty page), never a minted thread.
+
+**Links in messages (Decision #128).** `POST /api/links/preview` → `LinkPreviewBackendService`: an
+INTERNAL link (the serving origin, `APP_URL`, or a canonical product host) becomes a card read
+through the service that owns it, under the reader's identity (`ProfileBackendService`,
+`ProjectBackendService`, `ExploreBackendService`); an EXTERNAL one gets the link-scan verdict and,
+only when `safe`, the page's title, description and re-hosted icon. Signed-in readers only, 30 per
+minute, cards cached 60 s per reader. The browser batches every bubble's links into one request
+(`features/links/core/link-previews.ts`) and routes any external link whose verdict is not `safe`
+— including one not yet answered — through `/exit` (`exitHref`), whose verdict comes from
+`LinkPreviewBackendService.exitCheck`: a signed-in visit scans (rate-limited), a guest only ever
+sees a remembered verdict plus the URL's own shape, so the page is never an anonymous fetch proxy.
+
 ### Catalogue services (the first WRITE surface)
 
 The seller-side Catalogue (`/catalogue` + the per-item manage page `/catalogue/[id]`) is the **first
@@ -975,17 +1002,26 @@ rename here would silently rename a file their whole team depends on.
 #### Link ingest is the most dangerous path, and it is gated shut
 
 Attaching a link means **the server fetches a URL a stranger chose** — an SSRF primitive by
-construction. `services/files/link-scan.ts` writes the live path out so the requirements are auditable,
-and keeps the outbound fetch behind `FILES_BACKEND_LIVE`; until then it answers from a stub that
-touches no network. The live path must: allow `https:` only; **resolve DNS first and refuse** loopback,
-link-local (including `169.254.169.254`), private, CGNAT, unique-local and unspecified ranges; **pin the
-resolved address** and connect to the address that was checked (DNS rebinding); re-validate **every**
-redirect hop (max 2); enforce a hard timeout (5 s) and a **stream-enforced** response cap (512 KiB —
-`Content-Length` is attacker-supplied and a chunked response has none); carry **no** ambient credential
-(`credentials: "omit"`, `redirect: "manual"`); and **re-host the favicon** into `public_assets` rather
-than hotlinking it, because a hotlinked favicon sends every viewer's IP to a host the link's author
-chose. The verdict axis keeps `unscannable` distinct from `suspicious`: *"we could not reach it"* is
-not *"we found something"*.
+construction. `services/files/link-scan.ts` keeps the outbound fetch behind `FILES_BACKEND_LIVE`;
+until then it answers offline (the Safe Browsing test host is `blocked`, a suspicious shape is
+`suspicious`, `http:` is `unscannable`, anything else `safe` with a title from its path) and touches no
+network. The live path (Decision #128) is split so each requirement is auditable: `link-guards.ts`
+parses IPv4/IPv6 itself (mapped, NAT64, 6to4 and Teredo forms included) and refuses loopback,
+link-local (including `169.254.169.254`), private, CGNAT, unique-local, multicast, reserved and
+unspecified ranges, IP literals, credentials in the URL, lookalike hosts and non-standard ports;
+`link-fetch.ts` allows `https:` only, **resolves DNS first and refuses the whole host if ANY answer is
+forbidden** (rebinding), then **connects to the pinned, checked address itself** (`Deno.connect` +
+`Deno.startTls` with the hostname, so SNI and certificate verification still name the host) and
+speaks a minimal HTTP/1.1 (`Connection: close`, `Accept-Encoding: identity`, chunked decoding) with
+**no** ambient credential; it re-validates **every** redirect hop (max 2), enforces a hard 5 s
+deadline by closing the socket, and a **stream-enforced** 512 KiB cap (`Content-Length` is
+attacker-supplied and a chunked response has none); `link-reputation.ts` asks Google Safe Browsing
+(`LINK_SAFETY_API_KEY`); `link-favicon.ts` **re-hosts the favicon** into `public_assets` (the same
+guarded fetch, an image sniff, 64 KiB) rather than hotlinking it, because a hotlinked favicon sends
+every viewer's IP to a host the link's author chose. Verdicts are cached per URL (safe 1 h, flagged
+24 h, unscannable 10 min) and concurrent scans of one URL share one promise. The verdict axis keeps
+`unscannable` distinct from `suspicious`: *"we could not reach it"* is not *"we found something"*.
+Pinned by `link-scan.test.ts` (guards, rebinding, redirects, caps, deadline, favicon).
 
 #### The token vault
 
@@ -2062,8 +2098,9 @@ FRAMEIO_CLIENT_SECRET=XXXX-XXXX
 S3_ACCESS_KEY_ID=XXXX-XXXX
 S3_SECRET_ACCESS_KEY=XXXX-XXXX
 
-# Link safety — the reputation feed a pasted link's verdict is drawn from. The provider is not yet
-# chosen; the key is read at call time and never inlined (files/link-scan.ts).
+# Link safety — a Google Safe Browsing v4 Lookup API key (files/link-reputation.ts), read at call
+# time and never inlined; absent or the placeholder → no reputation lookup (the scan's own guards
+# still run). The lookup sends the full URL to Google (Decision #128).
 LINK_SAFETY_API_KEY=XXXX-XXXX
 
 # Stripe (Finance) — read only by packages/backend/core/stripe.ts; a value not shaped like its key

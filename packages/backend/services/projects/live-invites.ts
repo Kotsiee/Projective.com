@@ -176,7 +176,7 @@ export async function insertInvitations(
 	input: HireInvitation,
 	offer: HireOffer,
 	nowMs: number = Date.now(),
-): Promise<WriteOutcome<MemberInvite[]>> {
+): Promise<WriteOutcome<IssuedInvitations>> {
 	const project = await resolveProject(actor, input.projectId);
 	if (!project) return null;
 	const targetUserId = await resolveHandle(actor, input.handle);
@@ -213,7 +213,7 @@ export async function insertInvitations(
 			p_offer_price_cents: target.priceCents,
 			p_answers: input.answers,
 		});
-		if (error) return { refusal: inviteRefusalFrom(error.message) };
+		if (error) return { refusal: inviteRefusalFrom(error.message, error.details) };
 		if (typeof data === "string" && data) issued.push(data);
 	}
 
@@ -221,10 +221,32 @@ export async function insertInvitations(
 	const queue = await fetchInvitations(actor, db, project.id, stageNames, nowMs, new Map());
 	const mine = new Set(issued);
 	const rows = queue.filter((invite) => mine.has(invite.id));
+	const ids = { projectId: project.id, targetUserId };
 	// A row issued and then not re-read (a read refused between the two statements) is still real;
 	// it is reported by id so the caller can say how many landed rather than pretending none did.
-	if (rows.length === issued.length) return { data: rows };
-	return { data: rows.length > 0 ? rows : issued.map((id) => placeholderRow(id, input, nowMs)) };
+	if (rows.length === issued.length) return { data: { invites: rows, ...ids } };
+	return {
+		data: {
+			invites: rows.length > 0 ? rows : issued.map((id) => placeholderRow(id, input, nowMs)),
+			...ids,
+		},
+	};
+}
+
+/** The invitations a hire issued, and the two ids the request message that follows them needs. */
+export interface IssuedInvitations {
+	invites: MemberInvite[];
+	/** The project's uuid. */
+	projectId: string;
+	/** The invitee's user id. */
+	targetUserId: string;
+}
+
+/** The reopening instant `invite_to_project` puts in a cooldown refusal's DETAIL (`reopens_at=…`). */
+export function reopensAtFrom(details: string | null | undefined): string | null {
+	const match = details?.match(/reopens_at=(\S+)/);
+	if (!match || Number.isNaN(Date.parse(match[1]))) return null;
+	return new Date(match[1]).toISOString();
 }
 
 /**
@@ -235,7 +257,7 @@ export async function insertInvitations(
  * `unique_violation` is a 409; a `check_violation` (cooldown · closed · foreign stage) is a 422; an
  * ownership refusal falls through to `refusalFrom`'s 403.
  */
-function inviteRefusalFrom(message: string): WriteRefusal {
+function inviteRefusalFrom(message: string, details?: string | null): WriteRefusal {
 	if (
 		message.includes("already pending") || message.includes("already assigned") ||
 		message.includes("already on the project")
@@ -247,6 +269,7 @@ function inviteRefusalFrom(message: string): WriteRefusal {
 			status: 422,
 			message: stripPostgresPrefix(message),
 			errors: { projectId: "cooldown" },
+			details: { reopensAt: reopensAtFrom(details) },
 		};
 	}
 	if (message.includes("not part of this project")) {

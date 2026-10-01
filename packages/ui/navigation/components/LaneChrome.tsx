@@ -67,6 +67,10 @@ export function LaneList(
 export interface LaneTabOption<T extends string = string> {
 	value: T;
 	label: string;
+	/** A quiet unseen-activity dot after the label (§D.1 — a dot, never a count). */
+	dot?: boolean;
+	/** Words added to the tab's accessible name only — the count a dot stands for ("3 unread"). */
+	hint?: string;
 }
 
 export interface LaneTabsProps<T extends string = string> {
@@ -76,15 +80,42 @@ export interface LaneTabsProps<T extends string = string> {
 	value: T;
 	options: readonly LaneTabOption<T>[];
 	onSelect: (value: T) => void;
+	class?: string;
 }
 
 /**
  * LaneTabs — the plain-language tab strip at the peak of a lane. A quiet sliding underline marks the
- * active tab; no filled pill, no count (§B.4 — no boxes on non-interactive chrome).
+ * active tab; no filled pill, no count (§B.4 — no boxes on non-interactive chrome). A tab may carry an
+ * unseen-activity dot, with the count it stands for spoken in its name. Arrow keys, Home and End move
+ * between tabs (roving tab stop), per the ARIA tabs pattern.
  */
 export function LaneTabs<T extends string = string>(props: LaneTabsProps<T>): JSX.Element {
+	const onKeyDown = (event: KeyboardEvent) => {
+		const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+		if (!keys.includes(event.key)) return;
+		const tabs = Array.from(
+			(event.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>("[role='tab']"),
+		);
+		const at = tabs.indexOf(event.target as HTMLButtonElement);
+		if (at < 0) return;
+		event.preventDefault();
+		const rtl = getComputedStyle(event.currentTarget as HTMLElement).direction === "rtl";
+		const forward = (event.key === "ArrowRight") !== rtl;
+		const next = event.key === "Home"
+			? 0
+			: event.key === "End"
+			? tabs.length - 1
+			: (at + (forward ? 1 : -1) + tabs.length) % tabs.length;
+		tabs[next].focus();
+		props.onSelect(props.options[next].value);
+	};
 	return (
-		<div class="ui-lane-tabs" role="tablist" aria-label={props.label}>
+		<div
+			class={cx("ui-lane-tabs", props.class)}
+			role="tablist"
+			aria-label={props.label}
+			onKeyDown={onKeyDown}
+		>
 			{props.options.map((tab) => {
 				const selected = props.value === tab.value;
 				return (
@@ -93,15 +124,58 @@ export function LaneTabs<T extends string = string>(props: LaneTabsProps<T>): JS
 						type="button"
 						role="tab"
 						aria-selected={selected}
+						tabIndex={selected ? 0 : -1}
 						class="ui-lane-tabs__tab"
 						data-selected={selected ? "true" : undefined}
 						onClick={() => props.onSelect(tab.value)}
 					>
 						{tab.label}
+						{tab.dot && <span class="ui-lane-tabs__dot" aria-hidden="true" />}
+						{tab.hint && <span class="ui-visually-hidden">{`, ${tab.hint}`}</span>}
 					</button>
 				);
 			})}
 		</div>
+	);
+}
+// #endregion
+
+// #region Create action
+export interface LaneCreateButtonProps {
+	/** The action, as words ("New message", "Create project"); also its accessible name. */
+	label: string;
+	/** The leading glyph, supplied by the consumer so the package carries no icon set. */
+	icon: VNode;
+	/** Anchor ref when the button opens an overlay (see {@link LaneIconButtonProps.triggerRef}). */
+	triggerRef?: RefObject<HTMLElement>;
+	ariaHasPopup?: "menu" | "dialog";
+	ariaExpanded?: boolean;
+	ariaControls?: string;
+	class?: string;
+	onClick?: () => void;
+}
+
+/**
+ * LaneCreateButton — a lane's ONE primary action, the filled brand pill in its footer band ("New
+ * message", "Create project"), so every lane spells its create action the same way. The brand fill
+ * takes the §B.12 zero tonal step (its hover is the border channel) and a press compresses by scale
+ * only; in the collapsed rail the label folds away and the glyph stays, named by `aria-label`.
+ */
+export function LaneCreateButton(props: LaneCreateButtonProps): JSX.Element {
+	return (
+		<button
+			type="button"
+			ref={props.triggerRef as RefObject<HTMLButtonElement> | undefined}
+			class={cx("ui-lane-create", props.class)}
+			aria-label={props.label}
+			aria-haspopup={props.ariaHasPopup}
+			aria-expanded={props.ariaExpanded}
+			aria-controls={props.ariaControls}
+			onClick={props.onClick}
+		>
+			<span class="ui-lane-create__icon" aria-hidden="true">{props.icon}</span>
+			<span class="ui-lane-create__label" aria-hidden="true">{props.label}</span>
+		</button>
 	);
 }
 // #endregion

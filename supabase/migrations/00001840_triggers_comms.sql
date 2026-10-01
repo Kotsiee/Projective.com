@@ -8,6 +8,16 @@ CREATE TRIGGER trg_mask_message_pii
     FOR EACH ROW
     EXECUTE FUNCTION comms.tg_mask_message_pii();
 
+CREATE TRIGGER trg_dm_messages_mask_pii
+    BEFORE INSERT ON comms.dm_messages
+    FOR EACH ROW
+    EXECUTE FUNCTION comms.tg_mask_dm_message_pii();
+
+CREATE TRIGGER trg_dm_messages_promote_on_reply
+    BEFORE INSERT ON comms.dm_messages
+    FOR EACH ROW
+    EXECUTE FUNCTION comms.fn_promote_thread_on_reply();
+
 CREATE TRIGGER trg_notification_types_touch
     BEFORE UPDATE ON comms.notification_types
     FOR EACH ROW EXECUTE FUNCTION comms.fn_touch_updated_at();

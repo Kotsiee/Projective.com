@@ -151,6 +151,23 @@ import { plainTextToHtml } from "@projective/types/richtext";
 import { toMinorUnits } from "@projective/types/finance";
 import type { EntityView, ExploreItem, ServiceItem } from "@projective/types/explore";
 import { ProfileBackendService } from "../profile/ProfileBackendService.ts";
+import { MessagingBackendService } from "../messaging/MessagingBackendService.ts";
+import { dmConversationId } from "@projective/types/messaging";
+import { maskPii } from "@projective/types/comms";
+import { acceptApplicationLive, applyLive, respondLive } from "./live-applications.ts";
+import {
+	hasOpenStubApplication,
+	recordRequestDecision,
+	recordStubApplication,
+} from "./request-store.ts";
+import type {
+	AcceptApplication,
+	ApplicationAccepted,
+	ApplyToProject,
+	InvitationAnswered,
+	ProjectApplication,
+	RespondToInvitation,
+} from "@projective/types/projects";
 import type {
 	ArchiveProject,
 	BoardCard,
@@ -421,9 +438,47 @@ function notFound<T>(noun: string, id: string): ServiceResult<T> {
 	return fail<T>(404, { message: `No ${noun} found for "${id}".` });
 }
 
+/** What a sent hire answers with. */
+export interface HireSent {
+	invites: MemberInvite[];
+	total: number;
+	placeholder: boolean;
+	/** The DM the intro opened (or was posted into); null with no intro, or when it could not be posted. */
+	conversationId: string | null;
+}
+
+/**
+ * Post a request's opening message into the pair's DM (`MessagingBackendService.requestMessage`).
+ * The request itself is already recorded and the other side already notified, so a failure here costs
+ * only the DM: it is logged and answered `null`, never reported as a failed hire or application.
+ */
+async function postIntro(
+	recipientUserId: string,
+	body: string,
+	projectId: string,
+	actor: ReadActor,
+): Promise<string | null> {
+	try {
+		const posted = await MessagingBackendService.requestMessage(
+			recipientUserId,
+			body,
+			projectId,
+			actor,
+		);
+		return posted?.threadId ?? null;
+	} catch (error) {
+		liveFailed("postIntro", error);
+		return null;
+	}
+}
+
 /** Map a {@link WriteRefusal} onto the service envelope, preserving the database's own wording. */
 function refused<T>(refusal: WriteRefusal): ServiceResult<T> {
-	return fail<T>(refusal.status, { message: refusal.message, errors: refusal.errors });
+	return fail<T>(refusal.status, {
+		message: refusal.message,
+		errors: refusal.errors,
+		details: refusal.details,
+	});
 }
 
 /**
@@ -1405,13 +1460,8 @@ export class ProjectBackendService {
 	static async hire(
 		input: HireInvitation,
 		actor: ReadActor,
-	): Promise<ServiceResult<{ invites: MemberInvite[]; total: number; placeholder: boolean }>> {
-		const denied = requireIdentity<
-			{ invites: MemberInvite[]; total: number; placeholder: boolean }
-		>(
-			actor,
-			"invite someone to a project",
-		);
+	): Promise<ServiceResult<HireSent>> {
+		const denied = requireIdentity<HireSent>(actor, "invite someone to a project");
 		if (denied) return denied;
 		const handle = input.handle.replace(/^@/, "");
 
@@ -1422,8 +1472,13 @@ export class ProjectBackendService {
 		 * does not eat into the allowance of the corrected one.
 		 */
 		const owner = writeOwnerOf(actor);
-		if (!hireLimiter.peek(owner).allowed) {
-			return fail(429, { message: HIRE_RATE_LIMIT_MESSAGE, errors: { form: "rate_limited" } });
+		const ceiling = hireLimiter.peek(owner);
+		if (!ceiling.allowed) {
+			return fail(429, {
+				message: HIRE_RATE_LIMIT_MESSAGE,
+				errors: { form: "rate_limited" },
+				details: { retryAt: new Date(Date.now() + ceiling.retryAfterMs).toISOString() },
+			});
 		}
 
 		const briefRead = await this.hireBrief(input.projectId, actor, handle);
@@ -1431,9 +1486,18 @@ export class ProjectBackendService {
 			return fail(briefRead.status, { message: briefRead.message });
 		}
 		const brief = briefRead.data.brief;
-		// The cooldown rides the brief (`cooldownUntil`), so the refusal below names the date it lifts.
+		// The cooldown rides the brief (`cooldownUntil`), so the refusal below names the date it lifts —
+		// and carries the exact instant, so a client can show it in the reader's own zone.
 		const refusal = hireInvitationRefusal(brief, input);
-		if (refusal) return fail(422, { message: refusal.message, errors: refusal.errors });
+		if (refusal) {
+			return fail(422, {
+				message: refusal.message,
+				errors: refusal.errors,
+				details: refusal.errors.projectId === "cooldown"
+					? { reopensAt: brief.cooldownUntil ?? null }
+					: undefined,
+			});
+		}
 
 		/*
 		 * The SELLER's own intake, held by the same rule the modal ran.
@@ -1460,8 +1524,13 @@ export class ProjectBackendService {
 		// Everything about the offer is acceptable: NOW the send counts against the ceiling. Two
 		// checks rather than one `take` up front, so the race a `peek` leaves (a burst that passes the
 		// peek together) still resolves to exactly `max` accepted sends.
-		if (!hireLimiter.take(owner).allowed) {
-			return fail(429, { message: HIRE_RATE_LIMIT_MESSAGE, errors: { form: "rate_limited" } });
+		const taken = hireLimiter.take(owner);
+		if (!taken.allowed) {
+			return fail(429, {
+				message: HIRE_RATE_LIMIT_MESSAGE,
+				errors: { form: "rate_limited" },
+				details: { retryAt: new Date(Date.now() + taken.retryAfterMs).toISOString() },
+			});
 		}
 
 		// The terms as they will be RECORDED — the project's configured rates, or a placeholder on a
@@ -1476,7 +1545,8 @@ export class ProjectBackendService {
 		// database's own sentence, passed through. A thrown live write is a 502, never a fall-through to
 		// the stub (`liveWrite`): an invitation recorded in memory over a database that refused it would
 		// be a send that never happened reported as one that did.
-		const live = await liveWrite<{ invites: MemberInvite[]; total: number; placeholder: boolean }>(
+		const intro = input.message.trim();
+		const live = await liveWrite<HireSent>(
 			"hire",
 			actor,
 			input.projectId,
@@ -1487,9 +1557,12 @@ export class ProjectBackendService {
 				if ("refusal" in outcome) return outcome;
 				return {
 					data: {
-						invites: outcome.data,
+						invites: outcome.data.invites,
 						total: offer.totalCents ?? 0,
 						placeholder: offer.placeholder,
+						conversationId: intro
+							? await postIntro(outcome.data.targetUserId, intro, outcome.data.projectId, a)
+							: null,
 					},
 				};
 			},
@@ -1521,10 +1594,160 @@ export class ProjectBackendService {
 		}));
 		appendHireInvites(owner, brief.projectId, invites);
 		invalidateProjects(actor);
+		// The stub twin of the request message: the intro lands in the pair's DM in the viewer's store.
+		let conversationId: string | null = null;
+		if (intro) {
+			const sent = await MessagingBackendService.sendMessage(
+				{ conversationId: dmConversationId(handle), text: intro, attachmentIds: [], audio: null },
+				actor,
+			);
+			conversationId = sent.ok ? dmConversationId(handle) : null;
+		}
 		return ok(
-			{ invites, total: offer.totalCents ?? 0, placeholder: offer.placeholder },
+			{ invites, total: offer.totalCents ?? 0, placeholder: offer.placeholder, conversationId },
 			{ message: sentMessage, status: 201 },
 		);
+	}
+
+	/**
+	 * A freelancer applies to a stage (optionally one of its staffing roles) of a live project —
+	 * `POST /api/projects/apply`, the inbound half of the handshake. The application is recorded
+	 * `pending` and the owner notified (`application.received`) by `projects.apply_to_project`; a
+	 * cover note is then posted as the opening message of the request, in the owner's Requests folder.
+	 */
+	static async apply(
+		input: ApplyToProject,
+		actor: ReadActor,
+	): Promise<ServiceResult<ProjectApplication>> {
+		const denied = requireIdentity<ProjectApplication>(actor, "apply to a project");
+		if (denied) return denied;
+		const note = input.message.trim();
+
+		const live = await liveWrite<ProjectApplication>(
+			"apply",
+			actor,
+			input.projectId,
+			"Application sent.",
+			async (a) => {
+				const outcome = await applyLive(a, input);
+				if (outcome === null || "refusal" in outcome) return outcome;
+				const row = outcome.data;
+				return {
+					data: {
+						id: row.id,
+						projectId: row.projectSlug,
+						stageId: row.stageId,
+						roleId: row.roleId,
+						status: "pending",
+						message: row.message,
+						conversationId: note ? await postIntro(row.ownerUserId, note, row.projectId, a) : null,
+					},
+				};
+			},
+		);
+		if (live !== undefined) return live.ok ? { ...live, status: 201 } : live;
+
+		const project = findProject(input.projectId);
+		if (!project) return fail(404, { message: `No project found for "${input.projectId}".` });
+		if (hasOpenStubApplication(actor, project.slug, input.stageId, input.roleId)) {
+			return fail(409, {
+				message: "You already have a pending application here.",
+				errors: { stageId: "duplicate" },
+			});
+		}
+		const masked = note ? maskPii(note).masked : null;
+		const row = recordStubApplication(
+			actor,
+			{ projectId: project.slug, stageId: input.stageId, roleId: input.roleId, message: masked },
+			Date.now(),
+		);
+		return ok(
+			{
+				id: row.id,
+				projectId: project.slug,
+				stageId: row.stageId,
+				roleId: row.roleId,
+				status: "pending",
+				message: masked,
+				conversationId: null,
+			},
+			{ message: "Application sent.", status: 201 },
+		);
+	}
+
+	/**
+	 * The invitee answers a request: every invitation named is accepted or declined through
+	 * `projects.respond_to_project_invitation` (`POST /api/projects/invites/respond`). A multi-stage
+	 * hire is one request to the person receiving it, so the drawer answers its invitations together;
+	 * they are answered in sequence and the first refusal stops the rest, reported as such.
+	 */
+	static async respondToInvitations(
+		input: RespondToInvitation,
+		actor: ReadActor,
+	): Promise<ServiceResult<InvitationAnswered>> {
+		const denied = requireIdentity<InvitationAnswered>(actor, "answer an invitation");
+		if (denied) return denied;
+		const verb = input.accept ? "accepted" : "declined";
+
+		const live = await liveWrite<InvitationAnswered>(
+			"respondToInvitations",
+			actor,
+			input.invitationIds[0],
+			input.accept ? "Request accepted." : "Request declined.",
+			async (a) => {
+				const answered: InvitationAnswered["answered"] = [];
+				for (const id of input.invitationIds) {
+					const outcome = await respondLive(a, id, input.accept);
+					if (outcome === null) return answered.length > 0 ? { data: { answered } } : null;
+					if ("refusal" in outcome) return answered.length > 0 ? { data: { answered } } : outcome;
+					answered.push(outcome.data);
+				}
+				return { data: { answered } };
+			},
+			"invitation",
+		);
+		if (live !== undefined) return live;
+
+		for (const id of input.invitationIds) recordRequestDecision(id, verb);
+		return ok(
+			{ answered: input.invitationIds.map((id) => ({ id, status: verb })) },
+			{ message: input.accept ? "Request accepted." : "Request declined." },
+		);
+	}
+
+	/**
+	 * The client confirms an applicant's seat (`POST /api/projects/applications/accept`) through
+	 * `projects.assign_from_application` — conflict-guarded against double-booking, and the applicant
+	 * is told with `application.accepted`. The answer names where the seat is funded.
+	 */
+	static async acceptApplication(
+		input: AcceptApplication,
+		actor: ReadActor,
+	): Promise<ServiceResult<ApplicationAccepted>> {
+		const denied = requireIdentity<ApplicationAccepted>(actor, "confirm a seat");
+		if (denied) return denied;
+		const done: ApplicationAccepted = {
+			id: input.applicationId,
+			status: "accepted",
+			fundHref: "/wallet#upcoming",
+		};
+
+		const live = await liveWrite<ApplicationAccepted>(
+			"acceptApplication",
+			actor,
+			input.applicationId,
+			"Seat confirmed.",
+			async (a) => {
+				const outcome = await acceptApplicationLive(a, input.applicationId);
+				if (outcome === null || "refusal" in outcome) return outcome;
+				return { data: done };
+			},
+			"application",
+		);
+		if (live !== undefined) return live;
+
+		recordRequestDecision(input.applicationId, "accepted");
+		return ok(done, { message: "Seat confirmed." });
 	}
 
 	/**

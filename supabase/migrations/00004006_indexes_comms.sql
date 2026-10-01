@@ -21,6 +21,20 @@ CREATE INDEX IF NOT EXISTS idx_message_attachments_message
 CREATE INDEX IF NOT EXISTS idx_channel_files_channel
     ON comms.channel_files (channel_type, channel_id);
 
+-- The inbox reads one person's conversations a folder at a time (Primary · Requests · Archived).
+CREATE INDEX IF NOT EXISTS idx_dm_participants_folder
+    ON comms.dm_participants (user_id, inbox_folder);
+
+-- Membership checks, the roster and the reply-promotion trigger all look a participant up by
+-- (thread, person).
+CREATE INDEX IF NOT EXISTS idx_dm_participants_thread_user
+    ON comms.dm_participants (thread_id, user_id);
+
+-- A thread's newest messages: the inbox tail, the feed's keyset walk, and the request routing's
+-- "has anything been said here yet" probe.
+CREATE INDEX IF NOT EXISTS idx_dm_messages_thread_recent
+    ON comms.dm_messages (thread_id, created_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_notification_types_aliases ON comms.notification_types USING gin (aliases);
 CREATE INDEX IF NOT EXISTS idx_notification_types_category ON comms.notification_types (category) WHERE enabled;
 CREATE INDEX IF NOT EXISTS idx_notifications_user_feed

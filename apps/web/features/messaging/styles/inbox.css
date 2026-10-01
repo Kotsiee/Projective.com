@@ -190,7 +190,7 @@
 	white-space: nowrap;
 }
 
-/* Metadata — bounded, and the surface the kebab overlays on hover. */
+/* Metadata — bounded, and the surface the menu overlays on hover. */
 .inbox-row__meta {
 	flex: none;
 	display: flex;
@@ -215,11 +215,11 @@
 }
 
 /*
- * The kebab OVERLAYS the metadata column instead of reserving a permanent track beside it. In the
+ * The menu OVERLAYS the metadata column instead of reserving a permanent track beside it. In the
  * lane row this control cost 14% of the row width at all times to be invisible 95% of the time;
  * here it costs nothing until the row is hovered or focused.
  */
-.inbox-row__kebab {
+.inbox-row__menu {
 	position: absolute;
 	inset-inline-end: var(--space-3);
 	inset-block-start: 50%;
@@ -239,31 +239,48 @@
 	pointer-events: none;
 	transition: opacity var(--dur-fast) var(--ease-standard);
 }
-.inbox-row:hover .inbox-row__kebab,
-.inbox-row:focus-within .inbox-row__kebab,
-.inbox-row__kebab[data-open="true"],
-.inbox-row__kebab:focus-visible {
+.inbox-row:hover .inbox-row__menu,
+.inbox-row:focus-within .inbox-row__menu,
+.inbox-row__menu[data-open="true"],
+.inbox-row__menu:focus-visible {
 	opacity: 1;
 	pointer-events: auto;
 }
-.inbox-row__kebab:focus-visible {
+.inbox-row__menu:focus-visible {
 	outline: none;
 	box-shadow: none;
 }
-.inbox-row__kebab:hover {
+.inbox-row__menu:hover {
 	color: var(--on-surface);
 }
-.inbox-row__kebab svg {
+.inbox-row__menu svg {
 	inline-size: var(--icon-sm);
 	block-size: var(--icon-sm);
 }
-/* Fade the metadata under the revealed kebab rather than letting the two collide. */
+/* Fade the metadata under the revealed menu rather than letting the two collide. */
 .inbox-row:hover .inbox-row__meta,
 .inbox-row:focus-within .inbox-row__meta,
 .inbox-row[data-menu="true"] .inbox-row__meta {
 	opacity: 0;
 }
 /* #endregion */
+
+@media (pointer: coarse) {
+	.inbox-row__menu {
+		position: static;
+		align-self: center;
+		flex: none;
+		margin-inline-end: var(--space-2);
+		translate: none;
+		opacity: 1;
+		pointer-events: auto;
+	}
+	.inbox-row:hover .inbox-row__meta,
+	.inbox-row:focus-within .inbox-row__meta,
+	.inbox-row[data-menu="true"] .inbox-row__meta {
+		opacity: 1;
+	}
+}
 
 /* #region Compact density */
 .inbox[data-density="compact"] .inbox-row__link {
@@ -769,11 +786,6 @@
 			calc(var(--shell-bottomnav-h) + var(--space-6) + env(safe-area-inset-bottom, 0px));
 	}
 
-	/* There is no hover on touch, so a hover-revealed kebab would be unreachable. */
-	.inbox-row__kebab {
-		display: none;
-	}
-
 	/* The header band stacks its identity above its controls so neither is squeezed out. */
 	.inbox-head {
 		flex-direction: column;
@@ -810,7 +822,7 @@
 
 @media (prefers-reduced-motion: reduce) {
 	.inbox-row,
-	.inbox-row__kebab,
+	.inbox-row__menu,
 	.inbox-row__meta,
 	.inbox-foot__density-opt {
 		transition: none;

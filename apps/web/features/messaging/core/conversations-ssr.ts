@@ -2,6 +2,7 @@ import type { UserContext } from "@projective/types/auth";
 import { MessagingBackendService } from "@server/services/messaging/MessagingBackendService.ts";
 import type { FileListPage, MemberRosterPage } from "@projective/types/projects";
 import type {
+	ConversationContext,
 	ConversationDetail,
 	ConversationListPage,
 	MessagePage,
@@ -45,6 +46,15 @@ export async function resolveConversation(
 ): Promise<ConversationDetail | null> {
 	const res = await MessagingBackendService.conversation(id, actor);
 	return res.ok && res.data ? res.data.detail : null;
+}
+
+/** Resolve the conversation context panel's read (the Chat tab first paint), or null. */
+export async function resolveConversationContext(
+	id: string,
+	actor: ReadActor,
+): Promise<ConversationContext | null> {
+	const res = await MessagingBackendService.context(id, actor);
+	return res.ok && res.data ? res.data.context : null;
 }
 
 /** Resolve the latest message page for a conversation (the Chat tab first paint). */

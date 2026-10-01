@@ -25,6 +25,7 @@ export type MessagingIconName =
 	| "filter"
 	| "back"
 	| "kebab"
+	| "meatball"
 	| "star"
 	| "mail"
 	| "archive"
@@ -44,6 +45,7 @@ export type MessagingIconName =
 	| "close"
 	| "check"
 	| "inbox"
+	| "details"
 	| "robot";
 
 const PATHS: Record<MessagingIconName, VNode> = {
@@ -81,6 +83,14 @@ const PATHS: Record<MessagingIconName, VNode> = {
 			<circle cx="12" cy="5" r="1.7" />
 			<circle cx="12" cy="12" r="1.7" />
 			<circle cx="12" cy="19" r="1.7" />
+		</>
+	),
+	// The kebab laid along a row — the conversation row's overflow trigger.
+	meatball: (
+		<>
+			<circle cx="5" cy="12" r="1.7" />
+			<circle cx="12" cy="12" r="1.7" />
+			<circle cx="19" cy="12" r="1.7" />
 		</>
 	),
 	// Shared with `/projects` — StarIcon.
@@ -160,6 +170,13 @@ const PATHS: Record<MessagingIconName, VNode> = {
 			<path d="M4 13h4a4 4 0 0 0 8 0h4" />
 		</>
 	),
+	// A pane with its right column drawn — the conversation details toggle.
+	details: (
+		<>
+			<rect x="3" y="4.5" width="18" height="15" rx="2.4" />
+			<path d="M15 4.5v15" />
+		</>
+	),
 	robot: (
 		<>
 			<rect x="5" y="8" width="14" height="10" rx="2" />
@@ -169,7 +186,7 @@ const PATHS: Record<MessagingIconName, VNode> = {
 };
 
 /** Glyphs drawn as solid shapes rather than strokes (matches the projects `KebabIcon`). */
-const FILLED: ReadonlySet<MessagingIconName> = new Set<MessagingIconName>(["kebab"]);
+const FILLED: ReadonlySet<MessagingIconName> = new Set<MessagingIconName>(["kebab", "meatball"]);
 
 /**
  * MessagingIcon — renders a messaging glyph by name. Stroke-based, `currentColor`, `aria-hidden`, and

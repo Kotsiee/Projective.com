@@ -37,6 +37,8 @@ export {
 	LaneBar,
 	LaneCollapseButton,
 	type LaneCollapseButtonProps,
+	LaneCreateButton,
+	type LaneCreateButtonProps,
 	LaneEmpty,
 	type LaneEmptyProps,
 	LaneFooter,

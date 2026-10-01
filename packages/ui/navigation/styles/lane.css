@@ -88,7 +88,82 @@
 	box-shadow: none;
 	border-radius: var(--radius-xs);
 }
+
+.ui-lane-tabs__dot {
+	display: inline-block;
+	inline-size: 6px;
+	block-size: 6px;
+	margin-inline-start: var(--space-1);
+	vertical-align: 0.2em;
+	border-radius: var(--radius-full);
+	background: var(--primary);
+}
 /* #endregion */
+
+.ui-lane-create {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	font: inherit;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
+	line-height: 1;
+	color: var(--on-primary);
+	background: var(--primary);
+	border: var(--fld-bw) solid transparent;
+	border-radius: var(--radius-full);
+	cursor: pointer;
+	-webkit-tap-highlight-color: transparent;
+	touch-action: manipulation;
+	transform: translateZ(0) scale(1);
+	transition: var(--btn-transition-press);
+}
+
+.ui-lane-create:hover {
+	border-color: color-mix(in srgb, var(--on-primary) 60%, transparent);
+}
+
+.ui-lane-create:active {
+	transform: translateZ(0) scale(var(--btn-press-scale));
+	transition-duration: var(--dur-press);
+}
+
+.ui-lane-create:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+.ui-lane-create__icon {
+	display: inline-flex;
+	font-size: var(--icon-sm);
+}
+
+.ui-lane-create__icon svg {
+	inline-size: 1em;
+	block-size: 1em;
+}
+
+.ui-splitter[data-mode="collapsed"] .ui-lane-create {
+	padding: var(--space-2);
+}
+
+.ui-splitter[data-mode="collapsed"] .ui-lane-create__label {
+	display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-lane-create,
+	.ui-lane-create:active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .ui-lane-create,
+:root[data-motion="reduced"] .ui-lane-create:active {
+	transform: none;
+}
 
 /* #region Search row + pill field */
 .ui-lane-bar {

@@ -17,8 +17,8 @@ import type { ConversationListPage, MessagingRole } from "../types/messaging-typ
  *    (the `InboxView` island, the single fetch owner of `inbox-state`). Server-painted, so a phone
  *    with JavaScript off still gets its inbox.
  *
- * `initialCount` counts the DEFAULT PARTITION (archived excluded), which is what the body opens on,
- * so the header's first paint agrees with the list beneath it.
+ * `initialCount` counts the Primary folder, which is what the body opens on, so the header's first
+ * paint agrees with the list beneath it.
  */
 export interface MessagesRootProps {
 	page: ConversationListPage;
@@ -27,7 +27,7 @@ export interface MessagesRootProps {
 }
 
 export function MessagesRoot({ page, role, path }: MessagesRootProps): JSX.Element {
-	const initialCount = page.conversations.filter((c) => !c.archived).length;
+	const initialCount = page.conversations.filter((c) => c.folder === "primary").length;
 	return (
 		<div class="msg-root">
 			<div class="msg-root__desktop">

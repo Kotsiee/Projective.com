@@ -7,16 +7,19 @@ import {
 	type ConversationListPage,
 	type ConversationListParams,
 	type ConversationRelation,
-	type ConversationView,
+	ConversationView,
 	CreateConversationSchema,
-	type MessagingRole,
+	InboxFolder,
+	MessagingRole,
 } from "@projective/types/messaging";
 
 /**
- * `GET | HEAD | OPTIONS /api/messaging/conversations?q=…&view=…&unread=1&role=…&rel=…&svc=…&prod=…&entity=…&member=…&cursor=…`
- * — thin route: parse the sidebar's search + partition + advanced-filter facets (each facet a repeated
- * param → an OR-set), then delegate to the fat {@link MessagingBackendService} for a filtered, paged,
- * most-recently-active page (the inbox list, with the `messageCount > 0` visibility rule applied).
+ * `GET | HEAD | OPTIONS /api/messaging/conversations?q=…&folder=primary|requests|archived&view=…&unread=1&role=…&rel=…&svc=…&prod=…&entity=…&member=…&cursor=…`
+ * — thin route: parse the sidebar's search + folder + partition + advanced-filter facets (each facet a
+ * repeated param → an OR-set), then delegate to the fat {@link MessagingBackendService} for a
+ * filtered, paged, most-recently-active page (the inbox list, with the `messageCount > 0` visibility
+ * rule applied). `folder` narrows to the viewer's own folder; an unknown `folder`, `view` or `role`
+ * is ignored rather than cast, so a typo never reads as "no partition" with a value attached.
  *
  * The three read verbs come from {@link defineReadRoute}, which resolves the payload ONCE and derives
  * the responses from it — so `HEAD` cannot drift from `GET`, and the `ETag`/`If-None-Match`
@@ -45,13 +48,12 @@ function parseParams(url: URL): ConversationListParams {
 			memberIds.length > 0;
 	const limitRaw = p.get("limit");
 	const limit = limitRaw ? Number.parseInt(limitRaw, 10) : undefined;
-	const view = p.get("view");
-	const role = p.get("role");
 	return {
 		q: p.get("q") ?? undefined,
-		view: view ? (view as ConversationView) : undefined,
+		view: ConversationView.safeParse(p.get("view")).data,
+		folder: InboxFolder.safeParse(p.get("folder")).data,
 		unread: p.get("unread") === "1" ? true : undefined,
-		role: role ? (role as MessagingRole) : undefined,
+		role: MessagingRole.safeParse(p.get("role")).data,
 		cursor: p.get("cursor"),
 		limit: Number.isFinite(limit) ? limit : undefined,
 		filter: hasFilter ? { relations, serviceIds, productIds, entityIds, memberIds } : undefined,

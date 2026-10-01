@@ -308,6 +308,11 @@ export const LocalKeys = {
 	 */
 	MESSAGES_DENSITY: "pj.local.messages.density",
 	/**
+	 * Whether the conversation context panel stands open beside the thread from 1280px (`"1"` open |
+	 * `"0"` closed). Read after hydration; below 1280px the panel is a drawer that is never persisted.
+	 */
+	CONVERSATION_CONTEXT_PANEL: "pj.local.messages.contextPanel",
+	/**
 	 * The Message Settings (auto-responses + notification preferences) — a JSON `MessagingSettings` blob.
 	 * A client-side stub until `MESSAGING_BACKEND_LIVE` owns the write path; read after hydration to
 	 * hydrate the settings modal with the viewer's last-saved local edits over the SSR baseline.

@@ -60,6 +60,9 @@ export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
 	"files",
 	"file",
 	"share",
+	// The outbound-link interstitial: a handle shadowing the page that vouches for leaving the platform
+	// would be a phishing primitive, the reason `share` is listed.
+	"exit",
 	"wallet",
 	"billing",
 	"settings",

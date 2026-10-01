@@ -12,6 +12,8 @@ export interface ProjectsResult<T> {
 	message?: string;
 	/** Field-keyed validation errors, when the route rejected the query. */
 	errors?: Record<string, string>;
+	/** Structured facts about a refusal, e.g. `{ reopensAt }` on a re-invitation cooldown. */
+	details?: Record<string, string | number | boolean | null>;
 	/** The success payload; present when `ok`. */
 	data?: T;
 }

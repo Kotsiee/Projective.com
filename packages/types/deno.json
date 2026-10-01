@@ -11,6 +11,7 @@
 		"./explore": "./explore/mod.ts",
 		"./files": "./files/mod.ts",
 		"./integrations": "./integrations/mod.ts",
+		"./links": "./links/mod.ts",
 		"./catalogue": "./catalogue/mod.ts",
 		"./comms": "./comms/mod.ts",
 		"./newsletter": "./newsletter/mod.ts",

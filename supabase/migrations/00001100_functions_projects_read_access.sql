@@ -1258,3 +1258,42 @@ AS $$
         true
     );
 $$;
+
+-- Every project a given person is party to, for ANY user rather than auth.uid(): the owner, a
+-- freelancer or business participant, a live stage assignee (in person or through an active team),
+-- an open or accepted invitee, and an open or accepted applicant. Read by the DM PII filter, which
+-- has to ask the question about the OTHER member of a thread as well as the sender. Internal — no
+-- client grant (00002510).
+CREATE OR REPLACE FUNCTION projects.fn_engaged_projects(p_user_id uuid)
+RETURNS TABLE (project_id uuid)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, projects, org
+AS $$
+    SELECT p.id FROM projects.projects p WHERE p.owner_user_id = p_user_id
+    UNION
+    SELECT pp.project_id FROM projects.project_participants pp
+     WHERE pp.profile_type = 'freelancer' AND pp.profile_id = p_user_id
+    UNION
+    SELECT pp.project_id FROM projects.project_participants pp
+      JOIN org.business_profiles bp ON bp.id = pp.profile_id
+     WHERE pp.profile_type = 'business' AND bp.owner_user_id = p_user_id
+    UNION
+    SELECT ps.project_id FROM projects.stage_assignments sa
+      JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+     WHERE sa.assignee_type = 'freelancer' AND sa.freelancer_profile_id = p_user_id
+       AND sa.status NOT IN ('declined', 'cancelled', 'released')
+    UNION
+    SELECT ps.project_id FROM projects.stage_assignments sa
+      JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+      JOIN org.team_members tm ON tm.team_id = sa.team_id
+     WHERE sa.assignee_type = 'team' AND tm.user_id = p_user_id AND tm.status = 'active'
+       AND sa.status NOT IN ('declined', 'cancelled', 'released')
+    UNION
+    SELECT i.project_id FROM projects.project_invitations i
+     WHERE i.target_user_id = p_user_id AND i.status IN ('pending', 'accepted')
+    UNION
+    SELECT a.project_id FROM projects.project_applications a
+     WHERE a.applicant_user_id = p_user_id AND a.status IN ('pending', 'accepted');
+$$;

@@ -15,6 +15,7 @@ import { MessagingService } from "../core/MessagingService.ts";
 import { conversationHref } from "../core/conversation-model.ts";
 import { groupByDay } from "../core/inbox-model.ts";
 import { openNewConversation } from "../core/messaging-state.ts";
+import { moveConversation } from "../core/folder-moves.ts";
 import { liveMessagingRole, readDevSeam, subscribeDevSeam } from "../core/messaging-view.ts";
 import {
 	clearInboxFilters,
@@ -25,8 +26,10 @@ import {
 	inboxDensity,
 	inboxError,
 	inboxFilter,
+	inboxFolder,
 	inboxHasMore,
 	inboxLoading,
+	inboxMerged,
 	inboxNarrowed,
 	inboxPrefs,
 	inboxQuery,
@@ -38,7 +41,11 @@ import {
 	inboxView,
 	visibleConversations,
 } from "../core/inbox-state.ts";
-import type { ConversationListPage, MessagingRole } from "../types/messaging-types.ts";
+import {
+	type ConversationListPage,
+	InboxFolder,
+	type MessagingRole,
+} from "../types/messaging-types.ts";
 
 /**
  * InboxView — the `/messages` BODY. This is the surface: the conversation list renders here, in the
@@ -54,8 +61,8 @@ import type { ConversationListPage, MessagingRole } from "../types/messaging-typ
  * so there is one request path and no region can drift from the data it is describing.
  *
  * THIN: first paint comes from SSR props; every refine goes through `/api/messaging/conversations`.
- * The per-conversation actions (star · mute · archive · soft-delete) are optimistic overlays persisted
- * to `localStorage`, so they land instantly and the lane's counts move with them.
+ * Star · mute · soft-delete are optimistic overlays persisted to `localStorage`; a folder move is
+ * optimistic and confirmed by the server (`folder-moves`), so either lands instantly.
  */
 
 // #region Props
@@ -152,6 +159,7 @@ export default function InboxView(props: InboxViewProps): JSX.Element {
 			LocalKeys.MESSAGES_FILTERS,
 			JSON.stringify({
 				q: inboxQuery.value,
+				folder: inboxFolder.value,
 				view: inboxView.value,
 				unread: inboxUnreadOnly.value,
 				relation: inboxRelation.value,
@@ -179,7 +187,10 @@ export default function InboxView(props: InboxViewProps): JSX.Element {
 			try {
 				const saved = JSON.parse(rawFilters) as Record<string, unknown>;
 				if (typeof saved.q === "string" && saved.q) inboxQuery.value = saved.q;
-				if (typeof saved.view === "string") inboxView.value = saved.view as never;
+				const savedFolder = InboxFolder.safeParse(saved.folder);
+				if (savedFolder.success) inboxFolder.value = savedFolder.data;
+				if (saved.view === "archived") inboxFolder.value = "archived";
+				else if (saved.view === "inbox" || saved.view === "starred") inboxView.value = saved.view;
 				if (saved.unread === true) inboxUnreadOnly.value = true;
 				if (typeof saved.relation === "string") inboxRelation.value = saved.relation as never;
 				if (saved.filter && typeof saved.filter === "object") {
@@ -211,6 +222,10 @@ export default function InboxView(props: InboxViewProps): JSX.Element {
 			unsub();
 		};
 	}, []);
+
+	useSignalEffect(() => {
+		persist();
+	});
 
 	// #endregion
 
@@ -272,14 +287,18 @@ export default function InboxView(props: InboxViewProps): JSX.Element {
 	}
 	const toggleStar = (id: string) =>
 		updatePref(id, { starred: !flag(id, "starred", find(id)?.starred ?? false) });
-	const toggleArchive = (id: string) =>
-		updatePref(id, { archived: !flag(id, "archived", find(id)?.archived ?? false) });
+	const move = async (id: string, to: InboxFolder) => {
+		const from = inboxMerged.value.find((x) => x.id === id)?.folder;
+		if (!from || from === to) return;
+		const refused = await moveConversation(id, from, to);
+		if (refused) inboxError.value = refused;
+	};
 	const toggleMute = (id: string) =>
 		updatePref(id, { muted: !flag(id, "muted", find(id)?.muted ?? false) });
 	const del = (id: string) => updatePref(id, { deleted: true });
 	// #endregion
 
-	const emptyCopy = emptyStateFor(inboxView.value, inboxNarrowed.value);
+	const emptyCopy = emptyStateFor(inboxFolder.value, inboxView.value, inboxNarrowed.value);
 
 	return (
 		<section class="inbox" data-density={inboxDensity.value} aria-label="Conversations">
@@ -361,7 +380,7 @@ export default function InboxView(props: InboxViewProps): JSX.Element {
 									active={activeId === c.id}
 									compact={compact.value}
 									onToggleStar={toggleStar}
-									onToggleArchive={toggleArchive}
+									onMove={(id, to) => void move(id, to)}
 									onToggleMute={toggleMute}
 									onDelete={del}
 								/>
@@ -396,6 +415,7 @@ type EmptyIcon = "inbox" | "star" | "archive" | "search";
 
 /** The empty state branches on *why* it is empty, so its action always resolves the actual cause. */
 function emptyStateFor(
+	folder: InboxFolder,
 	view: string,
 	narrowed: boolean,
 ): { icon: EmptyIcon; title: string; note: string } {
@@ -406,18 +426,26 @@ function emptyStateFor(
 			note: "Nothing here fits the current search and filters. Clear them to see your whole inbox.",
 		};
 	}
-	if (view === "archived") {
-		return {
-			icon: "archive",
-			title: "Nothing archived",
-			note: "Conversations you archive move here and stay out of your inbox until you need them.",
-		};
-	}
 	if (view === "starred") {
 		return {
 			icon: "star",
 			title: "No starred conversations",
 			note: "Star a conversation from its row menu to keep it within reach here.",
+		};
+	}
+	if (folder === "requests") {
+		return {
+			icon: "inbox",
+			title: "No message requests",
+			note:
+				"Messages from people you haven't worked with yet wait here until you reply or move them to Primary.",
+		};
+	}
+	if (folder === "archived") {
+		return {
+			icon: "archive",
+			title: "Nothing archived",
+			note: "Conversations you archive move here and stay out of your inbox until you need them.",
 		};
 	}
 	return {

@@ -759,6 +759,36 @@ context without "ping fatigue."
   (the same list beside an open conversation), and the body with no conversation open is an
   empty state pointing at it. Below the shell's phone breakpoint, where the lane is removed, the
   list transfers into the body — moved, never duplicated.
+- **Folders — Primary · Requests · Archived.** Every conversation sits in exactly one folder, and
+  the folder is the VIEWER's: the two people in a DM file it independently. A hiring request (an
+  invitation's intro, an application's cover note — see §The Hiring Process) opens the pair's DM
+  in the recipient's **Requests**, unless the two follow each other, in which case it lands in
+  Primary; the sender always keeps it in Primary. **Replying is accepting**: the moment the
+  recipient replies, THEIR copy moves to Primary. The requester's follow-ups never move the
+  recipient's copy — a request cannot talk its way out of Requests. A row's `…` menu offers
+  Favourite · Move to Primary (from Requests) · Archive / Unarchive · Delete; a reply into an
+  archived conversation leaves it archived. The Requests tab carries an unread dot (the count is
+  spoken, never printed — `DESIGN_SYSTEM.md` §D.1), and an empty Requests folder explains what
+  arrives there.
+- **What a conversation is about (the context panel).** Beside a one-to-one thread — standing in
+  the page from 1280px, sliding over it below that — the panel names the counterpart (photo,
+  name, `@handle`, Standing) and the request between the two: its project, stage, role and price,
+  the intro or cover note, the scope, the questionnaire answers and the milestones, each as plain
+  rows. Its action rig is derived by the server from what the viewer may actually do: a freelancer
+  answers an invitation (**Accept request** — the thread moves to Primary — or **Decline**, which
+  starts the 48-day lockout below and archives the thread); a client confirms an applicant's seat
+  (**Fund escrow & confirm seat**, which lands them where the stage is funded). Earlier requests
+  between the two are listed beneath.
+- **Links in messages.** A link to Projective itself — a profile, a project, a listing — gets a
+  mini card read with the reader's own permissions (a project's escrow position only for someone
+  party to it). An external link is checked server-side before anyone is sent to it: the sender's
+  link is never fetched by the reader's browser, private and local addresses are refused, and the
+  address is checked against Google Safe Browsing. A link found **safe** opens directly and may
+  show the page's title; a **suspicious** or **blocked** link shows no preview, carries the badge
+  "Suspicious link — proceed with caution" (or "Blocked link"), and opens only through the
+  `/exit` interstitial, which asks for an explicit "I understand" first — and never opens a
+  blocked link at all. A link not yet checked also goes through `/exit`, so the safe default holds
+  before the verdict arrives. The interstitial never forwards anybody by itself.
 - **Sharing:** every _Share_ control on the platform (a discovery card, a listing, a project)
   opens ONE share surface: the same ranked people first (a share is a message with a link — it
   lands in the pair's DM), then the external quick actions (Snapchat · WhatsApp · Facebook ·
@@ -775,7 +805,11 @@ protected; a timestamp once unlocked), read via `projects.is_protected_phase`.
    (`comms.mask_pii`) scans every payload and **masks + flags** any email address, external phone
    number, or third-party payment link/handle (the row is stored with a `[… hidden]` placeholder and
    `pii_masked = true`). Enforcement lives in SQL so it cannot be bypassed via direct writes; the
-   `@projective/backend` `PIIFilter` mirrors the same rules for instant client feedback.
+   `@projective/backend` `PIIFilter` mirrors the same rules for instant client feedback. **Direct
+   messages are covered too:** a DM between two people negotiating or working on a protected project
+   — an open or accepted invitation or application between them, or a protected project both are on
+   — is masked by the same rules (`comms.tg_mask_dm_message_pii`), and so is an invitation's intro.
+   Neither side can opt out of it, because the contract the filter protects is not theirs alone.
 2. **The "Projective Unlock" (`handover_unlocked_at` set)**: When the **final escrow releases**
    (`projects.approve_stage` settles the last stage) — or the project is force-completed — the
    filter switches off for that project's threads and the full, unrestricted file library unlocks,
@@ -1010,6 +1044,15 @@ There are two primary ways an engagement begins:
 - **The Inbound Request (Freelancer-Led):** A freelancer or team browses the "Explore" page, finds
   an open project, and submits a **Proposal**. This may include a portfolio highlight or a brief
   cover note.
+
+  > **An application is a request, too.** Applying records an **application** against one stage —
+  > and one staffing role, where the stage lists them — that waits for the client (`pending`,
+  > shown as _Awaiting approval_); a freelancer holds at most one pending application per seat, and
+  > cannot apply to their own project or to one that is not taking applications. The client is
+  > notified (`application.received`), and a cover note becomes the opening message of the pair's
+  > DM, filed in the client's **Requests** (see §E. Direct & Group Conversations). The client
+  > answers by confirming the seat, which takes them to fund the stage; filling a seat marks its
+  > other pending applicants _Not selected_.
 - **The Outbound Invitation (Client-Led):** A client uses the "Explore" page to find a freelancer or
   team that matches their needs and sends a direct **Invitation** to join a specific project or
   stage.
@@ -1017,17 +1060,21 @@ There are two primary ways an engagement begins:
   > **An invitation is not a doorbell.** A provider who **declines** an invitation cannot be
   > re-invited to the SAME project by that client for **48 days** from the decline — the control
   > that would send it is rendered locked with the date it reopens, and the server refuses the send
-  > on the same rule. A client's outbound invitations are further capped at **10 per 10 minutes**
+  > on the same rule — naming the exact moment the project reopens to that freelancer. A client's outbound invitations are further capped at **10 per 10 minutes**
   > across every project and provider; past the cap the send is refused with a plain sentence
   > ("You've sent too many requests recently. Please wait a bit before sending more."). Both
   > guards exist so that saying no once is enough.
 
-  > **The invitation IS the message.** Sending one notifies the invitee through the notification
-  > engine (`stage.invite` — in-app, push and email by default, intersected with THEIR channel,
-  > quiet-hours, mute and digest preferences); the client's intro text rides the invitation itself
-  > and is quoted in that notice. No direct message is posted on the client's behalf — a message the
-  > client did not write is not theirs. The invitee's answer notifies the client the same way
-  > (`invitation.accepted` / `invitation.declined`).
+  > **The invitation IS the message — and the intro the client wrote opens the conversation.**
+  > Sending one notifies the invitee through the notification engine (`stage.invite` — in-app, push
+  > and email by default, intersected with THEIR channel, quiet-hours, mute and digest preferences);
+  > the client's intro text rides the invitation itself and is quoted in that notice. When the client
+  > wrote an intro, it is also posted — as the client's own words, masked while the project is
+  > protected — into the pair's DM, filed in the invitee's **Requests** unless the two follow each
+  > other (see §E. Direct & Group Conversations); without an intro no conversation is opened. Nothing
+  > the client did not write is ever posted on their behalf (Decision #128 refines #116 here). The
+  > invitee's answer notifies the client the same way (`invitation.accepted` /
+  > `invitation.declined`).
 
   > **Managing what you sent.** The project's Members page — and each stage's, which lists only the
   > invitations addressed to THAT stage — shows every invitation with its state (`Pending` ·

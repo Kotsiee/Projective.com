@@ -310,6 +310,92 @@ BEGIN
 END;
 $$;
 
+-- The protected engagement a DM falls under, or NULL. The message's own `project_id` when that
+-- project is still protected; otherwise a live, protected project the sender and another member of
+-- the thread are BOTH party to. A client cannot opt a message out: omitting `project_id` only sends
+-- the lookup to the derivation, and naming an unrelated project can only add masking.
+CREATE OR REPLACE FUNCTION comms.fn_dm_protected_project(
+    p_thread_id uuid,
+    p_sender uuid,
+    p_project_id uuid
+) RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, comms, projects
+AS $$
+    SELECT COALESCE(
+        (SELECT p.id FROM projects.projects p
+          WHERE p.id = p_project_id AND p.handover_unlocked_at IS NULL),
+        (SELECT p.id
+           FROM projects.projects p
+          WHERE p.handover_unlocked_at IS NULL
+            AND p.status IN ('draft', 'active', 'on_hold')
+            AND p.id IN (SELECT e.project_id FROM projects.fn_engaged_projects(p_sender) e)
+            AND p.id IN (
+                SELECT e.project_id
+                  FROM comms.dm_participants o
+                  CROSS JOIN LATERAL projects.fn_engaged_projects(o.user_id) e
+                 WHERE o.thread_id = p_thread_id AND o.user_id <> p_sender
+            )
+          LIMIT 1)
+    );
+$$;
+
+-- BEFORE INSERT gate for direct messages: the same mask + flag comms.tg_mask_message_pii applies to
+-- a stage room, applied whenever the thread falls under a protected engagement — a hiring request,
+-- an application, or two parties already working together.
+CREATE OR REPLACE FUNCTION comms.tg_mask_dm_message_pii()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, comms, projects
+AS $$
+DECLARE
+    v_masked text;
+    v_cats text[];
+BEGIN
+    IF NEW.body IS NULL OR NEW.body = '' THEN
+        RETURN NEW;
+    END IF;
+
+    IF comms.fn_dm_protected_project(NEW.thread_id, NEW.sender_user_id, NEW.project_id) IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT m.masked, m.categories INTO v_masked, v_cats FROM comms.mask_pii(NEW.body) m;
+    IF array_length(v_cats, 1) IS NOT NULL THEN
+        NEW.body := v_masked;
+        NEW.pii_masked := true;
+        NEW.pii_categories := v_cats;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+-- BEFORE INSERT on comms.dm_messages: a reply accepts a request. When the SENDER's own copy of the
+-- thread sits in their Requests folder, posting into it moves it to their Primary inbox. Every other
+-- participant's folder is left alone, so a requester's follow-up can never pull a thread out of the
+-- recipient's Requests — only the recipient answering does.
+CREATE OR REPLACE FUNCTION comms.fn_promote_thread_on_reply()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, comms
+AS $$
+BEGIN
+    UPDATE comms.dm_participants p
+    SET inbox_folder = 'primary'
+    WHERE p.thread_id = NEW.thread_id
+      AND p.user_id = NEW.sender_user_id
+      AND p.inbox_folder = 'requests'
+      AND p.deleted_at IS NULL;
+
+    RETURN NEW;
+END;
+$$;
+
 -- =============================================================================
 -- DM thread membership — the predicate the /messages read policies are built on.
 --
@@ -592,3 +678,184 @@ $$;
 
 COMMENT ON FUNCTION comms.add_dm_thread_members(uuid, uuid[]) IS
 'Add users to a thread the caller participates in; returns the number added (restored self-deletions included). Converts a plain DM with a third participant into a group. SECURITY DEFINER for the same reason as create_group_thread.';
+
+-- =============================================================================
+-- Inbox folders and hiring requests.
+--
+-- `comms.dm_participants.inbox_folder` is per-participant state with no client UPDATE policy, for the
+-- reason the SELECT policy is own-row-only: a policy wide enough to write it would also reach
+-- `last_read_at` and `deleted_at`. The two doors below each touch exactly one thing.
+-- =============================================================================
+
+-- Move a conversation between the caller's own folders (Primary · Requests · Archived). Refusals use
+-- the '<field>: <reason>' 22023 / 42501 shape the fat service maps to 422 / 403.
+CREATE OR REPLACE FUNCTION comms.set_dm_inbox_folder(
+    p_thread_id uuid,
+    p_folder text
+) RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, comms, auth
+AS $$
+DECLARE
+    v_me uuid := auth.uid();
+BEGIN
+    IF v_me IS NULL THEN
+        RAISE EXCEPTION 'set_dm_inbox_folder: no acting user' USING ERRCODE = '42501';
+    END IF;
+    IF p_folder IS NULL OR p_folder NOT IN ('primary', 'requests', 'archived') THEN
+        RAISE EXCEPTION 'folder: not_a_folder' USING ERRCODE = '22023';
+    END IF;
+
+    UPDATE comms.dm_participants p
+    SET inbox_folder = p_folder
+    WHERE p.thread_id = p_thread_id
+      AND p.user_id = v_me
+      AND p.deleted_at IS NULL;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Not a participant of this conversation' USING ERRCODE = '42501';
+    END IF;
+
+    RETURN p_folder;
+END;
+$$;
+
+COMMENT ON FUNCTION comms.set_dm_inbox_folder(uuid, text) IS
+'Set the caller''s own inbox folder (primary | requests | archived) for a thread they are an undeleted participant of. SECURITY DEFINER because dm_participants carries no client UPDATE policy.';
+
+-- Post the opening message of a hiring request into the pair's DM, opening the thread if there is
+-- none. The caller must hold an OPEN engagement with the recipient on `p_project_id` — a pending
+-- invitation they issued, or a pending application of theirs to the recipient's project — so the
+-- Requests folder cannot be used to file arbitrary messages into a stranger's inbox.
+--
+-- Routing applies only to a thread this request effectively OPENS (created now, holding no message
+-- yet, or restored from the recipient's own deletion): the sender keeps it in Primary and the
+-- recipient gets it in Requests unless the two follow each other. A conversation already under way
+-- is never re-filed. The message carries `p_project_id`, so comms.tg_mask_dm_message_pii masks it
+-- while that project is protected.
+CREATE OR REPLACE FUNCTION comms.send_request_message(
+    p_recipient uuid,
+    p_body text,
+    p_project_id uuid
+) RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, comms, projects, org, auth
+AS $$
+DECLARE
+    v_me       uuid := auth.uid();
+    v_body     text := btrim(COALESCE(p_body, ''));
+    v_thread   uuid;
+    v_opens    boolean := false;
+    v_restored integer := 0;
+    v_mutual   boolean;
+    v_routed   text;
+    v_message  uuid;
+BEGIN
+    IF v_me IS NULL THEN
+        RAISE EXCEPTION 'send_request_message: no acting user' USING ERRCODE = '42501';
+    END IF;
+    IF p_recipient IS NULL OR p_recipient = v_me THEN
+        RAISE EXCEPTION 'recipient: invalid' USING ERRCODE = '22023';
+    END IF;
+    IF v_body = '' THEN
+        RAISE EXCEPTION 'message: required' USING ERRCODE = '22023';
+    END IF;
+    IF char_length(v_body) > 4000 THEN
+        RAISE EXCEPTION 'message: too_long' USING ERRCODE = '22023';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM projects.project_invitations i
+         WHERE i.project_id = p_project_id
+           AND i.inviter_user_id = v_me
+           AND i.target_user_id = p_recipient
+           AND i.status = 'pending'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM projects.project_applications a
+          JOIN projects.projects p ON p.id = a.project_id
+         WHERE a.project_id = p_project_id
+           AND a.applicant_user_id = v_me
+           AND p.owner_user_id = p_recipient
+           AND a.status = 'pending'
+    ) THEN
+        RAISE EXCEPTION 'No open request to this person on that project' USING ERRCODE = '42501';
+    END IF;
+
+    SELECT t.id INTO v_thread
+    FROM comms.dm_threads t
+    JOIN comms.dm_participants p1 ON p1.thread_id = t.id AND p1.user_id = v_me
+    JOIN comms.dm_participants p2 ON p2.thread_id = t.id AND p2.user_id = p_recipient
+    WHERE t.kind <> 'group'
+    ORDER BY t.created_at
+    LIMIT 1;
+
+    IF v_thread IS NULL THEN
+        INSERT INTO comms.dm_threads (created_by_user_id)
+        VALUES (v_me)
+        RETURNING id INTO v_thread;
+
+        INSERT INTO comms.dm_participants (thread_id, user_id)
+        VALUES (v_thread, v_me), (v_thread, p_recipient);
+        v_opens := true;
+    ELSE
+        -- A new request is the one event that should bring a conversation somebody deleted for
+        -- themselves back into their inbox (the add_dm_thread_members rule).
+        UPDATE comms.dm_participants p
+        SET deleted_at = NULL
+        WHERE p.thread_id = v_thread
+          AND p.user_id = p_recipient
+          AND p.deleted_at IS NOT NULL;
+        GET DIAGNOSTICS v_restored = ROW_COUNT;
+
+        UPDATE comms.dm_participants p
+        SET deleted_at = NULL
+        WHERE p.thread_id = v_thread
+          AND p.user_id = v_me
+          AND p.deleted_at IS NOT NULL;
+
+        v_opens := v_restored > 0 OR NOT EXISTS (
+            SELECT 1 FROM comms.dm_messages m
+             WHERE m.thread_id = v_thread AND m.deleted_at IS NULL
+        );
+    END IF;
+
+    IF v_opens THEN
+        v_mutual := EXISTS (
+            SELECT 1 FROM org.profile_follows f
+             WHERE f.follower_user_id = v_me
+               AND f.target_entity_type = 'user'
+               AND f.target_entity_id = p_recipient
+        ) AND EXISTS (
+            SELECT 1 FROM org.profile_follows f
+             WHERE f.follower_user_id = p_recipient
+               AND f.target_entity_type = 'user'
+               AND f.target_entity_id = v_me
+        );
+        v_routed := CASE WHEN v_mutual THEN 'primary' ELSE 'requests' END;
+
+        UPDATE comms.dm_participants p
+        SET inbox_folder = v_routed
+        WHERE p.thread_id = v_thread AND p.user_id = p_recipient;
+
+        UPDATE comms.dm_participants p
+        SET inbox_folder = 'primary'
+        WHERE p.thread_id = v_thread AND p.user_id = v_me;
+    END IF;
+
+    INSERT INTO comms.dm_messages (thread_id, sender_user_id, project_id, body)
+    VALUES (v_thread, v_me, p_project_id, v_body)
+    RETURNING id INTO v_message;
+
+    RETURN jsonb_build_object(
+        'thread_id', v_thread,
+        'message_id', v_message,
+        'opened', v_opens,
+        'routed_to', v_routed
+    );
+END;
+$$;
+
+COMMENT ON FUNCTION comms.send_request_message(uuid, text, uuid) IS
+'Post a hiring request''s opening message (an invitation''s intro or an application''s cover note) into the pair''s DM, opening it if needed. A thread the request opens is filed in the recipient''s Requests folder unless the two follow each other; the sender keeps it in Primary. Requires an open invitation or application between the two on p_project_id.';

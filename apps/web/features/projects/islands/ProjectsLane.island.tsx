@@ -6,6 +6,7 @@ import { Popover } from "@projective/ui/feedback";
 import {
 	LaneBar,
 	LaneCollapseButton,
+	LaneCreateButton,
 	LaneEmpty,
 	LaneFooter,
 	LaneFooterActions,
@@ -497,18 +498,15 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 						allowOverflow={["top"]}
 						class="proj-menu-pop"
 						trigger={(api) => (
-							<button
-								type="button"
-								ref={api.ref as RefObject<HTMLButtonElement>}
-								class="proj-lane__create"
-								aria-haspopup="menu"
-								aria-expanded={api.expanded}
-								aria-controls={api.panelId}
+							<LaneCreateButton
+								triggerRef={api.ref as RefObject<HTMLElement>}
+								label="Create project"
+								icon={PlusIcon}
+								ariaHasPopup="menu"
+								ariaExpanded={api.expanded}
+								ariaControls={api.panelId}
 								onClick={api.toggle}
-							>
-								<span class="proj-lane__create-icon" aria-hidden="true">{PlusIcon}</span>
-								<span class="proj-lane__create-label">Create project</span>
-							</button>
+							/>
 						)}
 					>
 						<CreateMenu onPick={openCreate} />

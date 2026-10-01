@@ -1056,38 +1056,6 @@
 	font-variant-numeric: tabular-nums;
 }
 
-/* Create — the primary filled action, rightmost (relocated here from the header). */
-.proj-lane__create {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.4rem;
-	padding: 0.4rem 0.7rem;
-	font: inherit;
-	font-size: 0.8rem;
-	font-weight: 600;
-	color: var(--on-primary);
-	background: var(--primary);
-	border: none;
-	border-radius: var(--radius-full);
-	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		box-shadow var(--dur-fast) var(--ease-standard);
-}
-
-.proj-lane__create:hover {
-	background: color-mix(in srgb, var(--primary) 88%, black);
-}
-
-.proj-lane__create:focus-visible {
-	outline: none;
-	box-shadow: none;
-}
-
-.proj-lane__create-icon {
-	display: inline-flex;
-	font-size: 1rem;
-}
 /* #endregion */
 
 /* #region Density — collapse chrome when the lane is dragged/toggled to the narrow rail */
@@ -1098,7 +1066,6 @@
 .ui-splitter[data-mode="collapsed"] .proj-card__footer,
 .ui-splitter[data-mode="collapsed"] .proj-lane__involvement,
 .ui-splitter[data-mode="collapsed"] .proj-modifier,
-.ui-splitter[data-mode="collapsed"] .proj-lane__create-label,
 .ui-splitter[data-mode="collapsed"] .proj-lane .ui-lane-search,
 .ui-splitter[data-mode="collapsed"] .proj-lane .ui-lane-tabs {
 	display: none;
@@ -1121,10 +1088,6 @@
 
 .ui-splitter[data-mode="collapsed"] .proj-lane .ui-lane-collapse-slot {
 	order: 1;
-}
-
-.ui-splitter[data-mode="collapsed"] .proj-lane__create {
-	padding: 0.5rem;
 }
 /* #endregion */
 

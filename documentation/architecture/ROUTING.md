@@ -49,6 +49,7 @@ Parenthesized folders group routes **without** adding a URL segment:
 | files hub (root)        | `(dashboard)/files/index.tsx`                                | `/files` (personal/entity asset library — re-exports the wildcard below, so the root and a deep folder resolve through ONE code path)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | files hub (deep)        | `(dashboard)/files/[...path].tsx`                            | `/files/*` (any folder, at any depth — a real, deep-linkable, shareable URL the tree, the breadcrumbs and the address bar all address identically; each segment is percent-encoded INDEPENDENTLY, so a folder literally named `a/b` never reads back as the pair `["a","b"]`)                                                                                                                                                                                                                                                                                                                                                |
 | share link              | `(public)/share/[slug].tsx`                                  | `/share/:slug` (the public resolution of a read-only share link — the one files surface a stranger can reach)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| outbound-link exit      | `(public)/exit.tsx`                                          | `/exit?url=…` (the interstitial an external link from a message passes through unless its scan came back safe — names the host, the verdict and why; asks for an explicit "I understand" before an unchecked or suspicious link and never offers a blocked one; never redirects by itself; `noindex` + `no-referrer` + `no-store`; Decision #128)                                                                                                                                                                                                                                                                            |
 | integrations            | `(dashboard)/settings/integrations/index.tsx`                | `/settings/integrations` (the connector console — the caller's stored authorizations, and the catalogue)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | verification            | `(dashboard)/settings/verification.tsx`                      | `/settings/verification` (**Verification & payouts** — the freelancer's Level-2 identity check through Stripe Identity, the Stripe Connect payout account a withdrawal is transferred to, and each client business's Level-3 KYB through Connect onboarding. Every wallet lock about identity or payouts links here. Stripe's hosted pages come back through `/api/finance/connect/{return,refresh}?…&back=settings` and the Identity return, which land here with a one-line notice; the page itself reads `GET /api/finance/verify/status`. Root CLAUDE.md §8 Decision #126) |
 | teams roster            | `(dashboard)/teams/index.tsx`                                | `/teams` — the caller's teams (owned first), their pending invitations to teams, and the create entitlement. Read by `org.get_workspace_roster('team')`. |
@@ -352,9 +353,12 @@ why the denylist is not merely a duplicate of the route table:
   anyway because precedence protects the PATH, not the NAME: without the entry, `@share` remains
   claimable as a handle, and a handle that shadows the one route on the platform that hands out read
   access to private files is a phishing primitive rather than a routing curiosity.
+- **`exit`** (Decision #128) is denied for the same reason as `share`: `/exit` is the page that
+  vouches for leaving the platform, and an `@exit` profile would borrow that voice.
 
-Both are enforced through the one SSOT guard (`isReservedHandle`), so a future "claim your handle"
-flow validating against it inherits both without knowing why either is listed.
+All are enforced through the one SSOT guard (`isReservedHandle`) and its SQL twin
+`org.fn_is_reserved_handle` (pinned by `workspace.contract.test.ts`), so a future "claim your handle"
+flow validating against it inherits every entry without knowing why any is listed.
 
 ### The owner's three views of their own profile
 
@@ -429,6 +433,26 @@ on `ctx.state.profileStatus` — `200`, `404` for a reserved, unknown or hidden 
 deliberately indistinguishable), or `503` when the database could not be asked — so the shared
 layout paints a calm not-found or an honest "try again", never a fabricated profile. (Profiles are
 live-only since 2026-09-23; there is no stub profile to fabricate.)
+
+### Messaging, hiring-handshake & link API (Decision #128)
+
+Thin routes: Zod from `@projective/types/{messaging,projects,links}`, the actor from `readActor(ctx)`,
+then one fat-service method. A guest is a 401 on every write.
+
+| Route                                        | Method | Service → database                                                                  |
+| :------------------------------------------- | :----- | :---------------------------------------------------------------------------------- |
+| `/api/messaging/conversations`               | `GET` (`?folder=primary\|requests\|archived`, `view`, `role`, …) | `MessagingBackendService.conversations` — the folder is the VIEWER's (`dm_participants.inbox_folder`) |
+| `/api/messaging/conversations/[id]/folder`   | `POST` `{ folder }` | `MessagingBackendService.setFolder` → `comms.set_dm_inbox_folder` (404 for a conversation with no thread yet) |
+| `/api/messaging/conversations/[id]/context`  | `GET`  | `MessagingBackendService.context` → `projects.get_engagement_context` (the context panel) |
+| `/api/projects/hire`                         | `POST` | `ProjectBackendService.hire` → `projects.invite_to_project`, then the intro via `comms.send_request_message`; a cooldown refusal is 422 with `details.reopensAt`, the rate limit 429 with `details.retryAt` |
+| `/api/projects/apply`                        | `POST` → 201 | `ProjectBackendService.apply` → `projects.apply_to_project`, then the cover note via `comms.send_request_message` |
+| `/api/projects/invites/respond`              | `POST` `{ invitationIds, accept }` | `ProjectBackendService.respondToInvitations` → `projects.respond_to_project_invitation`, once per invitation of the request |
+| `/api/projects/applications/accept`          | `POST` `{ applicationId }` | `ProjectBackendService.acceptApplication` → `projects.assign_from_application`; answers `fundHref` |
+| `/api/links/preview`                         | `POST` `{ urls }` (1–20) | `LinkPreviewBackendService.previews` — signed-in only, 30 per minute, `private, no-store` |
+
+A conversation addressed as `dm-{handle}` with no thread yet resolves to a VIRTUAL conversation on
+the live path (an empty page, never a minted thread), so an invitation notification's
+`/messages/dm-{inviter}` link always lands somewhere answerable.
 
 ## Thin controllers / fat services
 

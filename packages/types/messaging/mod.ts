@@ -10,3 +10,6 @@ export * from "./conversations.ts";
 export * from "./settings.ts";
 export * from "./send.ts";
 export * from "./contacts.ts";
+export * from "./folders.ts";
+export * from "./activity.ts";
+export * from "./context.ts";

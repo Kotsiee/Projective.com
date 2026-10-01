@@ -2,10 +2,12 @@ import type { SupabaseClient } from "supabaseClient";
 import { getUserClient } from "../../core/supabase.ts";
 import { fetchPartyRows, partyRowsWithAvatars } from "../profile/party-cards.ts";
 import type { ReadActor } from "../read-actor.ts";
-import type {
-	ConversationKind,
-	ConversationRelation,
-	ConversationSummary,
+import {
+	compactActivityLabel,
+	type ConversationKind,
+	type ConversationRelation,
+	type ConversationSummary,
+	InboxFolder,
 } from "@projective/types/messaging";
 import type { ChatMessage, MessagePage } from "@projective/types/projects";
 
@@ -96,10 +98,15 @@ interface ParticipantRow {
 	user_id: string;
 	last_read_at: string | null;
 	is_starred: boolean;
+	/** Derived in the table from `inbox_folder`; read for the readers that still ask it. */
 	is_archived: boolean;
+	inbox_folder: string;
 	is_muted: boolean;
 	deleted_at: string | null;
 }
+
+const PARTICIPANT_COLUMNS =
+	"thread_id, user_id, last_read_at, is_starred, is_archived, inbox_folder, is_muted, deleted_at";
 
 /**
  * One row of `comms.dm_thread_roster()` — identity only.
@@ -322,6 +329,7 @@ export function toConversationSummary(
 			PREVIEW_MAX,
 		)
 		: "";
+	const folder = InboxFolder.safeParse(ctx.viewer?.inbox_folder).data ?? "primary";
 
 	return {
 		id: row.id,
@@ -335,13 +343,15 @@ export function toConversationSummary(
 		participants: others,
 		preview,
 		lastActivityLabel: activityLabel(lastAt, ctx.now),
+		lastActivityShort: compactActivityLabel(lastAt, ctx.now),
 		updatedAt: lastAt,
 		// NULL `last_read_at` means never opened, which is deliberately distinct from "opened and read
 		// nothing" — so a thread with any message in it is unread until the watermark exists.
 		unread: ctx.messageCount > 0 &&
 			(!readAt || Date.parse(lastAt) > Date.parse(readAt)),
 		starred: ctx.viewer?.is_starred ?? false,
-		archived: ctx.viewer?.is_archived ?? false,
+		folder,
+		archived: folder === "archived",
 		muted: ctx.viewer?.is_muted ?? false,
 		messageCount: ctx.messageCount,
 		serviceId: null,
@@ -387,7 +397,7 @@ export async function fetchConversations(
 
 	const { data: mine, error: mineErr } = await db
 		.from("dm_participants")
-		.select("thread_id, user_id, last_read_at, is_starred, is_archived, is_muted, deleted_at")
+		.select(PARTICIPANT_COLUMNS)
 		.eq("user_id", actor.userId)
 		.is("deleted_at", null);
 
