@@ -271,11 +271,10 @@
 	color: var(--primary);
 }
 
-.ckod-chip__avatar {
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
-	border-radius: var(--radius-full);
-	object-fit: cover;
+/* Two classes: `.ui-avatar` sets its own `--avatar-size` at one class, and may load after this sheet. */
+.ckod-chip__mark .ckod-chip__avatar {
+	--avatar-size: var(--icon-sm);
+	font-size: 0.5rem;
 }
 
 /* A long company name truncates rather than pushing the row into a horizontal scroller. */

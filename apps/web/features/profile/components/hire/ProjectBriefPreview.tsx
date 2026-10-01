@@ -1,8 +1,8 @@
 import type { JSX } from "preact";
-import { Avatar } from "@projective/ui/display";
 import { MoneyView } from "@projective/ui/display/money";
 import type { HireBrief, ProjectFormat } from "@projective/types/projects";
 import { MetaLine, SpecLedger, StatusMark } from "@features/view/components/entity-view-parts.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * ProjectBriefPreview — the assignment modal's read-only preview of the viewer's own project, in
@@ -118,7 +118,7 @@ export function ProjectBriefPreview({ brief }: ProjectBriefPreviewProps): JSX.El
 						<ul class="pf-projpreview__members" role="list">
 							{brief.members.map((m) => (
 								<li key={m.id} class="pf-projpreview__member">
-									<Avatar
+									<UserAvatar
 										image={m.party.avatar ?? undefined}
 										label={m.party.name}
 										size={28}

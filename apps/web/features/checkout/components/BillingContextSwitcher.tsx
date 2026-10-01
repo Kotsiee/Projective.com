@@ -1,5 +1,7 @@
 import type { JSX } from "preact";
+import { Avatar } from "@projective/ui/display";
 import { Icon } from "@projective/ui/icons";
+import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 import { adoptBillingContext, type DetailsDraft } from "../core/details-draft.ts";
 import type { BillingContext } from "../types/checkout-types.ts";
 
@@ -80,9 +82,11 @@ export function BillingContextSwitcher(props: BillingContextSwitcherProps): JSX.
 	const move = (event: JSX.TargetedKeyboardEvent<HTMLButtonElement>, index: number): void => {
 		const last = contexts.length - 1;
 		let next = index;
-		if (event.key === "ArrowRight" || event.key === "ArrowDown") next = index === last ? 0 : index + 1;
-		else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = index === 0 ? last : index - 1;
-		else if (event.key === "Home") next = 0;
+		if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+			next = index === last ? 0 : index + 1;
+		} else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+			next = index === 0 ? last : index - 1;
+		} else if (event.key === "Home") next = 0;
 		else if (event.key === "End") next = last;
 		else return;
 		event.preventDefault();
@@ -120,9 +124,17 @@ export function BillingContextSwitcher(props: BillingContextSwitcherProps): JSX.
 								onKeyDown={(event) => move(event, index)}
 							>
 								<span class="ckod-chip__mark" aria-hidden="true">
-									{entry.avatar
-										? <img class="ckod-chip__avatar" src={entry.avatar} alt="" />
-										: <Icon name={entry.kind === "business" ? "building" : "user"} size="2xs" />}
+									{entry.kind === "personal" || entry.avatar
+										? (
+											<Avatar
+												class="ckod-chip__avatar"
+												image={entry.avatar}
+												fallbackImage={personFallbackImage(entry.kind)}
+												label={entry.label}
+												shape={entry.kind === "personal" ? "circle" : "square"}
+											/>
+										)
+										: <Icon name="building" size="2xs" />}
 								</span>
 								<span class="ckod-chip__label">{entry.label}</span>
 								{selected

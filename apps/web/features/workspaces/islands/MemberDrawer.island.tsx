@@ -2,7 +2,6 @@ import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
 import "../styles/workspace.css";
 import { Drawer, Tooltip } from "@projective/ui/feedback";
-import { Avatar } from "@projective/ui/display";
 import { Button, InputText } from "@projective/ui/fields";
 import {
 	CAPABILITY_LABEL,
@@ -21,6 +20,7 @@ import {
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import { shortDate } from "../core/workspace-model.ts";
 import { ConditionalIcon, LockIcon, TickIcon } from "../components/MemberCard.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * MemberDrawer — layer 3 of the permission model: this person's overrides on top of their role.
@@ -254,7 +254,7 @@ export default function MemberDrawer(props: MemberDrawerProps): JSX.Element {
 			}}
 		>
 			<div class="wsp-mdrawer__head">
-				<Avatar
+				<UserAvatar
 					class="wsp-mdrawer__avatar"
 					image={member.avatar}
 					alt=""

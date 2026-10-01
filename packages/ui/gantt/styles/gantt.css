@@ -172,25 +172,11 @@
 	background: var(--gantt-lane-accent, var(--outline));
 }
 
+/* The face itself is an `Avatar`; this slot only keeps it from flexing. */
 .gantt-lane__face {
 	flex: none;
 	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 1.5rem;
-	block-size: 1.5rem;
-	border-radius: var(--radius-full);
-	background: var(--surface-2);
-	color: var(--text-secondary);
 	font-size: var(--text-2xs);
-	font-weight: var(--fw-semibold);
-	overflow: hidden;
-}
-
-.gantt-lane__photo {
-	inline-size: 100%;
-	block-size: 100%;
-	object-fit: cover;
 }
 
 .gantt-lane__text {

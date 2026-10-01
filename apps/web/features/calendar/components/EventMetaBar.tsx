@@ -1,7 +1,6 @@
 import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import { type Signal, useSignal } from "@preact/signals";
-import { Avatar } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import { DateTimePicker } from "@projective/ui/fields";
 import { Icon, type IconName } from "@projective/ui/icons";
@@ -9,6 +8,7 @@ import { calendarTime } from "@projective/ui/calendar";
 import type { CalendarEvent } from "@projective/types/scheduling";
 import { eventLiveStatus } from "@projective/types/scheduling";
 import { durationLabel, eventBadge } from "../core/event-view.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * EventMetaBar — the facts that govern an occurrence, read at a glance, and the two that can be moved.
@@ -341,7 +341,7 @@ export function EventMetaBar(props: EventMetaBarProps): JSX.Element {
 						<Icon name="user" size="2xs" class="evm-meta__mark" />
 						<span class="evm-meta__k">Organiser</span>
 						<span class="evm-person evm-meta__v">
-							<Avatar
+							<UserAvatar
 								image={event.organiser.avatar ?? undefined}
 								label={event.organiser.name}
 								size={20}

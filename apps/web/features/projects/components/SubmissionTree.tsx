@@ -4,6 +4,7 @@ import { TreeNav, type TreeNavNode } from "@projective/ui/navigation";
 import type { SubmissionTreeNode } from "../types/projects-types.ts";
 import { pathKey, statusTone } from "../core/submission-model.ts";
 import { FolderGlyph, StageGlyph, SubmissionStatusIcon, UnitGlyph } from "./submission-glyphs.tsx";
+import { DEFAULT_AVATAR_URL } from "@projective/types/user";
 
 /**
  * SubmissionTree — the deliverable navigation tree (Part 3). It maps the wire {@link SubmissionTreeNode}
@@ -64,7 +65,7 @@ function toNavNode(node: SubmissionTreeNode, parentPath: string[]): TreeNavNode 
 		sublabel: node.sublabel ?? undefined,
 		icon: iconFor(node.kind),
 		avatar: node.kind === "submitter"
-			? { image: node.avatar ?? undefined, label: node.label }
+			? { image: node.avatar, label: node.label, fallbackImage: DEFAULT_AVATAR_URL }
 			: null,
 		status: statusMark(node),
 		count: node.fileCount,

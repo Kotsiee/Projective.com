@@ -1,9 +1,9 @@
 import type { JSX } from "preact";
-import { Avatar } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import type { SplitStake } from "@projective/types/workspace";
 import { PolicyAmount, STALE_NOTE } from "./PolicyAmount.tsx";
 import { ClockGlyph, HoldGlyph, ReleaseGlyph } from "./policy-glyphs.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * SplitLegend — the record behind the split bar.
@@ -98,7 +98,7 @@ export function SplitLegend(props: SplitLegendProps): JSX.Element {
 						onFocusOut={() => props.onHighlight?.(null)}
 					>
 						<span class="wsp-split__key-mark" aria-hidden="true" />
-						<Avatar
+						<UserAvatar
 							class="wsp-split__key-avatar"
 							image={stake.avatar || undefined}
 							label={stake.name}

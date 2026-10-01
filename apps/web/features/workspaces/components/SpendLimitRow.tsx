@@ -1,5 +1,4 @@
 import type { JSX } from "preact";
-import { Avatar } from "@projective/ui/display";
 import { InputNumber, ToggleSwitch } from "@projective/ui/fields";
 import { Tooltip } from "@projective/ui/feedback";
 import { styleVars } from "@ui/core/style.ts";
@@ -7,6 +6,7 @@ import { toMajorUnits, toMinorUnits } from "@projective/types/finance";
 import type { SpendLimit } from "@projective/types/workspace";
 import { PolicyAmount } from "./PolicyAmount.tsx";
 import { DoneGlyph, EditGlyph } from "./policy-glyphs.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * SpendLimitRow — one member's spend envelope on a business's pooled wallet.
@@ -111,7 +111,7 @@ export function SpendLimitRow(props: SpendLimitRowProps): JSX.Element {
 
 	return (
 		<li class="wsp-spend__limit" data-can={limit.canSpend ? "true" : "false"}>
-			<Avatar
+			<UserAvatar
 				class="wsp-spend__limit-avatar"
 				image={limit.avatar || undefined}
 				label={limit.name}

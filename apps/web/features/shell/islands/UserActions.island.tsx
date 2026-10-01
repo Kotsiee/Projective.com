@@ -32,6 +32,7 @@ import { useEffectiveContext } from "@web/features/shell/core/effective-context.
 import { AuthService } from "@web/features/auth/core/AuthService.ts";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import { onAvatarChanged } from "@web/utils/avatar-sync.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 // #region Popover sub-views + presence model
 /** The states the account popover's `ui-popover__content` can render (task §2 + the currency picker). */
@@ -308,7 +309,7 @@ export default function UserActions(
 		<>
 			<div class="shell-account__head">
 				<a class="shell-account__id" href={links.viewProfile} role="menuitem" onClick={onNavigate}>
-					<Avatar label={displayName} image={avatarUrl} size="md" />
+					<UserAvatar label={displayName} image={avatarUrl} size="md" />
 					<span class="shell-account__ident">
 						<span class="shell-account__name">{displayName}</span>
 						{displaySub ? <span class="shell-account__sub">{displaySub}</span> : null}
@@ -759,7 +760,7 @@ export default function UserActions(
 				class="shell-util__profile shell-util__slot--desktop"
 				aria-label="Your account"
 			>
-				<Avatar label={displayName} image={avatarUrl} size="sm" />
+				<UserAvatar label={displayName} image={avatarUrl} size="sm" />
 			</button>
 			<Popover open={profileOpen} targetRef={profileBtn} placement="bottom-end" class="shell-pop">
 				<div class="shell-account" aria-label="Account">
@@ -775,7 +776,7 @@ export default function UserActions(
 				aria-haspopup="dialog"
 				onClick={() => (accountOpen.value = true)}
 			>
-				<Avatar label={displayName} image={avatarUrl} size="sm" />
+				<UserAvatar label={displayName} image={avatarUrl} size="sm" />
 			</button>
 			<Drawer
 				visible={accountOpen}
@@ -800,7 +801,7 @@ export default function UserActions(
 					{notifications.map((n) => (
 						<li key={n.id} class={`shell-feed__item${n.unread ? " shell-feed__item--unread" : ""}`}>
 							<span class="shell-feed__lead">
-								<Avatar image={n.avatar} alt={n.actor ?? ""} label={n.actor} size="sm" />
+								<UserAvatar image={n.avatar} alt={n.actor ?? ""} label={n.actor ?? ""} size="sm" />
 							</span>
 							<span class="shell-feed__body">
 								<span class="shell-feed__title">{n.title}</span>

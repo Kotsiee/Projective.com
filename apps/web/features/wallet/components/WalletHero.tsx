@@ -21,12 +21,13 @@ import {
 	fundStateLabel,
 	heldIn,
 	viewLabel,
-	type WalletView,
 	walletPageHref,
 	walletParam,
+	type WalletView,
 } from "../core/wallet-model.ts";
 import { ActionIcon, FundStateIcon } from "./wallet-glyphs.tsx";
 import { HeroTools } from "./WalletTools.tsx";
+import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 
 /** Props for {@link WalletHero}. */
 export interface WalletHeroProps {
@@ -79,7 +80,9 @@ function ScopePill(
 ): JSX.Element {
 	const open = useSignal(false);
 	const active = switcher.active;
-	const accounts = showsAggregate(switcher) ? [...switcher.accounts, switcher.aggregate] : switcher.accounts;
+	const accounts = showsAggregate(switcher)
+		? [...switcher.accounts, switcher.aggregate]
+		: switcher.accounts;
 	const name = active.scope === "personal" ? "Personal" : active.name;
 	return (
 		<Popover
@@ -102,6 +105,7 @@ function ScopePill(
 						: (
 							<Avatar
 								image={active.avatar ?? undefined}
+								fallbackImage={personFallbackImage(active.scope)}
 								label={active.name}
 								size={20}
 								class="wlt-scope__avatar"
@@ -137,7 +141,14 @@ function ScopePill(
 											<Icon name="wallet" size="xs" />
 										</span>
 									)
-									: <Avatar image={ref.avatar ?? undefined} label={ref.name} size={28} />}
+									: (
+										<Avatar
+											image={ref.avatar ?? undefined}
+											fallbackImage={personFallbackImage(ref.scope)}
+											label={ref.name}
+											size={28}
+										/>
+									)}
 								<span class="wlt-scope-menu__text">
 									<span class="wlt-scope-menu__name">
 										{ref.scope === "personal" ? "Personal" : ref.name}

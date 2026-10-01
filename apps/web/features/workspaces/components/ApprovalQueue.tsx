@@ -1,9 +1,9 @@
 import type { JSX } from "preact";
-import { Avatar } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import type { SpendRequest } from "@projective/types/workspace";
 import { PolicyAmount } from "./PolicyAmount.tsx";
 import { ApproveIcon, CrossIcon } from "./MemberCard.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * ApprovalQueue — spend that needs a decision, from both sides of it.
@@ -51,7 +51,7 @@ export function ApprovalQueue(props: ApprovalQueueProps): JSX.Element {
 		<div class="wsp-approvals">
 			{pending.map((req) => (
 				<div class="wsp-approvals__item" key={req.id} data-state="pending">
-					<Avatar
+					<UserAvatar
 						class="wsp-approvals__avatar"
 						image={req.avatar}
 						alt=""
@@ -118,7 +118,7 @@ export function ApprovalQueue(props: ApprovalQueueProps): JSX.Element {
 
 			{decided.map((req) => (
 				<div class="wsp-approvals__item" key={req.id} data-state={req.state}>
-					<Avatar
+					<UserAvatar
 						class="wsp-approvals__avatar"
 						image={req.avatar}
 						alt=""

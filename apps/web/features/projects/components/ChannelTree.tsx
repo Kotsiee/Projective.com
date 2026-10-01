@@ -11,6 +11,7 @@ import { channelHref } from "../core/chat-context.ts";
 import type { SidebarStageRow } from "../core/sidebar-overlay.ts";
 import { conditionalChannelGroups } from "@projective/types/projects";
 import type { DmChannel, ProjectChannel, ProjectDetail } from "../types/projects-types.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * ChannelTree — the communication accordion of the Project Details sidebar: General, Stages, and —
@@ -194,7 +195,7 @@ export function DmRow(
 			data-active={active ? "true" : undefined}
 			aria-current={active ? "page" : undefined}
 		>
-			<Avatar image={dm.party.avatar ?? undefined} label={dm.party.name} size={22} shape="circle" />
+			<UserAvatar image={dm.party.avatar} label={dm.party.name} size={22} shape="circle" />
 			<span class="proj-chan__name">{dm.party.name}</span>
 			{dm.unread && <span class="proj-chan__dot" role="status" aria-label="unread" />}
 		</a>

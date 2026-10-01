@@ -13,6 +13,7 @@ import { backHrefFor, backLabelFor, ENTITY_LABEL, signInHref } from "../core/vie
 import ExploreBackNav from "@features/explore/islands/ExploreBackNav.island.tsx";
 import type { ArticleViewExtra, EntityView } from "@projective/types/explore";
 import type { HrefContext } from "@features/explore/core/routing.ts";
+import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 
 /**
  * ArticleViewScreen — the custom **Articles** view template body (`/view/[id]?type=articles`). An
@@ -69,6 +70,8 @@ export function ArticleViewScreen(
 					<a class="art-author" href={profileHref(owner.handle)}>
 						<Avatar
 							image={owner.avatar}
+							fallbackImage={personFallbackImage(owner.kind)}
+							label={owner.name}
 							alt=""
 							size="sm"
 							shape={owner.kind === "business" ? "square" : "circle"}

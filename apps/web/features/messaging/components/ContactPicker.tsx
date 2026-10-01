@@ -1,12 +1,12 @@
 import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import { Avatar } from "@projective/ui/display";
 import { Button } from "@projective/ui/fields";
 import { MessagingIcon } from "./messaging-glyphs.tsx";
 import { ContactList } from "./ContactList.tsx";
 import { useContactSearch } from "../hooks/useContactSearch.ts";
 import type { RankedContact } from "../types/messaging-types.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * ContactPicker — the body of the New message / New group / Add members modal. It renders the
@@ -100,7 +100,7 @@ export function ContactPicker(props: ContactPickerProps): JSX.Element {
 				<ul class="msg-picker__chips" aria-label="Selected">
 					{picked.value.map((c) => (
 						<li key={c.id} class="msg-picker__chip">
-							<Avatar image={c.avatar ?? undefined} label={c.name} size={20} shape="circle" />
+							<UserAvatar image={c.avatar ?? undefined} label={c.name} size={20} shape="circle" />
 							<span class="msg-picker__chip-name">{c.name}</span>
 							<button
 								type="button"

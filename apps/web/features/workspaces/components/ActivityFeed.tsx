@@ -1,5 +1,4 @@
 import type { JSX, VNode } from "preact";
-import { Avatar } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import type { ActivityEntry } from "@projective/types/workspace";
 import {
@@ -11,6 +10,7 @@ import {
 	SettingsGlyph,
 	WalletGlyph,
 } from "../core/workspace-glyphs.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * ActivityFeed — the overview's "what has happened here" list.
@@ -91,12 +91,12 @@ export function ActivityFeed(props: ActivityFeedProps): JSX.Element {
 									{cloneGlyph(glyph)}
 								</span>
 							</Tooltip>
-							{entry.actorAvatar && (
-								<Avatar
+							{entry.actor && (
+								<UserAvatar
 									class="wsp-activity__avatar"
 									image={entry.actorAvatar}
 									alt=""
-									label={entry.actor ?? undefined}
+									label={entry.actor}
 									shape="circle"
 									size="sm"
 								/>

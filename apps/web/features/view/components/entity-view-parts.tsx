@@ -7,6 +7,7 @@ import type { EntitySeller, EntityView } from "@projective/types/explore";
 import { TIER_META } from "@features/profile/components/profile-glyphs.tsx";
 import type { SeatCapacity } from "../core/entity-archetype.ts";
 import { OWNER_KIND_LABEL, sellerBadges } from "../core/view-model.ts";
+import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 
 /**
  * Entity View — the unboxed composition primitives.
@@ -372,7 +373,14 @@ export function SellerLine(
 	return (
 		<div class="evp-seller">
 			<a class="evp-seller__link" href={`/${item.owner.handle}`}>
-				{avatar && <Avatar image={item.owner.avatar} label={item.owner.name} size="sm" />}
+				{avatar && (
+					<Avatar
+						image={item.owner.avatar}
+						fallbackImage={personFallbackImage(item.owner.kind)}
+						label={item.owner.name}
+						size="sm"
+					/>
+				)}
 				<span class="evp-seller__name">{item.owner.name}</span>
 				{item.owner.verified && (
 					tier
@@ -422,18 +430,14 @@ export function SellerLine(
 			*/
 			}
 			<p class="evp-seller__meta">
-				<span class="evp-seller__handle">@{handle}</span>
-				{" "}
-				<span class="evp-seller__dot" aria-hidden="true">·</span>
-				{" "}
+				<span class="evp-seller__handle">@{handle}</span>{" "}
+				<span class="evp-seller__dot" aria-hidden="true">·</span>{" "}
 				<span>{OWNER_KIND_LABEL[item.owner.kind]}</span>
 				{seller?.standing && (
 					<>
 						{" "}
-						<span class="evp-seller__dot" aria-hidden="true">·</span>
-						{" "}
-						<span class="evp-seller__standing">{seller.standing.label}</span>
-						{" "}
+						<span class="evp-seller__dot" aria-hidden="true">·</span>{" "}
+						<span class="evp-seller__standing">{seller.standing.label}</span>{" "}
 						<span class="evp-seller__standingnote">standing</span>
 					</>
 				)}

@@ -18,6 +18,7 @@ import { useSignalEffect } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
+import { Avatar } from "../../display/components/Avatar.tsx";
 import type { GanttStore } from "../core/gantt-store.ts";
 import { laneTop } from "../core/layout.ts";
 import type { GanttLane } from "../core/types.ts";
@@ -35,11 +36,6 @@ export interface GanttTaskListProps {
 	selectedLane: number | null;
 	onHoverLane?: (index: number | null) => void;
 	onActivateLane?: (lane: GanttLane, index: number) => void;
-}
-
-function initials(name: string): string {
-	const parts = name.trim().split(/\s+/).filter(Boolean);
-	return parts.slice(0, 2).map((p) => p.charAt(0).toUpperCase()).join("") || "?";
 }
 
 export function GanttTaskList(props: GanttTaskListProps): JSX.Element {
@@ -82,9 +78,13 @@ export function GanttTaskList(props: GanttTaskListProps): JSX.Element {
 				{lane.avatar
 					? (
 						<span class="gantt-lane__face" aria-hidden="true">
-							{lane.avatar.url
-								? <img class="gantt-lane__photo" src={lane.avatar.url} alt="" loading="lazy" />
-								: initials(lane.avatar.name)}
+							<Avatar
+								image={lane.avatar.url}
+								fallbackImage={lane.avatar.fallbackImage}
+								label={lane.avatar.name}
+								loading="lazy"
+								size={24}
+							/>
 						</span>
 					)
 					: (

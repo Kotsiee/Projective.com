@@ -790,6 +790,12 @@ $$;
 -- PL/pgSQL rather than SQL on purpose: a SQL-language body is validated when the function is
 -- CREATED, and files.fn_public_media_ref is created later, in 00001160 — a PL/pgSQL body resolves it
 -- when it runs, so the file order between the org and files function files stays free.
+--
+-- `oauth_avatar` is the sign-in provider's picture (Google writes `avatar_url`, keeps `picture`), the
+-- second rung of the avatar rule (`@projective/types/user` avatar.ts): shown when there is no uploaded
+-- photo. It is user-writable metadata, so it leaves here RAW and the caller renders it only after the
+-- provider-host allowlist (`safeOAuthAvatarUrl`) accepts it. Only the one picture key is projected —
+-- never the rest of `raw_user_meta_data`.
 CREATE OR REPLACE FUNCTION org.get_party_cards(p_user_ids uuid[])
 RETURNS TABLE (
     user_id uuid,
@@ -797,7 +803,8 @@ RETURNS TABLE (
     first_name text,
     last_name text,
     is_freelancer boolean,
-    avatar jsonb
+    avatar jsonb,
+    oauth_avatar text
 )
 LANGUAGE plpgsql
 STABLE
@@ -807,8 +814,11 @@ AS $$
 BEGIN
     RETURN QUERY
     SELECT u.user_id, u.username, u.first_name, u.last_name, u.is_freelancer,
-           files.fn_public_media_ref (u.avatar_file_id)
+           files.fn_public_media_ref (u.avatar_file_id),
+           COALESCE(NULLIF(au.raw_user_meta_data->>'avatar_url', ''),
+                    NULLIF(au.raw_user_meta_data->>'picture', ''))
     FROM org.users_public u
+    LEFT JOIN auth.users au ON au.id = u.user_id
     WHERE u.user_id = ANY (p_user_ids[1:500]);
 END;
 $$;

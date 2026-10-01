@@ -13,6 +13,7 @@ import { openPopout } from "../core/popout-state.ts";
 import { openAddMembers } from "../core/messaging-state.ts";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import type { ConversationDetail } from "../types/messaging-types.ts";
+import { DEFAULT_AVATAR_URL } from "@projective/types/user";
 
 /**
  * ConversationHeader — the contextual header for a `/messages/[conversationId]` view, mounted into the
@@ -111,6 +112,7 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 				<span class="chan-header__avatar" aria-hidden="true">
 					<Avatar
 						image={detail.avatar ?? undefined}
+						fallbackImage={detail.kind === "group" ? undefined : DEFAULT_AVATAR_URL}
 						label={detail.title}
 						size={30}
 						shape={detail.kind === "group" ? "square" : "circle"}

@@ -2,7 +2,6 @@ import type { JSX } from "preact";
 import type { Signal } from "@preact/signals";
 import { useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
-import { Avatar } from "@projective/ui/display";
 import { useVirtualScroll } from "@projective/ui/hooks";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import {
@@ -14,6 +13,7 @@ import {
 import { listRowHeight, listShowsThumbnails, zoom } from "../core/view-state.ts";
 import { FileKindIcon } from "./file-glyphs.tsx";
 import { Icon } from "@projective/ui/icons";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * FileTable — the dense list/table presentation of the workspace, window-virtualized (only in-view
@@ -245,7 +245,7 @@ export function FileTable(props: FileTableProps): JSX.Element {
 									{file.sender
 										? (
 											<>
-												<Avatar
+												<UserAvatar
 													image={file.sender.avatar ?? undefined}
 													label={file.sender.name}
 													size={20}

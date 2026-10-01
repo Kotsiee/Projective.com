@@ -1,7 +1,6 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { DndContext, DropIndicator, useSortable } from "@projective/ui/dnd";
-import { AvatarStack } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import {
@@ -10,6 +9,7 @@ import {
 	TICKET_INTENSITY_LABEL,
 } from "../../types/projects-types.ts";
 import type { TicketStageView } from "../../core/ticket-view.ts";
+import { UserAvatarStack } from "@web/components/UserAvatar.tsx";
 
 /**
  * StagePipeline — the ticket's stage sequence as a flow diagram.
@@ -154,7 +154,7 @@ function StageCard(props: CardProps): JSX.Element {
 				<div class="tkc-stage__end">
 					{stage
 						? (
-							<AvatarStack
+							<UserAvatarStack
 								people={stage.members}
 								max={4}
 								size={22}

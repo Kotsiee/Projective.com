@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { Avatar } from "@projective/ui/display";
 import { ProfileIcon } from "./profile-glyphs.tsx";
 import type { ProfileView } from "../types/profile-types.ts";
+import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 
 /**
  * ProfileCalendarHead — the one-line identity strip above the full-page availability calendar
@@ -16,7 +17,13 @@ export function ProfileCalendarHead({ profile }: { profile: ProfileView }): JSX.
 				<ProfileIcon name="back" class="pf-calhead__back-icon" />
 				<span>Profile</span>
 			</a>
-			<Avatar image={profile.avatar} label={profile.name} size={24} shape="circle" />
+			<Avatar
+				image={profile.avatar}
+				fallbackImage={personFallbackImage(profile.kind)}
+				label={profile.name}
+				size={24}
+				shape="circle"
+			/>
 			<span class="pf-calhead__name">{profile.name} · availability</span>
 		</header>
 	);

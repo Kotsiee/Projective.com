@@ -1,8 +1,8 @@
 import type { JSX, VNode } from "preact";
-import { Avatar } from "@projective/ui/display";
 import type { MemberScope, ProjectMemberRow } from "../types/projects-types.ts";
 import { AssignmentTag, MemberRoleBadge, PresenceDot } from "./MemberBadges.tsx";
 import { MailIcon, TicketIcon } from "./glyphs.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * MemberCard — the card presentation of a roster participant (the grid view, task §2.1). The same data
@@ -28,7 +28,7 @@ export function MemberCard(props: MemberCardProps): JSX.Element {
 		<article class="mem-card" data-viewer={m.isViewer ? "true" : undefined}>
 			<header class="mem-card__head">
 				<span class="mem-card__avatar">
-					<Avatar image={m.party.avatar ?? undefined} label={m.party.name} size="lg" />
+					<UserAvatar image={m.party.avatar ?? undefined} label={m.party.name} size="lg" />
 					<PresenceDot presence={m.presence} />
 				</span>
 				<div class="mem-card__id">

@@ -3,7 +3,6 @@ import type { Signal } from "@preact/signals";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { Splitter, SplitterPanel } from "@projective/ui/layout";
-import { Avatar } from "@projective/ui/display";
 import { Backdrop, BodyPortal, usePresence } from "@projective/ui/overlay";
 import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks";
 import type { FileItem, SubmissionReview, SubmissionTreeNode } from "../types/projects-types.ts";
@@ -22,6 +21,7 @@ import {
 	SubmissionStatusIcon,
 	TicketGlyph,
 } from "./submission-glyphs.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * SubmissionReviewModal — the full-screen client review workspace (Part 4). A `.ui-splitter` divides a
@@ -196,7 +196,7 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 										{unit.submitter.handle
 											? (
 												<a class="subm-ctx__who" href={profileHref(unit.submitter.handle)}>
-													<Avatar
+													<UserAvatar
 														image={unit.submitter.avatar ?? undefined}
 														label={unit.submitter.name}
 														size={40}
@@ -212,7 +212,7 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 											)
 											: (
 												<div class="subm-ctx__who">
-													<Avatar
+													<UserAvatar
 														image={unit.submitter.avatar ?? undefined}
 														label={unit.submitter.name}
 														size={40}
@@ -458,7 +458,7 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 															<ul class="subm-notes__list">
 																{review.notes.map((n) => (
 																	<li key={n.id} class="subm-note">
-																		<Avatar
+																		<UserAvatar
 																			image={n.author.avatar ?? undefined}
 																			label={n.author.name}
 																			size={24}

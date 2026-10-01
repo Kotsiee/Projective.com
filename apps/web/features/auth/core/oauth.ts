@@ -1,4 +1,5 @@
 import type { AccessTokenClaims } from "@projective/types/auth";
+import { oauthAvatarFromMetadata, safeOAuthAvatarUrl } from "@projective/types/user";
 
 /**
  * OAuth pre-fill parsing.
@@ -22,32 +23,10 @@ export interface OAuthPrefill {
 	avatar?: string;
 }
 
-/** Hosts we trust to render as a pre-filled avatar (provider CDNs + our media fallback registry). */
-const AVATAR_HOST_ALLOWLIST = [
-	"lh3.googleusercontent.com",
-	"googleusercontent.com",
-	"images.unsplash.com",
-];
-
 function clampName(value: string | null): string | undefined {
 	if (!value) return undefined;
 	const trimmed = value.trim().slice(0, 60);
 	return trimmed.length > 0 ? trimmed : undefined;
-}
-
-/** Accept only an https URL whose host is allow-listed; otherwise drop it. */
-export function safeAvatarUrl(raw: string | null | undefined): string | undefined {
-	if (!raw) return undefined;
-	try {
-		const url = new URL(raw);
-		if (url.protocol !== "https:") return undefined;
-		const ok = AVATAR_HOST_ALLOWLIST.some(
-			(host) => url.hostname === host || url.hostname.endsWith(`.${host}`),
-		);
-		return ok ? url.href : undefined;
-	} catch {
-		return undefined;
-	}
 }
 
 /**
@@ -61,7 +40,8 @@ export function parseOAuthPrefill(params: URLSearchParams): OAuthPrefill | null 
 		firstName: clampName(params.get("firstName")),
 		lastName: clampName(params.get("lastName")),
 		email: clampName(params.get("email")),
-		avatar: safeAvatarUrl(params.get("avatar")),
+		// The avatar is host-allowlisted by the shared rule (`@projective/types/user`).
+		avatar: safeOAuthAvatarUrl(params.get("avatar")),
 	};
 }
 
@@ -104,6 +84,6 @@ export function oauthPrefillFromClaims(
 		// The top-level claim is the fallback because /join renders this field READ-ONLY for an
 		// already-authenticated account: an absent email there is a control nobody can complete.
 		email: clampName(text(meta.email) ?? text(claims?.email)),
-		avatar: safeAvatarUrl(text(meta.avatar_url) ?? text(meta.picture)),
+		avatar: oauthAvatarFromMetadata(meta),
 	};
 }

@@ -42,6 +42,7 @@ import { useReturnFocus } from "../hooks/useReturnFocus.ts";
 import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
 import { settingsOf } from "@projective/types/profile";
 import ProfileMessagePopover from "./ProfileMessagePopover.island.tsx";
+import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 
 /**
  * ProfileHero — the split hero of the `/[handle]` profile: the identity column (the contextual Back
@@ -232,6 +233,7 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 								>
 									<Avatar
 										image={avatar}
+										fallbackImage={personFallbackImage(profile.kind)}
 										placeholder={profile.avatarPlaceholder}
 										label={profile.name}
 										size={72}
@@ -243,6 +245,7 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 							: (
 								<Avatar
 									image={avatar}
+									fallbackImage={personFallbackImage(profile.kind)}
 									placeholder={profile.avatarPlaceholder}
 									label={profile.name}
 									size={72}

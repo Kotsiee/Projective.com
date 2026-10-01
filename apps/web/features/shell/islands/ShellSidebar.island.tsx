@@ -5,7 +5,6 @@ import type { UserContext } from "@projective/types/auth";
 import { PERSONAL_MEMBER_CONTEXT } from "@projective/types/auth";
 import { NavItem, ShellSidebar } from "@projective/ui/navigation";
 import { Tooltip } from "@projective/ui/feedback";
-import { Avatar } from "@projective/ui/display";
 // The shell's header styling lives in a server component (UserShell), whose CSS import is NOT in any
 // island's client-bundle graph and so never ships. Riding it on this always-present island injects it
 // (same pattern as the footer's NewsletterForm island — see storage/footer decisions).
@@ -18,6 +17,7 @@ import {
 	type NavSublink,
 } from "@web/features/shell/core/nav-model.ts";
 import { useEffectiveContext } from "@web/features/shell/core/effective-context.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 export interface ShellSidebarIslandProps {
 	/** Current pathname — drives active state (was resolved server-side; now re-gated live too). */
@@ -101,10 +101,10 @@ export default function ShellSidebarIsland(
 			// Individual workspaces show the OWNER's circular avatar — never a generic icon.
 			return (
 				<span class="ui-sidebar-sublink__avatar">
-					<Avatar
+					<UserAvatar
 						image={sub.avatar}
 						alt={sub.owner ?? ""}
-						label={sub.owner}
+						label={sub.owner ?? ""}
 						shape="circle"
 						size={22}
 					/>

@@ -1,9 +1,9 @@
 import type { JSX } from "preact";
-import { Avatar } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import type { PoolEntry } from "@projective/types/workspace";
 import { PolicyAmount } from "./PolicyAmount.tsx";
 import { cloneGlyph, SpendGlyph, WalletGlyph } from "../core/workspace-glyphs.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * ContributionLedger — every movement into and out of the pooled wallet, attributed to a person.
@@ -61,7 +61,7 @@ export function ContributionLedger(props: ContributionLedgerProps): JSX.Element 
 							</span>
 						</Tooltip>
 
-						<Avatar
+						<UserAvatar
 							class="wsp-pool__avatar"
 							image={entry.avatar ?? undefined}
 							alt=""

@@ -1,6 +1,5 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
-import { Avatar } from "@projective/ui/display";
 import { Button, SelectButton } from "@projective/ui/fields";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
@@ -15,6 +14,7 @@ import {
 import { profileHref } from "@web/features/projects/core/routing.ts";
 import { FileKindIcon } from "@web/features/projects/components/file-glyphs.tsx";
 import { ScanMark, SourceMark, StatusMark, VisibilityMark } from "./file-hub-glyphs.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * InspectPanel — the right-hand detail pane, revealed only when an asset is selected.
@@ -192,7 +192,7 @@ export function InspectPanel(props: InspectPanelProps): JSX.Element | null {
 					{asset.sender
 						? (
 							<span class="fh-inspect__person">
-								<Avatar
+								<UserAvatar
 									image={asset.sender.avatar ?? undefined}
 									label={asset.sender.name}
 									size={20}

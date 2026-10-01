@@ -8,6 +8,7 @@ import { SHOWCASE_SLOTS, type ShowcaseSlot } from "@projective/types/profile";
 import { MediaCropModal } from "../media/MediaCropModal.tsx";
 import { type ProfileMediaState, ProfileService } from "../../core/ProfileService.ts";
 import { broadcastAvatar } from "@web/utils/avatar-sync.ts";
+import { DEFAULT_AVATAR_URL } from "@projective/types/user";
 
 /**
  * MediaSection — the profile photo and the six-slot showcase grid, as the owner edits them.
@@ -38,19 +39,24 @@ export function MediaSection(props: MediaSectionProps): JSX.Element {
 	const { handle, name, onNotice } = props;
 	const media = useSignal<ProfileMediaState>(props.initial);
 	const modalOpen = useSignal(false);
-	const modalTarget = useSignal<{ target: "avatar" | "showcase"; position?: number; alt?: string }>({
-		target: "avatar",
-	});
+	const modalTarget = useSignal<{ target: "avatar" | "showcase"; position?: number; alt?: string }>(
+		{
+			target: "avatar",
+		},
+	);
 	const removing = useSignal<number | null>(null);
 	const confirmOpen = useSignal(false);
 	const busy = useSignal(false);
 
-	const slots: Array<ShowcaseSlot | null> = Array.from({ length: SHOWCASE_SLOTS }, (_, i) =>
-		media.value.showcase.find((s) => s.position === i + 1) ?? null
+	const slots: Array<ShowcaseSlot | null> = Array.from(
+		{ length: SHOWCASE_SLOTS },
+		(_, i) => media.value.showcase.find((s) => s.position === i + 1) ?? null,
 	);
 
 	function open(target: "avatar" | "showcase", position?: number): void {
-		const current = position ? media.peek().showcase.find((s) => s.position === position) : undefined;
+		const current = position
+			? media.peek().showcase.find((s) => s.position === position)
+			: undefined;
 		modalTarget.value = { target, position, alt: current?.alt };
 		modalOpen.value = true;
 	}
@@ -97,7 +103,8 @@ export function MediaSection(props: MediaSectionProps): JSX.Element {
 		<div class="pf-edit__media">
 			<div class="pf-edit__avatar">
 				<Avatar
-					image={avatar?.url ?? ""}
+					image={avatar?.url}
+					fallbackImage={props.individual ? DEFAULT_AVATAR_URL : undefined}
 					placeholder={avatar?.placeholder}
 					label={name}
 					size={96}
@@ -129,7 +136,11 @@ export function MediaSection(props: MediaSectionProps): JSX.Element {
 						const position = i + 1;
 						const primary = position === 1;
 						return (
-							<li key={position} class="pf-showgrid__cell" data-primary={primary ? "true" : undefined}>
+							<li
+								key={position}
+								class="pf-showgrid__cell"
+								data-primary={primary ? "true" : undefined}
+							>
 								{slot
 									? (
 										<div class="pf-showgrid__filled">
@@ -172,7 +183,9 @@ export function MediaSection(props: MediaSectionProps): JSX.Element {
 										<button
 											type="button"
 											class="pf-showgrid__empty"
-											aria-label={`Add to showcase ${position}${primary ? " (your thumbnail)" : ""}`}
+											aria-label={`Add to showcase ${position}${
+												primary ? " (your thumbnail)" : ""
+											}`}
 											onClick={() => open("showcase", position)}
 										>
 											<Icon name="plus" size="md" />

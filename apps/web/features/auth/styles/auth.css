@@ -263,10 +263,10 @@ body:has(.auth) {
 	margin-bottom: var(--space-4);
 }
 
-.passport__avatar img {
-	inline-size: 100%;
-	block-size: 100%;
-	object-fit: cover;
+/* A person's passport photo is a `UserAvatar` (Google picture → default picture → initials), cut to
+   the passport's own corner. */
+.passport__avatar .passport__photo {
+	border-radius: inherit;
 }
 
 .passport__note {

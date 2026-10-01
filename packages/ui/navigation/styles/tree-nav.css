@@ -110,21 +110,7 @@
 	block-size: 1.125rem;
 }
 .ui-treenav__avatar {
-	inline-size: 1.25rem;
-	block-size: 1.25rem;
-	border-radius: var(--radius-full);
-	object-fit: cover;
-	display: block;
-}
-.ui-treenav__avatar--initials {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
-	color: var(--primary);
 	font-size: 0.5625rem;
-	font-weight: 700;
-	letter-spacing: 0.02em;
 }
 
 .ui-treenav__text {

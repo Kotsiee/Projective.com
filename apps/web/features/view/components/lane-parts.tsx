@@ -11,6 +11,7 @@ import type { ExploreItem } from "@projective/types/explore";
 import { toMinorUnits } from "@projective/types/finance";
 import { PriceOrigin } from "./entity-view-parts.tsx";
 import { jumpToStage } from "../core/view-state.ts";
+import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 
 /**
  * Entity View — the conversion lane's shared parts (`DESIGN_SYSTEM.md` §D.7.2).
@@ -67,6 +68,7 @@ export function LaneIdentity(
 			<a class="evp-lane__owner" href={`/${item.owner.handle}`}>
 				<Avatar
 					image={item.owner.avatar}
+					fallbackImage={personFallbackImage(item.owner.kind)}
 					label={item.owner.name}
 					size="md"
 					shape={item.owner.kind === "business" ? "square" : "circle"}

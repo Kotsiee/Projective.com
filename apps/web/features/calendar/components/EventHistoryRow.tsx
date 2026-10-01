@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
-import { Avatar } from "@projective/ui/display";
 import { Icon, type IconName } from "@projective/ui/icons";
 import type { EventHistoryEntry, EventHistoryKind } from "@projective/types/scheduling";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * EventHistoryRow — one entry in an event's audit log, wherever it is read.
@@ -49,7 +49,7 @@ export function EventHistoryRow(props: EventHistoryRowProps): JSX.Element {
 			<span class="evm-log__who">
 				{entry.actor
 					? (
-						<Avatar
+						<UserAvatar
 							image={entry.actor.avatar ?? undefined}
 							label={entry.actor.name}
 							size={compact ? 22 : 26}

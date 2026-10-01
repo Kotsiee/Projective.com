@@ -1,7 +1,6 @@
 import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
 import { Dialog } from "@projective/ui/feedback";
-import { Avatar } from "@projective/ui/display";
 import { Button } from "@projective/ui/fields";
 import {
 	activeMembers,
@@ -11,6 +10,7 @@ import {
 	type WorkspaceMember,
 } from "@projective/types/workspace";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * OwnershipTransfer — the way the owner hands the entity over.
@@ -140,7 +140,7 @@ export function OwnershipTransfer(props: OwnershipTransferProps): JSX.Element {
 
 						{successor.value && (
 							<div class="wsp-inviteform__preview">
-								<Avatar
+								<UserAvatar
 									image={successor.value.avatar}
 									alt=""
 									label={successor.value.name}

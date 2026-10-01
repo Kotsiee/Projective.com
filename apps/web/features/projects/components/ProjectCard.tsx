@@ -17,6 +17,7 @@ import {
 } from "./glyphs.tsx";
 import { isOwnerRole } from "../types/projects-types.ts";
 import type { ProjectStatus, ProjectSummary } from "../types/projects-types.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * ProjectCard — one streamlined engagement card in the `/projects` lane, laid out in three strict
@@ -151,7 +152,7 @@ export function ProjectCard(
 			{/* Row 1 — header */}
 			<div class="proj-card__head">
 				<span class="proj-card__lead">
-					<Avatar image={face.avatar ?? undefined} label={face.name} size={40} shape="circle" />
+					<UserAvatar image={face.avatar} label={face.name} size={40} shape="circle" />
 				</span>
 
 				<div class="proj-card__ident">

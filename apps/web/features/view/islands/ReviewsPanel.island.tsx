@@ -5,6 +5,7 @@ import { Icon } from "@projective/ui/icons";
 import { VerifiedBadge } from "@features/explore/components/VerifiedBadge.tsx";
 import { profileHref } from "@features/explore/core/routing.ts";
 import type { EntityReview, ReviewSummary } from "@projective/types/explore";
+import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 
 /**
  * ReviewsPanel — the full reviews section (Part 3.3). The left aggregate column shows the average, a
@@ -171,6 +172,8 @@ function ReviewCard({ review }: { review: EntityReview }): JSX.Element {
 				>
 					<Avatar
 						image={a.avatar}
+						fallbackImage={personFallbackImage(a.kind)}
+						label={a.name}
 						alt=""
 						size="sm"
 						shape={a.kind === "business" ? "square" : "circle"}

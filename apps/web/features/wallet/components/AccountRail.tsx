@@ -9,6 +9,7 @@ import type { WalletPotView, WalletRef, WalletSwitcher } from "../types/wallet-t
 import { walletHref, walletParam } from "../core/wallet-model.ts";
 import { accountKind, showsAggregate } from "./WalletHero.tsx";
 import { WalletGlyph } from "./wallet-glyphs.tsx";
+import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 
 /** Props for {@link AccountRail}. */
 export interface AccountRailProps {
@@ -37,7 +38,14 @@ function AccountTile(
 							<Icon name="wallet" size="sm" />
 						</span>
 					)
-					: <Avatar image={account.avatar ?? undefined} label={account.name} size={32} />}
+					: (
+						<Avatar
+							image={account.avatar ?? undefined}
+							fallbackImage={personFallbackImage(account.scope)}
+							label={account.name}
+							size={32}
+						/>
+					)}
 				{current && <span class="wlt-account__current" />}
 			</span>
 			<span class="wlt-account__name">

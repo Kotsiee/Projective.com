@@ -33,8 +33,11 @@ export interface GanttLane {
 	depth?: number;
 	/** A short trailing figure the task list prints beside the label ("4 tickets"). */
 	meta?: string;
-	/** The party the row belongs to, drawn as a small face beside the label. */
-	avatar?: { name: string; url?: string | null };
+	/**
+	 * The party the row belongs to, drawn as a small face beside the label (an `Avatar`: `url` →
+	 * `fallbackImage`, a host's default picture → initials of `name`).
+	 */
+	avatar?: { name: string; url?: string | null; fallbackImage?: string };
 	/** Whether a drag across this lane's empty space may create. Defaults to the island's `canCreate`. */
 	creatable?: boolean;
 	/** Where the row's label links, if anywhere. */

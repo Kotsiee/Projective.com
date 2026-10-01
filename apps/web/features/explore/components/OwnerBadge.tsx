@@ -3,6 +3,7 @@ import { Avatar } from "@projective/ui/display";
 import { VerifiedBadge } from "./VerifiedBadge.tsx";
 import { profileHref } from "../core/routing.ts";
 import type { ExploreOwner } from "../types/explore-types.ts";
+import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 
 /**
  * OwnerBadge — the owner attribution present on every explore card: the individual's, team's, or
@@ -35,6 +36,7 @@ export function OwnerBadge(
 				<a class="ex-owner__avatar-link" href={href} aria-label={`${owner.name} — view profile`}>
 					<Avatar
 						image={owner.avatar}
+						fallbackImage={personFallbackImage(owner.kind)}
 						placeholder={owner.avatarPlaceholder}
 						label={owner.name}
 						alt=""
@@ -54,6 +56,7 @@ export function OwnerBadge(
 					<span class="ex-owner__avatar-wrap" aria-hidden="true">
 						<Avatar
 							image={owner.avatar}
+							fallbackImage={personFallbackImage(owner.kind)}
 							placeholder={owner.avatarPlaceholder}
 							label={owner.name}
 							alt=""
@@ -75,6 +78,7 @@ export function OwnerBadge(
 			<a class="ex-owner__avatar-link" href={href} aria-label={`${owner.name} — view profile`}>
 				<Avatar
 					image={owner.avatar}
+					fallbackImage={personFallbackImage(owner.kind)}
 					placeholder={owner.avatarPlaceholder}
 					label={owner.name}
 					alt=""

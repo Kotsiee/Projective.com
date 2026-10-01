@@ -24,6 +24,7 @@ import { headerCondensed } from "@features/shell/core/migrating-header.ts";
 import { useMinuteClock } from "../hooks/useMinuteClock.ts";
 import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
 import { settingsOf } from "@projective/types/profile";
+import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 
 /**
  * ProfileStickyHeader — the condensed profile identity that MIGRATES into the shell's header slot
@@ -105,6 +106,7 @@ export default function ProfileStickyHeader(props: ProfileStickyHeaderProps): JS
 			<div class="pf-band__id">
 				<Avatar
 					image={avatar}
+					fallbackImage={personFallbackImage(profile.kind)}
 					placeholder={profile.avatarPlaceholder}
 					label={profile.name}
 					size={28}

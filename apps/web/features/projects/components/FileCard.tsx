@@ -1,8 +1,9 @@
 import type { JSX } from "preact";
-import { Avatar, ProgressiveImage } from "@projective/ui/display";
+import { ProgressiveImage } from "@projective/ui/display";
 import { imagePlaceholderOf } from "@projective/types/files";
 import { type AssetItem, sourceLabel } from "../types/projects-types.ts";
 import { FileKindIcon, PlayIcon } from "./file-glyphs.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * FileCard — one grid cell. A forced rounded-SQUARE thumbnail frame (1:1, never the media's native
@@ -68,7 +69,7 @@ export function FileCard({ file, onOpen }: FileCardProps): JSX.Element {
 					{file.sender
 						? (
 							<>
-								<Avatar
+								<UserAvatar
 									image={file.sender.avatar ?? undefined}
 									label={file.sender.name}
 									size={16}

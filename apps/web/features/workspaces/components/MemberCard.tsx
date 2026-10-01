@@ -1,5 +1,5 @@
 import type { JSX, RefObject } from "preact";
-import { Avatar, type AvatarSize } from "@projective/ui/display";
+import type { AvatarSize } from "@projective/ui/display";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Checkbox } from "@projective/ui/fields";
 import { styleVars } from "@ui/core/style.ts";
@@ -17,6 +17,7 @@ import {
 	type WorkspaceRoleDef,
 } from "@projective/types/workspace";
 import { membershipLabel, shortDate } from "../core/workspace-model.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * MemberCard — the canonical presentation of one person in an entity, **and** the shared atom set the
@@ -416,7 +417,7 @@ export function PersonAvatar(props: {
 }): JSX.Element {
 	const { member, size = "md", class: className } = props;
 	return (
-		<Avatar
+		<UserAvatar
 			shape="circle"
 			size={size}
 			image={member.avatar || undefined}

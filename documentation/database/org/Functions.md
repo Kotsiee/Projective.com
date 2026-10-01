@@ -206,8 +206,13 @@ so a private profile's existence is never disclosed by a different answer. The f
 ### `org.get_party_cards(p_user_ids uuid[])` — the identity door for every other surface
 
 `STABLE` · `SECURITY DEFINER` · granted to `authenticated` (not `anon`). Returns
-`(user_id, username, first_name, last_name, is_freelancer, avatar)` for at most **500** ids, where
-`avatar` is `files.fn_public_media_ref(avatar_file_id)`. It is the one place a person's display facts
+`(user_id, username, first_name, last_name, is_freelancer, avatar, oauth_avatar)` for at most **500**
+ids, where `avatar` is `files.fn_public_media_ref(avatar_file_id)` and `oauth_avatar` is the sign-in
+provider's picture from `auth.users.raw_user_meta_data` (`avatar_url`, else `picture`; `NULL` when
+neither). `oauth_avatar` is the second rung of the avatar rule (`@projective/types/user` avatar.ts),
+shown only when there is no uploaded photo. It is **user-writable** metadata, so it leaves the
+function raw and the caller renders it only after the provider-host allowlist (`safeOAuthAvatarUrl`)
+accepts it; no other metadata key is projected. It is the one place a person's display facts
 are resolved for any surface that shows OTHER people — project rosters and feeds, message senders,
 contact pickers, the nav's own account button — so an avatar change reaches every one of them on its
 next read instead of living in a dozen copies, and it is the one door that reads other people's

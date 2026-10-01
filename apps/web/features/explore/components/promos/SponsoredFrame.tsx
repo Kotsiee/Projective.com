@@ -3,6 +3,7 @@ import { Avatar } from "@projective/ui/display";
 import { Icon } from "@projective/ui/icons";
 import { vars } from "@features/marketing/core/style.ts";
 import type { SponsoredSlot } from "../../types/explore-types.ts";
+import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 
 /**
  * SponsoredFrame — a deliberately-reserved promoted content frame. Clearly labelled "Promoted" (Tag)
@@ -24,7 +25,14 @@ export function SponsoredFrame({ slot }: { slot: SponsoredSlot }): JSX.Element {
 				<p class="ex-sponsored__text">{slot.body}</p>
 				<div class="ex-sponsored__foot">
 					<span class="ex-owner ex-owner--sm">
-						<Avatar image={slot.owner.avatar} alt="" size="sm" class="ex-owner__avatar" />
+						<Avatar
+							image={slot.owner.avatar}
+							fallbackImage={personFallbackImage(slot.owner.kind)}
+							label={slot.owner.name}
+							alt=""
+							size="sm"
+							class="ex-owner__avatar"
+						/>
 						<span class="ex-owner__name">{slot.owner.name}</span>
 					</span>
 					<span class="ex-cta">

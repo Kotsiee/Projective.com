@@ -1,11 +1,11 @@
 import type { JSX } from "preact";
-import { Avatar } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { boardView } from "./detail-glyphs.tsx";
 import { profileHref } from "../core/routing.ts";
 import { isTaskDetail } from "../core/task-project.ts";
 import type { ProjectDetail } from "../types/projects-types.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * The type the lone glyph names. A Task is a `one_off`, which {@link boardView} calls a Timeline — true
@@ -48,7 +48,7 @@ export function ProjectContextCard({ detail }: ProjectContextCardProps): JSX.Ele
 		<header class="proj-ctx" data-kind={detail.kind} aria-label={`${typeTip} overview`}>
 			<div class="proj-ctx__top">
 				<span class="proj-ctx__avatar">
-					<Avatar
+					<UserAvatar
 						image={lead.avatar ?? undefined}
 						label={lead.name}
 						size={48}

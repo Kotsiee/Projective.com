@@ -6,7 +6,6 @@ import { Backdrop, BodyPortal, usePresence } from "@projective/ui/overlay";
 import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks";
 import { Button, InputText, Textarea } from "@projective/ui/fields";
 import type { FieldStatus } from "@projective/ui/fields";
-import { Avatar } from "@projective/ui/display";
 import { Icon, type IconName } from "@projective/ui/icons";
 import { toDisplayCurrency } from "@projective/types/finance";
 import {
@@ -19,6 +18,7 @@ import type { CreateProject } from "../types/projects-types.ts";
 import { ProjectSidebarService } from "../core/ProjectSidebarService.ts";
 import { formFocusEntry, formKeyNav, formPointerDown } from "../core/form-keys.ts";
 import { CloseIcon } from "./glyphs.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * ProjectCreateModal — the ONE surface that mints a project, wherever the client starts from.
@@ -578,7 +578,7 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 									<div class="pjc__field">
 										<span class="pjc__label" id={INVITE_ID}>Invited freelancer</span>
 										<div class="pjc__invitee" aria-labelledby={INVITE_ID}>
-											<Avatar
+											<UserAvatar
 												image={seller.avatar ?? undefined}
 												label={seller.name}
 												shape="circle"

@@ -10,6 +10,7 @@ import {
 	projectRoles,
 	projectStagesHeading,
 } from "../core/project-view-model.ts";
+import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 
 /**
  * Entity View — the Projects archetype's hero and body (`/view/[id]?type=projects`).
@@ -53,6 +54,7 @@ export function ProjectHero(
 				<ProgressiveImage imgClass="evp-banner__img" src={project.banner} loading="eager" />
 				<Avatar
 					image={item.owner.avatar}
+					fallbackImage={personFallbackImage(item.owner.kind)}
 					placeholder={item.owner.avatarPlaceholder}
 					label={item.owner.name}
 					size={64}

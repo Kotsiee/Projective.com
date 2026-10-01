@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { useComputed, useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import { Avatar, RatingStars } from "@projective/ui/display";
+import { RatingStars } from "@projective/ui/display";
 import { SelectButton } from "@projective/ui/fields";
 import type { Option } from "@projective/ui/fields";
 import { profileHref } from "@features/explore/core/routing.ts";
@@ -14,6 +14,7 @@ import {
 } from "../core/profile-model.ts";
 import { formatDate } from "../components/tabs/tab-shared.tsx";
 import type { ReviewEntry } from "../types/profile-types.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * ReviewsList — the Reviews section's rows behind a segmented stance filter: **All · As freelancer
@@ -52,7 +53,7 @@ function Review({ review }: { review: ReviewEntry }): JSX.Element {
 	const role = review.role === "client" ? "as their client" : "as their freelancer";
 	return (
 		<li class="pf-review">
-			<Avatar
+			<UserAvatar
 				image={review.authorAvatar}
 				label={review.authorName}
 				size={40}

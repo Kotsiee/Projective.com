@@ -1,7 +1,6 @@
 import type { JSX, VNode } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import { Avatar } from "@projective/ui/display";
 import { DatePicker, Select } from "@projective/ui/fields";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon, type IconName } from "@projective/ui/icons";
@@ -14,6 +13,7 @@ import {
 	isOverdue,
 	toDateInput,
 } from "../../core/ticket-model.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * TicketMetaBar — the four facts that govern a ticket, and the person it went to.
@@ -193,7 +193,7 @@ export function TicketMetaBar(props: TicketMetaBarProps): JSX.Element {
 		return (
 			<span class="tkv-person">
 				{party
-					? <Avatar image={party.avatar ?? undefined} label={party.name} size={20} alt="" />
+					? <UserAvatar image={party.avatar ?? undefined} label={party.name} size={20} alt="" />
 					: (
 						<span class="tkv-person__none" aria-hidden="true">
 							<Icon name="user" size="2xs" />
@@ -312,7 +312,7 @@ export function TicketMetaBar(props: TicketMetaBarProps): JSX.Element {
 								<span class="tkv-person tkv-meta__v">
 									{card.owner
 										? (
-											<Avatar
+											<UserAvatar
 												image={card.owner.avatar ?? undefined}
 												label={card.owner.name}
 												size={20}
@@ -348,7 +348,7 @@ export function TicketMetaBar(props: TicketMetaBarProps): JSX.Element {
 					<MetaItem icon="check" label="Claimed by" end>
 						<Tooltip content={`${card.assignee.name} claimed this ticket`}>
 							<span class="tkv-person tkv-meta__v" tabIndex={0}>
-								<Avatar
+								<UserAvatar
 									image={card.assignee.avatar ?? undefined}
 									label={card.assignee.name}
 									size={20}

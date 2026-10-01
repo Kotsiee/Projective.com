@@ -1,5 +1,6 @@
 import type { GanttItem, GanttLane } from "@projective/ui/gantt";
 import type { TimelineItem, TimelineLane } from "../types/projects-types.ts";
+import { DEFAULT_AVATAR_URL } from "@projective/types/user";
 
 /**
  * timeline-model — the pure, DOM-free mapping from the Zod timeline projection
@@ -19,7 +20,9 @@ export function toGanttLane(lane: TimelineLane): GanttLane {
 		accent: lane.accent ?? undefined,
 		depth: lane.depth,
 		meta: lane.meta ?? undefined,
-		avatar: lane.avatar ? { name: lane.avatar.name, url: lane.avatar.url } : undefined,
+		avatar: lane.avatar
+			? { name: lane.avatar.name, url: lane.avatar.url, fallbackImage: DEFAULT_AVATAR_URL }
+			: undefined,
 		creatable: lane.creatable,
 	};
 }

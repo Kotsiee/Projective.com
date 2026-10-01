@@ -1,11 +1,11 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { DndContext, DropIndicator, useSortable } from "@projective/ui/dnd";
-import { AvatarStack } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import type { TicketTask } from "../../types/projects-types.ts";
 import { taskOps } from "../../core/ticket-model.ts";
+import { UserAvatarStack } from "@web/components/UserAvatar.tsx";
 
 /**
  * TaskListEditor — the ticket's steps, at both scopes: the ticket's own list and each stage's.
@@ -67,7 +67,7 @@ function TaskProgress(props: { task: TicketTask; hidden?: boolean }): JSX.Elemen
 				? (
 					<Tooltip content={`Completed by ${names}`}>
 						<span class="tkc-task__by" tabIndex={0}>
-							<AvatarStack
+							<UserAvatarStack
 								people={task.completedBy}
 								max={3}
 								size={18}

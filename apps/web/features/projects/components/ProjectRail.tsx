@@ -1,5 +1,4 @@
 import { cloneElement, type JSX } from "preact";
-import { Avatar } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import {
@@ -12,6 +11,7 @@ import { PlusIcon } from "./glyphs.tsx";
 import { profileHref } from "../core/routing.ts";
 import { isTaskDetail } from "../core/task-project.ts";
 import type { ProjectDetail } from "../types/projects-types.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * ProjectRail — the COLLAPSED presentation of the Project Details sidebar: a single clean vertical
@@ -92,7 +92,7 @@ export function ProjectRail(
 								href={profileHref(lead.handle)}
 								aria-label={`View ${lead.name}'s profile`}
 							>
-								<Avatar
+								<UserAvatar
 									image={lead.avatar ?? undefined}
 									label={lead.name}
 									size={40}
@@ -104,7 +104,7 @@ export function ProjectRail(
 					: (
 						<Tooltip content={lead.name} placement="right">
 							<span class="proj-railbtn proj-railbtn--avatar" aria-label={lead.name}>
-								<Avatar
+								<UserAvatar
 									image={lead.avatar ?? undefined}
 									label={lead.name}
 									size={40}

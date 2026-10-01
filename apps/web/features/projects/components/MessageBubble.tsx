@@ -1,7 +1,6 @@
 import type { JSX } from "preact";
 import { cloneElement } from "preact";
 import { useSignal } from "@preact/signals";
-import { Avatar } from "@projective/ui/display";
 import type { MessageRow } from "../core/message-model.ts";
 import { profileHref } from "../core/routing.ts";
 import { MessageMedia } from "./MessageMedia.tsx";
@@ -9,6 +8,7 @@ import { MessageAudioPlayer } from "./MessageAudioPlayer.tsx";
 import { MessageActions } from "./MessageActions.tsx";
 import { WonkyStarIcon } from "./chat-glyphs.tsx";
 import { PinIcon } from "./channel-glyphs.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * MessageBubble — one authored message in the feed (task §2/§3). Composes:
@@ -61,10 +61,10 @@ export function MessageBubble(props: MessageBubbleProps): JSX.Element {
 						? (href
 							? (
 								<a class="msg-row__avatar-link" href={href} aria-label={sender?.name}>
-									<Avatar image={sender?.avatar ?? undefined} label={sender?.name} size={30} />
+									<UserAvatar image={sender?.avatar} label={sender?.name ?? "Unknown"} size={30} />
 								</a>
 							)
-							: <Avatar image={sender?.avatar ?? undefined} label={sender?.name} size={30} />)
+							: <UserAvatar image={sender?.avatar} label={sender?.name ?? "Unknown"} size={30} />)
 						: <span class="msg-row__gutter-time" aria-hidden="true">{m.timeLabel}</span>}
 				</div>
 			)}

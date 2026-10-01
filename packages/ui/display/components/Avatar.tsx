@@ -17,8 +17,17 @@ export type AvatarShape = "circle" | "square";
 // #endregion
 
 export interface AvatarProps {
-	/** Image source. Takes priority in the fallback chain (image → initials → icon). */
-	image?: string;
+	/**
+	 * Image source. Takes priority in the fallback chain (image → `fallbackImage` → initials → icon).
+	 * Empty/absent means "no picture".
+	 */
+	image?: string | null;
+	/**
+	 * A stand-in picture painted when there is no `image` AND when the `image` fails to load — a
+	 * host's default person picture. Painted as a background layer over the initials, so a stand-in
+	 * that itself fails to load still shows the initials. Unset (the default) skips this rung.
+	 */
+	fallbackImage?: string;
 	/** Alt text for the image (default empty — avatars are usually adjacent to a visible name). */
 	alt?: string;
 	/**
@@ -53,8 +62,8 @@ function initialsOf(label: string): string {
 }
 
 /**
- * Avatar — a person/entity glyph with a fallback chain: `image` → initials derived from `label` →
- * `icon` → a generic placeholder glyph.
+ * Avatar — a person/entity glyph with a fallback chain: `image` → `fallbackImage` → initials derived
+ * from `label` → `icon` → a generic placeholder glyph.
  *
  * The chain is resolved from props on the server AND at runtime: the image renders through
  * {@link ProgressiveImage}, whose fallback slot carries the same initials/icon the avatar would have
@@ -66,6 +75,7 @@ function initialsOf(label: string): string {
 export function Avatar(props: AvatarProps): JSX.Element {
 	const {
 		image,
+		fallbackImage,
 		alt = "",
 		placeholder,
 		loading,
@@ -85,26 +95,38 @@ export function Avatar(props: AvatarProps): JSX.Element {
 		vars["--avatar-bg"] = `var(--${severity})`;
 		vars["--avatar-fg"] = `var(--on-${severity}, var(--on-primary))`;
 	}
+	// A CSS image rather than an `<img>`: a background is only fetched when the layer is displayed, so
+	// an avatar whose own photo loads never downloads the stand-in.
+	if (fallbackImage) vars["--avatar-fallback-image"] = `url(${JSON.stringify(fallbackImage)})`;
 	const sizeClass = typeof size === "string" ? `ui-avatar--size-${size}` : undefined;
 
 	// The non-image chain, rendered directly when there is no image and as the frame's fallback
 	// slot when there is one — one tree, so the two can never disagree about what "no photo" shows.
-	let fallback: JSX.Element;
+	let glyph: JSX.Element;
 	if (label) {
-		fallback = <span class="ui-avatar__initials">{initialsOf(label)}</span>;
+		glyph = <span class="ui-avatar__initials">{initialsOf(label)}</span>;
 	} else if (icon) {
-		fallback = (
+		glyph = (
 			<span class="ui-avatar__icon" aria-hidden="true">
 				{icon}
 			</span>
 		);
 	} else {
-		fallback = (
+		glyph = (
 			<span class="ui-avatar__icon" aria-hidden="true">
 				<Icon name="user" />
 			</span>
 		);
 	}
+	// The stand-in picture sits OVER the glyph, so the glyph shows through if the stand-in fails too.
+	const fallback = fallbackImage
+		? (
+			<>
+				{glyph}
+				<span class="ui-avatar__fallback-image" aria-hidden="true" />
+			</>
+		)
+		: glyph;
 
 	const content = image
 		? (

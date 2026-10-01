@@ -1,8 +1,8 @@
 import type { JSX } from "preact";
-import { Avatar } from "@projective/ui/display";
 import type { SubmissionTreeNode } from "../types/projects-types.ts";
 import { nodeKindLabel, statusLabel, statusTone } from "../core/submission-model.ts";
 import { FolderGlyph, StageGlyph, SubmissionStatusIcon, UnitGlyph } from "./submission-glyphs.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * SubmissionNodeList — the LIST-mode presentation of the current node's child nodes (Freelancers /
@@ -45,7 +45,14 @@ export function SubmissionNodeList({ nodes, onOpen }: SubmissionNodeListProps): 
 					>
 						<span class="subm-noderow__lead" aria-hidden="true">
 							{node.kind === "submitter"
-								? <Avatar image={node.avatar ?? undefined} label={node.label} size={28} alt="" />
+								? (
+									<UserAvatar
+										image={node.avatar ?? undefined}
+										label={node.label}
+										size={28}
+										alt=""
+									/>
+								)
 								: (
 									<span class="subm-noderow__glyph">
 										<RowGlyph node={node} />

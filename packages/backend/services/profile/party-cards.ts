@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "supabaseClient";
 import type { ImagePlaceholder } from "@projective/types/files";
+import { resolveAvatarUrl } from "@projective/types/user";
 import { mediaPlaceholder, mediaUrl, parseMediaRef } from "../files/public-media.ts";
 
 /**
@@ -11,6 +12,10 @@ import { mediaPlaceholder, mediaUrl, parseMediaRef } from "../files/public-media
  * a copy of anyone's picture, so the next read of any of them shows the new one. It is also the one
  * door that reads OTHER people's `org.users_public` rows without the columns a visitor may never see
  * (`dob` above all) — the definer projects four facts and a picture.
+ *
+ * The picture follows the one avatar rule (`@projective/types/user` avatar.ts): the uploaded photo at
+ * the surface's tier, else the sign-in provider's picture, else `null` — which the UI's `UserAvatar`
+ * paints as the default picture.
  */
 
 // #region Types
@@ -23,9 +28,12 @@ export interface PartyCard {
 	/** "First Last", falling back to the username, then "Unknown". */
 	name: string;
 	isFreelancer: boolean;
-	/** The avatar at the `sm` tier (chrome and list rows), or `null` for the initials fallback. */
+	/**
+	 * The avatar for chrome and list rows — the uploaded photo's `sm` tier, else the OAuth picture — or
+	 * `null` for the default-picture fallback.
+	 */
 	avatar: string | null;
-	/** The avatar at the `md` tier (a larger disc), or `null`. */
+	/** The same at the `md` tier (a larger disc), or `null`. */
 	avatarLarge: string | null;
 	avatarPlaceholder?: ImagePlaceholder;
 }
@@ -38,6 +46,8 @@ export interface CardRow {
 	last_name: string | null;
 	is_freelancer: boolean | null;
 	avatar: unknown;
+	/** The sign-in provider's picture, RAW (user-writable) — only rendered through `resolveAvatarUrl`. */
+	oauth_avatar?: string | null;
 }
 
 // #endregion
@@ -60,8 +70,8 @@ function toCard(row: CardRow): PartyCard {
 		username: row.username ?? "",
 		name: cardName(row),
 		isFreelancer: !!row.is_freelancer,
-		avatar: mediaUrl(ref, "sm"),
-		avatarLarge: mediaUrl(ref, "md"),
+		avatar: resolveAvatarUrl({ uploaded: mediaUrl(ref, "sm"), oauth: row.oauth_avatar }),
+		avatarLarge: resolveAvatarUrl({ uploaded: mediaUrl(ref, "md"), oauth: row.oauth_avatar }),
 		avatarPlaceholder: mediaPlaceholder(ref),
 	};
 }
@@ -105,7 +115,7 @@ export interface PartyRowWithAvatar {
 	username: string;
 	first_name: string | null;
 	last_name: string | null;
-	/** The avatar at the `sm` tier, or `null` for the initials fallback. */
+	/** The avatar at the `sm` tier (uploaded, else OAuth), or `null` for the default-picture fallback. */
 	avatar: string | null;
 }
 
@@ -133,10 +143,12 @@ export async function fetchPartyRows(
 			// than a roster in which some people have names and the rest are "Unknown".
 			if (error || !Array.isArray(data)) return null;
 			for (const row of data as CardRow[]) {
-				const url = mediaUrl(parseMediaRef(row.avatar), "sm");
 				out.set(row.user_id, {
 					...row,
-					avatar_url: url && url.length <= AVATAR_URL_MAX ? url : null,
+					avatar_url: resolveAvatarUrl(
+						{ uploaded: mediaUrl(parseMediaRef(row.avatar), "sm"), oauth: row.oauth_avatar },
+						AVATAR_URL_MAX,
+					),
 				});
 			}
 		}

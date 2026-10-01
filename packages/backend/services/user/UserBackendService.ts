@@ -1,7 +1,11 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { getAnonClient, getUserClient, isAuthBackendLive } from "../../core/supabase.ts";
 import type { UserContext } from "@projective/types/auth";
-import { type CurrentUser, resolveAccountRole } from "@projective/types/user";
+import {
+	type CurrentUser,
+	oauthAvatarFromMetadata,
+	resolveAccountRole,
+} from "@projective/types/user";
 import {
 	DEFAULT_USER_LOCALE,
 	type DisplayPreferences,
@@ -312,7 +316,8 @@ export class UserBackendService {
 			return {
 				name: nameFromMeta(meta),
 				email: str(authUser.email) ?? str(meta.email),
-				avatar: str(meta.avatar_url) ?? str(meta.picture),
+				// Allowlisted: user metadata is writable by its own user.
+				avatar: oauthAvatarFromMetadata(meta),
 			};
 		} catch {
 			// Non-blocking: an unavailable identity read degrades to the chrome projection.

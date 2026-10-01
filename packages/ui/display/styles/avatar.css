@@ -82,6 +82,18 @@
 .ui-avatar__initials {
 	line-height: 1;
 }
+
+/*
+ * The host's stand-in picture (`fallbackImage`), layered over the initials/icon so a stand-in that
+ * fails to load leaves the glyph visible beneath it. `--avatar-fallback-image` is set per avatar.
+ */
+.ui-avatar__fallback-image {
+	position: absolute;
+	inset: 0;
+	background-image: var(--avatar-fallback-image, none);
+	background-position: center;
+	background-size: cover;
+}
 .ui-avatar__icon {
 	display: inline-flex;
 	font-size: 1.1em;

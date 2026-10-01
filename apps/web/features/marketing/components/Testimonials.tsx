@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import type { Testimonial } from "@projective/types/explore";
-import { Avatar } from "@projective/ui/display";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * Testimonials — a continuously moving marquee of alternating client & freelancer success stories.
@@ -31,7 +31,7 @@ function Row({ items, reverse }: { items: Testimonial[]; reverse?: boolean }): J
 						<span class="lp-quote__tag">{q.voice === "client" ? "Customer" : "Helper"}</span>
 						<blockquote class="lp-quote__text">{q.quote}</blockquote>
 						<figcaption class="lp-quote__who">
-							<Avatar
+							<UserAvatar
 								image={q.author.avatar}
 								placeholder={q.author.avatarPlaceholder}
 								label={q.author.name}

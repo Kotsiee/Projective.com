@@ -11,6 +11,7 @@ import { languageSummary, profileMetrics, profileSignals } from "../../core/card
 import { itemHref } from "../../core/routing.ts";
 import type { HrefContext } from "../../core/routing.ts";
 import type { ExploreItem, ProfileItem } from "../../types/explore-types.ts";
+import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 
 /**
  * ProfileCard — the single card for every profile-shaped entity: individuals, freelancers, teams and
@@ -92,6 +93,7 @@ export function ProfileCard(
 				<div class="ex-pcard__identity">
 					<Avatar
 						image={item.owner.avatar}
+						fallbackImage={personFallbackImage(item.owner.kind)}
 						placeholder={item.owner.avatarPlaceholder}
 						label={item.title}
 						alt=""

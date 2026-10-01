@@ -3,9 +3,9 @@ import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import { Button, MultiSelect, Select } from "@projective/ui/fields";
 import { Dialog } from "@projective/ui/feedback";
-import { Avatar } from "@projective/ui/display";
 import type { MemberRole, MemberStageRef, ProjectMemberRow } from "../types/projects-types.ts";
 import { ASSIGNABLE_ROLES } from "../core/member-model.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * MemberEditDialog — the combined "Edit Member" surface (task §2.2 "Edit Member Role" + the multi-stage
@@ -66,7 +66,11 @@ export function MemberEditDialog(props: MemberEditDialogProps): JSX.Element {
 			{member && (
 				<div class="mem-editform">
 					<div class="mem-editform__who">
-						<Avatar image={member.party.avatar ?? undefined} label={member.party.name} size="md" />
+						<UserAvatar
+							image={member.party.avatar ?? undefined}
+							label={member.party.name}
+							size="md"
+						/>
 						<div class="mem-editform__whotext">
 							<span class="mem-editform__name">{member.party.name}</span>
 							<span class="mem-editform__email">{member.email}</span>

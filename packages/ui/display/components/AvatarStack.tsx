@@ -19,6 +19,8 @@ export interface AvatarStackProps {
 	max?: number;
 	size?: AvatarSize;
 	shape?: AvatarShape;
+	/** Each face's stand-in picture — see `Avatar`'s `fallbackImage`. Not applied to the `+N` chip. */
+	fallbackImage?: string;
 	/**
 	 * What the separating ring is drawn in. Defaults to `var(--surface)`; pass the ancestor's own
 	 * background when the stack sits on a tinted card, or the ring reads as a halo instead of a gap.
@@ -42,7 +44,15 @@ export interface AvatarStackProps {
  * item-by-item, the same markup announces a stream of disconnected initials.
  */
 export function AvatarStack(props: AvatarStackProps): JSX.Element | null {
-	const { people, max = 4, size = "sm", shape = "circle", ringColor, class: className } = props;
+	const {
+		people,
+		max = 4,
+		size = "sm",
+		shape = "circle",
+		fallbackImage,
+		ringColor,
+		class: className,
+	} = props;
 	if (people.length === 0) return null;
 
 	const visible = people.slice(0, max);
@@ -62,7 +72,8 @@ export function AvatarStack(props: AvatarStackProps): JSX.Element | null {
 			{visible.map((p, i) => (
 				<Avatar
 					key={`${p.name}-${i}`}
-					image={p.avatar ?? undefined}
+					image={p.avatar}
+					fallbackImage={fallbackImage}
 					label={p.name}
 					size={size}
 					shape={shape}

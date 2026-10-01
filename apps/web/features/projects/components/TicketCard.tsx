@@ -1,5 +1,4 @@
 import type { JSX } from "preact";
-import { Avatar } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import {
@@ -12,6 +11,7 @@ import { priorityLabel, priorityTone } from "../core/board-model.ts";
 import { isOverdue } from "../core/ticket-model.ts";
 import { StageStatusIcon } from "./StageStatusIcon.tsx";
 import { ChecklistIcon, CommentIcon, PaperclipIcon, PriorityFlagIcon } from "./board-glyphs.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * TicketCard — the CONTENT of one Kanban ticket card. The `@projective/ui/kanban` KanbanCard around it
@@ -187,7 +187,9 @@ export function TicketCard({ card, lockedForClient = false }: TicketCardProps): 
 									<span
 										class="tkt__pay tkt__pay--paid"
 										role="img"
-										aria-label={`${TICKET_PAYMENT_SCOPE_LABEL[card.paymentScope]} — paid for this stage`}
+										aria-label={`${
+											TICKET_PAYMENT_SCOPE_LABEL[card.paymentScope]
+										} — paid for this stage`}
 										tabIndex={0}
 									>
 										<Icon name="check" size="2xs" />
@@ -215,7 +217,7 @@ export function TicketCard({ card, lockedForClient = false }: TicketCardProps): 
 					{card.budgetLabel ? <span class="tkt__budget">{card.budgetLabel}</span> : null}
 					{card.assignee
 						? (
-							<Avatar
+							<UserAvatar
 								image={card.assignee.avatar ?? undefined}
 								label={card.assignee.name}
 								size={22}

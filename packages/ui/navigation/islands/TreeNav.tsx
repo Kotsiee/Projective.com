@@ -3,6 +3,7 @@ import { type Signal, useSignal } from "@preact/signals";
 import "../styles/tree-nav.css";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
+import { Avatar } from "../../display/components/Avatar.tsx";
 
 /**
  * TreeNav — a standard tree-explorer navigation sidebar: a hierarchical list of disclosure nodes with
@@ -30,8 +31,11 @@ export interface TreeNavNode {
 	sublabel?: string | null;
 	/** Leading icon (folder/stage/…); ignored when `avatar` is set. */
 	icon?: VNode;
-	/** Leading circular avatar (submitter profile picture); wins over `icon`. */
-	avatar?: { image?: string | null; label: string } | null;
+	/**
+	 * Leading circular avatar (submitter profile picture); wins over `icon`. Drawn by `Avatar`, so it
+	 * shares its chain: `image` → `fallbackImage` (a host's default picture) → initials of `label`.
+	 */
+	avatar?: { image?: string | null; label: string; fallbackImage?: string } | null;
 	/** Trailing icon-only status glyph (e.g. a review-status mark). */
 	status?: VNode | null;
 	/** Muted trailing file/child count. */
@@ -71,13 +75,6 @@ function Chevron(): JSX.Element {
 	);
 }
 
-/** First-letter (or two-initials) fallback for an avatar with no image. */
-function initials(label: string): string {
-	const parts = label.trim().split(/\s+/);
-	if (parts.length === 0) return "?";
-	if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase();
-	return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
 // #endregion
 
 export function TreeNav(props: TreeNavProps): JSX.Element {
@@ -210,21 +207,16 @@ export function TreeNav(props: TreeNavProps): JSX.Element {
 
 						<span class="ui-treenav__lead" aria-hidden="true">
 							{node.avatar
-								? (node.avatar.image
-									? (
-										<img
-											class="ui-treenav__avatar"
-											src={node.avatar.image}
-											alt=""
-											loading="lazy"
-											draggable={false}
-										/>
-									)
-									: (
-										<span class="ui-treenav__avatar ui-treenav__avatar--initials">
-											{initials(node.avatar.label)}
-										</span>
-									))
+								? (
+									<Avatar
+										class="ui-treenav__avatar"
+										image={node.avatar.image}
+										fallbackImage={node.avatar.fallbackImage}
+										label={node.avatar.label}
+										loading="lazy"
+										size={20}
+									/>
+								)
 								: node.icon
 								? <span class="ui-treenav__icon">{node.icon}</span>
 								: <span class="ui-treenav__icon ui-treenav__icon--placeholder" />}

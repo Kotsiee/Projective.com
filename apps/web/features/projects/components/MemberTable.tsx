@@ -1,10 +1,10 @@
 import type { JSX, VNode } from "preact";
 import type { Signal } from "@preact/signals";
-import { Avatar } from "@projective/ui/display";
 import type { MemberScope, ProjectMemberRow } from "../types/projects-types.ts";
 import type { MemberSortKey } from "../core/member-model.ts";
 import { AssignmentTag, MemberRoleBadge, PresenceDot } from "./MemberBadges.tsx";
 import { ChevronIcon } from "./glyphs.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * MemberTable — the dense roster table (task §2.1). A real `<table>` for accessibility: sortable column
@@ -105,7 +105,11 @@ export function MemberTable(props: MemberTableProps): JSX.Element {
 							<td>
 								<div class="mem-identity">
 									<span class="mem-identity__avatar">
-										<Avatar image={m.party.avatar ?? undefined} label={m.party.name} size="md" />
+										<UserAvatar
+											image={m.party.avatar ?? undefined}
+											label={m.party.name}
+											size="md"
+										/>
 										<PresenceDot presence={m.presence} />
 									</span>
 									<span class="mem-identity__text">

@@ -1,11 +1,11 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
-import { Avatar } from "@projective/ui/display";
 import "../styles/article-view.css";
 import { profileHref } from "@features/explore/core/routing.ts";
 import { Icon } from "@projective/ui/icons";
 import { ViewIcon } from "../components/view-glyphs.tsx";
 import type { ArticleComment } from "@projective/types/explore";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * ArticleComments — the discussion section at the foot of the Articles view. Renders the composed
@@ -79,7 +79,7 @@ export default function ArticleComments(
 
 			{/* Composer. */}
 			<div class="art-composer">
-				<Avatar image="" label={authed ? "You" : "Guest"} size={40} shape="circle" />
+				<UserAvatar image="" label={authed ? "You" : "Guest"} size={40} shape="circle" />
 				<div class="art-composer__field">
 					<textarea
 						class="art-composer__input"
@@ -108,7 +108,7 @@ export default function ArticleComments(
 				{list.value.map((c) => (
 					<li key={c.id} class="art-cmt">
 						<a class="art-cmt__avatar" href={profileHref(c.author.handle)} aria-hidden="true">
-							<Avatar
+							<UserAvatar
 								image={c.author.avatar}
 								label={c.author.name}
 								size={40}
@@ -139,7 +139,7 @@ export default function ArticleComments(
 													href={profileHref(r.author.handle)}
 													aria-hidden="true"
 												>
-													<Avatar
+													<UserAvatar
 														image={r.author.avatar}
 														label={r.author.name}
 														size={32}

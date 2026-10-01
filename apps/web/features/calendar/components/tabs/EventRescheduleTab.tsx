@@ -1,6 +1,5 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
-import { Avatar } from "@projective/ui/display";
 import { Button, DatePicker, type DateValue, InputText, Select } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { calendarTime } from "@projective/ui/calendar";
@@ -16,6 +15,7 @@ import {
 	type RescheduleGate,
 	type RescheduleView,
 } from "../../core/event-view.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * EventRescheduleTab — moving a time, and the negotiation that takes.
@@ -394,7 +394,7 @@ function ProposalRow(props: {
 			</div>
 
 			<div class="evm-prop__who">
-				<Avatar
+				<UserAvatar
 					image={p.proposedBy.avatar ?? undefined}
 					label={p.proposedBy.name}
 					size={22}

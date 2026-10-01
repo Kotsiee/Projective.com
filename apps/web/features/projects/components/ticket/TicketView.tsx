@@ -18,7 +18,6 @@ import "../../styles/ticket-view.css";
 import { Backdrop, BodyPortal, useFrameScroll, useFrameState } from "@projective/ui/overlay";
 import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks";
 import { Splitter, SplitterPanel } from "@projective/ui/layout";
-import { AvatarStack } from "@projective/ui/display";
 import { Button, InlineEdit, InputText } from "@projective/ui/fields";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
@@ -55,6 +54,7 @@ import { TicketAttachmentsTab } from "./tabs/TicketAttachmentsTab.tsx";
 import { TicketHistoryTab } from "./tabs/TicketHistoryTab.tsx";
 import { TicketSubmissionsTab } from "./tabs/TicketSubmissionsTab.tsx";
 import { TicketTimelineTab } from "./tabs/TicketTimelineTab.tsx";
+import { UserAvatarStack } from "@web/components/UserAvatar.tsx";
 
 /**
  * TicketView — the ONE ticket surface. Creating, reading and editing a ticket are the same modal.
@@ -333,7 +333,7 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 										content={`Worked on by ${card.contributors.map((c) => c.name).join(", ")}`}
 									>
 										<span class="tkv__stack" tabIndex={0}>
-											<AvatarStack
+											<UserAvatarStack
 												people={card.contributors}
 												max={4}
 												size={24}

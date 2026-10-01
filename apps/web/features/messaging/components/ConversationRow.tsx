@@ -4,6 +4,7 @@ import { Avatar } from "@projective/ui/display";
 import { Popover } from "@projective/ui/feedback";
 import { MessagingIcon } from "./messaging-glyphs.tsx";
 import type { ConversationSummary } from "../types/messaging-types.ts";
+import { DEFAULT_AVATAR_URL } from "@projective/types/user";
 
 /**
  * ConversationRow — one conversation in the inbox sidebar list (`/messages`). The whole row is an anchor
@@ -41,6 +42,7 @@ export function ConversationRow(props: ConversationRowProps): JSX.Element {
 				<span class="msg-conv__avatar">
 					<Avatar
 						image={c.avatar ?? undefined}
+						fallbackImage={c.kind === "group" ? undefined : DEFAULT_AVATAR_URL}
 						label={c.title}
 						size={40}
 						shape={c.kind === "group" ? "square" : "circle"}

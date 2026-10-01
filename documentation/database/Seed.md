@@ -206,7 +206,8 @@ extension, does not know `.avif`, and the storage API refuses `application/octet
 - The two businesses (Helia Finance, Atlas Labs) have no banner, so the projects they post show the
   tonal band rather than a cover on the landing page and the project view.
 - Five freelancers and four users have no profile photo (eight photos for seventeen personas); their
-  avatars render initials.
+  avatars render the temporary default picture (`test_images/profile_1.jpg`, Decision #127), with
+  initials beneath it.
 - **Product downloads never arrive.** A product describes its files (`catalogue.products.file_manifest`)
   but no stored file backs them, `finance.order_lines.asset_id` has nothing to point at, and
   `files.fn_can_read` has no clause letting a buyer read a file attached to their order. Every

@@ -1,6 +1,5 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
-import { Avatar } from "@projective/ui/display";
 import { Select } from "@projective/ui/fields";
 import { RichTextEditor } from "@projective/ui/editor";
 import { Tooltip } from "@projective/ui/feedback";
@@ -20,6 +19,7 @@ import { statusLabel, statusTone } from "../../core/board-model.ts";
 import { INTENSITY_OPTIONS } from "../../core/ticket-model.ts";
 import type { TicketStageView } from "../../core/ticket-view.ts";
 import { TaskListEditor } from "./TaskListEditor.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * StageInspector — the modal's right panel while a stage is selected on the Stages tab.
@@ -242,7 +242,7 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 												<ul class="tkc-people">
 													{stage.members.map((m) => (
 														<li key={m.handle ?? m.name} class="tkc-people__row">
-															<Avatar image={m.avatar ?? undefined} label={m.name} size={26} />
+															<UserAvatar image={m.avatar ?? undefined} label={m.name} size={26} />
 															<span class="tkc-people__name">{m.name}</span>
 															{m.handle
 																? <span class="tkc-people__handle">@{m.handle}</span>

@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import { Avatar, ProgressiveImage, RatingStars } from "@projective/ui/display";
 import { VerifiedBadge } from "@features/explore/components/VerifiedBadge.tsx";
 import { type ProfileShowcase, routes } from "../core/landing-data.ts";
+import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 
 /**
  * ProfileCard — a discovery card for a freelancer or an assembled team, in the landing carousel.
@@ -41,6 +42,7 @@ export function ProfileCard({ profile }: { profile: ProfileShowcase }): JSX.Elem
 				<div class="ex-pcard__identity">
 					<Avatar
 						image={profile.avatar}
+						fallbackImage={personFallbackImage(profile.kind)}
 						placeholder={profile.avatarPlaceholder}
 						label={profile.name}
 						alt=""

@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
-import { Avatar } from "@projective/ui/display";
 import type { SubmissionTreeNode } from "../types/projects-types.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * FreelancerCard — a grid cell for a `submitter` tree node (Part 3, top level of a Submissions view).
@@ -28,7 +28,7 @@ export function FreelancerCard({ node, onOpen }: FreelancerCardProps): JSX.Eleme
 			aria-label={`${node.label} — Freelancer, ${countLabel}`}
 		>
 			<span class="subm-card__thumb subm-card__thumb--avatar">
-				<Avatar image={node.avatar ?? undefined} label={node.label} size={72} alt="" />
+				<UserAvatar image={node.avatar ?? undefined} label={node.label} size={72} alt="" />
 			</span>
 			<span class="subm-card__meta">
 				<span class="subm-card__name" title={node.label}>{node.label}</span>

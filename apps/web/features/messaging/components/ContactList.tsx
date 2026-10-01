@@ -1,11 +1,11 @@
 import type { JSX } from "preact";
 import { useId } from "preact/hooks";
 import "../styles/contact-picker.css";
-import { Avatar } from "@projective/ui/display";
 import { Button } from "@projective/ui/fields";
 import { MessagingIcon } from "./messaging-glyphs.tsx";
 import type { ContactSearch } from "../hooks/useContactSearch.ts";
 import type { RankedContact } from "../types/messaging-types.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * ContactList — the ranked people list every picker renders: a search field over the suggestions
@@ -60,7 +60,7 @@ export function ContactList(props: ContactListProps): JSX.Element {
 					data-tier={c.tier}
 					onClick={() => onToggle(c.id)}
 				>
-					<Avatar image={c.avatar ?? undefined} label={c.name} size={34} shape="circle" />
+					<UserAvatar image={c.avatar ?? undefined} label={c.name} size={34} shape="circle" />
 					<span class="msg-picker__row-text">
 						<span class="msg-picker__row-head">
 							<span class="msg-picker__row-name">{c.name}</span>

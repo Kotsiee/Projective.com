@@ -1,10 +1,10 @@
 import type { JSX } from "preact";
-import { Avatar } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import type { EventAttendee, RsvpResponse } from "@projective/types/scheduling";
 import { RSVP_LABEL, rsvpTally } from "@projective/types/scheduling";
 import { profileHref } from "@features/projects/core/routing.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * EventAttendeePanel — who is coming, and what each of them said.
@@ -54,7 +54,7 @@ export function EventAttendeePanel(props: EventAttendeePanelProps): JSX.Element 
 			<ul class="evm-people" aria-label="Participant list">
 				{roster.map((a) => (
 					<li key={a.id} class="evm-people__row" data-viewer={a.isViewer ? "true" : undefined}>
-						<Avatar image={a.avatar ?? undefined} label={a.name} size={28} alt="" />
+						<UserAvatar image={a.avatar ?? undefined} label={a.name} size={28} alt="" />
 						<span class="evm-people__id">
 							<span class="evm-people__name">
 								{a.handle

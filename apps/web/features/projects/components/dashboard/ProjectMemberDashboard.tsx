@@ -1,5 +1,4 @@
 import type { JSX } from "preact";
-import { Avatar } from "@projective/ui/display";
 import "../../styles/project-dashboard.css";
 import ProjectPageStyleAnchor from "../../islands/ProjectPageStyleAnchor.island.tsx";
 import type { ProjectOverview } from "../../types/projects-types.ts";
@@ -12,6 +11,7 @@ import {
 	UpdatesBlock,
 	WorkBlock,
 } from "./DashboardBlocks.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * The member dashboard body of `/projects/[projectId]` — the half of that route a viewer who is NOT
@@ -82,18 +82,20 @@ export function ProjectMemberDashboard(
 
 	return (
 		<div class="pjd">
-			{/*
-			 * On BOTH branches, not just the miss. This is a server component, and the Vite build
-			 * collects CSS side-effect imports from the ISLAND graph only — so with the anchor mounted
-			 * on the not-found path alone, the "Project not found" state shipped styled while the real
-			 * dashboard shipped 176 `pjd-*` elements with no rules at all. Invisible in dev, where Vite
-			 * serves a `<link>` from the SSR graph on both.
-			 */}
+			{
+				/*
+				 * On BOTH branches, not just the miss. This is a server component, and the Vite build
+				 * collects CSS side-effect imports from the ISLAND graph only — so with the anchor mounted
+				 * on the not-found path alone, the "Project not found" state shipped styled while the real
+				 * dashboard shipped 176 `pjd-*` elements with no rules at all. Invisible in dev, where Vite
+				 * serves a `<link>` from the SSR graph on both.
+				 */
+			}
 			<ProjectPageStyleAnchor />
 			<div class="pjd__inner">
 				<header class="pjd-hero">
 					<div class="pjd-hero__identity">
-						<Avatar
+						<UserAvatar
 							image={hero.owner.avatar ?? undefined}
 							label={hero.owner.name}
 							size="md"

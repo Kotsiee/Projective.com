@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
-import { Avatar } from "@projective/ui/display";
 import { profileHref } from "@features/explore/core/routing.ts";
 import type { DepartmentEntry, MemberEntry, ProfileKind } from "../../types/profile-types.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * WorkRoster — the people behind a multi-member entity. A team or business renders one flat
@@ -65,7 +65,7 @@ function PersonList({ members }: { members: readonly MemberEntry[] }): JSX.Eleme
 			{members.map((member) => (
 				<li class="pf-person" key={member.handle}>
 					<a class="pf-person__link" href={profileHref(member.handle)}>
-						<Avatar
+						<UserAvatar
 							image={member.avatar}
 							label={member.name}
 							size={40}

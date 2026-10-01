@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 import type { JoinStore } from "../core/wizardStore.ts";
 import { PURPOSE_LABELS, SKILL_LABELS } from "../core/onboarding-data.ts";
 
@@ -30,7 +31,14 @@ export function PassportCard({ store }: { store: JoinStore }): JSX.Element {
 		<div class="passport" aria-hidden="true">
 			<div class="passport__head">
 				<div class="passport__avatar pop" key={avatar ?? initials}>
-					{avatar ? <img src={avatar} alt="" width={48} height={48} /> : initials}
+					{org ? initials : (
+						<UserAvatar
+							class="passport__photo"
+							image={avatar}
+							label={name || initials}
+							size={48}
+						/>
+					)}
 				</div>
 				<div class="passport__brand">
 					<span class="passport__brand-label">Projective ID</span>

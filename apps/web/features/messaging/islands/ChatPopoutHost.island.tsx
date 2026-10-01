@@ -3,7 +3,6 @@ import { useEffect } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import "../styles/chat-popout.css";
 import { DraggablePopover } from "@projective/ui/overlay";
-import { Avatar } from "@projective/ui/display";
 import { Toast } from "@projective/ui/feedback";
 import { useIsMobile } from "@projective/ui/hooks";
 import { MessagingIcon } from "../components/messaging-glyphs.tsx";
@@ -15,6 +14,7 @@ import {
 	popout,
 	resizePopout,
 } from "../core/popout-state.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * ChatPopoutHost — the GLOBAL host for the floating chat window: the "Pop Out Chat" of a channel or
@@ -77,7 +77,7 @@ export default function ChatPopoutHost({ path }: { path: string }): JSX.Element 
 				}}
 				title={state.title}
 				icon={state.avatar
-					? <Avatar image={state.avatar} label={state.title} size={20} shape="circle" />
+					? <UserAvatar image={state.avatar} label={state.title} size={20} shape="circle" />
 					: <MessagingIcon name="chat" />}
 				width="24rem"
 				height="min(60vh, 34rem)"

@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
-import { Avatar } from "@projective/ui/display";
 import { Icon, type IconName } from "@projective/ui/icons";
 import type { TicketHistoryEntry, TicketHistoryKind } from "../../types/projects-types.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * TicketHistoryRow — one event in the ticket's audit log, wherever it is read.
@@ -52,7 +52,7 @@ export function TicketHistoryRow(props: TicketHistoryRowProps): JSX.Element {
 			<span class="tkv-log__who">
 				{entry.actor
 					? (
-						<Avatar
+						<UserAvatar
 							image={entry.actor.avatar ?? undefined}
 							label={entry.actor.name}
 							size={compact ? 22 : 26}

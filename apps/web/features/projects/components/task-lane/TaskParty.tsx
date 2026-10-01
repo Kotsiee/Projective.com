@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
-import { Avatar } from "@projective/ui/display";
 import { profileHref } from "../../core/routing.ts";
 import type { ProjectParty } from "../../types/projects-types.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * TaskParty — one person as the Task lane names them: a small circular face and their name, linking to
@@ -16,7 +16,7 @@ export interface TaskPartyProps {
 
 export function TaskParty({ party, size = 20 }: TaskPartyProps): JSX.Element {
 	const face = (
-		<Avatar image={party.avatar ?? undefined} label={party.name} size={size} shape="circle" />
+		<UserAvatar image={party.avatar ?? undefined} label={party.name} size={size} shape="circle" />
 	);
 	if (!party.handle) {
 		return (

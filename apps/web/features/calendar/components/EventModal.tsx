@@ -13,7 +13,6 @@ import "../styles/event-modal.css";
 import { Backdrop, BodyPortal, useFrameScroll, useFrameState } from "@projective/ui/overlay";
 import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks";
 import { Splitter, SplitterPanel } from "@projective/ui/layout";
-import { AvatarStack } from "@projective/ui/display";
 import { MoneyView } from "@projective/ui/display/money";
 import { Button, InlineEdit, InputText } from "@projective/ui/fields";
 import { Message, Tooltip } from "@projective/ui/feedback";
@@ -49,6 +48,7 @@ import { EventRescheduleTab } from "./tabs/EventRescheduleTab.tsx";
 import { EventAttachmentsTab } from "./tabs/EventAttachmentsTab.tsx";
 import { EventFinanceTab } from "./tabs/EventFinanceTab.tsx";
 import { EventHistoryTab } from "./tabs/EventHistoryTab.tsx";
+import { UserAvatarStack } from "@web/components/UserAvatar.tsx";
 
 /**
  * EventModal — the ONE calendar-event surface. Creating an entry, reading one, and negotiating a new
@@ -425,7 +425,7 @@ export function EventModal(props: EventModalProps): JSX.Element {
 										}`}
 									>
 										<span class="evm__stack" tabIndex={0}>
-											<AvatarStack
+											<UserAvatarStack
 												people={event.roster}
 												max={4}
 												size={24}

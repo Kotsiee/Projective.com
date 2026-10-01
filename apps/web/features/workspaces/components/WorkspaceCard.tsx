@@ -1,6 +1,5 @@
 import type { JSX, RefObject } from "preact";
 import { useSignal } from "@preact/signals";
-import { Avatar } from "@projective/ui/display";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { styleVars } from "@ui/core/style.ts";
 import { kindCopy, roleLabel, type WorkspaceSummary } from "@projective/types/workspace";
@@ -15,6 +14,7 @@ import {
 	SwitchGlyph,
 	WalletGlyph,
 } from "../core/workspace-glyphs.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * WorkspaceCard — one entity on the `/teams` · `/businesses` index, and the surface's most-repeated
@@ -267,7 +267,7 @@ function MemberStack(
 			aria-label={`${summary.faces.length} of ${summary.memberCount} members: ${names}`}
 		>
 			{summary.faces.map((face) => (
-				<Avatar
+				<UserAvatar
 					key={face.handle}
 					class="wsp-card__face"
 					image={face.avatar || undefined}

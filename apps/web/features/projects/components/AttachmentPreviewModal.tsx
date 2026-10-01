@@ -2,7 +2,7 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { Splitter, SplitterPanel } from "@projective/ui/layout";
-import { Avatar, Carousel } from "@projective/ui/display";
+import { Carousel } from "@projective/ui/display";
 import { Backdrop, BodyPortal, usePresence } from "@projective/ui/overlay";
 import { Popover } from "@projective/ui/feedback";
 import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks";
@@ -22,6 +22,7 @@ import {
 	KebabIcon,
 	StarGlyph,
 } from "./file-glyphs.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * AttachmentPreviewModal — the universal, footer-less preview. A `.ui-splitter` divides a large LEFT
@@ -319,7 +320,7 @@ export function AttachmentPreviewModal(props: AttachmentPreviewModalProps): JSX.
 																class="fx-aside__senderlink"
 																href={profileHref(file.sender.handle)}
 															>
-																<Avatar
+																<UserAvatar
 																	image={file.sender.avatar ?? undefined}
 																	label={file.sender.name}
 																	size={40}
@@ -333,7 +334,7 @@ export function AttachmentPreviewModal(props: AttachmentPreviewModalProps): JSX.
 														)
 														: (
 															<div class="fx-aside__senderlink">
-																<Avatar
+																<UserAvatar
 																	image={file.sender.avatar ?? undefined}
 																	label={file.sender.name}
 																	size={40}

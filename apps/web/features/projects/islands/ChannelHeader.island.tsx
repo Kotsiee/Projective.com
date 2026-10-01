@@ -2,7 +2,6 @@ import { cloneElement, type JSX, type RefObject } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import "../styles/channel-header.css";
-import { Avatar } from "@projective/ui/display";
 import { Drawer, Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { CHANNEL_TABS, type ChannelMeta, visibleChannelTabKeys } from "../core/channel-view.ts";
@@ -12,7 +11,6 @@ import {
 	BellIcon,
 	BellOffIcon,
 	CalendarIcon,
-	TimelineIcon,
 	ClockIcon,
 	DmIcon,
 	HashIcon,
@@ -22,11 +20,13 @@ import {
 	PinIcon,
 	SettingsIcon,
 	SubmissionsIcon,
+	TimelineIcon,
 } from "../components/detail-glyphs.tsx";
 import { ChatIcon, FilesIcon, PanelIcon } from "../components/channel-glyphs.tsx";
 import { KebabIcon, StarIcon, TicketIcon } from "../components/glyphs.tsx";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import { openPopout } from "@web/features/messaging/core/popout-state.ts";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
  * ChannelHeader — the contextual header for a project channel/chat engagement
@@ -245,7 +245,11 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 	}
 
 	const isStage = meta.kind === "stage";
-	const detailsLabel = props.isTask ? "Task details" : isStage ? "Stage details" : "Channel details";
+	const detailsLabel = props.isTask
+		? "Task details"
+		: isStage
+		? "Stage details"
+		: "Channel details";
 
 	return (
 		<header class="chan-header">
@@ -517,7 +521,7 @@ function ChannelDetailBody(
 					<ul class="chan-members__list">
 						{info.members.map((m) => (
 							<li key={m.name} class="chan-members__item">
-								<Avatar image={m.avatar ?? undefined} label={m.name} size={26} shape="circle" />
+								<UserAvatar image={m.avatar ?? undefined} label={m.name} size={26} shape="circle" />
 								<span class="chan-members__name">{m.name}</span>
 							</li>
 						))}

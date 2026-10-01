@@ -1127,6 +1127,13 @@ functions and writes through `org.save_profile` / `org.set_profile_avatar` / `or
   through `org.get_party_cards` (`profile/party-cards.ts`), so a new avatar reaches all of them on
   their next read. The open tab updates at once through a `pj:avatar-changed` window event
   (`apps/web/utils/avatar-sync.ts`), which the nav's account island listens for.
+- **A person's picture has one ranking.** `@projective/types/user` (`avatar.ts`) is the only code
+  that orders avatar sources: the uploaded photo at the surface's tier (`avatarTierFor` — `sm` ≤ 48px,
+  `md` ≤ 128px, `lg` beyond, per `TIER_LONG_EDGE.avatar`), else the sign-in provider's picture
+  (`get_party_cards.oauth_avatar`, user-writable, so rendered only through the provider-host allowlist
+  `safeOAuthAvatarUrl`), else `null`. The server applies the first two rungs (`party-cards.ts`,
+  `UserBackendService.me`); the UI applies the third — `UserAvatar` paints `DEFAULT_AVATAR_URL` for a
+  `null` and for a photo that fails to load, with initials beneath (Decision #127).
 
 **The media pipeline** (`@server/services/media/`) is the only way bytes reach a public bucket:
 

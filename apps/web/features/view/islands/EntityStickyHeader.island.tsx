@@ -17,6 +17,7 @@ import { scrollToId } from "../core/scroll-to.ts";
 import { BackLink } from "../components/BackLink.tsx";
 import type { ExploreItem } from "@projective/types/explore";
 import type { HrefContext } from "@features/explore/core/routing.ts";
+import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 
 /**
  * EntityStickyHeader — the condensed listing identity that MIGRATES into the middle-nav frame's header
@@ -102,6 +103,7 @@ export default function EntityStickyHeader(
 				<a class="evp-stickyhead__seller" href={`/${owner.handle}`}>
 					<Avatar
 						image={owner.avatar}
+						fallbackImage={personFallbackImage(owner.kind)}
 						label={owner.name}
 						size={24}
 						shape={owner.kind === "business" ? "square" : "circle"}
