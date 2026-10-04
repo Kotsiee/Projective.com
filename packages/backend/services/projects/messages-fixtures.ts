@@ -1,13 +1,18 @@
-import type {
-	ChatMessage,
-	MessageAttachment,
-	MessagePage,
-	MessagePageParams,
-	MessageSender,
-	ProjectDetail,
-	SystemActivityType,
+import {
+	type ChatMessage,
+	type MessageAttachment,
+	type MessageDelta,
+	messageDeltaText,
+	type MessageMark,
+	type MessagePage,
+	type MessagePageParams,
+	type MessageSender,
+	normalizeMessageDelta,
+	type ProjectDetail,
+	type SystemActivityType,
 } from "@projective/types/projects";
 import { findProjectDetail } from "./detail-fixtures.ts";
+import { replyFromMessage } from "./message-replies.ts";
 import { mockAvatar, mockCover } from "../../mocks/assets.ts";
 
 /**
@@ -130,9 +135,18 @@ function participantsOf(detail: ProjectDetail, channelId: string): MessageSender
 /** A `from` reference: the viewer, an other-participant index (mod count), or a system notice. */
 type From = "viewer" | { other: number } | "system";
 
+/** One run of a formatted beat: plain text, or `[text, ...marks]`. */
+type Run = string | readonly [string, ...MessageMark[]];
+
 interface Beat {
 	from: From;
 	text?: string;
+	/** A FORMATTED body, in place of `text` — the message's text is what these runs spell. */
+	runs?: readonly Run[];
+	/** A name later beats can reply to. */
+	key?: string;
+	/** The `key` of an EARLIER beat in the same channel that this one answers. */
+	replyTo?: string;
 	/** Count of single-row images. */
 	images?: number;
 	/** A mixed attachment set (grid; may overflow past 4 → `+N`). */
@@ -151,6 +165,11 @@ interface Beat {
  * The most-recent page, oldest→newest — a showcase that exercises grouping runs, system notices, a
  * single-row image set, a mixed/overflow grid, a voice memo, reactions, pins, and a favourite. Placed
  * at the tail so it is immediately visible; older filler is generated before it for pagination depth.
+ *
+ * It also carries the rich-message cases: a bold lead-in, a struck-through correction, an italic
+ * aside and a bold + underlined run, and three replies — one quoting the viewer's own message, one
+ * quoting a text-less voice memo (the quote's `audio` label), and one from the viewer quoting an
+ * attachment post, which is also pinned so the banner shows a reply.
  */
 const SHOWCASE: Beat[] = [
 	{
@@ -161,13 +180,34 @@ const SHOWCASE: Beat[] = [
 	{ from: { other: 0 }, text: "Morning! Kicking off the concepts stage 🎨", gapMin: 30 },
 	{
 		from: { other: 0 },
-		text: "Pulled together a moodboard overnight — sharing the direction below.",
+		runs: [
+			["Heads up:", "bold"],
+			" pulled together a moodboard overnight — sharing the direction below.",
+		],
 		gapMin: 2,
 	},
 	{ from: { other: 0 }, images: 3, gapMin: 1 },
-	{ from: "viewer", text: "These are gorgeous. The second palette is 🔥", gapMin: 6 },
-	{ from: "viewer", text: "Could we push the display type a notch bolder though?", gapMin: 1 },
-	{ from: { other: 1 }, text: "Agreed. I'll rework the type scale and repost.", gapMin: 4 },
+	{
+		from: "viewer",
+		runs: ["These are gorgeous. The ", ["third", "strike"], " second palette is 🔥"],
+		gapMin: 6,
+	},
+	{
+		from: "viewer",
+		key: "push-type",
+		text: "Could we push the display type a notch bolder though?",
+		gapMin: 1,
+	},
+	{
+		from: { other: 1 },
+		replyTo: "push-type",
+		runs: [
+			"Agreed. I'll rework the type scale and repost ",
+			["(probably first thing tomorrow)", "italic"],
+			".",
+		],
+		gapMin: 4,
+	},
 	{
 		from: "system",
 		system: {
@@ -180,13 +220,15 @@ const SHOWCASE: Beat[] = [
 	},
 	{
 		from: { other: 1 },
+		key: "concept-pack",
 		text: "Full concept pack + the source files:",
 		mixed: ["image", "image", "image", "pdf", "zip", "video"],
 		gapMin: 1,
 	},
-	{ from: "viewer", audio: true, gapMin: 8 },
+	{ from: "viewer", key: "memo", audio: true, gapMin: 8 },
 	{
 		from: { other: 0 },
+		replyTo: "memo",
 		text: "Ha, love the energy. Booking the review call now.",
 		reactions: [["👍", 2, true], ["❤️", 1, false]],
 		gapMin: 3,
@@ -203,7 +245,8 @@ const SHOWCASE: Beat[] = [
 	},
 	{
 		from: "viewer",
-		text: "Final direction locked ✅ great work everyone.",
+		replyTo: "concept-pack",
+		runs: [["Final direction locked", "bold", "underline"], " ✅ great work everyone."],
 		pinned: true,
 		favorited: true,
 		gapMin: 4,
@@ -298,6 +341,43 @@ function attachmentsFor(beat: Beat, id: string, seed: number): MessageAttachment
 	return out;
 }
 
+/**
+ * A formatted beat's Delta, built through the same `normalizeMessageDelta` the composer sends through,
+ * so a fixture Delta is exactly as normalised as a real one — and the message's `text` is taken FROM
+ * it, so the two agree by construction rather than by two strings typed to match.
+ */
+function deltaOf(runs: readonly Run[]): MessageDelta | null {
+	return normalizeMessageDelta(
+		runs.map((run) =>
+			typeof run === "string"
+				? { insert: run }
+				: { insert: run[0], attributes: Object.fromEntries(run.slice(1).map((m) => [m, true])) }
+		),
+	);
+}
+
+/**
+ * Resolve each beat's `replyTo` key against the messages built before it. A second pass because a
+ * quote is a projection OF its original, which therefore has to exist first. A key naming no earlier
+ * beat is a corpus error and throws, rather than shipping a fixture that silently renders no quote.
+ */
+function withReplies(beats: readonly Beat[], messages: readonly ChatMessage[]): ChatMessage[] {
+	const byKey = new Map<string, ChatMessage>();
+	return messages.map((message, i) => {
+		const beat = beats[i];
+		let out = message;
+		if (beat.replyTo) {
+			const replyTo = replyFromMessage(byKey.get(beat.replyTo));
+			if (!replyTo) {
+				throw new Error(`messages-fixtures: a beat replies to unknown key "${beat.replyTo}"`);
+			}
+			out = { ...message, replyTo };
+		}
+		if (beat.key) byKey.set(beat.key, out);
+		return out;
+	});
+}
+
 /** Materialise one beat into a {@link ChatMessage}. `base` is the channel route base for system links. */
 function buildMessage(
 	beat: Beat,
@@ -330,6 +410,7 @@ function buildMessage(
 		};
 	}
 
+	const delta = beat.runs ? deltaOf(beat.runs) : null;
 	return {
 		id,
 		type: isSystem ? "system" : "user",
@@ -338,7 +419,10 @@ function buildMessage(
 		dayLabel: fmtDay(ts),
 		sender,
 		isOwn,
-		text: beat.text ?? "",
+		text: delta ? messageDeltaText(delta) : beat.text ?? "",
+		delta,
+		// Filled by `withReplies`, once every earlier message exists to be quoted.
+		replyTo: null,
 		attachments: attachmentsFor(beat, id, seed + index),
 		audio: beat.audio
 			? { url: "#", durationMs: 42_000, durationLabel: "0:42", peaks: fakePeaks(seed + index, 48) }
@@ -367,10 +451,11 @@ function buildPool(detail: ProjectDetail, channelId: string, base: string): Chat
 	const totalSpan = gaps.reduce((a, g) => a + g, 0);
 	let ts = NOW - totalSpan - 4 * MIN;
 
-	return beats.map((beat, i) => {
+	const messages = beats.map((beat, i) => {
 		ts += gaps[i];
 		return buildMessage(beat, i, ts, channelId, base, others, seed);
 	});
+	return withReplies(beats, messages);
 }
 // #endregion
 
@@ -417,5 +502,22 @@ export function findMessagePage(params: MessagePageParams): MessagePage | null {
 		permissions: { canPin },
 		total,
 	};
+}
+
+/**
+ * One message of a channel's fixture history by id, wherever it sits — the corpus half of resolving
+ * a stub reply's original, which may be pages above the latest one. `null` when the project, the
+ * channel or the message does not resolve; the pool is per channel, so an id from another channel is
+ * a miss here exactly as `comms.tg_guard_message_reply` makes it one live.
+ */
+export function findChannelMessage(
+	projectId: string,
+	channelId: string,
+	messageId: string,
+): ChatMessage | null {
+	const detail = findProjectDetail(projectId);
+	if (!detail) return null;
+	const pool = buildPool(detail, channelId, `/projects/${projectId}/${channelId}`);
+	return pool.find((m) => m.id === messageId) ?? null;
 }
 // #endregion

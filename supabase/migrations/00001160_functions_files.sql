@@ -182,6 +182,22 @@ BEGIN
         RETURN projects.has_project_access (v_project_id);
     END IF;
 
+    -- A file attached to a message is readable by whoever may read that message. A chat attachment
+    -- is uploaded into the SENDER's own library (`personal`, private, owned by them), so without this
+    -- branch the person it was sent to read zero rows for it: the message arrived, the link row was
+    -- visible, and the file behind it was withheld. Reading the message is the grant — channel access
+    -- for a project message, thread participation for a DM — through the one predicate the reaction /
+    -- pin / favourite policies already share. Linking cannot widen it: the INSERT policy on
+    -- comms.message_attachments requires the linker to be able to read the file already.
+    IF EXISTS (
+        SELECT 1
+        FROM comms.message_attachments ma
+        WHERE ma.attachment_id = p_item_id
+          AND comms.can_read_message (ma.message_table, ma.message_id)
+    ) THEN
+        RETURN true;
+    END IF;
+
     RETURN false;
 END;
 $$;

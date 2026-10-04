@@ -1,0 +1,493 @@
+/*
+ * message-interactions — the floating pieces of the chat's interaction layer: the composer's glass
+ * formatting bubble, the touch reaction bubble, the highlight-mode context menu, the selection count
+ * pill and the mobile header action bar. Pure CSS + strict BEM, token-only (root CLAUDE.md §3).
+ *
+ * Every piece here is portalled to `document.body` (or pinned in a zero-height anchor) and positioned
+ * from custom properties the component writes — never from inline geometry — so none of them can be
+ * blurred by the highlight-mode filter on the rows, clipped by the pop-out window's scroller, or
+ * re-based by a transformed ancestor (DESIGN_SYSTEM.md §B.10).
+ *
+ * Glass is used on exactly two of them — the formatting bubble and the reaction bubble — by the
+ * product owner's direction (Decision #131, a scoped extension of §B.4.3): both float over the
+ * conversation, and the words being acted on stay legible through them. The blur is on a `::before`
+ * underlay, with an opaque fallback. The context menu, the pill and the header bar are solid.
+ */
+
+/* #region Glass (formatting + reaction bubbles) */
+.msg-glass {
+	position: fixed;
+	z-index: calc(var(--z-draggable) + 1);
+	isolation: isolate;
+	display: flex;
+	align-items: center;
+	gap: var(--space-px);
+	padding: var(--space-1);
+	border: var(--hairline);
+	border-radius: var(--radius-full);
+	box-shadow: var(--elevation-medium);
+}
+
+.msg-glass::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	border-radius: inherit;
+	background: color-mix(in srgb, var(--surface) var(--glass-veil-panel), transparent);
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	pointer-events: none;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+	.msg-glass::before {
+		background: var(--surface);
+	}
+}
+
+/* The formatting bubble: centred above the selection, kept a gutter inside the viewport's edges. */
+.msg-format {
+	left: clamp(6rem, var(--glass-x), calc(100vw - 6rem));
+	top: var(--glass-y);
+	transform: translate(-50%, calc(-100% - var(--space-2)));
+}
+
+.msg-format__btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.1rem;
+	block-size: 2.1rem;
+	padding: 0;
+	color: var(--on-surface);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-full);
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-press) var(--spring-standard);
+}
+
+.msg-format__btn:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+
+.msg-format__btn:active {
+	transform: scale(0.92);
+}
+
+.msg-format__btn[aria-pressed="true"] {
+	color: var(--on-primary);
+	background: var(--primary);
+}
+
+.msg-format__btn:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+.msg-format__glyph {
+	font-family: var(--font-reading);
+	font-size: 0.95rem;
+	line-height: 1;
+}
+
+.msg-format__btn[data-mark="bold"] .msg-format__glyph {
+	font-weight: var(--fw-bold);
+}
+
+.msg-format__btn[data-mark="italic"] .msg-format__glyph {
+	font-style: italic;
+}
+
+.msg-format__btn[data-mark="strike"] .msg-format__glyph {
+	text-decoration: line-through;
+}
+
+.msg-format__btn[data-mark="underline"] .msg-format__glyph {
+	text-decoration: underline;
+	text-underline-offset: 0.15em;
+}
+
+/* The reaction bubble: placed by the component, hidden for the one frame before it is measured. */
+.msg-reactbubble {
+	left: var(--glass-x, 0);
+	top: var(--glass-y, 0);
+}
+
+.msg-reactbubble:not([data-placed="true"]) {
+	visibility: hidden;
+}
+
+.msg-reactbubble__emoji {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.6rem;
+	block-size: 2.6rem;
+	padding: 0;
+	font-size: 1.35rem;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-full);
+	cursor: pointer;
+	transition: transform var(--dur-press) var(--spring-standard);
+}
+
+.msg-reactbubble__emoji:active {
+	transform: scale(0.88);
+}
+
+.msg-reactbubble__emoji:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+/* #endregion */
+
+/* #region Context menu (highlight mode) */
+.msg-cmenu {
+	position: fixed;
+	left: var(--ctx-x, 0);
+	top: var(--ctx-y, 0);
+	z-index: calc(var(--z-draggable) + 1);
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 13rem;
+	padding: var(--space-1);
+	background: var(--surface-1);
+	border: var(--hairline);
+	border-radius: var(--radius-lg);
+	box-shadow: var(--elevation-high);
+}
+
+.msg-cmenu:not([data-placed="true"]) {
+	visibility: hidden;
+}
+
+.msg-cmenu__react {
+	display: flex;
+	justify-content: space-between;
+	gap: 2px;
+	padding-block-end: var(--space-1);
+	margin-block-end: var(--space-1);
+	border-block-end: var(--hairline);
+}
+
+.msg-cmenu__emoji {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	padding: 0;
+	font-size: 1.1rem;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--spring-standard);
+}
+
+.msg-cmenu__emoji:hover,
+.msg-cmenu__emoji:focus-visible {
+	background: var(--surface-2);
+	transform: scale(1.12);
+}
+
+.msg-cmenu__item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: 0.45rem 0.55rem;
+	font: inherit;
+	font-size: 0.8rem;
+	color: var(--on-surface);
+	text-align: start;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+.msg-cmenu__item:hover:not(:disabled),
+.msg-cmenu__item:focus-visible {
+	background: var(--surface-2);
+}
+
+.msg-cmenu__item:focus-visible,
+.msg-cmenu__emoji:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+.msg-cmenu__item:disabled {
+	color: var(--text-secondary);
+	cursor: not-allowed;
+}
+
+.msg-cmenu__icon {
+	display: inline-flex;
+	flex: none;
+	font-size: 0.95rem;
+	color: var(--text-secondary);
+}
+
+.msg-cmenu__label {
+	flex: 1 1 auto;
+}
+
+.msg-cmenu__hint {
+	flex: none;
+	font-size: 0.68rem;
+	color: var(--text-secondary);
+}
+
+.msg-cmenu__item[data-danger="true"],
+.msg-cmenu__item[data-danger="true"] .msg-cmenu__icon {
+	color: var(--danger);
+}
+
+.msg-cmenu__item[data-danger="true"]:hover {
+	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
+}
+
+/* #endregion */
+
+/* #region Selection count pill (desktop / tablet) */
+/*
+ * A zero-height sticky anchor: the pill hangs from it, so appearing and disappearing never pushes the
+ * feed. Pinned just under the sticky header chrome on the page; the pop-out's scroller has no chrome
+ * above it, so there it pins to the scroller's own top.
+ */
+.msg-selbar {
+	position: sticky;
+	inset-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h, 0px) + var(--space-3));
+	z-index: var(--z-sticky);
+	block-size: 0;
+	display: flex;
+	justify-content: center;
+	pointer-events: none;
+}
+
+/* Below the pinned banner when the channel has one, rather than over it. */
+.chat-feed[data-has-pinned="true"] .msg-selbar {
+	inset-block-start: calc(
+		var(--shell-topbar-h) + var(--shell-midnav-header-h, 0px) + var(--space-4) + 2.6rem + var(--space-3)
+	);
+}
+
+.pop-chat__scroll .msg-selbar {
+	inset-block-start: 0;
+}
+
+.msg-selbar__pill {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	block-size: fit-content;
+	padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+	font-size: 0.8rem;
+	color: var(--on-surface);
+	background: var(--surface-1);
+	border: var(--hairline);
+	border-radius: var(--radius-full);
+	box-shadow: var(--elevation-medium);
+	pointer-events: auto;
+}
+
+.msg-selbar__count {
+	font-weight: var(--fw-semibold);
+	font-variant-numeric: tabular-nums;
+	padding-inline-end: var(--space-1);
+}
+
+.msg-selbar__btn {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	block-size: 1.9rem;
+	padding-inline: var(--space-2);
+	font: inherit;
+	font-size: 0.78rem;
+	color: var(--on-surface);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-full);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-press) var(--spring-standard);
+}
+
+.msg-selbar__btn--icon {
+	inline-size: 1.9rem;
+	justify-content: center;
+	padding: 0;
+	color: var(--text-secondary);
+}
+
+.msg-selbar__btn:hover {
+	background: var(--surface-2);
+}
+
+.msg-selbar__btn:active {
+	transform: scale(0.94);
+}
+
+.msg-selbar__btn:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+.msg-selbar__icon {
+	display: inline-flex;
+	font-size: 0.9rem;
+}
+
+/* #endregion */
+
+/* #region Mobile header action bar */
+/*
+ * Takes the top bar's own slot — same height, same tone, same hairline — while messages are being
+ * picked, the way a phone's messaging app swaps its title bar for the selection's actions. Solid,
+ * like the user-persona top bar it covers.
+ */
+.msg-mbar {
+	position: fixed;
+	inset-block-start: 0;
+	inset-inline: 0;
+	z-index: var(--z-overlay);
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	block-size: var(--shell-topbar-h);
+	padding-inline: var(--space-2);
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border-block-end: var(--hairline);
+	animation: msg-mbar-in var(--dur-medium) var(--ease-emphasized);
+}
+
+.msg-mbar__count {
+	min-inline-size: 1.5rem;
+	font-size: 1.05rem;
+	font-weight: var(--fw-semibold);
+	font-variant-numeric: tabular-nums;
+}
+
+.msg-mbar__spacer {
+	flex: 1 1 auto;
+}
+
+.msg-mbar__btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.6rem;
+	block-size: 2.6rem;
+	padding: 0;
+	font-size: 1.2rem;
+	color: var(--on-surface);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-full);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-press) var(--spring-standard);
+}
+
+.msg-mbar__btn:active {
+	background: var(--surface-1);
+	transform: scale(0.92);
+}
+
+.msg-mbar__btn[aria-pressed="true"] {
+	color: var(--primary);
+}
+
+.msg-mbar__btn[data-danger="true"] {
+	color: var(--danger);
+}
+
+.msg-mbar__btn:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+@keyframes msg-mbar-in {
+	from {
+		opacity: 0;
+	}
+
+	to {
+		opacity: 1;
+	}
+}
+
+/* #endregion */
+
+/* #region Reduced motion (both channels) */
+@media (prefers-reduced-motion: reduce) {
+	.msg-format__btn,
+	.msg-reactbubble__emoji,
+	.msg-cmenu__emoji,
+	.msg-cmenu__item,
+	.msg-selbar__btn,
+	.msg-mbar__btn {
+		transition-duration: 0ms;
+	}
+
+	.msg-format__btn:active,
+	.msg-reactbubble__emoji:active,
+	.msg-cmenu__emoji:hover,
+	.msg-cmenu__emoji:focus-visible,
+	.msg-selbar__btn:active,
+	.msg-mbar__btn:active {
+		transform: none;
+	}
+
+	.msg-mbar {
+		animation: none;
+	}
+}
+
+:root[data-motion="reduced"] .msg-format__btn,
+:root[data-motion="reduced"] .msg-reactbubble__emoji,
+:root[data-motion="reduced"] .msg-cmenu__emoji,
+:root[data-motion="reduced"] .msg-cmenu__item,
+:root[data-motion="reduced"] .msg-selbar__btn,
+:root[data-motion="reduced"] .msg-mbar__btn {
+	transition-duration: 0ms;
+}
+
+:root[data-motion="reduced"] .msg-format__btn:active,
+:root[data-motion="reduced"] .msg-reactbubble__emoji:active,
+:root[data-motion="reduced"] .msg-cmenu__emoji:hover,
+:root[data-motion="reduced"] .msg-cmenu__emoji:focus-visible,
+:root[data-motion="reduced"] .msg-selbar__btn:active,
+:root[data-motion="reduced"] .msg-mbar__btn:active {
+	transform: none;
+}
+
+:root[data-motion="reduced"] .msg-mbar {
+	animation: none;
+}
+
+/* #endregion */
+
+/* #region Forced colours */
+@media (forced-colors: active) {
+	.msg-format__btn[aria-pressed="true"] {
+		border: 1px solid currentColor;
+	}
+}
+
+/* #endregion */

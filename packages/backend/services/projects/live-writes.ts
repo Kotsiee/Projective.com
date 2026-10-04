@@ -14,6 +14,8 @@ import {
 	lockedStagePriceIds,
 	MAX_PROJECT_ATTACHMENTS,
 	MAX_STAGE_SKILLS,
+	messageDeltaFor,
+	messageDeltaText,
 	MILESTONE_MAX,
 	type MoveTicket,
 	normaliseSeats,
@@ -62,6 +64,14 @@ import {
 } from "./live-support.ts";
 import { insertWithSlugRetry } from "../../core/slug-retry.ts";
 import { resolveChannelRef, UUID_RE } from "./live-support.ts";
+import { fetchMessageAttachments } from "./message-attachments.ts";
+import {
+	REPLY_ORIGINAL_COLUMNS,
+	REPLY_REFUSAL_MESSAGE,
+	replyFromRow,
+	type ReplyOriginalRow,
+	replyRefusal,
+} from "./message-replies.ts";
 
 /**
  * live-writes — the RLS-scoped WRITE path for the projects domain.
@@ -847,7 +857,11 @@ export function refusalFrom(message: string, field?: string): WriteRefusal {
 		message.includes("free address for this project") ||
 		message.includes("are limited to") ||
 		message.includes("still open") ||
-		message.includes("unsettled");
+		message.includes("unsettled") ||
+		// `comms.tg_guard_message_reply` / `tg_guard_dm_message_reply`: a reply whose original is not
+		// in the sender's own channel or thread. Matched on the full sentence the triggers share with
+		// the services' own pre-check, so the two refusals read identically.
+		message.includes(REPLY_REFUSAL_MESSAGE);
 	if (rule) {
 		return {
 			status: 422,
@@ -2530,6 +2544,21 @@ function dayLabel(iso: string, now: number): string {
  *
  * A failed attachment link does NOT fail the send. The message is already committed at that point,
  * and refusing the whole call would report a failure for something the reader can see in the channel.
+ *
+ * ## A reply is checked before it is written, and again by the database
+ *
+ * `replyToId` must name a message of THIS channel that the caller can read; anything else is the one
+ * {@link replyRefusal}, before any row exists. `comms.tg_guard_message_reply` enforces the same rule
+ * on the insert itself, so the pre-check is about answering in the composer's terms (a field error,
+ * the original's quote on success) rather than about safety — and the trigger's raise maps onto the
+ * identical refusal through {@link refusalFrom} if the two ever disagree.
+ *
+ * ## The echo is the STORED row
+ *
+ * The returned message is mapped from the `body` / `body_delta` the insert reads back, never from the
+ * payload. `trg_mask_message_pii` may have rewritten the body and dropped the formatting during the
+ * project's protected phase, and the stored body may be clamped; the sender's own bubble has to show
+ * exactly what everybody else will read, or the masking is invisible to the one person it changed.
  */
 export async function insertProjectMessage(
 	actor: ReadActor & { accessToken: string },
@@ -2563,7 +2592,27 @@ export async function insertProjectMessage(
 	if (channelError) throw new Error(`comms.project_channels read failed: ${channelError.message}`);
 	if (!channel) return null;
 
+	// The original a reply quotes, read under the caller's own policy and scoped to THIS channel — the
+	// scope is the rule, not a filter: an id from another room the caller happens to belong to is a
+	// refusal, exactly as the trigger would make it. A malformed id is the same refusal rather than a
+	// `22P02` from the uuid column. Soft-deleted originals are deliberately NOT excluded; see the
+	// trigger's docblock in 00001300 for why replying to one is allowed.
+	let original: ReplyOriginalRow | undefined;
+	if (input.replyToId !== null) {
+		if (!UUID_RE.test(input.replyToId)) return { refusal: replyRefusal() };
+		const read = await db
+			.from("project_messages")
+			.select(REPLY_ORIGINAL_COLUMNS)
+			.eq("channel_id", channelId)
+			.eq("id", input.replyToId)
+			.maybeSingle();
+		if (read.error) throw new Error(`comms.project_messages read failed: ${read.error.message}`);
+		if (!read.data) return { refusal: replyRefusal() };
+		original = read.data as unknown as ReplyOriginalRow;
+	}
+
 	const attachmentIds = input.attachmentIds.filter((id) => UUID_RE.test(id));
+	const body = clamp(input.text, RICH_TEXT_MAX);
 	const { data, error } = await db
 		.from("project_messages")
 		.insert({
@@ -2572,14 +2621,25 @@ export async function insertProjectMessage(
 			// same thing, so a mismatch would be refused — but sending a value the policy has to reject
 			// is how a client comes to believe it may choose an author.
 			sender_user_id: actor.userId,
-			body: clamp(input.text, RICH_TEXT_MAX),
+			body,
+			// Only a Delta that spells the body actually being stored. The send schema's refine already
+			// ties it to `text`, but this module is also reached with typed values that never passed
+			// that refine, and `body` is `text` after the clamp — a Delta that disagrees with the stored
+			// body is one every reader would discard, so it is not written at all.
+			body_delta: input.delta && messageDeltaText(input.delta) === body ? input.delta : null,
+			reply_to_id: original?.id ?? null,
 			has_attachments: attachmentIds.length > 0,
 			is_audio: input.audio !== null,
 		})
-		.select("id, created_at")
+		.select("id, created_at, body, body_delta")
 		.maybeSingle();
-	if (error) return { refusal: refusalFrom(error.message, "text") };
-	const row = data as { id?: string; created_at?: string } | null;
+	if (error) {
+		const field = error.message.includes(REPLY_REFUSAL_MESSAGE) ? "replyToId" : "text";
+		return { refusal: refusalFrom(error.message, field) };
+	}
+	const row = data as
+		| { id?: string; created_at?: string; body?: string; body_delta?: unknown }
+		| null;
 	if (!row?.id) return { refusal: refusalFrom("project_messages insert returned no id", "text") };
 
 	if (attachmentIds.length > 0) {
@@ -2600,7 +2660,13 @@ export async function insertProjectMessage(
 	}
 
 	const createdAt = row.created_at ?? new Date(now).toISOString();
-	const parties = await fetchParties(actor, [actor.userId]);
+	const parties = await fetchParties(actor, [actor.userId, original?.sender_user_id]);
+	// Read back through the feed's own loader, so the echo and the next page agree on what each file
+	// is called and where it opens.
+	const attachments = attachmentIds.length > 0
+		? (await fetchMessageAttachments(actor, "comms.project_messages", [row.id])).get(row.id) ?? []
+		: [];
+	const text = clamp(row.body ?? body, RICH_TEXT_MAX);
 	return {
 		data: {
 			id: row.id,
@@ -2610,11 +2676,23 @@ export async function insertProjectMessage(
 			dayLabel: dayLabel(createdAt, now),
 			sender: senderOf(actor.userId, parties.get(actor.userId)),
 			isOwn: true,
-			text: clamp(input.text, 4000),
-			// The attachment projection needs the `files.items` rows the ids point at, which the feed's
-			// own read already assembles. Returning them empty here and letting the next page fill them
-			// in is one assembler rather than two that can disagree about what a file is called.
-			attachments: [],
+			text,
+			// Read off the stored column against the text being returned, so a body the PII trigger
+			// rewrote (Delta dropped) or the clamp above shortened renders plain, as it will for everyone.
+			delta: messageDeltaFor(row.body_delta, text),
+			replyTo: original
+				? replyFromRow(
+					original.id,
+					original,
+					clampOr(
+						senderOf(original.sender_user_id, parties.get(original.sender_user_id)).name,
+						NAME_MAX,
+						"Unknown",
+					),
+					actor.userId,
+				)
+				: null,
+			attachments,
 			audio: input.audio,
 			system: null,
 			reactions: [],

@@ -2,9 +2,17 @@ import { assert, assertEquals, assertNotEquals } from "@std/assert";
 import { ArcCache, cacheKey, invalidatePrefix, tenantPrefix } from "../../core/cache.ts";
 import { ProjectBackendService } from "./ProjectBackendService.ts";
 import { findProjectSetup } from "./setup-fixtures.ts";
+import { findMessagePage } from "./messages-fixtures.ts";
+import { REPLY_REFUSAL_MESSAGE } from "./message-replies.ts";
 import { buildStubCard, resetWriteStore, setupPatchFrom, writeOwnerOf } from "./write-store.ts";
 import type { ReadActor } from "../read-actor.ts";
-import type { CommitTicket } from "@projective/types/projects";
+import {
+	type CommitTicket,
+	messageDeltaText,
+	MessagePageSchema,
+	normalizeMessageDelta,
+	type SendProjectMessage,
+} from "@projective/types/projects";
 
 /**
  * write-store_test — the properties the projects write path is only correct because of.
@@ -31,6 +39,20 @@ function actorOf(userId: string, contextId = ""): ReadActor {
 
 const ALICE = actorOf("u-alice");
 const BOB = actorOf("u-bob");
+
+/** A send into the fixture channel — plain and not a reply unless overridden. */
+function sendOf(text: string, overrides: Partial<SendProjectMessage> = {}): SendProjectMessage {
+	return {
+		projectId: SLUG,
+		channelId: CHANNEL,
+		text,
+		delta: null,
+		replyToId: null,
+		attachmentIds: [],
+		audio: null,
+		...overrides,
+	};
+}
 
 /** A minimal, valid commit payload against a real fixture stage. */
 function commitOf(overrides: Partial<CommitTicket> = {}): CommitTicket {
@@ -230,13 +252,7 @@ Deno.test("a write is refused when nobody is signed in", async () => {
 // #region Messages
 Deno.test("a sent message lands on the latest page and not on an older cursor page", async () => {
 	resetWriteStore();
-	const sent = await ProjectBackendService.sendMessage({
-		projectId: SLUG,
-		channelId: CHANNEL,
-		text: "Kicking off the audit.",
-		attachmentIds: [],
-		audio: null,
-	}, ALICE);
+	const sent = await ProjectBackendService.sendMessage(sendOf("Kicking off the audit."), ALICE);
 	assert(sent.ok, sent.message);
 
 	const latest = await ProjectBackendService.messages(
@@ -256,13 +272,7 @@ Deno.test("a sent message lands on the latest page and not on an older cursor pa
 
 Deno.test("a sent message is attributed to the viewer the corpus already knows", async () => {
 	resetWriteStore();
-	const sent = await ProjectBackendService.sendMessage({
-		projectId: SLUG,
-		channelId: CHANNEL,
-		text: "Second note.",
-		attachmentIds: [],
-		audio: null,
-	}, ALICE);
+	const sent = await ProjectBackendService.sendMessage(sendOf("Second note."), ALICE);
 
 	const page = await ProjectBackendService.messages(
 		{ projectId: SLUG, channelId: CHANNEL },
@@ -275,6 +285,79 @@ Deno.test("a sent message is attributed to the viewer the corpus already knows",
 	// identity here would produce.
 	assertEquals(sent.data!.message.sender!.id, fixtureOwn!.sender!.id);
 	assertEquals(sent.data!.message.sender!.avatar, fixtureOwn!.sender!.avatar);
+});
+
+Deno.test("the channel fixtures carry formatting that spells its text and quotes of their own channel", () => {
+	const latest = findMessagePage({ projectId: SLUG, channelId: CHANNEL })!;
+	// The page the route serialises must satisfy the SSOT — a quote over its bounds or a Delta the
+	// schema rejects fails here rather than in a browser.
+	MessagePageSchema.parse(latest);
+
+	const formatted = latest.messages.filter((m) => m.delta !== null);
+	assert(formatted.length >= 3);
+	for (const m of formatted) assertEquals(messageDeltaText(m.delta!), m.text);
+
+	const replies = latest.messages.filter((m) => m.replyTo !== null);
+	assertEquals(replies.length, 3);
+	for (const reply of replies) {
+		const original = latest.messages.find((m) => m.id === reply.replyTo!.id);
+		assert(original, "a quote names a message of the same channel");
+		assertEquals(reply.replyTo!.isOwn, original.isOwn);
+	}
+	assert(replies.some((m) => m.replyTo!.isOwn), "one reply quotes the viewer's own message");
+	assert(latest.pinned.some((m) => m.replyTo !== null), "the pinned banner keeps its quote");
+});
+
+Deno.test("a stub reply quotes a message of its own channel and refuses any other", async () => {
+	resetWriteStore();
+	const corpus = findMessagePage({ projectId: SLUG, channelId: CHANNEL })!.messages;
+	const memo = corpus.find((m) => m.isOwn && m.audio !== null)!;
+
+	const reply = await ProjectBackendService.sendMessage(
+		sendOf("Booked for Thursday.", { replyToId: memo.id }),
+		ALICE,
+	);
+	assert(reply.ok, reply.message);
+	// A text-less original is labelled by what it carried, so its quote is not an empty line.
+	assertEquals(reply.data!.message.replyTo, {
+		id: memo.id,
+		senderName: memo.sender!.name,
+		isOwn: true,
+		excerpt: "",
+		media: "audio",
+		available: true,
+	});
+
+	// The viewer's own sent message is quotable — it is on the page the composer shows.
+	const followUp = await ProjectBackendService.sendMessage(
+		sendOf("Moved to Friday.", { replyToId: reply.data!.message.id }),
+		ALICE,
+	);
+	assert(followUp.ok, followUp.message);
+	assertEquals(followUp.data!.message.replyTo!.excerpt, "Booked for Thursday.");
+
+	// A system notice has no author to answer; another channel's message is outside the room; an
+	// unknown id names nothing. One refusal for all three, on the field, in the trigger's own words.
+	const notice = corpus.find((m) => m.type === "system")!;
+	const elsewhere = findMessagePage({ projectId: SLUG, channelId: "design" })!.messages.at(-1)!;
+	for (const replyToId of [notice.id, elsewhere.id, `${CHANNEL}-m-9999`]) {
+		const refused = await ProjectBackendService.sendMessage(
+			sendOf("Lost quote.", { replyToId }),
+			ALICE,
+		);
+		assertEquals(refused.ok, false);
+		assertEquals(refused.status, 422);
+		assertEquals(refused.message, REPLY_REFUSAL_MESSAGE);
+		assertEquals(refused.errors?.replyToId, "not_allowed");
+	}
+
+	// The Delta rides along only while it spells the text.
+	const bold = normalizeMessageDelta([{ insert: "Locked.", attributes: { bold: true } }]);
+	const formatted = await ProjectBackendService.sendMessage(
+		sendOf("Locked.", { delta: bold }),
+		ALICE,
+	);
+	assertEquals(formatted.data!.message.delta, bold);
 });
 // #endregion
 

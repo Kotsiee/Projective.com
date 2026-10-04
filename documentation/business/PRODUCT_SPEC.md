@@ -799,6 +799,27 @@ context without "ping fatigue."
   `/exit` interstitial, which asks for an explicit "I understand" first — and never opens a
   blocked link at all. A link not yet checked also goes through `/exit`, so the safe default holds
   before the verdict arrives. The interstitial never forwards anybody by itself.
+- **Formatting (every channel and conversation).** A message may carry four inline marks —
+  **bold**, _italic_, underline and ~~strikethrough~~ — applied by highlighting text while writing.
+  Nothing else (no headings, lists, colours or embedded links: a written link is still detected and
+  safety-checked as above). The words are stored once as plain text, which is what search,
+  notifications, previews and the protected-phase PII mask read; the formatting is stored beside
+  them and can never add a word the plain text lacks. A message whose text the PII mask rewrote is
+  shown plain — formatting is dropped rather than risk showing what was masked.
+- **Replies.** Any message can be answered with a reply, which quotes the original (author and a
+  one-line excerpt) and jumps to it when pressed. A reply always belongs to the same channel or
+  conversation as its original; an original that is later deleted, or that the reader can no longer
+  see, is quoted as "Original message unavailable" rather than disappearing. One reply answers one
+  message — replying to several at once is not offered.
+- **Files in messages.** A file sent in a conversation or channel is readable by everyone who can
+  read that message — the recipient opens and downloads it exactly as the sender can — and by
+  nobody else. Attaching a file is only possible for a file the sender can already read.
+- **Long messages.** A message may be up to 8,000 characters. Over 750 characters (or 10 lines)
+  it shows its first four lines with _Show more_; over 4,000 it shows as a card that opens the
+  whole message in a reading view.
+- **Selecting messages.** Readers can select several messages (Ctrl/Shift-click, the arrow keys, or
+  a long press on a phone) to copy them together — the copy reads as a transcript with who said
+  what and when. Selecting is a reading aid only: it changes nothing anybody else sees.
 - **Sharing:** every _Share_ control on the platform (a discovery card, a listing, a project)
   opens ONE share surface: the same ranked people first (a share is a message with a link — it
   lands in the pair's DM), then the external quick actions (Snapchat · WhatsApp · Facebook ·

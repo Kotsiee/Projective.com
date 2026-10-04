@@ -96,7 +96,7 @@ CLAUDE.md §6 — RLS is always on).
 | _send_messages_if_member_             | `comms.project_messages`             | `INSERT` | `sender_user_id = auth.uid()` **AND** channel access            |
 | _edit_own_messages_                   | `comms.project_messages`             | `UPDATE` | Both arms: `sender_user_id = auth.uid()` **AND** channel access |
 | _view_attachments_if_member_          | `comms.message_attachments`          | `SELECT` | Channel access (project messages) or DM participation           |
-| _Users link own message attachments_  | `comms.message_attachments`          | `INSERT` | Only for a message the caller sent                              |
+| _Users link own message attachments_  | `comms.message_attachments`          | `INSERT` | Only for a message the caller sent, and only for a file the caller can already read (`files.fn_can_read`) — Decision #132 |
 | _view_channel_files_if_member_        | `comms.channel_files`                | `SELECT` | Channel access (`'project'`) or DM participation (`'dm'`)       |
 | _register_channel_files_if_member_    | `comms.channel_files`                | `INSERT` | Same predicate as the read                                      |
 | _view_channel_participants_if_member_ | `comms.project_channel_participants` | `SELECT` | `comms.has_channel_access(channel_id)`                          |
@@ -126,6 +126,13 @@ so an edit cannot outlive the sender's membership of the room.
 
 Soft delete goes through this same policy (`deleted_at`); nothing here is hard-deleted (root
 `CLAUDE.md` §5).
+
+What the policy cannot hold is a REPLY staying in its room: it admits any column the sender owns,
+`reply_to_id` and `channel_id` included, so an edit could point a reply's quote at a message from a
+channel the room's readers may not be in. That rule is a trigger rather than a policy —
+`comms.tg_guard_message_reply` fires `BEFORE INSERT OR UPDATE OF reply_to_id, channel_id` (see
+[Functions.md](Functions.md)) — so it holds for this policy's writes as much as for the `INSERT`
+one's. `comms.dm_messages` carries the same guard, although it has no client `UPDATE` policy today.
 
 ### `comms.channel_files` — the register a channel file is listed in
 

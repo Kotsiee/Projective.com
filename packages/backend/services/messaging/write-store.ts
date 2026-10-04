@@ -1,9 +1,11 @@
 import type { SendConversationMessage } from "@projective/types/messaging";
-import type {
-	ChatMessage,
-	MessageAttachment,
-	MessagePage,
-	MessageSender,
+import {
+	type ChatMessage,
+	type MessageAttachment,
+	messageDeltaFor,
+	type MessagePage,
+	type MessageReply,
+	type MessageSender,
 } from "@projective/types/projects";
 import type { ReadActor } from "../read-actor.ts";
 import { VIEWER } from "./conversation-fixtures.ts";
@@ -67,6 +69,19 @@ export function sentConversationCount(owner: string, conversationId: string): nu
 	return peekBucket(owner)?.get(conversationId)?.length ?? 0;
 }
 
+/**
+ * One message this viewer sent into a conversation, by id — the half of a reply's original the
+ * corpus cannot answer for. Keyed by conversation, so an id sent into another thread is a miss, as
+ * it is for `comms.tg_guard_dm_message_reply`.
+ */
+export function findSentConversationMessage(
+	owner: string,
+	conversationId: string,
+	messageId: string,
+): ChatMessage | undefined {
+	return peekBucket(owner)?.get(conversationId)?.find((m) => m.id === messageId);
+}
+
 /** The stub path's author: the fixture corpus's own acting viewer, so the face matches the feed. */
 export function stubViewerSender(): MessageSender {
 	return { id: VIEWER.id, name: VIEWER.name, avatar: VIEWER.avatar, handle: VIEWER.handle };
@@ -86,12 +101,18 @@ function clockLabel(now: number): string {
  * The attachment projection cannot know the file's real name from an id alone — the live read joins
  * `files.items` for that — so a stub attachment carries a positional label. The row is honest about
  * what it is: a reference to an asset the viewer attached, rendered as a file card.
+ *
+ * `input.text` is what is STORED — the service hands over the PII-masked text when the stub's
+ * contact filter applied — and the Delta survives only while it still spells it, which is the stub
+ * twin of `comms.tg_mask_dm_message_pii` dropping the formatting of a body it rewrote. `replyTo` is
+ * resolved (or refused) by the caller.
  */
 export function buildStubConversationMessage(
 	input: SendConversationMessage,
 	sender: MessageSender,
 	ordinal: number,
 	now: number,
+	replyTo: MessageReply | null = null,
 ): ChatMessage {
 	const attachments: MessageAttachment[] = input.attachmentIds.map((id, index) => ({
 		id,
@@ -111,6 +132,8 @@ export function buildStubConversationMessage(
 		sender,
 		isOwn: true,
 		text: input.text,
+		delta: messageDeltaFor(input.delta, input.text),
+		replyTo,
 		attachments,
 		audio: input.audio,
 		system: null,

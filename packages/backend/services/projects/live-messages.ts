@@ -5,22 +5,23 @@ import {
 	clampOr,
 	commsDb,
 	fetchParties,
-	filesDb,
 	type PartyRow,
 	projectsDb,
 	senderOf,
 } from "./live-support.ts";
-import type {
-	ChatMessage,
-	MessageAttachment,
-	MessageAttachmentKind,
-	MessagePage,
-	MessagePageParams,
-	MessageReaction,
-	MessageSender,
+import {
+	type ChatMessage,
+	type MessageAttachment,
+	messageDeltaFor,
+	type MessagePage,
+	type MessagePageParams,
+	type MessageReaction,
+	type MessageReply,
+	type MessageSender,
 } from "@projective/types/projects";
-import { describeFile, type FileKind } from "@projective/types/files";
 import { resolveChannelRef, UUID_RE } from "./live-support.ts";
+import { REPLY_ORIGINAL_COLUMNS, replyFromRow, type ReplyOriginalRow } from "./message-replies.ts";
+import { fetchMessageAttachments } from "./message-attachments.ts";
 
 /**
  * live-messages — the RLS-scoped Postgres read path for ONE project channel's conversation
@@ -76,7 +77,21 @@ import { resolveChannelRef, UUID_RE } from "./live-support.ts";
  * None of those four tables can be embedded: `message_id` carries NO foreign key (Postgres cannot
  * point one column at two parents), so PostgREST has no relationship to traverse. Each is a second
  * query keyed on the page's message ids, and the denormalised `has_attachments` / `is_audio` booleans
- * on the message row are advisory — **no trigger maintains them** — so they are never read as truth.
+ * on the message row are advisory — **no trigger maintains them** — so they are never read as truth
+ * about what a bubble renders. Their one reader is a reply quote's `media` label, which is a word on
+ * a quote rather than a tile; `./message-replies.ts` states why that is the right trade.
+ *
+ * ## Formatting and replies
+ *
+ * `body_delta` is shown only when it spells exactly the text this module returns
+ * (`messageDeltaFor`). The text is clamped and may be a PII rewrite, and in either case the Delta no
+ * longer agrees and the bubble renders plain — formatting can be lost here, never words invented.
+ *
+ * `reply_to_id` is a self-reference, so the original is one more `comms.project_messages` row. An
+ * original already on the page (or in the pinned set) is reused; only the ones scrolled out of the
+ * window cost a read, issued once for the whole page ({@link fetchReplyOriginals}). That read is
+ * SECONDARY like every other enrichment: a failure, an original RLS withholds, and a soft-deleted
+ * original all resolve to the same `available: false` quote rather than failing the page.
  */
 
 // #region Constants
@@ -87,23 +102,14 @@ const DEFAULT_PAGE = 28;
 /** Hard ceiling on a page. `MessagePageParamsSchema.limit` is `max(100)`; this restates it server-side. */
 const MAX_PAGE = 100;
 
-/** `ChatMessage.text` is `max(4000)`; `comms.project_messages.body` is unbounded `text`. */
-const MESSAGE_TEXT_MAX = 4000;
+/** `ChatMessage.text` is `max(8000)` (the send cap); `comms.project_messages.body` is unbounded `text`. */
+const MESSAGE_TEXT_MAX = 8000;
 
 /** `MessageSender.name` is `min(1).max(120)` over three unbounded `org.users_public` columns. */
 const SENDER_NAME_MAX = 120;
 
 /** `MessageSender.handle` is `max(40)` over the unbounded, UNIQUE `org.users_public.username`. */
 const SENDER_HANDLE_MAX = 40;
-
-/** `MessageAttachment.name` is `max(200)`; `files.items.display_name` is unbounded `text`. */
-const ATTACHMENT_NAME_MAX = 200;
-
-/** `MessageAttachment.ext` is `max(12)`. A pathological filename can out-run it. */
-const ATTACHMENT_EXT_MAX = 12;
-
-/** `MessageAttachment.url` is `max(600)`; `files.items.link_url` is unbounded `text`. */
-const ATTACHMENT_URL_MAX = 600;
 
 /** `MessagePageSchema.pinned` is `.max(3)` and THROWS — the banner set is truncated before return. */
 const PINNED_MAX = 3;
@@ -130,28 +136,28 @@ const PINNED_MAX = 3;
 const PIN_SCAN_CAP = 100;
 
 /** The polymorphic discriminator for a project-channel message. See the module docblock. */
-const PROJECT_MESSAGE_TABLE = "comms.project_messages";
+const PROJECT_MESSAGE_TABLE = "comms.project_messages" as const;
 
-/** The `comms.project_messages` columns one bubble needs. */
+/**
+ * The `comms.project_messages` columns one bubble needs.
+ *
+ * A superset of `REPLY_ORIGINAL_COLUMNS`, so a message on the page can serve as the original of a
+ * reply on the same page without being read twice — which is the common case, since people answer
+ * what they can see.
+ */
 const MESSAGE_COLUMNS = [
 	"id",
 	"channel_id",
 	"sender_user_id",
 	"body",
+	"body_delta",
+	"reply_to_id",
+	"has_attachments",
+	"is_audio",
 	"created_at",
 	"deleted_at",
 ].join(", ");
 
-/** The `files.items` columns an attachment tile needs. See {@link toAttachment} for what is absent. */
-const FILE_COLUMNS = [
-	"id",
-	"display_name",
-	"original_name",
-	"mime_type",
-	"source",
-	"link_url",
-	"external_web_url",
-].join(", ");
 
 // #endregion
 
@@ -164,32 +170,12 @@ interface ChannelRow {
 }
 
 /** One `comms.project_messages` row as selected by {@link MESSAGE_COLUMNS}. */
-interface MessageRow {
-	id: string;
+interface MessageRow extends ReplyOriginalRow {
 	channel_id: string;
-	sender_user_id: string;
-	body: string;
+	/** Raw `jsonb`; it reaches a bubble only through `messageDeltaFor`, which parses it. */
+	body_delta: unknown;
+	reply_to_id: string | null;
 	created_at: string;
-	deleted_at: string | null;
-}
-
-/** One `comms.message_attachments` link row. `message_id` carries no FK — see the module docblock. */
-interface AttachmentLinkRow {
-	id: string;
-	message_id: string;
-	attachment_id: string;
-	created_at: string;
-}
-
-/** One `files.items` row as selected by {@link FILE_COLUMNS}. */
-interface FileRow {
-	id: string;
-	display_name: string | null;
-	original_name: string | null;
-	mime_type: string | null;
-	source: string | null;
-	link_url: string | null;
-	external_web_url: string | null;
 }
 
 /** One `comms.message_reactions` row — a chip count is a fold over these, never a stored number. */
@@ -212,6 +198,8 @@ interface MessageContext {
 	reactions: Map<string, MessageReaction[]>;
 	pinnedIds: ReadonlySet<string>;
 	favoritedIds: ReadonlySet<string>;
+	/** The originals this page's replies quote, by id — on-page rows and fetched ones alike. */
+	originals: ReadonlyMap<string, ReplyOriginalRow>;
 	viewerId: string;
 	now: number;
 }
@@ -288,127 +276,6 @@ function messageSender(userId: string, row: PartyRow | undefined): MessageSender
 		avatar: party.avatar,
 		handle,
 	};
-}
-
-// #endregion
-
-// #region Attachments
-
-/**
- * The rendering bucket a file maps onto, narrowed from the nine-member {@link FileKind} to the four
- * `MessageAttachmentKind` a bubble can draw.
- *
- * A visual kind is DOWNGRADED to `file` when there is no servable URL, and that is the important half
- * of this function. `MessageMedia` renders `<img src={att.url}>` for `image` and `video` and nothing
- * else; an empty `src` re-requests the current document and paints a broken tile with no explanation.
- * A `file` tile draws the type glyph and the filename instead — the same asset, honestly described as
- * something we can name but not yet serve. `pdf` needs no downgrade: its tile never renders an image.
- */
-function attachmentKindFor(kind: FileKind, servable: boolean): MessageAttachmentKind {
-	if (kind === "pdf") return "pdf";
-	if (servable && (kind === "image" || kind === "video")) return kind;
-	return "file";
-}
-
-/**
- * Map a `files.items` row onto one attachment tile.
- *
- * **`url` has no live source for a STORED asset.** `files.items` records `bucket_id` + `storage_path`
- * and nothing a browser can fetch: turning those into a signed, served URL is a files-domain concern
- * behind its own gate, and that path does not exist yet. So the URL is taken from the two columns
- * that already hold real, servable addresses — `link_url` for a link asset and `external_web_url` for
- * a mounted connector file — and is otherwise empty, with {@link attachmentKindFor} keeping an
- * unservable image out of an `<img>`. Composing a plausible storage path instead would render a
- * broken image on every attachment in the product, which is strictly worse than a named tile that
- * does not open yet.
- */
-function toAttachment(link: AttachmentLinkRow, file: FileRow): MessageAttachment {
-	const name = file.display_name?.trim() || file.original_name?.trim() || "";
-	const url = clamp(file.link_url ?? file.external_web_url, ATTACHMENT_URL_MAX);
-	const described = describeFile(file.original_name ?? name, file.mime_type ?? undefined);
-	return {
-		// The LINK row's id, not the file's. `MessageAttachment.id` is a render key and nothing on
-		// `comms.message_attachments` stops one asset being attached to a message twice, which would
-		// collide two Preact children on one key. The link row is unique by construction.
-		id: link.id,
-		kind: attachmentKindFor(described.kind, url.length > 0),
-		url,
-		name: clampOr(name, ATTACHMENT_NAME_MAX, "Attachment"),
-		ext: clamp(described.extension, ATTACHMENT_EXT_MAX),
-		// No intrinsic dimension columns exist on `files.items`. See the module docblock.
-		width: null,
-		height: null,
-	};
-}
-
-/**
- * Attachments per message id, for the given messages.
- *
- * Two queries because there is no third option: `message_id` carries no foreign key, so PostgREST
- * cannot embed `files.items` through the link table, and the link table cannot be embedded from the
- * message either. Both reads are SECONDARY — a failure costs the tiles on a page that otherwise
- * resolved, never the page — so neither throws.
- *
- * A link row whose `files.items` row does not come back is DROPPED rather than rendered as a
- * placeholder. RLS is the usual reason (`files.fn_can_read` admits a project-bucket mount to anyone
- * with project access, so the common case resolves, and a miss means the asset genuinely is not this
- * project's and not shared with the viewer); soft deletion is the other. In both cases there is no
- * name, no type and no address to draw, and a nameless tile that opens nothing tells the reader less
- * than its absence does. The trade is real and worth knowing: the bubble then shows fewer attachments
- * than the message carries, silently.
- */
-async function fetchAttachments(
-	actor: ReadActor & { accessToken: string },
-	messageIds: readonly string[],
-): Promise<Map<string, MessageAttachment[]>> {
-	const out = new Map<string, MessageAttachment[]>();
-	if (messageIds.length === 0) return out;
-
-	const { data, error } = await commsDb(actor)
-		.from("message_attachments")
-		.select("id, message_id, attachment_id, created_at")
-		.eq("message_table", PROJECT_MESSAGE_TABLE)
-		.in("message_id", messageIds as string[])
-		.order("created_at", { ascending: true })
-		.order("id", { ascending: true });
-
-	if (error) return out;
-	const links = (data ?? []) as unknown as AttachmentLinkRow[];
-	if (links.length === 0) return out;
-
-	const files = await fetchFiles(actor, links.map((link) => link.attachment_id));
-
-	for (const link of links) {
-		const file = files.get(link.attachment_id);
-		if (!file) continue;
-		const list = out.get(link.message_id) ?? [];
-		list.push(toAttachment(link, file));
-		out.set(link.message_id, list);
-	}
-	return out;
-}
-
-/** The `files.items` rows behind a set of attachment ids; a miss degrades to an absent tile. */
-async function fetchFiles(
-	actor: ReadActor & { accessToken: string },
-	fileIds: readonly string[],
-): Promise<Map<string, FileRow>> {
-	const out = new Map<string, FileRow>();
-	const unique = [...new Set(fileIds)].filter((id) => id.length > 0);
-	if (unique.length === 0) return out;
-
-	const { data, error } = await filesDb(actor)
-		.from("items")
-		.select(FILE_COLUMNS)
-		.in("id", unique)
-		// Explicit, even though `files.fn_can_read` already refuses a soft-deleted row: the policy is
-		// the security gate and this is the meaning gate, and a read that depends on a policy to hide
-		// deleted content breaks quietly the day that policy is rewritten.
-		.is("deleted_at", null);
-
-	if (error) return out;
-	for (const row of (data ?? []) as unknown as FileRow[]) out.set(row.id, row);
-	return out;
 }
 
 // #endregion
@@ -540,6 +407,61 @@ async function fetchPinnedRows(
 
 	if (error) return [];
 	return (data ?? []) as unknown as MessageRow[];
+}
+
+// #endregion
+
+// #region Replies
+
+/**
+ * The originals the given replies quote, keyed by id — rows already in hand first, the rest read in
+ * ONE query.
+ *
+ * `in hand` is the page plus the pinned set: they were selected with every column a quote needs, and
+ * a reply usually answers something still on screen, so most pages issue no read here at all.
+ *
+ * Scoped to `channel_id` although `comms.tg_guard_message_reply` already keeps every reply inside its
+ * own channel. The predicate is the MEANING of the quote, not a second guard: a quote from another
+ * room would show this channel's readers words they may not be cleared for, and a read that is only
+ * correct because a trigger elsewhere held is the kind that goes wrong silently. Soft-deleted rows are
+ * deliberately NOT filtered: what a deleted original looks like is decided once, in the quote mapper
+ * (`replyFromRow`), and a read that dropped them here would be making that decision a second time.
+ *
+ * Secondary, like every enrichment: a failed read costs the quotes their content (they read as
+ * unavailable), never the page.
+ */
+async function fetchReplyOriginals(
+	actor: ReadActor & { accessToken: string },
+	channelId: string,
+	replyIds: readonly string[],
+	inHand: readonly MessageRow[],
+): Promise<Map<string, ReplyOriginalRow>> {
+	const out = new Map<string, ReplyOriginalRow>();
+	const wanted = new Set(replyIds);
+	if (wanted.size === 0) return out;
+
+	for (const row of inHand) if (wanted.has(row.id)) out.set(row.id, row);
+	const missing = [...wanted].filter((id) => !out.has(id));
+	if (missing.length === 0) return out;
+
+	const { data, error } = await commsDb(actor)
+		.from("project_messages")
+		.select(REPLY_ORIGINAL_COLUMNS)
+		.eq("channel_id", channelId)
+		.in("id", missing);
+
+	if (error) return out;
+	for (const row of (data ?? []) as unknown as ReplyOriginalRow[]) out.set(row.id, row);
+	return out;
+}
+
+/** The quote a reply renders. An original that did not resolve reads as unavailable. */
+function replyOf(replyToId: string, ctx: MessageContext): MessageReply {
+	const original = ctx.originals.get(replyToId);
+	const name = original
+		? messageSender(original.sender_user_id, ctx.parties.get(original.sender_user_id)).name
+		: "";
+	return replyFromRow(replyToId, original, name, ctx.viewerId);
 }
 
 // #endregion
@@ -691,11 +613,13 @@ async function countChannelMessages(
 /**
  * Map one `comms.project_messages` row onto the feed's {@link ChatMessage} projection.
  *
- * `text` is CLAMPED, not passed through: `body` is unbounded `text`, the field is `max(4000)`, and
+ * `text` is CLAMPED, not passed through: `body` is unbounded `text`, the field is `max(8000)`, and
  * Zod throws rather than truncating — so a single long message would fail the whole page. It may also
- * already be a PII-masked rewrite; see the module docblock.
+ * already be a PII-masked rewrite; see the module docblock. The Delta is checked against THIS text,
+ * so a clamped or rewritten body renders plain.
  */
 function toChatMessage(row: MessageRow, ctx: MessageContext): ChatMessage {
+	const text = clamp(row.body, MESSAGE_TEXT_MAX);
 	return {
 		id: row.id,
 		// Always `user`. There is no system-message source in this schema — see the module docblock.
@@ -705,7 +629,9 @@ function toChatMessage(row: MessageRow, ctx: MessageContext): ChatMessage {
 		dayLabel: dayLabel(row.created_at, ctx.now),
 		sender: messageSender(row.sender_user_id, ctx.parties.get(row.sender_user_id)),
 		isOwn: row.sender_user_id === ctx.viewerId,
-		text: clamp(row.body, MESSAGE_TEXT_MAX),
+		text,
+		delta: messageDeltaFor(row.body_delta, text),
+		replyTo: row.reply_to_id ? replyOf(row.reply_to_id, ctx) : null,
 		attachments: ctx.attachments.get(row.id) ?? [],
 		audio: null,
 		system: null,
@@ -817,11 +743,21 @@ export async function fetchChannelMessagePage(
 	// most three extra ids, and one code path that cannot drift from the other.
 	const subjects = [...rows, ...pinnedRows];
 	const subjectIds = [...new Set(subjects.map((row) => row.id))];
-	const senderIds = subjects.map((row) => row.sender_user_id);
+
+	// The originals come before the parties because their authors have to be named too. This is the
+	// one dependent step a reply adds, and only when an original is off the page.
+	const replyIds = subjects
+		.map((row) => row.reply_to_id)
+		.filter((id): id is string => id !== null);
+	const originals = await fetchReplyOriginals(actor, channel.id, replyIds, subjects);
+	const senderIds = [
+		...subjects.map((row) => row.sender_user_id),
+		...[...originals.values()].map((row) => row.sender_user_id),
+	];
 
 	const [parties, attachments, reactions, favoritedIds] = await Promise.all([
 		fetchParties(actor, senderIds),
-		fetchAttachments(actor, subjectIds),
+		fetchMessageAttachments(actor, PROJECT_MESSAGE_TABLE, subjectIds),
 		fetchReactions(actor, subjectIds, actor.userId),
 		fetchFavorited(actor, subjectIds),
 	]);
@@ -832,6 +768,7 @@ export async function fetchChannelMessagePage(
 		reactions,
 		pinnedIds,
 		favoritedIds,
+		originals,
 		viewerId: actor.userId,
 		now,
 	};

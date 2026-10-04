@@ -302,20 +302,52 @@
 	align-items: flex-end;
 }
 
-/* Own hover time floats above the bubble (absolute — no layout shift, task §3). */
+/*
+ * The line — the bubble and, literally beside it, the side rail (ghost actions over the own sent
+ * time). Own rows run right-to-left so the rail sits on the bubble's inner side, toward the middle of
+ * the column. The rail is always laid out and only fades, so a hover never reflows the feed.
+ */
+.msg-row__line {
+	display: flex;
+	/* The rail drops beneath the bubble only when the column is too narrow to hold both side by side
+	   (a wide media grid in the pop-out window). Wrapping also keeps the rail out of the row's
+	   min-content width, so it can never widen the scroller it sits in. */
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-1);
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.msg-row[data-own="true"] .msg-row__line {
+	flex-direction: row-reverse;
+}
+
+.msg-row__side {
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 1px;
+}
+
+.msg-row[data-own="true"] .msg-row__side {
+	align-items: flex-end;
+}
+
+/* The viewer's own sent time, directly beneath the actions (task §2). */
 .msg-row__own-time {
-	position: absolute;
-	inset-block-start: -0.15rem;
-	inset-inline-end: var(--space-1);
-	transform: translateY(-100%);
+	padding-inline: 0.3rem;
 	font-size: 0.62rem;
+	font-variant-numeric: tabular-nums;
 	color: var(--text-secondary);
 	white-space: nowrap;
 	opacity: 0;
 	transition: opacity var(--dur-fast) var(--ease-standard);
 }
 
-.msg-row:hover .msg-row__own-time {
+.msg-row:hover .msg-row__own-time,
+.msg-row[data-active="true"] .msg-row__own-time {
 	opacity: 1;
 }
 
@@ -399,6 +431,217 @@
 	line-height: 1.45;
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
+}
+
+/*
+ * A long message, collapsed to four lines (`message-length.ts`). The clamp is CSS only, so the whole
+ * text stays in the DOM — copy, find-in-page and assistive technology reach all of it.
+ */
+.msg-bubble__text[data-collapsed="true"] {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 4;
+	line-clamp: 4;
+	overflow: hidden;
+}
+
+/* Show more / Show less — a text control in the bubble's own ink, so it reads on both bubble tones. */
+.msg-bubble__more {
+	display: inline-flex;
+	margin-block-start: var(--space-1);
+	padding: 0;
+	font: inherit;
+	font-size: 0.78rem;
+	font-weight: var(--fw-semibold);
+	color: inherit;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-xs);
+	cursor: pointer;
+	opacity: 0.85;
+	transition:
+		opacity var(--dur-fast) var(--ease-standard),
+		transform var(--dur-press) var(--spring-standard);
+}
+
+.msg-bubble__more:hover {
+	opacity: 1;
+	text-decoration: underline;
+	text-underline-offset: 0.15em;
+}
+
+.msg-bubble__more:active {
+	transform: scale(0.96);
+}
+
+.msg-bubble__more:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/*
+ * A message over 4,000 characters, as a card in the attachment idiom — type glyph, title, middot
+ * meta, the opening line — that opens the full text. A control inside an already-filled bubble, so it
+ * is a tint of the bubble's own ink (like the reply quote), not a second container colour.
+ */
+.msg-longcard {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+	inline-size: min(22rem, 100%);
+	padding: var(--space-2) var(--space-3);
+	font: inherit;
+	color: inherit;
+	text-align: start;
+	background: color-mix(in srgb, currentColor var(--tint), transparent);
+	border: none;
+	border-radius: var(--radius-lg);
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-press) var(--spring-standard);
+}
+
+.msg-longcard:hover {
+	background: color-mix(in srgb, currentColor var(--tint-strong), transparent);
+}
+
+.msg-longcard:active {
+	transform: scale(0.98);
+}
+
+.msg-longcard:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.msg-longcard__glyph {
+	display: inline-flex;
+	flex: none;
+	font-size: 1.4rem;
+	opacity: 0.85;
+}
+
+.msg-longcard__meta {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-inline-size: 0;
+}
+
+.msg-longcard__title {
+	font-size: 0.82rem;
+	font-weight: var(--fw-semibold);
+}
+
+.msg-longcard__sub {
+	font-size: 0.7rem;
+	font-variant-numeric: tabular-nums;
+	opacity: 0.8;
+}
+
+.msg-longcard__preview {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	overflow: hidden;
+	margin-block-start: var(--space-1);
+	font-size: 0.78rem;
+	line-height: 1.4;
+	opacity: 0.9;
+}
+
+/* The full text in its dialog — the body register, capped at the reading measure. */
+.msg-longread__when {
+	margin: 0 0 var(--space-3);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.msg-longread {
+	max-inline-size: var(--measure, 70ch);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	color: var(--on-surface);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+/* Inline marks from the composer's formatting bubble (the stored Quill Delta). */
+.msg-rich__bold {
+	font-weight: var(--fw-bold);
+}
+
+.msg-rich__underline,
+.msg-rich__strike {
+	text-decoration-thickness: from-font;
+}
+
+.msg-rich__underline {
+	text-underline-offset: 0.15em;
+}
+
+/*
+ * A reply's quote — a tonal inset of the bubble's own ink, so it reads on the accent bubble and the
+ * surface bubble alike without a second container colour or a coloured edge stripe (§B.4).
+ */
+.msg-quote {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	inline-size: 100%;
+	min-inline-size: 0;
+	margin-block-end: var(--space-1);
+	padding: 0.3rem 0.55rem;
+	font: inherit;
+	color: inherit;
+	text-align: start;
+	background: color-mix(in srgb, currentColor var(--tint), transparent);
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
+}
+
+button.msg-quote:hover {
+	background: color-mix(in srgb, currentColor var(--tint-strong), transparent);
+}
+
+button.msg-quote:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+.msg-quote[data-unavailable="true"] {
+	cursor: default;
+}
+
+.msg-quote__who {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+	font-size: 0.72rem;
+	font-weight: var(--fw-semibold);
+}
+
+.msg-quote__icon {
+	display: inline-flex;
+	font-size: 0.75rem;
+	opacity: 0.8;
+}
+
+.msg-quote__text {
+	font-size: 0.78rem;
+	line-height: 1.35;
+	opacity: 0.85;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.msg-quote[data-unavailable="true"] .msg-quote__text {
+	font-style: italic;
 }
 
 /* Corner masking — group-toward corners sharpen (task §2). Others: left side; own: right side. */
@@ -485,28 +728,21 @@
 /* #endregion */
 
 /* #region Hover action toolbar + menus */
+/*
+ * A GHOST toolbar in the side rail — no fill, no border, no shadow (task §2). The buttons are the only
+ * interactive surface, so only they take a tint, and only on hover. Own rows mirror the order so the
+ * Reply action sits nearest the bubble on both sides.
+ */
 .msg-actions {
-	position: absolute;
-	inset-block-start: -0.7rem;
 	display: flex;
 	gap: 1px;
-	padding: 2px;
-	background: var(--surface-1);
-	border: var(--hairline);
-	border-radius: var(--radius-lg);
-	box-shadow: var(--elevation-low);
 	opacity: 0;
 	pointer-events: none;
 	transition: opacity var(--dur-fast) var(--ease-standard);
-	z-index: var(--z-raised);
-}
-
-.msg-actions:not([data-own="true"]) {
-	inset-inline-end: var(--space-2);
 }
 
 .msg-actions[data-own="true"] {
-	inset-inline-start: var(--space-2);
+	flex-direction: row-reverse;
 }
 
 .msg-row:hover .msg-actions,
@@ -735,6 +971,23 @@
 	cursor: pointer;
 }
 
+/* A tile with an address is a link that opens the asset; one without is inert content. */
+a.msg-media__cell,
+a.msg-media__square {
+	text-decoration: none;
+}
+
+a.msg-media__cell:focus-visible,
+a.msg-media__square:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+span.msg-media__cell,
+span.msg-media__square {
+	cursor: default;
+}
+
 .msg-media__img {
 	inline-size: 100%;
 	block-size: 100%;
@@ -888,7 +1141,8 @@
 /* #endregion */
 
 /* #region Jump-to highlight */
-.chat-feed__row[data-highlight="true"] .msg-bubble {
+.chat-feed__row[data-highlight="true"] .msg-bubble,
+.pop-chat__row[data-highlight="true"] .msg-bubble {
 	animation: msg-flash 1.8s var(--ease-standard);
 }
 
@@ -901,6 +1155,177 @@
 	18% {
 		box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent);
 	}
+}
+
+/* #endregion */
+
+/* #region Highlight mode (selection, right-click spotlight, keyboard cursor) */
+/*
+ * While a surface is in highlight mode every message that is neither selected nor under the keyboard
+ * cursor is blurred and stepped back, and the chosen ones lift with a ring and the high elevation —
+ * the right-click spotlight is this same state with one message chosen. Holding Shift un-blurs the
+ * message under the pointer without selecting it, so a range end can be read before it is clicked.
+ * The hover toolbar steps aside, because the cursor's message now shows its actions as a menu: one
+ * menu at a time.
+ */
+.chat-feed,
+.pop-chat {
+	--msg-dim-blur: 2px;
+	--msg-dim-opacity: 0.45;
+}
+
+.msg-row:focus {
+	outline: none;
+}
+
+.msg-row,
+.chat-day,
+.msg-system {
+	transition:
+		filter var(--dur-medium) var(--ease-standard),
+		opacity var(--dur-medium) var(--ease-standard);
+}
+
+[data-msg-highlight="true"] .msg-row:not([data-selected="true"]):not([data-focused="true"]),
+[data-msg-highlight="true"] .chat-day,
+[data-msg-highlight="true"] .msg-system {
+	filter: blur(var(--msg-dim-blur));
+	opacity: var(--msg-dim-opacity);
+}
+
+[data-msg-highlight="true"][data-msg-shift="true"] .msg-row:hover {
+	filter: none;
+	opacity: 1;
+}
+
+.msg-bubble {
+	transition: box-shadow var(--dur-medium) var(--ease-standard);
+}
+
+.msg-row[data-selected="true"] .msg-bubble {
+	box-shadow:
+		0 0 0 2px var(--frame-surface, var(--surface)),
+		0 0 0 4px color-mix(in srgb, var(--primary) 60%, transparent),
+		var(--elevation-high);
+}
+
+/* The keyboard cursor — the message the menu belongs to — carries the full-strength ring. */
+.msg-row[data-focused="true"] .msg-bubble {
+	box-shadow:
+		0 0 0 2px var(--frame-surface, var(--surface)),
+		0 0 0 4px var(--primary),
+		var(--elevation-high);
+}
+
+[data-msg-highlight="true"] .msg-actions {
+	visibility: hidden;
+}
+
+/* Touch selection: a tap toggles a message, so it must not also start a text selection or callout. */
+[data-msg-touch="true"] .msg-row {
+	-webkit-user-select: none;
+	user-select: none;
+}
+
+/* #endregion */
+
+/* #region Swipe to reply (touch) */
+/*
+ * The row follows the finger through `--msg-swipe`, written by the gesture handler; on release the
+ * property is removed and the row settles back on the standard spring. The browser keeps vertical
+ * panning (`touch-action: pan-y`), which is what lets a scroll and a swipe start on the same row.
+ */
+.msg-row {
+	touch-action: pan-y;
+	-webkit-touch-callout: none;
+}
+
+.msg-row__main,
+.msg-row__gutter {
+	transform: translateX(var(--msg-swipe, 0px));
+	transition: transform var(--dur-medium) var(--spring-standard);
+}
+
+.msg-row[data-swiping="true"] .msg-row__main,
+.msg-row[data-swiping="true"] .msg-row__gutter {
+	transition: none;
+}
+
+.msg-row__swipe-cue {
+	position: absolute;
+	inset-block-start: 50%;
+	inset-inline-start: var(--space-2);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	font-size: 1rem;
+	color: var(--text-secondary);
+	background: var(--surface-2);
+	border-radius: var(--radius-full);
+	opacity: 0;
+	transform: translateY(-50%) scale(0.8);
+	transition:
+		opacity var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--spring-standard);
+	pointer-events: none;
+}
+
+.msg-row[data-swipe-dir="end"] .msg-row__swipe-cue {
+	inset-inline-start: auto;
+	inset-inline-end: var(--space-2);
+}
+
+.msg-row[data-swiping="true"] .msg-row__swipe-cue {
+	opacity: 0.6;
+}
+
+.msg-row[data-swipe-armed="true"] .msg-row__swipe-cue {
+	opacity: 1;
+	color: var(--on-primary);
+	background: var(--primary);
+	transform: translateY(-50%) scale(1);
+}
+
+/* Touch has no hover: the long press and the swipe replace the hover rail. */
+@media (hover: none) and (pointer: coarse) {
+	.msg-row__side {
+		display: none;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.msg-row__swipe-cue,
+	.msg-row[data-swipe-armed="true"] .msg-row__swipe-cue {
+		transform: translateY(-50%);
+	}
+
+	.msg-bubble__more:active,
+	.msg-longcard:active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .msg-row__swipe-cue,
+:root[data-motion="reduced"] .msg-row[data-swipe-armed="true"] .msg-row__swipe-cue {
+	transform: translateY(-50%);
+}
+
+/* #endregion */
+
+/* #region Announcements */
+.chat-feed__sr,
+.pop-chat__sr {
+	position: absolute;
+	inline-size: 1px;
+	block-size: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
 }
 
 /* #endregion */
@@ -924,7 +1349,8 @@
 		animation-duration: 0ms;
 	}
 
-	.chat-feed__row[data-highlight="true"] .msg-bubble {
+	.chat-feed__row[data-highlight="true"] .msg-bubble,
+	.pop-chat__row[data-highlight="true"] .msg-bubble {
 		animation: none;
 		box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 45%, transparent);
 	}
@@ -933,9 +1359,33 @@
 	.msg-meta__time,
 	.msg-row__own-time,
 	.msg-row__gutter-time,
-	.msg-react__emoji {
+	.msg-react__emoji,
+	.msg-row__main,
+	.msg-row__gutter,
+	.msg-row__swipe-cue,
+	.msg-row,
+	.chat-day,
+	.msg-system,
+	.msg-bubble {
 		transition-duration: 0ms;
 	}
+}
+
+:root[data-motion="reduced"] .msg-bubble__more:active,
+:root[data-motion="reduced"] .msg-longcard:active {
+	transform: none;
+}
+
+:root[data-motion="reduced"] .msg-actions,
+:root[data-motion="reduced"] .msg-row__own-time,
+:root[data-motion="reduced"] .msg-row__main,
+:root[data-motion="reduced"] .msg-row__gutter,
+:root[data-motion="reduced"] .msg-row__swipe-cue,
+:root[data-motion="reduced"] .msg-row,
+:root[data-motion="reduced"] .chat-day,
+:root[data-motion="reduced"] .msg-system,
+:root[data-motion="reduced"] .msg-bubble {
+	transition-duration: 0ms;
 }
 
 /* #endregion */

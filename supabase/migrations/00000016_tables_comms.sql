@@ -13,6 +13,9 @@
 --   * comms.dm_participants   += last_read_at, is_starred, is_archived, is_muted, deleted_at
 --   * comms.dm_participants   += inbox_folder (is_archived now derived from it)
 --   * comms.dm_messages       += pii_masked, pii_categories
+-- Folded columns (rich messages — inline formatting + replies):
+--   * comms.dm_messages       += body_delta (+ object CHECK), reply_to_id (+ self-FK)
+--   * comms.project_messages  += body_delta (+ object CHECK), reply_to_id (+ self-FK)
 -- New tables (audit gap-close): comms.auto_responses, comms.message_reactions, comms.message_pins,
 --   comms.message_favorites, comms.newsletter_subscriptions.
 -- =============================================================================================
@@ -197,9 +200,18 @@ CREATE TABLE comms.dm_messages (
         -- comms.project_messages (written by comms.tg_mask_dm_message_pii).
         pii_masked boolean NOT NULL DEFAULT false,
         pii_categories text[] NOT NULL DEFAULT '{}'::text[],
+        -- Inline formatting and the replied-to message, exactly as on comms.project_messages below —
+        -- read the reasoning there. The one difference is the scope a reply must stay inside: the
+        -- THREAD (comms.tg_guard_dm_message_reply), where a channel message stays inside its channel.
+        body_delta jsonb NULL,
+        reply_to_id uuid NULL,
         CONSTRAINT dm_messages_pkey PRIMARY KEY (id),
         CONSTRAINT dm_messages_sender_user_id_fkey FOREIGN KEY (sender_user_id) REFERENCES org.users_public (user_id),
-        CONSTRAINT dm_messages_thread_id_fkey FOREIGN KEY (thread_id) REFERENCES comms.dm_threads (id)
+        CONSTRAINT dm_messages_thread_id_fkey FOREIGN KEY (thread_id) REFERENCES comms.dm_threads (id),
+        CONSTRAINT dm_messages_body_delta_object
+            CHECK (body_delta IS NULL OR jsonb_typeof(body_delta) = 'object'),
+        CONSTRAINT dm_messages_reply_to_id_fkey
+            FOREIGN KEY (reply_to_id) REFERENCES comms.dm_messages (id) ON DELETE SET NULL
 );
 
 CREATE TABLE comms.project_channels (
@@ -232,9 +244,43 @@ CREATE TABLE comms.project_messages (
         -- Folded (0311): PII filter state during the protected phase.
         pii_masked boolean NOT NULL DEFAULT false,
         pii_categories text[] NOT NULL DEFAULT '{}'::text[],
+        -- The body's inline formatting (Bold · Italic · Underline · Strikethrough) as a Quill Delta:
+        -- the `{ ops }` envelope reduced to runs of text carrying those four marks and nothing else
+        -- (MessageDeltaSchema, packages/types/projects/message-rich.ts). NULL is the unformatted
+        -- message — the common case — and never an empty Delta.
+        --
+        -- The body is stored twice and the two must AGREE: the Delta's runs, joined, spell `body`
+        -- exactly. `body` stays the one source of words — search, notification and inbox previews,
+        -- link previews and the PII mask all read it and none of them has to learn what a Delta is —
+        -- and the Delta only says how those words are dressed. The agreement is not a CHECK because
+        -- spelling a Delta in SQL is a jsonb walk on every insert, and the rule is already held on
+        -- both sides of the column: the send schemas refuse a payload whose Delta and text differ, and
+        -- every read drops a Delta that does not spell the body it is about to show. So a stale Delta
+        -- can cost a message its formatting, never put a word on screen the body does not contain.
+        -- comms.tg_mask_message_pii NULLs it whenever it rewrites the body. The CHECK below pins only
+        -- the envelope, so a scalar or a bare array cannot land in a column every reader parses.
+        body_delta jsonb NULL,
+        -- The message this one answers; its quote renders at the top of the reply. A SELF-reference
+        -- rather than the polymorphic (message_table, message_id) pair the interaction tables use:
+        -- that convention exists only because a reaction or a pin can hang off either message table,
+        -- and a reply cannot — a channel message quotes a channel message, a DM quotes a DM — so
+        -- there is exactly one possible parent and Postgres can hold the reference itself.
+        --
+        -- What a foreign key cannot say is "and in the SAME channel": a reply pointing into a room the
+        -- reader may not be in would render a stranger's words as its quote. That half is
+        -- comms.tg_guard_message_reply (00001300), a BEFORE trigger on this table.
+        --
+        -- ON DELETE SET NULL, although nothing in the product hard-deletes a message (deleted_at is the
+        -- delete, and a soft-deleted original keeps this link — its quote then reads as unavailable).
+        -- It exists so a privacy purge of an original is never blocked by somebody having replied.
+        reply_to_id uuid NULL,
         CONSTRAINT project_messages_pkey PRIMARY KEY (id),
         CONSTRAINT project_messages_channel_id_fkey FOREIGN KEY (channel_id) REFERENCES comms.project_channels (id),
-        CONSTRAINT project_messages_sender_user_id_fkey FOREIGN KEY (sender_user_id) REFERENCES org.users_public (user_id)
+        CONSTRAINT project_messages_sender_user_id_fkey FOREIGN KEY (sender_user_id) REFERENCES org.users_public (user_id),
+        CONSTRAINT project_messages_body_delta_object
+            CHECK (body_delta IS NULL OR jsonb_typeof(body_delta) = 'object'),
+        CONSTRAINT project_messages_reply_to_id_fkey
+            FOREIGN KEY (reply_to_id) REFERENCES comms.project_messages (id) ON DELETE SET NULL
 );
 
 CREATE TABLE comms.project_channel_participants (

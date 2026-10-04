@@ -103,4 +103,24 @@ export function recordView(ref: Omit<ViewedRef, "at">, now: number = Date.now())
 		// entry, and nothing else about the click changes.
 	}
 }
+
+/**
+ * Drop references the discovery service has definitively said it cannot resolve (a 404), so a
+ * withdrawn item — or an id minted by a corpus the database no longer carries — stops costing a
+ * failed request on every page load. Callers pass only ids that came back as not-found; a 5xx or a
+ * network failure is transient and must never prune, or one outage would empty the history.
+ */
+export function forgetViews(ids: readonly string[]): void {
+	const s = store();
+	if (!s || ids.length === 0) return;
+	try {
+		const gone = new Set(ids);
+		s.setItem(
+			LocalKeys.EXPLORE_RECENT_VIEWS,
+			JSON.stringify(readViewHistory().filter((e) => !gone.has(e.id))),
+		);
+	} catch {
+		// Same quota reasoning as `recordView`: a prune that cannot be written is retried next load.
+	}
+}
 // #endregion

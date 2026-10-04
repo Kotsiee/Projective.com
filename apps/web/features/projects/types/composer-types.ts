@@ -6,6 +6,8 @@
  * schemas, not transient client state.
  */
 
+import type { MessageDelta } from "@projective/types/projects";
+
 // #region Attachments
 /** How an attachment preview renders: the real image, a video thumbnail, or a file-type glyph. */
 export type AttachmentKind = "image" | "video" | "file";
@@ -145,6 +147,13 @@ export interface ComposerPayload {
 	channelId: string;
 	/** The typed body, with any collapsed paste blocks appended back in order. */
 	text: string;
+	/**
+	 * The body's formatting as a normalised Quill Delta whose text is exactly {@link text}, or null
+	 * when there is no text (or the Delta could not be stored and the message goes plain).
+	 */
+	delta: MessageDelta | null;
+	/** The message this draft replies to, or null. */
+	replyToId: string | null;
 	/** Staged DEVICE files, in the order they were queued — the only ones with bytes to upload. */
 	files: File[];
 	/**

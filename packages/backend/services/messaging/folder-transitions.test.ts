@@ -33,6 +33,8 @@ Deno.test("a hiring request opens in Requests, and replying files the replier's 
 		{
 			conversationId: "dm-marcus",
 			text: "Thanks — happy to talk.",
+			delta: null,
+			replyToId: null,
 			attachmentIds: [],
 			audio: null,
 		},
@@ -52,7 +54,14 @@ Deno.test("a folder is per participant: one viewer's reply leaves another's Requ
 	const replier = actorOf("folders-replier");
 	const bystander = actorOf("folders-bystander");
 	const sent = await MessagingBackendService.sendMessage(
-		{ conversationId: "dm-ivy", text: "Let's set up a call.", attachmentIds: [], audio: null },
+		{
+			conversationId: "dm-ivy",
+			text: "Let's set up a call.",
+			delta: null,
+			replyToId: null,
+			attachmentIds: [],
+			audio: null,
+		},
 		replier,
 	);
 	assert(sent.ok, sent.message);
@@ -85,7 +94,14 @@ Deno.test("a reply into an archived conversation leaves it archived", async () =
 	const me = actorOf("folders-archived-reply");
 	assert((await MessagingBackendService.setFolder("dm-marcus", "archived", me)).ok);
 	const sent = await MessagingBackendService.sendMessage(
-		{ conversationId: "dm-marcus", text: "One more thing.", attachmentIds: [], audio: null },
+		{
+			conversationId: "dm-marcus",
+			text: "One more thing.",
+			delta: null,
+			replyToId: null,
+			attachmentIds: [],
+			audio: null,
+		},
 		me,
 	);
 	assert(sent.ok, sent.message);

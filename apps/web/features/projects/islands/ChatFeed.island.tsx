@@ -1,8 +1,8 @@
 import type { JSX } from "preact";
 import { useSignal, useSignalEffect } from "@preact/signals";
-import { useEffect, useLayoutEffect, useRef } from "preact/hooks";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "preact/hooks";
 import "../styles/chat-feed.css";
-import { useIntersectionObserver, useVirtualScroll } from "@projective/ui/hooks";
+import { useIntersectionObserver, useIsMobile, useVirtualScroll } from "@projective/ui/hooks";
 import { InlineNotice } from "@projective/ui/feedback";
 import { OFFLINE_NOTICE_TEXT } from "@web/utils/offline.ts";
 import { useOfflineStall } from "@web/utils/use-offline-stall.ts";
@@ -21,6 +21,9 @@ import { MessageBubble } from "../components/MessageBubble.tsx";
 import { SystemMessage } from "../components/SystemMessage.tsx";
 import { PinnedBanner } from "../components/PinnedBanner.tsx";
 import { ChatEmptyState } from "../components/ChatEmptyState.tsx";
+import { MessageSelectionBar } from "../components/MessageSelectionBar.tsx";
+import { ReactionBubble } from "../components/ReactionBubble.tsx";
+import { useMessageSelection } from "../hooks/useMessageSelection.ts";
 
 /**
  * ChatFeed — the bottom-up, virtualized message stream for a channel's Chat tab
@@ -37,9 +40,16 @@ import { ChatEmptyState } from "../components/ChatEmptyState.tsx";
  *     and a layout-effect re-anchors the scroll by the exact height the document grew, so the viewed
  *     message stays put (no jump).
  *
+ * Highlight mode, selection, the unfocused-composer shortcuts and the touch gestures come from
+ * {@link useMessageSelection} as the `page` surface; this island supplies how a message is revealed
+ * in a window-virtualized list, and renders the count pill (or, on a phone, the header action bar)
+ * and the long-press reaction bubble. A reply is handed to the footer composer on
+ * `MESSAGE_REPLY_EVENT`, and a reply's quote jumps to its original — loading earlier pages first when
+ * the original is above the loaded window.
+ *
  * THIN: first paint is the SSR-resolved latest page; the island owns view state (loaded window, pins,
- * reactions/favourites) and paginates via the API. Sends/pins/reactions are optimistic — persistence
- * lands with the messaging backend behind `PROJECTS_BACKEND_LIVE`.
+ * reactions/favourites) and paginates via the API. Pins/reactions are optimistic — persistence lands
+ * with the messaging backend behind `PROJECTS_BACKEND_LIVE`.
  */
 
 export interface ChatFeedProps {
@@ -58,6 +68,8 @@ export interface ChatFeedProps {
 
 /** Sticky chrome to clear when jumping to a message (top bar + header band + pinned banner). */
 const JUMP_CLEARANCE = 150;
+/** How many earlier pages a reply quote may load while looking for its original. */
+const JUMP_PAGE_BUDGET = 8;
 
 export default function ChatFeed(
 	{ projectId, channelId, initial, loadOlder: customLoadOlder }: ChatFeedProps,
@@ -75,7 +87,9 @@ export default function ChatFeed(
 	const skeleton = useSkeletonDelay();
 	const highlightId = useSignal<string | null>(null);
 	const canPin = initial?.permissions.canPin ?? false;
+	const mobile = useIsMobile();
 
+	const rootRef = useRef<HTMLDivElement>(null);
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const sentinelRef = useRef<HTMLDivElement>(null);
 	// The document scrollHeight captured just before a prepend, to re-anchor after the reflow.
@@ -94,6 +108,35 @@ export default function ChatFeed(
 		getItemKey: (i) => rows[i].key,
 		overscan: 6,
 	});
+
+	/**
+	 * Re-measure a row whenever its height changes after it mounted.
+	 *
+	 * The virtualizer measures a row when it is first drawn and never again, and a row's height moves
+	 * after that more often than it looks: a long message's Show more, an image finishing loading, a
+	 * reaction row appearing. Without this the next row keeps its old offset and the grown one slides
+	 * underneath it. One observer for the whole feed; a row is observed while it is drawn.
+	 */
+	const resizeRef = useRef<ResizeObserver | null>(null);
+	const measureRef = useRef(vs.measureElement);
+	measureRef.current = vs.measureElement;
+	useEffect(() => () => resizeRef.current?.disconnect(), []);
+	const measureRow = useCallback((el: HTMLElement | null) => {
+		if (!el) return;
+		measureRef.current(el);
+		// Created on the first row rather than in an effect: the rows drawn by the first render mount
+		// before any effect runs, and would otherwise never be observed.
+		if (!resizeRef.current && typeof ResizeObserver !== "undefined") {
+			resizeRef.current = new ResizeObserver((entries) => {
+				for (const entry of entries) {
+					// A row the virtualizer has scrolled away is let go rather than held for the session.
+					if (!entry.target.isConnected) resizeRef.current?.unobserve(entry.target);
+					else measureRef.current(entry.target as HTMLElement);
+				}
+			});
+		}
+		resizeRef.current?.observe(el);
+	}, []);
 	// #endregion
 
 	// #region Load older (top sentinel → prepend → re-anchor)
@@ -102,10 +145,11 @@ export default function ChatFeed(
 		rootMargin: "600px 0px 0px 0px",
 	}).visible;
 
-	async function loadOlder(): Promise<void> {
+	/** Fetch the next-older page. Resolves whether a page actually landed. */
+	async function loadOlder(): Promise<boolean> {
 		// A stalled feed waits for Retry (or the reconnection): the top sentinel stays in view after a
 		// failed page, and without this guard every intersection change would re-fire the request.
-		if (loadingOlder.value || stall.blocked.value || !hasMore.value || !cursor.value) return;
+		if (loadingOlder.value || stall.blocked.value || !hasMore.value || !cursor.value) return false;
 		loadingOlder.value = true;
 		skeleton.begin();
 		const doc = document.scrollingElement ?? document.documentElement;
@@ -132,9 +176,12 @@ export default function ChatFeed(
 			skeleton.end();
 			stall.settle(landed);
 		}
+		return landed;
 	}
 	/** The offline stall for the OLDER edge — this feed loads upward, so its notice sits at the top. */
-	const stall = useOfflineStall(loadOlder);
+	const stall = useOfflineStall(async () => {
+		await loadOlder();
+	});
 
 	useSignalEffect(() => {
 		if (topVisible.value) void loadOlder();
@@ -189,15 +236,53 @@ export default function ChatFeed(
 	}, [channelId]);
 	// #endregion
 
+	// #region Reveal (keyboard cursor) — window-virtualized
+	/**
+	 * Bring a message fully into the readable band — below the sticky header chrome and above the
+	 * footer composer — moving the window only as far as needed. A row the virtualizer has not drawn
+	 * is scrolled to by index instead, which also draws it.
+	 */
+	function reveal(id: string): void {
+		const el = rootRef.current?.querySelector<HTMLElement>(
+			`[data-message-id="${CSS.escape(id)}"]`,
+		);
+		if (!el) {
+			const idx = rowIndexOfMessage(buildRows(messages.value), id);
+			if (idx >= 0) vs.scrollToIndex(idx, -JUMP_CLEARANCE);
+			return;
+		}
+		const rect = el.getBoundingClientRect();
+		const footer = document.querySelector(".ui-middle-nav__footer")?.getBoundingClientRect();
+		const bottom = footer && footer.top > 0 ? footer.top : globalThis.innerHeight;
+		if (rect.top < JUMP_CLEARANCE) globalThis.scrollBy(0, rect.top - JUMP_CLEARANCE);
+		else if (rect.bottom > bottom) globalThis.scrollBy(0, rect.bottom - bottom + 12);
+	}
+
+	const sel = useMessageSelection({
+		surface: "page",
+		channelId,
+		rootRef,
+		messages,
+		reveal,
+		scrollBy: (dy) => globalThis.scrollBy(0, dy),
+	});
+	// #endregion
+
 	// #region Message actions (optimistic, immutable)
 	function updateMessage(id: string, fn: (m: ChatMessage) => ChatMessage): void {
 		messages.value = messages.value.map((m) => (m.id === id ? fn(m) : m));
 	}
+	/** An action taken from the highlight-mode menu or the header bar ends highlight mode. */
+	function done(): void {
+		if (sel.active.value) sel.exit();
+	}
 	function toggleFavorite(id: string): void {
 		updateMessage(id, (m) => ({ ...m, favorited: !m.favorited }));
+		done();
 	}
 	function togglePin(id: string): void {
 		updateMessage(id, (m) => ({ ...m, pinned: !m.pinned }));
+		done();
 	}
 	function react(id: string, emoji: string): void {
 		updateMessage(id, (m) => {
@@ -218,24 +303,49 @@ export default function ChatFeed(
 				),
 			};
 		});
+		done();
 	}
-	function reply(_id: string): void {
-		// STUB: threaded reply lands with the messaging backend (the composer is a separate footer island).
+	function reply(id: string): void {
+		const m = messages.value.find((x) => x.id === id);
+		if (m) sel.reply(m);
+	}
+	/** Copy: the whole selection when this message is part of it, else just this message. */
+	function copy(id: string): void {
+		const ids = sel.active.value && sel.selected.value.includes(id) ? sel.selected.value : [id];
+		void sel.copy(ids);
+		done();
 	}
 	function report(_id: string): void {
 		// STUB: report/flag routes to moderation once the backend lands.
+		done();
 	}
 	// #endregion
 
-	// #region Jump to a (pinned) message
-	function jumpTo(id: string): void {
-		const idx = rowIndexOfMessage(buildRows(messages.value), id);
-		if (idx < 0) return;
-		vs.scrollToIndex(idx, -JUMP_CLEARANCE);
+	// #region Jump to a (pinned or quoted) message
+	function flash(id: string): void {
 		highlightId.value = id;
 		setTimeout(() => {
 			if (highlightId.value === id) highlightId.value = null;
 		}, 1800);
+	}
+
+	/**
+	 * Scroll to a message and flash it. A reply's original can be older than anything loaded, so this
+	 * pages backward — within a budget, so a quote of a very old message cannot pull a whole history —
+	 * until it lands, and says so when it cannot.
+	 */
+	async function jumpTo(id: string): Promise<void> {
+		let idx = rowIndexOfMessage(buildRows(messages.value), id);
+		for (let page = 0; idx < 0 && page < JUMP_PAGE_BUDGET && hasMore.value; page++) {
+			if (!(await loadOlder())) break;
+			idx = rowIndexOfMessage(buildRows(messages.value), id);
+		}
+		if (idx < 0) {
+			sel.status.value = "That message is too far back to jump to — scroll up to find it.";
+			return;
+		}
+		vs.scrollToIndex(idx, -JUMP_CLEARANCE);
+		flash(id);
 	}
 	// #endregion
 
@@ -255,6 +365,8 @@ export default function ChatFeed(
 	}
 	// #endregion
 
+	const selectedCount = sel.selected.value.length;
+
 	function renderRow(row: FeedRow): JSX.Element {
 		if (row.kind === "divider") {
 			return (
@@ -270,18 +382,48 @@ export default function ChatFeed(
 				canPin={canPin}
 				onReply={reply}
 				onReact={react}
+				onCopy={copy}
 				onTogglePin={togglePin}
 				onToggleFavorite={toggleFavorite}
 				onReport={report}
+				onJump={(id) => void jumpTo(id)}
+				selection={sel.rowFor(row.message)}
+				selectionCount={selectedCount}
 			/>
 		);
 	}
 
-	return (
-		<div class="chat-feed">
-			<PinnedBanner pinned={pinned} onJump={jumpTo} />
+	const reactFor = sel.reactFor.value;
 
-			<div class="chat-feed__viewport" ref={viewportRef}>
+	return (
+		<div
+			class="chat-feed"
+			ref={rootRef}
+			data-msg-highlight={sel.active.value ? "true" : undefined}
+			data-msg-shift={sel.shift.value ? "true" : undefined}
+			data-msg-touch={sel.touch.value ? "true" : undefined}
+			data-has-pinned={pinned.length > 0 ? "true" : undefined}
+		>
+			<PinnedBanner pinned={pinned} onJump={(id) => void jumpTo(id)} />
+
+			<MessageSelectionBar
+				selection={sel}
+				messages={messages.value}
+				canPin={canPin}
+				mobile={mobile}
+				onReply={(m) => sel.reply(m)}
+				onTogglePin={togglePin}
+				onToggleFavorite={toggleFavorite}
+				onReport={report}
+			/>
+
+			<div
+				class="chat-feed__viewport"
+				ref={viewportRef}
+				role="feed"
+				aria-label="Messages"
+				aria-busy={loadingOlder.value ? "true" : "false"}
+			>
 				<div class="chat-feed__sentinel" ref={sentinelRef} aria-hidden="true" />
 				{
 					/* The loading edge of this list is its TOP, so the offline notice lands there rather
@@ -321,7 +463,7 @@ export default function ChatFeed(
 								class="chat-feed__row"
 								data-index={vi.index}
 								data-highlight={highlight ? "true" : undefined}
-								ref={vs.measureElement}
+								ref={measureRow}
 								style={`--v-start:${vi.start}px`}
 							>
 								{renderRow(row)}
@@ -330,6 +472,16 @@ export default function ChatFeed(
 					})}
 				</div>
 			</div>
+
+			{reactFor && sel.touch.value && (
+				<ReactionBubble
+					messageId={reactFor}
+					rootRef={rootRef}
+					onReact={(emoji) => react(reactFor, emoji)}
+				/>
+			)}
+
+			<p class="chat-feed__sr" role="status" aria-live="polite">{sel.status.value}</p>
 		</div>
 	);
 }

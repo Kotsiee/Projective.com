@@ -15,6 +15,7 @@ export * from "./create.ts";
 export * from "./detail.ts";
 export * from "./members.ts";
 export * from "./messages.ts";
+export * from "./message-rich.ts";
 export * from "./files.ts";
 export * from "./submissions.ts";
 export * from "./board.ts";

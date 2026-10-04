@@ -10,7 +10,13 @@ import {
 	type ConversationSummary,
 	InboxFolder,
 } from "@projective/types/messaging";
-import type { ChatMessage, MessagePage } from "@projective/types/projects";
+import {
+	type ChatMessage,
+	type MessageAttachment,
+	messageDeltaFor,
+	type MessagePage,
+} from "@projective/types/projects";
+import { replyFromRow } from "../projects/message-replies.ts";
 
 /**
  * live-queries — the RLS-scoped Postgres read path for the global inbox (`/messages`).
@@ -64,8 +70,13 @@ const MAX_PAGE = 100;
 /** `ConversationSummary.preview` is `max(200)`; the column is unbounded `text`. */
 const PREVIEW_MAX = 200;
 
-/** `ChatMessage.text` is `max(4000)`; the column is unbounded `text`. */
-export const MESSAGE_TEXT_MAX = 4000;
+/**
+ * `ChatMessage.text` is `max(8000)` — the send schemas' own cap — and the column is unbounded `text`.
+ * The SAME bound governs what a send stores and what a read returns: it used to be 4000 on both
+ * here while the send schema accepted 8000, so a long DM was silently cut to its first 4000
+ * characters on the way INTO the database.
+ */
+export const MESSAGE_TEXT_MAX = 8000;
 
 /**
  * The polymorphic discriminator for a DM message.
@@ -123,8 +134,14 @@ interface RosterRow {
 	joined_at: string;
 }
 
-/** One `comms.dm_messages` row. */
-export interface DmMessageRow {
+/**
+ * One `comms.dm_messages` row as the inbox TAIL reads it — the preview and the count, never a bubble.
+ *
+ * Kept narrower than {@link DmMessageRow} on purpose: the tail reads up to `THREAD_COUNT_CAP` rows per
+ * thread on every inbox render, and a Delta is the one column on the row that can be larger than the
+ * body itself, for a preview that renders plain text either way.
+ */
+export interface DmTailRow {
 	id: string;
 	thread_id: string;
 	sender_user_id: string;
@@ -134,6 +151,36 @@ export interface DmMessageRow {
 	created_at: string;
 	deleted_at: string | null;
 }
+
+/** The columns of {@link DmTailRow}. */
+const DM_TAIL_COLUMNS =
+	"id, thread_id, sender_user_id, body, has_attachments, is_audio, created_at, deleted_at";
+
+/**
+ * One `comms.dm_messages` row as a BUBBLE needs it: the tail's columns plus the formatting and the
+ * reply reference. Also every column a reply quote needs (`ReplyOriginalRow`), so a message on the
+ * page can be the original of a reply on the same page without a second read.
+ */
+export interface DmMessageRow extends DmTailRow {
+	/** Raw `jsonb`; it reaches a bubble only through `messageDeltaFor`, which parses it. */
+	body_delta: unknown;
+	reply_to_id: string | null;
+}
+
+/** The columns of {@link DmMessageRow} — every read and write-back that builds a bubble selects these. */
+export const DM_MESSAGE_COLUMNS = `${DM_TAIL_COLUMNS}, body_delta, reply_to_id`;
+
+/**
+ * The originals a set of replies quotes, by id. A miss — withheld, gone, or never read — renders the
+ * reply's quote as unavailable.
+ */
+export type ReplyOriginals = ReadonlyMap<string, DmMessageRow>;
+
+/** No attachments: a page whose messages carry none, and the degraded path. */
+const NO_ATTACHMENTS: ReadonlyMap<string, MessageAttachment[]> = new Map();
+
+/** No originals: a page with no replies, and the degraded path. */
+export const NO_ORIGINALS: ReplyOriginals = new Map();
 
 /** One `comms.message_reactions` row. */
 interface ReactionRow {
@@ -282,7 +329,7 @@ export interface ConversationContext {
 	/** Display parties by user id. */
 	parties: Map<string, PartyRow>;
 	/** The newest non-deleted message, if any. */
-	last: DmMessageRow | undefined;
+	last: DmTailRow | undefined;
 	/** How many non-deleted messages the thread holds — the visibility gate. */
 	messageCount: number;
 	/** Wall clock for the activity label. */
@@ -477,7 +524,7 @@ async function fetchParticipatingConversations(
 		others.set(row.thread_id, list);
 	}
 
-	const newest = new Map<string, DmMessageRow>();
+	const newest = new Map<string, DmTailRow>();
 	const counts = new Map<string, number>();
 	const unmeasured = new Set<string>();
 	for (const tail of tailRes) {
@@ -617,11 +664,12 @@ export async function fetchMessageInteractions(
  * Four fields are structurally unavailable and are returned empty rather than guessed, each for a
  * reason worth stating because each looks like an omission:
  *
- * - `attachments` — `comms.message_attachments` is POLYMORPHIC on `(message_table, message_id)` with
- *   **no foreign key on `message_id`** (Postgres cannot point one column at two parents), so
- *   PostgREST cannot embed it. It needs a second query keyed on the page's message ids; the flag
- *   `has_attachments` on the row is a denormalised boolean that **no trigger maintains**, so it is
- *   advisory and is not treated as truth here.
+ * - `attachments` are POPULATED from the page-level map the caller read with
+ *   `fetchMessageAttachments` (`../projects/message-attachments.ts`): `comms.message_attachments` is
+ *   polymorphic with **no foreign key on `message_id`**, so PostgREST cannot embed it and it is a
+ *   second query keyed on the page's ids. The `has_attachments` flag on the row is a denormalised
+ *   boolean that **no trigger maintains**, so it is never consulted. This used to be hard-coded empty,
+ *   which is why every file sent in a conversation stored correctly and then rendered as nothing.
  * - `audio` — there is no waveform column anywhere. `MessageAudio.peaks` is `max(512)` with each
  *   element bounded `0..1`, and nothing in the schema can produce it. `is_audio` has the same
  *   unmaintained-flag problem as `has_attachments`.
@@ -633,8 +681,14 @@ export async function fetchMessageInteractions(
  * - `system` — there is no system-message table and `dm_messages` has no `type` column, so
  *   `ChatMessageType === "system"` is unreachable on this path.
  *
- * `text` is CLAMPED, not passed through: the column is unbounded `text` and the field is `max(4000)`,
+ * `text` is CLAMPED, not passed through: the column is unbounded `text` and the field is `max(8000)`,
  * and Zod throws rather than truncating — so one long message would fail the whole page.
+ *
+ * `delta` is the stored Delta only when it spells exactly that clamped text (`messageDeltaFor`): a
+ * clamped body, or one `comms.tg_mask_dm_message_pii` rewrote, renders plain. `replyTo` is the
+ * original's quote from `originals`; an original that is not there — withheld, deleted, or simply not
+ * read — renders as unavailable rather than dropping the quote, which would make the reply read as a
+ * non-sequitur.
  */
 export function toChatMessage(
 	row: DmMessageRow,
@@ -642,8 +696,12 @@ export function toChatMessage(
 	viewerId: string,
 	now: number,
 	interactions: MessageInteractions = NO_INTERACTIONS,
+	originals: ReplyOriginals = NO_ORIGINALS,
+	attachments: ReadonlyMap<string, MessageAttachment[]> = NO_ATTACHMENTS,
 ): ChatMessage {
 	const party = parties.get(row.sender_user_id);
+	const text = clamp(row.body, MESSAGE_TEXT_MAX);
+	const original = row.reply_to_id ? originals.get(row.reply_to_id) : undefined;
 	return {
 		id: row.id,
 		type: "user",
@@ -657,8 +715,18 @@ export function toChatMessage(
 			handle: party?.username ?? null,
 		},
 		isOwn: row.sender_user_id === viewerId,
-		text: clamp(row.body, MESSAGE_TEXT_MAX),
-		attachments: [],
+		text,
+		delta: messageDeltaFor(row.body_delta, text),
+		replyTo: row.reply_to_id
+			? replyFromRow(
+				row.reply_to_id,
+				original,
+				// `MessageReply.senderName` is `max(120)`; `partyName` never returns an empty string.
+				clamp(partyName(original ? parties.get(original.sender_user_id) : undefined), 120),
+				viewerId,
+			)
+			: null,
+		attachments: attachments.get(row.id) ?? [],
 		audio: null,
 		system: null,
 		reactions: interactions.reactions.get(row.id) ?? [],
@@ -707,8 +775,12 @@ export function toMessagePage(
 	hasMore: boolean,
 	now: number,
 	interactions: MessageInteractions = NO_INTERACTIONS,
+	originals: ReplyOriginals = NO_ORIGINALS,
+	attachments: ReadonlyMap<string, MessageAttachment[]> = NO_ATTACHMENTS,
 ): MessagePage {
-	const messages = rows.map((row) => toChatMessage(row, parties, viewerId, now, interactions));
+	const messages = rows.map((row) =>
+		toChatMessage(row, parties, viewerId, now, interactions, originals, attachments)
+	);
 	const oldest = rows[0];
 	return {
 		channelId: threadId,
@@ -742,7 +814,7 @@ const THREAD_COUNT_CAP = 200;
 /** A thread's newest message and how many it holds (up to {@link THREAD_COUNT_CAP}). */
 interface ThreadTail {
 	threadId: string;
-	newest: DmMessageRow | undefined;
+	newest: DmTailRow | undefined;
 	count: number;
 	/**
 	 * Whether the count is a MEASUREMENT or merely the absence of one.
@@ -765,9 +837,7 @@ interface ThreadTail {
 async function fetchThreadTail(db: SupabaseClient, threadId: string): Promise<ThreadTail> {
 	const { data, error } = await db
 		.from("dm_messages")
-		.select(
-			"id, thread_id, sender_user_id, body, has_attachments, is_audio, created_at, deleted_at",
-		)
+		.select(DM_TAIL_COLUMNS)
 		.eq("thread_id", threadId)
 		.is("deleted_at", null)
 		.order("created_at", { ascending: false })
@@ -778,7 +848,7 @@ async function fetchThreadTail(db: SupabaseClient, threadId: string): Promise<Th
 	// fine, and `measured: false` keeps the visibility rule from mistaking an unread count for an
 	// empty conversation.
 	if (error) return { threadId, newest: undefined, count: 0, measured: false };
-	const rows = (data ?? []) as unknown as DmMessageRow[];
+	const rows = (data ?? []) as unknown as DmTailRow[];
 	return { threadId, newest: rows[0], count: rows.length, measured: true };
 }
 
@@ -841,22 +911,28 @@ async function resolveCursorAnchor(
  * The keyset predicate is `created_at < cursor.createdAt OR (created_at = … AND id < …)`, expressed
  * through PostgREST's `.or()`. An `OFFSET` would drift under concurrent inserts — a message arriving
  * mid-scroll shifts every subsequent page by one and the reader sees a duplicate.
+ *
+ * The page comes back with the `originals` its replies quote ({@link fetchReplyOriginals}), and the
+ * parties map names their authors as well as the page's own senders.
  */
 export async function fetchThreadMessages(
 	actor: ReadActor & { accessToken: string },
 	threadId: string,
 	before: string | null | undefined,
 	limit?: number,
-): Promise<{ rows: DmMessageRow[]; parties: Map<string, PartyRow>; hasMore: boolean }> {
+): Promise<{
+	rows: DmMessageRow[];
+	parties: Map<string, PartyRow>;
+	hasMore: boolean;
+	originals: ReplyOriginals;
+}> {
 	const db = commsClient(actor);
 	const size = Math.min(Math.max(limit ?? DEFAULT_PAGE, 1), MAX_PAGE);
 	const cursor = await resolveCursorAnchor(db, threadId, before);
 
 	let query = db
 		.from("dm_messages")
-		.select(
-			"id, thread_id, sender_user_id, body, has_attachments, is_audio, created_at, deleted_at",
-		)
+		.select(DM_MESSAGE_COLUMNS)
 		.eq("thread_id", threadId)
 		.is("deleted_at", null);
 
@@ -887,8 +963,49 @@ export async function fetchThreadMessages(
 	const fetched = (data ?? []) as unknown as DmMessageRow[];
 	const hasMore = fetched.length > size;
 	const rows = (hasMore ? fetched.slice(0, size) : fetched).reverse();
-	const parties = await fetchParties(actor, rows.map((r) => r.sender_user_id));
-	return { rows, parties, hasMore };
+	// The originals before the parties, because their authors are named in the quotes too.
+	const originals = await fetchReplyOriginals(db, threadId, rows);
+	const parties = await fetchParties(actor, [
+		...rows.map((r) => r.sender_user_id),
+		...[...originals.values()].map((r) => r.sender_user_id),
+	]);
+	return { rows, parties, hasMore, originals };
+}
+
+/**
+ * The originals a page's replies quote, keyed by id — rows already on the page first, the rest read
+ * in ONE query.
+ *
+ * Scoped to `thread_id` although `comms.tg_guard_dm_message_reply` already keeps a reply inside its
+ * own thread: the predicate is what a quote MEANS, and a read that is only correct because a trigger
+ * elsewhere held is the kind that goes wrong silently. Soft-deleted rows are deliberately not filtered;
+ * the quote mapper (`replyFromRow`) renders them unavailable, the same as a row that never came back.
+ *
+ * Secondary: a failed read costs the quotes their content, never the page.
+ */
+async function fetchReplyOriginals(
+	db: SupabaseClient,
+	threadId: string,
+	rows: readonly DmMessageRow[],
+): Promise<Map<string, DmMessageRow>> {
+	const out = new Map<string, DmMessageRow>();
+	const wanted = new Set(
+		rows.map((r) => r.reply_to_id).filter((id): id is string => id !== null),
+	);
+	if (wanted.size === 0) return out;
+
+	for (const row of rows) if (wanted.has(row.id)) out.set(row.id, row);
+	const missing = [...wanted].filter((id) => !out.has(id));
+	if (missing.length === 0) return out;
+
+	const { data, error } = await db
+		.from("dm_messages")
+		.select(DM_MESSAGE_COLUMNS)
+		.eq("thread_id", threadId)
+		.in("id", missing);
+	if (error) return out;
+	for (const row of (data ?? []) as unknown as DmMessageRow[]) out.set(row.id, row);
+	return out;
 }
 
 // #endregion

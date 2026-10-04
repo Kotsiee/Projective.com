@@ -269,13 +269,17 @@ The individual message entries for DMs.
 | `thread_id`       | uuid    | FK → `comms.dm_threads.id`. |
 | `sender_user_id`  | uuid    | FK → `org.users_public.user_id`. |
 | `project_id`      | uuid    | The project a request message is about (`comms.send_request_message`); read by the PII filter. |
-| `body`            | text    | Message content — stored masked while the pair's engagement is protected. |
-| `has_attachments` | boolean | Flag for UI optimization.   |
+| `body`            | text    | Message content — stored masked while the pair's engagement is protected. The one source of words: search, previews and the PII mask read it. |
+| `body_delta`      | jsonb   | NULL, or the body's inline formatting as a Quill Delta (`MessageDeltaSchema` in `packages/types/projects/message-rich.ts`: runs of text with Bold · Italic · Underline · Strikethrough). Its runs, joined, spell `body` exactly — see [`comms.project_messages`](#commsproject_messages). `dm_messages_body_delta_object`: `NULL` or a JSON object. Nulled by `comms.tg_mask_dm_message_pii` when it rewrites the body. |
+| `reply_to_id`     | uuid    | NULL, or the message this one answers. **Self-FK** `dm_messages_reply_to_id_fkey` → `comms.dm_messages.id` `ON DELETE SET NULL`; must be in the same **thread** (`comms.tg_guard_dm_message_reply`). |
+| `has_attachments` | boolean | Flag for UI optimization. Advisory (no trigger maintains it); read only for a reply quote's `media` label. |
+| `is_audio`        | boolean | The message is a voice memo. Advisory, like `has_attachments`. |
 | `pii_masked`      | boolean | Set by `comms.tg_mask_dm_message_pii` when the body was masked. |
 | `pii_categories`  | text[]  | Which contact categories were masked (`email` · `phone` · `payment_link` · `handle`). |
 
-Index (`00004006`): `idx_dm_messages_thread_recent (thread_id, created_at DESC)` — the latest page
-of a thread and its preview row.
+Indexes (`00004006`): `idx_dm_messages_thread_recent (thread_id, created_at DESC)` — the latest page
+of a thread and its preview row; `idx_dm_messages_reply_to (reply_to_id) WHERE reply_to_id IS NOT
+NULL` — the replies to a message, and the self-FK's `ON DELETE SET NULL` lookup.
 
 ---
 
@@ -303,12 +307,47 @@ CREATE TABLE comms.project_messages (
     sender_user_id uuid NOT NULL,
     body text NOT NULL,
     has_attachments boolean NOT NULL DEFAULT false,
+    is_audio boolean NOT NULL DEFAULT false,
     created_at timestamp with time zone NOT NULL DEFAULT now(),
     edited_at timestamp with time zone,
     deleted_at timestamp with time zone,
-    CONSTRAINT project_messages_pkey PRIMARY KEY (id)
+    pii_masked boolean NOT NULL DEFAULT false,
+    pii_categories text[] NOT NULL DEFAULT '{}'::text[],
+    body_delta jsonb NULL,
+    reply_to_id uuid NULL,
+    CONSTRAINT project_messages_pkey PRIMARY KEY (id),
+    CONSTRAINT project_messages_channel_id_fkey FOREIGN KEY (channel_id) REFERENCES comms.project_channels (id),
+    CONSTRAINT project_messages_sender_user_id_fkey FOREIGN KEY (sender_user_id) REFERENCES org.users_public (user_id),
+    CONSTRAINT project_messages_body_delta_object
+        CHECK (body_delta IS NULL OR jsonb_typeof(body_delta) = 'object'),
+    CONSTRAINT project_messages_reply_to_id_fkey
+        FOREIGN KEY (reply_to_id) REFERENCES comms.project_messages (id) ON DELETE SET NULL
 );
 ```
+
+**Formatting — `body` and `body_delta` must agree.** `body` is the plain text and stays the one
+source of words (search, notification and inbox previews, link previews, the PII mask).
+`body_delta` is NULL for an unformatted message, otherwise a Quill Delta `{ ops }` reduced to runs
+of text carrying only Bold · Italic · Underline · Strikethrough (`MessageDeltaSchema`,
+`packages/types/projects/message-rich.ts`). The runs, joined, spell `body` exactly. That is not a
+CHECK (spelling a Delta in SQL is a jsonb walk per insert); it is held on both sides of the column —
+the send schemas refuse a disagreeing payload, and every read drops a Delta that does not spell the
+body it shows (`messageDeltaFor`) — so formatting can be lost but a word the body lacks can never
+render. `comms.tg_mask_message_pii` nulls it whenever it rewrites the body. The CHECK pins only the
+envelope (a JSON object).
+
+**Replies — a self-reference, kept in the channel.** `reply_to_id` names the message this one
+answers. It is a self-FK rather than the polymorphic `(message_table, message_id)` pair the
+interaction tables use, because a reply has exactly one possible parent table (a channel message
+quotes a channel message). The key cannot say "in the same channel"; `comms.tg_guard_message_reply`
+does, on `INSERT` and on `UPDATE OF reply_to_id, channel_id` (see [Functions.md](Functions.md)).
+`ON DELETE SET NULL` never fires in the product — a delete is `deleted_at`, and a soft-deleted
+original keeps the link and quotes as unavailable — it exists so a privacy purge of an original is
+never blocked by a reply.
+
+Indexes (`00004006`): `idx_project_messages_channel_recent (channel_id, created_at DESC)` — the
+feed's keyset walk; `idx_project_messages_reply_to (reply_to_id) WHERE reply_to_id IS NOT NULL` — the
+replies to a message, and the self-FK's `ON DELETE SET NULL` lookup.
 
 ---
 

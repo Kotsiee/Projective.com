@@ -1,11 +1,16 @@
-import type {
-	ChatMessage,
-	MessageAttachment,
-	MessagePage,
-	MessageSender,
+import {
+	type ChatMessage,
+	type MessageAttachment,
+	type MessageDelta,
+	messageDeltaText,
+	type MessageMark,
+	type MessagePage,
+	type MessageSender,
+	normalizeMessageDelta,
 } from "@projective/types/projects";
 import type { ConversationSummary } from "@projective/types/messaging";
 import { findConversationSummary } from "./conversation-fixtures.ts";
+import { replyFromMessage } from "../projects/message-replies.ts";
 import { mockAvatar, mockCover } from "../../mocks/assets.ts";
 
 /**
@@ -95,9 +100,19 @@ function sendersOf(c: ConversationSummary): MessageSender[] {
 
 // #region Conversation script
 type From = "viewer" | { other: number };
+
+/** One run of a formatted beat: plain text, or `[text, ...marks]`. */
+type Run = string | readonly [string, ...MessageMark[]];
+
 interface Beat {
 	from: From;
 	text?: string;
+	/** A FORMATTED body, in place of `text` — the message's text is what these runs spell. */
+	runs?: readonly Run[];
+	/** A name later beats can reply to. */
+	key?: string;
+	/** The `key` of an EARLIER beat in the same conversation that this one answers. */
+	replyTo?: string;
 	images?: number;
 	mixed?: Array<"image" | "pdf" | "zip">;
 	audio?: boolean;
@@ -107,28 +122,56 @@ interface Beat {
 	gapMin?: number;
 }
 
-/** The most-recent page, oldest→newest — grouping runs, media, a voice memo, reactions, a pin. */
+/**
+ * The most-recent page, oldest→newest — grouping runs, media, a voice memo, reactions, a pin.
+ *
+ * And the rich-message cases, mirroring the project showcase: a bold lead-in, a struck-through
+ * correction, an italic aside, a bold + underlined run, and three replies — quoting the viewer's own
+ * message, a text-less voice memo, and (from the viewer, pinned) an attachment post.
+ */
 const SHOWCASE: Beat[] = [
 	{ from: { other: 0 }, text: "Hey! Great to connect here 👋", gapMin: 720 },
-	{ from: { other: 0 }, text: "Sharing where we landed on the direction:", gapMin: 2 },
-	{ from: { other: 0 }, images: 2, gapMin: 1 },
-	{ from: "viewer", text: "Love it — the second option really sings.", gapMin: 5 },
-	{ from: "viewer", text: "Could we tighten the spacing a touch?", gapMin: 1 },
-	{ from: { other: 0 }, text: "Absolutely. Reworking now and I'll repost.", gapMin: 6 },
 	{
 		from: { other: 0 },
+		runs: [["Quick update:", "bold"], " sharing where we landed on the direction."],
+		gapMin: 2,
+	},
+	{ from: { other: 0 }, images: 2, gapMin: 1 },
+	{
+		from: "viewer",
+		runs: ["Love it — the ", ["first", "strike"], " second option really sings."],
+		gapMin: 5,
+	},
+	{ from: "viewer", key: "spacing", text: "Could we tighten the spacing a touch?", gapMin: 1 },
+	{
+		from: { other: 0 },
+		replyTo: "spacing",
+		runs: ["Absolutely. Reworking now and I'll repost ", ["(give me an hour)", "italic"], "."],
+		gapMin: 6,
+	},
+	{
+		from: { other: 0 },
+		key: "pack",
 		text: "Here's the updated pack + source files:",
 		mixed: ["image", "pdf", "zip"],
 		gapMin: 40,
 	},
-	{ from: "viewer", audio: true, gapMin: 4 },
+	{ from: "viewer", key: "memo", audio: true, gapMin: 4 },
 	{
 		from: { other: 0 },
+		replyTo: "memo",
 		text: "Ha — perfect, thank you!",
 		reactions: [["👍", 2, true], ["🎉", 1, false]],
 		gapMin: 3,
 	},
-	{ from: "viewer", text: "Locking this in ✅", pinned: true, favorited: true, gapMin: 2 },
+	{
+		from: "viewer",
+		replyTo: "pack",
+		runs: [["Locking this in", "bold", "underline"], " ✅"],
+		pinned: true,
+		favorited: true,
+		gapMin: 2,
+	},
 	{ from: { other: 0 }, text: "🙌 onwards!", gapMin: 1 },
 ];
 
@@ -205,6 +248,42 @@ function attachmentsFor(beat: Beat, id: string, seed: number): MessageAttachment
 	return out;
 }
 
+/**
+ * A formatted beat's Delta, through the composer's own `normalizeMessageDelta`; the message's `text`
+ * is taken from it, so the two agree by construction (mirrors the project fixtures).
+ */
+function deltaOf(runs: readonly Run[]): MessageDelta | null {
+	return normalizeMessageDelta(
+		runs.map((run) =>
+			typeof run === "string"
+				? { insert: run }
+				: { insert: run[0], attributes: Object.fromEntries(run.slice(1).map((m) => [m, true])) }
+		),
+	);
+}
+
+/**
+ * Resolve each beat's `replyTo` key against the messages built before it — a second pass, because a
+ * quote is a projection of an original that has to exist first. An unknown key is a corpus error and
+ * throws rather than shipping a reply with no quote.
+ */
+function withReplies(beats: readonly Beat[], messages: readonly ChatMessage[]): ChatMessage[] {
+	const byKey = new Map<string, ChatMessage>();
+	return messages.map((message, i) => {
+		const beat = beats[i];
+		let out = message;
+		if (beat.replyTo) {
+			const replyTo = replyFromMessage(byKey.get(beat.replyTo));
+			if (!replyTo) {
+				throw new Error(`messages-fixtures: a beat replies to unknown key "${beat.replyTo}"`);
+			}
+			out = { ...message, replyTo };
+		}
+		if (beat.key) byKey.set(beat.key, out);
+		return out;
+	});
+}
+
 function buildMessage(
 	beat: Beat,
 	index: number,
@@ -216,6 +295,7 @@ function buildMessage(
 	const id = `${conversationId}-m-${index}`;
 	const isOwn = beat.from === "viewer";
 	const sender = isOwn ? VIEWER : others[(beat.from as { other: number }).other % others.length];
+	const delta = beat.runs ? deltaOf(beat.runs) : null;
 	return {
 		id,
 		type: "user",
@@ -224,7 +304,10 @@ function buildMessage(
 		dayLabel: fmtDay(ts),
 		sender,
 		isOwn,
-		text: beat.text ?? "",
+		text: delta ? messageDeltaText(delta) : beat.text ?? "",
+		delta,
+		// Filled by `withReplies`, once every earlier message exists to be quoted.
+		replyTo: null,
 		attachments: attachmentsFor(beat, id, seed + index),
 		audio: beat.audio
 			? { url: "#", durationMs: 38_000, durationLabel: "0:38", peaks: fakePeaks(seed + index, 48) }
@@ -269,10 +352,11 @@ function buildPool(c: ConversationSummary): ChatMessage[] {
 	const totalSpan = gaps.reduce((a, g) => a + g, 0);
 	let ts = NOW - totalSpan - 4 * MIN;
 
-	return beats.map((beat, i) => {
+	const messages = beats.map((beat, i) => {
 		ts += gaps[i];
 		return buildMessage(beat, i, ts, c.id, others, seed);
 	});
+	return withReplies(beats, messages);
 }
 // #endregion
 
@@ -333,5 +417,19 @@ export function findConversationMessagePage(params: ConversationMessageParams): 
 		permissions: { canPin },
 		total,
 	};
+}
+
+/**
+ * One message of a conversation's fixture history by id, wherever it sits — the corpus half of
+ * resolving a stub reply's original. `null` for an unknown or empty conversation and for an id the
+ * conversation does not hold, which is how an id from another thread misses, as it does live.
+ */
+export function findConversationMessage(
+	conversationId: string,
+	messageId: string,
+): ChatMessage | null {
+	const c = findConversationSummary(conversationId);
+	if (!c || c.messageCount === 0) return null;
+	return buildPool(c).find((m) => m.id === messageId) ?? null;
 }
 // #endregion

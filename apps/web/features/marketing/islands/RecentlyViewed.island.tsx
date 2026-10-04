@@ -2,7 +2,7 @@ import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import type { ExploreItem } from "@projective/types/explore";
-import { readViewHistory } from "@features/explore/core/view-history.ts";
+import { forgetViews, readViewHistory } from "@features/explore/core/view-history.ts";
 import { itemHref } from "@features/explore/core/routing.ts";
 // The footer is a server component, so its stylesheet only reaches the client through an island in the
 // page's bundle. `NewsletterForm` is the primary carrier and always renders; this island imports the
@@ -71,12 +71,17 @@ export default function RecentlyViewed(): JSX.Element | null {
 
 		let live = true;
 		(async () => {
+			const notFound: string[] = [];
 			const resolved = await Promise.all(refs.map(async (ref): Promise<RecentEntry | null> => {
 				try {
 					const res = await fetch(
 						`/api/explore/item?id=${encodeURIComponent(ref.id)}`,
 						{ headers: { accept: "application/json" } },
 					);
+					if (res.status === 404) {
+						notFound.push(ref.id);
+						return null;
+					}
 					const body = await res.json().catch(() => null);
 					// The thin route answers `{ ok, data: { item } }` — the payload is a named envelope,
 					// not the item itself, which is worth stating because `data` reading like the item is
@@ -91,6 +96,7 @@ export default function RecentlyViewed(): JSX.Element | null {
 					return null;
 				}
 			}));
+			forgetViews(notFound);
 			if (!live) return;
 			entries.value = resolved.filter((e): e is RecentEntry => e !== null);
 		})();

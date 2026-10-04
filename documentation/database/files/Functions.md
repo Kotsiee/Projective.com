@@ -112,6 +112,13 @@ left open in the other (the `scheduling` refusal-function precedent).
 | `owner_type = 'business'` and `org.is_active_business_member(owner_entity_id)`      |
 | `owner_type = 'organisation'` and `org.is_organisation_member(owner_entity_id)`     |
 | `bucket_id = 'project'` and `projects.has_project_access({project_id} path anchor)` |
+| attached (`comms.message_attachments`) to a message `comms.can_read_message()` admits |
+
+The message arm (Decision #132) is what lets the person a chat file was SENT to read it: a chat
+upload lands in the sender's own `personal` library, private, so no other arm admits the recipient
+— the link row was visible and the file behind it was not. It cannot be used to reach somebody
+else's asset, because the INSERT policy on `comms.message_attachments` requires the linker to
+pass `fn_can_read` for the file already.
 
 **Does not grant a read, deliberately:** `visibility = 'link'`. The opaque **slug** is the
 credential, not the item id. If `link` returned true here, any signed-in user could enumerate every

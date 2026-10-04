@@ -42,3 +42,55 @@ export interface MessageSentDetail {
 	/** The persisted message, shaped as the feed already renders them. */
 	message: unknown;
 }
+
+/**
+ * Which message surface on a page a chat control belongs to.
+ *
+ * `page` is the channel or conversation the URL addresses — its feed in the body, its composer in the
+ * footer band. `popout` is the floating chat window (and the profile messenger's sheet), which can be
+ * open over a page showing a DIFFERENT conversation, or the same one. Every cross-island chat event
+ * names its surface, because the channel id alone cannot tell the two composers on one channel apart.
+ */
+export type ChatSurface = "page" | "popout";
+
+/**
+ * Dispatched on `window` when a feed asks its composer to start a reply.
+ *
+ * The same two-roots problem as {@link MESSAGE_SENT_EVENT}, in the other direction: the feed is where
+ * the reader picks the message (a Reply action, an arrow key, a swipe) and the composer is where the
+ * reply is written, and on the page they are separate islands in different bands. The detail carries
+ * the quote as the composer's strip renders it, so the composer never has to look the message up.
+ */
+export const MESSAGE_REPLY_EVENT = "projective:message-reply";
+
+/** The `detail` payload for {@link MESSAGE_REPLY_EVENT}. */
+export interface MessageReplyDetail {
+	/** The channel (or conversation) whose composer should take the reply. */
+	channelId: string;
+	/** Which composer on that channel — see {@link ChatSurface}. */
+	surface: ChatSurface;
+	/** The message being answered, as the strip and the eventual quote render it. */
+	target: {
+		id: string;
+		senderName: string | null;
+		isOwn: boolean;
+		excerpt: string;
+		media: "none" | "attachment" | "audio";
+	};
+}
+
+/**
+ * Dispatched on `window` whenever any message's action menu opens, carrying the opener's token.
+ *
+ * "Only one message menu at a time" has to hold ACROSS islands — a feed's right-click menu and a
+ * hover toolbar's overflow menu in the pop-out window are different component trees, possibly in
+ * different bundles — so every opener announces itself and every other open menu closes on hearing a
+ * token that is not its own.
+ */
+export const MESSAGE_MENU_OPEN_EVENT = "projective:message-menu-open";
+
+/** The `detail` payload for {@link MESSAGE_MENU_OPEN_EVENT}. */
+export interface MessageMenuOpenDetail {
+	/** A token unique to the menu that just opened. */
+	owner: string;
+}

@@ -823,6 +823,27 @@ the inviter cannot resolve for another user under RLS) and carries neither the c
 message, so a live insert would record a success the row does not describe — flagged for a schema
 decision rather than papered over.
 
+**Formatting and replies.** Both send schemas — `SendProjectMessageSchema`
+(`@projective/types/projects/messages.ts`) and `SendConversationMessageSchema` — carry, besides
+`text` · `attachmentIds` · `audio`, two optional fields that default to "plain, not a reply":
+`delta`, the body's inline formatting (Bold · Italic · Underline · Strikethrough) as a normalised
+Quill Delta (`MessageDeltaSchema`, `@projective/types/projects/message-rich.ts`), and `replyToId`, the
+message this one answers. A Delta must spell `text` exactly (`sendDeltaAgrees`, a schema refine) —
+it is never a second source of words. Both tables store the plain body in `body` (which search,
+previews and the PII mask keep reading) and the Delta in `body_delta`, with the reply as a
+self-referencing `reply_to_id` (`00000016`); `ChatMessage` gains `delta` and `replyTo` (a
+`MessageReply` quote: sender, `isOwn`, a one-line excerpt, a `media` label, `available`). Three rules
+hold on every path: (1) a READ shows a Delta only when it spells the body being shown
+(`messageDeltaFor`), so a clamped or PII-masked body renders plain — the mask triggers also null
+`body_delta` when they rewrite; (2) a reply's original must sit in the reply's own channel / thread —
+refused as `422` on `replyToId` with "That message can't be replied to here." by the fat services'
+pre-check (`services/projects/message-replies.ts#replyRefusal`) and, as the backstop, by
+`comms.tg_guard_message_reply` / `tg_guard_dm_message_reply`, whose raise `refusalFrom` maps onto the
+same refusal; (3) a deleted or unreadable original renders as an `available: false` quote rather
+than disappearing. The live writes map their echo from the STORED row, so the sender sees the masked
+body exactly as everyone else will. On the stub path the original is looked up in the conversation's
+whole fixture history plus the viewer's own sent overlay, under the same refusal.
+
 **Inbox folders, hiring requests and the context panel (Decision #128).** A conversation's folder
 (`primary` · `requests` · `archived`) is the VIEWER's: it lives on `comms.dm_participants`, and every
 read projects it as `ConversationSummary.folder` (with `archived` derived from it). The lane

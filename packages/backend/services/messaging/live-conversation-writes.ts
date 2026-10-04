@@ -173,6 +173,8 @@ export async function createLiveConversation(
 		const sent = await insertDmMessage(actor, {
 			conversationId: threadId,
 			text,
+			delta: null,
+			replyToId: null,
 			attachmentIds: [],
 			audio: null,
 		}, now);

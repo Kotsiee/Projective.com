@@ -13,25 +13,31 @@ INSERT
 WITH
     CHECK (
         (
-            message_table = 'comms.project_messages'
-            AND EXISTS (
-                SELECT 1
-                FROM comms.project_messages pm
-                WHERE
-                    pm.id = message_id
-                    AND pm.sender_user_id = auth.uid ()
+            (
+                message_table = 'comms.project_messages'
+                AND EXISTS (
+                    SELECT 1
+                    FROM comms.project_messages pm
+                    WHERE
+                        pm.id = message_id
+                        AND pm.sender_user_id = auth.uid ()
+                )
+            )
+            OR (
+                message_table = 'comms.dm_messages'
+                AND EXISTS (
+                    SELECT 1
+                    FROM comms.dm_messages dm
+                    WHERE
+                        dm.id = message_id
+                        AND dm.sender_user_id = auth.uid ()
+                )
             )
         )
-        OR (
-            message_table = 'comms.dm_messages'
-            AND EXISTS (
-                SELECT 1
-                FROM comms.dm_messages dm
-                WHERE
-                    dm.id = message_id
-                    AND dm.sender_user_id = auth.uid ()
-            )
-        )
+        -- The linker must already be able to read the file. files.fn_can_read admits anyone who
+        -- can read a message a file is attached to, so without this arm attaching somebody else's
+        -- private asset id to your own message would be a way to read it.
+        AND files.fn_can_read (attachment_id)
     );
 
 

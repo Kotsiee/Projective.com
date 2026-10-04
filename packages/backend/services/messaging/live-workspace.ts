@@ -35,6 +35,7 @@ import {
 	categorizeFile,
 	categoryToKind,
 	fileExtension,
+	fileObjectHref,
 	messageAttachmentFacets,
 } from "@projective/types/files";
 
@@ -82,24 +83,16 @@ import {
  * at {@link IN_CHUNK} ids per request because a `?id=in.(...)` of several hundred uuids is a
  * multi-kilobyte URL that a proxy in front of PostgREST may refuse.
  *
- * ## A DM attachment the viewer did not upload is currently unreadable
+ * ## Reading a file somebody else sent
  *
- * `files.items` SELECT delegates to `files.fn_can_read(id)` (`00002011_policies_projects.sql`),
- * whose branches are: `public` visibility · own row · active member of the owning team/business/
- * organisation · `bucket_id = 'project'` gated by `projects.has_project_access`. A DM attachment
- * lands in the `messages` bucket (anchored on `{thread_id}`, `00005040`), is owned by the person who
- * sent it, and carries `link` visibility — which that predicate deliberately does NOT honour,
- * because the share slug is meant to be the credential. **There is no `messages`-bucket branch at
- * all**, so the function falls through to `false` and a co-participant reads zero `files.items` rows
- * for anything the counterparty sent.
- *
- * The join row is readable (`view_attachments_if_member` admits a DM participant), so the shape of
- * the failure is: the attachment is known to exist and its file row is withheld. Those rows are
- * OMITTED here rather than rendered from a fabricated name and size — an attachment card carrying
- * invented metadata is worse than an absent one. Nothing raises; the page just comes back thinner
- * than the conversation, which is exactly the silent-narrowing shape that policy replacement warned
- * about for the old `USING (true)`. Fixing it is a policy change (a `bucket_id = 'messages'` branch
- * keyed on `comms.dm_participants`), not something a query can work around.
+ * `files.items` SELECT delegates to `files.fn_can_read(id)`. A chat attachment is uploaded into the
+ * SENDER's own library (`personal`, private, owned by them), so the owner / team / project branches
+ * never admitted the person it was sent to: the link row was visible and the file row behind it was
+ * not, and the explorer silently came back without it. The function now has a message branch — a
+ * file attached to a message the caller may read (`comms.can_read_message`) is readable — and the
+ * INSERT policy on `comms.message_attachments` requires the linker to be able to read the file
+ * already, so linking cannot be used to reach somebody else's private asset. A row that still does
+ * not come back (soft-deleted) is OMITTED rather than rendered from a fabricated name and size.
  *
  * ## The unified-chatId contract still does not survive the trip to Postgres
  *
@@ -504,23 +497,33 @@ function sizeOf(raw: number | string | null): number {
  * The URL an asset resolves to.
  *
  * A `link` asset carries its own target and a mounted connector asset carries the provider's
- * "open in Drive/Dropbox" page, both of which are real, durable URLs. A **stored** asset has
- * neither: `files.items` holds `bucket_id` + `storage_path`, and the `messages` bucket is a PRIVATE
- * tier whose objects are readable only through a short-lived signed URL. Minting one is a storage
- * round trip PER OBJECT with an expiry that server-rendered HTML would outlive, so it belongs to a
- * download route rather than a list read.
+ * "open in Drive/Dropbox" page, both of which are real, durable URLs. A **stored** asset lives in a
+ * PRIVATE bucket whose objects are readable only through a short-lived signed URL — which server-
+ * rendered HTML would outlive — so it is addressed through the private-object route
+ * (`fileObjectHref`): a stable same-origin address that re-checks the read under the viewer's own
+ * session and redirects to a freshly signed URL. Before this used the route, every stored file in a
+ * conversation's explorer was `"#"` and opened nothing.
  *
- * `"#"` is the sentinel `AssetItemSchema` already documents for a non-previewable asset, so the grid
- * draws the category glyph — the same thing it draws for a fixture stub. Emitting a guessed
- * `/storage/v1/object/...` path instead would render as a broken image or a 400 on every row, which
- * is the failure mode `partyOf`'s null avatar exists to avoid.
+ * `"#"` remains for an asset with no address at all (a stored upload that never settled), the
+ * sentinel `AssetItemSchema` documents for a non-previewable asset, so the grid draws the category
+ * glyph rather than a broken image.
  */
 function urlOf(row: ItemRow, source: AssetSource): string {
 	if (source === "link" && row.link_url) return clamp(row.link_url, MAX.url);
 	if (source !== "supabase" && row.external_web_url) {
 		return clamp(row.external_web_url, MAX.url);
 	}
+	if (source === "supabase" && row.status === "uploaded") return fileObjectHref(row.id);
 	return "#";
+}
+
+/**
+ * A stored image's grid thumbnail: the object route's `sm` rendition (the route serves the original
+ * when the pipeline wrote none). `null` for everything else, which the grid draws as its glyph.
+ */
+function thumbnailOf(row: ItemRow, source: AssetSource, kind: FileKind): string | null {
+	if (source !== "supabase" || row.status !== "uploaded" || kind !== "image") return null;
+	return fileObjectHref(row.id, { tier: "sm" });
 }
 
 /**
@@ -633,7 +636,7 @@ function toFileItem(row: ItemRow, attachmentId: string, ctx: FileContext): FileI
 		name,
 		ext: clamp(fileExtension(row.original_name ?? name), MAX.ext),
 		url: urlOf(row, source),
-		thumbnailUrl: null,
+		thumbnailUrl: thumbnailOf(row, source, kind),
 		sizeBytes: bytes,
 		sizeLabel: clamp(sizeLabelOf(bytes), MAX.sizeLabel),
 		width: null,
@@ -839,9 +842,8 @@ function sortFiles(rows: FileItem[], key: FileSortKey, dir: FileSortDir): FileIt
  * rest of the page still resolves. The party lookup and the roster are secondary throughout and
  * degrade to "Unknown" and {@link UNTITLED_THREAD}, exactly as `../projects/live-queries.ts` does.
  *
- * An attachment whose `files.items` row is missing — deleted, or withheld by the `messages`-bucket
- * gap in `files.fn_can_read` described in the module docblock — is DROPPED rather than rendered from
- * invented metadata. `total` and the channel `count` therefore describe what the viewer can actually
+ * An attachment whose `files.items` row is missing — deleted, or not readable by this viewer — is
+ * DROPPED rather than rendered from invented metadata. `total` and the channel `count` therefore describe what the viewer can actually
  * read, not what the thread contains.
  */
 export async function fetchConversationFilePage(
@@ -894,7 +896,7 @@ export async function fetchConversationFilePage(
 		const item = items.get(link.attachment_id);
 		const message = byMessage.get(link.message_id);
 		// A join row whose asset or message did not come back is skipped, never faked. See the
-		// docblock: the common cause is the `messages`-bucket hole in `files.fn_can_read`.
+		// docblock: a soft-deleted file is the usual cause.
 		if (!item || !message) continue;
 		all.push(
 			toFileItem(item, link.id, {

@@ -11,9 +11,19 @@ import type { AssetItem } from "@web/features/files/types/file-types.ts";
 import { AccountService } from "@web/features/shell/core/AccountService.ts";
 import { MessagingService } from "@web/features/messaging/core/MessagingService.ts";
 import { MessagesService } from "../core/MessagesService.ts";
-import { MESSAGE_SENT_EVENT, type MessageSentDetail } from "@web/utils/lane-events.ts";
+import {
+	type ChatSurface,
+	MESSAGE_REPLY_EVENT,
+	MESSAGE_SENT_EVENT,
+	type MessageReplyDetail,
+	type MessageSentDetail,
+} from "@web/utils/lane-events.ts";
+import { messageDeltaText, normalizeMessageDelta } from "@projective/types/projects";
 import { uploadForProject } from "../core/upload.ts";
+import { composerMayTake, isTypingKey, ownsKeys } from "../core/chat-keyboard.ts";
 import { CloseIcon, PlusIcon, TrashIcon } from "../components/glyphs.tsx";
+import { ReplyIcon } from "../components/chat-glyphs.tsx";
+import { FormatBubble } from "../components/FormatBubble.tsx";
 import {
 	FileTypeGlyph,
 	LibraryIcon,
@@ -39,7 +49,7 @@ import {
 	resamplePeaks,
 	voiceFileNameFor,
 } from "../core/composer-model.ts";
-import { useAutoResize } from "../hooks/useAutoResize.ts";
+import { useComposerEditor } from "../hooks/useComposerEditor.ts";
 import { useAudioRecorder } from "../hooks/useAudioRecorder.ts";
 import { useWaveform } from "../hooks/useWaveform.ts";
 import type {
@@ -57,7 +67,17 @@ import type {
  * backdrop-blur scrim (kept on a `::before`-style underlay element so it never re-bases the Popover's
  * fixed panel — the glass-blur / fixed-overlay trap, root CLAUDE.md §8/§9) and carries:
  *
- *   - an auto-growing textarea (to a 200px ceiling, then internal scroll);
+ *   - an auto-growing rich message field ({@link useComposerEditor} — Quill, to a 200px ceiling,
+ *     then internal scroll) accepting exactly four marks: highlighting text raises the glass
+ *     {@link FormatBubble} (Bold · Italic · Strikethrough · Underline) directly above the selection,
+ *     and the send carries the body twice — plain `text` and the normalised Quill Delta — which the
+ *     feed renders back with its formatting;
+ *   - a reply strip: a feed asks for a reply on `MESSAGE_REPLY_EVENT` (Reply, an arrow key, a swipe)
+ *     and the strip quotes the message being answered until the reply is sent or cancelled (×, or
+ *     Escape in the field); the send carries its `replyToId`;
+ *   - type-anywhere: with the field unfocused, ordinary typing on the page focuses it and appends the
+ *     characters at the end of the draft (never stealing a key from another field, a menu, a dialog,
+ *     or the other chat surface — see `chat-keyboard.ts`);
  *   - a dynamic right control — Mic when empty, Send once there's a draft, Pause + Stop while capturing;
  *   - a voice engine ({@link useAudioRecorder}) with click-to-toggle, hold-to-talk, and `Ctrl+Space`,
  *     a live scrolling waveform, a `mm:ss` clock, pause/resume, and static equal-width bars once
@@ -74,7 +94,7 @@ import type {
  * its envelope already resampled to the persisted cap — uploads every device file through the shared
  * files handshake ({@link uploadForProject}, so bytes never transit an application route), and posts
  * the resulting asset ids to `/api/projects/messages/send`. Text and voice drafts are mutually
- * exclusive by construction (the textarea is replaced by the waveform while a memo exists).
+ * exclusive by construction (the field is replaced by the waveform while a memo exists).
  *
  * Nothing is ever dropped quietly. The draft is cleared only by a SUCCESS, and only the parts that
  * were actually sent — so a refusal leaves the words on screen to retry, and a person who kept typing
@@ -106,6 +126,14 @@ export interface ChatComposerProps {
 	 * resolvers that mount this composer pass no handlers at all.
 	 */
 	scope?: "project" | "conversation";
+	/**
+	 * Which chat surface this composer serves (see {@link ChatSurface}). `page` (the default) is the
+	 * footer composer of the channel the URL addresses: it takes type-anywhere keys from the whole page
+	 * except the floating window. `popout` is the floating window's own composer: it takes them only
+	 * while focus is inside the window. Replies are addressed by channel AND surface, so a reply
+	 * started in the window never lands in the page's composer on the same channel, or the reverse.
+	 */
+	surface?: ChatSurface;
 	/**
 	 * Where a capture or send failure is reported.
 	 *
@@ -157,13 +185,15 @@ const PERMISSION_KINDS: ReadonlySet<RecorderError["kind"]> = new Set([
  * What one send consumed.
  *
  * Captured before the request leaves so a success can clear exactly that and nothing else. The
- * composer stays editable while a large attachment uploads, and blanking the textarea on the way back
+ * composer stays editable while a large attachment uploads, and blanking the field on the way back
  * would delete a sentence typed after the send — the one kind of data loss a person cannot see
  * happening.
  */
 interface SentDraft {
-	/** The raw textarea value at send time; cleared only if it is still that. */
+	/** The raw field text at send time; cleared only if it is still that. */
 	text: string;
+	/** The message the send replied to; the strip is dismissed only if it still quotes it. */
+	replyToId: string | null;
 	/** The {@link DraftAttachment} ids consumed — by id, because the tray may have grown since. */
 	attachmentIds: string[];
 	/** The collapsed paste blocks consumed. */
@@ -201,6 +231,7 @@ export default function ChatComposer(
 		projectId,
 		channelId,
 		scope = "project",
+		surface = "page",
 		notices = "inline",
 		onReady,
 		onSend,
@@ -208,7 +239,21 @@ export default function ChatComposer(
 	}: ChatComposerProps,
 ): JSX.Element {
 	// #region State
-	const text = useSignal("");
+	const rootRef = useRef<HTMLDivElement>(null);
+	/** The message being replied to, as the strip quotes it; null when the draft is not a reply. */
+	const replyTo = useSignal<MessageReplyDetail["target"] | null>(null);
+	const editor = useComposerEditor({
+		placeholder: "Write a message…",
+		label: "Message",
+		onSubmit: () => void send(),
+		onEscape: () => {
+			if (!replyTo.value) return false;
+			replyTo.value = null;
+			return true;
+		},
+		onPaste,
+	});
+	const text = editor.text;
 	const attachments = useSignal<DraftAttachment[]>([]);
 	/** A send is in flight — the Send control is held so one press cannot become two messages. */
 	const sending = useSignal(false);
@@ -226,7 +271,6 @@ export default function ChatComposer(
 	const dragActive = useSignal(false);
 	const plusOpen = useSignal(false);
 
-	const auto = useAutoResize();
 	const rec = useAudioRecorder();
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	useWaveform(canvasRef, rec);
@@ -356,7 +400,12 @@ export default function ChatComposer(
 		pasted.value = pasted.value.filter((p) => p.id !== id);
 	}
 
-	function onPaste(event: JSX.TargetedClipboardEvent<HTMLTextAreaElement>): void {
+	/**
+	 * Paste, seen in the capture phase before the editor's own handler. Files join the tray and a long
+	 * paste collapses into a chip; anything else is left to the editor, which keeps only the four marks
+	 * a message can carry from whatever formatting the clipboard holds.
+	 */
+	function onPaste(event: ClipboardEvent): void {
 		const data = event.clipboardData;
 		if (!data) return;
 		if (data.files && data.files.length > 0) {
@@ -439,10 +488,8 @@ export default function ChatComposer(
 	 * themselves having done. Attachments and pastes are matched by id for the same reason.
 	 */
 	function clearSent(sent: SentDraft): void {
-		if (text.value === sent.text) {
-			text.value = "";
-			setTimeout(() => auto.resize(), 0);
-		}
+		if (text.value === sent.text) editor.clear();
+		if (sent.replyToId !== null && replyTo.value?.id === sent.replyToId) replyTo.value = null;
 		const consumedFiles = new Set(sent.attachmentIds);
 		for (const a of attachments.value) if (consumedFiles.has(a.id)) releasePreview(a);
 		attachments.value = attachments.value.filter((a) => !consumedFiles.has(a.id));
@@ -470,14 +517,34 @@ export default function ChatComposer(
 				peaks: resamplePeaks(memo.peaks, Math.min(MAX_AUDIO_PEAKS, Math.max(1, memo.peaks.length))),
 			};
 		}
-		// Collapsed pastes were only ever collapsed for display — they rejoin the body on the way out.
-		const body = [text.value.trim(), ...pasted.value.map((p) => p.text)].filter(Boolean).join(
-			"\n\n",
-		);
+		// Collapsed pastes were only ever collapsed for display — they rejoin the body on the way out,
+		// as unformatted runs after the field's own (formatted) runs.
+		const runs: unknown[] = editor.ops();
+		for (const p of pasted.value) {
+			if (runs.length > 0) runs.push({ insert: "\n\n" });
+			runs.push({ insert: p.text });
+		}
+		// The plain body is derived from the SAME runs the Delta is, and trimmed the way the Delta
+		// normaliser trims, so the two agree character for character (the send schemas refuse a pair
+		// that does not). A Delta the normaliser cannot store — an over-long run — is dropped, and the
+		// message goes plain rather than not at all.
+		const body = runs
+			.map((op) =>
+				typeof (op as { insert?: unknown }).insert === "string"
+					? (op as { insert: string }).insert
+					: ""
+			)
+			.join("")
+			.replace(/\r\n?/g, "\n")
+			.trim();
+		const normalized = normalizeMessageDelta(runs);
+		const delta = normalized && messageDeltaText(normalized) === body ? normalized : null;
 		return {
 			projectId,
 			channelId,
 			text: body,
+			delta,
+			replyToId: replyTo.value?.id ?? null,
 			// Device files carry bytes; library picks carry an id. They are separated HERE rather than by
 			// the send path, so nothing downstream has to know how a card got onto the tray.
 			files: attachments.value.flatMap((a) => (a.file ? [a.file] : [])),
@@ -545,6 +612,7 @@ export default function ChatComposer(
 		const draft = buildPayload();
 		const sent: SentDraft = {
 			text: text.value,
+			replyToId: draft.replyToId,
 			attachmentIds: attachments.value.map((a) => a.id),
 			pastedIds: pasted.value.map((p) => p.id),
 			voice: draft.voice !== null,
@@ -589,6 +657,8 @@ export default function ChatComposer(
 			? await MessagingService.send({
 				conversationId: channelId,
 				text: draft.text,
+				delta: draft.delta,
+				replyToId: draft.replyToId,
 				attachmentIds,
 				audio,
 			})
@@ -596,6 +666,8 @@ export default function ChatComposer(
 				projectId,
 				channelId,
 				text: draft.text,
+				delta: draft.delta,
+				replyToId: draft.replyToId,
 				attachmentIds,
 				audio,
 			});
@@ -622,12 +694,56 @@ export default function ChatComposer(
 		};
 	}
 
-	function onTextareaKeyDown(event: JSX.TargetedKeyboardEvent<HTMLTextAreaElement>): void {
-		if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
-			event.preventDefault();
-			void send();
+	// #endregion
+
+	// #region Reply strip + type-anywhere
+	/**
+	 * Take a reply a feed asked for. Addressed by channel AND surface: the pop-out window and the page
+	 * can show the same channel at once, and a reply belongs to the composer beside the feed it was
+	 * started from. Focus goes to the end of the draft, so the reader can start writing at once.
+	 */
+	useEffect(() => {
+		function onReply(event: Event): void {
+			const detail = (event as CustomEvent<MessageReplyDetail>).detail;
+			if (!detail || detail.channelId !== channelId || detail.surface !== surface) return;
+			if (rec.phase.value !== "inactive") return;
+			replyTo.value = detail.target;
+			editor.focusEnd();
 		}
-	}
+		globalThis.addEventListener(MESSAGE_REPLY_EVENT, onReply);
+		return () => globalThis.removeEventListener(MESSAGE_REPLY_EVENT, onReply);
+	}, [channelId, surface]);
+
+	/**
+	 * Typing with the field unfocused writes into it: the key is taken (default prevented), the field
+	 * focused, and the character appended at the END of the draft — wherever the caret last was — so a
+	 * reader who clicked a message and starts typing continues their sentence rather than splitting it.
+	 * Ctrl/⌘+V moves focus the same way without taking the key, so the paste itself lands in the field
+	 * through the normal path (files and long pastes included).
+	 *
+	 * Ownership is `chat-keyboard`'s: never a key typed into another field, a menu, a dialog, the other
+	 * chat surface, or a Space meant for a focused button. Nothing happens while a voice memo holds
+	 * the field.
+	 */
+	useEffect(() => {
+		function onKeyDown(event: KeyboardEvent): void {
+			if (event.defaultPrevented) return;
+			const active = event.target instanceof Element ? event.target : document.activeElement;
+			if (!ownsKeys(surface, active)) return;
+			if (rec.phase.value !== "inactive") return;
+			const paste = (event.ctrlKey || event.metaKey) && !event.altKey &&
+				event.key.toLowerCase() === "v";
+			if (paste) {
+				editor.focusEnd();
+				return;
+			}
+			if (!isTypingKey(event) || !composerMayTake(event, active)) return;
+			event.preventDefault();
+			editor.appendTyped(event.key);
+		}
+		globalThis.addEventListener("keydown", onKeyDown);
+		return () => globalThis.removeEventListener("keydown", onKeyDown);
+	}, [surface]);
 	// #endregion
 
 	// #region Global shortcut + unmount cleanup
@@ -665,7 +781,7 @@ export default function ChatComposer(
 		const timer = setTimeout(() => {
 			const active = document.activeElement;
 			if (active && active !== document.body) return;
-			auto.ref.current?.focus({ preventScroll: true });
+			editor.focus();
 		}, 0);
 		return () => clearTimeout(timer);
 	}, []);
@@ -740,10 +856,16 @@ export default function ChatComposer(
 	// #endregion
 
 	const err = rec.error.value;
+	// Read for its subscription: the selection's on-screen box moves when the field scrolls or the
+	// draft reflows, and the bubble has to move with it.
+	void editor.layoutTick.value;
+	const formatRect = editor.range.value && !hasVoice ? editor.selectionRect() : null;
 
 	return (
 		<div
+			ref={rootRef}
 			class="chat-composer"
+			data-surface={surface}
 			data-project={projectId}
 			data-channel={channelId}
 			data-drag={dragActive.value ? "true" : undefined}
@@ -756,6 +878,41 @@ export default function ChatComposer(
 			<div class="chat-composer__scrim" aria-hidden="true" />
 
 			<div class="chat-composer__inner">
+				{
+					/* The reply strip — who is being answered and what they said, until the reply goes
+					   or is cancelled. A control (it cancels), so it takes the tonal chip treatment the
+					   paste chips use rather than a bordered box. */
+				}
+				{replyTo.value && (
+					<div class="chat-composer__reply">
+						<span class="chat-composer__reply-icon" aria-hidden="true">
+							{cloneElement(ReplyIcon)}
+						</span>
+						<span class="chat-composer__reply-meta">
+							<span class="chat-composer__reply-title">
+								Replying to{" "}
+								{replyTo.value.isOwn ? "yourself" : replyTo.value.senderName ?? "a message"}
+							</span>
+							<span class="chat-composer__reply-text">
+								{replyTo.value.excerpt ||
+									(replyTo.value.media === "audio"
+										? "Voice message"
+										: replyTo.value.media === "attachment"
+										? "Attachment"
+										: "Message")}
+							</span>
+						</span>
+						<button
+							type="button"
+							class="chat-composer__paste-remove"
+							aria-label="Cancel reply"
+							onClick={() => (replyTo.value = null)}
+						>
+							{CloseIcon}
+						</button>
+					</div>
+				)}
+
 				{/* Attachment preview cards (max 10). */}
 				{attachments.value.length > 0 && (
 					<ul class="chat-composer__cards" aria-label="Attachments">
@@ -886,50 +1043,47 @@ export default function ChatComposer(
 							</Popover>
 						)}
 
-					{/* Field — textarea, or the waveform while recording/recorded. */}
+					{/* Field — the message editor, or the waveform while recording/recorded. */}
 					<div class="chat-composer__field">
-						{hasVoice
-							? (
-								<div class="chat-composer__voice" data-phase={phase}>
-									{phase === "requesting" && (
-										<span class="chat-composer__connecting">Connecting to your microphone…</span>
-									)}
-									<canvas
-										ref={canvasRef}
-										class="chat-composer__wave"
-										data-phase={phase}
-										aria-hidden="true"
-									/>
-									{
-										/* Readable on demand, but never a live region — a clock announcing itself five
+						{
+							/* The editor host stays MOUNTED while a memo holds the field, only hidden: Quill
+							   owns its DOM, and unmounting it would throw the instance away and rebuild it on
+							   every recording. Text and voice never coexist, so it is empty while hidden. */
+						}
+						<div class="chat-composer__editor" hidden={hasVoice}>
+							<div
+								ref={editor.hostRef}
+								class="chat-composer__input"
+								data-placeholder="Write a message…"
+								data-ready="false"
+							/>
+						</div>
+						{hasVoice && (
+							<div class="chat-composer__voice" data-phase={phase}>
+								{phase === "requesting" && (
+									<span class="chat-composer__connecting">Connecting to your microphone…</span>
+								)}
+								<canvas
+									ref={canvasRef}
+									class="chat-composer__wave"
+									data-phase={phase}
+									aria-hidden="true"
+								/>
+								{
+									/* Readable on demand, but never a live region — a clock announcing itself five
 									    times a second would bury every other message. Transitions are announced by
 									    the status line below instead. */
-									}
-									<span class="chat-composer__timer">
-										{formatClock(
-											phase === "recorded" && memo ? memo.durationMs : rec.elapsedMs.value,
-										)}
-										{phase !== "recorded" && (
-											<span class="chat-composer__timer-max">/ {formatClock(rec.maxMs)}</span>
-										)}
-									</span>
-								</div>
-							)
-							: (
-								<textarea
-									ref={auto.ref}
-									class="chat-composer__input"
-									rows={1}
-									placeholder="Write a message…"
-									value={text.value}
-									onInput={(e) => {
-										text.value = e.currentTarget.value;
-										auto.resize();
-									}}
-									onPaste={onPaste}
-									onKeyDown={onTextareaKeyDown}
-								/>
-							)}
+								}
+								<span class="chat-composer__timer">
+									{formatClock(
+										phase === "recorded" && memo ? memo.durationMs : rec.elapsedMs.value,
+									)}
+									{phase !== "recorded" && (
+										<span class="chat-composer__timer-max">/ {formatClock(rec.maxMs)}</span>
+									)}
+								</span>
+							</div>
+						)}
 					</div>
 
 					{
@@ -1082,6 +1236,14 @@ export default function ChatComposer(
 					{sending.value ? "Sending your message." : voiceStatus(phase, memo?.durationMs ?? 0)}
 				</p>
 			</div>
+
+			{formatRect && (
+				<FormatBubble
+					rect={formatRect}
+					marks={editor.marks.value}
+					onToggle={(mark) => editor.toggleMark(mark)}
+				/>
+			)}
 
 			{/* Hidden device file picker. */}
 			<input

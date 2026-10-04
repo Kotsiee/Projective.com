@@ -910,6 +910,12 @@ GRANT EXECUTE ON FUNCTION comms.send_request_message(uuid, text, uuid) TO authen
 -- no client should be able to ask about anyone. Reached only from the definer trigger.
 REVOKE ALL ON FUNCTION comms.fn_dm_protected_project(uuid, uuid, uuid) FROM public, anon, authenticated;
 
+-- The reply guards (00001300) are trigger functions: EXECUTE is checked once, at CREATE TRIGGER,
+-- against the trigger's creator, so no client role needs it and none is left holding it.
+REVOKE ALL ON FUNCTION comms.tg_guard_message_reply() FROM public, anon, authenticated;
+
+REVOKE ALL ON FUNCTION comms.tg_guard_dm_message_reply() FROM public, anon, authenticated;
+
 REVOKE ALL ON FUNCTION projects.fn_engaged_projects(uuid) FROM public, anon, authenticated;
 
 -- --- freelancer removal (00001120: release_ticket_to_backlog) ---

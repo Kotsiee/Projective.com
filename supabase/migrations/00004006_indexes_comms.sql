@@ -35,6 +35,20 @@ CREATE INDEX IF NOT EXISTS idx_dm_participants_thread_user
 CREATE INDEX IF NOT EXISTS idx_dm_messages_thread_recent
     ON comms.dm_messages (thread_id, created_at DESC);
 
+-- Replies, looked up from the ORIGINAL's side. A reply's quote resolves its original by primary key,
+-- so the feed needs nothing new; these serve the other direction — the self-FK's ON DELETE SET NULL,
+-- which must find every reply pointing at a purged original and would otherwise scan the whole table
+-- per deleted row, and any "replies to this message" read. Partial because almost no message is a
+-- reply, so the NULLs would be nearly the entire index; `reply_to_id = $1` implies NOT NULL, so the
+-- planner can still use it for the FK's own lookup.
+CREATE INDEX IF NOT EXISTS idx_project_messages_reply_to
+    ON comms.project_messages (reply_to_id)
+    WHERE reply_to_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_dm_messages_reply_to
+    ON comms.dm_messages (reply_to_id)
+    WHERE reply_to_id IS NOT NULL;
+
 CREATE INDEX IF NOT EXISTS idx_notification_types_aliases ON comms.notification_types USING gin (aliases);
 CREATE INDEX IF NOT EXISTS idx_notification_types_category ON comms.notification_types (category) WHERE enabled;
 CREATE INDEX IF NOT EXISTS idx_notifications_user_feed

@@ -1,22 +1,34 @@
 import type { JSX, RefObject } from "preact";
 import { useSignal } from "@preact/signals";
+import { useEffect, useRef } from "preact/hooks";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import type { ChatMessage } from "../types/projects-types.ts";
 import { FlagIcon, KebabIcon, StarIcon } from "./glyphs.tsx";
 import { PinIcon } from "./channel-glyphs.tsx";
 import { CopyIcon, ReactIcon, ReplyIcon } from "./chat-glyphs.tsx";
+import { makeId } from "../core/composer-model.ts";
+import { MESSAGE_MENU_OPEN_EVENT, type MessageMenuOpenDetail } from "@web/utils/lane-events.ts";
 
 /**
- * MessageActions — the on-hover quick actions + overflow menu for a message bubble (task §3). The
- * toolbar (Reply · React · Copy) and the meatball (`…`) trigger are absolutely positioned by the
- * bubble's CSS so revealing them never reflows the feed (no layout shift). The meatball opens a Popover
- * with Pin · Favourite · Report; React opens a small emoji quick-picker.
+ * MessageActions — the on-hover quick actions + overflow menu for a message bubble (task §3).
+ *
+ * A GHOST toolbar (Reply · React · Copy · `…`) that sits literally beside the bubble, in the row's
+ * side rail, with the viewer's own sent time directly beneath it. No fill, no border, no shadow: the
+ * buttons are the only interactive surface, so only they take a tint, on hover. The rail is always in
+ * the layout and only its opacity changes, so revealing it never reflows the feed.
+ *
+ * The meatball opens a Popover with Pin · Favourite · Report; React opens a small emoji quick-picker.
+ * In highlight mode the same actions render as {@link MessageContextMenu} instead, and the feed hides
+ * this toolbar, so a message never shows two menus.
+ *
+ * "One message menu at a time" holds across the page: opening either popover announces itself on
+ * {@link MESSAGE_MENU_OPEN_EVENT}, and an open one closes when it hears another menu open — the
+ * pop-out window and the page feed are different islands, so no shared signal could do this.
  *
  * Pin permission (task §3): `canPin` is server-derived — anyone in a private DM, but only an
- * owner-granted viewer in a project/team channel — so the Pin item is hidden when the viewer cannot pin.
- * Copy is real (`navigator.clipboard`); the rest are optimistic/stubbed until the messaging backend
- * lands behind `PROJECTS_BACKEND_LIVE`. `onOpenChange` lets the bubble keep the toolbar visible while a
- * menu is open (the row has lost `:hover` to the portaled panel).
+ * owner-granted viewer in a project/team channel — so the Pin item is hidden when the viewer cannot
+ * pin. `onOpenChange` lets the bubble keep the toolbar visible while a menu is open (the row has lost
+ * `:hover` to the portaled panel).
  */
 
 export interface MessageActionsProps {
@@ -26,6 +38,7 @@ export interface MessageActionsProps {
 	own: boolean;
 	onReply: () => void;
 	onReact: (emoji: string) => void;
+	onCopy: () => void;
 	onTogglePin: () => void;
 	onToggleFavorite: () => void;
 	onReport: () => void;
@@ -33,22 +46,48 @@ export interface MessageActionsProps {
 	onOpenChange: (open: boolean) => void;
 }
 
-const QUICK_EMOJI = ["👍", "❤️", "😂", "🎉", "👀", "✅"];
+/** The quick reactions offered everywhere a message can be reacted to. */
+export const QUICK_EMOJI = ["👍", "❤️", "😂", "🎉", "👀", "✅"] as const;
 
 export function MessageActions(props: MessageActionsProps): JSX.Element {
-	const { message, canPin, own, onReply, onReact, onTogglePin, onToggleFavorite, onReport } = props;
+	const {
+		message,
+		canPin,
+		own,
+		onReply,
+		onReact,
+		onCopy,
+		onTogglePin,
+		onToggleFavorite,
+		onReport,
+	} = props;
 	const reactOpen = useSignal(false);
 	const menuOpen = useSignal(false);
+	const owner = useRef(makeId("msg-actions"));
 
 	function notify(): void {
-		props.onOpenChange(reactOpen.value || menuOpen.value);
+		const open = reactOpen.value || menuOpen.value;
+		if (open) {
+			globalThis.dispatchEvent(
+				new CustomEvent<MessageMenuOpenDetail>(MESSAGE_MENU_OPEN_EVENT, {
+					detail: { owner: owner.current },
+				}),
+			);
+		}
+		props.onOpenChange(open);
 	}
 
-	async function copy(): Promise<void> {
-		try {
-			await navigator.clipboard?.writeText(message.text || "");
-		} catch { /* clipboard blocked — non-fatal */ }
-	}
+	useEffect(() => {
+		function onOtherMenu(e: Event): void {
+			if ((e as CustomEvent<MessageMenuOpenDetail>).detail?.owner === owner.current) return;
+			if (!reactOpen.value && !menuOpen.value) return;
+			reactOpen.value = false;
+			menuOpen.value = false;
+			props.onOpenChange(false);
+		}
+		globalThis.addEventListener(MESSAGE_MENU_OPEN_EVENT, onOtherMenu);
+		return () => globalThis.removeEventListener(MESSAGE_MENU_OPEN_EVENT, onOtherMenu);
+	}, []);
 
 	return (
 		<div class="msg-actions" data-own={own ? "true" : undefined}>
@@ -100,7 +139,7 @@ export function MessageActions(props: MessageActionsProps): JSX.Element {
 			</Popover>
 
 			<Tooltip content="Copy" placement="top">
-				<button type="button" class="msg-actions__btn" aria-label="Copy message" onClick={copy}>
+				<button type="button" class="msg-actions__btn" aria-label="Copy message" onClick={onCopy}>
 					{CopyIcon}
 				</button>
 			</Tooltip>

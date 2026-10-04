@@ -18,3 +18,11 @@ export {
 	shouldParseMarkdown,
 } from "./core/markdown.ts";
 export type { ResizeAxis } from "./core/resize.ts";
+/*
+ * The loader is exported for a surface that needs Quill's ENGINE without this component's chrome —
+ * the chat composer is a one-line field with a floating selection bubble, not a document with a
+ * toolbar — so it shares the one memoised import, and the one registered format set, rather than
+ * shipping a second Quill build.
+ */
+export { loadedQuill, loadQuill, warmQuill } from "./core/quill-loader.ts";
+export type { QuillConstructor, QuillInstance } from "./core/quill-loader.ts";

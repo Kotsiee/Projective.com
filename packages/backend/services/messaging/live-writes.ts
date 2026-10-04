@@ -1,13 +1,17 @@
-import type { ChatMessage } from "@projective/types/projects";
+import { type ChatMessage, messageDeltaText } from "@projective/types/projects";
 import { dmHandleOf, type SendConversationMessage } from "@projective/types/messaging";
 import type { ReadActor } from "../read-actor.ts";
 import { refusalFrom, type WriteOutcome } from "../projects/live-writes.ts";
+import { fetchMessageAttachments } from "../projects/message-attachments.ts";
 import { UUID_RE } from "../projects/live-support.ts";
+import { REPLY_REFUSAL_MESSAGE, replyRefusal } from "../projects/message-replies.ts";
 import {
 	commsClient,
+	DM_MESSAGE_COLUMNS,
 	type DmMessageRow,
 	fetchParties,
 	MESSAGE_TEXT_MAX,
+	NO_INTERACTIONS,
 	orgClient,
 	toChatMessage,
 } from "./live-queries.ts";
@@ -92,6 +96,12 @@ async function resolveThreadId(
  * while `comms.channel_files.channel_type` is the bare `'dm'`. Matching the wrong one returns zero
  * rows and raises nothing, so the file would never appear in the conversation's Files tab and nothing
  * would say why. A failed attachment link does NOT fail the send — the message is already committed.
+ *
+ * A reply is held to the rule `insertProjectMessage` states for a channel, scoped to the THREAD: the
+ * original must be a message of this thread the caller can read, or the send is the one
+ * `replyRefusal` before anything is written (`comms.tg_guard_dm_message_reply` is the backstop). The
+ * echo is mapped from the row the insert reads back, so a body `comms.tg_mask_dm_message_pii` masked
+ * — and whose formatting it dropped — reaches the sender exactly as the other participants see it.
  */
 export async function insertDmMessage(
 	actor: ReadActor & { accessToken: string },
@@ -102,23 +112,44 @@ export async function insertDmMessage(
 	if (!threadId) return null;
 
 	const db = commsClient(actor);
+
+	let original: DmMessageRow | undefined;
+	if (input.replyToId !== null) {
+		if (!UUID_RE.test(input.replyToId)) return { refusal: replyRefusal() };
+		const read = await db
+			.from("dm_messages")
+			.select(DM_MESSAGE_COLUMNS)
+			.eq("thread_id", threadId)
+			.eq("id", input.replyToId)
+			.maybeSingle();
+		if (read.error) throw new Error(`comms.dm_messages read failed: ${read.error.message}`);
+		if (!read.data) return { refusal: replyRefusal() };
+		original = read.data as unknown as DmMessageRow;
+	}
+
 	const attachmentIds = input.attachmentIds.filter((id) => UUID_RE.test(id));
+	const body = input.text.length <= MESSAGE_TEXT_MAX
+		? input.text
+		: input.text.slice(0, MESSAGE_TEXT_MAX);
 	const { data, error } = await db
 		.from("dm_messages")
 		.insert({
 			thread_id: threadId,
 			sender_user_id: actor.userId,
-			body: input.text.length <= MESSAGE_TEXT_MAX
-				? input.text
-				: input.text.slice(0, MESSAGE_TEXT_MAX),
+			body,
+			// Only a Delta that spells the body actually stored: the clamp above can shorten an 8,000
+			// character send to 4,000, and a Delta that no longer agrees is one every reader discards.
+			body_delta: input.delta && messageDeltaText(input.delta) === body ? input.delta : null,
+			reply_to_id: original?.id ?? null,
 			has_attachments: attachmentIds.length > 0,
 			is_audio: input.audio !== null,
 		})
-		.select(
-			"id, thread_id, sender_user_id, body, has_attachments, is_audio, created_at, deleted_at",
-		)
+		.select(DM_MESSAGE_COLUMNS)
 		.maybeSingle();
-	if (error) return { refusal: refusalFrom(error.message, "text") };
+	if (error) {
+		const field = error.message.includes(REPLY_REFUSAL_MESSAGE) ? "replyToId" : "text";
+		return { refusal: refusalFrom(error.message, field) };
+	}
 	const row = data as unknown as DmMessageRow | null;
 	if (!row?.id) return { refusal: refusalFrom("dm_messages insert returned no id", "text") };
 
@@ -139,12 +170,24 @@ export async function insertDmMessage(
 		);
 	}
 
-	const parties = await fetchParties(actor, [actor.userId]);
+	const parties = await fetchParties(
+		actor,
+		original ? [actor.userId, original.sender_user_id] : [actor.userId],
+	);
+	// The sender's own echo carries its files too, read back through the same loader the feed uses,
+	// so the bubble that appears on send is the bubble a reload draws — not a text-only row whose
+	// attachments only show up after a refresh.
+	const attachments = attachmentIds.length > 0
+		? await fetchMessageAttachments(actor, "comms.dm_messages", [row.id])
+		: undefined;
 	const message = toChatMessage(
 		{ ...row, created_at: row.created_at ?? new Date(now).toISOString() },
 		parties,
 		actor.userId,
 		now,
+		NO_INTERACTIONS,
+		original ? new Map([[original.id, original]]) : undefined,
+		attachments,
 	);
 	// The memo's projection is the caller's — the row only records `is_audio`, and the feed's own
 	// read has no waveform column to rebuild it from (see `toChatMessage`).

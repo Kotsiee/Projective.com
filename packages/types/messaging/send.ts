@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { MessageAudioSchema } from "../projects/messages.ts";
+import { MessageAudioSchema, sendDeltaAgrees } from "../projects/messages.ts";
+import { MessageDeltaSchema } from "../projects/message-rich.ts";
 
 /**
  * messaging.send — the Zod SSOT for posting ONE message into a global-inbox conversation
@@ -26,6 +27,10 @@ export const SendConversationMessageSchema = z.object({
 	/** The conversation id — a unified `dm-{handle}` / `grp-…` id, or a `comms.dm_threads` uuid. */
 	conversationId: z.string().min(1).max(120),
 	text: z.string().max(8000),
+	/** The body's formatting; null for an unformatted send. Must spell exactly `text`. */
+	delta: MessageDeltaSchema.nullable().default(null),
+	/** The message this one replies to, in the same conversation; null when it is not a reply. */
+	replyToId: z.string().min(1).max(80).nullable().default(null),
 	/** Every attachment, device-uploaded and library-picked alike, as `files.items` ids. */
 	attachmentIds: z.array(z.string().min(1).max(120)).max(20).default([]),
 	/** The voice memo's persisted projection; its own bytes are one of {@link attachmentIds}. */
@@ -33,7 +38,10 @@ export const SendConversationMessageSchema = z.object({
 }).refine(
 	(v) => v.text.trim().length > 0 || v.attachmentIds.length > 0 || v.audio !== null,
 	{ message: "Write a message, attach a file, or record a memo." },
-);
+).refine(sendDeltaAgrees, {
+	message: "The formatted body does not match the message text.",
+	path: ["delta"],
+});
 export type SendConversationMessage = z.infer<typeof SendConversationMessageSchema>;
 // #endregion
 

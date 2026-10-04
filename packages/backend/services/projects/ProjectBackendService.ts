@@ -60,6 +60,7 @@ import {
 	createdDetail,
 	createdMemberRoster,
 	createdSummary,
+	findSentMessage,
 	hireInviteCount,
 	isStoredArchived,
 	mergeSetupPatch,
@@ -103,7 +104,8 @@ import {
 	withResolvableScope,
 } from "./query.ts";
 import { findProjectDetail } from "./detail-fixtures.ts";
-import { findMessagePage } from "./messages-fixtures.ts";
+import { findChannelMessage, findMessagePage } from "./messages-fixtures.ts";
+import { replyFromMessage, replyRefusal } from "./message-replies.ts";
 import { findFilePage } from "./files-fixtures.ts";
 import { findSubmissionPage } from "./submissions-fixtures.ts";
 import { BOARD_FIXTURE_NOW, findBoardPage, findTicketProjectSlug } from "./board-fixtures.ts";
@@ -1598,7 +1600,14 @@ export class ProjectBackendService {
 		let conversationId: string | null = null;
 		if (intro) {
 			const sent = await MessagingBackendService.sendMessage(
-				{ conversationId: dmConversationId(handle), text: intro, attachmentIds: [], audio: null },
+				{
+					conversationId: dmConversationId(handle),
+					text: intro,
+					delta: null,
+					replyToId: null,
+					attachmentIds: [],
+					audio: null,
+				},
 				actor,
 			);
 			conversationId = sent.ok ? dmConversationId(handle) : null;
@@ -2080,6 +2089,11 @@ export class ProjectBackendService {
 	 * Attachments arrive as `files.items` ids, never as bytes: the device upload already went through
 	 * the files handshake before this call, which is why `/api/files/upload-init` exists. An
 	 * application route is not a file transport.
+	 *
+	 * A reply's original is resolved on both branches under the same rule — a message of THIS channel,
+	 * or the one `replyRefusal` (422 on `replyToId`). The stub looks in the channel's whole fixture
+	 * history and then in the viewer's own sent overlay, which together are everything the stub feed
+	 * can show; a system notice is not repliable, having no live counterpart to point at.
 	 */
 	static async sendMessage(
 		input: SendProjectMessage,
@@ -2106,11 +2120,20 @@ export class ProjectBackendService {
 		if (!page) return fail(404, { message: "No such project channel." });
 
 		const owner = writeOwnerOf(actor);
+		const replyTo = input.replyToId === null ? null : replyFromMessage(
+			findChannelMessage(input.projectId, input.channelId, input.replyToId) ??
+				findSentMessage(owner, input.projectId, input.channelId, input.replyToId),
+		);
+		if (input.replyToId !== null && !replyTo) {
+			const refusal = replyRefusal();
+			return fail(refusal.status, { message: refusal.message, errors: refusal.errors });
+		}
 		const message = buildStubMessage(
 			input,
 			viewerSenderFor(input.projectId, input.channelId),
 			sentMessageCount(owner, input.projectId, input.channelId),
 			Date.now(),
+			replyTo,
 		);
 		appendChannelMessage(owner, input.projectId, input.channelId, message);
 		invalidateProjects(actor);

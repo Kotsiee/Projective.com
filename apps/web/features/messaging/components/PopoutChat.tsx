@@ -4,9 +4,13 @@ import { useEffect, useRef } from "preact/hooks";
 // Reuse the project chat message chrome (`.msg-row`/`.chat-day`) + composer verbatim.
 import "@web/features/projects/styles/chat-feed.css";
 import "../styles/chat-popout.css";
+import { useIsMobile } from "@projective/ui/hooks";
 import { buildRows, type FeedRow } from "@web/features/projects/core/message-model.ts";
 import { MessageBubble } from "@web/features/projects/components/MessageBubble.tsx";
 import { SystemMessage } from "@web/features/projects/components/SystemMessage.tsx";
+import { MessageSelectionBar } from "@web/features/projects/components/MessageSelectionBar.tsx";
+import { ReactionBubble } from "@web/features/projects/components/ReactionBubble.tsx";
+import { useMessageSelection } from "@web/features/projects/hooks/useMessageSelection.ts";
 import ChatComposer, {
 	type ComposerHandle,
 } from "@web/features/projects/islands/ChatComposer.island.tsx";
@@ -32,7 +36,10 @@ import { offlineOr } from "@web/utils/use-offline-stall.ts";
  *   - appends the SERVER's row when the composer announces a send on `MESSAGE_SENT_EVENT`, so a
  *     message posted from the window appears in the window — the composer and the list are one
  *     component tree here, but the announcement is what the in-frame feed listens to as well, and
- *     one channel for "a row now exists" beats a second, private one.
+ *     one channel for "a row now exists" beats a second, private one;
+ *   - runs the same highlight mode, selection, shortcuts and touch gestures as the page feed, as the
+ *     `popout` surface ({@link useMessageSelection}): the keyboard is the window's while focus is
+ *     inside it, and its replies go to ITS composer even when the page behind shows the same channel.
  *
  * The composer is mounted in the popout's own SCOPE (a conversation posts to the inbox's send door,
  * a project channel to the projects one) and in `toast` notice mode — a 24rem window has no room for
@@ -46,6 +53,9 @@ export interface PopoutChatProps {
 }
 // #endregion
 
+/** How many earlier pages a reply quote may load while looking for its original. */
+const JUMP_PAGE_BUDGET = 8;
+
 export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 	const messages = useSignal<ChatMessage[]>([]);
 	const loading = useSignal(true);
@@ -55,7 +65,10 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 	const cursor = useSignal<string | null>(null);
 	const canPin = useSignal(false);
 	const dragActive = useSignal(false);
+	const flashId = useSignal<string | null>(null);
+	const mobile = useIsMobile();
 
+	const rootRef = useRef<HTMLDivElement>(null);
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const composerApi = useRef<ComposerHandle | null>(null);
 	const dragDepth = useRef(0);
@@ -109,8 +122,9 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 		scrollToBottom();
 	}
 
-	async function loadOlder(): Promise<void> {
-		if (!hasMore.value || !cursor.value || loadingOlder.value) return;
+	/** Prepend the next-older page, keeping the reader's place. Resolves whether a page landed. */
+	async function loadOlder(): Promise<boolean> {
+		if (!hasMore.value || !cursor.value || loadingOlder.value) return false;
 		const el = scrollRef.current;
 		const prevHeight = el?.scrollHeight ?? 0;
 		loadingOlder.value = true;
@@ -118,7 +132,7 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 		loadingOlder.value = false;
 		if (!page) {
 			error.value = offlineOr("Couldn't load earlier messages.");
-			return;
+			return false;
 		}
 		messages.value = [...page.messages, ...messages.value];
 		hasMore.value = page.hasMore;
@@ -126,6 +140,7 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 		requestAnimationFrame(() => {
 			if (el) el.scrollTop = el.scrollHeight - prevHeight;
 		});
+		return true;
 	}
 
 	useEffect(() => {
@@ -157,15 +172,48 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 	}, [state.channelId]);
 	// #endregion
 
+	// #region Selection (the `popout` surface)
+	function rowEl(id: string): HTMLElement | null {
+		return scrollRef.current?.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(id)}"]`) ??
+			null;
+	}
+
+	/** Bring a message into the panel's view, moving its scroller only as far as needed. */
+	function reveal(id: string): void {
+		const el = rowEl(id);
+		const box = scrollRef.current;
+		if (!el || !box) return;
+		const r = el.getBoundingClientRect();
+		const b = box.getBoundingClientRect();
+		if (r.top < b.top) box.scrollBy(0, r.top - b.top - 8);
+		else if (r.bottom > b.bottom) box.scrollBy(0, r.bottom - b.bottom + 8);
+	}
+
+	const sel = useMessageSelection({
+		surface: "popout",
+		channelId: state.channelId,
+		rootRef,
+		messages,
+		reveal,
+		scrollBy: (dy) => scrollRef.current?.scrollBy(0, dy),
+	});
+	// #endregion
+
 	// #region Optimistic message actions (mirrors ChatFeed)
 	function updateMessage(id: string, fn: (m: ChatMessage) => ChatMessage): void {
 		messages.value = messages.value.map((m) => (m.id === id ? fn(m) : m));
 	}
+	/** An action taken from the highlight-mode menu or the header bar ends highlight mode. */
+	function done(): void {
+		if (sel.active.value) sel.exit();
+	}
 	function toggleFavorite(id: string): void {
 		updateMessage(id, (m) => ({ ...m, favorited: !m.favorited }));
+		done();
 	}
 	function togglePin(id: string): void {
 		updateMessage(id, (m) => ({ ...m, pinned: !m.pinned }));
+		done();
 	}
 	function react(id: string, emoji: string): void {
 		updateMessage(id, (m) => {
@@ -186,8 +234,39 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 				),
 			};
 		});
+		done();
 	}
-	const noop = (): void => {};
+	function reply(id: string): void {
+		const m = messages.value.find((x) => x.id === id);
+		if (m) sel.reply(m);
+	}
+	function copy(id: string): void {
+		const ids = sel.active.value && sel.selected.value.includes(id) ? sel.selected.value : [id];
+		void sel.copy(ids);
+		done();
+	}
+	function report(_id: string): void {
+		// STUB: report/flag routes to moderation once the backend lands.
+		done();
+	}
+
+	/** Scroll to a quoted original, paging backward (within a budget) when it is not loaded yet. */
+	async function jumpTo(id: string): Promise<void> {
+		for (let page = 0; !rowEl(id) && page < JUMP_PAGE_BUDGET && hasMore.value; page++) {
+			if (!(await loadOlder())) break;
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+		const el = rowEl(id);
+		if (!el) {
+			sel.status.value = "That message is too far back to jump to — scroll up to find it.";
+			return;
+		}
+		el.scrollIntoView({ block: "center" });
+		flashId.value = id;
+		setTimeout(() => {
+			if (flashId.value === id) flashId.value = null;
+		}, 1800);
+	}
 	// #endregion
 
 	// #region Whole-panel drop zone
@@ -213,6 +292,8 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 	}
 	// #endregion
 
+	const selectedCount = sel.selected.value.length;
+
 	function renderRow(row: FeedRow): JSX.Element {
 		if (row.kind === "divider") {
 			return (
@@ -223,30 +304,55 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 		}
 		if (row.message.type === "system") return <SystemMessage message={row.message} />;
 		return (
-			<MessageBubble
-				row={row}
-				canPin={canPin.value}
-				onReply={noop}
-				onReact={react}
-				onTogglePin={togglePin}
-				onToggleFavorite={toggleFavorite}
-				onReport={noop}
-			/>
+			<div
+				class="pop-chat__row"
+				data-highlight={flashId.value === row.message.id ? "true" : undefined}
+			>
+				<MessageBubble
+					row={row}
+					canPin={canPin.value}
+					onReply={reply}
+					onReact={react}
+					onCopy={copy}
+					onTogglePin={togglePin}
+					onToggleFavorite={toggleFavorite}
+					onReport={report}
+					onJump={(id) => void jumpTo(id)}
+					selection={sel.rowFor(row.message)}
+					selectionCount={selectedCount}
+				/>
+			</div>
 		);
 	}
 
 	const rows = buildRows(messages.value);
+	const reactFor = sel.reactFor.value;
 
 	return (
 		<div
 			class="pop-chat"
+			ref={rootRef}
+			data-chat-surface="popout"
 			data-drag={dragActive.value ? "true" : undefined}
+			data-msg-highlight={sel.active.value ? "true" : undefined}
+			data-msg-shift={sel.shift.value ? "true" : undefined}
+			data-msg-touch={sel.touch.value ? "true" : undefined}
 			onDragEnter={onDragEnter}
 			onDragOver={onDragOver}
 			onDragLeave={onDragLeave}
 			onDrop={onDrop}
 		>
 			<div class="pop-chat__scroll" ref={scrollRef}>
+				<MessageSelectionBar
+					selection={sel}
+					messages={messages.value}
+					canPin={canPin.value}
+					mobile={mobile}
+					onReply={(m) => sel.reply(m)}
+					onTogglePin={togglePin}
+					onToggleFavorite={toggleFavorite}
+					onReport={report}
+				/>
 				{loading.value
 					? <p class="pop-chat__hint">Loading conversation…</p>
 					: error.value && messages.value.length === 0
@@ -281,6 +387,7 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 			<div class="pop-chat__composer">
 				<ChatComposer
 					scope={state.scope}
+					surface="popout"
 					projectId={state.projectId}
 					channelId={state.channelId}
 					notices="toast"
@@ -294,6 +401,16 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 					Drop files to attach
 				</span>
 			</div>
+
+			{reactFor && sel.touch.value && (
+				<ReactionBubble
+					messageId={reactFor}
+					rootRef={rootRef}
+					onReact={(emoji) => react(reactFor, emoji)}
+				/>
+			)}
+
+			<p class="pop-chat__sr" role="status" aria-live="polite">{sel.status.value}</p>
 		</div>
 	);
 }

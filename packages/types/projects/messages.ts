@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MessageDeltaSchema, messageDeltaText, MessageReplySchema } from "./message-rich.ts";
 
 /**
  * projects.messages — the Zod SSOT for a project channel's CONVERSATION read
@@ -133,8 +134,18 @@ export const ChatMessageSchema = z.object({
 	sender: MessageSenderSchema.nullable(),
 	/** Whether the acting viewer authored this — drives right-alignment + hidden metadata. */
 	isOwn: z.boolean(),
-	/** Text body — may be empty for a media-only / audio-only message. */
-	text: z.string().max(4000),
+	/**
+	 * Text body — may be empty for a media-only / audio-only message. Bounded by the send cap (8000),
+	 * so a message is read back whole; a bubble collapses anything long (`message-length.ts`).
+	 */
+	text: z.string().max(8000),
+	/**
+	 * The body's inline formatting (Bold · Italic · Underline · Strikethrough) as a Quill Delta whose
+	 * text is exactly {@link text}; null renders `text` plain. See `./message-rich.ts`.
+	 */
+	delta: MessageDeltaSchema.nullable(),
+	/** The message this one replies to, as its quote renders; null when it is not a reply. */
+	replyTo: MessageReplySchema.nullable(),
 	attachments: z.array(MessageAttachmentSchema),
 	/** An explicit voice memo, or null. */
 	audio: MessageAudioSchema.nullable(),
@@ -196,6 +207,19 @@ export type MessagePageParams = z.infer<typeof MessagePageParamsSchema>;
 
 // #region Send payload
 /**
+ * The agreement rule for a send: a Delta, when present, must spell exactly the plain `text`.
+ *
+ * Refused rather than repaired. The composer derives both from one editor, so a mismatch is a client
+ * defect or a forged body — and silently preferring either half would store a message whose search
+ * text and rendered text say different things. Shared with the conversation send schema.
+ */
+export function sendDeltaAgrees(
+	v: { text: string; delta: z.infer<typeof MessageDeltaSchema> | null },
+) {
+	return v.delta === null || messageDeltaText(v.delta) === v.text;
+}
+
+/**
  * The composer payload as it reaches the server.
  *
  * Device bytes are ALREADY uploaded through the files handshake before this is sent, so the wire shape
@@ -214,6 +238,13 @@ export const SendProjectMessageSchema = z.object({
 	projectId: z.string().min(1).max(120),
 	channelId: z.string().min(1).max(120),
 	text: z.string().max(8000),
+	/**
+	 * The body's formatting, normalised by `normalizeMessageDelta`; null for an unformatted send.
+	 * Never a second source of words — see {@link sendDeltaAgrees}.
+	 */
+	delta: MessageDeltaSchema.nullable().default(null),
+	/** The message this one replies to, in the same channel; null when it is not a reply. */
+	replyToId: z.string().min(1).max(80).nullable().default(null),
 	/** Every attachment, device-uploaded and library-picked alike, as `files.items` ids. */
 	attachmentIds: z.array(z.string().min(1).max(120)).max(20).default([]),
 	/** The voice memo's persisted projection; its own bytes are one of {@link attachmentIds}. */
@@ -221,6 +252,9 @@ export const SendProjectMessageSchema = z.object({
 }).refine(
 	(v) => v.text.trim().length > 0 || v.attachmentIds.length > 0 || v.audio !== null,
 	{ message: "Write a message, attach a file, or record a memo." },
-);
+).refine(sendDeltaAgrees, {
+	message: "The formatted body does not match the message text.",
+	path: ["delta"],
+});
 export type SendProjectMessage = z.infer<typeof SendProjectMessageSchema>;
 // #endregion

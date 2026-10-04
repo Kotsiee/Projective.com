@@ -12,7 +12,9 @@ import {
 	type MemberInvite,
 	type MemberRosterPage,
 	type MessageAttachment,
+	messageDeltaFor,
 	type MessagePage,
+	type MessageReply,
 	type MessageSender,
 	type MoveTicket,
 	normaliseSeats,
@@ -481,6 +483,22 @@ export function appendChannelMessage(
 /** How many messages this viewer has sent into a channel — the id suffix a fresh one takes. */
 export function sentMessageCount(owner: string, projectId: string, channelId: string): number {
 	return peekBucket(owner)?.messages.get(channelKey(projectId, channelId))?.length ?? 0;
+}
+
+/**
+ * One message this viewer sent into a channel, by id — the half of a reply's original the corpus
+ * cannot answer for. Scoped to the channel by the key, so an id sent elsewhere is a miss here, as it
+ * is for `comms.tg_guard_message_reply`.
+ */
+export function findSentMessage(
+	owner: string,
+	projectId: string,
+	channelId: string,
+	messageId: string,
+): ChatMessage | undefined {
+	return peekBucket(owner)?.messages.get(channelKey(projectId, channelId))?.find((m) =>
+		m.id === messageId
+	);
 }
 // #endregion
 
@@ -1671,12 +1689,17 @@ function clockLabel(now: number): string {
  * Attachments arrive as `files.items` ids — the bytes went through the upload handshake before this
  * call — and the corpus has no row to resolve them against, so the ids are carried as generic file
  * tiles rather than rendered as images whose dimensions would have to be invented.
+ *
+ * `replyTo` is resolved by the caller, which owns the refusal for an original it cannot find; this
+ * only carries it. The Delta is kept on the same terms the live write keeps it — only while it spells
+ * the text being stored — so a stub message and a live one render the same formatting or none.
  */
 export function buildStubMessage(
 	input: SendProjectMessage,
 	sender: MessageSender,
 	ordinal: number,
 	now: number,
+	replyTo: MessageReply | null = null,
 ): ChatMessage {
 	const attachments: MessageAttachment[] = input.attachmentIds.map((id, index) => ({
 		id,
@@ -1696,6 +1719,8 @@ export function buildStubMessage(
 		sender,
 		isOwn: true,
 		text: input.text,
+		delta: messageDeltaFor(input.delta, input.text),
+		replyTo,
 		attachments,
 		audio: input.audio,
 		system: null,

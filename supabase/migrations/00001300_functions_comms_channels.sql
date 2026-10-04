@@ -279,6 +279,16 @@ $$;
 
 -- BEFORE INSERT gate: mask + flag messages sent while the parent project is in its protected phase.
 -- This is the authoritative enforcement point — it fires for every insert path (service or direct).
+--
+-- A masked message also LOSES its formatting (`body_delta := NULL`). The Delta spells the ORIGINAL
+-- words run by run, so leaving it in place would keep every address and number this trigger just
+-- hid readable one column over. It is not masked op by op instead, because a contact detail can
+-- straddle formatting runs — a bold area code, an italic domain — and the patterns match the JOINED
+-- text: a per-run pass misses exactly the split ones, and mapping the masked text back onto the runs
+-- would have to invent where each mark now begins and ends inside a placeholder. So the message
+-- renders plain. Losing the bold on a sentence is the cheap failure here; a leaked phone number is
+-- not. (The read side would also discard the stale Delta, which no longer spells the body — but the
+-- original words must not be STORED, not merely go unrendered.)
 CREATE OR REPLACE FUNCTION comms.tg_mask_message_pii()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -302,6 +312,7 @@ BEGIN
     SELECT m.masked, m.categories INTO v_masked, v_cats FROM comms.mask_pii(NEW.body) m;
     IF array_length(v_cats, 1) IS NOT NULL THEN
         NEW.body := v_masked;
+        NEW.body_delta := NULL;
         NEW.pii_masked := true;
         NEW.pii_categories := v_cats;
     END IF;
@@ -344,7 +355,8 @@ $$;
 
 -- BEFORE INSERT gate for direct messages: the same mask + flag comms.tg_mask_message_pii applies to
 -- a stage room, applied whenever the thread falls under a protected engagement — a hiring request,
--- an application, or two parties already working together.
+-- an application, or two parties already working together. A masked body drops its formatting for
+-- the reason stated on that function: the Delta spells the unmasked words.
 CREATE OR REPLACE FUNCTION comms.tg_mask_dm_message_pii()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -366,8 +378,92 @@ BEGIN
     SELECT m.masked, m.categories INTO v_masked, v_cats FROM comms.mask_pii(NEW.body) m;
     IF array_length(v_cats, 1) IS NOT NULL THEN
         NEW.body := v_masked;
+        NEW.body_delta := NULL;
         NEW.pii_masked := true;
         NEW.pii_categories := v_cats;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+-- =============================================================================
+-- Replies stay inside their own conversation.
+--
+-- `reply_to_id` is a self-reference (00000016), so the foreign key already
+-- guarantees the original EXISTS and is a message of the same table. What it
+-- cannot say is that the original sits in the same CHANNEL (or, for a DM, the
+-- same THREAD) as the reply. Without that, a member of two rooms could post a
+-- reply in one whose quote is a message from the other — and every reader of the
+-- first room would be shown words from a room they may not be allowed into. The
+-- quote is rendered from the original, so this is a disclosure, not a cosmetic
+-- mismatch.
+--
+-- BEFORE INSERT, and BEFORE UPDATE of the two columns that could break the rule
+-- afterwards: `edit_own_messages` (00002012) lets a sender UPDATE their own
+-- project message, and a guard that ran only on INSERT would be one PATCH away
+-- from being bypassed. dm_messages has no client UPDATE policy today; the guard
+-- covers it anyway so the rule does not depend on that staying true.
+--
+-- SECURITY DEFINER for the same reason as the PII gates above: the rule is
+-- structural, so its lookup must not depend on what the inserting role's SELECT
+-- policy happens to admit. That reveals nothing — the refusal is ONE sentence for
+-- an original that is missing, in another room, or the row itself, so it cannot
+-- be used to probe which ids exist where. The sentence is written for a reader
+-- and raised as `check_violation`, which `refusalFrom` (projects/live-writes.ts)
+-- matches by its words and reports as a 422 on the `replyToId` field. The fat
+-- services refuse the same reply with the same words BEFORE inserting; this is
+-- the backstop every other insert path (service role, a hand-rolled request)
+-- cannot step around.
+--
+-- A soft-deleted original is NOT refused. It still exists and is still in the
+-- room, the reply is a true statement about what it answered, and its quote
+-- renders as unavailable — refusing would only punish somebody for a delete that
+-- landed while they were typing.
+-- =============================================================================
+CREATE OR REPLACE FUNCTION comms.tg_guard_message_reply()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, comms
+AS $$
+BEGIN
+    IF NEW.reply_to_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    IF NEW.reply_to_id = NEW.id OR NOT EXISTS (
+        SELECT 1 FROM comms.project_messages o
+        WHERE o.id = NEW.reply_to_id
+          AND o.channel_id = NEW.channel_id
+    ) THEN
+        RAISE EXCEPTION 'That message can''t be replied to here.'
+            USING ERRCODE = 'check_violation';
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+-- The DM twin of comms.tg_guard_message_reply: the original must sit in the reply's own thread.
+CREATE OR REPLACE FUNCTION comms.tg_guard_dm_message_reply()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, comms
+AS $$
+BEGIN
+    IF NEW.reply_to_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    IF NEW.reply_to_id = NEW.id OR NOT EXISTS (
+        SELECT 1 FROM comms.dm_messages o
+        WHERE o.id = NEW.reply_to_id
+          AND o.thread_id = NEW.thread_id
+    ) THEN
+        RAISE EXCEPTION 'That message can''t be replied to here.'
+            USING ERRCODE = 'check_violation';
     END IF;
 
     RETURN NEW;

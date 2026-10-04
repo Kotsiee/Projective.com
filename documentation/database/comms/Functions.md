@@ -160,11 +160,16 @@ zone degrades to UTC instead of aborting the run for every other user.
 | `on_users_public_created_notification_prefs` | `org.users_public`    | `comms.seed_notification_prefs()`  |
 | `on_notification_created_dispatch`           | `comms.notifications` | `comms.fn_dispatch_notification()` |
 | `trg_*_touch`                                | every engine table    | `comms.fn_touch_updated_at()`      |
+| `trg_mask_message_pii`                       | `comms.project_messages` | `comms.tg_mask_message_pii()`   |
+| `trg_project_messages_guard_reply`           | `comms.project_messages` | `comms.tg_guard_message_reply()` |
 | `trg_dm_messages_mask_pii`                   | `comms.dm_messages`   | `comms.tg_mask_dm_message_pii()`   |
 | `trg_dm_messages_promote_on_reply`           | `comms.dm_messages`   | `comms.fn_promote_thread_on_reply()` |
+| `trg_dm_messages_guard_reply`                | `comms.dm_messages`   | `comms.tg_guard_dm_message_reply()` |
 
-Both `dm_messages` triggers are `BEFORE INSERT` (`00001840`) and are documented under
-§Inbox folders, hiring requests & the DM contact filter below.
+Every message trigger is `BEFORE` (`00001840`). The mask and promotion triggers fire on `INSERT`
+and are documented under §Inbox folders, hiring requests & the DM contact filter below; the two
+reply guards fire on `INSERT` and on `UPDATE OF reply_to_id` plus the room column, and are documented
+under §Replies stay in their room.
 
 `seed_notification_prefs` mirrors `org.seed_user_preferences` (Decision #47) — a focused
 `AFTER INSERT` trigger under a **separate name**, so the existing `on_users_public_created` trigger
@@ -288,7 +293,10 @@ stage-message filter (PRODUCT_SPEC §3 "Handover") — when the message falls un
 engagement: the project the message names, while its handover is locked, or else a protected (`draft` / `active` /
 `on_hold`, handover not unlocked) project the sender and the thread's other participant are both
 engaged in (`projects.fn_engaged_projects`: owner, participant, live assignee or team member,
-pending/accepted invitee or applicant). Sets `pii_masked` / `pii_categories`. The helper and
+pending/accepted invitee or applicant). Sets `pii_masked` / `pii_categories`, and — like the stage
+filter `comms.tg_mask_message_pii` — sets `body_delta` to `NULL` whenever it rewrites the body: the
+Delta spells the unmasked words, and masking it run by run would miss a contact detail split across
+formatting runs, so a masked message renders plain. The helper and
 `projects.fn_engaged_projects` are executable by NO client role — only the definer trigger reaches
 them. `packages/types/comms/pii.ts` is the TypeScript twin, pinned to `comms.mask_pii`'s patterns by
 `pii.contract.test.ts`.
@@ -297,3 +305,32 @@ them. `packages/types/comms/pii.ts` is the TypeScript twin, pinned to `comms.mas
 request routing with and without a mutual follow, an existing thread never re-filed, a deleted row
 restored and re-filed, the reply promotion for the sender only, the folder door's two refusals, the
 cold-message refusal, masking in a protected pair's DM and none in an unrelated one.
+
+## Replies stay in their room (`00001300` / `00001840`)
+
+### `comms.tg_guard_message_reply()` · `comms.tg_guard_dm_message_reply()` — triggers
+
+`reply_to_id` is a self-referencing foreign key ([Tables.md](Tables.md)), so the original is
+guaranteed to exist and to be a message of the same table. What a key cannot say is that it sits in
+the reply's own **channel** (`project_messages`) or **thread** (`dm_messages`) — and a reply quoting a
+message from another room would show that room's words to readers who may not be cleared for it.
+
+- `BEFORE INSERT OR UPDATE OF reply_to_id, channel_id` on `comms.project_messages` (`thread_id` on
+  `comms.dm_messages`). The `UPDATE` arm exists because `edit_own_messages` lets a sender update their
+  own project message ([Policies.md](Policies.md)); a guard on `INSERT` alone would be one `PATCH`
+  away from bypassed.
+- A `NULL` `reply_to_id` passes. Otherwise the original must exist in the same room and must not be
+  the row itself, or the trigger raises **`check_violation` — "That message can't be replied to
+  here."** — one sentence for every cause, so it cannot be used to probe which ids exist where.
+  `refusalFrom` (`packages/backend/services/projects/live-writes.ts`) matches those words and reports
+  a `422` on the `replyToId` field — the same refusal the fat services return from their own
+  pre-check before inserting (`services/projects/message-replies.ts#replyRefusal`).
+- A soft-deleted original is NOT refused: it still exists and is still in the room, and the reply's
+  quote renders as unavailable.
+- `SECURITY DEFINER`, `search_path = public, comms`: the rule is structural, so its lookup does not
+  depend on what the inserting role's `SELECT` policy admits. `EXECUTE` is revoked from every client
+  role (`00002510`) — a trigger function's `EXECUTE` is checked once, at `CREATE TRIGGER`.
+
+**Not yet verified by execution** against a local Postgres (no database was run for this change):
+the guard's refusal of a cross-room reply and of a self-reply, an `UPDATE` moving a reply out of its
+room, a soft-deleted original accepted, and `body_delta` nulled by both mask triggers.

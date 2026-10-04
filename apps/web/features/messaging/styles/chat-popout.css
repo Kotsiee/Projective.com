@@ -42,8 +42,12 @@
 	display: flex;
 	flex-direction: column;
 	min-block-size: 0;
+	/* A flex item's automatic minimum is its content's min-content width; a wide message must not
+	   push the panel past the window it is drawn in. */
+	min-inline-size: 0;
 }
 .pop-chat__scroll {
+	position: relative;
 	flex: 1;
 	min-block-size: 0;
 	overflow-y: auto;
@@ -119,7 +123,7 @@
 .pop-chat__composer .chat-composer__inner {
 	max-inline-size: min(100%, var(--pop-chat-measure));
 }
-.pop-chat__composer .chat-composer__input {
+.pop-chat__composer .chat-composer__input .ql-editor {
 	max-block-size: 120px;
 }
 

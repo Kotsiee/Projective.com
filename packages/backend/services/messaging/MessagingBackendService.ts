@@ -51,8 +51,11 @@ import {
 } from "./conversation-fixtures.ts";
 import {
 	type ConversationMessageParams,
+	findConversationMessage,
 	findConversationMessagePage,
 } from "./messages-fixtures.ts";
+import { replyFromMessage, replyRefusal } from "../projects/message-replies.ts";
+import { fetchMessageAttachments } from "../projects/message-attachments.ts";
 import { findConversationFilePage, findConversationRoster } from "./workspace-fixtures.ts";
 import { findSettings } from "./settings-fixtures.ts";
 import {
@@ -81,6 +84,7 @@ import {
 import {
 	appendConversationMessage,
 	buildStubConversationMessage,
+	findSentConversationMessage,
 	overlayConversationPage,
 	sentConversationCount,
 	stubViewerSender,
@@ -338,16 +342,20 @@ export class MessagingBackendService {
 							clock(),
 						);
 					}
-					const { rows, parties, hasMore } = await fetchThreadMessages(
+					const { rows, parties, hasMore, originals } = await fetchThreadMessages(
 						actor,
 						ref.threadId,
 						params.before,
 						params.limit,
 					);
-					// Reactions, pins and favourites for the whole page in one lookup — issued after the
-					// rows because it needs their ids, which is the one place here a sequential await is
-					// not avoidable.
-					const interactions = await fetchMessageInteractions(actor, rows.map((r) => r.id));
+					// Reactions, pins and favourites, and the files attached, for the whole page — issued
+					// after the rows because both need their ids, and side by side because neither needs
+					// the other.
+					const ids = rows.map((r) => r.id);
+					const [interactions, attachments] = await Promise.all([
+						fetchMessageInteractions(actor, ids),
+						fetchMessageAttachments(actor, "comms.dm_messages", ids),
+					]);
 					return toMessagePage(
 						params.conversationId,
 						rows,
@@ -356,6 +364,8 @@ export class MessagingBackendService {
 						hasMore,
 						clock(),
 						interactions,
+						originals,
+						attachments,
 					);
 				});
 				if (!page) return fail(404, { message: "No such conversation." });
@@ -383,6 +393,12 @@ export class MessagingBackendService {
 	 *
 	 * The stub branch appends to the per-process store, which {@link messages} folds back onto the
 	 * latest page, so the message survives a reload exactly as a live one would.
+	 *
+	 * A reply's original must be a message of THIS conversation on both branches, or the send is the
+	 * one `replyRefusal` (422 on `replyToId`) — live through the RLS read in `insertDmMessage` (and
+	 * `comms.tg_guard_dm_message_reply` behind it), stub through the conversation's fixture history and
+	 * the viewer's own sent overlay. The stub resolves it BEFORE the folder promotion below, so a
+	 * refused send changes nothing, as a refused insert changes nothing live.
 	 */
 	static async sendMessage(
 		input: SendConversationMessage,
@@ -415,9 +431,19 @@ export class MessagingBackendService {
 		const page = findConversationMessagePage({ conversationId: input.conversationId });
 		if (!page) return fail(404, { message: "No such conversation." });
 		const owner = writeOwnerOf(actor);
+		const replyTo = input.replyToId === null ? null : replyFromMessage(
+			findConversationMessage(input.conversationId, input.replyToId) ??
+				findSentConversationMessage(owner, input.conversationId, input.replyToId),
+		);
+		if (input.replyToId !== null && !replyTo) {
+			const refusal = replyRefusal();
+			return fail(refusal.status, { message: refusal.message, errors: refusal.errors });
+		}
 		const summary = findConversationSummary(input.conversationId);
-		// The stub twins of the two BEFORE INSERT triggers on comms.dm_messages: the protected phase's
-		// contact filter, and a reply moving the sender's own copy of a request into Primary.
+		// The stub twins of the BEFORE INSERT triggers on comms.dm_messages: the protected phase's
+		// contact filter (which drops the formatting of a body it rewrites — `buildStubConversationMessage`
+		// keeps a Delta only while it spells the stored text), and a reply moving the sender's own copy
+		// of a request into Primary.
 		const masked = summary && stubIsProtected(summary) ? maskPii(input.text).masked : input.text;
 		if (summary) promoteStubOnSend(owner, summary.id, withStubFolder(owner, summary).folder);
 		const message = buildStubConversationMessage(
@@ -425,6 +451,7 @@ export class MessagingBackendService {
 			stubViewerSender(),
 			sentConversationCount(owner, input.conversationId),
 			Date.now(),
+			replyTo,
 		);
 		appendConversationMessage(owner, input.conversationId, message);
 		// A first message to somebody the corpus has no thread for (a profile's Message control) is
@@ -642,7 +669,14 @@ export class MessagingBackendService {
 		const text = (input.message ?? "").trim();
 		if (text.length > 0) {
 			const sent = await MessagingBackendService.sendMessage(
-				{ conversationId: summary.id, text, attachmentIds: [], audio: null },
+				{
+					conversationId: summary.id,
+					text,
+					delta: null,
+					replyToId: null,
+					attachmentIds: [],
+					audio: null,
+				},
 				actor,
 			);
 			messageAccepted = sent.ok;

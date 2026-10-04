@@ -1,4 +1,4 @@
-import type { JSX } from "preact";
+import type { ComponentChildren, JSX } from "preact";
 import type { MessageAttachment } from "../types/projects-types.ts";
 import { FileTypeGlyph } from "./composer-glyphs.tsx";
 import { PlayIcon } from "./chat-glyphs.tsx";
@@ -12,8 +12,11 @@ import { PlayIcon } from "./chat-glyphs.tsx";
  *     condenses into a **grid of rounded squares** (slightly larger than the composer's 4rem previews).
  *   - A strict maximum of **4** squares is shown: past that, 3 asset squares + a 4th `+N` overlay.
  *
- * Zero-JS server-safe (plain lazy `<img>`); the lightbox/gallery open is deferred (the tiles are
- * buttons so it wires in without markup churn).
+ * Zero-JS server-safe (plain lazy `<img>`). A tile with an address is a real link that opens the
+ * asset in a new tab — the full original for an image (the bubble draws a rendition), the object
+ * route's own disposition for everything else, which downloads a type that is not safe to show
+ * inline. A tile with no address is not a control at all: a button that does nothing is a defect
+ * here (root CLAUDE.md §3 gate 11), and before tiles were links every attachment rendered as one.
  */
 
 export interface MessageMediaProps {
@@ -25,6 +28,50 @@ const ROW_MAX = 3;
 /** Hard cap on visible grid squares (the 4th may be a `+N` overlay). */
 const GRID_MAX = 4;
 
+/**
+ * Where a tile opens: the asset itself, without the rendition size the bubble asked for — a reader
+ * opening a photo wants the photo, not the `md` WebP drawn in the bubble. `null` when there is no
+ * address to open.
+ */
+function openHref(att: MessageAttachment): string | null {
+	if (!att.url || att.url === "#") return null;
+	if (!att.url.startsWith("/")) return att.url;
+	const parsed = new URL(att.url, "https://projective.invalid");
+	parsed.searchParams.delete("tier");
+	const qs = parsed.searchParams.toString();
+	return `${parsed.pathname}${qs ? `?${qs}` : ""}`;
+}
+
+interface TileProps {
+	/** Where the tile opens; `null` renders a non-interactive tile. */
+	href: string | null;
+	class: string;
+	label: string;
+	style?: string;
+	kind?: string;
+	children: ComponentChildren;
+}
+
+/** A tile: a new-tab link when the asset has an address, otherwise inert content. */
+function Tile({ href, class: cls, label, style, kind, children }: TileProps): JSX.Element {
+	if (href) {
+		return (
+			<a
+				class={cls}
+				href={href}
+				target="_blank"
+				rel="noopener noreferrer"
+				aria-label={label}
+				style={style}
+				data-kind={kind}
+			>
+				{children}
+			</a>
+		);
+	}
+	return <span class={cls} style={style} data-kind={kind}>{children}</span>;
+}
+
 /** A visual medium renders its image (videos use the poster + a play badge). */
 function isVisual(a: MessageAttachment): boolean {
 	return a.kind === "image" || a.kind === "video";
@@ -34,15 +81,15 @@ function isVisual(a: MessageAttachment): boolean {
 function RowCell({ att }: { att: MessageAttachment }): JSX.Element {
 	const ratio = att.width && att.height ? att.width / att.height : 1;
 	return (
-		<button
-			type="button"
+		<Tile
+			href={openHref(att)}
 			class="msg-media__cell"
 			style={`--cell-ratio:${ratio.toFixed(4)}`}
-			aria-label={att.name}
+			label={att.name}
 		>
 			<img class="msg-media__img" src={att.url} alt={att.name} loading="lazy" />
 			{att.kind === "video" && <span class="msg-media__play" aria-hidden="true">{PlayIcon}</span>}
-		</button>
+		</Tile>
 	);
 }
 
@@ -52,12 +99,12 @@ function GridSquare(
 ): JSX.Element {
 	const visual = isVisual(att);
 	return (
-		<button
-			type="button"
-			class="msg-media__square"
-			data-kind={att.kind}
-			data-overlay={overlay ? "true" : undefined}
-			aria-label={overlay ? `${overlay} more attachments` : att.name}
+		<Tile
+			// The `+N` square stands for several files, so it does not link to the one it happens to show.
+			href={overlay ? null : openHref(att)}
+			class={overlay ? "msg-media__square msg-media__square--overlay" : "msg-media__square"}
+			kind={att.kind}
+			label={overlay ? `${overlay} more attachments` : att.name}
 		>
 			{visual
 				? <img class="msg-media__img" src={att.url} alt={att.name} loading="lazy" />
@@ -72,7 +119,7 @@ function GridSquare(
 			)}
 			{!visual && !overlay && <span class="msg-media__name">{att.name}</span>}
 			{overlay ? <span class="msg-media__more">+{overlay}</span> : null}
-		</button>
+		</Tile>
 	);
 }
 
@@ -83,19 +130,9 @@ export function MessageMedia({ attachments }: MessageMediaProps): JSX.Element | 
 
 	// Single visual medium — show it large at its true aspect ratio (capped).
 	if (allVisual && attachments.length === 1) {
-		const a = attachments[0];
-		const ratio = a.width && a.height ? a.width / a.height : 1;
 		return (
 			<div class="msg-media msg-media--single">
-				<button
-					type="button"
-					class="msg-media__cell"
-					style={`--cell-ratio:${ratio.toFixed(4)}`}
-					aria-label={a.name}
-				>
-					<img class="msg-media__img" src={a.url} alt={a.name} loading="lazy" />
-					{a.kind === "video" && <span class="msg-media__play" aria-hidden="true">{PlayIcon}</span>}
-				</button>
+				<RowCell att={attachments[0]} />
 			</div>
 		);
 	}
