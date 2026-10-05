@@ -10,6 +10,7 @@ import {
 import ThemeToggle from "@web/features/theme/islands/ThemeToggle.island.tsx";
 import { MEGA_MENUS, SECONDARY_LINKS } from "../core/megamenu-data.ts";
 import { Icon } from "@projective/ui/icons";
+import { useBackdropPress } from "@projective/ui/overlay";
 import { Logo } from "@web/components/Logo.tsx";
 import { withRedirect } from "@features/auth/core/redirect.ts";
 
@@ -148,6 +149,7 @@ export default function SiteHeader(
 	}
 
 	const closeMenu = () => (menuOpen.value = false);
+	const backdropPress = useBackdropPress(closeMenu);
 
 	return (
 		<header
@@ -321,7 +323,7 @@ export default function SiteHeader(
 			<div
 				class={`site-header__backdrop${menuOpen.value ? " is-open" : ""}`}
 				aria-hidden="true"
-				onClick={closeMenu}
+				{...backdropPress}
 			/>
 
 			<aside

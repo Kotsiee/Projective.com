@@ -85,7 +85,13 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 	const stack = useOverlayStack({ active: mounted, lockScroll: true, layer: "modal" });
 	const panelRef = useRef<HTMLDivElement>(null);
 	useFocusTrap({ active: mounted, containerRef: panelRef });
-	useDismiss({ open: mounted, onDismiss: onClose, panelRef, closeOnOutside: false });
+	useDismiss({
+		open: mounted,
+		enabled: stack.isTop,
+		onDismiss: onClose,
+		panelRef,
+		closeOnOutside: false,
+	});
 
 	// #region Review state
 	const rightMode = useSignal<RightMode>("file");

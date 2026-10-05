@@ -50,6 +50,10 @@ export interface InputTextProps extends BaseFieldProps {
 	autoCapitalize?: "none" | "off" | "sentences" | "words" | "characters";
 	/** Spell-check hint; `false` for identifiers and codes, which are not prose. */
 	spellcheck?: boolean;
+	/** Focus the input on mount (a picker's search field opened by an explicit action). */
+	autoFocus?: boolean;
+	/** Id of the element this input filters or drives, e.g. a search field's result list. */
+	"aria-controls"?: string;
 	class?: string;
 	style?: CSSProperties;
 }

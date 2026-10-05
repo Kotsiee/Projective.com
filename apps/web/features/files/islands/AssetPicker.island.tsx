@@ -705,10 +705,10 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 		// mounted it, closing both.
 		hostRef,
 		enabled: stack.isTop,
-		// A stray click on the backdrop must not throw away six deliberate choices. With nothing chosen
-		// there is nothing to lose, so the quick dismissal survives for the common "opened it by
-		// mistake" case; with a selection, Escape and Cancel are the two explicit ways out.
-		closeOnOutside: pickerSelection.value.length === 0,
+		// The backdrop below owns outside clicks; a pointerdown channel as well would close this layer
+		// mid-gesture and let the release land on the backdrop of the modal beneath. A stray backdrop
+		// click must not throw away deliberate choices, so it only dismisses while nothing is chosen.
+		closeOnOutside: false,
 	});
 	// #endregion
 

@@ -1,6 +1,9 @@
 import type { ComponentChildren, JSX } from "preact";
 import "../styles/mobile-menu.css";
 import { useSignal } from "@preact/signals";
+import { useRef } from "preact/hooks";
+import { useDismiss } from "../../hooks/useDismiss.ts";
+import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import { Icon } from "../../icons/mod.ts";
 
 export interface MobileMenuProps {
@@ -15,11 +18,21 @@ export interface MobileMenuProps {
  *
  * The overlay (and its `children` slot) is ALWAYS rendered and toggled via `data-open` so open/close
  * is an in-place attribute patch — robust across Fresh island hydration (conditionally *adding* a
- * node at a fragment root, or a slot only SSR-rendered while open, does not mount reliably). Focus/ESC
- * handling and the bottom utility bar are layered in as the overlay primitives land.
+ * node at a fragment root, or a slot only SSR-rendered while open, does not mount reliably). Escape
+ * closes it through the shared overlay stack; the bottom utility bar is still to come.
  */
 export function MobileMenu({ children, label = "Menu" }: MobileMenuProps): JSX.Element {
 	const open = useSignal(false);
+	const drawerRef = useRef<HTMLElement>(null);
+	const close = () => (open.value = false);
+	const stack = useOverlayStack({ active: open.value, layer: "modal" });
+	useDismiss({
+		open: open.value,
+		enabled: stack.isTop,
+		onDismiss: close,
+		panelRef: drawerRef,
+		closeOnOutside: false,
+	});
 	return (
 		<>
 			<button
@@ -44,9 +57,9 @@ export function MobileMenu({ children, label = "Menu" }: MobileMenuProps): JSX.E
 					class="ui-mobile-menu__backdrop"
 					aria-label="Close menu"
 					tabIndex={open.value ? 0 : -1}
-					onClick={() => (open.value = false)}
+					onClick={close}
 				/>
-				<nav class="ui-mobile-menu__drawer" aria-label={label}>{children}</nav>
+				<nav ref={drawerRef} class="ui-mobile-menu__drawer" aria-label={label}>{children}</nav>
 			</div>
 		</>
 	);

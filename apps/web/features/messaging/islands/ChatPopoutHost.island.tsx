@@ -9,10 +9,10 @@ import { MessagingIcon } from "../components/messaging-glyphs.tsx";
 import { PopoutChat } from "../components/PopoutChat.tsx";
 import {
 	closePopout,
-	hydratePopout,
 	movePopout,
 	popout,
 	resizePopout,
+	syncPopoutRoute,
 } from "../core/popout-state.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
@@ -21,15 +21,19 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  * conversation page, and the messenger a profile's "Message" control opens. Mounted once by EVERY
  * authenticated layout (`(dashboard)`, the authed `(public)` branch and the authed `/[handle]`
  * branch), so a window opened on a profile survives a navigation to Explore, the inbox or a
- * project: it re-seeds from `sessionStorage` on every mount ({@link hydratePopout}) and, when an
+ * project: it reconciles with `sessionStorage` on every mount ({@link syncPopoutRoute}) and, when an
  * active pop-out state exists, renders a {@link DraggablePopover} carrying the {@link PopoutChat}
  * (feed + composer + whole-panel file drop zone). Fresh navigations are full-page, so "persists
  * across route transitions" here means "persists across documents" — the store is the state, the
  * window is a projection of it, and both are rebuilt identically on the next page.
  *
- * Navigation memory: the host receives the current pathname; when the viewer is not on the popped-out
- * channel/conversation's own page, a header action routes there — "Return" for a chat popped out of
- * its page, "Open in inbox" for a conversation started from a profile, which the viewer was never on.
+ * Route lifecycle: arriving at a full chat view (`/messages/[conversationId]`, a channel's Chat tab)
+ * from another page closes the window, since that page now shows the chat it duplicated; the page it
+ * was spawned on keeps it. A back/forward-cache restore skips the mount, so `pageshow` and
+ * `popstate` re-run the same reconciliation.
+ *
+ * Navigation memory: when the viewer is not on the popped-out channel/conversation's own page, a
+ * ghost "Open in input" header action routes there and closes the window.
  *
  * A profile-started window DOCKS into the bottom-end corner the first time it opens (the anchor is
  * only consulted when nothing remembered where the window was); a drag or a resize is persisted, so
@@ -45,10 +49,29 @@ export default function ChatPopoutHost({ path }: { path: string }): JSX.Element 
 	const mobile = useIsMobile();
 	const toastMounted = useSignal(false);
 
-	// Re-seed the store from sessionStorage on mount (survives full-page navigations).
 	useEffect(() => {
-		hydratePopout();
+		syncPopoutRoute(path);
+	}, [path]);
+
+	useEffect(() => {
+		function onPageShow(event: PageTransitionEvent): void {
+			if (event.persisted) syncPopoutRoute(globalThis.location.pathname);
+		}
+		function onPopState(): void {
+			syncPopoutRoute(globalThis.location.pathname);
+		}
+		globalThis.addEventListener("pageshow", onPageShow);
+		globalThis.addEventListener("popstate", onPopState);
+		return () => {
+			globalThis.removeEventListener("pageshow", onPageShow);
+			globalThis.removeEventListener("popstate", onPopState);
+		};
 	}, []);
+
+	function openInInput(event: JSX.TargetedMouseEvent<HTMLAnchorElement>): void {
+		if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+		closePopout();
+	}
 
 	const state = popout.value;
 
@@ -65,8 +88,6 @@ export default function ChatPopoutHost({ path }: { path: string }): JSX.Element 
 	const hasPos = state.x != null && state.y != null;
 	const hasSize = state.w != null && state.h != null;
 	const fromProfile = state.source === "profile";
-	const returnLabel = fromProfile ? "Open in inbox" : "Return";
-	const returnName = fromProfile ? "Open this conversation in your inbox" : "Return to channel";
 
 	return (
 		<>
@@ -90,9 +111,14 @@ export default function ChatPopoutHost({ path }: { path: string }): JSX.Element 
 				headerActions={onPage
 					? undefined
 					: (
-						<a class="chat-popout__return" href={state.href} aria-label={returnName}>
+						<a
+							class="chat-popout__open"
+							href={state.href}
+							aria-label="Open in input"
+							title="Open in input"
+							onClick={openInInput}
+						>
 							<MessagingIcon name="maximize" />
-							<span class="chat-popout__return-label">{returnLabel}</span>
 						</a>
 					)}
 			>

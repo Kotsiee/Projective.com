@@ -1,9 +1,20 @@
 import type { ComponentChildren, JSX, VNode } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { useSignal } from "@preact/signals";
 import "../styles/draggable-popover.css";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
+import { inlineDelta } from "../../editor/core/resize.ts";
 import { BodyPortal } from "../components/BodyPortal.tsx";
+import {
+	RESIZE_GRIPS,
+	type ResizeBounds,
+	resizeBounds,
+	type ResizeDelta,
+	type ResizeGrip,
+	type ResizeRect,
+	resizeRect,
+} from "../core/resize-geometry.ts";
 import { usePresence } from "../core/usePresence.ts";
 import { useControllable } from "../../hooks/useControllable.ts";
 import { useId } from "../../hooks/useId.ts";
@@ -52,13 +63,16 @@ export interface DraggablePopoverProps {
 	 * the anchor is where a window goes the first time, not where it is kept.
 	 */
 	anchor?: PopoverAnchor;
-	/** Fired when a drag or keyboard move finishes, so the caller can persist the position. */
+	/**
+	 * Fired when a drag, keyboard move or start-edge resize finishes, so the caller can persist the
+	 * position.
+	 */
 	onPositionChange?: (position: PopoverPosition) => void;
-	/** Panel width (CSS length, default `22rem`). Used until the user resizes via the corner handle. */
+	/** Panel width (CSS length, default `22rem`). Used until the user resizes the panel. */
 	width?: string;
 	/** Panel height (CSS length). When omitted the panel is content-sized up to a viewport cap. */
 	height?: string;
-	/** Allow the user to resize the panel (corner drag handle + internal scroll). Default `true`. */
+	/** Allow the user to resize the panel (edge + corner grips, internal scroll). Default `true`. */
 	resizable?: boolean;
 	/** Initial user size (px). When set, overrides {@link width}/{@link height} — e.g. a persisted size. */
 	defaultSize?: PopoverSize;
@@ -85,6 +99,28 @@ const MIN_H = 128;
 const RESIZE_MARGIN = 12;
 /** Gap a docked window keeps from the two viewport edges it is anchored to. */
 const DOCK_MARGIN = 16;
+const RESIZE_FLOOR = { w: MIN_W, h: MIN_H };
+const KEYBOARD_GRIP: ResizeGrip = "end-end";
+const RESIZE_KEYS: Partial<Record<string, { x: number; y: number }>> = {
+	ArrowUp: { x: 0, y: -1 },
+	ArrowDown: { x: 0, y: 1 },
+	ArrowLeft: { x: -1, y: 0 },
+	ArrowRight: { x: 1, y: 0 },
+};
+
+interface ResizeDrag {
+	grip: ResizeGrip;
+	px: number;
+	py: number;
+	rtl: boolean;
+	rect: ResizeRect;
+	bounds: ResizeBounds;
+}
+
+interface ResizeCue {
+	grip: ResizeGrip;
+	visible: boolean;
+}
 /**
  * Highest offset currently claimed by an open window, so the most-recently-touched one floats above
  * its siblings. Bounded on purpose: an unreleased running counter climbs one step per interaction, and
@@ -109,12 +145,14 @@ function releaseZ(mine: number): void {
  *
  * **Move & resize.** The header is a drag handle (Pointer Events + `setPointerCapture`, clamped so it
  * can never be lost off-screen) and is also keyboard-movable (focus it, then arrow keys; `Shift` for a
- * larger step). When `resizable`, a styled bottom-right corner handle resizes the panel the same way
- * (pointer drag or arrow keys, clamped to a min size and the viewport) and its body scrolls internally
- * on overflow — a custom handle rather than the browser's near-invisible `resize` grip, which the
- * rounded corner and internal scroll make unreliable. `onPositionChange`/`onSizeChange` fire at the end
- * of a move/resize so the caller can persist them. Touching any part of a window lifts it above the
- * others (a shared z-counter).
+ * larger step). When `resizable`, eight transparent grips (four edges, four corners) sit just outside
+ * the frame, so they never cover content or the body's scrollbar. Each resizes with the opposite edge
+ * anchored, held to the panel's computed min/max size and the viewport; a start-edge grip moves the
+ * origin too. Hovering or dragging a grip lights a `--primary` cue on the frame (the target solid, its
+ * neighbours fading) that holds for the whole drag. The bottom inline-end corner is the one grip in
+ * the tab order (arrow keys, `Shift` for a larger step). The body scrolls internally on overflow.
+ * `onPositionChange`/`onSizeChange` fire at the end of a move/resize so the caller can persist them.
+ * Touching any part of a window lifts it above the others (a shared z-counter).
  *
  * **A11y.** `role="dialog"` with `aria-modal="false"` (explicitly non-blocking) + `aria-labelledby`.
  * The drag handle is a `role="button"` with a descriptive `aria-label`; the close control is a sibling
@@ -150,7 +188,8 @@ export function DraggablePopover(props: DraggablePopoverProps): JSX.Element | nu
 	const dragOffset = useRef<{ dx: number; dy: number } | null>(null);
 	const sizeRef = useRef<PopoverSize | null>(defaultSize ?? null);
 	const [size, setSizeState] = useState<PopoverSize | null>(sizeRef.current);
-	const resizeStart = useRef<{ px: number; py: number; w: number; h: number } | null>(null);
+	const resizeDrag = useRef<ResizeDrag | null>(null);
+	const cue = useSignal<ResizeCue>({ grip: KEYBOARD_GRIP, visible: false });
 	const [z, setZ] = useState(0);
 	const titleId = useId(undefined, "dpopover") + "-title";
 
@@ -162,16 +201,6 @@ export function DraggablePopover(props: DraggablePopoverProps): JSX.Element | nu
 	const setSize = (next: PopoverSize) => {
 		sizeRef.current = next;
 		setSizeState(next);
-	};
-
-	/** Constrain a candidate size to the min floors and to what fits from the panel's top-left corner. */
-	const clampSize = (w: number, h: number): PopoverSize => {
-		const maxW = Math.max(MIN_W, globalThis.innerWidth - posRef.current.x - RESIZE_MARGIN);
-		const maxH = Math.max(MIN_H, globalThis.innerHeight - posRef.current.y - RESIZE_MARGIN);
-		return {
-			w: Math.max(MIN_W, Math.min(w, maxW)),
-			h: Math.max(MIN_H, Math.min(h, maxH)),
-		};
 	};
 
 	/** Constrain a candidate position so the panel stays reachable within the viewport. */
@@ -282,59 +311,104 @@ export function DraggablePopover(props: DraggablePopoverProps): JSX.Element | nu
 	};
 	// #endregion
 
-	// #region Resize (Pointer Events on the corner handle)
-	const onResizePointerDown = (e: JSX.TargetedPointerEvent<HTMLDivElement>) => {
-		if (e.button !== 0) return;
-		e.stopPropagation();
+	// #region Resize (Pointer Events on the edge + corner grips)
+	const readRect = (el: HTMLElement): ResizeRect => ({
+		x: posRef.current.x,
+		y: posRef.current.y,
+		w: el.offsetWidth,
+		h: el.offsetHeight,
+	});
+
+	const resizeTo = (
+		start: ResizeRect,
+		grip: ResizeGrip,
+		delta: ResizeDelta,
+		bounds: ResizeBounds,
+	) => {
+		const viewport = { w: globalThis.innerWidth, h: globalThis.innerHeight };
+		const next = resizeRect(start, grip, delta, bounds, viewport, RESIZE_MARGIN);
+		setSize({ w: next.w, h: next.h });
+		if (next.x !== posRef.current.x || next.y !== posRef.current.y) {
+			setPos({ x: next.x, y: next.y });
+		}
+	};
+
+	const showCue = (grip: ResizeGrip) => {
+		if (!resizeDrag.current) cue.value = { grip, visible: true };
+	};
+	const hideCue = () => {
+		if (!resizeDrag.current) cue.value = { ...cue.value, visible: false };
+	};
+
+	const onResizePointerDown = (e: JSX.TargetedPointerEvent<HTMLDivElement>, grip: ResizeGrip) => {
 		const el = panelRef.current;
-		resizeStart.current = {
+		if (e.button !== 0 || !el) return;
+		e.stopPropagation();
+		const style = getComputedStyle(el);
+		resizeDrag.current = {
+			grip,
 			px: e.clientX,
 			py: e.clientY,
-			w: el?.offsetWidth ?? MIN_W,
-			h: el?.offsetHeight ?? MIN_H,
+			rtl: style.direction === "rtl",
+			rect: readRect(el),
+			bounds: resizeBounds(style, RESIZE_FLOOR),
 		};
 		e.currentTarget.setPointerCapture(e.pointerId);
+		cue.value = { grip, visible: true };
 		lift();
 	};
 	const onResizePointerMove = (e: JSX.TargetedPointerEvent<HTMLDivElement>) => {
-		const s = resizeStart.current;
-		if (!s) return;
-		setSize(clampSize(s.w + (e.clientX - s.px), s.h + (e.clientY - s.py)));
+		const drag = resizeDrag.current;
+		if (!drag) return;
+		resizeTo(drag.rect, drag.grip, {
+			inline: inlineDelta(e.clientX - drag.px, drag.rtl),
+			block: e.clientY - drag.py,
+		}, drag.bounds);
 	};
-	const onResizePointerUp = (e: JSX.TargetedPointerEvent<HTMLDivElement>) => {
-		if (!resizeStart.current) return;
-		resizeStart.current = null;
-		e.currentTarget.releasePointerCapture?.(e.pointerId);
+	const onResizePointerEnd = (e: JSX.TargetedPointerEvent<HTMLDivElement>) => {
+		const drag = resizeDrag.current;
+		if (!drag) return;
+		resizeDrag.current = null;
+		const handle = e.currentTarget;
+		handle.releasePointerCapture?.(e.pointerId);
+		const box = handle.getBoundingClientRect();
+		const over = e.type === "pointerup" &&
+			e.clientX >= box.left && e.clientX <= box.right &&
+			e.clientY >= box.top && e.clientY <= box.bottom;
+		cue.value = { grip: drag.grip, visible: over };
 		if (sizeRef.current) onSizeChange?.(sizeRef.current);
+		if (posRef.current.x !== drag.rect.x || posRef.current.y !== drag.rect.y) {
+			onPositionChange?.(posRef.current);
+		}
 	};
 
 	const onResizeKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
-		const step = e.shiftKey ? NUDGE * 4 : NUDGE;
+		const dir = RESIZE_KEYS[e.key];
 		const el = panelRef.current;
-		const cur = sizeRef.current ?? { w: el?.offsetWidth ?? MIN_W, h: el?.offsetHeight ?? MIN_H };
-		let handled = true;
-		switch (e.key) {
-			case "ArrowUp":
-				setSize(clampSize(cur.w, cur.h - step));
-				break;
-			case "ArrowDown":
-				setSize(clampSize(cur.w, cur.h + step));
-				break;
-			case "ArrowLeft":
-				setSize(clampSize(cur.w - step, cur.h));
-				break;
-			case "ArrowRight":
-				setSize(clampSize(cur.w + step, cur.h));
-				break;
-			default:
-				handled = false;
-		}
-		if (handled) {
-			e.preventDefault();
-			e.stopPropagation();
-			if (sizeRef.current) onSizeChange?.(sizeRef.current);
-		}
+		if (!dir || !el) return;
+		e.preventDefault();
+		e.stopPropagation();
+		const step = e.shiftKey ? NUDGE * 4 : NUDGE;
+		const style = getComputedStyle(el);
+		resizeTo(readRect(el), KEYBOARD_GRIP, {
+			inline: inlineDelta(dir.x * step, style.direction === "rtl"),
+			block: dir.y * step,
+		}, resizeBounds(style, RESIZE_FLOOR));
+		if (sizeRef.current) onSizeChange?.(sizeRef.current);
 	};
+	const onResizeFocus = (e: JSX.TargetedFocusEvent<HTMLDivElement>) => {
+		if (e.currentTarget.matches(":focus-visible")) showCue(KEYBOARD_GRIP);
+	};
+
+	const gripProps = (grip: ResizeGrip): JSX.HTMLAttributes<HTMLDivElement> => ({
+		class: `ui-draggable-popover__resize ui-draggable-popover__resize--${grip}`,
+		onPointerEnter: () => showCue(grip),
+		onPointerLeave: hideCue,
+		onPointerDown: (e) => onResizePointerDown(e, grip),
+		onPointerMove: onResizePointerMove,
+		onPointerUp: onResizePointerEnd,
+		onPointerCancel: onResizePointerEnd,
+	});
 	// #endregion
 
 	const onPanelKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
@@ -405,26 +479,29 @@ export function DraggablePopover(props: DraggablePopoverProps): JSX.Element | nu
 					</div>
 				</div>
 				<div class="ui-draggable-popover__body">{children}</div>
+				{resizable && RESIZE_GRIPS.map((grip) =>
+					grip === KEYBOARD_GRIP
+						? (
+							<div
+								key={grip}
+								{...gripProps(grip)}
+								role="button"
+								tabIndex={0}
+								aria-label="Resize window. Use arrow keys."
+								onKeyDown={onResizeKeyDown}
+								onFocus={onResizeFocus}
+								onBlur={hideCue}
+							/>
+						)
+						: <div key={grip} {...gripProps(grip)} aria-hidden="true" />
+				)}
 				{resizable && (
 					<div
-						class="ui-draggable-popover__resize"
-						role="button"
-						tabIndex={0}
-						aria-label="Resize window. Use arrow keys."
-						onPointerDown={onResizePointerDown}
-						onPointerMove={onResizePointerMove}
-						onPointerUp={onResizePointerUp}
-						onKeyDown={onResizeKeyDown}
-					>
-						<svg viewBox="0 0 12 12" width="12" height="12" fill="none" aria-hidden="true">
-							<path
-								d="M11 3 3 11M11 7l-4 4"
-								stroke="currentColor"
-								stroke-width="1.5"
-								stroke-linecap="round"
-							/>
-						</svg>
-					</div>
+						class="ui-draggable-popover__resize-cue"
+						data-grip={cue.value.grip}
+						data-visible={cue.value.visible ? "true" : undefined}
+						aria-hidden="true"
+					/>
 				)}
 			</div>
 		</BodyPortal>

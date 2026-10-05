@@ -23,9 +23,9 @@ import {
  * MemberPreviewModal — the condensed profile a plain click on a roster card opens: who this person is
  * on THIS engagement (their role, stages, workload — or what they applied or were invited for) above
  * the public half of their profile (headline, base, languages, response time, standing, skills),
- * fetched when the preview opens. The header carries "View full profile", a real link, so the full
- * page is one click (or a middle-click into a new tab) away; the footer carries Message and, for a
- * request, the same Accept/Reject the card offers.
+ * fetched when the preview opens. The header carries "View full profile" as an icon-only ghost link,
+ * so the full page is one click (or a middle-click into a new tab) away; the footer carries Message
+ * and, for a request, the same Accept/Reject the card offers.
  *
  * Text, not chips: every fact is a labelled line in the meta register (DESIGN_SYSTEM §B.11). A person
  * with no platform profile (an email-only invitee) previews from the roster facts alone, and so does
@@ -166,9 +166,13 @@ export function MemberPreviewModal(props: MemberPreviewModalProps): JSX.Element 
 				{role && <AuthorityMark role={role} />}
 			</span>
 			{handle && (
-				<a class="mem-preview__full" href={profileHref(handle)}>
-					View full profile
-					<Icon name="external-link" size="xs" />
+				<a
+					class="mem-preview__full"
+					href={profileHref(handle)}
+					aria-label="View full profile"
+					title="View full profile"
+				>
+					<Icon name="external-link" size="sm" />
 				</a>
 			)}
 		</div>

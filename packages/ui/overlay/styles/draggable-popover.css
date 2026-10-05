@@ -17,7 +17,6 @@
 	block-size: var(--ddp-h, auto);
 	max-inline-size: calc(100vw - var(--space-5));
 	max-block-size: calc(100dvh - var(--shell-topbar-h) - var(--space-6));
-	overflow: hidden;
 	background: var(--surface-1);
 	border: var(--hairline);
 	border-radius: var(--overlay-radius-lg);
@@ -35,38 +34,153 @@
 	transform: none;
 }
 .ui-draggable-popover--resizable {
+	--ddp-grip: var(--space-2);
 	min-inline-size: 16rem;
 	min-block-size: 8rem;
 }
 
-/* --- Resize handle (bottom-right corner) --- */
+/* --- Resize grips + cue --- */
 .ui-draggable-popover__resize {
 	position: absolute;
-	inset-block-end: 0;
-	inset-inline-end: 0;
-	z-index: 1;
-	display: inline-flex;
-	align-items: flex-end;
-	justify-content: flex-end;
-	inline-size: 20px;
-	block-size: 20px;
-	padding: 3px;
-	color: var(--text-secondary);
-	cursor: nwse-resize;
+	z-index: 2;
 	touch-action: none;
-	opacity: 0.55;
-	transition:
-		opacity var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
-}
-.ui-draggable-popover__resize:hover {
-	opacity: 1;
-	color: var(--on-surface);
+	user-select: none;
 }
 .ui-draggable-popover__resize:focus-visible {
 	outline: none;
 	box-shadow: none;
+}
+.ui-draggable-popover__resize--block-start,
+.ui-draggable-popover__resize--block-end {
+	inset-inline: var(--ddp-grip);
+	block-size: var(--ddp-grip);
+	cursor: ns-resize;
+}
+.ui-draggable-popover__resize--block-start {
+	inset-block-start: calc(-1 * var(--ddp-grip));
+}
+.ui-draggable-popover__resize--block-end {
+	inset-block-end: calc(-1 * var(--ddp-grip));
+}
+.ui-draggable-popover__resize--inline-start,
+.ui-draggable-popover__resize--inline-end {
+	inset-block: var(--ddp-grip);
+	inline-size: var(--ddp-grip);
+	cursor: ew-resize;
+}
+.ui-draggable-popover__resize--inline-start {
+	inset-inline-start: calc(-1 * var(--ddp-grip));
+}
+.ui-draggable-popover__resize--inline-end {
+	inset-inline-end: calc(-1 * var(--ddp-grip));
+}
+.ui-draggable-popover__resize--start-start,
+.ui-draggable-popover__resize--start-end,
+.ui-draggable-popover__resize--end-start,
+.ui-draggable-popover__resize--end-end {
+	inline-size: calc(2 * var(--ddp-grip));
+	block-size: calc(2 * var(--ddp-grip));
+}
+.ui-draggable-popover__resize--start-start {
+	inset-block-start: calc(-1 * var(--ddp-grip));
+	inset-inline-start: calc(-1 * var(--ddp-grip));
+	cursor: nwse-resize;
+}
+.ui-draggable-popover__resize--start-end {
+	inset-block-start: calc(-1 * var(--ddp-grip));
+	inset-inline-end: calc(-1 * var(--ddp-grip));
+	cursor: nesw-resize;
+}
+.ui-draggable-popover__resize--end-start {
+	inset-block-end: calc(-1 * var(--ddp-grip));
+	inset-inline-start: calc(-1 * var(--ddp-grip));
+	cursor: nesw-resize;
+}
+.ui-draggable-popover__resize--end-end {
+	inset-block-end: calc(-1 * var(--ddp-grip));
+	inset-inline-end: calc(-1 * var(--ddp-grip));
+	cursor: nwse-resize;
+}
+.ui-draggable-popover__resize--start-start:dir(rtl),
+.ui-draggable-popover__resize--end-end:dir(rtl) {
+	cursor: nesw-resize;
+}
+.ui-draggable-popover__resize--start-end:dir(rtl),
+.ui-draggable-popover__resize--end-start:dir(rtl) {
+	cursor: nwse-resize;
+}
+
+.ui-draggable-popover__resize-cue {
+	--ddp-cue-w: 2px;
+	--ddp-arc: max(var(--overlay-radius-lg), var(--space-3));
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	border: var(--ddp-cue-w) solid transparent;
+	border-radius: inherit;
+	background-origin: border-box;
+	background-repeat: no-repeat;
+	mask:
+		linear-gradient(currentColor 0 0) content-box,
+		linear-gradient(currentColor 0 0);
+	mask-composite: exclude;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+.ui-draggable-popover__resize-cue:dir(rtl) {
+	transform: scaleX(-1);
+}
+.ui-draggable-popover__resize-cue[data-visible="true"] {
 	opacity: 1;
+}
+.ui-draggable-popover__resize-cue[data-grip="block-start"] {
+	background-image: linear-gradient(to bottom, var(--primary) var(--ddp-cue-w), transparent);
+	background-position: top;
+	background-size: 100% var(--ddp-arc);
+}
+.ui-draggable-popover__resize-cue[data-grip="block-end"] {
+	background-image: linear-gradient(to top, var(--primary) var(--ddp-cue-w), transparent);
+	background-position: bottom;
+	background-size: 100% var(--ddp-arc);
+}
+.ui-draggable-popover__resize-cue[data-grip="inline-start"] {
+	background-image: linear-gradient(to right, var(--primary) var(--ddp-cue-w), transparent);
+	background-position: left;
+	background-size: var(--ddp-arc) 100%;
+}
+.ui-draggable-popover__resize-cue[data-grip="inline-end"] {
+	background-image: linear-gradient(to left, var(--primary) var(--ddp-cue-w), transparent);
+	background-position: right;
+	background-size: var(--ddp-arc) 100%;
+}
+.ui-draggable-popover__resize-cue[data-grip="start-start"] {
+	background-image:
+		linear-gradient(to right, var(--primary) var(--ddp-arc), transparent 50%),
+		linear-gradient(to bottom, var(--primary) var(--ddp-arc), transparent 50%);
+	background-position: top, left;
+	background-size: 100% var(--ddp-arc), var(--ddp-arc) 100%;
+}
+.ui-draggable-popover__resize-cue[data-grip="start-end"] {
+	background-image:
+		linear-gradient(to left, var(--primary) var(--ddp-arc), transparent 50%),
+		linear-gradient(to bottom, var(--primary) var(--ddp-arc), transparent 50%);
+	background-position: top, right;
+	background-size: 100% var(--ddp-arc), var(--ddp-arc) 100%;
+}
+.ui-draggable-popover__resize-cue[data-grip="end-start"] {
+	background-image:
+		linear-gradient(to right, var(--primary) var(--ddp-arc), transparent 50%),
+		linear-gradient(to top, var(--primary) var(--ddp-arc), transparent 50%);
+	background-position: bottom, left;
+	background-size: 100% var(--ddp-arc), var(--ddp-arc) 100%;
+}
+.ui-draggable-popover__resize-cue[data-grip="end-end"] {
+	background-image:
+		linear-gradient(to left, var(--primary) var(--ddp-arc), transparent 50%),
+		linear-gradient(to top, var(--primary) var(--ddp-arc), transparent 50%);
+	background-position: bottom, right;
+	background-size: 100% var(--ddp-arc), var(--ddp-arc) 100%;
 }
 
 /* --- Header / drag handle --- */
@@ -77,6 +191,8 @@
 	padding-inline: var(--space-2) var(--space-2);
 	padding-block: var(--space-2);
 	border-block-end: var(--hairline);
+	border-start-start-radius: inherit;
+	border-start-end-radius: inherit;
 	background: var(--surface-2);
 	flex: none;
 }
@@ -160,13 +276,15 @@
 	min-block-size: 0;
 	overflow: auto;
 	padding: var(--space-3);
+	border-end-start-radius: inherit;
+	border-end-end-radius: inherit;
 }
 
 /* The window opens with a slide; a reader who has asked for stillness gets the resting state on the
    first frame, which is already this element's static state (transform: none, opacity: 1). */
 @media (prefers-reduced-motion: reduce) {
 	.ui-draggable-popover,
-	.ui-draggable-popover__resize,
+	.ui-draggable-popover__resize-cue,
 	.ui-draggable-popover__close {
 		transition-duration: 0ms;
 	}

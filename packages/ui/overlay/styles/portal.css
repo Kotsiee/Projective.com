@@ -10,6 +10,6 @@
 	z-index: var(--z-portal, var(--z-overlay));
 	pointer-events: none;
 }
-.ui-portal > * {
+:where(.ui-portal) > * {
 	pointer-events: auto;
 }

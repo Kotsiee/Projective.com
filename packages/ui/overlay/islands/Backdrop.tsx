@@ -1,13 +1,17 @@
 import type { JSX } from "preact";
 import "../styles/backdrop.css";
 import { cx } from "../../core/cx.ts";
+import { useBackdropPress } from "../hooks/useBackdropPress.ts";
 
 // #region Props
 /** Props for {@link Backdrop}. */
 export interface BackdropProps {
 	/** When `true` the scrim is opaque and interactive; `false` fades it out and lets clicks through. */
 	visible: boolean;
-	/** Invoked when the scrim itself is clicked (typically dismisses the owning overlay). */
+	/**
+	 * Invoked when a press starts and ends on the scrim itself (typically dismisses the owning
+	 * overlay). Drags and selections released over the scrim never fire it.
+	 */
 	onClick?: (event: JSX.TargetedMouseEvent<HTMLDivElement>) => void;
 	/**
 	 * Which of the two scrim tiers to draw (default `standard`).
@@ -37,12 +41,13 @@ export interface BackdropProps {
  */
 export function Backdrop(props: BackdropProps): JSX.Element {
 	const { visible, onClick, intensity = "standard", class: className } = props;
+	const press = useBackdropPress(onClick);
 	return (
 		<div
 			class={cx("ui-backdrop", intensity === "heavy" && "ui-backdrop--heavy", className)}
 			data-state={visible ? "open" : "closed"}
 			aria-hidden="true"
-			onClick={onClick}
+			{...press}
 		/>
 	);
 }

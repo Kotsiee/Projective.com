@@ -44,7 +44,13 @@ export function MediaLightbox(
 	const stack = useOverlayStack({ active: mounted, lockScroll: true, layer: "modal" });
 	const panelRef = useRef<HTMLDivElement>(null);
 	useFocusTrap({ active: mounted, containerRef: panelRef });
-	useDismiss({ open: mounted, onDismiss: onClose, panelRef, closeOnOutside: false });
+	useDismiss({
+		open: mounted,
+		enabled: stack.isTop,
+		onDismiss: onClose,
+		panelRef,
+		closeOnOutside: false,
+	});
 
 	/** Step the gallery — reads `active.value` LIVE (signal) so the handler is never a stale closure. */
 	function step(delta: number): void {
@@ -54,13 +60,12 @@ export function MediaLightbox(
 		zoomed.value = false;
 	}
 
-	// Esc closes; ←/→ step the gallery. Bound only while mounted, so a closed lightbox never
-	// swallows an arrow key from the page beneath it.
+	// ←/→ step the gallery (Escape is `useDismiss`'s). Bound only while mounted, so a closed lightbox
+	// never swallows an arrow key from the page beneath it.
 	useEffect(() => {
 		if (!mounted) return;
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") onClose();
-			else if (e.key === "ArrowLeft") step(-1);
+			if (e.key === "ArrowLeft") step(-1);
 			else if (e.key === "ArrowRight") step(1);
 		};
 		globalThis.addEventListener("keydown", onKey);

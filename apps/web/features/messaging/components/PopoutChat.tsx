@@ -70,6 +70,7 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 
 	const rootRef = useRef<HTMLDivElement>(null);
 	const scrollRef = useRef<HTMLDivElement>(null);
+	const composerRef = useRef<HTMLDivElement>(null);
 	const composerApi = useRef<ComposerHandle | null>(null);
 	const dragDepth = useRef(0);
 	const settleTimers = useRef<number[]>([]);
@@ -178,15 +179,19 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 			null;
 	}
 
-	/** Bring a message into the panel's view, moving its scroller only as far as needed. */
+	/**
+	 * Bring a message into the panel's view, moving its scroller only as far as needed. The composer
+	 * floats over the scroller's foot, so the visible floor is its top edge, not the scroller's.
+	 */
 	function reveal(id: string): void {
 		const el = rowEl(id);
 		const box = scrollRef.current;
 		if (!el || !box) return;
 		const r = el.getBoundingClientRect();
 		const b = box.getBoundingClientRect();
+		const floor = b.bottom - (composerRef.current?.offsetHeight ?? 0);
 		if (r.top < b.top) box.scrollBy(0, r.top - b.top - 8);
-		else if (r.bottom > b.bottom) box.scrollBy(0, r.bottom - b.bottom + 8);
+		else if (r.bottom > floor) box.scrollBy(0, r.bottom - floor + 8);
 	}
 
 	const sel = useMessageSelection({
@@ -382,17 +387,16 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 							{rows.map((row) => <Fragment key={row.key}>{renderRow(row)}</Fragment>)}
 						</>
 					)}
-			</div>
-
-			<div class="pop-chat__composer">
-				<ChatComposer
-					scope={state.scope}
-					surface="popout"
-					projectId={state.projectId}
-					channelId={state.channelId}
-					notices="toast"
-					onReady={(api) => (composerApi.current = api)}
-				/>
+				<div class="pop-chat__composer" ref={composerRef}>
+					<ChatComposer
+						scope={state.scope}
+						surface="popout"
+						projectId={state.projectId}
+						channelId={state.channelId}
+						notices="toast"
+						onReady={(api) => (composerApi.current = api)}
+					/>
+				</div>
 			</div>
 
 			<div class="pop-chat__drop" aria-hidden="true">

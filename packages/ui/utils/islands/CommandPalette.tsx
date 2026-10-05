@@ -8,6 +8,7 @@ import { useId } from "../../hooks/useId.ts";
 import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import { useFocusTrap } from "../../hooks/useFocusTrap.ts";
 import { useDismiss } from "../../hooks/useDismiss.ts";
+import { useBackdropPress } from "../../overlay/hooks/useBackdropPress.ts";
 import { useListNavigation } from "../../hooks/useListNavigation.ts";
 import type { Bindable } from "../../fields/types/mod.ts";
 import type { MenuItem } from "../../types/mod.ts";
@@ -111,13 +112,19 @@ export function CommandPalette(props: CommandPaletteProps): JSX.Element | null {
 	const panelRef = useRef<HTMLDivElement>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
 
-	const stack = useOverlayStack({ active: isOpen, lockScroll: true });
+	const stack = useOverlayStack({ active: isOpen, lockScroll: true, layer: "modal" });
 	useFocusTrap({ active: isOpen, containerRef: panelRef, initialFocusRef: inputRef });
 
 	const close = () => ctrl.set(false);
-	// `enabled` gates the listener itself: the palette registers on `document` in the capture phase, so
-	// merely no-oping inside the callback would still consume Escape from anything it launched above it.
-	useDismiss({ open: isOpen, enabled: stack.isTop, onDismiss: close, panelRef });
+	// The backdrop is the only outside-click channel, so one press can never close the palette twice.
+	useDismiss({
+		open: isOpen,
+		enabled: stack.isTop,
+		onDismiss: close,
+		panelRef,
+		closeOnOutside: false,
+	});
+	const backdropPress = useBackdropPress(close);
 
 	// #region Model → filtered groups
 	const baseGroups = useMemo<FlatGroup[]>(() => {
@@ -250,7 +257,7 @@ export function CommandPalette(props: CommandPaletteProps): JSX.Element | null {
 
 	return (
 		<div class={cx("ui-cmdk", className)} style={styleVars({ "--cmdk-z": stack.zIndex })}>
-			<div class="ui-cmdk__backdrop" aria-hidden="true" onClick={close} />
+			<div class="ui-cmdk__backdrop" aria-hidden="true" {...backdropPress} />
 			<div
 				ref={panelRef}
 				class="ui-cmdk__panel"

@@ -139,17 +139,15 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 	const bodyRef = useRef<HTMLDivElement>(null);
 	useFocusTrap({ active: true, containerRef: panelRef });
 	// A ticket being composed can be dismissed, but not by a stray click on the backdrop — there is
-	// unsaved work in it by definition. Escape and Cancel still close it.
-	//
-	// `enabled: stack.isTop` is what stops this modal from acting on an event that belongs to an
-	// overlay above it; containment for its OWN portalled children (every Select, DatePicker and
-	// Popover in the tabs) is handled inside `useDismiss` by the overlay registry.
+	// unsaved work in it by definition. Escape and Cancel still close it. The backdrop is the only
+	// outside-click channel: it sits beneath anything stacked above (the asset picker), so a click
+	// there can only ever belong to this modal.
 	useDismiss({
 		open: true,
 		enabled: stack.isTop,
 		onDismiss: onClose,
 		panelRef,
-		closeOnOutside: !creating,
+		closeOnOutside: false,
 	});
 
 	// The title is the required field and the first thing to write, so on a new ticket the caret is

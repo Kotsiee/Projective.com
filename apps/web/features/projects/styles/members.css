@@ -668,7 +668,7 @@ a.mem-person__name:focus-visible {
 
 .mem-preview__head {
 	display: flex;
-	align-items: baseline;
+	align-items: center;
 	justify-content: space-between;
 	flex-wrap: wrap;
 	gap: var(--space-1) var(--space-3);
@@ -684,21 +684,44 @@ a.mem-person__name:focus-visible {
 
 .mem-preview__full {
 	display: inline-flex;
+	flex: none;
 	align-items: center;
-	gap: var(--space-1);
-	font-size: var(--text-sm);
-	font-weight: var(--fw-medium);
-	color: var(--primary);
+	justify-content: center;
+	inline-size: var(--overlay-action-size);
+	block-size: var(--overlay-action-size);
+	color: var(--text-secondary);
 	text-decoration: none;
-	white-space: nowrap;
+	background: transparent;
+	border-radius: var(--radius-full);
+	transition: var(--btn-transition-press);
 }
 
 .mem-preview__full:hover {
-	text-decoration: underline;
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+
+.mem-preview__full:active {
+	transform: scale(var(--btn-press-scale-icon));
 }
 
 .mem-preview__full:focus-visible {
 	outline: none;
+	box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.mem-preview__full,
+	.mem-preview__full:active {
+		transform: none;
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .mem-preview__full,
+:root[data-motion="reduced"] .mem-preview__full:active {
+	transform: none;
+	transition: none;
 }
 
 .mem-preview__body {

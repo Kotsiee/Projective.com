@@ -1,5 +1,6 @@
 import { signal } from "@preact/signals";
 import { readStored, removeStored, SessionKeys, writeStored } from "@web/utils/storage-keys.ts";
+import { normalisePath, shouldDismissPopout } from "./popout-route.ts";
 
 /**
  * popout-state — the cross-island, cross-navigation store for the floating "Pop Out Chat" popover
@@ -9,10 +10,12 @@ import { readStored, removeStored, SessionKeys, writeStored } from "@web/utils/s
  *
  *  - The pop-out button (in the channel/conversation header island) calls {@link openPopout} — same-page
  *    islands (the global {@link ChatPopoutHost}) react instantly via the shared signal.
- *  - After navigating away, the host re-mounts and re-seeds the signal from `sessionStorage`
- *    ({@link hydratePopout}); because the current path no longer matches the popped-out `href`, the host
- *    shows the "Return to Channel" / "Maximize" button in the popover header.
- *  - Closing the popover (×) clears the store.
+ *  - After navigating away, the host re-mounts and reconciles the store with the new document
+ *    ({@link syncPopoutRoute}); because the current path no longer matches the popped-out `href`, the
+ *    host shows the "Open in input" button in the popover header.
+ *  - Arriving at a full chat view (a conversation or a channel's Chat tab) from another page closes
+ *    the window — the page now shows the chat it duplicated. The page it was spawned on keeps it.
+ *  - Closing the popover (×) or opening it in the main input clears the store.
  *
  * Session-scoped so it never outlives the tab; the position is carried in the blob so the window
  * reopens where the developer left it within the session.
@@ -35,13 +38,17 @@ export interface PopoutState {
 	/**
 	 * Where the pop-out was opened FROM.
 	 *
-	 * `page` (the default) is a chat popped out of its own channel or conversation page — the header
-	 * offers "Return" once the viewer has navigated away. `profile` is a conversation started from a
-	 * person's `/[handle]` page: the viewer was never on the conversation page, so the same action
-	 * reads "Open in inbox" and the window docks into the bottom-end corner rather than opening at the
-	 * default spot below the top bar.
+	 * `page` (the default) is a chat popped out of its own channel or conversation page. `profile` is a
+	 * conversation started from a person's `/[handle]` page: the viewer was never on the conversation
+	 * page, so the window docks into the bottom-end corner rather than opening at the default spot
+	 * below the top bar.
 	 */
 	source?: "page" | "profile";
+	/**
+	 * The pathname of the last document that showed the window, stamped on open and on every host
+	 * mount. Arriving at a chat route from any other path dismisses the window.
+	 */
+	lastPath?: string;
 	/** The counterparty's avatar for the window's title glyph; null → the generic chat mark. */
 	avatar?: string | null;
 	/** Last window position (viewport px). */
@@ -84,7 +91,30 @@ export function hydratePopout(): void {
 export function openPopout(state: PopoutState): void {
 	const cur = popout.value;
 	const same = cur && cur.scope === state.scope && cur.channelId === state.channelId;
-	const next: PopoutState = same ? { ...state, x: cur.x, y: cur.y, w: cur.w, h: cur.h } : state;
+	const placed: PopoutState = same ? { ...state, x: cur.x, y: cur.y, w: cur.w, h: cur.h } : state;
+	const here = globalThis.location?.pathname;
+	const next: PopoutState = here ? { ...placed, lastPath: normalisePath(here) } : placed;
+	popout.value = next;
+	persist(next);
+}
+
+/**
+ * Reconcile the pop-out with the document now showing `pathname`: re-seed it from `sessionStorage`,
+ * then close it when this is a chat route reached from another page ({@link shouldDismissPopout}),
+ * or record `pathname` as the window's last page. Call on every host mount and on any return to a
+ * document that skipped mounting (a back/forward-cache restore, a `popstate`).
+ */
+export function syncPopoutRoute(pathname: string): void {
+	hydratePopout();
+	const cur = popout.value;
+	if (!cur) return;
+	if (shouldDismissPopout(cur.lastPath, pathname)) {
+		closePopout();
+		return;
+	}
+	const here = normalisePath(pathname);
+	if (cur.lastPath === here) return;
+	const next = { ...cur, lastPath: here };
 	popout.value = next;
 	persist(next);
 }

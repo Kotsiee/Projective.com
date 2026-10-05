@@ -76,23 +76,20 @@
 /* #endregion */
 
 /* #region Search + group name */
-.msg-picker__search {
-	position: relative;
-	display: flex;
-	align-items: center;
-}
 .msg-picker__search-icon {
-	position: absolute;
-	inset-inline-start: var(--space-3);
-	color: var(--text-secondary);
-	pointer-events: none;
+	display: inline-flex;
 }
 .msg-picker__search-icon svg {
 	inline-size: var(--icon-sm);
 	block-size: var(--icon-sm);
 }
-.msg-picker__search-input,
-/* #region Group photo + name — the photo control leads the name field on one row. */ .msg-picker__identity {
+.msg-picker__search .ui-input__input::-webkit-search-cancel-button {
+	-webkit-appearance: none;
+	appearance: none;
+}
+
+/* #region Group photo + name — the photo control leads the name field on one row. */
+.msg-picker__identity {
 	display: flex;
 	align-items: center;
 	gap: var(--space-3);
@@ -164,26 +161,17 @@
 	border: 1px solid transparent;
 	border-radius: var(--radius-lg);
 }
-.msg-picker__search-input {
-	padding-inline-start: calc(var(--space-5) + var(--space-2));
-}
-.msg-picker__search-input:focus-visible,
 .msg-picker__group-name:focus-visible {
 	outline: none;
 	border-color: var(--primary);
 }
-.msg-picker__search-input {
-	padding-inline-end: calc(var(--fld-hit) + var(--space-1));
-}
 /* The clear control sits inside the field on its trailing edge — a real button, 24px+ target. */
 .msg-picker__clear {
-	position: absolute;
-	inset-inline-end: var(--space-1);
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	inline-size: var(--fld-hit);
-	block-size: var(--fld-hit);
+	inline-size: var(--space-5);
+	block-size: var(--space-5);
 	padding: 0;
 	border: none;
 	border-radius: var(--radius-full);

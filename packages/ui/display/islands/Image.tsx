@@ -5,6 +5,7 @@ import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
 import { Portal } from "../../overlay/components/Portal.tsx";
 import { Backdrop } from "../../overlay/islands/Backdrop.tsx";
+import { useBackdropPress } from "../../overlay/hooks/useBackdropPress.ts";
 import { usePresence } from "../../overlay/core/usePresence.ts";
 import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import { useFocusTrap } from "../../hooks/useFocusTrap.ts";
@@ -88,7 +89,9 @@ export function Image(props: ImageProps): JSX.Element {
 	// #region Pan (pointer drag once zoomed in) — `panning` suppresses the transform transition so
 	// the image tracks the pointer 1:1 instead of chasing it.
 	const [panning, setPanning] = useState(false);
+	const stagePress = useBackdropPress(close);
 	const onStagePointerDown = (e: JSX.TargetedPointerEvent<HTMLDivElement>) => {
+		stagePress.onPointerDown(e);
 		if (zoom <= 1) return;
 		drag.current = { px: e.clientX, py: e.clientY, ox: pan.x, oy: pan.y };
 		setPanning(true);
@@ -187,7 +190,12 @@ export function Image(props: ImageProps): JSX.Element {
 							onPointerDown={onStagePointerDown}
 							onPointerMove={onStagePointerMove}
 							onPointerUp={endDrag}
-							onPointerLeave={endDrag}
+							onPointerLeave={() => {
+								stagePress.onPointerLeave();
+								endDrag();
+							}}
+							onPointerCancel={stagePress.onPointerCancel}
+							onClick={stagePress.onClick}
 						>
 							<img
 								class={cx("ui-image__preview-img", panning && "ui-image__preview-img--panning")}

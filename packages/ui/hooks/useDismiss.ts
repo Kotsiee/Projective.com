@@ -2,8 +2,8 @@
  * `useDismiss` — close an open overlay (menu/popover/dialog) on outside pointerdown or Escape.
  *
  * Client-only; listeners attach in an effect and tear down on close/unmount. Anchored overlays pass
- * both refs so a click on the trigger itself doesn't double-toggle. Escape is captured so it wins
- * over inner handlers that stop propagation.
+ * both refs so a click on the trigger itself doesn't double-toggle. Escape is owned by one
+ * {@link pushEscapeLayer} stack, so only the most recently opened overlay ever receives it.
  *
  * **"Outside" is ownership, not ancestry.** Every anchored panel in this package is projected into
  * `document.body` by `BodyPortal`, so a dropdown opened from inside a modal is that modal's DOM
@@ -19,8 +19,9 @@
  * else by the overlay that was open when it registered. Passing neither ref is supported and is what
  * most modals do; passing a host is strictly better where one exists.
  */
-import { useEffect } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import type { RefObject } from "preact";
+import { pushEscapeLayer } from "./escape-stack.ts";
 import { isWithinOverlay, registerOverlay } from "./overlay-registry.ts";
 import { useId } from "./useId.ts";
 
@@ -49,12 +50,9 @@ export interface DismissOptions {
 	/**
 	 * Whether this overlay currently owns the ESCAPE key — pass `useOverlayStack().isTop` (default true).
 	 *
-	 * This must gate the listener itself, not just the callback. Every instance registers on `document`
-	 * in the capture phase, so listeners run in registration order: an outer dialog that merely no-ops
-	 * inside its own callback would still consume the Escape press and starve the inner overlay.
-	 *
-	 * It does NOT gate outside-pointer dismissal, which is governed by containment instead — see the
-	 * comment on the two effects.
+	 * Escape already reaches only the most recently opened overlay; this further silences it while a
+	 * non-dismissing surface (e.g. a full-screen `BlockUI`) sits above. It does NOT gate
+	 * outside-pointer dismissal, which is governed by containment instead.
 	 */
 	enabled?: boolean;
 }
@@ -89,10 +87,8 @@ export function useDismiss(opts: DismissOptions): void {
 	/*
 	 * The two channels are gated DIFFERENTLY, because they fail in opposite directions.
 	 *
-	 * ESCAPE is exclusive: the handler calls `stopImmediatePropagation()`, so exactly one overlay may
-	 * own the key or a single press collapses the whole stack. `enabled` (the caller's `isTop`) picks
-	 * that owner, and it must gate the LISTENER — an overlay that merely no-ops inside its callback
-	 * still consumes the press and starves the overlay above it.
+	 * ESCAPE is exclusive: one `escape-stack` listener hands each press to the top layer only, so a
+	 * single press can never collapse the stack, whatever order the overlays rendered in.
 	 *
 	 * OUTSIDE POINTER is not exclusive, and gating it on `isTop` made an overlay undismissable for as
 	 * long as anything sat above it: with a child dropdown open, its parent stopped listening, so a
@@ -116,19 +112,15 @@ export function useDismiss(opts: DismissOptions): void {
 		return () => document.removeEventListener("pointerdown", onPointer, true);
 	}, [open, id, onDismiss, closeOnOutside]);
 
+	const live = useRef({ onDismiss, enabled, closeOnEscape });
+	live.current = { onDismiss, enabled, closeOnEscape };
+
 	useEffect(() => {
-		if (!open || !enabled || !closeOnEscape || typeof document === "undefined") return;
-
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key !== "Escape") return;
-			// `stopImmediatePropagation`, not `stopPropagation`: sibling listeners on `document` itself
-			// are unaffected by the latter, so one press used to close the whole stack at once.
-			e.stopImmediatePropagation();
-			e.preventDefault();
-			onDismiss();
-		};
-
-		document.addEventListener("keydown", onKey, true);
-		return () => document.removeEventListener("keydown", onKey, true);
-	}, [open, enabled, onDismiss, closeOnEscape]);
+		if (!open || typeof document === "undefined") return;
+		return pushEscapeLayer({
+			enabled: () => live.current.enabled,
+			closeOnEscape: () => live.current.closeOnEscape,
+			dismiss: () => live.current.onDismiss(),
+		});
+	}, [open]);
 }

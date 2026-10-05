@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { useId } from "preact/hooks";
 import "../styles/contact-picker.css";
-import { Button } from "@projective/ui/fields";
+import { Button, InputText } from "@projective/ui/fields";
 import { MessagingIcon } from "./messaging-glyphs.tsx";
 import type { ContactSearch } from "../hooks/useContactSearch.ts";
 import type { RankedContact } from "../types/messaging-types.ts";
@@ -134,32 +134,36 @@ export function ContactList(props: ContactListProps): JSX.Element {
 	return (
 		<div class="msg-picker__people">
 			{/* Search — global by name or @handle; empty returns to the ranked suggestions. */}
-			<div class="msg-picker__search">
-				<span class="msg-picker__search-icon" aria-hidden="true">
-					<MessagingIcon name="search" />
-				</span>
-				<input
-					type="search"
-					class="msg-picker__search-input"
-					placeholder={props.placeholder ?? "Search by name or @handle"}
-					value={q}
-					aria-label={props.placeholder ?? "Search by name or @handle"}
-					aria-controls={listId}
-					autoComplete="off"
-					autoFocus={props.autoFocus ? true : undefined}
-					onInput={(e) => search.setQuery((e.target as HTMLInputElement).value)}
-				/>
-				{q && (
-					<button
-						type="button"
-						class="msg-picker__clear"
-						aria-label="Clear search"
-						onClick={() => search.setQuery("")}
-					>
-						<MessagingIcon name="close" />
-					</button>
-				)}
-			</div>
+			<InputText
+				class="msg-picker__search"
+				type="search"
+				variant="filled"
+				block
+				value={search.query}
+				onValueChange={search.setQuery}
+				placeholder={props.placeholder ?? "Search by name or @handle"}
+				aria-label={props.placeholder ?? "Search by name or @handle"}
+				aria-controls={listId}
+				autoComplete="off"
+				autoFocus={props.autoFocus ? true : undefined}
+				start={
+					<span class="msg-picker__search-icon" aria-hidden="true">
+						<MessagingIcon name="search" />
+					</span>
+				}
+				end={q
+					? (
+						<button
+							type="button"
+							class="msg-picker__clear"
+							aria-label="Clear search"
+							onClick={() => search.setQuery("")}
+						>
+							<MessagingIcon name="close" />
+						</button>
+					)
+					: undefined}
+			/>
 
 			{/* The list — grouped suggestions, or a flat search result. */}
 			<div

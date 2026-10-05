@@ -170,7 +170,13 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 		containerRef: panelRef,
 		initialFocusRef: stepped ? cardsRef : titleFieldRef,
 	});
-	useDismiss({ open: mounted, onDismiss: onClose, panelRef, closeOnOutside: false });
+	useDismiss({
+		open: mounted,
+		enabled: stack.isTop,
+		onDismiss: onClose,
+		panelRef,
+		closeOnOutside: false,
+	});
 
 	// #region Form state
 	/** Which screen `stepped` is on. Pinned at 2 in `single`, where both halves render at once. */

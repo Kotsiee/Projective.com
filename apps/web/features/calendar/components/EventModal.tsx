@@ -188,17 +188,14 @@ export function EventModal(props: EventModalProps): JSX.Element {
 	const bodyRef = useRef<HTMLDivElement>(null);
 	useFocusTrap({ active: true, containerRef: panelRef });
 	// An entry being composed has unsaved work in it by definition, so a stray backdrop click cannot
-	// dismiss it. Escape and Cancel still do.
-	//
-	// `enabled: stack.isTop` stops this modal acting on an event belonging to an overlay above it;
-	// containment for its OWN portalled children (every Select, DatePicker and Tooltip in the tabs) is
-	// handled inside `useDismiss` by the overlay registry.
+	// dismiss it. Escape and Cancel still do. The backdrop is the only outside-click channel: it sits
+	// beneath anything stacked above, so a click there can only ever belong to this modal.
 	useDismiss({
 		open: true,
 		enabled: stack.isTop,
 		onDismiss: onClose,
 		panelRef,
-		closeOnOutside: !creating,
+		closeOnOutside: false,
 	});
 
 	/*
