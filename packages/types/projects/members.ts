@@ -401,6 +401,59 @@ export const MemberStageRefSchema = z.object({
 });
 export type MemberStageRef = z.infer<typeof MemberStageRefSchema>;
 
+/** One open stage invitation, paired with the stage it offers. */
+export interface PendingStageInvite {
+	stage: MemberStageRef;
+	invite: MemberInvite;
+}
+
+/** One member's relationship to every stage of the engagement. */
+export interface MemberStagePicture {
+	/** Stages the member holds a seat on, in stage order. */
+	held: MemberStageRef[];
+	/** Stages the member has an open (pending) invitation to, in stage order. */
+	pending: PendingStageInvite[];
+	/** Stages neither held nor pending — what "Invite to stage" may still offer. */
+	available: MemberStageRef[];
+}
+
+/**
+ * Resolve a member's held seats, open stage invitations and offerable stages. Seats match by stage
+ * NAME (the roster's `assignedStages` column); invitations match by `@handle`, since an identity-addressed
+ * invitation names a person and the roster row carries the same handle. Whole-project invitations and
+ * answered ones are not stage invitations and are ignored.
+ */
+export function memberStagePicture(
+	member: ProjectMemberRow,
+	stages: readonly MemberStageRef[],
+	invites: readonly MemberInvite[],
+): MemberStagePicture {
+	const handle = bareHandle(member.party.handle);
+	const open = new Map<string, MemberInvite>();
+	if (handle) {
+		for (const invite of invites) {
+			if (invite.status !== "pending" || !invite.stageId || invite.dismissedAt) continue;
+			if (bareHandle(invite.handle ?? null) !== handle) continue;
+			if (!open.has(invite.stageId)) open.set(invite.stageId, invite);
+		}
+	}
+	const held: MemberStageRef[] = [];
+	const pending: PendingStageInvite[] = [];
+	const available: MemberStageRef[] = [];
+	for (const stage of stages) {
+		const invite = open.get(stage.id);
+		if (member.assignedStages.includes(stage.name)) held.push(stage);
+		else if (invite) pending.push({ stage, invite });
+		else available.push(stage);
+	}
+	return { held, pending, available };
+}
+
+function bareHandle(handle: string | null): string | null {
+	const bare = handle?.replace(/^@+/, "").toLowerCase() ?? "";
+	return bare || null;
+}
+
 /**
  * The acting viewer's management capabilities on the roster, re-derived server-side from their role
  * (never trusted from the client, root CLAUDE.md §6). `canManage` is the master gate for the row

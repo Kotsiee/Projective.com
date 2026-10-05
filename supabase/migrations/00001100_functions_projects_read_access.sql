@@ -1066,6 +1066,29 @@ BEGIN
         updated_at = now()
     WHERE id = p_project_id;
 
+    -- Publishing settles the placeholder terms (Decision #108(E)): every seat a freelancer accepted
+    -- while the project was a draft is taken now, which is also what trips the post-onboarding shape
+    -- and price locks (Decision #139). A blueprint-instantiated draft keeps Decision #80's
+    -- `pending_funding` — its seats are bought against one ticket at a time, not at publish.
+    IF v_from = 'draft'::project_status AND p_to_status = 'active'::project_status
+        AND (SELECT source_blueprint_id FROM projects.projects WHERE id = p_project_id) IS NULL THEN
+        UPDATE projects.stage_assignments sa
+        SET status = 'assigned'
+        FROM projects.project_stages ps
+        WHERE ps.id = sa.project_stage_id
+            AND ps.project_id = p_project_id
+            AND sa.status = 'pending_funding';
+
+        UPDATE projects.project_stages ps
+        SET status = 'assigned'::stage_status
+        WHERE ps.project_id = p_project_id
+            AND ps.status = 'open'::stage_status
+            AND EXISTS (
+                SELECT 1 FROM projects.stage_assignments sa
+                WHERE sa.project_stage_id = ps.id AND sa.status = 'assigned'
+            );
+    END IF;
+
     INSERT INTO projects.project_status_history (project_id, actor_user_id, from_status, to_status, reason)
     VALUES (p_project_id, v_actor, v_from, p_to_status, p_reason);
 

@@ -14,6 +14,13 @@ CREATE TRIGGER trg_project_handover_on_complete
     WHEN (NEW.status = 'completed'::project_status)
     EXECUTE FUNCTION projects.tg_project_handover_on_complete();
 
+CREATE TRIGGER trg_project_shape_lock
+    BEFORE UPDATE OF format, structure_variation ON projects.projects
+    FOR EACH ROW
+    WHEN (OLD.format IS DISTINCT FROM NEW.format
+        OR OLD.structure_variation IS DISTINCT FROM NEW.structure_variation)
+    EXECUTE FUNCTION projects.fn_project_shape_lock();
+
 CREATE TRIGGER trg_meter_application_allowance
     AFTER INSERT ON projects.project_applications
     FOR EACH ROW

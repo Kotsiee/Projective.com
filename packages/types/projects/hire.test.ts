@@ -10,6 +10,8 @@ import {
 	hireInvitationTotalCents,
 	hirePricingModelFor,
 	resolveHireOffer,
+	stageInviteAsHire,
+	stageInviteRefusal,
 } from "./hire.ts";
 import type { MemberRosterPage } from "./members.ts";
 import { blankStage, reconcileSetup } from "./setup.ts";
@@ -363,3 +365,64 @@ Deno.test("hireInvitationRefusal: an active cooldown refuses with the date it li
 	// And a brief built for nobody carries none at all.
 	assertEquals(buildHireBrief(setupFor("pipeline", "standard"), withCooldown).cooldownUntil, null);
 });
+
+// #region stageInviteRefusal
+
+const noPending: ReadonlySet<string> = new Set();
+const pricedPipeline = buildHireBrief(
+	setupFor("pipeline", "standard", [priced("stg-a", 0, 40_000), priced("stg-b", 1, 25_000)]),
+	roster,
+);
+
+Deno.test("stageInviteRefusal: a member can be invited onto a stage they do not hold", () => {
+	const input = { projectId: "prj-test000001", handle: "@priya", stageIds: ["stg-b"] };
+	assertEquals(stageInviteRefusal(pricedPipeline, input, noPending), null);
+});
+
+Deno.test("stageInviteRefusal: a stage they already hold is refused, by name", () => {
+	const input = { projectId: "prj-test000001", handle: "priya", stageIds: ["stg-a"] };
+	assertEquals(stageInviteRefusal(pricedPipeline, input, noPending)?.errors, {
+		stageIds: "already_assigned",
+	});
+});
+
+Deno.test("stageInviteRefusal: an open invitation to the stage is not sent twice", () => {
+	const input = { projectId: "prj-test000001", handle: "priya", stageIds: ["stg-b"] };
+	assertEquals(stageInviteRefusal(pricedPipeline, input, new Set(["stg-b"]))?.errors, {
+		stageIds: "already_invited",
+	});
+});
+
+Deno.test("stageInviteRefusal: somebody not on the roster is sent to the profile hire flow", () => {
+	const input = { projectId: "prj-test000001", handle: "stranger", stageIds: ["stg-b"] };
+	assertEquals(stageInviteRefusal(pricedPipeline, input, noPending)?.errors, {
+		handle: "not_a_member",
+	});
+});
+
+Deno.test("stageInviteRefusal: a single-seat engagement has no further stage", () => {
+	const task = buildHireBrief(
+		setupFor("one_off", "single_task", [priced("stg-root", 0, 90_000)]),
+		roster,
+	);
+	const input = { projectId: "prj-test000001", handle: "priya", stageIds: ["stg-root"] };
+	assertEquals(stageInviteRefusal(task, input, noPending)?.errors, { stageIds: "not_applicable" });
+});
+
+Deno.test("stageInviteRefusal: the hire rule still applies, so a live unpriced stage is refused", () => {
+	const input = { projectId: "prj-test000001", handle: "priya", stageIds: ["stg-b"] };
+	assertEquals(stageInviteRefusal(pipeline, input, noPending)?.errors, { stages: "unpriced" });
+});
+
+Deno.test("stageInviteAsHire: stages at configured terms, no message, no intake", () => {
+	const hire = stageInviteAsHire({ projectId: "p", handle: "priya", stageIds: ["stg-a", "stg-b"] });
+	assertEquals(hire.stages, [
+		{ stageId: "stg-a", priceCents: null },
+		{ stageId: "stg-b", priceCents: null },
+	]);
+	assertEquals(hire.message, "");
+	assertEquals(hire.taskPriceCents, null);
+	assertEquals(hire.answers, {});
+});
+
+// #endregion

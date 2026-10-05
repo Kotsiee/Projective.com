@@ -1,57 +1,45 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import { Button, MultiSelect, Select } from "@projective/ui/fields";
+import { Button, Select } from "@projective/ui/fields";
 import { Dialog } from "@projective/ui/feedback";
-import type { MemberRole, MemberStageRef, ProjectMemberRow } from "../types/projects-types.ts";
+import type { MemberRole, ProjectMemberRow } from "../types/projects-types.ts";
 import { ASSIGNABLE_ROLES } from "../core/member-model.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
- * MemberEditDialog — the combined "Change role" surface (task §2.2 "Edit Member Role" + the multi-stage
- * form of §2.2 "Assign/Unassign Stage"). A modal {@link Dialog} letting an admin/owner/manager change a
- * participant's role and — on a pipeline — set which stages they contribute to, in one place. STUB persistence — the save
- * flips the roster optimistically; the live path (the participant-role + stage-assignment RPCs) lands
- * behind `PROJECTS_BACKEND_LIVE`. Reseeds its controls whenever a different member is opened.
+ * MemberEditDialog — the "Change role" surface: a modal {@link Dialog} letting an admin/owner/manager
+ * change a participant's role. Stage seats are not edited here — they are offered by invitation and
+ * accepted by the freelancer (Decision #139). STUB persistence — the save flips the roster
+ * optimistically until the participant-role RPC lands. Reseeds whenever a different member is opened.
  */
 export interface MemberEditDialogProps {
 	open: import("@preact/signals").Signal<boolean>;
 	member: ProjectMemberRow | null;
-	stages: MemberStageRef[];
-	/** Whether stages are a dimension of this engagement — a one-off or a session edits the role alone. */
-	showStages: boolean;
-	onSave: (memberId: string, role: MemberRole, stageNames: string[]) => void;
+	onSave: (memberId: string, role: MemberRole) => void;
 	onClose: () => void;
 }
 
 export function MemberEditDialog(props: MemberEditDialogProps): JSX.Element {
-	const { member, stages } = props;
+	const { member } = props;
 	const role = useSignal<string>(member?.role ?? "member");
-	const assigned = useSignal<string[]>(member?.assignedStages ?? []);
 
 	// Reseed the controls when a different member is opened (the dialog is reused across rows).
 	useEffect(() => {
-		if (member) {
-			role.value = member.role;
-			assigned.value = [...member.assignedStages];
-		}
+		if (member) role.value = member.role;
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [member?.id]);
 
-	const stageOptions = !props.showStages
-		? []
-		: stages.map((s) => ({ label: s.name, value: s.name }));
-
 	function save(): void {
 		if (!member) return;
-		props.onSave(member.id, role.value as MemberRole, assigned.value);
+		props.onSave(member.id, role.value as MemberRole);
 		props.open.value = false;
 	}
 
 	return (
 		<Dialog
 			visible={props.open}
-			header={props.showStages ? "Change role & stages" : "Change role"}
+			header="Change role"
 			width="30rem"
 			onVisibleChange={(v) => !v && props.onClose()}
 			class="mem-dialog"
@@ -93,23 +81,6 @@ export function MemberEditDialog(props: MemberEditDialogProps): JSX.Element {
 							Controls this member's permissions within the project.
 						</span>
 					</label>
-
-					{stageOptions.length > 0 && (
-						<label class="mem-field">
-							<span class="mem-field__label">Assigned stages</span>
-							<MultiSelect
-								fluid
-								display="chip"
-								placeholder="No stages assigned"
-								options={stageOptions}
-								value={assigned}
-								aria-label="Assigned stages"
-							/>
-							<span class="mem-field__hint">
-								The stages this member contributes to. Clearing a stage unassigns them from it.
-							</span>
-						</label>
-					)}
 				</div>
 			)}
 		</Dialog>

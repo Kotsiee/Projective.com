@@ -507,3 +507,77 @@ export function hireInvitationTotalCents(input: HireInvitation): number {
 	return input.stages.reduce((sum, offer) => sum + (offer.priceCents ?? 0), 0);
 }
 // #endregion
+
+// #region Stage invitation (a member already on the engagement)
+/**
+ * Invite someone already on the roster onto further stages — the Members tab's "Invite to stage".
+ * Each stage becomes one pending invitation at the stage's configured terms; the freelancer accepts or
+ * declines each (Decision #139). No intro message and no seller intake: they already joined once.
+ */
+export const StageInviteInputSchema = z.object({
+	/** The project's route slug. */
+	projectId: z.string().min(1).max(120),
+	/** The member's `@handle` (with or without the `@`). */
+	handle: z.string().trim().min(1).max(41),
+	stageIds: z.array(z.string().min(1).max(80)).min(1).max(50),
+});
+export type StageInviteInput = z.infer<typeof StageInviteInputSchema>;
+
+/** A stage invitation expressed as the hire write it shares the invitation rule and the RPC with. */
+export function stageInviteAsHire(input: StageInviteInput): HireInvitation {
+	return {
+		projectId: input.projectId,
+		handle: input.handle,
+		message: "",
+		stages: input.stageIds.map((stageId) => ({ stageId, priceCents: null })),
+		taskPriceCents: null,
+		answers: {},
+	};
+}
+
+/**
+ * Why a stage invitation cannot be sent, or `null` when it can. Everything {@link hireInvitationRefusal}
+ * refuses, plus: the invitee must already be on the roster, a single-seat (`task`) engagement has no
+ * further stage to offer, and a stage they hold or have an open invitation to is not offered twice.
+ */
+export function stageInviteRefusal(
+	brief: HireBrief,
+	input: StageInviteInput,
+	pendingStageIds: ReadonlySet<string>,
+	nowMs: number = Date.now(),
+): HireRefusal | null {
+	const bare = input.handle.replace(/^@+/, "");
+	const member = brief.members.find((m) => (m.party.handle ?? "").replace(/^@+/, "") === bare);
+	if (!member) {
+		return {
+			message: "They are not on this project yet — invite them from their profile.",
+			errors: { handle: "not_a_member" },
+		};
+	}
+	if (brief.pricingModel === "task") {
+		return {
+			message: "This project has a single seat, so there are no further stages to invite to.",
+			errors: { stageIds: "not_applicable" },
+		};
+	}
+	const general = hireInvitationRefusal(brief, stageInviteAsHire(input), nowMs);
+	if (general) return general;
+	const names = new Map(brief.stages.map((s) => [s.id, s.name]));
+	for (const stageId of input.stageIds) {
+		const name = names.get(stageId) ?? "that stage";
+		if (member.assignedStages.includes(name)) {
+			return {
+				message: `${member.party.name} already works on ${name}.`,
+				errors: { stageIds: "already_assigned" },
+			};
+		}
+		if (pendingStageIds.has(stageId)) {
+			return {
+				message: `${member.party.name} already has an open invitation to ${name}.`,
+				errors: { stageIds: "already_invited" },
+			};
+		}
+	}
+	return null;
+}
+// #endregion

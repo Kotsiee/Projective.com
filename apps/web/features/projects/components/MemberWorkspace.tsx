@@ -30,6 +30,8 @@ export interface MemberWorkspaceProps {
 	sortDir: Signal<"asc" | "desc">;
 	onSort: (key: string) => void;
 	memberActions: (member: ProjectMemberRow) => VNode | null;
+	/** A member's open stage invitations; `compact` for a one-line table cell. */
+	memberPending: (member: ProjectMemberRow, compact: boolean) => VNode | null;
 	requestActions: (request: MemberRequest) => VNode | null;
 	inviteActions: (invite: MemberInvite) => VNode | null;
 	removable: (invite: MemberInvite) => boolean;
@@ -163,6 +165,7 @@ export function MemberWorkspace(p: MemberWorkspaceProps): JSX.Element {
 						context={p.context}
 						showWorkload={p.showWorkload}
 						actions={p.memberActions(m)}
+						pending={p.memberPending(m, false)}
 						onOpen={p.onOpenMember}
 					/>
 				))}
@@ -176,6 +179,7 @@ export function MemberWorkspace(p: MemberWorkspaceProps): JSX.Element {
 				context={p.context}
 				showWorkload={p.showWorkload}
 				renderActions={p.memberActions}
+				renderPending={(m) => p.memberPending(m, true)}
 				onOpen={p.onOpenMember}
 			/>
 		);

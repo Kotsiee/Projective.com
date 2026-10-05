@@ -172,6 +172,8 @@ interface RosterCardProps {
 	/** Workload is a delivery fact — hidden on a conversation and a session roster. */
 	showWorkload: boolean;
 	actions: VNode | null;
+	/** Their open stage invitations, when the viewer manages the roster. */
+	pending?: VNode | null;
 	onOpen: (member: ProjectMemberRow) => void;
 }
 
@@ -201,6 +203,7 @@ export function RosterCard(props: RosterCardProps): JSX.Element {
 			actions={props.actions}
 			headline={<RoleText role={m.role} />}
 			meta={rosterFacts(m, context)}
+			pending={props.pending}
 			foot={foot}
 			onOpen={() => props.onOpen(m)}
 		/>

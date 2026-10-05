@@ -572,10 +572,17 @@ export function recordInviteDecision(
 	if (!joined) return;
 	const bucket = bucketFor(owner);
 	const rows = bucket.joined.get(projectId) ?? [];
-	if (!rows.some((row) => row.id === joined.id)) rows.unshift(joined);
+	const known = rows.findIndex((row) => row.id === joined.id);
+	if (known === -1) rows.unshift(joined);
+	else rows[known] = withStages(rows[known], joined.assignedStages);
 	bucket.joined.set(projectId, rows);
 	// A person who was removed and then re-invited and re-accepted is back.
 	bucket.removed.get(projectId)?.delete(joined.id);
+}
+
+function withStages(row: ProjectMemberRow, stageNames: readonly string[]): ProjectMemberRow {
+	const added = stageNames.filter((name) => !row.assignedStages.includes(name));
+	return added.length === 0 ? row : { ...row, assignedStages: [...row.assignedStages, ...added] };
 }
 
 /**
@@ -1283,8 +1290,13 @@ export function overlayMemberRoster(
 	let total = out.total;
 
 	for (const row of joined) {
-		if (members.some((m) => m.id === row.id)) continue;
 		if (removed?.get(row.id) === "project") continue;
+		const existing = members.findIndex((m) => m.id === row.id);
+		if (existing !== -1) {
+			// An existing member accepted a stage invitation: the seat joins the stages they hold.
+			members[existing] = withStages(members[existing], row.assignedStages);
+			continue;
+		}
 		members.push(
 			stageChannel
 				? {

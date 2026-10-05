@@ -1,0 +1,178 @@
+.ui-action-menu {
+	position: fixed;
+	inset-block-start: var(--float-top, -9999px);
+	left: var(--float-left, -9999px);
+	z-index: var(--z-portal, var(--z-overlay));
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	gap: calc(var(--space-1) / 2);
+	min-inline-size: 12rem;
+	max-inline-size: min(20rem, calc(100vw - 2 * var(--space-4)));
+	max-block-size: min(24rem, var(--float-available-h, calc(100vh - 2 * var(--space-4))));
+	padding: var(--space-1);
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	font-family: var(--font-sans);
+	color: var(--on-surface);
+	background: var(--surface);
+	border: var(--hairline);
+	border-radius: var(--overlay-radius-sm);
+	box-shadow: var(--elevation-high);
+	outline: none;
+	animation: ui-action-menu-enter var(--dur-fast) var(--spring-standard);
+}
+
+.ui-action-menu--sub {
+	animation-name: ui-action-menu-enter-sub;
+}
+
+.ui-action-menu__slot,
+.ui-action-menu .ui-tooltip__anchor {
+	display: flex;
+	min-inline-size: 0;
+}
+
+.ui-action-menu__item {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	box-sizing: border-box;
+	inline-size: 100%;
+	min-inline-size: 0;
+	padding: var(--space-2) var(--space-3);
+	font: inherit;
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+	text-align: start;
+	text-decoration: none;
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	transform: scale(1);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-press) var(--ease-standard);
+}
+
+.ui-action-menu__item:hover,
+.ui-action-menu__item:focus,
+.ui-action-menu__item--open {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+
+.ui-action-menu__item:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+.ui-action-menu__item:active:not(.ui-action-menu__item--disabled) {
+	transform: scale(var(--btn-press-scale));
+}
+
+.ui-action-menu__item--danger {
+	color: var(--danger);
+}
+
+.ui-action-menu__item--danger:hover,
+.ui-action-menu__item--danger:focus {
+	background: color-mix(in srgb, var(--danger) var(--tint-soft), transparent);
+}
+
+.ui-action-menu__item--disabled {
+	color: var(--text-secondary);
+	cursor: default;
+}
+
+.ui-action-menu__icon {
+	flex: none;
+	color: var(--text-secondary);
+}
+
+.ui-action-menu__item--danger .ui-action-menu__icon {
+	color: currentColor;
+}
+
+.ui-action-menu__text {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.ui-action-menu__label {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.ui-action-menu__hint {
+	overflow: hidden;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.ui-action-menu__shortcut,
+.ui-action-menu__badge {
+	flex: none;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.ui-action-menu__caret {
+	flex: none;
+	margin-inline-start: auto;
+	color: var(--text-secondary);
+}
+
+[dir="rtl"] .ui-action-menu__caret {
+	transform: scaleX(-1);
+}
+
+.ui-action-menu__separator {
+	flex: none;
+	block-size: 0;
+	margin-block: var(--space-1);
+	margin-inline: var(--space-2);
+	border-block-start: var(--hairline);
+}
+
+@keyframes ui-action-menu-enter {
+	from {
+		opacity: 0;
+		transform: translateY(calc(-1 * var(--space-1)));
+	}
+}
+
+@keyframes ui-action-menu-enter-sub {
+	from {
+		opacity: 0;
+		transform: translateX(calc(-1 * var(--space-1)));
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-action-menu {
+		animation: none;
+	}
+	.ui-action-menu__item,
+	.ui-action-menu__item:active:not(.ui-action-menu__item--disabled) {
+		transition: none;
+		transform: none !important;
+	}
+}
+
+:root[data-motion="reduced"] .ui-action-menu {
+	animation: none;
+}
+
+:root[data-motion="reduced"] .ui-action-menu__item,
+:root[data-motion="reduced"] .ui-action-menu__item:active:not(.ui-action-menu__item--disabled) {
+	transition: none;
+	transform: none !important;
+}

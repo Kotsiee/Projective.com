@@ -546,57 +546,6 @@ a.mem-person__name:focus-visible {
 	color: var(--text-secondary);
 }
 
-.mem-menu-pop .ui-popover__content,
-.mem-menu-pop {
-	padding: var(--space-1);
-}
-
-.mem-menu {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	min-inline-size: 12rem;
-}
-
-.mem-menu__item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	inline-size: 100%;
-	padding: var(--space-2) var(--space-3);
-	border: none;
-	border-radius: var(--radius-base);
-	background: transparent;
-	color: var(--on-surface);
-	font: inherit;
-	font-size: var(--text-sm);
-	text-align: start;
-	text-decoration: none;
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.mem-menu__item:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-}
-
-.mem-menu__item[data-danger="true"] {
-	color: var(--danger);
-}
-
-.mem-menu__item[data-danger="true"]:hover {
-	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
-}
-
-.mem-menu__item:focus-visible {
-	outline: none;
-}
-
-.mem-menu__icon {
-	display: inline-flex;
-	color: currentColor;
-}
-
 .mem-dialog__foot {
 	display: flex;
 	align-items: center;

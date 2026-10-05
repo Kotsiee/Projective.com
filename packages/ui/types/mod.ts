@@ -133,8 +133,9 @@ export interface LazyLoadEvent {
 // #region Menus
 /**
  * A menu command node — the lingua franca for Menu, Menubar, TieredMenu, MegaMenu, ContextMenu,
- * PanelMenu, SlideMenu, Breadcrumb, TabMenu, Steps, SpeedDial. `items` makes it a submenu; a bare
- * `separator` renders a divider row.
+ * ActionMenu, PanelMenu, SlideMenu, Breadcrumb, TabMenu, Steps, SpeedDial. `items` makes it a
+ * submenu; a bare `separator` renders a divider row. `danger`, `hint`, `disabledReason` and
+ * `emptyLabel` are read by ActionMenu; other renderers ignore them.
  */
 export interface MenuItem {
 	label?: string;
@@ -146,8 +147,21 @@ export interface MenuItem {
 	target?: string;
 	/** Command invoked on activation (mutually exclusive with `url` in practice). */
 	command?: (event: MenuItemCommandEvent) => void;
+	/** Child rows — a cascading submenu. An empty array opens to {@link MenuItem.emptyLabel}. */
 	items?: MenuItem[];
+	/**
+	 * Inert but still rendered. ActionMenu keeps a disabled row in the keyboard ring so its
+	 * {@link MenuItem.disabledReason} can be read.
+	 */
 	disabled?: boolean;
+	/** Why a `disabled` row is refused — shown in a Tooltip and announced as its description. */
+	disabledReason?: string;
+	/** Destructive row — drawn in the danger role. */
+	danger?: boolean;
+	/** One line of Meta-register secondary text under the label (e.g. "Pending invite"). */
+	hint?: string;
+	/** Text shown inside the submenu when `items` is an empty array, so the parent is never dead. */
+	emptyLabel?: string;
 	visible?: boolean;
 	separator?: boolean;
 	/** Trailing badge/count. */

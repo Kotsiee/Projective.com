@@ -9,6 +9,7 @@ import type {
 	RemoveMemberInput,
 	RemoveMemberResult,
 	SentInvitesPage,
+	StageInviteInput,
 } from "../types/projects-types.ts";
 import type { ProjectsResult } from "../types/results.ts";
 
@@ -77,6 +78,11 @@ export const MembersService = {
 	 */
 	removeMember(input: RemoveMemberInput): Promise<ProjectsResult<RemoveMemberResult>> {
 		return postProjects<RemoveMemberResult>("/api/projects/members/remove", input);
+	},
+
+	/** Invite a member already on the roster onto further stages — one pending invitation per stage. */
+	inviteToStages(input: StageInviteInput): Promise<ProjectsResult<{ invites: MemberInvite[] }>> {
+		return postProjects<{ invites: MemberInvite[] }>("/api/projects/members/stage-invite", input);
 	},
 
 	/** DEV ONLY — force an invitee's answer to one of the viewer's own invitations. */

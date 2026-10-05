@@ -31,27 +31,6 @@ export function UserPlusIcon({ size }: GlyphProps): JSX.Element {
 	);
 }
 
-/** A person with a minus — unassign from the current stage/channel. */
-export function UserMinusIcon({ size }: GlyphProps): JSX.Element {
-	return (
-		<Svg size={size}>
-			<circle cx="9" cy="8" r="3.2" />
-			<path d="M3.5 19a5.5 5.5 0 0 1 11 0" />
-			<path d="M15 11h6" />
-		</Svg>
-	);
-}
-
-/** A shield — change a member's role / permissions. */
-export function ShieldIcon({ size }: GlyphProps): JSX.Element {
-	return (
-		<Svg size={size}>
-			<path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" />
-			<path d="m9 12 2 2 4-4" />
-		</Svg>
-	);
-}
-
 /** A badge check — an assigned contributor. */
 export function ContributorIcon({ size }: GlyphProps): JSX.Element {
 	return (

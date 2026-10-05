@@ -322,6 +322,18 @@ The owner-only state machine. `draft|on_hold → active` needs a title and ≥1 
 `active|on_hold →
 completed` needs every ticket terminal **and** no escrow still held; terminal
 states are immutable. Writes `projects.project_status_history` and `projects.project_activity`.
+Publishing (`draft → active`) settles the staged seats: every `stage_assignments` row at
+`pending_funding` becomes `assigned` and an `open` stage holding one becomes `assigned` — except on a
+blueprint-instantiated draft (`source_blueprint_id` set), whose seats stay parked until funded
+(Decision #139).
+
+### `projects.fn_project_shape_lock() → trigger`
+
+`trg_project_shape_lock` — `BEFORE UPDATE OF format, structure_variation ON projects.projects`, fired
+only when either value actually changes. Refuses (`check_violation`) once any `stage_assignments` row
+on the project has a status other than `declined` / `pending_funding` — the same deny-list as
+`ONBOARDED_ASSIGNMENT_EXCLUDED` in `packages/types/projects/setup.ts`. The database backstop of
+Decision #89's shape lock (Decision #139).
 
 ---
 
@@ -402,10 +414,12 @@ are accepted through their link). A **decline** stamps `declined_at`, logs `invi
 notifies the inviter (`invitation.declined`). An **accept** stamps `accepted_at`, enrols the invitee
 as a `project_participants` row (`role = 'assignee'` for a freelancer — the staffing RPC's own
 vocabulary — else the invitation's role verbatim), takes the stage seat for a freelancer invited to a
-stage (`stage_assignments`, `status = 'pending_funding'` on a placeholder or draft, else `assigned`;
-refuses a person with no `org.freelancer_profiles` row), moves an `open` stage to `assigned` on a live
-project, logs `invitation_accepted`, and notifies the inviter (`invitation.accepted`) with the
-slug-addressed `/projects/{slug}/members`. Returns `{id, status, participant_id, assignment_id}`.
+stage (`stage_assignments`, `status = 'pending_funding'` while the project is a draft — publishing
+promotes it — else `assigned`; refuses a person with no `org.freelancer_profiles` row), moves an
+`open` stage to `assigned` on a live project, logs `invitation_accepted`, and notifies the inviter (`invitation.accepted`) with the
+slug-addressed `/projects/{slug}/members`. A whole-project freelancer invitation (`project_stage_id` NULL) takes the
+project's only stage when it has exactly one (a Task, a flat one-off) and no seat otherwise — a
+freelancer is never seated on every stage (Decision #139). Returns `{id, status, participant_id, assignment_id}`.
 
 **No client grant** (`EXECUTE` → `service_role` only). `p_actor` is who the decision is recorded AS;
 the caller has already established who may make it. Two doors reach it: the invitee's wrapper below,

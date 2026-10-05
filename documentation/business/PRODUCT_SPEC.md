@@ -1128,6 +1128,17 @@ There are two primary ways an engagement begins:
   > §Freelancer Removal Mid-Ticket), a seat on a stage already under way opens up again, and a person
   > with no work under way is removed at no financial consequence — which the confirmation says too.
 
+  > **Stages are offered one at a time, and each is accepted.** Joining a project never seats a
+  > freelancer on every stage: they hold exactly the stages they were invited to and accepted. A
+  > whole-project invitation on a single-stage engagement (a Task, a flat one-off) takes that one
+  > seat; on a multi-stage run it seats them on none. A client offers a member further stages from
+  > the Members page — the member's **"Invite to stage ›"** menu, or the **Stages** section of their
+  > preview — one pending invitation per stage at that stage's configured price, which the freelancer
+  > accepts or declines like any other. The member's card shows each open stage invitation as
+  > _Invited to {stage} · Pending_ with **Cancel** beside it; the preview lists the stages they hold,
+  > each with **Remove** behind the removal confirmation. A stage is never assigned without the
+  > freelancer's acceptance (Decision #139).
+
 ##### Discovery & Courtesy Calls (the third path)
 
 Before either party commits to a negotiation, they may simply **talk**. A discovery call is a
@@ -1627,7 +1638,10 @@ from. What is frozen is the money and the shape.
 cancelled or completed assignment keeps the lock, because the agreement existed and escrow may
 already have moved against it. Only two states never onboarded anybody: an invitation that was
 **declined**, and a blueprint-instantiated seat still **awaiting funding**, where nobody is committed
-to anything and no escrow exists.
+to anything and no escrow exists. A seat a freelancer accepted while the project was still a **draft**
+is staged, not yet taken: publishing takes it, and from that moment it locks like any other
+(Decision #139). The lock is enforced in the database as well as the form and the service, so no
+write path can change the type of a staffed project.
 
 The client is told this **before** it happens: publishing a project opens a confirmation naming
 exactly what will lock and when, so the constraint is something they accepted rather than something

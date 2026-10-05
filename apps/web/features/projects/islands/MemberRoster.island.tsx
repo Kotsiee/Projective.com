@@ -4,6 +4,7 @@ import { useEffect, useRef } from "preact/hooks";
 import "../styles/fx-toolbar.css";
 import "../styles/file-explorer.css";
 import "../styles/members.css";
+import "../styles/member-stages.css";
 import { Toast, useToast } from "@projective/ui/feedback";
 import { useIsMobile } from "@projective/ui/hooks";
 import type {
@@ -13,8 +14,11 @@ import type {
 	MemberRosterPage,
 	MemberRosterParams,
 	MemberScope,
+	MemberStagePicture,
+	MemberStageRef,
 	ProjectMemberRow,
 } from "../types/projects-types.ts";
+import { memberStagePicture } from "../types/projects-types.ts";
 import { MembersService } from "../core/MembersService.ts";
 import { RequestService } from "../core/RequestService.ts";
 import {
@@ -49,6 +53,9 @@ import { MemberActionsMenu } from "../components/MemberActionsMenu.tsx";
 import { MemberEditDialog } from "../components/MemberEditDialog.tsx";
 import { MemberInviteModal } from "../components/MemberInviteModal.tsx";
 import { RemoveMemberDialog } from "../components/RemoveMemberDialog.tsx";
+import { MemberStagePanel } from "../components/MemberStagePanel.tsx";
+import { PendingStageInvites } from "../components/PendingStageInvites.tsx";
+import { useStageInvites } from "../hooks/useStageInvites.ts";
 import {
 	MemberPreviewModal,
 	type PreviewSubject,
@@ -72,7 +79,9 @@ import { type DevSeamState, readDevSeam, subscribeDevSeam } from "@web/utils/dev
  * and returns to where it was if the server refuses. A removal is not — it moves escrow, so the list
  * follows the server's answer rather than preceding it (Decision #116). After any write the roster is
  * re-read in the background, so a confirmed applicant appears among the members as the server seats
- * them. Role edits and email invites remain stub-local until their live writes land.
+ * them. Stage seats are offered by invitation (the kebab's "Invite to stage ›", the preview's Stages
+ * section) and accepted by the freelancer; they are never granted here (Decision #139). Role edits and
+ * email invites remain stub-local until their live writes land.
  *
  * THIN: no DB, no `@server`; it refines the bounded roster client-side and reaches the server through
  * the thin `MembersService` / `RequestService`.
@@ -160,6 +169,8 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 	const toastMounted = useSignal(false);
 	const toast = useToast();
 	const mobile = useIsMobile();
+
+	const stageInvites = useStageInvites(projectId, invites, say);
 
 	const reqId = useRef(0);
 	const devKey = useRef<string | null>(null);
@@ -394,19 +405,12 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 		editMember.value = m;
 		editOpen.value = true;
 	}
-	function saveEdit(id: string, role: MemberRole, stageNames: string[]): void {
-		members.value = members.value.map((m) =>
-			m.id === id ? { ...m, role, assignedStages: [...stageNames] } : m
-		);
-	}
-	function quickAssign(m: ProjectMemberRow, assign: boolean): void {
-		members.value = members.value.map((r) =>
-			r.id === m.id ? { ...r, assignment: assign ? "contributor" : "observer" } : r
-		);
+	function saveEdit(id: string, role: MemberRole): void {
+		members.value = members.value.map((m) => m.id === id ? { ...m, role } : m);
 	}
 
 	/** Open the consequence-aware confirmation — from a kebab, or from an accepted invitation. */
-	function askRemove(m: ProjectMemberRow, stage: { id: string; name: string } | null = null): void {
+	function askRemove(m: ProjectMemberRow, stage: MemberStageRef | null = null): void {
 		previewOpen.value = false;
 		removeMember.value = m;
 		removeStage.value = stage;
@@ -485,6 +489,38 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 	}
 	// #endregion
 
+	// #region Stage seats
+	const scopedStages: MemberStageRef[] = context.stageChannel && roster.stageId
+		? stages.filter((s) => s.id === roster.stageId)
+		: stages;
+	/** Stage seats apply to a freelancer the viewer can address; a task engagement has none to offer. */
+	function pictureOf(m: ProjectMemberRow): MemberStagePicture | null {
+		if (!context.showStages || m.role !== "freelancer" || !m.party.handle || m.isViewer) {
+			return null;
+		}
+		return memberStagePicture(m, scopedStages, invites.value);
+	}
+	function inviteToStages(m: ProjectMemberRow, stageIds: string[]): void {
+		void stageInvites.invite(m, stageIds);
+	}
+	function cancelStageInvite(inv: MemberInvite): void {
+		void answerInvite(inv, "cancel");
+	}
+	const memberPending = (m: ProjectMemberRow, compact: boolean) => {
+		const picture = caps.canInvite ? pictureOf(m) : null;
+		if (!picture || picture.pending.length === 0) return null;
+		return (
+			<PendingStageInvites
+				pending={picture.pending}
+				compact={compact}
+				canCancel={caps.canInvite}
+				busy={busy.value}
+				onCancel={cancelStageInvite}
+			/>
+		);
+	};
+	// #endregion
+
 	// #region Row slots
 	const chatTargetOf = (party: { name: string; handle: string | null; avatar: string | null }) => ({
 		name: party.name,
@@ -498,12 +534,11 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 			<MemberActionsMenu
 				member={m}
 				stageChannel={context.stageChannel}
-				stageName={roster.channelName}
-				showStages={context.showStages}
+				picture={pictureOf(m)}
 				caps={caps}
 				manageable={caps.canManage && !m.isViewer}
 				onEdit={openEdit}
-				onQuickAssign={quickAssign}
+				onInviteToStages={inviteToStages}
 				onRemove={askRemove}
 			/>
 		</>
@@ -553,6 +588,26 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 		: { state: "idle" };
 	const previewBusy = previewSubject.value?.kind === "request" &&
 		busy.value.has(previewSubject.value.request.id);
+	const shownSubject = previewSubject.value;
+	const previewMember = shownSubject?.kind === "member"
+		? members.value.find((m) => m.id === shownSubject.member.id) ?? null
+		: null;
+	const previewPicture = previewMember && caps.canManage ? pictureOf(previewMember) : null;
+	const stagePanel = previewMember && previewPicture && (caps.canInvite || caps.canRemove)
+		? (
+			<MemberStagePanel
+				member={previewMember}
+				picture={previewPicture}
+				canInvite={caps.canInvite}
+				canRemove={caps.canRemove}
+				busy={busy.value}
+				sending={stageInvites.sending.value.has(previewMember.id)}
+				onInvite={inviteToStages}
+				onCancel={cancelStageInvite}
+				onRemove={askRemove}
+			/>
+		)
+		: null;
 
 	return (
 		<section
@@ -605,6 +660,7 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 					sortDir={sortFor.dir}
 					onSort={onSort}
 					memberActions={memberActions}
+					memberPending={memberPending}
 					requestActions={requestActions}
 					inviteActions={inviteActions}
 					removable={removable}
@@ -626,6 +682,7 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 				showWorkload={showWorkload}
 				load={previewLoad}
 				busy={previewBusy}
+				stagePanel={stagePanel}
 				onMessage={message}
 				onAccept={(r) => void decide(r, true)}
 				onReject={(r) => void decide(r, false)}
@@ -634,8 +691,6 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 			<MemberEditDialog
 				open={editOpen}
 				member={editMember.value}
-				stages={stages}
-				showStages={context.showStages}
 				onSave={saveEdit}
 				onClose={() => (editMember.value = null)}
 			/>

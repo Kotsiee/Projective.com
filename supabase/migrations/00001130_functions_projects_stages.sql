@@ -93,6 +93,27 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Post-onboarding shape lock (Decision #89 backstop): `format` and `structure_variation` freeze
+-- project-wide once any seat was genuinely taken. "Taken" is the same deny-list as
+-- `ONBOARDED_ASSIGNMENT_EXCLUDED` in packages/types/projects/setup.ts — only `declined` and
+-- `pending_funding` leave the shape open.
+CREATE OR REPLACE FUNCTION projects.fn_project_shape_lock()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM projects.stage_assignments sa
+        JOIN projects.project_stages ps ON ps.id = sa.project_stage_id
+        WHERE ps.project_id = NEW.id
+            AND sa.status NOT IN ('declined', 'pending_funding')
+    ) THEN
+        RAISE EXCEPTION 'Project type cannot be modified after freelancers have been onboarded.'
+            USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects;
+
 -- ---------------------------------------------------------------------------------------------
 -- projects.create_stage(p_project_id, p_name, p_description, p_description_text, p_unit_price_cents,
 --                       p_payload)
@@ -1499,6 +1520,7 @@ DECLARE
     v_project      projects.projects%ROWTYPE;
     v_participant  uuid;
     v_assignment   uuid;
+    v_seat_stage   uuid;
     v_stage_name   text;
     v_invitee_name text;
     v_type         text;
@@ -1560,13 +1582,25 @@ BEGIN
             RETURNING id INTO v_participant;
         END IF;
 
-        IF v_inv.role = 'freelancer' AND v_inv.project_stage_id IS NOT NULL THEN
+        -- The seat is the stage the invitation named. A whole-project invitation names none: on a
+        -- single-stage shape (a Task, a flat one-off) that stage is the only seat there is, so it is
+        -- taken; on a multi-stage run the freelancer joins unassigned and is invited onto stages one
+        -- at a time (Decision #139).
+        v_seat_stage := v_inv.project_stage_id;
+        IF v_seat_stage IS NULL AND v_inv.role = 'freelancer' THEN
+            SELECT min(ps.id::text)::uuid INTO v_seat_stage
+            FROM projects.project_stages ps
+            WHERE ps.project_id = v_inv.project_id
+            HAVING count(*) = 1;
+        END IF;
+
+        IF v_inv.role = 'freelancer' AND v_seat_stage IS NOT NULL THEN
             IF NOT EXISTS (SELECT 1 FROM org.freelancer_profiles fp WHERE fp.user_id = v_inv.target_user_id) THEN
                 RAISE EXCEPTION 'This person does not have a freelancer profile yet.' USING ERRCODE = 'check_violation';
             END IF;
             SELECT sa.id INTO v_assignment
             FROM projects.stage_assignments sa
-            WHERE sa.project_stage_id = v_inv.project_stage_id
+            WHERE sa.project_stage_id = v_seat_stage
                 AND sa.assignee_type = 'freelancer'
                 AND sa.freelancer_profile_id = v_inv.target_user_id
                 AND sa.status NOT IN ('released', 'cancelled', 'declined', 'completed');
@@ -1574,17 +1608,17 @@ BEGIN
                 INSERT INTO projects.stage_assignments
                     (project_stage_id, assignee_type, freelancer_profile_id, team_id, assigned_by, is_client_managed, status)
                 VALUES
-                    (v_inv.project_stage_id, 'freelancer', v_inv.target_user_id, NULL, v_inv.inviter_user_id, false,
-                     -- A placeholder acceptance parks the seat until the client prices and publishes
-                     -- (Decision #80's `pending_funding`); a live one takes the seat outright.
-                     CASE WHEN v_inv.placeholder OR v_project.status = 'draft' THEN 'pending_funding' ELSE 'assigned' END)
+                    (v_seat_stage, 'freelancer', v_inv.target_user_id, NULL, v_inv.inviter_user_id, false,
+                     -- A draft's acceptance parks the seat until publish, which promotes it
+                     -- (`set_project_status`); once live the terms are settled and the seat is taken.
+                     CASE WHEN v_project.status = 'draft' THEN 'pending_funding' ELSE 'assigned' END)
                 RETURNING id INTO v_assignment;
             END IF;
 
             -- An open stage moves to "assigned" the moment its first seat is filled (the staffing RPC's own rule).
             UPDATE projects.project_stages
             SET status = 'assigned'::stage_status
-            WHERE id = v_inv.project_stage_id AND status = 'open'::stage_status
+            WHERE id = v_seat_stage AND status = 'open'::stage_status
                 AND v_project.status <> 'draft';
         END IF;
 

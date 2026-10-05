@@ -59,35 +59,53 @@ export function activate(item: MenuItem, originalEvent: Event): boolean {
 // #region Keyboard geometry
 /**
  * Next focusable index in a flat item list, wrapping, skipping separators/disabled/group-headers.
- * `treatChildrenParentAsFocusable` keeps submenu parents in the ring (they open on Enter/Right).
+ * Submenu parents stay in the ring (they open on Enter/Right). `focusable` widens or narrows the
+ * ring — ActionMenu passes a predicate that keeps disabled rows readable.
  */
-export function nextFocusable(items: MenuItem[], from: number, delta: 1 | -1): number {
+export function nextFocusable(
+	items: MenuItem[],
+	from: number,
+	delta: 1 | -1,
+	focusable: (item: MenuItem) => boolean = isFocusable,
+): number {
 	const n = items.length;
 	if (n === 0) return -1;
 	let i = from;
 	for (let step = 0; step < n; step++) {
 		i = (i + delta + n) % n;
-		if (isFocusable(items[i])) return i;
+		if (focusable(items[i])) return i;
 	}
 	return from;
 }
 
 /** First/last focusable index, or -1 when none. */
-export function edgeFocusable(items: MenuItem[], edge: "first" | "last"): number {
-	return edge === "first" ? nextFocusable(items, -1, 1) : nextFocusable(items, 0, -1);
+export function edgeFocusable(
+	items: MenuItem[],
+	edge: "first" | "last",
+	focusable: (item: MenuItem) => boolean = isFocusable,
+): number {
+	const i = edge === "first"
+		? nextFocusable(items, -1, 1, focusable)
+		: nextFocusable(items, 0, -1, focusable);
+	return i >= 0 && items[i] && focusable(items[i]) ? i : -1;
 }
 
 /**
  * Typeahead — resolve the next index whose label starts with `buffer`, searching circularly from
  * `from`. Returns -1 when nothing matches. Buffer accumulation/timeout is owned by the caller.
  */
-export function typeaheadIndex(items: MenuItem[], from: number, buffer: string): number {
+export function typeaheadIndex(
+	items: MenuItem[],
+	from: number,
+	buffer: string,
+	focusable: (item: MenuItem) => boolean = isFocusable,
+): number {
 	const q = buffer.toLowerCase();
 	const n = items.length;
 	for (let step = 1; step <= n; step++) {
 		const i = (from + step + n) % n;
 		const it = items[i];
-		if (isFocusable(it) && (it.label ?? "").toLowerCase().startsWith(q)) return i;
+		if (focusable(it) && (it.label ?? "").toLowerCase().startsWith(q)) return i;
 	}
 	return -1;
 }

@@ -52,6 +52,8 @@ export interface MemberPreviewModalProps {
 	load: ProfileLoad;
 	/** A decision on the previewed request is in flight. */
 	busy: boolean;
+	/** The managing viewer's Stages section for a member subject; replaces the plain stages line. */
+	stagePanel?: JSX.Element | null;
 	onMessage: (target: ChatTarget) => void;
 	onAccept: (request: MemberRequest) => void;
 	onReject: (request: MemberRequest) => void;
@@ -81,12 +83,13 @@ function engagementFacts(
 	subject: PreviewSubject,
 	context: MemberContext,
 	showWorkload: boolean,
+	stagesShown: boolean,
 ): [string, string][] {
 	switch (subject.kind) {
 		case "member": {
 			const m = subject.member;
 			const lines: [string, string][] = [["Role", roleMeta(m.role).label]];
-			const facts = rosterFacts(m, context);
+			const facts = stagesShown ? [] : rosterFacts(m, context);
 			if (facts.length > 0) {
 				lines.push([context.stageChannel ? "On this stage" : "Stages", facts.join(" · ")]);
 			}
@@ -228,7 +231,16 @@ export function MemberPreviewModal(props: MemberPreviewModalProps): JSX.Element 
 						</div>
 					</div>
 
-					<FactList lines={engagementFacts(subject, props.context, props.showWorkload)} />
+					<FactList
+						lines={engagementFacts(
+							subject,
+							props.context,
+							props.showWorkload,
+							subject.kind === "member" && !!props.stagePanel,
+						)}
+					/>
+
+					{subject.kind === "member" && props.stagePanel}
 
 					{subject.kind === "request" && subject.request.message && (
 						<blockquote class="mem-preview__note">{subject.request.message}</blockquote>

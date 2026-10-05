@@ -186,6 +186,8 @@ export interface MembersTableProps extends SortProps {
 	context: MemberContext;
 	showWorkload: boolean;
 	renderActions: (member: ProjectMemberRow) => VNode | null;
+	/** The member's open stage invitations, one line, beside the stages they hold. */
+	renderPending?: (member: ProjectMemberRow) => VNode | null;
 	onOpen: (member: ProjectMemberRow) => void;
 }
 
@@ -238,7 +240,12 @@ export function MembersTable(props: MembersTableProps): JSX.Element {
 								? (m.attendance
 									? <AttendanceTag attendance={m.attendance} />
 									: <span class="mem-dash">—</span>)
-								: <Facts facts={rosterFacts(m, context)} />}
+								: (
+									<div class="mem-partcell">
+										<Facts facts={rosterFacts(m, context)} />
+										{props.renderPending?.(m)}
+									</div>
+								)}
 						</td>
 					)}
 					{props.showWorkload && (

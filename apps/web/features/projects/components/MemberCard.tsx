@@ -55,6 +55,8 @@ export interface MemberCardProps {
 	meta?: readonly ComponentChildren[];
 	/** The person's own words (a cover note), quoted and clamped. */
 	note?: string | null;
+	/** Open stage invitations, each with its status and the cancel control. */
+	pending?: ComponentChildren;
 	foot?: ComponentChildren;
 	/** A write on this card is in flight. */
 	busy?: boolean;
@@ -154,6 +156,8 @@ export function MemberCard(props: MemberCardProps): JSX.Element {
 				)}
 
 				{props.note && <p class="mem-card__note">{props.note}</p>}
+
+				{props.pending && <div class="mem-card__pending">{props.pending}</div>}
 
 				{props.foot && <div class="mem-card__foot">{props.foot}</div>}
 			</div>

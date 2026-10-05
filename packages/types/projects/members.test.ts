@@ -4,7 +4,9 @@ import {
 	invitesForScope,
 	type MemberInvite,
 	type MemberRequest,
+	memberStagePicture,
 	NO_REMOVAL_IMPACT,
+	type ProjectMemberRow,
 	removalNotices,
 	removalTouchesMoney,
 	requestsForScope,
@@ -165,6 +167,72 @@ Deno.test("a stage page lists only the requests addressed to that stage", () => 
 	];
 	assertEquals(requestsForScope(rows, "stage-1").map((r) => r.id), ["a"]);
 	assertEquals(requestsForScope(rows, null).map((r) => r.id), ["a", "b", "c"]);
+});
+
+// #endregion
+
+// #region memberStagePicture
+
+const stages = [
+	{ id: "stage-1", name: "Discovery" },
+	{ id: "stage-2", name: "Design" },
+	{ id: "stage-3", name: "Build" },
+];
+
+function member(overrides: Partial<ProjectMemberRow> = {}): ProjectMemberRow {
+	return {
+		id: "m-juno",
+		party: { name: "Juno Park", avatar: null, handle: "@juno" },
+		email: "juno@example.com",
+		role: "freelancer",
+		assignment: null,
+		presence: "offline",
+		assignedStages: ["Discovery"],
+		openTickets: 0,
+		ticketsLabel: "—",
+		joinedAt: "2026-07-01T00:00:00Z",
+		joinedLabel: "Jul 1, 2026",
+		isViewer: false,
+		...overrides,
+	};
+}
+
+Deno.test("a member's stages split into held, pending and offerable, in stage order", () => {
+	const picture = memberStagePicture(member(), stages, [
+		invite({ id: "i-3", stageId: "stage-3", stageName: "Build" }),
+	]);
+	assertEquals(picture.held.map((s) => s.id), ["stage-1"]);
+	assertEquals(picture.pending.map((p) => [p.stage.id, p.invite.id]), [["stage-3", "i-3"]]);
+	assertEquals(picture.available.map((s) => s.id), ["stage-2"]);
+});
+
+Deno.test("only this member's open stage invitations count as pending", () => {
+	const picture = memberStagePicture(member(), stages, [
+		invite({ id: "other", handle: "@someone", stageId: "stage-2" }),
+		invite({ id: "declined", stageId: "stage-2", status: "declined" }),
+		invite({ id: "whole", stageId: null, stageName: null }),
+		invite({ id: "gone", stageId: "stage-3", dismissedAt: "2026-07-11T00:00:00Z" }),
+	]);
+	assertEquals(picture.pending, []);
+	assertEquals(picture.available.map((s) => s.id), ["stage-2", "stage-3"]);
+});
+
+Deno.test("handles match without the @ and without case", () => {
+	const picture = memberStagePicture(
+		member({ party: { name: "Juno", avatar: null, handle: "Juno" } }),
+		stages,
+		[invite({ handle: "@juno", stageId: "stage-2" })],
+	);
+	assertEquals(picture.pending.map((p) => p.stage.id), ["stage-2"]);
+});
+
+Deno.test("a member with no handle has no addressable invitations", () => {
+	const picture = memberStagePicture(
+		member({ party: { name: "Guest", avatar: null, handle: null } }),
+		stages,
+		[invite({ handle: null, stageId: "stage-2" })],
+	);
+	assertEquals(picture.pending, []);
 });
 
 // #endregion

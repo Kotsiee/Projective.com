@@ -16,8 +16,9 @@
  * wrapper in the app.
  *
  * Wayfinding atoms (PrimeNG parity): Menu, Menubar, MegaMenu, TieredMenu, PanelMenu, SlideMenu,
- * ContextMenu, Breadcrumb, Steps, TabMenu, TabView/TabPanel, Paginator. Every menu-shaped control
- * consumes the shared `MenuItem` model (`@projective/ui` root types).
+ * ContextMenu, Breadcrumb, Steps, TabMenu, TabView/TabPanel, Paginator — plus ActionMenu, the
+ * portalled kebab/action menu with cascading submenus. Every menu-shaped control consumes the shared
+ * `MenuItem` model, re-exported here.
  */
 
 // #region Components
@@ -76,6 +77,8 @@ export { TieredMenu, type TieredMenuProps } from "./islands/TieredMenu.tsx";
 export { PanelMenu, type PanelMenuProps } from "./islands/PanelMenu.tsx";
 export { SlideMenu, type SlideMenuProps } from "./islands/SlideMenu.tsx";
 export { ContextMenu, type ContextMenuProps } from "./islands/ContextMenu.tsx";
+export { ActionMenu, type ActionMenuProps } from "./islands/ActionMenu.tsx";
+export type { MenuItem, MenuItemCommandEvent } from "../types/mod.ts";
 // #endregion
 
 // #region Trails, steps & tabs

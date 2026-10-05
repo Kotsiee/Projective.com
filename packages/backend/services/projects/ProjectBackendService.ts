@@ -144,11 +144,14 @@ import {
 	hireInvitationRefusal,
 	inviteActionFor,
 	invitesForScope,
+	memberStagePicture,
 	NO_REMOVAL_IMPACT,
 	providerScopedPage,
 	reconcileSetup,
 	requestsForScope,
 	resolveHireOffer,
+	stageInviteAsHire,
+	stageInviteRefusal,
 } from "@projective/types/projects";
 import { intakeRefusal, normaliseIntakeAnswers } from "@projective/types/services";
 import { plainTextToHtml } from "@projective/types/richtext";
@@ -195,6 +198,7 @@ import type {
 	FileListParams,
 	HireBrief,
 	HireInvitation,
+	HireOffer,
 	InviteActionInput,
 	InviteDecisionInput,
 	MemberInvite,
@@ -215,6 +219,7 @@ import type {
 	RemoveMemberResult,
 	SendProjectMessage,
 	SentInvitesPage,
+	StageInviteInput,
 	SubmissionListPage,
 	SubmissionListParams,
 	SubmissionUnit,
@@ -503,6 +508,36 @@ export interface HireSent {
 	placeholder: boolean;
 	/** The DM the intro opened (or was posted into); null with no intro, or when it could not be posted. */
 	conversationId: string | null;
+}
+
+function recordStubHireInvites(
+	owner: string,
+	brief: HireBrief,
+	handle: string,
+	offer: HireOffer,
+): MemberInvite[] {
+	const at = new Date().toISOString();
+	const base = hireInviteCount(owner, brief.projectId);
+	const stageOf = new Map(brief.stages.map((s) => [s.id, s]));
+	const targets = brief.pricingModel === "task"
+		? [{ stage: null as HireBrief["stages"][number] | null }]
+		: offer.stages.map((line) => ({ stage: stageOf.get(line.stageId) ?? null }));
+	const invites: MemberInvite[] = targets.map(({ stage }, i) => ({
+		id: `${brief.projectId}-hire-${base + i + 1}`,
+		email: `@${handle}`,
+		handle: `@${handle}`,
+		role: "freelancer",
+		stageId: stage?.id ?? null,
+		stageName: stage?.name ?? null,
+		invitedBy: "You",
+		invitedAt: at,
+		invitedLabel: "Just now",
+		status: "pending",
+		// A staged assignment on an unpublished project: attached now, priced at publish.
+		placeholder: offer.placeholder || undefined,
+	}));
+	appendHireInvites(owner, brief.projectId, invites);
+	return invites;
 }
 
 /**
@@ -1632,28 +1667,7 @@ export class ProjectBackendService {
 			return live.ok ? { ...live, status: 201 } : live;
 		}
 
-		const now = Date.now();
-		const at = new Date(now).toISOString();
-		const base = hireInviteCount(owner, brief.projectId);
-		const stageOf = new Map(brief.stages.map((s) => [s.id, s]));
-		const targets = brief.pricingModel === "task"
-			? [{ stage: null as HireBrief["stages"][number] | null }]
-			: offer.stages.map((line) => ({ stage: stageOf.get(line.stageId) ?? null }));
-		const invites: MemberInvite[] = targets.map(({ stage }, i) => ({
-			id: `${brief.projectId}-hire-${base + i + 1}`,
-			email: `@${handle}`,
-			handle: `@${handle}`,
-			role: "freelancer",
-			stageId: stage?.id ?? null,
-			stageName: stage?.name ?? null,
-			invitedBy: "You",
-			invitedAt: at,
-			invitedLabel: "Just now",
-			status: "pending",
-			// A staged assignment on an unpublished project: attached now, priced at publish.
-			placeholder: offer.placeholder || undefined,
-		}));
-		appendHireInvites(owner, brief.projectId, invites);
+		const invites = recordStubHireInvites(owner, brief, handle, offer);
 		invalidateProjects(actor);
 		// The stub twin of the request message: the intro lands in the pair's DM in the viewer's store.
 		let conversationId: string | null = null;
@@ -1675,6 +1689,67 @@ export class ProjectBackendService {
 			{ invites, total: offer.totalCents ?? 0, placeholder: offer.placeholder, conversationId },
 			{ message: sentMessage, status: 201 },
 		);
+	}
+
+	/**
+	 * Invite a member already on the roster onto further stages — `POST /api/projects/members/stage-invite`.
+	 * One pending invitation per stage at the stage's configured terms, through the same brief, refusal
+	 * rule and `projects.invite_to_project` RPC the profile hire uses; the freelancer accepts or declines
+	 * each. No intro message and no seller intake, because the member already joined once.
+	 */
+	static async inviteMemberToStages(
+		input: StageInviteInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ invites: MemberInvite[] }>> {
+		const denied = requireIdentity<{ invites: MemberInvite[] }>(actor, "invite someone to a stage");
+		if (denied) return denied;
+		const handle = input.handle.replace(/^@+/, "");
+
+		const [briefRead, rosterRead] = await Promise.all([
+			this.hireBrief(input.projectId, actor, handle),
+			this.members({ projectId: input.projectId }, actor),
+		]);
+		if (!briefRead.ok || !briefRead.data) {
+			return fail(briefRead.status, { message: briefRead.message });
+		}
+		if (!rosterRead.ok || !rosterRead.data) {
+			return fail(rosterRead.status, { message: rosterRead.message });
+		}
+		const brief = briefRead.data.brief;
+		const roster = rosterRead.data.page;
+		const member = roster.members.find((m) =>
+			(m.party.handle ?? "").replace(/^@+/, "").toLowerCase() === handle.toLowerCase()
+		);
+		const pending = new Set(
+			member
+				? memberStagePicture(member, roster.stages, roster.invites).pending.map((p) => p.stage.id)
+				: [],
+		);
+		const refusal = stageInviteRefusal(brief, input, pending);
+		if (refusal) return fail(422, { message: refusal.message, errors: refusal.errors });
+
+		const hire = stageInviteAsHire(input);
+		const offer = resolveHireOffer(brief, hire);
+		const sentMessage = input.stageIds.length === 1
+			? "Stage invitation sent."
+			: "Stage invitations sent.";
+
+		const live = await liveWrite<{ invites: MemberInvite[] }>(
+			"inviteMemberToStages",
+			actor,
+			input.projectId,
+			sentMessage,
+			async (a) => {
+				const outcome = await insertInvitations(a, hire, offer);
+				if (outcome === null || "refusal" in outcome) return outcome;
+				return { data: { invites: outcome.data.invites } };
+			},
+		);
+		if (live !== undefined) return live.ok ? { ...live, status: 201 } : live;
+
+		const invites = recordStubHireInvites(writeOwnerOf(actor), brief, handle, offer);
+		invalidateProjects(actor);
+		return ok({ invites }, { message: sentMessage, status: 201 });
 	}
 
 	/**
