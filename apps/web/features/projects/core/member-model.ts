@@ -1,8 +1,12 @@
 import type { Severity } from "@projective/ui/fields";
 import type {
+	InviteStatus,
+	MemberInvite,
 	MemberPresence,
+	MemberRequest,
 	MemberRole,
 	ProjectMemberRow,
+	SessionAttendance,
 	StageAssignment,
 } from "../types/projects-types.ts";
 
@@ -75,6 +79,15 @@ export const ROLE_META: Record<MemberRole, RoleMeta> = {
 export function roleMeta(role: MemberRole): RoleMeta {
 	return ROLE_META[role] ?? ROLE_META.member;
 }
+
+/**
+ * Whether a role holds the engagement's authority tier — the owner, or the client who commissioned
+ * it. These rows carry the roster's one distinct accent (the crown mark + avatar ring), so the person
+ * with final say is found at a glance without a badge on every card.
+ */
+export function holdsAuthority(role: MemberRole): boolean {
+	return role === "owner" || role === "client";
+}
 // #endregion
 
 // #region Presence & assignment metadata
@@ -89,6 +102,39 @@ export const PRESENCE_META: Record<MemberPresence, { label: string; token: strin
 export const ASSIGNMENT_META: Record<StageAssignment, { label: string; severity: Severity }> = {
 	contributor: { label: "Assigned Contributor", severity: "success" },
 	observer: { label: "Observer", severity: "secondary" },
+};
+
+/** The invitation lifecycle vocabulary — label, tint and the one-line explanation its tooltip carries. */
+export const INVITE_STATUS_META: Record<
+	InviteStatus,
+	{ label: string; severity: Severity; blurb: string }
+> = {
+	pending: { label: "Pending", severity: "info", blurb: "Sent and not yet answered." },
+	accepted: {
+		label: "Accepted",
+		severity: "success",
+		blurb: "They said yes and joined the project.",
+	},
+	declined: {
+		label: "Declined",
+		severity: "danger",
+		blurb: "They said no. A new invitation to them waits out the re-invitation cooldown.",
+	},
+	expired: { label: "Expired", severity: "warning", blurb: "Lapsed before they answered." },
+};
+
+/** A session attendee's standing — label, tint and its tooltip explanation. */
+export const ATTENDANCE_META: Record<
+	SessionAttendance,
+	{ label: string; severity: Severity; blurb: string }
+> = {
+	confirmed: { label: "Confirmed", severity: "success", blurb: "Holds a seat on the sittings." },
+	pending: {
+		label: "Awaiting reply",
+		severity: "warning",
+		blurb: "Offered a seat, not answered yet.",
+	},
+	declined: { label: "Declined", severity: "danger", blurb: "Turned the seat down." },
 };
 // #endregion
 
@@ -179,5 +225,111 @@ export function sortMembers(
 /** How many refinements are active (drives the toolbar filter dot). */
 export function activeFilterCount(f: MemberFilter): number {
 	return (f.query ? 1 : 0) + (f.roles.length > 0 ? 1 : 0) + (f.stage ? 1 : 0);
+}
+
+/** The Members section's sort choices, in the toolbar's {@link SortControl} vocabulary. */
+export const MEMBER_SORT_OPTIONS: ReadonlyArray<{ value: MemberSortKey; label: string }> = [
+	{ value: "role", label: "Role" },
+	{ value: "name", label: "Name" },
+	{ value: "joined", label: "Joined" },
+	{ value: "tickets", label: "Workload" },
+];
+
+/** The property a request or invitation queue sorts on. */
+export type QueueSortKey = "date" | "name" | "stage" | "status";
+
+/** The Requests section's sort choices. */
+export const REQUEST_SORT_OPTIONS: ReadonlyArray<{ value: QueueSortKey; label: string }> = [
+	{ value: "date", label: "Applied" },
+	{ value: "name", label: "Name" },
+	{ value: "stage", label: "Stage" },
+];
+
+/** The Invitations section's sort choices. */
+export const INVITE_SORT_OPTIONS: ReadonlyArray<{ value: QueueSortKey; label: string }> = [
+	{ value: "date", label: "Invited" },
+	{ value: "name", label: "Name" },
+	{ value: "status", label: "Status" },
+];
+
+/** The person an invitation addressed, as the roster prints them — the `@handle` or the address. */
+export function inviteeLabel(invite: MemberInvite): string {
+	return invite.handle ?? invite.email;
+}
+
+/** Whether a queue entry matches the free-text query on any of its printed fields. */
+function matchesAny(fields: readonly (string | null | undefined)[], q: string): boolean {
+	if (!q) return true;
+	const needle = q.trim().toLowerCase();
+	return fields.some((field) => (field ?? "").toLowerCase().includes(needle));
+}
+
+/** Filter the open applications by search and stage. */
+export function filterRequests(rows: MemberRequest[], f: MemberFilter): MemberRequest[] {
+	return rows.filter((r) =>
+		matchesAny([r.applicant.name, r.applicant.handle, r.stageName, r.roleName], f.query) &&
+		(!f.stage || r.stageName === f.stage)
+	);
+}
+
+/** Filter the invitations by search, role set and stage. */
+export function filterInvites(rows: MemberInvite[], f: MemberFilter): MemberInvite[] {
+	return rows.filter((r) =>
+		matchesAny([r.email, r.handle, r.stageName, r.invitedBy], f.query) &&
+		(f.roles.length === 0 || f.roles.includes(r.role)) &&
+		(!f.stage || r.stageName === f.stage)
+	);
+}
+
+/** The lifecycle order the Invitations section sorts by status in: open offers first. */
+const STATUS_ORDER: Record<InviteStatus, number> = {
+	pending: 0,
+	accepted: 1,
+	declined: 2,
+	expired: 3,
+};
+
+function byQueue<T>(
+	rows: T[],
+	dir: "asc" | "desc",
+	value: (row: T) => string | number,
+	name: (row: T) => string,
+): T[] {
+	const sign = dir === "asc" ? 1 : -1;
+	return [...rows].sort((a, b) => {
+		const va = value(a);
+		const vb = value(b);
+		const d = typeof va === "number" && typeof vb === "number"
+			? va - vb
+			: String(va).localeCompare(String(vb));
+		return (d === 0 ? name(a).localeCompare(name(b)) : d) * sign;
+	});
+}
+
+/** Sort the open applications. `date` is newest-last ascending, like every date column here. */
+export function sortRequests(
+	rows: MemberRequest[],
+	key: QueueSortKey,
+	dir: "asc" | "desc",
+): MemberRequest[] {
+	return byQueue(rows, dir, (r) => {
+		if (key === "date") return Date.parse(r.appliedAt) || 0;
+		if (key === "stage") return r.stageName ?? "";
+		return r.applicant.name;
+	}, (r) => r.applicant.name);
+}
+
+/** Sort the invitations. */
+export function sortInvites(
+	rows: MemberInvite[],
+	key: QueueSortKey,
+	dir: "asc" | "desc",
+): MemberInvite[] {
+	return byQueue(rows, dir, (r) => {
+		if (key === "date") return Date.parse(r.invitedAt) || 0;
+		if (key === "status") return STATUS_ORDER[r.status];
+		if (key === "stage") return r.stageName ?? "";
+		return inviteeLabel(r);
+	}, inviteeLabel);
 }
 // #endregion

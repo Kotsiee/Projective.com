@@ -1112,6 +1112,8 @@ export async function fetchConversationRoster(
 		format: "one_off",
 		members,
 		invites: [],
+		requests: [],
+		session: null,
 		stages: [],
 		viewerId: actor.userId,
 		viewerRole: "member",

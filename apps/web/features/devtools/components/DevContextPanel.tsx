@@ -339,6 +339,33 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 					</div>
 				</Field>
 
+				<Field label="Pending requests" hint="hasPendingRequests">
+					<div class="dev-ctx__segment" role="radiogroup" aria-label="Pending requests">
+						<button
+							type="button"
+							role="radio"
+							aria-checked={o.hasPendingRequests}
+							class="dev-ctx__seg"
+							data-active={o.hasPendingRequests}
+							disabled={!o.enabled}
+							onClick={() => patchDevContext({ hasPendingRequests: true })}
+						>
+							Has requests
+						</button>
+						<button
+							type="button"
+							role="radio"
+							aria-checked={!o.hasPendingRequests}
+							class="dev-ctx__seg"
+							data-active={!o.hasPendingRequests}
+							disabled={!o.enabled}
+							onClick={() => patchDevContext({ hasPendingRequests: false })}
+						>
+							None
+						</button>
+					</div>
+				</Field>
+
 				<div class="dev-ctx__grouphead">Messaging</div>
 
 				<Field label="Inbox view" hint="filter set">

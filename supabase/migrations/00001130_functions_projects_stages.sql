@@ -980,6 +980,86 @@ $$;
 
 -- #endregion
 
+-- #region 7b. reject_application — the owner declines an applicant
+-- The other answer to an inbound request (the Members tab's Requests section). The application becomes
+-- `rejected` — the status a filled seat already gives its other applicants, so "declined" and "not
+-- selected" are one state to the applicant — and they are told (`application.declined`), deep-linked to
+-- their conversation with the owner. Nothing else moves: no assignment existed, so nothing is released.
+-- The row is locked first so a concurrent accept and decline of the same application cannot both land.
+CREATE OR REPLACE FUNCTION projects.reject_application(p_application_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, projects, comms, org, auth
+AS $$
+DECLARE
+    v_actor    uuid := auth.uid();
+    v_project  uuid;
+    v_app_user uuid;
+    v_status   projects.application_status;
+    v_slug     text;
+    v_title    text;
+    v_owner    text;
+BEGIN
+    SELECT pa.project_id, pa.applicant_user_id, pa.status
+        INTO v_project, v_app_user, v_status
+    FROM projects.project_applications pa
+    WHERE pa.id = p_application_id
+    FOR UPDATE;
+
+    IF v_project IS NULL THEN
+        RAISE EXCEPTION 'Application % not found.', p_application_id USING ERRCODE = 'no_data_found';
+    END IF;
+
+    IF NOT projects.can_review_project(v_project) THEN
+        RAISE EXCEPTION 'Only the project owner may decline applications.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+
+    IF v_status <> 'pending' THEN
+        RAISE EXCEPTION 'This application has already been %.', v_status USING ERRCODE = 'check_violation';
+    END IF;
+
+    UPDATE projects.project_applications SET status = 'rejected', updated_at = now()
+    WHERE id = p_application_id;
+
+    INSERT INTO projects.project_activity (project_id, actor_user_id, kind, payload, entity_table, entity_id)
+    VALUES (
+        v_project, v_actor, 'application_rejected',
+        jsonb_build_object('application_id', p_application_id),
+        'projects.project_applications', p_application_id
+    );
+
+    SELECT p.slug, p.title, up.username INTO v_slug, v_title, v_owner
+    FROM projects.projects p
+    LEFT JOIN org.users_public up ON up.user_id = p.owner_user_id
+    WHERE p.id = v_project;
+
+    PERFORM comms.fn_notify(
+        v_app_user,
+        'application.declined',
+        format('Your application to %s was declined', v_title),
+        v_title,
+        'projects.project_applications',
+        p_application_id,
+        jsonb_build_object('project_slug', v_slug, 'project_title', v_title),
+        v_actor,
+        'project',
+        v_project,
+        NULL,
+        CASE WHEN v_owner IS NOT NULL THEN '/messages/dm-' || v_owner ELSE NULL END
+    );
+
+    RAISE LOG '[STAFFING_RPC] reject_application ok application=% project=%', p_application_id, v_project;
+
+    RETURN projects.fn_serialize_application(p_application_id);
+END;
+$$;
+
+COMMENT ON FUNCTION projects.reject_application(uuid) IS
+'The project owner declines a pending application: it becomes rejected, the decision is logged on project_activity, and the applicant is notified (application.declined). Owner-only; anything not pending is refused naming its status.';
+
+-- #endregion
+
 -- #region 8. Serializers + read-model
 CREATE OR REPLACE FUNCTION projects.fn_serialize_seat(p_seat_id uuid)
 RETURNS jsonb

@@ -93,6 +93,8 @@ const roster: MemberRosterPage = {
 		},
 	],
 	invites: [],
+	requests: [],
+	session: null,
 	stages: [{ id: "stg-a", name: "Stage 1" }, { id: "stg-b", name: "Stage 2" }],
 	viewerId: "m-1",
 	viewerRole: "client",

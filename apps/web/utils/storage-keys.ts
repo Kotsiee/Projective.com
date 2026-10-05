@@ -233,6 +233,12 @@ export const LocalKeys = {
 	 */
 	WORKSPACE_ZOOM: "pj.local.workspace.zoom",
 	/**
+	 * The project Members tab's zoom-driven view density (a `0`–`1` float) — the same list⇄grid model
+	 * as the File Explorer, shared cross-island (the footer rig ↔ the roster body). One key across the
+	 * project, stage and conversation rosters: they are one surface over three scopes.
+	 */
+	MEMBERS_ZOOM: "pj.local.members.zoom",
+	/**
 	 * The Kanban board's view mode (`kanban` | `list`) — shared cross-island (the footer View Control
 	 * Rig ↔ the board body), so the board reopens in the last-used surface.
 	 */

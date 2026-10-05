@@ -122,6 +122,8 @@ export interface DevOverrides {
 	memberRole: DevMemberRole;
 	/** Whether the Members tab should surface a pending-invitation queue (task §4). */
 	hasPendingInvites: boolean;
+	/** Whether the Members tab's Requests section should carry open applications. */
+	hasPendingRequests: boolean;
 	/**
 	 * Simulated `/messages` inbox view (task §4) — a NEW axis selecting which advanced-filter set the
 	 * inbox sidebar shows (provider-side vs buyer-side) and whether auto-responses are offered. Consumed
@@ -164,6 +166,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	projectOnboarding: "auto",
 	memberRole: "owner_admin",
 	hasPendingInvites: true,
+	hasPendingRequests: true,
 	messagingRole: "freelancer",
 	micPermission: "auto",
 	layoutDirection: "ltr",
@@ -319,6 +322,7 @@ function reflect(next: DevOverrides): void {
 		}
 		root.dataset.devMemberRole = next.memberRole;
 		root.dataset.devPendingInvites = String(next.hasPendingInvites);
+		root.dataset.devPendingRequests = String(next.hasPendingRequests);
 		root.dataset.devMessagingRole = next.messagingRole;
 		root.dataset.devMicPermission = next.micPermission;
 		root.dataset.devDirection = next.layoutDirection;
@@ -342,6 +346,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devProjectOnboarding;
 		delete root.dataset.devMemberRole;
 		delete root.dataset.devPendingInvites;
+		delete root.dataset.devPendingRequests;
 		delete root.dataset.devMessagingRole;
 		delete root.dataset.devMicPermission;
 		delete root.dataset.devDirection;

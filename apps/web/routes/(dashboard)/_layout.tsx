@@ -22,6 +22,7 @@ import { stageDetailsFooterFor } from "@web/features/projects/core/stage-details
 // the CHANNEL-scoped File Explorer rig (`/projects/…/files`), which the alias names more accurately.
 import { filesFooterFor as channelFilesFooterFor } from "@web/features/projects/core/files-footer-slot.tsx";
 import { submissionsFooterFor } from "@web/features/projects/core/submissions-footer-slot.tsx";
+import { membersFooterFor } from "@web/features/projects/core/members-footer-slot.tsx";
 import { boardFooterFor } from "@web/features/projects/core/board-footer-slot.tsx";
 import { timelineFooterFor } from "@web/features/projects/core/timeline-footer-slot.tsx";
 import { conversationHeaderFor } from "@web/features/messaging/core/conversation-header-slot.tsx";
@@ -125,7 +126,8 @@ async function middleNavFooterFor(
 	return await channelFooterFor(url, context, actor) ??
 		(await stageDetailsFooterFor(url, context, actor)) ??
 		channelFilesFooterFor(url, context) ??
-		submissionsFooterFor(url, context) ?? boardFooterFor(url, context) ??
+		submissionsFooterFor(url, context) ?? membersFooterFor(url, context) ??
+		boardFooterFor(url, context) ??
 		timelineFooterFor(url, context) ??
 		(await projectFooterFor(url, context, actor)) ??
 		(await conversationFooterFor(url, context, actor)) ??

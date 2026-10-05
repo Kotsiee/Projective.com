@@ -1,6 +1,7 @@
 import { postProjects } from "./api.ts";
 import type {
 	ApplicationAccepted,
+	ApplicationRejected,
 	ApplyToProject,
 	InvitationAnswered,
 	ProjectApplication,
@@ -9,7 +10,7 @@ import type { ProjectsResult } from "../types/results.ts";
 
 /**
  * RequestService — the THIN client side of the hiring handshake: a freelancer applies to a stage, an
- * invitee answers a request, a client confirms an applicant's seat. One POST per verb; the fat
+ * invitee answers a request, a client confirms or declines an applicant. One POST per verb; the fat
  * `ProjectBackendService` owns every rule, the notification and the conversation each one opens.
  */
 export const RequestService = {
@@ -29,6 +30,13 @@ export const RequestService = {
 	/** Confirm an applicant's seat; answers with where the seat is funded. */
 	acceptApplication(applicationId: string): Promise<ProjectsResult<ApplicationAccepted>> {
 		return postProjects<ApplicationAccepted>("/api/projects/applications/accept", {
+			applicationId,
+		});
+	},
+
+	/** Decline an applicant; the application becomes `rejected` and they are told. */
+	rejectApplication(applicationId: string): Promise<ProjectsResult<ApplicationRejected>> {
+		return postProjects<ApplicationRejected>("/api/projects/applications/reject", {
 			applicationId,
 		});
 	},

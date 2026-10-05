@@ -3,36 +3,28 @@ import type { Signal } from "@preact/signals";
 import { useSignal } from "@preact/signals";
 import { Button, Chips, Select } from "@projective/ui/fields";
 import { Dialog } from "@projective/ui/feedback";
-import { Tag } from "@projective/ui/display";
-import type { MemberInvite, MemberRole, MemberStageRef } from "../types/projects-types.ts";
+import type { MemberRole, MemberStageRef } from "../types/projects-types.ts";
 import { ASSIGNABLE_ROLES } from "../core/member-model.ts";
-import { MemberRoleBadge } from "./MemberBadges.tsx";
-import { CloseIcon } from "./glyphs.tsx";
-import { ResendIcon } from "./member-glyphs.tsx";
 
 /**
- * MemberInviteModal — the multi-invite + pending-invitations surface (task §3). A modal {@link Dialog}
- * with two tabs: **Invite** (add several emails as chips, pick the role they join as, and optionally
- * assign them straight to a stage) and **Pending Invitations** (the outstanding queue, each with resend
- * / cancel). STUB persistence — sending appends an optimistic pending row and the resend/cancel actions
- * mutate the local queue; the live path (the `projects.invitations` insert + email dispatch) lands
- * behind `PROJECTS_BACKEND_LIVE`. Only opened for a managing viewer (the island gates the trigger).
+ * MemberInviteModal — invite people by email: several addresses as chips, the role they join as, and
+ * (on an engagement with stages) the stage they are assigned to on acceptance. Opened from the
+ * footer's Invite trigger; the outstanding queue lives in the Members tab's Invitations section, so
+ * the modal is the form alone. STUB persistence — sending appends optimistic `pending` rows to that
+ * section; the live email-invitation write lands behind `PROJECTS_BACKEND_LIVE`.
  */
 export interface MemberInviteModalProps {
 	open: Signal<boolean>;
 	stages: MemberStageRef[];
-	invites: MemberInvite[];
+	/** Whether stages are a dimension of this engagement — a one-off or a session has no picker. */
+	showStages: boolean;
 	/** The current channel's stage id, pre-selected in the assign picker (channel-stage scope). */
 	defaultStageId: string | null;
 	onInvite: (emails: string[], role: MemberRole, stageId: string | null) => void;
-	onResend: (id: string) => void;
-	onCancel: (id: string) => void;
-	onClose: () => void;
 }
 
 export function MemberInviteModal(props: MemberInviteModalProps): JSX.Element {
-	const { stages, invites } = props;
-	const tab = useSignal<"invite" | "pending">("invite");
+	const { stages } = props;
 	const emails = useSignal<string[]>([]);
 	const role = useSignal<string>("freelancer");
 	const stageId = useSignal<string>(props.defaultStageId ?? "");
@@ -42,169 +34,68 @@ export function MemberInviteModal(props: MemberInviteModalProps): JSX.Element {
 		...stages.map((s) => ({ label: s.name, value: s.id })),
 	];
 	const validEmails = emails.value.filter((e) => /.+@.+\..+/.test(e.trim()));
+	const pickStage = props.showStages && stages.length > 0;
 
 	function send(): void {
 		if (validEmails.length === 0) return;
-		props.onInvite(validEmails, role.value as MemberRole, stageId.value || null);
+		props.onInvite(validEmails, role.value as MemberRole, pickStage ? stageId.value || null : null);
 		emails.value = [];
-		tab.value = "pending";
+		props.open.value = false;
 	}
 
 	return (
 		<Dialog
 			visible={props.open}
-			header="Invite members"
+			header="Invite people"
 			width="34rem"
-			onVisibleChange={(v) => !v && props.onClose()}
 			class="mem-dialog mem-invite"
+			footer={
+				<div class="mem-dialog__foot">
+					<Button
+						variant="text"
+						severity="secondary"
+						label="Cancel"
+						onClick={() => (props.open.value = false)}
+					/>
+					<Button
+						variant="filled"
+						label={validEmails.length > 1 ? `Send ${validEmails.length} invites` : "Send invite"}
+						disabled={validEmails.length === 0}
+						onClick={send}
+					/>
+				</div>
+			}
 		>
-			<div class="mem-tabs" role="tablist" aria-label="Invite views">
-				<button
-					type="button"
-					role="tab"
-					class="mem-tab"
-					aria-selected={tab.value === "invite"}
-					data-active={tab.value === "invite" ? "true" : undefined}
-					onClick={() => (tab.value = "invite")}
-				>
-					Invite people
-				</button>
-				<button
-					type="button"
-					role="tab"
-					class="mem-tab"
-					aria-selected={tab.value === "pending"}
-					data-active={tab.value === "pending" ? "true" : undefined}
-					onClick={() => (tab.value = "pending")}
-				>
-					Pending{invites.length > 0 ? ` (${invites.length})` : ""}
-				</button>
-			</div>
+			<div class="mem-invite__form">
+				<label class="mem-field">
+					<span class="mem-field__label">Email addresses</span>
+					<Chips
+						fluid
+						placeholder="name@company.com — press Enter"
+						value={emails}
+						aria-label="Invitee emails"
+					/>
+					<span class="mem-field__hint">Add one or more — press Enter or comma between each.</span>
+				</label>
 
-			{tab.value === "invite"
-				? (
-					<div class="mem-invite__form" role="tabpanel">
+				<div class="mem-invite__row" data-single={pickStage ? undefined : "true"}>
+					<label class="mem-field">
+						<span class="mem-field__label">Role</span>
+						<Select
+							fluid
+							options={ASSIGNABLE_ROLES.map((r) => ({ label: r.label, value: r.value }))}
+							value={role}
+							aria-label="Invite role"
+						/>
+					</label>
+					{pickStage && (
 						<label class="mem-field">
-							<span class="mem-field__label">Email addresses</span>
-							<Chips
-								fluid
-								placeholder="name@company.com — press Enter"
-								value={emails}
-								aria-label="Invitee emails"
-							/>
-							<span class="mem-field__hint">
-								Add one or more — press Enter or comma between each.
-							</span>
+							<span class="mem-field__label">Assign to stage</span>
+							<Select fluid options={stageOptions} value={stageId} aria-label="Assign to stage" />
 						</label>
-
-						<div class="mem-invite__row">
-							<label class="mem-field">
-								<span class="mem-field__label">Role</span>
-								<Select
-									fluid
-									options={ASSIGNABLE_ROLES.map((r) => ({ label: r.label, value: r.value }))}
-									value={role}
-									aria-label="Invite role"
-								/>
-							</label>
-							{stages.length > 0 && (
-								<label class="mem-field">
-									<span class="mem-field__label">Assign to stage</span>
-									<Select
-										fluid
-										options={stageOptions}
-										value={stageId}
-										aria-label="Assign to stage"
-									/>
-								</label>
-							)}
-						</div>
-
-						<div class="mem-dialog__foot">
-							<Button
-								variant="text"
-								severity="secondary"
-								label="Cancel"
-								onClick={() => (props.open.value = false)}
-							/>
-							<Button
-								variant="filled"
-								label={validEmails.length > 1
-									? `Send ${validEmails.length} invites`
-									: "Send invite"}
-								disabled={validEmails.length === 0}
-								onClick={send}
-							/>
-						</div>
-					</div>
-				)
-				: (
-					<div class="mem-pending" role="tabpanel">
-						{invites.length === 0
-							? (
-								<div class="mem-empty" role="status">
-									<p class="mem-empty__title">No pending invitations</p>
-									<p class="mem-empty__note">
-										Invites you send will appear here until they're accepted.
-									</p>
-								</div>
-							)
-							: (
-								<ul class="mem-pending__list">
-									{invites.map((inv) => (
-										<li key={inv.id} class="mem-pending__item">
-											<div class="mem-pending__main">
-												<span class="mem-pending__email">{inv.email}</span>
-												<span class="mem-pending__meta">
-													<MemberRoleBadge role={inv.role} />
-													{inv.stageName && <span class="mem-stagechip">{inv.stageName}</span>}
-													<Tag
-														value={inv.status === "expired"
-															? "Expired"
-															: inv.status === "declined"
-															? "Declined"
-															: "Pending"}
-														severity={inv.status === "expired"
-															? "warning"
-															: inv.status === "declined"
-															? "danger"
-															: "info"}
-														variant="subtle"
-														rounded
-													/>
-													<span class="mem-pending__age">{inv.invitedLabel}</span>
-												</span>
-											</div>
-											<div class="mem-pending__actions">
-												{
-													/* A declined invitation is the invitee's answer: resending it is exactly what
-													   the re-invitation cooldown refuses, so the control is absent, not disabled. */
-												}
-												{inv.status !== "declined" && (
-													<button
-														type="button"
-														class="mem-iconbtn"
-														aria-label={`Resend invite to ${inv.email}`}
-														onClick={() => props.onResend(inv.id)}
-													>
-														{ResendIcon}
-													</button>
-												)}
-												<button
-													type="button"
-													class="mem-iconbtn mem-iconbtn--danger"
-													aria-label={`Cancel invite to ${inv.email}`}
-													onClick={() => props.onCancel(inv.id)}
-												>
-													{CloseIcon}
-												</button>
-											</div>
-										</li>
-									))}
-								</ul>
-							)}
-					</div>
-				)}
+					)}
+				</div>
+			</div>
 		</Dialog>
 	);
 }

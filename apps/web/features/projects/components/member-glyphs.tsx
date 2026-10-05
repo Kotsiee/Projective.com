@@ -2,77 +2,72 @@ import type { JSX } from "preact";
 import { IconShell } from "@projective/ui/icons";
 
 /**
- * Members roster glyphs — the few 1em `currentColor` stroke icons the roster needs that the feed's
- * `glyphs.tsx` / `detail-glyphs.tsx` don't already provide (assign / unassign / role / view toggle /
- * contributor / resend). Co-located inline SVG, matching the feature's glyph convention (the package
- * has no icon registry). Reuse the shared feed glyphs for the common ones (Plus · Search · Kebab · Edit
- * · Trash · Mail · Eye · Check · Close · ExternalLink · Chevron).
+ * Members roster glyphs — the few stroke icons the roster needs that `@projective/ui/icons` does not
+ * carry (assign/unassign · role · contributor · the authority crown). Function components rather than
+ * shared VNode constants: a roster renders them once per row, and a fresh node per call site keeps
+ * Preact from reusing one element across positions. Common glyphs (message · kebab · check · close ·
+ * external link · grid · list) come from the package `Icon` registry.
  */
 
 // #region Base
-function Svg(props: JSX.SVGAttributes<SVGSVGElement>): JSX.Element {
-	return <IconShell {...props} />;
+interface GlyphProps {
+	size?: number;
+}
+
+function Svg(props: JSX.SVGAttributes<SVGSVGElement> & GlyphProps): JSX.Element {
+	const { size, ...rest } = props;
+	return <IconShell size={size} {...rest} />;
 }
 // #endregion
 
 /** A person with a plus — assign to the current stage/channel. */
-export const UserPlusIcon = (
-	<Svg>
-		<circle cx="9" cy="8" r="3.2" />
-		<path d="M3.5 19a5.5 5.5 0 0 1 11 0" />
-		<path d="M18 8v6M15 11h6" />
-	</Svg>
-);
+export function UserPlusIcon({ size }: GlyphProps): JSX.Element {
+	return (
+		<Svg size={size}>
+			<circle cx="9" cy="8" r="3.2" />
+			<path d="M3.5 19a5.5 5.5 0 0 1 11 0" />
+			<path d="M18 8v6M15 11h6" />
+		</Svg>
+	);
+}
 
 /** A person with a minus — unassign from the current stage/channel. */
-export const UserMinusIcon = (
-	<Svg>
-		<circle cx="9" cy="8" r="3.2" />
-		<path d="M3.5 19a5.5 5.5 0 0 1 11 0" />
-		<path d="M15 11h6" />
-	</Svg>
-);
+export function UserMinusIcon({ size }: GlyphProps): JSX.Element {
+	return (
+		<Svg size={size}>
+			<circle cx="9" cy="8" r="3.2" />
+			<path d="M3.5 19a5.5 5.5 0 0 1 11 0" />
+			<path d="M15 11h6" />
+		</Svg>
+	);
+}
 
-/** A shield — edit member role / permissions. */
-export const ShieldIcon = (
-	<Svg>
-		<path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" />
-		<path d="m9 12 2 2 4-4" />
-	</Svg>
-);
-
-/** A small grid — the card-view toggle. */
-export const GridIcon = (
-	<Svg>
-		<rect x="4" y="4" width="6.5" height="6.5" rx="1.4" />
-		<rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4" />
-		<rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4" />
-		<rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4" />
-	</Svg>
-);
-
-/** Stacked rows — the table-view toggle. */
-export const ListIcon = (
-	<Svg>
-		<path d="M8 6h12M8 12h12M8 18h12" />
-		<circle cx="4" cy="6" r="1.1" fill="currentColor" stroke="none" />
-		<circle cx="4" cy="12" r="1.1" fill="currentColor" stroke="none" />
-		<circle cx="4" cy="18" r="1.1" fill="currentColor" stroke="none" />
-	</Svg>
-);
+/** A shield — change a member's role / permissions. */
+export function ShieldIcon({ size }: GlyphProps): JSX.Element {
+	return (
+		<Svg size={size}>
+			<path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" />
+			<path d="m9 12 2 2 4-4" />
+		</Svg>
+	);
+}
 
 /** A badge check — an assigned contributor. */
-export const ContributorIcon = (
-	<Svg>
-		<path d="M12 3l2.3 1.7 2.8-.2.9 2.7 2.3 1.6-.9 2.7.9 2.7-2.3 1.6-.9 2.7-2.8-.2L12 21l-2.3-1.7-2.8.2-.9-2.7L3.7 15l.9-2.7-.9-2.7 2.3-1.6.9-2.7 2.8.2z" />
-		<path d="m9 12 2 2 4-4" />
-	</Svg>
-);
+export function ContributorIcon({ size }: GlyphProps): JSX.Element {
+	return (
+		<Svg size={size}>
+			<path d="M12 3l2.3 1.7 2.8-.2.9 2.7 2.3 1.6-.9 2.7.9 2.7-2.3 1.6-.9 2.7-2.8-.2L12 21l-2.3-1.7-2.8.2-.9-2.7L3.7 15l.9-2.7-.9-2.7 2.3-1.6.9-2.7 2.8.2z" />
+			<path d="m9 12 2 2 4-4" />
+		</Svg>
+	);
+}
 
-/** A circular arrow — resend a pending invitation. */
-export const ResendIcon = (
-	<Svg>
-		<path d="M20 11a8 8 0 1 0-.9 4.5" />
-		<path d="M20 5v6h-6" />
-	</Svg>
-);
+/** A crown — the engagement's authority tier (owner / client), the roster's one distinct accent. */
+export function CrownIcon({ size }: GlyphProps): JSX.Element {
+	return (
+		<Svg size={size}>
+			<path d="M4 8l4 4 4-7 4 7 4-4-1.6 10H5.6z" />
+			<path d="M6 21h12" />
+		</Svg>
+	);
+}

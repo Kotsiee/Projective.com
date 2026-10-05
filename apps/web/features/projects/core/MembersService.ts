@@ -47,6 +47,9 @@ export const MembersService = {
 		if (params.simPendingInvites !== undefined) {
 			qs.set("simPendingInvites", params.simPendingInvites ? "true" : "false");
 		}
+		if (params.simPendingRequests !== undefined) {
+			qs.set("simPendingRequests", params.simPendingRequests ? "true" : "false");
+		}
 		return getProjects<{ page: MemberRosterPage }>(`/api/projects/members?${qs.toString()}`);
 	},
 

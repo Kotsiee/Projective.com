@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import FileExplorer from "../islands/FileExplorer.island.tsx";
 import MemberRoster from "../islands/MemberRoster.island.tsx";
+import { memberSectionsFor, resolveMemberSection } from "../core/member-sections.ts";
 import type {
 	FileListPage,
 	FileScope,
@@ -17,8 +18,8 @@ import type {
  *
  * A route's only job is to resolve its page server-side and hand it here; everything the user sees and
  * touches — the zoom-driven grid⇄list explorer with its window virtualization and universal preview
- * modal, the roster table with its avatar stacks, role tags, and management actions — is the same
- * component tree in both places. Parity cannot drift, because there is only one implementation.
+ * modal, the zoom-driven member cards ⇄ table with its sections, preview and management actions — is
+ * the same component tree in both places. Parity cannot drift, because there is only one implementation.
  *
  * The scope prop is what differs: it selects the endpoint the islands' thin services refine through
  * (`/api/projects/*` for an engagement, `/api/messaging/*` for a conversation). Both answer the
@@ -51,10 +52,26 @@ export interface MembersViewProps {
 	channelId?: string;
 	/** The SSR-resolved roster; `null` renders the island's own not-found/empty state. */
 	initial: MemberRosterPage | null;
+	/** The raw `?view=` value — resolved here against the sections this roster offers its viewer. */
+	view?: string | null;
 }
 
-/** MembersView — the Members tab body for every scope. */
-export function MembersView({ scope, id, channelId, initial }: MembersViewProps): JSX.Element {
-	return <MemberRoster scope={scope} projectId={id} channelId={channelId} initial={initial} />;
+/**
+ * MembersView — the Members tab body for every scope. The section the address names is resolved
+ * server-side, so a Requests link opened by a viewer who cannot manage lands on Members.
+ */
+export function MembersView(
+	{ scope, id, channelId, initial, view }: MembersViewProps,
+): JSX.Element {
+	const section = resolveMemberSection(view, memberSectionsFor(initial));
+	return (
+		<MemberRoster
+			scope={scope}
+			projectId={id}
+			channelId={channelId}
+			initial={initial}
+			initialSection={section}
+		/>
+	);
 }
 // #endregion

@@ -3,9 +3,11 @@ import {
 	inviteActionFor,
 	invitesForScope,
 	type MemberInvite,
+	type MemberRequest,
 	NO_REMOVAL_IMPACT,
 	removalNotices,
 	removalTouchesMoney,
+	requestsForScope,
 } from "./members.ts";
 
 /**
@@ -134,6 +136,35 @@ Deno.test("every fact under way gets its own sentence, in a fixed order", () => 
 	assert(notices[1].includes("submitted ticket"));
 	assert(notices[2].includes("2 stages already under way"));
 	assert(notices[2].includes("Those seats open up"));
+});
+
+// #endregion
+
+// #region requestsForScope
+
+function request(overrides: Partial<MemberRequest> = {}): MemberRequest {
+	return {
+		id: "app-1",
+		applicant: { name: "Ivy Chen", avatar: null, handle: "ivy" },
+		applicantKind: "freelancer",
+		stageId: "stage-1",
+		stageName: "Discovery",
+		roleName: null,
+		message: null,
+		appliedAt: "2026-07-10T10:00:00.000Z",
+		appliedLabel: "2 days ago",
+		...overrides,
+	};
+}
+
+Deno.test("a stage page lists only the requests addressed to that stage", () => {
+	const rows = [
+		request({ id: "a", stageId: "stage-1" }),
+		request({ id: "b", stageId: "stage-2" }),
+		request({ id: "c", stageId: null }),
+	];
+	assertEquals(requestsForScope(rows, "stage-1").map((r) => r.id), ["a"]);
+	assertEquals(requestsForScope(rows, null).map((r) => r.id), ["a", "b", "c"]);
 });
 
 // #endregion

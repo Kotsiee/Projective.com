@@ -579,6 +579,23 @@ export function recordInviteDecision(
 }
 
 /**
+ * Seat the person an accepted APPLICATION brought in — the stub twin of the participant row
+ * `assign_from_application` inserts. Appended once, like an accepted invitation's member, and a
+ * previously removed person who applied again and was accepted is back.
+ */
+export function recordApplicationSeat(
+	owner: string,
+	projectId: string,
+	joined: ProjectMemberRow,
+): void {
+	const bucket = bucketFor(owner);
+	const rows = bucket.joined.get(projectId) ?? [];
+	if (!rows.some((row) => row.id === joined.id)) rows.unshift(joined);
+	bucket.joined.set(projectId, rows);
+	bucket.removed.get(projectId)?.delete(joined.id);
+}
+
+/**
  * Record a removal: from the whole project (`stageId` null — the row disappears from every roster
  * and the accepted record that brought them in leaves the list) or from one stage (the row loses
  * that stage and disappears from that stage's roster alone).
@@ -839,6 +856,8 @@ export function createdMemberRoster(ref: string, actor?: ReadActor): MemberRoste
 			isViewer: true,
 		}],
 		invites: [],
+		requests: [],
+		session: null,
 		stages: [...setup.stages]
 			.sort((a, b) => a.order - b.order)
 			.map((stage) => ({ id: stage.id, name: stage.name })),

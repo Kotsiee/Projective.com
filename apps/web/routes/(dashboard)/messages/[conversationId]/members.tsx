@@ -8,8 +8,8 @@ import { readActor } from "@web/utils/api-session.ts";
  * Members tab — the conversation participants (`/messages/[conversationId]/members`). Resolves the
  * roster server-side (the fat {@link MessagingBackendService.members}, no HTTP hop) and hands it to the
  * shared {@link MembersView} — the SAME component tree the channel Members tab mounts, so the inbox
- * gets the identical table, avatar stacks, role tags, and management actions rather than a lookalike
- * list. A conversation has no stages and no invitation queue, so those columns simply stay empty.
+ * gets the identical cards ⇄ table roster, preview and Message actions rather than a lookalike list.
+ * A conversation has no stages, requests or invitations, so it offers the Members section alone.
  */
 export default define.page(async function ConversationMembersPage(ctx) {
 	const actor = readActor(ctx);

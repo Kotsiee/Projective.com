@@ -70,4 +70,19 @@ export interface ApplicationAccepted {
 	/** Where the client funds the seat it just confirmed. */
 	fundHref: string;
 }
+
+/**
+ * `POST /api/projects/applications/reject` — the client declines an applicant. The application becomes
+ * `rejected` (the status a filled seat already gives its other applicants) and the applicant is told.
+ */
+export const RejectApplicationSchema = z.object({
+	applicationId: z.string().trim().min(1).max(120),
+});
+export type RejectApplication = z.infer<typeof RejectApplicationSchema>;
+
+/** The declined application. */
+export interface ApplicationRejected {
+	id: string;
+	status: "rejected";
+}
 // #endregion

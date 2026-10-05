@@ -1086,8 +1086,11 @@ There are two primary ways an engagement begins:
   > cannot apply to their own project or to one that is not taking applications. The client is
   > notified (`application.received`), and a cover note becomes the opening message of the pair's
   > DM, filed in the client's **Requests** (see §E. Direct & Group Conversations). The client
-  > answers by confirming the seat, which takes them to fund the stage; filling a seat marks its
-  > other pending applicants _Not selected_.
+  > answers by confirming the seat, which takes them to fund the stage, or by **declining** it,
+  > which tells the applicant and changes nothing else; filling a seat marks its other pending
+  > applicants _Not selected_. Both answers are given from the project's Members page, whose
+  > **Requests** section lists every open application (a stage's page lists only those addressed to
+  > that stage) with **Accept** and **Reject** on each.
 - **The Outbound Invitation (Client-Led):** A client uses the "Explore" page to find a freelancer or
   team that matches their needs and sends a direct **Invitation** to join a specific project or
   stage.
@@ -1111,7 +1114,10 @@ There are two primary ways an engagement begins:
   > invitee's answer notifies the client the same way (`invitation.accepted` /
   > `invitation.declined`).
 
-  > **Managing what you sent.** The project's Members page — and each stage's, which lists only the
+  > **Managing what you sent.** The project's Members page has three sections — **Members** (the
+  > roster), **Requests** (open applications) and **Invitations** — each addressable
+  > (`?view=requests` · `?view=invitations`) and offered only to a client who manages the project.
+  > Its Invitations section — and each stage's, which lists only the
   > invitations addressed to THAT stage — shows every invitation with its state (`Pending` ·
   > `Accepted` · `Declined` · `Expired`) and the one thing the client may do about it: **cancel** an
   > open offer; **dismiss** a declined or expired record (the decline still counts toward the

@@ -134,6 +134,8 @@ export interface DevSeamState {
 	memberRole: DevMemberRole;
 	/** Whether the Members tab should surface a pending-invitation queue (task §4). */
 	pendingInvites: boolean;
+	/** Whether the Members tab's Requests section should carry open applications. */
+	pendingRequests: boolean;
 	/** The simulated `/messages` inbox view (selects the advanced-filter set + auto-response offer). */
 	messagingRole: DevMessagingRole;
 	/** The simulated microphone permission for the chat composer's voice memo. */
@@ -263,6 +265,7 @@ export function readDevSeam(): DevSeamState | null {
 		projectOnboarding: coerce(ds.devProjectOnboarding, PROJECT_ONBOARDINGS, "auto"),
 		memberRole: coerce(ds.devMemberRole, MEMBER_ROLES, "owner_admin"),
 		pendingInvites: ds.devPendingInvites !== "false",
+		pendingRequests: ds.devPendingRequests !== "false",
 		messagingRole: coerce(ds.devMessagingRole, MESSAGING_ROLES, "freelancer"),
 		micPermission: coerce(ds.devMicPermission, MIC_PERMISSIONS, "auto"),
 		layoutDirection: coerce(ds.devDirection, LAYOUT_DIRECTIONS, "ltr"),

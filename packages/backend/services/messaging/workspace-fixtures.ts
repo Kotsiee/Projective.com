@@ -348,6 +348,8 @@ export function findConversationRoster(conversationId: string): MemberRosterPage
 		format: "one_off",
 		members: rows,
 		invites: [],
+		requests: [],
+		session: null,
 		stages: [],
 		viewerId: "viewer",
 		viewerRole: "member",

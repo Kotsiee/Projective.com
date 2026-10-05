@@ -13,7 +13,9 @@ import { refusalFrom, type WriteOutcome, type WriteRefusal } from "./live-writes
  * - **answer an invitation** → `projects.respond_to_project_invitation` (the invitee's own door onto
  *   `fn_apply_invitation_decision`);
  * - **confirm an applicant's seat** → `projects.assign_from_application` (owner-side, conflict-guarded,
- *   notifies the applicant with `application.accepted`).
+ *   notifies the applicant with `application.accepted`);
+ * - **decline an applicant** → `projects.reject_application` (owner-side, notifies the applicant with
+ *   `application.declined`).
  *
  * Each raises its refusals with SQLSTATEs and sentences written for a reader, mapped here to the
  * envelope; anything unexpected throws for the fat service to report as a 502.
@@ -104,4 +106,20 @@ export async function acceptApplicationLive(
 	}
 	const row = data as { id: string };
 	return { data: { id: row.id, status: "accepted" } };
+}
+
+/** Decline an applicant as the project's owner. */
+export async function rejectApplicationLive(
+	actor: ReadActor & { accessToken: string },
+	applicationId: string,
+): Promise<WriteOutcome<{ id: string; status: "rejected" }>> {
+	const { data, error } = await projectsDb(actor).rpc("reject_application", {
+		p_application_id: applicationId,
+	});
+	if (error) {
+		if (error.code === "P0002") return null;
+		return { refusal: handshakeRefusal(error, "applicationId") };
+	}
+	const row = data as { id: string };
+	return { data: { id: row.id, status: "rejected" } };
 }

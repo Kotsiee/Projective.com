@@ -1,0 +1,26 @@
+.mem-rig {
+	container-type: inline-size;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-2) var(--space-4);
+}
+
+.mem-rig .mem-rig__zoom {
+	flex: 0 1 auto;
+	padding: 0;
+}
+
+.mem-rig__spacer {
+	flex: 1 1 auto;
+}
+
+.mem-rig__invite {
+	flex: none;
+}
+
+@container (max-width: 24rem) {
+	.mem-rig__invite .ui-button__label {
+		display: none;
+	}
+}

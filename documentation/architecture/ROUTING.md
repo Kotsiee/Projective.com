@@ -282,6 +282,17 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   far-right **Review Submission** trigger is resolved by `submissionsFooterFor` (composed after
   `channelFooterFor` / `filesFooterFor` in the `(dashboard)` layout's single footer slot).
 
+- **The Members tab's sections are a query parameter** (Decision #136). `…/members` is the roster;
+  `?view=requests` and `?view=invitations` select the open applications and the sent invitations, on
+  the project (`/projects/[projectSlug]/members`) and stage (`…/[channelId]/members`) routes alike.
+  The section is resolved **server-side** against what the viewer may see
+  (`resolveMemberSection(view, memberSectionsFor(page))` in `features/projects/core/member-sections.ts`,
+  called by `MembersView`), so a management section opened by someone who cannot manage lands on
+  Members; a tab switch rewrites the address in place (`replaceState`, every other parameter kept)
+  rather than navigating. `/messages/[conversationId]/members` offers the roster alone. The footer's
+  zoom rig + far-right **Invite** trigger is resolved by `membersFooterFor` (after
+  `submissionsFooterFor`) and, on the conversation route, by `conversationFooterFor`.
+
 - **The asset hub `/files` is a wildcard tree route too**, and for the same reason: a folder must be
   a URL. `files/index.tsx` **re-exports** `files/[...path].tsx` rather than duplicating it, so
   `/files` and `/files/Brand/Logos` cannot drift in how they resolve. `AssetListPage.readOnly` is a

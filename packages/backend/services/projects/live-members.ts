@@ -3,14 +3,17 @@ import type { ReadActor } from "../read-actor.ts";
 import type {
 	ChannelKind,
 	MemberInvite,
+	MemberRequest,
 	MemberRole,
 	MemberRosterPage,
 	MemberRosterParams,
+	MemberSession,
 	MemberStageRef,
 	MemberViewerCaps,
 	ProjectFormat,
 	ProjectMemberRow,
 	RemovalImpact,
+	SessionAttendance,
 	StageAssignment,
 } from "@projective/types/projects";
 import {
@@ -115,6 +118,10 @@ const PARTICIPANT_COLUMNS = "id, profile_type, profile_id, role, created_at";
 const INVITATION_COLUMNS =
 	"id, project_stage_id, target_email, target_user_id, role, inviter_user_id, status, created_at, expires_at, accepted_at, declined_at, dismissed_at, placeholder";
 
+/** The `projects.project_applications` columns one request needs, with its target rows embedded. */
+const APPLICATION_COLUMNS =
+	"id, applicant_user_id, applicant_type, message, created_at, project_application_targets(target_type, target_id)";
+
 /**
  * The `projects.stage_assignments.status` values that mean the seat is HELD.
  *
@@ -186,6 +193,9 @@ const MONTHS = [
 	"Nov",
 	"Dec",
 ] as const;
+
+/** UTC weekday abbreviations for a session slot label, indexed by `getUTCDay()`. */
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 const DAY_MS = 86_400_000;
 
@@ -273,6 +283,17 @@ interface InvitationRow {
 	declined_at: string | null;
 	/** The client's acknowledgement of a declined/expired record — such a row leaves the list. */
 	dismissed_at: string | null;
+}
+
+/** One `projects.project_applications` row, as selected by {@link APPLICATION_COLUMNS}. */
+interface ApplicationRow {
+	id: string;
+	applicant_user_id: string;
+	/** `freelancer` or `team` — the `assignment_type` the accept will cast it to. */
+	applicant_type: string;
+	message: string | null;
+	created_at: string;
+	project_application_targets: { target_type: string; target_id: string }[] | null;
 }
 
 /** One `comms.project_channels` row, for the routed channel's identity. */
@@ -691,6 +712,167 @@ export async function fetchDeclinedInvitations(
 	return out;
 }
 
+/** The target an application is answered against, by the precedence `assign_from_application` uses. */
+function primaryTarget(
+	targets: ApplicationRow["project_application_targets"],
+): { target_type: string; target_id: string } | null {
+	const rank = (type: string) => (type === "seat" ? 0 : type === "role" ? 1 : 2);
+	return [...(targets ?? [])].sort((a, b) => rank(a.target_type) - rank(b.target_type))[0] ?? null;
+}
+
+/**
+ * The project's OPEN applications — the Members tab's Requests section.
+ *
+ * Read only for a managing viewer: the SELECT policy (`View own or owned applications`) already
+ * limits the table to the applicant and `can_review_project`, and the call site adds the roster's own
+ * management gate on top so a delivery-side participant never receives a queue the surface would not
+ * show them. A seat or staffing-role target resolves to the stage it belongs to, so the stage filter
+ * and {@link requestsForScope} narrow every application the same way whatever it targeted.
+ *
+ * A failure degrades to `[]`: a roster without its request queue is still a roster.
+ */
+async function fetchApplications(
+	actor: ReadActor & { accessToken: string },
+	db: SupabaseClient,
+	projectId: string,
+	stageNames: ReadonlyMap<string, string>,
+	nowMs: number,
+): Promise<MemberRequest[]> {
+	const { data, error } = await db
+		.from("project_applications")
+		.select(APPLICATION_COLUMNS)
+		.eq("project_id", projectId)
+		.eq("status", "pending")
+		.order("created_at", { ascending: false });
+	if (error) return [];
+	const rows = (data ?? []) as unknown as ApplicationRow[];
+	if (rows.length === 0) return [];
+
+	const targets = rows.map((row) => primaryTarget(row.project_application_targets));
+	const idsOf = (type: string) =>
+		targets.filter((t) => t?.target_type === type).map((t) =>
+			(t as { target_id: string }).target_id
+		);
+	const roleIds = idsOf("role");
+	const seatIds = idsOf("seat");
+
+	const [roles, seats, parties] = await Promise.all([
+		roleIds.length > 0
+			? db.from("stage_staffing_roles").select("id, project_stage_id, role_title").in("id", roleIds)
+			: Promise.resolve({ data: [], error: null }),
+		seatIds.length > 0
+			? db.from("stage_open_seats").select("id, project_stage_id").in("id", seatIds)
+			: Promise.resolve({ data: [], error: null }),
+		fetchParties(actor, rows.map((row) => row.applicant_user_id)),
+	]);
+	const roleById = new Map(
+		((roles.data ?? []) as { id: string; project_stage_id: string; role_title: string | null }[])
+			.map((role) => [role.id, role]),
+	);
+	const seatStage = new Map(
+		((seats.data ?? []) as { id: string; project_stage_id: string }[])
+			.map((seat) => [seat.id, seat.project_stage_id]),
+	);
+
+	return rows.map((row, i) => {
+		const target = targets[i];
+		const role = target?.target_type === "role" ? roleById.get(target.target_id) : undefined;
+		const stageId = !target
+			? null
+			: target.target_type === "stage"
+			? target.target_id
+			: target.target_type === "seat"
+			? seatStage.get(target.target_id) ?? null
+			: role?.project_stage_id ?? null;
+		const appliedAt = toIso(row.created_at);
+		return {
+			id: clampOr(row.id, 120, "application"),
+			applicant: partyOf(parties.get(row.applicant_user_id)),
+			applicantKind: row.applicant_type === "team" ? "team" : "freelancer",
+			stageId: stageId ? clamp(stageId, 120) : null,
+			stageName: stageId ? (stageNames.get(stageId) ?? null) : null,
+			roleName: role?.role_title ? clamp(role.role_title, 120) : null,
+			message: row.message ? clamp(row.message, 4000) : null,
+			appliedAt,
+			appliedLabel: clamp(agoLabel(appliedAt, nowMs), 28),
+		};
+	});
+}
+
+/** A sitting's label in UTC ("Thu 17 Jul · 14:30 UTC") — the roster's SSR == client rule. */
+function slotLabel(iso: string): string {
+	const d = new Date(iso);
+	if (Number.isNaN(d.getTime())) return "";
+	const hh = String(d.getUTCHours()).padStart(2, "0");
+	const mm = String(d.getUTCMinutes()).padStart(2, "0");
+	return `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} ${
+		MONTHS[d.getUTCMonth()]
+	} · ${hh}:${mm} UTC`;
+}
+
+/** A cohort membership's free-text `status` onto the attendance a roster row shows. */
+function toAttendance(raw: string | null | undefined): SessionAttendance {
+	if (raw === "active" || raw === "confirmed") return "confirmed";
+	if (raw === "cancelled" || raw === "declined" || raw === "left" || raw === "removed") {
+		return "declined";
+	}
+	return "pending";
+}
+
+/**
+ * The seat picture of a `session` engagement, and each attendee's standing on it, from the project's
+ * cohorts (`projects.cohorts.max_seats`), their memberships, and the next scheduled sitting
+ * (`projects.session_events`). A cohort that has completed or been cancelled holds no seats.
+ *
+ * `null` when the project has no cohort the viewer can read, and on any failed read: the capacity line
+ * is a summary, and a roster without it is still truthful where an invented figure would not be.
+ */
+async function fetchSessionSeats(
+	db: SupabaseClient,
+	projectId: string,
+	nowMs: number,
+): Promise<{ session: MemberSession; attendance: Map<string, SessionAttendance> } | null> {
+	const cohorts = await db.from("cohorts").select("id, max_seats, status").eq(
+		"project_id",
+		projectId,
+	);
+	if (cohorts.error) return null;
+	const live = ((cohorts.data ?? []) as { id: string; max_seats: number; status: string }[])
+		.filter((cohort) => cohort.status !== "completed" && cohort.status !== "cancelled");
+	if (live.length === 0) return null;
+	const ids = live.map((cohort) => cohort.id);
+
+	const [memberships, next] = await Promise.all([
+		db.from("cohort_memberships").select("user_id, status").in("cohort_id", ids),
+		db.from("session_events")
+			.select("start_time")
+			.in("cohort_id", ids)
+			.eq("status", "scheduled")
+			.gte("start_time", new Date(nowMs).toISOString())
+			.order("start_time", { ascending: true })
+			.limit(1),
+	]);
+	if (memberships.error) return null;
+
+	const attendance = new Map<string, SessionAttendance>();
+	for (const row of (memberships.data ?? []) as { user_id: string; status: string | null }[]) {
+		attendance.set(row.user_id, toAttendance(row.status));
+	}
+	const seatCap = live.reduce((sum, cohort) => sum + Math.max(0, cohort.max_seats), 0);
+	const seatsTaken = [...attendance.values()].filter((a) => a === "confirmed").length;
+	const nextAt = ((next.data ?? []) as { start_time: string }[])[0]?.start_time ?? null;
+
+	return {
+		session: {
+			mode: seatCap > 1 || attendance.size > 1 ? "group" : "solo",
+			seatCap,
+			seatsTaken,
+			nextSlotLabel: nextAt ? clamp(slotLabel(toIso(nextAt)), 60) : null,
+		},
+		attendance,
+	};
+}
+
 // #endregion
 
 // #region Roster assembly
@@ -945,6 +1127,16 @@ export async function fetchMemberRoster(
 		startedStageIds,
 	);
 
+	// A session's attendees carry where they stand on its sittings; every other format carries none.
+	const format = toFormat(project.format);
+	const sessionSeats = format === "session" ? await fetchSessionSeats(db, project.id, nowMs) : null;
+	if (sessionSeats) {
+		for (const entry of entries) {
+			const attendance = sessionSeats.attendance.get(entry.userId);
+			if (attendance) entry.row = { ...entry.row, attendance };
+		}
+	}
+
 	// The viewer's own row is the source of their role. A caller holding neither the owner seat nor a
 	// participant row — a stranger reading a public engagement — is a `guest`: the schema's own
 	// "read-limited external observer" and the least-privileged member of the union, so an identity we
@@ -969,10 +1161,14 @@ export async function fetchMemberRoster(
 		viewerStages,
 	);
 
-	// The queue is a management concern AND, on this table, an access control — see `fetchInvitations`.
-	const invites = viewerCaps.canInvite
-		? await fetchInvitations(actor, db, project.id, stageNames, nowMs, seatIdByUser)
-		: [];
+	// Both queues are a management concern — and, on the invitation table, an access control (see
+	// `fetchInvitations`). Issued together: neither depends on the other.
+	const [invites, requests] = viewerCaps.canInvite
+		? await Promise.all([
+			fetchInvitations(actor, db, project.id, stageNames, nowMs, seatIdByUser),
+			fetchApplications(actor, db, project.id, stageNames, nowMs),
+		])
+		: [[], []];
 
 	return {
 		scope,
@@ -985,9 +1181,11 @@ export async function fetchMemberRoster(
 		// the list on this.
 		stageId: channelStageId ? clamp(channelStageId, 120) : null,
 		projectTitle: clampOr(project.title, 160, "Untitled project"),
-		format: toFormat(project.format),
+		format,
 		members,
 		invites,
+		requests,
+		session: sessionSeats?.session ?? null,
 		stages,
 		// `""` when the caller holds no seat: the field is `max(120)` with no `min`, so the empty string
 		// is the schema's own "no row here is yours" and the surface's "You" marker matches nothing.

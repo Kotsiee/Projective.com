@@ -1,8 +1,10 @@
 import type {
 	MemberInvite,
+	MemberRequest,
 	MemberRole,
 	MemberRosterPage,
 	MemberRosterParams,
+	MemberSession,
 	MemberStageRef,
 	MemberViewerCaps,
 	ProjectDetail,
@@ -10,6 +12,7 @@ import type {
 	ProjectMemberRow,
 	ProjectParty,
 	RemovalImpact,
+	SessionAttendance,
 	StageAssignment,
 } from "@projective/types/projects";
 import { findProjectDetail } from "./detail-fixtures.ts";
@@ -477,6 +480,138 @@ function stageNameFor(
 }
 // #endregion
 
+// #region Requests
+/**
+ * The people who have APPLIED to an engagement — kept apart from {@link EXTRA_CAST} because an
+ * applicant is, by definition, not yet on the roster. One is a team so the team-lead application is
+ * reachable from the stub; one wrote no cover note so the quiet case renders too.
+ */
+const APPLICANT_CAST: ReadonlyArray<
+	{ party: ProjectParty; kind: "freelancer" | "team"; note: string | null }
+> = [
+	{
+		party: { name: "Ivy Chen", avatar: FACE("photo-1534528741775-53994a69daeb"), handle: "ivy" },
+		kind: "freelancer",
+		note: "I shipped a near-identical onboarding flow last quarter and can start on Monday.",
+	},
+	{
+		party: {
+			name: "Mateo Silva",
+			avatar: FACE("photo-1506794778202-cad84cf45f1d"),
+			handle: "mateo",
+		},
+		kind: "freelancer",
+		note: null,
+	},
+	{
+		party: { name: "Northwind Studio", avatar: null, handle: "northwind" },
+		kind: "team",
+		note: "Our three-person team covers research, UI and front-end build for this stage.",
+	},
+];
+
+/**
+ * A deterministic queue of open applications (only surfaced to a managing viewer, and only on an
+ * engagement with stages to apply to). One to three applicants per project off the slug hash, each
+ * addressed to a stage, so the stage filter and a stage page's narrowing both have something to do.
+ * A request the stub has already answered is dropped by the service, not here.
+ */
+function buildRequests(detail: ProjectDetail, stages: MemberStageRef[]): MemberRequest[] {
+	if (stages.length === 0) return [];
+	const seed = hash(detail.slug);
+	const count = 1 + (seed % APPLICANT_CAST.length);
+	return APPLICANT_CAST.slice(0, count).map((applicant, i) => {
+		const stage = stages[(seed + i) % stages.length];
+		const at = NOW - (i * 2 + 1) * DAY;
+		return {
+			id: `${detail.slug}-req-${i}`,
+			applicant: applicant.party,
+			applicantKind: applicant.kind,
+			stageId: stage.id,
+			stageName: stage.name,
+			roleName: null,
+			message: applicant.note,
+			appliedAt: new Date(at).toISOString(),
+			appliedLabel: agoLabel(at),
+		};
+	});
+}
+
+/**
+ * The fixture request an application id names, with the project it was made to — the stub accept's
+ * way back from a bare id to the person it seats. `undefined` for an id this corpus never minted.
+ */
+export function findFixtureRequest(
+	applicationId: string,
+): { projectId: string; request: MemberRequest; stages: MemberStageRef[] } | undefined {
+	const match = /^(.+)-req-\d+$/.exec(applicationId);
+	if (!match) return undefined;
+	const detail = findProjectDetail(match[1]);
+	if (!detail) return undefined;
+	const stages = effectiveStages(detail, detail.format);
+	const request = buildRequests(detail, stages).find((r) => r.id === applicationId);
+	return request ? { projectId: match[1], request, stages } : undefined;
+}
+// #endregion
+
+// #region Session seats
+const SLOT_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const SLOT_MONTHS = [
+	"Jan",
+	"Feb",
+	"Mar",
+	"Apr",
+	"May",
+	"Jun",
+	"Jul",
+	"Aug",
+	"Sep",
+	"Oct",
+	"Nov",
+	"Dec",
+] as const;
+
+/** Whether a role books a seat on a session (the attendee side) rather than hosting it. */
+function attendsSessions(role: MemberRole): boolean {
+	return role === "client" || role === "member" || role === "guest";
+}
+
+/**
+ * The seat picture of a `session` engagement, and each attendee's standing, derived off the slug hash:
+ * every other engagement is a group cohort (a third of those uncapped), the rest a 1-1 booking. The
+ * attendance spread reaches all three states on any roster large enough to show them.
+ */
+function sessionSeats(
+	detail: ProjectDetail,
+	rows: ProjectMemberRow[],
+): { session: MemberSession; rows: ProjectMemberRow[] } {
+	const seed = hash(detail.slug);
+	const group = seed % 2 === 0;
+	const wheel: SessionAttendance[] = ["confirmed", "confirmed", "pending", "declined"];
+	let attendees = 0;
+	const marked = rows.map((row) => {
+		if (!attendsSessions(row.role)) return row;
+		if (!group && attendees > 0) return row;
+		attendees += 1;
+		const attendance = attendees === 1 ? "confirmed" : wheel[hash(row.id) % wheel.length];
+		return { ...row, attendance };
+	});
+	const slot = new Date(NOW + ((seed % 5) + 1) * DAY);
+	slot.setUTCHours([10, 14, 16][seed % 3], 30, 0, 0);
+	return {
+		session: {
+			mode: group ? "group" : "solo",
+			seatCap: group ? (seed % 3 === 0 ? null : 12) : 1,
+			seatsTaken: marked.filter((row) => row.attendance === "confirmed").length,
+			nextSlotLabel: `${SLOT_WEEKDAYS[slot.getUTCDay()]} ${slot.getUTCDate()} ${
+				SLOT_MONTHS[slot.getUTCMonth()]
+			} · ${String(slot.getUTCHours()).padStart(2, "0")}:30 UTC`,
+		},
+		rows: marked,
+	};
+}
+// #endregion
+
 // #region Public builder
 /**
  * Resolve the routed channel's identity (name + kind + whether it is a stage, and which), or null in
@@ -534,13 +669,17 @@ export function findMemberRoster(params: MemberRosterParams): MemberRosterPage |
 	let rows = baseRows(detail, stages);
 	rows = withAssignment(rows, scope, identity.isStage);
 	const marked = markViewer(rows, viewer, stages, scope, identity.isStage);
-	const viewerStages = marked.rows.find((r) => r.id === marked.viewerId)?.assignedStages ?? [];
-	const visible = visibleTo(marked.rows, viewer, scope, identity.isStage, viewerStages);
+	const seats = format === "session" ? sessionSeats(detail, marked.rows) : null;
+	const allRows = seats?.rows ?? marked.rows;
+	const viewerStages = allRows.find((r) => r.id === marked.viewerId)?.assignedStages ?? [];
+	const visible = visibleTo(allRows, viewer, scope, identity.isStage, viewerStages);
 
-	// The pending queue is a management concern — only a managing viewer sees it, and the dev toggle can
-	// force it off/on. Total counts the full participant list (independent of the viewer's visibility).
+	// Both queues are a management concern — only a managing viewer sees them, and the dev toggles can
+	// force each off/on. Total counts the full participant list (independent of the viewer's visibility).
 	const includeInvites = viewer.caps.canInvite && (params.simPendingInvites ?? true);
 	const invites = includeInvites ? buildInvites(detail, stages) : [];
+	const includeRequests = viewer.caps.canInvite && (params.simPendingRequests ?? true);
+	const requests = includeRequests ? buildRequests(detail, stages) : [];
 
 	return {
 		scope,
@@ -553,6 +692,8 @@ export function findMemberRoster(params: MemberRosterParams): MemberRosterPage |
 		format,
 		members: visible,
 		invites,
+		requests,
+		session: seats?.session ?? null,
 		stages,
 		viewerId: marked.viewerId,
 		viewerRole: viewer.role,

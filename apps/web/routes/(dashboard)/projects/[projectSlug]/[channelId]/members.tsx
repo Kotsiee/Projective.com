@@ -2,6 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { resolveMemberRoster } from "@web/features/projects/core/members-ssr.ts";
 import { MembersView } from "@web/features/projects/components/workspace-views.tsx";
 import { readActor } from "@web/utils/api-session.ts";
+import { MEMBER_SECTION_PARAM } from "@web/features/projects/core/member-sections.ts";
 
 /**
  * Members tab — the channel/stage-scoped roster (`/projects/[projectId]/[channelId]/members`): the
@@ -16,5 +17,13 @@ export default define.page(async function ChannelMembersPage(ctx) {
 	const actor = readActor(ctx);
 	const { projectSlug: projectId, channelId } = ctx.params;
 	const { page } = await resolveMemberRoster(projectId, actor, channelId);
-	return <MembersView scope="channel" id={projectId} channelId={channelId} initial={page} />;
+	return (
+		<MembersView
+			scope="channel"
+			id={projectId}
+			channelId={channelId}
+			initial={page}
+			view={ctx.url.searchParams.get(MEMBER_SECTION_PARAM)}
+		/>
+	);
 });

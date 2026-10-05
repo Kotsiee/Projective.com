@@ -1195,6 +1195,16 @@ FROM public, anon;
 GRANT
 EXECUTE ON FUNCTION projects.get_viewer_hired_teams (uuid) TO authenticated;
 
+-- --- the Members tab's Requests section (00001130 §7b: reject_application) ---
+--
+-- The owner's decline of an applicant. The function checks `can_review_project` itself, so a signed-in
+-- caller is the only gate needed here; a guest has no `auth.uid()` and nothing to review.
+REVOKE ALL ON FUNCTION projects.reject_application (uuid)
+FROM public, anon;
+
+GRANT
+EXECUTE ON FUNCTION projects.reject_application (uuid) TO authenticated;
+
 -- #region The workspace console (Teams & Businesses, Decision #122)
 -- The write and read doors of /teams and /businesses. Each is a definer that resolves the caller from
 -- auth.uid() and checks the workspace capability it needs (org.fn_member_can) — never a role name —

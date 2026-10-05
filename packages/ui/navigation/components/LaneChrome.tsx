@@ -80,6 +80,12 @@ export interface LaneTabsProps<T extends string = string> {
 	value: T;
 	options: readonly LaneTabOption<T>[];
 	onSelect: (value: T) => void;
+	/**
+	 * The id of the `role="tabpanel"` region the tabs switch. When set, each tab gets the id
+	 * `{panelId}-tab-{value}` and `aria-controls={panelId}`, so the panel can name itself with
+	 * `aria-labelledby` the selected tab's id. Omit it when the tabs filter a list in place.
+	 */
+	panelId?: string;
 	class?: string;
 }
 
@@ -123,6 +129,8 @@ export function LaneTabs<T extends string = string>(props: LaneTabsProps<T>): JS
 						key={tab.value}
 						type="button"
 						role="tab"
+						id={props.panelId ? `${props.panelId}-tab-${tab.value}` : undefined}
+						aria-controls={props.panelId}
 						aria-selected={selected}
 						tabIndex={selected ? 0 : -1}
 						class="ui-lane-tabs__tab"

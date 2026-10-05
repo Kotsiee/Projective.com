@@ -464,6 +464,18 @@ naming its status. Takes the seat as a `stage_assignments` row (`assigned`), mar
 moves an `open` stage to `assigned`, and notifies the applicant (`application.accepted`, deep-linked
 to `/projects/{slug}`). The client lands on funding next — the seat is real once its escrow is.
 
+### `projects.reject_application(p_application_id uuid) → jsonb`
+
+`00001130` §7b, `SECURITY DEFINER`; `EXECUTE` → `authenticated` (revoked from `public`/`anon` in
+`00002510`). The owner declines an applicant — the Members tab's Requests section. Locks the
+application row first (so a concurrent accept and decline cannot both land), then refuses: an unknown
+id (`no_data_found`), a caller who cannot review the project (`insufficient_privilege`), anything not
+`pending` (`check_violation`, naming its status). Marks the application `rejected` — the same status a
+filled seat gives its other applicants, so "declined" and "not selected" are one state to the
+applicant — logs `application_rejected` on `project_activity`, and notifies the applicant
+(`application.declined`, deep-linked to their conversation with the owner). Nothing else moves: no
+assignment existed, so nothing is released. Returns `fn_serialize_application`.
+
 ### `projects.get_engagement_context(p_counterpart uuid) → jsonb`
 
 `SECURITY DEFINER`, `EXECUTE` → `authenticated`. The conversation context panel's one read: between

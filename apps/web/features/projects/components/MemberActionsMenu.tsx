@@ -1,17 +1,18 @@
 import type { JSX, RefObject, VNode } from "preact";
 import { useSignal } from "@preact/signals";
 import { Popover } from "@projective/ui/feedback";
+import { Icon } from "@projective/ui/icons";
 import type { MemberViewerCaps, ProjectMemberRow } from "../types/projects-types.ts";
-import { KebabIcon, TrashIcon } from "./glyphs.tsx";
+import { profileHref } from "../core/routing.ts";
 import { ShieldIcon, UserMinusIcon, UserPlusIcon } from "./member-glyphs.tsx";
 
 /**
- * MemberActionsMenu — the per-row management menu for admins / owners / managers (task §2). A kebab
- * trigger opens a compact Popover whose items render directly in `ui-popover__content` (matching the
- * feed card / profile-lane menu idiom): Edit member (role + stage assignments), a channel-stage quick
- * Assign/Unassign toggle, and Remove from project. Each item is a real button with an icon + label; the
- * menu closes after a pick. Rendered only for a manageable, non-self row (the island gates on
- * {@link MemberViewerCaps} + `isViewer`), so every item here is already permitted.
+ * MemberActionsMenu — the kebab on a roster card or row: the secondary actions on one participant. A
+ * native-button trigger (a `Popover` anchors on a real element) opens a compact menu: open the full
+ * profile in a new tab, change role (and stages, on a pipeline), the stage-channel quick Assign /
+ * Unassign toggle, and Remove. Each item is a real control with an icon and a label; the menu closes
+ * after a pick. The island renders it only for rows the viewer may act on, so every item shown is
+ * permitted — but "Open full profile" needs no permission, so a non-managing viewer still gets it.
  */
 export interface MemberActionsMenuProps {
 	member: ProjectMemberRow;
@@ -19,16 +20,24 @@ export interface MemberActionsMenuProps {
 	stageChannel: boolean;
 	/** The routed stage name (for the quick-toggle label), or null. */
 	stageName: string | null;
+	/** Whether stages are a dimension on this engagement — decides the edit item's wording. */
+	showStages: boolean;
 	caps: MemberViewerCaps;
+	/** The row may be managed (a managing viewer, not their own row). */
+	manageable: boolean;
 	onEdit: (member: ProjectMemberRow) => void;
 	onQuickAssign: (member: ProjectMemberRow, assign: boolean) => void;
 	onRemove: (member: ProjectMemberRow) => void;
 }
 
-/** One menu row. */
-function Item(
-	props: { icon: VNode; label: string; onClick: () => void; danger?: boolean },
-): JSX.Element {
+interface ItemProps {
+	icon: VNode;
+	label: string;
+	danger?: boolean;
+	onClick: () => void;
+}
+
+function Item(props: ItemProps): JSX.Element {
 	return (
 		<button
 			type="button"
@@ -43,13 +52,16 @@ function Item(
 	);
 }
 
-export function MemberActionsMenu(props: MemberActionsMenuProps): JSX.Element {
-	const { member, stageChannel, stageName, caps } = props;
+export function MemberActionsMenu(props: MemberActionsMenuProps): JSX.Element | null {
+	const { member, stageChannel, stageName, caps, manageable } = props;
 	const open = useSignal(false);
+	const handle = member.party.handle;
 	const assigned = member.assignment === "contributor";
-	// The quick toggle is meaningful for a hired contributor / team seat on a stage channel.
-	const quickAssignable = stageChannel && caps.canAssign &&
+	const canEdit = manageable && (caps.canEditRoles || caps.canAssign);
+	const quickAssignable = manageable && stageChannel && caps.canAssign &&
 		(member.role === "freelancer" || member.role === "member");
+	const canRemove = manageable && caps.canRemove;
+	if (!handle && !canEdit && !quickAssignable && !canRemove) return null;
 
 	const pick = (fn: () => void) => () => {
 		open.value = false;
@@ -65,37 +77,52 @@ export function MemberActionsMenu(props: MemberActionsMenuProps): JSX.Element {
 				<button
 					type="button"
 					ref={api.ref as RefObject<HTMLButtonElement>}
-					class="mem-iconbtn mem-row__kebab"
+					class="mem-iconbtn"
 					aria-haspopup="menu"
 					aria-expanded={api.expanded}
 					aria-controls={api.panelId}
-					aria-label={`Manage ${member.party.name}`}
+					aria-label={`More actions for ${member.party.name}`}
 					onClick={api.toggle}
 				>
-					{KebabIcon}
+					<Icon name="kebab" size="sm" />
 				</button>
 			)}
 		>
 			<div class="mem-menu" role="menu" aria-label={`Actions for ${member.party.name}`}>
-				{(caps.canEditRoles || caps.canAssign) && (
+				{handle && (
+					<a
+						role="menuitem"
+						class="mem-menu__item"
+						href={profileHref(handle)}
+						target="_blank"
+						rel="noopener"
+						onClick={() => (open.value = false)}
+					>
+						<span class="mem-menu__icon" aria-hidden="true">
+							<Icon name="external-link" size="sm" />
+						</span>
+						<span class="mem-menu__label">Open full profile</span>
+					</a>
+				)}
+				{canEdit && (
 					<Item
-						icon={ShieldIcon}
-						label="Edit member"
+						icon={<ShieldIcon />}
+						label={props.showStages ? "Change role & stages" : "Change role"}
 						onClick={pick(() => props.onEdit(member))}
 					/>
 				)}
 				{quickAssignable && (
 					<Item
-						icon={assigned ? UserMinusIcon : UserPlusIcon}
+						icon={assigned ? <UserMinusIcon /> : <UserPlusIcon />}
 						label={assigned
 							? `Unassign from ${stageName ?? "stage"}`
 							: `Assign to ${stageName ?? "stage"}`}
 						onClick={pick(() => props.onQuickAssign(member, !assigned))}
 					/>
 				)}
-				{caps.canRemove && (
+				{canRemove && (
 					<Item
-						icon={TrashIcon}
+						icon={<Icon name="trash" size="sm" />}
 						label="Remove from project"
 						danger
 						onClick={pick(() => props.onRemove(member))}

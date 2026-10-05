@@ -8,9 +8,9 @@ import { ASSIGNABLE_ROLES } from "../core/member-model.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
- * MemberEditDialog — the combined "Edit Member" surface (task §2.2 "Edit Member Role" + the multi-stage
+ * MemberEditDialog — the combined "Change role" surface (task §2.2 "Edit Member Role" + the multi-stage
  * form of §2.2 "Assign/Unassign Stage"). A modal {@link Dialog} letting an admin/owner/manager change a
- * participant's role and set which stages they contribute to, in one place. STUB persistence — the save
+ * participant's role and — on a pipeline — set which stages they contribute to, in one place. STUB persistence — the save
  * flips the roster optimistically; the live path (the participant-role + stage-assignment RPCs) lands
  * behind `PROJECTS_BACKEND_LIVE`. Reseeds its controls whenever a different member is opened.
  */
@@ -18,6 +18,8 @@ export interface MemberEditDialogProps {
 	open: import("@preact/signals").Signal<boolean>;
 	member: ProjectMemberRow | null;
 	stages: MemberStageRef[];
+	/** Whether stages are a dimension of this engagement — a one-off or a session edits the role alone. */
+	showStages: boolean;
 	onSave: (memberId: string, role: MemberRole, stageNames: string[]) => void;
 	onClose: () => void;
 }
@@ -36,7 +38,9 @@ export function MemberEditDialog(props: MemberEditDialogProps): JSX.Element {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [member?.id]);
 
-	const stageOptions = stages.map((s) => ({ label: s.name, value: s.name }));
+	const stageOptions = !props.showStages
+		? []
+		: stages.map((s) => ({ label: s.name, value: s.name }));
 
 	function save(): void {
 		if (!member) return;
@@ -47,7 +51,7 @@ export function MemberEditDialog(props: MemberEditDialogProps): JSX.Element {
 	return (
 		<Dialog
 			visible={props.open}
-			header="Edit member"
+			header={props.showStages ? "Change role & stages" : "Change role"}
 			width="30rem"
 			onVisibleChange={(v) => !v && props.onClose()}
 			class="mem-dialog"

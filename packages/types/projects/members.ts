@@ -8,7 +8,8 @@ import { ChannelKind } from "./detail.ts";
  * `detail.ts` is the thin participant chip the sidebar shows, THIS is the deep management projection the
  * Members tab renders: each participant with their access role, stage assignment (contributor vs
  * observer), presence, assigned-stage / ticket summary, contact handle, and join date — plus the
- * pending-invitation queue and the viewer capability flags that gate the client/admin/manager actions.
+ * invitation queue, the open applications, a session's seat picture, and the viewer capability flags
+ * that gate the client/admin/manager actions.
  *
  * Like {@link ProjectDetailSchema} / {@link FileListPageSchema} this is a READ projection, not a table
  * row — the fat {@link ProjectBackendService} DERIVES it deterministically from the resolved
@@ -77,6 +78,14 @@ export type InviteStatus = z.infer<typeof InviteStatus>;
 /** What a managing viewer may do to an invitation, decided by its status alone. */
 export const InviteAction = z.enum(["cancel", "dismiss", "remove"]);
 export type InviteAction = z.infer<typeof InviteAction>;
+
+/**
+ * Where a session attendee stands on the engagement's sittings — `confirmed` holds a seat,
+ * `pending` has been offered one and not answered, `declined` said no. A lifecycle status (it
+ * changes), so the roster may contain it in a status tag (DESIGN_SYSTEM §B.11.3).
+ */
+export const SessionAttendance = z.enum(["confirmed", "pending", "declined"]);
+export type SessionAttendance = z.infer<typeof SessionAttendance>;
 
 /**
  * The one client action an invitation in a given state admits, or `null`.
@@ -231,8 +240,73 @@ export const ProjectMemberRowSchema = z.object({
 	 * {@link NO_REMOVAL_IMPACT}, which is the neutral value and never a guess.
 	 */
 	impact: RemovalImpactSchema.optional(),
+	/**
+	 * On a `session` engagement, where this attendee stands on its sittings — see
+	 * {@link SessionAttendance}. `null`/absent for the host side and on every non-session roster.
+	 */
+	attendance: SessionAttendance.nullable().optional(),
 });
 export type ProjectMemberRow = z.infer<typeof ProjectMemberRowSchema>;
+// #endregion
+
+// #region Inbound request
+/**
+ * One PENDING application to the engagement — the Members tab's Requests section, the owner's side of
+ * `PRODUCT_SPEC.md` §The Hiring Process "The Inbound Request". Only open applications are carried: an
+ * accepted one is a roster row, a rejected or withdrawn one is history the owner has already answered.
+ *
+ * The cover note is carried as stored — `projects.apply_to_project` masks it while the project is
+ * protected — and is the applicant's own words, so it renders as content rather than metadata.
+ */
+export const MemberRequestSchema = z.object({
+	/** The application id — the key `accept` / `reject` act on. */
+	id: z.string().min(1).max(120),
+	applicant: ProjectPartySchema,
+	/** Whether a freelancer applied as themselves or a team lead applied for their team. */
+	applicantKind: z.enum(["freelancer", "team"]),
+	/** The stage the application targets (a seat's or a staffing role's stage resolves to it). */
+	stageId: z.string().max(120).nullable(),
+	stageName: z.string().max(120).nullable(),
+	/** The staffing role named, when the stage lists them. */
+	roleName: z.string().max(120).nullable(),
+	/** The cover note, as stored (PII-masked during the protected phase); `null` when none was written. */
+	message: z.string().max(4000).nullable(),
+	appliedAt: z.string(),
+	/** Pre-formatted relative age ("2 days ago"). */
+	appliedLabel: z.string().max(28),
+});
+export type MemberRequest = z.infer<typeof MemberRequestSchema>;
+
+/**
+ * The requests a STAGE-scoped roster lists: exactly those addressed to that stage — the
+ * {@link invitesForScope} rule applied to the inbound half, so the two queues a stage page shows agree
+ * about what "this stage" means. Project scope (`stageId` null) lists everything.
+ */
+export function requestsForScope(
+	requests: readonly MemberRequest[],
+	stageId: string | null,
+): MemberRequest[] {
+	if (stageId === null) return [...requests];
+	return requests.filter((request) => request.stageId === stageId);
+}
+// #endregion
+
+// #region Session summary
+/**
+ * The seat picture of a `session` engagement — the Members tab's capacity line. `solo` is a 1-1
+ * booking; `group` is a cohort with an optional seat cap (`PRODUCT_SPEC.md` §Session Services: "Group
+ * sessions allow for multiple attendees with optional seat caps").
+ */
+export const MemberSessionSchema = z.object({
+	mode: z.enum(["solo", "group"]),
+	/** The cohort's seat cap; `null` when the cohort is uncapped. */
+	seatCap: z.number().int().min(0).nullable(),
+	/** Seats held by confirmed attendees. */
+	seatsTaken: z.number().int().min(0),
+	/** The next scheduled sitting, pre-formatted ("Thu 17 Jul · 14:30 UTC"); `null` when none is booked. */
+	nextSlotLabel: z.string().max(60).nullable(),
+});
+export type MemberSession = z.infer<typeof MemberSessionSchema>;
 // #endregion
 
 // #region Pending invitation
@@ -368,6 +442,8 @@ export const MemberRosterParamsSchema = z.object({
 	simProjectType: ProjectFormat.optional(),
 	/** DEV-ONLY. Force the pending-invitation queue on/off. */
 	simPendingInvites: z.boolean().optional(),
+	/** DEV-ONLY. Force the inbound-request (application) queue on/off. */
+	simPendingRequests: z.boolean().optional(),
 });
 export type MemberRosterParams = z.infer<typeof MemberRosterParamsSchema>;
 // #endregion
@@ -394,6 +470,14 @@ export const MemberRosterPageSchema = z.object({
 	format: ProjectFormat,
 	members: z.array(ProjectMemberRowSchema),
 	invites: z.array(MemberInviteSchema),
+	/**
+	 * Open applications to the engagement (already narrowed to a stage page's own stage by
+	 * {@link requestsForScope}). Carried only for a viewer who can invite — the same management gate as
+	 * {@link invites} — and always empty in `conversation` scope.
+	 */
+	requests: z.array(MemberRequestSchema).default([]),
+	/** The seat picture of a `session` engagement; `null` for every other format and scope. */
+	session: MemberSessionSchema.nullable().default(null),
 	/** Every stage of the engagement — the stage filter + the invite/assign picker. */
 	stages: z.array(MemberStageRefSchema),
 	/** The acting viewer's participant id — the "You" marker + self-action guard. */

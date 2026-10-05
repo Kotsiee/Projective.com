@@ -76,6 +76,7 @@ import {
 	overlaySubmissionPage,
 	overlaySummary,
 	putTicketCard,
+	recordApplicationSeat,
 	recordCreatedProject,
 	recordInviteAction,
 	recordInviteDecision,
@@ -109,7 +110,7 @@ import { replyFromMessage, replyRefusal } from "./message-replies.ts";
 import { findFilePage } from "./files-fixtures.ts";
 import { findSubmissionPage } from "./submissions-fixtures.ts";
 import { BOARD_FIXTURE_NOW, findBoardPage, findTicketProjectSlug } from "./board-fixtures.ts";
-import { findMemberRoster } from "./members-fixtures.ts";
+import { findFixtureRequest, findMemberRoster } from "./members-fixtures.ts";
 import { archiveDraft, getDraft, instantiateDraft, sweepStaleDrafts } from "./draft-store.ts";
 import { composeLoadedViewPage } from "../explore/live-view.ts";
 
@@ -146,6 +147,7 @@ import {
 	NO_REMOVAL_IMPACT,
 	providerScopedPage,
 	reconcileSetup,
+	requestsForScope,
 	resolveHireOffer,
 } from "@projective/types/projects";
 import { intakeRefusal, normaliseIntakeAnswers } from "@projective/types/services";
@@ -156,18 +158,27 @@ import { ProfileBackendService } from "../profile/ProfileBackendService.ts";
 import { MessagingBackendService } from "../messaging/MessagingBackendService.ts";
 import { dmConversationId } from "@projective/types/messaging";
 import { maskPii } from "@projective/types/comms";
-import { acceptApplicationLive, applyLive, respondLive } from "./live-applications.ts";
+import {
+	acceptApplicationLive,
+	applyLive,
+	rejectApplicationLive,
+	respondLive,
+} from "./live-applications.ts";
 import {
 	hasOpenStubApplication,
 	recordRequestDecision,
 	recordStubApplication,
+	requestDecisionOf,
 } from "./request-store.ts";
 import type {
 	AcceptApplication,
 	ApplicationAccepted,
+	ApplicationRejected,
 	ApplyToProject,
 	InvitationAnswered,
+	MemberRequest,
 	ProjectApplication,
+	RejectApplication,
 	RespondToInvitation,
 } from "@projective/types/projects";
 import type {
@@ -308,14 +319,59 @@ function liveFailed(method: string, error: unknown): void {
 }
 
 /**
- * Narrow a roster's invitation list to the routed stage — `invitesForScope`, applied ONCE here for
- * both branches so the fixture roster, the live roster and the stub overlay all answer a stage page
- * with the same rule: in a stage channel only the invitations addressed to THAT stage; in project
- * scope every one; dismissed records nowhere.
+ * Narrow a roster's invitation and request queues to the routed stage — `invitesForScope` and
+ * `requestsForScope`, applied ONCE here for both branches so the fixture roster, the live roster and
+ * the stub overlay all answer a stage page with the same rule: in a stage channel only the records
+ * addressed to THAT stage; in project scope every one; dismissed invitations nowhere.
  */
 function scopeInvites(page: MemberRosterPage): MemberRosterPage {
 	const invites = invitesForScope(page.invites, page.stageId);
-	return invites.length === page.invites.length ? page : { ...page, invites };
+	const requests = requestsForScope(page.requests, page.stageId);
+	return invites.length === page.invites.length && requests.length === page.requests.length
+		? page
+		: { ...page, invites, requests };
+}
+
+/**
+ * The roster row an accepted APPLICATION seats on the stub roster — the applicant as they applied,
+ * holding the stage they applied to, with every count at zero. The id follows the fixture cast's
+ * `{slug}-mem-{handle}` minting so a later read resolves the same row.
+ */
+function stubSeatFromRequest(
+	projectId: string,
+	request: MemberRequest,
+	nowMs: number,
+): ProjectMemberRow {
+	const d = new Date(nowMs);
+	const MONTHS = [
+		"Jan",
+		"Feb",
+		"Mar",
+		"Apr",
+		"May",
+		"Jun",
+		"Jul",
+		"Aug",
+		"Sep",
+		"Oct",
+		"Nov",
+		"Dec",
+	];
+	return {
+		id: `${projectId}-mem-${request.applicant.handle ?? request.id}`,
+		party: request.applicant,
+		email: "",
+		role: "freelancer",
+		assignment: null,
+		presence: "offline",
+		assignedStages: request.stageName ? [request.stageName] : [],
+		openTickets: 0,
+		ticketsLabel: "—",
+		joinedAt: d.toISOString(),
+		joinedLabel: `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`,
+		isViewer: false,
+		impact: NO_REMOVAL_IMPACT,
+	};
 }
 
 /**
@@ -1107,8 +1163,11 @@ export class ProjectBackendService {
 			return fail(404, { message: `No project found for id "${params.projectId}".` });
 		}
 		// Invitations sent from a seller's profile, and every stub-path transition on them, fold onto
-		// the list (fixture branch only) BEFORE the stage scoping — a hire may address another stage.
-		return ok({ page: scopeInvites(overlayMemberRoster(page, actor)) });
+		// the list (fixture branch only) BEFORE the stage scoping — a hire may address another stage. A
+		// request the stub has already answered is history, not a queue entry.
+		const overlaid = overlayMemberRoster(page, actor);
+		const open = overlaid.requests.filter((request) => requestDecisionOf(request.id) === null);
+		return ok({ page: scopeInvites({ ...overlaid, requests: open }) });
 	}
 
 	/**
@@ -1755,8 +1814,55 @@ export class ProjectBackendService {
 		);
 		if (live !== undefined) return live;
 
+		// A fixture request seats its applicant on the stub roster, as `assign_from_application` enrols
+		// them as a participant on the live one; any other id is a request the drawer answered.
+		const fixture = findFixtureRequest(input.applicationId);
+		if (fixture && requestDecisionOf(input.applicationId) === null) {
+			recordApplicationSeat(
+				writeOwnerOf(actor),
+				fixture.projectId,
+				stubSeatFromRequest(fixture.projectId, fixture.request, Date.now()),
+			);
+		}
 		recordRequestDecision(input.applicationId, "accepted");
 		return ok(done, { message: "Seat confirmed." });
+	}
+
+	/**
+	 * The client declines an applicant (`POST /api/projects/applications/reject`) through
+	 * `projects.reject_application` — the application becomes `rejected` and the applicant is told
+	 * with `application.declined`. Nothing else moves: no seat was taken, so nothing is released.
+	 */
+	static async rejectApplication(
+		input: RejectApplication,
+		actor: ReadActor,
+	): Promise<ServiceResult<ApplicationRejected>> {
+		const denied = requireIdentity<ApplicationRejected>(actor, "decline an applicant");
+		if (denied) return denied;
+		const done: ApplicationRejected = { id: input.applicationId, status: "rejected" };
+
+		const live = await liveWrite<ApplicationRejected>(
+			"rejectApplication",
+			actor,
+			input.applicationId,
+			"Application declined.",
+			async (a) => {
+				const outcome = await rejectApplicationLive(a, input.applicationId);
+				if (outcome === null || "refusal" in outcome) return outcome;
+				return { data: done };
+			},
+			"application",
+		);
+		if (live !== undefined) return live;
+
+		if (requestDecisionOf(input.applicationId) !== null) {
+			return fail(409, {
+				message: "This application has already been answered.",
+				errors: { applicationId: "answered" },
+			});
+		}
+		recordRequestDecision(input.applicationId, "declined");
+		return ok(done, { message: "Application declined." });
 	}
 
 	/**
