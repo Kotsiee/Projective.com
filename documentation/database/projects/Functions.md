@@ -134,6 +134,11 @@ one as `freelancer` would be a false claim that also matches nothing (that branc
 `comms.get_stage_channels` provisions rooms lazily on first open and the channel tree is built from
 rooms that already exist, so a stage created without one is a stage nobody can navigate to.
 
+**So is the project-wide room** (step 7b — `comms.get_or_create_project_channel(id, NULL,
+'General')`, visibility `project_all`): it is what `/projects/[slug]/discussion` opens on every
+one-off, pipeline and session, and a project created without it has no Discussion. Opened for a Task
+as well, so a Task converted into a pipeline has its room already (Decision #135).
+
 **Every project leaves with at least one stage.** If the payload names none, one implicit `Delivery`
 stage is minted carrying the PROJECT's own `description`, `description_text` and IP mode, plus its
 `budget_amount_cents` as `unit_price_cents` — but only when `budget_type = 'fixed_price'`, because

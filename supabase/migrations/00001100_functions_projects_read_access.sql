@@ -467,6 +467,15 @@ BEGIN
         v_first_stage_id := v_stage_id;
     END IF;
 
+    -- 7b. The project-wide room.
+    --
+    -- What `/projects/{slug}/discussion` opens on every engagement that is not a Task: no stage, the
+    -- `project_all` visibility the 3-argument form defaults to. Without it a one-off or a pipeline has
+    -- no discussion at all and its lane has no Discussion link to offer. Opened for a Task too — its
+    -- discussion is its stage's room, but a Task converted into a pipeline in settings needs this room
+    -- the moment it becomes one. The call dedupes, so it can never mint a second.
+    PERFORM comms.get_or_create_project_channel(v_project_id, NULL, 'General');
+
     -- 8. Staffing roles.
     --
     -- `stage_staffing_roles` hangs off a STAGE, not a project, so a Direct Deliverable -- which the

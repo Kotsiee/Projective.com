@@ -300,9 +300,9 @@ The **project-wide room** — no `stage_id`, `visibility = 'project_all'` — is
 (`comms.get_or_create_project_channel` dedupes on project + stage + visibility). It is what
 `/projects/[slug]/discussion` opens on every engagement that is not a Task (a Task's discussion is
 its root stage's `stage_all` room), and the app's create path (`insertProject`) opens it through
-that definer RPC at creation, beside the root stage's rooms that `projects.create_stage` opens. A
-project created before that call existed has none, and its lane offers no Discussion link until one
-is opened (Decision #133).
+that definer RPC at creation, beside the root stage's rooms that `projects.create_stage` opens, and
+`projects.create_project` opens it too (step 7b). A project with none has no Discussion link; the
+one local project created before either path opened it was backfilled (Decisions #133 / #135).
 
 ### `comms.project_messages`
 
