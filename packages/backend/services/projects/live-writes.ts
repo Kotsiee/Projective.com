@@ -973,12 +973,12 @@ function notWritten(field?: string): WriteRefusal {
 }
 
 /**
- * The currency as `ck_projects_currency` will accept it.
+ * The currency in the shape `CurrencyCode` accepts — three upper-case letters.
  *
  * `CurrencyCode` already refuses anything else at the parser, so this is the second half of the same
  * rule rather than a new one: the fat service is also called from SSR with a typed value that never
- * passed through Zod, and a lowercase code reaching the column is a `23514` raised in the middle of
- * a save the owner cannot act on. Uppercasing is ISO 4217's own convention, not a decision taken on
+ * passed through Zod, and `projects.currency` carries no CHECK of its own, so this normaliser is the
+ * only thing standing between a malformed code and the column that prices escrow. Uppercasing is ISO 4217's own convention, not a decision taken on
  * the caller's behalf; anything that is still not three letters is dropped rather than truncated
  * into a code that means something else.
  *
@@ -1473,8 +1473,9 @@ export function planStageRoles(
  * this pass carries: the figure is a BONUS on top of the stage's ticket price rather than the role's
  * budget, so an absent one is an ordinary answer — most roles earn no bonus — and the two guards that
  * used to refuse an unpriced role here are gone. The required figure is `project_stages.unit_price_cents`,
- * which is what `finance.fn_hold_ticket_escrow` actually reads, and `pricingSatisfied` is what holds
- * it before a project may publish.
+ * which is what `finance.fn_hold_ticket_escrow` actually reads, and the ladder's `pricingSatisfied`
+ * row is what asks for it before the owner may publish (client-side, in `publishSetup`; the server's
+ * `projects.set_project_status` checks only a title and one stage).
  *
  * `null` is never coerced to `0`: zero is a bonus somebody deliberately set to nothing, and the
  * column is nullable precisely so the two stay distinguishable.
@@ -1660,7 +1661,8 @@ function validateUpdate(input: UpdateProject): WriteRefusal | null {
 	//
 	// What IS required is the primary figure escrow reads, and that is a PUBLISH gate rather than a
 	// save gate: a draft must stay savable long before it is costed, or the form cannot be filled in
-	// over two sittings. `pricingSatisfied` holds it on the status transition instead.
+	// over two sittings. The ladder's `pricingSatisfied` row asks for it before publishing — enforced
+	// by the client's `publishSetup`, not re-checked by `projects.set_project_status`.
 	for (const stage of input.stages ?? []) {
 		if (stage.startsWithId && stage.id && stage.startsWithId === stage.id) {
 			return {
@@ -1852,10 +1854,9 @@ const ROOT_STAGE_NAME: Record<ProjectCreateFormat, string> = {
  *
  * ## Why this does NOT call `projects.create_project`
  *
- * The RPC exists and is unusable for this flow, in four independent ways. It reads the row id out of
- * its own payload with no fallback, so `gen_random_uuid()` never fires and the insert has no id. It
- * defaults `visibility` to PUBLIC, which would put a project nobody has configured onto Explore — the
- * exact default `DEFAULT_PROJECT_RULES` refuses to take. It supplies neither `status` nor the budget
+ * The RPC exists and is unusable for this flow, in three independent ways (it now hardcodes
+ * `visibility = 'unlisted'`, which closed a fourth). It reads the row id out of its own payload with
+ * no fallback, so `gen_random_uuid()` never fires and the insert has no id. It supplies neither `status` nor the budget
  * pair, so the row lands with no price. And its nested stage insert carries neither
  * `unit_price_cents` nor `milestone`, so the one figure the modal collected would be discarded on the
  * way in.

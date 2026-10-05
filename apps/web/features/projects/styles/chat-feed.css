@@ -81,7 +81,7 @@
 	block-size: 1.2rem;
 	border: 2px solid var(--outline);
 	border-inline-end-color: transparent;
-	border-radius: 50%;
+	border-radius: var(--radius-full);
 	animation: chat-spin 0.6s linear infinite;
 }
 
@@ -269,7 +269,7 @@
 
 .msg-row__avatar-link {
 	display: inline-flex;
-	border-radius: 50%;
+	border-radius: var(--radius-full);
 }
 
 .msg-row__avatar-link:focus-visible {
@@ -678,7 +678,7 @@ button.msg-quote:focus-visible {
 	inset-inline-start: -0.4rem;
 	font-size: 1.05rem;
 	color: var(--warning);
-	filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25));
+	filter: drop-shadow(0 1px 1px color-mix(in srgb, var(--scrim) 25%, transparent));
 	transform: rotate(-12deg);
 }
 
@@ -1010,9 +1010,10 @@ span.msg-media__square {
 	inline-size: 2.6rem;
 	block-size: 2.6rem;
 	font-size: 1.3rem;
-	color: #fff;
-	background: rgba(0, 0, 0, 0.45);
-	border-radius: 50%;
+	/* A mark on photography (§B.7.7): the scrim pair, never a theme role — the ground is any frame. */
+	color: var(--on-scrim);
+	background: color-mix(in srgb, var(--scrim) var(--scrim-tint), transparent);
+	border-radius: var(--radius-full);
 	pointer-events: none;
 }
 
@@ -1083,8 +1084,8 @@ span.msg-media__square {
 	justify-content: center;
 	font-size: 1.1rem;
 	font-weight: 700;
-	color: #fff;
-	background: rgba(0, 0, 0, 0.55);
+	color: var(--on-scrim);
+	background: color-mix(in srgb, var(--scrim) var(--scrim-tint-heavy), transparent);
 }
 
 /* #endregion */

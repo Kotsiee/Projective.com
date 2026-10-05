@@ -10,6 +10,7 @@ import {
 	formatTicketMoney,
 	type InviteStatus,
 	type MemberInvite,
+	type MemberRole,
 	type MemberRosterPage,
 	type MessageAttachment,
 	messageDeltaFor,
@@ -30,6 +31,7 @@ import {
 	stageCostCents,
 	type StageSetup,
 	type SubmissionListPage,
+	type SubmissionStatus,
 	type SubmissionTreeNode,
 	type SubmissionUnit,
 	type TicketIntensity,
@@ -185,6 +187,17 @@ interface OwnerBucket {
 	 * left the engagement; a set of stage ids means they were unassigned from those stages only.
 	 */
 	removed: Map<string, Map<string, "project" | Set<string>>>;
+	/**
+	 * Role changes the client made, keyed by project slug then by roster row id — the stub twin of
+	 * `projects.set_member_role`. Folded onto the roster at read time by {@link overlayMemberRoster}.
+	 */
+	roles: Map<string, Map<string, MemberRole>>;
+	/**
+	 * Review verdicts recorded over submissions — a fixture's or a stub-created one — keyed by project
+	 * id, then by submission id (a unit's LAST path segment). Like `invites`, the unit itself is never
+	 * rewritten; the verdict is folded onto it at read time by {@link overlaySubmissionPage}.
+	 */
+	reviews: Map<string, Map<string, SubmissionStatus>>;
 }
 
 /** The stub path's record of what happened to one invitation after it was issued. */
@@ -232,6 +245,8 @@ function bucketFor(owner: string): OwnerBucket {
 		invites: new Map(),
 		joined: new Map(),
 		removed: new Map(),
+		roles: new Map(),
+		reviews: new Map(),
 	};
 	buckets.set(owner, fresh);
 	return fresh;
@@ -684,6 +699,34 @@ export function submitStoredSubmission(
 /** How many submissions this viewer has created in a project — the number a fresh unit takes. */
 export function submissionCount(owner: string, projectId: string): number {
 	return peekBucket(owner)?.submissions.get(projectId)?.length ?? 0;
+}
+
+/**
+ * Record a reviewer's verdict over a submission.
+ *
+ * The stub moves no money and raises no revision request — it records only the status the live
+ * `projects.review_submission` would leave the row in, so the explorer reads the same verdict back
+ * after a reload that it showed the moment the reviewer pressed the button.
+ */
+export function recordStubReview(
+	owner: string,
+	projectId: string,
+	submissionId: string,
+	status: SubmissionStatus,
+): void {
+	const bucket = bucketFor(owner);
+	const verdicts = bucket.reviews.get(projectId) ?? new Map<string, SubmissionStatus>();
+	verdicts.set(submissionId, status);
+	bucket.reviews.set(projectId, verdicts);
+}
+
+/** The verdict recorded over a submission on the stub path, if any. */
+export function storedReview(
+	owner: string,
+	projectId: string,
+	submissionId: string,
+): SubmissionStatus | undefined {
+	return peekBucket(owner)?.reviews.get(projectId)?.get(submissionId);
 }
 // #endregion
 
@@ -1282,7 +1325,8 @@ export function overlayMemberRoster(
 
 	const joined = bucket.joined.get(slug) ?? [];
 	const removed = bucket.removed.get(slug);
-	if (joined.length === 0 && (!removed || removed.size === 0)) return out;
+	const roles = bucket.roles.get(slug);
+	if (joined.length === 0 && (!removed || removed.size === 0)) return withRoleChanges(out, roles);
 
 	const stageChannel = out.scope === "channel" && out.channelKind === "stage";
 	const stageNameById = new Map(out.stages.map((stage) => [stage.id, stage.name]));
@@ -1330,7 +1374,38 @@ export function overlayMemberRoster(
 		});
 	}
 
-	return { ...out, members, total };
+	return withRoleChanges({ ...out, members, total }, roles);
+}
+
+/**
+ * Fold recorded role changes onto the roster — last, so a member an acceptance brought in carries
+ * the role the client gave them afterwards rather than the one the invitation named.
+ */
+function withRoleChanges(
+	page: MemberRosterPage,
+	roles: ReadonlyMap<string, MemberRole> | undefined,
+): MemberRosterPage {
+	if (!roles?.size) return page;
+	return {
+		...page,
+		members: page.members.map((row) => {
+			const role = roles.get(row.id);
+			return role && role !== row.role ? { ...row, role } : row;
+		}),
+	};
+}
+
+/** Record a role change — the stub twin of `projects.set_member_role`. Survives a reload. */
+export function recordRoleChange(
+	owner: string,
+	projectId: string,
+	memberId: string,
+	role: MemberRole,
+): void {
+	const bucket = bucketFor(owner);
+	const byProject = bucket.roles.get(projectId) ?? new Map<string, MemberRole>();
+	byProject.set(memberId, role);
+	bucket.roles.set(projectId, byProject);
 }
 
 /**
@@ -1377,7 +1452,18 @@ export function overlaySubmissionPage(
 	page: SubmissionListPage,
 	actor?: ReadActor,
 ): SubmissionListPage {
-	const created = peekBucket(writeOwnerOf(actor))?.submissions.get(page.projectId);
+	const bucket = peekBucket(writeOwnerOf(actor));
+	return applyStubReviews(
+		overlayCreatedSubmissions(page, bucket?.submissions.get(page.projectId)),
+		bucket?.reviews.get(page.projectId),
+	);
+}
+
+/** Prepend this viewer's stub-created units (see {@link overlaySubmissionPage}). */
+function overlayCreatedSubmissions(
+	page: SubmissionListPage,
+	created: readonly StoredSubmission[] | undefined,
+): SubmissionListPage {
 	if (!created?.length) return page;
 
 	const scoped = created.filter((entry) =>
@@ -1405,6 +1491,38 @@ export function overlaySubmissionPage(
 		...page,
 		tree: [...nodes, ...page.tree],
 		activeUnit: active ?? page.activeUnit,
+	};
+}
+
+/**
+ * Fold recorded review verdicts onto a page: every `unit` node whose segment carries one, and the
+ * active unit and its review projection when their last path segment does.
+ */
+function applyStubReviews(
+	page: SubmissionListPage,
+	verdicts: ReadonlyMap<string, SubmissionStatus> | undefined,
+): SubmissionListPage {
+	if (!verdicts?.size) return page;
+	const verdictOf = (path: readonly string[]) => verdicts.get(path[path.length - 1] ?? "");
+	const walk = (node: SubmissionTreeNode): SubmissionTreeNode => {
+		const status = node.kind === "unit" ? verdicts.get(node.segment) : undefined;
+		return {
+			...node,
+			status: status ?? node.status,
+			children: node.children.map(walk),
+		};
+	};
+	const activeStatus = page.activeUnit ? verdictOf(page.activeUnit.path) : undefined;
+	const reviewStatus = page.review ? verdictOf(page.review.unit.path) : undefined;
+	return {
+		...page,
+		tree: page.tree.map(walk),
+		activeUnit: page.activeUnit && activeStatus
+			? { ...page.activeUnit, status: activeStatus }
+			: page.activeUnit,
+		review: page.review && reviewStatus
+			? { ...page.review, unit: { ...page.review.unit, status: reviewStatus } }
+			: page.review,
 	};
 }
 // #endregion
@@ -1471,7 +1589,7 @@ export function setupPatchFrom(input: UpdateProject, base: ProjectSetup): Projec
 			// The base for a stage the client is CREATING is the SSOT's own blank, so a field added to
 			// `StageSetup` arrives here already carrying its intended default rather than being answered
 			// with whatever this file happened to guess.
-			const base = existing ?? blankStage(mintId("stage"), `Stage ${index + 1}`, index);
+			const base = existing ?? blankStage(mintStageId(), `Stage ${index + 1}`, index);
 			// The seat pair is normalised together because "unlimited with a count" is a state the schema
 			// forbids and this fold could otherwise construct — a payload that moves only one half must
 			// not leave the other describing a different stage.
@@ -1541,7 +1659,9 @@ export function mintTicketId(): string {
  * process, and one source is what makes that true across both writers.
  */
 export function mintStageId(): string {
-	return mintId("stage");
+	// `stage-new-N`, never `stage-N`: the fixture corpus names its own stages `stage-0…`, and a minted
+	// `stage-1` would shadow the fixture's on the board overlay (and take its tickets with it).
+	return mintId("stage-new");
 }
 
 /** Mint the id a stub-CREATED staffing role carries. See {@link mintStageId}. */

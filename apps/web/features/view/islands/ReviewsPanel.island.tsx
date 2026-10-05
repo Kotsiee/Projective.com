@@ -14,6 +14,10 @@ import { personFallbackImage } from "@web/components/UserAvatar.tsx";
  * entry carrying the reciprocal-review + verified-engagement trust badges. Interactive, so it's an
  * island; it also anchors `Avatar`/`RatingStars` CSS onto the page (the reused cards are server
  * components — the glass-blur CSS-bundling rule).
+ *
+ * A project page mounts it for its OWNER's client track (Decision #142) with its own heading, and each
+ * entry names the engagement it was left on only when the database released that title — which it
+ * does for a `public` project and for nothing else.
  */
 
 type SortKey = "recent" | "highest" | "lowest";
@@ -21,13 +25,35 @@ type SortKey = "recent" | "highest" | "lowest";
 export interface ReviewsPanelProps {
 	summary: ReviewSummary;
 	list: EntityReview[];
+	/** The section heading. Defaults to "Reviews". */
+	title?: string;
+	/** One Meta-register line under the heading saying whose reputation this is. */
+	subtitle?: string;
+	/**
+	 * What to say when there are no reviews at all. Without it the panel renders its full aggregate
+	 * at zero — which is right for a listing (zero is the fact) and wrong for a client nobody has
+	 * reviewed yet, where a 0.0 score reads as a bad client rather than a new one.
+	 */
+	emptyText?: string;
 }
 
-export default function ReviewsPanel({ summary, list }: ReviewsPanelProps): JSX.Element {
+export default function ReviewsPanel(
+	{ summary, list, title = "Reviews", subtitle, emptyText }: ReviewsPanelProps,
+): JSX.Element {
 	const sort = useSignal<SortKey>("recent");
 	const starFilter = useSignal<number | null>(null);
 
 	const total = summary.count || summary.distribution.reduce((a, b) => a + b, 0);
+
+	if (total === 0 && emptyText) {
+		return (
+			<section id="view-reviews" class="vw-reviews" aria-label={title}>
+				<h2 class="vw-reviews__title">{title}</h2>
+				{subtitle && <p class="vw-reviews__sub">{subtitle}</p>}
+				<p class="vw-revlist__empty">{emptyText}</p>
+			</section>
+		);
+	}
 
 	let shown = starFilter.value
 		? list.filter((r) => Math.round(r.rating) === starFilter.value)
@@ -43,8 +69,9 @@ export default function ReviewsPanel({ summary, list }: ReviewsPanelProps): JSX.
 	});
 
 	return (
-		<section id="view-reviews" class="vw-reviews" aria-label="Reviews">
-			<h2 class="vw-reviews__title">Reviews</h2>
+		<section id="view-reviews" class="vw-reviews" aria-label={title}>
+			<h2 class="vw-reviews__title">{title}</h2>
+			{subtitle && <p class="vw-reviews__sub">{subtitle}</p>}
 			<div class="vw-reviews__grid">
 				{/* Aggregate breakdown. */}
 				<aside class="vw-revagg">
@@ -192,7 +219,19 @@ function ReviewCard({ review }: { review: EntityReview }): JSX.Element {
 				</span>
 			</div>
 			<div class="vw-review__body">
-				<h3 class="vw-review__reviewtitle">{review.title}</h3>
+				{
+					/*
+					  The engagement, only when released: `contextTitle` is set solely for a `public`
+					  project, so an unlisted or private engagement prints nothing here rather than a
+					  placeholder that would still confirm one existed.
+					*/
+				}
+				{review.contextTitle && (
+					<p class="vw-review__context">
+						<span class="vw-review__contextlabel">Project</span> {review.contextTitle}
+					</p>
+				)}
+				{review.title && <h3 class="vw-review__reviewtitle">{review.title}</h3>}
 				<p class="vw-review__text">{review.body}</p>
 			</div>
 			<div class="vw-review__badges">

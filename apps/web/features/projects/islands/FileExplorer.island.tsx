@@ -7,10 +7,11 @@ import "../styles/file-card.css";
 import "../styles/file-table.css";
 import "../styles/attachment-modal.css";
 import { VirtualGrid } from "@projective/ui/display";
-import { InlineNotice } from "@projective/ui/feedback";
+import { InlineNotice, Toast, useToast } from "@projective/ui/feedback";
 import { InputText, MultiSelect, SortControl } from "@projective/ui/fields";
 import { OFFLINE_NOTICE_TEXT } from "@web/utils/offline.ts";
-import { useOfflineStall } from "@web/utils/use-offline-stall.ts";
+import { offlineOr, useOfflineStall } from "@web/utils/use-offline-stall.ts";
+import { logger } from "@web/utils/logger.ts";
 import type {
 	AssetItem,
 	FileChannelRef,
@@ -187,6 +188,15 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 
 	const loading = useSignal(false);
 	const loadingMore = useSignal(false);
+	/**
+	 * The last next-page load failed while the browser was ONLINE — a fault the offline stall does
+	 * not speak for. Gates `loadMore` so a reach-end trigger still in view cannot loop on a failing
+	 * endpoint; only the reader's Retry (or a successful refine, which resets the list) lifts it.
+	 */
+	const moreFailed = useSignal(false);
+	/** Mounted only when no other island has already put a stack up (they share one signal). */
+	const toastMounted = useSignal(false);
+	const toast = useToast();
 	const openId = useSignal<string | null>(null);
 	/**
 	 * The placeholder gate. `loading` still drives the empty-state suppression the moment a request
@@ -228,24 +238,38 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 		// Cleared BEFORE the payload check, so a failed refine surfaces its stale rows again rather
 		// than leaving the placeholder up for the life of the page.
 		skeleton.end();
-		if (res.ok && res.data) {
-			const page = res.data.page;
-			items.value = page.items;
-			// The tree's channel index is the project's FULL channel set. When the workspace is filtered
-			// to ONE channel the backend returns only that channel's index (it infers scope from the
-			// channelId), so keep the existing full index rather than collapsing the tree to the selection.
-			if (!(scope === "project" && activeChannel.value !== null)) {
-				channels.value = page.channels;
-			}
-			cursor.value = page.nextCursor;
-			hasMore.value = page.hasMore;
-			total.value = page.total;
+		if (!res.ok || !res.data) {
+			// The stale rows stay up — an empty workspace would claim there are no files — but the
+			// reader is told the search, sort or filter they just chose did not apply.
+			logger.error("File explorer refine failed", { scope, projectId, message: res.message });
+			if (!document.querySelector(".ui-toast")) toastMounted.value = true;
+			toast.show({
+				severity: "danger",
+				summary: offlineOr(res.message ?? "Couldn’t refresh files — showing the last results."),
+				life: 6000,
+			});
+			return;
 		}
+		// A fresh first page replaces the list, so a next-page failure against the old one is moot.
+		moreFailed.value = false;
+		const page = res.data.page;
+		items.value = page.items;
+		// The tree's channel index is the project's FULL channel set. When the workspace is filtered
+		// to ONE channel the backend returns only that channel's index (it infers scope from the
+		// channelId), so keep the existing full index rather than collapsing the tree to the selection.
+		if (!(scope === "project" && activeChannel.value !== null)) {
+			channels.value = page.channels;
+		}
+		cursor.value = page.nextCursor;
+		hasMore.value = page.hasMore;
+		total.value = page.total;
 	}
 
-	async function loadMore(): Promise<void> {
+	/** Append the next page. `retry` is the reader's Retry, the one caller past a standing failure. */
+	async function loadMore(retry = false): Promise<void> {
 		if (
-			loadingMore.value || stall.blocked.value || loading.value || !hasMore.value || !cursor.value
+			loadingMore.value || stall.blocked.value || (moreFailed.value && !retry) || loading.value ||
+			!hasMore.value || !cursor.value
 		) {
 			return;
 		}
@@ -259,9 +283,14 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 			cursor.value = res.data.page.nextCursor;
 			hasMore.value = res.data.page.hasMore;
 		}
-		stall.settle(res.ok);
+		// An offline failure is the stall's to report; any other failure is this list's own.
+		const offline = stall.settle(res.ok);
+		moreFailed.value = !res.ok && !offline;
+		if (moreFailed.value) {
+			logger.error("File explorer next page failed", { scope, projectId, message: res.message });
+		}
 	}
-	const stall = useOfflineStall(loadMore);
+	const stall = useOfflineStall(() => loadMore());
 	// #endregion
 
 	// #region Toolbar handlers
@@ -325,13 +354,14 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 			sortDir={sortDir}
 			onSort={applySort}
 			onOpen={open}
-			onReachEnd={loadMore}
+			onReachEnd={() => void loadMore()}
 			loadingMore={loadingMore.value}
 			loading={skeleton.visible.value}
 			skeletonCount={Math.min(Math.max(items.value.length, SKELETON_MIN), SKELETON_MAX)}
 		/>
 	);
-	// The offline stall, appended under the viewport in either scope's layout.
+	// The offline stall — or an online page failure, in the same words' place — appended under the
+	// viewport in either scope's layout. The two are exclusive: `settle` decides which one a failure is.
 	const stallNotice = stall.stalled.value
 		? (
 			<InlineNotice
@@ -339,6 +369,15 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 				actionLabel="Retry"
 				onAction={stall.retry}
 				busy={stall.retrying.value}
+			/>
+		)
+		: moreFailed.value
+		? (
+			<InlineNotice
+				text="Couldn’t load more files."
+				actionLabel="Retry"
+				onAction={() => void loadMore(true)}
+				busy={loadingMore.value}
 			/>
 		)
 		: null;
@@ -428,6 +467,8 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 				onRename={renameFile}
 				onToggleStar={toggleStar}
 			/>
+
+			{toastMounted.value ? <Toast position="bottom-center" /> : null}
 		</div>
 	);
 }

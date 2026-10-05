@@ -10,30 +10,46 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
 /**
  * MemberEditDialog — the "Change role" surface: a modal {@link Dialog} letting an admin/owner/manager
  * change a participant's role. Stage seats are not edited here — they are offered by invitation and
- * accepted by the freelancer (Decision #139). STUB persistence — the save flips the roster
- * optimistically until the participant-role RPC lands. Reseeds whenever a different member is opened.
+ * accepted by the freelancer (Decision #139). Persisted: the parent saves through
+ * `MembersService.updateRole` (`projects.set_member_role`), and the dialog closes only once the server
+ * has the change — a refusal stays inline with the server's sentence. Reseeds whenever a different
+ * member is opened.
  */
 export interface MemberEditDialogProps {
 	open: import("@preact/signals").Signal<boolean>;
 	member: ProjectMemberRow | null;
-	onSave: (memberId: string, role: MemberRole) => void;
+	/** Persist the role; resolves to the server's refusal, or `null` once it is saved. */
+	onSave: (memberId: string, role: MemberRole) => Promise<string | null>;
 	onClose: () => void;
 }
 
 export function MemberEditDialog(props: MemberEditDialogProps): JSX.Element {
 	const { member } = props;
 	const role = useSignal<string>(member?.role ?? "member");
+	const busy = useSignal(false);
+	const error = useSignal<string | null>(null);
 
 	// Reseed the controls when a different member is opened (the dialog is reused across rows).
 	useEffect(() => {
 		if (member) role.value = member.role;
+		error.value = null;
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [member?.id]);
 
-	function save(): void {
-		if (!member) return;
-		props.onSave(member.id, role.value as MemberRole);
-		props.open.value = false;
+	async function save(): Promise<void> {
+		if (!member || busy.value) return;
+		busy.value = true;
+		error.value = null;
+		try {
+			const refusal = await props.onSave(member.id, role.value as MemberRole);
+			if (refusal) {
+				error.value = refusal;
+				return;
+			}
+			props.open.value = false;
+		} finally {
+			busy.value = false;
+		}
 	}
 
 	return (
@@ -51,7 +67,13 @@ export function MemberEditDialog(props: MemberEditDialogProps): JSX.Element {
 						label="Cancel"
 						onClick={() => (props.open.value = false)}
 					/>
-					<Button variant="filled" label="Save changes" onClick={save} disabled={!member} />
+					<Button
+						variant="filled"
+						label="Save changes"
+						onClick={() => void save()}
+						disabled={!member}
+						loading={busy.value}
+					/>
 				</div>
 			}
 		>
@@ -81,6 +103,7 @@ export function MemberEditDialog(props: MemberEditDialogProps): JSX.Element {
 							Controls this member's permissions within the project.
 						</span>
 					</label>
+					{error.value && <p class="mem-dialog__error" role="alert">{error.value}</p>}
 				</div>
 			)}
 		</Dialog>

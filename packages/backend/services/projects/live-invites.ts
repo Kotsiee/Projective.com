@@ -124,7 +124,7 @@ async function resolveInvite(
  * lowercase column value: every handle the join wizard writes is lowercase, and the `ilike` route
  * would treat `_` — a legal handle character — as a wildcard.
  */
-async function resolveHandle(
+export async function resolveHandle(
 	actor: ReadActor & { accessToken: string },
 	handle: string,
 ): Promise<string | null> {
@@ -257,7 +257,7 @@ export function reopensAtFrom(details: string | null | undefined): string | null
  * `unique_violation` is a 409; a `check_violation` (cooldown · closed · foreign stage) is a 422; an
  * ownership refusal falls through to `refusalFrom`'s 403.
  */
-function inviteRefusalFrom(message: string, details?: string | null): WriteRefusal {
+export function inviteRefusalFrom(message: string, details?: string | null): WriteRefusal {
 	if (
 		message.includes("already pending") || message.includes("already assigned") ||
 		message.includes("already on the project")
@@ -294,7 +294,10 @@ function stripPostgresPrefix(message: string): string {
 }
 
 /** The stage name per stage id — the label an invitation row prints beside its stage. */
-async function stageNameMap(db: SupabaseClient, projectId: string): Promise<Map<string, string>> {
+export async function stageNameMap(
+	db: SupabaseClient,
+	projectId: string,
+): Promise<Map<string, string>> {
 	const { data, error } = await db
 		.from("project_stages")
 		.select("id, name")

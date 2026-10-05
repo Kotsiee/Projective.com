@@ -3,7 +3,7 @@ import "../styles/entity-view.css";
 import type { EntityView, ProjectViewExtra } from "@projective/types/explore";
 import type { HrefContext } from "@features/explore/core/routing.ts";
 import { PriceBlock } from "../components/lane-parts.tsx";
-import { ProjectCtaRig } from "../components/ProjectCtaRig.tsx";
+import { ProjectCtaRig, ProjectPreviewCta } from "../components/ProjectCtaRig.tsx";
 import { projectTicketPrice } from "../core/project-view-model.ts";
 
 /**
@@ -25,10 +25,12 @@ export interface ProjectApplyBarProps {
 	project: ProjectViewExtra;
 	authed: boolean;
 	ctx: HrefContext;
+	/** The owner's preview — the bar states the applicant's actions instead of offering them. */
+	preview?: boolean;
 }
 
 export default function ProjectApplyBar(
-	{ view, project, authed, ctx }: ProjectApplyBarProps,
+	{ view, project, authed, ctx, preview = false }: ProjectApplyBarProps,
 ): JSX.Element {
 	const price = projectTicketPrice(project);
 	return (
@@ -39,7 +41,9 @@ export default function ProjectApplyBar(
 				unit={price.unit}
 				isFloor={price.isFloor}
 			/>
-			<ProjectCtaRig item={view.item} authed={authed} ctx={ctx} layout="bar" />
+			{preview
+				? <ProjectPreviewCta layout="bar" />
+				: <ProjectCtaRig item={view.item} authed={authed} ctx={ctx} layout="bar" />}
 		</div>
 	);
 }

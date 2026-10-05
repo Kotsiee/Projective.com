@@ -1,6 +1,7 @@
 import { type ComponentChildren, h, type JSX } from "preact";
 import { signal } from "@preact/signals";
-import type { FieldStatus } from "@projective/ui/fields";
+import type { FieldStatus } from "@ui/fields/types/mod.ts";
+import { type ProjectSetup, STAGE_ITEM_LABEL } from "../types/projects-types.ts";
 
 /**
  * setup-validation — when the owner's Stage-2 workspace is allowed to tell them a field is wrong.
@@ -20,6 +21,9 @@ import type { FieldStatus } from "@projective/ui/fields";
  *
  * No `@server/*` import and no JSX beyond the one wrapper, so the module is safe on both sides of the
  * island boundary and the rule can be reasoned about without a DOM.
+ *
+ * It also holds the save blockers: the reasons a draft cannot be persisted at all, which the save,
+ * the publish and the auto-save on blur all consult before they build a payload.
  */
 
 // #region The touched / focused model
@@ -136,5 +140,33 @@ export function FieldGuard(
 	};
 
 	return h("div", { class: className, onFocusCapture, onBlurCapture }, children);
+}
+// #endregion
+
+// #region Save blockers
+/**
+ * The first reason this draft cannot be persisted, in the owner's words, or `null`.
+ *
+ * These are the places the wire schema is STRICTER than the working copy — `title`, a stage `name`, a
+ * stage task's `text`, a stage role's `name` and a project role's `name` are all `min(1)` — so an
+ * emptied one would come back as a 422 naming a field path rather than a section. Refusing here,
+ * rather than blanking the value or omitting the key, keeps the emptied field on screen where the
+ * owner can see what they cleared.
+ *
+ * A blank task and a blank stage role are reachable by design: both are added EMPTY, so an owner who
+ * presses "Add step" and then Save without typing has produced exactly this state.
+ */
+export function firstBlocker(setup: ProjectSetup): string | null {
+	const item = STAGE_ITEM_LABEL[setup.format];
+	if (setup.title.trim().length === 0) return "Give the project a name before saving.";
+	if (setup.stages.some((s) => s.name.trim().length === 0)) return `Every ${item} needs a name.`;
+	if (setup.stages.some((s) => s.tasks.some((t) => t.text.trim().length === 0))) {
+		return `Every step on a ${item}'s task list needs some text — or remove the empty one.`;
+	}
+	if (setup.stages.some((s) => s.roles.some((r) => r.name.trim().length === 0))) {
+		return `Every named role on a ${item} needs a name — or remove the empty one.`;
+	}
+	if (setup.roles.some((r) => r.name.trim().length === 0)) return "Every team role needs a name.";
+	return null;
 }
 // #endregion

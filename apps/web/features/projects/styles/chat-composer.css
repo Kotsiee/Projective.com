@@ -22,19 +22,16 @@
 	padding-inline: var(--space-3);
 }
 
-/* Gradient fade → theme surface, with the blur masked to fade in toward the bar. Behind the inner. */
+/*
+ * The layer behind the inner, reserved for the composer's scrim. It paints nothing today: the band
+ * behind the composer is the page canvas's own solid tone (sized by the rule below). Should a fade
+ * return, any blur belongs on a `::before` underlay, never on this element (§B.4.3).
+ */
 .chat-composer__scrim {
 	position: absolute;
 	inset: 0;
 	z-index: 0;
 	pointer-events: none;
-	/* background: linear-gradient(to bottom,
-	     transparent 0%,
-	     var(--frame-surface, var(--surface)) 100%);
-	backdrop-filter: blur(var(--glass-blur));
-	-webkit-backdrop-filter: blur(var(--glass-blur));
-	-webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 48%);
-	mask-image: linear-gradient(to bottom, transparent 0%, black 48%); */
 }
 
 .ui-shell-frame:has(.chan-tab[data-tab-key="chat"][data-active="true"]) .ui-page-canvas::before {
@@ -126,8 +123,13 @@
 	inset-inline: 0;
 	max-inline-size: none;
 	padding: 0.15rem 0.3rem;
-	color: var(--on-primary);
-	background: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent);
+	/* A caption on the thumbnail itself — the scrim pair, since the ground is the photo, not a role. */
+	color: var(--on-scrim);
+	background: linear-gradient(
+		to top,
+		color-mix(in srgb, var(--scrim) var(--scrim-tint-heavy), transparent),
+		transparent
+	);
 }
 
 .chat-composer__card-remove {

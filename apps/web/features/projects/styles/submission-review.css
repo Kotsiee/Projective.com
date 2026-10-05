@@ -571,6 +571,15 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
+/* A refused or failed verdict — the same slot as the hint, so the footer never reflows around it. */
+.subm-review__error {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	margin: 0;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--danger);
+}
 .subm-review__actions {
 	flex: none;
 	display: flex;

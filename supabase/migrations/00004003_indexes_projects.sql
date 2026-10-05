@@ -77,3 +77,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_project_invitations_open_seat
     ON projects.project_invitations (project_id, project_stage_id, target_user_id)
     NULLS NOT DISTINCT
     WHERE status = 'pending' AND target_user_id IS NOT NULL;
+
+-- The email-addressed twin (`projects.invite_by_email`): one OPEN invitation per (project, stage,
+-- address), compared case-insensitively because the RPC lowercases what it stores and an older row
+-- may not have been. NULLS NOT DISTINCT for the whole-project row, for the reason given above.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_project_invitations_open_email
+    ON projects.project_invitations (project_id, project_stage_id, lower(target_email))
+    NULLS NOT DISTINCT
+    WHERE status = 'pending' AND target_email IS NOT NULL;

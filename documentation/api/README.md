@@ -28,3 +28,6 @@ handler documentation as those handlers are implemented.
 
 Scaffolded. Per-route API tables are populated as handlers land, each in the **same change** as the
 route + its Zod schema (Zod SSOT rule).
+
+- [`projects-settlement.md`](projects-settlement.md): submission review, stage approval and Fair
+  Exit cancellation.

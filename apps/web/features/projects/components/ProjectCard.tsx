@@ -5,14 +5,12 @@ import { Avatar } from "@projective/ui/display";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { StatusIcon } from "./StatusIcon.tsx";
 import {
+	ArchiveIcon,
 	ExternalLinkIcon,
-	FlagIcon,
 	KebabIcon,
-	LeaveIcon,
 	OwnerRoleIcon,
 	ShareIcon,
 	StarIcon,
-	TrashIcon,
 	WorkerRoleIcon,
 } from "./glyphs.tsx";
 import { isOwnerRole } from "../types/projects-types.ts";
@@ -49,23 +47,27 @@ const RESTED = new Set<ProjectStatus>(["completed", "cancelled"]);
 // #endregion
 
 // #region Kebab menu
-/** One row in the per-card action menu. `danger` styles the destructive Delete action. */
+/** One row in the per-card action menu. `danger` styles the destructive Archive action. */
 interface CardMenuItem {
 	action: CardMenuAction;
 	label: string;
 	icon: VNode;
 	danger?: boolean;
+	/** Offered only to an authority role (owner/client/admin) — the archive is theirs to make. */
+	ownerOnly?: boolean;
 }
 
-/** The actions offered by the kebab menu. */
-export type CardMenuAction = "open" | "share" | "report" | "leave" | "delete";
+/**
+ * The actions offered by the kebab menu — only actions that DO something (root CLAUDE.md §3.11).
+ * Report and Leave are absent rather than inert: neither has a backend or a product rule yet, and a
+ * menu row that closes the menu and changes nothing is a control that lies.
+ */
+export type CardMenuAction = "open" | "share" | "archive";
 
 const MENU_ITEMS: readonly CardMenuItem[] = [
 	{ action: "open", label: "Open in new tab", icon: ExternalLinkIcon },
 	{ action: "share", label: "Share", icon: ShareIcon },
-	{ action: "report", label: "Report", icon: FlagIcon },
-	{ action: "leave", label: "Leave project", icon: LeaveIcon },
-	{ action: "delete", label: "Delete", icon: TrashIcon, danger: true },
+	{ action: "archive", label: "Archive project", icon: ArchiveIcon, danger: true, ownerOnly: true },
 ];
 
 /**
@@ -83,7 +85,7 @@ export interface ProjectCardProps {
 	active?: boolean;
 	/** Toggle the star (optimistic; real persistence lands with the live backend). */
 	onToggleStar: (id: string) => void;
-	/** A kebab-menu action was picked (report / leave / delete are routed to the parent to own). */
+	/** A kebab-menu action was picked (archive is routed to the parent, which confirms and writes). */
 	onMenuAction?: (id: string, action: CardMenuAction) => void;
 }
 
@@ -216,7 +218,7 @@ export function ProjectCard(
 						)}
 					>
 						<div class="proj-cardmenu" role="menu" aria-label={`Actions for ${item.title}`}>
-							{MENU_ITEMS.map((mi) => (
+							{MENU_ITEMS.filter((mi) => !mi.ownerOnly || isOwner).map((mi) => (
 								<button
 									key={mi.action}
 									type="button"

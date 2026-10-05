@@ -332,13 +332,21 @@ export function showsProductLedger(archetype: EntityArchetype, view: EntityView)
 }
 
 /**
- * Whether the commercial cross-sell rails and the reviews panel render.
+ * Whether the recommendation rails ("More by …" · "Similar & recommended") and the reviews panel
+ * render on the PUBLIC page.
  *
- * Every commerce archetype gets them; a project does not (Decision #44 removed them deliberately —
- * a brief being staffed is not being cross-sold) and an article has its own comments thread instead.
+ * Every commerce archetype gets them, and so does a project (Decision #142, reversing #44/#96 at the
+ * product owner's direction): a freelancer weighing a brief wants the client's other briefs, briefs
+ * like it, and how this client has treated the people who worked for them. What a project's rails and
+ * reviews CONTAIN differs — projects, not a catalogue; the client track, not the helper track — and is
+ * decided where the page is composed (`live-view.ts`), not here. An article has its own comments
+ * thread instead.
+ *
+ * The owner's preview (`/projects/[slug]/preview`) renders none of them whatever this answers; that
+ * is the page's `mode`, not the archetype's.
  */
 export function showsCommercialRails(archetype: EntityArchetype): boolean {
-	return isCommerceArchetype(archetype);
+	return isCommerceArchetype(archetype) || archetype === "project";
 }
 // #endregion
 

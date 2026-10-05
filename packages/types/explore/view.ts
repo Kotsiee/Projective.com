@@ -125,6 +125,12 @@ export const EntityReviewSchema = z.object({
 	reciprocal: z.boolean(),
 	/** "Verified purchase / completed engagement" trust marker. */
 	verifiedEngagement: z.boolean(),
+	/**
+	 * The title of the engagement the review was left on — present ONLY when that project's visibility
+	 * is `public`. The redaction happens in the database (`org.get_profile_reviews` nulls the title of an
+	 * unlisted or private project), so an absent value means "withheld or none", never "unknown".
+	 */
+	contextTitle: z.string().max(160).optional(),
 });
 export type EntityReview = z.infer<typeof EntityReviewSchema>;
 // #endregion

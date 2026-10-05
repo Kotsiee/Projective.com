@@ -1252,6 +1252,14 @@
 	opacity: 0.8;
 }
 
+/* The server's refusal, inline under the fields it concerns — the lane has no toast host. */
+.proj-stage-modal__error {
+	margin: 0;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--danger);
+}
+
 .proj-stage-modal__actions {
 	display: flex;
 	justify-content: flex-end;

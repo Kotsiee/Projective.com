@@ -929,6 +929,52 @@ REVOKE ALL ON FUNCTION projects.fn_engaged_projects(uuid) FROM public, anon, aut
 REVOKE ALL ON FUNCTION projects.release_ticket_to_backlog (uuid)
 FROM public, anon, authenticated;
 
+-- --- escrow settlement doors (00001120 / 00001130 / 00001150) ---
+
+-- 🚨 Five SECURITY DEFINER functions that release or settle escrow carried the default PUBLIC
+-- EXECUTE, and `anon` holds USAGE on `projects` (00002500), so each was an RPC a signed-out caller
+-- could reach. complete_ticket and delete_ticket had no caller check at all; approve_stage,
+-- force_complete_stage and cancel_stage_fair_exit checked only has_project_access, which the
+-- assignee passes — so the payee could approve their own payout. Each body now requires a signed-in
+-- caller with review authority (projects.can_review_project), and EXECUTE is held by
+-- `authenticated` alone. Not `service_role`: every one of them attributes the decision to
+-- auth.uid() and refuses without one, so a grant there could only ever produce a refusal.
+REVOKE ALL ON FUNCTION projects.complete_ticket (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.complete_ticket (uuid) TO authenticated;
+
+REVOKE ALL ON FUNCTION projects.delete_ticket (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.delete_ticket (uuid) TO authenticated;
+
+REVOKE ALL ON FUNCTION projects.force_complete_stage (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.force_complete_stage (uuid) TO authenticated;
+
+REVOKE ALL ON FUNCTION projects.approve_stage (uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.approve_stage (uuid, uuid) TO authenticated;
+
+REVOKE ALL ON FUNCTION projects.cancel_stage_fair_exit (uuid, uuid, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.cancel_stage_fair_exit (uuid, uuid, integer) TO authenticated;
+
+-- 🚨 The claim-TTL sweep REFUNDS every claimed ticket older than the TTL measured from `p_now` — a
+-- caller-supplied argument. With PUBLIC EXECUTE anybody could pass a far-future instant and refund and
+-- evict every claimed ticket on the platform in one call. It is a cron job: service_role only.
+REVOKE ALL ON FUNCTION projects.fn_release_expired_claims (timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.fn_release_expired_claims (timestamptz) TO service_role;
+
+-- Trigger function: EXECUTE is checked at CREATE TRIGGER, so no role needs it.
+REVOKE ALL ON FUNCTION projects.fn_ticket_settlement_guard () FROM PUBLIC, anon, authenticated;
+
+-- --- membership doors (00001135) ---
+
+-- SECURITY DEFINER writes into security.audit_logs / comms.fn_notify, which no client role reaches, so
+-- the grant is part of the access decision: signed-in callers only. Each body also refuses a NULL
+-- auth.uid() itself and applies its own authority check (set_member_role: can_review_project;
+-- invite_by_email: project owner).
+REVOKE ALL ON FUNCTION projects.set_member_role (uuid, uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.set_member_role (uuid, uuid, text) TO authenticated;
+
+REVOKE ALL ON FUNCTION projects.invite_by_email (uuid, uuid, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.invite_by_email (uuid, uuid, text, text) TO authenticated;
+
 -- --- the public profile read + owner write path (00001040) and the media projection (00001160) ---
 --
 -- Internal predicates are revoked from PUBLIC: they are called by the definer functions below (as

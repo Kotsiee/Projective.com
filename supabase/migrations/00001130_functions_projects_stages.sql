@@ -399,6 +399,10 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, auth;
 -- Client override that approves the current phase: release the held installment for the current
 -- stage, then advance to the next required stage and fund its installment — or, on the final stage,
 -- complete the whole ticket. Returns the new current_stage_id (NULL once the ticket is completed).
+--
+-- 🚨 A CLIENT override, so the guard is review authority (`can_review_project`), not
+-- `has_project_access`: the assignee has project access, and under that guard could approve their
+-- own installment and release its escrow. The ticket row is locked before the check.
 -- ---------------------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION projects.force_complete_stage(p_ticket_id uuid)
 RETURNS uuid AS $$
@@ -409,15 +413,20 @@ DECLARE
     v_next uuid;
     v_current_ord int;
 BEGIN
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Sign in to complete a stage.' USING ERRCODE = '42501';
+    END IF;
+
     SELECT current_stage_id, required_stages, project_id
     INTO v_current, v_stages, v_project_id
-    FROM projects.tickets WHERE id = p_ticket_id;
+    FROM projects.tickets WHERE id = p_ticket_id
+    FOR UPDATE;
 
     IF v_project_id IS NULL THEN
-        RAISE EXCEPTION 'Ticket % not found.', p_ticket_id;
+        RAISE EXCEPTION 'Ticket % not found.', p_ticket_id USING ERRCODE = 'no_data_found';
     END IF;
-    IF NOT projects.has_project_access(v_project_id) THEN
-        RAISE EXCEPTION 'You do not have permission to complete this stage.' USING ERRCODE = 'insufficient_privilege';
+    IF NOT projects.can_review_project(v_project_id) THEN
+        RAISE EXCEPTION 'Only the client/owner may complete this stage.' USING ERRCODE = '42501';
     END IF;
 
     -- Resolve the next required stage after the current one (by declared order).

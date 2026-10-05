@@ -8,9 +8,11 @@ import { PlusIcon } from "./glyphs.tsx";
 
 /**
  * CreateStageModal — the client-only "Create New Stage" surface, triggered from the Stages group's
- * inline ＋ (Project Details sidebar) AND from the Kanban board's Add-Column / footer Create Stage.
- * STUB: shaping is real (Title + optional Description, aligned to `CreateProjectStageSchema`), but
- * persistence is deferred to the live path (`projects.create_stage` RPC + escrow milestone wiring).
+ * inline ＋ (Project Details sidebar), the Kanban board's Add-Column / footer Create Stage, and the
+ * Timeline's footer. Title + optional Description, the two fields of `CreateStageInputSchema`; the
+ * caller persists them (`BoardService.createStage` → `POST /api/projects/[id]/stages`) and closes the
+ * surface only once the server has the stage — a refused create keeps the draft open to correct.
+ * While the write is in flight the submit shows its loading state and a second submit is ignored.
  *
  * Built on the shared {@link Dialog}, which supplies the whole overlay contract — the unified
  * `Backdrop`, the modal z-band, the focus trap, Escape, and backdrop dismissal. It replaced a
@@ -33,8 +35,12 @@ export interface CreateStageModalProps {
 	open: Signal<boolean>;
 	projectTitle: string;
 	onClose: () => void;
-	/** Called with the drafted stage (stub — the parent decides what to do). */
-	onCreate: (payload: CreateStagePayload) => void;
+	/**
+	 * Called with the drafted stage. The parent persists it and closes the modal on success; the
+	 * returned promise holds the submit in its loading state until the write settles, and a string it
+	 * resolves to is the server's refusal, shown inline while the draft stays open to correct.
+	 */
+	onCreate: (payload: CreateStagePayload) => Promise<string | null> | void;
 }
 
 const FORM_ID = "create-stage-form";
@@ -47,6 +53,8 @@ export function CreateStageModal(
 	const nameRef = useRef<HTMLDivElement>(null);
 	const name = useSignal("");
 	const description = useSignal("");
+	const busy = useSignal(false);
+	const error = useSignal<string | null>(null);
 
 	// Reset the draft each time the surface opens. Focus is the Dialog's job (`initialFocusRef`), so
 	// this effect no longer moves it, and the Escape listener it used to own is gone with it.
@@ -54,13 +62,20 @@ export function CreateStageModal(
 		if (!open.value) return;
 		name.value = "";
 		description.value = "";
+		error.value = null;
 	}, [open.value]);
 
-	function submit(e: Event): void {
+	async function submit(e: Event): Promise<void> {
 		e.preventDefault();
 		const n = name.value.trim();
-		if (!n) return;
-		onCreate({ name: n, description: description.value.trim() });
+		if (!n || busy.value) return;
+		busy.value = true;
+		error.value = null;
+		try {
+			error.value = (await onCreate({ name: n, description: description.value.trim() })) ?? null;
+		} finally {
+			busy.value = false;
+		}
 	}
 
 	return (
@@ -79,6 +94,7 @@ export function CreateStageModal(
 						form={FORM_ID}
 						label="Create stage"
 						icon={PlusIcon}
+						loading={busy.value}
 					/>
 				</div>
 			}
@@ -113,6 +129,7 @@ export function CreateStageModal(
 						placeholder="What this stage delivers, acceptance criteria, notes…"
 					/>
 				</div>
+				{error.value && <p class="proj-stage-modal__error" role="alert">{error.value}</p>}
 			</form>
 		</Dialog>
 	);

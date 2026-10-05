@@ -1573,10 +1573,6 @@
 	outline: none;
 	box-shadow: none;
 }
-
-.tkv-menu__item--danger {
-	color: var(--danger);
-}
 /* #endregion */
 
 /* #region Responsive — the side panel is the first thing to go */

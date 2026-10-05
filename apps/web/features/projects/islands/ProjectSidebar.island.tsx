@@ -13,6 +13,9 @@ import { TaskLanePanel } from "../components/task-lane/TaskLanePanel.tsx";
 import { ProjectNavSection } from "../components/ProjectNavSection.tsx";
 import { ProjectRail } from "../components/ProjectRail.tsx";
 import { CreateStageModal } from "../components/CreateStageModal.tsx";
+import { BoardService } from "../core/BoardService.ts";
+import { stagesCreatedEpoch } from "../core/stage-events.ts";
+import { ArchiveProjectDialog } from "../components/ArchiveProjectDialog.tsx";
 import {
 	BackIcon,
 	DetailsIcon,
@@ -25,6 +28,8 @@ import {
 	LaneFooterActions,
 	LaneIconButton,
 } from "@projective/ui/navigation";
+import { Toast, useToast } from "@projective/ui/feedback";
+import { logger } from "@web/utils/logger.ts";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import {
 	deriveGroupSession,
@@ -43,6 +48,7 @@ import { setupBaseline, setupCommitEpoch, setupDraft } from "../core/setup-store
 import { ProjectSidebarService } from "../core/ProjectSidebarService.ts";
 import { isTaskDetail } from "../core/task-project.ts";
 import { buildTaskLane, type TaskLane } from "../core/task-lane.ts";
+import { isOwnerRole } from "../types/projects-types.ts";
 import type { ProjectDetail } from "../types/projects-types.ts";
 
 /**
@@ -143,6 +149,12 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 	const currentPath = useSignal<string>(props.path);
 	// Active channel-tree quick-filters (OR-combined); empty = show the whole tree.
 	const filters = useSignal<ChannelFilterKey[]>([]);
+	// The kebab's Archive project confirmation, and the write it guards while in flight.
+	const archiveOpen = useSignal<boolean>(false);
+	const archiving = useSignal<boolean>(false);
+	/** Mounted only when no other island has already put a stack up (they share one signal). */
+	const toastMounted = useSignal<boolean>(false);
+	const toast = useToast();
 
 	// The effective service archetype — seeded from the SSR baseline (no hydration mismatch), then
 	// tracked live from the dev Context Switcher, with the current seam snapshot kept for the derivations.
@@ -212,6 +224,26 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 			cancelled = true;
 		};
 	}, [committed]);
+
+	/**
+	 * Re-read the engagement whenever a stage is created — here, on the Board or on the Timeline. A new
+	 * stage's room exists only server-side until it is read back, so this read is unconditional, unlike
+	 * the setup re-read above which first asks whether anything is outstanding. Same `cancelled` guard.
+	 */
+	const stagesCreated = stagesCreatedEpoch.value;
+	useEffect(() => {
+		if (stagesCreated === 0) return;
+		const current = liveDetail.peek();
+		if (!current) return;
+		let cancelled = false;
+		void ProjectSidebarService.detail(current.slug).then((res) => {
+			if (cancelled || !res.ok || !res.data) return;
+			liveDetail.value = res.data.detail;
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [stagesCreated]);
 
 	// Restore the persisted accordion open/closed preference once, client-side (never during SSR, so
 	// the server-rendered defaults stay authoritative for hydration). Merged onto the defaults so a
@@ -288,14 +320,50 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 		} catch { /* SSR / no window — non-fatal */ }
 	}
 
-	function onMenuAction(_action: SidebarMenuAction): void {
-		// Report / Leave / Delete need the live backend + confirmation surfaces; wired dumb for now so
-		// the menu is fully navigable (open + share resolve client-side inside the header).
+	function onMenuAction(action: SidebarMenuAction): void {
+		// Open and Share resolve inside the header; Archive is the one action that writes.
+		if (action === "archive") archiveOpen.value = true;
 	}
 
-	function onCreateStage(_stage: { name: string; description: string }): void {
-		// STUB: persistence is deferred to the live `projects.create_stage` RPC. Close on submit.
+	/** Push a toast, mounting a stack first when the page has none (they all render one signal). */
+	function notify(severity: "success" | "danger", summary: string): void {
+		if (!document.querySelector(".ui-toast")) toastMounted.value = true;
+		toast.show({ severity, summary, life: severity === "danger" ? 6000 : 3000 });
+	}
+
+	/**
+	 * Soft-archive the engagement (root CLAUDE.md §5 — the row and its history survive) and leave for
+	 * the feed, exactly as the setup rig's Archive does: every view in this lane addresses a project
+	 * that is no longer in circulation. A refusal stays on the page and says why, in the server's words.
+	 */
+	async function archiveProject(): Promise<void> {
+		if (archiving.value || !detail) return;
+		archiving.value = true;
+		const res = await ProjectSidebarService.archive(detail.slug);
+		archiving.value = false;
+		if (!res.ok) {
+			logger.error("Project archive failed", { slug: detail.slug, message: res.message });
+			notify("danger", res.message ?? "That did not archive — please try again.");
+			return;
+		}
+		globalThis.location.href = "/projects";
+	}
+
+	/**
+	 * Persist a new stage through `BoardService.createStage`. On success the service announces it
+	 * (`stagesCreatedEpoch`), which is what re-reads the engagement below — the lane learns the stage
+	 * and its freshly provisioned room from the server, exactly as a reload would. A refusal is
+	 * returned to the modal, which keeps the draft open and shows it.
+	 */
+	async function onCreateStage(
+		stage: { name: string; description: string },
+	): Promise<string | null> {
+		const slug = (liveDetail.peek() ?? detail)?.slug;
+		if (!slug) return "This project could not be found.";
+		const res = await BoardService.createStage(slug, stage);
+		if (!res.ok || !res.data) return res.message ?? "That stage could not be created.";
 		createStageOpen.value = false;
+		return null;
 	}
 
 	/** Best-effort client navigation (the Propose-Time / continuation actions route to the calendar). */
@@ -352,6 +420,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 					title={view.title}
 					starred={starred.value}
 					onToggleStar={toggleStar}
+					canArchive={isOwnerRole(view.viewerRole)}
 					onMenuAction={onMenuAction}
 				/>
 
@@ -439,6 +508,14 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 				onClose={() => (createStageOpen.value = false)}
 				onCreate={onCreateStage}
 			/>
+
+			<ArchiveProjectDialog
+				visible={archiveOpen}
+				title={view.title}
+				onAccept={() => void archiveProject()}
+			/>
+
+			{toastMounted.value ? <Toast position="bottom-center" /> : null}
 		</div>
 	);
 }

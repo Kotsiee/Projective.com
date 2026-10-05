@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { Avatar, ProgressiveImage } from "@projective/ui/display";
+import { Icon } from "@projective/ui/icons";
 import type { EntityView, ProjectViewExtra } from "@projective/types/explore";
 import { MetaLine, Section, SellerLine, SpecLedger } from "./entity-view-parts.tsx";
 import { StageProgressLedger } from "./StageProgressLedger.tsx";
@@ -10,7 +10,6 @@ import {
 	projectRoles,
 	projectStagesHeading,
 } from "../core/project-view-model.ts";
-import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 
 /**
  * Entity View — the Projects archetype's hero and body (`/view/[id]?type=projects`).
@@ -30,19 +29,22 @@ import { personFallbackImage } from "@web/components/UserAvatar.tsx";
  * the TERMINAL area (bottom-right). Below the frame breakpoint the lane is not rendered and
  * `ProjectApplyBar` re-homes the transaction into the body — moved, never duplicated (§D.7.4).
  *
- * # The banner survives, quieter
+ * # No banner
  *
- * The client's profile banner used to be the page's 7:2 hero with a 112px avatar overlapping it — a
- * profile page's chrome on a listing. It is now a slim strip at the top of the hero, with the
- * client's face overlapping its lower edge at half height: the same two facts (who posted this, and
- * their visual identity) at a Cord / LinkedIn listing's prominence rather than a profile's. The strip
- * is decorative — `alt=""`, `aria-hidden` — because the seller line beneath it states the identity
- * in words.
+ * The client's profile banner was a slim decorative strip at the top of this hero (Decision #96(B)).
+ * It is gone (Decision #142): the title is the page's primary optical area, and a strip above it was
+ * the one thing standing between the reader and it. The identity it carried is stated by the seller
+ * line — the client's face, name and role headline — which is where a listing states it.
  */
 
 // #region Hero
 export function ProjectHero(
-	{ view, project }: { view: EntityView; project: ProjectViewExtra },
+	{ view, project, reviewsHref }: {
+		view: EntityView;
+		project: ProjectViewExtra;
+		/** The client-reviews anchor the score jumps to — omitted where the page renders no reviews. */
+		reviewsHref?: string;
+	},
 ): JSX.Element {
 	const { item } = view;
 	const rating = item.rating?.asClient ?? item.rating?.asHelper ?? null;
@@ -50,19 +52,6 @@ export function ProjectHero(
 
 	return (
 		<div class="evp-overview evp-overview--project">
-			<div class="evp-banner" aria-hidden="true">
-				<ProgressiveImage imgClass="evp-banner__img" src={project.banner} loading="eager" />
-				<Avatar
-					image={item.owner.avatar}
-					fallbackImage={personFallbackImage(item.owner.kind)}
-					placeholder={item.owner.avatarPlaceholder}
-					label={item.owner.name}
-					size={64}
-					shape={item.owner.kind === "business" ? "square" : "circle"}
-					class="evp-banner__avatar"
-				/>
-			</div>
-
 			<h1 class="evp-overview__title">{item.title}</h1>
 
 			{
@@ -82,10 +71,33 @@ export function ProjectHero(
 				seller={view.seller}
 				rating={rating}
 				responseMinutes={view.responseMinutes}
-				avatar={false}
 				headline={project.ownerHeadline}
+				reviewsHref={reviewsHref}
 			/>
 		</div>
+	);
+}
+// #endregion
+
+// #region Preview notice
+/**
+ * The owner's preview banner — the first row of the frame on `/projects/[slug]/preview`, where the
+ * public page has its back link.
+ *
+ * Non-intrusive by construction: one sentence of Meta-register text on the page's own ground, an
+ * `eye` glyph and a link back to Details. No fill, no border, no dismiss — it is a fact about the
+ * page, not an alert, and a box around it would be static content in a container (§B.9.7). It is a
+ * `role="note"` rather than a live region: it is there on arrival and never changes.
+ */
+export function PreviewNotice({ editHref }: { editHref?: string }): JSX.Element {
+	return (
+		<p class="evp-previewnote" role="note">
+			<Icon name="eye" size="sm" class="evp-previewnote__icon" aria-hidden />
+			<span class="evp-previewnote__text">
+				This is how freelancers and applicants evaluate your project brief.
+			</span>
+			{editHref && <a class="evp-previewnote__link" href={editHref}>Edit details</a>}
+		</p>
 	);
 }
 // #endregion

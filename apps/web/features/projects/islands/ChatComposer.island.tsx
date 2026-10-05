@@ -1,16 +1,12 @@
-import { cloneElement, type JSX, type RefObject } from "preact";
+import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/chat-composer.css";
-import { Message, Popover, Tooltip, useToast } from "@projective/ui/feedback";
 import { useId } from "@projective/ui/hooks";
 import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
 import { openPicker } from "@web/features/files/core/files-state.ts";
-import { extractMetadata } from "@web/features/files/core/media/extract.ts";
 import type { AssetItem } from "@web/features/files/types/file-types.ts";
 import { AccountService } from "@web/features/shell/core/AccountService.ts";
-import { MessagingService } from "@web/features/messaging/core/MessagingService.ts";
-import { MessagesService } from "../core/MessagesService.ts";
 import {
 	type ChatSurface,
 	MESSAGE_REPLY_EVENT,
@@ -18,48 +14,46 @@ import {
 	type MessageReplyDetail,
 	type MessageSentDetail,
 } from "@web/utils/lane-events.ts";
-import { messageDeltaText, normalizeMessageDelta } from "@projective/types/projects";
-import { uploadForProject } from "../core/upload.ts";
 import { composerMayTake, isTypingKey, ownsKeys } from "../core/chat-keyboard.ts";
-import { CloseIcon, PlusIcon, TrashIcon } from "../components/glyphs.tsx";
-import { ReplyIcon } from "../components/chat-glyphs.tsx";
 import { FormatBubble } from "../components/FormatBubble.tsx";
 import {
-	FileTypeGlyph,
-	LibraryIcon,
-	MicIcon,
-	MicOffIcon,
-	PauseIcon,
-	ResumeIcon,
-	SendIcon,
-	StopIcon,
-	UploadIcon,
-} from "../components/composer-glyphs.tsx";
-import {
-	extOf,
-	fileKindOf,
-	formatBytes,
-	formatClock,
-	formatDuration,
 	isVoiceOversize,
 	makeId,
 	MAX_ATTACHMENTS,
-	MAX_AUDIO_PEAKS,
 	PASTE_COLLAPSE_CHARS,
-	resamplePeaks,
-	voiceFileNameFor,
 } from "../core/composer-model.ts";
 import { useComposerEditor } from "../hooks/useComposerEditor.ts";
 import { useAudioRecorder } from "../hooks/useAudioRecorder.ts";
 import { useWaveform } from "../hooks/useWaveform.ts";
-import type {
-	ComposerPayload,
-	DraftAttachment,
-	PastedBlock,
-	RecorderError,
-	RecorderPhase,
-	VoicePayload,
-} from "../types/composer-types.ts";
+import type { ComposerPayload, DraftAttachment, PastedBlock } from "../types/composer-types.ts";
+import {
+	ComposerAttachments,
+	ComposerReplyStrip,
+	releasePreview,
+	stageDeviceFiles,
+	stageLibraryAssets,
+	useFileDrop,
+} from "../components/composer/ComposerAttachments.tsx";
+import {
+	ComposerAudioRecorder,
+	useVoiceGestures,
+	voiceStatus,
+} from "../components/composer/ComposerAudioRecorder.tsx";
+import {
+	ComposerLeadingAction,
+	ComposerTrailingAction,
+} from "../components/composer/ComposerActions.tsx";
+import {
+	ComposerCaptureNotice,
+	ComposerSendNotice,
+	useComposerToasts,
+} from "../components/composer/ComposerNotices.tsx";
+import {
+	buildComposerPayload,
+	dispatchDraft,
+	type SendFailure,
+	type SentDraft,
+} from "../components/composer/composer-send.ts";
 
 /**
  * ChatComposer — the floating message input bar for a channel's Chat tab
@@ -166,66 +160,6 @@ export interface ChatComposerProps {
 	autoFocus?: boolean;
 }
 
-/** The primary site sidebar the Plus popover must never slide under (edge-detection). */
-const SHELL_AVOID = [".ui-app-shell__sidebar"] as const;
-/** A press held at least this long is a hold-to-talk gesture; shorter is a click-to-latch. */
-const HOLD_THRESHOLD_MS = 350;
-
-/** Failures about microphone *access* rather than the take itself — these carry the struck-mic mark. */
-const PERMISSION_KINDS: ReadonlySet<RecorderError["kind"]> = new Set([
-	"blocked",
-	"denied",
-	"unsupported",
-	"no_device",
-	"in_use",
-	"device_lost",
-]);
-
-/**
- * What one send consumed.
- *
- * Captured before the request leaves so a success can clear exactly that and nothing else. The
- * composer stays editable while a large attachment uploads, and blanking the field on the way back
- * would delete a sentence typed after the send — the one kind of data loss a person cannot see
- * happening.
- */
-interface SentDraft {
-	/** The raw field text at send time; cleared only if it is still that. */
-	text: string;
-	/** The message the send replied to; the strip is dismissed only if it still quotes it. */
-	replyToId: string | null;
-	/** The {@link DraftAttachment} ids consumed — by id, because the tray may have grown since. */
-	attachmentIds: string[];
-	/** The collapsed paste blocks consumed. */
-	pastedIds: string[];
-	/** Whether the voice memo went with it. */
-	voice: boolean;
-}
-
-/** A send that did not land, phrased for the inline notice rather than for a log. */
-interface SendFailure {
-	/** The one-line statement of what happened. */
-	title: string;
-	/** What to do about it, and what was kept. */
-	detail?: string;
-}
-
-/** The one sentence announced on each capture phase transition (see the `role="status"` line). */
-function voiceStatus(phase: RecorderPhase, durationMs: number): string {
-	switch (phase) {
-		case "requesting":
-			return "Connecting to your microphone.";
-		case "recording":
-			return "Recording.";
-		case "paused":
-			return "Recording paused.";
-		case "recorded":
-			return `Recording ready, ${formatDuration(durationMs)}. Send or discard it.`;
-		default:
-			return "";
-	}
-}
-
 export default function ChatComposer(
 	{
 		projectId,
@@ -268,7 +202,7 @@ export default function ChatComposer(
 	 */
 	const pickerId = useId(undefined, "composer-picker");
 	const pasted = useSignal<PastedBlock[]>([]);
-	const dragActive = useSignal(false);
+	const drop = useFileDrop((files) => addFiles(files));
 	const plusOpen = useSignal(false);
 
 	const rec = useAudioRecorder();
@@ -276,10 +210,6 @@ export default function ChatComposer(
 	useWaveform(canvasRef, rec);
 
 	const fileInputRef = useRef<HTMLInputElement>(null);
-	const dragDepth = useRef(0);
-	const pressAtRef = useRef(0);
-	const holdingRef = useRef(false);
-	const shortcutRef = useRef(false);
 	/**
 	 * The acting principal an upload is filed against, resolved once and remembered.
 	 *
@@ -312,82 +242,18 @@ export default function ChatComposer(
 	 * would spend a request only to be told the project does not exist.
 	 */
 	const dispatches = scope === "conversation" || projectId !== channelId;
-	const toast = useToast();
 	// #endregion
 
 	// #region Attachments + paste
 	function addFiles(list: FileList | File[]): void {
-		const incoming = Array.from(list);
-		if (incoming.length === 0) return;
-		const room = MAX_ATTACHMENTS - attachments.value.length;
-		if (room <= 0) return;
-		const next: DraftAttachment[] = [];
-		for (const file of incoming.slice(0, room)) {
-			const kind = fileKindOf(file.name, file.type);
-			const previewUrl = kind === "image" || kind === "video"
-				? URL.createObjectURL(file)
-				: undefined;
-			next.push({
-				id: makeId("att"),
-				file,
-				assetId: null,
-				name: file.name,
-				size: file.size,
-				ext: extOf(file.name),
-				kind,
-				previewUrl,
-			});
-		}
-		attachments.value = [...attachments.value, ...next];
+		const next = stageDeviceFiles(list, attachments.value);
+		if (next) attachments.value = [...attachments.value, ...next];
 	}
 
-	/**
-	 * Stage assets the viewer already has, from the Asset Picker.
-	 *
-	 * **Nothing is uploaded and nothing is copied.** A library pick is a reference: the bytes are
-	 * already on the platform, and re-uploading them would spend the person's storage allowance twice
-	 * for one file and give the same content two identities.
-	 *
-	 * The same-file guard is by ASSET id rather than by name: two different files can share a name,
-	 * and the same file picked twice is the case worth refusing.
-	 */
+	/** Stage library picks as references — see {@link stageLibraryAssets}. */
 	function addLibraryAssets(assets: AssetItem[]): void {
-		if (assets.length === 0) return;
-		const room = MAX_ATTACHMENTS - attachments.value.length;
-		if (room <= 0) return;
-		const staged = new Set(
-			attachments.value.map((a) => a.assetId).filter((id): id is string => id !== null),
-		);
-		const next: DraftAttachment[] = [];
-		for (const asset of assets) {
-			if (next.length >= room) break;
-			if (staged.has(asset.id)) continue;
-			const kind = fileKindOf(asset.name, asset.ext);
-			next.push({
-				id: makeId("att"),
-				file: null,
-				assetId: asset.id,
-				name: asset.name,
-				size: asset.sizeBytes,
-				ext: asset.ext,
-				kind,
-				// The asset's OWN thumbnail. Not an object URL, which is why the revoke paths below check
-				// `assetId` first — revoking a remote URL is meaningless, and treating it as ours is how a
-				// preview that other cards also point at goes blank.
-				previewUrl: kind === "image" || kind === "video"
-					? asset.thumbnailUrl ?? asset.url
-					: undefined,
-			});
-		}
-		attachments.value = [...attachments.value, ...next];
-	}
-
-	/** Revoke a preview URL only when this composer minted it (see {@link addLibraryAssets}). */
-	function releasePreview(attachment: DraftAttachment): void {
-		if (attachment.assetId !== null || !attachment.previewUrl) return;
-		try {
-			URL.revokeObjectURL(attachment.previewUrl);
-		} catch { /* already revoked */ }
+		const next = stageLibraryAssets(assets, attachments.value);
+		if (next) attachments.value = [...attachments.value, ...next];
 	}
 
 	function removeAttachment(id: string): void {
@@ -426,59 +292,6 @@ export default function ChatComposer(
 	}
 	// #endregion
 
-	// #region Drag & drop
-	function onDragEnter(event: JSX.TargetedDragEvent<HTMLDivElement>): void {
-		event.preventDefault();
-		dragDepth.current += 1;
-		dragActive.value = true;
-	}
-	function onDragOver(event: JSX.TargetedDragEvent<HTMLDivElement>): void {
-		event.preventDefault();
-	}
-	function onDragLeave(event: JSX.TargetedDragEvent<HTMLDivElement>): void {
-		event.preventDefault();
-		dragDepth.current = Math.max(0, dragDepth.current - 1);
-		if (dragDepth.current === 0) dragActive.value = false;
-	}
-	function onDrop(event: JSX.TargetedDragEvent<HTMLDivElement>): void {
-		event.preventDefault();
-		dragDepth.current = 0;
-		dragActive.value = false;
-		if (event.dataTransfer?.files) addFiles(event.dataTransfer.files);
-	}
-	// #endregion
-
-	// #region Voice gestures (click-to-toggle · hold-to-talk)
-	function onMicPointerDown(event: JSX.TargetedPointerEvent<HTMLButtonElement>): void {
-		if (event.button !== 0) return;
-		if (rec.phase.value === "recording") {
-			rec.stop();
-			return;
-		}
-		if (rec.phase.value !== "inactive" || hasText) return;
-		holdingRef.current = true;
-		pressAtRef.current = performance.now();
-		try {
-			// Capture keeps a drag off the button still counting as a hold. It throws if the pointer is
-			// already gone — which must not cost the viewer the recording they just asked for.
-			event.currentTarget.setPointerCapture?.(event.pointerId);
-		} catch { /* pointer released before the handler ran — carry on */ }
-		void rec.start();
-	}
-	function onMicPointerUp(): void {
-		if (!holdingRef.current) return;
-		holdingRef.current = false;
-		const held = performance.now() - pressAtRef.current;
-		// A real hold ends the take on release; a quick click leaves it latched (click again to stop).
-		if (held >= HOLD_THRESHOLD_MS && rec.phase.value === "recording") rec.stop();
-	}
-	function onMicPointerCancel(): void {
-		if (!holdingRef.current) return;
-		holdingRef.current = false;
-		if (rec.phase.value === "recording") rec.stop();
-	}
-	// #endregion
-
 	// #region Send
 	/**
 	 * Clear exactly what went, and nothing else.
@@ -498,106 +311,12 @@ export default function ChatComposer(
 		if (sent.voice) rec.discard();
 	}
 
-	/**
-	 * Assemble the outgoing draft. The memo becomes a real {@link File} named for the container the UA
-	 * actually produced, and its envelope is resampled here — once, at the boundary — to the persisted
-	 * `MessageAudio.peaks` cap, so nothing downstream repeats the maths.
-	 */
-	function buildPayload(): ComposerPayload {
-		let voice: VoicePayload | null = null;
-		if (memo) {
-			const file = new File([memo.blob], voiceFileNameFor(memo.mimeType, new Date()), {
-				type: memo.mimeType,
-				lastModified: Date.now(),
-			});
-			voice = {
-				file,
-				durationMs: memo.durationMs,
-				durationLabel: formatDuration(memo.durationMs),
-				peaks: resamplePeaks(memo.peaks, Math.min(MAX_AUDIO_PEAKS, Math.max(1, memo.peaks.length))),
-			};
-		}
-		// Collapsed pastes were only ever collapsed for display — they rejoin the body on the way out,
-		// as unformatted runs after the field's own (formatted) runs.
-		const runs: unknown[] = editor.ops();
-		for (const p of pasted.value) {
-			if (runs.length > 0) runs.push({ insert: "\n\n" });
-			runs.push({ insert: p.text });
-		}
-		// The plain body is derived from the SAME runs the Delta is, and trimmed the way the Delta
-		// normaliser trims, so the two agree character for character (the send schemas refuse a pair
-		// that does not). A Delta the normaliser cannot store — an over-long run — is dropped, and the
-		// message goes plain rather than not at all.
-		const body = runs
-			.map((op) =>
-				typeof (op as { insert?: unknown }).insert === "string"
-					? (op as { insert: string }).insert
-					: ""
-			)
-			.join("")
-			.replace(/\r\n?/g, "\n")
-			.trim();
-		const normalized = normalizeMessageDelta(runs);
-		const delta = normalized && messageDeltaText(normalized) === body ? normalized : null;
-		return {
-			projectId,
-			channelId,
-			text: body,
-			delta,
-			replyToId: replyTo.value?.id ?? null,
-			// Device files carry bytes; library picks carry an id. They are separated HERE rather than by
-			// the send path, so nothing downstream has to know how a card got onto the tray.
-			files: attachments.value.flatMap((a) => (a.file ? [a.file] : [])),
-			libraryAssetIds: attachments.value.flatMap((a) => (a.assetId ? [a.assetId] : [])),
-			voice,
-		};
-	}
-
 	/** The library an upload asks to be filed in, resolved from the session on first use. */
 	async function actingOwnerId(): Promise<string | null> {
 		if (ownerRef.current) return ownerRef.current;
 		const me = await AccountService.current();
 		ownerRef.current = me?.userId ?? null;
 		return ownerRef.current;
-	}
-
-	/**
-	 * Turn every device file into a `files.items` id, in the caller's order.
-	 *
-	 * A partial upload REFUSES the send. The files module is right that three of four attachments
-	 * arriving is still a drop worth keeping — but a chat message is not a drop: it is a statement
-	 * about the things attached to it, and one that quietly arrives missing an attachment is worse
-	 * than one that does not arrive at all. Nothing is cleared, so the person can drop the file that
-	 * failed and press Send again; the ones that did land are already in their library and dedupe on
-	 * their fingerprint rather than costing a second slice of quota.
-	 */
-	async function uploadDraftFiles(files: File[]): Promise<{ ids: string[] } | SendFailure> {
-		if (files.length === 0) return { ids: [] };
-		const ownerId = await actingOwnerId();
-		if (!ownerId) {
-			return {
-				title: "Your attachments could not be uploaded.",
-				detail: "We could not tell whose library to file them in — sign in again and retry.",
-			};
-		}
-		const outcome = await uploadForProject(files, {
-			ownerType: "user",
-			ownerId,
-			// Runs alongside the transfer, so a poster frame never delays the bytes; a reader that
-			// cannot answer degrades to `generic` rather than failing the upload.
-			metadataFor: extractMetadata,
-		});
-		if (outcome.failures.length > 0) {
-			const names = outcome.failures.map((f) => f.name).join(", ");
-			return {
-				title: outcome.failures.length === files.length
-					? "Nothing could be uploaded, so the message was not sent."
-					: "Some attachments did not upload, so the message was not sent.",
-				detail: `${names} — remove them or try again. Your message is still here.`,
-			};
-		}
-		// Every file landed, and `assetIds` is written positionally, so index i is file i.
-		return { ids: outcome.assetIds };
 	}
 
 	/**
@@ -609,7 +328,15 @@ export default function ChatComposer(
 	 */
 	async function send(): Promise<void> {
 		if (!canSend || sending.value) return;
-		const draft = buildPayload();
+		const draft = buildComposerPayload({
+			projectId,
+			channelId,
+			ops: editor.ops(),
+			pasted: pasted.value,
+			attachments: attachments.value,
+			replyToId: replyTo.value?.id ?? null,
+			memo,
+		});
 		const sent: SentDraft = {
 			text: text.value,
 			replyToId: draft.replyToId,
@@ -626,72 +353,25 @@ export default function ChatComposer(
 		sending.value = true;
 		sendError.value = null;
 
-		// The memo goes LAST so its id is the last one back — it is the only attachment whose id the
-		// payload needs individually, and a positional answer is cheaper than a second round trip.
-		const memo = draft.voice;
-		const uploaded = await uploadDraftFiles(memo ? [...draft.files, memo.file] : draft.files);
-		if (!("ids" in uploaded)) {
-			sending.value = false;
-			sendError.value = uploaded;
-			return;
-		}
-		const memoId = memo ? uploaded.ids[uploaded.ids.length - 1] ?? null : null;
-		const attachmentIds = [
-			...(memo ? uploaded.ids.slice(0, draft.files.length) : uploaded.ids),
-			...draft.libraryAssetIds,
-			...(memoId ? [memoId] : []),
-		];
-		const audio = memo && memoId
-			? {
-				// The server resolves the playable address from the asset the memo was uploaded as;
-				// a URL minted here would be an object URL that dies with this page.
-				url: "",
-				durationMs: memo.durationMs,
-				durationLabel: memo.durationLabel,
-				peaks: memo.peaks,
-			}
-			: null;
-		// One payload, two doors. The conversation door is addressed by the conversation's own id (the
-		// `channelId` slot — a conversation mount passes it in both), the project door by the pair.
-		const res = scope === "conversation"
-			? await MessagingService.send({
-				conversationId: channelId,
-				text: draft.text,
-				delta: draft.delta,
-				replyToId: draft.replyToId,
-				attachmentIds,
-				audio,
-			})
-			: await MessagesService.send({
-				projectId,
-				channelId,
-				text: draft.text,
-				delta: draft.delta,
-				replyToId: draft.replyToId,
-				attachmentIds,
-				audio,
-			});
+		const outcome = await dispatchDraft(draft, { scope, projectId, channelId, actingOwnerId });
 		sending.value = false;
-		if (res.ok) {
-			clearSent(sent);
-			// Tell whatever feed is on the page that a row now exists. The composer cannot reach the
-			// feed directly — they are separate hydration roots in different bands — and without this
-			// the message lands in the database while the surface shows nothing, which reads to the
-			// sender as a failure. The SERVER's message is what travels, so the feed appends the row
-			// that was actually stored rather than a hopeful copy of the draft.
-			if (res.data?.message) {
-				globalThis.dispatchEvent(
-					new CustomEvent<MessageSentDetail>(MESSAGE_SENT_EVENT, {
-						detail: { channelId, message: res.data.message },
-					}),
-				);
-			}
+		if (!outcome.ok) {
+			sendError.value = outcome.failure;
 			return;
 		}
-		sendError.value = {
-			title: res.message ?? "That message could not be sent.",
-			detail: "Nothing was cleared — press Send to try again.",
-		};
+		clearSent(sent);
+		// Tell whatever feed is on the page that a row now exists. The composer cannot reach the
+		// feed directly — they are separate hydration roots in different bands — and without this
+		// the message lands in the database while the surface shows nothing, which reads to the
+		// sender as a failure. The SERVER's message is what travels, so the feed appends the row
+		// that was actually stored rather than a hopeful copy of the draft.
+		if (outcome.message) {
+			globalThis.dispatchEvent(
+				new CustomEvent<MessageSentDetail>(MESSAGE_SENT_EVENT, {
+					detail: { channelId, message: outcome.message },
+				}),
+			);
+		}
 	}
 
 	// #endregion
@@ -746,29 +426,8 @@ export default function ChatComposer(
 	}, [surface]);
 	// #endregion
 
-	// #region Global shortcut + unmount cleanup
-	useEffect(() => {
-		function onKeyDown(event: KeyboardEvent): void {
-			if (!event.ctrlKey || event.code !== "Space" || event.repeat) return;
-			if (text.value.trim().length > 0 || rec.phase.value !== "inactive") return;
-			event.preventDefault();
-			shortcutRef.current = true;
-			void rec.start();
-		}
-		function onKeyUp(event: KeyboardEvent): void {
-			if (!shortcutRef.current) return;
-			if (event.code === "Space" || event.key === "Control") {
-				shortcutRef.current = false;
-				if (rec.phase.value === "recording") rec.stop();
-			}
-		}
-		globalThis.addEventListener("keydown", onKeyDown);
-		globalThis.addEventListener("keyup", onKeyUp);
-		return () => {
-			globalThis.removeEventListener("keydown", onKeyDown);
-			globalThis.removeEventListener("keyup", onKeyUp);
-		};
-	}, []);
+	// #region Voice gestures + unmount cleanup
+	const gestures = useVoiceGestures(rec, text);
 
 	// The recorder releases its own stream/graph on unmount and `pagehide` (see `useAudioRecorder`);
 	// this only has to clean up the attachment previews the island itself minted.
@@ -793,39 +452,7 @@ export default function ChatComposer(
 	// #endregion
 
 	// #region Toast-mode notices
-	/**
-	 * In `toast` mode every failure is handed to the shared stack and then cleared here, so the
-	 * inline notice never renders for it. The recorder's structured error is passed on whole — title,
-	 * cause and the browser-specific recovery steps — and a permission-class failure carries the same
-	 * struck-mic mark the inline notice would. Cleared AFTER it is shown, not instead: the hook keeps
-	 * the mic control's `data-blocked` state from `permission`, which this does not touch.
-	 */
-	const capture = rec.error.value;
-	useEffect(() => {
-		if (notices !== "toast" || !capture) return;
-		toast.show({
-			severity: capture.kind === "too_large" || capture.kind === "failed" ? "danger" : "warning",
-			summary: capture.title,
-			detail: [capture.detail, capture.help].filter(Boolean).join(" "),
-			// A CLONE, never the module constant: the mic button may be drawing the same struck-mic
-			// VNode at this moment, and one VNode mounted in two trees is the Preact reuse hazard.
-			icon: PERMISSION_KINDS.has(capture.kind) ? cloneElement(MicOffIcon) : undefined,
-			life: capture.help ? 9000 : 5000,
-		});
-		rec.clearError();
-	}, [capture]);
-
-	const failed = sendError.value;
-	useEffect(() => {
-		if (notices !== "toast" || !failed) return;
-		toast.show({
-			severity: "danger",
-			summary: failed.title,
-			detail: failed.detail,
-			life: 6000,
-		});
-		sendError.value = null;
-	}, [failed]);
+	useComposerToasts(notices, rec, sendError);
 	// #endregion
 
 	// #region Plus menu actions
@@ -855,7 +482,6 @@ export default function ChatComposer(
 	}
 	// #endregion
 
-	const err = rec.error.value;
 	// Read for its subscription: the selection's on-screen box moves when the field scrolls or the
 	// draft reflows, and the bubble has to move with it.
 	void editor.layoutTick.value;
@@ -868,180 +494,35 @@ export default function ChatComposer(
 			data-surface={surface}
 			data-project={projectId}
 			data-channel={channelId}
-			data-drag={dragActive.value ? "true" : undefined}
-			onDragEnter={onDragEnter}
-			onDragOver={onDragOver}
-			onDragLeave={onDragLeave}
-			onDrop={onDrop}
+			data-drag={drop.dragActive.value ? "true" : undefined}
+			onDragEnter={drop.onDragEnter}
+			onDragOver={drop.onDragOver}
+			onDragLeave={drop.onDragLeave}
+			onDrop={drop.onDrop}
 		>
 			{/* Gradient + blur underlay — a sibling, never an ancestor of the Plus popover trigger. */}
 			<div class="chat-composer__scrim" aria-hidden="true" />
 
 			<div class="chat-composer__inner">
-				{
-					/* The reply strip — who is being answered and what they said, until the reply goes
-					   or is cancelled. A control (it cancels), so it takes the tonal chip treatment the
-					   paste chips use rather than a bordered box. */
-				}
-				{replyTo.value && (
-					<div class="chat-composer__reply">
-						<span class="chat-composer__reply-icon" aria-hidden="true">
-							{cloneElement(ReplyIcon)}
-						</span>
-						<span class="chat-composer__reply-meta">
-							<span class="chat-composer__reply-title">
-								Replying to{" "}
-								{replyTo.value.isOwn ? "yourself" : replyTo.value.senderName ?? "a message"}
-							</span>
-							<span class="chat-composer__reply-text">
-								{replyTo.value.excerpt ||
-									(replyTo.value.media === "audio"
-										? "Voice message"
-										: replyTo.value.media === "attachment"
-										? "Attachment"
-										: "Message")}
-							</span>
-						</span>
-						<button
-							type="button"
-							class="chat-composer__paste-remove"
-							aria-label="Cancel reply"
-							onClick={() => (replyTo.value = null)}
-						>
-							{CloseIcon}
-						</button>
-					</div>
-				)}
+				<ComposerReplyStrip replyTo={replyTo} />
 
-				{/* Attachment preview cards (max 10). */}
-				{attachments.value.length > 0 && (
-					<ul class="chat-composer__cards" aria-label="Attachments">
-						{attachments.value.map((att) => (
-							<li key={att.id} class="chat-composer__card" data-kind={att.kind}>
-								{att.kind === "image" && att.previewUrl
-									? <img class="chat-composer__card-media" src={att.previewUrl} alt={att.name} />
-									: att.kind === "video" && att.previewUrl
-									? (
-										<video
-											class="chat-composer__card-media"
-											src={att.previewUrl}
-											muted
-											playsInline
-											preload="metadata"
-										/>
-									)
-									: (
-										<span class="chat-composer__card-file" aria-hidden="true">
-											<FileTypeGlyph ext={att.ext} />
-											{att.ext && <span class="chat-composer__card-ext">{att.ext}</span>}
-										</span>
-									)}
-								<span
-									class="chat-composer__card-name"
-									title={`${att.name} · ${formatBytes(att.size)}`}
-								>
-									{att.name}
-								</span>
-								<button
-									type="button"
-									class="chat-composer__card-remove"
-									aria-label={`Remove ${att.name}`}
-									onClick={() =>
-										removeAttachment(att.id)}
-								>
-									{CloseIcon}
-								</button>
-							</li>
-						))}
-					</ul>
-				)}
-
-				{/* Collapsed long-paste chips. */}
-				{pasted.value.map((block) => (
-					<div key={block.id} class="chat-composer__paste">
-						<span class="chat-composer__paste-glyph" aria-hidden="true">
-							<FileTypeGlyph ext="txt" />
-						</span>
-						<span class="chat-composer__paste-meta">
-							<span class="chat-composer__paste-title">Pasted text</span>
-							<span class="chat-composer__paste-sub">
-								{block.lines} lines · {block.chars.toLocaleString()} chars
-							</span>
-						</span>
-						<button
-							type="button"
-							class="chat-composer__paste-remove"
-							aria-label="Remove pasted text"
-							onClick={() => removePasted(block.id)}
-						>
-							{CloseIcon}
-						</button>
-					</div>
-				))}
+				<ComposerAttachments
+					attachments={attachments}
+					pasted={pasted}
+					onRemoveAttachment={removeAttachment}
+					onRemovePasted={removePasted}
+				/>
 
 				{/* The floating input bar. */}
 				<div class="chat-composer__bar">
-					{/* Left control — Plus popover, or Discard while a voice memo is active. */}
-					{hasVoice
-						? (
-							<Tooltip content="Discard recording" placement="top">
-								<button
-									type="button"
-									class="chat-composer__btn chat-composer__btn--ghost"
-									aria-label="Discard recording"
-									onClick={() => rec.discard()}
-								>
-									{TrashIcon}
-								</button>
-							</Tooltip>
-						)
-						: (
-							<Popover
-								open={plusOpen}
-								placement="top-start"
-								avoid={SHELL_AVOID}
-								allowOverflow={["top"]}
-								class="chat-composer-pop"
-								trigger={(api) => (
-									<Tooltip content="Add attachment" placement="top">
-										<button
-											type="button"
-											ref={api.ref as RefObject<HTMLButtonElement>}
-											class="chat-composer__btn chat-composer__btn--ghost"
-											aria-label="Add attachment"
-											aria-haspopup="menu"
-											aria-expanded={api.expanded}
-											aria-controls={api.panelId}
-											disabled={atCapacity}
-											onClick={api.toggle}
-										>
-											{PlusIcon}
-										</button>
-									</Tooltip>
-								)}
-							>
-								<div class="chat-composer__menu" role="menu" aria-label="Add attachment">
-									<button
-										type="button"
-										role="menuitem"
-										class="chat-composer__menu-item"
-										onClick={openDevicePicker}
-									>
-										<span class="chat-composer__menu-icon" aria-hidden="true">{UploadIcon}</span>
-										<span>Upload from Device</span>
-									</button>
-									<button
-										type="button"
-										role="menuitem"
-										class="chat-composer__menu-item"
-										onClick={openLibrary}
-									>
-										<span class="chat-composer__menu-icon" aria-hidden="true">{LibraryIcon}</span>
-										<span>Attach from Library</span>
-									</button>
-								</div>
-							</Popover>
-						)}
+					<ComposerLeadingAction
+						hasVoice={hasVoice}
+						plusOpen={plusOpen}
+						atCapacity={atCapacity}
+						onDiscard={() => rec.discard()}
+						onUploadFromDevice={openDevicePicker}
+						onAttachFromLibrary={openLibrary}
+					/>
 
 					{/* Field — the message editor, or the waveform while recording/recorded. */}
 					<div class="chat-composer__field">
@@ -1058,173 +539,23 @@ export default function ChatComposer(
 								data-ready="false"
 							/>
 						</div>
-						{hasVoice && (
-							<div class="chat-composer__voice" data-phase={phase}>
-								{phase === "requesting" && (
-									<span class="chat-composer__connecting">Connecting to your microphone…</span>
-								)}
-								<canvas
-									ref={canvasRef}
-									class="chat-composer__wave"
-									data-phase={phase}
-									aria-hidden="true"
-								/>
-								{
-									/* Readable on demand, but never a live region — a clock announcing itself five
-									    times a second would bury every other message. Transitions are announced by
-									    the status line below instead. */
-								}
-								<span class="chat-composer__timer">
-									{formatClock(
-										phase === "recorded" && memo ? memo.durationMs : rec.elapsedMs.value,
-									)}
-									{phase !== "recorded" && (
-										<span class="chat-composer__timer-max">/ {formatClock(rec.maxMs)}</span>
-									)}
-								</span>
-							</div>
-						)}
+						{hasVoice && <ComposerAudioRecorder rec={rec} canvasRef={canvasRef} />}
 					</div>
 
-					{
-						/* Right controls — Pause/Resume + Stop while capturing, Send when there's a draft,
-					    else Mic. Pause sits between Cancel and the primary control, so the three recording
-					    actions read left-to-right in the order they are reached. */
-					}
-					{phase === "requesting"
-						? (
-							<Tooltip content="Cancel" placement="top">
-								<button
-									type="button"
-									class="chat-composer__btn chat-composer__btn--stop"
-									data-paused="true"
-									aria-label="Cancel recording"
-									onClick={() => rec.discard()}
-								>
-									{StopIcon}
-								</button>
-							</Tooltip>
-						)
-						: capturing
-						? (
-							<>
-								<Tooltip
-									content={phase === "paused" ? "Resume recording" : "Pause recording"}
-									placement="top"
-								>
-									<button
-										type="button"
-										class="chat-composer__btn chat-composer__btn--pause"
-										aria-label={phase === "paused" ? "Resume recording" : "Pause recording"}
-										onClick={() => (phase === "paused" ? rec.resume() : rec.pause())}
-									>
-										{phase === "paused" ? ResumeIcon : PauseIcon}
-									</button>
-								</Tooltip>
-								<Tooltip content="Stop recording" placement="top">
-									<button
-										type="button"
-										class="chat-composer__btn chat-composer__btn--stop"
-										data-paused={phase === "paused" ? "true" : undefined}
-										aria-label="Stop recording"
-										onClick={() => rec.stop()}
-									>
-										{StopIcon}
-									</button>
-								</Tooltip>
-							</>
-						)
-						: phase === "recorded" || canSend
-						? (
-							// A finished memo always shows Send, disabled when it is too large to upload.
-							// Falling back to the Mic here would leave an enabled control that does nothing —
-							// the press guard rejects a `recorded` phase — and hide the only correct action.
-							<Tooltip
-								content={sending.value ? "Sending…" : oversize ? "Too large to send" : "Send"}
-								placement="top"
-							>
-								<button
-									type="button"
-									class="chat-composer__btn chat-composer__btn--send"
-									aria-label={oversize ? "Send message — recording too large" : "Send message"}
-									disabled={!canSend || sending.value}
-									aria-busy={sending.value ? "true" : undefined}
-									onClick={() => void send()}
-								>
-									{SendIcon}
-								</button>
-							</Tooltip>
-						)
-						: (
-							<Tooltip
-								content={micBlocked
-									? "Microphone unavailable"
-									: "Hold to talk · click to record · Ctrl+Space"}
-								placement="top"
-							>
-								<button
-									type="button"
-									class="chat-composer__btn chat-composer__btn--mic"
-									data-blocked={micBlocked ? "true" : undefined}
-									aria-label={micBlocked
-										? "Microphone unavailable — why?"
-										: "Record a voice message"}
-									onPointerDown={onMicPointerDown}
-									onPointerUp={onMicPointerUp}
-									onPointerCancel={onMicPointerCancel}
-									onPointerLeave={onMicPointerUp}
-								>
-									{micBlocked ? MicOffIcon : MicIcon}
-								</button>
-							</Tooltip>
-						)}
+					<ComposerTrailingAction
+						rec={rec}
+						canSend={canSend}
+						oversize={oversize}
+						micBlocked={micBlocked}
+						sending={sending}
+						onSend={() => void send()}
+						gestures={gestures}
+					/>
 				</div>
 
-				{
-					/* Capture failures, inline beside the control that produced them. Recovery steps appear
-				    only for a persisted block, where pressing the mic again would do nothing at all. */
-				}
-				{err && notices === "inline" && (
-					<div class="chat-composer__notice">
-						<Message
-							severity={err.kind === "too_large" || err.kind === "failed" ? "danger" : "warning"}
-							variant="subtle"
-							size="sm"
-							icon={PERMISSION_KINDS.has(err.kind) ? MicOffIcon : undefined}
-							closable
-							onClose={() => rec.clearError()}
-						>
-							<span class="chat-composer__notice-body">
-								<span class="chat-composer__notice-title">{err.title}</span>
-								{err.detail && <span class="chat-composer__notice-detail">{err.detail}</span>}
-								{err.help && <span class="chat-composer__notice-help">{err.help}</span>}
-							</span>
-						</Message>
-					</div>
-				)}
+				{notices === "inline" && <ComposerCaptureNotice rec={rec} />}
 
-				{
-					/* A send that did not land, stated where the Send button is rather than in a corner
-				    toast — and never a silent drop, because the message still looks written. */
-				}
-				{sendError.value && notices === "inline" && (
-					<div class="chat-composer__notice">
-						<Message
-							severity="danger"
-							variant="subtle"
-							size="sm"
-							closable
-							onClose={() => (sendError.value = null)}
-						>
-							<span class="chat-composer__notice-body">
-								<span class="chat-composer__notice-title">{sendError.value.title}</span>
-								{sendError.value.detail && (
-									<span class="chat-composer__notice-detail">{sendError.value.detail}</span>
-								)}
-							</span>
-						</Message>
-					</div>
-				)}
+				{notices === "inline" && <ComposerSendNotice sendError={sendError} />}
 
 				{
 					/* Phase transitions announced once each, so a non-sighted viewer knows capture began,

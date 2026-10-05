@@ -554,6 +554,14 @@ a.mem-person__name:focus-visible {
 	gap: var(--space-2);
 }
 
+/* A server refusal inside the Invite / Change role dialogs — inline, the draft kept open to correct. */
+.mem-dialog__error {
+	margin: 0;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--danger);
+}
+
 .mem-editform {
 	display: flex;
 	flex-direction: column;

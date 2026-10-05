@@ -1,25 +1,41 @@
+import { page } from "fresh";
 import { define } from "@web/utils/state.ts";
-import { PagePlaceholder } from "@web/components/PagePlaceholder.tsx";
+import { readActor } from "@web/utils/api-session.ts";
+import { resolveRequestContext } from "@web/utils/user-context.ts";
 import ProjectNoticeHost from "@features/projects/islands/ProjectNoticeHost.island.tsx";
+import { ProjectPortfolio } from "@features/projects/components/portfolio/ProjectPortfolio.tsx";
+import { resolvePortfolio } from "@features/projects/core/portfolio-ssr.ts";
 
 /**
- * `/projects` — the list surface, and the place every bounced engagement URL lands.
+ * `/projects` — the portfolio index, and the place every bounced engagement URL lands.
  *
- * The body is still the scaffold placeholder; the lane beside it is the real feed. The one addition
- * is {@link ProjectNoticeHost}, which turns a `?notice=` flash left by a redirect into a single toast
- * and then takes the parameter back out of the address bar. It is mounted here rather than in the
- * dashboard layout because this route is the only target the flash is ever sent to, and a host on the
- * layout would put an empty hydration root on every authenticated page to serve one of them.
+ * Thin route: the handler resolves the active workspace's projects through `resolvePortfolio` (the
+ * same `ProjectBackendService.list` read the lane beside it paints from) and the status filter from
+ * `?status=`; {@link ProjectPortfolio} renders the aggregate stage burn, the filter and the list. An
+ * empty workspace gets one action — Create a project — which opens the Quick-Init modal the lane hosts.
+ *
+ * {@link ProjectNoticeHost} turns a `?notice=` flash left by a redirect into a single toast and then
+ * takes the parameter back out of the address bar. It is mounted here rather than in the dashboard
+ * layout because this route is the only target the flash is ever sent to.
  */
-export default define.page(function ProjectsPage() {
+export const handler = define.handlers({
+	async GET(ctx) {
+		const data = await resolvePortfolio(
+			ctx.url,
+			ctx.state.userContext ?? resolveRequestContext(ctx.req),
+			readActor(ctx),
+			ctx.state.currency?.displayCurrency,
+		);
+		ctx.state.title = "Projects · Projective";
+		return page(data);
+	},
+});
+
+export default define.page<typeof handler>(function ProjectsPage({ data }) {
 	return (
 		<>
 			<ProjectNoticeHost />
-			<PagePlaceholder
-				title="Projects"
-				path="/projects"
-				note="Pick a project from the list on the left to open it."
-			/>
+			<ProjectPortfolio items={data.items} filter={data.filter} contextLabel={data.contextLabel} />
 		</>
 	);
 });

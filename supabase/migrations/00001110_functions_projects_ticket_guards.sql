@@ -153,3 +153,33 @@ BEGIN
     RETURN OLD;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, org, auth;
+
+-- Settlement authority on the TABLE path. The two triggers above pay escrow out on entering
+-- `completed` and on delete, and the "Manage tickets" policy lets the ASSIGNEE update and delete their
+-- own ticket — so without this a freelancer could skip every guarded RPC (move_ticket,
+-- complete_ticket, delete_ticket) and release their own escrow with one PATCH or DELETE. Only review
+-- authority (owner / active client-business member) may complete or delete a ticket. A NULL
+-- auth.uid() is the service role, cron or a migration, which act as the platform and are not gated.
+CREATE OR REPLACE FUNCTION projects.fn_ticket_settlement_guard()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+    END IF;
+
+    IF TG_OP = 'DELETE' THEN
+        IF NOT projects.can_review_project(OLD.project_id) THEN
+            RAISE EXCEPTION 'Only the client/owner may delete a ticket.' USING ERRCODE = '42501';
+        END IF;
+        RETURN OLD;
+    END IF;
+
+    IF NEW.status = 'completed'::public.ticket_status
+        AND OLD.status IS DISTINCT FROM 'completed'::public.ticket_status
+        AND NOT projects.can_review_project(NEW.project_id) THEN
+        RAISE EXCEPTION 'Only the client/owner may mark a ticket completed (confirm delivery).'
+            USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, org, auth;

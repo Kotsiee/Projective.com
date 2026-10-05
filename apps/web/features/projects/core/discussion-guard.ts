@@ -36,7 +36,9 @@ export async function legacyDiscussionRedirect(
 	// folder middleware is not guaranteed to have populated.
 	const segs = ctx.url.pathname.split("/").filter(Boolean);
 	if (segs[0] !== "projects" || segs.length < 3) return null;
-	const [, slug, ref, ...rest] = segs.map((s) => decodeURIComponent(s));
+	const decoded = decodeSegments(segs);
+	if (!decoded) return null;
+	const [, slug, ref, ...rest] = decoded;
 	if (isDiscussionRef(ref)) return null;
 
 	const { detail } = await resolveProjectDetail(
@@ -50,4 +52,18 @@ export async function legacyDiscussionRedirect(
 	const location = `/projects/${encodeURIComponent(slug)}/${DISCUSSION_REF}` +
 		(tail ? `/${tail}` : "") + ctx.url.search;
 	return new Response(null, { status: 303, headers: { location } });
+}
+
+/**
+ * Every path segment percent-decoded, or `null` when one carries a malformed escape.
+ *
+ * A request for `/projects/x/%E0%A4%A` names no room this guard could move, so it falls through to the
+ * route's own miss rather than throwing a `URIError` out of the middleware as a 500.
+ */
+function decodeSegments(segs: string[]): string[] | null {
+	try {
+		return segs.map((s) => decodeURIComponent(s));
+	} catch {
+		return null;
+	}
 }

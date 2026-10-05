@@ -18,7 +18,7 @@ import type {
 	MemberStageRef,
 	ProjectMemberRow,
 } from "../types/projects-types.ts";
-import { memberStagePicture } from "../types/projects-types.ts";
+import { AssignableMemberRole, memberStagePicture } from "../types/projects-types.ts";
 import { MembersService } from "../core/MembersService.ts";
 import { RequestService } from "../core/RequestService.ts";
 import {
@@ -80,8 +80,9 @@ import { type DevSeamState, readDevSeam, subscribeDevSeam } from "@web/utils/dev
  * follows the server's answer rather than preceding it (Decision #116). After any write the roster is
  * re-read in the background, so a confirmed applicant appears among the members as the server seats
  * them. Stage seats are offered by invitation (the kebab's "Invite to stage ›", the preview's Stages
- * section) and accepted by the freelancer; they are never granted here (Decision #139). Role edits and
- * email invites remain stub-local until their live writes land.
+ * section) and accepted by the freelancer; they are never granted here (Decision #139). Invitations
+ * (`MembersService.invite`) and role changes (`MembersService.updateRole`) are persisted and NOT
+ * optimistic — the roster shows them once the server answers, so a reload reads back the same list.
  *
  * THIN: no DB, no `@server`; it refines the bounded roster client-side and reaches the server through
  * the thin `MembersService` / `RequestService`.
@@ -405,8 +406,19 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 		editMember.value = m;
 		editOpen.value = true;
 	}
-	function saveEdit(id: string, role: MemberRole): void {
-		members.value = members.value.map((m) => m.id === id ? { ...m, role } : m);
+	/**
+	 * Persist a role change, then apply the SERVER's role to the row. Not optimistic: a role decides
+	 * what the person may do, so the roster shows a role only once the database holds it.
+	 */
+	async function saveEdit(id: string, role: MemberRole): Promise<string | null> {
+		const parsed = AssignableMemberRole.safeParse(role);
+		if (!parsed.success) return "That role cannot be granted here.";
+		const res = await MembersService.updateRole(projectId, id, parsed.data);
+		if (!res.ok || !res.data) return res.message ?? "That role could not be changed.";
+		const saved = res.data.role;
+		members.value = members.value.map((m) => m.id === id ? { ...m, role: saved } : m);
+		say("success", res.message ?? "Role updated.");
+		return null;
 	}
 
 	/** Open the consequence-aware confirmation — from a kebab, or from an accepted invitation. */
@@ -469,23 +481,35 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 		askRemove(m, stage);
 	}
 
-	function invite(emails: string[], role: MemberRole, stageId: string | null): void {
-		const stage = stageId ? stages.find((s) => s.id === stageId) ?? null : null;
-		const inviter = members.value.find((m) => m.id === roster?.viewerId)?.party.name ?? "You";
-		const now = Date.now();
-		const added: MemberInvite[] = emails.map((email, i) => ({
-			id: `inv-new-${now}-${i}`,
-			email,
-			role,
-			stageId: stage?.id ?? null,
-			stageName: stage?.name ?? null,
-			invitedBy: inviter,
-			invitedAt: new Date(now).toISOString(),
-			invitedLabel: "Just now",
-			status: "pending",
-		}));
-		invites.value = [...added, ...invites.value];
+	/**
+	 * Send invitations, then fold the rows the SERVER issued into the Invitations section — the queue a
+	 * reload reads back. Addresses the server refused (a cooldown, a duplicate, the outbound ceiling)
+	 * are reported once, by count and first reason; a send refused outright returns its sentence to the
+	 * modal, which keeps the draft open.
+	 */
+	async function invite(
+		addresses: string[],
+		role: AssignableMemberRole,
+		stageId: string | null,
+	): Promise<string | null> {
+		const res = await MembersService.invite(projectId, { addresses, role, stageId });
+		if (!res.ok || !res.data) return res.message ?? "Those invitations could not be sent.";
+		const issued = res.data.invites;
+		const fresh = new Set(issued.map((inv) => inv.id));
+		invites.value = [...issued, ...invites.value.filter((inv) => !fresh.has(inv.id))];
 		selectSection("invitations");
+		const refused = res.data.refused;
+		if (refused.length > 0) {
+			say(
+				"warning",
+				`${res.message ?? "Some invitations were sent."} ${refused[0].address}: ${
+					refused[0].message
+				}`,
+			);
+		} else {
+			say("success", res.message ?? "Invitation sent.");
+		}
+		return null;
 	}
 	// #endregion
 

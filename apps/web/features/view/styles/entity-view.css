@@ -389,7 +389,7 @@
     /*
      * No media column: the hero takes both content tracks. A session's artefact is the full-width
      * scheduler stage below the hero, and a project has no gallery at all — its identity is the
-     * client's banner strip inside the hero (see `.evp-banner`).
+     * seller line inside the hero (the banner strip was removed by Decision #142).
      */
     .evp-frame--nomedia {
         grid-template-columns: minmax(0, 1fr) var(--evp-lane-w);
@@ -821,46 +821,39 @@
 }
 
 /* ============================================================================
- * The project banner strip (Projects archetype)
+ * The owner's preview notice (`/projects/[slug]/preview`)
  *
- * The client's profile banner, retained at a LISTING's prominence rather than a profile's: a slim
- * strip at the top of the hero, with the client's face overlapping its lower edge at half height.
- * It used to be a 7:2 hero with a 112px avatar — a profile page's chrome on a page about one brief.
- * The strip's ratio is fixed and capped, so the artefact's shape depends on the frame's width and
- * never on the reader's window. `--radius-lg` matches the media canvas a service renders in the same
- * position, which is what makes the two heroes read as one family.
- *
- * The strip is decorative (`aria-hidden`) — the seller line beneath it states the identity in words.
+ * The frame's first row in preview, where the public page has its back link. Meta register on the
+ * page's own ground — no fill, no border, no dismiss: it is a fact about the page, not an alert, and
+ * boxing it would put static content in a container (§B.9.7). The link is the one interactive thing
+ * in it, so it is the one thing that carries the brand tone.
  * ========================================================================== */
-.evp-banner {
-    position: relative;
-    inline-size: 100%;
-    /* The avatar overlaps the strip's foot by half its height; that half is reserved here so the
-       title beneath is never covered. */
-    margin-block-end: calc(var(--evp-banner-avatar) / 2);
-    --evp-banner-avatar: 4rem;
+.evp-previewnote {
+    grid-area: back;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-2);
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
 }
 
-.evp-banner__img {
-    display: block;
-    inline-size: 100%;
-    aspect-ratio: 7 / 1;
-    max-block-size: 8.5rem;
-    object-fit: cover;
-    border-radius: var(--radius-lg);
-    background: var(--surface-1);
+.evp-previewnote__icon {
+    flex: none;
+    color: var(--text-secondary);
 }
 
-/*
- * The client's face, overlapping the strip's lower edge by exactly half its height and inset by one
- * step from the start edge. The ring is drawn in the page ground so the disc reads as sitting ON the
- * strip rather than cut out of it — the profile header's own idiom, at this scale.
- */
-.evp-banner .evp-banner__avatar {
-    position: absolute;
-    inset-block-end: calc(-1 * var(--evp-banner-avatar) / 2);
-    inset-inline-start: var(--space-4);
-    box-shadow: 0 0 0 3px var(--surface);
+.evp-previewnote__link {
+    color: var(--primary);
+    font-weight: var(--fw-medium);
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+}
+
+.evp-previewnote__link:hover {
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
 }
 
 /* The roles a brief is hiring for — one inline metadata line (§B.11.2), at Body size so it reads as
@@ -1332,11 +1325,76 @@
 .evp-track__caret {
     flex: none;
     color: var(--text-secondary);
-    transition: transform var(--dur-fast) var(--ease-standard);
+    transition: transform var(--dur-medium) var(--spring-standard);
 }
 
 .evp-track__body[open] .evp-track__caret {
     transform: rotate(180deg);
+}
+
+/*
+ * ---- THE SMOOTH DISCLOSURE ----
+ *
+ * The stage still expands through native `<details>` — server-rendered, keyboard-operable, working
+ * with JavaScript off — and only the HEIGHT change is animated, on `::details-content`, the slot the
+ * browser hides a closed `<details>`' content in.
+ *
+ * The slot is a one-row grid whose row animates `0fr` ⇄ `1fr`: a fractional track interpolates to
+ * the content's real height in every engine that has the pseudo-element, where `block-size: auto` only
+ * interpolates where `interpolate-size` ships. `content-visibility` is the property the browser
+ * itself flips on close, so it transitions DISCRETELY (`allow-discrete`) — it holds `visible` for the
+ * whole collapse and the content is not snatched away before the row has closed over it.
+ *
+ * `.evp-track__reveal` is the grid item and the clip. It owns no padding: a box cannot be shorter
+ * than its own padding, so padding here would leave a sliver of every closed stage showing. The
+ * padding lives on `.evp-track__detail` inside it.
+ *
+ * The spring is `--spring-standard` — critically damped, no overshoot (§B.5) — at `--dur-medium`, the
+ * caret's own timing, so the chevron and the panel read as one movement.
+ *
+ * And the track: `.evp-track__rule` is one absolutely-positioned line on the `<ol>`, so the expansion
+ * grows the list and the line with it, frame by frame. Nothing here draws a border, a fill or a
+ * radius on the expanding region — it opens on the page's own ground (§D.8.1, §B.9.7).
+ *
+ * An engine without `::details-content` ignores all of this and opens the stage instantly, which is
+ * the correct degradation of a decoration.
+ */
+.evp-track__body::details-content {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition:
+        grid-template-rows var(--dur-medium) var(--spring-standard),
+        content-visibility var(--dur-medium) var(--spring-standard) allow-discrete;
+}
+
+.evp-track__body[open]::details-content {
+    grid-template-rows: 1fr;
+}
+
+.evp-track__reveal {
+    min-block-size: 0;
+    overflow: clip;
+    opacity: 0;
+    transition: opacity var(--dur-medium) var(--spring-standard);
+}
+
+.evp-track__body[open] .evp-track__reveal {
+    opacity: 1;
+}
+
+/* Jump-to-final on BOTH reduced-motion channels (§B.12): the system query and the in-app overlay. */
+@media (prefers-reduced-motion: reduce) {
+    .evp-track__body::details-content,
+    .evp-track__reveal,
+    .evp-track__caret {
+        transition: none;
+    }
+}
+
+[data-motion="reduced"] .evp-track__body::details-content,
+[data-motion="reduced"] .evp-track__reveal,
+[data-motion="reduced"] .evp-track__caret {
+    transition: none;
 }
 
 .evp-track__detail {
@@ -1494,6 +1552,70 @@
     .evp-laneslot {
         display: block;
     }
+}
+
+/*
+ * ---- THE LANE GOES UNDER THE BAND, NEVER OVER IT (authenticated shell) ----
+ *
+ * A sticky box is bounded by its containing block — the frame — so as the frame's foot scrolls up the
+ * lane is carried up with it, through the strip `.ui-middle-nav__header` occupies. One level above
+ * `--z-sticky` (the guest shell's reason, above) it painted OVER the band there: measured on a short
+ * project page at 1440 × 900, the lane rode to y = 29 across a band spanning 48–96 and covered the
+ * band's seller and rating block. In this shell the band is in flow and full width, so the lane must
+ * pass beneath it like the rest of the page does. The guest shell keeps the higher level: its band is
+ * fixed, inset clear of the lane, and the race the note above describes is real there.
+ */
+.ui-page-canvas__body .evp-laneslot {
+    z-index: var(--z-raised);
+}
+
+/*
+ * ---- THE PROJECT LANE: content-sized, clamped, and docked below both bars (Decision #142) ----
+ *
+ * A project's lane is short — identity, a price, the stage quick-jumps, three ledger rows, the footer —
+ * and a project's frame is short too. Held at the viewport-locked `--evp-col-h` it was taller than the
+ * content beside it, so the frame's foot arrived while the lane was still docking and dragged it up
+ * into the header band. Sized to its content and CLAMPED to the viewport instead, it docks for as long
+ * as the frame has room; the clamp keeps a long stage list scrolling inside the panel (the footer is
+ * the skeleton's `flex: none`, so the Apply rig stays on screen), and the flex column below is what lets
+ * the clamp reach the scroll region — a percentage height cannot resolve against a `max-block-size`,
+ * a shrinking flex item can.
+ */
+.evp[data-archetype="project"] .evp-laneslot {
+    flex-direction: column;
+    block-size: auto;
+    max-block-size: var(--evp-col-h);
+}
+
+.evp[data-archetype="project"] .evp-laneslot > .pf-lane,
+.evp[data-archetype="project"] .evp-laneslot .pf-lane__full {
+    flex: 0 1 auto;
+    block-size: auto;
+    min-block-size: 0;
+}
+
+@container evp-body (min-width: 1040px) {
+    .evp[data-archetype="project"] .evp-laneslot {
+        display: flex;
+    }
+}
+
+/*
+ * In the authenticated shell the project lane docks clear of BOTH top bars at all times — the shell's
+ * top bar and the middle-nav header band — rather than at the top bar and stepping down when the band
+ * reveals. On a public brief that band is the migrated header, which a short project page may never
+ * condense; on the owner's preview it is the Details ⁄ Preview band, which never collapses at all. A pin
+ * line that depends on the band's state was right on one of the two and wrong on the other; a pin line
+ * below the band's full height is right on both, and has nothing to animate. The clamp subtracts the
+ * same line plus one step, so the docked panel's foot sits one step above the viewport floor.
+ */
+.ui-page-canvas__body .evp[data-archetype="project"] .evp-laneslot {
+    inset-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h) + var(--space-4));
+    margin-block-start: 0;
+    max-block-size: calc(
+        100dvh - var(--shell-topbar-h) - var(--shell-midnav-header-h) - var(--space-4) * 2
+    );
+    transition: none;
 }
 
 /* ---- Identity band: the uploader's face and NAME, with their earned badges ---- */
@@ -1855,6 +1977,38 @@ a.evp-cta__btn--inverted {
 .evp-cta__ghost:focus-visible {
     outline: none;
     box-shadow: none;
+}
+
+/*
+ * The owner's preview footer — the applicant's two actions NAMED, not offered (gate 11: a control
+ * that renders must do something, and the owner applying to their own brief is not a thing). Plain
+ * Meta-register rows with the rig's own glyphs in the rig's own order, so the owner can see what sits
+ * here without being handed a button that refuses.
+ */
+.evp-cta__previewlead {
+    margin: 0;
+    font-size: var(--text-xs);
+    font-weight: var(--fw-medium);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+
+.evp-cta__previewlist {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.evp-cta__previewitem {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--evp-cta-fs);
+    color: var(--on-surface);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -95,40 +95,45 @@ export function LaneIdentity(
 				</span>
 			</a>
 
-			<Popover
-				placement="bottom-end"
-				class="evp-menu"
-				trigger={(api) => (
-					<button
-						type="button"
-						ref={api.ref as RefObject<HTMLButtonElement>}
-						class="evp-lane__kebab"
-						aria-label={menuLabel}
-						aria-expanded={api.expanded ? "true" : "false"}
-						aria-controls={api.panelId}
-						aria-haspopup="menu"
-						onClick={api.toggle}
-					>
-						<Icon name="kebab" size="sm" />
-					</button>
-				)}
-			>
-				<div class="evp-menu__list" role="menu">
-					{menu.map((action) => (
+			{
+				/* No actions, no kebab: a trigger that opens an empty menu is a control that does nothing. */
+			}
+			{menu.length > 0 && (
+				<Popover
+					placement="bottom-end"
+					class="evp-menu"
+					trigger={(api) => (
 						<button
-							key={action.key}
 							type="button"
-							class="evp-menu__item"
-							role="menuitem"
-							data-danger={action.danger ? "true" : undefined}
-							onClick={action.onSelect}
+							ref={api.ref as RefObject<HTMLButtonElement>}
+							class="evp-lane__kebab"
+							aria-label={menuLabel}
+							aria-expanded={api.expanded ? "true" : "false"}
+							aria-controls={api.panelId}
+							aria-haspopup="menu"
+							onClick={api.toggle}
 						>
-							<Icon name={action.icon} size="sm" aria-hidden />
-							<span>{action.label}</span>
+							<Icon name="kebab" size="sm" />
 						</button>
-					))}
-				</div>
-			</Popover>
+					)}
+				>
+					<div class="evp-menu__list" role="menu">
+						{menu.map((action) => (
+							<button
+								key={action.key}
+								type="button"
+								class="evp-menu__item"
+								role="menuitem"
+								data-danger={action.danger ? "true" : undefined}
+								onClick={action.onSelect}
+							>
+								<Icon name={action.icon} size="sm" aria-hidden />
+								<span>{action.label}</span>
+							</button>
+						))}
+					</div>
+				</Popover>
+			)}
 		</header>
 	);
 }

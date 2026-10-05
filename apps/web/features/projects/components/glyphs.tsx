@@ -168,15 +168,6 @@ export const FlagIcon = (
 	</Svg>
 );
 
-/** Leave / step out of the engagement. */
-export const LeaveIcon = (
-	<Svg>
-		<path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4" />
-		<path d="M15 8l4 4-4 4" />
-		<path d="M19 12H9" />
-	</Svg>
-);
-
 /** A waste bin — the destructive delete action. */
 export const TrashIcon = (
 	<Svg>
@@ -184,6 +175,15 @@ export const TrashIcon = (
 		<path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
 		<path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" />
 		<path d="M10 11v6M14 11v6" />
+	</Svg>
+);
+
+/** An archive box — the soft archive (the row survives; it leaves circulation). */
+export const ArchiveIcon = (
+	<Svg>
+		<rect x="3" y="4" width="18" height="4" rx="1" />
+		<path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" />
+		<path d="M10 12h4" />
 	</Svg>
 );
 // #endregion

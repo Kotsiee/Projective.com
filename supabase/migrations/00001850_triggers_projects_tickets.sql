@@ -26,6 +26,13 @@ CREATE OR REPLACE TRIGGER trg_ticket_immutability_guard
     FOR EACH ROW
     EXECUTE FUNCTION projects.fn_ticket_immutability_guard();
 
+-- Named to sort before trg_ticket_claim_before / trg_ticket_delete_protocol, so the authority check
+-- sees the caller's own NEW.status and refuses before any escrow trigger runs.
+CREATE OR REPLACE TRIGGER trg_ticket_authority_guard
+    BEFORE UPDATE OF status OR DELETE ON projects.tickets
+    FOR EACH ROW
+    EXECUTE FUNCTION projects.fn_ticket_settlement_guard();
+
 CREATE OR REPLACE TRIGGER trg_ticket_claim_before
     BEFORE UPDATE OF current_assignee_id, status ON projects.tickets
     FOR EACH ROW

@@ -6,19 +6,18 @@ import { Backdrop, BodyPortal, usePresence } from "@projective/ui/overlay";
 import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks";
 import { Button, InputText, Textarea } from "@projective/ui/fields";
 import type { FieldStatus } from "@projective/ui/fields";
-import { Icon, type IconName } from "@projective/ui/icons";
 import { toDisplayCurrency } from "@projective/types/finance";
-import {
-	createInputForType,
-	PROJECT_TYPE_HINT,
-	PROJECT_TYPE_LABEL,
-	ProjectTypeChoice,
-} from "../types/projects-types.ts";
-import type { CreateProject } from "../types/projects-types.ts";
+import { createInputForType, PROJECT_TYPE_LABEL } from "../types/projects-types.ts";
+import type { CreateProject, ProjectTypeChoice } from "../types/projects-types.ts";
 import { ProjectSidebarService } from "../core/ProjectSidebarService.ts";
 import { formFocusEntry, formKeyNav, formPointerDown } from "../core/form-keys.ts";
 import { CloseIcon } from "./glyphs.tsx";
-import { UserAvatar } from "@web/components/UserAvatar.tsx";
+import {
+	InvitedFreelancerField,
+	TYPE_CARDS,
+	TypeRadioGroup,
+	TypeStepCards,
+} from "./ProjectCreateTypeCards.tsx";
 
 /**
  * ProjectCreateModal — the ONE surface that mints a project, wherever the client starts from.
@@ -61,28 +60,9 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  */
 
 // #region Vocabulary
-/** The glyph each type leads with — the registry's own, never a hand-authored `<svg>` (§B.7). */
-const TYPE_ICON: Record<ProjectTypeChoice, IconName> = {
-	task: "ticket",
-	one_off: "submission",
-	pipeline: "stages",
-};
-
-/** The three cards, derived from the SSOT enum's own members rather than restated. */
-const TYPE_CARDS: readonly ProjectTypeChoice[] = ProjectTypeChoice.options;
-
-/**
- * Stable ids — one instance is ever mounted, and each hint must bind to the control it describes.
- *
- * The type control is a `radiogroup`, which is not a labelable element, so it carries an
- * `aria-labelledby` pointing at its visible heading rather than a `<label for>` that would resolve to
- * nothing (WCAG 2.5.3 holds either way).
- */
+/** Stable ids — one instance is ever mounted, and each hint must bind to the control it describes. */
 const TITLE_ID = "pjc-title";
 const BRIEF_ID = "pjc-brief";
-const TYPE_LABEL_ID = "pjc-type-label";
-const TYPE_HINT_ID = "pjc-type-hint";
-const INVITE_ID = "pjc-invite";
 
 /** The SSOT's own bounds, restated where the controls enforce them. */
 const TITLE_MIN = 3;
@@ -443,16 +423,6 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 					</header>
 
 					<div class="pjc__body">
-						{
-							/*
-							 * The type step. Plain buttons in a `group`, NOT a radiogroup, and the distinction is
-							 * load-bearing: a radiogroup's selection follows focus, so arrowing across the cards
-							 * would advance the step on every key — and the shared Enter rule treats an
-							 * already-chosen radio as "move to the next control", which on the card the reader
-							 * just stepped Back to would be a dead press. As buttons, Enter and Space are the
-							 * browser's own activation, and activation is exactly what this step means.
-							 */
-						}
 						{onTypeStep && (
 							<>
 								<p class="pjc__lead">
@@ -460,34 +430,12 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 										? `What kind of work are you bringing ${seller.name} into?`
 										: "What kind of work is this?"}
 								</p>
-								<div
-									ref={cardsRef}
-									class="pjc__types pjc__types--list"
-									role="group"
-									aria-label="Project type"
-								>
-									{TYPE_CARDS.map((value) => (
-										<button
-											key={value}
-											type="button"
-											data-type={value}
-											class="pjc__type pjc__type--row"
-											aria-current={value === picked ? "true" : undefined}
-											onClick={() => pickType(value)}
-										>
-											<span class="pjc__type-glyph" aria-hidden="true">
-												<Icon name={TYPE_ICON[value]} size="xl" />
-											</span>
-											<span class="pjc__type-text">
-												<span class="pjc__type-label">{PROJECT_TYPE_LABEL[value]}</span>
-												<span class="pjc__type-hint">{PROJECT_TYPE_HINT[value]}</span>
-											</span>
-										</button>
-									))}
-								</div>
-								{fieldErrors.value.format && (
-									<p class="pjc__hint pjc__hint--error">{fieldErrors.value.format}</p>
-								)}
+								<TypeStepCards
+									cardsRef={cardsRef}
+									picked={picked}
+									onPick={pickType}
+									error={fieldErrors.value.format}
+								/>
 							</>
 						)}
 
@@ -532,73 +480,21 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 								</div>
 
 								{!stepped && (
-									<div class="pjc__field">
-										<span class="pjc__label" id={TYPE_LABEL_ID}>Project type</span>
-										<div
-											class="pjc__types"
-											role="radiogroup"
-											aria-labelledby={TYPE_LABEL_ID}
-											aria-describedby={TYPE_HINT_ID}
-										>
-											{TYPE_CARDS.map((value, index) => {
-												const active = value === picked;
-												return (
-													<button
-														key={value}
-														type="button"
-														role="radio"
-														aria-checked={active}
-														data-type={value}
-														class="pjc__type"
-														// Roving tabindex: one stop for the whole group, on the chosen card, so Tab
-														// steps past the control rather than through it.
-														tabIndex={active ? 0 : -1}
-														onClick={() => pickType(value)}
-														onKeyDown={(e) => onCardKeyDown(e, index)}
-													>
-														<span class="pjc__type-glyph" aria-hidden="true">
-															<Icon name={TYPE_ICON[value]} size="lg" />
-														</span>
-														<span class="pjc__type-label">{PROJECT_TYPE_LABEL[value]}</span>
-													</button>
-												);
-											})}
-										</div>
-										<p class="pjc__hint" id={TYPE_HINT_ID}>
-											{fieldErrors.value.format ??
-												PROJECT_TYPE_HINT[picked ?? initialType]}
-										</p>
-									</div>
+									<TypeRadioGroup
+										picked={picked}
+										fallback={initialType}
+										onPick={pickType}
+										onCardKeyDown={onCardKeyDown}
+										error={fieldErrors.value.format}
+									/>
 								)}
 
-								{
-									/*
-									 * The invited freelancer is CONTEXT, not a control: the modal was opened from this
-									 * person's profile, so there is no choice left to offer and a picker would only
-									 * invite the client to contradict the page they came from. It is rendered read-only
-									 * for the same reason the checkout prints what you are buying — the commitment
-									 * being made should be legible at the moment it is made.
-									 */
-								}
 								{seller && (
-									<div class="pjc__field">
-										<span class="pjc__label" id={INVITE_ID}>Invited freelancer</span>
-										<div class="pjc__invitee" aria-labelledby={INVITE_ID}>
-											<UserAvatar
-												image={seller.avatar ?? undefined}
-												label={seller.name}
-												shape="circle"
-												size="sm"
-											/>
-											<span class="pjc__invitee-text">
-												<span class="pjc__invitee-name">{seller.name}</span>
-												<span class="pjc__invitee-handle">{seller.handle}</span>
-											</span>
-										</div>
-										<p class="pjc__hint">
-											They are invited from the project's roster once it has a scope and a price.
-										</p>
-									</div>
+									<InvitedFreelancerField
+										name={seller.name}
+										handle={seller.handle}
+										avatar={seller.avatar}
+									/>
 								)}
 							</>
 						)}

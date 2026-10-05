@@ -70,6 +70,36 @@
 				"$env:PORT = '12998'; deno task dev:mock --port 12998 --strictPort"
 			],
 			"port": 12998
+		},
+		{
+			"name": "web-step3",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13003'; deno task dev --port 13003 --strictPort"
+			],
+			"port": 13003
+		},
+		{
+			"name": "web-step5",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13005'; deno task dev --port 13005 --strictPort"
+			],
+			"port": 13005
+		},
+		{
+			"name": "web-step6-mock",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '13006'; deno task dev:mock --port 13006 --strictPort"
+			],
+			"port": 13006
 		}
 	]
 }

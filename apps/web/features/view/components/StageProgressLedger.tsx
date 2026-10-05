@@ -22,7 +22,8 @@ import { MetaLine, ScopeChecklist } from "./entity-view-parts.tsx";
  * the boxed accordion §D.8.1 exists to prevent — a card, inside a card, inside a section.
  *
  * **2. Expansion is native `<details>`/`<summary>`, so this stays a SERVER component.** No island, no
- * hydration, no signal, and it works with JavaScript disabled. The public footer's link stacks
+ * hydration, no signal, and it works with JavaScript disabled. The open/close is ANIMATED in CSS alone
+ * (`::details-content` + the `.evp-track__reveal` clip), so smoothness costs no script either. The public footer's link stacks
  * established the pattern (Decision #13). An island here would also have been wrong for a second
  * reason: an SSR-painted stage run that only becomes expandable after hydration is a surface whose
  * primary evaluation control is missing during exactly the window a first-time visitor is reading it.
@@ -178,56 +179,65 @@ export function StageProgressLedger(
 								)}
 							</summary>
 
-							<div class="evp-track__detail">
-								<p class="evp-track__desc">{stage.description}</p>
-								{facts.length > 0 && <MetaLine items={facts} class="evp-track__facts" />}
-
-								{stage.revisions && (
-									<StageRevisionLine revisions={stage.revisions} currency={currency} />
-								)}
-
-								{stage.deliverables?.length
-									? (
-										<>
-											<h3 class="evp-track__subhead">Deliverables</h3>
-											<ScopeChecklist items={stage.deliverables} dense />
-										</>
-									)
-									: null}
-
-								{hasSeats && stage.seatKind === "roles" && stage.roles.length > 0 && (
-									<>
-										<h3 class="evp-track__subhead">Open roles</h3>
-										<ul class="evp-track__roles">
-											{stage.roles.map((role) => (
-												<li class="evp-track__role" key={role.name}>
-													<span class="evp-track__rolename">{role.name}</span>
-													<span class="evp-track__rolemeta">
-														{role.openSeats} open · {role.price.label}
-													</span>
-												</li>
-											))}
-										</ul>
-									</>
-								)}
-
-								{hasSeats && stage.seatKind === "seats" && stage.seatSummary && (
-									<p class="evp-track__seatsummary">{stage.seatSummary}</p>
-								)}
-
-								{
-									/*
-								  Required skills are metadata, so they are an inline middot line and not the
-								  tag cluster this block used to render (§B.11.2). The set is small enough to
-								  print whole — it is a requirement, and truncating a requirement changes it.
+							{
+								/*
+								  `evp-track__reveal` is the animated clip: the grid item inside the `<details>`'
+								  `::details-content` slot whose row springs 0fr ⇄ 1fr (`entity-view.css`). It
+								  carries no padding, because a box cannot shrink below its own padding.
 								*/
-								}
-								{stage.skills.length > 0 && (
-									<MetaLine
-										items={stage.skills.map((s) => s.label)}
-										class="evp-track__skills"
-									/>
-								)}
+							}
+							<div class="evp-track__reveal">
+								<div class="evp-track__detail">
+									<p class="evp-track__desc">{stage.description}</p>
+									{facts.length > 0 && <MetaLine items={facts} class="evp-track__facts" />}
+
+									{stage.revisions && (
+										<StageRevisionLine revisions={stage.revisions} currency={currency} />
+									)}
+
+									{stage.deliverables?.length
+										? (
+											<>
+												<h3 class="evp-track__subhead">Deliverables</h3>
+												<ScopeChecklist items={stage.deliverables} dense />
+											</>
+										)
+										: null}
+
+									{hasSeats && stage.seatKind === "roles" && stage.roles.length > 0 && (
+										<>
+											<h3 class="evp-track__subhead">Open roles</h3>
+											<ul class="evp-track__roles">
+												{stage.roles.map((role) => (
+													<li class="evp-track__role" key={role.name}>
+														<span class="evp-track__rolename">{role.name}</span>
+														<span class="evp-track__rolemeta">
+															{role.openSeats} open · {role.price.label}
+														</span>
+													</li>
+												))}
+											</ul>
+										</>
+									)}
+
+									{hasSeats && stage.seatKind === "seats" && stage.seatSummary && (
+										<p class="evp-track__seatsummary">{stage.seatSummary}</p>
+									)}
+
+									{
+										/*
+									  Required skills are metadata, so they are an inline middot line and not the
+									  tag cluster this block used to render (§B.11.2). The set is small enough to
+									  print whole — it is a requirement, and truncating a requirement changes it.
+									*/
+									}
+									{stage.skills.length > 0 && (
+										<MetaLine
+											items={stage.skills.map((s) => s.label)}
+											class="evp-track__skills"
+										/>
+									)}
+								</div>
 							</div>
 						</details>
 					</li>

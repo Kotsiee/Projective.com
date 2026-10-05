@@ -16,7 +16,7 @@ import {
 	LaneStages,
 	PriceBlock,
 } from "../components/lane-parts.tsx";
-import { ProjectCtaRig } from "../components/ProjectCtaRig.tsx";
+import { ProjectCtaRig, ProjectPreviewCta } from "../components/ProjectCtaRig.tsx";
 import { sellerBadges } from "../core/view-model.ts";
 import {
 	projectCurrency,
@@ -43,10 +43,16 @@ export interface ProjectLaneProps {
 	project: ProjectViewExtra;
 	authed: boolean;
 	ctx: HrefContext;
+	/**
+	 * The owner's preview: the same lane with no kebab (sharing, saving or reporting one's own draft
+	 * are not things the preview is for) and a footer that names the applicant's actions instead of
+	 * offering them ({@link ProjectPreviewCta}).
+	 */
+	preview?: boolean;
 }
 
 export default function ProjectLane(
-	{ view, project, authed, ctx }: ProjectLaneProps,
+	{ view, project, authed, ctx, preview = false }: ProjectLaneProps,
 ): JSX.Element {
 	const { item } = view;
 	const saved = useSignal(false);
@@ -61,7 +67,7 @@ export default function ProjectLane(
 		requestShare({ href: globalThis.location?.href ?? "", title: item.title, noun: "project" });
 	}
 
-	const menu: LaneMenuItem[] = [
+	const menu: LaneMenuItem[] = preview ? [] : [
 		{ key: "share", label: "Share project", icon: "share", onSelect: share },
 		{
 			key: "save",
@@ -113,7 +119,9 @@ export default function ProjectLane(
 				</div>
 
 				<div class="pf-lane__footer evp-lane__footer">
-					<ProjectCtaRig item={item} authed={authed} ctx={ctx} layout="lane" />
+					{preview
+						? <ProjectPreviewCta layout="lane" />
+						: <ProjectCtaRig item={item} authed={authed} ctx={ctx} layout="lane" />}
 				</div>
 			</div>
 

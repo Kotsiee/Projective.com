@@ -19,7 +19,7 @@ import ViewStyleAnchor from "../islands/ViewStyleAnchor.island.tsx";
 import { RelatedSection } from "./RelatedRail.tsx";
 import { ArticleViewScreen } from "./ArticleViewScreen.tsx";
 import { StageProgressLedger } from "./StageProgressLedger.tsx";
-import { ProjectBody, ProjectHero } from "./project-view-parts.tsx";
+import { PreviewNotice, ProjectBody, ProjectHero } from "./project-view-parts.tsx";
 import { BackLink } from "./BackLink.tsx";
 import {
 	MetaLine,
@@ -115,11 +115,30 @@ export interface EntityViewPageProps {
 	 * The two are different pages for a reader: one says the link is dead, the other says try again.
 	 */
 	unavailable?: boolean;
+	/**
+	 * `public` — the page a reader evaluates and converts on (`/view/[id]`).
+	 * `preview` — the project owner's View Mode 2 of 2 (`/projects/[slug]/preview`): the same frame,
+	 * hero, body and lane, minus everything that is not about evaluating the brief itself — no
+	 * recommendation rails, no reviews, no back link (the dashboard's own header band carries the
+	 * Details ⁄ Preview switch), and a lane whose footer states what an applicant would press rather
+	 * than offering the owner a control that would apply them to their own project.
+	 */
+	mode?: "public" | "preview";
+	/** The owner's Details page — where the preview notice sends them to change what they see. */
+	editHref?: string;
 }
 
 export function EntityViewPage(
-	{ view, ctx = { scope: "explore" }, authed = false, offer = null, schedule = null, unavailable = false }:
-		EntityViewPageProps,
+	{
+		view,
+		ctx = { scope: "explore" },
+		authed = false,
+		offer = null,
+		schedule = null,
+		unavailable = false,
+		mode = "public",
+		editHref,
+	}: EntityViewPageProps,
 ): JSX.Element {
 	if (!view) return <NotFound ctx={ctx} unavailable={unavailable} />;
 
@@ -149,6 +168,12 @@ export function EntityViewPage(
 	 * banner strip inside the hero.
 	 */
 	const noMedia = scheduled || isProject;
+	const preview = mode === "preview";
+	/*
+	 * The rails and reviews, decided once. The archetype says whether this KIND of page carries them;
+	 * the mode says whether this RENDERING does — the owner's preview never does, whatever the archetype.
+	 */
+	const rails = !preview && showsCommercialRails(archetype);
 
 	return (
 		<div class="evp" data-archetype={archetype}>
@@ -169,7 +194,7 @@ export function EntityViewPage(
 				  one control that can drift.
 				*/
 				}
-				<BackLink ctx={ctx} placement="page" />
+				{preview ? <PreviewNotice editHref={editHref} /> : <BackLink ctx={ctx} placement="page" />}
 
 				{
 					/*
@@ -180,33 +205,41 @@ export function EntityViewPage(
 				*/
 				}
 				<div class="evp-hero">
-					{project ? <ProjectHero view={view} project={project} /> : (
-						<div class="evp-overview">
-							<h1 class="evp-overview__title">{item.title}</h1>
+					{project
+						? (
+							<ProjectHero
+								view={view}
+								project={project}
+								reviewsHref={rails ? "#evp-reviews" : undefined}
+							/>
+						)
+						: (
+							<div class="evp-overview">
+								<h1 class="evp-overview__title">{item.title}</h1>
 
-							{
-								/*
+								{
+									/*
 								  Metadata as ONE muted middot-separated line (§B.11.2). This replaced a row
 								  of up to nine pills, none of which could be clicked — containment is a
 								  promise of interactivity, and offering nine affordances that all refuse is
 								  worse than offering none.
 								*/
-							}
-							<MetaLine items={meta} />
+								}
+								<MetaLine items={meta} />
 
-							<p class="evp-overview__summary">{item.summary}</p>
+								<p class="evp-overview__summary">{item.summary}</p>
 
-							<SellerLine
-								item={item}
-								seller={view.seller}
-								rating={rating}
-								responseMinutes={view.responseMinutes}
-								reviewsHref={showsCommercialRails(archetype) ? "#evp-reviews" : undefined}
-							/>
+								<SellerLine
+									item={item}
+									seller={view.seller}
+									rating={rating}
+									responseMinutes={view.responseMinutes}
+									reviewsHref={rails ? "#evp-reviews" : undefined}
+								/>
 
-							{capacity && archetype === "cohort" && <SeatMeter capacity={capacity} />}
-						</div>
-					)}
+								{capacity && archetype === "cohort" && <SeatMeter capacity={capacity} />}
+							</div>
+						)}
 
 					{/* Zero-UI sentinel driving the migrated sticky header (§D.7.6). */}
 					<EntityHeroProbe />
@@ -243,8 +276,17 @@ export function EntityViewPage(
 				*/
 				}
 				{project && (
-					<aside class="evp-laneslot" aria-label={`Apply to ${item.title}`}>
-						<ProjectLane view={view} project={project} authed={authed} ctx={ctx} />
+					<aside
+						class="evp-laneslot"
+						aria-label={preview ? `How applicants see ${item.title}` : `Apply to ${item.title}`}
+					>
+						<ProjectLane
+							view={view}
+							project={project}
+							authed={authed}
+							ctx={ctx}
+							preview={preview}
+						/>
 					</aside>
 				)}
 				{offer && (
@@ -291,7 +333,15 @@ export function EntityViewPage(
 					  this branch has already returned for.
 					*/
 					}
-					{project && <ProjectApplyBar view={view} project={project} authed={authed} ctx={ctx} />}
+					{project && (
+						<ProjectApplyBar
+							view={view}
+							project={project}
+							authed={authed}
+							ctx={ctx}
+							preview={preview}
+						/>
+					)}
 					{offer && (
 						<EntityBuyBar
 							view={view}
@@ -308,12 +358,23 @@ export function EntityViewPage(
 						? <ProjectBody view={view} project={project} />
 						: <ArchetypeBody view={view} archetype={archetype} deliverables={deliverables} />}
 
-					{/* ---- Commercial rails ---- */}
-					{showsCommercialRails(archetype) && (
+					{
+						/*
+						  ---- Recommendation rails ----
+
+						  A project's rails are the client's OTHER briefs and briefs that hire for the same
+						  skills — composed as projects in `live-view.ts`, never a seller's catalogue. "More
+						  by" leads at the project carousel's two-up base so the client's own work outranks
+						  the generic suggestions, which drop to three-up beneath it.
+						*/
+					}
+					{rails && (
 						<div class="evp-body">
 							<RelatedSection
 								title={`More by ${item.owner.name}`}
-								subtitle={`More work from ${firstNameOf(item)}, grouped by type`}
+								subtitle={isProject
+									? `Other projects ${firstNameOf(item)} is staffing, and the stage each is on`
+									: `More work from ${firstNameOf(item)}, grouped by type`}
 								items={moreByOwner}
 								ctx={ctx}
 								authed={authed}
@@ -321,10 +382,13 @@ export function EntityViewPage(
 							/>
 							<RelatedSection
 								title="Similar & recommended"
-								subtitle="Comparable options other clients considered"
+								subtitle={isProject
+									? "Briefs hiring for the same skills"
+									: "Comparable options other clients considered"}
 								items={similar}
 								ctx={ctx}
 								authed={authed}
+								columns={isProject ? 3 : undefined}
 							/>
 						</div>
 					)}
@@ -353,13 +417,23 @@ export function EntityViewPage(
 			  rating both jump to (`scrollToId`), and it has to exist in the first byte so the jump lands
 			  whether or not the panel has hydrated.
 
-			  A project renders no reviews and no cross-sell (Decision #44): a brief being staffed is
-			  not being cross-sold.
+			  A project's reviews are its OWNER's, as a client (Decision #142): what freelancers said
+			  about being paid and briefed by them. The owner's preview renders none.
 			*/
 			}
-			{showsCommercialRails(archetype) && (
+			{rails && (
 				<div class="evp-reviewsrow" id="evp-reviews">
-					<ReviewsPanel summary={reviews.summary} list={reviews.list} />
+					{isProject
+						? (
+							<ReviewsPanel
+								summary={reviews.summary}
+								list={reviews.list}
+								title={`${item.owner.name} as a client`}
+								subtitle="What freelancers said about working for this client: payment, briefing and communication"
+								emptyText={`No freelancer has reviewed ${firstNameOf(item)} as a client yet.`}
+							/>
+						)
+						: <ReviewsPanel summary={reviews.summary} list={reviews.list} />}
 				</div>
 			)}
 		</div>

@@ -1,9 +1,12 @@
 import { getProjects, postProjects } from "./api.ts";
+import { announceStageCreated } from "./stage-events.ts";
 import type {
 	BoardCard,
 	BoardListParams,
 	BoardPage,
 	CommitTicket,
+	CreatedStage,
+	CreateStageInput,
 	MoveTicket,
 } from "../types/projects-types.ts";
 import type { ProjectsResult } from "../types/results.ts";
@@ -40,6 +43,24 @@ export const BoardService = {
 	ticket(slug: string): Promise<ProjectsResult<{ page: BoardPage; card: BoardCard }>> {
 		const qs = new URLSearchParams({ slug });
 		return getProjects<{ page: BoardPage; card: BoardCard }>(`/api/projects/ticket?${qs}`);
+	},
+
+	/**
+	 * Append a stage to the project — the one write behind "Create stage" on the Board, the Timeline
+	 * and the lane. Answers with the PERSISTED stage as the board projects it (its `stg-…` slug
+	 * included), which is what the caller adds to its own model; a success is announced so the lane's
+	 * channel tree re-reads and shows the new stage's room.
+	 */
+	async createStage(
+		projectId: string,
+		input: CreateStageInput,
+	): Promise<ProjectsResult<CreatedStage>> {
+		const res = await postProjects<CreatedStage>(
+			`/api/projects/${encodeURIComponent(projectId)}/stages`,
+			input,
+		);
+		if (res.ok && res.data) announceStageCreated();
+		return res;
 	},
 
 	/**

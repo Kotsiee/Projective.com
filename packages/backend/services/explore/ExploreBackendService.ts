@@ -1,8 +1,9 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
-import { type Catalog, loadCatalog } from "./live-catalog.ts";
+import { type Catalog, loadCatalog, readProjectPreview } from "./live-catalog.ts";
 import { getAnonClient } from "../../core/supabase.ts";
 import { publicObjectUrl } from "../../core/storage-url.ts";
-import { buildLiveViewPage } from "./live-view.ts";
+import { buildLiveViewPage, composeViewPage, NO_REVIEWS } from "./live-view.ts";
+import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { getResults, groupResults, rankRecommended, relatedSearches } from "./query.ts";
 import type {
 	ArticleItem,
@@ -281,6 +282,46 @@ export class ExploreBackendService {
 				return fail(404, { message: `No item found for id "${id}".` });
 			}
 			return ok(await buildLiveViewPage(catalog, item));
+		} catch (error) {
+			return unavailable(error);
+		}
+	}
+
+	/**
+	 * The owner's PREVIEW of their own brief (`/projects/[slug]/preview`) — the same composed
+	 * {@link EntityView} a freelancer's `/view/[id]?type=projects` renders, built from the project's rows
+	 * as they are NOW, drafts included.
+	 *
+	 * The catalogue holds only published, public briefs and lags an edit by up to one TTL, so the rows
+	 * are read fresh with the owner's token (`readProjectPreview`) and mapped by the catalogue's own
+	 * `assemble`; the page then composes through the same `composeViewPage` as the public one. One
+	 * mapping and one composer is what lets the preview promise to be the page.
+	 *
+	 * The cross-sell rails and the reviews are left EMPTY rather than computed: the preview excludes
+	 * them (an owner evaluating their own brief is not the audience for a recommendation of someone
+	 * else's, and their own client reviews are not what they are checking), and a payload that carried
+	 * them would be one forgotten conditional away from rendering them.
+	 *
+	 * Ownership is the ROUTE's guard (`viewerIsClient`), and RLS is the backstop: a token that cannot
+	 * read the project gets a 404 here, never another client's draft.
+	 */
+	static async projectPreviewPage(
+		slug: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<EntityView>> {
+		if (!canReadLive(actor)) return fail(401, { message: "Sign in to preview this project." });
+		try {
+			const catalog = await loadCatalog();
+			const withProject = await readProjectPreview(actor.accessToken, slug, catalog);
+			const item = withProject?.byId.get(slug);
+			if (!withProject || !item || item.type !== "projects") {
+				return fail(404, { message: `No project found for "${slug}".` });
+			}
+			return ok({
+				...composeViewPage(withProject, item, NO_REVIEWS),
+				moreByOwner: [],
+				similar: [],
+			});
 		} catch (error) {
 			return unavailable(error);
 		}

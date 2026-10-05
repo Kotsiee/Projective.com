@@ -109,6 +109,12 @@ export function effectiveUnitStatus(
 export interface WorkflowActions {
 	/** Reviewer viewing a submitted item → "Review Submission". */
 	review: boolean;
+	/**
+	 * Reviewer viewing an ACCEPTED item → "Approve stage", which releases the stage's held escrow.
+	 * Offered only once a deliverable has been accepted, so the money decision follows the review
+	 * decision instead of standing in for it. Whether this viewer may approve is the server's call.
+	 */
+	approveStage: boolean;
 	/** Freelancer at the root (no active submission) → "Create New Submission". */
 	create: boolean;
 	/** Freelancer inside an unsubmitted draft → Upload · Delete · Submit for Review. */
@@ -126,14 +132,21 @@ export function resolveWorkflowActions(args: {
 	const { viewer, hasActiveUnit, effectiveStatus } = args;
 	const none: WorkflowActions = {
 		review: false,
+		approveStage: false,
 		create: false,
 		draftEdit: false,
 		statusBadge: null,
 	};
 
 	if (viewer.isReviewer) {
-		// A reviewer reviews a SUBMITTED item — never a bare draft (nothing to review yet).
-		return { ...none, review: hasActiveUnit && !!effectiveStatus && effectiveStatus !== "draft" };
+		// A reviewer reviews a SUBMITTED item — never a bare draft (nothing to review yet). The
+		// workspace stays reachable after a verdict, to read the work; an accepted unit additionally
+		// offers the stage approval.
+		return {
+			...none,
+			review: hasActiveUnit && !!effectiveStatus && effectiveStatus !== "draft",
+			approveStage: hasActiveUnit && effectiveStatus === "accepted",
+		};
 	}
 	// Freelancer.
 	if (!hasActiveUnit) return { ...none, create: true };

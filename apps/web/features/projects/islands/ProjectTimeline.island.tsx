@@ -285,40 +285,25 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 		toast(res.message ?? "That ticket could not be saved.");
 	}
 
-	function onCreateStage(stage: { name: string; description: string }): void {
-		patchBoard((b) => {
-			const order = b.stages.length;
-			return {
-				...b,
-				stages: [
-					...b.stages,
-					{
-						id: `stage-draft-${order}`,
-						// Deliberately NOT a `stg-…` shape. This stage does not exist yet, so it has no
-						// address, and `isSlug` refusing this placeholder is what stops anything linking
-						// to a URL the server has never minted.
-						slug: `stage-draft-${order}`,
-						name: stage.name,
-						order,
-						status: "draft",
-						locked: false,
-						description: stage.description,
-						// A brand-new stage has no rate, no roster, no history and no schedule yet — every
-						// one of those is a separate decision the client has not made, so none is guessed.
-						unitPriceCents: null,
-						categoryWeight: 1,
-						members: [],
-						ticketCount: 0,
-						assignmentMode: "open_pull",
-						maxConcurrentIntensity: null,
-						startAt: null,
-						endAt: null,
-						dependsOnStageId: null,
-					},
-				],
-			};
-		});
+	/**
+	 * Persist a new stage, then add the SERVER's stage to the timeline's board model — its `stg-…`
+	 * slug and order as a reload reads them, so the lane's "open this stage" jump resolves at once. Not
+	 * optimistic; a refusal is returned to the modal, which keeps the draft open and shows it.
+	 */
+	async function onCreateStage(
+		stage: { name: string; description: string },
+	): Promise<string | null> {
+		const res = await BoardService.createStage(props.projectId, stage);
+		if (!res.ok || !res.data) return res.message ?? "That stage could not be created.";
+		const saved = res.data.stage;
+		patchBoard((b) => ({
+			...b,
+			stages: [...b.stages.filter((s) => s.id !== saved.id), saved].sort((a, z) =>
+				a.order - z.order
+			),
+		}));
 		stageModalOpen.value = false;
+		return null;
 	}
 	// #endregion
 

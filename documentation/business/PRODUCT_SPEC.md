@@ -117,7 +117,7 @@ both the freelancer’s time and the client’s capital.
 
 | Feature                  | Deliverable-Based           | Session-Based           |
 | :----------------------- | :-------------------------- | :---------------------- |
-| **Primary Project Type** | Pipelines / One-Offs        | Session Services        |
+| **Primary Project Type** | Tasks / One-Offs / Pipelines | Session Services       |
 | **Success Metric**       | Completed Checklist / Files | Time Spent / Attendance |
 | **Escrow Trigger**       | Starting the Ticket         | Booking the Slot        |
 | **UI Representation**    | Kanban / Timeline           | Calendar                |
@@ -234,13 +234,24 @@ Projective offers three distinct "Work Flows" to accommodate various professiona
 every engagement requires a **Start Date**, an **End Date** is never mandatory, allowing for
 open-ended collaborations and retainers.
 
+**A client-architected project is one of exactly three types** (Decision #117, re-confirmed by
+Decision #143): **Task** — one deliverable, one price, a single stage holding a single ticket, with
+no Timeline and no Calendar; **One-off** — a finite scope whose one master ticket is carried through
+a run of milestones (stages), visualised on the Timeline; and **Pipeline** — the multi-stage Kanban
+engine for continuous work. Sessions (below) are a provider-side work flow, not a fourth project
+type. The three types are the Zod SSOT's `ProjectTypeChoice` (`task | one_off | pipeline`), stored
+as the `format` + `structure_variation` pair.
+
 #### The Three Work Flows
 
 ##### 1. One-Off Projects (The "Sprint")
 
 One-off projects are essentially single-ticket Pipelines designed for a specific, finite objective.
 
-- **Structure:** Defined by a single "Master Ticket" outlined in the project description.
+- **Structure:** Defined by a single "Master Ticket" outlined in the project description, carried
+  through a run of milestone stages (the database holds a one-off to exactly one ticket,
+  `fn_enforce_structure_variation`). A **Task** (below) is the same single ticket with **one** stage
+  and no milestones to run.
 - **Deadlines:** - **Soft Deadline:** A target date set by the client. Freelancers can be
   incentivised via a **Deadline Bonus**—a financial top-up released only if the final stage is
   approved before the soft deadline.
@@ -337,6 +348,15 @@ assets, audio stems, video presets, code kits). A **Project** is a brief being s
 never bought — and renders through the same frame with the same containers and registers, so a
 brief and a service read as one design system. Pricing is resolved from the same source as the card
 that linked here, so a listing can never quote two different prices in two places.
+
+**A brief carries its client's context (Decision #142).** Beneath a project's body: **More by
+[client]** (the client's other public briefs, with the stage each is on), **Similar & recommended**
+(other clients' briefs hiring for the same skills) and the **client's reviews** — what freelancers
+said about the owner _as a client_ (reciprocal feedback feeding the Client Trust Score), never the
+owner's reviews as a seller. A review names the engagement it was left on **only when that project
+is public**; an unlisted or private engagement is never named. The project owner previews the brief
+at `/projects/[slug]/preview` — the same page without the recommendation rails, without reviews, and
+with the applicant's actions described rather than offered.
 
 **The transaction has exactly one home.** The contextual navigation lane carries the identity line,
 the price, the primary and secondary actions and the summary ledger; the main canvas carries only
@@ -941,9 +961,12 @@ Freelancer—it is held by the platform’s secure ledger.
 
 | Project Type  | Lock Trigger                                                               | Release Trigger                                                                                       |
 | :------------ | :------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------- |
-| **One-Off**   | **Upfront:** When the project or first stage begins.                       | **Manual:** Upon Client approval of the final deliverable.                                            |
+| **One-Off**¹  | **Upfront:** When the project or first stage begins.                       | **Manual:** Upon Client approval of the final deliverable.                                            |
 | **Pipelines** | **Just-In-Time (JIT):** When a freelancer moves a ticket to "In Progress." | **Chain Reaction:** Approval of Ticket A releases payout and automatically locks Escrow for Ticket B. |
 | **Sessions**  | **Booking:** When the time slot is confirmed.                              | **Negative Consent:** 24 hours after the session ends (assuming no "No-Show" claim).                  |
+
+¹ A **Task** is a one-off without milestones (`format = one_off`), so it follows the One-Off row:
+its single stage is its first and final deliverable.
 
 #### 3. Finance Tracking & Analytics
 
@@ -2238,7 +2261,7 @@ fire for the same person on a device that genuinely does not have the file.
 |               |                           | `details`                | **Step 2 — Delivery & billing.** Distraction-free chrome (DESIGN_SYSTEM Part D.6). Auto-skips to `payment` when the saved details are already complete; `?edit=1` forces the form open |
 |               |                           | `payment`                | **Step 3 — Method & commit.** Distraction-free chrome. Bounces back to `details` when the details are incomplete, so a deep link can never reach a Pay button the server would refuse |
 |               |                           | `confirmation`           | **Step 4 — Post-purchase hub.** Full chrome restored: per-item fulfilment (download · project deep link · calendar export), the invoice, the order record (`?order=`) |
-|               | `/projects`               | `index`                  | List all projects — and the home of the **Quick-Init** create modal. `/projects/create` **308→** here; there is no create page |
+|               | `/projects`               | `index`                  | The **portfolio index** — every project in every workspace the reader belongs to, filterable by status (All · Draft · Active · On hold · Completed, `?status=`), with the aggregate **stage burn** (delivered ÷ planned stages, summed across the staged projects in view). An empty portfolio's one action opens the **Quick-Init** create modal (`?create=1`). `/projects/create` **308→** here; there is no create page |
 |               | `/projects/[project id]`  | `index` / `details`      | **Stage 2 — the owner's configuration workspace.** `[project id]` is the project's UUID. One continuous scrolling flow, not a stepper |
 |               |                           | `board`                  | Task/Kanban board                                                                              |
 |               |                           | `finance`                | Project budget/costs                                                                           |

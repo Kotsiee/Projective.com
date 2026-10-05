@@ -2,7 +2,7 @@ import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import type { JSX, RefObject } from "preact";
 import "../styles/projects-lane.css";
-import { Popover } from "@projective/ui/feedback";
+import { Popover, Toast, useToast } from "@projective/ui/feedback";
 import {
 	LaneBar,
 	LaneCollapseButton,
@@ -15,7 +15,8 @@ import {
 	LaneList,
 	LaneSearch,
 } from "@projective/ui/navigation";
-import { ProjectCard } from "../components/ProjectCard.tsx";
+import { type CardMenuAction, ProjectCard } from "../components/ProjectCard.tsx";
+import { ArchiveProjectDialog } from "../components/ArchiveProjectDialog.tsx";
 import { LaneTabs } from "../components/LaneTabs.tsx";
 import { RoleToggle } from "../components/RoleToggle.tsx";
 import { ServiceModifier } from "../components/ServiceModifier.tsx";
@@ -46,6 +47,7 @@ import type {
 	ScopeOption,
 } from "../types/projects-types.ts";
 import { IS_DEV } from "@web/utils/dev.ts";
+import { logger } from "@web/utils/logger.ts";
 import {
 	type DevPersona,
 	type DevSeamState,
@@ -168,6 +170,13 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 	 * real session. Drives the Projects/Services tabs + ownership toggle visibility. Always `null` in
 	 * production (the seam is never written and `readDevSeam` returns `null`). */
 	const devPersona = useSignal<DevPersona | null>(null);
+	/** The card whose kebab asked to archive it — held while the confirmation is up. */
+	const archiveTarget = useSignal<ProjectSummary | null>(null);
+	const archiveOpen = useSignal<boolean>(false);
+	const archiving = useSignal<boolean>(false);
+	/** Mounted only when no other island has already put a stack up (they share one signal). */
+	const toastMounted = useSignal<boolean>(false);
+	const toast = useToast();
 
 	// `ReturnType<typeof setTimeout>` keeps this env-agnostic: the modal chain pulls Quill's types
 	// (which include `@types/node`), so a browser `setTimeout` may type as `Timeout` here, not `number`.
@@ -189,8 +198,21 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 		loading.value = true;
 		const res = await ProjectSidebarService.list(next);
 		if (token !== reqId.current) return; // a newer request superseded this one
-		if (res.ok && res.data) payload.value = res.data;
 		loading.value = false;
+		if (res.ok && res.data) {
+			payload.value = res.data;
+			return;
+		}
+		// The previous rows stay up — a blank lane would read as "you have no projects", which is a
+		// different and false statement — but the reader is told the filter they chose did not apply.
+		logger.error("Projects feed refine failed", { params: next, message: res.message });
+		notify("danger", res.message ?? "Couldn’t refresh your projects — please try again.");
+	}
+
+	/** Push a toast, mounting a stack first when the page has none (they all render one signal). */
+	function notify(severity: "success" | "danger", summary: string): void {
+		if (!document.querySelector(".ui-toast")) toastMounted.value = true;
+		toast.show({ severity, summary, life: severity === "danger" ? 6000 : 3000 });
 	}
 
 	/** Apply a param change: sync the URL (shareable) then fetch. */
@@ -329,9 +351,40 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 		payload.value = { ...payload.value, items: flip(payload.value.items) };
 	}
 
-	function onMenuAction(_id: string, _action: string): void {
-		// Report / Leave / Delete need the live backend + confirmation surfaces; wired dumb for now so
-		// the menu is fully navigable (open-in-new-tab and share resolve client-side inside the card).
+	function onMenuAction(id: string, action: CardMenuAction): void {
+		// Open and Share resolve inside the card; Archive is the one action that writes.
+		if (action !== "archive") return;
+		const item = payload.value.items.find((r) => r.id === id);
+		if (!item) return;
+		archiveTarget.value = item;
+		archiveOpen.value = true;
+	}
+
+	/**
+	 * Soft-archive the confirmed card (root CLAUDE.md §5 — the row and its history survive), then
+	 * re-read the feed rather than splicing the row out: counts and groups are the server's, and a
+	 * locally patched list is a second filter that eventually disagrees with the first. Archiving the
+	 * engagement currently open in the body leaves for the bare feed, since that page now addresses a
+	 * project nobody can reach.
+	 */
+	async function archiveProject(): Promise<void> {
+		const target = archiveTarget.value;
+		if (!target || archiving.value) return;
+		archiving.value = true;
+		const res = await ProjectSidebarService.archive(target.slug);
+		archiving.value = false;
+		archiveTarget.value = null;
+		if (!res.ok) {
+			logger.error("Project archive failed", { slug: target.slug, message: res.message });
+			notify("danger", res.message ?? "That did not archive — please try again.");
+			return;
+		}
+		if (isActiveCard(target.slug)) {
+			globalThis.location.href = "/projects";
+			return;
+		}
+		notify("success", res.message ?? "Project archived.");
+		void run(params.value, false);
 	}
 
 	function resetFilters(): void {
@@ -522,6 +575,14 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 				onClose={() => (modalOpen.value = false)}
 				onCreated={onCreated}
 			/>
+
+			<ArchiveProjectDialog
+				visible={archiveOpen}
+				title={archiveTarget.value?.title ?? null}
+				onAccept={() => void archiveProject()}
+			/>
+
+			{toastMounted.value ? <Toast position="bottom-center" /> : null}
 		</div>
 	);
 }

@@ -3,6 +3,7 @@ import type { SubmissionStatus } from "../types/projects-types.ts";
 import type { WorkflowActions } from "../core/submission-access.ts";
 import { statusTone } from "../core/submission-model.ts";
 import {
+	AcceptedGlyph,
 	PlusGlyph,
 	ReviewGlyph,
 	SendGlyph,
@@ -15,7 +16,8 @@ import {
  * SubmissionActionBar — the primary/secondary workflow controls pinned to the right of the breadcrumbs
  * bar (`subm-crumbbar`), driven by the resolved {@link WorkflowActions} state machine (root task §3):
  *
- * - **Reviewer** viewing a submitted item → a single **Review Submission** button.
+ * - **Reviewer** viewing a submitted item → **Review Submission**; once the unit is accepted, also
+ *   **Approve Stage** (releases the stage's held escrow, behind a confirmation).
  * - **Freelancer** at the root → **Create New Submission**.
  * - **Freelancer** inside an unsubmitted draft → **Upload Files** · **Delete Submission** ·
  *   **Submit for Review**.
@@ -32,6 +34,10 @@ export interface SubmissionActionBarProps {
 	onUpload: () => void;
 	onDelete: () => void;
 	onSubmit: () => void;
+	/** Open the stage-approval confirmation (reviewer, accepted unit). */
+	onApproveStage: () => void;
+	/** A stage approval is in flight — the control is disabled and says so. */
+	approveBusy?: boolean;
 }
 
 /** The freelancer's post-submission badge label (root task §3.3 wording). */
@@ -61,21 +67,44 @@ function StatusBadge({ status }: { status: SubmissionStatus }): JSX.Element {
 }
 
 export function SubmissionActionBar(props: SubmissionActionBarProps): JSX.Element | null {
-	const { actions, onReview, onCreate, onUpload, onDelete, onSubmit } = props;
+	const { actions, onReview, onCreate, onUpload, onDelete, onSubmit, onApproveStage } = props;
+	const approveBusy = props.approveBusy === true;
 
-	if (actions.review) {
+	if (actions.review || actions.approveStage) {
 		return (
 			<div class="subm-actions">
-				<button
-					type="button"
-					class="subm-actions__btn subm-actions__btn--primary"
-					onClick={onReview}
-				>
-					<span class="subm-actions__icon" aria-hidden="true">
-						<ReviewGlyph size={16} />
-					</span>
-					Review Submission
-				</button>
+				{actions.review
+					? (
+						<button
+							type="button"
+							class={`subm-actions__btn ${
+								actions.approveStage ? "subm-actions__btn--soft" : "subm-actions__btn--primary"
+							}`}
+							onClick={onReview}
+						>
+							<span class="subm-actions__icon" aria-hidden="true">
+								<ReviewGlyph size={16} />
+							</span>
+							Review Submission
+						</button>
+					)
+					: null}
+				{actions.approveStage
+					? (
+						<button
+							type="button"
+							class="subm-actions__btn subm-actions__btn--primary"
+							disabled={approveBusy}
+							aria-busy={approveBusy}
+							onClick={onApproveStage}
+						>
+							<span class="subm-actions__icon" aria-hidden="true">
+								<AcceptedGlyph size={16} />
+							</span>
+							{approveBusy ? "Approving…" : "Approve Stage"}
+						</button>
+					)
+					: null}
 			</div>
 		);
 	}

@@ -51,10 +51,18 @@ export interface SubmissionReviewModalProps {
 	viewerId: string;
 	onClose: () => void;
 	onNavigate: (path: string[]) => void;
-	/** Commit a revision request with the accumulated feedback. */
-	onRequestRevision: (payload: { guidelines: string; annotations: number }) => void;
+	/**
+	 * Commit a revision request with the accumulated feedback. `notes` is the text the freelancer
+	 * receives: the overall guidelines followed by each file annotation, one per line, prefixed with
+	 * the file it is about.
+	 */
+	onRequestRevision: (payload: { guidelines: string; annotations: number; notes: string }) => void;
 	/** Accept the submission (escrow release). */
 	onAccept: () => void;
+	/** A verdict is in flight — both decision controls are disabled so one press cannot become two. */
+	busy?: boolean;
+	/** Why the last verdict did not land, rendered in the footer as an alert; null when there is none. */
+	error?: string | null;
 }
 
 type RightMode = "file" | "stage" | "ticket" | "notes";
@@ -79,6 +87,8 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 		onNavigate,
 		onRequestRevision,
 		onAccept,
+		busy = false,
+		error = null,
 	} = props;
 
 	const { mounted, state } = usePresence(open);
@@ -125,7 +135,10 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 	const unit = review.unit;
 	const selected = files.find((f) => f.id === selectedFileId.value) ?? files[0] ?? null;
 
-	const canRequestRevision = annotations.value.length > 0 || guidelines.value.trim().length > 0;
+	// A verdict is only owed on a unit awaiting review; after one, the workspace is read-only.
+	const decidable = unit.status === "pending_review";
+	const canRequestRevision = decidable &&
+		(annotations.value.length > 0 || guidelines.value.trim().length > 0);
 
 	const addAnnotation = () => {
 		const text = draftNote.value.trim();
@@ -138,11 +151,13 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 	};
 
 	const requestRevision = () => {
-		if (!canRequestRevision) return;
-		onRequestRevision({
-			guidelines: guidelines.value.trim(),
-			annotations: annotations.value.length,
-		});
+		if (!canRequestRevision || busy) return;
+		const overall = guidelines.value.trim();
+		const notes = [
+			overall,
+			...annotations.value.map((a) => `${a.fileName}: ${a.text}`),
+		].filter(Boolean).join("\n");
+		onRequestRevision({ guidelines: overall, annotations: annotations.value.length, notes });
 	};
 
 	// #region Tabs
@@ -507,21 +522,36 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 
 					{/* Footer — review enforcement controls */}
 					<footer class="subm-review__foot">
-						<p class="subm-review__hint" role="status">
-							{canRequestRevision
-								? "Ready — your feedback will be sent with the revision request."
-								: "Add a file annotation or overall guidelines to request a revision."}
-						</p>
-						<div class="subm-review__actions">
+						{error
+							? <p class="subm-review__error" role="alert">{error}</p>
+							: (
+								<p class="subm-review__hint" role="status">
+									{busy
+										? "Recording your decision…"
+										: !decidable
+										? "This submission has already been reviewed."
+										: canRequestRevision
+										? "Ready — your feedback will be sent with the revision request."
+										: "Add a file annotation or overall guidelines to request a revision."}
+								</p>
+							)}
+						<div class="subm-review__actions" aria-busy={busy}>
 							<button
 								type="button"
 								class="subm-btn subm-btn--danger"
-								disabled={!canRequestRevision}
+								disabled={!canRequestRevision || busy}
 								onClick={requestRevision}
 							>
 								Request Revision
 							</button>
-							<button type="button" class="subm-btn subm-btn--primary" onClick={onAccept}>
+							<button
+								type="button"
+								class="subm-btn subm-btn--primary"
+								disabled={busy || !decidable}
+								onClick={() => {
+									if (!busy && decidable) onAccept();
+								}}
+							>
 								Accept Submission
 							</button>
 						</div>

@@ -7,17 +7,39 @@
 -- projects.complete_ticket(p_ticket_id)
 -- Marks a ticket complete and releases its held escrow to the assigned payee (fee/bonus/team
 -- splits are applied inside finance.fn_release_ticket_escrow).
+--
+-- 🚨 The authorisation block is the whole security of this function: it is SECURITY DEFINER and
+-- pays out escrow, so without it any caller holding a ticket id could release that ticket's money.
+-- Authority is review authority (`can_review_project`: owner or active client-business member),
+-- never `has_project_access` — the assignee has project access and must not confirm their own
+-- delivery. The ticket row is locked first so the check and the release see the same ticket.
 -- ---------------------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION projects.complete_ticket(p_ticket_id uuid)
 RETURNS void AS $$
+DECLARE
+  v_actor   uuid := auth.uid();
+  v_project uuid;
 BEGIN
+  IF v_actor IS NULL THEN
+    RAISE EXCEPTION 'Sign in to complete a ticket.' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT t.project_id INTO v_project FROM projects.tickets t WHERE t.id = p_ticket_id FOR UPDATE;
+  IF v_project IS NULL THEN
+    RAISE EXCEPTION 'Ticket % not found.', p_ticket_id USING ERRCODE = 'no_data_found';
+  END IF;
+
+  IF NOT projects.can_review_project(v_project) THEN
+    RAISE EXCEPTION 'Only the client/owner may complete a ticket.' USING ERRCODE = '42501';
+  END IF;
+
   UPDATE projects.tickets
   SET status = 'completed'::ticket_status, updated_at = now()
   WHERE id = p_ticket_id;
 
   PERFORM finance.fn_release_ticket_escrow(p_ticket_id);
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, org, auth;
 
 -- ---------------------------------------------------------------------------------------------
 -- projects.delete_ticket(p_ticket_id)
@@ -26,14 +48,31 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance
 --   • After claim   -> release escrow in full to the freelancer as compensation, then purge.
 -- finance.escrows.ticket_id is ON DELETE SET NULL, so released escrow rows survive as an
 -- auditable record after the ticket row is removed.
+--
+-- 🚨 Same footing as complete_ticket: a DEFINER that releases escrow and hard-deletes, so review
+-- authority is checked before anything moves. An unknown id is refused rather than silently
+-- ignored, so a caller cannot read "nothing happened" as "allowed".
 -- ---------------------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION projects.delete_ticket(p_ticket_id uuid)
 RETURNS void AS $$
 DECLARE
+  v_actor    uuid := auth.uid();
+  v_project  uuid;
   v_assignee uuid;
 BEGIN
-  SELECT current_assignee_id INTO v_assignee FROM projects.tickets WHERE id = p_ticket_id;
-  IF NOT FOUND THEN RETURN; END IF;
+  IF v_actor IS NULL THEN
+    RAISE EXCEPTION 'Sign in to delete a ticket.' USING ERRCODE = '42501';
+  END IF;
+
+  SELECT t.project_id, t.current_assignee_id INTO v_project, v_assignee
+  FROM projects.tickets t WHERE t.id = p_ticket_id FOR UPDATE;
+  IF v_project IS NULL THEN
+    RAISE EXCEPTION 'Ticket % not found.', p_ticket_id USING ERRCODE = 'no_data_found';
+  END IF;
+
+  IF NOT projects.can_review_project(v_project) THEN
+    RAISE EXCEPTION 'Only the client/owner may delete a ticket.' USING ERRCODE = '42501';
+  END IF;
 
   IF v_assignee IS NOT NULL THEN
     PERFORM finance.fn_release_ticket_escrow(p_ticket_id);
@@ -41,7 +80,7 @@ BEGIN
 
   DELETE FROM projects.tickets WHERE id = p_ticket_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, org, auth;
 
 -- ---------------------------------------------------------------------------------------------
 -- projects.release_ticket_to_backlog(p_ticket_id)

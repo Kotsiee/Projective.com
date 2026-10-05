@@ -263,9 +263,9 @@ export const CreateProjectSchema = z.object({
 	 */
 	description: z.string().trim().max(2000, "Keep the brief under 2000 characters.").default(""),
 	/**
-	 * ISO-4217, upper-case. Validated for SHAPE here and narrowed to the offerable set server-side
-	 * through `toDisplayCurrency`, so a client that posts a well-formed but unsupported code gets the
-	 * platform default rather than a refusal it cannot act on.
+	 * ISO-4217, upper-case. Validated for SHAPE here only; the modal seeds it from the viewer's resolved
+	 * money context (already narrowed to the offerable set), and the create write stores what arrives
+	 * after `normalisedCurrency`.
 	 */
 	currency: z.string().trim().length(3, "Choose a currency.").toUpperCase(),
 	/** The one baseline figure, in MINOR units. `null` = not priced yet. */

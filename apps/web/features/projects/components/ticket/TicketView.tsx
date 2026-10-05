@@ -369,7 +369,7 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 											</button>
 										)}
 									>
-										<TicketMenu card={card} projectId={props.projectId} canEdit={canEdit} />
+										<TicketMenu card={card} projectId={props.projectId} />
 									</Popover>
 								)
 								: null}
@@ -733,11 +733,15 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 // #region Kebab menu
 /**
  * The ticket's secondary actions. Copy-link is first because it is the one a reader reaches for
- * mid-conversation; the destructive one is last and separated, and only exists for a seat that can
- * actually perform it.
+ * mid-conversation.
+ *
+ * Only actions that do something are offered (root CLAUDE.md §3.11). Following a ticket needs a
+ * notification subscription the backend does not have, and the ticket lifecycle has no archived state
+ * — the nearest, `cancelled`, is an escrow-bearing transition, not a tidy-up — so neither is drawn
+ * until it can be performed.
  */
 function TicketMenu(
-	props: { card: BoardCard; projectId: string; canEdit: boolean },
+	props: { card: BoardCard; projectId: string },
 ): JSX.Element {
 	const href = `/projects/${encodeURIComponent(props.projectId)}/board?ticket=${
 		encodeURIComponent(props.card.id)
@@ -759,18 +763,6 @@ function TicketMenu(
 				<Icon name="external-link" size="xs" />
 				Open in a new tab
 			</a>
-			<button type="button" class="tkv-menu__item">
-				<Icon name="bookmark" size="xs" />
-				Follow this ticket
-			</button>
-			{props.canEdit
-				? (
-					<button type="button" class="tkv-menu__item tkv-menu__item--danger">
-						<Icon name="archive-box" size="xs" />
-						Archive ticket
-					</button>
-				)
-				: null}
 		</div>
 	);
 }

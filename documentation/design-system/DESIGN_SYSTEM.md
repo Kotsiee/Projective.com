@@ -2991,7 +2991,15 @@ Expanding a stage reveals its deliverable checklist (§B.9.8) **inline, without 
 track** — the line runs behind the expansion, because a track that breaks at every open stage stops
 reading as a sequence, which is the only thing it was drawn to communicate. It is not an `Accordion`:
 that component brings a bordered panel per tab, which is the boxed accordion this rule exists to
-prevent. Lane ledger: `Stage 2 of 5 · Discovery`, plus per-stage quick-jumps.
+prevent. The expansion stays native `<details>` (server-rendered, keyboard-operable, working without
+script) and is **animated in CSS alone**: `::details-content` is a one-row grid whose row springs
+`0fr` ⇄ `1fr` on `--spring-standard` / `--dur-medium` (the caret's own timing), with
+`content-visibility` transitioned `allow-discrete` so content is not removed before the row closes
+over it, and a padding-free `.evp-track__reveal` clip inside it (a box cannot shrink below its own
+padding). The single track rule is on the list, so it grows and shrinks with the expansion frame by
+frame and never breaks. Both reduced-motion channels jump to final; an engine without
+`::details-content` opens instantly. The same ledger serves `?type=services` and `?type=projects`
+(Decision #142). Lane ledger: `Stage 2 of 5 · Discovery`, plus per-stage quick-jumps.
 
 **D.8.2 One-off deliverables.** No timeline — a single unboxed **scope checklist** (`Icon` `check` +
 Body text, one row per item) under a Section header, followed by a key–value specification ledger
@@ -3044,20 +3052,41 @@ commercial use is included has not been told the price of anything.
 **D.8.6 Projects — a brief being staffed.** A project renders through the SAME frame as the five
 commerce bodies, never a template of its own. It has no media column, so its hero spans the frame's
 two content tracks (the shape a session's scheduler stage already takes) and its title is the page's
-primary optical area — top-left, directly after the start strip. The client's profile banner survives
-as a slim decorative strip at the top of the hero (7:1, capped at `8.5rem`, `--radius-lg` to match
-the media canvas a listing renders in that position) with the client's face overlapping its lower
-edge at half height — a listing's prominence, not a profile's; it is `aria-hidden` because the seller
-line beneath it states the identity in words. Then title · one inline meta line (live stage ·
-classification · leading skills) · summary · the seller line carrying the client's role headline.
+primary optical area — top-left, directly after the back link. **There is no banner** (Decision #142,
+retiring the slim strip of Decision #96(B)): the client's identity is the seller line — face, name and
+role headline. Then title · one inline meta line (live stage · classification · leading skills) ·
+summary · the seller line, whose score jumps to the client reviews below.
 The body is a two-column details ledger (type · current stage · stage count · open seats · posted
 by), the roles being hired as ONE inline meta line, and the stage run on the §D.8.1 timeline track
 with its seat facts and open roles shown. The conversion rail is `ProjectLane` in the END column,
 built from the same lane parts as `EntityLane` (`lane-parts.tsx`): identity band · the per-ticket
 price (the floor, "From", for a pipeline; the fixed amount for a one-off) · stage quick-jumps ·
 summary ledger · a pinned footer carrying ONE inverted primary **Apply to project** and ONE ghost
-**Message client** — no secondary, since a brief is applied to and never basketed. No cross-sell
-rails and no reviews (§8 Decision #44). Below the frame breakpoint `ProjectApplyBar` re-homes the
+**Message client** — no secondary, since a brief is applied to and never basketed. In the
+authenticated shell the lane docks clear of BOTH top bars at all times
+(`top: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h) + var(--space-4))`), is sized to its
+content and clamped to the remaining viewport (a flex column, so the clamp reaches the scroll region
+and the footer stays on screen), and sits at `--z-raised` — BELOW the in-flow header band — so a lane
+carried up by the frame's foot passes under the band instead of covering it.
+
+Below the body, at the product owner's direction (Decision #142, reversing #44/#96): **"More by
+[client]"** — the client's other public briefs as project cards (stage pipeline shown), two-up, first —
+then **"Similar & recommended"** — other clients' briefs ranked by shared skills, then classification,
+three-up; a brief sharing no skill is dropped, not padded in — and then the **client's reviews**:
+the reviews freelancers left on the owner AS A CLIENT (the client track only — a client's helper
+reviews are a different reputation), read through `org.get_profile_reviews`, which releases an
+engagement's title only when that project is `public`; an unlisted or private engagement prints
+nothing rather than a placeholder. A client nobody has reviewed reads "No freelancer has reviewed …
+yet", never a 0.0 score. Payment-timeliness and spec-clarity sub-scores are NOT rendered: no column
+stores them (flagged in Decision #142).
+
+**The owner's preview (`/projects/[slug]/preview`, View Mode 2 of 2)** is the same `EntityViewPage` in
+`mode="preview"`, composed by the same service from the owner's own rows (drafts included): the back
+link's row carries a one-line Meta notice — _This is how freelancers and applicants evaluate your
+project brief._ · **Edit details** — with no fill, border or dismiss; there are no rails and no
+reviews; the lane has no kebab; and the lane footer and apply bar NAME the applicant's two actions
+(_Applicants act here_ · Apply to project · Message client) instead of rendering them — a disabled
+Apply would be a control that does nothing (§3 gate 11). Below the frame breakpoint `ProjectApplyBar` re-homes the
 price and the rig into the body (§D.7.4), and the header band is the same `EntityStickyHeader` a
 listing shows, labelled _Project_. Read as a Gutenberg diagram: primary optical area (top-left) =
 title + identifiers; strong follow (top-right) = the lane's identity and price; weak follow (body) =
@@ -3069,8 +3098,9 @@ the ledgers and the stage run; terminal (bottom-right) = the pinned Apply.
 > confines the booking calendar to a hero column, or ships a second/one-way availability switcher;
 > encodes seat capacity in an animated property or omits the spoken count; reduces licence terms
 > to a chip; or renders a project through a frame of its own — a boxed stage card, a pill for its
-> classification or roles, a profile-scale banner, or an Apply control anywhere but the lane footer
-> and the below-breakpoint apply bar.
+> classification or roles, a banner of any scale, an Apply control anywhere but the lane footer
+> and the below-breakpoint apply bar, or a live Apply/Message control on the owner's preview; or
+> names an engagement in a review whose project is not `public`.
 ## Part E — Contracts & merge gates (summary)
 
 A PR touching `@projective/ui` must satisfy (enforced via root `CLAUDE.md`):

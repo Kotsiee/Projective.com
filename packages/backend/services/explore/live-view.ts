@@ -257,18 +257,62 @@ function trustFor(item: ExploreItem): TrustFact[] {
 
 // #region Rails
 
-/** Other items by the same creator — the "More by …" rail. */
+/**
+ * Other items by the same creator — the "More by …" rail.
+ *
+ * A SELLER's rail is their catalogue (services, products, articles). A CLIENT's rail is their other
+ * open briefs: a freelancer weighing one project asks what else this client is hiring for, and the
+ * answer to that is projects — the client's articles and the services they happen to sell are a
+ * different relationship with them, and a cross-sell of those beside a brief is the wrong question.
+ */
 function moreByOwner(catalog: Catalog, item: ExploreItem): ExploreItem[] {
+	const sameOwner = (it: ExploreItem) => it.owner.handle === item.owner.handle && it.id !== item.id;
+	if (item.type === "projects") {
+		return catalog.items.filter((it) => sameOwner(it) && it.type === "projects").slice(0, 8);
+	}
 	return catalog.items
 		.filter((it) =>
-			it.owner.handle === item.owner.handle && it.id !== item.id &&
-			(it.type === "services" || it.type === "products" || it.type === "articles")
+			sameOwner(it) && (it.type === "services" || it.type === "products" || it.type === "articles")
 		)
 		.slice(0, 8);
 }
 
-/** Same type, same category first, a different owner preferred — the "Similar" rail. */
+/** The lower-cased skill labels an item lists — the overlap key the project "Similar" rail ranks on. */
+function skillKeys(it: ExploreItem): Set<string> {
+	return new Set(it.skills.map((s) => s.label.trim().toLowerCase()).filter((k) => k.length > 0));
+}
+
+/**
+ * Same type, same category first, a different owner preferred — the "Similar" rail.
+ *
+ * A project carries no category column, so its similarity is the SKILLS it hires for: shared skills
+ * dominate the score (two points each) and the same classification (pipeline / one-off) is the
+ * tie-break that keeps a long engagement from recommending a one-day job. This client's own briefs are
+ * excluded — the "More by" rail directly above already lists them, and one card in both rails is one
+ * recommendation counted twice. A brief that shares no skill at all is not similar and is dropped
+ * rather than padded in.
+ */
 function similarTo(catalog: Catalog, item: ExploreItem): ExploreItem[] {
+	if (item.type === "projects") {
+		const mine = skillKeys(item);
+		return catalog.items
+			.filter((it): it is Extract<ExploreItem, { type: "projects" }> =>
+				it.type === "projects" && it.owner.handle !== item.owner.handle
+			)
+			.map((it) => {
+				let shared = 0;
+				for (const key of skillKeys(it)) if (mine.has(key)) shared++;
+				return {
+					it,
+					shared,
+					score: shared * 2 + (it.classification === item.classification ? 1 : 0),
+				};
+			})
+			.filter((s) => s.shared > 0)
+			.sort((a, b) => b.score - a.score)
+			.slice(0, 8)
+			.map((s) => s.it);
+	}
 	const category = (it: ExploreItem) =>
 		it.type === "services" || it.type === "products" ? it.category : null;
 	return catalog.items
@@ -327,6 +371,7 @@ async function reviewsFor(
 	catalog: Catalog,
 	item: ExploreItem,
 ): Promise<{ summary: ReviewSummary; list: EntityReview[] }> {
+	if (item.type === "projects") return clientReviewsFor(catalog, item);
 	const empty = { summary: { average: 0, count: 0, distribution: [0, 0, 0, 0, 0] }, list: [] };
 	const subject = reviewSubject(catalog, item);
 	if (!subject) return empty;
@@ -370,6 +415,92 @@ async function reviewsFor(
 			count: rows.length,
 			distribution,
 			asHelper: { value: average, count: rows.length },
+		},
+		list,
+	};
+}
+
+/** One row of `org.get_profile_reviews` — the profile's received reviews, with the stance resolved. */
+interface ProfileReviewRow {
+	id: string;
+	rating: number | string;
+	title: string | null;
+	comment: string;
+	created_at: string;
+	/** The AUTHOR's side of the engagement: `freelancer` means the profile was reviewed as a client. */
+	author_role: "client" | "freelancer";
+	author_handle: string | null;
+	author_name: string | null;
+	/** NULL unless the engagement's project is `public` — the database does the redaction. */
+	context_title: string | null;
+}
+
+/**
+ * A project's reviews: what freelancers said about its OWNER AS A CLIENT.
+ *
+ * A brief is not itself reviewed — nobody rates a job posting — so the reputation a freelancer needs
+ * beside one is the client's: whether they paid, whether the brief they wrote was the job they
+ * wanted. That is the client track of the owner's received reviews, and only that track: a client who
+ * also sells services carries a second, unrelated helper track, and mixing the two would let a
+ * freelancer's glowing service reviews launder a client's late payments.
+ *
+ * Read through `org.get_profile_reviews` rather than the table, because that definer function is
+ * where the visibility rule already lives: it returns the engagement's title only when the project is
+ * `public`, so an unlisted or private engagement is never named here and cannot be by mistake.
+ */
+async function clientReviewsFor(
+	catalog: Catalog,
+	item: ExploreItem,
+): Promise<{ summary: ReviewSummary; list: EntityReview[] }> {
+	const empty = { summary: { average: 0, count: 0, distribution: [0, 0, 0, 0, 0] }, list: [] };
+	const handle = item.owner.handle.replace(/^@/, "");
+	if (!handle) return empty;
+	const { data, error } = await getAnonClient().schema("org").rpc("get_profile_reviews", {
+		p_handle: handle,
+		p_limit: 100,
+	});
+	if (error) throw new Error(`explore view: reading client reviews failed — ${error.message}`);
+	const rows = ((data ?? []) as ProfileReviewRow[]).filter((r) => r.author_role === "freelancer");
+	if (!rows.length) return empty;
+
+	const distribution = [0, 0, 0, 0, 0];
+	let total = 0;
+	const list: EntityReview[] = rows.map((r) => {
+		const rating = Number(r.rating);
+		total += rating;
+		distribution[Math.min(4, Math.max(0, Math.round(rating) - 1))]++;
+		const profile = r.author_handle
+			? catalog.profileByHandle.get(`@${r.author_handle}`)
+			: undefined;
+		const author = profile ? authorOf(profile) : {
+			handle: r.author_handle ? `@${r.author_handle}` : "",
+			name: r.author_name?.trim() || "Projective member",
+			avatar: "",
+			kind: "freelancer" as const,
+		};
+		return {
+			id: r.id,
+			author,
+			rating,
+			track: "client" as const,
+			title: r.title ?? "",
+			body: r.comment,
+			createdAt: r.created_at,
+			dateLabel: monthLabel(r.created_at),
+			reciprocal: false,
+			// The RPC withholds the engagement link along with a private title, so this cannot be told
+			// apart from a review with no engagement — false is the claim the data supports.
+			verifiedEngagement: false,
+			contextTitle: r.context_title?.trim() || undefined,
+		};
+	});
+	const average = Math.round((total / rows.length) * 100) / 100;
+	return {
+		summary: {
+			average,
+			count: rows.length,
+			distribution,
+			asClient: { value: average, count: rows.length },
 		},
 		list,
 	};

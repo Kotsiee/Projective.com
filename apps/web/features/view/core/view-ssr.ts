@@ -1,5 +1,6 @@
 import { ExploreBackendService } from "@server/services/explore/ExploreBackendService.ts";
 import type { EntityView } from "@projective/types/explore";
+import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
  * View feature — the SSR resolver bridging the route/layout to the fat {@link ExploreBackendService}.
@@ -59,4 +60,19 @@ export async function resolveViewPage(
  */
 export function peekViewPage(id: string): { view: EntityView | undefined } {
 	return { view: recent.get(id) ?? undefined };
+}
+
+/**
+ * Resolve the project OWNER's preview of their own brief — `/projects/[slug]/preview`'s call.
+ *
+ * Not memoised for the layout slots like {@link resolveViewPage}: the preview is a dashboard route
+ * whose header and lane bands are the project's own, so nothing downstream peeks it, and it is one
+ * viewer's answer read with one viewer's token — the shared memo must never hold it.
+ */
+export async function resolveProjectPreview(
+	slug: string,
+	actor: ReadActor,
+): Promise<{ view: EntityView | undefined; status: number }> {
+	const result = await ExploreBackendService.projectPreviewPage(slug, actor);
+	return { view: result.ok ? result.data : undefined, status: result.status };
 }

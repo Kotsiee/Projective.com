@@ -1,0 +1,345 @@
+/*
+ * ============================================================================
+ * The `/projects` portfolio index — `ProjectPortfolio`
+ *
+ * Unboxed by construction (§B.4, §B.9.7): the head and the burn summary are type on the page's own
+ * ground, the list is rows divided by single hairlines, and nothing static sits in a container. The
+ * contained things are the three containment is for (§B.11): the filter CONTROLS, their COUNTS, and
+ * each row's lifecycle STATUS.
+ *
+ * Responsive through a container query on `.prj-port` rather than the viewport: the page shares its
+ * width with the projects lane, which the reader can drag, so the viewport cannot say how wide the
+ * list actually is (the entity view's `@container` finding).
+ * ========================================================================== */
+.prj-port {
+	container: prj-port / inline-size;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+	padding: var(--space-6) var(--space-5) var(--space-7);
+	color: var(--on-surface);
+	font-family: var(--font-sans);
+}
+
+.prj-port--empty {
+	justify-content: center;
+	min-block-size: 60vh;
+}
+
+/* ---- Head: display register, with the workspace and the count as one meta line ---- */
+.prj-port__head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.prj-port__title {
+	margin: 0;
+	font-size: var(--text-3xl);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
+}
+
+.prj-port__meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+/* Every changing figure on the page. */
+.prj-port__num,
+.prj-port__pct,
+.prj-port__count {
+	font-variant-numeric: tabular-nums;
+}
+
+/* ---- The aggregate stage burn ---- */
+.prj-port__summary {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	max-inline-size: var(--measure);
+}
+
+/* Section-header register: small, uppercase, semibold — never bold, never large (§A.4). */
+.prj-port__eyebrow {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.prj-port__figure {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-1) var(--space-3);
+	margin: 0;
+}
+
+.prj-port__pct {
+	font-size: var(--text-2xl);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
+}
+
+.prj-port__figurenote {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+/*
+ * The segmented track meter (§D.8.4) — filled segments for delivered stages, recessed for the rest,
+ * `--space-px` seams. Geometry is set directly and never animated: a frozen animation clock must not be
+ * able to draw a half-delivered portfolio as empty (Decision #60).
+ */
+.prj-port__meter {
+	display: flex;
+	gap: var(--space-px);
+	inline-size: 100%;
+}
+
+.prj-port__meter--lg {
+	block-size: var(--space-2);
+}
+
+.prj-port__meter--sm {
+	block-size: var(--space-1);
+}
+
+.prj-port__seg {
+	flex: 1 1 0;
+	min-inline-size: 0;
+	background: var(--track-meter);
+}
+
+.prj-port__seg:first-child {
+	border-start-start-radius: var(--radius-full);
+	border-end-start-radius: var(--radius-full);
+}
+
+.prj-port__seg:last-child {
+	border-start-end-radius: var(--radius-full);
+	border-end-end-radius: var(--radius-full);
+}
+
+.prj-port__seg[data-done="true"] {
+	background: var(--primary);
+}
+
+/* ---- Status filter: controls, so contained; the active one is the tonal step ---- */
+.prj-port__filters {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+
+.prj-port__filter {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: var(--space-7);
+	padding-inline: var(--space-3);
+	border: var(--hairline-strong);
+	border-radius: var(--radius-full);
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	text-decoration: none;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-press) var(--spring-standard);
+}
+
+.prj-port__filter:hover {
+	background: var(--surface-1);
+	color: var(--on-surface);
+}
+
+/* Press feedback is `transform: scale()` only — never padding, margin or size (§3 gate 12). */
+.prj-port__filter:active {
+	transform: scale(0.97);
+}
+
+.prj-port__filter[aria-current="page"] {
+	background: var(--surface-2);
+	color: var(--on-surface);
+	font-weight: var(--fw-medium);
+}
+
+.prj-port__count {
+	color: var(--text-secondary);
+	font-weight: var(--fw-normal);
+}
+
+/* ---- The list: rows on the page's ground, divided by one hairline each ---- */
+.prj-port__list {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/*
+ * Mobile-first: one column — title and meta, then status and burn on one line beneath. The container
+ * query below spreads them into three tracks once there is room for the burn column to be readable.
+ */
+.prj-port__row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	grid-template-areas:
+		"link   link"
+		"status burn";
+	align-items: center;
+	gap: var(--space-2) var(--space-4);
+	padding-block: var(--space-4);
+	border-block-end: var(--hairline);
+}
+
+.prj-port__row:first-child {
+	border-block-start: var(--hairline);
+}
+
+.prj-port__link {
+	grid-area: link;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+	color: inherit;
+	text-decoration: none;
+	border-radius: var(--radius-sm);
+}
+
+.prj-port__name {
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.prj-port__link:hover .prj-port__name {
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+}
+
+.prj-port__rowmeta {
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/*
+ * Lifecycle status — one of the three things containment is for. The dot's colour is a redundant cue;
+ * the WORD is the status, so a colour-blind or high-contrast reader loses nothing.
+ */
+.prj-port__status {
+	grid-area: status;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	justify-self: start;
+	padding: var(--space-1) var(--space-2);
+	border-radius: var(--radius-full);
+	background: var(--surface-1);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	white-space: nowrap;
+}
+
+.prj-port__dot {
+	inline-size: var(--space-2);
+	block-size: var(--space-2);
+	border-radius: var(--radius-full);
+	background: var(--text-secondary);
+}
+
+.prj-port__status[data-status="active"] .prj-port__dot {
+	background: var(--primary);
+}
+
+.prj-port__status[data-status="on_hold"] .prj-port__dot {
+	background: var(--warning);
+}
+
+.prj-port__status[data-status="completed"] .prj-port__dot {
+	background: var(--success);
+}
+
+.prj-port__status[data-status="cancelled"] .prj-port__dot {
+	background: var(--danger);
+}
+
+.prj-port__burn {
+	grid-area: burn;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.prj-port__burn .prj-port__meter {
+	inline-size: calc(var(--space-8) * 2);
+}
+
+.prj-port__burnnote {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+
+.prj-port__none {
+	margin: 0;
+	font-size: var(--text-md);
+	color: var(--text-secondary);
+}
+
+.prj-port__inline {
+	color: var(--primary);
+	font-weight: var(--fw-medium);
+}
+
+@container prj-port (min-width: 640px) {
+	.prj-port__row {
+		grid-template-columns: minmax(0, 1fr) auto minmax(0, 14rem);
+		grid-template-areas: "link status burn";
+	}
+
+	.prj-port__burn {
+		justify-self: end;
+	}
+}
+
+/* Jump-to-final on BOTH reduced-motion channels (§B.12). */
+@media (prefers-reduced-motion: reduce) {
+	.prj-port__filter {
+		transition: none;
+	}
+
+	.prj-port__filter:active {
+		transform: none;
+	}
+}
+
+[data-motion="reduced"] .prj-port__filter {
+	transition: none;
+}
+
+[data-motion="reduced"] .prj-port__filter:active {
+	transform: none;
+}

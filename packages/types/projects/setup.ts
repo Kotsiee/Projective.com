@@ -42,10 +42,11 @@ import { hasRichTextProse } from "../richtext/plain-text.ts";
  * staffed by {@link ProjectRoleSetupSchema} roles instead, so its required ladder step is `roles`
  * where every other structure's is `stages`.
  *
- * Note the vocabulary split this bridges: `ProjectCreateFormat` (`./create.ts`) offers
- * `pipeline | one_off | direct_deliverable` at the modal, while the column enum is
- * `one_off | pipeline | session`. A Direct Deliverable is stored as `format: "one_off"` with
- * `structure: "single_task"`, which is what keeps the two vocabularies reconcilable without a third.
+ * Note the vocabulary split this bridges: `ProjectCreateFormat` (`./create.ts`) is
+ * `one_off | pipeline` plus a `hasStages` flag, the modal offers {@link ProjectTypeChoice}
+ * (`task | one_off | pipeline`), and the column enum is `one_off | pipeline | session`. A Task is
+ * stored as `format: "one_off"` with `structure: "single_task"`, which is what keeps the vocabularies
+ * reconcilable without a third format.
  */
 export const ProjectStructure = z.enum(["standard", "one_off", "single_task", "single_stage"]);
 export type ProjectStructure = z.infer<typeof ProjectStructure>;

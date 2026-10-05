@@ -1107,3 +1107,26 @@ export const MoveTicketSchema = z.object({
 });
 export type MoveTicket = z.infer<typeof MoveTicketSchema>;
 // #endregion
+
+// #region Create stage (write)
+/**
+ * `POST /api/projects/[id]/stages` — append one stage to a project from the Board, the Timeline or the
+ * lane's Stages group. The project is the route segment, never the body, so a payload cannot aim the
+ * write at a different engagement than the URL names.
+ *
+ * Deliberately the modal's two fields and nothing else: a stage's rate, roster, schedule and file
+ * policy are each a separate decision the setup surface owns, and the stage is born with the
+ * database's own defaults for them (`status = 'open'`, appended after the last `sort_order`, its
+ * General room provisioned in the same transaction by `projects.create_stage`).
+ */
+export const CreateStageInputSchema = z.object({
+	name: z.string().trim().min(1, "Name the stage.").max(120),
+	/** Plain text; stored as the stage's escaped rich-text brief and its `description_text`. */
+	description: z.string().trim().max(2000).default(""),
+});
+export type CreateStageInput = z.infer<typeof CreateStageInputSchema>;
+
+/** What a created stage answers with — the persisted stage as the board itself projects it. */
+export const CreatedStageSchema = z.object({ stage: BoardStageRefSchema });
+export type CreatedStage = z.infer<typeof CreatedStageSchema>;
+// #endregion

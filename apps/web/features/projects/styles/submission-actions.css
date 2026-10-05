@@ -43,8 +43,13 @@
 	background: var(--primary);
 	color: var(--on-primary);
 }
-.subm-actions__btn--primary:hover {
+.subm-actions__btn--primary:hover:not(:disabled) {
 	background: color-mix(in srgb, var(--primary) 88%, var(--on-primary));
+}
+/* In flight (a stage approval): the control stays in place and stops taking presses. */
+.subm-actions__btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 
 .subm-actions__btn--soft {

@@ -175,16 +175,19 @@ DECLARE
     v_stage      uuid;
     v_ticket     uuid;
     v_new_status text;
+    v_sub_status text;
     v_started_at timestamptz := clock_timestamp();
 BEGIN
     RAISE LOG '[SUBMISSION_MUTATION] review_submission begin ts=% actor=% submission=% decision=%',
         v_started_at, v_actor, p_submission_id, p_decision;
 
-    SELECT ps.project_id, ss.project_stage_id, ss.ticket_id
-        INTO v_project, v_stage, v_ticket
+    -- Locked so two concurrent reviews of one submission cannot both land.
+    SELECT ps.project_id, ss.project_stage_id, ss.ticket_id, ss.status
+        INTO v_project, v_stage, v_ticket, v_sub_status
     FROM projects.stage_submissions ss
     JOIN projects.project_stages ps ON ps.id = ss.project_stage_id
-    WHERE ss.id = p_submission_id;
+    WHERE ss.id = p_submission_id
+    FOR UPDATE OF ss;
 
     IF v_project IS NULL THEN
         RAISE EXCEPTION 'Submission % not found.', p_submission_id USING ERRCODE = 'no_data_found';
@@ -195,6 +198,14 @@ BEGIN
         RAISE WARNING '[SUBMISSION_MUTATION] denied actor=% cannot review project=%', v_actor, v_project;
         RAISE EXCEPTION 'You are not authorized to review deliverables on this project.'
             USING ERRCODE = 'insufficient_privilege';
+    END IF;
+
+    -- Only a submission awaiting review is adjudicated: a reviewer can read an unsent `draft` under RLS,
+    -- and re-reviewing an `accepted` / `revisions_requested` one would rewrite a decision already made.
+    -- Checked after the RBAC guard so a non-reviewer learns nothing about the submission's state.
+    IF v_sub_status IS DISTINCT FROM 'pending_review' THEN
+        RAISE EXCEPTION 'Only a submission awaiting review can be reviewed.'
+            USING ERRCODE = 'object_not_in_prerequisite_state';
     END IF;
 
     IF p_decision NOT IN ('accept', 'request_revision') THEN
@@ -286,12 +297,13 @@ BEGIN
     WHERE ps.id = p_stage_id AND ps.project_id = p_project_id;
 
     IF v_status IS NULL THEN
-        RAISE EXCEPTION 'Stage not found for this project.';
+        RAISE EXCEPTION 'Stage not found for this project.' USING ERRCODE = 'no_data_found';
     END IF;
 
     -- AC1: only an assigned stage may be funded.
     IF v_status <> 'assigned'::stage_status THEN
-        RAISE EXCEPTION 'Stage must be in the assigned state to fund escrow (current: %).', v_status;
+        RAISE EXCEPTION 'Stage must be in the assigned state to fund escrow (current: %).', v_status
+            USING ERRCODE = 'object_not_in_prerequisite_state';
     END IF;
 
     -- An individual's hold is skipped per ticket when their wallet cannot cover it, which would leave a
@@ -375,12 +387,18 @@ DECLARE
     v_paid bigint := 0;
     v_refunded bigint := 0;
 BEGIN
-    IF NOT projects.has_project_access(p_project_id) THEN
-        RAISE EXCEPTION 'Not authorized for this project.' USING ERRCODE = '42501';
+    -- 🚨 Settles the stage's escrow (part paid out, part refunded), so the guard is review authority,
+    -- not `has_project_access`: the assignee has project access and must not pick their own payout.
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Sign in to cancel a stage.' USING ERRCODE = '42501';
+    END IF;
+    IF NOT projects.can_review_project(p_project_id) THEN
+        RAISE EXCEPTION 'Only the client/owner may cancel this stage.' USING ERRCODE = '42501';
     END IF;
 
-    IF p_tier NOT IN (25, 50, 75) THEN
-        RAISE EXCEPTION 'Fair-exit tier must be 25, 50, or 75 (got %).', p_tier;
+    IF p_tier IS NULL OR p_tier NOT IN (25, 50, 75) THEN
+        RAISE EXCEPTION 'Fair-exit tier must be 25, 50, or 75 (got %).', p_tier
+            USING ERRCODE = 'invalid_parameter_value';
     END IF;
     v_bp := p_tier * 100;   -- percent -> basis points
 
@@ -389,7 +407,7 @@ BEGIN
     WHERE id = p_stage_id AND project_id = p_project_id;
 
     IF v_stage_name IS NULL THEN
-        RAISE EXCEPTION 'Stage not found for this project.';
+        RAISE EXCEPTION 'Stage not found for this project.' USING ERRCODE = 'no_data_found';
     END IF;
 
     FOR t IN
@@ -402,7 +420,8 @@ BEGIN
     END LOOP;
 
     IF v_cnt = 0 THEN
-        RAISE EXCEPTION 'No funded (held) escrow to cancel for this stage.';
+        RAISE EXCEPTION 'No funded (held) escrow to cancel for this stage.'
+            USING ERRCODE = 'object_not_in_prerequisite_state';
     END IF;
 
     -- Settlement totals, read back from the ledger for this stage's escrows.
@@ -466,7 +485,7 @@ BEGIN
     WHERE ps.id = p_stage_id AND ps.project_id = p_project_id;
 
     IF v_status IS NULL THEN
-        RAISE EXCEPTION 'Stage not found for this project.';
+        RAISE EXCEPTION 'Stage not found for this project.' USING ERRCODE = 'no_data_found';
     END IF;
 
     SELECT jsonb_build_object(
@@ -566,8 +585,13 @@ DECLARE
     v_splits jsonb;
     v_unlocked boolean := false;
 BEGIN
-    IF NOT projects.has_project_access(p_project_id) THEN
-        RAISE EXCEPTION 'Not authorized for this project.' USING ERRCODE = '42501';
+    -- 🚨 Releases every held escrow on the stage, so the guard is review authority, not
+    -- `has_project_access`: the assignee has project access and must not approve their own stage.
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Sign in to approve a stage.' USING ERRCODE = '42501';
+    END IF;
+    IF NOT projects.can_review_project(p_project_id) THEN
+        RAISE EXCEPTION 'Only the client/owner may approve this stage.' USING ERRCODE = '42501';
     END IF;
 
     SELECT ps.name, p.currency INTO v_stage_name, v_currency
@@ -576,7 +600,7 @@ BEGIN
     WHERE ps.id = p_stage_id AND ps.project_id = p_project_id;
 
     IF v_stage_name IS NULL THEN
-        RAISE EXCEPTION 'Stage not found for this project.';
+        RAISE EXCEPTION 'Stage not found for this project.' USING ERRCODE = 'no_data_found';
     END IF;
 
     -- Release every held escrow for this stage's tickets. fn_release_ticket_escrow applies the
@@ -591,7 +615,8 @@ BEGIN
     END LOOP;
 
     IF v_released = 0 THEN
-        RAISE EXCEPTION 'No funded (held) escrow to release for this stage.';
+        RAISE EXCEPTION 'No funded (held) escrow to release for this stage.'
+            USING ERRCODE = 'object_not_in_prerequisite_state';
     END IF;
 
     SELECT COALESCE(SUM(amount_cents + deadline_bonus_cents - platform_fee_cents), 0),

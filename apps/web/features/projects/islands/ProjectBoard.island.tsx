@@ -59,6 +59,12 @@ import { CreateStageModal } from "../components/CreateStageModal.tsx";
 import { type BoardWarningKind, BoardWarnings } from "../components/BoardWarnings.tsx";
 import { TicketView } from "../components/ticket/TicketView.tsx";
 import { SubmissionReviewModal } from "../components/SubmissionReviewModal.tsx";
+import { SettlementService, submissionIdOf } from "../core/SettlementService.ts";
+import type {
+	SubmissionReviewDecision,
+	SubmissionTreeNode,
+	SubmissionUnit,
+} from "../types/projects-types.ts";
 import { newTicketCard, reconcileCard, ticketCommitPayload } from "../core/ticket-model.ts";
 import {
 	boardHasTimeline,
@@ -77,6 +83,7 @@ import {
 	watchDevSeam,
 } from "../core/board-access.ts";
 import { resolveSessionKind } from "../core/session-model.ts";
+import { checkoutStepHref } from "@web/features/checkout/core/basket-model.ts";
 
 /**
  * ProjectBoard — the single island the Kanban board routes mount, for the project pipeline
@@ -181,6 +188,10 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	const stageModalOpen = useSignal(false);
 	/** Expanded tree keys for the review modal's own navigator (its own state, not the ticket's). */
 	const reviewExpanded = useSignal<Set<string>>(new Set());
+	/** A submission verdict is in flight from the review frame. */
+	const reviewBusy = useSignal(false);
+	/** Why the last verdict did not land — shown in the review modal's footer. */
+	const reviewError = useSignal<string | null>(null);
 	/**
 	 * The board's own address, captured once. The chain rewrites the URL while a review is open and
 	 * restores this on the way back; reading `location` at restore time would read whatever the chain
@@ -367,6 +378,50 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		}, 3200);
 	}
 
+	/**
+	 * Record a verdict on the submission the review frame shows, through the same settlement route
+	 * the Submissions explorer uses. Not optimistic: the modal holds its controls disabled while the
+	 * write is in flight and keeps a refusal (403 for a non-reviewer, 409 when it was already decided)
+	 * in its footer; only a recorded verdict updates the card's tree and closes the frame.
+	 */
+	async function decideReview(
+		unit: SubmissionUnit,
+		decision: SubmissionReviewDecision,
+		notes: string,
+	): Promise<void> {
+		if (reviewBusy.value) return;
+		const submissionId = submissionIdOf(unit);
+		if (!submissionId || !unit.stageId) {
+			reviewError.value = "This submission cannot be reviewed from here.";
+			return;
+		}
+		reviewBusy.value = true;
+		reviewError.value = null;
+		const res = await SettlementService.reviewSubmission(
+			props.projectId,
+			unit.stageId,
+			submissionId,
+			decision,
+			notes,
+		);
+		reviewBusy.value = false;
+		if (!res.ok || !res.data) {
+			reviewError.value = res.message ?? "Your decision could not be recorded — please try again.";
+			return;
+		}
+		const status = res.data.status;
+		const mark = (node: SubmissionTreeNode): SubmissionTreeNode => ({
+			...node,
+			status: node.kind === "unit" && node.segment === submissionId ? status : node.status,
+			children: node.children.map(mark),
+		});
+		cards.value = cards.value.map((card) =>
+			card.id === unit.ticketId ? { ...card, submissions: card.submissions.map(mark) } : card
+		);
+		toast(res.message ?? "Decision recorded.");
+		popFrame();
+	}
+
 	async function loadFallback(): Promise<void> {
 		skeleton.begin();
 		const res = await BoardService.list({ projectId: props.projectId, channelId: boardStageId });
@@ -379,11 +434,19 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		}
 	}
 
+	/**
+	 * Hand the buyer to the checkout, narrowed to this project's lines (`?project_id=` — the
+	 * preselect a "pay for this project's tickets" link exists for), so the rest of their basket is
+	 * left intact. The board commits no escrow itself: what is owed and what it funds are the
+	 * checkout's to price and the payment rails' to settle, never a count this island holds.
+	 */
 	function doCheckout(): void {
-		toast(
-			basketCount > 0
-				? `Escrow committed for ${basketCount} ticket${basketCount > 1 ? "s" : ""} (stub).`
-				: "Nothing to check out yet — add tickets with a description.",
+		if (basketCount === 0) {
+			toast("Nothing to check out yet — add tickets with a description.");
+			return;
+		}
+		globalThis.location.assign(
+			checkoutStepHref("basket", null, null, { projectId: props.projectId }),
 		);
 	}
 
@@ -675,34 +738,21 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		toast(res.message ?? "That ticket could not be saved.");
 	}
 
-	function onCreateStage(stage: { name: string; description: string }): void {
-		const order = stages.value.length;
-		stages.value = [
-			...stages.value,
-			{
-				id: `stage-draft-${order}`,
-				// Deliberately NOT a `stg-…` shape — an unsaved stage has no address yet, and `isSlug`
-				// refusing this placeholder is what stops anything linking to a URL that does not exist.
-				slug: `stage-draft-${order}`,
-				name: stage.name,
-				order,
-				status: "draft",
-				locked: false,
-				description: stage.description,
-				// A brand-new stage has no rate, no roster and no history yet — every one of those is a
-				// separate decision the client has not made, so none of them is guessed here.
-				unitPriceCents: null,
-				categoryWeight: 1,
-				members: [],
-				ticketCount: 0,
-				assignmentMode: "open_pull",
-				maxConcurrentIntensity: null,
-				startAt: null,
-				endAt: null,
-				dependsOnStageId: null,
-			},
-		];
+	/**
+	 * Persist a new stage, then add the SERVER's stage to the board — its `stg-…` slug, status and
+	 * order as a reload will read them. Not optimistic: a stage with no address yet would be a column
+	 * whose links resolve nowhere. A refusal is returned to the modal, which keeps the draft open and shows it.
+	 */
+	async function onCreateStage(
+		stage: { name: string; description: string },
+	): Promise<string | null> {
+		const res = await BoardService.createStage(props.projectId, stage);
+		if (!res.ok || !res.data) return res.message ?? "That stage could not be created.";
+		const saved = res.data.stage;
+		stages.value = [...stages.value.filter((s) => s.id !== saved.id), saved]
+			.sort((a, b) => a.order - b.order);
 		stageModalOpen.value = false;
+		return null;
 	}
 
 	function acceptWarning(): void {
@@ -877,16 +927,16 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 						currentPath={reviewPath}
 						expanded={reviewExpanded}
 						viewerId={initial?.viewerId ?? "viewer"}
-						onClose={() => popFrame()}
+						onClose={() => {
+							reviewError.value = null;
+							popFrame();
+						}}
 						onNavigate={(path) => openSubmission(viewing.id, path)}
-						onRequestRevision={() => {
-							toast("Revision requested — the freelancer has been notified (stub).");
-							popFrame();
-						}}
-						onAccept={() => {
-							toast("Submission accepted — escrow release queued (stub).");
-							popFrame();
-						}}
+						onRequestRevision={({ notes }) =>
+							void decideReview(review.unit, "request_revision", notes)}
+						onAccept={() => void decideReview(review.unit, "accept", "")}
+						busy={reviewBusy.value}
+						error={reviewError.value}
 					/>
 				)
 				: null}

@@ -24,6 +24,7 @@ import type {
 	SubmissionCrumb,
 	SubmissionListPage,
 	SubmissionReview,
+	SubmissionReviewDecision,
 	SubmissionStatus,
 	SubmissionTreeNode,
 	SubmissionUnit,
@@ -86,6 +87,8 @@ import { SubmissionBreadcrumbs } from "../components/SubmissionBreadcrumbs.tsx";
 import { SubmissionActionBar } from "../components/SubmissionActionBar.tsx";
 import { AttachmentPreviewModal } from "../components/AttachmentPreviewModal.tsx";
 import { SubmissionReviewModal } from "../components/SubmissionReviewModal.tsx";
+import { ApproveStageDialog } from "../components/ApproveStageDialog.tsx";
+import { SettlementService, submissionIdOf } from "../core/SettlementService.ts";
 import {
 	CreateSubmissionModal,
 	type CreateSubmissionPayload,
@@ -355,6 +358,16 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	 * that produced it until the person dismisses it.
 	 */
 	const workflowError = useSignal<string | null>(null);
+	/** What the last reviewer decision recorded, stated in the bar until dismissed. */
+	const workflowNotice = useSignal<string | null>(null);
+	/** A submission verdict is in flight — the review modal's decision controls are disabled. */
+	const reviewBusy = useSignal(false);
+	/** Why the last verdict did not land — shown inside the review modal, beside its controls. */
+	const reviewError = useSignal<string | null>(null);
+	/** The stage-approval confirmation's visibility (ConfirmDialog is signal-first). */
+	const approveOpen = useSignal(false);
+	/** A stage approval is in flight. */
+	const approveBusy = useSignal(false);
 
 	const reqId = useRef(0);
 	const searchTimer = useRef<number | null>(null);
@@ -509,20 +522,82 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	const startIndex = openFile ? groupIndexOf(group, openFile) : 0;
 	// #endregion
 
-	// #region Review flow (reviewer — optimistic)
+	// #region Review flow (reviewer)
 	function updateActiveStatus(status: SubmissionUnit["status"]): void {
 		if (activeUnit.value) activeUnit.value = { ...activeUnit.value, status };
 		if (review.value) {
 			review.value = { ...review.value, unit: { ...review.value.unit, status } };
 		}
 	}
-	function onRequestRevision(): void {
-		updateActiveStatus("revision_requested");
+
+	/**
+	 * Record a verdict on the active unit.
+	 *
+	 * NOT optimistic: a verdict is a decision about somebody's work and, on acceptance, the step
+	 * before their payout, so the surface reports what the server recorded rather than what was
+	 * pressed. While it is in flight the modal's controls are disabled; a refusal — a 403 when this
+	 * viewer may not review, a 409 when someone already did — stays in the modal footer as an alert,
+	 * next to the controls that produced it. On success the page is re-read so the tree, the unit and
+	 * the review notes all show the recorded state.
+	 */
+	async function decide(decision: SubmissionReviewDecision, notes: string): Promise<void> {
+		const unit = activeUnit.value;
+		if (!unit || reviewBusy.value) return;
+		const submissionId = submissionIdOf(unit);
+		if (!submissionId || !unit.stageId) {
+			reviewError.value = "This submission cannot be reviewed from here.";
+			return;
+		}
+		reviewBusy.value = true;
+		reviewError.value = null;
+		const res = await SettlementService.reviewSubmission(
+			projectId,
+			unit.stageId,
+			submissionId,
+			decision,
+			notes,
+		);
+		reviewBusy.value = false;
+		if (!res.ok || !res.data) {
+			reviewError.value = res.message ?? "Your decision could not be recorded — please try again.";
+			return;
+		}
+		updateActiveStatus(res.data.status);
 		reviewOpen.value = false;
+		workflowNotice.value = res.message ?? null;
+		void reload(path.value);
+	}
+	function onRequestRevision(payload: { notes: string }): void {
+		void decide("request_revision", payload.notes);
 	}
 	function onAccept(): void {
-		updateActiveStatus("accepted");
+		void decide("accept", "");
+	}
+	function closeReview(): void {
 		reviewOpen.value = false;
+		reviewError.value = null;
+	}
+
+	/**
+	 * Approve the active unit's stage — releasing its held escrow — after the confirmation.
+	 *
+	 * The result is stated in the bar either way: a refusal through the same danger message every
+	 * workflow write uses, a success as a notice naming what happened.
+	 */
+	async function approveActiveStage(): Promise<void> {
+		const stageId = activeUnit.value?.stageId ?? null;
+		if (!stageId || approveBusy.value) return;
+		approveBusy.value = true;
+		workflowError.value = null;
+		workflowNotice.value = null;
+		const res = await SettlementService.approveStage(projectId, stageId);
+		approveBusy.value = false;
+		if (!res.ok) {
+			workflowError.value = res.message ?? "The stage could not be approved — please try again.";
+			return;
+		}
+		workflowNotice.value = res.message ?? "Stage approved.";
+		void reload(path.value);
 	}
 	// #endregion
 
@@ -860,6 +935,8 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 								onUpload={() => (uploadOpen.value = true)}
 								onDelete={() => (deleteOpen.value = true)}
 								onSubmit={() => (preSubmitOpen.value = true)}
+								onApproveStage={() => (approveOpen.value = true)}
+								approveBusy={approveBusy.value}
 							/>
 						</div>
 						{toolbar()}
@@ -872,6 +949,17 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 								onClose={() => (workflowError.value = null)}
 							>
 								{workflowError.value}
+							</Message>
+						)}
+						{!workflowError.value && workflowNotice.value && (
+							<Message
+								severity="success"
+								variant="subtle"
+								size="sm"
+								closable
+								onClose={() => (workflowNotice.value = null)}
+							>
+								{workflowNotice.value}
 							</Message>
 						)}
 					</div>
@@ -920,10 +1008,19 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 				currentPath={path.value}
 				expanded={expanded}
 				viewerId={viewerId.value}
-				onClose={() => (reviewOpen.value = false)}
+				onClose={closeReview}
 				onNavigate={(p) => navigate(p)}
 				onRequestRevision={onRequestRevision}
 				onAccept={onAccept}
+				busy={reviewBusy.value}
+				error={reviewError.value}
+			/>
+
+			<ApproveStageDialog
+				open={approveOpen}
+				stageName={activeUnit.value?.stageName ?? currentStageName}
+				onClose={() => (approveOpen.value = false)}
+				onConfirm={() => void approveActiveStage()}
 			/>
 
 			<CreateSubmissionModal

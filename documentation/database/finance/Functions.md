@@ -132,7 +132,11 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
 ## Stage-level wrappers (in `projects`, invoke this engine — migration `0305`)
 
 `projects.fund_stage`, `projects.approve_stage`, `projects.cancel_stage_fair_exit`,
-`projects.get_stage_finance` — all `SECURITY DEFINER`, guarded by `projects.has_project_access`.
+`projects.get_stage_finance` — all `SECURITY DEFINER`. `get_stage_finance` is guarded by
+`projects.has_project_access`; `fund_stage` adds the payer's `spend` capability; `approve_stage` and
+`cancel_stage_fair_exit` require `projects.can_review_project` and are `EXECUTE`-granted to
+`authenticated` only, because the assignee passes `has_project_access` and must not settle their own
+escrow ([projects/Functions.md](../projects/Functions.md#escrow-settlement-doors)).
 These are the client-facing Finance-tab actions; they call the `finance.*` engine above. (The 0309
 business-dashboard read `org.get_business_finance` was retired 2026-09-28; an entity's balances are
 read under RLS by the wallet surface, and its console reads through `org.get_workspace_detail`.)

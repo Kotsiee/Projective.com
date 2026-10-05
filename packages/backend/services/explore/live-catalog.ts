@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "supabaseClient";
-import { getAnonClient } from "../../core/supabase.ts";
+import { getAnonClient, getUserClient } from "../../core/supabase.ts";
 import { publicObjectUrl } from "../../core/storage-url.ts";
 import { resolveSkill } from "./skills.ts";
 import type {
@@ -375,6 +375,22 @@ export function primeCatalogForTesting(catalog: Catalog | null): void {
 
 // #region Reads
 
+/*
+ * The project-shaped column lists, named once. Both the public catalogue read and the owner's
+ * preview read ({@link readProjectPreview}) select through these, so the brief an owner previews and
+ * the brief a freelancer opens are mapped from the same columns by the same {@link assemble} — a
+ * second list would be a second mapping, and the preview would drift from the page it promises to
+ * mirror the first time one of them gained a column.
+ */
+const PROJECT_COLUMNS =
+	"id, slug, owner_user_id, owner_team_id, client_business_id, title, description_text, format, structure_variation, currency, budget_type, budget_amount_cents, created_at";
+const STAGE_COLUMNS =
+	"id, project_id, name, slug, description_text, sort_order, status, skills, unit_price_cents, seat_count, seat_limit, parallel";
+const STAFFING_ROLE_COLUMNS =
+	"id, project_stage_id, role_title, quantity, budget_amount_cents, skills";
+const OPEN_SEAT_COLUMNS =
+	"id, project_stage_id, description_of_need, budget_min_cents, budget_max_cents, status";
+
 /** Throw a load failure with the table named, so a broken policy is diagnosable from the log. */
 function fail(table: string, message: string): never {
 	throw new Error(`explore catalogue: reading ${table} failed — ${message}`);
@@ -415,9 +431,10 @@ async function readCatalog(): Promise<Catalog> {
 				db.schema("catalogue").from("articles").select(
 					"id, slug, owner_user_id, owner_team_id, title, topic, summary, body, cover_file_id, read_minutes, published_at, created_at",
 				).eq("status", "published"),
-				db.schema("projects").from("projects").select(
-					"id, slug, owner_user_id, owner_team_id, client_business_id, title, description_text, format, structure_variation, currency, budget_type, budget_amount_cents, created_at",
-				).eq("status", "active").eq("visibility", "public"),
+				db.schema("projects").from("projects").select(PROJECT_COLUMNS).eq("status", "active").eq(
+					"visibility",
+					"public",
+				),
 				db.schema("marketplace").from("promoted_placements").select("entity_type, entity_id"),
 				db.schema("org").from("skills").select("id, slug, label"),
 			]);
@@ -477,7 +494,7 @@ async function readCatalog(): Promise<Catalog> {
 			db,
 			"projects",
 			"project_stages",
-			"id, project_id, name, slug, description_text, sort_order, status, skills, unit_price_cents, seat_count, seat_limit, parallel",
+			STAGE_COLUMNS,
 			"project_id",
 			projectIds,
 		),
@@ -501,7 +518,7 @@ async function readCatalog(): Promise<Catalog> {
 			db,
 			"projects",
 			"stage_staffing_roles",
-			"id, project_stage_id, role_title, quantity, budget_amount_cents, skills",
+			STAFFING_ROLE_COLUMNS,
 			"project_stage_id",
 			stageIds,
 		),
@@ -509,7 +526,7 @@ async function readCatalog(): Promise<Catalog> {
 			db,
 			"projects",
 			"stage_open_seats",
-			"id, project_stage_id, description_of_need, budget_min_cents, budget_max_cents, status",
+			OPEN_SEAT_COLUMNS,
 			"project_stage_id",
 			stageIds,
 		),
@@ -533,6 +550,97 @@ async function readCatalog(): Promise<Catalog> {
 		skillRows,
 		placements,
 	});
+}
+
+/**
+ * One project, read AS ITS OWNER, mapped exactly as the public catalogue maps a project — the source
+ * of the owner's brief preview (`/projects/[slug]/preview`).
+ *
+ * The catalogue cannot answer this: it holds `active` + `public` projects only, so a draft — the very
+ * thing an owner previews before publishing — is not in it, and a published brief in it can be up to
+ * one TTL behind the edit the owner just made. So this reads the rows fresh with the owner's own token
+ * (RLS decides; nothing here widens what they can see) and runs them through {@link assemble} beside
+ * the loaded catalogue's profile directory, so the owner, client and skill labels resolve from the
+ * same rows a freelancer's page resolves them from.
+ *
+ * Never cached and never merged into the shared catalogue: it is one viewer's answer, read with one
+ * viewer's token, and the module header explains why that must not reach the process-wide entry.
+ *
+ * `null` when the slug matches no project the token can read.
+ */
+export async function readProjectPreview(
+	accessToken: string,
+	slug: string,
+	catalog: Catalog,
+): Promise<Catalog | null> {
+	const db = getUserClient(accessToken);
+	const { data, error } = await db.schema("projects").from("projects").select(PROJECT_COLUMNS)
+		.eq("slug", slug).maybeSingle();
+	if (error) fail("projects.projects", error.message);
+	if (!data) return null;
+	const project = data as ProjectRow;
+
+	const [stages, requiredSkills, skillsRes] = await Promise.all([
+		byIds<StageRow>(db, "projects", "project_stages", STAGE_COLUMNS, "project_id", [project.id]),
+		byIds<{ project_id: string; skill_id: string }>(
+			db,
+			"projects",
+			"project_required_skills",
+			"project_id, skill_id",
+			"project_id",
+			[project.id],
+		),
+		getAnonClient().schema("org").from("skills").select("id, slug, label"),
+	]);
+	if (skillsRes.error) fail("org.skills", skillsRes.error.message);
+	const stageIds = stages.map((s) => s.id);
+	const [roles, seats] = await Promise.all([
+		byIds<StaffingRoleRow>(
+			db,
+			"projects",
+			"stage_staffing_roles",
+			STAFFING_ROLE_COLUMNS,
+			"project_stage_id",
+			stageIds,
+		),
+		byIds<OpenSeatRow>(
+			db,
+			"projects",
+			"stage_open_seats",
+			OPEN_SEAT_COLUMNS,
+			"project_stage_id",
+			stageIds,
+		),
+	]);
+
+	const single = assemble({
+		profiles: [...catalog.profileById.values()],
+		listings: [],
+		blueprints: [],
+		products: [],
+		articles: [],
+		projects: [project],
+		stages,
+		roles,
+		seats,
+		media: [],
+		files: [],
+		listingSkills: [],
+		requiredSkills,
+		skillRows: (skillsRes.data ?? []) as Array<{ id: string; slug: string; label: string }>,
+		placements: [],
+	});
+	const item = single.byId.get(project.slug);
+	const entry = single.projectBySlug.get(project.slug);
+	if (!item || !entry) return null;
+
+	// The loaded catalogue with this one project laid over it — a per-request copy of the two maps the
+	// view composer reads a project through, never a write to the shared snapshot.
+	return {
+		...catalog,
+		byId: new Map(catalog.byId).set(item.id, item),
+		projectBySlug: new Map(catalog.projectBySlug).set(item.id, entry),
+	};
 }
 
 // #endregion

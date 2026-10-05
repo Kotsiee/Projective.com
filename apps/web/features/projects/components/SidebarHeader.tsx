@@ -3,39 +3,35 @@ import { useSignal } from "@preact/signals";
 import { requestShare } from "@web/features/share/core/share-request.ts";
 import { Popover } from "@projective/ui/feedback";
 import { BackIcon } from "./detail-glyphs.tsx";
-import {
-	ExternalLinkIcon,
-	FlagIcon,
-	KebabIcon,
-	LeaveIcon,
-	ShareIcon,
-	StarIcon,
-	TrashIcon,
-} from "./glyphs.tsx";
+import { ArchiveIcon, ExternalLinkIcon, KebabIcon, ShareIcon, StarIcon } from "./glyphs.tsx";
 
 /**
  * SidebarHeader — the top row of the Project Details sidebar: a Back arrow that returns to the
  * `/projects` feed, and, right-aligned inline with it, a Star toggle + a kebab (`…`) menu carrying the
- * SAME actions as the feed cards (Open in new tab · Share · Report · Leave · Delete). Kept dumb — the
- * island owns the star state and routes destructive actions; open/share resolve client-side here.
+ * SAME actions as the feed cards (Open in new tab · Share · Archive project). Kept dumb — the island
+ * owns the star state and routes the archive; open/share resolve client-side here.
  */
 
-/** The kebab menu actions — identical vocabulary to the feed card's {@link CardMenuAction}. */
-export type SidebarMenuAction = "open" | "share" | "report" | "leave" | "delete";
+/** The kebab menu actions — identical vocabulary to the feed card's `CardMenuAction`. */
+export type SidebarMenuAction = "open" | "share" | "archive";
 
 interface MenuItem {
 	action: SidebarMenuAction;
 	label: string;
 	icon: VNode;
 	danger?: boolean;
+	/** Offered only when the island says the viewer may archive (an authority role). */
+	ownerOnly?: boolean;
 }
 
+/**
+ * Only actions that DO something (root CLAUDE.md §3.11). Report and Leave are absent rather than
+ * inert: neither has a backend or a product rule yet.
+ */
 const MENU_ITEMS: readonly MenuItem[] = [
 	{ action: "open", label: "Open in new tab", icon: ExternalLinkIcon },
 	{ action: "share", label: "Share", icon: ShareIcon },
-	{ action: "report", label: "Report", icon: FlagIcon },
-	{ action: "leave", label: "Leave project", icon: LeaveIcon },
-	{ action: "delete", label: "Delete", icon: TrashIcon, danger: true },
+	{ action: "archive", label: "Archive project", icon: ArchiveIcon, danger: true, ownerOnly: true },
 ];
 
 /** The primary site sidebar the `bottom-end` kebab menu must never slide under (edge-detection). */
@@ -47,12 +43,14 @@ export interface SidebarHeaderProps {
 	title: string;
 	starred: boolean;
 	onToggleStar: () => void;
-	/** Report / Leave / Delete are routed to the island (need confirmation + the live backend). */
+	/** Whether the viewer holds an authority role and so is offered Archive project. */
+	canArchive: boolean;
+	/** Archive is routed to the island, which confirms and writes. */
 	onMenuAction?: (action: SidebarMenuAction) => void;
 }
 
 export function SidebarHeader(
-	{ slug, title, starred, onToggleStar, onMenuAction }: SidebarHeaderProps,
+	{ slug, title, starred, onToggleStar, canArchive, onMenuAction }: SidebarHeaderProps,
 ): JSX.Element {
 	const menuOpen = useSignal(false);
 	const href = `/projects/${slug}`;
@@ -112,7 +110,7 @@ export function SidebarHeader(
 					)}
 				>
 					<div class="proj-cardmenu" role="menu" aria-label={`Actions for ${title}`}>
-						{MENU_ITEMS.map((mi) => (
+						{MENU_ITEMS.filter((mi) => !mi.ownerOnly || canArchive).map((mi) => (
 							<button
 								key={mi.action}
 								type="button"

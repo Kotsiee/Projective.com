@@ -68,3 +68,35 @@ export function ProjectCtaRig(
 		</div>
 	);
 }
+
+/**
+ * ProjectPreviewCta — what the owner's preview shows where the rig would be.
+ *
+ * The owner is looking at their own brief; Apply would apply them to it and Message would open a
+ * conversation with themselves. Rendering those two controls disabled would be worse still — a control
+ * that renders must do something (§3 gate 11), and a greyed-out primary reads as "something is wrong
+ * with your project" rather than "this is where applicants act". So the footer states, in words, the
+ * two actions an applicant gets here, naming them in the same order and with the same glyphs the rig
+ * uses, and offers nothing to press. It is NOT a live region — it never changes.
+ */
+export function ProjectPreviewCta({ layout = "lane" }: { layout?: "lane" | "bar" }): JSX.Element {
+	return (
+		<div
+			class={layout === "bar"
+				? "evp-cta evp-cta--bar evp-cta--preview"
+				: "evp-cta evp-cta--preview"}
+		>
+			<p class="evp-cta__previewlead">Applicants act here</p>
+			<ul class="evp-cta__previewlist">
+				<li class="evp-cta__previewitem">
+					<Icon name="user-plus" size="sm" aria-hidden />
+					<span>Apply to project</span>
+				</li>
+				<li class="evp-cta__previewitem">
+					<Icon name="message" size="sm" aria-hidden />
+					<span>Message client</span>
+				</li>
+			</ul>
+		</div>
+	);
+}

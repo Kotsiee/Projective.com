@@ -18,6 +18,7 @@ export * from "./messages.ts";
 export * from "./message-rich.ts";
 export * from "./files.ts";
 export * from "./submissions.ts";
+export * from "./settlement.ts";
 export * from "./board.ts";
 export * from "./setup.ts";
 export * from "./overview.ts";

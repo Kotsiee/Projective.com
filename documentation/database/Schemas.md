@@ -45,16 +45,16 @@ CREATE TYPE visibility AS ENUM ('public', 'invite_only', 'unlisted');
 
 ```sql
 -- Status Tracking
-CREATE TYPE project_status AS ENUM ('draft', 'active', 'on_hold', 'completed', 'cancelled');
-CREATE TYPE stage_status AS ENUM ('open', 'assigned', 'in_progress', 'submitted', 'approved', 'revisions', 'paid');
+CREATE TYPE project_status AS ENUM ('draft', 'active', 'on_hold', 'completed', 'cancelled', 'archived');
+CREATE TYPE stage_status AS ENUM ('open', 'assigned', 'in_progress', 'submitted', 'approved', 'revisions', 'paid', 'cancelled');
 CREATE TYPE dispute_status AS ENUM ('open', 'under_review', 'resolved', 'refunded');
 ```
 
 ### Modular Stage Configuration
 
 ```sql
--- Stage Behavior & Logic
-CREATE TYPE stage_type_enum AS ENUM ('file_based', 'session_based', 'group_session_based', 'management_based', 'maintenance_based');
+-- Stage Behavior & Logic (there is no stage-type enum: a stage's archetype is implicit in which
+-- of its file_* / session_* columns are filled — see flows/Projects.md §6.0)
 CREATE TYPE start_trigger_type AS ENUM ('fixed_date', 'on_project_start', 'on_hire_confirmed', 'dependent_on_stage');
 CREATE TYPE timeline_preset AS ENUM ('sequential', 'simultaneous', 'staggered', 'custom');
 ```

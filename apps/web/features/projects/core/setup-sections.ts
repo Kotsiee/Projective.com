@@ -67,10 +67,9 @@ export interface SetupSectionMeta {
  *
  *  - a role-staffed engagement (`structure === "single_task"`) takes `roles` where every other takes
  *    `stages`, which is the same discrimination `setupSteps` makes when it emits its staffing row;
- *  - a stage-LESS engagement (the Use-stages toggle off) takes `details` INSTEAD of `stages` — the
- *    same terms, asked flat. The toggle used to live inside the stage section, which is why that
- *    section had to survive being turned off; it now lives in Basics, so the section it governs can
- *    genuinely leave and be replaced rather than collapsing to the one control that undoes it;
+ *  - any other stage-LESS engagement (the legacy `single_stage` shape, which the create path no
+ *    longer mints) takes `details` INSTEAD of `stages` — the same terms, asked flat — so the stage
+ *    section genuinely leaves rather than collapsing to a control that undoes it;
  *  - `budget` renders ONLY where the engagement has no stage to carry its price
  *    ({@link pricedAtProjectLevel}). A staged run prices each stage and a flat one prices its root
  *    stage inside `details`, so on either of those a project-level amount would be a SECOND answer to

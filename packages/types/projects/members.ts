@@ -621,3 +621,75 @@ export const SentInvitesPageSchema = z.object({
 });
 export type SentInvitesPage = z.infer<typeof SentInvitesPageSchema>;
 // #endregion
+
+// #region Invite people · change role (writes)
+/**
+ * The roles an owner may GRANT — by invitation or by a role change. `owner` and `client` are the
+ * engagement's own authority tier and move only by owning the project, so neither is grantable; the
+ * five here are exactly the set `projects.invite_to_project`, `projects.invite_by_email` and
+ * `projects.set_member_role` accept.
+ */
+export const AssignableMemberRole = z.enum(["admin", "manager", "freelancer", "member", "guest"]);
+export type AssignableMemberRole = z.infer<typeof AssignableMemberRole>;
+
+/** At most this many addresses per send — the outbound ceiling's whole window in one go. */
+export const INVITE_BATCH_MAX = 10;
+
+/**
+ * One invitee as typed into the Invite modal: a platform `@handle` (an identity-addressed invitation
+ * the person answers in-app) or an email address (an email-addressed one). Normalised to lowercase so
+ * two spellings of one address are one invitee.
+ */
+export const InviteAddressSchema = z.string().trim().min(3).max(160).transform((raw) =>
+	raw.toLowerCase()
+)
+	.refine(
+		(v) => /^@[a-z0-9][a-z0-9_.-]{1,39}$/.test(v) || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v),
+		"Enter an @handle or an email address.",
+	);
+
+/**
+ * `POST /api/projects/[id]/invites` — invite people to the engagement (or one stage of it). The
+ * project is the route segment. Each address is one invitation; the fat service sends them in order
+ * and reports which landed, because a refusal on the fourth (a cooldown, a duplicate) must not
+ * unsend the first three.
+ */
+export const InviteProjectMemberInputSchema = z.object({
+	addresses: z.array(InviteAddressSchema).min(1, "Add at least one person.").max(INVITE_BATCH_MAX)
+		.transform((list) => [...new Set(list)]),
+	role: AssignableMemberRole.default("freelancer"),
+	/** The stage the invitee is seated on when they accept, or `null` for a whole-project invitation. */
+	stageId: z.string().max(120).nullable().default(null),
+});
+export type InviteProjectMemberInput = z.infer<typeof InviteProjectMemberInputSchema>;
+
+/** One address the send did NOT issue, with the database's (or the service's) own sentence. */
+export const InviteRefusalSchema = z.object({
+	address: z.string().max(160),
+	message: z.string().max(240),
+	code: z.string().max(40),
+});
+export type InviteRefusal = z.infer<typeof InviteRefusalSchema>;
+
+/** What an invite send answers with: the rows it issued, re-read from the queue, and any it could not. */
+export const InvitesSentSchema = z.object({
+	invites: z.array(MemberInviteSchema),
+	refused: z.array(InviteRefusalSchema),
+});
+export type InvitesSent = z.infer<typeof InvitesSentSchema>;
+
+/**
+ * `PATCH /api/projects/[id]/members/[memberId]/role` — change one participant's role. The member is
+ * the route segment (`ProjectMemberRow.id`, a participant row id — never a user id from the client).
+ */
+export const UpdateMemberRoleInputSchema = z.object({ role: AssignableMemberRole });
+export type UpdateMemberRoleInput = z.infer<typeof UpdateMemberRoleInputSchema>;
+
+/** What a role change answers with. `changed` is false when the member already held the role. */
+export const MemberRoleChangedSchema = z.object({
+	memberId: z.string().min(1).max(120),
+	role: AssignableMemberRole,
+	changed: z.boolean(),
+});
+export type MemberRoleChanged = z.infer<typeof MemberRoleChangedSchema>;
+// #endregion

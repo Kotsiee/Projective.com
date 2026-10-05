@@ -4,140 +4,234 @@ This document defines the structural flow for project creation, the strict behav
 archetypes, and the escrow/refund policies governing them. It serves as the architectural source of
 truth for the `projects` and `finance` schemas.
 
-> **Reconciled with the shipped implementation (2026-09-02).** The six-step flow below is the
-> architecture the wizard at `/projects/create` implements. Where an earlier revision of this
-> document asserted a column that does not exist — most importantly the `stage_type` archetype
-> discriminator (§6.0) — the assertion is now marked as **not built** rather than left standing.
-> Field names below are the Zod SSOT's (`packages/types/projects/create.ts`, `setup.ts`); column
-> names are `projects.projects` / `projects.project_stages` in
-> [`../database/projects/Tables.md`](../database/projects/Tables.md).
+> **Reconciled with the shipped implementation (2026-10-05).** This pass rewrote §1–§5 against the
+> code. The six-step wizard at `/projects/create` is **retired** — the route only answers `308 →
+> /projects` — and creation is now a Quick-Init modal followed by continuous configuration on the
+> draft's own workspace (§1; root `CLAUDE.md` §8 Decisions #85, #117, #118). Everything the earlier
+> revision cited from the wizard — `ProjectWizardStep`, `WIZARD_STEP_LABEL`, `WIZARD_STEP_FIELDS`,
+> the `FieldTier` / `FIELD_TIERS` / `fieldTier` / `blocksPosting` / `TierRule` taxonomy,
+> `CreateProjectStageSchema`, `effectiveVisibility`, the `direct_deliverable` create format — no
+> longer exists, and neither do the `ck_projects_title_len`, `ck_projects_currency` and
+> `ck_projects_deadline_bonus_format` CHECKs it described. The live create path does not call
+> `projects.create_project` (§2.4), there is no `nda_mode` column (§4.3), and
+> `file_upload_required` defaults to `false` at the column (§4.1). The 2026-09-02 pass's `stage_type`
+> reconciliation (§6.0) is unchanged. Field names below are the Zod SSOT's
+> (`packages/types/projects/create.ts`, `setup.ts`); column names are `projects.projects` /
+> `projects.project_stages` in [`../database/projects/Tables.md`](../database/projects/Tables.md).
 
-## 1. The 6-Step Project Creation Flow
+## 1. The 2-Step Project Creation Flow
 
-To prevent cognitive overload and align with the "Modular Project" philosophy, project creation is
-decoupled into six distinct phases. This ensures clients define the "What" before negotiating the
-"When" and "How Much".
+"Quick to onboard, slow to set up." The create payload is deliberately the **smallest** shape that
+can mint a coherent draft; everything a project eventually needs is configured afterwards on the
+draft itself. The split is not stylistic: a modal that collects a stage list has to be closed before
+the owner can look anything up, and a half-filled one loses everything on dismiss — a draft row
+loses nothing. So the modal's only job is to reach a URL, and the URL is where the work happens.
 
 ```mermaid
 flowchart TD
-    A[1. Details] -->|Metadata| B[2. Legal & Screening]
-    B -->|NDA, IP, Locales| C[3. Stages]
-    C -->|The 'What'| D[4. Timeline]
-    D -->|Dependencies & Dates| E[5. Budget & Staffing]
-    E -->|Fixed or Proposals| F[6. Review & Publish]
-    
-    style A fill:#0e7490,stroke:#083344,stroke-width:2px,color:#fff
-    style B fill:#0e7490,stroke:#083344,stroke-width:2px,color:#fff
-    style C fill:#0e7490,stroke:#083344,stroke-width:2px,color:#fff
-    style D fill:#0e7490,stroke:#083344,stroke-width:2px,color:#fff
-    style E fill:#0e7490,stroke:#083344,stroke-width:2px,color:#fff
-    style F fill:#047857,stroke:#064e3b,stroke-width:2px,color:#fff
+    A["1. Quick-Init modal<br/>Title · Description · Type"] -->|"POST /api/projects/create"| B["Draft row<br/>status draft · visibility unlisted<br/>+ root stage + General room"]
+    B -->|"navigate to /projects/[projectSlug]"| C["2. Setup configuration<br/>sections registered in setup-sections.ts"]
+    C -->|"Save · autosave-on-blur<br/>PATCH /api/projects/:slug"| C
+    C -->|"Publish — every required ladder row done"| D["projects.set_project_status(…, 'active')"]
 ```
 
-- **Step 1 Details** — high-level metadata: Title, brief, Project Type, Currency, Visibility and
-  reference attachments.
+### 1.1 Step 1 — the Quick-Init create modal
 
-- **Step 2 Legal & Screening** — global `ip_ownership_mode`, the NDA mode, portfolio display rights,
-  and the language / location screening arrays.
+`apps/web/features/projects/components/ProjectCreateModal.tsx` is the **one** surface that mints a
+project, wherever the client starts from (Decision #117). Its fields:
 
-- **Step 3 Stages (the "What")** — the atomic units of work, plus the `hasStages` toggle that
-  decides whether this engagement has any. No budgets and no dependencies are mapped here.
+- **Title** — required; trimmed, 3–160 characters (§4 Basics).
+- **Description** — optional plain text, ≤ 2000; stored as one escaped paragraph so the workspace
+  opens on the sentence the client already wrote.
+- **Type** — Task · One-off · Pipeline (`ProjectTypeChoice`, labels `PROJECT_TYPE_LABEL`, hints
+  `PROJECT_TYPE_HINT`; §2).
+- **Invited freelancer** — contextual and read-only, rendered only when the modal is opened from a
+  seller's `/[handle]` profile. It is displayed, not sent (Decisions #117(c) / #118(c)).
 
-- **Step 4 Timeline (the "When")** — sequencing: which stage waits on which, whether it runs in
-  parallel, the lag, the per-stage duration model, and the pipeline deadline-bonus offer.
+**Pacing** is a prop, never a second modal (Decision #118): `flow: "single"` on the `/projects` lane,
+whose create menu has already settled the type (the selector can still change it), and
+`flow: "stepped"` on a profile, where the type gets its own neutral first screen and the details
+follow.
 
-- **Step 5 Budget & Staffing (the "How Much")** — the per-stage price, the seat cap, and (for a
-  stage-less engagement) the team roles that replace stages as the staffing model.
+**Not asked:** currency and a baseline price (Decision #117, not reversed by #118). The payload still
+carries `currency` — seeded from the viewer's resolved money context through `toDisplayCurrency`,
+because it prices escrow for the life of the engagement — and sends `baselineAmountCents: null`; both
+are changed later in the workspace.
 
-- **Step 6 Review & Publish** — the derived readiness ladder and the effective-visibility
-  disclosure.
+The payload is `CreateProjectSchema` (`packages/types/projects/create.ts`), its `format` + `hasStages`
+pair produced by `createInputForType(type)`. `ProjectSidebarService.create` posts it to
+`POST /api/projects/create` → `ProjectBackendService.create` → `insertProject`
+(`packages/backend/services/projects/live-writes.ts`) on the live path, or the stub write-store
+otherwise. It returns `CreatedProjectSchema` `{ id, slug }`, and the modal navigates by **slug**
+(Decision #88).
 
-The step keys, their labels and the controls each step owns are the Zod SSOT's `ProjectWizardStep` ·
-`WIZARD_STEP_LABEL` · `WIZARD_STEP_FIELDS`, so the rail and the panel cannot name a step
-differently.
+### 1.2 Step 2 — continuous configuration on the workspace
+
+The draft is configured on its own workspace, `/projects/[projectSlug]` — the Details half of the
+engagement page (`/projects/[projectSlug]/edit` is a retired `308` shim). The sections are registered
+once in `apps/web/features/projects/core/setup-sections.ts` (`setupSections(setup)`, anchors
+`psu-<key>`), so the form and its side nav cannot disagree. In render order:
+
+| Section (`SetupSectionKey`)          | Rendered when                                                                                                          | Collects                                                                                                                                                                  |
+| :----------------------------------- | :--------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `basics` — Basics                    | always                                                                                                                 | Project name · Project type (Task · One-off · Pipeline) · Session kind, only on an existing session engagement                                                            |
+| `description` — Description          | always                                                                                                                 | The rich-text brief                                                                                                                                                       |
+| `details` — Details                  | a **flat** engagement — stage-less but not role-staffed (the legacy `single_stage` shape)                             | The root stage's terms, asked flat (`pricedStages` collects the root stage only)                                                                                         |
+| `budget` — Budget                    | `pricedAtProjectLevel(structure)` — only `single_task`, the one shape with no stage to carry a price                  | Budget type and amount                                                                                                                                                    |
+| `stages` — Stages / Milestones       | a staged run (`stageListVisible`); headed by `STAGE_SECTION_LABEL` — "Stages" on a pipeline, "Milestones" on a one-off | The per-stage editor (§4 Stages)                                                                                                                                          |
+| `roles` — Team roles                 | `structure === 'single_task'`, instead of `stages`                                                                     | Named roles for a stage-less engagement                                                                                                                                   |
+| `attachments` — Attachments          | always                                                                                                                 | Reference files                                                                                                                                                           |
+| `rules` — Terms & visibility         | always                                                                                                                 | Visibility on publish · Timeline preset (only when `timelinePresetApplies`) · Locations · Languages · **Advanced options**: NDA · Currency · Ownership · Portfolio rights · deadline bonus (pipeline only) |
+
+**Saving.** The client state machine is `apps/web/features/projects/core/setup-state.ts` (the working
+copy and baseline live in its leaf `setup-store.ts`). Every local edit is folded through
+`reconcileSetup` — the same function the fat service calls — so the progress bar the owner watches
+while typing and the gate the server derives on save are one implementation. Persistence is an
+explicit **Save** (button or `Ctrl+S`) plus an optional **autosave-on-blur** (`autoSaveOnBlur`,
+per-device preference `setAutoSave`); overlapping saves collapse (`requestSave`), a blur on an
+unchanged draft costs nothing, and a refused autosave is not retried until the next edit. Writes go
+to `PUT | PATCH /api/projects/:slug` with `UpdateProjectSchema` (`setup.ts`).
+
+**Publishing.** `publishSetup` refuses while `firstBlocker` names a problem or `previewReady` is
+false (§3), then sends the whole form with `status: 'active'`; the fat service runs the transition
+through `projects.set_project_status`, which owns its legality and audit row (§7.1).
 
 ---
 
-## 2. Project Type, `hasStages`, and the implicit stage
+## 2. Project types, `hasStages`, and the root stage
 
-### 2.1 The wizard offers TWO types; the enum keeps three
+### 2.1 Three types, two columns
 
-`ProjectCreateFormat` has three members — `pipeline`, `one_off`, `direct_deliverable` — and the
-wizard **offers only the first two**. A Direct Deliverable is not a third choice the author makes:
-it is the `hasStages: false` variant of a one-off, which is exactly what the single-task fallback
-already describes. The member survives because `projects.structure_variation` stores `single_task`,
-because the setup ladder swaps its staffing row from stages to roles on precisely that value, and
-because both are reachable from a project the wizard never created.
+The product offers **three** types everywhere a project is created or configured —
+`ProjectTypeChoice = task | one_off | pipeline` (`packages/types/projects/setup.ts`; Decision #117,
+being re-confirmed as Decision #143). A row stores them as two axes: `projects.format`
+(`project_format`) and `projects.structure_variation` (`ProjectStructure`).
+
+- **Task** — one deliverable, one price, no stages: a one-off with milestones off. Held by
+  `fn_enforce_structure_variation` to exactly one stage and one ticket, so it has no time axis to
+  draw — no Timeline or Calendar (`isTaskProject`; Decision #121). Staffed by optional Team roles
+  and priced at project level.
+- **One-off** — a fixed scope delivered against milestones (a staged one-off), visualised on the
+  Timeline. Each milestone's price is its whole fee, and the project budget is their sum
+  (`rolledUpBudget`).
+- **Pipeline** — ongoing work, ticket by ticket, across stages: the multi-stage Kanban engine. Its
+  stage price is a per-ticket rate and is never summed into the project budget; the lane drops
+  Timeline (Decision #134).
+
+`ProjectCreateFormat` is now `one_off | pipeline` only. **`direct_deliverable` is retired** as a create
+vocabulary: it had to be stored as `one_off` + `single_task` anyway, so the mapping onto
+`project_format` is the identity and the distinction survives one level down as `single_task`. (The
+`marketplace.service_delivery_model` enum still carries a `direct_deliverable` member; that is the
+services domain, not this one.)
 
 **Session engagements are not offered here.** `project_format` keeps its `session` member —
 `projects.cohorts` / `session_events` / `session_attendance` / `projects.session_kind` all depend on
 it — but a session is provider-side and is created from the service composer. The exclusion is at
-the offer, never at the enum.
+the offer, never at the enum: `projectTypeOf` answers `null` for a session, and the setup form
+appends a session option only to a project that already is one.
 
-### 2.2 The two-column mapping
+### 2.2 The mapping
 
-`createFormatToColumns(format, hasStages = true)` in `packages/types/projects/setup.ts` is the one
-implementation of the fold, called by both fat-service create paths:
+Write direction: `createInputForType(type)` → `[ProjectCreateFormat, hasStages]` →
+`createFormatToColumns(format, hasStages)` → `{ format, structure }`. `columnsForProjectType(type)` is
+that composition, used by the setup form's type selector; the create modal sends the same pair, so a
+Task minted from a profile and a Task chosen in settings are the same row.
 
-| Offered type         | `hasStages` | `projects.format` | `projects.structure_variation` |
-| :------------------- | :---------- | :---------------- | :----------------------------- |
-| `pipeline`           | `true`      | `pipeline`        | `standard`                     |
-| `pipeline`           | `false`     | `pipeline`        | `single_stage`                 |
-| `one_off`            | `true`      | `one_off`         | `one_off`                      |
-| `one_off`            | `false`     | `one_off`         | `single_task`                  |
-| `direct_deliverable` | _(ignored)_ | `one_off`         | `single_task`                  |
+| Type       | `createInputForType` | `projects.format` | `projects.structure_variation` | `fn_enforce_structure_variation` (`00001130`)    |
+| :--------- | :------------------- | :---------------- | :----------------------------- | :----------------------------------------------- |
+| `task`     | `["one_off", false]` | `one_off`         | `single_task`                  | ≤ 1 stage **and** ≤ 1 ticket                     |
+| `one_off`  | `["one_off", true]`  | `one_off`         | `one_off`                      | ≤ 1 ticket **per project** — see the flag below |
+| `pipeline` | `["pipeline", true]` | `pipeline`        | `standard`                     | unconstrained                                    |
+
+Read direction, `projectTypeOf(format, structure)` — total over every stored pair, including two the
+create path can no longer produce:
+
+| `format`   | `structure_variation`                  | Reads as   |
+| :--------- | :------------------------------------- | :--------- |
+| `one_off`  | `single_task`                          | `task`     |
+| `one_off`  | `single_stage` (legacy flat one-off)   | `task`     |
+| `one_off`  | `one_off` / `standard`                 | `one_off`  |
+| `pipeline` | any, including legacy `single_stage`   | `pipeline` |
+| `session`  | any                                    | `null`     |
+
+`createFormatToColumns("pipeline", false)` still returns `single_stage`, but no surface asks for it:
+`createInputForType` never yields that pair, and the setup form's old has-stages toggle
+(`structureForStages`) is retired, so `single_stage` is unreachable going forward. Rows already
+holding it keep rendering (as the `details` section) through `hasStages`.
+
+> **One master ticket, many milestones.** `fn_enforce_structure_variation` raises "One-off projects
+> are limited to a single ticket" once a `structure_variation = 'one_off'` project holds more than
+> one ticket — a **project-wide** count. That is the One-off model (`PRODUCT_SPEC.md` §The Three Work
+> Flows, Decision #143): the single master ticket travels the milestone stages through its
+> `required_stages`, and each stage it enters is priced and escrowed against that same ticket. A
+> Task differs only in having one stage. ⚠️ No seeded one-off has more than one stage (verified
+> 2026-10-05), so the multi-milestone path is exercised by no fixture.
 
 ### 2.3 `hasStages` is DERIVED and is never a column
 
-Reading back: `hasStages === (structure_variation !== 'single_task')` — `hasStagesFor(structure)`. A
-real boolean would be a second answer able to disagree with the stage list itself, and
-`projects.set_project_status` already gates `draft → active` on the stage **count**.
+Two predicates read the stored structure; neither is a column. `hasStagesFor(structure)` —
+`structure !== 'single_task'` — is the read direction of `createFormatToColumns` (used by
+`core/sidebar-overlay.ts`). `hasStages(structure)` additionally excludes `single_stage`, and it is what
+the setup sections, the ladder and the pricing rules branch on. A real boolean would be a second
+answer able to disagree with the stage list itself, and `projects.set_project_status` already gates
+`draft → active` on the stage **count**.
 
-The two directions are deliberately **not** inverses, and a test pins the asymmetry: turning stages
-off on a `pipeline` yields `single_stage`, which still has a stage, so the read direction correctly
-answers `true` for a toggle the author switched off.
+The two directions are deliberately **not** inverses, and `packages/backend/services/projects/create_test.ts`
+pins the asymmetry: `createFormatToColumns("pipeline", false)` yields `single_stage`, which still has a
+stage, so `hasStagesFor` correctly answers `true` for it.
 
-### 2.4 The implicit stage is minted by the SERVER
+### 2.4 The root stage is minted by the fat service
 
-An engagement whose payload names no stage is given one implicit `Delivery` stage by
-`projects.create_project`, carrying the project's own description (both halves), its IP mode and —
-when `budget_type = 'fixed_price'` — its `budget_amount_cents` as the stage `unit_price_cents`. Its
-channel is always opened. The fallback sits **after** the stages loop and outside the roles branch,
-so it fires for every stage-less shape rather than only a role-staffed one.
+`insertProject` (`live-writes.ts`) **does not call `projects.create_project`** — its docblock records
+why (the RPC reads the row id from its payload, supplies no budget pair, and its nested stage insert
+drops the price and milestone). It inserts the row directly under RLS (`"Users can create projects"`,
+`WITH CHECK (auth.uid() = owner_user_id)`) at `status = 'draft'`, `visibility = 'unlisted'`,
+`publish_visibility = 'public'` (§5), `budget_type = 'fixed_price'` and `budget_amount_cents` = the
+baseline on a one-off (otherwise `NULL`; the modal sends `null`). Then:
 
-The wizard therefore never blocks on stages (they are T3, §3) and never mints one itself. This is
-root `CLAUDE.md` §2 — fat services, dumb islands — winning over an earlier brief that put the
-fallback on the frontend.
+1. `projects.create_stage` mints **one root stage** — `Delivery` on a one-off (Task included),
+   `Stage 1` on a pipeline (`ROOT_STAGE_NAME`) — with an empty scope and
+   `unit_price_cents = baselineAmountCents`. `create_stage` provisions the stage's room in the same
+   transaction, which is why it is used rather than a direct insert.
+2. `comms.get_or_create_project_channel(project, NULL, 'General')` opens the project-wide room behind
+   `/projects/[slug]/discussion` (Decision #133).
+
+There is **no transaction across the statements**. A failed stage or room insert is warned, not
+raised: the owner still gets their draft, the `stages` ladder row says what is missing, and
+`set_project_status` refuses to activate a project with no stage. The stub write-store mirrors the
+one root stage.
+
+`projects.create_project(payload jsonb)` still exists in `00001100_functions_projects_read_access.sql`
+(it stores `draft` / `unlisted` and mints an implicit `Delivery` stage), but nothing on the create path
+calls it. Either way the island never mints a stage — root `CLAUDE.md` §2, fat services and dumb
+islands.
 
 ---
 
-## 3. The tier taxonomy — FORM LOGIC ONLY
+## 3. Validation — what gates what
 
-Every wizard control carries a tier. `FieldTier` · `FIELD_TIER_MEANING` · `FIELD_TIERS` ·
-`fieldTier(field, format)` · `blocksPosting(tier)` live in `packages/types/projects/create.ts`.
+The wizard's five-tier taxonomy was removed with the wizard. Validation is now three mechanisms, each
+with one job:
 
-| Tier | Meaning          | What it drives                                         |
-| :--- | :--------------- | :----------------------------------------------------- |
-| T1   | Blocker          | Step progression — the step cannot be left             |
-| T2   | Required to post | The publish gate (`blocksPosting` is T1 + T2)          |
-| T3   | Recommended      | Hint copy only                                         |
-| T4   | Nice to have     | Hint copy only                                         |
-| T5   | Conditional      | Hint copy only; rendered only when its condition holds |
+1. **The wire boundary.** `CreateProjectSchema` on create and `UpdateProjectSchema` on every
+   `PUT`/`PATCH` (`setup.ts`); the fat service's `validateUpdate` adds the refusals Zod cannot see (a
+   stage waiting for itself → `422 self_dependency`, a non-uuid attachment → `unknown_file`), and the
+   post-onboarding locks answer `422 field_locked_post_onboarding`. Refusals are field-keyed, so they
+   land on the control that caused them.
+2. **Save blockers.** `firstBlocker(setup)` in `apps/web/features/projects/core/setup-validation.ts`
+   refuses Save and Publish with one sentence for an empty project name, an unnamed stage, an empty
+   task-list step or an unnamed role. Autosave-on-blur skips silently instead of painting the form.
+3. **The publish gate.** The setup ladder's `required` rows (§4, Readiness ladder): `previewReady`
+   must be true before `publishSetup` sends `status: 'active'`, and the same flag unlocks Preview.
 
-**Tiers are never five literal colours.** The theme has token backing for exactly two gate ramps
-(`--fld-required-*` danger, `--fld-gate-*` warning); inventing three more breaches
-`DESIGN_SYSTEM.md` §B.8.3 / §A.5 and fails the colour-blindness gate. A tier is never rendered as a
-colour key, and the tier taxonomy is not a lifecycle — nothing in it reaches
-[`../PRODUCT_MANAGEMENT.md`](../PRODUCT_MANAGEMENT.md) §3.1.
+Severity is never a colour key. The theme has token backing for exactly two gate ramps
+(`--fld-required-*` danger, `--fld-gate-*` warning); inventing more breaches `DESIGN_SYSTEM.md`
+§B.8.3 / §A.5 and fails the colour-blindness gate. The ladder is not a lifecycle — nothing in it
+reaches [`../PRODUCT_MANAGEMENT.md`](../PRODUCT_MANAGEMENT.md) §3.1.
 
-**Two controls resolve by shape rather than by preference** (`TierRule` is a `{pipeline, one_off}`
-pair for these two and a flat tier for every other field; `direct_deliverable` resolves down the
-`one_off` arm because it IS a one-off):
-
-| Field            | `pipeline` | `one_off` | Why                                                                                                   |
-| :--------------- | :--------- | :-------- | :---------------------------------------------------------------------------------------------------- |
-| `stageUnitPrice` | T2         | T1        | A one-off's single fee IS the engagement; a pipeline's per-ticket rate can be set once work is scoped |
-| `stageDuration`  | T5         | T3        | A one-off's schedule is the deliverable's due date; a pipeline's is a per-stage refinement            |
+> ⚠️ **Flagged:** the readiness ladder is enforced on the client. The server-side transition
+> (`projects.set_project_status`) checks only a non-blank title and **≥ 1 stage**; it does not
+> re-check `pricingSatisfied` or the other `required` rows.
 
 ### 3.1 Validation paints on TOUCH, never at rest
 
@@ -148,121 +242,157 @@ the author has had a turn. The rule is `resolveFieldVerdict` / `useFieldValidati
 `@projective/ui/fields`; the clear-on-focus divergence from `DESIGN_SYSTEM.md` §A.7.3's "composes
 with focus" is recorded at §A.7.5 of that document.
 
+On the setup surface the WHEN is `fieldStatus(fieldKey, verdict)` in `core/setup-validation.ts`: a
+verdict shows only once the field has been left (`markTouched`) and never while the caret is in it
+(`markFocused`); `success` passes through. Most `@projective/ui` field controls own their focus
+handling, so `FieldGuard` reports entry and exit with capture-phase listeners, and a move between two
+elements inside one guard (a field and its stepper) is not a departure. `resetFieldValidation`
+clears the store on unmount so a second engagement does not inherit the first one's touched keys.
+
 ---
 
 ## 4. Fields & Constraints
 
-Tier column per §3. "Column" is the `projects.projects` / `projects.project_stages` destination, or
-`—` where the payload field is folded rather than stored.
+Keyed by setup section (§1.2). "Zod" is the schema field that carries the value today — the
+read projection `ProjectSetupSchema` and its parts, written through `UpdateProjectSchema` unless
+noted. "Column" is the `projects.projects` / `projects.project_stages` destination; the fold is
+`projectColumnPatch` / `stageTermsPatch` / `reconcileStages` / `reconcileRoles` in `live-writes.ts`.
 
-### Step 1 — Details
+### Basics
 
-| Field              | Tier | Zod (`CreateProjectSchema`) | Column                             | Constraints                                                                                                                                                                         |
-| :----------------- | :--- | :-------------------------- | :--------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Project Title      | T1   | `title`                     | `title`                            | 1–160 chars; DB `ck_projects_title_len` checks the **trimmed** length, so three spaces is not a title                                                                               |
-| Description        | T2   | `scope`                     | `description` + `description_text` | Max 8000; semantic HTML from `RichTextEditor`. **Both halves are always written** — writing one leaves search and every card blank while the detail page looks correct              |
-| Project Type       | T1   | `format` + `hasStages`      | `format` + `structure_variation`   | §2.2. `pipeline \| one_off` offered                                                                                                                                                 |
-| Currency           | T2   | `currency`                  | `currency`                         | `^[A-Z]{3}$` in Zod **and** as DB `ck_projects_currency` — a lowercase code is refused by both, so the wizard can say what is wrong while the field is still in front of the author |
-| Visibility         | T2   | `visibility`                | `visibility`                       | `public \| invite_only \| unlisted`; default `public`, **requested not stored** (§5)                                                                                                |
-| Global Attachments | T5   | `attachmentIds`             | `projects.project_attachments`     | Max 10 `files.items` ids                                                                                                                                                            |
+| Field        | Zod                                                                       | Column                           | Constraints                                                                                                                                                                                                                                                                                                                                 |
+| :----------- | :------------------------------------------------------------------------ | :------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Project name | `CreateProjectSchema.title` on create; `UpdateProjectSchema.title` after | `title`                          | Create: **trimmed, 3–160**. Update: 1–160. The column is `text NOT NULL` with **no length CHECK** (there is no `ck_projects_title_len`); `insertProject` clamps to 160. A blank-after-trim title is refused by `firstBlocker` on save, leaves the ladder's Title row undone, and is refused by `set_project_status` (`btrim(title) = ''`) on activation |
+| Project type | `ProjectTypeChoice` → `format` + `structure` (`columnsForProjectType`)   | `format` + `structure_variation` | §2.2. **Frozen once anybody is onboarded** (`shapeLocked`, `SHAPE_LOCK_REASON`)                                                                                                                                                                                                                                                            |
+| Session kind | `sessionKind` (`ProjectSessionKind`)                                      | `session_kind`                   | Rendered only on an existing session engagement; written `none` for any other format                                                                                                                                                                                                                                                       |
 
-**Not built:** the earlier `Industry Category (uuid, Required)` row. The column
-(`industry_category_id`) exists and is nullable; the wizard does not collect it and the ladder does
-not wait on it. The earlier `Banner (uuid)` row names **no column at all** on `projects.projects` —
-a project's showcase image is resolved from the owner's profile, not stored per project.
+### Description
 
-### Step 2 — Legal & Screening
+| Field       | Zod                                                                                                         | Column                             | Constraints                                                                                                                                                                                                                                                                       |
+| :---------- | :---------------------------------------------------------------------------------------------------------- | :--------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Description | `CreateProjectSchema.description` (plain text ≤ 2000, escaped into one paragraph); `UpdateProjectSchema.description` | `description` + `description_text` | Max 8000; semantic HTML from `RichTextEditor`. **Both halves are always written** — writing one leaves search and every card blank while the detail page looks correct. The ladder's Description row (optional) tests prose with `hasRichTextProse`, so an emptied editor's `<p><br></p>` does not count |
 
-| Field                | Tier | Zod                      | Column                        | Constraints                                                                                                          |
-| :------------------- | :--- | :----------------------- | :---------------------------- | :------------------------------------------------------------------------------------------------------------------- |
-| IP Ownership Mode    | T2   | `ipOwnershipMode`        | `ip_ownership_mode`           | `exclusive_transfer \| licensed_use \| shared_ownership \| projective_partner`                                       |
-| NDA mode             | T5   | `ndaMode`                | `nda_mode` (+ `nda_required`) | `none \| platform_standard \| custom`. §4.1                                                                          |
-| NDA document         | T5   | `ndaDocumentId`          | `nda_document_id`             | FK → `files.items`, `ON DELETE SET NULL`; permitted **only** when `nda_mode = 'custom'` (`ck_projects_nda_document`) |
-| Portfolio Rights     | T4   | `portfolioDisplayRights` | `portfolio_display_rights`    | `allowed \| forbidden \| embargoed`                                                                                  |
-| Language Requirement | T4   | `languages`              | `language_requirement`        | Max 20                                                                                                               |
-| Location Restriction | T4   | `locations`              | `location_restriction`        | Max 20; empty is "anywhere", which is an answer rather than an omission                                              |
+**Not collected:** `industry_category_id` exists and is nullable; no surface collects it and the
+ladder does not wait on it. A project has **no banner column** — its showcase image is resolved from
+the owner's profile.
 
-**Not built in the wizard:** `screening_questions`. The `jsonb` column exists and is written by no
-create path; a future screening step lands there rather than in a new column.
+### Budget (role-staffed Task only)
 
-#### 4.1 The NDA pair
+| Field       | Zod                             | Column                | Constraints                                                                                                                   |
+| :---------- | :------------------------------ | :-------------------- | :---------------------------------------------------------------------------------------------------------------------------- |
+| Budget type | `ProjectBudgetSchema.budgetType` | `budget_type`         | `fixed_price \| hourly_cap`                                                                                                   |
+| Amount      | `ProjectBudgetSchema.amountCents` | `budget_amount_cents` | Minor units, `CHECK (>= 0)`; `NULL` is "not priced yet", a different fact from zero. Frozen once anybody is onboarded (`projectPriceLocked`) |
 
-`nda_mode` is authoritative; `nda_required boolean` is its shadow and is **kept** because several
-readers already ask it. `create_project` derives it as `nda_required = (nda_mode <> 'none')`
-(`ndaRequiredFor`), and `ndaDocumentFor(mode, id)` drops a stale document id on a mode change so the
-`ck_projects_nda_document` CHECK cannot be tripped by a mode switch alone.
+On every other shape the Budget section does not render and the project amount is not typed: a
+one-off's is **derived** as the sum of its milestone fees on every fold (`rolledUpBudget`), and a
+pipeline's is left alone because its stage prices are per-ticket rates.
+
+### Stages / Milestones (and the flat Details section)
+
+Per stage, `StageSetupSchema`. The flat `details` section renders the same fields for the root stage
+only. Timing controls render only when `stageTimingApplies` (a staged run with more than one stage).
+
+| Field                 | Zod                                                    | Column                                 | Constraints                                                                                                                                                         |
+| :-------------------- | :----------------------------------------------------- | :------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Name                  | `name`                                                 | `name`                                 | 1–120; a blank name is a save blocker                                                                                                                               |
+| Scope                 | `description`                                          | `description` + `description_text`     | Max 8000; both halves written                                                                                                                                       |
+| Price                 | `unitPriceCents`                                       | `unit_price_cents`                     | Minor units, `CHECK (IS NULL OR >= 0)`; per ticket on a pipeline, the whole fee on a one-off; `null` = unpriced. Frozen per stage once a provider joins it (`lockedStagePriceIds`). §4.5 |
+| Delivery              | `milestone`                                            | `milestone`                            | Free text ≤ 240 (`MILESTONE_MAX`), column `NOT NULL DEFAULT ''`                                                                                                    |
+| Required skills       | `skills`                                               | `skills text[]`                        | ≤ 10 (`MAX_STAGE_SKILLS`), each trimmed, 1–60                                                                                                                       |
+| Task list             | `tasks` (`StageTaskSchema`)                            | `default_tasks` (jsonb)                | ≤ 50, each 1–240 chars; an empty step is a save blocker. Labels only — the checklist a ticket raised against the stage is seeded from                              |
+| Delivery date         | `deliveryDate`                                         | `file_due_date`                        | ISO date, a **one-off** field (a pipeline stage's timing comes from its predecessor); stored as midnight UTC                                                       |
+| Starts                | `dependency` (`sequential \| parallel`)                | `start_trigger_type`                   | Written as `dependent_on_stage` / `on_project_start`                                                                                                               |
+| Starts with           | `startsWithId`                                         | `start_dependency_stage_id`            | Never self (`422 self_dependency`), never a cycle — the dropdown offers only `stagePredecessorOptions` (`wouldCycle`); `null` = the stage above                  |
+| Delay                 | `delayDays`                                            | `start_dependency_lag_days`            | Signed, ±365 (`STAGE_DELAY_MAX_DAYS`) — a negative lag is a real overlap                                                                                          |
+| Capacity · Seats      | `capacity` (`unlimited \| limited`) + `seatCount`      | `capacity` + `seat_count`              | 1–99; a `limited` stage carries a count and an `unlimited` one carries `NULL` — `ck_project_stages_seat_count`, mirrored by `normaliseSeats` (default 3)           |
+| Named roles           | `roles[]` (`StageStaffingRoleSchema`)                  | `projects.stage_staffing_roles`        | ≤ 20; name 1–120, quantity 1–99, instructions ≤ 2000; `budgetCents` is a **bonus on top of** the stage price, never a total, and never counted as pricing        |
+| Accepted deliverables | `allowedFileKinds`                                     | `allowed_file_kinds text[]`            | ≤ 20; **empty means any**                                                                                                                                           |
+| NDA                   | `ndaRequired` (nullable)                               | stage `nda_required`                   | `null` **inherits** the project's `nda_required`; true/false override it for this stage                                                                             |
+
+#### 4.1 `file_upload_required` — false at the column, true through the RPCs
+
+The setup form does not collect it. The `00000015` column default is **`false`**; both
+`projects.create_stage` (`00001130`) and `projects.create_project` (`00001100`) fall back to
+**`true`** through `COALESCE`. Every stage the shipped paths mint goes through `create_stage`, so in
+practice a stage owes a deliverable — but a direct insert gets `false`, and editing the column default
+alone changes nothing on the RPC path (the most common inert-edit trap in this schema).
+
+#### 4.2 Legacy stage columns the setup form does not write
+
+`seat_limit` (`DEFAULT 3`, `NULL` = unlimited), `allowed_file_categories` / `allowed_file_extensions`,
+`nda_override`, `parallel` and `file_duration_mode` / `file_duration_days` are the stage table's
+**older** vocabulary. They exist and `create_stage` reads them from its optional payload, but the
+setup form speaks the renamed set above (`capacity` / `seat_count`, `allowed_file_kinds`,
+`nda_required`, `start_trigger_type`, `file_due_date`), and `reconcileStages` deliberately does not
+send that payload. `nda_override` in particular stores intent and enforces nothing.
+
+### Team roles (role-staffed Task)
+
+| Field      | Zod                                  | Column                          | Constraints                                                                                                                                                                                                                                         |
+| :--------- | :----------------------------------- | :------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Team roles | `roles[]` (`ProjectRoleSetupSchema`) | `projects.stage_staffing_roles` | ≤ 20; name 1–120, ≤ 20 skills, instructions ≤ 2000, `budgetCents` a bonus. The staffing model a stage-less engagement takes instead of stages. **Optional on a one-off without milestones** (`teamRolesRequired`): one fixed deliverable may be hired against with no team assembled |
+
+### Attachments
+
+| Field           | Zod                                                     | Column                         | Constraints                                                                                     |
+| :-------------- | :------------------------------------------------------ | :----------------------------- | :---------------------------------------------------------------------------------------------- |
+| Reference files | `attachments[]` (`ProjectAttachmentSchema`, by `files.items` id) | `projects.project_attachments` | ≤ 10 (`MAX_PROJECT_ATTACHMENTS`); a non-uuid id is refused (`422 unknown_file`) rather than dropped |
+
+### Terms & visibility
+
+`ProjectRulesSchema`, plus the currency, which rides on `ProjectBudgetSchema`.
+
+| Field                 | Zod                                                | Column                     | Constraints                                                                                                                                                                                                                                 |
+| :-------------------- | :------------------------------------------------- | :------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Visibility on publish | `visibility`                                       | `publish_visibility`       | `public \| invite_only \| unlisted` — the **intent**, never the live column (§5)                                                                                                                                                           |
+| Timeline              | `timelinePreset`                                   | `timeline_preset`          | `sequential \| simultaneous \| staggered \| custom`; rendered only when `timelinePresetApplies` (a staged structure)                                                                                                                       |
+| Locations             | `locationRestriction`                              | `location_restriction`     | ≤ 20, each 1–60; empty is "anywhere", which is an answer rather than an omission                                                                                                                                                          |
+| Languages             | `languageRequirement`                              | `language_requirement`     | ≤ 20, each 1–60; empty accepts any language                                                                                                                                                                                                |
+| Require an NDA        | `ndaRequired`                                      | `nda_required`             | §4.3                                                                                                                                                                                                                                       |
+| Which NDA             | `ndaSource` (`NdaDocumentSource`)                  | `nda_source`               | `platform \| custom` (column CHECK, `NOT NULL DEFAULT 'platform'`)                                                                                                                                                                         |
+| NDA document          | `ndaDocumentId`                                    | `nda_document_id`          | FK → `files.items`; permitted **only** when `nda_source = 'custom'` (`ck_projects_nda_document`); switching to `platform` nulls it                                                                                                       |
+| Currency              | `ProjectBudgetSchema.currency` (`CurrencyCode`)    | `currency`                 | Zod `^[A-Z]{3}$`; the fat service upper-cases it (`normalisedCurrency`) and drops anything still not three letters. The column is `text NOT NULL DEFAULT 'USD'` with **no CHECK** (there is no `ck_projects_currency`). On create, `CreateProjectSchema.currency` only checks length 3 and upper-cases |
+| Ownership of the work | `ipOwnershipMode`                                  | `ip_ownership_mode`        | `exclusive_transfer \| licensed_use \| shared_ownership \| projective_partner`                                                                                                                                                             |
+| Portfolio rights      | `portfolioDisplayRights`                           | `portfolio_display_rights` | `allowed \| forbidden \| embargoed`                                                                                                                                                                                                        |
+| Deadline bonus        | `allowDeadlineBonuses`                             | `allow_deadline_bonuses`   | Pipeline only — §4.4                                                                                                                                                                                                                       |
+
+**Not collected:** `screening_questions` (`jsonb`) exists and is written by no surface; a future
+screening step lands there rather than in a new column. `target_project_start_date` likewise exists
+on the project with no control.
+
+#### 4.3 The NDA pair
+
+**There is no `nda_mode` column.** The row stores confidentiality as `nda_required` (does one apply)
+plus `nda_source` (which instrument), with `nda_document_id` meaningful only under `custom`. The
+Terms section edits that pair directly. `NdaMode` (`none | platform_standard | custom`, `create.ts`)
+is the vocabulary of the `create_project` RPC's payload only, split across the pair by
+`ndaRequiredFor`, `ndaSourceFor` and `ndaDocumentFor`; a `projects.nda_mode` enum **type** exists for
+that parse, which is easy to confuse with a column.
 
 Three members, not four: "use a document I uploaded before" and "upload a new one" both resolve to
 `custom` plus a document id. A fourth member would encode **how the file arrived** rather than what
 governs the work.
 
-> ⚠️ **No constraint keeps the pair in step on a direct UPDATE.** `create_project` derives the
-> boolean; any other writer that touches one half must touch the other.
-
-### Step 3 — Stages (the "What")
-
-`hasStages` (T2, default `true`) gates the whole step. Per stage:
-
-| Field              | Tier | Zod (`CreateProjectStageSchema`)                  | Column                                                                             | Constraints                                                                                             |
-| :----------------- | :--- | :------------------------------------------------ | :--------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------ |
-| Stage Title        | T1   | `name`                                            | `name`                                                                             | 1–120 chars                                                                                             |
-| Stage Description  | T2   | `description`                                     | `description` + `description_text`                                                 | Max 8000; both halves written                                                                           |
-| Task list          | T3   | `tasks`                                           | `default_tasks` (jsonb)                                                            | Max 50, each ≤ 240 chars. Labels only — the checklist a ticket raised against the stage is seeded from  |
-| Skills             | T4   | `skills`                                          | `skills text[]`                                                                    | Max 10                                                                                                  |
-| Requires files     | T1   | `requiresFiles`                                   | `file_upload_required`                                                             | **Default `true`** (§4.2)                                                                               |
-| Allowed file types | T5   | `allowedFileCategories` / `allowedFileExtensions` | `allowed_file_categories files.file_category[]` / `allowed_file_extensions text[]` | Empty or NULL = **all**. Both may be set; a file passes when it satisfies whichever lists are non-empty |
-| NDA override       | T5   | `ndaOverride`                                     | `nda_override`                                                                     | §4.3                                                                                                    |
-| Milestone          | —    | `milestone`                                       | `milestone`                                                                        | Free text, ≤ 240; WHAT is owed, never WHEN                                                              |
-
-#### 4.2 `requiresFiles` defaults to TRUE in both places
-
-The `00000015` column default **and** `create_project`'s `COALESCE` fallback in `00001100`. The RPC
-always supplies an explicit value, so editing the column default alone changes nothing on the create
-path — the single most common inert-edit trap in this schema. A stage exists to produce a
-deliverable, and the submissions explorer, the review workspace and the escrow release all read a
-stage that owes nothing as a stage with nothing to approve.
-
-#### 4.3 `nda_override` stores intent and enforces nothing
-
-Stated plainly: **the column alone changes no behaviour.** The no-download, watermark and owner-only
-rules reach three separate readers that consult no stage flag today. Column now, enforcement later.
-
-### Step 4 — Timeline (the "When")
-
-| Field                | Tier                     | Zod                    | Column                      | Constraints                                                                                                                                                                                                                                                                 |
-| :------------------- | :----------------------- | :--------------------- | :-------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Depends on           | T1 (conditional)         | `dependsOnStageIndex`  | `start_dependency_stage_id` | An **index** into `stages` on the payload — a stage being sketched has no durable identity yet; the fat service resolves it to an id once the rows exist. Must not be self, and `create_stage` refuses a dependency from another project                                    |
-| Parallel             | T5                       | `parallel`             | `parallel`                  | Runs alongside the stage it depends on rather than after it                                                                                                                                                                                                                 |
-| Lag days             | T5                       | `lagDays`              | `start_dependency_lag_days` | 0–365                                                                                                                                                                                                                                                                       |
-| Duration mode        | T5 pipeline / T3 one-off | `durationMode`         | `file_duration_mode`        | `fixed_deadline \| relative_duration \| no_due_date`, CHECK-constrained. NULL in the column means "the owner has not chosen a timing model", which `no_due_date` (a choice somebody took) does not describe; the fat service normalises NULL → `no_due_date` on the way out |
-| Duration days        | ↑                        | `durationDays`         | `file_duration_days`        | Set when `durationMode = 'relative_duration'`                                                                                                                                                                                                                               |
-| Due date             | ↑                        | `dueDate`              | `file_due_date`             | Set when `durationMode = 'fixed_deadline'`. **Reuses the existing column** — no new one was added                                                                                                                                                                           |
-| Allow deadline bonus | T2                       | `allowDeadlineBonuses` | `allow_deadline_bonuses`    | Pipeline only, enforced by `ck_projects_deadline_bonus_format` as an implication, so it holds for the DEFINER RPCs too. §4.4                                                                                                                                                |
-
-Project-level `timeline_preset`, `target_project_start_date`, `start_trigger_type`,
-`fixed_start_date` and `hire_trigger_active` all exist as columns and are written by
-`create_project` from the payload's own keys; the wizard does not yet surface controls for them.
+> ⚠️ **No constraint keeps `nda_required` and `nda_source` in step.** `nda_required = false` leaves
+> `nda_source` meaningless (it keeps its `platform` default and nothing reads it); any writer that
+> touches one half must reason about the other.
 
 #### 4.4 The deadline bonus — two open conflicts, deliberately unresolved
 
 The offer is a boolean and the column is **plural** (`allow_deadline_bonuses`); there is no singular
 twin. The **rate** lives in exactly one greppable named constant, `DEADLINE_BONUS_RATE = 0.1` in
-`packages/types/projects/create.ts`, and it is never written to the database and never enters a
+`packages/types/projects/create.ts` (rendered as `DEADLINE_BONUS_PERCENT` in
+`components/setup/setup-format.ts`), and it is never written to the database and never enters a
 money path — the money path is `finance.escrows.deadline_bonus_*`.
+
+**Pipeline-only is enforced by the form alone:** the Terms section renders the toggle only when
+`format === 'pipeline'`. There is no `ck_projects_deadline_bonus_format` CHECK and `validateUpdate`
+does not refuse the field on another format.
 
 > ⚠️ **Flagged for a human, not resolved** (root `CLAUDE.md` §8): (a) the +10% figure comes from the
 > creation brief and appears in **no** source-of-truth document; (b) `PRODUCT_SPEC.md` assigns the
 > Deadline Bonus to **one-off** engagements while the brief makes it **pipeline-only**, which is
-> what shipped and what the CHECK now enforces.
-
-### Step 5 — Budget & Staffing (the "How Much")
-
-| Field          | Tier                     | Zod              | Column                                | Constraints                                                                                                                                                                   |
-| :------------- | :----------------------- | :--------------- | :------------------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stage price    | T2 pipeline / T1 one-off | `unitPriceCents` | `unit_price_cents`                    | Minor units, non-negative (CHECK). §4.5                                                                                                                                       |
-| Seats          | T2                       | `seatLimit`      | `seat_limit`                          | `NULL` = **Unlimited**; `DEFAULT 3` = limited; `CHECK (> 0)`. **Absent and `null` mean different things** on the payload — absent takes the default 3, `null` means unlimited |
-| Team roles     | T3                       | `roles[]`        | `projects.stage_staffing_roles`       | Max 20. The staffing model a **stage-less** engagement takes instead of stages (`staffedByRoles(structure)`). **Optional on a one-off without milestones** (`teamRolesRequired(format, structure)`, 2026-09-21): one fixed deliverable may be hired against with no team assembled, so the ladder row stays but no longer gates Preview. The project-level Timeline preset is likewise **absent** on that shape (`timelinePresetApplies(structure)`) — it describes how stages run against one another, and there is no run |
-| Project budget | —                        | `budget`         | `budget_type` + `budget_amount_cents` | `fixed_price \| hourly_cap`; a `NULL` amount is "not priced yet", which is a different fact from zero                                                                         |
+> what shipped.
 
 #### 4.5 The stage price reuses `unit_price_cents`
 
@@ -274,45 +404,58 @@ decorative: a negative price was storable and flowed straight into an escrow hol
 the direction the money moves.
 
 `stage_open_seats` (`description_of_need`, `budget_min_cents` / `budget_max_cents`,
-`require_proposals`) remains the marketplace-bid shape and is not written by the wizard.
+`require_proposals`) remains the marketplace-bid shape and is not written by the setup form.
 
-### Step 6 — Review & Publish
+### Readiness ladder and publish
 
-No controls of its own (`WIZARD_STEP_FIELDS.review` is empty). It renders two derived things:
+No section of its own; the ladder renders in the workspace's header band beside the Details ⇄
+Preview toggle.
 
-- **The readiness ladder** — `setupSteps` / `setupCompleteness` / `previewReady` /
-  `outstandingSteps` in `packages/types/projects/setup.ts`. Seven rows (Title · Project type ·
-  Description · Pricing · Stages-or-Roles · Rules · Publish), of which four are `required` — three
-  on a one-off without milestones, where the Roles row is carried but optional
-  (`teamRolesRequired`). The Stages row swaps to a Roles row on `single_task`. The percentage is
-  rounded once, at the one place it is computed, so the bar's `aria-valuenow`, its visible `NN%`
-  and its geometry are the same number.
-- **The effective-visibility disclosure** (§5).
-
-The draft is created at `status = 'draft'`; publication is
-`projects.set_project_status(…, 'active')` and needs a title and **≥ 1 stage** — which §2.4's
-implicit stage guarantees for every project the RPC creates.
+- **The ladder** — `setupSteps` / `setupCompleteness` / `previewReady` / `outstandingSteps`, keyed by
+  `ProjectSetupStepKey`, in `packages/types/projects/setup.ts`. Seven rows: Title · Project type ·
+  Description · Pricing · Stages-or-Team roles · Rules · Publish. **Required:** Title, Project type
+  (done from creation), Pricing (`pricingSatisfied` — every price the shape collects, or the project
+  budget on a role-staffed engagement), and the staffing row. The staffing row is Stages (done once a
+  stage exists, or at once on a stage-less shape) everywhere except `single_task`, where it is Team
+  roles — **optional** on a one-off without milestones (`teamRolesRequired`), so a Task has three
+  required rows. Description, Rules and Publish never gate. The percentage is rounded once, at the
+  one place it is computed, so the bar's `aria-valuenow`, its visible `NN%` and its geometry are the
+  same number; `completeness`, `steps` and `previewReady` are server-derived and never trusted from a
+  request body.
+- **Publish** — the draft is created at `status = 'draft'`; publication is
+  `projects.set_project_status(…, 'active')`, which needs a non-blank title and **≥ 1 stage** — which
+  §2.4's root stage provides for every project the shipped path creates. What publishing commits the
+  owner to is stated beforehand from `PUBLISH_LOCK_NOTICES`.
 
 ---
 
-## 5. Effective visibility
+## 5. Live visibility vs publish intent
 
-The wizard's control **defaults to `public`**. What is **stored** is
-`effectiveVisibility(requested, steps)`: the request is honoured only once every `required` ladder
-step is done, and until then the project is `unlisted` — reachable by its owner and by anyone
-holding the link, absent from Explore.
+Visibility is **two columns** (Decision #85): `publish_visibility` is the owner's **intent** — where
+the engagement should sit once it publishes — and `visibility` is where the row sits **now**. One
+column cannot hold both: writing the intent to it would publish the draft, and refusing the write
+would leave a dropdown that reverts to a value nobody chose.
 
-- It is computed **server-side**, beside the ladder, and called by **both** the wizard's disclosure
-  and the fat service that writes the row, so the sentence an author reads under the control and the
-  value the database receives are one decision rather than two implementations that agree today.
-- A freshly created project has satisfied nothing, so **create still stores `unlisted`** —
-  `projects.create_project` hardcodes it, and the security fix that made visibility
-  non-payload-readable (root `CLAUDE.md` §8 Decision #85(B)) is preserved, not reversed.
-- `unlisted` is returned rather than the author's choice being **rejected**: a refusal would block a
-  draft, and the whole point of the ladder is that a project can be saved long before it is offered.
+- **The rule** is `liveVisibilityFor(status, intent)` in `packages/types/projects/setup.ts`: a
+  `draft` is `unlisted` **unconditionally**; any other status takes the intent verbatim (including on
+  the way back to draft, which re-hides it). It never promotes on readiness alone — a complete draft
+  is still a draft, and publishing is an act the owner performs, not a threshold they cross.
+- **On create** `insertProject` writes `visibility = liveVisibilityFor('draft',
+  CREATED_PUBLISH_VISIBILITY)` — i.e. `unlisted`, reachable by its owner and by anyone holding the
+  link, absent from Explore — and `publish_visibility = CREATED_PUBLISH_VISIBILITY` (`public`),
+  because somebody creating a project to hire against is asking to be found.
+  `DEFAULT_PROJECT_RULES.visibility` (`invite_only`) is only the fallback for a projection
+  reconstructed with no create event behind it.
+- **On save** the Terms section writes only the intent (`ProjectRulesSchema.visibility` →
+  `publish_visibility`). `applyProjectUpdate` promotes it to `visibility` **after**
+  `set_project_status` has succeeded, on every save — so a published project's visibility change
+  takes effect at once, and on a draft the call re-asserts `unlisted`. The read projection carries
+  the live state as `ProjectSetupSchema.liveVisibility`, which `reconcileSetup` re-derives and never
+  folds from a payload, so a client cannot publish a draft by asserting it is already public.
 
-> ⚠️ **Flagged:** `projects.projects.visibility` still carries the column default `public`, which
-> only a writer that omits the column would ever see. Every path in this codebase supplies it.
+> ⚠️ **Flagged:** both `projects.projects.visibility` and `publish_visibility` carry the column
+> default `public`, which only a writer that omits them would ever see. Every create path supplies
+> both.
 
 ---
 
@@ -331,7 +474,8 @@ What exists instead: **every archetype's configuration columns coexist unconditi
 `project_stages` row** — `file_*` (revisions, duration mode, duration days, due date), `session_*`
 (duration minutes, count, preferred days, end date), and the pricing/dependency columns shared by
 all of them. A stage's archetype is therefore currently **implicit in which columns the owner
-filled**, and the wizard collects the file-based set only.
+filled**, and the setup form collects a subset of the file-based set only (`file_due_date`,
+`allowed_file_kinds`; §4).
 
 The escrow policies in §6.1–§6.4 remain the governing business rules and are unchanged;
 [`../business/PRODUCT_SPEC.md`](../business/PRODUCT_SPEC.md) §Escrow is their SSOT. They are
@@ -375,8 +519,9 @@ Approved --> [*]: Payout Released to Talent
 ```
 
 Configuration (all shipped columns): `file_revisions_allowed`, `file_duration_mode` (fixed vs
-relative vs none), `file_duration_days`, `file_due_date`, plus the Step 3 delivery contract —
-`file_upload_required`, `allowed_file_categories`, `allowed_file_extensions`.
+relative vs none), `file_duration_days`, `file_due_date`, plus the delivery contract —
+`file_upload_required` (§4.1), `allowed_file_kinds` (what the setup form writes) and the legacy
+`allowed_file_categories` / `allowed_file_extensions` pair (§4.2).
 
 ### 6.2 Session-Based Stages
 
@@ -391,7 +536,7 @@ relative vs none), `file_duration_days`, `file_due_date`, plus the Step 3 delive
   - Talent Cancellation: Client receives a 100% refund for all remaining unheld sessions.
 
 - Configuration: `session_duration_minutes`, `session_count`, `session_preferred_days`,
-  `session_end_date` (all shipped columns). Not reachable from the project wizard — a session
+  `session_end_date` (all shipped columns). Not reachable from project creation — a session
   engagement is created provider-side (§2.1).
 
 ### 6.3 Maintenance-Based Stages
@@ -423,10 +568,16 @@ relative vs none), `file_duration_days`, `file_due_date`, plus the Step 3 delive
 
 ## 7. Lifecycle, Kanban & Submissions State Machines
 
-> Implemented in migrations `0119_project_lifecycle.sql`, `0120_submissions_engine.sql`,
-> `0121_kanban_sync.sql`, `0122_project_card_summary.sql`, `0303_projects_lifecycle_rls.sql`. All
-> mutations flow through SECURITY DEFINER `projects.*` RPCs (finance stays unexposed) and are called
-> from FreshJS services (`ProjectLifecycleService*`, `SubmissionsService*`, `TicketsService*`).
+> Implemented in the consolidated migrations `00001100_functions_projects_read_access.sql`
+> (`set_project_status`, `can_review_project`, `get_project_card_summary`),
+> `00001120_functions_projects_ticket_lifecycle.sql` (`move_ticket`, `fn_ticket_review_submission`),
+> `00001150_functions_projects_stage_funding_submissions.sql` (`submit_deliverable`,
+> `review_submission`, `approve_stage`), `00001820_triggers_projects.sql`
+> (`trg_ticket_review_submission`), `00000015_tables_projects.sql` (`project_status_history`) and
+> `00002011_policies_projects.sql` (its RLS). All mutations flow through SECURITY DEFINER `projects.*`
+> RPCs (finance stays unexposed) and are called from the fat `ProjectBackendService`
+> (`packages/backend/services/projects/live-writes.ts`, `live-settlement.ts`); the island-side
+> clients are `ProjectSidebarService` and `SubmissionsService` (`apps/web/features/projects/core/`).
 
 ### 7.1 Project Lifecycle (`projects.set_project_status`)
 
@@ -463,6 +614,10 @@ Review=in_review, Done=completed).
 - **Review** (client / owner only, guarded by `projects.can_review_project`): `accept` → `accepted`;
   `request_revision` → `revisions_requested`, opens a `stage_revision_requests` row and bounces the
   ticket back to In Progress.
+- **Approve stage** (same authority): offered in the Submissions explorer once a unit is
+  `accepted`, behind a confirmation. It releases the stage's held escrow (`projects.approve_stage`).
+  Endpoints, payloads and status mapping:
+  [`../api/projects-settlement.md`](../api/projects-settlement.md).
 
 ### 7.4 Quick-Inspector metadata (`projects.get_project_card_summary`)
 
@@ -474,11 +629,14 @@ deadline (soonest future ticket due date or stage file due date).
 
 ## 8. Where creation happens
 
-`/projects/create` under `routes/(dashboard)/` renders the wizard; it is guarded, and it must stay a
-**static** sibling of `[projectId]` so `create` is never captured as a project slug. See
-[`../architecture/ROUTING.md`](../architecture/ROUTING.md).
+Creation happens in the Quick-Init modal (§1.1), opened from the `/projects` lane's create menu or a
+seller's `/[handle]` profile. `/projects/create` under `routes/(dashboard)/` is a retired `308 →
+/projects` shim with no page; it must stay a **static** sibling of `[projectSlug]` so `create` is
+never captured as a project slug. See [`../architecture/ROUTING.md`](../architecture/ROUTING.md).
 
-The write is one RPC — `projects.create_project(payload jsonb) RETURNS jsonb {id, slug}` — which
-inserts the project, its stages, their staffing roles, the participant row, the implicit stage when
-there is none, the project channel and a readable unique slug **in a single transaction**. Owner,
-status and visibility are set by the function from `auth.uid()`, never from the payload.
+The write is `POST /api/projects/create` → `ProjectBackendService.create` → `insertProject` (§2.4): a
+direct RLS-scoped insert of the draft, then `projects.create_stage` for the root stage and
+`comms.get_or_create_project_channel` for the General room — **not** one transaction, and **not**
+`projects.create_project`, which still exists but is not called. Owner, status and live visibility
+are set by the fat service (`owner_user_id = auth.uid()` under the `"Users can create projects"`
+policy), never taken from the payload.

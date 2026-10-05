@@ -29,6 +29,14 @@ import { serverEnv } from "../../core/env.ts";
 import { SlidingWindowLimiter } from "../../core/rate-limit.ts";
 import { fetchChannelMessagePage } from "./live-messages.ts";
 import { fetchSubmissionPage } from "./live-submissions.ts";
+import {
+	createStageRow,
+	issueInvitation,
+	type MintedStage,
+	readIssuedInvitations,
+	resolveInviteTarget,
+	setMemberRoleRow,
+} from "./live-membership.ts";
 import { fetchProjectOverview } from "./live-overview.ts";
 import {
 	applyProjectUpdate,
@@ -64,6 +72,7 @@ import {
 	hireInviteCount,
 	isStoredArchived,
 	mergeSetupPatch,
+	mintStageId,
 	mintTicketId,
 	movedStubCard,
 	overlayBoardPage,
@@ -82,6 +91,7 @@ import {
 	recordInviteDecision,
 	recordMemberRemoval,
 	recordProjectArchive,
+	recordRoleChange,
 	sentMessageCount,
 	setupPatchFrom,
 	storedCreatedProject,
@@ -113,6 +123,16 @@ import { BOARD_FIXTURE_NOW, findBoardPage, findTicketProjectSlug } from "./board
 import { findFixtureRequest, findMemberRoster } from "./members-fixtures.ts";
 import { archiveDraft, getDraft, instantiateDraft, sweepStaleDrafts } from "./draft-store.ts";
 import { composeLoadedViewPage } from "../explore/live-view.ts";
+import { approveStageRow, exitStageRow, reviewSubmissionRow } from "./live-settlement.ts";
+import { recordStubReview } from "./write-store.ts";
+import type {
+	ApproveStage,
+	CancelStageFairExit,
+	ReviewSubmission,
+	StageApproved,
+	StageExited,
+	SubmissionReviewed,
+} from "@projective/types/projects";
 
 /**
  * The listing's composed page, from the catalogue snapshot `findItem` resolved it from a line
@@ -135,6 +155,7 @@ import {
 	blankStage,
 	buildHireBrief,
 	buildProjectTimeline,
+	cooldownMessage,
 	CREATED_PUBLISH_VISIBILITY,
 	createFormatToColumns,
 	DEFAULT_PROJECT_BUDGET,
@@ -186,13 +207,17 @@ import type {
 } from "@projective/types/projects";
 import type {
 	ArchiveProject,
+	AssignableMemberRole,
 	BoardCard,
 	BoardListParams,
 	BoardPage,
+	BoardStageRef,
 	ChatMessage,
 	CommitTicket,
 	CreatedProject,
+	CreatedStage,
 	CreateProject,
+	CreateStageInput,
 	CreateSubmission,
 	FileListPage,
 	FileListParams,
@@ -201,7 +226,11 @@ import type {
 	HireOffer,
 	InviteActionInput,
 	InviteDecisionInput,
+	InviteProjectMemberInput,
+	InviteRefusal,
+	InvitesSent,
 	MemberInvite,
+	MemberRoleChanged,
 	MemberRosterPage,
 	MemberRosterParams,
 	MessagePage,
@@ -540,6 +569,103 @@ function recordStubHireInvites(
 	return invites;
 }
 
+// #region Membership-write helpers
+/** The 429 the outbound-invitation ceiling answers with, carrying the instant it reopens. */
+function rateLimitRefusal(retryAfterMs: number): WriteRefusal {
+	return {
+		status: 429,
+		message: HIRE_RATE_LIMIT_MESSAGE,
+		errors: { form: "rate_limited" },
+		details: { retryAt: new Date(Date.now() + retryAfterMs).toISOString() },
+	};
+}
+
+function rateLimited<T>(retryAfterMs: number): ServiceResult<T> {
+	return refused<T>(rateLimitRefusal(retryAfterMs));
+}
+
+/** The machine code a refusal pins to its control — its first field error, or `refused`. */
+function refusalCode(refusal: WriteRefusal): string {
+	const first = refusal.errors ? Object.values(refusal.errors)[0] : undefined;
+	return first ?? "refused";
+}
+
+/** "Invitation sent." · "3 invitations sent. 1 could not be sent." */
+function invitesSentMessage(sent: InvitesSent): string {
+	const n = sent.invites.length;
+	const head = n === 1 ? "Invitation sent." : `${n} invitations sent.`;
+	const r = sent.refused.length;
+	return r === 0 ? head : `${head} ${r} could not be sent.`;
+}
+
+/**
+ * A stage as the board projects it, for the one case the post-write re-read could not find it. The id
+ * is echoed as the slug — NOT a `stg-…` shape — so `isSlug` refuses it and nothing links to an address
+ * that has not been read back yet.
+ */
+function draftStageRef(id: string, input: CreateStageInput, order: number): BoardStageRef {
+	return {
+		id,
+		slug: id,
+		name: input.name,
+		order,
+		status: "draft",
+		locked: false,
+		description: input.description,
+		unitPriceCents: null,
+		categoryWeight: 1,
+		members: [],
+		ticketCount: 0,
+		assignmentMode: "open_pull",
+		maxConcurrentIntensity: null,
+		startAt: null,
+		endAt: null,
+		dependsOnStageId: null,
+	};
+}
+
+/**
+ * Why the STUB path will not issue an invitation to `address`, or `null` — the rules the database
+ * enforces on the live path (the ceiling, the 48-day decline cooldown, a duplicate open offer, a
+ * person already on the project), stated in the same words so the two branches refuse identically.
+ */
+function stubInviteRefusal(
+	page: MemberRosterPage,
+	history: readonly MemberInvite[],
+	address: string,
+	stageId: string | null,
+	nowMs: number,
+	owner: string,
+): { status: number; message: string; code: string } | null {
+	if (!hireLimiter.peek(owner).allowed) {
+		return { status: 429, message: HIRE_RATE_LIMIT_MESSAGE, code: "rate_limited" };
+	}
+	const bare = address.startsWith("@") ? address.slice(1) : null;
+	if (bare) {
+		const until = activeInviteCooldown(history, bare, nowMs);
+		if (until) return { status: 422, message: cooldownMessage(until), code: "cooldown" };
+		const onRoster = page.members.some((m) =>
+			(m.party.handle ?? "").replace(/^@+/, "").toLowerCase() === bare
+		);
+		if (onRoster && stageId === null) {
+			return { status: 409, message: "This person is already on the project.", code: "duplicate" };
+		}
+	}
+	const open = page.invites.some((invite) =>
+		invite.status === "pending" && (invite.stageId ?? null) === stageId &&
+		(invite.email.toLowerCase() === address || (invite.handle ?? "").toLowerCase() === address)
+	);
+	if (open) {
+		return {
+			status: 409,
+			message: "An invitation to this person for this stage is already pending.",
+			code: "duplicate",
+		};
+	}
+	return null;
+}
+// #endregion
+
 /**
  * Post a request's opening message into the pair's DM (`MessagingBackendService.requestMessage`).
  * The request itself is already recorded and the other side already notified, so a failure here costs
@@ -582,6 +708,11 @@ function refused<T>(refusal: WriteRefusal): ServiceResult<T> {
  * change in memory and answer `ok` for a mutation Postgres never accepted — reporting a save that
  * did not happen, which is the one outcome worse than reporting a failure. So a thrown live write
  * surfaces as a `502` and the caller is told to try again.
+ *
+ * The same rule FAILS CLOSED on identity: with the live backend on, a caller who has a user id but no
+ * access token (an expired or half-refreshed session) gets a `401`, never the stub store. Every write
+ * already passed `requireIdentity`, so the only thing missing is the credential RLS needs — and
+ * answering from memory would be the silent fallback this function exists to prevent.
  */
 async function liveWrite<T>(
 	method: string,
@@ -592,7 +723,10 @@ async function liveWrite<T>(
 	/** What `subject` names — see {@link notFound}. Defaults to a project, which most writes resolve. */
 	noun = "project",
 ): Promise<ServiceResult<T> | undefined> {
-	if (!isProjectsBackendLive() || !canReadLive(actor)) return undefined;
+	if (!isProjectsBackendLive()) return undefined;
+	if (!canReadLive(actor)) {
+		return fail<T>(401, { message: "Your session has expired — sign in again to save this." });
+	}
 	try {
 		const outcome = await run(actor);
 		if (outcome === null) return notFound<T>(noun, subject);
@@ -766,6 +900,25 @@ function viewerSenderFor(projectId: string, channelId: string | null): MessageSe
 		if (own?.sender) return own.sender;
 	}
 	return { id: "viewer", name: "You", avatar: null, handle: null };
+}
+// #endregion
+
+// #region Settlement plumbing
+/**
+ * The refusal a settlement write returns before it runs, or `null` to proceed.
+ *
+ * Beyond {@link requireIdentity}, this closes the one path by which a money-moving write could reach
+ * the stub with the live gate ON: a signed-in caller whose access token has lapsed fails
+ * `canReadLive`, and `liveWrite` would answer `undefined` — "use the stub" — recording an approval
+ * Postgres never saw. A 401 instead lets `apiFetch` refresh the session and retry the real write.
+ */
+function settlementDenied<T>(actor: ReadActor, action: string): ServiceResult<T> | null {
+	const anonymous = requireIdentity<T>(actor, action);
+	if (anonymous) return anonymous;
+	if (isProjectsBackendLive() && !canReadLive(actor)) {
+		return fail<T>(401, { message: "Your session expired. Sign in again to continue." });
+	}
+	return null;
 }
 // #endregion
 
@@ -1752,6 +1905,285 @@ export class ProjectBackendService {
 		return ok({ invites }, { message: sentMessage, status: 201 });
 	}
 
+	// #region Stage & membership writes
+	/**
+	 * Append a stage — `POST /api/projects/[id]/stages`, the one write behind "Create stage" on the
+	 * Board, the Timeline and the lane's Stages group.
+	 *
+	 * Live: `projects.create_stage` (owner-only, appended after the last `sort_order`, column defaults,
+	 * its General room opened in the same transaction), then the stage is READ BACK through the board
+	 * read so the caller receives it exactly as a reload will project it — its minted `stg-…` slug,
+	 * status and lock included — rather than a second rendering assembled here.
+	 *
+	 * Stub: the stage is appended to the stored setup patch, the same store a setup save writes and the
+	 * stub board, timeline and lane already fold, so it survives a reload in `dev:mock` too.
+	 */
+	static async createStage(
+		slug: string,
+		input: CreateStageInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<CreatedStage>> {
+		const denied = requireIdentity<CreatedStage>(actor, "add a stage");
+		if (denied) return denied;
+		const message = "Stage created.";
+
+		const live = await liveWrite<MintedStage>(
+			"createStage",
+			actor,
+			slug,
+			message,
+			(a) => createStageRow(a, slug, input),
+		);
+		if (live !== undefined) {
+			if (!live.ok || !live.data) {
+				return fail(live.status, {
+					message: live.message,
+					errors: live.errors,
+					details: live.details,
+				});
+			}
+			const stageId = live.data.stageId;
+			const read = await this.createdBoardStage(slug, actor, (s) => s.id === stageId);
+			return ok(
+				{ stage: read ?? draftStageRef(stageId, input, 0) },
+				{ message, status: 201 },
+			);
+		}
+
+		const owner = writeOwnerOf(actor);
+		const base = storedCreatedProject(owner, slug) ?? findProjectSetup(slug);
+		if (!base) return noSuchProject(slug);
+		const current = overlaySetup(base, actor);
+		if (current.archivedAt) {
+			return fail(409, { message: "This project is archived — no stage can be added to it." });
+		}
+		// What the BOARD held before the write, which is what "the new stage" is measured against — a
+		// fixture's setup list and its board list are not always the same ids (Decision #139 flag (d)).
+		const prior = await this.board({ projectId: slug, channelId: null, view: "stages" }, actor);
+		const before = new Set(
+			(prior.ok && prior.data ? prior.data.page.stages : current.stages).map((stage) => stage.id),
+		);
+		const patch: UpdateProject = {
+			stages: [
+				// Every existing stage by id alone: `setupPatchFrom` keeps each as stored and re-numbers
+				// the order, so the new stage lands last without touching anything it did not name.
+				...current.stages.map((stage) => ({ id: stage.id })),
+				{
+					name: input.name,
+					description: input.description ? plainTextToHtml(input.description) : "",
+				},
+			],
+		};
+		mergeSetupPatch(owner, base, setupPatchFrom(patch, current));
+		invalidateProjects(actor);
+		const read = await this.createdBoardStage(slug, actor, (s) => !before.has(s.id));
+		const stage = read ?? draftStageRef(mintStageId(), input, current.stages.length);
+		// The board card prints the plain brief; the stored copy is the setup surface's rich text.
+		return ok({ stage: { ...stage, description: input.description } }, { message, status: 201 });
+	}
+
+	/** The project board's stage that `match` selects, or `null` when the re-read could not find it. */
+	private static async createdBoardStage(
+		slug: string,
+		actor: ReadActor,
+		match: (stage: BoardStageRef) => boolean,
+	): Promise<BoardStageRef | null> {
+		const read = await this.board({ projectId: slug, channelId: null, view: "stages" }, actor);
+		return read.ok && read.data ? read.data.page.stages.find(match) ?? null : null;
+	}
+
+	/**
+	 * Invite people to the engagement (or one stage of it) — `POST /api/projects/[id]/invites`, the
+	 * Members tab's Invite modal.
+	 *
+	 * Each address is one invitation, sent in order: an `@handle` through `invite_to_project`
+	 * (identity-addressed, answered in-app, the 48-day decline cooldown enforced in the database), an
+	 * email through `invite_by_email` (kept email-addressed, so the inviter never learns whose account
+	 * an address belongs to). Both notify the invitee with `stage.invite` in the same transaction.
+	 *
+	 * The outbound ceiling is the Hire flow's (`HIRE_RATE_LIMIT`, 10 per sliding 10 minutes, keyed by
+	 * the acting identity) — one allowance, whichever surface spends it. Peeked before each address and
+	 * taken only once the database accepted it, so a refused address does not cost the next one.
+	 *
+	 * A refusal on one address does not unsend the others: the answer lists what was issued and what
+	 * was refused, each with the database's own sentence. Only when NOTHING was issued is the whole
+	 * send a failure, carrying the first refusal's status.
+	 */
+	static async inviteMember(
+		slug: string,
+		input: InviteProjectMemberInput,
+		actor: ReadActor,
+	): Promise<ServiceResult<InvitesSent>> {
+		const denied = requireIdentity<InvitesSent>(actor, "invite someone to a project");
+		if (denied) return denied;
+		const owner = writeOwnerOf(actor);
+		const ceiling = hireLimiter.peek(owner);
+		if (!ceiling.allowed) return rateLimited(ceiling.retryAfterMs);
+
+		const live = await liveWrite<InvitesSent>(
+			"inviteMember",
+			actor,
+			slug,
+			"Invitations sent.",
+			async (a) => {
+				const target = await resolveInviteTarget(a, slug);
+				if (!target) return null;
+				const issued: string[] = [];
+				const refused: InviteRefusal[] = [];
+				let first: WriteRefusal | null = null;
+				for (const address of input.addresses) {
+					const slot = hireLimiter.peek(owner);
+					if (!slot.allowed) {
+						first ??= rateLimitRefusal(slot.retryAfterMs);
+						refused.push({ address, message: HIRE_RATE_LIMIT_MESSAGE, code: "rate_limited" });
+						continue;
+					}
+					const outcome = await issueInvitation(a, target, address, input.role, input.stageId);
+					if ("refusal" in outcome) {
+						first ??= outcome.refusal;
+						refused.push({
+							address,
+							message: outcome.refusal.message,
+							code: refusalCode(outcome.refusal),
+						});
+						continue;
+					}
+					hireLimiter.take(owner);
+					issued.push(outcome.data);
+				}
+				if (issued.length === 0 && first) return { refusal: first };
+				return { data: { invites: await readIssuedInvitations(a, target, issued), refused } };
+			},
+		);
+		if (live !== undefined) {
+			if (!live.ok || !live.data) return live;
+			return ok(live.data, { message: invitesSentMessage(live.data), status: 201 });
+		}
+
+		const page = this.stubRoster(slug, actor);
+		if (!page) return noSuchProject(slug);
+		const stage = input.stageId ? page.stages.find((s) => s.id === input.stageId) ?? null : null;
+		if (input.stageId && !stage) {
+			return fail(422, {
+				message: "That stage is not part of this project.",
+				errors: { stageId: "unknown_stage" },
+			});
+		}
+		// The cooldown counts from a decline whether or not the client dismissed it, as the database does.
+		const history = overlayMemberRoster(
+			findMemberRoster({ projectId: slug }) ?? createdMemberRoster(slug, actor) ?? page,
+			actor,
+			{ keepDismissed: true },
+		).invites;
+		const nowMs = Date.now();
+		const base = hireInviteCount(owner, page.projectId);
+		const sent: MemberInvite[] = [];
+		const refused: InviteRefusal[] = [];
+		let first: { status: number; message: string; code: string } | null = null;
+		for (const address of input.addresses) {
+			const refusal = stubInviteRefusal(page, history, address, input.stageId, nowMs, owner);
+			if (refusal) {
+				first ??= refusal;
+				refused.push({ address, message: refusal.message, code: refusal.code });
+				continue;
+			}
+			hireLimiter.take(owner);
+			const handle = address.startsWith("@") ? address : null;
+			sent.push({
+				// Its own `-sent-` namespace: the fixture corpus mints `{slug}-inv-N` and the Hire flow
+				// `{slug}-hire-N`, and an id that collides with either is folded away as already present.
+				id: `${page.projectId}-sent-${base + sent.length + 1}`,
+				email: address,
+				handle,
+				role: input.role,
+				stageId: stage?.id ?? null,
+				stageName: stage?.name ?? null,
+				invitedBy: "You",
+				invitedAt: new Date(nowMs).toISOString(),
+				invitedLabel: "Just now",
+				status: "pending",
+			});
+		}
+		if (sent.length === 0 && first) {
+			return fail(first.status, { message: first.message, errors: { addresses: first.code } });
+		}
+		appendHireInvites(owner, page.projectId, sent);
+		invalidateProjects(actor);
+		const data = { invites: sent, refused };
+		return ok(data, { message: invitesSentMessage(data), status: 201 });
+	}
+
+	/**
+	 * The project's invitation queue — `GET /api/projects/[id]/invites`. The roster read's own queue,
+	 * so the list a managing viewer sees here and in the Invitations section is one read; a viewer the
+	 * roster withholds the queue from gets an empty list rather than a different answer.
+	 */
+	static async listInvites(
+		slug: string,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ invites: MemberInvite[] }>> {
+		const read = await this.members({ projectId: slug }, actor);
+		if (!read.ok || !read.data) return fail(read.status, { message: read.message });
+		return ok({ invites: read.data.page.invites });
+	}
+
+	/**
+	 * Change one participant's role — `PATCH /api/projects/[id]/members/[memberId]/role`, the Members
+	 * tab's Change role dialog.
+	 *
+	 * Live: `projects.set_member_role` — review authority (the owner, or a client-business member), the
+	 * caller's own row and the owner seat refused, `freelancer` stored as the `assignee` an accepted
+	 * invitation writes, and the change audited in `security.audit_logs` in the same transaction. A
+	 * role is a permission label only: no seat, ticket or escrow moves (that is `removeMember`).
+	 */
+	static async updateMemberRole(
+		slug: string,
+		memberId: string,
+		role: AssignableMemberRole,
+		actor: ReadActor,
+	): Promise<ServiceResult<MemberRoleChanged>> {
+		const denied = requireIdentity<MemberRoleChanged>(actor, "change a member's role");
+		if (denied) return denied;
+
+		const live = await liveWrite<MemberRoleChanged>(
+			"updateMemberRole",
+			actor,
+			memberId,
+			"Role updated.",
+			async (a) => {
+				const outcome = await setMemberRoleRow(a, slug, memberId, role);
+				if (outcome === null || "refusal" in outcome) return outcome;
+				return { data: { memberId, role: outcome.data.role, changed: outcome.data.changed } };
+			},
+			"member",
+		);
+		if (live !== undefined) return live;
+
+		const page = this.stubRoster(slug, actor);
+		if (!page) return noSuchProject(slug);
+		const row = page.members.find((m) => m.id === memberId);
+		if (!row) return notFound("member", memberId);
+		if (row.isViewer) {
+			return fail(422, {
+				message: "You cannot change your own role.",
+				errors: { role: "not_allowed" },
+			});
+		}
+		if (row.role === "owner" || row.role === "client") {
+			return fail(409, {
+				message: "The client side of the engagement has no role to change.",
+				errors: { memberId: "client_side" },
+			});
+		}
+		const changed = row.role !== role;
+		if (changed) {
+			recordRoleChange(writeOwnerOf(actor), page.projectId, memberId, role);
+			invalidateProjects(actor);
+		}
+		return ok({ memberId, role, changed }, { message: "Role updated." });
+	}
+	// #endregion
+
 	/**
 	 * A freelancer applies to a stage (optionally one of its staffing roles) of a live project —
 	 * `POST /api/projects/apply`, the inbound half of the handshake. The application is recorded
@@ -2383,6 +2815,116 @@ export class ProjectBackendService {
 			message: input.submit ? "Submitted for review." : "Draft saved.",
 		});
 	}
+
+	// #region Stage settlement
+	/**
+	 * Record a reviewer's verdict on one submission (`projects.review_submission`).
+	 *
+	 * `accept` marks the deliverable accepted; `request_revision` records the notes as a formal
+	 * revision request and returns the ticket to In Progress. Review authority is the FUNCTION's check
+	 * (owner or active client-business member); a freelancer, including the submitter, is refused 403.
+	 *
+	 * The stub records the verdict over the unit and moves nothing else — no revision request, no
+	 * ticket move — because those are rows the live read derives and the fixture read does not.
+	 */
+	static async reviewSubmission(
+		input: ReviewSubmission,
+		actor: ReadActor,
+	): Promise<ServiceResult<SubmissionReviewed>> {
+		const denied = settlementDenied<SubmissionReviewed>(actor, "review a submission");
+		if (denied) return denied;
+
+		const live = await liveWrite<SubmissionReviewed>(
+			"reviewSubmission",
+			actor,
+			input.submissionId,
+			input.decision === "accept" ? "Submission accepted." : "Revision requested.",
+			(a) => reviewSubmissionRow(a, input),
+			"submission",
+		);
+		if (live) return live;
+
+		if (!findProjectDetail(input.projectId)) return noSuchProject(input.projectId);
+		const status = input.decision === "accept" ? "accepted" : "revision_requested";
+		recordStubReview(writeOwnerOf(actor), input.projectId, input.submissionId, status);
+		invalidateProjects(actor);
+		return ok(
+			{ submissionId: input.submissionId, stageId: input.stageId, status },
+			{ message: input.decision === "accept" ? "Submission accepted." : "Revision requested." },
+		);
+	}
+
+	/**
+	 * Approve a stage and release every held escrow on it (`projects.approve_stage`).
+	 *
+	 * The stage settles straight to `paid` — release and settlement are one transaction — and when it
+	 * was the project's last unsettled stage the Contact Handover fires. Only the client/owner may do
+	 * this; the function refuses anyone else 403 before any money moves.
+	 *
+	 * The stub moves no money, so it reports zero released rather than inventing a payout figure. A
+	 * ledger line with no transaction behind it is worse than an honest zero.
+	 */
+	static async approveStage(
+		input: ApproveStage,
+		actor: ReadActor,
+	): Promise<ServiceResult<StageApproved>> {
+		const denied = settlementDenied<StageApproved>(actor, "approve a stage");
+		if (denied) return denied;
+
+		const live = await liveWrite<StageApproved>(
+			"approveStage",
+			actor,
+			input.stageId,
+			"Stage approved — escrow released.",
+			(a) => approveStageRow(a, input),
+			"stage",
+		);
+		if (live) return live;
+
+		if (!findProjectDetail(input.projectId)) return noSuchProject(input.projectId);
+		return ok({
+			stageId: input.stageId,
+			status: "paid",
+			releasedCount: 0,
+			totalPaidCents: 0,
+			feeCents: 0,
+			handoverUnlocked: false,
+		}, { message: "Stage approved (simulated — no escrow moved)." });
+	}
+
+	/**
+	 * Cancel a stage under the Fair Exit split (`projects.cancel_stage_fair_exit`): the freelancer is
+	 * paid `tier`% of each held escrow, net of the fee, and the remainder is refunded to the payer.
+	 * Client/owner only, refused 403 by the function for anyone else.
+	 */
+	static async cancelStageFairExit(
+		input: CancelStageFairExit,
+		actor: ReadActor,
+	): Promise<ServiceResult<StageExited>> {
+		const denied = settlementDenied<StageExited>(actor, "cancel a stage");
+		if (denied) return denied;
+
+		const live = await liveWrite<StageExited>(
+			"cancelStageFairExit",
+			actor,
+			input.stageId,
+			"Stage cancelled — the Fair Exit split was settled.",
+			(a) => exitStageRow(a, input),
+			"stage",
+		);
+		if (live) return live;
+
+		if (!findProjectDetail(input.projectId)) return noSuchProject(input.projectId);
+		return ok({
+			stageId: input.stageId,
+			status: "cancelled",
+			tier: input.tier,
+			cancelledCount: 0,
+			freelancerPaidCents: 0,
+			clientRefundedCents: 0,
+		}, { message: "Stage cancelled (simulated — no escrow moved)." });
+	}
+	// #endregion
 
 	/**
 	 * Mint a draft engagement from the Quick-Init modal, and return BOTH its identifiers.

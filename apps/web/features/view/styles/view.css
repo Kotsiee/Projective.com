@@ -555,6 +555,17 @@
     letter-spacing: var(--tracking-tight);
 }
 
+/*
+ * Whose reputation this is — a project page's reviews are its client's (Decision #142). Meta register,
+ * pulled up to the heading it qualifies: the section's own gap separates BLOCKS, and a subtitle that
+ * sits a full block-step from its heading reads as a second, unrelated block (§B.4.1 asymmetry).
+ */
+.vw-reviews__sub {
+    margin: calc(var(--space-1) - var(--space-4)) 0 0;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+
 .vw-reviews__grid {
     display: grid;
     grid-template-columns: minmax(15rem, 18.75rem) minmax(0, 1fr);
@@ -905,6 +916,20 @@
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
+}
+
+/*
+ * The engagement a review was left on — present only for a `public` project. Inline Meta text with
+ * its label in the secondary tone, never a chip: it is metadata about the review, not a control.
+ */
+.vw-review__context {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--on-surface);
+}
+
+.vw-review__contextlabel {
+    color: var(--text-secondary);
 }
 
 .vw-review__reviewtitle {

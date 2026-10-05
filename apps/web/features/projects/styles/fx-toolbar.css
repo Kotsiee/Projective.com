@@ -12,50 +12,53 @@
  * trap). Token-only, strict BEM (root CLAUDE.md §3).
  */
 .fx-toolbar {
-    position: sticky;
-    inset-block-start: calc(var(--fx-chrome) + var(--space-2));
-    z-index: var(--z-sticky);
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-block-size: var(--fx-toolbar-h);
-    padding-block: var(--space-2);
-    padding-inline: var(--space-2);
+	position: sticky;
+	inset-block-start: calc(var(--fx-chrome) + var(--space-2));
+	z-index: var(--z-sticky);
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: var(--fx-toolbar-h);
+	padding-block: var(--space-2);
+	padding-inline: var(--space-2);
+	/* The pill shape belongs to the bar; the underlay inherits it. The bar paints nothing itself. */
+	border-radius: var(--radius-full);
 }
 
+/* The §B.4.3 case-1 glass (a pinned bar content scrolls beneath), the same veil as `.mem-sectionbar`. */
 .fx-toolbar::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background: color-mix(in srgb, var(--surface) 62%, transparent);
-    backdrop-filter: blur(var(--glass-blur, 18px));
-    -webkit-backdrop-filter: blur(var(--glass-blur, 18px));
-    pointer-events: none;
-    border-radius: 50px;
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background: color-mix(in srgb, var(--surface) var(--glass-veil-chrome), transparent);
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	border-radius: inherit;
+	pointer-events: none;
 }
 
 .fx-toolbar__search {
-    flex: 1 1 auto;
-    min-inline-size: 0;
-    /* A clean max-width — the search never expands endlessly. */
-    max-inline-size: 22rem;
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	/* A clean max-width — the search never expands endlessly. */
+	max-inline-size: 22rem;
 }
 
 .fx-toolbar__search .ui-field {
-    border-radius: 20px;
+	border-radius: var(--radius-full);
 }
 
 .fx-toolbar__search .ui-field--focused,
 .fx-toolbar__search .ui-field:focus-within {
-    box-shadow: none;
+	box-shadow: none;
 }
 
 .fx-toolbar__searchicon {
-    display: inline-flex;
-    color: var(--text-secondary);
+	display: inline-flex;
+	color: var(--text-secondary);
 }
 
 .fx-toolbar__spacer {
-    flex: 1 1 auto;
+	flex: 1 1 auto;
 }

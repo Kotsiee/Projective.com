@@ -5,6 +5,7 @@ import "../styles/chat-feed.css";
 import { useIntersectionObserver, useIsMobile, useVirtualScroll } from "@projective/ui/hooks";
 import { InlineNotice } from "@projective/ui/feedback";
 import { OFFLINE_NOTICE_TEXT } from "@web/utils/offline.ts";
+import { logger } from "@web/utils/logger.ts";
 import { useOfflineStall } from "@web/utils/use-offline-stall.ts";
 import type { ChatMessage, MessagePage } from "../types/projects-types.ts";
 import {
@@ -61,7 +62,8 @@ export interface ChatFeedProps {
 	 * Optional custom older-page loader. When set, load-on-scroll-up calls this instead of the default
 	 * project-channel pager (`MessagesService.page`) — so the SAME feed drives both a project channel
 	 * (`/projects/…/chat`) and a global inbox conversation (`/messages/[id]/chat`, unified by `chatId`).
-	 * Returns the strictly-older page for the cursor, or `null` on failure/exhaustion.
+	 * Returns the strictly-older page for the cursor, or `null` on failure — exhaustion is a page whose
+	 * `hasMore` is false, never a `null`, because the feed reports a `null` to the reader as an error.
 	 */
 	loadOlder?: (cursor: string) => Promise<MessagePage | null>;
 }
@@ -79,6 +81,13 @@ export default function ChatFeed(
 	const hasMore = useSignal<boolean>(initial?.hasMore ?? false);
 	const cursor = useSignal<string | null>(initial?.nextCursor ?? null);
 	const loadingOlder = useSignal(false);
+	/**
+	 * The last older-page load failed while the browser was ONLINE — a server or payload fault, which
+	 * the offline stall deliberately does not speak for. Gates `loadOlder` the way `stall.blocked`
+	 * does, so a sentinel still in view cannot turn a failing endpoint into a request loop; only the
+	 * reader's Retry lifts it.
+	 */
+	const olderFailed = useSignal(false);
 	/**
 	 * The placeholder gate, kept separate from {@link loadingOlder} on purpose: that flag is the
 	 * re-entrancy guard and has to flip the instant a fetch starts, while this one only decides
@@ -145,11 +154,19 @@ export default function ChatFeed(
 		rootMargin: "600px 0px 0px 0px",
 	}).visible;
 
-	/** Fetch the next-older page. Resolves whether a page actually landed. */
-	async function loadOlder(): Promise<boolean> {
+	/**
+	 * Fetch the next-older page. Resolves whether a page actually landed. `retry` is the reader's
+	 * explicit Retry, the one caller allowed past a standing online failure.
+	 */
+	async function loadOlder(retry = false): Promise<boolean> {
 		// A stalled feed waits for Retry (or the reconnection): the top sentinel stays in view after a
 		// failed page, and without this guard every intersection change would re-fire the request.
-		if (loadingOlder.value || stall.blocked.value || !hasMore.value || !cursor.value) return false;
+		if (
+			loadingOlder.value || stall.blocked.value || (olderFailed.value && !retry) ||
+			!hasMore.value || !cursor.value
+		) {
+			return false;
+		}
 		loadingOlder.value = true;
 		skeleton.begin();
 		const doc = document.scrollingElement ?? document.documentElement;
@@ -169,12 +186,18 @@ export default function ChatFeed(
 			} else {
 				anchorRef.current = null;
 			}
-		} catch {
+		} catch (err) {
 			anchorRef.current = null;
+			logger.error("Chat feed: loading earlier messages threw", { channelId, err });
 		} finally {
 			loadingOlder.value = false;
 			skeleton.end();
-			stall.settle(landed);
+			// An offline failure is the stall's to report; any other failure is this feed's own.
+			const offline = stall.settle(landed);
+			olderFailed.value = !landed && !offline;
+			if (olderFailed.value) {
+				logger.error("Chat feed: earlier messages failed to load", { channelId });
+			}
 		}
 		return landed;
 	}
@@ -437,6 +460,15 @@ export default function ChatFeed(
 						actionLabel="Retry"
 						onAction={stall.retry}
 						busy={stall.retrying.value}
+					/>
+				)}
+				{olderFailed.value && (
+					<InlineNotice
+						class="chat-feed__stall"
+						text="Couldn’t load earlier messages."
+						actionLabel="Retry"
+						onAction={() => void loadOlder(true)}
+						busy={loadingOlder.value}
 					/>
 				)}
 				{

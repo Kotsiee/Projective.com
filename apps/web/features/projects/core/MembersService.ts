@@ -1,8 +1,12 @@
-import { getProjects, postProjects } from "./api.ts";
+import { getProjects, patchProjects, postProjects } from "./api.ts";
 import type {
+	AssignableMemberRole,
 	InviteActionInput,
 	InviteDecisionInput,
+	InviteProjectMemberInput,
+	InvitesSent,
 	MemberInvite,
+	MemberRoleChanged,
 	MemberRosterPage,
 	MemberRosterParams,
 	MemberScope,
@@ -26,7 +30,8 @@ import type { ProjectsResult } from "../types/results.ts";
  * global-inbox `conversation` scope reads `/api/messaging/members`. Both answer the identical
  * `MemberRosterPage` contract.
  *
- * **Writes.** `cancelInvite` / `dismissInvite` are the client's two acts on an invitation record;
+ * **Writes.** `invite` sends new invitations and `updateRole` changes a participant's role, both
+ * persisted server-side; `cancelInvite` / `dismissInvite` are the client's two acts on an invitation record;
  * `removeMember` undoes an acceptance (or removes any active participant) with the consequences the
  * fat service applies; `decideInvite` and `sentInvites` are the Dev Tools Invites window's pair —
  * development-only on the server, which answers 404 anywhere else.
@@ -83,6 +88,39 @@ export const MembersService = {
 	/** Invite a member already on the roster onto further stages — one pending invitation per stage. */
 	inviteToStages(input: StageInviteInput): Promise<ProjectsResult<{ invites: MemberInvite[] }>> {
 		return postProjects<{ invites: MemberInvite[] }>("/api/projects/members/stage-invite", input);
+	},
+
+	/**
+	 * Invite people — each `@handle` or email one invitation. The answer lists what was issued (as the
+	 * queue will read back) and what was refused, with the server's own sentence per address.
+	 */
+	invite(
+		projectId: string,
+		input: Pick<InviteProjectMemberInput, "addresses" | "role" | "stageId">,
+	): Promise<ProjectsResult<InvitesSent>> {
+		return postProjects<InvitesSent>(
+			`/api/projects/${encodeURIComponent(projectId)}/invites`,
+			input,
+		);
+	},
+
+	/** The project's invitation queue (`no-store`). */
+	listInvites(projectId: string): Promise<ProjectsResult<{ invites: MemberInvite[] }>> {
+		return getProjects<{ invites: MemberInvite[] }>(
+			`/api/projects/${encodeURIComponent(projectId)}/invites`,
+		);
+	},
+
+	/** Change one participant's role. `memberId` is the roster row id. */
+	updateRole(
+		projectId: string,
+		memberId: string,
+		role: AssignableMemberRole,
+	): Promise<ProjectsResult<MemberRoleChanged>> {
+		return patchProjects<MemberRoleChanged>(
+			`/api/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(memberId)}/role`,
+			{ role },
+		);
 	},
 
 	/** DEV ONLY — force an invitee's answer to one of the viewer's own invitations. */
