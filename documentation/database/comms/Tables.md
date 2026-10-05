@@ -296,6 +296,14 @@ specific stages.
 | `stage_id`   | uuid | Optional FK → `projects.project_stages.id`. |
 | `visibility` | text | `project_all` or restricted.                |
 
+The **project-wide room** — no `stage_id`, `visibility = 'project_all'` — is at most one per project
+(`comms.get_or_create_project_channel` dedupes on project + stage + visibility). It is what
+`/projects/[slug]/discussion` opens on every engagement that is not a Task (a Task's discussion is
+its root stage's `stage_all` room), and the app's create path (`insertProject`) opens it through
+that definer RPC at creation, beside the root stage's rooms that `projects.create_stage` opens. A
+project created before that call existed has none, and its lane offers no Discussion link until one
+is opened (Decision #133).
+
 ### `comms.project_messages`
 
 Stage-aware communication between clients and freelancers.

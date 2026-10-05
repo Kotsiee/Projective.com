@@ -10,10 +10,22 @@ import { ChannelTree } from "../components/ChannelTree.tsx";
 import { NormalSessionPanel } from "../components/NormalSessionPanel.tsx";
 import { GroupSessionPanel } from "../components/GroupSessionPanel.tsx";
 import { TaskLanePanel } from "../components/task-lane/TaskLanePanel.tsx";
-import { ProjectViewNav } from "../components/ProjectViewNav.tsx";
+import { ProjectNavSection } from "../components/ProjectNavSection.tsx";
 import { ProjectRail } from "../components/ProjectRail.tsx";
 import { CreateStageModal } from "../components/CreateStageModal.tsx";
-import { BackIcon } from "../components/detail-glyphs.tsx";
+import {
+	BackIcon,
+	DetailsIcon,
+	projectViewLinks,
+	viewLinkCurrent,
+} from "../components/detail-glyphs.tsx";
+import {
+	LaneCollapseButton,
+	LaneFooter,
+	LaneFooterActions,
+	LaneIconButton,
+} from "@projective/ui/navigation";
+import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import {
 	deriveGroupSession,
 	deriveNormalSession,
@@ -34,18 +46,16 @@ import { buildTaskLane, type TaskLane } from "../core/task-lane.ts";
 import type { ProjectDetail } from "../types/projects-types.ts";
 
 /**
- * SSR default open-set — the highest-traffic groups (General + Stages/Sub-groups) lead expanded, and a
- * Task's three sections all do: each is a short summary, and a Task's lane has nothing else in it.
+ * SSR default open-set — the highest-traffic groups (Stages/Sub-groups) lead expanded, and a Task's
+ * two sections both do: each is a short summary, and a Task's body has nothing else in it.
  */
 const DEFAULT_GROUPS: Record<string, boolean> = {
-	general: true,
 	stages: true,
 	subgroups: true,
 	teams: false,
 	dms: false,
 	"task-overview": true,
 	"task-lists": true,
-	"task-members": true,
 };
 
 /**
@@ -54,24 +64,30 @@ const DEFAULT_GROUPS: Record<string, boolean> = {
  * whenever a single engagement is open. It has two presentations, switched purely by the splitter's
  * density (`.ui-splitter[data-mode]`, driven by width) so BOTH a drag and the toggle flip it:
  *
- *   - **Expanded** — the full stack: sticky header (Back + Star + kebab) → the card-less identity
- *     header + a body that adapts to the service archetype → a sticky footer with the icon-only view
- *     links and a Collapse toggle.
- *   - **Collapsed** — a single clean vertical icon rail ({@link ProjectRail}).
+ *   - **Expanded** — four vertical zones, top to bottom:
+ *       1. the project header — a sticky row (Back + Star + kebab) over the card-less identity header;
+ *       2. the **top tier** ({@link ProjectNavSection}) — the engagement's primary views as full nav
+ *          rows: Discussion first, then the archetype's Board / Timeline / Calendar, Files,
+ *          Submissions and Members ({@link projectViewLinks});
+ *       3. the **contextual body**, which adapts to the archetype (below);
+ *       4. a **utility footer** — the collapse toggle and Project details, nothing else.
+ *   - **Collapsed** — a single clean vertical icon rail ({@link ProjectRail}) mirroring the same views.
  *
- * The expanded body is **service-archetype-aware** (task §3), resolved from the SSR `sessionKind`
- * baseline layered with the dev Context Switcher (`liveSessionKind`), exactly like the channel header:
+ * The contextual body is **archetype-aware** (task §3), resolved from the SSR `sessionKind` baseline
+ * layered with the dev Context Switcher (`liveSessionKind`), exactly like the channel header:
  *
- *   - **Standard project** (`none`) — the four-group channel tree + quick filters (the original view).
+ *   - **One-off / pipeline** (`none`) — the channel tree: a STAGES section (the owner's inline ＋ opens
+ *     Create Stage) plus Teams and Private Messages when the viewer has something in them, under the
+ *     quick filters. There is no General group: the project-wide room is the top tier's Discussion.
  *   - **Normal (1-1) session** (`normal`) — {@link NormalSessionPanel}: a mini-calendar + upcoming-
- *     session widget + session counter + shared-resources links + General channels (no stage tree).
- *   - **Group session** (`group`) — {@link GroupSessionPanel}: General + Sub-groups + Private-messages
- *     tree, cohort vote alert, and a 1-1 continuation CTA.
- *   - **Task** (a standard engagement whose type is Task) — {@link TaskLanePanel}: overview, task lists
- *     and members in place of the channel tree. A Task has one conversation, reached through the
- *     Discussion view link, so a navigator over conversations would have nothing to switch between.
+ *     session widget + session counter + shared-resources links (no stage tree).
+ *   - **Group session** (`group`) — {@link GroupSessionPanel}: Sub-groups + Private-messages tree,
+ *     cohort vote alert, and a 1-1 continuation CTA.
+ *   - **Task** (a standard engagement whose type is Task) — {@link TaskLanePanel}: its overview and its
+ *     task lists in place of the channel tree. Its one conversation and its roster are top-tier links.
  *     Keyed on the engagement with the draft folded on, so switching an unsaved form's type swaps the
- *     body live; a session archetype still wins, so the dev switcher can simulate one on any row.
+ *     body AND the top tier live; a session archetype still wins, so the dev switcher can simulate one
+ *     on any row.
  *
  * Both presentations are rendered; CSS reveals exactly one, so no client width-observer is needed and
  * the collapse toggles are deterministic (the footer always collapses, the rail always expands).
@@ -291,6 +307,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 
 	const activeKind = kind.value;
 	const base = `/projects/${detail.slug}`;
+	const detailsCurrent = viewLinkCurrent(currentPath.value, base, { seg: "" }) !== null;
 	const calendarHref = `${base}/calendar`;
 	const filesHref = `${base}/files`;
 
@@ -314,6 +331,8 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 	// derives from the immutable `slug`, so folding the draft in cannot shuffle it as the owner types.
 	const normalData = activeKind === "normal" ? deriveNormalSession(view, seam.value) : null;
 	const groupData = activeKind === "group" ? deriveGroupSession(view, seam.value) : null;
+	// The top tier follows the same projection, so an unsaved type switch moves it with the body.
+	const views = projectViewLinks(view, activeKind);
 
 	return (
 		<div class="proj-detail" data-service={activeKind}>
@@ -339,10 +358,13 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 				<div class="proj-detail__scroll">
 					<ProjectContextCard detail={view} />
 
+					<ProjectNavSection links={views} base={base} currentPath={currentPath.value} />
+
+					<hr class="proj-detail__divider" />
+
 					{normalData
 						? (
 							<NormalSessionPanel
-								detail={view}
 								data={normalData}
 								calendarHref={calendarHref}
 								filesHref={filesHref}
@@ -372,8 +394,6 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 							<>
 								<ChannelQuickFilters active={filters.value} onToggle={toggleFilter} />
 
-								<hr class="proj-detail__divider" />
-
 								<ChannelTree
 									detail={view}
 									stages={projection.stages}
@@ -387,15 +407,30 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 						)}
 				</div>
 
-				<div class="proj-detail__footer">
-					<ProjectViewNav
-						detail={view}
-						currentPath={currentPath.value}
+				{
+					/*
+					 * Utilities only — the views moved up into the top tier. The collapse toggle docks to the
+					 * lane's corner (`LaneCollapseButton`), the same point the collapsed rail's expand toggle
+					 * occupies, so collapsing and expanding never move the pointer. Project details is the
+					 * engagement's root page: the owner's configuration workspace, a member's dashboard.
+					 */
+				}
+				<LaneFooter class="proj-detail__footer">
+					<LaneCollapseButton
 						collapsed={false}
-						sessionKind={activeKind}
-						onToggleCollapse={() => setLaneCollapsed(true)}
+						icon={<SidebarToggleIcon />}
+						onToggle={() => setLaneCollapsed(true)}
 					/>
-				</div>
+					<LaneFooterActions>
+						<LaneIconButton
+							href={base}
+							icon={DetailsIcon}
+							label={view.viewerIsClient ? "Project details & settings" : "Project details"}
+							tooltipPlacement="top"
+							active={detailsCurrent}
+						/>
+					</LaneFooterActions>
+				</LaneFooter>
 			</div>
 
 			<CreateStageModal

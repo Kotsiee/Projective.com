@@ -7,6 +7,7 @@ import { Icon } from "@projective/ui/icons";
 import { CHANNEL_TABS, type ChannelMeta, visibleChannelTabKeys } from "../core/channel-view.ts";
 import { readDevSeam, resolveViewer, watchDevSeam } from "../core/submission-access.ts";
 import { liveSessionKind, type SessionKind } from "../core/session-model.ts";
+import { isDiscussionRef, type ProjectFormat } from "@projective/types/projects";
 import {
 	BellIcon,
 	BellOffIcon,
@@ -36,6 +37,7 @@ import {
 	ChannelDetailBody,
 	type ChannelDetailInfo,
 } from "../components/ChannelDetailBody.tsx";
+import { ChannelTabStrip } from "../components/ChannelTabStrip.tsx";
 
 /**
  * ChannelHeader — the contextual header for a project channel/chat engagement
@@ -56,6 +58,8 @@ import {
  * The three-region flow is a left identity block (flex 1) · centred underlined view tabs · right icon
  * actions (flex 1) so the tab strip stays visually centred. Tabs are real anchors — the active underline
  * is URL-driven (`data-active`), so it survives refresh and deep-links (§B.4 underlined tabs, no pills).
+ * When the strip would meet the actions, {@link ChannelTabStrip} collapses it to the active tab between
+ * circular prev/next chevrons (DESIGN_SYSTEM.md §D.4 "Compact tab strip").
  */
 
 // #region Tab icons (mapped from the pure tab keys in channel-view.ts, which stays JSX-free)
@@ -112,6 +116,8 @@ export interface ChannelHeaderProps {
 	 * live recompute and a persona flip can never bring back the Timeline or Calendar tab.
 	 */
 	isTask: boolean;
+	/** The engagement's stored format — with `isTask` and the live session kind, its tab set's type. */
+	format: ProjectFormat;
 	/** The resolved summary for the details drawer. */
 	detailInfo: ChannelDetailInfo;
 }
@@ -188,11 +194,21 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 				// freelancer must lose a tab that edits the terms they would be working under.
 				canConfigure: canConfigure && viewer.isReviewer,
 				isTask: props.isTask,
+				format: props.format,
+				isDiscussion: isDiscussionRef(meta.ref),
 			});
 		};
 		recompute();
 		return watchDevSeam(recompute);
-	}, [meta.kind, viewerIsClient, canConfigure, props.sessionKind, props.isTask]);
+	}, [
+		meta.kind,
+		meta.ref,
+		viewerIsClient,
+		canConfigure,
+		props.sessionKind,
+		props.isTask,
+		props.format,
+	]);
 
 	// Layer the persisted star/mute/pin preference on after hydration (never during SSR).
 	useEffect(() => {
@@ -268,28 +284,20 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 				</div>
 			</div>
 
-			{/* Centre — underlined view tabs (URL-driven active state; stage/session-gated set) */}
-			<nav class="chan-header__tabs" aria-label="Channel views">
-				{shownTabs.map((tab) => {
-					const href = tab.seg ? `${base}/${tab.seg}` : base;
-					const active = tab.key === activeTab;
-					return (
-						<a
-							key={tab.key}
-							class="chan-tab"
-							href={href}
-							data-active={active ? "true" : undefined}
-							aria-current={active ? "page" : undefined}
-							data-tab-key={tab.key}
-						>
-							<span class="chan-tab__icon" aria-hidden="true">
-								{cloneElement(TAB_ICONS[tab.key])}
-							</span>
-							<span class="chan-tab__label">{tab.label}</span>
-						</a>
-					);
-				})}
-			</nav>
+			{
+				/* Centre — underlined view tabs (URL-driven active state; stage/session-gated set), collapsing
+			    to a single stepped tab when the strip would meet the actions */
+			}
+			<ChannelTabStrip
+				label="Channel views"
+				activeKey={activeTab}
+				tabs={shownTabs.map((tab) => ({
+					key: tab.key,
+					label: tab.label,
+					href: tab.seg ? `${base}/${tab.seg}` : base,
+					icon: TAB_ICONS[tab.key],
+				}))}
+			/>
 
 			{/* Right — icon-only actions (§1: star toggle · details drawer · kebab menu) */}
 			<div class="chan-header__actions">

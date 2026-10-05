@@ -6,12 +6,18 @@ import type { TaskLane } from "../../core/task-lane.ts";
 import { type ProjectDetail, STAGE_STATUS_WORD } from "../../types/projects-types.ts";
 
 /**
- * TaskOverviewSection — the Task's key facts: its lifecycle status, when it is due, and who owns it.
+ * TaskOverviewSection — the Task's key facts: its lifecycle status, when it is due, who owns it, and
+ * who holds its ticket.
  *
  * A ledger rather than a card (§B.9.7): the facts rest on the lane surface, labelled in the meta
  * register. The status is the one contained mark, because it is a lifecycle state that changes
  * (§B.11.3); the due date and the owner are plain text. A Task with no date says so rather than
  * leaving the row out, because "no deadline" is a fact the reader came to check.
+ *
+ * The assignee is the board's, not the roster's: on the live path the participant read is often empty
+ * for anyone but the owner, while the ticket names the one person doing the Task. The row is absent
+ * until somebody holds the ticket — an unstaffed Task has no assignee to name, and "Unassigned" would be
+ * a status the Status row already states.
  */
 export interface TaskOverviewSectionProps {
 	detail: ProjectDetail;
@@ -59,6 +65,14 @@ export function TaskOverviewSection(
 						<TaskParty party={detail.owner} />
 					</dd>
 				</div>
+				{lane.ticket?.assignee && (
+					<div class="task-lane__fact">
+						<dt class="task-lane__term">Assigned</dt>
+						<dd class="task-lane__def">
+							<TaskParty party={lane.ticket.assignee} />
+						</dd>
+					</div>
+				)}
 			</dl>
 		</LaneSection>
 	);

@@ -39,6 +39,9 @@
 	gap: var(--space-3);
 	block-size: var(--shell-midnav-header-h);
 	padding-inline: var(--space-4);
+	/* One gap for the live tab strip AND its hidden measuring copy (`.chan-header__measure-strip`), so
+	   the natural width the collapse decision reads is the width the strip would really take. */
+	--chan-tabs-gap: var(--space-4);
 }
 
 /* Left identity block grows; the right actions block grows equally — together they keep the centre
@@ -133,9 +136,10 @@
 	flex: 0 1 auto;
 	min-inline-size: 0;
 	align-self: stretch;
+	position: relative;
 	display: flex;
 	align-items: stretch;
-	gap: var(--space-4);
+	gap: var(--chan-tabs-gap);
 	overflow-x: auto;
 	scrollbar-width: none;
 }
@@ -203,6 +207,124 @@
 .chan-tab__icon {
 	display: none;
 	font-size: 1.05rem;
+}
+
+/* #endregion */
+
+/* #region Centre — compact strip (collapsed when the full strip would meet the actions) */
+/*
+ * `ChannelTabStrip` swaps to this layout from a MEASUREMENT, not a breakpoint: only the active tab, centred,
+ * between circular prev/next chevrons. Every compound below is (0,2,0)+ on purpose, so it beats the
+ * mobile query's bare `.chan-tab__label` / `.chan-tab__icon` / `.chan-tab` rules whatever the source order.
+ */
+.chan-header__tabs.chan-header__tabs--compact {
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-1);
+	overflow: visible;
+}
+
+.chan-tab.chan-tab--compact {
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	block-size: 2rem;
+	padding-inline: var(--space-2);
+	font-family: inherit;
+	line-height: inherit;
+	color: var(--primary);
+	border: none;
+	border-radius: var(--radius-full);
+	cursor: pointer;
+	/* The browser keeps vertical panning; a horizontal drag reaches the swipe handler. */
+	touch-action: pan-y;
+	user-select: none;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard),
+		var(--btn-transition-press);
+}
+
+/* No underline in the compact layout — the chevrons and the picker say where you are. */
+.chan-tab.chan-tab--compact::after {
+	content: none;
+}
+
+.chan-tab.chan-tab--compact:hover,
+.chan-tab.chan-tab--compact[aria-expanded="true"] {
+	color: var(--primary);
+	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+}
+
+.chan-tab.chan-tab--compact .chan-tab__icon {
+	display: inline-flex;
+}
+
+.chan-tab.chan-tab--compact .chan-tab__label {
+	position: static;
+	inline-size: auto;
+	block-size: auto;
+	margin: 0;
+	min-inline-size: 0;
+	clip: auto;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.chan-tab.chan-tab--compact:active {
+	transform: scale(var(--btn-press-scale));
+}
+
+.chan-tab.chan-tab--compact:focus-visible,
+.chan-tabstep:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/* The circular step chevrons — never disabled: the last tab steps to the first and back. */
+.chan-tabstep {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+	font-size: 1rem;
+	color: var(--text-secondary);
+	text-decoration: none;
+	border-radius: var(--radius-full);
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard),
+		var(--btn-transition-press);
+}
+
+.chan-tabstep:hover {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.chan-tabstep:active {
+	transform: scale(var(--btn-press-scale-icon));
+}
+
+/* The full strip's hidden measuring copy: laid out (so it has a width) but zero-size and clipped, so it
+   adds no scrollable overflow and paints nothing. */
+.chan-header__measure {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: 0;
+	inline-size: 0;
+	block-size: 0;
+	overflow: hidden;
+	visibility: hidden;
+	pointer-events: none;
+}
+
+.chan-header__measure-strip {
+	display: flex;
+	gap: var(--chan-tabs-gap);
+	inline-size: max-content;
 }
 
 /* #endregion */
@@ -309,10 +431,30 @@
 	background: transparent;
 	border: none;
 	border-radius: var(--radius-sm);
+	text-decoration: none;
 	cursor: pointer;
 	transition:
 		background-color var(--dur-fast) var(--ease-standard),
 		color var(--dur-fast) var(--ease-standard);
+}
+
+/* The view picker (compact tab strip): a plain list of tab links, the current one marked. */
+.chan-menu.chan-menu--views {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.chan-menu__item[aria-current="page"],
+.chan-menu__item[aria-current="page"] .chan-menu__icon {
+	color: var(--primary);
+}
+
+.chan-menu__check {
+	display: inline-flex;
+	flex: none;
+	font-size: 0.95rem;
+	color: var(--primary);
 }
 
 /*
@@ -561,9 +703,12 @@
 
 	/* The desktop gap is set for text tabs; once the labels drop to their leading glyph it is spacing a
 	   word that is no longer there, and the 16px it holds is the width the channel name is short of. */
+	.chan-header {
+		--chan-tabs-gap: var(--space-3);
+	}
+
 	.chan-header__tabs {
 		flex: 1 1 auto;
-		gap: var(--space-3);
 	}
 
 	.chan-header__actions {
@@ -609,13 +754,24 @@
 	.chan-tab,
 	.chan-tab::after,
 	.chan-action,
+	.chan-tabstep,
 	.chan-menu__item {
 		transition-duration: 0ms;
+	}
+
+	.chan-tab.chan-tab--compact:active,
+	.chan-tabstep:active {
+		transform: none;
 	}
 
 	.chan-header__typing-dots {
 		animation: none;
 	}
+}
+
+:root[data-motion="reduced"] .chan-tab.chan-tab--compact:active,
+:root[data-motion="reduced"] .chan-tabstep:active {
+	transform: none;
 }
 
 /* #endregion */

@@ -2,8 +2,9 @@ import { page } from "fresh";
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
-import { findStageChannel } from "@projective/types/projects";
+import { findStageChannel, isDiscussionRef } from "@projective/types/projects";
 import { canConfigureStage } from "@web/features/projects/core/channel-view.ts";
+import { isTaskDetail } from "@web/features/projects/core/task-project.ts";
 import { resolveProjectDetail } from "@web/features/projects/core/detail-ssr.ts";
 import { resolveProjectSetup } from "@web/features/projects/core/setup-ssr.ts";
 import StageDetailsForm from "@web/features/projects/islands/StageDetailsForm.island.tsx";
@@ -77,8 +78,18 @@ export const handler = define.handlers({
 		const { detail } = await resolveProjectDetail(projectId, context, actor);
 		// A stage channel, or nothing. A general/team/DM channel has no configuration to edit and no
 		// Details tab, so its address here names a page that does not exist rather than one being
-		// withheld.
-		const channel = findStageChannel(detail?.channels.stages ?? [], channelId);
+		// withheld. A Task's `discussion` IS its stage, so it is configured through this tab too.
+		const channel = findStageChannel(detail?.channels.stages ?? [], channelId, {
+			task: detail ? isTaskDetail(detail) : false,
+		});
+		// A staged engagement's Discussion is not a stage: its Details tab is the engagement's own
+		// Details page (the owner's configuration workspace, a member's dashboard).
+		if (detail && !channel && isDiscussionRef(channelId)) {
+			return new Response(null, {
+				status: 303,
+				headers: { location: `/projects/${encodeURIComponent(projectId)}` },
+			});
+		}
 		if (!detail || !channel) return page(miss);
 
 		// The owner test is the server's own (`projects.projects.owner_user_id === viewer`, which is

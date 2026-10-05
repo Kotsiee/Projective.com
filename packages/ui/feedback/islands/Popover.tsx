@@ -68,6 +68,11 @@ export interface PopoverProps {
 	dismissable?: boolean;
 	/** Close on Escape (default `true`). */
 	closeOnEscape?: boolean;
+	/**
+	 * Focus this element on open instead of the panel's first tabbable — a picker lands on the CURRENT
+	 * choice rather than on whichever item happens to be listed first.
+	 */
+	initialFocusRef?: RefObject<HTMLElement>;
 	/** Fired whenever the open state changes. */
 	onOpenChange?: (open: boolean) => void;
 	/** Extra class(es) merged onto the panel. */
@@ -103,6 +108,7 @@ export function Popover(props: PopoverProps): JSX.Element {
 		matchWidth = false,
 		dismissable = true,
 		closeOnEscape = true,
+		initialFocusRef,
 		onOpenChange,
 		class: className,
 		children,
@@ -135,7 +141,12 @@ export function Popover(props: PopoverProps): JSX.Element {
 	// A popover is non-modal — the page beneath stays scrollable and clickable — so focus is confined
 	// for keyboard convenience only and the background is NOT marked inert. Hiding a live page from
 	// assistive tech would misdescribe what is actually interactive.
-	useFocusTrap({ active: mounted, containerRef: panelRef, inertBackground: false });
+	useFocusTrap({
+		active: mounted,
+		containerRef: panelRef,
+		initialFocusRef,
+		inertBackground: false,
+	});
 	useDismiss({
 		open: mounted,
 		enabled: stack.isTop,

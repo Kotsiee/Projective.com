@@ -14,11 +14,15 @@ import type { DmChannel, ProjectChannel, ProjectDetail } from "../types/projects
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
- * ChannelTree — the communication accordion of the Project Details sidebar: General, Stages, and —
+ * ChannelTree — the staged engagement's contextual body in the Project Details lane: its Stages and —
  * only when the viewer has something in them — Teams and Private Messages. Each group collapses/expands
  * independently. Every channel row is a real anchor into the project at `/projects/{slug}/{channelId}`
  * (see {@link channelHref}), so the conversation opens in-context; the channel's unified `chatId`
  * remains the shared thread identity the destination page loads (PRODUCT_SPEC §Unified Messaging).
+ *
+ * There is no General group. The project-wide room is the engagement's Discussion, a top-tier link of
+ * its own above this tree at `/projects/{slug}/discussion`; a folder holding that one room beside it
+ * would be the same destination twice, one of them a level down.
  *
  * Group specifics:
  *   - **Stages**: the client/creator gets an inline "＋" to open Create New Stage (gated on
@@ -215,7 +219,7 @@ export interface ChannelTreeProps {
 	 * has no draft. One prop, one code path — a live tree and a static tree could drift.
 	 */
 	stages: SidebarStageRow[];
-	/** Which groups are expanded (keyed `general|stages|teams|dms`). */
+	/** Which groups are expanded (keyed `stages|teams|dms`). */
 	openGroups: Record<string, boolean>;
 	onToggleGroup: (key: string) => void;
 	/** Client-only: open the Create New Stage modal. */
@@ -235,7 +239,6 @@ export function ChannelTree(
 	{ detail, stages, openGroups, onToggleGroup, onCreateStage, filters, activeChannelId }:
 		ChannelTreeProps,
 ): JSX.Element {
-	const { general } = detail.channels;
 	const { teams, dms } = conditionalChannelGroups(detail.channels);
 	const slug = detail.slug;
 
@@ -258,7 +261,6 @@ export function ChannelTree(
 	};
 	const matchDm = (d: DmChannel) => !filtering || (has("unread") && d.unread);
 
-	const fGeneral = general.filter(matchChannel);
 	const fStages = stages.filter(matchStage);
 	// Unfiltered, a team stays even with no room yet; filtered, it stays only for a matching room.
 	const fTeams = filtering
@@ -273,10 +275,7 @@ export function ChannelTree(
 	const show = (n: number) => !filtering || n > 0;
 	const groupOpen = (key: string) => (filtering ? true : !!openGroups[key]);
 
-	if (
-		filtering && fGeneral.length === 0 && fStages.length === 0 && fTeams.length === 0 &&
-		fDms.length === 0
-	) {
+	if (filtering && fStages.length === 0 && fTeams.length === 0 && fDms.length === 0) {
 		return (
 			<LaneSections>
 				<p class="proj-chan-empty">No channels match these filters.</p>
@@ -287,23 +286,7 @@ export function ChannelTree(
 
 	return (
 		<LaneSections>
-			{/* 1 — General */}
-			{show(fGeneral.length) && (
-				<AccordionGroup
-					id="general"
-					icon={HashIcon}
-					label="General"
-					open={groupOpen("general")}
-					onToggle={() => onToggleGroup("general")}
-					hasUnread={anyUnread(general)}
-				>
-					{fGeneral.map((c) => (
-						<ChannelRow key={c.id} channel={c} slug={slug} activeChannelId={activeChannelId} />
-					))}
-				</AccordionGroup>
-			)}
-
-			{/* 2 — Stages (client gets an inline Create New Stage ＋) */}
+			{/* 1 — Stages (the client/owner gets an inline Create New Stage ＋) */}
 			{show(fStages.length) && (
 				<AccordionGroup
 					id="stages"
@@ -331,7 +314,7 @@ export function ChannelTree(
 				</AccordionGroup>
 			)}
 
-			{/* 3 — Teams: only for a member of a hired team */}
+			{/* 2 — Teams: only for a member of a hired team */}
 			{fTeams.length > 0 && (
 				<AccordionGroup
 					id="teams"
@@ -368,7 +351,7 @@ export function ChannelTree(
 				</AccordionGroup>
 			)}
 
-			{/* 4 — Private Messages: only once a thread with a member carries project messages */}
+			{/* 3 — Private Messages: only once a thread with a member carries project messages */}
 			{fDms.length > 0 && (
 				<AccordionGroup
 					id="dms"

@@ -1,5 +1,6 @@
 import {
 	type ChatMessage,
+	expandChannelRef,
 	type MessageAttachment,
 	type MessageDelta,
 	messageDeltaText,
@@ -438,7 +439,10 @@ function buildMessage(
  * The full ordered message pool for a channel (oldest→newest). Empty for `announcements`-style
  * broadcast channels so the empty state is demonstrable. Otherwise: older filler + the showcase tail.
  */
-function buildPool(detail: ProjectDetail, channelId: string, base: string): ChatMessage[] {
+function buildPool(detail: ProjectDetail, ref: string, base: string): ChatMessage[] {
+	// `discussion` is the room it stands for, so the word and the room's own address draw one history —
+	// the same ids, the same people — rather than two lookalike threads.
+	const channelId = expandChannelRef(detail, ref);
 	// A couple of channel ids stand in for genuinely empty channels (demonstrates the empty state).
 	if (/announce|empty/i.test(channelId)) return [];
 

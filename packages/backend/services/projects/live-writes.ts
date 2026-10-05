@@ -1957,6 +1957,24 @@ export async function insertProject(
 		);
 	}
 
+	// The project-wide room — what `/projects/{slug}/discussion` opens on every engagement that is not a
+	// Task. Nothing else provisions it on this path (`create_stage` opens only the stage's own rooms),
+	// so without this call a project created here has no discussion at all and the lane has no link to
+	// offer. Opened for a Task too: its discussion is its stage's room today, but a Task converted into
+	// a pipeline in settings needs the room the moment it becomes one. Through the definer RPC, which
+	// checks the caller's access to the `project_all` scope and dedupes, so a retry cannot mint two.
+	// Warned, not raised, for the root stage's reason: the project exists and is what the owner needs.
+	const { error: roomError } = await commsDb(actor).rpc("get_or_create_project_channel", {
+		p_project_id: created.id,
+		p_stage_id: null,
+		p_name: "General",
+	});
+	if (roomError) {
+		console.warn(
+			`[insertProject] project ${created.id} created without its discussion room: ${roomError.message}`,
+		);
+	}
+
 	return { data: { id: created.id, slug: created.slug } };
 }
 // #endregion
@@ -2650,10 +2668,12 @@ export async function insertProjectMessage(
 				attachment_id: attachmentId,
 			})),
 		);
+		// The RESOLVED room, never `input.channelId`: the route segment may be a `stg-…` address or the
+		// word `discussion`, and either one in this uuid column fails the insert without a trace.
 		await db.from("channel_files").insert(
 			attachmentIds.map((attachmentId) => ({
 				channel_type: "project",
-				channel_id: input.channelId,
+				channel_id: channelId,
 				attachment_id: attachmentId,
 			})),
 		);

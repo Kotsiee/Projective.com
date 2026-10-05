@@ -6,6 +6,7 @@ import { activeTabOf, resolveChannelMeta, visibleChannelTabKeys } from "./channe
 import { resolveSessionKind } from "./session-model.ts";
 import { resolveProjectDetail } from "./detail-ssr.ts";
 import { isTaskDetail } from "./task-project.ts";
+import { isDiscussionRef } from "@projective/types/projects";
 import type { ChannelMeta } from "./channel-view.ts";
 import type { ProjectDetail, ProjectStatus } from "../types/projects-types.ts";
 import type { ReadActor } from "@server/services/read-actor.ts";
@@ -67,7 +68,9 @@ function buildDetailInfo(detail: ProjectDetail, meta: ChannelMeta): ChannelDetai
 	}));
 
 	if (meta.kind !== "stage") {
-		return { kindLabel: KIND_LABEL[meta.kind], members };
+		// The project-wide room reached as the engagement's Discussion is named for what the lane calls it.
+		const kindLabel = isDiscussionRef(meta.ref) ? "Project discussion" : KIND_LABEL[meta.kind];
+		return { kindLabel, members };
 	}
 
 	const stage = detail.channels.stages.find((s) => s.id === meta.channelId);
@@ -138,6 +141,8 @@ export async function channelHeaderFor(
 		stageAssigned: true,
 		canConfigure,
 		isTask,
+		format: detail.format,
+		isDiscussion: isDiscussionRef(meta.ref),
 	});
 
 	return (
@@ -151,6 +156,7 @@ export async function channelHeaderFor(
 			canConfigure={canConfigure}
 			sessionKind={sessionKind}
 			isTask={isTask}
+			format={detail.format}
 			detailInfo={buildDetailInfo(detail, meta)}
 		/>
 	);

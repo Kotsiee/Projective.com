@@ -14,7 +14,7 @@ import type {
 } from "@projective/types/projects";
 import { findProjectDetail } from "./detail-fixtures.ts";
 import { mockAvatar } from "../../mocks/assets.ts";
-import { findStageChannel, NO_REMOVAL_IMPACT } from "@projective/types/projects";
+import { expandChannelRef, findStageChannel, NO_REMOVAL_IMPACT } from "@projective/types/projects";
 
 /**
  * projects members fixtures — the fat {@link ProjectBackendService}'s in-memory answer for the Members
@@ -495,6 +495,8 @@ function channelIdentity(
 } {
 	const none = { name: null, kind: null, isStage: false, stageId: null };
 	if (!channelId) return none;
+	// `discussion` is the room it stands for — a Task's stage, or the project-wide room.
+	channelId = expandChannelRef(detail, channelId);
 	const { general, stages, teams, dms } = detail.channels;
 	for (const c of general) {
 		if (c.id === channelId) return { name: c.name, kind: "general", isStage: false, stageId: null };

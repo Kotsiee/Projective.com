@@ -234,6 +234,8 @@
 	background: transparent;
 	border: none;
 	border-radius: var(--radius-full);
+	/* The control may be a link (`href`), which must not pick up the user agent's underline. */
+	text-decoration: none;
 	cursor: pointer;
 	transition:
 		color var(--dur-fast) var(--ease-standard),

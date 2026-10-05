@@ -2,18 +2,17 @@ import type { JSX } from "preact";
 import { LaneSections } from "@projective/ui/navigation";
 import { TaskOverviewSection } from "./TaskOverviewSection.tsx";
 import { TaskListsSection } from "./TaskListsSection.tsx";
-import { TaskMembersSection } from "./TaskMembersSection.tsx";
-import { taskCollaborators, type TaskLane } from "../../core/task-lane.ts";
+import type { TaskLane } from "../../core/task-lane.ts";
 import type { ProjectDetail } from "../../types/projects-types.ts";
 
 /**
  * TaskLanePanel — the Project Details lane's body for a Task, in place of the channel tree.
  *
- * A Task has one conversation (reached through the Discussion view link), so a navigator over
- * conversations would have nothing to switch between. The lane spends that space on what a Task's
- * reader actually checks: its status, due date and owner; its task lists; and who is working on it.
- * Each is its own collapsible {@link LaneSection}, sharing the open-state map the channel tree used, so
- * a reader's collapsed sections survive a navigation exactly as its groups did.
+ * A Task has one conversation (the lane's top-tier Discussion link) and one roster (its Members link),
+ * so a navigator over either would have nothing to switch between. The body spends that space on what a
+ * Task's reader actually checks: its status, due date, owner and assignee; and its task lists. Each is
+ * its own collapsible {@link LaneSection}, sharing the open-state map the channel tree uses, so a
+ * reader's collapsed sections survive a navigation exactly as its groups do.
  *
  * Presentation only: the island owns the open-state, and the {@link TaskLane} is the server's
  * projection of the board (or its empty form while an unsaved form says Task).
@@ -45,12 +44,6 @@ export function TaskLanePanel(
 				path={path}
 				open={open("task-lists")}
 				onToggle={() => onToggleGroup("task-lists")}
-			/>
-			<TaskMembersSection
-				people={taskCollaborators(detail.members, lane.ticket?.assignee ?? null)}
-				membersHref={`/projects/${detail.slug}/members`}
-				open={open("task-members")}
-				onToggle={() => onToggleGroup("task-members")}
 			/>
 		</LaneSections>
 	);

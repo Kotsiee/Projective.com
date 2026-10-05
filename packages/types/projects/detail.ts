@@ -7,7 +7,7 @@ import {
 	ProjectStatus,
 	ProjectViewerRole,
 } from "./summary.ts";
-import { ProjectStructure } from "./setup.ts";
+import { isTaskProject, ProjectStructure } from "./setup.ts";
 
 /**
  * projects.detail — the Zod SSOT for the RICH single-engagement projection the Project Details
@@ -153,13 +153,21 @@ export type DmChannel = z.infer<typeof DmChannelSchema>;
  * Matches the SLUG and nothing else. A stage's id and its channel's id are internal keys that never
  * appear in a path, and accepting them here would let an address resolve in the stub — where the
  * fixtures make those strings coincide — and 404 in production, where they do not.
+ *
+ * The one other address it answers is {@link DISCUSSION_REF}, and only for a Task (`opts.task`): a
+ * Task's discussion IS its one stage's room, so `/projects/{slug}/discussion/tasks` names that stage
+ * exactly as its `stg-…` address does. On any other engagement the discussion is the project-wide
+ * room, which is not a stage, so the word resolves to nothing here.
  */
 export function findStageChannel(
 	stages: readonly StageChannel[],
 	ref: string | null | undefined,
+	opts: { task?: boolean } = {},
 ): StageChannel | null {
 	if (!ref) return null;
-	return stages.find((s) => s.slug === ref) ?? null;
+	const bySlug = stages.find((s) => s.slug === ref);
+	if (bySlug) return bySlug;
+	return opts.task && isDiscussionRef(ref) ? rootStageOf(stages, (s) => s.order) : null;
 }
 
 /** The four communication-tree groups, pre-partitioned server-side. */
@@ -251,4 +259,120 @@ export const ProjectDetailSchema = z.object({
 	channels: ProjectChannelsSchema,
 });
 export type ProjectDetail = z.infer<typeof ProjectDetailSchema>;
+// #endregion
+
+// #region Discussion — the engagement's one primary conversation
+/**
+ * The reserved channel segment for an engagement's discussion: `/projects/{slug}/discussion`.
+ *
+ * The polymorphic channel segment's FIFTH self-describing form, beside a `stg-…` stage address, a
+ * room uuid, a fixture channel id and a DM's `dm-…` chat id. It is a word rather than an id because
+ * the room it names differs by archetype and must not leak into the URL:
+ *
+ *   - a **Task** (`isTaskProject`) talks in its one stage's shared room — the room `create_project`
+ *     provisions for the implicit stage, and the one carrying the Tasks and Submissions views;
+ *   - every **staged** engagement (one-off, pipeline, session) talks in its project-wide room
+ *     (`comms.project_channels.visibility = 'project_all'`, no `stage_id`).
+ *
+ * A Task converted into a pipeline in settings changes which room the word opens and keeps its
+ * address, which is exactly why the address is not either room's own key. It cannot collide with a
+ * real channel: a stage segment is a `stg-…` slug, a room id is a uuid, and DMs are `dm-…`.
+ */
+export const DISCUSSION_REF = "discussion";
+
+/** Whether a routed channel segment is {@link DISCUSSION_REF}. */
+export function isDiscussionRef(ref: string | null | undefined): boolean {
+	return ref === DISCUSSION_REF;
+}
+
+/**
+ * An engagement's ROOT stage — the lowest `order`, ties left to array position.
+ *
+ * Generic over the row shape because the live reads hold `sort_order` rows and the projection holds
+ * `order`, and the rule has to be one rule for both: a legacy Task that somehow holds two stages is
+ * then answered deterministically everywhere rather than by whichever array each read happened to get.
+ */
+export function rootStageOf<T>(stages: readonly T[], orderOf: (stage: T) => number): T | null {
+	let root: T | null = null;
+	for (const stage of stages) {
+		if (root === null || orderOf(stage) < orderOf(root)) root = stage;
+	}
+	return root;
+}
+
+/** The room an engagement's discussion lives in — a stage's (a Task) or the project-wide one. */
+export type DiscussionRoom =
+	| { kind: "stage"; stage: StageChannel }
+	| { kind: "general"; channel: ProjectChannel };
+
+/**
+ * The room {@link DISCUSSION_REF} opens, or `null` when the engagement has none a link can reach.
+ *
+ * A Task takes its root stage's room, else a general room for an engagement whose stage room was
+ * never provisioned (Decision #121). Everything else takes its project-wide room — the FIRST general
+ * channel, which on the live path is the only one, because `comms.get_or_create_project_channel`
+ * dedupes `project_all` per project. A staged engagement never falls back to a stage: its discussion
+ * is the whole engagement's conversation, and quietly opening stage one instead would put the whole
+ * team's chatter in a room some of them cannot see.
+ *
+ * `null` is a real answer — a lane offering a Discussion link that led nowhere would be a control that
+ * renders and reaches nothing (root CLAUDE.md §3 gate 11).
+ */
+export function discussionRoomOf(
+	channels: Pick<ProjectChannels, "general" | "stages">,
+	task: boolean,
+): DiscussionRoom | null {
+	if (task) {
+		const stage = rootStageOf(channels.stages, (s) => s.order);
+		if (stage) return { kind: "stage", stage };
+	}
+	const general = channels.general[0];
+	return general ? { kind: "general", channel: general } : null;
+}
+
+/**
+ * {@link discussionRoomOf} for a whole engagement — the Task test folded in, so a caller holding a
+ * {@link ProjectDetail} cannot pass the wrong archetype.
+ */
+export function discussionOf(
+	detail: Pick<ProjectDetail, "format" | "structure" | "channels">,
+): DiscussionRoom | null {
+	return discussionRoomOf(detail.channels, isTaskProject(detail.format, detail.structure));
+}
+
+/**
+ * The room-specific segment a channel ref stands for: {@link DISCUSSION_REF} expanded to its room's
+ * own address (a Task's stage slug, else the project-wide room's id), and every other ref unchanged.
+ *
+ * For the reads that match a segment against a projection's own keys — the fixture corpus, chiefly —
+ * so `discussion` reaches the same rows its room's own address does. A discussion with no room comes
+ * back unchanged and therefore matches nothing, which is the miss it is.
+ */
+export function expandChannelRef(
+	detail: Pick<ProjectDetail, "format" | "structure" | "channels">,
+	ref: string,
+): string {
+	if (!isDiscussionRef(ref)) return ref;
+	const room = discussionOf(detail);
+	if (!room) return ref;
+	return room.kind === "stage" ? room.stage.slug : room.channel.id;
+}
+
+/**
+ * Whether a segment OTHER than {@link DISCUSSION_REF} addresses the discussion room — the old URL of
+ * a room that now has a canonical one. A Task's stage is reachable by its `stg-…` slug and by its
+ * room's id; a staged engagement's project-wide room by its own id. The caller redirects such an
+ * address to `/discussion`, so a link minted before the word existed lands where the lane points.
+ */
+export function addressesDiscussion(
+	detail: Pick<ProjectDetail, "format" | "structure" | "channels">,
+	ref: string,
+): boolean {
+	if (isDiscussionRef(ref)) return false;
+	const room = discussionOf(detail);
+	if (!room) return false;
+	return room.kind === "stage"
+		? ref === room.stage.slug || ref === room.stage.id
+		: ref === room.channel.id;
+}
 // #endregion

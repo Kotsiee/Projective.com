@@ -13,7 +13,17 @@
  */
 import { assert, assertEquals } from "@std/assert";
 import { isSlug, mintSlug, slugPattern } from "@projective/types/slugs";
-import { findStageChannel, type StageChannel } from "./detail.ts";
+import {
+	addressesDiscussion,
+	DISCUSSION_REF,
+	discussionOf,
+	expandChannelRef,
+	findStageChannel,
+	type ProjectChannel,
+	type ProjectDetail,
+	rootStageOf,
+	type StageChannel,
+} from "./detail.ts";
 
 // #region Fixtures
 function stage(slug: string, name: string, order: number): StageChannel {
@@ -130,5 +140,108 @@ Deno.test("a resolved stage carries all three keys, each for its own job", () =>
 	assertEquals(found.slug, slug);
 	assertEquals(found.id, "chan-2");
 	assertEquals(found.stageId, "stagerow-2");
+});
+// #endregion
+
+// #region Discussion
+/** A project-wide room, as the live read projects a `project_all` channel. */
+function general(id: string): ProjectChannel {
+	return { id, chatId: `chat-${id}`, name: "General", kind: "general", unread: false };
+}
+
+/** The three fields the discussion rule reads, for a Task or for a staged engagement. */
+function engagement(
+	task: boolean,
+	channels: { general?: ProjectChannel[]; stages?: StageChannel[] },
+): Pick<ProjectDetail, "format" | "structure" | "channels"> {
+	return {
+		format: task ? "one_off" : "pipeline",
+		structure: task ? "single_task" : "standard",
+		channels: {
+			general: channels.general ?? [],
+			stages: channels.stages ?? [],
+			teams: [],
+			dms: [],
+		},
+	};
+}
+
+Deno.test("a Task's discussion is its root stage's room, by order rather than array position", () => {
+	// Two stages on a Task is a legacy anomaly the database now refuses, so the answer must not depend
+	// on which order a read happened to return them in.
+	const root = mintSlug("stage");
+	const later = mintSlug("stage");
+	const d = engagement(true, {
+		general: [general("room-general")],
+		stages: [stage(later, "Later", 3), stage(root, "Delivery", 0)],
+	});
+	const room = discussionOf(d);
+	assert(room?.kind === "stage");
+	assertEquals(room.stage.slug, root);
+	assertEquals(expandChannelRef(d, DISCUSSION_REF), root);
+	assertEquals(findStageChannel(d.channels.stages, DISCUSSION_REF, { task: true })?.slug, root);
+});
+
+Deno.test("a staged engagement's discussion is its project-wide room and never a stage", () => {
+	const d = engagement(false, {
+		general: [general("room-general")],
+		stages: [stage(mintSlug("stage"), "Discovery", 0)],
+	});
+	const room = discussionOf(d);
+	assert(room?.kind === "general");
+	assertEquals(room.channel.id, "room-general");
+	assertEquals(expandChannelRef(d, DISCUSSION_REF), "room-general");
+	// The word names no stage here, so the stage-scoped views find nothing rather than stage one.
+	assertEquals(findStageChannel(d.channels.stages, DISCUSSION_REF), null);
+	assertEquals(findStageChannel(d.channels.stages, DISCUSSION_REF, { task: false }), null);
+});
+
+Deno.test("a staged engagement with no project-wide room has no discussion to link to", () => {
+	const d = engagement(false, { stages: [stage(mintSlug("stage"), "Discovery", 0)] });
+	assertEquals(discussionOf(d), null);
+	// Unexpanded, so every read matching on it misses — the same answer as any unknown segment.
+	assertEquals(expandChannelRef(d, DISCUSSION_REF), DISCUSSION_REF);
+});
+
+Deno.test("a Task whose stage room was never provisioned falls back to a general room", () => {
+	const d = engagement(true, { general: [general("room-general")] });
+	assertEquals(discussionOf(d)?.kind, "general");
+});
+
+Deno.test("every other segment passes through expansion unchanged", () => {
+	const slug = mintSlug("stage");
+	const d = engagement(false, {
+		general: [general("room-general")],
+		stages: [stage(slug, "A", 0)],
+	});
+	for (const seg of [slug, "room-general", "dm-ivy", "board"]) {
+		assertEquals(expandChannelRef(d, seg), seg);
+	}
+});
+
+Deno.test("only the discussion room's OLD addresses are redirected to the word", () => {
+	const root = mintSlug("stage");
+	const task = engagement(true, {
+		general: [general("room-general")],
+		stages: [stage(root, "D", 0)],
+	});
+	assert(addressesDiscussion(task, root), "a Task's stage slug is its discussion's old address");
+	assert(addressesDiscussion(task, "chan-0"), "so is the room id a notification may carry");
+	// A Task's seeded general room is a different room — reachable, but not its discussion.
+	assert(!addressesDiscussion(task, "room-general"));
+	assert(!addressesDiscussion(task, DISCUSSION_REF), "the word itself never redirects");
+
+	const other = mintSlug("stage");
+	const staged = engagement(false, {
+		general: [general("room-general")],
+		stages: [stage(other, "Discovery", 0)],
+	});
+	assert(addressesDiscussion(staged, "room-general"));
+	assert(!addressesDiscussion(staged, other), "a staged engagement's stage keeps its own address");
+});
+
+Deno.test("the root stage is the lowest order, and an empty list has none", () => {
+	assertEquals(rootStageOf([{ o: 2 }, { o: 1 }, { o: 5 }], (s) => s.o), { o: 1 });
+	assertEquals(rootStageOf([] as { o: number }[], (s) => s.o), null);
 });
 // #endregion

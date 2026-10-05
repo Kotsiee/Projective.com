@@ -8,14 +8,13 @@
 
 /* #region Preview / Edit header band (client, in `ui-middle-nav__header`) */
 /*
- * Three columns, and the outer two are `minmax(0, 1fr)` so they resolve to the SAME width whatever
- * either side happens to hold. That is the whole reason this is a grid and not a flex row: under
- * `space-between` the bar sat wherever the title's width left it — measured on a 930px band, a
- * two-character name put its centre 82px left of the band's, a 21-character one 14px left, and a long
- * one pushed it 193px RIGHT while crushing its track from 352px to 53px, because a flex row lets a
- * growing sibling take space from a shrinkable one. Equal `fr` tracks cannot do that: the leftover is
- * split in two before either side sees it, so the middle track is centred by construction and the
- * sides are what remains, rather than the middle being what the sides leave over.
+ * Three columns — identity · tabs · progress — and the outer two are `minmax(0, 1fr)` so they resolve
+ * to the SAME width whatever either side happens to hold. That is the whole reason this is a grid and
+ * not a flex row: under `space-between` the centre item sat wherever the title's width left it —
+ * measured on a 930px band, a two-character name put its centre 82px left of the band's and a long one
+ * pushed it 193px RIGHT, because a flex row lets a growing sibling take space from a shrinkable one.
+ * Equal `fr` tracks cannot do that: the leftover is split in two before either side sees it, so the
+ * middle track is centred by construction and the sides are what remains.
  *
  * `minmax(0, 1fr)` rather than a bare `1fr`, because a `1fr` track's automatic minimum is `auto` — one
  * long unbreakable title would set a floor the track then refuses to go below, which is the same bug
@@ -62,18 +61,30 @@
     white-space: nowrap;
 }
 
-/* Underlined view-mode tabs (§B.4 — no pills; the 2px underline lands on the band's bottom hairline). */
+/*
+ * Underlined view-mode tabs — the same treatment as the channel header's `.chan-header__tabs` /
+ * `.chan-tab` (§B.4: no pills; the 2px underline lands on the band's bottom hairline), so the two
+ * middle-nav headers read as one family. The one deliberate difference is the leading glyph: the
+ * channel header keeps its glyph for the compact mobile row, while these tabs show it at every width.
+ */
 .proj-pvhead__tabs {
-    display: inline-flex;
+    display: flex;
     align-items: stretch;
+    gap: var(--space-4);
     /*
-     * Flush to the trailing edge of its own track, and the full height of the band so the 2px active
-     * underline still lands on the bottom hairline — the grid centres its items, and a tab shorter
-     * than the band gives `inset-block-end: -1px` nothing to sit against.
+     * Centred in the grid's middle track, and the full height of the band so the 2px underline still
+     * lands on the bottom hairline — the grid centres its items vertically, and a tab shorter than the
+     * band gives `inset-block-end: -1px` nothing to sit against.
      */
-    justify-self: end;
+    justify-self: center;
     align-self: stretch;
-    flex: none;
+    min-inline-size: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.proj-pvhead__tabs::-webkit-scrollbar {
+    display: none;
 }
 
 .proj-pvtab {
@@ -81,41 +92,51 @@
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    padding-inline: var(--space-3);
-    font-size: 0.85rem;
+    flex: none;
+    padding-inline: 0.15rem;
+    font-size: 0.82rem;
     font-weight: 600;
     color: var(--text-secondary);
     text-decoration: none;
+    background: transparent;
     transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.proj-pvtab::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: -1px;
+    block-size: 2px;
+    border-radius: 2px 2px 0 0;
+    background: var(--primary);
+    transform: scaleX(0);
+    transform-origin: center;
+    transition: transform var(--dur-fast) var(--ease-standard);
 }
 
 .proj-pvtab:hover {
     color: var(--on-surface);
 }
 
-.proj-pvtab:focus-visible {
-    outline: none;
-    border-radius: var(--radius-sm);
+.proj-pvtab:hover::after {
+    background: color-mix(in srgb, var(--on-surface) 32%, transparent);
+    transform: scaleX(1);
 }
 
 .proj-pvtab[data-active="true"] {
-    color: var(--on-surface);
-}
-
-.proj-pvtab::after {
-    content: "";
-    position: absolute;
-    inset-inline: var(--space-2);
-    inset-block-end: -1px;
-    block-size: 2px;
-    background: var(--primary);
-    border-radius: 2px 2px 0 0;
-    transform: scaleX(0);
-    transition: transform var(--dur-medium) var(--spring-standard);
+    color: var(--primary);
 }
 
 .proj-pvtab[data-active="true"]::after {
+    background: var(--primary);
     transform: scaleX(1);
+}
+
+.proj-pvtab:focus-visible {
+    outline: none;
+    border-radius: var(--radius-sm);
+    box-shadow: none;
 }
 
 .proj-pvtab__icon {
@@ -127,9 +148,15 @@
     block-size: 1rem;
 }
 
+/* The locked tab's `Tooltip` anchor is the flex item, so it carries the full-height stretch on to it. */
+.proj-pvhead__tabs > .ui-tooltip__anchor {
+    align-items: stretch;
+}
+
 @media (prefers-reduced-motion: reduce) {
+    .proj-pvtab,
     .proj-pvtab::after {
-        transition: none;
+        transition-duration: 0ms;
     }
 }
 

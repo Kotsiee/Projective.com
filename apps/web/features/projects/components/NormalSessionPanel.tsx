@@ -1,8 +1,6 @@
 import type { JSX } from "preact";
-import { ChannelRow } from "./ChannelTree.tsx";
 import { CalendarPlusIcon, FolderIcon, UploadIcon, VideoIcon } from "./session-glyphs.tsx";
 import { bookingBadge, type NormalSessionData } from "../core/session-model.ts";
-import type { ProjectDetail } from "../types/projects-types.ts";
 
 /**
  * NormalSessionPanel — the Project Details sidebar body for a **Normal (1-1) Session** service
@@ -13,8 +11,10 @@ import type { ProjectDetail } from "../types/projects-types.ts";
  *     (`Confirmed` / `Pending Proposal` / `Rescheduled`), and a quick **Propose Time** CTA;
  *   - a **session counter** (`Session 3 of 10` or `Pay-per-session`);
  *   - quick links to the **Shared files & resources** area (`/projects/{slug}/files`) where the
- *     freelancer shares sheets/docs and the client uploads recorded assignments;
- *   - the minimal **General** channel list (a 1-1 session's only channels).
+ *     freelancer shares sheets/docs and the client uploads recorded assignments.
+ *
+ * Its one conversation is not listed here: it is the engagement's Discussion, the first link of the
+ * lane's top tier (`/projects/{slug}/discussion`).
  *
  * Presentation-only + THIN: every value is the SSR-derived {@link NormalSessionData}; the Propose-Time
  * and day-jump actions route to the existing project calendar (real booking persistence is deferred to
@@ -22,7 +22,6 @@ import type { ProjectDetail } from "../types/projects-types.ts";
  */
 
 export interface NormalSessionPanelProps {
-	detail: ProjectDetail;
 	/** The SSR/seam-derived 1-1 session projection (upcoming slot · counter · counterpart). */
 	data: NormalSessionData;
 	/** Where the Propose-Time CTA navigates (the project calendar). */
@@ -32,9 +31,8 @@ export interface NormalSessionPanelProps {
 }
 
 export function NormalSessionPanel(props: NormalSessionPanelProps): JSX.Element {
-	const { detail, data, calendarHref, filesHref } = props;
+	const { data, calendarHref, filesHref } = props;
 	const badge = bookingBadge(data.upcoming.bookingStatus);
-	const general = detail.channels.general;
 
 	return (
 		<div class="proj-sess proj-sess--normal">
@@ -87,16 +85,6 @@ export function NormalSessionPanel(props: NormalSessionPanelProps): JSX.Element 
 					</span>
 				</a>
 			</section>
-
-			{/* General channels — a 1-1 session's only channels */}
-			{general.length > 0 && (
-				<section class="sess-channels" aria-label="Channels">
-					<span class="sess-channels__label">Channels</span>
-					<div class="sess-channels__list">
-						{general.map((c) => <ChannelRow key={c.id} channel={c} slug={detail.slug} />)}
-					</div>
-				</section>
-			)}
 		</div>
 	);
 }

@@ -19,7 +19,7 @@ import type {
 import { categorizeFile, messageAttachmentFacets } from "@projective/types/files";
 import { findProjectDetail } from "./detail-fixtures.ts";
 import { mockAvatar, mockCover } from "../../mocks/assets.ts";
-import { findStageChannel } from "@projective/types/projects";
+import { expandChannelRef, findStageChannel } from "@projective/types/projects";
 
 /**
  * projects submissions fixtures — the fat {@link ProjectBackendService}'s in-memory answer for the
@@ -609,13 +609,15 @@ function stageForChannel(
 	detail: ProjectDetail,
 	channelId: string,
 ): ProjectDetail["channels"]["stages"][number] | null {
-	return findStageChannel(detail.channels.stages, channelId);
+	// `discussion` on a Task is its stage; on anything else it is the project-wide room, not a stage.
+	return findStageChannel(detail.channels.stages, expandChannelRef(detail, channelId));
 }
 
 function resolveChannel(
 	detail: ProjectDetail,
-	channelId: string,
+	ref: string,
 ): { name: string; kind: FileItem["channelKind"] } | null {
+	const channelId = expandChannelRef(detail, ref);
 	for (const c of detail.channels.general) {
 		if (c.id === channelId) return { name: c.name, kind: "general" };
 	}

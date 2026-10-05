@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { Tooltip } from "@projective/ui/feedback";
 import { LaneSections } from "@projective/ui/navigation";
-import { AccordionGroup, ChannelRow, DmRow } from "./ChannelTree.tsx";
+import { AccordionGroup, DmRow } from "./ChannelTree.tsx";
 import { DmIcon, HashIcon } from "./detail-glyphs.tsx";
 import { ContinuationIcon, LevelsIcon, OverlapIcon, PollIcon } from "./session-glyphs.tsx";
 import { channelHref } from "../core/chat-context.ts";
@@ -13,11 +13,13 @@ import type { ProjectDetail } from "../types/projects-types.ts";
  * GroupSessionPanel — the Project Details sidebar body for a **Group Session** service (courses,
  * seminars, multi-client cohorts — task §3.B). Its channel tree replaces the stage tree with:
  *
- *   - **General** — the main course chat & announcements;
  *   - **Sub-groups** — proficiency levels / breakout tracks (each with a level tag + an overlapping-
  *     schedule indicator when its live slot clashes with another);
  *   - **Private messages** — 1-1 threads with individual cohort members, rendered only once one of
  *     them carries messages sent inside this engagement (the channel tree's rule).
+ *
+ * The cohort's main chat is not a group here: it is the engagement's Discussion, the first link of the
+ * lane's top tier (`/projects/{slug}/discussion`).
  *
  * Above the tree it surfaces the cohort dynamics the group format needs: the viewer's active sub-group
  * tags, a live **reschedule-vote** alert (`Reschedule Proposal Voted: 8/12 Accepted`), and a primary
@@ -31,7 +33,7 @@ export interface GroupSessionPanelProps {
 	detail: ProjectDetail;
 	/** The SSR/seam-derived group projection (sub-groups · reschedule vote · preset-ended flag). */
 	data: GroupSessionData;
-	/** Which accordion groups are expanded (keyed `general|subgroups|dms`). */
+	/** Which accordion groups are expanded (keyed `subgroups|dms`). */
 	openGroups: Record<string, boolean>;
 	onToggleGroup: (key: string) => void;
 	/** Trigger a 1-1 Continuation Request (stub until the live backend). */
@@ -64,7 +66,6 @@ function SubGroupRow({ group, slug }: { group: SubGroup; slug: string }): JSX.El
 export function GroupSessionPanel(
 	{ detail, data, openGroups, onToggleGroup, onContinuation }: GroupSessionPanelProps,
 ): JSX.Element {
-	const { general } = detail.channels;
 	const { dms: projectDms } = conditionalChannelGroups(detail.channels);
 	const joined = data.subGroups.filter((g) => g.joined);
 	const votePct = data.vote.total > 0
@@ -120,19 +121,8 @@ export function GroupSessionPanel(
 				<span class="sess-vote__result">{data.vote.accepted} of {data.vote.total} accepted</span>
 			</section>
 
-			{/* Channel tree — General · Sub-groups · Private messages */}
+			{/* Channel tree — Sub-groups · Private messages */}
 			<LaneSections class="sess-tree">
-				<AccordionGroup
-					id="general"
-					icon={HashIcon}
-					label="General"
-					open={open("general")}
-					onToggle={() => onToggleGroup("general")}
-					hasUnread={general.some((c) => c.unread)}
-				>
-					{general.map((c) => <ChannelRow key={c.id} channel={c} slug={detail.slug} />)}
-				</AccordionGroup>
-
 				<AccordionGroup
 					id="subgroups"
 					icon={LevelsIcon}

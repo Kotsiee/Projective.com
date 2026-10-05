@@ -2,7 +2,13 @@ import type { SupabaseClient } from "supabaseClient";
 import { getUserClient } from "../../core/supabase.ts";
 import { fetchPartyRows, partyRowsWithAvatars } from "../profile/party-cards.ts";
 import type { ReadActor } from "../read-actor.ts";
-import { type ProjectStatus, ProjectStructure } from "@projective/types/projects";
+import {
+	isDiscussionRef,
+	isTaskProject,
+	ProjectFormat,
+	type ProjectStatus,
+	ProjectStructure,
+} from "@projective/types/projects";
 import { isSlug } from "@projective/types/slugs";
 import { clamp, clampOr } from "../../core/text.ts";
 
@@ -122,6 +128,10 @@ export async function resolveProjectRef<T>(
  *
  * A stage whose `stage_all` room has not been provisioned yet resolves to `null`: the stage exists and
  * its address is valid, but there is no room to open, and inventing one is not a read's job.
+ *
+ * The word `discussion` is the fifth form (`DISCUSSION_REF`), resolved by {@link resolveDiscussionRoom}
+ * to the engagement's one primary conversation. It cannot be confused with the other four on shape:
+ * it is neither a `stg-…` slug nor a uuid.
  */
 export async function resolveChannelRef(
 	actor: ReadActor & { accessToken: string },
@@ -129,6 +139,8 @@ export async function resolveChannelRef(
 	ref: string | null | undefined,
 ): Promise<string | null> {
 	if (!ref) return null;
+
+	if (isDiscussionRef(ref)) return await resolveDiscussionRoom(actor, projectId);
 
 	if (isSlug(ref, "stage")) {
 		const stage = await projectsDb(actor)
@@ -138,20 +150,94 @@ export async function resolveChannelRef(
 			.eq("slug", ref)
 			.maybeSingle();
 		if (stage.error || !stage.data) return null;
-		const stageId = (stage.data as unknown as { id: string }).id;
-
-		const room = await commsDb(actor)
-			.from("project_channels")
-			.select("id")
-			.eq("project_id", projectId)
-			.eq("stage_id", stageId)
-			.limit(1)
-			.maybeSingle();
-		if (room.error || !room.data) return null;
-		return (room.data as unknown as { id: string }).id;
+		return await stageRoomOf(actor, projectId, (stage.data as unknown as { id: string }).id);
 	}
 
 	return UUID_RE.test(ref) ? ref : null;
+}
+
+/**
+ * A stage's SHARED room — `stage_all`, never one of its two private rooms.
+ *
+ * `comms.get_stage_channels` inserts all three rooms for a stage, so a bare `stage_id` match could
+ * hand back the talent-side or client-side private room depending on which row the planner returned
+ * first. The visibility filter and its order are `projects`' own read-access rule for the same
+ * question (`stage_all` before a legacy `project_all` stage row), so the room a link opens and the
+ * room a stage's access is computed from are one room.
+ */
+async function stageRoomOf(
+	actor: ReadActor & { accessToken: string },
+	projectId: string,
+	stageId: string,
+): Promise<string | null> {
+	const room = await commsDb(actor)
+		.from("project_channels")
+		.select("id")
+		.eq("project_id", projectId)
+		.eq("stage_id", stageId)
+		.in("visibility", ["stage_all", "project_all"])
+		.order("visibility", { ascending: false })
+		.limit(1)
+		.maybeSingle();
+	if (room.error || !room.data) return null;
+	return (room.data as unknown as { id: string }).id;
+}
+
+/**
+ * The room `/projects/{slug}/discussion` opens — the live twin of `discussionRoomOf`, and the SAME
+ * rule, because a lane that links one room and a route that opens another would be worse than no
+ * link at all.
+ *
+ *   - A **Task** (`isTaskProject` over the row's two stored axes) talks in its root stage's shared
+ *     room — lowest `sort_order`, the stage `create_project` mints for it.
+ *   - Everything else, and a Task whose stage room was never provisioned, talks in the project-wide
+ *     room: no `stage_id`, `visibility = 'project_all'`, the oldest if a legacy project holds two
+ *     (`comms.get_or_create_project_channel` dedupes, so a current one cannot).
+ *
+ * `null` when the engagement has neither — the read then answers "no such channel", exactly as an
+ * unprovisioned stage room does. An unrecognised `format` or `structure_variation` reads as NOT a
+ * Task, which keeps the project-wide room rather than narrowing the conversation to one stage.
+ */
+async function resolveDiscussionRoom(
+	actor: ReadActor & { accessToken: string },
+	projectId: string,
+): Promise<string | null> {
+	const project = await projectsDb(actor)
+		.from("projects")
+		.select("format, structure_variation")
+		.eq("id", projectId)
+		.maybeSingle();
+	if (project.error || !project.data) return null;
+	const row = project.data as unknown as { format: string; structure_variation: string | null };
+	const format = ProjectFormat.safeParse(row.format);
+	const task = format.success &&
+		isTaskProject(format.data, toProjectStructure(row.structure_variation));
+
+	if (task) {
+		const root = await projectsDb(actor)
+			.from("project_stages")
+			.select("id")
+			.eq("project_id", projectId)
+			.order("sort_order", { ascending: true })
+			.limit(1)
+			.maybeSingle();
+		if (!root.error && root.data) {
+			const room = await stageRoomOf(actor, projectId, (root.data as unknown as { id: string }).id);
+			if (room) return room;
+		}
+	}
+
+	const general = await commsDb(actor)
+		.from("project_channels")
+		.select("id")
+		.eq("project_id", projectId)
+		.is("stage_id", null)
+		.eq("visibility", "project_all")
+		.order("created_at", { ascending: true })
+		.limit(1)
+		.maybeSingle();
+	if (general.error || !general.data) return null;
+	return (general.data as unknown as { id: string }).id;
 }
 
 /** The string bounds, re-exported from their one home so every projects importer keeps its path. */

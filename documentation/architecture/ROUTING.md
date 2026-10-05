@@ -206,15 +206,31 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   | Opened from…               | Channel kind                          | URL                                     |
   | :------------------------- | :------------------------------------ | :-------------------------------------- |
   | **the global `/messages`** | private / team message                | `/messages/[chat-id]`                   |
+  | **within a project**       | the engagement's **discussion**       | `/projects/[project-slug]/discussion`   |
   | **within a project**       | a **stage**                           | `/projects/[project-slug]/[stage-slug]` |
-  | **within a project**       | general / team / DM                   | `/projects/[project-slug]/[channel-id]` |
+  | **within a project**       | team / DM                             | `/projects/[project-slug]/[channel-id]` |
 
-  Every row of a Project Details channel tree (General, Stages, and — only when the viewer has
-  something in them — Teams and Private Messages) routes into the **project namespace** via
+  Every row of a Project Details channel tree (Stages, and — only when the viewer has something in
+  them — Teams and Private Messages) routes into the **project namespace** via
   `channelHref(projectSlug, ref)`
   (`apps/web/features/projects/core/chat-context.ts`); the destination page loads the thread by its
   shared `chatId`, so a project DM and the same person's global DM (`/messages/[chat-id]`) remain
   one continuous record.
+
+  **The engagement's discussion has a fixed address on every archetype** (Decision #133):
+  `/projects/[project-slug]/discussion` — the lane's first top-tier link, built by `discussionHref`.
+  The word `discussion` (`DISCUSSION_REF`, `@projective/types/projects`) is the polymorphic
+  segment's fifth self-describing form; WHICH room it opens is the server's question, answered by one
+  rule (`discussionOf` over the projection, `resolveChannelRef`'s discussion arm live, `expandChannelRef`
+  in the fixtures): a **Task** binds its root stage's shared `stage_all` room; every other archetype
+  binds its project-wide room (`comms.project_channels.visibility = 'project_all'`, no `stage_id`).
+  Every read and write beneath it — the feed, the composer, the room's tabs (`/discussion/files`,
+  `/discussion/tasks`, …, served by the `[channelId]` routes) — carries the word, not the room's key.
+  `discussion.tsx` serves the bare address and answers `303` to the engagement when it has no
+  discussion room. The room's OLD addresses (a Task's `stg-…` slug or room id, a staged engagement's
+  project-wide room id) answer `303` to `/discussion` with their tab path and query from
+  `[channelId]/_middleware.ts` (`legacyDiscussionRedirect`, `addressesDiscussion`) — `303`, because a
+  Task converted into a pipeline makes its stage an ordinary stage again.
 
   **The second segment is polymorphic, and a stage is the exception that earns it.** A stage is
   addressed by its own immutable `stg-…` slug (`projects.project_stages.slug`, Decision #88), never by
@@ -232,15 +248,22 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   `ChannelHeader` (`apps/web/features/projects/islands/ChannelHeader.island.tsx`, resolved per route
   by `channelHeaderFor` and mounted by the `(dashboard)` layout into the **middle-nav frame's header
   band** — `MiddleNav`'s `header` slot, flush against the lane) hosts contextual view tabs that each
-  map to a segment — `chat` (also the index), `files`, `members`, and the format-gated `submissions`
-  (pipeline · one-off), `calendar` (session), `tasks` (pipeline) and `timeline` (pipeline · one-off;
-  the same tickets as `tasks` on a time axis, and gated by the same rule). **A Task has neither
+  map to a segment — `chat` (also the index), `files`, `submissions`, `tasks`, `timeline`, `members`
+  and `details`. WHICH of them a room shows is one matrix, `CHANNEL_TAB_MATRIX` in
+  `core/channel-view.ts`, keyed by project type and room (Decision #134): a **Task's** and a
+  **session's** Discussion show Chat alone; a **one-off's** and a **pipeline's** Discussion show Chat ·
+  Files · Members · Details (Details opens the engagement's own Details page — `discussion/details`
+  answers `303` to `/projects/[project-slug]`); a **one-off** stage shows Chat · Files · Submissions ·
+  Members · Details; a **pipeline** stage adds Tasks · Timeline after Submissions. Team rooms and DMs
+  show Chat · Files · Members. On a stage, Submissions/Tasks/Timeline need a reviewer or an assigned
+  freelancer and Details needs the owner. **A Task has neither
   `timeline` nor `calendar`** (`isTaskProject` — one stage, one ticket, nothing to draw on a time
   axis): both tabs are absent, and all four routes answer `303` from `define.handlers` through the
   one guard `taskAbsentViewRedirect` (`features/projects/core/task-view-guard.ts`) — to the project
   for a project-level view, to the room for a channel-level one — so a tab and the route behind it
-  cannot disagree. A Task's single conversation is its stage's room, reached from the lane's
-  **Discussion** view link rather than from a channel tree (root `CLAUDE.md` §8 Decision #121).
+  cannot disagree. A Task's single conversation is its stage's room, reached at
+  `/projects/[project-slug]/discussion` from the lane's top-tier **Discussion** link rather than
+  from a channel tree (Decisions #121 / #133).
   Active-tab state is driven
   purely by the URL segment (`activeTabOf` in `core/channel-view.ts`), so deep-links and refreshes
   land on the right view. The former `/messages/[chatId]?project=…&scope=…` in-project addressing

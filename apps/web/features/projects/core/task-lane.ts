@@ -2,13 +2,12 @@ import {
 	type BoardCard,
 	type BoardPage,
 	type ProjectDetail,
-	type ProjectMember,
 	type ProjectParty,
 	TICKET_STATUS_WORD,
 	type TicketStatus,
 	type TicketTask,
 } from "../types/projects-types.ts";
-import { channelHref } from "./chat-context.ts";
+import { discussionHref } from "./chat-context.ts";
 import { formatDueDate } from "./ticket-model.ts";
 
 /**
@@ -143,7 +142,9 @@ export function buildTaskLane(detail: ProjectDetail, board: BoardPage | null): T
 		dueAt,
 		dueLabel,
 		lists,
-		boardHref: seated && stageSlug ? `${channelHref(detail.slug, stageSlug)}/tasks` : null,
+		// The Task's stage IS its discussion, so the board hangs off the discussion's address — the one
+		// the lane's Discussion link and the room's own tabs carry — rather than the stage's `stg-…` one.
+		boardHref: seated && stageSlug ? `${discussionHref(detail.slug)}/tasks` : null,
 	};
 }
 // #endregion
@@ -167,50 +168,6 @@ export function visibleTaskLists(
 /** A list's items under the quick filter: every item, or only the ones not done yet. */
 export function filterTaskItems(items: readonly TicketTask[], openOnly: boolean): TicketTask[] {
 	return openOnly ? items.filter((item) => !item.done) : [...items];
-}
-
-/** One collaborator as the lane's Members section lists them. */
-export interface TaskCollaborator {
-	party: ProjectParty;
-	/** The seat, in words — "Owner", "Freelancer", … or "Assigned" for the person holding the task. */
-	role: string;
-}
-
-const ROLE_WORD: Record<ProjectMember["role"], string> = {
-	owner: "Owner",
-	admin: "Admin",
-	freelancer: "Freelancer",
-	client: "Client",
-	member: "Member",
-};
-
-/** Whether two parties are the same person — by handle when both have one, else by name. */
-function samePerson(a: ProjectParty, b: ProjectParty): boolean {
-	if (a.handle && b.handle) return a.handle === b.handle;
-	return a.name === b.name;
-}
-
-/**
- * The Task's collaborators: the engagement's roster, with the person holding the ticket marked as
- * such — and added when the roster does not already name them.
- *
- * The addition is not a guess. On the live path the participant read is frequently empty for anyone
- * but the owner (its SELECT policy is owner-or-public), while the ticket's assignee is a real person
- * the board read names; a Members section that left out the one freelancer doing the Task would be
- * wrong about the only collaborator that matters.
- */
-export function taskCollaborators(
-	members: readonly ProjectMember[],
-	assignee: ProjectParty | null,
-): TaskCollaborator[] {
-	const out: TaskCollaborator[] = members.map((member) => ({
-		party: member.party,
-		role: assignee && samePerson(member.party, assignee) ? "Assigned" : ROLE_WORD[member.role],
-	}));
-	if (assignee && !members.some((member) => samePerson(member.party, assignee))) {
-		out.push({ party: assignee, role: "Assigned" });
-	}
-	return out;
 }
 
 /** Done and total across every list — the section's one-line summary. */

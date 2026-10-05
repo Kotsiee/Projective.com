@@ -243,31 +243,54 @@ export interface LaneIconButtonProps {
 	ariaControls?: string;
 	class?: string;
 	onClick?: () => void;
+	/**
+	 * Render a LINK instead of a button — for an icon-only control that navigates (a lane footer's
+	 * "project details"). A destination is a link, not a button that assigns `location`: it opens in a
+	 * new tab, shows its URL, and is announced as what it is. {@link active} then also marks it
+	 * `aria-current="page"`; the toggle/popup props are ignored, since a link is neither.
+	 */
+	href?: string;
 }
 
 /**
  * LaneIconButton — the lane's circular icon-only control (search filters, compose, settings, kebab).
- * Always carries an `aria-label` and, unless suppressed, a portal {@link Tooltip} (§B.6).
+ * Always carries an `aria-label` and, unless suppressed, a portal {@link Tooltip} (§B.6). With `href`
+ * it is the same control as a link.
  */
 export function LaneIconButton(props: LaneIconButtonProps): JSX.Element {
-	const button = (
-		<button
-			type="button"
-			ref={props.triggerRef as RefObject<HTMLButtonElement> | undefined}
-			class={cx("ui-lane-iconbtn", props.accent && "ui-lane-iconbtn--accent", props.class)}
-			data-on={props.active ? "true" : undefined}
-			data-open={props.ariaExpanded ? "true" : undefined}
-			aria-label={props.label}
-			aria-pressed={props.pressed}
-			aria-haspopup={props.ariaHasPopup}
-			aria-expanded={props.ariaExpanded}
-			aria-controls={props.ariaControls}
-			onClick={props.onClick}
-		>
-			{props.icon}
-			{props.dot && <span class="ui-lane-iconbtn__dot" aria-hidden="true" />}
-		</button>
-	);
+	const button = props.href !== undefined
+		? (
+			<a
+				href={props.href}
+				ref={props.triggerRef as RefObject<HTMLAnchorElement> | undefined}
+				class={cx("ui-lane-iconbtn", props.accent && "ui-lane-iconbtn--accent", props.class)}
+				data-on={props.active ? "true" : undefined}
+				aria-label={props.label}
+				aria-current={props.active ? "page" : undefined}
+				onClick={props.onClick}
+			>
+				{props.icon}
+				{props.dot && <span class="ui-lane-iconbtn__dot" aria-hidden="true" />}
+			</a>
+		)
+		: (
+			<button
+				type="button"
+				ref={props.triggerRef as RefObject<HTMLButtonElement> | undefined}
+				class={cx("ui-lane-iconbtn", props.accent && "ui-lane-iconbtn--accent", props.class)}
+				data-on={props.active ? "true" : undefined}
+				data-open={props.ariaExpanded ? "true" : undefined}
+				aria-label={props.label}
+				aria-pressed={props.pressed}
+				aria-haspopup={props.ariaHasPopup}
+				aria-expanded={props.ariaExpanded}
+				aria-controls={props.ariaControls}
+				onClick={props.onClick}
+			>
+				{props.icon}
+				{props.dot && <span class="ui-lane-iconbtn__dot" aria-hidden="true" />}
+			</button>
+		);
 
 	if (props.tooltip === null) return button;
 	return (

@@ -1,6 +1,6 @@
 /*
  * Project setup surface (`.psu-*`) — the owner's Details form on `/projects/[projectId]`, its
- * progress bar in the middle-nav header band, and its action rig in the footer band.
+ * progress ring in the middle-nav header band, and its action rig in the footer band.
  *
  * Pure CSS + strict BEM, token-only. Separation is spacing first, then a single hairline (§B.4): the
  * form is a stack of sections with NO card around any of them, because a section of prose and inputs
@@ -10,92 +10,157 @@
  *
  * The identity + tab half of the header band is `project-showcase.css`'s `.proj-pvhead` / `.proj-pvtab`
  * block, reused verbatim so the owner's two chrome states cannot drift; this file adds only the
- * progress bar that sits between them and the locked variant of a tab.
+ * progress ring in the band's trailing track, the locked variant of a tab, and the jump highlight.
  */
 
-/* #region Header band — the setup progress bar */
+/* #region Header band — the setup progress ring */
 /*
- * The bar sits in the header grid's middle track, which is `auto` — so the track is exactly as wide as
- * this element and the two `minmax(0, 1fr)` tracks either side split the rest EQUALLY. That is what
- * keeps the bar centred no matter how long the project's name grows; the width below decides how much
- * of the band it takes, never where it sits.
+ * The ring sits in the header grid's trailing `minmax(0, 1fr)` track, flush to its end. It is compact
+ * on purpose — a glyph-sized ring and the figure beside it — so the band's centred tabs keep their
+ * room at every width and the two never bid for the same pixels.
  *
- * The formula reserves the tabs' room BEFORE the bar claims any, so the two cannot bid for the same
- * pixels. Measured on this band, the tabs need 189px with their labels and 80px without — 189 rather
- * than 183 because the locked Preview is a `<button>` inside a `Tooltip` anchor and runs 6px wider
- * than the anchor it replaces, which is the state a narrow band is most likely to be in. Each reserve
- * carries ~6% and ~10% over its measurement, so a font-metric difference cannot turn a tight fit into
- * an overlap.
- *
- * Once the band is narrow enough that the subtraction bites, each side track settles at exactly
- * `--psu-side-reserve` and the bar absorbs every further pixel of narrowing itself — the right trade,
- * because a clipped tab is a control the reader cannot reach while a shorter track is still a true
- * statement.
- *
- * `100cqi` is the header band's content box, not the window (see `.proj-pvhead`). The plain `22rem` is
- * declared FIRST as the fallback for an engine that does not know container query units: an unknown
- * unit makes the `clamp()` invalid at parse time, so the declaration is dropped and this one survives.
- * Both `var()`s carry their own fallback for the other failure mode — a missing custom property makes
- * a math expression invalid at COMPUTED-VALUE time, which resolves to `auto` rather than falling back
- * to the previous declaration, and an `auto` here collapses the bar to the width of its percentage.
+ * The whole cluster is ONE button: hovering or focusing it opens the list of what is left, pressing
+ * it jumps to the first outstanding field. It carries no border at rest, because nothing on a header
+ * band is boxed until it is touched (§B.4); the hover tint is what says it can be pressed.
  */
-.psu-bar {
+.psu-progress {
 	display: flex;
 	align-items: center;
-	gap: var(--space-2);
-	justify-self: center;
+	justify-self: end;
 	min-inline-size: 0;
-
-	/* Room each side track keeps for the tabs, and the narrowest useful bar. Both step at the collapse. */
-	--psu-side-reserve: 12.5rem;
-	--psu-bar-min: 8rem;
-
-	inline-size: 22rem;
-	inline-size: clamp(
-		var(--psu-bar-min, 8rem),
-		100cqi - 2 * var(--psu-side-reserve, 12.5rem) - 2 * var(--space-4, 1rem),
-		22rem
-	);
 }
 
-.psu-bar__track {
-	position: relative;
-	flex: 1 1 auto;
-	/*
-	* A progressbar drawn at zero width is a false statement rather than a missing one, so the track
-	* never gives up its last pixels to the percentage beside it. The bar's own floor is 6rem and the
-	* figure and gap take 38px of it, so this is the invariant the width formula is written to respect
-	* rather than a constraint that ever binds.
-	*/
-	min-inline-size: 3rem;
-	block-size: 0.375rem;
+.psu-progress__button {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: 2rem;
+	padding-inline: var(--space-2);
+	background: transparent;
+	border: none;
 	border-radius: var(--radius-full);
-	background: var(--surface-3);
-	overflow: hidden;
+	font: inherit;
+	color: var(--text-secondary);
+	cursor: pointer;
+	transform: scale(1);
+	transition:
+		transform var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
+.psu-progress__button:hover {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.psu-progress__button:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+/* Press feedback (§B.12.1) — `transform` only, and never on the completed ring, which refuses. */
+.psu-progress__button:not([aria-disabled="true"]):active {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-press);
+}
+
+/* At 100% there is nothing to jump to: the tooltip still says so, but the press affordance goes. */
+.psu-progress__button[aria-disabled="true"] {
+	cursor: default;
+}
+
+.psu-progress__button[aria-disabled="true"]:hover {
+	background: transparent;
+	color: var(--text-secondary);
 }
 
 /*
- * The fill's width comes STRAIGHT from `--psu-bar-pct`, which the island writes from the
- * server-derived `completeness`. It is deliberately not transitioned: a backgrounded tab freezes the
- * animation clock, and a bar whose width arrives through a transition then renders at 0% on a project
- * that has real progress. Motion here would decorate a fact, and this engine has shipped that defect
- * twice already — geometry that ENCODES data is always set directly.
+ * The arc's dash offset comes STRAIGHT from the figure, never through the ring's default transition:
+ * a backgrounded tab freezes the animation clock, and geometry that arrives through a transition then
+ * renders at its start value. Geometry that ENCODES data is always set directly on this surface.
  */
-.psu-bar__fill {
-	display: block;
-	block-size: 100%;
-	inline-size: var(--psu-bar-pct, 0%);
-	border-radius: inherit;
-	background: var(--primary);
+.psu-progress__ring .ui-progress-ring__arc {
+	transition: none;
 }
 
-.psu-bar__value {
-	flex: none;
+.psu-progress__ring .ui-progress-ring__track {
+	stroke: var(--surface-3);
+}
+
+.psu-progress__value {
 	font-size: var(--text-xs);
 	font-weight: var(--fw-medium);
-	/* A figure that changes as the owner types must not reflow the tabs beside it. */
+	/* A figure that changes as the owner types must not reflow the band beside it. */
 	font-variant-numeric: tabular-nums;
-	color: var(--text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.psu-progress__button,
+	.psu-progress__button:not([aria-disabled="true"]):active {
+		transform: none !important;
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .psu-progress__button,
+:root[data-motion="reduced"] .psu-progress__button:not([aria-disabled="true"]):active {
+	transform: none !important;
+}
+
+/*
+ * The remaining-steps list, inside the shared `Tooltip` surface (portalled, `--z-tooltip`).
+ *
+ * The tooltip panel is the inverted pair (`--surface` ink on `--on-surface`), so secondary text here is
+ * a mix toward the panel rather than `--text-secondary`, which is tuned for the page and would vanish.
+ * The "Required" marker is inline middot text, not a chip (§B.11): nothing in the list can be pressed.
+ */
+.psu-progress-tip {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	padding-block: var(--space-1);
+	min-inline-size: 11rem;
+}
+
+.psu-progress-tip__head {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	font-variant-numeric: tabular-nums;
+}
+
+.psu-progress-tip__list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.psu-progress-tip__item {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-1);
+	font-size: var(--text-sm);
+}
+
+.psu-progress-tip__meta,
+.psu-progress-tip__foot {
+	color: color-mix(in srgb, var(--surface) 72%, var(--on-surface));
+}
+
+.psu-progress-tip__meta {
+	font-size: var(--text-xs);
+}
+
+.psu-progress-tip__foot {
+	margin: 0;
+	padding-block-start: var(--space-1);
+	font-size: var(--text-xs);
 }
 
 /*
@@ -122,22 +187,19 @@
 }
 
 /*
- * Icon-only tabs, keyed on the BAND rather than the window.
+ * Icon-only tabs and a figure-less ring, keyed on the BAND rather than the window.
  *
- * 35rem is not a round number, it is the width at which the wide tier runs out: with a 12.5rem reserve
- * each side, the subtraction above lands on the bar's 8rem floor at exactly 560px of container. Past
- * that the bar can give up nothing more, so the next pixel of narrowing would come out of a side track
- * and the tabs would begin overlapping the bar. What gives instead is the width the tab NAMES spend —
- * §B.6.3's icon-only rule — which buys back 109px and lets the reserve drop to 5.5rem.
+ * Below 26rem the two side tracks are each narrower than the ring cluster needs, and the next pixel of
+ * narrowing would come out of the centred tabs. What gives first is the width the tab NAMES spend —
+ * §B.6.3's icon-only rule — and then the figure beside the ring, which the ring itself, the button's
+ * label and the tooltip all still carry.
  *
- * The label is visually hidden, never removed: it is still the anchor's accessible name and still what
- * "label in name" (WCAG 2.5.3) matches, and the locked tab keeps its portal `Tooltip` either way.
- *
- * The percentage is never what gives. It is the only report of setup progress anywhere on this
- * surface, and hiding it leaves a narrow band with no answer to "how far along am I".
+ * Labels are visually hidden, never removed: the tab label is still the anchor's accessible name and
+ * what "label in name" (WCAG 2.5.3) matches.
  */
-@container pvhead (max-width: 35rem) {
-	.proj-pvhead .proj-pvtab__label {
+@container pvhead (max-width: 26rem) {
+	.proj-pvhead .proj-pvtab__label,
+	.proj-pvhead .psu-progress__value {
 		position: absolute;
 		inline-size: 1px;
 		block-size: 1px;
@@ -147,11 +209,56 @@
 		clip-path: inset(50%);
 		white-space: nowrap;
 	}
+}
 
-	.psu-bar {
-		--psu-side-reserve: 5.5rem;
-		--psu-bar-min: 6rem;
+/* #endregion */
+
+/* #region Jump highlight */
+/*
+ * The momentary ring the header's progress control leaves on the field it jumps to.
+ *
+ * An outline rather than a border, so it costs no layout and moves nothing (§B.12.3): the offset gap is
+ * filled with a soft halo and the ring fades out over roughly two seconds. The attribute is removed by
+ * a timer in `setup-progress.ts`, not by `animationend`, so a frozen animation clock cannot leave it on.
+ *
+ * `:where()` keeps the radius at zero specificity — a stage or role row already has its own corner and
+ * keeps it; a bare field, which has none, borrows one so the ring does not draw square corners.
+ *
+ * Under reduced motion the ring does not fade; it simply shows, static, until the timer drops it.
+ */
+:where([data-psu-pulse]) {
+	border-radius: var(--radius-base);
+}
+
+[data-psu-pulse] {
+	outline: 2px solid transparent;
+	outline-offset: var(--space-1);
+	animation: psu-pulse calc(var(--dur-slow) * 5) var(--ease-standard) both;
+}
+
+@keyframes psu-pulse {
+	0%,
+	30% {
+		outline-color: var(--primary);
+		box-shadow: 0 0 0 var(--space-1) color-mix(in srgb, var(--primary) var(--tint), transparent);
 	}
+
+	100% {
+		outline-color: transparent;
+		box-shadow: 0 0 0 var(--space-1) transparent;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	[data-psu-pulse] {
+		animation: none;
+		outline-color: var(--primary);
+	}
+}
+
+:root[data-motion="reduced"] [data-psu-pulse] {
+	animation: none;
+	outline-color: var(--primary);
 }
 
 /* #endregion */

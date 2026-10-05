@@ -9,6 +9,7 @@ import { Avatar } from "@projective/ui/display";
 import { Popover, Toast, Tooltip, useToast } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { MediaCropModal } from "@web/features/profile/components/media/MediaCropModal.tsx";
+import { ChannelTabStrip } from "@web/features/projects/components/ChannelTabStrip.tsx";
 import { useMediaQuery } from "@projective/ui/navigation";
 import { MessagingIcon } from "../components/messaging-glyphs.tsx";
 import {
@@ -179,25 +180,16 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 			</div>
 
 			{/* Centre — underlined view tabs (Chat · Files · Members only). */}
-			<nav class="chan-header__tabs" aria-label="Conversation views">
-				{CONVERSATION_TABS.map((tab) => {
-					const href = tab.seg ? `${base}/${tab.seg}` : base;
-					const active = tab.key === activeTab;
-					return (
-						<a
-							key={tab.key}
-							class="chan-tab"
-							href={href}
-							data-active={active ? "true" : undefined}
-							aria-current={active ? "page" : undefined}
-							data-tab-key={tab.key}
-						>
-							<span class="chan-tab__icon" aria-hidden="true">{TAB_ICON[tab.key]}</span>
-							<span class="chan-tab__label">{tab.label}</span>
-						</a>
-					);
-				})}
-			</nav>
+			<ChannelTabStrip
+				label="Conversation views"
+				activeKey={activeTab}
+				tabs={CONVERSATION_TABS.map((tab) => ({
+					key: tab.key,
+					label: tab.label,
+					href: tab.seg ? `${base}/${tab.seg}` : base,
+					icon: TAB_ICON[tab.key],
+				}))}
+			/>
 
 			{/* Right — icon-only actions (star · pop-out · kebab). */}
 			<div class="chan-header__actions">

@@ -11,6 +11,7 @@ import {
 	type PartyRow,
 	projectsDb,
 	senderOf,
+	toProjectStructure,
 	toStageProjectStatus,
 	toSubmissionStatus,
 } from "./live-support.ts";
@@ -43,6 +44,7 @@ import type {
 	SubmissionUnit,
 	SubmissionUnitKind,
 } from "@projective/types/projects";
+import { isDiscussionRef, isTaskProject, rootStageOf } from "@projective/types/projects";
 import { UUID_RE } from "./live-support.ts";
 
 /**
@@ -133,7 +135,8 @@ const ID_CHUNK = 150;
 const DEFAULT_LIMIT = 60;
 
 /** The `projects.projects` columns this read needs. */
-const PROJECT_COLUMNS = "id, slug, title, format, owner_user_id, client_business_id";
+const PROJECT_COLUMNS =
+	"id, slug, title, format, structure_variation, owner_user_id, client_business_id";
 
 /** The `projects.project_stages` columns the tree roots and the review projection need. */
 const STAGE_COLUMNS = "id, slug, name, status, sort_order, description_text";
@@ -216,6 +219,8 @@ interface ProjectRow {
 	slug: string;
 	title: string;
 	format: string;
+	/** The second axis of the type — with `format`, what tells a Task from a milestone one-off. */
+	structure_variation: string | null;
 	owner_user_id: string;
 	client_business_id: string | null;
 }
@@ -765,6 +770,10 @@ function resolveIsolation(viewerIsReviewer: boolean, params: SubmissionListParam
  * the stage list is already in hand and the segment is a key into it. That also means a stage whose
  * room has not been provisioned still scopes correctly here, where the old channel round-trip resolved
  * it to nothing.
+ *
+ * On a Task the segment may also be `discussion` (`DISCUSSION_REF`), the Task's root stage — the same
+ * rule `findStageChannel` applies to the projection, so the discussion's Submissions view is the
+ * stage's.
  */
 async function resolveStages(
 	db: SupabaseClient,
@@ -779,7 +788,12 @@ async function resolveStages(
 	if (error) throw new Error(`projects.project_stages read failed: ${error.message}`);
 	const stages = (data ?? []) as unknown as StageRow[];
 	if (!channelId) return stages;
-	return stages.filter((stage) => stage.slug === channelId);
+	const bySlug = stages.filter((stage) => stage.slug === channelId);
+	if (bySlug.length > 0 || !isDiscussionRef(channelId)) return bySlug;
+	const task = FORMATS.has(project.format) &&
+		isTaskProject(project.format as ProjectFormat, toProjectStructure(project.structure_variation));
+	const root = task ? rootStageOf(stages, (stage) => stage.sort_order ?? 0) : null;
+	return root ? [root] : [];
 }
 
 /**

@@ -3,6 +3,7 @@ import type { UserContext } from "@projective/types/auth";
 import { findStageChannel } from "@projective/types/projects";
 import StageDetailsRig from "../islands/StageDetailsRig.island.tsx";
 import { canConfigureStage } from "./channel-view.ts";
+import { isTaskDetail } from "./task-project.ts";
 import { resolveProjectDetail } from "./detail-ssr.ts";
 import { resolveProjectSetup } from "./setup-ssr.ts";
 import type { ReadActor } from "@server/services/read-actor.ts";
@@ -41,7 +42,10 @@ export async function stageDetailsFooterFor(
 	const [, projectId, channelId] = segs;
 	const { detail } = await resolveProjectDetail(projectId, context, actor);
 	// A stage channel, or nothing — a general/team/DM channel has no configuration and no Details tab.
-	const channel = findStageChannel(detail?.channels.stages ?? [], channelId);
+	// A Task's `discussion` is its stage, exactly as the route reads it.
+	const channel = findStageChannel(detail?.channels.stages ?? [], channelId, {
+		task: detail ? isTaskDetail(detail) : false,
+	});
 	if (!detail || !channel) return null;
 
 	const canConfigure = detail.viewerIsClient || context.role === "admin";

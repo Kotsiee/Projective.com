@@ -1,8 +1,9 @@
-import type { JSX } from "preact";
+import { cloneElement, type JSX } from "preact";
 import type { ProjectDetail, ProjectFormat } from "../types/projects-types.ts";
 import { IconShell } from "@projective/ui/icons";
-import { ChatIcon } from "./channel-glyphs.tsx";
-import { isTaskDetail, taskDiscussionOf } from "../core/task-project.ts";
+import { ChatIcon, FilesIcon } from "./channel-glyphs.tsx";
+import { discussionLinkOf } from "../core/chat-context.ts";
+import { isTaskDetail } from "../core/task-project.ts";
 
 /**
  * Project Details sidebar glyphs — minimal 1em `currentColor` stroke icons for the deep single-project
@@ -213,7 +214,23 @@ export function boardView(format: ProjectFormat, kind: "project" | "service"): {
 	return { label: "Pipeline", icon: PipelineIcon };
 }
 
-/** One core view destination of a Project Details engagement (Details · Board · Members · …). */
+/** The lane's primary view set — which archetype's top tier to draw. */
+export type ProjectNavArchetype = "task" | "one_off" | "pipeline" | "session";
+
+/**
+ * Which top tier an engagement gets. A session archetype (real or dev-simulated) wins, exactly as it
+ * wins the lane's body; then a Task; then the stored format.
+ */
+export function projectNavArchetype(
+	detail: Pick<ProjectDetail, "format" | "structure">,
+	sessionKind: "none" | "normal" | "group" = "none",
+): ProjectNavArchetype {
+	if (sessionKind !== "none" || detail.format === "session") return "session";
+	if (isTaskDetail(detail)) return "task";
+	return detail.format === "one_off" ? "one_off" : "pipeline";
+}
+
+/** One primary view of an engagement — a top-tier lane destination (Discussion · Board · Files · …). */
 export interface ProjectViewLink {
 	key: string;
 	label: string;
@@ -221,77 +238,119 @@ export interface ProjectViewLink {
 	/** Sub-path segment after `/projects/{slug}` (`""` for the Details root). */
 	seg: string;
 	/**
-	 * Whether the link stays current on every page BENEATH it, not only on its own. True for a Task's
-	 * Discussion, whose room has its own tabs (Files, Members, …): a reader on the room's Files view is
-	 * still in the discussion, and the link going dark there would say they had left it.
+	 * Whether the link stays current on every page BENEATH it, not only on its own. True for the
+	 * Discussion, whose room has its own tabs (Files, Members, Tasks, …): a reader on the room's Files
+	 * view is still in the discussion, and the link going dark there would say they had left it.
 	 */
 	prefix?: boolean;
+	/**
+	 * The link's status mark — something under it is awaiting the viewer (§D.1: a dot, never a count).
+	 * `label` is what the dot means, spoken in the link's accessible name and shown in the collapsed
+	 * rail's tooltip; `null` when there is nothing to report.
+	 */
+	status: { label: string } | null;
 }
 
 /**
- * The ordered core view links for an engagement, with the Board entry DYNAMICALLY labelled off the
- * engagement format/kind (Pipeline · Timeline · Calendar). Shared by the expanded footer nav
- * ({@link ProjectViewNav}) and the collapsed icon rail so both stay in lockstep.
+ * The engagement's primary views, in lane order — the top tier under the project header, and the
+ * collapsed rail's icon column. ONE set for both presentations, so they cannot disagree.
  *
- * `sessionKind` keeps the links consistent with the channel-header tab matrix (task §2/§3): a session
- * service (`normal`/`group`) forces the Board entry to the **Calendar** and DROPS the **Submissions**
- * view (a session has no stage submissions), so the sidebar's view rail matches the tabs. Passing the
- * effective (dev-overridable) archetype — not the raw `format` — means a dev-simulated session on a
- * pipeline-format engagement adapts too.
+ *   - **Task** — Discussion · Details · Files · Submissions · Members. No Board and no Timeline: one
+ *     ticket on one stage has nothing to lay out (Decision #121). Its Discussion carries Chat alone, so
+ *     the engagement's Details page is a view of its own here.
+ *   - **One-off** — Discussion · Timeline · Files · Submissions · Members. A one-off's board IS its
+ *     timeline (PRODUCT_SPEC §Project Types), so it gets the Gantt and no Kanban.
+ *   - **Pipeline** — Discussion · Board · Files · Submissions · Members. Its timeline is a stage's view
+ *     (the stage channel's Timeline tab), not a lane destination.
+ *   - **Session** (a `session` engagement, or a dev-simulated session archetype) — Discussion · Calendar
+ *     · Files · Members. A session has no stage submissions, and its time axis is a calendar.
  *
- * Settings is intentionally NOT a sidebar destination — consolidated project settings live inside the
- * `/edit` project page.
+ * **Discussion** leads every set and is the engagement's one primary conversation at a fixed address
+ * (`/projects/{slug}/discussion`); it is ABSENT when the engagement has no room for it
+ * ({@link discussionLinkOf}) rather than a link to "no such channel". On every other type Details is
+ * the lane footer's utility (and the Discussion's Details tab), not a view of the work.
  *
- * ORDER IS THE ONLY STATEMENT OF PRIORITY. There is no per-link "secondary" flag: the footer folds
- * from the rightmost inward when it runs out of room, so being last IS being the first to go, and a
- * lane wide enough for everything shows everything with no "More" menu at all. A flag saying
- * otherwise would pin a link into the menu at every width — which is precisely what Attachments used
- * to do, leaving a kebab on a 280px lane that had ~40px of room to spare.
+ * The status marks are the projection's own facts, never invented: the discussion room's unread; a
+ * stage with a new ticket on the Board; a stage whose submission came back for revision on Submissions.
  */
 export function projectViewLinks(
 	detail: ProjectDetail,
 	sessionKind: "none" | "normal" | "group" = "none",
 ): ProjectViewLink[] {
-	const isSession = sessionKind === "normal" || sessionKind === "group";
-	if (!isSession && isTaskDetail(detail)) return taskViewLinks(detail);
-	const board = isSession
-		? { label: "Calendar", icon: CalendarIcon }
-		: boardView(detail.format, detail.kind);
-	const links: ProjectViewLink[] = [
-		{ key: "details", label: "Details", icon: DetailsIcon, seg: "" },
-		// A one-off engagement's "board" IS its timeline (PRODUCT_SPEC §Project Types: one-off ⇒ Timeline
-		// view), so the link lands on the Gantt rather than on a Kanban titled "Timeline".
-		{ key: "board", label: board.label, icon: board.icon, seg: board.label === "Timeline" ? "timeline" : "board" },
-		{ key: "members", label: "Members", icon: MembersIcon, seg: "members" },
-	];
-	// Sessions have no stage submissions — hide the view (consistent with the hidden Submissions tab).
-	if (!isSession) {
+	const archetype = projectNavArchetype(detail, sessionKind);
+	const stages = detail.channels.stages;
+	const anyStage = (activity: string) => stages.some((s) => s.activity === activity);
+	const links: ProjectViewLink[] = [];
+
+	const discussion = discussionLinkOf(detail);
+	if (discussion) {
+		links.push({
+			key: "discussion",
+			label: "Discussion",
+			icon: ChatIcon,
+			seg: discussion.ref,
+			prefix: true,
+			status: discussion.unread ? { label: "unread messages" } : null,
+		});
+	}
+	if (archetype === "task") {
+		// A copy: the lane footer mounts `DetailsIcon` itself, and one VNode cannot be mounted twice.
+		links.push({
+			key: "details",
+			label: "Details",
+			icon: cloneElement(DetailsIcon),
+			seg: "",
+			status: null,
+		});
+	}
+	if (archetype === "pipeline") {
+		links.push({
+			key: "board",
+			label: "Board",
+			icon: PipelineIcon,
+			seg: "board",
+			status: anyStage("new_ticket") ? { label: "new tickets" } : null,
+		});
+	}
+	if (archetype === "one_off") {
+		links.push({
+			key: "timeline",
+			label: "Timeline",
+			icon: TimelineIcon,
+			seg: "timeline",
+			status: null,
+		});
+	}
+	if (archetype === "session") {
+		links.push({
+			key: "calendar",
+			label: "Calendar",
+			icon: CalendarIcon,
+			seg: "calendar",
+			status: null,
+		});
+	}
+	links.push({ key: "files", label: "Files", icon: FilesIcon, seg: "files", status: null });
+	if (archetype !== "session") {
 		links.push({
 			key: "submissions",
 			label: "Submissions",
 			icon: SubmissionsIcon,
 			seg: "submissions",
+			// Submissions is a WILDCARD route: a stage, a submitter and a unit are pages beneath it.
+			prefix: true,
+			status: anyStage("revision_requested") ? { label: "revision requested" } : null,
 		});
 	}
-	// Last, and last on purpose: the least-trafficked view is the one the footer folds away first.
-	links.push({
-		key: "attachments",
-		label: "Attachments",
-		icon: AttachmentsIcon,
-		seg: "attachments",
-	});
-	// NOTE: a `finances` link was removed here. There is no `/projects/[slug]/finances` route, so the
-	// segment fell through to the `[channelId]` dynamic route; `resolveChannelMeta` returned null, both
-	// frame bands resolved to nothing, and the page rendered the general channel's chat transcript with
-	// no tabs and no composer. Restore it together with the route, not before.
+	links.push({ key: "members", label: "Members", icon: MembersIcon, seg: "members", status: null });
 	return links;
 }
 
 /**
  * How a view link marks the reader's current place: `page` when the path IS the link's own, `true`
  * when it is a page beneath a {@link ProjectViewLink.prefix} link (the section rather than the page),
- * `null` otherwise. One rule for the expanded footer and the collapsed rail, so the two presentations
- * of one link set cannot disagree about where the reader is.
+ * `null` otherwise. One rule for the expanded top tier and the collapsed rail, so the two
+ * presentations of one link set cannot disagree about where the reader is.
  */
 export function viewLinkCurrent(
 	currentPath: string,
@@ -302,36 +361,5 @@ export function viewLinkCurrent(
 	if (currentPath === href || currentPath === `${href}/`) return "page";
 	if (link.prefix && currentPath.startsWith(`${href}/`)) return "true";
 	return null;
-}
-
-/**
- * A Task's view links: Details · Discussion · Members · Submissions · Attachments.
- *
- * No Board entry, because a Task's board would be a timeline of one bar (the `one_off` default) and its
- * one ticket is reached from the lane's task section instead. In its place, the Task's single
- * conversation — the channel tree that used to lead to it is not rendered on a Task, so this link is
- * the way in, and it sits second so it is the last to fold away on a narrow lane. Absent when the Task
- * has no room a link could reach ({@link taskDiscussionOf}), rather than a link to nowhere.
- */
-function taskViewLinks(detail: ProjectDetail): ProjectViewLink[] {
-	const discussion = taskDiscussionOf(detail);
-	const links: ProjectViewLink[] = [
-		{ key: "details", label: "Details", icon: DetailsIcon, seg: "" },
-	];
-	if (discussion) {
-		links.push({
-			key: "discussion",
-			label: "Discussion",
-			icon: ChatIcon,
-			seg: discussion.ref,
-			prefix: true,
-		});
-	}
-	links.push(
-		{ key: "members", label: "Members", icon: MembersIcon, seg: "members" },
-		{ key: "submissions", label: "Submissions", icon: SubmissionsIcon, seg: "submissions" },
-		{ key: "attachments", label: "Attachments", icon: AttachmentsIcon, seg: "attachments" },
-	);
-	return links;
 }
 // #endregion

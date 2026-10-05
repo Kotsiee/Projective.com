@@ -73,6 +73,14 @@
 	font-weight: 600;
 }
 
+/* The optional trailing status mark (`trailing`) — pushed to the row's end, never shrunk. */
+.ui-nav-item__trailing {
+	display: inline-flex;
+	align-items: center;
+	flex: none;
+	margin-inline-start: auto;
+}
+
 /* Collapsed rail: square blocks (--shell-nav-block) with one large centered icon, labels hidden,
    icons on the shared vertical axis (Part D.1). Driven by the root attribute (FOUC-safe). */
 :root[data-sidebar="collapsed"] .ui-shell-sidebar .ui-nav-item {
@@ -83,8 +91,11 @@
 	justify-content: center;
 }
 
-/* Collapsed: hide the visible label (the anchor's `aria-label` carries the accessible name). */
-:root[data-sidebar="collapsed"] .ui-shell-sidebar .ui-nav-item__label {
+/* Collapsed: hide the visible label (the anchor's `aria-label` carries the accessible name). The
+   trailing mark goes with it — a square has no row end, and its meaning is in the name too. */
+:root[data-sidebar="collapsed"] .ui-shell-sidebar .ui-nav-item__label,
+:root[data-sidebar="collapsed"] .ui-shell-sidebar .ui-nav-item__trailing,
+.ui-splitter[data-mode="collapsed"] .ui-nav-item__trailing {
 	display: none;
 }
 

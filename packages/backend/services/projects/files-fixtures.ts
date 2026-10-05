@@ -12,7 +12,7 @@ import type {
 import { categorizeFile, messageAttachmentFacets } from "@projective/types/files";
 import { findProjectDetail } from "./detail-fixtures.ts";
 import { mockAvatar, mockCover } from "../../mocks/assets.ts";
-import { findStageChannel } from "@projective/types/projects";
+import { expandChannelRef, findStageChannel } from "@projective/types/projects";
 
 /**
  * projects files fixtures — the fat {@link ProjectBackendService}'s in-memory answer for the File
@@ -345,11 +345,13 @@ function filesForChannel(detail: ProjectDetail, chan: ChanDesc): FileItem[] {
 }
 
 /** The full corpus for a scope: one channel, or every channel (project scope). */
-function corpusFor(detail: ProjectDetail, channelId: string | null | undefined): {
+function corpusFor(detail: ProjectDetail, ref: string | null | undefined): {
 	items: FileItem[];
 	channels: FileChannelRef[];
 } {
 	const chans = channelsOf(detail);
+	// `discussion` narrows to the room it stands for, exactly as that room's own address does.
+	const channelId = ref ? expandChannelRef(detail, ref) : ref;
 	// A stage carries its own `stg-…` address rather than its room's id, so the segment is resolved to
 	// a channel before the corpus is narrowed. Without this a stage's Files tab scopes to nothing while
 	// its Chat tab scopes correctly — the same URL, two answers.

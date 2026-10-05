@@ -1,7 +1,7 @@
-import type { ChannelKind, ProjectDetail } from "../types/projects-types.ts";
-import { findStageChannel } from "@projective/types/projects";
+import type { ChannelKind, ProjectDetail, ProjectFormat } from "../types/projects-types.ts";
+import { discussionOf, findStageChannel, isDiscussionRef } from "@projective/types/projects";
 import { isSession, type SessionKind } from "./session-model.ts";
-import { isTaskDetail, TASK_ABSENT_VIEWS } from "./task-project.ts";
+import { isTaskDetail } from "./task-project.ts";
 
 /**
  * channel-view — the pure, DOM-free model behind a project channel/chat view
@@ -23,15 +23,19 @@ export interface ChannelTab {
  * The channel view tabs, in display order. Chat is the default (its `seg` is empty so the bare channel
  * base resolves to it). Each maps 1:1 to a route file under `[channelId]/` — the tabs are real anchors,
  * so active state is URL-driven and deep-links land on the right view.
+ *
+ * The order is the one every archetype's tab set in {@link CHANNEL_TAB_MATRIX} reads in — the work
+ * views (Submissions · Tasks · Timeline) between Files and Members — so a set is always a SUBSEQUENCE
+ * of this list and the header can render it by filtering.
  */
 export const CHANNEL_TABS: ChannelTab[] = [
 	{ key: "chat", label: "Chat", seg: "" },
 	{ key: "files", label: "Files", seg: "files" },
-	{ key: "members", label: "Members", seg: "members" },
 	{ key: "submissions", label: "Submissions", seg: "submissions" },
 	{ key: "calendar", label: "Calendar", seg: "calendar" },
 	{ key: "tasks", label: "Tasks", seg: "tasks" },
 	{ key: "timeline", label: "Timeline", seg: "timeline" },
+	{ key: "members", label: "Members", seg: "members" },
 	// LAST, and that is a placement rather than an ordering accident: it is the only tab that edits
 	// the engagement rather than working inside it, and it is the only one most viewers never see.
 	{ key: "details", label: "Details", seg: "details" },
@@ -51,12 +55,58 @@ export function activeTabOf(pathname: string, base: string): string {
 
 // #region Tab visibility (Stage Access & Channel Header Tab Visibility)
 /**
- * The task/deliverable tabs that exist ONLY for a **standard** stage engagement. On a general/team/DM
- * channel they are hidden entirely; on a stage channel they are gated by viewer role + assignment; and
- * on ANY session-based service they are hidden completely (a session has no stage submissions/tasks —
- * task §2). `calendar` is handled separately (session-ONLY), so it is not in this set.
+ * The task/deliverable tabs a stage channel shows only to a reviewer or to a freelancer assigned to
+ * that stage — a freelancer not part of the stage loses them.
  */
 export const STAGE_GATED_TAB_KEYS = ["submissions", "tasks", "timeline"] as const;
+
+/** Which of the four project types a channel belongs to — the axis the tab matrix is keyed on. */
+export type ChannelArchetype = "task" | "one_off" | "pipeline" | "session";
+
+/**
+ * The channel tab sets, by project type and by room — the maximum a viewer can see, before the role
+ * gates in {@link visibleChannelTabKeys} narrow it.
+ *
+ *   - **Task** — Discussion: Chat. No stage channels.
+ *   - **One-off** — Discussion: Chat · Files · Members · Details. Stage: Chat · Files · Submissions ·
+ *     Members · Details.
+ *   - **Pipeline** — Discussion: Chat · Files · Members · Details. Stage: Chat · Files · Submissions ·
+ *     Tasks · Timeline · Members · Details.
+ *   - **Session** — Discussion: Chat. No stage channels.
+ *
+ * `stage: null` means the type has no stage channels; a stage room reached by address there shows
+ * Chat alone. Every other room (a team room, a DM, a session sub-group) shows Chat · Files · Members.
+ */
+export const CHANNEL_TAB_MATRIX: Record<
+	ChannelArchetype,
+	{ discussion: readonly string[]; stage: readonly string[] | null }
+> = {
+	task: { discussion: ["chat"], stage: null },
+	one_off: {
+		discussion: ["chat", "files", "members", "details"],
+		stage: ["chat", "files", "submissions", "members", "details"],
+	},
+	pipeline: {
+		discussion: ["chat", "files", "members", "details"],
+		stage: ["chat", "files", "submissions", "tasks", "timeline", "members", "details"],
+	},
+	session: { discussion: ["chat"], stage: null },
+};
+
+/** The tabs of a room that is neither the discussion nor a stage — a team room, a DM, a sub-group. */
+const OTHER_ROOM_TABS: readonly string[] = ["chat", "files", "members"];
+
+/**
+ * The channel's project type: a session archetype (real, or dev-simulated through `sessionKind`) wins,
+ * then a Task, then the stored format.
+ */
+export function channelArchetype(
+	access: Pick<ChannelTabAccess, "format" | "sessionKind" | "isTask">,
+): ChannelArchetype {
+	if (isSession(access.sessionKind) || access.format === "session") return "session";
+	if (access.isTask) return "task";
+	return access.format === "one_off" ? "one_off" : "pipeline";
+}
 
 /** The viewer capabilities that decide stage-tab visibility (resolved by the caller). */
 export interface ChannelTabAccess {
@@ -89,40 +139,43 @@ export interface ChannelTabAccess {
 	 * tabs are absent whatever else is true, and the routes behind them refuse on the same set.
 	 */
 	isTask: boolean;
+	/** The engagement's stored format — what tells a one-off's tab set from a pipeline's. */
+	format: ProjectFormat;
+	/** Whether the room is the engagement's Discussion (`/projects/{slug}/discussion`). */
+	isDiscussion: boolean;
 }
 
 /**
- * The visible channel tab keys for a viewer (the Channel Header Tab Visibility Matrix — task §2).
+ * The visible channel tab keys for a viewer: the room's set from {@link CHANNEL_TAB_MATRIX}, narrowed
+ * by two role gates on a STAGE room.
  *
- * - `Chat` / `Files` / `Members` — always shown.
- * - `Calendar` — shown ONLY for a session-based service (any channel); hidden for standard projects.
- * - `Tasks` / `Submissions` / `Timeline` — hidden completely for any session; on a standard project
- *   they appear only on a **stage** channel AND only for a reviewer (client/admin/manager) or a
- *   freelancer assigned to that stage — a freelancer not part of the stage loses them. Timeline is
- *   gated exactly like Tasks because it is the same tickets on a time axis instead of in lanes.
- * - `Details` — a **stage** channel only, and only for a viewer who may configure the engagement
- *   ({@link ChannelTabAccess.canConfigure}). Unlike Tasks and Submissions it is NOT hidden for a
- *   session: a session's stages are its sittings, and their scope, price and capacity are configured
- *   the same way a pipeline stage's are. What that tab edits is the engagement's terms, which exist
- *   on every archetype; what Tasks and Submissions edit is deliverable flow, which a session has none
- *   of.
- * - On a **Task**, `Timeline` and `Calendar` are absent outright (see {@link ChannelTabAccess.isTask}).
+ * - `Submissions` / `Tasks` / `Timeline` — only for a reviewer (client/admin/manager) or a freelancer
+ *   assigned to that stage.
+ * - `Details` — only for a viewer who may configure the engagement
+ *   ({@link ChannelTabAccess.canConfigure}): it edits the terms the stage's work is done under.
  *
- * Absence, not refusal, for the viewer who may not configure: a tab rendered and disabled advertises
- * a capability and then withholds it, and the route behind it refuses independently anyway
- * (DESIGN_SYSTEM's rule that a capability which does not apply is expressed by not being there).
+ * The Discussion's `Details` is not gated: it opens the engagement's own Details page (the owner's
+ * configuration workspace, a member's dashboard), which every member has.
+ *
+ * Absence, not refusal, for a gated viewer: a tab rendered and disabled advertises a capability and
+ * then withholds it, and the route behind it refuses independently anyway.
  */
 export function visibleChannelTabKeys(access: ChannelTabAccess): string[] {
-	const session = isSession(access.sessionKind);
+	const sets = CHANNEL_TAB_MATRIX[channelArchetype(access)];
+	const stageRoom = access.channelKind === "stage" && !access.isDiscussion;
+	const allowed = access.isDiscussion
+		? sets.discussion
+		: stageRoom
+		? sets.stage ?? ["chat"]
+		: OTHER_ROOM_TABS;
 	const stageGated = new Set<string>(STAGE_GATED_TAB_KEYS);
-	const showStageTabs = !session && access.channelKind === "stage" &&
-		(access.isReviewer || (access.isFreelancer && access.stageAssigned));
+	const seated = access.isReviewer || (access.isFreelancer && access.stageAssigned);
 
 	return CHANNEL_TABS.filter((t) => {
-		if (access.isTask && TASK_ABSENT_VIEWS.has(t.key)) return false;
-		if (t.key === "calendar") return session;
-		if (t.key === "details") return access.channelKind === "stage" && access.canConfigure;
-		if (stageGated.has(t.key)) return showStageTabs;
+		if (!allowed.includes(t.key)) return false;
+		if (!stageRoom) return true;
+		if (t.key === "details") return access.canConfigure;
+		if (stageGated.has(t.key)) return seated;
 		return true;
 	}).map((t) => t.key);
 }
@@ -180,9 +233,36 @@ export interface ChannelMeta {
  * segment names no channel (e.g. a project-view path like `/projects/{slug}/board`, which is NOT a
  * channel and gets no channel header). The route-id convention mirrors {@link channelHref}/`ChannelTree`:
  * general + team channels key off `channel.id`, stages off `stage.id`, and DMs off the unified `chatId`.
+ *
+ * `discussion` resolves to the engagement's discussion room (`discussionOf`, the rule the server
+ * resolves the same word by): a Task's stage room, headed as the Task, or the project-wide room,
+ * headed "Discussion". Its `ref` stays the word, so every tab under it keeps the canonical address.
  */
 export function resolveChannelMeta(detail: ProjectDetail, ref: string): ChannelMeta | null {
 	const { general, stages, teams, dms } = detail.channels;
+
+	if (isDiscussionRef(ref)) {
+		const room = discussionOf(detail);
+		if (!room) return null;
+		if (room.kind === "stage") {
+			return {
+				ref,
+				channelId: room.stage.id,
+				stageId: room.stage.stageId,
+				title: detail.title,
+				sub: "Task discussion",
+				kind: "stage",
+			};
+		}
+		return {
+			ref,
+			channelId: room.channel.id,
+			stageId: null,
+			title: "Discussion",
+			sub: detail.title,
+			kind: "general",
+		};
+	}
 
 	for (const c of general) {
 		if (c.id === ref) {

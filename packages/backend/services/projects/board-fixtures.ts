@@ -33,6 +33,7 @@ import { allProjects } from "./fixtures.ts";
 import { mockCover } from "../../mocks/assets.ts";
 import { SLUG_ALPHABET, SLUG_BODY_LENGTH, SLUG_PREFIXES } from "@projective/types/slugs";
 import {
+	expandChannelRef,
 	findStageChannel,
 	providerVisibleCards,
 	type TicketPaymentScope,
@@ -1097,7 +1098,11 @@ export function findBoardPage(params: BoardListParams): BoardPage | null {
 	const all = corpusCards(detail);
 	let cards = all;
 	if (kind === "stage") {
-		const stage = findStageChannel(detail.channels.stages, channelId);
+		// `discussion` on a Task is its one stage, so the discussion's Tasks view is that stage's board.
+		const stage = findStageChannel(
+			detail.channels.stages,
+			channelId ? expandChannelRef(detail, channelId) : channelId,
+		);
 		cards = stage ? all.filter((c) => c.stageId === stage.id) : [];
 	}
 	cards = cards.filter((c) => matches(c, params));

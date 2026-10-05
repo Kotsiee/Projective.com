@@ -11,9 +11,12 @@ import {
 	cardColumnId,
 	countsAsOnboarded,
 	formatTicketMoney,
+	isDiscussionRef,
+	isTaskProject,
 	type ProjectParty,
 	type ProjectStructure,
 	providerVisibleCards,
+	rootStageOf,
 	type StageAssignmentMode,
 	stageCostCents,
 	TICKET_COLUMN_LABEL,
@@ -1325,9 +1328,18 @@ function viewerIsClientOf(
  * An unresolvable channel yields `null`, and the caller then returns an EMPTY card list — matching
  * the fixtures, and preferring an empty board to a board that silently shows every stage's tickets
  * under one stage's name.
+ *
+ * On a Task the segment may also be `discussion` (`DISCUSSION_REF`), which names the Task's root stage
+ * — the same rule `findStageChannel` applies to the projection, written over these rows.
  */
-function stageForChannel(stages: readonly StageRow[], channelId: string): StageRow | null {
-	return stages.find((s) => s.slug === channelId) ?? null;
+function stageForChannel(
+	stages: readonly StageRow[],
+	channelId: string,
+	task: boolean,
+): StageRow | null {
+	const bySlug = stages.find((s) => s.slug === channelId);
+	if (bySlug) return bySlug;
+	return task && isDiscussionRef(channelId) ? rootStageOf(stages, (s) => s.sort_order ?? 0) : null;
 }
 
 /**
@@ -1654,7 +1666,11 @@ export async function fetchBoardPage(
 
 	let cards = placed;
 	if (kind === "stage") {
-		const stage = stageForChannel(stageRows, params.channelId ?? "");
+		const stage = stageForChannel(
+			stageRows,
+			params.channelId ?? "",
+			isTaskProject(summary.format, structure),
+		);
 		cards = stage ? placed.filter((c) => c.stageId === stage.id) : [];
 	}
 	cards = cards.filter((card) => matches(card, params));

@@ -3,7 +3,6 @@ import {
 	ALL_TASK_LISTS,
 	buildTaskLane,
 	filterTaskItems,
-	taskCollaborators,
 	taskLaneProgress,
 	visibleTaskLists,
 } from "./task-lane.ts";
@@ -12,7 +11,6 @@ import type {
 	BoardPage,
 	BoardStageRef,
 	ProjectDetail,
-	ProjectMember,
 	ProjectParty,
 	TicketTask,
 } from "../types/projects-types.ts";
@@ -25,7 +23,6 @@ import type {
  */
 
 // #region Fixtures
-const IVY: ProjectParty = { name: "Ivy Chen", handle: "ivy", avatar: null };
 const JUNO: ProjectParty = { name: "Juno Park", handle: "juno", avatar: null };
 
 function task(id: string, done: boolean): TicketTask {
@@ -132,7 +129,7 @@ Deno.test("a frozen report or a cancelled ticket is never read as the Task", () 
 });
 
 Deno.test("the task board is offered to the client and to a seated provider — not to anyone else", () => {
-	const href = "/projects/prj-abcdefghij/stg-aaaaaaaaaa/tasks";
+	const href = "/projects/prj-abcdefghij/discussion/tasks";
 	assertEquals(buildTaskLane(detail(), board()).boardHref, href);
 	assertEquals(
 		buildTaskLane(detail(), board({ viewerIsClient: false, viewerStageIds: ["row-1"] })).boardHref,
@@ -157,7 +154,7 @@ Deno.test("with no board the lane is empty but still knows where the board is", 
 	const lane = buildTaskLane(withRoom, null);
 	assertEquals(lane.ticket, null);
 	assertEquals(lane.lists, []);
-	assertEquals(lane.boardHref, "/projects/prj-abcdefghij/stg-bbbbbbbbbb/tasks");
+	assertEquals(lane.boardHref, "/projects/prj-abcdefghij/discussion/tasks");
 	assertEquals(buildTaskLane(detail({ viewerIsClient: false }), null).boardHref, null);
 });
 // #endregion
@@ -182,24 +179,5 @@ Deno.test("the quick filter narrows to what is still open, and off shows everyth
 
 Deno.test("progress totals every list", () => {
 	assertEquals(taskLaneProgress(buildTaskLane(detail(), board()).lists), { done: 1, total: 3 });
-});
-// #endregion
-
-// #region Collaborators
-Deno.test("the person holding the Task is marked Assigned, and added when the roster omits them", () => {
-	const owner: ProjectMember = { id: "m1", party: IVY, role: "owner" };
-	const hired: ProjectMember = { id: "m2", party: JUNO, role: "freelancer" };
-
-	assertEquals(
-		taskCollaborators([owner, hired], JUNO).map((c) => [c.party.handle, c.role]),
-		[["ivy", "Owner"], ["juno", "Assigned"]],
-	);
-	// The live participant read is often empty for anyone but the owner, so the assignee is appended
-	// rather than left out — they are the one collaborator a Task's reader is looking for.
-	assertEquals(
-		taskCollaborators([owner], JUNO).map((c) => [c.party.handle, c.role]),
-		[["ivy", "Owner"], ["juno", "Assigned"]],
-	);
-	assertEquals(taskCollaborators([owner], null).map((c) => c.role), ["Owner"]);
 });
 // #endregion

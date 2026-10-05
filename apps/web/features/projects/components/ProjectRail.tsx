@@ -1,8 +1,10 @@
 import { cloneElement, type JSX } from "preact";
 import { Tooltip } from "@projective/ui/feedback";
+import { LaneCollapseButton } from "@projective/ui/navigation";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import {
 	BackIcon,
+	DetailsIcon,
 	type ProjectViewLink,
 	projectViewLinks,
 	viewLinkCurrent,
@@ -20,11 +22,12 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  * `--shell-nav-block` square matching the global rail's collapsed `.ui-nav-item` (portal
  * {@link Tooltip} carries the name — never a native `title`).
  *
- * Top section (aligned to the top): Back · owner/client avatar (links to `/@handle`) · Details ·
- * Board (dynamic Pipeline/Timeline/Calendar) · Members · Submissions · Attachments · Finances.
- * Bottom section (pinned via `margin-block-start: auto`): a client-only Add-stage ＋ · the Expand
- * toggle (reusing the global rail's {@link SidebarToggleIcon} glyph + morphing-divider slide).
- * Settings is intentionally absent — project settings live in the `/edit` page.
+ * Top section (aligned to the top): Back · owner/client avatar (links to `/@handle`) · the SAME
+ * primary views the expanded lane's top tier draws ({@link projectViewLinks} — Discussion first, then
+ * the archetype's Board/Timeline/Calendar, Files, Submissions, Members), each carrying its status dot.
+ * Bottom section (pinned via `margin-block-start: auto`) — the expanded footer's utilities, in the
+ * same order: a client-only Add-stage ＋, Project details, and the {@link LaneCollapseButton}, which
+ * docks to the lane's corner so the expanded and collapsed toggles share one hitbox.
  *
  * Rendered alongside the expanded view; CSS (`.ui-splitter[data-mode="collapsed"]`) reveals exactly
  * one at a time. Its icons are {@link cloneElement}-copied off the shared `projectViewLinks` set so the
@@ -60,20 +63,24 @@ export function ProjectRail(
 
 	const link = (l: ProjectViewLink): JSX.Element => {
 		const current = viewLinkCurrent(currentPath, base, l);
+		// The status rides in the tooltip and the name, never as text on the square (§B.6).
+		const name = l.status ? `${l.label} — ${l.status.label}` : l.label;
 		return (
-			<Tooltip key={l.key} content={l.label} placement="right">
+			<Tooltip key={l.key} content={name} placement="right">
 				<a
 					class="proj-railbtn"
 					href={hrefFor(l.seg)}
 					data-active={current ? "true" : undefined}
 					aria-current={current ?? undefined}
-					aria-label={l.label}
+					aria-label={name}
 				>
 					{cloneElement(l.icon)}
+					{l.status && <span class="proj-railbtn__dot" aria-hidden="true" />}
 				</a>
 			</Tooltip>
 		);
 	};
+	const detailsCurrent = viewLinkCurrent(currentPath, base, { seg: "" });
 
 	return (
 		<nav class="proj-detail__rail" aria-label="Project navigation">
@@ -131,18 +138,27 @@ export function ProjectRail(
 					</Tooltip>
 				)}
 
-				<Tooltip content="Expand lane" placement="right">
-					<button
-						type="button"
-						class="proj-railbtn proj-railbtn--toggle"
-						data-collapsed="true"
-						aria-label="Expand lane"
-						aria-pressed="true"
-						onClick={onExpand}
-					>
-						<SidebarToggleIcon />
-					</button>
-				</Tooltip>
+				{/* A Task's view set already carries Details; the rail never shows one destination twice. */}
+				{!topLinks.some((l) => l.key === "details") && (
+					<Tooltip content="Project details" placement="right">
+						<a
+							class="proj-railbtn"
+							href={base}
+							data-active={detailsCurrent ? "true" : undefined}
+							aria-current={detailsCurrent ?? undefined}
+							aria-label="Project details"
+						>
+							{cloneElement(DetailsIcon)}
+						</a>
+					</Tooltip>
+				)}
+
+				<LaneCollapseButton
+					collapsed
+					icon={<SidebarToggleIcon />}
+					tooltipPlacement="right"
+					onToggle={onExpand}
+				/>
 			</div>
 		</nav>
 	);

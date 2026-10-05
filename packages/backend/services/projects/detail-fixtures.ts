@@ -137,7 +137,12 @@ function describe(row: ProjectSummary): string {
 // #endregion
 
 // #region Channel builders
-/** The always-present General group. */
+/**
+ * The project-wide room — ONE, because that is all the live schema can hold:
+ * `comms.get_or_create_project_channel` dedupes `project_all` per project. It is the room
+ * `/projects/{slug}/discussion` opens on every engagement that is not a Task, and a second one here
+ * would be a room the stub offers and production cannot have.
+ */
 function generalChannels(row: ProjectSummary): ProjectChannel[] {
 	return [
 		{
@@ -146,13 +151,6 @@ function generalChannels(row: ProjectSummary): ProjectChannel[] {
 			name: "General",
 			kind: "general",
 			unread: row.unread,
-		},
-		{
-			id: "announcements",
-			chatId: `chan-${row.slug}-announce`,
-			name: "Announcements",
-			kind: "general",
-			unread: false,
 		},
 	];
 }

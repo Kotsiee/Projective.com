@@ -40,6 +40,36 @@
 				"$env:PORT = '12990'; deno task dev:mock --port 12990 --strictPort"
 			],
 			"port": 12990
+		},
+		{
+			"name": "web-tabs",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '12995'; deno task dev --port 12995 --strictPort"
+			],
+			"port": 12995
+		},
+		{
+			"name": "web-lane",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '12997'; deno task dev --port 12997 --strictPort"
+			],
+			"port": 12997
+		},
+		{
+			"name": "web-lane-mock",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = '12998'; deno task dev:mock --port 12998 --strictPort"
+			],
+			"port": 12998
 		}
 	]
 }

@@ -2,7 +2,8 @@
  * project-sidebar — the contextual middle-nav sidebar for the Project Details page
  * (`/projects/[projectId]`). Pure CSS + strict BEM, token-only (root CLAUDE.md §3). It mirrors the
  * feed lane's calm, spacious idiom: a fixed header (Back + Star + kebab), a scrolling body holding the
- * contextual entity card, the core view links, and the four-group communication accordion.
+ * contextual entity card, the top tier of primary views, and the archetype's contextual body (the
+ * stage tree, a Task's overview and lists, or a session's panel), over a utility footer.
  *
  * Separation hierarchy (§B.4): non-interactive regions (the context card, group bodies) are set off
  * by spacing, a tonal surface tint, and single hairlines — never four-sided boxes. Full borders +
@@ -89,9 +90,18 @@
 	gap: var(--space-1);
 }
 
-/* Bottom section (Settings + Expand toggle) pinned to the foot of the rail. */
+/*
+ * Bottom section (Add stage + Project details + the docked Expand toggle) pinned to the foot of the
+ * rail. The toggle is a `LaneCollapseButton`: its visible button docks to the lane's corner at
+ * `--ui-lane-collapse-inset-block`, and the rail ends at the same inset so its in-flow slot sits
+ * exactly under it rather than a few pixels off.
+ */
 .proj-detail__rail-group--bottom {
 	margin-block-start: auto;
+}
+
+.proj-detail__rail {
+	padding-block-end: var(--ui-lane-collapse-inset-block, var(--space-3));
 }
 
 /*
@@ -99,6 +109,7 @@
  * square, zero inline padding, `--radius-base`, the same hover/active tints and 24px icon.
  */
 .proj-railbtn {
+	position: relative;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -152,16 +163,23 @@
 	block-size: auto;
 }
 
-/* The Expand toggle reuses the global rail glyph; its dotted bar rests at the collapsed (left) edge. */
-.proj-railbtn--toggle .shell-toggle {
-	inline-size: 22px;
-	block-size: 22px;
-	stroke-width: 1.8;
+/*
+ * A view's status (unread discussion, new ticket, revision) on the collapsed square — the corner dot
+ * the expanded row carries at its end. Its meaning is in the square's name and tooltip (§B.6).
+ */
+.proj-railbtn__dot {
+	position: absolute;
+	inset-block-start: 0.6rem;
+	inset-inline-end: 0.6rem;
+	inline-size: 6px;
+	block-size: 6px;
+	border-radius: 50%;
+	background: var(--primary);
+	box-shadow: 0 0 0 2px var(--surface-1);
 }
 
-.proj-detail .proj-railbtn--toggle .shell-toggle__bar {
-	transition: transform var(--dur-medium) var(--spring-standard);
-	transform: translateX(0);
+.proj-railbtn[data-active="true"] .proj-railbtn__dot {
+	box-shadow: 0 0 0 2px var(--surface-2);
 }
 
 /* #endregion */
@@ -442,6 +460,37 @@
 .proj-ctx__desc:focus-visible {
 	outline: none;
 	box-shadow: none;
+}
+
+/* #endregion */
+
+/* #region Top tier — the engagement's primary views (`ProjectNavSection`, package `NavItem` rows) */
+/*
+ * The rows are the package's `.ui-nav-item` — the global rail's destination row, unmodified. The list
+ * pulls out by the item's own inline margin so each row's box lines up with the content column (the
+ * context card above, the stage tree below) instead of sitting indented inside it.
+ */
+.proj-nav__list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin: 0 calc(-1 * var(--space-2));
+	padding: 0;
+	list-style: none;
+}
+
+/* The view's status mark — the trailing dot of §D.1 (a dot, never a count). */
+.proj-nav__dot {
+	display: inline-block;
+	inline-size: 6px;
+	block-size: 6px;
+	border-radius: 50%;
+	background: var(--primary);
+}
+
+/* On the filled active row the dot takes the row's own ink, so it never vanishes into the fill. */
+.proj-nav .ui-nav-item--active .proj-nav__dot {
+	background: currentColor;
 }
 
 /* #endregion */
@@ -843,15 +892,13 @@
 }
 
 /* Shared resources / files links */
-.sess-links,
-.sess-channels {
+.sess-links {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-1);
 }
 
-.sess-links__label,
-.sess-channels__label {
+.sess-links__label {
 	padding-inline: 0.1rem;
 	font-size: 0.62rem;
 	font-weight: 600;
@@ -903,12 +950,6 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-}
-
-.sess-channels__list {
-	display: flex;
-	flex-direction: column;
-	gap: 1px;
 }
 
 /* Level / proficiency tag pill (sub-groups) */
@@ -1155,107 +1196,14 @@
 }
 /* #endregion */
 
-/* #region Sticky footer — horizontal icon view-nav + lane collapse toggle */
+/* #region Utility footer — the docked collapse toggle + Project details (`LaneFooter`) */
+/*
+ * The band itself is the shared `.ui-lane-footer` (surface, hairline, padding, the collapse slot's
+ * inset). It holds utilities only: the views it used to carry are the top tier now. It stays in flow
+ * at the foot of the flex column — the body above is the one scroller — so it needs no sticky.
+ */
 .proj-detail__footer {
 	flex: none;
-	position: sticky;
-	inset-block-end: 0;
-	z-index: 2;
-	padding: var(--space-2) var(--space-3);
-	background: var(--surface-1);
-	border-block-start: var(--hairline);
-}
-
-/* Two clusters: the collapse toggle (left) · the view links + the More kebab (pushed right). */
-.proj-viewnav {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-}
-
-.proj-viewnav__links {
-	display: flex;
-	align-items: center;
-	justify-content: flex-end;
-	gap: 2px;
-	min-inline-size: 0;
-	flex-wrap: nowrap;
-	/* Push the view-link cluster to the right, leaving the collapse toggle alone on the left. */
-	margin-inline-start: auto;
-}
-
-.proj-viewnav__btn,
-.proj-viewnav__collapse {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: 2rem;
-	block-size: 2rem;
-	font-size: 1.05rem;
-	color: var(--text-secondary);
-	background: transparent;
-	border: none;
-	border-radius: var(--radius-base);
-	cursor: pointer;
-	text-decoration: none;
-	transition:
-		color var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard);
-}
-
-.proj-viewnav__btn {
-	border-radius: var(--radius-full);
-}
-
-.proj-viewnav__btn:hover,
-.proj-viewnav__collapse:hover {
-	color: var(--on-surface);
-	background: var(--surface-2);
-}
-
-.proj-viewnav__btn[data-active="true"] {
-	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
-}
-
-/* "More" overflow trigger — reads active when any view now inside the menu is the open one. */
-.proj-viewnav__more[data-open="true"] {
-	color: var(--on-surface);
-	background: var(--surface-2);
-}
-
-.proj-viewnav__btn:focus-visible,
-.proj-viewnav__collapse:focus-visible {
-	outline: none;
-	box-shadow: none;
-}
-
-.proj-viewnav__icon {
-	display: inline-flex;
-}
-
-/*
- * Collapse toggle — reuses the global rail toggle's `SidebarToggleIcon` glyph AND its morphing-divider
- * slide animation. The `.proj-detail` ancestor lifts specificity above the package's global
- * `:root[data-sidebar="expanded"] .shell-toggle__bar` rule so the dotted bar tracks THIS lane's
- * collapsed state, not the main sidebar's (identical technique to the feed footer's `.proj-lane__collapse`).
- */
-.proj-viewnav__collapse .shell-toggle {
-	inline-size: 22px;
-	block-size: 22px;
-	stroke-width: 1.8;
-}
-
-.proj-detail .proj-viewnav__collapse .shell-toggle__bar {
-	transition: transform var(--dur-medium) var(--spring-standard);
-}
-
-.proj-detail .proj-viewnav__collapse:not([data-collapsed="true"]) .shell-toggle__bar {
-	transform: translateX(6px);
-}
-
-.proj-detail .proj-viewnav__collapse[data-collapsed="true"] .shell-toggle__bar {
-	transform: translateX(0);
 }
 
 /* #endregion */
@@ -1348,11 +1296,7 @@
 	.proj-ctx__desc,
 	.proj-ctx__owner-name,
 	.proj-railbtn,
-	.proj-railbtn--add,
-	.proj-viewnav__btn,
-	.proj-viewnav__collapse,
-	.proj-viewnav__collapse .shell-toggle__bar,
-	.proj-railbtn--toggle .shell-toggle__bar {
+	.proj-railbtn--add {
 		transition-duration: 0ms;
 	}
 }
