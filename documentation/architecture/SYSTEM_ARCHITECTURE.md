@@ -1409,7 +1409,10 @@ Every write returns the RE-READ console so an island adopts the server's state. 
   through `org.get_party_cards` (`profile/party-cards.ts`) and pictures through
   `files.get_public_media` + `core/storage-url.ts`. Balances and ledgers are read under the caller's
   RLS with the wallet surface's own entity projection, never re-derived.
-- **The acting context is written only by the switch RPCs.** `security.session_context` is
+- **The acting context is written only by the switch RPCs.** (Its organisation targets are listed by
+  `GET /api/context/organisations` → `ContextBackendService.organisations`: owned or ACTIVE-member
+  organisations, archived excluded, filtered explicitly because the `org.organisations` SELECT
+  policy also admits platform admins to every row.) `security.session_context` is
   SELECT-only to clients; `POST /api/context/switch` → `ContextBackendService` calls
   `security.switch_session_context` (freelancer | business), `switch_team_context`,
   `switch_organisation_context` or `clear_session_context` (back to personal), each of which re-checks
@@ -1471,7 +1474,16 @@ a 422 with `fieldErrors[field]`; `42501` → 403, `P0002` → 404, `23505` / `55
   projection when the live read is unavailable (it only 401s a genuine guest). Shape: the Zod SSOT
   **`@projective/types/user`** (`CurrentUser`, `resolveAccountRole`). The thin client
   `AccountService.current()` is chrome-safe — a failed load resolves to `null` (→ the SSR-hydrated
-  context fallback), never a sign-in redirect.
+  context fallback), never a sign-in redirect. In an entity context `workspace.name` is the entity's
+  display name (an RLS read of `org.teams` / `org.business_profiles` / `org.organisations`), falling
+  back to its slug. A second read, `GET /api/user/setup` → `UserBackendService.setup`, returns the
+  PERSON's profile-setup FACTS (`AccountSetup`: photo · headline · story · skill count · payout
+  readiness · published hours), the published working hours and the Standing rung, composed from
+  the reads every other surface trusts (`org.get_party_cards` → `org.get_profile_view` →
+  `finance.my_verification_status`). It never ships a percentage: the one rule,
+  `calculateProfileCompleteness`, runs in the island (and in its unit test), and a fact the server
+  cannot check (finance not live) is `null` and drops out of the count. Unreadable → `setup: null`
+  → no ring (Decision #149).
 - **Google OAuth (PKCE).** `/api/auth/oauth/google` begins the Supabase handshake and persists the
   PKCE **code-verifier** in a short-lived cookie (a `CookieStore` storage adapter on the anon
   client); `/api/auth/callback` exchanges the `code` for a session, mints the `sb-*` cookies, clears

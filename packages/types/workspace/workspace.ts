@@ -361,6 +361,23 @@ export const SwitchContextInputSchema = z.object({
 });
 export type SwitchContextInput = z.infer<typeof SwitchContextInputSchema>;
 
+/**
+ * An organisation the caller may act as (`GET /api/context/organisations`) — the third list beside the
+ * team and business rosters in the account popover's context switcher. A thin projection over
+ * `org.organisations` for the orgs the caller OWNS or holds an ACTIVE membership in; an organisation is
+ * not a {@link WorkspaceKind}, so it has no roster entry of its own.
+ */
+export const ActingOrganisationSchema = z.object({
+	id: z.string().max(64),
+	/** The trading name, else the legal name. */
+	name: z.string().max(200),
+	/** The organisation's `@handle`, without the `@`. */
+	handle: z.string().max(40),
+	/** Whether the caller owns it (otherwise a member). */
+	owner: z.boolean(),
+});
+export type ActingOrganisation = z.infer<typeof ActingOrganisationSchema>;
+
 /** The outcome of a handle-availability probe. */
 export const HandleCheckSchema = z.object({
 	handle: z.string().max(40),

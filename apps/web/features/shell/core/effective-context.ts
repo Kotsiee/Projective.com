@@ -2,6 +2,7 @@ import { type ReadonlySignal, useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import type { ContextRole, ContextType, UserContext } from "@projective/types/auth";
 import {
+	type DevProfileSetup,
 	type DevSeamState,
 	personaCapabilities,
 	readDevSeam,
@@ -30,6 +31,11 @@ export interface EffectiveContext {
 	context: UserContext;
 	/** `true` while a Context-Switcher override is active (so the popover can prefer it over live data). */
 	overridden: boolean;
+	/**
+	 * The simulated setup position of the viewer's own profile (the account popover's ring, nudge and
+	 * pip); `"auto"` — use the real read — whenever no override is active.
+	 */
+	profileSetup: DevProfileSetup;
 }
 
 /**
@@ -59,10 +65,18 @@ export function deriveEffectiveContext(base: UserContext, seam: DevSeamState | n
  * In production the seam is inert, so the signal stays `{ context: base, overridden: false }` forever.
  */
 export function useEffectiveContext(base: UserContext): ReadonlySignal<EffectiveContext> {
-	const sig = useSignal<EffectiveContext>({ context: base, overridden: false });
+	const sig = useSignal<EffectiveContext>({
+		context: base,
+		overridden: false,
+		profileSetup: "auto",
+	});
 	useEffect(() => {
 		const apply = (seam: DevSeamState | null): void => {
-			sig.value = { context: deriveEffectiveContext(base, seam), overridden: seam !== null };
+			sig.value = {
+				context: deriveEffectiveContext(base, seam),
+				overridden: seam !== null,
+				profileSetup: seam?.profileSetup ?? "auto",
+			};
 		};
 		apply(readDevSeam());
 		return subscribeDevSeam(apply);

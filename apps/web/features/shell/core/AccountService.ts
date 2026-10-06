@@ -1,4 +1,4 @@
-import type { CurrentUser } from "@projective/types/user";
+import { type AccountSetup, AccountSetupSchema, type CurrentUser } from "@projective/types/user";
 
 /**
  * AccountService — the THIN client service for the acting user's own account (the front half of the
@@ -19,6 +19,26 @@ export const AccountService = {
 			const body = await res.json().catch(() => null);
 			const user = body && typeof body === "object" ? (body as { user?: CurrentUser }).user : null;
 			return user ?? null;
+		} catch {
+			return null;
+		}
+	},
+
+	/**
+	 * How far the acting person's profile is set up (the completion ring + presence pip), or `null`
+	 * when it can't be resolved — in which case the popover draws a plain avatar rather than a ring
+	 * that claims a percentage nobody measured. Parsed against the SSOT, so a drifted payload degrades
+	 * to `null` instead of painting a wrong figure.
+	 */
+	async setup(): Promise<AccountSetup | null> {
+		try {
+			const res = await fetch("/api/user/setup", { headers: { accept: "application/json" } });
+			if (!res.ok) return null;
+			const body = await res.json().catch(() => null);
+			const parsed = AccountSetupSchema.safeParse(
+				body && typeof body === "object" ? (body as { setup?: unknown }).setup : null,
+			);
+			return parsed.success ? parsed.data : null;
 		} catch {
 			return null;
 		}

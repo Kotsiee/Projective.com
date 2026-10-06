@@ -1,7 +1,13 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
-import { getAnonClient, getUserClient, isAuthBackendLive } from "../../core/supabase.ts";
+import {
+	getAnonClient,
+	getUserClient,
+	isAuthBackendLive,
+	isFinanceBackendLive,
+} from "../../core/supabase.ts";
 import type { UserContext } from "@projective/types/auth";
 import {
+	type AccountSetup,
 	type CurrentUser,
 	oauthAvatarFromMetadata,
 	resolveAccountRole,
@@ -14,6 +20,9 @@ import {
 } from "@projective/types/org";
 import { toDisplayCurrency } from "@projective/types/finance";
 import { fetchPartyCards } from "../profile/party-cards.ts";
+import { fetchProfileView } from "../profile/live-profile.ts";
+import { myVerificationStatus } from "../finance/live-payments.ts";
+import { actorFrom, canReadLive } from "../read-actor.ts";
 
 /**
  * UserBackendService — the FAT server-side service for the **acting user's own account**.
@@ -124,10 +133,11 @@ export class UserBackendService {
 			return fail(401, { message: "You need to be signed in to view your account." });
 		}
 
-		const [live, card, prefs] = await Promise.all([
+		const [live, card, prefs, entityName] = await Promise.all([
 			UserBackendService.liveIdentity(input.accessToken),
 			UserBackendService.profileCard(context.userId, input.accessToken),
 			UserBackendService.livePreferences(context.userId, input.accessToken),
+			UserBackendService.entityName(context, input.accessToken),
 		]);
 		const preferences = resolvePreferences(prefs, context);
 
@@ -148,14 +158,74 @@ export class UserBackendService {
 			// The actor owns this request, so they are online by definition.
 			online: true,
 			// A personal space is the neutral default (no workspace chip); an entity context surfaces the
-			// active tenant. The stamped `active_context.handle` is the entity's handle for a tenant.
+			// active tenant by its display name, falling back to the stamped `active_context.handle` (the
+			// entity's slug) only when the name cannot be read.
 			workspace: context.contextType === "personal"
 				? null
-				: { name: handle ?? badge.label, kind: context.contextType },
+				: { name: entityName ?? handle ?? badge.label, kind: context.contextType },
 			preferences,
 		};
 
 		return ok({ user });
+	}
+
+	/**
+	 * How far the acting PERSON's own profile is set up — the facts behind the popover's completion
+	 * ring, plus the published hours its presence pip is derived from and the earned Standing rung.
+	 *
+	 * Composed from the reads every other surface already trusts, never from a parallel query: the
+	 * person's handle from their party card (so a session acting as a team still reads the PERSON, not
+	 * the team's slug), the profile itself from `org.get_profile_view` (photo · headline · story ·
+	 * skills · published hours · standing — the same document `/[handle]` renders), and payout
+	 * readiness from `finance.my_verification_status`.
+	 *
+	 * Chrome-safe like {@link me}: when the read cannot be made (stub mode, no token, an unreachable
+	 * database) it answers `setup: null` with a 200, and the popover draws no ring rather than a ring at
+	 * 0%. A payout read that is not connected leaves that one fact `null`, which drops the step from the
+	 * count instead of reporting it missing. Only a genuine guest is refused (401).
+	 */
+	static async setup(
+		input: { context: UserContext; accessToken?: string },
+	): Promise<ServiceResult<{ setup: AccountSetup | null }>> {
+		const { context } = input;
+		if (!context.userId) {
+			return fail(401, { message: "You need to be signed in to view your profile setup." });
+		}
+		const actor = actorFrom(context, input.accessToken);
+		if (!isAuthBackendLive() || !canReadLive(actor)) return ok({ setup: null });
+
+		try {
+			const cards = await fetchPartyCards(getUserClient(actor.accessToken), [context.userId]);
+			const handle = cards.get(context.userId)?.username?.trim();
+			if (!handle) return ok({ setup: null });
+
+			const [profile, verification] = await Promise.all([
+				fetchProfileView(handle, actor),
+				isFinanceBackendLive() ? myVerificationStatus(actor.accessToken) : Promise.resolve(null),
+			]);
+			if (!profile) return ok({ setup: null });
+
+			const seller = profile.kind === "freelancer";
+			const hoursPublished = profile.hasAvailability && profile.hours !== null;
+			const setup: AccountSetup = {
+				handle,
+				facts: {
+					seller,
+					hasPhoto: profile.avatar.length > 0,
+					hasHeadline: profile.headline.trim().length > 0,
+					hasStory: profile.story.trim().length > 0,
+					skillCount: profile.skills.length,
+					payoutReady: verification?.ok ? verification.value.payoutReady : null,
+					hoursPublished,
+				},
+				// The owner's read can see draft hours; the pip may only ever say what a visitor sees.
+				hours: hoursPublished ? profile.hours : null,
+				standing: profile.stats.standing,
+			};
+			return ok({ setup });
+		} catch {
+			return ok({ setup: null });
+		}
 	}
 
 	/**
@@ -296,6 +366,38 @@ export class UserBackendService {
 			// `cardName` falls back to the username; only a composed name is a name worth showing here.
 			const composed = card.name !== card.username && card.name !== "Unknown" ? card.name : null;
 			return { name: composed, avatar: card.avatar };
+		} catch {
+			return null;
+		}
+	}
+
+	/**
+	 * The acting entity's display name — the team's or business's `name`, the organisation's trading
+	 * name else its legal name — read as the caller under RLS (a member can read the entity they act
+	 * as). `null` in a personal context and on any failure, so the caller falls back to the slug.
+	 */
+	private static async entityName(
+		context: UserContext,
+		accessToken?: string,
+	): Promise<string | null> {
+		if (context.contextType === "personal" || !context.contextId) return null;
+		if (!isAuthBackendLive() || !accessToken) return null;
+		try {
+			const db = getUserClient(accessToken).schema("org");
+			if (context.contextType === "organisation") {
+				const { data, error } = await db.from("organisations")
+					.select("legal_name,trading_name")
+					.eq("id", context.contextId)
+					.maybeSingle();
+				if (error || !data) return null;
+				return str(data.trading_name) ?? str(data.legal_name) ?? null;
+			}
+			const table = context.contextType === "team" ? "teams" : "business_profiles";
+			const { data, error } = await db.from(table)
+				.select("name")
+				.eq("id", context.contextId)
+				.maybeSingle();
+			return error || !data ? null : str(data.name) ?? null;
 		} catch {
 			return null;
 		}

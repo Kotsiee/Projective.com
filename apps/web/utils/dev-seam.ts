@@ -99,6 +99,21 @@ export type DevMicPermission = "auto" | "prompt" | "granted" | "denied" | "unsup
 /** The document layout direction the Context Switcher can simulate (RtL/LtR verification, independent of language). */
 export type DevLayoutDirection = "ltr" | "rtl" | "auto";
 
+/**
+ * The simulated setup position of the viewer's own profile — the header account popover's completion
+ * ring, its go-live nudge and its presence pip. `auto` defers to the real `GET /api/user/setup` read.
+ * The rest substitute the FACTS the completeness rule runs on (never a percentage), so the rule under
+ * test is the shipping one:
+ *  - `new` — nothing set up: no photo, story, skills, payout or hours.
+ *  - `live` — the go-live baseline met (photo · headline + story · skills), payout and hours pending.
+ *  - `complete` — every step done, with Mon–Fri 9:00–17:30 published hours in the browser's own zone,
+ *    so the pip and its tooltip have a real schedule to derive from.
+ *
+ * Its own axis because each value is a SERVER fact about stored profile data that no control on the
+ * header can change, and a seeded persona sits at one position only.
+ */
+export type DevProfileSetup = "auto" | "new" | "live" | "complete";
+
 /** The DOM event the Context Switcher dispatches whenever the active override changes. */
 export const DEV_SEAM_EVENT = "pj:devcontext";
 
@@ -142,6 +157,8 @@ export interface DevSeamState {
 	micPermission: DevMicPermission;
 	/** The simulated document layout direction (RtL/LtR). */
 	layoutDirection: DevLayoutDirection;
+	/** The simulated setup position of the viewer's own profile (account popover ring + nudge + pip). */
+	profileSetup: DevProfileSetup;
 }
 // #endregion
 
@@ -229,6 +246,7 @@ const PROJECT_ONBOARDINGS: readonly DevProjectOnboarding[] = [
 	"all_stages",
 ];
 const LAYOUT_DIRECTIONS: readonly DevLayoutDirection[] = ["ltr", "rtl", "auto"];
+const PROFILE_SETUPS: readonly DevProfileSetup[] = ["auto", "new", "live", "complete"];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */
 function coerce<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -269,6 +287,8 @@ export function readDevSeam(): DevSeamState | null {
 		messagingRole: coerce(ds.devMessagingRole, MESSAGING_ROLES, "freelancer"),
 		micPermission: coerce(ds.devMicPermission, MIC_PERMISSIONS, "auto"),
 		layoutDirection: coerce(ds.devDirection, LAYOUT_DIRECTIONS, "ltr"),
+		// Absent = `auto`, the same "no second spelling for no override" rule as `projectOnboarding`.
+		profileSetup: coerce(ds.devProfileSetup, PROFILE_SETUPS, "auto"),
 	};
 }
 

@@ -1,20 +1,22 @@
 import type { JSX } from "preact";
 import { useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import type { UserContext } from "@projective/types/auth";
+import type { ContextType, UserContext } from "@projective/types/auth";
 import { PERSONAL_MEMBER_CONTEXT } from "@projective/types/auth";
-import type { CurrentUser } from "@projective/types/user";
-import { resolveAccountRole } from "@projective/types/user";
+import type { AccountSetup, CurrentUser } from "@projective/types/user";
+import { calculateProfileCompleteness, resolveAccountRole } from "@projective/types/user";
 // The shell header CSS lives in a server component (UserShell) whose import never reaches a client
 // bundle; riding it on this always-present header island injects it (same pattern as ShellSidebar).
 import "@web/features/shell/styles/user-shell.css";
-import { Drawer, Popover } from "@projective/ui/feedback";
+import { Drawer, Popover, ProgressBar, Tooltip } from "@projective/ui/feedback";
 import { Avatar } from "@projective/ui/display";
-import { dsConfig, toggleMode } from "@projective/ui/system";
-import { NavIcon } from "@web/features/shell/core/nav-icons.tsx";
+import { Button } from "@projective/ui/fields";
+import { cycleThemePreference, type ThemePreference, themePreference } from "@projective/ui/system";
+import { type IconName, NavIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { createMenuOptions, profileLinks } from "@web/features/shell/core/actions-model.ts";
 import { getNotifications } from "@web/features/shell/core/nav-fixtures.ts";
 import {
+	type ActingOrganisation,
 	roleLabel as workspaceRoleLabel,
 	workspaceHref,
 	type WorkspaceKind,
@@ -26,48 +28,44 @@ import BasketDrawer from "@web/features/checkout/islands/BasketDrawer.island.tsx
 import { basketCount } from "@web/features/checkout/core/basket-state.ts";
 import { defaultOwnerParam, isCheckoutPath } from "@web/features/checkout/core/basket-model.ts";
 import { AccountService } from "@web/features/shell/core/AccountService.ts";
-import { commitDisplayCurrency, displayCurrency } from "@web/features/shell/core/currency-state.ts";
-import { DISPLAY_CURRENCIES } from "@projective/types/finance";
+import {
+	presenceAt,
+	setupStepHref,
+	simulatedSetup,
+} from "@web/features/shell/core/account-setup.ts";
 import { useEffectiveContext } from "@web/features/shell/core/effective-context.ts";
 import { AuthService } from "@web/features/auth/core/AuthService.ts";
-import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import { onAvatarChanged } from "@web/utils/avatar-sync.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
+import { ProfileProgressAvatar } from "@web/features/shell/components/ProfileProgressAvatar.tsx";
 
-// #region Popover sub-views + presence model
-/** The states the account popover's `ui-popover__content` can render (task §2 + the currency picker). */
-type AccountView = "main" | "status" | "context" | "currency";
+// #region Popover sub-views + vocabulary
+/** The states the account popover's `ui-popover__content` can render. */
+type AccountView = "main" | "context";
 
-/** A presence status the user can select from the status picker (task §2B). */
-type StatusKey = "online" | "away" | "dnd" | "invisible";
+/** How an acting context's kind is named on the "Acting as" row and in the switcher. */
+const CONTEXT_KIND_LABEL: Record<ContextType, string> = {
+	personal: "Personal",
+	team: "Team",
+	business: "Business",
+	organisation: "Organisation",
+};
 
-interface StatusOption {
-	key: StatusKey;
-	label: string;
-	/** Short qualifier under the label. */
-	desc: string;
-}
+/** The theme control's glyph + spoken name per preference, and the one a press moves to. */
+const THEME_CONTROL: Record<ThemePreference, { icon: IconName; label: string; next: string }> = {
+	light: { icon: "sun", label: "Light", next: "Dark" },
+	dark: { icon: "moon", label: "Dark", next: "System" },
+	system: { icon: "monitor", label: "System", next: "Light" },
+};
 
-/** The presence options, in menu order. The leading dot tone is driven by CSS off `data-status`. */
-const STATUS_OPTIONS: readonly StatusOption[] = [
-	{ key: "online", label: "Online", desc: "Available to everyone" },
-	{ key: "away", label: "Away", desc: "Idle — replies may be slow" },
-	{ key: "dnd", label: "Do Not Disturb", desc: "Notifications muted" },
-	{ key: "invisible", label: "Invisible", desc: "Appear offline" },
-];
-
-/** Narrow a stored string to a known {@link StatusKey}, defaulting to `online`. */
-function toStatus(raw: string | null): StatusKey {
-	return raw === "away" || raw === "dnd" || raw === "invisible" || raw === "online"
-		? raw
-		: "online";
-}
+/** How often the presence pip re-derives from the clock — a band edge is never more than a minute late. */
+const PRESENCE_TICK_MS = 60_000;
 // #endregion
 
 export interface UserActionsProps {
 	/**
 	 * The hydrated user context — gates the Create menu (seller-only Business/Service/Product; Team
-	 * hidden in an organisation), the "Become a Freelancer" CTA (shown only for a client context), and
+	 * hidden in an organisation), the "Become a Freelancer" action (shown only for a client context), and
 	 * seeds the profile links + the account popover's fallback identity. Chrome only; access is
 	 * re-checked server-side + under RLS. Defaults to a personal member so the tray is never empty.
 	 */
@@ -92,21 +90,26 @@ export interface UserActionsProps {
 
 /**
  * UserActions — the unified header's trailing action tray (DESIGN_SYSTEM.md Part D.1, "Right Block"),
- * left→right: **Create** · **Notifications** · **Basket** · **Profile**. The Profile control opens a
- * **state-driven account popover** (task §2) that switches its `ui-popover__content` between three
- * sub-views without ever closing:
- *  - **main** — identity (no "Client" tag; a **Become a Freelancer** CTA for a client context), a
- *    dedicated clickable **online-status row**, View profile / Settings, a single **Sun/Moon** theme
- *    icon-button, and Log out. A header **context-switch** icon opens the context switcher.
- *  - **status** — the presence picker (Online · Away · Do Not Disturb · Invisible); selecting returns
- *    to `main` and persists the choice.
- *  - **context** — Teams ⁄ Businesses tabs listing the memberships the user can switch into, with
- *    Create-New / Manage footer actions.
+ * left→right: **Create** · **Notifications** · **Basket** · **Profile**. The Profile control is the
+ * person's avatar inside a **profile-completion ring** with a **presence pip**, and opens the account
+ * popover, a state-driven view container with two sub-views:
+ *  - **main** — top to bottom: the identity block (ringed avatar · name · `@handle` · Standing ·
+ *    the derived presence line, whose tooltip is the working-hours schedule); the **Acting as** row;
+ *    the **profile-setup nudge** (a progress track plus an inline checklist) while setup is under 100%;
+ *    the destinations (View profile · Become a Freelancer · Availability & hours · Wallet & payouts ·
+ *    Settings); and a footer with a light ⁄ dark ⁄ system theme control and Log out.
+ *  - **context** — the switcher: the person themself, then their Teams, Businesses and
+ *    Organisations; choosing one re-stamps the session through `useContextSwitch`.
  *
- * The menu binds **live account data** (name/avatar/email/role/status/workspace) fetched once on
- * hydration from the thin {@link AccountService}, falling back to the SSR {@link UserContext} until it
- * resolves. **Responsive (Part D.3):** below `--bp-md` the avatar opens a right-side account `Drawer`
- * that shares the very same view-driven body, so the two surfaces never drift.
+ * Presence is DERIVED from the person's published working hours and the clock (the same rule a
+ * visitor's "Available now ⁄ Away" badge reads), never chosen — there is no presence service, and a
+ * pip the viewer sets by hand would say something the calendar contradicts. Display currency is not
+ * here: it is switched from the wallet and at checkout (Decision #149).
+ *
+ * Identity binds **live account data** fetched once on hydration from the thin {@link AccountService}
+ * (`me` for identity, `setup` for completeness · hours · Standing), falling back to the SSR
+ * {@link UserContext} until each resolves. **Responsive (Part D.3):** below `--bp-md` the avatar opens
+ * a right-side account `Drawer` that shares the very same view-driven body.
  */
 export default function UserActions(
 	{ context = PERSONAL_MEMBER_CONTEXT, protectedRoute = false, path }: UserActionsProps,
@@ -120,70 +123,80 @@ export default function UserActions(
 	const accountOpen = useSignal(false);
 	const createBtn = useRef<HTMLButtonElement>(null);
 	const profileBtn = useRef<HTMLButtonElement>(null);
+	// The desktop popover's first focus: the Acting-as row, so the presence link (whose tooltip opens on
+	// focus) is never focused programmatically on every open.
+	const actingRef = useRef<HTMLButtonElement>(null);
 
-	// The account popover's active sub-view + the context switcher's active tab.
+	// The account popover's active sub-view, and whether the setup checklist is unfolded.
 	const view = useSignal<AccountView>("main");
-	const ctxTab = useSignal<"teams" | "businesses">("teams");
-	// The selected presence status — a durable local preference (task §2B), hydrated after mount.
-	const status = useSignal<StatusKey>("online");
-	// The currency being written, and whether the last write failed to persist server-side. Both are
-	// about the SAVE, never about what is displayed — the display already changed optimistically.
-	const savingCurrency = useSignal<string | null>(null);
-	const currencySaveFailed = useSignal(false);
+	const checklistOpen = useSignal(false);
 	/**
-	 * The viewer's real teams and businesses, read through the live roster the first time each tab is
-	 * shown — `null` until then. Read lazily because most opens of the popover never visit this view, and
-	 * a membership list that paid for itself on every page load would be the header's slowest part.
+	 * The viewer's real teams and businesses, read through the live roster the first time the switcher
+	 * is shown — `null` until then. Read lazily because most opens of the popover never visit it, and a
+	 * membership list that paid for itself on every page load would be the header's slowest part.
 	 */
 	const memberships = useSignal<Record<WorkspaceKind, readonly WorkspaceSummary[] | null>>({
 		team: null,
 		business: null,
 	});
+	const organisations = useSignal<readonly ActingOrganisation[] | null>(null);
 	const membershipsError = useSignal<string | null>(null);
 	// The acting-context switch: POST /api/context/switch → re-mint the token → hard navigation.
 	const contextSwitch = useContextSwitch();
 
-	// Reset to the main view whenever both account surfaces are closed, so reopening always starts on
-	// the identity screen (never a stale status/context sub-view). Reads only the open signals — never
-	// `view` — so it can't loop.
+	// Reset to the main view (checklist folded) whenever both account surfaces are closed, so reopening
+	// always starts on the identity screen. Reads only the open signals, so it can't loop.
 	useSignalEffect(() => {
-		if (!profileOpen.value && !accountOpen.value) view.value = "main";
+		if (!profileOpen.value && !accountOpen.value) {
+			view.value = "main";
+			checklistOpen.value = false;
+		}
 	});
 
-	// The acting user's live account projection (name/avatar/email/role/status/workspace), fetched once
-	// on hydration. `null` until it resolves — and if the read fails — so the menu falls back to the
-	// context-derived placeholders below (chrome only; a failed load is never an access failure).
+	// The acting user's live account projection (name/avatar/role/workspace) and their profile setup,
+	// each fetched once on hydration. `null` until it resolves — and if the read fails — so the popover
+	// falls back to the context-derived placeholders and draws no ring (chrome only; a failed load is
+	// never an access failure).
 	const account = useSignal<CurrentUser | null>(null);
+	const setup = useSignal<AccountSetup | null>(null);
 	const loggingOut = useSignal(false);
+	// The clock the presence pip derives from; ticks once a minute so a band edge flips the pip.
+	const now = useSignal(Date.now());
 	useEffect(() => {
-		status.value = toStatus(readStored("local", LocalKeys.ACCOUNT_STATUS));
 		let alive = true;
 		AccountService.current().then((user) => {
 			if (alive && user) account.value = user;
 		});
+		AccountService.setup().then((value) => {
+			if (alive && value) setup.value = value;
+		});
+		const tick = setInterval(() => (now.value = Date.now()), PRESENCE_TICK_MS);
 		return () => {
 			alive = false;
+			clearInterval(tick);
 		};
 	}, []);
 
-	// A profile photo changed on THIS page (the owner's editor broadcasts it): show the new face now
-	// rather than on the next navigation.
+	// A profile photo changed on THIS page (the owner's editor broadcasts it): show the new face — and
+	// the photo step it completes — now rather than on the next navigation.
 	useEffect(() =>
 		onAvatarChanged(({ userId, url }) => {
 			const current = account.peek();
 			if (current && current.userId === userId) account.value = { ...current, avatar: url };
+			const known = setup.peek();
+			if (current?.userId === userId && known) {
+				setup.value = { ...known, facts: { ...known.facts, hasPhoto: !!url } };
+			}
 		}), []);
 
 	// Live effective context (SSR base → DEV Context Switcher override). Every capability-gated surface
-	// below — the Create menu, the role badge, the Become-a-Freelancer CTA, the context switcher's
-	// active-row detection — reads this, so flipping the simulated persona re-gates the popover with no
-	// reload. Inert in production (the seam degrades to the base context).
+	// below — the Create menu, the Acting-as row, the Become-a-Freelancer action, the switcher's active
+	// row, and the simulated profile setup — reads this, so flipping the simulated persona re-gates the
+	// popover with no reload. Inert in production (the seam degrades to the base context).
 	const effective = useEffectiveContext(context);
 	const effCtx = effective.value.context;
 	const devOverride = effective.value.overridden;
-
-	// Reading `dsConfig.value` re-renders this island when the mode flips from any surface.
-	const dark = dsConfig.value.mode === "dark";
+	const devSetup = effective.value.profileSetup;
 
 	const createOptions = createMenuOptions(effCtx);
 	const links = profileLinks(effCtx);
@@ -200,31 +213,63 @@ export default function UserActions(
 	// Whether the reader is INSIDE the basket flow, which is what makes this control the current
 	// destination. Answered by `isCheckoutPath` — the same guard every checkout slot resolver opens
 	// with — so the control and the lane, header and footer bands the flow mounts cannot disagree
-	// about where the flow begins and ends. It covers `/basket` as well as `/checkout`: `/basket`
-	// redirects into the flow and, with the rail entry gone, this control is now its only cue.
+	// about where the flow begins and ends.
 	const onBasketFlow = path !== undefined && isCheckoutPath(path);
 
-	// Resolved account display — the live projection when present, else the context-derived fallback.
-	// A dev persona override wins over the fetched account for the role/identity display, so the
-	// Context Switcher visibly re-personas the popover (the live fetch reflects the real, unswitched
-	// session and would otherwise mask the simulation).
+	// #region Resolved account display
+	// The live projection when present, else the context-derived fallback. A dev persona override wins
+	// over the fetched account for the role display, so the Context Switcher visibly re-personas the
+	// popover (the live fetch reflects the real, unswitched session and would otherwise mask it).
 	const acct = account.value;
 	const fallbackBadge = resolveAccountRole(effCtx);
 	const displayName = acct?.name ?? links.displayName;
-	const displaySub = acct?.email ?? "";
 	const avatarUrl = acct?.avatar ?? undefined;
-	const roleLabel = devOverride ? fallbackBadge.label : (acct?.roleLabel ?? fallbackBadge.label);
 	const roleKey = devOverride ? fallbackBadge.role : (acct?.role ?? fallbackBadge.role);
-	const workspace = acct?.workspace ?? null;
-	// A client context shows no role tag — it gets the "Become a Freelancer" CTA instead (task §2A).
+	// A client context gets the "Become a Freelancer" action.
 	const isClient = roleKey === "client";
-	const activeStatus = STATUS_OPTIONS.find((o) => o.key === status.value) ?? STATUS_OPTIONS[0];
 
-	// The live display currency, read straight from the shared store — the SAME signal every
-	// `MoneyView` on the page reads. So the menu's current value and the figures it governs cannot
-	// drift apart, and a switch made from anywhere is reflected here without a refetch.
-	const activeCurrency = DISPLAY_CURRENCIES.find((c) => c.code === displayCurrency.value) ??
-		DISPLAY_CURRENCIES[0];
+	// The PERSON's handle. In an entity context `UserContext.handle` is the entity's slug, so only the
+	// setup read (or a personal context) can name the person.
+	const personalHandle = setup.value?.handle ??
+		(effCtx.contextType === "personal" ? (acct?.handle ?? effCtx.handle) : null);
+
+	// The setup the ring and nudge run on: the real read, or — under a Dev Context Switcher position —
+	// simulated FACTS run through the same rule. A persona override also decides which checklist
+	// (seller or buyer) applies, so the checklist follows the simulated persona with everything else.
+	const realSetup = setup.value;
+	const sellerNow = devOverride
+		? effCtx.isFreelancer
+		: (realSetup?.facts.seller ?? effCtx.isFreelancer);
+	const activeSetup: AccountSetup | null = devSetup !== "auto"
+		? simulatedSetup(devSetup, {
+			handle: personalHandle ?? "you",
+			seller: sellerNow,
+			standing: realSetup?.standing ?? null,
+		})
+		: realSetup && { ...realSetup, facts: { ...realSetup.facts, seller: sellerNow } };
+	const completeness = activeSetup ? calculateProfileCompleteness(activeSetup.facts) : null;
+	const presence = activeSetup ? presenceAt(activeSetup.hours, now.value) : null;
+	const setupHandle = activeSetup?.handle ?? personalHandle;
+	const standing = sellerNow ? activeSetup?.standing ?? null : null;
+
+	// "Acting as" — the persona in a personal context, the entity's display name otherwise. Under a
+	// simulated entity persona the real session has no such entity, so only its kind is named.
+	const workspace = acct?.workspace ?? null;
+	const actingName = effCtx.contextType === "personal"
+		? `Personal · ${roleKey === "freelancer" ? "Freelancer" : "Client"}`
+		: workspace && workspace.kind === effCtx.contextType
+		? `${CONTEXT_KIND_LABEL[effCtx.contextType]} · ${workspace.name}`
+		: CONTEXT_KIND_LABEL[effCtx.contextType];
+
+	// The trigger's spoken name carries what its ring and pip draw, so neither is sight-only.
+	const triggerLabel = [
+		"Your account",
+		completeness && !completeness.complete ? `profile ${completeness.percent}% set up` : null,
+		presence ? presence.label.toLowerCase() : null,
+	].filter(Boolean).join(", ");
+
+	const theme = THEME_CONTROL[themePreference.value];
+	// #endregion
 
 	/**
 	 * Smart logout — revoke + clear the session, then route-aware redirect: leave a protected route for
@@ -242,37 +287,21 @@ export default function UserActions(
 		}
 	}
 
-	/** Persist + apply a presence status, then return to the identity view. */
-	function pickStatus(next: StatusKey): void {
-		status.value = next;
-		writeStored("local", LocalKeys.ACCOUNT_STATUS, next);
-		view.value = "main";
-	}
-
 	/**
-	 * Apply a display-currency change and return to the identity view.
-	 *
-	 * The store moves first, inside {@link commitDisplayCurrency}, so every figure on the page has
-	 * already changed by the time this returns to `main` — the switch reads as instant because it IS
-	 * instant; the PATCH settles behind it. The menu closes on the optimistic step rather than waiting,
-	 * because a menu that hangs open on a network round-trip makes a cheap preference feel expensive.
-	 *
-	 * `currencySaveFailed` surfaces the one case that must not pass silently: the choice applied to
-	 * this browser but did not persist, so it will not follow the viewer to another device.
+	 * Move between sub-views and land focus on the new view's entry control — the old one unmounts with
+	 * the view, and a keyboard user must not be dropped onto `<body>`. Resolved inside the surface the
+	 * press came from, because the popover and the mobile sheet render the same body twice.
 	 */
-	async function pickCurrency(code: string): Promise<void> {
-		if (savingCurrency.value) return;
-		savingCurrency.value = code;
-		view.value = "main";
-		const saved = await commitDisplayCurrency(code);
-		savingCurrency.value = null;
-		currencySaveFailed.value = !saved;
+	function goTo(next: AccountView, event: JSX.TargetedMouseEvent<HTMLElement>): void {
+		const surface = event.currentTarget.closest(".shell-account");
+		view.value = next;
+		const selector = next === "context" ? ".shell-subview__back" : ".shell-account__acting";
+		setTimeout(() => surface?.querySelector<HTMLElement>(selector)?.focus(), 0);
 	}
 
 	/** Read the viewer's memberships of one kind, once, through the live roster route. */
 	async function loadMemberships(kind: WorkspaceKind): Promise<void> {
 		if (memberships.peek()[kind] !== null) return;
-		membershipsError.value = null;
 		const res = await WorkspaceService.roster(kind);
 		if (!res.ok || !res.data) {
 			membershipsError.value = res.message ??
@@ -284,272 +313,333 @@ export default function UserActions(
 		memberships.value = { ...memberships.peek(), [kind]: live };
 	}
 
-	// Load the tab's list the first time the switcher shows it.
+	/** Read the organisations the viewer may act as, once. */
+	async function loadOrganisations(): Promise<void> {
+		if (organisations.peek() !== null) return;
+		const res = await WorkspaceService.actingOrganisations();
+		organisations.value = res.ok && res.data ? res.data.organisations : [];
+	}
+
+	// Load every list the first time the switcher shows.
 	useSignalEffect(() => {
 		if (view.value !== "context") return;
-		void loadMemberships(ctxTab.value === "teams" ? "team" : "business");
+		membershipsError.value = null;
+		void loadMemberships("team");
+		void loadMemberships("business");
+		void loadOrganisations();
 	});
 
 	/**
-	 * Switch the acting context into a team/business (task §2C), through the shared hook: the session is
-	 * re-stamped server-side, the token re-minted, then a hard navigation lands on the entity's console.
-	 * The popover stays open while that runs so the busy state is visible rather than a menu that simply
-	 * vanished.
+	 * Switch the acting context through the shared hook: the session is re-stamped server-side, the
+	 * token re-minted, then a hard navigation lands on the entity's console (an organisation, which has
+	 * no console of its own, lands on its profile). The popover stays open while that runs so the busy
+	 * state is visible rather than a menu that simply vanished.
 	 */
-	function switchContext(kind: WorkspaceKind, entry: WorkspaceSummary): void {
-		void contextSwitch.switchTo(kind, entry.id, {
-			destination: workspaceHref(kind, entry.handle),
-			handle: entry.handle,
+	function switchTo(kind: Exclude<ContextType, "personal">, id: string, handle: string): void {
+		void contextSwitch.switchTo(kind, id, {
+			destination: kind === "organisation" ? `/${handle}` : workspaceHref(kind, handle),
+			handle,
 		});
 	}
 
 	// #region Sub-view renderers
-	/** The identity view — the default popover body. */
-	const mainView = (onNavigate: () => void): JSX.Element => (
-		<>
-			<div class="shell-account__head">
-				<a class="shell-account__id" href={links.viewProfile} role="menuitem" onClick={onNavigate}>
-					<UserAvatar label={displayName} image={avatarUrl} size="md" />
-					<span class="shell-account__ident">
-						<span class="shell-account__name">{displayName}</span>
-						{displaySub ? <span class="shell-account__sub">{displaySub}</span> : null}
-						{!isClient
-							? (
-								<span class="shell-account__meta">
-									<span class="shell-account__badge" data-role={roleKey}>{roleLabel}</span>
-								</span>
-							)
-							: null}
-					</span>
-				</a>
+	/** The identity block — ringed avatar, name, `@handle` · Standing, and the derived presence line. */
+	const identity = (onNavigate: () => void): JSX.Element => {
+		const meta = [
+			setupHandle ? `@${setupHandle}` : null,
+			standing ? `${standing.label} standing` : null,
+		].filter(Boolean).join(" · ");
+		return (
+			<div class="shell-account__identity">
+				<ProfileProgressAvatar
+					label={displayName}
+					image={avatarUrl}
+					size="md"
+					percent={completeness?.percent ?? null}
+					presence={presence?.tone ?? null}
+				/>
+				<div class="shell-account__ident">
+					<span class="shell-account__name">{displayName}</span>
+					{meta ? <span class="shell-account__meta">{meta}</span> : null}
+					{presence && setupHandle
+						? (
+							<Tooltip content={presence.schedule} placement="bottom-start">
+								<a
+									class="shell-account__presence"
+									data-presence={presence.tone}
+									href={setupStepHref("hours", setupHandle)}
+									onClick={onNavigate}
+								>
+									<span class="shell-account__presence-dot" aria-hidden="true" />
+									<span>{presence.label}</span>
+									{presence.next
+										? <span class="shell-account__presence-next">· {presence.next}</span>
+										: null}
+								</a>
+							</Tooltip>
+						)
+						: null}
+				</div>
+			</div>
+		);
+	};
+
+	/** The profile-setup nudge — a progress track and an inline checklist, shown only below 100%. */
+	const setupNudge = (onNavigate: () => void): JSX.Element | null => {
+		if (!completeness || completeness.complete || !setupHandle) return null;
+		const toGoLive = completeness.goLive.applies && !completeness.goLive.met;
+		const count = toGoLive ? completeness.goLive.remaining : completeness.remaining;
+		const hint = `${count} ${count === 1 ? "step" : "steps"} ${toGoLive ? "to go live" : "left"}`;
+		const open = checklistOpen.value;
+		return (
+			<div class="shell-setup">
 				<button
 					type="button"
-					class="shell-account__switch"
-					aria-label="Switch team or business"
-					onClick={() => {
-						ctxTab.value = "teams";
-						view.value = "context";
-					}}
+					class="shell-setup__head"
+					aria-expanded={open}
+					aria-controls="shell-setup-steps"
+					onClick={() => (checklistOpen.value = !open)}
 				>
-					<NavIcon name="switch" />
-				</button>
-			</div>
-
-			{isClient
-				? (
-					<a class="shell-account__cta" href={links.settings} role="menuitem" onClick={onNavigate}>
-						<NavIcon name="services" class="shell-account__cta-icon" />
-						<span>Become a Freelancer</span>
-					</a>
-				)
-				: null}
-
-			{workspace
-				? (
-					<div class="shell-account__workspace">
-						<span class="shell-account__workspace-label">Workspace</span>
-						<span class="shell-account__workspace-name">{workspace.name}</span>
-					</div>
-				)
-				: null}
-
-			{/* Online-status — its own dedicated row; opens the status picker (task §2B). */}
-			<button
-				type="button"
-				class="shell-status"
-				data-status={status.value}
-				aria-haspopup="menu"
-				onClick={() => (view.value = "status")}
-			>
-				<span class="shell-status__dot" aria-hidden="true" />
-				<span class="shell-status__label">{activeStatus.label}</span>
-				<NavIcon name="chevron" class="shell-status__chevron" />
-			</button>
-
-			{/* Currency — the global display-currency switcher; opens the picker sub-view. */}
-			<button
-				type="button"
-				class="shell-currency"
-				aria-haspopup="menu"
-				onClick={() => (view.value = "currency")}
-			>
-				<span class="shell-currency__symbol" aria-hidden="true">{activeCurrency.symbol}</span>
-				<span class="shell-currency__text">
-					<span class="shell-currency__label">Currency</span>
-					<span class="shell-currency__value">
-						{activeCurrency.code} · {activeCurrency.label}
+					<span class="shell-setup__title">
+						Profile setup <span class="shell-setup__pct">{completeness.percent}%</span>
 					</span>
+					<span class="shell-setup__hint">{hint}</span>
+					<NavIcon name="chevron" class="shell-setup__chevron" />
+				</button>
+				<ProgressBar
+					class="shell-setup__bar"
+					value={completeness.percent}
+					aria-label={`Profile setup, ${completeness.percent}% complete`}
+				/>
+				{open
+					? (
+						<ul class="shell-setup__steps" id="shell-setup-steps">
+							{completeness.steps.map((step) => (
+								<li key={step.id}>
+									{step.done
+										? (
+											<span class="shell-setup__step" data-done="true">
+												<NavIcon name="check" class="shell-setup__mark" />
+												<span>{step.label}</span>
+												<span class="ui-visually-hidden">(done)</span>
+											</span>
+										)
+										: (
+											<a
+												class="shell-setup__step"
+												href={setupStepHref(step.id, setupHandle)}
+												onClick={onNavigate}
+											>
+												<span
+													class="shell-setup__mark shell-setup__mark--todo"
+													aria-hidden="true"
+												/>
+												<span>{step.label}</span>
+												{step.goLive && completeness.goLive.applies
+													? <span class="shell-setup__live">Go-live</span>
+													: null}
+											</a>
+										)}
+								</li>
+							))}
+						</ul>
+					)
+					: null}
+			</div>
+		);
+	};
+
+	/** The identity view — the default popover body. */
+	const mainView = (
+		onNavigate: () => void,
+		focusRef?: { current: HTMLButtonElement | null },
+	): JSX.Element => (
+		<>
+			{identity(onNavigate)}
+
+			{/* Acting as — the active session context, and the way into the switcher. */}
+			<button
+				ref={focusRef}
+				type="button"
+				class="shell-account__acting"
+				onClick={(e) => goTo("context", e)}
+			>
+				<span class="shell-account__acting-text">
+					<span class="shell-account__acting-label">Acting as</span>
+					<span class="shell-account__acting-name">{actingName}</span>
 				</span>
-				<NavIcon name="chevron" class="shell-status__chevron" />
+				<span class="shell-account__acting-action">Switch</span>
+				<NavIcon name="chevron" class="shell-account__acting-chevron" />
 			</button>
-			{
-				/* The display changed either way; this says only that it did not SAVE. Surfacing it is the
-				   difference between "your currency is X everywhere" and "your currency is X on this
-				   browser until you clear it", and the viewer cannot tell those apart by looking. */
-			}
-			{currencySaveFailed.value
-				? (
-					<p class="shell-account__note" role="status">
-						Showing {activeCurrency.code} on this device — we couldn’t save it to your account.
-					</p>
-				)
-				: null}
+
+			{setupNudge(onNavigate)}
 
 			<div class="shell-menu__sep" role="separator" />
 
-			<a class="shell-menu__item" href={links.viewProfile} role="menuitem" onClick={onNavigate}>
+			<a class="shell-menu__item" href={links.viewProfile} onClick={onNavigate}>
 				<span class="shell-menu__icon">
 					<NavIcon name="user" />
 				</span>
 				<span class="shell-menu__label">View profile</span>
 			</a>
-			<a class="shell-menu__item" href={links.settings} role="menuitem" onClick={onNavigate}>
+			{isClient
+				? (
+					<a
+						class="shell-menu__item shell-menu__item--accent"
+						href="/become-partner"
+						onClick={onNavigate}
+					>
+						<span class="shell-menu__icon">
+							<NavIcon name="services" />
+						</span>
+						<span class="shell-menu__label">Become a Freelancer</span>
+					</a>
+				)
+				: null}
+			{setupHandle
+				? (
+					<a
+						class="shell-menu__item"
+						href={setupStepHref("hours", setupHandle)}
+						onClick={onNavigate}
+					>
+						<span class="shell-menu__icon">
+							<NavIcon name="clock" />
+						</span>
+						<span class="shell-menu__label">Availability &amp; hours</span>
+					</a>
+				)
+				: null}
+			<a class="shell-menu__item" href="/wallet" onClick={onNavigate}>
+				<span class="shell-menu__icon">
+					<NavIcon name="wallet" />
+				</span>
+				<span class="shell-menu__label">Wallet &amp; payouts</span>
+			</a>
+			<a class="shell-menu__item" href={links.settings} onClick={onNavigate}>
 				<span class="shell-menu__icon">
 					<NavIcon name="settings" />
 				</span>
 				<span class="shell-menu__label">Settings</span>
 			</a>
 
-			{/* Theme — a single Sun/Moon icon-button toggle (task §2D), replacing the old switch. */}
-			<div class="shell-account__row">
-				<span class="shell-account__row-label">Theme</span>
-				<button
-					type="button"
-					class="shell-theme-btn"
-					aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
-					onClick={() => toggleMode()}
-				>
-					<NavIcon name={dark ? "sun" : "moon"} />
-				</button>
-			</div>
-
 			<div class="shell-menu__sep" role="separator" />
 
-			<button
-				type="button"
-				class="shell-menu__item shell-menu__item--danger"
-				role="menuitem"
-				disabled={loggingOut.value}
-				onClick={() => {
-					onNavigate();
-					handleLogout();
-				}}
-			>
-				<span class="shell-menu__icon">
-					<NavIcon name="logout" />
-				</span>
-				<span class="shell-menu__label">{loggingOut.value ? "Signing out…" : "Log out"}</span>
-			</button>
+			{/* Footer rig — the theme preference (light → dark → system) and Log out. */}
+			<div class="shell-account__foot">
+				<Button
+					variant="text"
+					severity="secondary"
+					size="sm"
+					iconOnly
+					class="shell-account__theme"
+					icon={<NavIcon name={theme.icon} />}
+					aria-label={`Theme: ${theme.label}. Switch to ${theme.next}`}
+					title={`Theme: ${theme.label}`}
+					onClick={() => cycleThemePreference()}
+				/>
+				<Button
+					variant="text"
+					severity="danger"
+					size="sm"
+					class="shell-account__logout"
+					icon={<NavIcon name="logout" />}
+					label={loggingOut.value ? "Signing out…" : "Log out"}
+					disabled={loggingOut.value}
+					onClick={() => {
+						onNavigate();
+						void handleLogout();
+					}}
+				/>
+			</div>
 		</>
 	);
 
-	/** The presence picker view (task §2B). */
-	const statusView = (): JSX.Element => (
-		<div class="shell-subview">
-			<div class="shell-subview__head">
-				<button
-					type="button"
-					class="shell-subview__back"
-					aria-label="Back"
-					onClick={() => (view.value = "main")}
-				>
-					<NavIcon name="arrowLeft" />
-				</button>
-				<span class="shell-subview__title">Set status</span>
-			</div>
-			<ul class="shell-picker" role="radiogroup" aria-label="Presence status">
-				{STATUS_OPTIONS.map((opt) => {
-					const selected = opt.key === status.value;
-					return (
-						<li key={opt.key} role="none">
-							<button
-								type="button"
-								role="radio"
-								aria-checked={selected}
-								class="shell-picker__item"
-								data-status={opt.key}
-								onClick={() => pickStatus(opt.key)}
-							>
-								<span class="shell-status__dot" aria-hidden="true" />
-								<span class="shell-picker__text">
-									<span class="shell-picker__label">{opt.label}</span>
-									<span class="shell-picker__desc">{opt.desc}</span>
-								</span>
-								{selected ? <NavIcon name="check" class="shell-picker__check" /> : null}
-							</button>
-						</li>
-					);
-				})}
-			</ul>
-		</div>
+	/** One switchable row in the context switcher. */
+	const contextRow = (
+		key: string,
+		mark: JSX.Element,
+		name: string,
+		detail: string,
+		active: boolean,
+		onPick: () => void,
+	): JSX.Element => (
+		<li key={key} role="none">
+			<button
+				type="button"
+				class="shell-ctx__item"
+				data-active={active ? "true" : undefined}
+				aria-current={active ? "true" : undefined}
+				disabled={active || contextSwitch.switching.value}
+				onClick={onPick}
+			>
+				{mark}
+				<span class="shell-ctx__body">
+					<span class="shell-ctx__name">{name}</span>
+					<span class="shell-ctx__detail">{detail}</span>
+				</span>
+				{active ? <NavIcon name="check" class="shell-ctx__check" /> : null}
+			</button>
+		</li>
 	);
 
-	/**
-	 * The display-currency picker.
-	 *
-	 * A `radiogroup`, not a menu: these are mutually-exclusive states of one setting, and only a
-	 * radiogroup lets a screen reader announce "3 of 12, selected". Each row shows the code as the
-	 * primary token — a viewer scanning for their currency looks for "EUR", not for "Euro" — with the
-	 * name as the qualifier, and the symbol in a fixed-width leading column so the codes line up.
-	 */
-	const currencyView = (): JSX.Element => (
-		<div class="shell-subview">
-			<div class="shell-subview__head">
-				<button
-					type="button"
-					class="shell-subview__back"
-					aria-label="Back"
-					onClick={() => (view.value = "main")}
-				>
-					<NavIcon name="arrowLeft" />
-				</button>
-				<span class="shell-subview__title">Display currency</span>
+	/** A titled section of the switcher (Teams · Businesses · Organisations). */
+	const contextSection = (
+		title: string,
+		manage: { href: string; label: string } | null,
+		onNavigate: () => void,
+		body: JSX.Element | JSX.Element[],
+	): JSX.Element => (
+		<section class="shell-ctx__section" aria-label={title}>
+			<div class="shell-ctx__section-head">
+				<span class="shell-ctx__section-title">{title}</span>
+				{manage
+					? (
+						<a class="shell-ctx__manage" href={manage.href} onClick={onNavigate}>
+							{manage.label}
+						</a>
+					)
+					: null}
 			</div>
-			{
-				/* States the one thing a currency switcher must never leave ambiguous on a marketplace:
-				   that this changes what you SEE, not what you are charged. */
-			}
-			<p class="shell-subview__note">
-				Prices are converted for display. You’re always charged in the listing’s own currency.
-			</p>
-			<ul class="shell-picker" role="radiogroup" aria-label="Display currency">
-				{DISPLAY_CURRENCIES.map((option) => {
-					const selected = option.code === activeCurrency.code;
-					return (
-						<li key={option.code} role="none">
-							<button
-								type="button"
-								role="radio"
-								aria-checked={selected}
-								class="shell-picker__item"
-								disabled={savingCurrency.value !== null}
-								onClick={() => pickCurrency(option.code)}
-							>
-								<span class="shell-currency__symbol" aria-hidden="true">{option.symbol}</span>
-								<span class="shell-picker__text">
-									<span class="shell-picker__label">{option.code}</span>
-									<span class="shell-picker__desc">{option.label}</span>
-								</span>
-								{selected ? <NavIcon name="check" class="shell-picker__check" /> : null}
-							</button>
-						</li>
-					);
-				})}
-			</ul>
-		</div>
+			<ul class="shell-ctx__list">{body}</ul>
+		</section>
 	);
 
-	/** The in-popover context switcher view (task §2C). */
-	const contextView = (onNavigate: () => void): JSX.Element => {
-		const tab = ctxTab.value;
-		const kind: WorkspaceKind = tab === "teams" ? "team" : "business";
+	/** A team or business list, with its loading / empty / error states. */
+	const workspaceRows = (kind: WorkspaceKind): JSX.Element | JSX.Element[] => {
 		const list = memberships.value[kind];
+		const noun = kind === "team" ? "teams" : "businesses";
+		if (list === null) {
+			return (
+				<li class="shell-ctx__empty" role="status">
+					{membershipsError.value ?? `Loading your ${noun}…`}
+				</li>
+			);
+		}
+		if (list.length === 0) return <li class="shell-ctx__empty">No {noun} yet.</li>;
+		return list.map((m) =>
+			contextRow(
+				m.id,
+				<Avatar label={m.name} image={m.avatar || undefined} size="sm" shape="square" />,
+				m.name,
+				`${workspaceRoleLabel(m.role)} · ${
+					m.memberCount === 1 ? "1 member" : `${m.memberCount} members`
+				}`,
+				effCtx.contextType === kind && effCtx.contextId === m.id,
+				() => switchTo(kind, m.id, m.handle),
+			)
+		);
+	};
+
+	/** The in-popover context switcher view. */
+	const contextView = (onNavigate: () => void): JSX.Element => {
 		const switching = contextSwitch.switching.value;
-		const manageHref = tab === "teams" ? "/teams" : "/businesses";
-		const createHref = tab === "teams" ? "/teams/create" : "/businesses/create";
-		const createLabel = tab === "teams" ? "Create New Team" : "Create New Business";
-		const manageLabel = tab === "teams" ? "Manage Teams" : "Manage Businesses";
-		const activeType = effCtx.contextType;
+		const orgs = organisations.value;
+		// Teams are the freelancer side of the platform (PRODUCT_SPEC §Freelancer-Only Space), gated
+		// exactly as the sidebar gates its Teams entry.
+		const showTeams = effCtx.isFreelancer || effCtx.contextType === "team";
+		const canCreateTeam = showTeams && effCtx.contextType !== "organisation";
+		const canCreateBusiness = effCtx.isFreelancer;
 
 		return (
 			<div class="shell-subview">
@@ -558,86 +648,61 @@ export default function UserActions(
 						type="button"
 						class="shell-subview__back"
 						aria-label="Back"
-						onClick={() => (view.value = "main")}
+						onClick={(e) => goTo("main", e)}
 					>
 						<NavIcon name="arrowLeft" />
 					</button>
 					<span class="shell-subview__title">Switch context</span>
 				</div>
 
-				<div class="shell-ctx__tabs" role="tablist" aria-label="Context kind">
-					<button
-						type="button"
-						role="tab"
-						class="shell-ctx__tab"
-						aria-selected={tab === "teams"}
-						data-active={tab === "teams" ? "true" : undefined}
-						onClick={() => (ctxTab.value = "teams")}
-					>
-						Teams
-					</button>
-					<button
-						type="button"
-						role="tab"
-						class="shell-ctx__tab"
-						aria-selected={tab === "businesses"}
-						data-active={tab === "businesses" ? "true" : undefined}
-						onClick={() => (ctxTab.value = "businesses")}
-					>
-						Businesses
-					</button>
-				</div>
+				<div class="shell-ctx" aria-busy={switching ? "true" : undefined}>
+					<ul class="shell-ctx__list">
+						{contextRow(
+							"personal",
+							<UserAvatar label={displayName} image={avatarUrl} size="sm" />,
+							displayName,
+							`Personal · ${effCtx.isFreelancer ? "Freelancer" : "Client"}`,
+							effCtx.contextType === "personal",
+							() => void contextSwitch.exitToPersonal(),
+						)}
+					</ul>
 
-				<ul class="shell-ctx__list" aria-busy={list === null || switching ? "true" : undefined}>
-					{list === null
-						? (
-							<li class="shell-ctx__empty" role="status">
-								{membershipsError.value ?? `Loading your ${tab}…`}
-							</li>
+					{showTeams
+						? contextSection(
+							"Teams",
+							{ href: "/teams", label: "Manage" },
+							onNavigate,
+							workspaceRows("team"),
 						)
-						: list.length === 0
-						? <li class="shell-ctx__empty">No {tab} yet.</li>
-						: list.map((m) => {
-							const active = activeType === kind && effCtx.contextId === m.id;
-							return (
-								<li key={m.id} role="none">
-									<button
-										type="button"
-										class="shell-ctx__item"
-										data-active={active ? "true" : undefined}
-										aria-current={active ? "true" : undefined}
-										disabled={active || switching}
-										onClick={() => switchContext(kind, m)}
-									>
-										<Avatar label={m.name} image={m.avatar || undefined} size="sm" shape="square" />
-										<span class="shell-ctx__body">
-											<span class="shell-ctx__name">{m.name}</span>
-											<span class="shell-ctx__detail">
-												{workspaceRoleLabel(m.role)} ·{" "}
-												{m.memberCount === 1 ? "1 member" : `${m.memberCount} members`}
-											</span>
-										</span>
-										{active ? <NavIcon name="check" class="shell-ctx__check" /> : null}
-									</button>
-								</li>
-							);
-						})}
-				</ul>
-
-				{activeType !== "personal" && (
-					<button
-						type="button"
-						class="shell-menu__item"
-						role="menuitem"
-						disabled={switching}
-						onClick={() => void contextSwitch.exitToPersonal()}
-					>
-						<span class="shell-menu__icon">
-							<NavIcon name="user" />
-						</span>
-						<span class="shell-menu__label">Act as yourself</span>
-					</button>
-				)}
+						: null}
+					{contextSection(
+						"Businesses",
+						{ href: "/businesses", label: "Manage" },
+						onNavigate,
+						workspaceRows("business"),
+					)}
+					{
+						/* Organisations appear only when the viewer has one — most people never will, and an
+						   empty "Organisations" heading would advertise a kind of account they cannot open. */
+					}
+					{orgs && orgs.length > 0
+						? contextSection(
+							"Organisations",
+							null,
+							onNavigate,
+							orgs.map((o) =>
+								contextRow(
+									o.id,
+									<Avatar label={o.name} size="sm" shape="square" />,
+									o.name,
+									o.owner ? "Owner" : "Member",
+									effCtx.contextType === "organisation" && effCtx.contextId === o.id,
+									() => switchTo("organisation", o.id, o.handle),
+								)
+							),
+						)
+						: null}
+				</div>
 
 				{(switching || contextSwitch.error.value) && (
 					<p class="shell-account__note" role="status" aria-live="polite">
@@ -645,32 +710,47 @@ export default function UserActions(
 					</p>
 				)}
 
-				<div class="shell-menu__sep" role="separator" />
-				<div class="shell-ctx__foot">
-					<a class="shell-menu__item" href={createHref} role="menuitem" onClick={onNavigate}>
-						<span class="shell-menu__icon">
-							<NavIcon name="create" />
-						</span>
-						<span class="shell-menu__label">{createLabel}</span>
-					</a>
-					<a class="shell-menu__item" href={manageHref} role="menuitem" onClick={onNavigate}>
-						<span class="shell-menu__icon">
-							<NavIcon name={tab === "teams" ? "teams" : "business"} />
-						</span>
-						<span class="shell-menu__label">{manageLabel}</span>
-					</a>
-				</div>
+				{canCreateTeam || canCreateBusiness
+					? (
+						<>
+							<div class="shell-menu__sep" role="separator" />
+							{canCreateTeam
+								? (
+									<a class="shell-menu__item" href="/teams/create" onClick={onNavigate}>
+										<span class="shell-menu__icon">
+											<NavIcon name="create" />
+										</span>
+										<span class="shell-menu__label">Create a team</span>
+									</a>
+								)
+								: null}
+							{canCreateBusiness
+								? (
+									<a
+										class="shell-menu__item"
+										href="/businesses/create"
+										onClick={onNavigate}
+									>
+										<span class="shell-menu__icon">
+											<NavIcon name="create" />
+										</span>
+										<span class="shell-menu__label">Create a business</span>
+									</a>
+								)
+								: null}
+						</>
+					)
+					: null}
 			</div>
 		);
 	};
 
 	/** The view-driven account body — shared by the desktop Popover and the mobile side-sheet Drawer. */
-	const accountBody = (onNavigate: () => void): JSX.Element => {
-		if (view.value === "status") return statusView();
-		if (view.value === "currency") return currencyView();
-		if (view.value === "context") return contextView(onNavigate);
-		return mainView(onNavigate);
-	};
+	const accountBody = (
+		onNavigate: () => void,
+		focusRef?: { current: HTMLButtonElement | null },
+	): JSX.Element =>
+		view.value === "context" ? contextView(onNavigate) : mainView(onNavigate, focusRef);
 	// #endregion
 
 	return (
@@ -753,18 +833,31 @@ export default function UserActions(
 				{basketLines > 0 ? <span class="shell-util__dot" aria-hidden="true" /> : null}
 			</button>
 
-			{/* Profile (desktop) — circular avatar opening the account Popover */}
+			{/* Profile (desktop) — the ringed avatar opening the account Popover */}
 			<button
 				ref={profileBtn}
 				type="button"
 				class="shell-util__profile shell-util__slot--desktop"
-				aria-label="Your account"
+				aria-label={triggerLabel}
 			>
-				<UserAvatar label={displayName} image={avatarUrl} size="sm" />
+				<ProfileProgressAvatar
+					label={displayName}
+					image={avatarUrl}
+					size="sm"
+					percent={completeness?.percent ?? null}
+					presence={presence?.tone ?? null}
+				/>
 			</button>
-			<Popover open={profileOpen} targetRef={profileBtn} placement="bottom-end" class="shell-pop">
-				<div class="shell-account" aria-label="Account">
-					{accountBody(() => (profileOpen.value = false))}
+			<Popover
+				open={profileOpen}
+				targetRef={profileBtn}
+				placement="bottom-end"
+				label="Account"
+				initialFocusRef={actingRef}
+				class="shell-pop shell-pop--account"
+			>
+				<div class="shell-account">
+					{accountBody(() => (profileOpen.value = false), actingRef)}
 				</div>
 			</Popover>
 
@@ -772,11 +865,17 @@ export default function UserActions(
 			<button
 				type="button"
 				class="shell-util__profile shell-util__slot--mobile"
-				aria-label="Your account"
+				aria-label={triggerLabel}
 				aria-haspopup="dialog"
 				onClick={() => (accountOpen.value = true)}
 			>
-				<UserAvatar label={displayName} image={avatarUrl} size="sm" />
+				<ProfileProgressAvatar
+					label={displayName}
+					image={avatarUrl}
+					size="sm"
+					percent={completeness?.percent ?? null}
+					presence={presence?.tone ?? null}
+				/>
 			</button>
 			<Drawer
 				visible={accountOpen}
@@ -785,7 +884,7 @@ export default function UserActions(
 				class="shell-drawer shell-drawer--account"
 				size="min(20rem, 88vw)"
 			>
-				<div class="shell-account shell-account--sheet" aria-label="Account">
+				<div class="shell-account shell-account--sheet">
 					{accountBody(() => (accountOpen.value = false))}
 				</div>
 			</Drawer>

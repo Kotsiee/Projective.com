@@ -14,7 +14,7 @@ import { createContext } from "preact";
 import { useContext } from "preact/hooks";
 import { effect, type Signal, signal } from "@preact/signals";
 import { applyScheme, buildScheme } from "./theme-engine.ts";
-import type { DesignSystemConfig, ThemeMode } from "../types/mod.ts";
+import type { DesignSystemConfig, ThemeMode, ThemePreference } from "../types/mod.ts";
 
 // #region Store
 export const DEFAULT_CONFIG: DesignSystemConfig = {
@@ -30,6 +30,14 @@ export const DEFAULT_CONFIG: DesignSystemConfig = {
 
 /** Global, island-shared active configuration. */
 export const dsConfig: Signal<DesignSystemConfig> = signal({ ...DEFAULT_CONFIG });
+
+/**
+ * The viewer's theme CHOICE — a fixed mode, or `"system"` to follow `prefers-color-scheme` live. The
+ * painted mode stays on {@link dsConfig}; this is only what a theme control should show as selected.
+ * `"system"` is the honest default: until a choice is read from storage, the inline pre-paint script
+ * has already followed the OS.
+ */
+export const themePreference: Signal<ThemePreference> = signal("system");
 
 /** Preact context wrapping the active-config signal (defaults to the global store). */
 export const DesignSystemContext = createContext<Signal<DesignSystemConfig>>(dsConfig);
@@ -52,7 +60,11 @@ function persist(mode: ThemeMode): void {
 /** Patch the global configuration. */
 export function updateConfig(patch: Partial<DesignSystemConfig>): void {
 	dsConfig.value = { ...dsConfig.value, ...patch };
-	if (patch.mode) persist(patch.mode);
+	if (patch.mode) {
+		persist(patch.mode);
+		// Setting a mode IS choosing it, so a later OS change must no longer override it.
+		themePreference.value = patch.mode;
+	}
 }
 
 export function setMode(mode: ThemeMode): void {
@@ -61,6 +73,43 @@ export function setMode(mode: ThemeMode): void {
 
 export function toggleMode(): void {
 	setMode(dsConfig.value.mode === "dark" ? "light" : "dark");
+}
+
+/** The mode the operating system currently asks for (`light` when it cannot be read). */
+function systemMode(): ThemeMode {
+	try {
+		return globalThis.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+	} catch {
+		return "light";
+	}
+}
+
+/**
+ * Apply a {@link ThemePreference}. A fixed mode is stored exactly as {@link setMode} stores it;
+ * `"system"` CLEARS the stored mode — the same absence the inline pre-paint script reads as "follow
+ * the OS" on the next load — and paints the system's current mode without persisting it.
+ */
+export function setThemePreference(preference: ThemePreference): void {
+	if (preference !== "system") {
+		setMode(preference);
+		return;
+	}
+	try {
+		localStorage.removeItem("theme");
+	} catch {
+		/* storage unavailable — non-fatal */
+	}
+	themePreference.value = "system";
+	const mode = systemMode();
+	if (mode !== dsConfig.value.mode) dsConfig.value = { ...dsConfig.value, mode };
+}
+
+/** Step the preference light → dark → system → light, returning the new one. */
+export function cycleThemePreference(): ThemePreference {
+	const order: readonly ThemePreference[] = ["light", "dark", "system"];
+	const next = order[(order.indexOf(themePreference.value) + 1) % order.length];
+	setThemePreference(next);
+	return next;
 }
 
 export function setSeed(seed: string): void {
@@ -89,6 +138,13 @@ export function hydrateConfigFromDom(): void {
 	if (typeof document === "undefined") return;
 	const mode: ThemeMode = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
 	if (mode !== dsConfig.value.mode) dsConfig.value = { ...dsConfig.value, mode };
+	let stored: string | null = null;
+	try {
+		stored = localStorage.getItem("theme");
+	} catch {
+		/* storage unavailable — the OS is being followed */
+	}
+	themePreference.value = stored === "light" || stored === "dark" ? stored : "system";
 }
 
 /**
@@ -100,8 +156,18 @@ export function bindRootTheme(): () => void {
 	if (typeof document === "undefined" || rootBound) return () => {};
 	rootBound = true;
 	const dispose = effect(() => applyConfig(document.documentElement, dsConfig.value));
+	// Under a "system" preference an OS switch (a scheduled dark mode at dusk) repaints live. The stored
+	// preference is never written here — following the OS is precisely the state of storing nothing.
+	const scheme = globalThis.matchMedia?.("(prefers-color-scheme: dark)");
+	const onScheme = (event: MediaQueryListEvent) => {
+		if (themePreference.peek() !== "system") return;
+		const mode: ThemeMode = event.matches ? "dark" : "light";
+		if (mode !== dsConfig.peek().mode) dsConfig.value = { ...dsConfig.peek(), mode };
+	};
+	scheme?.addEventListener?.("change", onScheme);
 	return () => {
 		dispose();
+		scheme?.removeEventListener?.("change", onScheme);
 		rootBound = false;
 	};
 }

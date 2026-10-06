@@ -299,7 +299,7 @@
 }
 
 .shell-util__profile:hover {
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--on-surface) var(--tint), transparent);
+    box-shadow: 0 0 0 var(--space-px) color-mix(in srgb, var(--on-surface) var(--tint), transparent);
 }
 
 /* #endregion */
@@ -415,334 +415,462 @@
 
 /* #endregion */
 
-/* #region Account menu */
-.shell-account {
-    min-inline-size: 14rem;
+/* #region Account popover — identity · acting-as · setup nudge · destinations · footer rig
+ * One elevated panel (the shared `ui-popover`: `--overlay-radius-sm`, `--hairline`,
+ * `--elevation-high`) and nothing boxed inside it (§B.4): rows separate by spacing, type register and
+ * the single `shell-menu__sep` hairline. The Acting-as row is the one tonal fill, because it is a
+ * control; static content never gets a container.
+ */
+.shell-pop--account .ui-popover__content {
+    padding: var(--space-2) var(--space-1) var(--space-1);
+    /* The account body is taller than a menu once the checklist unfolds; it scrolls inside the panel
+       rather than the panel growing past the viewport. */
+    max-block-size: min(40rem, calc(100vh - var(--space-8)));
 }
 
-.shell-account__id {
+.shell-account {
+    inline-size: 18rem;
+    max-inline-size: 100%;
+}
+
+/* The mobile side-sheet fills its Drawer instead of the Popover's fixed measure. */
+.shell-account--sheet {
+    inline-size: 100%;
+}
+
+/* #region Identity block */
+.shell-account__identity {
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-sm);
-    color: var(--on-surface);
-    text-decoration: none;
-}
-
-.shell-account__id:hover {
-    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-}
-
-.shell-account__id:focus-visible {
-    outline: none;
+    /* Asymmetric: tight to the panel's top edge, generous before the controls below it. */
+    padding: var(--space-1) var(--space-3) var(--space-3);
 }
 
 .shell-account__ident {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: var(--space-px);
     min-inline-size: 0;
 }
 
 .shell-account__name {
-    font-weight: 600;
-    font-size: 0.92rem;
-    white-space: nowrap;
     overflow: hidden;
+    font-size: var(--text-md);
+    font-weight: var(--fw-semibold);
+    line-height: var(--leading-snug);
+    color: var(--on-surface);
+    white-space: nowrap;
     text-overflow: ellipsis;
 }
 
-.shell-account__sub {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/* Role badge + live status — the identity's dynamic state row. */
+/* `@handle · Trusted standing` — metadata, so inline secondary text, never a badge (§B.11). */
 .shell-account__meta {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin-block-start: 2px;
-}
-
-.shell-account__badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 1px var(--space-2);
-    border-radius: var(--radius-full);
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    background: color-mix(in srgb, var(--primary) var(--tint), transparent);
-    color: var(--primary);
-}
-
-.shell-account__status {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35ch;
-    font-size: 0.72rem;
+    overflow: hidden;
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug);
     color: var(--text-secondary);
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
-.shell-account__status-dot {
-    inline-size: 6px;
-    block-size: 6px;
+/* The derived presence line. A link (to the hours editor) whose tooltip is the weekly schedule. */
+.shell-account__presence {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    inline-size: fit-content;
+    max-inline-size: 100%;
+    margin-block-start: var(--space-px);
+    border-radius: var(--radius-xs);
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug);
+    color: var(--on-surface);
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.shell-account__presence:hover {
+    text-decoration: underline;
+    text-underline-offset: var(--space-px);
+}
+
+.shell-account__presence-next {
+    overflow: hidden;
+    color: var(--text-secondary);
+    text-overflow: ellipsis;
+}
+
+/* Two channels, not one: hue AND fill. Available is a solid `--success` dot; Away is a hollow
+   `--warning` ring — so the two stay tellable apart under the colour-blindness overlays. */
+.shell-account__presence-dot {
+    flex: 0 0 auto;
+    inline-size: var(--space-2);
+    block-size: var(--space-2);
     border-radius: var(--radius-full);
     background: var(--success);
 }
 
-.shell-account__status[data-online="false"] .shell-account__status-dot {
-    background: var(--text-secondary);
+.shell-account__presence[data-presence="away"] .shell-account__presence-dot {
+    background: transparent;
+    box-shadow: inset 0 0 0 var(--space-px) var(--warning);
 }
-
-/* Active workspace/team — a tonal-tinted row (§B.4: no boxed border), only when in a tenant context. */
-.shell-account__workspace {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    margin: var(--space-px) var(--space-1) 0;
-    padding: var(--space-1) var(--space-3);
-}
-
-.shell-account__workspace-label {
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--text-secondary);
-}
-
-.shell-account__workspace-name {
-    min-inline-size: 0;
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--on-surface);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.shell-account__row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    padding: var(--space-2) var(--space-3);
-}
-
-.shell-account__row-label {
-    font-size: 0.9rem;
-    color: var(--on-surface);
-}
-
-.shell-account__foot {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-}
-
-.shell-account__foot .shell-menu__item {
-    flex: 1 1 auto;
-}
-
 /* #endregion */
 
-/* #region Account popover — state-driven sub-views (identity · status · context) */
-/* Identity header row: the profile link grows; the context-switch icon sits at the trailing edge. */
-.shell-account__head {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1);
-}
+/* #region Profile ring + presence pip (ProfileProgressAvatar) */
+.shell-ring {
+    --ring-arc: var(--primary);
+    --ring-track: var(--surface-2);
+    /* The colour the pip's cut-out ring paints — the surface the avatar sits on. */
+    --ring-cutout: var(--surface);
 
-.shell-account__head .shell-account__id {
-    flex: 1 1 auto;
-    min-inline-size: 0;
-}
-
-.shell-account__switch {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    position: relative;
+    display: inline-grid;
     flex: 0 0 auto;
-    inline-size: 34px;
-    block-size: 34px;
-    border: 0;
+    place-items: center;
+    /* Gap + stroke on every side, in `rem`, so the ring scales WITH the avatar under text zoom. */
+    padding: var(--space-1);
     border-radius: var(--radius-full);
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
+}
+
+/* In the header the avatar sits on the `--surface-2` chrome (the same cut-out `.shell-util__dot` uses). */
+.shell-util__profile .shell-ring {
+    --ring-cutout: var(--surface-2);
+}
+
+.shell-ring[data-ring="complete"] {
+    --ring-arc: var(--success);
+}
+
+.shell-ring__svg {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+    /* Start the arc at twelve o'clock. */
+    transform: rotate(-90deg);
+}
+
+.shell-ring__track {
+    stroke: var(--ring-track);
+}
+
+.shell-ring__arc {
+    stroke: var(--ring-arc);
+    stroke-linecap: round;
     transition:
-        background-color var(--dur-fast) var(--ease-standard),
-        color var(--dur-fast) var(--ease-standard);
+        stroke-dashoffset var(--dur-slow) var(--ease-standard),
+        stroke var(--dur-slow) var(--ease-standard);
 }
 
-.shell-account__switch svg {
-    inline-size: 18px;
-    block-size: 18px;
+/* A round cap draws a dot even at zero length; an empty ring must read as empty. */
+.shell-ring[data-ring="empty"] .shell-ring__arc {
+    stroke-opacity: 0;
 }
 
-.shell-account__switch:hover {
-    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-    color: var(--on-surface);
+.shell-ring__pip {
+    position: absolute;
+    inset-block-end: var(--space-px);
+    inset-inline-end: var(--space-px);
+    inline-size: var(--space-2);
+    block-size: var(--space-2);
+    border-radius: var(--radius-full);
+    background: var(--success);
+    box-shadow: 0 0 0 var(--space-px) var(--ring-cutout);
 }
 
-.shell-account__switch:focus-visible {
-    outline: none;
+.shell-ring[data-size="md"] .shell-ring__pip {
+    inline-size: var(--space-3);
+    block-size: var(--space-3);
 }
 
-/* Become a Freelancer — a prominent tonal CTA shown only for a client context (§B.4: tint, no border). */
-.shell-account__cta {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin: var(--space-1) var(--space-1) 0;
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-base);
-    background: color-mix(in srgb, var(--primary) var(--tint), transparent);
-    color: var(--primary);
-    font-size: 0.88rem;
-    font-weight: 600;
-    text-decoration: none;
-    transition: background-color var(--dur-fast) var(--ease-standard);
+.shell-ring__pip[data-presence="away"] {
+    background: var(--ring-cutout);
+    box-shadow:
+        inset 0 0 0 var(--space-px) var(--warning),
+        0 0 0 var(--space-px) var(--ring-cutout);
 }
 
-.shell-account__cta:hover {
-    background: color-mix(in srgb, var(--primary) var(--tint-strong), transparent);
+/* High contrast: the neutral track must still read as a track against the panel. */
+:root[data-contrast="high"] .shell-ring {
+    --ring-track: var(--outline);
 }
 
-.shell-account__cta:focus-visible {
-    outline: none;
+@media (prefers-reduced-motion: reduce) {
+    .shell-ring__arc {
+        transition: none;
+    }
 }
 
-.shell-account__cta-icon {
-    inline-size: 18px;
-    block-size: 18px;
-    flex: 0 0 auto;
+:root[data-motion="reduced"] .shell-ring__arc {
+    transition: none;
 }
+/* #endregion */
 
-/* Dedicated online-status row — clickable, opens the status picker. */
-.shell-status {
+/* #region Acting as — the active session context, and the way into the switcher */
+.shell-account__acting {
     display: flex;
     align-items: center;
     gap: var(--space-2);
     inline-size: calc(100% - 2 * var(--space-1));
-    margin: var(--space-1) var(--space-1) 0;
+    margin: 0 var(--space-1);
     padding: var(--space-2) var(--space-3);
     border: 0;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-base);
+    background: var(--surface-1);
+    color: var(--on-surface);
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+    transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+/* Hover never lowers label contrast (§B.12): a darker fill would pull `--primary` on it from 4.87 to
+   4.62:1, so the fill stays put and the action underlines instead. */
+.shell-account__acting:hover .shell-account__acting-action {
+    text-decoration: underline;
+    text-underline-offset: var(--space-px);
+}
+
+/* Press feedback is a scale and nothing else (§B.12). */
+.shell-account__acting:active {
+    transform: scale(var(--btn-press-scale));
+    transition-duration: var(--dur-press);
+}
+
+.shell-account__acting:focus-visible {
+    outline: none;
+}
+
+.shell-account__acting-text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-inline-size: 0;
+}
+
+.shell-account__acting-label {
+    font-size: var(--text-xs);
+    line-height: var(--leading-snug);
+    color: var(--text-secondary);
+}
+
+.shell-account__acting-name {
+    overflow: hidden;
+    font-size: var(--text-md);
+    font-weight: var(--fw-medium);
+    line-height: var(--leading-snug);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.shell-account__acting-action {
+    flex: 0 0 auto;
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    color: var(--primary);
+}
+
+.shell-account__acting-chevron {
+    flex: 0 0 auto;
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+    color: var(--primary);
+}
+
+/* The chevron points forward — which is the other way in a right-to-left document. */
+.shell-account__acting-chevron:dir(rtl) {
+    transform: scaleX(-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .shell-account__acting:active {
+        transform: none;
+    }
+}
+
+:root[data-motion="reduced"] .shell-account__acting:active {
+    transform: none;
+}
+/* #endregion */
+
+/* #region Profile-setup nudge — a progress track and an inline checklist (only below 100%) */
+.shell-setup {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-3) var(--space-1);
+}
+
+.shell-setup__head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    inline-size: 100%;
+    padding: 0;
+    border: 0;
     background: transparent;
     color: var(--on-surface);
     font: inherit;
-    font-size: 0.88rem;
     text-align: start;
     cursor: pointer;
 }
 
-.shell-status:hover {
-    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-}
-
-.shell-status:focus-visible {
+.shell-setup__head:focus-visible {
     outline: none;
 }
 
-.shell-status__label {
+.shell-setup__title {
     flex: 1 1 auto;
     min-inline-size: 0;
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
 }
 
-.shell-status__chevron {
-    inline-size: 16px;
-    block-size: 16px;
+/* A figure that changes as steps land. */
+.shell-setup__pct {
+    font-variant-numeric: tabular-nums;
     color: var(--text-secondary);
-    transform: rotate(90deg);
 }
 
-/* Shared presence dot — the tone is driven by the ancestor's data-status (row + picker option). */
-.shell-status__dot {
+.shell-setup__hint {
     flex: 0 0 auto;
-    inline-size: 9px;
-    block-size: 9px;
-    border-radius: var(--radius-full);
-    background: var(--text-secondary);
+    font-size: var(--text-sm);
+    color: var(--primary);
 }
 
-.shell-status[data-status="online"] .shell-status__dot,
-.shell-picker__item[data-status="online"] .shell-status__dot {
-    background: var(--success);
+.shell-setup__head:hover .shell-setup__hint {
+    text-decoration: underline;
+    text-underline-offset: var(--space-px);
 }
 
-.shell-status[data-status="away"] .shell-status__dot,
-.shell-picker__item[data-status="away"] .shell-status__dot {
-    background: var(--warning);
+.shell-setup__chevron {
+    flex: 0 0 auto;
+    align-self: center;
+    inline-size: var(--icon-xs);
+    block-size: var(--icon-xs);
+    color: var(--primary);
+    transform: rotate(90deg);
+    transition: transform var(--dur-fast) var(--ease-standard);
 }
 
-.shell-status[data-status="dnd"] .shell-status__dot,
-.shell-picker__item[data-status="dnd"] .shell-status__dot {
-    background: var(--danger);
+.shell-setup__head[aria-expanded="true"] .shell-setup__chevron {
+    transform: rotate(-90deg);
 }
 
-.shell-status[data-status="invisible"] .shell-status__dot,
-.shell-picker__item[data-status="invisible"] .shell-status__dot {
-    background: transparent;
-    box-shadow: inset 0 0 0 1.5px var(--text-secondary);
+/* A slimmer track than the stock ProgressBar — a nudge, not a task meter. */
+.shell-setup__bar .ui-progressbar__track {
+    block-size: var(--space-1);
 }
 
-/* Single Sun/Moon theme icon-button (replaces the footer ToggleSwitch). */
-.shell-theme-btn {
-    display: inline-flex;
+.shell-setup__steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-px);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.shell-setup__step {
+    display: flex;
     align-items: center;
-    justify-content: center;
-    inline-size: 34px;
-    block-size: 34px;
-    border: 0;
-    border-radius: var(--radius-full);
-    background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+    gap: var(--space-2);
+    padding: var(--space-1) 0;
+    border-radius: var(--radius-xs);
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug);
     color: var(--on-surface);
-    cursor: pointer;
-    transition:
-        background-color var(--dur-fast) var(--ease-standard),
-        color var(--dur-fast) var(--ease-standard);
+    text-decoration: none;
 }
 
-.shell-theme-btn svg {
-    inline-size: 18px;
-    block-size: 18px;
+a.shell-setup__step:hover {
+    color: var(--primary);
 }
 
-.shell-theme-btn:hover {
-    background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
+.shell-setup__step[data-done="true"] {
+    color: var(--text-secondary);
 }
 
-.shell-theme-btn:focus-visible {
-    outline: none;
+.shell-setup__mark {
+    flex: 0 0 auto;
+    inline-size: var(--icon-xs);
+    block-size: var(--icon-xs);
+    color: var(--success);
 }
 
-/* Sub-view scaffold (status + context) — a titled header with a back affordance. */
-.shell-subview {
-    min-inline-size: 15rem;
+/* A pending step's mark: an empty circle, drawn as a hairline ring the size of the check glyph. */
+.shell-setup__mark--todo {
+    border-radius: var(--radius-full);
+    box-shadow: inset 0 0 0 var(--space-px) var(--outline);
 }
 
+/* Which steps make up the go-live baseline — inline secondary text, not a tag (§B.11). */
+.shell-setup__live {
+    margin-inline-start: auto;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .shell-setup__chevron {
+        transition: none;
+    }
+}
+
+:root[data-motion="reduced"] .shell-setup__chevron {
+    transition: none;
+}
+/* #endregion */
+
+/* #region Destinations + footer rig */
+/* The seller-conversion destination reads as the one forward step in the list. */
+.shell-menu__item--accent {
+    color: var(--primary);
+}
+
+.shell-menu__item--accent .shell-menu__icon {
+    color: currentColor;
+}
+
+/* Theme preference at the start, Log out at the end. */
+.shell-account__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-px) var(--space-1);
+}
+
+.shell-account__theme svg,
+.shell-account__logout svg {
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+}
+
+.shell-account__note {
+    margin: var(--space-1) var(--space-3) var(--space-2);
+    font-size: var(--text-xs);
+    line-height: var(--leading-snug);
+    color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Sub-view scaffold — a titled header with a back affordance */
 .shell-subview__head {
     display: flex;
     align-items: center;
     gap: var(--space-1);
-    padding: 2px var(--space-1) var(--space-1);
+    padding: 0 var(--space-1) var(--space-1);
 }
 
 .shell-subview__back {
     display: inline-flex;
+    flex: 0 0 auto;
     align-items: center;
     justify-content: center;
-    flex: 0 0 auto;
-    inline-size: 30px;
-    block-size: 30px;
+    inline-size: var(--space-6);
+    block-size: var(--space-6);
     border: 0;
     border-radius: var(--radius-full);
     background: transparent;
@@ -754,8 +882,12 @@
 }
 
 .shell-subview__back svg {
-    inline-size: 18px;
-    block-size: 18px;
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+}
+
+.shell-subview__back svg:dir(rtl) {
+    transform: scaleX(-1);
 }
 
 .shell-subview__back:hover {
@@ -768,204 +900,52 @@
 }
 
 .shell-subview__title {
-    font-weight: 600;
-    font-size: 0.92rem;
-    color: var(--on-surface);
-}
-
-/*
- * A qualifying note inside a sub-view. Used by the currency picker to state that conversion is a
- * display concern — the one thing a currency control on a marketplace must not leave ambiguous.
- * Quiet, but present in the flow rather than behind a hover: a reassurance nobody can find is not one.
- */
-.shell-subview__note,
-.shell-account__note {
-    margin: var(--space-1) var(--space-3) var(--space-2);
-    font-size: var(--text-xs);
-    line-height: 1.4;
-    color: var(--text-secondary);
-}
-
-/* #region Currency switcher
- * The row mirrors `.shell-status` exactly — same box, same hover, same chevron — because they are
- * siblings in the same menu doing the same job (open a picker), and two near-identical controls that
- * differ by a few pixels read as a mistake.
- */
-.shell-currency {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    inline-size: calc(100% - 2 * var(--space-1));
-    margin: var(--space-1) var(--space-1) 0;
-    padding: var(--space-2) var(--space-3);
-    border: 0;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--on-surface);
-    font: inherit;
-    font-size: 0.88rem;
-    text-align: start;
-    cursor: pointer;
-}
-
-.shell-currency:hover {
-    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-}
-
-.shell-currency:focus-visible {
-    outline: none;
-}
-
-/*
- * Fixed-width so the codes beside it align down the picker list. `ch` rather than `rem`: the column
- * has to fit glyphs of very different widths ("£" vs "CHF"), and `ch` tracks the font's own digit
- * advance, so the alignment survives a type-scale change.
- */
-.shell-currency__symbol {
-    flex: 0 0 auto;
-    inline-size: 2.5ch;
-    font-variant-numeric: tabular-nums;
+    font-size: var(--text-md);
     font-weight: var(--fw-semibold);
-    color: var(--text-secondary);
-    text-align: center;
+    color: var(--on-surface);
 }
-
-.shell-currency__text {
-    display: flex;
-    flex: 1 1 auto;
-    min-inline-size: 0;
-    flex-direction: column;
-    gap: 1px;
-}
-
-.shell-currency__label {
-    line-height: 1.2;
-}
-
-/* The current value, truncated rather than wrapped — the row must stay one line tall beside its peers. */
-.shell-currency__value {
-    overflow: hidden;
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
-    line-height: 1.2;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-}
-
-/* A currency row is mid-write: dimmed and inert, but the label stays fully legible. */
-.shell-picker__item:disabled {
-    cursor: default;
-    opacity: 0.6;
-}
-
 /* #endregion */
 
-/* Status picker list. */
-.shell-picker {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-}
-
-.shell-picker__item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    inline-size: 100%;
-    padding: var(--space-2) var(--space-3);
-    border: 0;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    color: var(--on-surface);
-    font: inherit;
-    text-align: start;
-    cursor: pointer;
-}
-
-.shell-picker__item:hover {
-    background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-}
-
-.shell-picker__item:focus-visible {
-    outline: none;
-}
-
-.shell-picker__text {
+/* #region Context switcher — the person, then Teams · Businesses · Organisations */
+.shell-ctx {
     display: flex;
     flex-direction: column;
-    gap: 1px;
-    flex: 1 1 auto;
-    min-inline-size: 0;
+    gap: var(--space-2);
 }
 
-.shell-picker__label {
-    font-size: 0.9rem;
-    font-weight: 500;
-}
-
-.shell-picker__desc {
-    font-size: 0.76rem;
-    color: var(--text-secondary);
-}
-
-.shell-picker__check,
-.shell-ctx__check {
-    flex: 0 0 auto;
-    inline-size: 18px;
-    block-size: 18px;
-    color: var(--primary);
-}
-
-/* Context switcher — Teams ⁄ Businesses tabs + membership list + footer actions. */
-.shell-ctx__tabs {
+.shell-ctx__section-head {
     display: flex;
-    gap: var(--space-4);
-    margin: 0 var(--space-3);
-    border-block-end: var(--hairline);
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3) 0;
 }
 
-.shell-ctx__tab {
-    position: relative;
-    padding: var(--space-2) 2px;
-    border: 0;
-    background: transparent;
+/* The section-header register (§A.4): small, uppercase, semibold — never heavier. */
+.shell-ctx__section-title {
+    font-size: var(--text-xs);
+    font-weight: var(--fw-semibold);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
     color: var(--text-secondary);
-    font: inherit;
-    font-size: 0.86rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: color var(--dur-fast) var(--ease-standard);
 }
 
-.shell-ctx__tab:hover {
-    color: var(--on-surface);
+.shell-ctx__manage {
+    border-radius: var(--radius-xs);
+    font-size: var(--text-xs);
+    color: var(--primary);
+    text-decoration: none;
 }
 
-.shell-ctx__tab[data-active="true"] {
-    color: var(--on-surface);
-}
-
-/* Underlined active tab — sits on the tab-strip hairline (§B.4). */
-.shell-ctx__tab[data-active="true"]::after {
-    content: "";
-    position: absolute;
-    inset-inline: 0;
-    inset-block-end: -1px;
-    block-size: 2px;
-    border-radius: 2px 2px 0 0;
-    background: var(--primary);
-}
-
-.shell-ctx__tab:focus-visible {
-    outline: none;
+.shell-ctx__manage:hover {
+    text-decoration: underline;
+    text-underline-offset: var(--space-px);
 }
 
 .shell-ctx__list {
-    list-style: none;
-    margin: var(--space-1) 0;
+    margin: 0;
     padding: 0;
-    max-block-size: 15rem;
-    overflow-y: auto;
+    list-style: none;
 }
 
 .shell-ctx__item {
@@ -983,10 +963,15 @@
     cursor: pointer;
 }
 
-.shell-ctx__item:hover {
+.shell-ctx__item:hover:not(:disabled) {
     background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 
+.shell-ctx__item:disabled {
+    cursor: default;
+}
+
+/* The active context keeps full ink — it is disabled only because switching to itself is a no-op. */
 .shell-ctx__item[data-active="true"] {
     background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
 }
@@ -997,40 +982,41 @@
 
 .shell-ctx__body {
     display: flex;
-    flex-direction: column;
-    gap: 1px;
     flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--space-px);
     min-inline-size: 0;
 }
 
 .shell-ctx__name {
-    font-size: 0.9rem;
-    font-weight: 500;
-    white-space: nowrap;
     overflow: hidden;
+    font-size: var(--text-md);
+    font-weight: var(--fw-medium);
+    white-space: nowrap;
     text-overflow: ellipsis;
 }
 
 .shell-ctx__detail {
-    font-size: 0.76rem;
+    overflow: hidden;
+    font-size: var(--text-sm);
     color: var(--text-secondary);
     white-space: nowrap;
-    overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.shell-ctx__empty {
-    padding: var(--space-3);
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    text-align: center;
+.shell-ctx__check {
+    flex: 0 0 auto;
+    inline-size: var(--icon-sm);
+    block-size: var(--icon-sm);
+    color: var(--primary);
 }
 
-.shell-ctx__foot {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+.shell-ctx__empty {
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
 }
+/* #endregion */
 
 /* #endregion */
 
@@ -1130,12 +1116,6 @@
 /* #endregion */
 
 /* #region Responsive — desktop vs mobile action slots (Part D.3 "Mobile User") */
-/* The account side-sheet fills the mobile Drawer rather than the Popover's min width. */
-.shell-account--sheet {
-    min-inline-size: 0;
-    inline-size: 100%;
-}
-
 /* Default (desktop): the mobile-only header actions (Messages, avatar-sheet trigger) are hidden. */
 .shell-util__slot--mobile {
     display: none;

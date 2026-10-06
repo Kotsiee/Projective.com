@@ -1,6 +1,7 @@
 import { getWorkspace, postWorkspace, queryOf } from "./api.ts";
 import type { UserContext } from "@projective/types/auth";
 import type {
+	ActingOrganisation,
 	ArchiveRoleInput,
 	CreateWorkspaceInput,
 	HandleCheck,
@@ -62,6 +63,7 @@ export const WORKSPACE_ENDPOINTS = {
 	spend: "/api/workspace/spend",
 	spendDecide: "/api/workspace/spend-decide",
 	contextSwitch: "/api/context/switch",
+	contextOrganisations: "/api/context/organisations",
 } as const;
 // #endregion
 
@@ -180,6 +182,17 @@ export const WorkspaceService = {
 	 */
 	switchContext(input: SwitchContextInput): Promise<WorkspaceResult<{ context?: UserContext }>> {
 		return postWorkspace<{ context?: UserContext }>(WORKSPACE_ENDPOINTS.contextSwitch, input);
+	},
+
+	/**
+	 * The organisations the viewer may act as (owned, or an active membership) — the switcher's third
+	 * list beside the team and business rosters. An organisation is not a {@link WorkspaceKind}, so it
+	 * has no roster of its own.
+	 */
+	actingOrganisations(): Promise<WorkspaceResult<{ organisations: ActingOrganisation[] }>> {
+		return getWorkspace<{ organisations: ActingOrganisation[] }>(
+			WORKSPACE_ENDPOINTS.contextOrganisations,
+		);
 	},
 };
 // #endregion

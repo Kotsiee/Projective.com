@@ -3,10 +3,11 @@
  *
  * The ONLY place `@material/material-color-utilities` is imported (approved exception,
  * SYSTEM_ARCHITECTURE.md §3). Structure (unified convention): `types/` · `core/` · `components/`.
- *   - types: DesignSystemConfig · ThemeMode · CvdMode · ThemeInput.
+ *   - types: DesignSystemConfig · ThemeMode · ThemePreference · CvdMode · ThemeInput.
  *   - core/theme-engine: buildScheme · schemeToCss · applyScheme (pure; SSR-safe).
- *   - core/context: dsConfig store · DesignSystemContext · useDesignSystem · mutators · bindRootTheme
- *     · hydrateConfigFromDom · applyConfig.
+ *   - core/context: dsConfig store · themePreference · DesignSystemContext · useDesignSystem ·
+ *     mutators (incl. setThemePreference · cycleThemePreference) · bindRootTheme ·
+ *     hydrateConfigFromDom · applyConfig.
  *   - components/DesignSystemProvider: the mount component.
  *
  * Components never import this for values — they read the emitted `var(--*)` custom properties.

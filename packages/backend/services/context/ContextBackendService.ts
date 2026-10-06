@@ -1,5 +1,5 @@
 import type { UserContext } from "@projective/types/auth";
-import type { SwitchContextInput } from "@projective/types/workspace";
+import type { ActingOrganisation, SwitchContextInput } from "@projective/types/workspace";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { getUserClient } from "../../core/supabase.ts";
 
@@ -111,6 +111,55 @@ export class ContextBackendService {
 			// A configuration or transport failure — logged, never surfaced verbatim.
 			console.error("[context:switch]", error instanceof Error ? error.message : error);
 			return fail(503, { message: "Could not switch workspace — please try again." });
+		}
+	}
+
+	/**
+	 * The organisations the caller may switch into: the ones they OWN plus the ones they hold an ACTIVE
+	 * membership in, archived ones excluded — the same admission `security.switch_organisation_context`
+	 * applies, so the switcher never offers a row the RPC would refuse.
+	 *
+	 * Both reads are RLS-scoped as the caller. The filters are explicit rather than left to the policy,
+	 * because the `org.organisations` SELECT policy also admits platform admins to EVERY organisation —
+	 * which is a viewing right, not a list of identities the admin can act as.
+	 */
+	static async organisations(
+		request: ContextRequest,
+	): Promise<ServiceResult<{ organisations: ActingOrganisation[] }>> {
+		const userId = request.context.userId;
+		// The id is interpolated into a PostgREST filter, so it must be exactly a uuid, never free text.
+		if (!request.accessToken || !userId || !UUID_RE.test(userId)) {
+			return fail(401, { message: "Sign in to see your organisations." });
+		}
+		try {
+			const db = getUserClient(request.accessToken).schema("org");
+			const memberships = await db.from("organisation_members")
+				.select("organisation_id")
+				.eq("user_id", userId)
+				.eq("status", "active");
+			if (memberships.error) throw new Error(memberships.error.message);
+			const memberOf = (memberships.data ?? []).map((row) => String(row.organisation_id));
+
+			const filter = memberOf.length > 0
+				? `owner_user_id.eq.${userId},id.in.(${memberOf.join(",")})`
+				: `owner_user_id.eq.${userId}`;
+			const orgs = await db.from("organisations")
+				.select("id,owner_user_id,legal_name,trading_name,handle,status")
+				.or(filter)
+				.neq("status", "archived")
+				.order("legal_name");
+			if (orgs.error) throw new Error(orgs.error.message);
+
+			const organisations = (orgs.data ?? []).map((row): ActingOrganisation => ({
+				id: String(row.id),
+				name: String(row.trading_name ?? "").trim() || String(row.legal_name),
+				handle: String(row.handle),
+				owner: row.owner_user_id === userId,
+			}));
+			return ok({ organisations });
+		} catch (error) {
+			console.error("[context:organisations]", error instanceof Error ? error.message : error);
+			return fail(503, { message: "Couldn't load your organisations just now." });
 		}
 	}
 }

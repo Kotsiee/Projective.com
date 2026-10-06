@@ -100,6 +100,16 @@
 				"$env:PORT = '13006'; deno task dev:mock --port 13006 --strictPort"
 			],
 			"port": 13006
+		},
+		{
+			"name": "web-account",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13011'; deno task dev --port 13011 --strictPort"
+			],
+			"port": 13011
 		}
 	]
 }

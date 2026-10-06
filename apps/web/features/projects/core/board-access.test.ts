@@ -74,6 +74,7 @@ function seam(over: Partial<DevSeamState> = {}): DevSeamState {
 		messagingRole: "client",
 		micPermission: "auto",
 		layoutDirection: "auto",
+		profileSetup: "auto",
 		...over,
 	};
 }

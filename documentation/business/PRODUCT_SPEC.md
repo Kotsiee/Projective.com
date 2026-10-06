@@ -146,9 +146,14 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
   seller's **skills** (used for discovery ranking); it does **not** carry an hourly rate —
   Projective does not treat a signalling hourly rate as a platform field. Unlocking is free,
   idempotent, and immediately activates the Freelancer persona. Reaching the profile's **go-live
-  milestone** (a baseline of photo, headline, story, and skills) is what lets a freelancer publish
-  publicly, sell premium services, and apply to workspaces — this can happen before the profile is
-  100% complete.
+  milestone** (a baseline of photo, headline, story, and at least three skills) is what lets a
+  freelancer publish publicly, sell premium services, and apply to workspaces — this can happen
+  before the profile is 100% complete. A seller's profile is **complete** when it also has a payout
+  method ready and published working hours; a buyer's checklist is photo · headline and story ·
+  published working hours, with no go-live milestone. The account menu shows that completeness as a
+  ring around the person's avatar and, below 100%, a setup nudge listing each remaining step — every
+  step DERIVED from stored data, and a step the platform cannot check is left out rather than
+  counted (Decision #149).
 - **Draft-First Creation:** Creating a Team is deliberately low-friction — a member supplies only a
   display **Name** and a unique alphanumeric **`@handle`**. The Team is created instantly in a
   **Draft/Unverified** state; branding, contribution splits, roles, and member invitations are

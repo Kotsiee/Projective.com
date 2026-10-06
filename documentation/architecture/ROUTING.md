@@ -432,6 +432,12 @@ ownership from the live read's `viewer.isOwner`.
 `/api/profile/*` and `/api/media/*` are thin: HTTP parsing, Zod (`@projective/types/profile`,
 `@projective/types/files`), then `ProfileBackendService` / `MediaBackendService`.
 
+The account popover's own reads sit under `/api/user/*`: `GET /api/user/me` (identity) and
+`GET /api/user/setup` (the PERSON's profile-setup facts, published hours and Standing — composed
+from `org.get_party_cards`, `org.get_profile_view` and `finance.my_verification_status`; `setup:
+null` when the read cannot be made, 401 only for a guest; Decision #149), both through
+`UserBackendService`.
+
 ### Workspace (Teams & Businesses) API
 
 Live-only since 2026-09-28 (root `CLAUDE.md` §8 Decision #122): no fixture branch and no backend gate.
@@ -461,6 +467,7 @@ themselves or left in a transfer), so an island adopts the server's state. RPC r
 | `/api/workspace/spend`               | `POST`                | `finance.save_spend_policy`                                                             |
 | `/api/workspace/spend-decide`        | `POST`                | `finance.decide_spend_approval`                                                         |
 | `/api/context/switch`                | `POST`                | `security.switch_session_context` · `switch_team_context` · `switch_organisation_context` · `clear_session_context` |
+| `/api/context/organisations`         | `GET`                 | RLS reads of `org.organisation_members` (own active rows) + `org.organisations` — the orgs the caller owns or actively belongs to, archived excluded (the account switcher's third list; Decision #149) |
 
 An over-limit spend REQUEST is not a workspace route: it is filed from the wallet surface through
 `finance.request_spend_approval`. A context switch re-stamps the JWT: the caller then refreshes the session (`/api/auth/refresh`) and

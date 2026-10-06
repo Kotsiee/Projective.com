@@ -95,8 +95,15 @@
 }
 /* #endregion */
 
+/* Both reduced-motion channels: the OS preference and the product's own `data-motion` overlay. The
+   panel then appears in place — no slide, no fade — rather than travelling for 0ms. */
 @media (prefers-reduced-motion: reduce) {
 	.ui-popover {
 		transition-duration: 0ms;
+		transform: none;
 	}
+}
+:root[data-motion="reduced"] .ui-popover {
+	transition-duration: 0ms;
+	transform: none;
 }

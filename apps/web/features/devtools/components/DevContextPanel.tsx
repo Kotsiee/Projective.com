@@ -8,6 +8,7 @@ import {
 	DEV_MEMBER_ROLES,
 	DEV_MESSAGING_ROLES,
 	DEV_MIC_PERMISSIONS,
+	DEV_PROFILE_SETUPS,
 	DEV_PROJECT_ACCESSES,
 	DEV_PROJECT_ONBOARDINGS,
 	DEV_PROJECT_STATUSES,
@@ -441,6 +442,21 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.layoutDirection}
 						disabled={!o.enabled}
 						onChange={(layoutDirection) => patchDevContext({ layoutDirection })}
+					/>
+				</Field>
+
+				{
+					/* The header account popover's completion ring, go-live nudge and presence pip. Each
+				    value is a stored-profile fact no header control can change, so this is the only
+				    runtime route to the nudge's "to go live" vs "left" copy and to a published schedule. */
+				}
+				<Field label="Profile setup" hint="account ring">
+					<Segment
+						name="Profile setup"
+						options={DEV_PROFILE_SETUPS}
+						value={o.profileSetup}
+						disabled={!o.enabled}
+						onChange={(profileSetup) => patchDevContext({ profileSetup })}
 					/>
 				</Field>
 			</div>

@@ -39,7 +39,9 @@ export type IconName =
 	| "check"
 	| "arrowLeft"
 	| "sun"
-	| "moon";
+	| "moon"
+	| "monitor"
+	| "clock";
 // #endregion
 
 const PATHS: Record<IconName, VNode> = {
@@ -179,15 +181,30 @@ const PATHS: Record<IconName, VNode> = {
 	check: <path d="M4.5 12.5 9 17l10.5-11" />,
 	// Back — a left-pointing arrow for sub-view headers.
 	arrowLeft: <path d="M11 5l-7 7 7 7M4 12h16" />,
-	// Sun — light theme (shown to switch INTO light while dark is active).
+	// Sun — the light theme preference (the account popover's theme control shows the CURRENT choice).
 	sun: (
 		<>
 			<circle cx="12" cy="12" r="4" />
 			<path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8" />
 		</>
 	),
-	// Moon — dark theme (shown to switch INTO dark while light is active).
+	// Moon — the dark theme preference.
 	moon: <path d="M21 13a8.5 8.5 0 0 1-10-10 8.5 8.5 0 1 0 10 10z" />,
+	// Monitor — the "follow the system" theme preference (a display on its stand).
+	monitor: (
+		<>
+			<rect x="3" y="4" width="18" height="12.5" rx="2.5" />
+			<path d="M9 20.5h6M12 16.5v4" />
+		</>
+	),
+	// Clock — working hours (Availability & Hours). Distinct from `calendar`, which is the /calendar
+	// destination: one glyph, one destination (§B.7).
+	clock: (
+		<>
+			<circle cx="12" cy="12" r="8.5" />
+			<path d="M12 7.5V12l3 2" />
+		</>
+	),
 };
 
 /**

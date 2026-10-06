@@ -2,7 +2,8 @@
  * `@projective/types/user` — the Zod SSOT for the acting user's account projection (the header
  * account popover's data shape). See {@link current-user}. A derived read projection over the Supabase
  * `auth.users` + `org.users_public` records; no DB table of its own, so it lands with no migration.
- * Also the one avatar-resolution rule every person picture follows ({@link avatar}).
+ * Also the one avatar-resolution rule every person picture follows ({@link avatar}), and the
+ * profile-completeness rule behind the popover's completion ring ({@link profile-setup}).
  */
 export {
 	type AvatarSources,
@@ -24,3 +25,14 @@ export {
 	resolveAccountRole,
 	WorkspaceKind,
 } from "./current-user.ts";
+export {
+	type AccountSetup,
+	AccountSetupSchema,
+	calculateProfileCompleteness,
+	GO_LIVE_MIN_SKILLS,
+	type ProfileCompleteness,
+	type ProfileSetupFacts,
+	ProfileSetupFactsSchema,
+	type ProfileSetupStep,
+	type ProfileSetupStepId,
+} from "./profile-setup.ts";

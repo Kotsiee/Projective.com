@@ -71,8 +71,8 @@ export const CurrentUserSchema = z.object({
 	 * on the platform is formatted with (`org.user_preferences.preferred_display_currency` / `locale`).
 	 *
 	 * Resolved, so the nullable "follow the origin" column state has already been collapsed to a
-	 * concrete code by the server: the popover renders a currency switcher, and a switcher whose
-	 * current value is `null` has nothing truthful to check. This is the AUTHORITATIVE value the
+	 * concrete code by the server: the currency switchers (wallet hero, checkout) render a current
+	 * value, and a switcher whose current value is `null` has nothing truthful to check. This is the AUTHORITATIVE value the
 	 * client reconciles its optimistic switch against — the same read that survives a page load, so a
 	 * switch that failed server-side cannot masquerade as one that stuck.
 	 */

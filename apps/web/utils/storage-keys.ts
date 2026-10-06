@@ -96,12 +96,6 @@ export const LocalKeys = {
 	/** The last active profile/context handle, so the app can rehydrate the switcher instantly. */
 	LAST_ACTIVE_CONTEXT: "pj.local.lastActiveContext",
 	/**
-	 * The account popover's chosen presence status (`online` | `away` | `dnd` | `invisible`). A
-	 * client-side preference persisted across sessions until the live presence service owns it; read
-	 * after hydration so it never diverges from the SSR-painted default.
-	 */
-	ACCOUNT_STATUS: "pj.local.account.status",
-	/**
 	 * The viewer's chosen money DISPLAY currency (ISO-4217) — mirrors
 	 * `org.user_preferences.preferred_display_currency`.
 	 *

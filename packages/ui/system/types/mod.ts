@@ -1,6 +1,11 @@
 /** @projective/ui/system — shared theming types. */
 
 export type ThemeMode = "light" | "dark";
+/**
+ * What the viewer CHOSE, as opposed to what is painted ({@link ThemeMode}): a fixed mode, or
+ * `"system"` — follow the operating system's `prefers-color-scheme`, live, and store nothing.
+ */
+export type ThemePreference = ThemeMode | "system";
 export type CvdMode = "none" | "protan" | "deutan" | "tritan";
 
 /** Input to the Material You scheme builder. */

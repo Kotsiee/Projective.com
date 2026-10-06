@@ -29,6 +29,7 @@ import {
 	type DevMessagingRole,
 	type DevMicPermission,
 	type DevPersona,
+	type DevProfileSetup,
 	type DevProjectOnboarding,
 	type DevProjectType,
 	type DevSeamRole,
@@ -58,6 +59,7 @@ export type {
 	DevMemberRole,
 	DevMessagingRole,
 	DevMicPermission,
+	DevProfileSetup,
 	DevProjectType,
 	DevServiceType,
 	DevSessionBookingStatus,
@@ -161,6 +163,12 @@ export interface DevOverrides {
 	micPermission: DevMicPermission;
 	/** Simulated document layout direction (LtR/RtL) — verifies the whole surface mirrors under `dir="rtl"`. */
 	layoutDirection: DevLayoutDirection;
+	/**
+	 * Simulated setup position of the viewer's own profile — the header account popover's completion
+	 * ring, go-live nudge and presence pip. Substitutes the FACTS the shipping completeness rule runs
+	 * on, so the rule itself is what gets exercised; `auto` defers to the real `GET /api/user/setup`.
+	 */
+	profileSetup: DevProfileSetup;
 }
 
 /** Selectable option metadata for the switcher UI. */
@@ -194,6 +202,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	messagingRole: "freelancer",
 	micPermission: "auto",
 	layoutDirection: "ltr",
+	profileSetup: "auto",
 };
 
 /** Account-type options in display order. */
@@ -310,6 +319,18 @@ export const DEV_LAYOUT_DIRECTIONS: ReadonlyArray<DevOption<DevLayoutDirection>>
 	{ value: "auto", label: "Auto" },
 ];
 
+/**
+ * Profile-setup options in display order (the account popover's ring, nudge and pip). `Auto` defers
+ * to the real read; `Live` is the value worth having — go-live met but not 100%, the one state where
+ * the nudge's copy changes from "to go live" to "left".
+ */
+export const DEV_PROFILE_SETUPS: ReadonlyArray<DevOption<DevProfileSetup>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "new", label: "New" },
+	{ value: "live", label: "Live" },
+	{ value: "complete", label: "Complete" },
+];
+
 // #endregion
 
 // #region Store
@@ -375,6 +396,9 @@ function reflect(next: DevOverrides): void {
 		root.dataset.devPendingRequests = String(next.hasPendingRequests);
 		root.dataset.devMessagingRole = next.messagingRole;
 		root.dataset.devMicPermission = next.micPermission;
+		// Absent = `auto` on the seam, like `projectOnboarding` above.
+		if (next.profileSetup !== "auto") root.dataset.devProfileSetup = next.profileSetup;
+		else delete root.dataset.devProfileSetup;
 		root.dataset.devDirection = next.layoutDirection;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
 		// properties everywhere mean the shell and every surface mirror to the opposite edge.
@@ -401,6 +425,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devPendingRequests;
 		delete root.dataset.devMessagingRole;
 		delete root.dataset.devMicPermission;
+		delete root.dataset.devProfileSetup;
 		delete root.dataset.devDirection;
 		// Restore the document's natural direction (the pref-driven default, LtR here).
 		root.removeAttribute("dir");
