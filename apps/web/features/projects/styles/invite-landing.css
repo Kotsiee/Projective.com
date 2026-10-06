@@ -1,0 +1,104 @@
+/*
+ * invite-landing.css — the `/invite/[token]` page (Decision #145): one centred column of text with a
+ * single optional form. Static content is never boxed (§3 gate 6); the only filled element is the
+ * note field, a control.
+ */
+
+.invite-landing {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-3);
+	inline-size: 100%;
+	max-inline-size: 34rem;
+	margin-inline: auto;
+	padding: clamp(var(--space-8), 10vh, calc(var(--space-8) * 2)) var(--space-4) var(--space-8);
+}
+
+.invite-landing__glyph {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 3rem;
+	block-size: 3rem;
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+	color: var(--primary);
+}
+
+.invite-landing__meta {
+	margin: var(--space-2) 0 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.invite-landing__title {
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: var(--text-3xl);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
+	color: var(--on-surface);
+}
+
+.invite-landing__body {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	color: var(--text-secondary);
+}
+
+.invite-landing__ask {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-2);
+	inline-size: 100%;
+	margin-block-start: var(--space-4);
+}
+
+.invite-landing__label {
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.invite-landing__note {
+	inline-size: 100%;
+	padding: var(--space-2) var(--space-3);
+	font-family: var(--font-sans);
+	font-size: var(--text-md);
+	line-height: var(--leading-normal);
+	color: var(--on-surface);
+	background: var(--surface-2);
+	border: 1px solid transparent;
+	border-radius: var(--radius-lg);
+	resize: vertical;
+}
+
+.invite-landing__note:focus-visible {
+	outline: none;
+	border-color: var(--primary);
+}
+
+.invite-landing__error {
+	margin: 0;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--danger);
+}
+
+.invite-landing__next {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	margin-block-start: var(--space-2);
+	font-weight: var(--fw-medium);
+	color: var(--primary);
+	text-decoration: none;
+}
+
+.invite-landing__next:hover {
+	text-decoration: underline;
+}

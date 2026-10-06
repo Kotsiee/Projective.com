@@ -43,6 +43,13 @@ that could not carry a foreign key.
 
 A product has no status of its own: it is public exactly when a PUBLISHED listing offers it.
 
+**No contact or payment details in public copy (Decision #147).** `catalogue.products.title` /
+`description` / `specs` and `catalogue.listings.title` / `description` are permanently outside the
+Projective Unlock (`PRODUCT_SPEC.md` §Messaging 1.B): no email, phone, messaging or off-platform
+payment link, `$cashtag`, or bank/card detail. Checked at create/update time by the catalogue write
+service and refused field-named, never masked; no CHECK or trigger enforces it. **Not yet
+enforced.** Article bodies (`catalogue.articles.body`) are not yet covered — Decision #147 flag (a).
+
 ## `catalogue.articles`
 
 | Column             | Type                        | Notes                                                                                         |

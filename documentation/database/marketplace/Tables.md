@@ -59,6 +59,13 @@ The listing page (`/view/svc-…`) and every discovery card read these columns l
 empty value means the seller has not stated it, and the page omits that part rather than inventing
 it.
 
+**No contact or payment details in service copy (Decision #147).** Every seller-authored text on a
+blueprint — `title`, `description`, the `stage_template` and `team_roles` entries, `deliverables`,
+`intake_fields` labels — is public copy and permanently outside the Projective Unlock
+(`PRODUCT_SPEC.md` §Messaging 1.B): no email, phone, messaging or off-platform payment link,
+`$cashtag`, or bank/card detail. Checked at create/update time by the catalogue write service and
+refused field-named, never masked; no CHECK or trigger enforces it. **Not yet enforced.**
+
 | Column            | Type             | Notes                                                                                                   |
 | :---------------- | :--------------- | :------------------------------------------------------------------------------------------------------ |
 | `stage_template`  | jsonb            | NOT NULL `DEFAULT '[]'`. An ordered array of `BlueprintStage` (`@projective/types/explore` `stored.ts`: name, description, deliverables, turnaround, `priceCents`, skills). The stages a Pipeline or One-Off is delivered through — the showcase the view renders and what "Add to projects" instantiates. `ck_service_blueprints_stage_template_shape`: array, ≤ 12. |

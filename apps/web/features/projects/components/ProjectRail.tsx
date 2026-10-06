@@ -2,13 +2,7 @@ import { cloneElement, type JSX } from "preact";
 import { Tooltip } from "@projective/ui/feedback";
 import { LaneCollapseButton } from "@projective/ui/navigation";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
-import {
-	BackIcon,
-	DetailsIcon,
-	type ProjectViewLink,
-	projectViewLinks,
-	viewLinkCurrent,
-} from "./detail-glyphs.tsx";
+import { BackIcon, DetailsIcon, type ProjectViewLink, viewLinkCurrent } from "./detail-glyphs.tsx";
 import { PlusIcon } from "./glyphs.tsx";
 import { profileHref } from "../core/routing.ts";
 import { isTaskDetail } from "../core/task-project.ts";
@@ -41,6 +35,8 @@ export interface ProjectRailProps {
 	currentPath: string;
 	/** The effective service archetype — sessions drop Submissions + label the Board "Calendar". */
 	sessionKind?: "none" | "normal" | "group";
+	/** The lane's view links ({@link projectViewLinks}) — the expanded top tier's own set. */
+	links: readonly ProjectViewLink[];
 	/** Expand the lane back out (dispatched to the splitter). */
 	onExpand: () => void;
 	/** Client-only: open the Create New Stage modal. */
@@ -48,11 +44,11 @@ export interface ProjectRailProps {
 }
 
 export function ProjectRail(
-	{ detail, currentPath, sessionKind = "none", onExpand, onCreateStage }: ProjectRailProps,
+	{ detail, currentPath, sessionKind = "none", links: topLinks, onExpand, onCreateStage }:
+		ProjectRailProps,
 ): JSX.Element {
 	const base = `/projects/${detail.slug}`;
 	const isSession = sessionKind === "normal" || sessionKind === "group";
-	const topLinks = projectViewLinks(detail, sessionKind);
 	// A project leads with its owner, a service with its client; fall back to the owner.
 	const lead = (detail.kind === "service" ? detail.client : detail.owner) ?? detail.owner;
 
@@ -76,7 +72,12 @@ export function ProjectRail(
 					aria-label={name}
 				>
 					{cloneElement(l.icon)}
-					{l.status && <span class="proj-railbtn__dot" aria-hidden="true" />}
+					{l.status && (
+						<span
+							class={`proj-railbtn__dot proj-railbtn__dot--${l.status.tone}`}
+							aria-hidden="true"
+						/>
+					)}
 				</a>
 			</Tooltip>
 		);

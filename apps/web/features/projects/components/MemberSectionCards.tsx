@@ -228,7 +228,11 @@ export function RequestCard(props: RequestCardProps): JSX.Element {
 			seed={r.id}
 			actions={props.actions}
 			headline={`Applied to ${requestTarget(r)}`}
-			meta={[r.applicantKind === "team" ? "Team" : "Freelancer", r.appliedLabel]}
+			meta={[
+				r.applicantKind === "team" ? "Team" : "Freelancer",
+				...(r.viaInviteLink ? ["Via invite link"] : []),
+				r.appliedLabel,
+			]}
 			note={r.message}
 			busy={props.busy}
 			foot={

@@ -163,9 +163,15 @@ ALTER TABLE projects.ticket_history ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE projects.user_preferences ENABLE ROW LEVEL SECURITY;
 
+ALTER TABLE projects.view_reads ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE projects.project_required_skills ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE projects.project_invitations ENABLE ROW LEVEL SECURITY;
+
+-- The stage invite link's token is a capability like an invitation's; managers read it, nobody writes
+-- it directly (the definer doors in 00001135 §4 do).
+ALTER TABLE projects.stage_invite_links ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE finance.escrows ENABLE ROW LEVEL SECURITY;
 

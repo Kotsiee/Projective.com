@@ -607,22 +607,6 @@ a.mem-person__name:focus-visible {
 	color: var(--text-secondary);
 }
 
-.mem-invite__form {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-4);
-}
-
-.mem-invite__row {
-	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: var(--space-3);
-}
-
-.mem-invite__row[data-single="true"] {
-	grid-template-columns: 1fr;
-}
-
 .mem-preview__head {
 	display: flex;
 	align-items: center;
@@ -835,10 +819,6 @@ a.mem-person__name:focus-visible {
 
 	.mem-sectionbar__meta {
 		display: none;
-	}
-
-	.mem-invite__row {
-		grid-template-columns: 1fr;
 	}
 
 	.mem-col--date,

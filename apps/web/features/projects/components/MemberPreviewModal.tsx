@@ -111,7 +111,7 @@ function engagementFacts(
 			return [
 				["Applied for", requestTarget(r)],
 				["Applying as", r.applicantKind === "team" ? "A team" : "A freelancer"],
-				["Applied", r.appliedLabel],
+				["Applied", r.viaInviteLink ? `${r.appliedLabel} · via invite link` : r.appliedLabel],
 			];
 		}
 		case "invite": {

@@ -35,3 +35,8 @@ CREATE TRIGGER trg_check_public_project_footprint
     BEFORE INSERT OR UPDATE OF status, visibility ON projects.projects
     FOR EACH ROW
     EXECUTE FUNCTION projects.fn_check_public_project_footprint ();
+
+CREATE TRIGGER trg_projects_touch_updated_at
+    BEFORE UPDATE ON projects.projects
+    FOR EACH ROW
+    EXECUTE FUNCTION projects.fn_touch_updated_at ();

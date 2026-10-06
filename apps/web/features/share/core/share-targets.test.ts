@@ -3,6 +3,7 @@ import {
 	composeInternalMessage,
 	composeShareText,
 	externalShareUrl,
+	INVITE_SHARE_TARGETS,
 	SHARE_TARGETS,
 } from "./share-targets.ts";
 
@@ -74,4 +75,19 @@ Deno.test("the internal message leads with the note, else the title, and ends wi
 		composeInternalMessage({ url: "https://p.com", title: "", text: "" }, ""),
 		"https://p.com",
 	);
+});
+
+Deno.test("LinkedIn carries the link alone; Email puts the title in the subject and the link in the body", () => {
+	const li = externalShareUrl("linkedin", req)!;
+	assertStringIncludes(li, "https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2F");
+	const mail = externalShareUrl("email", req)!;
+	assertStringIncludes(mail, "mailto:?subject=Brand%20Identity%20Sprint");
+	const body = new URL(mail.replace("mailto:", "mailto:x")).searchParams.get("body") ?? "";
+	assertStringIncludes(body, req.url);
+});
+
+Deno.test("the invite targets are a subset of the share targets", () => {
+	const all = new Set(SHARE_TARGETS.map((spec) => spec.key));
+	for (const spec of INVITE_SHARE_TARGETS) assertEquals(all.has(spec.key), true, spec.key);
+	assertEquals(INVITE_SHARE_TARGETS.map((spec) => spec.key), ["whatsapp", "linkedin", "x", "email"]);
 });

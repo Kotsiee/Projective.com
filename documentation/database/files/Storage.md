@@ -34,6 +34,16 @@ build storage paths through it rather than hardcoding bucket ids or path strings
 
 ## 📂 Directory Structure
 
+**Two moderation zones (Decision #148).** The **public** buckets — `avatars`, `showcase`,
+`catalogue`, `public_assets` — are the Public Glass Front: an object may be written to one only
+after the moderation classifier returns a clean verdict for it (explicit content, and contact or
+payment details in the image). The **private** buckets — `project`, `messages`, `personal`,
+`workspace` — are the Private Collaborative Workspace: they are **never** run through automated
+explicit-content screening, so adult or explicit material a creative brief requires (character and
+anatomy models, life drawing, mature scripts, unfiltered voice takes) is stored and served normally.
+Moderation there is reactive, from a user report. `quarantine` screens for hostile bytes only, never
+for content. **The classifier is not built yet** — see §Security Enforcement.
+
 ### `avatars` (Public)
 
 Profile photos, edge-cached. Public read; **written only by the media pipeline** (service role) —
@@ -341,6 +351,23 @@ WHERE ss.id = :submission_id;
   operation performed by a `SECURITY DEFINER` function or the service role, so a user can never
   bypass a project-access, DM-membership, or verification check by writing straight to a restricted
   bucket.
+- **Clean verdict before public promotion (planned, Decision #148).** A write into `avatars`,
+  `showcase`, `catalogue` or `public_assets` requires a clean moderation verdict on the decoded
+  content, obtained by the media pipeline **after** quarantine admission and **before** the WebP
+  tiers are cut. A flagged image is not written and not attached; its private library original keeps
+  `status = 'uploaded'`. The classifier being unavailable fails closed (nothing is published
+  unscreened). `files.items.status = 'quarantined'` stays reserved for hostile bytes found by the
+  sniff. Design: `SYSTEM_ARCHITECTURE.md` §Backend Services → Content moderation.
+- **No automated content screening in private buckets.** `project`, `messages`, `personal` and
+  `workspace` objects are checked for hostile bytes on upload and nothing else; the creative safe
+  harbor (`PRODUCT_SPEC.md` §Messaging 1.C) rules out explicit-content scanning there. Their
+  moderation is a user report against the file or message that carries it.
+- ⚠️ **Two public buckets accept direct client writes.** `"Owners can write their public assets"`
+  (`public_assets`) and `"Sellers can write their catalogue media"` (`catalogue`) in `00002017` are
+  `FOR ALL TO authenticated` on `auth.uid() = owner` — a signed-in user can PUT an unscanned,
+  unscreened file straight into a public bucket, skipping quarantine and any publication gate. This is
+  the hole closed for `avatars` on 2026-09-22; closing it here (service-role write only, behind the
+  pipeline) is a migration and is flagged in Decision #148 (b).
 
 ## 🏷️ File classification
 

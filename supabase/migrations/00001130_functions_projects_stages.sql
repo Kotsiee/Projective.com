@@ -885,9 +885,9 @@ BEGIN
         RAISE EXCEPTION 'Application % not found.', p_application_id USING ERRCODE = 'no_data_found';
     END IF;
 
-    -- Only the paying side may accept an application and bind talent to the stage.
-    IF NOT projects.can_review_project(v_project) THEN
-        RAISE EXCEPTION 'Only the project owner may accept applications.' USING ERRCODE = 'insufficient_privilege';
+    -- Staffing authority (Decision #145): the owner, the client business, or a delegated admin/manager.
+    IF NOT projects.can_manage_project_members(v_project) THEN
+        RAISE EXCEPTION 'Only the project owner, an admin or a manager may accept requests.' USING ERRCODE = 'insufficient_privilege';
     END IF;
 
     IF v_status <> 'pending' THEN
@@ -1010,7 +1010,7 @@ $$;
 
 -- #endregion
 
--- #region 7b. reject_application — the owner declines an applicant
+-- #region 7b. reject_application — the managing side declines an applicant
 -- The other answer to an inbound request (the Members tab's Requests section). The application becomes
 -- `rejected` — the status a filled seat already gives its other applicants, so "declined" and "not
 -- selected" are one state to the applicant — and they are told (`application.declined`), deep-linked to
@@ -1041,8 +1041,8 @@ BEGIN
         RAISE EXCEPTION 'Application % not found.', p_application_id USING ERRCODE = 'no_data_found';
     END IF;
 
-    IF NOT projects.can_review_project(v_project) THEN
-        RAISE EXCEPTION 'Only the project owner may decline applications.' USING ERRCODE = 'insufficient_privilege';
+    IF NOT projects.can_manage_project_members(v_project) THEN
+        RAISE EXCEPTION 'Only the project owner, an admin or a manager may decline requests.' USING ERRCODE = 'insufficient_privilege';
     END IF;
 
     IF v_status <> 'pending' THEN
@@ -1086,7 +1086,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION projects.reject_application(uuid) IS
-'The project owner declines a pending application: it becomes rejected, the decision is logged on project_activity, and the applicant is notified (application.declined). Owner-only; anything not pending is refused naming its status.';
+'The project''s staffing authority (can_manage_project_members) declines a pending application: it becomes rejected, the decision is logged on project_activity, and the applicant is notified (application.declined). Anything not pending is refused naming its status.';
 
 -- #endregion
 
@@ -1361,17 +1361,21 @@ BEGIN
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Project % not found.', p_project_id USING ERRCODE = 'no_data_found';
     END IF;
-    IF v_project.owner_user_id <> v_actor THEN
-        RAISE EXCEPTION 'Only the project owner may invite people to it.' USING ERRCODE = 'insufficient_privilege';
+    IF NOT projects.can_manage_project_members(p_project_id) THEN
+        RAISE EXCEPTION 'Only the project owner, an admin or a manager may invite people to it.' USING ERRCODE = 'insufficient_privilege';
     END IF;
     IF v_project.status IN ('archived', 'cancelled', 'completed') THEN
         RAISE EXCEPTION 'This project is closed — nobody can be invited to it.' USING ERRCODE = 'check_violation';
     END IF;
-    IF p_target_user_id = v_actor THEN
+    IF p_target_user_id = v_actor OR p_target_user_id = v_project.owner_user_id THEN
         RAISE EXCEPTION 'You are already on this project.' USING ERRCODE = 'check_violation';
     END IF;
     IF p_role IS NULL OR p_role NOT IN ('admin', 'manager', 'freelancer', 'member', 'guest') THEN
         RAISE EXCEPTION 'That is not a role an invitation can grant.' USING ERRCODE = 'check_violation';
+    END IF;
+    -- A delegate staffs the project; appointing another delegate is the owner's call.
+    IF p_role IN ('admin', 'manager') AND NOT projects.can_review_project(p_project_id) THEN
+        RAISE EXCEPTION 'Only the project owner may invite an admin or a manager.' USING ERRCODE = 'insufficient_privilege';
     END IF;
 
     -- The stage, when named, must be THIS project's. The FK only names the table.
@@ -1497,7 +1501,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION projects.invite_to_project(uuid, uuid, uuid, text, text, bigint, jsonb) IS
-'Issues one identity-addressed project (or stage) invitation as the project owner, derives `placeholder` from the project status and the resolved offer, enforces the 48-day re-invitation cooldown, and emits a `stage.invite` notification to the invitee through comms.fn_notify in the same transaction. Owner-only.';
+'Issues one identity-addressed project (or stage) invitation as the project''s staffing authority (can_manage_project_members; only review authority may offer admin or manager), derives `placeholder` from the project status and the resolved offer, enforces the 48-day re-invitation cooldown, and emits a `stage.invite` notification to the invitee through comms.fn_notify in the same transaction.';
 
 REVOKE ALL ON FUNCTION projects.invite_to_project(uuid, uuid, uuid, text, text, bigint, jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION projects.invite_to_project(uuid, uuid, uuid, text, text, bigint, jsonb) TO authenticated;

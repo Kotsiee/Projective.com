@@ -37,7 +37,10 @@ export interface AppliedRow {
  * Map a handshake RPC's refusal onto the envelope by its SQLSTATE; anything else goes through the
  * shared `refusalFrom`, which never passes an internal message through.
  */
-function handshakeRefusal(error: { code?: string; message: string }, field: string): WriteRefusal {
+export function handshakeRefusal(
+	error: { code?: string; message: string },
+	field: string,
+): WriteRefusal {
 	const message = error.message.replace(/^ERROR:\s*/i, "").trim();
 	if (error.code === "23505") return { status: 409, message, errors: { [field]: "duplicate" } };
 	if (error.code === "23514" || error.code === "22023") {

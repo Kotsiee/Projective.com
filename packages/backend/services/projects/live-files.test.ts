@@ -162,7 +162,7 @@ const OWNER = actorOf(OWNER_ID);
 const CHANNELS = [
 	{
 		id: C_GENERAL,
-		name: "General",
+		name: "Discussion",
 		stage_id: null,
 		visibility: "project_all",
 		created_at: "2026-09-01T00:00:00Z",
@@ -325,7 +325,7 @@ Deno.test("fetchFilePage file facts: classification, size, folder trail, message
 		assertEquals(brief.folderPath, ["Root", "Specs"]);
 		assertEquals(brief.starred, true);
 		assertEquals([brief.channelName, brief.channelKind, brief.messageId], [
-			"General",
+			"Discussion",
 			"general",
 			"m-1",
 		]);

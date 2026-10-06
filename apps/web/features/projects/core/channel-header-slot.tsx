@@ -34,7 +34,7 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
 };
 
 const KIND_LABEL: Record<ChannelMeta["kind"], string> = {
-	general: "General channel",
+	general: "Discussion",
 	stage: "Stage",
 	team: "Team channel",
 	dm: "Direct message",

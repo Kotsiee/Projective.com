@@ -711,6 +711,102 @@ messaging channels.
 > Invoicing, and Stage-tracking—are so deeply integrated that moving "off-platform" for active work
 > would be an operational disadvantage.
 
+##### A. The leakage-prevention pipeline (Decision #147)
+
+Contact and payment leakage is caught by three tiers. Each has one job, and only the database tier
+is authoritative: the other two may add checks but can never relax what the database enforces.
+
+| Tier | Where it runs | When | What it does | Status |
+| :--- | :------------ | :--- | :----------- | :----- |
+| **1 · Edge pre-filter** | In-process, inside the fat send services (Deno, TypeScript/WASM), before the insert | Synchronous, < 2 ms, $0 infrastructure | Normalises Unicode confusables/homoglyphs, extracts URLs and domains (`tldts` / `linkify-it`), Luhn-checks digit runs so a card number is caught and a long numeric reference is not; refuses a naive attempt before it is stored | **Planned.** Today Tier 1 is the composer's warning only — `packages/types/comms/pii.ts`, the regex twin of Tier 2 |
+| **2 · Database enforcement** | `BEFORE INSERT` triggers on `comms.project_messages` and `comms.dm_messages`, calling `comms.mask_pii` | Every insert, on every path (service, RPC or direct write) | While `projects.is_protected_phase` holds, rewrites each match to a category placeholder (`[email hidden]` · `[link hidden]` · `[handle hidden]` · `[phone hidden]`) and sets `pii_masked = true` + `pii_categories` | **Shipped** (`00001300` / `00001840`) |
+| **3 · Deep NLP** | Self-hosted Microsoft Presidio microservice (spaCy NER + rule matchers) | Asynchronous, after commit, off the send path | Scores obfuscated intent the regexes cannot see — spelled-out numerals, disguised handles, split addresses — and files the message for review | **Planned** |
+
+Rules that hold across the tiers:
+
+- **The database tier is the floor.** A category Tier 1 refuses must also be masked by Tier 2, or a
+  direct write would carry exactly what the edge refused.
+- **Tier 3 never edits, deletes or delays a message.** Its output is evidence: a review-queue entry
+  feeding the **Consequences** ladder above. Whether an automated restriction may be applied without
+  telling the user is an open question (Decision #147 flag (d)).
+- **Tiers 1 and 3 run only where Tier 2 would mask** — inside the protected phase — so the Projective
+  Unlock lifts all three at once.
+
+##### B. Public surfaces are never unlocked (Decision #147)
+
+The Projective Unlock applies to **project messaging only** (stage channels and the DMs that fall
+under a protected engagement). Public, marketplace-facing copy is **permanently** barred from:
+
+- personal banking or payment details (account and routing numbers, IBANs, card numbers);
+- off-platform payment links and handles (PayPal, Venmo, Cash App, Zelle, Wise, Revolut, Ko-fi,
+  `$cashtags`, and the like);
+- external direct-contact redirects (email addresses, phone numbers, messaging links such as
+  `t.me` / `wa.me`, and social handles offered as a way to transact off-platform).
+
+The rule covers every surface a stranger can read, and it does not lapse when a project completes:
+
+| Surface | Columns |
+| :------ | :------ |
+| Public profile | `org.users_public.headline`, `org.users_public.bio` |
+| Public services | `marketplace.service_blueprints` copy (incl. `stage_template` / `team_roles` text) |
+| Digital products & catalogue listings | `catalogue.products.title` / `description`, `catalogue.listings.title` / `description` |
+| Public project briefs | `projects.projects.title` / `description` |
+
+Enforcement is at **creation and update time**, in the write door that owns each surface
+(`org.save_profile`, the catalogue and project write services): an offending field is **refused**
+with a `422` naming the field — never silently masked, because public copy is authored and the owner
+must see and fix it. **Not yet enforced** (Decision #147). The structured link surfaces
+(`org.profile_links`, a business's `website`) and article bodies are not settled by this rule —
+Decision #147 flag (a).
+
+##### C. Content safety & moderation — the Two-Zone model (Decision #148)
+
+Content is moderated by **where it is seen**, not by what it is. Two zones, two regimes:
+
+| | **Public Glass Front** | **Private Collaborative Workspace** |
+| :- | :--------------------- | :---------------------------------- |
+| **Scope** | Public profiles (`org.users_public`: avatar, banner, `headline`, `bio`), the showcase carousel, digital marketplace listings (`catalogue`), public service cards (`marketplace.service_blueprints`), public project briefs | Project channels (`comms.project_messages`), stage deliverables (`projects.stage_submissions`), DMs (`comms.dm_messages`), project and message attachments (`files`) |
+| **Audience** | Anyone, signed in or not; cached at the edge | Only the parties to the engagement or conversation |
+| **Regime** | **Proactive.** Automated pre-screening before anything is published | **Reactive.** No automated content screening; moderation starts from a user report |
+| **Screened for** | Explicit content (nudity, sexual content, graphic violence, hate symbols and speech) and platform leakage (§1.B) | Nothing automatically, except the protected-phase contact filter (§1.A), which is platform integrity and still applies |
+| **Status** | **Planned** — no screening exists yet | Reporting **planned** — no report surface exists yet |
+
+**Public zone — screen, then publish.** An image only becomes public when the pipeline cuts its
+public rendition (an avatar, a showcase slot, a listing cover or gallery image); that is the moment
+it is screened. A clean verdict publishes it. A flagged image is **not published**: the owner gets a
+plain-language correction notice naming the reason ("This image can't be used on a public profile —
+it appears to contain nudity") and keeps the original in their private library, untouched, because
+a private copy harms nobody. Public text follows §1.B and is screened for hate speech the same way.
+Nothing in this zone is ever exempt — no creative brief, no Standing level and no plan buys an
+exception.
+
+**Private zone — the creative safe harbor.** Creative and technical work routinely needs adult or
+explicit material: character and anatomy modelling for games, life drawing, film and script
+dialogue, voice acting with profanity, medical and forensic illustration. Inside a private
+collaboration none of this is scanned, flagged or blocked; an automated classifier here would
+misfire on legitimate work, chill the briefs Projective exists to host, and cost compute on every
+message and file. The safe harbor covers material that serves the work and is shared among the
+people engaged on it. It **never** covers content that is illegal (including any sexual content
+involving minors), harassment or threats directed at a participant, or explicit material sent to
+someone who has not engaged on that work — all reportable, and illegal content is escalated beyond
+the platform as the law requires.
+
+**Reporting.** Any party who can see a message, submission, file, DM or public item can report it,
+choosing a reason. At filing, the platform freezes an **immutable snapshot** of what was reported —
+the content, its author, its context and timestamps — in the same spirit as the Evidence Vault
+(§Dispute Resolution 1), so editing or deleting the original afterwards changes nothing. A reviewer
+resolves each report as **dismissed** (no violation) or **actioned** (violation verified). The
+reported party is never shown who reported them.
+
+**Consequences tie into Standing.** An actioned report issues a penalty against the author, sized
+to the severity of the violation. Active penalties are the `penalty` term of the Reliability Index
+($R_i$) (§Reputation 5 "What moves a rung"), so a verified violation lowers the score and can
+**demote the author's Standing rung** — with it the listing allowance, proposal bonus, discovery
+weighting and commission rate that rung carries. Serious or repeated violations escalate along the
+existing ladder (§1 **Consequences**: suspension through to a permanent ban). Every actioned
+outcome is a moderation decision and is therefore a **mandatory notification** to the person it
+affects (§Notifications rule 1). A penalty can expire or be reversed; it is never deleted.
+
 #### 2. Channel Architecture
 
 Communication is partitioned into specific channels to ensure that the right people have the right
@@ -903,6 +999,27 @@ cancelling a session cancels its reminders.
 _Schema, routing precedence and delivery mechanics:
 [`database/comms/`](../database/comms/Tables.md) · `SYSTEM_ARCHITECTURE.md` §The Notification
 Engine._
+
+#### Project lane activity marks — what changed since you last looked
+
+Inside an engagement, each of the lane's views carries a quiet mark when something changed there
+since **this person** last opened it (Decision #146). Opening the view clears it; nothing else does.
+The marks are computed per person, so the owner and a freelancer on the same engagement see different
+things:
+
+- **Overview** — a dot when the engagement's details, status or stages changed; on arrival the changed
+  regions are briefly highlighted.
+- **Discussion** — the number of unread messages from other people (up to "9+").
+- **Board** — a dot for new tickets or stages; a neutral dot when cards moved lanes.
+- **Timeline** — a warning dot when a deadline falls within the next 48 hours; otherwise a dot for
+  recorded progress.
+- **Files** — a dot when the owner shared a new file.
+- **Submissions** — the number waiting on you: new work to review if you review, new verdicts on your
+  own work if you submit.
+- **Members** — the number of membership changes: people joining for everyone, plus join requests
+  and invitation outcomes for those who staff the engagement.
+
+What happened before a person's first visit to an engagement is not marked.
 
 ---
 
@@ -1139,7 +1256,8 @@ There are two primary ways an engagement begins:
 
   > **Managing what you sent.** The project's Members page has three sections — **Members** (the
   > roster), **Requests** (open applications) and **Invitations** — each addressable
-  > (`?view=requests` · `?view=invitations`) and offered only to a client who manages the project.
+  > (`?view=requests` · `?view=invitations`) and offered only to whoever staffs the project: the
+  > owner, the client business, or an **admin** or **manager** they appointed (Decision #145).
   > Its Invitations section — and each stage's, which lists only the
   > invitations addressed to THAT stage — shows every invitation with its state (`Pending` ·
   > `Accepted` · `Declined` · `Expired`) and the one thing the client may do about it: **cancel** an
@@ -1161,6 +1279,36 @@ There are two primary ways an engagement begins:
   > _Invited to {stage} · Pending_ with **Cancel** beside it; the preview lists the stages they hold,
   > each with **Remove** behind the removal confirmation. A stage is never assigned without the
   > freelancer's acceptance (Decision #139).
+
+  > **A stage's roster is the people who can act on it.** Being on a project lets a person view its
+  > stages; it does not make them a member of each. A stage's Members section lists only the people
+  > assigned to that stage (_Contributors_) and the people who oversee every stage — the owner, the
+  > client side, admins and managers (_Observers_). An unassigned freelancer, team member or guest
+  > stays on the project's roster and off the stage's. The stage's Invitations and Requests list only
+  > what is addressed to that stage, and nobody appears in any of the three lists without a seat, an
+  > open invitation or an open request there (Decision #145).
+
+  > **Staffing can be delegated.** An admin or manager the owner appointed may invite people, answer
+  > requests, cancel or dismiss invitations and share a stage's invite link. Appointing another admin
+  > or manager — by invitation or by a role change — stays with the owner's side, as do removals
+  > (Decision #145).
+
+  > **A stage invite link asks; it never seats.** Whoever staffs the project can create one link per
+  > stage, copy it, share it to WhatsApp, LinkedIn, X or email, **reset** it (the old link stops
+  > working at once) or **turn it off**. Opening the link asks the person to sign in, shows the
+  > project, the stage and who shared it, and offers **Ask to join** with an optional note. Asking
+  > files an ordinary request on that stage — it appears in the stage's **Requests**, marked as
+  > arriving by link, and the owner is notified (`application.received`) — which is accepted or
+  > declined like any other. A link never seats anyone, never moves money, and is refused to a
+  > person already on the stage, already invited to it, already asking, or without a freelancer
+  > profile; a link to a finished stage or a closed project does not work (Decision #145).
+
+  > **Inviting is one click per person.** The Invite modal and the Share modal share one layout: the
+  > link at the top, a search whose matches open beneath it, and a **Quick add** rail of the people
+  > the viewer already works with — shared workspaces first, then mutual follows, follows, past
+  > collaborators and recent conversations. People already on the roster are not suggested, and
+  > anyone holding an open invitation to the chosen stage reads _Invited_ rather than offering a
+  > duplicate. An email address typed into the search can be invited directly (Decision #145).
 
 ##### Discovery & Courtesy Calls (the third path)
 

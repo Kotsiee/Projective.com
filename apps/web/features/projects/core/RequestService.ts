@@ -4,7 +4,9 @@ import type {
 	ApplicationRejected,
 	ApplyToProject,
 	InvitationAnswered,
+	InviteLinkRedeemed,
 	ProjectApplication,
+	RedeemInviteLink,
 } from "../types/projects-types.ts";
 import type { ProjectsResult } from "../types/results.ts";
 
@@ -17,6 +19,11 @@ export const RequestService = {
 	/** Apply to a stage; a cover note opens the conversation with the client. */
 	apply(payload: ApplyToProject): Promise<ProjectsResult<ProjectApplication>> {
 		return postProjects<ProjectApplication>("/api/projects/apply", payload);
+	},
+
+	/** Ask to join a stage through its invite link (Decision #145); files a pending request. */
+	redeemInviteLink(payload: RedeemInviteLink): Promise<ProjectsResult<InviteLinkRedeemed>> {
+		return postProjects<InviteLinkRedeemed>("/api/projects/invite-links/redeem", payload);
 	},
 
 	/** Accept or decline every invitation of one request together. */

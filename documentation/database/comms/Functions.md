@@ -306,6 +306,60 @@ request routing with and without a mutual follow, an existing thread never re-fi
 restored and re-filed, the reply promotion for the sender only, the folder door's two refusals, the
 cold-message refusal, masking in a protected pair's DM and none in an unrelated one.
 
+## The protected-phase contact filter (`00001300` / `00001840`, Decision #147)
+
+Tier 2 — the authoritative tier — of the leakage-prevention pipeline (`SYSTEM_ARCHITECTURE.md`
+§Messaging services → Contact & financial leakage prevention; `PRODUCT_SPEC.md` §Messaging 1.A).
+
+### `comms.mask_pii(p_text text) → TABLE (masked text, categories text[])`
+
+A pure masker: `IMMUTABLE`, not `SECURITY DEFINER`, reads no table and knows nothing about phases.
+`NULL` or `''` is returned unchanged with `'{}'`. Otherwise four POSIX passes run **in this order**,
+each replacing every match and appending its category once:
+
+| # | Category       | Matches                                                                                           | Placeholder        |
+| :- | :------------- | :------------------------------------------------------------------------------------------------ | :----------------- |
+| 1 | `email`        | `local@domain.tld` (case-insensitive)                                                             | `[email hidden]`   |
+| 2 | `payment_link` | PayPal · Venmo · Cash App · Zelle · Wise · Revolut · Monzo · Ko-fi · Buy Me a Coffee · `t.me` · `wa.me` · `telegram.me`, with or without scheme, plus the rest of the token | `[link hidden]`    |
+| 3 | `handle`       | `$cashtag` (`$` + letter + 1+ word characters)                                                    | `[handle hidden]`  |
+| 4 | `phone`        | 8+ characters of digits / spaces / `( ) . -`, optional leading `+` or `(`, digit at both ends     | `[phone hidden]`   |
+
+Order is load-bearing: a payment URL can contain digits the phone pass would otherwise consume. The
+phone pass also consumes any long digit run — a card number is masked as `phone`, and so is a long
+numeric reference; there is no Luhn or confusable handling at this tier yet (Decision #147 flag (e)).
+`packages/types/comms/pii.ts` is the TypeScript twin; `pii.contract.test.ts` pins its
+`SQL_PII_PATTERNS` to this function verbatim, so a pattern edited on one side fails until the other
+follows.
+
+### `comms.tg_mask_message_pii()` — trigger
+
+`BEFORE INSERT ON comms.project_messages` (`trg_mask_message_pii`), `SECURITY DEFINER`. Phase check:
+resolves the channel's `project_id` from `comms.project_channels` and returns `NEW` untouched when
+there is none or `projects.is_protected_phase(project)` is false — i.e. once
+`projects.projects.handover_unlocked_at` is set (the final stage settling through
+`projects.approve_stage`, or `projects.tg_project_handover_on_complete` on a force-completion). `is_protected_phase` defaults to **true** for an unknown
+id, so a missing project fails toward masking. The DM equivalent is `comms.tg_mask_dm_message_pii`
+above, which resolves the phase through `comms.fn_dm_protected_project`.
+
+**Masking contract (both triggers).** On any category hit, in one row write:
+
+- `body` := the masked text — the original words are never stored;
+- `body_delta` := `NULL` — the Delta spells the original, so the message renders plain;
+- `pii_masked` := `true`, `pii_categories` := the categories in pass order.
+
+No hit → the row is stored exactly as sent with `pii_masked = false`. The triggers never raise: a
+protected-phase message is masked, not refused. Masking is one-way; nothing restores the original,
+and the Projective Unlock does not unmask rows written before it.
+
+**Other callers.** `projects.invite_to_project`, `projects.apply_to_project` and
+`projects.redeem_invite_link` pass a request's free-text message through `comms.mask_pii` while the
+project is protected, before it is stored on the request row or quoted in the owner's
+notification.
+
+**Gap — edits are not masked.** Both triggers fire on `INSERT` only. `comms.project_messages` is
+editable by its sender through `edit_own_messages` (`00002012`, no column restriction), so a body —
+or `pii_masked` itself — can be rewritten after the mask ran. Decision #147 flag (c).
+
 ## Replies stay in their room (`00001300` / `00001840`)
 
 ### `comms.tg_guard_message_reply()` · `comms.tg_guard_dm_message_reply()` — triggers

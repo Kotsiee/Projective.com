@@ -85,3 +85,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_project_invitations_open_email
     ON projects.project_invitations (project_id, project_stage_id, lower(target_email))
     NULLS NOT DISTINCT
     WHERE status = 'pending' AND target_email IS NOT NULL;
+
+-- One ACTIVE invite link per stage (Decision #145): a reset revokes the old row in the same
+-- transaction that mints the new one, and a concurrent first open loses the race here and re-reads.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_stage_invite_links_active
+    ON projects.stage_invite_links (project_stage_id)
+    WHERE status = 'active';
+
+-- "Which requests did this link bring in?" — partial, because almost every application has none.
+CREATE INDEX IF NOT EXISTS idx_project_applications_invite_link
+    ON projects.project_applications (invite_link_id)
+    WHERE invite_link_id IS NOT NULL;

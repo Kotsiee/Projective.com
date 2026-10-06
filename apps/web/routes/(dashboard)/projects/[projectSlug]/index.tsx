@@ -1,7 +1,13 @@
 import { page } from "fresh";
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
-import { landingFor, type ProjectStatus, type ProjectWorkspace } from "@projective/types/projects";
+import {
+	landingFor,
+	type OverviewChange,
+	type ProjectStatus,
+	type ProjectWorkspace,
+} from "@projective/types/projects";
+import { resolveNavActivity } from "@features/projects/core/nav-activity-ssr.ts";
 import { ProjectOverviewScreen } from "@features/projects/components/overview/ProjectOverviewScreen.tsx";
 import { resolveProjectWorkspace } from "@features/projects/core/overview-ssr.ts";
 import {
@@ -43,6 +49,8 @@ import { STATUS_LABEL } from "@features/projects/core/portfolio-model.ts";
 interface OverviewData {
 	workspace: ProjectWorkspace | null;
 	slug: string;
+	/** Regions changed since the viewer's last visit, for the arrival highlight. */
+	changes: OverviewChange[];
 }
 
 export const handler = define.handlers({
@@ -58,13 +66,17 @@ export const handler = define.handlers({
 		}
 
 		ctx.state.title = `${resolved.title} · Projective`;
-		const { workspace } = await resolveProjectWorkspace(slug, readActor(ctx), landing.viewer);
+		const actor = readActor(ctx);
+		const [{ workspace }, activity] = await Promise.all([
+			resolveProjectWorkspace(slug, actor, landing.viewer),
+			resolveNavActivity(ctx.state, slug, actor),
+		]);
 		const shown = workspace && resolved.simulated
 			? withStatus(workspace, resolved.status)
 			: workspace;
 		// Kept for the footer band's rig, which the layout renders after this handler returns.
 		if (shown) ctx.state.projectWorkspace = shown;
-		const data: OverviewData = { workspace: shown, slug };
+		const data: OverviewData = { workspace: shown, slug, changes: activity.overview.changes };
 		return page(data);
 	},
 });
@@ -78,5 +90,7 @@ function withStatus(workspace: ProjectWorkspace, status: ProjectStatus): Project
 }
 
 export default define.page<typeof handler>(function ProjectOverviewPage({ data }) {
-	return <ProjectOverviewScreen workspace={data.workspace} slug={data.slug} />;
+	return (
+		<ProjectOverviewScreen workspace={data.workspace} slug={data.slug} changes={data.changes} />
+	);
 });

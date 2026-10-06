@@ -2,7 +2,12 @@ import { createDefine } from "fresh";
 import type { UserContext } from "@projective/types/auth";
 import type { FxRateTable } from "@projective/types/finance";
 import type { ProfileView } from "@projective/types/profile";
-import type { ProjectAccess, ProjectStatus, ProjectWorkspace } from "@projective/types/projects";
+import type {
+	ProjectAccess,
+	ProjectNavActivity,
+	ProjectStatus,
+	ProjectWorkspace,
+} from "@projective/types/projects";
 
 /**
  * Request-scoped state shared across middleware, handlers, and pages.
@@ -83,6 +88,11 @@ export interface State {
 	 * layout does not compose the same four reads a second time. Absent on every other route.
 	 */
 	projectWorkspace?: ProjectWorkspace;
+	/**
+	 * The viewer's lane activity for the engagement a `/projects/[slug]/*` request addresses, read once
+	 * so the Overview's arrival highlight and the lane's marks answer from the same instant.
+	 */
+	projectNavActivity?: { slug: string; activity: ProjectNavActivity };
 }
 
 /** The typed `define` helper (`define.page` · `define.handlers` · `define.middleware`). */

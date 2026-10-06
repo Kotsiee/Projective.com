@@ -12,6 +12,7 @@ import type {
 	UpdateProject,
 } from "../types/projects-types.ts";
 import type { ProjectsResult } from "../types/results.ts";
+import type { MarkViewSeenResult, ProjectNavView } from "../types/projects-types.ts";
 
 /**
  * ProjectSidebarService — the THIN client controller for the `/projects` middle-nav feed.
@@ -62,6 +63,11 @@ export const ProjectSidebarService = {
 		return getProjects<{ detail: ProjectDetail }>(
 			`/api/projects/detail?slug=${encodeURIComponent(slug)}`,
 		);
+	},
+
+	/** Record that the viewer opened one of the engagement's lane views, clearing its activity mark. */
+	markSeen(slug: string, view: ProjectNavView): Promise<ProjectsResult<MarkViewSeenResult>> {
+		return postProjects<MarkViewSeenResult>("/api/projects/nav-seen", { projectId: slug, view });
 	},
 
 	/**

@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { NavItem } from "@projective/ui/navigation";
 import { type ProjectViewLink, viewLinkCurrent } from "./detail-glyphs.tsx";
+import type { ProjectViewStatus } from "../core/nav-activity-model.ts";
 
 /**
  * ProjectNavSection — the lane's top tier: the engagement's primary views as full `NavItem` rows
@@ -11,8 +12,9 @@ import { type ProjectViewLink, viewLinkCurrent } from "./detail-glyphs.tsx";
  * They are the lane's first destinations now, named in words, and the footer keeps only utilities.
  *
  * The set is {@link projectViewLinks} — archetype-specific (a Task has no Board or Timeline, a session
- * has a Calendar and no Submissions) and shared with the collapsed rail. A link's status is a trailing
- * dot (§D.1 — never a count) whose meaning is folded into the link's accessible name.
+ * has a Calendar and no Submissions) and shared with the collapsed rail. A link's activity mark sits
+ * at the row's end: a toned dot, or a plain tabular figure where the number is what the reader acts on
+ * (Decision #146). Its meaning is folded into the link's accessible name.
  *
  * Current-place marking is {@link viewLinkCurrent}: `aria-current="page"` on the view itself, `"true"`
  * on a page beneath a section link (the Discussion's Files tab is still the Discussion).
@@ -32,7 +34,7 @@ export function ProjectNavSection(
 		<nav class="proj-nav" aria-label="Project views">
 			<ul class="proj-nav__list" role="list">
 				{links.map((link) => (
-					<li key={link.key} class="proj-nav__item">
+					<li key={link.key} class="proj-nav__item" data-nav-view={link.key}>
 						<NavItem
 							href={link.seg ? `${base}/${link.seg}` : base}
 							label={link.label}
@@ -40,11 +42,16 @@ export function ProjectNavSection(
 							active={viewLinkCurrent(currentPath, base, link) ?? false}
 							dot={link.status !== null}
 							dotLabel={link.status?.label}
-							trailing={link.status ? <span class="proj-nav__dot" /> : undefined}
+							trailing={link.status ? <NavMark status={link.status} /> : undefined}
 						/>
 					</li>
 				))}
 			</ul>
 		</nav>
 	);
+}
+
+function NavMark({ status }: { status: ProjectViewStatus }): JSX.Element {
+	if (status.count !== null) return <span class="proj-nav__count">{status.count}</span>;
+	return <span class={`proj-nav__dot proj-nav__dot--${status.tone}`} />;
 }

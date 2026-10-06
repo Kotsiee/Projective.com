@@ -274,7 +274,7 @@ The individual message entries for DMs.
 | `reply_to_id`     | uuid    | NULL, or the message this one answers. **Self-FK** `dm_messages_reply_to_id_fkey` → `comms.dm_messages.id` `ON DELETE SET NULL`; must be in the same **thread** (`comms.tg_guard_dm_message_reply`). |
 | `has_attachments` | boolean | Flag for UI optimization. Advisory (no trigger maintains it); read only for a reply quote's `media` label. |
 | `is_audio`        | boolean | The message is a voice memo. Advisory, like `has_attachments`. |
-| `pii_masked`      | boolean | Set by `comms.tg_mask_dm_message_pii` when the body was masked. |
+| `pii_masked`      | boolean | Set by `comms.tg_mask_dm_message_pii` when the body was masked. Semantics as on [`comms.project_messages`](#commsproject_messages). |
 | `pii_categories`  | text[]  | Which contact categories were masked (`email` · `phone` · `payment_link` · `handle`). |
 
 Indexes (`00004006`): `idx_dm_messages_thread_recent (thread_id, created_at DESC)` — the latest page
@@ -343,6 +343,26 @@ the send schemas refuse a disagreeing payload, and every read drops a Delta that
 body it shows (`messageDeltaFor`) — so formatting can be lost but a word the body lacks can never
 render. `comms.tg_mask_message_pii` nulls it whenever it rewrites the body. The CHECK pins only the
 envelope (a JSON object).
+
+**`pii_masked` / `pii_categories` — the protected-phase contact filter (Decision #147).** Same
+semantics on `comms.project_messages` and `comms.dm_messages`; written only by their `BEFORE INSERT`
+mask triggers (`comms.tg_mask_message_pii` / `comms.tg_mask_dm_message_pii`, see
+[Functions.md](Functions.md#the-protected-phase-contact-filter-00001300--00001840-decision-147)).
+
+- `pii_masked = true` ⇔ the row was inserted while its engagement was protected
+  (`projects.projects.handover_unlocked_at IS NULL`) **and** `comms.mask_pii` matched at least one
+  category. `body` then holds the masked text (`[email hidden]` · `[link hidden]` · `[handle hidden]`
+  · `[phone hidden]`), `body_delta` is `NULL`, and `pii_categories` lists the categories that fired,
+  in pass order. The original words are not stored anywhere.
+- `pii_masked = false` with `pii_categories = '{}'` ⇔ nothing was masked: no match, an unlocked
+  engagement, or no protected engagement at all. It is **not** a claim the body is free of contact
+  details — a message sent after the Projective Unlock may legitimately carry them.
+- The flags record the insert. They are not recomputed when the project unlocks (masked rows stay
+  masked) and, on `comms.project_messages`, not protected against the sender's own `UPDATE`
+  (`edit_own_messages`) — Decision #147 flag (c).
+- No read projects either column yet (the placeholders in `body` are what renders). They are the
+  evidence record review and enforcement tooling is to read for the Consequences ladder
+  (`PRODUCT_SPEC.md` §Messaging 1).
 
 **Replies — a self-reference, kept in the channel.** `reply_to_id` names the message this one
 answers. It is a self-FK rather than the polymorphic `(message_table, message_id)` pair the

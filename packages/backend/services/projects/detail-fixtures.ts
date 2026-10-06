@@ -149,7 +149,7 @@ function generalChannels(row: ProjectSummary): ProjectChannel[] {
 		{
 			id: "general",
 			chatId: `chan-${row.slug}-general`,
-			name: "General",
+			name: "Discussion",
 			kind: "general",
 			unread: row.unread,
 		},

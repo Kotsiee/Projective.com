@@ -1038,3 +1038,30 @@ a.pjd-track__name:hover {
 	}
 }
 /* #endregion */
+
+.pjd-arrival {
+	border-radius: var(--radius-sm);
+	animation: pjd-arrival var(--dur-highlight) var(--ease-standard) 1;
+}
+
+@keyframes pjd-arrival {
+	from {
+		background-color: color-mix(in srgb, var(--primary) var(--tint), transparent);
+		box-shadow: 0 0 0 var(--space-2) color-mix(in srgb, var(--primary) var(--tint), transparent);
+	}
+
+	to {
+		background-color: transparent;
+		box-shadow: 0 0 0 var(--space-2) transparent;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.pjd-arrival {
+		animation: none;
+	}
+}
+
+:root[data-motion="reduced"] .pjd-arrival {
+	animation: none;
+}

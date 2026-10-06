@@ -587,6 +587,25 @@ CREATE TABLE projects.user_preferences (
         CONSTRAINT user_preferences_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects (id)
 );
 
+-- #region Lane view read marks
+-- When one person last opened one of an engagement's lane views. `projects.get_nav_activity` counts
+-- what changed after this instant and `projects.mark_view_seen` moves it; one row per (person,
+-- engagement, view), upserted and never deleted. A separate table rather than columns on
+-- `user_preferences` because the view set grows with the lane, and a column per view would turn every
+-- new view into a schema change on a table it has nothing else to do with.
+CREATE TABLE projects.view_reads (
+  user_id uuid NOT NULL,
+  project_id uuid NOT NULL,
+  lane_view text NOT NULL,
+  seen_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT view_reads_pkey PRIMARY KEY (user_id, project_id, lane_view),
+  CONSTRAINT view_reads_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE CASCADE,
+  CONSTRAINT view_reads_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects (id) ON DELETE CASCADE,
+  CONSTRAINT view_reads_lane_view_check
+    CHECK (lane_view IN ('overview', 'discussion', 'board', 'timeline', 'files', 'submissions', 'members'))
+);
+-- #endregion
+
 CREATE TABLE projects.stage_open_seats (
     id uuid NOT NULL DEFAULT gen_random_uuid (),
     project_stage_id uuid NOT NULL,
@@ -764,6 +783,43 @@ CREATE TABLE projects.waitlists (
 	CONSTRAINT waitlists_unique_user UNIQUE (service_blueprint_id, user_id)
 );
 
+-- #region Stage invite links (Decision #145)
+-- A shareable link that lets anyone signed in ASK to join one stage. Holding it grants nothing:
+-- redeeming it (`projects.redeem_invite_link`) files a pending application on the stage, which the
+-- project's owner, admins and managers answer from the Members tab's Requests section like any other
+-- request — so a leaked link costs a queue of requests, never a seat, a ticket or escrow.
+--
+-- At most ONE active link per stage (`uq_stage_invite_links_active`, 00004003). Resetting a link
+-- revokes the active row and mints a new one, so an old URL stops working the moment it is replaced;
+-- nothing is deleted (root CLAUDE.md §5), and every application a link produced keeps naming it.
+CREATE TABLE projects.stage_invite_links (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL,
+  project_stage_id uuid NOT NULL,
+
+-- The capability, minted server-side from 18 random bytes as unpadded base64url (24 characters).
+-- UNIQUE because it is the lookup key on the redeem path.
+token text NOT NULL UNIQUE,
+
+  status text NOT NULL DEFAULT 'active'::text,
+  created_by uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+
+-- The audit half of status = 'revoked': when the link stopped working, and who turned it off.
+revoked_at timestamp with time zone,
+revoked_by uuid,
+
+  CONSTRAINT stage_invite_links_pkey PRIMARY KEY (id),
+  CONSTRAINT stage_invite_links_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects(id) ON DELETE CASCADE,
+  CONSTRAINT stage_invite_links_project_stage_id_fkey FOREIGN KEY (project_stage_id) REFERENCES projects.project_stages(id) ON DELETE CASCADE,
+  CONSTRAINT stage_invite_links_created_by_fkey FOREIGN KEY (created_by) REFERENCES org.users_public(user_id),
+  CONSTRAINT stage_invite_links_revoked_by_fkey FOREIGN KEY (revoked_by) REFERENCES org.users_public(user_id),
+  CONSTRAINT stage_invite_links_status_check CHECK (status IN ('active', 'revoked')),
+  CONSTRAINT ck_stage_invite_links_revoked CHECK ((status = 'revoked') = (revoked_at IS NOT NULL)),
+  CONSTRAINT ck_stage_invite_links_token CHECK (token ~ '^[A-Za-z0-9_-]{24}$')
+);
+-- #endregion
+
 CREATE TABLE projects.project_applications (
     id uuid NOT NULL DEFAULT gen_random_uuid (),
     project_id uuid NOT NULL,
@@ -772,6 +828,9 @@ CREATE TABLE projects.project_applications (
     applicant_profile_id uuid NOT NULL,
     message text,
     status projects.application_status NOT NULL DEFAULT 'pending',
+    -- The stage invite link this request arrived through, or NULL for an application from the
+    -- listing. Provenance only: a link-borne request is answered exactly like any other.
+    invite_link_id uuid,
     created_at timestamp
     with
         time zone NOT NULL DEFAULT now(),
@@ -780,7 +839,8 @@ CREATE TABLE projects.project_applications (
         time zone NOT NULL DEFAULT now(),
         CONSTRAINT project_applications_pkey PRIMARY KEY (id),
         CONSTRAINT project_applications_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects (id),
-        CONSTRAINT project_applications_user_id_fkey FOREIGN KEY (applicant_user_id) REFERENCES org.users_public (user_id)
+        CONSTRAINT project_applications_user_id_fkey FOREIGN KEY (applicant_user_id) REFERENCES org.users_public (user_id),
+        CONSTRAINT project_applications_invite_link_id_fkey FOREIGN KEY (invite_link_id) REFERENCES projects.stage_invite_links (id)
 );
 
 CREATE TABLE projects.project_application_targets (

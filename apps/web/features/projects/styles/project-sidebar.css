@@ -182,6 +182,14 @@
 	box-shadow: 0 0 0 2px var(--surface-2);
 }
 
+.proj-railbtn__dot--neutral {
+	background: var(--text-secondary);
+}
+
+.proj-railbtn__dot--alert {
+	background: var(--warning);
+}
+
 /* #endregion */
 
 /* #region Header (Back + Star + kebab) */
@@ -488,7 +496,7 @@
 	list-style: none;
 }
 
-/* The view's status mark — the trailing dot of §D.1 (a dot, never a count). */
+/* The view's activity mark — a toned dot, or a plain figure where the number is the news (Decision #146). */
 .proj-nav__dot {
 	display: inline-block;
 	inline-size: 6px;
@@ -497,9 +505,29 @@
 	background: var(--primary);
 }
 
-/* On the filled active row the dot takes the row's own ink, so it never vanishes into the fill. */
+.proj-nav__dot--neutral {
+	background: var(--text-secondary);
+}
+
+.proj-nav__dot--alert {
+	background: var(--warning);
+}
+
+.proj-nav__count {
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+	color: var(--primary);
+}
+
+/* On the filled active row a mark takes the row's own ink, so it never vanishes into the fill. */
 .proj-nav .ui-nav-item--active .proj-nav__dot {
 	background: currentColor;
+}
+
+.proj-nav .ui-nav-item--active .proj-nav__count {
+	color: currentColor;
 }
 
 /* #endregion */

@@ -5,6 +5,8 @@ import "../styles/fx-toolbar.css";
 import "../styles/file-explorer.css";
 import "../styles/members.css";
 import "../styles/member-stages.css";
+import "../styles/invite-share.css";
+import "@features/share/styles/share-people.css";
 import { Toast, useToast } from "@projective/ui/feedback";
 import { useIsMobile } from "@projective/ui/hooks";
 import type {
@@ -51,7 +53,7 @@ import { MemberWorkspace } from "../components/MemberWorkspace.tsx";
 import { MessageButton } from "../components/MemberSectionCards.tsx";
 import { MemberActionsMenu } from "../components/MemberActionsMenu.tsx";
 import { MemberEditDialog } from "../components/MemberEditDialog.tsx";
-import { MemberInviteModal } from "../components/MemberInviteModal.tsx";
+import { InviteShareModal } from "../components/InviteShareModal.tsx";
 import { RemoveMemberDialog } from "../components/RemoveMemberDialog.tsx";
 import { MemberStagePanel } from "../components/MemberStagePanel.tsx";
 import { PendingStageInvites } from "../components/PendingStageInvites.tsx";
@@ -719,11 +721,16 @@ export default function MemberRoster(props: MemberRosterProps): JSX.Element {
 				onClose={() => (editMember.value = null)}
 			/>
 			{canInvite && (
-				<MemberInviteModal
+				<InviteShareModal
 					open={inviteOpen}
+					projectId={projectId}
+					projectTitle={roster.projectTitle}
 					stages={stages}
 					showStages={context.showStages}
 					defaultStageId={context.stageChannel ? roster.stageId : null}
+					viewerRole={roster.viewerRole}
+					members={members.value}
+					invites={invites.value}
 					onInvite={invite}
 				/>
 			)}

@@ -29,7 +29,7 @@ loses nothing. So the modal's only job is to reach a URL, and the URL is where t
 
 ```mermaid
 flowchart TD
-    A["1. Quick-Init modal<br/>Title · Description · Type"] -->|"POST /api/projects/create"| B["Draft row<br/>status draft · visibility unlisted<br/>+ root stage + General room"]
+    A["1. Quick-Init modal<br/>Title · Description · Type"] -->|"POST /api/projects/create"| B["Draft row<br/>status draft · visibility unlisted<br/>+ root stage + Discussion room"]
     B -->|"navigate to /projects/[projectSlug]"| C["2. Setup configuration<br/>sections registered in setup-sections.ts"]
     C -->|"Save · autosave-on-blur<br/>PATCH /api/projects/:slug"| C
     C -->|"Publish — every required ladder row done"| D["projects.set_project_status(…, 'active')"]
@@ -213,7 +213,7 @@ baseline on a one-off (otherwise `NULL`; the modal sends `null`). Then:
    `Stage 1` on a pipeline (`ROOT_STAGE_NAME`) — with an empty scope and
    `unit_price_cents = baselineAmountCents`. `create_stage` provisions the stage's room in the same
    transaction, which is why it is used rather than a direct insert.
-2. `comms.get_or_create_project_channel(project, NULL, 'General')` opens the project-wide room behind
+2. `comms.get_or_create_project_channel(project, NULL, 'Discussion')` opens the project-wide room behind
    `/projects/[slug]/discussion` (Decision #133).
 
 There is **no transaction across the statements**. A failed stage or room insert is warned, not
@@ -656,7 +656,7 @@ never captured as a project slug. See [`../architecture/ROUTING.md`](../architec
 
 The write is `POST /api/projects/create` → `ProjectBackendService.create` → `insertProject` (§2.4): a
 direct RLS-scoped insert of the draft, then `projects.create_stage` for the root stage and
-`comms.get_or_create_project_channel` for the General room — **not** one transaction, and **not**
+`comms.get_or_create_project_channel` for the Discussion room — **not** one transaction, and **not**
 `projects.create_project`, which still exists but is not called. Owner, status and live visibility
 are set by the fat service (`owner_user_id = auth.uid()` under the `"Users can create projects"`
 policy), never taken from the payload.

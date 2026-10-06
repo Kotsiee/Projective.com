@@ -968,12 +968,44 @@ REVOKE ALL ON FUNCTION projects.fn_ticket_settlement_guard () FROM PUBLIC, anon,
 -- SECURITY DEFINER writes into security.audit_logs / comms.fn_notify, which no client role reaches, so
 -- the grant is part of the access decision: signed-in callers only. Each body also refuses a NULL
 -- auth.uid() itself and applies its own authority check (set_member_role: can_review_project;
--- invite_by_email: project owner).
+-- invite_by_email, act_on_invitation and the stage invite-link doors: can_manage_project_members;
+-- resolve/redeem_invite_link: any signed-in holder of the token).
 REVOKE ALL ON FUNCTION projects.set_member_role (uuid, uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.set_member_role (uuid, uuid, text) TO authenticated;
 
 REVOKE ALL ON FUNCTION projects.invite_by_email (uuid, uuid, text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.invite_by_email (uuid, uuid, text, text) TO authenticated;
+
+REVOKE ALL ON FUNCTION projects.act_on_invitation (uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.act_on_invitation (uuid, text) TO authenticated;
+
+REVOKE ALL ON FUNCTION projects.get_stage_invite_link (uuid, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.get_stage_invite_link (uuid, boolean) TO authenticated;
+
+REVOKE ALL ON FUNCTION projects.revoke_stage_invite_link (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.revoke_stage_invite_link (uuid) TO authenticated;
+
+REVOKE ALL ON FUNCTION projects.resolve_invite_link (text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.resolve_invite_link (text) TO authenticated;
+
+REVOKE ALL ON FUNCTION projects.redeem_invite_link (text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.redeem_invite_link (text, text) TO authenticated;
+
+-- Internal: called by the two doors above as their owner, never an RPC of its own.
+REVOKE ALL ON FUNCTION projects.fn_invite_link_state (projects.stage_invite_links, uuid)
+FROM PUBLIC, anon, authenticated;
+
+-- --- lane view activity marks (00001145) ---
+--
+-- SECURITY INVOKER reads and one own-row upsert: RLS is the gate, so the grant only keeps them off
+-- the anonymous role, whose auth.uid() is NULL and which each body refuses anyway.
+REVOKE ALL ON FUNCTION projects.get_nav_activity (text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.get_nav_activity (text) TO authenticated;
+
+REVOKE ALL ON FUNCTION projects.mark_view_seen (text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.mark_view_seen (text, text) TO authenticated;
+
+REVOKE ALL ON FUNCTION projects.fn_touch_updated_at () FROM PUBLIC, anon, authenticated;
 
 -- --- the public profile read + owner write path (00001040) and the media projection (00001160) ---
 --
@@ -1243,7 +1275,7 @@ EXECUTE ON FUNCTION projects.get_viewer_hired_teams (uuid) TO authenticated;
 
 -- --- the Members tab's Requests section (00001130 §7b: reject_application) ---
 --
--- The owner's decline of an applicant. The function checks `can_review_project` itself, so a signed-in
+-- The managing side's decline of an applicant. The function checks `can_manage_project_members` itself, so a signed-in
 -- caller is the only gate needed here; a guest has no `auth.uid()` and nothing to review.
 REVOKE ALL ON FUNCTION projects.reject_application (uuid)
 FROM public, anon;

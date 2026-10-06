@@ -1,0 +1,61 @@
+/*
+ * invite-share.css — the Members tab's Invite modal (Decision #145): the role · stage target, the
+ * stage's invite link, the search and the Quick Add rail. The three shared pieces are styled in
+ * `@features/share/styles/share-people.css`; this file only lays them out.
+ *
+ * Token-only, strict BEM. Sections are separated by spacing and the section-header register, never a
+ * box — everything here sits inside a Dialog (§3 gate 6).
+ */
+
+.invite-share {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+	min-inline-size: 0;
+}
+
+.invite-share__target {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: var(--space-3);
+}
+
+.invite-share__target[data-single="true"] {
+	grid-template-columns: 1fr;
+}
+
+.invite-share__section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.invite-share__heading {
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.invite-share__hint {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.invite-share__error {
+	margin: 0;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--danger);
+}
+
+@media (max-width: 767px) {
+	.invite-share__target {
+		grid-template-columns: 1fr;
+	}
+}

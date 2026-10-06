@@ -60,6 +60,7 @@
     --dur-fast: 150ms;
     --dur-medium: 250ms;
     --dur-slow: 350ms;
+    --dur-highlight: 1800ms;
     --ease-standard: cubic-bezier(0.2, 0, 0, 1);
     --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
     --ease-exit: cubic-bezier(0.4, 0, 1, 1);
@@ -1238,6 +1239,7 @@
         --dur-fast: 0ms;
         --dur-medium: 0ms;
         --dur-slow: 0ms;
+        --dur-highlight: 0ms;
     }
 
     *,

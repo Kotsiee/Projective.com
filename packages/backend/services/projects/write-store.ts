@@ -34,6 +34,7 @@ import {
 	type SubmissionStatus,
 	type SubmissionTreeNode,
 	type SubmissionUnit,
+	stageAssignmentOf,
 	type TicketIntensity,
 	type TicketStageRef,
 	ticketTotalCents,
@@ -1331,6 +1332,7 @@ export function overlayMemberRoster(
 
 	const stageChannel = out.scope === "channel" && out.channelKind === "stage";
 	const stageNameById = new Map(out.stages.map((stage) => [stage.id, stage.name]));
+	const routedStage = (out.stageId ? stageNameById.get(out.stageId) : undefined) ?? out.channelName;
 	let members = [...out.members];
 	let total = out.total;
 
@@ -1342,16 +1344,18 @@ export function overlayMemberRoster(
 			members[existing] = withStages(members[existing], row.assignedStages);
 			continue;
 		}
-		members.push(
-			stageChannel
-				? {
-					...row,
-					assignment: out.channelName && row.assignedStages.includes(out.channelName)
-						? "contributor"
-						: "observer",
-				}
-				: row,
+		if (!stageChannel) {
+			members.push(row);
+			total += 1;
+			continue;
+		}
+		const assignment = stageAssignmentOf(
+			row.role,
+			!!routedStage && row.assignedStages.includes(routedStage),
 		);
+		// Joined the project but not this stage: they are not on its roster (Decision #145).
+		if (!assignment) continue;
+		members.push({ ...row, assignment });
 		total += 1;
 	}
 
@@ -1380,20 +1384,23 @@ export function overlayMemberRoster(
 
 /**
  * Fold recorded role changes onto the roster — last, so a member an acceptance brought in carries
- * the role the client gave them afterwards rather than the one the invitation named.
+ * the role the client gave them afterwards rather than the one the invitation named. On a stage
+ * roster an observer who loses oversight no longer has a relationship to the stage and leaves it.
  */
 function withRoleChanges(
 	page: MemberRosterPage,
 	roles: ReadonlyMap<string, MemberRole> | undefined,
 ): MemberRosterPage {
 	if (!roles?.size) return page;
-	return {
-		...page,
-		members: page.members.map((row) => {
-			const role = roles.get(row.id);
-			return role && role !== row.role ? { ...row, role } : row;
-		}),
-	};
+	const members = page.members.flatMap((row) => {
+		const role = roles.get(row.id);
+		if (!role || role === row.role) return [row];
+		if (row.assignment === null) return [{ ...row, role }];
+		const assignment = stageAssignmentOf(role, row.assignment === "contributor");
+		return assignment ? [{ ...row, role, assignment }] : [];
+	});
+	const dropped = page.members.length - members.length;
+	return { ...page, members, total: Math.max(0, page.total - dropped) };
 }
 
 /** Record a role change — the stub twin of `projects.set_member_role`. Survives a reload. */

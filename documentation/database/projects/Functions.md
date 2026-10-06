@@ -3,7 +3,7 @@
 Functions and RPCs for the `projects` schema. Tables: [Tables.md](Tables.md) · Policies:
 [Policies.md](Policies.md).
 
-83 functions — every `CREATE FUNCTION projects.*` in `supabase/migrations/` — each with its
+93 functions — every `CREATE FUNCTION projects.*` in `supabase/migrations/` — each with its
 signature, security context, `EXECUTE` holders and caller check. Defined in `00001100`–`00001150`;
 trigger bindings in `00001800` / `00001820` / `00001850`; explicit grants in `00002510` and beside a
 handful of definitions.
@@ -50,6 +50,17 @@ org.is_active_business_member(p.client_business_id))`. Deliberately **not** true
 `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`, `search_path = public, projects, org, auth`; default
 `PUBLIC` `EXECUTE` (it is a policy predicate, so it must run as the invoking role). An unknown id and a
 guest both answer `false`.
+
+### `projects.can_manage_project_members(_project_id uuid) → boolean`
+
+`00001100` §2 (Decision #145). **Staffing authority**: `can_review_project(_project_id)`, or the caller
+holds a person-participant row on the project whose `role` is `admin` or `manager` (written by
+`set_member_role` or an accepted invitation). The gate on inviting, answering requests, cancelling or
+dismissing invitations and managing a stage's invite link, and the SELECT arm on
+`project_invitations`, `project_applications`, `project_application_targets` and
+`stage_invite_links`. Appointing an admin or manager is NOT covered — each issuing door re-checks
+`can_review_project` for those two roles. `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`; default
+`PUBLIC` `EXECUTE` (a policy predicate).
 
 ### `projects.has_stage_access(p_stage_id uuid) → boolean`
 
@@ -171,7 +182,7 @@ one as `freelancer` would be a false claim that also matches nothing (that branc
 rooms that already exist, so a stage created without one is a stage nobody can navigate to.
 
 **So is the project-wide room** (step 7b — `comms.get_or_create_project_channel(id, NULL,
-'General')`, visibility `project_all`): it is what `/projects/[slug]/discussion` opens on every
+'Discussion')`, visibility `project_all`; named for the lane view it is, Decision #146): it is what `/projects/[slug]/discussion` opens on every
 one-off, pipeline and session, and a project created without it has no Discussion. Opened for a Task
 as well, so a Task converted into a pipeline has its room already (Decision #135).
 
@@ -315,6 +326,42 @@ project_current}` from live claimed / in-progress / in-review intensity. `STABLE
 `search_path = public, projects, org, security, auth`; default `PUBLIC` `EXECUTE`. Returns `NULL` for a
 `NULL` user. **No caller check** — `p_user_id` is caller-supplied, so any caller can read any user's
 workload figures.
+
+---
+
+## Lane activity (`00001145`)
+
+The Project Details lane's per-viewer activity marks (Decision #146). Both RPCs are **`SECURITY
+INVOKER`** with `search_path = ''`, so every count is taken under the caller's RLS — that is what splits
+the roles. `EXECUTE` narrowed to `authenticated` in `00002510` ("lane view activity marks"); each body
+also refuses a `NULL` `auth.uid()` with `42501`.
+
+### `projects.get_nav_activity(p_slug text) → jsonb`
+
+`STABLE`. `NULL` when the slug resolves to nothing the caller can read; otherwise one object per lane
+view: `overview.changes` (`details` — `projects.updated_at`, non-owners only · `status` —
+`project_status_history` by someone else · `stages` — a stage created (non-owners) or completed, or an
+owner-visible `project_activity` row on `project_stages`), `discussion.unread` (messages by others in the
+discussion room — a Task's root stage room, else the project-wide room — capped at 10),
+`board.tone` (`new`: a ticket created by someone else or, for non-owners, a new stage · `moved`: a
+`stage_moved`/`status_changed` history row by someone else), `timeline.tone` (`deadline`: an open
+stage's `file_due_date` inside 48 h that has entered that window since the last look — ignores the
+first-visit floor · `update`: a stage completed/created or a `milestone_confirmed` by someone else),
+`files.fresh` (non-owners: the owner attached a file in a readable project room),
+`submissions.count` (reviewers: `pending_review` work by others · everyone else: verdicts on their own
+submissions; capped at 100) and `members.count` (arrivals; for `can_manage_project_members` also
+pending applications, declines and expiries; capped at 100). A view never opened is measured from the
+caller's first mark on the engagement, else from now.
+
+### `projects.mark_view_seen(p_slug text, p_view text) → timestamptz`
+
+`VOLATILE`. Upserts `projects.view_reads` for `(auth.uid(), project, p_view)` at `now()` and returns it;
+`NULL` for an unreadable slug. An unknown view fails the table's CHECK (`23514`).
+
+### `projects.fn_touch_updated_at() → trigger`
+
+`BEFORE UPDATE ON projects.projects` (`trg_projects_touch_updated_at`, `00001820`): `NEW.updated_at :=
+now()`. `EXECUTE` revoked from `PUBLIC`, `anon`, `authenticated`.
 
 ---
 
@@ -888,14 +935,18 @@ The client-led half of `PRODUCT_SPEC.md` §The Hiring Process ("The Outbound Inv
 2026-09-21 in `00001130_functions_projects_stages.sql` §10. Four DEFINER functions, one transaction
 each, so an invitation and the notification that announces it — or an acceptance and the participant
 row it grants — cannot exist without each other. Authorisation is made explicitly inside each body
-(DEFINER bypasses RLS), and matches the `Owner manages invitations` policy: the owner alone.
+(DEFINER bypasses RLS). Issuing is **staffing authority** (`can_manage_project_members`, Decision
+#145) — the owner, the client business, or an appointed admin or manager — while offering the
+`admin` or `manager` role stays `can_review_project`. The `Owner manages invitations` policy still
+admits direct writes from the owner alone; a delegate reaches every act through these doors.
 
 ### `projects.invite_to_project(p_project_id uuid, p_stage_id uuid, p_target_user_id uuid, p_role text, p_message text DEFAULT '', p_offer_price_cents bigint DEFAULT NULL, p_answers jsonb DEFAULT '{}') → uuid`
 
 Issues ONE identity-addressed invitation (one row, one stage — `NULL` for a whole-project offer) as
-the project owner, and emits `stage.invite` to the invitee through `comms.fn_notify` in the same
-transaction. Refuses, in the database's own words: a non-owner (`insufficient_privilege`), a closed
-project, the owner inviting themself, a role the accept path cannot grant, a stage of another project,
+the project's staffing authority, and emits `stage.invite` to the invitee through `comms.fn_notify`
+in the same transaction. Refuses, in the database's own words: a caller without staffing authority
+(`insufficient_privilege`), a delegate offering `admin`/`manager` (`insufficient_privilege`), a closed
+project, the caller or the owner as the invitee, a role the accept path cannot grant, a stage of another project,
 a seat the person already holds, and the **48-day re-invitation cooldown** (`check_violation`, naming
 the date it lifts in the message and the exact instant in `DETAIL = 'reopens_at=<ISO-8601 UTC>'`, which
 the fat service returns as `details.reopensAt` on its 422). A duplicate open seat is re-raised from
@@ -919,8 +970,8 @@ the router no longer serves (Decision #88). `EXECUTE` → `authenticated`.
 ### `projects.invite_by_email(p_project_id uuid, p_stage_id uuid, p_email text, p_role text) → uuid`
 
 `00001135_functions_projects_membership.sql` (Decision #141). The email-addressed twin of
-`invite_to_project`, behind the Members tab's Invite modal (`POST /api/projects/[id]/invites`). Owner
-only; refuses a closed project, a role outside `admin · manager · freelancer · member · guest`, a
+`invite_to_project`, behind the Members tab's Invite modal (`POST /api/projects/[id]/invites`).
+Staffing authority, with `admin`/`manager` offers reserved to review authority; refuses a closed project, a role outside `admin · manager · freelancer · member · guest`, a
 malformed address (`check_violation`), and a stage of another project. Stores `lower(btrim(email))`
 in `target_email` and **never resolves it to `target_user_id`**: the roster re-reads the queue, so a
 resolved row would tell the inviter whose account owns the address (the rule
@@ -1012,10 +1063,10 @@ then posts the note through `comms.send_request_message` into the owner's Reques
 
 ### `projects.assign_from_application(p_application_id uuid) → jsonb`
 
-The owner confirms an applicant's seat — whatever the application targeted (a stage, a role or an
-open seat). Gated on **review authority** — `projects.can_review_project(project)`, i.e. the owner
-or an active client-business member, else `insufficient_privilege` (the message says "project owner";
-the predicate is wider); an unknown id is `no_data_found`; anything not `pending` is a
+The managing side confirms an applicant's seat — whatever the application targeted (a stage, a role,
+an open seat, or a stage through its invite link). Gated on **staffing authority** —
+`projects.can_manage_project_members(project)` (Decision #145), else `insufficient_privilege`; an
+unknown id is `no_data_found`; anything not `pending` is a
 `check_violation` naming its status. A candidate already on the stage is `unique_violation`, one
 booked on an overlapping stage (`fn_assignee_slot_conflict`) `exclusion_violation`; accepts of one
 candidate are serialised by an advisory lock. A freelancer is also enrolled as a `project_participants`
@@ -1028,14 +1079,70 @@ to `/projects/{slug}`). The client lands on funding next — the seat is real on
 ### `projects.reject_application(p_application_id uuid) → jsonb`
 
 `00001130` §7b, `SECURITY DEFINER`; `EXECUTE` → `authenticated` (revoked from `public`/`anon` in
-`00002510`). The owner declines an applicant — the Members tab's Requests section. Locks the
+`00002510`). The managing side declines an applicant — the Members tab's Requests section. Locks the
 application row first (so a concurrent accept and decline cannot both land), then refuses: an unknown
-id (`no_data_found`), a caller who cannot review the project (`insufficient_privilege`), anything not
+id (`no_data_found`), a caller without staffing authority (`can_manage_project_members`,
+`insufficient_privilege`), anything not
 `pending` (`check_violation`, naming its status). Marks the application `rejected` — the same status a
 filled seat gives its other applicants, so "declined" and "not selected" are one state to the
 applicant — logs `application_rejected` on `project_activity`, and notifies the applicant
 (`application.declined`, deep-linked to their conversation with the owner). Nothing else moves: no
 assignment existed, so nothing is released. Returns `fn_serialize_application`.
+
+## Invitation records & stage invite links (`00001135` §3–§4, Decision #145)
+
+### `projects.act_on_invitation(p_invitation_id uuid, p_action text) → jsonb`
+
+The managing side's two acts on an invitation record: `cancel` (`pending → revoked`, no cooldown) and
+`dismiss` (`dismissed_at` on a non-pending record, idempotent). Locks the row; a record the caller
+cannot manage (`can_manage_project_members`) is `no_data_found` like an unknown id, so a stranger
+learns nothing; the wrong act for the status is `check_violation`; an unknown action `22023`. Records
+`project.invitation_revoked` / `project.invitation_dismissed` on `security.audit_logs`. A door rather
+than a direct UPDATE because a delegate holding UPDATE on the row could rewrite its role or token.
+`SECURITY DEFINER`; `EXECUTE` → `authenticated`. Returns `{id, action, changed}`.
+
+### `projects.fn_invite_link_state(p_link projects.stage_invite_links, p_actor uuid) → text`
+
+The ONE rule for what a stage invite link means to a person, read by both doors below:
+`revoked` (not active) · `closed` (project archived/cancelled/completed, or stage
+approved/paid/cancelled) · `manager` (owner, or a participant admin/manager) · `member` (a live
+freelancer assignment on the stage) · `invited` (an open identity-addressed invitation to the stage)
+· `requested` (a pending application targeting the stage) · `no_profile` (no
+`org.freelancer_profiles` row) · `open`. `STABLE`, `SECURITY DEFINER`; **no client `EXECUTE`**
+(revoked from `PUBLIC, anon, authenticated`).
+
+### `projects.get_stage_invite_link(p_stage_id uuid, p_rotate boolean DEFAULT false) → jsonb`
+
+The stage's active link, minted on first use (18 random bytes as unpadded base64url); `p_rotate`
+revokes the active row (`revoked_at`, `revoked_by`) and mints a replacement in the same transaction.
+Staffing authority, else `insufficient_privilege`; a closed project or finished stage is
+`check_violation`. A concurrent first mint that loses `uq_stage_invite_links_active` re-reads the
+winner. Records `project.invite_link_created` / `project.invite_link_revoked` on
+`security.audit_logs`. Returns `{id, token, stageId, createdAt}`. `EXECUTE` → `authenticated`.
+
+### `projects.revoke_stage_invite_link(p_stage_id uuid) → boolean`
+
+Turns the stage's active link off; `true` when one was active, `false` when there was nothing to
+revoke (not an error). Staffing authority. Audited as above. `EXECUTE` → `authenticated`.
+
+### `projects.resolve_invite_link(p_token text) → jsonb`
+
+The landing page's read: `{state, projectSlug, projectTitle, stageSlug, stageName, sharedByName,
+sharedByHandle}` for the signed-in caller (`fn_invite_link_state`); an unknown token answers
+`{"state":"invalid"}` only. Refuses a NULL `auth.uid()` (`42501`). `STABLE`, `SECURITY DEFINER`;
+`EXECUTE` → `authenticated`.
+
+### `projects.redeem_invite_link(p_token text, p_message text DEFAULT NULL) → jsonb`
+
+The holder asks to join: a `pending` `project_applications` row with `invite_link_id`, a `stage`
+target, `application_submitted` on `project_activity` (payload carries `invite_link_id`), and
+`application.received` to the owner — the same request `apply_to_project` files, answered by
+`assign_from_application` / `reject_application`. Unlike `apply_to_project` it does not require a
+public listing or an open hire trigger: the link is the managers' own invitation to ask. An advisory
+lock per (stage, caller) makes a double press one request. Every state but `open` is refused with
+its sentence and `DETAIL = 'state=<state>'` (`unique_violation` for manager/member/invited/requested,
+`check_violation` otherwise); an unknown token is `no_data_found`; the note is masked during the
+protected phase and capped at 4,000 characters. Seats nobody. `EXECUTE` → `authenticated`.
 
 ### `projects.get_engagement_context(p_counterpart uuid) → jsonb`
 

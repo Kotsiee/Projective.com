@@ -40,11 +40,30 @@ export type MemberRole = z.infer<typeof MemberRole>;
 
 /**
  * A participant's engagement WITH a specific stage/channel: an `contributor` is actively assigned to
- * deliver on it; an `observer` has visibility only. `null` on a non-stage channel or in project scope
- * (where the per-stage relationship is summarised by {@link ProjectMemberRow.assignedStages} instead).
+ * deliver on it; an `observer` oversees it without a seat. `null` on a non-stage channel or in project
+ * scope (where the per-stage relationship is summarised by {@link ProjectMemberRow.assignedStages}).
  */
 export const StageAssignment = z.enum(["contributor", "observer"]);
 export type StageAssignment = z.infer<typeof StageAssignment>;
+
+/** The roles that oversee every stage of an engagement and can act on each without holding a seat. */
+export const OVERSIGHT_ROLES: ReadonlySet<MemberRole> = new Set<MemberRole>([
+	"client",
+	"owner",
+	"admin",
+	"manager",
+]);
+
+/**
+ * A participant's relationship to one stage, or `null` when they have none and so stay off that
+ * stage's roster (Decision #145). Assigned → `contributor`; unassigned oversight → `observer`; an
+ * unassigned freelancer · member · guest can view the stage as a project participant but cannot act
+ * on it, so they are not one of its members.
+ */
+export function stageAssignmentOf(role: MemberRole, assignedHere: boolean): StageAssignment | null {
+	if (assignedHere) return "contributor";
+	return OVERSIGHT_ROLES.has(role) ? "observer" : null;
+}
 
 /** Coarse presence — a tonal dot beside the avatar (label revealed on hover, never inline text §B.6). */
 export const MemberPresence = z.enum(["online", "away", "offline"]);
@@ -274,6 +293,11 @@ export const MemberRequestSchema = z.object({
 	appliedAt: z.string(),
 	/** Pre-formatted relative age ("2 days ago"). */
 	appliedLabel: z.string().max(28),
+	/**
+	 * The request arrived through the stage's invite link rather than the listing (Decision #145).
+	 * Optional so every literal keeps compiling; absence reads as `false`.
+	 */
+	viaInviteLink: z.boolean().optional(),
 });
 export type MemberRequest = z.infer<typeof MemberRequestSchema>;
 
@@ -537,7 +561,10 @@ export const MemberRosterPageSchema = z.object({
 	viewerId: z.string().max(120),
 	viewerRole: MemberRole,
 	viewerCaps: MemberViewerCapsSchema,
-	/** Total participants (drives the "N members" caption; independent of any client-side filter). */
+	/**
+	 * Total people on this roster — the project's participants, or on a stage page that stage's
+	 * members (Decision #145). Drives the "N members" caption; independent of any visibility filter.
+	 */
 	total: z.number().int().min(0),
 });
 export type MemberRosterPage = z.infer<typeof MemberRosterPageSchema>;

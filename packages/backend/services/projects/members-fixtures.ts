@@ -13,11 +13,15 @@ import type {
 	ProjectParty,
 	RemovalImpact,
 	SessionAttendance,
-	StageAssignment,
 } from "@projective/types/projects";
 import { findProjectDetail } from "./detail-fixtures.ts";
 import { mockAvatar } from "../../mocks/assets.ts";
-import { expandChannelRef, findStageChannel, NO_REMOVAL_IMPACT } from "@projective/types/projects";
+import {
+	expandChannelRef,
+	findStageChannel,
+	NO_REMOVAL_IMPACT,
+	stageAssignmentOf,
+} from "@projective/types/projects";
 
 /**
  * projects members fixtures — the fat {@link ProjectBackendService}'s in-memory answer for the Members
@@ -279,24 +283,30 @@ function impactOf(seed: number, openTickets: number, stagesHeld: number): Remova
 }
 
 /**
- * Resolve each row's channel/stage `assignment` (contributor vs observer) for channel scope. Only a
- * STAGE channel carries the distinction; on a general/team/DM channel — a "public" surface — assignment
- * stays null (everyone is a plain participant). In project scope assignment is likewise null (the
- * per-stage relationship is summarised by `assignedStages` instead).
+ * Resolve each row's `assignment` on the routed stage through `stageAssignmentOf` (Decision #145): a
+ * row holding the stage is a contributor, unassigned oversight an observer, and anyone else `null` —
+ * which `findMemberRoster` then leaves off the stage's roster. `stageName` is `null` off a stage
+ * channel and in project scope, where assignment stays null and `assignedStages` carries the picture.
  */
-function withAssignment(
-	rows: ProjectMemberRow[],
-	scope: "channel" | "project",
-	isStageChannel: boolean,
-): ProjectMemberRow[] {
-	if (scope === "project" || !isStageChannel) return rows;
-	return rows.map((r) => {
-		let assignment: StageAssignment | null;
-		if (r.role === "freelancer" || r.role === "member") assignment = "contributor";
-		else if (r.role === "guest") assignment = "observer";
-		else assignment = "observer"; // client/owner/admin/manager oversee this stage as observers
-		return { ...r, assignment };
-	});
+function withAssignment(rows: ProjectMemberRow[], stageName: string | null): ProjectMemberRow[] {
+	if (stageName === null) return rows;
+	return rows.map((r) => ({
+		...r,
+		assignment: stageAssignmentOf(r.role, r.assignedStages.includes(stageName)),
+	}));
+}
+
+/** The routed stage's name as `assignedStages` spells it, or `null` off a stage channel. */
+function routedStageName(
+	identity: { isStage: boolean; stageId: string | null; name: string | null },
+	stages: readonly MemberStageRef[],
+): string | null {
+	if (!identity.isStage) return null;
+	const byId = stages.find((stage) => stage.id === identity.stageId);
+	if (byId) return byId.name;
+	// A one-off collapses its milestones into one delivery stage; every stage room is that stage.
+	if (stages.length === 1) return stages[0].name;
+	return identity.name;
 }
 
 /** Prepend a distinct simulated "You" row (dev sim), or mark the best-fit existing row as the viewer. */
@@ -318,7 +328,7 @@ function markViewer(
 			email: "you@projective.app",
 			role: viewer.role,
 			assignment: scope === "channel" && isStageChannel
-				? (viewer.assigned ? "contributor" : "observer")
+				? stageAssignmentOf(viewer.role, viewer.assigned)
 				: null,
 			presence: "online",
 			assignedStages: viewer.assigned && viewer.role === "freelancer" && stages.length > 0
@@ -666,13 +676,15 @@ export function findMemberRoster(params: MemberRosterParams): MemberRosterPage |
 	const stages = effectiveStages(detail, format);
 	const viewer = resolveViewer(detail, params.simViewer);
 
-	let rows = baseRows(detail, stages);
-	rows = withAssignment(rows, scope, identity.isStage);
+	const stageName = scope === "channel" ? routedStageName(identity, stages) : null;
+	const rows = withAssignment(baseRows(detail, stages), stageName);
 	const marked = markViewer(rows, viewer, stages, scope, identity.isStage);
 	const seats = format === "session" ? sessionSeats(detail, marked.rows) : null;
 	const allRows = seats?.rows ?? marked.rows;
 	const viewerStages = allRows.find((r) => r.id === marked.viewerId)?.assignedStages ?? [];
-	const visible = visibleTo(allRows, viewer, scope, identity.isStage, viewerStages);
+	// A stage's roster is the people who can act on it (Decision #145).
+	const rostered = stageName === null ? allRows : allRows.filter((r) => r.assignment !== null);
+	const visible = visibleTo(rostered, viewer, scope, identity.isStage, viewerStages);
 
 	// Both queues are a management concern — only a managing viewer sees them, and the dev toggles can
 	// force each off/on. Total counts the full participant list (independent of the viewer's visibility).
@@ -698,7 +710,7 @@ export function findMemberRoster(params: MemberRosterParams): MemberRosterPage |
 		viewerId: marked.viewerId,
 		viewerRole: viewer.role,
 		viewerCaps: viewer.caps,
-		total: marked.rows.length,
+		total: rostered.length,
 	};
 }
 // #endregion

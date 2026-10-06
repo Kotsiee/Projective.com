@@ -2,7 +2,7 @@ import type { ComponentType, JSX } from "preact";
 import { useSignal, useSignalEffect } from "@preact/signals";
 import { Dialog } from "@projective/ui/feedback";
 import "../styles/share.css";
-import "@features/messaging/styles/contact-picker.css";
+import "../styles/share-people.css";
 import { dismissShare, shareOpen, shareRequest } from "../core/share-request.ts";
 import type { ShareModalBodyProps } from "../components/ShareModalBody.tsx";
 
@@ -12,9 +12,9 @@ import type { ShareModalBodyProps } from "../components/ShareModalBody.tsx";
  * `share-request` bridge: every trigger calls `requestShare(…)`, and this island opens.
  *
  * The body is loaded LAZILY on first open. The host itself ships to every page, so it is kept to a
- * signal subscription and a `Dialog`; the ranked people list, its transport and the external
- * targets arrive in their own chunk the first time somebody presses Share, and never for a page
- * where nobody does. Both stylesheets are imported HERE, statically, because a sheet only reaches
+ * signal subscription and a `Dialog`; the people search, the Quick Add rail, their transport and the
+ * external targets arrive in their own chunk the first time somebody presses Share, and never for a
+ * page where nobody does. Both stylesheets are imported HERE, statically, because a sheet only reaches
  * the browser through an island's module graph (Decision #39) and the lazy chunk's CSS emission on
  * a production build is not something this host may rely on.
  *

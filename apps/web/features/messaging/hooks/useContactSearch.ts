@@ -25,6 +25,13 @@ export interface ContactSearchOptions {
 	exclude?: readonly string[];
 	/** Result cap; the server applies its own default when absent. */
 	limit?: number;
+	/**
+	 * Load the ranked suggestions on mount (default `true`). A search-only field passes `false`: it has
+	 * nothing to show until somebody types.
+	 */
+	loadOnMount?: boolean;
+	/** Debounce between keystrokes and the search request, ms (default 220). */
+	debounceMs?: number;
 }
 
 export interface ContactSearch {
@@ -53,7 +60,7 @@ export function useContactSearch(options: ContactSearchOptions = {}): ContactSea
 	const query = useSignal("");
 	const contacts = useSignal<RankedContact[]>([]);
 	const searched = useSignal(false);
-	const loading = useSignal(true);
+	const loading = useSignal(options.loadOnMount !== false);
 	const error = useSignal<string | null>(null);
 
 	const reqId = useRef(0);
@@ -85,7 +92,7 @@ export function useContactSearch(options: ContactSearchOptions = {}): ContactSea
 
 	useEffect(() => {
 		live.current = true;
-		void load("");
+		if (optionsRef.current.loadOnMount !== false) void load("");
 		return () => {
 			live.current = false;
 			if (timer.current) clearTimeout(timer.current);
@@ -97,7 +104,7 @@ export function useContactSearch(options: ContactSearchOptions = {}): ContactSea
 		if (timer.current) clearTimeout(timer.current);
 		timer.current = setTimeout(
 			() => void load(value.trim()),
-			SEARCH_DEBOUNCE_MS,
+			optionsRef.current.debounceMs ?? SEARCH_DEBOUNCE_MS,
 		) as unknown as number;
 	}
 

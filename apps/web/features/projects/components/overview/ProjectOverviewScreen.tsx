@@ -1,8 +1,13 @@
 import type { JSX } from "preact";
 import "../../styles/project-dashboard.css";
-import { isClosedStatus, type ProjectWorkspace } from "@projective/types/projects";
+import {
+	isClosedStatus,
+	type OverviewChange,
+	type ProjectWorkspace,
+} from "@projective/types/projects";
 import ProjectPageStyleAnchor from "../../islands/ProjectPageStyleAnchor.island.tsx";
 import ProjectNoticeHost from "../../islands/ProjectNoticeHost.island.tsx";
+import OverviewArrival from "../../islands/OverviewArrival.island.tsx";
 import { profileHref } from "../../core/routing.ts";
 import {
 	EarningsBlock,
@@ -52,11 +57,13 @@ export interface ProjectOverviewScreenProps {
 	workspace: ProjectWorkspace | null;
 	/** The routed slug — quoted in the not-found branch so the reader can see what was asked for. */
 	slug: string;
+	/** Regions changed since the viewer's last visit — highlighted briefly on arrival. */
+	changes?: readonly OverviewChange[];
 }
 
 /** The Overview for one engagement, or a calm miss with the one route back. */
 export function ProjectOverviewScreen(
-	{ workspace, slug }: ProjectOverviewScreenProps,
+	{ workspace, slug, changes = [] }: ProjectOverviewScreenProps,
 ): JSX.Element {
 	if (!workspace) {
 		return (
@@ -85,6 +92,7 @@ export function ProjectOverviewScreen(
 			<ProjectPageStyleAnchor />
 			{/* Turns a `?notice=room-not-found` left by the room guard into one toast, then strips it. */}
 			<ProjectNoticeHost />
+			{changes.length > 0 && <OverviewArrival changes={changes} />}
 			<div class="pjd__inner">
 				<header class="pjd-hero">
 					<div class="pjd-hero__identity">
@@ -116,9 +124,9 @@ export function ProjectOverviewScreen(
 							)}
 					</div>
 
-					<h1 class="pjd-hero__title">{hero.title}</h1>
+					<h1 class="pjd-hero__title" data-pjd-region="details">{hero.title}</h1>
 
-					<div class="pjd-hero__facts">
+					<div class="pjd-hero__facts" data-pjd-region="status">
 						<StatusMark status={hero.status} label={hero.statusLabel} />
 						<MetaFacts items={hero.meta} />
 					</div>

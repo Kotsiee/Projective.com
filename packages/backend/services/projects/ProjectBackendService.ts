@@ -121,6 +121,7 @@ import { findFilePage } from "./files-fixtures.ts";
 import { findSubmissionPage } from "./submissions-fixtures.ts";
 import { BOARD_FIXTURE_NOW, findBoardPage, findTicketProjectSlug } from "./board-fixtures.ts";
 import { findFixtureRequest, findMemberRoster } from "./members-fixtures.ts";
+import { findStubLinkRequest, stubLinkRequests } from "./invite-link-store.ts";
 import { archiveDraft, getDraft, instantiateDraft, sweepStaleDrafts } from "./draft-store.ts";
 import { composeLoadedViewPage } from "../explore/live-view.ts";
 import { approveStageRow, exitStageRow, reviewSubmissionRow } from "./live-settlement.ts";
@@ -1357,9 +1358,13 @@ export class ProjectBackendService {
 		}
 		// Invitations sent from a seller's profile, and every stub-path transition on them, fold onto
 		// the list (fixture branch only) BEFORE the stage scoping — a hire may address another stage. A
-		// request the stub has already answered is history, not a queue entry.
+		// request the stub has already answered is history, not a queue entry. Requests filed through a
+		// stage's invite link join the queue a managing viewer sees (Decision #145).
 		const overlaid = overlayMemberRoster(page, actor);
-		const open = overlaid.requests.filter((request) => requestDecisionOf(request.id) === null);
+		const linked = overlaid.viewerCaps.canInvite ? stubLinkRequests(overlaid.projectId) : [];
+		const open = [...linked, ...overlaid.requests].filter((request) =>
+			requestDecisionOf(request.id) === null
+		);
 		return ok({ page: scopeInvites({ ...overlaid, requests: open }) });
 	}
 
@@ -1369,8 +1374,8 @@ export class ProjectBackendService {
 	 * list and the write cannot disagree — a stale client that rendered Dismiss on a row the invitee
 	 * has since accepted is refused, not obeyed.
 	 *
-	 * Live: an UPDATE under the owner's own RLS (`live-invites.ts`). Stub: an overlay in the write
-	 * store, so the change survives a reload exactly as a live one would.
+	 * Live: `projects.act_on_invitation`, open to the owner, an admin or a manager (`live-invites.ts`).
+	 * Stub: an overlay in the write store, so the change survives a reload exactly as a live one would.
 	 */
 	static async inviteAction(
 		input: InviteActionInput,
@@ -2328,7 +2333,8 @@ export class ProjectBackendService {
 
 		// A fixture request seats its applicant on the stub roster, as `assign_from_application` enrols
 		// them as a participant on the live one; any other id is a request the drawer answered.
-		const fixture = findFixtureRequest(input.applicationId);
+		const fixture = findFixtureRequest(input.applicationId) ??
+			findStubLinkRequest(input.applicationId);
 		if (fixture && requestDecisionOf(input.applicationId) === null) {
 			recordApplicationSeat(
 				writeOwnerOf(actor),

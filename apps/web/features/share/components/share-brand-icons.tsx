@@ -72,6 +72,29 @@ function Telegram(props: IconProps): JSX.Element {
 	);
 }
 
+function LinkedIn(props: IconProps): JSX.Element {
+	return (
+		<svg class={props.class} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+			<path d="M4.98 3.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5ZM3 9.75h4v11H3v-11Zm6.5 0h3.8v1.6h.06c.53-1 1.83-2.06 3.77-2.06 4.03 0 4.77 2.65 4.77 6.1v6.36h-4v-5.64c0-1.35-.02-3.08-1.88-3.08-1.88 0-2.17 1.47-2.17 2.98v5.74h-4v-11Z" />
+		</svg>
+	);
+}
+
+function Email(props: IconProps): JSX.Element {
+	return (
+		<svg class={props.class} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+			<rect x="3" y="5" width="18" height="14" rx="2.5" stroke="currentColor" stroke-width="1.8" />
+			<path
+				d="m4 7 8 6 8-6"
+				stroke="currentColor"
+				stroke-width="1.8"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+			/>
+		</svg>
+	);
+}
+
 const MARKS: Record<ExternalShareTarget, (props: IconProps) => JSX.Element> = {
 	snapchat: Snapchat,
 	whatsapp: WhatsApp,
@@ -79,6 +102,8 @@ const MARKS: Record<ExternalShareTarget, (props: IconProps) => JSX.Element> = {
 	instagram: Instagram,
 	x: XMark,
 	telegram: Telegram,
+	linkedin: LinkedIn,
+	email: Email,
 };
 
 /** The mark for a target — a fresh VNode per call (no shared constants, per the reuse hazard). */

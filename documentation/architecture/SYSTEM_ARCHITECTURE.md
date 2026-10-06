@@ -792,10 +792,13 @@ people picker (`GET /api/messaging/suggestions`) is **ranked by relationship, th
 rule lives ONCE in the SSOT (`@projective/types/messaging` `deriveContactRank`) and both branches
 feed it EVIDENCE: the live path from `org.*_members`, `org.profile_follows` (both directions),
 `projects.projects`/`project_participants` and the viewer's threads; the stub from the same casts
-the rest of the app renders. The picker component (`ContactList` + `useContactSearch`) is shared
-with the platform-wide **share modal** (`apps/web/features/share/`, one `ShareHost` island per
-shell driven by the `share-request` bridge), so "send this to somebody" and "start a
-conversation" cannot disagree about who comes first.
+the rest of the app renders. The same ranked read (`useContactSearch`) feeds the messaging picker
+(`ContactList`) and the three people pieces in `apps/web/features/share/` — `ShareLinkBar`,
+`UserSearchPopover` (a debounced combobox over the read) and `QuickAddRail` — which the
+platform-wide **share modal** (one `ShareHost` island per shell, driven by the `share-request`
+bridge) and the Members tab's **Invite modal** (`InviteShareModal`) both compose (Decision #145), so
+"send this to somebody", "invite somebody" and "start a conversation" cannot disagree about who
+comes first.
 
 **Sending a message, and the profile-side Hire (Decision #103).** The inbox's send is
 `SendConversationMessageSchema` (`@projective/types/messaging/send.ts`, one field apart from the
@@ -870,6 +873,160 @@ minute, cards cached 60 s per reader. The browser batches every bubble's links i
 — including one not yet answered — through `/exit` (`exitHref`), whose verdict comes from
 `LinkPreviewBackendService.exitCheck`: a signed-in visit scans (rate-limited), a guest only ever
 sees a remembered verdict plus the URL's own shape, so the page is never an anonymous fetch proxy.
+
+### Contact & financial leakage prevention (Decision #147)
+
+The protected-phase contact filter (`PRODUCT_SPEC.md` §Messaging 1 "Platform Integrity" and §3 "The
+Handover State") is a three-tier, edge-to-database pipeline. **Tier 2 is the authority**; Tiers 1
+and 3 may add detection but never relax it, and none of the three runs once
+`projects.handover_unlocked_at` is set.
+
+```text
+send ─▶ Tier 1  in-process pre-filter (fat service, sync, <2 ms) ──refuse──▶ 422 to the composer
+          │ pass
+          ▼
+        Tier 2  BEFORE INSERT trigger → comms.mask_pii (authoritative) ──▶ row stored, pii_masked
+          │ after commit, candidates only
+          ▼
+        Tier 3  self-hosted Presidio (async worker) ──▶ review queue → Consequences ladder
+```
+
+**Tier 1 — in-process pre-filter (planned).** Runs inside the fat send services
+(`MessagingBackendService.sendMessage`, the projects message send, `comms.send_request_message`'s
+callers) before the insert, in the same Deno process — no network hop, no per-call cost. Pipeline:
+(1) NFKC-normalise and fold Unicode confusables/homoglyphs (Cyrillic `а` → `a`, full-width digits,
+zero-width joiners stripped) so an obfuscated address is matched in its plain form; (2) extract URLs
+and bare domains with `linkify-it`, resolve the registrable domain with `tldts`, and match it against
+the payment / messaging host list `comms.mask_pii` carries; (3) run the four Tier 2 categories over
+the normalised text; (4) Luhn-check every 13–19 digit run so a payment card is refused while a long
+numeric reference is not. A hit is refused as `422` naming the category, shown inline by the
+composer. Hot paths may move into the `WASM` package (§Packages → WASM) when profiling warrants;
+the contract is unchanged. **Today Tier 1 is only the composer's advisory warning:**
+`packages/types/comms/pii.ts` (`maskPii` / `containsPii`), pinned to the SQL patterns by
+`pii.contract.test.ts`. Any category Tier 1 adds (card numbers, confusable-folded matches) must land
+in `comms.mask_pii` in the same change — otherwise a direct write stores what the edge refuses.
+
+**Tier 2 — database enforcement (shipped).** `trg_mask_message_pii` (`comms.project_messages`) and
+`trg_dm_messages_mask_pii` (`comms.dm_messages`), both `BEFORE INSERT`, `SECURITY DEFINER`
+(`00001300` / `00001840`). Each resolves the protected engagement (`projects.is_protected_phase` for
+a channel's project; `comms.fn_dm_protected_project` for a DM), runs the `IMMUTABLE`
+`comms.mask_pii(text)`, and on any hit rewrites `body`, nulls `body_delta`, and sets `pii_masked` /
+`pii_categories`. It fires on every insert path, so a client that skips the services is still
+masked. **Known gap:** both triggers are `INSERT`-only, and `comms.project_messages` carries the
+`edit_own_messages` `UPDATE` policy with no column restriction (`GRANT ALL` on `comms` to
+`authenticated`) — a sender can edit a stored body, or `pii_masked`, after the mask ran
+(Decision #147 flag (c)). `comms.dm_messages` has no `UPDATE` policy and is not exposed.
+
+**Tier 3 — asynchronous deep NLP (planned).** A dedicated, Dockerised **Microsoft Presidio**
+analyzer (spaCy NER + Presidio pattern/context recognisers, plus custom recognisers for spelled-out
+numerals, split handles and "at"/"dot" addresses) on a 2 GB RAM VPS container (~$10–15/month). It is
+fed **after commit** by a background worker draining a queue of candidate messages — protected-phase
+rows Tier 2 did not mask, plus rows Tier 1/2 flagged as near-misses — so message latency never
+depends on it. It returns entity spans and scores only; it never writes `comms.*_messages`. Scores
+above threshold become review-queue entries for the **Consequences** ladder (`PRODUCT_SPEC.md`
+§Messaging 1). The analyzer is reachable only from the worker on a private network, keeps no
+payload after scoring, and is not a sub-processor (message bodies never leave Projective's own
+infrastructure). The queue table, the review-queue table, the worker and the analyzer's environment
+key are not yet designed; each lands with its migration, Zod schema, `documentation/database/*` entry
+and Environment Variable Contract line in one change (§1 Additive Rule, Zod SSOT).
+
+**Why self-hosted, zero-SaaS.** Enterprise trust & safety APIs (Sift, Hive Moderation and peers) were
+rejected: per-message pricing scales with the busiest surface on the platform, every protected-phase
+message would be shipped to a third-party processor, and their synchronous review would sit on the
+send path. The chosen split puts the cheap, deterministic checks where they cost nothing (in-process
+Tier 1), the guarantee where it cannot be bypassed (Postgres Tier 2), and the expensive judgement
+where latency does not matter (self-hosted Tier 3), for one small container's compute.
+
+**Public surfaces (planned).** The permanent prohibition on contact and payment details in public copy
+(`PRODUCT_SPEC.md` §Messaging 1.B) reuses the Tier 1 detector at create/update time in each owning
+write door — `org.save_profile` (`org.users_public.headline` / `bio`), the catalogue write services
+(`catalogue.products`, `catalogue.listings`, `marketplace.service_blueprints`) and the projects
+setup write (`projects.projects.title` / `description`) — and **refuses** (`422`, field-named) rather
+than masks. It ignores `handover_unlocked_at`. No public-copy check exists yet.
+
+### Content moderation — the Two-Zone model (Decision #148)
+
+`PRODUCT_SPEC.md` §Messaging 1.C. **Public Glass Front** surfaces are screened proactively before
+publication; the **Private Collaborative Workspace** is moderated reactively, from user reports.
+Everything below is **planned** — no classifier, report table or report route exists yet.
+
+| Zone | Buckets | Tables | Automated explicit-content screening |
+| :--- | :------ | :----- | :----------------------------------- |
+| Public | `avatars` · `showcase` · `catalogue` · `public_assets` | `org.users_public` (`headline`, `bio`, avatar/banner), `catalogue.*`, `marketplace.service_blueprints`, published `projects.projects` copy | **Required** before publication |
+| Private | `project` · `messages` · `personal` · `workspace` | `comms.project_messages`, `comms.dm_messages`, `projects.stage_submissions`, `files.items` in private buckets | **None** (the Decision #147 contact filter still runs) |
+
+**The publication gate (`@server/services/media`).** Quarantine admits every upload into a private
+library (`personal` / `workspace`, §Storage Lifecycle); a public object only ever comes from a later
+**publish** step — today `MediaBackendService`'s rendition cut into `avatars` / `showcase`, and the
+catalogue media writes once they move behind the pipeline. The gate runs there, on the decoded
+pixels, **before** the WebP tiers are cut:
+
+1. Decode the library original (the existing Worker step) and send the decoded still — for a video,
+   its poster plus sampled frames — to the classifier.
+2. **Clean** → cut tiers, write the public object, attach (`org.set_profile_avatar`,
+   `org.save_showcase`, the catalogue write) as today.
+3. **Flagged** → no public object is written and nothing is attached; the publish answers `422`
+   with the category, and the owner receives a correction notice (a `comms.fn_notify` event; the type
+   key lands in the catalog with the feature). The library original keeps `status = 'uploaded'` —
+   it is the owner's private file and stays usable privately. `quarantined` remains reserved for
+   hostile bytes found by the sniff.
+4. **Classifier unavailable** → fail closed: the publish answers `503` and is retryable; nothing is
+   published unscreened.
+
+Public text (`headline`, `bio`, listing and service copy, project briefs) is screened at the same
+write doors as the Decision #147 public-copy leakage check, for hate speech and slurs.
+
+**The classifier stack — self-hosted first.**
+
+- **Primary:** a self-hosted CPU container exposing two analyzers behind one internal endpoint —
+  **NudeNet** (image nudity/exposure detection) and **Microsoft Presidio**, the Decision #147 Tier 3
+  service, whose Image Redactor (OCR) catches contact and payment details written into an image.
+  CPU inference only, no GPU, reachable only from the media service on a private network, no payload
+  retained after scoring.
+- **Fallback (optional, off by default):** a hosted moderation API (OpenAI's moderation endpoint or
+  Sightengine) for categories NudeNet does not cover (graphic violence, hate symbols) or when the
+  container is down. Enabling it makes the provider a sub-processor of **public-bound** images only;
+  private content is never sent to it.
+- Thresholds per category are tunable configuration, not code; every verdict (category scores,
+  model version, decision) is recorded on the publish attempt so a disputed refusal can be audited.
+
+**The reactive reporting workflow (private and public zones alike).**
+
+1. **File** — `POST /api/reports` (thin: Zod + auth) → a reports fat service. The client sends only
+   the subject (`subject_type`, `subject_id`) and a `reason`; the service confirms the reporter can
+   read the subject **under their own JWT** (a report is never a way to read something), then builds
+   the **evidence snapshot server-side** from the stored row — body, author, room/thread, timestamps,
+   and for a file its id, `content_hash` and a service-held copy — never from client-supplied text.
+2. **Store** — one `ops.reports` row, `status = 'pending'`. The snapshot is immutable: no `UPDATE`
+   path touches it, and deleting or editing the original afterwards leaves it intact.
+3. **Review** — an `ops.admin_users` reviewer resolves it `dismissed` or `actioned` with
+   `resolution_notes`, through a `SECURITY DEFINER` door; the reporter's identity is never projected
+   to the reported party.
+4. **Penalise** — `actioned` writes a `security.penalties` row (`subject_type` · `subject_id` of the
+   author, `severity`, `source_id` = the report) and calls `org.fn_recompute_standing`, whose
+   `penalty` component subtracts active penalty severity; a lower score can demote the rung
+   (`org.standing_events` records `demoted`). The outcome is a mandatory notification.
+
+**Proposed `ops.reports` shape** — not migrated; it lands with its migration (`00000013_tables_ops`,
+edited in place), RLS policies, Zod schema and `documentation/database/ops/*` in one change:
+
+| Column | Type | Notes |
+| :----- | :--- | :---- |
+| `id` | uuid | PK. |
+| `reporter_user_id` | uuid | FK → `auth.users`. Never projected to the reported party. |
+| `reported_subject_type` | text | CHECK: `project_message` · `dm_message` · `stage_submission` · `file` · `profile` · `listing` · `service` · `project`. |
+| `reported_subject_id` | uuid | The subject row; deliberately not an FK (subjects span schemas and must outlive deletion). |
+| `reason` | text | CHECK against a closed reason vocabulary (Zod SSOT). |
+| `evidence_snapshot` | jsonb | Server-built at filing; immutable; Zod-typed per subject type (§1 JSONB Contracts). |
+| `status` | text | CHECK `pending` · `dismissed` · `actioned`; `DEFAULT 'pending'`. |
+| `resolution_notes` | text | Reviewer's notes; required when leaving `pending`. |
+| `resolved_by` / `resolved_at` | uuid / timestamptz | Set together on resolution. |
+| `created_at` | timestamptz | `DEFAULT now()`. |
+
+**Why this split.** Proactive screening is spent only where content meets strangers — a small,
+bounded volume of profile, showcase and listing media — so a CPU container covers it; the private
+zone, where volume is unbounded and false positives would block legitimate creative work, costs
+nothing until a person asks for review.
 
 ### Catalogue services (the first WRITE surface)
 
@@ -1393,6 +1550,11 @@ viruses.
    `personal`, with its WebP tiers) and the database record is updated; a public copy only ever
    reaches `avatars` / `showcase` as a pipeline-cut rendition. A file that fails is deleted from
    quarantine and its row marked `quarantined` (a hostile file) or `error`.
+4. **Publication gate (planned, Decision #148):** before any object is written to a **public**
+   bucket (`avatars`, `showcase`, `catalogue`, `public_assets`), the moderation classifier must
+   return a clean verdict. The gate sits at publication, not in quarantine: a quarantined upload
+   always lands in a **private** library first, and screening there would scan the private zone the
+   Two-Zone model exempts. See §Backend Services → Content moderation.
 
 ### Edge Functions & Webhooks
 

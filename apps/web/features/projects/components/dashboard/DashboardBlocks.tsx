@@ -84,6 +84,8 @@ export interface BlockProps {
 	/** The fuller view for this block; omitted when the block has nowhere further to go. */
 	moreHref?: string;
 	moreLabel?: string;
+	/** The Overview region this block draws — the arrival highlight's target (`data-pjd-region`). */
+	region?: string;
 	children: ComponentChildren;
 }
 
@@ -92,9 +94,9 @@ export interface BlockProps {
  * SPACING alone. No surface, no border, no card — a block is a region of the page, and §B.4 spends
  * one device on a boundary, which the grid's gap has already spent.
  */
-export function Block({ title, moreHref, moreLabel, children }: BlockProps): JSX.Element {
+export function Block({ title, moreHref, moreLabel, region, children }: BlockProps): JSX.Element {
 	return (
-		<section class="pjd-block">
+		<section class="pjd-block" data-pjd-region={region}>
 			<div class="pjd-block__head">
 				<h2 class="pjd-block__title">{title}</h2>
 				{moreHref && <a class="pjd-block__more" href={moreHref}>{moreLabel ?? "View all"}</a>}

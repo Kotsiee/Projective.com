@@ -474,7 +474,7 @@ BEGIN
     -- no discussion at all and its lane has no Discussion link to offer. Opened for a Task too — its
     -- discussion is its stage's room, but a Task converted into a pipeline in settings needs this room
     -- the moment it becomes one. The call dedupes, so it can never mint a second.
-    PERFORM comms.get_or_create_project_channel(v_project_id, NULL, 'General');
+    PERFORM comms.get_or_create_project_channel(v_project_id, NULL, 'Discussion');
 
     -- 8. Staffing roles.
     --
@@ -921,6 +921,28 @@ AS $$
                 OR (p.client_business_id IS NOT NULL AND org.is_active_business_member (p.client_business_id))
             )
     );
+$$;
+
+-- TRUE when the caller may staff the project: review authority, or a person-participant the owner
+-- made an `admin` or `manager` (`set_member_role`). This is the authority behind inviting, answering
+-- requests, cancelling or dismissing invitations and managing a stage's invite link (Decision #145).
+-- Granting the `admin`/`manager` roles themselves stays review authority: each issuing door checks
+-- that separately, so a delegate can never appoint a peer.
+CREATE OR REPLACE FUNCTION projects.can_manage_project_members(_project_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, projects, org, auth
+AS $$
+    SELECT projects.can_review_project(_project_id)
+        OR EXISTS (
+            SELECT 1 FROM projects.project_participants pp
+            WHERE pp.project_id = _project_id
+                AND pp.profile_type = 'freelancer'
+                AND pp.profile_id = auth.uid()
+                AND pp.role IN ('admin', 'manager')
+        );
 $$;
 
 -- #endregion

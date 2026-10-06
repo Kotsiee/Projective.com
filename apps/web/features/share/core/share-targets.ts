@@ -13,6 +13,8 @@ import type { ShareRequest } from "./share-request.ts";
  *  - X         `https://x.com/intent/post?url=…&text=…`
  *  - Facebook  `https://www.facebook.com/sharer/sharer.php?u=…`  (the sharer ignores any text)
  *  - Snapchat  `https://www.snapchat.com/scan?attachmentUrl=…`   (Creative Kit's web entry)
+ *  - LinkedIn  `https://www.linkedin.com/sharing/share-offsite/?url=…` (the link only)
+ *  - Email     `mailto:?subject=…&body=…`                         (the device's mail client)
  *
  * **Instagram has no web share intent.** There is no URL that opens Instagram with a link or a
  * caption pre-filled; sharing into it is possible only through the device's own share sheet
@@ -30,7 +32,9 @@ export type ExternalShareTarget =
 	| "x"
 	| "facebook"
 	| "snapchat"
-	| "instagram";
+	| "instagram"
+	| "linkedin"
+	| "email";
 
 /** How a target is reached. `intent` opens a URL; `sheet-or-paste` has no URL of its own. */
 export type ShareTargetMode = "intent" | "sheet-or-paste";
@@ -49,7 +53,18 @@ export const SHARE_TARGETS: readonly ShareTargetSpec[] = [
 	{ key: "instagram", label: "Instagram", mode: "sheet-or-paste" },
 	{ key: "x", label: "X", mode: "intent" },
 	{ key: "telegram", label: "Telegram", mode: "intent" },
+	{ key: "linkedin", label: "LinkedIn", mode: "intent" },
+	{ key: "email", label: "Email", mode: "intent" },
 ];
+
+/**
+ * The shorter set a stage invite link offers (Decision #145): the professional and direct channels a
+ * collaborator is asked through, in that order. A subset of {@link SHARE_TARGETS}, so every key has
+ * a mark and an intent.
+ */
+export const INVITE_SHARE_TARGETS: readonly ShareTargetSpec[] = ["whatsapp", "linkedin", "x", "email"]
+	.map((key) => SHARE_TARGETS.find((spec) => spec.key === key))
+	.filter((spec): spec is ShareTargetSpec => spec !== undefined);
 
 /** Where the paste-mode target sends the viewer after the link is on their clipboard. */
 export const INSTAGRAM_HOME = "https://www.instagram.com/";
@@ -97,6 +112,12 @@ export function externalShareUrl(
 			return `https://www.facebook.com/sharer/sharer.php?u=${url}`;
 		case "snapchat":
 			return `https://www.snapchat.com/scan?attachmentUrl=${url}`;
+		case "linkedin":
+			return `https://www.linkedin.com/sharing/share-offsite/?url=${url}`;
+		case "email":
+			return `mailto:?subject=${enc}&body=${encodeURIComponent(text ? `${text}
+
+${request.url}` : request.url)}`;
 		case "instagram":
 			return null;
 	}

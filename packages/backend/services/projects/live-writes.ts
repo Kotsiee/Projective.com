@@ -1968,7 +1968,7 @@ export async function insertProject(
 	const { error: roomError } = await commsDb(actor).rpc("get_or_create_project_channel", {
 		p_project_id: created.id,
 		p_stage_id: null,
-		p_name: "General",
+		p_name: "Discussion",
 	});
 	if (roomError) {
 		console.warn(

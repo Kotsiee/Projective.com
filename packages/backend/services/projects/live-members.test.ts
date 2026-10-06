@@ -474,7 +474,7 @@ Deno.test("fetchMemberRoster answers null for a slug that resolves to nothing", 
 // #endregion
 
 // #region fetchMemberRoster — channel scope
-Deno.test("in a stage channel each member is a contributor or an observer", async () => {
+Deno.test("a stage channel lists its assignees and oversight, never an unassigned participant", async () => {
 	await withPostgrest(
 		rosterRoutes({
 			"comms.project_channels": [{
@@ -492,7 +492,10 @@ Deno.test("in a stage channel each member is a contributor or an observer", asyn
 			assertEquals(page.channelName, "Discovery room");
 			assertEquals(page.stageId, S1);
 			assertEquals(page.members.find((m) => m.id === "pp-free")?.assignment, "contributor");
-			assertEquals(page.members.find((m) => m.id === "pp-idle")?.assignment, "observer");
+			assertEquals(page.members.find((m) => m.id === "pp-mgr")?.assignment, "observer");
+			assertEquals(page.members.find((m) => m.id === `owner:${OWNER_ID}`)?.assignment, "observer");
+			assertEquals(page.members.some((m) => m.id === "pp-idle"), false);
+			assertEquals(page.total, 3, "the caption counts the stage, not the project");
 			const channelRead = calls.find((c) => c.name === "project_channels")!;
 			assertEquals(channelRead.query.get("project_id"), `eq.${PROJECT_UUID}`);
 		},

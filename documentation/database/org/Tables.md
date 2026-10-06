@@ -35,6 +35,17 @@ Free text here let a typo silently hide a profile from everyone. The one predica
 **There is no client write policy** — see [Policies.md](Policies.md#orgusers_public). Owner edits go
 through `org.save_profile`, which names every column it touches.
 
+**`headline` and `bio` never carry contact or payment details (Decision #147).** Public profile copy
+is permanently outside the Projective Unlock (`PRODUCT_SPEC.md` §Messaging 1.B): no email address,
+phone number, messaging link (`t.me`, `wa.me`, …), off-platform payment link or `$cashtag`, bank or
+card detail, or handle offered as a route off-platform — whatever the state of any project the user
+is on (`projects.projects.handover_unlocked_at` is never consulted). The check runs at create/update
+time in the write door (`org.save_profile` / the profile fat service), reusing the Tier 1 detector,
+and **refuses** the save naming the field rather than masking it. There is no CHECK constraint or
+trigger on these columns. **Not yet enforced** — today both columns accept any text.
+`org.profile_links` (below) is a separate structured surface whose status under this rule is open
+(Decision #147 flag (a)).
+
 ### `org.freelancer_profiles`
 
 The "Seller" persona. A user has exactly one freelancer profile.
@@ -346,7 +357,8 @@ says now. Zod mirrors: `CertificationEntrySchema` (`tabs.ts`, the read) and `Cer
 
 ### `org.profile_links`
 
-Social and portfolio links for both profile types.
+Social and portfolio links for both profile types. Whether these rows are exempt from the public-copy
+contact prohibition on `org.users_public` is open — Decision #147 flag (a).
 
 ```sql
 CREATE TABLE org.profile_links (

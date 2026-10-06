@@ -3,6 +3,8 @@ import type {
 	AssignableMemberRole,
 	InviteActionInput,
 	InviteDecisionInput,
+	InviteLinkAction,
+	InviteLinkResult,
 	InviteProjectMemberInput,
 	InvitesSent,
 	MemberInvite,
@@ -104,6 +106,20 @@ export const MembersService = {
 		);
 	},
 
+	/** A stage's active invite link, or `link: null` when it has none (Decision #145). Never mints. */
+	inviteLink(projectId: string, stageId: string): Promise<ProjectsResult<InviteLinkResult>> {
+		return getProjects<InviteLinkResult>(inviteLinkUrl(projectId, stageId));
+	},
+
+	/** Mint-or-read (`ensure`), replace (`reset`) or turn off (`revoke`) a stage's invite link. */
+	inviteLinkAction(
+		projectId: string,
+		stageId: string,
+		action: InviteLinkAction,
+	): Promise<ProjectsResult<InviteLinkResult>> {
+		return postProjects<InviteLinkResult>(inviteLinkUrl(projectId, stageId), { action });
+	},
+
 	/** The project's invitation queue (`no-store`). */
 	listInvites(projectId: string): Promise<ProjectsResult<{ invites: MemberInvite[] }>> {
 		return getProjects<{ invites: MemberInvite[] }>(
@@ -135,3 +151,9 @@ export const MembersService = {
 		return getProjects<{ page: SentInvitesPage }>("/api/projects/invites/sent");
 	},
 };
+
+function inviteLinkUrl(projectId: string, stageId: string): string {
+	return `/api/projects/${encodeURIComponent(projectId)}/stages/${
+		encodeURIComponent(stageId)
+	}/invite-link`;
+}

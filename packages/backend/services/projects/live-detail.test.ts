@@ -185,7 +185,7 @@ const STAGES = [
 const CHANNELS = [
 	{
 		id: "c-general",
-		name: "General",
+		name: "Discussion",
 		stage_id: null,
 		visibility: "project_all",
 		created_at: "2026-09-01T00:00:00Z",

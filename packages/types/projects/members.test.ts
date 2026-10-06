@@ -4,12 +4,14 @@ import {
 	invitesForScope,
 	type MemberInvite,
 	type MemberRequest,
+	MemberRole,
 	memberStagePicture,
 	NO_REMOVAL_IMPACT,
 	type ProjectMemberRow,
 	removalNotices,
 	removalTouchesMoney,
 	requestsForScope,
+	stageAssignmentOf,
 } from "./members.ts";
 
 /**
@@ -233,6 +235,26 @@ Deno.test("a member with no handle has no addressable invitations", () => {
 		[invite({ handle: null, stageId: "stage-2" })],
 	);
 	assertEquals(picture.pending, []);
+});
+
+// #endregion
+
+// #region Stage roster membership
+
+Deno.test("an assignee is a contributor on the stage, whatever their role", () => {
+	for (const role of MemberRole.options) {
+		assertEquals(stageAssignmentOf(role, true), "contributor");
+	}
+});
+
+Deno.test("unassigned oversight observes a stage; anyone else unassigned is not on its roster", () => {
+	assertEquals(stageAssignmentOf("owner", false), "observer");
+	assertEquals(stageAssignmentOf("client", false), "observer");
+	assertEquals(stageAssignmentOf("admin", false), "observer");
+	assertEquals(stageAssignmentOf("manager", false), "observer");
+	assertEquals(stageAssignmentOf("freelancer", false), null);
+	assertEquals(stageAssignmentOf("member", false), null);
+	assertEquals(stageAssignmentOf("guest", false), null);
 });
 
 // #endregion

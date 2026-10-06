@@ -48,8 +48,9 @@ import { setupBaseline, setupCommitEpoch, setupDraft } from "../core/setup-store
 import { ProjectSidebarService } from "../core/ProjectSidebarService.ts";
 import { isTaskDetail } from "../core/task-project.ts";
 import { buildTaskLane, type TaskLane } from "../core/task-lane.ts";
-import { isOwnerRole } from "../types/projects-types.ts";
-import type { ProjectDetail } from "../types/projects-types.ts";
+import { isOwnerRole, QUIET_NAV_ACTIVITY } from "../types/projects-types.ts";
+import type { ProjectDetail, ProjectNavActivity } from "../types/projects-types.ts";
+import { currentNavView } from "../core/nav-activity-model.ts";
 
 /**
  * SSR default open-set — the highest-traffic groups (Stages/Sub-groups) lead expanded, and a Task's
@@ -138,10 +139,15 @@ export interface ProjectSidebarProps {
 	 * empty on the client when an unsaved setup form turns a non-Task into one.
 	 */
 	taskLane?: TaskLane | null;
+	/**
+	 * The viewer's activity across the lane views since they last opened each, resolved server-side.
+	 * The view being opened right now is drawn without its mark and recorded as seen on arrival.
+	 */
+	navActivity?: ProjectNavActivity;
 }
 
 export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element {
-	const { detail, sessionKind = "none" } = props;
+	const { detail, sessionKind = "none", navActivity = QUIET_NAV_ACTIVITY } = props;
 
 	const starred = useSignal<boolean>(detail?.starred ?? false);
 	// General + Stages/Sub-groups open by default; Teams + DMs collapsed. SSR paints these defaults; the
@@ -270,6 +276,27 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 		sync();
 		return subscribeDevSeam(sync);
 	}, [sessionKind]);
+
+	/**
+	 * Record the arrival on a lane view so its mark clears for the next navigation. Once per page:
+	 * every view change is a full render, so this island mounts afresh on each. A failed write keeps
+	 * the mark until the next arrival records it, so it is reported to the log and nowhere else.
+	 */
+	useEffect(() => {
+		if (!detail) return;
+		const base = `/projects/${detail.slug}`;
+		const links = projectViewLinks(detail, navActivity, kind.peek());
+		const here = currentNavView(links, (l) => viewLinkCurrent(props.path, base, l) !== null);
+		if (!here) return;
+		void ProjectSidebarService.markSeen(detail.slug, here).then((res) => {
+			if (res.ok) return;
+			logger.warn("Lane view not marked as seen", {
+				slug: detail.slug,
+				view: here,
+				message: res.message,
+			});
+		});
+	}, []);
 
 	// A slug that resolved to nothing — a calm stub with a way back, never a hard error.
 	if (!detail) {
@@ -401,8 +428,13 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 	// derives from the immutable `slug`, so folding the draft in cannot shuffle it as the owner types.
 	const normalData = activeKind === "normal" ? deriveNormalSession(view, seam.value) : null;
 	const groupData = activeKind === "group" ? deriveGroupSession(view, seam.value) : null;
-	// The top tier follows the same projection, so an unsaved type switch moves it with the body.
-	const views = projectViewLinks(view, activeKind);
+	// The top tier follows the same projection, so an unsaved type switch moves it with the body. The
+	// view being opened right now carries no mark: arriving is what clears it.
+	const views = projectViewLinks(view, navActivity, activeKind).map((link) =>
+		link.status && viewLinkCurrent(currentPath.value, base, link) !== null
+			? { ...link, status: null }
+			: link
+	);
 
 	return (
 		<div class="proj-detail" data-service={activeKind}>
@@ -411,6 +443,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 				detail={view}
 				currentPath={currentPath.value}
 				sessionKind={activeKind}
+				links={views}
 				onExpand={() => setLaneCollapsed(false)}
 				onCreateStage={openCreateStage}
 			/>

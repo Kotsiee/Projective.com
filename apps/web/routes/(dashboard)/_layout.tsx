@@ -7,6 +7,7 @@ import { UserShell } from "@web/features/shell/components/UserShell.tsx";
 import { NavIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { resolveProjectsFeed } from "@web/features/projects/core/feed-ssr.ts";
 import { resolveProjectDetail } from "@web/features/projects/core/detail-ssr.ts";
+import { resolveNavActivity } from "@web/features/projects/core/nav-activity-ssr.ts";
 import { resolveSessionKind } from "@web/features/projects/core/session-model.ts";
 import { isTaskDetail } from "@web/features/projects/core/task-project.ts";
 import { resolveTaskLane } from "@web/features/projects/core/task-lane-ssr.ts";
@@ -187,6 +188,7 @@ async function laneFor(
 	url: URL,
 	context: UserContext,
 	actor: ReadActor,
+	state: State,
 ): Promise<ComponentChildren> {
 	// The asset hub (`/files`) hosts its directory tree, its scope map (library ⁄ mounted ⁄ drives) and
 	// the storage allowance. Resolved BEFORE the `/projects` fall-through — `/files` is its own
@@ -225,7 +227,11 @@ async function laneFor(
 
 	const projectId = projectIdOf(url.pathname);
 	if (projectId) {
-		const { detail } = await resolveProjectDetail(projectId, context, actor);
+		// The viewer's lane activity is independent of the detail, so the two reads run side by side.
+		const [{ detail }, navActivity] = await Promise.all([
+			resolveProjectDetail(projectId, context, actor),
+			resolveNavActivity(state, projectId, actor),
+		]);
 		// The SSR archetype baseline (from the engagement format); the island re-derives it live from
 		// the dev Context Switcher so a simulated session swaps the sidebar body without a reload.
 		const sessionKind = detail ? resolveSessionKind(detail.format, null) : "none";
@@ -240,6 +246,7 @@ async function laneFor(
 				path={url.pathname}
 				sessionKind={sessionKind}
 				taskLane={taskLane}
+				navActivity={navActivity}
 			/>
 		);
 	}
@@ -276,7 +283,7 @@ export default define.page(async function DashboardLayout(ctx) {
 	// Resolved together rather than in series: the four slots are independent, and awaiting each
 	// behind the last would add all four latencies to every dashboard navigation.
 	const [lane, middleNavHeader, middleNavFooter, middleNavPanel] = await Promise.all([
-		laneFor(ctx.url, context, actor),
+		laneFor(ctx.url, context, actor, ctx.state),
 		middleNavHeaderFor(ctx.url, context, actor, ctx.state),
 		middleNavFooterFor(ctx.url, context, actor, ctx.state),
 		middleNavPanelFor(ctx.url, context, actor),

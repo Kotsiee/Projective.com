@@ -3,7 +3,7 @@
 The `projects` schema is the functional core of the platform. It manages the lifecycle of work, from
 project definition and stage-based modularity to staffing, execution, and revision tracking.
 
-**28 tables**, all declared in `supabase/migrations/00000015_tables_projects.sql` (indexes in
+**30 tables**, all declared in `supabase/migrations/00000015_tables_projects.sql` (indexes in
 `00004003_indexes_projects.sql`, triggers in `00001820`/`00001850`/`00001890`). Column lists below
 follow the migration's own order. A column is **nullable with no default** unless its Notes say
 otherwise; enum values are quoted from `00000003_enums_core.sql` / `00000004_enums_domains.sql`.
@@ -61,7 +61,9 @@ and high-level metadata.
 `idx_projects_stale_drafts` (`last_activity_at` WHERE `status = 'draft' AND source_blueprint_id IS NOT
 NULL`). **Triggers:** `trg_projects_slug` (`security.fn_slug_guard('prj')`) · `trg_sync_project_search`
 · `trg_update_project_counts` · `trg_project_handover_on_complete` · `trg_project_shape_lock` (freezes
-`format`/`structure_variation` once a seat is taken) · `trg_check_public_project_footprint`.
+`format`/`structure_variation` once a seat is taken) · `trg_check_public_project_footprint` ·
+`trg_projects_touch_updated_at` (`projects.fn_touch_updated_at`, every `UPDATE` — `updated_at` is
+what the Overview's "details changed" lane mark reads, Decision #146).
 
 **`slug` is the address; `id` does not route.** `/projects/:projectSlug` carries a `prj-` slug and
 nothing else — not the uuid, and not the title-derived slug this column used to hold. Both of those
@@ -399,8 +401,10 @@ skips unknown skill ids).
 ### `projects.project_applications`
 
 A seller's application to work on a project, written by `projects.apply_to_project` /
-`projects.apply_to_seat` and resolved by `projects.assign_from_application`. What it applies to
-lives in `project_application_targets`.
+`projects.apply_to_seat` / `projects.redeem_invite_link` (a stage invite link, Decision #145) and
+resolved by `projects.assign_from_application` or `projects.reject_application` — both open to the
+project's staffing authority (`can_manage_project_members`). What it applies to lives in
+`project_application_targets`.
 
 | Column                 | Type                         | Notes                                                                 |
 | :--------------------- | :--------------------------- | :-------------------------------------------------------------------- |
@@ -411,11 +415,13 @@ lives in `project_application_targets`.
 | `applicant_profile_id` | uuid                         | NOT NULL. Polymorphic on `applicant_type` — no FK.                    |
 | `message`              | text                         | PII-masked by `apply_to_project`.                                     |
 | `status`               | projects.application_status | NOT NULL `DEFAULT 'pending'`. `pending`, `accepted`, `rejected`, `withdrawn`. |
+| `invite_link_id`       | uuid                         | FK → `projects.stage_invite_links.id`. The link the request arrived through; NULL for a listing application. Provenance only (Decision #145). |
 | `created_at`           | timestamptz                  | NOT NULL `DEFAULT now()`.                                             |
 | `updated_at`           | timestamptz                  | NOT NULL `DEFAULT now()`.                                             |
 
 **Triggers:** `trg_meter_application_allowance` (AFTER INSERT: meters the applicant's entitlement
 allowance) · `trg_refund_withdrawn_application` (AFTER UPDATE OF `status`: refunds it on withdrawal).
+**Indexes:** `idx_project_applications_invite_link` (`invite_link_id` WHERE NOT NULL).
 
 ### `projects.project_application_targets`
 
@@ -494,16 +500,44 @@ act and starts no cooldown. Outbound invitations are additionally rate-limited p
 
 **The client's three acts on a record** (2026-09-21) are decided by its status alone
 (`inviteActionFor`, `packages/types/projects/members.ts`): a `pending` offer is **cancelled**
-(`status → revoked`, an UPDATE under the owner's own policy); a `declined`/`expired` record is
-**dismissed** (`dismissed_at`, the answer kept); an `accepted` record's action is to **remove the
+(`status → revoked`) and a `declined`/`expired` record is **dismissed** (`dismissed_at`, the answer
+kept), both through `projects.act_on_invitation` so an admin or manager can perform them without a
+direct-write grant (Decision #145); an `accepted` record's action is to **remove the
 freelancer it brought in** (`projects.remove_project_member`, see [Functions.md](Functions.md)),
 which retires the record with `dismissed_at`. A stage-scoped Members page lists only the
 invitations addressed to that stage (`invitesForScope`); a whole-project invitation appears in
 project scope alone.
 
 ⚠️ Because `token` is the capability and RLS is row-level, **any policy that admits a row admits its
-token**. The SELECT policy is therefore limited to the project owner and to the invited identity —
-see [Policies.md](Policies.md) before widening it.
+token**. The SELECT policy is therefore limited to the project's staffing authority
+(`can_manage_project_members` — the owner, the client business, an appointed admin or manager) and to
+the invited identity — see [Policies.md](Policies.md) before widening it.
+
+### `projects.stage_invite_links`
+
+A stage's shareable invite link (Decision #145). Holding it lets a signed-in person **ask** to join
+the stage — `projects.redeem_invite_link` files a pending `project_applications` row carrying
+`invite_link_id` — and nothing more: no seat, ticket or escrow moves until the request is accepted
+from the Requests section. Lifecycle `active → revoked` (terminal); a reset revokes the active row
+and mints a new one in one transaction, so the old URL dies first. Nothing is deleted.
+
+| Column             | Type        | Notes                                                                 |
+| :----------------- | :---------- | :-------------------------------------------------------------------- |
+| `id`               | uuid        | PK, `DEFAULT gen_random_uuid()`.                                      |
+| `project_id`       | uuid        | NOT NULL. FK → `projects.projects.id`, `ON DELETE CASCADE`.           |
+| `project_stage_id` | uuid        | NOT NULL. FK → `projects.project_stages.id`, `ON DELETE CASCADE`.     |
+| `token`            | text UNIQUE | NOT NULL. **The capability to ask.** 18 random bytes as unpadded base64url (`ck_stage_invite_links_token`: 24 chars of `[A-Za-z0-9_-]`). |
+| `status`           | text        | NOT NULL `DEFAULT 'active'`. CHECK `active`, `revoked`.               |
+| `created_by`       | uuid        | NOT NULL. FK → `org.users_public.user_id`. Shown as "shared by".      |
+| `created_at`       | timestamptz | NOT NULL `DEFAULT now()`.                                             |
+| `revoked_at`       | timestamptz | Set iff `status = 'revoked'` (`ck_stage_invite_links_revoked`).       |
+| `revoked_by`       | uuid        | FK → `org.users_public.user_id`. Who reset or turned the link off.    |
+
+**Constraints:** `stage_invite_links_status_check` · `ck_stage_invite_links_revoked` ·
+`ck_stage_invite_links_token`. **Indexes:** `uq_stage_invite_links_active` — one ACTIVE link per
+stage (partial unique on `project_stage_id` WHERE `status = 'active'`). RLS: staffing authority
+reads; no write policy — every write is a definer door (`get_stage_invite_link` ·
+`revoke_stage_invite_link` · `redeem_invite_link`, see [Functions.md](Functions.md)).
 
 ---
 
@@ -855,6 +889,19 @@ RLS — see [Policies.md](Policies.md). Composite PK (`user_id`, `project_id`).
 | `is_starred`     | boolean     | `DEFAULT false` (nullable).                 |
 | `is_archived`    | boolean     | `DEFAULT false` (nullable).                 |
 | `last_viewed_at` | timestamptz | `DEFAULT now()` (nullable).                 |
+
+### `projects.view_reads`
+
+When one person last opened one of an engagement's lane views (Decision #146). `projects.get_nav_activity`
+counts what changed after `seen_at`; `projects.mark_view_seen` upserts it. Never deleted. Own-rows RLS
+— see [Policies.md](Policies.md). Composite PK (`user_id`, `project_id`, `lane_view`).
+
+| Column       | Type        | Notes                                                                                     |
+| :----------- | :---------- | :---------------------------------------------------------------------------------------- |
+| `user_id`    | uuid        | NOT NULL, PK. FK → `org.users_public.user_id`, `ON DELETE CASCADE`.                         |
+| `project_id` | uuid        | NOT NULL, PK. FK → `projects.projects.id`, `ON DELETE CASCADE`.                            |
+| `lane_view`  | text        | NOT NULL, PK. CHECK `overview · discussion · board · timeline · files · submissions · members`. |
+| `seen_at`    | timestamptz | NOT NULL `DEFAULT now()`.                                                                 |
 
 ### `projects.project_attachments`
 

@@ -6,7 +6,7 @@ RLS policies for the `projects` schema. Tables: [Tables.md](Tables.md) · Functi
 Declared in `00002001_policies_enable_rls.sql` (the `ENABLE ROW LEVEL SECURITY` statements) and
 `00002011_policies_projects.sql` (the policies themselves).
 
-**All 28 `projects` tables have RLS enabled and at least one policy — 60 policies in total**, every one
+**All 29 `projects` tables have RLS enabled and at least one policy — 61 policies in total**, every one
 in `00002011` (no other migration creates or drops a `projects` policy). Privileges sit underneath:
 `00002500` grants `ALL` (minus `TRUNCATE`) on every table to `authenticated`, and `00002520` grants
 `anon` `SELECT` on six only — `projects`, `project_stages`, `stage_staffing_roles`,
@@ -29,6 +29,7 @@ performance cliff and at worst a recursion error.
 | `projects.has_project_access(uuid)` | Owner · freelancer participant · business participant · stage assignee · active member of an assigned team. An assignment counts only while it is not `declined` / `cancelled` / `released` (since 2026-09-28 — [Functions.md](Functions.md#access-predicates)). |
 | `projects.has_stage_access(uuid)`   | The paying side (owner / active client-business member), or live talent assigned to **that stage**.                |
 | `projects.can_review_project(uuid)` | Owner, or an active member of the paying client business. The "client viewer" authority.                           |
+| `projects.can_manage_project_members(uuid)` | `can_review_project`, or a person-participant whose role is `admin` / `manager`. **Staffing authority** — invitations, requests and invite links (Decision #145). |
 | `projects.is_protected_phase(uuid)` | The project is before its Projective Unlock. Defaults **true** for an unknown id, so the PII filter fails to mask. |
 
 ---
@@ -232,6 +233,12 @@ expression to `USING` and `WITH CHECK` only when both are present; with `USING` 
 take their own row and rewrite `user_id` to somebody else's in the same statement, silently starring
 a project on another account.
 
+### `projects.view_reads`
+
+_Manage own lane read marks_ — `FOR ALL` with `USING (user_id = auth.uid())` and `WITH CHECK (user_id =
+auth.uid() AND projects.has_project_access(project_id))`: a read mark is a fact about the caller's own
+attention, and one cannot be planted on an engagement the caller cannot open (Decision #146).
+
 ### `projects.project_required_skills`
 
 | Policy                          | Command  | Rule                                      |
@@ -247,8 +254,8 @@ requirement list is what it is recruiting for, while a draft's stays as private 
 
 | Policy                                 | Command  | Rule                                                                                                            |
 | :------------------------------------- | :------- | :-------------------------------------------------------------------------------------------------------------- |
-| _View invitations as owner or invitee_ | `SELECT` | Project owner, **or** `target_user_id = auth.uid()`, **or** `target_email` matches one of the caller's own **verified** `org.user_emails` rows (`verified_at IS NOT NULL`, case-insensitive). |
-| _Owner manages invitations_            | `ALL`    | Project owner on both arms, and `inviter_user_id = auth.uid()` on the check.                                    |
+| _View invitations as owner or invitee_ | `SELECT` | `can_manage_project_members(project_id)` (Decision #145), **or** `target_user_id = auth.uid()`, **or** `target_email` matches one of the caller's own **verified** `org.user_emails` rows (`verified_at IS NOT NULL`, case-insensitive). |
+| _Owner manages invitations_            | `ALL`    | Project owner on both arms, and `inviter_user_id = auth.uid()` on the check. A delegate writes only through the definer doors (`invite_to_project`, `invite_by_email`, `act_on_invitation`), which cannot be used to rewrite a row's role or token. |
 
 🚨 **Never a blanket read.** `token` is the capability: whoever holds the value can accept and be
 granted the role the row names. RLS is row-level, so a policy that admits a row admits its token,
@@ -256,7 +263,7 @@ and there is no column-level fallback while `00002500` grants the whole table to
 permissive `SELECT` here is not a disclosure of who was invited, it is a grant of project access to
 everyone with an account.
 
-Two readers, and only two. An EMAIL-addressed invitee may have had no account at invite time, so
+Two readers, and only two: the project's staffing authority, and the invitee. An EMAIL-addressed invitee may have had no account at invite time, so
 that identity join goes through `org.user_emails`. Its own-rows-only policy does **not** protect this
 join: `org.user_emails` has a client `INSERT` policy, so any caller can add an arbitrary address to
 their own row, and without the `verified_at IS NOT NULL` arm asserting the invited address was enough
@@ -267,6 +274,16 @@ FK the owner wrote, not a value the reader can assert. Verified by execution: th
 exactly their identity-addressed rows and not the project's email-addressed ones; a stranger sees
 zero. Compared case-insensitively, because an email address is: an invitation that silently fails
 to match its own recipient is indistinguishable from one that was never sent.
+
+### `projects.stage_invite_links`
+
+| Policy                             | Command  | Rule                                         |
+| :--------------------------------- | :------- | :------------------------------------------- |
+| _Managers view stage invite links_ | `SELECT` | `can_manage_project_members(project_id)`.    |
+
+The token is the capability to ASK to join a stage — redeeming it files a request and seats nobody —
+so it is still never a blanket read. No write policy: minting, resetting, revoking and redeeming are
+the definer doors in `00001135` §4 (Decision #145).
 
 ---
 
@@ -280,7 +297,7 @@ to match its own recipient is indistinguishable from one that was never sent.
 | `projects.stage_staffing_roles`           | Owner, or public-active project.                         | Owner (`FOR ALL`).                          |
 | `projects.stage_budget_rules`             | Owner, or public-active project.                         | Owner (`FOR ALL`).                          |
 | `projects.project_participants`           | Owner, or public-active project.                         | Owner (`FOR ALL`).                          |
-| `projects.project_applications`           | The applicant, or `can_review_project`.                  | Definer RPCs only.                          |
+| `projects.project_applications`           | The applicant, or `can_manage_project_members`.          | Definer RPCs only.                          |
 | `projects.project_application_targets`    | Follows the parent application.                          | Definer RPCs only.                          |
 | `projects.stage_revision_requests`        | Requester, or project owner.                             | Requester (`FOR ALL`).                      |
 | `projects.ticket_workload_reports`        | Reporter, project owner, or project access.              | `INSERT` by the assignee only.              |
@@ -378,10 +395,11 @@ and at least one policy in `00002011`; none is RLS-off and none is RLS-on with z
 | `cohorts`                     |        2 | `cohort_memberships`        |        2 |
 | `session_events`              |        2 | `session_attendance`        |        2 |
 | `waitlists`                   |        4 | `maintenance_contracts`     |        1 |
+| `stage_invite_links`          |        1 | `view_reads`                |        1 |
 
 Tables whose only writes are definer functions (no client write policy, by design): `ticket_history`,
 `project_applications`, `project_application_targets`, `stage_open_seat_skills`,
-`project_status_history`.
+`project_status_history`, `stage_invite_links`.
 
 **Policy defects.**
 

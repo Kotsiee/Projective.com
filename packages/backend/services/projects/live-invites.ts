@@ -27,12 +27,11 @@ import type {
  * - **Issuing** an invitation goes through `projects.invite_to_project`, a DEFINER RPC, because the
  *   row and the `stage.invite` notification that announces it have to land in ONE transaction and
  *   `comms.fn_notify` is reachable only from a definer context (00002510 grants it to `service_role`
- *   alone). The RPC checks project ownership itself and DERIVES `placeholder`, so nothing this module
- *   sends can mark a live project's invitation as unpriced.
- * - **Cancel** and **dismiss** are plain UPDATEs under the caller's own RLS (`Owner manages
- *   invitations`, FOR ALL). Under RLS an UPDATE whose `USING` arm matches nothing affects ZERO rows
- *   and raises NOTHING, so every write here selects its id back and treats an empty result as a
- *   refusal rather than a success — the `notWritten` rule of `live-writes.ts`.
+ *   alone). The RPC checks staffing authority itself (`can_manage_project_members`) and DERIVES
+ *   `placeholder`, so nothing this module sends can mark a live project's invitation as unpriced.
+ * - **Cancel** and **dismiss** go through `projects.act_on_invitation`, a DEFINER RPC, because an
+ *   admin or manager may perform them (Decision #145) and the direct-write policy is the owner's
+ *   alone: a delegate holding UPDATE on the row could rewrite its role or token.
  * - **A forced decision** calls `projects.fn_apply_invitation_decision` through the SERVICE-ROLE
  *   client — the ONE implementation of an acceptance, the same body the invitee's own
  *   `respond_to_project_invitation` runs. It has no client grant on purpose (a caller-supplied actor
@@ -141,7 +140,7 @@ export async function resolveHandle(
 	return exact?.user_id ?? null;
 }
 
-/** The refusal an RLS-filtered write deserves — see the module docblock. */
+/** The refusal for a write this caller may not make, worded so it names no table or row. */
 function notWritten(field: string): WriteRefusal {
 	return {
 		status: 403,
@@ -336,12 +335,15 @@ function placeholderRow(id: string, input: HireInvitation, nowMs: number): Membe
 // #region Cancel · dismiss
 
 /**
- * Cancel a pending offer (`status → revoked`) or dismiss an answered/lapsed record (`dismissed_at`).
+ * Cancel a pending offer (`status → revoked`) or dismiss an answered/lapsed record (`dismissed_at`)
+ * through `projects.act_on_invitation`, the definer door an admin or manager shares with the owner
+ * (Decision #145).
  *
- * The status the row is in decides which write is legal, and the WHERE clause restates it so a
- * stale client — one that rendered "Dismiss" on a row the invitee has since accepted — updates zero
- * rows and is told so, instead of hiding a member's record. A revoked pending offer is the client
- * withdrawing before an answer; nothing about it starts a cooldown.
+ * The status the row is in decides which act is legal. It is checked here first, against the row as
+ * the caller's RLS returns it, so the common refusals carry their field codes; the function checks
+ * it again under a row lock, so a stale client — one that rendered "Dismiss" on a row the invitee has
+ * since accepted — is refused rather than hiding a member's record. A revoked pending offer is the
+ * client withdrawing before an answer; nothing about it starts a cooldown.
  */
 export async function applyInviteAction(
 	actor: ReadActor & { accessToken: string },
@@ -349,52 +351,36 @@ export async function applyInviteAction(
 ): Promise<WriteOutcome<MemberInvite | null>> {
 	const project = await resolveProject(actor, input.projectId);
 	if (!project) return null;
-	const db = projectsDb(actor);
 	const invite = await resolveInvite(actor, project.id, input.inviteId);
 	if (!invite) return null;
 
-	if (input.action === "cancel") {
-		if (invite.status !== "pending") {
-			return {
-				refusal: {
-					status: 409,
-					message:
-						`This invitation has already been ${invite.status}; it can no longer be cancelled.`,
-					errors: { inviteId: "not_pending" },
-				},
-			};
-		}
-		const { data, error } = await db
-			.from("project_invitations")
-			.update({ status: "revoked" })
-			.eq("id", invite.id)
-			.eq("status", "pending")
-			.select("id");
-		if (error) return { refusal: refusalFrom(error.message, "inviteId") };
-		if (!data || data.length === 0) return { refusal: notWritten("inviteId") };
-		return { data: null };
-	}
-
-	// dismiss
-	if (invite.status === "pending") {
+	if (input.action === "cancel" && invite.status !== "pending") {
 		return {
 			refusal: {
 				status: 409,
-				message: "An open invitation is cancelled, not dismissed.",
-				errors: { inviteId: "still_pending" },
+				message: `This invitation has already been ${invite.status}; it can no longer be cancelled.`,
+				errors: { inviteId: "not_pending" },
 			},
 		};
 	}
-	if (invite.dismissed_at) return { data: null };
-	const { data, error } = await db
-		.from("project_invitations")
-		.update({ dismissed_at: new Date().toISOString() })
-		.eq("id", invite.id)
-		.neq("status", "pending")
-		.is("dismissed_at", null)
-		.select("id");
+	if (input.action === "dismiss") {
+		if (invite.status === "pending") {
+			return {
+				refusal: {
+					status: 409,
+					message: "An open invitation is cancelled, not dismissed.",
+					errors: { inviteId: "still_pending" },
+				},
+			};
+		}
+		if (invite.dismissed_at) return { data: null };
+	}
+
+	const { error } = await projectsDb(actor).rpc("act_on_invitation", {
+		p_invitation_id: invite.id,
+		p_action: input.action,
+	});
 	if (error) return { refusal: refusalFrom(error.message, "inviteId") };
-	if (!data || data.length === 0) return { refusal: notWritten("inviteId") };
 	return { data: null };
 }
 

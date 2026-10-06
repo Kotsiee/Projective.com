@@ -16,6 +16,7 @@ import type {
 	SessionAttendance,
 	StageAssignment,
 } from "@projective/types/projects";
+import { OVERSIGHT_ROLES, stageAssignmentOf } from "@projective/types/projects";
 import {
 	clamp,
 	clampOr,
@@ -120,7 +121,7 @@ const INVITATION_COLUMNS =
 
 /** The `projects.project_applications` columns one request needs, with its target rows embedded. */
 const APPLICATION_COLUMNS =
-	"id, applicant_user_id, applicant_type, message, created_at, project_application_targets(target_type, target_id)";
+	"id, applicant_user_id, applicant_type, message, created_at, invite_link_id, project_application_targets(target_type, target_id)";
 
 /**
  * The `projects.stage_assignments.status` values that mean the seat is HELD.
@@ -158,14 +159,6 @@ const OPEN_TICKET_STATUS: readonly string[] = [
 	"in_progress",
 	"in_review",
 ];
-
-/** The roles that oversee an engagement rather than deliver on it. Drives caps AND visibility. */
-const LEADERSHIP_ROLES: ReadonlySet<MemberRole> = new Set<MemberRole>([
-	"client",
-	"owner",
-	"admin",
-	"manager",
-]);
 
 /** Display order for the roster: authority first, then delivery, then read-limited observers. */
 const ROLE_RANK: Record<MemberRole, number> = {
@@ -293,6 +286,8 @@ interface ApplicationRow {
 	applicant_type: string;
 	message: string | null;
 	created_at: string;
+	/** The stage invite link the request arrived through, or null for a listing application. */
+	invite_link_id: string | null;
 	project_application_targets: { target_type: string; target_id: string }[] | null;
 }
 
@@ -400,7 +395,7 @@ function toFormat(raw: string | null | undefined): ProjectFormat {
  * refused.
  */
 function capsFor(role: MemberRole): MemberViewerCaps {
-	const manages = LEADERSHIP_ROLES.has(role);
+	const manages = OVERSIGHT_ROLES.has(role);
 	return {
 		canManage: manages,
 		canInvite: manages,
@@ -795,6 +790,7 @@ async function fetchApplications(
 			message: row.message ? clamp(row.message, 4000) : null,
 			appliedAt,
 			appliedLabel: clamp(agoLabel(appliedAt, nowMs), 28),
+			viaInviteLink: !!row.invite_link_id,
 		};
 	});
 }
@@ -926,11 +922,12 @@ function mergeParticipants(
  * observe, and in project scope the per-stage picture is exactly what `assignedStages` summarises
  * instead.
  *
- * Within a stage channel every project participant is treated as PRESENT, and a non-assignee is an
- * `observer` rather than absent. `comms.project_channel_participants` exists but cannot answer the
- * membership question: it is keyed by `(profile_type, profile_id)` — a profile, not a user — carries
- * no `user_id`, and is consulted by no policy, which is the same reason `live-support` gives for the
- * project side having no unread signal.
+ * Within a stage channel the assignment follows `stageAssignmentOf` (Decision #145): an assignee is a
+ * `contributor`, unassigned oversight an `observer`, and anyone else `null` — a project participant
+ * who can view the stage but not act on it, whom `fetchMemberRoster` then leaves off the stage's
+ * roster. `comms.project_channel_participants` cannot answer the membership question: it is keyed by
+ * `(profile_type, profile_id)` — a profile, not a user — carries no `user_id`, and is consulted by no
+ * policy, which is the same reason `live-support` gives for the project side having no unread signal.
  *
  * A user id with no `org.users_public` row keeps its seat under the "Unknown" placeholder `partyOf`
  * already draws. That absence is a real state (RLS can withhold a public profile from a viewer who can
@@ -965,8 +962,9 @@ function buildRows(
 		};
 		const isViewer = viewerUserId.length > 0 && userId === viewerUserId;
 
-		let assignment: StageAssignment | null = null;
-		if (channelStageId) assignment = held?.has(channelStageId) ? "contributor" : "observer";
+		const assignment: StageAssignment | null = channelStageId
+			? stageAssignmentOf(role, held?.has(channelStageId) ?? false)
+			: null;
 
 		const row: ProjectMemberRow = {
 			id,
@@ -1024,7 +1022,7 @@ function visibleTo(
 	return entries
 		.filter(({ row }) => {
 			if (row.isViewer) return true;
-			if (LEADERSHIP_ROLES.has(row.role)) return true;
+			if (OVERSIGHT_ROLES.has(row.role)) return true;
 			// An unassigned contributor has no colleagues to see — only the people who can hire them.
 			if (!viewerAssigned) return false;
 			if (publicChannel) return true;
@@ -1152,8 +1150,13 @@ export async function fetchMemberRoster(
 		? self?.row.assignment === "contributor"
 		: viewerStages.length > 0;
 
+	// A stage's roster is the people who can act on that stage (Decision #145); the viewer's own role
+	// was read from the unfiltered list above, so leaving them off it changes what they see, not who
+	// they are.
+	const rostered = channelStageId ? entries.filter((entry) => entry.row.assignment !== null) : entries;
+
 	const members = visibleTo(
-		entries,
+		rostered,
 		viewerCaps,
 		viewerAssigned,
 		scope,
@@ -1192,8 +1195,8 @@ export async function fetchMemberRoster(
 		viewerId: self ? clamp(self.row.id, 120) : "",
 		viewerRole,
 		viewerCaps,
-		// Deliberately the unfiltered count — see `visibleTo`.
-		total: entries.length,
+		// Deliberately the count before `visibleTo` narrows it, and after a stage scopes it.
+		total: rostered.length,
 	};
 }
 

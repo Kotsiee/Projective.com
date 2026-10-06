@@ -1,10 +1,11 @@
 import { cloneElement, type JSX } from "preact";
 import { landingFor } from "@projective/types/projects";
-import type { ProjectDetail, ProjectFormat } from "../types/projects-types.ts";
+import type { ProjectDetail, ProjectFormat, ProjectNavActivity } from "../types/projects-types.ts";
 import { IconShell } from "@projective/ui/icons";
 import { ChatIcon, FilesIcon } from "./channel-glyphs.tsx";
 import { discussionLinkOf } from "../core/chat-context.ts";
 import { isTaskDetail } from "../core/task-project.ts";
+import { type ProjectViewStatus, viewStatusOf } from "../core/nav-activity-model.ts";
 
 /**
  * Project Details sidebar glyphs — minimal 1em `currentColor` stroke icons for the deep single-project
@@ -255,11 +256,11 @@ export interface ProjectViewLink {
 	 */
 	prefix?: boolean;
 	/**
-	 * The link's status mark — something under it is awaiting the viewer (§D.1: a dot, never a count).
-	 * `label` is what the dot means, spoken in the link's accessible name and shown in the collapsed
-	 * rail's tooltip; `null` when there is nothing to report.
+	 * The link's activity mark — something under it changed since the viewer last opened it: a dot, or
+	 * a plain figure where the number is what the reader acts on (Decision #146). `label` is spoken in
+	 * the link's accessible name and shown in the collapsed rail's tooltip; `null` when nothing waits.
 	 */
-	status: { label: string } | null;
+	status: ProjectViewStatus | null;
 }
 
 /**
@@ -287,21 +288,26 @@ export interface ProjectViewLink {
  * ({@link discussionLinkOf}) rather than a link to "no such channel". On every other type Details is
  * the owner's lane-footer utility (and the Discussion's Details tab), not a view of the work.
  *
- * The status marks are the projection's own facts, never invented: the discussion room's unread; a
- * stage with a new ticket on the Board; a stage whose submission came back for revision on Submissions.
+ * The status marks are the viewer's own activity ({@link ProjectNavActivity} — per view, since they
+ * last opened it), never invented here. Details and Calendar carry none.
  */
 export function projectViewLinks(
 	detail: ProjectDetail,
+	activity: ProjectNavActivity,
 	sessionKind: "none" | "normal" | "group" = "none",
 ): ProjectViewLink[] {
 	const archetype = projectNavArchetype(detail, sessionKind);
-	const stages = detail.channels.stages;
-	const anyStage = (activity: string) => stages.some((s) => s.activity === activity);
 	// Only where the root would SHOW the Overview: on the owner's draft it forwards to `/details`, so the
 	// link would lead straight back to the page it was pressed on (root CLAUDE.md §3 gate 11).
 	const links: ProjectViewLink[] =
 		landingFor(detail.viewerAccess, detail.status).kind === "overview"
-			? [{ key: "overview", label: "Overview", icon: OverviewIcon, seg: "", status: null }]
+			? [{
+				key: "overview",
+				label: "Overview",
+				icon: OverviewIcon,
+				seg: "",
+				status: viewStatusOf("overview", activity),
+			}]
 			: [];
 
 	const discussion = discussionLinkOf(detail);
@@ -312,7 +318,7 @@ export function projectViewLinks(
 			icon: ChatIcon,
 			seg: discussion.ref,
 			prefix: true,
-			status: discussion.unread ? { label: "unread messages" } : null,
+			status: viewStatusOf("discussion", activity),
 		});
 	}
 	if (archetype === "task" && detail.viewerIsClient) {
@@ -331,7 +337,7 @@ export function projectViewLinks(
 			label: "Board",
 			icon: PipelineIcon,
 			seg: "board",
-			status: anyStage("new_ticket") ? { label: "new tickets" } : null,
+			status: viewStatusOf("board", activity),
 		});
 	}
 	if (archetype === "one_off") {
@@ -340,7 +346,7 @@ export function projectViewLinks(
 			label: "Timeline",
 			icon: TimelineIcon,
 			seg: "timeline",
-			status: null,
+			status: viewStatusOf("timeline", activity),
 		});
 	}
 	if (archetype === "session") {
@@ -352,7 +358,13 @@ export function projectViewLinks(
 			status: null,
 		});
 	}
-	links.push({ key: "files", label: "Files", icon: FilesIcon, seg: "files", status: null });
+	links.push({
+		key: "files",
+		label: "Files",
+		icon: FilesIcon,
+		seg: "files",
+		status: viewStatusOf("files", activity),
+	});
 	if (archetype !== "session") {
 		links.push({
 			key: "submissions",
@@ -361,10 +373,16 @@ export function projectViewLinks(
 			seg: "submissions",
 			// Submissions is a WILDCARD route: a stage, a submitter and a unit are pages beneath it.
 			prefix: true,
-			status: anyStage("revision_requested") ? { label: "revision requested" } : null,
+			status: viewStatusOf("submissions", activity),
 		});
 	}
-	links.push({ key: "members", label: "Members", icon: MembersIcon, seg: "members", status: null });
+	links.push({
+		key: "members",
+		label: "Members",
+		icon: MembersIcon,
+		seg: "members",
+		status: viewStatusOf("members", activity),
+	});
 	return links;
 }
 

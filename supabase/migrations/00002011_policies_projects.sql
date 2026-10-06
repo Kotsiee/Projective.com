@@ -836,7 +836,7 @@ CREATE POLICY "View seat skills" ON projects.stage_open_seat_skills FOR SELECT T
 CREATE POLICY "View own or owned applications" ON projects.project_applications FOR
 SELECT TO public USING (
         applicant_user_id = auth.uid ()
-        OR projects.can_review_project (project_id)
+        OR projects.can_manage_project_members (project_id)
     );
 
 CREATE POLICY "View application targets" ON projects.project_application_targets FOR
@@ -848,7 +848,7 @@ SELECT TO public USING (
                 pa.id = project_application_targets.application_id
                 AND (
                     pa.applicant_user_id = auth.uid ()
-                    OR projects.can_review_project (pa.project_id)
+                    OR projects.can_manage_project_members (pa.project_id)
                 )
         )
     );
@@ -901,6 +901,18 @@ CREATE POLICY "Manage own project preferences" ON projects.user_preferences FOR 
 WITH
     CHECK (user_id = auth.uid ());
 
+-- --- view_reads: one person's own lane read marks ---
+--
+-- Same shape and reasoning as user_preferences: a read mark is a fact about the
+-- caller's own attention, never another user's. Writing one also requires access to
+-- the engagement, so a mark cannot be planted on a project the caller cannot open.
+CREATE POLICY "Manage own lane read marks" ON projects.view_reads FOR ALL TO authenticated USING (user_id = auth.uid ())
+WITH
+    CHECK (
+        user_id = auth.uid ()
+        AND projects.has_project_access (project_id)
+    );
+
 -- --- project_required_skills: the staffing requirement list ---
 --
 -- Readable by anyone who can reach the project, because the requirement is part
@@ -941,8 +953,10 @@ WITH
 -- `authenticated`. A permissive SELECT here is not a disclosure of who was
 -- invited, it is a grant of project access to everyone with an account.
 --
--- Two readers, and only two: the project owner, who issued the invitations and
--- has to manage them, and the invited identity, resolved by matching
+-- Two readers, and only two: the project's staffing authority
+-- (`can_manage_project_members` — the owner, the client business, a delegated
+-- admin or manager), who issue the invitations and have to manage them, and the
+-- invited identity, resolved by matching
 -- `target_email` against the caller's own verified addresses. The invitee is
 -- addressed by email precisely because at invite time they may have no account,
 -- so the identity join has to go through org.user_emails — which carries its own
@@ -951,17 +965,14 @@ WITH
 -- address is, and an invitation that silently fails to match its own recipient is
 -- indistinguishable from one that was never sent.
 --
--- Writes are the owner's alone: issuing, revoking and expiring an invitation are
--- all acts of granting or withdrawing access to their project.
+-- Direct writes are the owner's alone: issuing, revoking and expiring an
+-- invitation are acts of granting or withdrawing access to their project. A
+-- delegate reaches the same acts only through the definer doors
+-- (`invite_to_project`, `invite_by_email`, `act_on_invitation`), which can
+-- refuse what a raw UPDATE could not — rewriting a row's role or token.
 CREATE POLICY "View invitations as owner or invitee" ON projects.project_invitations FOR
 SELECT TO authenticated USING (
-        EXISTS (
-            SELECT 1
-            FROM projects.projects p
-            WHERE
-                p.id = project_invitations.project_id
-                AND p.owner_user_id = auth.uid ()
-        )
+        projects.can_manage_project_members (project_id)
         -- An identity-addressed invitation (a hire from a profile, Decision #108) names its invitee
         -- directly, so the invitee reads their own row with no email join at all — and only their
         -- own: `target_user_id` is a FK the owner wrote, not a value the reader can assert.
@@ -986,6 +997,16 @@ SELECT TO authenticated USING (
                 -- someone else's address, and this attack writes your own.
                 AND ue.verified_at IS NOT NULL
         )
+    );
+
+-- --- stage_invite_links: the staffing authority reads its stages' links ---
+--
+-- The token is the capability to ASK to join (redeeming files a request, never a
+-- seat), so it is still never a blanket read. No write policy: every write is a
+-- definer door in 00001135 §4.
+CREATE POLICY "Managers view stage invite links" ON projects.stage_invite_links FOR
+SELECT TO authenticated USING (
+        projects.can_manage_project_members (project_id)
     );
 
 CREATE POLICY "Owner manages invitations" ON projects.project_invitations FOR ALL TO authenticated USING (

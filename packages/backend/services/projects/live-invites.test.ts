@@ -517,12 +517,11 @@ Deno.test("insertInvitations THROWS when the project lookup itself fails (outage
 // #endregion
 
 // #region applyInviteAction
-Deno.test("applyInviteAction cancels a pending invitation with a status-guarded UPDATE", async () => {
-	const keyRow = invitationRow();
+Deno.test("applyInviteAction cancels a pending invitation through act_on_invitation", async () => {
 	await withPostgrest({
 		"projects.projects": [PROJECT_ROW],
-		"projects.project_invitations": (req: FakeRequest) =>
-			req.method === "PATCH" ? [{ id: INVITE_ID }] : [keyRow],
+		"projects.project_invitations": [invitationRow()],
+		"projects.rpc.act_on_invitation": { id: INVITE_ID, action: "cancel", changed: true },
 	}, async (calls) => {
 		const outcome = await applyInviteAction(OWNER, {
 			projectId: SLUG,
@@ -530,37 +529,39 @@ Deno.test("applyInviteAction cancels a pending invitation with a status-guarded 
 			action: "cancel",
 		});
 		assertEquals(outcome, { data: null });
-		const patch = calls.find((c) => c.method === "PATCH");
-		assert(patch);
-		assertEquals(patch.body, { status: "revoked" });
-		assertEquals(filterOf(patch, "status"), "eq.pending");
+		const rpc = calls.find((c) => c.rpc && c.name === "act_on_invitation");
+		assert(rpc);
+		assertEquals(rpc.body, { p_invitation_id: INVITE_ID, p_action: "cancel" });
+		assertEquals(calls.some((c) => c.method === "PATCH"), false);
 	});
 });
 
-Deno.test("applyInviteAction: an UPDATE that RLS filtered to zero rows is a 403, not a success", async () => {
+Deno.test("applyInviteAction dismisses an answered record through act_on_invitation", async () => {
 	await withPostgrest({
 		"projects.projects": [PROJECT_ROW],
-		"projects.project_invitations": (req: FakeRequest) =>
-			req.method === "PATCH" ? [] : [invitationRow()],
-	}, async () => {
+		"projects.project_invitations": [invitationRow({ status: "declined" })],
+		"projects.rpc.act_on_invitation": { id: INVITE_ID, action: "dismiss", changed: true },
+	}, async (calls) => {
 		const outcome = await applyInviteAction(OWNER, {
 			projectId: SLUG,
 			inviteId: INVITE_ID,
-			action: "cancel",
+			action: "dismiss",
 		});
-		assert(outcome && "refusal" in outcome);
-		assertEquals(outcome.refusal.status, 403);
-		assertEquals(outcome.refusal.errors, { inviteId: "not_permitted" });
+		assertEquals(outcome, { data: null });
+		const rpc = calls.find((c) => c.rpc && c.name === "act_on_invitation");
+		assertEquals(rpc?.body, { p_invitation_id: INVITE_ID, p_action: "dismiss" });
 	});
 });
 
-Deno.test("applyInviteAction maps an UPDATE error to a refusal rather than throwing", async () => {
+Deno.test("applyInviteAction maps a refused act_on_invitation to a refusal rather than throwing", async () => {
 	await withPostgrest({
 		"projects.projects": [PROJECT_ROW],
-		"projects.project_invitations": (req: FakeRequest) =>
-			req.method === "PATCH"
-				? pgFail("42501", "new row violates row-level security policy: insufficient_privilege", 403)
-				: [invitationRow()],
+		"projects.project_invitations": [invitationRow()],
+		"projects.rpc.act_on_invitation": pgFail(
+			"42501",
+			"Only the project owner, an admin or a manager may invite people to it.",
+			403,
+		),
 	}, async () => {
 		const outcome = await applyInviteAction(OWNER, {
 			projectId: SLUG,

@@ -105,7 +105,7 @@ export function StageRunBlock(
 	const delivered = stages.filter((s) => s.state === "delivered").length;
 	const showState = new Set(stages.map((s) => s.state)).size > 1;
 	return (
-		<Block title="Stages">
+		<Block title="Stages" region="stages">
 			<p class="pjd-run__summary">
 				{delivered} of {stages.length} {stages.length === 1 ? "stage" : "stages"} delivered
 			</p>

@@ -4,7 +4,7 @@
 -- GENERATED FILE — do not edit by hand. Regenerate with:
 --   deno run --allow-read --allow-write --allow-env supabase/seeds/generate.ts
 --
--- A project gets a General room plus one `stage_all` room per stage (the rooms comms.get_stage_channels would otherwise provision lazily). DM read state is per participant: `last_read_at` before the last message means unread.
+-- A project gets a Discussion room plus one `stage_all` room per stage (the rooms comms.get_stage_channels would otherwise provision lazily). DM read state is per participant: `last_read_at` before the last message means unread.
 --
 -- Every insert is ON CONFLICT DO NOTHING and every id is derived deterministically from a natural
 -- key, so this file is idempotent: running it twice, or against a partially-seeded database, is safe.
@@ -13,28 +13,28 @@
 
 INSERT INTO comms.project_channels (id, project_id, name, stage_id, visibility, created_at)
 VALUES
-  ('17b756ff-3897-4f62-ac20-5415c78cfea8', 'f64b99ba-0ab3-4c4f-ac7b-5a88f2577625', 'General', NULL, 'project_all', now() - interval '504 hours'),
+  ('17b756ff-3897-4f62-ac20-5415c78cfea8', 'f64b99ba-0ab3-4c4f-ac7b-5a88f2577625', 'Discussion', NULL, 'project_all', now() - interval '504 hours'),
   ('22bef015-fc59-475a-ad8e-27777ec1566c', 'f64b99ba-0ab3-4c4f-ac7b-5a88f2577625', 'Discovery and research', 'faa19a6c-a1b2-4453-a0a6-bf02a933dd81', 'stage_all', now() - interval '504 hours'),
   ('495f41c8-f456-4303-a9d9-06eed7f97a09', 'f64b99ba-0ab3-4c4f-ac7b-5a88f2577625', 'UX and flows', 'fda19f25-a2b2-45e6-afa6-bd6fa633d8c8', 'stage_all', now() - interval '504 hours'),
   ('a37afc9f-5159-421c-a3c4-7d6d95ddc36a', 'f64b99ba-0ab3-4c4f-ac7b-5a88f2577625', 'Visual design and handoff', 'fca19d92-a3b2-4779-aea6-bbdca733da5b', 'stage_all', now() - interval '504 hours'),
-  ('e7a7fb3a-076f-46c5-ae72-1d602dbe806b', '7f930a97-cfa8-4784-a7d0-61c913c2f3ce', 'General', NULL, 'project_all', now() - interval '1080 hours'),
+  ('e7a7fb3a-076f-46c5-ae72-1d602dbe806b', '7f930a97-cfa8-4784-a7d0-61c913c2f3ce', 'Discussion', NULL, 'project_all', now() - interval '1080 hours'),
   ('61b801e2-3216-4427-ac88-fd94aad73bd1', '7f930a97-cfa8-4784-a7d0-61c913c2f3ce', 'Data model and ingestion', '2a5614e5-7032-4b5c-a46f-12ebe434fde2', 'stage_all', now() - interval '1080 hours'),
   ('41a1be4b-c5db-439e-a9b6-33b143cb2134', '7f930a97-cfa8-4784-a7d0-61c913c2f3ce', 'Dashboard build', '2756102c-7332-4015-a56f-147ee334fc4f', 'stage_all', now() - interval '1080 hours'),
   ('51608bc4-f203-40dd-a299-d3f20b8e9f3b', '7f930a97-cfa8-4784-a7d0-61c913c2f3ce', 'Rollout and documentation', '285611bf-7232-4e82-a66f-1611e234fabc', 'stage_all', now() - interval '1080 hours'),
-  ('8b20a518-937b-48c3-aad4-75ae1aa74561', '8fc13e15-5051-4c3c-af74-82ef238f210e', 'General', NULL, 'project_all', now() - interval '384 hours'),
+  ('8b20a518-937b-48c3-aad4-75ae1aa74561', '8fc13e15-5051-4c3c-af74-82ef238f210e', 'Discussion', NULL, 'project_all', now() - interval '384 hours'),
   ('f3ecd71c-6e93-4df9-ad6b-b8a66e087f83', '8fc13e15-5051-4c3c-af74-82ef238f210e', 'Brand refresh delivery', '1df76187-f9b7-4c96-abc4-cd4dc4f456b4', 'stage_all', now() - interval '384 hours'),
-  ('01614cc7-3612-47a0-a03a-dbddc112cac6', '4a9f7c1e-0c3f-462f-a67e-0ce833290759', 'General', NULL, 'project_all', now() - interval '144 hours'),
+  ('01614cc7-3612-47a0-a03a-dbddc112cac6', '4a9f7c1e-0c3f-462f-a67e-0ce833290759', 'Discussion', NULL, 'project_all', now() - interval '144 hours'),
   ('9efc842d-69b2-4ed4-a742-9e2ffdc1a6ce', '4a9f7c1e-0c3f-462f-a67e-0ce833290759', 'Architecture and design', '3106f13e-a74c-4e83-aafc-625c843f9801', 'stage_all', now() - interval '144 hours'),
   ('97edcfc0-6543-48f1-a398-0fc6926ec657', '4a9f7c1e-0c3f-462f-a67e-0ce833290759', 'iOS build', '3006efab-a84c-4016-adfc-6715813f9348', 'stage_all', now() - interval '144 hours'),
   ('80b8a237-7016-4b32-a914-da65b1cc3f60', '4a9f7c1e-0c3f-462f-a67e-0ce833290759', 'Android build', '2f06ee18-a94c-41a9-acfc-6582823f94db', 'stage_all', now() - interval '144 hours'),
   ('8898dc12-b7a6-4057-abf8-254c400c3ef1', '4a9f7c1e-0c3f-462f-a67e-0ce833290759', 'QA and release', '3606f91d-aa4c-433c-a7fc-5da3873f9cba', 'stage_all', now() - interval '144 hours'),
-  ('e0adf9af-6ff2-46a8-a22f-e909cbc6b5da', 'af6c1867-2b94-49f4-ad1f-12c10c4ab616', 'General', NULL, 'project_all', now() - interval '1200 hours'),
+  ('e0adf9af-6ff2-46a8-a22f-e909cbc6b5da', 'af6c1867-2b94-49f4-ad1f-12c10c4ab616', 'Discussion', NULL, 'project_all', now() - interval '1200 hours'),
   ('66a96145-475b-4e6c-a442-e23bec8564c2', 'af6c1867-2b94-49f4-ad1f-12c10c4ab616', 'Tokens and foundations', '8ca74d22-728b-47ff-a528-acf449954ed9', 'stage_all', now() - interval '1200 hours'),
   ('459a77f8-a093-4209-afd0-7a92266c5b2b', 'af6c1867-2b94-49f4-ad1f-12c10c4ab616', 'Core components', '8ba74b8f-738b-4992-a828-b1ad46954a20', 'stage_all', now() - interval '1200 hours'),
   ('fdc7f40f-5e77-4b6a-a38b-7ed1dff32424', 'af6c1867-2b94-49f4-ad1f-12c10c4ab616', 'Documentation site', '8aa749fc-748b-4b25-a728-b01a47954bb3', 'stage_all', now() - interval '1200 hours'),
-  ('8ed2ca3a-da90-408d-a05f-0a3cdfa87baf', '5210c27e-66e4-45c1-a142-01dcaf55d1d7', 'General', NULL, 'project_all', now() - interval '216 hours'),
+  ('8ed2ca3a-da90-408d-a05f-0a3cdfa87baf', '5210c27e-66e4-45c1-a142-01dcaf55d1d7', 'Discussion', NULL, 'project_all', now() - interval '216 hours'),
   ('9fbcaee2-8070-4b5f-aa85-c280e7886745', '5210c27e-66e4-45c1-a142-01dcaf55d1d7', 'Site build', 'e0ee3319-8fc2-4698-a9a6-a7239da82cb2', 'stage_all', now() - interval '216 hours'),
-  ('260fdb62-7f6b-4cc7-a5d6-1684d9843151', '65f5e896-28c7-442b-ab08-2f9404d56901', 'General', NULL, 'project_all', now() - interval '48 hours'),
+  ('260fdb62-7f6b-4cc7-a5d6-1684d9843151', '65f5e896-28c7-442b-ab08-2f9404d56901', 'Discussion', NULL, 'project_all', now() - interval '48 hours'),
   ('5b937b5a-4f92-442d-a7d6-3658adcd29b3', '65f5e896-28c7-442b-ab08-2f9404d56901', 'Concepts', 'a86e5ff7-39b0-43a0-a55d-65e1c78ef93a', 'stage_all', now() - interval '48 hours'),
   ('538ff703-4884-4fc0-acfb-06a53be1898a', '65f5e896-28c7-442b-ab08-2f9404d56901', 'Final artwork', 'a96e618a-3cb0-4859-a25d-6128c68ef7a7', 'stage_all', now() - interval '48 hours')
 ON CONFLICT (id) DO NOTHING;
