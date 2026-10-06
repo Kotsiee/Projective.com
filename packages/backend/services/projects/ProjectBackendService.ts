@@ -133,6 +133,11 @@ import type {
 	StageExited,
 	SubmissionReviewed,
 } from "@projective/types/projects";
+import {
+	composeWorkspace,
+	type ProjectWorkspace,
+	type WorkspaceViewer,
+} from "@projective/types/projects";
 
 /**
  * The listing's composed page, from the catalogue snapshot `findItem` resolved it from a line
@@ -2448,6 +2453,49 @@ export class ProjectBackendService {
 		// hide it through the other — otherwise a soft-deleted project stays openable on half its links.
 		if (isStoredArchived(actor, found.id, found.slug, slug)) return noSuchProject(slug);
 		return ok({ overview: overlayOverview(found, slug, actor) });
+	}
+
+	/**
+	 * The engagement's Overview — `/projects/[slug]` for the owner and every participant (Decision
+	 * #144): the base {@link overview} plus "Needs you", the stage run and the people.
+	 *
+	 * COMPOSED from reads this service already answers on both branches rather than queried afresh:
+	 * the overview, the board (the run and every ticket's state), the roster (people and open
+	 * applications) and — for the owner only, who alone is shown prices — the setup. The composition is
+	 * the pure `composeWorkspace`, so the live path and the stub path cannot disagree about what a
+	 * "submission waiting for review" or a "stage that needs a price" is.
+	 *
+	 * The base read is the gate: its miss is this read's miss. Every other source degrades on its own —
+	 * a board or roster that fails arrives as `null`, and that part of the page reads as unknown rather
+	 * than as a confident zero. Kept separate from {@link overview} so a link preview and
+	 * `/api/projects/overview`, which need the hero alone, do not pay for three more reads.
+	 */
+	static async workspace(
+		slug: string,
+		actor: ReadActor,
+		viewer: WorkspaceViewer,
+	): Promise<ServiceResult<{ workspace: ProjectWorkspace }>> {
+		const base = await ProjectBackendService.overview(slug, actor);
+		if (!base.ok || !base.data) {
+			return fail(base.status || 404, {
+				message: base.message ?? `No project found for "${slug}".`,
+			});
+		}
+
+		const [board, roster, setup] = await Promise.all([
+			ProjectBackendService.board({ projectId: slug }, actor),
+			ProjectBackendService.members({ projectId: slug }, actor),
+			viewer === "owner" ? ProjectBackendService.setup(slug, actor) : Promise.resolve(null),
+		]);
+
+		return ok({
+			workspace: composeWorkspace(base.data.overview, {
+				viewer,
+				board: board.ok && board.data ? board.data.page : null,
+				roster: roster.ok && roster.data ? roster.data.page : null,
+				setup: setup && setup.ok && setup.data ? setup.data.setup : null,
+			}),
+		});
 	}
 
 	/**

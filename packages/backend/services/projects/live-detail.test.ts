@@ -473,3 +473,81 @@ Deno.test("fetchProjectDetail THROWS when the channel read fails", async () => {
 	);
 });
 // #endregion
+
+// #region Viewer access (Decision #144)
+const STRANGER_ID = "77777777-7777-4777-8777-777777777777";
+
+/** What a viewer the project does not admit can read of it: the project row, its stages, nothing else. */
+function strangerRoutes(over: Record<string, Route> = {}): Record<string, Route> {
+	return happyRoutes({
+		"projects.project_participants": [],
+		"projects.rpc.get_viewer_hired_teams": [],
+		"comms.project_channels": [],
+		...over,
+	});
+}
+
+Deno.test("access is the database's own predicate, asked with the project's row id", async () => {
+	await withPostgrest(
+		strangerRoutes({ "projects.rpc.has_project_access": true }),
+		async (calls) => {
+			const detail = await fetchProjectDetail(actorOf(STRANGER_ID), SLUG);
+			assert(detail);
+			assertEquals(detail.viewerAccess, "participant");
+			const asked = calls.find((c) => c.rpc && c.name === "has_project_access");
+			assert(asked, "has_project_access was never called");
+			assertEquals(asked.schema, "projects");
+			assertEquals(asked.body, { _project_id: PROJECT_UUID });
+		},
+	);
+});
+
+Deno.test("a viewer the predicate refuses is a prospect, though viewerRole still reads member", async () => {
+	await withPostgrest(
+		strangerRoutes({ "projects.rpc.has_project_access": false }),
+		async () => {
+			const detail = await fetchProjectDetail(actorOf(STRANGER_ID), SLUG);
+			assert(detail);
+			ProjectDetailSchema.parse(detail);
+			assertEquals(detail.viewerAccess, "prospect");
+			assertEquals(detail.viewerIsClient, false);
+		},
+	);
+});
+
+Deno.test("the client side is the owner whatever the predicate answers", async () => {
+	await withPostgrest(happyRoutes({ "projects.rpc.has_project_access": false }), async () => {
+		const detail = await fetchProjectDetail(OWNER, SLUG);
+		assert(detail);
+		assertEquals(detail.viewerAccess, "owner");
+	});
+});
+
+Deno.test("a failed predicate falls back to the seat signals this read holds instead of guessing", async () => {
+	const denied = pgFail("42501", "permission denied", 403);
+	// A hire whose participant row is readable keeps their workspace when the RPC fails…
+	await withPostgrest(happyRoutes({ "projects.rpc.has_project_access": denied }), async () => {
+		const detail = await fetchProjectDetail(actorOf(FREELANCER_ID), SLUG);
+		assert(detail);
+		assertEquals(detail.viewerAccess, "participant");
+	});
+	// …and so does one who can enter a room, the signal left on a private project.
+	await withPostgrest(
+		strangerRoutes({
+			"projects.rpc.has_project_access": denied,
+			"comms.project_channels": [CHANNELS[0]],
+		}),
+		async () => {
+			const detail = await fetchProjectDetail(actorOf(STRANGER_ID), SLUG);
+			assert(detail);
+			assertEquals(detail.viewerAccess, "participant");
+		},
+	);
+	// With no signal at all, a failed predicate leaves a stranger a stranger.
+	await withPostgrest(strangerRoutes({ "projects.rpc.has_project_access": denied }), async () => {
+		const detail = await fetchProjectDetail(actorOf(STRANGER_ID), SLUG);
+		assert(detail);
+		assertEquals(detail.viewerAccess, "prospect");
+	});
+});
+// #endregion

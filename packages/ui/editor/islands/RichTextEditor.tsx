@@ -172,6 +172,29 @@ const LIST_BUTTONS: readonly ToolButton[] = [
 /** The strict allow-list handed to Quill so paste + typing can never introduce another format. */
 const ALLOWED_FORMATS = ["bold", "italic", "underline", "strike", "header", "list"];
 
+/**
+ * Quill's default Tab bindings, switched off by name so Tab and Shift+Tab move focus like they do in
+ * every other field (WCAG 2.1.1, 2.4.3).
+ *
+ * By default Quill takes Tab for itself: `tab` inserts a `\t` into the document, and `indent` /
+ * `outdent` / the code-block pair indent. `indent` and `code-block` are not in {@link ALLOWED_FORMATS},
+ * so the indenting bindings swallowed the key and changed nothing, and `tab` wrote tab characters into
+ * the text — measured on a stage's scope, where a keyboard user tabbing through the form typed sixty of
+ * them, and auto-save would have stored them on the next blur. `remove tab` (Shift+Tab after a `\t`)
+ * goes too: with nothing inserting tabs, it would only ever delete a tab that arrived by paste.
+ *
+ * A binding is dropped by giving its name a falsy value — Quill's keyboard module skips every falsy
+ * entry when it builds the bindings it listens with.
+ */
+const TAB_BINDINGS_OFF = {
+	tab: false,
+	indent: false,
+	outdent: false,
+	"remove tab": false,
+	"indent code-block": false,
+	"outdent code-block": false,
+} as const;
+
 function resolveInitial(value: Bindable<string> | undefined): string {
 	if (value instanceof Signal) return value.value;
 	return typeof value === "string" ? value : "";
@@ -306,7 +329,7 @@ export function RichTextEditor(props: RichTextEditorProps): JSX.Element {
 			editor = new Quill(editorEl, {
 				placeholder,
 				formats: ALLOWED_FORMATS,
-				modules: { toolbar: toolbarEl },
+				modules: { toolbar: toolbarEl, keyboard: { bindings: TAB_BINDINGS_OFF } },
 			});
 			quillRef.current = editor;
 

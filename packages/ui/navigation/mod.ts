@@ -27,7 +27,7 @@ export { ShellTopBar, type ShellTopBarProps } from "./components/ShellTopBar.tsx
 export { ShellSidebar, type ShellSidebarProps } from "./components/ShellSidebar.tsx";
 export { ShellFrame, type ShellFrameProps } from "./components/ShellFrame.tsx";
 export { MiddleNav, type MiddleNavProps } from "./components/MiddleNav.tsx";
-export { PageCanvas, type PageCanvasProps } from "./components/PageCanvas.tsx";
+export { PAGE_CANVAS_MAIN_ID, PageCanvas, type PageCanvasProps } from "./components/PageCanvas.tsx";
 export { NavItem, type NavItemProps } from "./components/NavItem.tsx";
 export { BottomNav, type BottomNavItem, type BottomNavProps } from "./components/BottomNav.tsx";
 export { Link, type LinkProps } from "./components/Link.tsx";

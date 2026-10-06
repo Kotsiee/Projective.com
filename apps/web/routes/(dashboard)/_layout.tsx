@@ -1,5 +1,5 @@
 import type { ComponentChildren } from "preact";
-import { define } from "@web/utils/state.ts";
+import { define, type State } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { asAuthenticatedContext, type UserContext } from "@projective/types/auth";
 import { NavItem, type ShellChrome } from "@projective/ui/navigation";
@@ -109,19 +109,23 @@ function projectIdOf(pathname: string): string | null {
  * Resolve the middle-nav footer band for a request: the channel/conversation Chat composer on a Chat
  * tab, the stage configuration's Save ⁄ Discard rig on a channel `/details` tab, the File Explorer's
  * View Control Rig on a `/files` route, the Submissions rig on `/submissions`, the Board rig on
- * `/board`, the engagement preview's Apply rig on a bare `/projects/[id]`, else nothing. Composed so
- * exactly one owns the single footer slot per URL. Every navigation is a full page render, so this
- * simply resolves fresh each time.
+ * `/board`, the Overview's rig on a bare `/projects/[slug]` and the owner's setup rig on its
+ * `/details` (Decision #144), else nothing. Composed so exactly one owns the single footer slot per
+ * URL. Every navigation is a full page render, so this simply resolves fresh each time.
  *
  * Order within the chain is READING order, not precedence, wherever two resolvers cannot both claim
  * a URL. `stageDetailsFooterFor` sits with `channelFooterFor` because they are the two channel-scoped
  * resolvers: the composer is gated to the Chat tab and the stage rig to a `details` segment no other
  * resolver tests for, so neither can reach the other's route.
+ *
+ * `state` reaches the engagement resolvers only: the project middleware memoised the viewer's access
+ * there, and the Overview's handler its composed read, so the bands answer from the page's own values.
  */
 async function middleNavFooterFor(
 	url: URL,
 	context: UserContext,
 	actor: ReadActor,
+	state: State,
 ): Promise<ComponentChildren> {
 	return await channelFooterFor(url, context, actor) ??
 		(await stageDetailsFooterFor(url, context, actor)) ??
@@ -129,7 +133,7 @@ async function middleNavFooterFor(
 		submissionsFooterFor(url, context) ?? membersFooterFor(url, context) ??
 		boardFooterFor(url, context) ??
 		timelineFooterFor(url, context) ??
-		(await projectFooterFor(url, context, actor)) ??
+		(await projectFooterFor(url, context, actor, state)) ??
 		(await conversationFooterFor(url, context, actor)) ??
 		(await catalogueFooterFor(url, context, actor)) ??
 		(await workspaceFooterFor(url, actor)) ??
@@ -138,17 +142,19 @@ async function middleNavFooterFor(
 }
 
 /**
- * Resolve the middle-nav header band: the project channel header on a channel route, the project
- * Preview/Edit header on the bare engagement, or the global-inbox conversation header on a
- * `/messages/[conversationId]` route. Exactly one owns the single header slot per URL.
+ * Resolve the middle-nav header band: the project channel header on a channel route, the engagement's
+ * Overview header or the owner's Details ⇄ Preview header on the engagement's own pages, or the
+ * global-inbox conversation header on a `/messages/[conversationId]` route. Exactly one owns the single
+ * header slot per URL.
  */
 async function middleNavHeaderFor(
 	url: URL,
 	context: UserContext,
 	actor: ReadActor,
+	state: State,
 ): Promise<ComponentChildren> {
 	return await channelHeaderFor(url, context, actor) ??
-		(await projectHeaderFor(url, context, actor)) ??
+		(await projectHeaderFor(url, context, actor, state)) ??
 		(await conversationHeaderFor(url, context, actor)) ??
 		(await catalogueHeaderFor(url, context, actor)) ??
 		(await workspaceHeaderFor(url, actor)) ??
@@ -271,8 +277,8 @@ export default define.page(async function DashboardLayout(ctx) {
 	// behind the last would add all four latencies to every dashboard navigation.
 	const [lane, middleNavHeader, middleNavFooter, middleNavPanel] = await Promise.all([
 		laneFor(ctx.url, context, actor),
-		middleNavHeaderFor(ctx.url, context, actor),
-		middleNavFooterFor(ctx.url, context, actor),
+		middleNavHeaderFor(ctx.url, context, actor, ctx.state),
+		middleNavFooterFor(ctx.url, context, actor, ctx.state),
 		middleNavPanelFor(ctx.url, context, actor),
 	]);
 

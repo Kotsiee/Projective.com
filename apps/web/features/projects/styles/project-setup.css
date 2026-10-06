@@ -95,16 +95,69 @@
 	font-variant-numeric: tabular-nums;
 }
 
+/*
+ * A PUBLISHED engagement's band (Decision #144): the outstanding fixes in words ("3 stages need a
+ * price") instead of a percentage, as one quiet control that jumps to the first of them. The same
+ * affordances as the ring's button — no border at rest, a solid hover step, press feedback by
+ * `transform` only — and the tone rides the glyph so the sentence stays the page's ink.
+ */
+.psu-fixes {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: 2rem;
+	min-inline-size: 0;
+	max-inline-size: 100%;
+	padding-inline: var(--space-2);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-full);
+	font: inherit;
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+	cursor: pointer;
+	transform: scale(1);
+	transition:
+		transform var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
+}
+
+.psu-fixes:hover {
+	background: var(--surface-2);
+}
+
+.psu-fixes:active {
+	transform: scale(var(--btn-press-scale));
+	transition-duration: var(--dur-press);
+}
+
+.psu-fixes__icon {
+	flex: none;
+	display: inline-flex;
+	color: color-mix(in srgb, var(--warning) 32%, var(--on-surface));
+}
+
+.psu-fixes__label {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.psu-progress__button,
-	.psu-progress__button:not([aria-disabled="true"]):active {
+	.psu-progress__button:not([aria-disabled="true"]):active,
+	.psu-fixes,
+	.psu-fixes:active {
 		transform: none !important;
 		transition: none;
 	}
 }
 
 :root[data-motion="reduced"] .psu-progress__button,
-:root[data-motion="reduced"] .psu-progress__button:not([aria-disabled="true"]):active {
+:root[data-motion="reduced"] .psu-progress__button:not([aria-disabled="true"]):active,
+:root[data-motion="reduced"] .psu-fixes,
+:root[data-motion="reduced"] .psu-fixes:active {
 	transform: none !important;
 }
 
@@ -654,19 +707,47 @@
 }
 
 /*
- * A stage row IS interactive — it expands, it reorders, it deletes — so a full contour is what §B.4
- * reserves for exactly this, and it is the one boundary on the surface that spends one.
+ * ONE device per boundary (§B.4, §B.9.3; Decision #144). A stage used to spend two at once — a full
+ * contour AND a `--surface-1` fill — and, expanded, it became a 1,000px bordered box of labels and help
+ * text around its own bordered fields: a form boxed inside a card.
+ *
+ *   • A closed stage is a list row. One hairline separates it from the stage before it, drawn on its
+ *     top edge and never around it.
+ *   • The OPEN stage is the one tinted region — the tint is what says "you are editing this one" — so
+ *     it drops the hairline, and so does the stage after it, or the tint would carry a line on each edge.
+ *   • A role row is always open (a role has no collapsed form), so it is always the tint, and the list's
+ *     own gap separates one from the next.
+ *
+ * The rows' controls — grip, the expand button, remove — keep their own affordances; the region needs
+ * no contour to be operable.
  */
 .psu-stage,
 .psu-role {
-	border: var(--hairline);
 	border-radius: var(--radius-lg);
-	background: var(--surface-1);
-	transition: border-color var(--dur-fast) var(--ease-standard);
+	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
+.psu-stage + .psu-stage {
+	border-block-start: var(--hairline);
+	border-start-start-radius: 0;
+	border-start-end-radius: 0;
+}
+
+.psu-stage[data-open],
+.psu-role {
+	background: var(--surface-1);
+}
+
+.psu-stage[data-open],
+.psu-stage[data-open] + .psu-stage {
+	border-block-start-color: transparent;
+}
+
+/* A drop target during a reorder: the one moment the row is outlined, in the accent. */
 .psu-stage[data-over] {
-	border-color: var(--primary);
+	outline: var(--hairline);
+	outline-color: var(--primary);
+	outline-offset: -1px;
 }
 
 .psu-stage[data-dragging] {

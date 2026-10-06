@@ -24,9 +24,9 @@ import { messageHrefFor, signInHref } from "../core/view-model.ts";
  * namespace is authed-only, and a link that lands a guest on a login wall with no way back is worse
  * than one that says where it is taking them.
  *
- * Apply is an optimistic client stub (`projectApplied`) until the application write path lands —
- * the same state the dashboard's `ProjectPreviewRig` reads, so an application shows everywhere at
- * once.
+ * Apply is an optimistic client stub (`projectApplied`) until the application write path lands, so an
+ * application shows everywhere this rig renders at once. Since Decision #144 that is the public
+ * listing only: the engagement's own pages are for people already on it.
  */
 export function ProjectCtaRig(
 	{ item, authed, ctx, layout = "lane" }: {

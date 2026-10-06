@@ -5,15 +5,13 @@ import SetupSectionNav from "../../islands/SetupSectionNav.island.tsx";
 import type { ProjectSetup } from "../../types/projects-types.ts";
 
 /**
- * ProjectSetupScreen — the body of `/projects/[projectId]` for the CLIENT/owner, and the two-column
- * shell the Stage-2 workspace lays out in.
+ * ProjectSetupScreen — the body of `/projects/[slug]/details`, the owner's configuration of the
+ * engagement, and the two-column shell the Stage-2 workspace lays out in.
  *
- * `/projects/[projectId]` is a role dispatcher: this is what the person who commissioned the work
- * sees, and {@link ProjectMemberDashboard} is what everybody else does. They are deliberately
- * different surfaces over different reads, because they answer different questions — "is this
- * engagement ready to hire against" versus "what does this engagement want from me". One projection
- * serving both would hand a freelancer the owner's budget fields and hand the owner an assignment
- * list that is always empty.
+ * It used to be the body of the engagement's ROOT for its owner. Since Decision #144 the root is the
+ * engagement's Overview (`ProjectOverviewScreen`) for the owner and every participant, and this lives
+ * at its own address: a configuration answers "is this engagement ready to hire against", which is
+ * the owner's question while setting it up — not the first thing anybody should land on once it runs.
  *
  * The shell is a grid of two columns: the sticky section rail, and the form. The rail is deliberately
  * OUTSIDE the form's reading measure — a form field wider than ~44rem stops being scannable, but the

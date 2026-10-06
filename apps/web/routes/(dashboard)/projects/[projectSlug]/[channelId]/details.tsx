@@ -7,6 +7,7 @@ import { canConfigureStage } from "@web/features/projects/core/channel-view.ts";
 import { isTaskDetail } from "@web/features/projects/core/task-project.ts";
 import { resolveProjectDetail } from "@web/features/projects/core/detail-ssr.ts";
 import { resolveProjectSetup } from "@web/features/projects/core/setup-ssr.ts";
+import { projectDetailsHref, projectHref } from "@web/features/projects/core/project-access.ts";
 import StageDetailsForm from "@web/features/projects/islands/StageDetailsForm.island.tsx";
 import ProjectPageStyleAnchor from "@web/features/projects/islands/ProjectPageStyleAnchor.island.tsx";
 import type { ProjectSetup } from "@web/features/projects/types/projects-types.ts";
@@ -83,11 +84,14 @@ export const handler = define.handlers({
 			task: detail ? isTaskDetail(detail) : false,
 		});
 		// A staged engagement's Discussion is not a stage: its Details tab is the engagement's own
-		// Details page (the owner's configuration workspace, a member's dashboard).
+		// configuration at `/details` for the owner (Decision #144), and the engagement's Overview for
+		// anybody else — sent there directly, rather than through `/details` only to be bounced again.
 		if (detail && !channel && isDiscussionRef(channelId)) {
 			return new Response(null, {
 				status: 303,
-				headers: { location: `/projects/${encodeURIComponent(projectId)}` },
+				headers: {
+					location: detail.viewerIsClient ? projectDetailsHref(projectId) : projectHref(projectId),
+				},
 			});
 		}
 		if (!detail || !channel) return page(miss);

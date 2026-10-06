@@ -1,4 +1,5 @@
 import {
+	accessOf,
 	type DmChannel,
 	isTaskProject,
 	type ProjectChannel,
@@ -331,6 +332,9 @@ function buildDetail(row: ProjectSummary): ProjectDetail {
 		description: describe(row),
 		viewerRole: row.viewerRole,
 		viewerIsClient: viewerIsClient(row),
+		// Every corpus row is one of the viewer's OWN engagements (the feed is "my projects"), so the
+		// stub path has no stranger to resolve: the client side is the owner, everyone else is on it.
+		viewerAccess: accessOf(viewerIsClient(row), true),
 		scopeType: row.scopeType,
 		scopeLabel: row.scopeLabel,
 		starred: row.starred,

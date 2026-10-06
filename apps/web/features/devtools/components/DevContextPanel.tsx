@@ -8,7 +8,9 @@ import {
 	DEV_MEMBER_ROLES,
 	DEV_MESSAGING_ROLES,
 	DEV_MIC_PERMISSIONS,
+	DEV_PROJECT_ACCESSES,
 	DEV_PROJECT_ONBOARDINGS,
+	DEV_PROJECT_STATUSES,
 	DEV_PROJECT_TYPES,
 	DEV_ROLES,
 	DEV_SERVICE_TYPES,
@@ -43,6 +45,15 @@ function Field(props: { label: string; hint?: string; children: JSX.Element }): 
 			{props.children}
 		</div>
 	);
+}
+
+/**
+ * Reload when the open page is an engagement's, so a server-side landing simulation applies at once.
+ * Anywhere else nothing reads it until the next `/projects/[slug]` request, so a reload there would
+ * only throw the page's state away.
+ */
+function reloadProjectPage(): void {
+	if (globalThis.location?.pathname.startsWith("/projects/")) globalThis.location.reload();
 }
 
 /** A segmented single-choice control. */
@@ -297,6 +308,39 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.projectOnboarding}
 						disabled={!o.enabled}
 						onChange={(projectOnboarding) => patchDevContext({ projectOnboarding })}
+					/>
+				</Field>
+
+				<div class="dev-ctx__grouphead">Project landing</div>
+
+				{
+					/* `/projects/[slug]` dispatches SERVER-side on access × status (Decision #144): an owner's
+				    or a participant's Overview, a draft owner sent to Details, a prospect sent to the public
+				    listing. The pair rides the `pj.dev.landing` cookie, so a change reloads the page to apply. */
+				}
+				<Field label="Viewer access" hint="reloads">
+					<Segment
+						name="Viewer access"
+						options={DEV_PROJECT_ACCESSES}
+						value={o.projectAccess}
+						disabled={!o.enabled}
+						onChange={(projectAccess) => {
+							patchDevContext({ projectAccess });
+							reloadProjectPage();
+						}}
+					/>
+				</Field>
+
+				<Field label="Project status" hint="reloads">
+					<Segment
+						name="Project status"
+						options={DEV_PROJECT_STATUSES}
+						value={o.projectStatus}
+						disabled={!o.enabled}
+						onChange={(projectStatus) => {
+							patchDevContext({ projectStatus });
+							reloadProjectPage();
+						}}
 					/>
 				</Field>
 

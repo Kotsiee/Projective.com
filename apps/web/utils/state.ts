@@ -2,6 +2,7 @@ import { createDefine } from "fresh";
 import type { UserContext } from "@projective/types/auth";
 import type { FxRateTable } from "@projective/types/finance";
 import type { ProfileView } from "@projective/types/profile";
+import type { ProjectAccess, ProjectStatus, ProjectWorkspace } from "@projective/types/projects";
 
 /**
  * Request-scoped state shared across middleware, handlers, and pages.
@@ -60,6 +61,28 @@ export interface State {
 	 * claiming the profile does not exist.
 	 */
 	profileStatus?: 200 | 404 | 503;
+	/**
+	 * How the viewer stands toward the engagement a `/projects/[slug]/*` request addresses — resolved
+	 * ONCE by `routes/(dashboard)/projects/[projectSlug]/_middleware.ts` (Decision #144) so the page,
+	 * the header band and the footer band answer from one value rather than three reads that a dev
+	 * simulation could make disagree. Absent on every other route.
+	 */
+	projectAccess?: {
+		/** The routed slug this answer is for — a guard against reading it for another engagement. */
+		slug: string;
+		title: string;
+		access: ProjectAccess;
+		status: ProjectStatus;
+		/** Whether the engagement has its discussion room (`discussionOf`), so a band may link it. */
+		discussion: boolean;
+		/** Whether a development-only landing simulation changed either value. */
+		simulated: boolean;
+	};
+	/**
+	 * The Overview read the `/projects/[slug]` handler composed, kept for the footer band's rig so the
+	 * layout does not compose the same four reads a second time. Absent on every other route.
+	 */
+	projectWorkspace?: ProjectWorkspace;
 }
 
 /** The typed `define` helper (`define.page` · `define.handlers` · `define.middleware`). */

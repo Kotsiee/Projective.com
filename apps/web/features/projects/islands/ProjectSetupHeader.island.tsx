@@ -5,13 +5,15 @@ import { ProgressRing, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { outstandingSteps } from "../types/projects-types.ts";
 import type { ProjectSetup } from "../types/projects-types.ts";
+import { previewAllowed, pricedStages } from "@projective/types/projects";
 import { currentSetup, setupDraft } from "../core/setup-state.ts";
 import { jumpToStep, nextSetupStep, remainingSteps, stepHref } from "../core/setup-progress.ts";
 
 /**
- * ProjectSetupHeader — the owner's middle-nav header band on `/projects/[projectId]` and its
- * `/preview` sibling: identity on the left, the Details ⇄ Preview tabs centred, and the setup
- * progress ring on the far right.
+ * ProjectSetupHeader — the owner's middle-nav header band on `/projects/[slug]/details` and its
+ * `/preview` sibling (Decision #144): identity on the left, the Details ⇄ Preview tabs centred, and on
+ * the far right the setup progress ring — or, once the engagement is published, the outstanding fixes
+ * in words ("3 stages need a price"), because a running engagement is not a percentage of anything.
  *
  * It reads the shared draft, so the ring moves as the owner types in the body island — the two are
  * separate hydration roots and never exchange props. Before the body seeds the store the ring renders
@@ -29,7 +31,8 @@ import { jumpToStep, nextSetupStep, remainingSteps, stepHref } from "../core/set
  * surface at the matching section instead. At 100% it has nothing left to do and says so, so it is
  * `aria-disabled` rather than a press that silently does nothing (root CLAUDE.md §3 gate 11).
  *
- * **Preview is rendered and LOCKED, not hidden, while the required steps are outstanding.** Removing
+ * **On a draft, Preview is rendered and LOCKED, not hidden, while the required steps are outstanding**
+ * (`previewAllowed`; a published engagement always previews, its listing being public already). Removing
  * it would hide the path to publishing; locking it and naming what is missing teaches that path. The
  * lock is `aria-disabled` rather than the native `disabled` attribute deliberately: a natively
  * disabled control is unfocusable and, in most engines, suppresses the pointer events its own tooltip
@@ -55,14 +58,19 @@ export default function ProjectSetupHeader(
 	const live = setupDraft.value ?? currentSetup(setup);
 	const pct = live.completeness;
 	const base = `/projects/${slug}`;
+	const detailsHref = `${base}/details`;
 	const outstanding = outstandingSteps(live.steps);
 	const remaining = remainingSteps(live.steps);
 	const next = nextSetupStep(live.steps);
 	const complete = next === null;
-	const locked = !live.previewReady;
+	// A published engagement always previews — its listing is already public (Decision #144).
+	const locked = !previewAllowed(live.status, live.previewReady);
 	const lockReason = outstanding.length > 0
 		? `Preview opens once you finish: ${outstanding.map((s) => s.label).join(" · ")}`
 		: "Preview is not available yet.";
+	// Once published, completeness stops being a percentage and becomes the list of what to fix.
+	const published = live.status !== "draft";
+	const fixes = published ? outstandingFixes(live) : [];
 
 	const remainingText = complete
 		? "All setup steps are complete."
@@ -73,7 +81,14 @@ export default function ProjectSetupHeader(
 	const onProgressPress = () => {
 		if (!next) return;
 		if (jumpToStep(next, live)) return;
-		globalThis.location.assign(stepHref(base, next, live));
+		globalThis.location.assign(stepHref(detailsHref, next, live));
+	};
+
+	const onFixPress = () => {
+		const first = outstanding[0];
+		if (!first) return;
+		if (jumpToStep(first, live)) return;
+		globalThis.location.assign(stepHref(detailsHref, first, live));
 	};
 
 	const tip = (
@@ -106,7 +121,7 @@ export default function ProjectSetupHeader(
 			<nav class="proj-pvhead__tabs" aria-label="Project view">
 				<a
 					class="proj-pvtab"
-					href={base}
+					href={detailsHref}
 					data-active={active === "details" ? "true" : undefined}
 					aria-current={active === "details" ? "page" : undefined}
 				>
@@ -147,36 +162,81 @@ export default function ProjectSetupHeader(
 					)}
 			</nav>
 
-			<div class="psu-progress">
-				<Tooltip content={tip} placement="bottom-end" class="psu-progress-tip__panel">
-					<button
-						type="button"
-						class="psu-progress__button"
-						data-complete={complete ? "true" : undefined}
-						aria-disabled={complete ? "true" : undefined}
-						aria-label={`Project setup ${pct}% complete`}
-						aria-describedby={REMAINING_ID}
-						onClick={onProgressPress}
-					>
-						{
-							/*
-							 * The ring's own `progressbar` role is presentational inside a button, so the
-							 * button's label carries the figure and the hidden summary carries the list.
-							 */
-						}
-						<ProgressRing
-							class="psu-progress__ring"
-							value={pct}
-							size={20}
-							strokeWidth={3}
-							severity={complete ? "success" : "primary"}
-							aria-label="Project setup progress"
-						/>
-						<span class="psu-progress__value" aria-hidden="true">{pct}%</span>
-					</button>
-				</Tooltip>
-				<span id={REMAINING_ID} class="psu-visually-hidden">{remainingText}</span>
-			</div>
+			{published
+				? (
+					/*
+					 * A live engagement is not "86% complete" — it is running, with a stage or two still to
+					 * finish. So the ring gives way to the fixes in words, as a control that jumps to the
+					 * first of them; with nothing outstanding the band says nothing at all.
+					 */
+					fixes.length > 0 && (
+						<div class="psu-progress">
+							<button type="button" class="psu-fixes" onClick={onFixPress}>
+								<span class="psu-fixes__icon" aria-hidden="true">
+									<Icon name="warning" size="sm" />
+								</span>
+								<span class="psu-fixes__label">{fixes.join(" · ")}</span>
+							</button>
+						</div>
+					)
+				)
+				: (
+					<div class="psu-progress">
+						<Tooltip content={tip} placement="bottom-end" class="psu-progress-tip__panel">
+							<button
+								type="button"
+								class="psu-progress__button"
+								data-complete={complete ? "true" : undefined}
+								aria-disabled={complete ? "true" : undefined}
+								aria-label={`Project setup ${pct}% complete`}
+								aria-describedby={REMAINING_ID}
+								onClick={onProgressPress}
+							>
+								{
+									/*
+									 * The ring's own `progressbar` role is presentational inside a button, so the
+									 * button's label carries the figure and the hidden summary carries the list.
+									 */
+								}
+								<ProgressRing
+									class="psu-progress__ring"
+									value={pct}
+									size={20}
+									strokeWidth={3}
+									severity={complete ? "success" : "primary"}
+									aria-label="Project setup progress"
+								/>
+								<span class="psu-progress__value" aria-hidden="true">{pct}%</span>
+							</button>
+						</Tooltip>
+						<span id={REMAINING_ID} class="psu-visually-hidden">{remainingText}</span>
+					</div>
+				)}
 		</header>
 	);
+}
+
+/**
+ * What a published engagement still needs, in words — "3 stages need a price", then any other
+ * required step by name. The unpriced stages are counted with the ladder's own rule
+ * (`pricedStages`), so the band and the ladder cannot disagree about which stages are meant.
+ */
+function outstandingFixes(setup: ProjectSetup): string[] {
+	const out: string[] = [];
+	for (const step of outstandingSteps(setup.steps)) {
+		if (step.key === "pricing") {
+			const unpriced = pricedStages(setup.structure, setup.stages)
+				.filter((stage) => stage.unitPriceCents === null).length;
+			out.push(
+				unpriced === 0
+					? "The project needs a price"
+					: unpriced === 1
+					? "1 stage needs a price"
+					: `${unpriced} stages need a price`,
+			);
+		} else {
+			out.push(`${step.label} needs attention`);
+		}
+	}
+	return out;
 }

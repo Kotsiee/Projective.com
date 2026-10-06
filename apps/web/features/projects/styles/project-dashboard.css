@@ -1,7 +1,7 @@
 /*
- * The member dashboard body of `/projects/[projectId]` — the half of that route a viewer who is not
- * the client sees. Pure CSS + strict BEM, token-only, logical properties throughout so the whole
- * surface mirrors under `dir="rtl"`.
+ * The engagement's Overview — the body of `/projects/[slug]` for the owner and every participant, and
+ * its header and footer bands (Decision #144). Pure CSS + strict BEM, token-only, logical properties
+ * throughout so the whole surface mirrors under `dir="rtl"`.
  *
  * The rules this sheet is built to satisfy, stated so a later edit knows what it is allowed to spend:
  *
@@ -71,15 +71,32 @@
 }
 
 /*
- * The four blocks. `auto-fit` over `minmax(min(100%, 22rem), 1fr)` rather than named areas so the
- * DOM order IS the reading order at every width — a grid that places blocks out of source order
- * reads correctly to the eye and wrongly to a screen reader and to the keyboard.
+ * Two columns — the main column (Needs you · the stage run · Recent updates) and the aside (the
+ * viewer's own work and money · Messages · People) — from `55rem` of container width, one below it.
+ * Each column is a flex stack whose `gap` is the whole boundary between its blocks. The DOM order IS
+ * the reading order at every width (main, then aside), so a screen reader and the keyboard meet the
+ * blocks in the order the eye does.
  */
-.pjd__grid {
+.pjd__layout {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+	grid-template-columns: minmax(0, 1fr);
 	gap: var(--pjd-gap-block);
 	margin-block-start: var(--pjd-gap-block);
+}
+
+.pjd__main,
+.pjd__aside {
+	display: flex;
+	flex-direction: column;
+	gap: var(--pjd-gap-block);
+	min-inline-size: 0;
+}
+
+@container pjd (min-width: 55rem) {
+	.pjd__layout {
+		grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+		column-gap: var(--space-8);
+	}
 }
 /* #endregion */
 
@@ -593,6 +610,345 @@ a.pjd-row:focus-visible {
 }
 /* #endregion */
 
+/* #region Lifecycle notice
+ *
+ * One line under the hero saying what the engagement's lifecycle means for this page (a draft, on
+ * hold, closed). Unboxed: it is a fact about the page, not a card on it (§B.9), so it is a sentence
+ * with a leading glyph and nothing around it.
+ */
+.pjd-notice {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--on-surface);
+}
+
+.pjd-notice__icon {
+	flex: none;
+	display: inline-flex;
+	padding-block-start: 0.15em;
+	color: var(--text-secondary);
+}
+
+.pjd-notice[data-status="on_hold"] .pjd-notice__icon {
+	color: color-mix(in srgb, var(--warning) 32%, var(--on-surface));
+}
+
+.pjd-notice__link {
+	color: var(--primary);
+	text-decoration: none;
+	border-radius: var(--radius-sm);
+}
+
+.pjd-notice__link:hover {
+	text-decoration: underline;
+}
+/* #endregion */
+
+/* #region Needs you
+ *
+ * Ordinary `.pjd-row` links; the trailing chevron says each row goes somewhere, in the Meta tone so
+ * it never competes with the verb phrase it follows.
+ */
+.pjd-next__go {
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Stage run (§D.8.1's track, read-only)
+ *
+ * One hairline running the length of the run with each stage's ordinal in a small outline ring on it.
+ * The line is drawn per stage — from below its ring to the next stage's ring — so it can never pass
+ * BEHIND a ring and needs no background to hide under one.
+ */
+.pjd-run__summary {
+	margin: 0 0 var(--space-2);
+	font-size: var(--text-sm);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.pjd-track {
+	--pjd-ring: 1.5rem;
+
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	min-inline-size: 0;
+}
+
+.pjd-track__stage {
+	position: relative;
+	display: grid;
+	grid-template-columns: var(--pjd-ring) minmax(0, 1fr) auto;
+	align-items: start;
+	column-gap: var(--space-3);
+	padding-block: var(--space-3);
+	min-inline-size: 0;
+}
+
+.pjd-track__stage:not(:last-child)::after {
+	content: "";
+	position: absolute;
+	inset-inline-start: calc(var(--pjd-ring) / 2);
+	inset-block-start: calc(var(--space-3) + var(--pjd-ring));
+	inset-block-end: calc(var(--space-3) * -1);
+	border-inline-start: var(--hairline);
+}
+
+/*
+ * Rings, never filled discs — the same waypoints `/view`'s ledger draws (`.evp-track__node`): an
+ * outline reads as a point on a track, where a filled disc reads as a button (§D.8.1). The ring's
+ * colour carries the state: neutral while open, the accent while in progress, the success tone once
+ * delivered.
+ */
+.pjd-track__ring {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--pjd-ring);
+	block-size: var(--pjd-ring);
+	border: var(--hairline);
+	border-color: var(--outline);
+	border-radius: var(--radius-full);
+	font-size: var(--text-2xs);
+	font-weight: var(--fw-medium);
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+	color: var(--text-secondary);
+}
+
+.pjd-track__stage[data-state="in_progress"] .pjd-track__ring {
+	border-color: var(--primary);
+	color: var(--primary);
+}
+
+.pjd-track__stage[data-state="delivered"] .pjd-track__ring {
+	border-color: color-mix(in srgb, var(--success) 55%, var(--outline));
+	color: var(--success);
+}
+
+.pjd-track__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+	padding-block-start: 0.1em;
+}
+
+.pjd-track__name {
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+	text-decoration: none;
+	overflow-wrap: anywhere;
+	border-radius: var(--radius-sm);
+}
+
+a.pjd-track__name:hover {
+	text-decoration: underline;
+}
+
+.pjd-track__stage[data-state="cancelled"] .pjd-track__name {
+	color: var(--text-secondary);
+	text-decoration: line-through;
+}
+
+.pjd-track__facts {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+/* The one fact on the run that asks for action — the owner's unpriced stage. Tone on the ink only. */
+.pjd-track__flag {
+	font-weight: var(--fw-medium);
+	color: color-mix(in srgb, var(--warning) 32%, var(--on-surface));
+}
+
+.pjd-track__price {
+	display: inline-flex;
+	align-items: baseline;
+	gap: var(--space-1);
+	padding-block-start: 0.1em;
+	font-size: var(--text-sm);
+	white-space: nowrap;
+	color: var(--on-surface);
+}
+
+/*
+ * `MoneyView` sets its own weight (`--fw-semibold`), which would put a price — a qualifier — above
+ * the stage name it qualifies. Three classes deep so it wins over `.ui-money--body .ui-money__amount`
+ * (0,2,0) whatever order island bundling loads the two sheets in.
+ */
+.pjd-track__price .ui-money--body .ui-money__amount {
+	font-weight: var(--fw-medium);
+}
+
+.pjd-track__unit {
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+
+/*
+ * A phone-width column cannot spare a price track beside the name: it squeezed the name to two lines
+ * and broke the facts mid-phrase. The price moves under the facts instead, in the body column.
+ */
+@container pjd (max-width: 34rem) {
+	.pjd-track__stage {
+		grid-template-columns: var(--pjd-ring) minmax(0, 1fr);
+	}
+
+	.pjd-track__price {
+		grid-column: 2;
+		padding-block-start: var(--space-1);
+	}
+}
+/* #endregion */
+
+/* #region Header band (`.ui-middle-nav__header`)
+ *
+ * The engagement's name and lifecycle status at the start; the owner's Details and Preview links at
+ * the end. Same height, gutter and solid `--surface-1` step as the configuration's header band, so the
+ * band does not jump between the engagement's own pages.
+ */
+.pjd-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-4);
+	block-size: var(--shell-midnav-header-h, 3rem);
+	padding-inline: var(--space-4);
+	background: var(--surface-1);
+	min-inline-size: 0;
+}
+
+.pjd-head__id {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.pjd-head__title {
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
+	color: var(--on-surface);
+}
+
+.pjd-head__links {
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	flex: none;
+}
+
+.pjd-head__link {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--text-secondary);
+	text-decoration: none;
+	border-radius: var(--radius-sm);
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.pjd-head__link:hover {
+	color: var(--on-surface);
+}
+
+.pjd-head__icon {
+	display: inline-flex;
+}
+/* #endregion */
+
+/* #region Footer band (`.ui-middle-nav__footer`)
+ *
+ * When the engagement last moved, then at most one outlined and one filled control. The labels may be
+ * a full verb phrase ("Submit work on 3 tickets"), so on a narrow band they truncate inside their
+ * buttons rather than push the band wider than the screen.
+ */
+.pjd-rig {
+	container-type: inline-size;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	block-size: 100%;
+	padding-inline: var(--space-6);
+	min-inline-size: 0;
+}
+
+.pjd-rig__meta {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	margin: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.pjd-rig__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex: 0 1 auto;
+	min-inline-size: 0;
+}
+
+/* Links drawn as buttons: the button classes do not reset an anchor's underline. */
+.pjd-rig__actions .ui-button {
+	min-inline-size: 0;
+	max-inline-size: 100%;
+	text-decoration: none;
+}
+
+.pjd-rig__actions .ui-button__label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+@container (max-width: 32rem) {
+	.pjd-rig {
+		padding-inline: var(--space-4);
+	}
+
+	.pjd-rig__meta {
+		display: none;
+	}
+}
+
+/*
+ * On a phone the two commands do not fit side by side without truncating both ("Invite pe…"). The
+ * outlined one steps aside so the page's top action reads whole; its destination stays one tap away
+ * (the Members view, or the Discussion, both in the lane).
+ */
+@container (max-width: 28rem) {
+	.pjd-rig__secondary {
+		display: none;
+	}
+}
+/* #endregion */
+
 /* #region Not found
  *
  * The same calm miss the showcase gives an unresolvable slug: say what happened, quote what was
@@ -663,6 +1019,7 @@ a.pjd-row:focus-visible {
 @media (prefers-reduced-motion: reduce) {
 	.pjd-hero__owner,
 	.pjd-row,
+	.pjd-head__link,
 	.pjd-miss__cta {
 		transition: none;
 	}

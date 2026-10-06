@@ -1,4 +1,5 @@
 import { cloneElement, type JSX } from "preact";
+import { landingFor } from "@projective/types/projects";
 import type { ProjectDetail, ProjectFormat } from "../types/projects-types.ts";
 import { IconShell } from "@projective/ui/icons";
 import { ChatIcon, FilesIcon } from "./channel-glyphs.tsx";
@@ -28,7 +29,17 @@ export const BackIcon = (
 // #endregion
 
 // #region Core view links
-/** Overview / details — a document with lines. */
+/** Overview — the engagement's command center: a dashboard of unequal panels. */
+export const OverviewIcon = (
+	<Svg>
+		<rect x="4" y="4" width="7" height="7" rx="1.5" />
+		<rect x="13" y="4" width="7" height="4" rx="1.5" />
+		<rect x="13" y="10" width="7" height="10" rx="1.5" />
+		<rect x="4" y="13" width="7" height="7" rx="1.5" />
+	</Svg>
+);
+
+/** Details — the engagement's configuration: a document with lines. */
 export const DetailsIcon = (
 	<Svg>
 		<rect x="5" y="3.5" width="14" height="17" rx="2" />
@@ -235,7 +246,7 @@ export interface ProjectViewLink {
 	key: string;
 	label: string;
 	icon: JSX.Element;
-	/** Sub-path segment after `/projects/{slug}` (`""` for the Details root). */
+	/** Sub-path segment after `/projects/{slug}` (`""` for the Overview at the root). */
 	seg: string;
 	/**
 	 * Whether the link stays current on every page BENEATH it, not only on its own. True for the
@@ -255,9 +266,15 @@ export interface ProjectViewLink {
  * The engagement's primary views, in lane order — the top tier under the project header, and the
  * collapsed rail's icon column. ONE set for both presentations, so they cannot disagree.
  *
+ * **Overview** leads every set (Decision #144): the engagement's root, `/projects/{slug}`, is its
+ * command center for the owner and every participant — except on the owner's DRAFT, whose root
+ * forwards to the configuration, so the link is left out rather than pointing back at it. Then, per
+ * archetype:
+ *
  *   - **Task** — Discussion · Details · Files · Submissions · Members. No Board and no Timeline: one
  *     ticket on one stage has nothing to lay out (Decision #121). Its Discussion carries Chat alone, so
- *     the engagement's Details page is a view of its own here.
+ *     the engagement's Details (`/details`, its configuration) is a view of its own here — for the
+ *     OWNER only, whose configuration it is; a participant's way into the engagement is the Overview.
  *   - **One-off** — Discussion · Timeline · Files · Submissions · Members. A one-off's board IS its
  *     timeline (PRODUCT_SPEC §Project Types), so it gets the Gantt and no Kanban.
  *   - **Pipeline** — Discussion · Board · Files · Submissions · Members. Its timeline is a stage's view
@@ -265,10 +282,10 @@ export interface ProjectViewLink {
  *   - **Session** (a `session` engagement, or a dev-simulated session archetype) — Discussion · Calendar
  *     · Files · Members. A session has no stage submissions, and its time axis is a calendar.
  *
- * **Discussion** leads every set and is the engagement's one primary conversation at a fixed address
+ * **Discussion** is the engagement's one primary conversation at a fixed address
  * (`/projects/{slug}/discussion`); it is ABSENT when the engagement has no room for it
  * ({@link discussionLinkOf}) rather than a link to "no such channel". On every other type Details is
- * the lane footer's utility (and the Discussion's Details tab), not a view of the work.
+ * the owner's lane-footer utility (and the Discussion's Details tab), not a view of the work.
  *
  * The status marks are the projection's own facts, never invented: the discussion room's unread; a
  * stage with a new ticket on the Board; a stage whose submission came back for revision on Submissions.
@@ -280,7 +297,12 @@ export function projectViewLinks(
 	const archetype = projectNavArchetype(detail, sessionKind);
 	const stages = detail.channels.stages;
 	const anyStage = (activity: string) => stages.some((s) => s.activity === activity);
-	const links: ProjectViewLink[] = [];
+	// Only where the root would SHOW the Overview: on the owner's draft it forwards to `/details`, so the
+	// link would lead straight back to the page it was pressed on (root CLAUDE.md §3 gate 11).
+	const links: ProjectViewLink[] =
+		landingFor(detail.viewerAccess, detail.status).kind === "overview"
+			? [{ key: "overview", label: "Overview", icon: OverviewIcon, seg: "", status: null }]
+			: [];
 
 	const discussion = discussionLinkOf(detail);
 	if (discussion) {
@@ -293,13 +315,13 @@ export function projectViewLinks(
 			status: discussion.unread ? { label: "unread messages" } : null,
 		});
 	}
-	if (archetype === "task") {
+	if (archetype === "task" && detail.viewerIsClient) {
 		// A copy: the lane footer mounts `DetailsIcon` itself, and one VNode cannot be mounted twice.
 		links.push({
 			key: "details",
 			label: "Details",
 			icon: cloneElement(DetailsIcon),
-			seg: "",
+			seg: "details",
 			status: null,
 		});
 	}

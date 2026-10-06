@@ -1,35 +1,37 @@
 import type { ComponentChildren } from "preact";
 import type { UserContext } from "@projective/types/auth";
-import EntityStickyHeader from "@features/view/islands/EntityStickyHeader.island.tsx";
+import { previewAllowed } from "@projective/types/projects";
+import type { State } from "@web/utils/state.ts";
 import ProjectSetupHeader from "../islands/ProjectSetupHeader.island.tsx";
-import { resolveProjectShowcase } from "./showcase-ssr.ts";
+import { ProjectOverviewHeader } from "../components/overview/ProjectOverviewHeader.tsx";
+import { storedProjectAccess } from "./project-access.ts";
 import { resolveProjectSetup } from "./setup-ssr.ts";
 import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
- * project-header-slot — the SSR-idiomatic resolver for the ROLE-BASED middle-nav header band on the
- * engagement routes. It mirrors the shell's other URL-keyed slot resolvers (`channelHeaderFor` /
- * `viewHeaderFor`): a pure function of the URL plus the acting context, evaluated by the `(dashboard)`
- * layout and threaded into `UserShell`'s `middleNavHeader`, so the correct band paints in the first
- * byte with no client-context flash.
+ * project-header-slot — the SSR-idiomatic resolver for the middle-nav header band on the engagement's
+ * own three pages (Decision #144). It mirrors the shell's other URL-keyed slot resolvers
+ * (`channelHeaderFor` / `viewHeaderFor`): a pure function of the URL plus the acting context, evaluated
+ * by the `(dashboard)` layout and threaded into `UserShell`'s `middleNavHeader`, so the correct band
+ * paints in the first byte with no client-context flash.
  *
- * Composed AFTER `channelHeaderFor`, which owns the channel routes — this claims only the bare
- * engagement page (`/projects/[id]`) and its preview (`/projects/[id]/preview`). Every other URL under
- * `/projects` (board, files, submissions, members, a channel) must fall through, or this steals a band
- * that belongs to another surface.
+ * Composed AFTER `channelHeaderFor`, which owns the channel routes — this claims only the Overview
+ * (`/projects/[slug]`), the configuration (`/details`) and the preview (`/preview`). Every other URL
+ * under `/projects` (board, files, submissions, members, a channel) must fall through, or this steals
+ * a band that belongs to another surface.
  *
- * Role gating is re-derived server-side from `viewerIsClient`, never trusted from the client (root
- * CLAUDE.md §6):
- *   • **Client / owner** → {@link ProjectSetupHeader}: identity · the setup progress bar · the
- *     Details ⁄ Preview switch, with Preview rendered-and-locked until every required step is done.
- *   • **Freelancer / member** → the reused view {@link EntityStickyHeader} (archetype `project`), so a
- *     non-owner's band on the engagement is the SAME band a brief shows on `/view/[id]?type=projects`.
+ *   • **Overview** → {@link ProjectOverviewHeader}: the engagement's name, plus the owner's Details
+ *     and (when the engagement may preview) Preview links. It reads the access the
+ *     project middleware memoised for this request, so the band and the page cannot disagree.
+ *   • **Details / Preview** → {@link ProjectSetupHeader}, the owner's: identity · the Details ⇄ Preview
+ *     pair · the setup ladder (or, once published, the outstanding fixes in words). A non-owner never
+ *     stays on either page — both routes send them on — so this draws nothing for them.
  *
  * Server-only (it reaches `@server/services`); never imported by an island.
  */
 
-/** Which of the owner's two modes a URL addresses, or `null` when this resolver declines it. */
-type SetupMode = "details" | "preview";
+/** Which of the engagement's own pages a URL addresses, or `null` when this resolver declines it. */
+type ProjectMode = "overview" | "details" | "preview";
 
 /**
  * Resolve the mode from the path segments.
@@ -38,42 +40,49 @@ type SetupMode = "details" | "preview";
  * board`, `/files`, `/members` and every channel id are all length 3 and every one of them owns its
  * own header band already.
  */
-function modeOf(segs: string[]): SetupMode | null {
+function modeOf(segs: string[]): ProjectMode | null {
 	if (segs[0] !== "projects" || segs.length < 2 || segs[1] === "create") return null;
-	if (segs.length === 2) return "details";
-	if (segs.length === 3 && segs[2] === "preview") return "preview";
+	if (segs.length === 2) return "overview";
+	if (segs.length === 3 && (segs[2] === "details" || segs[2] === "preview")) return segs[2];
 	return null;
 }
 
 /** Resolve the engagement header band for a request, or `null` so the band collapses. */
 export async function projectHeaderFor(
 	url: URL,
-	context: UserContext,
+	_context: UserContext,
 	actor: ReadActor,
+	state?: State,
 ): Promise<ComponentChildren> {
 	const segs = url.pathname.split("/").filter(Boolean);
 	const mode = modeOf(segs);
 	if (!mode) return null;
 
 	const slug = segs[1];
-	const { detail, showcase, viewerIsClient } = await resolveProjectShowcase(slug, context, actor);
-	if (!detail || !showcase) return null;
+	const resolved = storedProjectAccess(state, slug);
 
-	if (!viewerIsClient) {
-		// The preview route is owner-only and redirects a non-owner, so only `details` reaches here.
-		// Authed (the whole dashboard is behind the guard); the projects scope has no
-		// back-to-explore/profile context, so the neutral `explore` scope drives the owner link.
+	if (mode === "overview") {
+		if (!resolved || resolved.access === "prospect") return null;
+		const owner = resolved.access === "owner";
+		// A published engagement always previews; only a draft needs its ladder, which only the setup
+		// read carries — so the read is paid for in the one state that asks the question.
+		const ladderDone = owner && resolved.status === "draft"
+			? (await resolveProjectSetup(slug, actor)).setup?.previewReady ?? false
+			: true;
 		return (
-			<EntityStickyHeader
-				item={showcase.item}
-				archetype="project"
-				authed
-				ctx={{ scope: "explore" }}
+			<ProjectOverviewHeader
+				slug={slug}
+				title={resolved.title}
+				owner={owner}
+				canPreview={owner && previewAllowed(resolved.status, ladderDone)}
 			/>
 		);
 	}
 
+	// `/preview` skips the project middleware, so `resolved` may be absent there; the setup read's own
+	// `viewerIsClient` then decides, exactly as the route's guard does.
+	if (resolved && resolved.access !== "owner") return null;
 	const { setup } = await resolveProjectSetup(slug, actor);
-	if (!setup) return null;
+	if (!setup || !setup.viewerIsClient) return null;
 	return <ProjectSetupHeader slug={slug} active={mode} setup={setup} />;
 }

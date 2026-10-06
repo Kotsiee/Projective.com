@@ -2,16 +2,18 @@ import type { SupabaseClient } from "supabaseClient";
 import { getUserClient } from "../../core/supabase.ts";
 import { fetchPublicMedia, mediaUrl } from "../files/public-media.ts";
 import type { ReadActor } from "../read-actor.ts";
-import type {
-	ChannelKind,
-	ProjectChannel,
-	ProjectDetail,
-	ProjectMember,
-	ProjectParty,
-	ProjectSummary,
-	ProjectViewerRole,
-	StageChannel,
-	TeamChannel,
+import {
+	accessOf,
+	type ChannelKind,
+	type ProjectAccess,
+	type ProjectChannel,
+	type ProjectDetail,
+	type ProjectMember,
+	type ProjectParty,
+	type ProjectSummary,
+	type ProjectViewerRole,
+	type StageChannel,
+	type TeamChannel,
 } from "@projective/types/projects";
 import type { PartyRow } from "./live-support.ts";
 import {
@@ -519,6 +521,44 @@ async function fetchParticipants(db: SupabaseClient, projectId: string): Promise
 }
 
 /**
+ * Whether the engagement admits this viewer — `projects.has_project_access`, the predicate the
+ * projects, rooms and files SELECT policies are written in: the owner, a participant row, the owner of
+ * a participating business, or a freelancer or team stage assignment that was not declined, cancelled
+ * or released.
+ *
+ * Asked as the predicate itself rather than re-derived from the rows this module reads, because those
+ * rows cannot answer it: the participant SELECT policy is owner-or-(active AND public), so on a private
+ * project a hire reads no participant row at all — not even their own — and would look like a stranger.
+ *
+ * `null` when the call fails, so the caller can fall back to the signals it does hold instead of
+ * reading a failed RPC as "no access" and sending a hire to the public listing.
+ */
+async function fetchHasAccess(db: SupabaseClient, projectId: string): Promise<boolean | null> {
+	const { data, error } = await db.rpc("has_project_access", { _project_id: projectId });
+	if (error || typeof data !== "boolean") return null;
+	return data;
+}
+
+/**
+ * The viewer's {@link ProjectAccess}, from the access predicate when it answered and otherwise from the
+ * signals this read already holds: a participant row of their own, a stage held by a team they belong
+ * to, or any room they may enter (`comms.has_channel_access` admits participants only). Any one of
+ * those proves a seat; none of them proves its absence, which is why the predicate is asked first.
+ */
+function resolveViewerAccess(
+	viewerIsClient: boolean,
+	hasAccess: boolean | null,
+	actor: ReadActor,
+	participants: readonly ParticipantRow[],
+	hiredStages: number,
+	reachableRooms: number,
+): ProjectAccess {
+	const fallback = participants.some((row) => row.profile_id === actor.userId) ||
+		hiredStages > 0 || reachableRooms > 0;
+	return accessOf(viewerIsClient, hasAccess ?? fallback);
+}
+
+/**
  * Every channel of the project this viewer may enter, oldest first.
  *
  * No visibility predicate and no access predicate: `comms.has_channel_access` is already the SELECT
@@ -788,14 +828,15 @@ export async function fetchProjectDetail(
 	if (!summary) return null;
 
 	const db = projectsDb(actor);
-	// Five independent reads over one project. Issued together because none depends on another's
-	// result, and awaiting them in series would add all five latencies to every sidebar render.
-	const [detailRow, stages, participants, channelRows, hired] = await Promise.all([
+	// Six independent reads over one project. Issued together because none depends on another's
+	// result, and awaiting them in series would add all six latencies to every sidebar render.
+	const [detailRow, stages, participants, channelRows, hired, hasAccess] = await Promise.all([
 		fetchDetailRow(db, slug),
 		fetchStages(db, summary.id),
 		fetchParticipants(db, summary.id),
 		fetchChannels(actor, summary.id),
 		fetchViewerHiredTeams(db, summary.id),
+		fetchHasAccess(db, summary.id),
 	]);
 
 	const { general, stageAll, privateRooms } = partitionChannels(channelRows);
@@ -826,6 +867,7 @@ export async function fetchProjectDetail(
 	for (const [id, row] of teams) if (row.name) teamNames.set(id, row.name);
 
 	const ownerUserId = detailRow?.owner_user_id ?? "";
+	const viewerIsClient = resolveViewerIsClient(actor, ownerUserId, participants);
 
 	return {
 		id: summary.id,
@@ -838,7 +880,15 @@ export async function fetchProjectDetail(
 		typeLabel: typeLabelFor(summary),
 		description: clamp(detailRow?.description_text, 2000),
 		viewerRole: summary.viewerRole,
-		viewerIsClient: resolveViewerIsClient(actor, ownerUserId, participants),
+		viewerIsClient,
+		viewerAccess: resolveViewerAccess(
+			viewerIsClient,
+			hasAccess,
+			actor,
+			participants,
+			hired.size,
+			channelRows.length,
+		),
 		scopeType: summary.scopeType,
 		scopeLabel: summary.scopeLabel,
 		starred: summary.starred,

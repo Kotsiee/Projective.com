@@ -67,10 +67,13 @@ otherwise. It returns `CreatedProjectSchema` `{ id, slug }`, and the modal navig
 
 ### 1.2 Step 2 — continuous configuration on the workspace
 
-The draft is configured on its own workspace, `/projects/[projectSlug]` — the Details half of the
-engagement page (`/projects/[projectSlug]/edit` is a retired `308` shim). The sections are registered
-once in `apps/web/features/projects/core/setup-sections.ts` (`setupSections(setup)`, anchors
-`psu-<key>`), so the form and its side nav cannot disagree. In render order:
+The draft is configured at `/projects/[projectSlug]/details`, the owner's configuration of the
+engagement (Decision #144). While the project is a draft, the engagement's root forwards its owner
+there with a `303`; once it is published the root is the engagement's **Overview** (§1.3), and
+`/details` stays one link away in the Overview's header band and the lane's footer.
+`/projects/[projectSlug]/edit` and `/settings` are `308` shims to `/details`. The sections are
+registered once in `apps/web/features/projects/core/setup-sections.ts` (`setupSections(setup)`,
+anchors `psu-<key>`), so the form and its side nav cannot disagree. In render order:
 
 | Section (`SetupSectionKey`)          | Rendered when                                                                                                          | Collects                                                                                                                                                                  |
 | :----------------------------------- | :--------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -95,6 +98,23 @@ to `PUT | PATCH /api/projects/:slug` with `UpdateProjectSchema` (`setup.ts`).
 **Publishing.** `publishSetup` refuses while `firstBlocker` names a problem or `previewReady` is
 false (§3), then sends the whole form with `status: 'active'`; the fat service runs the transition
 through `projects.set_project_status`, which owns its legality and audit row (§7.1).
+
+### 1.3 After publish — the engagement's Overview
+
+Once published, `/projects/[projectSlug]` is the engagement's **Overview** for its owner and every
+participant (Decision #144): what needs the viewer, where each stage stands, the rooms and the
+people. Who reaches it is one pure rule, `landingFor(access, status)` in
+`packages/types/projects/access.ts`, over two server facts — the viewer's `viewerAccess` (owner ·
+participant · prospect, from `projects.has_project_access`) and the project's status. The owner's
+draft forwards to `/details`; a prospect on any workspace path is sent to the public listing. The
+addresses and redirects are tabled in [`ROUTING.md`](../architecture/ROUTING.md).
+
+The page is composed, not read: `ProjectBackendService.workspace` folds the overview, board, roster
+and (for the owner) setup reads through the pure `composeWorkspace`
+(`packages/types/projects/workspace.ts`). "Needs you" for the owner lists submissions to review,
+applications to decide and stages that still need a price — the last counted with the setup
+ladder's own `pricedStages`, so the Overview and the ladder agree about which stages are meant. A
+participant sees returned work to revise and claimed work to deliver.
 
 ---
 

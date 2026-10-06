@@ -18,6 +18,8 @@
 
 import { signal } from "@preact/signals";
 import type { ContextRole, ContextType, UserContext } from "@projective/types/auth";
+import type { ProjectAccess, ProjectStatus } from "@projective/types/projects";
+import { encodeLandingSim, LANDING_SIM_COOKIE } from "@features/projects/core/landing-sim.ts";
 import { logger } from "@web/utils/logger.ts";
 import { readStored, removeStored, SessionKeys, writeStored } from "@web/utils/storage-keys.ts";
 import {
@@ -46,6 +48,10 @@ import {
 export type DevAccountType = DevPersona;
 /** The team/business role view a developer can impersonate. */
 export type DevRole = DevSeamRole;
+/** A simulated access toward the open engagement, or `auto` for the real one (Decision #144). */
+export type DevProjectAccess = "auto" | ProjectAccess;
+/** A simulated lifecycle status for the open engagement, or `auto` for the real one. */
+export type DevProjectStatus = "auto" | ProjectStatus;
 /** The engagement delivery format a developer can impersonate (submissions ticket handling). */
 export type {
 	DevLayoutDirection,
@@ -115,6 +121,22 @@ export interface DevOverrides {
 	 */
 	projectOnboarding: DevProjectOnboarding;
 	/**
+	 * Simulated access toward the open engagement — owner · participant · prospect — for the dispatch
+	 * of `/projects/[slug]` (Decision #144): an owner's Overview, a participant's, or a prospect sent to
+	 * the public listing. `auto` defers to the server's real answer.
+	 *
+	 * Unlike every axis above, this one is decided SERVER-side, before a byte of the page renders — so
+	 * the `data-dev-*` seam cannot reach it. {@link reflect} also writes it into the `pj.dev.landing`
+	 * cookie, which the project middleware honours in development only, and the panel reloads the page.
+	 */
+	projectAccess: DevProjectAccess;
+	/**
+	 * Simulated lifecycle status for the same dispatch — a draft sends its owner to `/details`, a
+	 * closed engagement's Overview reads as a record. `auto` defers to the real status. Server-side, so
+	 * it rides the same cookie as {@link projectAccess}.
+	 */
+	projectStatus: DevProjectStatus;
+	/**
 	 * Simulated acting-member view for the Members tab (task §4) — the four access conditions the roster
 	 * rules branch on (Owner/Admin · Manager · Freelancer assigned · Freelancer unassigned). Consumed by
 	 * the roster island to re-simulate the viewer's capabilities + visible member set.
@@ -164,6 +186,8 @@ export const DEV_DEFAULTS: DevOverrides = {
 	submissionState: "draft",
 	hasTasks: true,
 	projectOnboarding: "auto",
+	projectAccess: "auto",
+	projectStatus: "auto",
 	memberRole: "owner_admin",
 	hasPendingInvites: true,
 	hasPendingRequests: true,
@@ -221,6 +245,27 @@ export const DEV_SUBMISSION_STATES: ReadonlyArray<DevOption<DevSubmissionState>>
 	{ value: "submitted", label: "Submitted" },
 	{ value: "approved", label: "Approved" },
 	{ value: "revision_requested", label: "Revision" },
+];
+
+/**
+ * Simulated engagement-access options in display order (the `/projects/[slug]` dispatch, Decision
+ * #144). `Auto` defers to the server; `Prospect` is the case no seeded fixture reaches.
+ */
+export const DEV_PROJECT_ACCESSES: ReadonlyArray<DevOption<DevProjectAccess>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "owner", label: "Owner" },
+	{ value: "participant", label: "Participant" },
+	{ value: "prospect", label: "Prospect" },
+];
+
+/** Simulated engagement-status options in display order (the same dispatch). */
+export const DEV_PROJECT_STATUSES: ReadonlyArray<DevOption<DevProjectStatus>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "draft", label: "Draft" },
+	{ value: "active", label: "Active" },
+	{ value: "on_hold", label: "On hold" },
+	{ value: "completed", label: "Completed" },
+	{ value: "cancelled", label: "Cancelled" },
 ];
 
 /**
@@ -320,6 +365,11 @@ function reflect(next: DevOverrides): void {
 		} else {
 			delete root.dataset.devProjectOnboarding;
 		}
+		// The landing pair follows the same "absent = auto" rule on the seam.
+		if (next.projectAccess !== "auto") root.dataset.devProjectAccess = next.projectAccess;
+		else delete root.dataset.devProjectAccess;
+		if (next.projectStatus !== "auto") root.dataset.devProjectStatus = next.projectStatus;
+		else delete root.dataset.devProjectStatus;
 		root.dataset.devMemberRole = next.memberRole;
 		root.dataset.devPendingInvites = String(next.hasPendingInvites);
 		root.dataset.devPendingRequests = String(next.hasPendingRequests);
@@ -344,6 +394,8 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devSubmissionState;
 		delete root.dataset.devHasTasks;
 		delete root.dataset.devProjectOnboarding;
+		delete root.dataset.devProjectAccess;
+		delete root.dataset.devProjectStatus;
 		delete root.dataset.devMemberRole;
 		delete root.dataset.devPendingInvites;
 		delete root.dataset.devPendingRequests;
@@ -353,7 +405,26 @@ function reflect(next: DevOverrides): void {
 		// Restore the document's natural direction (the pref-driven default, LtR here).
 		root.removeAttribute("dir");
 	}
+	writeLandingCookie(next);
 	globalThis.dispatchEvent?.(new CustomEvent(DEV_SEAM_EVENT, { detail: next }));
+}
+
+/**
+ * Mirror the landing pair into the `pj.dev.landing` cookie — the only channel that reaches the
+ * SERVER-side dispatch of `/projects/[slug]` (Decision #144). Written while simulation is on and an axis
+ * is not `auto`; removed otherwise, so switching simulation off restores the real dispatch on the next
+ * request. The server reads it only in development.
+ */
+function writeLandingCookie(next: DevOverrides): void {
+	const value = next.enabled
+		? encodeLandingSim({
+			access: next.projectAccess === "auto" ? null : next.projectAccess,
+			status: next.projectStatus === "auto" ? null : next.projectStatus,
+		})
+		: null;
+	document.cookie = value
+		? `${LANDING_SIM_COOKIE}=${encodeURIComponent(value)}; path=/; samesite=lax`
+		: `${LANDING_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 /** Patch a subset of the overrides. */

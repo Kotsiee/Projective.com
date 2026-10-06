@@ -1,4 +1,6 @@
 import type { JSX } from "preact";
+import { useEffect, useId, useRef } from "preact/hooks";
+import { useSignal } from "@preact/signals";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { boardView } from "./detail-glyphs.tsx";
@@ -24,12 +26,19 @@ function typeMark(detail: ProjectDetail): { label: string; icon: JSX.Element } {
  * the §B.4 separation hierarchy.
  *
  * Layout: the leading party's LARGE avatar on the left (a **project** leads with its owner, a
- * **service** with the client it's delivered for), the title + a single clickable owner/client name
- * stacked to its right, and — pinned top-right — a lone icon-only project-type glyph
+ * **service** with the client it's delivered for), the engagement's name + a single clickable
+ * owner/client name stacked to its right, and — pinned top-right — a lone icon-only project-type glyph
  * (Pipeline · Timeline · Calendar) whose portal {@link Tooltip} names the engagement type. Beneath sits
- * the interactive, truncated description: hovering shifts its colour (darker in light mode, lighter in
- * dark) and clicking it — or the "Show details" affordance — routes to the engagement's main page
- * (`/projects/{slug}`).
+ * the description, clamped to three lines with an in-place **Show details** disclosure.
+ *
+ * Decision #144 changed two things. The name is a paragraph, not an `<h1>`: the page beside the lane
+ * owns the document's one title, and two level-one headings told assistive technology the page was
+ * about two things. And the description no longer links to the engagement's root — the root is now
+ * the Overview, so "Show details" would have promised the brief and opened a dashboard; it reveals
+ * the words in place instead. The disclosure is drawn only while the text is actually clamped, so it
+ * never toggles nothing (root CLAUDE.md §3 gate 11).
+ *
+ * Rendered only inside the `ProjectSidebar` island, so its one piece of state is a local signal.
  */
 export interface ProjectContextCardProps {
 	detail: ProjectDetail;
@@ -40,9 +49,21 @@ export function ProjectContextCard({ detail }: ProjectContextCardProps): JSX.Ele
 	// A project leads with its owner; a service leads with the client. Fall back to the owner so the
 	// header always has an identity even for a client-less internal draft.
 	const lead = (isService ? detail.client : detail.owner) ?? detail.owner;
-	const detailsHref = `/projects/${detail.slug}`;
 	const board = typeMark(detail);
 	const typeTip = `${board.label} ${isService ? "service" : "project"}`;
+
+	const expanded = useSignal(false);
+	// Optimistically `true` so the server render keeps the line it always had; the first measurement
+	// after hydration withdraws the control when three lines already hold the whole description.
+	const clamped = useSignal(true);
+	const textRef = useRef<HTMLParagraphElement>(null);
+	const textId = useId();
+
+	useEffect(() => {
+		const el = textRef.current;
+		if (!el || expanded.value) return;
+		clamped.value = el.scrollHeight > el.clientHeight + 1;
+	}, [detail.description]);
 
 	return (
 		<header class="proj-ctx" data-kind={detail.kind} aria-label={`${typeTip} overview`}>
@@ -57,7 +78,7 @@ export function ProjectContextCard({ detail }: ProjectContextCardProps): JSX.Ele
 				</span>
 
 				<div class="proj-ctx__idblock">
-					<h1 class="proj-ctx__title">{detail.title}</h1>
+					<p class="proj-ctx__title">{detail.title}</p>
 					{lead.handle
 						? (
 							<a
@@ -81,14 +102,22 @@ export function ProjectContextCard({ detail }: ProjectContextCardProps): JSX.Ele
 				</Tooltip>
 			</div>
 
-			{
-				/* The whole description is the interactive reveal into the main page (§B.6 icon-first: the
-			    words live here, the action is the hover/click). */
-			}
-			<a class="proj-ctx__desc" href={detailsHref} aria-label="Open project details">
-				<span class="proj-ctx__desc-text">{detail.description}</span>
-				<span class="proj-ctx__show">Show details</span>
-			</a>
+			{detail.description && (
+				<div class="proj-ctx__desc" data-expanded={expanded.value ? "true" : undefined}>
+					<p class="proj-ctx__desc-text" id={textId} ref={textRef}>{detail.description}</p>
+					{(clamped.value || expanded.value) && (
+						<button
+							type="button"
+							class="proj-ctx__show"
+							aria-expanded={expanded.value ? "true" : "false"}
+							aria-controls={textId}
+							onClick={() => (expanded.value = !expanded.value)}
+						>
+							{expanded.value ? "Show less" : "Show details"}
+						</button>
+					)}
+				</div>
+			)}
 		</header>
 	);
 }

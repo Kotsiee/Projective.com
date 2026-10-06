@@ -845,8 +845,9 @@ export function createdDetail(ref: string, actor?: ReadActor): ProjectDetail | n
 		description: flattenRichText(setup.description).slice(0, 2000),
 		viewerRole: "owner",
 		// The creator IS the client — they commissioned it. This is what routes the dispatcher to the
-		// setup surface rather than to somebody else's dashboard.
+		// owner's surfaces (a draft's configuration, then the Overview) rather than a prospect's listing.
 		viewerIsClient: true,
+		viewerAccess: "owner",
 		scopeType: actor?.contextType ?? "personal",
 		scopeLabel: actor?.contextId ? "Workspace" : "Personal",
 		starred: false,

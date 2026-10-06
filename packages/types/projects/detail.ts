@@ -8,6 +8,7 @@ import {
 	ProjectViewerRole,
 } from "./summary.ts";
 import { isTaskProject, ProjectStructure } from "./setup.ts";
+import { ProjectAccess } from "./access.ts";
 
 /**
  * projects.detail — the Zod SSOT for the RICH single-engagement projection the Project Details
@@ -245,6 +246,13 @@ export const ProjectDetailSchema = z.object({
 	 * the viewer's role; never trusted from the client (root CLAUDE.md §6).
 	 */
 	viewerIsClient: z.boolean(),
+	/**
+	 * How the acting user stands toward the engagement — owner, participant or prospect — and so what
+	 * its root address does for them (Decision #144, {@link landingFor}). Derived server-side beside
+	 * {@link viewerIsClient}: `viewerRole` cannot answer it, because a stranger on a public engagement
+	 * falls back to `member`, the same value a hire carries.
+	 */
+	viewerAccess: ProjectAccess,
 	scopeType: ContextType,
 	scopeLabel: z.string().min(1).max(120),
 	/** Whether the actor starred this engagement (drives the header Star toggle). */

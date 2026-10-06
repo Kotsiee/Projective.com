@@ -1587,8 +1587,10 @@ switching how they prefer to READ money must never move what a project is priced
 
 #### 2. Configuration
 
-Everything else is collected on `/projects/[project id]`, as **one continuous scrolling flow with a
-sticky section navigator — not a stepper**: the brief, IP ownership, visibility, deadline bonuses,
+Everything else is collected on `/projects/[project id]/details`, the owner's configuration (while
+the project is a draft its root forwards the owner there; once it is published the root is the
+engagement's Overview, and the configuration stays one link away), as **one continuous scrolling
+flow with a sticky section navigator — not a stepper**: the brief, IP ownership, visibility, deadline bonuses,
 reference attachments, the NDA (the platform standard or the client's own document), language and
 location requirements, and the stage architecture — per stage its scope, tasks, required skills
 (max 10), duration, dependency, seat capacity, roles, submittable file kinds and NDA override.
@@ -2262,7 +2264,8 @@ fire for the same person on a device that genuinely does not have the file.
 |               |                           | `payment`                | **Step 3 — Method & commit.** Distraction-free chrome. Bounces back to `details` when the details are incomplete, so a deep link can never reach a Pay button the server would refuse |
 |               |                           | `confirmation`           | **Step 4 — Post-purchase hub.** Full chrome restored: per-item fulfilment (download · project deep link · calendar export), the invoice, the order record (`?order=`) |
 |               | `/projects`               | `index`                  | The **portfolio index** — every project in every workspace the reader belongs to, filterable by status (All · Draft · Active · On hold · Completed, `?status=`), with the aggregate **stage burn** (delivered ÷ planned stages, summed across the staged projects in view). An empty portfolio's one action opens the **Quick-Init** create modal (`?create=1`). `/projects/create` **308→** here; there is no create page |
-|               | `/projects/[project id]`  | `index` / `details`      | **Stage 2 — the owner's configuration workspace.** `[project id]` is the project's UUID. One continuous scrolling flow, not a stepper |
+|               | `/projects/[project id]`  | `index`                  | **The engagement's Overview** — the command center for its owner and everyone working on it: what needs the viewer (submissions to review, applications to decide, stages still to price; work to deliver or revise), where each stage stands, the rooms and the people. `[project id]` is the project's `prj-` slug. The owner of a DRAFT is sent to `details`; somebody who is not on the engagement is sent to its public listing |
+|               |                           | `details`                | **Stage 2 — the owner's configuration workspace.** One continuous scrolling flow, not a stepper. Owner only. `/edit` and `/settings` redirect here |
 |               |                           | `board`                  | Task/Kanban board                                                                              |
 |               |                           | `finance`                | Project budget/costs                                                                           |
 |               |                           | `settings`               | Project configuration                                                                          |

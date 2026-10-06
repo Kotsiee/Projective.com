@@ -29,8 +29,13 @@ export const NOTICE_PARAM = "notice";
 /** Where a project miss lands. The list is the only page that is always there to receive it. */
 export const PROJECTS_PATH = "/projects";
 
-/** The codes this app may flash. A code, not a sentence: a URL is not where copy belongs. */
-export type ProjectNoticeCode = "project-not-found";
+/**
+ * The codes this app may flash. A code, not a sentence: a URL is not where copy belongs.
+ *
+ * `room-not-found` is carried to the engagement's own Overview rather than to the list (Decision
+ * #144): the project exists, only the room address under it named nothing this viewer can enter.
+ */
+export type ProjectNoticeCode = "project-not-found" | "room-not-found";
 
 /**
  * The sentence each code renders.
@@ -42,6 +47,7 @@ export type ProjectNoticeCode = "project-not-found";
  */
 const MESSAGES: Readonly<Record<ProjectNoticeCode, string>> = {
 	"project-not-found": "Project does not exist",
+	"room-not-found": "That room doesn’t exist or isn’t open to you",
 };
 
 /**

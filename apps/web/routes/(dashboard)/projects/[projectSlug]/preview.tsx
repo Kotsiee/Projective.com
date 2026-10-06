@@ -3,13 +3,23 @@ import { EmptyState } from "@projective/ui/utils";
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { resolveProjectSetup } from "@features/projects/core/setup-ssr.ts";
+import {
+	projectDetailsHref,
+	projectHref,
+	projectListingHref,
+	resolveProjectAccess,
+	seeOther,
+} from "@features/projects/core/project-access.ts";
+import { projectsNoticeHref } from "@features/projects/core/project-notice.ts";
+import { previewAllowed } from "@projective/types/projects";
 import { EntityViewPage } from "@features/view/components/EntityViewPage.tsx";
 import { resolveProjectPreview } from "@features/view/core/view-ssr.ts";
 import ViewStyleAnchor from "@features/view/islands/ViewStyleAnchor.island.tsx";
 
 /**
- * `/projects/[projectSlug]/preview` — View Mode 2 of 2 for a project's owner: the brief exactly as a
- * freelancer evaluating it on `/view/[id]?type=projects` sees it, minus what is not about the brief.
+ * `/projects/[projectSlug]/preview` — the owner's preview, paired with `/details` in the header band
+ * (Decision #144): the brief exactly as a freelancer evaluating it on `/view/[id]?type=projects` sees
+ * it, minus what is not about the brief.
  *
  * It renders the SAME `EntityViewPage` in `mode="preview"`, from an `EntityView` composed by the same
  * `ExploreBackendService` composer the public page uses — read fresh with the owner's token, so a
@@ -23,25 +33,33 @@ import ViewStyleAnchor from "@features/view/islands/ViewStyleAnchor.island.tsx";
  *   1. Signed in. The `(dashboard)` group already requires a session; this re-asserts it, because a
  *      preview route that rendered for whatever a middleware let through would be a guard that held
  *      only as long as an unrelated file did.
- *   2. The owner, with setup complete. `viewerIsClient` is re-derived server-side, never trusted from
- *      the client; `previewReady` is the setup ladder's "every required step done" — the same value
- *      that renders the band's Preview tab LOCKED, so a control locked in the interface is locked at
- *      its URL too, rather than only for people who did not think to type the address.
+ *   2. The owner, when the engagement may preview (`previewAllowed`, Decision #144). A DRAFT must have
+ *      finished its required setup steps (`previewReady`, the setup ladder's "every required step
+ *      done" — the same value that renders the band's Preview tab LOCKED, so a control locked in the
+ *      interface is locked at its URL too). A PUBLISHED engagement always previews: its listing is
+ *      already public, and the old rule locked the owner out of their own live brief the moment a
+ *      stage added later had no price.
  *
- * Either failing is a 303 to the project's own page. The redirect is returned from `define.handlers`,
- * never from the page component: a `Response` returned by a `define.page` component is dead code — the
- * redirect silently never fires and the body renders anyway (root CLAUDE.md §8 Decision #61).
+ * A non-owner is sent straight to the public listing — the page this one previews, and where they
+ * belong — rather than to the engagement's root, which would only redirect them a second time. An
+ * owner who may not preview yet is sent to `/details`, where the outstanding steps are. Every exit is a
+ * 303 returned from `define.handlers`, never from the page component: a `Response` returned by a
+ * `define.page` component is dead code (root CLAUDE.md §8 Decision #61).
  */
 export const handler = define.handlers({
 	async GET(ctx) {
 		const slug = ctx.params.projectSlug;
-		const back = new Response(null, { status: 303, headers: { location: `/projects/${slug}` } });
-		if (!ctx.state.isAuthenticated) return back;
+		if (!ctx.state.isAuthenticated) return seeOther(projectHref(slug));
+
+		const resolved = await resolveProjectAccess(ctx, slug);
+		if (!resolved) return seeOther(projectsNoticeHref("project-not-found"));
+		if (resolved.access !== "owner") return seeOther(projectListingHref(slug));
 
 		const actor = readActor(ctx);
 		const { setup } = await resolveProjectSetup(slug, actor);
-		const isSetupComplete = !!setup?.previewReady;
-		if (!setup || !setup.viewerIsClient || !isSetupComplete) return back;
+		if (!setup || !previewAllowed(resolved.status, setup.previewReady)) {
+			return seeOther(projectDetailsHref(slug));
+		}
 
 		const { view, status } = await resolveProjectPreview(setup.slug, actor);
 		ctx.state.title = `Preview ${setup.title} · Projective`;
@@ -50,7 +68,7 @@ export const handler = define.handlers({
 });
 
 export default define.page<typeof handler>(function ProjectPreviewPage({ data }) {
-	const editHref = `/projects/${data.slug}`;
+	const editHref = projectDetailsHref(data.slug);
 
 	// The brief could not be composed — the marketplace read failed, or (in fixture mode) the project
 	// exists only in the stub store and has no rows to compose from. Either way the owner is told so

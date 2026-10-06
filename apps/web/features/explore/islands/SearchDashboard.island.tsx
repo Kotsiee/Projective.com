@@ -327,7 +327,7 @@ export default function SearchDashboard(
 					</div>
 
 					<div class="ex-dash__grid">
-						<main class="ex-dash__main">
+						<div class="ex-dash__main">
 							{pl.count === 0
 								? (
 									<EmptyState
@@ -371,7 +371,7 @@ export default function SearchDashboard(
 										))}
 									</div>
 								)}
-						</main>
+						</div>
 					</div>
 				</div>
 			</div>

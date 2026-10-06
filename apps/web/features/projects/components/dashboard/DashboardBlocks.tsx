@@ -79,7 +79,7 @@ export function StatusMark(
 
 // #region Block frame
 /** Props shared by every block: a section header, an optional trailing link, and its content. */
-interface BlockProps {
+export interface BlockProps {
 	title: string;
 	/** The fuller view for this block; omitted when the block has nowhere further to go. */
 	moreHref?: string;
@@ -92,7 +92,7 @@ interface BlockProps {
  * SPACING alone. No surface, no border, no card — a block is a region of the page, and §B.4 spends
  * one device on a boundary, which the grid's gap has already spent.
  */
-function Block({ title, moreHref, moreLabel, children }: BlockProps): JSX.Element {
+export function Block({ title, moreHref, moreLabel, children }: BlockProps): JSX.Element {
 	return (
 		<section class="pjd-block">
 			<div class="pjd-block__head">
@@ -105,7 +105,7 @@ function Block({ title, moreHref, moreLabel, children }: BlockProps): JSX.Elemen
 }
 
 /** The honest empty line a block renders in place of its list. */
-function Empty({ children }: { children: string }): JSX.Element {
+export function Empty({ children }: { children: string }): JSX.Element {
 	return <p class="pjd-block__empty">{children}</p>;
 }
 // #endregion

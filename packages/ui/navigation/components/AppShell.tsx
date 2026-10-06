@@ -31,6 +31,13 @@ export interface AppShellProps {
 	 * still reserves its grid track — which is how a "hidden" 280px lane leaves a 280px hole.
 	 */
 	chrome?: ShellChrome;
+	/**
+	 * The `id` of the page's main landmark — `PageCanvas` renders it as `main-content`. When set, the
+	 * shell's FIRST focusable element is a "Skip to content" link to it, hidden until it takes keyboard
+	 * focus (WCAG 2.4.1). Without it a keyboard user crosses the top bar, the global rail and the
+	 * middle-nav lane — fifty-odd stops on a project page — before reaching anything the page is about.
+	 */
+	skipTo?: string;
 	/** Nested content — a MiddleNav (Blue) or a PageCanvas (Green). */
 	children?: ComponentChildren;
 }
@@ -52,6 +59,7 @@ export function AppShell(props: AppShellProps): JSX.Element {
 		utilityBar,
 		sidebar,
 		chrome = "full",
+		skipTo,
 		children,
 	} = props;
 	// The rail is shown when the persona has one AND there is something to put in it. Keying on the
@@ -68,6 +76,11 @@ export function AppShell(props: AppShellProps): JSX.Element {
 			)}
 			data-chrome={chrome === "focus" ? "focus" : undefined}
 		>
+			{
+				/* Out of flow (`position: fixed`), so it takes no cell of the shell's grid; first in the
+				   DOM, so it is the first Tab stop on the page. */
+			}
+			{skipTo ? <a class="ui-app-shell__skip" href={`#${skipTo}`}>Skip to content</a> : null}
 			<ShellTopBar
 				glass={persona === "guest"}
 				brand={

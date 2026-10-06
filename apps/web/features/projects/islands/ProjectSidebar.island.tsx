@@ -73,10 +73,12 @@ const DEFAULT_GROUPS: Record<string, boolean> = {
  *   - **Expanded** — four vertical zones, top to bottom:
  *       1. the project header — a sticky row (Back + Star + kebab) over the card-less identity header;
  *       2. the **top tier** ({@link ProjectNavSection}) — the engagement's primary views as full nav
- *          rows: Discussion first, then the archetype's Board / Timeline / Calendar, Files,
- *          Submissions and Members ({@link projectViewLinks});
+ *          rows: Overview first (the engagement's root, Decision #144), then Discussion, the
+ *          archetype's Board / Timeline / Calendar, Files, Submissions and Members
+ *          ({@link projectViewLinks});
  *       3. the **contextual body**, which adapts to the archetype (below);
- *       4. a **utility footer** — the collapse toggle and Project details, nothing else.
+ *       4. a **utility footer** — the collapse toggle and, for the owner, Project details (the
+ *          engagement's configuration at `/details`), nothing else.
  *   - **Collapsed** — a single clean vertical icon rail ({@link ProjectRail}) mirroring the same views.
  *
  * The contextual body is **archetype-aware** (task §3), resolved from the SSR `sessionKind` baseline
@@ -375,7 +377,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 
 	const activeKind = kind.value;
 	const base = `/projects/${detail.slug}`;
-	const detailsCurrent = viewLinkCurrent(currentPath.value, base, { seg: "" }) !== null;
+	const detailsCurrent = viewLinkCurrent(currentPath.value, base, { seg: "details" }) !== null;
 	const calendarHref = `${base}/calendar`;
 	const filesHref = `${base}/files`;
 
@@ -481,7 +483,9 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 					 * Utilities only — the views moved up into the top tier. The collapse toggle docks to the
 					 * lane's corner (`LaneCollapseButton`), the same point the collapsed rail's expand toggle
 					 * occupies, so collapsing and expanding never move the pointer. Project details is the
-					 * engagement's root page: the owner's configuration workspace, a member's dashboard.
+					 * owner's configuration at `/details` (Decision #144) — not drawn for anybody else, whose
+					 * way into the engagement is the top tier's Overview, and not drawn twice on a Task,
+					 * whose top tier already carries it.
 					 */
 				}
 				<LaneFooter class="proj-detail__footer">
@@ -490,15 +494,17 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 						icon={<SidebarToggleIcon />}
 						onToggle={() => setLaneCollapsed(true)}
 					/>
-					<LaneFooterActions>
-						<LaneIconButton
-							href={base}
-							icon={DetailsIcon}
-							label={view.viewerIsClient ? "Project details & settings" : "Project details"}
-							tooltipPlacement="top"
-							active={detailsCurrent}
-						/>
-					</LaneFooterActions>
+					{view.viewerIsClient && !views.some((link) => link.key === "details") && (
+						<LaneFooterActions>
+							<LaneIconButton
+								href={`${base}/details`}
+								icon={DetailsIcon}
+								label="Project details & settings"
+								tooltipPlacement="top"
+								active={detailsCurrent}
+							/>
+						</LaneFooterActions>
+					)}
 				</LaneFooter>
 			</div>
 

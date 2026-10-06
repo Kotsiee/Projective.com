@@ -370,12 +370,17 @@
 	padding-block-start: 0.1rem;
 }
 
+/*
+ * The lane's name for the engagement. Not a heading (the page owns the one `<h1>`, Decision #144) and
+ * never bold: semibold at body size is the most this identity row may spend, because the next more
+ * important thing on screen is the page title beside it.
+ */
 .proj-ctx__title {
 	margin: 0;
-	font-size: 1.02rem;
-	font-weight: 700;
-	line-height: 1.2;
-	letter-spacing: -0.01em;
+	font-size: var(--text-base);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
 	color: var(--on-surface);
 }
 
@@ -418,21 +423,23 @@
 	border-radius: var(--radius-full);
 }
 
-/* The description is one interactive reveal block: hover shifts its colour, click routes to the page. */
+/*
+ * The description, clamped to three lines with an in-place disclosure (Decision #144). It used to be
+ * one link to the engagement's root — which, once the root became the Overview, would have promised
+ * "details" and delivered a dashboard. The words are revealed where they are instead.
+ */
 .proj-ctx__desc {
 	display: flex;
 	flex-direction: column;
 	gap: 0.2rem;
-	text-decoration: none;
-	border-radius: var(--radius-sm);
 	color: var(--text-secondary);
-	transition: color var(--dur-fast) var(--ease-standard);
 }
 
 .proj-ctx__desc-text {
+	margin: 0;
 	font-size: 0.76rem;
 	line-height: 1.5;
-	/* Up to 3 lines — the rest reveals on the main page. */
+	/* Up to 3 lines until the disclosure opens. */
 	display: -webkit-box;
 	-webkit-line-clamp: 3;
 	line-clamp: 3;
@@ -440,26 +447,28 @@
 	overflow: hidden;
 }
 
+.proj-ctx__desc[data-expanded="true"] .proj-ctx__desc-text {
+	display: block;
+	-webkit-line-clamp: unset;
+	line-clamp: none;
+	overflow: visible;
+}
+
 .proj-ctx__show {
 	align-self: flex-start;
+	padding: 0;
+	background: none;
+	border: none;
+	border-radius: var(--radius-sm);
+	font: inherit;
 	font-size: 0.74rem;
-	font-weight: 600;
+	font-weight: var(--fw-semibold);
 	color: var(--primary);
+	cursor: pointer;
 }
 
-/* Hover anywhere on the block shifts the body copy toward the primary text colour (darker in light
-   mode, lighter in dark) to signal the whole area is clickable. */
-.proj-ctx__desc:hover {
-	color: var(--on-surface);
-}
-
-.proj-ctx__desc:hover .proj-ctx__show {
+.proj-ctx__show:hover {
 	text-decoration: underline;
-}
-
-.proj-ctx__desc:focus-visible {
-	outline: none;
-	box-shadow: none;
 }
 
 /* #endregion */

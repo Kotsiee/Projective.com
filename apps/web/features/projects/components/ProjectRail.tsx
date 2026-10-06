@@ -23,11 +23,12 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  * {@link Tooltip} carries the name — never a native `title`).
  *
  * Top section (aligned to the top): Back · owner/client avatar (links to `/@handle`) · the SAME
- * primary views the expanded lane's top tier draws ({@link projectViewLinks} — Discussion first, then
- * the archetype's Board/Timeline/Calendar, Files, Submissions, Members), each carrying its status dot.
- * Bottom section (pinned via `margin-block-start: auto`) — the expanded footer's utilities, in the
- * same order: a client-only Add-stage ＋, Project details, and the {@link LaneCollapseButton}, which
- * docks to the lane's corner so the expanded and collapsed toggles share one hitbox.
+ * primary views the expanded lane's top tier draws ({@link projectViewLinks} — Overview, Discussion,
+ * then the archetype's Board/Timeline/Calendar, Files, Submissions, Members), each carrying its status
+ * dot. Bottom section (pinned via `margin-block-start: auto`) — the expanded footer's utilities, in
+ * the same order: a client-only Add-stage ＋, the owner's Details (`/details`, Decision #144), and the
+ * {@link LaneCollapseButton}, which docks to the lane's corner so the expanded and collapsed toggles
+ * share one hitbox.
  *
  * Rendered alongside the expanded view; CSS (`.ui-splitter[data-mode="collapsed"]`) reveals exactly
  * one at a time. Its icons are {@link cloneElement}-copied off the shared `projectViewLinks` set so the
@@ -80,7 +81,7 @@ export function ProjectRail(
 			</Tooltip>
 		);
 	};
-	const detailsCurrent = viewLinkCurrent(currentPath, base, { seg: "" });
+	const detailsCurrent = viewLinkCurrent(currentPath, base, { seg: "details" });
 
 	return (
 		<nav class="proj-detail__rail" aria-label="Project navigation">
@@ -138,15 +139,18 @@ export function ProjectRail(
 					</Tooltip>
 				)}
 
-				{/* A Task's view set already carries Details; the rail never shows one destination twice. */}
-				{!topLinks.some((l) => l.key === "details") && (
-					<Tooltip content="Project details" placement="right">
+				{
+					/* The owner's configuration only — it is nobody else's to open (Decision #144). A Task's
+					   view set already carries Details; the rail never shows one destination twice. */
+				}
+				{detail.viewerIsClient && !topLinks.some((l) => l.key === "details") && (
+					<Tooltip content="Project details & settings" placement="right">
 						<a
 							class="proj-railbtn"
-							href={base}
+							href={hrefFor("details")}
 							data-active={detailsCurrent ? "true" : undefined}
 							aria-current={detailsCurrent ?? undefined}
-							aria-label="Project details"
+							aria-label="Project details & settings"
 						>
 							{cloneElement(DetailsIcon)}
 						</a>

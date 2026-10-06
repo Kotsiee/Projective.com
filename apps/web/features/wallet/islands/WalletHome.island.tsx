@@ -77,7 +77,8 @@ function reducedMotion(): boolean {
 
 function Failure({ message }: { message: string }): JSX.Element {
 	return (
-		<main class="wlt" aria-labelledby="wlt-title">
+		// A named region, not a second `<main>`: the shell's canvas is the page's one main landmark.
+		<section class="wlt" aria-labelledby="wlt-title">
 			<section class="wlt-hero wlt-hero--failed">
 				<div class="wlt-hero__inner">
 					<h1 id="wlt-title" class="wlt-hero__failtitle">Wallet</h1>
@@ -92,7 +93,7 @@ function Failure({ message }: { message: string }): JSX.Element {
 					</div>
 				</div>
 			</section>
-		</main>
+		</section>
 	);
 }
 
@@ -347,7 +348,7 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 	);
 
 	return (
-		<main class="wlt" data-view={view} aria-labelledby="wlt-title">
+		<section class="wlt" data-view={view} aria-labelledby="wlt-title">
 			{viewShowsRuler(view) && (
 				<div class="wlt-rulebar">
 					<div class="wlt-rulebar__slot">
@@ -445,7 +446,7 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 				resolve={resolve}
 				onChanged={(fresh) => void refresh(fresh)}
 			/>
-		</main>
+		</section>
 	);
 }
 

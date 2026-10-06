@@ -22,6 +22,8 @@ export * from "./settlement.ts";
 export * from "./board.ts";
 export * from "./setup.ts";
 export * from "./overview.ts";
+export * from "./access.ts";
+export * from "./workspace.ts";
 export * from "./timeline.ts";
 export * from "./hire.ts";
 export * from "./apply.ts";

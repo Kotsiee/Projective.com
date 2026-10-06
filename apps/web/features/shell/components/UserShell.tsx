@@ -6,6 +6,7 @@ import {
 	AppShell,
 	BottomNav,
 	MiddleNav,
+	PAGE_CANVAS_MAIN_ID,
 	PageCanvas,
 	type ShellChrome,
 	type UseSplitterOptions,
@@ -184,6 +185,8 @@ export function UserShell(
 			<AppShell
 				persona="user"
 				chrome={chrome}
+				// The first Tab stop on every signed-in page: past the top bar, the rail and the lane.
+				skipTo={PAGE_CANVAS_MAIN_ID}
 				brand={
 					<div class="shell-headlead">
 						<BrandMark />

@@ -225,3 +225,31 @@
 		padding-inline-start: 0;
 	}
 }
+
+/*
+ * Skip to content (WCAG 2.4.1) — the shell's first Tab stop when `skipTo` is set. Off-screen until it
+ * takes focus, then pinned over the top bar's leading edge; `position: fixed` takes it out of the
+ * shell's grid, so it never claims a cell. It is moved by `transform` rather than by an animated
+ * inset, and nothing transitions it, so both reduced-motion channels already get the jump-to-final.
+ * Drawn as the inverted pair (`--surface` on `--on-surface`) so it reads as a command over any chrome
+ * in either theme.
+ */
+.ui-app-shell__skip {
+	position: fixed;
+	inset-block-start: var(--space-2);
+	inset-inline-start: var(--space-2);
+	z-index: var(--z-tooltip);
+	padding: var(--space-2) var(--space-4);
+	border-radius: var(--radius-full);
+	background: var(--on-surface);
+	color: var(--surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	text-decoration: none;
+	transform: translateY(calc(-100% - var(--space-4)));
+}
+
+.ui-app-shell__skip:focus,
+.ui-app-shell__skip:focus-visible {
+	transform: none;
+}
