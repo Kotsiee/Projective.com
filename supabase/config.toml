@@ -259,8 +259,12 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
-# Custom transactional email templates. These use {{ .TokenHash }} and link to
-# /api/v1/auth/confirm, which verifies server-side (cross-device safe).
+# Custom transactional email templates. Links and the logo hang off {{ .RedirectTo }}, which the
+# server sets to APP_URL (GoTrue falls back to site_url): confirmation -> /api/auth/confirm (token_hash,
+# verified server-side, cross-device safe), recovery -> /forgot-password at the code step.
+# Locally GoTrue fetches these (bind-mounted, so edits are live) from Kong's :8088 template server.
+# A `kong reload` rebuilds Kong's nginx.conf without that server and GoTrue silently sends its
+# default email instead: if that email reappears, run `docker restart supabase_kong_<project_id>`.
 [auth.email.template.confirmation]
 subject = "Confirm your Projective account"
 content_path = "./supabase/templates/confirmation.html"

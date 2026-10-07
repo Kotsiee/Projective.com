@@ -14,9 +14,11 @@ export const handler = define.handlers({
 	GET(ctx) {
 		ctx.state.title = "Reset password · Projective";
 		ctx.state.description = "Reset your Projective password.";
+		const email = ctx.url.searchParams.get("email") ?? undefined;
 		return page({
 			redirectTo: readRedirect(ctx.url.searchParams),
-			email: ctx.url.searchParams.get("email") ?? undefined,
+			email,
+			codeSent: Boolean(email) && ctx.url.searchParams.get("step") === "reset",
 		});
 	},
 });
@@ -24,7 +26,11 @@ export const handler = define.handlers({
 export default define.page<typeof handler>(function ForgotPasswordRoute({ data }) {
 	return (
 		<AuthShell aside={<SceneAside variant="forgot" />}>
-			<ForgotPasswordForm redirectTo={data.redirectTo} email={data.email} />
+			<ForgotPasswordForm
+				redirectTo={data.redirectTo}
+				email={data.email}
+				codeSent={data.codeSent}
+			/>
 		</AuthShell>
 	);
 });

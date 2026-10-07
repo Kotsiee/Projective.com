@@ -1823,10 +1823,22 @@ PostgreSQL RLS.
   record whenever a new identity is registered in the `auth.users` schema.
 - **Transactional emails:** GoTrue sends branded, dual-path emails from `supabase/templates/` (wired
   in `config.toml` `[auth.email.template.*]`). The **confirmation** and **recovery** templates each
-  surface the **6-digit OTP** (`{{ .Token }}`, `otp_length = 6`) _and_ a magic link, matching the
-  `/verify` and `/forgot-password` "type the code or click the link" flows. They are premium,
-  responsive, dark-mode-aware, and image-free (inline CSS + table layout, VML buttons for Outlook).
-  Note `enable_confirmations = false` for local dev (mail lands in Inbucket).
+  surface the **6-digit OTP** (`{{ .Token }}`, `otp_length = 6`) _and_ a link, matching the
+  `/verify` and `/forgot-password` "type the code or click the link" flows. Every URL hangs off
+  `{{ .RedirectTo }}`, which `AuthBackendService` sets to the bare `APP_URL` origin (GoTrue
+  substitutes `site_url`, also a bare origin, when it refuses one): the confirmation button opens
+  `GET /api/auth/confirm?token_hash=…&type=email` (thin route → `confirmEmailLink` → `verifyOtp`,
+  session cookies minted on the clicking device, `/home`; a spent link lands on
+  `/login?notice=confirm_failed`), and the recovery button opens `/forgot-password?email=…&step=reset`
+  on the code step. Design follows the design-system palette for seed `#288690` resolved to literal
+  hex (no card: one column on the `--bg` tone, the code on a `--surface-2` tint, `--primary` /
+  `--on-primary` button, semibold headings, `tabular-nums` code), responsive, dark-mode-aware
+  (`prefers-color-scheme`), inline CSS + table layout with VML buttons for Outlook. The one image is
+  the self-contained app-icon mark, `apps/web/static/email/logo-mark.png` (rendered from
+  `static/logo.svg`), with an empty `alt` because the live-text wordmark follows it. Locally GoTrue
+  fetches the bind-mounted templates from Kong's `:8088` server; a `kong reload` drops that server and GoTrue
+  silently falls back to its default email (fix: `docker restart supabase_kong_<project_id>`).
+  Mail lands in Mailpit (`http://127.0.0.1:54324`).
 - **Secondary email addresses are verified by token, never by a column write** (Decision #151).
   `org.user_emails.verified_at` unlocks invitations sent to an address (`projects.project_invitations`,
   `org.fn_is_invitee`, `projects.invite_by_email`), so clients have SELECT only on the table and every

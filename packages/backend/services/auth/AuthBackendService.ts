@@ -180,6 +180,12 @@ export interface ConfirmEmailInput {
 	redirectTo: string;
 }
 
+/** A confirmation-link click: the `token_hash` GoTrue put in the email's button. */
+export interface ConfirmEmailLinkInput {
+	tokenHash: string;
+	redirectTo: string;
+}
+
 /** A verification-status poll. */
 export interface VerificationStatusInput {
 	email?: string;
@@ -220,6 +226,10 @@ export interface AuthPayload {
 
 /** Sentinel code the MVP stubs treat as the deterministic failure path. */
 const SENTINEL_BAD_CODE = "000000";
+
+function appOrigin(): string {
+	return serverEnv().appUrl.replace(/\/+$/, "");
+}
 
 export class AuthBackendService {
 	// #region Account creation & sign-in
@@ -556,6 +566,30 @@ export class AuthBackendService {
 	}
 
 	/**
+	 * Confirm an email from the link in the confirmation email. Live: exchange the `token_hash` with
+	 * GoTrue (`verifyOtp`) and mint the session cookie on whichever device opened the link — the
+	 * `/verify` tab that started the signup picks the confirmation up through its status poll. Stub:
+	 * succeeds without a session.
+	 */
+	static async confirmEmailLink(input: ConfirmEmailLinkInput): Promise<ServiceResult<AuthPayload>> {
+		if (!isAuthBackendLive()) {
+			return ok({ redirectTo: input.redirectTo });
+		}
+		try {
+			const { data, error } = await getAnonClient().auth.verifyOtp({
+				token_hash: input.tokenHash,
+				type: "email",
+			});
+			if (error) {
+				return fail(422, { message: "That confirmation link has expired or was already used." });
+			}
+			return ok({ redirectTo: input.redirectTo }, { session: toSession(data.session) });
+		} catch (e) {
+			return fail(500, { message: e instanceof Error ? e.message : "Verification failed." });
+		}
+	}
+
+	/**
 	 * Poll app-owned verification state — the "database listener" behind `/verify`. Live: read
 	 * `org.user_emails.verified_at` (kept in lockstep with GoTrue by migration 0312). Stub: not-yet.
 	 */
@@ -594,10 +628,18 @@ export class AuthBackendService {
 	 * mailer. The admin `createUser` that provisions accounts never sends mail — only GoTrue's public
 	 * endpoints do — so this is the one door every confirmation email leaves through. supabase-js
 	 * RETURNS a refused send as `{ error }` rather than throwing, so the result is read, not assumed.
+	 *
+	 * `emailRedirectTo` is the app's bare origin: `confirmation.html` builds its button and logo URLs
+	 * on `{{ .RedirectTo }}`, and GoTrue substitutes `site_url` (also a bare origin) when it refuses a
+	 * redirect, so either value yields a working link.
 	 */
 	private static async dispatchConfirmation(email: string): Promise<boolean> {
 		try {
-			const { error } = await getAnonClient().auth.resend({ type: "signup", email });
+			const { error } = await getAnonClient().auth.resend({
+				type: "signup",
+				email,
+				options: { emailRedirectTo: appOrigin() },
+			});
 			return !error;
 		} catch {
 			return false;
@@ -608,7 +650,8 @@ export class AuthBackendService {
 	// #region Password recovery
 	/**
 	 * Begin password recovery. Anti-enumeration: always reports success regardless of whether the
-	 * address has an account. Live: GoTrue sends the recovery email (recovery.html template).
+	 * address has an account. Live: GoTrue sends the recovery email (recovery.html template), whose
+	 * links hang off the bare origin passed as `redirectTo` (see {@link dispatchConfirmation}).
 	 */
 	static async requestPasswordReset(
 		input: { email: string; redirectTo: string },
@@ -616,7 +659,7 @@ export class AuthBackendService {
 		if (isAuthBackendLive()) {
 			try {
 				await getAnonClient().auth.resetPasswordForEmail(input.email, {
-					redirectTo: `${serverEnv().appUrl}/reset`,
+					redirectTo: appOrigin(),
 				});
 			} catch {
 				// Swallow — never reveal whether the address exists.

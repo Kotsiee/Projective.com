@@ -12,14 +12,20 @@ import { withRedirect } from "../core/redirect.ts";
  * ForgotPasswordForm — two-step recovery on the soft auth surface. Step 1 requests a reset code by
  * email (the server responds identically whether or not the account exists, to avoid enumeration).
  * Step 2 takes the 6-digit code plus a new password, then returns the user to sign in with the
- * original return path preserved.
+ * original return path preserved. `codeSent` (the recovery email's button) opens straight on step 2
+ * for the emailed address.
  */
 export default function ForgotPasswordForm(
-	{ redirectTo, email: initialEmail }: { redirectTo: string; email?: string },
+	{ redirectTo, email: initialEmail, codeSent = false }: {
+		redirectTo: string;
+		email?: string;
+		codeSent?: boolean;
+	},
 ) {
-	const step = useSignal<"request" | "reset">("request");
+	const resuming = codeSent && Boolean(initialEmail);
+	const step = useSignal<"request" | "reset">(resuming ? "reset" : "request");
 	const email = useSignal(initialEmail ?? "");
-	const sentTo = useSignal("");
+	const sentTo = useSignal(resuming ? initialEmail ?? "" : "");
 	const otp = useOtpInput(6);
 	const password = useSignal("");
 	const confirm = useSignal("");

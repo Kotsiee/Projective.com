@@ -117,6 +117,11 @@ export const VerifySchema = z.object({
 
 export const ResendSchema = z.object({ email: email.optional() });
 
+export const ConfirmLinkSchema = z.object({
+	token_hash: z.string().regex(/^[0-9a-f]{20,128}$/i),
+	type: z.literal("email"),
+});
+
 /** Flatten a Zod error into a `{ "path.to.field": message }` record for `AuthResult.errors`. */
 export function fieldErrors(error: z.ZodError): Record<string, string> {
 	const out: Record<string, string> = {};

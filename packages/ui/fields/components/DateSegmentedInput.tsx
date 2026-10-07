@@ -49,13 +49,11 @@ export interface DateSegmentedInputProps {
 	/** A segment took or lost focus. `null` means the control no longer owns focus. */
 	onActivate: (kind: DateSegmentKind | null) => void;
 	/**
-	 * The reader asked for the calendar, and where focus should go once it is there.
-	 *
-	 * A CLICK keeps focus on the segment (`"segments"`), because a reader who clicked a box is about
-	 * to type in it. Enter and Space hand focus to the grid (`"grid"`), which is what makes the second
-	 * Enter select a day rather than needing a Tab in between.
+	 * The reader asked for the calendar from the keyboard. Enter and Space hand focus to the grid,
+	 * which is what makes the second Enter select a day rather than needing a Tab in between. A click
+	 * is handled by the picker's field container, which opens without moving focus off the segment.
 	 */
-	onRequestOpen: (focus: "segments" | "grid") => void;
+	onRequestOpen: (focus: "grid") => void;
 	/** The reader is finished (Enter while open). */
 	onRequestClose: () => void;
 }
@@ -337,11 +335,6 @@ export function DateSegmentedInput(props: DateSegmentedInputProps): JSX.Element 
 					}
 					onBuffer(kind, "");
 					onActivate(null);
-				}}
-				onClick={() => {
-					// Clicking a date field should show the calendar. The segment still takes focus, so
-					// typing continues to work; the popover does not steal it (see the picker's focus owner).
-					if (!open && editable) onRequestOpen("segments");
 				}}
 			/>
 		);

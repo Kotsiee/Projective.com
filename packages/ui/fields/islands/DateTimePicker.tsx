@@ -412,6 +412,7 @@ export function DateTimePicker(props: DateTimePickerProps): JSX.Element {
 						<div class="ui-datetime__body">
 							<DatePicker
 								inline
+								wheelNavigation
 								class="ui-datetime__calendar"
 								value={calValue}
 								onValueChange={onCalendarChange}

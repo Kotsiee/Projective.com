@@ -218,6 +218,7 @@ export {
 	type DateTemplate,
 	type DateValue,
 } from "./islands/DatePicker.tsx";
+export type { DateDelimiter } from "./core/calendar-nav.ts";
 export { TimeTumbler, type TimeTumblerProps } from "./islands/TimeTumbler.tsx";
 export { DateTimePicker, type DateTimePickerProps } from "./islands/DateTimePicker.tsx";
 /**

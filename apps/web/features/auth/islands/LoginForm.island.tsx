@@ -2,7 +2,7 @@ import { AuthHeading } from "../components/AuthShell.tsx";
 import { OAuthButtons } from "../components/OAuthButtons.tsx";
 import { CredentialsForm } from "../components/CredentialsForm.tsx";
 import { SsoPanel } from "../components/SsoPanel.tsx";
-import { CheckIcon } from "../components/icons.tsx";
+import { CheckIcon, WarnIcon } from "../components/icons.tsx";
 import { withRedirect } from "../core/redirect.ts";
 
 /**
@@ -30,6 +30,17 @@ export default function LoginForm(
 					<div class="auth-banner auth-banner--success" role="status">
 						<span class="auth-banner__icon">{CheckIcon()}</span>
 						<span>Password updated. Sign in with your new password.</span>
+					</div>
+				)
+				: null}
+
+			{notice === "confirm_failed"
+				? (
+					<div class="auth-banner auth-banner--error" role="alert">
+						<span class="auth-banner__icon">{WarnIcon()}</span>
+						<span>
+							That confirmation link has expired or was already used. Sign in to get a new code.
+						</span>
 					</div>
 				)
 				: null}

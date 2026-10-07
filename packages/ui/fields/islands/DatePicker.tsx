@@ -1,6 +1,6 @@
 import type { JSX, RefObject, VNode } from "preact";
-import { useMemo, useRef } from "preact/hooks";
-import { signal, useSignalEffect } from "@preact/signals";
+import { useEffect, useMemo, useRef } from "preact/hooks";
+import { batch, signal, useSignalEffect } from "@preact/signals";
 import "../styles/datepicker.css";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
@@ -25,7 +25,16 @@ import {
 	parseSegmentLayout,
 	partsFromDate,
 	partsToDate,
+	segmentOrder,
 } from "../core/date-segments.ts";
+import {
+	applyDelimiter,
+	createWheelStepper,
+	type DateDelimiter,
+	periodStepForKey,
+	shiftMonthsKeepingDay,
+	type WheelSample,
+} from "../core/calendar-nav.ts";
 import { DateSegmentedInput } from "../components/DateSegmentedInput.tsx";
 import { CalendarHeader } from "../components/CalendarHeader.tsx";
 import { CalendarMonthTrack } from "../components/CalendarMonthTrack.tsx";
@@ -69,6 +78,17 @@ export interface DatePickerProps extends BaseFieldProps {
 	disabledDates?: Date[];
 	/** Display format tokens: `d dd D DD m mm M MM yy yyyy` (default `mm/dd/yy`). */
 	dateFormat?: string;
+	/**
+	 * Separator drawn between the day, month and year, replacing whatever `dateFormat` uses. Omit it
+	 * to keep the separators `dateFormat` already has.
+	 */
+	delimiter?: DateDelimiter;
+	/**
+	 * Turn the wheel over the calendar to step it: a plain wheel moves one month, Ctrl/Cmd + wheel
+	 * one year. Default `true` in popup mode and `false` inline, where the calendar sits in page flow
+	 * and a wheel over it is usually the page being scrolled.
+	 */
+	wheelNavigation?: boolean;
 	/**
 	 * Type the date directly, in `DD` / `MM` / `YYYY` boxes (default `true` for `single`).
 	 *
@@ -246,7 +266,16 @@ function emptyBuffers(): Record<DateSegmentKind, string> {
  * | Enter          | open the calendar while the date is INCOMPLETE; a complete date leaves Enter to the form (implicit submission, a wizard's next-field rule); close while open | select the focused day   |
  * | Space          | open the calendar         | select the focused day   |
  * | Backspace      | clear THIS segment only   | —                        |
+ * | Escape         | close, keeping the committed value; focus returns to the field   |
  * | Tab            | ordinary focus traversal, in and out of the control       |
+ *
+ * While the calendar is open, period shortcuts work from either half (Cmd replaces Ctrl on macOS):
+ * Ctrl + Left / Right steps one month, Ctrl + Up / Down one year, Ctrl + Shift + Up / Down five.
+ * Over the panel a wheel notch steps one month, Ctrl + wheel one year — see `core/calendar-nav.ts`.
+ * A step that would leave no selectable day in view is refused, as the chevrons are.
+ *
+ * A click anywhere on the field opens the calendar and puts focus in the field (the first empty
+ * segment, else the first). The calendar icon toggles it.
  *
  * In popup mode the PANEL is projected into `document.body` via {@link BodyPortal} and claims a live
  * stacking index from {@link useOverlayStack}, so it escapes any ancestor that would clip it
@@ -267,6 +296,8 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 		maxDate,
 		disabledDates,
 		dateFormat = "mm/dd/yy",
+		delimiter,
+		wheelNavigation = !inline,
 		segmented = true,
 		firstDayOfWeek = 1,
 		yearSpan = 100,
@@ -299,6 +330,8 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 
 	/** Three boxes can hold one date, so the other two cardinalities keep the read-only display. */
 	const useSegments = segmented && selectionMode === "single";
+	const format = applyDelimiter(dateFormat, delimiter);
+	const layout = parseSegmentLayout(format);
 
 	// #region Local UI state
 	const seed = toDates(ctrl.get())[0] ?? new Date();
@@ -340,7 +373,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 	});
 	useDismiss({
 		open: open.value && !inline,
-		onDismiss: () => (open.value = false),
+		onDismiss: () => dismissPanel(),
 		panelRef: panelRef as RefObject<HTMLElement>,
 		triggerRef: triggerRef as RefObject<HTMLElement>,
 		// The month/year pickers open their own panels FROM inside this one, so this overlay is not
@@ -356,14 +389,26 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 	// Move keyboard focus onto the active day whenever it (or the open state) changes — but only when
 	// the GRID is what the reader is driving. While a segment holds focus the highlight still tracks
 	// every keystroke; it just does not chase focus across the control to do it.
+	//
+	// Deferred one task: the write that moved the day only QUEUES the re-render, so a day in another
+	// month is still absent — or inside an inert neighbour page — when this runs synchronously.
 	useSignalEffect(() => {
 		const key = dayKey(focusedDate.value);
 		if (!(inline || open.value)) return;
 		if (focusOwner.value !== "grid") return;
-		const host = panelRef.current;
-		if (!host) return;
-		const el = host.querySelector<HTMLElement>(`[data-day="${key}"]`);
-		el?.focus();
+		const timer = setTimeout(() => {
+			if (focusOwner.peek() !== "grid") return;
+			const host = panelRef.current;
+			if (!host) return;
+			const active = host.ownerDocument.activeElement;
+			const ownsFocus = !active || active === host.ownerDocument.body ||
+				host.contains(active) || !!triggerRef.current?.contains(active);
+			if (!ownsFocus) return;
+			const cells = host.querySelectorAll<HTMLElement>(`[data-day="${key}"]`);
+			const target = Array.from(cells).find((el) => !el.closest("[inert]"));
+			if (target && target !== active) target.focus();
+		}, 0);
+		return () => clearTimeout(timer);
 	});
 
 	/**
@@ -443,6 +488,54 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 		if (maxDate && target > monthIndex(maxDate)) return true;
 		return false;
 	};
+
+	/** Move the view and the highlighted day together, so a grid that holds focus keeps it. */
+	const stepPeriod = (months: number) => {
+		if (months === 0 || stepBlocked(months)) return;
+		batch(() => {
+			viewDate.value = addMonths(viewDate.peek(), months);
+			focusedDate.value = shiftMonthsKeepingDay(focusedDate.peek(), months);
+		});
+	};
+
+	const onPeriodKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLElement>) => {
+		if (!(inline || open.peek())) return;
+		const months = periodStepForKey(e);
+		if (months === null) return;
+		e.preventDefault();
+		stepPeriod(months);
+	};
+	// #endregion
+
+	// #region Wheel navigation
+	const stepPeriodRef = useRef(stepPeriod);
+	stepPeriodRef.current = stepPeriod;
+	const panelMounted = inline || open.value;
+
+	// Attached by hand so `{ passive: false }` is explicit: Ctrl + wheel is the browser's page zoom,
+	// and a plain wheel would scroll the page under the panel.
+	useEffect(() => {
+		const host = panelRef.current;
+		if (!panelMounted || !wheelNavigation || disabled || !host) return;
+		const stepper = createWheelStepper();
+		const onWheel = (event: WheelEvent) => {
+			if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+			event.preventDefault();
+			const sample: WheelSample = {
+				deltaX: event.deltaX,
+				deltaY: event.deltaY,
+				deltaMode: event.deltaMode,
+				timeStamp: event.timeStamp,
+				wheelDeltaY: "wheelDeltaY" in event && typeof event.wheelDeltaY === "number"
+					? event.wheelDeltaY
+					: undefined,
+			};
+			const step = stepper.feed(sample);
+			if (step !== 0) stepPeriodRef.current(step * (event.ctrlKey || event.metaKey ? 12 : 1));
+		};
+		host.addEventListener("wheel", onWheel, { passive: false });
+		return () => host.removeEventListener("wheel", onWheel);
+	}, [panelMounted, wheelNavigation, disabled]);
 	// #endregion
 
 	// #region Disabled predicate
@@ -587,6 +680,58 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 		focusOwner.value = owner;
 		open.value = true;
 	};
+
+	/** Focus the first empty segment, else the field's entry point. */
+	const focusEntry = () => {
+		const root = triggerRef.current;
+		if (!root) return;
+		const current = parts.peek();
+		const empty = useSegments
+			? segmentOrder(layout).find((kind) => current[kind] === null)
+			: undefined;
+		const target = (empty && root.querySelector<HTMLElement>(`[data-segment="${empty}"]`)) ||
+			root.querySelector<HTMLElement>(".ui-datepicker__entry");
+		target?.focus();
+	};
+
+	/** The day the calendar rests on: the committed value, else whatever the segments name so far. */
+	const anchorDate = (): Date => {
+		const committed = toDates(ctrl.get())[0];
+		if (committed) return atMidnight(committed);
+		const typed = parts.peek();
+		const today = new Date();
+		const year = typed.year ?? today.getFullYear();
+		const month = typed.month ?? today.getMonth();
+		return new Date(year, month, clampDayToMonth(year, month, typed.day ?? today.getDate()));
+	};
+
+	/**
+	 * Close without committing anything: the view and the highlight return to the anchor, and focus
+	 * returns to the field if the panel held it.
+	 */
+	const dismissPanel = () => {
+		const host = panelRef.current;
+		const panelHadFocus = !!host && host.contains(host.ownerDocument.activeElement);
+		const anchor = anchorDate();
+		batch(() => {
+			open.value = false;
+			viewDate.value = startOfMonth(anchor);
+			focusedDate.value = anchor;
+			if (focusOwner.peek() === "grid") focusOwner.value = null;
+		});
+		if (panelHadFocus) focusEntry();
+	};
+
+	const onTriggerClick = (e: JSX.TargetedMouseEvent<HTMLDivElement>) => {
+		if (disabled) return;
+		const target = e.target instanceof Element ? e.target : null;
+		if (open.peek() && target?.closest(".ui-datepicker__icon")) {
+			dismissPanel();
+			return;
+		}
+		if (!(target instanceof HTMLInputElement)) focusEntry();
+		if (!open.peek()) openPanel(useSegments ? "segments" : null);
+	};
 	// #endregion
 
 	// #region Focus / navigation
@@ -600,6 +745,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 	};
 
 	const onGridKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
+		if (e.ctrlKey || e.metaKey || e.altKey) return;
 		const cur = focusedDate.peek();
 		switch (e.key) {
 			case "ArrowLeft":
@@ -866,7 +1012,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 		const dates = toDates(ctrl.signal.value);
 		if (dates.length === 0) return "";
 		const fmt = (d: Date) =>
-			formatDatePattern(d, dateFormat) + (showTime ? ` ${formatTime(d, hourFormat)}` : "");
+			formatDatePattern(d, format) + (showTime ? ` ${formatTime(d, hourFormat)}` : "");
 		if (selectionMode === "range") {
 			return dates.length === 2 ? `${fmt(dates[0])} - ${fmt(dates[1])}` : fmt(dates[0]);
 		}
@@ -887,6 +1033,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 				ref={panelRef}
 				aria-label={ariaLabel}
 				aria-describedby={ariaDescribedby}
+				onKeyDown={onPeriodKeyDown}
 			>
 				{renderPanelBody()}
 			</div>
@@ -895,14 +1042,6 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 	// #endregion
 
 	// #region Popup presentation
-	const toggleOpen = () => {
-		if (disabled || readOnly) return;
-		if (open.value) open.value = false;
-		else openPanel("grid");
-	};
-
-	const layout = parseSegmentLayout(dateFormat);
-
 	return (
 		<div class={cx("ui-datepicker", fluid && "ui-datepicker--fluid", className)}>
 			<div
@@ -921,6 +1060,8 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 						focused: useSegments && activeSegment.value !== null,
 					}),
 				)}
+				onClick={onTriggerClick}
+				onKeyDown={onPeriodKeyDown}
 			>
 				{useSegments
 					? (
@@ -947,8 +1088,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 								if (kind !== null) focusOwner.value = "segments";
 								else if (focusOwner.peek() === "segments") focusOwner.value = null;
 							}}
-							// A click keeps focus where it is so typing continues; Enter hands the calendar
-							// focus, which is what makes the second Enter select a day.
+							// Enter hands the calendar focus, which is what makes the second Enter select a day.
 							onRequestOpen={openPanel}
 							onRequestClose={() => (open.value = false)}
 						/>
@@ -964,15 +1104,15 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 							placeholder={placeholder}
 							value={displayValue()}
 							role="combobox"
-							aria-haspopup="grid"
+							aria-haspopup="dialog"
 							aria-expanded={open.value}
 							aria-controls={panelId}
 							aria-label={ariaLabel}
 							aria-describedby={ariaDescribedby}
 							aria-invalid={ariaInvalid(status)}
 							aria-required={required || undefined}
-							onClick={toggleOpen}
 							onKeyDown={(e) => {
+								if (e.ctrlKey || e.metaKey || e.altKey) return;
 								if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
 									e.preventDefault();
 									openPanel("grid");
@@ -985,10 +1125,11 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 						type="button"
 						class="ui-datepicker__icon"
 						aria-label="Open calendar"
+						aria-haspopup="dialog"
 						aria-expanded={open.value}
+						aria-controls={panelId}
 						disabled={disabled}
 						tabIndex={-1}
-						onClick={toggleOpen}
 					>
 						<Icon name="calendar" />
 					</button>
@@ -1017,6 +1158,7 @@ export function DatePicker(props: DatePickerProps): JSX.Element {
 						role="dialog"
 						aria-modal="false"
 						aria-label={ariaLabel ?? "Choose date"}
+						onKeyDown={onPeriodKeyDown}
 						style={styleVars({
 							"--float-top": floating ? `${floating.top}px` : undefined,
 							"--float-left": floating ? `${floating.left}px` : undefined,
