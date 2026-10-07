@@ -2,7 +2,9 @@
 --          20260723093000, 20260723094000, 20260724112000, 20260724113000)
 
 CREATE INDEX IF NOT EXISTS idx_wallets_owner ON finance.wallets (owner_type, owner_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_wallet_created ON finance.transactions (wallet_id, created_at DESC);
+-- `(created_at, id)` is the ledger's keyset (finance.list_ledger): the id breaks ties between lines
+-- written in the same instant, so a page boundary is one row, never a set of equal timestamps.
+CREATE INDEX IF NOT EXISTS idx_transactions_wallet_created ON finance.transactions (wallet_id, created_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_escrows_stage ON finance.escrows (project_stage_id);
 CREATE INDEX IF NOT EXISTS idx_escrows_ticket ON finance.escrows (ticket_id);
 CREATE INDEX IF NOT EXISTS idx_escrows_payer_business ON finance.escrows (payer_business_id);

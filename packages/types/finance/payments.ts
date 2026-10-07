@@ -76,6 +76,25 @@ export type InboundPaymentStatus = z.infer<typeof InboundPaymentStatus>;
 export const EscrowLockStatus = z.enum(["not_applicable", "pending", "locked", "failed"]);
 export type EscrowLockStatus = z.infer<typeof EscrowLockStatus>;
 
+/**
+ * `finance.inbound_payments.checkout` — the order a card or express top-up pays for (Decision #153):
+ * the basket, the lines, the currency, the unit prices and promo the buyer was shown, and the attempt
+ * key the order is placed under. Written by `finance.attach_checkout_order`; read by the settle door,
+ * which places the order AS THE PAYER when the webhook credits the wallet — so a buyer whose browser
+ * never returns is not left with a funded wallet and no order. Ids and minor units only.
+ */
+export const CheckoutOrderLinkSchema = z.object({
+	basketId: uuid,
+	itemIds: z.array(uuid).min(1).max(200),
+	currency,
+	/** Each line's unit price in the listing's own currency, as the buyer was shown it. */
+	units: z.record(z.string(), minorUnitsNonNeg),
+	promoCode: z.string().max(60).nullable(),
+	/** The checkout's attempt key — the order's idempotency key, shared with the browser's placement. */
+	orderKey: attemptKey,
+});
+export type CheckoutOrderLink = z.infer<typeof CheckoutOrderLinkSchema>;
+
 /** A row of `finance.inbound_payments` — one attempt to move money INTO a wallet from outside. */
 export const InboundPaymentSchema = z.object({
 	id: uuid,
@@ -99,6 +118,12 @@ export const InboundPaymentSchema = z.object({
 	createdBy: uuid,
 	/** The standing rule that charged this payment off-session, or null for a payment made in the moment. */
 	depositRuleId: uuid.nullable().optional(),
+	/** The checkout this top-up pays for; `null` for every other payment (Decision #153). */
+	checkout: CheckoutOrderLinkSchema.nullable().optional(),
+	/** The order that checkout placed — by the settling webhook or the browser, under one key. */
+	orderId: uuid.nullable().optional(),
+	/** Why the settling webhook could not place the order; the money stays in the wallet. */
+	orderError: z.string().max(400).nullable().optional(),
 	createdAt: timestamp,
 	updatedAt: timestamp,
 	succeededAt: timestamp.nullable(),
@@ -415,8 +440,31 @@ export const CreateCardSetupSchema = z.object({
 export type CreateCardSetup = z.infer<typeof CreateCardSetupSchema>;
 
 /**
- * What the browser needs to collect a card with the Payment Element in `setup` mode. The card number
- * goes from the Element straight to Stripe; Projective only ever sees the resulting `pm_…` id.
+ * The payment-method types a card is saved with: card only. ONE list read by both halves of the
+ * deferred card setup — the browser's Elements group (`allowedPaymentMethodTypes`) and the server's
+ * SetupIntent (`allowed_payment_method_types`) — because Stripe requires the Elements options and the
+ * intent created at Save to match; a form that offered a method the intent then refused would fail
+ * only after the person had typed their card.
+ */
+export const CARD_SETUP_PAYMENT_METHOD_TYPES = ["card"] as const;
+export type CardSetupPaymentMethodType = (typeof CARD_SETUP_PAYMENT_METHOD_TYPES)[number];
+
+/**
+ * What the browser needs to mount the card form BEFORE any SetupIntent exists
+ * (`GET /api/finance/cards/setup`) — Stripe's "collect payment details before creating an Intent"
+ * flow. Only the publishable key and the mode: the SetupIntent is opened when the person presses
+ * Save (`POST` on the same path), so an Add card dialog that is opened and abandoned creates nothing
+ * at Stripe.
+ */
+export const CardSetupConfigSchema = z.object({
+	publishableKey: z.string().max(255).nullable(),
+	mode: StripeMode,
+});
+export type CardSetupConfig = z.infer<typeof CardSetupConfigSchema>;
+
+/**
+ * What the browser needs to confirm the card it collected, as a SetupIntent created at Save. The
+ * card number goes from the Element straight to Stripe; Projective only ever sees the `pm_…` id.
  */
 export const CardSetupHandoffSchema = z.object({
 	setupIntentId: stripeId("seti"),

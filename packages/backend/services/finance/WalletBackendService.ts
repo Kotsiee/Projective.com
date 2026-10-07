@@ -41,6 +41,14 @@ import * as actions from "./wallet-actions.ts";
 import { type RenderedDocument, renderInvoicePdf, renderStatementPdf } from "./finance-documents.ts";
 import type { WalletActionOutcome } from "./wallet-actions.ts";
 import { resolveWalletContext, type WalletContext } from "./wallet-scope.ts";
+import type { ProposalAllowanceStatus } from "@projective/types/finance";
+import {
+	allowanceTeamFor,
+	AllowanceAccessError,
+	readProposalAllowance,
+} from "./proposal-allowance.ts";
+import { isFinanceBackendLive } from "../../core/supabase.ts";
+import { canReadLive } from "../read-actor.ts";
 
 /**
  * WalletBackendService — the FAT half of the context-scoped Wallet & Finance surface (`/wallet`, its
@@ -157,9 +165,16 @@ export class WalletBackendService {
 		return read("access", query, actor, async (ctx) => ({ access: await accessOf(ctx) }));
 	}
 
-	/** The wallet's ledger as CSV (each amount in the currency it was stored in). */
-	static exportLedger(query: WalletQuery, actor: ReadActor): Promise<Result<{ filename: string; csv: string }>> {
-		return read("export", query, actor, (ctx) => ledgerCsvOf(ctx));
+	/**
+	 * The wallet's ledger as CSV, with the Transactions page's filters applied (each amount in the
+	 * currency it was stored in).
+	 */
+	static exportLedger(
+		query: WalletQuery,
+		params: TransactionListParams,
+		actor: ReadActor,
+	): Promise<Result<{ filename: string; csv: string }>> {
+		return read("export", query, actor, (ctx) => ledgerCsvOf(ctx, params));
 	}
 
 	// #region Documents
@@ -228,6 +243,35 @@ export class WalletBackendService {
 
 	static enrolSmoother(input: IncomeSmootherEnrolInput, query: WalletQuery, actor: ReadActor) {
 		return write("smoother", () => actions.enrolSmoother(input, query, actor));
+	}
+	// #endregion
+
+	// #region Proposal allowance
+	/**
+	 * The acting subject's proposal allowance — the weekly quota, the anti-burst buffer, when the next
+	 * token drips back, and whether an application would be accepted now (`GET /api/user/allowance`).
+	 * The subject is the team named by `teamId`, else the person when `personal` is set, else the
+	 * acting team context, else the person; the read itself lives in `proposal-allowance.ts`, behind
+	 * `finance.get_proposal_allowance`.
+	 */
+	static async getProposalAllowanceStatus(
+		actor: ReadActor,
+		subject: { teamId?: string | null; personal?: boolean } = {},
+	): Promise<Result<ProposalAllowanceStatus>> {
+		if (!actor.userId) return fail(401, { message: "Sign in to see your proposal allowance." });
+		if (isFinanceBackendLive() && !canReadLive(actor)) {
+			return fail(401, { message: "Your session expired. Sign in again to see your proposals." });
+		}
+		try {
+			const teamId = subject.teamId ?? (subject.personal ? null : allowanceTeamFor(actor));
+			return ok(await readProposalAllowance(actor, teamId));
+		} catch (error) {
+			if (error instanceof AllowanceAccessError) {
+				return fail(403, { message: error.message, errors: { teamId: "not_permitted" } });
+			}
+			console.error("[wallet:allowance]", error instanceof Error ? error.message : error);
+			return fail(503, { message: "We couldn't read your proposal allowance just now." });
+		}
 	}
 	// #endregion
 }

@@ -28,6 +28,21 @@ export const walletOverviewLive = signal<WalletOverview | null>(null);
 export const walletFlowLive = signal<FlowPeriod | null>(null);
 // #endregion
 
+// #region Saved cards
+/**
+ * The payment method a card was just saved as (`finance.payment_methods.id`), published once the
+ * server has recorded it — by the Add payment method dialog, or on the return from a bank's 3-D
+ * Secure page — so the methods list marks it and the Recurring deposit picker opens on it.
+ */
+export const walletAddedCardId = signal<string | null>(null);
+
+/**
+ * Why a card the bank sent back from a redirect (3-D Secure) was not saved: the Add payment method
+ * dialog, reopened for another try, shows it once and clears it.
+ */
+export const walletCardReturnNotice = signal<string | null>(null);
+// #endregion
+
 /** A dialog the command centre can open. */
 export type WalletDialog =
 	| { kind: "action"; action: WalletAction; stageId?: string }

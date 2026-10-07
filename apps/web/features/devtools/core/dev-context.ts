@@ -32,11 +32,14 @@ import {
 	type DevProfileSetup,
 	type DevProjectOnboarding,
 	type DevProjectType,
+	type DevProposalAllowance,
 	type DevSeamRole,
 	type DevServiceType,
 	type DevSessionBookingStatus,
+	type DevSettingsAttention,
 	type DevStageAssignment,
 	type DevSubmissionState,
+	type DevWalletAurora,
 	personaCapabilities,
 } from "@web/utils/dev-seam.ts";
 
@@ -61,10 +64,13 @@ export type {
 	DevMicPermission,
 	DevProfileSetup,
 	DevProjectType,
+	DevProposalAllowance,
 	DevServiceType,
 	DevSessionBookingStatus,
+	DevSettingsAttention,
 	DevStageAssignment,
 	DevSubmissionState,
+	DevWalletAurora,
 };
 
 /** The full override set. `enabled` is the master switch — when off, {@link applyDevContext} is a pass-through. */
@@ -169,6 +175,26 @@ export interface DevOverrides {
 	 * on, so the rule itself is what gets exercised; `auto` defers to the real `GET /api/user/setup`.
 	 */
 	profileSetup: DevProfileSetup;
+	/**
+	 * How the `/wallet` hero's live aurora is chosen: `auto` runs the shipping gates and watchdog,
+	 * `static` keeps the resting CSS gradient, `animated` forces the shader past the hardware gates and
+	 * the watchdog (still honouring reduced motion and a hidden page). Its own axis because core count,
+	 * device memory and frame times are device facts no page control can change.
+	 */
+	walletAurora: DevWalletAurora;
+	/**
+	 * The `/settings` attention dashboard and lane marks: the real facts, a fully set-up account, or
+	 * every rule tripped once. Its own axis because KYC, payout and connector states are server facts
+	 * no settings control can change (Decision #150).
+	 */
+	settingsAttention: DevSettingsAttention;
+	/**
+	 * The proposal allowance the popover meter, the lane disclosure and the apply modal render
+	 * (Decision #154): the real read, or a substituted status — plenty, low, paced (enforced or soft),
+	 * the week spent, or a one-member team. Its own axis because tokens, the drip clock and a roster are
+	 * server facts no control can reach without spending real proposals.
+	 */
+	proposalAllowance: DevProposalAllowance;
 }
 
 /** Selectable option metadata for the switcher UI. */
@@ -203,6 +229,9 @@ export const DEV_DEFAULTS: DevOverrides = {
 	micPermission: "auto",
 	layoutDirection: "ltr",
 	profileSetup: "auto",
+	walletAurora: "auto",
+	settingsAttention: "auto",
+	proposalAllowance: "auto",
 };
 
 /** Account-type options in display order. */
@@ -331,6 +360,37 @@ export const DEV_PROFILE_SETUPS: ReadonlyArray<DevOption<DevProfileSetup>> = [
 	{ value: "complete", label: "Complete" },
 ];
 
+/**
+ * Wallet-aurora options in display order (the `/wallet` hero's live shader). `Animated` is the value
+ * worth having: it runs the shader on a machine the hardware gates or the watchdog would refuse.
+ */
+export const DEV_WALLET_AURORAS: ReadonlyArray<DevOption<DevWalletAurora>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "static", label: "Static" },
+	{ value: "animated", label: "Animated" },
+];
+
+/** Settings-attention options in display order (the `/settings` dashboard and the lane's marks). */
+export const DEV_SETTINGS_ATTENTIONS: ReadonlyArray<DevOption<DevSettingsAttention>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "clear", label: "All clear" },
+	{ value: "all", label: "Everything" },
+];
+
+/**
+ * Proposal-allowance options in display order. `Paced` is the value worth having: an enforced empty
+ * buffer — the disabled submit and the live countdown, which no seeded persona sits at.
+ */
+export const DEV_PROPOSAL_ALLOWANCES: ReadonlyArray<DevOption<DevProposalAllowance>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "healthy", label: "Healthy" },
+	{ value: "low", label: "Low" },
+	{ value: "paced", label: "Paced" },
+	{ value: "paced_soft", label: "Paced (unenforced)" },
+	{ value: "weekly", label: "Week spent" },
+	{ value: "team_small", label: "Team < 2" },
+];
+
 // #endregion
 
 // #region Store
@@ -399,6 +459,14 @@ function reflect(next: DevOverrides): void {
 		// Absent = `auto` on the seam, like `projectOnboarding` above.
 		if (next.profileSetup !== "auto") root.dataset.devProfileSetup = next.profileSetup;
 		else delete root.dataset.devProfileSetup;
+		if (next.walletAurora !== "auto") root.dataset.devWalletAurora = next.walletAurora;
+		else delete root.dataset.devWalletAurora;
+		if (next.settingsAttention !== "auto") {
+			root.dataset.devSettingsAttention = next.settingsAttention;
+		} else delete root.dataset.devSettingsAttention;
+		if (next.proposalAllowance !== "auto") {
+			root.dataset.devProposalAllowance = next.proposalAllowance;
+		} else delete root.dataset.devProposalAllowance;
 		root.dataset.devDirection = next.layoutDirection;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
 		// properties everywhere mean the shell and every surface mirror to the opposite edge.
@@ -426,6 +494,9 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devMessagingRole;
 		delete root.dataset.devMicPermission;
 		delete root.dataset.devProfileSetup;
+		delete root.dataset.devWalletAurora;
+		delete root.dataset.devSettingsAttention;
+		delete root.dataset.devProposalAllowance;
 		delete root.dataset.devDirection;
 		// Restore the document's natural direction (the pref-driven default, LtR here).
 		root.removeAttribute("dir");

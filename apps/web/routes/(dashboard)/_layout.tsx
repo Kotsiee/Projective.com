@@ -54,6 +54,7 @@ import ProjectSidebar from "@web/features/projects/islands/ProjectSidebar.island
 import ChatPopoutHost from "@web/features/messaging/islands/ChatPopoutHost.island.tsx";
 import TicketDeepLinkHost from "@web/features/projects/islands/TicketDeepLinkHost.island.tsx";
 import { MoneyFlowMount } from "@web/features/checkout/components/MoneyFlowMount.tsx";
+import { settingsLaneFor } from "@web/features/settings/core/settings-slots.tsx";
 import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
@@ -221,6 +222,12 @@ async function laneFor(
 	// one entity, that entity's capability-filtered management rail.
 	if (url.pathname.startsWith("/teams") || url.pathname.startsWith("/businesses")) {
 		return await workspaceLaneFor(url, actor);
+	}
+
+	// The Settings console (`/settings*`): the search field and the section tree, with each section's
+	// attention mark — the same facts, read once per request, that the `/settings` dashboard lists.
+	if (url.pathname === "/settings" || url.pathname.startsWith("/settings/")) {
+		return await settingsLaneFor(url, context, actor, state);
 	}
 
 	if (!url.pathname.startsWith("/projects")) return sectionLane();

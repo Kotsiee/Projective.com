@@ -1,3 +1,5 @@
+import type { StripeDeferredElementsOptions } from "./stripe-flow.ts";
+
 /**
  * stripe-js — the one loader for Stripe.js in the browser.
  *
@@ -13,16 +15,33 @@
  */
 
 // #region Types
+/** An Elements group bound to an intent that already exists (a top-up, a card checkout). */
+export interface StripeIntentElementsOptions {
+	clientSecret: string;
+}
+
+/**
+ * What an Elements group is created with: an existing intent's client secret, or the deferred
+ * options of a form mounted before its intent exists (`stripe-flow.ts`) — painted in the tokens.
+ */
+export type StripeElementsOptions =
+	& (StripeIntentElementsOptions | StripeDeferredElementsOptions)
+	& { appearance?: StripeAppearance };
+
 /** The subset of the Stripe.js object Projective uses. */
 export interface StripeJs {
-	elements(options: { clientSecret: string; appearance?: StripeAppearance }): StripeElements;
+	elements(options: StripeElementsOptions): StripeElements;
 	confirmPayment(options: {
 		elements: StripeElements;
+		/** Required when the group was mounted deferred: the PaymentIntent created at confirm. */
+		clientSecret?: string;
 		redirect: "if_required";
 		confirmParams: { return_url: string };
 	}): Promise<{ error?: StripeJsError; paymentIntent?: { id: string; status: string } }>;
 	confirmSetup(options: {
 		elements: StripeElements;
+		/** Required when the group was mounted deferred: the SetupIntent created at Save. */
+		clientSecret?: string;
 		redirect: "if_required";
 		confirmParams: { return_url: string };
 	}): Promise<{ error?: StripeJsError; setupIntent?: { id: string; status: string } }>;
@@ -35,14 +54,47 @@ export interface StripeJs {
 /** The Elements group a Payment Element belongs to. */
 export interface StripeElements {
 	create(type: "payment", options?: Record<string, unknown>): StripePaymentElement;
+	create(type: "expressCheckout", options?: Record<string, unknown>): StripeExpressCheckoutElement;
 	submit(): Promise<{ error?: StripeJsError }>;
+}
+
+/**
+ * A mounted Express Checkout Element — Stripe's own Apple Pay, Google Pay and PayPal buttons, shown
+ * only where the device, the browser and the account can actually pay with them.
+ */
+export interface StripeExpressCheckoutElement {
+	mount(el: HTMLElement): void;
+	destroy(): void;
+	/** `availablePaymentMethods` is `undefined` when NO wallet can be shown on this device. */
+	on(
+		event: "ready",
+		handler: (event: { availablePaymentMethods?: Record<string, boolean> }) => void,
+	): void;
+	/** A button was pressed: `resolve()` must be called within a second or the sheet does not open. */
+	on(event: "click", handler: (event: { resolve(options?: Record<string, unknown>): void }) => void): void;
+	/** The buyer approved in the wallet sheet; report a failure back to the sheet with `paymentFailed`. */
+	on(
+		event: "confirm",
+		handler: (event: {
+			expressPaymentType: string;
+			paymentFailed(options?: { reason?: "fail" | "invalid_payment_data" | "invalid_shipping_address" }): void;
+		}) => void,
+	): void;
+	on(event: "cancel", handler: () => void): void;
+	on(event: "loaderror", handler: (event: StripeElementEvent) => void): void;
+}
+
+/** What a Payment Element event carries: `complete` on `change`, `error` on `loaderror`. */
+export interface StripeElementEvent {
+	complete?: boolean;
+	error?: StripeJsError;
 }
 
 /** A mounted Payment Element. */
 export interface StripePaymentElement {
 	mount(el: HTMLElement): void;
 	destroy(): void;
-	on(event: "ready" | "change", handler: (event: { complete?: boolean }) => void): void;
+	on(event: "ready" | "change" | "loaderror", handler: (event: StripeElementEvent) => void): void;
 }
 
 /** A Stripe.js error — its `message` is written for the person paying and is safe to show. */

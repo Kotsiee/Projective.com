@@ -182,7 +182,14 @@ import {
 } from "@projective/types/projects";
 import { intakeRefusal, normaliseIntakeAnswers } from "@projective/types/services";
 import { plainTextToHtml } from "@projective/types/richtext";
-import { toMinorUnits } from "@projective/types/finance";
+import { allowanceNotice, allowanceNoticeText, toMinorUnits } from "@projective/types/finance";
+import {
+	AllowanceAccessError,
+	readProposalAllowance,
+	recordProposalDenial,
+	stubConsumeAllowance,
+	stubRefundAllowance,
+} from "../finance/proposal-allowance.ts";
 import type { EntityView, ExploreItem, ServiceItem } from "@projective/types/explore";
 import { ProfileBackendService } from "../profile/ProfileBackendService.ts";
 import { MessagingBackendService } from "../messaging/MessagingBackendService.ts";
@@ -191,20 +198,29 @@ import { maskPii } from "@projective/types/comms";
 import {
 	acceptApplicationLive,
 	applyLive,
+	listMyApplicationsLive,
 	rejectApplicationLive,
 	respondLive,
+	withdrawApplicationLive,
 } from "./live-applications.ts";
 import {
 	hasOpenStubApplication,
+	listStubApplications,
 	recordRequestDecision,
 	recordStubApplication,
 	requestDecisionOf,
+	stubApplicationStatus,
+	withdrawStubApplication,
 } from "./request-store.ts";
 import type {
 	AcceptApplication,
 	ApplicationAccepted,
 	ApplicationRejected,
+	ApplicationWithdrawn,
 	ApplyToProject,
+	SentApplication,
+	SentApplicationsQuery,
+	WithdrawApplication,
 	InvitationAnswered,
 	MemberRequest,
 	ProjectApplication,
@@ -517,6 +533,54 @@ function invalidateProjects(actor: ReadActor): void {
 function requireIdentity<T>(actor: ReadActor, action: string): ServiceResult<T> | null {
 	if (actor.userId.length > 0) return null;
 	return fail<T>(401, { message: `Sign in to ${action}.` });
+}
+
+/**
+ * The proposal allowance's pre-flight gate: `null` when the application may proceed, else the `422`
+ * (or `403`) that refuses it before anything is written.
+ *
+ * It reads the SAME subject the application will be metered against — the team named on the request,
+ * else the person — through `finance.get_proposal_allowance`, and refuses only what that status says
+ * refuses: eligibility always, the meters only while `proposal_allowance_enforced` is on (Decision
+ * #58's fail-open switch; #154). A refusal here happens before the insert, so the metering trigger never
+ * runs, and the gate records `entitlement.denied` itself.
+ *
+ * A read that FAILS lets the application through: the insert trigger still meters it, and still
+ * refuses it when enforcement is on, so a flaky read never strands an applicant who has headroom.
+ */
+async function proposalGate<T>(
+	actor: ReadActor,
+	teamId: string | null,
+	project: string,
+): Promise<ServiceResult<T> | null> {
+	let status;
+	try {
+		status = await readProposalAllowance(actor, teamId);
+	} catch (error) {
+		if (error instanceof AllowanceAccessError) {
+			return fail<T>(403, { message: error.message, errors: { teamId: "not_permitted" } });
+		}
+		console.warn("[ProjectBackendService.apply] allowance pre-flight unavailable:", error);
+		return null;
+	}
+	if (status.canApply || !status.blockReason) return null;
+	const notice = allowanceNotice(status);
+	void recordProposalDenial(actor, status.blockReason, teamId, project);
+	return fail<T>(422, {
+		message: notice
+			? allowanceNoticeText(notice, Date.parse(status.serverNow))
+			: "You can't apply right now.",
+		errors: { allowance: status.blockReason },
+		details: {
+			blockReason: status.blockReason,
+			weeklyRemaining: status.weeklyRemaining,
+			weeklyGranted: status.weeklyGranted,
+			bufferUnits: status.bufferUnits,
+			bufferCap: status.bufferCap,
+			nextBufferRefillAt: status.nextBufferRefillAt,
+			weeklyResetsAt: status.weeklyResetsAt,
+		},
+	});
 }
 
 /** The uniform 404 for a slug or id that resolved to nothing the viewer can see. */
@@ -2208,6 +2272,9 @@ export class ProjectBackendService {
 		if (denied) return denied;
 		const note = input.message.trim();
 
+		const gated = await proposalGate<ProjectApplication>(actor, input.teamId, input.projectId);
+		if (gated) return gated;
+
 		const live = await liveWrite<ProjectApplication>(
 			"apply",
 			actor,
@@ -2223,6 +2290,8 @@ export class ProjectBackendService {
 						projectId: row.projectSlug,
 						stageId: row.stageId,
 						roleId: row.roleId,
+						applicantType: row.applicantType ?? (input.teamId ? "team" : "freelancer"),
+						teamId: row.teamId ?? input.teamId,
 						status: "pending",
 						message: row.message,
 						conversationId: note ? await postIntro(row.ownerUserId, note, row.projectId, a) : null,
@@ -2243,21 +2312,113 @@ export class ProjectBackendService {
 		const masked = note ? maskPii(note).masked : null;
 		const row = recordStubApplication(
 			actor,
-			{ projectId: project.slug, stageId: input.stageId, roleId: input.roleId, message: masked },
+			{
+				projectId: project.slug,
+				stageId: input.stageId,
+				roleId: input.roleId,
+				teamId: input.teamId,
+				message: masked,
+			},
 			Date.now(),
 		);
+		// The fixture twin of `trg_meter_application_allowance`: meter it, never refuse it here.
+		stubConsumeAllowance(actor, input.teamId);
 		return ok(
 			{
 				id: row.id,
 				projectId: project.slug,
 				stageId: row.stageId,
 				roleId: row.roleId,
+				applicantType: input.teamId ? "team" : "freelancer",
+				teamId: input.teamId,
 				status: "pending",
 				message: masked,
 				conversationId: null,
 			},
 			{ message: "Application sent.", status: 201 },
 		);
+	}
+
+	/**
+	 * The applicant takes a pending proposal back (`POST /api/projects/applications/withdraw`) through
+	 * `projects.withdraw_application`. The status flip refunds one weekly proposal unit in the same
+	 * transaction; the anti-burst buffer token is not returned (an apply → withdraw loop must not be a
+	 * way to notify a client without limit).
+	 */
+	static async withdrawApplication(
+		input: WithdrawApplication,
+		actor: ReadActor,
+	): Promise<ServiceResult<ApplicationWithdrawn>> {
+		const denied = requireIdentity<ApplicationWithdrawn>(actor, "withdraw a proposal");
+		if (denied) return denied;
+		const message = "Proposal withdrawn — 1 proposal returned to this week's allowance.";
+
+		const live = await liveWrite<ApplicationWithdrawn>(
+			"withdrawApplication",
+			actor,
+			input.applicationId,
+			message,
+			(a) => withdrawApplicationLive(a, input.applicationId),
+			"application",
+		);
+		if (live !== undefined) return live;
+
+		const row = withdrawStubApplication(actor, input.applicationId);
+		if (row === null) return notFound("application", input.applicationId);
+		if (row === "not_pending") {
+			return fail(409, {
+				message: "Only a pending application can be withdrawn.",
+				errors: { applicationId: "answered" },
+			});
+		}
+		stubRefundAllowance(actor, row.teamId);
+		return ok({ id: row.id, status: "withdrawn", refunded: 1 }, { message });
+	}
+
+	/**
+	 * The proposals the viewer has sent — and those filed for a team they belong to — newest first
+	 * (`GET /api/projects/applications/mine`), optionally narrowed to one project: the listing page asks
+	 * it "have I applied here?" and `/projects` lists them all. Never cached: a withdrawal must show on
+	 * the next read.
+	 */
+	static async sentApplications(
+		query: SentApplicationsQuery,
+		actor: ReadActor,
+	): Promise<ServiceResult<SentApplication[]>> {
+		const denied = requireIdentity<SentApplication[]>(actor, "see your proposals");
+		if (denied) return denied;
+
+		if (isProjectsBackendLive()) {
+			if (!canReadLive(actor)) {
+				return fail(401, {
+					message: "Your session has expired — sign in again to see your proposals.",
+				});
+			}
+			try {
+				return ok(await listMyApplicationsLive(actor, query.project ?? null));
+			} catch (error) {
+				console.error("[ProjectBackendService.sentApplications]", error);
+				return fail(502, { message: "We couldn't load your proposals just now." });
+			}
+		}
+
+		return ok(listStubApplications(actor, query.project).map((row): SentApplication => {
+			const status = stubApplicationStatus(row.id);
+			return {
+				id: row.id,
+				status,
+				applicantType: row.teamId ? "team" : "freelancer",
+				teamId: row.teamId,
+				teamName: null,
+				canWithdraw: status === "pending",
+				projectSlug: row.projectId,
+				projectTitle: findProject(row.projectId)?.title ?? row.projectId,
+				stageSlug: row.stageId,
+				stageName: null,
+				roleTitle: null,
+				createdAt: row.createdAt,
+			};
+		}));
 	}
 
 	/**

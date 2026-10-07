@@ -94,6 +94,60 @@ projects).
 > own `org.organisation_verification_level` (migration 0314). Reconciles with the tiered KYC/KYB
 > model (Decisions #6/#7). Predicate: `finance.fn_business_kyb_verified(business_id)`.
 
+### `org.user_emails`
+
+A person's email addresses — the GoTrue sign-in address (filed at signup) plus up to four secondary
+ones. Zod SSOT: `packages/types/org/user-emails.ts`.
+
+| Column        | Type        | Notes                                                                                                                                                                         |
+| :------------ | :---------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`          | uuid        | PK.                                                                                                                                                                           |
+| `user_id`     | uuid        | FK → `auth.users.id` and → `org.users_public.user_id` (so an account that has not finished onboarding has no addresses here).                                                |
+| `email`       | text        | Stored as given by GoTrue for the sign-in row; trimmed and lower-cased by `org.add_user_email` for the rest. Unique per person case-insensitively (`uq_user_emails_user_email`). |
+| `is_primary`  | boolean     | The contact address the platform writes to — NOT "can sign in with". At most one per person (`uq_user_emails_one_primary`, partial, not deferrable).                        |
+| `verified_at` | timestamptz | `NULL` while unverified. **Load-bearing** — see below.                                                                                                                        |
+| `created_at`  | timestamptz | `NOT NULL DEFAULT now()`.                                                                                                                                                     |
+
+**`verified_at` unlocks invitations, so the table is read-only to a client** (2026-10-06). A verified
+address admits its holder to the invitations sent to it: the `projects.project_invitations` SELECT
+policy, `org.fn_is_invitee` and `projects.invite_by_email` all trust it. Until 2026-10-06 the table
+carried own-row INSERT/UPDATE/DELETE policies (the UPDATE without a `WITH CHECK`) under a blanket
+`GRANT ALL`, so any signed-in user could file somebody else's address already verified — or stamp
+`verified_at` onto a row they had — and read and accept that person's invitations. Now:
+
+- **One SELECT policy** (own rows, or a platform admin) and no write policy
+  ([Policies.md](Policies.md#orguser_emails)); `INSERT`/`UPDATE`/`DELETE` are revoked from `anon` and
+  `authenticated` (`00002520`).
+- **Every writer is a definer:** `public.provision_user_profile` files the sign-in address as primary
+  at signup; `public.handle_email_confirmed` mirrors GoTrue's `email_confirmed_at` into it; a secondary
+  address is filed UNVERIFIED by `org.add_user_email` and stamped verified only by
+  `org.confirm_user_email` redeeming a token mailed to it ([Functions.md](Functions.md#-email-addresses-00001050)).
+- **`org.trg_user_emails_guard`** (`BEFORE INSERT OR UPDATE`, trigger `user_emails_guard`, `00001815`)
+  refuses a client role's insert that arrives verified or primary and a client update to `verified_at`,
+  `email`, `is_primary` or `user_id` — defence in depth should a grant or policy ever come back.
+- `idx_user_emails_verified_email` (`lower(email) WHERE verified_at IS NOT NULL`) serves "who holds
+  this address verified" — `projects.invite_by_email` and the `email_in_use` check.
+
+### `org.email_verification_tokens`
+
+Single-use proof that a person holds the inbox of one of their `org.user_emails` rows. **Definer-only:**
+RLS is on with **no policy** and no client grant (`REVOKE ALL … FROM anon, authenticated`), so no client
+role reads or writes a row. **The raw token is never stored.**
+
+| Column        | Type        | Notes                                                                                                                                  |
+| :------------ | :---------- | :------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`          | uuid        | PK.                                                                                                                                    |
+| `email_id`    | uuid        | FK → `org.user_emails.id` `ON DELETE CASCADE` (removing an address takes its tokens). Indexed (`idx_email_verification_tokens_email`). |
+| `user_id`     | uuid        | FK → `auth.users.id` `ON DELETE CASCADE`. The account the token redeems for (the row's owner at issue time).                          |
+| `token_hash`  | text        | `UNIQUE`, `CHECK ~ '^[0-9a-f]{64}$'` — the SHA-256 (hex) of the raw token. The lookup key.                                              |
+| `expires_at`  | timestamptz | `now() + 24 hours` at issue (`EMAIL_TOKEN_TTL_HOURS`); a reissue sets every earlier outstanding token's to `now()`.                     |
+| `consumed_at` | timestamptz | Set when redeemed — for every outstanding token of the address at once. A row is consumed, never deleted.                              |
+| `created_at`  | timestamptz | `NOT NULL DEFAULT now()`.                                                                                                              |
+
+`security.issue_email_verification` (service role only) mints 32 random bytes as hex, stores only the
+hash and returns the raw value once, for the mailer; `org.confirm_user_email` hashes what the link
+carries and looks that up ([security/Functions.md](../security/Functions.md)).
+
 ---
 
 ## 🧑‍🤝‍🧑 Organization & Teams
@@ -386,13 +440,24 @@ Per-user preferences (one row per user, seeded by the `org.seed_user_preferences
 | Column                       | Type                   | Notes                                                                                                                                                                                                                                                                                                          |
 | :--------------------------- | :--------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `user_id`                    | uuid                   | PK, FK → `auth.users.id` (CASCADE).                                                                                                                                                                                                                                                                            |
-| `theme`                      | text                   | `system` (default) / `light` / `dark`.                                                                                                                                                                                                                                                                         |
+| `theme`                      | text                   | `system` (default) / `light` / `dark` — `CHECK` (`user_preferences_theme_check`, 2026-10-06; nullable). `system` follows `prefers-color-scheme` live.                                                                                                                                                         |
 | `notification_email`         | boolean                | Default `true`.                                                                                                                                                                                                                                                                                                |
 | `notification_push`          | boolean                | Default `false`.                                                                                                                                                                                                                                                                                               |
 | `locale`                     | text                   | BCP-47 locale (language + region), default `en-GB`. **This is the language source.**                                                                                                                                                                                                                           |
 | `preferred_display_currency` | char(3)                | **Additive (`20260723090000`).** Presentational display-conversion target (ISO-4217), `DEFAULT 'GBP'`, `CHECK ~ '^[A-Z]{3}$'`; `NULL` = follow origin (an explicitly cleared preference, distinct from the default). Never affects stored/settled amounts. Stamped into the JWT by `custom_access_token_hook`. |
 | `layout_direction`           | `org.layout_direction` | **Additive.** `auto` (default) / `ltr` / `rtl`. Chosen INDEPENDENT of language; `auto` → the locale's natural direction. See `DESIGN_SYSTEM.md` §A.6.                                                                                                                                                          |
 | `ui_settings`                | jsonb                  | Misc client UI state.                                                                                                                                                                                                                                                                                          |
+| `contrast`                   | text                   | **2026-10-06.** `NOT NULL DEFAULT 'standard'`, `CHECK IN ('standard','high')`. `high` forces the AAA overlay.                                                                                                                                                                                                 |
+| `font`                       | text                   | **2026-10-06.** `NOT NULL DEFAULT 'sans'`, `CHECK IN ('sans','dyslexic')`. `dyslexic` remaps every family to OpenDyslexic (`DESIGN_SYSTEM.md` §A.5).                                                                                                                                                         |
+| `cvd`                        | text                   | **2026-10-06.** `NOT NULL DEFAULT 'none'`, `CHECK IN ('none','protan','deutan','tritan')`. The colour-vision shift; mirrors `@projective/ui/system` `CvdMode`.                                                                                                                                                 |
+| `motion`                     | text                   | **2026-10-06.** `NOT NULL DEFAULT 'standard'`, `CHECK IN ('standard','reduced')`. `reduced` forces reduced motion on every device.                                                                                                                                                                            |
+
+> **The appearance overlays (`theme` · `contrast` · `font` · `cvd` · `motion`, 2026-10-06).**
+> `standard` / `sans` / `none` mean **no overlay**, not "force the default": the reader's OS media
+> queries (`prefers-contrast`, `prefers-reduced-motion`, and `prefers-color-scheme` under
+> `theme = 'system'`) still apply. This row is the durable cross-device copy; the `pj.a11y` cookie is
+> its per-device mirror, and that cookie is what server rendering reads so the overlays paint in the
+> first byte. Zod: `AppearancePreferencesSchema` / `DEFAULT_APPEARANCE`.
 
 > **Reconciliation (flagged, root `CLAUDE.md` §8):** `locale` already carries the BCP-47 locale, so
 > **no** separate `preferred_locale`/`language` column was added (avoids duplication);
@@ -619,6 +684,11 @@ may only add trailing columns):
     email/password profile is provisioned at signup (before confirmation), the
     `on_auth_user_confirmed` trigger (`public.handle_email_confirmed`,
     `migrations/0312_email_verification_sync.sql`) advances `verified_at` on the NULL→timestamp
-    transition so it stays trustworthy. GoTrue still owns the single-use confirmation token; no
-    second token is stored here. The `/verify` page polls this via
-    `api/v1/auth/verification-status`.
+    transition so it stays trustworthy. GoTrue still owns the single-use confirmation token for the
+    SIGN-IN address. The `/verify` page polls this via `api/v1/auth/verification-status`.
+  - _Since 2026-10-06_ a SECONDARY address is verified by the app's own token handshake
+    (`org.email_verification_tokens`, hash-only — see above), because GoTrue knows nothing about
+    secondary addresses. The table is read-only to clients; see `org.user_emails` above.
+  - _Open:_ a GoTrue **email change** (new sign-in address) is not mirrored — `handle_email_confirmed`
+    fires only on the first `email_confirmed_at`, so the old sign-in row stays and `is_sign_in`
+    (`org.get_my_emails`) then marks no row. No email-change flow exists in the app yet.

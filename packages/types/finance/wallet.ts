@@ -20,6 +20,7 @@ import {
 	VaultCapability,
 } from "./vault.ts";
 import { InvoiceStatus, StatementStatus } from "./billing.ts";
+import { CardBrand } from "./card-art.ts";
 
 /**
  * finance wallet — the READ + WRITE projection SSOT for the context-scoped Wallet & Finance surface
@@ -190,13 +191,121 @@ export const IncomingItemSchema = z.object({
 });
 export type IncomingItem = z.infer<typeof IncomingItemSchema>;
 
-/** One bucket of the in-vs-out cashflow series (a day/week/month, per range). */
+/**
+ * One bucket of the in-vs-out cashflow series (a day/week/month, per range). `start` is the bucket's
+ * first calendar day in the VIEWER's time zone (`YYYY-MM-DD`), so a bar labelled "5 Oct" holds exactly
+ * the movements of the reader's 5 October; `netMinor` is `in − out`, summed server-side.
+ */
 export const FlowPointSchema = z.object({
 	label: z.string().max(20),
+	start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 	inMinor: minorUnitsNonNeg,
 	outMinor: minorUnitsNonNeg,
+	netMinor: minorUnits,
 });
 export type FlowPoint = z.infer<typeof FlowPointSchema>;
+
+/**
+ * The family a ledger line belongs to — the Transactions page's category selector, and the analytics
+ * page's volume breakdown. Finer than {@link TxnCategory} (which folds escrow releases and direct sales
+ * into one "earning"), coarser than the raw `reason` code; {@link LEDGER_KIND_REASONS} is the one map
+ * between the two, shared by the database filter and the label.
+ */
+export const LedgerKind = z.enum([
+	"escrow_release",
+	"escrow_hold",
+	"service_sale",
+	"product_sale",
+	"order_payment",
+	"platform_fee",
+	"topup",
+	"payout",
+	"transfer",
+	"refund",
+	"other",
+]);
+export type LedgerKind = z.infer<typeof LedgerKind>;
+
+/**
+ * The `finance.transactions.reason` codes each {@link LedgerKind} stands for. `other` names no code: it
+ * is whatever no family claims, and so cannot be filtered on.
+ */
+export const LEDGER_KIND_REASONS: Readonly<Record<LedgerKind, readonly string[]>> = {
+	escrow_release: [
+		"escrow_release",
+		"escrow_release_vault_retention",
+		"fair_exit_release",
+		"fair_exit_release_vault_retention",
+		"team_split",
+		"team_finder_fee",
+	],
+	escrow_hold: ["escrow_hold"],
+	service_sale: ["service_sale", "service_sale_vault_retention"],
+	product_sale: ["product_sale", "product_sale_vault_retention"],
+	order_payment: ["order_payment"],
+	platform_fee: ["platform_fee", "instant_payout_fee"],
+	topup: ["topup", "demo_opening_credit"],
+	payout: ["payout", "payout_reversal"],
+	transfer: ["transfer_in", "transfer_out", "team_distribution"],
+	refund: ["refund", "escrow_refund", "fair_exit_refund", "chargeback"],
+	other: [],
+};
+
+/** The family a `reason` code belongs to; an unknown code is `other`. */
+export function ledgerKindOf(reason: string): LedgerKind {
+	for (const kind of LedgerKind.options) {
+		if (LEDGER_KIND_REASONS[kind].includes(reason)) return kind;
+	}
+	return "other";
+}
+
+/** Who sits on the other side of a ledger line — a person, a team or a business (`assignment_type`). */
+export const LedgerPartyKind = z.enum(["user", "team", "business"]);
+export type LedgerPartyKind = z.infer<typeof LedgerPartyKind>;
+
+/** The kind of record a ledger line paid for or came from. */
+export const LedgerSubjectKind = z.enum([
+	"stage",
+	"service",
+	"product",
+	"order",
+	"topup",
+	"payout",
+	"transfer",
+]);
+export type LedgerSubjectKind = z.infer<typeof LedgerSubjectKind>;
+
+/**
+ * What a ledger line is ABOUT — the project stage it funded or released, the marketplace order it paid,
+ * the top-up that brought it in — named as the reader may see it, with its address when it has one. A
+ * record the reader may not read (a buyer's order, seen by the seller) is not named at all.
+ */
+export const LedgerSubjectSchema = z.object({
+	kind: LedgerSubjectKind,
+	/** "Helia redesign · Discovery", "Order PJ-48213", "Card top-up". */
+	label: z.string().max(160),
+	href: z.string().max(200).nullable(),
+});
+export type LedgerSubject = z.infer<typeof LedgerSubjectSchema>;
+
+/**
+ * The instrument that moved the money — a card network and its last four, the display fragment Stripe
+ * returned when the card was saved. Only where the platform recorded which instrument paid (an order's
+ * saved card, a recurring deposit's source); never inferred.
+ */
+export const LedgerInstrumentSchema = z.object({
+	brand: CardBrand,
+	last4: z.string().regex(/^\d{4}$/).nullable(),
+});
+export type LedgerInstrument = z.infer<typeof LedgerInstrumentSchema>;
+
+/**
+ * Where a line's money stands now, projected from its fund state and any open case against it:
+ * `cleared` (spendable), `pending` (held in escrow or clearing its safety window), `disputed` (frozen
+ * in the Dispute Lockbox or reversed by an open card dispute).
+ */
+export const LedgerSettlement = z.enum(["cleared", "pending", "disputed"]);
+export type LedgerSettlement = z.infer<typeof LedgerSettlement>;
 
 /**
  * A projected ledger line — one movement as the wallet surfaces it (the overview's recent list + the full
@@ -213,15 +322,31 @@ export const LedgerLineSchema = z.object({
 	counterparty: z.string().max(120).nullable(),
 	/** The counterparty `@handle`, when it is a platform entity (canonical `/@handle` link). */
 	counterpartyHandle: z.string().max(40).nullable(),
+	/** What kind of entity the counterparty is; `null` when there is none the reader may see. */
+	counterpartyKind: LedgerPartyKind.nullable(),
+	/** The counterparty's picture through the public-media door, when they have one. */
+	counterpartyAvatar: z.string().max(600).nullable(),
 	amount: MoneyViewSchema,
 	fundState: FundState,
 	category: TxnCategory,
+	/** The line's family — what the category selector filters on. */
+	kind: LedgerKind,
 	refKind: z.enum(["stage", "session", "invoice", "payout", "deposit", "transfer", "fee"])
 		.nullable(),
 	refId: z.string().max(64).nullable(),
 	href: z.string().max(200).nullable(),
+	/** The record this line is about, as the reader may see it. */
+	subject: LedgerSubjectSchema.nullable(),
+	/** The card that paid, where the platform recorded one. */
+	instrument: LedgerInstrumentSchema.nullable(),
+	settlement: LedgerSettlement,
+	/** The invoice PDF for the stage this line settled (`/api/finance/invoices/[id]/pdf`), when one exists. */
+	receiptHref: z.string().max(200).nullable(),
 	at: timestamp,
+	/** "Today", "Yesterday", "3 days ago", "12 Sept" — on the viewer's calendar. */
 	dateLabel: z.string().max(40),
+	/** The heading the ledger files the line under: "Today", "Yesterday", else its month ("September 2026"). */
+	group: z.string().max(40),
 });
 export type LedgerLine = z.infer<typeof LedgerLineSchema>;
 // #endregion
@@ -477,6 +602,112 @@ export const FlowRange = z.enum(["30d", "60d", "90d"]);
 export type FlowRange = z.infer<typeof FlowRange>;
 
 /**
+ * The fund states in order of how soon the money can be spent: now, after the 7-day window, once the
+ * work is approved, once a case closes — the direction money actually travels, read backwards. The
+ * allocation meter and the hero's figures both read in this order.
+ */
+export const FUND_STATE_ORDER: readonly FundState[] = ["available", "pending", "locked", "on_hold"];
+
+/** Below this true share (basis points) a slice is a sliver: drawn as a pip at {@link SLIVER_WIDTH_BP}. */
+export const SLIVER_BP = 150;
+/** The width a sliver is drawn at, so a share that is not nothing never renders as nothing. */
+export const SLIVER_WIDTH_BP = 150;
+
+/**
+ * One fund state's slice of the balance, as the allocation meter draws it. `shareBp` is the TRUE share
+ * of the whole; `widthBp` is the geometry the segment is drawn at — the same number, except that a
+ * sliver is floored at {@link SLIVER_WIDTH_BP} and the difference is taken from the largest slice, so the
+ * drawn widths still sum to exactly 10000. `percent` is the legend's whole percent (largest-remainder,
+ * `<1%` for a sliver that is not nothing).
+ */
+export const AllocationSliceSchema = z.object({
+	state: FundState,
+	value: MoneyViewSchema,
+	shareBp: basisPoints,
+	widthBp: basisPoints,
+	percent: z.string().max(8),
+	sliver: z.boolean(),
+});
+export type AllocationSlice = z.infer<typeof AllocationSliceSchema>;
+
+/**
+ * Whole percents that always add up to 100: each share is floored, then the points left over go to the
+ * largest remainders. Rounding each share on its own lets three thirds print as 33% + 33% + 33%.
+ */
+function wholePercents(ratios: readonly number[]): number[] {
+	const raw = ratios.map((r) => r * 100);
+	const floors = raw.map(Math.floor);
+	let left = 100 - floors.reduce((a, b) => a + b, 0);
+	const order = raw.map((v, i) => ({ i, rem: v - floors[i] })).sort((a, b) => b.rem - a.rem);
+	for (const { i } of order) {
+		if (left <= 0) break;
+		if (ratios[i] <= 0) continue;
+		floors[i] += 1;
+		left -= 1;
+	}
+	return floors;
+}
+
+/**
+ * Basis points that sum to exactly 10000 across the non-zero slices (largest remainder), so the drawn
+ * segments fill the track with no hairline gap and no overflow.
+ */
+function wholeBasisPoints(minor: readonly number[], total: number): number[] {
+	const raw = minor.map((m) => (m / total) * 10000);
+	const floors = raw.map(Math.floor);
+	let left = 10000 - floors.reduce((a, b) => a + b, 0);
+	const order = raw.map((v, i) => ({ i, rem: v - floors[i] })).sort((a, b) => b.rem - a.rem);
+	for (const { i } of order) {
+		if (left <= 0) break;
+		if (minor[i] <= 0) continue;
+		floors[i] += 1;
+		left -= 1;
+	}
+	return floors;
+}
+
+/**
+ * How a balance divides across the fund states — only the states that hold something, in
+ * {@link FUND_STATE_ORDER}. Pure: the fat service calls it with the SAME four figures it summed into the
+ * total, so the meter's segments add up to the figure above them; the client never recomputes it.
+ */
+export function allocationSlices(
+	values: Readonly<Record<FundState, MoneyView>>,
+): AllocationSlice[] {
+	const minor = FUND_STATE_ORDER.map((state) => Math.max(0, values[state].minor));
+	const total = minor.reduce((a, b) => a + b, 0);
+	if (total <= 0) return [];
+	const share = wholeBasisPoints(minor, total);
+	const percents = wholePercents(minor.map((m) => m / total));
+	const width = [...share];
+	const live = minor.map((m) => m > 0);
+	let debt = 0;
+	share.forEach((bp, i) => {
+		if (live[i] && bp < SLIVER_BP) {
+			debt += SLIVER_WIDTH_BP - bp;
+			width[i] = SLIVER_WIDTH_BP;
+		}
+	});
+	if (debt > 0) {
+		const largest = width.reduce((best, bp, i) => (bp > width[best] ? i : best), 0);
+		width[largest] = Math.max(SLIVER_WIDTH_BP, width[largest] - debt);
+	}
+	const slices: AllocationSlice[] = [];
+	FUND_STATE_ORDER.forEach((state, i) => {
+		if (!live[i]) return;
+		slices.push({
+			state,
+			value: values[state],
+			shareBp: share[i],
+			widthBp: width[i],
+			percent: percents[i] === 0 ? "<1%" : `${percents[i]}%`,
+			sliver: share[i] < SLIVER_BP,
+		});
+	});
+	return slices;
+}
+
+/**
  * The Overview hub projection — the calm landing. The shared spine (three-state balances + money on the
  * way + the in/out sparkline + 5 recent lines + the capability-gated quick actions + the verification
  * gate) plus exactly one populated variant-extras block.
@@ -496,6 +727,12 @@ export const WalletOverviewSchema = z.object({
 	 * segment, but never a total, and never a currency string (finance-model.md §7).
 	 */
 	capital: MoneyViewSchema,
+	/**
+	 * The four-state meter's slices, computed server-side from the same four figures ({@link
+	 * allocationSlices}); empty when the wallet holds nothing, and empty for the read-only rollup, which
+	 * carries available cash only.
+	 */
+	allocation: z.array(AllocationSliceSchema).max(4),
 	/** Active stages the Locked balance is working on — the legend's "Working on 3 stages" note. */
 	lockedStageCount: z.number().int().min(0),
 	/** Open dispute cases the On-hold balance is frozen against — the legend's "1 case in review". */
@@ -533,7 +770,15 @@ export type WalletOverview = z.infer<typeof WalletOverviewSchema>;
 export const TxnSort = z.enum(["date", "amount", "counterparty", "category", "status"]);
 export type TxnSort = z.infer<typeof TxnSort>;
 
-/** The ledger filters (search · direction · fund state · category · project · date range). */
+/**
+ * The ledger filters (search · direction · fund state · category · line family · project · date range).
+ *
+ * Paging is KEYSET, not offset: `cursor` is `k:<base64url("<created_at ISO>|<id>")>` — the last line of
+ * the previous page — and the next page is every matching line strictly older than it in
+ * `(created_at DESC, id DESC)` order (`finance.list_ledger`). A line written while the reader scrolls
+ * can therefore never shift a page boundary and repeat or skip a row, which an offset would. Keyset
+ * paging is defined for the date order only; `sort`/`dir` re-order the lines already loaded.
+ */
 export const TransactionListParamsSchema = z.object({
 	scope: WalletScope.optional(),
 	contextId: z.string().max(64).optional(),
@@ -542,22 +787,65 @@ export const TransactionListParamsSchema = z.object({
 	direction: TransactionDirection.optional(),
 	fundState: FundState.optional(),
 	category: TxnCategory.optional(),
+	/** Line families to include (any of); absent or empty means every family. */
+	kinds: z.array(LedgerKind).max(12).optional(),
+	/**
+	 * The ruler's window, resolved server-side on the viewer's calendar ("the last 7 days" is today and
+	 * the six days before it); an explicit `from` wins.
+	 */
+	range: z.lazy(() => ActivityRange).optional(),
 	project: z.string().max(64).optional(),
 	from: z.string().optional(),
 	to: z.string().optional(),
 	sort: TxnSort.optional(),
 	dir: z.enum(["asc", "desc"]).optional(),
-	cursor: z.string().max(120).nullable().optional(),
+	cursor: z.string().max(200).nullable().optional(),
 	limit: z.number().int().min(1).max(200).optional(),
 });
 export type TransactionListParams = z.infer<typeof TransactionListParamsSchema>;
+
+/** A keyset position in the ledger: the `(created_at, id)` of the last line already read. */
+export interface LedgerKeyset {
+	at: string;
+	id: string;
+}
+
+const KEYSET_RE = /^k:([A-Za-z0-9_-]+)$/;
+const KEYSET_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Encodes a keyset position as an opaque `k:` cursor (base64url, no padding). */
+export function encodeLedgerCursor(key: LedgerKeyset): string {
+	const bytes = new TextEncoder().encode(`${key.at}|${key.id}`);
+	let binary = "";
+	for (const b of bytes) binary += String.fromCharCode(b);
+	return `k:${btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
+}
+
+/** Decodes a `k:` cursor; anything malformed (or an old `o:` offset cursor) is `null` — the first page. */
+export function decodeLedgerCursor(cursor: string | null | undefined): LedgerKeyset | null {
+	const match = cursor ? KEYSET_RE.exec(cursor) : null;
+	if (!match) return null;
+	try {
+		const b64 = match[1].replace(/-/g, "+").replace(/_/g, "/");
+		const binary = atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4));
+		const text = new TextDecoder().decode(Uint8Array.from(binary, (c) => c.charCodeAt(0)));
+		const bar = text.lastIndexOf("|");
+		const at = text.slice(0, bar);
+		const id = text.slice(bar + 1);
+		if (bar <= 0 || !Number.isFinite(Date.parse(at)) || !KEYSET_UUID_RE.test(id)) return null;
+		return { at: new Date(at).toISOString(), id };
+	} catch {
+		return null;
+	}
+}
 
 /** A page of ledger lines plus the projects present in the corpus (drives the project filter chips). */
 export const TransactionPageSchema = z.object({
 	items: z.array(LedgerLineSchema),
 	hasMore: z.boolean(),
-	nextCursor: z.string().max(120).nullable(),
-	total: z.number().int().min(0),
+	nextCursor: z.string().max(200).nullable(),
+	/** How many lines match, where it is known; keyset paging never counts, so this is `null` there. */
+	total: z.number().int().min(0).nullable(),
 	/** Distinct projects seen (for the filter dropdown) — `{ id, name }`. */
 	projects: z.array(z.object({ id: z.string().max(64), name: z.string().max(120) })).max(60),
 });
@@ -589,15 +877,82 @@ export const ProjectFlowSchema = z.object({
 export type ProjectFlow = z.infer<typeof ProjectFlowSchema>;
 
 /**
+ * The calendar unit a cash-flow bucket spans, truncated in the viewer's time zone
+ * (`date_trunc(grain, created_at AT TIME ZONE tz)` — `finance.ledger_flow`). A week starts on Monday.
+ */
+export const FlowGrain = z.enum(["day", "week", "month"]);
+export type FlowGrain = z.infer<typeof FlowGrain>;
+
+/** One line family's volume over the window: what came in, what went out, and its share of both. */
+export const KindSliceSchema = z.object({
+	kind: LedgerKind,
+	amountIn: MoneyViewSchema,
+	amountOut: MoneyViewSchema,
+	/** `in + out` — what the family moved, the figure the breakdown ranks by. */
+	volume: MoneyViewSchema,
+	/** The family's share of the window's whole volume. */
+	shareBp: basisPoints,
+	lines: z.number().int().min(0),
+});
+export type KindSlice = z.infer<typeof KindSliceSchema>;
+
+/**
+ * One projected clearance on the release schedule: money clearing its 7-day window on a known date,
+ * escrow on a stage with a due date (projected to clear a safety window after it), or escrow awaiting
+ * approval with no date at all — never a date the platform does not have.
+ */
+export const ReleaseItemSchema = z.object({
+	id: z.string().max(64),
+	label: z.string().max(160),
+	href: z.string().max(200).nullable(),
+	amount: MoneyViewSchema,
+	/** `pending` — clearing; `locked` — still in escrow on the stage. */
+	state: FundState,
+	/** When the money is projected to become spendable; `null` when nothing dates it. */
+	at: timestamp.nullable(),
+	basis: z.enum(["clearing", "stage_due", "awaiting_approval"]),
+});
+export type ReleaseItem = z.infer<typeof ReleaseItemSchema>;
+
+/**
+ * A project ranked by the capital allocated to it from this wallet: escrow held on its stages plus
+ * releases still clearing, with what it moved in the window beside it.
+ */
+export const ProjectAllocationSchema = z.object({
+	id: z.string().max(64),
+	name: z.string().max(120),
+	href: z.string().max(200).nullable(),
+	held: MoneyViewSchema,
+	clearing: MoneyViewSchema,
+	/** `held + clearing`. */
+	allocated: MoneyViewSchema,
+	/** What moved on the project's lines within the window. */
+	moved: MoneyViewSchema,
+	/** The project's share of everything allocated across the listed projects. */
+	shareBp: basisPoints,
+});
+export type ProjectAllocation = z.infer<typeof ProjectAllocationSchema>;
+
+/**
  * The Activity projection — where the charts live (kept off the calm overview). In-vs-out, by-category,
  * by-project, plus role-specific series: a freelancer's locked capital + projected income, a
  * business's budget burn-down.
+ *
+ * The flow series and every total are summed IN THE DATABASE over the whole window
+ * (`finance.ledger_flow`), bucketed on the viewer's calendar (`timezone`), so a long window is no longer
+ * read through the most recent thousand lines.
  */
 export const ActivityViewSchema = z.object({
 	range: ActivityRange,
+	grain: FlowGrain,
+	/** The IANA zone the buckets were truncated in. */
+	timezone: z.string().max(64),
 	flow: z.array(FlowPointSchema).max(64),
 	byCategory: z.array(CategorySliceSchema).max(12),
+	byKind: z.array(KindSliceSchema).max(12),
 	byProject: z.array(ProjectFlowSchema).max(24),
+	topProjects: z.array(ProjectAllocationSchema).max(12),
+	releases: z.array(ReleaseItemSchema).max(24),
 	totalIn: MoneyViewSchema,
 	totalOut: MoneyViewSchema,
 	net: MoneyViewSchema,
@@ -1104,5 +1459,10 @@ export interface WalletQuery {
 	display?: string | null;
 	/** The viewer's preferred display currency (their account setting); used when none is explicit. */
 	viewerCurrency?: string | null;
+	/**
+	 * The IANA zone the request's calendar runs in (the browser's `?tz=`); the viewer's profile zone, then
+	 * UTC, when absent or not a zone.
+	 */
+	timezone?: string | null;
 }
 // #endregion

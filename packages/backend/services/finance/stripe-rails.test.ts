@@ -1,11 +1,12 @@
 import { assert, assertEquals } from "@std/assert";
-import type { InboundPayment } from "@projective/types/finance";
+import { CARD_SETUP_PAYMENT_METHOD_TYPES, type InboundPayment } from "@projective/types/finance";
 import {
 	classifyStripeError,
 	connectAccountParams,
 	identitySessionParams,
 	onboardingLinkParams,
 	paymentIntentParams,
+	setupIntentParams,
 	transfersCapabilityOf,
 } from "./stripe-rails.ts";
 
@@ -53,6 +54,30 @@ Deno.test("a card payment is a PLATFORM charge: no destination, no fee skim, no 
 		(params.metadata as Record<string, string>).projective_stage_id,
 		PAYMENT.projectStageId,
 	);
+});
+
+Deno.test("a card SetupIntent is card-only and off-session, matching the deferred card form", () => {
+	const params = setupIntentParams("cus_123", {
+		ownerType: "team",
+		ownerId: PAYMENT.walletId,
+		displayName: "North Loop",
+		contactEmail: null,
+		createdBy: PAYMENT.createdBy,
+	}) as unknown as Record<string, unknown>;
+	assertEquals(params.customer, "cus_123");
+	assertEquals(params.usage, "off_session");
+	// The browser mounts Elements with `allowedPaymentMethodTypes: CARD_SETUP_PAYMENT_METHOD_TYPES`
+	// before this intent exists; Stripe requires the two to match.
+	assertEquals(params.allowed_payment_method_types, [...CARD_SETUP_PAYMENT_METHOD_TYPES]);
+	// Mutually exclusive with `allowed_payment_method_types`; `payment_method_types` is being retired.
+	for (const forbidden of ["automatic_payment_methods", "payment_method_types"]) {
+		assert(!(forbidden in params), `${forbidden} must not be set`);
+	}
+	assertEquals(params.metadata, {
+		projective_owner_type: "team",
+		projective_owner_id: PAYMENT.walletId,
+		projective_created_by: PAYMENT.createdBy,
+	});
 });
 
 Deno.test("a top-up names no stage in its metadata", () => {

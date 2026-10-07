@@ -1046,20 +1046,50 @@ what happened. `EXECUTE` → `authenticated`.
 
 The freelancer-led half of `PRODUCT_SPEC.md` §The Hiring Process ("The Inbound Request").
 
-### `projects.apply_to_project(p_project text, p_stage text, p_role_id uuid DEFAULT NULL, p_message text DEFAULT NULL) → jsonb`
+### `projects.apply_to_project(p_project text, p_stage text, p_role_id uuid DEFAULT NULL, p_message text DEFAULT NULL, p_team_id uuid DEFAULT NULL) → jsonb`
 
 `SECURITY DEFINER`, `EXECUTE` → `authenticated`. The caller applies to one stage (slug or id) of a
-project (slug or id), naming a staffing role where the stage lists them. Refuses, in the database's
+project (slug or id), naming a staffing role where the stage lists them — as themselves, or with
+`p_team_id` on a TEAM's behalf (`applicant_type = 'team'`, the team as `applicant_profile_id`, so
+acceptance seats the team; Decision #154(D)). Refuses, in the database's
 own words: no caller (`insufficient_privilege`), a note over the hire-message limit (`22023`), an
 unknown project (`no_data_found`), the owner's own project, a project that is not `active` and
-`public`/`unlisted`, a caller with no freelancer profile, a stage of another project or one not
-taking applications, a role not open to applications (all `check_violation`), a person already on
-the stage, and a second pending application for the same target (`unique_violation`). Inserts the
+`public`/`unlisted`, a caller with no freelancer profile (personal applications), a stage of another
+project or one not taking applications, a role not open to applications (all `check_violation`), a
+person (or team) already on the stage, and a second pending application for the same target from the
+same applicant (`unique_violation`). A team application additionally needs `bind_seat` on the team
+(`org.is_team_lead`, `insufficient_privilege`), two active members, and a project the team does not
+own (`check_violation`). The duplicate and already-on-stage checks are applicant-aware, so a lead may
+hold one pending application as themselves and one for the team. Inserts the
 `project_applications` row (`pending`) with its `project_application_targets` row, the cover note
-masked while the project is protected, logs `application_submitted` on `project_activity`, and
-notifies the owner (`application.received`, deep-linked to the applicant's DM). Returns
-`{ id, projectId, projectSlug, ownerUserId, stageId, roleId, status, message }`; the fat service
-then posts the note through `comms.send_request_message` into the owner's Requests.
+masked while the project is protected, logs `application_submitted` on `project_activity` (with
+`team_id`), and notifies the owner (`application.received`, titled with the team's name for a team,
+deep-linked to the applicant's DM). The insert fires `trg_meter_application_allowance`, which spends
+one `weekly_proposals` unit (and one buffer token) from the applicant's allowance. Returns
+`{ id, projectId, projectSlug, ownerUserId, stageId, roleId, applicantType, teamId, status, message }`;
+the fat service then posts the note through `comms.send_request_message` into the owner's Requests.
+The app runs the allowance's pre-flight gate before calling it (`ProjectBackendService.apply`).
+
+### `projects.withdraw_application(p_application_id uuid) → jsonb`
+
+`00001130` §6c, `SECURITY DEFINER`; `EXECUTE` → `authenticated` (revoked from `public`/`anon` in
+`00002510`). The applicant takes a pending proposal back — the only way an application becomes
+`withdrawn`. Locks the row, then refuses: no caller (`insufficient_privilege`), an unknown id
+(`no_data_found`), a caller who neither filed it nor holds `bind_seat` on the applying team
+(`insufficient_privilege`), anything not `pending` (`check_violation`). Sets `withdrawn`, which
+`trg_refund_withdrawn_application` turns into a refund of one WEEKLY proposal unit in the same
+transaction; the anti-burst buffer token is deliberately not returned (Decision #154(E)). Logs
+`application_withdrawn` on `project_activity`. Returns `{ id, status: 'withdrawn', refunded: 1 }`.
+
+### `projects.list_my_applications(p_project text DEFAULT NULL) → jsonb`
+
+`00001130` §6d, `SECURITY DEFINER`, `STABLE`; `EXECUTE` → `authenticated`. The proposals the caller
+has sent — every application they filed, plus those filed for a team they are an active member of —
+newest first (at most 200), as a JSON array of `{ id, status, applicantType, teamId, teamName,
+canWithdraw, projectSlug, projectTitle, stageSlug, stageName, roleTitle, createdAt }`. The rows are
+scoped to the caller; the names are read with the definer's rights, so a project that has since gone
+private still shows the title the caller applied to. `p_project` (slug or uuid) narrows to one
+project — the listing page's "have I applied here?". Backs `GET /api/projects/applications/mine`.
 
 ### `projects.assign_from_application(p_application_id uuid) → jsonb`
 

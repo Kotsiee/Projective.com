@@ -23,33 +23,89 @@ migration-numbering and RLS conventions.
 
 ## `org.enable_freelancer_profile(p_payload jsonb) → jsonb`
 
-**Migration:** `supabase/migrations/0313_freelancer_conversion.sql` · **Security:**
-`SECURITY DEFINER` · **Grant:** `authenticated`.
+**Migration:** `supabase/migrations/00001020_functions_org_entities.sql` (from `0313`) ·
+**Security:** `SECURITY DEFINER` · **Grant:** `authenticated` (explicitly `REVOKE`d from `PUBLIC`,
+`anon` in `00002510`).
 
 The self-serve "Become a Partner" conversion — how a user who onboarded as a Client/Operator unlocks
 a freelancer profile after the fact (persona is no longer fixed at signup; cf.
 `provision_user_profile` in `0304`, which only creates a freelancer profile for
-`objective = 'freelancer' | 'seller'`). Keyed off `auth.uid()`. Idempotent.
+`objective = 'freelancer' | 'seller'`). Keyed off `auth.uid()`. Idempotent. Called by
+`UserBackendService.enableFreelancer` behind `POST /api/user/freelancer` (the `/become-partner`
+page, Decision #150).
 
-In one transaction it:
+`p_payload.skills` is an optional array of **`org.skills` slugs** (the vocabulary
+`freelancer_profiles.skills` holds): trimmed, lower-cased and de-duplicated in the order given; more
+than ten, or any slug the taxonomy does not hold, raises `22023`. In one transaction it:
 
 1. **Links** the freelancer record —
    `INSERT INTO org.freelancer_profiles (user_id, skills) … ON
    CONFLICT (user_id) DO NOTHING`
-   (the table is keyed by `user_id`; optional starter `skills` come from `p_payload`).
+   (the table is keyed by `user_id`).
 2. **Flips** `org.users_public.is_freelancer = true` (the denormalised flag `getMe` + nav gates
    read).
-3. **Activates** the freelancer persona — upserts `security.session_context`
-   (`active_profile_type = 'freelancer'`, `active_profile_id = user_id`), leaving any active team.
+3. **Activates** the freelancer persona through `security.fn_set_session_context('freelancer',
+   uid, NULL, NULL, uid)` — the one session-context writer, which clears the team and organisation
+   slots in the same statement (and audits `session.switch_context`). Until 2026-10-06 this step
+   upserted only the profile slot, so a caller acting as a team or an organisation held two slots
+   and `ck_session_context_one_slot` failed the whole conversion.
 4. **Audits** a genuine conversion only — `security.audit_logs` `freelancer.unlocked` (written from
    the definer context because `audit_logs` is not granted to `authenticated`; cf. `0205`/`0304`).
 
-Returns `{ freelancer_profile_id, created, is_freelancer }`; `created` is `false` when the profile
-already existed (the call is then a no-op re-activation). Raises `28000` when unauthenticated and
-`42501` when the caller has not completed onboarding (no `users_public` row).
+Returns `{ freelancer_profile_id, handle, created, is_freelancer }` — `handle` is the person's
+`@username` (the client navigates to `/[handle]/edit`); `created` is `false` when the profile
+already existed (the call is then a no-op re-activation). Raises `28000` when unauthenticated,
+`42501` when the caller has not completed onboarding (no `users_public` row) and `22023` for a
+refused skill list. The access token is NOT re-minted here: the client must
+`POST /api/auth/refresh` so the hook stamps `active_context.isFreelancer = true`.
 
 > Note: `org.freelancer_profiles` no longer carries an `hourly_rate` column — rates are not a
 > platform signalling field (see `org/Tables.md`).
+
+## `org.get_acting_context_details(p_context_type text, p_context_id uuid) → jsonb`
+
+**Migration:** `00001020_functions_org_entities.sql` §5b · **Security:** `SECURITY DEFINER`,
+`STABLE`, `SET search_path = ''` · **Grant:** `authenticated` (revoked from `PUBLIC`, `anon`).
+
+The acting entity's display name for the account popover (`UserBackendService.me` →
+`workspace.name`). `p_context_type` is `team` · `business` · `organisation`; answers
+`{ context_type, context_id, name, handle }` only when the caller holds an **active** seat in that
+entity (an organisation's owner counts), else `NULL` — so it can never read an entity the caller is
+not acting inside. It exists because `org.business_profiles` has no client SELECT policy: the
+previous RLS read returned nothing for a business member and the header fell back to the slug. An
+organisation's `name` is its trading name, else its legal name.
+
+## `org.update_organisation(p_org_id uuid, p_payload jsonb) → jsonb`
+
+**Migration:** `00001020_functions_org_entities.sql` §5c · **Security:** `SECURITY DEFINER`,
+`SET search_path = ''` · **Grant:** `authenticated` (revoked from `PUBLIC`, `anon`).
+
+The **only** write door on `org.organisations` since 2026-10-06 — the table's client UPDATE policy
+is gone (`org/Policies.md`). `p_payload` is the camelCase `@projective/types/org`
+`UpdateOrganisation` partial:
+
+- **Who:** the owner, an active `admin` member, or a platform admin (`security.is_admin()`);
+  otherwise `42501`.
+- **Which keys:** `legalName` · `tradingName` · `registrationNumber` · `corporateEmail` ·
+  `corporatePhone` · `website` · `addressLine1` · `addressCity` · `addressPostcode` ·
+  `addressCountry` · `employeeScale` · `primaryIndustry` · `industryOther` · `departments` ·
+  `purpose` · `billingEmail` · `defaultCurrency`. A platform-owned key (`handle`, `status`,
+  `verificationLevel`, `ownerUserId`, `logoFileId`, …) raises `42501`; any other unknown key `22023`
+  — refused, never ignored. An empty payload is `22023`.
+- **Legal identity** (`legalName`, `registrationNumber`, `corporateEmail`): owner (or platform
+  admin) only — `42501` for an admin member — and **frozen** while `verification_level` is
+  `kyb_pending` or `verified` (`55000`): a verified identity that could be edited afterwards would
+  verify nothing.
+- **Validation:** every text key is trimmed and bounded exactly as the Zod schema states;
+  `legalName` / `corporateEmail` / `defaultCurrency` cannot be blank; emails must look like emails
+  (stored lower-cased); `defaultCurrency` is three letters (stored upper-cased); `employeeScale` must
+  be an `org.employee_scale` value; `departments` (≤ 60 chars each) and `purpose` (≤ 40) must be
+  string arrays; choosing `primaryIndustry = 'other'` without an `industryOther` is `22023`. An empty
+  string clears an optional field.
+- **Audit:** `security.audit_logs` `organisation.updated` with `{ fields, as_platform_admin }`.
+
+Returns `{ id, updated_fields }`. No service or route calls it yet — organisation settings have no
+UI (Decision #150 flag).
 
 ## `org.seed_user_preferences() → trigger`
 
@@ -85,7 +141,7 @@ Keyed off `auth.uid()`; safe to call from any policy `USING`/`WITH CHECK` clause
 
 ## `public.create_organisation(p_owner uuid, p_payload jsonb) → uuid`
 
-**Migration:** `supabase/migrations/0315_create_organisation_rpc.sql` · **Security:**
+**Migration:** `supabase/migrations/00001010_functions_org_onboarding.sql` (from `0315`) · **Security:**
 `SECURITY DEFINER`, `SET search_path = public, org, security` · **Grant:** `service_role` only.
 
 Atomic organisation provisioning, called by `@projective/backend`'s `AuthBackendService`
@@ -95,9 +151,67 @@ defaults to `NULL`, and the 0314 `industry_other` CHECK still applies), seeds th
 `org.organisation_members` row (`role = 'owner'`), and writes an `organisation.created` entry to
 `security.audit_logs` (definer context, because that table isn't granted to `authenticated` — cf.
 `provision_user_profile` in 0304). `p_payload` is the camelCase `@projective/types`
-`CreateOrganisation` shape. Returns the new org id; a duplicate `handle` surfaces as a
-`unique_violation` the service maps to a 422. Owner-only (buyer) by construction — organisations
-carry no service/product surface.
+`CreateOrganisation` shape. Returns the new org id.
+
+**Handles share one namespace** (2026-10-06): the handle is trimmed and lower-cased, then checked
+with `org.fn_handle_refusal` BEFORE the insert — the same rule (3–40 chars, lowercase letters,
+digits and hyphens, not reserved, not taken by any person, team, business or organisation) and the
+same sentence the create forms' availability probe shows. A taken handle raises `23505`, any other
+refusal `22023`; `AuthBackendService` returns the message with a 422. The `UNIQUE` on
+`organisations.handle` only ever saw other organisations, so before this an organisation could claim
+a person's `@username` and the two fought over `/{handle}`.
+
+**Grant:** `service_role` only, and explicitly `REVOKE`d from `PUBLIC`, `anon` and `authenticated`
+(`00002510`) — it trusts the `p_owner` it is handed, and Postgres grants a new `public` function to
+`PUBLIC`, so until 2026-10-06 any signed-out caller could mint an organisation owned by anybody.
+Owner-only (buyer) by construction — organisations carry no service/product surface.
+
+---
+
+## 📧 Email addresses (`00001050`)
+
+**Migration:** `supabase/migrations/00001050_functions_org_emails.sql` (trigger in `00001815`) ·
+**Zod:** `packages/types/org/user-emails.ts` · **Service:** `EmailsBackendService`
+(`packages/backend/services/user/`) · **Routes:** `/api/user/emails/*`.
+
+`org.user_emails.verified_at` unlocks the invitations sent to an address, so the table is read-only to
+a client ([Tables.md](Tables.md#orguser_emails), [Policies.md](Policies.md#orguser_emails)) and these
+definers are its write doors (with `public.provision_user_profile` and `public.handle_email_confirmed`).
+All are `SECURITY DEFINER`, `SET search_path = ''`, resolve the caller from `auth.uid()` and touch only
+the caller's own rows; `EXECUTE` is `authenticated` only (`00002510` — the org schema is deny-by-default).
+The per-person writes take `pg_advisory_xact_lock(hashtext('user-emails:' || uid))`, so concurrent
+adds cannot both pass the limit and concurrent primary switches cannot race the one-primary index.
+
+**Refusals** are raised as the exception MESSAGE with SQLSTATE `P0001`, the message being exactly one
+`EmailRefusal` code — `email_invalid` · `email_exists` · `email_limit` · `email_not_found` ·
+`email_unverified` · `email_is_primary` · `email_is_sign_in` · `email_in_use` · `token_invalid` ·
+`token_expired` · `token_used` · `token_wrong_account`. Two conditions carry their own SQLSTATE instead:
+no signed-in subject → `28000 'not_authenticated'`; no `org.users_public` row yet (an OAuth sign-up mid
+onboarding) → `42501 'profile_required'` (`add_user_email` only). Every write appends a
+`security.audit_logs` row (`user.email_added` · `user.email_removed` · `user.email_primary_changed` ·
+`user.email_verified`) carrying no address.
+
+| Function | Returns | Does / refuses |
+| :-- | :-- | :-- |
+| `org.get_my_emails()` | `TABLE (id, email, is_primary, verified_at, is_sign_in, created_at)` | The caller's rows, primary first then oldest. `is_sign_in` = the address equals `auth.users.email` (case-insensitive) — a different fact from `is_primary`. `LANGUAGE sql STABLE`; empty for no subject. |
+| `org.add_user_email(p_email text)` | `uuid` | Trims + lower-cases; files the address **unverified, not primary**. `email_invalid` (not `x@y.z`-shaped, or > 254 chars) · `email_exists` (already the caller's, case-insensitively — also the `uq_user_emails_user_email` race) · `email_limit` (the caller already has 5 — `MAX_USER_EMAILS`). Deliberately NOT refused when another account holds the address verified: that would make this door a lookup of who is registered under which address; that refusal waits for `confirm`, when the caller has proved they hold the inbox. |
+| `org.remove_user_email(p_email_id uuid)` | `void` | Deletes one of the caller's secondary addresses (its tokens cascade). `email_not_found` (also for another person's row — one answer, so ids cannot be probed) · `email_is_primary` · `email_is_sign_in`. |
+| `org.set_primary_email(p_email_id uuid)` | `void` | Clears the old primary FIRST, then sets the new one (`uq_user_emails_one_primary` is partial, so never deferrable). The current primary again is a no-op. `email_not_found` · `email_unverified`. |
+| `org.confirm_user_email(p_token text)` | `uuid` (the address id) | Lower-cases + trims the token; anything not 64 hex chars is `token_invalid` without hashing. Looks up `sha256(token)` and checks, in order: `token_invalid` (no such hash) → `token_used` → `token_expired` → `token_wrong_account` (`token.user_id <> auth.uid()`) → `email_in_use` (another account holds the address VERIFIED; checked under an advisory lock on the lower-cased address so two accounts cannot both win). On success stamps `verified_at = now()` (only if NULL) and consumes EVERY outstanding token of the address. A refusal consumes nothing. |
+
+### `org.trg_user_emails_guard() → trigger`
+
+`BEFORE INSERT OR UPDATE ON org.user_emails FOR EACH ROW` (trigger `user_emails_guard`, `00001815`).
+**INVOKER** on purpose — inside a definer `current_user` is the function's owner, so the doors above,
+provisioning, the GoTrue mirror, the service role and the seed all pass, and only a client role's own
+statement is judged. For `anon`/`authenticated` it refuses (`42501`) an INSERT with `verified_at` set or
+`is_primary = true`, and an UPDATE that changes `verified_at`, `email`, `is_primary` or `user_id`.
+Defence in depth: the grants and policies already refuse every client write. Not executable by any
+client role (trigger functions are checked at `CREATE TRIGGER`).
+
+The token MINT is not here: `security.issue_email_verification` returns a raw token, so it is service
+role only and lives in `security`, where the service role holds `USAGE`
+([security/Functions.md](../security/Functions.md#securityissue_email_verificationp_email_id-uuid--text--service-role-only)).
 
 ---
 

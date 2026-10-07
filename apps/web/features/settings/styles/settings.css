@@ -1,0 +1,896 @@
+/*
+ * The Settings engine (Decision #150) — the shapes every section is drawn with, shared by the
+ * contextual modal and the `/settings` console so a section looks the same in both.
+ *
+ * Separation follows DESIGN_SYSTEM §B.4: a section is a column of blocks divided by spacing and ONE
+ * hairline; rows inside a block are divided by spacing alone; nothing static is boxed. The only fills
+ * belong to controls, lifecycle statuses (Verified · Unverified · Primary · Default) and the
+ * attention marks (§B.11). Every size, colour, radius and duration is a token.
+ */
+
+/* #region Local tokens */
+.stg-view,
+.stg-home,
+.stg-console,
+.stg-lane,
+.stg-modal {
+	/* Press feedback scale (§B.12) — a ratio, not a length. */
+	--stg-press-scale: 0.98;
+	/* The pane colour the sticky footer must match to hide what scrolls beneath it. */
+	--stg-pane-bg: var(--surface);
+}
+/* #endregion */
+
+/* #region Section frame */
+.stg-view {
+	container: stg / inline-size;
+	min-inline-size: 0;
+}
+
+.stg-section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-6);
+	max-inline-size: var(--measure-wide);
+}
+
+.stg-head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.stg-head__title {
+	margin: 0;
+	font-size: var(--text-2xl);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
+	color: var(--on-surface);
+}
+
+.stg-head--modal .stg-head__title {
+	font-size: var(--text-xl);
+}
+
+.stg-head__lede {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Blocks & rows */
+.stg-block {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	scroll-margin-block-start: var(--space-4);
+}
+
+.stg-block + .stg-block {
+	padding-block-start: var(--space-6);
+	border-block-start: var(--hairline);
+}
+
+.stg-block__head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.stg-block__title {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+}
+
+.stg-block__lede {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.stg-block__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.stg-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	column-gap: var(--space-5);
+	row-gap: var(--space-2);
+	padding-block: var(--space-2);
+}
+
+.stg-row__text {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	min-inline-size: 0;
+}
+
+.stg-row__label {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--text-base);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+}
+
+.stg-row__desc {
+	max-inline-size: var(--measure);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.stg-row__lock {
+	flex: none;
+	color: var(--text-secondary);
+}
+
+.stg-row__control {
+	display: flex;
+	justify-content: flex-end;
+}
+
+@container stg (max-width: 30rem) {
+	.stg-row {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.stg-row__control {
+		justify-content: flex-start;
+	}
+}
+
+.stg-note {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.stg-note a,
+.stg-facts__note a {
+	color: var(--primary);
+}
+
+.stg-tabular {
+	font-variant-numeric: tabular-nums;
+}
+
+.stg-outlink {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	align-self: flex-start;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--primary);
+	text-decoration: none;
+}
+
+.stg-outlink:hover {
+	text-decoration: underline;
+}
+
+/* A subordinate form switched off by its parent toggle: present, legible, inert. */
+.stg-subform {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.stg-subform[data-off="true"] {
+	opacity: var(--fld-disabled-alpha);
+}
+/* #endregion */
+
+/* #region Status & footer */
+.stg-status {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: var(--leading-normal);
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.stg-status--idle {
+	min-block-size: 0;
+}
+
+.stg-status--saved svg {
+	color: var(--success);
+}
+
+.stg-status--device svg {
+	color: var(--warning);
+}
+
+.stg-status--error {
+	color: var(--on-surface);
+}
+
+.stg-status--error svg {
+	color: var(--danger);
+}
+
+/* The form footer pins to the bottom of whichever pane scrolls, so Save never leaves the view (§B.10.8). */
+.stg-footer {
+	position: sticky;
+	inset-block-end: 0;
+	z-index: var(--z-raised);
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-3);
+	padding-block: var(--space-3);
+	border-block-start: var(--hairline);
+	background: var(--stg-pane-bg);
+}
+
+.stg-footer__status {
+	margin-inline-end: auto;
+}
+
+.stg-footer__dirty {
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.stg-footer__dirty:empty {
+	display: none;
+}
+/* #endregion */
+
+/* #region Escalation (page-only and status-escalate sections in the modal) */
+.stg-escalate {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-4);
+}
+
+.stg-statusline {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	grid-template-areas:
+		"label state"
+		"detail detail";
+	column-gap: var(--space-3);
+	row-gap: var(--space-px);
+	padding-block: var(--space-3);
+}
+
+.stg-statusline + .stg-statusline {
+	border-block-start: var(--hairline);
+}
+
+.stg-statusline__label {
+	grid-area: label;
+	font-size: var(--text-base);
+	color: var(--on-surface);
+}
+
+.stg-statusline__state {
+	grid-area: state;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.stg-statusline__detail {
+	grid-area: detail;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+/* The pip changes SHAPE as well as hue, so a state survives every colour-vision overlay. */
+.stg-statusline__pip {
+	inline-size: var(--space-2);
+	block-size: var(--space-2);
+	border-radius: var(--radius-full);
+	background: var(--outline);
+}
+
+.stg-statusline[data-tone="success"] .stg-statusline__pip {
+	background: var(--success);
+}
+
+.stg-statusline[data-tone="info"] .stg-statusline__pip {
+	background: var(--info);
+}
+
+.stg-statusline[data-tone="warning"] .stg-statusline__pip {
+	background: transparent;
+	box-shadow: inset 0 0 0 var(--fld-bw) var(--warning);
+}
+
+.stg-statusline[data-tone="danger"] .stg-statusline__pip {
+	border-radius: var(--radius-xs);
+	background: var(--danger);
+}
+/* #endregion */
+
+/* #region Lifecycle statuses (the only pills) */
+.stg-pill {
+	display: inline-flex;
+	align-items: center;
+	padding: var(--space-px) var(--space-2);
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+}
+
+.stg-pill--primary {
+	background: color-mix(in srgb, var(--primary) var(--tint), var(--surface));
+}
+
+.stg-pill--pending {
+	background: color-mix(in srgb, var(--warning) var(--tint), var(--surface));
+}
+/* #endregion */
+
+/* #region Facts (read-only identity) */
+.stg-facts {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+}
+
+.stg-facts__row {
+	display: grid;
+	grid-template-columns: minmax(0, 12rem) minmax(0, 1fr);
+	gap: var(--space-1) var(--space-4);
+	padding-block: var(--space-2);
+}
+
+.stg-facts__row dt {
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.stg-facts__row dd {
+	margin: 0;
+	font-size: var(--text-base);
+	color: var(--on-surface);
+}
+
+.stg-facts__note {
+	display: block;
+	margin-block-start: var(--space-px);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+@container stg (max-width: 30rem) {
+	.stg-facts__row {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+/* #endregion */
+
+/* #region Lists of things with actions (emails · cards · workspaces) */
+.stg-emails,
+.stg-cards,
+.stg-ws,
+.stg-hours {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.stg-emails__item,
+.stg-cards__item,
+.stg-ws__item {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--space-2) var(--space-4);
+	padding-block: var(--space-3);
+}
+
+.stg-emails__item + .stg-emails__item,
+.stg-cards__item + .stg-cards__item,
+.stg-ws__item + .stg-ws__item {
+	border-block-start: var(--hairline);
+}
+
+.stg-emails__main,
+.stg-cards__main,
+.stg-ws__main {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.stg-emails__address,
+.stg-cards__name,
+.stg-ws__name {
+	overflow-wrap: anywhere;
+	font-size: var(--text-base);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.stg-ws__name {
+	text-decoration: none;
+}
+
+.stg-ws__name:hover {
+	text-decoration: underline;
+}
+
+.stg-emails__meta,
+.stg-cards__meta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.stg-ws__meta,
+.stg-emails__sign {
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.stg-cards__expired {
+	color: var(--on-surface);
+	font-weight: var(--fw-medium);
+}
+
+.stg-emails__actions,
+.stg-emails__confirm {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-1);
+}
+
+.stg-emails__ask {
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+}
+
+@container stg (max-width: 30rem) {
+	.stg-emails__item,
+	.stg-cards__item,
+	.stg-ws__item {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.stg-emails__actions,
+	.stg-emails__confirm {
+		justify-content: flex-start;
+	}
+}
+
+.stg-ws__acting {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+}
+
+.stg-ws__acting-label {
+	font-size: var(--text-base);
+	color: var(--on-surface);
+}
+
+.stg-hours {
+	gap: var(--space-1);
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+}
+/* #endregion */
+
+/* #region Forms */
+.stg-addemail {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	align-items: end;
+	gap: var(--space-2) var(--space-3);
+	padding-block-start: var(--space-3);
+	max-inline-size: var(--measure);
+}
+
+.stg-field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.stg-field__label {
+	font-size: var(--fld-label-fs);
+	font-weight: var(--fld-label-fw);
+	color: var(--fld-label-fg);
+}
+
+.stg-field__hint {
+	grid-column: 1 / -1;
+	margin: 0;
+	font-size: var(--fld-hint-fs);
+	color: var(--fld-hint-fg);
+}
+
+.stg-field__hint--error {
+	color: var(--on-surface);
+}
+
+.stg-inline-fields {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-4);
+}
+/* #endregion */
+
+/* #region The routing matrix */
+.stg-matrix-scroll {
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
+}
+
+.stg-matrix {
+	inline-size: 100%;
+	border-collapse: collapse;
+	font-size: var(--text-sm);
+}
+
+.stg-matrix thead th {
+	padding: var(--space-2);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	text-align: center;
+	color: var(--text-secondary);
+}
+
+.stg-matrix thead .stg-matrix__corner {
+	padding-inline-start: 0;
+	text-align: start;
+}
+
+.stg-matrix tbody th {
+	padding-block: var(--space-3);
+	padding-inline-end: var(--space-3);
+	font-weight: var(--fw-normal);
+	text-align: start;
+}
+
+.stg-matrix tbody td {
+	padding: var(--space-2);
+	text-align: center;
+}
+
+.stg-matrix tbody tr + tr > * {
+	border-block-start: var(--hairline);
+}
+
+.stg-matrix__cat {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--text-base);
+	color: var(--on-surface);
+}
+
+.stg-matrix__desc {
+	display: block;
+	margin-block-start: var(--space-px);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.stg-matrix__row--locked .stg-matrix__cat {
+	color: var(--text-secondary);
+}
+
+.stg-matrix__lock,
+.stg-locked-control {
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-secondary);
+	border-radius: var(--radius-sm);
+}
+/* #endregion */
+
+/* #region Navigator (the modal's left pane and the console lane share it) */
+.stg-nav {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-block-size: 0;
+}
+
+.stg-nav__empty {
+	margin: 0;
+	padding-inline: var(--space-2);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.stg-mark {
+	display: inline-flex;
+	align-items: center;
+	color: var(--text-secondary);
+}
+
+.stg-mark--danger {
+	color: var(--danger);
+}
+
+.stg-mark--warning {
+	color: var(--warning);
+}
+
+.stg-mark--info {
+	color: var(--info);
+}
+/* #endregion */
+
+/* #region Console page */
+.stg-console {
+	container: stg-console / inline-size;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	padding: var(--space-6) var(--space-6) var(--space-8);
+}
+
+.stg-console__back {
+	display: none;
+	align-items: center;
+	gap: var(--space-1);
+	align-self: flex-start;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--primary);
+	text-decoration: none;
+}
+
+/* Below the shell breakpoint the lane is gone, so the page carries its own way back up. */
+@media (max-width: 767px) {
+	.stg-console {
+		padding: var(--space-4);
+	}
+
+	.stg-console__back {
+		display: inline-flex;
+	}
+}
+/* #endregion */
+
+/* #region Console root: attention dashboard + drill-down */
+.stg-home {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-7);
+	max-inline-size: var(--measure-wide);
+	padding: var(--space-6) var(--space-6) var(--space-8);
+}
+
+.stg-attention {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.stg-attention__clear {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: var(--text-base);
+	color: var(--on-surface);
+}
+
+.stg-attention__clear svg {
+	color: var(--success);
+}
+
+.stg-attention__list {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.stg-attention__item {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--space-3) var(--space-4);
+	padding-block: var(--space-4);
+}
+
+.stg-attention__item + .stg-attention__item {
+	border-block-start: var(--hairline);
+}
+
+.stg-attention__mark {
+	display: inline-flex;
+	color: var(--info);
+}
+
+.stg-attention__item[data-tone="warning"] .stg-attention__mark {
+	color: var(--warning);
+}
+
+.stg-attention__item[data-tone="danger"] .stg-attention__mark {
+	color: var(--danger);
+}
+
+.stg-attention__text {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	min-inline-size: 0;
+}
+
+.stg-attention__title {
+	font-size: var(--text-base);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.stg-attention__detail {
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.stg-attention__action {
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--primary);
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.stg-attention__action:hover {
+	text-decoration: underline;
+}
+
+/* The drill-down menu exists for the phone, where the shell has no lane to navigate with. */
+.stg-drill {
+	display: none;
+}
+
+.stg-drill__title {
+	margin-block-end: var(--space-2);
+}
+
+.stg-drill__list {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.stg-drill__item {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-3) var(--space-2);
+	border-radius: var(--radius-md);
+	color: var(--on-surface);
+	text-decoration: none;
+	transform: scale(1);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.stg-drill__item:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), var(--surface));
+}
+
+.stg-drill__item:active {
+	transform: scale(var(--stg-press-scale));
+	transition-duration: var(--dur-press);
+}
+
+.stg-drill__icon {
+	display: grid;
+	place-items: center;
+	inline-size: var(--overlay-action-size);
+	block-size: var(--overlay-action-size);
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
+	color: var(--on-surface-variant);
+}
+
+.stg-drill__text {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	min-inline-size: 0;
+}
+
+.stg-drill__label {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--text-base);
+	font-weight: var(--fw-medium);
+}
+
+.stg-drill__desc {
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.stg-drill__chev {
+	color: var(--text-secondary);
+}
+
+@media (max-width: 767px) {
+	.stg-home {
+		padding: var(--space-4);
+	}
+
+	.stg-drill {
+		display: block;
+	}
+
+	.stg-attention__item {
+		grid-template-columns: auto minmax(0, 1fr);
+	}
+
+	.stg-attention__action {
+		grid-column: 2;
+	}
+}
+/* #endregion */
+
+/* #region Reduced motion — both channels */
+@media (prefers-reduced-motion: reduce) {
+	.stg-drill__item,
+	.stg-drill__item:active {
+		transform: none;
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .stg-drill__item,
+:root[data-motion="reduced"] .stg-drill__item:active {
+	transform: none;
+	transition: none;
+}
+/* #endregion */

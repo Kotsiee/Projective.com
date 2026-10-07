@@ -1,0 +1,140 @@
+/*
+ * The `/settings` console's middle-nav lane (Decision #150). Like every lane it renders an expanded
+ * stack and a collapsed icon rail and lets `.ui-splitter[data-mode="collapsed"]` reveal one. The
+ * expanded stack is the shared search + tree (`.stg-nav`, styled in settings.css); the rail is one
+ * icon link per section with a pip for a section that needs attention.
+ */
+
+/* #region Dual presentation */
+.stg-lane,
+.stg-lane__full {
+	display: flex;
+	flex-direction: column;
+	block-size: 100%;
+	min-block-size: 0;
+}
+
+.stg-rail {
+	display: none;
+}
+
+.ui-splitter[data-mode="collapsed"] .stg-lane__full {
+	display: none;
+}
+
+.ui-splitter[data-mode="collapsed"] .stg-rail {
+	display: flex;
+}
+/* #endregion */
+
+/* #region Expanded stack */
+.stg-lane__title {
+	margin: 0;
+	padding-inline: var(--space-2);
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+	text-decoration: none;
+}
+
+.stg-lane__title:hover {
+	text-decoration: underline;
+}
+
+.stg-lane__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding: var(--space-3) var(--space-3) var(--space-5);
+}
+/* #endregion */
+
+/* #region Collapsed rail */
+.stg-rail {
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-4);
+	block-size: 100%;
+	padding: var(--space-3) 0;
+}
+
+.stg-rail__group {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-1);
+}
+
+.stg-rail__bottom {
+	margin-block-start: auto;
+}
+
+.stg-rail__item {
+	position: relative;
+	display: inline-grid;
+	place-items: center;
+	inline-size: var(--shell-nav-block);
+	block-size: var(--shell-nav-block);
+	border-radius: var(--radius-base);
+	color: var(--text-secondary);
+	text-decoration: none;
+	transform: scale(1);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.stg-rail__item:hover {
+	background: var(--surface-2);
+	color: var(--on-surface);
+}
+
+.stg-rail__item:active {
+	transform: scale(var(--stg-press-scale));
+	transition-duration: var(--dur-press);
+}
+
+.stg-rail__item[aria-current="page"] {
+	background: color-mix(in srgb, var(--primary) var(--tint), var(--surface));
+	color: var(--on-surface);
+}
+
+/* Shape, not only hue: a hollow ring for a warning, a filled square for danger, a dot for info. */
+.stg-rail__pip {
+	position: absolute;
+	inset-block-start: var(--space-2);
+	inset-inline-end: var(--space-2);
+	inline-size: var(--space-2);
+	block-size: var(--space-2);
+	border-radius: var(--radius-full);
+	background: var(--info);
+}
+
+.stg-rail__pip--warning {
+	background: var(--surface);
+	box-shadow: inset 0 0 0 var(--fld-bw) var(--warning);
+}
+
+.stg-rail__pip--danger {
+	border-radius: var(--radius-xs);
+	background: var(--danger);
+}
+/* #endregion */
+
+/* #region Reduced motion — both channels */
+@media (prefers-reduced-motion: reduce) {
+	.stg-rail__item,
+	.stg-rail__item:active {
+		transform: none;
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .stg-rail__item,
+:root[data-motion="reduced"] .stg-rail__item:active {
+	transform: none;
+	transition: none;
+}
+/* #endregion */

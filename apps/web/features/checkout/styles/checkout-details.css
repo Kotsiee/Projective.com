@@ -49,8 +49,13 @@
 	container-name: cko ckod ckodform;
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-6);
-	padding: var(--space-6) var(--space-4) var(--space-8);
+	gap: var(--space-4);
+	/*
+	 * `--space-4` all round (Decision #153): the step is sized to fit a 900px-tall window without
+	 * scrolling, and the padding it used to carry (`--space-6` above, `--space-8` below) was 48px of
+	 * that budget spent on nothing.
+	 */
+	padding: var(--space-4);
 }
 
 /*
@@ -75,7 +80,7 @@
 	container-name: ckodform;
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-6);
+	gap: var(--space-4);
 	inline-size: 100%;
 	/* A reading measure for a column of fields — see the header note; nothing here is a figure. */
 	max-inline-size: 44rem;
@@ -108,7 +113,7 @@
 .ckod__head {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-2);
+	gap: var(--space-1);
 }
 
 .ckod__title {
@@ -118,14 +123,6 @@
 	font-weight: var(--fw-semibold);
 	line-height: 1.2;
 }
-
-.ckod__lede {
-	margin: 0;
-	color: var(--text-secondary);
-	font-size: var(--text-sm);
-	line-height: 1.5;
-	max-inline-size: 52ch;
-}
 /* #endregion */
 
 /* #region Sections */
@@ -133,11 +130,12 @@
  * One hairline between sections, drawn on the leading edge of each section after the first, so a
  * boundary spends exactly one device. No section is enclosed.
  *
- * **The vertical rhythm is asymmetric on purpose** (§B.4 rung 1): `--space-6` opens above a section
- * heading, `--space-2` holds the heading to the subtext that explains it, and `--space-4` separates
- * that pair from the fields. Even gaps would leave three equally-weighted bands and the heading
- * would stop reading as the start of anything; the tight gap is what makes heading + subtext one
- * object, and the wide gap above it is what makes the boundary legible without a second border.
+ * **The vertical rhythm is asymmetric on purpose** (§B.4 rung 1): `--space-4` opens above a section
+ * heading (with the form's own `--space-4` gap before the hairline), and `--space-3` holds the
+ * heading to its fields. The section's one-line purpose rides on the heading as secondary text
+ * rather than as a paragraph under it (Decision #153 — the step is sized to a 900px window), so the
+ * heading and its explanation are one object by construction, and the wider gap above the hairline
+ * is what keeps the boundary legible without a second border.
  *
  * The `--hairline` token is a COMPLETE `border` shorthand (`1px solid color-mix(…)`). Writing
  * `1px solid var(--hairline)` produces an invalid declaration the engine drops silently — all six
@@ -147,20 +145,16 @@
 .ckod__section {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-2);
-	padding-block-start: var(--space-6);
+	gap: var(--space-3);
+	padding-block-start: var(--space-4);
 	border-block-start: var(--hairline);
 	min-inline-size: 0;
-}
-
-.ckod--modal .ckod__section {
-	padding-block-start: var(--space-5);
 }
 
 .ckod__legend {
 	display: flex;
 	flex-wrap: wrap;
-	gap: var(--space-2);
+	gap: var(--space-1) var(--space-2);
 	align-items: baseline;
 	margin: 0;
 	color: var(--on-surface);
@@ -173,15 +167,6 @@
 	color: var(--text-secondary);
 	font-size: var(--text-xs);
 	font-weight: var(--fw-normal);
-}
-
-/* Section subtext: the secondary reading register, one step under the field labels it introduces. */
-.ckod__hint {
-	margin: 0;
-	color: var(--text-secondary);
-	font-size: var(--text-sm);
-	line-height: var(--leading-normal);
-	max-inline-size: var(--measure-narrow);
 }
 /* #endregion */
 
@@ -322,28 +307,31 @@
 
 /* #region Field grid */
 /*
- * Twelve tracks, so a row can ask for a half (six) or a third (four) without a second grid nested
- * inside the first — which is what lets City / State / Postcode sit three across on the same grid
- * that runs First / Last two across. Below the first breakpoint every row is full width: at that
- * size two fields side by side are two fields nobody can read.
+ * Twelve tracks, and every field states how many it takes as a NUMBER (`data-span="8"`), so a row is
+ * written as the sum it is: `6 + 6` for a name, `8 + 4` for a street line beside its apartment line,
+ * `5 + 3 + 4` for City · Postcode · Country, `4 + 4 + 4` for a three-up row.
  *
- * The extra `--space-2` above the grid, on top of the section's own gap, is the asymmetric step
- * between the heading pair and the controls (§B.4 rung 1).
+ * **Every value that is emitted has a rule — that is the contract the grid broke.** The markup once
+ * asked for `wide` and `narrow` while this sheet only knew `full`, `half` and `third`; an unmatched
+ * item falls to auto-placement, which on a twelve-track grid is ONE track, and the address line
+ * rendered 44px wide (Decision #153, measured). The span vocabulary is now the type
+ * `DetailsFieldSpan` in `AddressFields.tsx`, and each of its members appears below.
+ *
+ * Three tiers, by the FORM COLUMN's width (`ckodform`), never the viewport's:
+ *
+ * - **Below 34rem** — one column. Two fields side by side at that size are two fields nobody reads.
+ * - **34rem to 40rem** — every row that is not full width takes HALF. A pair stays a pair; a triple
+ *   wraps its last field onto the next row, which is the honest failure mode — a postcode squeezed
+ *   below the width of its own value is worse than a second row.
+ * - **40rem and up** — the spans as written.
+ *
+ * Row gap `--space-3`, column gap `--space-4`: a row's fields are read across as one line, and the
+ * rows are separated just enough that a label is never read as belonging to the control above it.
  */
 .ckod__grid {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
-	gap: var(--space-4);
-	margin-block-start: var(--space-2);
-}
-
-/*
- * A short value on a wide row is held to `--field-max` rather than stretched: a 44rem-wide email
- * input tells the reader to expect a longer address than one. A MEASURE on a field, never on a
- * figure — no amount, chart or table is ever a descendant of this rule.
- */
-.ckod-field[data-cap="true"] {
-	max-inline-size: var(--field-max);
+	gap: var(--space-3) var(--space-4);
 }
 
 @container ckodform (min-width: 34rem) {
@@ -351,24 +339,30 @@
 		grid-template-columns: repeat(12, minmax(0, 1fr));
 	}
 
-	.ckod-field[data-span="full"] {
-		grid-column: span 12;
+	.ckod-field {
+		grid-column: span 6;
 	}
 
-	/*
-	 * A third only becomes a third once the COLUMN can carry three legible fields. Until then it
-	 * shares the two-across rhythm, and the odd one wraps — which is the honest failure mode, since a
-	 * 7rem postcode field beside a 7rem city field is narrower than the values they hold.
-	 */
-	.ckod-field[data-span="half"],
-	.ckod-field[data-span="third"] {
-		grid-column: span 6;
+	.ckod-field[data-span="12"] {
+		grid-column: span 12;
 	}
 }
 
 @container ckodform (min-width: 40rem) {
-	.ckod-field[data-span="third"] {
+	.ckod-field[data-span="3"] {
+		grid-column: span 3;
+	}
+
+	.ckod-field[data-span="4"] {
 		grid-column: span 4;
+	}
+
+	.ckod-field[data-span="5"] {
+		grid-column: span 5;
+	}
+
+	.ckod-field[data-span="8"] {
+		grid-column: span 8;
 	}
 }
 /* #endregion */
@@ -417,16 +411,16 @@
 }
 
 /*
- * The note row reserves its height whether or not it has something to say, so a validation message
- * appearing mid-form cannot shove every field below it down the page — the reason
- * `--fld-hint-min-h` exists. `min-block-size` rather than a fixed height, so a two-line error still
- * grows into the space it needs.
+ * The note row exists only when it has something to say (Decision #153 — an owner-directed exception
+ * to the `--fld-hint-min-h` reservation, scoped to this step). The reservation stopped a message from
+ * shoving the form down, but it cost every row a blank 20px band whether or not anything was ever
+ * said, and that blank band was the largest single reason the step scrolled. A message now grows its
+ * own grid row when it appears; the row's neighbours grow with it, so the grid stays aligned.
  */
 .ckod-field__note {
 	display: flex;
 	gap: var(--space-1);
 	align-items: center;
-	min-block-size: var(--fld-hint-min-h);
 	color: var(--fld-hint-fg);
 	font-size: var(--fld-hint-fs);
 	line-height: var(--leading-snug);
@@ -449,9 +443,13 @@
 	min-inline-size: 0;
 }
 
+/*
+ * Wide enough for the closed trigger's flag, code and chevron and no wider: the number beside it is
+ * the part that is typed, and on a four-track row every rem given to the prefix is taken from it.
+ */
 .ckod-phone__dial.ui-field {
 	flex: none;
-	inline-size: 8rem;
+	inline-size: 6.5rem;
 	border-start-end-radius: 0;
 	border-end-end-radius: 0;
 }
@@ -507,10 +505,16 @@
  * form renders at all. The block's own rhythm is the asymmetric one used throughout: the label is
  * held tight to the chips it names, and the row is opened away from the lede above it.
  */
+/*
+ * One row where it fits — the label, then the chips — with the note directly under it. The label is
+ * the chips' group name, so it reads as the start of the same line rather than as a heading of its
+ * own; at a narrow width the row wraps and the label sits above the chips.
+ */
 .ckod-switch {
 	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-3);
+	align-items: center;
 	margin-block-start: var(--space-2);
 }
 
@@ -529,6 +533,7 @@
 }
 
 .ckod-switch__note {
+	flex-basis: 100%;
 	margin: 0;
 	color: var(--fld-hint-fg);
 	font-size: var(--fld-hint-fs);
@@ -538,10 +543,15 @@
 /* #endregion */
 
 /* #region Invoicing */
+/*
+ * The switch and its one-sentence state share a row when they fit, the sentence reading as the
+ * switch's continuation; the statement-day picker, when monthly is on, always takes a row of its own.
+ */
 .ckod-inv {
 	display: flex;
-	flex-direction: column;
-	gap: var(--space-2);
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-3);
+	align-items: center;
 }
 
 .ckod-inv__row {
@@ -571,6 +581,7 @@
 }
 
 .ckod-inv__day {
+	flex-basis: 100%;
 	margin-block-start: var(--space-2);
 	max-inline-size: 20rem;
 }
@@ -639,7 +650,7 @@
 	flex-wrap: wrap;
 	gap: var(--space-3);
 	align-items: center;
-	padding-block-start: var(--space-6);
+	padding-block-start: var(--space-4);
 	border-block-start: var(--hairline);
 }
 

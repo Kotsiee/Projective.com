@@ -6,6 +6,7 @@ import { CtaButton } from "./CtaButton.tsx";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
 import { applyToProject, projectApplied } from "../core/view-state.ts";
 import { messageHrefFor, signInHref } from "../core/view-model.ts";
+import { AllowanceDisclosure } from "@features/proposals/components/AllowanceDisclosure.tsx";
 
 /**
  * ProjectCtaRig — the action rig BOTH of a project's transactional regions render.
@@ -24,9 +25,12 @@ import { messageHrefFor, signInHref } from "../core/view-model.ts";
  * namespace is authed-only, and a link that lands a guest on a login wall with no way back is worse
  * than one that says where it is taking them.
  *
- * Apply is an optimistic client stub (`projectApplied`) until the application write path lands, so an
- * application shows everywhere this rig renders at once. Since Decision #144 that is the public
- * listing only: the engagement's own pages are for people already on it.
+ * Apply opens the listing's one `ProjectApplyModal` (stage, role, applicant, cover note, and the
+ * proposal allowance's pre-flight gate). Beneath it sits the cost disclosure — `1 proposal token · N
+ * ready` (Decision #154) — in this shared rig, so the lane and the bar quote one cost. "Applied" is
+ * derived from the viewer's real pending proposals, and pressing it opens the same modal to manage or
+ * withdraw them. Since Decision #144 that is the public listing only: the engagement's own pages are
+ * for people already on it.
  */
 export function ProjectCtaRig(
 	{ item, authed, ctx, layout = "lane" }: {
@@ -41,25 +45,19 @@ export function ProjectCtaRig(
 	const applied = projectApplied.value;
 	const contactHref = authed ? messageHrefFor(item) : signInHref(item, ctx);
 
-	function run(): Promise<boolean> {
-		const before = projectApplied.value;
-		const after = applyToProject(item, authed, ctx);
-		// A guest is bounced by `applyToProject` and nothing changed; only a real flip settles.
-		return Promise.resolve(after !== before && after);
-	}
-
 	return (
 		<div class={layout === "bar" ? "evp-cta evp-cta--bar" : "evp-cta"}>
 			<CtaButton
 				label={applied ? "Applied" : "Apply to project"}
-				ariaLabel={applied ? "Applied — press to withdraw your application" : undefined}
+				ariaLabel={applied ? "Applied — open to manage or withdraw your proposal" : undefined}
 				settledLabel="Applied"
 				phase={primary.phase}
 				tone={applied ? "brand" : "inverted"}
 				variant={applied ? "outlined" : "filled"}
 				icon={<Icon name={applied ? "check" : "user-plus"} size="sm" aria-hidden />}
-				onClick={() => void primary.run(run)}
+				onClick={() => void applyToProject(item, authed, ctx)}
 			/>
+			<AllowanceDisclosure authed={authed} />
 
 			<a class="evp-cta__ghost" href={contactHref}>
 				<Icon name="message" size="sm" aria-hidden />

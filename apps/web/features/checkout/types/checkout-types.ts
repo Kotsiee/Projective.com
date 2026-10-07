@@ -75,29 +75,6 @@ export type {
 export type { BusinessBilling } from "@projective/types/finance";
 // #endregion
 
-// #region Device capabilities
-/**
- * What this device and deployment can pay with — capability reports, never a simulation of the buyer.
- *
- * They travel as query params so the server's provider offer can consult them. While no payment
- * processor is connected the server refuses every processor-backed route regardless, so these decide
- * nothing today; they are sent because they are true, and because the day a processor is connected
- * the offer must not have to be re-plumbed to learn them.
- */
-export interface DeviceCapabilities {
-	/**
-	 * Whether this browser offers Google Pay. Left ABSENT: availability can only be determined with
-	 * Google's own `pay.js`, which this platform does not load, and an unknown capability is not
-	 * reported as either answer.
-	 */
-	googlePay?: boolean;
-	/** Whether this device offers Apple Pay (`ApplePaySession.canMakePayments()`). */
-	applePay?: boolean;
-	/** Whether PayPal is configured for this deployment. */
-	paypalEnabled?: boolean;
-}
-// #endregion
-
 // #region Read context
 /**
  * The shared read context every `BasketService` / `CheckoutService` / `CardsService` call threads: which
@@ -117,8 +94,6 @@ export interface CheckoutContext {
 	projectId?: string | null;
 	/** `?service_id=` narrowing — a checkout scoped to one service's lines. */
 	serviceId?: string | null;
-	/** What this device can pay with — see {@link DeviceCapabilities}. */
-	device?: DeviceCapabilities;
 	/**
 	 * The payment route the buyer has selected, when they have. Read server-side only to decide
 	 * whether the gateway-contribution offer applies — a wallet or invoice payment touches no card

@@ -1,7 +1,8 @@
-import type {
-	InboundPayment,
-	PayoutAccount,
-	TransfersCapabilityStatus,
+import {
+	CARD_SETUP_PAYMENT_METHOD_TYPES,
+	type InboundPayment,
+	type PayoutAccount,
+	type TransfersCapabilityStatus,
 } from "@projective/types/finance";
 import { type Stripe, stripeIdempotencyKey } from "../../core/stripe.ts";
 
@@ -17,7 +18,10 @@ import { type Stripe, stripeIdempotencyKey } from "../../core/stripe.ts";
  * Three Stripe rules this module encodes (see `.agents/skills/stripe-best-practices`):
  *
  * - **No `payment_method_types`.** Omitting it enables dynamic payment methods, configured in the
- *   Dashboard rather than hard-coded here.
+ *   Dashboard rather than hard-coded here (and the API's `2026-08-26.preview` removes it as a writable
+ *   parameter). The one narrowing is the card SetupIntent, which names
+ *   `allowed_payment_method_types: ['card']` because its card-only form is mounted before the intent
+ *   exists and the two must match ({@link setupIntentParams}).
  * - **Accounts v2, never `type: 'express'`.** An "Express" account is the v2 `dashboard: 'express'`
  *   with the RECIPIENT configuration (it receives transfers; the platform is merchant of record) and
  *   application-held fees and losses — the only combination Stripe accepts for an Express dashboard.
@@ -419,14 +423,21 @@ export async function createCustomer(stripe: Stripe, owner: CardOwner): Promise<
 
 /**
  * A SetupIntent that saves a card for later, OFF-SESSION use (a recurring deposit charges it with
- * nobody at the keyboard, so the bank's mandate has to be collected now). No
- * `payment_method_types`: dynamic payment methods, as for PaymentIntents.
+ * nobody at the keyboard, so the bank's mandate has to be collected now).
+ *
+ * It is created only when the person presses Save, AFTER the browser's card form has collected the
+ * card — Stripe's deferred-intent flow — and Stripe requires the intent to match the Elements options
+ * that form was mounted with. The form is card-only (`allowedPaymentMethodTypes`), so the intent names
+ * the same list as `allowed_payment_method_types`, read from the one shared constant. That parameter
+ * is mutually exclusive with `automatic_payment_methods` (and with `payment_method_types`, which the
+ * API is retiring), so neither is sent. `usage: 'off_session'` is also SetupIntent's default; it is
+ * stated because the recurring deposit depends on it.
  */
 export function setupIntentParams(customerId: string, owner: CardOwner): SetupIntentCreateParams {
 	return {
 		customer: customerId,
 		usage: "off_session",
-		automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+		allowed_payment_method_types: [...CARD_SETUP_PAYMENT_METHOD_TYPES],
 		metadata: {
 			projective_owner_type: owner.ownerType,
 			projective_owner_id: owner.ownerId,

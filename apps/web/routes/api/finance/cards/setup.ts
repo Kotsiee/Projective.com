@@ -5,8 +5,11 @@ import { invalidBody, readJson, toPaymentsResponse } from "@features/payments/co
 import { PaymentBackendService } from "@server/services/finance/PaymentBackendService.ts";
 
 /**
- * `POST /api/finance/cards/setup` — start saving a card: answers with a Stripe SetupIntent's client
- * secret for the Payment Element in `setup` mode.
+ * `/api/finance/cards/setup` — the two halves of saving a card with Stripe's deferred-intent flow.
+ *
+ * `GET` answers `{ publishableKey, mode }`: enough to mount the card form straight away, before any
+ * SetupIntent exists. `POST` — called when the person presses Save, after the form has collected the
+ * card — answers with a Stripe SetupIntent's client secret, which `stripe.confirmSetup` confirms.
  *
  * Thin by contract: Zod-validate and delegate. The fat {@link PaymentBackendService} authorises the
  * owner (`finance.card_owner_for` — the caller, or a team/business they manage billing for), makes sure
@@ -14,9 +17,13 @@ import { PaymentBackendService } from "@server/services/finance/PaymentBackendSe
  * recorded by `POST /api/finance/cards/confirm` (or, as a backstop, the `setup_intent.succeeded`
  * webhook) after Stripe confirms it.
  *
- * Body: `{ scope: "personal" | "team" | "business", contextId? }`.
+ * `POST` body: `{ scope: "personal" | "team" | "business", contextId? }`.
  */
 export const handler = define.handlers({
+	GET(ctx) {
+		return toPaymentsResponse(PaymentBackendService.cardSetupConfig(readActor(ctx)));
+	},
+
 	async POST(ctx) {
 		const parsed = CreateCardSetupSchema.safeParse(await readJson(ctx.req));
 		if (!parsed.success) return invalidBody(parsed.error);

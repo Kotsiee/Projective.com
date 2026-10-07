@@ -986,12 +986,13 @@ SELECT TO authenticated USING (
                     project_invitations.target_email
                 )
                 -- 🚨 `verified_at` is not optional here, and the reason is the direction of the threat.
-                -- `org.user_emails` carries a client INSERT policy (`WITH CHECK (user_id = auth.uid())`)
-                -- and `org` is exposed to PostgREST, so any signed-in caller can add an ARBITRARY address
-                -- to their OWN row. Without this arm, ASSERTING the invited address is enough to become
-                -- an "invitee" and read `token` — which this table's own comment calls the capability:
-                -- whoever holds it can accept and be granted the role it names. That is project-access
-                -- escalation, not a disclosure.
+                -- Any signed-in caller can add an ARBITRARY address to their OWN account
+                -- (org.add_user_email — unverified). Without this arm, ASSERTING the invited address is
+                -- enough to become an "invitee" and read `token` — which this table's own comment calls
+                -- the capability: whoever holds it can accept and be granted the role it names. That is
+                -- project-access escalation, not a disclosure. `verified_at` is trustworthy because
+                -- no client role can write it (2026-10-06, 00002010 / 00001050): it is stamped only by
+                -- the GoTrue mirror or by redeeming a token mailed to the address.
                 --
                 -- The own-rows-only policy on `org.user_emails` does not help: it stops you reading
                 -- someone else's address, and this attack writes your own.

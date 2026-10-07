@@ -30,11 +30,19 @@ export interface StubApplication {
 	projectId: string;
 	stageId: string;
 	roleId: string | null;
+	/** The team applied for, or null for a personal application. */
+	teamId: string | null;
 	message: string | null;
 	createdAt: string;
 }
 
 const applications: StubApplication[] = [];
+
+/**
+ * Applications their applicant took back. Kept apart from {@link decisions} on purpose: those are the
+ * OTHER side's answers, which the conversation fixtures render, and a withdrawal is not an answer.
+ */
+const withdrawn = new Set<string>();
 
 /** Record an application; returns it. */
 export function recordStubApplication(
@@ -64,12 +72,48 @@ export function hasOpenStubApplication(
 	return applications.some((a) =>
 		a.owner === owner && a.projectId === projectId && a.stageId === stageId &&
 		a.roleId === roleId &&
-		requestDecisionOf(a.id) === null
+		requestDecisionOf(a.id) === null && !withdrawn.has(a.id)
 	);
+}
+
+/** The status a stub application reads as now. */
+export function stubApplicationStatus(
+	id: string,
+): "pending" | "accepted" | "rejected" | "withdrawn" {
+	if (withdrawn.has(id)) return "withdrawn";
+	const decision = requestDecisionOf(id);
+	if (decision === "accepted") return "accepted";
+	if (decision === "declined") return "rejected";
+	return "pending";
+}
+
+/** This viewer's stub applications, newest first, optionally narrowed to one project. */
+export function listStubApplications(actor: ReadActor, projectId?: string): StubApplication[] {
+	const owner = actor.userId || "anonymous";
+	return applications
+		.filter((a) => a.owner === owner && (!projectId || a.projectId === projectId))
+		.reverse();
+}
+
+/**
+ * Withdraw one of this viewer's pending stub applications. Returns the row it withdrew, `null` when
+ * the viewer has no such application, or `"not_pending"` when it has already been answered.
+ */
+export function withdrawStubApplication(
+	actor: ReadActor,
+	id: string,
+): StubApplication | null | "not_pending" {
+	const owner = actor.userId || "anonymous";
+	const row = applications.find((a) => a.id === id && a.owner === owner);
+	if (!row) return null;
+	if (stubApplicationStatus(id) !== "pending") return "not_pending";
+	withdrawn.add(id);
+	return row;
 }
 
 /** Forget everything (tests). */
 export function clearRequestStore(): void {
 	decisions.clear();
 	applications.length = 0;
+	withdrawn.clear();
 }

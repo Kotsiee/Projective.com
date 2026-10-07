@@ -3,6 +3,8 @@
 @import "./wallet-tools.css";
 @import "./wallet-sheet.css";
 @import "./wallet-meter.css";
+@import "./wallet-ledger.css";
+@import "./wallet-analytics.css";
 @import "./wallet-accounts.css";
 @import "./wallet-flow.css";
 @import "./wallet-dialogs.css";

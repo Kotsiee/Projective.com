@@ -1,14 +1,16 @@
 /*
- * The four-state allocation meter at the head of the sheet.
+ * The allocation meter at the head of the sheet — a balance summary bar.
  *
  * Geometry rules, each load-bearing:
- * - A segment's width is `flex-grow: var(--wlt-share)` from a zero basis, so the four shares divide
- *   exactly what is left after the gaps — the segments sum to the whole track, never past it.
- * - Widths are set directly and NEVER transitioned. A share that animated its width would, in a tab
- *   whose animation clock is frozen, sit at its starting width — a meter saying the wrong thing.
- *   Hover only moves `opacity`, which carries no value.
- * - The 2px seam between segments is the surface showing through (`--space-px` gap), never a stroke:
- *   a border would add ink that is not data.
+ * - A segment's width is `flex: 0 0 var(--seg)`, `--seg` the server's `widthBp` as a percentage. The
+ *   widths sum to exactly 100% (the server floors slivers and takes the difference from the largest
+ *   slice), so nothing grows, shrinks or wraps, and the track is the whole.
+ * - Widths are set directly and NEVER transitioned or animated. A share that animated its width would,
+ *   in a tab whose animation clock is frozen, sit at its starting width — a meter saying the wrong
+ *   thing. Hover only moves `opacity`, which carries no value.
+ * - The seam between segments is the surface showing through a start padding INSIDE each later
+ *   segment's basis, never a gap (a gap would push fixed bases past 100%) and never a stroke (a border
+ *   adds ink that is not data).
  */
 
 .wlt-alloc {
@@ -23,7 +25,6 @@
 
 .wlt-alloc__bar {
 	display: flex;
-	gap: var(--space-px);
 	block-size: var(--space-3);
 	border-radius: var(--radius-full);
 	overflow: clip;
@@ -34,9 +35,14 @@
 }
 
 .wlt-alloc__cell {
+	box-sizing: border-box;
 	display: flex;
-	flex: var(--wlt-share) 1 0;
+	flex: 0 0 var(--seg);
 	min-inline-size: 0;
+}
+
+.wlt-alloc__cell + .wlt-alloc__cell {
+	padding-inline-start: var(--space-px);
 }
 
 .wlt-alloc__cell > .ui-tooltip__anchor {
@@ -51,23 +57,36 @@
 	transition: opacity var(--dur-fast) var(--ease-standard);
 }
 
+/* Clearing is the same money as Available, not yet spendable: the brand teal, hatched. */
+.wlt-alloc__cell[data-state="pending"] .wlt-alloc__seg {
+	background: repeating-linear-gradient(
+		-45deg,
+		var(--wlt-fund-clearing) 0 var(--space-1),
+		var(--wlt-fund-clearing-soft) var(--space-1) calc(var(--space-1) * 2)
+	);
+}
+
 .wlt-alloc__cell[data-state="available"],
-.wlt-alloc__item[data-state="available"] {
+.wlt-alloc__item[data-state="available"],
+.wlt-alloc-pop[data-state="available"] {
 	--wlt-alloc-fill: var(--wlt-fund-available);
 }
 
 .wlt-alloc__cell[data-state="locked"],
-.wlt-alloc__item[data-state="locked"] {
+.wlt-alloc__item[data-state="locked"],
+.wlt-alloc-pop[data-state="locked"] {
 	--wlt-alloc-fill: var(--wlt-fund-escrow);
 }
 
 .wlt-alloc__cell[data-state="pending"],
-.wlt-alloc__item[data-state="pending"] {
+.wlt-alloc__item[data-state="pending"],
+.wlt-alloc-pop[data-state="pending"] {
 	--wlt-alloc-fill: var(--wlt-fund-clearing);
 }
 
 .wlt-alloc__cell[data-state="on_hold"],
-.wlt-alloc__item[data-state="on_hold"] {
+.wlt-alloc__item[data-state="on_hold"],
+.wlt-alloc-pop[data-state="on_hold"] {
 	--wlt-alloc-fill: var(--wlt-fund-reserved);
 }
 
@@ -82,13 +101,23 @@
 	}
 }
 
+/* #region Legend — a <dl>: each term with its figure and share beneath */
 .wlt-alloc__legend {
-	list-style: none;
 	margin: 0;
-	padding: 0;
 	display: flex;
 	flex-wrap: wrap;
-	gap: var(--space-2) var(--space-5);
+	gap: var(--space-3) var(--space-7);
+}
+
+.wlt-alloc__item {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	min-inline-size: 0;
+}
+
+.wlt-alloc__dt {
+	margin: 0;
 }
 
 .wlt-alloc__term {
@@ -97,7 +126,14 @@
 	gap: var(--space-2);
 	font-size: var(--text-sm);
 	line-height: var(--leading-snug);
+	color: var(--on-surface-variant);
+	border-radius: var(--radius-sm);
 	cursor: default;
+}
+
+.wlt-alloc__term:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
 }
 
 .wlt-alloc__dot {
@@ -113,12 +149,29 @@
 	color: var(--wlt-alloc-fill);
 }
 
-.wlt-alloc__label {
+/* A sliver's pip: the share is real but too thin to point at on the track, so the legend marks it. */
+.wlt-alloc__pip {
+	flex: none;
+	inline-size: var(--space-1);
+	block-size: var(--space-1);
+	border-radius: 50%;
+	background: var(--wlt-alloc-fill);
+	box-shadow: 0 0 0 var(--space-px) var(--surface), 0 0 0 calc(var(--space-px) * 2)
+		var(--wlt-alloc-fill);
+}
+
+.wlt-alloc__dd {
+	margin: 0;
+	display: inline-flex;
+	align-items: baseline;
+	gap: var(--space-2);
+	padding-inline-start: calc(var(--pip-dot) + var(--space-2));
 	color: var(--on-surface);
 }
 
 .wlt-alloc__pct {
-	color: var(--on-surface-variant);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
 	font-variant-numeric: tabular-nums;
 }
 
@@ -127,17 +180,86 @@
 	font-size: var(--text-sm);
 	color: var(--on-surface-variant);
 }
+/* #endregion */
 
-.wlt-alloc__tip {
+/* #region The detail popover (a rich Tooltip surface, portalled to the body) */
+/* The package Popover's surface (the same tokens), so a detail reads as a panel, not as a hint. */
+.ui-tooltip.wlt-alloc__tip {
+	max-inline-size: min(20rem, calc(100vw - var(--space-6)));
+	padding: var(--space-3);
+	color: var(--on-surface);
+	background: var(--surface);
+	border: var(--hairline);
+	border-radius: var(--overlay-radius-sm);
+	box-shadow: var(--elevation-high);
+}
+
+.wlt-alloc-pop {
 	display: flex;
 	flex-direction: column;
-	gap: var(--space-px);
+	gap: var(--space-1);
 	text-align: start;
 }
 
-.wlt-alloc__tiphead {
-	font-weight: var(--fw-medium);
+.wlt-alloc-pop__head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--text-sm);
+	color: var(--on-surface-variant);
 }
+
+.wlt-alloc-pop__label {
+	flex: 1 1 auto;
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.wlt-alloc-pop__pct {
+	font-variant-numeric: tabular-nums;
+}
+
+.wlt-alloc-pop__figure {
+	font-size: var(--text-lg);
+}
+
+.wlt-alloc-pop__hint {
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+}
+
+.wlt-alloc-pop__items {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin-block-start: var(--space-2);
+	padding-block-start: var(--space-2);
+	border-block-start: var(--hairline);
+}
+
+.wlt-alloc-pop__item {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	min-inline-size: 0;
+}
+
+.wlt-alloc-pop__name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+}
+
+.wlt-alloc-pop__meta,
+.wlt-alloc-pop__more {
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+/* #endregion */
 
 @media (prefers-reduced-motion: reduce) {
 	.wlt-alloc__seg {

@@ -12,6 +12,7 @@ import EntityBuyBar from "../islands/EntityBuyBar.island.tsx";
 import EntityLane from "../islands/EntityLane.island.tsx";
 import ProjectLane from "../islands/ProjectLane.island.tsx";
 import ProjectApplyBar from "../islands/ProjectApplyBar.island.tsx";
+import ProjectApplyModal from "../islands/ProjectApplyModal.island.tsx";
 import SessionSchedulerStage from "../islands/SessionSchedulerStage.island.tsx";
 import EntityHeroProbe from "../islands/EntityHeroProbe.island.tsx";
 import ReviewsPanel from "../islands/ReviewsPanel.island.tsx";
@@ -341,6 +342,17 @@ export function EntityViewPage(
 							ctx={ctx}
 							preview={preview}
 						/>
+					)}
+					{
+						/*
+					  The apply dialog, mounted ONCE for the page — not inside the lane or the bar, which hide
+					  each other by `display` and would otherwise both host it. Both regions open it through
+					  `applyOpen`. A guest's Apply bounces to sign-in, and the owner's preview applies to
+					  nothing, so neither mounts it.
+					*/
+					}
+					{project && authed && !preview && (
+						<ProjectApplyModal projectSlug={item.id} title={item.title} stages={project.stages} />
 					)}
 					{offer && (
 						<EntityBuyBar

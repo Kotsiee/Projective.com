@@ -114,9 +114,15 @@ export const MessagingService = {
 		return postMessaging<{ id: string }>("/api/messaging/conversations", payload);
 	},
 
-	/** Persist the Message Settings (stub — persistence lands with the backend). */
-	saveSettings(settings: MessagingSettings): Promise<MessagingResult<{ ok: true }>> {
-		return postMessaging<{ ok: true }>("/api/messaging/settings", settings);
+	/**
+	 * Persist the Message Settings and receive them back AS STORED. The server's copy can differ from
+	 * what was sent — new auto-response rules get real ids, and `groupActivity` / `serviceInquiries`
+	 * share one stored switch — so a caller should adopt `data.settings` rather than its own draft.
+	 */
+	saveSettings(
+		settings: MessagingSettings,
+	): Promise<MessagingResult<{ settings: MessagingSettings }>> {
+		return postMessaging<{ settings: MessagingSettings }>("/api/messaging/settings", settings);
 	},
 
 	/**

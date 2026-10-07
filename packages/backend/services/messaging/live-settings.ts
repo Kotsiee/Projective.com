@@ -460,6 +460,77 @@ function toNotifications(
 	};
 }
 
+/**
+ * Whether a `comms.notification_type_mutes` row is in force at `nowMs`.
+ *
+ * `fn_resolve_channels`'s predicate, restated: `muted_until IS NULL OR muted_until > now()`. An
+ * unparseable deadline is treated as lapsed rather than indefinite: a mute this code cannot read
+ * must not silence a toggle the user can no longer explain.
+ */
+function muteActive(row: TypeMuteRow, nowMs: number): boolean {
+	if (!row.muted_until) return true;
+	const until = Date.parse(row.muted_until);
+	return !Number.isNaN(until) && until > nowMs;
+}
+
+/**
+ * Whether a type mute silences the inbox (`in_app`) at `nowMs`.
+ *
+ * A mute is ACTIVE only while {@link muteActive}; `channels` NULL or empty means every transport;
+ * a non-empty `channels` is transport-SCOPED and silences the inbox only when it lists `in_app`.
+ */
+function silencesInApp(row: TypeMuteRow, nowMs: number): boolean {
+	if (!muteActive(row, nowMs)) return false;
+	const channels = row.channels ?? [];
+	return channels.length === 0 || channels.includes(IN_APP_CHANNEL);
+}
+
+/** The type keys among `rows` whose inbox delivery is silenced at `nowMs`. */
+function silencedKeysFrom(rows: readonly TypeMuteRow[], nowMs: number): ReadonlySet<string> {
+	const silenced = new Set<string>();
+	for (const row of rows) {
+		if (silencesInApp(row, nowMs)) silenced.add(row.type_key);
+	}
+	return silenced;
+}
+
+// #endregion
+
+// #region Mapping — the whole projection
+
+/** Map the auto-response rows (already ordered and capped) onto rules, dropping unfireable ones. */
+function rulesFrom(rows: readonly AutoResponseRow[]): AutoResponseRule[] {
+	const rules: AutoResponseRule[] = [];
+	for (const row of rows) {
+		const rule = toRule(row);
+		if (rule) rules.push(rule);
+	}
+	return rules;
+}
+
+/**
+ * Compose the full {@link MessagingSettings} from the four reads.
+ *
+ * Pure, so the write path (`live-settings-write.ts`) can prove in a unit test that what it writes
+ * reads back through exactly this function.
+ */
+function projectSettings(input: {
+	prefs: PrefsRow | null;
+	rules: AutoResponseRule[];
+	categoryInApp: boolean | null;
+	silencedKeys: ReadonlySet<string>;
+	nowMs: number;
+}): MessagingSettings {
+	const { prefs } = input;
+	return {
+		autoResponsesEnabled: prefs?.auto_responses_enabled ?? PREFS_DEFAULTS.autoResponsesEnabled,
+		autoResponses: input.rules,
+		notifications: toNotifications(prefs, input.categoryInApp, input.silencedKeys, input.nowMs),
+		readReceipts: prefs?.read_receipts ?? PREFS_DEFAULTS.readReceipts,
+		showTypingIndicator: prefs?.show_typing_indicator ?? PREFS_DEFAULTS.showTypingIndicator,
+	};
+}
+
 // #endregion
 
 // #region Queries
@@ -525,27 +596,29 @@ async function fetchSilencedTypeKeys(
 	actor: ReadActor & { accessToken: string },
 	nowMs: number,
 ): Promise<ReadonlySet<string>> {
-	const silenced = new Set<string>();
-
 	const { data, error } = await commsDb(actor)
 		.from("notification_type_mutes")
 		.select("type_key, muted_until, channels")
 		.eq("user_id", actor.userId)
 		.in("type_key", [TYPE_KEY_NEW_MESSAGE, TYPE_KEY_MENTION]);
 
-	if (error) return silenced;
+	if (error) return new Set<string>();
+	return silencedKeysFrom((data ?? []) as TypeMuteRow[], nowMs);
+}
 
-	for (const row of (data ?? []) as TypeMuteRow[]) {
-		if (row.muted_until) {
-			const until = Date.parse(row.muted_until);
-			// An unparseable deadline is treated as lapsed rather than indefinite: a mute this code
-			// cannot read must not silence a toggle the user can no longer explain.
-			if (Number.isNaN(until) || until <= nowMs) continue;
-		}
-		const channels = row.channels ?? [];
-		if (channels.length === 0 || channels.includes(IN_APP_CHANNEL)) silenced.add(row.type_key);
-	}
-	return silenced;
+/**
+ * The query for the window of auto-response rows the modal is shown: the viewer's own, oldest first,
+ * capped at {@link AUTO_RESPONSE_CAP}. Shared with the write path, so "every rule the viewer could
+ * see" — the set a save may update or delete — is one query rather than two that could drift.
+ */
+function autoResponseWindow(actor: ReadActor & { accessToken: string }) {
+	return commsDb(actor)
+		.from("auto_responses")
+		.select(AUTO_RESPONSE_COLUMNS)
+		.eq("user_id", actor.userId)
+		.order("created_at", { ascending: true })
+		.order("id", { ascending: true })
+		.limit(AUTO_RESPONSE_CAP);
 }
 
 /**
@@ -562,22 +635,10 @@ async function fetchSilencedTypeKeys(
 async function fetchAutoResponses(
 	actor: ReadActor & { accessToken: string },
 ): Promise<AutoResponseRule[]> {
-	const { data, error } = await commsDb(actor)
-		.from("auto_responses")
-		.select(AUTO_RESPONSE_COLUMNS)
-		.eq("user_id", actor.userId)
-		.order("created_at", { ascending: true })
-		.order("id", { ascending: true })
-		.limit(AUTO_RESPONSE_CAP);
+	const { data, error } = await autoResponseWindow(actor);
 
 	if (error) throw new Error(`comms.auto_responses read failed: ${error.message}`);
-
-	const rules: AutoResponseRule[] = [];
-	for (const row of (data ?? []) as unknown as AutoResponseRow[]) {
-		const rule = toRule(row);
-		if (rule) rules.push(rule);
-	}
-	return rules;
+	return rulesFrom((data ?? []) as unknown as AutoResponseRow[]);
 }
 
 /**
@@ -613,20 +674,42 @@ export async function fetchMessagingSettings(
 	// on another's result, and awaiting them sequentially would add all four latencies to a modal
 	// open. The two secondary reads swallow their own errors, so a rejection here is always one of
 	// the two primaries.
-	const [prefs, autoResponses, categoryInApp, silencedKeys] = await Promise.all([
+	const [prefs, rules, categoryInApp, silencedKeys] = await Promise.all([
 		fetchPrefs(actor),
 		fetchAutoResponses(actor),
 		fetchCategoryInApp(actor),
 		fetchSilencedTypeKeys(actor, nowMs),
 	]);
 
-	return {
-		autoResponsesEnabled: prefs?.auto_responses_enabled ?? PREFS_DEFAULTS.autoResponsesEnabled,
-		autoResponses,
-		notifications: toNotifications(prefs, categoryInApp, silencedKeys, nowMs),
-		readReceipts: prefs?.read_receipts ?? PREFS_DEFAULTS.readReceipts,
-		showTypingIndicator: prefs?.show_typing_indicator ?? PREFS_DEFAULTS.showTypingIndicator,
-	};
+	return projectSettings({ prefs, rules, categoryInApp, silencedKeys, nowMs });
 }
+
+// #endregion
+
+// #region Shared with the write path
+
+/*
+ * The mapping `live-settings-write.ts` inverts, exported from this one place so the writer cannot
+ * drift from the reader: the column list, the window the modal sees, the catalog keys, the mute
+ * predicate and the projection itself are the reader's own, not copies of them.
+ */
+export {
+	AUTO_RESPONSE_CAP,
+	autoResponseWindow,
+	IN_APP_CHANNEL,
+	legacyQuietHoursActive,
+	MESSAGES_CATEGORY,
+	muteActive,
+	muteAllFrom,
+	PREFS_DEFAULTS,
+	projectSettings,
+	rulesFrom,
+	silencedKeysFrom,
+	silencesInApp,
+	toRule,
+	TYPE_KEY_MENTION,
+	TYPE_KEY_NEW_MESSAGE,
+};
+export type { AutoResponseRow, PrefsRow, TypeMuteRow };
 
 // #endregion

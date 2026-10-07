@@ -61,6 +61,14 @@ CREATE TABLE org.users_public (
     CONSTRAINT users_public_visibility_check CHECK (visibility IN ('public', 'unlisted', 'private'))
 );
 
+-- A person's addresses. `verified_at` is load-bearing — a verified address unlocks the project and
+-- workspace invitations sent to it (projects.project_invitations SELECT, org.fn_is_invitee,
+-- projects.invite_by_email) — so the table is READ-ONLY to a client (2026-10-06). Every write is a
+-- definer: provisioning files the sign-in address, public.handle_email_confirmed mirrors GoTrue's
+-- confirmation, and a secondary address is added unverified by org.add_user_email and verified only
+-- by org.confirm_user_email redeeming a mailed token (00001050). One row per address per person and
+-- one primary per person are unique indexes (00004001); org.trg_user_emails_guard refuses a client
+-- write to the trusted columns should a grant ever come back.
 CREATE TABLE org.user_emails (
     id uuid NOT NULL DEFAULT gen_random_uuid (),
     user_id uuid NOT NULL,
@@ -75,6 +83,27 @@ CREATE TABLE org.user_emails (
         CONSTRAINT user_emails_pkey PRIMARY KEY (id),
         CONSTRAINT user_emails_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id),
         CONSTRAINT user_emails_user_id_fkey1 FOREIGN KEY (user_id) REFERENCES org.users_public (user_id)
+);
+
+-- Single-use proof that a person holds the inbox of one of their org.user_emails rows. DEFINER-ONLY:
+-- RLS is on with no policy and no client grant, so no client role reads or writes a row. The raw
+-- token is never stored — security.issue_email_verification mints it, stores only its SHA-256 (hex)
+-- and hands the raw value to the mailer once; org.confirm_user_email hashes what the link carries
+-- and looks that up. A token is consumed (never deleted) when redeemed, and a reissue expires the
+-- ones before it.
+CREATE TABLE org.email_verification_tokens (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    email_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    token_hash text NOT NULL,
+    expires_at timestamptz NOT NULL,
+    consumed_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT email_verification_tokens_pkey PRIMARY KEY (id),
+    CONSTRAINT email_verification_tokens_token_hash_key UNIQUE (token_hash),
+    CONSTRAINT email_verification_tokens_token_hash_check CHECK (token_hash ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT email_verification_tokens_email_id_fkey FOREIGN KEY (email_id) REFERENCES org.user_emails (id) ON DELETE CASCADE,
+    CONSTRAINT email_verification_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE CASCADE
 );
 
 CREATE TABLE org.user_preferences (
@@ -93,7 +122,21 @@ CREATE TABLE org.user_preferences (
         OR preferred_display_currency ~ '^[A-Z]{3}$'
     ),
     layout_direction org.layout_direction NOT NULL DEFAULT 'auto',
+    -- Appearance overlays (Settings engine, 2026-10-06; Zod SSOT packages/types/org/preferences.ts).
+    -- `standard` / `sans` / `none` mean NO overlay, not "force the default": the reader's OS media
+    -- queries (prefers-contrast, prefers-reduced-motion, prefers-color-scheme for `theme = 'system'`)
+    -- still apply. This row is the durable cross-device copy; the `pj.a11y` cookie is its per-device
+    -- mirror, and that cookie is what server rendering reads so the overlays paint in the first byte.
+    contrast text NOT NULL DEFAULT 'standard',
+    font text NOT NULL DEFAULT 'sans',
+    cvd text NOT NULL DEFAULT 'none',
+    motion text NOT NULL DEFAULT 'standard',
     CONSTRAINT user_preferences_pkey PRIMARY KEY (user_id),
+    CONSTRAINT user_preferences_theme_check CHECK (theme IN ('system', 'light', 'dark')),
+    CONSTRAINT user_preferences_contrast_check CHECK (contrast IN ('standard', 'high')),
+    CONSTRAINT user_preferences_font_check CHECK (font IN ('sans', 'dyslexic')),
+    CONSTRAINT user_preferences_cvd_check CHECK (cvd IN ('none', 'protan', 'deutan', 'tritan')),
+    CONSTRAINT user_preferences_motion_check CHECK (motion IN ('standard', 'reduced')),
     CONSTRAINT user_preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE CASCADE
 );
 

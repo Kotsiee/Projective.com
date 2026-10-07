@@ -1,5 +1,6 @@
 import {
 	type CardOwnerScope,
+	type CheckoutOrderLink,
 	type InboundPayment,
 	InboundPaymentSchema,
 	KycStatus,
@@ -147,10 +148,27 @@ export function inboundPaymentOf(row: Row): InboundPayment {
 		livemode: typeof row.livemode === "boolean" ? row.livemode : null,
 		createdBy: row.created_by,
 		depositRuleId: row.deposit_rule_id ?? null,
+		checkout: checkoutLinkOf(row.checkout),
+		orderId: row.order_id ?? null,
+		orderError: row.order_error ?? null,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 		succeededAt: row.succeeded_at ?? null,
 	});
+}
+
+/** Map the stored `checkout` jsonb (snake_case) onto {@link CheckoutOrderLink}; `null` when absent. */
+function checkoutLinkOf(raw: unknown): CheckoutOrderLink | null {
+	if (typeof raw !== "object" || raw === null) return null;
+	const link = raw as Row;
+	return {
+		basketId: String(link.basket_id),
+		itemIds: Array.isArray(link.item_ids) ? link.item_ids.map(String) : [],
+		currency: String(link.currency),
+		units: (typeof link.units === "object" && link.units !== null ? link.units : {}) as Record<string, number>,
+		promoCode: typeof link.promo_code === "string" ? link.promo_code : null,
+		orderKey: String(link.order_key),
+	};
 }
 
 /** Map a `finance.payout_accounts` row onto the SSOT shape. */
@@ -238,6 +256,41 @@ export function attachCardPayment(
 		p_payment_id: paymentId,
 		p_provider_ref: providerRef,
 	}, inboundPaymentOf);
+}
+
+/**
+ * Name the checkout a started card / express top-up pays for (`finance.attach_checkout_order`,
+ * Decision #153), so the settling webhook can place the order as the payer.
+ *
+ * `value: null` means the DATABASE predates the door (PostgREST `PGRST202` — no such function): the
+ * payment goes ahead without the server-side backstop, exactly as before it existed, because the
+ * browser still places the order itself under the same key. Any other answer is the door's own
+ * refusal and is returned as one.
+ */
+export async function attachCheckoutOrder(
+	accessToken: string,
+	paymentId: string,
+	link: CheckoutOrderLink,
+): Promise<DbResult<InboundPayment | null>> {
+	const { data, error } = await getUserClient(accessToken).schema("finance").rpc("attach_checkout_order", {
+		p_payment_id: paymentId,
+		p_checkout: {
+			basket_id: link.basketId,
+			item_ids: link.itemIds,
+			currency: link.currency,
+			units: link.units,
+			promo_code: link.promoCode,
+			order_key: link.orderKey,
+		},
+	});
+	if (error) {
+		if (error.code === "PGRST202") {
+			console.warn("[payments:attach_checkout_order] not deployed — no server-side order backstop for", paymentId);
+			return { ok: true, value: null };
+		}
+		return { ok: false, refusal: refusalOf(error, "attach_checkout_order") };
+	}
+	return { ok: true, value: inboundPaymentOf(data as Row) };
 }
 
 /** Give up on a payment the processor refused to create (`finance.abandon_card_payment`). */

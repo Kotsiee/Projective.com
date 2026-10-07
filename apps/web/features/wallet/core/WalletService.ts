@@ -1,5 +1,6 @@
+import { apiFetch } from "@web/utils/api-client.ts";
 import { getWallet, postWallet } from "./api.ts";
-import { buildWalletQuery } from "./wallet-model.ts";
+import { buildWalletQuery, ledgerApiParams } from "./wallet-model.ts";
 import type { WalletResult } from "../types/results.ts";
 import type { WalletCardHandoff } from "@projective/types/finance";
 import type {
@@ -38,15 +39,25 @@ import type {
  * them).
  */
 
-/** The shared client context every call threads (the active wallet and the display currency). */
+/**
+ * The shared client context every call threads: the active wallet, the display currency and the
+ * browser's time zone (what "Today" and a cash-flow day mean on the server's side of the read).
+ */
 export interface WalletContext {
 	wallet: string | null;
 	display: string | null;
+	timezone?: string | null;
 }
+
+/** A finished CSV export, or the reason there is none. */
+export type WalletExport =
+	| { ok: true; blob: Blob; filename: string }
+	| { ok: false; message: string };
 
 function qs(ctx: WalletContext, extra?: Record<string, string>): string {
 	const base = buildWalletQuery(ctx);
 	const params = new URLSearchParams(base);
+	if (ctx.timezone) params.set("tz", ctx.timezone);
 	if (extra) { for (const [k, v] of Object.entries(extra)) if (v) params.set(k, v); }
 	const s = params.toString();
 	return s ? `?${s}` : "";
@@ -70,19 +81,32 @@ export const WalletService = {
 		ctx: WalletContext,
 		params: TransactionListParams,
 	): Promise<WalletResult<{ page: TransactionPage }>> {
-		const extra: Record<string, string> = {};
-		if (params.search) extra.search = params.search;
-		if (params.direction) extra.direction = params.direction;
-		if (params.fundState) extra.fundState = params.fundState;
-		if (params.category) extra.category = params.category;
-		if (params.project) extra.project = params.project;
-		if (params.from) extra.from = params.from;
-		if (params.to) extra.to = params.to;
-		if (params.sort) extra.sort = params.sort;
-		if (params.dir) extra.dir = params.dir;
-		if (params.cursor) extra.cursor = params.cursor;
-		if (params.limit) extra.limit = String(params.limit);
-		return getWallet(`/api/wallet/transactions${qs(ctx, extra)}`);
+		return getWallet(`/api/wallet/transactions${qs(ctx, ledgerApiParams(params))}`);
+	},
+
+	/**
+	 * The ledger as CSV, with the page's filters. Only a CSV answer is a file; any other answer is read as
+	 * the wallet's JSON refusal and its message returned, so an error is shown, never downloaded.
+	 */
+	async exportLedger(ctx: WalletContext, params: TransactionListParams): Promise<WalletExport> {
+		const query = { ...ledgerApiParams(params) };
+		delete query.cursor;
+		delete query.limit;
+		try {
+			const res = await apiFetch(`/api/wallet/export${qs(ctx, query)}`, {
+				headers: { accept: "text/csv, application/json" },
+			});
+			const type = res.headers.get("content-type") ?? "";
+			if (res.ok && type.startsWith("text/csv")) {
+				const disposition = res.headers.get("content-disposition") ?? "";
+				const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "projective-wallet.csv";
+				return { ok: true, blob: await res.blob(), filename };
+			}
+			const body = await res.json().catch(() => null) as { message?: string } | null;
+			return { ok: false, message: body?.message ?? "The ledger couldn't be exported just now." };
+		} catch {
+			return { ok: false, message: "Network error — the export didn't download. Try again." };
+		}
 	},
 
 	/** The Activity charts projection over a range. */

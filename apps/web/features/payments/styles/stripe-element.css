@@ -1,9 +1,11 @@
 /*
- * stripe-element — the frame around Stripe's Payment Element (StripeElementPanel).
+ * stripe-element — the frame around Stripe's Payment Element (StripeElementMount) and the in-body
+ * confirm of an existing intent (StripeElementPanel).
  *
  * The Element itself is Stripe's iframe, painted from the resolved design tokens through the Appearance
  * API (core/stripe-js.ts); this sheet only lays out the frame: the mount, the loading line, the
- * processor note and the confirm button. Token-only, logical properties, no box around static text.
+ * processor note and, for a panel, the confirm button. A dialog that saves a card puts its Save in the
+ * footer slot instead. Token-only, logical properties, no box around static text.
  */
 
 .pay-element {
@@ -29,12 +31,18 @@
 	line-height: var(--leading-normal, 1.5);
 }
 
-.pay-element__submit {
+.pay-panel {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.pay-panel__submit {
 	align-self: stretch;
 }
 
 @media (min-width: 40rem) {
-	.pay-element__submit {
+	.pay-panel__submit {
 		align-self: flex-end;
 	}
 }

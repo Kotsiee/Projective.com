@@ -21,6 +21,7 @@
 		"./richtext": "./richtext/mod.ts",
 		"./scheduling": "./scheduling/mod.ts",
 		"./services": "./services/mod.ts",
+		"./settings": "./settings/mod.ts",
 		"./slugs": "./slugs/mod.ts",
 		"./logging": "./logging/mod.ts",
 		"./user": "./user/mod.ts",

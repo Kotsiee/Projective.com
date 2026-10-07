@@ -5,10 +5,13 @@ import { toProjectsResponse } from "@features/projects/core/respond.ts";
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
 
 /**
- * `POST /api/projects/apply` — a freelancer applies, as themselves, to a stage (optionally one of its
- * staffing roles) of a live project. Zod-validated against {@link ApplyToProjectSchema}, then the fat
- * {@link ProjectBackendService.apply}: the application is recorded `pending` and the owner notified;
- * a cover note opens the request in the owner's Requests folder. 201 with the application.
+ * `POST /api/projects/apply` — a freelancer applies, as themselves or (`teamId`) on behalf of a team
+ * they may bind to work, to a stage (optionally one of its staffing roles) of a live project.
+ * Zod-validated against {@link ApplyToProjectSchema}, then the fat {@link ProjectBackendService.apply}:
+ * the proposal allowance's pre-flight gate runs first (a `422` whose `errors.allowance` and
+ * `details.blockReason` name the reason, with `entitlement.denied` recorded), then the application is
+ * recorded `pending` and the owner notified; a cover note opens the request in the owner's Requests
+ * folder. 201 with the application.
  */
 export const handler = define.handlers({
 	async POST(ctx) {

@@ -10,8 +10,8 @@ import type {
 	WalletOverview,
 	WalletVerification,
 } from "../types/wallet-types.ts";
-import { networkFromBrand, networkLabel } from "@projective/types/finance";
-import { ACTION_LABEL, fundStateLabel, isElsewhere } from "./wallet-model.ts";
+import { FUND_STATE_ORDER, networkFromBrand, networkLabel } from "@projective/types/finance";
+import { ACTION_LABEL, isElsewhere } from "./wallet-model.ts";
 
 // #region Actions
 /** An offered action as the hero draws it. */
@@ -108,31 +108,27 @@ export const MOVEMENTS: ReadonlySet<WalletAction> = new Set([
 // #endregion
 
 // #region Ledger
-/** One date band of the ledger. */
-export interface LedgerBand {
-	key: "today" | "yesterday" | "earlier";
-	label: string;
-	lines: LedgerLine[];
-}
+/** One entry of the ledger feed: a group heading, or a line under it. */
+export type LedgerFeedItem =
+	| { type: "group"; key: string; label: string }
+	| { type: "line"; key: string; line: LedgerLine };
 
 /**
- * Bands lines into Today · Yesterday · Earlier from the server's own `dateLabel`, so the server render
- * and the hydrated island agree; row order within a band is preserved.
+ * Flattens lines into the feed the ledger draws: a heading wherever the server's `group` changes
+ * ("Today", "Yesterday", "September 2026"), then the lines under it, in the order the server sent them.
+ * The server files each line on the viewer's calendar, so the server render and the hydrated island agree.
  */
-export function bandLedger(lines: readonly LedgerLine[]): LedgerBand[] {
-	const today: LedgerLine[] = [];
-	const yesterday: LedgerLine[] = [];
-	const earlier: LedgerLine[] = [];
+export function ledgerFeed(lines: readonly LedgerLine[]): LedgerFeedItem[] {
+	const items: LedgerFeedItem[] = [];
+	let current: string | null = null;
 	for (const line of lines) {
-		if (line.dateLabel === "Today") today.push(line);
-		else if (line.dateLabel === "Yesterday") yesterday.push(line);
-		else earlier.push(line);
+		if (line.group !== current) {
+			current = line.group;
+			items.push({ type: "group", key: `g:${line.group}:${line.id}`, label: line.group });
+		}
+		items.push({ type: "line", key: line.id, line });
 	}
-	const bands: LedgerBand[] = [];
-	if (today.length > 0) bands.push({ key: "today", label: "Today", lines: today });
-	if (yesterday.length > 0) bands.push({ key: "yesterday", label: "Yesterday", lines: yesterday });
-	if (earlier.length > 0) bands.push({ key: "earlier", label: "Earlier", lines: earlier });
-	return bands;
+	return items;
 }
 
 /** Appends a newly loaded page, dropping lines already present. */
@@ -375,19 +371,6 @@ export function flowBars(points: readonly FlowPoint[]): FlowBar[] {
 // #endregion
 
 // #region Fund allocation
-/** One fund state's slice of the balance, as the hero's metrics and the allocation meter draw it. */
-export interface AllocationPart {
-	state: FundState;
-	label: string;
-	value: MoneyView;
-	/** What the state means for this wallet, in a sentence ("Held on 2 active stages until…"). */
-	hint: string;
-	/** The share of the whole, `0`–`1` — display geometry only, never a figure. */
-	ratio: number;
-	/** The share as the legend prints it: a whole percent, or `<1%` for a sliver that is not nothing. */
-	percent: string;
-}
-
 /** The sentence each fund state carries, specific to this wallet's stages and cases. */
 export function fundStateHint(state: FundState, overview: WalletOverview): string {
 	switch (state) {
@@ -411,65 +394,10 @@ export function fundStateHint(state: FundState, overview: WalletOverview): strin
 }
 
 /**
- * The states in order of how soon the money can be spent: now, after the 7-day window, once the work is
- * approved, once a case closes — the direction money actually travels, read backwards. It is also the
- * order that keeps the brand teal (spendable) away from the success green (escrow): side by side the two
- * measure ΔE 14.8, under the 15 a full-colour reader needs to tell adjacent segments apart.
+ * The states in order of how soon the money can be spent — the SSOT's {@link FUND_STATE_ORDER}, which
+ * the server's allocation slices follow, so the hero's figures and the meter read the same way.
  */
-export const ALLOCATION_ORDER: readonly FundState[] = ["available", "pending", "locked", "on_hold"];
-
-/**
- * Whole percents that always add up to 100: each share is floored, then the points left over go to the
- * largest remainders. Rounding each share on its own lets three thirds print as 33% + 33% + 33%.
- */
-function wholePercents(ratios: readonly number[]): number[] {
-	const raw = ratios.map((r) => r * 100);
-	const floors = raw.map(Math.floor);
-	let left = 100 - floors.reduce((a, b) => a + b, 0);
-	const order = raw.map((v, i) => ({ i, rem: v - floors[i] })).sort((a, b) => b.rem - a.rem);
-	for (const { i } of order) {
-		if (left <= 0) break;
-		if (ratios[i] <= 0) continue;
-		floors[i] += 1;
-		left -= 1;
-	}
-	return floors;
-}
-
-/**
- * How the balance divides across the four fund states — only the states that hold something, in
- * {@link ALLOCATION_ORDER} (spendable → clearing → escrow → reserved). The ratios come from the same four
- * figures the server summed into the total, so the segments of a meter drawn from them add up to it
- * exactly. The read-only rollup carries available cash alone and so has no breakdown (`null`); a
- * wallet holding nothing yields an empty list.
- */
-export function allocationOf(overview: WalletOverview): AllocationPart[] | null {
-	if (overview.ref.scope === "aggregate") return null;
-	const values: Record<FundState, MoneyView> = {
-		available: overview.available,
-		locked: overview.locked,
-		pending: overview.pending,
-		on_hold: overview.onHold,
-	};
-	const minor = ALLOCATION_ORDER.map((state) => Math.max(0, values[state].minor));
-	const total = minor.reduce((a, b) => a + b, 0);
-	if (total <= 0) return [];
-	const ratios = minor.map((m) => m / total);
-	const percents = wholePercents(ratios);
-	const parts: AllocationPart[] = [];
-	ALLOCATION_ORDER.forEach((state, i) => {
-		if (minor[i] <= 0) return;
-		parts.push({
-			state,
-			label: fundStateLabel(state),
-			value: values[state],
-			hint: fundStateHint(state, overview),
-			ratio: ratios[i],
-			percent: percents[i] === 0 ? "<1%" : `${percents[i]}%`,
-		});
-	});
-	return parts;
-}
+export const ALLOCATION_ORDER: readonly FundState[] = FUND_STATE_ORDER;
 // #endregion
 
 // #region Payment methods

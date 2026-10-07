@@ -683,11 +683,18 @@ $$;
 -- owner is told through the router (`application.received`), whose deep link is the conversation
 -- with the applicant. The fat service then posts the note as the opening DM through
 -- comms.send_request_message, which files it in the owner's Requests folder.
+--
+-- `p_team_id` applies on a TEAM's behalf instead (`applicant_type = 'team'`, the team as the
+-- applicant profile, so acceptance seats the team). Only a member holding `bind_seat` may commit the
+-- team to work (`org.is_team_lead`), and a team needs two active members before it may send
+-- proposals at all (PRODUCT_SPEC §Proposal allowances). The proposal is metered against the team's
+-- pool by the insert trigger, exactly as a personal one is metered against the person's.
 CREATE OR REPLACE FUNCTION projects.apply_to_project(
     p_project text,
     p_stage   text,
     p_role_id uuid DEFAULT NULL,
-    p_message text DEFAULT NULL
+    p_message text DEFAULT NULL,
+    p_team_id uuid DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -705,6 +712,8 @@ DECLARE
     v_app         uuid;
     v_name        text;
     v_username    text;
+    v_team_name   text;
+    v_members     integer;
 BEGIN
     IF v_actor IS NULL THEN
         RAISE EXCEPTION 'Sign in to apply to a project.' USING ERRCODE = 'insufficient_privilege';
@@ -724,8 +733,25 @@ BEGIN
     IF v_project.status <> 'active' OR v_project.visibility NOT IN ('public', 'unlisted') THEN
         RAISE EXCEPTION 'This project is not taking applications.' USING ERRCODE = 'check_violation';
     END IF;
+    IF p_team_id IS NOT NULL THEN
+        -- A team application seats the TEAM on acceptance, so the team is what must be able to work.
+        IF NOT org.is_team_lead(p_team_id) THEN
+            RAISE EXCEPTION 'Only a team member who can commit the team to work may apply on its behalf.'
+                USING ERRCODE = 'insufficient_privilege';
+        END IF;
+        IF v_project.owner_team_id = p_team_id THEN
+            RAISE EXCEPTION 'A team cannot apply to its own project.' USING ERRCODE = 'check_violation';
+        END IF;
+        SELECT count(*)::integer INTO v_members
+          FROM org.team_members m
+         WHERE m.team_id = p_team_id AND m.status = 'active';
+        IF v_members < 2 THEN
+            RAISE EXCEPTION 'Teams must have at least 2 members before applying to client projects.'
+                USING ERRCODE = 'check_violation';
+        END IF;
+        SELECT t.name INTO v_team_name FROM org.teams t WHERE t.id = p_team_id;
     -- An accepted application becomes a freelancer stage assignment, whose FK is the freelancer profile.
-    IF NOT EXISTS (SELECT 1 FROM org.freelancer_profiles fp WHERE fp.user_id = v_actor) THEN
+    ELSIF NOT EXISTS (SELECT 1 FROM org.freelancer_profiles fp WHERE fp.user_id = v_actor) THEN
         RAISE EXCEPTION 'Set up your freelancer profile before applying.' USING ERRCODE = 'check_violation';
     END IF;
 
@@ -752,22 +778,29 @@ BEGIN
         v_target_id := v_stage.id;
     END IF;
 
+    -- Both checks are applicant-aware: a lead's own seat and their team's are different applicants, so a
+    -- person may hold one pending application as themselves and one on their team's behalf.
     IF EXISTS (
         SELECT 1 FROM projects.stage_assignments sa
          WHERE sa.project_stage_id = v_stage.id
-           AND sa.assignee_type = 'freelancer'
-           AND sa.freelancer_profile_id = v_actor
            AND sa.status NOT IN ('released', 'cancelled', 'declined', 'completed')
+           AND (
+                (p_team_id IS NULL AND sa.assignee_type = 'freelancer' AND sa.freelancer_profile_id = v_actor)
+             OR (p_team_id IS NOT NULL AND sa.assignee_type = 'team' AND sa.team_id = p_team_id)
+           )
     ) THEN
         RAISE EXCEPTION 'You are already on this stage.' USING ERRCODE = 'unique_violation';
     END IF;
     IF EXISTS (
         SELECT 1 FROM projects.project_applications pa
           JOIN projects.project_application_targets pat ON pat.application_id = pa.id
-         WHERE pa.applicant_user_id = v_actor
-           AND pa.status = 'pending'
+         WHERE pa.status = 'pending'
            AND pat.target_type = v_target_type
            AND pat.target_id = v_target_id
+           AND (
+                (p_team_id IS NULL AND pa.applicant_type = 'freelancer' AND pa.applicant_user_id = v_actor)
+             OR (p_team_id IS NOT NULL AND pa.applicant_type = 'team' AND pa.applicant_profile_id = p_team_id)
+           )
     ) THEN
         RAISE EXCEPTION 'You already have a pending application here.' USING ERRCODE = 'unique_violation';
     END IF;
@@ -779,7 +812,8 @@ BEGIN
     INSERT INTO projects.project_applications
         (project_id, applicant_user_id, applicant_type, applicant_profile_id, message, status)
     VALUES
-        (v_project.id, v_actor, 'freelancer', v_actor, v_message, 'pending')
+        (v_project.id, v_actor, CASE WHEN p_team_id IS NULL THEN 'freelancer' ELSE 'team' END,
+         COALESCE(p_team_id, v_actor), v_message, 'pending')
     RETURNING id INTO v_app;
 
     INSERT INTO projects.project_application_targets (application_id, target_type, target_id)
@@ -788,7 +822,7 @@ BEGIN
     INSERT INTO projects.project_activity (project_id, actor_user_id, kind, payload, entity_table, entity_id)
     VALUES (
         v_project.id, v_actor, 'application_submitted',
-        jsonb_build_object('application_id', v_app, 'stage_id', v_stage.id, 'role_id', p_role_id),
+        jsonb_build_object('application_id', v_app, 'stage_id', v_stage.id, 'role_id', p_role_id, 'team_id', p_team_id),
         'projects.project_applications', v_app
     );
 
@@ -800,7 +834,7 @@ BEGIN
     PERFORM comms.fn_notify(
         v_project.owner_user_id,
         'application.received',
-        format('%s applied to %s', COALESCE(v_name, 'A freelancer'), COALESCE(v_role_title, v_stage.name)),
+        format('%s applied to %s', COALESCE(v_team_name, v_name, 'A freelancer'), COALESCE(v_role_title, v_stage.name)),
         v_project.title || ' · ' || v_stage.name
             || CASE WHEN v_message IS NOT NULL THEN ' — ' || left(v_message, 140) ELSE '' END,
         'projects.project_applications',
@@ -826,17 +860,147 @@ BEGIN
         'ownerUserId', v_project.owner_user_id,
         'stageId', v_stage.id,
         'roleId', p_role_id,
+        'applicantType', CASE WHEN p_team_id IS NULL THEN 'freelancer' ELSE 'team' END,
+        'teamId', p_team_id,
         'status', 'pending',
         'message', v_message
     );
 END;
 $$;
 
-COMMENT ON FUNCTION projects.apply_to_project(text, text, uuid, text) IS
-'A freelancer applies, as themselves, to a stage (optionally one of its staffing roles) of an active, public or unlisted project. Masks the cover note in the protected phase, records a pending application, and notifies the owner (application.received). Project and stage accept a slug or a uuid.';
+COMMENT ON FUNCTION projects.apply_to_project(text, text, uuid, text, uuid) IS
+'A freelancer applies, as themselves or (p_team_id) on behalf of a team they may bind to work, to a stage (optionally one of its staffing roles) of an active, public or unlisted project. A team needs two active members. Masks the cover note in the protected phase, records a pending application (metered against the applicant''s proposal allowance by trigger), and notifies the owner (application.received). Project and stage accept a slug or a uuid.';
 
-REVOKE ALL ON FUNCTION projects.apply_to_project(text, text, uuid, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION projects.apply_to_project(text, text, uuid, text) TO authenticated;
+REVOKE ALL ON FUNCTION projects.apply_to_project(text, text, uuid, text, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION projects.apply_to_project(text, text, uuid, text, uuid) TO authenticated;
+
+-- #endregion
+
+-- #region 6c. withdraw_application — the applicant takes a pending proposal back
+-- Withdrawing is the applicant's own act and the only way an application becomes `withdrawn`. The
+-- status flip is what `trg_refund_withdrawn_application` listens for, so the proposal's unit returns
+-- to the applicant's weekly allowance in this same transaction — selectivity is never punished twice.
+-- The buffer token is NOT returned: the drip exists to stop bursts, and an apply → withdraw loop that
+-- refilled it would let a sender notify the same client without limit.
+--
+-- The person who filed it may withdraw it, and so may anyone who could have filed it for the team
+-- (`bind_seat`). Only a pending application can be withdrawn; an answered one is history.
+CREATE OR REPLACE FUNCTION projects.withdraw_application(p_application_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, projects, org, auth
+AS $$
+DECLARE
+    v_actor uuid := auth.uid();
+    v_app   projects.project_applications%ROWTYPE;
+BEGIN
+    IF v_actor IS NULL THEN
+        RAISE EXCEPTION 'Sign in to withdraw an application.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+
+    SELECT * INTO v_app FROM projects.project_applications pa
+     WHERE pa.id = p_application_id
+       FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Application % not found.', p_application_id USING ERRCODE = 'no_data_found';
+    END IF;
+
+    IF NOT (
+        v_app.applicant_user_id = v_actor
+        OR (v_app.applicant_type = 'team' AND org.is_team_lead(v_app.applicant_profile_id))
+    ) THEN
+        RAISE EXCEPTION 'Only the applicant can withdraw this application.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF v_app.status <> 'pending' THEN
+        RAISE EXCEPTION 'Only a pending application can be withdrawn.' USING ERRCODE = 'check_violation';
+    END IF;
+
+    UPDATE projects.project_applications
+       SET status = 'withdrawn'
+     WHERE id = v_app.id;
+
+    INSERT INTO projects.project_activity (project_id, actor_user_id, kind, payload, entity_table, entity_id)
+    VALUES (
+        v_app.project_id, v_actor, 'application_withdrawn',
+        jsonb_build_object('application_id', v_app.id),
+        'projects.project_applications', v_app.id
+    );
+
+    RETURN jsonb_build_object('id', v_app.id, 'status', 'withdrawn', 'refunded', 1);
+END;
+$$;
+
+COMMENT ON FUNCTION projects.withdraw_application(uuid) IS
+'The applicant (or a member who may bind the applying team) withdraws a pending application. The status flip refunds one weekly proposal unit through trg_refund_withdrawn_application; the anti-burst buffer token is not returned.';
+
+-- #endregion
+
+-- #region 6d. list_my_applications — the proposals the caller has sent
+-- Every application the caller filed, plus those filed for a team they belong to, newest first, with
+-- the names a list needs (project, stage, role, team) resolved here. The applicant may not be able to
+-- read a project that has since gone private, and the title they applied to is still theirs to see,
+-- so the names are read with the definer's rights; the ROWS are scoped to the caller.
+-- `p_project` narrows to one project (slug or uuid) — the listing page asks "have I applied here?".
+CREATE OR REPLACE FUNCTION projects.list_my_applications(p_project text DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, projects, org, auth
+AS $$
+DECLARE
+    v_actor uuid := auth.uid();
+BEGIN
+    IF v_actor IS NULL THEN
+        RAISE EXCEPTION 'Sign in to see your proposals.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+
+    RETURN COALESCE((
+        SELECT jsonb_agg(row_to_json(r)::jsonb ORDER BY r."createdAt" DESC)
+        FROM (
+            SELECT
+                pa.id,
+                pa.status,
+                pa.applicant_type AS "applicantType",
+                CASE WHEN pa.applicant_type = 'team' THEN pa.applicant_profile_id END AS "teamId",
+                CASE WHEN pa.applicant_type = 'team' THEN t.name END AS "teamName",
+                (pa.applicant_user_id = v_actor
+                    OR (pa.applicant_type = 'team' AND org.is_team_lead(pa.applicant_profile_id))) AS "canWithdraw",
+                p.slug AS "projectSlug",
+                p.title AS "projectTitle",
+                s.slug AS "stageSlug",
+                s.name AS "stageName",
+                sr.role_title AS "roleTitle",
+                pa.created_at AS "createdAt"
+            FROM projects.project_applications pa
+            JOIN projects.projects p ON p.id = pa.project_id
+            LEFT JOIN projects.project_application_targets pat ON pat.application_id = pa.id
+            LEFT JOIN projects.stage_staffing_roles sr
+                   ON pat.target_type = 'role' AND sr.id = pat.target_id
+            LEFT JOIN projects.stage_open_seats os
+                   ON pat.target_type = 'seat' AND os.id = pat.target_id
+            LEFT JOIN projects.project_stages s
+                   ON s.id = CASE pat.target_type
+                                WHEN 'stage' THEN pat.target_id
+                                WHEN 'role' THEN sr.project_stage_id
+                                ELSE os.project_stage_id
+                             END
+            LEFT JOIN org.teams t ON pa.applicant_type = 'team' AND t.id = pa.applicant_profile_id
+            WHERE (
+                    pa.applicant_user_id = v_actor
+                 OR (pa.applicant_type = 'team' AND org.is_active_team_member(pa.applicant_profile_id))
+                  )
+              AND (p_project IS NULL OR p.slug = p_project OR p.id::text = p_project)
+            ORDER BY pa.created_at DESC
+            LIMIT 200
+        ) r
+    ), '[]'::jsonb);
+END;
+$$;
+
+COMMENT ON FUNCTION projects.list_my_applications(text) IS
+'The applications the caller filed or that were filed for a team they belong to, newest first, with project, stage, role and team names and whether the caller may withdraw each. p_project narrows to one project (slug or uuid).';
 
 -- #endregion
 

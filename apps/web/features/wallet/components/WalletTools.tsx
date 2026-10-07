@@ -6,6 +6,7 @@ import { Icon } from "@projective/ui/icons";
 import { styleVars } from "@ui/core/style.ts";
 import { DISPLAY_CURRENCIES } from "@projective/types/finance";
 import { commitDisplayCurrency } from "@web/features/shell/core/currency-state.ts";
+import { openSettings } from "@features/settings/core/settings-bridge.ts";
 import { FLOW_PERIODS, type FlowPeriod, periodLabel, periodPhrase } from "../core/wallet-model.ts";
 
 // #region Range ruler
@@ -163,16 +164,29 @@ function CurrencyTrigger({ current }: { current: string }): JSX.Element {
 // #endregion
 
 /**
- * The hero's corner tools: the display-currency trigger and the account-settings link, as glass
+ * The hero's corner tools: the display-currency trigger and the verification & payouts gear, as glass
  * buttons in the hero's top inline-end corner. They sit on the aurora, so they take the hero's own
  * glass and ink rather than the page's.
+ *
+ * The gear opens Settings → Verification & payouts in the contextual modal (`openSettings`, Decision
+ * #150) — the settings a wallet actually depends on. It stays a real link to the console page, so a
+ * modified click (new tab) and a page that never hydrated still arrive there.
  */
 export function HeroTools({ display }: { display: string }): JSX.Element {
 	return (
 		<div class="wlt-hero__tools" role="group" aria-label="Wallet settings">
 			<CurrencyTrigger current={display} />
-			<Tooltip content="Account settings" placement="bottom">
-				<a class="wlt-tool wlt-tool--icon" href="/settings" aria-label="Account settings">
+			<Tooltip content="Verification & payouts" placement="bottom">
+				<a
+					class="wlt-tool wlt-tool--icon"
+					href="/settings/verification"
+					aria-label="Verification and payouts settings"
+					onClick={(event) => {
+						if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+						event.preventDefault();
+						openSettings("verification");
+					}}
+				>
 					<Icon name="settings" size="sm" />
 				</a>
 			</Tooltip>

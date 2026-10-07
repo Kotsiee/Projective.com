@@ -2,6 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { hasSessionCookie } from "@web/utils/auth-cookies.ts";
 import { resolveRequestContext } from "@web/utils/user-context.ts";
 import { resolveCurrencyContext, runWithCurrency } from "@web/utils/currency-context.ts";
+import { resolveA11yContext } from "@web/utils/a11y-context.ts";
 import { contentSecurityPolicy, originOf } from "@web/utils/csp.ts";
 
 /**
@@ -49,6 +50,9 @@ export default define.middleware(async (ctx) => {
 	// exactly as much as a signed-in one. Cached for 15 minutes inside the FX engine, and total: it
 	// never throws and never blocks, so an unavailable rate table costs a conversion, not a request.
 	ctx.state.currency = await resolveCurrencyContext(ctx.req, ctx.state.userContext);
+	// The accessibility overlays, from the `pj.a11y` cookie — a header read, no I/O — so `_app.tsx`
+	// paints high contrast, OpenDyslexic, a CVD shift or reduced motion in the first byte.
+	ctx.state.a11y = resolveA11yContext(ctx.req);
 	// Opened around the WHOLE chain, not just the render: `AsyncLocalStorage` is what carries the
 	// currency past every island boundary and every await to the deepest server-rendered price.
 	const res = await runWithCurrency(ctx.state.currency, () => ctx.next());

@@ -1,18 +1,24 @@
 import { assert, assertEquals, assertFalse } from "@std/assert";
 import type { LedgerLine, MoneyView, WalletAction, WalletOverview } from "../types/wallet-types.ts";
+import { allocationSlices } from "../types/wallet-types.ts";
 import {
-	allocationOf,
-	bandLedger,
 	flowBars,
+	fundStateHint,
+	ledgerFeed,
 	mergeLedger,
 	methodName,
 	resolveHeroActions,
 	upcomingItems,
 } from "./wallet-home.ts";
 import {
+	defaultPeriodFor,
 	FLOW_PERIODS,
 	heldIn,
 	isElsewhere,
+	ledgerApiParams,
+	ledgerApiParamsFrom,
+	ledgerFiltersFrom,
+	ledgerParamsOf,
 	periodRange,
 	toActivityRange,
 	toFlowPeriod,
@@ -20,6 +26,7 @@ import {
 	viewShowsRuler,
 	walletHref,
 	walletPageHref,
+	withLedgerFilters,
 } from "./wallet-model.ts";
 
 const money = (minor: number, currency = "GBP"): MoneyView => ({
@@ -55,6 +62,7 @@ function overview(patch: Partial<WalletOverview> = {}): WalletOverview {
 		onHold: money(0),
 		lifetime: money(0),
 		capital: money(10_000),
+		allocation: [],
 		lockedStageCount: 0,
 		heldCaseCount: 0,
 		incoming: [],
@@ -82,7 +90,7 @@ function overview(patch: Partial<WalletOverview> = {}): WalletOverview {
 	} as WalletOverview;
 }
 
-function line(id: string, dateLabel: string): LedgerLine {
+function line(id: string, group: string): LedgerLine {
 	return {
 		id,
 		direction: "credit",
@@ -90,14 +98,22 @@ function line(id: string, dateLabel: string): LedgerLine {
 		title: `Line ${id}`,
 		counterparty: null,
 		counterpartyHandle: null,
+		counterpartyKind: null,
+		counterpartyAvatar: null,
 		amount: money(100),
 		fundState: "available",
 		category: "earning",
+		kind: "escrow_release",
 		refKind: null,
 		refId: null,
 		href: null,
+		subject: null,
+		instrument: null,
+		settlement: "cleared",
+		receiptHref: null,
 		at: "2026-09-29T10:00:00.000Z",
-		dateLabel,
+		dateLabel: group,
+		group,
 	};
 }
 
@@ -192,16 +208,21 @@ Deno.test("a saved method is named the way people write the network, with its la
 	assertEquals(methodName({ label: null, brand: null, last4: null }), "Payment method");
 });
 
-Deno.test("the ledger bands by the server's own date label, preserving order", () => {
-	const bands = bandLedger([
+Deno.test("the ledger feed heads each run of the server's own group, preserving order", () => {
+	const feed = ledgerFeed([
 		line("a", "Today"),
-		line("b", "3 days ago"),
-		line("c", "Today"),
-		line("d", "Yesterday"),
+		line("b", "Today"),
+		line("c", "Yesterday"),
+		line("d", "September 2026"),
+		line("e", "September 2026"),
 	]);
-	assertEquals(bands.map((b) => b.key), ["today", "yesterday", "earlier"]);
-	assertEquals(bands[0].lines.map((l) => l.id), ["a", "c"]);
-	assertEquals(bandLedger([]), []);
+	assertEquals(
+		feed.map((item) => item.type === "group" ? `#${item.label}` : item.line.id),
+		["#Today", "a", "b", "#Yesterday", "c", "#September 2026", "d", "e"],
+	);
+	// Keys stay unique when a group name repeats after a later page lands out of order.
+	assertEquals(new Set(feed.map((item) => item.key)).size, feed.length);
+	assertEquals(ledgerFeed([]), []);
 });
 
 Deno.test("merging a page drops lines already shown", () => {
@@ -277,11 +298,15 @@ Deno.test("a payout schedule row is omitted while payouts are manual", () => {
 
 Deno.test("flow bars share one peak across money in and out, and an empty window is flat", () => {
 	const bars = flowBars([
-		{ label: "1 Sep", inMinor: 400, outMinor: 100 },
-		{ label: "2 Sep", inMinor: 0, outMinor: 800 },
+		{ label: "1 Sep", start: "2026-09-01", inMinor: 400, outMinor: 100, netMinor: 300 },
+		{ label: "2 Sep", start: "2026-09-02", inMinor: 0, outMinor: 800, netMinor: -800 },
 	]);
 	assertEquals(bars.map((b) => [b.inRatio, b.outRatio]), [[0.5, 0.125], [0, 1]]);
-	assertEquals(flowBars([{ label: "1 Sep", inMinor: 0, outMinor: 0 }])[0].inRatio, 0);
+	assertEquals(
+		flowBars([{ label: "1 Sep", start: "2026-09-01", inMinor: 0, outMinor: 0, netMinor: 0 }])[0]
+			.inRatio,
+		0,
+	);
 });
 
 Deno.test("period, range and address helpers", () => {
@@ -326,55 +351,121 @@ Deno.test("period, range and address helpers", () => {
 });
 
 Deno.test("the allocation divides the balance across the states that hold something", () => {
-	const parts = allocationOf(overview({
+	const slices = allocationSlices({
 		available: money(6_000),
 		locked: money(3_000),
 		pending: money(1_000),
-		onHold: money(0),
-		lockedStageCount: 2,
-	}))!;
+		on_hold: money(0),
+	});
 	// Ordered by how soon the money can be spent: available, clearing, escrow.
-	assertEquals(parts.map((p) => p.state), ["available", "pending", "locked"]);
-	assertEquals(parts.map((p) => p.percent), ["60%", "10%", "30%"]);
-	assertEquals(parts.map((p) => p.ratio), [0.6, 0.1, 0.3]);
-	assertEquals(parts[2].label, "In escrow");
-	assertEquals(parts[2].hint, "Held on 2 active stages until the work is approved");
+	assertEquals(slices.map((p) => p.state), ["available", "pending", "locked"]);
+	assertEquals(slices.map((p) => p.percent), ["60%", "10%", "30%"]);
+	assertEquals(slices.map((p) => p.shareBp), [6000, 1000, 3000]);
+	assertEquals(slices.map((p) => p.widthBp), [6000, 1000, 3000]);
+	assertEquals(slices.some((p) => p.sliver), false);
+	assertEquals(
+		fundStateHint("locked", overview({ lockedStageCount: 2 })),
+		"Held on 2 active stages until the work is approved",
+	);
 });
 
-Deno.test("allocation percents always total 100 and a sliver reads as <1%", () => {
-	const thirds = allocationOf(overview({
+Deno.test("allocation percents total 100, drawn widths total 10000, and a sliver is floored, not lost", () => {
+	const thirds = allocationSlices({
 		available: money(1),
 		locked: money(1),
 		pending: money(1),
-	}))!;
+		on_hold: money(0),
+	});
 	assertEquals(thirds.map((p) => p.percent), ["34%", "33%", "33%"]);
+	assertEquals(thirds.reduce((a, p) => a + p.widthBp, 0), 10000);
 
-	const sliver = allocationOf(overview({
+	const sliver = allocationSlices({
 		available: money(99_950),
-		onHold: money(50),
-		heldCaseCount: 1,
-	}))!;
-	assertEquals(sliver.map((p) => [p.label, p.percent]), [["Available", "100%"], [
-		"Reserved",
-		"<1%",
-	]]);
-	assertEquals(sliver[1].hint, "Reserved while 1 case is reviewed");
+		pending: money(0),
+		locked: money(0),
+		on_hold: money(50),
+	});
+	assertEquals(sliver.map((p) => [p.state, p.percent, p.sliver]), [
+		["available", "100%", false],
+		["on_hold", "<1%", true],
+	]);
+	// The true share is kept; only the drawn width is floored, taken from the largest slice.
+	assertEquals(sliver[1].shareBp, 5);
+	assertEquals(sliver[1].widthBp, 150);
+	assertEquals(sliver.reduce((a, p) => a + p.widthBp, 0), 10000);
+	assertEquals(
+		fundStateHint("on_hold", overview({ heldCaseCount: 1 })),
+		"Reserved while 1 case is reviewed",
+	);
 });
 
-Deno.test("the rollup has no breakdown and an empty wallet has no parts", () => {
+Deno.test("an empty wallet has no slices", () => {
 	assertEquals(
-		allocationOf(overview({ ref: { ...overview().ref, scope: "aggregate" } })),
-		null,
+		allocationSlices({
+			available: money(0),
+			pending: money(0),
+			locked: money(0),
+			on_hold: money(0),
+		}),
+		[],
 	);
-	assertEquals(allocationOf(overview({ available: money(0) })), []);
+});
+
+Deno.test("the ledger's filters live in its address, defaults omitted, and map to the API and back", () => {
+	const sp = new URLSearchParams(
+		"w=team%3At1&q=helia&dir=out&kind=platform_fee,bogus,escrow_release&flow=3m",
+	);
+	const filters = ledgerFiltersFrom(sp);
+	assertEquals(filters, {
+		q: "helia",
+		dir: "out",
+		kinds: ["escrow_release", "platform_fee"],
+		period: "3m",
+	});
+	assertEquals(ledgerFiltersFrom(new URLSearchParams("")).period, "all");
+	const written = withLedgerFilters(new URLSearchParams("w=team%3At1&display=EUR"), filters);
+	assertEquals(written.get("w"), "team:t1");
+	assertEquals(written.get("display"), "EUR");
+	assertEquals(written.get("kind"), "escrow_release,platform_fee");
+	const cleared = withLedgerFilters(written, { q: " ", dir: "all", kinds: [], period: "all" });
+	assertEquals([...cleared.keys()].sort(), ["display", "w"]);
+
+	const params = ledgerParamsOf(filters);
+	assertEquals(params, {
+		search: "helia",
+		direction: "debit",
+		kinds: ["escrow_release", "platform_fee"],
+		range: "90d",
+	});
+	const round = ledgerApiParamsFrom(
+		new URLSearchParams({ ...ledgerApiParams({ ...params, cursor: "k:abc", limit: 40 }) }),
+	);
+	assertEquals(round.search, "helia");
+	assertEquals(round.direction, "debit");
+	assertEquals(round.kinds, ["escrow_release", "platform_fee"]);
+	assertEquals(round.range, "90d");
+	assertEquals(round.cursor, "k:abc");
+	assertEquals(round.limit, 40);
+	assertEquals(
+		ledgerApiParamsFrom(new URLSearchParams("range=decade&direction=sideways")).range,
+		undefined,
+	);
 });
 
 Deno.test("wallet pages keep the wallet and currency, and carry a window only where one is drawn", () => {
 	assertEquals(walletPageHref("overview", "personal", "GBP"), "/wallet?display=GBP");
 	assertEquals(
 		walletPageHref("transactions", "team:t1", "EUR", "1y"),
-		"/wallet/transactions?w=team%3At1&display=EUR",
+		"/wallet/transactions?w=team%3At1&display=EUR&flow=1y",
 	);
+	// Each page leaves off its OWN default window: the ledger lists everything, the charts a month.
+	assertEquals(walletPageHref("transactions", "personal", null, "all"), "/wallet/transactions");
+	assertEquals(
+		walletPageHref("transactions", "personal", null, "1m"),
+		"/wallet/transactions?flow=1m",
+	);
+	assertEquals(defaultPeriodFor("transactions"), "all");
+	assertEquals(defaultPeriodFor("analytics"), "1m");
 	assertEquals(
 		walletPageHref("analytics", "personal", null, "1y"),
 		"/wallet/analytics?flow=1y",

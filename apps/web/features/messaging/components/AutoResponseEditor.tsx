@@ -1,14 +1,16 @@
 import type { JSX } from "preact";
+import "../styles/auto-response.css";
 import { ToggleSwitch } from "@projective/ui/fields";
 import { MessagingIcon } from "./messaging-glyphs.tsx";
 import type { AutoResponseRule, AutoResponseTrigger } from "../types/messaging-types.ts";
 
 /**
- * AutoResponseEditor — the auto-response rules editor inside the Message Settings modal (task §2D).
+ * AutoResponseEditor — the auto-response ("away reply") rules editor of Settings → Messaging (task §2D;
+ * Decision #150 moved it there from the retired Message Settings modal).
  * Each rule sets up a custom automated greeting/inquiry reply for incoming client messages, optionally
  * scoped to a specific Service / Product / keyword, with an `AI-assisted` flag that reserves the plug-in
  * point for a future AI drafter (inert today). Add / edit / remove; fully controlled by the parent
- * (`rules` + `onChange`), so the modal owns the single settings draft.
+ * (`rules` + `onChange`), so the section owns the single settings draft.
  */
 
 // #region Props

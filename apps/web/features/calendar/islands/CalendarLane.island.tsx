@@ -24,10 +24,10 @@ import type { CalendarViewMode } from "@projective/ui/calendar";
 import type { CalendarEvent, CalendarEventKind, SchedulePage } from "@projective/types/scheduling";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
-import { AvailabilityBlock, AvailabilityDialog } from "../components/AvailabilityManager.tsx";
+import { AvailabilityBlock } from "../components/AvailabilityManager.tsx";
+import { openSettings } from "@features/settings/core/settings-bridge.ts";
 import { providerMarkFor } from "../components/provider-marks.tsx";
 import {
-	availabilityOpen,
 	CALENDAR_VIEWS,
 	calendarFocus,
 	focusedAt,
@@ -268,7 +268,7 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 							class="cal-rail__item"
 							aria-label="Working hours and leave"
 							aria-haspopup="dialog"
-							onClick={() => (availabilityOpen.value = true)}
+							onClick={() => openSettings("scheduling")}
 						>
 							<Icon name="clock" />
 						</button>
@@ -365,7 +365,7 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 								? (
 									<AvailabilityBlock
 										availability={page.availability}
-										onConfigure={() => (availabilityOpen.value = true)}
+										onConfigure={() => openSettings("scheduling")}
 									/>
 								)
 								: (
@@ -385,10 +385,6 @@ export default function CalendarLane(props: CalendarLaneProps): JSX.Element {
 					/>
 				</LaneFooter>
 			</div>
-
-			{page?.availability
-				? <AvailabilityDialog open={availabilityOpen} availability={page.availability} />
-				: null}
 		</div>
 	);
 }

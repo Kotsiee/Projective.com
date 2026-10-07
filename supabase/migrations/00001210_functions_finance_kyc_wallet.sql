@@ -1871,3 +1871,176 @@ BEGIN
 END;
 $$;
 -- #endregion
+
+-- #region 14. The wallet ledger read — keyset pages and calendar buckets (Decision #150, 2026-10-06)
+-- The `/wallet/transactions` ledger and the `/wallet/analytics` cash flow read through these functions
+-- instead of pulling the most recent thousand lines into the web server and paging or summing them
+-- there. All three are SECURITY INVOKER: `finance.transactions` answers only for wallets the caller may
+-- view (`fn_can_view_wallet`), so a wallet id the caller cannot see contributes nothing rather than an
+-- error, and every joined read below answers under the joined table's own policy — a search can only
+-- ever match a name the caller could already read.
+
+-- One page of a set of wallets' ledger, newest first, strictly older than the keyset position
+-- `(p_after_at, p_after_id)` — the last line of the previous page. Keyset rather than offset: a line
+-- written while the reader scrolls cannot move a page boundary, so nothing repeats or goes missing.
+--
+-- Filters (all optional, all ANDed): direction; a set of `reason` codes (the line-family selector,
+-- mapped from families to codes by the application — `LEDGER_KIND_REASONS`); a half-open date range
+-- `[p_from, p_to)`; and a text search. The search matches, case-insensitively and as a literal
+-- substring (`%`, `_` and `\` in it are escaped), the project title or stage name an escrow line paid
+-- for, either party of that escrow (a person's name or handle other than the caller, a team, or a
+-- business's public face through `finance.get_purchase_owner`), an order's reference or line title —
+-- plus two sets the application resolves from words the database cannot see: the reason codes whose
+-- LABELS match (`p_search_reasons`, "escrow release") and the caller's own wallets whose owner name
+-- matches (`p_search_wallets`, a transfer to "Atlas Labs"). Returns up to p_limit rows (1–201; the
+-- application asks for one more than it shows, to learn whether another page exists).
+CREATE OR REPLACE FUNCTION finance.list_ledger(
+    p_wallet_ids uuid[],
+    p_limit integer DEFAULT 41,
+    p_after_at timestamptz DEFAULT NULL,
+    p_after_id uuid DEFAULT NULL,
+    p_direction text DEFAULT NULL,
+    p_reasons text[] DEFAULT NULL,
+    p_from timestamptz DEFAULT NULL,
+    p_to timestamptz DEFAULT NULL,
+    p_search text DEFAULT NULL,
+    p_search_reasons text[] DEFAULT NULL,
+    p_search_wallets uuid[] DEFAULT NULL
+)
+RETURNS SETOF finance.transactions
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+    SELECT t.*
+    FROM finance.transactions t
+    CROSS JOIN LATERAL (
+        SELECT CASE
+            WHEN pg_catalog.btrim(COALESCE(p_search, '')) = '' THEN NULL
+            ELSE '%' || pg_catalog.replace(pg_catalog.replace(pg_catalog.replace(
+                pg_catalog.btrim(p_search), '\', '\\'), '%', '\%'), '_', '\_') || '%'
+        END AS pattern
+    ) q
+    WHERE t.wallet_id = ANY (p_wallet_ids)
+      AND (p_direction IS NULL OR t.direction = p_direction)
+      AND (p_reasons IS NULL OR t.reason = ANY (p_reasons))
+      AND (p_from IS NULL OR t.created_at >= p_from)
+      AND (p_to IS NULL OR t.created_at < p_to)
+      AND (
+          p_after_at IS NULL
+          OR t.created_at < p_after_at
+          OR (t.created_at = p_after_at AND p_after_id IS NOT NULL AND t.id < p_after_id)
+      )
+      AND (
+          q.pattern IS NULL
+          OR t.reason = ANY (COALESCE(p_search_reasons, '{}'::text[]))
+          OR (t.ref_table = 'wallets' AND t.ref_id = ANY (COALESCE(p_search_wallets, '{}'::uuid[])))
+          OR (t.ref_table = 'escrows' AND EXISTS (
+              SELECT 1
+              FROM finance.escrows e
+              LEFT JOIN projects.project_stages s ON s.id = e.project_stage_id
+              LEFT JOIN projects.projects p ON p.id = s.project_id
+              WHERE e.id = t.ref_id
+                AND (
+                    p.title ILIKE q.pattern
+                    OR s.name ILIKE q.pattern
+                    OR EXISTS (
+                        SELECT 1 FROM org.users_public u
+                        WHERE u.user_id IN (e.payer_user_id, CASE WHEN e.payee_type = 'freelancer' THEN e.payee_id END)
+                          AND u.user_id IS DISTINCT FROM auth.uid()
+                          AND (u.username ILIKE q.pattern
+                               OR pg_catalog.concat_ws(' ', u.first_name, u.last_name) ILIKE q.pattern)
+                    )
+                    OR (e.payee_type = 'team' AND EXISTS (
+                        SELECT 1 FROM org.teams tm WHERE tm.id = e.payee_id AND tm.name ILIKE q.pattern
+                    ))
+                    OR (e.payer_business_id IS NOT NULL
+                        AND (finance.get_purchase_owner('business', e.payer_business_id) ->> 'name') ILIKE q.pattern)
+                )
+          ))
+          OR (t.ref_table = 'orders' AND EXISTS (
+              SELECT 1 FROM finance.orders o WHERE o.id = t.ref_id AND o.reference ILIKE q.pattern
+          ))
+          OR (t.ref_table = 'order_lines' AND EXISTS (
+              SELECT 1
+              FROM finance.order_lines ol
+              JOIN finance.orders o ON o.id = ol.order_id
+              WHERE ol.id = t.ref_id AND (ol.title ILIKE q.pattern OR o.reference ILIKE q.pattern)
+          ))
+      )
+    ORDER BY t.created_at DESC, t.id DESC
+    LIMIT LEAST(GREATEST(COALESCE(p_limit, 41), 1), 201);
+$$;
+
+COMMENT ON FUNCTION finance.list_ledger(uuid[], integer, timestamptz, uuid, text, text[], timestamptz, timestamptz, text, text[], uuid[]) IS
+'One keyset page of a set of wallets'' ledger as the CALLER may read it: newest first, strictly older
+than (p_after_at, p_after_id), filtered by direction, reason codes, a half-open date range and a
+literal-substring search over what the caller may read about each line. SECURITY INVOKER.';
+
+-- Money in and out of a set of wallets, summed per CALENDAR bucket in the viewer's time zone:
+-- `date_trunc(grain, created_at AT TIME ZONE tz)`, so a "5 Oct" bar holds exactly the movements of the
+-- reader's own 5 October rather than a UTC day or an arbitrary 24-hour slice ending now. Grouped by
+-- currency (the application converts each origin currency once), direction and reason (the application
+-- folds reasons into line families), with the line count. `p_grain` is `day` · `week` (ISO, Monday) ·
+-- `month`; anything else is `day`. `p_tz` must be an IANA zone name — the application validates it and
+-- falls back to UTC, and an unknown name is an error here rather than a silent UTC.
+CREATE OR REPLACE FUNCTION finance.ledger_flow(
+    p_wallet_ids uuid[],
+    p_from timestamptz DEFAULT NULL,
+    p_to timestamptz DEFAULT NULL,
+    p_tz text DEFAULT 'UTC',
+    p_grain text DEFAULT 'day'
+)
+RETURNS TABLE (
+    bucket date,
+    currency text,
+    direction text,
+    reason text,
+    total_cents bigint,
+    line_count integer
+)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+    SELECT
+        pg_catalog.date_trunc(g.grain, t.created_at AT TIME ZONE g.tz)::date AS bucket,
+        t.currency::text,
+        t.direction,
+        t.reason,
+        pg_catalog.sum(t.amount_cents)::bigint AS total_cents,
+        pg_catalog.count(*)::integer AS line_count
+    FROM finance.transactions t
+    CROSS JOIN LATERAL (
+        SELECT
+            CASE WHEN p_grain IN ('day', 'week', 'month') THEN p_grain ELSE 'day' END AS grain,
+            COALESCE(NULLIF(pg_catalog.btrim(p_tz), ''), 'UTC') AS tz
+    ) g
+    WHERE t.wallet_id = ANY (p_wallet_ids)
+      AND (p_from IS NULL OR t.created_at >= p_from)
+      AND (p_to IS NULL OR t.created_at < p_to)
+    GROUP BY 1, 2, 3, 4
+    ORDER BY 1, 2, 3, 4;
+$$;
+
+COMMENT ON FUNCTION finance.ledger_flow(uuid[], timestamptz, timestamptz, text, text) IS
+'A set of wallets'' ledger summed per calendar bucket (day · ISO week · month) in the viewer''s time
+zone, per currency, direction and reason, as the CALLER may read it. SECURITY INVOKER.';
+
+-- The oldest movement of a set of wallets the caller may read — where an "all time" window starts.
+CREATE OR REPLACE FUNCTION finance.ledger_first_at(p_wallet_ids uuid[])
+RETURNS timestamptz
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+    SELECT pg_catalog.min(t.created_at) FROM finance.transactions t WHERE t.wallet_id = ANY (p_wallet_ids);
+$$;
+
+COMMENT ON FUNCTION finance.ledger_first_at(uuid[]) IS
+'The earliest created_at among the given wallets'' ledger lines the caller may read; NULL when none.
+SECURITY INVOKER.';
+-- #endregion

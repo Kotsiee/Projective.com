@@ -1,8 +1,7 @@
 import type { ComponentChildren } from "preact";
 import type { UserContext } from "@projective/types/auth";
 import MessagesSidebar from "../islands/MessagesSidebar.island.tsx";
-import { resolveConversationList, resolveMessagingSettings } from "./conversations-ssr.ts";
-import { DEFAULT_MESSAGING_SETTINGS } from "./messaging-defaults.ts";
+import { resolveConversationList } from "./conversations-ssr.ts";
 import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
@@ -31,16 +30,12 @@ export async function messagesLaneFor(
 	actor: ReadActor,
 ): Promise<ComponentChildren> {
 	if (!url.pathname.startsWith("/messages")) return null;
-	const [{ page, role }, settings] = await Promise.all([
-		resolveConversationList(context, actor),
-		resolveMessagingSettings(context, actor),
-	]);
+	const { page, role } = await resolveConversationList(context, actor);
 	return (
 		<MessagesSidebar
 			initial={page}
 			role={role}
 			path={url.pathname}
-			settings={settings ?? DEFAULT_MESSAGING_SETTINGS}
 		/>
 	);
 }

@@ -54,6 +54,8 @@ Parenthesized folders group routes **without** adding a URL segment:
 | stage invite link       | `(dashboard)/invite/[token].tsx`                             | `/invite/:token` (where a stage invite link lands — the project, the stage, who shared it, and "Ask to join" when the link is open to this person, which files a pending request and seats nobody. Inside `(dashboard)`, so a guest signs in first and returns here via `redirectTo`; the token is shape-checked before any read; `noindex` + `no-referrer` + `no-store` because the path is a capability; Decision #145) |
 | share link              | `(public)/share/[slug].tsx`                                  | `/share/:slug` (the public resolution of a read-only share link — the one files surface a stranger can reach)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | outbound-link exit      | `(public)/exit.tsx`                                          | `/exit?url=…` (the interstitial an external link from a message passes through unless its scan came back safe — names the host, the verdict and why; asks for an explicit "I understand" before an unchecked or suspicious link and never offers a blocked one; never redirects by itself; `noindex` + `no-referrer` + `no-store`; Decision #128)                                                                                                                                                                                                                                                                            |
+| settings (root)         | `(dashboard)/settings/index.tsx`                             | `/settings` — the Settings console root (Decision #151): the **attention dashboard** (identity check, payout account, business KYB, expired connectors, unconfirmed emails — derived from facts by `attentionItems`), plus the section **drill-down menu** below 767px where the shell has no lane. A `?connect=` landing (the integrations callback's fallback) **303→** `/settings/integrations?connect=…`. Controller `features/settings/routes/SettingsHomeScreen.tsx` (re-exported). |
+| settings (section)      | `(dashboard)/settings/[section].tsx`                         | `/settings/:section` — one console page for each `SettingsSectionKey` (`account · profile · workspaces · language · appearance · notifications · messaging · scheduling · billing`; `verification` and `integrations` keep their own static routes below and render in the same lane). An unknown section **303→** `/settings/account`. `#anchor` deep-links an entry (`/settings/appearance#contrast`). Server-rendered from `resolveSettingsSection` — the SAME read `/api/settings/:section` serves the modal. Lane: `settingsLaneFor`. |
 | integrations            | `(dashboard)/settings/integrations/index.tsx`                | `/settings/integrations` (the connector console — the caller's stored authorizations, and the catalogue)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | verification            | `(dashboard)/settings/verification.tsx`                      | `/settings/verification` (**Verification & payouts** — the freelancer's Level-2 identity check through Stripe Identity, the Stripe Connect payout account a withdrawal is transferred to, and each client business's Level-3 KYB through Connect onboarding. Every wallet lock about identity or payouts links here. Stripe's hosted pages come back through `/api/finance/connect/{return,refresh}?…&back=settings` and the Identity return, which land here with a one-line notice; the page itself reads `GET /api/finance/verify/status`. Root CLAUDE.md §8 Decision #126) |
 | teams roster            | `(dashboard)/teams/index.tsx`                                | `/teams` — the caller's teams (owned first), their pending invitations to teams, and the create entitlement. Read by `org.get_workspace_roster('team')`. |
@@ -177,9 +179,18 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   dialogs the lane opens are hosted wherever the reader is. Their state lives in the query string:
   `?w=scope:id` selects which wallet is shown (a view filter, never a context switch — builders
   `walletHref()` and `walletPageHref()` in `apps/web/features/wallet/core/wallet-model.ts`, which keep
-  `w` and `display` on every page link), `?flow=7d|1m|3m|6m|1y|5y|all` the cash-flow window on the two
-  pages that draw one (overview · analytics; set from the pinned range ruler; the pre-ruler names
-  `week|month|quarter|year` still resolve), `?display=` the currency the figures are drawn in. The
+  `w` and `display` on every page link), `?flow=7d|1m|3m|6m|1y|5y|all` the window on the three
+  pages read over one (overview · analytics draw cash flow over it, the ledger lists it; set from the
+  pinned range ruler; the pre-ruler names `week|month|quarter|year` still resolve; each page omits its
+  OWN default — `1m` for the cash-flow pages, `all` for the ledger, `defaultPeriodFor`),
+  `?display=` the currency the figures are drawn in. `/wallet/transactions` also carries its filter bar
+  (Decision #152): `?q=` the search, `?dir=in|out` the direction, `?kind=a,b` the line families
+  (`LEDGER_KIND_CHOICES`), each dropped at its default (`withLedgerFilters`), so a filtered ledger links
+  and reloads as it was. The island adds `?tz=<IANA zone>` to its own `/api/wallet/*` reads (never to a
+  page address) so "Today" and a cash-flow day are the reader's calendar; `GET /api/wallet/transactions`
+  pages by an opaque keyset `cursor` (`k:…`), and `GET /api/wallet/export` takes the same filters and
+  answers a refusal as JSON, never as a file. `GET /api/finance/cards/setup` hands the Add payment
+  method dialog the publishable key before any SetupIntent exists (deferred Elements). The
   remaining retired deep pages answer `(dashboard)/wallet/[section].tsx` with a **308**, keeping `w`
   and `display`: `activity` → `/wallet/analytics`, `payouts` · `funding` · `access` →
   `/wallet#upcoming`, `methods` → `/wallet#methods`. Any other `/wallet/<segment>` is a 404.
@@ -436,7 +447,51 @@ The account popover's own reads sit under `/api/user/*`: `GET /api/user/me` (ide
 `GET /api/user/setup` (the PERSON's profile-setup facts, published hours and Standing — composed
 from `org.get_party_cards`, `org.get_profile_view` and `finance.my_verification_status`; `setup:
 null` when the read cannot be made, 401 only for a guest; Decision #149), both through
-`UserBackendService`.
+`UserBackendService`. `GET /api/user/allowance` (`?team=<uuid>` for a team's pool, `?as=self` for the
+person's own in a team context) is the proposal allowance — weekly units, the anti-burst buffer, the
+next drip and whether an application would be accepted (`ProposalAllowanceStatus`) — through
+`WalletBackendService.getProposalAllowanceStatus` → `finance.get_proposal_allowance`; `403` for a
+team the caller is not in, `no-store` because the read pays out the drip (Decision #154).
+
+`POST /api/user/freelancer` is the "Become a Partner" unlock behind `/become-partner` (Decision
+#150): `EnableFreelancerInputSchema` (`@projective/types/user` — one to ten `org.skills` slugs) →
+`UserBackendService.enableFreelancer(readActor(ctx), input)` → `org.enable_freelancer_profile`
+in the caller's JWT. `201` on a fresh unlock, `200` when it was already unlocked, `401` / `403`
+(onboarding incomplete) / `422` (refused skills) / `503` otherwise; the body carries the person's
+`handle`. The client then `POST`s `/api/auth/refresh` and hard-navigates to `/[handle]/edit`.
+`/become-partner` itself reads the setup facts and the skills taxonomy server-side
+(`UserBackendService.setup` / `starterSkills`) and hands them to `BecomePartnerWizard` as props.
+
+### Settings engine (Decision #151)
+
+**The contextual modal's URL contract — `?settings=<section>` on any signed-in page.** Owned by ONE
+host, `features/settings/islands/SettingsModalHost.island.tsx`, mounted in `UserShell`; pure helpers
+in `features/settings/core/settings-url.ts` (`readSettingsParam`, `withSettingsParam` — every other
+parameter and the hash survive, in order). Any surface opens it with
+`openSettings(section, anchor?)` (`core/settings-bridge.ts`, the cancelable `pj:settings-open` event;
+when no host claims it the bridge navigates to `/settings/:section` instead).
+
+- **Arriving** with `?settings=x` opens section x; a malformed value is stripped. On `/settings/*` the
+  parameter is a request for that section's PAGE, so the host navigates there.
+- **Opening from a gear PUSHES** one history entry, so browser Back dismisses the modal; **moving
+  between sections REPLACES** it; **closing** removes the parameter and nothing else (stepping back
+  over the host's own entry, or replacing one it did not push). Every entry carries
+  `fClientNav: false` and the page's own entry is re-stamped first — the `?tkv=` recipe (Decision #95),
+  without which Back reloads the document.
+- **Expand to full page** is `location.replace(/settings/:section#anchor)`; unsaved form drafts travel
+  in `SessionKeys.SETTINGS_DRAFTS` and the page adopts them.
+
+| Route                                    | Method | Service → database |
+| :--------------------------------------- | :----- | :----------------- |
+| `/api/settings/[section]`                | `GET`  | `resolveSettingsSection` (`features/settings/core/settings-ssr.ts`) — the section's payload (`SettingsSectionEnvelope`, `@projective/types/settings`), composed from the services that own each section's data. `404` unknown section · `401` guest · `no-store`. `error` names a PART that could not be read; the request itself still succeeds. |
+| `/api/user/preferences`                  | `GET` · `PATCH` | `PATCH` takes `UserPreferencesUpdateSchema` (strict: display currency · locale · direction · theme · `contrast` · `font` · `cvd` · `motion`) → `SettingsBackendService.updatePreferences`, which splits it: the display half through `UserBackendService.updatePreferences`, the appearance half into the four `org.user_preferences` columns. Answers `{ preferences, appearance, appearancePersisted }` and, whenever the appearance or direction changed, **`Set-Cookie: pj.a11y=…`** (`utils/a11y-context.ts`) so the next response is server-rendered in the new overlays. `GET` adds `{ appearance, appearanceLive }`. |
+| `/api/user/emails`                       | `GET` · `POST` `{ email }` | `EmailsBackendService.list` → `org.get_my_emails` · `.add` → `org.add_user_email`, then the token through the SERVICE client `security.issue_email_verification` and `services/mail/verification-mailer.ts`. `POST` → `201 { emails, delivery }` (`sent` · `logged` · `unavailable`); 422 `errors.email`; 429 `details.retryAt` (5 sends per 15 min). The raw token never reaches a browser. |
+| `/api/user/emails/[id]`                  | `DELETE` | `EmailsBackendService.remove` → `org.remove_user_email` (never the primary or the sign-in address) |
+| `/api/user/emails/[id]/primary`          | `POST` | `EmailsBackendService.setPrimary` → `org.set_primary_email` (verified addresses only) |
+| `/api/user/emails/[id]/resend`           | `POST` | `EmailsBackendService.resend` — a fresh token (earlier ones expire); 409 when already verified |
+| `/api/user/emails/verify`                | `GET` `?token=` | The mailed link: `org.confirm_user_email` for the signed-in account (it renews the session itself), then **303→** `/settings/account?email=<EmailVerifyOutcome>`; signed out **303→** `/login?redirectTo=…`. `no-store`, `no-referrer`. Refusals carry `details.refusal` (an `EmailRefusal` code); a non-uuid `:id` is 404. |
+| `/api/user/notifications`                | `GET` · `PUT` | `NotificationCenterBackendService` over `comms.notification_prefs` / `notification_category_prefs` / `notification_types` in the caller's JWT. `PUT` = `NotificationCenterUpdateSchema` (partial; `resetChannels` sets a channel back to `null` on every category row so a master toggle is not outranked). 401 guest · 422 invalid / quiet hours incomplete · 503 not live. |
+| `/api/messaging/settings`                | `GET` (`?role=`) · `POST` `MessagingSettings` | `MessagingBackendService.settings` · `.saveSettings` → `live-settings-write.ts`, the exact inverse of the reader: `comms.notification_prefs`, the `messages` category's `in_app`, the `message.new` / `message.mention` in-app mutes, and a replace-set of `comms.auto_responses` over the rules shown. Answers the fresh read. 422 field errors · 401 guest. |
 
 ### Workspace (Teams & Businesses) API
 
@@ -497,7 +552,9 @@ then one fat-service method. A guest is a 401 on every write.
 | `/api/messaging/conversations/[id]/folder`   | `POST` `{ folder }` | `MessagingBackendService.setFolder` → `comms.set_dm_inbox_folder` (404 for a conversation with no thread yet) |
 | `/api/messaging/conversations/[id]/context`  | `GET`  | `MessagingBackendService.context` → `projects.get_engagement_context` (the context panel) |
 | `/api/projects/hire`                         | `POST` | `ProjectBackendService.hire` → `projects.invite_to_project`, then the intro via `comms.send_request_message`; a cooldown refusal is 422 with `details.reopensAt`, the rate limit 429 with `details.retryAt` |
-| `/api/projects/apply`                        | `POST` → 201 | `ProjectBackendService.apply` → `projects.apply_to_project`, then the cover note via `comms.send_request_message` |
+| `/api/projects/apply`                        | `POST` `{ projectId, stageId, roleId, message, teamId }` → 201 | `ProjectBackendService.apply` — the proposal allowance's pre-flight gate first (a refusal is 422 with `errors.allowance` + `details.blockReason`, and `entitlement.denied` recorded through `finance.record_proposal_denial`; Decision #154), then `projects.apply_to_project`, then the cover note via `comms.send_request_message` |
+| `/api/projects/applications/withdraw`        | `POST` `{ applicationId }` | `ProjectBackendService.withdrawApplication` → `projects.withdraw_application`; the status flip refunds one weekly proposal unit (Decision #154) |
+| `/api/projects/applications/mine`            | `GET` (`?project=<slug>`) | `ProjectBackendService.sentApplications` → `projects.list_my_applications` — the viewer's sent proposals, newest first; `no-store` |
 | `/api/projects/invites/respond`              | `POST` `{ invitationIds, accept }` | `ProjectBackendService.respondToInvitations` → `projects.respond_to_project_invitation`, once per invitation of the request |
 | `/api/projects/applications/accept`          | `POST` `{ applicationId }` | `ProjectBackendService.acceptApplication` → `projects.assign_from_application`; answers `fundHref` |
 | `/api/projects/[id]/stages/[stageId]/invite-link` | `GET` · `POST` `{ action: ensure\|reset\|revoke }` | `InviteLinkService.stageLink` (reads the active link, never mints) · `InviteLinkService.act` → `projects.get_stage_invite_link` / `projects.revoke_stage_invite_link` (Decision #145) |

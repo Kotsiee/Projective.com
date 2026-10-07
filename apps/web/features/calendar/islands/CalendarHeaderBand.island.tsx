@@ -8,8 +8,8 @@ import { Icon } from "@projective/ui/icons";
 import type { SchedulePage } from "@projective/types/scheduling";
 import { integrationLabel } from "@projective/types/scheduling";
 import { ProviderMark } from "../components/provider-marks.tsx";
+import { openSettings } from "@features/settings/core/settings-bridge.ts";
 import {
-	availabilityOpen,
 	calendarFocus,
 	focusedAt,
 	calendarPage,
@@ -205,12 +205,8 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 
 				{
 					/*
-					 * Working hours, inherited from the lane below 767px.
-					 *
-					 * It only WRITES the shared signal — the dialog itself stays mounted by the lane, which
-					 * is `display: none` at this width but still in the DOM, and whose panel escapes through
-					 * `BodyPortal` regardless. Mounting a second copy here would open two dialogs at once on
-					 * every width where both regions exist.
+					 * Working hours, inherited from the lane below 767px. It opens Settings → Scheduling & calls
+					 * in the contextual modal (Decision #150), the same destination as the lane's control.
 					 */
 				}
 				<Tooltip content="Working hours and leave">
@@ -219,7 +215,7 @@ export default function CalendarHeaderBand(props: CalendarHeaderBandProps): JSX.
 						class="cal-band__iconbtn cal-band__iconbtn--mobile"
 						aria-label="Working hours and leave"
 						aria-haspopup="dialog"
-						onClick={() => (availabilityOpen.value = true)}
+						onClick={() => openSettings("scheduling")}
 					>
 						<Icon name="clock" size="xs" />
 					</button>

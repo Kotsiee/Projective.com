@@ -11,27 +11,28 @@ import { DetailsField } from "./AddressFields.tsx";
  * personal and a business buyer, because the person receiving the work is a person either way.
  *
  * The email here is the ACCOUNT-level default. A basket line that carries its own
- * `destinationEmail` still wins for that line; this is what pre-fills it, which is why the hint says
- * so rather than implying the address is final.
+ * `destinationEmail` still wins for that line; the section heading says so ("downloads and receipts
+ * go here") rather than a standing hint under the field, which cost the form a row.
  *
- * **Two rows.** The name splits across the row because a first and last name are read as one fact;
- * the email takes the row beneath and is capped at `--field-max`, because an address stretched to
- * the form's full measure invites the reader to expect a longer value than one.
+ * **One row** (`3 + 3 + 6`): a first and last name are read as one fact and are short, and the email
+ * takes the other half — wide enough for a real address, not so wide it invites the reader to expect
+ * a longer value than one. Where the form column is narrower the three halve and the email wraps to
+ * a row of its own (see the grid note in `checkout-details.css`).
  */
 
 // #region Props
 /** Props for {@link DeliveryFields}. */
 export interface DeliveryFieldsProps {
 	draft: DetailsDraft;
-	/** Block writes while a save is in flight. */
-	disabled?: boolean;
+	/** A save is in flight: the controls turn read-only and keep focus. */
+	busy?: boolean;
 	/** Id scope, so a modal copy of this form never mints the same ids as the page. */
 	scope?: string;
 }
 // #endregion
 
 export function DeliveryFields(props: DeliveryFieldsProps): JSX.Element {
-	const { draft, disabled, scope } = props;
+	const { draft, busy, scope } = props;
 	return (
 		<div class="ckod__grid">
 			<DetailsField
@@ -41,9 +42,9 @@ export function DeliveryFields(props: DeliveryFieldsProps): JSX.Element {
 				value={draft.delivery.firstName}
 				required
 				autoComplete="given-name"
-				disabled={disabled}
+				busy={busy}
 				scope={scope}
-				span="half"
+				span={3}
 			/>
 			<DetailsField
 				draft={draft}
@@ -52,9 +53,9 @@ export function DeliveryFields(props: DeliveryFieldsProps): JSX.Element {
 				value={draft.delivery.lastName}
 				required
 				autoComplete="family-name"
-				disabled={disabled}
+				busy={busy}
 				scope={scope}
-				span="half"
+				span={3}
 			/>
 			<DetailsField
 				draft={draft}
@@ -65,11 +66,9 @@ export function DeliveryFields(props: DeliveryFieldsProps): JSX.Element {
 				email
 				autoComplete="email"
 				placeholder="name@example.com"
-				hint="Downloads and receipts go here. Any line with its own address keeps it."
-				disabled={disabled}
+				busy={busy}
 				scope={scope}
-				span="full"
-				cap
+				span={6}
 			/>
 		</div>
 	);

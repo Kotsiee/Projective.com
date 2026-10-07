@@ -1,4 +1,5 @@
 import type { JSX, RefObject } from "preact";
+import { useRef } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
@@ -27,6 +28,7 @@ import {
 } from "../core/wallet-model.ts";
 import { ActionIcon, FundStateIcon } from "./wallet-glyphs.tsx";
 import { HeroTools } from "./WalletTools.tsx";
+import { HeroAurora } from "./HeroAurora.tsx";
 import { personFallbackImage } from "@web/components/UserAvatar.tsx";
 
 /** Props for {@link WalletHero}. */
@@ -302,12 +304,15 @@ export function WalletHero(props: WalletHeroProps): JSX.Element {
 	const balanceLabel = aggregate
 		? `Available across ${accountCount} ${accountCount === 1 ? "account" : "accounts"}`
 		: "Total balance";
+	const ownRef = useRef<HTMLElement>(null);
+	const heroRef = props.heroRef ?? ownRef;
 	return (
 		<section
 			class={compact ? "wlt-hero wlt-hero--compact" : "wlt-hero"}
-			ref={props.heroRef}
+			ref={heroRef}
 			aria-labelledby="wlt-title"
 		>
+			<HeroAurora host={heroRef} />
 			<HeroTools display={props.display} />
 			<div class="wlt-hero__inner">
 				<ScopePill switcher={switcher} display={props.display} view={view} />

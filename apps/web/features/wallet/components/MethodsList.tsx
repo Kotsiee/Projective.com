@@ -4,6 +4,7 @@ import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import type { PaymentMethodView } from "../types/wallet-types.ts";
 import { methodName, type ResolvedAction } from "../core/wallet-home.ts";
+import { walletAddedCardId } from "../core/wallet-state.ts";
 import { WalletGlyph } from "./wallet-glyphs.tsx";
 
 /** Props for {@link MethodsList}. */
@@ -30,8 +31,13 @@ function defaultsOf(m: PaymentMethodView): string | null {
 	return null;
 }
 
-/** The wallet's saved payment methods. Card details stay with the processor; only fragments show here. */
+/**
+ * The wallet's saved payment methods. Card details stay with the processor; only fragments show here.
+ * A card saved a moment ago (`walletAddedCardId`) is marked `aria-current` and says "Just added" in
+ * its meta line — a fact, so plain text, never a tag.
+ */
 export function MethodsList(props: MethodsListProps): JSX.Element {
+	const added = walletAddedCardId.value;
 	return (
 		<section class="wlt-section wlt-methods" id="methods" aria-labelledby="wlt-methods-title">
 			<header class="wlt-section__head">
@@ -52,10 +58,13 @@ export function MethodsList(props: MethodsListProps): JSX.Element {
 					<ul class="wlt-rows">
 						{props.methods.map((m) => {
 							const defaults = defaultsOf(m);
+							const isNew = m.id === added;
 							return (
 								<li
 									class="wlt-row"
 									key={m.id}
+									aria-current={isNew ? "true" : undefined}
+									data-new={isNew ? "true" : undefined}
 									data-muted={m.status === "active" ? undefined : "true"}
 								>
 									<span class="wlt-row__mark" aria-hidden="true">
@@ -64,7 +73,9 @@ export function MethodsList(props: MethodsListProps): JSX.Element {
 									<span class="wlt-row__body">
 										<span class="wlt-row__title">{methodName(m)}</span>
 										<span class="wlt-row__meta">
-											{[ROLE[m.methodRole], defaults].filter(Boolean).join(" · ")}
+											{[ROLE[m.methodRole], defaults, isNew ? "Just added" : null]
+												.filter(Boolean)
+												.join(" · ")}
 										</span>
 									</span>
 									{m.status !== "active" && (

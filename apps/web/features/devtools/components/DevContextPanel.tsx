@@ -13,11 +13,14 @@ import {
 	DEV_PROJECT_ONBOARDINGS,
 	DEV_PROJECT_STATUSES,
 	DEV_PROJECT_TYPES,
+	DEV_PROPOSAL_ALLOWANCES,
 	DEV_ROLES,
 	DEV_SERVICE_TYPES,
 	DEV_SESSION_BOOKINGS,
+	DEV_SETTINGS_ATTENTIONS,
 	DEV_STAGE_ASSIGNMENTS,
 	DEV_SUBMISSION_STATES,
+	DEV_WALLET_AURORAS,
 	type DevOption,
 	devOverrides,
 	patchDevContext,
@@ -457,6 +460,53 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.profileSetup}
 						disabled={!o.enabled}
 						onChange={(profileSetup) => patchDevContext({ profileSetup })}
+					/>
+				</Field>
+
+				{
+					/* The `/wallet` hero's live aurora. Its gates read device facts (core count, memory,
+				    frame times) no page control can change, so this is the only runtime route to the
+				    shader on a machine that `auto` refuses — and to the static gradient on one it allows.
+				    Applies live; the hero reflects the outcome on `data-aurora` / `data-aurora-reason`. */
+				}
+				<Field label="Wallet aurora" hint="hero shader">
+					<Segment
+						name="Wallet aurora"
+						options={DEV_WALLET_AURORAS}
+						value={o.walletAurora}
+						disabled={!o.enabled}
+						onChange={(walletAurora) => patchDevContext({ walletAurora })}
+					/>
+				</Field>
+
+				{
+					/* The `/settings` attention dashboard and the lane's section marks. KYC, payout and
+				    connector states are server facts no settings control can change, so this substitutes
+				    the FACTS — the shipping rule still decides what is listed. */
+				}
+				<Field label="Settings attention" hint="/settings dashboard">
+					<Segment
+						name="Settings attention"
+						options={DEV_SETTINGS_ATTENTIONS}
+						value={o.settingsAttention}
+						disabled={!o.enabled}
+						onChange={(settingsAttention) => patchDevContext({ settingsAttention })}
+					/>
+				</Field>
+
+				{
+					/* The proposal allowance — the popover meter, the lane disclosure and the apply modal's
+				    pre-flight notice. Tokens, the drip clock and a team roster are server facts no control
+				    can reach without spending real proposals, so this substitutes the STATUS; the shipping
+				    copy, countdown and gate still run on it. Client-only: the server gate is untouched. */
+				}
+				<Field label="Proposal allowance" hint="meter · apply gate">
+					<Segment
+						name="Proposal allowance"
+						options={DEV_PROPOSAL_ALLOWANCES}
+						value={o.proposalAllowance}
+						disabled={!o.enabled}
+						onChange={(proposalAllowance) => patchDevContext({ proposalAllowance })}
 					/>
 				</Field>
 			</div>

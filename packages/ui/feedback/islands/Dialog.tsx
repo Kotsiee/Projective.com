@@ -74,6 +74,13 @@ export interface DialogProps {
 	 * the header's × button, since the header precedes the body in DOM order.
 	 */
 	initialFocusRef?: RefObject<HTMLElement>;
+	/**
+	 * The id of the element that NAMES the dialog, for a `headerTemplate` that carries controls. By
+	 * default a templated dialog is named by its whole header region, which folds every action button's
+	 * label into the name ("Settings Expand to full page Close"); pointing at the template's own title
+	 * keeps the name the title.
+	 */
+	labelledBy?: string;
 	/** Fired whenever visibility changes. */
 	onVisibleChange?: (visible: boolean) => void;
 	/** Extra class(es) merged onto the panel. */
@@ -113,6 +120,7 @@ export function Dialog(props: DialogProps): JSX.Element | null {
 		width,
 		height,
 		initialFocusRef,
+		labelledBy,
 		onVisibleChange,
 		class: className,
 		children,
@@ -234,9 +242,8 @@ export function Dialog(props: DialogProps): JSX.Element | null {
 					ref={panelRef}
 					role={role}
 					aria-modal={modal || undefined}
-					aria-labelledby={hasHeader && (header !== undefined || headerTemplate)
-						? titleId
-						: undefined}
+					aria-labelledby={labelledBy ??
+						(hasHeader && (header !== undefined || headerTemplate) ? titleId : undefined)}
 					aria-describedby={bodyId}
 					data-state={state}
 					class={cx("ui-dialog__panel", (offset || size) && "ui-dialog__panel--free", className)}

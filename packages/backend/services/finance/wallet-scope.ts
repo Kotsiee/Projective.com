@@ -12,6 +12,7 @@ import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { type MoneyProjector, moneyProjector } from "./commerce-money.ts";
 import { listOwners, type ResolvedOwner } from "./commerce-owner.ts";
 import { FxService } from "./FxService.ts";
+import { safeTimeZone } from "./wallet-ledger.ts";
 
 /**
  * wallet-scope — WHICH wallet a `/wallet` read or movement is about, and what the viewer may do there.
@@ -79,6 +80,11 @@ export interface WalletContext {
 	accounts: WalletAccount[];
 	/** The wallet this read is about, or the read-only rollup of all of them. */
 	target: WalletAccount | "aggregate";
+	/**
+	 * The IANA zone the viewer's calendar runs in — what "Today" and a cash-flow day mean. The request's
+	 * own zone (the browser's) first, then the viewer's profile, then UTC.
+	 */
+	timezone: string;
 }
 // #endregion
 
@@ -140,7 +146,7 @@ export async function resolveWalletContext(
 	if (!canReadLive(actor)) return null;
 	const db = getUserClient(actor.accessToken);
 
-	const [owners, walletsRes, permsRes, profileRes, payoutRes] = await Promise.all([
+	const [owners, walletsRes, permsRes, profileRes, payoutRes, personRes] = await Promise.all([
 		listOwners({ display: query.display, viewerCurrency: query.viewerCurrency }, actor),
 		db.schema("finance").from("wallets")
 			.select("id, owner_type, owner_id, currency, balance_cents, approval_threshold_cents"),
@@ -159,6 +165,10 @@ export async function resolveWalletContext(
 			.eq("provider", "stripe")
 			.eq("status", "verified")
 			.limit(1),
+		safeTimeZone(query.timezone)
+			? Promise.resolve({ data: null, error: null })
+			: db.schema("org").from("users_public").select("timezone").eq("user_id", actor.userId)
+				.maybeSingle(),
 	]);
 	if (walletsRes.error) throw new Error(`finance.wallets read failed: ${walletsRes.error.message}`);
 	if (permsRes.error) throw new Error(`finance.vault_permissions read failed: ${permsRes.error.message}`);
@@ -233,6 +243,9 @@ export async function resolveWalletContext(
 		money: await moneyProjector(display),
 		accounts,
 		target,
+		// A profile zone that cannot be read is no reason to fail the wallet: the calendar falls back to UTC.
+		timezone: safeTimeZone(query.timezone) ??
+			safeTimeZone((personRes.data as { timezone: string | null } | null)?.timezone) ?? "UTC",
 	};
 }
 // #endregion

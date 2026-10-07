@@ -381,6 +381,85 @@ BEGIN
     RETURN pg_catalog.to_jsonb(v_payment);
 END;
 $$;
+
+-- Name the checkout a started card / express top-up pays for (Decision #153), so the webhook that
+-- settles it can place the order even if the payer's browser never returns. The caller must be the
+-- payer, the payment must still be unpaid, and the caller must be able to spend from the basket NOW
+-- (finance.fn_can_manage_basket — the same guard place_wallet_order applies). Write-once: the same
+-- checkout again is a no-op; a DIFFERENT one for the same payment is refused, because one payment
+-- paying for two orders is exactly the case this exists to prevent. Nothing here prices anything — the
+-- units and the promo are re-checked against the catalogue by place_wallet_order when it runs.
+CREATE OR REPLACE FUNCTION finance.attach_checkout_order(p_payment_id uuid, p_checkout jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_payment finance.inbound_payments;
+    v_basket finance.baskets;
+    v_checkout jsonb;
+    v_key text := p_checkout ->> 'order_key';
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'auth: sign in to pay' USING ERRCODE = '42501';
+    END IF;
+    IF p_checkout IS NULL OR pg_catalog.jsonb_typeof(p_checkout) <> 'object'
+       OR NOT (p_checkout ?& ARRAY['basket_id', 'item_ids', 'currency', 'units', 'order_key'])
+       OR pg_catalog.jsonb_typeof(p_checkout -> 'item_ids') <> 'array'
+       OR pg_catalog.jsonb_array_length(p_checkout -> 'item_ids') = 0
+       OR pg_catalog.jsonb_typeof(p_checkout -> 'units') <> 'object' THEN
+        RAISE EXCEPTION 'checkout: expected basket_id, item_ids, currency, units and order_key'
+            USING ERRCODE = '22023';
+    END IF;
+    IF v_key IS NULL OR pg_catalog.length(v_key) < 8 OR pg_catalog.length(v_key) > 120 THEN
+        RAISE EXCEPTION 'checkout: an order key needs between 8 and 120 characters' USING ERRCODE = '22023';
+    END IF;
+
+    SELECT * INTO v_payment FROM finance.inbound_payments WHERE id = p_payment_id FOR UPDATE;
+    -- Someone else's payment is answered exactly like a missing one.
+    IF NOT FOUND OR v_payment.created_by <> v_uid THEN
+        RAISE EXCEPTION 'payment: that payment does not exist' USING ERRCODE = 'P0002';
+    END IF;
+    IF v_payment.purpose <> 'wallet_topup' THEN
+        RAISE EXCEPTION 'payment: only a top-up can pay for a checkout' USING ERRCODE = '22023';
+    END IF;
+    IF pg_catalog.upper(p_checkout ->> 'currency') <> v_payment.currency THEN
+        RAISE EXCEPTION 'checkout: the order must be in the payment''s currency' USING ERRCODE = '22023';
+    END IF;
+
+    SELECT * INTO v_basket FROM finance.baskets WHERE id = (p_checkout ->> 'basket_id')::uuid;
+    IF NOT FOUND OR NOT finance.fn_can_manage_basket(v_basket.owner_type, v_basket.owner_id) THEN
+        RAISE EXCEPTION 'checkout: that basket is not one you can pay for' USING ERRCODE = '42501';
+    END IF;
+
+    v_checkout := pg_catalog.jsonb_build_object(
+        'basket_id', v_basket.id,
+        'item_ids', p_checkout -> 'item_ids',
+        'currency', v_payment.currency,
+        'units', p_checkout -> 'units',
+        'promo_code', NULLIF(pg_catalog.btrim(COALESCE(p_checkout ->> 'promo_code', '')), ''),
+        'order_key', v_key
+    );
+    IF v_payment.checkout IS NOT NULL THEN
+        IF v_payment.checkout = v_checkout THEN
+            RETURN pg_catalog.to_jsonb(v_payment);
+        END IF;
+        RAISE EXCEPTION 'payment: this payment already pays for a different checkout' USING ERRCODE = 'PX409';
+    END IF;
+    IF v_payment.status <> 'requires_payment' THEN
+        RAISE EXCEPTION 'payment: this payment has already moved on' USING ERRCODE = 'PX409';
+    END IF;
+
+    UPDATE finance.inbound_payments
+       SET checkout = v_checkout, updated_at = pg_catalog.now()
+     WHERE id = v_payment.id
+    RETURNING * INTO v_payment;
+    RETURN pg_catalog.to_jsonb(v_payment);
+END;
+$$;
 -- #endregion
 
 -- #region 3. Card payments — the processor doors
@@ -417,6 +496,9 @@ DECLARE
     v_lock_status text := 'not_applicable';
     v_lock_error text;
     v_escrows uuid[] := '{}';
+    v_order jsonb;
+    v_order_id uuid;
+    v_order_error text;
 BEGIN
     IF NOT finance.fn_claim_stripe_event(p_event_id, 'payment_intent.succeeded') THEN
         RETURN finance.fn_stripe_event_replay(p_event_id);
@@ -504,17 +586,52 @@ BEGIN
         RETURNING * INTO v_payment;
     END IF;
 
+    -- A top-up that pays for a checkout (Decision #153) places that order now, AS THE PAYER, under the
+    -- order key the browser would use — the same claim swap and subtransaction as the escrow lock above.
+    -- If the browser placed it first (or places it later), place_wallet_order replays on the key and no
+    -- second order exists. A refusal (a price that moved, a line no longer for sale, a spending limit)
+    -- rolls back only the order: the money stays in the wallet, the reason is recorded, and the
+    -- browser's own attempt re-asks under the same key and shows it.
+    IF v_payment.purpose = 'wallet_topup' AND v_payment.checkout IS NOT NULL THEN
+        v_prev_sub := pg_catalog.current_setting('request.jwt.claim.sub', true);
+        BEGIN
+            PERFORM pg_catalog.set_config('request.jwt.claim.sub', v_payment.created_by::text, true);
+            v_order := finance.place_wallet_order(
+                (v_payment.checkout ->> 'basket_id')::uuid,
+                ARRAY(SELECT pg_catalog.jsonb_array_elements_text(v_payment.checkout -> 'item_ids')::uuid),
+                v_payment.checkout ->> 'currency',
+                v_payment.checkout -> 'units',
+                v_payment.checkout ->> 'promo_code',
+                v_payment.checkout ->> 'order_key'
+            );
+            v_order_id := (v_order ->> 'order_id')::uuid;
+        EXCEPTION WHEN OTHERS THEN
+            v_order_error := pg_catalog.left(SQLERRM, 400);
+        END;
+        PERFORM pg_catalog.set_config('request.jwt.claim.sub', COALESCE(v_prev_sub, ''), true);
+        UPDATE finance.inbound_payments
+           SET order_id = v_order_id,
+               order_error = v_order_error,
+               updated_at = pg_catalog.now()
+         WHERE id = v_payment.id
+        RETURNING * INTO v_payment;
+    END IF;
+
     PERFORM comms.fn_notify(
         v_payment.created_by,
         CASE WHEN v_lock_status = 'locked' THEN 'escrow.funded' ELSE 'wallet.topup_succeeded' END,
         CASE
             WHEN v_lock_status = 'locked' THEN 'Stage funded'
             WHEN v_lock_status = 'failed' THEN 'Payment received — stage not funded'
+            WHEN v_order_id IS NOT NULL THEN 'Payment received — order placed'
+            WHEN v_order_error IS NOT NULL THEN 'Payment received — order not placed'
             ELSE 'Top-up received'
         END,
         CASE
             WHEN v_lock_status = 'locked' THEN 'Your card payment arrived and the stage''s escrow is secured.'
             WHEN v_lock_status = 'failed' THEN 'Your card payment is in the wallet, but the stage could not be funded: ' || COALESCE(v_lock_error, 'unknown reason')
+            WHEN v_order_id IS NOT NULL THEN 'Your payment arrived and your order has been placed.'
+            WHEN v_order_error IS NOT NULL THEN 'Your payment is in your wallet, but the order could not be placed: ' || v_order_error
             ELSE 'Your card payment has been added to your wallet.'
         END,
         'inbound_payments',
@@ -527,7 +644,9 @@ BEGIN
         'payment_id', v_payment.id,
         'transaction_id', v_tx,
         'lock_status', v_payment.lock_status,
-        'locked_escrow_ids', pg_catalog.to_jsonb(v_payment.locked_escrow_ids)
+        'locked_escrow_ids', pg_catalog.to_jsonb(v_payment.locked_escrow_ids),
+        'order_id', v_payment.order_id,
+        'order_error', v_payment.order_error
     ));
 END;
 $$;

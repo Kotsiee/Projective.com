@@ -8,17 +8,21 @@ import type {
 	BudgetBurn,
 	BusinessExtras,
 	CategorySlice,
+	FlowGrain,
 	FundableStage,
 	FundingView,
 	IncomeSmootherState,
 	IncomingItem,
 	InvoicesView,
+	KindSlice,
 	MethodsView,
 	MoneyView,
 	PaymentMethodView,
 	PayoutsView,
 	PersonalExtras,
+	ProjectAllocation,
 	ProjectFlow,
+	ReleaseItem,
 	SpendApprovalView,
 	SpendingCapView,
 	SplitRuleView,
@@ -36,19 +40,41 @@ import type {
 	WalletVariant,
 	WalletVerification,
 } from "@projective/types/finance";
-import { currencyExponent, PLATFORM_FEE_BP, walletVariant } from "@projective/types/finance";
+import {
+	allocationSlices,
+	currencyExponent,
+	PLATFORM_FEE_BP,
+	walletVariant,
+} from "@projective/types/finance";
 import { getUserClient } from "../../core/supabase.ts";
 import { fetchPublicMedia, mediaUrl } from "../files/public-media.ts";
 import {
+	addGrain,
+	bucketSeries,
 	dateLabel,
+	type FlowBucketRow,
 	flowSeries,
+	kindTotals,
 	LEDGER_WINDOW,
+	type LedgerFilter,
 	ledgerPage,
+	listLedger,
+	localDay,
+	projectsOfRows,
+	rangeStart,
+	readFirstMovement,
+	readFlowBuckets,
 	readLedger,
 	reasonMeta,
+	reasonsForKinds,
+	reasonsMatching,
 	stageFacts,
+	type StageFacts,
+	stageHref,
 	toLedgerLines,
+	truncateDay,
 	type TxnRow,
+	walletsMatching,
 } from "./wallet-ledger.ts";
 import {
 	aggregateRef,
@@ -823,7 +849,7 @@ export async function overviewOf(ctx: WalletContext): Promise<WalletOverview> {
 				clearingLabel: "On active stage",
 				clearingAt: null,
 				clearingFraction: 0,
-				href: facts ? clip(facts.stageSlug ? `/projects/${facts.projectSlug}/${facts.stageSlug}` : `/projects/${facts.projectSlug}`, 200) : null,
+				href: facts ? clip(stageHref(facts), 200) : null,
 			});
 		}
 	}
@@ -892,6 +918,7 @@ export async function overviewOf(ctx: WalletContext): Promise<WalletOverview> {
 		onHold,
 		lifetime,
 		capital: ctx.money.derived(capitalMinor),
+		allocation: allocationSlices({ available, pending: pendingView, locked, on_hold: onHold }),
 		lockedStageCount: new Set(liveEscrows.map((e) => e.project_stage_id)).size,
 		heldCaseCount: disputed.length,
 		incoming: incoming.slice(0, 12),
@@ -937,6 +964,7 @@ async function aggregateOverview(ctx: WalletContext): Promise<WalletOverview> {
 		onHold: ctx.money.derived(0),
 		lifetime,
 		capital: ref.available,
+		allocation: [],
 		lockedStageCount: 0,
 		heldCaseCount: 0,
 		incoming: [],
@@ -966,8 +994,12 @@ export function switcherOf(ctx: WalletContext): WalletSwitcher {
 
 // #region Transactions + activity
 export function transactionsOf(ctx: WalletContext, params: TransactionListParams): Promise<TransactionPage> {
-	const ids = ctx.target === "aggregate" ? ctx.accounts.flatMap(walletIds) : walletIds(ctx.target);
-	return ledgerPage(ctx, ids, params);
+	return ledgerPage(ctx, walletsInView(ctx), params);
+}
+
+/** Every wallet row the read covers: the target's, or every account's for the rollup. */
+function walletsInView(ctx: WalletContext): string[] {
+	return ctx.target === "aggregate" ? ctx.accounts.flatMap(walletIds) : walletIds(ctx.target);
 }
 
 /** A text cell as a spreadsheet will read it: quoted when it must be, and never a formula. */
@@ -979,123 +1011,384 @@ function csvText(value: string | null): string {
 	return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
+/** The most lines one export carries. */
+const EXPORT_LIMIT = LEDGER_WINDOW;
+const EXPORT_PAGE = 200;
+
 /**
- * The wallet's ledger as CSV, for the rig's Export control. Every line in the read window, newest
- * first, with each amount in the currency it was STORED in — an export is a record, and a record in a
- * converted currency would change every time the rates did. Debits are negative.
+ * The wallet's ledger as CSV — the lines the Transactions page is showing, with its filters applied
+ * (direction, line family, date range, search), newest first, up to {@link EXPORT_LIMIT} lines, read
+ * page by page through the same keyset door. Each amount is in the currency it was STORED in — an
+ * export is a record, and a record in a converted currency would change every time the rates did.
+ * Debits are negative.
  */
-export async function ledgerCsvOf(ctx: WalletContext): Promise<{ filename: string; csv: string }> {
-	const accounts = ctx.target === "aggregate" ? ctx.accounts : [ctx.target];
-	const rows = await readLedger(ctx, accounts.flatMap(walletIds), { limit: LEDGER_WINDOW });
-	const lines = await toLedgerLines(ctx, rows);
-	const out = ["Date,Description,Counterparty,Category,Status,Amount,Currency,Reference"];
-	for (const line of lines) {
-		const held = line.amount.origin ?? line.amount;
-		const exponent = currencyExponent(held.currency);
-		const signed = (line.direction === "debit" ? -held.minor : held.minor) / 10 ** exponent;
-		out.push([
-			line.at,
-			csvText(line.title),
-			csvText(line.counterparty),
-			line.category,
-			line.fundState,
-			signed.toFixed(exponent),
-			held.currency.toUpperCase(),
-			csvText(line.refId),
-		].join(","));
+export async function ledgerCsvOf(
+	ctx: WalletContext,
+	params: TransactionListParams = {},
+): Promise<{ filename: string; csv: string }> {
+	const ids = walletsInView(ctx);
+	const search = params.search?.trim() || null;
+	const filter: LedgerFilter = {
+		direction: params.direction ?? null,
+		reasons: reasonsForKinds(params.kinds),
+		from: params.from ?? rangeStart(params.range, Date.now(), ctx.timezone),
+		to: params.to ?? null,
+		search,
+		searchReasons: search ? reasonsMatching(search) : [],
+		searchWallets: search ? walletsMatching(ctx.accounts, search) : [],
+		after: null,
+	};
+	const out = ["Date,Description,Counterparty,Category,Status,Amount,Currency,Card,Reference"];
+	let read = 0;
+	while (read < EXPORT_LIMIT) {
+		const rows = await listLedger(ctx, ids, filter, Math.min(EXPORT_PAGE, EXPORT_LIMIT - read));
+		if (rows.length === 0) break;
+		read += rows.length;
+		for (const line of await toLedgerLines(ctx, rows)) {
+			const held = line.amount.origin ?? line.amount;
+			const exponent = currencyExponent(held.currency);
+			const signed = (line.direction === "debit" ? -held.minor : held.minor) / 10 ** exponent;
+			const card = line.instrument
+				? `${line.instrument.brand}${line.instrument.last4 ? ` ${line.instrument.last4}` : ""}`
+				: null;
+			out.push([
+				line.at,
+				csvText(line.title),
+				csvText(line.counterparty),
+				line.kind,
+				line.settlement,
+				signed.toFixed(exponent),
+				held.currency.toUpperCase(),
+				csvText(card),
+				csvText(line.subject?.label ?? line.refId),
+			].join(","));
+		}
+		const last = rows[rows.length - 1];
+		if (rows.length < EXPORT_PAGE) break;
+		filter.after = { at: last.created_at, id: last.id };
 	}
 	const who = ctx.target === "aggregate" ? "all-accounts" : ctx.target.scope;
-	const day = new Date().toISOString().slice(0, 10);
+	const day = localDay(Date.now(), ctx.timezone);
 	return { filename: `projective-wallet-${who}-${day}.csv`, csv: `${out.join("\r\n")}\r\n` };
 }
 
-/** A bounded cash-flow window: how many days it spans and how many equal slices its chart draws. */
-const ACTIVITY_WINDOW: Readonly<Record<Exclude<ActivityRange, "all">, { days: number; buckets: number }>> = {
-	"7d": { days: 7, buckets: 7 },
-	"30d": { days: 30, buckets: 30 },
-	"90d": { days: 90, buckets: 13 },
-	"180d": { days: 180, buckets: 26 },
-	"12m": { days: 365, buckets: 12 },
-	"5y": { days: 1826, buckets: 20 },
+/**
+ * Each bounded window as calendar buckets: how many, of what grain. The window always ends with the
+ * bucket holding today, so "the last 7 days" is today and the six days before it, and "the last 12
+ * months" is this month and the eleven before it.
+ */
+const ACTIVITY_WINDOW: Readonly<
+	Record<Exclude<ActivityRange, "all">, { grain: FlowGrain; buckets: number }>
+> = {
+	"7d": { grain: "day", buckets: 7 },
+	"30d": { grain: "day", buckets: 30 },
+	"90d": { grain: "week", buckets: 13 },
+	"180d": { grain: "week", buckets: 26 },
+	"12m": { grain: "month", buckets: 12 },
+	"5y": { grain: "month", buckets: 60 },
 };
 
+/** The most buckets a series draws (the Zod cap); a longer "all" window keeps its newest buckets. */
+const MAX_BUCKETS = 64;
+
 /**
- * The `all` window, sized to the ledger it covers: from the oldest movement read to today, sliced by day
- * up to a month, by week up to half a year, by month up to two years, and in twenty equal slices beyond.
- * A wallet with no movements still draws a week, so the chart has an axis to say "nothing yet" on.
+ * The `all` window, sized to the ledger it covers: from the oldest movement to today, by day up to a
+ * month, by week up to half a year, by month beyond. A wallet with no movements still draws a week, so
+ * the chart has an axis to say "nothing yet" on.
  */
-function allWindow(rows: readonly { created_at: string }[], now: number): { days: number; buckets: number } {
-	const oldest = rows.length > 0 ? Date.parse(rows[rows.length - 1].created_at) : Number.NaN;
-	const days = Number.isFinite(oldest) ? Math.max(7, Math.ceil((now - oldest) / DAY) + 1) : 7;
-	if (days <= 31) return { days, buckets: days };
-	if (days <= 182) return { days, buckets: Math.ceil(days / 7) };
-	if (days <= 730) return { days, buckets: Math.min(24, Math.ceil(days / 30.44)) };
-	return { days, buckets: 20 };
+function allWindow(firstDay: string | null, today: string): { grain: FlowGrain; firstDay: string } {
+	if (!firstDay) return { grain: "day", firstDay: addGrain(today, "day", -6) };
+	const days =
+		Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${firstDay}T00:00:00Z`)) / DAY) + 1;
+	if (days <= 31) {
+		return { grain: "day", firstDay: days < 7 ? addGrain(today, "day", -6) : firstDay };
+	}
+	if (days <= 182) return { grain: "week", firstDay: truncateDay(firstDay, "week") };
+	const first = truncateDay(firstDay, "month");
+	const floor = addGrain(truncateDay(today, "month"), "month", -(MAX_BUCKETS - 1));
+	return { grain: "month", firstDay: first < floor ? floor : first };
 }
+
+/** Sums database bucket rows per origin currency, then converts once. */
+function sumRows(ctx: WalletContext, rows: readonly FlowBucketRow[]): MoneyView {
+	return sumOf(ctx.money, rows.map((r) => ({ minor: r.total_cents, currency: r.currency })));
+}
+
+/** Release-window days before released escrow becomes spendable (finance-model §Fund states). */
+const SAFETY_WINDOW_DAYS = 7;
 
 export async function activityOf(ctx: WalletContext, range: ActivityRange): Promise<ActivityView> {
 	const now = Date.now();
-	const bounded = range === "all" ? null : ACTIVITY_WINDOW[range];
-	const since = bounded ? new Date(now - bounded.days * DAY).toISOString() : undefined;
-	const accounts = ctx.target === "aggregate" ? ctx.accounts : [ctx.target];
-	const rows = await readLedger(ctx, accounts.flatMap(walletIds), { since, limit: LEDGER_WINDOW });
-	const { days, buckets } = bounded ?? allWindow(rows, now);
-
-	const projects = new Map<string, string>();
-	const lines = await toLedgerLines(ctx, rows, projects);
-	const byCategoryMinor = new Map<TxnCategory, number>();
-	const byProjectMinor = new Map<string, number>();
-	let totalIn = 0;
-	let totalOut = 0;
-	for (const line of lines) {
-		const minor = line.amount.minor;
-		byCategoryMinor.set(line.category, (byCategoryMinor.get(line.category) ?? 0) + minor);
-		if (line.refId) byProjectMinor.set(line.refId, (byProjectMinor.get(line.refId) ?? 0) + minor);
-		if (line.direction === "credit") totalIn += minor;
-		else totalOut += minor;
+	const ids = walletsInView(ctx);
+	const today = localDay(now, ctx.timezone);
+	let grain: FlowGrain;
+	let firstDay: string;
+	if (range === "all") {
+		const first = await readFirstMovement(ctx, ids);
+		({ grain, firstDay } = allWindow(
+			first ? localDay(Date.parse(first), ctx.timezone) : null,
+			today,
+		));
+	} else {
+		const window = ACTIVITY_WINDOW[range];
+		grain = window.grain;
+		firstDay = addGrain(truncateDay(today, grain), grain, -(window.buckets - 1));
 	}
-	const categorySum = [...byCategoryMinor.values()].reduce((a, b) => a + b, 0) || 1;
-	const byCategory: CategorySlice[] = [...byCategoryMinor.entries()]
-		.sort((a, b) => b[1] - a[1])
+	const lastDay = truncateDay(today, grain);
+
+	// The database truncates in the viewer's zone; asking from a day before the first local midnight
+	// covers every UTC offset, and the rows before the window's first bucket are dropped here.
+	const fromInstant = new Date(Date.parse(`${firstDay}T00:00:00Z`) - DAY).toISOString();
+	const bucketRows = (await readFlowBuckets(ctx, ids, { from: fromInstant, to: null, grain }))
+		.filter((r) => r.bucket >= firstDay);
+	const credits = bucketRows.filter((r) => r.direction === "credit");
+	const debits = bucketRows.filter((r) => r.direction === "debit");
+	const totalIn = sumRows(ctx, credits);
+	const totalOut = sumRows(ctx, debits);
+
+	const byCategoryHeld = new Map<TxnCategory, FlowBucketRow[]>();
+	for (const r of bucketRows) {
+		const category = reasonMeta(r.reason, r.direction).category;
+		byCategoryHeld.set(category, [...(byCategoryHeld.get(category) ?? []), r]);
+	}
+	const categoryMinor = [...byCategoryHeld.entries()].map(([category, rows]) => ({
+		category,
+		minor: sumRows(ctx, rows).minor,
+	}));
+	const categorySum = categoryMinor.reduce((a, b) => a + b.minor, 0) || 1;
+	const byCategory: CategorySlice[] = categoryMinor
+		.sort((a, b) => b.minor - a.minor)
 		.slice(0, 12)
-		.map(([category, minor]) => ({
+		.map(({ category, minor }) => ({
 			category,
 			amount: ctx.money.derived(minor),
 			shareBp: Math.round((minor / categorySum) * 10000),
 		}));
-	const byProject: ProjectFlow[] = [...byProjectMinor.entries()]
-		.sort((a, b) => b[1] - a[1])
+
+	const kinds = kindTotals(ctx, bucketRows);
+	const kindVolume = kinds.reduce((a, k) => a + k.inMinor + k.outMinor, 0) || 1;
+	const byKind: KindSlice[] = kinds.slice(0, 12).map((k) => ({
+		kind: k.kind,
+		amountIn: ctx.money.derived(k.inMinor),
+		amountOut: ctx.money.derived(k.outMinor),
+		volume: ctx.money.derived(k.inMinor + k.outMinor),
+		shareBp: Math.min(10000, Math.round(((k.inMinor + k.outMinor) / kindVolume) * 10000)),
+		lines: k.lines,
+	}));
+
+	// What each project moved: escrow-backed lines carry their project, read through the bounded window
+	// (the most recent thousand lines of the span) because the attribution is a join, not a sum.
+	const rows = await readLedger(ctx, ids, { since: fromInstant, limit: LEDGER_WINDOW });
+	const inWindow = rows.filter((r) => localDay(Date.parse(r.created_at), ctx.timezone) >= firstDay);
+	const projectOf = await projectsOfRows(ctx, inWindow);
+	const movedHeld = new Map<
+		string,
+		{ title: string; href: string; amounts: { minor: number; currency: string }[] }
+	>();
+	for (const row of inWindow) {
+		const project = projectOf.get(row.id);
+		if (!project) continue;
+		const entry = movedHeld.get(project.slug) ??
+			{ title: project.title, href: project.href, amounts: [] };
+		entry.amounts.push({ minor: row.amount_cents, currency: row.currency });
+		movedHeld.set(project.slug, entry);
+	}
+	const moved = new Map(
+		[...movedHeld].map(([slug, e]) => [slug, { ...e, value: sumOf(ctx.money, e.amounts) }]),
+	);
+	const byProject: ProjectFlow[] = [...moved.entries()]
+		.sort((a, b) => b[1].value.minor - a[1].value.minor)
 		.slice(0, 24)
-		.map(([id, minor]) => ({ id: clip(id, 64), name: clip(projects.get(id) ?? id, 120), amount: ctx.money.derived(minor) }));
+		.map(([id, e]) => ({ id: clip(id, 64), name: clip(e.title, 120), amount: e.value }));
 
 	let lockedCapital: MoneyView | null = null;
+	let projectedIncome: MoneyView | null = null;
 	let burnDown: BudgetBurn | null = null;
+	let releases: ReleaseItem[] = [];
+	let topProjects: ProjectAllocation[] = [];
 	if (ctx.target !== "aggregate") {
 		const account = ctx.target;
-		const escrows = await escrowsFor(ctx, account);
+		const [escrows, pending] = await Promise.all([
+			escrowsFor(ctx, account),
+			pendingFor(ctx, account),
+		]);
+		const live = escrows.filter(isLive);
 		const seller = account.scope === "team" || (account.scope === "personal" && ctx.viewer.isFreelancer);
+		// The same figure the Overview's meter shows, summed the same way (held currency, converted once).
+		lockedCapital = sumOf(
+			ctx.money,
+			live.map((e) => ({ minor: escrowValue(account, e), currency: e.currency })),
+		);
 		if (seller) {
-			// The same figure the Overview's meter shows, summed the same way (held currency, converted once).
-			lockedCapital = sumOf(
-				ctx.money,
-				escrows.filter(isLive).map((e) => ({ minor: escrowValue(account, e), currency: e.currency })),
-			);
+			// What a seller has coming and cannot spend yet: escrow on active stages (net of the fee already
+			// set) plus releases still inside their safety window.
+			projectedIncome = sumOf(ctx.money, [
+				...live.map((e) => ({ minor: escrowValue(account, e), currency: e.currency })),
+				...pending.map((p) => ({ minor: p.amount_cents, currency: p.currency })),
+			]);
 		}
 		if (account.scope === "business") burnDown = (await businessExtras(ctx, account, escrows)).burnDown;
+
+		const escrowById = new Map(escrows.map((e) => [e.id, e]));
+		const stages = await stageFacts(ctx, [
+			...live.map((e) => e.project_stage_id),
+			...pending.flatMap((p) => {
+				const e = p.escrow_id ? escrowById.get(p.escrow_id) : undefined;
+				return e ? [e.project_stage_id] : [];
+			}),
+		]);
+		releases = releaseSchedule(ctx, account, live, pending, escrowById, stages);
+		topProjects = projectAllocation(ctx, account, live, pending, escrowById, stages, moved);
 	}
+
 	return {
 		range,
-		flow: flowSeries(ctx, rows, days, buckets, now),
+		grain,
+		timezone: ctx.timezone,
+		flow: bucketSeries(ctx, bucketRows, firstDay, lastDay, grain),
 		byCategory,
+		byKind,
 		byProject,
-		totalIn: ctx.money.derived(totalIn),
-		totalOut: ctx.money.derived(totalOut),
-		net: ctx.money.derived(totalIn - totalOut),
+		topProjects,
+		releases,
+		totalIn,
+		totalOut,
+		net: ctx.money.derived(totalIn.minor - totalOut.minor),
 		lockedCapital,
-		// Held escrow IS the income a seller has coming: what the stages already fund, net of the fee.
-		projectedIncome: lockedCapital,
+		projectedIncome,
 		burnDown,
 	};
+}
+
+/**
+ * The projected clearances, soonest first: releases clearing their window on a known date, then
+ * escrow on stages with a due date (projected to clear a safety window after it), then escrow awaiting
+ * approval with nothing to date it. Escrow is grouped per stage, as the overview groups it.
+ */
+function releaseSchedule(
+	ctx: WalletContext,
+	account: WalletAccount,
+	live: readonly EscrowRow[],
+	pending: readonly PendingRow[],
+	escrowById: ReadonlyMap<string, EscrowRow>,
+	stages: ReadonlyMap<string, StageFacts>,
+): ReleaseItem[] {
+	const items: ReleaseItem[] = [];
+	for (const p of pending) {
+		const escrow = p.escrow_id ? escrowById.get(p.escrow_id) : undefined;
+		const stage = escrow ? stages.get(escrow.project_stage_id) : undefined;
+		items.push({
+			id: clip(`pending-${p.id}`, 64),
+			label: clip(stage ? `${stage.projectTitle} · ${stage.stageName}` : "Release clearing", 160),
+			href: stage ? clip(stageHref(stage), 200) : null,
+			amount: money(ctx, p.amount_cents, p.currency),
+			state: "pending",
+			at: new Date(p.available_at).toISOString(),
+			basis: "clearing",
+		});
+	}
+	const byStage = new Map<string, EscrowRow[]>();
+	for (const e of live) {
+		byStage.set(e.project_stage_id, [...(byStage.get(e.project_stage_id) ?? []), e]);
+	}
+	for (const [stageId, group] of byStage) {
+		const stage = stages.get(stageId);
+		const due = stage?.dueAt ? Date.parse(stage.dueAt) : Number.NaN;
+		items.push({
+			id: clip(`escrow-${stageId}`, 64),
+			label: clip(stage ? `${stage.projectTitle} · ${stage.stageName}` : "Escrow on a stage", 160),
+			href: stage ? clip(stageHref(stage), 200) : null,
+			amount: sumOf(
+				ctx.money,
+				group.map((e) => ({ minor: escrowValue(account, e), currency: e.currency })),
+			),
+			state: "locked",
+			at: Number.isFinite(due) ? new Date(due + SAFETY_WINDOW_DAYS * DAY).toISOString() : null,
+			basis: Number.isFinite(due) ? "stage_due" : "awaiting_approval",
+		});
+	}
+	return items
+		.sort((a, b) => (a.at === null ? 1 : b.at === null ? -1 : a.at.localeCompare(b.at)))
+		.slice(0, 24);
+}
+
+/**
+ * Projects ranked by the capital this wallet has allocated to them — escrow held on their stages plus
+ * releases still clearing — then by what they moved in the window, so a project that only moved money
+ * still lists after the ones holding it.
+ */
+function projectAllocation(
+	ctx: WalletContext,
+	account: WalletAccount,
+	live: readonly EscrowRow[],
+	pending: readonly PendingRow[],
+	escrowById: ReadonlyMap<string, EscrowRow>,
+	stages: ReadonlyMap<string, StageFacts>,
+	moved: ReadonlyMap<string, { title: string; href: string; value: MoneyView }>,
+): ProjectAllocation[] {
+	interface Acc {
+		title: string;
+		href: string;
+		held: { minor: number; currency: string }[];
+		clearing: { minor: number; currency: string }[];
+	}
+	const byProject = new Map<string, Acc>();
+	const entry = (stage: StageFacts): Acc => {
+		const found = byProject.get(stage.projectSlug);
+		if (found) return found;
+		const fresh: Acc = {
+			title: stage.projectTitle,
+			href: `/projects/${stage.projectSlug}`,
+			held: [],
+			clearing: [],
+		};
+		byProject.set(stage.projectSlug, fresh);
+		return fresh;
+	};
+	for (const e of live) {
+		const stage = stages.get(e.project_stage_id);
+		if (stage) entry(stage).held.push({ minor: escrowValue(account, e), currency: e.currency });
+	}
+	for (const p of pending) {
+		const escrow = p.escrow_id ? escrowById.get(p.escrow_id) : undefined;
+		const stage = escrow ? stages.get(escrow.project_stage_id) : undefined;
+		if (stage) entry(stage).clearing.push({ minor: p.amount_cents, currency: p.currency });
+	}
+	for (const [slug, m] of moved) {
+		if (!byProject.has(slug)) {
+			byProject.set(slug, { title: m.title, href: m.href, held: [], clearing: [] });
+		}
+	}
+	const rows = [...byProject.entries()].map(([slug, acc]) => {
+		const held = acc.held.length > 0 ? sumOf(ctx.money, acc.held) : ctx.money.derived(0);
+		const clearing = acc.clearing.length > 0
+			? sumOf(ctx.money, acc.clearing)
+			: ctx.money.derived(0);
+		return {
+			slug,
+			acc,
+			held,
+			clearing,
+			allocated: ctx.money.derived(held.minor + clearing.minor),
+			moved: moved.get(slug)?.value ?? ctx.money.derived(0),
+		};
+	});
+	const allocatedSum = rows.reduce((a, r) => a + r.allocated.minor, 0);
+	return rows
+		.sort((a, b) => b.allocated.minor - a.allocated.minor || b.moved.minor - a.moved.minor)
+		.slice(0, 12)
+		.map((r) => ({
+			id: clip(r.slug, 64),
+			name: clip(r.acc.title, 120),
+			href: clip(r.acc.href, 200),
+			held: r.held,
+			clearing: r.clearing,
+			allocated: r.allocated,
+			moved: r.moved,
+			shareBp: allocatedSum > 0
+				? Math.min(10000, Math.round((r.allocated.minor / allocatedSum) * 10000))
+				: 0,
+		}));
 }
 // #endregion
 
@@ -1190,7 +1483,9 @@ export async function fundingOf(ctx: WalletContext): Promise<FundingView> {
 			amount: money(ctx, Number(r.amount_cents) || 0, r.currency),
 			interval: r.interval,
 			sourceLabel: source ? methodLabel(source) : null,
-			nextRunLabel: r.next_run_at ? clip(dateLabel(r.next_run_at), 60) : "Not scheduled",
+			nextRunLabel: r.next_run_at
+				? clip(dateLabel(r.next_run_at, Date.now(), ctx.timezone), 60)
+				: "Not scheduled",
 			active: r.active,
 			failureNote: r.failure_count > 0 && r.last_error ? clip(`Last run failed — ${r.last_error}`, 200) : null,
 		};
@@ -1282,7 +1577,7 @@ export async function payoutsOf(ctx: WalletContext): Promise<PayoutsView> {
 		status: p.status,
 		destinationLabel: clip(destinations.find((d) => d.id === p.destination_method_id)?.label ?? "Bank account", 120),
 		at: new Date(p.created_at).toISOString(),
-		dateLabel: dateLabel(p.created_at),
+		dateLabel: dateLabel(p.created_at, Date.now(), ctx.timezone),
 	}));
 
 	return {
@@ -1479,7 +1774,7 @@ export async function accessOf(ctx: WalletContext): Promise<AccessView> {
 				reason: clip(a.reason, 400),
 				status: a.status,
 				at: new Date(a.created_at).toISOString(),
-				dateLabel: dateLabel(a.created_at, now),
+				dateLabel: dateLabel(a.created_at, now, ctx.timezone),
 			};
 		}),
 		audit: audit.map((a) => {
@@ -1493,7 +1788,7 @@ export async function accessOf(ctx: WalletContext): Promise<AccessView> {
 				amount: money(ctx, Number(a.amount_cents) || 0, a.currency),
 				label: clip(`${face?.name ?? "A member"} · ${kind}`, 200),
 				at: new Date(a.created_at).toISOString(),
-				dateLabel: dateLabel(a.created_at, now),
+				dateLabel: dateLabel(a.created_at, now, ctx.timezone),
 			};
 		}),
 		viewerCapabilities: account.capabilities,

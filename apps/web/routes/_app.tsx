@@ -8,6 +8,7 @@ import ImageFallbackBridge from "@web/features/shell/islands/ImageFallbackBridge
 import OfflineBridge from "@web/features/shell/islands/OfflineBridge.island.tsx";
 import ExploreHistoryTracker from "@web/features/explore/islands/ExploreHistoryTracker.island.tsx";
 import { DevMount } from "@web/features/devtools/components/DevMount.tsx";
+import { a11yRootAttributes, DEFAULT_A11Y } from "@web/utils/a11y-context.ts";
 
 // Precompute the default light + dark token rules once (SSR). Injected as a <style> so the very
 // first paint is correctly themed for either mode with no flash; the DesignSystemRoot island then
@@ -79,11 +80,16 @@ export default define.page(function App({ Component, state }) {
 	// discipline `data-theme` gets above, for the same reason. `state.currency` is always set in a
 	// real request; the fallbacks only cover a render outside the middleware (tests, error pages).
 	const currency = state.currency;
+	// The accessibility overlays the viewer saved (the `pj.a11y` cookie, Decision #150) — written onto
+	// <html> here so high contrast, OpenDyslexic, a CVD shift or reduced motion are in force for the
+	// very first paint. Only overlays that are ON become attributes; the OS media queries cover the rest.
+	const a11y = a11yRootAttributes(state.a11y ?? DEFAULT_A11Y);
 	return (
 		<html
 			lang="en"
 			data-currency={currency?.displayCurrency ?? "GBP"}
 			data-currency-locale={currency?.locale ?? "en-GB"}
+			{...a11y}
 		>
 			<head>
 				<meta charset="utf-8" />
@@ -111,6 +117,17 @@ export default define.page(function App({ Component, state }) {
 					dangerouslySetInnerHTML={{
 						__html:
 							`(()=>{try{const t=localStorage.getItem("theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=t;}catch(_){/* noop */}})();`,
+					}}
+				/>
+				<script
+					// Restore the accessibility overlays before first paint on a device whose `pj.a11y` cookie
+					// is gone but whose localStorage copy survived — and re-write the cookie so the next
+					// request paints server-side again. When the cookie exists the server already rendered
+					// it, so this does nothing. Literal key MUST match LocalKeys.A11Y_PREFERENCES
+					// ("pj.local.a11y"); the cookie format MUST match utils/a11y-context.ts serializeA11y.
+					dangerouslySetInnerHTML={{
+						__html:
+							`(()=>{try{if(document.cookie.indexOf("pj.a11y=")>=0)return;const p=JSON.parse(localStorage.getItem("pj.local.a11y")||"null");if(!p)return;const d=document.documentElement.dataset,ok=(v,a)=>a.indexOf(v)>=0;const c=ok(p.contrast,["standard","high"])?p.contrast:"standard",f=ok(p.font,["sans","dyslexic"])?p.font:"sans",v=ok(p.cvd,["none","protan","deutan","tritan"])?p.cvd:"none",m=ok(p.motion,["standard","reduced"])?p.motion:"standard";if(c==="high")d.contrast="high";if(f==="dyslexic")d.font="dyslexic";if(v!=="none")d.cvd=v;const r=ok(p.dir,["ltr","rtl","auto"])?p.dir:"auto";if(m==="reduced")d.motion="reduced";if(r!=="auto")document.documentElement.dir=r;document.cookie="pj.a11y=contrast-"+c+"_font-"+f+"_cvd-"+v+"_motion-"+m+"_dir-"+r+"; path=/; max-age=31536000; samesite=lax";}catch(_){/* noop */}})();`,
 					}}
 				/>
 				<script

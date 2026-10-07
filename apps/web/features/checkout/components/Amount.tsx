@@ -70,6 +70,16 @@ export interface AmountProps {
 	 * inputs to.
 	 */
 	stacked?: boolean;
+	/**
+	 * Print the figure in ITS OWN currency, never re-projected into the viewer's.
+	 *
+	 * `MoneyView` follows the viewer's currency by default, which is right for every price. It is wrong
+	 * for exactly one figure: the amount a processor will charge (Decision #153), which is a fact in
+	 * the seller's currency — re-projected, "US$229.00 charged" would read back as the AED total it is
+	 * meant to qualify. Pinning hands `MoneyView` the figure's own currency as the display currency,
+	 * so it converts nothing.
+	 */
+	pinned?: boolean;
 	class?: string;
 }
 // #endregion
@@ -112,6 +122,7 @@ export function Amount(props: AmountProps): JSX.Element {
 				tone={tone === "credit" ? "credit" : tone === "default" ? "default" : "muted"}
 				sign={sign}
 				hideOrigin={props.hideOrigin}
+				displayCurrency={props.pinned ? value.currency : undefined}
 			/>
 			{srLabel ? <span class="ui-visually-hidden">{srLabel}</span> : null}
 		</span>

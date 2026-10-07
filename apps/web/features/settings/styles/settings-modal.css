@@ -1,0 +1,159 @@
+/*
+ * The contextual Settings modal (Decision #150): a `Dialog` at `--overlay-w-xl` × `--overlay-h-lg`
+ * whose body is a split workspace — the search + tree pane beside the section pane — so the dialog's
+ * own padded, scrolling body steps aside and each pane scrolls itself (one scroller per axis,
+ * DESIGN_SYSTEM §B.10.8). Below the modal's own container width the split becomes a drill-down.
+ */
+
+/* #region Panel */
+/* The Dialog caps every panel at `--overlay-w-lg`; a two-pane workspace takes the next step up. */
+.ui-dialog__panel.stg-modal {
+	max-inline-size: var(--overlay-w-xl);
+}
+
+.stg-modal .ui-dialog__header {
+	padding-block: var(--space-3);
+}
+
+.stg-modal .ui-dialog__body {
+	display: flex;
+	flex-direction: column;
+	min-block-size: 0;
+	padding: 0;
+	overflow: hidden;
+}
+
+.stg-modal__head {
+	display: flex;
+	flex: 1 1 auto;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.stg-modal__titles {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.stg-modal__title {
+	margin: 0;
+	font-size: var(--text-lg);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+}
+
+.stg-modal__meta {
+	overflow: hidden;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.stg-modal__meta::before {
+	content: "·";
+	margin-inline-end: var(--space-2);
+}
+
+.stg-modal__tools {
+	display: flex;
+	flex: none;
+	align-items: center;
+	gap: var(--space-1);
+}
+
+.stg-modal__loading {
+	margin: 0;
+	padding: var(--space-5);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Split workspace */
+.stg-modal__body {
+	container: stg-modal / inline-size;
+	display: flex;
+	flex: 1 1 auto;
+	min-block-size: 0;
+}
+
+.stg-modal__split {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	block-size: 100%;
+}
+
+.stg-modal__navpane,
+.stg-modal__contentpane {
+	display: flex;
+	flex-direction: column;
+	min-block-size: 0;
+}
+
+/* The tree pane is the one tonal step in the modal: a solid ramp tone, never a wash (§B.9.8). */
+.stg-modal__navpane {
+	background: var(--surface-1);
+}
+
+.stg-modal__nav {
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding: var(--space-3);
+}
+
+.stg-modal__content {
+	--stg-pane-bg: var(--surface);
+	flex: 1 1 auto;
+	min-block-size: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding: var(--space-5) var(--space-6) 0;
+}
+
+.stg-modal__content .stg-section {
+	padding-block-end: var(--space-6);
+}
+
+.stg-modal__content .stg-footer {
+	margin-block-start: calc(var(--space-6) * -1);
+}
+
+.stg-modal__back {
+	display: none;
+}
+/* #endregion */
+
+/* #region Narrow: a drill-down instead of a split */
+@container stg-modal (max-width: 40rem) {
+	.stg-modal__split > .ui-splitter__gutter {
+		display: none;
+	}
+
+	.stg-modal__split > .ui-splitter__pane {
+		flex: 1 1 100%;
+	}
+
+	/* `SplitterPanel`'s class lands on the pane's CONTENT; the pane box itself is what must go. */
+	.stg-modal__body[data-pane="section"] .ui-splitter__pane:has(> .stg-modal__navpane),
+	.stg-modal__body[data-pane="nav"] .ui-splitter__pane:has(> .stg-modal__contentpane) {
+		display: none;
+	}
+
+	.stg-modal__back {
+		display: inline-flex;
+		margin-block-end: var(--space-3);
+	}
+
+	.stg-modal__content {
+		padding: var(--space-4) var(--space-4) 0;
+	}
+}
+/* #endregion */

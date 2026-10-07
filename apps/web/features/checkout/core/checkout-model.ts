@@ -30,9 +30,7 @@ import type {
 export const PROVIDER_LABEL: Record<PaymentProvider, string> = {
 	card: "Card",
 	wallet: "Projective wallet",
-	google_pay: "Google Pay",
-	apple_pay: "Apple Pay",
-	paypal: "PayPal",
+	express: "Express checkout",
 	invoice: "Invoice",
 };
 
@@ -48,11 +46,12 @@ export const PROVIDER_LABEL: Record<PaymentProvider, string> = {
  *
  * The payment step draws one list of instruments — the Projective wallet and the cards on file — and
  * a buyer picks the THING they want to pay with; the route is a consequence of that choice rather
- * than a question asked before it. The remaining three live routes (Google Pay, Apple Pay, PayPal)
- * are **express** actions: pressing one starts a payment immediately in the vendor's own sheet, so
- * they are never a selection that sits waiting for a separate Buy Now. `invoice` is not a route the
- * buyer picks here at all — consolidated monthly billing is arranged once, on the Details step, and
- * offering it as a per-purchase instrument would imply it can be chosen per basket.
+ * than a question asked before it. The `express` route (Apple Pay, Google Pay, PayPal through Stripe's
+ * Express Checkout Element) is an ACTION: pressing one of its buttons starts a payment immediately in
+ * the wallet's own sheet, so it is never a selection that sits waiting for a separate Buy Now.
+ * `invoice` is not a route the buyer picks here at all — consolidated monthly billing is arranged
+ * once, on the Details step, and offering it as a per-purchase instrument would imply it can be
+ * chosen per basket.
  */
 export const SELECTABLE_ROUTES: readonly PaymentProvider[] = ["wallet", "card"];
 
@@ -100,10 +99,7 @@ export function providerIcon(provider: PaymentProvider): IconName {
 			return "wallet";
 		case "invoice":
 			return "document";
-		case "paypal":
-			return "globe";
-		case "google_pay":
-		case "apple_pay":
+		case "express":
 			return "shield";
 		case "card":
 		default:

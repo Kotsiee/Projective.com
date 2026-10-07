@@ -14,26 +14,13 @@ import type { CheckoutQuery } from "@projective/types/finance";
  * the caller is — the identity the live reads run under is the session's `ReadActor`, passed beside
  * the query rather than inside it, so a request field can never be mistaken for an identity.
  *
- * **Capabilities, not simulations.** Device-wallet and PayPal availability are genuine facts the
- * client sniffs (a browser either offers Google Pay or it does not) or the deployment configures, and
- * the SSOT's `ProviderContext.deviceWallets` / `paypalEnabled` take them as inputs for exactly that
- * reason. They ride the query string because they have the same shape. The fixture-era simulation
- * axes (persona, workspace role, KYB, wallet coverage, saved-card shape, details state …) are gone:
- * every one of those facts is now read from the database, and a query param that could override one
- * would be a way to lie to the checkout about the account paying.
+ * **No simulations, and no device sniffing.** The fixture-era simulation axes (persona, workspace
+ * role, KYB, wallet coverage, saved-card shape, details state …) are gone: every one of those facts
+ * is read from the database, and a query param that could override one would be a way to lie to the
+ * checkout about the account paying. The device-wallet flags (`googlePay` / `applePay` / `paypal`)
+ * went with the per-vendor routes they fed: Stripe's Express Checkout Element now decides in the
+ * browser which wallet buttons a device can show (Decision #153).
  */
-
-// #region Capabilities
-/** Client-sniffed payment capabilities — inputs to the SSOT's `availableProviders`, never overrides. */
-export interface BasketCapabilities {
-	/** Whether this browser offers Google Pay. */
-	googlePay?: boolean;
-	/** Whether this device offers Apple Pay. */
-	applePay?: boolean;
-	/** Whether PayPal is configured for this deployment. */
-	paypalEnabled?: boolean;
-}
-// #endregion
 
 // #region Resolved query
 /**
@@ -59,8 +46,6 @@ export interface BasketQuery extends CheckoutQuery {
 	provider?: string | null;
 	/** Whether the buyer has opted into the voluntary gateway contribution. */
 	processingContribution?: boolean;
-	/** Client-sniffed payment capabilities. */
-	capabilities?: BasketCapabilities;
 }
 // #endregion
 
@@ -72,18 +57,6 @@ function flag(raw: string | null): boolean | undefined {
 	if (v === "1" || v === "true" || v === "yes" || v === "on") return true;
 	if (v === "0" || v === "false" || v === "no" || v === "off") return false;
 	return undefined;
-}
-
-/** Parse the capability flags from a query string. */
-export function parseCapabilities(sp: URLSearchParams): BasketCapabilities | undefined {
-	const caps: BasketCapabilities = {};
-	const gpay = flag(sp.get("googlePay"));
-	if (gpay !== undefined) caps.googlePay = gpay;
-	const apay = flag(sp.get("applePay"));
-	if (apay !== undefined) caps.applePay = apay;
-	const paypal = flag(sp.get("paypal"));
-	if (paypal !== undefined) caps.paypalEnabled = paypal;
-	return Object.keys(caps).length > 0 ? caps : undefined;
 }
 
 /**
@@ -121,7 +94,6 @@ export function basketQueryFrom(sp: URLSearchParams, context: UserContext): Bask
 		viewerCurrency: context.displayCurrency ?? null,
 		provider: sp.get("provider"),
 		processingContribution: flag(sp.get("contribute")) ?? false,
-		capabilities: parseCapabilities(sp),
 	};
 }
 

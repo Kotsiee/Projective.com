@@ -270,6 +270,8 @@ function emptySession(display: string): CheckoutBootstrap["session"] {
 			processingContribution: zero(display),
 			total: zero(display),
 		},
+		// Nothing to pay for, so there is no processor charge to state.
+		charge: null,
 		requiresEmail: false,
 		requiresSchedule: false,
 		requiresStage: false,

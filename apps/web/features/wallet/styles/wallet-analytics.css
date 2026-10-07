@@ -1,0 +1,599 @@
+/*
+ * /wallet/analytics — an uncarded 12-column regional grid (DESIGN_SYSTEM §B.4 / §B.9.7).
+ *
+ * No region is a box. Regions separate by asymmetric whitespace (`--space-7` above a header,
+ * `--space-3` below it) and, where two regions meet, ONE hairline — a row boundary is a block-start
+ * hairline, a column boundary an inline-start hairline — never a border, a tint and a shadow at once.
+ * Columns are decided by the grid's own width (`@container wlt-an`), because the lane and the right
+ * panel decide how wide the canvas is, not the viewport.
+ */
+
+.wlt-sheet__page--analytics {
+	inline-size: min(100%, 76rem);
+}
+
+.wlt-an {
+	/*
+	 * The chart's three series: money in on the success ramp, money out a neutral grey (a direction, not
+	 * a judgement), and net in full ink — told apart by lightness and by FORM (two washes, one line), so
+	 * no two hues sit side by side that a reader must separate by colour alone.
+	 */
+	--wlt-chart-out-ink: var(--outline);
+	--wlt-chart-net: var(--on-surface);
+	--wlt-area-h: 15rem;
+	container: wlt-an / inline-size;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+/*
+ * The grid lives one level INSIDE the container, because a container query styles descendants only:
+ * one column until the container is wide enough for twelve. Twelve tracks always would cost eleven
+ * `--space-7` gaps of minimum width — 528px — and push every region past a phone-width page.
+ */
+.wlt-an__grid {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	column-gap: var(--space-7);
+}
+
+/* Refetch keeps the frame: the previous window stays drawn, quieter, until the next one lands. */
+.wlt-an[data-loading="true"] {
+	opacity: 0.6;
+}
+
+.wlt-an__region {
+	grid-column: 1 / -1;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
+	padding-block-start: var(--space-7);
+}
+
+.wlt-an__region:first-of-type {
+	padding-block-start: 0;
+}
+
+/* Each later row starts on one hairline. */
+.wlt-an__region + .wlt-an__region {
+	border-block-start: var(--hairline);
+}
+
+.wlt-an__head {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-3);
+	min-block-size: 1.5rem;
+}
+
+.wlt-an__title {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
+}
+
+.wlt-an__meta {
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+
+@container wlt-an (min-width: 52rem) {
+	.wlt-an__grid {
+		grid-template-columns: repeat(12, minmax(0, 1fr));
+	}
+
+	.wlt-an__region[data-span="8"] {
+		grid-column: span 8;
+	}
+
+	/* A narrow region beside a wide one: the column boundary is its own single hairline, and the row
+	   hairline it would otherwise also carry is dropped — one device per boundary. */
+	.wlt-an__region[data-span="4"] {
+		grid-column: span 4;
+		margin-inline-start: calc(-1 * var(--space-7) / 2);
+		padding-inline-start: calc(var(--space-7) / 2);
+		border-inline-start: var(--hairline);
+	}
+
+	.wlt-an__region[data-span="8"] + .wlt-an__region[data-span="4"] {
+		border-block-start: var(--hairline);
+	}
+}
+
+/* #region KPI strip */
+.wlt-kpis {
+	margin: 0;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+	gap: var(--space-4) var(--space-6);
+}
+
+.wlt-kpi {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.wlt-kpi__label {
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.wlt-kpi__value {
+	margin: 0;
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface);
+}
+/* #endregion */
+
+/* #region Cash flow area chart */
+.wlt-area {
+	margin: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.wlt-area__frame {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	grid-template-rows: auto auto;
+	column-gap: var(--space-3);
+	row-gap: var(--space-2);
+}
+
+.wlt-area__yaxis {
+	position: relative;
+	grid-row: 1;
+	min-inline-size: 3rem;
+	block-size: var(--wlt-area-h);
+}
+
+.wlt-area__ytick {
+	position: absolute;
+	inset-inline-end: 0;
+	inset-block-start: calc(var(--wlt-y) * 100%);
+	transform: translateY(-50%);
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+	white-space: nowrap;
+}
+
+.wlt-area__plot {
+	--wlt-area-in: var(--wlt-chart-in);
+	--wlt-area-out: var(--wlt-chart-out-ink);
+	--wlt-area-net: var(--wlt-chart-net);
+	position: relative;
+	grid-row: 1;
+	block-size: var(--wlt-area-h);
+	border-radius: var(--radius-sm);
+	cursor: crosshair;
+	touch-action: pan-y;
+}
+
+.wlt-area__plot:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.wlt-area__grid {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+
+.wlt-area__gridline {
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: calc(var(--wlt-y) * 100%);
+	border-block-start: var(--hairline);
+}
+
+.wlt-area__gridline[data-zero="true"] {
+	border-block-start-color: var(--outline);
+}
+
+.wlt-area__svg {
+	position: absolute;
+	inset: 0;
+	inline-size: 100%;
+	block-size: 100%;
+	overflow: visible;
+}
+
+.wlt-area__fill {
+	stroke-width: 2;
+	stroke-linejoin: round;
+	stroke-linecap: round;
+	vector-effect: non-scaling-stroke;
+}
+
+.wlt-area__fill--in {
+	fill: color-mix(in srgb, var(--wlt-area-in) 12%, transparent);
+	stroke: var(--wlt-area-in);
+}
+
+.wlt-area__fill--out {
+	fill: color-mix(in srgb, var(--wlt-area-out) 12%, transparent);
+	stroke: var(--wlt-area-out);
+}
+
+.wlt-area__net {
+	fill: none;
+	stroke: var(--wlt-area-net);
+	stroke-width: 2;
+	stroke-linejoin: round;
+	stroke-linecap: round;
+	vector-effect: non-scaling-stroke;
+}
+
+/* The crosshair: a hairline at the bucket, a ringed dot on every series there. */
+.wlt-area__cross {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: calc(var(--wlt-x) * 100%);
+	border-inline-start: var(--hairline);
+	border-inline-start-color: var(--outline);
+	pointer-events: none;
+}
+
+[dir="rtl"] .wlt-area__cross {
+	inset-inline-start: auto;
+	inset-inline-end: calc(var(--wlt-x) * 100%);
+}
+
+.wlt-area__dot {
+	position: absolute;
+	inset-block-start: calc(var(--wlt-y) * 100%);
+	inset-inline-start: 0;
+	inline-size: var(--space-2);
+	block-size: var(--space-2);
+	border-radius: 50%;
+	transform: translate(-50%, -50%);
+	box-shadow: 0 0 0 calc(var(--space-px) * 2) var(--surface);
+}
+
+[dir="rtl"] .wlt-area__dot {
+	transform: translate(50%, -50%);
+}
+
+.wlt-area__dot--in {
+	background: var(--wlt-area-in);
+}
+
+.wlt-area__dot--out {
+	background: var(--wlt-area-out);
+}
+
+.wlt-area__dot--net {
+	background: var(--wlt-area-net);
+}
+
+/* The SVG is drawn left to right; under RTL the time axis mirrors with the reading order. */
+[dir="rtl"] .wlt-area__svg {
+	transform: scaleX(-1);
+}
+
+.wlt-area__xaxis {
+	grid-column: 2;
+	display: flex;
+	justify-content: space-between;
+	gap: var(--space-3);
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.wlt-area__foot {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-2) var(--space-5);
+}
+
+.wlt-area__legend {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2) var(--space-4);
+	font-size: var(--text-sm);
+	color: var(--on-surface-variant);
+}
+
+.wlt-area__key {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.wlt-area__key::before {
+	content: "";
+	inline-size: var(--space-3);
+	block-size: var(--space-2);
+	border-radius: var(--radius-sm);
+	background: color-mix(in srgb, var(--wlt-key) 18%, transparent);
+	box-shadow: inset 0 calc(var(--space-px) * 2) 0 var(--wlt-key);
+}
+
+.wlt-area__key--net::before {
+	block-size: calc(var(--space-px) * 2);
+	background: var(--wlt-key);
+	box-shadow: none;
+}
+
+.wlt-area__key--in,
+.wlt-area__swatch--in {
+	--wlt-key: var(--wlt-chart-in);
+}
+
+.wlt-area__key--out,
+.wlt-area__swatch--out {
+	--wlt-key: var(--wlt-chart-out-ink);
+}
+
+.wlt-area__key--net,
+.wlt-area__swatch--net {
+	--wlt-key: var(--wlt-chart-net);
+}
+
+.wlt-area__readout {
+	margin: 0;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-1) var(--space-4);
+	min-block-size: 1.5rem;
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+}
+
+.wlt-area__when {
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.wlt-area__pair {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	font-weight: var(--fw-medium);
+}
+
+.wlt-area__swatch {
+	inline-size: var(--space-3);
+	block-size: calc(var(--space-px) * 2);
+	border-radius: var(--radius-full);
+	background: var(--wlt-key);
+}
+
+.wlt-area__name,
+.wlt-area__hint {
+	font-weight: var(--fw-normal);
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Ranked bars (category volume, top projects) */
+.wlt-bars {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.wlt-bars__row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	grid-template-areas:
+		"label value"
+		"track track"
+		"meta meta";
+	row-gap: var(--space-1);
+	column-gap: var(--space-3);
+	align-items: baseline;
+}
+
+.wlt-bars__label {
+	grid-area: label;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--text-md);
+	color: var(--on-surface);
+}
+
+.wlt-bars__label--link {
+	text-decoration: none;
+}
+
+.wlt-bars__label--link:hover {
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+}
+
+.wlt-bars__value {
+	grid-area: value;
+	justify-self: end;
+	font-variant-numeric: tabular-nums;
+}
+
+.wlt-bars__track {
+	grid-area: track;
+	block-size: var(--space-1);
+	border-radius: var(--radius-full);
+	background: var(--track-meter);
+	overflow: clip;
+}
+
+.wlt-bars__fill {
+	display: block;
+	block-size: 100%;
+	inline-size: calc(var(--wlt-share) * 100%);
+	border-radius: inherit;
+	background: var(--primary);
+}
+
+.wlt-bars__meta {
+	grid-area: meta;
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+/* #endregion */
+
+/* #region Release schedule */
+.wlt-rel {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.wlt-rel__axis {
+	position: relative;
+	block-size: 2.75rem;
+	margin-inline: var(--space-2);
+}
+
+.wlt-rel__rule {
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: var(--space-3);
+	border-block-start: var(--hairline);
+	border-block-start-color: var(--outline);
+}
+
+.wlt-rel__tick {
+	position: absolute;
+	inset-block-start: calc(var(--space-3) + var(--space-3));
+	inset-inline-start: calc(var(--wlt-x) * 100%);
+	transform: translateX(-50%);
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+	white-space: nowrap;
+	font-variant-numeric: tabular-nums;
+}
+
+[dir="rtl"] .wlt-rel__tick {
+	transform: translateX(50%);
+}
+
+.wlt-rel__tick:first-of-type {
+	transform: none;
+}
+
+.wlt-rel__pip {
+	position: absolute;
+	inset-block-start: var(--space-3);
+	inset-inline-start: calc(var(--wlt-x) * 100%);
+	inline-size: var(--space-3);
+	block-size: var(--space-3);
+	border-radius: 50%;
+	background: var(--wlt-rel-fill);
+	box-shadow: 0 0 0 calc(var(--space-px) * 2) var(--surface);
+	transform: translate(-50%, -50%);
+}
+
+[dir="rtl"] .wlt-rel__pip {
+	transform: translate(50%, -50%);
+}
+
+.wlt-rel__pip[data-state="pending"],
+.wlt-rel__row[data-state="pending"] {
+	--wlt-rel-fill: var(--wlt-fund-clearing);
+}
+
+.wlt-rel__pip[data-state="locked"],
+.wlt-rel__row[data-state="locked"] {
+	--wlt-rel-fill: var(--wlt-fund-escrow);
+}
+
+.wlt-rel__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+.wlt-rel__row {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	column-gap: var(--space-3);
+	padding-block: var(--space-3);
+	border-block-end: var(--hairline);
+}
+
+.wlt-rel__row:last-child {
+	border-block-end: 0;
+}
+
+.wlt-rel__mark {
+	inline-size: var(--pip-dot);
+	block-size: var(--pip-dot);
+	border-radius: 50%;
+	background: var(--wlt-rel-fill);
+}
+
+.wlt-rel__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	min-inline-size: 0;
+}
+
+.wlt-rel__name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--text-md);
+	color: var(--on-surface);
+	text-decoration: none;
+}
+
+a.wlt-rel__name:hover {
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+}
+
+.wlt-rel__meta,
+.wlt-rel__when {
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.wlt-rel__trail {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: var(--space-px);
+	text-align: end;
+	white-space: nowrap;
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.wlt-an {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .wlt-an {
+	transition: none;
+}

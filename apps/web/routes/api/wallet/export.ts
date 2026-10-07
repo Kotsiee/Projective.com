@@ -1,22 +1,43 @@
 import { define } from "@web/utils/state.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { readActor } from "@web/utils/api-session.ts";
-import { walletQueryFrom } from "@features/wallet/core/wallet-model.ts";
+import { TransactionListParamsSchema } from "@projective/types/finance";
+import { toFieldErrors, toWalletResponse } from "@features/wallet/core/respond.ts";
+import { ledgerApiParamsFrom, walletQueryFrom } from "@features/wallet/core/wallet-model.ts";
 import { WalletBackendService } from "@server/services/finance/WalletBackendService.ts";
 
 /**
- * `GET /api/wallet/export?w=` — the footer rig's Export control: the active wallet's ledger as a CSV
- * download, read as the signed-in viewer. The control is a plain link, so a refusal answers in plain
- * text rather than JSON — it is what the browser shows the person who pressed it.
+ * `GET /api/wallet/export?w=&…filters…` — the Transactions page's Download CSV: the ledger the page is
+ * showing (its search, direction, line families and window), read as the signed-in viewer.
+ *
+ * Only a success is a file. A refusal answers in the wallet's JSON shape with its status — the page
+ * fetches the export and shows that message in an alert, rather than handing the browser an error
+ * sentence to save as `export.csv`.
  */
 export const handler = define.handlers({
 	async GET(ctx) {
 		const context = asAuthenticatedContext(ctx.state.userContext);
-		const res = await WalletBackendService.exportLedger(walletQueryFrom(ctx.url.searchParams, context), readActor(ctx));
+		const sp = ctx.url.searchParams;
+		const parsed = TransactionListParamsSchema.safeParse({
+			...ledgerApiParamsFrom(sp),
+			cursor: null,
+		});
+		if (!parsed.success) {
+			return Response.json({
+				ok: false,
+				message: "Those filters couldn't be read.",
+				errors: toFieldErrors(parsed.error),
+			}, { status: 400 });
+		}
+		const res = await WalletBackendService.exportLedger(
+			walletQueryFrom(sp, context),
+			parsed.data,
+			readActor(ctx),
+		);
 		if (!res.ok || !res.data) {
-			return new Response(res.message ?? "The ledger couldn't be exported just now.", {
-				status: res.status,
-				headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+			return toWalletResponse({
+				...res,
+				message: res.message ?? "The ledger couldn't be exported just now.",
 			});
 		}
 		return new Response(res.data.csv, {

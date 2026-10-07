@@ -8,9 +8,9 @@
 -- buyers said about them.
 --
 -- Scope: the three tables whose schemas became reachable through PostgREST with the live discovery
--- reads (`marketplace`, `catalogue`), and the two `org` profile owners a client can still write
--- directly (`org.teams`, `org.organisations`) — see the `org` region below for the audit that
--- cleared them.
+-- reads (`marketplace`, `catalogue`), and the two `org` profile owners a client once wrote
+-- directly (`org.teams`, `org.organisations`; both are definer-only now) — see the `org` region
+-- below for the audit that cleared them.
 -- =============================================================================================
 
 DROP TRIGGER IF EXISTS trg_service_blueprints_derived ON marketplace.service_blueprints;
@@ -42,12 +42,12 @@ CREATE TRIGGER trg_listings_derived
 -- #region org — the profile owners a client can still write
 -- `org.users_public`, `org.freelancer_profiles`, `org.business_profiles` and (since 2026-09-28)
 -- `org.teams` carry no client write policy at all, so nothing reaches them but a definer — a team is
--- renamed through org.update_workspace, which checks `edit_profile`. One owner remains writable over
--- PostgREST: `org.organisations` ("Owners and admins can update the organisation"). Its policy is
--- right to let an owner edit an address; it was never meant to let one set a rating, hand the
--- organisation to themselves as an admin, mark it verified, take somebody else's `@handle`, or point
--- its picture at a file from another person's library. The team guards stay as defence in depth: a
--- future policy that re-opens the table must not re-open these columns with it.
+-- renamed through org.update_workspace, which checks `edit_profile`. Since 2026-10-06 the same holds
+-- for `org.organisations`: its bare UPDATE policy is gone and org.update_organisation (00001020 §5c)
+-- is the one write door. The guards below stay as defence in depth: a future policy that re-opens
+-- either table must not re-open these columns with it — an organisation must never be set to a
+-- rating, handed to an admin, marked verified, given somebody else's `@handle`, or have its picture
+-- pointed at a file from another person's library.
 --
 -- Audit (2026-09-23) of every writer of the guarded columns — each is SECURITY DEFINER, so inside it
 -- `current_user` is the function's owner and the guards let it through:

@@ -1,6 +1,2 @@
-import { define } from "@web/utils/state.ts";
-import { PagePlaceholder } from "@web/components/PagePlaceholder.tsx";
-
-export default define.page(function SettingsPage() {
-	return <PagePlaceholder title="Settings" path="/settings" note="Account settings." />;
-});
+/** `/settings` — the Settings console root; the controller lives in the settings feature (Decision #150). */
+export { default, handler } from "@features/settings/routes/SettingsHomeScreen.tsx";

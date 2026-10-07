@@ -1,0 +1,97 @@
+/**
+ * checkout-shared.css — the checkout's own commit colour and the one class that applies it, plus the
+ * keyboard focus ring the two focus steps keep (see the last region).
+ *
+ * **The commit CTA is amber, and it is the same amber in every theme** (Decision #153, owner
+ * direction). Every button on `/checkout/*` that COMMITS the buyer — Continue on Details, Buy Now on
+ * Payment, the confirm-and-pay in the dialog, saving details from the payment step — carries one
+ * distraction-free warm gold that sits beside the teal `--primary` rather than competing with it.
+ * Like `--primary`/`--on-primary` it is MODE-INVARIANT: a commit that changed hue between light and
+ * dark would read as two different actions.
+ *
+ * It is a TOKEN PAIR, not a re-tinted severity (§B.8.3): `severity="warning"` used to stand in for
+ * it, which made "commit to paying" and "something needs your attention" the same colour. The
+ * severity keeps its meaning; the checkout's commitment gets its own name.
+ *
+ * - `--checkout-commit-bg` — `hsl(38 92% 50%)`.
+ * - `--checkout-commit-fg` — a near-black ink, measured **8.09:1** on the fill (WCAG AAA, ≥ 7:1 in
+ *   both modes because neither side moves). Pinned by `checkout-commit-tokens.test.ts`, which reads
+ *   this file.
+ * - `--checkout-commit-pole` — the direction hover and press blend toward. It is LIGHT because the ink
+ *   is dark: blending away from the ink is what makes the label's contrast RISE with pressure instead
+ *   of falling (§3 gate 12; the same reasoning as `.ui-button`'s `--btn-shade`, inverted for a fill
+ *   whose ink does not follow the theme).
+ *
+ * The pill shape on these controls is the owner-approved checkout exception (§B.8.4, Decision #70).
+ * These are the only literal colours on the surface outside the vendor-mark block, and they live
+ * here, declared once, rather than at any call site.
+ */
+
+/* #region Tokens */
+:root {
+	--checkout-commit-bg: hsl(38 92% 50%);
+	--checkout-commit-fg: #1a1a1a;
+	--checkout-commit-pole: hsl(48 100% 96%);
+}
+/* #endregion */
+
+/* #region Commit button */
+/*
+ * Applied as a class beside a `filled` Button. It sets the Button's own accent pair and its tonal
+ * ramp, so every state the Button already draws (hover, press scale, disabled fade, focus ring)
+ * comes from the component and only the colour comes from here. Two classes of specificity so it
+ * outranks the severity modifier the component always emits.
+ */
+.ui-button.cko-commit {
+	--btn-accent: var(--checkout-commit-bg);
+	--btn-on: var(--checkout-commit-fg);
+	--btn-shade: var(--checkout-commit-pole);
+	--btn-mix-hover: 92%;
+	--btn-mix-active: 86%;
+}
+
+/* The brand's border-channel hover does not apply: this fill has headroom, and spends it tonally. */
+.ui-button.cko-commit:hover:not(:disabled):not([aria-disabled="true"]) {
+	border-color: transparent;
+}
+/* #endregion */
+
+/* #region Keyboard focus on the two focus steps */
+/*
+ * Details and Payment show a keyboard focus ring — a SCOPED EXCEPTION to the product-owner directive
+ * in `apps/web/styles/global.css` ("NO VISIBLE FOCUS INDICATOR"), made because this flow's brief asks
+ * for one (Decision #153, which flags the contradiction for a human). Everything outside these two
+ * steps keeps the global suppression exactly as it is, and deleting this region restores it here too.
+ *
+ * **Why private tokens.** The directive neutralises the `--focus-ring-*` family at `:root` with
+ * `!important` (and the canvas engines read those values back), so re-declaring them here would
+ * re-arm every component rule inside these regions at once. `--cko-ring*` is the same ring, derived
+ * the same way the theme engine derives `--focus-ring` — it IS `--secondary` — at the token layer's
+ * own geometry: 1px (2px under `data-contrast="high"`), held 2px clear of the control, because a ring
+ * drawn ON an accent fill measures 1.00–1.19:1 and vanishes on exactly the controls that matter.
+ *
+ * **One mechanism.** An `outline` with an offset, for a control that is its own focusable element AND
+ * for a composite field (`.ui-field:has(:focus-visible)` — the modality-aware form of `:focus-within`),
+ * so the two cannot drift. A picker's trigger sits inside its field and takes the field's ring; it is
+ * excluded from the control form so it is never ringed twice. The fields' own soft `--fld-focus-glow`
+ * (which the directive keeps for form controls) is left alone underneath.
+ *
+ * `!important` because the directive's element rules carry it; `:is()` weighs its most specific
+ * argument, so these rules sit at (0,4,0) and (0,3,0) — above the directive's (0,1,1) element rules.
+ */
+:is(.ckod, .cko-pstep) {
+	--cko-ring: var(--secondary);
+	--cko-ring-w: 1px;
+	--cko-ring-offset: 2px;
+}
+
+:root[data-contrast="high"] :is(.ckod, .cko-pstep) {
+	--cko-ring-w: 2px;
+}
+
+:is(.ckod, .cko-pstep) :is(a[href], button:not([role="combobox"]), [role="radio"], summary, [tabindex]:not([tabindex="-1"])):focus-visible,
+:is(.ckod, .cko-pstep) .ui-field:has(:focus-visible) {
+	outline: var(--cko-ring-w) solid var(--cko-ring) !important;
+	outline-offset: var(--cko-ring-offset) !important;
+}
+/* #endregion */

@@ -131,3 +131,42 @@ Deno.test("the withdrawal payout statuses are PayoutStatus, member for member", 
 		[...PayoutStatus.options],
 	);
 });
+
+Deno.test("attach_checkout_order is a USER door: the payer names the order, never anon or the processor", () => {
+	assert(
+		/REVOKE ALL ON FUNCTION finance\.attach_checkout_order \(uuid, jsonb\) FROM PUBLIC, anon;/.test(
+			GRANTS_SQL,
+		),
+		"attach_checkout_order is not revoked from PUBLIC/anon",
+	);
+	assert(
+		/GRANT EXECUTE ON FUNCTION finance\.attach_checkout_order \(uuid, jsonb\) TO authenticated;/
+			.test(GRANTS_SQL),
+		"attach_checkout_order is not granted to authenticated",
+	);
+	assert(
+		/CREATE OR REPLACE FUNCTION finance\.attach_checkout_order\(p_payment_id uuid, p_checkout jsonb\)/
+			.test(
+				FUNCTIONS_SQL,
+			),
+		"attach_checkout_order is not defined in 00001230",
+	);
+});
+
+Deno.test("a checkout rides only on a top-up, and an order outcome only on a checkout (Decision #153)", () => {
+	const body = tableBody("finance.inbound_payments");
+	assert(
+		/checkout IS NULL OR purpose = 'wallet_topup'/.test(body),
+		"missing the top-up-only CHECK",
+	);
+	assert(
+		/\(order_id IS NULL AND order_error IS NULL\) OR checkout IS NOT NULL/.test(body),
+		"missing the order-only-with-checkout CHECK",
+	);
+	// The settle door places the order from the stored checkout, as the payer.
+	assert(
+		/finance\.place_wallet_order\(\s*\(v_payment\.checkout ->> 'basket_id'\)::uuid/.test(
+			FUNCTIONS_SQL,
+		),
+	);
+});

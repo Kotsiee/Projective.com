@@ -144,13 +144,19 @@ export type SaveCardInput = z.infer<typeof SaveCardInputSchema>;
 // #endregion
 
 // #region Payment providers
-/** The ways a checkout can be paid. */
+/**
+ * The ways a checkout can be paid.
+ *
+ * `express` is ONE route, not three: Apple Pay, Google Pay and PayPal arrive through Stripe's Express
+ * Checkout Element, which decides — from the device, the browser and the account's enabled methods —
+ * which of them it can actually show (Decision #153). The server cannot know that, so it offers the
+ * route and the Element offers the buttons. The three per-vendor routes this enum used to carry were
+ * refused in every environment and drawn as hand-made buttons; they are gone with those buttons.
+ */
 export const PaymentProvider = z.enum([
 	"card",
 	"wallet",
-	"google_pay",
-	"apple_pay",
-	"paypal",
+	"express",
 	"invoice",
 ]);
 export type PaymentProvider = z.infer<typeof PaymentProvider>;
@@ -188,10 +194,6 @@ export interface ProviderContext {
 	kybStatus: KycStatus | null;
 	/** The entity's verification tier — Level 3 is Business/KYB (`PRODUCT_SPEC` §Identity). */
 	verificationTier: number | null;
-	/** Device wallet capability, sniffed by the client and passed to the server. */
-	deviceWallets?: { googlePay?: boolean; applePay?: boolean };
-	/** Whether PayPal is configured for this deployment. */
-	paypalEnabled?: boolean;
 }
 
 /** Owner types whose money belongs to an entity rather than to the acting individual. */
@@ -209,9 +211,11 @@ const KYB_TIER = 3;
  *  1. **An individual may not purchase on an entity's behalf.** If the basket spends entity money and
  *     the acting user is not a member of that entity, every provider is refused — there is no path
  *     that lets a non-member charge a business, including their own card.
- *  2. **An entity may only spend from its Projective wallet or a verified business card.** Personal
- *     device wallets and PayPal are individual instruments; offering them in an entity context would
- *     invite a member to front an entity purchase personally, which breaks attribution and refunds.
+ *  2. **An entity may only spend from its Projective wallet or a verified business card.** The
+ *     express wallets (Apple Pay, Google Pay, PayPal) are individual instruments; offering them in an
+ *     entity context would invite a member to front an entity purchase personally, which breaks
+ *     attribution and refunds. For an individual the route is always offered — whether a given
+ *     device can show any of its buttons is the Express Checkout Element's decision, not this one.
  *  3. **Invoicing requires KYB Level 3.** Deferred settlement is credit, and credit is extended to a
  *     verified business, never to an individual.
  *
@@ -268,44 +272,12 @@ export function availableProviders(ctx: ProviderContext): ProviderAvailability[]
 				);
 				break;
 			}
-			case "google_pay": {
-				if (entity) {
-					offer.push({ provider, available: false, reason: entityOnlyReason });
-				} else {
-					offer.push(
-						ctx.deviceWallets?.googlePay ? { provider, available: true, reason: null } : {
-							provider,
-							available: false,
-							reason: "Google Pay is not set up in this browser.",
-						},
-					);
-				}
-				break;
-			}
-			case "apple_pay": {
-				if (entity) {
-					offer.push({ provider, available: false, reason: entityOnlyReason });
-				} else {
-					offer.push(
-						ctx.deviceWallets?.applePay ? { provider, available: true, reason: null } : {
-							provider,
-							available: false,
-							reason: "Apple Pay is not available on this device.",
-						},
-					);
-				}
-				break;
-			}
-			case "paypal": {
-				if (entity) {
-					offer.push({ provider, available: false, reason: entityOnlyReason });
-				} else {
-					offer.push(
-						ctx.paypalEnabled === false
-							? { provider, available: false, reason: "PayPal is not available right now." }
-							: { provider, available: true, reason: null },
-					);
-				}
+			case "express": {
+				offer.push(
+					entity
+						? { provider, available: false, reason: entityOnlyReason }
+						: { provider, available: true, reason: null },
+				);
 				break;
 			}
 			case "invoice": {
@@ -737,6 +709,16 @@ export const CheckoutSessionContextSchema = z.object({
 	cardsConnected: z.boolean().default(false),
 	promo: AppliedPromoSchema.nullable(),
 	totals: CheckoutTotalsSchema,
+	/**
+	 * What a CARD or EXPRESS payment actually charges: the order total in the listings' OWN currency
+	 * (Decision #153). A processor charge is made in the currency the seller priced in, so when the
+	 * buyer reads the basket in another currency this is the figure their bank statement will show —
+	 * computed by the same arithmetic as {@link totals}, over the same lines read in that currency, so
+	 * the amount on screen and the amount charged cannot come from two calculations. Equal to
+	 * `totals.total` (same currency, same minor units) on a same-currency checkout; `null` when the
+	 * lines are priced in more than one currency and no single charge exists.
+	 */
+	charge: MoneyViewSchema.nullable().default(null),
 	/** Whether any line needs a delivery address — drives the adaptive row layout. */
 	requiresEmail: z.boolean(),
 	/** Whether any line needs a booked slot. */

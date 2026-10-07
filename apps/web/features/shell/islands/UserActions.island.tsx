@@ -38,6 +38,8 @@ import { AuthService } from "@web/features/auth/core/AuthService.ts";
 import { onAvatarChanged } from "@web/utils/avatar-sync.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 import { ProfileProgressAvatar } from "@web/features/shell/components/ProfileProgressAvatar.tsx";
+import { AllowanceMeter } from "@features/proposals/components/AllowanceMeter.tsx";
+import { effectiveAllowance, ensureAllowance } from "@features/proposals/core/allowance-state.ts";
 
 // #region Popover sub-views + vocabulary
 /** The states the account popover's `ui-popover__content` can render. */
@@ -96,6 +98,9 @@ export interface UserActionsProps {
  *  - **main** — top to bottom: the identity block (ringed avatar · name · `@handle` · Standing ·
  *    the derived presence line, whose tooltip is the working-hours schedule); the **Acting as** row;
  *    the **profile-setup nudge** (a progress track plus an inline checklist) while setup is under 100%;
+ *    the **proposal allowance meter** directly beneath it, for anyone who can send proposals (a
+ *    freelancer, or a team) — weekly left · buffer ready, the next drip, and an upgrade link when low
+ *    (Decision #154);
  *    the destinations (View profile · Become a Freelancer · Availability & hours · Wallet & payouts ·
  *    Settings); and a footer with a light ⁄ dark ⁄ system theme control and Log out.
  *  - **context** — the switcher: the person themself, then their Teams, Businesses and
@@ -251,6 +256,15 @@ export default function UserActions(
 	const presence = activeSetup ? presenceAt(activeSetup.hours, now.value) : null;
 	const setupHandle = activeSetup?.handle ?? personalHandle;
 	const standing = sellerNow ? activeSetup?.standing ?? null : null;
+
+	// The proposal allowance is a SELLER's meter: a freelancer's own, or the acting team's pool. A buyer
+	// sends no proposals, so their popover neither reads nor shows one (reading also opens a metering
+	// week, which a buyer has no use for).
+	const sendsProposals = sellerNow || effCtx.contextType === "team";
+	useEffect(() => {
+		if (sendsProposals) ensureAllowance();
+	}, [sendsProposals]);
+	const allowance = sendsProposals ? effectiveAllowance.value : null;
 
 	// "Acting as" — the persona in a personal context, the entity's display name otherwise. Under a
 	// simulated entity persona the real session has no such entity, so only its kind is named.
@@ -473,6 +487,8 @@ export default function UserActions(
 			</button>
 
 			{setupNudge(onNavigate)}
+
+			{allowance ? <AllowanceMeter snapshot={allowance} onNavigate={onNavigate} /> : null}
 
 			<div class="shell-menu__sep" role="separator" />
 

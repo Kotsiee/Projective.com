@@ -255,3 +255,29 @@ still succeeds, and a forged rating, a counter, a plan tier, a member cap, a han
 change (including an organisation admin naming themselves owner), a verification level, a status
 and a borrowed picture are each refused with `42501`. The two client INSERT policies that would have
 let those columns be set at birth were removed in the same change (`org/Policies.md`).
+
+## Email verification tokens (2026-10-06)
+
+### `security.issue_email_verification(p_email_id uuid) → text` — service role only
+
+**Migration:** [`00001050_functions_org_emails.sql`](../../../supabase/migrations/00001050_functions_org_emails.sql)
+§3 · `SECURITY DEFINER`, `SET search_path = ''` · **Grant:** `service_role` only — `REVOKE ALL` from
+`PUBLIC`, `anon` and `authenticated` (`00002510`; `authenticated` holds `USAGE` on `security`, so the
+revoke has to name it).
+
+Mints a verification token for one `org.user_emails` row and returns the **raw** token, once, for the
+mailer: 32 bytes from `extensions.gen_random_bytes` as hex (64 chars). Only its SHA-256 (hex) is
+stored, in `org.email_verification_tokens`, with `expires_at = now() + 24 hours`
+(`EMAIL_TOKEN_TTL_HOURS`); every earlier outstanding token for the address is expired first, so only
+the newest link works. An unknown id raises `P0001 'email_not_found'`; an address that is **already
+verified returns `NULL`** and issues nothing (there is nothing to prove — `EmailsBackendService`
+answers that case itself before calling).
+
+**Why `security`, and why no user id.** The service role holds `USAGE` on `security` and not on `org`,
+so this is the one email function that lives here. It takes no identity on purpose: the app decodes
+session JWTs without verifying them, so a service-role call must never trust a caller-supplied
+identity — and it does not need to. The token is mailed to the row's OWN address and
+`org.confirm_user_email` redeems it only for the row's OWN account (`token_wrong_account` otherwise),
+so issuing one for someone else's row gains the issuer nothing. `EmailsBackendService` passes only an
+id the caller's own token produced (`org.add_user_email`) or listed (`org.get_my_emails`). The rest of
+the handshake is in [`../org/Functions.md`](../org/Functions.md#-email-addresses-00001050).

@@ -2,6 +2,7 @@ import type { JSX } from "preact";
 import type { Signal } from "@preact/signals";
 import { useSignal, useSignalEffect } from "@preact/signals";
 import { useCallback, useMemo } from "preact/hooks";
+import "../styles/checkout-shared.css";
 import "../styles/checkout-details.css";
 import { missingBuyerFields } from "@projective/types/finance";
 import { Button } from "@projective/ui/fields";
@@ -126,8 +127,8 @@ export default function SaveDetailsModal(props: SaveDetailsModalProps): JSX.Elem
 				<div class="ckod-modal__foot">
 					<Button variant="text" size="sm" disabled={busy} onClick={close}>Cancel</Button>
 					<Button
+						class="cko-commit"
 						variant="filled"
-						severity="warning"
 						size="sm"
 						loading={busy}
 						onClick={() => void save()}
@@ -149,7 +150,7 @@ export default function SaveDetailsModal(props: SaveDetailsModalProps): JSX.Elem
 
 				<section class="ckod__section" aria-labelledby={`${SCOPE}-delivery`}>
 					<h3 class="ckod__legend" id={`${SCOPE}-delivery`}>Delivery</h3>
-					<DeliveryFields draft={draft} disabled={busy} scope={SCOPE} />
+					<DeliveryFields draft={draft} busy={busy} scope={SCOPE} />
 				</section>
 
 				<section class="ckod__section" aria-labelledby={`${SCOPE}-billing`}>
@@ -157,7 +158,7 @@ export default function SaveDetailsModal(props: SaveDetailsModalProps): JSX.Elem
 					<BillingFields
 						draft={draft}
 						departments={departmentOptions}
-						disabled={busy}
+						busy={busy}
 						scope={SCOPE}
 					/>
 				</section>

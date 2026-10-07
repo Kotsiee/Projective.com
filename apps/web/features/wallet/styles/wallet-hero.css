@@ -74,6 +74,52 @@
 }
 /* #endregion */
 
+/*
+ * #region The live aurora (HeroAurora.tsx)
+ *
+ * The gradient above is the resting state — what shows with no script, under reduced motion, on a
+ * device the gates refuse, and whenever the canvas is not running. Where the runtime allows it, a
+ * procedural canvas paints the same field in motion over it.
+ *
+ * The canvas takes the hero's underlay layer — the role a `::before` underlay would play, except that a
+ * `<canvas>` cannot live in a pseudo-element — so it is the hero's first child instead: absolutely
+ * positioned over the hero's whole padding box (which already reaches up behind the glass top bar
+ * through `--wlt-hero-lift`), at `z-index: -1` inside the stacking context the hero opens with its
+ * `z-index: 0`. That paints it after the hero's own background and before every piece of hero content,
+ * positioned or not. A replaced element does not stretch from `inset` alone, hence the explicit size.
+ *
+ * It fades in on its first drawn frame through `opacity` only. A transition clock that never advances
+ * leaves it at 0 — the gradient beneath still shows, and nothing above it depends on the fade.
+ */
+.wlt-hero__canvas {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: 0;
+	z-index: -1;
+	display: block;
+	inline-size: 100%;
+	block-size: 100%;
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity var(--wlt-aurora-fade) var(--ease-standard);
+}
+
+.wlt-hero__canvas[data-painted="true"] {
+	opacity: 1;
+}
+
+/* The runtime never mounts it under reduced motion; this holds the line if a preference flips first. */
+@media (prefers-reduced-motion: reduce) {
+	.wlt-hero__canvas {
+		display: none;
+	}
+}
+
+:root[data-motion="reduced"] .wlt-hero__canvas {
+	display: none;
+}
+/* #endregion */
+
 .wlt-hero__inner {
 	position: relative;
 	container: wlt-hero / inline-size;

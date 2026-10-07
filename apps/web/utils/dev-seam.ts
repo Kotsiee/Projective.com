@@ -114,6 +114,47 @@ export type DevLayoutDirection = "ltr" | "rtl" | "auto";
  */
 export type DevProfileSetup = "auto" | "new" | "live" | "complete";
 
+/**
+ * How the `/wallet` hero's live aurora is chosen. `auto` runs the shipping gates (reduced motion, data
+ * saver, device memory, core count, page visibility) and the performance watchdog; `static` never
+ * mounts the canvas, so the resting CSS gradient is what shows; `animated` skips the hardware and
+ * data-saver gates and the watchdog so the shader can be exercised on any machine, while still
+ * honouring reduced motion and pausing on a hidden page.
+ *
+ * Its own axis because every non-`auto` value is a DEVICE fact (core count, memory, frame times) a
+ * developer cannot change from the page.
+ */
+export type DevWalletAurora = "auto" | "static" | "animated";
+
+/**
+ * The `/settings` attention dashboard and the lane's marks (Decision #150). `auto` shows the real
+ * facts; `clear` substitutes a fully set-up freelancer; `all` trips every attention rule once (an
+ * unverified identity, no payout account, an unverified business, an expired connector, an unconfirmed
+ * email). The FACTS are faked — `attentionItems`, the shipping rule, still decides what shows.
+ */
+export type DevSettingsAttention = "auto" | "clear" | "all";
+
+/**
+ * The proposal allowance (Decision #154) — the account popover's meter, the conversion lane's
+ * disclosure and the apply modal's pre-flight notice. `auto` shows the real read; every other value
+ * substitutes the STATUS those surfaces render, so the shipping copy, countdown and gate run on it:
+ * `healthy` (plenty left), `low` (≤ 5 weekly — the upgrade link), `paced` (no buffer token, enforced:
+ * submit disabled, live countdown), `paced_soft` (no buffer token while enforcement is off — the
+ * notice says it still goes through), `weekly` (the week spent, enforced) and `team_small` (a
+ * one-member team). Client-side only: the server's gate still answers from the real allowance.
+ *
+ * Its own axis because each value is a metered SERVER fact (tokens spent, a drip clock, a roster) that
+ * no page control can reach without spending real proposals.
+ */
+export type DevProposalAllowance =
+	| "auto"
+	| "healthy"
+	| "low"
+	| "paced"
+	| "paced_soft"
+	| "weekly"
+	| "team_small";
+
 /** The DOM event the Context Switcher dispatches whenever the active override changes. */
 export const DEV_SEAM_EVENT = "pj:devcontext";
 
@@ -159,6 +200,16 @@ export interface DevSeamState {
 	layoutDirection: DevLayoutDirection;
 	/** The simulated setup position of the viewer's own profile (account popover ring + nudge + pip). */
 	profileSetup: DevProfileSetup;
+	/**
+	 * How the `/wallet` hero's live aurora is chosen (gated · forced static · forced animated).
+	 * `readDevSeam` always fills it; it is optional so hand-built seam fixtures need not, and absent
+	 * reads as `auto`.
+	 */
+	walletAurora?: DevWalletAurora;
+	/** The simulated settings attention facts. Optional like `walletAurora`; absent reads as `auto`. */
+	settingsAttention?: DevSettingsAttention;
+	/** The simulated proposal allowance. Optional like `walletAurora`; absent reads as `auto`. */
+	proposalAllowance?: DevProposalAllowance;
 }
 // #endregion
 
@@ -247,6 +298,17 @@ const PROJECT_ONBOARDINGS: readonly DevProjectOnboarding[] = [
 ];
 const LAYOUT_DIRECTIONS: readonly DevLayoutDirection[] = ["ltr", "rtl", "auto"];
 const PROFILE_SETUPS: readonly DevProfileSetup[] = ["auto", "new", "live", "complete"];
+const WALLET_AURORAS: readonly DevWalletAurora[] = ["auto", "static", "animated"];
+const SETTINGS_ATTENTIONS: readonly DevSettingsAttention[] = ["auto", "clear", "all"];
+const PROPOSAL_ALLOWANCES: readonly DevProposalAllowance[] = [
+	"auto",
+	"healthy",
+	"low",
+	"paced",
+	"paced_soft",
+	"weekly",
+	"team_small",
+];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */
 function coerce<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -289,6 +351,10 @@ export function readDevSeam(): DevSeamState | null {
 		layoutDirection: coerce(ds.devDirection, LAYOUT_DIRECTIONS, "ltr"),
 		// Absent = `auto`, the same "no second spelling for no override" rule as `projectOnboarding`.
 		profileSetup: coerce(ds.devProfileSetup, PROFILE_SETUPS, "auto"),
+		// Absent = `auto` here too.
+		walletAurora: coerce(ds.devWalletAurora, WALLET_AURORAS, "auto"),
+		settingsAttention: coerce(ds.devSettingsAttention, SETTINGS_ATTENTIONS, "auto"),
+		proposalAllowance: coerce(ds.devProposalAllowance, PROPOSAL_ALLOWANCES, "auto"),
 	};
 }
 

@@ -1,0 +1,356 @@
+/*
+ * The ledger — the overview's preview and the Transactions page's windowed feed share one row.
+ *
+ * The feed is virtual: `.wlt-feed--virtual` is as tall as every entry would be (`--wlt-feed-h`, from the
+ * window's offset table) and only the entries near the viewport are in it, each placed at its offset
+ * with `transform` (`--wlt-feed-y`). Rows are a fixed rhythm so the estimate the window lays out with is
+ * the height they render at — nothing below a row moves when it is measured.
+ */
+
+/* #region Feed */
+.wlt-feedbox {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.wlt-feed {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.wlt-feed--virtual {
+	position: relative;
+	block-size: var(--wlt-feed-h, auto);
+	contain: layout;
+}
+
+.wlt-feed--virtual > .wlt-feed__slot {
+	position: absolute;
+	inset-inline: 0;
+	inset-block-start: 0;
+	transform: translateY(var(--wlt-feed-y, 0));
+}
+
+.wlt-feed__group {
+	display: flex;
+	align-items: flex-end;
+	min-block-size: 2.75rem;
+}
+
+.wlt-feed__heading {
+	margin: 0;
+	padding-block: var(--space-3) var(--space-1);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--text-secondary);
+}
+
+.wlt-feed__line {
+	border-block-end: var(--hairline);
+}
+
+.wlt-feed--static > .wlt-feed__line:last-child {
+	border-block-end: 0;
+}
+
+.wlt-feed__sentinel {
+	block-size: var(--space-px);
+}
+
+.wlt-feed__empty {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+}
+
+.wlt-feed__end {
+	margin: 0;
+	padding-block: var(--space-3);
+	text-align: center;
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Row */
+.wlt-lrow {
+	position: relative;
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: center;
+	column-gap: var(--space-3);
+	min-block-size: 4.5rem;
+	box-sizing: border-box;
+	padding-block: var(--space-3);
+	padding-inline: var(--space-2);
+	margin-inline: calc(-1 * var(--space-2));
+	border-radius: var(--radius-base);
+	transform: scale(1);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.wlt-lrow:hover {
+	background: color-mix(in srgb, var(--on-surface) 5%, transparent);
+}
+
+.wlt-lrow:has(.wlt-lrow__open:active) {
+	transform: scale(var(--wlt-press-scale-row));
+	transition-duration: var(--dur-press);
+}
+
+.wlt-lrow:has(.wlt-lrow__open:focus-visible) {
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.wlt-lrow__lead {
+	display: flex;
+}
+
+.wlt-lrow__mark {
+	display: grid;
+	place-items: center;
+	inline-size: 2.5rem;
+	block-size: 2.5rem;
+	border-radius: 50%;
+	background: var(--surface-1);
+	color: var(--on-surface-variant);
+}
+
+.wlt-lrow__mark[data-category="earning"],
+.wlt-lrow__mark[data-category="deposit"],
+.wlt-lrow__mark[data-category="refund"] {
+	background: color-mix(in srgb, var(--success) 14%, var(--surface));
+	color: var(--wlt-credit-ink);
+}
+
+.wlt-lrow__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	min-inline-size: 0;
+}
+
+/* The one control that opens the line: its hit area is stretched over the whole row. */
+.wlt-lrow__open {
+	all: unset;
+	display: block;
+	min-inline-size: 0;
+	cursor: pointer;
+}
+
+.wlt-lrow__open::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+}
+
+.wlt-lrow__open:focus-visible {
+	outline: none;
+}
+
+.wlt-lrow__title {
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.wlt-lrow__meta {
+	display: flex;
+	min-inline-size: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.wlt-lrow__part {
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* The time is the one part that must never be the one to ellipsise away. */
+.wlt-lrow__part:last-child {
+	flex: none;
+}
+
+.wlt-lrow__party {
+	display: inline;
+}
+
+.wlt-lrow__handle,
+.wlt-lrow__kind {
+	margin-inline-start: var(--space-1);
+	color: var(--text-secondary);
+}
+
+.wlt-lrow__card {
+	font-variant-numeric: tabular-nums;
+}
+
+/* Links inside the row sit ABOVE the stretched open control. */
+.wlt-lrow__link,
+.wlt-lrow__receipt {
+	position: relative;
+	z-index: 1;
+}
+
+.wlt-lrow__link {
+	color: inherit;
+	text-decoration: underline;
+	text-decoration-color: color-mix(in srgb, currentColor 35%, transparent);
+	text-underline-offset: 0.2em;
+}
+
+.wlt-lrow__link:hover {
+	color: var(--on-surface);
+	text-decoration-color: currentColor;
+}
+
+.wlt-lrow__trail {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: var(--space-1);
+	text-align: end;
+	white-space: nowrap;
+}
+
+.wlt-lrow__amount {
+	font-size: var(--text-md);
+}
+
+.wlt-lrow__facts {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.wlt-lrow__receipt {
+	inline-size: 1.75rem;
+	block-size: 1.75rem;
+}
+
+/* A lifecycle status — the one kind of non-control that may wear a container (§3 gate 7). */
+.wlt-status {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding-block: var(--space-px);
+	padding-inline: var(--space-2);
+	border-radius: var(--radius-full);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+}
+
+.wlt-status[data-settlement="pending"] {
+	background: var(--surface-1);
+	color: var(--on-surface-variant);
+}
+
+.wlt-status[data-settlement="disputed"] {
+	background: var(--wlt-attention-fill);
+	color: var(--wlt-attention-ink);
+}
+
+.wlt-lrow--placeholder {
+	display: block;
+	margin-inline: 0;
+	background:
+		radial-gradient(circle at calc(var(--space-2) + 1.25rem) 50%, var(--surface-1) 1.25rem,
+		transparent 1.3rem),
+		linear-gradient(var(--surface-1), var(--surface-1)) calc(var(--space-2) * 2 + 3rem) 38% / 40%
+		var(--space-3)
+		no-repeat,
+		linear-gradient(var(--surface-1), var(--surface-1)) calc(var(--space-2) * 2 + 3rem) 66% / 24%
+		var(--space-2)
+		no-repeat;
+}
+
+.wlt-lrow--placeholder:hover {
+	background-color: transparent;
+}
+
+@container wlt-sheet (max-width: 30rem) {
+	.wlt-lrow {
+		grid-template-columns: auto minmax(0, 1fr);
+		row-gap: var(--space-1);
+	}
+
+	.wlt-lrow__trail {
+		grid-column: 2;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+	}
+}
+/* #endregion */
+
+/* #region Filter bar */
+.wlt-filters {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.wlt-filters__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-3);
+}
+
+.wlt-filters__search {
+	flex: 1 1 16rem;
+	min-inline-size: 12rem;
+}
+
+.wlt-filters__kinds {
+	flex: 0 1 13rem;
+	min-inline-size: 10rem;
+}
+
+.wlt-filters__end {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin-inline-start: auto;
+}
+
+@container wlt-sheet (max-width: 36rem) {
+	.wlt-filters__search,
+	.wlt-filters__kinds {
+		flex-basis: 100%;
+	}
+
+	.wlt-filters__end {
+		margin-inline-start: 0;
+	}
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.wlt-lrow:has(.wlt-lrow__open:active) {
+		transform: none;
+	}
+
+	.wlt-lrow {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .wlt-lrow:has(.wlt-lrow__open:active) {
+	transform: none;
+}

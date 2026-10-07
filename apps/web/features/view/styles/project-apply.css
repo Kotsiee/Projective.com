@@ -1,0 +1,115 @@
+/*
+ * ============================================================================
+ * ProjectApplyModal — the listing's application dialog (Decision #154).
+ *
+ * The dialog panel is the elevated surface; nothing inside it is boxed again (§B.6 — no card inside an
+ * elevated panel). Fields are the design system's own; the pending-proposal rows are hairline rows,
+ * and the pre-flight notice is an unboxed `InlineNotice`.
+ * ========================================================================== */
+.pam__body {
+	container: pam-panel / inline-size;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	padding: var(--space-5);
+}
+
+.pam__row {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: var(--space-4);
+}
+
+@container pam-panel (min-width: 30rem) {
+	.pam__row:has(> .pam__field + .pam__field) {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	}
+}
+
+.pam__field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.pam__label {
+	margin: 0;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.pam__optional {
+	font-weight: var(--fw-normal);
+	color: var(--text-secondary);
+}
+
+.pam__none {
+	margin: 0;
+	font-size: var(--text-md);
+	color: var(--text-secondary);
+}
+
+.pam__error {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--danger);
+}
+
+/* ---- Already applied: hairline rows, status contained, withdraw as a text action ---- */
+.pam__pending {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.pam__pendinglist {
+	display: flex;
+	flex-direction: column;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.pam__pendingrow {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2) var(--space-3);
+	padding-block: var(--space-2);
+	border-block-end: var(--hairline);
+}
+
+.pam__pendingrow:first-child {
+	border-block-start: var(--hairline);
+}
+
+.pam__pendingname {
+	flex: 1 1 12rem;
+	min-inline-size: 0;
+	font-size: var(--text-sm);
+	color: var(--on-surface);
+}
+
+.pam__pendingactions {
+	display: inline-flex;
+	gap: var(--space-3);
+}
+
+/* ---- Footer: the cost in the meta register, then the one primary ---- */
+.pam__footer {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-4);
+	inline-size: 100%;
+}
+
+.pam__cost {
+	margin: 0;
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}

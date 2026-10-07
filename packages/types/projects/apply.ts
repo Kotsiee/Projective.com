@@ -23,6 +23,12 @@ export const ApplyToProjectSchema = z.object({
 	roleId: z.string().trim().min(1).max(120).nullable().default(null),
 	/** The cover note, plain text; it becomes the request's opening message. */
 	message: z.string().max(HIRE_MESSAGE_MAX).default(""),
+	/**
+	 * Apply on a TEAM's behalf instead of as yourself. Only a member who may bind the team to work
+	 * (`bind_seat`) may, and the team needs two active members; the proposal is metered against the
+	 * team's pool. `null` applies as the signed-in person.
+	 */
+	teamId: z.string().uuid().nullable().default(null),
 });
 export type ApplyToProject = z.infer<typeof ApplyToProjectSchema>;
 
@@ -33,11 +39,69 @@ export interface ProjectApplication {
 	projectId: string;
 	stageId: string;
 	roleId: string | null;
+	/** Who applied: the person, or a team they bound. */
+	applicantType: ApplicantType;
+	/** The team that applied, when {@link applicantType} is `team`. */
+	teamId: string | null;
 	status: "pending";
 	/** The note as stored — PII-masked while the project is protected. */
 	message: string | null;
 	/** The conversation the note opened with the client; null when there was no note to post. */
 	conversationId: string | null;
+}
+// #endregion
+
+// #region The applicant's side — sent proposals and withdrawal
+/** `projects.project_applications.applicant_type`. */
+export const ApplicantType = z.enum(["freelancer", "team"]);
+export type ApplicantType = z.infer<typeof ApplicantType>;
+
+/** `projects.application_status`. */
+export const ApplicationStatus = z.enum(["pending", "accepted", "rejected", "withdrawn"]);
+export type ApplicationStatus = z.infer<typeof ApplicationStatus>;
+
+/**
+ * One proposal the viewer sent (or one filed for a team they belong to) — a row of
+ * `projects.list_my_applications`, which `GET /api/projects/applications/mine` returns newest first.
+ */
+export const SentApplicationSchema = z.object({
+	id: z.string(),
+	status: ApplicationStatus,
+	applicantType: ApplicantType,
+	teamId: z.string().nullable(),
+	teamName: z.string().nullable(),
+	/** Whether the viewer may withdraw it — they filed it, or may bind the applying team. */
+	canWithdraw: z.boolean(),
+	projectSlug: z.string(),
+	projectTitle: z.string(),
+	stageSlug: z.string().nullable(),
+	stageName: z.string().nullable(),
+	roleTitle: z.string().nullable(),
+	createdAt: z.string(),
+});
+export type SentApplication = z.infer<typeof SentApplicationSchema>;
+
+/** `GET /api/projects/applications/mine?project=` — narrows to one project when given. */
+export const SentApplicationsQuerySchema = z.object({
+	project: z.string().trim().min(1).max(120).optional(),
+});
+export type SentApplicationsQuery = z.infer<typeof SentApplicationsQuerySchema>;
+
+/**
+ * `POST /api/projects/applications/withdraw` — the applicant takes a pending proposal back. The
+ * status flip refunds one weekly proposal unit (the anti-burst buffer token is not returned).
+ */
+export const WithdrawApplicationSchema = z.object({
+	applicationId: z.string().trim().min(1).max(120),
+});
+export type WithdrawApplication = z.infer<typeof WithdrawApplicationSchema>;
+
+/** The withdrawn application. */
+export interface ApplicationWithdrawn {
+	id: string;
+	status: "withdrawn";
+	/** Weekly proposal units returned to the applicant. */
+	refunded: number;
 }
 // #endregion
 

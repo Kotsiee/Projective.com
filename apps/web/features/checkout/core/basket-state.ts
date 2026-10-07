@@ -9,7 +9,6 @@ import type {
 	CheckoutResult,
 	CheckoutSessionContext,
 	PaymentProvider,
-	DeviceCapabilities,
 	SavedCard,
 } from "../types/checkout-types.ts";
 import type { CheckoutResponse } from "../types/results.ts";
@@ -55,29 +54,7 @@ export function currentCheckoutContext(): CheckoutContext {
 		display: displayCurrency.value,
 		projectId: preselectProjectId.value,
 		serviceId: preselectServiceId.value,
-		device: deviceWallets(),
 	};
-}
-
-/**
- * What this device can actually pay with.
- *
- * Apple Pay announces itself synchronously through `ApplePaySession`, so it is reported honestly.
- * **Google Pay cannot**: determining availability requires Google's own `pay.js`, which this platform
- * does not load, so nothing is claimed about it — the field is left absent. Reporting an unknown
- * capability as `true` would offer a route that fails at the last step; as `false`, it would hide one
- * that works.
- */
-export function deviceWallets(): DeviceCapabilities {
-	const session = (globalThis as Record<string, unknown>).ApplePaySession as
-		| { canMakePayments?: () => boolean }
-		| undefined;
-	if (!session) return { applePay: false };
-	try {
-		return { applePay: session.canMakePayments?.() === true };
-	} catch {
-		return { applePay: false };
-	}
 }
 
 /**

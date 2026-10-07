@@ -7,6 +7,20 @@ CREATE INDEX idx_team_members_user ON org.team_members (user_id);
 CREATE INDEX idx_user_bookmarks_lookup ON org.user_bookmarks (user_id, entity_type);
 -- (No separate token index: `token` is UNIQUE, which is already an index.)
 
+-- #region Email addresses (00001050)
+-- One row per address per person (case-insensitively — an address is), and at most one primary per
+-- person. The primary index is partial and so never deferrable, which is why org.set_primary_email
+-- clears the old primary BEFORE setting the new one.
+CREATE UNIQUE INDEX uq_user_emails_user_email ON org.user_emails (user_id, lower(email));
+CREATE UNIQUE INDEX uq_user_emails_one_primary ON org.user_emails (user_id) WHERE is_primary;
+-- "Who holds this address verified" — projects.invite_by_email resolves an invitee by it, and
+-- org.confirm_user_email refuses `email_in_use` by it.
+CREATE INDEX idx_user_emails_verified_email ON org.user_emails (lower(email)) WHERE verified_at IS NOT NULL;
+-- A reissue expires, and a confirm consumes, every outstanding token of one address.
+-- (No separate hash index: `token_hash` is UNIQUE, which is already an index.)
+CREATE INDEX idx_email_verification_tokens_email ON org.email_verification_tokens (email_id);
+-- #endregion
+
 -- #region Workspace membership invariants (Decision #122)
 -- These are the constraints a row-level CHECK cannot state, because each one spans rows.
 

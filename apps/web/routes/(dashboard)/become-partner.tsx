@@ -1,12 +1,5 @@
-import { define } from "@web/utils/state.ts";
-import { PagePlaceholder } from "@web/components/PagePlaceholder.tsx";
-
-export default define.page(function BecomePartnerPage() {
-	return (
-		<PagePlaceholder
-			title="Become a Partner"
-			path="/become-partner"
-			note="Freelancer conversion funnel (Client/Operator → unlock freelancer suite)."
-		/>
-	);
-});
+/**
+ * `/become-partner` — the freelancer conversion page. The controller lives with its feature
+ * (`features/profile/routes/BecomePartnerScreen.tsx`); this file only places it in the route tree.
+ */
+export { default, handler } from "@features/profile/routes/BecomePartnerScreen.tsx";

@@ -2,12 +2,16 @@ import type { UserContext } from "@projective/types/auth";
 import type {
 	ActivityRange,
 	FundState,
+	LedgerKind,
+	LedgerSettlement,
 	MoneyView,
+	TransactionListParams,
 	TxnCategory,
 	WalletAction,
 	WalletQuery,
 	WalletScope,
 } from "../types/wallet-types.ts";
+import { LedgerKind as LedgerKindEnum } from "../types/wallet-types.ts";
 
 // #region Wallet param (scope:id) ⇄ query
 /** Encodes a wallet reference as the `?w=` param (`personal` · `team:{id}` · `aggregate`). */
@@ -47,6 +51,7 @@ export function walletQueryFrom(sp: URLSearchParams, context: UserContext): Wall
 		wallet: sp.get("w") ?? defaultWalletParam(context),
 		display: sp.get("display"),
 		viewerCurrency: context.displayCurrency ?? null,
+		timezone: sp.get("tz"),
 	};
 }
 
@@ -103,7 +108,10 @@ export function viewLabel(view: WalletView): string {
 	return VIEW_LABEL[view];
 }
 
-/** The address of a wallet page for a wallet and currency; `flow` is carried where the page reads it. */
+/**
+ * The address of a wallet page for a wallet and currency; `flow` is carried where the page reads it,
+ * and left off where it is that page's own default.
+ */
 export function walletPageHref(
 	view: WalletView,
 	wallet: string,
@@ -111,7 +119,7 @@ export function walletPageHref(
 	flow?: FlowPeriod | null,
 ): string {
 	const params = new URLSearchParams(buildWalletQuery({ wallet, display }));
-	if (flow && flow !== DEFAULT_FLOW_PERIOD && viewShowsRuler(view)) params.set("flow", flow);
+	if (flow && flow !== defaultPeriodFor(view) && viewShowsRuler(view)) params.set("flow", flow);
 	const qs = params.toString();
 	return `${VIEW_PATH[view]}${qs ? `?${qs}` : ""}`;
 }
@@ -123,9 +131,12 @@ export function viewOfPath(pathname: string): WalletView | null {
 	return found ?? null;
 }
 
-/** Whether a page draws a cash-flow window, and so carries the pinned range ruler. */
+/**
+ * Whether a page is read over a window, and so carries the pinned range ruler: the overview and the
+ * analytics draw a cash-flow window, the ledger lists one.
+ */
 export function viewShowsRuler(view: WalletView): boolean {
-	return view === "overview" || view === "analytics";
+	return view === "overview" || view === "analytics" || view === "transactions";
 }
 
 /**
@@ -149,6 +160,14 @@ export const FLOW_PERIODS: readonly FlowPeriod[] = ["7d", "1m", "3m", "6m", "1y"
 
 /** The period the page opens on when `?flow=` names none. */
 export const DEFAULT_FLOW_PERIOD: FlowPeriod = "1m";
+
+/**
+ * The window a page opens on when `?flow=` names none: the ledger lists everything until the reader
+ * narrows it; the cash-flow pages draw the last month.
+ */
+export function defaultPeriodFor(view: WalletView): FlowPeriod {
+	return view === "transactions" ? "all" : DEFAULT_FLOW_PERIOD;
+}
 
 const PERIOD_RANGE: Readonly<Record<FlowPeriod, ActivityRange>> = {
 	"7d": "7d",
@@ -211,10 +230,184 @@ export function periodSlicesAreSpans(period: FlowPeriod): boolean {
 	return period !== "7d" && period !== "1m";
 }
 
-/** Parses the page's `?flow=` param; a pre-ruler name maps across, anything else is the default. */
-export function toFlowPeriod(raw: string | null | undefined): FlowPeriod {
+/**
+ * Parses the page's `?flow=` param; a pre-ruler name maps across, anything else is `fallback` (the
+ * cash-flow default unless the page says otherwise).
+ */
+export function toFlowPeriod(
+	raw: string | null | undefined,
+	fallback: FlowPeriod = DEFAULT_FLOW_PERIOD,
+): FlowPeriod {
 	if (FLOW_PERIODS.includes(raw as FlowPeriod)) return raw as FlowPeriod;
-	return (raw && LEGACY_PERIOD[raw]) || DEFAULT_FLOW_PERIOD;
+	return (raw && LEGACY_PERIOD[raw]) || fallback;
+}
+// #endregion
+
+// #region Ledger filters
+/** The direction toggle as the page's URL names it. */
+export type LedgerDirection = "all" | "in" | "out";
+
+/**
+ * The Transactions page's filter bar, as the reader set it — synced to the page's own URL (`?q=` ·
+ * `?dir=in|out` · `?kind=a,b` · `?flow=`) so a filtered ledger can be linked, reloaded and shared.
+ */
+export interface LedgerFilters {
+	q: string;
+	dir: LedgerDirection;
+	kinds: LedgerKind[];
+	period: FlowPeriod;
+}
+
+/** The line families the category selector offers, in the order it lists them. */
+export const LEDGER_KIND_CHOICES: readonly LedgerKind[] = [
+	"escrow_release",
+	"service_sale",
+	"product_sale",
+	"order_payment",
+	"platform_fee",
+	"topup",
+	"payout",
+	"transfer",
+	"refund",
+];
+
+const KIND_LABEL: Readonly<Record<LedgerKind, string>> = {
+	escrow_release: "Escrow releases",
+	escrow_hold: "Escrow funded",
+	service_sale: "Service sales",
+	product_sale: "Product sales",
+	order_payment: "Order payments",
+	platform_fee: "Platform fees",
+	topup: "Top-ups",
+	payout: "Payouts",
+	transfer: "Transfers",
+	refund: "Refunds",
+	other: "Other",
+};
+
+/** A line family's plural label ("Escrow releases"). */
+export function ledgerKindLabel(kind: LedgerKind): string {
+	return KIND_LABEL[kind];
+}
+
+const SETTLEMENT_LABEL: Readonly<Record<LedgerSettlement, string>> = {
+	cleared: "Cleared",
+	pending: "Pending",
+	disputed: "Disputed",
+};
+
+/** A line's settlement state, as a word. */
+export function settlementLabel(settlement: LedgerSettlement): string {
+	return SETTLEMENT_LABEL[settlement];
+}
+
+const SEARCH_MAX = 160;
+
+function kindsFrom(raw: string | null): LedgerKind[] {
+	if (!raw) return [];
+	const wanted = new Set(raw.split(",").map((k) => k.trim()));
+	return LedgerKindEnum.options.filter((k) => k !== "other" && wanted.has(k));
+}
+
+/** The filter bar's state from the page's URL; anything unrecognised is the unfiltered default. */
+export function ledgerFiltersFrom(sp: URLSearchParams): LedgerFilters {
+	const dir = sp.get("dir");
+	return {
+		q: (sp.get("q") ?? "").slice(0, SEARCH_MAX),
+		dir: dir === "in" || dir === "out" ? dir : "all",
+		kinds: kindsFrom(sp.get("kind")),
+		period: toFlowPeriod(sp.get("flow"), defaultPeriodFor("transactions")),
+	};
+}
+
+/** Whether the search, direction or category narrows the ledger (the window is the ruler's). */
+export function ledgerFiltered(f: LedgerFilters): boolean {
+	return f.q.trim() !== "" || f.dir !== "all" || f.kinds.length > 0;
+}
+
+/**
+ * Writes the filter bar into a copy of the page's query, leaving every other param (`w`, `display`)
+ * alone and dropping each filter that is at its default, so an unfiltered ledger has a clean address.
+ */
+export function withLedgerFilters(base: URLSearchParams, f: LedgerFilters): URLSearchParams {
+	const next = new URLSearchParams(base);
+	const q = f.q.trim();
+	if (q) next.set("q", q);
+	else next.delete("q");
+	if (f.dir !== "all") next.set("dir", f.dir);
+	else next.delete("dir");
+	if (f.kinds.length > 0) next.set("kind", f.kinds.join(","));
+	else next.delete("kind");
+	if (f.period !== defaultPeriodFor("transactions")) next.set("flow", f.period);
+	else next.delete("flow");
+	return next;
+}
+
+/** The ledger read the filter bar asks for (keyset paging is added per page). */
+export function ledgerParamsOf(f: LedgerFilters): TransactionListParams {
+	const q = f.q.trim();
+	return {
+		search: q || undefined,
+		direction: f.dir === "in" ? "credit" : f.dir === "out" ? "debit" : undefined,
+		kinds: f.kinds.length > 0 ? f.kinds : undefined,
+		range: f.period === "all" ? undefined : periodRange(f.period),
+	};
+}
+
+/** A ledger read as `/api/wallet/transactions` (and `/api/wallet/export`) query params. */
+export function ledgerApiParams(params: TransactionListParams): Record<string, string> {
+	const out: Record<string, string> = {};
+	if (params.search) out.search = params.search;
+	if (params.direction) out.direction = params.direction;
+	if (params.fundState) out.fundState = params.fundState;
+	if (params.category) out.category = params.category;
+	if (params.kinds && params.kinds.length > 0) out.kinds = params.kinds.join(",");
+	if (params.range) out.range = params.range;
+	if (params.project) out.project = params.project;
+	if (params.from) out.from = params.from;
+	if (params.to) out.to = params.to;
+	if (params.sort) out.sort = params.sort;
+	if (params.dir) out.dir = params.dir;
+	if (params.cursor) out.cursor = params.cursor;
+	if (params.limit) out.limit = String(params.limit);
+	return out;
+}
+
+/** The inverse of {@link ledgerApiParams}, for the thin routes; the result is Zod-checked there. */
+export function ledgerApiParamsFrom(sp: URLSearchParams): TransactionListParams {
+	const limit = Number.parseInt(sp.get("limit") ?? "", 10);
+	const kinds = kindsFrom(sp.get("kinds"));
+	const range = sp.get("range");
+	const direction = sp.get("direction");
+	const dir = sp.get("dir");
+	return {
+		search: sp.get("search")?.slice(0, SEARCH_MAX) || undefined,
+		direction: direction === "credit" || direction === "debit" ? direction : undefined,
+		fundState: (sp.get("fundState") || undefined) as TransactionListParams["fundState"],
+		category: (sp.get("category") || undefined) as TransactionListParams["category"],
+		kinds: kinds.length > 0 ? kinds : undefined,
+		range: range && ACTIVITY_RANGES.includes(range as ActivityRange)
+			? range as ActivityRange
+			: undefined,
+		project: sp.get("project") || undefined,
+		from: sp.get("from") || undefined,
+		to: sp.get("to") || undefined,
+		sort: (sp.get("sort") || undefined) as TransactionListParams["sort"],
+		dir: dir === "asc" || dir === "desc" ? dir : undefined,
+		cursor: sp.get("cursor") || null,
+		limit: Number.isFinite(limit) ? limit : undefined,
+	};
+}
+
+/** The browser's IANA time zone, or `null` where it cannot be read (the server, an old engine). */
+export function browserTimeZone(): string | null {
+	try {
+		return typeof Intl !== "undefined"
+			? Intl.DateTimeFormat().resolvedOptions().timeZone ?? null
+			: null;
+	} catch {
+		return null;
+	}
 }
 // #endregion
 

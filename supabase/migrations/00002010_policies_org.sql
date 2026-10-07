@@ -23,31 +23,22 @@ SELECT TO public USING (
 -- edits go through org.save_profile, which names every column it touches. With no write policy the
 -- table is default-deny to a client, which is the whole point.
 
+-- org.user_emails is READ-ONLY to a client (2026-10-06): one SELECT policy, and NO INSERT, UPDATE or
+-- DELETE policy. `verified_at` unlocks the invitations sent to an address (the
+-- projects.project_invitations SELECT policy, org.fn_is_invitee, projects.invite_by_email), and the
+-- own-row write policies this replaces let any signed-in user INSERT somebody else's address with
+-- `verified_at` already set — or UPDATE it onto a row they had (the UPDATE policy had no WITH CHECK)
+-- — and so read and accept invitations meant for that person. Every write is now a definer:
+-- provisioning, public.handle_email_confirmed, and the 00001050 email functions, where a secondary
+-- address is verified only by redeeming a mailed token. Write grants are revoked too (00002520) and
+-- org.trg_user_emails_guard (00001815) refuses a client write to the trusted columns regardless.
 CREATE POLICY "Users can view their own emails" ON org.user_emails FOR
-SELECT TO public USING (
+SELECT TO authenticated USING (
         user_id = auth.uid ()
         OR security.is_admin ()
     );
 
-CREATE POLICY "Users can add their own emails" ON org.user_emails FOR
-INSERT
-    TO public
-WITH
-    CHECK (
-        user_id = auth.uid ()
-        OR security.is_admin ()
-    );
-
-CREATE POLICY "Users can update their own emails" ON org.user_emails FOR
-UPDATE TO public USING (
-    user_id = auth.uid ()
-    OR security.is_admin ()
-);
-
-CREATE POLICY "Users can delete their own emails" ON org.user_emails FOR DELETE TO public USING (
-    user_id = auth.uid ()
-    OR security.is_admin ()
-);
+-- org.email_verification_tokens: RLS on (00002001) and NO policy, deliberately — definer-only.
 
 
 -- --- from 0204_projects.sql ---
@@ -165,13 +156,12 @@ SELECT TO public USING (
 -- client INSERT could set `verification_level` and `status` at birth, where the UPDATE-only
 -- immutability guard (00001895) cannot reach.
 
--- Owner or admin members may update.
-CREATE POLICY "Owners and admins can update the organisation" ON org.organisations FOR
-UPDATE TO public USING (
-    owner_user_id = auth.uid ()
-    OR org.is_organisation_member (id, 'admin')
-    OR security.is_admin ()
-);
+-- NO client UPDATE (or DELETE) policy on org.organisations (2026-10-06). The bare
+-- "Owners and admins can update the organisation" policy this replaces had no column list and no
+-- WITH CHECK, so any admin could rewrite the legal name, registration number and corporate and
+-- billing emails over PostgREST, unvalidated and unaudited. Every edit now goes through
+-- org.update_organisation (00001020 §5c): an allow-list of keys, the legal identity owner-only and
+-- frozen once KYB begins, every value bounded, every edit audited.
 
 -- organisation_members: a user sees their own row; owners/admins see the whole roster.
 CREATE POLICY "Members can view the roster" ON org.organisation_members FOR

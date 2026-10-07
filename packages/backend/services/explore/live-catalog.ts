@@ -216,6 +216,8 @@ export interface StageRow {
 	seat_count: number | null;
 	seat_limit: number | null;
 	parallel: boolean | null;
+	/** Whether the stage is hiring at all — `projects.apply_to_project` refuses a stage with it off. */
+	hire_trigger_active: boolean | null;
 }
 
 /** A named staffing role on a public project's stage. */
@@ -226,6 +228,8 @@ export interface StaffingRoleRow {
 	quantity: number | null;
 	budget_amount_cents: number | null;
 	skills: string[] | null;
+	/** Whether the role takes proposals — only such a role can be named by an application. */
+	allow_proposals: boolean | null;
 }
 
 /** An open seat on a public project's stage. */
@@ -385,9 +389,9 @@ export function primeCatalogForTesting(catalog: Catalog | null): void {
 const PROJECT_COLUMNS =
 	"id, slug, owner_user_id, owner_team_id, client_business_id, title, description_text, format, structure_variation, currency, budget_type, budget_amount_cents, created_at";
 const STAGE_COLUMNS =
-	"id, project_id, name, slug, description_text, sort_order, status, skills, unit_price_cents, seat_count, seat_limit, parallel";
+	"id, project_id, name, slug, description_text, sort_order, status, skills, unit_price_cents, seat_count, seat_limit, parallel, hire_trigger_active";
 const STAFFING_ROLE_COLUMNS =
-	"id, project_stage_id, role_title, quantity, budget_amount_cents, skills";
+	"id, project_stage_id, role_title, quantity, budget_amount_cents, skills, allow_proposals";
 const OPEN_SEAT_COLUMNS =
 	"id, project_stage_id, description_of_need, budget_min_cents, budget_max_cents, status";
 

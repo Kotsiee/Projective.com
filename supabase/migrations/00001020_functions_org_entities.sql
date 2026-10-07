@@ -58,7 +58,9 @@ SET search_path = public, org, security, auth
 AS $$
 DECLARE
     v_uid uuid := auth.uid();
+    v_handle text;
     v_skills text[];
+    v_unknown text;
     v_created boolean := false;
 BEGIN
     IF v_uid IS NULL THEN
@@ -66,16 +68,36 @@ BEGIN
     END IF;
 
     -- Must be a fully-onboarded user (owns a public profile) before adding a persona.
-    IF NOT EXISTS (SELECT 1 FROM org.users_public WHERE user_id = v_uid) THEN
+    SELECT u.username INTO v_handle FROM org.users_public u WHERE u.user_id = v_uid;
+    IF NOT FOUND THEN
         RAISE EXCEPTION 'Complete onboarding before unlocking a freelancer profile'
             USING ERRCODE = '42501';
     END IF;
 
-    -- Optional starter skills carried from the CTA (mirrors provision_user_profile's contract).
+    -- Optional starter skills: `org.skills` slugs (the vocabulary `freelancer_profiles.skills`
+    -- holds), de-duplicated in the order given, at most ten, every one a known slug.
     IF p_payload ? 'skills' AND jsonb_typeof(p_payload->'skills') = 'array' THEN
-        SELECT ARRAY(SELECT jsonb_array_elements_text(p_payload->'skills')) INTO v_skills;
+        SELECT COALESCE(array_agg(slug ORDER BY first_at), '{}'::text[]) INTO v_skills
+        FROM (
+            SELECT lower(btrim(e.value)) AS slug, min(e.ordinality) AS first_at
+            FROM jsonb_array_elements_text(p_payload->'skills') WITH ORDINALITY AS e(value, ordinality)
+            WHERE btrim(e.value) <> ''
+            GROUP BY lower(btrim(e.value))
+        ) picked;
     ELSE
         v_skills := '{}'::text[];
+    END IF;
+
+    IF COALESCE(array_length(v_skills, 1), 0) > 10 THEN
+        RAISE EXCEPTION 'Choose at most 10 starter skills' USING ERRCODE = '22023';
+    END IF;
+
+    SELECT s INTO v_unknown
+    FROM unnest(v_skills) AS s
+    WHERE NOT EXISTS (SELECT 1 FROM org.skills k WHERE k.slug = s)
+    LIMIT 1;
+    IF v_unknown IS NOT NULL THEN
+        RAISE EXCEPTION 'Unknown skill: %', v_unknown USING ERRCODE = '22023';
     END IF;
 
     -- 1. Link the freelancer profile record to the account (idempotent — freelancer_profiles is
@@ -91,17 +113,12 @@ BEGIN
      WHERE user_id = v_uid;
 
     -- 3. Activate the freelancer persona immediately so the suite unlocks without a manual switch.
-    --    Freelancer profiles are keyed by user_id, so the active profile id is the user id. Any
-    --    active team context is left untouched.
-    INSERT INTO security.session_context (
-        user_id, active_profile_type, active_profile_id, updated_at
-    ) VALUES (
-        v_uid, 'freelancer', v_uid, now()
-    )
-    ON CONFLICT (user_id) DO UPDATE SET
-        active_profile_type = 'freelancer',
-        active_profile_id = v_uid,
-        updated_at = now();
+    --    Freelancer profiles are keyed by user_id, so the active profile id is the user id. It goes
+    --    through the one session-context writer, which clears the team and organisation slots in the
+    --    same statement: writing only the profile slot left a caller acting as a team or an
+    --    organisation holding two slots, which ck_session_context_one_slot refuses — so the
+    --    conversion failed for exactly the people most likely to attempt it.
+    PERFORM security.fn_set_session_context('freelancer', v_uid, NULL, NULL, v_uid);
 
     -- 4. Audit a genuine conversion only (definer context — audit_logs isn't granted to authenticated).
     IF v_created THEN
@@ -122,6 +139,7 @@ BEGIN
 
     RETURN jsonb_build_object(
         'freelancer_profile_id', v_uid,
+        'handle', v_handle,
         'created', v_created,
         'is_freelancer', true
     );
@@ -170,6 +188,276 @@ BEGIN
 END;
 $$;
 
+-- #endregion
+
+-- #region 5b. The acting entity's own name — read through a door, not through RLS
+-- `UserBackendService.me` names the entity a person acts as. It read the name as the caller under
+-- RLS, which works for a team (members may SELECT their team) and an organisation, and returns
+-- NOTHING for a business: `org.business_profiles` has no client SELECT policy at all, so a business
+-- member's header fell back to the slug. This answers for exactly one entity — the one named — and
+-- only when the caller holds an active seat in it (the owner of an organisation counts), so it can
+-- never be used to read an entity the caller is not acting inside. NULL when they are not.
+CREATE OR REPLACE FUNCTION org.get_acting_context_details(p_context_type text, p_context_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_name text;
+    v_handle text;
+BEGIN
+    IF v_uid IS NULL OR p_context_id IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    IF p_context_type = 'team' THEN
+        SELECT t.name, t.slug INTO v_name, v_handle
+        FROM org.teams t
+        WHERE t.id = p_context_id
+          AND EXISTS (
+              SELECT 1 FROM org.team_members m
+              WHERE m.team_id = t.id AND m.user_id = v_uid AND m.status = 'active'
+          );
+    ELSIF p_context_type = 'business' THEN
+        SELECT b.name, b.slug INTO v_name, v_handle
+        FROM org.business_profiles b
+        WHERE b.id = p_context_id
+          AND EXISTS (
+              SELECT 1 FROM org.business_members m
+              WHERE m.business_id = b.id AND m.user_id = v_uid AND m.status = 'active'
+          );
+    ELSIF p_context_type = 'organisation' THEN
+        SELECT COALESCE(NULLIF(btrim(o.trading_name), ''), o.legal_name), o.handle
+          INTO v_name, v_handle
+        FROM org.organisations o
+        WHERE o.id = p_context_id
+          AND (
+              o.owner_user_id = v_uid
+              OR EXISTS (
+                  SELECT 1 FROM org.organisation_members m
+                  WHERE m.organisation_id = o.id AND m.user_id = v_uid AND m.status = 'active'
+              )
+          );
+    ELSE
+        RETURN NULL;
+    END IF;
+
+    IF v_handle IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    RETURN jsonb_build_object(
+        'context_type', p_context_type,
+        'context_id', p_context_id,
+        'name', NULLIF(btrim(v_name), ''),
+        'handle', v_handle
+    );
+END;
+$$;
+-- #endregion
+
+-- #region 5c. Editing an organisation — the one write door
+-- `org.organisations` had a bare `FOR UPDATE` policy for its owner and admins: no column list, no
+-- WITH CHECK, no validation. Any admin could rewrite the legal name, the registration number and the
+-- corporate and billing addresses over PostgREST, with nothing checked and nothing recorded. The
+-- policy is gone (00002010); this is the only way an organisation changes now.
+--
+--   * Only the keys below are accepted; an unknown key is refused, never ignored, and the
+--     platform-owned columns (owner · handle · status · verification · logo) are refused by name.
+--   * The LEGAL identity — legal name, registration number, corporate email — is the owner's to
+--     change, and is frozen once KYB has begun (`kyb_pending`, `verified`): a verified identity that
+--     could be edited afterwards would verify nothing.
+--   * Every value is checked against the bounds `@projective/types/org` UpdateOrganisationSchema
+--     states; an empty string clears an optional field.
+--   * Every edit is audited (`organisation.updated`, with the keys changed).
+CREATE OR REPLACE FUNCTION org.update_organisation(p_org_id uuid, p_payload jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_org org.organisations%ROWTYPE;
+    v_is_owner boolean;
+    v_is_org_admin boolean;
+    v_key text;
+    v_text text;
+    v_spec record;
+    v_fields jsonb;
+    v_identity_keys text[] := ARRAY['legalName', 'registrationNumber', 'corporateEmail'];
+    v_platform_keys text[] := ARRAY[
+        'handle', 'status', 'verificationLevel', 'ownerUserId', 'logoFileId', 'id', 'createdAt', 'updatedAt'
+    ];
+    v_editable_keys text[] := ARRAY[
+        'legalName', 'tradingName', 'registrationNumber', 'corporateEmail', 'corporatePhone', 'website',
+        'addressLine1', 'addressCity', 'addressPostcode', 'addressCountry', 'employeeScale',
+        'primaryIndustry', 'industryOther', 'billingEmail', 'defaultCurrency', 'departments', 'purpose'
+    ];
+    v_email_re text := '^[^@[:space:]]+@[^@[:space:]]+[.][^@[:space:]]+$';
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Not authenticated' USING ERRCODE = '28000';
+    END IF;
+    IF p_payload IS NULL OR jsonb_typeof(p_payload) <> 'object' OR p_payload = '{}'::jsonb THEN
+        RAISE EXCEPTION 'Nothing to update' USING ERRCODE = '22023';
+    END IF;
+
+    SELECT * INTO v_org FROM org.organisations o WHERE o.id = p_org_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Organisation not found' USING ERRCODE = 'P0002';
+    END IF;
+
+    v_is_owner := v_org.owner_user_id = v_uid;
+    v_is_org_admin := org.is_organisation_member(p_org_id, 'admin');
+    IF NOT v_is_owner AND NOT v_is_org_admin AND NOT security.is_admin() THEN
+        RAISE EXCEPTION 'Only the owner or an admin can edit this organisation' USING ERRCODE = '42501';
+    END IF;
+
+    -- Which keys, and who may send them.
+    FOR v_key IN SELECT jsonb_object_keys(p_payload) LOOP
+        IF v_key = ANY (v_platform_keys) THEN
+            RAISE EXCEPTION '% is set by the platform and cannot be edited', v_key USING ERRCODE = '42501';
+        ELSIF NOT v_key = ANY (v_editable_keys) THEN
+            RAISE EXCEPTION 'Unknown field: %', v_key USING ERRCODE = '22023';
+        END IF;
+        IF v_key = ANY (v_identity_keys) THEN
+            IF NOT v_is_owner AND NOT security.is_admin() THEN
+                RAISE EXCEPTION 'Only the owner can change the organisation''s legal identity'
+                    USING ERRCODE = '42501';
+            END IF;
+            IF v_org.verification_level IN ('kyb_pending', 'verified') THEN
+                RAISE EXCEPTION 'The legal identity is locked while verification is under way or complete'
+                    USING ERRCODE = '55000';
+            END IF;
+        END IF;
+    END LOOP;
+
+    -- Text keys: (key, max length, may be cleared). One table so every bound is stated once.
+    FOR v_spec IN
+        SELECT * FROM (VALUES
+            ('legalName', 160, false), ('tradingName', 160, true), ('registrationNumber', 60, true),
+            ('corporateEmail', 160, false), ('corporatePhone', 40, true), ('website', 200, true),
+            ('addressLine1', 160, true), ('addressCity', 80, true), ('addressPostcode', 20, true),
+            ('addressCountry', 60, true), ('employeeScale', 20, true), ('primaryIndustry', 60, true),
+            ('industryOther', 80, true), ('billingEmail', 160, true), ('defaultCurrency', 3, false)
+        ) AS t(key, max_len, nullable)
+    LOOP
+        CONTINUE WHEN NOT p_payload ? v_spec.key;
+        IF jsonb_typeof(p_payload->v_spec.key) NOT IN ('string', 'null') THEN
+            RAISE EXCEPTION '% must be text', v_spec.key USING ERRCODE = '22023';
+        END IF;
+        v_text := btrim(p_payload->>v_spec.key);
+        IF COALESCE(v_text, '') = '' AND NOT v_spec.nullable THEN
+            RAISE EXCEPTION '% is required', v_spec.key USING ERRCODE = '22023';
+        END IF;
+        IF length(v_text) > v_spec.max_len THEN
+            RAISE EXCEPTION '% is % characters at most', v_spec.key, v_spec.max_len USING ERRCODE = '22023';
+        END IF;
+    END LOOP;
+
+    IF p_payload ? 'corporateEmail' AND btrim(p_payload->>'corporateEmail') !~ v_email_re THEN
+        RAISE EXCEPTION 'corporateEmail is not an email address' USING ERRCODE = '22023';
+    END IF;
+    IF COALESCE(btrim(p_payload->>'billingEmail'), '') <> ''
+       AND btrim(p_payload->>'billingEmail') !~ v_email_re THEN
+        RAISE EXCEPTION 'billingEmail is not an email address' USING ERRCODE = '22023';
+    END IF;
+    IF p_payload ? 'defaultCurrency' AND upper(btrim(p_payload->>'defaultCurrency')) !~ '^[A-Z]{3}$' THEN
+        RAISE EXCEPTION 'defaultCurrency is a three-letter currency code' USING ERRCODE = '22023';
+    END IF;
+    IF COALESCE(btrim(p_payload->>'employeeScale'), '') <> ''
+       AND NOT btrim(p_payload->>'employeeScale') = ANY (enum_range(NULL::org.employee_scale)::text[]) THEN
+        RAISE EXCEPTION 'employeeScale is not a known scale' USING ERRCODE = '22023';
+    END IF;
+    FOR v_spec IN SELECT * FROM (VALUES ('departments', 60), ('purpose', 40)) AS t(key, max_len) LOOP
+        CONTINUE WHEN NOT p_payload ? v_spec.key;
+        IF jsonb_typeof(p_payload->v_spec.key) <> 'array' THEN
+            RAISE EXCEPTION '% must be a list', v_spec.key USING ERRCODE = '22023';
+        END IF;
+        IF EXISTS (
+            SELECT 1 FROM jsonb_array_elements(p_payload->v_spec.key) e
+            WHERE jsonb_typeof(e) <> 'string' OR length(e #>> '{}') > v_spec.max_len
+        ) THEN
+            RAISE EXCEPTION 'Each % entry is text of % characters at most', v_spec.key, v_spec.max_len
+                USING ERRCODE = '22023';
+        END IF;
+    END LOOP;
+
+    -- An 'other' industry needs its specifier (organisations_industry_other_ck) — said in words here
+    -- rather than as a constraint violation.
+    IF COALESCE(
+           CASE WHEN p_payload ? 'primaryIndustry' THEN NULLIF(btrim(p_payload->>'primaryIndustry'), '')
+                ELSE v_org.primary_industry END, ''
+       ) = 'other'
+       AND COALESCE(
+           CASE WHEN p_payload ? 'industryOther' THEN NULLIF(btrim(p_payload->>'industryOther'), '')
+                ELSE v_org.industry_other END, ''
+       ) = '' THEN
+        RAISE EXCEPTION 'Name the industry when choosing Other' USING ERRCODE = '22023';
+    END IF;
+
+    UPDATE org.organisations o SET
+        legal_name = CASE WHEN p_payload ? 'legalName' THEN btrim(p_payload->>'legalName') ELSE o.legal_name END,
+        trading_name = CASE WHEN p_payload ? 'tradingName'
+            THEN NULLIF(btrim(p_payload->>'tradingName'), '') ELSE o.trading_name END,
+        registration_number = CASE WHEN p_payload ? 'registrationNumber'
+            THEN NULLIF(btrim(p_payload->>'registrationNumber'), '') ELSE o.registration_number END,
+        corporate_email = CASE WHEN p_payload ? 'corporateEmail'
+            THEN lower(btrim(p_payload->>'corporateEmail')) ELSE o.corporate_email END,
+        corporate_phone = CASE WHEN p_payload ? 'corporatePhone'
+            THEN NULLIF(btrim(p_payload->>'corporatePhone'), '') ELSE o.corporate_phone END,
+        website = CASE WHEN p_payload ? 'website'
+            THEN NULLIF(btrim(p_payload->>'website'), '') ELSE o.website END,
+        address_line_1 = CASE WHEN p_payload ? 'addressLine1'
+            THEN NULLIF(btrim(p_payload->>'addressLine1'), '') ELSE o.address_line_1 END,
+        address_city = CASE WHEN p_payload ? 'addressCity'
+            THEN NULLIF(btrim(p_payload->>'addressCity'), '') ELSE o.address_city END,
+        address_postcode = CASE WHEN p_payload ? 'addressPostcode'
+            THEN NULLIF(btrim(p_payload->>'addressPostcode'), '') ELSE o.address_postcode END,
+        address_country = CASE WHEN p_payload ? 'addressCountry'
+            THEN NULLIF(btrim(p_payload->>'addressCountry'), '') ELSE o.address_country END,
+        employee_scale = CASE WHEN p_payload ? 'employeeScale'
+            THEN NULLIF(btrim(p_payload->>'employeeScale'), '')::org.employee_scale ELSE o.employee_scale END,
+        primary_industry = CASE WHEN p_payload ? 'primaryIndustry'
+            THEN NULLIF(btrim(p_payload->>'primaryIndustry'), '') ELSE o.primary_industry END,
+        industry_other = CASE WHEN p_payload ? 'industryOther'
+            THEN NULLIF(btrim(p_payload->>'industryOther'), '') ELSE o.industry_other END,
+        departments = CASE WHEN p_payload ? 'departments'
+            THEN ARRAY(SELECT btrim(v) FROM jsonb_array_elements_text(p_payload->'departments') v
+                       WHERE btrim(v) <> '')
+            ELSE o.departments END,
+        purpose = CASE WHEN p_payload ? 'purpose'
+            THEN ARRAY(SELECT btrim(v) FROM jsonb_array_elements_text(p_payload->'purpose') v
+                       WHERE btrim(v) <> '')
+            ELSE o.purpose END,
+        billing_email = CASE WHEN p_payload ? 'billingEmail'
+            THEN NULLIF(lower(btrim(p_payload->>'billingEmail')), '') ELSE o.billing_email END,
+        default_currency = CASE WHEN p_payload ? 'defaultCurrency'
+            THEN upper(btrim(p_payload->>'defaultCurrency')) ELSE o.default_currency END,
+        updated_at = now()
+    WHERE o.id = p_org_id;
+
+    SELECT jsonb_agg(k ORDER BY k) INTO v_fields FROM jsonb_object_keys(p_payload) k;
+
+    INSERT INTO security.audit_logs (user_id, action, entity_table, entity_id, metadata)
+    VALUES (
+        v_uid,
+        'organisation.updated',
+        'org.organisations',
+        p_org_id,
+        jsonb_build_object(
+            'fields', v_fields,
+            'as_platform_admin', NOT v_is_owner AND NOT v_is_org_admin
+        )
+    );
+
+    RETURN jsonb_build_object('id', p_org_id, 'updated_fields', v_fields);
+END;
+$$;
 -- #endregion
 
 -- #region 6. The permission engine's SQL twin (@projective/types/workspace)

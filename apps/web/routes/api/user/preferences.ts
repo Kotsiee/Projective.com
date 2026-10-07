@@ -3,15 +3,21 @@ import { readCookies, SB_ACCESS_COOKIE } from "@web/utils/auth-cookies.ts";
 import { resolveRequestContext } from "@web/utils/user-context.ts";
 import { UserPreferencesUpdateSchema } from "@projective/types/org";
 import { UserBackendService } from "@server/services/user/UserBackendService.ts";
+import { SettingsBackendService } from "@server/services/user/SettingsBackendService.ts";
+import { readActor } from "@web/utils/api-session.ts";
+import { a11ySetCookie, DEFAULT_A11Y } from "@web/utils/a11y-context.ts";
 import type { ServiceResult } from "@server/services/ServiceResult.ts";
 
 /**
  * `GET` / `PATCH /api/user/preferences` — the acting user's display preferences (currency · locale ·
- * layout direction).
+ * layout direction) and appearance (theme · contrast · font · colour vision · motion).
  *
  * Thin by contract: resolve the request's chrome context + access token, Zod-validate the patch, and
- * delegate to the fat {@link UserBackendService}. No preference logic, no column mapping, and no
- * capability decision lives here.
+ * delegate — the read to {@link UserBackendService} + `SettingsBackendService.appearance`, the save to
+ * `SettingsBackendService.updatePreferences`, which splits the patch between the two halves. No
+ * preference logic, no column mapping, and no capability decision lives here. The one HTTP concern it
+ * adds is the `pj.a11y` cookie: a save that touched the appearance answers with `Set-Cookie`, so the
+ * next request is server-rendered in the new overlays (Decision #150).
  *
  * **`PATCH`, not `POST`** — the body is a genuine partial (see `UserPreferencesUpdateSchema`), and a
  * caller changing only their currency must not have to resend a locale it never intended to touch.
@@ -40,7 +46,13 @@ function actor(req: Request, state: { userContext?: unknown; accessToken?: strin
 
 export const handler = define.handlers({
 	async GET(ctx) {
-		return respond(await UserBackendService.preferences(actor(ctx.req, ctx.state)));
+		const display = await UserBackendService.preferences(actor(ctx.req, ctx.state));
+		if (!display.ok || !display.data) return respond(display);
+		const look = await SettingsBackendService.appearance({ actor: readActor(ctx), device: ctx.state.a11y });
+		return respond({
+			...display,
+			data: { ...display.data, appearance: look.data?.appearance ?? null, appearanceLive: look.data?.live ?? false },
+		});
 	},
 
 	async PATCH(ctx) {
@@ -59,11 +71,31 @@ export const handler = define.handlers({
 				{ status: 422 },
 			);
 		}
-		return respond(
-			await UserBackendService.updatePreferences({
-				...actor(ctx.req, ctx.state),
-				patch: parsed.data,
-			}),
-		);
+		const result = await SettingsBackendService.updatePreferences({
+			context: actor(ctx.req, ctx.state).context,
+			actor: readActor(ctx),
+			patch: parsed.data,
+			device: ctx.state.a11y,
+		});
+		const response = respond(result);
+		// The per-device mirror the server paints the next first byte from — set whether or not the
+		// account write landed, because the overlays (and the direction) are already in force on this
+		// device either way. Fields the save did not touch keep the device's current values.
+		const appearance = result.ok ? result.data?.appearance ?? null : null;
+		const dir = result.ok ? parsed.data.layoutDirection : undefined;
+		if (appearance || dir) {
+			const device = ctx.state.a11y ?? DEFAULT_A11Y;
+			response.headers.append(
+				"set-cookie",
+				a11ySetCookie({
+					contrast: appearance?.contrast ?? device.contrast,
+					font: appearance?.font ?? device.font,
+					cvd: appearance?.cvd ?? device.cvd,
+					motion: appearance?.motion ?? device.motion,
+					dir: dir ?? device.dir,
+				}),
+			);
+		}
+		return response;
 	},
 });

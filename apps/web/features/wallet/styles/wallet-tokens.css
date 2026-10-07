@@ -49,14 +49,17 @@
 	--wlt-sheet-shadow: 0 calc(-1 * var(--space-3)) var(--space-7) color-mix(in srgb, var(--scrim) 16%, transparent);
 
 	/*
-	 * The four fund states, as the allocation meter paints them. Spendable is the brand, escrow the
-	 * success ramp (capital that is safe and working), clearing the warning ramp (money not yet
-	 * spendable) and reserved the aurora's violet (money set aside). Each is a mark, never ink: the
-	 * legend's words stay in text tokens and carry the state's name beside its shape.
+	 * The four fund states, as the allocation meter paints them (Decision #150, after a payments
+	 * dashboard's balance summary bar). Spendable is the brand teal; clearing is the SAME teal hatched
+	 * over its own soft tint — the same money, not yet spendable; escrow is amber (capital committed and
+	 * reserved against work); reserved is the aurora's violet (money set aside while a case is open).
+	 * Each is a mark, never ink: the legend's words stay in text tokens and carry the state's name beside
+	 * its shape, and the hatch is a second, non-colour channel between the two teals.
 	 */
 	--wlt-fund-available: var(--primary);
-	--wlt-fund-escrow: var(--success);
-	--wlt-fund-clearing: var(--warning);
+	--wlt-fund-clearing: var(--primary);
+	--wlt-fund-clearing-soft: color-mix(in srgb, var(--primary) 34%, var(--surface));
+	--wlt-fund-escrow: var(--warning);
 	--wlt-fund-reserved: var(--wlt-aurora-violet);
 
 	--wlt-credit-ink: color-mix(in srgb, var(--success) 72%, var(--on-surface));
@@ -70,3 +73,15 @@
 	--wlt-ruler-shadow: 0 var(--space-1) var(--space-4) color-mix(in srgb, var(--scrim) 36%, transparent);
 	--wlt-sheet-shadow: 0 calc(-1 * var(--space-3)) var(--space-7) color-mix(in srgb, var(--scrim) 40%, transparent);
 }
+
+/* #region Aurora canvas */
+/*
+ * The live aurora (HeroAurora.tsx, wallet-hero.css). It samples its colours at runtime from the
+ * `--wlt-aurora-*` palette above and solves its brightness ceiling from `--wlt-hero-ink`,
+ * `--wlt-hero-ink-soft` and `--wlt-glass-fill`, so it declares no colour of its own — only the fade
+ * that hands the hero from the static gradient to the canvas on its first drawn frame.
+ */
+:root {
+	--wlt-aurora-fade: calc(var(--dur-slow) * 2);
+}
+/* #endregion */

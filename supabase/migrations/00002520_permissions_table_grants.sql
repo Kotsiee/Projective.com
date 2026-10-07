@@ -34,6 +34,16 @@ GRANT ALL ON TABLE security.platform_params TO service_role;
 
 -- #endregion
 
+-- #region org: email addresses + verification tokens (00001050, 2026-10-06)
+-- 00002500 grants ALL on every org table to both client roles. org.user_emails keeps SELECT (filtered
+-- to the caller's own rows by its one policy, 00002010) and loses every write verb: its writers are
+-- definers, because `verified_at` unlocks invitations. The token table is definer-only — no client
+-- verb at all, so not even a policy mistake could expose a token hash.
+REVOKE INSERT, UPDATE, DELETE ON TABLE org.user_emails FROM anon, authenticated;
+
+REVOKE ALL ON TABLE org.email_verification_tokens FROM anon, authenticated;
+-- #endregion
+
 -- #region Finance: escrow visibility (writes are SECURITY DEFINER only)
 GRANT SELECT ON TABLE finance.escrows TO authenticated;
 

@@ -73,14 +73,30 @@ project detail's business parties (`live-detail.ts`) degrade to "Unknown" on the
 
 ### `org.user_emails`
 
-Protects secondary and primary email associations.
+**SELECT only, owner or admin — no client write policy** (2026-10-06).
 
 ```sql
--- ALL: Strictly private to the owning user or platform admins
-CREATE POLICY "Users can manage their own emails" 
-ON org.user_emails FOR ALL TO public 
+CREATE POLICY "Users can view their own emails"
+ON org.user_emails FOR SELECT TO authenticated
 USING (user_id = auth.uid() OR security.is_admin());
 ```
+
+This section used to document a single own-row `FOR ALL` policy; what was actually migrated was four
+`TO public` policies — SELECT, INSERT (`WITH CHECK` own row), UPDATE (own row, **no** `WITH CHECK`) and
+DELETE — under the schema-wide `GRANT ALL`. Either way a signed-in user could INSERT somebody else's
+address with `verified_at` already set, or UPDATE it onto a row they had, and `verified_at` is what the
+`projects.project_invitations` SELECT policy, `org.fn_is_invitee` and `projects.invite_by_email` trust:
+it read and accepted invitations meant for that person. The three write policies are gone,
+`INSERT`/`UPDATE`/`DELETE` are revoked from `anon`/`authenticated` (`00002520`), and every write is a
+definer — provisioning, `public.handle_email_confirmed`, and the `00001050` email functions, where a
+secondary address is verified only by redeeming a token mailed to it
+([Functions.md](Functions.md#-email-addresses-00001050)). `org.trg_user_emails_guard` refuses a client
+write to `verified_at` / `email` / `is_primary` / `user_id` should a grant or policy ever return.
+
+### `org.email_verification_tokens`
+
+**RLS on, no policy at all, no client grant** — definer-only. Only `org.confirm_user_email` and
+`security.issue_email_verification` (service role) touch it; a row holds only a token's SHA-256.
 
 ---
 
@@ -211,23 +227,25 @@ Security Notes warn about.
 CREATE POLICY "Members can view their organisation"
 ON org.organisations FOR SELECT TO public
 USING (owner_user_id = auth.uid() OR org.is_organisation_member(id) OR security.is_admin());
-
--- UPDATE: owner or admin members (or admin)
-CREATE POLICY "Owners and admins can update the organisation"
-ON org.organisations FOR UPDATE TO public
-USING (owner_user_id = auth.uid() OR org.is_organisation_member(id, 'admin') OR security.is_admin());
 ```
 
 **No client INSERT policy** (2026-09-23): an organisation is provisioned by
 `public.create_organisation` (service role) together with its owner membership, and a raw client
 INSERT could set `verification_level` and `status` at birth.
 
-Because the UPDATE policy has no `WITH CHECK`, its `USING` clause judges the post-image too — and an
-ADMIN member satisfies it whatever `owner_user_id` says, so it let an admin write themselves in as
-owner. `trg_organisations_immutable` (trigger file `00001895`) refuses a client UPDATE of
-`owner_user_id`, `status` (which includes `suspended`), `verification_level` (the KYB tier), `handle`
-and `logo_file_id` (set through `org.set_profile_avatar`). The trading name, address and contact
-details stay editable by the owner and admins.
+**No client UPDATE or DELETE policy** (2026-10-06, Decision #150). The former
+`"Owners and admins can update the organisation"` policy (`FOR UPDATE TO public USING (owner OR admin
+member OR platform admin)`) had no column list and no `WITH CHECK`, so any admin could rewrite
+`legal_name`, `registration_number`, `corporate_email` and `billing_email` over PostgREST with
+nothing validated and nothing audited — and, since `USING` judged the post-image too, write
+themselves in as owner. Every edit now goes through `org.update_organisation(p_org_id, p_payload)`
+(`org/Functions.md`): an allow-list of keys, the legal identity owner-only and frozen once KYB
+begins, every value bounded, every edit audited. A raw client `UPDATE` now matches zero rows.
+
+`trg_organisations_immutable` (trigger file `00001895`) stays as defence in depth: it refuses a
+client UPDATE of `owner_user_id`, `status` (which includes `suspended`), `verification_level` (the
+KYB tier), `handle` and `logo_file_id` (set through `org.set_profile_avatar`), so a future policy
+that re-opens the table cannot re-open those columns with it.
 
 ### `org.organisation_members`
 

@@ -9,8 +9,13 @@ import type { UserContext } from "@projective/types/auth";
 import {
 	type AccountSetup,
 	type CurrentUser,
+	type EnableFreelancerInput,
+	type FreelancerConversionResult,
+	FreelancerConversionResultSchema,
 	oauthAvatarFromMetadata,
 	resolveAccountRole,
+	type StarterSkillOption,
+	StarterSkillOptionSchema,
 } from "@projective/types/user";
 import {
 	DEFAULT_USER_LOCALE,
@@ -22,7 +27,8 @@ import { toDisplayCurrency } from "@projective/types/finance";
 import { fetchPartyCards } from "../profile/party-cards.ts";
 import { fetchProfileView } from "../profile/live-profile.ts";
 import { myVerificationStatus } from "../finance/live-payments.ts";
-import { actorFrom, canReadLive } from "../read-actor.ts";
+import { actorFrom, canReadLive, type ReadActor } from "../read-actor.ts";
+import { freelancerUnlockFailure } from "./freelancer-unlock.ts";
 
 /**
  * UserBackendService — the FAT server-side service for the **acting user's own account**.
@@ -300,6 +306,86 @@ export class UserBackendService {
 	}
 
 	/**
+	 * "Become a Partner" — add the freelancer persona to the acting person's identity
+	 * (`PRODUCT_SPEC.md` §Additive, Unlockable Personas) through `org.enable_freelancer_profile`.
+	 *
+	 * The RPC does the whole conversion in one transaction — the freelancer profile with its starter
+	 * skills, the `is_freelancer` flag, the switch into the freelancer persona (through the one
+	 * session-context writer, so a person acting as a team or an organisation converts cleanly) and the
+	 * audit — and it is idempotent: a second call re-activates the persona and reports `created: false`.
+	 * The ACCESS TOKEN does not change here; the caller must refresh the session so the hook re-mints
+	 * `app_metadata.active_context` with `isFreelancer: true` before the seller chrome can show.
+	 *
+	 * Runs in the caller's JWT context (the RPC is keyed off `auth.uid()`); there is no fixture path —
+	 * a conversion that did not happen must never be reported as one.
+	 */
+	static async enableFreelancer(
+		actor: ReadActor,
+		input: EnableFreelancerInput,
+	): Promise<ServiceResult<FreelancerConversionResult>> {
+		if (!actor.userId) {
+			return fail(401, { message: "Sign in to unlock your freelancer profile." });
+		}
+		if (!isAuthBackendLive()) {
+			return fail(503, { message: "Freelancer profiles can't be unlocked in this environment." });
+		}
+		if (!canReadLive(actor)) {
+			return fail(401, { message: "Your session has expired. Please sign in again." });
+		}
+		try {
+			const { data, error } = await getUserClient(actor.accessToken)
+				.schema("org")
+				.rpc("enable_freelancer_profile", { p_payload: { skills: input.skills } });
+			if (error) return freelancerUnlockFailure(error);
+			const parsed = FreelancerConversionResultSchema.safeParse({
+				freelancerProfileId: data?.freelancer_profile_id,
+				handle: data?.handle,
+				created: data?.created,
+				isFreelancer: data?.is_freelancer,
+			});
+			if (!parsed.success) {
+				return fail(502, {
+					message: "Your profile was unlocked, but we couldn't confirm it. Refresh to continue.",
+				});
+			}
+			return ok(parsed.data, {
+				status: parsed.data.created ? 201 : 200,
+				message: parsed.data.created
+					? "Your freelancer profile is unlocked."
+					: "Your freelancer profile was already unlocked.",
+			});
+		} catch {
+			return fail(503, { message: "We couldn't reach the server. Try again in a moment." });
+		}
+	}
+
+	/**
+	 * The `org.skills` taxonomy the starter-skill picker offers, by label. Public reference data (the
+	 * table's one policy admits every role), read with the anon client. Fails rather than inventing a
+	 * list: the unlock refuses any slug the taxonomy does not hold, so a made-up option could only fail.
+	 */
+	static async starterSkills(): Promise<ServiceResult<{ skills: StarterSkillOption[] }>> {
+		if (!isAuthBackendLive()) {
+			return fail(503, { message: "The skills list isn't available in this environment." });
+		}
+		try {
+			const { data, error } = await getAnonClient()
+				.schema("org")
+				.from("skills")
+				.select("slug,label")
+				.order("label", { ascending: true });
+			if (error) return fail(503, { message: "We couldn't load the skills list." });
+			const skills = (data ?? []).flatMap((row) => {
+				const parsed = StarterSkillOptionSchema.safeParse(row);
+				return parsed.success ? [parsed.data] : [];
+			});
+			return ok({ skills });
+		} catch {
+			return fail(503, { message: "We couldn't load the skills list." });
+		}
+	}
+
+	/**
 	 * Best-effort read of the caller's own `org.user_preferences` row. Only attempts it when live + a
 	 * token is present; every failure (unconfigured, no row yet, RLS, network) resolves to `null` so
 	 * the caller falls back to the chrome-context projection. Never throws.
@@ -373,8 +459,10 @@ export class UserBackendService {
 
 	/**
 	 * The acting entity's display name — the team's or business's `name`, the organisation's trading
-	 * name else its legal name — read as the caller under RLS (a member can read the entity they act
-	 * as). `null` in a personal context and on any failure, so the caller falls back to the slug.
+	 * name else its legal name — through `org.get_acting_context_details`, which answers only for an
+	 * entity the caller holds an active seat in. Not an RLS table read: `org.business_profiles` has no
+	 * client SELECT policy, so a business member read `null` and the header showed the slug. `null` in
+	 * a personal context and on any failure, so the caller falls back to the slug.
 	 */
 	private static async entityName(
 		context: UserContext,
@@ -383,21 +471,14 @@ export class UserBackendService {
 		if (context.contextType === "personal" || !context.contextId) return null;
 		if (!isAuthBackendLive() || !accessToken) return null;
 		try {
-			const db = getUserClient(accessToken).schema("org");
-			if (context.contextType === "organisation") {
-				const { data, error } = await db.from("organisations")
-					.select("legal_name,trading_name")
-					.eq("id", context.contextId)
-					.maybeSingle();
-				if (error || !data) return null;
-				return str(data.trading_name) ?? str(data.legal_name) ?? null;
-			}
-			const table = context.contextType === "team" ? "teams" : "business_profiles";
-			const { data, error } = await db.from(table)
-				.select("name")
-				.eq("id", context.contextId)
-				.maybeSingle();
-			return error || !data ? null : str(data.name) ?? null;
+			const { data, error } = await getUserClient(accessToken)
+				.schema("org")
+				.rpc("get_acting_context_details", {
+					p_context_type: context.contextType,
+					p_context_id: context.contextId,
+				});
+			if (error || !data || typeof data !== "object") return null;
+			return str((data as Record<string, unknown>).name) ?? null;
 		} catch {
 			return null;
 		}

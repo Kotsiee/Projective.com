@@ -1,6 +1,6 @@
 import type { ComponentChildren, JSX, VNode } from "preact";
 import { useSignal } from "@preact/signals";
-import { useRef } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import { Alert, Dialog } from "@projective/ui/feedback";
 import {
 	Button,
@@ -16,7 +16,14 @@ import { useIsMobile } from "@projective/ui/hooks";
 import { MoneyView } from "@projective/ui/display/money";
 import { profileHref } from "@features/projects/core/routing.ts";
 import { type WalletContext, WalletService } from "../core/WalletService.ts";
-import { closeWalletDialog, newAttemptKey, walletDialog } from "../core/wallet-state.ts";
+import {
+	closeWalletDialog,
+	newAttemptKey,
+	openWalletDialog,
+	walletAddedCardId,
+	walletCardReturnNotice,
+	walletDialog,
+} from "../core/wallet-state.ts";
 import { methodName, MOVEMENTS, type ResolvedAction } from "../core/wallet-home.ts";
 import {
 	ACTION_LABEL,
@@ -40,9 +47,20 @@ import type {
 	WalletSwitcher,
 } from "../types/wallet-types.ts";
 import type { WalletResult } from "../types/results.ts";
-import { incomeSmootherFeeMinor, type WalletCardHandoff } from "@projective/types/finance";
+import {
+	type CardOwnerScope,
+	incomeSmootherFeeMinor,
+	type WalletCardHandoff,
+} from "@projective/types/finance";
+import { StripeElementMount } from "@features/payments/components/StripeElementMount.tsx";
 import { StripeElementPanel } from "@features/payments/components/StripeElementPanel.tsx";
 import { PaymentsService } from "@features/payments/core/PaymentsService.ts";
+import {
+	type StripeReturn,
+	stripeReturnOf,
+	withoutStripeReturn,
+} from "@features/payments/core/stripe-flow.ts";
+import { useStripeCardSetup } from "@features/payments/hooks/useStripeElement.ts";
 import { ActionIcon, CategoryIcon } from "./wallet-glyphs.tsx";
 
 /** The data every wallet dialog draws from. */
@@ -589,7 +607,6 @@ function MoveDialog(
 						clientSecret={handoff.value.clientSecret}
 						publishableKey={handoff.value.publishableKey}
 						submitLabel={`Pay ${figure}`}
-						returnPath="/wallet"
 						onOutcome={(result) => {
 							if (result.ok) void settle(handoff.value!.paymentId);
 						}}
@@ -633,16 +650,19 @@ function ConfigDialog(
 ): JSX.Element {
 	const { overview, action } = props;
 	const closing = useClosing(props.id);
-	/** `card` — the Payment Element is on screen for Add card's SetupIntent. */
-	const phase = useSignal<"form" | "saving" | "card" | "done">("form");
-	const setup = useSignal<WalletCardHandoff["setup"] | null>(null);
+	const phase = useSignal<"form" | "saving" | "done">("form");
 	const schedule = action === "set_payout" ? props.schedule : null;
 	const threshold = schedule?.threshold ? heldIn(schedule.threshold) : null;
 	const amount = useSignal<number | null>(
 		threshold ? toMajorUnits(threshold.minor, threshold.currency) : null,
 	);
 	const interval = useSignal("monthly");
-	const source = useSignal("");
+	const fundingMethods = props.methods.filter((m) =>
+		m.methodRole !== "payout" && m.status === "active"
+	);
+	// A card saved a moment ago is the one a new recurring deposit most likely means to charge.
+	const added = walletAddedCardId.peek();
+	const source = useSignal(added && fundingMethods.some((m) => m.id === added) ? added : "");
 	const mode = useSignal<string>(schedule?.mode ?? "scheduled_monthly");
 	const destination = useSignal(
 		props.destinations.find((d) => d.label === schedule?.destinationLabel)?.id ?? "",
@@ -657,9 +677,6 @@ function ConfigDialog(
 	const currency = heldIn(overview.available).currency;
 	const display = props.query.display ?? undefined;
 	const base = { scope: overview.ref.scope, contextId: overview.ref.id, display };
-	const fundingMethods = props.methods.filter((m) =>
-		m.methodRole !== "payout" && m.status === "active"
-	);
 	const smoother = overview.personal?.incomeSmoother ?? null;
 	const needsAmount = action === "new_recurring" || action === "request_spend" ||
 		action === "enrol_smoother" ||
@@ -684,8 +701,6 @@ function ConfigDialog(
 				interval: interval.value as "weekly" | "monthly",
 				sourceMethodId: source.value || null,
 			})
-			: action === "add_method"
-			? await WalletService.addMethod({ ...base, methodRole: "funding" })
 			: action === "set_payout"
 			? await WalletService.setPayout({
 				...base,
@@ -703,11 +718,6 @@ function ConfigDialog(
 			})
 			: await WalletService.enrolSmoother({ targetMonthlyMinor: minor, currency, display });
 
-		if (res.ok && action === "add_method" && res.data?.result?.setup) {
-			setup.value = res.data.result.setup;
-			phase.value = "card";
-			return;
-		}
 		if (res.ok) {
 			outcome.value = res.data?.result?.message ?? res.message ?? "Saved.";
 			phase.value = "done";
@@ -719,29 +729,8 @@ function ConfigDialog(
 		phase.value = "form";
 	};
 
-	/** The card was confirmed at Stripe; the server re-reads the SetupIntent and records it. */
-	const recordCard = async (setupIntentId: string) => {
-		phase.value = "saving";
-		const saved = await PaymentsService.confirmCard({
-			setupIntentId,
-			scope: overview.ref.scope === "team" || overview.ref.scope === "business" ? overview.ref.scope : "personal",
-			contextId: overview.ref.scope === "personal" ? null : overview.ref.id,
-		});
-		if (!saved.ok || !saved.data) {
-			failure.value = saved.message ?? "The card couldn't be saved.";
-			phase.value = "card";
-			return;
-		}
-		const fresh = await WalletService.overview(props.query).catch(() => null);
-		if (fresh?.ok && fresh.data) props.onChanged(fresh.data.overview);
-		outcome.value = `${methodName({ label: null, brand: saved.data.brand, last4: saved.data.last4 })} saved.`;
-		phase.value = "done";
-	};
-
 	const footer = phase.value === "done"
 		? <Button variant="filled" label="Done" onClick={closing.close} />
-		: phase.value === "card"
-		? <Button variant="text" label="Cancel" onClick={closing.close} />
 		: (
 			<>
 				<Button
@@ -752,11 +741,7 @@ function ConfigDialog(
 				/>
 				<Button
 					variant="filled"
-					label={action === "request_spend"
-						? "Send request"
-						: action === "add_method"
-						? "Continue"
-						: "Save"}
+					label={action === "request_spend" ? "Send request" : "Save"}
 					loading={phase.value === "saving"}
 					disabled={phase.value === "saving"}
 					onClick={() => void save()}
@@ -775,32 +760,8 @@ function ConfigDialog(
 		>
 			{phase.value === "done"
 				? <Done amount={null} message={outcome.value} />
-				: phase.value === "card" && setup.value
-				? (
-					<div class="wlt-form">
-						<StripeElementPanel
-							mode="setup"
-							clientSecret={setup.value.clientSecret}
-							publishableKey={setup.value.publishableKey}
-							submitLabel="Save card"
-							returnPath="/wallet"
-							onOutcome={(result) => {
-								if (result.ok) void recordCard(setup.value!.setupIntentId);
-							}}
-						/>
-						{failure.value && <Alert severity="danger">{failure.value}</Alert>}
-					</div>
-				)
 				: (
 					<div class="wlt-form" ref={formRef}>
-						{action === "add_method" && (
-							<p class="wlt-dlg__lead">
-								Save a card to pay into this wallet and for recurring deposits. You'll enter the card with
-								Stripe on the next step — its details never reach Projective. Payouts go to your payout
-								account, set up under Verification &amp; payouts.
-							</p>
-						)}
-
 						{action === "new_recurring" && (
 							<>
 								<FormControl label="How often">
@@ -941,6 +902,155 @@ function ConfigDialog(
 				)}
 		</Frame>
 	);
+}
+// #endregion
+
+// #region Add payment method
+/** Whose card a wallet saves: a team or business vault's own, otherwise the person's. */
+function cardOwnerOf(
+	overview: WalletOverview,
+): { scope: CardOwnerScope; contextId: string | null } {
+	const scope: CardOwnerScope = overview.ref.scope === "team" || overview.ref.scope === "business"
+		? overview.ref.scope
+		: "personal";
+	return { scope, contextId: scope === "personal" ? null : overview.ref.id };
+}
+
+/**
+ * Add payment method: the card form on screen the moment the dialog opens, Save in the footer.
+ *
+ * Stripe's deferred-intent flow: the Payment Element mounts before any SetupIntent exists, and Save
+ * runs `elements.submit()` → the wallet's own `add_method` action (which authorises the owner and
+ * opens the SetupIntent) → `stripe.confirmSetup` → `POST /api/finance/cards/confirm`, where the server
+ * re-reads the SetupIntent from Stripe and records the card. The new card is published through
+ * `walletAddedCardId` so the methods list marks it and the Recurring deposit picker opens on it.
+ */
+function AddCardDialog(
+	props: WalletDialogData & {
+		id: number;
+		position: Position;
+		onChanged: (overview: WalletOverview | null) => void;
+	},
+): JSX.Element {
+	const { overview } = props;
+	const closing = useClosing(props.id);
+	const phase = useSignal<"entry" | "saving" | "done">("entry");
+	/** The SetupIntent Stripe confirmed — kept so a failed record retries the record, never the card. */
+	const confirmed = useSignal<string | null>(null);
+	const failure = useSignal<string | null>(walletCardReturnNotice.peek());
+	const outcome = useSignal<string | null>(null);
+
+	useEffect(() => {
+		walletCardReturnNotice.value = null;
+	}, []);
+
+	const card = useStripeCardSetup({
+		enabled: phase.value !== "done",
+		currency: heldIn(overview.available).currency,
+		createIntent: async () => {
+			const res = await WalletService.addMethod({
+				scope: overview.ref.scope,
+				contextId: overview.ref.id,
+				display: props.query.display ?? undefined,
+				methodRole: "funding",
+			}).catch(() => null);
+			const setup = res?.ok ? res.data?.result?.setup : undefined;
+			return setup
+				? { ok: true, setupIntentId: setup.setupIntentId, clientSecret: setup.clientSecret }
+				: {
+					ok: false,
+					message: res?.message ?? Object.values(res?.errors ?? {})[0] ??
+						"Couldn't start saving the card. Try again.",
+				};
+		},
+	});
+
+	/** The server re-reads the SetupIntent from Stripe and records the card it saved. */
+	const record = async (setupIntentId: string) => {
+		phase.value = "saving";
+		failure.value = null;
+		const saved = await PaymentsService.confirmCard({ setupIntentId, ...cardOwnerOf(overview) });
+		if (!saved.ok || !saved.data) {
+			failure.value = saved.message ?? "The card couldn't be saved. Try again.";
+			phase.value = "entry";
+			return;
+		}
+		walletAddedCardId.value = saved.data.methodId;
+		props.onChanged(null);
+		outcome.value = `${
+			methodName({ label: null, brand: saved.data.brand, last4: saved.data.last4 })
+		} saved.`;
+		phase.value = "done";
+	};
+
+	const save = async () => {
+		if (confirmed.value) return record(confirmed.value);
+		failure.value = null;
+		const result = await card.confirm();
+		if (!result.ok) return;
+		confirmed.value = result.id;
+		await record(result.id);
+	};
+
+	const busy = card.confirming.value || phase.value === "saving";
+	const footer = phase.value === "done"
+		? <Button variant="filled" label="Done" onClick={closing.close} />
+		: (
+			<>
+				<Button variant="text" label="Cancel" disabled={busy} onClick={closing.close} />
+				<Button
+					variant="filled"
+					label={confirmed.value ? "Try again" : "Save card"}
+					loading={busy}
+					disabled={busy || (!confirmed.value && !card.canConfirm.value)}
+					onClick={() => void save()}
+				/>
+			</>
+		);
+
+	return (
+		<Frame
+			id={props.id}
+			title={ACTION_LABEL.add_method}
+			position={props.position}
+			closing={closing}
+			footer={footer}
+		>
+			{phase.value === "done"
+				? <Done amount={null} message={outcome.value} />
+				: (
+					<div class="wlt-form">
+						<StripeElementMount controller={card} />
+						{failure.value && <Alert severity="danger">{failure.value}</Alert>}
+					</div>
+				)}
+		</Frame>
+	);
+}
+
+/**
+ * Finish what a bank's redirect (3-D Secure) interrupted. A saved card is recorded for the wallet in
+ * view — the server re-reads the SetupIntent, so `redirect_status` is only a prompt — and marked; a
+ * card that was not saved reopens Add payment method with the reason. A top-up's card is credited
+ * by the signed webhook, so the wallet is only re-read.
+ */
+async function settleStripeReturn(back: StripeReturn, props: WalletDialogsProps): Promise<void> {
+	if (back.kind === "payment") {
+		props.onChanged(null);
+		return;
+	}
+	const saved = back.status === "failed" ? null : await PaymentsService.confirmCard({
+		setupIntentId: back.intentId,
+		...cardOwnerOf(props.overview),
+	});
+	if (saved?.ok && saved.data) {
+		walletAddedCardId.value = saved.data.methodId;
+		props.onChanged(null);
+		return;
+	}
+	walletCardReturnNotice.value = saved?.message ??
+		"Your bank didn't confirm the card, so it wasn't saved. Try again or use another card.";
+	openWalletDialog({ kind: "action", action: "add_method" });
 }
 // #endregion
 
@@ -1141,10 +1251,26 @@ function ApprovalDialog(
 }
 // #endregion
 
-/** Renders whichever wallet dialog is open, as a bottom sheet on a phone. */
+/**
+ * Renders whichever wallet dialog is open, as a bottom sheet on a phone — and, once on load, finishes
+ * a card step a bank's redirect interrupted: Stripe returns to the page that was in view (its `?w=`
+ * and every other param intact) with its own `setup_intent`/`payment_intent` + `redirect_status`
+ * params, which are stripped at once, leaving every other param where it was.
+ */
 export function WalletDialogs(props: WalletDialogsProps): JSX.Element | null {
 	const open = walletDialog.value;
 	const position: Position = useIsMobile() ? "bottom" : "center";
+	const latest = useRef(props);
+	latest.current = props;
+
+	useEffect(() => {
+		const url = new URL(globalThis.location.href);
+		const back = stripeReturnOf(url.searchParams);
+		if (!back) return;
+		history.replaceState(history.state, "", withoutStripeReturn(url));
+		void settleStripeReturn(back, latest.current);
+	}, []);
+
 	if (!open) return null;
 	switch (open.kind) {
 		case "line":
@@ -1169,6 +1295,9 @@ export function WalletDialogs(props: WalletDialogsProps): JSX.Element | null {
 			const item = props.resolve(open.action);
 			if (item.locked) {
 				return <LockedDialog key={open.id} id={open.id} item={item} position={position} />;
+			}
+			if (open.action === "add_method") {
+				return <AddCardDialog key={open.id} {...props} id={open.id} position={position} />;
 			}
 			return MOVEMENTS.has(open.action)
 				? (

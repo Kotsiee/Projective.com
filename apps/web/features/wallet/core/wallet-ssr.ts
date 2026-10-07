@@ -4,7 +4,11 @@ import type { ReadActor } from "@server/services/read-actor.ts";
 import type { ServiceResult } from "@server/services/ServiceResult.ts";
 import { WalletBackendService } from "@server/services/finance/WalletBackendService.ts";
 import {
+	defaultPeriodFor,
 	type FlowPeriod,
+	type LedgerFilters,
+	ledgerFiltersFrom,
+	ledgerParamsOf,
 	periodRange,
 	toFlowPeriod,
 	type WalletView,
@@ -27,7 +31,7 @@ import type {
 export type WalletRead<T> = { ok: true; data: T } | { ok: false; message: string };
 
 /** Ledger lines fetched per page. */
-export const LEDGER_PAGE = 20;
+export const LEDGER_PAGE = 40;
 
 /**
  * Everything a wallet page paints in its first byte. The overview is required; each other part is its
@@ -42,6 +46,8 @@ export interface WalletHomeData {
 	ledger: WalletRead<TransactionPage>;
 	activity: WalletRead<ActivityView>;
 	period: FlowPeriod;
+	/** The Transactions page's filter bar as its URL set it; `null` on every other page. */
+	filters: LedgerFilters | null;
 	funding: WalletRead<FundingView> | null;
 	payouts: WalletRead<PayoutsView> | null;
 	methods: WalletRead<MethodsView> | null;
@@ -76,13 +82,18 @@ export async function resolveWalletHome(
 	view: WalletView = "overview",
 ): Promise<WalletRead<WalletHomeData>> {
 	const query = walletQueryFrom(url.searchParams, context);
-	const period = toFlowPeriod(url.searchParams.get("flow"));
+	const filters = view === "transactions" ? ledgerFiltersFrom(url.searchParams) : null;
+	const period = filters?.period ??
+		toFlowPeriod(url.searchParams.get("flow"), defaultPeriodFor(view));
+	const ledgerParams = filters
+		? { ...ledgerParamsOf(filters), limit: LEDGER_PAGE }
+		: { limit: LEDGER_PAGE };
 	const aggregate = query.wallet === "aggregate";
 	const vault = vaultScope(query.wallet);
 
 	const [main, ledger, activity, funding, payouts, methods, access, invoices] = await Promise.all([
 		WalletBackendService.overviewWithSwitcher(query, actor),
-		WalletBackendService.transactions(query, { limit: LEDGER_PAGE }, actor),
+		WalletBackendService.transactions(query, ledgerParams, actor),
 		WalletBackendService.activity(query, periodRange(period), actor),
 		aggregate ? null : WalletBackendService.funding(query, actor),
 		aggregate ? null : WalletBackendService.payouts(query, actor),
@@ -104,6 +115,7 @@ export async function resolveWalletHome(
 			ledger: toRead(ledger, (d) => d.page),
 			activity: toRead(activity, (d) => d.activity),
 			period,
+			filters,
 			funding: funding ? toRead(funding, (d) => d.funding) : null,
 			payouts: payouts ? toRead(payouts, (d) => d.payouts) : null,
 			methods: methods ? toRead(methods, (d) => d.methods) : null,

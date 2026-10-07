@@ -6,7 +6,7 @@ import {
 	detailsFieldId,
 	markTouched,
 } from "../core/details-draft.ts";
-import { AddressFields, DetailsField } from "./AddressFields.tsx";
+import { AddressFields, DetailsField, DetailsLabel } from "./AddressFields.tsx";
 import { PhoneField } from "./PhoneField.tsx";
 
 /**
@@ -27,7 +27,14 @@ import { PhoneField } from "./PhoneField.tsx";
  * number (CRN) and the tax registration (VAT / EIN) are three different facts on three different
  * columns; a company can hold a CRN and no VAT registration, so collapsing them into one field makes
  * a legitimate state unfilable. Only the name is ever pre-filled from the chosen entity — a plausible
- * looking registration number nobody entered is worse than an empty one that asks.
+ * looking registration number nobody entered is worse than an empty one that asks. The two numbers
+ * keep their hints, because those two are the pair a buyer confuses; every other field's meaning now
+ * lives in its label rather than in a standing line beneath it.
+ *
+ * **Rows are track sums** on the twelve-track grid (see `AddressFields`): personally `4 + 4 + 4`
+ * (name · email · mobile) then the address; for a company `8 + 4`, `6 + 6`, `8 + 4`, then the
+ * address. The department picker sits beside the invoice email rather than after the address, so
+ * the address's last field is the form's last field and Enter on it submits.
  *
  * **Department allocation is a Select, and only when there is something to select.** An entity that
  * declares no departments renders no control at all rather than an empty dropdown that can never be
@@ -38,28 +45,40 @@ import { PhoneField } from "./PhoneField.tsx";
 /** Props shared by both billing blocks. */
 export interface BillingBlockProps {
 	draft: DetailsDraft;
-	/** Block writes while a save is in flight. */
-	disabled?: boolean;
+	/** A save is in flight: the controls turn read-only and keep focus. */
+	busy?: boolean;
 	/** Id scope, so a modal copy of this form never mints the same ids as the page. */
 	scope?: string;
 }
 
 /** The natural-person invoice: who is billed, and where they are for tax purposes. */
 export function PersonalBillingFields(props: BillingBlockProps): JSX.Element {
-	const { draft, disabled } = props;
+	const { draft, busy } = props;
 	return (
 		<div class="ckod__grid">
 			<DetailsField
 				draft={draft}
 				path="personal.name"
-				label="Name"
+				label="Name on the invoice"
 				value={draft.personal.name}
 				required
 				autoComplete="name"
-				hint="As it appears on the card or account being billed."
-				disabled={disabled}
+				busy={busy}
 				scope={props.scope}
-				span="half"
+				span={4}
+			/>
+			<DetailsField
+				draft={draft}
+				path="personal.email"
+				label="Billing email"
+				value={draft.personal.email}
+				required
+				email
+				autoComplete="email"
+				placeholder="name@example.com"
+				busy={busy}
+				scope={props.scope}
+				span={4}
 			/>
 			<PhoneField
 				draft={draft}
@@ -67,30 +86,16 @@ export function PersonalBillingFields(props: BillingBlockProps): JSX.Element {
 				label="Mobile"
 				value={draft.personal.phone}
 				country={draft.personal.address.country}
-				disabled={disabled}
+				busy={busy}
 				scope={props.scope}
-				span="half"
-			/>
-			<DetailsField
-				draft={draft}
-				path="personal.email"
-				label="Email"
-				value={draft.personal.email}
-				required
-				email
-				autoComplete="email"
-				placeholder="name@example.com"
-				disabled={disabled}
-				scope={props.scope}
-				span="full"
-				cap
+				span={4}
 			/>
 			<AddressFields
 				draft={draft}
 				address={draft.personal.address}
 				prefix="personal.address"
 				line1Label="Address"
-				disabled={disabled}
+				busy={busy}
 				scope={props.scope}
 			/>
 		</div>
@@ -112,7 +117,7 @@ export interface BusinessBillingFieldsProps extends BillingBlockProps {
  * read together as "who this company is on paper" and both are answered from the same document.
  */
 export function BusinessBillingFields(props: BusinessBillingFieldsProps): JSX.Element {
-	const { draft, departments, disabled } = props;
+	const { draft, departments, busy } = props;
 	const departmentId = detailsFieldId("business.departmentId", props.scope);
 
 	return (
@@ -120,14 +125,13 @@ export function BusinessBillingFields(props: BusinessBillingFieldsProps): JSX.El
 			<DetailsField
 				draft={draft}
 				path="business.companyName"
-				label="Company Name"
+				label="Registered company name"
 				value={draft.business.companyName}
 				required
 				autoComplete="organization"
-				hint="The registered legal name, not a trading name."
-				disabled={disabled}
+				busy={busy}
 				scope={props.scope}
-				span="half"
+				span={8}
 			/>
 			<PhoneField
 				draft={draft}
@@ -136,20 +140,20 @@ export function BusinessBillingFields(props: BusinessBillingFieldsProps): JSX.El
 				value={draft.business.phone}
 				country={draft.business.address.country}
 				required
-				disabled={disabled}
+				busy={busy}
 				scope={props.scope}
-				span="half"
+				span={4}
 			/>
 			<DetailsField
 				draft={draft}
 				path="business.registrationNumber"
-				label="Company Registration Number"
+				label="Company registration number"
 				value={draft.business.registrationNumber}
 				required
 				hint="The incorporation number — a CRN in the UK, an EIN in the US."
-				disabled={disabled}
+				busy={busy}
 				scope={props.scope}
-				span="half"
+				span={6}
 			/>
 			<DetailsField
 				draft={draft}
@@ -157,41 +161,32 @@ export function BusinessBillingFields(props: BusinessBillingFieldsProps): JSX.El
 				label="VAT ID"
 				value={draft.business.taxId}
 				required
-				hint="Your tax registration. Separate from the registration number."
-				disabled={disabled}
+				hint="The tax registration — separate from the registration number."
+				busy={busy}
 				scope={props.scope}
-				span="half"
+				span={6}
 			/>
 			<DetailsField
 				draft={draft}
 				path="business.corporateEmail"
-				label="Email"
+				label="Invoice email"
 				value={draft.business.corporateEmail}
 				required
 				email
 				autoComplete="email"
 				placeholder="accounts@company.com"
-				hint="Invoices and payment receipts are sent here."
-				disabled={disabled}
+				busy={busy}
 				scope={props.scope}
-				span="full"
-				cap
-			/>
-			<AddressFields
-				draft={draft}
-				address={draft.business.address}
-				prefix="business.address"
-				line1Label="Address"
-				disabled={disabled}
-				scope={props.scope}
+				span={8}
 			/>
 			{departments.length > 0
 				? (
-					<p class="ckod-field" data-span="full" data-cap="true">
-						<label class="ckod-field__label" for={departmentId}>
-							Department or project scope
-							<span class="ckod-field__opt">Optional</span>
-						</label>
+					<p
+						class="ckod-field"
+						data-span={4}
+						data-filled={draft.business.departmentId.value ? "true" : "false"}
+					>
+						<DetailsLabel for={departmentId} label="Department" />
 						<Select
 							id={departmentId}
 							size="md"
@@ -203,16 +198,20 @@ export function BusinessBillingFields(props: BusinessBillingFieldsProps): JSX.El
 								label: entry.label,
 								value: entry.id,
 							}))}
-							disabled={disabled}
-							aria-describedby={`${departmentId}-note`}
+							readOnly={busy}
 							onValueChange={() => markTouched(draft, "business.departmentId")}
 						/>
-						<span class="ckod-field__note" id={`${departmentId}-note`}>
-							Which budget this purchase is attributed to on the invoice.
-						</span>
 					</p>
 				)
 				: null}
+			<AddressFields
+				draft={draft}
+				address={draft.business.address}
+				prefix="business.address"
+				line1Label="Registered address"
+				busy={busy}
+				scope={props.scope}
+			/>
 		</div>
 	);
 }

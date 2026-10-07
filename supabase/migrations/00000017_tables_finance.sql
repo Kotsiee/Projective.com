@@ -1068,10 +1068,30 @@ CREATE TABLE finance.inbound_payments (
     -- NULL for a payment somebody made in the moment. SET NULL: deleting a rule must not erase the
     -- history of what it charged.
     deposit_rule_id uuid REFERENCES finance.deposit_rules (id) ON DELETE SET NULL,
+    -- The checkout this top-up pays for (Decision #153) — `{basket_id, item_ids, currency, units,
+    -- promo_code, order_key}`, written by finance.attach_checkout_order. When set, the signed webhook
+    -- that settles the top-up ALSO places the order (finance.place_wallet_order, as `created_by`,
+    -- under `order_key`), so a buyer whose browser never comes back is not left with a funded wallet
+    -- and no order. Only ids, integer minor units and a promo code — no PII. NULL for every other top-up.
+    checkout jsonb,
+    -- The order that checkout placed. SET NULL: an order is never deleted, but the payment must not
+    -- be the thing that keeps it.
+    order_id uuid REFERENCES finance.orders (id) ON DELETE SET NULL,
+    -- Why the webhook could not place it (a price that moved, a line no longer for sale). The money
+    -- stays in the wallet; the browser's own attempt re-asks under the same key.
+    order_error text,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     succeeded_at timestamptz,
     CONSTRAINT uq_inbound_payments_provider_ref UNIQUE (provider, provider_ref),
+    -- Only a top-up can pay for a checkout; an escrow lock funds a stage, never an order.
+    CONSTRAINT inbound_payments_checkout_only_for_topups CHECK (
+        checkout IS NULL OR purpose = 'wallet_topup'
+    ),
+    -- An order outcome exists only for a payment that carried a checkout.
+    CONSTRAINT inbound_payments_order_only_with_checkout CHECK (
+        (order_id IS NULL AND order_error IS NULL) OR checkout IS NOT NULL
+    ),
     -- A standing deposit only ever tops a wallet up.
     CONSTRAINT inbound_payments_rule_only_for_topups CHECK (
         deposit_rule_id IS NULL OR purpose = 'wallet_topup'
@@ -1102,8 +1122,9 @@ CREATE TABLE finance.inbound_payments (
 COMMENT ON TABLE finance.inbound_payments IS
 'One attempt to move money INTO a wallet from an external instrument (a Stripe PaymentIntent on the
 platform account). Settled only by the signed payment_intent.succeeded webhook, which credits the
-wallet (reason topup) and, for an escrow_lock, holds the stage escrow from it. The twin of
-finance.payouts. Money moves only through the finance.* definer functions; no client role writes here.';
+wallet (reason topup), for an escrow_lock holds the stage escrow from it, and for a top-up carrying a
+checkout places that order as the payer. The twin of finance.payouts. Money moves only through the
+finance.* definer functions; no client role writes here.';
 -- #endregion
 
 -- #region Processor customers — the Stripe Customer a saved card is attached to

@@ -1,4 +1,9 @@
-import type { ApplyToProject } from "@projective/types/projects";
+import {
+	type ApplicantType,
+	type ApplyToProject,
+	type SentApplication,
+	SentApplicationSchema,
+} from "@projective/types/projects";
 import type { ReadActor } from "../read-actor.ts";
 import { projectsDb } from "./live-support.ts";
 import { refusalFrom, type WriteOutcome, type WriteRefusal } from "./live-writes.ts";
@@ -15,7 +20,10 @@ import { refusalFrom, type WriteOutcome, type WriteRefusal } from "./live-writes
  * - **confirm an applicant's seat** → `projects.assign_from_application` (owner-side, conflict-guarded,
  *   notifies the applicant with `application.accepted`);
  * - **decline an applicant** → `projects.reject_application` (owner-side, notifies the applicant with
- *   `application.declined`).
+ *   `application.declined`);
+ * - **withdraw a proposal** → `projects.withdraw_application` (applicant-side; the status flip refunds
+ *   one weekly proposal unit through `trg_refund_withdrawn_application`);
+ * - **list the proposals sent** → `projects.list_my_applications` (the caller's own, and their teams').
  *
  * Each raises its refusals with SQLSTATEs and sentences written for a reader, mapped here to the
  * envelope; anything unexpected throws for the fat service to report as a 502.
@@ -29,6 +37,8 @@ export interface AppliedRow {
 	ownerUserId: string;
 	stageId: string;
 	roleId: string | null;
+	applicantType: ApplicantType;
+	teamId: string | null;
 	status: "pending";
 	message: string | null;
 }
@@ -60,6 +70,7 @@ export async function applyLive(
 		p_stage: input.stageId,
 		p_role_id: input.roleId,
 		p_message: input.message.trim() || null,
+		p_team_id: input.teamId,
 	});
 	if (error) {
 		if (error.code === "P0002") return null;
@@ -125,4 +136,44 @@ export async function rejectApplicationLive(
 	}
 	const row = data as { id: string };
 	return { data: { id: row.id, status: "rejected" } };
+}
+
+/** Withdraw one of the caller's pending applications; the database refunds the weekly unit. */
+export async function withdrawApplicationLive(
+	actor: ReadActor & { accessToken: string },
+	applicationId: string,
+): Promise<WriteOutcome<{ id: string; status: "withdrawn"; refunded: number }>> {
+	const { data, error } = await projectsDb(actor).rpc("withdraw_application", {
+		p_application_id: applicationId,
+	});
+	if (error) {
+		// A malformed id (22P02) names no application, exactly like an unknown one.
+		if (error.code === "P0002" || error.code === "22P02") return null;
+		return { refusal: handshakeRefusal(error, "applicationId") };
+	}
+	const row = data as { id: string; refunded?: number };
+	return { data: { id: row.id, status: "withdrawn", refunded: row.refunded ?? 1 } };
+}
+
+/**
+ * The proposals the caller has sent (and those filed for their teams), newest first. Throws on any
+ * failure — a list that silently came back empty would read as "you have sent nothing".
+ */
+export async function listMyApplicationsLive(
+	actor: ReadActor & { accessToken: string },
+	project: string | null,
+): Promise<SentApplication[]> {
+	const { data, error } = await projectsDb(actor).rpc("list_my_applications", {
+		p_project: project,
+	});
+	if (error) {
+		throw new Error(
+			`projects.list_my_applications failed (${error.code ?? "no code"}): ${error.message}`,
+		);
+	}
+	const rows = Array.isArray(data) ? data : [];
+	return rows.flatMap((row) => {
+		const parsed = SentApplicationSchema.safeParse(row);
+		return parsed.success ? [parsed.data] : [];
+	});
 }

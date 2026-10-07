@@ -47,3 +47,15 @@ export function isToggleSidebarShortcut(event: ShortcutKey): boolean {
 	const key = event.key.toLowerCase();
 	return key === "b" || (!/^[a-z]$/.test(key) && event.code === "KeyB");
 }
+
+/**
+ * A bare `/` — "focus this surface's search" (the settings console and modal). Shift is allowed
+ * because some layouts type `/` with it; any command modifier is not, so `Cmd+/` and friends stay
+ * free, and `Cmd+K` remains reserved for the platform command palette. The caller must still skip
+ * {@link isEditableTarget} targets: a `/` typed into a field is text.
+ */
+export function isFocusSearchShortcut(event: ShortcutKey): boolean {
+	if (event.defaultPrevented || event.repeat) return false;
+	if (event.ctrlKey || event.metaKey || event.altKey) return false;
+	return event.key === "/";
+}

@@ -117,6 +117,9 @@ export function OrderSummaryRail(props: OrderSummaryRailProps): JSX.Element {
 	 * Unticked, the server adds nothing and the row is absent entirely.
 	 */
 	const showsContribution = totals.processingContribution.minor > 0;
+	/** The processor charge, and whether it is in a currency other than the one the rail reads in. */
+	const charge = view.charge;
+	const converted = charge !== null && charge.currency !== view.currency;
 
 	return (
 		<section class="cko-rail" aria-labelledby="cko-rail-head">
@@ -303,6 +306,40 @@ export function OrderSummaryRail(props: OrderSummaryRailProps): JSX.Element {
 						</span>
 					</span>
 				</p>
+
+				{
+					/*
+					 * The dual display (Decision #153). A card or express payment is charged in the currency
+					 * the sellers priced in, so when that is not the buyer's currency the rail states the
+					 * amount that will be taken, in that currency, directly under the total:
+					 * `AED 840.27 AED (~US$229.00 USD charged)`.
+					 *
+					 * The tilde is the platform's ONE estimate grammar (`MoneyView`'s `£78.50 (~€90.00 EUR)`):
+					 * it marks the pair as a conversion, and — exactly as there — the accessible sentence says
+					 * which side is exact. Here that is the charge: the processor takes precisely this figure,
+					 * and the buyer's bank, not this platform, converts it on their statement. The charge is
+					 * `pinned` so it prints in its own currency instead of being re-projected into the
+					 * viewer's. The rate is the one the shown figures were priced at, read off the settlement
+					 * rather than resolved again.
+					 */
+				}
+				{converted && charge && (
+					<p class="cko-rail__charge">
+						<span class="ui-visually-hidden">
+							{`Your card or wallet is charged exactly ${charge.display} ${charge.currency}; the ${view.currency} total above is an estimate.`}
+						</span>
+						<span class="cko-rail__charge-figure" aria-hidden="true">
+							(~<Amount value={charge} size="body" hideOrigin pinned /> {charge.currency} charged)
+						</span>
+						{view.settlement.rateLabel && (
+							<span class="cko-rail__charge-rate">
+								{view.settlement.rateLabel}
+								{view.settlement.asOfLabel ? ` · locked ${view.settlement.asOfLabel}` : ""}. Your
+								bank converts the charge at its own rate.
+							</span>
+						)}
+					</p>
+				)}
 			</div>
 
 			{props.children}

@@ -67,6 +67,7 @@ import {
 } from "./live-queries.ts";
 import { fetchContacts } from "./live-contacts.ts";
 import { fetchMessagingSettings } from "./live-settings.ts";
+import { saveLiveSettings } from "./live-settings-write.ts";
 import { fetchConversationFilePage, fetchConversationRoster } from "./live-workspace.ts";
 import { insertDmMessage } from "./live-writes.ts";
 import { addLiveMembers, createLiveConversation } from "./live-conversation-writes.ts";
@@ -882,6 +883,57 @@ export class MessagingBackendService {
 		if (live !== undefined && live !== null) return ok({ settings: live });
 		return ok({ settings: findSettings(role) });
 	}
+
+	// #region Settings write
+
+	/**
+	 * Persist the viewer's Message Settings — `POST /api/messaging/settings` — and return what is now
+	 * stored: the FRESH read, not an echo, because the write cannot hold every combination the modal
+	 * can express (`groupActivity` and `serviceInquiries` share one switch; see
+	 * `live-settings-write.ts`), and the modal must show what will actually happen.
+	 *
+	 * Live, through `saveLiveSettings` under the caller's own JWT; the tenant's messaging read cache is
+	 * invalidated on EVERY outcome of a live attempt, because a refused or failed save may already have
+	 * landed its earlier writes. With the gate on but no usable token the answer is a 401 — saying
+	 * "saved" to a session that cannot write would be a lie the client's token refresh can fix. With
+	 * the gate off there is nothing to persist to; the stub acknowledges with the settings it was given.
+	 */
+	static async saveSettings(
+		settings: MessagingSettings,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ settings: MessagingSettings }>> {
+		if (actor.userId.length === 0) {
+			return fail(401, { message: "Sign in to save your message settings." });
+		}
+		if (!isMessagingBackendLive()) return ok({ settings }, { message: "Settings saved." });
+		if (!canReadLive(actor)) {
+			return fail(401, { message: "Your session has expired. Please sign in again." });
+		}
+
+		try {
+			const refusal = await saveLiveSettings(actor, settings);
+			if (refusal) {
+				invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
+				return fail(refusal.status, { message: refusal.message, errors: refusal.errors });
+			}
+		} catch (error) {
+			invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
+			liveFailed("saveSettings", error);
+			return fail(502, { message: "Your settings could not be saved — please try again." });
+		}
+		invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
+
+		try {
+			const stored = await fetchMessagingSettings(actor);
+			if (stored) return ok({ settings: stored }, { message: "Settings saved." });
+		} catch (error) {
+			// Every write landed; only the confirming read failed. Saying "not saved" would be false.
+			liveFailed("saveSettings", error);
+		}
+		return ok({ settings }, { message: "Settings saved." });
+	}
+
+	// #endregion
 }
 
 // #region Projections

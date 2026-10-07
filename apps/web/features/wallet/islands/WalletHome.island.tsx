@@ -4,10 +4,10 @@ import { useEffect, useRef } from "preact/hooks";
 import "../styles/wallet.css";
 import { displayCurrency as storeCurrency } from "@projective/ui/display/money";
 import { Icon } from "@projective/ui/icons";
+import { useOfflineStall } from "@web/utils/use-offline-stall.ts";
 import { type WalletContext, WalletService } from "../core/WalletService.ts";
 import { LEDGER_PAGE, type WalletHomeData, type WalletRead } from "../core/wallet-ssr.ts";
 import {
-	allocationOf,
 	mergeLedger,
 	resolveAction,
 	resolveHeroActions,
@@ -15,14 +15,19 @@ import {
 	upcomingItems,
 } from "../core/wallet-home.ts";
 import {
-	buildWalletQuery,
-	DEFAULT_FLOW_PERIOD,
+	browserTimeZone,
+	defaultPeriodFor,
 	type FlowPeriod,
 	hasInvoices,
+	ledgerFiltered,
+	type LedgerFilters as Filters,
+	ledgerFiltersFrom,
+	ledgerParamsOf,
 	periodRange,
 	viewShowsRuler,
-	type WalletView,
 	walletPageHref,
+	type WalletView,
+	withLedgerFilters,
 } from "../core/wallet-model.ts";
 import { openWalletDialog, walletFlowLive, walletOverviewLive } from "../core/wallet-state.ts";
 import type {
@@ -41,11 +46,12 @@ import { WalletHero } from "../components/WalletHero.tsx";
 import { AccountRail } from "../components/AccountRail.tsx";
 import { CashFlow } from "../components/CashFlow.tsx";
 import { UpcomingList } from "../components/UpcomingList.tsx";
-import { LedgerList } from "../components/LedgerList.tsx";
+import { LedgerFeed, LedgerPreview } from "../components/LedgerList.tsx";
+import { LedgerFilters } from "../components/LedgerFilters.tsx";
 import { MethodsList } from "../components/MethodsList.tsx";
 import { WalletDialogs } from "../components/WalletDialogs.tsx";
 import { AllocationMeter } from "../components/AllocationMeter.tsx";
-import { FlowBreakdown } from "../components/FlowBreakdown.tsx";
+import { AnalyticsView } from "../components/AnalyticsView.tsx";
 import { InvoicesPanel } from "../components/InvoicesPanel.tsx";
 import { RangeRuler } from "../components/WalletTools.tsx";
 import { VerificationGate } from "../components/VerificationGate.tsx";
@@ -69,10 +75,30 @@ function partOf<T>(read: WalletRead<T> | null): Part<T> | null {
 /** Ledger lines the overview previews before linking to the full ledger. */
 const LEDGER_PREVIEW = 6;
 
+const UNFILTERED: Filters = {
+	q: "",
+	dir: "all",
+	kinds: [],
+	period: defaultPeriodFor("transactions"),
+};
+
 function reducedMotion(): boolean {
 	if (typeof document === "undefined") return true;
 	if (document.documentElement.dataset.motion === "reduced") return true;
 	return globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+}
+
+/** Hands a downloaded file to the browser's save flow, then lets go of it. */
+function saveBlob(blob: Blob, filename: string): void {
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement("a");
+	a.href = url;
+	a.download = filename;
+	a.rel = "noopener";
+	document.body.appendChild(a);
+	a.click();
+	a.remove();
+	setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function Failure({ message }: { message: string }): JSX.Element {
@@ -101,6 +127,8 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 	const overview = useSignal<WalletOverview>(data.overview);
 	const switcher = useSignal<WalletSwitcher>(data.switcher);
 	const display = useSignal(data.display);
+	const timezone = useSignal<string | null>(null);
+	const view = data.view;
 
 	const ledgerRead = partOf(data.ledger);
 	const lines = useSignal<LedgerLine[]>(ledgerRead?.data?.items ?? []);
@@ -108,6 +136,9 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 	const hasMore = useSignal(ledgerRead?.data?.hasMore ?? false);
 	const ledgerError = useSignal<string | null>(ledgerRead?.error ?? null);
 	const ledgerBusy = useSignal(false);
+	const filters = useSignal<Filters>(data.filters ?? UNFILTERED);
+	/** Each ledger request's ticket; an answer for a superseded request (an older filter) is dropped. */
+	const ledgerTicket = useRef(0);
 
 	const activityRead = partOf(data.activity);
 	const period = useSignal<FlowPeriod>(data.period);
@@ -130,7 +161,11 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 	const heroRef = useRef<HTMLElement>(null);
 	const sheetRef = useRef<HTMLDivElement>(null);
 
-	const query = (): WalletContext => ({ wallet: data.wallet, display: display.value });
+	const query = (): WalletContext => ({
+		wallet: data.wallet,
+		display: display.value,
+		timezone: timezone.peek(),
+	});
 
 	// #region Reads
 	const loadActivity = async (next: FlowPeriod) => {
@@ -146,22 +181,51 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 			: res.message ?? "The cash flow couldn't be loaded.";
 	};
 
-	const loadLedger = async (reset: boolean) => {
+	/**
+	 * The first page (`reset`) or the next keyset page of the ledger, with the page's filters on the
+	 * Transactions page. Returns whether it landed, for the offline stall.
+	 */
+	const fetchLedger = async (reset: boolean): Promise<boolean> => {
+		const ticket = ++ledgerTicket.current;
 		ledgerBusy.value = true;
+		if (reset) {
+			ledgerError.value = null;
+			cursor.value = null;
+		}
+		const base = view === "transactions" ? ledgerParamsOf(filters.peek()) : {};
 		const res = await WalletService.transactions(query(), {
+			...base,
 			limit: LEDGER_PAGE,
-			cursor: reset ? null : cursor.value,
+			cursor: reset ? null : cursor.peek(),
 		});
+		if (ticket !== ledgerTicket.current) return true;
 		ledgerBusy.value = false;
 		if (res.ok && res.data) {
 			const page = res.data.page;
-			lines.value = reset ? page.items : mergeLedger(lines.value, page.items);
+			lines.value = reset ? page.items : mergeLedger(lines.peek(), page.items);
 			cursor.value = page.nextCursor;
 			hasMore.value = page.hasMore;
 			ledgerError.value = null;
-		} else {
-			ledgerError.value = res.message ?? "Transactions couldn't be loaded.";
+			return true;
 		}
+		if (reset) lines.value = [];
+		return false;
+	};
+
+	const loadMore = async () => {
+		if (ledgerBusy.peek() || !hasMore.peek() || !cursor.peek() || stall.blocked.peek()) return;
+		const ok = await fetchLedger(false);
+		// A page that failed OFFLINE stalls the tail with the offline notice and its own Retry; any other
+		// failure says so in its own words.
+		if (stall.settle(ok) || ok) return;
+		ledgerError.value = "The next transactions couldn't be loaded.";
+	};
+	const stall = useOfflineStall(loadMore);
+
+	const reloadLedger = async () => {
+		const ok = await fetchLedger(true);
+		if (stall.settle(ok) || ok) return;
+		ledgerError.value = "Transactions couldn't be loaded.";
 	};
 
 	const loadSide = async () => {
@@ -216,10 +280,10 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 		flows.value = {};
 		const [main] = await Promise.all([
 			WalletService.overview(query()),
-			loadLedger(true),
+			reloadLedger(),
 			loadActivity(current),
 			loadSide(),
-			data.view === "invoices" && invoices.peek() ? loadInvoices() : null,
+			view === "invoices" && invoices.peek() ? loadInvoices() : null,
 		]);
 		if (main.ok && main.data) {
 			overview.value = main.data.overview;
@@ -231,6 +295,16 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 	// #region Effects
 	useEffect(() => {
 		mounted.value = true;
+		// The server drew "Today" and the cash-flow days on the viewer's profile zone (or UTC). Once the
+		// browser's own zone is known, a page drawn on a different calendar is read again on this one.
+		const zone = browserTimeZone();
+		timezone.value = zone;
+		const drawnIn = activityRead?.data?.timezone ?? null;
+		if (zone && drawnIn && zone !== drawnIn) {
+			flows.value = {};
+			void loadActivity(period.peek());
+			void reloadLedger();
+		}
 	}, []);
 
 	useEffect(() => {
@@ -273,20 +347,56 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 		hero.addEventListener("focusin", onFocus);
 		return () => hero.removeEventListener("focusin", onFocus);
 	}, []);
+
+	// Back/forward between filtered addresses re-reads the filters the address names.
+	useEffect(() => {
+		if (view !== "transactions") return;
+		const onPop = () => {
+			const next = ledgerFiltersFrom(new URL(location.href).searchParams);
+			filters.value = next;
+			period.value = next.period;
+			void reloadLedger();
+		};
+		globalThis.addEventListener("popstate", onPop);
+		return () => globalThis.removeEventListener("popstate", onPop);
+	}, []);
 	// #endregion
 
 	// #region Handlers
+	/** Applies the Transactions page's filters: written into the address, then the first page re-read. */
+	function applyFilters(next: Filters) {
+		filters.value = next;
+		const url = new URL(location.href);
+		url.search = withLedgerFilters(url.searchParams, next).toString();
+		history.replaceState(history.state, "", url);
+		lines.value = [];
+		hasMore.value = false;
+		stall.settle(true);
+		void reloadLedger();
+	}
+
 	function choosePeriod(next: FlowPeriod) {
 		period.value = next;
 		walletFlowLive.value = next;
+		if (view === "transactions") {
+			applyFilters({ ...filters.peek(), period: next });
+			return;
+		}
 		flowError.value = null;
 		flowBusy.value = false;
 		const url = new URL(location.href);
-		if (next === DEFAULT_FLOW_PERIOD) url.searchParams.delete("flow");
+		if (next === defaultPeriodFor(view)) url.searchParams.delete("flow");
 		else url.searchParams.set("flow", next);
 		history.replaceState(history.state, "", url);
 		if (!flows.peek()[next]) void loadActivity(next);
 	}
+
+	const exportLedger = async (): Promise<string | null> => {
+		const res = await WalletService.exportLedger(query(), ledgerParamsOf(filters.peek()));
+		if (!res.ok) return res.message;
+		saveBlob(res.blob, res.filename);
+		return null;
+	};
 
 	const openAction = (action: WalletAction, stageId?: string) =>
 		openWalletDialog({ kind: "action", action, stageId });
@@ -296,10 +406,10 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 		else openAction(a.action, a.stageId);
 	};
 
+	const openLine = (line: LedgerLine) => openWalletDialog({ kind: "line", line });
 	// #endregion
 
 	const o = overview.value;
-	const view = data.view;
 	const actions = resolveHeroActions(o);
 	const resolve = (action: WalletAction) => resolveAction(action, o.unavailable, o.verification);
 	const canDecide = o.capabilities.includes("manage_billing") ||
@@ -314,38 +424,10 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 	const sideErrors = [funding.value?.error, payouts.value?.error, approvals.value?.error]
 		.filter((m): m is string => !!m);
 	const activity = flows.value[period.value] ?? null;
-	const exportQuery = buildWalletQuery({ wallet: data.wallet, display: display.value });
-	const exportHref = `/api/wallet/export${exportQuery ? `?${exportQuery}` : ""}`;
 	const addMethod = o.quickActions.includes("add_method") ? resolve("add_method") : null;
-	const allocation = allocationOf(o);
+	const aggregate = o.ref.scope === "aggregate";
 	const pageHref = (target: WalletView) =>
 		walletPageHref(target, data.wallet, display.value, period.value);
-
-	const ledger = (preview: boolean) => (
-		<LedgerList
-			lines={lines.value}
-			hasMore={hasMore.value}
-			loading={ledgerBusy.value}
-			error={ledgerError.value}
-			exportHref={exportHref}
-			mounted={mounted.value}
-			onOpen={(line) => openWalletDialog({ kind: "line", line })}
-			onMore={() => void loadLedger(false)}
-			onRetry={() => void loadLedger(lines.value.length === 0)}
-			preview={preview ? { limit: LEDGER_PREVIEW, href: pageHref("transactions") } : undefined}
-		/>
-	);
-
-	const cashFlow = (linked: boolean) => (
-		<CashFlow
-			period={period.value}
-			activity={activity}
-			loading={flowBusy.value}
-			error={flowError.value}
-			onRetry={() => void loadActivity(period.value)}
-			moreHref={linked ? pageHref("analytics") : undefined}
-		/>
-	);
 
 	return (
 		<section class="wlt" data-view={view} aria-labelledby="wlt-title">
@@ -384,22 +466,40 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 
 				{view === "overview" && (
 					<div class="wlt-sheet__grid" data-methods={methods.value ? "true" : undefined}>
-						{allocation && <AllocationMeter parts={allocation} />}
+						{!aggregate && <AllocationMeter overview={o} />}
 						<AccountRail
 							switcher={switcher.value}
 							display={display.value}
 							pot={o.personal?.taxPot ?? null}
 							reducedMotion={reducedMotion}
 						/>
-						{cashFlow(true)}
+						<CashFlow
+							period={period.value}
+							activity={activity}
+							loading={flowBusy.value}
+							error={flowError.value}
+							onRetry={() =>
+								void loadActivity(period.value)}
+							moreHref={pageHref("analytics")}
+						/>
 						<UpcomingList
 							items={upcoming}
 							errors={sideErrors}
 							retrying={sideBusy.value}
 							onAction={onUpcoming}
-							onRetry={() => void loadSide()}
+							onRetry={() =>
+								void loadSide()}
 						/>
-						{ledger(true)}
+						<LedgerPreview
+							lines={lines.value}
+							limit={LEDGER_PREVIEW}
+							href={pageHref("transactions")}
+							error={ledgerError.value}
+							loading={ledgerBusy.value}
+							mounted={mounted.value}
+							onOpen={openLine}
+							onRetry={() => void reloadLedger()}
+						/>
 						{methods.value && (
 							<MethodsList
 								methods={methods.value.data?.methods ?? []}
@@ -413,13 +513,55 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 					</div>
 				)}
 
-				{view === "transactions" && <div class="wlt-sheet__page">{ledger(false)}</div>}
+				{view === "transactions" && (
+					<div class="wlt-sheet__page wlt-sheet__page--ledger">
+						<section
+							class="wlt-section wlt-ledger"
+							id="transactions"
+							aria-labelledby="wlt-ledger-title"
+						>
+							<header class="wlt-section__head">
+								<h2 id="wlt-ledger-title" class="wlt-section__title">Transactions</h2>
+							</header>
+							<LedgerFilters
+								filters={filters.value}
+								onChange={applyFilters}
+								onExport={exportLedger}
+								canExport={lines.value.length > 0}
+							/>
+							<LedgerFeed
+								lines={lines.value}
+								hasMore={hasMore.value}
+								loading={ledgerBusy.value}
+								error={ledgerError.value}
+								stalled={stall.stalled.value}
+								retrying={stall.retrying.value}
+								filtered={ledgerFiltered(filters.value)}
+								mounted={mounted.value}
+								onOpen={openLine}
+								onMore={() => void loadMore()}
+								onRetry={() => {
+									ledgerError.value = null;
+									void (lines.peek().length === 0 ? reloadLedger() : loadMore());
+								}}
+								onStallRetry={stall.retry}
+								onClearFilters={() =>
+									applyFilters({ ...UNFILTERED, period: filters.peek().period })}
+							/>
+						</section>
+					</div>
+				)}
 
 				{view === "analytics" && (
 					<div class="wlt-sheet__page wlt-sheet__page--analytics">
-						{cashFlow(false)}
-						{allocation && <AllocationMeter parts={allocation} />}
-						<FlowBreakdown period={period.value} activity={activity} loading={flowBusy.value} />
+						<AnalyticsView
+							period={period.value}
+							activity={activity}
+							loading={flowBusy.value}
+							error={flowError.value}
+							onRetry={() => void loadActivity(period.value)}
+							mounted={mounted.value}
+						/>
 					</div>
 				)}
 
@@ -452,9 +594,10 @@ function Home({ data }: { data: WalletHomeData }): JSX.Element {
 
 /**
  * Every `/wallet` page: a luminous hero under a dashboard sheet, with every money action in a dialog.
- * The overview's sheet carries accounts, cash flow, upcoming obligations, recent transactions and
- * payment methods; `/wallet/transactions`, `/wallet/analytics` and `/wallet/invoices` each carry their
- * own. One island serves all four so the dialogs the lane opens are hosted on whichever page is open.
+ * The overview's sheet carries the allocation meter, accounts, cash flow, upcoming obligations, recent
+ * transactions and payment methods; `/wallet/transactions` the filtered, windowed ledger;
+ * `/wallet/analytics` the regional analytics grid; `/wallet/invoices` a business vault's bills. One
+ * island serves all four so the dialogs the lane opens are hosted on whichever page is open.
  */
 export default function WalletHome({ home }: WalletHomeProps): JSX.Element {
 	return home.ok ? <Home data={home.data} /> : <Failure message={home.message} />;

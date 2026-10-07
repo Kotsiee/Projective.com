@@ -4,18 +4,12 @@ import { Badge, PaymentCardOption } from "@projective/ui/display";
 import type { PaymentCardArt, PaymentCardData } from "@projective/ui/display";
 import { Icon } from "@projective/ui/icons";
 import type { PaymentMethodId } from "../core/checkout-model.ts";
-import { PROVIDER_LABEL, providerIcon } from "../core/checkout-model.ts";
 import { Amount } from "./Amount.tsx";
-import type {
-	CheckoutWallet,
-	PaymentProvider,
-	ProviderAvailability,
-	SavedCard,
-} from "../types/checkout-types.ts";
+import type { CheckoutWallet, ProviderAvailability, SavedCard } from "../types/checkout-types.ts";
 
 /**
- * PaymentChoice — how the buyer is paying: the instruments they SELECT between, the express routes
- * they TRIGGER, and the face a summary names an instrument by.
+ * PaymentChoice — how the buyer is paying: the instruments they SELECT between, and the face a
+ * summary names an instrument by. The express wallets they TRIGGER are `ExpressCheckoutElement`.
  *
  * ## Selecting is not the same act as triggering, so they are not the same control
  *
@@ -31,8 +25,9 @@ import type {
  *   charged against: the Projective wallet, and every card on file. One selection, shared, which is
  *   what makes "either the wallet or a card, never both" structural rather than two components
  *   remembering to clear each other (`selectedMethodId` in `basket-state.ts`).
- * - **{@link ExpressCheckout}** — the three vendor sheets, drawn in the rail above Buy Now. Each is a
- *   button that starts a payment, never an option that waits for one.
+ * - **`ExpressCheckoutElement`** — Stripe's own Apple Pay, Google Pay and PayPal buttons, drawn in the
+ *   rail above Buy Now (Decision #153). Each is a button that starts a payment, never an option that
+ *   waits for one; the hand-made vendor buttons and their hex livery that used to stand here are gone.
  *
  * `invoice` appears in neither: consolidated monthly billing is arranged once, on the Details step,
  * and offering it as a per-purchase instrument would imply it can be picked per basket. The
@@ -133,6 +128,12 @@ export interface PaymentMethodChooserProps {
 	onSelect: (id: PaymentMethodId) => void;
 	/** Opens the add-a-method modal — the inline "Add new card" row and the empty state both use it. */
 	onAddCard: () => void;
+	/**
+	 * Whether a card can be added from here at all (the processor is connected). When the card route
+	 * is refused for a reason a new card answers — a business account with no business card on file —
+	 * the "Add new card" action stays under the reason rather than vanishing with the list.
+	 */
+	canAddCard: boolean;
 }
 
 /** The DOM id of one instrument option, so roving focus moves without a ref per cell. */
@@ -391,98 +392,30 @@ export function PaymentMethodChooser(props: PaymentMethodChooserProps): JSX.Elem
 						/>
 					)
 					: (
-						<p class="cko-methods__reason" id="cko-method-card-reason">
-							<Icon name="lock" />
-							<span>
-								{cardOffer?.reason ??
-									"Paying by card isn't available for this account right now."}
-							</span>
-						</p>
+						<>
+							<p class="cko-methods__reason" id="cko-method-card-reason">
+								<Icon name="lock" />
+								<span>
+									{cardOffer?.reason ??
+										"Paying by card isn't available for this account right now."}
+								</span>
+							</p>
+							{
+								/*
+								 * The refusal is often one a new card ANSWERS ("add a business card to this
+								 * account"), so the action that answers it stays on screen beneath it — the list
+								 * being withheld must not take the way out with it.
+								 */
+							}
+							{props.canAddCard && (
+								<div class="cko-cardlist">
+									<AddCardRow onAddCard={props.onAddCard} />
+								</div>
+							)}
+						</>
 					)}
 			</div>
 		</div>
-	);
-}
-// #endregion
-
-// #region Express checkout
-/** The three vendor sheets, in the order the design draws them. */
-const EXPRESS_ROUTES: readonly PaymentProvider[] = ["apple_pay", "google_pay", "paypal"];
-
-/** Props for {@link ExpressCheckout}. */
-export interface ExpressCheckoutProps {
-	/** Every route the server offered, available or not. */
-	providers: readonly ProviderAvailability[];
-	/** Whether a charge is already in flight, so a second sheet cannot be opened over the first. */
-	busy: boolean;
-	/** Whether something unrelated to the route blocks payment — an express sheet cannot fix it. */
-	blocked: boolean;
-	/** Starts the payment in the vendor's own sheet. */
-	onPay: (provider: PaymentProvider) => void;
-}
-
-/**
- * Apple Pay · Google Pay · PayPal, as three buttons that START a payment.
- *
- * **These are actions, not options.** Pressing one opens the vendor's sheet and pays there; nothing
- * here arms a later Buy Now, which is why they live above the divider rather than in the instrument
- * list. A route the server refused renders disabled with its own reason bound by `aria-describedby`,
- * the same gate-versus-absence rule the instrument list follows.
- *
- * **Vendor livery is deliberate and is the one place on this surface a literal colour is permitted.**
- * Each network publishes mandatory presentation rules for its button — Apple Pay black-on-white-mark,
- * PayPal's yellow, Google's light button — and a brand-tinted control is the buyer's evidence that
- * the sheet about to open is the one they recognise. Those constants are quarantined in a single
- * documented block in `checkout-payment.css` (`--xpay-*`), exactly as brand marks are quarantined in
- * `footer-icons.tsx` (Decision #62), and they are the only values on the surface that are not
- * `var(--*)`. Everything else — geometry, spacing, radius, focus ring, motion — is token-driven.
- *
- * On Safari the Apple Pay button additionally adopts the platform's OWN rendering through
- * `-webkit-appearance: -apple-pay-button`, which is the only way to draw a compliant Apple Pay mark:
- * the glyph is drawn by the OS, not by us, so nothing here reproduces a trademark. Elsewhere it falls
- * back to the styled form.
- */
-export function ExpressCheckout(props: ExpressCheckoutProps): JSX.Element | null {
-	const offers = EXPRESS_ROUTES
-		.map((provider) => props.providers.find((entry) => entry.provider === provider))
-		.filter((offer): offer is ProviderAvailability => offer !== undefined);
-
-	// No express route was even offered for this checkout — so there is no express region, rather than
-	// an empty one captioned with three refusals nobody asked about.
-	if (offers.length === 0) return null;
-
-	return (
-		<section class="cko-xpay" aria-labelledby="cko-xpay-head">
-			<h3 class="cko-xpay__head" id="cko-xpay-head">Express checkout</h3>
-			<div class="cko-xpay__row">
-				{offers.map((offer) => {
-					const reasonId = `cko-xpay-${offer.provider}-reason`;
-					const refused = !offer.available || props.blocked;
-					return (
-						<div key={offer.provider} class="cko-xpay__cell">
-							<button
-								type="button"
-								class="cko-xpay__btn"
-								data-provider={offer.provider}
-								disabled={refused || props.busy}
-								aria-describedby={refused ? reasonId : undefined}
-								onClick={() => props.onPay(offer.provider)}
-							>
-								<Icon name={providerIcon(offer.provider)} />
-								<span class="cko-xpay__label">{PROVIDER_LABEL[offer.provider]}</span>
-							</button>
-							{refused && (
-								<p class="cko-xpay__reason" id={reasonId}>
-									{props.blocked && offer.available
-										? "Sort out the item above first — an express payment can't clear it."
-										: offer.reason ?? "This isn't available on this device."}
-								</p>
-							)}
-						</div>
-					);
-				})}
-			</div>
-		</section>
 	);
 }
 // #endregion

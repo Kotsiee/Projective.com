@@ -1,4 +1,4 @@
-import type { JSX } from "preact";
+import type { ComponentChildren, JSX } from "preact";
 import { EmptyState } from "@projective/ui/utils";
 import { Icon } from "@projective/ui/icons";
 import type { ProjectSummary } from "@projective/types/projects";
@@ -41,10 +41,16 @@ export interface ProjectPortfolioProps {
 	items: readonly ProjectSummary[];
 	filter: PortfolioFilter;
 	contextLabel: string;
+	/**
+	 * Sections that follow the list on the same ground — the viewer's sent proposals
+	 * (`ProposalList`). Rendered in the empty state too: a freelancer with no projects of their own
+	 * may still have proposals out.
+	 */
+	children?: ComponentChildren;
 }
 
 export function ProjectPortfolio(
-	{ items, filter, contextLabel }: ProjectPortfolioProps,
+	{ items, filter, contextLabel, children }: ProjectPortfolioProps,
 ): JSX.Element {
 	if (items.length === 0) {
 		return (
@@ -62,6 +68,7 @@ export function ProjectPortfolio(
 						</a>
 					}
 				/>
+				{children}
 			</div>
 		);
 	}
@@ -143,6 +150,8 @@ export function ProjectPortfolio(
 						{visible.map((item) => <PortfolioRow key={item.id} item={item} />)}
 					</ul>
 				)}
+
+			{children}
 		</div>
 	);
 }

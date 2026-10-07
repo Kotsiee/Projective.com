@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import {
 	isEditableTarget,
+	isFocusSearchShortcut,
 	isToggleSidebarShortcut,
 	type ShortcutKey,
 	type ShortcutTarget,
@@ -70,5 +71,23 @@ Deno.test("isEditableTarget — the page, a link or a button outside an editor d
 	assertEquals(isEditableTarget(target("BUTTON")), false);
 	assertEquals(isEditableTarget(null), false);
 	assertEquals(isEditableTarget(undefined), false);
+});
+// #endregion
+
+// #region The search slash
+Deno.test("isFocusSearchShortcut — a bare slash, with or without Shift, focuses search", () => {
+	const slash = (patch: Partial<ShortcutKey>) => press({ key: "/", code: "Slash", ctrlKey: false, ...patch });
+	assertEquals(isFocusSearchShortcut(slash({})), true);
+	assertEquals(isFocusSearchShortcut(slash({ shiftKey: true })), true);
+});
+
+Deno.test("isFocusSearchShortcut — a command modifier, a held key or a taken key does not", () => {
+	const slash = (patch: Partial<ShortcutKey>) => press({ key: "/", code: "Slash", ctrlKey: false, ...patch });
+	assertEquals(isFocusSearchShortcut(slash({ ctrlKey: true })), false);
+	assertEquals(isFocusSearchShortcut(slash({ metaKey: true })), false);
+	assertEquals(isFocusSearchShortcut(slash({ altKey: true })), false);
+	assertEquals(isFocusSearchShortcut(slash({ repeat: true })), false);
+	assertEquals(isFocusSearchShortcut(slash({ defaultPrevented: true })), false);
+	assertEquals(isFocusSearchShortcut(press({ key: "k", code: "KeyK", ctrlKey: false, metaKey: true })), false);
 });
 // #endregion

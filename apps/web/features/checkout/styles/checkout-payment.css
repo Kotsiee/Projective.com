@@ -1045,6 +1045,33 @@
 	letter-spacing: 0.04em;
 }
 
+/*
+ * The exact processor charge under a converted total, and the rate the total was shown at. Meta
+ * register — secondary ink, small type, tabular figures — because it qualifies the total; it is also
+ * a required disclosure (the amount that will actually leave the card), so it is never collapsed.
+ */
+.cko-rail__charge {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	align-items: flex-end;
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+	text-align: end;
+}
+
+.cko-rail__charge-figure {
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+}
+
+.cko-rail__charge-rate {
+	max-inline-size: 36ch;
+	line-height: var(--leading-snug);
+}
+
 .cko-rail__commit {
 	display: flex;
 	flex: none;
@@ -1119,34 +1146,19 @@
 
 /* #region Express checkout */
 /*
- * VENDOR BRAND CONSTANTS — the ONE place on this surface where a literal colour is permitted, and the
- * only rule in these sheets that is not `var(--*)`.
+ * The region Stripe's Express Checkout Element mounts into (Decision #153).
  *
- * Apple, Google and PayPal each publish mandatory presentation rules for their button, and a
- * brand-tinted control is the buyer's evidence that the sheet about to open is the one they
- * recognise. A token-generated approximation would be both off-brand and, for the networks whose
- * marks are contractual, non-compliant. They are quarantined here as named constants exactly as brand
- * marks are quarantined in `footer-icons.tsx` (root CLAUDE.md §8 Decision #62), and they are
- * deliberately NOT theme-reactive: a vendor button looks the same in both themes by mandate.
- *
- * Everything else about these controls — geometry, spacing, radius, focus ring, motion, disabled
- * treatment — is token-driven like every other control on the platform.
+ * There are no vendor colours here any more. The buttons are Stripe's: each wallet is drawn in its
+ * own platform's rendering inside Stripe's iframe, so the quarantined `--xpay-*` hex block and the
+ * hand-made `.cko-xpay__btn` rules that imitated them are gone. What remains is the region's own
+ * geometry — a meta-register label, the mount node, and the one-line reason shown when the route is
+ * refused or the device can offer no wallet.
  */
 .cko-xpay {
-	--xpay-apple-bg: #000;
-	--xpay-apple-fg: #fff;
-	--xpay-apple-edge: #000;
-	--xpay-google-bg: #fff;
-	--xpay-google-fg: #3c4043;
-	--xpay-google-edge: #dadce0;
-	--xpay-paypal-bg: #ffc439;
-	--xpay-paypal-fg: #003087;
-	--xpay-paypal-edge: #ffc439;
-
 	display: flex;
 	flex: none;
 	flex-direction: column;
-	gap: var(--space-3);
+	gap: var(--space-2);
 }
 
 .cko-xpay__head {
@@ -1159,136 +1171,28 @@
 }
 
 /*
- * Three abreast, wrapping when the rail cannot hold them.
- *
- * A ROW rather than a stack for a measured reason: stacked, the express block was 177px of a rail
- * capped at 772px on a 900px-tall window, which pushed Buy Now 95px past the pinned box's foot — the
- * buyer had to scroll the rail to reach the button the rail exists to present. Three across costs 71px
- * and brings the whole rail inside its cap. `1 1 8rem` is what makes the wrap honest rather than a
- * breakpoint guess: the cells sit in a row while each can hold its vendor's name and drop to a stack
- * when they cannot, asked of the rail's real width rather than the window's.
+ * The Element sizes its own iframe; this only reserves the button height while it loads, so the
+ * commit beneath does not jump down when the buttons arrive, and collapses when the device can show
+ * none (the reason line then says so).
  */
-.cko-xpay__row {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-2);
-}
-
-.cko-xpay__cell {
-	display: flex;
-	flex: 1 1 8rem;
-	flex-direction: column;
-	gap: var(--space-1);
+.cko-xpay__element {
+	min-block-size: 2.75rem;
 	min-inline-size: 0;
 }
 
-/*
- * Below the width that holds three, stack all three rather than letting two share a row and the
- * third stretch alone across it. Measured at 390px: the wrap produced 151 / 151 / 310, which reads as
- * one vendor being offered more prominently than the other two — a hierarchy among payment networks
- * that nothing on this surface intends. Asked of the RAIL, which at this width is the content column.
- */
-@container cko-rail (max-width: 24rem) {
-	.cko-xpay__row {
-		flex-direction: column;
-	}
-}
-
-.cko-xpay__btn {
-	appearance: none;
-	display: flex;
-	gap: var(--space-2);
-	align-items: center;
-	justify-content: center;
-	min-block-size: 2.75rem;
-	padding: var(--space-2) var(--space-4);
-	/* The checkout's owner-approved pill, so an express button matches the commit beneath it. */
-	border: 1px solid var(--xpay-edge);
-	border-radius: var(--radius-full);
-	background: var(--xpay-bg);
-	color: var(--xpay-fg);
-	font: inherit;
-	font-size: var(--text-sm);
-	font-weight: var(--fw-semibold);
-	cursor: pointer;
-	transition: opacity var(--dur-fast) var(--ease-standard);
-}
-
-.cko-xpay__btn[data-provider="apple_pay"] {
-	--xpay-bg: var(--xpay-apple-bg);
-	--xpay-fg: var(--xpay-apple-fg);
-	--xpay-edge: var(--xpay-apple-edge);
-}
-
-.cko-xpay__btn[data-provider="google_pay"] {
-	--xpay-bg: var(--xpay-google-bg);
-	--xpay-fg: var(--xpay-google-fg);
-	--xpay-edge: var(--xpay-google-edge);
-}
-
-.cko-xpay__btn[data-provider="paypal"] {
-	--xpay-bg: var(--xpay-paypal-bg);
-	--xpay-fg: var(--xpay-paypal-fg);
-	--xpay-edge: var(--xpay-paypal-edge);
-}
-
-.cko-xpay__btn:hover:not(:disabled) {
-	opacity: 0.88;
-}
-
-/*
- * The focus ring is the PLATFORM's, not the vendor's. A brand colour is what the button IS; where the
- * keyboard is standing is a fact about this application, and it has to read against three different
- * backgrounds — which is exactly what the composite two-tone ring is built to do.
- */
-.cko-xpay__btn:focus-visible {
-	outline: none;
-	box-shadow: none;
-}
-
-/*
- * Fade the ink and the edge, never the box (§A.7) — except that a vendor button has no ink/box pair
- * to separate: the brand colour IS the fill. So the whole control takes the field contract's one
- * disabled alpha, the same value the package's own disabled card face uses, and `pointer-events` is
- * left alone so the `not-allowed` cursor beside it still resolves.
- */
-.cko-xpay__btn:disabled {
-	cursor: not-allowed;
-	opacity: var(--fld-disabled-alpha);
-}
-
-/*
- * The genuine Apple Pay button, where the platform can draw it.
- *
- * `-apple-pay-button` is Safari's own appearance keyword: the mark is rendered by the OS, so nothing
- * here reproduces a trademark and the result is compliant by construction. Everywhere else the styled
- * form above stands, which is why this is an `@supports` addition rather than the base rule.
- */
-@supports (-webkit-appearance: -apple-pay-button) {
-	.cko-xpay__btn[data-provider="apple_pay"] {
-		-webkit-appearance: -apple-pay-button;
-		-apple-pay-button-type: buy;
-		-apple-pay-button-style: black;
-		block-size: 2.75rem;
-		padding: 0;
-		border: 0;
-	}
-
-	.cko-xpay__btn[data-provider="apple_pay"] > * {
-		display: none;
-	}
+.cko-xpay__element[data-state="none"],
+.cko-xpay__element[data-state="failed"] {
+	display: none;
 }
 
 .cko-xpay__reason {
+	display: flex;
+	gap: var(--space-1);
+	align-items: center;
 	margin: 0;
 	color: var(--text-secondary);
 	font-size: var(--text-2xs);
-}
-
-@media (prefers-reduced-motion: reduce) {
-	.cko-xpay__btn {
-		transition: none;
-	}
+	line-height: var(--leading-snug);
 }
 /* #endregion */
 

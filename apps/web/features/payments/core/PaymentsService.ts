@@ -1,5 +1,6 @@
 import { apiFetch } from "@web/utils/api-client.ts";
 import type {
+	CardSetupConfig,
 	CardSetupHandoff,
 	ConfirmCardSetup,
 	ConnectOnboardingInput,
@@ -62,7 +63,18 @@ export const PaymentsService = {
 		return "timeout";
 	},
 
-	/** Open a SetupIntent to save a card for an owner; the Payment Element confirms it in `setup` mode. */
+	/**
+	 * What the card form needs to mount before any SetupIntent exists (the publishable key and the
+	 * mode). Read when an Add card surface opens; the intent itself waits for Save.
+	 */
+	cardSetupConfig(): Promise<PaymentsResponse<CardSetupConfig>> {
+		return send("/api/finance/cards/setup");
+	},
+
+	/**
+	 * Open a SetupIntent to save a card for an owner — at Save, after the deferred card form has
+	 * collected the card; `stripe.confirmSetup` confirms it with this answer's client secret.
+	 */
 	createCardSetup(input: CreateCardSetup): Promise<PaymentsResponse<CardSetupHandoff>> {
 		return post("/api/finance/cards/setup", input);
 	},

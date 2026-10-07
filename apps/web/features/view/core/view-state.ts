@@ -1,5 +1,6 @@
-import { signal } from "@preact/signals";
+import { computed, signal } from "@preact/signals";
 import { signInHref } from "./view-model.ts";
+import { sentProposals } from "@features/proposals/core/allowance-state.ts";
 import { scrollToElement } from "./scroll-to.ts";
 import type { ExploreItem } from "@projective/types/explore";
 import type { HrefContext } from "@features/explore/core/routing.ts";
@@ -12,31 +13,42 @@ import type { HrefContext } from "@features/explore/core/routing.ts";
  * full navigation reloads the page and resets them, which is the intended transient scope.
  */
 
-// #region Entity view — apply stub
+// #region Entity view — apply
 /*
  * The scroll-migrated header's condensed state is NOT here any more: it is the shell's shared
  * `headerCondensed` (`@features/shell/core/migrating-header.ts`), one signal for every surface that
  * registers a band, so the entity view and the profile condense on one rule.
  */
 
-/**
- * Whether the viewer has applied to / expressed interest in this project — optimistic client stub
- * (the real application flow is a Phase-2 route). Shared so the header CTA, sticky header, and lane
- * all reflect the applied state together.
- */
-export const projectApplied = signal(false);
+/** Whether the listing's apply modal (`ProjectApplyModal`, one per page) is open. */
+export const applyOpen = signal(false);
+
+/** The listing's project slug, seeded by the modal's island on mount. */
+export const applyProjectSlug = signal<string | null>(null);
 
 /**
- * Apply to / express interest in a project. Guests bounce to sign-in (returning to this item);
- * signed-in viewers toggle the optimistic `projectApplied` stub. Returns the new applied state.
+ * Whether the viewer has a PENDING proposal on this listing — derived from the real sent-proposals
+ * store (`GET /api/projects/applications/mine`), never toggled optimistically. The header CTA, the
+ * sticky header and the lane all read it, so a withdrawal anywhere on the page flips them together.
+ */
+export const projectApplied = computed(() => {
+	const slug = applyProjectSlug.value;
+	return !!slug &&
+		(sentProposals.value ?? []).some((row) => row.projectSlug === slug && row.status === "pending");
+});
+
+/**
+ * Open the apply modal. Guests bounce to sign-in (returning to this item). With a pending proposal
+ * already sent, the same modal is where it is managed — and withdrawn — so the control never toggles
+ * an application on a single press. Returns whether the modal opened.
  */
 export function applyToProject(item: ExploreItem, authed: boolean, ctx: HrefContext): boolean {
 	if (!authed) {
 		globalThis.location.href = signInHref(item, ctx);
 		return false;
 	}
-	projectApplied.value = !projectApplied.value;
-	return projectApplied.value;
+	applyOpen.value = true;
+	return true;
 }
 // #endregion
 

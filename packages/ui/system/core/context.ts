@@ -14,7 +14,7 @@ import { createContext } from "preact";
 import { useContext } from "preact/hooks";
 import { effect, type Signal, signal } from "@preact/signals";
 import { applyScheme, buildScheme } from "./theme-engine.ts";
-import type { DesignSystemConfig, ThemeMode, ThemePreference } from "../types/mod.ts";
+import type { CvdMode, DesignSystemConfig, ThemeMode, ThemePreference } from "../types/mod.ts";
 
 // #region Store
 export const DEFAULT_CONFIG: DesignSystemConfig = {
@@ -133,11 +133,35 @@ export function applyConfig(el: HTMLElement, cfg: DesignSystemConfig): void {
 	el.dataset.motion = cfg.reducedMotion ? "reduced" : "full";
 }
 
-/** Sync the store's `mode` from the pre-paint `<html data-theme>` set by the inline theme script. */
+/** The CVD modes the store accepts — anything else on the element reads as `"none"`. */
+const CVD_MODES: readonly CvdMode[] = ["none", "protan", "deutan", "tritan"];
+
+/**
+ * Sync the store from what the document was painted with: `mode` from the pre-paint
+ * `<html data-theme>`, and the four accessibility overlays from the `data-contrast` · `data-font` ·
+ * `data-cvd` · `data-motion` attributes the server renders from the viewer's saved preference.
+ * Without the overlay half, binding the store would repaint `:root` with its defaults and undo the
+ * server's first paint — a flash of the wrong accessibility state on every load.
+ */
 export function hydrateConfigFromDom(): void {
 	if (typeof document === "undefined") return;
-	const mode: ThemeMode = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
-	if (mode !== dsConfig.value.mode) dsConfig.value = { ...dsConfig.value, mode };
+	const data = document.documentElement.dataset;
+	const mode: ThemeMode = data.theme === "dark" ? "dark" : "light";
+	const cvd = CVD_MODES.find((value) => value === data.cvd) ?? "none";
+	const overlays = {
+		highContrast: data.contrast === "high",
+		dyslexicFont: data.font === "dyslexic",
+		cvd,
+		reducedMotion: data.motion === "reduced",
+	};
+	const current = dsConfig.value;
+	if (
+		mode !== current.mode || overlays.highContrast !== current.highContrast ||
+		overlays.dyslexicFont !== current.dyslexicFont || overlays.cvd !== current.cvd ||
+		overlays.reducedMotion !== current.reducedMotion
+	) {
+		dsConfig.value = { ...current, mode, ...overlays };
+	}
 	let stored: string | null = null;
 	try {
 		stored = localStorage.getItem("theme");

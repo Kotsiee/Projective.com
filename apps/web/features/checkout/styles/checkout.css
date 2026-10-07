@@ -19,9 +19,10 @@
  * modal, which mounts on a listing page. Both ride this same barrel from their own islands for the
  * same reason — a purchase panel that renders unstyled is a purchase panel nobody completes.
  *
- * Order is the cascade: chrome first (the bands and the trail they carry), then the lane, then the
- * bodies in step order, then the two off-surface overlays.
+ * Order is the cascade: the surface's shared tokens first, then chrome (the bands and the trail they
+ * carry), then the lane, then the bodies in step order, then the two off-surface overlays.
  */
+@import "./checkout-shared.css";
 @import "./basket-bands.css";
 @import "./checkout-stepper.css";
 @import "./basket-lane.css";

@@ -209,3 +209,103 @@ export const NotificationSettingsSchema = z.object({
 });
 export type NotificationSettings = z.infer<typeof NotificationSettingsSchema>;
 // #endregion
+
+// #region The settings console's notification centre
+/** The four transports a person routes — `webhook` is an integration, never a preference. */
+export const PersonalChannel = z.enum(["in_app", "push", "email", "sms"]);
+export type PersonalChannel = z.infer<typeof PersonalChannel>;
+
+/** Display order of the routing matrix's columns. */
+export const PERSONAL_CHANNELS: readonly PersonalChannel[] = ["in_app", "push", "email", "sms"];
+
+/** The global row, trimmed to what the console edits. Times are `HH:MM` local to `timezone`. */
+export const NotificationCenterPrefsSchema = z.object({
+	inApp: z.boolean(),
+	push: z.boolean(),
+	email: z.boolean(),
+	sms: z.boolean(),
+	timezone: z.string(),
+	quietHoursEnabled: z.boolean(),
+	quietHoursStart: z.string().nullable(),
+	quietHoursEnd: z.string().nullable(),
+	mutedUntil: timestamp.nullable(),
+	digestFrequency: DigestFrequency,
+});
+export type NotificationCenterPrefs = z.infer<typeof NotificationCenterPrefsSchema>;
+
+/** One matrix row: a category's per-channel overrides, `null` = follow the channel's master. */
+export const NotificationCenterCategorySchema = z.object({
+	category: NotificationCategory,
+	inApp: z.boolean().nullable(),
+	push: z.boolean().nullable(),
+	email: z.boolean().nullable(),
+	sms: z.boolean().nullable(),
+});
+export type NotificationCenterCategory = z.infer<typeof NotificationCenterCategorySchema>;
+
+/**
+ * The catalog's MANDATORY events in one category, summarised — what no preference can silence
+ * (`comms.fn_resolve_channels` step 1). Read from `comms.notification_types`, never restated here.
+ */
+export const RequiredAlertsSchema = z.object({
+	category: NotificationCategory,
+	/** How many enabled event types in the category are mandatory. */
+	mandatory: z.number().int().min(0),
+	/** How many enabled event types the category has in all. */
+	total: z.number().int().min(0),
+	/** The union of the mandatory types' default channels — where they always land. */
+	channels: z.array(PersonalChannel),
+});
+export type RequiredAlerts = z.infer<typeof RequiredAlertsSchema>;
+
+/** `GET /api/user/notifications` — everything the Notifications section draws. */
+export const NotificationCenterSchema = z.object({
+	prefs: NotificationCenterPrefsSchema,
+	/** All eight categories, in `NotificationCategory` order, absent rows filled with `null`s. */
+	categories: z.array(NotificationCenterCategorySchema),
+	required: z.array(RequiredAlertsSchema),
+	/** `false` when the live read failed and this is the seeded default — never shown as saved. */
+	live: z.boolean(),
+});
+export type NotificationCenter = z.infer<typeof NotificationCenterSchema>;
+
+/** `HH:MM` (24h), the shape a quiet-hours bound is edited in. */
+const ClockTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use a 24-hour time like 22:00.");
+
+/**
+ * `PUT /api/user/notifications` — a partial save.
+ *
+ * `resetChannels` is how a MASTER toggle behaves: because the router reads
+ * `COALESCE(category, global)`, an explicit category value outranks the master, so flipping a master
+ * alone would leave the overridden cells where they were. Naming the channel here sets every
+ * category's value for it back to `null` in the same save — the column then follows its master.
+ */
+export const NotificationCenterUpdateSchema = z.object({
+	prefs: z.object({
+		inApp: z.boolean(),
+		push: z.boolean(),
+		email: z.boolean(),
+		sms: z.boolean(),
+		timezone: z.string().min(1).max(60),
+		quietHoursEnabled: z.boolean(),
+		quietHoursStart: ClockTime.nullable(),
+		quietHoursEnd: ClockTime.nullable(),
+		mutedUntil: timestamp.nullable(),
+	}).partial().optional(),
+	categories: z.array(
+		NotificationCenterCategorySchema.pick({ category: true }).extend(
+			NotificationCenterCategorySchema.pick({ inApp: true, push: true, email: true, sms: true })
+				.partial().shape,
+		),
+	).max(8).optional(),
+	resetChannels: z.array(PersonalChannel).max(4).optional(),
+}).strict().refine(
+	(body) => {
+		const p = body.prefs;
+		return !p?.quietHoursEnabled || (p.quietHoursStart !== null && p.quietHoursEnd !== null &&
+			p.quietHoursStart !== undefined && p.quietHoursEnd !== undefined);
+	},
+	{ message: "Quiet hours need a start and an end.", path: ["prefs", "quietHoursStart"] },
+);
+export type NotificationCenterUpdate = z.infer<typeof NotificationCenterUpdateSchema>;
+// #endregion

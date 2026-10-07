@@ -178,9 +178,12 @@ result.
   (`state IN ('trialing','active','past_due')` and not past `current_period_end`), falling back to
   its audience's default free plan. **Every subject always resolves to a plan** â€” there is no
   unentitled state.
-- **`finance.fn_subject_standing_level(subject_type, subject_id) â†’ smallint`** â€” defers to
+- **`finance.fn_subject_standing_level(subject_type, subject_id) → smallint`** — defers to
   `org.fn_standing_level` for earning subjects; buyer subjects (`business`/`organisation`) resolve
-  to rung `1`, because they carry the Client Trust Score rather than Standing.
+  to rung `1`, because they carry the Client Trust Score rather than Standing. A person metered as
+  **`user`** reads their **`freelancer`** rung — `org.entity_standing` keys a seller by user id under
+  that type and no recompute writes a `user` row, so reading `user` literally pinned every individual
+  at rung 1 and dropped the earned weekly-proposal bonus (Decision #154(C)).
 
 ### `finance.fn_effective_limit(subject_type, subject_id, key) â†’ integer`
 
@@ -217,16 +220,40 @@ Both are mirrored by pure TypeScript twins in `packages/types/finance/entitlemen
 - **`finance.fn_current_allowance(subject_type, subject_id, key) â†’ finance.allowance_periods`**
   â€” opens or rolls the weekly period (`date_trunc('week', now())`), snapshotting `granted_units`
   with its `base_units` / `standing_bonus_units` provenance so a mid-week upgrade or promotion is an
-  explicit new grant rather than a silent drift. Also applies the lazy buffer drip. Emits
+  explicit new grant rather than a silent drift. Also applies the lazy buffer drip: while the buffer
+  is below its cap and at least one `proposal_buffer_window_hours` window has passed since
+  `buffer_refreshed_at`, it adds `drip × windows` (capped) and **advances the clock by the windows it
+  paid out** — never to `now()`, so a late read keeps its partial window and the "next token"
+  instant (`buffer_refreshed_at + window`) stays true. Emits
   `allowance.period_rolled` / `allowance.buffer_replenished`. **`service_role` only** — it takes any subject, so a client grant would disclose other people's
-  allowances; a self-scoped wrapper is how a viewer should see their own.
-- **`finance.fn_consume_allowance(subject, units, key, reason, ref_table, ref_id) â†’ boolean`** â€”
+  allowances; `finance.get_proposal_allowance` is the self-scoped door.
+- **`finance.fn_consume_allowance(subject, units, key, reason, ref_table, ref_id) → boolean`** —
   spends units. Requires **both** weekly headroom and a buffer token, so a week's allowance can
-  never be dumped into one hour of spam. Emits `allowance.consumed` on success and
-  `allowance.exhausted` on refusal â€” the refusal is recorded either way, because the denial rate
+  never be dumped into one hour of spam. A spend that takes a **full** buffer below its cap restarts
+  the drip clock at `now()` — a full bucket is not dripping, so idle time never banks a refill.
+  Emits `allowance.consumed` on success and
+  `allowance.exhausted` on refusal — the refusal is recorded either way, because the denial rate
   is the upgrade signal. **`service_role` only.**
-- **`finance.fn_refund_allowance(...) â†’ boolean`** â€” returns units (a withdrawn proposal should
-  not cost the week's allowance). **`service_role` only.**
+- **`finance.fn_refund_allowance(...) → boolean`** — returns WEEKLY units (a withdrawn proposal
+  should not cost the week's allowance). The buffer token is not returned — an apply → withdraw loop
+  must not refill the anti-burst drip. **`service_role` only.**
+- **`finance.get_proposal_allowance(p_team_id uuid DEFAULT NULL) → jsonb`** — the caller's proposal
+  allowance (Decision #154). `SECURITY DEFINER`, granted to `authenticated`; the subject is DERIVED —
+  `auth.uid()` as `user`, or `p_team_id` as `team` only when the caller is an active member
+  (`42501` otherwise). Calls `fn_current_allowance` (so reading opens the week and pays out the drip)
+  and returns `subject_type`, `subject_id`, `period_start`, `period_end`, `granted_units`,
+  `consumed_units`, `base_units`, `standing_bonus_units`, `buffer_units`, `buffer_cap`,
+  `buffer_refreshed_at`, `buffer_window_hours`, `buffer_drip`, `plan_code` / `plan_label` /
+  `plan_tier` / `plan_audience`, `upgrade_plan_label` / `upgrade_weekly_units` (the same audience's
+  public Pro plan, free tiers only), `standing_level`, `enforced` (`proposal_allowance_enforced`),
+  `team_member_count` and `can_bind_seat` (team only), and `server_now`. Resolved by
+  `resolveProposalAllowance` (`@projective/types/finance`).
+- **`finance.record_proposal_denial(p_reason text, p_team_id uuid DEFAULT NULL, p_project text DEFAULT NULL) → void`**
+  — writes `entitlement.denied` (`gate: preflight`) for a refusal the app's pre-flight gate made
+  before `apply_to_project` inserted, which the metering trigger therefore never saw. Caller-scoped
+  like the read; `p_reason` ∈ `weekly_exhausted · buffer_exhausted · team_too_small ·
+  missing_permission`; `p_project` is a slug or uuid. Granted to `authenticated` (the `analytics`
+  schema is not exposed to PostgREST).
 
 ### Footprint
 
@@ -670,6 +697,54 @@ direct PostgREST insert is refused and cannot skip the needs-approval check or c
 
 ---
 
+## 📒 The wallet ledger read (`00001210` §14, Decision #152)
+
+The `/wallet/transactions` ledger and the `/wallet/analytics` cash flow read through these three
+functions instead of pulling the most recent 1,000 lines into the web server and paging or summing
+them there. All three are **`SECURITY INVOKER`**, `STABLE`, `SET search_path = ''`: they answer under
+the caller's own RLS (`finance.transactions` → `fn_can_view_wallet`), so a wallet id the caller cannot
+see contributes nothing rather than an error, and every joined read answers under the joined table's
+own policy. Granted to `authenticated`, revoked from `PUBLIC` and `anon` (`00002510`). Zod SSOT:
+`TransactionListParamsSchema` (`kinds`, `range`, `encodeLedgerCursor`/`decodeLedgerCursor`),
+`LEDGER_KIND_REASONS`, `ActivityViewSchema` (`grain`, `timezone`) in `packages/types/finance/wallet.ts`.
+
+### `finance.list_ledger(p_wallet_ids, p_limit = 41, p_after_at, p_after_id, p_direction, p_reasons, p_from, p_to, p_search, p_search_reasons, p_search_wallets)` → `SETOF finance.transactions`
+
+One **keyset** page, newest first: every matching line strictly older than `(p_after_at, p_after_id)` —
+the last line of the previous page — in `(created_at DESC, id DESC)` order, served by
+`idx_transactions_wallet_created (wallet_id, created_at DESC, id DESC)` (`00004005`). A line written
+while the reader scrolls cannot move a page boundary, so nothing repeats or goes missing (an offset
+would). The application asks for one row more than it shows to learn whether another page exists, and
+carries the position as an opaque cursor `k:<base64url("<created_at ISO>|<id>")>`; anything else
+(including a pre-#152 `o:<offset>`) is read as the first page. `p_limit` is clamped to 1–201.
+
+| Filter (all optional, ANDed) | Effect |
+| :--------------------------- | :----- |
+| `p_direction`                | `credit` · `debit`. |
+| `p_reasons`                  | The `reason` codes of the selected line families (`LEDGER_KIND_REASONS` — the application maps families → codes). |
+| `p_from` / `p_to`            | Half-open `[from, to)`. The application resolves the ruler's window on the viewer's calendar (`rangeStart`). |
+| `p_search`                   | Case-insensitive literal substring (`%`, `_` and `\` escaped) over: the project title or stage name an escrow line paid for; either party of that escrow (a person's name or handle **other than the caller**, a team the caller may see, a business's public face via `finance.get_purchase_owner`); an order's reference; an order line's title (buyer-readable only). |
+| `p_search_reasons`           | Reason codes whose LABELS match the words — copy the database cannot see ("release" → the release codes). |
+| `p_search_wallets`           | The caller's own wallets whose owner name matches (a transfer to "Atlas Labs"). |
+
+### `finance.ledger_flow(p_wallet_ids, p_from, p_to, p_tz = 'UTC', p_grain = 'day')` → `TABLE (bucket date, currency text, direction text, reason text, total_cents bigint, line_count integer)`
+
+The ledger summed per **calendar bucket in the viewer's time zone** —
+`date_trunc(p_grain, created_at AT TIME ZONE p_tz)::date` — grouped by origin currency (the
+application converts each currency's bucket sum ONCE, the `sumOf` rounding rule), direction and reason
+(folded into line families and the coarse categories by the application). `p_grain` is `day` · `week`
+(ISO, Monday) · `month`; anything else is `day`. `p_tz` must be an IANA zone (the application validates
+it with `Intl` and falls back to the profile zone, then UTC); an unknown zone is an error, never a
+silent UTC. Summed over the whole window, so a 5-year or all-time window is no longer read through the
+most recent 1,000 lines (closes Decision #123 flag (g)).
+
+### `finance.ledger_first_at(p_wallet_ids)` → `timestamptz`
+
+The oldest movement the caller may read across the wallets — where an "all time" window starts.
+`NULL` when there is none.
+
+---
+
 ## 💳 Stripe fiat rails (`00001230`, Decision #125)
 
 Money entering the platform from a card, the Connect payout account a person or team is paid out
@@ -729,6 +804,18 @@ Closes an attempt Stripe refused to create (`canceled`, and a lock `failed`). On
 `requires_payment` row is touched; anything else is returned unchanged, so it can never cancel a
 payment that is already in Stripe's hands.
 
+#### `finance.attach_checkout_order(p_payment_id, p_checkout)` → jsonb
+
+Names the checkout a started card / express top-up pays for (Decision #153), so settlement can place
+the order even if the payer's browser never returns. The caller must be the payer (anything else is
+answered as missing, `P0002`), the payment a still-unpaid `wallet_topup`, the checkout's currency the
+payment's, and the caller able to spend from the basket NOW (`finance.fn_can_manage_basket`, the guard
+`place_wallet_order` applies). `p_checkout` needs `basket_id`, `item_ids` (non-empty), `currency`,
+`units` and an `order_key` of 8–120 characters; it is stored normalised. **Write-once:** the same
+checkout again is a no-op, a different one is `PX409` — one payment paying for two orders is the case
+this exists to prevent. Prices nothing: the units and promo are re-checked against the catalogue when
+`place_wallet_order` runs. Executable by `authenticated` only.
+
 ### Card payments — processor doors
 
 #### `finance.settle_card_payment(p_event_id, p_provider_ref, p_amount_received, p_currency, p_livemode)` → jsonb
@@ -740,8 +827,13 @@ credit. For an `escrow_lock` it then runs `projects.fund_stage` **as the payer w
 (`request.jwt.claim.sub` set to `created_by` for the call, restored after), inside a subtransaction:
 the lock re-checks that person's access and spend right NOW, and a refusal rolls back only the lock —
 the money stays in the wallet and `lock_error` says why. A short arrival fails the lock the same way.
-The escrows it created are recorded in `locked_escrow_ids`. Notifies `escrow.funded` or
-`wallet.topup_succeeded` (with the lock failure spelled out when there was one).
+The escrows it created are recorded in `locked_escrow_ids`. For a `wallet_topup` carrying a
+`checkout` (Decision #153) it then runs `finance.place_wallet_order` **as the payer**, the same claim
+swap and subtransaction, under the checkout's `order_key` — the key the browser places the same order
+under, so whichever arrives second replays and exactly one order exists; a refusal rolls back only the
+order, recorded in `order_error`, and the money stays in the wallet. Notifies `escrow.funded` or
+`wallet.topup_succeeded` (with the lock failure, the placed order, or the order refusal spelled out).
+Returns `order_id` / `order_error` beside the lock outcome.
 
 #### `finance.record_card_payment_failure(p_event_id, p_provider_ref, p_status, p_reason, p_livemode)` → jsonb
 
@@ -853,7 +945,10 @@ back from them (flagged — a product decision).
   owner; a racing second request gets the first.
 - `finance.record_saved_card(owner_type, owner_id, pm_ref, brand, last4, exp_month, exp_year, created_by,
   make_default)` (processor) — writes the funding `payment_methods` row and its `saved_cards` display
-  projection, linked; idempotent on (owner, payment method); the first card becomes the default.
+  projection, linked; idempotent on (owner, payment method); the first card becomes the default. A card
+  saved to a team / business / organisation is recorded `is_business_card = true` (Decision #153): it
+  can only arrive through `card_owner_for` (manage_billing on the entity), so it is the entity's own
+  instrument — without this, the business-card rule refused every card a business added at checkout.
 
 ### Recurring deposits
 

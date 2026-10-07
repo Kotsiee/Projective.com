@@ -70,8 +70,8 @@ export function ConfirmPayDialog(props: ConfirmPayDialogProps): JSX.Element {
 				}}
 			/>
 			<Button
+				class="cko-commit"
 				variant="filled"
-				severity="warning"
 				loading={busy}
 				// The SERVER's string, printed verbatim. This dialog composes no figure of its own.
 				label={busy ? "Taking payment…" : `Pay ${session.totals.total.display}`}

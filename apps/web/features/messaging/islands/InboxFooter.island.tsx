@@ -4,7 +4,8 @@ import { Button } from "@projective/ui/fields";
 import { Tooltip } from "@projective/ui/feedback";
 import { LocalKeys, writeStored } from "@web/utils/storage-keys.ts";
 import { MessagingIcon } from "../components/messaging-glyphs.tsx";
-import { openNewConversation, settingsModalOpen } from "../core/messaging-state.ts";
+import { openNewConversation } from "../core/messaging-state.ts";
+import { openSettings } from "@features/settings/core/settings-bridge.ts";
 import { type InboxDensity, inboxDensity } from "../core/inbox-state.ts";
 
 /**
@@ -54,7 +55,7 @@ export default function InboxFooter(): JSX.Element {
 						iconOnly
 						icon={<MessagingIcon name="settings" />}
 						aria-label="Message settings"
-						onClick={() => (settingsModalOpen.value = true)}
+						onClick={() => openSettings("messaging")}
 					/>
 				</Tooltip>
 				<Button

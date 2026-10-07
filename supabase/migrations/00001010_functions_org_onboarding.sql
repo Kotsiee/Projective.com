@@ -244,12 +244,24 @@ SET search_path = public, org, security
 AS $$
 DECLARE
     v_org uuid;
+    v_handle text := lower(btrim(COALESCE(p_payload->>'handle', '')));
+    v_refusal text;
 BEGIN
     IF p_owner IS NULL THEN
         RAISE EXCEPTION 'owner is required' USING ERRCODE = '22023';
     END IF;
-    IF NULLIF(p_payload->>'legalName', '') IS NULL OR NULLIF(p_payload->>'handle', '') IS NULL THEN
+    IF NULLIF(p_payload->>'legalName', '') IS NULL OR v_handle = '' THEN
         RAISE EXCEPTION 'legalName and handle are required' USING ERRCODE = '22023';
+    END IF;
+
+    -- One handle namespace across people, teams, businesses and organisations (00001020 §9). The
+    -- UNIQUE on org.organisations.handle only ever saw other organisations, so an organisation could
+    -- claim a person's `@username` or a team's slug and the two would fight over `/{handle}`. The
+    -- refusal is the same sentence the create forms' availability probe shows.
+    v_refusal := org.fn_handle_refusal(v_handle);
+    IF v_refusal IS NOT NULL THEN
+        RAISE EXCEPTION '%', v_refusal
+            USING ERRCODE = CASE WHEN org.fn_handle_taken(v_handle) THEN '23505' ELSE '22023' END;
     END IF;
 
     -- The org row. NULLIF collapses the client's empty-string defaults to NULL; the
@@ -263,7 +275,7 @@ BEGIN
         p_owner,
         p_payload->>'legalName',
         NULLIF(p_payload->>'tradingName', ''),
-        p_payload->>'handle',
+        v_handle,
         NULLIF(p_payload->>'registrationNumber', ''),
         p_payload->>'corporateEmail',
         NULLIF(p_payload->>'corporatePhone', ''),
@@ -299,7 +311,7 @@ BEGIN
         'organisation.created',
         'org.organisations',
         v_org,
-        jsonb_build_object('handle', p_payload->>'handle', 'legal_name', p_payload->>'legalName'),
+        jsonb_build_object('handle', v_handle, 'legal_name', p_payload->>'legalName'),
         NULL
     );
 

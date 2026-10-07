@@ -2,6 +2,7 @@ import { createDefine } from "fresh";
 import type { UserContext } from "@projective/types/auth";
 import type { FxRateTable } from "@projective/types/finance";
 import type { ProfileView } from "@projective/types/profile";
+import type { A11yOverlays } from "@web/utils/a11y-context.ts";
 import type {
 	ProjectAccess,
 	ProjectNavActivity,
@@ -52,6 +53,12 @@ export interface State {
 		locale: string;
 		table: FxRateTable;
 	};
+	/**
+	 * The viewer's accessibility overlays (contrast · font · colour vision · motion), read from the
+	 * `pj.a11y` cookie by `routes/_middleware.ts` so `_app.tsx` can write them onto `<html>` before the
+	 * first paint (`utils/a11y-context.ts`, Decision #150). Presentation only.
+	 */
+	a11y?: A11yOverlays;
 	/** Active persona/profile handle, when resolved. */
 	handle?: string;
 	/**

@@ -129,12 +129,25 @@ EXECUTE ON FUNCTION projects.is_protected_phase (uuid) TO authenticated;
 
 -- --- from 0313_freelancer_conversion.sql ---
 
-GRANT
-EXECUTE ON FUNCTION org.enable_freelancer_profile (jsonb) TO authenticated;
+-- Stated per function, not left to the schema-wide revoke at the top of this file, so a later
+-- `GRANT … ON ALL FUNCTIONS IN SCHEMA org` cannot silently hand a definer write to `anon`.
+REVOKE EXECUTE ON FUNCTION org.enable_freelancer_profile (jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION org.enable_freelancer_profile (jsonb) TO authenticated;
+
+-- The acting entity's name (00001020 §5b): answers only for an entity the caller holds a seat in.
+REVOKE EXECUTE ON FUNCTION org.get_acting_context_details (text, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION org.get_acting_context_details (text, uuid) TO authenticated;
+
+-- The one write door on org.organisations (00001020 §5c); the client UPDATE policy is gone.
+REVOKE EXECUTE ON FUNCTION org.update_organisation (uuid, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION org.update_organisation (uuid, jsonb) TO authenticated;
 
 -- --- from 0315_create_organisation_rpc.sql ---
 
 -- Only the service-role backend provisions organisations (after admin-creating the owner identity).
+-- It trusts the `p_owner` it is handed, and Postgres grants a new `public` function to PUBLIC — so
+-- until 2026-10-06 any signed-out caller could mint an organisation owned by anybody. Revoked.
+REVOKE EXECUTE ON FUNCTION public.create_organisation (uuid, jsonb) FROM PUBLIC, anon, authenticated;
 GRANT
 EXECUTE ON FUNCTION public.create_organisation (uuid, jsonb) TO service_role;
 
@@ -584,6 +597,21 @@ EXECUTE ON FUNCTION finance.fn_refund_allowance (
     uuid
 ) TO service_role;
 
+-- The caller-scoped doors onto the proposal allowance. Each derives its subject from auth.uid() (and
+-- an active team membership for a team), so neither can address another subject's allowance — which
+-- is what keeps `fn_current_allowance` itself, which takes any subject id, service-role only.
+REVOKE ALL ON FUNCTION finance.get_proposal_allowance (uuid)
+FROM public, anon;
+
+GRANT
+EXECUTE ON FUNCTION finance.get_proposal_allowance (uuid) TO authenticated;
+
+REVOKE ALL ON FUNCTION finance.record_proposal_denial (text, uuid, text)
+FROM public, anon;
+
+GRANT
+EXECUTE ON FUNCTION finance.record_proposal_denial (text, uuid, text) TO authenticated;
+
 GRANT
 EXECUTE ON FUNCTION finance.fn_footprint_usage (
     text,
@@ -771,6 +799,10 @@ REVOKE ALL ON FUNCTION finance.attach_card_payment (uuid, text) FROM PUBLIC, ano
 GRANT EXECUTE ON FUNCTION finance.attach_card_payment (uuid, text) TO authenticated;
 REVOKE ALL ON FUNCTION finance.abandon_card_payment (uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.abandon_card_payment (uuid, text) TO authenticated;
+-- The checkout a card / express top-up pays for (Decision #153): a user door — the payer names the
+-- order; only the service-role settle door ever places it from the webhook.
+REVOKE ALL ON FUNCTION finance.attach_checkout_order (uuid, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.attach_checkout_order (uuid, jsonb) TO authenticated;
 REVOKE ALL ON FUNCTION finance.payout_account_for (text, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.payout_account_for (text, uuid) TO authenticated;
 REVOKE ALL ON FUNCTION finance.record_payout_account (text, uuid, text) FROM PUBLIC, anon;
@@ -1283,6 +1315,22 @@ FROM public, anon;
 GRANT
 EXECUTE ON FUNCTION projects.reject_application (uuid) TO authenticated;
 
+-- --- the applicant's side of a proposal (00001130 §6c withdraw_application, §6d list_my_applications) ---
+--
+-- Both resolve the caller from auth.uid(): withdrawal checks the caller filed the application (or may
+-- bind the applying team), and the list returns only the caller's own and their teams' applications.
+REVOKE ALL ON FUNCTION projects.withdraw_application (uuid)
+FROM public, anon;
+
+GRANT
+EXECUTE ON FUNCTION projects.withdraw_application (uuid) TO authenticated;
+
+REVOKE ALL ON FUNCTION projects.list_my_applications (text)
+FROM public, anon;
+
+GRANT
+EXECUTE ON FUNCTION projects.list_my_applications (text) TO authenticated;
+
 -- #region The workspace console (Teams & Businesses, Decision #122)
 -- The write and read doors of /teams and /businesses. Each is a definer that resolves the caller from
 -- auth.uid() and checks the workspace capability it needs (org.fn_member_can) — never a role name —
@@ -1309,6 +1357,20 @@ GRANT EXECUTE ON FUNCTION finance.save_team_split (uuid, jsonb) TO authenticated
 GRANT EXECUTE ON FUNCTION finance.preview_team_split (uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION finance.save_spend_policy (uuid, jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION finance.request_spend_approval (uuid, bigint, text, text, uuid) TO authenticated;
+
+-- The wallet ledger reads (00001210 §14). SECURITY INVOKER: each answers under the caller's own RLS, so
+-- granting them reaches no row the caller could not already select. A signed-out caller has nothing to
+-- read, so `anon` is refused outright.
+REVOKE EXECUTE ON FUNCTION finance.list_ledger (
+    uuid[], integer, timestamptz, uuid, text, text[], timestamptz, timestamptz, text, text[], uuid[]
+) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.list_ledger (
+    uuid[], integer, timestamptz, uuid, text, text[], timestamptz, timestamptz, text, text[], uuid[]
+) TO authenticated;
+REVOKE EXECUTE ON FUNCTION finance.ledger_flow (uuid[], timestamptz, timestamptz, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.ledger_flow (uuid[], timestamptz, timestamptz, text, text) TO authenticated;
+REVOKE EXECUTE ON FUNCTION finance.ledger_first_at (uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.ledger_first_at (uuid[]) TO authenticated;
 
 -- The acting-context switches (00001001). The shared writer they call is NOT reachable: it trusts its
 -- arguments, and every switch re-checks the membership before calling it.
@@ -1343,4 +1405,21 @@ REVOKE ALL ON FUNCTION scheduling.fn_guard_rostered_event () FROM PUBLIC, anon, 
 REVOKE ALL ON FUNCTION scheduling.fn_event_has_roster (uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION scheduling.fn_event_has_roster (uuid) TO authenticated, service_role;
 REVOKE ALL ON FUNCTION scheduling.fn_check_schedule_timezone () FROM PUBLIC, anon, authenticated;
+-- #endregion
+
+-- #region Email addresses (00001050, 2026-10-06)
+-- org.user_emails is read-only to a client; these definers are its write doors. Each resolves the
+-- caller from auth.uid() and touches only the caller's own rows, so all five are safe for a signed-in
+-- caller and none for a guest. (The org schema is deny-by-default at the top of this file; the guard
+-- trigger function stays unreachable — EXECUTE on a trigger function is checked at CREATE TRIGGER.)
+GRANT EXECUTE ON FUNCTION org.get_my_emails () TO authenticated;
+GRANT EXECUTE ON FUNCTION org.add_user_email (text) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.remove_user_email (uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.set_primary_email (uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.confirm_user_email (text) TO authenticated;
+-- The token mint returns a RAW verification token, so it is the service role's alone. It lives in
+-- `security` because the service role holds USAGE there and not on `org`; `authenticated` holds USAGE
+-- on `security` too, which is why the revoke names it explicitly.
+REVOKE ALL ON FUNCTION security.issue_email_verification (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION security.issue_email_verification (uuid) TO service_role;
 -- #endregion

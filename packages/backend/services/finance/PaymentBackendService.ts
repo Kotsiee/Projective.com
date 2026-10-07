@@ -1,5 +1,7 @@
 import {
 	type CardPaymentHandoff,
+	type CardSetupConfig,
+	type CheckoutOrderLink,
 	type CardSetupHandoff,
 	type ConfirmCardSetup,
 	type ConnectAccountStatus,
@@ -39,6 +41,7 @@ import {
 	abandonCardPayment,
 	abandonIdentityVerification,
 	attachCardPayment,
+	attachCheckoutOrder,
 	attachIdentitySession,
 	beginCardPayment,
 	beginIdentityVerification,
@@ -212,6 +215,7 @@ async function cardPayment(
 	actor: ReadActor,
 	request: Parameters<typeof beginCardPayment>[1],
 	savedCard: string | null = null,
+	checkout: CheckoutOrderLink | null = null,
 ): Promise<Result<CardPaymentHandoff>> {
 	if (!canReadLive(actor)) return signedOut("Sign in to pay.");
 	const settings = liveSettings();
@@ -221,6 +225,15 @@ async function cardPayment(
 	if (!begun.ok) return refused(begun.refusal);
 	let payment = begun.value.payment;
 	const replayed = begun.value.replayed;
+
+	// The order this top-up pays for is named BEFORE any intent exists: a saved card is confirmed
+	// server-side the moment its intent is created, and the webhook settling it must already know
+	// which order to place (Decision #153). Write-once, so a replayed attempt re-names the same one.
+	if (checkout && payment.status === "requires_payment") {
+		const linked = await attachCheckoutOrder(actor.accessToken, payment.id, checkout);
+		if (!linked.ok) return refused(linked.refusal);
+		if (linked.value) payment = linked.value;
+	}
 
 	// A replayed key names an attempt that already ended one way or another; its key cannot start
 	// another payment, and saying so is better than handing back a secret for a dead intent.
@@ -365,11 +378,13 @@ export class PaymentBackendService {
 	}
 
 	/**
-	 * Pay for a checkout by card: the charge is a top-up of the PAYING account's wallet (created in the
-	 * charge currency if it has none), after which the order is settled from that wallet exactly as a
-	 * wallet purchase is — one charge path, one ledger (the model every escrow lock already follows).
-	 * The browser confirms the returned PaymentIntent, waits for {@link paymentStatus} to report it
-	 * settled, then places the wallet order.
+	 * Pay for a checkout by card or express wallet: the charge is a top-up of the PAYING account's
+	 * wallet (created in the charge currency if it has none), after which the order is settled from
+	 * that wallet exactly as a wallet purchase is — one charge path, one ledger (the model every escrow
+	 * lock already follows). The browser confirms the returned PaymentIntent, waits for
+	 * {@link paymentStatus} to report it settled, then places the wallet order; when `checkout` is
+	 * given, the settling webhook ALSO places it, as the payer, under the same key — so the order exists
+	 * even if the browser never comes back (Decision #153), and whichever arrives second replays.
 	 */
 	static async createCheckoutCardPayment(
 		input: {
@@ -380,6 +395,8 @@ export class PaymentBackendService {
 			idempotencyKey: string;
 			/** The saved card's `pm_…` to charge in place; `null` to collect a card in the browser. */
 			savedCardRef?: string | null;
+			/** The order this top-up pays for — placed by the settling webhook if the browser does not. */
+			checkout?: CheckoutOrderLink | null;
 		},
 		actor: ReadActor,
 	): Promise<Result<CardPaymentHandoff>> {
@@ -395,7 +412,7 @@ export class PaymentBackendService {
 			expectedAmountMinor: input.amountMinor,
 			currency: input.currency.toUpperCase(),
 			idempotencyKey: input.idempotencyKey,
-		}, input.savedCardRef ?? null);
+		}, input.savedCardRef ?? null, input.checkout ?? null);
 	}
 
 	/**
@@ -727,9 +744,26 @@ export class PaymentBackendService {
 
 	// #region Saved cards
 	/**
+	 * What the browser needs to mount the card form BEFORE a SetupIntent exists (Stripe's deferred-intent
+	 * flow): the publishable key and the mode, and nothing that names an owner. The form collects the
+	 * card first; {@link createCardSetup} opens the SetupIntent only when the person presses Save, so an
+	 * Add card dialog that is opened and abandoned creates nothing at Stripe. Gated like every other
+	 * card call — signed in (401), then connected here (503) — so a page never mounts a form whose Save
+	 * could only be refused.
+	 */
+	static cardSetupConfig(actor: ReadActor): Result<CardSetupConfig> {
+		if (!canReadLive(actor)) return signedOut("Sign in to save a card.");
+		const settings = liveSettings();
+		if (!settings) return notConnected("Saving cards isn't connected in this environment.");
+		return ok({ publishableKey: settings.publishableKey, mode: settings.mode });
+	}
+
+	/**
 	 * Start saving a card: resolve (and authorise) the owner, make sure they have a Stripe Customer —
 	 * created once, recorded through the database so two racing requests share one — and open a
-	 * SetupIntent for the Payment Element. Nothing is saved until {@link confirmCardSetup}.
+	 * SetupIntent for the Payment Element. Called when the person presses Save, after the form has
+	 * collected the card (the intent matches the card-only form, `setupIntentParams`). Nothing is saved
+	 * until {@link confirmCardSetup}.
 	 */
 	static async createCardSetup(input: CreateCardSetup, actor: ReadActor): Promise<Result<CardSetupHandoff>> {
 		if (!canReadLive(actor)) return signedOut("Sign in to save a card.");

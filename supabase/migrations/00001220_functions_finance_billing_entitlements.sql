@@ -89,6 +89,12 @@ $$;
 
 -- The subject's earned rung, for the two scaling modes. Business/organisation subjects do not carry
 -- Standing (they are buyers, ranked by the separate Client Trust Score) → they resolve to rung 1.
+--
+-- A PERSON is metered as `user` (the proposal trigger spends the applicant's own allowance) but earns
+-- Standing as a `freelancer` — `org.entity_standing` keys a seller by user id under that type, and no
+-- recompute writes a `user` row. Both name the same person, so `user` reads the freelancer rung;
+-- reading `user` literally found nothing and pinned every individual at rung 1, which silently
+-- dropped the earned weekly-proposal bonus the ladder promises.
 CREATE OR REPLACE FUNCTION finance.fn_subject_standing_level(p_subject_type text, p_subject_id uuid)
 RETURNS smallint
 LANGUAGE sql
@@ -97,8 +103,10 @@ SECURITY DEFINER
 SET search_path = finance, org, public
 AS $$
     SELECT CASE
-        WHEN p_subject_type IN ('user', 'freelancer', 'team')
-            THEN org.fn_standing_level (p_subject_type::org.standing_subject, p_subject_id)
+        WHEN p_subject_type IN ('user', 'freelancer')
+            THEN org.fn_standing_level ('freelancer'::org.standing_subject, p_subject_id)
+        WHEN p_subject_type = 'team'
+            THEN org.fn_standing_level ('team'::org.standing_subject, p_subject_id)
         ELSE 1::smallint
     END;
 $$;
@@ -265,6 +273,7 @@ DECLARE
     v_drip integer;
     v_multiple integer;
     v_elapsed integer;
+    v_windows integer;
     v_plan uuid;
 BEGIN
     SELECT * INTO v_row FROM finance.allowance_periods a
@@ -309,6 +318,12 @@ BEGIN
     END IF;
 
     -- Lazy drip: top the buffer up for every whole replenish window elapsed since the last refresh.
+    --
+    -- The clock ADVANCES by the windows it paid out rather than jumping to now(): a read that lands
+    -- seven hours into the next window must leave those seven hours on the clock, or every late read
+    -- would quietly stretch the drip and the "next token in" countdown would move backwards. It only
+    -- runs while the buffer is below its cap; a full buffer's clock is restarted by the spend that
+    -- takes it below the cap (`fn_consume_allowance`), so idle time never banks extra tokens.
     SELECT (value #>> '{}')::integer INTO v_elapsed
     FROM security.platform_params WHERE key = 'proposal_buffer_window_hours';
     v_elapsed := COALESCE(v_elapsed, 10);
@@ -317,13 +332,11 @@ BEGIN
         AND now() >= v_row.buffer_refreshed_at + make_interval(hours => v_elapsed) THEN
 
         v_drip := COALESCE(finance.fn_effective_limit (p_subject_type, p_subject_id, 'proposal_buffer_per_10h'), 0);
+        v_windows := GREATEST(1, floor(EXTRACT(EPOCH FROM (now() - v_row.buffer_refreshed_at)) / (v_elapsed * 3600))::integer);
 
         UPDATE finance.allowance_periods a
-        SET buffer_units = LEAST(
-                a.buffer_cap,
-                a.buffer_units + v_drip * GREATEST(1, floor(EXTRACT(EPOCH FROM (now() - a.buffer_refreshed_at)) / (v_elapsed * 3600))::integer)
-            ),
-            buffer_refreshed_at = now()
+        SET buffer_units = LEAST(a.buffer_cap, a.buffer_units + v_drip * v_windows),
+            buffer_refreshed_at = a.buffer_refreshed_at + make_interval(hours => v_elapsed * v_windows)
         WHERE a.id = v_row.id
         RETURNING * INTO v_row;
 
@@ -379,9 +392,17 @@ BEGIN
         RETURN false;
     END IF;
 
+    -- A spend that takes a FULL buffer below its cap starts the drip clock now: the bucket was not
+    -- dripping while it was full, so the first window is counted from the moment it had room. (Without
+    -- this a buffer that sat full for a day refilled the instant after its first spend.) `a.*` on the
+    -- right-hand side is the pre-update row.
     UPDATE finance.allowance_periods a
     SET consumed_units = a.consumed_units + p_units,
-        buffer_units = CASE WHEN v_from_buffer THEN GREATEST(a.buffer_units - p_units, 0) ELSE a.buffer_units END
+        buffer_units = CASE WHEN v_from_buffer THEN GREATEST(a.buffer_units - p_units, 0) ELSE a.buffer_units END,
+        buffer_refreshed_at = CASE
+            WHEN v_from_buffer AND a.buffer_units >= a.buffer_cap THEN now()
+            ELSE a.buffer_refreshed_at
+        END
     WHERE a.id = v_row.id
     RETURNING * INTO v_row;
 
@@ -430,6 +451,147 @@ BEGIN
     VALUES (v_row.id, p_subject_type, p_subject_id, p_key, -p_units, p_reason, p_ref_table, p_ref_id);
 
     RETURN true;
+END;
+$$;
+
+-- The CALLER's proposal allowance — the one door the app reads it through.
+--
+-- The subject is derived, never accepted: the signed-in user, or a team the caller is an active member
+-- of. That is why `fn_current_allowance` itself stays service-role only — it takes any subject id. Opening
+-- the week and paying out the lazy drip are writes, so this is VOLATILE, and reading it is also what keeps
+-- the buffer current. Everything the meter, the countdown and the pre-flight gate need comes back in one
+-- object: the period, the drip dials, the plan, the earned rung, the enforcement switch, and — for a team —
+-- the active head-count and whether the caller may bind the team to work (`bind_seat`).
+CREATE OR REPLACE FUNCTION finance.get_proposal_allowance(p_team_id uuid DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = finance, org, security, public
+AS $$
+DECLARE
+    v_actor uuid := auth.uid();
+    v_subject_type text;
+    v_subject_id uuid;
+    v_row finance.allowance_periods%ROWTYPE;
+    v_window integer;
+    v_enforced boolean;
+    v_plan finance.plans%ROWTYPE;
+    v_members integer;
+    v_can_bind boolean;
+    v_up_label text;
+    v_up_weekly integer;
+BEGIN
+    IF v_actor IS NULL THEN
+        RAISE EXCEPTION 'Sign in to see your proposal allowance.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+
+    IF p_team_id IS NULL THEN
+        v_subject_type := 'user';
+        v_subject_id := v_actor;
+    ELSE
+        IF NOT org.is_active_team_member (p_team_id) THEN
+            RAISE EXCEPTION 'You are not an active member of that team.' USING ERRCODE = 'insufficient_privilege';
+        END IF;
+        v_subject_type := 'team';
+        v_subject_id := p_team_id;
+        SELECT count(*)::integer INTO v_members
+        FROM org.team_members m
+        WHERE m.team_id = p_team_id AND m.status = 'active';
+        v_can_bind := org.is_team_lead (p_team_id);
+    END IF;
+
+    v_row := finance.fn_current_allowance (v_subject_type, v_subject_id, 'weekly_proposals');
+
+    SELECT (value #>> '{}')::integer INTO v_window
+    FROM security.platform_params WHERE key = 'proposal_buffer_window_hours';
+    SELECT (value #>> '{}')::boolean INTO v_enforced
+    FROM security.platform_params WHERE key = 'proposal_allowance_enforced';
+    SELECT * INTO v_plan FROM finance.plans p
+    WHERE p.id = finance.fn_active_plan (v_subject_type, v_subject_id);
+
+    -- What upgrading would give — the same audience's public Pro plan and its weekly base — so the
+    -- "upgrade for N a week" offer reads the catalogue rather than repeating a number. Free tiers only.
+    IF v_plan.tier = 'free' THEN
+        SELECT p.label, e.limit_value INTO v_up_label, v_up_weekly
+        FROM finance.plans p
+        JOIN finance.plan_entitlements e ON e.plan_id = p.id AND e.entitlement_key = 'weekly_proposals'
+        WHERE p.audience = v_plan.audience AND p.tier = 'pro' AND p.is_public
+        ORDER BY p.sort_order
+        LIMIT 1;
+    END IF;
+
+    RETURN jsonb_build_object(
+        'subject_type', v_subject_type,
+        'subject_id', v_subject_id,
+        'period_start', v_row.period_start,
+        'period_end', v_row.period_end,
+        'granted_units', v_row.granted_units,
+        'consumed_units', v_row.consumed_units,
+        'base_units', v_row.base_units,
+        'standing_bonus_units', v_row.standing_bonus_units,
+        'buffer_units', v_row.buffer_units,
+        'buffer_cap', v_row.buffer_cap,
+        'buffer_refreshed_at', v_row.buffer_refreshed_at,
+        'buffer_window_hours', COALESCE(v_window, 10),
+        'buffer_drip', COALESCE(finance.fn_effective_limit (v_subject_type, v_subject_id, 'proposal_buffer_per_10h'), 0),
+        'plan_code', v_plan.code,
+        'plan_label', v_plan.label,
+        'plan_tier', v_plan.tier,
+        'plan_audience', v_plan.audience,
+        'upgrade_plan_label', v_up_label,
+        'upgrade_weekly_units', v_up_weekly,
+        'standing_level', finance.fn_subject_standing_level (v_subject_type, v_subject_id),
+        'enforced', COALESCE(v_enforced, false),
+        'team_member_count', v_members,
+        'can_bind_seat', v_can_bind,
+        'server_now', now()
+    );
+END;
+$$;
+
+-- Record a proposal the app's pre-flight gate refused.
+--
+-- The gate refuses BEFORE `apply_to_project` inserts, so the metering trigger never runs and its
+-- `entitlement.denied` row is never written — the denial funnel (the upgrade signal) would go dark the
+-- moment enforcement is switched on. This writes it instead, for the caller's own subject only. It is
+-- called only for a refusal the gate actually made: while enforcement is off nothing is refused here,
+-- and the trigger records the over-cap attempt itself, so a denial is never counted twice.
+CREATE OR REPLACE FUNCTION finance.record_proposal_denial(
+    p_reason text,
+    p_team_id uuid DEFAULT NULL,
+    p_project text DEFAULT NULL
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = finance, org, analytics, public
+AS $$
+DECLARE
+    v_actor uuid := auth.uid();
+    v_project uuid;
+BEGIN
+    IF v_actor IS NULL THEN
+        RAISE EXCEPTION 'Sign in to apply to a project.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF p_reason NOT IN ('weekly_exhausted', 'buffer_exhausted', 'team_too_small', 'missing_permission') THEN
+        RAISE EXCEPTION 'Unknown proposal denial reason %.', p_reason USING ERRCODE = '22023';
+    END IF;
+    IF p_team_id IS NOT NULL AND NOT org.is_active_team_member (p_team_id) THEN
+        RAISE EXCEPTION 'You are not an active member of that team.' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+
+    IF p_project IS NOT NULL THEN
+        SELECT p.id INTO v_project FROM projects.projects p
+        WHERE p.slug = p_project OR p.id::text = p_project;
+    END IF;
+
+    PERFORM analytics.fn_emit (
+        'entitlement.denied',
+        CASE WHEN p_team_id IS NULL THEN 'user' ELSE 'team' END::analytics.subject_kind,
+        COALESCE(p_team_id, v_actor),
+        jsonb_build_object('key', 'weekly_proposals', 'attempted', 1, 'reason', p_reason, 'gate', 'preflight'),
+        1, v_project, 'allowance'
+    );
 END;
 $$;
 

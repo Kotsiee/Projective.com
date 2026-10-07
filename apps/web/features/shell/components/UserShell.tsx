@@ -17,6 +17,7 @@ import MiddleNavPanel from "@web/features/shell/islands/MiddleNavPanel.island.ts
 import NavSearchBar from "@web/features/shell/islands/NavSearchBar.island.tsx";
 import UserActions from "@web/features/shell/islands/UserActions.island.tsx";
 import ShareHost from "@web/features/share/islands/ShareHost.island.tsx";
+import SettingsModalHost from "@web/features/settings/islands/SettingsModalHost.island.tsx";
 import { bottomNavItems } from "@web/features/shell/core/bottom-nav-model.tsx";
 import { BrandMark } from "./BrandMark.tsx";
 
@@ -229,6 +230,8 @@ export function UserShell(
 			{focus ? null : <BottomNav items={bottomNavItems(path, context)} label="Primary" />}
 			{/* The one share modal every Share control on the page opens (share-request bridge). */}
 			<ShareHost authed returnTo={path} />
+			{/* The contextual Settings modal: owns `?settings=` and every gear's `openSettings()` (Decision #150). */}
+			<SettingsModalHost context={context} />
 		</>
 	);
 }

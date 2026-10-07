@@ -574,6 +574,16 @@ between chart types without reloading data.
 - **Interchangeability:** Similar to `DataDisplay`, it accepts a unified dataset and a `view`
   signal.
 
+**Wallet analytics (app-side, Decision #152)** — `/wallet/analytics` is the low-density SVG tier
+built in the feature, not a package primitive: `apps/web/features/wallet/core/chart-geometry.ts`
+turns the server's series into `d3-scale` / `d3-shape` geometry (a diverging money-in / money-out area
+with a net line on ONE y-scale, a dated release axis), drawn in a fixed viewBox the SVG stretches to
+its box (`preserveAspectRatio="none"` + `vector-effect: non-scaling-stroke`) so it renders on the
+server with no measurement; axis labels, the crosshair and its dots are HTML placed by the same
+ratios. Every chart is `aria-hidden` beside a readable twin (a keyboard crosshair with a polite
+readout, a visually hidden table, an ordered list). The series is summed in the database per calendar
+bucket in the viewer's zone (`finance.ledger_flow`); no figure is ever derived from a coordinate.
+
 **Calendar (Session Planner)** A "Google/Teams Style" calendar optimized for freelancers managing
 session-based work.
 
@@ -1427,6 +1437,52 @@ Refusals follow one convention: an RPC raises `22023 '<field>: <reason>'`, which
 a 422 with `fieldErrors[field]`; `42501` → 403, `P0002` → 404, `23505` / `55000` → 409, `23514` →
 422, anything else → 500 with a generic sentence (the real error is logged).
 
+### The Settings engine — one taxonomy, two surfaces (Decision #151)
+
+Settings exist in two places that must never disagree: a **contextual modal** any page opens
+(`?settings=<section>`, a gear's `openSettings()`), and the **`/settings` console** (a middle-nav
+lane + one page per section). Both are drawn from the same three pieces:
+
+- **The registry** — `features/settings/core/settings-registry.ts`, pure and isomorphic: eleven
+  sections (`SettingsSectionKey`, owned by `@projective/types/settings`) and every searchable entry
+  with its label, keywords, `anchor`, `surface` (`modal` · `page-only` · `status-escalate`) and an
+  optional `gate(ctx)` evaluated against the EFFECTIVE context (dev persona axes apply). Search,
+  the modal's tree, the lane's tree, the attention marks and the phone drill-down all read it.
+- **One read per section** — `resolveSettingsSection` (`core/settings-ssr.ts`) composes the services
+  that already own each section's data (`SettingsBackendService` for identity + appearance,
+  `EmailsBackendService`, `NotificationCenterBackendService`, `MessagingBackendService`,
+  `ProfileBackendService`, `PaymentBackendService`, `IntegrationsBackendService`). The console page is
+  server-rendered from it; the modal fetches the same payload from `GET /api/settings/[section]`.
+- **One renderer** — `SettingsSectionView` draws a section on either surface. In the modal a
+  `page-only` section (Scheduling — the weekly schedule is a matrix) and a `status-escalate` one
+  (Verification and Integrations — their actions leave for Stripe or a provider's consent page) show
+  their STATUS and one escalation into the console; nothing is ever hidden or disabled there.
+
+**Islands stay dumb.** The modal host and the console islands only `fetch` `/api/*` through
+`SettingsService`; every write is an existing or new thin route over a fat service. The modal's
+eleven sections are a lazily-imported module (also their stylesheet carrier), so a page that only
+renders a gear never ships them. The URL contract (push on open, replace between sections, strip on
+close, `fClientNav: false` on every entry) is in `ROUTING.md` §Settings engine.
+
+**Appearance paints from the first byte.** `org.user_preferences` gained `contrast` · `font` · `cvd` ·
+`motion` (the theme column already existed). The durable copy is the row; the **`pj.a11y` cookie**
+(`utils/a11y-context.ts`, not HttpOnly — it carries no authority) is its per-device mirror, read by
+`routes/_middleware.ts` into `ctx.state.a11y` and written by `_app.tsx` onto `<html>`
+(`data-contrast` · `data-font` · `data-cvd` · `data-motion`, plus `dir` — the document direction rides
+the same cookie because a mirrored relayout after paint is a full reflow). Only overlays that are ON
+become attributes, so the OS `prefers-contrast` / `prefers-reduced-motion` queries still apply under
+`standard`. `hydrateConfigFromDom` reads those attributes back into the design-system store, so
+hydration never repaints the defaults. A change applies in this order: the store (same frame) → the
+cookie → `LocalKeys.A11Y_PREFERENCES` (a pre-paint script restores a cleared cookie from it) →
+`PATCH /api/user/preferences`, whose response re-sets the cookie. The appearance columns are read and
+written in statements of their own, never beside the display currency, so a database that predates
+them degrades Appearance to "this device only" instead of breaking the currency switcher.
+
+**Keyboard.** `/` focuses the settings search (modal and lane) unless the target is editable
+(`shell/core/shortcuts.ts` `isFocusSearchShortcut`); Enter in the search opens the best match and
+moves focus INTO it; the tree is `TreeNav` (one tab stop, arrows, Home/End). `Cmd/Ctrl+K` is left to
+the command palette.
+
 ### Sessions & Google OAuth
 
 - **Session cookies.** A successful sign-in (password grant, verified email OTP) returns the GoTrue
@@ -1475,8 +1531,9 @@ a 422 with `fieldErrors[field]`; `42501` → 403, `P0002` → 404, `23505` / `55
   **`@projective/types/user`** (`CurrentUser`, `resolveAccountRole`). The thin client
   `AccountService.current()` is chrome-safe — a failed load resolves to `null` (→ the SSR-hydrated
   context fallback), never a sign-in redirect. In an entity context `workspace.name` is the entity's
-  display name (an RLS read of `org.teams` / `org.business_profiles` / `org.organisations`), falling
-  back to its slug. A second read, `GET /api/user/setup` → `UserBackendService.setup`, returns the
+  display name, read through `org.get_acting_context_details` (which answers only for an entity the
+  caller holds an active seat in — an RLS read could not see `org.business_profiles`, which has no
+  client SELECT policy, so a business showed its slug; Decision #150), falling back to its slug. A second read, `GET /api/user/setup` → `UserBackendService.setup`, returns the
   PERSON's profile-setup FACTS (`AccountSetup`: photo · headline · story · skill count · payout
   readiness · published hours), the published working hours and the Standing rung, composed from
   the reads every other surface trusts (`org.get_party_cards` → `org.get_profile_view` →
@@ -1484,6 +1541,32 @@ a 422 with `fieldErrors[field]`; `42501` → 403, `P0002` → 404, `23505` / `55
   `calculateProfileCompleteness`, runs in the island (and in its unit test), and a fact the server
   cannot check (finance not live) is `null` and drops out of the count. Unreadable → `setup: null`
   → no ring (Decision #149).
+- **Proposal allowance (Decision #154).** One caller-scoped definer, `finance.get_proposal_allowance`,
+  is the only door: it derives the subject from `auth.uid()` (or an active team membership), so
+  `finance.fn_current_allowance` — which takes ANY subject id — stays service-role. `GET
+  /api/user/allowance` (thin) → `WalletBackendService.getProposalAllowanceStatus` (logic in
+  `services/finance/proposal-allowance.ts`, an in-memory twin with finance off) →
+  `resolveProposalAllowance` (`@projective/types/finance`), which owns the one refusal rule: the
+  metered reasons refuse only while `proposal_allowance_enforced` is on, the eligibility reasons
+  (team under two members, no `bind_seat`) always. `ProjectBackendService.apply` runs the same read as
+  a **pre-flight gate** for the subject the application will be metered against and, when it refuses,
+  records `entitlement.denied` through `finance.record_proposal_denial` — the app-layer emission
+  #58 called for, since the insert trigger never runs. A gate read that FAILS lets the application
+  through; the trigger still meters and, when enforced, still refuses. On the client, one module-level
+  store (`features/proposals/core/allowance-state.ts`) feeds the popover meter, the lane disclosure,
+  the apply modal and the `/projects` proposal list, so a write re-reads it once and every meter
+  moves with no reload; countdowns are measured on the server's clock (`serverNow` + the receipt
+  skew), and the Dev Context Switcher's `proposalAllowance` axis is applied there, client-side only.
+- **Persona unlock ("Become a Partner").** `/become-partner` → `POST /api/user/freelancer` (thin,
+  `EnableFreelancerInputSchema`) → `UserBackendService.enableFreelancer` →
+  `org.enable_freelancer_profile` in the caller's JWT, which creates the freelancer profile with its
+  starter skills, flips `is_freelancer`, and switches the acting context to the freelancer persona
+  through `security.fn_set_session_context` (clearing any team or organisation slot). The claims
+  then lag the database exactly as after a context switch, so the client runs the same sequence as
+  `useContextSwitch`: `POST /api/auth/refresh` (the hook re-mints `active_context.isFreelancer`),
+  then a hard navigation to `/[handle]/edit` so the server-painted chrome (sidebar Services/Teams,
+  the Create menu's seller items, the popover's role) re-derives from the new token. A failed
+  refresh is reported, never navigated past (Decision #150).
 - **Google OAuth (PKCE).** `/api/auth/oauth/google` begins the Supabase handshake and persists the
   PKCE **code-verifier** in a short-lived cookie (a `CookieStore` storage adapter on the anon
   client); `/api/auth/callback` exchanges the `code` for a session, mints the `sb-*` cookies, clears
@@ -1628,6 +1711,15 @@ pg_cron ─ fn_process_queue · fn_escalate_unread · fn_build_digests · sweeps
   timers) keyed by a deterministic `dedupe_key`, so re-running a scheduler is a no-op and the event
   that invalidates a reminder cancels it by key.
 
+**Where people change it.** Settings → Notifications edits preferences through `GET`/`PUT
+/api/user/notifications` (`NotificationCenterBackendService`, caller's JWT). Because the router reads
+`COALESCE(category, global)`, a channel MASTER is saved together with a `resetChannels` entry that
+sets that channel back to `null` on every category row — otherwise an older per-category value would
+outrank the master. Mandatory catalog types are shown as locked "always on" rows summarised from the
+catalog (`RequiredAlerts`), never as switches. Settings → Messaging writes the same
+`notification_prefs` row (receipts, typing, sound, away replies) through `POST /api/messaging/settings`;
+quiet hours and the global pause are edited only under Notifications, so one column has one editor.
+
 **Still to build (not in the database layer):** the `dispatch-push` / `send-email` Edge Functions and
 their provider credentials (VAPID keypair, FCM/APNs, an SMTP or email-provider block in
 `config.toml`). The outbound trigger is feature-flagged **off** with an `XXXX-XXXX` placeholder URL
@@ -1735,6 +1827,18 @@ PostgreSQL RLS.
   `/verify` and `/forgot-password` "type the code or click the link" flows. They are premium,
   responsive, dark-mode-aware, and image-free (inline CSS + table layout, VML buttons for Outlook).
   Note `enable_confirmations = false` for local dev (mail lands in Inbucket).
+- **Secondary email addresses are verified by token, never by a column write** (Decision #151).
+  `org.user_emails.verified_at` unlocks invitations sent to an address (`projects.project_invitations`,
+  `org.fn_is_invitee`, `projects.invite_by_email`), so clients have SELECT only on the table and every
+  write is a definer: `org.add_user_email` files it unverified; `security.issue_email_verification`
+  (service role ONLY — the app decodes JWTs without verifying them, so the function takes an email id
+  and mails the row's own address, never a caller-supplied identity) mints a single-use 24-hour token
+  and stores only its SHA-256; `org.confirm_user_email`, called by the signed-in owner holding the
+  token, is the one path that stamps `verified_at`. An INVOKER guard trigger refuses any client-role
+  change to `verified_at` · `email` · `is_primary` · `user_id` even if a policy is ever re-added. The
+  sign-in address is still confirmed by GoTrue (`public.handle_email_confirmed`). The link leaves
+  through `packages/backend/services/mail/verification-mailer.ts` — see the Environment Variable
+  Contract for its no-transport behaviour.
 
 ---
 
@@ -1748,6 +1852,10 @@ from **one source of preference** (`org.user_preferences`) and applied at read t
 - The app supports **both** left-to-right and right-to-left layouts. Direction is chosen by user
   preference (`org.user_preferences.layout_direction` — `ltr` / `rtl` / `auto`) **independent of
   language**; `auto` falls back to the natural direction of the user's `locale`.
+- **Where it is set and painted (Decision #151):** Settings → Language & region saves it
+  (`PATCH /api/user/preferences`), applies it on the device at once, and records it in the `pj.a11y`
+  cookie, from which `_app.tsx` server-renders `<html dir>` on the next request (`auto` writes no
+  attribute). See §The Settings engine.
 - **Mechanism:** the resolved direction is written as the `dir` attribute on the document root; the
   UI mirrors automatically because the codebase already styles with **CSS logical properties**
   (`inline-size`, `inset-inline`, `margin-inline`, `padding-inline`, `border-inline-*`) rather than
@@ -2030,8 +2138,8 @@ The same two-door order as §1.1; the new database doors are `00001240_functions
 | Capability | Thin route | Fat method | Database doors |
 | :--------- | :--------- | :--------- | :------------- |
 | Withdraw to the payout account | `POST /api/wallet/payouts` (and the wallet's `withdraw` action) | `WalletBackendService.withdraw` → `PaymentBackendService.withdraw` | `begin_payout` (user) · `complete_payout` · `fail_payout` (service role) |
-| Save a card (SetupIntent) | `POST /api/finance/cards/setup` · `POST /api/finance/cards/confirm` (and the wallet's `add_method` action) | `createCardSetup` · `confirmCardSetup` | `card_owner_for` · `record_processor_customer` (user) · `record_saved_card` (service role) |
-| Pay at checkout by card | `POST /api/checkout/create` (`provider: "card"`) → `GET /api/finance/payments/[id]` | `CheckoutBackendService.create` → `createCheckoutCardPayment` | `ensure_purchase_wallet` + the §1.1 card doors, then `place_wallet_order` |
+| Save a card (SetupIntent) | `GET /api/finance/cards/setup` (the publishable key for deferred Elements, Decision #152) · `POST /api/finance/cards/setup` · `POST /api/finance/cards/confirm` (and the wallet's `add_method` action) | `cardSetupConfig` · `createCardSetup` · `confirmCardSetup` | `card_owner_for` · `record_processor_customer` (user) · `record_saved_card` (service role) |
+| Pay at checkout by card or express wallet | `POST /api/checkout/create` (`provider: "card"` · `"express"`) → `GET /api/finance/payments/[id]` | `CheckoutBackendService.create` → `createCheckoutCardPayment` | `ensure_purchase_wallet` + the §1.1 card doors + `attach_checkout_order` (user, Decision #153), then `place_wallet_order` — by the browser AND by `settle_card_payment`, under one key |
 | Recurring deposits | the wallet's `new_recurring` action · `POST /api/finance/cron/deposits` (bearer `FINANCE_CRON_SECRET`, 404 otherwise) | `processDueDeposits` | `create_deposit_rule` (user) · `claim_due_deposit_rules` · `bind_scheduled_payment` (service role) |
 | Income Smoother enrolment | the wallet's `enrol_smoother` action | `WalletBackendService.enrolSmoother` | `set_income_smoother` (user) |
 | Verification console (`/settings/verification`) | `GET /api/finance/verify/status` · `POST /api/finance/verify/kyc` · `POST /api/finance/verify/kyb` | `verificationStatus` · `createIdentitySession` · `startKybOnboarding` | `my_verification_status` · the §1.1 identity + Connect doors |
@@ -2039,14 +2147,27 @@ The same two-door order as §1.1; the new database doors are `00001240_functions
 | Connect status sync | both webhooks (`account.updated`; thin v2 events) | `handleStripeWebhook` · `handleStripeThinWebhook` | `sync_payout_account` (service role) |
 | Invoice / statement PDF | `GET /api/finance/invoices/[id]/pdf` · `GET /api/finance/statements/[id]/pdf` | `WalletBackendService.documentPdf` | RLS-scoped reads (`View invoices you are party to`) |
 
-- **A card checkout is a top-up, then a wallet order.** The card is charged into the PAYING account's
-  wallet (created in the charge currency if missing); only once the signed webhook has credited it does
-  the browser place the order from the wallet, under a fresh attempt key. One charge path, one ledger.
-  A saved card is charged in place — confirmed server-side, with a bank's 3-D Secure challenge answered
-  in the browser by Stripe.js `handleNextAction` (`CardPaymentHandoff.confirmation`); a new card is
-  entered through the Add-card form (a SetupIntent), never typed into the checkout. The card is charged
-  in the lines' own currency, so it is offered only while the basket is displayed in that currency (the
-  option carries the reason otherwise).
+- **A card or express checkout is a top-up, then a wallet order** (Decision #153 revises Decision
+  #126 here). The processor charge tops up the PAYING account's wallet (created in the charge currency if
+  missing), and the order is placed from the wallet under the checkout's OWN attempt key — by the browser
+  once the signed webhook has credited the wallet, AND by `settle_card_payment` itself, as the payer, from
+  the `checkout` the browser attached (`finance.attach_checkout_order`) before any intent existed.
+  Whichever comes second replays, so the order exists even when the browser never returns, and a
+  refused order leaves the money in the wallet with `order_error`. One charge path, one ledger. A saved
+  card is charged in place — confirmed server-side, with a bank's 3-D Secure challenge answered in the
+  browser by Stripe.js `handleNextAction` (`CardPaymentHandoff.confirmation`); a new card is entered
+  through the Add-card form (a SetupIntent), never typed into the checkout.
+- **Charged in the listing's own currency, shown in the buyer's.** The processor is charged the
+  session's `charge` — the order total in the listings' currency, computed by re-reading the same basket
+  in that currency through the same `toTotals` (`chargeFor`), so the figure shown and the figure charged
+  are one computation; the display currency no longer gates the card (#126(g) resolved). The checkout
+  rail states both (`AED 840.27 (~US$229.00 USD charged)`, with the locked rate).
+- **Express wallets are Stripe's Express Checkout Element** (`provider: "express"`): mounted in
+  deferred-intent mode for the `charge`, it shows whichever of Apple Pay, Google Pay and PayPal the
+  device, browser and account allow (HTTPS required; Apple Pay also needs the payment-method domain
+  registered). On confirm the server opens the PaymentIntent (automatic payment methods, matching the
+  deferred Elements group); a redirect-based wallet returns to `/checkout/payment?pay=<payment>&attempt=<key>`
+  and the page resumes that payment. The CSP is unchanged — the Element runs in Stripe's own frames.
 - **Withdrawals debit first.** `begin_payout` debits the wallet (`payout`) before the Transfer is
   created, so money in flight cannot be spent twice; a definitive Stripe refusal credits it back
   (`payout_reversal`); a transient failure leaves the payout `pending` for `transfer.created` to settle.
@@ -2250,6 +2371,15 @@ The application relies on a strict set of environment variables. The canonical s
 > **tracked** in this repository despite `.gitignore` (an ignore rule does not apply to a tracked
 > file — root `CLAUDE.md` §8 Decision #125), so a key written there is committed by the next
 > `git add`.
+
+> **Outbound email — none configured yet (Decision #57(f), #151).**
+> `packages/backend/services/mail/verification-mailer.ts` is the only seam an email-verification link
+> leaves through. With no transport configured, development logs
+> `[dev mail] Verify <address> -> ${APP_URL}/api/user/emails/verify?token=…` and reports
+> `delivery: "logged"`; under `DENO_ENV=production` nothing is sent, a warning is logged WITHOUT the
+> token, and `delivery` is `"unavailable"` (the address is saved unverified and the UI says so).
+> `APP_URL` builds the link, so it must be the public origin anywhere deployed. A provider lands as a
+> key in this contract plus `core/env.ts`, returned from `configuredTransport()`.
 
 ```env
 # Application

@@ -134,13 +134,21 @@ export function CheckoutContractBanner(props: CheckoutContractBannerProps): JSX.
 					</dd>
 				</div>
 
+				{
+					/*
+					 * When the sellers priced in another currency, every route takes the payment in THAT
+					 * currency — a card or express charge (Decision #153) and a wallet order alike — so the
+					 * fact names both: what the order is shown in, and what it is taken in. The rail carries
+					 * the exact charged figure.
+					 */
+				}
 				<div class="cko-contract__fact" data-fact="currency">
 					<dt class="cko-contract__key">Currency &amp; settlement</dt>
 					<dd class="cko-contract__val">
 						<span class="cko-contract__party">{settlement.label}</span>
 						<span class="cko-contract__sub">
-							{settlement.rateLabel
-								? "Prices were set in another currency and converted for you."
+							{settlement.originCurrency
+								? `Priced in ${settlement.originCurrency} and shown converted; payment is taken in ${settlement.originCurrency}.`
 								: "Every price on this order was set in this currency."}
 						</span>
 					</dd>

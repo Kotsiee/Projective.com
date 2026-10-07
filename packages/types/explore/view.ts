@@ -212,6 +212,11 @@ export function revisionAllowanceKind(revisions: StageRevisions): RevisionAllowa
 
 /** One named open role in a stage's Open Roles structure — its title, open-seat count, and ticket price. */
 export const StageRoleSchema = z.object({
+	/**
+	 * The staffing role's id — what an application names to apply for this role. Present only while
+	 * the role takes proposals (`allow_proposals`); a role without one can be read about, not applied to.
+	 */
+	id: z.string().optional(),
 	name: z.string(),
 	/** How many seats this role is recruiting. */
 	openSeats: z.number(),
@@ -229,6 +234,12 @@ export const ProjectStageSchema = z.object({
 	name: z.string(),
 	description: z.string(),
 	status: ProjectStageStatus,
+	/**
+	 * Whether the stage is taking applications right now — its hire trigger is on and it is open or
+	 * underway (the same test `projects.apply_to_project` refuses on). Optional so a fixture that
+	 * predates it still parses; absent reads as not taking applications.
+	 */
+	acceptingApplications: z.boolean().optional(),
 	/** Which opening structure this stage uses — a general seat pool or named roles. */
 	seatKind: StageSeatKind,
 	/** Open Seats variant only — a general description of who the open seats are for. */

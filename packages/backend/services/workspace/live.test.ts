@@ -372,14 +372,19 @@ Deno.test("buildSpendPolicy: capabilities decide approvers/contributors/spenders
 });
 
 Deno.test("trendOf: earnings for a team, spend for a business, empty when nothing moved", () => {
-	const flow = [{ label: "a", inMinor: 0, outMinor: 50 }, {
+	const flow = [{ label: "a", start: "2026-10-01", inMinor: 0, outMinor: 50, netMinor: -50 }, {
 		label: "b",
+		start: "2026-10-02",
 		inMinor: 200,
 		outMinor: 100,
+		netMinor: 100,
 	}];
 	assertEquals(trendOf("team", flow), [0, 1]);
 	assertEquals(trendOf("business", flow), [0.5, 1]);
-	assertEquals(trendOf("team", [{ label: "a", inMinor: 0, outMinor: 9 }]), []);
+	assertEquals(
+		trendOf("team", [{ label: "a", start: "2026-10-01", inMinor: 0, outMinor: 9, netMinor: -9 }]),
+		[],
+	);
 });
 
 // #endregion

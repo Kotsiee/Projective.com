@@ -1,12 +1,10 @@
 import type { JSX } from "preact";
-import type { Signal } from "@preact/signals";
-import { Dialog } from "@projective/ui/feedback";
-import { Message } from "@projective/ui/feedback";
 import type { AvailabilityRule, CalendarAvailability } from "@projective/types/scheduling";
 import "../styles/calendar-chrome.css";
 
 /**
- * AvailabilityManager — the lane's availability block and the modal behind its configure trigger.
+ * AvailabilityManager — the lane's availability block. Its configure trigger opens Settings →
+ * Scheduling & calls (Decision #150), which replaced the read-only "Working hours and leave" dialog.
  *
  * Three facts, in the order a person asks for them: WHEN AM I WORKING (the weekly bands), WHEN AM I
  * INTERRUPTIBLE (the narrower call windows inside them), and WHEN AM I AWAY (booked leave). They are
@@ -127,31 +125,5 @@ export function AvailabilityBlock(props: AvailabilityBlockProps): JSX.Element {
 					)}
 			</div>
 		</div>
-	);
-}
-
-export interface AvailabilityDialogProps {
-	open: Signal<boolean>;
-	availability: CalendarAvailability;
-}
-
-/**
- * The configuration modal.
- *
- * It presents the schedule as it stands and says plainly that editing it is not wired yet, rather
- * than offering inputs that would accept a change and drop it. Writing availability needs the
- * `scheduling.availability_rules` / `blackout_dates` write path, which is still behind the backend
- * gate — and a form that silently discards what somebody typed about when they are working is worse
- * than no form.
- */
-export function AvailabilityDialog(props: AvailabilityDialogProps): JSX.Element {
-	return (
-		<Dialog visible={props.open} header="Working hours and leave" width="30rem">
-			<Message severity="info" class="cal-avail-dialog__note">
-				Editing your hours lands with the scheduling backend. What is below is what your calendar is
-				currently drawn from.
-			</Message>
-			<AvailabilityBlock availability={props.availability} />
-		</Dialog>
 	);
 }

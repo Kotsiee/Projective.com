@@ -127,3 +127,46 @@ export const CreateOrganisationSchema = z.object({
 });
 export type CreateOrganisation = z.infer<typeof CreateOrganisationSchema>;
 // #endregion
+
+// #region Update shape (org.update_organisation payload)
+/**
+ * The keys `org.update_organisation(p_org_id, p_payload)` accepts — the only write door on
+ * `org.organisations` (the client UPDATE policy is gone). A genuine partial: send only what changes;
+ * an empty string clears an optional field. `.strict()` mirrors the RPC, which refuses an unknown key
+ * rather than ignoring it, and never lists the platform-owned columns (owner · handle · status ·
+ * verification · logo).
+ *
+ * {@link ORGANISATION_IDENTITY_KEYS} are the LEGAL identity: the owner's alone to change, and refused
+ * by the RPC once `verificationLevel` is `kyb_pending` or `verified`. The cross-field `other`
+ * industry rule is checked by the RPC against the stored row, since a partial cannot see it.
+ */
+export const UpdateOrganisationSchema = z.object({
+	legalName: z.string().trim().min(1).max(160),
+	tradingName: z.string().trim().max(160),
+	registrationNumber: z.string().trim().max(60),
+	corporateEmail: z.string().trim().email().max(160),
+	corporatePhone: z.string().trim().max(40),
+	website: z.string().trim().max(200),
+	addressLine1: z.string().trim().max(160),
+	addressCity: z.string().trim().max(80),
+	addressPostcode: z.string().trim().max(20),
+	addressCountry: z.string().trim().max(60),
+	employeeScale: EmployeeScale.or(z.literal("")),
+	primaryIndustry: z.string().trim().max(60),
+	industryOther: z.string().trim().max(80),
+	departments: z.array(z.string().max(60)).max(50),
+	purpose: z.array(z.string().max(40)).max(20),
+	billingEmail: z.string().trim().email().max(160).or(z.literal("")),
+	defaultCurrency: z.string().trim().regex(/^[A-Za-z]{3}$/, "A three-letter currency code."),
+}).partial().strict().refine((value) => Object.keys(value).length > 0, {
+	message: "Nothing to update.",
+});
+export type UpdateOrganisation = z.infer<typeof UpdateOrganisationSchema>;
+
+/** The legal-identity keys of {@link UpdateOrganisationSchema}: owner-only, frozen once KYB begins. */
+export const ORGANISATION_IDENTITY_KEYS = [
+	"legalName",
+	"registrationNumber",
+	"corporateEmail",
+] as const;
+// #endregion

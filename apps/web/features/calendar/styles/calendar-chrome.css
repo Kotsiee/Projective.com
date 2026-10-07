@@ -382,10 +382,6 @@
 	flex: none;
 }
 
-.cal-avail-dialog__note {
-	margin-block-end: var(--space-3);
-}
-
 /* #endregion */
 
 /* #region Header band */

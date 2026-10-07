@@ -755,6 +755,18 @@ function stageStatus(status: string): ProjectStageStatus {
 	return "upcoming";
 }
 
+/**
+ * Whether a stage is taking applications — the same test `projects.apply_to_project` refuses on (hire
+ * trigger on, and the stage open or underway), so the apply modal never offers a stage the write will
+ * turn away.
+ */
+function acceptsApplications(
+	stage: { status: string; hire_trigger_active: boolean | null },
+): boolean {
+	return stage.hire_trigger_active !== false &&
+		(stage.status === "open" || stage.status === "assigned" || stage.status === "in_progress");
+}
+
 function projectViewFor(
 	catalog: Catalog,
 	item: Extract<ExploreItem, { type: "projects" }>,
@@ -772,6 +784,7 @@ function projectViewFor(
 		const roleList: StageRole[] = stageRoles.map((r) => {
 			const each = majorOf(r.budget_amount_cents ?? s.unit_price_cents, currency);
 			return {
+				...(r.allow_proposals !== false ? { id: r.id } : {}),
 				name: r.role_title,
 				openSeats: Math.max(1, r.quantity ?? 1),
 				price: ticketPrice(each, each, currency),
@@ -806,6 +819,7 @@ function projectViewFor(
 			name: s.name,
 			description: s.description_text ?? "",
 			status: stageStatus(s.status),
+			acceptingApplications: acceptsApplications(s),
 			seatKind,
 			seatSummary: seatKind === "seats"
 				? openSeatRows[0]?.description_of_need ?? undefined

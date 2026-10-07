@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { type Signal, useSignal, useSignalEffect } from "@preact/signals";
 import { InputText, Select } from "@projective/ui/fields";
-import { Icon } from "@projective/ui/icons";
+import { countryCodeOf } from "@projective/types/finance";
 import {
 	type DetailsDraft,
 	detailsFieldId,
@@ -9,7 +9,7 @@ import {
 	isTouched,
 	markTouched,
 } from "../core/details-draft.ts";
-import type { DetailsFieldSpan } from "./AddressFields.tsx";
+import { type DetailsFieldSpan, DetailsLabel, DetailsNote } from "./AddressFields.tsx";
 
 /**
  * PhoneField — a country dial-code prefix joined to a national number, rendering as one control
@@ -87,17 +87,15 @@ export function dialCodeOf(iso: string): DialCode {
 /**
  * Resolve the prefix a country field implies.
  *
- * The address country is free text, so both the ISO code and the written name are accepted; anything
- * else defaults rather than guessing, because a wrong dial code on a real number is worse than a
- * default the buyer can see and change.
+ * A saved country may still be free text from before the country picker, so it is normalised through
+ * the SSOT's `countryCodeOf` (code, name or alias); anything this list has no prefix for defaults
+ * rather than guessing, because a wrong dial code on a real number is worse than a default the buyer
+ * can see and change.
  */
 export function isoForCountry(country: string | undefined): string {
-	const value = (country ?? "").trim().toUpperCase();
-	if (value === "") return DEFAULT_DIAL_ISO;
-	const match = DIAL_CODES.find(
-		(entry) => entry.iso === value || entry.name.toUpperCase() === value,
-	);
-	return match?.iso ?? DEFAULT_DIAL_ISO;
+	const code = countryCodeOf(country);
+	if (code === null) return DEFAULT_DIAL_ISO;
+	return DIAL_CODES.some((entry) => entry.iso === code) ? code : DEFAULT_DIAL_ISO;
 }
 // #endregion
 
@@ -166,9 +164,9 @@ export interface PhoneFieldProps {
 	required?: boolean;
 	/** Standing help text, described rather than announced. */
 	hint?: string;
-	/** Block writes while a save is in flight. */
-	disabled?: boolean;
-	/** How many of the grid's six tracks this row occupies. */
+	/** A save is in flight: both controls turn read-only and busy, and keep focus. */
+	busy?: boolean;
+	/** How many of the grid's twelve tracks this row occupies. */
 	span?: DetailsFieldSpan;
 	/** Id scope, so the page form and the modal never mint the same ids. */
 	scope?: string;
@@ -190,7 +188,7 @@ function dialRow(iso: string, compact: boolean): JSX.Element {
 
 /** A dial-code prefix joined to a national number. */
 export function PhoneField(props: PhoneFieldProps): JSX.Element {
-	const { draft, path, label, value, required, hint, disabled, scope } = props;
+	const { draft, path, label, value, required, hint, busy, scope } = props;
 	const id = detailsFieldId(path, scope);
 	const dialId = `${id}-dial`;
 	const noteId = `${id}-note`;
@@ -239,13 +237,8 @@ export function PhoneField(props: PhoneFieldProps): JSX.Element {
 	const note = verdict.message ?? hint ?? null;
 
 	return (
-		<p class="ckod-field ckod-field--phone" data-span={props.span ?? "half"}>
-			<label class="ckod-field__label" for={id}>
-				{label}
-				{required
-					? <span class="ckod-field__req" aria-hidden="true">*</span>
-					: <span class="ckod-field__opt">Optional</span>}
-			</label>
+		<p class="ckod-field ckod-field--phone" data-span={props.span ?? 4}>
+			<DetailsLabel for={id} label={label} required={required} />
 
 			{
 				/*
@@ -261,7 +254,7 @@ export function PhoneField(props: PhoneFieldProps): JSX.Element {
 					size="md"
 					aria-label="Country dialling code"
 					value={iso}
-					disabled={disabled}
+					readOnly={busy}
 					options={DIAL_CODES.map((entry) => ({
 						// The plain, matchable text: what typeahead searches and what is read aloud. The
 						// templates below are presentation only.
@@ -290,7 +283,9 @@ export function PhoneField(props: PhoneFieldProps): JSX.Element {
 					autoComplete="tel-national"
 					placeholder="12456789"
 					value={national}
-					disabled={disabled}
+					readOnly={busy}
+					aria-busy={busy || undefined}
+					enterKeyHint="next"
 					status={verdict.status}
 					aria-describedby={note ? noteId : undefined}
 					onValueChange={() => publish()}
@@ -298,15 +293,7 @@ export function PhoneField(props: PhoneFieldProps): JSX.Element {
 				/>
 			</span>
 
-			{/* Always rendered, height reserved — see {@link DetailsField}. */}
-			{verdict.message
-				? (
-					<span class="ckod-field__note ckod-field__note--error" id={noteId} role="alert">
-						<Icon name="error" size="2xs" />
-						{verdict.message}
-					</span>
-				)
-				: <span class="ckod-field__note" id={noteId}>{hint}</span>}
+			<DetailsNote id={noteId} message={verdict.message} hint={hint} />
 		</p>
 	);
 }

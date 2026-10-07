@@ -44,6 +44,12 @@ export interface InputTextProps extends BaseFieldProps {
 	 */
 	onKeyDown?: JSX.KeyboardEventHandler<HTMLInputElement>;
 	/**
+	 * The label a virtual keyboard puts on its Enter key — `next` on a field a form walks forward
+	 * from, `go` on the one that submits it. A hint to the keyboard only: what Enter actually DOES
+	 * stays the form's decision, so the two must be set together.
+	 */
+	enterKeyHint?: "enter" | "done" | "go" | "next" | "previous" | "search" | "send";
+	/**
 	 * Mobile keyboard capitalisation hint. `none` for anything the reader types verbatim — a
 	 * username, a code, a handle — because iOS capitalises the first letter of a plain text field.
 	 */

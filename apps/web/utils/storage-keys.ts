@@ -36,6 +36,12 @@ export const SessionKeys = {
 	/** The last Explore search scope selected in-tab (restores the entity dropdown after a reload). */
 	EXPLORE_LAST_SCOPE: "pj.session.explore.scope",
 	/**
+	 * Unsaved Settings form drafts, `{ [section]: draft }` JSON — what lets "Expand to full page" carry a
+	 * half-edited form from the contextual modal to `/settings/[section]` without losing a keystroke.
+	 * Cleared per section on save or discard.
+	 */
+	SETTINGS_DRAFTS: "pj.session.settings.drafts",
+	/**
 	 * DEV-ONLY. The Developer-Tools Context Switcher's active persona/ownership/role overrides, as a
 	 * JSON blob. Session-scoped (transient) on purpose: a reload should not leave a developer stuck
 	 * simulating a fake persona. Read/written only by `apps/web/features/devtools/*`, which is excluded
@@ -105,6 +111,13 @@ export const LocalKeys = {
 	 * The three are written together by the switcher and reconciled against the server's answer.
 	 */
 	DISPLAY_CURRENCY: "pj.local.currency",
+	/**
+	 * The accessibility overlays (`{ contrast, font, cvd, motion }` JSON) — mirrors the four
+	 * `org.user_preferences` columns. The `pj.a11y` cookie is what the server paints from; this copy
+	 * lets `_app.tsx`'s pre-paint script restore the overlays (and the cookie) on a device whose
+	 * cookie was cleared. Literal key MUST match that script.
+	 */
+	A11Y_PREFERENCES: "pj.local.a11y",
 	/** Durable cache of onboarding progress metadata (see {@link CacheKeys.ONBOARDING_STAGE_CACHE}). */
 	ONBOARDING_STAGE_CACHE: "pj.local.onboardingStageCache",
 	/** Recent Explore search terms (most-recent-first, capped) — powers the search recall list. */

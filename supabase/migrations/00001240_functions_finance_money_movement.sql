@@ -489,6 +489,14 @@ $$;
 -- (finance.payment_methods) and its display projection (finance.saved_cards), linked, from what the
 -- processor returned — brand, last four, expiry — and never anything that could charge the card.
 -- Idempotent on (owner, payment method id). The first card an owner saves becomes their default.
+--
+-- A card saved to a TEAM, BUSINESS or ORGANISATION is recorded as that entity's business card
+-- (Decision #153). It can only get here through finance.card_owner_for, which requires the saver to
+-- hold manage_billing on the entity — so it is the entity's own instrument by ownership and by who put
+-- it there. Without this, `availableProviders` (an entity pays only by business card) refused every
+-- card a business added at checkout, and "Add card" was a control that could never lead to paying.
+-- The processor reports no reliable consumer/commercial flag to read instead; `is_business_card` stays
+-- immutable after insert (00001830).
 CREATE OR REPLACE FUNCTION finance.record_saved_card(
     p_owner_type text,
     p_owner_id uuid,
@@ -555,12 +563,13 @@ BEGIN
         END IF;
         INSERT INTO finance.saved_cards (
             owner_type, owner_id, payment_method_id, stripe_payment_method_id, brand, last4,
-            exp_month, exp_year, created_by_user_id, is_default
+            exp_month, exp_year, created_by_user_id, is_default, is_business_card
         ) VALUES (
             p_owner_type, p_owner_id, v_method.id, p_payment_method_ref, v_brand, p_last4,
             CASE WHEN p_exp_month BETWEEN 1 AND 12 THEN p_exp_month END,
             CASE WHEN p_exp_year BETWEEN 2000 AND 2100 THEN p_exp_year END,
-            p_created_by, v_method.is_default_funding
+            p_created_by, v_method.is_default_funding,
+            p_owner_type IN ('team', 'business', 'organisation')
         )
         RETURNING * INTO v_card;
     END IF;

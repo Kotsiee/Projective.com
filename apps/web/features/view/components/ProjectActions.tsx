@@ -16,7 +16,8 @@ import type { HrefContext } from "@features/explore/core/routing.ts";
  * the body header carries it until it scrolls away and the condensed band takes over. Do not read the
  * duplicate mounts as three competing primaries: they are one button in three mutually exclusive states.
  *
- * Apply is an optimistic client stub (guests bounce to sign-in); the real application flow is Phase 2.
+ * Apply opens the listing's `ProjectApplyModal` (guests bounce to sign-in); "Applied" is derived from
+ * the viewer's real pending proposals, and pressing it opens the same modal to manage them.
  */
 export function ProjectActions(
 	{ item, authed, ctx }: {
@@ -33,7 +34,7 @@ export function ProjectActions(
 				type="button"
 				class="pf-btn pf-btn--primary"
 				data-on={applied ? "true" : undefined}
-				aria-pressed={applied}
+				aria-haspopup={authed ? "dialog" : undefined}
 				onClick={() => applyToProject(item, authed, ctx)}
 			>
 				{applied

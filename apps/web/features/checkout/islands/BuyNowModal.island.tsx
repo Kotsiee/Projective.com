@@ -35,7 +35,11 @@ import {
 	closeBuyNow,
 	registerBuyNowHost,
 } from "../core/buy-now-state.ts";
-import type { CheckoutContext, PaymentProvider } from "../types/checkout-types.ts";
+import type {
+	CheckoutContext,
+	PaymentProvider,
+	ProviderAvailability,
+} from "../types/checkout-types.ts";
 
 /**
  * BuyNowModal — single-listing instant checkout, without leaving Explore or the entity page.
@@ -74,11 +78,26 @@ export interface BuyNowModalProps {
 const PROVIDER_LABEL: Record<PaymentProvider, string> = {
 	card: "Card",
 	wallet: "Projective wallet",
-	google_pay: "Google Pay",
-	apple_pay: "Apple Pay",
-	paypal: "PayPal",
+	express: "Apple Pay, Google Pay or PayPal",
 	invoice: "Invoice",
 };
+
+/**
+ * The offer as THIS panel can act on it. The express wallets need Stripe's Express Checkout Element,
+ * which only the full payment step mounts, so here the route is shown refused with where to find it
+ * rather than offered as a choice this panel could not complete (the gate-versus-absence rule).
+ */
+function buyNowOffer(providers: readonly ProviderAvailability[]): ProviderAvailability[] {
+	return providers.map((offer) =>
+		offer.provider === "express" && offer.available
+			? {
+				...offer,
+				available: false,
+				reason: "Pay with a wallet like Apple Pay from the full checkout.",
+			}
+			: offer
+	);
+}
 
 /** How far along one instant-purchase attempt is. */
 type BuyPhase = "preparing" | "ready" | "failed" | "done";
@@ -138,7 +157,7 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 		// A provider adopted for an earlier scope may not be on offer here. `applySession` only adopts
 		// into an EMPTY choice, so an unavailable carry-over is corrected explicitly rather than left to
 		// be refused at the last step.
-		const offer = read.data?.session.providers ?? [];
+		const offer = buyNowOffer(read.data?.session.providers ?? []);
 		const held = chosenProvider.value;
 		if (!held || !offer.some((p) => p.provider === held && p.available)) {
 			chosenProvider.value = offer.find((p) => p.available)?.provider ?? null;
@@ -352,7 +371,7 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 									 */
 								}
 								<ul class="bnow__providers" role="radiogroup" aria-labelledby="bnow-pay">
-									{view.providers.map((offer) => (
+									{buyNowOffer(view.providers).map((offer) => (
 										<li key={offer.provider} role="none">
 											<label
 												class="bnow__provider"

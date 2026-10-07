@@ -275,9 +275,9 @@ export function contextFrom(sp: URLSearchParams, context: UserContext): Checkout
 /**
  * Serialise a read context into the `/api/basket|checkout|cards` query string.
  *
- * Scope only — which basket, whose money, which display currency, which deep link — plus the device's
- * payment capabilities, which are facts about the browser rather than about the buyer. Nothing here
- * changes what the server answers about the account: that is read live, as the signed-in caller.
+ * Scope only — which basket, whose money, which display currency, which deep link — plus the route
+ * and the contribution the read is for. Nothing here changes what the server answers about the
+ * account: that is read live, as the signed-in caller.
  */
 export function buildCheckoutQuery(ctx: CheckoutContext): string {
 	const qs = new URLSearchParams();
@@ -286,10 +286,6 @@ export function buildCheckoutQuery(ctx: CheckoutContext): string {
 	if (ctx.display) qs.set("display", ctx.display);
 	if (ctx.projectId) qs.set("project_id", ctx.projectId);
 	if (ctx.serviceId) qs.set("service_id", ctx.serviceId);
-	const d = ctx.device;
-	if (d?.googlePay !== undefined) qs.set("googlePay", d.googlePay ? "1" : "0");
-	if (d?.applePay !== undefined) qs.set("applePay", d.applePay ? "1" : "0");
-	if (d?.paypalEnabled !== undefined) qs.set("paypal", d.paypalEnabled ? "1" : "0");
 	if (ctx.provider) qs.set("provider", ctx.provider);
 	if (ctx.contribute !== undefined) qs.set("contribute", ctx.contribute ? "1" : "0");
 	return qs.toString();

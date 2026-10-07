@@ -265,9 +265,6 @@ export const connectOpen = signal(false);
 /** The `.ics` import modal. */
 export const importOpen = signal(false);
 
-/** The availability configuration modal (working hours · call windows · booked leave). */
-export const availabilityOpen = signal(false);
-
 /**
  * A create request raised by a BAND.
  *

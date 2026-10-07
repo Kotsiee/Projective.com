@@ -145,7 +145,9 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
   reputation, and the two are switched from the account menu. A freelancer profile carries the
   seller's **skills** (used for discovery ranking); it does **not** carry an hourly rate —
   Projective does not treat a signalling hourly rate as a platform field. Unlocking is free,
-  idempotent, and immediately activates the Freelancer persona. Reaching the profile's **go-live
+  idempotent, and immediately activates the Freelancer persona; the person chooses one to ten
+  starter skills from the platform's skills taxonomy on the way in, and lands in their profile
+  editor to finish the go-live baseline (Decision #150). Reaching the profile's **go-live
   milestone** (a baseline of photo, headline, story, and at least three skills) is what lets a
   freelancer publish publicly, sell premium services, and apply to workspaces — this can happen
   before the profile is 100% complete. A seller's profile is **complete** when it also has a payout
@@ -1126,6 +1128,18 @@ Money enters and leaves the platform through two deliberately asymmetric paths:
   platform opens for the payer automatically (the wallet is the ledger of record), and the purchase or
   escrow is paid from it — so a card buyer and a wallet buyer are one ledger, and nothing is asked of
   the buyer to make that true (root `CLAUDE.md` §8 Decision #126).
+- **A purchase is charged in the currency the seller priced it in, and the buyer sees both
+  figures** (Decision #153). Browsing in another currency never blocks paying by card: checkout shows
+  the total in the buyer's currency beside the exact amount that will be charged in the seller's
+  (`AED 840.27 (~US$229.00 USD charged)`) and the rate it was shown at; the buyer's bank converts the
+  charge on their statement. Apple Pay, Google Pay and PayPal are offered as express buttons wherever
+  the device can use them — to individuals only, since they are personal instruments.
+- **A paid order is never left unplaced.** Once the card or wallet payment has arrived, the order is
+  placed even if the buyer closed the page; if it can no longer be placed (a price changed, an item
+  was withdrawn), the money stays in the buyer's wallet and they are told why (Decision #153).
+- **A business pays only from its wallet or with a card on its own account.** A card that a member
+  with billing rights saves to the business is that business's card; a personal card cannot pay for
+  a business purchase.
 - **An individual client funds escrow like a business does.** A project with no client business is
   funded by its owner — by card, or from their own wallet — and every release, refund and fair-exit
   split returns money to that person. Only the project's owner may fund it.
@@ -1202,6 +1216,27 @@ is worse. A ceiling therefore exists on **every** tier — a paid plan raises it
 proposals are never sold à la carte. Withdrawing a proposal returns its unit.
 
 An entity must hold at least **two members** before it may send proposals as a team.
+
+How it reads to the person sending them:
+
+- **Two meters, one spend.** Applying spends one unit of the **weekly** allowance _and_ one
+  **buffer token** from the rolling drip; either at zero stops an application. The week resets each
+  Monday at 00:00 UTC; the buffer returns a few tokens every several hours and banks up to a small
+  multiple of that, so a quiet day is not lost but a week can never be spent in one burst.
+- **Always visible.** Anyone who sends proposals sees both figures — the weekly units left and the
+  tokens ready — with when the next token arrives, from the account menu, and the cost of an
+  application ("1 proposal token") beside every Apply. When the week is nearly spent or the buffer is
+  empty, the way to accelerate (a paid plan) is offered; it is never the only way forward.
+- **Told before, not after.** The application form checks the allowance before it is sent and says
+  plainly what stands in the way — the pacing limit with a live countdown to the next token, the
+  spent week with its reset, a team with fewer than two members, or a member without the authority
+  to commit the team to work. While the platform runs the allowance as a meter only, the form still
+  says so but lets the application through.
+- **Withdrawal returns the week, not the token.** Withdrawing a pending proposal returns its weekly
+  unit at once; the buffer token stays spent, because a token that came back would let a sender
+  apply, withdraw and apply again to the same client without limit.
+- **Teams.** A team applies through a member who may commit it to work, spends the team's own
+  allowance, and is held to the two-member rule above.
 
 ##### Entitlement resolution
 
@@ -2294,6 +2329,52 @@ Business/enterprise signup is the deliberate opposite: a structured wizard. Coll
 > The organization is still created in a **Draft/Unverified** state; full KYB (registration
 > documents, UBO) remains deferred to verification Level 3 before a Business Wallet opens. This
 > onboarding **gathers** the identity/scale/IAM baselines up front; it does not itself complete KYB.
+>
+> **After creation (Decision #150):** the organisation's `@handle` shares one namespace with
+> people, teams and businesses, so it is refused at creation if any of them holds it. Its owner and
+> admins may edit the trading name, contact details, address, scale, industry, departments,
+> purpose, billing email and default currency; the **legal identity** — legal name, registration
+> number and corporate email — is the **owner's** alone to change, and is **frozen** once KYB is
+> under way or complete, because an identity that could be edited after verification would verify
+> nothing. Every edit is recorded in the audit log.
+
+## Settings
+
+_Added 2026-10-07 (root `CLAUDE.md` §8 Decision #151)._ A person reaches every setting two ways, and
+the two always agree: in place, from wherever they are — a gear in the inbox, the calendar or the
+wallet opens **Settings as a window** over the page, on the section that gear is about — and on the
+full **Settings console** (`/settings`), one page per section. One search finds a setting in either.
+
+- **What a section is.** Account (legal name, `@handle`, date of birth, email addresses, password) ·
+  Profile (who can find you, local time and city on your page, photo zoom) · Workspaces (who you are
+  acting as; your teams, businesses and organisations) · Language & region (number and date format,
+  display currency, text direction) · Appearance (theme, high contrast, a dyslexia-friendly font, a
+  colour-vision adjustment, reduced motion) · Notifications · Messaging (read receipts, typing,
+  message alerts, away replies) · Scheduling & calls (working hours, discovery calls, courtesy-call
+  length, weekly cap and cooldown, buffers and notice) · Billing (saved cards) · Verification &
+  payouts · Integrations.
+- **Nothing is hidden in the window.** A setting too large for it (the weekly schedule) or one that
+  must leave Projective to be changed (an identity check with Stripe, a provider's consent page)
+  shows its current state there and one clear way into the console.
+- **Attention.** The console's front page lists only what stands between the person and earning or
+  paying: an identity check to start or retry, a missing payout bank account, a business awaiting
+  verification, a connection that stopped syncing, an email address not yet confirmed — most urgent
+  first, each with its one action.
+- **Email addresses.** A person holds up to five: the address they sign in with plus others. An added
+  address counts only once confirmed through a link mailed to it — one use, for that account, within
+  24 hours. Only a confirmed address can become the **primary** (where Projective writes to them), and
+  only a confirmed address unlocks invitations sent to it. The sign-in address and the primary cannot
+  be removed from Settings.
+- **Accessibility follows the person, and applies at once.** Appearance choices take effect on the
+  device the moment they are made, are remembered on that device from the very first screen of the
+  next visit, and are saved to the account so another device can adopt them. "Off" never overrides
+  the device: with high contrast or reduced motion off, the device's own setting still applies.
+- **Required alerts cannot be switched off.** Money movement, account security and system notices
+  are shown as locked, always-on rows ("Required for financial and account security") — never as
+  switches that look as though they could stop them (§Notifications — what we tell you, and what
+  you can turn off).
+- **Display currency is presentation only** (§Global Multi-Currency & Localized Money): it changes
+  how prices read, never what is charged or paid.
 
 ## Assets & Attachments
 
@@ -2396,7 +2477,9 @@ fire for the same person on a device that genuinely does not have the file.
 |               |                           | `files/[file id]`        | View specific file                                                                             |
 |               | `/files`                  | `index`                  | Asset hub — personal/entity library + read-only mounted project & channel attachments          |
 |               |                           | `[...path]`              | Folder navigation (deep-linkable; the tree, breadcrumbs and URL address the same node)         |
-|               | `/settings`               | `index`                  | General account settings                                                                       |
+|               | `/settings`               | `index`                  | The Settings console's root: what needs your attention (identity check, payout account, business verification, expired connections, unconfirmed emails), and on a phone the menu of every section (§Settings) |
+|               |                           | `[section]`              | One section: account · profile · workspaces · language & region · appearance · notifications · messaging · scheduling & calls · billing |
+|               |                           | `verification`           | Verification & payouts — identity check, payout account, business verification                 |
 |               |                           | `integrations`           | Connected cloud-storage drives (Google Drive, Dropbox, Frame.io, custom S3)                    |
 |               | `/teams`                  | `index`                  | Show all teams                                                                                 |
 |               | `/teams/create`           |                          | Create a new team                                                                              |

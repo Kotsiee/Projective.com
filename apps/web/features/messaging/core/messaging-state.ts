@@ -23,9 +23,6 @@ export interface ContactPickerRequest {
 }
 export const contactPicker = signal<ContactPickerRequest | null>(null);
 
-/** Whether the Message Settings modal is open. */
-export const settingsModalOpen = signal(false);
-
 /** Open the New message picker — or, with `{ group: true }`, the New group picker. */
 export function openNewConversation(options: { group?: boolean } = {}): void {
 	contactPicker.value = { mode: "new", group: options.group === true };

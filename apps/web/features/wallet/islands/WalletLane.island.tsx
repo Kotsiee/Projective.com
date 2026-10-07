@@ -61,6 +61,29 @@ function run(action: WalletAction): void {
 	openWalletDialog({ kind: "action", action });
 }
 
+/**
+ * One action as a lane row — the same icon-led row as the page links above it (§B.6), but a button,
+ * because it opens a dialog rather than going anywhere. A locked action keeps its lock glyph, is named
+ * "…, unavailable", and still opens: pressing it explains why (the Tooltip says so on hover/focus).
+ */
+function ActionRow({ item }: { item: ResolvedAction }): JSX.Element {
+	return (
+		<button
+			type="button"
+			class="wlt-link-row"
+			data-locked={item.locked ? "true" : undefined}
+			aria-label={item.locked ? `${item.label}, unavailable` : undefined}
+			onClick={() => run(item.action)}
+		>
+			<span class="wlt-link-row__icon" aria-hidden="true">
+				<ActionIcon action={item.action} size="sm" />
+				{item.locked && <Icon name="lock" class="wlt-link-row__lock" />}
+			</span>
+			<span class="wlt-link-row__label">{item.label}</span>
+		</button>
+	);
+}
+
 // #region Collapsed rail
 function WalletRail(
 	props: WalletLaneProps & { overview: WalletOverview | null; onExpand: () => void },
@@ -120,7 +143,8 @@ function WalletRail(
 
 /**
  * The `/wallet` middle-nav lane: the wallet's pages as real links, the verification gate when one is
- * open, and every money action the viewer is offered as an icon-led grid. It renders both
+ * open (one pip-led line), and every money action the viewer is offered as an icon-led row in the
+ * same row pattern as the page links — no tiles, no boxes (§B.6, §B.9.7). It renders both
  * presentations and lets `.ui-splitter[data-mode="collapsed"]` reveal one — the expanded stack or an
  * icon rail — like every other lane.
  *
@@ -189,19 +213,16 @@ export default function WalletLane(props: WalletLaneProps): JSX.Element {
 										<ul class="wlt-lane__actions">
 											{actions.map((item) => (
 												<li key={item.action}>
-													<button
-														type="button"
-														class="wlt-qa"
-														data-locked={item.locked ? "true" : undefined}
-														aria-label={item.locked ? `${item.label}, unavailable` : undefined}
-														onClick={() => run(item.action)}
-													>
-														<span class="wlt-qa__icon" aria-hidden="true">
-															<ActionIcon action={item.action} size="md" />
-															{item.locked && <Icon name="lock" class="wlt-qa__lock" />}
-														</span>
-														<span class="wlt-qa__label">{item.label}</span>
-													</button>
+													{item.locked
+														? (
+															<Tooltip
+																content={item.reason ?? "This isn't available right now."}
+																placement="right"
+															>
+																<ActionRow item={item} />
+															</Tooltip>
+														)
+														: <ActionRow item={item} />}
 												</li>
 											))}
 										</ul>

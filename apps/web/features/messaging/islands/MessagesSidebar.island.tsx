@@ -33,11 +33,11 @@ import {
 import { MessagesFilterPanel } from "../components/MessagesFilterPanel.tsx";
 import { MessagesRail } from "../components/MessagesRail.tsx";
 import { NewConversationModal } from "../components/NewConversationModal.tsx";
-import { MessageSettingsModal } from "../components/MessageSettingsModal.tsx";
 import { MessagingService } from "../core/MessagingService.ts";
 import { conversationHref } from "../core/conversation-model.ts";
 import { folderOverrides, moveConversation, withFolder } from "../core/folder-moves.ts";
-import { openNewConversation, settingsModalOpen } from "../core/messaging-state.ts";
+import { openNewConversation } from "../core/messaging-state.ts";
+import { openSettings } from "@features/settings/core/settings-bridge.ts";
 import { liveMessagingRole, readDevSeam, subscribeDevSeam } from "../core/messaging-view.ts";
 import {
 	activeFilterCount,
@@ -55,7 +55,6 @@ import {
 	INBOX_FOLDERS,
 	InboxFolder,
 	type MessagingRole,
-	type MessagingSettings,
 } from "../types/messaging-types.ts";
 
 /**
@@ -86,8 +85,6 @@ export interface MessagesSidebarProps {
 	role: MessagingRole;
 	/** SSR pathname — seeds the active conversation highlight. */
 	path: string;
-	/** The SSR Message Settings projection (seeds the settings modal). */
-	settings: MessagingSettings;
 }
 
 /** Local per-conversation state overrides. */
@@ -393,7 +390,7 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 				recent={displayed.value.slice(0, 8)}
 				activeId={activeId}
 				onNew={() => openNewConversation()}
-				onSettings={() => (settingsModalOpen.value = true)}
+				onSettings={() => openSettings("messaging")}
 				onExpand={() => setLaneCollapsed(false)}
 			/>
 
@@ -533,7 +530,7 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 							icon={<MessagingIcon name="settings" />}
 							label="Message settings"
 							tooltipPlacement="top"
-							onClick={() => (settingsModalOpen.value = true)}
+							onClick={() => openSettings("messaging")}
 						/>
 						<LaneCreateButton
 							label="New message"
@@ -544,9 +541,8 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 				</LaneFooter>
 			</div>
 
-			{/* Modals (driven by the shared messaging-state signals). */}
+			{/* The new-conversation modal (driven by the shared messaging-state signal). Message settings open in the contextual Settings modal (Decision #150). */}
 			<NewConversationModal />
-			<MessageSettingsModal initial={props.settings} />
 		</div>
 	);
 }

@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
-import { useCallback, useEffect, useMemo } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useRef } from "preact/hooks";
 import "../styles/checkout.css";
 import { missingBuyerFields } from "@projective/types/finance";
 import { Button } from "@projective/ui/fields";
@@ -19,6 +19,7 @@ import {
 	seedStep,
 	stepError,
 } from "../core/checkout-state.ts";
+import { handleDetailsEnter } from "../core/details-keys.ts";
 import {
 	createDetailsDraft,
 	type DetailsDepartments,
@@ -70,12 +71,24 @@ import type { CheckoutSessionContext } from "../types/checkout-types.ts";
  * the session with `contribute`, and the whole totals block comes back recomputed. That is also what
  * keeps the total the buyer is shown on this step identical to the one the payment step submits.
  *
- * ## One commitment, in the rail
+ * ## One commitment, in the rail — and it submits THE FORM
  *
  * The step runs in focus chrome and carries no footer band, so the summary rail's Continue is the
  * page's single `filled` action (§B.8.2) — placed beside the figure it commits to. The form's own
  * foot keeps only the quiet `outlined` Save details, which saves and stays. Two Continues that did
  * the same thing left a reader working out whether they did.
+ *
+ * The fields are a real `<form id="cko-details" noValidate>`, and Continue is its submit button from
+ * across the layout (`type="submit" form="cko-details"`), so the rail button, Enter on the last field
+ * and assistive tech's "submit form" all reach the same `onSubmit`. `noValidate` because the SSOT's
+ * `missingBuyerFields` is the validator — the browser's own bubbles would be a second, disagreeing
+ * one. Enter walks the form forward (`details-keys.ts`).
+ *
+ * ## Busy never takes focus away
+ *
+ * While a save is in flight the controls are read-only and `aria-busy`, and neither action is
+ * `disabled`: a disabled control that held focus hands it to `<body>`, which is exactly where a buyer
+ * who submitted with Enter would otherwise be left. A repeat press is absorbed by `save`'s own guard.
  */
 
 // #region Props
@@ -119,6 +132,7 @@ export default function CheckoutDetailsScreen(props: CheckoutDetailsScreenProps)
 	const invoicing = useSignal(session.invoicing);
 	const saving = useSignal(false);
 	const saved = useSignal(false);
+	const formRef = useRef<HTMLFormElement | null>(null);
 
 	// #region Shared state
 	useEffect(() => {
@@ -191,6 +205,12 @@ export default function CheckoutDetailsScreen(props: CheckoutDetailsScreenProps)
 		globalThis.location.assign(checkoutStepHref("payment", session.basketId || null, owner));
 	}, []);
 
+	/** The form's submit — reached from the rail's Continue and from Enter on the last field. */
+	const onSubmit = useCallback((event: Event): void => {
+		event.preventDefault();
+		void advance();
+	}, [advance]);
+
 	// #endregion
 
 	// #region Derived
@@ -201,19 +221,24 @@ export default function CheckoutDetailsScreen(props: CheckoutDetailsScreenProps)
 	const activeContext = activeBillingContext(contexts.value, draft.contextId.value);
 	const departmentOptions = departments[draft.contextId.value] ?? [];
 	const busy = saving.value;
+	const spinner = <span class="ui-button__spinner" aria-hidden="true" />;
 	const lines = projection.items.filter((item) => includedNow(item, item.isSelectedForCheckout));
 	// #endregion
 
 	return (
 		<div class="ckod">
 			<div class="ckod__cols">
-				<div class="ckod__form">
+				<form
+					id="cko-details"
+					class="ckod__form"
+					ref={formRef}
+					noValidate
+					aria-busy={busy || undefined}
+					onSubmit={onSubmit}
+					onKeyDownCapture={(event) => handleDetailsEnter(event, formRef.current)}
+				>
 					<header class="ckod__head">
 						<h1 class="ckod__title">Delivery &amp; billing</h1>
-						<p class="ckod__lede">
-							Supplied once and kept — the next order will not ask again. You can change any of it
-							before you pay.
-						</p>
 
 						{
 							/*
@@ -260,28 +285,33 @@ export default function CheckoutDetailsScreen(props: CheckoutDetailsScreenProps)
 						)
 						: null}
 
+					{
+						/*
+						 * Each section's one-line purpose rides on its heading as secondary text rather than
+						 * as a paragraph of its own: the same words, one row instead of two.
+						 */
+					}
 					<section class="ckod__section" aria-labelledby="ckod-delivery">
-						<h2 class="ckod__legend" id="ckod-delivery">Delivery</h2>
-						<p class="ckod__hint">
-							Digital work is delivered in the platform and to this address. Nothing is posted, so
-							no street is asked for here.
-						</p>
-						<DeliveryFields draft={draft} disabled={busy} />
+						<h2 class="ckod__legend" id="ckod-delivery">
+							Delivery
+							<span class="ckod__legend-sub">
+								Downloads and receipts go here · nothing is posted
+							</span>
+						</h2>
+						<DeliveryFields draft={draft} busy={busy} />
 					</section>
 
 					<section class="ckod__section" aria-labelledby="ckod-billing">
 						<h2 class="ckod__legend" id="ckod-billing">
-							Billing Details{activeContext
-								? <span class="ckod__legend-sub">{activeContext.label}</span>
-								: null}
+							Billing details
+							<span class="ckod__legend-sub">
+								{activeContext ? `${activeContext.label} · ` : ""}what the invoice and tax use
+							</span>
 						</h2>
-						<p class="ckod__hint">
-							What appears on the invoice, and where you are for tax purposes.
-						</p>
 						<BillingFields
 							draft={draft}
 							departments={departmentOptions}
-							disabled={busy}
+							busy={busy}
 						/>
 					</section>
 
@@ -302,12 +332,12 @@ export default function CheckoutDetailsScreen(props: CheckoutDetailsScreenProps)
 					}
 					<div class="ckod__actions">
 						<Button
+							type="button"
 							variant="outlined"
 							size="md"
 							rounded
-							disabled={busy}
-							loading={busy}
-							icon={<Icon name="check" size="xs" />}
+							aria-busy={busy || undefined}
+							icon={busy ? spinner : <Icon name="check" size="xs" />}
 							onClick={() => void save()}
 						>
 							Save details
@@ -324,7 +354,7 @@ export default function CheckoutDetailsScreen(props: CheckoutDetailsScreenProps)
 								: "Not saved yet."}
 						</span>
 					</div>
-				</div>
+				</form>
 
 				<div class="cko-pstep__aside">
 					<OrderSummaryRail
@@ -342,16 +372,16 @@ export default function CheckoutDetailsScreen(props: CheckoutDetailsScreenProps)
 					>
 						<div class="cko-rail__commit">
 							<Button
-								class="cko-rail__buy"
+								class="cko-rail__buy cko-commit"
+								type="submit"
+								form="cko-details"
 								variant="filled"
-								severity="warning"
 								size="lg"
 								fluid
 								rounded
-								loading={busy}
-								icon={<Icon name="arrow-right" size="xs" />}
+								aria-busy={busy || undefined}
+								icon={busy ? spinner : <Icon name="arrow-right" size="xs" />}
 								iconPos="right"
-								onClick={() => void advance()}
 							>
 								Continue
 							</Button>

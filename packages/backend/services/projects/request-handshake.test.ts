@@ -143,6 +143,7 @@ Deno.test("an application is recorded pending, and a second one for the same sea
 		stageId: "stg-anything",
 		roleId: null,
 		message: "I've shipped three of these — call me on +44 7700 900123.",
+		teamId: null,
 	};
 	const first = await ProjectBackendService.apply(input, freelancer);
 	assert(first.ok && first.data, first.message);
