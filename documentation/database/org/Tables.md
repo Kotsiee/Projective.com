@@ -573,10 +573,44 @@ Client Trust Score.
 | `tenure_days`                           | integer      | —                                                                   |
 | `penalty_severity`                      | numeric(6,2) | Active `security.penalties` aggregate, subtracted at recompute.     |
 | `components`                            | jsonb        | Per-component contribution, for the "why am I this rung" surface.   |
+| `active_adornments`                     | text[]       | The earned trust signals — at most one slug per dimension (below). Default `'{}'`. |
+| `verification_stamp`                    | text         | `none` · `id_verified` · `vault_verified` · `corporate_verified`. Default `none`. |
 | `level_changed_at` / `computed_at`      | timestamptz  | —                                                                   |
 
 > **Every input is client-valued.** Raw earnings and raw proposal counts are deliberately absent:
 > ranking by spend or by volume is exactly the pay-to-win trap this ladder exists to avoid.
+
+**Trust signals (Decision #155).** Both columns are DERIVED and definer-written only — a client has
+SELECT on this table (`"Read standing"`) and nothing else.
+
+- `active_adornments` is materialised by `org.fn_refresh_active_adornments`, which
+  `org.fn_recompute_standing` calls at the end of every recompute, so the Standing sweep keeps it
+  current. Six dimensions of three tiers; a dimension contributes the HIGHEST tier whose own evidence
+  holds, so the array never exceeds six slugs. `ck_entity_standing_active_adornments` limits it to the
+  eighteen registered slugs (`AdornmentSlugSchema`). Ranking and the public cap of three are the
+  profile read's (`rankAdornments`), never stored. A `user` subject is always empty — buyers are not
+  gamified.
+- `verification_stamp` is a PERSON's strongest verification authority, kept on their `freelancer`
+  row by `trg_freelancer_profiles_verification_stamp` (00001830) and re-derived on every recompute:
+  `vault_verified` needs KYC **and** a verified payout account (the `finance.fn_freelancer_payout_ready`
+  pair), `id_verified` KYC alone. A row is created only when there is a stamp to hold. The CHECK
+  admits `corporate_verified` so the vocabulary is one type, but no person's row ever holds it: a
+  business or organisation has no Standing row, and `org.get_profile_view` derives its stamp from its
+  own KYB (`business_profiles.kyb_status = 'verified'` / `organisations.verification_level =
+  'verified'`).
+
+| Dimension     | Tier 1                                   | Tier 2                                        | Tier 3                                          |
+| :------------ | :--------------------------------------- | :-------------------------------------------- | :---------------------------------------------- |
+| communication | `quick_replies` — median first reply < 4 h | `fast_replies` — < 1 h                        | `instant_dispatch` — < 15 min                   |
+| turnaround    | `on_schedule` — on-time streak ≥ 10      | `rapid_turnaround` — mean claim → accepted < 48 h | `same_day_delivery` — < 24 h                    |
+| integrity     | `first_pass_approved` — 10 stages, no revision round | `dispute_free` — streak ≥ 20      | `flawless_execution` — 50 stages, no disputed escrow |
+| retention     | `repeat_favorite` — `repeat_client` award | `high_retention` — > 40% of ≥ 5 engagements from returning clients | `retained_partner` — still on a Pipeline joined > 6 months ago |
+| sentiment     | `rated_4_8` — ≥ 4.80 over ≥ 5 reviews    | `top_reviews` — ≥ 4.95 over ≥ 10              | `100_percent_recommended` — 50 stages, no review below 5 |
+| mastery       | `create_specialist` — one category > 60% share, ≥ 5 stages in it | `squad_verified` — team, ≥ 10 stages, a payout split | `architect_tier` — the `architect` designation |
+
+Communication reads `search.talent_signals.response_time_hours` and requires a live `fast_response`
+streak of at least five as evidence; turnaround spans run from the ticket's first `claimed` /
+`in_progress` history row to its accepted submission, over at least five delivered tickets.
 
 ### `org.standing_events`
 

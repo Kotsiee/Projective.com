@@ -29,7 +29,7 @@ export const handler = define.handlers({
 		const setup = setupResult.ok ? setupResult.data?.setup ?? null : null;
 
 		// The stored profile is the authority; the token's claim answers only when the read could not.
-		const alreadySeller = setup ? setup.facts.seller : context.isFreelancer;
+		const alreadySeller = setup ? setup.seller : context.isFreelancer;
 		const personalHandle = setup?.handle ??
 			(context.contextType === "personal" ? context.handle : null);
 

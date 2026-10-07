@@ -3,6 +3,7 @@ import { DualRatingSchema, SkillRefSchema } from "../explore/items.ts";
 import { ImagePlaceholderSchema } from "../files/metadata.ts";
 import { AvailabilityRuleSchema } from "../scheduling/scheduling.ts";
 import { INTAKE_FIELDS_MAX, IntakeFieldSchema } from "../services/intake.ts";
+import { AdornmentSlugSchema, PUBLIC_ADORNMENT_LIMIT, VerificationStampSchema } from "../org/standing.ts";
 
 /**
  * profile.profile — the Zod SSOT for a public profile's header + overview projection
@@ -338,6 +339,16 @@ export const ProfileViewSchema = z.object({
 	tier: VerificationTier,
 	/** Every attained tier, rendered as badges in ladder order. */
 	verifications: z.array(VerificationTier),
+	/**
+	 * The strongest verification authority — the crest beside the name (Decision #155). A person's
+	 * identity or payout check; a business's or organisation's corporate KYB.
+	 */
+	verificationStamp: VerificationStampSchema,
+	/**
+	 * The earned trust signals a public surface shows: ranked by `rankAdornments` and capped at
+	 * {@link PUBLIC_ADORNMENT_LIMIT}. Always empty for a buyer, a business and an organisation.
+	 */
+	adornments: z.array(AdornmentSlugSchema).max(PUBLIC_ADORNMENT_LIMIT),
 	/** Follower / following counts. */
 	followers: z.number(),
 	following: z.number(),

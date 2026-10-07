@@ -56,7 +56,7 @@ function ClientMark({ client }: { client: NotableClient }): JSX.Element {
 			{client.verified && (
 				<Tooltip content="Verified client" placement="top">
 					<span class="pf-proof__crest" role="img" aria-label="Verified client">
-						<Icon name="verified" filled size="xs" />
+						<Icon name="keystone-check" filled size="xs" />
 					</span>
 				</Tooltip>
 			)}

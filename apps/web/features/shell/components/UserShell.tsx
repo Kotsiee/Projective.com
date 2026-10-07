@@ -18,6 +18,7 @@ import NavSearchBar from "@web/features/shell/islands/NavSearchBar.island.tsx";
 import UserActions from "@web/features/shell/islands/UserActions.island.tsx";
 import ShareHost from "@web/features/share/islands/ShareHost.island.tsx";
 import SettingsModalHost from "@web/features/settings/islands/SettingsModalHost.island.tsx";
+import MilestoneCelebration from "@web/features/shell/islands/MilestoneCelebration.island.tsx";
 import { bottomNavItems } from "@web/features/shell/core/bottom-nav-model.tsx";
 import { BrandMark } from "./BrandMark.tsx";
 
@@ -232,6 +233,7 @@ export function UserShell(
 			<ShareHost authed returnTo={path} />
 			{/* The contextual Settings modal: owns `?settings=` and every gear's `openSettings()` (Decision #150). */}
 			<SettingsModalHost context={context} />
+			{focus ? null : <MilestoneCelebration />}
 		</>
 	);
 }

@@ -1,9 +1,8 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import { Avatar } from "@projective/ui/display";
-import { Toast, Tooltip, useToast } from "@projective/ui/feedback";
-import { Icon } from "@projective/ui/icons";
+import { Avatar, TrustAdornments, VerificationStampBadge } from "@projective/ui/display";
+import { Toast, useToast } from "@projective/ui/feedback";
 import type { PublicCallOffer } from "@projective/types/scheduling";
 import SignInPrompt from "@features/auth/islands/SignInPrompt.island.tsx";
 import { MigratingBack } from "@features/shell/components/MigratingBack.tsx";
@@ -21,7 +20,9 @@ import { AvatarLightbox } from "../components/AvatarLightbox.tsx";
 import { ProfileMetrics } from "../components/ProfileMetrics.tsx";
 import { ProfileRig } from "../components/ProfileRig.tsx";
 import { ProfileShowcase } from "../components/ProfileShowcase.tsx";
-import { ENTITY_META, TIER_META } from "../components/profile-glyphs.tsx";
+import { ENTITY_META } from "../components/profile-glyphs.tsx";
+import { adornmentItems, shownAdornments } from "../core/trust-signals.ts";
+import { useTrustSignalOverride } from "../hooks/useTrustSignalOverride.ts";
 import ConsultationModal from "../components/hire/ConsultationModal.tsx";
 import { ProjectCreateModal } from "@features/projects/components/ProjectCreateModal.tsx";
 import ProjectAssignModal from "../components/hire/ProjectAssignModal.tsx";
@@ -201,8 +202,12 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 		});
 	}
 
-	const tier = TIER_META[profile.tier];
 	const seller = !preview && isSellerKind(profile.kind);
+	const trustOverride = useTrustSignalOverride();
+	const stamp = trustOverride.stamp === "auto" ? profile.verificationStamp : trustOverride.stamp;
+	const adornments = isSellerKind(profile.kind)
+		? adornmentItems(shownAdornments(profile.adornments, trustOverride.adornments))
+		: [];
 
 	return (
 		<>
@@ -257,17 +262,7 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 
 					<h1 class="pf-hero__name">
 						<span class="pf-hero__nametext">{profile.name}</span>
-						{profile.verified && (
-							<Tooltip content={tier.title} placement="top">
-								<Icon
-									name="verified"
-									filled
-									size="md"
-									class="pf-hero__crest"
-									title={tier.title}
-								/>
-							</Tooltip>
-						)}
+						<VerificationStampBadge stamp={stamp} size="md" class="pf-hero__crest" />
 					</h1>
 
 					<p class="pf-hero__meta">
@@ -275,6 +270,8 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 						<span class="pf-hero__dot" aria-hidden="true">·</span>
 						<span>{ENTITY_META[profile.kind].label}</span>
 					</p>
+
+					<TrustAdornments items={adornments} class="pf-hero__trust" />
 
 					{
 						/* The probe's subject is the wrapper, not the rig: the rig renders its own root and

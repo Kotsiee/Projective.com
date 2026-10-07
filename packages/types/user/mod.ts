@@ -36,14 +36,4 @@ export {
 	type StarterSkillOption,
 	StarterSkillOptionSchema,
 } from "./freelancer-conversion.ts";
-export {
-	type AccountSetup,
-	AccountSetupSchema,
-	calculateProfileCompleteness,
-	GO_LIVE_MIN_SKILLS,
-	type ProfileCompleteness,
-	type ProfileSetupFacts,
-	ProfileSetupFactsSchema,
-	type ProfileSetupStep,
-	type ProfileSetupStepId,
-} from "./profile-setup.ts";
+export { type AccountSetup, AccountSetupSchema } from "./profile-setup.ts";

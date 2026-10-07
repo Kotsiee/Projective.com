@@ -357,3 +357,121 @@ $$;
 
 COMMENT ON FUNCTION org.seed_user_preferences() IS
   'Seeds a default org.user_preferences row when a public profile is created (email + OAuth signup). Idempotent (ON CONFLICT DO NOTHING). See root CLAUDE.md Decision #47.';
+-- #endregion
+
+-- #region 2. Profile setup progress (Decision #155)
+-- Whether a profile story holds any text, across the three stored bio shapes: `{ text }` (what
+-- org.save_profile and the seed write), a Quill Delta `{ ops }`, and `{ html }`. The SQL twin of
+-- `bioText` in the profile service; anything else reads as empty.
+CREATE OR REPLACE FUNCTION org.fn_bio_has_text(p_bio jsonb)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT CASE
+        WHEN p_bio IS NULL OR jsonb_typeof(p_bio) <> 'object' THEN false
+        WHEN jsonb_typeof(p_bio -> 'text') = 'string' THEN btrim(p_bio ->> 'text', E' \t\r\n') <> ''
+        WHEN jsonb_typeof(p_bio -> 'ops') = 'array' THEN EXISTS (
+            SELECT 1 FROM jsonb_array_elements(p_bio -> 'ops') AS op
+            WHERE jsonb_typeof(op -> 'insert') = 'string' AND btrim(op ->> 'insert', E' \t\r\n') <> ''
+        )
+        WHEN jsonb_typeof(p_bio -> 'html') = 'string' THEN
+            btrim(regexp_replace(p_bio ->> 'html', '<[^>]*>|&nbsp;', ' ', 'g'), E' \t\r\n') <> ''
+        ELSE false
+    END;
+$$;
+
+-- How far a person's own profile is set up — the ONE completeness rule, read by the account popover's
+-- ring (`ProfileSetupProgress`, @projective/types/org). Every step is DERIVED from stored state;
+-- nothing is awarded for visiting a page. The weights total 100:
+--
+--   account          20  name + date of birth on the profile, an address on the sign-in identity
+--   email_verified   10  one of the person's addresses is confirmed (org.user_emails.verified_at)
+--   skills           10  seller skills or buyer interests chosen
+--   avatar           20  an UPLOADED photo (a sign-in provider's picture does not count)
+--   profile_copy     20  a headline and a story
+--   working_hours    20  a published schedule with at least one active band
+--
+-- The first three are what /join collects, so a finished sign-up reads 40. `next_suggested_action`
+-- is the single highest-yield next step: an unconfirmed address first, then a seller's earning gate
+-- (identity, then payout — PRODUCT_SPEC "No Forever-Escrow"), then the setup steps by weight, and
+-- for a fully set-up buyer the freelancer unlock. NULL when nothing is left. A caller may read only
+-- their own progress; the service role may read anyone's. NULL for a person with no profile row.
+CREATE OR REPLACE FUNCTION org.fn_compute_profile_setup_progress(p_user_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid ();
+    v_user org.users_public%ROWTYPE;
+    v_fp org.freelancer_profiles%ROWTYPE;
+    v_seller boolean;
+    v_account boolean;
+    v_email boolean;
+    v_skills boolean;
+    v_avatar boolean;
+    v_copy boolean;
+    v_hours boolean;
+    v_score integer := 0;
+    v_keys text[] := '{}'::text[];
+    v_next text;
+BEGIN
+    IF v_uid IS NOT NULL AND v_uid IS DISTINCT FROM p_user_id THEN
+        RAISE EXCEPTION 'auth: you can only read your own setup progress' USING ERRCODE = '42501';
+    END IF;
+
+    SELECT * INTO v_user FROM org.users_public u WHERE u.user_id = p_user_id;
+    IF NOT FOUND THEN
+        RETURN NULL;
+    END IF;
+    SELECT * INTO v_fp FROM org.freelancer_profiles f WHERE f.user_id = p_user_id;
+    v_seller := FOUND AND v_user.is_freelancer;
+
+    v_account := NULLIF(btrim(concat_ws(' ', v_user.first_name, v_user.last_name)), '') IS NOT NULL
+        AND v_user.dob IS NOT NULL
+        AND EXISTS (SELECT 1 FROM auth.users au WHERE au.id = p_user_id AND au.email IS NOT NULL);
+    v_email := EXISTS (
+        SELECT 1 FROM org.user_emails ue WHERE ue.user_id = p_user_id AND ue.verified_at IS NOT NULL
+    );
+    v_skills := COALESCE(cardinality(v_fp.skills), 0) > 0 OR cardinality(v_user.interests) > 0;
+    v_avatar := v_user.avatar_file_id IS NOT NULL;
+    v_copy := btrim(COALESCE(v_user.headline, '')) <> '' AND org.fn_bio_has_text(v_user.bio);
+    v_hours := EXISTS (
+        SELECT 1
+        FROM scheduling.schedules sc
+        JOIN scheduling.availability_rules ar ON ar.schedule_id = sc.id AND ar.is_active
+        WHERE sc.owner_type = 'user'::scheduling.owner_type AND sc.owner_id = p_user_id AND sc.is_published
+    );
+
+    IF v_account THEN v_score := v_score + 20; v_keys := v_keys || 'account'::text; END IF;
+    IF v_email THEN v_score := v_score + 10; v_keys := v_keys || 'email_verified'::text; END IF;
+    IF v_skills THEN v_score := v_score + 10; v_keys := v_keys || 'skills'::text; END IF;
+    IF v_avatar THEN v_score := v_score + 20; v_keys := v_keys || 'avatar'::text; END IF;
+    IF v_copy THEN v_score := v_score + 20; v_keys := v_keys || 'profile_copy'::text; END IF;
+    IF v_hours THEN v_score := v_score + 20; v_keys := v_keys || 'working_hours'::text; END IF;
+
+    v_next := CASE
+        WHEN NOT v_email THEN 'verify_email'
+        WHEN v_seller AND v_fp.kyc_status IS DISTINCT FROM 'verified'::finance.kyc_status THEN 'verify_identity'
+        WHEN v_seller AND NOT v_fp.payout_ready THEN 'add_payout'
+        WHEN NOT v_avatar THEN 'add_photo'
+        WHEN NOT v_copy THEN 'write_profile'
+        WHEN NOT v_hours THEN 'publish_hours'
+        WHEN NOT v_skills THEN 'add_skills'
+        WHEN NOT v_account THEN 'complete_account'
+        WHEN NOT v_seller THEN 'become_partner'
+        ELSE NULL
+    END;
+
+    RETURN jsonb_build_object(
+        'score', v_score,
+        'completed_keys', to_jsonb(v_keys),
+        'next_suggested_action', v_next
+    );
+END;
+$$;
+-- #endregion

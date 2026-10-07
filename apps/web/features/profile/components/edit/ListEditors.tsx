@@ -482,7 +482,7 @@ export function CertificationsEditor(
 					/>
 					{row.verified && (
 						<p class="pf-rows__verified">
-							<Icon name="verified" size="xs" filled aria-hidden /> Verified by Projective — editing the
+							<Icon name="seal-check" size="xs" filled aria-hidden /> Verified by Projective — editing the
 							name or issuer removes this until it's checked again.
 						</p>
 					)}

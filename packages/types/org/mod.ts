@@ -6,3 +6,4 @@ export * from "./organisations.ts";
 export * from "./preferences.ts";
 export * from "./user-emails.ts";
 export * from "./standing.ts";
+export * from "./onboarding.ts";

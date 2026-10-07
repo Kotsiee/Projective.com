@@ -2054,6 +2054,32 @@ Deliberately absent: login and attendance streaks, vanity points detached from c
 public earnings leaderboards. The first is hostile to freelancer wellbeing, the second cheapens the
 signal, and the third drives race-to-the-bottom pricing.
 
+##### Trust signals and verification crests (Decision #155)
+
+A seller's delivery record also earns **trust signals** — short claims a client can check, such as
+_Fast replies_, _On schedule_, _Dispute-free_, _Long-term partner_, _Rated 4.8+_ or _Architect_.
+There are six dimensions (communication · turnaround · delivery integrity · client retention ·
+review sentiment · mastery) of three tiers each, every threshold read from the platform's own
+records and protected by a volume floor; a seller holds at most one signal per dimension (its
+highest tier) and a public profile shows the **top three**, highest tier first. They are recomputed
+with Standing, never awarded by hand, never purchasable, and never shown for a buyer. They render as
+one line of plain text with an explanation on demand — never as badges (the rule above).
+
+**Verification is shown as a crest beside the name, one per authority:** _Identity verified_ (a
+government ID check), _Payout verified_ (identity AND a verified payout account — the
+No-Forever-Escrow pair, so escrow can always be released to them) and, on a business or
+organisation profile, _Corporate verified_ (KYB). The crest shows the STRONGEST authority behind the
+profile and moves the moment the provider's verdict lands. A verification landing or profile setup
+reaching 100% is congratulated in place — a brief animation and one notification that says only
+what the milestone unlocks — never a blocking screen and never a claim the platform does not honour
+(no discovery boost is attached to verification; discovery weight comes from Standing alone).
+
+**Profile setup progress** (the account popover's ring) is computed in one place on the server: the
+account details, a confirmed email and chosen skills or interests — the 40% a finished sign-up
+reads — then a profile photo, a headline and story, and published working hours (20% each). The one
+suggested next step puts a seller's earning gate (identity, then payout) before everything but an
+unconfirmed email.
+
 ##### Buyers are not gamified
 
 Clients, businesses and organisations carry the **Client Trust Score** and verification badges, not a

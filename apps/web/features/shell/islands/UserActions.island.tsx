@@ -4,12 +4,13 @@ import { useEffect, useRef } from "preact/hooks";
 import type { ContextType, UserContext } from "@projective/types/auth";
 import { PERSONAL_MEMBER_CONTEXT } from "@projective/types/auth";
 import type { AccountSetup, CurrentUser } from "@projective/types/user";
-import { calculateProfileCompleteness, resolveAccountRole } from "@projective/types/user";
+import { resolveAccountRole } from "@projective/types/user";
+import { VERIFICATION_STAMP_META } from "@projective/types/org";
 // The shell header CSS lives in a server component (UserShell) whose import never reaches a client
 // bundle; riding it on this always-present header island injects it (same pattern as ShellSidebar).
 import "@web/features/shell/styles/user-shell.css";
-import { Drawer, Popover, ProgressBar, Tooltip } from "@projective/ui/feedback";
-import { Avatar } from "@projective/ui/display";
+import { Drawer, Popover, Tooltip } from "@projective/ui/feedback";
+import { Avatar, VerificationStampBadge } from "@projective/ui/display";
 import { Button } from "@projective/ui/fields";
 import { cycleThemePreference, type ThemePreference, themePreference } from "@projective/ui/system";
 import { type IconName, NavIcon } from "@web/features/shell/core/nav-icons.tsx";
@@ -28,11 +29,9 @@ import BasketDrawer from "@web/features/checkout/islands/BasketDrawer.island.tsx
 import { basketCount } from "@web/features/checkout/core/basket-state.ts";
 import { defaultOwnerParam, isCheckoutPath } from "@web/features/checkout/core/basket-model.ts";
 import { AccountService } from "@web/features/shell/core/AccountService.ts";
-import {
-	presenceAt,
-	setupStepHref,
-	simulatedSetup,
-} from "@web/features/shell/core/account-setup.ts";
+import { presenceAt, setupStepHref, simulatedSetup } from "@web/features/shell/core/account-setup.ts";
+import { accountSetupSnapshot, celebrating } from "@web/features/shell/core/milestones.ts";
+import { AccountSetupNudge } from "@web/features/shell/components/AccountSetupNudge.tsx";
 import { useEffectiveContext } from "@web/features/shell/core/effective-context.ts";
 import { AuthService } from "@web/features/auth/core/AuthService.ts";
 import { onAvatarChanged } from "@web/utils/avatar-sync.ts";
@@ -112,7 +111,7 @@ export interface UserActionsProps {
  * here: it is switched from the wallet and at checkout (Decision #149).
  *
  * Identity binds **live account data** fetched once on hydration from the thin {@link AccountService}
- * (`me` for identity, `setup` for completeness · hours · Standing), falling back to the SSR
+ * (`me` for identity, `setup` for progress · stamp · hours · Standing), falling back to the SSR
  * {@link UserContext} until each resolves. **Responsive (Part D.3):** below `--bp-md` the avatar opens
  * a right-side account `Drawer` that shares the very same view-driven body.
  */
@@ -182,15 +181,16 @@ export default function UserActions(
 		};
 	}, []);
 
-	// A profile photo changed on THIS page (the owner's editor broadcasts it): show the new face — and
-	// the photo step it completes — now rather than on the next navigation.
+	// A profile photo changed on THIS page (the owner's editor broadcasts it): show the new face now,
+	// and re-read the setup so the photo step lands as the database scores it.
 	useEffect(() =>
 		onAvatarChanged(({ userId, url }) => {
 			const current = account.peek();
 			if (current && current.userId === userId) account.value = { ...current, avatar: url };
-			const known = setup.peek();
-			if (current?.userId === userId && known) {
-				setup.value = { ...known, facts: { ...known.facts, hasPhoto: !!url } };
+			if (current?.userId === userId) {
+				AccountService.setup().then((value) => {
+					if (value) setup.value = value;
+				});
 			}
 		}), []);
 
@@ -202,6 +202,7 @@ export default function UserActions(
 	const effCtx = effective.value.context;
 	const devOverride = effective.value.overridden;
 	const devSetup = effective.value.profileSetup;
+	const devStamp = effective.value.verificationStamp;
 
 	const createOptions = createMenuOptions(effCtx);
 	const links = profileLinks(effCtx);
@@ -239,23 +240,27 @@ export default function UserActions(
 		(effCtx.contextType === "personal" ? (acct?.handle ?? effCtx.handle) : null);
 
 	// The setup the ring and nudge run on: the real read, or — under a Dev Context Switcher position —
-	// simulated FACTS run through the same rule. A persona override also decides which checklist
-	// (seller or buyer) applies, so the checklist follows the simulated persona with everything else.
+	// the answer the SQL rule would give there. A persona override also decides seller vs buyer.
 	const realSetup = setup.value;
-	const sellerNow = devOverride
-		? effCtx.isFreelancer
-		: (realSetup?.facts.seller ?? effCtx.isFreelancer);
-	const activeSetup: AccountSetup | null = devSetup !== "auto"
-		? simulatedSetup(devSetup, {
-			handle: personalHandle ?? "you",
-			seller: sellerNow,
-			standing: realSetup?.standing ?? null,
-		})
-		: realSetup && { ...realSetup, facts: { ...realSetup.facts, seller: sellerNow } };
-	const completeness = activeSetup ? calculateProfileCompleteness(activeSetup.facts) : null;
+	const sellerNow = devOverride ? effCtx.isFreelancer : (realSetup?.seller ?? effCtx.isFreelancer);
+	const activeSetup = simulatedSetup(realSetup, devSetup, devStamp, {
+		handle: personalHandle ?? "you",
+		seller: sellerNow,
+		standing: realSetup?.standing ?? null,
+	});
+	const percent = activeSetup?.progress.score ?? null;
+	const stamp = activeSetup?.verificationStamp ?? "none";
 	const presence = activeSetup ? presenceAt(activeSetup.hours, now.value) : null;
 	const setupHandle = activeSetup?.handle ?? personalHandle;
 	const standing = sellerNow ? activeSetup?.standing ?? null : null;
+	const celebratingNow = celebrating.value !== null;
+
+	// Publish what the ring draws, so the milestone celebration compares the same state — keyed on
+	// what a milestone is made of, not on every render.
+	const snapshotKey = activeSetup ? `${activeSetup.handle}|${stamp}|${percent}` : "";
+	useEffect(() => {
+		accountSetupSnapshot.value = activeSetup;
+	}, [snapshotKey]);
 
 	// The proposal allowance is a SELLER's meter: a freelancer's own, or the acting team's pool. A buyer
 	// sends no proposals, so their popover neither reads nor shows one (reading also opens a metering
@@ -278,7 +283,8 @@ export default function UserActions(
 	// The trigger's spoken name carries what its ring and pip draw, so neither is sight-only.
 	const triggerLabel = [
 		"Your account",
-		completeness && !completeness.complete ? `profile ${completeness.percent}% set up` : null,
+		percent !== null && percent < 100 ? `profile ${percent}% set up` : null,
+		stamp !== "none" ? VERIFICATION_STAMP_META[stamp].label.toLowerCase() : null,
 		presence ? presence.label.toLowerCase() : null,
 	].filter(Boolean).join(", ");
 
@@ -369,11 +375,21 @@ export default function UserActions(
 					label={displayName}
 					image={avatarUrl}
 					size="md"
-					percent={completeness?.percent ?? null}
+					percent={percent}
 					presence={presence?.tone ?? null}
+					celebrate={celebratingNow}
 				/>
 				<div class="shell-account__ident">
-					<span class="shell-account__name">{displayName}</span>
+					<span class="shell-account__nameline">
+						<span class="shell-account__name">{displayName}</span>
+						<VerificationStampBadge
+							stamp={stamp}
+							size="xs"
+							placement="bottom"
+							celebrate={celebratingNow}
+							class="shell-account__crest"
+						/>
+					</span>
 					{meta ? <span class="shell-account__meta">{meta}</span> : null}
 					{presence && setupHandle
 						? (
@@ -381,7 +397,7 @@ export default function UserActions(
 								<a
 									class="shell-account__presence"
 									data-presence={presence.tone}
-									href={setupStepHref("hours", setupHandle)}
+									href={setupStepHref("working_hours", setupHandle)}
 									onClick={onNavigate}
 								>
 									<span class="shell-account__presence-dot" aria-hidden="true" />
@@ -394,71 +410,6 @@ export default function UserActions(
 						)
 						: null}
 				</div>
-			</div>
-		);
-	};
-
-	/** The profile-setup nudge — a progress track and an inline checklist, shown only below 100%. */
-	const setupNudge = (onNavigate: () => void): JSX.Element | null => {
-		if (!completeness || completeness.complete || !setupHandle) return null;
-		const toGoLive = completeness.goLive.applies && !completeness.goLive.met;
-		const count = toGoLive ? completeness.goLive.remaining : completeness.remaining;
-		const hint = `${count} ${count === 1 ? "step" : "steps"} ${toGoLive ? "to go live" : "left"}`;
-		const open = checklistOpen.value;
-		return (
-			<div class="shell-setup">
-				<button
-					type="button"
-					class="shell-setup__head"
-					aria-expanded={open}
-					aria-controls="shell-setup-steps"
-					onClick={() => (checklistOpen.value = !open)}
-				>
-					<span class="shell-setup__title">
-						Profile setup <span class="shell-setup__pct">{completeness.percent}%</span>
-					</span>
-					<span class="shell-setup__hint">{hint}</span>
-					<NavIcon name="chevron" class="shell-setup__chevron" />
-				</button>
-				<ProgressBar
-					class="shell-setup__bar"
-					value={completeness.percent}
-					aria-label={`Profile setup, ${completeness.percent}% complete`}
-				/>
-				{open
-					? (
-						<ul class="shell-setup__steps" id="shell-setup-steps">
-							{completeness.steps.map((step) => (
-								<li key={step.id}>
-									{step.done
-										? (
-											<span class="shell-setup__step" data-done="true">
-												<NavIcon name="check" class="shell-setup__mark" />
-												<span>{step.label}</span>
-												<span class="ui-visually-hidden">(done)</span>
-											</span>
-										)
-										: (
-											<a
-												class="shell-setup__step"
-												href={setupStepHref(step.id, setupHandle)}
-												onClick={onNavigate}
-											>
-												<span
-													class="shell-setup__mark shell-setup__mark--todo"
-													aria-hidden="true"
-												/>
-												<span>{step.label}</span>
-												{step.goLive && completeness.goLive.applies
-													? <span class="shell-setup__live">Go-live</span>
-													: null}
-											</a>
-										)}
-								</li>
-							))}
-						</ul>
-					)
-					: null}
 			</div>
 		);
 	};
@@ -486,7 +437,18 @@ export default function UserActions(
 				<NavIcon name="chevron" class="shell-account__acting-chevron" />
 			</button>
 
-			{setupNudge(onNavigate)}
+			{activeSetup && setupHandle
+				? (
+					<AccountSetupNudge
+						setup={activeSetup}
+						handle={setupHandle}
+						open={checklistOpen.value}
+						onToggle={() => (checklistOpen.value = !checklistOpen.value)}
+						onNavigate={onNavigate}
+						celebrate={celebratingNow}
+					/>
+				)
+				: null}
 
 			{allowance ? <AllowanceMeter snapshot={allowance} onNavigate={onNavigate} /> : null}
 
@@ -516,7 +478,7 @@ export default function UserActions(
 				? (
 					<a
 						class="shell-menu__item"
-						href={setupStepHref("hours", setupHandle)}
+						href={setupStepHref("working_hours", setupHandle)}
 						onClick={onNavigate}
 					>
 						<span class="shell-menu__icon">
@@ -860,8 +822,9 @@ export default function UserActions(
 					label={displayName}
 					image={avatarUrl}
 					size="sm"
-					percent={completeness?.percent ?? null}
+					percent={percent}
 					presence={presence?.tone ?? null}
+					celebrate={celebratingNow}
 				/>
 			</button>
 			<Popover
@@ -889,8 +852,9 @@ export default function UserActions(
 					label={displayName}
 					image={avatarUrl}
 					size="sm"
-					percent={completeness?.percent ?? null}
+					percent={percent}
 					presence={presence?.tone ?? null}
+					celebrate={celebratingNow}
 				/>
 			</button>
 			<Drawer

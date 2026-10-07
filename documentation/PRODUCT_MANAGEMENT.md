@@ -201,6 +201,8 @@ column for them.** Their canonical definitions are the enum + doc listed:
 | Domain lifecycle           | States                                                     | Canonical home                                       |
 | :------------------------- | :--------------------------------------------------------- | :--------------------------------------------------- |
 | **KYC / KYB verification** | `unverified → pending → verified` (`rejected` / `expired`) | `finance.kyc_status` · `finance-model.md` §10        |
+| **Verification stamp** (Decision #155) | A DERIVED projection, never a stored transition: a person's `none → id_verified → vault_verified` follows their KYC status and payout readiness (a lapse moves it back down), re-derived by trigger on every KYC/payout write and on every Standing recompute; a business's or organisation's `corporate_verified` is read live from its KYB | `org.entity_standing.verification_stamp` · `org.fn_verification_stamp` · `packages/types/org/standing.ts` |
+| **Trust signals** (Decision #155) | DERIVED, not a lifecycle: earned and lost with the delivery record at each Standing recompute; at most one per dimension | `org.entity_standing.active_adornments` · `org.fn_refresh_active_adornments` |
 | **Fund state**             | `locked → pending → available`; `on_hold` (dispute)        | `finance.fund_state` · `finance-model.md` §7         |
 | **Invoice**                | `draft → issued → paid`; `overdue` / `void`                | `finance.invoices.status` · `finance-model.md` §15   |
 | **Statement**              | `draft → issued → final`                                   | `finance.statement_status` · `finance-model.md` §15  |

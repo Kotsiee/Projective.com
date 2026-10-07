@@ -1,6 +1,5 @@
 import type { JSX } from "preact";
-import { Avatar, RatingStars } from "@projective/ui/display";
-import { Icon } from "@projective/ui/icons";
+import { Avatar, RatingStars, VerificationStampBadge } from "@projective/ui/display";
 import type { PublicCallOffer } from "@projective/types/scheduling";
 // `profile-skeleton.css` is load-bearing, not cosmetic reuse: the GUEST shell keys its sub-header
 // glass underlay, hairline and elevation off the literal selector
@@ -22,6 +21,7 @@ import { availabilityAt, localTimeLabel, wallClockAt } from "../core/hours.ts";
 import { type HireProject, reviewsHref } from "../core/profile-model.ts";
 import { headerCondensed } from "@features/shell/core/migrating-header.ts";
 import { useMinuteClock } from "../hooks/useMinuteClock.ts";
+import { useTrustSignalOverride } from "../hooks/useTrustSignalOverride.ts";
 import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
 import { settingsOf } from "@projective/types/profile";
 import { personFallbackImage } from "@web/components/UserAvatar.tsx";
@@ -84,6 +84,7 @@ export default function ProfileStickyHeader(props: ProfileStickyHeaderProps): JS
 	const showClock = settingsOf(profile).showLocalTime;
 	const hours = profile.hours && profile.hours.rules.length > 0 ? profile.hours : null;
 	const now = useMinuteClock();
+	const trustOverride = useTrustSignalOverride();
 	const rating = profile.rating.asHelper ?? profile.rating.asClient;
 
 	const state = hours ? availabilityAt(hours, now.value) : null;
@@ -114,9 +115,12 @@ export default function ProfileStickyHeader(props: ProfileStickyHeaderProps): JS
 					class="pf-band__avatar"
 				/>
 				<span class="pf-band__name" title={profile.name}>{profile.name}</span>
-				{profile.verified && (
-					<Icon name="verified" size="xs" filled class="pf-band__crest" aria-hidden />
-				)}
+				<VerificationStampBadge
+					stamp={trustOverride.stamp === "auto" ? profile.verificationStamp : trustOverride.stamp}
+					size="xs"
+					mode="decorative"
+					class="pf-band__crest"
+				/>
 				<span class="pf-band__meta">
 					<span class="pf-band__handle">{profile.handle}</span>
 					<span class="pf-band__dot" aria-hidden="true">·</span>

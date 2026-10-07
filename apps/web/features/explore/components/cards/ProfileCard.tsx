@@ -103,7 +103,7 @@ export function ProfileCard(
 					/>
 					<span class="ex-pcard__name">
 						<span class="ex-pcard__nametext">{item.title}</span>
-						{item.owner.verified && <VerifiedBadge size="md" />}
+						{item.owner.verified && <VerifiedBadge size="md" kind={item.owner.kind} />}
 					</span>
 					<span class="ex-pcard__handle">{item.owner.handle}</span>
 				</div>

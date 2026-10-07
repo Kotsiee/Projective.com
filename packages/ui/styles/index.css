@@ -66,6 +66,7 @@
     --ease-exit: cubic-bezier(0.4, 0, 1, 1);
     /* Over-damped springs — critically/over-damped, NO bounce (§B.4). Used for Splitter/Drawer
 	reflow and any physics-flavoured motion; expressed as easing curves for CSS transitions. */
+    --spring-snappy: cubic-bezier(0.16, 1, 0.3, 1);
     --spring-standard: cubic-bezier(0.22, 1, 0.36, 1);
     --spring-gentle: cubic-bezier(0.33, 1, 0.68, 1);
 

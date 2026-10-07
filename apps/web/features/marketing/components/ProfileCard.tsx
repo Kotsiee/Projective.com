@@ -52,7 +52,7 @@ export function ProfileCard({ profile }: { profile: ProfileShowcase }): JSX.Elem
 					/>
 					<span class="ex-pcard__name">
 						<span class="ex-pcard__nametext">{profile.name}</span>
-						{profile.verified && <VerifiedBadge size="md" />}
+						{profile.verified && <VerifiedBadge size="md" kind={profile.kind} />}
 					</span>
 					<span class="ex-pcard__handle">{profile.handle}</span>
 				</div>

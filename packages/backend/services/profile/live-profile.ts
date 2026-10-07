@@ -23,6 +23,7 @@ import {
 	type WorkPiece,
 } from "@projective/types/profile";
 import { IntakeFieldSchema } from "@projective/types/services";
+import { rankAdornments, type VerificationStamp, VerificationStampSchema } from "@projective/types/org";
 import type { MediaRef } from "@projective/types/files";
 import type { ExploreOwner, ProjectItem } from "@projective/types/explore";
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
@@ -130,6 +131,7 @@ interface RawProfile {
 	member_since: string;
 	rating: { as_helper: RawRating; as_client: RawRating };
 	verified: boolean;
+	verification_stamp?: string;
 	hire_intake: unknown;
 	viewer_is_owner: boolean;
 	viewer_follows: boolean;
@@ -140,6 +142,7 @@ interface RawProfile {
 	completed_stages: number;
 	standing: { level: number; label: string } | null;
 	architect: boolean;
+	adornments?: unknown;
 	hours: {
 		timezone: string;
 		published: boolean;
@@ -195,6 +198,12 @@ export function bioText(bio: unknown): string {
 function num(v: number | string | null | undefined): number {
 	const n = typeof v === "string" ? Number(v) : v ?? 0;
 	return Number.isFinite(n) ? n : 0;
+}
+
+/** The stored stamp, or `none` for a value this build does not know. */
+function stampOf(raw: string | undefined): VerificationStamp {
+	const parsed = VerificationStampSchema.safeParse(raw);
+	return parsed.success ? parsed.data : "none";
 }
 
 /** The trust ladder the profile has climbed, in ladder order. */
@@ -345,6 +354,8 @@ export function mapProfileView(raw: RawProfile): ProfileView {
 		verified: !!raw.verified,
 		tier,
 		verifications,
+		verificationStamp: stampOf(raw.verification_stamp),
+		adornments: seller && Array.isArray(raw.adornments) ? rankAdornments(raw.adornments.map(String)) : [],
 		followers: num(raw.followers),
 		following: num(raw.following),
 		memberSince: raw.member_since,

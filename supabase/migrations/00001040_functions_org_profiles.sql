@@ -225,6 +225,10 @@ BEGIN
                 )
             ),
             'verified', COALESCE(f.kyc_status = 'verified'::finance.kyc_status, false),
+            'verification_stamp', COALESCE((
+                SELECT es.verification_stamp FROM org.entity_standing es
+                WHERE es.subject_type = 'freelancer'::org.standing_subject AND es.subject_id = u.user_id
+            ), 'none'),
             'hire_intake', CASE WHEN u.is_freelancer THEN COALESCE(f.hire_intake, '[]'::jsonb) ELSE '[]'::jsonb END,
             'response_minutes', NULL
         ), u.is_freelancer
@@ -270,6 +274,7 @@ BEGIN
                 'as_client', jsonb_build_object('value', 0, 'count', 0)
             ),
             'verified', false,
+            'verification_stamp', 'none',
             'hire_intake', COALESCE(t.hire_intake, '[]'::jsonb),
             'response_minutes', NULL
         )
@@ -307,6 +312,8 @@ BEGIN
                 )
             ),
             'verified', b.kyb_status = 'verified'::finance.kyc_status,
+            'verification_stamp', CASE WHEN b.kyb_status = 'verified'::finance.kyc_status
+                THEN 'corporate_verified' ELSE 'none' END,
             'hire_intake', '[]'::jsonb,
             'response_minutes', NULL
         )
@@ -341,6 +348,8 @@ BEGIN
                 'as_client', jsonb_build_object('value', 0, 'count', 0)
             ),
             'verified', o.verification_level <> 'unverified'::org.organisation_verification_level,
+            'verification_stamp', CASE WHEN o.verification_level = 'verified'::org.organisation_verification_level
+                THEN 'corporate_verified' ELSE 'none' END,
             'hire_intake', '[]'::jsonb,
             'response_minutes', NULL
         )
@@ -407,6 +416,14 @@ BEGIN
             SELECT 1 FROM org.entity_achievements ea
             WHERE ea.subject_id = v_id AND ea.achievement_code = 'architect'
         ),
+        -- Every earned trust signal a SELLER holds, unranked; the service ranks them and shows three.
+        'adornments', CASE WHEN v_seller THEN COALESCE((
+            SELECT to_jsonb(es.active_adornments)
+            FROM org.entity_standing es
+            WHERE es.subject_id = v_id
+              AND es.subject_type = CASE WHEN v_type = 'team'
+                  THEN 'team'::org.standing_subject ELSE 'freelancer'::org.standing_subject END
+        ), '[]'::jsonb) ELSE '[]'::jsonb END,
         -- The published weekly bands. A schedule nobody published is the owner's draft — visible to
         -- them (so the edit surface can round-trip it) and to nobody else.
         'hours', (

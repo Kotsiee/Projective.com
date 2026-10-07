@@ -4,6 +4,7 @@ import type { ContextRole, ContextType, UserContext } from "@projective/types/au
 import {
 	type DevProfileSetup,
 	type DevSeamState,
+	type DevVerificationStamp,
 	personaCapabilities,
 	readDevSeam,
 	subscribeDevSeam,
@@ -36,6 +37,8 @@ export interface EffectiveContext {
 	 * pip); `"auto"` — use the real read — whenever no override is active.
 	 */
 	profileSetup: DevProfileSetup;
+	/** The simulated verification stamp of the viewer's own profile; `"auto"` without an override. */
+	verificationStamp: DevVerificationStamp;
 }
 
 /**
@@ -69,6 +72,7 @@ export function useEffectiveContext(base: UserContext): ReadonlySignal<Effective
 		context: base,
 		overridden: false,
 		profileSetup: "auto",
+		verificationStamp: "auto",
 	});
 	useEffect(() => {
 		const apply = (seam: DevSeamState | null): void => {
@@ -76,6 +80,7 @@ export function useEffectiveContext(base: UserContext): ReadonlySignal<Effective
 				context: deriveEffectiveContext(base, seam),
 				overridden: seam !== null,
 				profileSetup: seam?.profileSetup ?? "auto",
+				verificationStamp: seam?.verificationStamp ?? "auto",
 			};
 		};
 		apply(readDevSeam());

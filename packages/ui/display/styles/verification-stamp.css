@@ -1,0 +1,61 @@
+.ui-stamp {
+	--ui-stamp-ink: var(--primary);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	vertical-align: middle;
+	color: var(--ui-stamp-ink);
+	border-radius: var(--radius-full);
+	line-height: 1;
+}
+
+.ui-stamp[data-stamp="vault_verified"] {
+	--ui-stamp-ink: var(--tertiary);
+}
+
+.ui-stamp[data-stamp="corporate_verified"] {
+	--ui-stamp-ink: var(--on-surface-variant);
+}
+
+.ui-stamp:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+.ui-stamp[data-celebrate="true"] {
+	animation: ui-stamp-set var(--dur-fast) var(--spring-snappy) both;
+}
+
+.ui-stamp__tip {
+	display: grid;
+	gap: var(--space-1);
+}
+
+.ui-stamp__tip-label {
+	font-weight: var(--fw-medium);
+}
+
+@keyframes ui-stamp-set {
+	from {
+		transform: scale(1.6);
+		opacity: 0;
+	}
+
+	to {
+		transform: scale(1);
+		opacity: 1;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-stamp[data-celebrate="true"] {
+		animation: none;
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .ui-stamp[data-celebrate="true"] {
+	animation: none;
+	transform: none;
+}

@@ -294,13 +294,7 @@
 	display: inline-flex;
 	align-items: center;
 	flex: 0 0 auto;
-	/* The star's fill. The crest is `filled`, so `currentColor` paints the whole seal. */
-	color: var(--primary);
-	/*
-	* The ground the check is cut out of. The glyph declares only WHICH part is the knockout; this is
-	* the call site that says what it sits on, which is what keeps the colour out of the glyph (§B.7.6).
-	*/
-	--icon-knockout: var(--on-primary);
+	--icon-knockout: var(--surface);
 	vertical-align: middle;
 }
 

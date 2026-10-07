@@ -509,6 +509,20 @@ EXECUTE ON FUNCTION org.fn_record_mastery (
     boolean
 ) TO service_role;
 
+-- Trust signals (Decision #155): derived by the platform only. The setup-progress read is the caller's
+-- own (the function refuses another person's id), so it is open to a signed-in caller alone.
+REVOKE ALL ON FUNCTION org.fn_verification_stamp (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION org.fn_refresh_verification_stamp (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION org.trg_freelancer_profiles_verification_stamp () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION org.fn_refresh_active_adornments (org.standing_subject, uuid)
+FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION org.fn_compute_profile_setup_progress (uuid) FROM PUBLIC, anon;
+
+GRANT EXECUTE ON FUNCTION org.fn_verification_stamp (uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION org.fn_refresh_verification_stamp (uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION org.fn_refresh_active_adornments (org.standing_subject, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION org.fn_compute_profile_setup_progress (uuid) TO authenticated, service_role;
+
 -- --- from 20260724113000_entitlements_allowances_enforcement.sql ---
 
 -- The pure mapping and the Standing rung stay client-callable: the rung is shown publicly on a

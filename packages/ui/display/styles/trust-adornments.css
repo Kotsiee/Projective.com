@@ -1,0 +1,35 @@
+.ui-trust {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-normal);
+	color: var(--text-secondary);
+}
+
+.ui-trust__item {
+	display: inline-flex;
+	align-items: center;
+	min-inline-size: 0;
+}
+
+.ui-trust__sep {
+	margin-inline: var(--space-1);
+	color: var(--on-surface-variant);
+}
+
+.ui-trust__signal {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	white-space: nowrap;
+	border-radius: var(--radius-sm);
+}
+
+.ui-trust__signal:focus-visible {
+	outline: none;
+	box-shadow: none;
+}

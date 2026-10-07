@@ -1,31 +1,100 @@
-import type { AccountSetup, ProfileSetupStepId } from "@projective/types/user";
-import { GO_LIVE_MIN_SKILLS } from "@projective/types/user";
+import type { AccountSetup } from "@projective/types/user";
+import {
+	type ProfileSetupProgress,
+	SETUP_STEP_ORDER,
+	type SetupAction,
+	type SetupStepKey,
+	type VerificationStamp,
+} from "@projective/types/org";
 import type { ProfileHours } from "@projective/types/profile";
-import type { DevProfileSetup } from "@web/utils/dev-seam.ts";
+import type { DevProfileSetup, DevVerificationStamp } from "@web/utils/dev-seam.ts";
 import { availabilityAt, hoursSummary } from "@web/features/profile/core/hours.ts";
 
 /**
- * account-setup — the account popover's view of the PERSON's own profile: where each setup step is
- * edited, the presence pip derived from published working hours, and the dev simulation of both.
+ * account-setup — the account popover's view of the PERSON's own profile: where each setup step and
+ * the suggested next action are completed, the presence pip derived from published working hours,
+ * and the dev simulation of both.
  *
- * The completeness RULE is not here; it is `calculateProfileCompleteness` in `@projective/types/user`,
- * shared with the server and its tests. This module only routes the rule's steps and derives presence.
+ * The completeness RULE is not here; it is `org.fn_compute_profile_setup_progress` (Decision #155).
+ * This module only names and routes what that function answered.
  */
 
-// #region Step routes
-/**
- * Where a checklist step is completed. Identity steps open the profile editor; payout opens
- * Verification & payouts; hours open the Availability editor. `handle` is the PERSON's (no `@`).
- */
-export function setupStepHref(step: ProfileSetupStepId, handle: string): string {
+// #region Step + action routes
+/** The checklist's line for each setup step, read the same whether it is done or pending. */
+export const SETUP_STEP_LABEL: Readonly<Record<SetupStepKey, string>> = {
+	account: "Complete your account details",
+	email_verified: "Confirm your email address",
+	skills: "Choose your skills or interests",
+	avatar: "Add a profile photo",
+	profile_copy: "Write your headline and story",
+	working_hours: "Publish your working hours",
+};
+
+/** The call to action for each suggested next step. */
+export const SETUP_ACTION_LABEL: Readonly<Record<SetupAction, string>> = {
+	verify_email: "Confirm your email",
+	verify_identity: "Verify your identity",
+	add_payout: "Add a payout account",
+	add_photo: "Add a profile photo",
+	write_profile: "Write your headline and story",
+	publish_hours: "Publish your working hours",
+	add_skills: "Choose your skills",
+	complete_account: "Finish your account details",
+	become_partner: "Become a Freelancer",
+};
+
+/** Why the earning-gate actions come first — said once, beside the call to action. */
+export const SETUP_ACTION_REASON: Readonly<Partial<Record<SetupAction, string>>> = {
+	verify_identity: "Clients can hire you once your identity is verified.",
+	add_payout: "A verified payout account lets escrow be released to you.",
+	become_partner: "Offer your skills alongside hiring.",
+};
+
+/** Where a checklist step is completed. `handle` is the PERSON's (no `@`). */
+export function setupStepHref(step: SetupStepKey, handle: string): string {
 	switch (step) {
-		case "payout":
-			return "/settings/verification";
-		case "hours":
+		case "email_verified":
+			return "/settings/account#emails";
+		case "working_hours":
 			return `/${handle}/edit/availability`;
 		default:
 			return `/${handle}/edit`;
 	}
+}
+
+/** Where a suggested next action is taken. `handle` is the PERSON's (no `@`). */
+export function setupActionHref(action: SetupAction, handle: string): string {
+	switch (action) {
+		case "verify_email":
+			return "/settings/account#emails";
+		case "verify_identity":
+			return "/settings/verification#identity-check";
+		case "add_payout":
+			return "/settings/verification#payouts";
+		case "publish_hours":
+			return `/${handle}/edit/availability`;
+		case "become_partner":
+			return "/become-partner";
+		default:
+			return `/${handle}/edit`;
+	}
+}
+
+/** One checklist line: the step, its label and whether it is done, in checklist order. */
+export interface SetupChecklistLine {
+	key: SetupStepKey;
+	label: string;
+	done: boolean;
+}
+
+/** The whole checklist for a progress answer, done and pending, in checklist order. */
+export function setupChecklist(progress: ProfileSetupProgress): SetupChecklistLine[] {
+	const done = new Set(progress.completedKeys);
+	return SETUP_STEP_ORDER.map((key) => ({
+		key,
+		label: SETUP_STEP_LABEL[key],
+		done: done.has(key),
+	}));
 }
 // #endregion
 
@@ -98,29 +167,63 @@ function weekdayHours(): ProfileHours {
 }
 
 /**
- * The {@link AccountSetup} a Dev Context Switcher `profileSetup` position stands for. It substitutes
- * FACTS only — the shipping completeness rule still decides the percentage — and keeps the real
- * handle and standing where they are known, so links in the simulation still go somewhere real.
+ * What `org.fn_compute_profile_setup_progress` answers at each simulated position. Fixed answers,
+ * not a re-derivation: the weights live in SQL alone.
+ */
+function simulatedProgress(
+	position: Exclude<DevProfileSetup, "auto">,
+	seller: boolean,
+): ProfileSetupProgress {
+	switch (position) {
+		case "new":
+			return {
+				score: 40,
+				completedKeys: ["account", "email_verified", "skills"],
+				nextSuggestedAction: seller ? "verify_identity" : "add_photo",
+			};
+		case "live":
+			return {
+				score: 80,
+				completedKeys: ["account", "email_verified", "skills", "avatar", "profile_copy"],
+				nextSuggestedAction: seller ? "add_payout" : "publish_hours",
+			};
+		case "complete":
+			return {
+				score: 100,
+				completedKeys: [...SETUP_STEP_ORDER],
+				nextSuggestedAction: seller ? null : "become_partner",
+			};
+	}
+}
+
+/**
+ * The {@link AccountSetup} the Dev Context Switcher's `profileSetup` and `verificationStamp`
+ * positions stand for, over the real read (or a bare base when it has not landed). Keeps the real
+ * handle and standing so links in the simulation still go somewhere real.
  */
 export function simulatedSetup(
-	position: Exclude<DevProfileSetup, "auto">,
+	real: AccountSetup | null,
+	position: DevProfileSetup,
+	stamp: DevVerificationStamp,
 	base: { handle: string; seller: boolean; standing: AccountSetup["standing"] },
-): AccountSetup {
-	const identity = position !== "new";
+): AccountSetup | null {
+	if (position === "auto" && stamp === "auto") {
+		return real ? { ...real, seller: base.seller } : null;
+	}
 	const finished = position === "complete";
+	const progress = position !== "auto"
+		? simulatedProgress(position, base.seller)
+		: real?.progress ?? simulatedProgress("new", base.seller);
+	const verificationStamp: VerificationStamp = stamp !== "auto"
+		? stamp
+		: real?.verificationStamp ?? "none";
 	return {
-		handle: base.handle,
-		facts: {
-			seller: base.seller,
-			hasPhoto: identity,
-			hasHeadline: identity,
-			hasStory: identity,
-			skillCount: identity ? GO_LIVE_MIN_SKILLS : 0,
-			payoutReady: finished,
-			hoursPublished: finished,
-		},
-		hours: finished ? weekdayHours() : null,
-		standing: base.standing ?? (base.seller ? { level: 1, label: "New" } : null),
+		handle: real?.handle ?? base.handle,
+		seller: base.seller,
+		progress,
+		verificationStamp,
+		hours: position === "auto" ? real?.hours ?? null : finished ? weekdayHours() : null,
+		standing: real?.standing ?? base.standing ?? (base.seller ? { level: 1, label: "New" } : null),
 	};
 }
 // #endregion

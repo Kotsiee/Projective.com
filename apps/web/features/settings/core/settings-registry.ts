@@ -503,7 +503,7 @@ export const SETTINGS_REGISTRY: readonly SettingsRegistryEntry[] = [
 		section: "verification",
 		label: "Identity check",
 		description: "Level 2 verification to earn on Projective",
-		icon: "verified",
+		icon: "seal-check",
 		keywords: ["kyc", "identity", "id check", "passport", "level 2"],
 		surface: "status-escalate",
 		gate: isSeller,

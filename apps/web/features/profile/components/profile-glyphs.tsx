@@ -1,5 +1,5 @@
 import type { JSX, VNode } from "preact";
-import type { ProfileKind, ProfileTab, VerificationTier } from "../types/profile-types.ts";
+import type { ProfileKind, ProfileTab } from "../types/profile-types.ts";
 import { IconShell } from "@projective/ui/icons";
 
 /**
@@ -11,10 +11,10 @@ import { IconShell } from "@projective/ui/icons";
 
 // #region Glyph names
 /**
- * Note what is NOT here: `verified`. The trust crest is shared vocabulary — the profile tier badges,
- * the sticky header, the notable-client cards and the projects view all make the same claim about an
- * entity — so it belongs to the registry (`@projective/ui/icons`, `<Icon name="verified" />`) and not
- * to this feature. It used to live in both, drawn from two numerically different path datasets, which
+ * Note what is NOT here: the verification crests. They are shared vocabulary — the profile hero, the
+ * sticky header, the notable-client cards and the projects view all make the same claims about an
+ * entity — so they belong to the registry (`@projective/ui/icons`: `seal-check` · `shield-check` ·
+ * `keystone-check`, rendered through `VerificationStampBadge`) and not to this feature. It used to live in both, drawn from two numerically different path datasets, which
  * meant the same assertion rendered as two subtly different marks depending on which surface made it.
  * A glyph stays here only when it is genuinely the profile domain's own (§B.7.1).
  */
@@ -285,15 +285,5 @@ export const ENTITY_META: Record<ProfileKind, { label: string; glyph: ProfileGly
 	team: { label: "Team", glyph: "entity-team" },
 	business: { label: "Business", glyph: "entity-business" },
 	organisation: { label: "Organisation", glyph: "entity-organisation" },
-};
-// #endregion
-
-// #region Verification tiers
-/** Presentation metadata for a verification tier (badge label + full title). */
-export const TIER_META: Record<VerificationTier, { label: string; title: string }> = {
-	L1: { label: "L1", title: "L1 · Basic — email & identity confirmed" },
-	L2: { label: "L2", title: "L2 · Verified — ID & payment verified" },
-	L3: { label: "L3", title: "L3 · Business / KYB verified" },
-	architect: { label: "Architect", title: "Architect Tier — top-trust operator" },
 };
 // #endregion

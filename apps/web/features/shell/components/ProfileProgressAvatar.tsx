@@ -28,6 +28,8 @@ export interface ProfileProgressAvatarProps {
 	percent: number | null;
 	/** The derived presence pip; `null` draws none (no published hours, nothing to say). */
 	presence: PresenceTone | null;
+	/** Plays the one-shot milestone stamp on the ring (Decision #155). */
+	celebrate?: boolean;
 }
 
 /**
@@ -42,7 +44,7 @@ export interface ProfileProgressAvatarProps {
  * `progressbar` — because a second progressbar inside a button announces twice and nests badly.
  */
 export function ProfileProgressAvatar(props: ProfileProgressAvatarProps): JSX.Element {
-	const { label, image, size, percent, presence } = props;
+	const { label, image, size, percent, presence, celebrate = false } = props;
 	const { box, stroke } = RING[size];
 	const r = (box - stroke) / 2;
 	const pct = percent === null ? null : Math.min(100, Math.max(0, percent));
@@ -51,6 +53,7 @@ export function ProfileProgressAvatar(props: ProfileProgressAvatarProps): JSX.El
 		<span
 			class="shell-ring"
 			data-size={size}
+			data-celebrate={celebrate ? "true" : undefined}
 			data-ring={pct === null
 				? undefined
 				: pct >= 100

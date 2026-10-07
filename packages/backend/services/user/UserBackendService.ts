@@ -1,10 +1,5 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
-import {
-	getAnonClient,
-	getUserClient,
-	isAuthBackendLive,
-	isFinanceBackendLive,
-} from "../../core/supabase.ts";
+import { getAnonClient, getUserClient, isAuthBackendLive } from "../../core/supabase.ts";
 import type { UserContext } from "@projective/types/auth";
 import {
 	type AccountSetup,
@@ -21,14 +16,15 @@ import {
 	DEFAULT_USER_LOCALE,
 	type DisplayPreferences,
 	type LayoutDirection,
+	type ProfileSetupProgress,
 	type UserPreferencesUpdate,
 } from "@projective/types/org";
 import { toDisplayCurrency } from "@projective/types/finance";
 import { fetchPartyCards } from "../profile/party-cards.ts";
 import { fetchProfileView } from "../profile/live-profile.ts";
-import { myVerificationStatus } from "../finance/live-payments.ts";
 import { actorFrom, canReadLive, type ReadActor } from "../read-actor.ts";
 import { freelancerUnlockFailure } from "./freelancer-unlock.ts";
+import { fetchSetupProgress, SetupProgressReadError } from "./setup-progress.ts";
 
 /**
  * UserBackendService — the FAT server-side service for the **acting user's own account**.
@@ -176,19 +172,17 @@ export class UserBackendService {
 	}
 
 	/**
-	 * How far the acting PERSON's own profile is set up — the facts behind the popover's completion
-	 * ring, plus the published hours its presence pip is derived from and the earned Standing rung.
+	 * How far the acting PERSON's own profile is set up — the popover's ring and next step, plus the
+	 * verification stamp, the published hours its presence pip is derived from and the earned rung.
 	 *
-	 * Composed from the reads every other surface already trusts, never from a parallel query: the
-	 * person's handle from their party card (so a session acting as a team still reads the PERSON, not
-	 * the team's slug), the profile itself from `org.get_profile_view` (photo · headline · story ·
-	 * skills · published hours · standing — the same document `/[handle]` renders), and payout
-	 * readiness from `finance.my_verification_status`.
+	 * Composed from the reads every other surface already trusts: the person's handle from their party
+	 * card (so a session acting as a team still reads the PERSON, not the team's slug), the progress
+	 * from `org.fn_compute_profile_setup_progress` ({@link getSetupProgress}'s read), and the stamp,
+	 * hours and standing from `org.get_profile_view` — the same document `/[handle]` renders.
 	 *
 	 * Chrome-safe like {@link me}: when the read cannot be made (stub mode, no token, an unreachable
 	 * database) it answers `setup: null` with a 200, and the popover draws no ring rather than a ring at
-	 * 0%. A payout read that is not connected leaves that one fact `null`, which drops the step from the
-	 * count instead of reporting it missing. Only a genuine guest is refused (401).
+	 * 0%. Only a genuine guest is refused (401).
 	 */
 	static async setup(
 		input: { context: UserContext; accessToken?: string },
@@ -205,25 +199,18 @@ export class UserBackendService {
 			const handle = cards.get(context.userId)?.username?.trim();
 			if (!handle) return ok({ setup: null });
 
-			const [profile, verification] = await Promise.all([
+			const [profile, progress] = await Promise.all([
 				fetchProfileView(handle, actor),
-				isFinanceBackendLive() ? myVerificationStatus(actor.accessToken) : Promise.resolve(null),
+				UserBackendService.getSetupProgress(actor),
 			]);
-			if (!profile) return ok({ setup: null });
+			if (!profile || !progress.ok || !progress.data) return ok({ setup: null });
 
-			const seller = profile.kind === "freelancer";
 			const hoursPublished = profile.hasAvailability && profile.hours !== null;
 			const setup: AccountSetup = {
 				handle,
-				facts: {
-					seller,
-					hasPhoto: profile.avatar.length > 0,
-					hasHeadline: profile.headline.trim().length > 0,
-					hasStory: profile.story.trim().length > 0,
-					skillCount: profile.skills.length,
-					payoutReady: verification?.ok ? verification.value.payoutReady : null,
-					hoursPublished,
-				},
+				seller: profile.kind === "freelancer",
+				progress: progress.data,
+				verificationStamp: profile.verificationStamp,
 				// The owner's read can see draft hours; the pip may only ever say what a visitor sees.
 				hours: hoursPublished ? profile.hours : null,
 				standing: profile.stats.standing,
@@ -231,6 +218,30 @@ export class UserBackendService {
 			return ok({ setup });
 		} catch {
 			return ok({ setup: null });
+		}
+	}
+
+	/**
+	 * The acting person's own setup progress — score, completed steps and the next suggested action —
+	 * as `org.fn_compute_profile_setup_progress` computes it (Decision #155). Takes the
+	 * {@link ReadActor}, not a bare id: the function runs in the caller's JWT and refuses anyone else's.
+	 * `401` for a guest, `404` before onboarding has created a profile, `503` when the database cannot
+	 * answer (the reason travels in `details`).
+	 */
+	static async getSetupProgress(actor: ReadActor): Promise<ServiceResult<ProfileSetupProgress>> {
+		if (!actor.userId) return fail(401, { message: "Sign in to see your setup progress." });
+		if (!isAuthBackendLive()) return fail(503, { message: "Setup progress is unavailable right now." });
+		if (!canReadLive(actor)) return fail(401, { message: "Sign in to see your setup progress." });
+		try {
+			const progress = await fetchSetupProgress(getUserClient(actor.accessToken), actor.userId);
+			if (!progress) return fail(404, { message: "Finish signing up to see your setup progress." });
+			return ok(progress);
+		} catch (error) {
+			const code = error instanceof SetupProgressReadError ? error.code : null;
+			return fail(code === "42501" ? 403 : 503, {
+				message: "Setup progress is unavailable right now.",
+				details: { reason: error instanceof Error ? error.message : String(error), code },
+			});
 		}
 	}
 

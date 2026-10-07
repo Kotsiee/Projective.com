@@ -25,6 +25,12 @@ import type {
 } from "@projective/types/explore";
 import { productMediaAspect } from "@projective/types/explore";
 import {
+	type AdornmentSlug,
+	AdornmentSlugSchema,
+	rankAdornments,
+	type VerificationStamp,
+} from "@projective/types/org";
+import {
 	ARTICLES,
 	BUSINESSES,
 	FREELANCERS,
@@ -348,6 +354,20 @@ function tierFor(kind: ProfileKind, verified: boolean, seed: number): Verificati
 	return "L1";
 }
 
+/** The crest, consistent with {@link tierFor}: an entity is corporate, a verified person half payout. */
+function stampFor(kind: ProfileKind, verified: boolean, seed: number): VerificationStamp {
+	if (kind === "business" || kind === "organisation") return "corporate_verified";
+	if (!verified) return "none";
+	return seed % 2 === 0 ? "vault_verified" : "id_verified";
+}
+
+/** A deterministic spread of earned signals for a seller, ranked as the live read ranks them. */
+function adornmentsFor(kind: ProfileKind, seed: number): AdornmentSlug[] {
+	if (kind !== "freelancer" && kind !== "team") return [];
+	const pool = AdornmentSlugSchema.options;
+	return rankAdornments([0, 5, 11].map((step) => pool[(seed + step * 7) % pool.length]));
+}
+
 /**
  * A fuller multi-sentence story derived from a one-line summary + headline. A profile with no
  * headline yet gets an intro that does not mention one — "I'm Ivy, ." is what interpolating an empty
@@ -564,6 +584,8 @@ export function findProfile(handle: string): ProfileView | null {
 		verified,
 		tier,
 		verifications: tiersUpTo(tier),
+		verificationStamp: stampFor(kind, verified, seed),
+		adornments: adornmentsFor(kind, seed),
 		followers: 120 + (seed % 900),
 		following: 40 + (seed % 300),
 		memberSince: row?.createdAt ?? "2026-01-15",

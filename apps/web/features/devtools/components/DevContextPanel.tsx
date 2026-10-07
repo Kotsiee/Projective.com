@@ -20,6 +20,8 @@ import {
 	DEV_SETTINGS_ATTENTIONS,
 	DEV_STAGE_ASSIGNMENTS,
 	DEV_SUBMISSION_STATES,
+	DEV_TRUST_ADORNMENTS,
+	DEV_VERIFICATION_STAMPS,
 	DEV_WALLET_AURORAS,
 	type DevOption,
 	devOverrides,
@@ -460,6 +462,26 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.profileSetup}
 						disabled={!o.enabled}
 						onChange={(profileSetup) => patchDevContext({ profileSetup })}
+					/>
+				</Field>
+
+				<Field label="Verification stamp" hint="crest · celebration">
+					<Segment
+						name="Verification stamp"
+						options={DEV_VERIFICATION_STAMPS}
+						value={o.verificationStamp}
+						disabled={!o.enabled}
+						onChange={(verificationStamp) => patchDevContext({ verificationStamp })}
+					/>
+				</Field>
+
+				<Field label="Trust signals" hint="profile hero">
+					<Segment
+						name="Trust signals"
+						options={DEV_TRUST_ADORNMENTS}
+						value={o.trustAdornments}
+						disabled={!o.enabled}
+						onChange={(trustAdornments) => patchDevContext({ trustAdornments })}
 					/>
 				</Field>
 

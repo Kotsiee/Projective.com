@@ -80,3 +80,12 @@ CREATE TRIGGER trg_basket_items_derived
         'purchased_at', 'discount_amount_minor', 'discount_code', 'original_price_minor'
     );
 -- #endregion
+
+-- #region Verification stamp (Decision #155)
+-- A person's identity and payout caches move their verification stamp in the same statement, so the
+-- crest a profile shows can never lag the evidence behind it.
+CREATE TRIGGER trg_freelancer_profiles_verification_stamp
+    AFTER INSERT OR UPDATE OF kyc_status, payout_ready ON org.freelancer_profiles
+    FOR EACH ROW
+    EXECUTE FUNCTION org.trg_freelancer_profiles_verification_stamp ();
+-- #endregion

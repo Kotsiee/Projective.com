@@ -39,6 +39,8 @@ import {
 	type DevSettingsAttention,
 	type DevStageAssignment,
 	type DevSubmissionState,
+	type DevTrustAdornments,
+	type DevVerificationStamp,
 	type DevWalletAurora,
 	personaCapabilities,
 } from "@web/utils/dev-seam.ts";
@@ -70,6 +72,8 @@ export type {
 	DevSettingsAttention,
 	DevStageAssignment,
 	DevSubmissionState,
+	DevTrustAdornments,
+	DevVerificationStamp,
 	DevWalletAurora,
 };
 
@@ -171,8 +175,8 @@ export interface DevOverrides {
 	layoutDirection: DevLayoutDirection;
 	/**
 	 * Simulated setup position of the viewer's own profile — the header account popover's completion
-	 * ring, go-live nudge and presence pip. Substitutes the FACTS the shipping completeness rule runs
-	 * on, so the rule itself is what gets exercised; `auto` defers to the real `GET /api/user/setup`.
+	 * ring, next-step call to action and presence pip. Substitutes what the SQL completeness rule would
+	 * answer (Decision #155); `auto` defers to the real `GET /api/user/setup`.
 	 */
 	profileSetup: DevProfileSetup;
 	/**
@@ -195,6 +199,14 @@ export interface DevOverrides {
 	 * server facts no control can reach without spending real proposals.
 	 */
 	proposalAllowance: DevProposalAllowance;
+	/**
+	 * The verification stamp the account popover and the profile hero draw (Decision #155). Raising it
+	 * fires the milestone celebration, so the toast and the stamp animation are reachable without a
+	 * provider webhook.
+	 */
+	verificationStamp: DevVerificationStamp;
+	/** The earned trust signals the profile hero lists (Decision #155): stored, none, first-tier or top-tier. */
+	trustAdornments: DevTrustAdornments;
 }
 
 /** Selectable option metadata for the switcher UI. */
@@ -232,6 +244,8 @@ export const DEV_DEFAULTS: DevOverrides = {
 	walletAurora: "auto",
 	settingsAttention: "auto",
 	proposalAllowance: "auto",
+	verificationStamp: "auto",
+	trustAdornments: "auto",
 };
 
 /** Account-type options in display order. */
@@ -350,8 +364,8 @@ export const DEV_LAYOUT_DIRECTIONS: ReadonlyArray<DevOption<DevLayoutDirection>>
 
 /**
  * Profile-setup options in display order (the account popover's ring, nudge and pip). `Auto` defers
- * to the real read; `Live` is the value worth having — go-live met but not 100%, the one state where
- * the nudge's copy changes from "to go live" to "left".
+ * to the real read; `New` is the 40% a finished sign-up reads, `Complete` the one state where the
+ * percentage gives way to the verification status.
  */
 export const DEV_PROFILE_SETUPS: ReadonlyArray<DevOption<DevProfileSetup>> = [
 	{ value: "auto", label: "Auto" },
@@ -389,6 +403,26 @@ export const DEV_PROPOSAL_ALLOWANCES: ReadonlyArray<DevOption<DevProposalAllowan
 	{ value: "paced_soft", label: "Paced (unenforced)" },
 	{ value: "weekly", label: "Week spent" },
 	{ value: "team_small", label: "Team < 2" },
+];
+
+/**
+ * Verification-stamp options in display order. Stepping `None` → `Payout` is the value worth having:
+ * it fires the milestone celebration, which otherwise needs a KYC and a payout webhook.
+ */
+export const DEV_VERIFICATION_STAMPS: ReadonlyArray<DevOption<DevVerificationStamp>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "none", label: "None" },
+	{ value: "id_verified", label: "Identity" },
+	{ value: "vault_verified", label: "Payout" },
+	{ value: "corporate_verified", label: "Corporate" },
+];
+
+/** Trust-signal options in display order (the profile hero's inline line). */
+export const DEV_TRUST_ADORNMENTS: ReadonlyArray<DevOption<DevTrustAdornments>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "none", label: "None" },
+	{ value: "earned", label: "Earned" },
+	{ value: "top", label: "Top tier" },
 ];
 
 // #endregion
@@ -467,6 +501,11 @@ function reflect(next: DevOverrides): void {
 		if (next.proposalAllowance !== "auto") {
 			root.dataset.devProposalAllowance = next.proposalAllowance;
 		} else delete root.dataset.devProposalAllowance;
+		if (next.verificationStamp !== "auto") {
+			root.dataset.devVerificationStamp = next.verificationStamp;
+		} else delete root.dataset.devVerificationStamp;
+		if (next.trustAdornments !== "auto") root.dataset.devTrustAdornments = next.trustAdornments;
+		else delete root.dataset.devTrustAdornments;
 		root.dataset.devDirection = next.layoutDirection;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
 		// properties everywhere mean the shell and every surface mirror to the opposite edge.
@@ -497,6 +536,8 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devWalletAurora;
 		delete root.dataset.devSettingsAttention;
 		delete root.dataset.devProposalAllowance;
+		delete root.dataset.devVerificationStamp;
+		delete root.dataset.devTrustAdornments;
 		delete root.dataset.devDirection;
 		// Restore the document's natural direction (the pref-driven default, LtR here).
 		root.removeAttribute("dir");

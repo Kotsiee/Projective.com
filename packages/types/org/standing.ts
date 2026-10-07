@@ -51,6 +51,266 @@ export const StandingLevelValue = z.number().int().min(1).max(5);
 export type StandingLevelValue = z.infer<typeof StandingLevelValue>;
 // #endregion
 
+// #region Trust signals — verification stamps
+/**
+ * The strongest verification authority behind a profile (Decision #155). A person's is stored on
+ * `org.entity_standing.verification_stamp`; a business's or organisation's `corporate_verified` is
+ * derived from its own KYB by `org.get_profile_view`.
+ */
+export const VerificationStampSchema = z.enum([
+	"none",
+	"id_verified",
+	"vault_verified",
+	"corporate_verified",
+]);
+export type VerificationStamp = z.infer<typeof VerificationStampSchema>;
+
+/** A stamp that renders a crest. */
+export type EarnedVerificationStamp = Exclude<VerificationStamp, "none">;
+
+/** The crest glyph each authority renders as (`@projective/ui/icons`). */
+export type VerificationCrestGlyph = "seal-check" | "shield-check" | "keystone-check";
+
+/** How one verification authority is shown and explained. */
+export interface VerificationStampMeta {
+	glyph: VerificationCrestGlyph;
+	/** The claim, in sentence case ("Identity verified"). */
+	label: string;
+	/** Who checked what — the tooltip's explanation. */
+	authority: string;
+}
+
+/** Every crest, keyed by stamp. The one place a stamp becomes words and a glyph. */
+export const VERIFICATION_STAMP_META: Readonly<Record<EarnedVerificationStamp, VerificationStampMeta>> = {
+	id_verified: {
+		glyph: "seal-check",
+		label: "Identity verified",
+		authority: "Government ID checked by Stripe Identity.",
+	},
+	vault_verified: {
+		glyph: "shield-check",
+		label: "Payout verified",
+		authority: "Identity checked and a verified payout account on file, so escrow can always be released to them.",
+	},
+	corporate_verified: {
+		glyph: "keystone-check",
+		label: "Corporate verified",
+		authority: "Registered business details verified (KYB) through Stripe.",
+	},
+};
+
+const STAMP_RANK: Readonly<Record<VerificationStamp, number>> = {
+	none: 0,
+	id_verified: 1,
+	vault_verified: 2,
+	corporate_verified: 3,
+};
+
+/** Orders stamps by strength: `none` < identity < payout < corporate. */
+export function stampRank(stamp: VerificationStamp): number {
+	return STAMP_RANK[stamp];
+}
+
+/**
+ * The crest a surface draws when it knows only that an owner is verified and what kind it is — an
+ * explore card, a review author, a listing's seller line. A business's or organisation's check is its
+ * KYB; anyone else's is an identity check. It never claims the payout stamp, which only the profile
+ * read (`org.get_profile_view`) can see.
+ */
+export function stampForVerifiedOwner(verified: boolean | undefined, kind: string): VerificationStamp {
+	if (!verified) return "none";
+	return kind === "business" || kind === "organisation" ? "corporate_verified" : "id_verified";
+}
+// #endregion
+
+// #region Trust signals — adornments
+/** The six dimensions an adornment is earned on. A profile holds at most one per dimension. */
+export const AdornmentDimension = z.enum([
+	"communication",
+	"turnaround",
+	"integrity",
+	"retention",
+	"sentiment",
+	"mastery",
+]);
+export type AdornmentDimension = z.infer<typeof AdornmentDimension>;
+
+/**
+ * The registered trust signals — six dimensions of three tiers. Mirrors
+ * `ck_entity_standing_active_adornments`; the thresholds live in `org.fn_refresh_active_adornments`.
+ */
+export const AdornmentSlugSchema = z.enum([
+	"quick_replies",
+	"fast_replies",
+	"instant_dispatch",
+	"on_schedule",
+	"rapid_turnaround",
+	"same_day_delivery",
+	"first_pass_approved",
+	"dispute_free",
+	"flawless_execution",
+	"repeat_favorite",
+	"high_retention",
+	"retained_partner",
+	"rated_4_8",
+	"top_reviews",
+	"100_percent_recommended",
+	"create_specialist",
+	"squad_verified",
+	"architect_tier",
+]);
+export type AdornmentSlug = z.infer<typeof AdornmentSlugSchema>;
+
+/** The registry glyph a dimension's signals render with — one per dimension, never per signal. */
+export type AdornmentGlyph = "message" | "clock" | "success" | "repeat" | "star" | "stages";
+
+/** How one trust signal is shown and explained. */
+export interface AdornmentMeta {
+	dimension: AdornmentDimension;
+	/** 1 → 3 within the dimension. */
+	tier: 1 | 2 | 3;
+	glyph: AdornmentGlyph;
+	/** The inline claim ("Fast replies"). */
+	label: string;
+	/** What earned it — the tooltip's explanation. */
+	description: string;
+}
+
+const DIMENSION_GLYPH: Readonly<Record<AdornmentDimension, AdornmentGlyph>> = {
+	communication: "message",
+	turnaround: "clock",
+	integrity: "success",
+	retention: "repeat",
+	sentiment: "star",
+	mastery: "stages",
+};
+
+function adornment(
+	dimension: AdornmentDimension,
+	tier: 1 | 2 | 3,
+	label: string,
+	description: string,
+): AdornmentMeta {
+	return { dimension, tier, glyph: DIMENSION_GLYPH[dimension], label, description };
+}
+
+/** Every trust signal, keyed by slug. */
+export const ADORNMENT_META: Readonly<Record<AdornmentSlug, AdornmentMeta>> = {
+	quick_replies: adornment("communication", 1, "Quick replies", "Usually answers a new message within 4 hours."),
+	fast_replies: adornment("communication", 2, "Fast replies", "Usually answers a new message within an hour."),
+	instant_dispatch: adornment(
+		"communication",
+		3,
+		"Replies in minutes",
+		"Usually answers a new message within 15 minutes.",
+	),
+	on_schedule: adornment("turnaround", 1, "On schedule", "Delivered the last 10 tickets on or before their due date."),
+	rapid_turnaround: adornment(
+		"turnaround",
+		2,
+		"Rapid turnaround",
+		"Accepted work arrives within 48 hours of starting, on average.",
+	),
+	same_day_delivery: adornment(
+		"turnaround",
+		3,
+		"Same-day delivery",
+		"Accepted work arrives within 24 hours of starting, on average.",
+	),
+	first_pass_approved: adornment(
+		"integrity",
+		1,
+		"First-pass approvals",
+		"10 stages approved without a revision round.",
+	),
+	dispute_free: adornment("integrity", 2, "Dispute-free", "20 deliveries in a row without a dispute."),
+	flawless_execution: adornment("integrity", 3, "Flawless record", "50 stages delivered and none disputed."),
+	repeat_favorite: adornment("retention", 1, "Hired again", "A client came back for a second engagement."),
+	high_retention: adornment(
+		"retention",
+		2,
+		"High retention",
+		"More than 40% of engagements come from returning clients.",
+	),
+	retained_partner: adornment(
+		"retention",
+		3,
+		"Long-term partner",
+		"Still delivering on a pipeline first joined more than six months ago.",
+	),
+	rated_4_8: adornment("sentiment", 1, "Rated 4.8+", "Averages 4.8 stars or more across at least 5 client reviews."),
+	top_reviews: adornment(
+		"sentiment",
+		2,
+		"Top reviews",
+		"Averages 4.95 stars or more across at least 10 client reviews.",
+	),
+	"100_percent_recommended": adornment(
+		"sentiment",
+		3,
+		"100% recommended",
+		"50 stages delivered and every review five stars.",
+	),
+	create_specialist: adornment(
+		"mastery",
+		1,
+		"Specialist",
+		"Over 60% of delivered work falls in one CREATE category.",
+	),
+	squad_verified: adornment(
+		"mastery",
+		2,
+		"Proven squad",
+		"A team with 10 or more delivered stages and an agreed payout split.",
+	),
+	architect_tier: adornment(
+		"mastery",
+		3,
+		"Architect",
+		"Leads multi-person stages and authors Marketplace stage templates.",
+	),
+};
+
+/** How many trust signals a public surface shows. */
+export const PUBLIC_ADORNMENT_LIMIT = 3;
+
+const DIMENSION_PRIORITY: readonly AdornmentDimension[] = [
+	"sentiment",
+	"integrity",
+	"turnaround",
+	"communication",
+	"retention",
+	"mastery",
+];
+
+/**
+ * The ranking rule for public display: unknown slugs dropped, one per dimension (its highest tier),
+ * then highest tier first, ties broken by what a client weighs most — reviews, integrity, turnaround,
+ * responsiveness, retention, mastery. Pure and total.
+ */
+export function rankAdornments(
+	slugs: readonly string[],
+	limit: number = PUBLIC_ADORNMENT_LIMIT,
+): AdornmentSlug[] {
+	const best = new Map<AdornmentDimension, AdornmentSlug>();
+	for (const raw of slugs) {
+		const parsed = AdornmentSlugSchema.safeParse(raw);
+		if (!parsed.success) continue;
+		const meta = ADORNMENT_META[parsed.data];
+		const held = best.get(meta.dimension);
+		if (!held || ADORNMENT_META[held].tier < meta.tier) best.set(meta.dimension, parsed.data);
+	}
+	return [...best.values()]
+		.sort((a, b) => {
+			const ma = ADORNMENT_META[a];
+			const mb = ADORNMENT_META[b];
+			if (ma.tier !== mb.tier) return mb.tier - ma.tier;
+			return DIMENSION_PRIORITY.indexOf(ma.dimension) - DIMENSION_PRIORITY.indexOf(mb.dimension);
+		})
+		.slice(0, Math.max(0, limit));
+}
+// #endregion
+
 // #region Ladder configuration
 /**
  * A row of `org.standing_levels` — the tunable ladder. Money perks live in finance
@@ -102,6 +362,10 @@ export const EntityStandingSchema = z.object({
 	penaltySeverity: z.number(),
 	/** Per-component contribution, for the "why am I this rung" surface. */
 	components: z.record(z.string(), z.number()),
+	/** The earned trust signals, at most one per dimension (`org.fn_refresh_active_adornments`). */
+	activeAdornments: z.array(AdornmentSlugSchema),
+	/** The strongest verification authority behind a person (`org.fn_verification_stamp`). */
+	verificationStamp: VerificationStampSchema,
 	levelChangedAt: z.string().nullable(),
 	computedAt: z.string(),
 	createdAt: z.string(),
@@ -215,3 +479,4 @@ export function levelForScore(
 	return resolved as StandingLevelValue;
 }
 // #endregion
+

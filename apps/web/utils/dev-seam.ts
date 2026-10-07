@@ -101,18 +101,32 @@ export type DevLayoutDirection = "ltr" | "rtl" | "auto";
 
 /**
  * The simulated setup position of the viewer's own profile — the header account popover's completion
- * ring, its go-live nudge and its presence pip. `auto` defers to the real `GET /api/user/setup` read.
- * The rest substitute the FACTS the completeness rule runs on (never a percentage), so the rule under
- * test is the shipping one:
- *  - `new` — nothing set up: no photo, story, skills, payout or hours.
- *  - `live` — the go-live baseline met (photo · headline + story · skills), payout and hours pending.
- *  - `complete` — every step done, with Mon–Fri 9:00–17:30 published hours in the browser's own zone,
- *    so the pip and its tooltip have a real schedule to derive from.
+ * ring, its next-step call to action and its presence pip. `auto` defers to the real
+ * `GET /api/user/setup` read. The rest substitute what `org.fn_compute_profile_setup_progress` would
+ * answer (Decision #155 — the rule lives in SQL, so a simulation substitutes its RESULT):
+ *  - `new` — a finished sign-up: 40%, the photo next.
+ *  - `live` — photo and story added: 80%, the working hours next.
+ *  - `complete` — 100%, with Mon–Fri 9:00–17:30 published hours in the browser's own zone, so the
+ *    pip and its tooltip have a real schedule to derive from.
  *
  * Its own axis because each value is a SERVER fact about stored profile data that no control on the
  * header can change, and a seeded persona sits at one position only.
  */
 export type DevProfileSetup = "auto" | "new" | "live" | "complete";
+
+/**
+ * The simulated verification stamp (Decision #155) — the crest in the account popover and on the
+ * profile hero, and the milestone celebration a raise fires. `auto` shows the stored stamp. Its own
+ * axis because KYC, payout and KYB outcomes are written only by provider webhooks.
+ */
+export type DevVerificationStamp = "auto" | "none" | "id_verified" | "vault_verified" | "corporate_verified";
+
+/**
+ * The simulated earned trust signals on the profile hero (Decision #155): `auto` shows the stored
+ * signals, `none` an empty record, `earned` three first-tier signals, `top` three top-tier ones. Its
+ * own axis because every signal is derived from months of delivery history.
+ */
+export type DevTrustAdornments = "auto" | "none" | "earned" | "top";
 
 /**
  * How the `/wallet` hero's live aurora is chosen. `auto` runs the shipping gates (reduced motion, data
@@ -210,6 +224,10 @@ export interface DevSeamState {
 	settingsAttention?: DevSettingsAttention;
 	/** The simulated proposal allowance. Optional like `walletAurora`; absent reads as `auto`. */
 	proposalAllowance?: DevProposalAllowance;
+	/** The simulated verification stamp. Optional like `walletAurora`; absent reads as `auto`. */
+	verificationStamp?: DevVerificationStamp;
+	/** The simulated trust signals. Optional like `walletAurora`; absent reads as `auto`. */
+	trustAdornments?: DevTrustAdornments;
 }
 // #endregion
 
@@ -309,6 +327,14 @@ const PROPOSAL_ALLOWANCES: readonly DevProposalAllowance[] = [
 	"weekly",
 	"team_small",
 ];
+const VERIFICATION_STAMPS: readonly DevVerificationStamp[] = [
+	"auto",
+	"none",
+	"id_verified",
+	"vault_verified",
+	"corporate_verified",
+];
+const TRUST_ADORNMENTS: readonly DevTrustAdornments[] = ["auto", "none", "earned", "top"];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */
 function coerce<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -355,6 +381,8 @@ export function readDevSeam(): DevSeamState | null {
 		walletAurora: coerce(ds.devWalletAurora, WALLET_AURORAS, "auto"),
 		settingsAttention: coerce(ds.devSettingsAttention, SETTINGS_ATTENTIONS, "auto"),
 		proposalAllowance: coerce(ds.devProposalAllowance, PROPOSAL_ALLOWANCES, "auto"),
+		verificationStamp: coerce(ds.devVerificationStamp, VERIFICATION_STAMPS, "auto"),
+		trustAdornments: coerce(ds.devTrustAdornments, TRUST_ADORNMENTS, "auto"),
 	};
 }
 

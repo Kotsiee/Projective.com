@@ -267,6 +267,54 @@ read helpers are granted to `authenticated`.
 > movement to reputation math. `standing_demotion_grace_days` (default 30) is reserved for the
 > anti-flapping guard on demotions.
 
+### Trust signals (`00001030` §9 — Decision #155)
+
+All `SECURITY DEFINER`, `SET search_path = ''`, revoked from `PUBLIC` · `anon` · `authenticated` and
+granted to `service_role` only. `org.fn_recompute_standing` calls the two refreshers at the end of
+every recompute (the stamp for a `freelancer` subject only), so the sweep keeps both columns current.
+
+- **`org.fn_refresh_active_adornments(subject_type, subject_id) → text[]`** — derives the earned
+  trust signals from the delivery record (thresholds in [Tables.md](Tables.md#orgentity_standing)),
+  stores the highest tier per dimension on `entity_standing.active_adornments` (only when it changed)
+  and returns them. A `user` subject is cleared and returns `{}` — buyers are not gamified.
+- **`org.fn_verification_stamp(user_id) → text`** — `STABLE`. `vault_verified` when
+  `freelancer_profiles.kyc_status = 'verified'` AND `payout_ready`; `id_verified` on KYC alone; else
+  `none` (also for a person with no seller row).
+- **`org.fn_refresh_verification_stamp(user_id) → text`** — writes that stamp onto the person's
+  `freelancer` Standing row: an `INSERT … ON CONFLICT DO UPDATE` when there is a stamp to hold (so a
+  row is never created just to say `none`), an `UPDATE` back to `none` otherwise.
+- **`org.trg_freelancer_profiles_verification_stamp() → trigger`** — attached `AFTER INSERT OR UPDATE
+  OF kyc_status, payout_ready ON org.freelancer_profiles` (00001830); calls the refresher, so the
+  crest moves in the same statement as the KYC webhook or `finance.sync_payout_account`.
+
+---
+
+## 🧭 Profile setup progress (`00001010` §2 — Decision #155)
+
+- **`org.fn_compute_profile_setup_progress(user_id uuid) → jsonb`** — `STABLE`, `SECURITY DEFINER`,
+  `SET search_path = ''`; granted to `authenticated` and `service_role`, revoked from `PUBLIC` and
+  `anon`. The ONE completeness rule (reversing Decision #149(A)'s TypeScript rule). A caller may read
+  only their own id (`42501` otherwise); the service role (no `auth.uid()`) may read anyone's. `NULL`
+  when the person has no `org.users_public` row. Answers
+  `{ score int, completed_keys text[], next_suggested_action text|null }`:
+
+  | Key              | Weight | Done when                                                                                  |
+  | :--------------- | -----: | :----------------------------------------------------------------------------------------- |
+  | `account`        |     20 | a first or last name, a date of birth, and an address on the `auth.users` identity         |
+  | `email_verified` |     10 | an `org.user_emails` row with `verified_at`                                                |
+  | `skills`         |     10 | `freelancer_profiles.skills` or `users_public.interests` non-empty                         |
+  | `avatar`         |     20 | `users_public.avatar_file_id` — an UPLOADED photo; a sign-in provider's does not count     |
+  | `profile_copy`   |     20 | a non-blank `headline` and `org.fn_bio_has_text(bio)`                                      |
+  | `working_hours`  |     20 | a published `scheduling.schedules` row (`owner_type = 'user'`) with an active band         |
+
+  The first three are what `/join` collects, so a finished sign-up reads **40**. The next action is
+  the first that applies of: `verify_email` · a seller's `verify_identity` · `add_payout` (the
+  No-Forever-Escrow earning gate) · `add_photo` · `write_profile` · `publish_hours` · `add_skills` ·
+  `complete_account` · a buyer's `become_partner`; `NULL` when nothing is left.
+- **`org.fn_bio_has_text(bio jsonb) → boolean`** — `IMMUTABLE`. Whether a story holds any text across
+  the three stored shapes (`{ text }`, a Quill Delta `{ ops }`, `{ html }`) — the SQL twin of the
+  profile service's `bioText`.
+
 ---
 
 ## 👤 The public profile (`00001040`)
@@ -310,7 +358,7 @@ so a private profile's existence is never disclosed by a different answer. The f
 | Function                             | Returns                                                                                                                                                                                                                                                                                                                  |
 | :----------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `get_profile_owner(handle)`          | `{owner_type, owner_id}` — the cheap resolution the scheduling readers use to find an owner's schedule without the whole document.                                                                                                                                                                                       |
-| `get_profile_view(handle)`           | The whole profile chrome in one call: identity, avatar and banner references, the showcase (slot order, alt, references), the context-bar facts, the metrics strip and earned Standing, the owner's presentation switches, the seller's hire intake, and the **viewer's** relationship to the profile (owner, follows). |
+| `get_profile_view(handle)`           | The whole profile chrome in one call: identity, avatar and banner references, the showcase (slot order, alt, references), the context-bar facts, the metrics strip and earned Standing, the `verification_stamp` (a person's stored stamp; a business's or organisation's `corporate_verified` derived from its own KYB; a team `none`) and a seller's unranked `adornments` (always `[]` for a buyer, business or organisation — the service ranks and caps them), the owner's presentation switches, the seller's hire intake, and the **viewer's** relationship to the profile (owner, follows). |
 | `get_profile_experience(handle)`     | Career, education and certifications (individuals only).                                                                                                                                                                                                                                                                 |
 | `get_profile_reviews(handle, limit)` | The latest reviews of the profile (default 60), each with its author's card.                                                                                                                                                                                                                                              |
 | `get_profile_roster(handle)`         | A team's, business's or organisation's members. A team/business member's `role` label is their `title`, else the NAME of the role row they hold (was `initcap(role)`), ordered by preset rank then join date.                                                                                                                  |

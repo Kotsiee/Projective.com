@@ -444,9 +444,10 @@ ownership from the live read's `viewer.isOwner`.
 `@projective/types/files`), then `ProfileBackendService` / `MediaBackendService`.
 
 The account popover's own reads sit under `/api/user/*`: `GET /api/user/me` (identity) and
-`GET /api/user/setup` (the PERSON's profile-setup facts, published hours and Standing — composed
-from `org.get_party_cards`, `org.get_profile_view` and `finance.my_verification_status`; `setup:
-null` when the read cannot be made, 401 only for a guest; Decision #149), both through
+`GET /api/user/setup` (the PERSON's setup progress — score, completed steps and the next suggested
+action, computed by `org.fn_compute_profile_setup_progress` — with the verification stamp, published
+hours and Standing, composed from `org.get_party_cards` and `org.get_profile_view`; `setup: null`
+when the read cannot be made, 401 only for a guest; Decisions #149 / #155), both through
 `UserBackendService`. `GET /api/user/allowance` (`?team=<uuid>` for a team's pool, `?as=self` for the
 person's own in a team context) is the proposal allowance — weekly units, the anti-burst buffer, the
 next drip and whether an application would be accepted (`ProposalAllowanceStatus`) — through

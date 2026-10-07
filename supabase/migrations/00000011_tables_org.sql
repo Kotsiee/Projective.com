@@ -825,10 +825,31 @@ CREATE TABLE org.entity_standing (
     penalty_severity numeric(6, 2) NOT NULL DEFAULT 0,
     -- Per-component contribution, for the "why am I this rung" profile surface.
     components jsonb NOT NULL DEFAULT '{}'::jsonb,
+    -- The earned trust signals (org.fn_refresh_active_adornments): at most one slug per dimension, the
+    -- highest tier the record qualifies for. Ranking and the public cap of three are applied by the
+    -- profile read (`rankAdornments`, @projective/types/org), not stored.
+    active_adornments text[] NOT NULL DEFAULT '{}'::text[],
+    -- The strongest verification authority behind a PERSON (org.fn_verification_stamp), kept in step by
+    -- trg_freelancer_profiles_verification_stamp. `corporate_verified` belongs to a business profile,
+    -- which has no Standing row: org.get_profile_view derives it there from the business's own KYB.
+    verification_stamp text NOT NULL DEFAULT 'none',
     level_changed_at timestamptz,
     computed_at timestamptz NOT NULL DEFAULT now(),
     created_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT uq_entity_standing UNIQUE (subject_type, subject_id)
+    CONSTRAINT uq_entity_standing UNIQUE (subject_type, subject_id),
+    CONSTRAINT ck_entity_standing_verification_stamp CHECK (
+        verification_stamp IN ('none', 'id_verified', 'vault_verified', 'corporate_verified')
+    ),
+    CONSTRAINT ck_entity_standing_active_adornments CHECK (
+        active_adornments <@ ARRAY[
+            'quick_replies', 'fast_replies', 'instant_dispatch',
+            'on_schedule', 'rapid_turnaround', 'same_day_delivery',
+            'first_pass_approved', 'dispute_free', 'flawless_execution',
+            'repeat_favorite', 'high_retention', 'retained_partner',
+            'rated_4_8', 'top_reviews', '100_percent_recommended',
+            'create_specialist', 'squad_verified', 'architect_tier'
+        ]::text[]
+    )
 );
 
 CREATE TABLE org.standing_events (

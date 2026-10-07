@@ -454,7 +454,19 @@
     min-inline-size: 0;
 }
 
+.shell-account__nameline {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-inline-size: 0;
+}
+
+.shell-account__crest {
+    --icon-knockout: var(--surface);
+}
+
 .shell-account__name {
+    min-inline-size: 0;
     overflow: hidden;
     font-size: var(--text-md);
     font-weight: var(--fw-semibold);
@@ -596,14 +608,38 @@
     --ring-track: var(--outline);
 }
 
+.shell-ring[data-celebrate="true"] {
+    animation: shell-ring-stamp var(--dur-fast) var(--spring-snappy) both;
+}
+
+@keyframes shell-ring-stamp {
+    from {
+        transform: scale(1.15);
+    }
+
+    to {
+        transform: scale(1);
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .shell-ring__arc {
         transition: none;
+    }
+
+    .shell-ring[data-celebrate="true"] {
+        animation: none;
+        transform: none;
     }
 }
 
 :root[data-motion="reduced"] .shell-ring__arc {
     transition: none;
+}
+
+:root[data-motion="reduced"] .shell-ring[data-celebrate="true"] {
+    animation: none;
+    transform: none;
 }
 /* #endregion */
 
@@ -805,11 +841,33 @@ a.shell-setup__step:hover {
     box-shadow: inset 0 0 0 var(--space-px) var(--outline);
 }
 
-/* Which steps make up the go-live baseline — inline secondary text, not a tag (§B.11). */
-.shell-setup__live {
-    margin-inline-start: auto;
-    font-size: var(--text-xs);
+.shell-setup__status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    color: var(--on-surface);
+    --icon-knockout: var(--surface);
+}
+
+.shell-setup__next {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding-block: var(--space-1) var(--space-2);
+}
+
+.shell-setup__reason {
+    margin: 0;
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug);
     color: var(--text-secondary);
+}
+
+.shell-setup__cta {
+    text-decoration: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

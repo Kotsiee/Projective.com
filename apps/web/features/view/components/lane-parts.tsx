@@ -1,7 +1,8 @@
 import type { JSX, RefObject } from "preact";
 import { Popover } from "@projective/ui/feedback";
-import { Avatar } from "@projective/ui/display";
+import { Avatar, VerificationStampBadge } from "@projective/ui/display";
 import { MoneyView } from "@projective/ui/display/money";
+import { stampForVerifiedOwner } from "@projective/types/org";
 import { Icon, type IconName } from "@projective/ui/icons";
 import { StatusChip } from "@features/explore/components/StatusChip.tsx";
 import type { CardSignal } from "@features/explore/core/card-signals.ts";
@@ -77,15 +78,11 @@ export function LaneIdentity(
 				<span class="evp-lane__identity">
 					<span class="evp-lane__name">
 						{item.owner.name}
-						{item.owner.verified && (
-							<Icon
-								name="verified"
-								size="sm"
-								filled
-								class="evp-lane__crest"
-								aria-label="Verified"
-							/>
-						)}
+						<VerificationStampBadge
+							stamp={stampForVerifiedOwner(item.owner.verified, item.owner.kind)}
+							size="sm"
+							class="evp-lane__crest"
+						/>
 					</span>
 					{badges.length > 0 && (
 						<span class="evp-lane__badges">

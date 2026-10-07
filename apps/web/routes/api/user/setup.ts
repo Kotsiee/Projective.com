@@ -5,8 +5,9 @@ import { UserBackendService } from "@server/services/user/UserBackendService.ts"
 
 /**
  * `GET /api/user/setup` — how far the acting person's own profile is set up (the header account
- * popover's completion ring + go-live nudge), with the published hours its presence pip derives from
- * and the earned Standing rung.
+ * popover's completion ring and next-step call to action, computed by
+ * `org.fn_compute_profile_setup_progress`), with the verification stamp, the published hours its
+ * presence pip derives from and the earned Standing rung.
  *
  * Thin by contract, and shaped exactly like `GET /api/user/me`: resolve the chrome context and the
  * access token, delegate to the fat {@link UserBackendService.setup}, map the result. Self-authorising

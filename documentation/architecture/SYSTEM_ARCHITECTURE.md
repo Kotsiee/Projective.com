@@ -1534,13 +1534,28 @@ the command palette.
   display name, read through `org.get_acting_context_details` (which answers only for an entity the
   caller holds an active seat in — an RLS read could not see `org.business_profiles`, which has no
   client SELECT policy, so a business showed its slug; Decision #150), falling back to its slug. A second read, `GET /api/user/setup` → `UserBackendService.setup`, returns the
-  PERSON's profile-setup FACTS (`AccountSetup`: photo · headline · story · skill count · payout
-  readiness · published hours), the published working hours and the Standing rung, composed from
-  the reads every other surface trusts (`org.get_party_cards` → `org.get_profile_view` →
-  `finance.my_verification_status`). It never ships a percentage: the one rule,
-  `calculateProfileCompleteness`, runs in the island (and in its unit test), and a fact the server
-  cannot check (finance not live) is `null` and drops out of the count. Unreadable → `setup: null`
-  → no ring (Decision #149).
+  PERSON's `AccountSetup`: the setup PROGRESS, the verification stamp, the published working hours
+  and the Standing rung, composed from `org.get_party_cards` → `org.get_profile_view` (stamp · hours
+  · standing) and `UserBackendService.getSetupProgress` (`services/user/setup-progress.ts`) →
+  `org.fn_compute_profile_setup_progress`. **The completeness rule lives in that SQL function
+  alone** (Decision #155, reversing #149(A)'s TypeScript rule): weights account 20 · email 10 ·
+  skills/interests 10 — the 40 a finished sign-up reads — then photo 20 · headline + story 20 ·
+  published hours 20, plus the single `next_suggested_action` (a seller's KYC and payout first). The
+  popover only names and routes what it answered (`shell/core/account-setup.ts`); at 100% the
+  percentage gives way to the verification status, and the next action is one filled call to action
+  (`AccountSetupNudge`). Unreadable → `setup: null` → no ring.
+- **Milestone celebrations (Decision #155).** A verification stamp landing or setup reaching 100% is
+  celebrated IN PLACE, never with a blocking modal: the popover publishes the setup it renders
+  (`shell/core/milestones.ts` · `accountSetupSnapshot`), the `MilestoneCelebration` island (mounted
+  by `UserShell`) compares it with the last mark this device saw (`LocalKeys.SEEN_MILESTONES`) and,
+  on a raise, plays a one-shot stamp (`transform: scale()` on `--spring-snappy`, none under either
+  reduced-motion channel) on the header ring and the popover crest, plus one transient `Toast` that
+  states only what the milestone unlocks. A first visit records the baseline and celebrates nothing.
+- **Trust signals (Decision #155).** `org.get_profile_view` carries `verification_stamp` and a
+  seller's `adornments`; `mapProfileView` (`services/profile/live-profile.ts`) ranks them with
+  `rankAdornments` and caps them at `PUBLIC_ADORNMENT_LIMIT` (3) before they reach `ProfileView`.
+  Both are written only by definers in the Standing sweep and the KYC/payout trigger
+  (`database/org/Functions.md` §Trust signals).
 - **Proposal allowance (Decision #154).** One caller-scoped definer, `finance.get_proposal_allowance`,
   is the only door: it derives the subject from `auth.uid()` (or an active team membership), so
   `finance.fn_current_allowance` — which takes ANY subject id — stays service-role. `GET
@@ -2307,6 +2322,26 @@ is not a rewrite (`extension_points`, `plugin_scopes`, `plugins`, `plugin_versio
 - **Not built now:** the SDK/CLI, GitHub-repo plugin loading, the review/publish pipeline, the
   marketplace, revenue share. All post-PMF. **AI workflows/automation agents** ride the _same_
   capability-scoped Plugin API — an agent is a `headless` plugin with programmatic scopes.
+
+#### 3.5 Agent-authored messages — the roadmap (NOT BUILT; Decision #155)
+
+No autonomous agent, agent workflow or agent identity exists in code or schema, and none is to be
+built ahead of this plan. When agents arrive they act FOR a person and are attributable to them:
+
+- **One actor axis on a message.** `comms.project_messages` (and `comms.dm_messages`) gain
+  `actor_kind text NOT NULL DEFAULT 'human' CHECK (actor_kind IN ('human', 'agent_assisted',
+  'autonomous_agent'))`, edited in place in `00000016` with its `@projective/types` schema and
+  `database/comms/Tables.md` in the same change (root `CLAUDE.md` §1). `sender_user_id` stays the
+  accountable, delegating PERSON in every case — there is no synthetic agent user — and a nullable
+  `actor_plugin_id → integrations.plugins(id)` names the agent.
+- **Agents are `headless` plugins.** A procurement bot or a delegated assistant is an
+  `integrations.plugins` row with `runtime = 'headless'` (the enum value exists today), installed
+  and consented like any plugin, its every write mediated by `fn_plugin_has_scope` — never a direct
+  database client.
+- **Indicated, never disguised.** Every message reader (the feed, inbox previews, notifications)
+  renders a non-`human` row with a Meta-register indicator ("Sent by an assistant", with the plugin's
+  name on demand) — never a pill (DESIGN_SYSTEM §B.11) and never omitted. The PII mask, the reply
+  guard and the edit window apply unchanged, because they govern the words, not the author.
 
 _The `integrations` connection store was originally described under Conferencing §2.1 (2026-07-24);
 this §3 supersedes and generalises it — Conferencing is now one consumer of §3._

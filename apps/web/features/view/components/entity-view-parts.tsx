@@ -1,10 +1,9 @@
 import type { ComponentChildren, JSX } from "preact";
 import { Icon } from "@projective/ui/icons";
-import { Tooltip } from "@projective/ui/feedback";
-import { Avatar, RatingStars } from "@projective/ui/display";
+import { Avatar, RatingStars, VerificationStampBadge } from "@projective/ui/display";
 import { displayCurrency, displayLocale, formatMoney } from "@projective/ui/display/money";
 import type { EntitySeller, EntityView } from "@projective/types/explore";
-import { TIER_META } from "@features/profile/components/profile-glyphs.tsx";
+import { stampForVerifiedOwner } from "@projective/types/org";
 import type { SeatCapacity } from "../core/entity-archetype.ts";
 import { OWNER_KIND_LABEL, sellerBadges } from "../core/view-model.ts";
 import { personFallbackImage } from "@web/components/UserAvatar.tsx";
@@ -309,8 +308,8 @@ export function PriceOrigin(
 /**
  * The seller line — the provider's identity as the profile hero states it, at a listing's scale.
  *
- * Avatar · name · the verification crest (its attained TIER on hover, the same `TIER_META` copy the
- * profile hero uses) · one aggregate score as ONE anchor to the reviews · then the earned signals as
+ * Avatar · name · the verification crest (the authority that checked the owner, explained on hover —
+ * Decision #155) · one aggregate score as ONE anchor to the reviews · then the earned signals as
  * TEXT (§B.11.4). Beneath it, the profile hero's own meta register: `@handle · kind · Standing`.
  *
  * Shared by every archetype's hero, including a project's (where the "seller" is the client who
@@ -346,7 +345,6 @@ export function SellerLine(
 		label: badge.label,
 		explanation: explainBadge(badge.id, item, rating, responseMinutes),
 	}));
-	const tier = seller?.tier ? TIER_META[seller.tier] : null;
 	const handle = item.owner.handle.replace(/^@/, "");
 
 	/*
@@ -382,29 +380,11 @@ export function SellerLine(
 					/>
 				)}
 				<span class="evp-seller__name">{item.owner.name}</span>
-				{item.owner.verified && (
-					tier
-						? (
-							<Tooltip content={tier.title} placement="top">
-								<Icon
-									name="verified"
-									size="sm"
-									filled
-									class="evp-seller__crest"
-									title={tier.title}
-								/>
-							</Tooltip>
-						)
-						: (
-							<Icon
-								name="verified"
-								size="sm"
-								filled
-								class="evp-seller__crest"
-								title="Verified"
-							/>
-						)
-				)}
+				<VerificationStampBadge
+					stamp={stampForVerifiedOwner(item.owner.verified, item.owner.kind)}
+					size="sm"
+					class="evp-seller__crest"
+				/>
 			</a>
 			{headline && <span class="evp-seller__headline">{headline}</span>}
 			{score && (reviewsHref

@@ -120,6 +120,12 @@ export const LocalKeys = {
 	A11Y_PREFERENCES: "pj.local.a11y",
 	/** Durable cache of onboarding progress metadata (see {@link CacheKeys.ONBOARDING_STAGE_CACHE}). */
 	ONBOARDING_STAGE_CACHE: "pj.local.onboardingStageCache",
+	/**
+	 * The last account milestones THIS DEVICE has seen celebrated, keyed by the person's handle — a
+	 * JSON map `{ [handle]: { stamp, complete } }`. Only a raise past what is stored is celebrated, so
+	 * a milestone is announced once per device and never on a first visit (Decision #155).
+	 */
+	SEEN_MILESTONES: "pj.local.seenMilestones",
 	/** Recent Explore search terms (most-recent-first, capped) — powers the search recall list. */
 	EXPLORE_RECENT_SEARCHES: "pj.local.explore.recentSearches",
 	/**

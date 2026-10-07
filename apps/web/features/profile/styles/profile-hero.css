@@ -118,8 +118,11 @@
 
 .pf-hero__crest {
     flex: none;
-    color: var(--on-surface);
     --icon-knockout: var(--surface);
+}
+
+.pf-hero__trust {
+    margin-block-start: var(--space-1);
 }
 
 .pf-hero__meta {

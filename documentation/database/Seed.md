@@ -91,6 +91,13 @@ each freelancer (by user id) and team (by team id):
 | `tenure_days`          | Days since the account (or team) was created                                                            |
 | `penalty_severity`     | Active, unexpired `security.penalties`                                                                  |
 
+The same recompute also materialises each subject's `active_adornments` and a freelancer's
+`verification_stamp` (Decision #155). The stamp was already written when `01_identities.sql`
+inserted the seller's `org.freelancer_profiles` row (`trg_freelancer_profiles_verification_stamp`),
+so the `ON CONFLICT DO UPDATE` here keeps it. With no seller past five completed stages and no
+streak or achievement writer in the seeded world, most sellers hold few or no trust signals — the
+honest result, as with the rung below.
+
 **Every seller reads as "New" (L1), and that is the honest result.** The ladder has two gates — a
 score and a completed-stage floor (5 for Established) — and nobody in the seeded world has completed
 five stages. Scores still differ by record: Maris scores 90 on one on-time delivery rated 5.0 (held at

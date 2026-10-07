@@ -83,7 +83,7 @@ function certificationTitle(c: CertificationEntry): ComponentChildren {
 			{c.name}
 			<Tooltip content="Verified by Projective">
 				<span class="pf-tl__crest" tabIndex={0} role="img" aria-label="Verified by Projective">
-					<Icon name="verified" filled size="xs" />
+					<Icon name="seal-check" filled size="xs" />
 				</span>
 			</Tooltip>
 		</>

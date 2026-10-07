@@ -377,6 +377,30 @@ Indexes (`00004006`): `idx_project_messages_channel_recent (channel_id, created_
 feed's keyset walk; `idx_project_messages_reply_to (reply_to_id) WHERE reply_to_id IS NOT NULL` — the
 replies to a message, and the self-FK's `ON DELETE SET NULL` lookup.
 
+**Roadmap — who (or what) wrote a message (NOT MIGRATED; Decision #155).** Agent-written messages are
+not built: no autonomous actor, workflow or agent identity exists in code or schema, and every row
+today is written by the human `sender_user_id` names. When they land, the planned extension is one
+additive column, edited in place in `00000016` like every other column:
+
+```sql
+actor_kind text NOT NULL DEFAULT 'human'
+    CHECK (actor_kind IN ('human', 'agent_assisted', 'autonomous_agent'))
+```
+
+- `human` — typed and sent by the person (every existing row; the default makes the backfill a no-op).
+- `agent_assisted` — drafted by an assistant and sent by the person, who stays `sender_user_id` and
+  stays accountable for the words.
+- `autonomous_agent` — sent by an agent acting for the person without a per-message confirmation;
+  `sender_user_id` is still the delegating person, never a synthetic user.
+
+The agents themselves are `integrations.plugins` rows with `runtime = 'headless'` (the runtime value
+already exists in `integrations.plugin_runtime`) — e.g. a procurement bot posting stage updates — so
+an agent message is attributable to a delegating person AND to an installed, permission-scoped
+plugin; a nullable `actor_plugin_id → integrations.plugins(id)` is the expected companion column.
+Every reader of a message (the feed, inbox previews, notifications) is to render a non-`human` row
+with a Meta-register indicator ("Sent by an assistant") rather than a pill (DESIGN_SYSTEM §B.11), and
+the PII mask, reply guard and edit window apply unchanged. `comms.dm_messages` takes the same pair.
+
 ---
 
 ## 📎 Attachments & Shared Files

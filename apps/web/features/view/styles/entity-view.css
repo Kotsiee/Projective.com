@@ -750,9 +750,8 @@
 }
 
 .evp-seller__crest {
-    color: var(--primary);
     flex: none;
-    --icon-knockout: var(--on-primary);
+    --icon-knockout: var(--surface);
 }
 
 /* The aggregate score is one anchor to the reviews — stars, figure and count together, never a
@@ -1690,7 +1689,6 @@
 
 .evp-lane__crest {
     flex: none;
-    color: var(--primary);
 }
 
 .evp-lane__kebab {
@@ -2650,7 +2648,6 @@ a.evp-cta__btn--inverted {
 }
 
 .evp-stickyhead__crest {
-    color: var(--primary);
     flex: none;
 }
 

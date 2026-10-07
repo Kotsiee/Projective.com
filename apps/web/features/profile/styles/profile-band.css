@@ -54,7 +54,6 @@
 
 .pf-band__crest {
     flex: none;
-    color: var(--on-surface);
     /* The ground the knocked-out check is cut out of — the band's own surface. */
     --icon-knockout: var(--surface-1);
 }
