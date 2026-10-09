@@ -51,8 +51,8 @@
 }
 
 .task-lane__action[data-on="true"] {
-	color: var(--primary);
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	color: var(--on-surface);
+	background: var(--surface-2);
 }
 
 .task-lane__action[data-on="true"] svg {

@@ -33,6 +33,7 @@ import {
 	submitting,
 } from "../core/basket-state.ts";
 import { contributionOptedIn, seedStep } from "../core/checkout-state.ts";
+import { cardStepPending } from "../core/card-step.ts";
 import {
 	attemptFingerprint,
 	includedNow,
@@ -493,6 +494,7 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 	const savedCards = view.savedCards.length > 0 ? view.savedCards : props.cards;
 	const card = savedCards.find((entry) => entry.id === chosenCardId.value) ?? null;
 	const done = result?.status === "succeeded";
+	const cardStep = cardStepPending(result);
 	const showsInvoicing = view.buyer.contextKind === "business" ||
 		view.owner.ownerType === "business" || view.owner.ownerType === "organisation";
 	const detailsHref = editDetailsHref(initial.owner);
@@ -732,24 +734,27 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 									</p>
 								)}
 
-								<div class="cko-rail__commit">
-									<Button
-										class="cko-rail__buy cko-commit"
-										variant="filled"
-										size="lg"
-										fluid
-										rounded
-										disabled={blocked}
-										loading={submitting.value}
-										aria-describedby={blocked ? "cko-buy-gate" : undefined}
-										label={buyLabel}
-										onClick={() => openConfirm()}
-									/>
-									<p class="cko-rail__reassure">
-										<Icon name="lock" />
-										<span>You'll confirm the amount before anything is charged.</span>
-									</p>
-								</div>
+								{!cardStep && (
+									<div class="cko-rail__commit">
+										<Button
+											class="cko-rail__buy"
+											severity="accent"
+											variant="filled"
+											size="lg"
+											fluid
+											rounded
+											disabled={blocked}
+											loading={submitting.value}
+											aria-describedby={blocked ? "cko-buy-gate" : undefined}
+											label={buyLabel}
+											onClick={() => openConfirm()}
+										/>
+										<p class="cko-rail__reassure">
+											<Icon name="lock" />
+											<span>You'll confirm the amount before anything is charged.</span>
+										</p>
+									</div>
+								)}
 							</OrderSummaryRail>
 						</div>
 					</div>

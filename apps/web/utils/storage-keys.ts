@@ -49,6 +49,13 @@ export const SessionKeys = {
 	 */
 	DEV_CONTEXT_OVERRIDES: "pj.session.dev.contextOverrides",
 	/**
+	 * DEV-ONLY. The Context Switcher's Theme knobs (`{ seed, accentSeed, radiusScale, shadowIntensity }`
+	 * JSON), present only while one differs from `DEFAULT_CONFIG`. Session-scoped for the same reason
+	 * as {@link SessionKeys.DEV_CONTEXT_OVERRIDES}: a tweak survives navigation in this tab, never a
+	 * new one. Read/written only by `apps/web/features/devtools/*`.
+	 */
+	DEV_THEME_OVERRIDES: "pj.session.dev.themeOverrides",
+	/**
 	 * The active floating "Pop Out Chat" popover state (task §1) — a JSON blob
 	 * `{ scope, projectId, channelId, title, href, x?, y? }`. Session-scoped so a popped-out
 	 * conversation survives full-page navigations (the popover re-mounts from this and shows a "Return

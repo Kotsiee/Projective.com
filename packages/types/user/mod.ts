@@ -11,8 +11,12 @@ export {
 	type AvatarTier,
 	avatarTierFor,
 	DEFAULT_AVATAR_URL,
+	isOAuthProvider,
 	OAUTH_AVATAR_HOSTS,
 	oauthAvatarFromMetadata,
+	type OAuthAvatarSource,
+	OAuthAvatarSourceSchema,
+	oauthProviderLabel,
 	resolveAvatarUrl,
 	safeOAuthAvatarUrl,
 } from "./avatar.ts";

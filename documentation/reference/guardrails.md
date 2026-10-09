@@ -99,12 +99,17 @@ never by appending new timestamped migrations that patch earlier ones.
   6. **Anti-card** (§B.4.2, §B.9.7–B.9.8) — static content (prose, stage breakdowns, scope lists,
      spec ledgers) is never boxed; cards never nest, and never sit inside an elevated panel; a list
      of cards gets no container card; a region background is never a translucent colour (a tonal
-     step is a **solid** ramp tone: `--bg` → `--surface-1` → `--surface-2`).
+     step is a **solid** ramp tone: `--bg` → `--surface-1` → `--surface-2`). The same holds for the
+     active / selected state of a navigation rail or a middle-nav list row: never a translucent
+     `--primary` wash (`rgba(primary, .15)`, `color-mix(… var(--primary) …, transparent)`) — the
+     active rail is `--surface-2` with `--on-surface` ink, plus an optional 2px inline-start
+     indicator reserved `transparent` at rest (§B.4.2, Decision #157).
   7. **Anti-tagification** (§B.11) — containment asserts interactivity. Non-actionable metadata
      (category, skills, delivery model, turnaround, formats, licence, timestamps) is inline
      `--text-secondary` text separated by middots — never a pill/chip/tag/badge. Containers are
      reserved for **controls · lifecycle statuses · required disclosures · counts**. Two adjacent
-     non-interactive fills on one row is a finding.
+     non-interactive fills on one row is a finding. A permitted chip or tag fills with a solid
+     tonal step, never a translucent `--primary` wash (§B.11.6).
   8. **Hierarchy over weight** (§A.4) — four registers (display · section header · body · meta),
      each moving size, case and tracking together. A heading is never `--fw-bold` (700) or heavier;
      two adjacent levels may not differ by weight alone; a changing figure is `tabular-nums`.
@@ -137,12 +142,26 @@ never by appending new timestamped migrations that patch earlier ones.
       states, a **mode-adaptive** pair must reach **≥ 7:1** in dark, and no pair may narrow under
       `data-contrast="high"`. **`--primary`/`--on-primary` are mode-invariant** — the same colour in
       every state (§A.1.1) — so they are held to AA rather than AAA, and any re-mapping of them
-      inside a mode branch is a defect. A hover or active state must never lower a filled control's
-      label contrast nor drop its fill under 3:1 against a surface it can sit on, which is why the
-      tonal blend runs toward `--on-surface` rather than the ink, and why the brand — which has
-      headroom in neither direction — takes a zero step and spends the border channel instead. The
-      colour half is machine-checked in `packages/ui/system/core/theme-engine.test.ts`, because it is
-      the one gate here whose failure is invisible to a source-reading review.
+      inside a mode branch is a defect. **`--accent`/`--on-accent`** (§A.1.2, Decision #157) is held
+      to the full rule — ≥ 4.5:1 in all four states, ≥ 7:1 in dark, never narrowing under high
+      contrast — and is **fixed-polarity** (light fill, dark ink in every mode), so it bypasses
+      `fg()`/`on()` and must never flip polarity in any state. A hover or active state must never
+      lower a filled control's label contrast nor drop its fill under 3:1 against a surface it can
+      sit on, which is why the tonal blend of a theme-following role runs toward `--on-surface`
+      rather than the ink, why `--accent` — whose ink IS the `--on-surface` side in light mode —
+      blends toward a mode-invariant LIGHT pole instead, and why the brand — which has headroom in
+      neither direction — takes a zero step and spends the border channel instead. The light
+      `--accent` fill's sub-3:1 page visibility is a logged deviation (Decision #157 flag (b)), not a
+      precedent. The colour half is machine-checked in `packages/ui/system/core/theme-engine.test.ts`,
+      because it is the one gate here whose failure is invisible to a source-reading review.
+  13. **The Button Interaction Matrix** (§B.8.1, Decision #157) — a filled button takes the fill of
+      its tier: amber `severity="accent"` for a commit inside a financial / conversion flow or the
+      act that starts one (pill), monochrome inverted for a structural commitment, teal `--primary`
+      for major navigation active states and core workflow commits; utility actions are
+      `severity="neutral" variant="outlined"` (`--hairline-strong` border, `--on-surface` ink);
+      toolbar tools and escape hatches are ghost. Two fills in one decision region only when
+      hue-ranked amber + monochrome (the entity-view lane rig is held as shipped, flag (f));
+      `accent` and `neutral` are Button-only.
 
 ## 4. Routing & Folder Conventions (Fresh 2.x)
 

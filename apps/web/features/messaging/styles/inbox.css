@@ -63,8 +63,11 @@
 	position: relative;
 	display: flex;
 	align-items: stretch;
+	border-inline-start: 2px solid transparent;
 	border-radius: var(--radius-lg);
-	transition: background-color var(--dur-fast) var(--ease-standard);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard);
 }
 .inbox-row + .inbox-row {
 	margin-block-start: var(--space-1);
@@ -75,7 +78,8 @@
 	background: var(--surface-2);
 }
 .inbox-row[data-active="true"] {
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	background: var(--surface-2);
+	border-inline-start-color: var(--on-surface);
 }
 
 /*

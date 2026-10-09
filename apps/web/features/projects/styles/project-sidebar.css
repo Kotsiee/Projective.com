@@ -117,6 +117,7 @@
 	block-size: var(--shell-nav-block);
 	padding: 0;
 	border: none;
+	border-inline: 2px solid transparent;
 	border-radius: var(--radius-base);
 	color: var(--on-surface-variant, var(--text-secondary));
 	background: transparent;
@@ -124,16 +125,18 @@
 	cursor: pointer;
 	transition:
 		color var(--dur-fast) var(--ease-standard),
-		background-color var(--dur-fast) var(--ease-standard);
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard);
 }
 
 .proj-railbtn:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+	background: var(--surface-2);
 	color: var(--on-surface);
 }
 
 .proj-railbtn[data-active="true"] {
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	background: var(--surface-2);
+	border-inline-start-color: var(--on-surface);
 	color: var(--on-surface);
 }
 
@@ -604,22 +607,25 @@
 	color: var(--on-surface);
 	text-decoration: none;
 	background: transparent;
+	border-inline-start: 2px solid transparent;
 	border-radius: var(--radius-sm);
-	transition: background-color var(--dur-fast) var(--ease-standard);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard);
 }
 
 .proj-chan:hover {
 	background: var(--surface-2);
 }
 
-/* Active (open) channel — tinted like the inbox's active-conversation row (parity, §B.4). */
 .proj-chan[data-active="true"] {
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	background: var(--surface-2);
+	border-inline-start-color: var(--on-surface);
 	color: var(--on-surface);
 }
 
 .proj-chan[data-active="true"] .proj-chan__glyph {
-	color: var(--primary);
+	color: var(--on-surface);
 }
 
 .proj-chan[data-active="true"] .proj-chan__name {

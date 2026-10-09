@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { CropShape } from "./crop.ts";
 
 /**
  * files.variants — the Zod SSOT for what the media pipeline DERIVES from an upload: the purpose an
@@ -78,6 +79,15 @@ export const RENDITION_QUALITY = 88;
 export const RENDITION_ASPECT: Readonly<Record<RenditionPurpose, number>> = {
 	avatar: 1,
 	showcase: 16 / 10,
+};
+
+/**
+ * The frame the editor shows and the clamp enforces. The avatar is clamped to its CIRCLE, so it can
+ * reach every edge of the picture at any rotation; the showcase frame is the whole box.
+ */
+export const RENDITION_SHAPE: Readonly<Record<RenditionPurpose, CropShape>> = {
+	avatar: "circle",
+	showcase: "rect",
 };
 
 /**

@@ -376,7 +376,7 @@ function MoveDialog(
 		? (
 			<>
 				<Button variant="text" label="Cancel" onClick={closing.close} />
-				<Button variant="filled" label="Continue" onClick={review} />
+				<Button variant="filled" severity="accent" rounded label="Continue" onClick={review} />
 			</>
 		)
 		: step.value === "done"
@@ -402,6 +402,8 @@ function MoveDialog(
 				/>
 				<Button
 					variant="filled"
+					severity="accent"
+					rounded
 					label={step.value === "error" ? "Try again" : verb}
 					loading={step.value === "sending"}
 					disabled={step.value === "sending"}

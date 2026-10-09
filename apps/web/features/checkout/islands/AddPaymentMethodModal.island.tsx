@@ -221,12 +221,13 @@ export default function AddPaymentMethodModal(props: AddPaymentMethodModalProps)
 				</p>
 			)}
 			<div class="cko-addpm__acts">
-				<Button variant="text" label="Cancel" disabled={busy} onClick={close} />
+				<Button variant="text" rounded label="Cancel" disabled={busy} onClick={close} />
 				{!liveCard
 					? (
 						<Button
-							class="cko-commit"
+							severity="accent"
 							variant="filled"
+							rounded
 							disabled
 							aria-describedby="cko-addpm-gate"
 							label={tab.value === "card" ? "Save card" : "Save bank details"}
@@ -234,8 +235,9 @@ export default function AddPaymentMethodModal(props: AddPaymentMethodModalProps)
 					)
 					: (
 						<Button
-							class="cko-commit"
+							severity="accent"
 							variant="filled"
+							rounded
 							label={confirmed.value ? "Try again" : "Save card"}
 							loading={busy}
 							disabled={busy || (!confirmed.value && !card.canConfirm.value)}

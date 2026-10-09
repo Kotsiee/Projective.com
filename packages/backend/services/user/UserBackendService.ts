@@ -7,7 +7,10 @@ import {
 	type EnableFreelancerInput,
 	type FreelancerConversionResult,
 	FreelancerConversionResultSchema,
+	isOAuthProvider,
 	oauthAvatarFromMetadata,
+	type OAuthAvatarSource,
+	oauthProviderLabel,
 	resolveAccountRole,
 	type StarterSkillOption,
 	StarterSkillOptionSchema,
@@ -223,6 +226,32 @@ export class UserBackendService {
 			return ok({ setup });
 		} catch {
 			return ok({ setup: null });
+		}
+	}
+
+	/**
+	 * The caller's own sign-in picture, for the media picker's provider source: read from the VERIFIED
+	 * identity (GoTrue `getUser`), never from a request, and allowlisted by `safeOAuthAvatarUrl`.
+	 * `url: null` when the identity has no usable picture or the read cannot be made; `401` for a guest.
+	 */
+	static async oauthAvatar(actor: ReadActor): Promise<ServiceResult<OAuthAvatarSource>> {
+		if (!canReadLive(actor)) return fail(401, { message: "Sign in to use your sign-in picture." });
+		const none: OAuthAvatarSource = { provider: null, label: oauthProviderLabel(null), url: null };
+		if (!isAuthBackendLive()) return ok(none);
+		try {
+			const { data, error } = await getAnonClient().auth.getUser(actor.accessToken);
+			const authUser = data?.user;
+			if (error || !authUser) return ok(none);
+			const raw = str((authUser.app_metadata ?? {}).provider);
+			const provider = isOAuthProvider(raw) ? raw : null;
+			const meta = (authUser.user_metadata ?? {}) as Record<string, unknown>;
+			return ok({
+				provider,
+				label: oauthProviderLabel(provider),
+				url: oauthAvatarFromMetadata(meta) ?? null,
+			});
+		} catch {
+			return fail(503, { message: "Your sign-in account couldn't be read right now." });
 		}
 	}
 

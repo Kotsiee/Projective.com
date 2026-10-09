@@ -808,7 +808,7 @@ export default function CheckoutBasketScreen(props: CheckoutBasketScreenProps): 
 								</div>
 							</div>
 							<a
-								class="ui-button ui-button--warning ui-button--filled ui-button--size-lg ui-button--fluid ui-button--rounded bsk-summary__cta"
+								class="ui-button ui-button--accent ui-button--filled ui-button--size-lg ui-button--fluid ui-button--rounded bsk-summary__cta"
 								href={checkoutTarget}
 							>
 								<span class="ui-button__label">Proceed to Checkout</span>

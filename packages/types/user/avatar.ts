@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 /**
  * user/avatar — the ONE resolution rule for a person's profile picture.
  *
@@ -80,6 +82,42 @@ export interface AvatarSources {
 export function resolveAvatarUrl(sources: AvatarSources, maxLength = Infinity): string | null {
 	const candidates = [sources.uploaded?.trim() || undefined, safeOAuthAvatarUrl(sources.oauth)];
 	return candidates.find((url) => url !== undefined && url.length <= maxLength) ?? null;
+}
+
+// #endregion
+
+// #region The sign-in picture as a library source
+
+/**
+ * The caller's own sign-in picture as the media picker offers it: the provider (`google`, …), its
+ * display label, and the allowlisted URL — `null` when the identity carries no usable picture. Read
+ * on the server from the verified identity, never from a request.
+ */
+export const OAuthAvatarSourceSchema = z.object({
+	provider: z.string().nullable(),
+	label: z.string(),
+	url: z.string().url().nullable(),
+});
+export type OAuthAvatarSource = z.infer<typeof OAuthAvatarSourceSchema>;
+
+/** A sign-in provider's display name; an unknown or absent provider reads as the generic phrase. */
+export function oauthProviderLabel(provider: string | null | undefined): string {
+	switch (provider) {
+		case "google":
+			return "Google";
+		case "github":
+			return "GitHub";
+		case "linkedin":
+		case "linkedin_oidc":
+			return "LinkedIn";
+		default:
+			return "sign-in account";
+	}
+}
+
+/** Whether a GoTrue `app_metadata.provider` is a third-party identity (not a password or code). */
+export function isOAuthProvider(provider: string | null | undefined): provider is string {
+	return !!provider && provider !== "email" && provider !== "phone";
 }
 
 // #endregion

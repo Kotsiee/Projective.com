@@ -89,6 +89,38 @@
     box-shadow: none;
 }
 
+.pf-hero__avatarbtn--edit {
+    cursor: pointer;
+}
+
+.pf-hero__avataroverlay {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--scrim) 55%, transparent);
+    color: var(--on-scrim);
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-standard);
+    pointer-events: none;
+}
+
+.pf-hero__avatarbtn--edit:hover .pf-hero__avataroverlay,
+.pf-hero__avatarbtn--edit:focus-visible .pf-hero__avataroverlay,
+.pf-hero__avatarbtn--edit[aria-expanded="true"] .pf-hero__avataroverlay {
+    opacity: 1;
+}
+
+@media (hover: none) {
+    .pf-hero__avataroverlay {
+        inset: auto 0 0 auto;
+        inline-size: 1.75rem;
+        block-size: 1.75rem;
+        opacity: 1;
+    }
+}
+
 /* The full-size photo: a square frame the large rendition fills, reserved before it loads. */
 .pf-avatarbox__frame {
     aspect-ratio: 1;
@@ -260,11 +292,19 @@
         transform: none;
         transition: none;
     }
+
+    .pf-hero__avataroverlay {
+        transition: none;
+    }
 }
 
 :root[data-motion="reduced"] .pf-hero__avatarbtn,
 :root[data-motion="reduced"] .pf-hero__avatarbtn:active {
     transform: none;
+    transition: none;
+}
+
+:root[data-motion="reduced"] .pf-hero__avataroverlay {
     transition: none;
 }
 

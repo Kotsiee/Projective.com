@@ -425,6 +425,7 @@
 }
 
 .fh-inspect__preview {
+	position: relative;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -514,10 +515,24 @@
 	line-height: 1.5;
 }
 
-.fh-inspect__actions {
-	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-2);
+.ui-button.fh-inspect__iconbtn {
+	flex: none;
+	color: var(--text-secondary);
+}
+.ui-button.fh-inspect__iconbtn:hover:not(:disabled) {
+	color: var(--on-surface);
+}
+/*
+ * A control laid over the preview picture: a solid surface disc, because a transparent ghost on a
+ * photograph has no contrast to promise.
+ */
+.ui-button.fh-inspect__download {
+	position: absolute;
+	inset-block-start: var(--space-2);
+	inset-inline-start: var(--space-2);
+	z-index: 1;
+	background: var(--surface);
+	box-shadow: var(--elevation-low);
 }
 .fh-inspect__manage {
 	display: flex;

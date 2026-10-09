@@ -5,14 +5,19 @@ import type { FieldSize, Severity } from "../types/mod.ts";
 
 export type ButtonVariant = "filled" | "outlined" | "text" | "link";
 
-export interface ButtonProps
+/**
+ * Button colour ramp: the shared {@link Severity} set plus two Button-only tiers of the Interaction
+ * Matrix (§B.8.1) — `accent`, the amber terminal financial/conversion commit (`--accent` /
+ * `--on-accent`), and `neutral`, the outlined utility action (`--on-surface` ink on a
+ * `--hairline-strong` border). Neither is a status, so neither reaches Tag/Badge/Alert/Message/Toast.
+ */
+export type ButtonSeverity = Severity | "accent" | "neutral";
+
+/** Props shared by every Button regardless of colour ramp. */
+export interface ButtonBaseProps
 	extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "size" | "icon" | "loading"> {
 	/** Button label. Optional for icon-only buttons (pass `aria-label` then). */
 	label?: string;
-	/** Semantic colour ramp (default `primary`). */
-	severity?: Severity;
-	/** Fill treatment (default `filled`). `text`/`link` are low-emphasis; `outlined` is medium. */
-	variant?: ButtonVariant;
 	/** Size ramp (default `md`). */
 	size?: FieldSize;
 	/** Elevated (raised) surface with a resting shadow. */
@@ -34,11 +39,48 @@ export interface ButtonProps
 	children?: ComponentChildren;
 }
 
+/** A status or brand ramp: every fill treatment is legal. */
+export interface ButtonSemanticTone {
+	/** Semantic colour ramp (default `primary`). */
+	severity?: Severity;
+	/** Fill treatment (default `filled`). `text`/`link` are low-emphasis; `outlined` is medium. */
+	variant?: ButtonVariant;
+}
+
+/**
+ * The amber terminal-commit ramp. Filled only: `--accent` is contrast-checked as a fill under
+ * `--on-accent`, not as ink on a page surface, so an outlined/text/link label would be unreadable.
+ */
+export interface ButtonAccentTone {
+	/** Terminal financial / conversion commit (Pay, Hire, Fund escrow). */
+	severity: "accent";
+	/** Only `filled` is legal for the accent ramp. */
+	variant?: "filled";
+}
+
+/**
+ * The neutral utility ramp — tier 4 of the Interaction Matrix (Upload, Message, Follow). Outlined
+ * only: the tier is defined as a hairline-bordered control, so a neutral fill would read as tier 2.
+ */
+export interface ButtonNeutralTone {
+	/** Utility action, inked in `--on-surface` rather than a brand or status hue. */
+	severity: "neutral";
+	/** Only `outlined` is legal for the neutral ramp. */
+	variant: "outlined";
+}
+
+/** Button props: the shared base plus exactly one colour-ramp contract. */
+export type ButtonProps =
+	& ButtonBaseProps
+	& (ButtonSemanticTone | ButtonAccentTone | ButtonNeutralTone);
+
 /**
  * Button — the primary action control. Covers every PrimeNG treatment: filled/outlined/text/link
- * variants across all seven severities, raised/rounded modifiers, icon (+ position) and icon-only
- * forms, a corner badge, and a loading state that shows a spinner and sets `aria-busy`. Fully
- * keyboard-operable via the native `<button>`; disabled/loading remove it from activation.
+ * variants across all seven severities, the filled-only amber `accent` commit tier, the outlined-only
+ * `neutral` utility tier, raised/rounded
+ * modifiers, icon (+ position) and icon-only forms, a corner badge, and a loading state that shows a
+ * spinner and sets `aria-busy`. Fully keyboard-operable via the native `<button>`; disabled/loading
+ * remove it from activation.
  */
 export function Button(props: ButtonProps): JSX.Element {
 	const {

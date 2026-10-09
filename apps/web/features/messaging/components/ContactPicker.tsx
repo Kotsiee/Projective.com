@@ -5,10 +5,8 @@ import { Button } from "@projective/ui/fields";
 import { Avatar } from "@projective/ui/display";
 import { Icon } from "@projective/ui/icons";
 import { CONVERSATION_PICTURE_FALLBACK_URL } from "@projective/types/messaging";
-import {
-	type MediaCropChoice,
-	MediaCropModal,
-} from "@web/features/profile/components/media/MediaCropModal.tsx";
+import { MediaCropPicker } from "@web/features/files/components/media-crop/MediaCropPicker.tsx";
+import type { MediaCropChoice } from "@web/features/files/core/media/media-pick.ts";
 import { MessagingIcon } from "./messaging-glyphs.tsx";
 import { ContactList } from "./ContactList.tsx";
 import { useContactSearch } from "../hooks/useContactSearch.ts";
@@ -172,13 +170,14 @@ export function ContactPicker(props: ContactPickerProps): JSX.Element {
 					)}
 				</div>
 			)}
-			<MediaCropModal
+			<MediaCropPicker
 				open={photoOpen}
+				requesterId="messaging-new-group-photo"
 				target="avatar"
 				title="Group photo"
 				saveLabel="Use photo"
-				onSave={(choice) => {
-					groupPhoto.value = choice;
+				onSave={([choice]) => {
+					groupPhoto.value = choice ?? null;
 					return Promise.resolve(null);
 				}}
 			/>

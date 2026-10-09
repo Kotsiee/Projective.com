@@ -126,7 +126,7 @@
 
 .cal-rail__item[data-active="true"] {
 	background: var(--surface-3);
-	color: var(--primary);
+	color: var(--on-surface);
 }
 
 .cal-rail__item--accent {

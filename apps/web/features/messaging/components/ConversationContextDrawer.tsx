@@ -164,11 +164,23 @@ function Rig(props: ConversationContextDrawerProps): JSX.Element {
 					{a.kind === "fund_escrow" && a.href
 						? (
 							<a
-								class="ui-button ui-button--primary ui-button--filled ui-button--size-md ui-button--fluid msg-ctx__fund"
+								class="ui-button ui-button--accent ui-button--filled ui-button--size-md ui-button--rounded ui-button--fluid msg-ctx__fund"
 								href={a.href}
 							>
 								<span class="ui-button__label">{a.label}</span>
 							</a>
+						)
+						: a.kind === "confirm_seat"
+						? (
+							<Button
+								label={a.label}
+								severity="accent"
+								rounded
+								fluid
+								loading={props.busy === a.kind}
+								disabled={props.busy !== null && props.busy !== a.kind}
+								onClick={() => props.onAction(a)}
+							/>
 						)
 						: (
 							<Button

@@ -28,9 +28,14 @@ import { z } from "zod";
  *  - the legal crop CENTRES form an axis-aligned rectangle — the picture shrunk by the bounding
  *    box's half-extents ({@link centreBounds}).
  *
- * A square box at rotation 0 is exactly the old circular avatar cropper's fit (the short side spans
- * the box), so a rotation-free avatar crop behaves as it always did; the difference is that a rotated
- * avatar now stays FILLED instead of storing transparent corners.
+ * ## The circle — what is SEEN, not the box, must stay inside
+ *
+ * A `circle` crop ({@link CropShape}) is shown as the circle inscribed in a square box, and only the
+ * circle has to stay inside the picture. A circle is the same shape at every angle, so its fit is the
+ * short side at EVERY rotation and its legal centres are the picture shrunk by its radius — the
+ * minimum scale no longer climbs as the dial turns, and the circle can reach every edge. The square
+ * the server stores around it then has corners that may fall outside the picture; the cut fills
+ * those from the nearest edge pixel, and no surface ever shows them (an avatar is drawn round).
  *
  * Every function is total: any input is clamped into a legal state rather than refused.
  */
@@ -48,6 +53,9 @@ export interface CropState {
 	/** The crop centre, in source pixels below the picture's centre. */
 	cy: number;
 }
+
+/** The visible frame: the whole box, or the circle inscribed in a square box (aspect is then 1). */
+export type CropShape = "rect" | "circle";
 
 /** The source picture's natural size, in pixels. */
 export interface CropImage {
@@ -103,9 +111,18 @@ export const CropStateSchema = z.object({
  * The height, in source pixels, of the LARGEST box of `aspect` (width ÷ height) whose bounding box
  * fits the picture at `rotation`. The two terms are the two axes: the box's bounding width
  * `|cos|·w + |sin|·h` must not exceed the picture's width, and its bounding height
- * `|sin|·w + |cos|·h` must not exceed its height, with `w = aspect·h`.
+ * `|sin|·w + |cos|·h` must not exceed its height, with `w = aspect·h`. A circle's fit is the short
+ * side at every rotation.
  */
-export function fitHeight(image: CropImage, aspect: number, rotation: number): number {
+export function fitHeight(
+	image: CropImage,
+	aspect: number,
+	rotation: number,
+	shape: CropShape = "rect",
+): number {
+	if (shape === "circle") {
+		return Math.max(1e-6, Math.min(positive(image.width, 1), positive(image.height, 1)));
+	}
 	const a = positive(aspect, 1);
 	const { cos, sin } = trig(rotation);
 	const byWidth = safeDiv(positive(image.width, 1), cos * a + sin);
@@ -118,23 +135,33 @@ export function cropBox(
 	state: Pick<CropState, "zoom" | "rotation">,
 	image: CropImage,
 	aspect: number,
+	shape: CropShape = "rect",
 ): { width: number; height: number } {
 	const zoom = clamp(finite(state.zoom, 1), CROP_ZOOM_MIN, CROP_ZOOM_MAX);
-	const height = fitHeight(image, aspect, state.rotation) / zoom;
-	return { width: height * positive(aspect, 1), height };
+	const height = fitHeight(image, aspect, state.rotation, shape) / zoom;
+	return { width: height * shapeAspect(aspect, shape), height };
 }
 
 /**
  * How far the crop centre may sit from the picture's centre on each axis, in source pixels: the
- * picture's half-size less the box's bounding half-extents. Exactly zero on the tight axis at zoom
- * 1 — the box then spans that axis and has nowhere to go. Never negative.
+ * picture's half-size less the box's bounding half-extents (a circle's: its radius, at any angle).
+ * Exactly zero on the tight axis at zoom 1 — the frame then spans that axis and has nowhere to go.
+ * Never negative.
  */
 export function centreBounds(
 	state: Pick<CropState, "zoom" | "rotation">,
 	image: CropImage,
 	aspect: number,
+	shape: CropShape = "rect",
 ): { x: number; y: number } {
-	const box = cropBox(state, image, aspect);
+	const box = cropBox(state, image, aspect, shape);
+	if (shape === "circle") {
+		const radius = box.width / 2;
+		return {
+			x: Math.max(0, positive(image.width, 1) / 2 - radius),
+			y: Math.max(0, positive(image.height, 1) / 2 - radius),
+		};
+	}
 	const { cos, sin } = trig(state.rotation);
 	const ex = (cos * box.width + sin * box.height) / 2;
 	const ey = (sin * box.width + cos * box.height) / 2;
@@ -153,10 +180,15 @@ export function wrapRotation(deg: number): number {
 }
 
 /** Clamp every field of a state into legality for this picture and aspect. Total — never throws. */
-export function clampCrop(state: CropState, image: CropImage, aspect: number): CropState {
+export function clampCrop(
+	state: CropState,
+	image: CropImage,
+	aspect: number,
+	shape: CropShape = "rect",
+): CropState {
 	const zoom = clamp(finite(state.zoom, 1), CROP_ZOOM_MIN, CROP_ZOOM_MAX);
 	const rotation = wrapRotation(finite(state.rotation, 0));
-	const bounds = centreBounds({ zoom, rotation }, image, aspect);
+	const bounds = centreBounds({ zoom, rotation }, image, aspect, shape);
 	return {
 		zoom,
 		rotation,
@@ -179,8 +211,9 @@ export function stageTransform(
 	image: CropImage,
 	aspect: number,
 	stageWidth: number,
+	shape: CropShape = "rect",
 ): StageTransform {
-	const box = cropBox(state, image, aspect);
+	const box = cropBox(state, image, aspect, shape);
 	const scale = positive(stageWidth, 1) / box.width;
 	const { x, y } = rotate(state.cx * scale, state.cy * scale, state.rotation);
 	return { tx: -x, ty: -y, scale, rotation: state.rotation };
@@ -198,8 +231,9 @@ export function dragCentre(
 	stageWidth: number,
 	dx: number,
 	dy: number,
+	shape: CropShape = "rect",
 ): Pick<CropState, "cx" | "cy"> {
-	const scale = stageTransform(state, image, aspect, stageWidth).scale;
+	const scale = stageTransform(state, image, aspect, stageWidth, shape).scale;
 	const { x, y } = rotate(dx / scale, dy / scale, -state.rotation);
 	return { cx: state.cx - x, cy: state.cy - y };
 }
@@ -233,8 +267,9 @@ export function sourcePointFor(
 	aspect: number,
 	u: number,
 	v: number,
+	shape: CropShape = "rect",
 ): { x: number; y: number } {
-	const box = cropBox(state, image, aspect);
+	const box = cropBox(state, image, aspect, shape);
 	const local = rotate((u - 0.5) * box.width, (v - 0.5) * box.height, -state.rotation);
 	return {
 		x: positive(image.width, 1) / 2 + state.cx + local.x,
@@ -264,6 +299,10 @@ function finite(n: number, fallback: number): number {
 
 function positive(n: number, fallback: number): number {
 	return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function shapeAspect(aspect: number, shape: CropShape): number {
+	return shape === "circle" ? 1 : positive(aspect, 1);
 }
 
 function safeDiv(a: number, b: number): number {

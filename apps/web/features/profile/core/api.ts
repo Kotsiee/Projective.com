@@ -2,8 +2,8 @@ import { apiFetch } from "@web/utils/api-client.ts";
 import type { ProfileResult } from "../types/results.ts";
 
 /**
- * Profile transport primitives — the two `fetch` helpers the thin {@link ProfileService} and
- * `MediaService` compose over.
+ * Profile transport primitives — the two `fetch` helpers the thin {@link ProfileService} composes
+ * over.
  *
  * Any network/parse failure degrades to a soft `{ ok: false, message }` rather than throwing, so
  * islands stay dumb (mirrors the explore/auth features' `api.ts`). Both go through `apiFetch`, so an

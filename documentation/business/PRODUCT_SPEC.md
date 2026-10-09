@@ -563,11 +563,15 @@ the one who manages it — the individual, a team's owner or lead, a business's 
 organisation's owner or admin — an owner header sits above the page with three tabs, each its own
 address:
 
-- **Preview** (`/[handle]`) is the profile exactly as a visitor sees it. Nothing on it is editable,
-  and its conversion controls say they are inert here rather than acting on the owner's own account.
+- **Preview** (`/[handle]`) is the profile as a visitor sees it, and its conversion controls say
+  they are inert here rather than acting on the owner's own account. The one thing the owner can
+  change from it is the photo: hovering it reveals an edit overlay that opens the File Picker to
+  upload a picture, choose one from their library or bring in their sign-in account's picture, then
+  frame it (Decision #158).
 - **Edit Profile & Settings** (`/[handle]/edit`) is one vertically stacked page of collapsible
   sections that mirror the preview's structure, every field a persistently editable input: the
-  photo and the six-slot showcase, the name, headline and story, location and time zone, skills,
+  photo and the six-slot showcase (adding to an empty slot lets the owner choose up to as many
+  pictures or videos as there are empty slots, then frame each one before anything is saved), the name, headline and story, location and time zone, skills,
   languages, career history, education and certifications, and the privacy and display switches —
   who can see the profile (public · unlisted · private), whether visitors may open the photo full
   size, whether the location line and the local clock show. A certification the platform has
@@ -2600,7 +2604,7 @@ fire for the same person on a device that genuinely does not have the file.
 |               |                           | `reviews`                | Verified client and peer reviews                                                               |
 |               |                           | `posts`                  | Published articles and updates                                                                 |
 |               |                           | `availability`           | Full-page availability calendar (no profile chrome; linked as "Full calendar" from the context bar's availability block) |
-|               |                           | `edit`                   | **Owner only.** Edit Profile & Settings — collapsible inline sections, the six-slot showcase + photo with the media selection & crop modal, privacy and display switches (§The Public Profile) |
+|               |                           | `edit`                   | **Owner only.** Edit Profile & Settings — collapsible inline sections, the six-slot showcase + photo through the File Picker’s media mode (upload · library · sign-in picture, then the crop stage), privacy and display switches (§The Public Profile) |
 |               |                           | `edit/availability`      | **Owner only.** Working hours, time zone, publishing and discovery-call terms                  |
 |               |                           | _retired_                | `services` · `products` · `projects` · `portfolio` · `teams` · `businesses` · `members` · `departments` · `about` · `education` · `articles` — each 308s into its consolidated section |
 |               | `/share/[slug]`           |                          | Share-link resolution. Renders the asset for a holder of the opaque slug; every dead state (missing / expired / revoked / exhausted) returns an identical 404 |
@@ -2819,10 +2823,16 @@ Hex values define the base visual target.
 
 - **Primary Background (#FAFAFA):** Used for the main body background to reduce eye strain.
 - **Surface Layer (#FFFFFF):** Used for Cards, Headers, and Sidebar elements to create elevation.
-- **Primary Teal (#288690):** Main action color, primary buttons, and active states.
+- **Primary Teal (#288690):** Brand primary (Button Interaction Matrix tier 3) — major navigation
+  active states and core workflow commits (DESIGN_SYSTEM §B.8.1, §B.4.2).
 - **Success (#268C66):** Used for "Complete" status and approved submissions.
-- **Warning (#D98216):** Used for "In Progress" status and time-sensitive alerts.
+- **Warning (#D98216):** Used for "In Progress" status and time-sensitive alerts. _(Drift: the
+  engine's warning seed is #F19C13 — #ca8100 light, #ed990d dark — so warning and Accent Amber are
+  not one colour in code; #D98216 now belongs to the accent. Pending a ruling, Decision #157 (c).)_
 - **Danger (#D94141):** Used for "Incomplete" status, errors, and no-show claims.
+- **Accent Amber (#D98216):** Terminal financial / conversion commits only — a commit inside a
+  financial or conversion flow, or the act that starts one: every checkout commit (Pay / Place
+  Order), Hire, Fund Escrow (DESIGN_SYSTEM §B.8.1 tier 1; scope open as Decision #157 (j)).
 
 #### 2. Typography & Contrast
 
@@ -2836,7 +2846,9 @@ Hex values define the base visual target.
 - **Background (#1A1A1A):** Deep neutral for the main canvas.
 - **Surface Layer (#212121):** Elevated cards and navigation bars.
 - **Text Main (#FFFFFF):** Maximum readability for dark backgrounds.
-- **Text Secondary (#B3B3B3):** Muted contrast for secondary information.\
+- **Text Secondary (#B3B3B3):** Muted contrast for secondary information.
+- **Accent Amber (#E58A18):** The tonal lift of the accent for dark mode, still carrying dark ink
+  (fixed polarity — DESIGN_SYSTEM §A.1.2).\
 
 ### Geometry & Elevation
 

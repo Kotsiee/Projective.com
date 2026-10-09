@@ -7,12 +7,6 @@
  * scoped there would silently fall back for exactly one of the two rigs (the `--wlt-*` lesson,
  * Decision #60). Everything here is on the global ramp: the ink pair for the monochrome CTAs, the
  * `--btn-*` hooks the shared `Button` base reads, the motion tokens.
- *
- * The CTAs are monochrome on purpose (Decision #96): the primary is the page's ink as its fill
- * (`--btn-accent: --on-surface` / `--btn-on: --surface`, the inverted-surface idiom `Tooltip` uses),
- * and the secondaries are outlined in the same ink. No brand teal on the profile chrome. The follow
- * acknowledgement moves `transform` and `opacity` only (§B.12) and is removed by both reduced-motion
- * channels.
  */
 
 /* #region Rig */
@@ -36,7 +30,7 @@
     white-space: nowrap;
 }
 
-.ui-button.pf-rig__cta--primary {
+.ui-button.pf-rig__cta--mono {
     --btn-accent: var(--on-surface);
     --btn-on: var(--surface);
     --btn-mix-hover: 88%;
@@ -44,18 +38,12 @@
     --btn-shade: var(--surface);
 }
 
-.ui-button.pf-rig__cta--primary:hover:not(:disabled):not([aria-disabled="true"]):not(:focus-visible):not(.ui-button--outlined):not(.ui-button--text):not(.ui-button--link) {
+.ui-button.pf-rig__cta--mono:hover:not(:disabled):not([aria-disabled="true"]):not(:focus-visible):not(.ui-button--outlined):not(.ui-button--text):not(.ui-button--link) {
     border-color: transparent;
 }
 
-.ui-button.pf-rig__cta--secondary {
-    --btn-accent: var(--on-surface);
-    --btn-on: var(--surface);
-}
-
-.ui-button.pf-rig__cta--secondary[aria-pressed="true"] {
+.ui-button.pf-rig__cta--neutral[aria-pressed="true"] {
     color: var(--text-secondary);
-    border-color: var(--hairline-strong-color);
 }
 
 /* The seller rig's compact secondaries: a circle of the primary's height, glyph-only. */

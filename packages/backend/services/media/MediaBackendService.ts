@@ -1,5 +1,7 @@
-import type { ServiceResult } from "../ServiceResult.ts";
+import { fail, type ServiceResult } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
+import { UserBackendService } from "../user/UserBackendService.ts";
+import { ingestOAuthAvatar } from "./oauth-avatar.ts";
 import type {
 	LibraryAsset,
 	LibraryListParams,
@@ -38,5 +40,18 @@ export class MediaBackendService {
 		input: LibraryUploadComplete,
 	): Promise<ServiceResult<LibraryAsset>> {
 		return await completeLibraryUpload(actor, input);
+	}
+
+	/**
+	 * Bring the caller's sign-in picture into their library through the quarantine pipeline. The URL
+	 * is read from their verified identity here, never accepted from the request.
+	 */
+	static async syncOAuthAvatar(actor: ReadActor): Promise<ServiceResult<LibraryAsset>> {
+		const source = await UserBackendService.oauthAvatar(actor);
+		if (!source.ok || !source.data) return fail(source.status, { message: source.message });
+		if (!source.data.url) {
+			return fail(404, { message: "Your sign-in account has no picture to bring in." });
+		}
+		return await ingestOAuthAvatar(actor, source.data.url);
 	}
 }

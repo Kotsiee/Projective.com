@@ -128,7 +128,7 @@ export default function BoardViewControlRig(): JSX.Element {
 							? (
 								<button
 									type="button"
-									class="brd-rig__action brd-rig__action--primary"
+									class="brd-rig__action brd-rig__action--accent"
 									onClick={requestCheckout}
 								>
 									<CheckoutIcon size={16} />

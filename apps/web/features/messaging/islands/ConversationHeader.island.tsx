@@ -8,7 +8,7 @@ import "../styles/conversation.css";
 import { Avatar } from "@projective/ui/display";
 import { Popover, Toast, Tooltip, useToast } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
-import { MediaCropModal } from "@web/features/profile/components/media/MediaCropModal.tsx";
+import { MediaCropPicker } from "@web/features/files/components/media-crop/MediaCropPicker.tsx";
 import { ChannelTabStrip } from "@web/features/projects/components/ChannelTabStrip.tsx";
 import { useMediaQuery } from "@projective/ui/navigation";
 import { MessagingIcon } from "../components/messaging-glyphs.tsx";
@@ -341,12 +341,16 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 				</Popover>
 			</div>
 			{isGroup && (
-				<MediaCropModal
+				<MediaCropPicker
 					open={photoOpen}
+					requesterId="messaging-group-photo"
 					target="avatar"
 					title="Group photo"
 					saveLabel="Save photo"
-					onSave={(choice) => savePhoto({ sourceAssetId: choice.sourceAssetId, crop: choice.crop })}
+					onSave={([choice]) =>
+						choice
+							? savePhoto({ sourceAssetId: choice.sourceAssetId, crop: choice.crop })
+							: Promise.resolve(null)}
 				/>
 			)}
 			{toastMounted.value ? <Toast position="bottom-center" /> : null}

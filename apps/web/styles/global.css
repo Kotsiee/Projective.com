@@ -328,6 +328,9 @@ summary:focus-visible,
  * card clothing, and the wallet's range ruler, which is the select-button's segmented radio group with
  * a sliding thumb.
  *
+ * The File Picker crop stage's icon-only ghost buttons (back, the zoom steppers, Reset) are
+ * exempted at the owner's direction (Decision #159).
+ *
  * `!important` for the same reason the elevation restores above use it: it is answering an
  * `!important`, and a specificity fight against a runtime-injected `:root` block is not winnable by
  * source order.
@@ -336,7 +339,9 @@ summary:focus-visible,
 .ui-select__filter-input:focus-visible,
 .ui-select-button__option:focus-visible,
 .pjc__type:focus-visible,
-.wlt-ruler__cell:focus-visible {
+.wlt-ruler__cell:focus-visible,
+.apk-main__back:focus-visible,
+.pf-media__iconbtn:focus-visible {
 	box-shadow: var(--fld-focus-glow) !important;
 }
 

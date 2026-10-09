@@ -46,17 +46,19 @@ export function StripeElementPanel(props: StripeElementPanelProps): JSX.Element 
 		returnPath: props.returnPath,
 	});
 	const confirming = controller.confirming.value;
+	const submit = {
+		label: confirming ? "Confirming…" : props.submitLabel,
+		disabled: !controller.canConfirm.value || props.busy === true,
+		loading: confirming,
+		onClick: () => void controller.confirm().then(props.onOutcome),
+		class: "pay-panel__submit",
+	};
 	return (
 		<div class="pay-panel">
 			<StripeElementMount controller={controller} />
-			<Button
-				label={confirming ? "Confirming…" : props.submitLabel}
-				variant="filled"
-				disabled={!controller.canConfirm.value || props.busy === true}
-				loading={confirming}
-				onClick={() => void controller.confirm().then(props.onOutcome)}
-				class="pay-panel__submit"
-			/>
+			{props.mode === "payment"
+				? <Button {...submit} variant="filled" severity="accent" rounded />
+				: <Button {...submit} variant="filled" />}
 		</div>
 	);
 }

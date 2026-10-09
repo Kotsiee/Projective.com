@@ -8,6 +8,7 @@ import {
 	RENDITION_ASPECT,
 	RENDITION_MAX_EDGE,
 	RENDITION_QUALITY,
+	RENDITION_SHAPE,
 	type RenditionPurpose,
 	TIER_QUALITY,
 	type VariantTier,
@@ -82,15 +83,16 @@ export async function runImageJob(job: ImageJob): Promise<ImageJobResult> {
 	}
 
 	const aspect = RENDITION_ASPECT[job.purpose];
+	const shape = RENDITION_SHAPE[job.purpose];
 	const image = { width: src.width, height: src.height };
-	const crop = clampCrop(job.crop, image, aspect);
-	const box = cropBox(crop, image, aspect);
+	const crop = clampCrop(job.crop, image, aspect, shape);
+	const box = cropBox(crop, image, aspect, shape);
 	// Fit the box's native size under the purpose cap, then fix the height from the width so the
 	// rendition's aspect is exact rather than off by a rounding pixel.
 	const fitted = fitWithin(box.width, box.height, RENDITION_MAX_EDGE[job.purpose]);
 	const width = fitted.width;
 	const height = Math.max(1, Math.round(width / aspect));
-	const cut = renderCrop(src, crop, aspect, width, height);
+	const cut = renderCrop(src, crop, aspect, width, height, shape);
 	const full: EncodedImage = { bytes: await encodeWebp(cut, RENDITION_QUALITY), width, height };
 	const tiers = await encodeTiers(cut, job.purpose);
 	const placeholder = placeholderOf(tiers.bitmaps.sm);

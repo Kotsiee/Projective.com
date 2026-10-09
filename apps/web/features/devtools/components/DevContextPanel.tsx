@@ -32,6 +32,7 @@ import {
 	setDevEnabled,
 } from "../core/dev-context.ts";
 import { openMoneyFlow } from "@features/checkout/core/money-flow-state.ts";
+import { DevThemeControls } from "./DevThemeControls.tsx";
 
 // #region Props
 /** Props for {@link DevContextPanel}. */
@@ -542,6 +543,8 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 					/>
 				</Field>
 			</div>
+
+			<DevThemeControls />
 
 			<div class="dev-ctx__group">
 				<div class="dev-ctx__grouphead">Money</div>

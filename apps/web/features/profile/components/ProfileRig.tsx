@@ -33,8 +33,10 @@ import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
  * are mounted once, by the hero, on the shared signals in `core/profile-state.ts`.
  *
  * Which controls render is `rigFor`'s decision (root CLAUDE.md §8 Decision #108): a SELLER leads
- * with **Hire** and **Add to project** with Message + Follow as icon-only secondaries; a BUYER keeps
- * Message as its text primary with Follow beside it; the OWNER sees Settings + Share. Hire renders
+ * with **Hire** and **Add to project** with Message + Follow as icon-only secondaries; a BUYER sees
+ * Message + Follow as text; the OWNER sees Settings + Share. Fills follow the Button Interaction
+ * Matrix (DESIGN_SYSTEM §B.8.1 / §D.7.7): Hire is the amber accent pill, Add to project the
+ * monochrome inverted pill wherever it renders, every other control neutral outlined. Hire renders
  * for a guest (a listing's preview is public) but its PRESS opens the sign-in prompt in place of the
  * listings popover; Add to project is withheld from a guest outright, because its rows are the
  * viewer's own projects.
@@ -119,10 +121,12 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 	const celebrating = followCelebrating.value;
 	const followLabel = isFollowing ? `Following ${profile.name}` : `Follow ${profile.name}`;
 	const followText = isFollowing ? "Following" : "Follow";
+	const accent =
+		`ui-button ui-button--accent ui-button--filled ui-button--size-${size} ui-button--rounded`;
 	const filled =
 		`ui-button ui-button--primary ui-button--filled ui-button--size-${size} ui-button--rounded`;
 	const outlined =
-		`ui-button ui-button--primary ui-button--outlined ui-button--size-${size} ui-button--rounded`;
+		`ui-button ui-button--neutral ui-button--outlined ui-button--size-${size} ui-button--rounded`;
 
 	const burst = celebrating
 		? (
@@ -143,8 +147,9 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 					rounded
 					iconOnly
 					size={size}
+					severity="neutral"
 					variant="outlined"
-					class="pf-rig__cta pf-rig__cta--secondary pf-rig__cta--icon"
+					class="pf-rig__cta pf-rig__cta--neutral pf-rig__cta--icon"
 					aria-label={`Message ${profile.name}`}
 					icon={<Icon name="message" size="sm" />}
 					onClick={() => openMessage(viewer)}
@@ -156,8 +161,9 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 						rounded
 						iconOnly
 						size={size}
+						severity="neutral"
 						variant="outlined"
-						class="pf-rig__cta pf-rig__cta--secondary pf-rig__cta--icon pf-rig__cta--follow"
+						class="pf-rig__cta pf-rig__cta--neutral pf-rig__cta--icon pf-rig__cta--follow"
 						aria-label={followLabel}
 						aria-pressed={isFollowing}
 						icon={<Icon name={isFollowing ? "check" : "user-plus"} size="sm" />}
@@ -188,14 +194,15 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 			{canEdit
 				? (
 					<>
-						<a class={`${filled} pf-rig__cta pf-rig__cta--primary`} href="/settings">
+						<a class={`${outlined} pf-rig__cta pf-rig__cta--neutral`} href="/settings">
 							<span class="ui-button__label">Settings</span>
 						</a>
 						<Button
 							rounded
 							size={size}
+							severity="neutral"
 							variant="outlined"
-							class="pf-rig__cta pf-rig__cta--secondary"
+							class="pf-rig__cta pf-rig__cta--neutral"
 							onClick={() => shareProfile(profile)}
 						>
 							Share
@@ -218,7 +225,7 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 									<button
 										type="button"
 										ref={api.ref as RefObject<HTMLButtonElement>}
-										class={`${filled} pf-rig__cta pf-rig__cta--primary pf-rig__cta--hire`}
+										class={`${accent} pf-rig__cta pf-rig__cta--hire`}
 										aria-haspopup="dialog"
 										aria-expanded={api.expanded ? "true" : "false"}
 										aria-controls={api.panelId}
@@ -252,9 +259,7 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 									<button
 										type="button"
 										ref={api.ref as RefObject<HTMLButtonElement>}
-										class={`${rig.primary === "add" ? filled : outlined} pf-rig__cta ${
-											rig.primary === "add" ? "pf-rig__cta--primary" : "pf-rig__cta--secondary"
-										} pf-rig__cta--add`}
+										class={`${filled} pf-rig__cta pf-rig__cta--mono pf-rig__cta--add`}
 										// The visible label, restated: the band folds this control to its glyph on a
 										// phone, and the name must survive the fold.
 										aria-label="Add to project"
@@ -290,7 +295,9 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 						<Button
 							rounded
 							size={size}
-							class="pf-rig__cta pf-rig__cta--primary"
+							severity="neutral"
+							variant="outlined"
+							class="pf-rig__cta pf-rig__cta--neutral"
 							onClick={() => openMessage(viewer)}
 						>
 							Message
@@ -299,8 +306,9 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 							<Button
 								rounded
 								size={size}
+								severity="neutral"
 								variant="outlined"
-								class="pf-rig__cta pf-rig__cta--secondary pf-rig__cta--follow"
+								class="pf-rig__cta pf-rig__cta--neutral pf-rig__cta--follow"
 								aria-pressed={isFollowing}
 								aria-label={followLabel}
 								icon={isFollowing ? <Icon name="check" size="sm" /> : undefined}

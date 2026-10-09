@@ -37,19 +37,22 @@ bounces.**
 
 ### A.1 The Core Palette
 
-The brand anchor is **Brand Teal `#288690`** (from `PRODUCT_SPEC.md` §Visual Identity). Teal is the
-seed for the entire tonal system (Part 2). All base semantic targets below are the product spec's
-values, expressed here as the token contract components consume.
+The brand anchor is **Brand Teal `#288690`** (from `PRODUCT_SPEC.md` §Visual Identity). Teal seeds
+the tonal system (Part 2); amber `#D98216` seeds the one accent role (§A.1.2). All base semantic
+targets below are the product spec's values, expressed here as the token contract components
+consume.
 
 #### Brand & semantic seeds
 
 | Token                   | Light       | Dark                                            | Role                                                   |
 | :---------------------- | :---------- | :---------------------------------------------- | :----------------------------------------------------- |
-| `--brand` / `--primary` | `#288690`   | `#288690` (tonal-lifted for contrast, see §A.2) | Primary action, active state                           |
+| `--brand` / `--primary` | `#288690`   | `#288690` (tonal-lifted for contrast, see §A.2) | Brand primary — tier 3 (§B.8.1)                        |
 | `--success`             | `#268C66`   | tonal                                           | "Complete" / approved                                  |
 | `--warning`             | `#D98216`   | tonal                                           | "In Progress" / time-sensitive                         |
 | `--danger`              | `#D94141`   | tonal                                           | "Incomplete" / error / no-show                         |
 | `--info`                | `#3D7BD9`   | tonal                                           | Neutral-informational state (Ready / To do / advisory) |
+| `--accent`              | `#d88115`   | `#e58b22` (tonal lift, fixed polarity — §A.1.2) | Terminal financial / conversion commit (§B.8.1)        |
+| `--on-accent`           | `#191c1d`   | `#0b0f0f` (`N.tone(4)`, dark `--surface`)       | Ink on `--accent` — dark in every mode (§A.1.2)        |
 | `--bg`                  | `#FAFAFA`   | `#1A1A1A`                                       | Primary canvas                                         |
 | `--surface`             | `#FFFFFF`   | `#212121`                                       | Elevated cards/headers/sidebar                         |
 | `--text-main`           | `#1A1A1A`   | `#FFFFFF`                                       | Body & headings                                        |
@@ -57,6 +60,15 @@ values, expressed here as the token contract components consume.
 | `--text-disabled`       | `#B3B3B3`   | tonal                                           | Non-interactive                                        |
 | `--border-subtle`       | `#E6E6E6`   | tonal                                           | Razor-thin indicators only (§B.4)                      |
 | `--focus-ring`          | `#4a6366`   | `#b1cbcf`                                       | Focus ring — generated, tracks `--secondary` (§A.7.3)  |
+
+> **Two names in this table are not what the code reads (Decision #157 flags (c), (d)).** The
+> engine's `--warning` seed is `#F19C13` (light tone 60 = `#ca8100`), not the `#D98216` above — a
+> pre-existing drift, left as written pending a ruling; `#D98216` is now the accent's seed (§A.1.2).
+> And `--text-main` is a spec name, not a token: ink is `--on-surface` everywhere in code. The
+> `--accent` / `--on-accent` cells are the engine's resolved tokens (`A.tone(62)` / `A.tone(66)`,
+> `N.tone(10)` / `N.tone(4)`), not the directive's approximations (`#D98216` / `#E58A18` /
+> `#1A1A1A`); the `--bg` / `--surface` dark cells are spec targets — the engine resolves dark
+> `--surface` to `#0b0f0f`.
 
 #### Contrast engineering (light **and** dark)
 
@@ -73,8 +85,9 @@ different tones from the _same_ ramp — one source, two selections.
 > package permitted in the UI layer, and **only** inside `packages/ui/system/` (the theming engine).
 > It never enters a component. Recorded in `SYSTEM_ARCHITECTURE.md` §3.
 
-**Goal:** from a single **seed color** (default `#288690`, or a user's chosen accent) generate a
-full, accessible, contextual set of tonal palettes, and write them into the same `--*` CSS custom
+**Goal:** from a **brand seed** (default `#288690`, or a user's chosen brand colour) and one
+**accent seed** (default `#D98216`, the amber conversion role of §A.1.2) generate a full,
+accessible, contextual set of tonal palettes, and write them into the same `--*` CSS custom
 properties the components already read. Components stay 100% library-agnostic; only the engine knows
 Material exists.
 
@@ -87,15 +100,20 @@ Material exists.
    **primary**, `a2` **secondary**, `a3` **tertiary**, `n1` **neutral**, `n2` **neutral-variant** —
    each a continuous function `tone(0..100) → color`. (The implementation uses `CorePalette` for
    version-robustness; the newer `DynamicScheme`/`SchemeTonalSpot` "flavor" API is an available
-   upgrade path when a scheme flavor becomes user-selectable.)
+   upgrade path when a scheme flavor becomes user-selectable.) A **second** `CorePalette` is built
+   from `ACCENT_SEED`; only its `a1` is read (`A`), and only for `--accent`. Its ink is not taken
+   from `A` at all but from the brand seed's `n1` (`N`), the palette `--surface` / `--on-surface`
+   already resolve from.
 3. **Tone selection = the light/dark switch — except for the brand pair, which does not switch.**
    A **tone** is picked per role per mode. Because tone correlates with contrast, the pairs are
    engineered, not eyeballed:
    - Light: `secondary = P2.tone(40)`, `on-secondary = P2.tone(98)`, `surface = N.tone(100)`,
      `on-surface = N.tone(10)`, `outline = NV.tone(50)`.
-   - Dark: `secondary = P2.tone(80)`, `on-secondary = P2.tone(20)`, `surface = N.tone(6)`,
+   - Dark: `secondary = P2.tone(80)`, `on-secondary = P2.tone(20)`, `surface = N.tone(4)`,
      `on-surface = N.tone(90)`, `outline = NV.tone(60)`.
    - **Both, identically:** `primary = P.tone(45)`, `on-primary = P.tone(98)` — see §A.1.1.
+   - **Fixed polarity, re-toned per mode:** light `accent = A.tone(62)`, `on-accent = N.tone(10)`;
+     dark `accent = A.tone(66)`, `on-accent = N.tone(4)` — see §A.1.2.
 
    **The invariant is straddling mid-tone, not the size of the gap.** A mode-adaptive pair must sit
    on opposite sides of tone 50 with a gap of ~60 tones. This is stated precisely because the looser
@@ -122,13 +140,83 @@ the mode input entirely, so there is nothing left for the value to vary with.
 
 **What this costs, stated rather than hidden.** `--primary` is the one role that does not widen under
 the high-contrast overlay: it holds **5.13:1** in all four states — AA for normal text, above the 3:1
-non-text floor, but not the ~7–8:1 a mode-adaptive pair reaches. It is also the only role whose
-_polarity_ does not flip with the theme (dark fill, light ink, in both modes), which is why
+non-text floor, but not the ~7–8:1 a mode-adaptive pair reaches. It is also one of two roles whose
+_polarity_ does not flip with the theme (dark fill, light ink, in both modes — the other is
+`--accent`, §A.1.2), which is why
 `button.css` cannot blend every severity in one direction (§B.12.4), and why its fill sits at
 **3.05:1** against `--surface-3` in dark — enough to see, with 0.05 of a ratio point to spare and
 therefore nothing to spend. Every one of these figures is pinned by test in
 `packages/ui/system/core/theme-engine.test.ts`, including the byte-for-byte equality of the pair
 across all four states.
+
+> **Engine drift (Decision #157 flag (m)).** The code does not currently match this section's dark
+> branch: `theme-engine.ts` emits dark `--primary` as `core.a1.tone(55)` (`#00929e`), not
+> `tone(45)` (`#007680`), while its own comments, the light branch and the text above say 45. The
+> "byte-for-byte" claim is therefore the contract, not the shipped value; it is logged, not changed
+> here, and nothing that cites the brand pair as a fixed-polarity precedent (§A.1.2) should be
+> pinned against it until the drift is ruled.
+
+**A.1.2 The accent pair is fixed-polarity amber (product owner, 2026-10-09, Decision #157).**
+`--accent` / `--on-accent` is the one role that means _money moves now_ — the terminal financial and
+conversion commit (§B.8.1 tier 1). It is global, not a surface's private pair: ONE seed,
+`ACCENT_SEED = #D98216`, through its own `CorePalette` (`A` = its `a1`), with the ink taken from the
+brand seed's neutral `N` — so the light label is literally `--on-surface` (in both contrast states)
+and, at normal contrast only, the dark label is literally the dark `--surface`; under
+`data-contrast="high"` the dark label moves to `N.tone(0)` (`#000000`) while `--surface` holds at
+`N.tone(4)`, because surfaces are never widened.
+
+| State                | `--accent`                                   | `--on-accent`                                     | Ratio       |
+| :------------------- | :------------------------------------------- | :------------------------------------------------ | :---------- |
+| Light                | `A.tone(62)` = `#d88115` (≈ the seed itself) | `N.tone(10)` = `#191c1d` (= light `--on-surface`) | **5.77:1**  |
+| Dark                 | `A.tone(66)` = `#e58b22` (tonal lift)        | `N.tone(4)` (= dark `--surface`)                  | **7.39:1**  |
+| Light, high contrast | `A.tone(62)` — holds                         | `N.tone(0)`                                       | **7.07:1**  |
+| Dark, high contrast  | `A.tone(78)` = `#ffb061`                     | `N.tone(0)`                                       | **11.63:1** |
+
+**Polarity is fixed — light fill, dark ink, in every mode** — like `--primary`, unlike every
+mode-adaptive role. That is why it bypasses `fg()` / `on()` exactly as the brand pair does (§A.1.1):
+those helpers choose a widening direction from the mode on the assumption that fill and ink swap
+sides with the theme. Written `fg(62)` / `on(10)`, the light branch widens the fill DOWN and the ink
+UP — 62 → 50 over 10 → 22 (`#af6500` on `#323536`, **2.76:1**, down from 5.77:1 and under both
+the 4.5:1 and 3:1 floors) — so the pair converges under `data-contrast="high"`, the brand-pair trap
+verbatim. The accent's own rule is stated per side instead:
+
+- **The ink always moves away from the fill:** `on-accent = max(0, t − HC_DELTA)` (12) in BOTH
+  modes (light 10 → 0, dark 4 → 0).
+- **The fill moves up by 12 in dark only** (66 → 78). In light it **holds at 62**: raising it costs
+  visibility on a near-white page, and lowering it closes the gap with the ink. The pair never
+  narrows.
+
+**Pressure blends toward a light pole.** `--btn-shade` (`--on-surface`) is the right pole for a role
+whose polarity follows the theme; for a fixed-polarity light fill it is the INK in light mode, and
+blending toward it walks both sides of the pair together. The accent's hover and press therefore
+blend toward a mode-invariant near-white (`N.tone(100)`, the value `--on-scrim` already resolves
+to), so the label's contrast rises with pressure in both modes (§B.12.4) — the mechanism that
+Decision #153 built for the checkout commit, now owned by the token layer.
+
+**What this costs, stated rather than hidden.** The light fill sits under the 3:1 non-text floor
+this house applies to fills (§B.12.4) on **every** light ground, and pressure lowers it further:
+
+| Light ground                     | Resting | Hover (8% to the pole) | Press (12% to the pole) |
+| :------------------------------- | :------ | :--------------------- | :---------------------- |
+| `--surface` (`N.tone(100)`)      | 2.97:1  | 2.71:1                 | 2.59:1                  |
+| `--bg` (`N.tone(98)`)            | 2.84:1  | —                      | —                       |
+| `--surface-1` (`N.tone(96)`)     | 2.69:1  | —                      | —                       |
+| `--surface-2` (`N.tone(94)`)     | 2.55:1  | —                      | —                       |
+| `--surface-3` (`N.tone(92)`)     | 2.42:1  | 2.21:1                 | **2.11:1** (worst case) |
+
+High contrast leaves every figure unchanged — the light fill holds at 62 and surfaces are never
+widened. The label carries the control's identification, so WCAG 1.4.11 is not failed, and the
+Decision #153 checkout amber had the same property; it is nonetheless a house-rule deviation —
+covering every light ground and both pressure states, and waiving §B.12.4's "do not shave a floor"
+rule for this role — logged as Decision #157 flag (b), not granted. The alternative the flag puts to
+a human is the brand's treatment in light mode (a zero tonal step plus the border-channel hover,
+§B.12.4), with the light pole kept for dark only.
+
+And the fill is one hue with `--warning` in **both** modes: light `#d88115` against light warning
+`#ca8100` measures **1.06:1**, dark `#e58b22` against dark warning `#ed990d` (`F19C13` `a1` tone 70)
+**1.14:1**. "Commit" and "needs attention" are again one hue — the §B.8.3 failure that #153 fixed —
+flag (a), awaiting a ruling on which ramp moves. Every ratio in the four-state table is pinned in
+`packages/ui/system/core/theme-engine.test.ts`.
 4. **Emit CSS variables.** The engine serializes selected tones to `--primary`, `--on-primary`,
    `--surface-1…5`, `--outline`, etc., and sets them on `:root` (and on any nested
    `<DesignSystemProvider>` scope, §D.3).
@@ -137,20 +225,23 @@ across all four states.
 // packages/ui/system/theme-engine.ts  (engine only — never imported by a component)
 import { argbFromHex, CorePalette, hexFromArgb } from "@material/material-color-utilities";
 
-/** Generate the token map for one seed + mode, ready to write to CSS custom properties. */
+/** Generate the token map for the brand + accent seeds and one mode, ready for CSS custom properties. */
 export function buildScheme(
-	{ seed, dark, highContrast = false }: ThemeInput,
+	{ seed, accentSeed = ACCENT_SEED, dark, highContrast = false }: ThemeInput,
 ): Record<string, string> {
 	const core = CorePalette.of(argbFromHex(seed)); // a1 P · a2 · a3 · n1 N · n2 NV
+	const accent = CorePalette.of(argbFromHex(accentSeed)).a1; // A — read for --accent only (§A.1.2)
 	const hx = (argb: number) => hexFromArgb(argb);
 	return dark
 		? {
 			"--primary": hx(core.a1.tone(80)), // straddles mid against on-primary tone(20)
 			"--on-primary": hx(core.a1.tone(20)),
-			"--surface": hx(core.n1.tone(6)),
+			"--surface": hx(core.n1.tone(4)),
 			"--surface-1": hx(core.n1.tone(10)),
 			"--on-surface": hx(core.n1.tone(90)),
 			"--outline": hx(core.n2.tone(60)),
+			"--accent": hx(accent.tone(66)), // fixed polarity: HC widening is per side (§A.1.2)
+			"--on-accent": hx(core.n1.tone(4)),
 			// …secondary/tertiary + fixed-hue success/warning/danger/info from their own seeds.
 		}
 		: {
@@ -160,6 +251,8 @@ export function buildScheme(
 			"--surface-1": hx(core.n1.tone(96)),
 			"--on-surface": hx(core.n1.tone(10)),
 			"--outline": hx(core.n2.tone(50)),
+			"--accent": hx(accent.tone(62)),
+			"--on-accent": hx(core.n1.tone(10)),
 		};
 }
 ```
@@ -199,11 +292,32 @@ or "system" is unrepresentable (Decision #149).
 The engine exposes three **global** knobs, each a small set of root variables that cascade
 everywhere. Adjusting them re-themes the whole app; **components never special-case them.**
 
-| Knob                 | Mechanism                            | Root variables                                         |
-| :------------------- | :----------------------------------- | :----------------------------------------------------- |
-| **Colors**           | seed + scheme flavor → §A.2 pipeline | all `--primary/-surface/-outline/…`                    |
-| **Border radius**    | one global scale multiplier          | `--radius-scale` × the `--radius-*` ramp (§A.3)        |
-| **Shadow intensity** | one global opacity/spread multiplier | `--shadow-intensity` × the `--elevation-*` ramp (§A.3) |
+| Knob                 | Mechanism                                                  | Root variables                                         |
+| :------------------- | :--------------------------------------------------------- | :----------------------------------------------------- |
+| **Colors**           | brand seed + accent seed + scheme flavor → §A.2 pipeline   | all `--primary/-accent/-surface/-outline/…`            |
+| **Border radius**    | one global scale multiplier                                | `--radius-scale` × the `--radius-*` ramp (§A.3)        |
+| **Shadow intensity** | one global opacity/spread multiplier                       | `--shadow-intensity` × the `--elevation-*` ramp (§A.3) |
+
+The Colors knob has **two seeds**, both live-adjustable through the store mutators `setSeed` /
+`setAccentSeed`: `dsConfig.seed` (brand) and `dsConfig.accentSeed` (accent) → `applyConfig` →
+`:root` `style.setProperty`, the same path for both, so retuning the amber re-derives `--accent` /
+`--on-accent` in all four mode/contrast states without a reload and without touching a component.
+Neither seed is persisted by the design system: the SSR first paint (`_app.tsx`) builds from the
+defaults, and an omitted `accentSeed` resolves to `ACCENT_SEED`.
+
+**All three knobs have a development control.** The Dev Context Switcher's **Theme** group
+(`apps/web/features/devtools/core/dev-theme.ts`, `components/DevThemeControls.tsx`) drives
+`dsConfig.seed`, `dsConfig.accentSeed`, `radiusScale` and `shadowIntensity` live through
+`updateConfig`; `applyConfig` writes the scheme and `--radius-scale` / `--shadow-intensity` on
+`:root` via `style.setProperty`, readable in the element inspector. The seeds are native colour
+inputs (the `@projective/ui` `ColorPicker` popover renders beneath the dev window's near-maximum
+`z-index`); radius and shadow are the `@projective/ui` `Slider`, bounded by `DEV_THEME_RANGES`. The
+group ignores the simulation master switch, keeps a session-only copy (`sessionStorage`
+`pj.session.dev.themeOverrides`) only while a value differs from `DEFAULT_CONFIG`, and its Reset
+restores `DEFAULT_CONFIG`. It is a recorded exception to the root `CLAUDE.md` §5 Dev Context
+Switcher contract: it has `DevThemeKnobs` and `DEV_THEME_DEFAULTS` (derived from `DEFAULT_CONFIG`,
+so Reset cannot drift from the shipping values) but no `DevOption` list and no `data-dev-*`
+`reflect()`, because the theme engine reads `dsConfig` directly — there is no seam to mirror.
 
 ```css
 :root {
@@ -682,10 +796,72 @@ and the boundary is now spending two devices (§B.9.3) to do what one opaque ste
 
 `color-mix()` remains correct for **ink, marks and states** — a chip label mixed toward
 `--on-surface`, a hover tint over a known parent, a disabled ink — because those composite against a
-surface the rule itself named. It is wrong as the definition of a **region's own background**.
+surface the rule itself named — except the selected / active state of a navigation rail, a
+middle-nav row or a tag, which is a solid tonal step (below). It is wrong as the definition of a
+**region's own background**.
+
+**The active row is a tonal step too (owner directive, 2026-10-09, Decision #157).** A selected
+item on a navigation rail, a row in a middle-nav list and a tag are region backgrounds in miniature,
+and they are where the translucent brand wash keeps coming back — `rgba(primary, .15)`,
+`color-mix(in srgb, var(--primary) 15%, transparent)`. On those three surfaces it is **prohibited**:
+a teal wash over an unknown ground is unmeasurable for the same reasons as above, and it spends the
+brand hue on a state the brand is not making a claim about. The active rail is solid:
+
+```css
+background: var(--surface-2);
+color: var(--on-surface);
+```
+
+plus, optionally, a **2px inline-start indicator** — a `border-inline-start` that is reserved
+`transparent` at rest and only recoloured when active, so selection moves no box (§B.12.3) and
+mirrors for free under `dir="rtl"` (§A.6). The indicator is inked **`--on-surface`** — a house
+choice, not the directive's (it names the indicator, not its colour): the brand hue would put back
+the claim the wash was removed for. A square **icon rail** button reserves `border-inline` on BOTH
+sides (`2px solid transparent`) and recolours only the start edge, so the glyph stays centred in its
+box whether or not the indicator shows. A rail with an indicator hovers at `--surface-2` too, so
+hover is never heavier than active; the indicator and the active weight carry the difference.
+
+**Shipped on the solid step.** Every surface that carried the wash now renders `--surface-2` /
+`--on-surface`:
+
+- **Package:** `TreeNav`'s active row (`.ui-treenav__row--active`, with the indicator) and
+  `LaneIconButton`'s engaged state (`.ui-lane-iconbtn[data-on]`, a round icon control, so no
+  indicator — its glyph takes a 16% `currentColor` fill instead). The `--accent` modifier
+  (`.ui-lane-iconbtn--accent`) keeps its `--primary` glyph and moves only its hover to a
+  `--surface-2` fill: the wash was banned, not the hue.
+- **Rails and middle-nav rows, with the indicator:** the asset picker's sources and drives
+  (`.apk-nav__source` / `__drive[aria-current]`), the settings rail (`.stg-rail__item`, formerly an
+  opaque teal mix with `--surface`), inbox rows (`.inbox-row[data-active]`), the files hub rail
+  (`.fh-rail__item`), the catalogue rail and lane rows (`.cat-rail__item` / `.cat-lrow`), the
+  project rail and channels (`.proj-railbtn` / `.proj-chan`), the file explorer tree
+  (`.fx-tree__node`), the wallet lane (`.wlt-link-row` / `.wlt-rail__item[aria-current]`), the
+  `/view` lane items and rail buttons (`.pf-laneitem` / `.pf-railbtn`) and the basket lane rail
+  (`.bsk-lane__railbtn`).
+- **Toggles without an indicator:** the task lane's action toggle (`.task-lane__action[data-on]`,
+  matching `LaneIconButton`) and the workspace filter pill (`.wsp-lane__filter-pill[data-on]`, whose
+  full border recolours to `--on-surface`).
+- **The calendar rail** (`.cal-rail__item[data-active]`) keeps its solid `--surface-3` active and
+  changes only its ink, from `--primary` to `--on-surface`.
+
+**Which active rows are surface-2 and which are teal is not yet drawn (Decision #157 flag (k)).**
+The directive says both "the active rail is `--surface-2`" and that tier 3 of the Button
+Interaction Matrix (§B.8.1) — solid `--primary` — is reserved for "major navigation active states",
+without naming which surfaces are which. What this section prohibits outright is the **wash**, and
+that is now gone. Rows whose active state is a SOLID `--primary` / `--on-primary` fill — the
+package `NavItem` as shipped, in the global `ShellSidebar` rail and in the Project Details lane's
+top tier (`ProjectNavSection`, §D.4), and `BottomNav` — are held as shipped as tier-3 "major
+navigation active states", not as a precedent. The flag asks whether the middle-nav `NavItem` rows
+join the surface-2 set. It also asks for an order between hover and active: on `LaneIconButton` and
+the indicator rails the hover fill equals the active fill, and on `TreeNav` and the asset picker the
+hover tint (`--on-surface` at `--tint-subtle`) is about as heavy as the active step, so only the
+indicator or the glyph fill tells them apart. The options are an active at `--surface-3` (as
+`.msg-conv` does) or a lighter hover; an active at `--surface-3` would revise this section's
+`--surface-2` rule.
 
 > **Merge gate.** A non-interactive region whose `background` is a translucent colour is not
-> mergeable. Use `--bg` / `--surface-1` / `--surface-2`.
+> mergeable. Use `--bg` / `--surface-1` / `--surface-2`. Nor is an active navigation-rail item,
+> middle-nav list row or tag whose fill is a translucent `--primary` wash — use `--surface-2` with
+> `--on-surface` ink.
 
 > **Scoped exception — the `/wallet` sheet rim (Decision #123).** The dashboard sheet that slides over
 > the wallet hero is translucent for its first `--wlt-sheet-fade` (`--space-7`) only: a veil running
@@ -867,8 +1043,8 @@ sidebar (global rail, middle-nav lane, Project Details channel tree) and any den
    #146): the Project Details lane's top tier prints a figure where the number is what the reader
    acts on — Discussion's unread messages, Submissions awaiting the viewer, Members changes — as
    plain `tabular-nums` `--fw-semibold` text capped at `9+`, never inside a pill, chip or fill; every
-   other view keeps a toned dot (accent · neutral `--text-secondary` · `--warning`), the collapsed
-   rail keeps the dot, and the figure's meaning is always in the link's accessible name.
+   other view keeps a toned dot (brand `--primary` · neutral `--text-secondary` · `--warning`), the
+   collapsed rail keeps the dot, and the figure's meaning is always in the link's accessible name.
 3. **Icon-only action rows in sticky footers.** Panel-scoped actions and utilities are grouped into
    **horizontal, icon-only button rows**, typically pinned to a **sticky footer**, so the scrollable
    content region keeps its full height (mirrors the §D.2 collapsed splitter's vertical icon-only
@@ -1034,9 +1210,10 @@ by silhouette so the distinction survives every colour-vision overlay; `Verifica
 
 ### B.8 Button Usage Policy (merge gate)
 
-`Button` ships **four variants** (`filled` · `outlined` · `text` · `link`) × **seven severities**
-(`primary` · `secondary` · `success` · `info` · `warning` · `help` · `danger`) × three sizes, plus
-`raised` / `rounded` / `iconOnly` / `fluid`. That is a large surface, and a large surface without a
+`Button` ships **four variants** (`filled` · `outlined` · `text` · `link`) × **seven shared
+severities** (`primary` · `secondary` · `success` · `info` · `warning` · `help` · `danger`) × three
+sizes, plus two Button-only severities that each allow one variant — `accent` (`filled` only) and
+`neutral` (`outlined` only), B.8.1 / B.8.3 — and `raised` / `rounded` / `iconOnly` / `fluid`. That is a large surface, and a large surface without a
 policy is how a screen ends up with four equally-loud buttons and no answer to "what do I do here."
 The policy is that **the variant is not a taste choice — it is a declaration of interaction
 weight**, and weight is a property of the action, not of the designer's mood.
@@ -1049,6 +1226,79 @@ weight**, and weight is a property of the action, not of the designer's mood.
 | `outlined` | A real alternative    | A second path a user genuinely picks between (Cancel-with-consequence, a secondary create) |
 | `text`     | Repeated / in-context | Row actions, list affordances, toolbar verbs, the escape hatch (Cancel)                    |
 | `link`     | Navigation            | Goes somewhere; never mutates                                                              |
+
+**The Button Interaction Matrix (owner directive, 2026-10-09, Decision #157).** Weight says how
+loud an action is; the matrix says **which fill** a loud action gets, by what the action commits
+the person to. A `filled` button takes exactly one of the first three tiers; the last two are the
+non-fill weights above, named for the jobs the matrix reserves them for.
+
+| Tier                                   | Fill · ink                                                                                                  | Shape                                              | Use for                                                                   | Examples                                                                                                         |
+| :------------------------------------- | :---------------------------------------------------------------------------------------------------------- | :------------------------------------------------- | :------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------- |
+| **1. Terminal financial / conversion** | `severity="accent"` (Button-only, `filled` only): solid `--accent` · `--on-accent` (§A.1.2)                 | pill — `rounded` (`--radius-full`)                 | A commit inside a financial / conversion flow, or the act that starts one | Checkout Pay / Place Order and every checkout commit · profile hero Hire · Fund Escrow                           |
+| **2. Primary structural commitment**   | monochrome inverted: solid `--on-surface` · `--surface` ink (§D.7.7)                                        | per surface (§D.7.7: pill)                         | Commits to structure, not money                                           | Add to project · primary creation triggers (Create project, `LaneCreateButton`)                                  |
+| **3. Brand primary**                   | `severity="primary"`: solid `--primary` · mode-invariant `--on-primary`                                     | the radius ramp (B.8.4)                            | Major navigation active states (§B.4.2), core workflow commits            | Save photo · Attach Selected                                                                                     |
+| **4. Neutral outlined**                | `severity="neutral" variant="outlined"` (Button-only): border `var(--hairline-strong)` · `--on-surface` ink | the radius ramp; icon-only may be a circle (B.8.4) | Utility actions — **mandatory** for them                                  | Asset-picker Upload · Show more · Try again · profile media upload · profile Message · Follow · Settings · Share |
+| **5. Ghost / bare**                    | `text`: transparent · a subtle tonal hover lift                                                             | the radius ramp                                    | Secondary toolbar tools, escape hatches                                   | Toolbar verbs · Cancel · the basket footer's Checkout pill (B.8.4)                                               |
+
+Tier 2 has no severity of its own: it is the §D.7.7 override `--btn-accent: var(--on-surface);
+--btn-on: var(--surface)` on a `filled` Button, which swaps sides with the theme by construction.
+The tiers are ranked by **hue before emphasis** — amber is the one colour in the product that means
+the person is in the act of paying or converting, monochrome is structure, teal is the brand's own
+navigation and workflow voice. That is what makes tier 1 safe beside tier 2 (B.8.2).
+
+**The tier-1 test, stated once.** Tier 1 is **a commit inside a financial or conversion flow, or
+the act that starts one**: every commit of the checkout — Continue, Save details, the Add-card
+actions, Pay / Place Order (B.8.4) — the profile's Hire, which starts a hire, and Fund Escrow. It is
+never borrowed for a commit outside such a flow: an amber "Save" on a settings form teaches the
+reader that amber means nothing. Every other statement of tier 1's scope in this document, in
+`PRODUCT_SPEC.md` §Visual Identity and in the B.8 gate reads from this sentence. The narrower
+reading — amber for the money-moving commit alone (Pay / Place Order, Fund Escrow), with the flow's
+other commits in tier 2 — is open as Decision #157 flag (j); the docs follow the directive's
+"every checkout commit" until it is ruled.
+
+**Where tier 1 renders today.** Beyond the checkout (B.8.4) and the profile's Hire (§D.7.7):
+
+- the basket summary's **Proceed to Checkout** link (`bsk-summary__cta`) — the act that starts the
+  checkout flow;
+- the wallet movement dialog (`WalletDialogs.tsx` `MoveDialog`): its **Continue** and its review
+  commit — _Fund escrow €X_, _Withdraw €X_, _Transfer €X_, _Split €X_, _Continue to payment_;
+- the shared `StripeElementPanel`'s **Pay £X** confirm in payment mode — the wallet top-up's card
+  step and the `/checkout/payment` card step;
+- the DM context drawer's **Fund escrow & confirm seat** — both the `fund_escrow` link and the
+  `confirm_seat` Button;
+- the project board footer's **Checkout N** pill (`.brd-rig__action--accent`, a feature-local
+  control whose hover and press blend toward `--on-scrim` by `--tint-soft` / `--tint`, B.12.4).
+
+**Commits that stay tier 3 — the "never borrowed" sentence, worked.** Wallet configuration commits
+(the payout schedule, recurring-deposit setup, spend request, income smoother, Save card), the
+spend-approval **Approve**, **Accept Submission** and **Publish** commit a setting or a workflow
+step, not a payment in flight, and keep `severity="primary"`. One money-releasing commit, and its
+opener, are held non-amber by a component, not by the rule: `ConfirmDialog` / `ConfirmPopup` type `acceptSeverity`
+as the shared `Severity`, so _Approve and release_ (`ApproveStageDialog`) cannot take `accent`, and
+its opener _Approve Stage_ (`SubmissionActionBar`) stays beside it for consistency (Decision #157
+flag (o)). The schedule view's _Book this slot_ (`EventModal`), the body counterpart of the lane's
+held _Book session_, waits on flag (f) (flag (q)).
+
+**Tier 1 is `<Button severity="accent" rounded>`.** The severity sets the colour only; the pill comes
+from `rounded`. `accent` is `filled`-only by type — `ButtonAccentTone` admits only `variant?:
+"filled"` — because `--accent` is contrast-checked as a fill under `--on-accent`, not as ink on a
+page: as text on light `--surface` it measures 2.97:1, so an outlined, text or link amber label would
+be unreadable. A native `<button>` or `<a>` that must carry a ref or an `href` (the profile's Hire,
+the basket's Proceed to Checkout, the drawer's fund link) wears the same class set,
+`ui-button--accent ui-button--filled ui-button--rounded`, with no local colour overrides.
+
+**Tier 4 is `<Button severity="neutral" variant="outlined">`.** `neutral` is the second Button-only
+severity, typed through `ButtonNeutralTone`, which requires `variant: "outlined"` — a neutral
+`filled`, `text` or `link` does not compile, because a neutral fill would read as tier 2.
+`button.css` sets `.ui-button--neutral { --btn-accent: var(--on-surface); --btn-on: var(--surface) }`
+and `.ui-button--neutral.ui-button--outlined { border: var(--hairline-strong) }`; hover is the
+`outlined` variant's own `--tint-soft` lift in `--on-surface`. A native element wears
+`ui-button--neutral ui-button--outlined` (the profile owner rig's Settings `<a>`). Whether every
+`outlined` turns neutral, or only utility actions do while a severity-tinted `outlined` keeps the
+weight table's "real alternative" row, is open as flag (l); until it is ruled, utility actions take
+the neutral severity and the weight table's `outlined` row is unchanged. `--hairline-strong` is the
+existing border shorthand (`1px solid var(--hairline-strong-color)`, §A.3), used as-is, never
+re-mixed.
 
 **B.8.2 One filled action per view — and per overlay.** A view's primary action is singular by
 definition; the moment there are two, neither is primary and the user reads a fork. The cap counts
@@ -1066,12 +1316,22 @@ actions all `text` (severity distinguishing accept from the rest), and the one u
 `outlined`. A repeated action is **never** `filled` — a column of filled buttons is a column of
 noise, and it makes the row's _content_ the least prominent thing in the row.
 
-> **The one sanctioned two-fill rig (§D.7.7).** The entity view's conversion lane renders two solid
-> pills — an inverted monochrome primary and a brand-teal secondary — plus a ghost tertiary. The cap
-> exists to protect the reader's ability to rank the actions, and here the ranking is carried by
-> **hue** (a monochrome commit against a brand basket) rather than by emphasis, so it survives. The
-> exception is scoped to that rig and must not be generalised: two fills of the SAME colour is the
-> case the cap was written for, and remains a finding.
+> **Two fills are legal only when ranked by hue (§D.7.7, Decision #157).** The cap exists to
+> protect the reader's ability to rank the actions. Where a decision region genuinely holds a
+> terminal financial commit AND a structural commitment, the two may both be filled because the
+> matrix ranks them by **hue** — amber tier 1 against monochrome tier 2 — rather than by emphasis,
+> so the ranking survives. The canonical case is the profile action rig: **Hire** (amber accent)
+> beside **Add to project** (monochrome inverted). The entity view's conversion lane (monochrome
+> commit + teal basket) predates the matrix and is held as shipped, scoped to that lane, pending a
+> ruling (§D.7.7). Two fills of the SAME colour — or any two tiers other than the amber/monochrome
+> pair — is the case the cap was written for, and remains a finding.
+
+**Right** — `/checkout/payment` while a card step is pending (`cardStepPending`,
+`apps/web/features/checkout/core/card-step.ts`: a `requires_action` result carrying a payment
+handoff). The card panel's **Pay £X** is then the only tier-1 commit: the rail's Buy Now block is not
+rendered at all, rather than rendered beside it, which also stops a second charge attempt
+mid-handoff. Two amber Pay buttons for one payment are the same-colour case, so one of them leaves
+the DOM.
 
 **B.8.3 Severity is meaning, never decoration.** Severity encodes what the action _is_ — it is not a
 palette. Two rules follow:
@@ -1082,38 +1342,79 @@ palette. Two rules follow:
   chance to notice was the word "Transfer"; the interface said "this is the normal thing to do
   here." Now `variant="filled" severity="danger"`, a vocabulary the codebase already had and had
   simply not reached for. Read that as the general failure mode: the wrong severity is almost never
-  a _misuse_ of the API, it is a _non-use_ of it.
-- **Do not invent a severity by re-tinting.** The accent-pair block (`--x-accent` / `--x-on`) is
+  a _misuse_ of the API, it is a _non-use_ of it. This rule and tier 1 of B.8.1 overlap on an
+  irreversible but intended money movement — _Approve and release_, _Withdraw_, _Transfer_ — which
+  the matrix makes amber; the wallet's movement commits ship as tier 1. Which rule wins is open as
+  Decision #157 flag (p); the reading proposed there is that `danger` is for destructive or loss
+  actions, and an irreversible financial commit the person intends is tier 1.
+- **Do not invent a severity by re-tinting.** The severity pair block (`--x-accent` / `--x-on`) is
   hand-copied across `Button` · `Badge` · `Tag` · `Alert` · `Message` · `Toast`, so a wrong pair
   appears **six times, not once**. `secondary` once paired with `--on-surface` and measured **2.67:1
   light / 1.32:1 dark**; `info` was aliased to `--secondary`, so the generated blue ramp rendered
   nowhere and two severities were visual duplicates. When a severity or ramp changes, all six
-  components are in scope for that PR.
+  components are in scope for that PR. The rule covers the seven shared severities only: the two
+  Button-only rows below exist in `button.css` alone and are not hand-copied anywhere.
+- **`accent` and `neutral` are Button-only severities (Decision #157).** Each names a tier of the
+  Interaction Matrix (B.8.1) — `accent` the terminal commit (tier 1), `neutral` the utility action
+  (tier 4) — not a state, so neither has a meaning on `Badge` · `Tag` · `Alert` · `Message` ·
+  `Toast`: an amber tag or alert would borrow tier 1 outside a financial flow and put a fill where
+  §B.11.6 forbids one. Neither is in the shared `Severity` union
+  (`packages/ui/fields/types/mod.ts`) those five components read; `Button` takes the wider
+  `ButtonSeverity` (`Severity | "accent" | "neutral"`), each Button-only member narrowed to its one
+  legal variant (`ButtonAccentTone` → `filled`, `ButtonNeutralTone` → `outlined`), and the other five
+  severity pair blocks have no row for either. Components that forward a severity to an inner
+  `Button` keep the shared type: `ConfirmDialog` / `ConfirmPopup` `acceptSeverity` is `Severity`, so
+  a financial commit hosted in one cannot be amber — widening it to `ButtonSeverity` with an
+  accept-`rounded` hook is open as Decision #157 flag (o).
 
 **B.8.4 Shape.** `rounded` is the **pill** (`--radius-full`) and is a _shape_, reserved for
 chip-like and floating controls; it is deliberately not multiplied by `--radius-scale` (§A.3). Every
 other button reads the radius ramp **at its own size** — a `sm` button is not a `lg` button's corner
 on a smaller box. `Button` and `ToggleButton` shipped a fixed `--radius-base` at all three sizes,
 which is why an `sm` control read visibly rounder than its neighbours. `raised` is a **response**
-(hover / drag / active), never a resting state — the same rule §B.9 applies to `Card`.
+(hover / drag / active), never a resting state — the same rule §B.9 applies to `Card`. Tier 1 of the
+Button Interaction Matrix (B.8.1) is the one place the pill is part of an action's identity rather
+than a surface's choice: an amber terminal commit is a pill wherever it renders (Decision #157).
+Tier 1 does not by itself license `rounded` for any other tier; a pill elsewhere stands on its own
+justification — a surface's recorded choice (the §D.7.7 rigs, the §C.1 `LaneCreateButton`) or the
+chip-like / floating rule above, under which an icon-only control (a tier-4 Message or Follow
+circle) may be round.
 
 > **Scoped exception — the checkout surface (owner-approved, 2026-08-10).** Every CTA and quiet
 > action across `/checkout`, `/checkout/details`, `/checkout/payment` and `/checkout/confirmation`
 > takes the pill, because the flow's design draws them that way consistently and a single rounded
 > rectangle among them reads as a mistake rather than as a distinction. This is a **surface**
 > decision, not a relaxation of the rule: the pill still means nothing semantically, it is still not
-> multiplied by `--radius-scale`, and it does **not** extend to any other surface. A control outside
-> the checkout that wants `rounded` still has to earn it by being chip-like or floating. Logged in
+> multiplied by `--radius-scale`, and it does **not** extend to any other surface (tier 1 of B.8.1
+> excepted). A control outside the checkout that wants `rounded` still has to earn it by being
+> chip-like or floating. The flow's three dialogs — confirm-and-pay, Save details and Add payment
+> method — are inside the exception: their footers pill both the commit and the Back / Cancel escape
+> hatch (they took the size-based radius before). Logged in
 > root `CLAUDE.md` §8 Decision #70.
 >
-> **The checkout's commit colour (Decision #153).** Every COMMIT on the flow — Continue, Buy Now, the
-> confirm-and-pay, Save details, the Add-card actions — is a `filled` Button carrying `.cko-commit`,
-> which points the Button's accent pair at the surface's own token pair (`checkout-shared.css`):
-> `--checkout-commit-bg` (`hsl(38 92% 50%)`) / `--checkout-commit-fg` (near-black), **8.09:1**,
-> mode-invariant like `--primary`, with hover and press blending toward a LIGHT `--checkout-commit-pole`
-> so the label's contrast rises with pressure (§B.12). It replaced `severity="warning"` as a stand-in,
-> which had made "commit to paying" and "needs your attention" one colour — the §B.8.3 failure. Pinned
-> by `checkout-commit-tokens.test.ts`. Like the pill, it is scoped to `/checkout` and nowhere else.
+> **The checkout's commit colour (Decision #153, amended by Decision #157).** Every COMMIT on the
+> flow — Continue, Buy Now / Pay, the confirm-and-pay dialog's Pay, Save details and both Add-card
+> actions — is `<Button severity="accent" variant="filled" rounded>`: the **global accent pair**
+> `--accent` / `--on-accent` (§A.1.2), tier 1 of the Button Interaction Matrix (B.8.1) by the tier-1
+> test there — each is a commit inside a financial flow, whether or not that one press moves money
+> (scope open as flag (j)). The basket summary's **Proceed to Checkout** link (`bsk-summary__cta`),
+> the act that starts the flow, wears the same class set (`ui-button--accent ui-button--filled
+> ui-button--rounded`); it was `ui-button--warning`. The surface's private `--checkout-commit-bg` /
+> `-fg` / `-pole` tokens and the `.cko-commit` class are **deleted**; what they proved — a
+> fixed-polarity amber whose hover and press blend toward a LIGHT pole so the label's contrast rises
+> with pressure (§B.12) — moved into the token layer, where `theme-engine.test.ts` pins it.
+> `checkout-commit-tokens.test.ts` is gone with the tokens; `checkout-commit-tier.test.ts`
+> (`apps/web/features/checkout/core/`) now covers the markup contract — no private commit token or
+> class, no warning-ramp commit, every commit an accent filled pill, and the card-step rule of B.8.2.
+> The colour is no longer a checkout exception; the **pill** above still is (Decision #70),
+> unchanged.
+>
+> **The basket footer band defers to the summary card.** On the basket step the band's **Checkout**
+> pill is tier 5 ghost — `ui-button--text`, ink `--btn-accent: var(--on-surface)`, no underline —
+> not a filled link: it duplicates the summary card's amber commit, and the region holds one fill.
+> The band's other ghost actions take the same `--on-surface` ink and hover tint, not `--primary`;
+> `danger` toolbar actions keep their hue. The footer rig types its commitment as
+> `CtaTier = "accent" | "ghost"`, defaulting to `accent`, so `warning` is no longer a rig commit ramp.
 
 **B.8.5 Icon-only buttons.** An icon-only button is a control with its label removed, not a control
 without one. It must carry **all three**: an `aria-label`, a portal `Tooltip` (§B.6 — never a native
@@ -1132,9 +1433,14 @@ three modal footers achieve `flex-end` only via an unconditional `flex: 1 1 auto
 their actions.
 
 > **Merge gate.** A PR is not mergeable if it renders more than one `filled` button in a single
-> decision region, styles an irreversible action without `severity="danger"`, ships an icon-only
-> button lacking `aria-label` + `Tooltip` + a ≥24px target, uses `raised` as a resting state, or
-> orders a footer's actions with a spacer instead of `justify-content`.
+> decision region (other than the hue-ranked amber + monochrome pair, B.8.2, and the entity-view
+> lane rig held as shipped under Decision #157 flag (f), §D.7.7), fills a button from outside its
+> Interaction Matrix tier (an amber commit outside a financial / conversion flow, B.8.1's tier-1
+> test — wallet configuration commits, spend-approval Approve, Accept Submission and Publish stay
+> tier 3; a utility action that is not `severity="neutral" variant="outlined"`), puts
+> `severity="accent"` or `severity="neutral"` on any component other than `Button`, styles an irreversible action without `severity="danger"`, ships an
+> icon-only button lacking `aria-label` + `Tooltip` + a ≥24px target, uses `raised` as a resting
+> state, or orders a footer's actions with a spacer instead of `justify-content`.
 
 ---
 
@@ -1214,8 +1520,8 @@ on the canvas; it does not also get a container card. The grid is expressed by t
 section by its heading.
 
 **B.9.8 A checklist is glyph + text, not a row of boxes.** Deliverables, inclusions and scope items
-render as an unboxed list: an `Icon` (`check`) in the accent, the item in Body register, one row per
-item at `--space-3`. No per-row surface, no per-row border, no per-row chip. The check glyph is the
+render as an unboxed list: an `Icon` (`check`) in the brand (`--primary`), the item in Body
+register, one row per item at `--space-3`. No per-row surface, no per-row border, no per-row chip. The check glyph is the
 only ink the row spends, and it is doing the work a box would have done worse.
 
 > **Merge gate.** A PR is not mergeable if it boxes non-interactive grouped content where spacing +
@@ -1432,7 +1738,7 @@ not, no matter how much it looks like one.
 **B.11.4 Trust and promotional signals are inline composites, not badge rows.** A seller's standing
 renders as one line: the `Avatar`, the name as a link, `RatingStars compact` (one star + the score),
 then the derived signals — *Top rated*, *Fast replies*, *Available now* — as **subtle text links**
-in the accent, each carrying a portal `Tooltip` (§B.6.4) that says what earned it. The signal is a
+in the brand (`--primary`), each carrying a portal `Tooltip` (§B.6.4) that says what earned it. The signal is a
 claim the reader may want to check, so it gets an explanation on demand; it does not get a fill,
 because a fill makes six earned signals compete with the one lifecycle status that genuinely needs
 the colour channel. Where a signal is inherently graphical — the verification crest — it is an
@@ -1443,9 +1749,19 @@ at least one of them is metadata wearing a control's clothes. Reviewers should r
 right-to-left and ask of each: *is this clicked, is this a lifecycle state, is this a legal
 disclosure, is this a numeral?* The first "no" is the finding.
 
+**B.11.6 A permitted container is still a solid fill (owner directive, 2026-10-09).** A chip or tag
+that earns its container under B.11.3 fills it with a **solid tonal step** — `--surface-1` /
+`--surface-2` for a neutral control, the role's own generated ramp tone for a lifecycle status —
+never a semi-transparent brand wash (`rgba(primary, .15)`, `color-mix(… var(--primary) …,
+transparent)`). The prohibition is the same one §B.4.2 states for active navigation rails and
+middle-nav lists, and for the same reasons: the wash is unmeasurable over whatever it lands on, it
+compounds when a tag sits on a tinted card, and a teal tint on a tag reads as the brand making a
+claim the tag is not making.
+
 > **Merge gate.** A PR that wraps non-actionable metadata in a pill, chip, tag or badge — or that
 > ships two adjacent non-interactive fills on one row — is not mergeable. The fix is inline Meta-
-> register text with middot separators, not a smaller chip.
+> register text with middot separators, not a smaller chip. A permitted chip or tag whose fill is a
+> translucent `--primary` wash is not mergeable either (B.11.6).
 >
 > **One scoped exception (product owner, 2026-09-10 — §8 Decision #96).** The public profile's
 > context bar renders its **Skills** and **Languages** as monochrome, borderless pills (`.pf-tag`:
@@ -1455,6 +1771,13 @@ disclosure, is this a numeral?* The first "no" is the finding.
 > explicit direction for that surface's editorial cluster. The pills are achromatic and identical in
 > shape, so the exception does not smuggle a status colour in; it is recorded here so it is not
 > generalised to a card, a lane or any other surface, where B.11.2 stands.
+>
+> The same bar's **availability status is not a container.** It is unboxed text led by an inline
+> dot that differs by shape as well as by word: _Available_ draws a solid `--on-surface` dot beside
+> `--on-surface` text at `--fw-medium`; _Away_ a hollow `--on-surface` ring beside `--text-secondary`
+> text at `--fw-normal`. The sticky header band's pip matches. The dot stays achromatic under
+> Decision #96's monochrome profile chrome — no `--success` for Available, and no `--warning` for
+> Away, which would also collide with the amber commit (Decision #157 flag (a)).
 
 ---
 
@@ -1514,6 +1837,14 @@ exact inverse of its job. `--secondary` and `--tertiary` were always written str
 > directions, so it is held to the AA floor and to the 3:1 non-text floor against every surface — not
 > to AAA. Demanding 7:1 of it would be demanding the thing brand invariance forbids.
 
+> **The accent pair is held to the whole rule — and it is fixed-polarity.** `--accent` /
+> `--on-accent` (§A.1.2) re-tones per mode, so unlike the brand pair it owes all three clauses:
+> **5.77:1** light, **7.39:1** dark (≥ 7:1), **7.07:1** and **11.63:1** under `data-contrast="high"`
+> — wider in both modes, never narrower. Its polarity, however, does not flip with the theme (light
+> fill, dark ink, always), so it neither straddles through `fg()` / `on()` nor blends toward
+> `--btn-shade`: its widening is written per side, and its hover and press blend toward a
+> mode-invariant LIGHT pole (§B.12.4). All four ratios join the pinned set in `theme-engine.test.ts`.
+
 > **Ink is locked at the token layer, never by a literal.** Enforcing the invariant as a hardcoded
 > `color: #fff !important` would break **§D.7.7**, the inverted conversion-lane CTA, which is itself a
 > merge gate and works by overriding `--btn-on` — and after §A.1.1 it would be wrong on its own terms,
@@ -1540,6 +1871,43 @@ reader spends the most time in. `--on-surface` is the pole opposite the _page_, 
 polarity follows the theme it is also away from the ink, and contrast _rises_ with pressure:
 `--secondary` runs 7.72 → 7.91 → 8.00 in dark and 6.13 → 6.69 → 6.99 in light.
 
+**A fixed-polarity fill needs a fixed pole.** For `--accent` (§A.1.2) the ink is dark in every mode,
+so in light mode `--on-surface` IS the ink's side and the default blend would walk the pair
+together — the very failure the direction rule exists to prevent. `severity="accent"` therefore
+points `--btn-shade` at a mode-invariant near-white (`N.tone(100)`, the value `--on-scrim` resolves
+to), away from the ink in both modes, so the label's contrast rises with pressure exactly as it does
+for a theme-following role. This is the pole Decision #153 built for the checkout commit, promoted
+to the token layer.
+
+`.ui-button--accent` sets `--btn-shade: var(--on-scrim)` with the standard 92% / 88% steps.
+`--on-scrim` is `n1.tone(100)` = `#ffffff` in all four mode/contrast states and in the
+pre-hydration defaults, so the pole cannot move with the theme. Measured, the label rises with
+pressure in every state (rest → hover → press):
+
+| State                | Rest    | Hover (92%) | Press (88%) |
+| :------------------- | :------ | :---------- | :---------- |
+| Light                | 5.77:1  | 6.31:1      | 6.62:1      |
+| Light, high contrast | 7.07:1  | 7.74:1      | 8.11:1      |
+| Dark                 | 7.39:1  | 7.97:1      | 8.31:1      |
+| Dark, high contrast  | 11.63:1 | 12.17:1     | 12.44:1     |
+
+So the button family has **three pole rules**, one per kind of pair: `--on-surface` for a
+theme-following role, a zero step for the mode-invariant `--primary` (below), and the light
+`--on-scrim` pole for the fixed-polarity `--accent`. The accent takes no border-channel hover — its
+label has the headroom the brand's does not. A feature-local amber control blends toward the same
+pole: the project board footer's `.brd-rig__action--accent` hovers and presses at
+`color-mix(in srgb, var(--accent), var(--on-scrim) var(--tint-soft))` / `var(--tint)`, which
+replaced a `filter: brightness()` hover this section bans.
+
+**It is also the one place the rule below is waived, and the waiver is logged, not granted.** In
+light mode the accent fill has no page-side headroom at all — it rests at 2.42–2.97:1 across the
+light grounds — and lightening it for pressure lowers that further, to **2.71:1** hovered and
+**2.59:1** pressed on `--surface` and **2.11:1** pressed on `--surface-3` (the full table is in
+§A.1.2). That is exactly the floor-shaving the next paragraph forbids. The directive fixes the light
+pole, so the docs record the departure as Decision #157 flag (b); the alternative before a human is
+the brand's own treatment for the light branch — `--btn-mix-hover` / `--btn-mix-active: 100%` plus
+the border-channel hover — with the light pole kept for dark, where the fill has the headroom.
+
 > **A control with no contrast headroom spends a different channel — it does not spend the last 0.03.**
 > The brand fill is mode-invariant (§A.1.1), so the single value it has must be readable under a
 > near-white ink *and* findable on a near-black page at once, and in dark it clears both only just:
@@ -1563,7 +1931,12 @@ statically at all, because it depends on whatever the fill happened to resolve t
 > state lowers a filled control's label contrast or drops its fill under 3:1 against any surface it can
 > sit on; if a filled pair measures below 4.5:1, if a mode-adaptive one measures below 7:1 in dark, or
 > if any pair narrows under `data-contrast="high"`; if `--primary`/`--on-primary` differ between any
-> two mode/contrast states; or if press feedback survives either reduced-motion channel.
+> two mode/contrast states; if `--accent`/`--on-accent` flips polarity in any state or blends its
+> hover or press toward its own ink; or if press feedback survives either reduced-motion channel. The
+> light `--accent` fill — **2.42–2.97:1** at rest across `--bg` and `--surface` … `--surface-3`,
+> falling to **2.11:1** pressed on `--surface-3`, unchanged under high contrast (§A.1.2) — is a
+> logged deviation from the 3:1 clause above and from §B.12.4's no-headroom rule (Decision #157
+> flag (b)), not a precedent.
 
 ---
 
@@ -1578,9 +1951,9 @@ verbatim because every component depends only on the token contract (Part A) —
 | Sub-path                        | Components                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | :------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **`@projective/ui/layout`**     | Box, Container, Grid (auto-fit `minChildWidth` + column-capped `maxCols`), Row, Column, Stack, AspectRatio, Divider, Separator, Panel, Fieldset, Toolbar, ScrollPanel, Splitter (+SplitterPanel), Stepper (+StepperPanel), MeterGroup                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| **`@projective/ui/navigation`** | AppShell (optional `skipTo`: the shell's FIRST Tab stop becomes a "Skip to content" link to the page's main landmark, off-screen until focused, out of the shell grid — WCAG 2.4.1, Decision #144), ShellFrame, ShellTopBar, ShellSidebar, MiddleNav (optional `panel` column — §D.4), PageCanvas (its body is the page's one `<main>` landmark, `id="main-content"` = `PAGE_CANVAS_MAIN_ID` unless `mainId` says otherwise, `tabIndex={-1}` so the skip link moves focus into it; a page inside it never renders a second `<main>`), NavItem (optional decorative `trailing` status slot — a lane's activity mark: a dot, or on the Project Details lane's top tier a plain figure (Decision #146) — removed with the label in a collapsed rail, its meaning carried by `dot`/`dotLabel` in the accessible name; `active` takes `"true"` for a SECTION link so a page beneath it announces `aria-current="true"` rather than `"page"` — Decision #133), BottomNav, Link, MiddleNavSplitter, MiddleNavPanel (the frame's drag-resizable right panel: leading-edge `role="separator"` handle with Arrow/Home/End resize, `min`/`max` clamp, persisted width hoisted to `.ui-middle-nav` as `--shell-panel-w`, `data-open` docking, own scroll body — §D.2), MobileMenu, TreeNav, **Lane chrome** (LaneHead, LaneFooter(+Actions), LaneList, LaneBar, LaneTabs (a tab may carry an unseen-activity `dot` with its count spoken through a visually hidden `hint` — §D.1, a dot never a count; Arrow keys · Home · End move a roving tab stop, RTL-aware; an optional `panelId` gives each tab the id `{panelId}-tab-{value}` and `aria-controls`, so a section panel can name itself with `aria-labelledby` — the Members tab's Members · Requests · Invitations, Decision #136), LaneCreateButton (a lane's ONE primary action as a filled brand pill — `.ui-lane-create`, the §B.12 zero tonal step with the border-ring hover and a scale-only press; the label folds away in a collapsed splitter; New message and Create project both use it), LaneSearch, LaneIconButton (`href` renders the same control as a link — a destination is an `<a>`, never a button that assigns `location`), LaneToggleRow, LaneSection(+LaneSections), LaneCollapseButton (stationary: docks to the `.ui-splitter` block-end/inline-start corner, centred on `--shell-lane-rail-w`, so render it in BOTH the expanded footer and the collapsed rail and the two share one hitbox), LaneEmpty — the shared middle-nav lane control set every lane surface composes), Menu, Menubar, MegaMenu, TieredMenu, PanelMenu, SlideMenu, ContextMenu, ActionMenu (the kebab/action-menu primitive: a `Popover`-contract trigger render-prop opening a portalled `role="menu"` whose parent rows cascade into flyout submenus — every flyout its own `BodyPortal`, `right-start` flipping and clamping into the viewport, owned by its parent row so presses inside never dismiss; roving focus over readable rows (disabled ones included, their `disabledReason` in a Tooltip + `aria-describedby`), typeahead, Right/Enter/Space open onto the first child, Left/Escape close one level through the shared escape stack, Tab closes all; mouse hover-intent with a safe-triangle aim test, touch taps toggle; `danger`/`hint`/`emptyLabel` rows; pure logic in `navigation/core/menu-tree.ts`), Breadcrumb, Steps, TabMenu, TabView (+TabPanel), Paginator (alias Pagination)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| **`@projective/ui/fields`**     | **Button** (4 variants `filled`/`outlined`/`text`/`link` × 7 severities × 3 sizes, plus the `raised`/`rounded`/`iconOnly`/`fluid` modifiers — governed by §B.8, which is what decides _which_ of those 84 combinations is correct), SplitButton, SpeedDial, InputText (a typed `enterKeyHint`, so a form that walks forward on Enter labels the virtual keyboard's key `next`/`go` to match — Decision #153), Textarea, **InlineEdit** (text that becomes its own field in place, at identical metrics — the owner-editing affordance), InputNumber, **NumberInput** (the direct-manipulation numeric field, sibling to `InputNumber` rather than a replacement for it: leading adornment · value · ghost `+`/`−` steppers, reachable four ways because the same control sets `3 seats` and `£250,000` and no one gesture is good at both. Type it; step it from a `-`/`+` pair sitting side by side in the trailing slot (`adjacent`, the default; `stacked` is the vertical column and `split` flanks the value), where a press fires once and a HOLD ramps after ~380ms and stops the moment the value stops moving, so a button held at its bound is not still running a timer; scrub it by dragging the leading adornment, logarithmically accelerated — `1 + gain · ln(1 + v/ref)^exponent`, capped — so a creep moves single steps while a flick covers orders of magnitude, through Pointer Lock for unbounded travel with a window-delta fallback that is honest about ending at the screen edge rather than continuing on the last known velocity; or spin the wheel over it, on a hand-attached non-passive listener because a wheel handler that cannot `preventDefault` scrolls the page out from under the field it is editing. The wheel has TWO gates, because the two gestures ask for different things: a plain wheel needs focus, since the event arrives merely because the pointer is over the field and a reader scrolling a long form past it did not ask to change anything; Ctrl+wheel needs only hover, since nobody holds a modifier and turns the wheel over one specific number field by accident. That second gate takes the browser's page zoom over any hovered field — a deliberate WCAG 1.4.4 trade, with zoom still reachable by keyboard and by the browser's own menu — and it fires on a whole-number field too, stepping by `step` rather than silently handing the zoom back while its neighbour steps. Left/Right jump to `min`/`max`, but ONLY on a fully bounded field — on a half-bounded one the caret keys keep the meaning every text field gives them. Typing is FILTERED live, on every `input` rather than on blur: digits, grouping commas, exactly one decimal point, and a leading sign only where the field's own `min` permits one — a field that accepts `abc` for as long as the reader is looking at it and then silently empties itself the moment they click away has taught them nothing about what went wrong. The filter is one left-to-right scan, which is what makes `sanitize(prefix)` a prefix of `sanitize(whole)` and so lets the caret be restored by counting survivors to its left; without that, correcting a typo in the middle of `1250.00` throws the reader to the far end of the figure on the very keystroke they used to fix it. Rejecting a character need not CHANGE the draft (`a` typed onto `12` filters back to `12`), so the element is corrected imperatively — a re-render that never happens cannot undo what the browser already painted. What survives the filter is then authoritative and is clamped but never snapped to the step grid: `step` is the size of a nudge, not a claim about which values are legal, and a currency field that steps by whole pounds must still accept `12.50`. Holding Ctrl (or Cmd) swaps the unit to `precisionStep` for EVERY gesture at once — arrows, wheel, steppers and drag — so "hold Ctrl to work in pennies" is one thing to learn rather than four; it is read live per pointer sample, so the modifier can be taken mid-drag to creep onto an exact figure, and swapping the unit IS the damping rather than a hardcoded divide-by-100 that only the drag would honour. It is ignored where `maxFractionDigits: 0` says the field holds whole numbers, since a fine step there produces a figure the next blur rounds away. A currency field puts its symbol in the leading adornment and NOWHERE else — the box holds the bare figure, because a symbol inside the string is something the reader has to type around, and `aria-valuetext` is formatted WITH the currency precisely because the visible text is not. The placeholder defaults to the field's OWN zero, formatted by the same formatter that renders the value (`0.00` at two fraction digits, `0` at none), so the hint shows the shape the box expects rather than a word describing the value's absence — a form of "Unpriced" / "Not set" / "No bonus" in boxes that only accept digits taught the reader nothing about what to type. The input is the `spinbutton` and carries the whole contract including `aria-valuetext`, so the steppers and the handle stay out of the tab order rather than adding three stops per field to a form that has nine of them. Every question of what a number BECOMES — clamp, snap, round, and the scrub curve — lives in the pure `fields/core/number-field.ts`, which `InputNumber` also folds onto: two numeric controls that each rounded their own way would eventually disagree about one figure, and these fields carry prices), InputMask, Password (the show/hide toggle is a real `type="button"` — inside a form, an untyped button is a submit, and Enter in the secret input performs implicit submission by clicking the form's FIRST submit button; `onKeyDown` is an explicit prop, as on InputText, for a form that moves focus on Enter rather than submitting), InputGroup(+Addon), FloatLabel (`over` · `on` · `in`; `in` grows the control to the shared `--fld-h-infield` two-line geometry so the floated label and the value never overlap — the one variant whose label stays inside the box and so composes with a `FormControl` hint row), IftaLabel (the same in-field geometry, pinned rather than animated), IconField(+InputIcon), Checkbox, TriStateCheckbox, RadioButton, RadioGroup, ToggleSwitch (alias InputSwitch), ToggleButton, SelectButton, Rating, Select (alias Dropdown — with `optionTemplate`/`valueTemplate` for rows that carry an identity rather than a word: a person's face, a workspace mark, rendered in both the panel and the trigger while `Option.label` stays the name typeahead matches. Opens CENTRED on the current value and keeps the active row in view through Arrow/Home/End/typeahead, so a long list never asks the reader to hunt for the value they already chose; the centring runs before paint, because a deferred one visibly paints the wrong end of the list and snaps. The panel caps itself at `min(--fld-panel-maxh, --float-available-h)` and scrolls internally, so a list longer than the space below the trigger loses its scrollbar rather than its last rows. **`panelWidth`** (Decision #156) — `trigger` (default: the trigger's width, never under `--fld-panel-minw`) · `auto` (as wide as the widest row, never narrower than the trigger, capped at the viewport less the collision inset; the positioner measures the rendered box, so a wide panel slides back on screen) · any CSS length — and **`panelClass`**, the one hook for styling the portalled panel. An option may carry **`description`**, drawn as a second, meta-register line and searched by the filter (typeahead still matches the label)), **CurrencySelect** (Decision #156 — THE currency picker: a `Select` whose trigger and every option draw the same `CurrencyLabel`, fed any `CurrencyChoice[]` such as `DISPLAY_CURRENCIES`; `panelWidth` defaults to `auto`, the filter turns on past eight currencies and searches code, name and country; used by Settings → Language & region, the checkout band, the project budget, the paid-call fee), MultiSelect, Listbox, AutoComplete, Chips, TreeSelect, CascadeSelect, Slider (`allowCross` lets a range's two handles pass THROUGH each other — each keeps its DOM identity across the crossing so pointer capture and focus stay on the handle the reader is holding, and only its spoken role, "minimum"/"maximum", follows the value; a focus-gated wheel steps the focused handle, focus being the gate because the event reaches the track merely by the pointer resting over it), **RangeSlider** (alias `DualSlider` — the dual-thumb track over two adorned `NumberInput` boxes, one value set two ways and re-sorted whichever way it was changed, so typing a minimum above the maximum swaps the pair rather than refusing the entry; tab order is lower handle → upper handle → minimum box → maximum box, and the boxes are always the ORDERED pair), **StarRatingInput** (a half-precision star rating modelled as ONE `role="slider"` rather than a radiogroup — a value that steps by halves is a number on a scale, not one of five choices — with Arrow ±precision, PageUp/Down ±1, Home/End, pointer-position half previews in either writing direction, and click-again-to-clear; every star is the registry `star` glyph twice, an outline under a width-clipped filled copy, so the two cannot drift geometrically; the fill is `--ui-star-fill`, defaulting to the amber `--warning` ramp and re-tonable by the host, the rest state the neutral `--outline`), **MilestoneSlider** (a discrete, NON-LINEAR track of named stops equally spaced whatever their values — `Same day · 1–3 days · 1 week · 1 month` — composed over `Slider` so keyboard, wheel and capture are inherited; ticks beneath, the selected stop's label riding the handle, and `aria-valuetext` speaking the LABEL, never the index), Knob, SortControl, ZoomSlider, DatePicker (a click anywhere on the field opens the calendar and puts focus in it — the first empty segment, else the first — while the icon toggles; the segments' separators follow `dateFormat` unless a `delimiter` of `/`, `.` or `-` overrides them; while open, Ctrl/Cmd + Left/Right steps a month, Ctrl/Cmd + Up/Down a year and Ctrl/Cmd + Shift + Up/Down five, from either the segments or the grid, the focused day travelling with the view so the grid keeps focus; over the panel a wheel notch steps one month and Ctrl/Cmd + wheel one year on a non-passive listener — wheel up increments, as on `NumberInput` — with a stream latched to ONE step until it pauses (50ms) or reverses, so a trackpad flick and its momentum are one step and a notch is exactly one; `wheelNavigation` defaults on in popup mode and off inline, and `DateTimePicker` opts its inline calendar in; a step that leaves no selectable day in view is refused as the chevrons are; Escape commits nothing, returns the view to the committed or typed date, and hands focus back to the field; the rules live in the pure `fields/core/calendar-nav.ts`. Enter on the segmented field opens the calendar only while the date is INCOMPLETE — a complete date is a finished answer, so Enter is left to the surrounding form's implicit submission or a wizard's next-field rule, and Space opens the calendar at any time; the month grid speaks the mini-month's visual language — one-letter weekday strip, seam-separated square cells on `--fld-opt-h`, whole-week hover — copied rather than imported, because `calendar.css` ships only through the Calendar island; its month/year controls are the package's own `Select`, the year one windowed over a `yearSpan` that defaults to ±100 years and opens scrolled to the current selection), **TimeTumbler** (a drum-roll time picker — two reels, three under `hour12`, drawn as a combination lock: pointer/touch drag with a release flick, wheel/trackpad, ▲/▼ controls, keyboard (Up/Down, PageUp/PageDown a quarter turn, Home/End) and DIRECT numeric entry, because the centre cell IS the `role="spinbutton"` rather than a display with a hidden input beside it. The selected cell is placed by LAYOUT and every gesture commits a whole number of cells synchronously — the reel’s transform carries only the sub-cell remainder — so the drum lands on the value the gesture asked for in a background tab, where rAF and every transition are frozen. `minMinutes`/`maxMinutes` narrow the REELS rather than rejecting a value afterwards, and a bound that misses the `minuteStep` grid is offered anyway, or a coarse step would make the earliest legal time unreachable; the faded neighbours are `aria-hidden` affordances, never content), **DateTimePicker** (ONE popover composing the inline `DatePicker` and the `TimeTumbler`, returning a single `Date` that carries both. `min`/`max` constrain the TIME on the boundary day and not merely the date, so a legal day can never be left holding an illegal hour; the composed calendar keeps its grid and loses its card, since a bordered card inside a panel is a box in a box (§B.4)), ColorPicker, FileUpload, FormControl, **FieldLegend** (the one-line explanation an asterisk needs), **status marks** (AlertMark/CheckMark/GateMark/BusyMark + `FieldMark`/`statusMark` — the §A.5 icon channel rendered into every `.ui-field__mark` slot). All geometry and every state read the `--fld-*` contract (§A.7) |
-| **`@projective/ui/display`**    | Table (sort/multi-sort + per-column `multiSort` toggle), TreeTable, Tree, DataView, VirtualScroller, Scroller, VirtualGrid, OrgChart, Timeline, GMap, AudioVisualizer, **VideoPlayer** (the ONE video surface, in two sizes — `compact`: Play ⁄ Pause + Mute as two ghost buttons in a corner; `full`: a glass transport bar with play · mute + an expanding volume slider · the clock · a seekable scrubber · a speed cycle, plus a centred paused-state mark. The `<video>` element is the single source of truth: every control writes to it and every piece of UI mirrors its events, so a host driving the element through `videoRef` — a carousel that lets only its active slide play — sees the controls agree with no second channel. Controls are hidden at rest and revealed by hover, keyboard focus or a tap (a second tap hides; a reveal on a playing video withdraws after a beat); the `full` bar also stands while the video is not playing. Every control stops propagation, so a press never follows a host's stretched link nor starts its swipe; a `children` slot layers a host's link and caption between the picture and the controls. Autoplay is always muted; an unplayable source (`#`, absent) renders the poster and NO controls; every colour is the scrim pair, on `::before` glass (§B.4.3), never a theme role; the fills are geometry that encodes a fact and are never transitioned. Reached through the narrow `./display/video` sub-path as well as the barrel), **MoneyView** (the single way a money figure reaches the screen: an inline, baseline-aligned, `tabular-nums` amount in the VIEWER's display currency plus, when the figure was priced in another, an always-visible estimate indicator carrying the origin — `£78.50 (~€90.00 EUR)`; never a hover, since the hover is unavailable on touch and this is the fact that says whether the number is exact. Resolves its currency through props → the request context → the host's ambient resolver → the shared `@preact/signals` store, so the SAME component is correct in a zero-JS server component and reactive inside a hydrated island. The minor units (pence, cents) sit on the SAME baseline as the major run — never raised — sized by `--minor-size` and faded by `--minor-fade` (§A.3, both widening under high contrast) through the per-step `--money-minor-size` / `--money-minor-fade` hooks: `hero` caps its tail at 0.42em, and `body`/`micro` keep it at full size and full ink because a split there is noise. Motion touches `opacity` only — never a property that carries the value), **Card** (`elevated`/`filled`/`flat`, default **`filled`**; a **non-interactive** container — `raised` is a transient hover/drag/focus response, never a resting state; all geometry from the §A.3 card rhythm tokens, governed by §B.9), **Avatar** (fallback chain `image` → `fallbackImage` → initials of `label` → `icon`; `fallbackImage` is a host's stand-in picture, painted as a CSS background layer OVER the initials — fetched only when shown, and a stand-in that fails to load leaves the initials visible; it covers both "no photo" and "photo failed to load". The app draws every PERSON through `UserAvatar` / `UserAvatarStack` (`apps/web/components/UserAvatar.tsx`, which fixes the stand-in to `DEFAULT_AVATAR_URL` and requires `label`) and passes `personFallbackImage(kind)` where one surface draws people and entities alike; organisations, teams and group chats keep initials — Decision #127), AvatarGroup, **AvatarStack** (the data-driven cascading roster with a `+N` overflow chip and one composed a11y label; `fallbackImage` is forwarded to every face, never the `+N` chip), Badge (+OverlayBadge), RatingStars, Chip, Tag, **PaymentCard** (+ **PaymentCardOption**, + `paymentCardArt`) — the CR80/ISO-7810 saved-card instrument with a real `preserve-3d` flip: three `aria-hidden` mask groups plus the REAL `last4`, and a back whose CVV box is `•••` **ornament** (never a value, never an `<input>`, no reveal affordance); art arrives as token expressions through `--pc-*` and geometry steps by `@container`, List, ListItem, Accordion (+AccordionTab), Carousel, Galleria, Image, **ProgressiveImage** (every card thumbnail's and every `Avatar` photo's `<img>`: the picture, else its BlurHash preview, else a neutral fallback slot — a zero-JS server frame whose ground colour is read from the hash's DC term on the server and whose full decode is painted client-side by ONE per-page watcher (`watchProgressiveImages`, document-level `load`/`error` capture + a `MutationObserver`, never a `src` rewrite), with optional `srcset` / `sizes` handed straight to the `<img>` so a processed image's WebP tiers are chosen by the browser (`sizes` is dropped when there is no `srcset` to size), reached through the narrow `./display/image` sub-path; `Avatar` renders its photo through it so a broken photo degrades to the same `fallbackImage`-then-initials a photo-less avatar shows; the pure decoder is `./display/blurhash`), **Flag** (Decision #156 — a circular national flag from an ISO 3166-1 code or `EU`, drawn inline from `flag-art.tsx` so it renders identically on every platform (regional-indicator emoji draw as two letters on Windows); `xs`–`xl` on the icon ramp; a hairline ring keeps a white field readable; a code without artwork falls back to its letters on a neutral disc; decorative unless given a `label`. The artwork carries the flags' own colours as CONTENT, like a brand mark, never through the token layer), **CurrencyLabel** (Decision #156 — the one way a currency is drawn: flag, then `[symbol] [code]` over the issuing country in the meta register; `currencyHeadline` drops the symbol when it IS the code), **VerificationStampBadge** (Decision #155 — the verification crest beside a name: `stamp` ∈ `id_verified` · `vault_verified` · `corporate_verified` renders the `seal-check` · `shield-check` · `keystone-check` glyph filled, its check knocked out to the call site's `--icon-knockout`, inked `--primary` · `--tertiary` · `--on-surface-variant` so SHAPE, not hue, tells the authorities apart; `none` renders nothing; `explained` (default) is a focusable crest with a portal `Tooltip` naming the claim and who checked it, `decorative` is `aria-hidden` for a crest repeated elsewhere on the surface; `celebrate` plays a one-shot `transform: scale()` stamp on `--spring-snappy`, none under either reduced-motion channel — never a pill, §B.11.4), **TrustAdornments** (Decision #155 — earned trust signals as ONE Meta-register list: `--text-sm` · `--fw-normal` · `--text-secondary`, each an inline registry glyph + its claim, middot-separated by `aria-hidden` siblings, every claim explained by a portal `Tooltip`; no fill, no badge row; the caller passes them already ranked and capped — §B.11.2 / §B.11.4) |
+| **`@projective/ui/navigation`** | AppShell (optional `skipTo`: the shell's FIRST Tab stop becomes a "Skip to content" link to the page's main landmark, off-screen until focused, out of the shell grid — WCAG 2.4.1, Decision #144), ShellFrame, ShellTopBar, ShellSidebar, MiddleNav (optional `panel` column — §D.4), PageCanvas (its body is the page's one `<main>` landmark, `id="main-content"` = `PAGE_CANVAS_MAIN_ID` unless `mainId` says otherwise, `tabIndex={-1}` so the skip link moves focus into it; a page inside it never renders a second `<main>`), NavItem (optional decorative `trailing` status slot — a lane's activity mark: a dot, or on the Project Details lane's top tier a plain figure (Decision #146) — removed with the label in a collapsed rail, its meaning carried by `dot`/`dotLabel` in the accessible name; `active` takes `"true"` for a SECTION link so a page beneath it announces `aria-current="true"` rather than `"page"` — Decision #133), BottomNav, Link, MiddleNavSplitter, MiddleNavPanel (the frame's drag-resizable right panel: leading-edge `role="separator"` handle with Arrow/Home/End resize, `min`/`max` clamp, persisted width hoisted to `.ui-middle-nav` as `--shell-panel-w`, `data-open` docking, own scroll body — §D.2), MobileMenu, TreeNav, **Lane chrome** (LaneHead, LaneFooter(+Actions), LaneList, LaneBar, LaneTabs (a tab may carry an unseen-activity `dot` with its count spoken through a visually hidden `hint` — §D.1, a dot never a count; Arrow keys · Home · End move a roving tab stop, RTL-aware; an optional `panelId` gives each tab the id `{panelId}-tab-{value}` and `aria-controls`, so a section panel can name itself with `aria-labelledby` — the Members tab's Members · Requests · Invitations, Decision #136), LaneCreateButton (a lane's ONE primary action as a filled pill — `.ui-lane-create`, the §B.12 zero tonal step with the border-ring hover and a scale-only press; the label folds away in a collapsed splitter; New message and Create project both use it. It still SHIPS as a brand-teal (`--primary`) pill; by the Button Interaction Matrix it is a primary creation trigger, so §B.8.1 tier 2 — the monochrome inverted fill — with its pill standing as the lane surface's own shape (§B.8.4). The migration has not been made: it, and whether New message, a messaging verb rather than a structural one, follows it, stay open under Decision #157 flag (i)), LaneSearch, LaneIconButton (`href` renders the same control as a link — a destination is an `<a>`, never a button that assigns `location`; hover and the engaged state `data-on` are a solid `--surface-2` fill with `--on-surface` ink, the engaged glyph taking a 16% `currentColor` fill; the `--accent` modifier keeps a `--primary` glyph and hovers to `--surface-2` — §B.4.2, no translucent wash), LaneToggleRow, LaneSection(+LaneSections), LaneCollapseButton (stationary: docks to the `.ui-splitter` block-end/inline-start corner, centred on `--shell-lane-rail-w`, so render it in BOTH the expanded footer and the collapsed rail and the two share one hitbox), LaneEmpty — the shared middle-nav lane control set every lane surface composes), Menu, Menubar, MegaMenu, TieredMenu, PanelMenu, SlideMenu, ContextMenu, ActionMenu (the kebab/action-menu primitive: a `Popover`-contract trigger render-prop opening a portalled `role="menu"` whose parent rows cascade into flyout submenus — every flyout its own `BodyPortal`, `right-start` flipping and clamping into the viewport, owned by its parent row so presses inside never dismiss; roving focus over readable rows (disabled ones included, their `disabledReason` in a Tooltip + `aria-describedby`), typeahead, Right/Enter/Space open onto the first child, Left/Escape close one level through the shared escape stack, Tab closes all; mouse hover-intent with a safe-triangle aim test, touch taps toggle; `danger`/`hint`/`emptyLabel` rows; pure logic in `navigation/core/menu-tree.ts`), Breadcrumb, Steps, TabMenu, TabView (+TabPanel), Paginator (alias Pagination)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **`@projective/ui/fields`**     | **Button** (4 variants `filled`/`outlined`/`text`/`link` × the 7 shared severities × 3 sizes, plus two Button-only severities on `ButtonSeverity` = `Severity | "accent" | "neutral"`, each typed to one variant: `accent` (`ButtonAccentTone`, `filled` only) is the amber terminal-commit tier on the global `--accent`/`--on-accent` pair, its hover and press blending toward the `--on-scrim` light pole — tier 1 is `severity="accent" rounded`, the pill coming from `rounded` (§A.1.2, §B.8.1 tier 1, §B.12.4); `neutral` (`ButtonNeutralTone`, `outlined` only) is the tier-4 utility action, `--on-surface` ink on a `var(--hairline-strong)` border with the `outlined` tint-soft hover (§B.8.1 tier 4). Neither is on the `Severity` union `Badge`/`Tag`/`Alert`/`Message`/`Toast` share (§B.8.3, Decision #157). Plus the `raised`/`rounded`/`iconOnly`/`fluid` modifiers — governed by §B.8 and its Button Interaction Matrix, which is what decides _which_ of those 90 typed combinations is correct), SplitButton, SpeedDial, InputText (a typed `enterKeyHint`, so a form that walks forward on Enter labels the virtual keyboard's key `next`/`go` to match — Decision #153), Textarea, **InlineEdit** (text that becomes its own field in place, at identical metrics — the owner-editing affordance), InputNumber, **NumberInput** (the direct-manipulation numeric field, sibling to `InputNumber` rather than a replacement for it: leading adornment · value · ghost `+`/`−` steppers, reachable four ways because the same control sets `3 seats` and `£250,000` and no one gesture is good at both. Type it; step it from a `-`/`+` pair sitting side by side in the trailing slot (`adjacent`, the default; `stacked` is the vertical column and `split` flanks the value), where a press fires once and a HOLD ramps after ~380ms and stops the moment the value stops moving, so a button held at its bound is not still running a timer; scrub it by dragging the leading adornment, logarithmically accelerated — `1 + gain · ln(1 + v/ref)^exponent`, capped — so a creep moves single steps while a flick covers orders of magnitude, through Pointer Lock for unbounded travel with a window-delta fallback that is honest about ending at the screen edge rather than continuing on the last known velocity; or spin the wheel over it, on a hand-attached non-passive listener because a wheel handler that cannot `preventDefault` scrolls the page out from under the field it is editing. The wheel has TWO gates, because the two gestures ask for different things: a plain wheel needs focus, since the event arrives merely because the pointer is over the field and a reader scrolling a long form past it did not ask to change anything; Ctrl+wheel needs only hover, since nobody holds a modifier and turns the wheel over one specific number field by accident. That second gate takes the browser's page zoom over any hovered field — a deliberate WCAG 1.4.4 trade, with zoom still reachable by keyboard and by the browser's own menu — and it fires on a whole-number field too, stepping by `step` rather than silently handing the zoom back while its neighbour steps. Left/Right jump to `min`/`max`, but ONLY on a fully bounded field — on a half-bounded one the caret keys keep the meaning every text field gives them. Typing is FILTERED live, on every `input` rather than on blur: digits, grouping commas, exactly one decimal point, and a leading sign only where the field's own `min` permits one — a field that accepts `abc` for as long as the reader is looking at it and then silently empties itself the moment they click away has taught them nothing about what went wrong. The filter is one left-to-right scan, which is what makes `sanitize(prefix)` a prefix of `sanitize(whole)` and so lets the caret be restored by counting survivors to its left; without that, correcting a typo in the middle of `1250.00` throws the reader to the far end of the figure on the very keystroke they used to fix it. Rejecting a character need not CHANGE the draft (`a` typed onto `12` filters back to `12`), so the element is corrected imperatively — a re-render that never happens cannot undo what the browser already painted. What survives the filter is then authoritative and is clamped but never snapped to the step grid: `step` is the size of a nudge, not a claim about which values are legal, and a currency field that steps by whole pounds must still accept `12.50`. Holding Ctrl (or Cmd) swaps the unit to `precisionStep` for EVERY gesture at once — arrows, wheel, steppers and drag — so "hold Ctrl to work in pennies" is one thing to learn rather than four; it is read live per pointer sample, so the modifier can be taken mid-drag to creep onto an exact figure, and swapping the unit IS the damping rather than a hardcoded divide-by-100 that only the drag would honour. It is ignored where `maxFractionDigits: 0` says the field holds whole numbers, since a fine step there produces a figure the next blur rounds away. A currency field puts its symbol in the leading adornment and NOWHERE else — the box holds the bare figure, because a symbol inside the string is something the reader has to type around, and `aria-valuetext` is formatted WITH the currency precisely because the visible text is not. The placeholder defaults to the field's OWN zero, formatted by the same formatter that renders the value (`0.00` at two fraction digits, `0` at none), so the hint shows the shape the box expects rather than a word describing the value's absence — a form of "Unpriced" / "Not set" / "No bonus" in boxes that only accept digits taught the reader nothing about what to type. The input is the `spinbutton` and carries the whole contract including `aria-valuetext`, so the steppers and the handle stay out of the tab order rather than adding three stops per field to a form that has nine of them. Every question of what a number BECOMES — clamp, snap, round, and the scrub curve — lives in the pure `fields/core/number-field.ts`, which `InputNumber` also folds onto: two numeric controls that each rounded their own way would eventually disagree about one figure, and these fields carry prices), InputMask, Password (the show/hide toggle is a real `type="button"` — inside a form, an untyped button is a submit, and Enter in the secret input performs implicit submission by clicking the form's FIRST submit button; `onKeyDown` is an explicit prop, as on InputText, for a form that moves focus on Enter rather than submitting), InputGroup(+Addon), FloatLabel (`over` · `on` · `in`; `in` grows the control to the shared `--fld-h-infield` two-line geometry so the floated label and the value never overlap — the one variant whose label stays inside the box and so composes with a `FormControl` hint row), IftaLabel (the same in-field geometry, pinned rather than animated), IconField(+InputIcon), Checkbox, TriStateCheckbox, RadioButton, RadioGroup, ToggleSwitch (alias InputSwitch), ToggleButton, SelectButton, Rating, Select (alias Dropdown — with `optionTemplate`/`valueTemplate` for rows that carry an identity rather than a word: a person's face, a workspace mark, rendered in both the panel and the trigger while `Option.label` stays the name typeahead matches. Opens CENTRED on the current value and keeps the active row in view through Arrow/Home/End/typeahead, so a long list never asks the reader to hunt for the value they already chose; the centring runs before paint, because a deferred one visibly paints the wrong end of the list and snaps. The panel caps itself at `min(--fld-panel-maxh, --float-available-h)` and scrolls internally, so a list longer than the space below the trigger loses its scrollbar rather than its last rows. **`panelWidth`** (Decision #156) — `trigger` (default: the trigger's width, never under `--fld-panel-minw`) · `auto` (as wide as the widest row, never narrower than the trigger, capped at the viewport less the collision inset; the positioner measures the rendered box, so a wide panel slides back on screen) · any CSS length — and **`panelClass`**, the one hook for styling the portalled panel. An option may carry **`description`**, drawn as a second, meta-register line and searched by the filter (typeahead still matches the label)), **CurrencySelect** (Decision #156 — THE currency picker: a `Select` whose trigger and every option draw the same `CurrencyLabel`, fed any `CurrencyChoice[]` such as `DISPLAY_CURRENCIES`; `panelWidth` defaults to `auto`, the filter turns on past eight currencies and searches code, name and country; used by Settings → Language & region, the checkout band, the project budget, the paid-call fee. `Select`/`CurrencySelect` have no `variant` prop: a borderless trigger is asked for with `class="ui-field--bare"` (as `MemberToolbar` does), and the checkout band does exactly that, with `panelClass="cko-cur__panel"` giving a solid `--surface-2` panel with `--on-surface` ink), MultiSelect, Listbox, AutoComplete, Chips, TreeSelect, CascadeSelect, Slider (`allowCross` lets a range's two handles pass THROUGH each other — each keeps its DOM identity across the crossing so pointer capture and focus stay on the handle the reader is holding, and only its spoken role, "minimum"/"maximum", follows the value; a focus-gated wheel steps the focused handle, focus being the gate because the event reaches the track merely by the pointer resting over it, while Ctrl/Cmd + wheel needs only hover — the `NumberInput` two-gate rule; pressing the bare track jumps the nearest handle there AND keeps dragging it until release, so click-then-drag is one gesture — Decision #159), **RangeSlider** (alias `DualSlider` — the dual-thumb track over two adorned `NumberInput` boxes, one value set two ways and re-sorted whichever way it was changed, so typing a minimum above the maximum swaps the pair rather than refusing the entry; tab order is lower handle → upper handle → minimum box → maximum box, and the boxes are always the ORDERED pair), **StarRatingInput** (a half-precision star rating modelled as ONE `role="slider"` rather than a radiogroup — a value that steps by halves is a number on a scale, not one of five choices — with Arrow ±precision, PageUp/Down ±1, Home/End, pointer-position half previews in either writing direction, and click-again-to-clear; every star is the registry `star` glyph twice, an outline under a width-clipped filled copy, so the two cannot drift geometrically; the fill is `--ui-star-fill`, defaulting to the amber `--warning` ramp and re-tonable by the host, the rest state the neutral `--outline`), **MilestoneSlider** (a discrete, NON-LINEAR track of named stops equally spaced whatever their values — `Same day · 1–3 days · 1 week · 1 month` — composed over `Slider` so keyboard, wheel and capture are inherited; ticks beneath, the selected stop's label riding the handle, and `aria-valuetext` speaking the LABEL, never the index), Knob, SortControl, ZoomSlider, DatePicker (a click anywhere on the field opens the calendar and puts focus in it — the first empty segment, else the first — while the icon toggles; the segments' separators follow `dateFormat` unless a `delimiter` of `/`, `.` or `-` overrides them; while open, Ctrl/Cmd + Left/Right steps a month, Ctrl/Cmd + Up/Down a year and Ctrl/Cmd + Shift + Up/Down five, from either the segments or the grid, the focused day travelling with the view so the grid keeps focus; over the panel a wheel notch steps one month and Ctrl/Cmd + wheel one year on a non-passive listener — wheel up increments, as on `NumberInput` — with a stream latched to ONE step until it pauses (50ms) or reverses, so a trackpad flick and its momentum are one step and a notch is exactly one; `wheelNavigation` defaults on in popup mode and off inline, and `DateTimePicker` opts its inline calendar in; a step that leaves no selectable day in view is refused as the chevrons are; Escape commits nothing, returns the view to the committed or typed date, and hands focus back to the field; the rules live in the pure `fields/core/calendar-nav.ts`. Enter on the segmented field opens the calendar only while the date is INCOMPLETE — a complete date is a finished answer, so Enter is left to the surrounding form's implicit submission or a wizard's next-field rule, and Space opens the calendar at any time; the month grid speaks the mini-month's visual language — one-letter weekday strip, seam-separated square cells on `--fld-opt-h`, whole-week hover — copied rather than imported, because `calendar.css` ships only through the Calendar island; its month/year controls are the package's own `Select`, the year one windowed over a `yearSpan` that defaults to ±100 years and opens scrolled to the current selection), **TimeTumbler** (a drum-roll time picker — two reels, three under `hour12`, drawn as a combination lock: pointer/touch drag with a release flick, wheel/trackpad, ▲/▼ controls, keyboard (Up/Down, PageUp/PageDown a quarter turn, Home/End) and DIRECT numeric entry, because the centre cell IS the `role="spinbutton"` rather than a display with a hidden input beside it. The selected cell is placed by LAYOUT and every gesture commits a whole number of cells synchronously — the reel’s transform carries only the sub-cell remainder — so the drum lands on the value the gesture asked for in a background tab, where rAF and every transition are frozen. `minMinutes`/`maxMinutes` narrow the REELS rather than rejecting a value afterwards, and a bound that misses the `minuteStep` grid is offered anyway, or a coarse step would make the earliest legal time unreachable; the faded neighbours are `aria-hidden` affordances, never content), **DateTimePicker** (ONE popover composing the inline `DatePicker` and the `TimeTumbler`, returning a single `Date` that carries both. `min`/`max` constrain the TIME on the boundary day and not merely the date, so a legal day can never be left holding an illegal hour; the composed calendar keeps its grid and loses its card, since a bordered card inside a panel is a box in a box (§B.4)), ColorPicker, FileUpload, FormControl, **FieldLegend** (the one-line explanation an asterisk needs), **status marks** (AlertMark/CheckMark/GateMark/BusyMark + `FieldMark`/`statusMark` — the §A.5 icon channel rendered into every `.ui-field__mark` slot). All geometry and every state read the `--fld-*` contract (§A.7) |
+| **`@projective/ui/display`**    | Table (sort/multi-sort + per-column `multiSort` toggle), TreeTable, Tree, DataView, VirtualScroller, Scroller, VirtualGrid, OrgChart, Timeline, GMap, AudioVisualizer, **VideoPlayer** (the ONE video surface, in two sizes — `compact`: Play ⁄ Pause + Mute as two ghost buttons in a corner; `full`: a glass transport bar with play · mute + an expanding volume slider · the clock · a seekable scrubber · a speed cycle, plus a centred paused-state mark. The `<video>` element is the single source of truth: every control writes to it and every piece of UI mirrors its events, so a host driving the element through `videoRef` — a carousel that lets only its active slide play — sees the controls agree with no second channel. Controls are hidden at rest and revealed by hover, keyboard focus or a tap (a second tap hides; a reveal on a playing video withdraws after a beat); the `full` bar also stands while the video is not playing. Every control stops propagation, so a press never follows a host's stretched link nor starts its swipe; a `children` slot layers a host's link and caption between the picture and the controls. Autoplay is always muted; an unplayable source (`#`, absent) renders the poster and NO controls; every colour is the scrim pair, on `::before` glass (§B.4.3), never a theme role; the fills are geometry that encodes a fact and are never transitioned. Reached through the narrow `./display/video` sub-path as well as the barrel), **MoneyView** (the single way a money figure reaches the screen: an inline, baseline-aligned, `tabular-nums` amount in the VIEWER's display currency plus, when the figure was priced in another, an always-visible estimate indicator carrying the origin — `£78.50 (~€90.00 EUR)`; never a hover, since the hover is unavailable on touch and this is the fact that says whether the number is exact. Resolves its currency through props → the request context → the host's ambient resolver → the shared `@preact/signals` store, so the SAME component is correct in a zero-JS server component and reactive inside a hydrated island. The minor units (pence, cents) sit on the SAME baseline as the major run — never raised — sized by `--minor-size` and faded by `--minor-fade` (§A.3, both widening under high contrast) through the per-step `--money-minor-size` / `--money-minor-fade` hooks: `hero` caps its tail at 0.42em, and `body`/`micro` keep it at full size and full ink because a split there is noise. Motion touches `opacity` only — never a property that carries the value), **Card** (`elevated`/`filled`/`flat`, default **`filled`**; a **non-interactive** container — `raised` is a transient hover/drag/focus response, never a resting state; all geometry from the §A.3 card rhythm tokens, governed by §B.9), **Avatar** (fallback chain `image` → `fallbackImage` → initials of `label` → `icon`; `fallbackImage` is a host's stand-in picture, painted as a CSS background layer OVER the initials — fetched only when shown, and a stand-in that fails to load leaves the initials visible; it covers both "no photo" and "photo failed to load". The app draws every PERSON through `UserAvatar` / `UserAvatarStack` (`apps/web/components/UserAvatar.tsx`, which fixes the stand-in to `DEFAULT_AVATAR_URL` and requires `label`) and passes `personFallbackImage(kind)` where one surface draws people and entities alike; organisations, teams and group chats keep initials — Decision #127), AvatarGroup, **AvatarStack** (the data-driven cascading roster with a `+N` overflow chip and one composed a11y label; `fallbackImage` is forwarded to every face, never the `+N` chip), Badge (+OverlayBadge), RatingStars, Chip, Tag (a permitted container under §B.11.3, filled with a SOLID tonal step, never a translucent `--primary` wash, §B.11.6: `filled` is the role's own fill and `--on-<role>` ink; `subtle` is solid `--surface-2`; `outlined` keeps a role-coloured border on a transparent ground. `outlined` and `subtle` share the label ink `--tag-ink` = `color-mix(in srgb, var(--tag-accent) 60%, var(--on-surface))` — raw role ink measured 2.57:1 for the light semantic roles and 4.38:1 for `primary`, while the mix measures 5.00:1 at worst across all 7 severities × 4 mode/contrast states — light `info` on `--surface-2`/`--surface-3`), **PaymentCard** (+ **PaymentCardOption**, + `paymentCardArt`) — the CR80/ISO-7810 saved-card instrument with a real `preserve-3d` flip: three `aria-hidden` mask groups plus the REAL `last4`, and a back whose CVV box is `•••` **ornament** (never a value, never an `<input>`, no reveal affordance); art arrives as token expressions through `--pc-*` and geometry steps by `@container`, List, ListItem, Accordion (+AccordionTab), Carousel, Galleria, Image, **ProgressiveImage** (every card thumbnail's and every `Avatar` photo's `<img>`: the picture, else its BlurHash preview, else a neutral fallback slot — a zero-JS server frame whose ground colour is read from the hash's DC term on the server and whose full decode is painted client-side by ONE per-page watcher (`watchProgressiveImages`, document-level `load`/`error` capture + a `MutationObserver`, never a `src` rewrite), with optional `srcset` / `sizes` handed straight to the `<img>` so a processed image's WebP tiers are chosen by the browser (`sizes` is dropped when there is no `srcset` to size), reached through the narrow `./display/image` sub-path; `Avatar` renders its photo through it so a broken photo degrades to the same `fallbackImage`-then-initials a photo-less avatar shows; the pure decoder is `./display/blurhash`), **Flag** (Decision #156 — a circular national flag from an ISO 3166-1 code or `EU`, drawn inline from `flag-art.tsx` so it renders identically on every platform (regional-indicator emoji draw as two letters on Windows); `xs`–`xl` on the icon ramp; a hairline ring keeps a white field readable; a code without artwork falls back to its letters on a neutral disc; decorative unless given a `label`. The artwork carries the flags' own colours as CONTENT, like a brand mark, never through the token layer), **CurrencyLabel** (Decision #156 — the one way a currency is drawn: flag, then `[symbol] [code]` over the issuing country in the meta register; `currencyHeadline` drops the symbol when it IS the code), **VerificationStampBadge** (Decision #155 — the verification crest beside a name: `stamp` ∈ `id_verified` · `vault_verified` · `corporate_verified` renders the `seal-check` · `shield-check` · `keystone-check` glyph filled, its check knocked out to the call site's `--icon-knockout`, inked `--primary` · `--tertiary` · `--on-surface-variant` so SHAPE, not hue, tells the authorities apart; `none` renders nothing; `explained` (default) is a focusable crest with a portal `Tooltip` naming the claim and who checked it, `decorative` is `aria-hidden` for a crest repeated elsewhere on the surface; `celebrate` plays a one-shot `transform: scale()` stamp on `--spring-snappy`, none under either reduced-motion channel — never a pill, §B.11.4), **TrustAdornments** (Decision #155 — earned trust signals as ONE Meta-register list: `--text-sm` · `--fw-normal` · `--text-secondary`, each an inline registry glyph + its claim, middot-separated by `aria-hidden` siblings, every claim explained by a portal `Tooltip`; no fill, no badge row; the caller passes them already ranked and capped — §B.11.2 / §B.11.4) |
 | **`@projective/ui/feedback`**   | Message, Messages, Alert, Banner, **InlineNotice** (the unboxed edge-of-region status line — one sentence in the meta register plus at most one underlined `Button --link` action, no fill and no border, so a note appended under a list never reads as one more item in it; `busy` for an in-flight retry; the offline stall notice at the loading edge of every paginated list is this), **Ribbon** (the viewport-pinned bottom status strip for a fact about the whole SESSION — offline, a maintenance window — controlled and network-agnostic, `--on-surface`-on-`--surface` inverted so it clears ≥ 14:1 in every theme state by construction; enter/exit on `transform`/`opacity`, the closed state `visibility: hidden` after the exit so a withdrawn action is out of the tab order; **the box is always mounted — it is the `role="status"` live region — and EMPTY while hidden**: its glyph/statement/action are presence-gated (`usePresence`, exit grace `--dur-medium`), present only while visible or on the way out, so a closed strip paints nothing even before its island-carried stylesheet lands — a hidden strip that kept its words relied on CSS timing and painted them as a plain line of text at the bottom of every page for the window before the sheet applied; while open it writes `:root[data-ribbon="open"]`, which sets `--ribbon-inset` — the room every bottom-pinned surface [the middle-nav footer band, bottom toast anchors, the page tail] adds to its own offset so it moves WITH the strip rather than under it; sits at `--z-nav`, above sticky bands and below every backdrop; stacks above the mobile bottom nav when one is present), Toast (`position` — nine anchors, each resolved with logical insets so it mirrors under RTL; `bottom-start`/`-end` &c. are accepted spellings of the same points; the three bottom anchors clear `--ribbon-inset`), Dialog (`role`, `initialFocusRef`, `labelledBy` — names a templated dialog by its own title rather than its whole header region, `backdropIntensity` — `standard` | `heavy`, see the Backdrop row), DynamicDialog, ConfirmDialog (`role="alertdialog"`, opens on the reject action), ConfirmPopup (`label`), Drawer (alias Sidebar), Tooltip, Popover (alias OverlayPanel; `label` promotes it to `role="dialog"` — an unnamed dialog announces worse than no role; `initialFocusRef` lands focus on a chosen element — a picker opens on its CURRENT choice; under EITHER reduced-motion channel — the OS query or `:root[data-motion="reduced"]` — it appears in place with no slide and no fade), ProgressBar, ProgressSpinner, ProgressRing, Spinner, Loader, Skeleton                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | **`@projective/ui/overlay`**    | Backdrop (dismisses only on a press that starts and ends on the scrim itself, via the exported `useBackdropPress` + pure `isDismissPress` — reuse it for any bespoke dismiss surface; tint/blur fixed by `--scrim`/`--scrim-tint`/`--scrim-blur`, no `blur` prop; ONE named second tier, `intensity="heavy"` → `--scrim-tint-heavy`/`--scrim-blur-heavy`, chosen by what the modal MEANS — "the page beneath cannot be used right now", the offline interstitial — never by taste, §B.10.2), Overlay (modal band + `inert` background), HoverCard (stack-managed, Escape-dismissable per WCAG 1.4.13), Portal, BodyPortal, DraggablePopover (non-modal draggable/resizable window, bounded z counter) (+ `usePresence`, watchdogged enter), **MoneyFlowPopover** (the developer money-flow debugger composed ON DraggablePopover — glass on a `::before` underlay, a four-state capital meter whose segment widths are set from the value and **never animated**, a purchase → escrow → release → disburse simulator, a balance override, a before/after wallet preview and an ordered flow trace; **fully controlled, zero fetch, zero money arithmetic** — see the portability note below), **the modal STACK** (`createModalStack` + `useFrameState`/`useFrameScroll`/`bindFrameSignal`) — a replace-in-place router for a chain of modals: only the TOP frame renders, so a ticket → review chain composites ONE blurred backdrop instead of two, and each frame's live UI state (tab, inputs, scroll offsets) is held in a deliberately **non-reactive** cache so popping back restores the surface the viewer left rather than a fresh one (§B.10.9)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | **`@projective/ui/utils`**      | CommandPalette, Kbd, ScrollArea, ScrollTop, EmptyState, BlockUI, Inplace, Terminal, Captcha, FocusTrap, Defer, AnimateOnScroll, Ripple                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -1864,7 +2237,9 @@ Submissions additions (root CLAUDE.md §8 Decision #33): **`navigation/TreeNav`*
 explorer (a lighter sibling of `display/Tree`): borderless disclosure rows with **chevron**
 open/close affordances (never triangles), an optional leading icon OR circular avatar per node, an
 icon-only trailing status slot + a muted count, controllable selection + a controllable/internal
-expanded-key set, `role="tree"`/`treeitem` with arrow/Home/End keys. Selecting a row scopes the host
+expanded-key set, `role="tree"`/`treeitem` with arrow/Home/End keys. The active row is a solid
+`--surface-2` step with `--on-surface` ink and a 2px `--on-surface` inline-start indicator, reserved
+`transparent` at rest (§B.4.2). Selecting a row scopes the host
 workspace; a single-hairline vertical divider between the tree and the workspace is the host's
 concern (§B.4). Also a backward-compatible **`Breadcrumb` extension**: a crumb may carry a
 `MenuItem.command` for **client-driven** trails (an in-place tree navigator) — the crumb stays an
@@ -2657,7 +3032,10 @@ The routed tab body + `ChatComposer` flow in the canvas beneath it:
      room for it. A view's status is a trailing dot (the room's unread · a new ticket on Board · a
      revision on Submissions), spoken in the link's name. The list pulls out by the item's own
      inline margin so each row lines up with the content column. The active row is the package's
-     filled `--primary` / `--on-primary` pair; its dot takes `currentColor`.
+     filled `--primary` / `--on-primary` pair; its dot takes `currentColor`. That solid fill is not
+     the translucent wash §B.4.2 prohibits, and it is held as shipped as a tier-3 navigation active
+     state (§B.8.1) — but this is a middle-nav list, for which the directive also names
+     `--surface-2` / `--on-surface`, so the row's final treatment waits on Decision #157 flag (k).
   3. **Contextual body** — a staged engagement's **STAGES** section (the owner's inline ＋ opens
      Create Stage) plus Teams / Private Messages when the viewer has something in them, under the
      quick filters; a Task's Overview (Status · Due · Owner · Assigned) and Tasks checklist; a
@@ -2899,7 +3277,8 @@ buyer see the same offer in the same place. Its anatomy is fixed, top to bottom:
    third line in Meta register carrying both the struck original and the saving — never a chip.
 3. **Primary CTA — one, full-width, INVERTED pill.** Its label is the archetype's actual verb:
    **Buy now** · **Book session** · **Reserve seat** · **Fund Stage 1** · **Apply to project**. The
-   treatment is §D.7.7's monochrome fill, not `--primary`.
+   treatment is §D.7.7's monochrome fill, not `--primary` — held for the money verbs too, pending
+   the ruling recorded in §D.7.7 (Decision #157 flag (f)).
 4. **Secondary CTA — one, full-width, BRAND pill.** _Add to basket_. Solid `--primary`, same height
    and radius as the primary, ranked below it by hue rather than by emphasis (§D.7.7).
 5. **Tertiary — one ghost action, and only ever this one.** _Message seller_, with its glyph. This is
@@ -3024,9 +3403,41 @@ re-measuring a beat after the band flips because that reveal moves the page with
 > replace this the moment there is somewhere to prove it works; it is not currently a correctness
 > question but a verifiability one.
 
-**D.7.7 The action rig is monochrome-first.**
+**D.7.7 The action rig is ranked by hue.**
 
-The primary CTA is **inverted**: the page's ink colour as its fill. Expressed as
+Two rigs share this idiom and they are not the same rig, so which control takes which tier of the
+Button Interaction Matrix (§B.8.1, Decision #157) is stated per control:
+
+| Rig                                | Control                                                                 | Tier (§B.8.1)                         | Treatment                           |
+| :--------------------------------- | :---------------------------------------------------------------------- | :------------------------------------ | :---------------------------------- |
+| Profile hero + band (`ProfileRig`) | **Hire**                                                                | 1 · terminal conversion               | amber `--accent` pill               |
+| Profile hero + band (`ProfileRig`) | **Add to project** — beside Hire or alone                               | 2 · structural commitment             | monochrome inverted pill            |
+| Profile hero + band (`ProfileRig`) | Seller rig: Message · Follow                                            | 4 · neutral outlined, icon-only       | `neutral` `outlined` circle         |
+| Profile hero + band (`ProfileRig`) | Buyer rig: Message · Follow                                             | 4 · neutral outlined                  | `neutral` `outlined` text pill      |
+| Profile hero + band (`ProfileRig`) | Owner rig: Settings (an `<a>`) · Share                                  | 4 · neutral outlined                  | `neutral` `outlined` pill           |
+| Entity-view lane (§D.7.2 item 3)   | Primary CTA, non-financial verb (_Apply to project_)                    | 2 · structural commitment             | monochrome inverted pill            |
+| Entity-view lane (§D.7.2 item 3)   | Primary CTA, money verb (_Buy now_ · _Book session_ · _Fund Stage 1_ …) | 1 by the matrix — **held as shipped** | monochrome inverted pill (flag (f)) |
+| Entity-view lane (§D.7.2 item 4)   | _Add to basket_                                                         | ranked below the primary by hue       | solid `--primary` pill              |
+| Entity-view lane (§D.7.2 item 5)   | _Message seller_                                                        | 5 · ghost                             | `text`                              |
+
+The profile rig is the matrix's canonical two-fill case: amber Hire beside monochrome Add to
+project, ranked by hue (§B.8.2). Nothing on the profile rig is tier 3, and the buyer and owner rigs
+have no filled control at all — §B.8.2 caps fills at one and sets no minimum. The markup per tier:
+Hire is the bare `ui-button--accent ui-button--filled ui-button--rounded` class set on a native
+`<button>` (its `Popover` needs the ref `Button` does not forward), with no rig-local colour
+override; Add to project is `ui-button--primary ui-button--filled` plus `.pf-rig__cta--mono`, the
+inverted override, wherever it renders; every tier-4 control is the shared
+`severity="neutral" variant="outlined"` preset (`ui-button--neutral ui-button--outlined` on the
+Settings anchor), the rig keeping only a muted ink for a pressed Follow
+(`.pf-rig__cta--neutral[aria-pressed="true"]`). The entity-view lane is not yet reconciled, and that is stated
+rather than resolved: the matrix puts a money verb in tier 1, but an amber primary beside the teal
+basket would be two fills that are not the amber/monochrome pair, and the matrix reserves teal for
+navigation and workflow commits, which _Add to basket_ is neither. Until a human rules
+(Decision #157 flag (f)), the lane renders as below — monochrome primary, teal basket — and is
+not a precedent for any other surface.
+
+The monochrome fill — the lane's primary, and the profile rig's Add to project — is **inverted**: the
+page's ink colour as its fill. Expressed as
 `--btn-accent: var(--on-surface); --btn-on: var(--surface)` — the inverted-surface idiom the system
 already has in `Tooltip` — the pair swaps sides with the theme by construction, so one declaration is
 correct in both directions: near-white on near-black in light, near-black on near-white in dark.
@@ -3035,7 +3446,9 @@ correct in both directions: near-white on near-black in light, near-black on nea
 **14.93:1** dark, and it *improves* under `data-contrast="high"` (~20:1 both), so it needs no
 accessibility carve-out and is unaffected by the colour-blindness overlays, being achromatic.
 
-The secondary carries the brand teal, and **its ink is `--surface` too** — which is the whole trick.
+**In the entity-view lane**, the secondary carries the brand teal, and **its ink is `--surface`
+too** — which is the whole trick. (The profile rig has no teal fill; its second fill is amber Hire
+on `--on-accent`, §A.1.2.)
 Solid `--primary` with white text measures **5.38:1 in light** (correct, and literally white) but
 **3.75:1 in dark**, and the token pair `--on-primary` measures **3.57:1** there. Both then *collapse*
 under `data-contrast="high"` in dark — **2.52:1** and **1.75:1** — so the overlay meant to rescue
@@ -3058,16 +3471,21 @@ them makes them unreadable. `--surface` resolves to `#ffffff` in light and `#0b0
 > viable choice — a filled `--primary` control elsewhere in the product now clears AA on its own token
 > pair in every state, rather than 3.57:1 in dark and 1.75:1 under the overlay.
 
-Geometry: both pills are `--radius-full`, `--fw-medium`, and **36px** tall. That height is
+Geometry (entity-view lane): both pills are `--radius-full`, `--fw-medium`, and **36px** tall. The
+profile rig's pills are `--radius-full` too, but take the Button `size` ramp the rig is rendered
+at per placement (hero, sticky band), and are not bound by this height. That height is
 deliberately OFF the `--fld-h-*` ramp, which steps 32 → 40 → 48 — a compact commit control is neither
 of its neighbours. It stays on the ramp's own 4px grid, and if the pattern spreads the ramp should
 gain the step rather than each surface re-declaring it.
 
-> **§B.8.2 note.** The lane renders two solid fills, which the one-`filled`-per-decision-region cap
-> reads as a violation. It is a sanctioned exception, scoped to this rig: the two are ranked by HUE
-> (monochrome commit vs brand basket) rather than by emphasis, so the hierarchy a reader perceives is
-> intact — which is what the cap protects. It is recorded here so the next author does not generalise
-> it to a surface where both fills would be the same colour.
+> **§B.8.2 note.** Both rigs can render two solid fills (the profile's seller rig does; its buyer and
+> owner rigs render none), which the one-`filled`-per-decision-region cap
+> reads as a violation. The profile rig is the sanctioned case the matrix names: amber Hire against
+> monochrome Add to project, ranked by HUE rather than by emphasis, so the hierarchy a reader
+> perceives is intact — which is what the cap protects. The entity-view lane's monochrome commit
+> against a brand basket predates the matrix and is held as shipped, scoped to this lane, pending
+> Decision #157 flag (f). Neither generalises: two fills of the same colour, or any pair other
+> than amber + monochrome, remains a finding on every other surface.
 
 **D.7.8 The canvas is content-first.**
 
@@ -3258,9 +3676,14 @@ A PR touching `@projective/ui` must satisfy (enforced via root `CLAUDE.md`):
 8. **§B.12's contrast invariant is machine-checked, and that is the point.** Every filled
    `--<role>` / `--on-<role>` pair must measure ≥ 4.5:1 in all four mode/contrast states, a
    mode-adaptive pair must reach ≥ 7:1 in dark, no pair may narrow under `data-contrast="high"`, and
-   `--primary`/`--on-primary` must be byte-identical across every state (§A.1.1). Press feedback must
-   be `transform`-only, must move no box-model property, and must be disabled by **both**
-   reduced-motion channels. The colour half is pinned in
+   `--primary`/`--on-primary` must be byte-identical across every state (§A.1.1). `--accent` /
+   `--on-accent` (§A.1.2) is in the set on the full terms — ≥ 4.5:1 in all four states, ≥ 7:1 in
+   dark, never narrowing under high contrast — and, being fixed-polarity (light fill, dark ink in
+   every mode), its hover and press blend toward a light pole, never toward `--on-surface`; its
+   light fill's sub-3:1 page visibility (2.42–2.97:1, 2.11:1 pressed) is a logged deviation
+   (Decision #157 flag (b)), not a precedent. Press
+   feedback must be `transform`-only, must move no box-model property, and must be disabled by
+   **both** reduced-motion channels. The colour half is pinned in
    `packages/ui/system/core/theme-engine.test.ts` because it is the one law here whose failure is
    invisible to a source-reading review — the pair it governs shipped at 3.57:1, and at 1.75:1 under
    the accessibility overlay, for months without anyone reading a stylesheet and noticing.
@@ -3302,13 +3725,18 @@ so those 556 controls remain uncovered there while the base-rule remainder is no
 is the ruling this entry defers, and it would give every control two focus implementations. It is now
 a smaller change than it was, since the mechanism and the geometry already exist.
 
-**F.2 — Seven severities is more than this product means.** _Audit position:_ `help` (mapped to
+**F.2 — Eight severities is more than this product means.** _Audit position:_ `help` (mapped to
 `--tertiary`) carries no meaning anywhere in Projective, and `info` vs `secondary` were literal
 visual duplicates until 2026-07-30 — evidence that the set is wider than the vocabulary. A smaller
 set is harder to misuse, and §B.8.3's whole problem is misuse. _House position:_ the roster is
 committed to **PrimeNG feature-parity** (§C.1 roster-rename note); a severity is part of that
 surface, and removing one is a breaking change to a copy-paste-portable package. _Ruling needed:_
-keep all seven for parity and forbid `help` by policy, or drop it from the `Severity` union.
+keep all seven parity severities and forbid `help` by policy, or drop it from the `Severity` union.
+_Since Decision #157:_ `Button` carries two more, `accent` (filled only) and `neutral` (outlined
+only), neither of which is a PrimeNG severity — the parity argument above no longer describes
+`Button` exactly. Both are confined to `Button` (`ButtonSeverity`, §B.8.3) so the shared `Severity`
+union, and the parity of the five other severity-bearing components, is unchanged; whether that
+departure is acceptable is part of the same ruling.
 
 **F.3 — The `filled`-per-view cap vs. genuinely two-primary surfaces.** _Audit position (encoded as
 §B.8.2):_ one `filled` per decision region. _Unresolved case:_ the wallet footer rig legitimately
@@ -3316,7 +3744,16 @@ offers **Top up** and **Withdraw** as co-equal primaries — neither is subordin
 to `outlined` would misrepresent the surface. §B.8.2's "mutually exclusive by render condition"
 escape does not cover them. _Options:_ (a) accept the cap and pick a winner per rig; (b) formalise a
 "co-primary pair" exception limited to a footer action rig; (c) treat each as its own decision
-region. Currently the cap is written as absolute, so the wallet rig is technically in violation.
+region. Since Decision #157 the cap has one exception — two fills ranked by hue, amber tier 1
+against monochrome tier 2 (§B.8.2) — but it does not reach the wallet: Top up and Withdraw both move
+money, so under the Interaction Matrix both would be tier 1, and two amber fills are the same-colour
+case the cap still forbids. _As shipped:_ the pair no longer sits in a footer rig — it is part of
+the `/wallet` hero's glass action-pill row (`WalletHero.tsx` `.wlt-pill`), where neither pill is
+filled, and the amber lives on each movement dialog's own commit (§B.8.1, "where tier 1 renders
+today"), so the two-amber case does not arise today. The options above still stand the moment the
+pills become filled — (a) pick a winner and move the other to tier 2 or 4, (b) a scoped co-primary
+exception, (c) separate regions — and the choice is logged with the tier-1 scope question as
+Decision #157 flag (j), not settled by the matrix.
 
 **F.4 — §B.6 icon-first density vs. §B.7.7's ban on icon inflation.** _These two sections point
 opposite ways and the boundary is undrawn._ §B.6 mandates a glyph on every lane row and every dense

@@ -58,7 +58,8 @@ export default function CheckoutCurrencySelect(
 	return (
 		<div class="cko-cur">
 			<CurrencySelect
-				class="cko-cur__field"
+				class="ui-field--bare cko-cur__field"
+				panelClass="cko-cur__panel"
 				aria-label="Display currency"
 				size="sm"
 				value={choice}

@@ -243,9 +243,9 @@
 }
 
 .wsp-lane__filter-pill[data-on="true"] {
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
-	border-color: var(--primary);
-	color: var(--primary);
+	background: var(--surface-2);
+	border-color: var(--on-surface);
+	color: var(--on-surface);
 }
 
 .wsp-lane__filter-pill:focus-visible {

@@ -225,6 +225,20 @@
 	--btn-mix-hover: 92%;
 	--btn-mix-active: 88%;
 }
+.ui-button--accent {
+	--btn-accent: var(--accent);
+	--btn-on: var(--on-accent);
+	--btn-shade: var(--on-scrim);
+	--btn-mix-hover: 92%;
+	--btn-mix-active: 88%;
+}
+.ui-button--neutral {
+	--btn-accent: var(--on-surface);
+	--btn-on: var(--surface);
+}
+.ui-button--neutral.ui-button--outlined {
+	border: var(--hairline-strong);
+}
 /* #endregion */
 
 /* #region Variants */

@@ -35,7 +35,8 @@ export interface SliderProps extends Omit<BaseFieldProps, "fluid"> {
 	/**
 	 * Step the FOCUSED handle on the wheel (default `true`). Focus is the gate deliberately: the event
 	 * reaches the track merely because the pointer is over it, and a reader scrolling a long sidebar
-	 * past a slider did not ask to change anything.
+	 * past a slider did not ask to change anything. Ctrl/Cmd + wheel needs only hover (the first
+	 * handle steps), since nobody holds a modifier over one slider by accident — the `NumberInput` rule.
 	 */
 	enableWheel?: boolean;
 	/** Track axis (default `horizontal`). */
@@ -56,8 +57,9 @@ export interface SliderProps extends Omit<BaseFieldProps, "fluid"> {
 /**
  * Slider — a token-driven range input supporting a single handle or a dual-handle range. Each handle
  * is a `role="slider"` with full `aria-value*` state and keyboard operation (Arrow ±step, PageUp/Down
- * ±10·step, Home/End), a focus-gated wheel, and pointer drag through pointer capture; clicking the
- * track jumps the nearest handle. Range handles are constrained so they cannot cross unless
+ * ±10·step, Home/End), a focus-gated wheel (Ctrl/Cmd + wheel on hover), and pointer drag through
+ * pointer capture; pressing the track jumps the nearest handle there and keeps dragging it until
+ * release. Range handles are constrained so they cannot cross unless
  * {@link SliderProps.allowCross} is set. Signal-first via {@link useControllable}.
  */
 export function Slider(props: SliderProps): JSX.Element {
@@ -89,6 +91,7 @@ export function Slider(props: SliderProps): JSX.Element {
 	const rootId = useId(id, "slider");
 	const trackRef = useRef<HTMLDivElement>(null);
 	const dragging = useRef<number | null>(null);
+	const trackDrag = useRef<number | null>(null);
 	/** Whether DOM handle 0 currently holds the UPPER value (only ever flips under `allowCross`). */
 	const swapped = useRef(false);
 	const vertical = orientation === "vertical";
@@ -179,11 +182,37 @@ export function Slider(props: SliderProps): JSX.Element {
 		dragging.current = null;
 	};
 
+	/**
+	 * A press on the bare track jumps the nearest handle there AND keeps tracking until release, so
+	 * "click, then drag" is one gesture. A press that started on a handle is the handle's own.
+	 */
 	const onTrackDown = (e: JSX.TargetedPointerEvent<HTMLDivElement>) => {
-		if (locked) return;
+		if (locked || e.button !== 0) return;
+		if ((e.target as HTMLElement).closest?.(".ui-slider__handle")) return;
 		const target = valueFromPointer(e.clientX, e.clientY);
 		const index = nearestHandle(target);
 		setHandle(index, target);
+		e.preventDefault();
+		try {
+			e.currentTarget.setPointerCapture(e.pointerId);
+		} catch {
+			return;
+		}
+		trackDrag.current = index;
+		e.currentTarget.querySelector<HTMLElement>(`[data-handle="${index}"]`)?.focus();
+	};
+
+	const onTrackMove = (e: JSX.TargetedPointerEvent<HTMLDivElement>) => {
+		if (trackDrag.current === null) return;
+		setHandle(trackDrag.current, valueFromPointer(e.clientX, e.clientY));
+	};
+
+	const onTrackUp = (e: JSX.TargetedPointerEvent<HTMLDivElement>) => {
+		if (trackDrag.current === null) return;
+		if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+			e.currentTarget.releasePointerCapture(e.pointerId);
+		}
+		trackDrag.current = null;
 	};
 	// #endregion
 
@@ -232,8 +261,10 @@ export function Slider(props: SliderProps): JSX.Element {
 		if (!track || !enableWheel) return;
 		const onWheel = (event: WheelEvent) => {
 			const active = track.ownerDocument.activeElement;
-			if (!(active instanceof HTMLElement) || !track.contains(active)) return;
-			const index = Number(active.dataset.handle);
+			const focused = active instanceof HTMLElement && track.contains(active);
+			const modified = event.ctrlKey || event.metaKey;
+			if (!focused && !modified) return;
+			const index = focused ? Number((active as HTMLElement).dataset.handle) : 0;
 			if (!Number.isInteger(index)) return;
 			const delta = event.deltaY !== 0 ? -event.deltaY : event.deltaX;
 			if (delta === 0) return;
@@ -270,7 +301,14 @@ export function Slider(props: SliderProps): JSX.Element {
 			{name !== undefined && (
 				<input type="hidden" name={name} value={String(range ? sorted.join(",") : values[0])} />
 			)}
-			<div ref={trackRef} class="ui-slider__track ui-hit" onPointerDown={onTrackDown}>
+			<div
+				ref={trackRef}
+				class="ui-slider__track ui-hit"
+				onPointerDown={onTrackDown}
+				onPointerMove={onTrackMove}
+				onPointerUp={onTrackUp}
+				onPointerCancel={onTrackUp}
+			>
 				<div
 					class="ui-slider__range"
 					style={styleVars({

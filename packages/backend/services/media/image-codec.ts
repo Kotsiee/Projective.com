@@ -6,6 +6,7 @@ import {
 	type ColorSummary,
 	colorSummary,
 	componentsFor,
+	type CropShape,
 	type CropState,
 	encodeBlurHash,
 	isAxisAligned,
@@ -274,7 +275,8 @@ export function hasTransparency(bitmap: Bitmap): boolean {
  * `clampCrop`) out of `source`, into a `width × height` output. Rotation 0 with an output no larger
  * than the box is a plain copy followed by a resample; any rotation is one bilinear resampling pass
  * through the same inverse mapping the editor draws with (`sourcePointFor`), so the saved crop is the
- * one the person saw.
+ * one the person saw. A `circle` crop's square may overhang the picture; its corners are then filled
+ * from the nearest edge pixel by the resampling pass, never by stretching a clipped copy.
  */
 export function renderCrop(
 	source: Bitmap,
@@ -282,11 +284,14 @@ export function renderCrop(
 	aspect: number,
 	width: number,
 	height: number,
+	shape: CropShape = "rect",
 ): Bitmap {
 	const image = { width: source.width, height: source.height };
-	if (isAxisAligned(state)) {
-		const tl = sourcePointFor(state, image, aspect, 0, 0);
-		const br = sourcePointFor(state, image, aspect, 1, 1);
+	const tl = sourcePointFor(state, image, aspect, 0, 0, shape);
+	const br = sourcePointFor(state, image, aspect, 1, 1, shape);
+	const inside = tl.x >= -0.5 && tl.y >= -0.5 && br.x <= source.width + 0.5 &&
+		br.y <= source.height + 0.5;
+	if (isAxisAligned(state) && inside) {
 		const x0 = clampInt(Math.round(tl.x), 0, source.width - 1);
 		const y0 = clampInt(Math.round(tl.y), 0, source.height - 1);
 		const x1 = clampInt(Math.round(br.x), x0 + 1, source.width);
@@ -297,9 +302,9 @@ export function renderCrop(
 
 	// Rotated: affine inverse mapping, evaluated incrementally. The mapping from output pixel centres
 	// to source points is linear, so the three corner points define it completely.
-	const o = sourcePointFor(state, image, aspect, 0.5 / width, 0.5 / height);
-	const ux = sourcePointFor(state, image, aspect, 1.5 / width, 0.5 / height);
-	const vy = sourcePointFor(state, image, aspect, 0.5 / width, 1.5 / height);
+	const o = sourcePointFor(state, image, aspect, 0.5 / width, 0.5 / height, shape);
+	const ux = sourcePointFor(state, image, aspect, 1.5 / width, 0.5 / height, shape);
+	const vy = sourcePointFor(state, image, aspect, 0.5 / width, 1.5 / height, shape);
 	const dxu = ux.x - o.x, dyu = ux.y - o.y;
 	const dxv = vy.x - o.x, dyv = vy.y - o.y;
 	// When the output is much smaller than the box, bilinear sampling alone aliases: render at the
@@ -308,7 +313,7 @@ export function renderCrop(
 	if (boxScale > 1.5) {
 		const nativeW = Math.max(1, Math.round(width * boxScale));
 		const nativeH = Math.max(1, Math.round(height * boxScale));
-		return resize(renderCrop(source, state, aspect, nativeW, nativeH), width, height);
+		return resize(renderCrop(source, state, aspect, nativeW, nativeH, shape), width, height);
 	}
 	const out = new Uint8ClampedArray(width * height * 4);
 	for (let y = 0; y < height; y++) {

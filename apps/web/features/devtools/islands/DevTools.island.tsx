@@ -8,6 +8,7 @@ import type { UserContext } from "@projective/types/auth";
 import { logger } from "@web/utils/logger.ts";
 import { LocalKeys, readStored, type StorageKey, writeStored } from "@web/utils/storage-keys.ts";
 import { devOverrides, hydrateDevContext, patchDevContext } from "../core/dev-context.ts";
+import { hydrateDevTheme } from "../core/dev-theme.ts";
 import { DevContextPanel } from "../components/DevContextPanel.tsx";
 import { LogInspector } from "../components/LogInspector.tsx";
 import { DevInvitesPanel } from "../components/DevInvitesPanel.tsx";
@@ -104,6 +105,7 @@ export default function DevTools(props: DevToolsProps): JSX.Element {
 
 	useEffect(() => {
 		hydrateDevContext();
+		hydrateDevTheme();
 		// Restore any window the developer left open, so a page switch or hard refresh reopens the
 		// Context Switcher / Log Inspector in the same (already position-persisted) spot. Done here in an
 		// effect — never during render — so it can't cause a hydration mismatch against the SSR markup.

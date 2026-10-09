@@ -53,8 +53,8 @@ import type { BasketItem, MoneyView } from "../types/checkout-types.ts";
  *    rig controls now, and the tiers collapse a LABEL rather than a capability.
  * 3. **One filled commitment per decision region (§B.8.2).** The **amber** commitment on the basket
  *    step belongs to the body's summary card ("Proceed to Checkout"). The band's own Checkout is
- *    therefore the neutral `secondary` pill — a second route to the same step, not a second shout.
- *    On the three later steps the body carries no commitment, so the rig's CTA is the amber one.
+ *    therefore a neutral ghost pill (§B.8.1 tier 5) — a second route to the same step, not a second
+ *    shout. A rig commitment with no twin in the body is the tier-1 `accent` pill.
  * 4. **The rig owns the ACTIONS; the body owns the facts.** The one fact the band does print, the
  *    basket Total, is the server's own `MoneyView` rendered through {@link Amount}; nothing here sums,
  *    formats or converts.
@@ -92,14 +92,12 @@ export interface CheckoutFooterRigProps {
 }
 
 /**
- * The commitment's colour ramp.
+ * The commitment's Button Interaction Matrix tier (§B.8.1).
  *
- * `warning` is the amber the flow commits in; `secondary` the neutral pill used where the amber
- * already belongs to another control in the same decision region (§B.8.2). Narrowed to the two the
- * rig actually offers rather than typed as the full `Severity` union, so a third can only be added
- * deliberately.
+ * `accent` is the tier-1 amber commit; `ghost` the tier-5 neutral pill used where the amber already
+ * belongs to another control in the same decision region (§B.8.2).
  */
-type CtaSeverity = "warning" | "secondary";
+type CtaTier = "accent" | "ghost";
 
 /** One action the rig offers, in both its label and its glyph-only presentation. */
 interface RigAction {
@@ -108,10 +106,10 @@ interface RigAction {
 	icon: IconName;
 	/** A navigation action renders as an anchor; everything else is a button. */
 	href?: string;
-	/** The step's single commitment: filled, rendered last, and never collapsed to a glyph. */
+	/** The step's single commitment: rendered last, and never collapsed to a glyph. */
 	cta?: boolean;
-	/** The commitment's ramp; defaults to the amber `warning`. Ignored on a non-CTA action. */
-	ctaSeverity?: CtaSeverity;
+	/** The commitment's tier; defaults to the amber `accent`. Ignored on a non-CTA action. */
+	ctaTier?: CtaTier;
 	/**
 	 * Render the commitment as a label alone, with no leading glyph.
 	 *
@@ -317,8 +315,8 @@ function actionsFor(props: CheckoutFooterRigProps, ctx: RigContext): RigAction[]
 					/*
 					 * The band's route forward, at every width.
 					 *
-					 * NEUTRAL rather than amber: the body's summary card already carries the step's filled
-					 * amber commitment, and §B.8.2 caps one per decision region. It also carries no figure —
+					 * A neutral ghost rather than amber: the body's summary card already carries the step's
+					 * filled amber commitment, and §B.8.2 caps one per decision region. It also carries no figure —
 					 * the Total at the other end of the band is that figure, and printing it twice in one
 					 * strip invites a reader to check whether the two agree.
 					 *
@@ -331,7 +329,7 @@ function actionsFor(props: CheckoutFooterRigProps, ctx: RigContext): RigAction[]
 					icon: "wallet",
 					href: checkoutStepHref("details", props.basketId, props.owner),
 					cta: true,
-					ctaSeverity: "secondary",
+					ctaTier: "ghost",
 					plain: true,
 					disabled: ctx.selectedCount === 0,
 				},
@@ -425,7 +423,8 @@ function RigControl({ action }: { action: RigAction }): VNode {
 }
 
 /**
- * The step's commitment: a filled pill, flush to the band's inline end, whose words never collapse.
+ * The step's commitment: a pill flush to the band's inline end, whose words never collapse — the
+ * tier-1 accent fill, or the tier-5 neutral ghost where the body already owns the amber.
  *
  * The anchor form wears `@projective/ui`'s own button classes by hand rather than forking a second
  * button family — the same move the body's summary CTA makes. It has to be an anchor: advancing the
@@ -433,8 +432,15 @@ function RigControl({ action }: { action: RigAction }): VNode {
  * router would take that away.
  */
 function RigCta({ action }: { action: RigAction }): VNode {
-	const severity: CtaSeverity = action.ctaSeverity ?? "warning";
+	const tier: CtaTier = action.ctaTier ?? "accent";
 	const glyph = action.plain ? null : <Icon name={action.icon} />;
+	const tierClass = tier === "ghost" ? "cko-rig__cta cko-rig__cta--ghost" : "cko-rig__cta";
+	const label = (
+		<>
+			<span class="ui-button__label">{action.label}</span>
+			{action.amount ? <Amount value={action.amount} size="body" hideOrigin /> : null}
+		</>
+	);
 
 	/*
 	 * No `Tooltip` and no `aria-label` on this control, unlike the quiet actions above it.
@@ -446,34 +452,49 @@ function RigCta({ action }: { action: RigAction }): VNode {
 	 * not.
 	 */
 	if (action.href) {
+		const ramp = tier === "ghost"
+			? "ui-button--primary ui-button--text"
+			: "ui-button--accent ui-button--filled";
 		return (
 			<a
-				class={`cko-rig__cta ui-button ui-button--${severity} ui-button--filled ui-button--size-sm ui-button--rounded`}
+				class={`${tierClass} ui-button ${ramp} ui-button--size-sm ui-button--rounded`}
 				href={action.disabled ? undefined : action.href}
 				aria-disabled={action.disabled ? "true" : undefined}
 			>
 				{glyph ? <span class="ui-button__icon">{glyph}</span> : null}
-				<span class="ui-button__label">{action.label}</span>
-				{action.amount ? <Amount value={action.amount} size="body" hideOrigin /> : null}
+				{label}
 			</a>
 		);
 	}
 
-	return (
-		<Button
-			severity={severity}
-			variant="filled"
-			size="sm"
-			rounded
-			icon={glyph ?? undefined}
-			disabled={action.disabled}
-			class="cko-rig__cta"
-			onClick={action.onSelect}
-		>
-			<span class="ui-button__label">{action.label}</span>
-			{action.amount ? <Amount value={action.amount} size="body" hideOrigin /> : null}
-		</Button>
-	);
+	return tier === "ghost"
+		? (
+			<Button
+				variant="text"
+				size="sm"
+				rounded
+				icon={glyph ?? undefined}
+				disabled={action.disabled}
+				class={tierClass}
+				onClick={action.onSelect}
+			>
+				{label}
+			</Button>
+		)
+		: (
+			<Button
+				severity="accent"
+				variant="filled"
+				size="sm"
+				rounded
+				icon={glyph ?? undefined}
+				disabled={action.disabled}
+				class={tierClass}
+				onClick={action.onSelect}
+			>
+				{label}
+			</Button>
+		);
 }
 // #endregion
 

@@ -166,6 +166,28 @@ Deno.test("renderCrop: the cut matches the editor's mapping, rotated or not", ()
 	}
 });
 
+Deno.test("renderCrop: a circle's overhanging square corners are edge-filled, never transparent", () => {
+	const src = quadrants(400, 300);
+	const image = { width: 400, height: 300 };
+	const state = clampCrop({ zoom: 2, rotation: 45, cx: 1e5, cy: -1e5 }, image, 1, "circle");
+	const out = renderCrop(src, state, 1, 64, 64, "circle");
+	assertEquals([out.width, out.height], [64, 64]);
+	for (let i = 3; i < out.data.length; i += 4) assertEquals(out.data[i], 255);
+	for (const [u, v] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+		const p = sourcePointFor(state, image, 1, u, v, "circle");
+		const x = Math.min(399, Math.max(0, Math.floor(p.x)));
+		const y = Math.min(299, Math.max(0, Math.floor(p.y)));
+		const expected = pixel(src, x, y);
+		const got = pixel(out, Math.min(63, Math.floor(u * 64)), Math.min(63, Math.floor(v * 64)));
+		for (let c = 0; c < 3; c++) {
+			assert(
+				Math.abs(got[c] - expected[c]) < 80,
+				`corner (${u},${v}) channel ${c}: ${got} vs ${expected}`,
+			);
+		}
+	}
+});
+
 Deno.test("runImageJob(render): an avatar is square, capped, tiered and carries a placeholder", async () => {
 	const jpeg = await asJpeg(quadrants(3000, 2000), 85);
 	const result = await runImageJob({

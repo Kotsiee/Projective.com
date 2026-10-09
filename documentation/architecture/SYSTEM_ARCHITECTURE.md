@@ -474,7 +474,7 @@ layer; this section stays a narrative overview, not a duplicate of the matrices.
 **Icon** A component for rendering vector icons consistently.
 
 - **Use Cases:** Adding visual context to buttons, menus, or notifications.
-- **Options:** `variant`, `size`, `spin`, `colour` (mapped to semantic tokens like `--text-main` or
+- **Options:** `variant`, `size`, `spin`, `colour` (mapped to semantic tokens like `--on-surface` or
   `--primary`).
 
 **Button** A highly versatile component for initiating actions.
@@ -1380,7 +1380,32 @@ functions and writes through `org.save_profile` / `org.set_profile_avatar` / `or
    ORIGINAL with the shared crop model (`@projective/types/files` `crop.ts` — the same arithmetic the
    browser previews), re-encodes it (which also strips EXIF and anything a polyglot could carry) and
    writes it with its tiers to the public `avatars` or `showcase` bucket, where only the service role
-   may write. The attach RPC then re-checks that the rendition belongs to the profile's owner.
+   may write. The attach RPC then re-checks that the rendition belongs to the profile's owner. Each
+   target has a crop SHAPE (`RENDITION_SHAPE`): the avatar is clamped to its visible CIRCLE, so it
+   can reach every edge of the picture at any rotation and its minimum zoom does not change as it
+   turns; the square stored around it may overhang the picture, and the cut fills those corners from
+   the nearest edge pixel (no surface shows them). The showcase frame is clamped as a whole box.
+6. **The sign-in picture** (`/api/media/oauth-avatar-sync`, `services/media/oauth-avatar.ts`). The
+   provider's picture is never read by the browser (a canvas drawn from the provider CDN is tainted,
+   and the URL is user-writable metadata). The server reads the URL from the caller's VERIFIED
+   identity (`UserBackendService.oauthAvatar`), checks it against the provider allowlist, fetches it
+   under the link guards (`files/link-fetch.ts` — https, pinned DNS, no private addresses, an 8 MiB cap,
+   one deadline), re-checks the final host after redirects, sniffs the bytes, and then runs the SAME
+   quarantine flow a browser upload takes (declare → service-role write to the declared quarantine
+   object → complete). The result is an ordinary library asset; nothing about the profile changes
+   until the person frames it and saves.
+
+The picker for all three rendition surfaces (the profile photo, a showcase slot, a group conversation
+photo) is the File Picker in **media mode** (`AssetPicker` `media`, `files/components/media-crop/`):
+Upload from device · Projective Library · Sign-in account, then a fixed-size Crop & Adjust stage
+(rule-of-thirds guides, an infinite rotation ruler, Reset) whose save hands the source and its crop to
+the host — `/api/profile/[handle]/media` or the group-photo route (Decision #158). It runs in two
+steps, Browse → **Continue** → Crop → **Save & Apply**: adding to the showcase chooses up to as many
+sources as there are empty slots (a chosen card toggles off), each framed in turn with circular
+chevrons and an active tray. **Nothing is written before Save & Apply** (Decision #160): a device file
+is held in the tab as an object URL and the sign-in picture is only previewed; on save each goes
+through the quarantine pipeline above, then the renditions are cut. Cancel revokes the blobs and
+leaves `files.items` untouched.
 
 Gaps, stated: there is no third-party **malware** scan yet (the checks are a content sniff and a
 full decode), and variant bytes are not metered against the owner's storage quota.

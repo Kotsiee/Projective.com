@@ -702,10 +702,13 @@
 	align-items: center;
 	gap: var(--space-2);
 	padding: var(--space-1) var(--space-2);
+	border-inline-start: 2px solid transparent;
 	border-radius: var(--radius-base);
 	color: var(--on-surface);
 	text-decoration: none;
-	transition: background var(--dur-fast) var(--ease-standard);
+	transition:
+		background var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard);
 }
 
 .cat-lrow:hover {
@@ -718,7 +721,8 @@
 }
 
 .cat-lrow[data-active="true"] {
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
+	background: var(--surface-2);
+	border-inline-start-color: var(--on-surface);
 }
 
 .cat-lrow__icon {
@@ -732,7 +736,7 @@
 }
 
 .cat-lrow[data-active="true"] .cat-lrow__icon {
-	color: var(--primary);
+	color: var(--on-surface);
 }
 
 /* Circular cover thumbnail when the listing has media (else the fallback kind glyph renders). */
@@ -847,6 +851,14 @@
 	background: var(--primary-hover, color-mix(in srgb, var(--primary) 88%, var(--on-surface)));
 }
 
+.cat-rail__item {
+	border-inline: 2px solid transparent;
+	transition:
+		background var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard);
+}
+
 .cat-rail__item:hover {
 	background: var(--surface-2);
 	color: var(--on-surface);
@@ -859,8 +871,9 @@
 }
 
 .cat-rail__item[data-active="true"] {
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
-	color: var(--primary);
+	background: var(--surface-2);
+	border-inline-start-color: var(--on-surface);
+	color: var(--on-surface);
 }
 
 .cat-rail__dot {

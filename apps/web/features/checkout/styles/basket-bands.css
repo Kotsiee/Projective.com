@@ -222,6 +222,11 @@
     min-inline-size: 9.5rem;
 }
 
+.ui-select__panel.cko-cur__panel {
+    background: var(--surface-2);
+    color: var(--on-surface);
+}
+
 /*
  * A saving that could not be persisted is still the viewer's currency in THIS browser, so the note
  * states that rather than reverting a choice the surface is visibly honouring. It floats below the
@@ -325,22 +330,17 @@ a.cko-rig__btn:focus-visible {
     box-shadow: none;
 }
 
-/*
- * The step's single commitment.
- *
- * `--warning` / `--on-warning` is the amber the build brief names, read from the token rather than
- * from the hex it quotes (root CLAUDE.md §3). The pair is the theme engine's, so it stays legible in
- * light, dark and under the contrast overlays — which the brief's literal amber hex would not, since
- * that value appears nowhere in this product and is not one any theme here produces. Flagged in the
- * decision log rather than silently converted to `--primary`.
- *
- * The button form gets the same treatment from `severity="warning" variant="filled"`; this rule
- * dresses the ANCHOR form so a navigation and a submission read as one control.
- */
-a.cko-rig__btn--cta {
-    background: var(--warning);
-    color: var(--on-warning);
-    font-weight: var(--fw-medium);
+.cko-rig__cta {
+    text-decoration: none;
+}
+
+a.cko-rig__cta[aria-disabled="true"] {
+    pointer-events: none;
+}
+
+.ui-button.cko-rig__cta--ghost,
+.ui-button--primary.cko-rig__btn {
+    --btn-accent: var(--on-surface);
 }
 
 /* #region Container tiers */

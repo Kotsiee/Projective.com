@@ -72,7 +72,10 @@
     font-size: 0.78rem;
     font-weight: 500;
     cursor: pointer;
-    transition: background-color var(--dur-fast) var(--ease-standard);
+    transform: scale(1);
+    transition:
+        background-color var(--dur-fast) var(--ease-standard),
+        transform var(--dur-fast) var(--ease-standard);
 }
 
 .brd-rig__action:hover {
@@ -83,13 +86,34 @@
     outline: none;
 }
 
-.brd-rig__action--primary {
-    background: var(--primary);
-    color: var(--on-primary);
+.brd-rig__action--accent {
+    background: var(--accent);
+    color: var(--on-accent);
 }
 
-.brd-rig__action--primary:hover {
-    filter: brightness(0.94);
+.brd-rig__action--accent:hover {
+    background: color-mix(in srgb, var(--accent), var(--on-scrim) var(--tint-soft));
+}
+
+.brd-rig__action--accent:active {
+    background: color-mix(in srgb, var(--accent), var(--on-scrim) var(--tint));
+}
+
+.brd-rig__action:active:not(:disabled) {
+    transform: scale(var(--btn-press-scale));
+    transition-duration: var(--dur-press);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .brd-rig__action,
+    .brd-rig__action:active:not(:disabled) {
+        transform: none;
+    }
+}
+
+:root[data-motion="reduced"] .brd-rig__action,
+:root[data-motion="reduced"] .brd-rig__action:active:not(:disabled) {
+    transform: none;
 }
 
 .brd-rig__basket {

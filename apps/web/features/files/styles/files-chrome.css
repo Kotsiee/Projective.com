@@ -157,22 +157,26 @@
 	block-size: var(--shell-nav-block);
 	padding: 0;
 	border: none;
+	border-inline: 2px solid transparent;
 	border-radius: var(--radius-base);
 	background: none;
 	color: var(--text-secondary);
 	cursor: pointer;
 	text-decoration: none;
-	transition: background-color var(--dur-fast) var(--ease-standard);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard);
 }
 
 .fh-rail__item:hover {
-	background: var(--surface-3);
+	background: var(--surface-2);
 	color: var(--on-surface);
 }
 
 .fh-rail__item[data-active="true"] {
-	background: color-mix(in srgb, var(--primary) 16%, transparent);
-	color: var(--primary);
+	background: var(--surface-2);
+	border-inline-start-color: var(--on-surface);
+	color: var(--on-surface);
 }
 
 .fh-rail__item:focus-visible {

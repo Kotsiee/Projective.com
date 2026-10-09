@@ -125,11 +125,12 @@ export default function SaveDetailsModal(props: SaveDetailsModalProps): JSX.Elem
 			}}
 			footer={
 				<div class="ckod-modal__foot">
-					<Button variant="text" size="sm" disabled={busy} onClick={close}>Cancel</Button>
+					<Button variant="text" size="sm" rounded disabled={busy} onClick={close}>Cancel</Button>
 					<Button
-						class="cko-commit"
+						severity="accent"
 						variant="filled"
 						size="sm"
+						rounded
 						loading={busy}
 						onClick={() => void save()}
 					>

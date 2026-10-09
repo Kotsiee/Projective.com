@@ -17,6 +17,7 @@ import "@features/view/styles/service-booking.css";
 import "../styles/profile.css";
 import "../styles/profile-hire.css";
 import { AvatarLightbox } from "../components/AvatarLightbox.tsx";
+import { OwnerAvatarEdit } from "../components/OwnerAvatarEdit.tsx";
 import { ProfileMetrics } from "../components/ProfileMetrics.tsx";
 import { ProfileRig } from "../components/ProfileRig.tsx";
 import { ProfileShowcase } from "../components/ProfileShowcase.tsx";
@@ -80,10 +81,11 @@ import { personFallbackImage } from "@web/components/UserAvatar.tsx";
  *
  * # The owner sees the visitor's page
  *
- * The profile itself is never edited in place: the owner edits at `/[handle]/edit`, and on the
- * public route they are PREVIEWING — the page renders exactly as a visitor's, rig and all, and a
- * press on a visitor's control explains what it does rather than acting on their own account
- * (`preview`, `core/rig-actions.ts`).
+ * The profile is edited at `/[handle]/edit`, and on the public route the owner is PREVIEWING — the
+ * page renders as a visitor's, rig and all, and a press on a visitor's control explains what it does
+ * rather than acting on their own account (`preview`, `core/rig-actions.ts`). The one exception is
+ * the photo: for the owner it is {@link OwnerAvatarEdit}, whose hover overlay opens the File Picker
+ * in avatar mode.
  *
  * # The full-size photo is the owner's to offer
  *
@@ -122,6 +124,8 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 	const bareHandle = profile.handle.replace(/^@+/, "");
 	/** The full-size photo, when the owner offers it and there is one to show. */
 	const expandable = settingsOf(profile).allowAvatarExpand && !!profile.avatarFull && !!avatar;
+	/** The database's verdict, never the chrome token: only the owner gets the photo's edit control. */
+	const owner = profile.viewer?.isOwner === true;
 	const lightboxOpen = useSignal(false);
 	/**
 	 * The toast stack the assignment flow reports into. Mounted lazily and only when no other island
@@ -226,7 +230,20 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 					/>
 
 					<div class="pf-hero__avatarwrap">
-						{expandable
+						{owner
+							? (
+								<OwnerAvatarEdit
+									handle={bareHandle}
+									name={profile.name}
+									image={avatar || undefined}
+									placeholder={profile.avatarPlaceholder}
+									fallbackImage={personFallbackImage(profile.kind)}
+									avatarUserId={profile.owner?.type === "user" ? profile.userId : null}
+									size={72}
+									class="pf-hero__avatar"
+								/>
+							)
+							: expandable
 							? (
 								<button
 									type="button"

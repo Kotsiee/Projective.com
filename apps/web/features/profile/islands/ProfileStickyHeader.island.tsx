@@ -1,4 +1,6 @@
 import type { JSX } from "preact";
+import { useSignal } from "@preact/signals";
+import { useEffect } from "preact/hooks";
 import { Avatar, RatingStars, VerificationStampBadge } from "@projective/ui/display";
 import type { PublicCallOffer } from "@projective/types/scheduling";
 // `profile-skeleton.css` is load-bearing, not cosmetic reuse: the GUEST shell keys its sub-header
@@ -25,6 +27,7 @@ import { useTrustSignalOverride } from "../hooks/useTrustSignalOverride.ts";
 import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
 import { settingsOf } from "@projective/types/profile";
 import { personFallbackImage } from "@web/components/UserAvatar.tsx";
+import { onAvatarChanged } from "@web/utils/avatar-sync.ts";
 
 /**
  * ProfileStickyHeader — the condensed profile identity that MIGRATES into the shell's header slot
@@ -80,7 +83,15 @@ function pad(n: number): string {
 export default function ProfileStickyHeader(props: ProfileStickyHeaderProps): JSX.Element {
 	const { profile, preview, authed, services, hireProjects, consultation } = props;
 	const condensed = headerCondensed.value;
-	const avatar = profile.avatar;
+	const liveAvatar = useSignal(profile.avatar);
+	const avatar = liveAvatar.value;
+
+	useEffect(() => {
+		if (profile.owner?.type !== "user") return;
+		return onAvatarChanged(({ userId, url }) => {
+			if (userId === profile.userId) liveAvatar.value = url;
+		});
+	}, [profile.userId]);
 	const showClock = settingsOf(profile).showLocalTime;
 	const hours = profile.hours && profile.hours.rules.length > 0 ? profile.hours : null;
 	const now = useMinuteClock();

@@ -17,6 +17,7 @@ import "@web/features/projects/styles/submission-card.css";
 import "@web/features/projects/styles/attachment-modal.css";
 import "../styles/files-hub.css";
 import "../styles/asset-picker.css";
+import "../styles/media-crop.css";
 // #endregion
 
 import { Backdrop, BodyPortal } from "@projective/ui/overlay";
@@ -79,6 +80,15 @@ import { AssetTree, ROOT_KEY } from "../components/AssetTree.tsx";
 import { InspectPanel } from "../components/InspectPanel.tsx";
 import { QuotaMeter } from "../components/QuotaMeter.tsx";
 import { SourceMark } from "../components/file-hub-glyphs.tsx";
+import { MediaCropWorkspace } from "../components/media-crop/MediaCropWorkspace.tsx";
+import { SignInPictureSource } from "../components/media-crop/SignInPictureSource.tsx";
+import {
+	candidateFromAsset,
+	mediaAcceptAttr,
+	mediaKinds,
+	type MediaPickConfig,
+} from "../core/media/media-pick.ts";
+import { useMediaPick } from "../hooks/use-media-pick.ts";
 import { offlineOr } from "@web/utils/use-offline-stall.ts";
 
 /**
@@ -149,6 +159,14 @@ import { offlineOr } from "@web/utils/use-offline-stall.ts";
  * dialog the scroller is the dialog's own body — the measurement would be of a box the rows do not
  * occupy. A plain `auto-fill` CSS grid over a paged slice is correct here and costs nothing at this
  * size.
+ *
+ * ## Media mode
+ *
+ * With {@link AssetPickerProps.media} the picker becomes the one place a profile photo, a showcase
+ * slot or a group photo is chosen and framed. The rail offers Upload from device · Projective Library
+ * · the sign-in account's picture; choosing or dropping a picture switches `.apk-main` to the Crop &
+ * Adjust stage (`MediaCropWorkspace`), and the footer's action hands the source and its crop to the
+ * host's `onSave` instead of `onPick`. The state lives in `useMediaPick`.
  */
 
 // #region Props
@@ -192,6 +210,8 @@ export interface AssetPickerProps {
 	scope?: PickerScope;
 	/** Dismiss. Defaults to `closePicker()`. */
 	onClose?: () => void;
+	/** Choose and frame ONE picture for a rendition target instead of attaching files (media mode). */
+	media?: MediaPickConfig;
 }
 // #endregion
 
@@ -201,7 +221,7 @@ export interface AssetPickerProps {
  * I have put this?": the engagement I am in, then my own library, then what I touched last, then the
  * accounts I have linked, then the two ways of introducing something that is not here yet.
  */
-type SourceKey = "project" | "library" | "recent" | "drives" | "link" | "upload";
+type SourceKey = "project" | "library" | "recent" | "drives" | "link" | "upload" | "oauth";
 
 interface SourceSpec {
 	key: SourceKey;
@@ -238,6 +258,28 @@ const SOURCES: readonly SourceSpec[] = [
 	},
 	{ key: "link", label: "Paste a link", icon: "link", note: "Store a web address as a file." },
 	{ key: "upload", label: "Upload", icon: "upload", note: "Add something from this device." },
+];
+
+/** The media mode's rail: three ways to arrive at one picture to frame. */
+const MEDIA_SOURCES: readonly SourceSpec[] = [
+	{
+		key: "upload",
+		label: "Upload from device",
+		icon: "upload",
+		note: "Drop a picture on the frame, or choose one from this device.",
+	},
+	{
+		key: "library",
+		label: "Projective Library",
+		icon: "folder",
+		note: "Your own library — choose a picture to frame it.",
+	},
+	{
+		key: "oauth",
+		label: "Sign-in account",
+		icon: "user",
+		note: "The picture your sign-in account carries, copied into your library first.",
+	},
 ];
 
 /** The three sources that BROWSE a listing; the other two produce one asset and hand it straight over. */
@@ -602,12 +644,17 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 	const globallyOpen = pickerOpen.value && request !== null;
 	const isOpen = props.open ?? globallyOpen;
 
-	const mode: "single" | "multi" = props.mode ?? (request?.multiple ? "multi" : "single");
+	const media = props.media ?? null;
+	const mode: "single" | "multi" = media
+		? "single"
+		: props.mode ?? (request?.multiple ? "multi" : "single");
 	const multiple = mode === "multi";
 	const cap = multiple ? (request?.max ?? null) : 1;
-	const title = request?.title ?? "Attach from your files";
-	const accept = resolveAccept(props.accept ?? request?.kinds);
-	const scope = props.scope ?? null;
+	const title = media?.title ?? request?.title ?? "Attach from your files";
+	const accept = resolveAccept(media ? mediaKinds(media) : props.accept ?? request?.kinds);
+	const scope = media ? null : props.scope ?? null;
+	const mediaPick = useMediaPick(media, isOpen);
+	const cropping = media !== null && mediaPick.phase.value === "crop";
 	// #endregion
 
 	// #region Local listing state (never `files-state` — see the module note)
@@ -713,9 +760,9 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 	// #endregion
 
 	// #region Location
-	const activeSources = useComputed<SourceSpec[]>(() =>
-		SOURCES.filter((s) => (s.key === "project" ? scope !== null : true))
-	);
+	const activeSources: SourceSpec[] = media
+		? MEDIA_SOURCES.filter((s) => s.key !== "oauth" || media.offerSignInPicture)
+		: SOURCES.filter((s) => (s.key === "project" ? scope !== null : true));
 
 	/** The scope a source reads, and how it addresses a folder inside it. */
 	function locationOf(key: SourceKey): {
@@ -993,6 +1040,12 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 
 	function onSelect(asset: AssetItem, activation: AssetActivation): void {
 		notice.value = null;
+		if (media) {
+			const candidate = candidateFromAsset(asset, media.allowVideo);
+			const refusal = "refusal" in candidate ? candidate.refusal : mediaPick.toggle(candidate);
+			if (refusal) notice.value = refusal;
+			return;
+		}
 		// "multiple: false" is a promise to the host about what it will receive. Enforcing it at the
 		// click is what keeps the host from having to defend against a payload it said it could not take.
 		if (!multiple) {
@@ -1271,7 +1324,15 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 
 	function onFilesPicked(list: FileList | null): void {
 		if (!list || list.length === 0) return;
+		if (media) {
+			void mediaPick.stageFiles(Array.from(list));
+			return;
+		}
 		for (const file of Array.from(list)) void runUpload(file);
+	}
+
+	async function saveMedia(): Promise<void> {
+		if (await mediaPick.save()) dismiss();
 	}
 	// #endregion
 
@@ -1363,13 +1424,23 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 		linkUrl.value = "";
 		search.value = "";
 		driveId.value = null;
-		source.value = scope !== null ? "project" : "library";
+		source.value = media ? "upload" : scope !== null ? "project" : "library";
 		expanded.value = new Set([ROOT_KEY]);
 		tree.value = [];
 		treeKeyRef.current = "";
 		resetLocation();
 		void reload();
 	}, [isOpen]);
+
+	const candidateId = mediaPick.candidate.value?.id ?? null;
+	useEffect(() => {
+		if (!candidateId) return;
+		const timer = setTimeout(() => {
+			const stage = panelRef.current?.querySelector<HTMLElement>(".pf-media__stage[tabindex]");
+			if (stage && !stage.contains(document.activeElement)) stage.focus();
+		}, 0);
+		return () => clearTimeout(timer);
+	}, [candidateId]);
 	// #endregion
 
 	// #region Derived
@@ -1390,16 +1461,24 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 		tree.value.reduce((total, node) => total + node.fileCount, 0)
 	);
 
-	const chosenIds = useComputed(() => new Set(pickerSelection.value.map((a) => a.id)));
+	const chosenIds = new Set(
+		media
+			? mediaPick.items.value.map((i) => i.candidate.id)
+			: pickerSelection.value.map((a) => a.id),
+	);
 	const count = pickerSelection.value.length;
-	const atCap = cap !== null && count >= cap;
+	const atCap = media
+		? media.max > 1 && mediaPick.items.value.length >= media.max
+		: cap !== null && count >= cap;
 
-	const inspected = inspectId.value
+	const inspected = inspectId.value && !media
 		? items.value.find((a) => a.id === inspectId.value) ??
 			pickerSelection.value.find((a) => a.id === inspectId.value) ?? null
 		: null;
 
-	const spec = SOURCES.find((s) => s.key === source.value) ?? SOURCES[1];
+	const spec = activeSources.find((s) => s.key === source.value) ?? SOURCES[1];
+	const navShown = navOpen.value && !cropping;
+	const stageShown = media !== null && (cropping || source.value === "upload");
 	const loc = locationOf(source.value);
 	const crumbs = breadcrumbsFor(path.value, { base: "/files", rootLabel: loc.rootLabel });
 	const narrowed = search.value.trim().length > 0;
@@ -1411,6 +1490,16 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 
 	// #region Workspace
 	function workspace(): JSX.Element {
+		if (media && stageShown) {
+			return (
+				<MediaCropWorkspace
+					config={media}
+					state={mediaPick}
+					onBrowse={() => fileInputRef.current?.click()}
+				/>
+			);
+		}
+		if (media && source.value === "oauth") return <SignInPictureSource state={mediaPick} />;
 		if (source.value === "link") return linkPanel();
 		if (source.value === "upload") return uploadPanel();
 		if (source.value === "drives" && driveId.value === null) return drivePrompt();
@@ -1420,7 +1509,13 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 				<div class="apk-state apk-state--error" role="alert">
 					<p class="apk-state__title">These files could not be loaded</p>
 					<p class="apk-state__note">{error.value}</p>
-					<Button variant="outlined" size="sm" label="Try again" onClick={() => commit()} />
+					<Button
+						severity="neutral"
+						variant="outlined"
+						size="sm"
+						label="Try again"
+						onClick={() => commit()}
+					/>
 				</div>
 			);
 		}
@@ -1476,11 +1571,13 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 						<PickerFolderCell key={`f:${folder.id}`} folder={folder} onOpen={openFolder} />
 					))}
 					{visibleItems.value.map((asset) => {
-						const selected = chosenIds.value.has(asset.id);
+						const selected = chosenIds.has(asset.id);
 						// A card that cannot be picked is disabled rather than hidden: the file is still
 						// there, and hiding it would look like it had gone.
-						const blocked = !selected && atCap && multiple
-							? `You can choose up to ${cap} ${cap === 1 ? "file" : "files"}.`
+						const blocked = !selected && atCap && (multiple || media !== null)
+							? media
+								? `You have ${media.max} empty slots — remove one to choose another.`
+								: `You can choose up to ${cap} ${cap === 1 ? "file" : "files"}.`
 							: null;
 						return (
 							<PickerAssetCell
@@ -1512,6 +1609,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 					? (
 						<div class="apk-more">
 							<Button
+								severity="neutral"
 								variant="outlined"
 								size="sm"
 								label={loading.value ? "Loading…" : "Show more"}
@@ -1606,6 +1704,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 							: "They are added to your library, then chosen for you."}
 					</p>
 					<Button
+						severity="neutral"
 						variant="outlined"
 						size="sm"
 						label="Choose from this device"
@@ -1631,6 +1730,119 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 	}
 	// #endregion
 
+	function mediaFooter(config: MediaPickConfig): JSX.Element {
+		const status = mediaPick.status.value;
+		const chosen = mediaPick.items.value;
+		const active = mediaPick.active.value;
+		return (
+			<footer class="apk__foot">
+				<div class="apk-tray" role="group" aria-label="Chosen">
+					{status
+						? <p class="apk-tray__empty" role="status">{status}</p>
+						: chosen.length === 0
+						? (
+							<span class="apk__why" id="apk-save-why">
+								{config.max > 1
+									? `Nothing chosen yet — choose up to ${config.max} for your empty slots.`
+									: "Nothing chosen yet — choose or upload a picture first."}
+							</span>
+						)
+						: (
+							<ul class="apk-tray__list" role="list">
+								{chosen.map((item, i) => {
+									const thumb = item.candidate.poster ??
+										(item.candidate.kind === "image" ? item.candidate.src : null);
+									const face = (
+										<>
+											<span class="apk-tray__thumb" aria-hidden="true">
+												{thumb
+													? <img src={thumb} alt="" loading="lazy" />
+													: <FileKindIcon kind={item.candidate.kind} size={16} />}
+											</span>
+											<span class="apk-tray__name" title={item.candidate.name}>
+												{item.candidate.name}
+											</span>
+										</>
+									);
+									return (
+										<li
+											class="apk-tray__item"
+											key={item.candidate.id}
+											data-active={cropping && i === active ? "true" : undefined}
+										>
+											{cropping
+												? (
+													<button
+														type="button"
+														class="apk-tray__pick"
+														aria-current={i === active ? "true" : undefined}
+														aria-label={`Frame ${item.candidate.name}`}
+														onClick={() => mediaPick.go(i)}
+													>
+														{face}
+													</button>
+												)
+												: (
+													<>
+														{face}
+														<Tooltip content={`Remove ${item.candidate.name}`}>
+															<button
+																type="button"
+																class="apk-tray__drop"
+																aria-label={`Remove ${item.candidate.name}`}
+																onClick={() => mediaPick.remove(item.candidate.id)}
+															>
+																<Icon name="close" size="2xs" />
+															</button>
+														</Tooltip>
+													</>
+												)}
+										</li>
+									);
+								})}
+							</ul>
+						)}
+				</div>
+				<div class="apk__actions">
+					{notice.value ? <p class="apk__notice" role="status">{notice.value}</p> : null}
+					{cropping
+						? (
+							<>
+								<Button
+									variant="text"
+									label="Back"
+									disabled={mediaPick.saving.value}
+									onClick={() => mediaPick.back()}
+								/>
+								<Button
+									variant="filled"
+									label={config.saveLabel}
+									loading={mediaPick.saving.value}
+									disabled={mediaPick.saving.value || status !== null}
+									onClick={() => void saveMedia()}
+								/>
+							</>
+						)
+						: (
+							<>
+								<Button variant="text" label="Cancel" onClick={dismiss} />
+								<Button
+									variant="filled"
+									label={chosen.length > 1 ? `Continue (${chosen.length})` : "Continue"}
+									disabled={chosen.length === 0 || status !== null}
+									aria-describedby={chosen.length === 0 ? "apk-save-why" : undefined}
+									onClick={() => {
+										const refusal = mediaPick.proceed();
+										notice.value = refusal;
+									}}
+								/>
+							</>
+						)}
+				</div>
+			</footer>
+		);
+	}
+
 	// The host node renders in BOTH states and carries the ref in both. It is the only part of this
 	// island that stays where the author mounted it — inside the surface that opened the picker —
 	// which is what lets the overlay registry name that surface as this picker's opener instead of
@@ -1642,7 +1854,9 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 				<div class="apk" style={`--apk-z:${stack.zIndex}`}>
 					<Backdrop
 						visible
-						onClick={pickerSelection.value.length === 0 ? dismiss : undefined}
+						onClick={(media ? mediaPick.items.value.length === 0 : pickerSelection.value.length === 0)
+							? dismiss
+							: undefined}
 					/>
 					<div
 						ref={panelRef}
@@ -1658,25 +1872,33 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 							<div class="apk__ident">
 								<h2 class="apk__title">{title}</h2>
 								<p class="apk__sub">
-									{accept.active
+									{media
+										? cropping
+											? "Frame it, then save"
+											: media.offerSignInPicture
+										? "Upload a picture, choose one from your library, or use your sign-in picture"
+										: "Upload a picture or choose one from your library"
+										: accept.active
 										? `Choose ${multiple ? accept.noun : `one of your ${accept.noun}`}`
 										: multiple
 										? "Choose one or more of your files"
 										: "Choose one of your files"}
-									{cap !== null && multiple ? ` · up to ${cap}` : ""}
+									{!media && cap !== null && multiple ? ` · up to ${cap}` : ""}
 								</p>
 							</div>
-							<Tooltip content={navOpen.value ? "Hide sources" : "Show sources"}>
-								<button
-									type="button"
-									class="apk__act"
-									aria-label={navOpen.value ? "Hide sources" : "Show sources"}
-									aria-pressed={navOpen.value ? "true" : "false"}
-									onClick={() => (navOpen.value = !navOpen.value)}
-								>
-									<Icon name="menu" size="sm" />
-								</button>
-							</Tooltip>
+							{cropping ? null : (
+								<Tooltip content={navOpen.value ? "Hide sources" : "Show sources"}>
+									<button
+										type="button"
+										class="apk__act apk__act--toggle"
+										aria-label={navOpen.value ? "Hide sources" : "Show sources"}
+										aria-pressed={navOpen.value ? "true" : "false"}
+										onClick={() => (navOpen.value = !navOpen.value)}
+									>
+										<Icon name="panel-right" size="sm" />
+									</button>
+								</Tooltip>
+							)}
 							<button
 								type="button"
 								class="apk__act apk__act--close"
@@ -1706,17 +1928,17 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 									 */
 								}
 								<Splitter
-									key={`apk-${navOpen.value ? "n" : ""}${inspected ? "i" : ""}`}
+									key={`apk-${navShown ? "n" : ""}${inspected ? "i" : ""}`}
 									layout="horizontal"
 									class="apk__split"
-									stateKey={`asset-picker-${navOpen.value ? "n" : ""}${inspected ? "i" : ""}`}
+									stateKey={`asset-picker-${navShown ? "n" : ""}${inspected ? "i" : ""}`}
 								>
-									{navOpen.value
+									{navShown
 										? (
 											<SplitterPanel size={22} minSize={14} maxSize={34} class="apk-nav">
 												<nav class="apk-nav__inner" aria-label="Where to look">
 													<ul class="apk-nav__sources" role="list">
-														{activeSources.value.map((item) => (
+														{activeSources.map((item) => (
 															<li key={item.key}>
 																<button
 																	type="button"
@@ -1795,12 +2017,38 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 										: null}
 
 									<SplitterPanel
-										size={inspected ? (navOpen.value ? 54 : 76) : (navOpen.value ? 78 : 100)}
+										size={inspected ? (navShown ? 54 : 76) : (navShown ? 78 : 100)}
 										minSize={40}
 										class="apk-main"
 									>
 										<div class="apk-main__bar">
-											{BROWSING.has(source.value)
+											{cropping
+												? (
+													<Tooltip content="Back to file selection">
+														<Button
+															iconOnly
+															rounded
+															size="sm"
+															variant="text"
+															severity="secondary"
+															class="apk-main__back ui-hit"
+															icon={<Icon name="arrow-left" size="sm" />}
+															aria-label="Back to file selection"
+															onClick={() => mediaPick.back()}
+														/>
+													</Tooltip>
+												)
+												: null}
+											{cropping
+												? (
+													<p class="apk-main__note">
+														{mediaPick.candidate.value?.name}
+														{mediaPick.items.value.length > 1
+															? ` · ${mediaPick.active.value + 1} of ${mediaPick.items.value.length}`
+															: ""}
+													</p>
+												)
+												: BROWSING.has(source.value)
 												? (
 													<AssetBreadcrumbs
 														crumbs={crumbs}
@@ -1811,7 +2059,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 												)
 												: <p class="apk-main__note">{spec.note}</p>}
 
-											{BROWSING.has(source.value)
+											{BROWSING.has(source.value) && !cropping
 												? (
 													<InputText
 														value={search}
@@ -1826,7 +2074,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 												: null}
 										</div>
 
-										{locationReadOnly.value && BROWSING.has(source.value)
+										{locationReadOnly.value && BROWSING.has(source.value) && !stageShown
 											? (
 												<p class="apk-main__readonly">
 													<Icon name="lock" size="2xs" aria-hidden="true" />
@@ -1838,7 +2086,11 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 											)
 											: null}
 
-										<div class="apk-main__scroll">{workspace()}</div>
+										<div
+											class={`apk-main__scroll${stageShown ? " apk-main__scroll--stage" : ""}`}
+										>
+											{workspace()}
+										</div>
 									</SplitterPanel>
 
 									{inspected
@@ -1881,6 +2133,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 						{/* #endregion */}
 
 						{/* #region Footer — the tray, the allowance, the action */}
+						{media ? mediaFooter(media) : (
 						<footer class="apk__foot">
 							<div class="apk-tray" role="group" aria-label="Chosen files">
 								{count === 0
@@ -1955,6 +2208,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 									: null}
 							</div>
 						</footer>
+						)}
 						{/* #endregion */}
 					</div>
 
@@ -1968,8 +2222,8 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 						ref={fileInputRef}
 						class="apk__file"
 						type="file"
-						multiple={multiple}
-						accept={accept.attr || undefined}
+						multiple={media ? media.max > 1 : multiple}
+						accept={media ? mediaAcceptAttr(media) : accept.attr || undefined}
 						tabIndex={-1}
 						aria-hidden="true"
 						onChange={(e) => {

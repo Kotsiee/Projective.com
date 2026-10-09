@@ -83,6 +83,12 @@ export function objectName(name: string, ext: string): string {
 	return `${stem}.${ext}`;
 }
 
+/** The quarantine object an upload declared as `name` lands at — the one path its ticket signs. */
+export function quarantinePath(userId: string, assetId: string, name: string): string {
+	const ext = (/\.([a-z0-9]{1,8})$/i.exec(name)?.[1] ?? "bin").toLowerCase();
+	return quarantineLocation(userId, assetId, objectName(name, ext)).path;
+}
+
 function kindOfMime(mime: string): "image" | "video" | null {
 	if (mime.startsWith("image/")) return "image";
 	if (mime.startsWith("video/")) return "video";
@@ -433,8 +439,7 @@ export async function initLibraryUpload(
 ): Promise<ServiceResult<LibraryUploadTicket>> {
 	if (!canReadLive(actor)) return denied();
 	const assetId = crypto.randomUUID();
-	const ext = (/\.([a-z0-9]{1,8})$/i.exec(input.name)?.[1] ?? "bin").toLowerCase();
-	const { path } = quarantineLocation(actor.userId, assetId, objectName(input.name, ext));
+	const path = quarantinePath(actor.userId, assetId, input.name);
 	try {
 		const db = getUserClient(actor.accessToken);
 		const { error } = await db.schema("files").from("items").insert({

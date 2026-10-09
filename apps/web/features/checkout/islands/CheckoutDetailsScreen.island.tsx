@@ -372,9 +372,10 @@ export default function CheckoutDetailsScreen(props: CheckoutDetailsScreenProps)
 					>
 						<div class="cko-rail__commit">
 							<Button
-								class="cko-rail__buy cko-commit"
+								class="cko-rail__buy"
 								type="submit"
 								form="cko-details"
+								severity="accent"
 								variant="filled"
 								size="lg"
 								fluid

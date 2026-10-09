@@ -257,16 +257,19 @@
 	inline-size: var(--shell-nav-block);
 	block-size: var(--shell-nav-block);
 	border: 0;
+	border-inline: 2px solid transparent;
 	border-radius: var(--radius-base);
 	background: transparent;
 	color: var(--on-surface);
 	text-decoration: none;
 	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard);
 }
 
 .bsk-lane__railbtn:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+	background: var(--surface-2);
 }
 
 .bsk-lane__railbtn:focus-visible {
@@ -275,8 +278,9 @@
 }
 
 .bsk-lane__railbtn[data-active="true"] {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-	color: var(--primary);
+	background: var(--surface-2);
+	border-inline-start-color: var(--on-surface);
+	color: var(--on-surface);
 }
 
 .bsk-lane__railbtn[data-tone="warn"] {

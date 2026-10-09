@@ -78,6 +78,21 @@ const HC_DELTA = 12;
  * Do not re-map either token inside a mode branch, and do not "fix" the pair by widening it: any
  * alternate tone mapping is exactly the drift these constants exist to prevent.
  */
+
+/**
+ * Default seed of the amber accent pair (`--accent` / `--on-accent`) — the terminal financial and
+ * conversion commit (DESIGN_SYSTEM.md §A.1.2, Decision #157). Only its `a1` palette is read.
+ */
+export const ACCENT_SEED = "#D98216";
+
+const ACCENT_FILL_TONE = { light: 62, dark: 66 } as const;
+
+const ACCENT_INK_TONE = { light: 10, dark: 4 } as const;
+
+interface AccentTones {
+	fill: number;
+	ink: number;
+}
 // #endregion
 
 // #region Helpers
@@ -163,6 +178,13 @@ function focusShadow(halo: string, ring: string, glow: string, hc: boolean, inse
 	// An inset ring has no outside to glow into, so it is composed without one.
 	return inset ? ringLayers : `${ringLayers}, 0 0 5px ${edge}px ${glow}`;
 }
+
+function accentTones(dark: boolean, hc: boolean): AccentTones {
+	const fill = dark ? ACCENT_FILL_TONE.dark : ACCENT_FILL_TONE.light;
+	const ink = dark ? ACCENT_INK_TONE.dark : ACCENT_INK_TONE.light;
+	if (!hc) return { fill, ink };
+	return { fill: dark ? Math.min(100, fill + HC_DELTA) : fill, ink: Math.max(0, ink - HC_DELTA) };
+}
 // #endregion
 
 // #region Public API
@@ -171,7 +193,7 @@ function focusShadow(halo: string, ring: string, glow: string, hc: boolean, inse
  * run at request time in `_app.tsx` to inject a first-paint `<style>` with no flash.
  */
 export function buildScheme(
-	{ seed, dark, highContrast = false }: ThemeInput,
+	{ seed, accentSeed = ACCENT_SEED, dark, highContrast = false }: ThemeInput,
 ): Record<string, string> {
 	const core = CorePalette.of(argbFromHex(seed));
 	const hc = highContrast;
@@ -299,6 +321,10 @@ export function buildScheme(
 		vars[`--${name}`] = hx(sc.a1.tone(dark ? fg(70) : fg(60)));
 		vars[`--on-${name}`] = hx(sc.a1.tone(dark ? on(20) : on(100)));
 	}
+
+	const accent = accentTones(dark, hc);
+	vars["--accent"] = hx(CorePalette.of(argbFromHex(accentSeed)).a1.tone(accent.fill));
+	vars["--on-accent"] = hx(core.n1.tone(accent.ink));
 
 	return vars;
 }

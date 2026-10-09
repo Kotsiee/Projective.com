@@ -2,6 +2,7 @@
 .ui-tag {
 	--tag-accent: var(--primary);
 	--tag-on: var(--on-primary);
+	--tag-ink: color-mix(in srgb, var(--tag-accent) 60%, var(--on-surface));
 
 	display: inline-flex;
 	align-items: center;
@@ -57,13 +58,13 @@
 	background: var(--tag-accent);
 }
 .ui-tag--outlined {
-	color: var(--tag-accent);
+	color: var(--tag-ink);
 	background: transparent;
 	border-color: var(--tag-accent);
 }
 .ui-tag--subtle {
-	color: var(--tag-accent);
-	background: color-mix(in srgb, var(--tag-accent) 16%, transparent);
+	color: var(--tag-ink);
+	background: var(--surface-2);
 }
 /* #endregion */
 

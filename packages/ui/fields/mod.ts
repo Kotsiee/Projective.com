@@ -53,7 +53,16 @@ export type { ListNavigation } from "./hooks/useListNavigation.ts";
 // #endregion
 
 // #region Buttons & actions
-export { Button, type ButtonProps, type ButtonVariant } from "./components/Button.tsx";
+export {
+	Button,
+	type ButtonAccentTone,
+	type ButtonBaseProps,
+	type ButtonNeutralTone,
+	type ButtonProps,
+	type ButtonSemanticTone,
+	type ButtonSeverity,
+	type ButtonVariant,
+} from "./components/Button.tsx";
 export { type MenuAction, SplitButton, type SplitButtonProps } from "./islands/SplitButton.tsx";
 export {
 	SpeedDial,

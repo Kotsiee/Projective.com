@@ -77,6 +77,7 @@
 	inline-size: 100%;
 	padding: var(--space-2);
 	border: none;
+	border-inline-start: 2px solid transparent;
 	border-radius: var(--radius-sm);
 	background: transparent;
 	color: var(--on-surface);
@@ -84,7 +85,9 @@
 	font-size: 0.8125rem;
 	text-align: start;
 	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard);
 }
 
 .fx-tree__node:hover {
@@ -97,8 +100,9 @@
 }
 
 .fx-tree__node[data-active="true"] {
-	background: color-mix(in srgb, var(--primary) var(--tint), transparent);
-	color: var(--primary);
+	background: var(--surface-2);
+	border-inline-start-color: var(--on-surface);
+	color: var(--on-surface);
 	font-weight: 600;
 }
 
@@ -109,7 +113,7 @@
 }
 
 .fx-tree__node[data-active="true"] .fx-tree__icon {
-	color: var(--primary);
+	color: var(--on-surface);
 }
 
 .fx-tree__label {

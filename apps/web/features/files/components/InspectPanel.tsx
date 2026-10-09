@@ -29,7 +29,9 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  * ## Facts, then actions — in that order and never merged
  *
  * The panel lists what the asset IS (type · size · when · who · where · privacy · digest) before what
- * can be done to it. Every figure is the SERVER's — `sizeLabel`, `dateLabel` and the digest are all
+ * can be done to it. The two everyday actions are icon-only ghost controls in the corners — Open in
+ * new tab beside Close, Download on the preview's top-left — and only the manage block below speaks
+ * in labelled buttons, because a destructive action must never be a bare icon. Every figure is the SERVER's — `sizeLabel`, `dateLabel` and the digest are all
  * pre-formatted on the row — so nothing here divides bytes, parses a timestamp or re-derives a state
  * the server already resolved.
  *
@@ -148,6 +150,19 @@ export function InspectPanel(props: InspectPanelProps): JSX.Element | null {
 		<aside class="fh-inspect" aria-label={`Details for ${asset.name}`}>
 			<header class="fh-inspect__head">
 				<h2 class="fh-inspect__title" title={asset.name}>{asset.name}</h2>
+				<Tooltip content="Open in new tab">
+					<Button
+						iconOnly
+						rounded
+						size="sm"
+						variant="text"
+						severity="secondary"
+						class="fh-inspect__iconbtn ui-hit"
+						icon={<Icon name="external-link" size="sm" />}
+						aria-label="Open in new tab"
+						onClick={() => onOpenRaw(asset)}
+					/>
+				</Tooltip>
 				<Tooltip content="Close details">
 					<button
 						type="button"
@@ -161,6 +176,20 @@ export function InspectPanel(props: InspectPanelProps): JSX.Element | null {
 			</header>
 
 			<div class="fh-inspect__preview" data-kind={asset.kind}>
+				<Tooltip content="Download">
+					<Button
+						iconOnly
+						rounded
+						size="sm"
+						variant="text"
+						severity="secondary"
+						class="fh-inspect__iconbtn fh-inspect__download ui-hit"
+						icon={<Icon name="download" size="sm" />}
+						aria-label={`Download ${asset.name}`}
+						disabled={busy}
+						onClick={() => onDownload(asset)}
+					/>
+				</Tooltip>
 				{hasThumb
 					? (
 						<img
@@ -266,24 +295,6 @@ export function InspectPanel(props: InspectPanelProps): JSX.Element | null {
 					</p>
 				)
 				: null}
-
-			<div class="fh-inspect__actions">
-				<Button
-					variant="outlined"
-					size="sm"
-					icon={<Icon name="download" />}
-					label="Download"
-					disabled={busy}
-					onClick={() => onDownload(asset)}
-				/>
-				<Button
-					variant="text"
-					size="sm"
-					icon={<Icon name="external-link" />}
-					label="Open in new tab"
-					onClick={() => onOpenRaw(asset)}
-				/>
-			</div>
 
 			{asset.canManage
 				? (

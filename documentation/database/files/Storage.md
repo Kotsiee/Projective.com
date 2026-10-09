@@ -227,8 +227,8 @@ quarantine/
 
 #### The upload pipeline
 
-The media library (`/[handle]/edit` → the media picker → `/api/media/*`) is the first surface wired
-end to end. `packages/backend/services/media/library.ts` runs it:
+The media library (the File Picker's media mode → `/api/media/*`) is the first surface wired end to
+end. `packages/backend/services/media/library.ts` runs it:
 
 1. **Declare** (`POST /api/media/upload-init`, the caller's own session): a `files.items` row at
    `status = 'pending_upload'`, `bucket_id = 'quarantine'`, `purpose = 'library'` — the only shape
@@ -248,6 +248,23 @@ end to end. `packages/backend/services/media/library.ts` runs it:
    it, `files.item_variants` rows are written, the row becomes `uploaded`, and the quarantine object
    is removed. A storage or pipeline failure puts the row back to `pending_upload` so a retry can
    finish it; nothing half-written is left behind.
+
+**Staged until Save & Apply** (Decision #160): the media picker holds dropped device files in the
+browser and runs the declare → PUT → complete flow for each only when the person saves, so a
+cancelled pick leaves no `pending_upload` row and no quarantine object.
+
+**The sign-in picture enters the same way, also only on save** (`POST /api/media/oauth-avatar-sync`,
+`packages/backend/services/media/oauth-avatar.ts`): the server reads the provider URL from the
+caller's verified identity, fetches it under the link guards, sniffs it, then performs steps 1–5
+itself — the declare runs under the caller's session, the bytes are written to the declared
+`quarantine/{user_id}/{asset_id}/sign-in-picture.{ext}` object by the service role, and the complete
+claims, sniffs, decodes and admits it to `personal/users/{user_id}/library/`. No new table, column or
+bucket.
+
+**Renditions and the circle.** A rendition is cut from the library original into `avatars` /
+`showcase` (`avatars/{owner_id}/avatar/{rendition_id}/full.webp` + `sm`/`md`/`lg`). The avatar's crop
+is clamped to its visible circle, so the square object may extend past the picture; those corners
+are filled from the nearest edge pixel by the resampling cut, never left transparent or stretched.
 
 **The `/files` hub runs the same pipeline for any kind of file**
 (`POST /api/files/upload-init` → the signed `PUT` → `POST /api/files/upload-complete`,

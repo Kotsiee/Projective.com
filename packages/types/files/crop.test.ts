@@ -147,3 +147,76 @@ Deno.test("CropStateSchema: accepts the editor's range and refuses absurd values
 	assert(!CropStateSchema.safeParse({ zoom: 0.5, rotation: 0, cx: 0, cy: 0 }).success);
 	assert(!CropStateSchema.safeParse({ zoom: 1, rotation: 0, cx: 1e9, cy: 0 }).success);
 });
+
+Deno.test("circle: the fit is the short side at every rotation", () => {
+	for (let rot = -180; rot <= 180; rot += 5) {
+		assertAlmostEquals(fitHeight(LANDSCAPE, 1, rot, "circle"), 3000);
+		assertAlmostEquals(fitHeight(PORTRAIT, 1, rot, "circle"), 900);
+	}
+	assertAlmostEquals(cropBox({ zoom: 2, rotation: 33 }, LANDSCAPE, 16 / 10, "circle").width, 1500);
+});
+
+/**
+ * The circle's invariant, swept across a full turn: every point on the visible circle — not merely the
+ * square around it — lies inside the picture after clamping.
+ */
+Deno.test("invariant: a clamped circle never leaves the picture across 0°–360°", () => {
+	const images: CropImage[] = [
+		LANDSCAPE,
+		PORTRAIT,
+		{ width: 1200, height: 1200 },
+		{ width: 5000, height: 400 },
+	];
+	for (const image of images) {
+		for (let rot = 0; rot <= 360; rot += 7.5) {
+			for (const zoom of [1, 1.3, 2.7, 6]) {
+				for (const [cx, cy] of [[0, 0], [1e5, 1e5], [-1e5, 3e4], [-321, 17]]) {
+					const s = clampCrop({ zoom, rotation: rot, cx, cy }, image, 1, "circle");
+					for (let k = 0; k < 32; k++) {
+						const phi = (k / 32) * 2 * Math.PI;
+						const u = 0.5 + 0.5 * Math.cos(phi);
+						const v = 0.5 + 0.5 * Math.sin(phi);
+						const p = sourcePointFor(s, image, 1, u, v, "circle");
+						const eps = 1e-6 * Math.max(image.width, image.height);
+						assert(
+							p.x >= -eps && p.x <= image.width + eps && p.y >= -eps && p.y <= image.height + eps,
+							`φ=${k} at ${JSON.stringify(s)} on ${image.width}×${image.height} → ${p.x},${p.y}`,
+						);
+					}
+				}
+			}
+		}
+	}
+});
+
+Deno.test("circle: zoomed and rotated, the circle still reaches the picture's edge", () => {
+	const s = clampCrop({ zoom: 2, rotation: 45, cx: 1e5, cy: 0 }, LANDSCAPE, 1, "circle");
+	const right = sourcePointFor(s, LANDSCAPE, 1, 1, 0.5, "circle");
+	const rim = Math.hypot(
+		right.x - (LANDSCAPE.width / 2 + s.cx),
+		right.y - (LANDSCAPE.height / 2 + s.cy),
+	);
+	assertAlmostEquals(s.cx + LANDSCAPE.width / 2 + rim, LANDSCAPE.width, 1e-6);
+	const boxed = clampCrop({ zoom: 2, rotation: 45, cx: 1e5, cy: 0 }, LANDSCAPE, 1);
+	const boxedRim = LANDSCAPE.width / 2 + boxed.cx + cropBox(boxed, LANDSCAPE, 1).width / 2;
+	assert(
+		boxedRim < LANDSCAPE.width - 100,
+		"the square's corners stop its circle short of the edge",
+	);
+});
+
+Deno.test("circle: rotating never changes the legal centres", () => {
+	const at0 = centreBounds({ zoom: 1.7, rotation: 0 }, LANDSCAPE, 1, "circle");
+	const at60 = centreBounds({ zoom: 1.7, rotation: 60 }, LANDSCAPE, 1, "circle");
+	assertEquals(at0, at60);
+});
+
+Deno.test("circle: the stage scale and a drag round-trip match the box model", () => {
+	const s: CropState = { zoom: 1.5, rotation: 30, cx: 40, cy: -25 };
+	const t = stageTransform(s, LANDSCAPE, 1, 300, "circle");
+	assertAlmostEquals(t.scale, 300 / (3000 / 1.5));
+	const moved = dragCentre(s, LANDSCAPE, 1, 300, 12, -7, "circle");
+	const back = dragCentre({ ...s, ...moved }, LANDSCAPE, 1, 300, -12, 7, "circle");
+	assertAlmostEquals(back.cx, s.cx, 1e-9);
+	assertAlmostEquals(back.cy, s.cy, 1e-9);
+});

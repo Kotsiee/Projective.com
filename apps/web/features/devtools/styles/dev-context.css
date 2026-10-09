@@ -100,10 +100,52 @@
 	color: var(--text-secondary);
 }
 
+.dev-ctx__group {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
 .dev-ctx__field {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-1);
+}
+
+.dev-ctx__value {
+	font-family: var(--font-mono);
+	font-variant-numeric: tabular-nums;
+	font-weight: 500;
+	text-transform: none;
+	letter-spacing: 0;
+	color: var(--on-surface);
+}
+
+.dev-ctx__swatch {
+	display: block;
+	inline-size: 100%;
+	block-size: 2rem;
+	padding: 2px;
+	border: var(--hairline);
+	border-radius: var(--radius-base);
+	background: var(--surface-2);
+	cursor: pointer;
+}
+.dev-ctx__swatch::-webkit-color-swatch-wrapper {
+	padding: 0;
+}
+.dev-ctx__swatch::-webkit-color-swatch {
+	border: none;
+	border-radius: var(--radius-sm);
+}
+.dev-ctx__swatch::-moz-color-swatch {
+	border: none;
+	border-radius: var(--radius-sm);
+}
+.dev-ctx__swatch:focus-visible {
+	outline: none;
+	border-color: var(--primary);
+	box-shadow: none;
 }
 .dev-ctx__label {
 	display: flex;
@@ -240,6 +282,12 @@
 .dev-ctx__reset:hover {
 	background: var(--surface-3);
 	color: var(--on-surface);
+}
+.dev-ctx__reset:disabled {
+	background: var(--surface-2);
+	color: var(--text-secondary);
+	cursor: not-allowed;
+	opacity: 0.5;
 }
 .dev-ctx__reset:focus-visible {
 	outline: none;
