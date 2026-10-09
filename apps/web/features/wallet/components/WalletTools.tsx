@@ -3,6 +3,7 @@ import { useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
+import { CurrencyLabel, Flag } from "@projective/ui/display";
 import { styleVars } from "@ui/core/style.ts";
 import { DISPLAY_CURRENCIES } from "@projective/types/finance";
 import { commitDisplayCurrency } from "@web/features/shell/core/currency-state.ts";
@@ -80,9 +81,11 @@ export function RangeRuler(
 
 // #region Currency
 /**
- * The display-currency trigger. It writes the SAME store as the account menu's currency picker, so the
- * two can never disagree about what the page is drawn in; the page hears the change and re-reads its
- * figures converted server-side.
+ * The display-currency trigger. It writes the SAME store as Settings → Language & region and the
+ * checkout's picker, so they can never disagree about what the page is drawn in; the page hears the
+ * change and re-reads its figures converted server-side. The list rows are the standard
+ * `CurrencyLabel`; the trigger is a one-line glass pill (flag · symbol · code) by the hero's tool
+ * contract.
  */
 function CurrencyTrigger({ current }: { current: string }): JSX.Element {
 	const open = useSignal(false);
@@ -119,6 +122,7 @@ function CurrencyTrigger({ current }: { current: string }): JSX.Element {
 						aria-busy={saving.value ? "true" : undefined}
 						onClick={api.toggle}
 					>
+						{active ? <Flag code={active.country} size="sm" class="wlt-tool__flag" /> : null}
 						<span class="wlt-tool__symbol" aria-hidden="true">{active?.symbol ?? current}</span>
 						<span class="wlt-tool__code" aria-hidden="true">{current}</span>
 						<Icon name="chevron-down" size="xs" class="wlt-tool__chevron" />
@@ -144,13 +148,12 @@ function CurrencyTrigger({ current }: { current: string }): JSX.Element {
 									type="button"
 									role="radio"
 									aria-checked={selected ? "true" : "false"}
+									aria-label={`${option.code}, ${option.label}, ${option.countryName}`}
 									class="wlt-currency__item"
 									disabled={saving.value !== null}
 									onClick={() => void pick(option.code)}
 								>
-									<span class="wlt-currency__symbol" aria-hidden="true">{option.symbol}</span>
-									<span class="wlt-currency__code">{option.code}</span>
-									<span class="wlt-currency__label">{option.label}</span>
+									<CurrencyLabel currency={option} />
 									{selected && <Icon name="check" size="xs" class="wlt-currency__check" />}
 								</button>
 							</li>

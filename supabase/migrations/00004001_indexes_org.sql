@@ -21,6 +21,15 @@ CREATE INDEX idx_user_emails_verified_email ON org.user_emails (lower(email)) WH
 CREATE INDEX idx_email_verification_tokens_email ON org.email_verification_tokens (email_id);
 -- #endregion
 
+-- #region Handle history + scheduled removals (00001060)
+-- The change-policy clock reads a person's latest changes; the 90-day hold looks a handle up.
+CREATE INDEX idx_handle_changes_user_changed ON org.handle_changes (user_id, changed_at DESC);
+CREATE INDEX idx_handle_changes_old_handle ON org.handle_changes (lower(old_handle), changed_at DESC);
+-- One open request per person per scope; the sweep reads the due ones.
+CREATE UNIQUE INDEX uq_deletion_requests_one_open ON org.deletion_requests (user_id, scope) WHERE status = 'scheduled';
+CREATE INDEX idx_deletion_requests_due ON org.deletion_requests (scheduled_for) WHERE status = 'scheduled';
+-- #endregion
+
 -- #region Workspace membership invariants (Decision #122)
 -- These are the constraints a row-level CHECK cannot state, because each one spans rows.
 

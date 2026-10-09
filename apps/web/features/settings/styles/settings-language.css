@@ -1,0 +1,43 @@
+.stg-locale-select.ui-field {
+	min-inline-size: 15rem;
+}
+
+.stg-locale {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	max-inline-size: 100%;
+}
+
+.stg-locale__text {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+	line-height: var(--leading-tight);
+}
+
+.stg-locale__name,
+.stg-locale__english {
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+
+.stg-locale__name {
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	unicode-bidi: isolate;
+}
+
+.stg-locale__english {
+	font-size: var(--text-2xs);
+	color: var(--text-secondary);
+}
+
+@container stg (max-width: 30rem) {
+	.stg-locale-select.ui-field {
+		min-inline-size: 0;
+	}
+}

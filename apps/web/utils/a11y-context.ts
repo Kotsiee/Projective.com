@@ -5,6 +5,7 @@ import {
 	DEFAULT_APPEARANCE,
 	FontPreference,
 	LayoutDirection,
+	localeDirection,
 	MotionPreference,
 } from "@projective/types/org";
 
@@ -102,14 +103,21 @@ export function a11ySetCookie(overlays: A11yOverlays): string {
  * The `<html>` data attributes for a set of overlays — ONLY the overlays that are on. A `standard`
  * contrast or motion writes nothing, so the stylesheet's `prefers-contrast` / `prefers-reduced-motion`
  * blocks still answer the reader's OS; writing an explicit "normal" here would switch them off.
+ *
+ * An `auto` direction is resolved by the viewer's `locale` (its script): a right-to-left language
+ * lays the page out right to left from the first byte; a left-to-right one writes nothing.
  */
-export function a11yRootAttributes(overlays: A11yOverlays): Record<string, string> {
+export function a11yRootAttributes(
+	overlays: A11yOverlays,
+	locale?: string,
+): Record<string, string> {
 	const attrs: Record<string, string> = {};
 	if (overlays.contrast === "high") attrs["data-contrast"] = "high";
 	if (overlays.font === "dyslexic") attrs["data-font"] = "dyslexic";
 	if (overlays.cvd !== "none") attrs["data-cvd"] = overlays.cvd;
 	if (overlays.motion === "reduced") attrs["data-motion"] = "reduced";
 	if (overlays.dir === "ltr" || overlays.dir === "rtl") attrs.dir = overlays.dir;
+	else if (locale && localeDirection(locale) === "rtl") attrs.dir = "rtl";
 	return attrs;
 }
 

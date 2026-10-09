@@ -203,3 +203,33 @@ export const NegotiatedRateSchema = z.object({
 });
 export type NegotiatedRate = z.infer<typeof NegotiatedRateSchema>;
 // #endregion
+
+// #region Settings → Billing plan summary
+/** One plan as the Settings comparison lists it. */
+export const PlanOfferSchema = z.object({
+	code: z.string().min(1).max(60),
+	label: z.string().min(1).max(80),
+	tier: PlanTier,
+	priceCents: minorUnitsNonNeg.nullable(),
+	currency,
+	billingInterval: BillingInterval,
+	isCustomPriced: z.boolean(),
+	pricingNote: z.string().nullable(),
+});
+export type PlanOffer = z.infer<typeof PlanOfferSchema>;
+
+/**
+ * The person's plan as Settings → Billing draws it: the plan held (or the audience's free default
+ * when no subscription row exists), its state and renewal, and the audience's public plans for the
+ * comparison. Read-only until checkout for plans exists.
+ */
+export const CurrentPlanSchema = z.object({
+	current: PlanOfferSchema,
+	/** `null` = holding the free default, with no subscription row behind it. */
+	state: SubscriptionState.nullable(),
+	renewsAt: timestamp.nullable(),
+	cancelAtPeriodEnd: z.boolean(),
+	offers: z.array(PlanOfferSchema),
+});
+export type CurrentPlan = z.infer<typeof CurrentPlanSchema>;
+// #endregion

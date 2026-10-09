@@ -2371,21 +2371,64 @@ the two always agree: in place, from wherever they are — a gear in the inbox, 
 wallet opens **Settings as a window** over the page, on the section that gear is about — and on the
 full **Settings console** (`/settings`), one page per section. One search finds a setting in either.
 
-- **What a section is.** Account (legal name, `@handle`, date of birth, email addresses, password) ·
+- **What a section is.** Account (legal name, date of birth, `@handle`, freelancer or client, email
+  addresses, password, connected sign-in accounts, deleting the account — Decision #156) ·
   Profile (who can find you, local time and city on your page, photo zoom) · Workspaces (who you are
   acting as; your teams, businesses and organisations) · Language & region (number and date format,
   display currency, text direction) · Appearance (theme, high contrast, a dyslexia-friendly font, a
   colour-vision adjustment, reduced motion) · Notifications · Messaging (read receipts, typing,
   message alerts, away replies) · Scheduling & calls (working hours, discovery calls, courtesy-call
-  length, weekly cap and cooldown, buffers and notice) · Billing (saved cards) · Verification &
-  payouts · Integrations.
+  length, weekly cap and cooldown, buffers and notice) · Billing (the plan, saved cards) ·
+  Verification & payouts · Integrations.
 - **Nothing is hidden in the window.** A setting too large for it (the weekly schedule) or one that
   must leave Projective to be changed (an identity check with Stripe, a provider's consent page)
   shows its current state there and one clear way into the console.
-- **Attention.** The console's front page lists only what stands between the person and earning or
-  paying: an identity check to start or retry, a missing payout bank account, a business awaiting
-  verification, a connection that stopped syncing, an email address not yet confirmed — most urgent
-  first, each with its one action.
+- **The front page (Decision #156).** `/settings` opens with a search over every setting, then what
+  needs attention, then how complete the person's profile is — a bar and ONE call to action to the
+  next step — and then every section as a card that opens it. While searching, the cards narrow to
+  the matching sections and list the matching settings, each a link straight to it.
+- **Attention.** The front page lists only what stands between the person and earning, paying or
+  keeping their account: an identity check to start or retry, a missing payout bank account, a
+  business awaiting verification, a connection that stopped syncing, an email address not yet
+  confirmed, a profile step left, a saved card that has expired (or expires this month or next), a
+  plan whose payment failed, a single way of signing in when another could be added, and a scheduled
+  deletion — most urgent first, each with its one action. A section with something listed carries a
+  dot in the menu beside it, on the console and in the window alike; its shape, not only its colour,
+  says how urgent.
+- **Changing your handle.** A person may change their `@handle` twice within three days — enough to
+  fix a typo — and after the second change it is locked for 90 days. Settings says before each change
+  how many are left and, once locked, the date it unlocks. A handle given up is held for its previous
+  owner for 90 days: nobody else can take it, and they may take it back.
+- **Freelancer or client.** A client becomes a freelancer through the standard onboarding. A freelancer
+  can switch to client only, behind a confirmation that spells out the consequence and asks them to
+  type CONFIRM: they stop selling at once, their own listings are taken down, and the freelancer
+  profile is permanently erased after **90 days**. Reviews, Standing and money records are kept —
+  other people and the regulator rely on them. Becoming a freelancer again inside the 90 days restores
+  everything. It cannot be done while money is held in escrow for them, while they hold live work or
+  while their wallet still holds money.
+- **Deleting an account.** Behind the same typed confirmation, a person may delete their account:
+  their profile is hidden at once and their personal data is erased after **30 days**, during which
+  they can cancel from Settings. It cannot be done while money is held, work is live, a wallet holds
+  money, a project they own is running or they own a team, business or organisation. Erasure
+  anonymises; records of money that moved are kept anonymised for the retention period
+  (§Security — Retention Policies).
+- **Connected accounts.** A person can sign in with Google, Apple, Facebook, LinkedIn, Microsoft or
+  Amazon as well as, or instead of, their email and password — where that provider is switched on.
+  One that is not shows "Not available yet", never a button that does nothing. A sign-in method can be
+  disconnected only while another remains; the email sign-in is managed under Email addresses.
+- **Plans.** Billing shows the plan the person holds (the free plan every account has, unless they
+  subscribe), its renewal, and the individual plans side by side. Changing plans is not available yet,
+  and the page says so.
+- **Dates and direction.** Dates follow the person's language until they choose a format (DD/MM/YYYY ·
+  MM/DD/YYYY · YYYY-MM-DD); a chosen format stays when the language changes. With text direction on
+  Automatic, a right-to-left language (Arabic, Hebrew, Urdu …) lays every page out right to left.
+- **Away replies.** A person can answer, automatically: the first message of a conversation, a message
+  containing a keyword, a service inquiry, a product inquiry or a project invitation — or any message
+  while they are away (notifications paused), busy (in a call or event), out of hours (outside their
+  published working hours) or on holiday (between dates they set). A rule can be limited to dates; each
+  answers a conversation at most once a day, and an automatic reply never accepts a request on the
+  person's behalf. These statuses are worked out from what the person already keeps — there is no
+  status to set by hand.
 - **Email addresses.** A person holds up to five: the address they sign in with plus others. An added
   address counts only once confirmed through a link mailed to it — one use, for that account, within
   24 hours. Only a confirmed address can become the **primary** (where Projective writes to them), and
@@ -2503,7 +2546,7 @@ fire for the same person on a device that genuinely does not have the file.
 |               |                           | `files/[file id]`        | View specific file                                                                             |
 |               | `/files`                  | `index`                  | Asset hub — personal/entity library + read-only mounted project & channel attachments          |
 |               |                           | `[...path]`              | Folder navigation (deep-linkable; the tree, breadcrumbs and URL address the same node)         |
-|               | `/settings`               | `index`                  | The Settings console's root: what needs your attention (identity check, payout account, business verification, expired connections, unconfirmed emails), and on a phone the menu of every section (§Settings) |
+|               | `/settings`               | `index`                  | The Settings hub: a search over every setting, what needs your attention, the profile completeness tracker, and every section as a card (§Settings) |
 |               |                           | `[section]`              | One section: account · profile · workspaces · language & region · appearance · notifications · messaging · scheduling & calls · billing |
 |               |                           | `verification`           | Verification & payouts — identity check, payout account, business verification                 |
 |               |                           | `integrations`           | Connected cloud-storage drives (Google Drive, Dropbox, Frame.io, custom S3)                    |

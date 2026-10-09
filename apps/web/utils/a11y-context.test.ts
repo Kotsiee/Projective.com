@@ -89,3 +89,9 @@ Deno.test("a11y cookie — an older cookie without a direction reads as auto", (
 	assertEquals(parseA11y("dir-sideways").dir, "auto");
 	assertEquals(a11yRootAttributes({ ...DEFAULT_A11Y, dir: "auto" }), {});
 });
+
+Deno.test("a11y root — auto follows the viewer's language; an explicit choice wins", () => {
+	assertEquals(a11yRootAttributes({ ...DEFAULT_A11Y, dir: "auto" }, "ar-AE"), { dir: "rtl" });
+	assertEquals(a11yRootAttributes({ ...DEFAULT_A11Y, dir: "auto" }, "en-GB"), {});
+	assertEquals(a11yRootAttributes({ ...DEFAULT_A11Y, dir: "ltr" }, "he-IL"), { dir: "ltr" });
+});

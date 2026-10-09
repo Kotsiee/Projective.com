@@ -256,6 +256,16 @@ change (including an organisation admin naming themselves owner), a verification
 and a borrowed picture are each refused with `42501`. The two client INSERT policies that would have
 let those columns be set at birth were removed in the same change (`org/Policies.md`).
 
+## Scheduled erasures (Decision #156)
+
+### `security.purge_due_account_deletions(p_limit integer = 100) → integer` — service role only
+
+**Migration:** [`00001060_functions_org_account_lifecycle.sql`](../../../supabase/migrations/00001060_functions_org_account_lifecycle.sql)
+§6 · `SECURITY DEFINER` · **Grant:** `service_role` only (`REVOKE ALL` from `PUBLIC`, `anon`,
+`authenticated` in `00002510`). The service role's door to `org.fn_purge_due_deletions` — it holds
+`USAGE` on `security` and not on `org`. Called by `POST /api/user/cron/erasures` (bearer
+`ACCOUNT_CRON_SECRET`); answers how many requests completed.
+
 ## Email verification tokens (2026-10-06)
 
 ### `security.issue_email_verification(p_email_id uuid) → text` — service role only

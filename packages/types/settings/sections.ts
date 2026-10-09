@@ -8,6 +8,10 @@ import { OwnerAvailabilitySchema } from "../scheduling/owner-availability.ts";
 import { ProfileSettingsSchema, ProfileVisibility } from "../profile/profile.ts";
 import { AppearancePreferencesSchema, DisplayPreferencesSchema } from "../org/preferences.ts";
 import { UserEmailSchema } from "../org/user-emails.ts";
+import { AccountLifecycleSchema, HandlePolicySchema } from "../org/account-lifecycle.ts";
+import { SetupActionSchema } from "../org/onboarding.ts";
+import { ConnectedAccountsSchema } from "../auth/identities.ts";
+import { CurrentPlanSchema, SubscriptionState } from "../finance/plans.ts";
 
 /**
  * settings — the Zod SSOT for the two-phase Settings engine: the section vocabulary, the facts the
@@ -76,6 +80,30 @@ export const SettingsAttentionFactsSchema = z.object({
 	connections: z.array(AttentionConnectionSchema).nullable(),
 	/** Addresses on the account still waiting for their verification link. */
 	unverifiedEmails: z.number().int().min(0).nullable(),
+	/** The profile setup score (`org.fn_compute_profile_setup_progress`) and its suggested step. */
+	profile: z.object({
+		/** The PERSON's handle, for the step's address. */
+		handle: z.string(),
+		score: z.number().int().min(0).max(100),
+		pendingSteps: z.number().int().min(0),
+		nextAction: SetupActionSchema.nullable(),
+	}).nullable(),
+	/** Saved cards that have expired or expire this month or next, and the plan's billing state. */
+	billing: z.object({
+		expiredCards: z.number().int().min(0),
+		expiringCards: z.number().int().min(0),
+		subscriptionState: SubscriptionState.nullable(),
+	}).nullable(),
+	/** Sign-in resilience and anything scheduled to be erased. */
+	security: z.object({
+		/** How many ways the person can sign in (GoTrue identities). */
+		signInMethods: z.number().int().min(0),
+		/** Whether a provider this environment offers is not yet connected. */
+		canAddSignIn: z.boolean(),
+		/** ISO dates of a scheduled erasure, when one is scheduled. */
+		accountDeletionAt: z.string().nullable(),
+		freelancerRemovalAt: z.string().nullable(),
+	}).nullable(),
 });
 export type SettingsAttentionFacts = z.infer<typeof SettingsAttentionFactsSchema>;
 
@@ -84,6 +112,9 @@ export const UNKNOWN_ATTENTION_FACTS: SettingsAttentionFacts = {
 	verification: null,
 	connections: null,
 	unverifiedEmails: null,
+	profile: null,
+	billing: null,
+	security: null,
 };
 // #endregion
 
@@ -99,6 +130,12 @@ export const AccountSectionSchema = z.object({
 		dob: z.string().nullable(),
 	}).nullable(),
 	emails: z.array(UserEmailSchema).nullable(),
+	/** Where the person stands under the @handle change policy. */
+	handlePolicy: HandlePolicySchema.nullable(),
+	/** The freelancer persona, and any removal or deletion scheduled. */
+	lifecycle: AccountLifecycleSchema.nullable(),
+	/** The providers the person signs in with. */
+	connected: ConnectedAccountsSchema.nullable(),
 });
 
 /** Profile visibility and the public-page switches — saved through the profile editor's own route. */
@@ -141,8 +178,14 @@ export const SchedulingSectionSchema = z.object({
 	availability: OwnerAvailabilitySchema.nullable(),
 });
 
-/** Billing reads the saved cards on the client through the existing `/api/cards` routes. */
-export const BillingSectionSchema = z.object({ section: z.literal("billing") });
+/**
+ * Billing — the plan held (the subscription placeholder); the saved cards are read on the client
+ * through the existing `/api/cards` routes.
+ */
+export const BillingSectionSchema = z.object({
+	section: z.literal("billing"),
+	plan: CurrentPlanSchema.nullable(),
+});
 
 export const VerificationSectionSchema = z.object({
 	section: z.literal("verification"),

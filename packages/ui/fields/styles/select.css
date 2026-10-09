@@ -132,6 +132,15 @@
 .ui-select__panel--top {
 	transform-origin: bottom center;
 }
+.ui-select__panel--auto {
+	inline-size: max-content;
+	min-inline-size: max(var(--fld-panel-minw), var(--float-width, 0px));
+	max-inline-size: calc(100vw - var(--space-4));
+}
+.ui-select__panel--sized {
+	inline-size: var(--select-panel-w, var(--float-width, auto));
+	max-inline-size: calc(100vw - var(--space-4));
+}
 @keyframes ui-select-pop {
 	from {
 		opacity: 0;
@@ -265,6 +274,22 @@
 	overflow: hidden;
 	white-space: nowrap;
 	text-overflow: ellipsis;
+}
+.ui-select__option-label--stacked {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+}
+.ui-select__option-title,
+.ui-select__option-desc {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.ui-select__option-desc {
+	font-size: var(--text-xs);
+	font-weight: 400;
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
 }
 .ui-select__empty {
 	padding: var(--space-3);

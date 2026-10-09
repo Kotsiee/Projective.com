@@ -27,6 +27,12 @@
 	min-inline-size: 0;
 }
 
+.stg-view--page {
+	inline-size: 100%;
+	max-inline-size: var(--measure-wide);
+	margin-inline: auto;
+}
+
 .stg-section {
 	display: flex;
 	flex-direction: column;
@@ -643,22 +649,23 @@
 	color: var(--text-secondary);
 }
 
-.stg-mark {
-	display: inline-flex;
-	align-items: center;
-	color: var(--text-secondary);
+.stg-dot {
+	display: inline-block;
+	flex: none;
+	inline-size: var(--space-2);
+	block-size: var(--space-2);
+	border-radius: var(--radius-full);
+	background: var(--info);
 }
 
-.stg-mark--danger {
-	color: var(--danger);
+.stg-dot--warning {
+	background: transparent;
+	box-shadow: inset 0 0 0 calc(var(--fld-bw) * 2) var(--warning);
 }
 
-.stg-mark--warning {
-	color: var(--warning);
-}
-
-.stg-mark--info {
-	color: var(--info);
+.stg-dot--danger {
+	border-radius: var(--radius-xs);
+	background: var(--danger);
 }
 /* #endregion */
 
@@ -691,206 +698,5 @@
 	.stg-console__back {
 		display: inline-flex;
 	}
-}
-/* #endregion */
-
-/* #region Console root: attention dashboard + drill-down */
-.stg-home {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-7);
-	max-inline-size: var(--measure-wide);
-	padding: var(--space-6) var(--space-6) var(--space-8);
-}
-
-.stg-attention {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-3);
-}
-
-.stg-attention__clear {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	margin: 0;
-	font-size: var(--text-base);
-	color: var(--on-surface);
-}
-
-.stg-attention__clear svg {
-	color: var(--success);
-}
-
-.stg-attention__list {
-	display: flex;
-	flex-direction: column;
-	margin: 0;
-	padding: 0;
-	list-style: none;
-}
-
-.stg-attention__item {
-	display: grid;
-	grid-template-columns: auto minmax(0, 1fr) auto;
-	align-items: center;
-	gap: var(--space-3) var(--space-4);
-	padding-block: var(--space-4);
-}
-
-.stg-attention__item + .stg-attention__item {
-	border-block-start: var(--hairline);
-}
-
-.stg-attention__mark {
-	display: inline-flex;
-	color: var(--info);
-}
-
-.stg-attention__item[data-tone="warning"] .stg-attention__mark {
-	color: var(--warning);
-}
-
-.stg-attention__item[data-tone="danger"] .stg-attention__mark {
-	color: var(--danger);
-}
-
-.stg-attention__text {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-px);
-	min-inline-size: 0;
-}
-
-.stg-attention__title {
-	font-size: var(--text-base);
-	font-weight: var(--fw-medium);
-	color: var(--on-surface);
-}
-
-.stg-attention__detail {
-	font-size: var(--text-sm);
-	color: var(--text-secondary);
-}
-
-.stg-attention__action {
-	font-size: var(--text-sm);
-	font-weight: var(--fw-medium);
-	color: var(--primary);
-	text-decoration: none;
-	white-space: nowrap;
-}
-
-.stg-attention__action:hover {
-	text-decoration: underline;
-}
-
-/* The drill-down menu exists for the phone, where the shell has no lane to navigate with. */
-.stg-drill {
-	display: none;
-}
-
-.stg-drill__title {
-	margin-block-end: var(--space-2);
-}
-
-.stg-drill__list {
-	display: flex;
-	flex-direction: column;
-	margin: 0;
-	padding: 0;
-	list-style: none;
-}
-
-.stg-drill__item {
-	display: grid;
-	grid-template-columns: auto minmax(0, 1fr) auto;
-	align-items: center;
-	gap: var(--space-3);
-	padding: var(--space-3) var(--space-2);
-	border-radius: var(--radius-md);
-	color: var(--on-surface);
-	text-decoration: none;
-	transform: scale(1);
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		transform var(--dur-fast) var(--ease-standard);
-}
-
-.stg-drill__item:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), var(--surface));
-}
-
-.stg-drill__item:active {
-	transform: scale(var(--stg-press-scale));
-	transition-duration: var(--dur-press);
-}
-
-.stg-drill__icon {
-	display: grid;
-	place-items: center;
-	inline-size: var(--overlay-action-size);
-	block-size: var(--overlay-action-size);
-	border-radius: var(--radius-full);
-	background: var(--surface-2);
-	color: var(--on-surface-variant);
-}
-
-.stg-drill__text {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-px);
-	min-inline-size: 0;
-}
-
-.stg-drill__label {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	font-size: var(--text-base);
-	font-weight: var(--fw-medium);
-}
-
-.stg-drill__desc {
-	font-size: var(--text-sm);
-	color: var(--text-secondary);
-}
-
-.stg-drill__chev {
-	color: var(--text-secondary);
-}
-
-@media (max-width: 767px) {
-	.stg-home {
-		padding: var(--space-4);
-	}
-
-	.stg-drill {
-		display: block;
-	}
-
-	.stg-attention__item {
-		grid-template-columns: auto minmax(0, 1fr);
-	}
-
-	.stg-attention__action {
-		grid-column: 2;
-	}
-}
-/* #endregion */
-
-/* #region Reduced motion — both channels */
-@media (prefers-reduced-motion: reduce) {
-	.stg-drill__item,
-	.stg-drill__item:active {
-		transform: none;
-		transition: none;
-	}
-}
-
-:root[data-motion="reduced"] .stg-drill__item,
-:root[data-motion="reduced"] .stg-drill__item:active {
-	transform: none;
-	transition: none;
 }
 /* #endregion */

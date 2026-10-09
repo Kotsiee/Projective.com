@@ -143,6 +143,7 @@ export { Rating, type RatingProps } from "./islands/Rating.tsx";
 
 // #region Selection controls (listbox family & advanced)
 export { Dropdown, Select, type SelectProps } from "./islands/Select.tsx";
+export { CurrencySelect, type CurrencySelectProps } from "./islands/CurrencySelect.tsx";
 export {
 	MultiSelect,
 	type MultiSelectDisplay,

@@ -18,6 +18,18 @@ CREATE TRIGGER trg_dm_messages_promote_on_reply
     FOR EACH ROW
     EXECUTE FUNCTION comms.fn_promote_thread_on_reply();
 
+-- Only comms.tg_dm_auto_reply marks a message automatic; a client write may not.
+CREATE TRIGGER trg_dm_messages_derived
+    BEFORE INSERT OR UPDATE ON comms.dm_messages
+    FOR EACH ROW
+    EXECUTE FUNCTION security.fn_guard_derived_columns('auto_response_id');
+
+-- Settings → Messaging away replies (00001300 §Auto-replies).
+CREATE TRIGGER trg_dm_messages_auto_reply
+    AFTER INSERT ON comms.dm_messages
+    FOR EACH ROW
+    EXECUTE FUNCTION comms.tg_dm_auto_reply();
+
 -- A reply's original must be in the reply's own channel / thread (00001300). On UPDATE as well as
 -- INSERT, scoped to the two columns that could move a reply out of its room after the fact.
 CREATE TRIGGER trg_project_messages_guard_reply

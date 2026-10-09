@@ -9,10 +9,13 @@
  */
 
 .vrf {
+	box-sizing: border-box;
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-8);
+	inline-size: 100%;
 	max-inline-size: 56rem;
+	margin-inline: auto;
 	padding-block: var(--space-6) var(--space-12);
 	padding-inline: var(--space-4);
 }

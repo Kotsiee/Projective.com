@@ -39,6 +39,9 @@ function seedAutoResponses(role: MessagingRole): MessagingSettings["autoResponse
 			keyword: null,
 			message:
 				"Thanks for reaching out about the Brand Identity Sprint! I typically reply within a few hours. To get us started, could you share a bit about your brand and timeline?",
+			statusCondition: null,
+			startsAt: null,
+			endsAt: null,
 			aiAssist: false,
 		},
 		{
@@ -53,6 +56,9 @@ function seedAutoResponses(role: MessagingRole): MessagingSettings["autoResponse
 			keyword: null,
 			message:
 				"Hi! The Aurora UI Kit includes a single-seat licence by default; team licences are available — happy to send a quote.",
+			statusCondition: null,
+			startsAt: null,
+			endsAt: null,
 			aiAssist: true,
 		},
 		{
@@ -66,6 +72,9 @@ function seedAutoResponses(role: MessagingRole): MessagingSettings["autoResponse
 			productName: null,
 			keyword: null,
 			message: "Thanks for your message! I'm away until Monday and will reply as soon as I'm back.",
+			statusCondition: null,
+			startsAt: null,
+			endsAt: null,
 			aiAssist: false,
 		},
 	];

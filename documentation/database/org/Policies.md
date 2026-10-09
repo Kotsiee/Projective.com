@@ -93,6 +93,21 @@ secondary address is verified only by redeeming a token mailed to it
 ([Functions.md](Functions.md#-email-addresses-00001050)). `org.trg_user_emails_guard` refuses a client
 write to `verified_at` / `email` / `is_primary` / `user_id` should a grant or policy ever return.
 
+### `org.handle_changes` / `org.deletion_requests`
+
+**SELECT only, owner or admin; no client write policy and the write grants revoked** (Decision #156).
+Both are written only by the 00001060 definers ([Functions.md](Functions.md#-account-lifecycle-00001060)).
+
+```sql
+CREATE POLICY "Users can view their own handle changes"
+ON org.handle_changes FOR SELECT TO authenticated
+USING (user_id = auth.uid() OR security.is_admin());
+
+CREATE POLICY "Users can view their own deletion requests"
+ON org.deletion_requests FOR SELECT TO authenticated
+USING (user_id = auth.uid() OR security.is_admin());
+```
+
 ### `org.email_verification_tokens`
 
 **RLS on, no policy at all, no client grant** — definer-only. Only `org.confirm_user_email` and

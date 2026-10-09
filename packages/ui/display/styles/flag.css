@@ -1,0 +1,58 @@
+.ui-flag {
+	position: relative;
+	display: inline-grid;
+	flex: 0 0 auto;
+	place-items: center;
+	inline-size: var(--flag-size, var(--icon-sm));
+	block-size: var(--flag-size, var(--icon-sm));
+	border-radius: var(--radius-full);
+	overflow: hidden;
+	vertical-align: middle;
+}
+
+.ui-flag::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	box-shadow: inset 0 0 0 var(--fld-bw) var(--border-subtle);
+	pointer-events: none;
+}
+
+.ui-flag__art {
+	display: block;
+	inline-size: 100%;
+	block-size: 100%;
+}
+
+.ui-flag--xs {
+	--flag-size: var(--icon-xs);
+}
+
+.ui-flag--sm {
+	--flag-size: var(--icon-sm);
+}
+
+.ui-flag--md {
+	--flag-size: var(--icon-md);
+}
+
+.ui-flag--lg {
+	--flag-size: var(--icon-lg);
+}
+
+.ui-flag--xl {
+	--flag-size: var(--icon-xl);
+}
+
+.ui-flag--fallback {
+	background: var(--surface-2);
+	color: var(--on-surface-variant);
+}
+
+.ui-flag__code {
+	font-size: calc(var(--flag-size, var(--icon-sm)) * 0.4);
+	font-weight: var(--fw-semibold);
+	line-height: 1;
+	letter-spacing: 0;
+}

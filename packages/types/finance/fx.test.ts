@@ -103,6 +103,13 @@ Deno.test("DISPLAY_CURRENCIES — the platform base leads, and codes are unique"
 	assertStrictEquals(new Set(codes).size, codes.length);
 });
 
+Deno.test("DISPLAY_CURRENCIES — every currency names its issuing territory", () => {
+	for (const { code, country, countryName } of DISPLAY_CURRENCIES) {
+		assertStrictEquals(/^[A-Z]{2}$/.test(country), true, `${code} has a malformed country`);
+		assertStrictEquals(countryName.trim().length > 0, true, `${code} has no country name`);
+	}
+});
+
 Deno.test("DISPLAY_CURRENCIES — every offerable currency has a known minor-unit exponent", () => {
 	// Offering a currency whose exponent defaults silently would put the decimal point in the wrong
 	// place for it. This asserts the exponent table has an opinion about each one.

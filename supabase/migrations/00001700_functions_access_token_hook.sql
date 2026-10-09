@@ -52,6 +52,7 @@ DECLARE
   -- locale the viewer's figures are FORMATTED in, never what any ledger row stores or settles at.
   v_display_currency text;
   v_locale text;
+  v_date_format text;
 
   -- Resolved chrome context.
   v_type text := 'personal';
@@ -86,8 +87,9 @@ BEGIN
 
   -- Presentation preferences. A row may not exist yet (the seed trigger runs AFTER INSERT on
   -- org.users_public), so both fall back to the platform defaults rather than a NULL claim.
-  SELECT UPPER(NULLIF(TRIM(pr.preferred_display_currency), '')), NULLIF(TRIM(pr.locale), '')
-    INTO v_display_currency, v_locale
+  SELECT UPPER(NULLIF(TRIM(pr.preferred_display_currency), '')), NULLIF(TRIM(pr.locale), ''),
+         pr.date_format
+    INTO v_display_currency, v_locale, v_date_format
   FROM org.user_preferences pr
   WHERE pr.user_id = v_user_id;
 
@@ -204,7 +206,8 @@ BEGIN
       'isFreelancer', v_ctx_is_freelancer,
       'onboarded', v_onboarded,
       'displayCurrency', v_display_currency,
-      'locale', v_locale
+      'locale', v_locale,
+      'dateFormat', v_date_format
     ),
     true
   );

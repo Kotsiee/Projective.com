@@ -1,6 +1,14 @@
 import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
-import { Checkbox, MultiSelect, Select, SelectButton, ToggleSwitch } from "@projective/ui/fields";
+import {
+	Checkbox,
+	CurrencySelect,
+	MultiSelect,
+	Select,
+	SelectButton,
+	ToggleSwitch,
+} from "@projective/ui/fields";
+import { DISPLAY_CURRENCIES } from "@projective/types/finance";
 import { Icon } from "@projective/ui/icons";
 import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
 import { openPicker } from "@web/features/files/core/files-state.ts";
@@ -18,7 +26,6 @@ import { patchSetup } from "../../core/setup-state.ts";
 import { useAttachmentUpload } from "../../hooks/useAttachmentUpload.ts";
 import { Disclosure, Field, Note, PairRow, Section } from "./setup-primitives.tsx";
 import {
-	CURRENCY_OPTIONS,
 	DEADLINE_BONUS_PERCENT,
 	IP_LABEL,
 	LANGUAGE_OPTIONS,
@@ -368,8 +375,8 @@ export function RulesSection(
 					label="Currency"
 					hint="Every figure on this page is priced in it. Changing it relabels those figures; it does not convert them."
 				>
-					<Select
-						options={CURRENCY_OPTIONS}
+					<CurrencySelect
+						currencies={DISPLAY_CURRENCIES}
 						value={setup.budget.currency}
 						onValueChange={(next: string) => patchSetup({ budget: { currency: next } })}
 						filter

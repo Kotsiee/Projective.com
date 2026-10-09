@@ -4,6 +4,7 @@ import type { UserContext } from "@projective/types/auth";
 import {
 	ACCOUNT_TYPES,
 	applyDevContext,
+	DEV_ACCOUNT_LIFECYCLES,
 	DEV_LAYOUT_DIRECTIONS,
 	DEV_MEMBER_ROLES,
 	DEV_MESSAGING_ROLES,
@@ -513,6 +514,15 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.settingsAttention}
 						disabled={!o.enabled}
 						onChange={(settingsAttention) => patchDevContext({ settingsAttention })}
+					/>
+				</Field>
+				<Field label="Account lifecycle" hint="Settings → Account">
+					<Segment
+						name="Account lifecycle"
+						options={DEV_ACCOUNT_LIFECYCLES}
+						value={o.accountLifecycle}
+						disabled={!o.enabled}
+						onChange={(accountLifecycle) => patchDevContext({ accountLifecycle })}
 					/>
 				</Field>
 

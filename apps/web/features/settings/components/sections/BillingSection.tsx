@@ -14,9 +14,16 @@ import {
 	SettingsBlock,
 } from "../SettingsParts.tsx";
 import { sectionMeta } from "../../core/settings-registry.ts";
+import type { SettingsSectionDataOf } from "@projective/types/settings";
+import { PlanBlock } from "./billing/PlanBlock.tsx";
+
+// #region Stylesheet carrier
+import "../../styles/settings-billing.css";
+// #endregion
 
 /**
- * Settings → Billing (Decision #150): the cards saved against the acting account — which one a card
+ * Settings → Billing (Decisions #151, #156): the plan (read-only until plan checkout exists), then the
+ * cards saved against the acting account — which one a card
  * payment pre-selects, and removing one — through the checkout's own `/api/cards` routes and
  * `CardsService`, so the default here is the default at checkout. Adding a card stays where Stripe's
  * card field already lives (checkout and the wallet): nothing in this section can take a card number.
@@ -53,7 +60,12 @@ function expiry(card: SavedCard): { text: string; expired: boolean } {
 	};
 }
 
-export function BillingSection(): JSX.Element {
+export interface BillingSectionProps {
+	data: SettingsSectionDataOf<"billing">;
+	locale: string;
+}
+
+export function BillingSection(props: BillingSectionProps): JSX.Element {
 	const meta = sectionMeta("billing");
 	const payload = useSignal<CardsPayload | null>(null);
 	const loadError = useSignal<string | null>(null);
@@ -90,6 +102,7 @@ export function BillingSection(): JSX.Element {
 	return (
 		<div class="stg-section">
 			<SectionHead title={meta.label} description={meta.description} />
+			<PlanBlock plan={props.data.plan} locale={props.locale} />
 			<SettingsBlock
 				anchor="cards"
 				title="Saved cards"

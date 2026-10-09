@@ -13,6 +13,7 @@ import {
 	StarterSkillOptionSchema,
 } from "@projective/types/user";
 import {
+	DateFormat,
 	DEFAULT_USER_LOCALE,
 	type DisplayPreferences,
 	type LayoutDirection,
@@ -78,6 +79,8 @@ interface PreferencesRow {
 	locale: string | null;
 	preferred_display_currency: string | null;
 	layout_direction: string | null;
+	/** Read in its own statement (see {@link UserBackendService.liveDateFormat}); absent when unread. */
+	date_format?: string | null;
 }
 
 /**
@@ -91,7 +94,7 @@ interface PreferencesRow {
  */
 function resolvePreferences(
 	row: PreferencesRow | null,
-	context: Pick<UserContext, "displayCurrency" | "locale">,
+	context: Pick<UserContext, "displayCurrency" | "locale" | "dateFormat">,
 ): DisplayPreferences {
 	const direction = row?.layout_direction;
 	return {
@@ -100,6 +103,7 @@ function resolvePreferences(
 		),
 		locale: str(row?.locale) ?? str(context.locale) ?? DEFAULT_USER_LOCALE,
 		layoutDirection: direction === "ltr" || direction === "rtl" ? direction : "auto",
+		dateFormat: DateFormat.safeParse(row?.date_format ?? context.dateFormat).data ?? null,
 	};
 }
 
@@ -111,6 +115,7 @@ function toColumnPatch(patch: UserPreferencesUpdate): Record<string, unknown> {
 	if (patch.notificationPush !== undefined) columns.notification_push = patch.notificationPush;
 	if (patch.locale !== undefined) columns.locale = patch.locale;
 	if (patch.layoutDirection !== undefined) columns.layout_direction = patch.layoutDirection;
+	if (patch.dateFormat !== undefined) columns.date_format = patch.dateFormat;
 	// `null` is a real value here (clear the preference), so the check is against `undefined` only.
 	if (patch.preferredDisplayCurrency !== undefined) {
 		columns.preferred_display_currency = patch.preferredDisplayCurrency === null
@@ -312,6 +317,7 @@ export class UserBackendService {
 					: base.displayCurrency,
 				locale: patch.locale ?? base.locale,
 				layoutDirection: (patch.layoutDirection ?? base.layoutDirection) as LayoutDirection,
+				dateFormat: patch.dateFormat !== undefined ? patch.dateFormat : base.dateFormat,
 			},
 		});
 	}
@@ -413,10 +419,27 @@ export class UserBackendService {
 				.select("locale,preferred_display_currency,layout_direction")
 				.eq("user_id", userId)
 				.maybeSingle();
-			return error ? null : (data as PreferencesRow | null);
+			if (error || !data) return null;
+			const dateFormat = await UserBackendService.liveDateFormat(userId, accessToken);
+			return { ...(data as PreferencesRow), date_format: dateFormat };
 		} catch {
 			return null;
 		}
+	}
+
+	/**
+	 * The `date_format` column, read in its own statement so a database that predates it degrades to
+	 * "follow the locale" instead of failing the currency and locale read beside it (the Decision #151
+	 * appearance precedent). `null` on any failure.
+	 */
+	private static async liveDateFormat(userId: string, accessToken: string): Promise<string | null> {
+		const { data, error } = await getUserClient(accessToken)
+			.schema("org")
+			.from("user_preferences")
+			.select("date_format")
+			.eq("user_id", userId)
+			.maybeSingle();
+		return error ? null : ((data as { date_format?: string | null } | null)?.date_format ?? null);
 	}
 
 	/**
@@ -432,14 +455,26 @@ export class UserBackendService {
 		columns: Record<string, unknown>,
 	): Promise<PreferencesRow | null> {
 		if (!isAuthBackendLive() || !accessToken) return null;
+		const { date_format: dateFormat, ...display } = columns;
 		try {
+			const client = getUserClient(accessToken).schema("org").from("user_preferences");
+			if (dateFormat !== undefined) {
+				const res = await client
+					.upsert({ user_id: userId, date_format: dateFormat }, { onConflict: "user_id" });
+				if (res.error) return null;
+			}
+			if (Object.keys(display).length === 0) {
+				return await UserBackendService.livePreferences(userId, accessToken);
+			}
 			const { data, error } = await getUserClient(accessToken)
 				.schema("org")
 				.from("user_preferences")
-				.upsert({ user_id: userId, ...columns }, { onConflict: "user_id" })
+				.upsert({ user_id: userId, ...display }, { onConflict: "user_id" })
 				.select("locale,preferred_display_currency,layout_direction")
 				.maybeSingle();
-			return error ? null : (data as PreferencesRow | null);
+			if (error || !data) return null;
+			const stored = await UserBackendService.liveDateFormat(userId, accessToken);
+			return { ...(data as PreferencesRow), date_format: stored };
 		} catch {
 			return null;
 		}

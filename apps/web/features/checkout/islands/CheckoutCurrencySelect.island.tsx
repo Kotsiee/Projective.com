@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { useSignal, useSignalEffect } from "@preact/signals";
 import "../styles/checkout-stepper.css";
-import { Select } from "@projective/ui/fields";
+import { CurrencySelect } from "@projective/ui/fields";
 import { DISPLAY_CURRENCIES } from "@projective/types/finance";
 import { commitDisplayCurrency, displayCurrency } from "@web/features/shell/core/currency-state.ts";
 
@@ -39,20 +39,6 @@ export interface CheckoutCurrencySelectProps {
 }
 // #endregion
 
-/** `🇬🇧 GBP (£)` — the brief's format. The flag is decoration and is hidden from assistive tech. */
-function currencyRow(code: string, compact: boolean): JSX.Element {
-	const entry = DISPLAY_CURRENCIES.find((c) => c.code === code);
-	if (!entry) return <span class="cko-cur__row">{code}</span>;
-	return (
-		<span class="cko-cur__row">
-			<span class="cko-cur__flag" aria-hidden="true">{entry.flag}</span>
-			<span class="cko-cur__code">{entry.code}</span>
-			<span class="cko-cur__symbol" aria-hidden="true">({entry.symbol})</span>
-			{compact ? null : <span class="cko-cur__name">{entry.label}</span>}
-		</span>
-	);
-}
-
 export default function CheckoutCurrencySelect(
 	props: CheckoutCurrencySelectProps,
 ): JSX.Element {
@@ -71,19 +57,12 @@ export default function CheckoutCurrencySelect(
 
 	return (
 		<div class="cko-cur">
-			<Select
+			<CurrencySelect
 				class="cko-cur__field"
 				aria-label="Display currency"
 				size="sm"
 				value={choice}
-				options={DISPLAY_CURRENCIES.map((c) => ({
-					// `label` stays the plain, matchable text: it is what typeahead searches and what
-					// assistive tech reads. The templates below are presentation only.
-					label: `${c.code} — ${c.label}`,
-					value: c.code,
-				}))}
-				valueTemplate={(opt) => currencyRow(String(opt.value), true)}
-				optionTemplate={(opt) => currencyRow(String(opt.value), false)}
+				currencies={DISPLAY_CURRENCIES}
 				onValueChange={(next) => {
 					if (!next || next === displayCurrency.peek().toUpperCase()) return;
 					choice.value = next;

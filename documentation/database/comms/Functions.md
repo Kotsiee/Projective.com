@@ -284,7 +284,31 @@ Returns `{ thread_id, message_id, opened, routed_to }`.
 `BEFORE INSERT ON comms.dm_messages`. A reply accepts a request: the SENDER's own row moves
 `requests → primary`. No other participant's folder is touched, so a requester's follow-ups can
 never pull a thread out of the recipient's Requests, and a reply into an archived thread leaves it
-archived.
+archived. An automatic reply (`auto_response_id` set) is not the person answering and promotes
+nothing.
+
+## Auto-replies (`00001300` / `00001840`, Decision #156)
+
+### `comms.tg_dm_auto_reply()` — trigger
+
+`AFTER INSERT ON comms.dm_messages` (`trg_dm_messages_auto_reply`). For a human message in a two-person
+thread whose recipient has `auto_responses_enabled`, it posts the recipient's best matching enabled
+rule as the recipient, marked with `auto_response_id`. Most specific first: a keyword in the body → a
+named service → a pending hiring invitation from the sender (`project_invitation`) → any service
+inquiry (the thread is a `service_inquiry` or the message names a service) → a `status` → `any`
+(only while the recipient has never replied in the thread). Each rule fires at most once per thread
+per 24 hours, only inside its `starts_at`/`ends_at` window, and never in answer to an automatic
+message. `product` rules match nothing yet. Best effort: a failure is a `WARNING` and the person's own
+message stands. `SECURITY DEFINER`; `REVOKE`d from the client roles (`00002510`).
+
+### `comms.fn_auto_reply_status(p_user, p_status, p_at) → boolean`
+
+Each status is DERIVED, never chosen (Decision #149(C)): `away` — notifications paused
+(`notification_prefs.muted_until > p_at`); `busy` — inside an event or blackout on the person's own
+schedule (`scheduling.fn_has_conflicting_event` / `fn_is_blacked_out`); `out_of_hours` — a published
+schedule with working-hours bands that do not cover `p_at` (`scheduling.fn_band_covers`); `holiday` —
+true, the rule's own window having already applied. `REVOKE`d from `PUBLIC`/`anon`/`authenticated`: a
+person's availability is theirs (the comms schema does not revoke PUBLIC by default, Decision #151(c)).
 
 ### `comms.tg_mask_dm_message_pii()` · `comms.fn_dm_protected_project(thread, sender, project) → uuid`
 

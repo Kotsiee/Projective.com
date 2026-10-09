@@ -6,3 +6,4 @@
  * (`@projective/types/auth`) or the barrel.
  */
 export * from "./user-context.ts";
+export * from "./identities.ts";

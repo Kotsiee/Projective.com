@@ -203,7 +203,7 @@
 }
 
 .wlt-tool--currency {
-	padding-inline: var(--space-3) var(--space-2);
+	padding-inline: var(--space-2) var(--space-2);
 }
 
 .wlt-tool__symbol,
@@ -278,7 +278,7 @@
 .wlt-currency__item {
 	inline-size: 100%;
 	display: grid;
-	grid-template-columns: 2.25rem auto minmax(0, 1fr) auto;
+	grid-template-columns: minmax(0, 1fr) auto;
 	align-items: center;
 	gap: var(--space-2);
 	padding: var(--space-2);
@@ -311,24 +311,6 @@
 
 .wlt-currency__item:disabled {
 	cursor: progress;
-}
-
-.wlt-currency__symbol {
-	color: var(--on-surface-variant);
-	text-align: center;
-}
-
-.wlt-currency__code {
-	font-weight: var(--fw-medium);
-	letter-spacing: var(--tracking-wide);
-	font-variant-numeric: tabular-nums;
-}
-
-.wlt-currency__label {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	color: var(--on-surface-variant);
 }
 
 .wlt-currency__check {

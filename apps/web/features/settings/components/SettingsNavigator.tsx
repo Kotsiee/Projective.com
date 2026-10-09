@@ -22,7 +22,8 @@ import type { AttentionTone } from "../core/attention-model.ts";
  *   Appearance → Theme). Enter opens the best match and moves focus INTO it.
  * - The tree is `TreeNav`: one tab stop, ArrowUp/Down between rows, Right/Left to open and close a
  *   section, Home/End, Enter/Space to activate.
- * - A section that needs attention carries a toned mark — a glyph AND a word for assistive tech,
+ * - A section that needs attention carries a dot badge whose SHAPE carries the tone (a filled dot
+ *   for a nudge, a ring for an action, a square for a blocker) and whose label says it in words —
  *   never the colour alone.
  */
 
@@ -54,12 +55,6 @@ const TONE_WORD: Readonly<Record<AttentionTone, string>> = {
 	info: "update",
 };
 
-const TONE_ICON: Readonly<Record<AttentionTone, "error" | "warning" | "info">> = {
-	danger: "error",
-	warning: "warning",
-	info: "info",
-};
-
 function nodeKey(section: SettingsSectionKey, anchor: string | null): string {
 	return anchor ? `${section}#${anchor}` : section;
 }
@@ -88,11 +83,7 @@ export function SettingsNavigator(props: SettingsNavigatorProps): JSX.Element {
 			label: section.label,
 			icon: <Icon name={section.icon} size="sm" />,
 			status: tone
-				? (
-					<span class={`stg-mark stg-mark--${tone}`} role="img" aria-label={TONE_WORD[tone]}>
-						<Icon name={TONE_ICON[tone]} size="xs" aria-hidden="true" />
-					</span>
-				)
+				? <span class={`stg-dot stg-dot--${tone}`} role="img" aria-label={TONE_WORD[tone]} />
 				: null,
 			children: entries.map((entry) => ({
 				key: nodeKey(section.key, entry.anchor),

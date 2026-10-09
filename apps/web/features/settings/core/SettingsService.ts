@@ -7,7 +7,18 @@ import type {
 	UserPreferencesUpdate,
 } from "@projective/types/org";
 import type { NotificationCenter, NotificationCenterUpdate } from "@projective/types/comms";
-import type { SettingsSectionDataOf, SettingsSectionKey } from "@projective/types/settings";
+import type {
+	SettingsAttentionFacts,
+	SettingsSectionDataOf,
+	SettingsSectionKey,
+} from "@projective/types/settings";
+import type {
+	AccountLifecycle,
+	DeletionScope,
+	HandlePolicy,
+	ScheduleDeletion,
+} from "@projective/types/org";
+import type { ConnectedAccounts } from "@projective/types/auth";
 
 /**
  * SettingsService — the THIN client controller for the Settings engine (Decision #150): the
@@ -96,6 +107,60 @@ export const SettingsService = {
 		return res.ok
 			? { ok: true, data: { data: res.data.data, error: res.data.error ?? null } }
 			: res;
+	},
+
+	/** The attention facts — what the modal marks its sections with. */
+	attention(): Promise<SettingsResult<{ facts: SettingsAttentionFacts }>> {
+		return call<{ facts: SettingsAttentionFacts }>("/api/settings/attention");
+	},
+	// #endregion
+
+	// #region Handle
+	/** Change the @handle. The caller renews the session afterwards — the token carries it. */
+	changeHandle(
+		handle: string,
+	): Promise<SettingsResult<{ policy: HandlePolicy; previous: string }>> {
+		return call<{ policy: HandlePolicy; previous: string }>(
+			"/api/user/handle",
+			json("POST", { handle }),
+			"Your handle couldn't be changed.",
+		);
+	},
+	// #endregion
+
+	// #region Account lifecycle
+	/** Schedule a freelancer-profile removal or the account's deletion. */
+	scheduleDeletion(
+		input: ScheduleDeletion,
+	): Promise<SettingsResult<{ lifecycle: AccountLifecycle }>> {
+		return call<{ lifecycle: AccountLifecycle }>(
+			"/api/user/lifecycle",
+			json("POST", input),
+			"That couldn't be scheduled.",
+		);
+	},
+	/** Cancel a scheduled removal inside its window. */
+	cancelDeletion(scope: DeletionScope): Promise<SettingsResult<{ lifecycle: AccountLifecycle }>> {
+		return call<{ lifecycle: AccountLifecycle }>(
+			`/api/user/lifecycle?scope=${encodeURIComponent(scope)}`,
+			{ method: "DELETE" },
+			"That couldn't be cancelled.",
+		);
+	},
+	// #endregion
+
+	// #region Connected accounts
+	/** Disconnect one sign-in provider. */
+	disconnectIdentity(id: string): Promise<SettingsResult<ConnectedAccounts>> {
+		return call<ConnectedAccounts>(
+			`/api/user/identities/${encodeURIComponent(id)}`,
+			{ method: "DELETE" },
+			"That sign-in method couldn't be disconnected.",
+		);
+	},
+	/** Where a connect starts — a navigation, because it leaves for the provider. */
+	connectIdentityHref(provider: string): string {
+		return `/api/user/identities/link/${encodeURIComponent(provider)}`;
 	},
 	// #endregion
 

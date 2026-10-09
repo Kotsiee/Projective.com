@@ -1458,6 +1458,28 @@ lane + one page per section). Both are drawn from the same three pieces:
   (Verification and Integrations — their actions leave for Stripe or a provider's consent page) show
   their STATUS and one escalation into the console; nothing is ever hidden or disabled there.
 
+**The hub and the account lifecycle (Decision #156).** `/settings` is a hub: an in-page search over
+the registry (`searchSettings`, the same rule the lane and the modal filter with); "Needs your
+attention"; a profile completeness tracker (the `org.fn_compute_profile_setup_progress` score and ONE
+call to action to its suggested step, routed by `features/shell/core/setup-actions.ts`); and every
+section as an interactive card that opens it, listing its matching settings as links while searching.
+The attention FACTS grew three parts — `profile` (score, pending steps, next action), `billing` (saved
+cards expired or expiring this month or next — `cardExpiryCounts` — and the plan's state) and
+`security` (sign-in methods, whether another provider can be connected, and any scheduled erasure) —
+still read once per request (`attentionFactsFor`) and turned into items by the pure `attentionItems`.
+The lane, the hub's cards and the modal's tree all draw the same **dot badge** per section (shape per
+tone: a filled dot, a ring, a square), the modal reading the facts from `GET /api/settings/attention`
+through the `useAttention` hook. Account composes three new services: `AccountLifecycleBackendService`
+(the handle policy, giving up the freelancer profile, deleting the account, cancelling — all over the
+`00001060` definers in the caller's JWT, plus `sweepDue` for the scheduler), `IdentitiesBackendService`
+(GoTrue identities: the list from `auth.getUser`, provider availability from GoTrue's own
+`/auth/v1/settings` cached five minutes, a link as a PKCE `linkIdentity` whose verifier alone leaves as
+a cookie and comes back through `/api/auth/callback`, an unlink over REST refused for the email
+identity and the last sign-in method; linking needs `[auth] enable_manual_linking = true`) and
+`PlanBackendService` (the held plan or the free default, read-only). Language reads and writes the new
+`date_format` column in its own statement so an older database degrades to "follow the locale". The
+dev `accountLifecycle` axis substitutes the handle policy or the lifecycle answers.
+
 **Islands stay dumb.** The modal host and the console islands only `fetch` `/api/*` through
 `SettingsService`; every write is an existing or new thin route over a fat service. The modal's
 eleven sections are a lazily-imported module (also their stylesheet carrier), so a page that only
@@ -1735,6 +1757,15 @@ catalog (`RequiredAlerts`), never as switches. Settings → Messaging writes the
 `notification_prefs` row (receipts, typing, sound, away replies) through `POST /api/messaging/settings`;
 quiet hours and the global pause are edited only under Notifications, so one column has one editor.
 
+**Away replies are sent by the database (Decision #156).** `comms.tg_dm_auto_reply` (`AFTER INSERT ON
+comms.dm_messages`) answers a human message in a one-to-one thread with the recipient's best matching
+`comms.auto_responses` rule — keyword, named service, hiring invitation, any service inquiry, a status,
+then a first-contact greeting — at most once per rule per thread per day, inside the rule's optional
+window, marking the reply `auto_response_id` so it never answers itself or accepts a request. Statuses
+are derived (`comms.fn_auto_reply_status`): away = notifications paused, busy = in a calendar event or
+blackout, out of hours = outside published working hours, holiday = the rule's own dates. A failure is a
+`WARNING`, never the loss of the person's message.
+
 **Still to build (not in the database layer):** the `dispatch-push` / `send-email` Edge Functions and
 their provider credentials (VAPID keypair, FCM/APNs, an SMTP or email-provider block in
 `config.toml`). The outbound trigger is feature-flagged **off** with an `XXXX-XXXX` placeholder URL
@@ -1881,8 +1912,12 @@ from **one source of preference** (`org.user_preferences`) and applied at read t
   language**; `auto` falls back to the natural direction of the user's `locale`.
 - **Where it is set and painted (Decision #151):** Settings → Language & region saves it
   (`PATCH /api/user/preferences`), applies it on the device at once, and records it in the `pj.a11y`
-  cookie, from which `_app.tsx` server-renders `<html dir>` on the next request (`auto` writes no
-  attribute). See §The Settings engine.
+  cookie, from which `_app.tsx` server-renders `<html dir>` on the next request. **`auto` is resolved
+  by the viewer's locale (Decision #156):** `localeDirection` (`@projective/types/org`) reads the
+  script — an explicit script subtag wins (`-Arab`, `-Hebr`, `-Thaa` …), otherwise the language
+  (`ar`, `he`, `fa`, `ur`, `ps`, `sd`, `ug`, `yi`, `dv`, `ckb` …) — so `a11yRootAttributes` writes
+  `dir="rtl"` for a right-to-left locale and nothing for a left-to-right one, and the Language section
+  re-applies it the moment the locale changes. See §The Settings engine.
 - **Mechanism:** the resolved direction is written as the `dir` attribute on the document root; the
   UI mirrors automatically because the codebase already styles with **CSS logical properties**
   (`inline-size`, `inset-inline`, `margin-inline`, `padding-inline`, `border-inline-*`) rather than
@@ -2486,6 +2521,9 @@ STRIPE_THIN_WEBHOOK_SECRET=XXXX-XXXX
 # Bearer token (≥ 32 characters) the scheduler presents to POST /api/finance/cron/deposits; anything
 # else — including an unset secret — gets a 404, so the endpoint does not advertise that it exists.
 FINANCE_CRON_SECRET=XXXX-XXXX
+# Bearer token (≥ 32 characters) the scheduler presents to POST /api/user/cron/erasures, which runs the
+# account and freelancer-profile erasures that have come due (Decision #156); 404 otherwise.
+ACCOUNT_CRON_SECRET=XXXX-XXXX
 # Optional, development only: stripe-mock origin; ignored for live keys and under DENO_ENV=production
 # STRIPE_API_BASE=http://localhost:12111
 

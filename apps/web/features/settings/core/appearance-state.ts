@@ -1,6 +1,6 @@
 import { dsConfig, setThemePreference, themePreference, updateConfig } from "@projective/ui/system";
 import type { AppearancePreferences } from "@projective/types/org";
-import type { LayoutDirection } from "@projective/types/org";
+import { type LayoutDirection, resolveLayoutDirection } from "@projective/types/org";
 import {
 	A11Y_COOKIE,
 	A11Y_COOKIE_MAX_AGE,
@@ -108,13 +108,14 @@ export async function commitAppearance(
 // #region Direction
 /**
  * Apply a document direction on this device at once and remember it in the device copy, so the next
- * server render lays the page out the same way (`<html dir>` from the cookie). `auto` removes the
- * attribute: the document follows its language's natural direction.
+ * server render lays the page out the same way (`<html dir>` from the cookie). `auto` follows the
+ * language: a right-to-left `locale` sets `dir="rtl"`, a left-to-right one removes the attribute.
  */
-export function applyDirection(dir: LayoutDirection): void {
+export function applyDirection(dir: LayoutDirection, locale: string): void {
 	if (typeof document !== "undefined") {
-		if (dir === "auto") document.documentElement.removeAttribute("dir");
-		else document.documentElement.dir = dir;
+		const resolved = resolveLayoutDirection(dir, locale);
+		if (dir === "auto" && resolved === "ltr") document.documentElement.removeAttribute("dir");
+		else document.documentElement.dir = resolved;
 	}
 	persistOverlaysOnDevice({ dir });
 }

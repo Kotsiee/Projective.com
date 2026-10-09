@@ -205,6 +205,11 @@ CREATE TABLE comms.dm_messages (
         -- THREAD (comms.tg_guard_dm_message_reply), where a channel message stays inside its channel.
         body_delta jsonb NULL,
         reply_to_id uuid NULL,
+        -- Set only on a message comms.tg_dm_auto_reply sent for its author: the rule that fired it.
+        -- The marker that stops an auto-reply answering an auto-reply, dedupes a rule per thread per
+        -- day, and keeps an automatic message from promoting a request thread. No foreign key: a rule
+        -- the person deletes leaves its past messages marked, which is all the column is for.
+        auto_response_id uuid NULL,
         CONSTRAINT dm_messages_pkey PRIMARY KEY (id),
         CONSTRAINT dm_messages_sender_user_id_fkey FOREIGN KEY (sender_user_id) REFERENCES org.users_public (user_id),
         CONSTRAINT dm_messages_thread_id_fkey FOREIGN KEY (thread_id) REFERENCES comms.dm_threads (id),
@@ -578,10 +583,17 @@ CREATE TABLE comms.auto_responses (
     trigger text NOT NULL,
     -- Scope columns, each meaningful for exactly one trigger. The CHECK below makes every other
     -- combination unrepresentable, so a rule can never claim to match a service while also carrying
-    -- a keyword the matcher would then have to guess about.
+    -- a keyword the matcher would then have to guess about. A service or product rule with no id
+    -- answers every service request or product inquiry.
     service_id uuid,
     product_id uuid,
     keyword text,
+    -- The condition a `status` rule answers during (comms.fn_auto_reply_status): notifications paused,
+    -- in a calendar event or blackout, outside published working hours, or the rule's own dates.
+    status_condition text,
+    -- An optional window the rule is live in; a holiday rule must have both ends.
+    starts_at timestamptz,
+    ends_at timestamptz,
     -- The reply body, sent verbatim when ai_assist is false.
     message text NOT NULL,
     -- Forward-looking: hand this rule to the AI assistant instead of sending the stored body as
@@ -594,14 +606,29 @@ CREATE TABLE comms.auto_responses (
         FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE CASCADE,
     CONSTRAINT auto_responses_service_id_fkey
         FOREIGN KEY (service_id) REFERENCES marketplace.service_blueprints (id) ON DELETE CASCADE,
-    CONSTRAINT auto_responses_trigger_check CHECK (trigger IN ('any', 'service', 'product', 'keyword')),
+    CONSTRAINT auto_responses_trigger_check CHECK (
+        trigger IN ('any', 'service', 'product', 'keyword', 'status', 'project_invitation')
+    ),
+    CONSTRAINT auto_responses_status_condition_check CHECK (
+        status_condition IS NULL OR status_condition IN ('away', 'busy', 'out_of_hours', 'holiday')
+    ),
     -- One trigger, one scope column populated. Without this a keyword rule with a NULL keyword is
     -- storable and the matcher has no defined behaviour for it.
     CONSTRAINT auto_responses_scope_check CHECK (
-        (trigger = 'any'     AND service_id IS NULL     AND product_id IS NULL     AND keyword IS NULL) OR
-        (trigger = 'service' AND service_id IS NOT NULL AND product_id IS NULL     AND keyword IS NULL) OR
-        (trigger = 'product' AND product_id IS NOT NULL AND service_id IS NULL     AND keyword IS NULL) OR
-        (trigger = 'keyword' AND keyword    IS NOT NULL AND service_id IS NULL     AND product_id IS NULL)
+        (trigger IN ('any', 'project_invitation')
+            AND service_id IS NULL AND product_id IS NULL AND keyword IS NULL AND status_condition IS NULL) OR
+        (trigger = 'service' AND product_id IS NULL AND keyword IS NULL AND status_condition IS NULL) OR
+        (trigger = 'product' AND service_id IS NULL AND keyword IS NULL AND status_condition IS NULL) OR
+        (trigger = 'keyword' AND keyword IS NOT NULL
+            AND service_id IS NULL AND product_id IS NULL AND status_condition IS NULL) OR
+        (trigger = 'status' AND status_condition IS NOT NULL
+            AND service_id IS NULL AND product_id IS NULL AND keyword IS NULL)
+    ),
+    CONSTRAINT auto_responses_window_check CHECK (
+        starts_at IS NULL OR ends_at IS NULL OR ends_at > starts_at
+    ),
+    CONSTRAINT auto_responses_holiday_window_check CHECK (
+        status_condition IS DISTINCT FROM 'holiday' OR (starts_at IS NOT NULL AND ends_at IS NOT NULL)
     )
 );
 -- #endregion

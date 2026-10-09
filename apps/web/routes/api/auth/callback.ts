@@ -4,6 +4,16 @@ import { joinCompletionTarget } from "@features/auth/core/auth-routing.ts";
 import { oauthStoreCookies, readCookies, sessionSetCookies } from "@web/utils/auth-cookies.ts";
 import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts";
 
+/**
+ * A connect started from Settings → Account (`/api/user/identities/link/[provider]`) is already signed
+ * in, so a failure returns there with `?connect=failed` instead of to the sign-in page.
+ */
+function failedLinkTarget(redirectTo: string): string | null {
+	return redirectTo.startsWith("/settings/account")
+		? "/settings/account?connect=failed#connected-accounts"
+		: null;
+}
+
 /** A 303 redirect with optional `Set-Cookie`s. */
 function redirect(location: string, cookies: string[] = []): Response {
 	const res = new Response(null, { status: 303, headers: { location } });
@@ -28,7 +38,9 @@ export const handler = define.handlers({
 			ctx.url.searchParams.get("error");
 
 		if (oauthError || !code) {
-			return redirect(withRedirect("/login?notice=oauth_failed", redirectTo));
+			return redirect(
+				failedLinkTarget(redirectTo) ?? withRedirect("/login?notice=oauth_failed", redirectTo),
+			);
 		}
 
 		const result = await AuthBackendService.exchangeOAuthCode({
@@ -39,7 +51,10 @@ export const handler = define.handlers({
 		const clearVerifier = oauthStoreCookies(result.store.diff(), 0);
 
 		if (result.error || !result.session) {
-			return redirect(withRedirect("/login?notice=oauth_failed", redirectTo), clearVerifier);
+			return redirect(
+				failedLinkTarget(redirectTo) ?? withRedirect("/login?notice=oauth_failed", redirectTo),
+				clearVerifier,
+			);
 		}
 
 		const cookies = [...clearVerifier, ...sessionSetCookies(result.session)];

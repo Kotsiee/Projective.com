@@ -24,6 +24,7 @@ import { logger } from "@web/utils/logger.ts";
 import { readStored, removeStored, SessionKeys, writeStored } from "@web/utils/storage-keys.ts";
 import {
 	DEV_SEAM_EVENT,
+	type DevAccountLifecycle,
 	type DevLayoutDirection,
 	type DevMemberRole,
 	type DevMessagingRole,
@@ -60,6 +61,7 @@ export type DevProjectAccess = "auto" | ProjectAccess;
 export type DevProjectStatus = "auto" | ProjectStatus;
 /** The engagement delivery format a developer can impersonate (submissions ticket handling). */
 export type {
+	DevAccountLifecycle,
 	DevLayoutDirection,
 	DevMemberRole,
 	DevMessagingRole,
@@ -193,6 +195,13 @@ export interface DevOverrides {
 	 */
 	settingsAttention: DevSettingsAttention;
 	/**
+	 * Settings → Account's handle policy and lifecycle: the real reads, a handle inside its correction
+	 * window or locked, or a freelancer removal or account deletion scheduled. Its own axis because
+	 * those are server clocks no control can reach without really changing a handle or scheduling an
+	 * erasure (Decision #156).
+	 */
+	accountLifecycle: DevAccountLifecycle;
+	/**
 	 * The proposal allowance the popover meter, the lane disclosure and the apply modal render
 	 * (Decision #154): the real read, or a substituted status — plenty, low, paced (enforced or soft),
 	 * the week spent, or a one-member team. Its own axis because tokens, the drip clock and a roster are
@@ -243,6 +252,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	profileSetup: "auto",
 	walletAurora: "auto",
 	settingsAttention: "auto",
+	accountLifecycle: "auto",
 	proposalAllowance: "auto",
 	verificationStamp: "auto",
 	trustAdornments: "auto",
@@ -391,6 +401,15 @@ export const DEV_SETTINGS_ATTENTIONS: ReadonlyArray<DevOption<DevSettingsAttenti
 	{ value: "all", label: "Everything" },
 ];
 
+/** Account-lifecycle options in display order (Settings → Account). */
+export const DEV_ACCOUNT_LIFECYCLES: ReadonlyArray<DevOption<DevAccountLifecycle>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "handle-window", label: "Handle: 1 left" },
+	{ value: "handle-locked", label: "Handle locked" },
+	{ value: "removal-scheduled", label: "Removal due" },
+	{ value: "deletion-scheduled", label: "Deletion due" },
+];
+
 /**
  * Proposal-allowance options in display order. `Paced` is the value worth having: an enforced empty
  * buffer — the disabled submit and the live countdown, which no seeded persona sits at.
@@ -498,6 +517,9 @@ function reflect(next: DevOverrides): void {
 		if (next.settingsAttention !== "auto") {
 			root.dataset.devSettingsAttention = next.settingsAttention;
 		} else delete root.dataset.devSettingsAttention;
+		if (next.accountLifecycle !== "auto") {
+			root.dataset.devAccountLifecycle = next.accountLifecycle;
+		} else delete root.dataset.devAccountLifecycle;
 		if (next.proposalAllowance !== "auto") {
 			root.dataset.devProposalAllowance = next.proposalAllowance;
 		} else delete root.dataset.devProposalAllowance;
@@ -535,6 +557,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devProfileSetup;
 		delete root.dataset.devWalletAurora;
 		delete root.dataset.devSettingsAttention;
+		delete root.dataset.devAccountLifecycle;
 		delete root.dataset.devProposalAllowance;
 		delete root.dataset.devVerificationStamp;
 		delete root.dataset.devTrustAdornments;

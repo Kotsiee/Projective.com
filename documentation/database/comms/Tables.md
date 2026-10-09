@@ -260,6 +260,28 @@ Indexes (`00004006`): `idx_dm_participants_folder (user_id, inbox_folder)` — t
 `idx_dm_participants_thread_user (thread_id, user_id)` — the per-message participant lookups the
 two `BEFORE INSERT` triggers on `dm_messages` make.
 
+### `comms.auto_responses`
+
+A person's away-reply rules (Settings → Messaging; Decisions #151, #156). Own rows only
+([Policies.md](Policies.md)); read and replace-set by `live-settings.ts` / `live-settings-write.ts`; sent
+by `comms.tg_dm_auto_reply` ([Functions.md](Functions.md#auto-replies-00001300--00001840-decision-156))
+while `comms.notification_prefs.auto_responses_enabled` is on. Zod: `AutoResponseRuleSchema`.
+
+| Column             | Type        | Notes                                                                                                                                   |
+| :----------------- | :---------- | :-------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`               | uuid        | PK.                                                                                                                                     |
+| `user_id`          | uuid        | FK → `org.users_public.user_id` `ON DELETE CASCADE`.                                                                                     |
+| `enabled`          | boolean     | Per-rule switch (the master is `notification_prefs.auto_responses_enabled`).                                                            |
+| `name` · `message` | text        | The rule's label, and the reply sent verbatim.                                                                                           |
+| `trigger`          | text        | `any` (first contact) · `keyword` · `service` · `product` · `project_invitation` · `status` (`auto_responses_trigger_check`).          |
+| `service_id`       | uuid        | FK → `marketplace.service_blueprints`; `service` only; `NULL` = every service inquiry.                                                |
+| `product_id`       | uuid        | No FK; `product` only; `NULL` = every product inquiry. Matches nothing yet — inquiries carry no product.                                |
+| `keyword`          | text        | Required for `keyword`, otherwise `NULL`.                                                                                                |
+| `status_condition` | text        | `away` · `busy` · `out_of_hours` · `holiday`; required for `status`, otherwise `NULL`. `auto_responses_scope_check` pins every column to its trigger. |
+| `starts_at` · `ends_at` | timestamptz | Optional live window (`auto_responses_window_check`: ends after it starts); a `holiday` rule needs both (`auto_responses_holiday_window_check`). |
+| `ai_assist`        | boolean     | The plug-in point for a future drafter; inert.                                                                                          |
+| `created_at` · `updated_at` | timestamptz |                                                                                                                                  |
+
 ### `comms.dm_messages`
 
 The individual message entries for DMs.
@@ -276,6 +298,7 @@ The individual message entries for DMs.
 | `is_audio`        | boolean | The message is a voice memo. Advisory, like `has_attachments`. |
 | `pii_masked`      | boolean | Set by `comms.tg_mask_dm_message_pii` when the body was masked. Semantics as on [`comms.project_messages`](#commsproject_messages). |
 | `pii_categories`  | text[]  | Which contact categories were masked (`email` · `phone` · `payment_link` · `handle`). |
+| `auto_response_id` | uuid  | **Decision #156.** Set only on a message `comms.tg_dm_auto_reply` sent for its author: the rule that fired it. Stops an auto-reply answering an auto-reply, dedupes a rule per thread per day and keeps an automatic message from accepting a request. No FK (a deleted rule leaves its past messages marked). A client write may not set it (`trg_dm_messages_derived` → `security.fn_guard_derived_columns`). |
 
 Indexes (`00004006`): `idx_dm_messages_thread_recent (thread_id, created_at DESC)` — the latest page
 of a thread and its preview row; `idx_dm_messages_reply_to (reply_to_id) WHERE reply_to_id IS NOT

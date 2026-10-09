@@ -53,6 +53,23 @@ export interface SelectProps extends BaseFieldProps {
 	 * only that is given, so the common case — the same row shape in both places — is one prop.
 	 */
 	valueTemplate?: (opt: Option) => VNode | string;
+	/**
+	 * How wide the open panel is.
+	 *
+	 * - `trigger` (default) — the trigger's width, never narrower than `--fld-panel-minw`.
+	 * - `auto` — as wide as its widest row needs, never narrower than the trigger, capped at the
+	 *   viewport. For a compact trigger over rich rows (a flag, a code and a country name).
+	 * - any CSS length (`"20rem"`, `"min(24rem, 90vw)"`) — that width, capped at the viewport.
+	 *
+	 * The positioner measures the rendered panel, so a panel wider than its trigger still clamps
+	 * inside the viewport rather than running off the inline end.
+	 */
+	panelWidth?: "trigger" | "auto" | (string & Record<never, never>);
+	/**
+	 * Extra class(es) on the PANEL. The panel is portalled into `document.body`, so a rule rooted at
+	 * the field's own wrapper cannot reach it — this is the hook a caller styles it through.
+	 */
+	panelClass?: string;
 	class?: string;
 }
 // #endregion
@@ -74,7 +91,9 @@ function toRenderGroups(
 	query: string,
 ): RenderGroup[] {
 	const q = query.trim().toLowerCase();
-	const keep = (o: Option) => q === "" || o.label.toLowerCase().includes(q);
+	const keep = (o: Option) =>
+		q === "" || o.label.toLowerCase().includes(q) ||
+		(o.description?.toLowerCase().includes(q) ?? false);
 
 	let groups: RenderGroup[];
 	if (isGroupArray(options)) {
@@ -133,6 +152,8 @@ export function Select(props: SelectProps): JSX.Element {
 		virtualItemSize = 40,
 		optionTemplate,
 		valueTemplate = optionTemplate,
+		panelWidth = "trigger",
+		panelClass,
 		id,
 		name,
 		disabled,
@@ -445,9 +466,17 @@ export function Select(props: SelectProps): JSX.Element {
 				class={cx(
 					"ui-select__option-label",
 					optionTemplate && "ui-select__option-label--template",
+					!optionTemplate && opt.description && "ui-select__option-label--stacked",
 				)}
 			>
-				{optionTemplate ? optionTemplate(opt) : opt.label}
+				{optionTemplate ? optionTemplate(opt) : opt.description
+					? (
+						<>
+							<span class="ui-select__option-title">{opt.label}</span>
+							<span class="ui-select__option-desc">{opt.description}</span>
+						</>
+					)
+					: opt.label}
 			</span>
 		</li>
 	);
@@ -510,11 +539,17 @@ export function Select(props: SelectProps): JSX.Element {
 						class={cx(
 							"ui-select__panel",
 							floating?.placement.startsWith("top") && "ui-select__panel--top",
+							panelWidth === "auto" && "ui-select__panel--auto",
+							panelWidth !== "auto" && panelWidth !== "trigger" && "ui-select__panel--sized",
+							panelClass,
 						)}
 						style={styleVars({
 							"--float-top": floating ? `${floating.top}px` : undefined,
 							"--float-left": floating ? `${floating.left}px` : undefined,
 							"--float-width": floating ? `${floating.width}px` : undefined,
+							"--select-panel-w": panelWidth !== "auto" && panelWidth !== "trigger"
+								? panelWidth
+								: undefined,
 							// The panel caps itself to the space actually left on the resolved side, so a long
 							// list scrolls internally instead of running off the bottom of the screen. `null`
 							// means that side is deliberately unbounded, which is not a length — emit nothing

@@ -14,11 +14,31 @@ import { z } from "zod";
 
 // #region Auto-responses
 /**
- * What triggers an auto-response. `any` fires on any first incoming message; `service`/`product` fire
- * only when the inbound conversation is about a specific offering; `keyword` matches inbound text.
+ * What triggers an auto-response (`comms.tg_dm_auto_reply`, most specific first):
+ * - `keyword` — the inbound text contains the keyword.
+ * - `service` — a service request; one named service, or any when `serviceId` is null.
+ * - `project_invitation` — a hiring invitation's opening message.
+ * - `product` — a product inquiry (stored; inquiries do not carry their product yet, so it waits).
+ * - `status` — while the person is in {@link AutoResponseStatus}.
+ * - `any` — the first message of a conversation the person has not replied in.
  */
-export const AutoResponseTrigger = z.enum(["any", "service", "product", "keyword"]);
+export const AutoResponseTrigger = z.enum([
+	"any",
+	"service",
+	"product",
+	"keyword",
+	"status",
+	"project_invitation",
+]);
 export type AutoResponseTrigger = z.infer<typeof AutoResponseTrigger>;
+
+/**
+ * The status a `status` rule answers during — each DERIVED, never chosen (Decision #149(C)): `away`
+ * while notifications are paused, `busy` during a calendar event or blackout, `out_of_hours`
+ * outside published working hours, `holiday` between the rule's own dates.
+ */
+export const AutoResponseStatus = z.enum(["away", "busy", "out_of_hours", "holiday"]);
+export type AutoResponseStatus = z.infer<typeof AutoResponseStatus>;
 
 /** One configured automated response. */
 export const AutoResponseRuleSchema = z.object({
@@ -36,6 +56,12 @@ export const AutoResponseRuleSchema = z.object({
 	productName: z.string().max(120).nullable(),
 	/** The inbound keyword this rule matches (`trigger === "keyword"`); null otherwise. */
 	keyword: z.string().max(80).nullable(),
+	/** The status this rule answers during (`trigger === "status"`); null otherwise. */
+	statusCondition: AutoResponseStatus.nullable(),
+	/** When the rule goes live (ISO); null = already. Required, with {@link endsAt}, for a holiday. */
+	startsAt: z.string().max(40).nullable(),
+	/** When the rule stops (ISO, after {@link startsAt}); null = until switched off. */
+	endsAt: z.string().max(40).nullable(),
 	/** The message body sent automatically. */
 	message: z.string().min(1).max(2000),
 	/**

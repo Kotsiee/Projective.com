@@ -14,6 +14,12 @@ import { MessagingBackendService } from "@server/services/messaging/MessagingBac
 import { ProfileBackendService } from "@server/services/profile/ProfileBackendService.ts";
 import { PaymentBackendService } from "@server/services/finance/PaymentBackendService.ts";
 import { IntegrationsBackendService } from "@server/services/integrations/IntegrationsBackendService.ts";
+import { AccountLifecycleBackendService } from "@server/services/user/AccountLifecycleBackendService.ts";
+import { IdentitiesBackendService } from "@server/services/auth/IdentitiesBackendService.ts";
+import { PlanBackendService } from "@server/services/finance/PlanBackendService.ts";
+import { CardsBackendService } from "@server/services/finance/CardsBackendService.ts";
+import { pendingSetupSteps } from "@projective/types/org";
+import { cardExpiryCounts } from "./attention-model.ts";
 import { defaultMessagingRole } from "@features/messaging/core/conversation-model.ts";
 import { DEFAULT_MESSAGING_SETTINGS } from "@features/messaging/core/messaging-defaults.ts";
 import { resolveConnections } from "@features/files/core/integrations-ssr.ts";
@@ -60,14 +66,20 @@ async function readSection(
 	const { actor, context } = input;
 	switch (key) {
 		case "account": {
-			const [identity, emails] = await Promise.all([
+			const [identity, emails, policy, lifecycle, connected] = await Promise.all([
 				SettingsBackendService.identity(actor),
 				EmailsBackendService.list(actor),
+				AccountLifecycleBackendService.handlePolicy(actor),
+				AccountLifecycleBackendService.lifecycle(actor),
+				IdentitiesBackendService.list(actor),
 			]);
 			const data: SettingsSectionData = {
 				section: "account",
 				identity: identity.data?.identity ?? null,
 				emails: emails.ok && emails.data ? emails.data.emails : null,
+				handlePolicy: policy.ok && policy.data ? policy.data.policy : null,
+				lifecycle: lifecycle.ok && lifecycle.data ? lifecycle.data.lifecycle : null,
+				connected: connected.ok && connected.data ? connected.data : null,
 			};
 			const error = !emails.ok
 				? emails.message ?? "Your email addresses couldn't be loaded."
@@ -139,8 +151,13 @@ async function readSection(
 				error: availability ? null : res?.message ?? "Your schedule couldn't be loaded just now.",
 			};
 		}
-		case "billing":
-			return { data: { section: "billing" }, error: null };
+		case "billing": {
+			const res = await PlanBackendService.current(actor);
+			return {
+				data: { section: "billing", plan: res.ok && res.data ? res.data.plan : null },
+				error: null,
+			};
+		}
 		case "verification": {
 			const res = await PaymentBackendService.verificationStatus(actor);
 			return {
@@ -159,7 +176,14 @@ async function readSection(
 function emptySection(key: SettingsSectionKey, input: SettingsReadInput): SettingsSectionData {
 	switch (key) {
 		case "account":
-			return { section: "account", identity: null, emails: null };
+			return {
+				section: "account",
+				identity: null,
+				emails: null,
+				handlePolicy: null,
+				lifecycle: null,
+				connected: null,
+			};
 		case "profile":
 			return { section: "profile", handle: null, visibility: null, settings: null };
 		case "workspaces":
@@ -171,6 +195,7 @@ function emptySection(key: SettingsSectionKey, input: SettingsReadInput): Settin
 					displayCurrency: input.context.displayCurrency,
 					locale: input.context.locale,
 					layoutDirection: "auto",
+					dateFormat: input.context.dateFormat ?? null,
 				},
 			};
 		case "appearance":
@@ -182,7 +207,7 @@ function emptySection(key: SettingsSectionKey, input: SettingsReadInput): Settin
 		case "scheduling":
 			return { section: "scheduling", handle: null, availability: null };
 		case "billing":
-			return { section: "billing" };
+			return { section: "billing", plan: null };
 		case "verification":
 			return { section: "verification", status: null };
 		case "integrations":
@@ -230,12 +255,31 @@ export function attentionFactsFor(
 }
 
 async function readAttentionFacts(actor: ReadActor): Promise<SettingsAttentionFacts> {
-	const [verification, connections, emails] = await Promise.all([
+	const [
+		verification,
+		connections,
+		emails,
+		progress,
+		handle,
+		cards,
+		plan,
+		identities,
+		lifecycle,
+	] = await Promise.all([
 		PaymentBackendService.verificationStatus(actor).catch(() => null),
 		IntegrationsBackendService.connections(actor).catch(() => null),
 		EmailsBackendService.list(actor).catch(() => null),
+		UserBackendService.getSetupProgress(actor).catch(() => null),
+		personHandle(actor).catch(() => null),
+		CardsBackendService.list({}, actor).catch(() => null),
+		PlanBackendService.current(actor).catch(() => null),
+		IdentitiesBackendService.list(actor).catch(() => null),
+		AccountLifecycleBackendService.lifecycle(actor).catch(() => null),
 	]);
 	const v = verification?.ok && verification.data ? verification.data : null;
+	const setup = progress?.ok && progress.data ? progress.data : null;
+	const accounts = identities?.ok && identities.data ? identities.data : null;
+	const scheduled = lifecycle?.ok && lifecycle.data ? lifecycle.data.lifecycle : null;
 	return {
 		verification: v
 			? {
@@ -258,6 +302,32 @@ async function readAttentionFacts(actor: ReadActor): Promise<SettingsAttentionFa
 			: null,
 		unverifiedEmails: emails?.ok && emails.data
 			? emails.data.emails.filter((e) => !e.verifiedAt).length
+			: null,
+		profile: setup && handle
+			? {
+				handle,
+				score: setup.score,
+				pendingSteps: pendingSetupSteps(setup).length,
+				nextAction: setup.nextSuggestedAction,
+			}
+			: null,
+		billing: cards?.ok && cards.data
+			? {
+				...cardExpiryCounts(cards.data.cards, new Date()),
+				subscriptionState: plan?.ok && plan.data?.plan ? plan.data.plan.state : null,
+			}
+			: null,
+		security: accounts || scheduled
+			? {
+				signInMethods: accounts?.identities.length ?? 0,
+				canAddSignIn: accounts
+					? accounts.available.some((provider) =>
+						!accounts.identities.some((identity) => identity.provider === provider)
+					)
+					: false,
+				accountDeletionAt: scheduled?.accountDeletion?.scheduledFor ?? null,
+				freelancerRemovalAt: scheduled?.freelancerRemoval?.scheduledFor ?? null,
+			}
 			: null,
 	};
 }

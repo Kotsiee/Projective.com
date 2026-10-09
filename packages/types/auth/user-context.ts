@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DEFAULT_LOCALE, PLATFORM_BASE_CURRENCY, toDisplayCurrency } from "../finance/fx.ts";
+import { DateFormat } from "../org/preferences.ts";
 
 /**
  * auth/user-context — the Zod SSOT for the **User Context Hydration** shape.
@@ -92,6 +93,11 @@ export const UserContextSchema = z.object({
 	displayCurrency: z.string().min(3).max(3),
 	/** The BCP-47 locale (`org.user_preferences.locale`) `Intl` formats dates and money with. */
 	locale: z.string().max(20),
+	/**
+	 * `org.user_preferences.date_format` — an explicit numeric date order. Absent or `null` follows
+	 * {@link locale}; only a value the column allows is ever carried.
+	 */
+	dateFormat: DateFormat.nullable().optional(),
 });
 export type UserContext = z.infer<typeof UserContextSchema>;
 // #endregion
@@ -146,6 +152,8 @@ export interface ActiveContextClaim {
 	displayCurrency?: string;
 	/** `org.user_preferences.locale` — the BCP-47 locale `Intl` formats with. */
 	locale?: string;
+	/** `org.user_preferences.date_format` — `dmy` · `mdy` · `ymd`, or `null` to follow the locale. */
+	dateFormat?: string | null;
 }
 // #endregion
 
@@ -280,6 +288,7 @@ export function resolveUserContext(claims: AccessTokenClaims | null | undefined)
 	// failure that would render an unconverted amount under the wrong symbol.
 	const displayCurrency = toDisplayCurrency(str(active.displayCurrency));
 	const locale = str(active.locale) ?? str(user.locale) ?? DEFAULT_LOCALE;
+	const dateFormat = DateFormat.safeParse(active.dateFormat).data ?? null;
 
 	return {
 		contextType,
@@ -292,6 +301,7 @@ export function resolveUserContext(claims: AccessTokenClaims | null | undefined)
 		userId,
 		displayCurrency,
 		locale,
+		dateFormat,
 	};
 }
 // #endregion

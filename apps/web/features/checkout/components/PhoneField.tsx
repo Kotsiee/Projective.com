@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { type Signal, useSignal, useSignalEffect } from "@preact/signals";
 import { InputText, Select } from "@projective/ui/fields";
+import { Flag } from "@projective/ui/display";
 import { countryCodeOf } from "@projective/types/finance";
 import {
 	type DetailsDraft,
@@ -13,7 +14,7 @@ import { type DetailsFieldSpan, DetailsLabel, DetailsNote } from "./AddressField
 
 /**
  * PhoneField — a country dial-code prefix joined to a national number, rendering as one control
- * (`🇬🇧 +44 | 12456789`) while remaining two real, separately-operable controls.
+ * (`[flag] +44 | 12456789`) while remaining two real, separately-operable controls.
  *
  * ## The list is a convenience, not a directory
  *
@@ -44,10 +45,8 @@ import { type DetailsFieldSpan, DetailsLabel, DetailsNote } from "./AddressField
 // #region Dial codes
 /** One selectable dialling country. */
 export interface DialCode {
-	/** ISO 3166-1 alpha-2. The option VALUE, so `+1` can be two distinct choices. */
+	/** ISO 3166-1 alpha-2. The option VALUE, so `+1` can be two distinct choices; also its flag. */
 	iso: string;
-	/** Decorative only — never the accessible name. */
-	flag: string;
 	/** E.164 country calling code, with its leading `+`. */
 	dial: string;
 	/** The country name. This, with {@link dial}, is what the option actually means. */
@@ -61,18 +60,18 @@ export interface DialCode {
  * {@link splitPhone} resolves that tie by list order, so a stored `+1` number reads back as US.
  */
 export const DIAL_CODES: readonly DialCode[] = [
-	{ iso: "GB", flag: "🇬🇧", dial: "+44", name: "United Kingdom" },
-	{ iso: "IE", flag: "🇮🇪", dial: "+353", name: "Ireland" },
-	{ iso: "US", flag: "🇺🇸", dial: "+1", name: "United States" },
-	{ iso: "CA", flag: "🇨🇦", dial: "+1", name: "Canada" },
-	{ iso: "AU", flag: "🇦🇺", dial: "+61", name: "Australia" },
-	{ iso: "NZ", flag: "🇳🇿", dial: "+64", name: "New Zealand" },
-	{ iso: "DE", flag: "🇩🇪", dial: "+49", name: "Germany" },
-	{ iso: "FR", flag: "🇫🇷", dial: "+33", name: "France" },
-	{ iso: "ES", flag: "🇪🇸", dial: "+34", name: "Spain" },
-	{ iso: "NL", flag: "🇳🇱", dial: "+31", name: "Netherlands" },
-	{ iso: "IN", flag: "🇮🇳", dial: "+91", name: "India" },
-	{ iso: "AE", flag: "🇦🇪", dial: "+971", name: "United Arab Emirates" },
+	{ iso: "GB", dial: "+44", name: "United Kingdom" },
+	{ iso: "IE", dial: "+353", name: "Ireland" },
+	{ iso: "US", dial: "+1", name: "United States" },
+	{ iso: "CA", dial: "+1", name: "Canada" },
+	{ iso: "AU", dial: "+61", name: "Australia" },
+	{ iso: "NZ", dial: "+64", name: "New Zealand" },
+	{ iso: "DE", dial: "+49", name: "Germany" },
+	{ iso: "FR", dial: "+33", name: "France" },
+	{ iso: "ES", dial: "+34", name: "Spain" },
+	{ iso: "NL", dial: "+31", name: "Netherlands" },
+	{ iso: "IN", dial: "+91", name: "India" },
+	{ iso: "AE", dial: "+971", name: "United Arab Emirates" },
 ];
 
 /** The prefix used when the address names no country this list knows. */
@@ -179,7 +178,7 @@ function dialRow(iso: string, compact: boolean): JSX.Element {
 	const entry = dialCodeOf(iso);
 	return (
 		<span class="ckod-dial">
-			<span class="ckod-dial__flag" aria-hidden="true">{entry.flag}</span>
+			<Flag code={entry.iso} size="sm" class="ckod-dial__flag" />
 			<span class="ckod-dial__code">{entry.dial}</span>
 			{compact ? null : <span class="ckod-dial__name">{entry.name}</span>}
 		</span>

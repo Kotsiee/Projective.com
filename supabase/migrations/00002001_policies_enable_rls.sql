@@ -93,6 +93,11 @@ ALTER TABLE org.user_emails ENABLE ROW LEVEL SECURITY;
 -- Definer-only (00001050): RLS on with NO policy, so no client role reads or writes a row.
 ALTER TABLE org.email_verification_tokens ENABLE ROW LEVEL SECURITY;
 
+-- Read-own, definer-written (00001060).
+ALTER TABLE org.handle_changes ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE org.deletion_requests ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE org.user_skills ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE org.users_public ENABLE ROW LEVEL SECURITY;

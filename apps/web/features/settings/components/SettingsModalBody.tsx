@@ -10,6 +10,7 @@ import type { SettingsSectionKey } from "@projective/types/settings";
 import { isEditableTarget, isFocusSearchShortcut } from "@features/shell/core/shortcuts.ts";
 import { sectionMeta } from "../core/settings-registry.ts";
 import { type SettingsLocation, SettingsNavigator } from "./SettingsNavigator.tsx";
+import { useAttention } from "../hooks/useAttention.ts";
 import { SettingsSectionView } from "./SettingsSectionView.tsx";
 
 // #region Stylesheet carrier
@@ -87,6 +88,7 @@ export function SettingsModalHeader(
 
 export default function SettingsModalBody(props: SettingsModalBodyProps): JSX.Element {
 	const query = useSignal("");
+	const attention = useAttention(null, props.context.locale);
 	/** Which pane the narrow (drill-down) layout shows. */
 	const pane = useSignal<"nav" | "section">("section");
 	const contentRef = useRef<HTMLDivElement>(null);
@@ -131,6 +133,7 @@ export default function SettingsModalBody(props: SettingsModalBodyProps): JSX.El
 							context={props.context}
 							selected={props.location}
 							query={query}
+							marks={attention.marks}
 							searchRef={props.searchRef}
 							onSelect={navigate}
 						/>

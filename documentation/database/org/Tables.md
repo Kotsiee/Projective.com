@@ -148,6 +148,41 @@ role reads or writes a row. **The raw token is never stored.**
 hash and returns the raw value once, for the mailer; `org.confirm_user_email` hashes what the link
 carries and looks that up ([security/Functions.md](../security/Functions.md)).
 
+### `org.handle_changes`
+
+Every change of a person's `@handle` (Decision #156). **Read-own, definer-written:** one SELECT policy
+(own row or admin), `INSERT`/`UPDATE`/`DELETE` revoked from the client roles; the only writer is
+`org.change_username` ([Functions.md](Functions.md#-account-lifecycle-00001060)). The history is both
+the change-policy clock and the 90-day **hold** on a released handle (`org.fn_handle_taken`). Zod:
+`packages/types/org/account-lifecycle.ts`.
+
+| Column       | Type        | Notes                                                                                                   |
+| :----------- | :---------- | :------------------------------------------------------------------------------------------------------ |
+| `id`         | uuid        | PK.                                                                                                     |
+| `user_id`    | uuid        | FK → `org.users_public.user_id` `ON DELETE CASCADE`.                                                     |
+| `old_handle` | text        | The handle given up. Held for its previous owner for 90 days (`idx_handle_changes_old_handle`).         |
+| `new_handle` | text        | `handle_changes_distinct_check`: differs from `old_handle` case-insensitively.                          |
+| `changed_at` | timestamptz | `NOT NULL DEFAULT now()`. The policy reads a person's latest two (`idx_handle_changes_user_changed`).   |
+
+### `org.deletion_requests`
+
+A scheduled removal (Decision #156): the freelancer profile given up (`freelancer_profile`, erased after
+90 days) or the whole account (`account`, after 30). Lifecycle `scheduled → cancelled | completed`
+(`PRODUCT_MANAGEMENT.md` §3.5); **nothing is deleted** — a completed row is the record that the erasure
+ran. Read-own like `org.handle_changes`; written only by the 00001060 definers.
+
+| Column          | Type        | Notes                                                                                                                                         |
+| :-------------- | :---------- | :-------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`            | uuid        | PK.                                                                                                                                           |
+| `user_id`       | uuid        | FK → `org.users_public.user_id` `ON DELETE CASCADE`.                                                                                           |
+| `scope`         | text        | `CHECK IN ('freelancer_profile','account')`. At most one `scheduled` per person per scope (`uq_deletion_requests_one_open`, partial).          |
+| `status`        | text        | `scheduled` (default) · `cancelled` · `completed`. `deletion_requests_terminal_check` pins each status to exactly its own timestamp.          |
+| `requested_at`  | timestamptz | `NOT NULL DEFAULT now()`.                                                                                                                       |
+| `scheduled_for` | timestamptz | When the erasure is due; `> requested_at`. The sweep reads the due ones (`idx_deletion_requests_due`, partial).                                |
+| `cancelled_at`  | timestamptz | Set by a cancel (or by becoming a freelancer again inside the window).                                                                         |
+| `completed_at`  | timestamptz | Set by the sweep once the erasure ran.                                                                                                         |
+| `metadata`      | jsonb       | Object. What scheduling paused (`paused_listings`, `unpublished_services`, `prior_visibility`) so a cancel restores exactly that; a deferred sweep adds `deferred_at` / `deferred_by`. |
+
 ---
 
 ## 🧑‍🤝‍🧑 Organization & Teams
@@ -445,12 +480,13 @@ Per-user preferences (one row per user, seeded by the `org.seed_user_preferences
 | `notification_push`          | boolean                | Default `false`.                                                                                                                                                                                                                                                                                               |
 | `locale`                     | text                   | BCP-47 locale (language + region), default `en-GB`. **This is the language source.**                                                                                                                                                                                                                           |
 | `preferred_display_currency` | char(3)                | **Additive (`20260723090000`).** Presentational display-conversion target (ISO-4217), `DEFAULT 'GBP'`, `CHECK ~ '^[A-Z]{3}$'`; `NULL` = follow origin (an explicitly cleared preference, distinct from the default). Never affects stored/settled amounts. Stamped into the JWT by `custom_access_token_hook`. |
-| `layout_direction`           | `org.layout_direction` | **Additive.** `auto` (default) / `ltr` / `rtl`. Chosen INDEPENDENT of language; `auto` → the locale's natural direction. See `DESIGN_SYSTEM.md` §A.6.                                                                                                                                                          |
+| `layout_direction`           | `org.layout_direction` | **Additive.** `auto` (default) / `ltr` / `rtl`. Chosen INDEPENDENT of language; `auto` → the locale's natural direction, resolved from its script (`localeDirection`, Decision #156: `ar` · `he` · `fa` · `ur` … and any `-Arab` · `-Hebr` subtag lay out right to left). See `DESIGN_SYSTEM.md` §A.6.                                                                                       |
 | `ui_settings`                | jsonb                  | Misc client UI state.                                                                                                                                                                                                                                                                                          |
 | `contrast`                   | text                   | **2026-10-06.** `NOT NULL DEFAULT 'standard'`, `CHECK IN ('standard','high')`. `high` forces the AAA overlay.                                                                                                                                                                                                 |
 | `font`                       | text                   | **2026-10-06.** `NOT NULL DEFAULT 'sans'`, `CHECK IN ('sans','dyslexic')`. `dyslexic` remaps every family to OpenDyslexic (`DESIGN_SYSTEM.md` §A.5).                                                                                                                                                         |
 | `cvd`                        | text                   | **2026-10-06.** `NOT NULL DEFAULT 'none'`, `CHECK IN ('none','protan','deutan','tritan')`. The colour-vision shift; mirrors `@projective/ui/system` `CvdMode`.                                                                                                                                                 |
 | `motion`                     | text                   | **2026-10-06.** `NOT NULL DEFAULT 'standard'`, `CHECK IN ('standard','reduced')`. `reduced` forces reduced motion on every device.                                                                                                                                                                            |
+| `date_format`                | text                   | **Decision #156.** Nullable, `CHECK IN ('dmy','mdy','ymd')` (`user_preferences_date_format_check`). `NULL` follows the locale's own numeric date order; a value is an explicit override that survives a language change. Stamped into the JWT (`active_context.dateFormat`) by `custom_access_token_hook`.             |
 
 > **The appearance overlays (`theme` · `contrast` · `font` · `cvd` · `motion`, 2026-10-06).**
 > `standard` / `sans` / `none` mean **no overlay**, not "force the default": the reader's OS media

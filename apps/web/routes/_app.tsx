@@ -83,7 +83,7 @@ export default define.page(function App({ Component, state }) {
 	// The accessibility overlays the viewer saved (the `pj.a11y` cookie, Decision #150) — written onto
 	// <html> here so high contrast, OpenDyslexic, a CVD shift or reduced motion are in force for the
 	// very first paint. Only overlays that are ON become attributes; the OS media queries cover the rest.
-	const a11y = a11yRootAttributes(state.a11y ?? DEFAULT_A11Y);
+	const a11y = a11yRootAttributes(state.a11y ?? DEFAULT_A11Y, currency?.locale);
 	return (
 		<html
 			lang="en"

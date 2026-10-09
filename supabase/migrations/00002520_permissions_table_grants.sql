@@ -44,6 +44,15 @@ REVOKE INSERT, UPDATE, DELETE ON TABLE org.user_emails FROM anon, authenticated;
 REVOKE ALL ON TABLE org.email_verification_tokens FROM anon, authenticated;
 -- #endregion
 
+-- #region org: handle history + scheduled removals (00001060)
+-- Read-own through their policies; written only by the 00001060 definers.
+REVOKE INSERT, UPDATE, DELETE ON TABLE org.handle_changes FROM anon, authenticated;
+
+REVOKE INSERT, UPDATE, DELETE ON TABLE org.deletion_requests FROM anon, authenticated;
+
+REVOKE ALL ON TABLE org.handle_changes, org.deletion_requests FROM anon;
+-- #endregion
+
 -- #region Finance: escrow visibility (writes are SECURITY DEFINER only)
 GRANT SELECT ON TABLE finance.escrows TO authenticated;
 

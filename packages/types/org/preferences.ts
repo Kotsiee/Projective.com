@@ -16,6 +16,59 @@ import { DEFAULT_LOCALE, PLATFORM_BASE_CURRENCY } from "../finance/fx.ts";
 export const LayoutDirection = z.enum(["ltr", "rtl", "auto"]);
 export type LayoutDirection = z.infer<typeof LayoutDirection>;
 
+/**
+ * `org.user_preferences.date_format` — an explicit numeric date order. `null` (the column's
+ * default) follows the locale, so a language change re-orders dates unless the person chose one.
+ */
+export const DateFormat = z.enum(["dmy", "mdy", "ymd"]);
+export type DateFormat = z.infer<typeof DateFormat>;
+
+// #region Direction
+/** Languages written right to left (ISO 639 primary subtags). */
+const RTL_LANGUAGES: ReadonlySet<string> = new Set([
+	"ar",
+	"arc",
+	"ckb",
+	"dv",
+	"fa",
+	"he",
+	"iw",
+	"ji",
+	"ps",
+	"sd",
+	"syr",
+	"ug",
+	"ur",
+	"yi",
+]);
+
+/** Scripts written right to left (ISO 15924, lower-cased), for an explicit `-Arab`-style subtag. */
+const RTL_SCRIPTS: ReadonlySet<string> = new Set([
+	"adlm",
+	"arab",
+	"hebr",
+	"mand",
+	"nkoo",
+	"rohg",
+	"samr",
+	"syrc",
+	"thaa",
+]);
+
+/** The natural direction of a BCP-47 locale's script. An explicit script subtag wins. */
+export function localeDirection(locale: string): "ltr" | "rtl" {
+	const parts = locale.trim().toLowerCase().replace(/_/g, "-").split("-").filter(Boolean);
+	const script = parts.slice(1).find((part) => part.length === 4);
+	if (script) return RTL_SCRIPTS.has(script) ? "rtl" : "ltr";
+	return RTL_LANGUAGES.has(parts[0] ?? "") ? "rtl" : "ltr";
+}
+
+/** The direction to lay a document out in: an explicit choice, or `auto` resolved by the locale. */
+export function resolveLayoutDirection(dir: LayoutDirection, locale: string): "ltr" | "rtl" {
+	return dir === "auto" ? localeDirection(locale) : dir;
+}
+// #endregion
+
 // #region Appearance & accessibility
 /**
  * `org.user_preferences.theme` — the colour-scheme CHOICE. `system` follows `prefers-color-scheme`
@@ -98,6 +151,8 @@ export const UserPreferencesSchema = z.object({
 	font: FontPreference,
 	cvd: CvdPreference,
 	motion: MotionPreference,
+	/** `null` = follow the locale's date order. */
+	dateFormat: DateFormat.nullable(),
 });
 export type UserPreferences = z.infer<typeof UserPreferencesSchema>;
 
@@ -120,6 +175,8 @@ export const UserPreferencesUpdateSchema = z.object({
 	font: FontPreference.optional(),
 	cvd: CvdPreference.optional(),
 	motion: MotionPreference.optional(),
+	/** `null` returns dates to the locale's own order. */
+	dateFormat: DateFormat.nullable().optional(),
 }).strict();
 export type UserPreferencesUpdate = z.infer<typeof UserPreferencesUpdateSchema>;
 
@@ -162,5 +219,7 @@ export const DisplayPreferencesSchema = z.object({
 	locale: z.string().max(20),
 	/** The resolved document direction (`auto` already collapsed by the caller when it needs to be). */
 	layoutDirection: LayoutDirection,
+	/** The explicit date order, or `null` to follow {@link locale}. */
+	dateFormat: DateFormat.nullable(),
 });
 export type DisplayPreferences = z.infer<typeof DisplayPreferencesSchema>;

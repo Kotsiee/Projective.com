@@ -481,6 +481,11 @@ SECURITY DEFINER
 SET search_path = public, comms
 AS $$
 BEGIN
+    -- An automatic reply is not the person answering, so it never accepts a request.
+    IF NEW.auto_response_id IS NOT NULL THEN
+        RETURN NEW;
+    END IF;
+
     UPDATE comms.dm_participants p
     SET inbox_folder = 'primary'
     WHERE p.thread_id = NEW.thread_id
@@ -1018,3 +1023,145 @@ $$;
 
 COMMENT ON FUNCTION comms.send_request_message(uuid, text, uuid) IS
 'Post a hiring request''s opening message (an invitation''s intro or an application''s cover note) into the pair''s DM, opening it if needed. A thread the request opens is filed in the recipient''s Requests folder unless the two follow each other; the sender keeps it in Primary. Requires an open invitation or application between the two on p_project_id.';
+
+-- #region Auto-replies (Settings → Messaging)
+-- Is a person in a status an auto-reply answers during? Every condition is DERIVED from what the
+-- person already keeps, never asserted (Decision #149(C) — there is no hand-set presence):
+--   away         notifications are paused (comms.notification_prefs.muted_until)
+--   busy         inside a calendar event or a blackout on their own schedule
+--   out_of_hours outside their published weekly working hours (no published hours, never matches)
+--   holiday      the rule's own dates, which the caller's window test has already applied
+-- PL/pgSQL, not SQL: the scheduling predicates it reads are created later (00001510), and a SQL body
+-- is resolved at CREATE time while a PL/pgSQL one is resolved when it runs.
+CREATE OR REPLACE FUNCTION comms.fn_auto_reply_status(p_user uuid, p_status text, p_at timestamptz)
+RETURNS boolean
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    RETURN CASE p_status
+        WHEN 'away' THEN EXISTS (
+            SELECT 1 FROM comms.notification_prefs np
+             WHERE np.user_id = p_user AND np.muted_until > p_at
+        )
+        WHEN 'busy' THEN EXISTS (
+            SELECT 1 FROM scheduling.schedules s
+             WHERE s.owner_id = p_user AND s.owner_type IN ('user', 'freelancer')
+               AND (scheduling.fn_has_conflicting_event(s.id, p_at, p_at + interval '1 minute')
+                 OR scheduling.fn_is_blacked_out(s.id, p_at, p_at + interval '1 minute'))
+        )
+        WHEN 'out_of_hours' THEN EXISTS (
+            SELECT 1 FROM scheduling.schedules s
+             WHERE s.owner_id = p_user AND s.owner_type IN ('user', 'freelancer') AND s.is_published
+               AND EXISTS (
+                   SELECT 1 FROM scheduling.availability_rules r
+                    WHERE r.schedule_id = s.id AND r.kind = 'working_hours' AND r.is_active
+               )
+               AND NOT scheduling.fn_band_covers(
+                   s.id, 'working_hours'::scheduling.availability_kind, p_at, p_at + interval '1 minute')
+        )
+        WHEN 'holiday' THEN true
+        ELSE false
+    END;
+END;
+$$;
+
+-- AFTER INSERT on comms.dm_messages: answer a human message in a one-to-one thread with the
+-- recipient's best matching rule. Most specific first — a keyword, a named service, a hiring
+-- invitation, any service request, a status, then a first-contact greeting — and each rule at most
+-- once per thread per day. A product rule matches nothing yet: an inquiry carries no product.
+--
+-- Best effort by design: the person's own message has already been written, and an auto-reply that
+-- cannot be sent must never take it down with it, so a failure is reported as a WARNING (server log)
+-- and the insert stands.
+CREATE OR REPLACE FUNCTION comms.tg_dm_auto_reply()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_kind comms.conversation_kind;
+    v_recipient uuid;
+    v_invite boolean;
+    v_first boolean;
+    v_rule comms.auto_responses;
+    v_now timestamptz := now();
+BEGIN
+    IF NEW.auto_response_id IS NOT NULL OR NEW.deleted_at IS NOT NULL THEN
+        RETURN NULL;
+    END IF;
+
+    BEGIN
+        SELECT t.kind INTO v_kind FROM comms.dm_threads t WHERE t.id = NEW.thread_id;
+        IF NOT FOUND OR v_kind = 'group' THEN
+            RETURN NULL;
+        END IF;
+        IF (SELECT count(*) FROM comms.dm_participants p WHERE p.thread_id = NEW.thread_id) <> 2 THEN
+            RETURN NULL;
+        END IF;
+        SELECT p.user_id INTO v_recipient
+          FROM comms.dm_participants p
+         WHERE p.thread_id = NEW.thread_id AND p.user_id <> NEW.sender_user_id
+         LIMIT 1;
+        IF v_recipient IS NULL OR NOT EXISTS (
+            SELECT 1 FROM comms.notification_prefs np
+             WHERE np.user_id = v_recipient AND np.auto_responses_enabled
+        ) THEN
+            RETURN NULL;
+        END IF;
+
+        v_invite := NEW.project_id IS NOT NULL AND EXISTS (
+            SELECT 1 FROM projects.project_invitations i
+             WHERE i.project_id = NEW.project_id AND i.inviter_user_id = NEW.sender_user_id
+               AND i.target_user_id = v_recipient AND i.status = 'pending'
+        );
+        v_first := NOT EXISTS (
+            SELECT 1 FROM comms.dm_messages m
+             WHERE m.thread_id = NEW.thread_id AND m.sender_user_id = v_recipient
+               AND m.auto_response_id IS NULL AND m.deleted_at IS NULL
+        );
+
+        SELECT r.* INTO v_rule
+          FROM comms.auto_responses r
+         WHERE r.user_id = v_recipient AND r.enabled AND btrim(r.message) <> ''
+           AND (r.starts_at IS NULL OR r.starts_at <= v_now)
+           AND (r.ends_at IS NULL OR r.ends_at > v_now)
+           AND CASE r.trigger
+               WHEN 'keyword' THEN strpos(lower(NEW.body), lower(r.keyword)) > 0
+               WHEN 'service' THEN (NEW.service_id IS NOT NULL OR v_kind = 'service_inquiry')
+                   AND (r.service_id IS NULL OR r.service_id = NEW.service_id)
+               WHEN 'project_invitation' THEN v_invite
+               WHEN 'status' THEN comms.fn_auto_reply_status(v_recipient, r.status_condition, v_now)
+               WHEN 'any' THEN v_first
+               ELSE false
+           END
+           AND NOT EXISTS (
+               SELECT 1 FROM comms.dm_messages m
+                WHERE m.thread_id = NEW.thread_id AND m.auto_response_id = r.id
+                  AND m.created_at > v_now - interval '24 hours'
+           )
+         ORDER BY CASE
+               WHEN r.trigger = 'keyword' THEN 0
+               WHEN r.trigger = 'service' AND r.service_id IS NOT NULL THEN 1
+               WHEN r.trigger = 'project_invitation' THEN 2
+               WHEN r.trigger = 'service' THEN 3
+               WHEN r.trigger = 'status' THEN 4
+               ELSE 5
+           END, r.created_at, r.id
+         LIMIT 1;
+        IF NOT FOUND THEN
+            RETURN NULL;
+        END IF;
+
+        INSERT INTO comms.dm_messages (thread_id, sender_user_id, body, auto_response_id)
+        VALUES (NEW.thread_id, v_recipient, v_rule.message, v_rule.id);
+    EXCEPTION WHEN OTHERS THEN
+        RAISE WARNING 'comms.tg_dm_auto_reply: thread % — % (%)', NEW.thread_id, SQLERRM, SQLSTATE;
+    END;
+    RETURN NULL;
+END;
+$$;
+-- #endregion

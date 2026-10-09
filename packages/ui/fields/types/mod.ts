@@ -137,6 +137,11 @@ export interface Option<V = string> {
 	group?: string;
 	/** Optional leading icon token/name for renderers that support it. */
 	icon?: string;
+	/**
+	 * A second, quieter line under the label (`Select` draws it in the meta register). Searched by the
+	 * filter alongside the label; typeahead still matches the label alone.
+	 */
+	description?: string;
 }
 
 /** A group of options for the grouped rendering path (Select/MultiSelect/Listbox). */

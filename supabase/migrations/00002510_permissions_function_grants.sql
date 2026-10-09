@@ -1437,3 +1437,25 @@ GRANT EXECUTE ON FUNCTION org.confirm_user_email (text) TO authenticated;
 REVOKE ALL ON FUNCTION security.issue_email_verification (uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION security.issue_email_verification (uuid) TO service_role;
 -- #endregion
+
+-- #region Account lifecycle (00001060)
+-- The handle policy and the scheduled removals act on the caller alone (auth.uid()), so they are safe
+-- for a signed-in caller and none for a guest. The fn_* helpers stay definer-internal. The erasure
+-- sweep is the service role's alone, through its security-schema door.
+GRANT EXECUTE ON FUNCTION org.get_handle_policy () TO authenticated;
+GRANT EXECUTE ON FUNCTION org.change_username (text) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.get_account_lifecycle () TO authenticated;
+GRANT EXECUTE ON FUNCTION org.schedule_freelancer_removal (text) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.schedule_account_deletion (text) TO authenticated;
+GRANT EXECUTE ON FUNCTION org.cancel_deletion_request (text) TO authenticated;
+REVOKE ALL ON FUNCTION security.purge_due_account_deletions (integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION security.purge_due_account_deletions (integer) TO service_role;
+-- #endregion
+
+-- #region Auto-replies (00001300)
+-- Whether a person is away, busy or out of hours is theirs to keep: the status predicate is reached
+-- only from inside the definer trigger, never as an RPC (the comms schema does not revoke PUBLIC by
+-- default, Decision #151(c)).
+REVOKE ALL ON FUNCTION comms.fn_auto_reply_status (uuid, text, timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION comms.tg_dm_auto_reply () FROM PUBLIC, anon, authenticated;
+-- #endregion

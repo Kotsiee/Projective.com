@@ -28,6 +28,7 @@ import {
 	type VerificationStatus,
 } from "@projective/types/finance";
 import { serverEnv } from "../../core/env.ts";
+import { isBearerAuthorised } from "../../core/bearer.ts";
 import {
 	getStripe,
 	type StripeSettings,
@@ -859,15 +860,7 @@ export class PaymentBackendService {
 	 * characters; a placeholder or a short secret authorises nothing). Compared in constant time.
 	 */
 	static isCronAuthorised(authorization: string | null): boolean {
-		const secret = serverEnv().financeCronSecret?.trim() ?? "";
-		if (secret.length < 32) return false;
-		const token = authorization?.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
-		const a = new TextEncoder().encode(token);
-		const b = new TextEncoder().encode(secret);
-		if (a.length !== b.length) return false;
-		let diff = 0;
-		for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
-		return diff === 0;
+		return isBearerAuthorised(authorization, serverEnv().financeCronSecret);
 	}
 
 	/**

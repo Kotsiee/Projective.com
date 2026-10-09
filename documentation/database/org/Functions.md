@@ -215,6 +215,42 @@ role only and lives in `security`, where the service role holds `USAGE`
 
 ---
 
+## 🪪 Account lifecycle (`00001060`)
+
+**Migration:** `supabase/migrations/00001060_functions_org_account_lifecycle.sql` · **Zod:**
+`packages/types/org/account-lifecycle.ts` · **Service:** `AccountLifecycleBackendService`
+(`packages/backend/services/user/`) · **Routes:** `/api/user/handle`, `/api/user/lifecycle`,
+`/api/user/cron/erasures` (Decision #156).
+
+All `SECURITY DEFINER`, `SET search_path = ''`; the doors resolve the caller from `auth.uid()` and act on
+the caller alone, `EXECUTE` to `authenticated`; the `fn_*` helpers are definer-internal (the org schema
+is deny-by-default). **Refusals** are the exception MESSAGE with `P0001`, one `AccountRefusal` code —
+`handle_unchanged` · `handle_locked` · `handle_refused` (DETAIL = the namespace rule's sentence) ·
+`account_closing` · `confirmation_mismatch` · `already_scheduled` · `not_freelancer` · `blocked` (DETAIL
+= blocker codes) · `not_scheduled` · `scope_invalid`; no subject → `28000`, no profile → `42501
+'profile_required'`. Writes take `pg_advisory_xact_lock` on the person (and, for a handle, on the handle).
+
+| Function | Returns | Does / refuses |
+| :-- | :-- | :-- |
+| `org.fn_handle_change_policy(p_user uuid)` | `jsonb` | The policy clock: two changes inside a three-day window, then a 90-day lock after the window's second change. `{remaining (2·1·0), window_ends_at, locked_until, last_changed_at, total_changes}`. Mirrors `HANDLE_POLICY`. |
+| `org.fn_handle_is_own_hold(p_handle, p_user)` | `boolean` | The handle is free in the four tables and held only by `p_user`'s own change in the last 90 days — they may take it back. |
+| `org.get_handle_policy()` | `jsonb` | The caller's policy plus `handle`. |
+| `org.change_username(p_handle text)` | `jsonb` | Lower-cases + trims; refuses `handle_unchanged` · `account_closing` · `handle_locked` · `handle_refused` (`fn_handle_refusal`, except the caller's own hold; a racing `unique_violation` too). Writes `users_public.username`, a `handle_changes` row and `user.handle_changed` to the audit log; answers the new policy + `previous`. The token carries the handle, so the caller renews the session. |
+| `org.fn_account_blockers(p_user, p_scope)` | `text[]` | `escrow_held` (payee as a freelancer; payer too for `account`) · `live_work` (a live stage assignment on an active / on-hold project) · `wallet_balance` (a `freelancer` wallet; a `user` one too for `account`) · for `account` only, `active_projects` (owned, active / on hold) and `owns_workspaces` (an active owner seat on a live team, business or organisation). |
+| `org.get_account_lifecycle()` | `jsonb` | `{is_freelancer, has_freelancer_profile, freelancer_removal, account_deletion, freelancer_blockers, account_blockers}`. |
+| `org.schedule_freelancer_removal(p_confirmation)` | `jsonb` | Requires `CONFIRM`; `already_scheduled` · `not_freelancer` · `blocked`. Pauses the person's own published listings and unpublishes their own services (ids recorded in `metadata`), sets `is_freelancer = false`, returns the session context to personal, and schedules the erasure for **90 days**. |
+| `org.schedule_account_deletion(p_confirmation)` | `jsonb` | Requires `CONFIRM`; `already_scheduled` · `blocked`. Pauses listings, hides the profile (`visibility = 'private'`, the prior value recorded) and schedules the erasure for **30 days**. |
+| `org.cancel_deletion_request(p_scope)` / `org.fn_cancel_deletion(p_user, p_scope)` | `jsonb` / `boolean` | Republishes exactly what was paused, restores the persona (freelancer scope) or the visibility (account scope), and marks the request `cancelled`. `not_scheduled` · `scope_invalid`. |
+| `org.fn_pause_personal_listings` / `org.fn_restore_personal_listings` | `jsonb` / `void` | The pause and its inverse — personal listings only (`owner_team_id IS NULL`); team listings belong to the team. |
+| `org.fn_erase_freelancer_profile(p_user)` | `void` | Archives the personal listings (terminal), unpublishes services, clears the seller profile's skills, hire intake and identity reference, sets it unavailable. Standing, reviews and money records stay. |
+| `org.fn_erase_account(p_user)` | `void` | The seller half, then the profile becomes an anonymous tombstone (`deleted-<id>` handle, names, copy, location, photos cleared, private, DOB `1900-01-01`), addresses anonymised, `auth.users` email scrubbed and banned, `auth.identities` and `auth.sessions` removed. |
+| `org.fn_purge_due_deletions(p_limit = 100)` | `integer` | The sweep: every due `scheduled` request (`FOR UPDATE SKIP LOCKED`); one whose blockers came back is deferred (`metadata.deferred_by`), not forced. Reached by the service role through `security.purge_due_account_deletions`. |
+
+`org.enable_freelancer_profile` cancels an open `freelancer_profile` request (becoming a freelancer again
+inside the window restores everything) and refuses while an `account` deletion is scheduled.
+
+---
+
 ## 🏅 Standing & progression (migration `20260724111000_standing_reputation.sql`)
 
 All four mutating functions are `SECURITY DEFINER` with a pinned `search_path`, **`REVOKE`d from
@@ -512,7 +548,9 @@ namespace under a `pg_advisory_xact_lock` on the handle.
 
 - **`fn_is_reserved_handle(handle)`** — `IMMUTABLE`; the SQL twin of `RESERVED_HANDLES`
   (`@projective/types/profile`), pinned by the contract test.
-- **`fn_handle_taken(handle)`** — case-insensitively taken in any of the four tables.
+- **`fn_handle_taken(handle)`** — case-insensitively taken in any of the four tables, or **held**:
+  given up by a person in the last 90 days (`org.handle_changes`, Decision #156), so nobody can step
+  into a renamed person's old links. Only the previous owner may take it back (`org.change_username`).
 - **`fn_handle_refusal(handle)`** — why a handle cannot be claimed (3–40 chars,
   `^[a-z0-9][a-z0-9-]*[a-z0-9]$`, reserved, taken) or `NULL`.
 - **`check_handle(handle) → {handle, available, reason}`** — `authenticated`. The create form's

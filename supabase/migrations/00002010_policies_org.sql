@@ -40,6 +40,20 @@ SELECT TO authenticated USING (
 
 -- org.email_verification_tokens: RLS on (00002001) and NO policy, deliberately — definer-only.
 
+-- A person reads their own handle history and their own scheduled removals; every write is a
+-- definer in 00001060 (write grants revoked in 00002520).
+CREATE POLICY "Users can view their own handle changes" ON org.handle_changes FOR
+SELECT TO authenticated USING (
+        user_id = auth.uid ()
+        OR security.is_admin ()
+    );
+
+CREATE POLICY "Users can view their own deletion requests" ON org.deletion_requests FOR
+SELECT TO authenticated USING (
+        user_id = auth.uid ()
+        OR security.is_admin ()
+    );
+
 
 -- --- from 0204_projects.sql ---
 

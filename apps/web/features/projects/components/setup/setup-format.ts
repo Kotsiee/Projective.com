@@ -1,5 +1,5 @@
 import type { DateValue, Option } from "@projective/ui/fields";
-import { currencyExponent, DISPLAY_CURRENCIES } from "@projective/types/finance";
+import { currencyExponent } from "@projective/types/finance";
 import { FileKind } from "@projective/types/files";
 import {
 	DEADLINE_BONUS_RATE,
@@ -196,18 +196,6 @@ export const CAPACITY_OPTIONS: Option[] = [
 	{ value: "unlimited", label: "Open to anyone" },
 	{ value: "limited", label: "Fixed seats" },
 ];
-
-/**
- * Every currency the platform can price in, from the SSOT's curated list.
- *
- * Not a hand-written subset: an amount stored in a currency the dropdown does not carry renders a
- * `Select` whose value matches no option, and the owner then cannot change it back to one that does.
- * The list is curated upstream precisely so every entry has a seeded rate behind it.
- */
-export const CURRENCY_OPTIONS: Option[] = DISPLAY_CURRENCIES.map((c) => ({
-	value: c.code,
-	label: `${c.code} — ${c.label}`,
-}));
 
 export const FILE_KIND_OPTIONS: Option[] = FileKind.options.map((kind) => ({
 	value: kind,

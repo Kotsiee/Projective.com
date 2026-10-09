@@ -204,6 +204,9 @@ function rule(part: Partial<AutoResponseRule> = {}): AutoResponseRule {
 		productId: null,
 		productName: null,
 		keyword: null,
+		statusCondition: null,
+		startsAt: null,
+		endsAt: null,
 		message: "Thanks — I'll reply within a day.",
 		aiAssist: false,
 		...part,
@@ -218,6 +221,9 @@ function ruleRow(part: Partial<AutoResponseRow> & { id: string }): AutoResponseR
 		service_id: null,
 		product_id: null,
 		keyword: null,
+		status_condition: null,
+		starts_at: null,
+		ends_at: null,
 		message: "Stored body",
 		ai_assist: false,
 		created_at: "2026-09-01T00:00:00.000Z",
@@ -535,7 +541,19 @@ Deno.test("a rule the tables cannot hold is refused with a field error, not stor
 				rule({ id: "ar-custom-2", trigger: "keyword", keyword: "   " }),
 				rule({ id: "ar-custom-3", message: "   " }),
 				rule({ id: "ar-custom-3" }),
-				rule({ id: "ar-custom-5", trigger: "product", productId: null }),
+				rule({ id: "ar-custom-5", trigger: "product", productId: "not-a-uuid" }),
+				rule({ id: "ar-custom-6", trigger: "status", statusCondition: null }),
+				rule({
+					id: "ar-custom-7",
+					trigger: "status",
+					statusCondition: "holiday",
+					startsAt: "2026-12-20T00:00:00.000Z",
+				}),
+				rule({
+					id: "ar-custom-8",
+					startsAt: "2026-12-20T00:00:00.000Z",
+					endsAt: "2026-12-19T00:00:00.000Z",
+				}),
 			],
 		}),
 		storedOf(EMPTY),
@@ -548,7 +566,39 @@ Deno.test("a rule the tables cannot hold is refused with a field error, not stor
 		"autoResponses.2.message",
 		"autoResponses.3.id",
 		"autoResponses.4.productId",
+		"autoResponses.5.statusCondition",
+		"autoResponses.6.startsAt",
+		"autoResponses.7.endsAt",
 	]);
+});
+
+Deno.test("a service or product rule with no id answers every inquiry of its kind", () => {
+	const result = planSettingsWrite(
+		settingsOf({
+			autoResponses: [
+				rule({ id: "ar-custom-1", trigger: "service", serviceId: null }),
+				rule({ id: "ar-custom-2", trigger: "project_invitation" }),
+				rule({
+					id: "ar-custom-3",
+					trigger: "status",
+					statusCondition: "holiday",
+					startsAt: "2026-12-20T09:00:00+01:00",
+					endsAt: "2027-01-02T09:00:00+01:00",
+				}),
+			],
+		}),
+		storedOf(EMPTY),
+		NOW,
+	);
+	assert("plan" in result);
+	assertEquals(
+		result.plan.rules.insert.map((c) => [c.trigger, c.service_id, c.status_condition, c.starts_at]),
+		[
+			["service", null, null, null],
+			["project_invitation", null, null, null],
+			["status", null, "holiday", "2026-12-20T08:00:00.000Z"],
+		],
+	);
 });
 
 Deno.test("only the trigger's own scope column is written", () => {

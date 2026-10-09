@@ -479,8 +479,6 @@
 /* Decoration only — `aria-hidden` in the markup; the dial code and the name carry the meaning. */
 .ckod-dial__flag {
 	flex: none;
-	font-size: var(--text-md);
-	line-height: 1;
 }
 
 .ckod-dial__code {

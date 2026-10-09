@@ -206,6 +206,13 @@ export interface ServerEnv {
 	 */
 	financeCronSecret: string | undefined;
 	/**
+	 * The bearer token the scheduler presents to `POST /api/user/cron/erasures`, from
+	 * `ACCOUNT_CRON_SECRET`. The route runs the account and freelancer-profile erasures that have come
+	 * due, so like the deposits route it answers 404 to anything else — including every request while
+	 * this is unset or shorter than 32 characters.
+	 */
+	accountCronSecret: string | undefined;
+	/**
 	 * The Google Safe Browsing (v4 Lookup) API key a link's reputation is checked against, from
 	 * `LINK_SAFETY_API_KEY`. Server-only. The `XXXX-XXXX` placeholder counts as absent
 	 * (`files/link-reputation.ts`), and an absent key skips the reputation check rather than failing it.
@@ -242,6 +249,7 @@ export function serverEnv(): ServerEnv {
 		stripeApiBase: firstEnv("STRIPE_API_BASE"),
 		stripeThinWebhookSecret: firstEnv("STRIPE_THIN_WEBHOOK_SECRET"),
 		financeCronSecret: firstEnv("FINANCE_CRON_SECRET"),
+		accountCronSecret: firstEnv("ACCOUNT_CRON_SECRET"),
 		linkSafetyApiKey: firstEnv("LINK_SAFETY_API_KEY"),
 	};
 }

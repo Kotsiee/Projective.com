@@ -133,35 +133,61 @@ export interface DisplayCurrencyOption {
 	 */
 	symbol: string;
 	/**
-	 * The issuing territory's flag, as a regional-indicator emoji pair.
+	 * The issuing territory — ISO 3166-1 alpha-2, or `EU` — whose circular flag the picker draws
+	 * (`@projective/ui` `Flag`).
 	 *
 	 * Stored explicitly rather than derived from the first two letters of {@link code}. The
-	 * derivation happens to work for all twelve entries below — including `EUR` → `EU`, which has a
-	 * real flag — but it is a coincidence of ISO-4217's country-plus-letter convention, and the first
-	 * supranational or commodity code added (`XAF`, `XOF`, `XAU`) would silently render two unrelated
-	 * letter glyphs instead of a flag.
+	 * derivation happens to work for all twelve entries below — including `EUR` → `EU` — but it is a
+	 * coincidence of ISO-4217's country-plus-letter convention, and the first supranational or
+	 * commodity code added (`XAF`, `XOF`, `XAU`) would silently draw an unrelated flag.
 	 *
-	 * It is **decoration and must be `aria-hidden` at every render site**: a screen reader announcing
-	 * "flag of the United Kingdom, GBP, British Pound" buries the two facts that identify the
-	 * currency behind one that does not. The code and the label carry the meaning.
+	 * The flag is **decoration** at every render site: a screen reader announcing "flag of the United
+	 * Kingdom, GBP, British Pound" buries the two facts that identify the currency behind one that
+	 * does not. The code and the label carry the meaning.
 	 */
-	flag: string;
+	country: string;
+	/** The issuing territory's name — the picker's second line (`United States`). */
+	countryName: string;
 }
 
 /** The curated switcher list, in menu order (platform base first, then by usage). */
 export const DISPLAY_CURRENCIES: readonly DisplayCurrencyOption[] = Object.freeze([
-	{ code: "GBP", label: "British Pound", symbol: "£", flag: "🇬🇧" },
-	{ code: "USD", label: "US Dollar", symbol: "$", flag: "🇺🇸" },
-	{ code: "EUR", label: "Euro", symbol: "€", flag: "🇪🇺" },
-	{ code: "CAD", label: "Canadian Dollar", symbol: "CA$", flag: "🇨🇦" },
-	{ code: "AUD", label: "Australian Dollar", symbol: "A$", flag: "🇦🇺" },
-	{ code: "JPY", label: "Japanese Yen", symbol: "¥", flag: "🇯🇵" },
-	{ code: "INR", label: "Indian Rupee", symbol: "₹", flag: "🇮🇳" },
-	{ code: "SGD", label: "Singapore Dollar", symbol: "S$", flag: "🇸🇬" },
-	{ code: "CHF", label: "Swiss Franc", symbol: "CHF", flag: "🇨🇭" },
-	{ code: "ZAR", label: "South African Rand", symbol: "R", flag: "🇿🇦" },
-	{ code: "NGN", label: "Nigerian Naira", symbol: "₦", flag: "🇳🇬" },
-	{ code: "AED", label: "UAE Dirham", symbol: "AED", flag: "🇦🇪" },
+	{
+		code: "GBP",
+		label: "British Pound",
+		symbol: "£",
+		country: "GB",
+		countryName: "United Kingdom",
+	},
+	{ code: "USD", label: "US Dollar", symbol: "$", country: "US", countryName: "United States" },
+	{ code: "EUR", label: "Euro", symbol: "€", country: "EU", countryName: "European Union" },
+	{ code: "CAD", label: "Canadian Dollar", symbol: "CA$", country: "CA", countryName: "Canada" },
+	{
+		code: "AUD",
+		label: "Australian Dollar",
+		symbol: "A$",
+		country: "AU",
+		countryName: "Australia",
+	},
+	{ code: "JPY", label: "Japanese Yen", symbol: "¥", country: "JP", countryName: "Japan" },
+	{ code: "INR", label: "Indian Rupee", symbol: "₹", country: "IN", countryName: "India" },
+	{ code: "SGD", label: "Singapore Dollar", symbol: "S$", country: "SG", countryName: "Singapore" },
+	{ code: "CHF", label: "Swiss Franc", symbol: "CHF", country: "CH", countryName: "Switzerland" },
+	{
+		code: "ZAR",
+		label: "South African Rand",
+		symbol: "R",
+		country: "ZA",
+		countryName: "South Africa",
+	},
+	{ code: "NGN", label: "Nigerian Naira", symbol: "₦", country: "NG", countryName: "Nigeria" },
+	{
+		code: "AED",
+		label: "UAE Dirham",
+		symbol: "AED",
+		country: "AE",
+		countryName: "United Arab Emirates",
+	},
 ]);
 
 /** Whether `code` is an offerable display currency. Case-insensitive. */

@@ -145,6 +145,9 @@ export interface AutoResponseColumns {
 	service_id: string | null;
 	product_id: string | null;
 	keyword: string | null;
+	status_condition: AutoResponseRule["statusCondition"];
+	starts_at: string | null;
+	ends_at: string | null;
 	message: string;
 	ai_assist: boolean;
 }
@@ -342,14 +345,15 @@ export function ruleColumns(
 	let serviceId: string | null = null;
 	let productId: string | null = null;
 	let keyword: string | null = null;
+	let statusCondition: AutoResponseRule["statusCondition"] = null;
 	switch (rule.trigger) {
 		case "service":
 			if (rule.serviceId && UUID_RE.test(rule.serviceId)) serviceId = rule.serviceId.toLowerCase();
-			else errors[`${path}.serviceId`] = "Choose the service this rule answers.";
+			else if (rule.serviceId) errors[`${path}.serviceId`] = "Choose one of your services.";
 			break;
 		case "product":
 			if (rule.productId && UUID_RE.test(rule.productId)) productId = rule.productId.toLowerCase();
-			else errors[`${path}.productId`] = "Choose the product this rule answers.";
+			else if (rule.productId) errors[`${path}.productId`] = "Choose one of your products.";
 			break;
 		case "keyword": {
 			const text = rule.keyword?.trim() ?? "";
@@ -357,8 +361,24 @@ export function ruleColumns(
 			else errors[`${path}.keyword`] = "Enter the keyword this rule listens for.";
 			break;
 		}
+		case "status":
+			if (rule.statusCondition) statusCondition = rule.statusCondition;
+			else errors[`${path}.statusCondition`] = "Choose when this reply is sent.";
+			break;
+		case "project_invitation":
 		case "any":
 			break;
+	}
+
+	const startsAt = instantOrNull(rule.startsAt);
+	const endsAt = instantOrNull(rule.endsAt);
+	if (rule.startsAt && startsAt === null) errors[`${path}.startsAt`] = "Enter a valid start date.";
+	if (rule.endsAt && endsAt === null) errors[`${path}.endsAt`] = "Enter a valid end date.";
+	if (startsAt && endsAt && Date.parse(endsAt) <= Date.parse(startsAt)) {
+		errors[`${path}.endsAt`] = "End after it starts.";
+	}
+	if (statusCondition === "holiday" && (!startsAt || !endsAt)) {
+		errors[`${path}.startsAt`] = "A holiday reply needs its first and last day.";
 	}
 
 	if (Object.keys(errors).length > before) return null;
@@ -369,9 +389,25 @@ export function ruleColumns(
 		service_id: serviceId,
 		product_id: productId,
 		keyword,
+		status_condition: statusCondition,
+		starts_at: startsAt,
+		ends_at: endsAt,
 		message,
 		ai_assist: rule.aiAssist,
 	};
+}
+
+/** An ISO instant normalised to `toISOString()`, or `null` for an empty or unparseable value. */
+function instantOrNull(value: string | null): string | null {
+	if (!value) return null;
+	const ms = Date.parse(value);
+	return Number.isNaN(ms) ? null : new Date(ms).toISOString();
+}
+
+/** Two instants that are the same moment, however each was written (or both absent). */
+function sameInstant(stored: string | null | undefined, next: string | null): boolean {
+	if (!stored || !next) return !stored && !next;
+	return Date.parse(stored) === Date.parse(next);
 }
 
 /** Whether a stored row already holds exactly these columns (an unchanged rule is not rewritten). */
@@ -382,6 +418,9 @@ function sameColumns(row: AutoResponseRow, columns: AutoResponseColumns): boolea
 		(row.service_id ?? null) === columns.service_id &&
 		(row.product_id ?? null) === columns.product_id &&
 		(row.keyword ?? null) === columns.keyword &&
+		(row.status_condition ?? null) === columns.status_condition &&
+		sameInstant(row.starts_at, columns.starts_at) &&
+		sameInstant(row.ends_at, columns.ends_at) &&
 		row.message === columns.message &&
 		row.ai_assist === columns.ai_assist;
 }

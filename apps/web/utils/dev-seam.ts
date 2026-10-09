@@ -149,6 +149,18 @@ export type DevWalletAurora = "auto" | "static" | "animated";
 export type DevSettingsAttention = "auto" | "clear" | "all";
 
 /**
+ * Settings → Account's lifecycle (Decision #156). `auto` shows the real reads; the others substitute
+ * the handle policy (inside its correction window, or locked for 90 days) or the lifecycle (a
+ * freelancer removal or an account deletion scheduled). The ANSWERS are faked — nothing is written.
+ */
+export type DevAccountLifecycle =
+	| "auto"
+	| "handle-window"
+	| "handle-locked"
+	| "removal-scheduled"
+	| "deletion-scheduled";
+
+/**
  * The proposal allowance (Decision #154) — the account popover's meter, the conversion lane's
  * disclosure and the apply modal's pre-flight notice. `auto` shows the real read; every other value
  * substitutes the STATUS those surfaces render, so the shipping copy, countdown and gate run on it:
@@ -222,6 +234,8 @@ export interface DevSeamState {
 	walletAurora?: DevWalletAurora;
 	/** The simulated settings attention facts. Optional like `walletAurora`; absent reads as `auto`. */
 	settingsAttention?: DevSettingsAttention;
+	/** The simulated account lifecycle. Optional like `walletAurora`; absent reads as `auto`. */
+	accountLifecycle?: DevAccountLifecycle;
 	/** The simulated proposal allowance. Optional like `walletAurora`; absent reads as `auto`. */
 	proposalAllowance?: DevProposalAllowance;
 	/** The simulated verification stamp. Optional like `walletAurora`; absent reads as `auto`. */
@@ -318,6 +332,13 @@ const LAYOUT_DIRECTIONS: readonly DevLayoutDirection[] = ["ltr", "rtl", "auto"];
 const PROFILE_SETUPS: readonly DevProfileSetup[] = ["auto", "new", "live", "complete"];
 const WALLET_AURORAS: readonly DevWalletAurora[] = ["auto", "static", "animated"];
 const SETTINGS_ATTENTIONS: readonly DevSettingsAttention[] = ["auto", "clear", "all"];
+const ACCOUNT_LIFECYCLES: readonly DevAccountLifecycle[] = [
+	"auto",
+	"handle-window",
+	"handle-locked",
+	"removal-scheduled",
+	"deletion-scheduled",
+];
 const PROPOSAL_ALLOWANCES: readonly DevProposalAllowance[] = [
 	"auto",
 	"healthy",
@@ -380,6 +401,7 @@ export function readDevSeam(): DevSeamState | null {
 		// Absent = `auto` here too.
 		walletAurora: coerce(ds.devWalletAurora, WALLET_AURORAS, "auto"),
 		settingsAttention: coerce(ds.devSettingsAttention, SETTINGS_ATTENTIONS, "auto"),
+		accountLifecycle: coerce(ds.devAccountLifecycle, ACCOUNT_LIFECYCLES, "auto"),
 		proposalAllowance: coerce(ds.devProposalAllowance, PROPOSAL_ALLOWANCES, "auto"),
 		verificationStamp: coerce(ds.devVerificationStamp, VERIFICATION_STAMPS, "auto"),
 		trustAdornments: coerce(ds.devTrustAdornments, TRUST_ADORNMENTS, "auto"),

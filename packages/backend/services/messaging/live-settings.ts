@@ -1,9 +1,10 @@
-import type {
-	AutoResponseRule,
-	AutoResponseTrigger,
-	MessagingRole,
-	MessagingSettings,
-	NotificationPreferences,
+import {
+	type AutoResponseRule,
+	AutoResponseStatus,
+	type AutoResponseTrigger,
+	type MessagingRole,
+	type MessagingSettings,
+	type NotificationPreferences,
 } from "@projective/types/messaging";
 import type { ReadActor } from "../read-actor.ts";
 import { clamp, clampOr, commsDb } from "../projects/live-support.ts";
@@ -98,7 +99,7 @@ const PREFS_COLUMNS = [
 
 /** The `comms.auto_responses` columns one rule needs. `user_id` is implied by the predicate. */
 const AUTO_RESPONSE_COLUMNS =
-	"id, enabled, name, trigger, service_id, product_id, keyword, message, ai_assist, created_at";
+	"id, enabled, name, trigger, service_id, product_id, keyword, status_condition, starts_at, ends_at, message, ai_assist, created_at";
 
 /**
  * A hard ceiling on auto-response rules pulled for the modal.
@@ -209,6 +210,9 @@ interface AutoResponseRow {
 	service_id: string | null;
 	product_id: string | null;
 	keyword: string | null;
+	status_condition: string | null;
+	starts_at: string | null;
+	ends_at: string | null;
 	message: string | null;
 	ai_assist: boolean | null;
 	created_at: string | null;
@@ -232,6 +236,8 @@ function toTrigger(raw: string | null | undefined): AutoResponseTrigger {
 		case "service":
 		case "product":
 		case "keyword":
+		case "status":
+		case "project_invitation":
 			return raw;
 		default:
 			return "any";
@@ -256,12 +262,15 @@ function toRule(row: AutoResponseRow): AutoResponseRule | null {
 	if (id.length === 0) return null;
 	const message = clamp(row.message, 2000).trim();
 	if (message.length === 0) return null;
+	const trigger = toTrigger(row.trigger);
+	const statusCondition = AutoResponseStatus.safeParse(row.status_condition).data ?? null;
+	if (trigger === "status" && statusCondition === null) return null;
 
 	return {
 		id,
 		enabled: row.enabled === true,
 		name: clampOr(row.name, 120, "Untitled rule"),
-		trigger: toTrigger(row.trigger),
+		trigger,
 		serviceId: row.service_id ? clamp(row.service_id, 80) : null,
 		// Never resolvable: `marketplace` is not an exposed schema, so the blueprint this FK points at
 		// cannot be read, embedded or joined from any PostgREST request this process can issue.
@@ -271,6 +280,9 @@ function toRule(row: AutoResponseRow): AutoResponseRule | null {
 		// key at all, so there is no table to resolve it against even in principle.
 		productName: null,
 		keyword: row.keyword ? clamp(row.keyword, 80) : null,
+		statusCondition: trigger === "status" ? statusCondition : null,
+		startsAt: row.starts_at ? clamp(row.starts_at, 40) : null,
+		endsAt: row.ends_at ? clamp(row.ends_at, 40) : null,
 		message,
 		aiAssist: row.ai_assist === true,
 	};

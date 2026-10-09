@@ -74,6 +74,15 @@ BEGIN
             USING ERRCODE = '42501';
     END IF;
 
+    -- An account on its way out cannot take on a new persona (00001060).
+    IF EXISTS (
+        SELECT 1 FROM org.deletion_requests d
+         WHERE d.user_id = v_uid AND d.scope = 'account' AND d.status = 'scheduled'
+    ) THEN
+        RAISE EXCEPTION 'Your account is scheduled for deletion. Cancel that first.'
+            USING ERRCODE = '42501';
+    END IF;
+
     -- Optional starter skills: `org.skills` slugs (the vocabulary `freelancer_profiles.skills`
     -- holds), de-duplicated in the order given, at most ten, every one a known slug.
     IF p_payload ? 'skills' AND jsonb_typeof(p_payload->'skills') = 'array' THEN
@@ -107,7 +116,9 @@ BEGIN
     ON CONFLICT (user_id) DO NOTHING;
     v_created := FOUND;
 
-    -- 2. Flip the denormalised persona flag consumed by getMe + the nav gates.
+    -- 2. Flip the denormalised persona flag consumed by getMe + the nav gates. Coming back inside a
+    --    scheduled removal's 90 days cancels it and republishes what it paused (00001060).
+    PERFORM org.fn_cancel_deletion(v_uid, 'freelancer_profile');
     UPDATE org.users_public
        SET is_freelancer = true, updated_at = now()
      WHERE user_id = v_uid;
@@ -832,7 +843,9 @@ AS $$
     ]);
 $$;
 
--- Is this handle taken anywhere in the namespace (case-insensitively)?
+-- Is this handle taken anywhere in the namespace (case-insensitively)? A handle a person gave up in
+-- the last 90 days (org.handle_changes) counts as taken, so nobody can step into a renamed person's
+-- old links; only its previous owner may take it back (org.change_username, 00001060).
 CREATE OR REPLACE FUNCTION org.fn_handle_taken(p_handle text)
 RETURNS boolean
 LANGUAGE sql
@@ -843,7 +856,11 @@ AS $$
     SELECT EXISTS (SELECT 1 FROM org.users_public u WHERE lower(u.username) = lower(p_handle))
         OR EXISTS (SELECT 1 FROM org.teams t WHERE lower(t.slug) = lower(p_handle))
         OR EXISTS (SELECT 1 FROM org.business_profiles b WHERE lower(b.slug) = lower(p_handle))
-        OR EXISTS (SELECT 1 FROM org.organisations o WHERE lower(o.handle) = lower(p_handle));
+        OR EXISTS (SELECT 1 FROM org.organisations o WHERE lower(o.handle) = lower(p_handle))
+        OR EXISTS (
+            SELECT 1 FROM org.handle_changes h
+             WHERE lower(h.old_handle) = lower(p_handle) AND h.changed_at > now() - interval '90 days'
+        );
 $$;
 
 -- Why a handle cannot be claimed, or NULL when it can. The same rule the create form's probe shows.

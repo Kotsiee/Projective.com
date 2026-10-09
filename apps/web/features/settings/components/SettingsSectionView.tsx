@@ -141,7 +141,13 @@ function renderSection(
 	const modal = props.mode === "modal";
 	switch (data.section) {
 		case "account":
-			return <AccountSection data={data} />;
+			return (
+				<AccountSection
+					data={data}
+					locale={props.context.locale}
+					dateFormat={props.context.dateFormat ?? null}
+				/>
+			);
 		case "profile":
 			return <ProfileSection data={data} />;
 		case "workspaces":
@@ -166,7 +172,7 @@ function renderSection(
 				? <SchedulingOverview data={data} onEscalate={escalate()} />
 				: <SchedulingSection data={data} />;
 		case "billing":
-			return <BillingSection />;
+			return <BillingSection data={data} locale={props.context.locale} />;
 		case "verification":
 			return <VerificationOverview data={data} error={error} onEscalate={escalate()} />;
 		case "integrations":

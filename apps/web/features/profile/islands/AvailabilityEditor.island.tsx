@@ -2,7 +2,14 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { Tooltip } from "@projective/ui/feedback";
-import { Button, FormControl, InputNumber, Select, ToggleSwitch } from "@projective/ui/fields";
+import {
+	Button,
+	CurrencySelect,
+	FormControl,
+	InputNumber,
+	Select,
+	ToggleSwitch,
+} from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import {
 	type OwnerAvailability,
@@ -396,9 +403,9 @@ export default function AvailabilityEditor(props: AvailabilityEditorProps): JSX.
 											</FormControl>
 											<FormControl label="Currency">
 												{({ id }) => (
-													<Select
+													<CurrencySelect
 														id={id}
-														options={DISPLAY_CURRENCIES.map((c) => ({ label: `${c.code} · ${c.label}`, value: c.code }))}
+														currencies={DISPLAY_CURRENCIES}
 														value={call.feeCurrency ?? "GBP"}
 														fluid
 														onValueChange={(c) => setCall({ feeCurrency: c })}

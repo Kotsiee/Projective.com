@@ -106,6 +106,47 @@ CREATE TABLE org.email_verification_tokens (
     CONSTRAINT email_verification_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE CASCADE
 );
 
+-- Every change of a person's @handle. Definer-written by org.change_username (00001060); the history
+-- is both the change-policy clock (two changes in three days, then a 90-day lock) and the hold that
+-- keeps a released handle from being claimed by anyone else for 90 days.
+CREATE TABLE org.handle_changes (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    user_id uuid NOT NULL,
+    old_handle text NOT NULL,
+    new_handle text NOT NULL,
+    changed_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT handle_changes_pkey PRIMARY KEY (id),
+    CONSTRAINT handle_changes_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE CASCADE,
+    CONSTRAINT handle_changes_distinct_check CHECK (lower(old_handle) <> lower(new_handle))
+);
+
+-- A scheduled removal: a freelancer profile given up (scope `freelancer_profile`, 90 days) or the
+-- whole account (scope `account`, 30 days). Lifecycle `scheduled → cancelled | completed`; nothing
+-- is deleted — a completed request is the record that the erasure ran. `metadata` holds what the
+-- scheduling paused (listing ids, the prior visibility) so a cancel restores exactly that.
+CREATE TABLE org.deletion_requests (
+    id uuid NOT NULL DEFAULT gen_random_uuid (),
+    user_id uuid NOT NULL,
+    scope text NOT NULL,
+    status text NOT NULL DEFAULT 'scheduled',
+    requested_at timestamptz NOT NULL DEFAULT now(),
+    scheduled_for timestamptz NOT NULL,
+    cancelled_at timestamptz,
+    completed_at timestamptz,
+    metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+    CONSTRAINT deletion_requests_pkey PRIMARY KEY (id),
+    CONSTRAINT deletion_requests_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public (user_id) ON DELETE CASCADE,
+    CONSTRAINT deletion_requests_scope_check CHECK (scope IN ('freelancer_profile', 'account')),
+    CONSTRAINT deletion_requests_status_check CHECK (status IN ('scheduled', 'cancelled', 'completed')),
+    CONSTRAINT deletion_requests_window_check CHECK (scheduled_for > requested_at),
+    CONSTRAINT deletion_requests_terminal_check CHECK (
+        (status = 'scheduled' AND cancelled_at IS NULL AND completed_at IS NULL)
+        OR (status = 'cancelled' AND cancelled_at IS NOT NULL AND completed_at IS NULL)
+        OR (status = 'completed' AND completed_at IS NOT NULL AND cancelled_at IS NULL)
+    ),
+    CONSTRAINT deletion_requests_metadata_check CHECK (jsonb_typeof(metadata) = 'object')
+);
+
 CREATE TABLE org.user_preferences (
     user_id uuid NOT NULL,
     theme text DEFAULT 'system',
@@ -131,7 +172,11 @@ CREATE TABLE org.user_preferences (
     font text NOT NULL DEFAULT 'sans',
     cvd text NOT NULL DEFAULT 'none',
     motion text NOT NULL DEFAULT 'standard',
+    -- NULL follows the locale's own date order; a value is an explicit override that survives a
+    -- language change (Settings → Language & region).
+    date_format text,
     CONSTRAINT user_preferences_pkey PRIMARY KEY (user_id),
+    CONSTRAINT user_preferences_date_format_check CHECK (date_format IS NULL OR date_format IN ('dmy', 'mdy', 'ymd')),
     CONSTRAINT user_preferences_theme_check CHECK (theme IN ('system', 'light', 'dark')),
     CONSTRAINT user_preferences_contrast_check CHECK (contrast IN ('standard', 'high')),
     CONSTRAINT user_preferences_font_check CHECK (font IN ('sans', 'dyslexic')),
