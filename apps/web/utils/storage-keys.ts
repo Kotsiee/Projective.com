@@ -239,6 +239,10 @@ export const LocalKeys = {
 	FILES_ZOOM: "pj.local.files.zoom",
 	/** Persisted File Explorer table column widths — a single JSON `Record<columnKey, px>` map. */
 	FILES_COLUMNS: "pj.local.files.columns",
+	/** Whether the file inspector's details panel is open on desktop (`"1"`|`"0"`). */
+	INSPECTOR_PANEL_OPEN: "pj.local.inspector.panelOpen",
+	/** Whether the file preview modal's side panel is open on desktop (`"1"`|`"0"`). */
+	PREVIEW_ASIDE_OPEN: "pj.local.preview.asideOpen",
 	/**
 	 * The Catalogue console's zoom-driven view density (a `0`–`1` float) — the same list⇄grid model as
 	 * the File Explorer, shared cross-island (the footer View Control Rig ↔ the console body). Its own key

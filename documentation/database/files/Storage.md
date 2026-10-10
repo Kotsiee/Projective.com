@@ -287,6 +287,56 @@ then answers `302` to a **300-second** signed URL — `?tier=sm|md|lg` picks an 
 served as a download, whatever was asked. Every refusal is a bodiless `404`, so an id that exists and
 an id that does not look the same to someone who may read neither.
 
+**The same bytes can also be STREAMED through `/api/media/proxy/[fileId]`** (Decision #161(A);
+`MediaBackendService.streamAsset` → `services/media/stream.ts`, transport
+`core/storage-stream.ts`). It is the file inspector's only byte source and, since Decision #162(A),
+the address every stored asset row carries — the redirect route above stays only for the library
+picker and the share-folder listing (`live-library.ts`). The two doors share one gate — `objectFor`, unchanged, with the same
+`?tier=` / `?download=1` / `?share=` — and differ only in delivery:
+
+- **Transport.** After the gate the app reads the object from storage's INTERNAL origin with the
+  service key (`/storage/v1/object/authenticated/…`, never the public URL, never a client-supplied
+  path) and pipes the body to the browser; the request's abort signal cancels the upstream read.
+  `Range`, `If-Range`, `If-None-Match` and `If-Modified-Since` are forwarded, so `200` / `206` / `304`
+  pass through and a `416` comes back bodiless with `content-range: bytes */<size>`. Anything else
+  storage answers (its `400` for a missing object included) is the same bodiless `404`. `HEAD` is
+  answered without a body.
+- **Headers are an allowlist.** From storage only `content-length`, `content-range`,
+  `accept-ranges`, `etag` and `last-modified` are copied; everything else is the proxy's own, and
+  nothing names a host, bucket or object path. `content-type` keeps an inline-safe image / video /
+  audio / PDF type (`inlineSafe`, `live-objects.ts`) and `image/svg+xml`, turns any text-like type
+  (plain text, Markdown, JSON, XML, YAML, CSV, source code) into `text/plain; charset=utf-8`, and
+  makes everything else `application/octet-stream` — **never `text/html`**, because these bytes are
+  served from the app's own origin, beside the session cookie.
+- **Disposition and sandbox.** `inline` only for an inline-safe type that was not asked for as a
+  download, otherwise `attachment`; the filename is the display name (ASCII fallback + RFC 5987
+  `filename*`), never the storage path. Every response that is not inline-safe (SVG, every text-like
+  type but `text/plain`, every other binary) also carries
+  `content-security-policy: default-src 'none'; sandbox`. Always
+  `x-content-type-options: nosniff`, `cross-origin-resource-policy: same-origin`,
+  `x-robots-tag: noindex, nofollow`, `referrer-policy: no-referrer`.
+- **Cache.** `private, no-transform, max-age=3600` with `vary: cookie`; a read authorised by a share
+  slug is `private, no-store`, so it never outlives the link.
+- **Limits and counting.** A sliding window of 1,200 reads a minute per identity — `s:<slug>` for a
+  share read, `u:<user>` for a signed-in one; anonymous public reads are unkeyed — and only a fresh
+  read (no `Range`, or one from byte 0) spends it, so seeking a long video does not. Past it: `429`
+  with `retry-after`. Storage unreachable: `503`. **The proxy never counts a download** (see
+  [Functions.md](Functions.md) `fn_record_download`); the inspector's Download action records through
+  `POST /api/files/download-record` for a signed-in viewer, as the hub does (Decision #161(F)).
+
+**Thumbnails and previews read the proxy at a tier (Decision #162(A)).** A listing never carries a
+storage URL: every stored, uploaded row — hub (public buckets included), project, channel and
+conversation files, chat attachments — is addressed by its `files.items` id (`AssetItem.assetId`,
+`MessageAttachment.assetId`; on a message-linked row `id` is the `comms.message_attachments` link)
+as `/api/media/proxy/<assetId>` for the original and `?tier=sm` for an image's thumbnail; a chat
+tile asks for `?tier=md`, and a client building a `srcset` uses `sm 320w, md 1280w, lg 2560w`
+(`assetMediaSrcset`, the `library` plan's long edges in `variants.ts`). `?tier=` is the only size
+vocabulary — a requested "thumbnail variant" is `tier=sm`. The tier is read from
+`files.item_variants`, which upload-complete writes when the media pipeline decodes an image; a file
+with no rendition at that tier (an SVG, an image the pipeline could not decode, the seeded
+project-bucket images) is served its original, so its "thumbnail" is a full-size read. Fixtures, web links and connector files
+keep their own URLs.
+
 A **rendition** (`POST /api/profile/{handle}/media`) is cut server-side from the library ORIGINAL
 with the shared crop model (`@projective/types/files` `crop.ts`, the same arithmetic the browser
 editor previews), re-encoded as a fresh WebP — which also strips EXIF and anything a polyglot could
@@ -361,7 +411,12 @@ WHERE ss.id = :submission_id;
   `workspace`, `invoices`, `verification`) are downloaded via short-lived signed URLs; the public
   buckets (`avatars`, `catalogue`, `public_assets`) serve directly from the edge cache. A signed URL
   is a **bearer capability**: it is minted per request by the fat service, never cached onto a row,
-  and never persisted into a projection the client reads.
+  and never persisted into a projection the client reads. The one exception to "via signed URLs" is
+  the streaming proxy `/api/media/proxy/[fileId]` (Decision #161(A), §The upload pipeline above): it
+  re-checks the same read and streams the bytes itself with the service key, so no signed URL — and
+  no storage host, bucket or path — ever reaches the inspector, the preview modal or a files listing
+  (Decision #162(A): hub rows from the public buckets go through it as well; profile avatars read
+  through `org.get_party_cards` still carry a public-bucket URL, flag (i)).
 - **Per-bucket limits.** Each bucket sets its own `file_size_limit` and `allowed_mime_types` in the
   seed — nothing inherits the global 50 MiB / any-MIME default.
 - **Promote, don't cross.** Moving a file from `quarantine` to any destination bucket is an atomic
@@ -424,6 +479,22 @@ an island can classify identically for instant UI.
   in `files.storage_usage` (see [Functions.md](Functions.md)). Harmless while
   `storage_quota_enforced` is `false`; before it is flipped, a sweep that marks stale declarations
   `error` (which releases the reservation) and deletes their quarantine objects is required.
+- **The streaming proxy holds a request worker for the whole read.** The upload path keeps large
+  bodies off application workers (a signed `PUT`); `/api/media/proxy/[fileId]` does the opposite for
+  reads, so a long video occupies a worker for as long as it plays. Accepted for the inspector
+  (Decision #161(A)); the 1,200-a-minute window bounds how many reads start, not how long each runs.
+  Large-file streaming has only been exercised with small objects so far. Since Decision #162 every
+  grid thumbnail is a proxied read too, so a long `/files` grid scrolled quickly spends the window
+  and holds a worker per cell (flag (c)); no CDN sits in front of the proxy.
+- **An image without renditions thumbnails at full size.** `?tier=sm` falls back to the original
+  when `files.item_variants` has no row — an SVG, an image the pipeline could not decode, and the
+  seeded project-bucket images, whose seed writes no variants (Decision #162 flag (d)). Seeding
+  the tiers (or a backfill for rows uploaded before the pipeline cut them) would make those grid
+  thumbnails real 320px reads.
+- **A share link's download limit does not hold for viewing.** `download_count` moves only through
+  `files.fn_record_download`, so neither the redirect route nor the proxy counts a read, and a
+  `download_limit = 1` link can be opened and streamed without limit — pre-existing, made visible by
+  the inspector, flagged in Decision #161.
 - **Image transformation is off.** `[storage.image_transformation]` is commented out in
   `supabase/config.toml`; enable it (imgproxy) before relying on server-side avatar/thumbnail
   resizing.

@@ -32,12 +32,13 @@ import type {
 	LinkScanStatus,
 } from "@projective/types/files";
 import {
+	assetIdOf,
 	categorizeFile,
 	categoryToKind,
 	fileExtension,
-	fileObjectHref,
 	messageAttachmentFacets,
 } from "@projective/types/files";
+import { assetAddress, withMediaFacts } from "../files/asset-row.ts";
 
 /**
  * live-workspace — the RLS-scoped Postgres read path for a DM thread's **Files** and **Members**
@@ -167,6 +168,7 @@ const ITEM_COLUMNS = [
 	"link_scan_status",
 	"link_scanned_at",
 	"external_web_url",
+	"metadata",
 	"created_at",
 ].join(", ");
 
@@ -258,6 +260,8 @@ interface ItemRow {
 	link_scan_status: string | null;
 	link_scanned_at: string | null;
 	external_web_url: string | null;
+	/** The upload-time extraction envelope (`NOT NULL DEFAULT '{}'`); parsed by `metadataOf`. */
+	metadata: unknown;
 	created_at: string;
 }
 
@@ -494,39 +498,6 @@ function sizeOf(raw: number | string | null): number {
 // #region Asset mapping
 
 /**
- * The URL an asset resolves to.
- *
- * A `link` asset carries its own target and a mounted connector asset carries the provider's
- * "open in Drive/Dropbox" page, both of which are real, durable URLs. A **stored** asset lives in a
- * PRIVATE bucket whose objects are readable only through a short-lived signed URL — which server-
- * rendered HTML would outlive — so it is addressed through the private-object route
- * (`fileObjectHref`): a stable same-origin address that re-checks the read under the viewer's own
- * session and redirects to a freshly signed URL. Before this used the route, every stored file in a
- * conversation's explorer was `"#"` and opened nothing.
- *
- * `"#"` remains for an asset with no address at all (a stored upload that never settled), the
- * sentinel `AssetItemSchema` documents for a non-previewable asset, so the grid draws the category
- * glyph rather than a broken image.
- */
-function urlOf(row: ItemRow, source: AssetSource): string {
-	if (source === "link" && row.link_url) return clamp(row.link_url, MAX.url);
-	if (source !== "supabase" && row.external_web_url) {
-		return clamp(row.external_web_url, MAX.url);
-	}
-	if (source === "supabase" && row.status === "uploaded") return fileObjectHref(row.id);
-	return "#";
-}
-
-/**
- * A stored image's grid thumbnail: the object route's `sm` rendition (the route serves the original
- * when the pipeline wrote none). `null` for everything else, which the grid draws as its glyph.
- */
-function thumbnailOf(row: ItemRow, source: AssetSource, kind: FileKind): string | null {
-	if (source !== "supabase" || row.status !== "uploaded" || kind !== "image") return null;
-	return fileObjectHref(row.id, { tier: "sm" });
-}
-
-/**
  * The `link` facet of a link asset, or `null`.
  *
  * `LinkAttachmentSchema.domain` is `min(1)` while `files.items.link_domain` is nullable, so the host
@@ -575,15 +546,14 @@ interface FileContext {
 /**
  * Map one `files.items` row plus its message onto the explorer's {@link FileItem} projection.
  *
+ * `assetId`, `url` and `thumbnailUrl` come from the hub's own `assetAddress` (the media proxy for a
+ * stored, settled asset; a link's or connector's own URL; else `"#"`), and the dimensions, duration
+ * and `metadata` envelope from `withMediaFacts` — the same projection the hub draws, so a file looks
+ * the same in a conversation as in the library it came from.
+ *
  * Several required fields have no live source and are returned NEUTRAL rather than synthesised.
  * Each looks like an omission, so each is stated:
  *
- * - `width` / `height` / `durationLabel` — nothing on `files.items` records intrinsic pixel
- *   dimensions or media duration, and no writer in this repo puts them in `metadata` either. `null`
- *   lets the preview size itself from the object it actually loads; a guessed aspect ratio would
- *   make every image jump on decode.
- * - `thumbnailUrl` — a thumbnail is a URL, and stored assets have none (see {@link urlOf}). There is
- *   no derived-thumbnail column and no rendition pipeline, so this is `null` for every row.
  * - `messageAudioUrl` — there is no audio URL and no waveform column anywhere in `comms`;
  *   `dm_messages.is_audio` is a denormalised boolean **no trigger maintains** and is not treated as
  *   truth. A voice note reaches this list as an ordinary `audio`-kind attachment row, which is what
@@ -592,7 +562,7 @@ interface FileContext {
  * - `external` — populating `ExternalRefSchema` needs `providerSlug`, which lives in
  *   `integrations.providers`, and `supabase/config.toml` does **not expose the `integrations`
  *   schema** to PostgREST. A mounted asset therefore cannot carry its connector back-reference; its
- *   provider URL still survives as {@link urlOf}'s answer.
+ *   provider URL still survives as its `url`.
  * - `folderPath` — the trail lives on `files.folders.path` and would be a third keyed query for a
  *   breadcrumb nothing renders in a conversation. Left empty by the shared helper's default.
  * - `downloadedByViewer` — `files.download_events` is read-own and could answer this, but it is a
@@ -625,18 +595,20 @@ function toFileItem(row: ItemRow, attachmentId: string, ctx: FileContext): FileI
 	const at = ctx.message.created_at;
 	const time = clockLabel(at);
 	const day = dayLabel(at, ctx.now);
+	const address = assetAddress(row, kind);
 
-	return {
+	return withMediaFacts<FileItem>({
 		// The JOIN row's id, not the asset's: one file may be attached to two messages, and those are
 		// two rows in this list with two different provenances. The asset id would collide between
 		// them, which would break the grid key, the cursor and the preview-modal selector at once.
 		id: attachmentId,
+		assetId: assetIdOf(row.id),
 		kind,
 		category,
 		name,
 		ext: clamp(fileExtension(row.original_name ?? name), MAX.ext),
-		url: urlOf(row, source),
-		thumbnailUrl: thumbnailOf(row, source, kind),
+		url: address.url,
+		thumbnailUrl: address.thumbnailUrl,
 		sizeBytes: bytes,
 		sizeLabel: clamp(sizeLabelOf(bytes), MAX.sizeLabel),
 		width: null,
@@ -679,7 +651,7 @@ function toFileItem(row: ItemRow, attachmentId: string, ctx: FileContext): FileI
 		contentHash: row.content_hash,
 		hashSampled: row.hash_sampled === true,
 		link: linkOf(row, source),
-	};
+	}, row.metadata);
 }
 
 // #endregion

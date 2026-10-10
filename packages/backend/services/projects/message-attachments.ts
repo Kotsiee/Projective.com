@@ -1,7 +1,15 @@
 import type { ReadActor } from "../read-actor.ts";
 import { clamp, clampOr, commsDb, filesDb } from "./live-support.ts";
 import type { MessageAttachment, MessageAttachmentKind } from "@projective/types/projects";
-import { describeFile, type FileKind, fileObjectHref } from "@projective/types/files";
+import {
+	assetIdOf,
+	describeFile,
+	type FileKind,
+	imagePlaceholderOf,
+	mediaDimensionsOf,
+	mediaProxyHref,
+} from "@projective/types/files";
+import { metadataOf } from "../files/asset-row.ts";
 
 /**
  * message-attachments — the files behind a page of chat messages, for BOTH message tables.
@@ -29,12 +37,13 @@ import { describeFile, type FileKind, fileObjectHref } from "@projective/types/f
  *
  * ## Where the bytes come from
  *
- * A stored asset (`source = 'supabase'`, `status = 'uploaded'`) is addressed through the private-object
- * route (`fileObjectHref`), which re-checks the read under the viewer's session and redirects to a
- * short-lived signed URL. That route is the STABLE address, so it is safe in server-rendered HTML in a
- * way a signed URL is not. An image asks for the `md` rendition (the route serves the original when the
- * pipeline wrote none). A link asset keeps its own target and a mounted connector file its provider
- * page; anything else has no address and renders as a named file tile.
+ * A stored asset (`source = 'supabase'`, `status = 'uploaded'`) streams through the media proxy
+ * (`mediaProxyHref`, Decision #162(A)), which re-checks the read under the viewer's session; no storage
+ * host or path reaches the page, and the address is stable, so it is safe in server-rendered HTML. An
+ * image asks for the `md` rendition (the proxy serves the original when the pipeline wrote none). A link
+ * asset keeps its own target and a mounted connector file its provider page; anything else has no
+ * address and renders as a named file tile. The tile also carries the file's own id (`assetId`), its
+ * MIME type, and the dimensions and BlurHash read at upload, so a bubble lays out before the bytes land.
  */
 
 // #region Limits
@@ -44,6 +53,8 @@ const NAME_MAX = 200;
 const EXT_MAX = 12;
 /** `MessageAttachment.url` is `max(600)`. */
 const URL_MAX = 600;
+/** `MessageAttachment.mimeType` is `max(255)`. */
+const MIME_MAX = 255;
 // #endregion
 
 // #region Row shapes
@@ -65,10 +76,11 @@ const FILE_COLUMNS = [
 	"status",
 	"link_url",
 	"external_web_url",
+	"metadata",
 ].join(", ");
 
 /** One `files.items` row as selected by {@link FILE_COLUMNS}. */
-interface FileRow {
+export interface FileRow {
 	id: string;
 	display_name: string | null;
 	original_name: string | null;
@@ -77,6 +89,8 @@ interface FileRow {
 	status: string | null;
 	link_url: string | null;
 	external_web_url: string | null;
+	/** The upload-time extraction envelope; parsed by `metadataOf`. */
+	metadata: unknown;
 }
 
 /** The polymorphic discriminators `comms.message_attachments.message_table` accepts. */
@@ -100,16 +114,37 @@ function attachmentKindFor(kind: FileKind, servable: boolean): MessageAttachment
 function urlFor(file: FileRow, kind: FileKind): string {
 	if (file.source === "supabase") {
 		if (file.status !== "uploaded") return "";
-		return fileObjectHref(file.id, kind === "image" ? { tier: "md" } : {});
+		return mediaProxyHref(file.id, kind === "image" ? { tier: "md" } : {});
 	}
 	return clamp(file.link_url ?? file.external_web_url, URL_MAX);
 }
 
-/** Map a link row and its file onto one attachment tile. */
-function toAttachment(link: AttachmentLinkRow, file: FileRow): MessageAttachment {
+/** The intrinsic size and placeholder the upload-time extraction read, when it read them. */
+function mediaOf(
+	file: FileRow,
+): { width: number | null; height: number | null; blurhash: string | null } {
+	const metadata = metadataOf(file.metadata);
+	const dims = mediaDimensionsOf(metadata);
+	return {
+		width: dims?.width ?? null,
+		height: dims?.height ?? null,
+		blurhash: imagePlaceholderOf(metadata)?.blurhash ?? null,
+	};
+}
+
+/**
+ * Map a link row and its file onto one attachment tile — pure, so the projection is testable
+ * without a database.
+ */
+export function toAttachment(
+	link: Pick<AttachmentLinkRow, "id">,
+	file: FileRow,
+): MessageAttachment {
 	const name = file.display_name?.trim() || file.original_name?.trim() || "";
 	const described = describeFile(file.original_name ?? name, file.mime_type ?? undefined);
 	const url = urlFor(file, described.kind);
+	const media = mediaOf(file);
+	const mime = file.mime_type?.trim() ?? "";
 	return {
 		// The LINK row's id, not the file's: nothing stops one asset being attached to a message
 		// twice, which would collide two Preact children on one key. The link row is unique.
@@ -118,9 +153,11 @@ function toAttachment(link: AttachmentLinkRow, file: FileRow): MessageAttachment
 		url,
 		name: clampOr(name, NAME_MAX, "Attachment"),
 		ext: clamp(described.extension, EXT_MAX),
-		// No intrinsic dimension columns exist on `files.items`; the bubble lays images out by tile.
-		width: null,
-		height: null,
+		width: media.width,
+		height: media.height,
+		assetId: assetIdOf(file.id),
+		mimeType: mime ? clamp(mime, MIME_MAX) : null,
+		blurhash: media.blurhash,
 	};
 }
 // #endregion

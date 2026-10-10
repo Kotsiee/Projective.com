@@ -1,11 +1,22 @@
 import type { JSX } from "preact";
 import type { Signal } from "@preact/signals";
-import { useSignal } from "@preact/signals";
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useMemo, useRef } from "preact/hooks";
 import { Splitter, SplitterPanel } from "@projective/ui/layout";
-import { Backdrop, BodyPortal, usePresence } from "@projective/ui/overlay";
+import {
+	Backdrop,
+	BodyPortal,
+	createModalStack,
+	type ModalStack,
+	useFrameState,
+	usePresence,
+} from "@projective/ui/overlay";
 import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks";
+import { ProgressiveImage } from "@projective/ui/display/image";
+import { Tooltip } from "@projective/ui/feedback";
+import { Icon } from "@projective/ui/icons";
+import { assetMediaSrc, assetPlaceholder } from "@features/files/core/asset-media.ts";
 import type { FileItem, SubmissionReview, SubmissionTreeNode } from "../types/projects-types.ts";
+import { fileTabHref, openFileInTab, useFileTriggerFocus } from "../hooks/useFileTiles.ts";
 import { kindLabel } from "../core/file-model.ts";
 import { statusLabel, statusTone } from "../core/submission-model.ts";
 import { profileHref } from "../core/routing.ts";
@@ -63,7 +74,28 @@ export interface SubmissionReviewModalProps {
 	busy?: boolean;
 	/** Why the last verdict did not land, rendered in the footer as an alert; null when there is none. */
 	error?: string | null;
+	/**
+	 * When rendered as a frame of a modal stack: the workspace (selected file, mode, fullscreen,
+	 * guidelines, annotations, draft note) lives in the frame cache, so a preview opened over it and
+	 * dismissed again restores it as it was left.
+	 */
+	frame?: { stack: ModalStack<string, unknown>; uid: number };
+	/**
+	 * Open a file of this selection in the full preview, as a frame that replaces this one. Returns
+	 * `false` when the host cannot, and the file opens in a new tab instead. Absent: no control.
+	 */
+	onOpenFile?: (fileId: string) => boolean;
 }
+
+/** The frame-cache keys the review workspace keeps its state under. */
+export const REVIEW_FRAME_KEYS = [
+	"rightMode",
+	"selectedFileId",
+	"fullscreen",
+	"guidelines",
+	"annotations",
+	"draftNote",
+] as const;
 
 type RightMode = "file" | "stage" | "ticket" | "notes";
 interface Annotation {
@@ -89,6 +121,8 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 		onAccept,
 		busy = false,
 		error = null,
+		frame,
+		onOpenFile,
 	} = props;
 
 	const { mounted, state } = usePresence(open);
@@ -104,16 +138,27 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 	});
 
 	// #region Review state
-	const rightMode = useSignal<RightMode>("file");
-	const selectedFileId = useSignal<string | null>(null);
-	const fullscreen = useSignal(false);
-	const guidelines = useSignal("");
-	const annotations = useSignal<Annotation[]>([]);
-	const draftNote = useSignal("");
+	const local = useMemo(() => createModalStack<string, unknown>(), []);
+	const cache = frame?.stack ?? local;
+	const uid = frame?.uid ?? 0;
+	const rightMode = useFrameState<RightMode>(cache, uid, "rightMode", "file");
+	const selectedFileId = useFrameState<string | null>(cache, uid, "selectedFileId", null);
+	const fullscreen = useFrameState(cache, uid, "fullscreen", false);
+	const guidelines = useFrameState(cache, uid, "guidelines", "");
+	const annotations = useFrameState<Annotation[]>(cache, uid, "annotations", []);
+	const draftNote = useFrameState(cache, uid, "draftNote", "");
+	const restored = useRef(frame ? cache.has(uid, "rightMode") : false);
+	const expandRef = useRef<HTMLButtonElement>(null);
+	useFileTriggerFocus(frame ?? null, () => expandRef.current);
 
-	// Reset the workspace whenever a new unit / file set opens.
+	// Reset the workspace whenever a new unit / file set opens — but not when a frame is restored
+	// from the cache, whose workspace is exactly what the reviewer left.
 	const groupKey = `${review?.unit.path.join("/") ?? ""}#${files.map((f) => f.id).join("|")}`;
 	useEffect(() => {
+		if (restored.current) {
+			restored.current = false;
+			return;
+		}
 		rightMode.value = "file";
 		selectedFileId.value = files[0]?.id ?? null;
 		fullscreen.value = false;
@@ -134,6 +179,12 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 
 	const unit = review.unit;
 	const selected = files.find((f) => f.id === selectedFileId.value) ?? files[0] ?? null;
+	const selectedTabHref = selected ? fileTabHref(selected) : null;
+	const openPreview = () => {
+		if (!selected) return;
+		if (onOpenFile?.(selected.id)) return;
+		openFileInTab(selected);
+	};
 
 	// A verdict is only owed on a unit awaiting review; after one, the workspace is read-only.
 	const decidable = unit.status === "pending_review";
@@ -307,17 +358,34 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 											>
 												{fullscreen.value ? <CollapseGlyph size={17} /> : <ExpandGlyph size={17} />}
 											</button>
-											{selected
+											{selected && onOpenFile
 												? (
-													<a
-														class="subm-work__tool"
-														href={selected.url}
-														target="_blank"
-														rel="noopener noreferrer"
-														aria-label="Open in new tab"
-													>
-														<ExternalGlyph size={17} />
-													</a>
+													<Tooltip content="Open preview" placement="bottom">
+														<button
+															ref={expandRef}
+															type="button"
+															class="subm-work__tool"
+															aria-label={`Open preview of ${selected.name}`}
+															onClick={openPreview}
+														>
+															<Icon name="eye" size="sm" />
+														</button>
+													</Tooltip>
+												)
+												: null}
+											{selectedTabHref
+												? (
+													<Tooltip content="Open in new tab" placement="bottom">
+														<a
+															class="subm-work__tool"
+															href={selectedTabHref}
+															target="_blank"
+															rel="noopener noreferrer"
+															aria-label="Open in new tab"
+														>
+															<ExternalGlyph size={17} />
+														</a>
+													</Tooltip>
 												)
 												: null}
 										</div>
@@ -329,32 +397,39 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 												{!fullscreen.value && files.length > 1
 													? (
 														<div class="subm-work__rail" aria-label="Files in this selection">
-															{files.map((f) => (
-																<button
-																	key={f.id}
-																	type="button"
-																	class="subm-work__railitem"
-																	data-active={f.id === selected?.id ? "true" : undefined}
-																	aria-label={f.name}
-																	aria-current={f.id === selected?.id ? "true" : undefined}
-																	onClick={() => (selectedFileId.value = f.id)}
-																>
-																	{f.thumbnailUrl && (f.kind === "image" || f.kind === "video")
-																		? (
-																			<img
-																				src={f.thumbnailUrl}
-																				alt=""
-																				loading="lazy"
-																				draggable={false}
-																			/>
-																		)
-																		: (
-																			<span class="subm-work__railglyph" aria-hidden="true">
-																				<FileKindIcon kind={f.kind} size={16} />
-																			</span>
-																		)}
-																</button>
-															))}
+															{files.map((f) => {
+																const thumb = f.kind === "image" || f.kind === "video"
+																	? assetMediaSrc(f, "sm")
+																	: null;
+																return (
+																	<button
+																		key={f.id}
+																		type="button"
+																		class="subm-work__railitem"
+																		data-file-id={f.id}
+																		data-active={f.id === selected?.id ? "true" : undefined}
+																		aria-label={f.name}
+																		aria-current={f.id === selected?.id ? "true" : undefined}
+																		onClick={() => (selectedFileId.value = f.id)}
+																	>
+																		{thumb
+																			? (
+																				<ProgressiveImage
+																					src={thumb}
+																					placeholder={assetPlaceholder(f)}
+																					loading="lazy"
+																					draggable={false}
+																					fallback={<FileKindIcon kind={f.kind} size={16} />}
+																				/>
+																			)
+																			: (
+																				<span class="subm-work__railglyph" aria-hidden="true">
+																					<FileKindIcon kind={f.kind} size={16} />
+																				</span>
+																			)}
+																	</button>
+																);
+															})}
 														</div>
 													)
 													: null}

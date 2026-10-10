@@ -430,13 +430,20 @@ the PII mask, reply guard and edit window apply unchanged. `comms.dm_messages` t
 
 ### `comms.message_attachments`
 
-Poly-morphic link table connecting messages to `org.attachments`.
+Poly-morphic link table connecting messages to `files.items`.
 
-| Column          | Type | Notes                                            |
-| :-------------- | :--- | :----------------------------------------------- |
-| `message_table` | text | `comms.project_messages` or `comms.dm_messages`. |
-| `message_id`    | uuid | ID from the specified message table.             |
-| `attachment_id` | uuid | FK → `org.attachments.id`.                       |
+| Column          | Type        | Notes                                                                     |
+| :-------------- | :---------- | :------------------------------------------------------------------------ |
+| `id`            | uuid        | PK — the link row; a chat tile and a channel/DM file row are keyed by it. |
+| `message_table` | text        | `comms.project_messages` or `comms.dm_messages` (CHECK).                  |
+| `message_id`    | uuid        | ID from the specified message table (no FK — two possible parents).       |
+| `attachment_id` | uuid        | FK → `files.items.id` — the asset the proxy and the inspector address.    |
+| `created_at`    | timestamptz | When the link was written.                                                |
+
+Indexes (`00004006`): `idx_message_attachments_message (message_table, message_id)` — the files of a
+page of messages; `idx_message_attachments_attachment (attachment_id)` — the reverse lookup, the
+messages one file was posted in (`MessagingBackendService.attachmentSource`, the preview modal's
+source message and "Go to message", Decision #162).
 
 ### `comms.channel_files`
 

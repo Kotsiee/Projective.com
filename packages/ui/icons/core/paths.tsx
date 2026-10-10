@@ -630,6 +630,132 @@ const OBJECTS = {
 } as const;
 // #endregion
 
+// #region Inspector & canvas tools
+const CANVAS = {
+	/** Zoom in — the `search` lens with a plus. */
+	"zoom-in": () => (
+		<>
+			<circle cx="11" cy="11" r="6.5" />
+			<path d="M15.8 15.8L20.5 20.5M11 8.5v5M8.5 11h5" />
+		</>
+	),
+	/** Zoom out — the `search` lens with a minus. */
+	"zoom-out": () => (
+		<>
+			<circle cx="11" cy="11" r="6.5" />
+			<path d="M15.8 15.8L20.5 20.5M8.5 11h5" />
+		</>
+	),
+	/** Fit to view — a frame held inside four corners (not `expand`, which fills the screen). */
+	"zoom-fit": () => (
+		<>
+			<path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4" />
+			<rect x="8" y="8.5" width="8" height="7" rx="1.4" />
+		</>
+	),
+	/** Rotate a quarter turn clockwise — an arrow bending over a tile (not `refresh`, a retry). */
+	"rotate-cw": () => (
+		<>
+			<rect x="3.5" y="10.5" width="10" height="10" rx="2" />
+			<path d="M7.5 7.5v-1a3 3 0 0 1 3-3h3a5 5 0 0 1 5 5v5M16 11l2.5 2.5L21 11" />
+		</>
+	),
+	/** Rotate a quarter turn counter-clockwise — the mirror of `rotate-cw`. */
+	"rotate-ccw": () => (
+		<>
+			<rect x="10.5" y="10.5" width="10" height="10" rx="2" />
+			<path d="M16.5 7.5v-1a3 3 0 0 0-3-3h-3a5 5 0 0 0-5 5v5M8 11l-2.5 2.5L3 11" />
+		</>
+	),
+	/** Mirror left-to-right — two triangles across a vertical axis. */
+	"flip-horizontal": () => <path d="M12 3.5v17M9.5 6.5l-6 11h6zM14.5 6.5l6 11h-6z" />,
+	/** Mirror top-to-bottom — two triangles across a horizontal axis. */
+	"flip-vertical": () => <path d="M3.5 12h17M6.5 9.5l11-6v6zM6.5 14.5l11 6v-6z" />,
+	/** Print — a printer with the sheet it feeds out. */
+	"print": () => (
+		<>
+			<path d="M7 9V3.5h10V9" />
+			<path d="M7 17H5a1.5 1.5 0 0 1-1.5-1.5v-5A1.5 1.5 0 0 1 5 9h14a1.5 1.5 0 0 1 1.5 1.5v5A1.5 1.5 0 0 1 19 17h-2" />
+			<rect x="7" y="13.5" width="10" height="7" rx="1" />
+		</>
+	),
+	/** Pan / move freely — arrows out along both axes (not `grip`, a drag handle). */
+	"move": () => (
+		<path d="M12 3.5v17M3.5 12h17M9.5 6L12 3.5 14.5 6M9.5 18l2.5 2.5 2.5-2.5M6 9.5L3.5 12 6 14.5M18 9.5l2.5 2.5-2.5 2.5" />
+	),
+	/** A 3D object — an oblique cube (not `box`, a product). */
+	"cube-3d": () => <path d="M3.5 8.5h12v12h-12zM3.5 8.5l5-5h12l-5 5M20.5 3.5v12l-5 5" />,
+	/** Lighting — a light bulb. */
+	"light-bulb": () => (
+		<path d="M9 17.5v-1.6c0-1-.5-1.8-1.3-2.6A6 6 0 1 1 16.3 13.3c-.8.8-1.3 1.6-1.3 2.6v1.6M9 17.5h6M10 20.5h4" />
+	),
+	/** A viewpoint camera — look through a scene's camera (not `video-camera`, a call). */
+	"camera-scene": () => (
+		<>
+			<path d="M3.5 9a2 2 0 0 1 2-2h2.2l1.5-2.5h5.6L16.3 7h2.2a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" />
+			<circle cx="12" cy="13" r="3.5" />
+		</>
+	),
+	/** A ground grid in perspective (not `grid`, a density choice). */
+	"grid-floor": () => (
+		<path d="M7 8.5h10l4 11H3zM12 8.5v11M9.5 8.5l-2 11M14.5 8.5l2 11M5.6 12.4h12.8M4.4 15.6h15.2" />
+	),
+	/** Coordinate axes — three arrows from one origin. */
+	"axes-3d": () => (
+		<path d="M8 16V4M5.5 6.5L8 4l2.5 2.5M8 16h12M17.5 13.5L20 16l-2.5 2.5M8 16l-4.5 4.5M3.5 17v3.5H7" />
+	),
+	/** Wireframe — a subdivided triangle mesh. */
+	"wireframe": () => <path d="M4 19.5l8-15 8 15zM8 12h8l-4 7.5z" />,
+	/** An environment map — a sphere with a horizon and a light source (not `globe`, a language). */
+	"globe-environment": () => (
+		<>
+			<circle cx="12" cy="12" r="8.5" />
+			<path d="M3.5 12.5c2.5 1.6 5.3 2.4 8.5 2.4s6-.8 8.5-2.4" />
+			<circle cx="15" cy="8" r="1.8" />
+		</>
+	),
+	/** Wrap long lines — a line returning under itself. */
+	"text-wrap": () => (
+		<path d="M4 6h16M4 12h13a3 3 0 0 1 0 6h-4.5M15 15.5l-2.5 2.5 2.5 2.5M4 18h5" />
+	),
+	/** Source code — angle brackets around a slash. */
+	"code-brackets": () => <path d="M8.5 7l-5 5 5 5M15.5 7l5 5-5 5M13.5 5l-3 14" />,
+	/** Line numbers / a numbered list. */
+	"list-numbers": () => (
+		<path d="M11 6h9.5M11 12h9.5M11 18h9.5M4.5 5L6 4v6M4.5 10h3M4.5 14.8a1.5 1.5 0 0 1 3 .2c0 1.5-3 2.5-3 4.5h3" />
+	),
+	/** One page at a time — a single sheet with a folded corner. */
+	"page-single": () => (
+		<path d="M14 3.5H7.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8zM14 3.5V8h4.5" />
+	),
+	/** A page-thumbnail rail beside the current page. */
+	"page-thumbnails": () => (
+		<>
+			<rect x="3.5" y="3.5" width="5" height="4.5" rx="1" />
+			<rect x="3.5" y="9.75" width="5" height="4.5" rx="1" />
+			<rect x="3.5" y="16" width="5" height="4.5" rx="1" />
+			<rect x="11" y="3.5" width="9.5" height="17" rx="1.8" />
+		</>
+	),
+	/** A typeface — the type tool's T. */
+	"font-type": () => <path d="M5 7V4.5h14V7M12 4.5v15M9 19.5h6" />,
+	/** Tabular data — a ruled table. */
+	"table-grid": () => (
+		<>
+			<rect x="3.5" y="4.5" width="17" height="15" rx="2.2" />
+			<path d="M3.5 9.5h17M3.5 14.5h17M9.5 4.5v15M15 4.5v15" />
+		</>
+	),
+	/** Orbit the view — a ring circling an object, with its direction of travel. */
+	"orbit-rotate": () => (
+		<>
+			<circle cx="12" cy="11" r="3.5" />
+			<path d="M17 8.6c2.4.9 3.8 2.1 3.5 3.4-.4 2.2-4.4 4-9 4s-8.6-1.8-8.5-4c.1-1.4 1.6-2.6 4-3.4M4.8 7.7L7 8.6l-1.25 2.05" />
+		</>
+	),
+} as const;
+// #endregion
+
 /**
  * The complete registry, flattened.
  *
@@ -645,6 +771,7 @@ export const ICON_PATHS = {
 	...STATE,
 	...PEOPLE,
 	...OBJECTS,
+	...CANVAS,
 } as const satisfies Record<string, () => VNode>;
 
 /** Every canonical glyph name. Adding a glyph widens this union automatically. */

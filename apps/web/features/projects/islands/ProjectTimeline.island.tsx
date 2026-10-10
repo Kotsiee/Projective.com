@@ -24,9 +24,16 @@ import {
 import { BoardService } from "../core/BoardService.ts";
 import { TimelineService } from "../core/TimelineService.ts";
 import { TicketView } from "../components/ticket/TicketView.tsx";
+import { TicketFileFrame } from "../components/ticket/TicketFileFrame.tsx";
+import { TicketPickerFrame } from "../components/ticket/TicketPickerFrame.tsx";
 import { CreateStageModal } from "../components/CreateStageModal.tsx";
 import { newTicketCard, reconcileCard, ticketCommitPayload } from "../core/ticket-model.ts";
-import { type TicketMode, ticketStack, ticketSubmissionHref } from "../core/ticket-view.ts";
+import {
+	registerTicketFileHost,
+	type TicketMode,
+	ticketStack,
+	ticketSubmissionHref,
+} from "../core/ticket-view.ts";
 import { registerTicketSurface } from "../core/ticket-link.ts";
 import {
 	type BoardAccess,
@@ -86,6 +93,7 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 	const timezone = initial?.timezone ?? null;
 	const loading = useSignal(false);
 	const composing = useSignal<BoardCard | null>(null);
+	const savingId = useSignal<string | null>(null);
 	const stageModalOpen = useSignal(false);
 	const notice = useSignal("");
 	const newIdRef = useRef(0);
@@ -128,6 +136,8 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
+	// This island draws the chain's file previews, so a ticket tab opens a file in place.
+	useEffect(() => registerTicketFileHost(false), []);
 
 	// What the footer rig may offer, re-published on every capability or data change.
 	useSignalEffect(() => {
@@ -261,9 +271,11 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 			}));
 			composing.value = null;
 			repointFrame(clientId, optimisticId, "view");
+			savingId.value = optimisticId;
 		}
 
 		const res = await BoardService.commit(ticketCommitPayload(props.projectId, clientId, card));
+		if (savingId.peek() === optimisticId) savingId.value = null;
 		if (res.ok && res.data) {
 			const saved = res.data.card;
 			patchBoard((b) => ({ ...b, cards: b.cards.map((c) => (c.id === optimisticId ? saved : c)) }));
@@ -448,6 +460,7 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 						stages={stagesOf()}
 						cards={cardsOf()}
 						canEdit={access.value.canEditTicket}
+						saving={savingId.value === viewing.id}
 						isClient={access.value.isClient}
 						isFreelancer={access.value.isFreelancer}
 						workspaceKind={board.value?.workspaceKind ?? "personal"}
@@ -472,6 +485,21 @@ export default function ProjectTimeline(props: ProjectTimelineProps): JSX.Elemen
 						}}
 					/>
 				)
+				: null}
+
+			{frame?.kind === "file" && !frame.input?.standalone
+				? (
+					<TicketFileFrame
+						key={frame.uid}
+						uid={frame.uid}
+						viewerId={board.value?.viewerId ?? ""}
+						projectId={props.projectId}
+					/>
+				)
+				: null}
+
+			{frame?.kind === "picker" && !frame.input?.standalone
+				? <TicketPickerFrame key={frame.uid} uid={frame.uid} />
 				: null}
 
 			<CreateStageModal

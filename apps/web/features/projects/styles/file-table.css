@@ -154,12 +154,6 @@
 	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
 	color: var(--text-secondary);
 }
-.fx-row__thumb img {
-	inline-size: 100%;
-	block-size: 100%;
-	object-fit: cover;
-	display: block;
-}
 .fx-row__name {
 	min-inline-size: 0;
 	overflow: hidden;

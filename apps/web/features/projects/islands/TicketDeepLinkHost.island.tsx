@@ -4,7 +4,7 @@ import { useEffect, useRef } from "preact/hooks";
 import { Toast, useToast } from "@projective/ui/feedback";
 import type { BoardCard, BoardPage } from "../types/projects-types.ts";
 import { BoardService } from "../core/BoardService.ts";
-import { ticketStack } from "../core/ticket-view.ts";
+import { addressingFrame, registerTicketFileHost, ticketStack } from "../core/ticket-view.ts";
 import {
 	isTicketSlug,
 	onTicketSurfaceChange,
@@ -14,6 +14,8 @@ import {
 	withTicketParam,
 } from "../core/ticket-link.ts";
 import type { TicketStandaloneProps } from "../components/ticket/TicketStandalone.tsx";
+import type { TicketFileFrameProps } from "../components/ticket/TicketFileFrame.tsx";
+import type { TicketPickerFrameProps } from "../components/ticket/TicketPickerFrame.tsx";
 
 /**
  * TicketDeepLinkHost — the ONE owner of the `?tkv=<ticket-slug>` ⇄ ticket-modal relationship,
@@ -34,7 +36,9 @@ import type { TicketStandaloneProps } from "../components/ticket/TicketStandalon
  * **Modal → URL.** Whenever the chain's top frame is a ticket WITH an address, the parameter is
  * written; when the chain empties, or the top frame is a draft with no address yet, it is stripped.
  * A review frame is left alone: the board rewrites the URL to the submission's own address while a
- * review is open, and restores the ticket parameter itself on the way back.
+ * review is open, and restores the ticket parameter itself on the way back. A file or picker frame
+ * never writes the URL either: the address of the frame beneath it stays while a preview or the
+ * picker shows, and Back closes a ticket chain with either on top the same way it closes a ticket.
  *
  * ## History: push on open, replace thereafter, never `history.back()`
  *
@@ -71,6 +75,10 @@ interface Standalone {
 	card: BoardCard;
 	uid: number;
 	Component: (props: TicketStandaloneProps) => JSX.Element;
+	/** The chain's `file` frames, from the same chunk. */
+	FileFrame: (props: TicketFileFrameProps) => JSX.Element | null;
+	/** The chain's `picker` frames, from the same chunk. */
+	PickerFrame: (props: TicketPickerFrameProps) => JSX.Element;
 }
 
 /**
@@ -176,7 +184,14 @@ export default function TicketDeepLinkHost(props: TicketDeepLinkHostProps): JSX.
 			slug,
 			standalone: true,
 		});
-		standalone.value = { page, card, uid: frame.uid, Component: mod.TicketStandalone };
+		standalone.value = {
+			page,
+			card,
+			uid: frame.uid,
+			Component: mod.TicketStandalone,
+			FileFrame: mod.TicketFileFrame,
+			PickerFrame: mod.TicketPickerFrame,
+		};
 	}
 
 	/** Resolve a slug the URL is asking for: a page surface first, the fetch after a grace. */
@@ -199,12 +214,12 @@ export default function TicketDeepLinkHost(props: TicketDeepLinkHostProps): JSX.
 	/** Make the modal agree with the address bar. */
 	function syncFromUrl(): void {
 		const raw = readTicketParam(location.search);
-		const top = ticketStack.top.peek();
+		const top = addressingFrame(ticketStack.frames.peek());
 
 		if (raw === null) {
 			cancelPending();
-			// A ticket frame with no parameter behind it is one Back has just closed. A review frame
-			// owns its own address and is left to the board.
+			// A ticket frame with no parameter behind it is one Back has just closed, with any preview
+			// or picker open over it. A review frame owns its own address and is left to the board.
 			if (top && top.kind === "ticket") {
 				ticketStack.close();
 				standalone.value = null;
@@ -226,6 +241,8 @@ export default function TicketDeepLinkHost(props: TicketDeepLinkHostProps): JSX.
 		if (top && top.kind === "ticket" && top.input?.slug === raw) return;
 		resolve(raw);
 	}
+
+	useEffect(() => registerTicketFileHost(true), []);
 
 	useEffect(() => {
 		// Armed BEFORE the first sync, so a ticket a page surface opens synchronously inside it is
@@ -277,6 +294,10 @@ export default function TicketDeepLinkHost(props: TicketDeepLinkHostProps): JSX.
 	const shown = standalone.value;
 	const rendersStandalone = !!frame && frame.kind === "ticket" && !!frame.input?.standalone &&
 		!!shown && shown.uid === frame.uid;
+	const rendersOver = !!frame && !!frame.input?.standalone && !!shown &&
+		ticketStack.frames.value.some((f) => f.uid === shown.uid);
+	const rendersFile = rendersOver && frame?.kind === "file";
+	const rendersPicker = rendersOver && frame?.kind === "picker";
 
 	return (
 		<>
@@ -296,6 +317,19 @@ export default function TicketDeepLinkHost(props: TicketDeepLinkHostProps): JSX.
 						onRefused={say}
 					/>
 				)
+				: null}
+			{rendersFile && frame && shown
+				? (
+					<shown.FileFrame
+						key={frame.uid}
+						uid={frame.uid}
+						viewerId={shown.page.viewerId}
+						projectId={shown.page.projectId}
+					/>
+				)
+				: null}
+			{rendersPicker && frame && shown
+				? <shown.PickerFrame key={frame.uid} uid={frame.uid} />
 				: null}
 			{toastMounted.value ? <Toast position="bottom-center" /> : null}
 		</>

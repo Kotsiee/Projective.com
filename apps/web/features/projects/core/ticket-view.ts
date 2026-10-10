@@ -1,6 +1,8 @@
-import { createModalStack } from "@projective/ui/overlay";
-import type { IconName } from "@projective/ui/icons";
+import { createModalStack, type ModalFrame } from "@ui/overlay/core/modal-stack.ts";
+import type { IconName } from "@ui/icons/core/paths.tsx";
+import { FILE_FRAME_TRIGGER, openFileFrame } from "./file-frame.ts";
 import type {
+	AssetItem,
 	BoardCard,
 	BoardPage,
 	BoardStageRef,
@@ -35,7 +37,7 @@ import {
  * a ticket REPLACES the ticket rather than covering it, so one backdrop blur is ever composited, and
  * dismissing the review restores the ticket at the tab and scroll offset it was left at.
  */
-export type TicketFrameKind = "ticket" | "review" | "file";
+export type TicketFrameKind = "ticket" | "review" | "file" | "picker";
 
 /** Open-time input for a frame. Live UI state lives in the stack's cache, not here. */
 export interface TicketFrameInput {
@@ -74,6 +76,98 @@ export interface TicketFrameInput {
  * one of them can reach is not a chain.
  */
 export const ticketStack = createModalStack<TicketFrameKind, TicketFrameInput>();
+// #endregion
+
+// #region File frames
+/**
+ * The input of a `file` frame pushed over `beneath`: it inherits the ticket, the browsed path and
+ * the `standalone` posture, so the host that drew the frame beneath draws the preview too.
+ */
+export function ticketFileInput(
+	beneath: TicketFrameInput | null | undefined,
+	fileId: string,
+): TicketFrameInput {
+	const input: TicketFrameInput = { fileId };
+	if (beneath?.ticketId) input.ticketId = beneath.ticketId;
+	if (beneath?.slug) input.slug = beneath.slug;
+	if (beneath?.path) input.path = [...beneath.path];
+	if (beneath?.standalone) input.standalone = true;
+	return input;
+}
+
+/**
+ * The frame whose address the URL carries: the nearest frame under any file or picker frames. Neither
+ * writes the URL, so `?tkv=` (or a review's own address) stays while a preview or the picker shows.
+ */
+export function addressingFrame<K extends string, I>(
+	frames: readonly ModalFrame<K, I>[],
+): ModalFrame<K, I> | null {
+	for (let i = frames.length - 1; i >= 0; i--) {
+		if (frames[i].kind !== "file" && frames[i].kind !== "picker") return frames[i];
+	}
+	return null;
+}
+
+const fileHosts = { board: 0, standalone: 0 };
+
+/**
+ * Declare that this island renders `file` and `picker` frames for chains of the given posture (board
+ * or timeline: `false`; the deep-link host: `true`). Returns the release.
+ */
+export function registerTicketFileHost(standalone: boolean): () => void {
+	const key = standalone ? "standalone" : "board";
+	fileHosts[key]++;
+	let live = true;
+	return () => {
+		if (!live) return;
+		live = false;
+		fileHosts[key]--;
+	};
+}
+
+/** Whether a mounted host renders `file` frames over a ticket of this posture. */
+export function ticketFileHosted(standalone: boolean): boolean {
+	return fileHosts[standalone ? "standalone" : "board"] > 0;
+}
+
+/**
+ * Open a file from inside the ticket chain as a `file` frame that replaces the frame on top.
+ * Returns `false` (and opens nothing) when no frame is open or no host renders file frames for it,
+ * so the caller can fall back to a new tab.
+ */
+export function openTicketFile(files: readonly AssetItem[], fileId: string): boolean {
+	const top = ticketStack.top.peek();
+	if (!top || !ticketFileHosted(top.input?.standalone === true)) return false;
+	openFileFrame(ticketStack, "file", ticketFileInput(top.input, fileId), files, fileId);
+	return true;
+}
+// #endregion
+
+// #region Picker frames
+/** The Asset Picker routing key for a ticket's attachments. */
+export const TICKET_PICKER_ID = "ticket-attachments";
+
+/** The trigger a ticket frame records when it opens the picker, for focus return to "From library". */
+export const TICKET_LIBRARY_TRIGGER = "control:library";
+
+/**
+ * Replace the ticket with the library picker. Refuses (returns `false`) unless that ticket is the top
+ * frame and a mounted host renders picker frames for it. The picker inherits the ticket's address,
+ * so hosts and capability-loss guards still resolve the ticket while it shows.
+ */
+export function pushTicketPicker(ticketUid: number): boolean {
+	const top = ticketStack.top.peek();
+	if (!top || top.uid !== ticketUid || top.kind !== "ticket") return false;
+	if (!ticketFileHosted(top.input?.standalone === true)) return false;
+	const input: TicketFrameInput = {};
+	if (top.input?.ticketId) input.ticketId = top.input.ticketId;
+	if (top.input?.slug) input.slug = top.input.slug;
+	if (top.input?.standalone) input.standalone = true;
+	if (top.input?.mode) input.mode = top.input.mode;
+	ticketStack.write(ticketUid, FILE_FRAME_TRIGGER, TICKET_LIBRARY_TRIGGER);
+	ticketStack.push("picker", TICKET_PICKER_ID, input);
+	return true;
+}
 // #endregion
 
 // #region Tabs

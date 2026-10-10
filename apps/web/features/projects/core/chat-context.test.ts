@@ -1,5 +1,13 @@
 import { assert, assertEquals } from "@std/assert";
-import { activeChannelIdOf, discussionHref, discussionLinkOf } from "./chat-context.ts";
+import {
+	activeChannelIdOf,
+	channelMessageHref,
+	conversationMessageHref,
+	discussionHref,
+	discussionLinkOf,
+	messageAnchorOf,
+	withoutMessageAnchor,
+} from "./chat-context.ts";
 import type { ProjectChannel, ProjectDetail, StageChannel } from "../types/projects-types.ts";
 
 /**
@@ -111,3 +119,46 @@ Deno.test("the discussion is a channel segment; the project views are not", () =
 		assertEquals(activeChannelIdOf(`/projects/prj-a/${view}`), null, view);
 	}
 });
+
+// #region Message links
+const ROOM_UUID = "22222222-3333-4444-8555-666666666666";
+
+Deno.test("a room's message link names the message in the query, by slug only", () => {
+	assertEquals(
+		channelMessageHref("prj-67ss4hwneu", "stg-3f4gvyycwv", "m-1"),
+		"/projects/prj-67ss4hwneu/stg-3f4gvyycwv/chat?m=m-1",
+	);
+	assertEquals(
+		channelMessageHref("prj-a", "discussion", "a b"),
+		"/projects/prj-a/discussion/chat?m=a+b",
+	);
+	assertEquals(channelMessageHref("prj-a", ROOM_UUID, "m-1"), null);
+	assertEquals(channelMessageHref(ROOM_UUID, ROOM_UUID, "m-1"), null);
+});
+
+Deno.test("a conversation's message link is the inbox route, never a project path", () => {
+	assertEquals(
+		conversationMessageHref(ROOM_UUID, "m-1"),
+		`/messages/${ROOM_UUID}?m=m-1`,
+	);
+	assertEquals(conversationMessageHref("dm-mara", "m-1"), "/messages/dm-mara?m=m-1");
+});
+
+Deno.test("the anchor is read from ?m=, else a legacy #m- fragment", () => {
+	assertEquals(messageAnchorOf("?m=abc", ""), "abc");
+	assertEquals(messageAnchorOf("?tab=x&m=abc", "#m-old"), "abc");
+	assertEquals(messageAnchorOf("", "#m-old%20id"), "old id");
+	assertEquals(messageAnchorOf("?m=", "#m-"), null);
+	assertEquals(messageAnchorOf("", "#m-%E0%A4%A"), null);
+	assertEquals(messageAnchorOf("?x=1", "#top"), null);
+});
+
+Deno.test("stripping the anchor keeps every other part of the address", () => {
+	assertEquals(withoutMessageAnchor("/messages/c", "?m=abc", ""), "/messages/c");
+	assertEquals(
+		withoutMessageAnchor("/projects/p/discussion/chat", "?tkv=t&m=abc", "#m-abc"),
+		"/projects/p/discussion/chat?tkv=t",
+	);
+	assertEquals(withoutMessageAnchor("/messages/c", "", "#top"), "/messages/c#top");
+});
+// #endregion

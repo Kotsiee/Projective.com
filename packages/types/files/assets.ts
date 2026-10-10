@@ -151,6 +151,17 @@ export const AssetActorSchema = z.object({
 });
 export type AssetActor = z.infer<typeof AssetActorSchema>;
 
+/** A `files.items` id — the key the media proxy and the inspector address an asset's bytes by. */
+export const AssetIdSchema = z.string().uuid();
+
+/**
+ * The `files.items` id a raw key names, or `null` when it is not one (a fixture id, a link-row key).
+ * The same check {@link AssetIdSchema} applies, so a value this returns always parses.
+ */
+export function assetIdOf(raw: string | null | undefined): string | null {
+	return raw && AssetIdSchema.safeParse(raw).success ? raw : null;
+}
+
 // #endregion
 
 // #region Connector + link facets
@@ -207,6 +218,12 @@ export const AssetItemSchema = z.object({
 	// --- Identity + rendering (identical to the pre-existing FileItem) ---
 	/** Stable asset id (the grid/list key and the preview-modal selector). */
 	id: z.string().min(1).max(120),
+	/**
+	 * The `files.items` id behind the row — what the media proxy and the inspector key on. Equal to `id`
+	 * for a library row; the attached file's id on a channel or conversation row, whose `id` is the
+	 * message-attachment link. `null`/absent when no registry asset backs the row (fixtures).
+	 */
+	assetId: AssetIdSchema.nullable().optional(),
 	kind: FileKind,
 	/**
 	 * The rich {@link FileCategory} (search/filter/facets/analytics), classified from name + MIME. It

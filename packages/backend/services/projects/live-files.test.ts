@@ -336,10 +336,17 @@ Deno.test("fetchFilePage file facts: classification, size, folder trail, message
 		assertEquals(brief.downloadedByViewer, true);
 		// A private item posted into a channel reads as link-visible to the room.
 		assertEquals(brief.visibility, "link");
+		// A stored, settled file streams through the proxy; a non-uuid key is no `files.items` id.
+		assertEquals([brief.url, brief.thumbnailUrl, brief.assetId], [
+			"/api/media/proxy/i-brief",
+			null,
+			null,
+		]);
 
 		const link = page.items.find((f) => f.id === "a-2")!;
 		assertEquals([link.kind, link.ext, link.source], ["link", "", "link"]);
 		assertEquals(link.link?.url, "https://example.org/board");
+		assertEquals([link.url, link.thumbnailUrl], ["https://example.org/board", null]);
 		assertEquals(link.link?.scanStatus, "safe");
 		assertEquals(link.visibility, "public");
 		assertEquals(link.channelKind, "stage");

@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import process from "node:process";
+import { VENDOR_TREES } from "./apps/web/features/inspector/core/vendor-paths.ts";
 
 // #region Helper Functions
 const ROOT = process.cwd();
@@ -482,6 +483,241 @@ function dedupeFreshStaticAssets(): Plugin {
 		},
 	};
 }
+
+/**
+ * Content type per vendored file extension. A file whose extension is not listed (a README) is not
+ * published; licence files are, as plain text.
+ */
+const VENDOR_CONTENT_TYPES: Readonly<Record<string, string>> = {
+	".wasm": "application/wasm",
+	".js": "text/javascript; charset=utf-8",
+	".bcmap": "application/octet-stream",
+	".pfb": "application/x-font-type1",
+	".ttf": "font/ttf",
+	".icc": "application/octet-stream",
+};
+
+/** One vendored file: where it is served, where it is read from, and as what. */
+interface VendorFile {
+	publicPath: string;
+	filePath: string;
+	contentType: string;
+}
+
+function vendorContentType(name: string): string | null {
+	if (name.startsWith("LICENSE")) return "text/plain; charset=utf-8";
+	return VENDOR_CONTENT_TYPES[path.extname(name).toLowerCase()] ?? null;
+}
+
+function errorText(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Lists every file of every {@link VENDOR_TREES} entry from the repo's `node_modules`, plus the
+ * reasons a tree could not be listed (package missing, installed version differs from the version
+ * baked into its public path, directory missing or empty).
+ */
+function collectVendorFiles(): { files: VendorFile[]; problems: string[] } {
+	const files: VendorFile[] = [];
+	const problems: string[] = [];
+
+	for (const tree of VENDOR_TREES) {
+		const packageRoot = path.join(ROOT, "node_modules", tree.packageName);
+
+		let installed: string | undefined;
+		try {
+			const manifest = fs.readFileSync(path.join(packageRoot, "package.json"), "utf8");
+			installed = (JSON.parse(manifest) as { version?: string }).version;
+		} catch (error) {
+			problems.push(
+				`${tree.packageName} is not installed (run \`deno install\`): ${errorText(error)}`,
+			);
+			continue;
+		}
+		if (installed !== tree.version) {
+			problems.push(
+				`${tree.packageName}@${installed ?? "?"} is installed but vendor-paths.ts serves ` +
+					`${tree.version}; keep the deno.json pin and vendor-paths.ts in step.`,
+			);
+			continue;
+		}
+
+		let sourceDir: string;
+		try {
+			sourceDir = fs.realpathSync(path.join(packageRoot, ...tree.source.split("/")));
+		} catch (error) {
+			problems.push(`${tree.packageName}/${tree.source} is missing: ${errorText(error)}`);
+			continue;
+		}
+
+		let listed = 0;
+		for (const entry of walkSync(sourceDir, { includeDirs: false, followSymlinks: true })) {
+			const contentType = vendorContentType(entry.name);
+			if (contentType === null) continue;
+			const relative = path.relative(sourceDir, entry.path).split(path.sep).join("/");
+			files.push({ publicPath: tree.publicPath + relative, filePath: entry.path, contentType });
+			listed++;
+		}
+		if (listed === 0) problems.push(`${tree.packageName}/${tree.source} has no servable files.`);
+	}
+
+	return { files, problems };
+}
+
+/**
+ * Publishes the file inspector's engine assets — pdf.js `wasm/`, `cmaps/`, `standard_fonts/` and
+ * `iccs/`, three's Draco (`draco/gltf`) and Basis decoders — at the fixed, versioned public paths
+ * in `apps/web/features/inspector/core/vendor-paths.ts`, without committing ~5 MB of vendor files.
+ *
+ * These are runtime fetches by URL (pdf.js resolves `${cMapUrl}${name}.bcmap`, DRACOLoader
+ * `${decoderPath}draco_decoder.wasm`), not imports, so no module graph ever reaches them and Vite
+ * would otherwise ship none of them.
+ *  - **dev** (`configureServer`): streams the exact listed files from `node_modules`. The map is
+ *    the allowlist, so there is no path traversal to guard. It must run before `fresh()`'s dev
+ *    middleware, which would otherwise hand `/vendor/*` to the router and 404.
+ *  - **build**: emits each file into the CLIENT environment only (`_fresh/client/vendor/…`), named
+ *    and with an `originalFileName`, so Vite lists it in the client manifest. Fresh's server
+ *    snapshot registers every client-manifest file as an `immutable` static file — one year of
+ *    cache, which the version in the path makes safe — and `staticFiles()` serves it under
+ *    `deno task serve`. Production content types are Fresh's (by extension; `.bcmap` falls back to
+ *    `text/plain`, harmless since pdf.js reads it as an ArrayBuffer).
+ *
+ * A missing package or a version that disagrees with `vendor-paths.ts` fails the build and warns in
+ * dev.
+ */
+function vendorAssets(): Plugin[] {
+	return [
+		{
+			name: "projective:vendor-assets:serve",
+			apply: "serve",
+			configureServer(server) {
+				const { files, problems } = collectVendorFiles();
+				for (const problem of problems) {
+					server.config.logger.warn(`[vendor-assets] ${problem}`);
+				}
+				const byPath = new Map(files.map((file) => [file.publicPath, file]));
+
+				server.middlewares.use((req, res, next) => {
+					const pathname = (req.url ?? "").split("?", 1)[0];
+					if (!pathname.startsWith("/vendor/")) return next();
+
+					let decoded: string;
+					try {
+						decoded = decodeURIComponent(pathname);
+					} catch {
+						return next();
+					}
+					const file = byPath.get(decoded);
+					if (file === undefined) return next();
+
+					if (req.method !== "GET" && req.method !== "HEAD") {
+						res.statusCode = 405;
+						res.setHeader("allow", "GET, HEAD");
+						res.end();
+						return;
+					}
+
+					fs.stat(file.filePath, (statError, stat) => {
+						if (statError !== null) return next(statError);
+						res.statusCode = 200;
+						res.setHeader("content-type", file.contentType);
+						res.setHeader("content-length", String(stat.size));
+						res.setHeader("cache-control", "no-cache");
+						res.setHeader("x-content-type-options", "nosniff");
+						if (req.method === "HEAD") {
+							res.end();
+							return;
+						}
+						fs.createReadStream(file.filePath)
+							.on("error", (readError) => {
+								if (res.headersSent) res.destroy(readError);
+								else next(readError);
+							})
+							.pipe(res);
+					});
+				});
+			},
+		},
+		{
+			name: "projective:vendor-assets:emit",
+			apply: "build",
+			applyToEnvironment(env) {
+				return env.config.consumer === "client";
+			},
+			async buildStart() {
+				const { files, problems } = collectVendorFiles();
+				if (problems.length > 0) {
+					this.error(`[vendor-assets]\n${problems.join("\n")}`);
+				}
+
+				const sources = await Promise.all(
+					files.map((file) => fs.promises.readFile(file.filePath)),
+				);
+				files.forEach((file, index) => {
+					const fileName = file.publicPath.slice(1);
+					this.emitFile({
+						type: "asset",
+						fileName,
+						name: path.posix.basename(fileName),
+						originalFileName: fileName,
+						source: new Uint8Array(sources[index]),
+					});
+				});
+			},
+		},
+	];
+}
+// #endregion
+
+// #region Browser CommonJS
+/** npm packages whose `browser` field swaps a CommonJS entry for a self-contained browser bundle. */
+const BROWSER_ENTRY_PACKAGES: ReadonlySet<string> = new Set(["jszip"]);
+
+/** The `browser`-field replacement for a resolved package file, or `null` when it has none. */
+function browserEntryFor(file: string): string | null {
+	let dir = path.dirname(file);
+	while (!fs.existsSync(path.join(dir, "package.json"))) {
+		const parent = path.dirname(dir);
+		if (parent === dir) return null;
+		dir = parent;
+	}
+	const manifest: unknown = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8"));
+	if (typeof manifest !== "object" || manifest === null || !("browser" in manifest)) return null;
+	const browser = manifest.browser;
+	if (typeof browser !== "object" || browser === null) return null;
+	const relative = `./${path.relative(dir, file).replaceAll("\\", "/")}`;
+	const target = Reflect.get(browser, relative) ??
+		Reflect.get(browser, relative.replace(/\.js$/, ""));
+	return typeof target === "string" ? path.join(dir, target).replaceAll("\\", "/") : null;
+}
+
+/**
+ * Client environment only: resolves the packages in {@link BROWSER_ENTRY_PACKAGES} to the file their
+ * `browser` field names, which Fresh's Deno resolver does not read.
+ *
+ * Without it the client build bundles jszip (docx-preview's dependency, the file inspector's `.docx`
+ * canvas) from its CommonJS `lib/`, and the CommonJS-to-ESM conversion breaks it: `JSZip.prototype =
+ * require("./object")` becomes a frozen ES namespace, so `JSZip.prototype.loadAsync = …` throws
+ * "object is not extensible" the moment the chunk loads. The dev server is unaffected; only a
+ * production build failed. The browser bundle is self-contained.
+ */
+function browserEntries(): Plugin {
+	return {
+		name: "projective:browser-entries",
+		enforce: "pre",
+		applyToEnvironment(env) {
+			return env.config.consumer === "client";
+		},
+		async resolveId(source, importer, options) {
+			if (!BROWSER_ENTRY_PACKAGES.has(source)) return null;
+			const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
+			if (resolved === null || resolved.external || resolved.id.startsWith("\0")) return resolved;
+			const entry = browserEntryFor(resolved.id);
+			return entry === null ? resolved : { ...resolved, id: entry };
+		},
+	};
+}
 // #endregion
 
 // #region Vite Configuration
@@ -497,10 +733,12 @@ export default defineConfig(({ mode }) => {
 
 		plugins: [
 			pinDenoRegistrySpecifiers(),
+			browserEntries(),
 			normalizeModuleIds(),
 			stripVendorSourcemaps(),
 			dedupeFreshStaticAssets(),
 			flattenManifestCss(),
+			vendorAssets(),
 			fresh({
 				islandSpecifiers,
 			}),

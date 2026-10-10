@@ -466,6 +466,9 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 				onClose={() => (openId.value = null)}
 				onRename={renameFile}
 				onToggleStar={toggleStar}
+				context={scope === "conversation"
+					? { kind: "messages", conversationId: projectId }
+					: { kind: "project", projectSlug: projectId }}
 			/>
 
 			{toastMounted.value ? <Toast position="bottom-center" /> : null}

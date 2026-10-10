@@ -1,55 +1,36 @@
 import type { JSX } from "preact";
+import "../styles/attachment-modal.css";
 import { AudioVisualizer } from "@projective/ui/display";
+import { ProgressiveImage } from "@projective/ui/display/image";
+import { VideoPlayer } from "@projective/ui/display/video";
+import { Icon } from "@projective/ui/icons";
+import { MEDIA_PROXY_ROUTE } from "@projective/types/files";
+import {
+	assetMediaSrc,
+	assetMediaSrcset,
+	assetPlaceholder,
+} from "@features/files/core/asset-media.ts";
 import type { AssetItem } from "../types/projects-types.ts";
-import { DownloadIcon, FileKindIcon, PlayIcon } from "./file-glyphs.tsx";
+import { previewDownloadHref, previewIconName } from "./preview/preview-model.ts";
+import { LEGACY_TEXT_LINES, useLegacyText } from "./preview/use-legacy-text.ts";
 
-/**
- * FilePreview — the rich inline renderer for a single attachment in the preview modal's media panel,
- * chosen by kind: an image, a video (poster + play affordance), an audio waveform player, a
- * syntax-highlighted code block, or a document/archive placeholder with a download affordance. It is
- * the `itemTemplate` the modal's swipe carousel renders per slide. Presentation only — the actual
- * playback / streaming of stub assets lands with the live files backend.
- */
+/** Props for {@link FilePreview}. */
 export interface FilePreviewProps {
 	file: AssetItem;
+	/** The visible one of several: loads its picture eagerly. */
 	active: boolean;
 }
 
-/** Parse a pre-formatted `m:ss` (or `h:mm:ss`) duration label to milliseconds; `0` when absent. */
-function durationLabelToMs(label: string | null | undefined): number {
-	if (!label) return 0;
-	const parts = label.split(":").map((p) => parseInt(p, 10));
-	if (parts.some((n) => Number.isNaN(n))) return 0;
-	const seconds = parts.reduce((acc, n) => acc * 60 + n, 0);
-	return seconds * 1000;
-}
-
-/** A deterministic waveform (0–1) from a stable seed — no RNG, so SSR == client. */
-function peaks(seed: string, n: number): number[] {
-	let h = 0;
-	for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-	const out: number[] = [];
-	for (let i = 0; i < n; i++) {
-		const a = Math.abs(Math.sin((i + 1) * 0.6 + h));
-		const b = ((h + i * 41) % 100) / 100;
-		out.push(Math.min(1, Math.max(0.12, a * 0.6 + b * 0.4)));
-	}
-	return out;
-}
-
-// #region Sample code (fixture content for the code preview)
+// #region Fixture samples
 const SAMPLE: Record<string, string> = {
 	ts:
 		`import { signal } from "@preact/signals";\n\n// Derived view density for the file grid.\nexport const zoom = signal(0.62);\n\nexport function columnsFor(width: number, min: number): number {\n\treturn Math.max(1, Math.floor(width / min));\n}\n`,
 	tsx:
 		`export function Card({ title }: { title: string }) {\n\treturn (\n\t\t<div class="card">\n\t\t\t<h3>{title}</h3>\n\t\t</div>\n\t);\n}\n`,
 	css:
-		`.card {\n\t/* interactive → a full border is allowed */\n\tborder: 1px solid var(--outline);\n\tborder-radius: var(--radius-base);\n\tbackground: var(--surface);\n}\n`,
+		`.card {\n\tborder: 1px solid var(--outline);\n\tborder-radius: var(--radius-base);\n\tbackground: var(--surface);\n}\n`,
 	json: `{\n\t"name": "tokens",\n\t"radius": { "base": 8, "lg": 12 },\n\t"enabled": true\n}\n`,
 };
-function sampleFor(ext: string): string {
-	return SAMPLE[ext] ?? SAMPLE.ts;
-}
 
 const KEYWORDS = new Set([
 	"import",
@@ -68,7 +49,6 @@ const KEYWORDS = new Set([
 	"class",
 ]);
 
-/** A tiny per-line tokenizer → highlighted spans (comments · strings · keywords · numbers). */
 function highlight(line: string): JSX.Element[] {
 	const out: JSX.Element[] = [];
 	const commentAt = line.indexOf("//");
@@ -80,96 +60,199 @@ function highlight(line: string): JSX.Element[] {
 	while ((m = re.exec(code)) !== null) {
 		const t = m[0];
 		let cls: string | undefined;
-		if (/^["'`]/.test(t)) cls = "fx-code--str";
-		else if (/^\d/.test(t)) cls = "fx-code--num";
-		else if (KEYWORDS.has(t)) cls = "fx-code--kw";
+		if (/^["'`]/.test(t)) cls = "fx-code__tok fx-code__tok--str";
+		else if (/^\d/.test(t)) cls = "fx-code__tok fx-code__tok--num";
+		else if (KEYWORDS.has(t)) cls = "fx-code__tok fx-code__tok--kw";
 		out.push(cls ? <span key={key++} class={cls}>{t}</span> : <span key={key++}>{t}</span>);
 	}
-	if (comment) out.push(<span key={key++} class="fx-code--cmt">{comment}</span>);
+	if (comment) out.push(<span key={key++} class="fx-code__tok fx-code__tok--cmt">{comment}</span>);
 	return out;
 }
 // #endregion
 
-export function FilePreview({ file, active }: FilePreviewProps): JSX.Element {
-	if (file.kind === "image" && file.thumbnailUrl) {
-		return (
-			<figure class="fx-preview fx-preview--image">
-				<img
-					class="fx-preview__img"
-					src={file.url !== "#" ? file.url : file.thumbnailUrl}
-					alt={file.name}
-					draggable={false}
-					loading={active ? "eager" : "lazy"}
-				/>
-			</figure>
-		);
-	}
-
-	if (file.kind === "video") {
-		return (
-			<div class="fx-preview fx-preview--video">
-				<div
-					class="fx-preview__stage"
-					style={file.thumbnailUrl ? `background-image:url(${file.thumbnailUrl})` : undefined}
-				>
-					<button type="button" class="fx-preview__play" aria-label="Play video">
-						<PlayIcon size={30} />
-					</button>
-				</div>
-				<p class="fx-preview__note">
-					Video preview{file.durationLabel ? ` · ${file.durationLabel}` : ""}
-				</p>
-			</div>
-		);
-	}
-
-	if (file.kind === "audio") {
-		return (
-			<div class="fx-preview fx-preview--audio">
-				<div class="fx-audio">
-					<AudioVisualizer
-						src={file.messageAudioUrl ?? file.url}
-						peaks={peaks(file.id, 96)}
-						durationMs={durationLabelToMs(file.durationLabel) || 42_000}
-						durationLabel={file.durationLabel ?? "0:00"}
-						showSpeed
-						aria-label={`Audio · ${file.name}`}
-					/>
-				</div>
-			</div>
-		);
-	}
-
-	if (file.kind === "code") {
-		const lines = sampleFor(file.ext).replace(/\n$/, "").split("\n");
-		return (
-			<div class="fx-preview fx-preview--code">
-				<pre class="fx-code"><code>
-					{lines.map((line, i) => (
-						<span key={i} class="fx-code__line">
-							<span class="fx-code__ln" aria-hidden="true">{i + 1}</span>
-							<span class="fx-code__src">{line ? highlight(line) : " "}</span>
-						</span>
-					))}
-				</code></pre>
-			</div>
-		);
-	}
-
-	// PDF / doc / archive / other — a clean document placeholder with a download affordance.
+// #region Renderers
+function Placeholder(
+	{ file, reason }: { file: AssetItem; reason?: string },
+): JSX.Element {
+	const isLink = file.source === "link" && file.link !== null;
+	const download = previewDownloadHref(file);
 	return (
 		<div class="fx-preview fx-preview--doc">
-			<div class="fx-doc">
-				<span class="fx-doc__glyph" aria-hidden="true">
-					<FileKindIcon kind={file.kind} size={56} />
-				</span>
-				<span class="fx-doc__name">{file.name}</span>
-				<span class="fx-doc__meta">{file.ext.toUpperCase()} · {file.sizeLabel}</span>
-				<a class="fx-doc__download" href={file.url} download aria-label={`Download ${file.name}`}>
-					<DownloadIcon size={16} />
-					<span>Download to view</span>
-				</a>
+			<span class="fx-preview__glyph" aria-hidden="true">
+				<Icon name={previewIconName(file.kind)} size="xl" />
+			</span>
+			<p class="fx-preview__name">{isLink ? file.link?.title || file.name : file.name}</p>
+			<p class="fx-preview__meta">
+				{isLink ? file.link?.domain : [file.ext.toUpperCase(), file.sizeLabel].filter(Boolean)
+					.join(" · ")}
+			</p>
+			{reason ? <p class="fx-preview__note">{reason}</p> : null}
+			{isLink && file.link
+				? (
+					<a
+						class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm fx-preview__action"
+						href={file.link.url}
+						target="_blank"
+						rel="noopener noreferrer"
+					>
+						<span class="ui-button__icon">
+							<Icon name="external-link" size="sm" />
+						</span>
+						<span class="ui-button__label">Open link</span>
+					</a>
+				)
+				: download
+				? (
+					<a
+						class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm fx-preview__action"
+						href={download}
+						download={file.name}
+					>
+						<span class="ui-button__icon">
+							<Icon name="download" size="sm" />
+						</span>
+						<span class="ui-button__label">Download</span>
+					</a>
+				)
+				: null}
+		</div>
+	);
+}
+
+function ImagePreview({ file, active }: FilePreviewProps): JSX.Element {
+	const src = assetMediaSrc(file) ?? assetMediaSrc(file, "md");
+	if (!src) return <Placeholder file={file} />;
+	return (
+		<figure class="fx-preview fx-preview--image">
+			<ProgressiveImage
+				class="fx-preview__picture"
+				src={src}
+				srcset={assetMediaSrcset(file) ?? undefined}
+				sizes="(max-width: 767.98px) 100vw, 70vw"
+				alt={file.name}
+				fit="contain"
+				placeholder={assetPlaceholder(file)}
+				loading={active ? "eager" : "lazy"}
+				draggable={false}
+				fallback={<Icon name="image" size="xl" />}
+			/>
+		</figure>
+	);
+}
+
+function VideoPreview({ file }: { file: AssetItem }): JSX.Element {
+	const src = assetMediaSrc(file);
+	const media = file.metadata?.media;
+	const poster = assetMediaSrc(file, "md") ??
+		(media?.kind === "video" ? media.posterDataUrl : null) ?? undefined;
+	if (!src) return <Placeholder file={file} />;
+	return (
+		<div class="fx-preview fx-preview--video">
+			<div class="fx-preview__screen">
+				<VideoPlayer
+					variant="full"
+					src={src}
+					poster={poster}
+					label={file.name}
+					fit="contain"
+					preload="metadata"
+				/>
 			</div>
 		</div>
 	);
+}
+
+function durationMsOf(file: AssetItem): number {
+	const media = file.metadata?.media;
+	if (media?.kind === "audio" || media?.kind === "video") return media.durationMs;
+	const parts = (file.durationLabel ?? "").split(":").map((p) => Number.parseInt(p, 10));
+	if (parts.length === 0 || parts.some((n) => Number.isNaN(n))) return 0;
+	return parts.reduce((acc, n) => acc * 60 + n, 0) * 1000;
+}
+
+const FLAT_PEAKS = Array.from({ length: 96 }, () => 0.3);
+
+function AudioPreview({ file }: { file: AssetItem }): JSX.Element {
+	const media = file.metadata?.media;
+	const peaks = media?.kind === "audio" && media.peaks.length > 0 ? media.peaks : FLAT_PEAKS;
+	const src = file.messageAudioUrl ?? assetMediaSrc(file) ?? undefined;
+	return (
+		<div class="fx-preview fx-preview--audio">
+			<div class="fx-preview__player">
+				<AudioVisualizer
+					src={src}
+					peaks={peaks}
+					durationMs={durationMsOf(file)}
+					durationLabel={file.durationLabel ?? undefined}
+					showSpeed
+					aria-label={`Audio · ${file.name}`}
+				/>
+			</div>
+		</div>
+	);
+}
+
+function CodePreview({ file }: { file: AssetItem }): JSX.Element {
+	const original = assetMediaSrc(file);
+	const proxied = original !== null && original.startsWith(`${MEDIA_PROXY_ROUTE}/`)
+		? original
+		: null;
+	const read = useLegacyText(proxied, file.sizeBytes);
+	if (proxied && read.status !== "ready") {
+		if (read.status === "loading") {
+			return (
+				<div class="fx-preview fx-preview--doc" role="status">
+					<p class="fx-preview__note">Loading {file.name}…</p>
+				</div>
+			);
+		}
+		return <Placeholder file={file} reason={read.status === "error" ? read.message : undefined} />;
+	}
+	const text = proxied && read.status === "ready" ? read.text : SAMPLE[file.ext] ?? SAMPLE.ts;
+	const all = text.replace(/\n$/, "").split("\n");
+	const lines = all.slice(0, LEGACY_TEXT_LINES);
+	return (
+		<div class="fx-preview fx-preview--code">
+			<pre class="fx-code" tabIndex={0} aria-label={`${file.name} source`}><code>
+				{lines.map((line, i) => (
+					<span key={i} class="fx-code__line">
+						<span class="fx-code__ln" aria-hidden="true">{i + 1}</span>
+						<span class="fx-code__src">{line ? highlight(line) : " "}</span>
+					</span>
+				))}
+			</code></pre>
+			{all.length > lines.length
+				? (
+					<p class="fx-preview__note">
+						Showing the first {LEGACY_TEXT_LINES.toLocaleString()} of {all.length.toLocaleString()}
+						{" "}
+						lines.
+					</p>
+				)
+				: null}
+		</div>
+	);
+}
+// #endregion
+
+/**
+ * FilePreview — the row's own renderer for one file, where the inspector's canvas does not apply (a
+ * fixture, a link, a connector file) and wherever a surface draws a file inline (the submission
+ * review and pre-submit stages, the public share page). Stored bytes are read through the media
+ * proxy: a picture with its BlurHash, a playable video, an audio player, the file's real text for
+ * code; anything else names itself and offers its download.
+ */
+export function FilePreview({ file, active }: FilePreviewProps): JSX.Element {
+	switch (file.kind) {
+		case "image":
+			return <ImagePreview file={file} active={active} />;
+		case "video":
+			return <VideoPreview file={file} />;
+		case "audio":
+			return <AudioPreview file={file} />;
+		case "code":
+			return <CodePreview file={file} />;
+		default:
+			return <Placeholder file={file} />;
+	}
 }

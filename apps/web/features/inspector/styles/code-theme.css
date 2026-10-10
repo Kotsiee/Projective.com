@@ -1,0 +1,74 @@
+.ins-code,
+.ins-md__doc {
+	--ins-hl-keyword: color-mix(in oklab, var(--primary) 70%, var(--on-surface));
+	--ins-hl-string: color-mix(in oklab, var(--success) 62%, var(--on-surface));
+	--ins-hl-number: color-mix(in oklab, var(--warning) 55%, var(--on-surface));
+	--ins-hl-title: color-mix(in oklab, var(--info) 65%, var(--on-surface));
+	--ins-hl-type: color-mix(in oklab, var(--tertiary) 80%, var(--on-surface));
+	--ins-hl-attr: color-mix(in oklab, var(--secondary) 80%, var(--on-surface));
+	--ins-hl-deletion: color-mix(in oklab, var(--danger) 65%, var(--on-surface));
+	--ins-hl-comment: var(--text-secondary);
+	--ins-hl-meta: var(--on-surface-variant);
+	--ins-hl-plain: var(--on-surface);
+}
+
+:where(.ins-code, .ins-md__doc) :where(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-doctag, .hljs-template-tag, .hljs-meta .hljs-keyword) {
+	color: var(--ins-hl-keyword);
+}
+
+:where(.ins-code, .ins-md__doc) :where(.hljs-string, .hljs-regexp, .hljs-char, .hljs-meta .hljs-string, .hljs-addition) {
+	color: var(--ins-hl-string);
+}
+
+:where(.ins-code, .ins-md__doc) :where(.hljs-number, .hljs-symbol, .hljs-bullet, .hljs-variable.constant_, .hljs-link) {
+	color: var(--ins-hl-number);
+}
+
+:where(.ins-code, .ins-md__doc) :where(.hljs-title, .hljs-title.function_, .hljs-section, .hljs-selector-id, .hljs-name) {
+	color: var(--ins-hl-title);
+}
+
+:where(.ins-code, .ins-md__doc) :where(.hljs-type, .hljs-built_in, .hljs-title.class_, .hljs-title.class_.inherited__, .hljs-class .hljs-title, .hljs-selector-class) {
+	color: var(--ins-hl-type);
+}
+
+:where(.ins-code, .ins-md__doc) :where(.hljs-attr, .hljs-attribute, .hljs-property, .hljs-selector-attr, .hljs-selector-pseudo, .hljs-params, .hljs-variable, .hljs-template-variable, .hljs-variable.language_) {
+	color: var(--ins-hl-attr);
+}
+
+:where(.ins-code, .ins-md__doc) :where(.hljs-comment, .hljs-quote) {
+	color: var(--ins-hl-comment);
+	font-style: italic;
+}
+
+:where(.ins-code, .ins-md__doc) :where(.hljs-meta, .hljs-meta.prompt_, .hljs-tag, .hljs-subst) {
+	color: var(--ins-hl-meta);
+}
+
+:where(.ins-code, .ins-md__doc) :where(.hljs-tag .hljs-name) {
+	color: var(--ins-hl-title);
+}
+
+:where(.ins-code, .ins-md__doc) :where(.hljs-tag .hljs-attr) {
+	color: var(--ins-hl-attr);
+}
+
+:where(.ins-code, .ins-md__doc) :where(.hljs-deletion) {
+	color: var(--ins-hl-deletion);
+}
+
+:where(.ins-code, .ins-md__doc) :where(.hljs-operator, .hljs-punctuation) {
+	color: var(--ins-hl-plain);
+}
+
+:where(.ins-code, .ins-md__doc) :where(.hljs-emphasis) {
+	font-style: italic;
+}
+
+:where(.ins-code, .ins-md__doc) :where(.hljs-strong, .hljs-section) {
+	font-weight: var(--fw-semibold);
+}
+
+:where(.ins-code, .ins-md__doc) :where(.hljs-link) {
+	text-decoration: underline;
+}

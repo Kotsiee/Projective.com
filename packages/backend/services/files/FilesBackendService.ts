@@ -15,6 +15,7 @@ import type {
 	DownloadHistoryPage,
 	DownloadVia,
 	FileObjectTier,
+	InspectAsset,
 	LinkAttach,
 	MoveAssets,
 	RenameAsset,
@@ -56,6 +57,7 @@ import {
 } from "./live-library-writes.ts";
 import { completeUpload, initUpload } from "./live-uploads.ts";
 import { objectUrlFor } from "./live-objects.ts";
+import { inspectAssetFor } from "./live-inspect.ts";
 
 /**
  * FilesBackendService — the FAT half of the `/files` asset hub (thin routes / fat services, root
@@ -161,6 +163,22 @@ export class FilesBackendService {
 		return signedIn("item", actor, async (a) => {
 			const item = await readAsset(a, id);
 			return item ? ok(item) : fail(404, { message: "No such file." }) as Result<AssetItem>;
+		});
+	}
+
+	/**
+	 * One asset as the shell-free inspector renders it — for a signed-in reader, a visitor to a public
+	 * file, or anyone holding a share link that reaches it. Every address in it is a proxy or page route;
+	 * every refusal is the same 404, matching the media proxy's answer for the bytes.
+	 */
+	static inspect(
+		id: string,
+		opts: { share: string | null },
+		actor: ReadActor,
+	): Promise<Result<InspectAsset>> {
+		return anyone("inspect", async () => {
+			const asset = await inspectAssetFor(actor, id, opts);
+			return asset ? ok(asset) : fail(404, { message: "No such file." }) as Result<InspectAsset>;
 		});
 	}
 

@@ -45,8 +45,10 @@ import {
 	type AssetListParams,
 	type AssetTreeNode,
 	type AssetVisibility,
+	fileInspectHref,
 	type FileSortDir,
 	type FileSortKey,
+	inspectable,
 } from "../types/file-types.ts";
 import { FilesService } from "../core/FilesService.ts";
 import { assetHref, shapeFolderAsNode } from "../core/asset-model.ts";
@@ -498,9 +500,12 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 		inspectId.value = selection.value.includes(asset.id) ? asset.id : null;
 	}
 
-	/** Middle click — hand the raw asset to a new tab. `noopener` so the opened page cannot reach back. */
+	/**
+	 * Middle click — open the asset in a new tab: a stored file in the inspector, a link or external
+	 * file at its own address. `noopener` so the opened page cannot reach back.
+	 */
 	function openRaw(asset: AssetItem): void {
-		const target = asset.link?.url ?? asset.url;
+		const target = inspectable(asset) ? fileInspectHref(asset.id) : asset.link?.url ?? asset.url;
 		if (!target || target === "#") return;
 		globalThis.open(target, "_blank", "noopener,noreferrer");
 	}
@@ -851,6 +856,7 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 				onClose={() => (previewId.value = null)}
 				onRename={(assetId, name) => void rename(assetId, name)}
 				onToggleStar={toggleStar}
+				context={{ kind: "files" }}
 			/>
 		</div>
 	);

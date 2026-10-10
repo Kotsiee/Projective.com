@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { type Signal, useSignal } from "@preact/signals";
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useMemo, useRef } from "preact/hooks";
 import "../styles/fx-toolbar.css";
 import "../styles/file-explorer.css";
 import "../styles/submission-explorer.css";
@@ -11,10 +11,12 @@ import "../styles/file-table.css";
 import "../styles/submission-card.css";
 import "../styles/attachment-modal.css";
 import { VirtualGrid } from "@projective/ui/display";
+import { createModalStack } from "@projective/ui/overlay";
 import { InlineNotice, Message } from "@projective/ui/feedback";
 import { InputText, MultiSelect, SortControl } from "@projective/ui/fields";
 import { OFFLINE_NOTICE_TEXT } from "@web/utils/offline.ts";
 import { useOfflineStall } from "@web/utils/use-offline-stall.ts";
+import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
 import type {
 	AssetItem,
 	FileItem,
@@ -30,12 +32,14 @@ import type {
 	SubmissionUnit,
 } from "../types/projects-types.ts";
 import { SubmissionsService } from "../core/SubmissionsService.ts";
+import { FILE_KIND_OPTIONS, FILE_SORT_OPTIONS, messageGroup } from "../core/file-model.ts";
 import {
-	FILE_KIND_OPTIONS,
-	FILE_SORT_OPTIONS,
-	groupIndexOf,
-	messageGroup,
-} from "../core/file-model.ts";
+	FILE_FRAME_TRIGGER,
+	type FrameSnapshot,
+	openFileFrame,
+	seedFrame,
+	snapshotFrame,
+} from "../core/file-frame.ts";
 import {
 	ancestorKeys,
 	childNodesAt,
@@ -85,8 +89,8 @@ import { SubmissionNodeList } from "../components/SubmissionNodeList.tsx";
 import { ROOT_KEY, SubmissionTree } from "../components/SubmissionTree.tsx";
 import { SubmissionBreadcrumbs } from "../components/SubmissionBreadcrumbs.tsx";
 import { SubmissionActionBar } from "../components/SubmissionActionBar.tsx";
-import { AttachmentPreviewModal } from "../components/AttachmentPreviewModal.tsx";
-import { SubmissionReviewModal } from "../components/SubmissionReviewModal.tsx";
+import { FileFrame } from "../components/FileFrame.tsx";
+import { REVIEW_FRAME_KEYS, SubmissionReviewModal } from "../components/SubmissionReviewModal.tsx";
 import { ApproveStageDialog } from "../components/ApproveStageDialog.tsx";
 import { SettlementService, submissionIdOf } from "../core/SettlementService.ts";
 import {
@@ -95,7 +99,7 @@ import {
 } from "../components/CreateSubmissionModal.tsx";
 import { UploadFilesModal } from "../components/UploadFilesModal.tsx";
 import { DeleteSubmissionDialog } from "../components/DeleteSubmissionDialog.tsx";
-import { PreSubmitModal } from "../components/PreSubmitModal.tsx";
+import { PRESUBMIT_LIBRARY_TRIGGER, PreSubmitModal } from "../components/PreSubmitModal.tsx";
 import { TasksPanel } from "../components/TasksPanel.tsx";
 import { SearchIcon } from "../components/file-glyphs.tsx";
 
@@ -127,6 +131,17 @@ const CARD_META = 62;
 /** Placeholder extent floor/ceiling — enough to fill a viewport without drawing a whole corpus. */
 const SKELETON_MIN = 8;
 const SKELETON_MAX = 24;
+
+/**
+ * The explorer's own modal chain. The preview, the review workspace, the pre-submit review and the
+ * Asset Picker render only as its top frame, so a preview opened from a review, or the picker opened
+ * from the pre-submit review, REPLACES that modal (one scrim) and dismissing it restores the modal
+ * with its state.
+ */
+type ExplorerModal = "review" | "file" | "presubmit" | "picker";
+
+/** The Asset Picker routing key for the pre-submit review's library picks. */
+const PRESUBMIT_PICKER_ID = "presubmit-library";
 
 // #region Workspace view (zoom-reactive body)
 interface WorkspaceViewProps {
@@ -308,7 +323,7 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 
 	const loading = useSignal(false);
 	const loadingMore = useSignal(false);
-	const openId = useSignal<string | null>(null);
+	const modals = useMemo(() => createModalStack<ExplorerModal, undefined>(), []);
 	/**
 	 * The placeholder gate. `loading` still suppresses the empty state the moment a request starts;
 	 * this only decides whether the wait has been long enough to draw, so the stubbed backend (which
@@ -333,12 +348,10 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	// The shared stage/ticket task checklist (bound by both the Tasks panel and the Pre-Submit modal).
 	const checklist = useSignal<TaskChecklist>(buildTaskChecklist(base, { hasTickets: true }));
 
-	// Workflow modal / dialog visibility.
-	const reviewOpen = useSignal(false);
+	// Workflow modal / dialog visibility (the review and pre-submit review are frames of `modals`).
 	const createOpen = useSignal(false);
 	const uploadOpen = useSignal(false);
 	const deleteOpen = useSignal(false);
-	const preSubmitOpen = useSignal(false);
 	/**
 	 * Deliverables picked from the freelancer's own library in the pre-submit review.
 	 *
@@ -369,6 +382,8 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	/** A stage approval is in flight. */
 	const approveBusy = useSignal(false);
 
+	/** The workspace a dismissed review left (draft feedback), restored when that unit reopens. */
+	const reviewDraft = useRef<{ unit: string; snapshot: FrameSnapshot } | null>(null);
 	const reqId = useRef(0);
 	const searchTimer = useRef<number | null>(null);
 	const workspaceRef = useRef<HTMLDivElement>(null);
@@ -507,9 +522,36 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	}
 	// #endregion
 
-	// #region Preview modal
+	// #region Modal chain
 	function open(file: AssetItem): void {
-		openId.value = file.id;
+		const row = items.value.find((f) => f.id === file.id);
+		if (!row) return;
+		openFileFrame(modals, "file", undefined, messageGroup(items.value, row), row.id, "open");
+	}
+	/** Open a file of the review's selection as a frame that replaces the review. */
+	function openFromReview(fileId: string): boolean {
+		openFileFrame(modals, "file", undefined, items.value, fileId);
+		return true;
+	}
+	function openReview(): void {
+		const unit = review.value?.unit.path.join("/") ?? "";
+		const frame = modals.open("review", unit);
+		const draft = reviewDraft.current;
+		if (draft && draft.unit === unit) seedFrame(modals, frame.uid, draft.snapshot);
+	}
+	function openPreSubmit(): void {
+		modals.open("presubmit", "presubmit");
+	}
+	/** Replace the pre-submit review with the Asset Picker; focus returns to its trigger on the pop. */
+	function openLibrary(): void {
+		const top = modals.top.peek();
+		if (top?.kind !== "presubmit") return;
+		modals.write(top.uid, FILE_FRAME_TRIGGER, PRESUBMIT_LIBRARY_TRIGGER);
+		modals.push("picker", PRESUBMIT_PICKER_ID);
+	}
+	/** Dismiss the top frame, restoring the one beneath it. */
+	function popModal(): void {
+		if (!modals.back()) modals.close();
 	}
 	function renameFile(id: string, name: string): void {
 		items.value = items.value.map((f) => (f.id === id ? { ...f, name } : f));
@@ -517,9 +559,6 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	function toggleStar(id: string): void {
 		items.value = items.value.map((f) => (f.id === id ? { ...f, starred: !f.starred } : f));
 	}
-	const openFile = openId.value ? items.value.find((f) => f.id === openId.value) : undefined;
-	const group = openFile ? messageGroup(items.value, openFile) : [];
-	const startIndex = openFile ? groupIndexOf(group, openFile) : 0;
 	// #endregion
 
 	// #region Review flow (reviewer)
@@ -563,7 +602,8 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 			return;
 		}
 		updateActiveStatus(res.data.status);
-		reviewOpen.value = false;
+		reviewDraft.current = null;
+		modals.close();
 		workflowNotice.value = res.message ?? null;
 		void reload(path.value);
 	}
@@ -574,7 +614,14 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 		void decide("accept", "");
 	}
 	function closeReview(): void {
-		reviewOpen.value = false;
+		const top = modals.top.peek();
+		if (top?.kind === "review") {
+			reviewDraft.current = {
+				unit: top.id,
+				snapshot: snapshotFrame(modals, top.uid, REVIEW_FRAME_KEYS),
+			};
+		}
+		modals.close();
 		reviewError.value = null;
 	}
 
@@ -716,7 +763,7 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	 * filed twice — once as the draft and once as the submission.
 	 */
 	async function onConfirmSubmit(): Promise<void> {
-		preSubmitOpen.value = false;
+		modals.close();
 		if (workflowBusy.value) return;
 		const draft = localDraft.value;
 		if (!draft) {
@@ -816,7 +863,7 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 		if (typeof location === "undefined") return;
 		if (!wantsReview(location.search)) return;
 		if (!review.value || !viewer.isReviewer) return;
-		reviewOpen.value = true;
+		openReview();
 		history.replaceState(history.state, "", location.pathname);
 	}, [review.value?.unit.path.join("/"), viewer.isReviewer]);
 
@@ -839,6 +886,8 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	const currentNode = nodeAt(tree.value, path.value);
 	const showNodes = nodeShowsChildCards(currentNode) && !hasFilters;
 	const childNodes = showNodes ? childNodesAt(tree.value, path.value) : [];
+
+	const modalTop = modals.top.value;
 
 	const workspaceView = (
 		<WorkspaceView
@@ -930,11 +979,11 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 							</div>
 							<SubmissionActionBar
 								actions={workflow}
-								onReview={() => (reviewOpen.value = true)}
+								onReview={openReview}
 								onCreate={() => (createOpen.value = true)}
 								onUpload={() => (uploadOpen.value = true)}
 								onDelete={() => (deleteOpen.value = true)}
-								onSubmit={() => (preSubmitOpen.value = true)}
+								onSubmit={openPreSubmit}
 								onApproveStage={() => (approveOpen.value = true)}
 								approveBusy={approveBusy.value}
 							/>
@@ -986,35 +1035,47 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 					: null}
 			</div>
 
-			<AttachmentPreviewModal
-				open={!!openFile}
-				files={group}
-				startIndex={startIndex}
-				viewerId={viewerId.value}
-				projectId={projectId}
-				notesMode
-				onClose={() => (openId.value = null)}
-				onRename={renameFile}
-				onToggleStar={toggleStar}
-			/>
+			{modalTop?.kind === "file"
+				? (
+					<FileFrame
+						key={modalTop.uid}
+						stack={modals}
+						uid={modalTop.uid}
+						viewerId={viewerId.value}
+						projectId={projectId}
+						context={{ kind: "submission" }}
+						notesMode
+						onClose={popModal}
+						onRename={renameFile}
+						onToggleStar={toggleStar}
+					/>
+				)
+				: null}
 
-			<SubmissionReviewModal
-				open={reviewOpen.value}
-				review={review.value}
-				files={items.value}
-				tree={tree.value}
-				rootLabel={rootLabel}
-				rootCount={rootCount}
-				currentPath={path.value}
-				expanded={expanded}
-				viewerId={viewerId.value}
-				onClose={closeReview}
-				onNavigate={(p) => navigate(p)}
-				onRequestRevision={onRequestRevision}
-				onAccept={onAccept}
-				busy={reviewBusy.value}
-				error={reviewError.value}
-			/>
+			{modalTop?.kind === "review"
+				? (
+					<SubmissionReviewModal
+						key={modalTop.uid}
+						open
+						frame={{ stack: modals, uid: modalTop.uid }}
+						onOpenFile={openFromReview}
+						review={review.value}
+						files={items.value}
+						tree={tree.value}
+						rootLabel={rootLabel}
+						rootCount={rootCount}
+						currentPath={path.value}
+						expanded={expanded}
+						viewerId={viewerId.value}
+						onClose={closeReview}
+						onNavigate={(p) => navigate(p)}
+						onRequestRevision={onRequestRevision}
+						onAccept={onAccept}
+						busy={reviewBusy.value}
+						error={reviewError.value}
+					/>
+				)
+				: null}
 
 			<ApproveStageDialog
 				open={approveOpen}
@@ -1045,16 +1106,35 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 				onConfirm={onDeleteSubmission}
 			/>
 
-			<PreSubmitModal
-				open={preSubmitOpen.value}
-				submissionName={draftName}
-				files={[...items.value, ...libraryPicks.value]}
-				checklist={checklist.value}
-				onToggle={toggleTask}
-				onClose={() => (preSubmitOpen.value = false)}
-				onConfirm={() => void onConfirmSubmit()}
-				onAddFromLibrary={addLibraryPicks}
-			/>
+			{modalTop?.kind === "presubmit"
+				? (
+					<PreSubmitModal
+						key={modalTop.uid}
+						open
+						frame={{ stack: modals, uid: modalTop.uid }}
+						submissionName={draftName}
+						files={[...items.value, ...libraryPicks.value]}
+						checklist={checklist.value}
+						onToggle={toggleTask}
+						onClose={popModal}
+						onConfirm={() => void onConfirmSubmit()}
+						onOpenLibrary={openLibrary}
+					/>
+				)
+				: null}
+
+			{modalTop?.kind === "picker"
+				? (
+					<AssetPicker
+						key={modalTop.uid}
+						requesterId={PRESUBMIT_PICKER_ID}
+						frame={{ stack: modals, uid: modalTop.uid }}
+						mode="multi"
+						title="Add from your files"
+						onPick={addLibraryPicks}
+					/>
+				)
+				: null}
 		</div>
 	);
 }

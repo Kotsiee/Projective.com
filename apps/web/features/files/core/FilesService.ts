@@ -1,5 +1,6 @@
 import { getFiles, postFiles } from "./api.ts";
 import { toFieldErrors } from "./respond.ts";
+import { apiFetch } from "@web/utils/api-client.ts";
 import {
 	type AssetFolder,
 	type AssetItem,
@@ -21,6 +22,7 @@ import {
 	type DownloadGuard,
 	type DownloadHistoryPage,
 	type DownloadVia,
+	type InspectAsset,
 	type LinkAttach,
 	LinkAttachSchema,
 	type MoveAssets,
@@ -51,7 +53,7 @@ import type { FilesResult } from "../types/results.ts";
  * AND the writes (mirrors `CatalogueService` / `WalletService`).
  *
  * **One method here corresponds to exactly one method there, under the same name**, so a reader
- * moving between the two halves never has to translate: `list` · `tree` · `item` · `quota` ·
+ * moving between the two halves never has to translate: `list` · `tree` · `item` · `inspect` · `quota` ·
  * `dedupCheck` · `uploadInit` · `uploadComplete` · `attachLink` · `createFolder` · `rename` · `move`
  * · `remove` · `setVisibility` · `createShare` · `revokeShare` · `resolveShare` · `downloadGuard` ·
  * `recordDownload` · `history`. The payload type is the fat method's payload verbatim — the routes
@@ -136,6 +138,25 @@ export const FilesService = {
 	item(id: string): Promise<FilesResult<AssetItem>> {
 		const qs = new URLSearchParams({ id });
 		return getFiles<AssetItem>(`/api/files/item?${qs.toString()}`);
+	},
+
+	/**
+	 * One asset's inspector DTO — what the preview modal mounts the inspector canvas from. `null` when
+	 * the server answers 404 (missing, not readable, or a share slug that does not reach it); any other
+	 * failure throws, so a caller can tell "nothing to show" from "try again".
+	 */
+	async inspect(id: string, share?: string | null): Promise<InspectAsset | null> {
+		const qs = new URLSearchParams({ id });
+		if (share) qs.set("share", share);
+		const res = await apiFetch(`/api/files/inspect?${qs.toString()}`, {
+			headers: { accept: "application/json" },
+		});
+		if (res.status === 404) return null;
+		const body = await res.json().catch(() => null) as FilesResult<InspectAsset> | null;
+		if (!res.ok || !body?.ok || !body.data) {
+			throw new Error(body?.message ?? `The file could not be opened (${res.status}).`);
+		}
+		return body.data;
 	},
 
 	/**

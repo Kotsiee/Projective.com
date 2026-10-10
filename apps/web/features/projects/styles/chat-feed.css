@@ -941,6 +941,7 @@ button.msg-quote:focus-visible {
 .msg-media--single .msg-media__cell {
 	display: block;
 	max-inline-size: 100%;
+	min-block-size: 0;
 	max-block-size: 20rem;
 	aspect-ratio: var(--cell-ratio, 1);
 }
@@ -971,32 +972,32 @@ button.msg-quote:focus-visible {
 	cursor: pointer;
 }
 
-/* A tile with an address is a link that opens the asset; one without is inert content. */
-a.msg-media__cell,
-a.msg-media__square {
+.msg-media__cell--action,
+.msg-media__square--action {
+	font: inherit;
+	text-align: inherit;
 	text-decoration: none;
+	transition: transform var(--dur-fast) var(--ease-standard);
 }
 
-a.msg-media__cell:focus-visible,
-a.msg-media__square:focus-visible {
+.msg-media__cell--action:active,
+.msg-media__square--action:active {
+	transform: scale(var(--btn-press-scale));
+}
+
+.msg-media__cell--action:focus-visible,
+.msg-media__square--action:focus-visible {
 	outline: none;
-	box-shadow: var(--focus-ring-shadow);
+	box-shadow: none;
 }
 
-span.msg-media__cell,
-span.msg-media__square {
+.msg-media__cell--inert,
+.msg-media__square--inert {
 	cursor: default;
 }
 
-.msg-media__img {
-	inline-size: 100%;
-	block-size: 100%;
-	object-fit: cover;
-	display: block;
-}
-
-.msg-media--single .msg-media__img {
-	block-size: 100%;
+.msg-media__picture {
+	min-block-size: 0;
 }
 
 .msg-media__play {
@@ -1144,7 +1145,7 @@ span.msg-media__square {
 /* #region Jump-to highlight */
 .chat-feed__row[data-highlight="true"] .msg-bubble,
 .pop-chat__row[data-highlight="true"] .msg-bubble {
-	animation: msg-flash 1.8s var(--ease-standard);
+	animation: msg-flash var(--dur-highlight) var(--ease-standard);
 }
 
 @keyframes msg-flash {
@@ -1303,7 +1304,9 @@ span.msg-media__square {
 	}
 
 	.msg-bubble__more:active,
-	.msg-longcard:active {
+	.msg-longcard:active,
+	.msg-media__cell--action:active,
+	.msg-media__square--action:active {
 		transform: none;
 	}
 }
@@ -1311,6 +1314,11 @@ span.msg-media__square {
 :root[data-motion="reduced"] .msg-row__swipe-cue,
 :root[data-motion="reduced"] .msg-row[data-swipe-armed="true"] .msg-row__swipe-cue {
 	transform: translateY(-50%);
+}
+
+:root[data-motion="reduced"] .msg-media__cell--action:active,
+:root[data-motion="reduced"] .msg-media__square--action:active {
+	transform: none;
 }
 
 /* #endregion */

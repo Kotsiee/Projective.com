@@ -1,6 +1,10 @@
 import type { JSX } from "preact";
-import { ProgressiveImage } from "@projective/ui/display";
-import { imagePlaceholderOf } from "@projective/types/files";
+import { ProgressiveImage } from "@projective/ui/display/image";
+import {
+	assetMediaSrc,
+	assetMediaSrcset,
+	assetPlaceholder,
+} from "@features/files/core/asset-media.ts";
 import { type AssetItem, sourceLabel } from "../types/projects-types.ts";
 import { FileKindIcon, PlayIcon } from "./file-glyphs.tsx";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
@@ -22,8 +26,13 @@ export interface FileCardProps {
 	onOpen: (file: AssetItem) => void;
 }
 
+const CARD_SIZES = "auto, 18rem";
+
 export function FileCard({ file, onOpen }: FileCardProps): JSX.Element {
-	const hasThumb = file.thumbnailUrl !== null && (file.kind === "image" || file.kind === "video");
+	const thumbSrc = file.kind === "image" || file.kind === "video"
+		? assetMediaSrc(file, "sm")
+		: null;
+	const thumbSrcset = thumbSrc ? assetMediaSrcset(file) : null;
 
 	return (
 		<button
@@ -35,12 +44,14 @@ export function FileCard({ file, onOpen }: FileCardProps): JSX.Element {
 			}`}
 		>
 			<span class="fx-card__thumb" data-kind={file.kind}>
-				{hasThumb
+				{thumbSrc
 					? (
 						<ProgressiveImage
 							imgClass="fx-card__img"
-							src={file.thumbnailUrl ?? file.url}
-							placeholder={imagePlaceholderOf(file.metadata)}
+							src={thumbSrc}
+							srcset={thumbSrcset ?? undefined}
+							sizes={CARD_SIZES}
+							placeholder={assetPlaceholder(file)}
 							loading="lazy"
 							draggable={false}
 							fallback={<FileKindIcon kind={file.kind} size={30} />}

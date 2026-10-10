@@ -1,5 +1,6 @@
 import {
 	type AssetFolder,
+	assetIdOf,
 	type AssetItem,
 	type AssetMetadata,
 	AssetMetadataSchema,
@@ -10,13 +11,12 @@ import {
 	describeFile,
 	type FileCategory,
 	type FileKind,
-	fileObjectHref,
 	type FileStatus,
 	type LinkAttachment,
 	type LinkScanStatus,
+	mediaProxyHref,
 } from "@projective/types/files";
 import { clamp, clampOr } from "../../core/text.ts";
-import { isPublicBucket, publicObjectUrl } from "../../core/storage-url.ts";
 import { applyMediaFacts } from "./media-facts.ts";
 
 /**
@@ -28,7 +28,7 @@ import { applyMediaFacts } from "./media-facts.ts";
  * Two projections of one table is how a file comes to be "2.4 MB" in one place and "2.3 MB" in the
  * next, or public in the hub and private in the channel beside it.
  *
- * Pure except for the storage base URL; every read issues its own queries and hands rows here.
+ * Pure; every read issues its own queries and hands rows here.
  */
 
 // #region Columns + row shapes
@@ -334,34 +334,50 @@ export function ownerIdOf(row: { owner_entity_id: string | null; owner_user_id: 
 }
 
 /**
- * Where the asset's bytes are served from, and its preview thumbnail.
+ * Where the asset's bytes are served from, and its preview thumbnail (Decision #162(A)).
  *
  *  - A LINK opens its own URL and has no bytes to preview.
  *  - A MOUNTED connector asset hands off to the provider's own page.
  *  - An upload that is not `uploaded` (pending, scanning, refused) has nothing to serve — `"#"` is the
  *    sentinel every preview and picker already branches on, where a URL would render as a broken image.
- *  - A PUBLIC bucket object has a stable public address.
- *  - Anything else lives in a PRIVATE bucket and is reached through the object route, which checks the
- *    read and redirects to a short-lived signed URL. A signed URL itself is never stored or
- *    server-rendered: it would stop working while the page that carries it is still open.
+ *  - Every stored, settled asset — public bucket or private — streams through the media proxy, which
+ *    re-checks the read under the viewer's session. No storage host, bucket or object path reaches the
+ *    page, and the address is stable, so it is safe in server-rendered HTML. An image's grid thumbnail
+ *    is the proxy's `sm` rendition (the original when the pipeline wrote none).
+ *
+ * Shared by every producer of an asset row — the hub, a project room's files, a conversation's files —
+ * so the three cannot disagree about where a file's bytes live.
  */
 export function assetAddress(
-	row: Pick<ItemRow, "id" | "source" | "status" | "bucket_id" | "storage_path" | "link_url" | "external_web_url">,
+	row: Pick<ItemRow, "id" | "source" | "status" | "link_url" | "external_web_url">,
 	kind: FileKind,
 ): { url: string; thumbnailUrl: string | null } {
-	if (row.source === "link") return { url: clamp(row.link_url, 2000) || "#", thumbnailUrl: null };
+	if (row.source === "link") return { url: clampOr(row.link_url, 2000, "#"), thumbnailUrl: null };
 	if (row.source && row.source !== "supabase") {
-		return { url: clamp(row.external_web_url, 2000) || "#", thumbnailUrl: null };
+		return { url: clampOr(row.external_web_url, 2000, "#"), thumbnailUrl: null };
 	}
 	if (row.status !== "uploaded") return { url: "#", thumbnailUrl: null };
-	if (isPublicBucket(row.bucket_id)) {
-		const url = publicObjectUrl(row.bucket_id, row.storage_path) ?? "#";
-		return { url, thumbnailUrl: kind === "image" && url !== "#" ? url : null };
-	}
 	return {
-		url: fileObjectHref(row.id),
-		thumbnailUrl: kind === "image" ? fileObjectHref(row.id, { tier: "sm" }) : null,
+		url: mediaProxyHref(row.id),
+		thumbnailUrl: kind === "image" ? mediaProxyHref(row.id, { tier: "sm" }) : null,
 	};
+}
+
+/**
+ * Overlay a stored extraction envelope onto any asset row — {@link applyMediaFacts} for a narrowing of
+ * `AssetItem` (a channel or conversation `FileItem`), keeping the caller's own type.
+ */
+export function withMediaFacts<T extends AssetItem>(item: T, rawMetadata: unknown): T {
+	const metadata = metadataOf(rawMetadata);
+	const applied = applyMediaFacts(item, metadata);
+	const next = {
+		...item,
+		width: applied.width,
+		height: applied.height,
+		durationLabel: applied.durationLabel,
+		thumbnailUrl: applied.thumbnailUrl,
+	};
+	return metadata === undefined ? next : { ...next, metadata: applied.metadata };
 }
 
 /**
@@ -416,6 +432,7 @@ export function toAssetItem(row: ItemRow, ctx: AssetContext): AssetItem {
 
 	const item: AssetItem = {
 		id: row.id,
+		assetId: assetIdOf(row.id),
 		kind,
 		category,
 		name: clampOr(rawName, 200, "Untitled"),

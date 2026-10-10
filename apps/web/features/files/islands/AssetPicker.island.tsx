@@ -40,6 +40,7 @@ import { FilesService } from "../core/FilesService.ts";
 import { IntegrationsService } from "../core/IntegrationsService.ts";
 import { breadcrumbsFor, pathKey, providerSource, rootChildren } from "../core/asset-model.ts";
 import { fingerprintFile } from "../core/fingerprint.ts";
+import type { PickerFrameRef } from "../core/picker-frame.ts";
 import { awaitExtraction, extractMetadata } from "../core/media/extract.ts";
 import {
 	anchorId,
@@ -66,9 +67,11 @@ import {
 	CATEGORY_META,
 	categoryToKind,
 	type FileCategory,
+	fileInspectHref,
 	FileKind,
 	type FileScope,
 	formatMib,
+	inspectable,
 	MIB,
 	type StorageQuota,
 	type UploadTask,
@@ -212,6 +215,13 @@ export interface AssetPickerProps {
 	onClose?: () => void;
 	/** Choose and frame ONE picture for a rendition target instead of attaching files (media mode). */
 	media?: MediaPickConfig;
+	/**
+	 * Render as a frame of a modal stack: always open, and dismissal pops the frame (`back()`, else
+	 * `close()`) unless `onClose` is given. A leaf frame — its own browsing state is not frame-cached.
+	 */
+	frame?: PickerFrameRef;
+	/** Header and dialog label for a controlled or framed picker; defaults to the open request's title. */
+	title?: string;
 }
 // #endregion
 
@@ -642,7 +652,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 	// #region Open/close resolution
 	const request = pickerRequest.value?.requesterId === requesterId ? pickerRequest.value : null;
 	const globallyOpen = pickerOpen.value && request !== null;
-	const isOpen = props.open ?? globallyOpen;
+	const isOpen = props.frame ? true : props.open ?? globallyOpen;
 
 	const media = props.media ?? null;
 	const mode: "single" | "multi" = media
@@ -650,7 +660,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 		: props.mode ?? (request?.multiple ? "multi" : "single");
 	const multiple = mode === "multi";
 	const cap = multiple ? (request?.max ?? null) : 1;
-	const title = media?.title ?? request?.title ?? "Attach from your files";
+	const title = media?.title ?? props.title ?? request?.title ?? "Attach from your files";
 	const accept = resolveAccept(media ? mediaKinds(media) : props.accept ?? request?.kinds);
 	const scope = media ? null : props.scope ?? null;
 	const mediaPick = useMediaPick(media, isOpen);
@@ -709,7 +719,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 	const reqId = useRef(0);
 	const debounceRef = useRef<number | null>(null);
 	const viewerRef = useRef<string>("");
-	const restoreRef = useRef<{ ids: string[]; anchor: string | null } | null>(null);
+	const sessionRef = useRef(0);
 	/** The space whose tree is currently loaded — see {@link loadTree}. `""` forces a refetch. */
 	const treeKeyRef = useRef<string>("");
 
@@ -728,7 +738,12 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 	useFocusTrap({ active: isOpen, containerRef: panelRef });
 
 	function dismiss(): void {
-		(props.onClose ?? closePicker)();
+		if (props.onClose) return props.onClose();
+		if (props.frame) {
+			if (!props.frame.stack.back()) props.frame.stack.close();
+			return;
+		}
+		closePicker();
 	}
 
 	// A picker mounted INSIDE another overlay dies with it: closing the ticket modal unmounts this
@@ -989,9 +1004,11 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 		void reload();
 	}
 
-	/** Middle click — hand the raw asset to a new tab. `noopener` so the opened page cannot reach back. */
+	/** Open in a new tab — the inspector for stored files, the asset's own address otherwise. */
 	function openRaw(asset: AssetItem): void {
-		const target = asset.link?.url ?? asset.external?.externalWebUrl ?? asset.url;
+		const target = inspectable(asset)
+			? fileInspectHref(asset.id)
+			: asset.link?.url ?? asset.external?.externalWebUrl ?? asset.url;
 		if (!target || target === "#") return;
 		globalThis.open(target, "_blank", "noopener,noreferrer");
 	}
@@ -1173,6 +1190,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 			return;
 		}
 		busy.value = true;
+		const session = sessionRef.current;
 		const res = await FilesService.attachLink({
 			url,
 			folderId: null,
@@ -1180,6 +1198,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 			ownerId: viewerRef.current,
 		});
 		busy.value = false;
+		if (sessionRef.current !== session) return;
 		if (res.ok && res.data) {
 			linkUrl.value = "";
 			notice.value = null;
@@ -1204,6 +1223,8 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 			notice.value = "Your library is still loading — try again in a moment.";
 			return;
 		}
+		const session = sessionRef.current;
+		const live = () => sessionRef.current === session;
 		const id = queueKey();
 		const task: UploadTask = {
 			id,
@@ -1263,6 +1284,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 
 		if (ticket.dedup.verdict === "exact_duplicate" && ticket.dedup.existing) {
 			patchUpload(id, { phase: "done", progress: 1, resolution: "link_existing" });
+			if (!live()) return;
 			adopt(ticket.dedup.existing);
 			notice.value =
 				`You already had ${ticket.dedup.existing.name} — the copy you have was chosen.`;
@@ -1301,7 +1323,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 				return;
 			}
 			patchUpload(id, { phase: "done", progress: 1 });
-			adopt(done.data);
+			if (live()) adopt(done.data);
 			return;
 		}
 
@@ -1319,7 +1341,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 			return;
 		}
 		patchUpload(id, { phase: "done", progress: 1 });
-		adopt(done.data);
+		if (live()) adopt(done.data);
 	}
 
 	function onFilesPicked(list: FileList | null): void {
@@ -1392,7 +1414,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 
 	/**
 	 * Start from a clean location every time the picker opens, and hand the host's selection back when
-	 * it closes.
+	 * it closes — or unmounts while open, which is how a framed picker always ends.
 	 *
 	 * A picker that reopened where it was last left looks like memory and behaves like a trap: the
 	 * second host asking for an avatar would land in whatever folder the first host's attachment search
@@ -1405,18 +1427,9 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 	 * trigger with no subscription at all.
 	 */
 	useEffect(() => {
-		if (!isOpen) {
-			// Guarded on having actually been open: this effect also runs on the very first render of a
-			// closed picker, and sweeping a SHARED queue then would clear finished uploads belonging to
-			// whatever surface is behind it.
-			if (restoreRef.current) {
-				restoreSelection(restoreRef.current.ids, restoreRef.current.anchor);
-				restoreRef.current = null;
-				clearFinishedUploads();
-			}
-			return;
-		}
-		restoreRef.current = { ids: [...selection.value], anchor: anchorId.value };
+		if (!isOpen) return;
+		const session = ++sessionRef.current;
+		const snapshot = { ids: [...selection.value], anchor: anchorId.value };
 		clearSelection();
 		pickerSelection.value = [];
 		myUploads.value = [];
@@ -1430,6 +1443,11 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 		treeKeyRef.current = "";
 		resetLocation();
 		void reload();
+		return () => {
+			if (sessionRef.current === session) sessionRef.current++;
+			restoreSelection(snapshot.ids, snapshot.anchor);
+			clearFinishedUploads();
+		};
 	}, [isOpen]);
 
 	const candidateId = mediaPick.candidate.value?.id ?? null;
@@ -1744,7 +1762,7 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 							<span class="apk__why" id="apk-save-why">
 								{config.max > 1
 									? `Nothing chosen yet — choose up to ${config.max} for your empty slots.`
-									: "Nothing chosen yet — choose or upload a picture first."}
+									: "Choose or upload a picture to frame it."}
 							</span>
 						)
 						: (
@@ -1826,16 +1844,20 @@ export default function AssetPicker(props: AssetPickerProps): JSX.Element {
 						: (
 							<>
 								<Button variant="text" label="Cancel" onClick={dismiss} />
-								<Button
-									variant="filled"
-									label={chosen.length > 1 ? `Continue (${chosen.length})` : "Continue"}
-									disabled={chosen.length === 0 || status !== null}
-									aria-describedby={chosen.length === 0 ? "apk-save-why" : undefined}
-									onClick={() => {
-										const refusal = mediaPick.proceed();
-										notice.value = refusal;
-									}}
-								/>
+								{config.max > 1
+									? (
+										<Button
+											variant="filled"
+											label={chosen.length > 1 ? `Continue (${chosen.length})` : "Continue"}
+											disabled={chosen.length === 0 || status !== null}
+											aria-describedby={chosen.length === 0 ? "apk-save-why" : undefined}
+											onClick={() => {
+												const refusal = mediaPick.proceed();
+												notice.value = refusal;
+											}}
+										/>
+									)
+									: null}
 							</>
 						)}
 				</div>

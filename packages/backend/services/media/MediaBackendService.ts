@@ -11,6 +11,7 @@ import type {
 	LibraryUploadTicket,
 } from "@projective/types/files";
 import { completeLibraryUpload, initLibraryUpload, listLibrary } from "./library.ts";
+import { type StreamedAsset, streamAssetFor, type StreamRequest } from "./stream.ts";
 
 /**
  * MediaBackendService — the FAT service behind a person's media library: the listing the media
@@ -53,5 +54,17 @@ export class MediaBackendService {
 			return fail(404, { message: "Your sign-in account has no picture to bring in." });
 		}
 		return await ingestOAuthAvatar(actor, source.data.url);
+	}
+
+	/**
+	 * Stream an asset's bytes through the app after the read decision — the media proxy behind
+	 * `/api/media/proxy/[fileId]`. Every refusal is a 404.
+	 */
+	static async streamAsset(
+		actor: ReadActor,
+		fileId: string,
+		request: StreamRequest,
+	): Promise<ServiceResult<StreamedAsset>> {
+		return await streamAssetFor(actor, fileId, request);
 	}
 }

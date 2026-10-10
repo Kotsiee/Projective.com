@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { MessageDeltaSchema, messageDeltaText, MessageReplySchema } from "./message-rich.ts";
+import { AssetIdSchema } from "../files/assets.ts";
+import { BlurHashSchema } from "../files/metadata.ts";
 
 /**
  * projects.messages — the Zod SSOT for a project channel's CONVERSATION read
@@ -54,8 +56,79 @@ export const MessageAttachmentSchema = z.object({
 	width: z.number().int().positive().nullable(),
 	/** Intrinsic pixel height (images/videos); null for files. */
 	height: z.number().int().positive().nullable(),
+	/**
+	 * The `files.items` id behind the tile — what the media proxy, the preview modal and the inspector
+	 * address. `id` stays the link row, so one file attached twice never collides on a key. Absent or
+	 * `null` on a fixture tile.
+	 */
+	assetId: AssetIdSchema.nullable().optional(),
+	/** The stored MIME type as the uploader declared it; `null` when unknown. */
+	mimeType: z.string().max(255).nullable().optional(),
+	/** The BlurHash read at upload (an image, or a video's poster) — the tile's loading placeholder. */
+	blurhash: BlurHashSchema.nullable().optional(),
 });
 export type MessageAttachment = z.infer<typeof MessageAttachmentSchema>;
+// #endregion
+
+// #region Attachment source
+/** Which message table an attachment's source message lives in. */
+export const AttachmentSourceKind = z.enum(["dm", "project"]);
+export type AttachmentSourceKind = z.infer<typeof AttachmentSourceKind>;
+
+/** Who sent the source message, as the preview's source-message row draws them. */
+export const AttachmentSourceSenderSchema = z.object({
+	id: z.string().min(1).max(80),
+	name: z.string().min(1).max(120),
+	/** The `@handle` the name links to; `null` → no link. */
+	handle: z.string().max(40).nullable(),
+	/** The avatar address; `null` → the initials fallback. */
+	avatarSrc: z.string().max(400).nullable(),
+});
+export type AttachmentSourceSender = z.infer<typeof AttachmentSourceSenderSchema>;
+
+/** The longest excerpt an {@link AttachmentSource} carries. */
+export const ATTACHMENT_SOURCE_EXCERPT_MAX = 280;
+
+/**
+ * One message a file was posted in — the reverse lookup behind the preview's "Go to message".
+ *
+ * `conversationId` is the thread uuid for a DM and the room (`comms.project_channels`) uuid for a
+ * project message — an identity to compare against, never a route segment. `href` is the route: a
+ * conversation's `/messages/<id>?m=<messageId>`, or a project room's
+ * `/projects/<prj-…>/<stg-…|discussion>/chat?m=<messageId>`.
+ */
+export const AttachmentSourceSchema = z.object({
+	messageId: z.string().min(1).max(80),
+	kind: AttachmentSourceKind,
+	conversationId: z.string().max(120).nullable(),
+	/** The room or group name the message sits in; `null` for a one-to-one DM. */
+	channelLabel: z.string().max(160).nullable(),
+	sender: AttachmentSourceSenderSchema,
+	/** ISO timestamp of the message. */
+	createdAt: z.string(),
+	dayLabel: z.string().max(24),
+	timeLabel: z.string().max(20),
+	/** The message body as stored (already PII-masked where the thread is protected), whitespace folded. */
+	excerpt: z.string().max(ATTACHMENT_SOURCE_EXCERPT_MAX),
+	href: z.string().min(1).max(600),
+});
+export type AttachmentSource = z.infer<typeof AttachmentSourceSchema>;
+
+/**
+ * A message body as a one-paragraph excerpt: whitespace folded, cut on a word boundary near `max`
+ * with an ellipsis. The single derivation, so the service and the modal's instant paint agree.
+ */
+export function attachmentSourceExcerpt(
+	body: string | null | undefined,
+	max: number = ATTACHMENT_SOURCE_EXCERPT_MAX,
+): string {
+	const flat = (body ?? "").replace(/\s+/g, " ").trim();
+	if (flat.length <= max) return flat;
+	const cut = flat.slice(0, Math.max(0, max - 1));
+	const space = cut.lastIndexOf(" ");
+	const head = space > max * 0.6 ? cut.slice(0, space) : cut;
+	return `${head.trimEnd()}…`;
+}
 // #endregion
 
 // #region Audio memo

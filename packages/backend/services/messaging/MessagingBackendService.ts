@@ -24,6 +24,7 @@ import type {
 import { dmHandleOf, uniqueContactIds } from "@projective/types/messaging";
 import { maskPii } from "@projective/types/comms";
 import type {
+	AttachmentSource,
 	ChatMessage,
 	FileListPage,
 	FileListParams,
@@ -56,7 +57,13 @@ import {
 } from "./messages-fixtures.ts";
 import { replyFromMessage, replyRefusal } from "../projects/message-replies.ts";
 import { fetchMessageAttachments } from "../projects/message-attachments.ts";
-import { findConversationFilePage, findConversationRoster } from "./workspace-fixtures.ts";
+import {
+	findAttachmentSources,
+	findConversationFilePage,
+	findConversationRoster,
+} from "./workspace-fixtures.ts";
+import { fetchAttachmentSources } from "./live-attachment-source.ts";
+import { UUID_RE } from "../projects/live-support.ts";
 import { findSettings } from "./settings-fixtures.ts";
 import {
 	fetchConversation,
@@ -823,6 +830,46 @@ export class MessagingBackendService {
 		const page = findConversationFilePage(params);
 		if (!page) return fail(404, { message: "No such conversation." });
 		return ok({ page });
+	}
+
+	/**
+	 * The messages an asset was posted in — the preview modal's source-message section and its "Go to
+	 * message" target — newest first, across DMs and project rooms.
+	 *
+	 * Live, every row is RLS-scoped to the caller (`view_attachments_if_member`, then each message
+	 * table's own policy) and soft-deleted messages are excluded, so an empty list means "never posted
+	 * anywhere you can read". `conversationId` narrows to one thread or room: a uuid is matched as is, a
+	 * `dm-{handle}` resolves to its thread first (no thread yet → nothing), and any other shape (a route
+	 * segment such as `stg-…`) leaves the list unnarrowed. Anonymous callers get an empty list. The
+	 * fixture branch searches one fixture conversation, where tiles carry no `files.items` id.
+	 */
+	static async attachmentSource(
+		assetId: string,
+		actor: ReadActor,
+		opts: { conversationId?: string | null } = {},
+	): Promise<ServiceResult<{ sources: AttachmentSource[] }>> {
+		if (assetId.length === 0) return fail(400, { message: "Missing asset id." });
+		if (actor.userId.length === 0) return ok({ sources: [] });
+		const scope = opts.conversationId?.trim() || null;
+		const live = await liveRead(
+			"attachmentSource",
+			actor,
+			"messaging.attachmentSource",
+			{ assetId, scope },
+			async (a) => {
+				let conversationId: string | null = null;
+				if (scope && dmHandleOf(scope)) {
+					const ref = await resolveThreadRef(a, scope);
+					if (!ref || ref.kind !== "thread") return [];
+					conversationId = ref.threadId;
+				} else if (scope && UUID_RE.test(scope)) {
+					conversationId = scope;
+				}
+				return await fetchAttachmentSources(a, assetId, { conversationId }, clock());
+			},
+		);
+		if (live) return ok({ sources: live });
+		return ok({ sources: findAttachmentSources(assetId, scope) });
 	}
 
 	/**

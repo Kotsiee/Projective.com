@@ -13,7 +13,14 @@ import type {
 	TicketStageRef,
 } from "../../../types/projects-types.ts";
 import { filesZoom, gridColWidth, viewMode, zoom } from "../../../core/view-state.ts";
-import { childrenAtPath, filesAtPath, nodeAtPath, ticketStack } from "../../../core/ticket-view.ts";
+import {
+	childrenAtPath,
+	filesAtPath,
+	nodeAtPath,
+	openTicketFile,
+	ticketStack,
+} from "../../../core/ticket-view.ts";
+import { useFileTiles } from "../../../hooks/useFileTiles.ts";
 import { pathKey } from "../../../core/submission-model.ts";
 import { FileCard } from "../../FileCard.tsx";
 import { FreelancerCard } from "../../FreelancerCard.tsx";
@@ -87,6 +94,11 @@ export function TicketSubmissionsTab(props: TicketSubmissionsTabProps): JSX.Elem
 	const rootCount = card.submissions.reduce((n, s) => n + s.fileCount, 0);
 	// A container node drills into its children; a unit or a directory shows what is in it.
 	const showsChildren = !current || (current.kind !== "unit" && current.kind !== "dir");
+	const tiles = useFileTiles(workspaceRef, {
+		files: showsChildren ? [] : files,
+		preview: (f) => openTicketFile(files, f.id),
+		frame: { stack: ticketStack, uid: props.uid },
+	});
 
 	function navigate(next: string[]): void {
 		path.value = next;
@@ -184,7 +196,12 @@ export function TicketSubmissionsTab(props: TicketSubmissionsTabProps): JSX.Elem
 							/>
 						</div>
 
-						<div class="tkv-subs__work" ref={workspaceRef}>
+						<div
+							class="tkv-subs__work"
+							ref={workspaceRef}
+							onClickCapture={tiles.onClickCapture}
+							onAuxClick={tiles.onAuxClick}
+						>
 							{showsChildren
 								? children.length === 0
 									? <p class="tkv-empty tkv-empty--inline">Nothing here yet.</p>
@@ -210,7 +227,7 @@ export function TicketSubmissionsTab(props: TicketSubmissionsTabProps): JSX.Elem
 											<FileCard
 												key={f.id}
 												file={f}
-												onOpen={() => globalThis.open(f.url, "_blank")}
+												onOpen={tiles.onOpen}
 											/>
 										))}
 									</div>

@@ -10,6 +10,11 @@ import { MessageBubble } from "@web/features/projects/components/MessageBubble.t
 import { SystemMessage } from "@web/features/projects/components/SystemMessage.tsx";
 import { MessageSelectionBar } from "@web/features/projects/components/MessageSelectionBar.tsx";
 import { ReactionBubble } from "@web/features/projects/components/ReactionBubble.tsx";
+import {
+	ChatAttachmentPreview,
+	type ChatPreviewRequest,
+} from "@web/features/projects/components/ChatAttachmentPreview.tsx";
+import type { ChatFeedScope } from "@web/features/projects/core/chat-attachments.ts";
 import { useMessageSelection } from "@web/features/projects/hooks/useMessageSelection.ts";
 import ChatComposer, {
 	type ComposerHandle,
@@ -66,7 +71,12 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 	const canPin = useSignal(false);
 	const dragActive = useSignal(false);
 	const flashId = useSignal<string | null>(null);
+	const preview = useSignal<ChatPreviewRequest | null>(null);
 	const mobile = useIsMobile();
+	const conversation = state.conversationId ?? state.channelId;
+	const scope: ChatFeedScope = state.scope === "conversation"
+		? { kind: "conversation", projectId: conversation, channelId: conversation }
+		: { kind: "project", projectId: state.projectId, channelId: state.channelId };
 
 	const rootRef = useRef<HTMLDivElement>(null);
 	const scrollRef = useRef<HTMLDivElement>(null);
@@ -299,6 +309,10 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 
 	const selectedCount = sel.selected.value.length;
 
+	function openAttachment(messageId: string, index: number, trigger: HTMLElement): void {
+		preview.value = { messageId, index, trigger };
+	}
+
 	function renderRow(row: FeedRow): JSX.Element {
 		if (row.kind === "divider") {
 			return (
@@ -323,6 +337,7 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 					onToggleFavorite={toggleFavorite}
 					onReport={report}
 					onJump={(id) => void jumpTo(id)}
+					onOpenAttachment={openAttachment}
 					selection={sel.rowFor(row.message)}
 					selectionCount={selectedCount}
 				/>
@@ -415,6 +430,13 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 			)}
 
 			<p class="pop-chat__sr" role="status" aria-live="polite">{sel.status.value}</p>
+
+			<ChatAttachmentPreview
+				request={preview}
+				messages={messages.value}
+				scope={scope}
+				onGoToMessage={(id) => void jumpTo(id)}
+			/>
 		</div>
 	);
 }

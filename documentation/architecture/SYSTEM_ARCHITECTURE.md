@@ -1099,7 +1099,7 @@ have different trust models.
 
 | Half             | Client (thin)         | Routes (thin)             | Service (fat)                             | Gate                        |
 | :--------------- | :-------------------- | :------------------------- | :---------------------------------------- | :-------------------------- |
-| The hub          | `FilesService`        | `/api/files/*` (19)       | `services/files/FilesBackendService.ts`   | **`FILES_BACKEND_LIVE`**    |
+| The hub          | `FilesService`        | `/api/files/*` (20)       | `services/files/FilesBackendService.ts`   | **`FILES_BACKEND_LIVE`**    |
 | The connectors   | `IntegrationsService` | `/api/integrations/*` (7) | `services/integrations/IntegrationsBackendService.ts` | **`INTEGRATIONS_BACKEND_LIVE`** |
 
 Both default **off** (`isFilesBackendLive()` / `isIntegrationsBackendLive()` in `core/supabase.ts`),
@@ -1113,8 +1113,8 @@ reusable Asset Picker; feature code in `apps/web/features/files/`.
 **One method per method, one route per method.** Each `FilesService` method corresponds to exactly one
 fat method **under the same name** (`list` · `tree` · `item` · `quota` · `dedupCheck` · `uploadInit` ·
 `uploadComplete` · `attachLink` · `createFolder` · `rename` · `move` · `remove` · `setVisibility` ·
-`createShare` · `revokeShare` · `resolveShare` · `downloadGuard` · `recordDownload` · `history`), so a
-reader crossing the boundary never translates. Islands import the client service, never
+`createShare` · `revokeShare` · `resolveShare` · `downloadGuard` · `recordDownload` · `history` ·
+`inspect`), so a reader crossing the boundary never translates. Islands import the client service, never
 `@server/services/*` — that import edge is what keeps the credential-touching half out of the browser
 bundle.
 
@@ -1146,6 +1146,100 @@ writes a row indistinguishable from a real one that would survive the gate flip 
   on `security.platform_params.storage_quota_enforced` (seeded `false`). When it does refuse, the
   `entitlement.denied` analytics event is emitted by the **app layer**, not by the trigger — a `RAISE`
   inside Postgres rolls back the analytics row written moments earlier (§8 Decision #58).
+
+#### The file inspector and the streaming proxy (Decision #161)
+
+A stored file opens in a new tab at **`/inspect/[fileId]`** — a shell-free page (route group
+`(standalone)`, no `_layout`) whose controller is `features/inspector/routes/InspectScreen.tsx`. Two
+server doors feed it, and they keep the two halves of the rule above apart:
+
+- **What the page knows — `FilesBackendService.inspect(id, { share }, actor)`** (`anyone`-wrapped;
+  `services/files/live-inspect.ts`, the pure projection `toInspectAsset` in `inspect-dto.ts`). It
+  mirrors `objectFor`'s three read branches (share slug → `fn_resolve_share` + a service read; signed
+  in → the user's client under RLS; anonymous → the anon client), admits only `source = 'supabase'`,
+  `status = 'uploaded'`, not deleted, and returns one `InspectAsset` (`@projective/types/files`
+  `inspect.ts`), validated with `InspectAssetSchema` before it leaves (a mismatch is a `503`). Every
+  refusal is `404`. The canvas is chosen by the pure `resolveViewer(name, mime)` — extension first,
+  stored type second — and a file whose original no browser draws (HEIC, TIFF, PSD) shows its `lg`
+  WebP rendition, or the unsupported fallback without one. `access` (owner · member · share · public),
+  `canManage`, `shareUrl` (the newest live item link, managers only) and `downloadCount` (managers
+  only) are server-derived; the owner's handle, name and avatar come from `org.profiles_index` (the
+  public profile door), so an owner with a private profile shows as `null`. **Every address on the
+  DTO is a same-origin proxy or page route** — `AssetItem.url` / `thumbnailUrl`, which can be raw
+  storage URLs, are never carried over. The page handler (`core/inspector-ssr.ts`, server-only) calls
+  it directly, without an HTTP hop; the preview modal reads the same DTO through the thin
+  `GET /api/files/inspect?id=&share=` (`FilesService.inspect`, `null` on a `404`; Decision #162).
+- **The bytes — `MediaBackendService.streamAsset(actor, fileId, request)`**, behind
+  `GET|HEAD /api/media/proxy/[fileId]` (a one-line delegate to `services/media/stream.ts`
+  `streamAssetFor`; transport `core/storage-stream.ts` `fetchStoredObject`). Same gate as
+  `/api/files/object/[id]` (`objectFor`, unchanged), but the response is STREAMED from storage's
+  internal origin instead of a `302` to a signed URL, so the page never sees a storage host, bucket,
+  path or signed URL. Range / conditional requests pass through (206 · 304 · 416), headers are built
+  from an allowlist with a never-`text/html` type policy and a sandbox CSP on anything not
+  inline-safe, a share read is `no-store`, and a read never counts a download. Full contract:
+  `documentation/database/files/Storage.md` §The upload pipeline. It sits under `/api/media/*` because
+  the media services own byte delivery (`ROUTING.md` §Profile and media API). Since Decision #162 it
+  is also the address every stored asset's preview and grid thumbnail carries (below); the redirect
+  route stays only for its remaining consumers.
+
+The page's canvases are islands that `fetch` the proxy (or point `<img>` / `<video>` / `<audio>` at
+it) and load their engines — `three`, `pdfjs-dist` (legacy build), `highlight.js`, `dompurify`,
+`docx-preview`, plus the existing `marked` — only by a memoised dynamic `import()` inside an effect,
+never at module scope (Fresh's server snapshot evaluates every island module). Their decoder and
+font trees (pdf.js wasm / cmaps / standard fonts / ICC profiles, three's Draco and Basis
+transcoders) are served same-origin under **`/vendor/<lib>/<version>/…`** by the `vendorAssets()`
+plugin in `vite.config.ts` (streamed from `node_modules` in dev, emitted into the client build for
+`serve`); the paths come from `features/inspector/core/vendor-paths.ts`, versioned because Fresh marks
+client-build files immutable. Engines only, never their CSS — every surface is reskinned with tokens
+(Decision #161(E)). Fresh's Deno resolver ignores a package's `browser` field, so the client build
+resolves `jszip` (docx-preview's dependency) to its self-contained browser bundle through the
+`browserEntries()` plugin in `vite.config.ts`; bundled from its CommonJS `lib/`, the converted module
+throws on load and the `.docx` canvas fails in production only.
+
+#### Asset addresses and the preview modal (Decision #162)
+
+**Every stored asset's address is the proxy.** `AssetItem` carries `assetId` — the `files.items`
+uuid — beside `id`, which on a project, channel or conversation row is the
+`comms.message_attachments` link id (one file posted twice is two rows) and on a hub row equals
+`assetId`; `MessageAttachment` carries `assetId`, `mimeType` and `blurhash`. The producers build
+every stored, uploaded file's addresses as `url = mediaProxyHref(assetId)` and, for an image,
+`thumbnailUrl = mediaProxyHref(assetId, { tier: "sm" })` — `asset-row.ts` `assetAddress` (the hub,
+public buckets included), `projects/live-files.ts`, `messaging/live-workspace.ts` — and a chat tile
+as `mediaProxyHref(assetId, { tier: "md" })` (`projects/message-attachments.ts`). Project and
+conversation rows read the stored upload metadata too (`withMediaFacts`: width, height, BlurHash).
+Fixtures, web links and connector files keep their own URLs. The browser never sees a storage
+host, bucket, path or signed URL in a listing; `/api/files/object/[id]` remains for the library
+picker (`media-pick.ts`) and the share-folder listing (`live-library.ts`). The client resolver is
+`apps/web/features/files/core/asset-media.ts` (`assetMediaSrc` · `assetMediaSrcset` ·
+`assetPlaceholder`), a pure module that falls back to the row's own URL when there is no stored
+uuid. Cost, flagged: each thumbnail is a proxied read holding a request worker and counting against
+the per-identity 1,200-a-minute window (Decision #162 flag (c), #161 flag (g)).
+
+**The preview modal embeds the inspector; it does not reimplement it.** `AttachmentPreviewModal`
+(`features/projects/components/preview/`) fetches the asset's `InspectAsset` through
+`FilesService.inspect` (a page-lifetime signal cache keyed by asset id) and mounts the inspector's
+viewer through `useInspectorHost(asset, { signedIn, embedded: true })` (`features/inspector/hooks/`)
+and the `components/embed/` components. `createInspectorShell(asset, options)` takes
+`InspectorShellOptions { urlSync, print, embedded }` (all defaulted for `/inspect`, so that page is
+unchanged); embedded means no `#L` hash reads or writes, no print dialog or print listeners, and
+key listeners scoped to the `data-ins-key-scope` element rather than `document`. The registry maps
+`model` to a handoff card in embedded mode (`embedModelHandoff`), because the app CSP keeps
+`'wasm-unsafe-eval'` and `blob:` connect page-scoped to `/inspect` (#161(D)). A row with no stored
+bytes renders the legacy `FilePreview`.
+
+**Where a file came from.**
+`MessagingBackendService.attachmentSource(assetId, actor, { conversationId })` →
+`services/messaging/live-attachment-source.ts` (`fetchAttachmentSources`) reads `comms.message_attachments` by `attachment_id` (index `idx_message_attachments_attachment`)
+under the caller's JWT — RLS `view_attachments_if_member` (`comms.can_read_message`) decides what
+comes back — then the DM or project message (deleted ones excluded), the senders and, for a
+project message, the project and stage slugs for the link. It returns `AttachmentSource[]`
+(`@projective/types/projects`), newest first: `/messages/<thread>?m=<id>` for a DM,
+`/projects/<prj-…>/<stg-…>/chat?m=<id>` for a stage room, `…/discussion/chat?m=<id>` for the
+project-wide room, and the room uuid for a private room with no other address (Decision #162 flag
+(h)). The excerpt is the stored body — already masked at write time — collapsed and cut at a word
+to 280 characters. A guest, or any failure, gets `[]`; mock mode answers from the fixture
+conversations. Served by `GET|HEAD /api/messaging/attachment-source` through the messaging read
+cache (ETag); the client is `MessagingService.attachmentSource`.
 
 #### The connector adapter interface
 
@@ -1406,6 +1500,11 @@ chevrons and an active tray. **Nothing is written before Save & Apply** (Decisio
 is held in the tab as an object URL and the sign-in picture is only previewed; on save each goes
 through the quarantine pipeline above, then the renditions are cut. Cancel revokes the blobs and
 leaves `files.items` untouched.
+
+`MediaBackendService` also owns the READ side of private bytes for the file inspector:
+`streamAsset` streams a library or project object through `/api/media/proxy/[fileId]` after the
+files read gate, never writes and never counts (Decision #161; §Asset Management → The file inspector
+and the streaming proxy).
 
 Gaps, stated: there is no third-party **malware** scan yet (the checks are a content sniff and a
 full decode), and variant bytes are not metered against the owner's storage quota.
@@ -1851,7 +1950,15 @@ Deno 2.x provides a hardened environment that we strictly configure through perm
   import it silently blocked every local storage image). **`'unsafe-inline'` remains on `script-src`
   and `style-src`** (Fresh 2's inline bootstrap and the theme pre-paint carry no nonce; the design
   system writes custom properties through `style`); a nonce-based policy is a separate change
-  (§8 Decision #126).
+  (§8 Decision #126). The header is cached per **profile** (`cspHeaderFor(profile)`): `app` is the
+  policy above, set by the middleware; **`inspector`** is the same policy plus `'wasm-unsafe-eval'` in
+  `script-src` (WebAssembly compilation only — pdf.js image decoders, Draco / Basis / meshopt — never
+  JS `eval`) and `blob:` in `connect-src` (a GLB's embedded textures), and nothing else. Only the
+  `/inspect/[fileId]` page sends it, on its own response, which the middleware then leaves alone.
+  It is the one sanctioned LOOSENING of the platform policy — every other route may only tighten —
+  and is flagged against #126 in Decision #161(D). `x-frame-options: DENY`, `object-src 'none'` and
+  `frame-ancestors 'none'` still hold there, which is why a PDF is drawn on a canvas, never framed.
+  The streaming proxy's non-inline-safe responses carry their own `default-src 'none'; sandbox`.
 - **Secrets Management:** Sensitive keys (Stripe API, AWS keys) are stored in **Supabase Vault** and
   accessed via environment variables in Edge Functions, never hardcoded in the repository.
 
@@ -2074,6 +2181,16 @@ see — a cold load while offline, a programmatic `location.assign`, a native fo
 connection that drops after a navigation has started. Everything below sits ABOVE it and is
 installed once per document by the `OfflineBridge` island (`features/shell/islands/`, mounted from
 `routes/_app.tsx`); the rules it applies are pure and unit-tested in `apps/web/utils/offline.ts`.
+
+`isCacheable` in `sw.js` also refuses any request carrying a `Range` header. Together with the
+`/api/*` rule this keeps every private byte out of the worker's cache: the file inspector reads only
+through `/api/media/proxy/[fileId]` (Decision #161), so neither a whole file nor a media seek is ever
+stored, and that route must stay under `/api/`. The `/vendor/<lib>/<version>/…` decoder trees follow
+the ordinary static-asset rule (`isStaticAsset`: a `.js` or `.ttf` is cached, a `.wasm` or `.bcmap`
+passes to the network); their paths are versioned, so a hit is never stale. `handleNavigation`
+never stores a document whose `cache-control` says `no-store` (Decision #161(j)), so a
+`private, no-store` page — `/inspect/[fileId]`, `/share/[slug]`, `/exit`, `/invite/[token]` — is
+never replayed offline from the shell cache; offline, such a page gets the inline fallback.
 
 | Layer | Mechanism | Rule |
 | :-- | :-- | :-- |

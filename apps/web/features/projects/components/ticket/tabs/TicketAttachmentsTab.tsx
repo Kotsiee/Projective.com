@@ -1,9 +1,8 @@
 import type { JSX } from "preact";
-import { useSignal } from "@preact/signals";
-import { useRef } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import { Icon } from "@projective/ui/icons";
-import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
-import { openPicker } from "@web/features/files/core/files-state.ts";
+import { useFrameState } from "@projective/ui/overlay";
+import { takePicks } from "@web/features/files/core/picker-frame.ts";
 import type { AssetItem } from "@web/features/files/types/file-types.ts";
 import { ViewZoomRig } from "@web/features/shell/components/ViewZoomRig.tsx";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
@@ -17,6 +16,13 @@ import { filesZoom, gridColWidth, viewMode, zoom } from "../../../core/view-stat
 import { FileCard } from "../../FileCard.tsx";
 import { FileTable } from "../../FileTable.tsx";
 import { GridIcon, ListIcon } from "../../file-glyphs.tsx";
+import {
+	openTicketFile,
+	pushTicketPicker,
+	TICKET_LIBRARY_TRIGGER,
+	ticketStack,
+} from "../../../core/ticket-view.ts";
+import { useFileTiles } from "../../../hooks/useFileTiles.ts";
 
 // This tab mounts the `/files` cards, table and empty state, so it carries their sheets — see the note
 // in `TicketView` for why a component and not its host island is the right carrier.
@@ -45,20 +51,18 @@ import "../../../styles/file-card.css";
  * escrow release — an upload here would be a delivery with no review attached to it. So a provider
  * seat gets the grid and the downloads and no drop zone, and is told where its own uploads belong
  * rather than left to wonder.
- */
-/**
- * The Asset Picker routing key.
  *
- * A module constant rather than a per-instance id, because exactly one ticket modal is open at a
- * time — the modal STACK replaces a frame rather than covering it (Decision #65), so two attachment
- * tabs cannot be mounted at once and there is nothing for a second key to disambiguate.
+ * "From library" opens the Asset Picker as a frame that REPLACES the ticket on its chain; the picks
+ * come back through the ticket frame's cache and are staged when this tab mounts again.
  */
-const PICKER_ID = "ticket-attachments";
-
 export interface TicketAttachmentsTabProps {
 	card: BoardCard;
-	/** Whether the viewer may attach files here (client side). */
+	/** The ticket frame's identity in the modal stack. */
+	uid: number;
+	/** Whether the viewer may attach files here (client side, with edit rights). */
 	canUpload: boolean;
+	/** Whether a create of this ticket is awaiting the server; nothing may replace the ticket meanwhile. */
+	saving?: boolean;
 	onPatch: (patch: Partial<BoardCard>) => void;
 }
 
@@ -66,14 +70,26 @@ export function TicketAttachmentsTab(props: TicketAttachmentsTabProps): JSX.Elem
 	const { card, canUpload } = props;
 	const workspaceRef = useRef<HTMLDivElement>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
+	const libraryRef = useRef<HTMLButtonElement>(null);
 	useCtrlWheelZoom(workspaceRef, filesZoom);
 
 	// The list presentation sorts in place — there is no server page to re-request for a set this
 	// small, so the sort is applied to what is already here.
-	const sortKey = useSignal<string>("date");
-	const sortDir = useSignal<FileSortDir>("desc");
+	const sortKey = useFrameState<string>(ticketStack, props.uid, "attachments:sortKey", "date");
+	const sortDir = useFrameState<FileSortDir>(ticketStack, props.uid, "attachments:sortDir", "desc");
 
 	const items = sortFiles(card.attachments, sortKey.value as FileSortKey, sortDir.value);
+	const tiles = useFileTiles(workspaceRef, {
+		files: items,
+		preview: (f) => !props.saving && openTicketFile(items, f.id),
+		frame: { stack: ticketStack, uid: props.uid },
+		locateTrigger: (trigger) => trigger === TICKET_LIBRARY_TRIGGER ? libraryRef.current : null,
+	});
+
+	useEffect(() => {
+		const picks = takePicks(ticketStack, props.uid);
+		if (picks.length > 0) stageAssets(picks);
+	}, [props.uid]);
 
 	/**
 	 * Staged by NAME only, matching every other write on this surface. Real upload lands with
@@ -135,14 +151,11 @@ export function TicketAttachmentsTab(props: TicketAttachmentsTabProps): JSX.Elem
 					? (
 						<>
 							<button
+								ref={libraryRef}
 								type="button"
 								class="tkv-addfile"
-								onClick={() =>
-									openPicker({
-										requesterId: PICKER_ID,
-										title: "Attach from your files",
-										multiple: true,
-									})}
+								disabled={props.saving}
+								onClick={() => pushTicketPicker(props.uid)}
 							>
 								<Icon name="folder" size="xs" />
 								From library
@@ -172,7 +185,12 @@ export function TicketAttachmentsTab(props: TicketAttachmentsTabProps): JSX.Elem
 					: null}
 			</div>
 
-			<div class="tkv-subs__work" ref={workspaceRef}>
+			<div
+				class="tkv-subs__work"
+				ref={workspaceRef}
+				onClickCapture={tiles.onClickCapture}
+				onAuxClick={tiles.onAuxClick}
+			>
 				{card.attachments.length === 0
 					? (
 						<div class="fx-empty" role="status">
@@ -191,7 +209,7 @@ export function TicketAttachmentsTab(props: TicketAttachmentsTabProps): JSX.Elem
 								<FileCard
 									key={f.id}
 									file={f}
-									onOpen={() => globalThis.open(f.url, "_blank")}
+									onOpen={tiles.onOpen}
 								/>
 							))}
 						</div>
@@ -202,7 +220,7 @@ export function TicketAttachmentsTab(props: TicketAttachmentsTabProps): JSX.Elem
 							sortKey={sortKey}
 							sortDir={sortDir}
 							onSort={applySort}
-							onOpen={(f) => globalThis.open(f.url, "_blank")}
+							onOpen={tiles.onOpen}
 							virtualize={false}
 						/>
 					)}
@@ -216,14 +234,6 @@ export function TicketAttachmentsTab(props: TicketAttachmentsTabProps): JSX.Elem
 					</p>
 				)
 				: null}
-
-			{
-				/* Mounted unconditionally, and NOT behind `canUpload`: an island is only in the page's
-			    island graph once it renders, and that graph is what carries its stylesheet — a picker
-			    that appeared with the first client seat would paint its first frame unstyled. It draws
-			    nothing until it is opened, and only a client seat has a control that opens it. */
-			}
-			<AssetPicker requesterId={PICKER_ID} onPick={stageAssets} />
 		</div>
 	);
 }

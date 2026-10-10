@@ -16,6 +16,7 @@ import type {
 	SendConversationMessage,
 } from "../types/messaging-types.ts";
 import type { MessagingResult } from "../types/results.ts";
+import type { AttachmentSource } from "@projective/types/projects";
 
 /**
  * MessagingService — the THIN client controller for the global inbox (`/messages`).
@@ -155,6 +156,24 @@ export const MessagingService = {
 			`/api/messaging/conversations/${encodeURIComponent(id)}/folder`,
 			{ folder },
 		);
+	},
+
+	/**
+	 * The messages a `files.items` asset was posted in, newest first — the preview modal's source
+	 * message and its "Go to message" target. Narrowed to one conversation when `conversationId` is
+	 * given. Resolves `[]` on any failure: the source is supplementary context the modal has already
+	 * painted from the file row, never a reason to surface an error.
+	 */
+	async attachmentSource(
+		assetId: string,
+		conversationId?: string | null,
+	): Promise<AttachmentSource[]> {
+		const qs = new URLSearchParams({ assetId });
+		if (conversationId) qs.set("conversationId", conversationId);
+		const result = await getMessaging<{ sources: AttachmentSource[] }>(
+			`/api/messaging/attachment-source?${qs.toString()}`,
+		);
+		return result.ok && result.data ? result.data.sources : [];
 	},
 
 	/** The conversation context drawer's read: the counterpart, the requests, the actions. */

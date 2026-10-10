@@ -101,17 +101,64 @@ export function activeChannelIdOf(pathname: string): string | null {
 	return PROJECT_VIEWS.has(segs[2]) ? null : segs[2];
 }
 
+/** The query parameter a chat address names the message to land on with. */
+export const MESSAGE_ANCHOR_PARAM = "m";
+
+/** The legacy fragment prefix (`#m-{id}`) older message links carry; read, never written. */
+const LEGACY_MESSAGE_HASH = "#m-";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
- * Build a deep link to a specific message inside its channel chat:
- * `/projects/{projectId}/{channelId}/chat#m-{messageId}`. Routing to the channel's Chat tab is the
- * guaranteed behaviour; the `#m-` anchor lets the feed scroll to the message when it is mounted (a
- * best-effort target inside the window-virtualized stream).
+ * Build a deep link to a specific message inside a project room's chat:
+ * `/projects/{projectSlug}/{channelRef}/chat?m={messageId}`. The feed reads `m` on mount and
+ * scrolls to the message, paging back for it when it is older than the first page.
+ *
+ * `null` when either segment is a uuid: rooms route by their `prj-…` / `stg-…` slugs or their
+ * fixed words (`discussion`, `general`), never by a database id (Decision #88).
  */
 export function channelMessageHref(
-	projectId: string,
-	channelId: string,
+	projectSlug: string,
+	channelRef: string,
 	messageId: string,
-): string {
-	return `${channelHref(projectId, channelId)}/chat#m-${encodeURIComponent(messageId)}`;
+): string | null {
+	if (UUID.test(projectSlug) || UUID.test(channelRef)) return null;
+	const query = new URLSearchParams({ [MESSAGE_ANCHOR_PARAM]: messageId });
+	return `${channelHref(projectSlug, channelRef)}/chat?${query}`;
+}
+
+/** A deep link to a message in a conversation: `/messages/{conversationId}?m={messageId}`. */
+export function conversationMessageHref(conversationId: string, messageId: string): string {
+	const query = new URLSearchParams({ [MESSAGE_ANCHOR_PARAM]: messageId });
+	return `/messages/${encodeURIComponent(conversationId)}?${query}`;
+}
+
+/**
+ * The message id an address asks the feed to land on: the `?m=` parameter, else a legacy `#m-{id}`
+ * fragment; `null` when it names none.
+ */
+export function messageAnchorOf(search: string, hash: string): string | null {
+	const fromQuery = new URLSearchParams(search).get(MESSAGE_ANCHOR_PARAM)?.trim();
+	if (fromQuery) return fromQuery;
+	if (!hash.startsWith(LEGACY_MESSAGE_HASH)) return null;
+	const raw = hash.slice(LEGACY_MESSAGE_HASH.length);
+	try {
+		const id = decodeURIComponent(raw).trim();
+		return id === "" ? null : id;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The same address without its message anchor (the `m` parameter and a legacy `#m-` fragment), so
+ * a reload or a shared copy of the page opens at the newest message again.
+ */
+export function withoutMessageAnchor(pathname: string, search: string, hash: string): string {
+	const params = new URLSearchParams(search);
+	params.delete(MESSAGE_ANCHOR_PARAM);
+	const query = params.toString();
+	const fragment = hash.startsWith(LEGACY_MESSAGE_HASH) ? "" : hash;
+	return `${pathname}${query ? `?${query}` : ""}${fragment}`;
 }
 // #endregion

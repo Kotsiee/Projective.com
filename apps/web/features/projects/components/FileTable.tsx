@@ -3,6 +3,8 @@ import type { Signal } from "@preact/signals";
 import { useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import { useVirtualScroll } from "@projective/ui/hooks";
+import { ProgressiveImage } from "@projective/ui/display/image";
+import { assetMediaSrc, assetPlaceholder } from "@features/files/core/asset-media.ts";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import {
 	type AssetItem,
@@ -207,8 +209,9 @@ export function FileTable(props: FileTableProps): JSX.Element {
 					{rows.map((vi) => {
 						const file = items[vi.index];
 						if (!file) return null;
-						const thumb = showThumb && file.thumbnailUrl &&
-							(file.kind === "image" || file.kind === "video");
+						const thumb = showThumb && (file.kind === "image" || file.kind === "video")
+							? assetMediaSrc(file, "sm")
+							: null;
 						return (
 							<div
 								key={file.id}
@@ -230,11 +233,12 @@ export function FileTable(props: FileTableProps): JSX.Element {
 									<span class="fx-row__thumb" data-kind={file.kind}>
 										{thumb
 											? (
-												<img
-													src={file.thumbnailUrl ?? file.url}
-													alt=""
+												<ProgressiveImage
+													src={thumb}
+													placeholder={assetPlaceholder(file)}
 													loading="lazy"
 													draggable={false}
+													fallback={<FileKindIcon kind={file.kind} size={18} />}
 												/>
 											)
 											: <FileKindIcon kind={file.kind} size={18} />}

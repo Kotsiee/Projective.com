@@ -144,7 +144,7 @@ export function useMediaPick(config: MediaPickConfig | null, open: boolean): Med
 		}
 		items.value = result.items;
 		error.value = null;
-		return null;
+		return c.max <= 1 && result.items.length === 1 ? proceed() : null;
 	}
 
 	function remove(id: string): void {
@@ -198,8 +198,8 @@ export function useMediaPick(config: MediaPickConfig | null, open: boolean): Med
 				poster: null,
 				origin: { kind: "staged", file },
 			});
+			if (c.max <= 1) break;
 		}
-		if (items.peek().length >= c.max) proceed();
 	}
 
 	async function pickSignIn(): Promise<void> {
@@ -226,7 +226,6 @@ export function useMediaPick(config: MediaPickConfig | null, open: boolean): Med
 			origin: { kind: "signin" },
 		});
 		if (refusal) error.value = refusal;
-		else if (items.peek().length >= c.max) proceed();
 	}
 	// #endregion
 
@@ -265,8 +264,14 @@ export function useMediaPick(config: MediaPickConfig | null, open: boolean): Med
 		return null;
 	}
 
+	/** Multi-select keeps the choices and their framing; a single pick is let go, to choose again. */
 	function back(): void {
-		commit();
+		if ((configRef.current?.max ?? 1) <= 1) {
+			for (const item of items.peek()) release(item);
+			items.value = [];
+		} else {
+			commit();
+		}
 		phase.value = "browse";
 		error.value = null;
 	}

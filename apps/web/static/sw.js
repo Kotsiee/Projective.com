@@ -143,8 +143,10 @@ async function handleNavigation(request) {
 	try {
 		const fresh = await fetch(request);
 		// Only a real, complete 200 is worth storing. A redirect cached as a document replays as a
-		// response the browser refuses to use for a navigation.
-		if (fresh.ok && fresh.type === "basic" && !fresh.redirected) {
+		// response the browser refuses to use for a navigation, and a `no-store` page (the file
+		// inspector, a share link) has asked never to outlive the visit.
+		const storable = !/no-store/i.test(fresh.headers.get("cache-control") ?? "");
+		if (fresh.ok && fresh.type === "basic" && !fresh.redirected && storable) {
 			cache.put(request, fresh.clone());
 		}
 		return fresh;

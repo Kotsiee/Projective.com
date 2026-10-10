@@ -1,15 +1,21 @@
 import type { JSX } from "preact";
-import { useSignal } from "@preact/signals";
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useMemo, useRef } from "preact/hooks";
 import { Splitter, SplitterPanel } from "@projective/ui/layout";
-import { Backdrop, BodyPortal, usePresence } from "@projective/ui/overlay";
+import {
+	Backdrop,
+	BodyPortal,
+	createModalStack,
+	useFrameState,
+	usePresence,
+} from "@projective/ui/overlay";
 import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks";
-import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
-import { openPicker } from "@web/features/files/core/files-state.ts";
+import { ProgressiveImage } from "@projective/ui/display/image";
+import { assetMediaSrc, assetPlaceholder } from "@features/files/core/asset-media.ts";
 import type { AssetItem } from "@web/features/files/types/file-types.ts";
 import type { TaskChecklist } from "../core/submission-tasks.ts";
 import { checklistProgress } from "../core/submission-tasks.ts";
 import { kindLabel } from "../core/file-model.ts";
+import { type TileFrame, useFileTriggerFocus } from "../hooks/useFileTiles.ts";
 import { FilePreview } from "./FilePreview.tsx";
 import { TaskChecklistView } from "./TaskChecklistView.tsx";
 import { CloseIcon, FileKindIcon } from "./file-glyphs.tsx";
@@ -26,8 +32,10 @@ import { SendGlyph } from "./submission-glyphs.tsx";
  * across both. Mounted through {@link BodyPortal} to beat the glass-blur `position: fixed` trap.
  */
 
-/** The Asset Picker routing key — one pre-submit review is open at a time. */
-const PICKER_ID = "presubmit-library";
+/** The focus-return trigger a framed pre-submit review resolves to its "Add from your files" control. */
+export const PRESUBMIT_LIBRARY_TRIGGER = "control:library";
+
+const SELECTED_KEY = "selectedFileId";
 
 export interface PreSubmitModalProps {
 	open: boolean;
@@ -46,13 +54,17 @@ export interface PreSubmitModalProps {
 	onClose: () => void;
 	onConfirm: () => void;
 	/**
-	 * Add deliverables the freelancer already has, from the Asset Picker.
+	 * Open the Asset Picker to add deliverables the freelancer already has.
 	 *
-	 * Optional, and the control only appears when it is supplied: the HOST owns what will be submitted,
-	 * so a modal that staged picks in its own state would show a file the submission does not contain.
-	 * Absent, the modal behaves exactly as it did before this seam existed.
+	 * Optional, and the control only appears when it is supplied. The HOST opens the picker (as a
+	 * frame that replaces this one) and stages the picks, because it owns what will be submitted.
 	 */
-	onAddFromLibrary?: (assets: AssetItem[]) => void;
+	onOpenLibrary?: () => void;
+	/**
+	 * When rendered as a frame of a modal stack: the selected file lives in the frame cache, and focus
+	 * returns to "Add from your files" when the picker frame over it is popped.
+	 */
+	frame?: TileFrame;
 }
 
 export function PreSubmitModal(props: PreSubmitModalProps): JSX.Element | null {
@@ -64,7 +76,8 @@ export function PreSubmitModal(props: PreSubmitModalProps): JSX.Element | null {
 		onToggle,
 		onClose,
 		onConfirm,
-		onAddFromLibrary,
+		onOpenLibrary,
+		frame,
 	} = props;
 
 	const { mounted, state } = usePresence(open);
@@ -81,10 +94,29 @@ export function PreSubmitModal(props: PreSubmitModalProps): JSX.Element | null {
 		closeOnOutside: false,
 	});
 
-	const selectedFileId = useSignal<string | null>(null);
+	const local = useMemo(() => createModalStack<string, unknown>(), []);
+	const cache = frame?.stack ?? local;
+	const uid = frame?.uid ?? 0;
+	const restored = useRef(frame ? cache.has(uid, SELECTED_KEY) : false);
+	const selectedFileId = useFrameState<string | null>(
+		cache,
+		uid,
+		SELECTED_KEY,
+		files[0]?.id ?? null,
+	);
 	useEffect(() => {
+		if (restored.current) {
+			restored.current = false;
+			return;
+		}
 		if (open) selectedFileId.value = files[0]?.id ?? null;
 	}, [open, files.length]);
+
+	const libraryRef = useRef<HTMLButtonElement>(null);
+	useFileTriggerFocus(
+		frame ?? null,
+		(trigger) => trigger === PRESUBMIT_LIBRARY_TRIGGER ? libraryRef.current : null,
+	);
 
 	if (!mounted) return null;
 
@@ -130,17 +162,13 @@ export function PreSubmitModal(props: PreSubmitModalProps): JSX.Element | null {
 										<p class="subm-ctx__meta">
 											{files.length} {files.length === 1 ? "file" : "files"} ready to submit
 										</p>
-										{onAddFromLibrary
+										{onOpenLibrary
 											? (
 												<button
+													ref={libraryRef}
 													type="button"
 													class="subm-ctx__add"
-													onClick={() =>
-														openPicker({
-															requesterId: PICKER_ID,
-															title: "Add from your files",
-															multiple: true,
-														})}
+													onClick={onOpenLibrary}
 												>
 													Add from your files
 												</button>
@@ -164,31 +192,38 @@ export function PreSubmitModal(props: PreSubmitModalProps): JSX.Element | null {
 										{files.length > 1
 											? (
 												<div class="subm-work__rail" aria-label="Files in this submission">
-													{files.map((f) => (
-														<button
-															key={f.id}
-															type="button"
-															class="subm-work__railitem"
-															data-active={f.id === selected?.id ? "true" : undefined}
-															aria-label={f.name}
-															onClick={() => (selectedFileId.value = f.id)}
-														>
-															{f.thumbnailUrl && (f.kind === "image" || f.kind === "video")
-																? (
-																	<img
-																		src={f.thumbnailUrl}
-																		alt=""
-																		loading="lazy"
-																		draggable={false}
-																	/>
-																)
-																: (
-																	<span class="subm-work__railglyph" aria-hidden="true">
-																		<FileKindIcon kind={f.kind} size={16} />
-																	</span>
-																)}
-														</button>
-													))}
+													{files.map((f) => {
+														const thumb = f.kind === "image" || f.kind === "video"
+															? assetMediaSrc(f, "sm")
+															: null;
+														return (
+															<button
+																key={f.id}
+																type="button"
+																class="subm-work__railitem"
+																data-file-id={f.id}
+																data-active={f.id === selected?.id ? "true" : undefined}
+																aria-label={f.name}
+																onClick={() => (selectedFileId.value = f.id)}
+															>
+																{thumb
+																	? (
+																		<ProgressiveImage
+																			src={thumb}
+																			placeholder={assetPlaceholder(f)}
+																			loading="lazy"
+																			draggable={false}
+																			fallback={<FileKindIcon kind={f.kind} size={16} />}
+																		/>
+																	)
+																	: (
+																		<span class="subm-work__railglyph" aria-hidden="true">
+																			<FileKindIcon kind={f.kind} size={16} />
+																		</span>
+																	)}
+															</button>
+														);
+													})}
 												</div>
 											)
 											: null}
@@ -250,17 +285,6 @@ export function PreSubmitModal(props: PreSubmitModalProps): JSX.Element | null {
 						</div>
 					</footer>
 				</div>
-
-				{
-					/* Inside the portal layer, so the picker's own fixed panel is not re-based by the
-				    review panel's chrome. Mounted whenever the modal is, not only when the seam is
-				    supplied — a conditionally-rendered island is absent from the page's island graph, and
-				    that graph is what carries its stylesheet. */
-				}
-				<AssetPicker
-					requesterId={PICKER_ID}
-					onPick={(assets) => onAddFromLibrary?.(assets)}
-				/>
 			</div>
 		</BodyPortal>
 	);

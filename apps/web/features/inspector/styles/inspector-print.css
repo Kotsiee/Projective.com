@@ -1,0 +1,67 @@
+#ins-print-root {
+	display: none;
+}
+
+@page ins-print-portrait {
+	size: portrait;
+	margin: 0;
+}
+
+@page ins-print-landscape {
+	size: landscape;
+	margin: 0;
+}
+
+@media print {
+	html:has(> body > #ins-print-root),
+	body:has(> #ins-print-root) {
+		block-size: auto;
+		margin: 0;
+		padding: 0;
+		overflow: visible;
+		background: none;
+	}
+
+	body:has(> #ins-print-root) > :not(#ins-print-root) {
+		display: none;
+	}
+
+	#ins-print-root {
+		display: block;
+		print-color-adjust: exact;
+		-webkit-print-color-adjust: exact;
+	}
+
+	#ins-print-root .ins-print-page {
+		page: ins-print-portrait;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		box-sizing: border-box;
+		inline-size: 100%;
+		block-size: 100vh;
+		overflow: hidden;
+		break-after: page;
+		break-inside: avoid;
+	}
+	#ins-print-root .ins-print-page--landscape {
+		page: ins-print-landscape;
+	}
+	#ins-print-root .ins-print-page:last-child {
+		break-after: auto;
+	}
+
+	#ins-print-root .ins-print-page__image {
+		display: block;
+		inline-size: 100%;
+		block-size: 100%;
+		object-fit: contain;
+	}
+	#ins-print-root[data-fit="actual"] .ins-print-page__image {
+		inline-size: var(--ins-print-w);
+		block-size: var(--ins-print-h);
+		max-inline-size: none;
+		max-block-size: none;
+		object-fit: fill;
+	}
+}

@@ -14,6 +14,7 @@ Parenthesized folders group routes **without** adding a URL segment:
 | `routes/(public)/(auth)/` | Auth sub-group (own chrome later)                                                            | none        |
 | `routes/(dashboard)/`     | Authenticated app (home, projects, businesses, teams, messages, wallet, settings, services, …) | **guarded** |
 | `routes/[handle]/`        | Public profile namespace — users, teams, corporations by `@handle`                           | none        |
+| `routes/(standalone)/`    | Shell-free pages — today only the file inspector (`/inspect/:fileId`). **No `_layout.tsx`**: only `_app.tsx` wraps them (tokens, a11y, DevMount), so no `UserShell`/`GuestShell` renders (Decision #161(C)) | none (session renewed) |
 
 ## Special files
 
@@ -25,7 +26,13 @@ Parenthesized folders group routes **without** adding a URL segment:
   to `/login` or `/join` is returned to their captured `redirectTo` (or `/home`) instead of being
   asked to authenticate again or walked back through onboarding. `/join?oauth=…` is exempt — the
   OAuth callback signs a NEW identity in and then sends them there to create their profile.
-- `_layout.tsx` per group — shell chrome; `(dashboard)` mounts the dual-nav + Splitter.
+- `routes/(standalone)/_middleware.ts` — renews the session without redirecting (the
+  `[handle]/_middleware.ts` model: `ensureSession`, then `accessToken`, `isAuthenticated` and a
+  refreshed `userContext`, and the set/clear cookies appended to the response), so an expired access
+  token does not read a signed-in viewer as anonymous. Never a guard: a guest and a share-link holder
+  pass, and the page's own read decides what they see.
+- `_layout.tsx` per group — shell chrome; `(dashboard)` mounts the dual-nav + Splitter. `(standalone)`
+  deliberately has none — the only route group that renders no shell at all (Decision #161(C)).
 
 ## Dynamic segments (examples in the skeleton)
 
@@ -54,6 +61,7 @@ Parenthesized folders group routes **without** adding a URL segment:
 | stage invite link       | `(dashboard)/invite/[token].tsx`                             | `/invite/:token` (where a stage invite link lands — the project, the stage, who shared it, and "Ask to join" when the link is open to this person, which files a pending request and seats nobody. Inside `(dashboard)`, so a guest signs in first and returns here via `redirectTo`; the token is shape-checked before any read; `noindex` + `no-referrer` + `no-store` because the path is a capability; Decision #145) |
 | share link              | `(public)/share/[slug].tsx`                                  | `/share/:slug` (the public resolution of a read-only share link — the one files surface a stranger can reach)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | outbound-link exit      | `(public)/exit.tsx`                                          | `/exit?url=…` (the interstitial an external link from a message passes through unless its scan came back safe — names the host, the verdict and why; asks for an explicit "I understand" before an unchecked or suspicious link and never offers a blocked one; never redirects by itself; `noindex` + `no-referrer` + `no-store`; Decision #128)                                                                                                                                                                                                                                                                            |
+| file inspector          | `(standalone)/inspect/[fileId].tsx`                          | `/inspect/:fileId` (`?share=<slug>` optional) — the shell-free, full-window inspector for ONE stored file: a top bar, the canvas that suits the file (image, SVG, video, audio, PDF, code, text, Markdown, table, 3D model, Word document, font, or the unsupported fallback — `resolveViewer`, `@projective/types/files`) and a details panel. Controller `features/inspector/routes/InspectScreen.tsx` (re-exported); the handler reads `FilesBackendService.inspect` under the viewer's own read rule (`fn_can_read`, or the live share slug) and every refusal is the SAME calm `404` page, whether the file is missing, private or the link is dead. Addressed by the `files.items.id` **uuid** — an explicit exception to Decision #88 (files carry no slug; flagged in Decision #161(B)). Headers: the inspector CSP profile (`cspHeaderFor("inspector")`, Decision #161(D)), `noindex, nofollow`, `no-referrer`, `private, no-store`. Its bytes come only from `/api/media/proxy/:fileId`; `fileInspectHref(id, { share })` builds the address. |
 | settings (root)         | `(dashboard)/settings/index.tsx`                             | `/settings` — the Settings hub (Decisions #151, #156): an in-page **search** over every setting, **Needs your attention** (identity check, payout account, business KYB, expired connectors, unconfirmed emails, profile steps, expired cards, a failed plan payment, a lone sign-in method, a scheduled erasure — derived from facts by `attentionItems`), the **profile completeness** tracker with one call to action, and every section as an **interactive card** (a single column on a phone, where the shell has no lane). A `?connect=` landing (the integrations callback's fallback) **303→** `/settings/integrations?connect=…`. Controller `features/settings/routes/SettingsHomeScreen.tsx` (re-exported). |
 | settings (section)      | `(dashboard)/settings/[section].tsx`                         | `/settings/:section` — one console page for each `SettingsSectionKey` (`account · profile · workspaces · language · appearance · notifications · messaging · scheduling · billing`; `verification` and `integrations` keep their own static routes below and render in the same lane). An unknown section **303→** `/settings/account`. `#anchor` deep-links an entry (`/settings/appearance#contrast`). Server-rendered from `resolveSettingsSection` — the SAME read `/api/settings/:section` serves the modal. Lane: `settingsLaneFor`. |
 | integrations            | `(dashboard)/settings/integrations/index.tsx`                | `/settings/integrations` (the connector console — the caller's stored authorizations, and the catalogue)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -236,6 +244,22 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
   shared `chatId`, so a project DM and the same person's global DM (`/messages/[chat-id]`) remain
   one continuous record.
 
+  **A message is addressed by `?m=<messageId>` on its conversation's chat address**
+  (Decision #162(G)): `/messages/[conversationId]?m=<id>` for a DM, `/projects/[project-slug]/[stage-slug]/chat?m=<id>`
+  for a stage room (a Task's discussion room by its stage slug), `/projects/[project-slug]/discussion/chat?m=<id>`
+  for the project-wide room. A private team or business room, or an extra project-wide room, has no
+  slug and keeps its room uuid in that segment — flagged against Decision #88 (#162 flag (h)). A query
+  parameter rather than a hash, because the server can read it. `ChatFeed` reads `m` (and the legacy
+  `#m-<id>` anchor) once on mount, skips the open-at-bottom scroll, strips the parameter with
+  `replaceState` (`fClientNav: false`), then jumps to the message and flashes it; a message beyond
+  the feed's page-back budget ends at its "too far back" status (#162 flag (g)). The links are built
+  server-side by `dmMessageHref` / `projectMessageHref` (`services/messaging/live-attachment-source.ts`)
+  and client-side by `features/projects/core/chat-context.ts`: `conversationMessageHref` for a
+  conversation, `channelMessageHref` for a project room (slug paths only — it answers `null` when
+  either segment is a uuid, so the client never mints a uuid link the server-built source may still
+  carry), `messageAnchorOf` / `withoutMessageAnchor` to read and strip the anchor
+  (`MESSAGE_ANCHOR_PARAM = "m"`).
+
   **The engagement's discussion has a fixed address on every archetype** (Decision #133):
   `/projects/[project-slug]/discussion` — the lane's first top-tier link, built by `discussionHref`.
   The word `discussion` (`DISCUSSION_REF`, `@projective/types/projects`) is the polymorphic
@@ -396,7 +420,8 @@ Two link shapes are **fixed platform-wide**; every route, island, and link build
 ## Reserved-handle precedence
 
 Static routes win over `[handle]`. `/about`, `/explore`, `/login`, `/help/*`, `/view/*`, `/share/*`
-resolve to their `(public)` routes; anything else falls through to `/:handle`.
+resolve to their `(public)` routes and `/inspect/*` to its `(standalone)` route; anything else falls
+through to `/:handle`.
 
 **`files` and `share` are both in the denylist**, and each is there for a different reason, which is
 why the denylist is not merely a duplicate of the route table:
@@ -411,6 +436,12 @@ why the denylist is not merely a duplicate of the route table:
   access to private files is a phishing primitive rather than a routing curiosity.
 - **`exit`** (Decision #128) is denied for the same reason as `share`: `/exit` is the page that
   vouches for leaving the platform, and an `@exit` profile would borrow that voice.
+- **`inspect`** (Decision #161(G)) is denied for both reasons at once: `/inspect/:fileId` opens
+  private files, so an `@inspect` profile would borrow its voice the way `@share` would; and a bare
+  `/inspect` (no id) meets no static route and falls through to `/:handle`, which the denylist turns
+  into a 404. It is listed in `RESERVED_HANDLES`, `org.fn_is_reserved_handle` and the auth form's
+  username list (`features/auth/core/options.ts`, which still lacks `file`, `files` and `share` —
+  pre-existing drift).
 
 All are enforced through the one SSOT guard (`isReservedHandle`) and its SQL twin
 `org.fn_is_reserved_handle` (pinned by `workspace.contract.test.ts`), so a future "claim your handle"
@@ -441,6 +472,8 @@ ownership from the live read's `viewer.isOwner`.
 | `/api/media/upload-init`                   | `POST`                   | Declare an upload: a `pending_upload` row in `quarantine` + a signed upload URL.                         |
 | `/api/media/upload-complete`               | `POST`                   | Run the pipeline: claim → sniff → decode → WebP tiers → admit (see `database/files/Storage.md`).         |
 | `/api/media/oauth-avatar-sync`             | `GET` · `POST`           | `GET`: the caller's sign-in provider + allowlisted picture URL. `POST`: fetch it server-side and run it through the same pipeline into the caller's library (URL read from the verified identity, never the request). |
+| `/api/media/proxy/[fileId]`                | `GET` · `HEAD`           | An asset's bytes STREAMED through the app after the same read gate as `/api/files/object/[id]` (`objectFor`): `?tier=sm\|md\|lg` (a WebP rendition, else the original), `?download=1` (attachment), `?share=<slug>`. Forwards `Range` / `If-Range` / `If-None-Match` / `If-Modified-Since` (206 · 304 · 416); headers from an allowlist, never copied from storage; never counts a download. Refusals are a bodiless `404` (also a malformed id), `429` with `retry-after`, or `503` — all `no-store`. `mediaProxyHref(id, opts)` builds it (Decision #161(A)); see `database/files/Storage.md`. Since Decision #162(A) it is the `url` / `thumbnailUrl` of every stored asset row (grid thumbnails `?tier=sm`, chat tiles `?tier=md`). |
+| `/api/files/inspect`                       | `GET` (`?id=<uuid>&share=<slug>`) | One stored asset's `InspectAsset` for the preview modal (Decision #162) — the same DTO `/inspect/[fileId]` renders, through `FilesBackendService.inspect` (`FilesService.inspect` on the client). `400` with no `id`; every refusal `404`; `503` when the read fails. |
 
 `/api/profile/*` and `/api/media/*` are thin: HTTP parsing, Zod (`@projective/types/profile`,
 `@projective/types/files`), then `ProfileBackendService` / `MediaBackendService`.
@@ -561,6 +594,7 @@ then one fat-service method. A guest is a 401 on every write.
 | `/api/messaging/conversations`               | `GET` (`?folder=primary\|requests\|archived`, `view`, `role`, …) | `MessagingBackendService.conversations` — the folder is the VIEWER's (`dm_participants.inbox_folder`) |
 | `/api/messaging/conversations/[id]/folder`   | `POST` `{ folder }` | `MessagingBackendService.setFolder` → `comms.set_dm_inbox_folder` (404 for a conversation with no thread yet) |
 | `/api/messaging/conversations/[id]/context`  | `GET`  | `MessagingBackendService.context` → `projects.get_engagement_context` (the context panel) |
+| `/api/messaging/attachment-source`           | `GET` · `HEAD` (`?assetId=<uuid>&conversationId=`) | `MessagingBackendService.attachmentSource` → `live-attachment-source.ts` — the messages a `files.items` asset was posted in that the caller can read (RLS `view_attachments_if_member`), newest first, each with its `?m=` link; `conversationId` (a thread or room uuid, or `dm-{handle}`) narrows it. `400` with no `assetId`; a guest or a failure gets `[]`; ETag via the read-endpoint factory (Decision #162) |
 | `/api/projects/hire`                         | `POST` | `ProjectBackendService.hire` → `projects.invite_to_project`, then the intro via `comms.send_request_message`; a cooldown refusal is 422 with `details.reopensAt`, the rate limit 429 with `details.retryAt` |
 | `/api/projects/apply`                        | `POST` `{ projectId, stageId, roleId, message, teamId }` → 201 | `ProjectBackendService.apply` — the proposal allowance's pre-flight gate first (a refusal is 422 with `errors.allowance` + `details.blockReason`, and `entitlement.denied` recorded through `finance.record_proposal_denial`; Decision #154), then `projects.apply_to_project`, then the cover note via `comms.send_request_message` |
 | `/api/projects/applications/withdraw`        | `POST` `{ applicationId }` | `ProjectBackendService.withdrawApplication` → `projects.withdraw_application`; the status flip refunds one weekly proposal unit (Decision #154) |

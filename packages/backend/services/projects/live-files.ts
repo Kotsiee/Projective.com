@@ -17,8 +17,14 @@ import type {
 	LinkAttachment,
 	LinkScanStatus,
 } from "@projective/types/files";
-import { categoryToKind, describeFile, messageAttachmentFacets } from "@projective/types/files";
+import {
+	assetIdOf,
+	categoryToKind,
+	describeFile,
+	messageAttachmentFacets,
+} from "@projective/types/files";
 import type { ReadActor } from "../read-actor.ts";
+import { assetAddress, withMediaFacts } from "../files/asset-row.ts";
 import {
 	clamp,
 	clampOr,
@@ -176,6 +182,8 @@ const ITEM_COLUMNS = [
 	"link_favicon_url",
 	"link_scan_status",
 	"link_scanned_at",
+	"external_web_url",
+	"metadata",
 ].join(", ");
 
 // #endregion
@@ -237,6 +245,9 @@ interface ItemRow {
 	link_favicon_url: string | null;
 	link_scan_status: string | null;
 	link_scanned_at: string | null;
+	external_web_url: string | null;
+	/** The upload-time extraction envelope (`NOT NULL DEFAULT '{}'`); parsed by `metadataOf`. */
+	metadata: unknown;
 }
 
 /** One `files.folders` row, for the materialised breadcrumb trail. */
@@ -569,20 +580,17 @@ interface AssemblyContext {
  * is what a row here actually is, and it matches the fixtures — whose ids are `${messageId}-${i}`,
  * one per attachment and not one per asset.
  *
+ * ## Bytes and media facts come from the shared asset projection
+ *
+ *  - **`assetId`, `url`, `thumbnailUrl`.** `assetId` is the `files.items` id the row's `id` is not;
+ *    `url`/`thumbnailUrl` are the hub's own `assetAddress` — the media proxy for a stored, settled
+ *    asset (an image's thumbnail at its `sm` tier), a link's or connector's own URL, else `"#"`.
+ *  - **`width` / `height` / `durationLabel` and `metadata`.** Read from the upload-time extraction
+ *    envelope through `withMediaFacts`, exactly as the hub reads them; a row nobody extracted keeps
+ *    `null` and no envelope.
+ *
  * ## Fields returned NEUTRAL because no column can answer them
  *
- *  - **`url` (`"#"`) and `thumbnailUrl` (`null`).** The `project` bucket is seeded `public = false`,
- *    so no derivable public URL exists; serving one means minting a signed URL per row through the
- *    Storage API, which is a files-domain concern behind its own gate. `"#"` is the established
- *    sentinel for "no real source" that `FilePreview`, `AssetPicker`, `FilesHub` and
- *    `AudioVisualizer` all already branch on, and the fixtures already emit it for every
- *    non-previewable asset — so this degrades into a code path the UI has. A guessed public path on
- *    a private bucket would 404 on every row, which renders as a broken image rather than a glyph.
- *  - **`width` / `height` / `durationLabel` (`null`).** Intrinsic media dimensions live nowhere:
- *    `files.items.metadata` is an unconstrained `jsonb` with no documented key convention and no
- *    writer anywhere in the migrations. Probing speculative keys would assert a contract that does
- *    not exist. (`width`/`height` are `.positive()` besides, so a stored `0` would FAIL the parse —
- *    any future reader of that column must map `0` to `null` rather than pass it through.)
  *  - **`external` (`null`).** See {@link toExternalRef}.
  *
  * ## Fields answered from a real column, with the reading stated
@@ -638,17 +646,19 @@ function toFileItem(
 
 	const canManage = ctx.viewerId.length > 0 && item.owner_user_id === ctx.viewerId;
 	const stored = toAssetVisibility(item.visibility);
+	const address = assetAddress(item, kind);
 
-	return {
+	return withMediaFacts<FileItem>({
 		id: attachment.id,
+		assetId: assetIdOf(item.id),
 		kind,
 		category,
 		// `min(1)`, so a blank display name has to resolve to something. "Untitled" rather than the
 		// id: a uuid is not a filename, and this is the string an inline rename would be seeded with.
 		name: clampOr(rawName, 200, "Untitled"),
 		ext,
-		url: "#",
-		thumbnailUrl: null,
+		url: address.url,
+		thumbnailUrl: address.thumbnailUrl,
 		sizeBytes,
 		sizeLabel: clamp(fmtSize(sizeBytes), 16),
 		width: null,
@@ -691,7 +701,7 @@ function toFileItem(
 		hashSampled: item.hash_sampled === true,
 		external: toExternalRef(),
 		link: toLinkAttachment(item),
-	};
+	}, item.metadata);
 }
 
 // #endregion

@@ -61,7 +61,7 @@ export function storagePublicBase(): string | null {
  * would read the rest of the name as a fragment or a query and request a different object. The `/`
  * separators are the only characters that must survive unencoded.
  */
-function encodeObjectPath(path: string): string {
+export function encodeObjectPath(path: string): string {
 	return path.split("/").filter((s) => s.length > 0).map(encodeURIComponent).join("/");
 }
 

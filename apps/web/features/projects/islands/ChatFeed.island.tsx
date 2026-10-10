@@ -24,7 +24,13 @@ import { PinnedBanner } from "../components/PinnedBanner.tsx";
 import { ChatEmptyState } from "../components/ChatEmptyState.tsx";
 import { MessageSelectionBar } from "../components/MessageSelectionBar.tsx";
 import { ReactionBubble } from "../components/ReactionBubble.tsx";
+import {
+	ChatAttachmentPreview,
+	type ChatPreviewRequest,
+} from "../components/ChatAttachmentPreview.tsx";
 import { useMessageSelection } from "../hooks/useMessageSelection.ts";
+import { chatFeedScope } from "../core/chat-attachments.ts";
+import { messageAnchorOf, withoutMessageAnchor } from "../core/chat-context.ts";
 
 /**
  * ChatFeed — the bottom-up, virtualized message stream for a channel's Chat tab
@@ -47,6 +53,10 @@ import { useMessageSelection } from "../hooks/useMessageSelection.ts";
  * and the long-press reaction bubble. A reply is handed to the footer composer on
  * `MESSAGE_REPLY_EVENT`, and a reply's quote jumps to its original — loading earlier pages first when
  * the original is above the loaded window.
+ *
+ * An address carrying `?m=<messageId>` (or a legacy `#m-` fragment) opens on that message instead of
+ * the newest. A bubble's attachment tile opens the file preview over the feed
+ * ({@link ChatAttachmentPreview}), whose "Go to message" jumps to the message here.
  *
  * THIN: first paint is the SSR-resolved latest page; the island owns view state (loaded window, pins,
  * reactions/favourites) and paginates via the API. Pins/reactions are optimistic — persistence lands
@@ -72,6 +82,26 @@ export interface ChatFeedProps {
 const JUMP_CLEARANCE = 150;
 /** How many earlier pages a reply quote may load while looking for its original. */
 const JUMP_PAGE_BUDGET = 8;
+const JUMP_SETTLE_MS = [60, 220, 480];
+const JUMP_PIN_MS = [900, 1500];
+const JUMP_CANCEL_EVENTS = ["wheel", "touchstart", "keydown"] as const;
+const STILL_FLASH_MS = 1800;
+
+function highlightMs(): number {
+	const raw = getComputedStyle(document.documentElement).getPropertyValue("--dur-highlight").trim();
+	const ms = raw.endsWith("ms") ? parseFloat(raw) : parseFloat(raw) * 1000;
+	return Number.isFinite(ms) ? ms : 0;
+}
+
+function nextFrame(): Promise<void> {
+	return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+function stripMessageAnchor(): void {
+	const next = withoutMessageAnchor(location.pathname, location.search, location.hash);
+	const state = history.state && typeof history.state === "object" ? history.state : {};
+	history.replaceState({ ...state, fClientNav: false }, "", next);
+}
 
 export default function ChatFeed(
 	{ projectId, channelId, initial, loadOlder: customLoadOlder }: ChatFeedProps,
@@ -95,8 +125,10 @@ export default function ChatFeed(
 	 */
 	const skeleton = useSkeletonDelay();
 	const highlightId = useSignal<string | null>(null);
+	const preview = useSignal<ChatPreviewRequest | null>(null);
 	const canPin = initial?.permissions.canPin ?? false;
 	const mobile = useIsMobile();
+	const scope = chatFeedScope(projectId, channelId);
 
 	const rootRef = useRef<HTMLDivElement>(null);
 	const viewportRef = useRef<HTMLDivElement>(null);
@@ -117,6 +149,8 @@ export default function ChatFeed(
 		getItemKey: (i) => rows[i].key,
 		overscan: 6,
 	});
+	const vsRef = useRef(vs);
+	vsRef.current = vs;
 
 	/**
 	 * Re-measure a row whenever its height changes after it mounted.
@@ -154,19 +188,31 @@ export default function ChatFeed(
 		rootMargin: "600px 0px 0px 0px",
 	}).visible;
 
+	const inflightOlder = useRef<Promise<boolean> | null>(null);
+
 	/**
 	 * Fetch the next-older page. Resolves whether a page actually landed. `retry` is the reader's
-	 * explicit Retry, the one caller allowed past a standing online failure.
+	 * explicit Retry, the one caller allowed past a standing online failure. A call made while a page
+	 * is already on its way shares that fetch, so a jump paging back never mistakes the sentinel's
+	 * load for the end of history.
 	 */
-	async function loadOlder(retry = false): Promise<boolean> {
+	function loadOlder(retry = false): Promise<boolean> {
+		if (inflightOlder.current) return inflightOlder.current;
 		// A stalled feed waits for Retry (or the reconnection): the top sentinel stays in view after a
 		// failed page, and without this guard every intersection change would re-fire the request.
 		if (
-			loadingOlder.value || stall.blocked.value || (olderFailed.value && !retry) ||
-			!hasMore.value || !cursor.value
+			stall.blocked.value || (olderFailed.value && !retry) || !hasMore.value || !cursor.value
 		) {
-			return false;
+			return Promise.resolve(false);
 		}
+		const run = fetchOlder(cursor.value).finally(() => {
+			inflightOlder.current = null;
+		});
+		inflightOlder.current = run;
+		return run;
+	}
+
+	async function fetchOlder(before: string): Promise<boolean> {
 		loadingOlder.value = true;
 		skeleton.begin();
 		const doc = document.scrollingElement ?? document.documentElement;
@@ -174,8 +220,8 @@ export default function ChatFeed(
 		let landed = false;
 		try {
 			const page = customLoadOlder
-				? await customLoadOlder(cursor.value)
-				: await MessagesService.page(projectId, channelId, cursor.value).then((res) =>
+				? await customLoadOlder(before)
+				: await MessagesService.page(projectId, channelId, before).then((res) =>
 					res.ok && res.data ? res.data.page : null
 				);
 			if (page) {
@@ -223,9 +269,16 @@ export default function ChatFeed(
 	// #region Open at the bottom (re-pin as measurements settle)
 	// The feed opens on the NEWEST message. Every navigation is a full page load, so this mounts fresh
 	// each time; we pin to the end immediately and again as the variable-height rows measure in, on the
-	// SAME window scroller the feed virtualizes against (`vs.scrollToEnd`, `useWindow`).
+	// SAME window scroller the feed virtualizes against (`vs.scrollToEnd`, `useWindow`). An address
+	// naming a message skips the re-pins, which would carry the reader away from it.
 	useEffect(() => {
 		vs.scrollToEnd("auto");
+		const target = messageAnchorOf(location.search, location.hash);
+		if (target) {
+			stripMessageAnchor();
+			void jumpTo(target, true);
+			return;
+		}
 		const timers = [60, 220, 480].map((ms) => setTimeout(() => vs.scrollToEnd("auto"), ms));
 		return () => timers.forEach(clearTimeout);
 	}, []);
@@ -345,30 +398,77 @@ export default function ChatFeed(
 	// #endregion
 
 	// #region Jump to a (pinned or quoted) message
+	const settleTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+	useEffect(() => {
+		const stop = () => {
+			settleTimers.current.forEach(clearTimeout);
+			settleTimers.current = [];
+		};
+		const opts: AddEventListenerOptions = { capture: true, passive: true };
+		for (const type of JUMP_CANCEL_EVENTS) globalThis.addEventListener(type, stop, opts);
+		return () => {
+			stop();
+			for (const type of JUMP_CANCEL_EVENTS) globalThis.removeEventListener(type, stop, opts);
+		};
+	}, []);
+
 	function flash(id: string): void {
 		highlightId.value = id;
+		const ms = highlightMs();
 		setTimeout(() => {
 			if (highlightId.value === id) highlightId.value = null;
-		}, 1800);
+		}, ms > 0 ? ms : STILL_FLASH_MS);
 	}
 
 	/**
 	 * Scroll to a message and flash it. A reply's original can be older than anything loaded, so this
 	 * pages backward — within a budget, so a quote of a very old message cannot pull a whole history —
-	 * until it lands, and says so when it cannot.
+	 * until it lands, and says so when it cannot. Once older pages have landed (or when `settle` asks,
+	 * as an address's anchor does) it re-aims while the rows around the target measure in, through the
+	 * latest render's offsets rather than the ones this call started with. Once the scroll has run, the
+	 * drawn row is pinned exactly below the sticky chrome, since estimated offsets of rows not yet
+	 * measured can leave it under the header. A wheel, touch or key from the reader stops the settling.
 	 */
-	async function jumpTo(id: string): Promise<void> {
-		let idx = rowIndexOfMessage(buildRows(messages.value), id);
+	async function jumpTo(id: string, settle = false): Promise<void> {
+		const indexOf = () => rowIndexOfMessage(buildRows(messages.value), id);
+		let idx = indexOf();
+		let paged = false;
 		for (let page = 0; idx < 0 && page < JUMP_PAGE_BUDGET && hasMore.value; page++) {
 			if (!(await loadOlder())) break;
-			idx = rowIndexOfMessage(buildRows(messages.value), id);
+			paged = true;
+			await nextFrame();
+			idx = indexOf();
 		}
 		if (idx < 0) {
 			sel.status.value = "That message is too far back to jump to — scroll up to find it.";
 			return;
 		}
-		vs.scrollToIndex(idx, -JUMP_CLEARANCE);
+		const aim = () => {
+			const at = indexOf();
+			if (at >= 0) vsRef.current.scrollToIndex(at, -JUMP_CLEARANCE);
+		};
+		const pin = () => {
+			const row = rootRef.current?.querySelector<HTMLElement>(
+				`[data-message-id="${CSS.escape(id)}"]`,
+			);
+			if (!row) {
+				aim();
+				return;
+			}
+			const drift = row.getBoundingClientRect().top - JUMP_CLEARANCE;
+			if (Math.abs(drift) > 1) globalThis.scrollBy({ top: drift, behavior: "instant" });
+		};
+		aim();
 		flash(id);
+		settleTimers.current.forEach(clearTimeout);
+		settleTimers.current = [
+			...(settle || paged ? JUMP_SETTLE_MS.map((ms) => setTimeout(aim, ms)) : []),
+			...JUMP_PIN_MS.map((ms) => setTimeout(pin, ms)),
+		];
+	}
+
+	function openAttachment(messageId: string, index: number, trigger: HTMLElement): void {
+		preview.value = { messageId, index, trigger };
 	}
 	// #endregion
 
@@ -410,6 +510,7 @@ export default function ChatFeed(
 				onToggleFavorite={toggleFavorite}
 				onReport={report}
 				onJump={(id) => void jumpTo(id)}
+				onOpenAttachment={openAttachment}
 				selection={sel.rowFor(row.message)}
 				selectionCount={selectedCount}
 			/>
@@ -514,6 +615,13 @@ export default function ChatFeed(
 			)}
 
 			<p class="chat-feed__sr" role="status" aria-live="polite">{sel.status.value}</p>
+
+			<ChatAttachmentPreview
+				request={preview}
+				messages={messages.value}
+				scope={scope}
+				onGoToMessage={(id) => void jumpTo(id)}
+			/>
 		</div>
 	);
 }

@@ -44,6 +44,7 @@ import {
 	type TicketTab,
 	ticketTabs,
 } from "../../core/ticket-view.ts";
+import { FILE_FRAME_TRIGGER } from "../../core/file-frame.ts";
 import { TicketMetaBar } from "./TicketMetaBar.tsx";
 import { TicketActivityPanel } from "./TicketActivityPanel.tsx";
 import { StageInspector } from "./StageInspector.tsx";
@@ -99,6 +100,11 @@ export interface TicketViewProps {
 	cards: BoardCard[];
 	/** Whether the viewer may rewrite the ticket's content. */
 	canEdit: boolean;
+	/**
+	 * Whether a create of this ticket is awaiting the server. The host re-points the frame when the
+	 * answer lands, which it can only do while the ticket is on top, so nothing replaces it meanwhile.
+	 */
+	saving?: boolean;
 	/** Whether the viewer acts on the provider side — gates the Create Submission actions. */
 	isFreelancer: boolean;
 	/** Whether the viewer acts on the client side — gates attachment upload + the owner selector. */
@@ -140,8 +146,7 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 	useFocusTrap({ active: true, containerRef: panelRef });
 	// A ticket being composed can be dismissed, but not by a stray click on the backdrop — there is
 	// unsaved work in it by definition. Escape and Cancel still close it. The backdrop is the only
-	// outside-click channel: it sits beneath anything stacked above (the asset picker), so a click
-	// there can only ever belong to this modal.
+	// outside-click channel, so a click there can only ever belong to this modal.
 	useDismiss({
 		open: true,
 		enabled: stack.isTop,
@@ -151,9 +156,12 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 	});
 
 	// The title is the required field and the first thing to write, so on a new ticket the caret is
-	// already in it. The focus trap parks focus on the panel first, so this runs after it.
+	// already in it. The focus trap parks focus on the panel first, so this runs after it. A frame
+	// restored with a focus-return trigger (back from the picker or a preview) leaves focus to it.
+	const restoring = useRef(ticketStack.read<string | null>(uid, FILE_FRAME_TRIGGER, null) !== null)
+		.current;
 	useEffect(() => {
-		if (!creating) return;
+		if (!creating || restoring) return;
 		panelRef.current?.querySelector<HTMLInputElement>(".tkv__titlefield input")?.focus();
 	}, [creating]);
 
@@ -531,7 +539,9 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 										? (
 											<TicketAttachmentsTab
 												card={card}
-												canUpload={isClient}
+												uid={uid}
+												canUpload={isClient && canEdit}
+												saving={props.saving}
 												onPatch={patch}
 											/>
 										)

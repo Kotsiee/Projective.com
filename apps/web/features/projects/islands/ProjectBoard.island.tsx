@@ -59,6 +59,8 @@ import { CreateStageModal } from "../components/CreateStageModal.tsx";
 import { type BoardWarningKind, BoardWarnings } from "../components/BoardWarnings.tsx";
 import { TicketView } from "../components/ticket/TicketView.tsx";
 import { SubmissionReviewModal } from "../components/SubmissionReviewModal.tsx";
+import { TicketFileFrame } from "../components/ticket/TicketFileFrame.tsx";
+import { TicketPickerFrame } from "../components/ticket/TicketPickerFrame.tsx";
 import { SettlementService, submissionIdOf } from "../core/SettlementService.ts";
 import type {
 	SubmissionReviewDecision,
@@ -70,6 +72,8 @@ import {
 	boardHasTimeline,
 	filesAtPath,
 	firstUnitUnder,
+	openTicketFile,
+	registerTicketFileHost,
 	reviewForPath,
 	type TicketMode,
 	ticketStack,
@@ -185,6 +189,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	 * be counted in the basket until the client presses Create.
 	 */
 	const composing = useSignal<BoardCard | null>(null);
+	const savingId = useSignal<string | null>(null);
 	const stageModalOpen = useSignal(false);
 	/** Expanded tree keys for the review modal's own navigator (its own state, not the ticket's). */
 	const reviewExpanded = useSignal<Set<string>>(new Set());
@@ -368,6 +373,8 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	// The chain is page-local state; leaving the page discards it (and its caches) rather than
 	// leaking frames into whatever mounts next.
 	useEffect(() => () => ticketStack.close(), []);
+	// This island draws the chain's file previews, so a ticket tab opens a file in place.
+	useEffect(() => registerTicketFileHost(false), []);
 	// #endregion
 
 	// #region Actions
@@ -718,9 +725,11 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 			cards.value = [{ ...card, id: optimisticId, dateLabel: "Just now" }, ...cards.value];
 			composing.value = null;
 			repointFrame(clientId, optimisticId, "view");
+			savingId.value = optimisticId;
 		}
 
 		const res = await BoardService.commit(ticketCommitPayload(props.projectId, clientId, card));
+		if (savingId.peek() === optimisticId) savingId.value = null;
 		if (res.ok && res.data) {
 			const saved = res.data.card;
 			cards.value = cards.value.map((c) => (c.id === optimisticId ? saved : c));
@@ -896,6 +905,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 						stages={stages.value}
 						cards={cards.value}
 						canEdit={access.value.canEditTicket}
+						saving={savingId.value === viewing.id}
 						isClient={access.value.isClient}
 						isFreelancer={access.value.isFreelancer}
 						workspaceKind={initial?.workspaceKind ?? "personal"}
@@ -919,6 +929,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 					<SubmissionReviewModal
 						key={frame.uid}
 						open
+						frame={{ stack: ticketStack, uid: frame.uid }}
 						review={review}
 						files={filesAtPath(viewing, reviewPath)}
 						tree={viewing.submissions}
@@ -932,6 +943,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 							popFrame();
 						}}
 						onNavigate={(path) => openSubmission(viewing.id, path)}
+						onOpenFile={(fileId) => openTicketFile(filesAtPath(viewing, reviewPath), fileId)}
 						onRequestRevision={({ notes }) =>
 							void decideReview(review.unit, "request_revision", notes)}
 						onAccept={() => void decideReview(review.unit, "accept", "")}
@@ -939,6 +951,21 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 						error={reviewError.value}
 					/>
 				)
+				: null}
+
+			{frame?.kind === "file" && !frame.input?.standalone
+				? (
+					<TicketFileFrame
+						key={frame.uid}
+						uid={frame.uid}
+						viewerId={initial?.viewerId ?? ""}
+						projectId={props.projectId}
+					/>
+				)
+				: null}
+
+			{frame?.kind === "picker" && !frame.input?.standalone
+				? <TicketPickerFrame key={frame.uid} uid={frame.uid} />
 				: null}
 
 			<CreateStageModal

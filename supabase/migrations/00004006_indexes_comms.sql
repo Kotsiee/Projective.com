@@ -15,6 +15,11 @@ CREATE INDEX IF NOT EXISTS idx_project_messages_channel_recent
 CREATE INDEX IF NOT EXISTS idx_message_attachments_message
     ON comms.message_attachments (message_table, message_id);
 
+-- The reverse lookup: which messages one file was posted in. The preview modal's source-message
+-- section and its "Go to message" ask it per opened file, and without this it scans every link row.
+CREATE INDEX IF NOT EXISTS idx_message_attachments_attachment
+    ON comms.message_attachments (attachment_id);
+
 -- The channel Files tab. Same shape, different vocabulary: this table
 -- discriminates on the BARE 'project' / 'dm' pair, not the schema-qualified one
 -- above.

@@ -59,6 +59,8 @@ export const RESERVED_HANDLES: ReadonlySet<string> = new Set([
 	"inbox",
 	"files",
 	"file",
+	// The shell-free file inspector (`/inspect/[fileId]`, Decision #161(G)).
+	"inspect",
 	"share",
 	// The outbound-link interstitial: a handle shadowing the page that vouches for leaving the platform
 	// would be a phishing primitive, the reason `share` is listed.

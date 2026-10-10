@@ -211,7 +211,12 @@ its target would otherwise present as a broken download rather than an honest 40
 
 - **It never returns the bytes, and never a signed URL.** Minting a download URL stays a server
   decision so the download can be counted and audited into `files.download_events` — a function that
-  handed back a URL would make the audit optional.
+  handed back a URL would make the audit optional. Bytes reach a browser only through the two server
+  doors in [Storage.md](Storage.md) §The upload pipeline: the `/api/files/object/[id]` redirect and
+  the `/api/media/proxy/[fileId]` stream (Decision #161(A)). Both resolve a share slug through this
+  function's liveness predicate and **neither counts a read** — only an explicit Download recorded via
+  `fn_record_download` moves `download_count`, so a `download_limit` bounds recorded downloads, not
+  views or streams (flagged in Decision #161).
 - **It does not re-check ownership.** By the time it runs, the slug has already been accepted as the
   credential. That is exactly why the `WITH CHECK` ownership arm on the `share_links` policy is
   load-bearing (see [Policies.md](Policies.md)) — this function will faithfully resolve a **forged**

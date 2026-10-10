@@ -51,6 +51,11 @@ export interface MessageBubbleProps {
 	onReport: (id: string) => void;
 	/** Jump to a quoted original (a reply's quote was pressed). */
 	onJump: (id: string) => void;
+	/**
+	 * Open the file preview on one of this message's attachments; `trigger` is the tile focus returns
+	 * to. Absent where a surface has no preview: tiles then open in a new tab.
+	 */
+	onOpenAttachment?: (messageId: string, index: number, trigger: HTMLElement) => void;
 	/** The surface's selection binding for this row; absent where a surface has no highlight mode. */
 	selection?: RowBinding;
 	/** How many messages are selected — the context menu's multi-message form reads it. */
@@ -125,7 +130,14 @@ export function MessageBubble(props: MessageBubbleProps): JSX.Element {
 							<MessageBody text={m.text} delta={m.delta} author={who} own={own} timeLabel={m.timeLabel} />
 						)}
 						{hasText && <MessageLinkPreviews text={m.text} />}
-						{m.attachments.length > 0 && <MessageMedia attachments={m.attachments} />}
+						{m.attachments.length > 0 && (
+							<MessageMedia
+								attachments={m.attachments}
+								onOpen={props.onOpenAttachment
+									? (index, trigger) => props.onOpenAttachment?.(m.id, index, trigger)
+									: undefined}
+							/>
+						)}
 						{m.audio && <MessageAudioPlayer audio={m.audio} />}
 						{m.favorited && (
 							<span class="msg-bubble__fav" aria-label="Favourited" title="Favourited">

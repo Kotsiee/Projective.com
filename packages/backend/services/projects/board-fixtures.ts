@@ -361,9 +361,9 @@ function stageRefs(
 // #region Ticket contents (attachments · history · submissions)
 const FILE_NAMES: readonly { name: string; ext: string; kind: string; category: string }[] = [
 	{ name: "direction-board.png", ext: "png", kind: "image", category: "image" },
-	{ name: "wireframes-v2.pdf", ext: "pdf", kind: "document", category: "pdf" },
-	{ name: "handoff-notes.md", ext: "md", kind: "document", category: "document" },
-	{ name: "component-audit.csv", ext: "csv", kind: "document", category: "spreadsheet" },
+	{ name: "wireframes-v2.pdf", ext: "pdf", kind: "pdf", category: "pdf" },
+	{ name: "handoff-notes.md", ext: "md", kind: "doc", category: "document" },
+	{ name: "component-audit.csv", ext: "csv", kind: "doc", category: "spreadsheet" },
 	{ name: "walkthrough.mp4", ext: "mp4", kind: "video", category: "video" },
 ];
 

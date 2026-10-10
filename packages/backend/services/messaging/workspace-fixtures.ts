@@ -1,4 +1,5 @@
 import type {
+	AttachmentSource,
 	ChatMessage,
 	FileChannelRef,
 	FileItem,
@@ -12,10 +13,12 @@ import type {
 	MemberViewerCaps,
 	ProjectMemberRow,
 } from "@projective/types/projects";
+import { attachmentSourceExcerpt } from "@projective/types/projects";
 import { categorizeFile, messageAttachmentFacets } from "@projective/types/files";
 import type { ConversationDetail } from "@projective/types/messaging";
 import { findConversationDetail } from "./conversation-fixtures.ts";
 import { findConversationMessagePage } from "./messages-fixtures.ts";
+import { bySourceRecency, dmMessageHref } from "./live-attachment-source.ts";
 
 /**
  * messaging workspace fixtures — the conversation-scoped **Files** and **Members** projections.
@@ -248,6 +251,45 @@ export function findConversationFilePage(params: FileListParams): FileListPage |
 		total: sorted.length,
 		viewerId: "viewer",
 	};
+}
+
+/**
+ * The fixture twin of the attachment reverse lookup: the messages of one fixture conversation that
+ * carry the attachment `key` names — a tile id, or the `${messageId}-${attachmentId}` row id the file
+ * page mints. Fixture tiles have no `files.items` id, so without a conversation there is nothing to
+ * search and the answer is empty, never a fabricated source.
+ */
+export function findAttachmentSources(
+	key: string,
+	conversationId: string | null | undefined,
+): AttachmentSource[] {
+	if (!conversationId) return [];
+	const detail = findConversationDetail(conversationId);
+	const page = findConversationMessagePage({ conversationId, limit: 100 });
+	if (!detail || !page) return [];
+	return page.messages
+		.filter((m) => m.attachments.some((a) => a.id === key || `${m.id}-${a.id}` === key))
+		.map((m): AttachmentSource => {
+			const sender = m.sender ?? { id: "viewer", name: "You", avatar: null, handle: null };
+			return {
+				messageId: m.id,
+				kind: "dm",
+				conversationId: detail.id,
+				channelLabel: detail.kind === "group" ? detail.title : null,
+				sender: {
+					id: sender.id,
+					name: sender.name,
+					handle: sender.handle,
+					avatarSrc: sender.avatar,
+				},
+				createdAt: m.createdAt,
+				dayLabel: m.dayLabel,
+				timeLabel: m.timeLabel,
+				excerpt: attachmentSourceExcerpt(m.text),
+				href: dmMessageHref(detail.id, m.id),
+			};
+		})
+		.sort(bySourceRecency);
 }
 // #endregion
 

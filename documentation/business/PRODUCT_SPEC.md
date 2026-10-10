@@ -944,7 +944,18 @@ context without "ping fatigue."
   message — replying to several at once is not offered.
 - **Files in messages.** A file sent in a conversation or channel is readable by everyone who can
   read that message — the recipient opens and downloads it exactly as the sender can — and by
-  nobody else. Attaching a file is only possible for a file the sender can already read.
+  nobody else. Attaching a file is only possible for a file the sender can already read. Pressing a
+  file in a message opens it in the preview modal (§Assets & Attachments → The preview modal);
+  middle-, Ctrl- or ⌘-clicking it opens it in the inspector in a new tab instead.
+- **Go to message.** A file opened from a conversation's or channel's Files tab, the hub or a
+  project's files shows the message it was posted in — the sender, when, and the start of the text
+  as it was stored (masked text stays masked) — with **Go to message**. Pressing it closes the
+  preview and lands in the conversation at that message, highlighted briefly; when the preview was
+  opened from the same conversation's chat it scrolls there without leaving the page. Only messages
+  the reader can read are offered; a deleted message is never offered, and a file the reader holds
+  without seeing any of its messages shows no source at all. A message link is shareable: it is the
+  conversation's own address with the message named (`?m=<message>`). A very old message beyond the
+  conversation's reach-back says so rather than jumping (flagged, Decision #162(g)).
 - **Long messages.** A message may be up to 8,000 characters. Over 750 characters (or 10 lines)
   it shows its first four lines with _Show more_; over 4,000 it shows as a card that opens the
   whole message in a reading view.
@@ -2520,6 +2531,70 @@ per person and per device, so someone who already has a file on the machine they
 so before it downloads again — a courtesy, not a restriction, and one that deliberately does not
 fire for the same person on a device that genuinely does not have the file.
 
+### The File Inspector
+
+Any file the platform stores opens in its own browser tab at `/inspect/[file]` — from the hub's
+"Open in new tab", a ticket's attachments and submissions, and the attachment preview — as a
+**full-window inspector with no app chrome**: a slim top bar (the Projective mark, the file's name,
+its type and size, Download, full screen and the panel toggle), the file itself filling the window,
+and a details panel beside it (a sheet from the bottom on a phone). The panel holds the controls for
+that kind of file, its keyboard shortcuts, its facts (type, format, size, dimensions, duration,
+pages, upload date, owner, visibility, download count for the person who manages it, content hash)
+and its links (copy this inspector link, copy the share link for a manager, download the original).
+Web links and files mounted from a connected drive keep opening where they live today.
+
+| File | What the inspector does |
+| :--- | :--- |
+| **Images** (JPG, PNG, GIF, WebP, AVIF, BMP, ICO; SVG) | Zoom at the cursor and pinch on touch, pan, fit / 100%, rotate, flip, a checker, dark or light backdrop. HEIC, TIFF and PSD show their stored preview rendition instead of the original. |
+| **Video and audio** | The platform's own video player and waveform player: speed, loop, frame stepping, picture-in-picture, a still of the current frame, and a waveform drawn in the browser when none was stored. |
+| **PDF** | Continuous pages with selectable text, page jump, zoom and fit, rotation, thumbnails, find, the outline, document properties, and a **Print** dialog (page range, quality, fit). |
+| **Code, text, Markdown, tables** | Highlighted source with line numbers, wrap, find, go to line and linkable lines; Markdown rendered (sanitised) or as source with a table of contents; CSV / TSV as a sortable, filterable table. Very large text is not read into the page. |
+| **3D models** (GLB / glTF, OBJ, STL, PLY, FBX, 3MF, DAE, USDZ) | Orbit, pan and zoom; perspective or orthographic cameras, view presets and the model's own cameras; studio and built-in lights, environments, wireframe, grid, axes, bounds; animation playback; mesh and size facts. A model that references files it does not carry says which are missing. |
+| **Word documents and fonts** | DOCX rendered as pages with zoom and print; a font as an editable specimen with a size control and a glyph grid. |
+| **Everything else** | An honest fallback: the file's kind, name, "Preview isn't available for … files", Download, and the preview image when one exists. A canvas that fails (no WebGL, a damaged file) falls back the same way with the reason. |
+
+**Who can open it is exactly who can read the file** — the owner, a member of the owning team or
+business, a participant of the project it sits in, anyone at all for a public file, and a holder of a
+live share link (the inspector carries the link's slug along). Anyone else, and every dead link,
+sees the same calm "This file isn't available" page — it never reveals whether the file exists. The
+page is never indexed. Viewing is not downloading: only the Download action is recorded in the
+person's download history, and a share link's download limit counts those recorded downloads, not
+views (flagged, Decision #161).
+
+### The preview modal
+
+Pressing a file anywhere it is listed — the hub, a project's or a conversation's Files tab, a
+ticket's attachments or submissions, a submission review, a file in a chat message — opens it in
+place in the **preview modal** (Decision #162), without leaving the page. A stored file shows the
+inspector's own view of it — the same zoom, pages, playback, highlighted source, tables and
+specimen — inside the modal, with that kind of file's controls in a side panel. Two things stay
+on the inspector page only: printing, and 3D models, which show a card with **Open in inspector**.
+A web link or a file mounted from a connected drive shows its own preview with a working Open or
+Download.
+
+- **Header.** The file's kind, its name (renamed in place by whoever can manage it), and its format,
+  size and dimensions or duration as plain text. Star, **Download** (recorded in the person's
+  download history, as from the hub), **Copy link** (the file's inspector address — it opens only
+  for people who can already read the file), **Open in new tab** (the inspector), the side-panel
+  toggle and Close.
+- **Side panel.** The file's facts (size, dimensions or duration, format, when it was uploaded and
+  by whom), the controls for that kind of file, the message it came from with **Go to message**
+  (§Messaging), notes where the surface keeps them (Submissions), and the keyboard shortcuts. On a
+  desktop it can be hidden, and the choice is remembered on that device.
+- **More than one file.** A strip of thumbnails along the bottom, with previous and next; the arrow
+  keys move between files while focus is on the header or the strip.
+- **Phone.** The preview fills the screen. An **Info** button opens the side panel as a sheet from
+  the bottom that a swipe down closes; zoom, fit, rotate and page controls sit on the file itself,
+  and two fingers pinch and turn an image.
+- **One at a time.** A file opened from inside a ticket or a submission review replaces it rather
+  than covering it; closing the file returns to the ticket or review exactly as it was left,
+  unsaved feedback included.
+- **Format, not "verified".** The modal states the file's format; it never claims the type was
+  verified, because the platform does not record whether an upload's content matched its declared
+  type (flagged, Decision #162(a)). There is no Report action (no report flow exists yet).
+
+Who can open a file in the modal is exactly who can read it, as on the inspector page.
+
 ## Sitemap and Route Overview
 
 | Category      | Path / Route              | Sub-Path                 | Description                                                                                    |
@@ -2608,6 +2683,7 @@ fire for the same person on a device that genuinely does not have the file.
 |               |                           | `edit/availability`      | **Owner only.** Working hours, time zone, publishing and discovery-call terms                  |
 |               |                           | _retired_                | `services` · `products` · `projects` · `portfolio` · `teams` · `businesses` · `members` · `departments` · `about` · `education` · `articles` — each 308s into its consolidated section |
 |               | `/share/[slug]`           |                          | Share-link resolution. Renders the asset for a holder of the opaque slug; every dead state (missing / expired / revoked / exhausted) returns an identical 404 |
+|               | `/inspect/[file]`         |                          | The File Inspector — one stored file full-window with no app chrome, the canvas that suits its type and a details panel (§Assets & Attachments → The File Inspector). Readable by exactly who can read the file, or with `?share=` by a share-link holder; every refusal is one identical not-found page; never indexed |
 |               | `/help/[...article path]` | `index`                  | Documentation / Help center                                                                    |
 |               | `/view/[entity]`          | `index`                  | Public entity viewer — the evaluation & purchase surface. One page, six bodies (Pipeline · One-Off · Session · Cohort · Digital Product · Project) resolved from the listing's delivery model. The transaction lives in the contextual lane, never a third column (§The Entity View; DESIGN_SYSTEM §D.7–§D.8) |
 |               |                           | `schedule`               | Bookable availability leaf for Session / Group-Session archetypes — fills the content region itself (no lane) |

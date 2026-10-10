@@ -13,7 +13,8 @@
  *  2. **Nesting still works** — a dropdown opened INSIDE an open modal steps above the modal rather
  *     than dropping to the popover base, so it is never swallowed by its own parent surface.
  */
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useState } from "preact/hooks";
+import { createScrollLock } from "./scroll-lock.ts";
 
 // #region Module-level shared state
 /** The stacking class an overlay belongs to. */
@@ -36,7 +37,6 @@ interface StackEntry {
 
 /** Currently-active overlays in claim order, top-most last. */
 const stack: StackEntry[] = [];
-let lockCount = 0;
 let savedOverflow = "";
 let savedPaddingInlineEnd = "";
 
@@ -52,10 +52,21 @@ function syncTop(): void {
 	for (let i = 0; i < stack.length; i++) stack[i].setIsTop(i === stack.length - 1);
 }
 
-/** Reference-counted body scroll lock — compensates for the scrollbar to avoid layout shift. */
-function lockBodyScroll(): void {
-	if (typeof document === "undefined") return;
-	if (lockCount === 0) {
+/** How long a release waits when the double frame never comes (a backgrounded tab). */
+const RELEASE_WATCHDOG_MS = 250;
+
+/**
+ * Reference-counted body scroll lock — compensates for the scrollbar to avoid layout shift.
+ *
+ * The release waits two frames (or the watchdog). A modal-stack frame swap unmounts the outgoing
+ * overlay synchronously but the incoming one claims the lock in an effect flushed after the next
+ * frame; releasing at once restored `overflow` and the scrollbar padding for that frame. The
+ * watchdog hops one more task before releasing: after a long task both it and Preact's effect
+ * flush are already due, and the hop queues the release behind the flush's own task.
+ */
+const bodyLock = createScrollLock({
+	apply() {
+		if (typeof document === "undefined") return;
 		const body = document.body;
 		const scrollbar = globalThis.innerWidth - document.documentElement.clientWidth;
 		savedOverflow = body.style.overflow;
@@ -64,18 +75,36 @@ function lockBodyScroll(): void {
 		// Logical, not `paddingRight`: under `dir="rtl"` the scrollbar sits on the left, and physical
 		// compensation would shift the layout it is supposed to hold still.
 		if (scrollbar > 0) body.style.paddingInlineEnd = `${scrollbar}px`;
-	}
-	lockCount++;
-}
-
-function unlockBodyScroll(): void {
-	if (typeof document === "undefined") return;
-	lockCount = Math.max(0, lockCount - 1);
-	if (lockCount === 0) {
+	},
+	release() {
+		if (typeof document === "undefined") return;
 		document.body.style.overflow = savedOverflow;
 		document.body.style.paddingInlineEnd = savedPaddingInlineEnd;
-	}
-}
+	},
+	defer(task) {
+		let done = false;
+		let raf = 0;
+		let hop: ReturnType<typeof setTimeout> | undefined;
+		const cancel = () => {
+			done = true;
+			cancelAnimationFrame(raf);
+			clearTimeout(watchdog);
+			clearTimeout(hop);
+		};
+		const run = () => {
+			if (done) return;
+			cancel();
+			task();
+		};
+		raf = requestAnimationFrame(() => {
+			raf = requestAnimationFrame(run);
+		});
+		const watchdog = setTimeout(() => {
+			hop = setTimeout(run, 0);
+		}, RELEASE_WATCHDOG_MS);
+		return cancel;
+	},
+});
 // #endregion
 
 export interface OverlayStackOptions {
@@ -108,10 +137,8 @@ export function useOverlayStack(opts: OverlayStackOptions): OverlayStackState {
 		stack.push(entry);
 		setZIndex(mine);
 		syncTop();
-		if (lockScroll) lockBodyScroll();
 
 		return () => {
-			if (lockScroll) unlockBodyScroll();
 			// Drop this claim and let the ceiling fall out of what is still open. A running counter that
 			// released only when it happened to be top leaked a step on every out-of-order teardown, and
 			// in a shell that never full-page-navigates that drift eventually lifts a plain popover above
@@ -121,7 +148,15 @@ export function useOverlayStack(opts: OverlayStackOptions): OverlayStackState {
 			setIsTop(false);
 			syncTop();
 		};
-	}, [active, lockScroll, base]);
+	}, [active, base]);
+
+	// The lock is claimed in the commit that mounts the overlay, so a frame swap's incoming claim
+	// lands in the same task as the outgoing release and cancels it, whatever runs before paint.
+	useLayoutEffect(() => {
+		if (!active || !lockScroll) return;
+		bodyLock.acquire();
+		return () => bodyLock.release();
+	}, [active, lockScroll]);
 
 	return { zIndex, isTop };
 }

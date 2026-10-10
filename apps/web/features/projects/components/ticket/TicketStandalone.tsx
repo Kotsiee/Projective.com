@@ -26,6 +26,9 @@ import {
 } from "../../core/board-access.ts";
 import { resolveSessionKind } from "../../core/session-model.ts";
 
+export { TicketFileFrame } from "./TicketFileFrame.tsx";
+export { TicketPickerFrame } from "./TicketPickerFrame.tsx";
+
 /**
  * TicketStandalone — the View Ticket modal rendered from a FETCHED board rather than a page's own.
  *
@@ -36,7 +39,9 @@ import { resolveSessionKind } from "../../core/session-model.ts";
  * the SAME endpoint. It is deliberately `view`-only: composing a ticket needs a board to land on.
  *
  * Submission actions hand over to their canonical addresses rather than mounting a second review
- * workspace here — the timeline island makes the same call, for the same reason.
+ * workspace here — the timeline island makes the same call, for the same reason. A file opened from
+ * one of its tabs is a `file` frame on the same chain, and "From library" a `picker` frame; both
+ * renderers ship in this chunk, so either replaces the ticket without a second load.
  */
 export interface TicketStandaloneProps {
 	uid: number;
