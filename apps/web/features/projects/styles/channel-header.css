@@ -148,6 +148,10 @@
 	display: none;
 }
 
+.chan-header__tabs.chan-header__tabs--single > * {
+	display: none;
+}
+
 /* A simple full-height text item. Its ::after is the active/hover underline, pinned to the header's
    bottom edge (nudged -1px) so it sits precisely on top of the divider hairline — a seamless tab line. */
 .chan-tab {

@@ -3057,7 +3057,9 @@ The routed tab body + `ChatComposer` flow in the canvas beneath it:
   gives its natural width in either layout, and a `ResizeObserver` (header · copy · each action
   control) collapses once `(inner − tabs) / 2 − gap < actions + gap` (`core/tab-strip.ts`, pure and
   unit-tested). The rule reads only the NATURAL width, so the compact layout cannot feed back and
-  flip it. SSR renders the full strip; a narrow header switches on hydration.
+  flip it. SSR renders the full strip; a narrow header switches on hydration. With only ONE visible
+  tab the strip shows nothing (`.chan-header__tabs--single`, `aria-hidden`): the nav stays as the
+  empty centre spacer and the active tab stays in the DOM for the Chat canvas `:has` hook.
 - **Composer footer band (bottom, Chat-only).** The blurred message input (`ChatComposer` —
   auto-growing field, attachment/paste chips, voice recorder, dynamic Mic→Send→Stop control) is the
   content of the **middle-nav frame's configurable `footer` band** (`.ui-middle-nav__footer`), a

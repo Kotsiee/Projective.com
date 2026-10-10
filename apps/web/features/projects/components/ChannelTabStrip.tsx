@@ -27,6 +27,9 @@ import { shouldCollapseTabs, stepIndex, swipeStep } from "../core/tab-strip.ts";
  * Every step control is an anchor to the target tab, and a swipe clicks that same anchor — so stepping
  * is ordinary navigation by one code path, whatever triggered it. The compact active control keeps
  * `.chan-tab[data-tab-key][data-active]`, which `chat-composer.css` keys the Chat canvas off via `:has`.
+ *
+ * A single tab is not a choice, so `--single` hides the strip's contents while the nav stays as the
+ * empty centre spacer and the active tab stays in the DOM for that `:has` hook.
  */
 
 // #region Props
@@ -127,6 +130,7 @@ export function ChannelTabStrip({ tabs, activeKey, label }: ChannelTabStripProps
 	const current = tabs[index];
 	const prev = tabs[stepIndex(index, -1, tabs.length)];
 	const next = tabs[stepIndex(index, 1, tabs.length)];
+	const single = tabs.length < 2;
 
 	// #region Swipe (pointer events cover touch, pen and a mouse drag alike)
 	function onPointerDown(e: JSX.TargetedPointerEvent<HTMLButtonElement>): void {
@@ -159,8 +163,13 @@ export function ChannelTabStrip({ tabs, activeKey, label }: ChannelTabStripProps
 	return (
 		<nav
 			ref={navRef}
-			class={cx("chan-header__tabs", compact.value && "chan-header__tabs--compact")}
+			class={cx(
+				"chan-header__tabs",
+				compact.value && "chan-header__tabs--compact",
+				single && "chan-header__tabs--single",
+			)}
 			aria-label={label}
+			aria-hidden={single ? "true" : undefined}
 		>
 			{compact.value && current
 				? (
