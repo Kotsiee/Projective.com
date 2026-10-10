@@ -515,10 +515,9 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 					/*
 					 * Utilities only — the views moved up into the top tier. The collapse toggle docks to the
 					 * lane's corner (`LaneCollapseButton`), the same point the collapsed rail's expand toggle
-					 * occupies, so collapsing and expanding never move the pointer. Project details is the
-					 * owner's configuration at `/details` (Decision #144) — not drawn for anybody else, whose
-					 * way into the engagement is the top tier's Overview, and not drawn twice on a Task,
-					 * whose top tier already carries it.
+					 * occupies, so collapsing and expanding never move the pointer. Edit project opens the
+					 * configuration at `/details` (Decision #144) for review authority only — filled while
+					 * that page is open — and is the one way into it on every type, a Task included.
 					 */
 				}
 				<LaneFooter class="proj-detail__footer">
@@ -527,14 +526,15 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 						icon={<SidebarToggleIcon />}
 						onToggle={() => setLaneCollapsed(true)}
 					/>
-					{view.viewerIsClient && !views.some((link) => link.key === "details") && (
+					{view.viewerCanConfigure && (
 						<LaneFooterActions>
 							<LaneIconButton
 								href={`${base}/details`}
 								icon={DetailsIcon}
-								label="Project details & settings"
+								label="Edit project"
 								tooltipPlacement="top"
 								active={detailsCurrent}
+								fillWhenActive
 							/>
 						</LaneFooterActions>
 					)}

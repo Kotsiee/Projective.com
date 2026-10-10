@@ -48,7 +48,7 @@ export async function stageDetailsFooterFor(
 	});
 	if (!detail || !channel) return null;
 
-	const canConfigure = detail.viewerIsClient || context.role === "admin";
+	const canConfigure = detail.viewerCanConfigure || context.role === "admin";
 	if (!canConfigureStage({ channelKind: "stage", canConfigure })) return null;
 
 	/*

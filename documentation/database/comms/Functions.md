@@ -197,7 +197,7 @@ block or roll back the transaction that emitted the notification.
 | :----------------------------------------- | :-------- | :---------------------------------------- |
 | `comms.can_access_scope(uuid, uuid, text)` | 0311      | Private-channel scope check.              |
 | `comms.has_channel_access(uuid)`           | 0311      | Channel membership predicate used by RLS. |
-| `comms.get_stage_channels(uuid)`           | 0311      | Channels visible for a stage.             |
+| `comms.get_stage_channels(uuid)`           | 0311      | Channels visible for a stage. Skips an archived stage or room and never provisions a Session's stage rooms (Decision #163). |
 | `comms.get_or_create_project_channel(...)` | 0112      | Idempotent project-channel provisioning.  |
 | `comms.get_or_create_dm_thread(...)`       | 0113      | Idempotent DM-thread provisioning. Excludes `group` threads since Decision #102 — a group holding both people is not their DM. |
 

@@ -63,8 +63,11 @@ SELECT TO public USING (
         JOIN projects.projects p ON p.id = s.project_id
         WHERE s.id = stage_assignments.project_stage_id
         AND (
-            p.owner_user_id = auth.uid() 
+            p.owner_user_id = auth.uid()
             OR (p.status = 'active'::project_status AND p.visibility = 'public'::visibility)
+            -- Review authority configures the project, so it must see the seats that freeze its
+            -- prices (the setup write path's onboarding lock reads these rows).
+            OR projects.can_review_project (p.id)
         )
     )
 );
@@ -175,13 +178,23 @@ CREATE POLICY "Users can delete own projects" ON projects.projects FOR DELETE TO
 -- ⚠️ Do NOT read the twelve remaining `USING`-only `FOR ALL` policies in this schema as holes on the
 -- strength of a missing `WITH CHECK` alone. They may each still deserve a narrower post-image
 -- predicate; they are not open by default.
-CREATE POLICY "Users can update own projects" ON projects.projects FOR
-UPDATE TO public USING (auth.uid () = owner_user_id)
+--
+-- Review authority (projects.can_review_project: the owner, or an active member of the paying client
+-- business) configures the engagement, so it may update the row. Reassigning `owner_user_id` or
+-- `client_business_id` stays the owner's alone — projects.fn_guard_project_ownership refuses it for
+-- anybody else, which a row policy cannot express (it sees the post-image, not who changed what).
+CREATE POLICY "Reviewers can update their projects" ON projects.projects FOR
+UPDATE TO public USING (projects.can_review_project (id))
 WITH
-    CHECK (auth.uid () = owner_user_id);
+    CHECK (projects.can_review_project (id));
 
 CREATE POLICY "Users can view own projects" ON projects.projects FOR
 SELECT TO public USING (auth.uid () = owner_user_id);
+
+-- A member of the paying business may be on no stage and hold no participant row, so
+-- has_project_access does not admit them; they still configure the engagement and must read it.
+CREATE POLICY "Reviewers can view their projects" ON projects.projects FOR
+SELECT TO authenticated USING (projects.can_review_project (id));
 
 -- The missing arm. Until this policy existed the only two SELECT paths on this
 -- table were "I own it" and "it is active AND public", so a freelancer hired onto
@@ -220,10 +233,9 @@ CREATE POLICY "Manage roles own" ON projects.stage_staffing_roles FOR ALL TO pub
     EXISTS (
         SELECT 1
         FROM projects.project_stages s
-            JOIN projects.projects p ON p.id = s.project_id
         WHERE
             s.id = stage_staffing_roles.project_stage_id
-            AND p.owner_user_id = auth.uid ()
+            AND projects.can_review_project (s.project_id)
     )
 );
 
@@ -242,13 +254,7 @@ SELECT TO public USING (
 );
 
 CREATE POLICY "Users can manage stages of own projects" ON projects.project_stages FOR ALL TO public USING (
-    EXISTS (
-        SELECT 1
-        FROM projects.projects p
-        WHERE
-            p.id = project_stages.project_id
-            AND p.owner_user_id = auth.uid ()
-    )
+    projects.can_review_project (project_stages.project_id)
 );
 
 CREATE POLICY "Users can view stages of visible projects" ON projects.project_stages FOR
@@ -1060,12 +1066,14 @@ WITH
 CREATE POLICY "View project attachments" ON projects.project_attachments FOR
 SELECT TO authenticated USING (
         projects.has_project_access (project_id)
+        OR projects.can_review_project (project_id)
     );
 
--- Writes are the OWNER's alone, and narrower than the read on purpose. These
--- files are the terms the work is judged against; a participant who could attach
--- to the project — rather than submit through projects.stage_submissions, where a
--- deliverable is versioned, reviewed and tied to an escrow release — would be
+-- Writes are the CLIENT side's alone — review authority (projects.can_review_project:
+-- the owner, or an active member of the paying business), and narrower than the read
+-- on purpose. These files are the terms the work is judged against; a participant who
+-- could attach to the project — rather than submit through projects.stage_submissions,
+-- where a deliverable is versioned, reviewed and tied to an escrow release — would be
 -- adding to the client's own brief with none of that ledger behind it.
 --
 -- Split into INSERT and DELETE rather than written as FOR ALL, because there is
@@ -1077,26 +1085,14 @@ INSERT
     TO authenticated
 WITH
     CHECK (
-        EXISTS (
-            SELECT 1
-            FROM projects.projects p
-            WHERE
-                p.id = project_attachments.project_id
-                AND p.owner_user_id = auth.uid ()
-        )
+        projects.can_review_project (project_attachments.project_id)
     );
 
 -- Detaching removes only the LINK. The files.items row is untouched and stays in
 -- the owner's library, so this is not the hard deletion root CLAUDE.md §5 forbids
 -- — the same reasoning as "Detach files from own submissions" above.
 CREATE POLICY "Owner detaches project references" ON projects.project_attachments FOR DELETE TO authenticated USING (
-    EXISTS (
-        SELECT 1
-        FROM projects.projects p
-        WHERE
-            p.id = project_attachments.project_id
-            AND p.owner_user_id = auth.uid ()
-    )
+    projects.can_review_project (project_attachments.project_id)
 );
 
 -- --- project_required_skills: the public half ---

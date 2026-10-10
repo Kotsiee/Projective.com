@@ -147,6 +147,7 @@ export async function resolveChannelRef(
 			.from("project_stages")
 			.select("id")
 			.eq("project_id", projectId)
+			.is("archived_at", null)
 			.eq("slug", ref)
 			.maybeSingle();
 		if (stage.error || !stage.data) return null;
@@ -218,6 +219,7 @@ async function resolveDiscussionRoom(
 			.from("project_stages")
 			.select("id")
 			.eq("project_id", projectId)
+			.is("archived_at", null)
 			.order("sort_order", { ascending: true })
 			.limit(1)
 			.maybeSingle();
@@ -308,6 +310,30 @@ export function senderOf(userId: string, row: PartyRow | undefined | null): {
 	handle: string | null;
 } {
 	return { id: userId, ...partyOf(row) };
+}
+
+/**
+ * Whether the acting user holds review authority — the TypeScript mirror of
+ * `projects.can_review_project`, both clauses: the owner, or an active member of the paying client
+ * business. Asked as a column read rather than the RPC, which no migration grants `EXECUTE` on. Fails
+ * CLOSED: a failed membership lookup withholds the configuration rather than offering one RLS refuses.
+ */
+export async function resolveReviewAuthority(
+	actor: ReadActor & { accessToken: string },
+	ownerUserId: string,
+	clientBusinessId: string | null,
+): Promise<boolean> {
+	if (actor.userId.length > 0 && actor.userId === ownerUserId) return true;
+	if (!clientBusinessId || actor.userId.length === 0) return false;
+	const { data, error } = await orgDb(actor)
+		.from("business_members")
+		.select("user_id")
+		.eq("business_id", clientBusinessId)
+		.eq("user_id", actor.userId)
+		.eq("status", "active")
+		.limit(1);
+	if (error) return false;
+	return ((data ?? []) as unknown[]).length > 0;
 }
 
 /**

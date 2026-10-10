@@ -438,6 +438,105 @@ Deno.test("an engagement with no messages short-circuits to an empty page", asyn
 });
 // #endregion
 
+// #region Project files
+const REF = item("i-ref", {
+	display_name: "creative-brief.pdf",
+	mime_type: "application/pdf",
+	size_bytes: 4096,
+	status: "uploaded",
+	created_at: "2026-09-01T12:00:00.000Z",
+});
+
+/** {@link fileRoutes} plus one client project file, served only when the read asks for it by id. */
+function projectFileRoutes(over: Record<string, Route> = {}): Record<string, Route> {
+	return fileRoutes({
+		"projects.projects": [{
+			id: PROJECT_UUID,
+			slug: SLUG,
+			owner_user_id: OWNER_ID,
+			format: "pipeline",
+			structure_variation: "standard",
+		}],
+		"projects.project_attachments": [{ attachment_id: "i-ref" }],
+		"files.items": (req: FakeRequest) =>
+			(req.query.get("id") ?? "").includes("i-ref") ? [REF] : ITEMS,
+		...over,
+	});
+}
+
+Deno.test("project scope lists the client's project files beside the channel attachments", async () => {
+	await withPostgrest(projectFileRoutes(), async () => {
+		const page = await fetchFilePage(actorOf(FREELANCER_ID), { projectId: SLUG });
+		assert(page);
+		FileListPageSchema.parse(page);
+		assertEquals(page.items.map((f) => f.id), ["a-2", "a-1", "i-ref"]);
+		assertEquals(page.projectFileCount, 1);
+		assertEquals(page.task, false);
+		const ref = page.items.find((f) => f.id === "i-ref")!;
+		assertEquals([ref.channelId, ref.messageId, ref.messageText], [null, null, null]);
+		assertEquals([ref.sender.id, ref.sender.name], [OWNER_ID, "Olive Owner"]);
+		assertEquals([ref.name, ref.sizeBytes, ref.canManage], ["creative-brief.pdf", 4096, false]);
+		assertEquals(ref.createdAt, "2026-09-01T12:00:00.000Z");
+	});
+});
+
+Deno.test("projectFiles lists only the project files and keeps the channel counts whole", async () => {
+	await withPostgrest(projectFileRoutes(), async () => {
+		const page = await fetchFilePage(OWNER, { projectId: SLUG, projectFiles: true });
+		assert(page);
+		FileListPageSchema.parse(page);
+		assertEquals(page.scope, "project");
+		assertEquals(page.items.map((f) => f.id), ["i-ref"]);
+		assertEquals(page.total, 1);
+		assertEquals(page.channels.map((c) => [c.id, c.count]), [[C_GENERAL, 1], [C_STAGE, 1]]);
+		assertEquals(page.items[0].canManage, true);
+	});
+});
+
+Deno.test("a channel-scoped read never reads the project files", async () => {
+	await withPostgrest(projectFileRoutes(), async (calls) => {
+		const page = await fetchFilePage(OWNER, { projectId: SLUG, channelId: C_STAGE });
+		assert(page);
+		assertEquals(page.items.map((f) => f.id), ["a-2"]);
+		assertEquals(page.projectFileCount, 0);
+		assertEquals(calls.some((c) => c.name === "project_attachments"), false);
+	});
+});
+
+Deno.test("a Task engagement is flagged so the tree drops its Channels header", async () => {
+	await withPostgrest(
+		projectFileRoutes({
+			"projects.projects": [{
+				id: PROJECT_UUID,
+				slug: SLUG,
+				owner_user_id: OWNER_ID,
+				format: "one_off",
+				structure_variation: "single_task",
+			}],
+		}),
+		async () => {
+			const page = await fetchFilePage(OWNER, { projectId: SLUG });
+			assertEquals(page?.task, true);
+		},
+	);
+});
+
+Deno.test("fetchFilePage THROWS when projects.project_attachments fails (42501)", async () => {
+	await withPostgrest(
+		projectFileRoutes({
+			"projects.project_attachments": pgFail("42501", "permission denied", 403),
+		}),
+		async () => {
+			await assertRejects(
+				() => fetchFilePage(OWNER, { projectId: SLUG }),
+				Error,
+				"projects.project_attachments read failed",
+			);
+		},
+	);
+});
+// #endregion
+
 // #region Degradation and failures
 Deno.test("failed enrichments (parties, folders, downloads) degrade instead of throwing", async () => {
 	const denied = pgFail("42501", "permission denied", 403);

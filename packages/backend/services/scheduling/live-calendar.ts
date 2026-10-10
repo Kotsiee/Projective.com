@@ -1231,6 +1231,7 @@ export async function readPersonalCalendar(
 			projects.from("project_stages")
 				.select(`${STAGE_WINDOW_COLUMNS}, project_id, slug, name, status`)
 				.in("project_id", ids)
+				.is("archived_at", null)
 				.order("id"),
 		"projects.project_stages",
 	);

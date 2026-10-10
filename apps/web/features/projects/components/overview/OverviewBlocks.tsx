@@ -5,13 +5,17 @@ import {
 	type NextAction,
 	type NextActionKind,
 	type ProjectStatus,
+	WORKSPACE_PERSON_ROLE_LABEL,
 	WORKSPACE_STAGE_STATE_LABEL,
 	type WorkspacePeople,
+	type WorkspacePerson,
 	type WorkspaceStage,
 	type WorkspaceViewer,
 } from "@projective/types/projects";
-import { Block, Empty } from "../dashboard/DashboardBlocks.tsx";
+import { UserAvatar } from "@web/components/UserAvatar.tsx";
+import { Block, Empty, MetaFacts } from "../dashboard/DashboardBlocks.tsx";
 import { projectDetailsHref, projectHref } from "../../core/project-access.ts";
+import { profileHref } from "../../core/routing.ts";
 
 /**
  * The blocks only the Overview draws (Decision #144) — beside the dashboard's existing Recent updates,
@@ -160,17 +164,64 @@ export function StageRunBlock(
 // #endregion
 
 // #region People
+/** The person's lines beneath their name: role, then stages, team and business as middot facts. */
+function personFacts(person: WorkspacePerson): string[] {
+	const facts: string[] = [WORKSPACE_PERSON_ROLE_LABEL[person.role]];
+	if (person.stages) facts.push(person.stages);
+	if (person.team) facts.push(`Team ${person.team}`);
+	if (person.business) facts.push(`${person.business.role} at ${person.business.name}`);
+	return facts;
+}
+
 /**
- * Who is on the engagement. The count is the whole team — the roster's own unfiltered total — so it is
- * truthful even where this viewer's role lists fewer rows. The owner also sees invitations still
- * waiting for an answer; applications are already in Needs you, and are not repeated here.
+ * Who is on the engagement: each person with their role, the stages they deliver on (never on a Task,
+ * whose one stage IS the work), the hired team they are seated through and their standing in the
+ * paying business. A person with a public handle links to their profile (Decision #3); one without
+ * renders as text rather than as a link that would 404 (§3 gate 11).
+ *
+ * The count beneath is the whole team — the roster's own unfiltered total — so it is truthful even
+ * where this viewer's role lists fewer rows. The owner also sees invitations still waiting for an
+ * answer; applications are already in Needs you, and are not repeated here.
  */
 export function PeopleBlock(
-	{ people, slug, viewer }: { people: WorkspacePeople; slug: string; viewer: WorkspaceViewer },
+	{ people, roster, slug, viewer }: {
+		people: WorkspacePeople;
+		roster: readonly WorkspacePerson[];
+		slug: string;
+		viewer: WorkspaceViewer;
+	},
 ): JSX.Element {
 	const members = projectHref(slug, "members");
 	return (
-		<Block title="People">
+		<Block title="People" moreHref={members} moreLabel="Members">
+			{roster.length > 0 && (
+				<ul class="pjd-list pjd-people">
+					{roster.map((person) => {
+						const body = (
+							<>
+								<UserAvatar image={person.avatar ?? undefined} label={person.name} size="sm" />
+								<span class="pjd-row__body">
+									<span class="pjd-row__title">
+										{person.name}
+										{person.handle && (
+											<span class="pjd-people__handle">@{person.handle.replace(/^@/, "")}</span>
+										)}
+										{person.isViewer && <span class="pjd-people__you">You</span>}
+									</span>
+									<MetaFacts items={personFacts(person)} />
+								</span>
+							</>
+						);
+						return (
+							<li key={person.id}>
+								{person.handle
+									? <a class="pjd-row" href={profileHref(person.handle)}>{body}</a>
+									: <div class="pjd-row">{body}</div>}
+							</li>
+						);
+					})}
+				</ul>
+			)}
 			<ul class="pjd-list">
 				<li>
 					<a class="pjd-row" href={members}>

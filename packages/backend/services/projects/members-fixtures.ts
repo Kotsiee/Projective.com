@@ -233,10 +233,27 @@ function baseRows(detail: ProjectDetail, stages: MemberStageRef[]): ProjectMembe
 		parties.push(extra);
 	}
 
+	// Affiliations, derived from facts the detail already holds: a contributor may deliver through one of
+	// the engagement's hired teams, and the client-side seats belong to the paying business.
+	const hiredTeam = detail.channels.teams[0] ?? null;
+	const clientBusiness = detail.client;
+	const BUSINESS_ROLE: Partial<Record<MemberRole, string>> = {
+		client: "Owner",
+		admin: "Admin",
+		manager: "Manager",
+	};
+
 	return parties.map((p, i) => {
 		const id = `${detail.slug}-mem-${p.party.handle ?? i}`;
 		// Contributors deliver on 1–2 stages; observers/leadership carry none. Deterministic off the seed.
 		const isContributor = p.role === "freelancer" || p.role === "member";
+		const team = hiredTeam && p.role === "freelancer" && (seed + i) % 3 === 0
+			? { id: hiredTeam.teamId, name: hiredTeam.teamName }
+			: null;
+		const businessRole = BUSINESS_ROLE[p.role];
+		const business = clientBusiness && businessRole
+			? { name: clientBusiness.name, role: businessRole }
+			: null;
 		const assigned: string[] = [];
 		if (isContributor && stages.length > 0) {
 			assigned.push(stageName(seed + i)!);
@@ -259,6 +276,8 @@ function baseRows(detail: ProjectDetail, stages: MemberStageRef[]): ProjectMembe
 			joinedLabel: dateLabel(joinedMs),
 			isViewer: false,
 			impact: impactOf(seed + i, openTickets, stagesHeld.length),
+			team,
+			business,
 		};
 	});
 }

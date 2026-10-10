@@ -329,6 +329,10 @@ nda_required boolean,
 
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   completed_at timestamp with time zone,
+  -- Soft removal (root CLAUDE.md §5). Set by projects.sanitize_single_room_topology when a stage that
+  -- carries history (tickets, submissions, seats, money) is retired by a switch to a Task; a stage with
+  -- nothing hanging off it is deleted instead. Product reads skip an archived stage; history keeps it.
+  archived_at timestamp with time zone,
   ip_mode ip_option_mode DEFAULT 'exclusive_transfer'::ip_option_mode,
   -- Folded (0310): per-stage assignment routing mode + Project Hard Cap on summed W_i.
   assignment_mode projects.assignment_routing_mode NOT NULL DEFAULT 'open_pull',

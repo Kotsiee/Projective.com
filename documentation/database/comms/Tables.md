@@ -313,11 +313,20 @@ NULL` — the replies to a message, and the self-FK's `ON DELETE SET NULL` looku
 Themed chat rooms within a project workspace. Channels can be global to the project or restricted to
 specific stages.
 
-| Column       | Type | Notes                                       |
-| :----------- | :--- | :------------------------------------------ |
-| `project_id` | uuid | FK → `projects.projects.id`.                |
-| `stage_id`   | uuid | Optional FK → `projects.project_stages.id`. |
-| `visibility` | text | `project_all` or restricted.                |
+| Column        | Type        | Notes                                                                                   |
+| :------------ | :---------- | :-------------------------------------------------------------------------------------- |
+| `project_id`  | uuid        | FK → `projects.projects.id`.                                                            |
+| `stage_id`    | uuid        | Optional FK → `projects.project_stages.id`.                                             |
+| `visibility`  | text        | `project_all` or restricted.                                                            |
+| `archived_at` | timestamptz | Nullable. Soft removal set by `projects.sanitize_single_room_topology` (Decision #163). |
+
+**`archived_at`: a retired room that carries history (Decision #163).** When a save leaves the
+project a Task (every non-root stage's rooms) or a Session (every stage-bound room),
+`projects.sanitize_single_room_topology` hard-deletes a room with no history
+(`projects.fn_room_has_history`: messages, channel files, scheduled events) and archives the rest.
+The `view_channels_if_member` SELECT policy hides an archived room, but the filter is not in
+`comms.has_channel_access`, so its messages and files stay readable as history. The project-wide
+room is never retired. See [Policies](Policies.md).
 
 The **project-wide room** — no `stage_id`, `visibility = 'project_all'` — is at most one per project
 (`comms.get_or_create_project_channel` dedupes on project + stage + visibility). It is what

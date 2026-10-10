@@ -104,6 +104,9 @@ export async function resolveProjectAccess(
 		title: detail.title,
 		access: sim.access ?? detail.viewerAccess,
 		status: sim.status ?? detail.status,
+		// A simulated access speaks for the configuration too: simulating a participant must lock the
+		// owner out of `/details` exactly as a real participant is.
+		canConfigure: sim.access ? sim.access === "owner" : detail.viewerCanConfigure,
 		discussion: discussionOf(detail) !== null,
 		simulated: isLandingSimActive(sim),
 	};

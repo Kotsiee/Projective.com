@@ -269,6 +269,16 @@
 	background: var(--surface-2);
 }
 
+.ui-lane-iconbtn--fill-active[data-on="true"],
+.ui-lane-iconbtn--fill-active[data-on="true"]:hover {
+	color: var(--on-primary);
+	background: var(--primary);
+}
+
+.ui-lane-iconbtn--fill-active[data-on="true"] svg {
+	fill: none;
+}
+
 .ui-lane-iconbtn__dot {
 	position: absolute;
 	inset-block-start: 0.35rem;

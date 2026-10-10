@@ -374,6 +374,12 @@ GRANT
 EXECUTE ON FUNCTION scheduling.fn_can_see_event_coordination (uuid) TO authenticated,
 service_role;
 
+-- The history probes behind projects.sanitize_single_room_topology are SECURITY DEFINER and answer
+-- for any id, so a direct caller could learn what lies behind a stage or room it cannot read. Only
+-- the sanitizer (which re-asks review authority) calls them, as their owner.
+REVOKE ALL ON FUNCTION projects.fn_room_has_history (uuid) FROM public, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.fn_stage_has_history (uuid) FROM public, anon, authenticated;
+
 -- --- from 20260724104000_scheduling_booking_engine.sql ---
 
 GRANT

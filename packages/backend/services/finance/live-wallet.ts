@@ -662,6 +662,7 @@ export async function fundableStages(ctx: WalletContext, account: WalletAccount)
 	const stagesRes = await db.from("project_stages")
 		.select("id, name, project_id, unit_price_cents")
 		.in("project_id", projects.map((p) => p.id))
+		.is("archived_at", null)
 		.eq("status", "assigned");
 	if (stagesRes.error) throw new Error(`projects.project_stages read failed: ${stagesRes.error.message}`);
 	const stages = (stagesRes.data ?? []) as { id: string; name: string; project_id: string; unit_price_cents: number | null }[];

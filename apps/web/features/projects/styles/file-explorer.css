@@ -70,6 +70,10 @@
 	color: var(--text-secondary);
 }
 
+.fx-tree__list--ungrouped {
+	margin-block-start: var(--space-3);
+}
+
 .fx-tree__node {
 	display: flex;
 	align-items: center;
@@ -180,7 +184,8 @@
 		flex-flow: row wrap;
 	}
 
-	.fx-tree__group {
+	.fx-tree__group,
+	.fx-tree__list--ungrouped {
 		inline-size: 100%;
 	}
 }

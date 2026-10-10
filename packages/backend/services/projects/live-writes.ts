@@ -10,6 +10,8 @@ import {
 	cumulativeStageCents,
 	DEFAULT_STAGE_SETUP,
 	FIELD_LOCKED_POST_ONBOARDING,
+	isSingleRoomEngagement,
+	isTaskProject,
 	liveVisibilityFor,
 	lockedStagePriceIds,
 	MAX_PROJECT_ATTACHMENTS,
@@ -59,6 +61,7 @@ import {
 	filesDb,
 	orgDb,
 	projectsDb,
+	resolveReviewAuthority,
 	senderOf,
 	toSubmissionStatus,
 } from "./live-support.ts";
@@ -170,6 +173,7 @@ interface SetupProjectRow {
 	location_restriction: string[] | null;
 	language_requirement: string[] | null;
 	owner_user_id: string;
+	client_business_id: string | null;
 	archived_at: string | null;
 }
 
@@ -247,6 +251,7 @@ const SETUP_PROJECT_COLUMNS = [
 	"location_restriction",
 	"language_requirement",
 	"owner_user_id",
+	"client_business_id",
 	"archived_at",
 ].join(", ");
 
@@ -535,7 +540,7 @@ function toSetup(
 	stages: readonly SetupStageRow[],
 	roles: readonly StaffingRoleRow[],
 	attachments: readonly ProjectAttachment[],
-	viewerId: string,
+	viewerCanConfigure: boolean,
 	onboarded: OnboardedCounts,
 ): ProjectSetup {
 	const rolesByStage = groupRolesByStage(roles);
@@ -578,9 +583,10 @@ function toSetup(
 		// its form renders no stage list, so a figure derived from the stages this projection happens to
 		// carry would read zero on a fully staffed engagement — see `ProjectSetupSchema.onboardedCount`.
 		onboardedCount: onboarded.total,
-		// The setup surface is the OWNER's. `create_stage` and `reorder_stages` both authorise on
-		// ownership, so anything wider here would draw controls the database will refuse.
-		viewerIsClient: row.owner_user_id === viewerId,
+		// The setup surface is review authority's — the owner, or an active member of the paying
+		// business — the same predicate `create_stage`, `reorder_stages` and the write policies use, so
+		// the controls drawn are exactly the ones the database accepts.
+		viewerIsClient: viewerCanConfigure,
 	});
 }
 // #endregion
@@ -638,6 +644,7 @@ async function fetchSetupStages(
 		.from("project_stages")
 		.select(SETUP_STAGE_COLUMNS)
 		.eq("project_id", projectRowId)
+		.is("archived_at", null)
 		.order("sort_order", { ascending: true });
 	if (error) return [];
 	return (data ?? []) as unknown as SetupStageRow[];
@@ -798,12 +805,13 @@ async function composeSetup(
 	// Sequential because the role and assignment reads are keyed on the stage ids the previous read
 	// returned; the attachment read is independent, so it runs alongside them rather than after.
 	const stageIds = stages.map((s) => s.id);
-	const [roles, attachments, onboarded] = await Promise.all([
+	const [roles, attachments, onboarded, viewerCanConfigure] = await Promise.all([
 		fetchStaffingRoles(actor, stageIds),
 		fetchProjectAttachments(actor, row.id),
 		fetchOnboardedCounts(actor, stageIds),
+		resolveReviewAuthority(actor, row.owner_user_id, row.client_business_id),
 	]);
-	return toSetup(row, stages, roles, attachments, actor.userId, onboarded);
+	return toSetup(row, stages, roles, attachments, viewerCanConfigure, onboarded);
 }
 // #endregion
 
@@ -2094,13 +2102,33 @@ export async function applyProjectUpdate(
 		const refusal = await reconcileAttachments(db, row.id, input.attachments);
 		if (refusal) return { refusal };
 	}
+	const shape = {
+		format: (input.format ?? row.format) as ProjectFormat,
+		structure: (input.structure ?? row.structure_variation) as ProjectStructure,
+	};
+	const singleRoom = isSingleRoomEngagement(shape);
 	if (input.stages) {
-		const refusal = await reconcileStages(actor, row.id, input.stages, replace);
+		// A Task holds one stage. A draft still carrying the stages a previous shape left behind sends
+		// them all; only the root is reconciled, so a retired stage is never re-created against the
+		// one-stage cap — the sanitizer below retires the rest.
+		const stages = singleRoom && isTaskProject(shape.format, shape.structure)
+			? [...input.stages].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).slice(0, 1)
+			: input.stages;
+		const refusal = await reconcileStages(actor, row.id, stages, replace);
 		if (refusal) return { refusal };
 	}
 	if (input.roles) {
 		const refusal = await reconcileRoles(actor, row.id, input.roles, replace);
 		if (refusal) return { refusal };
+	}
+
+	// A Task or Session presents one room, so whatever a previous shape left behind — extra stages,
+	// stage-bound rooms — is retired: deleted when it carries no history, archived when it does
+	// (`projects.sanitize_single_room_topology`). Last of the structural writes, so it sees the stages
+	// this same save just reconciled.
+	if (singleRoom) {
+		const { error } = await db.rpc("sanitize_single_room_topology", { p_project_id: row.id });
+		if (error) return { refusal: refusalFrom(error.message, "stages") };
 	}
 
 	// AFTER the stages, and re-read rather than computed from the payload. The project's own budget is
@@ -2368,7 +2396,8 @@ async function resolveTicketStages(
 	const { data, error } = await projectsDb(actor)
 		.from("project_stages")
 		.select("id, unit_price_cents")
-		.eq("project_id", projectRowId);
+		.eq("project_id", projectRowId)
+		.is("archived_at", null);
 	if (error) return refusalFrom(error.message, "stages");
 
 	const rates = new Map<string, number | null>();

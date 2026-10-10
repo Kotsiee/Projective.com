@@ -1,4 +1,4 @@
-import type { FileItem, FileKind, FileSortKey } from "../types/projects-types.ts";
+import type { ExplorerFileItem, FileKind, FileSortKey } from "../types/projects-types.ts";
 
 /**
  * file-model — pure, DOM-free helpers for the File Explorer (labels, filter/sort vocabularies, and
@@ -54,17 +54,18 @@ export const FILE_SORT_OPTIONS: { value: FileSortKey; label: string }[] = [
 // #region Message grouping (the preview carousel)
 /**
  * The sibling files that were posted together with `file` (same `messageId`), in stable id order —
- * the set the preview modal's swipe carousel + companion tray walk. A lone attachment yields a
- * one-item group.
+ * the set the preview modal's swipe carousel + companion tray walk. A lone attachment, or a project
+ * file (posted in no message), yields a one-item group.
  */
-export function messageGroup(items: FileItem[], file: FileItem): FileItem[] {
+export function messageGroup<T extends ExplorerFileItem>(items: T[], file: T): T[] {
+	if (file.messageId === null) return [file];
 	const group = items.filter((it) => it.messageId === file.messageId);
 	if (group.length <= 1) return [file];
 	return group.slice().sort((a, b) => a.id.localeCompare(b.id));
 }
 
 /** The index of `file` within its message group. */
-export function groupIndexOf(group: FileItem[], file: FileItem): number {
+export function groupIndexOf(group: ExplorerFileItem[], file: ExplorerFileItem): number {
 	const i = group.findIndex((it) => it.id === file.id);
 	return i === -1 ? 0 : i;
 }

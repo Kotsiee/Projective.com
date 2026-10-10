@@ -3,7 +3,7 @@
 Functions and RPCs for the `projects` schema. Tables: [Tables.md](Tables.md) · Policies:
 [Policies.md](Policies.md).
 
-93 functions — every `CREATE FUNCTION projects.*` in `supabase/migrations/` — each with its
+99 functions — every `CREATE FUNCTION projects.*` in `supabase/migrations/` — each with its
 signature, security context, `EXECUTE` holders and caller check. Defined in `00001100`–`00001150`;
 trigger bindings in `00001800` / `00001820` / `00001850`; explicit grants in `00002510` and beside a
 handful of definitions.
@@ -351,7 +351,8 @@ first-visit floor · `update`: a stage completed/created or a `milestone_confirm
 `submissions.count` (reviewers: `pending_review` work by others · everyone else: verdicts on their own
 submissions; capped at 100) and `members.count` (arrivals; for `can_manage_project_members` also
 pending applications, declines and expiries; capped at 100). A view never opened is measured from the
-caller's first mark on the engagement, else from now.
+caller's first mark on the engagement, else from now. An archived stage (`archived_at`) is ignored by
+the Task discussion-room lookup and the deadline tone (Decision #163).
 
 ### `projects.mark_view_seen(p_slug text, p_view text) → timestamptz`
 
@@ -408,10 +409,11 @@ General room here is what makes a newly-created stage reachable the moment it ex
 `NOT NULL` column.
 
 `SECURITY DEFINER`, `search_path = public, projects, comms, auth`, because it writes through
-`comms.project_channels` whose RLS the caller does not otherwise satisfy. **The ownership check is
+`comms.project_channels` whose RLS the caller does not otherwise satisfy. **The authority check is
 therefore the only thing standing between a signed-in caller and somebody else's pipeline**, and it
-is deliberately the first thing the body does — an unauthenticated caller and a non-owner both get
-`insufficient_privilege`.
+is deliberately the first thing the body does — an unauthenticated caller and anyone without
+`projects.can_review_project` (the owner, or an active member of the paying client business; owner
+only before Decision #163) both get `insufficient_privilege`.
 
 ### `projects.reorder_stages(p_project_id uuid, p_ordered_ids uuid[]) → void`
 
@@ -424,12 +426,12 @@ relies on — so any signed-in caller who knew a project id and its stage ids co
 else's pipeline. Stage order is the execution sequence, so that is a change to what gets built when,
 not a cosmetic one.
 
-Authority is **ownership**, not `has_project_access`: an assigned freelancer legitimately reads the
-pipeline and must not be able to rewrite the client's sequencing. `search_path` includes `auth` so
-`auth.uid()` resolves.
+Authority is **review authority** (`projects.can_review_project`; ownership only before
+Decision #163), not `has_project_access`: an assigned freelancer legitimately reads the pipeline and
+must not be able to rewrite the client's sequencing. `search_path` includes `auth` so `auth.uid()` resolves.
 
 The check is now in place: `SECURITY DEFINER`, `search_path = public, projects, auth`, default `PUBLIC`
-`EXECUTE`; `auth.uid() IS NULL` → `42501`, not `p.owner_user_id = auth.uid()` → `42501`. Ids that are
+`EXECUTE`; `auth.uid() IS NULL` → `42501`, not `can_review_project(p_project_id)` → `42501`. Ids that are
 not stages of `p_project_id` are silently skipped. `trg_stage_reorder_lock` (below) raises if any
 stage whose position actually changes has already started.
 
@@ -446,8 +448,36 @@ scrubs before it included. The function's own comment (and this doc, until 2026-
 at all.
 
 `SECURITY DEFINER`, `search_path = public, projects, finance, auth`; default `PUBLIC` `EXECUTE`. Guard,
-in order: `auth.uid() IS NULL` → `42501`; not `p.owner_user_id = auth.uid()` → `42501`; stage not in
-the project → `check_violation` (`23514`).
+in order: `auth.uid() IS NULL` → `42501`; not `can_review_project(p_project_id)` → `42501` (owner only
+before Decision #163); stage not in the project → `check_violation` (`23514`).
+
+### `projects.sanitize_single_room_topology(p_project_id uuid) → jsonb`
+
+`00001130` (Decision #163). Called at the end of every live save that leaves the project a Task
+(`one_off` + `single_stage` | `single_task`) or a Session, so the engagement presents one shared room.
+A **Task** keeps its root stage (lowest `sort_order`, then `created_at`) and retires every other
+non-archived stage with its rooms; a **Session** keeps its stages (they are its sessions) and retires
+every stage-bound room. The project-wide room is never touched (Decision #135). Retiring is a hard
+delete (participants, staffing roles, budget rules and dependants' `start_dependency_stage_id` cleared
+first) only when `fn_stage_has_history` / `fn_room_has_history` is false; otherwise the row (and a
+stage's rooms) gets `archived_at = now()`. Returns `{sanitized: false}` for any other shape, else
+`{sanitized, deleted_stages, archived_stages, deleted_rooms, archived_rooms}`; a second call is a
+no-op.
+
+`SECURITY DEFINER`, `search_path = public, projects, comms, finance, auth`; default `PUBLIC`
+`EXECUTE`. Guard: `auth.uid() IS NULL` or not `can_review_project(p_project_id)` → `42501`; unknown
+project → `P0002`.
+
+### `projects.fn_stage_has_history(p_stage_id uuid) → boolean` / `projects.fn_room_has_history(p_channel_id uuid) → boolean`
+
+`00001130` (Decision #163). The sanitizer's history probes. A room has history when it holds
+`comms.project_messages`, `comms.channel_files` (`channel_type = 'project'`) or `scheduling.events`. A
+stage has history when any ticket sits in it or requires it, any `ticket_history` row names it, or it
+has a submission, assignment, open seat, invitation, invite link, escrow, invoice, basket item, order
+line or inbound payment — or any of its rooms has history. Staffing roles and budget rules are
+configuration, not history. `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`, `search_path = public`.
+**`EXECUTE` revoked from `public`, `anon` and `authenticated`** in `00002510`: they answer for any id,
+so only the sanitizer (which re-asks review authority) calls them, as their owner.
 
 ### `projects.fn_stage_reorder_lock() → trigger`
 
@@ -462,7 +492,7 @@ ticket outside `backlog`, or has any `stage_assignments` row at all. `SECURITY I
 `finance.fn_release_ticket_escrow` for every ticket whose `current_stage_id` is the stage, then strips
 the stage from every ticket's `required_stages`. `SECURITY DEFINER`, `search_path = public, projects,
 finance, org, auth`; no caller check (a trigger). Reached through `delete_stage` (which has already
-detached the tickets, so the release loop finds none) or a direct `DELETE` under the owner-only
+detached the tickets, so the release loop finds none) or a direct `DELETE` under the review-authority
 _Users can manage stages of own projects_ policy, where it **does** release the stage's escrow.
 
 ### `projects.fn_enforce_structure_variation() → trigger`
@@ -470,7 +500,8 @@ _Users can manage stages of own projects_ policy, where it **does** release the 
 Two bindings in `00001850`: `trg_enforce_structure_variation_tickets` (`BEFORE INSERT ON
 projects.tickets`) and `trg_enforce_structure_variation_stages` (`BEFORE INSERT ON
 projects.project_stages`). Caps by `projects.structure_variation`: `one_off` ≤ 1 ticket; `single_task`
-≤ 1 stage and ≤ 1 ticket; `single_stage` ≤ 1 stage; `standard` / `NULL` unlimited. Raises `P0001`.
+≤ 1 stage and ≤ 1 ticket; `single_stage` ≤ 1 stage; `standard` / `NULL` unlimited. Archived stages
+(`archived_at`) are not counted (Decision #163). Raises `P0001`.
 `SECURITY INVOKER`, no `search_path`, so the counts are taken under the inserting role's RLS.
 
 ### `projects.fn_stage_window(p_stage_id uuid) → tstzrange`
@@ -614,7 +645,7 @@ Grants are in `00002510` ("escrow settlement doors").
 | `projects.approve_stage(p_project_id uuid, p_stage_id uuid) → jsonb`             | `00001150` | Releases every held escrow on the stage; stage → `paid`        | `authenticated`                  | signed in + `can_review_project`; stage ∈ project            |
 | `projects.cancel_stage_fair_exit(p_project_id uuid, p_stage_id uuid, p_tier integer) → jsonb` | `00001150` | Pays the tier (25/50/75 %) out, refunds the rest; stage → `cancelled` | `authenticated`        | signed in + `can_review_project`; stage ∈ project            |
 | `projects.move_ticket(…)` (→ `completed`)                                        | `00001120` | Via `trg_ticket_escrow_sync`                                   | default                          | `has_project_access`, plus `can_review_project` for Done     |
-| `projects.delete_stage(p_project_id uuid, p_stage_id uuid) → void`               | `00001130` | Releases claimed tickets' escrow in the stage                  | default                          | signed in + project **owner**                                |
+| `projects.delete_stage(p_project_id uuid, p_stage_id uuid) → void`               | `00001130` | Releases claimed tickets' escrow in the stage                  | default                          | signed in + `can_review_project` (Decision #163)             |
 | `projects.remove_project_member(…)`                                              | `00001130` | Via `release_ticket_to_backlog`                                | `authenticated`                  | project owner                                                |
 | `projects.release_ticket_to_backlog(p_ticket_id uuid) → void`                    | `00001120` | Releases a ticket's escrow, resets it to New                   | **none** (owner-only, internal)  | none — reachable only through `remove_project_member`        |
 | `projects.fn_release_expired_claims(p_now timestamptz DEFAULT now()) → integer`  | `00001140` | **Refunds** every claim older than the TTL                     | **`service_role`** only          | none — a cron job                                            |
@@ -626,6 +657,9 @@ owner, or an active member of the paying client business). Until 2026-10-05 `com
 `cancel_stage_fair_exit` checked only `has_project_access`, and all five carried the default
 `PUBLIC` `EXECUTE` — with `anon` holding `USAGE` on `projects` (Decision #85(e)), anyone with a
 ticket id could release its escrow, and a freelancer could approve their own stage.
+
+`approve_stage`'s handover check (the last settled stage completes the project) ignores archived
+stages (`archived_at`, Decision #163), so a retired stage never holds the handover open.
 
 **Refusals** — authority refusals are `42501` (`insufficient_privilege`); the rest carry a specific
 `SQLSTATE` so the fat service can map them to an HTTP status rather than a generic 502:
@@ -845,7 +879,8 @@ splits too); foreign stage → `P0002`.
 
 ### `projects.set_project_status(p_project_id uuid, p_to_status project_status, p_reason text DEFAULT NULL) → project_status`
 
-The owner-only state machine. `draft|on_hold → active` needs a title and ≥1 stage;
+The review-authority state machine (Decision #163). `draft|on_hold → active` needs a title and ≥1
+non-archived stage;
 `active|on_hold →
 completed` needs every ticket terminal **and** no escrow still held; terminal
 states are immutable. Writes `projects.project_status_history` and `projects.project_activity`.
@@ -862,9 +897,19 @@ on the project has a status other than `declined` / `pending_funding` — the sa
 `ONBOARDED_ASSIGNMENT_EXCLUDED` in `packages/types/projects/setup.ts`. The database backstop of
 Decision #89's shape lock (Decision #139).
 
+### `projects.fn_guard_project_ownership() → trigger`
+
+`trg_guard_project_ownership` — `BEFORE UPDATE OF owner_user_id, client_business_id ON
+projects.projects`, fired only when either value actually changes; bound in `00001820`, defined in
+`00001130` (Decision #163). Review authority may update the project row, but reassigning the owner or
+the paying business stays the owner's alone: a signed-in caller other than `OLD.owner_user_id` is
+refused (`insufficient_privilege`). A `NULL` `auth.uid()` (service role, seeds) passes. `SECURITY
+INVOKER`, `search_path = public, projects`; default `PUBLIC` `EXECUTE`, moot.
+
 `set_project_status` is `SECURITY DEFINER`, `search_path = public, projects, finance, org, auth`,
-default `PUBLIC` `EXECUTE`. Guard: unknown project `P0002`, then `v_owner IS DISTINCT FROM
-auth.uid()` → `insufficient_privilege` (`42501`) — owner only, not the client business. Every
+default `PUBLIC` `EXECUTE`. Guard: unknown project `P0002`, then a `NULL` actor or not
+`can_review_project(p_project_id)` → `insufficient_privilege` (`42501`) — the owner or the client
+business (owner only before Decision #163). Every
 transition refusal is `check_violation` (`23514`); `archived` is reachable from any non-terminal state
 and is itself terminal. `fn_project_shape_lock` is `SECURITY DEFINER`, `search_path = public,
 projects`, bound in `00001820`; default `PUBLIC` `EXECUTE`, moot.

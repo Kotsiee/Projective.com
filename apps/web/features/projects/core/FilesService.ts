@@ -24,6 +24,7 @@ export const FilesService = {
 				: { projectId: params.projectId },
 		);
 		if (!conversation && params.channelId) qs.set("channelId", params.channelId);
+		if (!conversation && params.projectFiles) qs.set("projectFiles", "1");
 		if (params.sort) qs.set("sort", params.sort);
 		if (params.dir) qs.set("dir", params.dir);
 		if (params.kinds && params.kinds.length > 0) qs.set("kinds", params.kinds.join(","));

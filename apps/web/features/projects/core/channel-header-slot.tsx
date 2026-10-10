@@ -131,7 +131,7 @@ export async function channelHeaderFor(
 	// `viewerIsClient` projects on this read); the admin arm comes from the chrome context, which is
 	// decoded from the access token and is the same claim the shell gates on. Neither grants ACCESS on
 	// its own — the route below re-asks, and RLS is the real gate.
-	const canConfigure = detail.viewerIsClient || context.role === "admin";
+	const canConfigure = detail.viewerCanConfigure || context.role === "admin";
 	const isTask = isTaskDetail(detail);
 	const visibleTabs = visibleChannelTabKeys({
 		channelKind: meta.kind,

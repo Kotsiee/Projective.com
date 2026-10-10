@@ -246,6 +246,8 @@ export function findConversationFilePage(params: FileListParams): FileListPage |
 		channelId: detail.id,
 		items,
 		channels: [channel],
+		projectFileCount: 0,
+		task: false,
 		hasMore,
 		nextCursor: hasMore ? items[items.length - 1]?.id ?? null : null,
 		total: sorted.length,

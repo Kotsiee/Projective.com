@@ -10,6 +10,12 @@ import type {
 	SystemActivityType,
 	TicketStatus,
 } from "@projective/types/projects";
+import {
+	DISCUSSION_REF,
+	isSingleRoomEngagement,
+	ProjectFormat,
+	SINGLE_ROOM_NAME,
+} from "@projective/types/projects";
 import type { ReadActor } from "../read-actor.ts";
 import {
 	clamp,
@@ -20,6 +26,8 @@ import {
 	partyOf,
 	type PartyRow,
 	projectsDb,
+	resolveChannelRef,
+	toProjectStructure,
 	toTicketStatus,
 } from "./live-support.ts";
 
@@ -86,6 +94,8 @@ interface ProjectRow {
 	status: string;
 	currency: string | null;
 	owner_user_id: string;
+	format: string;
+	structure_variation: string | null;
 }
 
 /** One `projects.project_stages` row — the progress meter's two numbers come from these. */
@@ -253,7 +263,7 @@ async function fetchProject(
 ): Promise<ProjectRow | null> {
 	const base = projectsDb(actor)
 		.from("projects")
-		.select("id, slug, title, status, currency, owner_user_id");
+		.select("id, slug, title, status, currency, owner_user_id, format, structure_variation");
 	// By slug and only by slug: a project has one public address, so there is no column to choose
 	// between and no shape to test. See `project-identity.ts` for why the branch this replaces was a
 	// standing hazard rather than a convenience.
@@ -273,6 +283,7 @@ async function fetchStages(
 		.from("project_stages")
 		.select("id, slug, name, status")
 		.eq("project_id", projectId)
+		.is("archived_at", null)
 		.order("sort_order", { ascending: true });
 	if (error) return [];
 	return (data ?? []) as unknown as StageRow[];
@@ -332,12 +343,30 @@ async function fetchActivity(
 // #endregion
 
 // #region Mapping
-/** Project the visible rooms into the quick-entry list. */
+/**
+ * Project the visible rooms into the quick-entry list. A single-room engagement (`singleRoomId` not
+ * `undefined`) lists its Discussion alone, at its fixed address — its stage and spare rooms are stored
+ * but never presented.
+ */
 function channelsOf(
 	slug: string,
 	rows: readonly ChannelRow[],
 	stages: readonly StageRow[],
+	singleRoomId: string | null | undefined,
 ): ProjectOverviewChannel[] {
+	if (singleRoomId !== undefined) {
+		const room = rows.find((row) => row.id === singleRoomId);
+		return room
+			? [{
+				id: room.id,
+				name: SINGLE_ROOM_NAME,
+				kind: "general",
+				unread: false,
+				lastMessagePreview: "",
+				href: clamp(`/projects/${slug}/${DISCUSSION_REF}`, HREF_MAX),
+			}]
+			: [];
+	}
 	const stageSlugs = new Map(stages.map((s) => [s.id, s.slug]));
 	return rows.slice(0, CHANNEL_LIMIT).map((row) => {
 		const kind: ChannelKind = !row.stage_id
@@ -430,12 +459,18 @@ export async function fetchProjectOverview(
 	const project = await fetchProject(actor, projectId);
 	if (!project) return null;
 
-	const [stages, channels, tickets, activity, owner] = await Promise.all([
+	const format = ProjectFormat.safeParse(project.format);
+	const singleRoom = format.success && isSingleRoomEngagement({
+		format: format.data,
+		structure: toProjectStructure(project.structure_variation),
+	});
+	const [stages, channels, tickets, activity, owner, singleRoomId] = await Promise.all([
 		fetchStages(actor, project.id),
 		fetchChannels(actor, project.id),
 		fetchAssignments(actor, project.id),
 		fetchActivity(actor, project.id),
 		fetchParties(actor, [project.owner_user_id]),
+		singleRoom ? resolveChannelRef(actor, project.id, DISCUSSION_REF) : Promise.resolve(undefined),
 	]);
 
 	const actorIds = activity.map((row) => row.actor_user_id);
@@ -475,7 +510,7 @@ export async function fetchProjectOverview(
 			totalStages: totalStages > 0 ? totalStages : null,
 		},
 		updates: activityOf(project.slug, activity, parties, now),
-		channels: channelsOf(project.slug, channels, stages),
+		channels: channelsOf(project.slug, channels, stages, singleRoomId),
 		assignments,
 		finance: neutralFinance(currency),
 	};

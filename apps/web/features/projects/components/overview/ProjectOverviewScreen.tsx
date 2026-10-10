@@ -2,14 +2,16 @@ import type { JSX } from "preact";
 import "../../styles/project-dashboard.css";
 import {
 	isClosedStatus,
+	type FileListPage,
 	type OverviewChange,
 	type ProjectWorkspace,
 } from "@projective/types/projects";
 import ProjectPageStyleAnchor from "../../islands/ProjectPageStyleAnchor.island.tsx";
 import ProjectNoticeHost from "../../islands/ProjectNoticeHost.island.tsx";
 import OverviewArrival from "../../islands/OverviewArrival.island.tsx";
-import { profileHref } from "../../core/routing.ts";
+import ProjectAttachments from "../../islands/ProjectAttachments.island.tsx";
 import {
+	Block,
 	EarningsBlock,
 	MessagesBlock,
 	MetaFacts,
@@ -18,7 +20,8 @@ import {
 	WorkBlock,
 } from "../dashboard/DashboardBlocks.tsx";
 import { NextActionsBlock, OverviewNotice, PeopleBlock, StageRunBlock } from "./OverviewBlocks.tsx";
-import { UserAvatar } from "@web/components/UserAvatar.tsx";
+import { BriefBlock, TermsBlock } from "./BriefBlocks.tsx";
+import { ClaimableBlock, SubmissionsBlock } from "./WorkSignalBlocks.tsx";
 
 /**
  * The engagement's **Overview** — the body of `/projects/[slug]` for the owner and every participant
@@ -27,8 +30,10 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  * It answers the question a command center exists for: what needs me, and where does everything
  * stand. Two columns from `55rem` of container width, one below it, in this reading order:
  *
- *   • **Main** — Needs you · the stage run · Recent updates.
- *   • **Aside** — Your work and Your earnings (a participant's own position) · Messages · People.
+ *   • **Main** — Needs you · the Brief · Inclusions & terms · Project files · the stage run · Recent
+ *     updates.
+ *   • **Aside** — a participant's Active submissions, Claimable tasks, Your work and Your earnings ·
+ *     Messages (only when there is more than the one Discussion the lane already links) · People.
  *
  * The owner is not shown a money block: the live overview's finance is a neutral placeholder (all
  * zeros), and "$0 in escrow" on a funded engagement would be a false statement, not a missing one.
@@ -59,11 +64,13 @@ export interface ProjectOverviewScreenProps {
 	slug: string;
 	/** Regions changed since the viewer's last visit — highlighted briefly on arrival. */
 	changes?: readonly OverviewChange[];
+	/** The client's project files, or `null` when that read failed. */
+	attachments?: FileListPage | null;
 }
 
 /** The Overview for one engagement, or a calm miss with the one route back. */
 export function ProjectOverviewScreen(
-	{ workspace, slug, changes = [] }: ProjectOverviewScreenProps,
+	{ workspace, slug, changes = [], attachments = null }: ProjectOverviewScreenProps,
 ): JSX.Element {
 	if (!workspace) {
 		return (
@@ -82,10 +89,25 @@ export function ProjectOverviewScreen(
 		);
 	}
 
-	const { hero, viewer, nextActions, stages, updates, channels, assignments, finance, people } =
-		workspace;
+	const {
+		hero,
+		viewer,
+		nextActions,
+		stages,
+		updates,
+		channels,
+		assignments,
+		finance,
+		people,
+		brief,
+		roster,
+		submissions,
+		claimable,
+	} = workspace;
 	const participant = viewer === "participant";
 	const hasRun = stages.length > 0;
+	// The lane already links the Discussion; a list holding that one room restates it.
+	const showMessages = channels.length > 1;
 
 	return (
 		<div class="pjd" data-viewer={viewer}>
@@ -95,35 +117,6 @@ export function ProjectOverviewScreen(
 			{changes.length > 0 && <OverviewArrival changes={changes} />}
 			<div class="pjd__inner">
 				<header class="pjd-hero">
-					<div class="pjd-hero__identity">
-						<UserAvatar
-							image={hero.owner.avatar ?? undefined}
-							label={hero.owner.name}
-							size="md"
-						/>
-						{
-							/*
-							 * The owner's handle resolves to the canonical wildcard namespace `/@handle`
-							 * (Decision #3). A party with no public handle has no profile to reach, so the
-							 * name renders as text rather than as a link that would 404 (§3 gate 11).
-							 */
-						}
-						{hero.handle
-							? (
-								<a class="pjd-hero__owner" href={profileHref(hero.handle)}>
-									<span class="pjd-hero__owner-name">{hero.owner.name}</span>
-									<span class="pjd-hero__handle">
-										@{hero.handle.replace(/^@/, "")}
-									</span>
-								</a>
-							)
-							: (
-								<span class="pjd-hero__owner-static">
-									<span class="pjd-hero__owner-name">{hero.owner.name}</span>
-								</span>
-							)}
-					</div>
-
 					<h1 class="pjd-hero__title" data-pjd-region="details">{hero.title}</h1>
 
 					<div class="pjd-hero__facts" data-pjd-region="status">
@@ -137,10 +130,17 @@ export function ProjectOverviewScreen(
 				<div class="pjd__layout">
 					<div class="pjd__main">
 						<NextActionsBlock actions={nextActions} closed={isClosedStatus(hero.status)} />
+						{brief && <BriefBlock brief={brief} />}
+						{brief && <TermsBlock brief={brief} />}
+						<Block title="Project files">
+							<ProjectAttachments projectSlug={slug} initial={attachments} />
+						</Block>
 						{hasRun && <StageRunBlock stages={stages} viewer={viewer} />}
 						<UpdatesBlock updates={updates} />
 					</div>
 					<div class="pjd__aside">
+						{participant && <SubmissionsBlock submissions={submissions} slug={slug} />}
+						{participant && <ClaimableBlock claimable={claimable} />}
 						{participant && (
 							<WorkBlock
 								assignments={assignments}
@@ -150,8 +150,10 @@ export function ProjectOverviewScreen(
 							/>
 						)}
 						{participant && <EarningsBlock finance={finance} />}
-						<MessagesBlock channels={channels} />
-						{people && <PeopleBlock people={people} slug={slug} viewer={viewer} />}
+						{showMessages && <MessagesBlock channels={channels} />}
+						{people && (
+							<PeopleBlock people={people} roster={roster} slug={slug} viewer={viewer} />
+						)}
 					</div>
 				</div>
 			</div>

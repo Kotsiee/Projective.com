@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "supabaseClient";
 import type {
+	ExplorerFileItem,
 	FileChannelRef,
 	FileItem,
 	FileKind,
@@ -7,6 +8,14 @@ import type {
 	FileListParams,
 	FileSortDir,
 	FileSortKey,
+	ProjectFileItem,
+} from "@projective/types/projects";
+import {
+	DISCUSSION_REF,
+	isTaskProject,
+	MAX_PROJECT_ATTACHMENTS,
+	ProjectFormat,
+	SINGLE_ROOM_NAME,
 } from "@projective/types/projects";
 import type {
 	AssetOwnerType,
@@ -24,7 +33,13 @@ import {
 	messageAttachmentFacets,
 } from "@projective/types/files";
 import type { ReadActor } from "../read-actor.ts";
-import { assetAddress, withMediaFacts } from "../files/asset-row.ts";
+import {
+	assetAddress,
+	ITEM_COLUMNS as ASSET_ITEM_COLUMNS,
+	type ItemRow as AssetItemRow,
+	toAssetItem,
+	withMediaFacts,
+} from "../files/asset-row.ts";
 import {
 	clamp,
 	clampOr,
@@ -32,8 +47,9 @@ import {
 	fetchParties,
 	filesDb,
 	projectsDb,
-	senderOf,
 	resolveChannelRef,
+	senderOf,
+	toProjectStructure,
 } from "./live-support.ts";
 
 /**
@@ -248,6 +264,15 @@ interface ItemRow {
 	external_web_url: string | null;
 	/** The upload-time extraction envelope (`NOT NULL DEFAULT '{}'`); parsed by `metadataOf`. */
 	metadata: unknown;
+}
+
+/** One `projects.projects` row — identity, the client, and the two axes that make a Task. */
+interface ProjectRow {
+	id: string;
+	slug: string;
+	owner_user_id: string;
+	format: string;
+	structure_variation: string | null;
 }
 
 /** One `files.folders` row, for the materialised breadcrumb trail. */
@@ -779,7 +804,7 @@ async function fetchDownloadedItemIds(
 // #region Filter, sort, page
 
 /** Filename and kind narrowing, matching `findFilePage`'s `matches` predicate exactly. */
-function matches(item: FileItem, params: FileListParams): boolean {
+function matches(item: ExplorerFileItem, params: FileListParams): boolean {
 	if (params.kinds && params.kinds.length > 0 && !params.kinds.includes(item.kind)) return false;
 	if (params.query) {
 		const q = params.query.trim().toLowerCase();
@@ -789,7 +814,7 @@ function matches(item: FileItem, params: FileListParams): boolean {
 }
 
 /** The five sort comparators. Identical to the fixture's, so a gate flip cannot reorder a page. */
-const SORTERS: Record<FileSortKey, (a: FileItem, b: FileItem) => number> = {
+const SORTERS: Record<FileSortKey, (a: ExplorerFileItem, b: ExplorerFileItem) => number> = {
 	name: (a, b) => a.name.localeCompare(b.name),
 	date: (a, b) => a.createdAt.localeCompare(b.createdAt),
 	size: (a, b) => a.sizeBytes - b.sizeBytes,
@@ -804,7 +829,11 @@ const SORTERS: Record<FileSortKey, (a: FileItem, b: FileItem) => number> = {
  * message's instant — and a cursor paging through an order the engine is free to vary between calls
  * would skip and repeat rows across page boundaries.
  */
-function sortItems(items: FileItem[], sort: FileSortKey, dir: FileSortDir): FileItem[] {
+function sortItems(
+	items: ExplorerFileItem[],
+	sort: FileSortKey,
+	dir: FileSortDir,
+): ExplorerFileItem[] {
 	const cmp = SORTERS[sort];
 	const sorted = items.slice().sort((a, b) => cmp(a, b) || a.id.localeCompare(b.id));
 	return dir === "desc" ? sorted.reverse() : sorted;
@@ -835,36 +864,111 @@ function sortItems(items: FileItem[], sort: FileSortKey, dir: FileSortDir): File
 async function resolveProject(
 	db: SupabaseClient,
 	projectId: string,
-): Promise<{ id: string; slug: string } | null> {
+): Promise<ProjectRow | null> {
 	const bySlug = await db
 		.from("projects")
-		.select("id, slug")
+		.select("id, slug, owner_user_id, format, structure_variation")
 		.eq("slug", projectId)
 		.maybeSingle();
 
 	if (bySlug.error) {
 		throw new Error(`projects.projects slug read failed: ${bySlug.error.message}`);
 	}
-	return bySlug.data ? bySlug.data as unknown as { id: string; slug: string } : null;
+	return bySlug.data ? bySlug.data as unknown as ProjectRow : null;
+}
+
+/** An unrecognised `format` reads as NOT a Task, keeping the full tree. */
+function isTaskRow(row: ProjectRow): boolean {
+	const format = ProjectFormat.safeParse(row.format);
+	return format.success && isTaskProject(format.data, toProjectStructure(row.structure_variation));
+}
+
+/** A Task or a Session presents one shared room — `isSingleRoomEngagement` over the stored row. */
+function isSingleRoomRow(row: ProjectRow): boolean {
+	return row.format === "session" || isTaskRow(row);
 }
 
 // #endregion
 
-// #region Entry point
+// #region Project files
 
 /**
- * One page of project-channel attachments, or `null` when the project does not resolve.
+ * The client's project files — `projects.project_attachments` joined to `files.items` — as rows
+ * attributed to the project owner, who is the only party that attaches them.
  *
- * `null` means "no such project, or none this viewer may see", and the route maps it to a 404. Every
- * other emptiness is a VALID page: a project whose channels the viewer cannot enter, a channel id
- * matching nothing, and a channel with no attachments all return a page with no items, because the
- * explorer has an empty state for each and a 404 would tell the reader the project is gone.
+ * Built by the hub's own {@link toAssetItem}: a project file was posted in no message, so it carries
+ * no channel or message provenance, and `createdAt` is the upload instant. A join row whose asset
+ * RLS withholds is skipped, as in the channel corpus. Both hops THROW, matching the channel hops:
+ * an empty list served because a read failed is indistinguishable from a client who attached nothing.
+ */
+async function fetchProjectFiles(
+	actor: ReadActor & { accessToken: string },
+	project: ProjectRow,
+	now: number,
+): Promise<ProjectFileItem[]> {
+	const joinRead = await projectsDb(actor)
+		.from("project_attachments")
+		.select("attachment_id")
+		.eq("project_id", project.id)
+		.limit(MAX_PROJECT_ATTACHMENTS);
+	if (joinRead.error) {
+		throw new Error(`projects.project_attachments read failed: ${joinRead.error.message}`);
+	}
+
+	const ids = ((joinRead.data ?? []) as unknown as { attachment_id: string }[])
+		.map((row) => row.attachment_id);
+	if (ids.length === 0) return [];
+
+	const files = filesDb(actor);
+	const itemRead = await files
+		.from("items")
+		.select(ASSET_ITEM_COLUMNS)
+		.in("id", ids)
+		.is("deleted_at", null);
+	if (itemRead.error) throw new Error(`files.items read failed: ${itemRead.error.message}`);
+
+	const rows = (itemRead.data ?? []) as unknown as AssetItemRow[];
+	if (rows.length === 0) return [];
+
+	const folderIds = [...new Set(rows.map((row) => row.folder_id).filter((id): id is string => !!id))];
+	const [parties, folderPaths, downloaded] = await Promise.all([
+		fetchParties(actor, [project.owner_user_id]),
+		fetchFolderPaths(files, folderIds),
+		fetchDownloadedItemIds(files, actor, rows.map((row) => row.id)),
+	]);
+	const client = senderOf(project.owner_user_id, parties.get(project.owner_user_id));
+
+	return rows.map((row) => ({
+		...toAssetItem(row, {
+			viewerId: actor.userId,
+			folderPaths,
+			downloaded,
+			shareSlugs: new Map(),
+			now,
+		}),
+		sender: client,
+	}));
+}
+
+// #endregion
+
+// #region Channel corpus
+
+/** The channel attachments of a scope plus its channel index. */
+interface ChannelCorpus {
+	corpus: FileItem[];
+	channels: FileChannelRef[];
+}
+
+/**
+ * Every channel attachment in scope — one channel when `channelRef` is set, else every channel of
+ * the project — and the channel index counted from it.
  *
- * The read is four keyed hops — project → channels → messages → attachments → assets — with the
- * party, folder and download lookups fanned out in parallel once the asset ids are known. The first
- * four hops THROW on failure: each is primary, and an empty page served because
- * `comms.project_messages` was unreachable is a lie the caller cannot detect. The calling service
- * catches, logs and falls back to fixtures.
+ * The read is four keyed hops — channels → messages → attachments → assets — with the party, folder
+ * and download lookups fanned out in parallel once the asset ids are known. The hops THROW on
+ * failure: each is primary, and an empty corpus served because `comms.project_messages` was
+ * unreachable is a lie the caller cannot detect. The calling service catches, logs and falls back to
+ * fixtures.
  *
  * An attachment whose `files.items` row does not come back is SKIPPED, never half-rendered. RLS can
  * legitimately withhold it — `files.fn_can_read` grants a project mount only for a `project`-bucket
@@ -873,22 +977,22 @@ async function resolveProject(
  * asset is withheld too. Without that row there is no name, size, category or owner, every one of
  * which the projection requires.
  */
-export async function fetchFilePage(
+async function fetchChannelCorpus(
 	actor: ReadActor & { accessToken: string },
-	params: FileListParams,
-): Promise<FileListPage | null> {
-	const projects = projectsDb(actor);
+	projectRowId: string,
+	channelRef: string | null,
+	requestedChannelId: string | null,
+	now: number,
+	singleRoomId: string | null | undefined,
+): Promise<ChannelCorpus> {
 	const comms = commsDb(actor);
 	const files = filesDb(actor);
-
-	const project = await resolveProject(projects, params.projectId);
-	if (!project) return null;
 
 	// --- Channels -------------------------------------------------------------------------------
 	const channelRead = await comms
 		.from("project_channels")
 		.select(CHANNEL_COLUMNS)
-		.eq("project_id", project.id)
+		.eq("project_id", projectRowId)
 		.order("created_at", { ascending: true })
 		.limit(CHANNEL_ROW_CAP);
 
@@ -896,35 +1000,27 @@ export async function fetchFilePage(
 		throw new Error(`comms.project_channels read failed: ${channelRead.error.message}`);
 	}
 
-	const allChannels = (channelRead.data ?? []) as unknown as ChannelRow[];
-	// The routed segment is resolved to a room id first: a stage carries its `stg-…` address, which
-	// names no channel row directly. Resolved rather than matched so a stage's files scope the same way
-	// its chat does.
-	const requestedChannelId = await resolveChannelRef(actor, project.id, params.channelId);
+	const readChannels = (channelRead.data ?? []) as unknown as ChannelRow[];
+	// A single-room engagement (`undefined` means not one) lists its Discussion alone, relabelled; its
+	// stage and spare rooms stay stored but are never presented.
+	const allChannels = singleRoomId === undefined
+		? readChannels
+		: readChannels
+			.filter((row) => row.id === singleRoomId)
+			.map((row) => ({ ...row, name: SINGLE_ROOM_NAME, stage_id: null }));
 	// Narrowed in TypeScript rather than with a second `.eq()`, exactly as `corpusFor` does: the
 	// channel id reaching this service may be a fixture-shaped string rather than a uuid, and a
 	// non-uuid `.eq()` against a uuid column raises 22P02 instead of matching nothing.
-	const scopedChannels = params.channelId
+	const scopedChannels = channelRef
 		? allChannels.filter((row) => row.id === requestedChannelId)
 		: allChannels;
 
 	const channelById = new Map(scopedChannels.map((row) => [row.id, row]));
-	const now = Date.now();
 
-	/** A valid, empty page. Every early exit below is an empty CHANNEL, never a missing project. */
-	const emptyPage = (): FileListPage => ({
-		scope: requestedChannelId ? "channel" : "project",
-		projectId: clampOr(params.projectId, 120, project.slug),
-		channelId: requestedChannelId ? clamp(requestedChannelId, 120) : null,
-		items: [],
-		channels: scopedChannels.map(toChannelRef),
-		hasMore: false,
-		nextCursor: null,
-		total: 0,
-		viewerId: clamp(actor.userId, 80),
-	});
+	/** Every early exit below is an empty CHANNEL, never a missing project. */
+	const empty = (): ChannelCorpus => ({ corpus: [], channels: scopedChannels.map(toChannelRef) });
 
-	if (scopedChannels.length === 0) return emptyPage();
+	if (scopedChannels.length === 0) return empty();
 
 	// --- Messages -------------------------------------------------------------------------------
 	// `has_attachments` is NOT used to narrow this: the column has no writer anywhere in the
@@ -943,7 +1039,7 @@ export async function fetchFilePage(
 	}
 
 	const messages = (messageRead.data ?? []) as unknown as MessageRow[];
-	if (messages.length === 0) return emptyPage();
+	if (messages.length === 0) return empty();
 	const messageById = new Map(messages.map((row) => [row.id, row]));
 
 	// --- Attachments ----------------------------------------------------------------------------
@@ -963,7 +1059,7 @@ export async function fetchFilePage(
 	}
 
 	const attachments = (attachmentRead.data ?? []) as unknown as AttachmentRow[];
-	if (attachments.length === 0) return emptyPage();
+	if (attachments.length === 0) return empty();
 
 	// --- Assets ---------------------------------------------------------------------------------
 	const assetIds = [...new Set(attachments.map((row) => row.attachment_id))];
@@ -978,7 +1074,7 @@ export async function fetchFilePage(
 	const itemById = new Map(
 		((itemRead.data ?? []) as unknown as ItemRow[]).map((row) => [row.id, row]),
 	);
-	if (itemById.size === 0) return emptyPage();
+	if (itemById.size === 0) return empty();
 
 	// --- Secondary lookups, fanned out together -------------------------------------------------
 	const readableIds = [...itemById.keys()];
@@ -1028,10 +1124,55 @@ export async function fetchFilePage(
 		count: counts.get(row.id) ?? 0,
 	}));
 
+	return { corpus, channels };
+}
+
+// #endregion
+
+// #region Entry point
+
+/**
+ * One page of the explorer — channel attachments and, in project scope, the client's project files —
+ * or `null` when the project does not resolve.
+ *
+ * `null` means "no such project, or none this viewer may see", and the route maps it to a 404. Every
+ * other emptiness is a VALID page: a project whose channels the viewer cannot enter, a channel id
+ * matching nothing, and a channel with no attachments all return a page with no items, because the
+ * explorer has an empty state for each and a 404 would tell the reader the project is gone.
+ *
+ * `projectFiles` lists the project files alone; the channel corpus is still read so the tree's
+ * counts stay whole. Channel scope reads no project files: they belong to the project, not a room.
+ */
+export async function fetchFilePage(
+	actor: ReadActor & { accessToken: string },
+	params: FileListParams,
+): Promise<FileListPage | null> {
+	const project = await resolveProject(projectsDb(actor), params.projectId);
+	if (!project) return null;
+
+	const now = Date.now();
+	const projectFiles = params.projectFiles === true;
+	const channelRef = projectFiles ? null : params.channelId ?? null;
+	// The routed segment is resolved to a room id first: a stage carries its `stg-…` address, which
+	// names no channel row directly. Resolved rather than matched so a stage's files scope the same way
+	// its chat does.
+	const [requestedChannelId, singleRoomId] = await Promise.all([
+		resolveChannelRef(actor, project.id, channelRef),
+		isSingleRoomRow(project)
+			? resolveChannelRef(actor, project.id, DISCUSSION_REF)
+			: Promise.resolve(undefined),
+	]);
+
+	const [{ corpus, channels }, files] = await Promise.all([
+		fetchChannelCorpus(actor, project.id, channelRef, requestedChannelId, now, singleRoomId),
+		channelRef ? Promise.resolve<ProjectFileItem[]>([]) : fetchProjectFiles(actor, project, now),
+	]);
+	const listed: ExplorerFileItem[] = projectFiles ? files : [...files, ...corpus];
+
 	// --- Filter, sort, page ---------------------------------------------------------------------
 	const sort = params.sort ?? "date";
 	const dir = params.dir ?? (sort === "date" ? "desc" : "asc");
-	const sorted = sortItems(corpus.filter((file) => matches(file, params)), sort, dir);
+	const sorted = sortItems(listed.filter((file) => matches(file, params)), sort, dir);
 	const total = sorted.length;
 
 	const limit = Math.min(MAX_LIMIT, Math.max(1, params.limit ?? DEFAULT_LIMIT));
@@ -1052,6 +1193,8 @@ export async function fetchFilePage(
 		channelId: requestedChannelId ? clamp(requestedChannelId, 120) : null,
 		items: page,
 		channels,
+		projectFileCount: files.length,
+		task: isTaskRow(project),
 		hasMore,
 		nextCursor: hasMore && page.length > 0 ? page[page.length - 1].id : null,
 		total,

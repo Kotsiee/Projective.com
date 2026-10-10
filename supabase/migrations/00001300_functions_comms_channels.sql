@@ -188,8 +188,9 @@ DECLARE
     v_scope text;
     v_label text;
 BEGIN
+    -- An archived stage (projects.sanitize_single_room_topology) is gone from the product.
     SELECT ps.project_id, ps.name INTO v_project, v_stage_name
-    FROM projects.project_stages ps WHERE ps.id = p_stage_id;
+    FROM projects.project_stages ps WHERE ps.id = p_stage_id AND ps.archived_at IS NULL;
 
     IF v_project IS NULL THEN
         RAISE EXCEPTION 'Stage not found.' USING ERRCODE = 'no_data_found';
@@ -200,7 +201,13 @@ BEGIN
             USING ERRCODE = 'insufficient_privilege';
     END IF;
 
+    -- A Session presents one room, its project-wide Discussion, so its stages (its sessions) are never
+    -- given rooms of their own — provisioning here would undo the sanitizer on the next open. The
+    -- existence test below deliberately counts archived rooms, so an archived scope is not re-created.
     FOREACH v_scope IN ARRAY v_scopes LOOP
+        EXIT WHEN EXISTS (
+            SELECT 1 FROM projects.projects p WHERE p.id = v_project AND p.format::text = 'session'
+        );
         IF NOT EXISTS (
             SELECT 1 FROM comms.project_channels pc
             WHERE pc.project_id = v_project AND pc.stage_id = p_stage_id AND pc.visibility = v_scope
@@ -227,6 +234,7 @@ BEGIN
     FROM comms.project_channels pc
     WHERE pc.project_id = v_project
         AND pc.stage_id = p_stage_id
+        AND pc.archived_at IS NULL
         AND pc.visibility IN ('stage_all', 'team_private', 'business_private')
     ORDER BY array_position(v_scopes, pc.visibility);
 END;

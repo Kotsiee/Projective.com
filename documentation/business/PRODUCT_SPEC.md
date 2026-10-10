@@ -277,10 +277,13 @@ navigation is simplified to match:
   **Discussion** link at `/projects/[project id]/discussion` — the same address every engagement's
   discussion has (a one-off's, a pipeline's and a session's open their project-wide room instead).
   There is no channel tree to switch between, and the room is headed as the Task's discussion rather
-  than as a stage.
+  than as a stage. A Task or a Session is presented as exactly one shared room named "Discussion" on
+  every surface (the file explorer, the Overview's Messages, the files index); the stored rooms are
+  unchanged (Decision #163).
 - **A project lane for the work, not for channels.** Beneath the lane's top tier — Discussion ·
-  Details · Files · Submissions · Members, with no Board, Timeline or Calendar; its Discussion is a
-  Chat view alone (Decision #134) — the lane shows what a Task's
+  Files · Submissions · Members, with no Board, Timeline or Calendar; its Discussion is a Chat view
+  alone (Decision #134); the configuration is the lane footer's Edit project control, as on every
+  type (Decision #163) — the lane shows what a Task's
   reader checks: an **overview** (status · due date · owner · the person holding the ticket) and its
   **task lists** (the ticket's checklist and its delivery steps, with a switcher between lists and an
   "open only" filter — read-only, because completion is claimed at submission). The roster is the
@@ -312,6 +315,9 @@ Sessions are time-bound, synchronous engagements for knowledge transfer or consu
     coaching).
 - **Visualization:** **Calendar View.** Focuses on time-slots, availability, and upcoming
   synchronous events.
+- **One conversation.** Like a Task, a Session is presented as exactly one shared room named
+  "Discussion" on every surface — its project-wide room; its sessions are never given rooms of their
+  own. The stored rooms are unchanged (Decision #163).
 
 #### Services vs. Projects
 
@@ -1790,10 +1796,13 @@ switching how they prefer to READ money must never move what a project is priced
 
 #### 2. Configuration
 
-Everything else is collected on `/projects/[project id]/details`, the owner's configuration (while
+Everything else is collected on `/projects/[project id]/details`, the engagement's configuration (while
 the project is a draft its root forwards the owner there; once it is published the root is the
-engagement's Overview, and the configuration stays one link away), as **one continuous scrolling
-flow with a sticky section navigator — not a stepper**: the brief, IP ownership, visibility, deadline bonuses,
+engagement's Overview, and the configuration stays one link away — the lane footer's Edit project).
+The client side configures: the owner **or an active member of the paying client business** may
+open it, edit the brief and stages, attach reference files and change the status, while who owns
+the project and which business pays for it remain the owner's alone (Decision #163). It is laid out
+as **one continuous scrolling flow with a sticky section navigator — not a stepper**: the brief, IP ownership, visibility, deadline bonuses,
 reference attachments, the NDA (the platform standard or the client's own document), language and
 location requirements, and the stage architecture — per stage its scope, tasks, required skills
 (max 10), duration, dependency, seat capacity, roles, submittable file kinds and NDA override.
@@ -2648,8 +2657,8 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `payment`                | **Step 3 — Method & commit.** Distraction-free chrome. Bounces back to `details` when the details are incomplete, so a deep link can never reach a Pay button the server would refuse |
 |               |                           | `confirmation`           | **Step 4 — Post-purchase hub.** Full chrome restored: per-item fulfilment (download · project deep link · calendar export), the invoice, the order record (`?order=`) |
 |               | `/projects`               | `index`                  | The **portfolio index** — every project in every workspace the reader belongs to, filterable by status (All · Draft · Active · On hold · Completed, `?status=`), with the aggregate **stage burn** (delivered ÷ planned stages, summed across the staged projects in view). An empty portfolio's one action opens the **Quick-Init** create modal (`?create=1`). `/projects/create` **308→** here; there is no create page |
-|               | `/projects/[project id]`  | `index`                  | **The engagement's Overview** — the command center for its owner and everyone working on it: what needs the viewer (submissions to review, applications to decide, stages still to price; work to deliver or revise), where each stage stands, the rooms and the people. `[project id]` is the project's `prj-` slug. The owner of a DRAFT is sent to `details`; somebody who is not on the engagement is sent to its public listing |
-|               |                           | `details`                | **Stage 2 — the owner's configuration workspace.** One continuous scrolling flow, not a stepper. Owner only. `/edit` and `/settings` redirect here |
+|               | `/projects/[project id]`  | `index`                  | **The engagement's Overview** — the command center for its owner and everyone working on it: what needs the viewer (submissions to review, applications to decide, stages still to price; work to deliver or revise), the brief, its inclusions & terms, the client's project files, where each stage stands, and — beside them — a participant's active submissions, claimable tasks, work and earnings, the rooms (hidden when there is only the Discussion the lane already links) and the people (Decision #163). Prices stay the owner's: a participant sees the composed brief only. `[project id]` is the project's `prj-` slug. The owner of a DRAFT is sent to `details`; somebody who is not on the engagement is sent to its public listing |
+|               |                           | `details`                | **Stage 2 — the configuration workspace.** One continuous scrolling flow, not a stepper. Review authority only — the owner or an active member of the paying client business (Decision #163); anyone else is sent to the Overview. `/edit` and `/settings` redirect here |
 |               |                           | `board`                  | Task/Kanban board                                                                              |
 |               |                           | `finance`                | Project budget/costs                                                                           |
 |               |                           | `settings`               | Project configuration                                                                          |

@@ -77,20 +77,31 @@ otherwise discard the table.
 
 ### `projects.projects`
 
-| Policy                              | Command  | Rule                                                           |
-| :---------------------------------- | :------- | :------------------------------------------------------------- |
-| _Users can view own projects_       | `SELECT` | `auth.uid() = owner_user_id`                                   |
-| _Public can view active published…_ | `SELECT` | `status = 'active' AND visibility = 'public'`                  |
-| _Participants can view their…_      | `SELECT` | `projects.has_project_access(id)`                              |
-| _Users can create projects_         | `INSERT` | `auth.uid() = owner_user_id`                                   |
-| _Users can update own projects_     | `UPDATE` | `USING` **and** `WITH CHECK` both `auth.uid() = owner_user_id` |
-| _Users can delete own projects_     | `DELETE` | `auth.uid() = owner_user_id`                                   |
+| Policy                                 | Command  | Rule                                                                       |
+| :------------------------------------- | :------- | :------------------------------------------------------------------------- |
+| _Users can view own projects_          | `SELECT` | `auth.uid() = owner_user_id`                                               |
+| _Reviewers can view their projects_    | `SELECT` | `projects.can_review_project(id)`                                          |
+| _Public can view active published…_    | `SELECT` | `status = 'active' AND visibility = 'public'`                              |
+| _Participants can view their…_         | `SELECT` | `projects.has_project_access(id)`                                          |
+| _Users can create projects_            | `INSERT` | `auth.uid() = owner_user_id`                                               |
+| _Reviewers can update their projects_  | `UPDATE` | `USING` **and** `WITH CHECK` both `projects.can_review_project(id)`        |
+| _Users can delete own projects_        | `DELETE` | `auth.uid() = owner_user_id`                                               |
 
-_Participants can view their projects_ is `TO authenticated`; the other five are `TO public`.
+_Participants can view their projects_ and _Reviewers can view their projects_ are `TO
+authenticated`; the other five are `TO public`.
+
+**Review authority configures the engagement (Decision #163).** The `UPDATE` policy (previously
+_Users can update own projects_, owner only) and the reviewer `SELECT` arm admit
+`projects.can_review_project` — the owner, or an active member of the paying client business, who may
+be on no stage and hold no participant row, so `has_project_access` does not admit them. Reassigning
+`owner_user_id` or `client_business_id` stays the owner's alone: a row policy sees only the
+post-image, so `trg_guard_project_ownership`
+([Functions.md](Functions.md#projectsfn_guard_project_ownership--trigger)) refuses it for anybody
+else.
 
 ⚠️ **A missing `WITH CHECK` on an `UPDATE` policy is NOT a hole by itself.** Postgres uses the
 policy's `USING` expression as its `WITH CHECK` when none is written, so
-`USING (auth.uid() = owner_user_id)` alone already refused
+`USING (auth.uid() = owner_user_id)` (the owner-only form before Decision #163) alone already refused
 `UPDATE projects.projects SET owner_user_id = <someone else>`. Verified by reconstructing the
 `USING`-only form and attempting exactly that:
 
@@ -128,13 +139,17 @@ scope on involvement itself rather than leaning on RLS (Decision #82).
 ### `projects.project_stages`
 
 `SELECT` for the owner, for a publicly-visible active project, or via
-`projects.has_project_access(project_id)`. `FOR ALL` management for the project owner.
+`projects.has_project_access(project_id)`. `FOR ALL` management for review authority (the owner, or an
+active member of the paying client business; owner only before Decision #163).
 
 | Policy                                      | Command  | Rule                                                              |
 | :------------------------------------------ | :------- | :---------------------------------------------------------------- |
 | _Users can view stages of visible projects_ | `SELECT` | Project owner, or project `status = 'active' AND visibility = 'public'`. |
 | _Participants can view stages_              | `SELECT` | `projects.has_project_access(project_stages.project_id)`          |
-| _Users can manage stages of own projects_   | `ALL`    | Project owner (`USING` only; reused as the check).                |
+| _Users can manage stages of own projects_   | `ALL`    | `projects.can_review_project(project_id)` (`USING` only; reused as the check). |
+
+An archived stage (`archived_at`, Decision #163) is still readable under these policies — it is
+history; the product reads filter it ([Tables.md](Tables.md)).
 
 A direct `DELETE` under the third policy fires `trg_stage_delete_cascade`, which releases the escrow of
 every ticket still in the stage ([Functions.md](Functions.md#projectsfn_stage_delete_cascade--trigger)).
@@ -291,10 +306,10 @@ the definer doors in `00001135` §4 (Decision #145).
 
 | Table                                     | Read                                                     | Write                                       |
 | :---------------------------------------- | :------------------------------------------------------- | :------------------------------------------ |
-| `projects.stage_assignments`              | Owner, or public-active project.                         | Owner (`FOR ALL`).                          |
+| `projects.stage_assignments`              | Owner, public-active project, or `can_review_project` (Decision #163). | Owner (`FOR ALL`).            |
 | `projects.stage_open_seats`               | Owner, or public-active project.                         | Owner (`FOR ALL`).                          |
 | `projects.stage_open_seat_skills`         | Project access, or any `active` project.                 | Definer RPCs only.                          |
-| `projects.stage_staffing_roles`           | Owner, or public-active project.                         | Owner (`FOR ALL`).                          |
+| `projects.stage_staffing_roles`           | Owner, or public-active project.                         | `can_review_project` (`FOR ALL`, Decision #163). |
 | `projects.stage_budget_rules`             | Owner, or public-active project.                         | Owner (`FOR ALL`).                          |
 | `projects.project_participants`           | Owner, or public-active project.                         | Owner (`FOR ALL`).                          |
 | `projects.project_applications`           | The applicant, or `can_manage_project_members`.          | Definer RPCs only.                          |
@@ -309,7 +324,7 @@ the definer doors in `00001135` §4 (Decision #145).
 | `projects.session_attendance`             | Self, or project owner.                                  | `INSERT` as self.                           |
 | `projects.waitlists`                      | Self, or the blueprint's freelancer.                     | Join/leave as self; either side may update. |
 | `projects.maintenance_contracts`          | Freelancer or project owner (`FOR ALL`).                 | Same.                                       |
-| `projects.project_attachments`            | `has_project_access(project_id)`.                        | Owner `INSERT` / `DELETE`; no `UPDATE`.     |
+| `projects.project_attachments`            | `has_project_access` or `can_review_project`.            | `can_review_project` `INSERT` / `DELETE`; no `UPDATE`. |
 
 Policy names, in table order: _View assignments_ / _Owner manage assignments_; _View seats public or
 own_ / _Manage seats own_; _View seat skills_; _View roles public or own_ / _Manage roles own_; _View
@@ -322,16 +337,17 @@ _View own attendance_ / _Log own attendance_; _View waitlists_ / _Join waitlist_
 (`UPDATE`) / _Leave waitlist_ (`DELETE`); _Users can view/manage own contracts_; and the three
 attachment policies below. The public-active read arms are `status = 'active' AND visibility =
 'public'`; _View seat skills_ is wider — project access **or any `active` project** whatever its
-visibility. `project_activity`'s `INSERT` checks only `auth.uid() = actor_user_id`, with no project
+visibility. _View assignments_ gained its review-authority arm so the setup write path's onboarding
+lock sees the seats that freeze prices (Decision #163). `project_activity`'s `INSERT` checks only `auth.uid() = actor_user_id`, with no project
 predicate (see Findings).
 
 ### `projects.project_attachments`
 
-| Policy                              | Command                       | Rule                                      |
-| :---------------------------------- | :---------------------------- | :---------------------------------------- |
-| _View project attachments_          | `SELECT` (`TO authenticated`) | `projects.has_project_access(project_id)` |
-| _Owner attaches project references_ | `INSERT` (`TO authenticated`) | `WITH CHECK` project owner                |
-| _Owner detaches project references_ | `DELETE` (`TO authenticated`) | Project owner                             |
+| Policy                              | Command                       | Rule                                                                         |
+| :---------------------------------- | :---------------------------- | :--------------------------------------------------------------------------- |
+| _View project attachments_          | `SELECT` (`TO authenticated`) | `projects.has_project_access(project_id) OR projects.can_review_project(project_id)` |
+| _Owner attaches project references_ | `INSERT` (`TO authenticated`) | `WITH CHECK` `projects.can_review_project(project_id)`                       |
+| _Owner detaches project references_ | `DELETE` (`TO authenticated`) | `projects.can_review_project(project_id)`                                    |
 
 Scoped to project access rather than to the uploader, because an attachment is project context — it
 is what the brief refers to — and a freelancer who cannot open the reference a stage description
@@ -339,7 +355,9 @@ cites has the stage and not the work. The join row carries nothing beyond the pa
 `files.items` keeps its own policy, so this admits the **relationship** while the file's own rules
 still decide whether the bytes can be fetched.
 
-Writes are the **owner's** alone, narrower than the read: a participant adds to the work through
+Writes are the **client side's** alone — review authority, the owner or an active member of the
+paying business (owner only before Decision #163; the policy names are unchanged) — and narrower
+than the read: a participant adds to the work through
 `stage_submissions`, where a deliverable is versioned and reviewed, not to the client's brief. Split
 into `INSERT` and `DELETE` because every column is part of the primary key, so there is no `UPDATE` to
 grant. Detaching removes only the link; the `files.items` row stays in the owner's library.

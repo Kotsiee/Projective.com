@@ -916,6 +916,8 @@ export async function fetchConversationFilePage(
 		channelId: threadId,
 		items: page,
 		channels: [channel],
+		projectFileCount: 0,
+		task: false,
 		hasMore,
 		nextCursor: hasMore ? page[page.length - 1]?.id ?? null : null,
 		total: sorted.length,

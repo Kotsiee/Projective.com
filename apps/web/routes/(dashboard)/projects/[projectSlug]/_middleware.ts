@@ -17,8 +17,8 @@ import {
  * passes through with the answer memoised on `ctx.state.projectAccess` for the page and both bands.
  *
  * Reads only (`GET`/`HEAD`): a write is the API's to authorise, and redirecting a form post would
- * silently drop its body. `/preview` keeps its own two-sided guard — an owner-only page whose
- * non-owner exit is the same listing — so it is passed through untouched rather than asked twice.
+ * silently drop its body. `/preview` keeps its own two-sided guard — review authority only, everyone
+ * else sent to the root — so it is passed through untouched rather than asked twice.
  * A project that resolves to nothing is left to each route's existing miss path.
  */
 export default define.middleware(async (ctx) => {

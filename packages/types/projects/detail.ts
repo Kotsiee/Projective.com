@@ -247,6 +247,12 @@ export const ProjectDetailSchema = z.object({
 	 */
 	viewerIsClient: z.boolean(),
 	/**
+	 * Whether the acting user holds review authority — `projects.can_review_project`: the owner, or an
+	 * active member of the paying client business. Gates the engagement's configuration (`/details`,
+	 * `/preview`) and the lane's Edit project control. Re-derived server-side, never trusted.
+	 */
+	viewerCanConfigure: z.boolean(),
+	/**
 	 * How the acting user stands toward the engagement — owner, participant or prospect — and so what
 	 * its root address does for them (Decision #144, {@link landingFor}). Derived server-side beside
 	 * {@link viewerIsClient}: `viewerRole` cannot answer it, because a stranger on a public engagement
@@ -347,6 +353,26 @@ export function discussionOf(
 ): DiscussionRoom | null {
 	return discussionRoomOf(detail.channels, isTaskProject(detail.format, detail.structure));
 }
+
+/**
+ * Whether an engagement presents exactly ONE shared room — its Discussion — on every surface: a Task
+ * or a Session. Presentation only: the stored rooms are untouched (a Task keeps its spare project-wide
+ * room for a later switch to a pipeline, Decision #135), they are simply never listed.
+ */
+export function isSingleRoomEngagement(
+	detail: Pick<ProjectDetail, "format" | "structure">,
+): boolean {
+	return detail.format === "session" || isTaskProject(detail.format, detail.structure);
+}
+
+/** The channel id behind a {@link DiscussionRoom}, or `null` when there is no room. */
+export function discussionRoomId(room: DiscussionRoom | null): string | null {
+	if (!room) return null;
+	return room.kind === "stage" ? room.stage.channel.id : room.channel.id;
+}
+
+/** The name a single-room engagement gives its one room, whatever the stored row is called. */
+export const SINGLE_ROOM_NAME = "Discussion";
 
 /**
  * The room-specific segment a channel ref stands for: {@link DISCUSSION_REF} expanded to its room's

@@ -990,11 +990,12 @@ BEGIN
         RAISE EXCEPTION 'Project % not found.', p_project_id USING ERRCODE = 'no_data_found';
     END IF;
 
-    -- Only the project owner may drive lifecycle transitions.
-    IF v_owner IS DISTINCT FROM v_actor THEN
-        RAISE WARNING '[PROJECT_LIFECYCLE_RPC] denied actor=% is not owner=% project=%',
+    -- Only review authority (the owner, or an active member of the paying client business) may
+    -- drive lifecycle transitions.
+    IF v_actor IS NULL OR NOT projects.can_review_project(p_project_id) THEN
+        RAISE WARNING '[PROJECT_LIFECYCLE_RPC] denied actor=% has no review authority owner=% project=%',
             v_actor, v_owner, p_project_id;
-        RAISE EXCEPTION 'Only the project owner may change the project status.'
+        RAISE EXCEPTION 'Only the project owner or its client business may change the project status.'
             USING ERRCODE = 'insufficient_privilege';
     END IF;
 
@@ -1025,7 +1026,8 @@ BEGIN
             RAISE EXCEPTION 'A project must have a title before it can be activated.'
                 USING ERRCODE = 'check_violation';
         END IF;
-        SELECT count(*) INTO v_stage_count FROM projects.project_stages WHERE project_id = p_project_id;
+        SELECT count(*) INTO v_stage_count FROM projects.project_stages
+        WHERE project_id = p_project_id AND archived_at IS NULL;
         IF v_stage_count < 1 THEN
             RAISE EXCEPTION 'A project needs at least one stage before it can be activated.'
                 USING ERRCODE = 'check_violation';

@@ -655,7 +655,8 @@ async function fetchStageCounts(
 	const { data, error } = await db
 		.from("project_stages")
 		.select("project_id, status")
-		.in("project_id", projectIds as string[]);
+		.in("project_id", projectIds as string[])
+		.is("archived_at", null);
 
 	if (error) return counts;
 	for (const row of (data ?? []) as StageCountRow[]) {

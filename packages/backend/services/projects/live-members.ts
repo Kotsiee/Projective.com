@@ -2,8 +2,10 @@ import type { SupabaseClient } from "supabaseClient";
 import type { ReadActor } from "../read-actor.ts";
 import type {
 	ChannelKind,
+	MemberBusiness,
 	MemberInvite,
 	MemberRequest,
+	MemberTeam,
 	MemberRole,
 	MemberRosterPage,
 	MemberRosterParams,
@@ -104,7 +106,7 @@ import { resolveChannelRef } from "./live-support.ts";
 // #region Constants
 
 /** The `projects.projects` columns the roster envelope needs. */
-const PROJECT_COLUMNS = "id, slug, title, format, owner_user_id, created_at";
+const PROJECT_COLUMNS = "id, slug, title, format, owner_user_id, client_business_id, created_at";
 
 /** The `projects.project_participants` columns one roster row needs. */
 const PARTICIPANT_COLUMNS = "id, profile_type, profile_id, role, created_at";
@@ -214,6 +216,7 @@ interface ProjectRow {
 	title: string;
 	format: string;
 	owner_user_id: string;
+	client_business_id: string | null;
 	created_at: string;
 }
 
@@ -421,6 +424,7 @@ async function fetchStages(db: SupabaseClient, projectId: string): Promise<Stage
 		.from("project_stages")
 		.select("id, name, sort_order, status")
 		.eq("project_id", projectId)
+		.is("archived_at", null)
 		.order("sort_order", { ascending: true });
 	if (error) return [];
 	return (data ?? []) as unknown as StageRow[];
@@ -456,6 +460,94 @@ async function fetchAssignments(
 		byUser.set(row.freelancer_profile_id, held);
 	}
 	return byUser;
+}
+
+/** A business or team role preset, worded for the People list. */
+function roleWord(raw: string | null | undefined): string {
+	const role = (raw ?? "").trim().toLowerCase();
+	if (!role) return "Member";
+	return clamp(role.charAt(0).toUpperCase() + role.slice(1).replace(/_/g, " "), 60);
+}
+
+/** The team and client-business affiliations of the roster's people. */
+interface Affiliations {
+	teams: Map<string, MemberTeam>;
+	business: Map<string, MemberBusiness>;
+}
+
+/**
+ * Who on the roster delivers through a hired team, and who belongs to the paying client business.
+ *
+ * A team seat names the TEAM (`stage_assignments.team_id`), never the person, so a person's team is
+ * the hired team they are an active member of. Every read is a secondary enrichment and degrades to an
+ * empty map: an affiliation that could not be read is left out, never guessed.
+ */
+async function fetchAffiliations(
+	actor: ReadActor & { accessToken: string },
+	db: SupabaseClient,
+	project: ProjectRow,
+	stageIds: readonly string[],
+	userIds: readonly string[],
+): Promise<Affiliations> {
+	const out: Affiliations = { teams: new Map(), business: new Map() };
+	if (userIds.length === 0) return out;
+	const org = orgDb(actor);
+
+	const teamSeats = stageIds.length === 0 ? null : await db
+		.from("stage_assignments")
+		.select("team_id")
+		.in("project_stage_id", stageIds as string[])
+		.eq("assignee_type", "team")
+		.in("status", HELD_ASSIGNMENT_STATUS as string[]);
+	const teamIds = [
+		...new Set(
+			((teamSeats?.data ?? []) as { team_id: string | null }[])
+				.map((row) => row.team_id)
+				.filter((id): id is string => !!id),
+		),
+	];
+
+	const [teamMembers, teamRows, businessMembers, businessRow] = await Promise.all([
+		teamIds.length === 0 ? null : org
+			.from("team_members")
+			.select("team_id, user_id")
+			.in("team_id", teamIds)
+			.in("user_id", userIds as string[])
+			.eq("status", "active"),
+		teamIds.length === 0 ? null : org.from("teams").select("id, name").in("id", teamIds),
+		project.client_business_id
+			? org
+				.from("business_members")
+				.select("user_id, role")
+				.eq("business_id", project.client_business_id)
+				.in("user_id", userIds as string[])
+				.eq("status", "active")
+			: null,
+		project.client_business_id
+			? org.from("business_profiles").select("name").eq("id", project.client_business_id).maybeSingle()
+			: null,
+	]);
+
+	const teamNames = new Map(
+		((teamRows?.data ?? []) as { id: string; name: string | null }[]).map((row) => [row.id, row.name]),
+	);
+	for (const row of (teamMembers?.data ?? []) as { team_id: string; user_id: string }[]) {
+		const name = teamNames.get(row.team_id);
+		if (name && !out.teams.has(row.user_id)) {
+			out.teams.set(row.user_id, { id: row.team_id, name: clampOr(name, 120, "Team") });
+		}
+	}
+
+	const businessName = (businessRow?.data as { name: string | null } | null)?.name ?? null;
+	if (businessName) {
+		for (const row of (businessMembers?.data ?? []) as { user_id: string; role: string | null }[]) {
+			out.business.set(row.user_id, {
+				name: clampOr(businessName, 120, "Business"),
+				role: roleWord(row.role),
+			});
+		}
+	}
+	return out;
 }
 
 /**
@@ -1101,12 +1193,13 @@ export async function fetchMemberRoster(
 	// Five independent lookups over one already-resolved project. Issued together rather than in
 	// series: none depends on another's result, and awaiting them one at a time would add all five
 	// latencies to every roster render.
-	const [parties, assignments, tickets, viewerEmail, channel] = await Promise.all([
+	const [parties, assignments, tickets, viewerEmail, channel, affiliations] = await Promise.all([
 		fetchParties(actor, userIds),
 		fetchAssignments(db, stageRows.map((stage) => stage.id)),
 		fetchOpenTicketCounts(db, project.id, userIds),
 		fetchViewerEmail(actor),
 		resolveChannel(actor, project.id, params.channelId ?? null),
+		fetchAffiliations(actor, db, project, stageRows.map((stage) => stage.id), userIds),
 	]);
 
 	const scope: "channel" | "project" = channel ? "channel" : "project";
@@ -1124,6 +1217,14 @@ export async function fetchMemberRoster(
 		channelStageId,
 		startedStageIds,
 	);
+
+	for (const entry of entries) {
+		entry.row = {
+			...entry.row,
+			team: affiliations.teams.get(entry.userId) ?? null,
+			business: affiliations.business.get(entry.userId) ?? null,
+		};
+	}
 
 	// A session's attendees carry where they stand on its sittings; every other format carries none.
 	const format = toFormat(project.format);

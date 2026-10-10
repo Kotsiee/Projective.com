@@ -657,6 +657,7 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM projects.project_stages
         WHERE project_id = p_project_id
+            AND archived_at IS NULL
             AND status NOT IN ('paid'::stage_status, 'cancelled'::stage_status)
     ) THEN
         UPDATE projects.projects

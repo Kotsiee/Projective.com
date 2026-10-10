@@ -21,6 +21,13 @@ CREATE TRIGGER trg_project_shape_lock
         OR OLD.structure_variation IS DISTINCT FROM NEW.structure_variation)
     EXECUTE FUNCTION projects.fn_project_shape_lock();
 
+CREATE TRIGGER trg_guard_project_ownership
+    BEFORE UPDATE OF owner_user_id, client_business_id ON projects.projects
+    FOR EACH ROW
+    WHEN (OLD.owner_user_id IS DISTINCT FROM NEW.owner_user_id
+        OR OLD.client_business_id IS DISTINCT FROM NEW.client_business_id)
+    EXECUTE FUNCTION projects.fn_guard_project_ownership();
+
 CREATE TRIGGER trg_meter_application_allowance
     AFTER INSERT ON projects.project_applications
     FOR EACH ROW

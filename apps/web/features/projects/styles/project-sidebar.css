@@ -140,6 +140,13 @@
 	color: var(--on-surface);
 }
 
+.proj-railbtn--edit[data-active="true"],
+.proj-railbtn--edit[data-active="true"]:hover {
+	background: var(--primary);
+	border-inline-start-color: transparent;
+	color: var(--on-primary);
+}
+
 /* Collapsed-rail Add-stage — a subtle primary-tinted action, distinct from the ghost nav icons. */
 .proj-railbtn--add {
 	color: var(--primary);

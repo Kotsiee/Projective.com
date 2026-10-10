@@ -150,6 +150,7 @@ BEGIN
           FROM comms.project_channels c
           JOIN projects.project_stages s ON s.id = c.stage_id
          WHERE c.project_id = v_project.id
+           AND s.archived_at IS NULL
            AND c.visibility NOT IN ('team_private', 'business_private')
          ORDER BY s.sort_order, c.created_at
          LIMIT 1;
@@ -199,6 +200,7 @@ BEGIN
     IF EXISTS (
         SELECT 1 FROM projects.project_stages s
          WHERE s.project_id = v_project.id
+           AND s.archived_at IS NULL
            AND s.completed_at IS NULL
            AND s.status NOT IN ('approved', 'paid', 'cancelled')
            AND s.file_due_date > v_now

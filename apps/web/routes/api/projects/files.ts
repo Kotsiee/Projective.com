@@ -42,6 +42,7 @@ export const handler = define.handlers(
 
 			const sp = ctx.url.searchParams;
 			const channelId = sp.get("channelId");
+			const projectFiles = sp.get("projectFiles") === "1";
 			const sortRaw = sp.get("sort");
 			const dirRaw = sp.get("dir");
 			const query = sp.get("query") ?? undefined;
@@ -65,6 +66,7 @@ export const handler = define.handlers(
 				dir,
 				kinds: kinds.length > 0 ? kinds : undefined,
 				query: query || undefined,
+				projectFiles: projectFiles || undefined,
 				cursor: cursor || null,
 				limit: Number.isFinite(limit) ? limit : undefined,
 			}, readActor(ctx));

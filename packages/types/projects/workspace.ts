@@ -1,10 +1,29 @@
 import { z } from "zod";
 import { formatMoney, type MoneyView, MoneyViewSchema } from "../finance/wallet.ts";
+import { flattenRichText } from "../richtext/plain-text.ts";
 import { WorkspaceViewer } from "./access.ts";
-import type { BoardCard, BoardPage, BoardStageRef } from "./board.ts";
+import {
+	type BoardCard,
+	type BoardPage,
+	type BoardStageRef,
+	TICKET_INTENSITY_LABEL,
+} from "./board.ts";
 import type { MemberRosterPage } from "./members.ts";
 import { type ProjectOverview, ProjectOverviewSchema } from "./overview.ts";
-import { pricedAtProjectLevel, pricedStages, type ProjectSetup } from "./setup.ts";
+import {
+	isTaskProject,
+	pricedAtProjectLevel,
+	pricedStages,
+	PROJECT_TYPE_LABEL,
+	type ProjectRules,
+	type ProjectSetup,
+	projectTypeOf,
+} from "./setup.ts";
+import type {
+	SubmissionListPage,
+	SubmissionStatus,
+	SubmissionTreeNode,
+} from "./submissions.ts";
 import type { ProjectStatus } from "./summary.ts";
 
 /**
@@ -136,6 +155,111 @@ export const WorkspacePeopleSchema = z.object({
 export type WorkspacePeople = z.infer<typeof WorkspacePeopleSchema>;
 // #endregion
 
+// #region Brief
+/** One operational term a freelancer is hired under ("IP ownership" · "Exclusive transfer"). */
+export const WorkspaceTermSchema = z.object({
+	label: z.string().min(1).max(60),
+	value: z.string().min(1).max(200),
+});
+export type WorkspaceTerm = z.infer<typeof WorkspaceTermSchema>;
+
+/**
+ * What the engagement is and the terms it is run under — the brief every person on it works against.
+ * Composed from the configuration, so it says exactly what the owner configured; prices are absent
+ * except the budget model's headline figure, which a hire already saw on the listing.
+ */
+export const WorkspaceBriefSchema = z.object({
+	/** The description as plain prose paragraphs (never rendered as HTML on the Overview). */
+	description: z.string().max(8000),
+	/** "Task" · "One-off" · "Pipeline" · "Session" · "Group session". */
+	formatLabel: z.string().min(1).max(40),
+	/** The skills the stages ask for, deduplicated, in stage order. */
+	tags: z.array(z.string().min(1).max(60)).max(12),
+	/** The latest delivery date across the stages ("Due Fri, 12 Sep"), or `null` when undated. */
+	deadlineLabel: z.string().max(40).nullable(),
+	/** "Fixed price · $4,000" / "Hourly cap · $60" / the model alone when unpriced. */
+	budgetLabel: z.string().min(1).max(80),
+	/** The NDA the work is under: none, the platform standard, or the client's own document. */
+	nda: z.object({
+		required: z.boolean(),
+		source: z.enum(["none", "platform", "custom"]),
+		label: z.string().min(1).max(80),
+	}),
+	terms: z.array(WorkspaceTermSchema).max(10),
+});
+export type WorkspaceBrief = z.infer<typeof WorkspaceBriefSchema>;
+// #endregion
+
+// #region People roster
+/** The three sides a person stands on in the People list. */
+export const WorkspacePersonRole = z.enum(["owner", "client_member", "freelancer"]);
+export type WorkspacePersonRole = z.infer<typeof WorkspacePersonRole>;
+
+export const WORKSPACE_PERSON_ROLE_LABEL: Readonly<Record<WorkspacePersonRole, string>> = {
+	owner: "Owner",
+	client_member: "Client member",
+	freelancer: "Freelancer",
+};
+
+/** One person on the engagement, as the Overview's People list shows them. */
+export const WorkspacePersonSchema = z.object({
+	id: z.string().min(1).max(120),
+	name: z.string().min(1).max(120),
+	handle: z.string().max(40).nullable(),
+	avatar: z.string().max(400).nullable(),
+	role: WorkspacePersonRole,
+	/** The stages they deliver on, joined ("Discovery, Concepts"); `null` on a Task or with none. */
+	stages: z.string().max(200).nullable(),
+	/** The hired team they are seated through, or `null`. */
+	team: z.string().max(120).nullable(),
+	/** Their membership of the paying business and their corporate role there, or `null`. */
+	business: z.object({ name: z.string().min(1).max(120), role: z.string().min(1).max(60) })
+		.nullable(),
+	isViewer: z.boolean(),
+});
+export type WorkspacePerson = z.infer<typeof WorkspacePersonSchema>;
+
+/** The most people the Overview lists before "everyone" is the Members page's job. */
+export const MAX_WORKSPACE_PEOPLE = 12;
+// #endregion
+
+// #region Freelancer work signals
+/** A deliverable's review state, worded for the freelancer. */
+export const WorkspaceSubmissionState = z.enum(["pending_review", "in_revision", "approved"]);
+export type WorkspaceSubmissionState = z.infer<typeof WorkspaceSubmissionState>;
+
+export const WORKSPACE_SUBMISSION_STATE_LABEL: Readonly<Record<WorkspaceSubmissionState, string>> = {
+	pending_review: "Pending review",
+	in_revision: "In revision",
+	approved: "Approved",
+};
+
+/** One of the viewer's own recent deliverables and where its review stands. */
+export const WorkspaceSubmissionSchema = z.object({
+	id: z.string().min(1).max(400),
+	title: z.string().min(1).max(200),
+	stageName: z.string().max(120).nullable(),
+	state: WorkspaceSubmissionState,
+	href: z.string().min(1).max(600),
+});
+export type WorkspaceSubmission = z.infer<typeof WorkspaceSubmissionSchema>;
+
+/** A ready ticket the viewer may claim now without breaching their workload cap. */
+export const WorkspaceClaimableSchema = z.object({
+	ticketId: z.string().min(1).max(120),
+	title: z.string().min(1).max(200),
+	stageName: z.string().max(120).nullable(),
+	/** "Standard · 1 unit of capacity" — what claiming it costs the viewer's W_i budget. */
+	loadLabel: z.string().min(1).max(60),
+	dueLabel: z.string().max(28).nullable(),
+	href: z.string().min(1).max(300),
+});
+export type WorkspaceClaimable = z.infer<typeof WorkspaceClaimableSchema>;
+
+/** How many rows each work-signal list carries. */
+export const MAX_WORK_SIGNALS = 6;
+// #endregion
+
 // #region Envelope
 /** The whole Overview read: the base overview plus what the composition adds. */
 export const ProjectWorkspaceSchema = ProjectOverviewSchema.extend({
@@ -146,6 +270,16 @@ export const ProjectWorkspaceSchema = ProjectOverviewSchema.extend({
 	stages: z.array(WorkspaceStageSchema).max(50),
 	/** `null` when the roster could not be read — an unknown count is not drawn as zero. */
 	people: WorkspacePeopleSchema.nullable(),
+	/** `null` when the configuration could not be read. */
+	brief: WorkspaceBriefSchema.nullable().default(null),
+	/** Whether the engagement is a Task — the People list then names no stage. */
+	task: z.boolean().default(false),
+	/** The people on the engagement, owner first; empty when the roster could not be read. */
+	roster: z.array(WorkspacePersonSchema).max(MAX_WORKSPACE_PEOPLE).default([]),
+	/** The viewer's own recent deliverables — participant only; empty for the owner. */
+	submissions: z.array(WorkspaceSubmissionSchema).max(MAX_WORK_SIGNALS).default([]),
+	/** Tickets ready for an open claim within the viewer's capacity — participant only. */
+	claimable: z.array(WorkspaceClaimableSchema).max(MAX_WORK_SIGNALS).default([]),
 });
 export type ProjectWorkspace = z.infer<typeof ProjectWorkspaceSchema>;
 // #endregion
@@ -155,9 +289,15 @@ export type ProjectWorkspace = z.infer<typeof ProjectWorkspaceSchema>;
 export interface WorkspaceSources {
 	viewer: WorkspaceViewer;
 	board: BoardPage | null;
-	/** The owner's configuration — read for the owner only, since only the owner is shown prices. */
+	/**
+	 * The configuration. Read for every viewer, because the brief is composed from it — but only the
+	 * owner's composition reads its PRICES ({@link stageRun}, {@link ownerActions}); a participant's
+	 * takes the brief alone.
+	 */
 	setup: ProjectSetup | null;
 	roster: MemberRosterPage | null;
+	/** The viewer's own submissions (`asFreelancer`) — read for a participant only. */
+	submissions?: SubmissionListPage | null;
 }
 
 /** Tickets that are no longer part of the work: withdrawn, or hidden after a report. */
@@ -356,6 +496,229 @@ function participantActions(
 	return out;
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** `Due Fri, 12 Sep` from UTC components, so SSR and a refetch cannot disagree by a timezone. */
+function dueLabelOf(ms: number): string {
+	const d = new Date(ms);
+	return `Due ${WEEKDAYS[d.getUTCDay()]}, ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+}
+
+const IP_OWNERSHIP_LABEL: Readonly<Record<ProjectRules["ipOwnershipMode"], string>> = {
+	exclusive_transfer: "Transferred exclusively to the client",
+	licensed_use: "Licensed for the client's use",
+	shared_ownership: "Shared between client and freelancer",
+	projective_partner: "Projective partner terms",
+};
+
+const PORTFOLIO_LABEL: Readonly<Record<ProjectRules["portfolioDisplayRights"], string>> = {
+	allowed: "May be shown in a portfolio",
+	forbidden: "May not be shown publicly",
+	embargoed: "May be shown after an embargo",
+};
+
+/** The type's name on the Overview — the setup selector's words, plus the two session kinds. */
+function formatLabelOf(setup: ProjectSetup): string {
+	if (setup.format === "session") return setup.sessionKind === "group" ? "Group session" : "Session";
+	const type = projectTypeOf(setup.format, setup.structure);
+	return type ? PROJECT_TYPE_LABEL[type] : "Project";
+}
+
+/**
+ * The brief, from the configuration. Every line is something the owner configured; nothing is
+ * inferred. The description is flattened to prose: the Overview renders text, never stored HTML.
+ */
+export function briefOf(setup: ProjectSetup): WorkspaceBrief {
+	const tags: string[] = [];
+	const seen = new Set<string>();
+	const skills = [
+		...[...setup.stages].sort((a, b) => a.order - b.order).flatMap((stage) => stage.skills),
+		...setup.roles.flatMap((role) => role.skills),
+	];
+	for (const skill of skills) {
+		const key = skill.trim().toLowerCase();
+		if (!key || seen.has(key)) continue;
+		seen.add(key);
+		tags.push(clampText(skill.trim(), 60));
+	}
+
+	let latest: number | null = null;
+	for (const stage of setup.stages) {
+		const at = stage.deliveryDate ? Date.parse(stage.deliveryDate) : Number.NaN;
+		if (!Number.isNaN(at) && (latest === null || at > latest)) latest = at;
+	}
+
+	const model = setup.budget.budgetType === "hourly_cap" ? "Hourly cap" : "Fixed price";
+	const amount = setup.budget.amountCents;
+
+	const rules = setup.rules;
+	const nda: WorkspaceBrief["nda"] = !rules.ndaRequired
+		? { required: false, source: "none", label: "No NDA" }
+		: rules.ndaSource === "custom"
+		? { required: true, source: "custom", label: "Custom NDA from the client" }
+		: { required: true, source: "platform", label: "Projective standard NDA" };
+
+	const terms: WorkspaceTerm[] = [
+		{ label: "IP ownership", value: IP_OWNERSHIP_LABEL[rules.ipOwnershipMode] },
+		{ label: "Portfolio", value: PORTFOLIO_LABEL[rules.portfolioDisplayRights] },
+		{
+			label: "Location",
+			value: rules.locationRestriction.length > 0
+				? clampText(rules.locationRestriction.join(", "), 200)
+				: "Anywhere",
+		},
+		{
+			label: "Languages",
+			value: rules.languageRequirement.length > 0
+				? clampText(rules.languageRequirement.join(", "), 200)
+				: "No requirement",
+		},
+	];
+	if (rules.allowDeadlineBonuses) {
+		terms.push({ label: "Deadline bonuses", value: "Offered for early delivery" });
+	}
+
+	return {
+		description: clampText(flattenRichText(setup.description).trim(), 8000),
+		formatLabel: formatLabelOf(setup),
+		tags: tags.slice(0, 12),
+		deadlineLabel: latest === null ? null : dueLabelOf(latest),
+		budgetLabel: amount === null
+			? model
+			: clampText(`${model} · ${formatMoney(amount, setup.budget.currency)}`, 80),
+		nda,
+		terms,
+	};
+}
+
+const CLIENT_SIDE_ROLES: ReadonlySet<string> = new Set(["client", "admin", "manager"]);
+const FREELANCER_ROLES: ReadonlySet<string> = new Set(["freelancer", "member"]);
+
+/**
+ * The People list: owner, client members, freelancers — the roster's own order within each. A
+ * `guest` is a read-limited observer, not a party to the work, and is left to the Members page.
+ */
+function rosterOf(roster: MemberRosterPage | null, task: boolean): WorkspacePerson[] {
+	if (!roster) return [];
+	const rank: Record<WorkspacePersonRole, number> = { owner: 0, client_member: 1, freelancer: 2 };
+	const people: WorkspacePerson[] = [];
+	for (const row of roster.members) {
+		const role: WorkspacePersonRole | null = row.role === "owner"
+			? "owner"
+			: CLIENT_SIDE_ROLES.has(row.role)
+			? "client_member"
+			: FREELANCER_ROLES.has(row.role)
+			? "freelancer"
+			: null;
+		if (!role) continue;
+		people.push({
+			id: row.id,
+			name: clampText(row.party.name, 120),
+			handle: row.party.handle,
+			avatar: row.party.avatar,
+			role,
+			stages: !task && row.assignedStages.length > 0
+				? clampText(row.assignedStages.join(", "), 200)
+				: null,
+			team: row.team?.name ?? null,
+			business: row.business ?? null,
+			isViewer: row.isViewer,
+		});
+	}
+	return people
+		.map((person, index) => ({ person, index }))
+		.sort((a, b) => rank[a.person.role] - rank[b.person.role] || a.index - b.index)
+		.map(({ person }) => person)
+		.slice(0, MAX_WORKSPACE_PEOPLE);
+}
+
+const SUBMISSION_STATE: Partial<Record<SubmissionStatus, WorkspaceSubmissionState>> = {
+	pending_review: "pending_review",
+	revision_requested: "in_revision",
+	accepted: "approved",
+};
+
+/**
+ * The viewer's own deliverables, from their isolated submissions tree: every `unit` node that has been
+ * sent, with the stage it sits under. Returned work leads, then work awaiting review, then approved.
+ */
+function submissionsOf(slug: string, page: SubmissionListPage | null | undefined): WorkspaceSubmission[] {
+	if (!page) return [];
+	const out: WorkspaceSubmission[] = [];
+	const walk = (nodes: readonly SubmissionTreeNode[], path: string[], stage: string | null) => {
+		for (const node of nodes) {
+			const at = [...path, node.segment];
+			const stageName = node.kind === "stage" ? node.label : stage;
+			const state = node.kind === "unit" && node.status ? SUBMISSION_STATE[node.status] : undefined;
+			if (state) {
+				out.push({
+					id: clampText(at.join("/"), 400),
+					title: clampText(node.label, 200),
+					stageName: stageName ? clampText(stageName, 120) : null,
+					state,
+					href: `/projects/${slug}/submissions/${at.map(encodeURIComponent).join("/")}`,
+				});
+			}
+			walk(node.children, at, stageName);
+		}
+	};
+	walk(page.tree, [], null);
+	const order: Record<WorkspaceSubmissionState, number> = {
+		in_revision: 0,
+		pending_review: 1,
+		approved: 2,
+	};
+	return out
+		.map((item, index) => ({ item, index }))
+		.sort((a, b) => order[a.item.state] - order[b.item.state] || a.index - b.index)
+		.map(({ item }) => item)
+		.slice(0, MAX_WORK_SIGNALS);
+}
+
+/** Ticket states that occupy a freelancer's workload capacity. */
+const HOLDING: ReadonlySet<string> = new Set(["claimed", "in_progress", "in_review"]);
+
+/**
+ * Tickets the viewer could claim now: ready (`todo`), unclaimed, described (the purchasing gate), on a
+ * stage they are seated on whose routing is an open pull — and that fit under the stage's cap on
+ * summed W_i once the work the viewer already holds there is counted. The board read is already
+ * narrowed to what a provider may see (paid, onboarded), so nothing here widens it.
+ */
+function claimableOf(slug: string, base: ProjectOverview, board: BoardPage | null): WorkspaceClaimable[] {
+	if (!board) return [];
+	const seated = new Set(board.viewerStageIds);
+	const mine = new Set(base.assignments.map((a) => a.ticketId));
+	const stages = new Map(board.stages.map((stage) => [stage.id, stage]));
+	const held = new Map<string, number>();
+	for (const card of board.cards) {
+		if (!card.stageId || !mine.has(card.id) || !HOLDING.has(card.status)) continue;
+		held.set(card.stageId, (held.get(card.stageId) ?? 0) + card.workload);
+	}
+	const out: WorkspaceClaimable[] = [];
+	for (const card of board.cards) {
+		if (card.status !== "todo" || card.claimed || !card.hasDescription || !card.stageId) continue;
+		if (!seated.has(card.stageId)) continue;
+		const stage = stages.get(card.stageId);
+		if (!stage || stage.assignmentMode !== "open_pull") continue;
+		const cap = stage.maxConcurrentIntensity;
+		if (cap !== null && (held.get(card.stageId) ?? 0) + card.workload > cap) continue;
+		const units = card.workload === 1 ? "1 unit" : `${card.workload} units`;
+		out.push({
+			ticketId: card.id,
+			title: clampText(card.title, 200),
+			stageName: clampText(stage.name, 120),
+			loadLabel: clampText(`${TICKET_INTENSITY_LABEL[card.intensity]} · ${units} of capacity`, 60),
+			dueLabel: card.dueLabel,
+			href: card.slug
+				? `/projects/${slug}/board?tkv=${encodeURIComponent(card.slug)}`
+				: `/projects/${slug}/board`,
+		});
+		if (out.length >= MAX_WORK_SIGNALS) break;
+	}
+	return out;
+}
+
 /**
  * Compose the Overview from its sources.
  *
@@ -372,6 +735,10 @@ export function composeWorkspace(
 		? ownerActions(slug, sources, stages)
 		: participantActions(slug, base, sources);
 	const roster = sources.roster;
+	const participant = sources.viewer === "participant";
+	const task = sources.setup
+		? isTaskProject(sources.setup.format, sources.setup.structure)
+		: sources.board?.structure === "single_task";
 	return {
 		...base,
 		viewer: sources.viewer,
@@ -384,6 +751,11 @@ export function composeWorkspace(
 				pendingInvitations: roster.invites.filter((invite) => invite.status === "pending").length,
 			}
 			: null,
+		brief: sources.setup ? briefOf(sources.setup) : null,
+		task,
+		roster: rosterOf(roster, task),
+		submissions: participant ? submissionsOf(slug, sources.submissions) : [],
+		claimable: participant ? claimableOf(slug, base, sources.board) : [],
 	};
 }
 // #endregion

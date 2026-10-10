@@ -226,6 +226,10 @@ CREATE TABLE comms.project_channels (
     stage_id uuid,
     visibility text NOT NULL DEFAULT 'project_all'::text,
     created_at timestamp with time zone NOT NULL DEFAULT now(),
+    -- Soft removal (root CLAUDE.md §5). Set by projects.sanitize_single_room_topology when a room that
+    -- carries history is retired by a switch to a Task or Session; an empty room is deleted instead.
+    -- An archived room is never listed (the SELECT policy hides it) but its messages and files stay.
+    archived_at timestamp with time zone,
     CONSTRAINT project_channels_pkey PRIMARY KEY (id),
     CONSTRAINT project_channels_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects(id)
 );

@@ -140,18 +140,15 @@ export function ProjectRail(
 					</Tooltip>
 				)}
 
-				{
-					/* The owner's configuration only — it is nobody else's to open (Decision #144). A Task's
-					   view set already carries Details; the rail never shows one destination twice. */
-				}
-				{detail.viewerIsClient && !topLinks.some((l) => l.key === "details") && (
-					<Tooltip content="Project details & settings" placement="right">
+				{/* Review authority only — the configuration is nobody else's to open (Decision #144). */}
+				{detail.viewerCanConfigure && (
+					<Tooltip content="Edit project" placement="right">
 						<a
-							class="proj-railbtn"
+							class="proj-railbtn proj-railbtn--edit"
 							href={hrefFor("details")}
 							data-active={detailsCurrent ? "true" : undefined}
 							aria-current={detailsCurrent ?? undefined}
-							aria-label="Project details & settings"
+							aria-label="Edit project"
 						>
 							{cloneElement(DetailsIcon)}
 						</a>

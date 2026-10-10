@@ -22,8 +22,10 @@ import type { ProjectSetup } from "@features/projects/types/projects-types.ts";
  * (Decision #89) still draw every frozen term — the type, and each staffed stage's price — as locked,
  * with its reason.
  *
- * Owner only. Anyone else is sent to the Overview with a 303 (the configuration is not theirs to see,
- * and a participant's "Project details" now IS the Overview). `/edit` and `/settings` 308 here.
+ * Review authority only — the owner, or an active member of the paying client business
+ * (`projects.can_review_project`, mirrored as `canConfigure`). Anyone else is sent to the Overview with
+ * a 303 (the configuration is not theirs to see, and a participant's "Project details" now IS the
+ * Overview). `/edit` and `/settings` 308 here.
  */
 
 interface DetailsData {
@@ -36,7 +38,7 @@ export const handler = define.handlers({
 		const slug = ctx.params.projectSlug;
 		const resolved = await resolveProjectAccess(ctx, slug);
 		if (!resolved) return seeOther(projectsNoticeHref("project-not-found"));
-		if (resolved.access !== "owner") return seeOther(projectHref(slug));
+		if (!resolved.canConfigure) return seeOther(projectHref(slug));
 
 		ctx.state.title = `Details · ${resolved.title} · Projective`;
 		const { setup } = await resolveProjectSetup(slug, readActor(ctx));

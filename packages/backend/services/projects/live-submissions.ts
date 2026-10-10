@@ -784,6 +784,7 @@ async function resolveStages(
 		.from("project_stages")
 		.select(STAGE_COLUMNS)
 		.eq("project_id", project.id)
+		.is("archived_at", null)
 		.order("sort_order", { ascending: true });
 	if (error) throw new Error(`projects.project_stages read failed: ${error.message}`);
 	const stages = (data ?? []) as unknown as StageRow[];

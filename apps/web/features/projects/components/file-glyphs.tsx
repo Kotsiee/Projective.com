@@ -214,6 +214,9 @@ export function ChannelHashIcon({ size = 18, class: c }: GlyphProps): JSX.Elemen
 export function DmBubbleIcon({ size = 18, class: c }: GlyphProps): JSX.Element {
 	return svg(size, c, <path d="M4 5h16v10H9l-5 4V5z" />);
 }
+export function PaperclipIcon({ size = 18, class: c }: GlyphProps): JSX.Element {
+	return svg(size, c, <path d="M8 12.5l6.5-6.5a3 3 0 0 1 4.2 4.2l-8 8a5 5 0 0 1-7-7l7.5-7.5" />);
+}
 export function PlayIcon({ size = 22, class: c }: GlyphProps): JSX.Element {
 	return svg(size, c, <path d="M8 5.5l11 6.5-11 6.5z" fill="currentColor" stroke="none" />);
 }

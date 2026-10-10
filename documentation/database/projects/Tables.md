@@ -214,6 +214,7 @@ one row, so a stage's kind is implicit in which columns the owner filled (see
 | `nda_required`              | boolean                          | Per-stage override; `NULL` inherits.                                                      |
 | `created_at`                | timestamptz                      | NOT NULL `DEFAULT now()`.                                                                 |
 | `completed_at`              | timestamptz                      |                                                                                           |
+| `archived_at`               | timestamptz                      | Nullable. Soft removal set by `projects.sanitize_single_room_topology` (Decision #163).   |
 | `ip_mode`                   | ip_option_mode                   | `DEFAULT 'exclusive_transfer'` (nullable). Override for stage-specific IP terms.          |
 | `assignment_mode`           | projects.assignment_routing_mode | NOT NULL `DEFAULT 'open_pull'`. `open_pull`, `round_robin`, `manual`, `parallel_stream`.  |
 | `max_concurrent_intensity`  | numeric(6,2)                     | Project Hard Cap on summed $W_i$.                                                         |
@@ -227,8 +228,16 @@ one row, so a stage's kind is implicit in which columns the owner filled (see
 `trg_stage_reorder_lock` (BEFORE UPDATE OF `sort_order`) · `trg_stage_delete_cascade` (BEFORE DELETE:
 releases held escrow for its active tickets, scrubs the stage from other tickets' `required_stages`,
 nulls dependants' `start_dependency_stage_id`) · `trg_enforce_structure_variation_stages` (BEFORE
-INSERT: `single_task`/`single_stage` projects hold one stage). In the `supabase_realtime`
-publication.
+INSERT: `single_task`/`single_stage` projects hold one non-archived stage). In the
+`supabase_realtime` publication.
+
+**`archived_at`: a retired stage that carries history (Decision #163).** When a save leaves the
+project a Task, `projects.sanitize_single_room_topology` retires every stage but the root (lowest
+`sort_order`): a stage with no history (`projects.fn_stage_has_history`) is hard-deleted, anything
+else is archived here instead, together with its rooms. Product reads (lane, board, overview, feed
+counts, members, submissions, setup, wallet funding queue, calendar) skip an archived stage, and the
+structure-variation cap, `set_project_status`, `approve_stage` and `get_nav_activity` ignore it;
+history (finance labels, profiles, search) keeps it. See [Functions](Functions.md).
 
 **The stage's address.** Same contract as `projects.projects.slug` — opaque, derived from nothing,
 minted by `security.fn_slug_guard` and refused by it on any later update. Globally unique rather
@@ -918,8 +927,9 @@ also be a submission deliverable or a profile banner.
 default deny — and default deny on a `SELECT` is silent, returning `200 []` rather than an error.
 The attachments list therefore rendered as an empty list rather than a failure, the one shape nobody
 investigates because it is indistinguishable from a project with no attachments. Policies now exist:
-read via `projects.has_project_access` (the brief is what a participant works against), write
-owner-only. See [Policies.md](Policies.md). Note that admitting a **link** never admits a **file** —
+read via `projects.has_project_access` or `projects.can_review_project` (the brief is what a
+participant works against), write review authority only — the owner or an active client-business
+member (Decision #163). See [Policies.md](Policies.md). Note that admitting a **link** never admits a **file** —
 the bytes are governed separately by `files.fn_can_read`.
 
 ---

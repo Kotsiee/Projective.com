@@ -14,8 +14,8 @@ import { offlineOr, useOfflineStall } from "@web/utils/use-offline-stall.ts";
 import { logger } from "@web/utils/logger.ts";
 import type {
 	AssetItem,
+	ExplorerFileItem,
 	FileChannelRef,
-	FileItem,
 	FileKind,
 	FileListPage,
 	FileScope,
@@ -41,7 +41,7 @@ import {
 import { ProjectSkeleton, useSkeletonDelay } from "../components/ProjectSkeletons.tsx";
 import { FileCard } from "../components/FileCard.tsx";
 import { FileTable } from "../components/FileTable.tsx";
-import { FileChannelTree } from "../components/FileChannelTree.tsx";
+import { FileChannelTree, type FileTreeSelection } from "../components/FileChannelTree.tsx";
 import { AttachmentPreviewModal } from "../components/AttachmentPreviewModal.tsx";
 import { SearchIcon } from "../components/file-glyphs.tsx";
 
@@ -79,9 +79,11 @@ const SKELETON_MIN = 8;
 const SKELETON_MAX = 24;
 
 interface WorkspaceViewProps {
-	items: FileItem[];
+	items: ExplorerFileItem[];
 	isEmpty: boolean;
 	hasFilters: boolean;
+	/** The empty state's note when no search or filter is narrowing the list. */
+	emptyNote: string;
 	sortKey: Signal<string>;
 	sortDir: Signal<FileSortDir>;
 	onSort: (key: FileSortKey) => void;
@@ -132,9 +134,7 @@ function WorkspaceView(p: WorkspaceViewProps): JSX.Element {
 			<div class="fx-empty" role="status">
 				<p class="fx-empty__title">No files here yet</p>
 				<p class="fx-empty__note">
-					{p.hasFilters
-						? "No files match the current search and filters."
-						: "Attachments shared in this space will appear here."}
+					{p.hasFilters ? "No files match the current search and filters." : p.emptyNote}
 				</p>
 			</div>
 		);
@@ -173,18 +173,20 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 	const { scope, projectId, channelId, initial } = props;
 
 	// #region State
-	const items = useSignal<FileItem[]>(initial?.items ?? []);
+	const items = useSignal<ExplorerFileItem[]>(initial?.items ?? []);
 	const channels = useSignal<FileChannelRef[]>(initial?.channels ?? []);
+	const projectFileCount = useSignal<number>(initial?.projectFileCount ?? 0);
 	const cursor = useSignal<string | null>(initial?.nextCursor ?? null);
 	const hasMore = useSignal<boolean>(initial?.hasMore ?? false);
 	const total = useSignal<number>(initial?.total ?? 0);
 	const viewerId = initial?.viewerId ?? "viewer";
+	const task = initial?.task ?? false;
 
 	const query = useSignal("");
 	const sortKey = useSignal<string>("date");
 	const sortDir = useSignal<FileSortDir>("desc");
 	const filterKinds = useSignal<string[]>([]);
-	const activeChannel = useSignal<string | null>(null);
+	const treeSelection = useSignal<FileTreeSelection>({ kind: "all" });
 
 	const loading = useSignal(false);
 	const loadingMore = useSignal(false);
@@ -212,10 +214,16 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 
 	// #region Data loading (thin refine + infinite scroll)
 	function baseParams(nextCursor: string | null) {
+		const sel = treeSelection.value;
 		return {
 			scope,
 			projectId,
-			channelId: scope === "project" ? activeChannel.value : (channelId ?? null),
+			channelId: scope !== "project"
+				? (channelId ?? null)
+				: sel.kind === "channel"
+				? sel.id
+				: null,
+			projectFiles: scope === "project" && sel.kind === "project" ? true : undefined,
 			// An empty key is the 3rd sort state ("none") — omit `sort` so the backend returns its
 			// default order.
 			sort: sortKey.value ? (sortKey.value as FileSortKey) : undefined,
@@ -257,8 +265,9 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 		// The tree's channel index is the project's FULL channel set. When the workspace is filtered
 		// to ONE channel the backend returns only that channel's index (it infers scope from the
 		// channelId), so keep the existing full index rather than collapsing the tree to the selection.
-		if (!(scope === "project" && activeChannel.value !== null)) {
+		if (!(scope === "project" && treeSelection.value.kind === "channel")) {
 			channels.value = page.channels;
+			projectFileCount.value = page.projectFileCount;
 		}
 		cursor.value = page.nextCursor;
 		hasMore.value = page.hasMore;
@@ -314,8 +323,8 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 		filterKinds.value = kinds;
 		void reload();
 	}
-	function onSelectChannel(id: string | null): void {
-		activeChannel.value = id;
+	function onSelectNode(selection: FileTreeSelection): void {
+		treeSelection.value = selection;
 		void reload();
 	}
 	// #endregion
@@ -350,6 +359,9 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 			items={items.value}
 			isEmpty={isEmpty}
 			hasFilters={hasFilters}
+			emptyNote={scope === "project" && treeSelection.value.kind === "project"
+				? "Files the client attaches to the project will appear here."
+				: "Attachments shared in this space will appear here."}
 			sortKey={sortKey}
 			sortDir={sortDir}
 			onSort={applySort}
@@ -433,9 +445,11 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 						<aside class="fx-aside-tree">
 							<FileChannelTree
 								channels={channels.value}
-								active={activeChannel}
-								onSelect={onSelectChannel}
-								total={channels.value.reduce((s, c) => s + c.count, 0)}
+								active={treeSelection}
+								onSelect={onSelectNode}
+								total={channels.value.reduce((s, c) => s + c.count, projectFileCount.value)}
+								projectFileCount={projectFileCount.value}
+								task={task}
 							/>
 						</aside>
 						<div class="fx-main">

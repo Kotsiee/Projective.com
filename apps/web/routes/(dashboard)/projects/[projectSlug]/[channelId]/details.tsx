@@ -90,17 +90,17 @@ export const handler = define.handlers({
 			return new Response(null, {
 				status: 303,
 				headers: {
-					location: detail.viewerIsClient ? projectDetailsHref(projectId) : projectHref(projectId),
+					location: detail.viewerCanConfigure ? projectDetailsHref(projectId) : projectHref(projectId),
 				},
 			});
 		}
 		if (!detail || !channel) return page(miss);
 
-		// The owner test is the server's own (`projects.projects.owner_user_id === viewer`, which is
-		// what `viewerIsClient` projects on this read); the admin arm comes from the chrome context,
+		// Review authority is the server's own (`projects.can_review_project`, which is what
+		// `viewerCanConfigure` projects on this read); the admin arm comes from the chrome context,
 		// decoded from the access token. Identical to the header slot's, so the tab and the route
 		// cannot disagree about who may open this.
-		const canConfigure = detail.viewerIsClient || context.role === "admin";
+		const canConfigure = detail.viewerCanConfigure || context.role === "admin";
 		if (!canConfigureStage({ channelKind: "stage", canConfigure })) {
 			return new Response(null, {
 				status: 303,

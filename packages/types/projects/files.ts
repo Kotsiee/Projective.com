@@ -106,11 +106,32 @@ export const FileListParamsSchema = z.object({
 	])).max(9).optional(),
 	/** Free-text filename match. */
 	query: z.string().max(120).optional(),
+	/**
+	 * Restrict to the client's project files (`projects.project_attachments`) — the tree's "Project
+	 * files" node. Overrides `channelId`.
+	 */
+	projectFiles: z.boolean().optional(),
 	/** Opaque paging cursor (the id of the last item of the previous page). */
 	cursor: z.string().max(120).nullable().optional(),
 	limit: z.number().int().min(1).max(200).optional(),
 });
 export type FileListParams = z.infer<typeof FileListParamsSchema>;
+// #endregion
+
+// #region Project file row
+/**
+ * One of the client's project files — a reference file hung off the project itself
+ * (`projects.project_attachments`), not posted in any channel. {@link AssetItemSchema} with no
+ * channel or message provenance, and the client re-mandated as `sender`, since every project file
+ * is theirs.
+ */
+export const ProjectFileItemSchema = AssetItemSchema.extend({
+	sender: MessageSenderSchema,
+});
+export type ProjectFileItem = z.infer<typeof ProjectFileItemSchema>;
+
+/** Any row the project/channel File Explorer lists. */
+export type ExplorerFileItem = FileItem | ProjectFileItem;
 // #endregion
 
 // #region Page envelope
@@ -119,13 +140,21 @@ export const FileListPageSchema = z.object({
 	scope: z.enum(["channel", "project", "conversation", "hub", "drive", "share"]),
 	projectId: z.string().min(1).max(120),
 	channelId: z.string().max(120).nullable(),
-	/** The matched files, already sorted + filtered, oldest-cursor→newest-cursor per the paging. */
-	items: z.array(FileItemSchema),
+	/**
+	 * The matched files, already sorted + filtered, oldest-cursor→newest-cursor per the paging. Channel
+	 * attachments ({@link FileItemSchema}) and, in project scope, the client's project files
+	 * ({@link ProjectFileItemSchema}).
+	 */
+	items: z.array(z.union([FileItemSchema, ProjectFileItemSchema])),
 	/**
 	 * Every channel that holds files (project scope → all channels as the tree's top level; channel
 	 * scope → just the one). Counts reflect the WHOLE channel, independent of the active filter.
 	 */
 	channels: z.array(FileChannelRefSchema),
+	/** How many project files the client has attached — the tree's "Project files" count. */
+	projectFileCount: z.number().int().min(0).default(0),
+	/** The engagement is a Task (one stage, one ticket), so the tree drops its "Channels" header. */
+	task: z.boolean().default(false),
 	hasMore: z.boolean(),
 	nextCursor: z.string().max(120).nullable(),
 	/** Total matched across all pages (drives the "N files" caption). */

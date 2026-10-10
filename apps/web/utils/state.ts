@@ -85,6 +85,8 @@ export interface State {
 		title: string;
 		access: ProjectAccess;
 		status: ProjectStatus;
+		/** Review authority (`viewerCanConfigure`) — may open `/details` and `/preview`. */
+		canConfigure: boolean;
 		/** Whether the engagement has its discussion room (`discussionOf`), so a band may link it. */
 		discussion: boolean;
 		/** Whether a development-only landing simulation changed either value. */

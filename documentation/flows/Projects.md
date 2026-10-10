@@ -109,12 +109,19 @@ participant · prospect, from `projects.has_project_access`) and the project's s
 draft forwards to `/details`; a prospect on any workspace path is sent to the public listing. The
 addresses and redirects are tabled in [`ROUTING.md`](../architecture/ROUTING.md).
 
-The page is composed, not read: `ProjectBackendService.workspace` folds the overview, board, roster
-and (for the owner) setup reads through the pure `composeWorkspace`
+The page is composed, not read: `ProjectBackendService.workspace` folds the overview, board, roster,
+setup (every viewer — only the composed brief reaches a participant; prices stay the owner's) and,
+for a participant, their own submissions through the pure `composeWorkspace`
 (`packages/types/projects/workspace.ts`). "Needs you" for the owner lists submissions to review,
 applications to decide and stages that still need a price — the last counted with the setup
 ladder's own `pricedStages`, so the Overview and the ladder agree about which stages are meant. A
 participant sees returned work to revise and claimed work to deliver.
+
+Beside it (Decision #163): the Brief and an Inclusions & terms ledger (NDA, IP, portfolio, location,
+languages, deadline bonuses), the client's searchable Project files, the People list (role, stages
+except on a Task, hired team, role in the paying business), Messages only when there is more than
+the one Discussion, and for a participant their Active submissions by review state and the Claimable
+tasks open to them within their workload cap.
 
 ---
 

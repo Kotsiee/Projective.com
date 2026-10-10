@@ -332,6 +332,8 @@ function buildDetail(row: ProjectSummary): ProjectDetail {
 		description: describe(row),
 		viewerRole: row.viewerRole,
 		viewerIsClient: viewerIsClient(row),
+		// The corpus's admin and client seats stand in for members of the paying business.
+		viewerCanConfigure: viewerIsClient(row),
 		// Every corpus row is one of the viewer's OWN engagements (the feed is "my projects"), so the
 		// stub path has no stranger to resolve: the client side is the owner, everyone else is on it.
 		viewerAccess: accessOf(viewerIsClient(row), true),

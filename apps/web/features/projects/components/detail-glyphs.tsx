@@ -1,4 +1,4 @@
-import { cloneElement, type JSX } from "preact";
+import type { JSX } from "preact";
 import { landingFor } from "@projective/types/projects";
 import type { ProjectDetail, ProjectFormat, ProjectNavActivity } from "../types/projects-types.ts";
 import { IconShell } from "@projective/ui/icons";
@@ -272,10 +272,8 @@ export interface ProjectViewLink {
  * forwards to the configuration, so the link is left out rather than pointing back at it. Then, per
  * archetype:
  *
- *   - **Task** — Discussion · Details · Files · Submissions · Members. No Board and no Timeline: one
- *     ticket on one stage has nothing to lay out (Decision #121). Its Discussion carries Chat alone, so
- *     the engagement's Details (`/details`, its configuration) is a view of its own here — for the
- *     OWNER only, whose configuration it is; a participant's way into the engagement is the Overview.
+ *   - **Task** — Discussion · Files · Submissions · Members. No Board and no Timeline: one ticket on
+ *     one stage has nothing to lay out (Decision #121).
  *   - **One-off** — Discussion · Timeline · Files · Submissions · Members. A one-off's board IS its
  *     timeline (PRODUCT_SPEC §Project Types), so it gets the Gantt and no Kanban.
  *   - **Pipeline** — Discussion · Board · Files · Submissions · Members. Its timeline is a stage's view
@@ -285,8 +283,8 @@ export interface ProjectViewLink {
  *
  * **Discussion** is the engagement's one primary conversation at a fixed address
  * (`/projects/{slug}/discussion`); it is ABSENT when the engagement has no room for it
- * ({@link discussionLinkOf}) rather than a link to "no such channel". On every other type Details is
- * the owner's lane-footer utility (and the Discussion's Details tab), not a view of the work.
+ * ({@link discussionLinkOf}) rather than a link to "no such channel". On every type the configuration
+ * (`/details`) is the lane footer's Edit project control for review authority, not a view of the work.
  *
  * The status marks are the viewer's own activity ({@link ProjectNavActivity} — per view, since they
  * last opened it), never invented here. Details and Calendar carry none.
@@ -319,16 +317,6 @@ export function projectViewLinks(
 			seg: discussion.ref,
 			prefix: true,
 			status: viewStatusOf("discussion", activity),
-		});
-	}
-	if (archetype === "task" && detail.viewerIsClient) {
-		// A copy: the lane footer mounts `DetailsIcon` itself, and one VNode cannot be mounted twice.
-		links.push({
-			key: "details",
-			label: "Details",
-			icon: cloneElement(DetailsIcon),
-			seg: "details",
-			status: null,
 		});
 	}
 	if (archetype === "pipeline") {

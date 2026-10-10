@@ -91,7 +91,7 @@ CLAUDE.md §6 — RLS is always on).
 
 | Policy                                | Table                                | Command  | Rule                                                            |
 | :------------------------------------ | :----------------------------------- | :------- | :-------------------------------------------------------------- |
-| _view_channels_if_member_             | `comms.project_channels`             | `SELECT` | `comms.has_channel_access(id)`                                  |
+| _view_channels_if_member_             | `comms.project_channels`             | `SELECT` | `archived_at IS NULL` **AND** `comms.has_channel_access(id)` — Decision #163 |
 | _view_messages_if_member_             | `comms.project_messages`             | `SELECT` | `comms.has_channel_access(channel_id)`                          |
 | _send_messages_if_member_             | `comms.project_messages`             | `INSERT` | `sender_user_id = auth.uid()` **AND** channel access            |
 | _edit_own_messages_                   | `comms.project_messages`             | `UPDATE` | Both arms: `sender_user_id = auth.uid()` **AND** channel access |
@@ -103,6 +103,10 @@ CLAUDE.md §6 — RLS is always on).
 
 Private-channel scoping and the PII handover gate are layered on top by migration 0311
 (`comms.can_access_scope`, `comms.has_channel_access`).
+
+An archived room (`archived_at`, set by `projects.sanitize_single_room_topology` — Decision #163) is
+filtered in `view_channels_if_member` only, never in `comms.has_channel_access`: the room stops being
+listed, while its messages, attachments and channel files stay readable as history.
 
 ### ⚠️ The sender pin on `send_messages_if_member`
 

@@ -12,12 +12,19 @@ export interface FileBootstrap {
 	page: FileListPage | null;
 }
 
-/** Resolve the initial file page. `channelId` unset → project scope (all channels). */
+/**
+ * Resolve the initial file page. `channelId` unset → project scope (all channels); `projectFiles` →
+ * the client's project files alone.
+ */
 export async function resolveFilePage(
 	projectId: string,
 	actor: ReadActor,
 	channelId?: string | null,
+	projectFiles = false,
 ): Promise<FileBootstrap> {
-	const res = await ProjectBackendService.files({ projectId, channelId: channelId ?? null }, actor);
+	const res = await ProjectBackendService.files(
+		{ projectId, channelId: channelId ?? null, projectFiles: projectFiles || undefined },
+		actor,
+	);
 	return { page: res.ok && res.data ? res.data.page : null };
 }

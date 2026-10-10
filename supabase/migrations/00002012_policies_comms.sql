@@ -43,8 +43,11 @@ WITH
 
 -- --- from 0311_e7_private_channels_pii_handover.sql ---
 
+-- An archived room (projects.sanitize_single_room_topology) is never listed. The filter lives here and
+-- NOT in comms.has_channel_access, which also gates the room's messages and attachments: those stay
+-- readable as history, the room simply stops being a place anybody is shown.
 CREATE POLICY "view_channels_if_member" ON comms.project_channels FOR SELECT TO authenticated
-USING (comms.has_channel_access (id));
+USING (archived_at IS NULL AND comms.has_channel_access (id));
 
 -- 🚨 The `sender_user_id = auth.uid()` arm is not redundant with channel access.
 -- Channel access answers "may this person post here"; it says nothing about WHOSE

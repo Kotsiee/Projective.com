@@ -6,7 +6,6 @@ import { resolveProjectSetup } from "@features/projects/core/setup-ssr.ts";
 import {
 	projectDetailsHref,
 	projectHref,
-	projectListingHref,
 	resolveProjectAccess,
 	seeOther,
 } from "@features/projects/core/project-access.ts";
@@ -33,16 +32,18 @@ import ViewStyleAnchor from "@features/view/islands/ViewStyleAnchor.island.tsx";
  *   1. Signed in. The `(dashboard)` group already requires a session; this re-asserts it, because a
  *      preview route that rendered for whatever a middleware let through would be a guard that held
  *      only as long as an unrelated file did.
- *   2. The owner, when the engagement may preview (`previewAllowed`, Decision #144). A DRAFT must have
+ *   2. Review authority — the owner, or an active member of the paying client business
+ *      (`projects.can_review_project`, mirrored as `canConfigure`) — when the engagement may preview
+ *      (`previewAllowed`, Decision #144). A DRAFT must have
  *      finished its required setup steps (`previewReady`, the setup ladder's "every required step
  *      done" — the same value that renders the band's Preview tab LOCKED, so a control locked in the
  *      interface is locked at its URL too). A PUBLISHED engagement always previews: its listing is
  *      already public, and the old rule locked the owner out of their own live brief the moment a
  *      stage added later had no price.
  *
- * A non-owner is sent straight to the public listing — the page this one previews, and where they
- * belong — rather than to the engagement's root, which would only redirect them a second time. An
- * owner who may not preview yet is sent to `/details`, where the outstanding steps are. Every exit is a
+ * Anyone without review authority is sent to the engagement's root, `/projects/{slug}`, whose own
+ * dispatch then places them (a participant on the Overview, a prospect on the listing). An owner who
+ * may not preview yet is sent to `/details`, where the outstanding steps are. Every exit is a
  * 303 returned from `define.handlers`, never from the page component: a `Response` returned by a
  * `define.page` component is dead code (root CLAUDE.md §8 Decision #61).
  */
@@ -53,7 +54,7 @@ export const handler = define.handlers({
 
 		const resolved = await resolveProjectAccess(ctx, slug);
 		if (!resolved) return seeOther(projectsNoticeHref("project-not-found"));
-		if (resolved.access !== "owner") return seeOther(projectListingHref(slug));
+		if (!resolved.canConfigure) return seeOther(projectHref(slug));
 
 		const actor = readActor(ctx);
 		const { setup } = await resolveProjectSetup(slug, actor);

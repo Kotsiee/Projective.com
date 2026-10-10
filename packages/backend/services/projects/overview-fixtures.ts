@@ -13,6 +13,13 @@ import type {
 	ProjectUpdate,
 	SystemActivityType,
 } from "@projective/types/projects";
+import {
+	DISCUSSION_REF,
+	discussionOf,
+	discussionRoomId,
+	isSingleRoomEngagement,
+	SINGLE_ROOM_NAME,
+} from "@projective/types/projects";
 import { findProjectDetail } from "./detail-fixtures.ts";
 import { findBoardPage } from "./board-fixtures.ts";
 import { findMessagePage } from "./messages-fixtures.ts";
@@ -245,6 +252,7 @@ const CHANNEL_LIMIT = 8;
  * missing feature.
  */
 function channelsOf(slug: string, detail: ProjectDetail): ProjectOverviewChannel[] {
+	if (isSingleRoomEngagement(detail)) return singleRoomChannelsOf(slug, detail);
 	const rows: Array<{ id: string; name: string; kind: ChannelKind; unread: boolean }> = [
 		...detail.channels.general.map((c) => ({
 			id: c.id,
@@ -280,6 +288,37 @@ function channelsOf(slug: string, detail: ProjectDetail): ProjectOverviewChannel
 			lastMessagePreview: previewOf(slug, row.id),
 			href: `/projects/${slug}/${row.id}`,
 		}));
+}
+
+/**
+ * A Task's or Session's rooms: its one Discussion, at its fixed address, then its private threads.
+ * The stage and spare project-wide rooms are stored but never presented.
+ */
+function singleRoomChannelsOf(slug: string, detail: ProjectDetail): ProjectOverviewChannel[] {
+	const out: ProjectOverviewChannel[] = [];
+	const room = discussionOf(detail);
+	const roomId = discussionRoomId(room);
+	if (room && roomId) {
+		out.push({
+			id: roomId,
+			name: SINGLE_ROOM_NAME,
+			kind: "general",
+			unread: room.kind === "stage" ? room.stage.channel.unread : room.channel.unread,
+			lastMessagePreview: previewOf(slug, roomId),
+			href: `/projects/${slug}/${DISCUSSION_REF}`,
+		});
+	}
+	for (const d of detail.channels.dms.slice(0, CHANNEL_LIMIT - out.length)) {
+		out.push({
+			id: d.chatId,
+			name: d.party.name,
+			kind: "dm",
+			unread: d.unread,
+			lastMessagePreview: previewOf(slug, d.chatId),
+			href: `/projects/${slug}/${d.chatId}`,
+		});
+	}
+	return out;
 }
 
 /** How much of the last line the row shows before it stops being a preview. */

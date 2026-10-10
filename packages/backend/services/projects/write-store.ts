@@ -848,6 +848,7 @@ export function createdDetail(ref: string, actor?: ReadActor): ProjectDetail | n
 		// The creator IS the client — they commissioned it. This is what routes the dispatcher to the
 		// owner's surfaces (a draft's configuration, then the Overview) rather than a prospect's listing.
 		viewerIsClient: true,
+		viewerCanConfigure: true,
 		viewerAccess: "owner",
 		scopeType: actor?.contextType ?? "personal",
 		scopeLabel: actor?.contextId ? "Workspace" : "Personal",

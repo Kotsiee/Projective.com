@@ -72,7 +72,9 @@ BEGIN
     END IF;
 
     SELECT count(*) INTO v_ticket_count FROM projects.tickets WHERE project_id = NEW.project_id;
-    SELECT count(*) INTO v_stage_count FROM projects.project_stages WHERE project_id = NEW.project_id;
+    -- An archived stage (sanitize_single_room_topology) no longer occupies the engagement's shape.
+    SELECT count(*) INTO v_stage_count FROM projects.project_stages
+    WHERE project_id = NEW.project_id AND archived_at IS NULL;
 
     IF TG_OP = 'INSERT' AND TG_TABLE_NAME = 'tickets' THEN
         v_ticket_count := v_ticket_count + 1;
@@ -113,6 +115,21 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects;
+
+-- Ownership guard. Review authority (projects.can_review_project) may update the project row, but
+-- who owns the engagement and which business pays for it are the OWNER's to change — a business
+-- member re-pointing `client_business_id` would otherwise grant themselves the authority they used.
+-- A session with no user (the service role, seeds) is not a reviewer and passes through.
+CREATE OR REPLACE FUNCTION projects.fn_guard_project_ownership()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF auth.uid() IS NOT NULL AND auth.uid() IS DISTINCT FROM OLD.owner_user_id THEN
+        RAISE EXCEPTION 'Only the project owner may change who owns or pays for the project.'
+            USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, projects;
 
 -- ---------------------------------------------------------------------------------------------
 -- projects.create_stage(p_project_id, p_name, p_description, p_description_text, p_unit_price_cents,
@@ -181,11 +198,10 @@ BEGIN
 
   v_name := COALESCE(NULLIF(btrim(p_name), ''), NULLIF(btrim(COALESCE(v_bag->>'name', '')), ''), 'Untitled stage');
 
-  IF NOT EXISTS (
-    SELECT 1 FROM projects.projects p
-    WHERE p.id = p_project_id AND p.owner_user_id = v_actor
-  ) THEN
-    RAISE EXCEPTION 'Only the project owner may add a stage.' USING ERRCODE = 'insufficient_privilege';
+  -- Review authority: the owner, or an active member of the paying client business.
+  IF v_actor IS NULL OR NOT projects.can_review_project(p_project_id) THEN
+    RAISE EXCEPTION 'Only the project owner or its client business may add a stage.'
+      USING ERRCODE = 'insufficient_privilege';
   END IF;
 
   -- A dependency has to be a stage of THIS project. Without the check a caller could point the new
@@ -292,16 +308,15 @@ BEGIN
   -- signed-in account could wipe an unrelated project's pipeline — and, once a stage reconciler
   -- reached it over HTTP, could do so in one request.
   --
-  -- Ownership rather than `has_project_access`: an assigned freelancer legitimately reads the
-  -- pipeline and must never be able to delete the stage their own escrow is held against.
+  -- Review authority (the owner, or an active member of the paying client business) rather than
+  -- `has_project_access`: an assigned freelancer legitimately reads the pipeline and must never be
+  -- able to delete the stage their own escrow is held against.
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Sign in to delete a stage.' USING ERRCODE = 'insufficient_privilege';
   END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM projects.projects p
-    WHERE p.id = p_project_id AND p.owner_user_id = auth.uid()
-  ) THEN
-    RAISE EXCEPTION 'Only the project owner may delete a stage.' USING ERRCODE = 'insufficient_privilege';
+  IF NOT projects.can_review_project(p_project_id) THEN
+    RAISE EXCEPTION 'Only the project owner or its client business may delete a stage.'
+      USING ERRCODE = 'insufficient_privilege';
   END IF;
 
   -- The stage must belong to the project named. Without this the ownership check above proves only
@@ -358,6 +373,154 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, auth;
 
 -- ---------------------------------------------------------------------------------------------
+-- projects.fn_room_has_history(p_channel_id) / projects.fn_stage_has_history(p_stage_id)
+-- Whether a room or a stage carries anything a person made or paid for. A room: messages, files,
+-- scheduled events. A stage: tickets (current or required), submissions, seats, applications,
+-- invitations and invite links, every finance row, ticket history — and the history of its rooms.
+-- Pure configuration (staffing roles, budget rules) is not history: it is the stage's own definition.
+-- ---------------------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION projects.fn_room_has_history(p_channel_id uuid)
+RETURNS boolean AS $$
+  SELECT EXISTS (SELECT 1 FROM comms.project_messages m WHERE m.channel_id = p_channel_id)
+      OR EXISTS (
+        SELECT 1 FROM comms.channel_files f
+        WHERE f.channel_type = 'project' AND f.channel_id = p_channel_id
+      )
+      OR EXISTS (SELECT 1 FROM scheduling.events e WHERE e.channel_id = p_channel_id);
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+
+CREATE OR REPLACE FUNCTION projects.fn_stage_has_history(p_stage_id uuid)
+RETURNS boolean AS $$
+  SELECT EXISTS (SELECT 1 FROM projects.tickets t WHERE t.current_stage_id = p_stage_id)
+      OR EXISTS (
+        SELECT 1 FROM projects.tickets t, jsonb_array_elements(t.required_stages) e
+        WHERE e->>'stage_id' = p_stage_id::text
+      )
+      OR EXISTS (
+        SELECT 1 FROM projects.ticket_history h
+        WHERE h.previous_stage_id = p_stage_id OR h.new_stage_id = p_stage_id
+      )
+      OR EXISTS (SELECT 1 FROM projects.stage_submissions s WHERE s.project_stage_id = p_stage_id)
+      OR EXISTS (SELECT 1 FROM projects.stage_assignments a WHERE a.project_stage_id = p_stage_id)
+      OR EXISTS (SELECT 1 FROM projects.stage_open_seats o WHERE o.project_stage_id = p_stage_id)
+      OR EXISTS (SELECT 1 FROM projects.project_invitations i WHERE i.project_stage_id = p_stage_id)
+      OR EXISTS (SELECT 1 FROM projects.stage_invite_links l WHERE l.project_stage_id = p_stage_id)
+      OR EXISTS (SELECT 1 FROM finance.escrows x WHERE x.project_stage_id = p_stage_id)
+      OR EXISTS (SELECT 1 FROM finance.invoices x WHERE x.project_stage_id = p_stage_id)
+      OR EXISTS (SELECT 1 FROM finance.basket_items x WHERE x.stage_id = p_stage_id)
+      OR EXISTS (SELECT 1 FROM finance.order_lines x WHERE x.stage_id = p_stage_id)
+      OR EXISTS (SELECT 1 FROM finance.inbound_payments x WHERE x.project_stage_id = p_stage_id)
+      OR EXISTS (
+        SELECT 1 FROM comms.project_channels c
+        WHERE c.stage_id = p_stage_id AND projects.fn_room_has_history(c.id)
+      );
+$$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
+
+-- ---------------------------------------------------------------------------------------------
+-- projects.sanitize_single_room_topology(p_project_id)
+-- A Task (`one_off` + `single_stage`|`single_task`) or a Session presents ONE shared room, its
+-- Discussion. When an engagement is configured or converted into one, the rooms and stages a
+-- previous shape left behind are retired here:
+--
+--   • a Task keeps its root stage (lowest `sort_order`) — whose room IS its Discussion — and retires
+--     every other stage with its rooms;
+--   • a Session keeps its stages (they are its sessions) and retires their stage-bound rooms; its
+--     Discussion is the project-wide room.
+--
+-- Retiring is a HARD delete only when the row carries no history at all (fn_stage_has_history /
+-- fn_room_has_history); anything with history is ARCHIVED (`archived_at`), never destroyed (root
+-- CLAUDE.md §5). The project-wide room is never touched: a Task keeps it for a later switch back to a
+-- pipeline (Decision #135). Idempotent — a second call finds nothing left to retire.
+--
+-- Review authority only, re-asked here because this is SECURITY DEFINER and runs past RLS.
+-- ---------------------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION projects.sanitize_single_room_topology(p_project_id uuid)
+RETURNS jsonb AS $$
+DECLARE
+  v_format          text;
+  v_structure       text;
+  v_task            boolean;
+  v_root            uuid;
+  v_stage           record;
+  v_room            record;
+  v_deleted_stages  integer := 0;
+  v_archived_stages integer := 0;
+  v_deleted_rooms   integer := 0;
+  v_archived_rooms  integer := 0;
+BEGIN
+  IF auth.uid() IS NULL OR NOT projects.can_review_project(p_project_id) THEN
+    RAISE EXCEPTION 'Only the project owner or its client business may reshape the project.'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  SELECT p.format::text, p.structure_variation::text INTO v_format, v_structure
+  FROM projects.projects p WHERE p.id = p_project_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Project % not found.', p_project_id USING ERRCODE = 'no_data_found';
+  END IF;
+
+  v_task := v_format = 'one_off' AND v_structure IN ('single_stage', 'single_task');
+  IF NOT v_task AND v_format <> 'session' THEN
+    RETURN jsonb_build_object('sanitized', false);
+  END IF;
+
+  IF v_task THEN
+    SELECT s.id INTO v_root
+    FROM projects.project_stages s
+    WHERE s.project_id = p_project_id AND s.archived_at IS NULL
+    ORDER BY s.sort_order, s.created_at
+    LIMIT 1;
+
+    FOR v_stage IN
+      SELECT s.id FROM projects.project_stages s
+      WHERE s.project_id = p_project_id AND s.archived_at IS NULL AND s.id IS DISTINCT FROM v_root
+    LOOP
+      IF projects.fn_stage_has_history(v_stage.id) THEN
+        UPDATE projects.project_stages SET archived_at = now() WHERE id = v_stage.id;
+        UPDATE comms.project_channels SET archived_at = now()
+        WHERE stage_id = v_stage.id AND archived_at IS NULL;
+        v_archived_stages := v_archived_stages + 1;
+      ELSE
+        FOR v_room IN SELECT c.id FROM comms.project_channels c WHERE c.stage_id = v_stage.id LOOP
+          DELETE FROM comms.project_channel_participants WHERE channel_id = v_room.id;
+          DELETE FROM comms.project_channels WHERE id = v_room.id;
+          v_deleted_rooms := v_deleted_rooms + 1;
+        END LOOP;
+        DELETE FROM projects.stage_staffing_roles WHERE project_stage_id = v_stage.id;
+        DELETE FROM projects.stage_budget_rules WHERE project_stage_id = v_stage.id;
+        UPDATE projects.project_stages SET start_dependency_stage_id = NULL
+        WHERE start_dependency_stage_id = v_stage.id;
+        DELETE FROM projects.project_stages WHERE id = v_stage.id;
+        v_deleted_stages := v_deleted_stages + 1;
+      END IF;
+    END LOOP;
+  ELSE
+    FOR v_room IN
+      SELECT c.id FROM comms.project_channels c
+      WHERE c.project_id = p_project_id AND c.stage_id IS NOT NULL AND c.archived_at IS NULL
+    LOOP
+      IF projects.fn_room_has_history(v_room.id) THEN
+        UPDATE comms.project_channels SET archived_at = now() WHERE id = v_room.id;
+        v_archived_rooms := v_archived_rooms + 1;
+      ELSE
+        DELETE FROM comms.project_channel_participants WHERE channel_id = v_room.id;
+        DELETE FROM comms.project_channels WHERE id = v_room.id;
+        v_deleted_rooms := v_deleted_rooms + 1;
+      END IF;
+    END LOOP;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'sanitized', true,
+    'deleted_stages', v_deleted_stages,
+    'archived_stages', v_archived_stages,
+    'deleted_rooms', v_deleted_rooms,
+    'archived_rooms', v_archived_rooms
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, comms, finance, auth;
+
+-- ---------------------------------------------------------------------------------------------
 -- projects.reorder_stages(p_project_id, p_ordered_ids)
 -- Atomic bulk reorder that preserves each column's internal ticket array/order (ticket
 -- sort_order is independent of stage sort_order, so simply restamping stage order is safe).
@@ -380,10 +543,9 @@ BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'Sign in to reorder stages.' USING ERRCODE = 'insufficient_privilege';
   END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM projects.projects p WHERE p.id = p_project_id AND p.owner_user_id = auth.uid()
-  ) THEN
-    RAISE EXCEPTION 'Only the project owner may reorder its stages.' USING ERRCODE = 'insufficient_privilege';
+  IF NOT projects.can_review_project(p_project_id) THEN
+    RAISE EXCEPTION 'Only the project owner or its client business may reorder its stages.'
+      USING ERRCODE = 'insufficient_privilege';
   END IF;
 
   FOR i IN 1 .. array_length(p_ordered_ids, 1) LOOP

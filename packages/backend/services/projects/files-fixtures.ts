@@ -1,4 +1,5 @@
 import type {
+	ExplorerFileItem,
 	FileChannelRef,
 	FileItem,
 	FileKind,
@@ -8,11 +9,26 @@ import type {
 	FileSortKey,
 	MessageSender,
 	ProjectDetail,
+	ProjectFileItem,
 } from "@projective/types/projects";
-import { categorizeFile, messageAttachmentFacets } from "@projective/types/files";
+import {
+	categorizeFile,
+	categoryToKind,
+	describeFile,
+	messageAttachmentFacets,
+} from "@projective/types/files";
 import { findProjectDetail } from "./detail-fixtures.ts";
+import { findProjectSetup } from "./setup-fixtures.ts";
 import { mockAvatar, mockCover } from "../../mocks/assets.ts";
-import { expandChannelRef, findStageChannel } from "@projective/types/projects";
+import {
+	discussionOf,
+	discussionRoomId,
+	expandChannelRef,
+	findStageChannel,
+	isSingleRoomEngagement,
+	isTaskProject,
+	SINGLE_ROOM_NAME,
+} from "@projective/types/projects";
 
 /**
  * projects files fixtures — the fat {@link ProjectBackendService}'s in-memory answer for the File
@@ -153,10 +169,22 @@ interface ChanDesc {
 	senders: MessageSender[];
 }
 
-/** Flatten a project's four channel groups into a single ordered descriptor list. */
+/**
+ * Flatten a project's four channel groups into a single ordered descriptor list. A Task or Session
+ * lists its one Discussion room (relabelled) and its private threads, never its stage or spare rooms.
+ */
 function channelsOf(detail: ProjectDetail): ChanDesc[] {
 	const cast = groupSenders(detail);
 	const out: ChanDesc[] = [];
+	if (isSingleRoomEngagement(detail)) {
+		const roomId = discussionRoomId(discussionOf(detail));
+		if (roomId) out.push({ id: roomId, name: SINGLE_ROOM_NAME, kind: "general", senders: cast });
+		for (const d of detail.channels.dms) {
+			const other = partyToSender(d.chatId, d.party.name, d.party.avatar, d.party.handle);
+			out.push({ id: d.chatId, name: d.party.name, kind: "dm", senders: [VIEWER, other] });
+		}
+		return out;
+	}
 	for (const g of detail.channels.general) {
 		out.push({ id: g.id, name: g.name, kind: "general", senders: cast });
 	}
@@ -344,14 +372,69 @@ function filesForChannel(detail: ProjectDetail, chan: ChanDesc): FileItem[] {
 	return items;
 }
 
-/** The full corpus for a scope: one channel, or every channel (project scope). */
-function corpusFor(detail: ProjectDetail, ref: string | null | undefined): {
-	items: FileItem[];
+/**
+ * The client's project files — the setup fixture's reference attachments, so the explorer lists the
+ * same files the project's configuration shows. Dated before the first channel post: a brief is
+ * attached when the project is set up, ahead of the conversation about it.
+ */
+function projectFilesFor(detail: ProjectDetail): ProjectFileItem[] {
+	const attachments = findProjectSetup(detail.slug)?.attachments ?? [];
+	const client = detail.viewerIsClient ? VIEWER : partyToSender(
+		`${detail.slug}-owner`,
+		detail.owner.name,
+		detail.owner.avatar,
+		detail.owner.handle,
+	);
+	return attachments.map((a, i) => {
+		const seed = hash(`${a.id}:project-file`);
+		const { category, extension } = describeFile(a.name);
+		const kind = categoryToKind(category);
+		const photo = kind === "image" ? PHOTOS[seed % PHOTOS.length] : null;
+		const bytes = a.sizeBytes ?? 0;
+		const created = NOW - (21 - i) * DAY - (seed % 6) * HOUR;
+		return {
+			id: a.id,
+			kind,
+			category,
+			name: a.name,
+			ext: extension,
+			url: photo ? photo.url : "#",
+			thumbnailUrl: photo ? photo.url : null,
+			sizeBytes: bytes,
+			sizeLabel: fmtSize(bytes),
+			width: photo ? photo.w : null,
+			height: photo ? photo.h : null,
+			durationLabel: null,
+			channelId: null,
+			channelName: null,
+			channelKind: null,
+			messageId: null,
+			messageText: null,
+			messageAudioUrl: null,
+			sender: client,
+			createdAt: new Date(created).toISOString(),
+			timeLabel: fmtTime(created),
+			dayLabel: fmtDay(created),
+			dateLabel: fmtDateTime(created),
+			starred: false,
+			...messageAttachmentFacets(client.id, { canManage: client.id === VIEWER.id }),
+		};
+	});
+}
+
+/**
+ * The full corpus for a scope: one channel, or every channel plus the client's project files
+ * (project scope), or the project files alone (`projectFiles`). The channel index always covers the
+ * scope's channels, so the tree's counts hold whichever node is selected.
+ */
+function corpusFor(detail: ProjectDetail, ref: string | null | undefined, projectFiles: boolean): {
+	items: ExplorerFileItem[];
 	channels: FileChannelRef[];
+	projectFileCount: number;
 } {
 	const chans = channelsOf(detail);
 	// `discussion` narrows to the room it stands for, exactly as that room's own address does.
-	const channelId = ref ? expandChannelRef(detail, ref) : ref;
+	const channelId = ref && !projectFiles ? expandChannelRef(detail, ref) : null;
 	// A stage carries its own `stg-…` address rather than its room's id, so the segment is resolved to
 	// a channel before the corpus is narrowed. Without this a stage's Files tab scopes to nothing while
 	// its Chat tab scopes correctly — the same URL, two answers.
@@ -362,18 +445,25 @@ function corpusFor(detail: ProjectDetail, ref: string | null | undefined): {
 	// The channel index (tree top level) — counts reflect the WHOLE channel, filter-independent. In
 	// channel scope it is just the one channel; in project scope every channel that holds files.
 	const channels: FileChannelRef[] = [];
-	const items: FileItem[] = [];
+	const channelItems: FileItem[] = [];
 	for (const c of scoped) {
 		const f = filesForChannel(detail, c);
-		items.push(...f);
+		channelItems.push(...f);
 		channels.push({ id: c.id, name: c.name, kind: c.kind, count: f.length });
 	}
-	return { items, channels };
+	if (channelId) return { items: channelItems, channels, projectFileCount: 0 };
+
+	const files = projectFilesFor(detail);
+	return {
+		items: projectFiles ? files : [...files, ...channelItems],
+		channels,
+		projectFileCount: files.length,
+	};
 }
 // #endregion
 
 // #region Filter + sort + page
-function matches(item: FileItem, params: FileListParams): boolean {
+function matches(item: ExplorerFileItem, params: FileListParams): boolean {
 	if (params.kinds && params.kinds.length > 0 && !params.kinds.includes(item.kind)) return false;
 	if (params.query) {
 		const q = params.query.trim().toLowerCase();
@@ -382,7 +472,7 @@ function matches(item: FileItem, params: FileListParams): boolean {
 	return true;
 }
 
-const SORTERS: Record<FileSortKey, (a: FileItem, b: FileItem) => number> = {
+const SORTERS: Record<FileSortKey, (a: ExplorerFileItem, b: ExplorerFileItem) => number> = {
 	name: (a, b) => a.name.localeCompare(b.name),
 	date: (a, b) => a.createdAt.localeCompare(b.createdAt),
 	size: (a, b) => a.sizeBytes - b.sizeBytes,
@@ -390,7 +480,11 @@ const SORTERS: Record<FileSortKey, (a: FileItem, b: FileItem) => number> = {
 	type: (a, b) => a.kind.localeCompare(b.kind) || a.ext.localeCompare(b.ext),
 };
 
-function sortItems(items: FileItem[], sort: FileSortKey, dir: FileSortDir): FileItem[] {
+function sortItems(
+	items: ExplorerFileItem[],
+	sort: FileSortKey,
+	dir: FileSortDir,
+): ExplorerFileItem[] {
 	const cmp = SORTERS[sort];
 	const sorted = items.slice().sort(cmp);
 	// A stable tiebreak by id keeps paging deterministic when the key ties.
@@ -401,7 +495,8 @@ function sortItems(items: FileItem[], sort: FileSortKey, dir: FileSortDir): File
 const DEFAULT_LIMIT = 60;
 
 /**
- * Resolve a page of files. `channelId` unset/null → the whole project; set → that channel only.
+ * Resolve a page of files. `channelId` unset/null → the whole project; set → that channel only;
+ * `projectFiles` → the client's project files only.
  * Returns `null` only when the PROJECT itself resolves to nothing (the route maps that to a 404); an
  * empty-but-valid channel yields a page with no items so the explorer can show its empty state.
  */
@@ -409,8 +504,9 @@ export function findFilePage(params: FileListParams): FileListPage | null {
 	const detail = findProjectDetail(params.projectId);
 	if (!detail) return null;
 
-	const channelId = params.channelId ?? null;
-	const { items, channels } = corpusFor(detail, channelId);
+	const projectFiles = params.projectFiles === true;
+	const channelId = projectFiles ? null : params.channelId ?? null;
+	const { items, channels, projectFileCount } = corpusFor(detail, channelId, projectFiles);
 
 	const sort = params.sort ?? "date";
 	const dir = params.dir ?? (sort === "date" ? "desc" : "asc");
@@ -434,6 +530,8 @@ export function findFilePage(params: FileListParams): FileListPage | null {
 		channelId,
 		items: page,
 		channels,
+		projectFileCount,
+		task: isTaskProject(detail.format, detail.structure),
 		hasMore,
 		nextCursor: hasMore && page.length > 0 ? page[page.length - 1].id : null,
 		total,

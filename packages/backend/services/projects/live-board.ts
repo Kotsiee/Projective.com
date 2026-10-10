@@ -1406,6 +1406,7 @@ async function fetchStages(db: SupabaseClient, projectId: string): Promise<Stage
 		.from("project_stages")
 		.select(STAGE_COLUMNS)
 		.eq("project_id", projectId)
+		.is("archived_at", null)
 		.order("sort_order", { ascending: true });
 	if (error) throw new Error(`projects.project_stages read failed: ${error.message}`);
 	return (data ?? []) as unknown as StageRow[];

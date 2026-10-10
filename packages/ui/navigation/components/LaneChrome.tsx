@@ -240,6 +240,11 @@ export interface LaneIconButtonProps {
 	/** Persistent accent styling (a primary action such as Compose), independent of {@link active}. */
 	accent?: boolean;
 	/**
+	 * Draw the {@link active} state as a solid `--primary` fill with `--on-primary` ink instead of the
+	 * tonal tint — for a link whose destination is a distinct mode (the lane footer's Edit project).
+	 */
+	fillWhenActive?: boolean;
+	/**
 	 * Anchor ref for an overlay trigger. Named (not `ref`) because Preact does not forward `ref`
 	 * through a function component without `preact/compat`, which this package deliberately avoids.
 	 */
@@ -271,7 +276,12 @@ export function LaneIconButton(props: LaneIconButtonProps): JSX.Element {
 			<a
 				href={props.href}
 				ref={props.triggerRef as RefObject<HTMLAnchorElement> | undefined}
-				class={cx("ui-lane-iconbtn", props.accent && "ui-lane-iconbtn--accent", props.class)}
+				class={cx(
+					"ui-lane-iconbtn",
+					props.accent && "ui-lane-iconbtn--accent",
+					props.fillWhenActive && "ui-lane-iconbtn--fill-active",
+					props.class,
+				)}
 				data-on={props.active ? "true" : undefined}
 				aria-label={props.label}
 				aria-current={props.active ? "page" : undefined}
@@ -285,7 +295,12 @@ export function LaneIconButton(props: LaneIconButtonProps): JSX.Element {
 			<button
 				type="button"
 				ref={props.triggerRef as RefObject<HTMLButtonElement> | undefined}
-				class={cx("ui-lane-iconbtn", props.accent && "ui-lane-iconbtn--accent", props.class)}
+				class={cx(
+					"ui-lane-iconbtn",
+					props.accent && "ui-lane-iconbtn--accent",
+					props.fillWhenActive && "ui-lane-iconbtn--fill-active",
+					props.class,
+				)}
 				data-on={props.active ? "true" : undefined}
 				data-open={props.ariaExpanded ? "true" : undefined}
 				aria-label={props.label}

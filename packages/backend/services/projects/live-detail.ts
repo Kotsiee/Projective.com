@@ -25,6 +25,7 @@ import {
 	orgDb,
 	partyOf,
 	projectsDb,
+	resolveReviewAuthority,
 	toMemberRole,
 	toProjectStructure,
 	toStageProjectStatus,
@@ -497,6 +498,7 @@ async function fetchStages(db: SupabaseClient, projectId: string): Promise<Stage
 		.from("project_stages")
 		.select("id, slug, name, sort_order, status")
 		.eq("project_id", projectId)
+		.is("archived_at", null)
 		.order("sort_order", { ascending: true });
 	if (error) throw new Error(`projects.project_stages read failed: ${error.message}`);
 	return (data ?? []) as unknown as StageRow[];
@@ -868,6 +870,7 @@ export async function fetchProjectDetail(
 
 	const ownerUserId = detailRow?.owner_user_id ?? "";
 	const viewerIsClient = resolveViewerIsClient(actor, ownerUserId, participants);
+	const viewerCanConfigure = await resolveReviewAuthority(actor, ownerUserId, clientBusinessId);
 
 	return {
 		id: summary.id,
@@ -881,8 +884,10 @@ export async function fetchProjectDetail(
 		description: clamp(detailRow?.description_text, 2000),
 		viewerRole: summary.viewerRole,
 		viewerIsClient,
+		viewerCanConfigure,
+		// Review authority is the client side too: a member of the paying business owns the configuration.
 		viewerAccess: resolveViewerAccess(
-			viewerIsClient,
+			viewerIsClient || viewerCanConfigure,
 			hasAccess,
 			actor,
 			participants,

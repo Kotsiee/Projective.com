@@ -227,6 +227,21 @@ export function removalTouchesMoney(impact: RemovalImpact | undefined | null): b
 // #endregion
 
 // #region Member row
+/** A hired team a participant is seated through. */
+export const MemberTeamSchema = z.object({
+	id: z.string().min(1).max(120),
+	name: z.string().min(1).max(120),
+});
+export type MemberTeam = z.infer<typeof MemberTeamSchema>;
+
+/** A participant's membership of the paying client business. */
+export const MemberBusinessSchema = z.object({
+	name: z.string().min(1).max(120),
+	/** The corporate role preset they rank as there ("Owner", "Admin", "Member"…), already worded. */
+	role: z.string().min(1).max(60),
+});
+export type MemberBusiness = z.infer<typeof MemberBusinessSchema>;
+
 /** One participant row in the roster. */
 export const ProjectMemberRowSchema = z.object({
 	/** Stable participant id (the roster key + the actions-menu selector). */
@@ -264,6 +279,16 @@ export const ProjectMemberRowSchema = z.object({
 	 * {@link SessionAttendance}. `null`/absent for the host side and on every non-session roster.
 	 */
 	attendance: SessionAttendance.nullable().optional(),
+	/**
+	 * The hired team this participant delivers through, when they hold a seat as part of one. `null`/
+	 * absent for an individual hire or a client-side seat.
+	 */
+	team: MemberTeamSchema.nullable().optional(),
+	/**
+	 * Their membership of the paying client business and the corporate role they hold there. `null`/
+	 * absent when the engagement has no client business or they are not a member of it.
+	 */
+	business: MemberBusinessSchema.nullable().optional(),
 });
 export type ProjectMemberRow = z.infer<typeof ProjectMemberRowSchema>;
 // #endregion

@@ -174,6 +174,7 @@ import {
 	memberStagePicture,
 	NO_REMOVAL_IMPACT,
 	providerScopedPage,
+	isTaskProject,
 	reconcileSetup,
 	requestsForScope,
 	resolveHireOffer,
@@ -2627,8 +2628,9 @@ export class ProjectBackendService {
 	 * #144): the base {@link overview} plus "Needs you", the stage run and the people.
 	 *
 	 * COMPOSED from reads this service already answers on both branches rather than queried afresh:
-	 * the overview, the board (the run and every ticket's state), the roster (people and open
-	 * applications) and — for the owner only, who alone is shown prices — the setup. The composition is
+	 * the overview, the board (the run, every ticket's state, the claimable tickets), the roster (people
+	 * and open applications), the setup (the brief for everyone; prices for the owner alone) and, for a
+	 * participant, their own submissions. The composition is
 	 * the pure `composeWorkspace`, so the live path and the stub path cannot disagree about what a
 	 * "submission waiting for review" or a "stage that needs a price" is.
 	 *
@@ -2649,10 +2651,15 @@ export class ProjectBackendService {
 			});
 		}
 
-		const [board, roster, setup] = await Promise.all([
+		// The setup is read for every viewer because the brief is composed from it; the composition reads
+		// its prices for the owner only. A participant's own submissions feed their work signals.
+		const [board, roster, setup, submissions] = await Promise.all([
 			ProjectBackendService.board({ projectId: slug }, actor),
 			ProjectBackendService.members({ projectId: slug }, actor),
-			viewer === "owner" ? ProjectBackendService.setup(slug, actor) : Promise.resolve(null),
+			ProjectBackendService.setup(slug, actor),
+			viewer === "participant"
+				? ProjectBackendService.submissions({ projectId: slug, asFreelancer: true }, actor)
+				: Promise.resolve(null),
 		]);
 
 		return ok({
@@ -2660,7 +2667,8 @@ export class ProjectBackendService {
 				viewer,
 				board: board.ok && board.data ? board.data.page : null,
 				roster: roster.ok && roster.data ? roster.data.page : null,
-				setup: setup && setup.ok && setup.data ? setup.data.setup : null,
+				setup: setup.ok && setup.data ? setup.data.setup : null,
+				submissions: submissions && submissions.ok && submissions.data ? submissions.data.page : null,
 			}),
 		});
 	}
@@ -2733,7 +2741,15 @@ export class ProjectBackendService {
 		}
 		// Keyed by the project's own identity rather than by the routed segment: the same project reached
 		// through its slug and through its uuid must accumulate ONE set of edits, not two.
-		const merged = mergeSetupPatch(owner, base, setupPatchFrom(input, current));
+		let merged = mergeSetupPatch(owner, base, setupPatchFrom(input, current));
+		// The live path's `sanitize_single_room_topology`, for the stub: a Task keeps its root stage
+		// only. The stub has no messages, files or money, so nothing here would ever be archived — the
+		// stages a previous shape left behind are simply dropped from the stored configuration.
+		const next = reconcileSetup(base, merged);
+		if (isTaskProject(next.format, next.structure) && next.stages.length > 1) {
+			const root = [...next.stages].sort((a, b) => a.order - b.order)[0];
+			merged = mergeSetupPatch(owner, base, { stages: [root] });
+		}
 		invalidateProjects(actor);
 		// The response is simulated too, and it has to be: the form adopts what comes back as its new
 		// clean baseline, so an unsimulated response would silently drop the simulation on the first
