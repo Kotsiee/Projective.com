@@ -299,6 +299,11 @@ export const LocalKeys = {
 	 */
 	BASKET_LAST: "pj.local.basket.lastBasket",
 	/**
+	 * The owner scope (`personal` · `team:{id}` · …) the header basket drawer's switcher last chose,
+	 * off the checkout routes — where the URL's `?owner=` is the selection instead.
+	 */
+	BASKET_OWNER: "pj.local.basket.owner",
+	/**
 	 * The in-progress checkout draft — a JSON blob of the buyer's UNSUBMITTED selections (chosen
 	 * provider, chosen card id, typed promo code) keyed by basket id. Deliberately **never** an amount
 	 * and **never** an instrument: every figure is server-computed and a card is an opaque Stripe

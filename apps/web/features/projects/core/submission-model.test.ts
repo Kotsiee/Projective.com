@@ -4,6 +4,7 @@ import type {
 	SubmissionStatus,
 	SubmissionTreeNode,
 } from "@projective/types/projects";
+import { revisionIsFree } from "@projective/types/projects";
 import {
 	ancestorKeys,
 	childNodesAt,
@@ -11,11 +12,11 @@ import {
 	nodeKindLabel,
 	nodeShowsChildCards,
 	pathKey,
+	revisionAllowanceLabel,
 	statusLabel,
 	statusTone,
 	submissionHref,
 	submissionsBase,
-	submissionTickets,
 } from "./submission-model.ts";
 
 /**
@@ -131,30 +132,25 @@ Deno.test("containers drill into cards; a submission and its folders show files"
 });
 // #endregion
 
-// #region Create-submission tickets
-Deno.test("a one-off has no tickets to fulfil", () => {
-	assertEquals(submissionTickets("prj-1:stg-1", { hasTickets: false }), []);
+// #region Revision allotment (Decision #167)
+const terms = (used: number, allowed: number | null, priceMinor: number | null) => ({
+	used,
+	allowed,
+	priceMinor,
 });
 
-Deno.test("a ticketed engagement offers one to three tickets, stable per seed", () => {
-	for (const seed of ["a", "prj-1:stg-1", "prj-2:stg-9", "zzzz", ""]) {
-		const first = submissionTickets(seed, { hasTickets: true });
-		assert(first.length >= 1 && first.length <= 3, `${seed}: ${first.length}`);
-		assertEquals(submissionTickets(seed, { hasTickets: true }), first);
-		for (const t of first) {
-			assert(/^TCK-\d{3}$/.test(t.id), t.id);
-			assert(t.title.startsWith(`${t.id} · `), t.title);
-		}
-	}
+Deno.test("a round is free while the allotment is unlimited, unused, or extra rounds cost nothing", () => {
+	assert(revisionIsFree(terms(9, null, null)));
+	assert(revisionIsFree(terms(1, 2, 12000)));
+	assert(revisionIsFree(terms(2, 2, 0)));
+	assert(!revisionIsFree(terms(2, 2, 12000)));
+	assert(!revisionIsFree(terms(0, 0, null)), "0 included rounds and none for sale is exhausted");
 });
 
-Deno.test("a revision ticket, when there is one, is only ever the last", () => {
-	let sawRevision = false;
-	for (let i = 0; i < 40; i++) {
-		const list = submissionTickets(`seed-${i}`, { hasTickets: true });
-		list.slice(0, -1).forEach((t) => assertEquals(t.kind, "ticket"));
-		if (list.at(-1)?.kind === "revision") sawRevision = true;
-	}
-	assert(sawRevision, "some seed yields a revision ticket");
+Deno.test("the allotment line counts free rounds and is absent when unlimited", () => {
+	assertEquals(revisionAllowanceLabel(terms(1, 2, 12000)), "1 of 2 free revisions used");
+	assertEquals(revisionAllowanceLabel(terms(1, 1, 12000)), "1 of 1 free revision used");
+	assertEquals(revisionAllowanceLabel(terms(3, 2, 0)), "2 of 2 free revisions used");
+	assertEquals(revisionAllowanceLabel(terms(4, null, null)), null);
 });
 // #endregion

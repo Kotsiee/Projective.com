@@ -90,3 +90,22 @@ Deno.test("a non-member of an entity is refused every route", () => {
 	const offer = availableProviders({ ...person, ownerType: "team", actingIsMember: false });
 	assert(offer.every((entry) => !entry.available && entry.reason !== null));
 });
+
+Deno.test("a verified business pays by invoice only on monthly invoicing, with nothing overdue, inside its limit", () => {
+	const business: ProviderContext = {
+		...person,
+		ownerType: "business",
+		kybStatus: "verified",
+		verificationTier: 3,
+		onAccount: { monthly: true, overdue: false, headroomMinor: 10_000 },
+	};
+	assert(offerOf(business).invoice.available);
+	const notMonthly = offerOf({ ...business, onAccount: { monthly: false, overdue: false, headroomMinor: 10_000 } });
+	assert(!notMonthly.invoice.available);
+	assert(notMonthly.invoice.reason?.includes("monthly invoicing"));
+	const overdue = offerOf({ ...business, onAccount: { monthly: true, overdue: true, headroomMinor: 10_000 } });
+	assert(overdue.invoice.reason?.includes("overdue"));
+	const short = offerOf({ ...business, onAccount: { monthly: true, overdue: false, headroomMinor: 8_000 } });
+	assert(!short.invoice.available);
+	assert(short.invoice.reason?.includes("on-account limit"));
+});

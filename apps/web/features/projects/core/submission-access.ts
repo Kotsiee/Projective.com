@@ -4,7 +4,12 @@ import {
 	readDevSeam,
 	subscribeDevSeam,
 } from "@web/utils/dev-seam.ts";
-import type { ProjectFormat, SubmissionStatus } from "../types/projects-types.ts";
+import type {
+	ProjectFormat,
+	SubmissionRevisions,
+	SubmissionStatus,
+} from "../types/projects-types.ts";
+import { formatMoney } from "@projective/types/finance";
 
 /**
  * submission-access — the pure, shipping-safe model that resolves the SUBMISSIONS workflow's effective
@@ -83,6 +88,33 @@ export function mapDevSubmissionStatus(state: DevSubmissionState): SubmissionSta
 		default:
 			return "draft";
 	}
+}
+
+/**
+ * The review's revision allotment with the dev `revisionAllotment` override applied (Decision #167).
+ * `exhausted` uses up the free rounds — keeping the stage's own count and price when it has them, else
+ * two rounds at a stand-in price — so the Buy a revision path renders. Anything else is the real terms.
+ */
+export function effectiveRevisions(
+	revisions: SubmissionRevisions | null,
+	seam: DevSeamState | null,
+): SubmissionRevisions | null {
+	if (seam?.revisionAllotment !== "exhausted") return revisions;
+	const allowed = revisions?.allowed ?? 2;
+	const priceMinor = revisions?.priceMinor || 12_000;
+	const currency = revisions?.currency ?? "USD";
+	return {
+		used: allowed,
+		allowed,
+		priceMinor,
+		currency,
+		priceLabel: revisions?.priceMinor ? revisions.priceLabel : formatMoney(priceMinor, currency),
+	};
+}
+
+/** Whether the active unit carries a funded paid round — the real flag, or the dev `paid` override. */
+export function effectivePaidRevision(unitPaid: boolean, seam: DevSeamState | null): boolean {
+	return seam?.revisionAllotment === "paid" || unitPaid;
 }
 
 /**

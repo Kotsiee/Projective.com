@@ -26,8 +26,16 @@ Migrations `20260724090000`–`20260724094000`. Zod SSOT:
 
 ### `comms.notification_types`
 
-The routing matrix **as data**: one row per event key declaring how that event is delivered. 91 keys
+The routing matrix **as data**: one row per event key declaring how that event is delivered. 94 keys
 are seeded (money · work · messages · schedule · discovery · account · system · marketing).
+`packages/types/comms/catalog.contract.test.ts` fails when a `comms.fn_notify` call in a migration,
+or an `rpc("fn_notify")` in a backend service, emits a key (or alias) the seed does not carry, and
+when `KNOWN_NOTIFICATION_TYPES` drifts from the seed.
+
+**Added 2026-10-10:** `chargeback.won` (money · high · in_app + email, mandatory) and
+`chargeback.lost` (money · critical · in_app + email, mandatory, pierces quiet hours), emitted by the
+chargeback-resolution RPCs in `00001240`. Until then both auto-registered as `system`/`medium` on
+first use, i.e. a money outcome routed as a mutable system notice.
 
 **The eight added 2026-09-28 (Teams & Businesses, root `CLAUDE.md` §8 Decision #122)**, each
 emitted by a workspace or money RPC. `spend.approved` / `spend.rejected` were already emitted by

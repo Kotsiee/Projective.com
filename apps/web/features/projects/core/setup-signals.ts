@@ -275,6 +275,7 @@ function fingerprint(setup: ProjectSetup): string {
 			setup.rules.allowDeadlineBonuses,
 			setup.rules.locationRestriction,
 			setup.rules.languageRequirement,
+			setup.rules.autoFundOverride ?? null,
 		],
 		setup.stages.map((s) => [
 			s.id,

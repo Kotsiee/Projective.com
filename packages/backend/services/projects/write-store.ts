@@ -45,6 +45,7 @@ import { flattenRichText } from "@projective/types/richtext";
 import { mintSlug } from "@projective/types/slugs";
 import { toMajorUnits } from "@projective/types/finance";
 import type { ReadActor } from "../read-actor.ts";
+import { fixtureFunding } from "./board-fixtures.ts";
 
 /**
  * projects write store — the mutable, PER-PROCESS overlay the projects write path keeps while
@@ -841,6 +842,7 @@ export function createdDetail(ref: string, actor?: ReadActor): ProjectDetail | n
 		kind: "project",
 		format: setup.format,
 		structure: setup.structure,
+		sessionKind: setup.format === "session" ? setup.sessionKind : "none",
 		status: setup.status,
 		typeLabel: TYPE_LABELS[setup.format],
 		description: flattenRichText(setup.description).slice(0, 2000),
@@ -866,6 +868,7 @@ export function createdDetail(ref: string, actor?: ReadActor): ProjectDetail | n
 		// something (root CLAUDE.md §3 gate 11); mimicking the live tree's appearance without its
 		// substance is worse than differing from it visibly.
 		channels: { general: [], stages: [], teams: [], dms: [] },
+		funding: null,
 	};
 }
 
@@ -1215,6 +1218,7 @@ function overlayStages(
 			categoryWeight: 1,
 			members: [],
 			ticketCount,
+			funding: null,
 			assignmentMode: "open_pull",
 			maxConcurrentIntensity: null,
 			// A stage minted from a setup save has no schedule yet; the timeline draws it as an
@@ -1760,6 +1764,7 @@ export function buildStubCard(
 	const budgetCents = ticketTotalCents(refs);
 	const description = input.description.trim();
 	const tasks = input.tasks;
+	const escrowHeld = previous?.escrowHeld ?? false;
 	return {
 		id,
 		// A saved ticket always has an address, so the stub mints one the way the database's trigger
@@ -1777,11 +1782,21 @@ export function buildStubCard(
 		// stub that flipped these would report money as held that no ledger has a record of.
 		claimed: previous?.claimed ?? false,
 		claimedAt: previous?.claimedAt ?? null,
-		escrowHeld: previous?.escrowHeld ?? false,
+		escrowHeld,
 		// Funding is bought, not typed. A commit carries what was already paid for; a ticket nobody has
 		// bought yet is unpaid, and this stub has no purchase path that could say otherwise.
 		paymentScope: previous?.paymentScope ?? "unpaid",
 		paidStageIds: previous?.paidStageIds ?? [],
+		funding: fixtureFunding({
+			status: input.status,
+			escrowHeld,
+			hasDescription: description.length > 0,
+			budgetCents,
+			stageId: input.stageId,
+			stages: refs,
+			paymentScope: previous?.paymentScope ?? "unpaid",
+			paidStageIds: previous?.paidStageIds ?? [],
+		}),
 		priority: input.priority,
 		intensity: input.intensity,
 		workload: workloadOf(refs, stages),
@@ -1818,10 +1833,10 @@ export function buildStubCard(
  * flips, which is the harder bug to find.
  */
 export function movedStubCard(card: BoardCard, input: MoveTicket, now: number): BoardCard {
+	const moved = { ...card, status: input.status, stageId: input.stageId };
 	return {
-		...card,
-		status: input.status,
-		stageId: input.stageId,
+		...moved,
+		funding: fixtureFunding(moved),
 		sortOrder: input.status === "backlog" && input.sortOrder !== null
 			? input.sortOrder
 			: card.sortOrder,
@@ -1918,6 +1933,7 @@ export function buildStubSubmissionUnit(
 		dateLabel: dateLabelOf(now),
 		fileCount: input.fileIds.length,
 		noteCount: 0,
+		paidRevision: false,
 	};
 }
 // #endregion

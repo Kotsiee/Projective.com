@@ -24,6 +24,7 @@ import { findProjectDetail } from "./detail-fixtures.ts";
 import { findBoardPage } from "./board-fixtures.ts";
 import { findMessagePage } from "./messages-fixtures.ts";
 import { findProject } from "./query.ts";
+import { rollupFundingState } from "../finance/funding-state.ts";
 
 /**
  * projects overview fixtures — the in-memory answer for the FREELANCER's `/projects/[projectId]`
@@ -236,6 +237,7 @@ function assignmentsOf(
 			status: card.status,
 			dueLabel: card.dueDate ? dueLabel(card.dueDate) : null,
 			href: `/projects/${slug}/board`,
+			funding: card.funding,
 		}));
 }
 // #endregion
@@ -484,6 +486,7 @@ export function findProjectOverview(projectKey: string): ProjectOverview | null 
 		channels: channelsOf(slug, detail),
 		assignments: assignmentsOf(slug, cards, stageNames, seat),
 		finance: financeOf(mine),
+		funding: rollupFundingState(mine.flatMap((card) => (card.funding ? [card.funding] : []))),
 	};
 }
 // #endregion

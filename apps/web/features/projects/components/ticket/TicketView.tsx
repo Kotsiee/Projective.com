@@ -56,6 +56,8 @@ import { TicketHistoryTab } from "./tabs/TicketHistoryTab.tsx";
 import { TicketSubmissionsTab } from "./tabs/TicketSubmissionsTab.tsx";
 import { TicketTimelineTab } from "./tabs/TicketTimelineTab.tsx";
 import { UserAvatarStack } from "@web/components/UserAvatar.tsx";
+import { FundingStatus } from "../FundingStatus.tsx";
+import { fundingAction, fundingDateLabel } from "../../core/funding-ui.ts";
 
 /**
  * TicketView — the ONE ticket surface. Creating, reading and editing a ticket are the same modal.
@@ -132,6 +134,14 @@ export interface TicketViewProps {
 	onOpenSubmission: (path: string[]) => void;
 	/** Start a submission against an active stage (provider side). */
 	onCreateSubmission: (stageId: string) => void;
+	/** Fund this ticket now — opens Buy Now. Absent where the host cannot (no Buy Now mounted). */
+	onBuyNow?: (card: BoardCard) => void;
+	/** Put this ticket in the basket. */
+	onAddToBasket?: (card: BoardCard) => void;
+	/** The payee starts work on a funded ticket (provider side). */
+	onStartWork?: (card: BoardCard) => void;
+	/** A funding write the host started is in flight. */
+	fundingBusy?: boolean;
 }
 
 export function TicketView(props: TicketViewProps): JSX.Element {
@@ -187,6 +197,13 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 	// glance at Finances overwrite where the reader had got to in a long History — the offset belongs
 	// to the content, and the content changes with the tab.
 	useFrameScroll(ticketStack, uid, `scroll:${tab.value}`, bodyRef);
+	// A server-side change to a ticket nobody is editing (Start work, a settled payment) re-bases the
+	// working copy, so the header never states a status the server has already moved on from.
+	useEffect(() => {
+		if (creating || ticketFingerprint(draft.value) !== baseline.value) return;
+		draft.value = props.card;
+		baseline.value = ticketFingerprint(props.card);
+	}, [props.card]);
 
 	const card = draft.value;
 	const hasTimeline = props.hasTimeline !== false;
@@ -211,6 +228,50 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 		: inspected
 		? "stage"
 		: null;
+
+	/*
+	 * The funding line reads the SERVER card, never the working copy: whether money is held is not
+	 * something an unsaved edit can change. It has one home at a time — the Finances tab while that tab
+	 * is open, the footer otherwise — so its action is never on screen twice (§D.7.4's moved, never
+	 * duplicated). Nothing is said about a ticket that is unsaved or mid-edit.
+	 */
+	const server = props.card;
+	const funding = !creating && !dirty ? server.funding : null;
+	const fundingSide = isFreelancer ? "provider" : "client";
+	const startPending = isFreelancer && funding !== null &&
+		(fundingAction(funding, "provider") ?? "").startsWith("start");
+	const fundingLine = (extra?: string, actions = true) =>
+		funding && !actions
+			? (
+				<FundingStatus
+					funding={funding}
+					side={fundingSide}
+					freelancer={server.assignee?.name ?? null}
+					dateLabel={fundingDateLabel(server, funding)}
+				/>
+			)
+			: funding
+			? (
+				<FundingStatus
+					class={extra}
+					funding={funding}
+					side={fundingSide}
+					freelancer={server.assignee?.name ?? null}
+					dateLabel={fundingDateLabel(server, funding)}
+					pollSlug={server.slug}
+					busy={props.fundingBusy}
+					onBuyNow={isClient && props.onBuyNow ? () => props.onBuyNow?.(server) : undefined}
+					onAddToBasket={isClient && props.onAddToBasket
+						? () => props.onAddToBasket?.(server)
+						: undefined}
+					onRetry={isClient && props.onBuyNow ? () => props.onBuyNow?.(server) : undefined}
+					onReview={isClient ? () => (tab.value = "submissions") : undefined}
+					onStart={isFreelancer && props.onStartWork
+						? () => props.onStartWork?.(server)
+						: undefined}
+				/>
+			)
+			: null;
 
 	const tabId = (t: TicketTab) => `tkv-tab-${t}`;
 	const panelId = (t: TicketTab) => `tkv-panel-${t}`;
@@ -534,7 +595,9 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 											/>
 										)
 										: null}
-									{tab.value === "finances" ? <TicketFinanceTab card={card} /> : null}
+									{tab.value === "finances"
+										? <TicketFinanceTab card={card} funding={fundingLine()} />
+										: null}
 									{tab.value === "attachments"
 										? (
 											<TicketAttachmentsTab
@@ -588,6 +651,9 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 														(c) => c.stageId === inspected.ref.stageId && c.id !== card.id,
 													)}
 													editable={canEdit}
+													funding={inspected.ref.stageId === server.stageId
+														? fundingLine(undefined, false)
+														: null}
 													onClose={() => (selectedStage.value = null)}
 													onPatch={(sp) =>
 														patch({
@@ -688,10 +754,15 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 						}
 						{creating || dirty
 							? <p class="tkv__gate" role="status">{gate.message}</p>
+							: funding && tab.value !== "finances"
+							? fundingLine("tkv__fund")
 							: <span class="tkv__gate tkv__gate--spacer" />}
 
 						<div class="tkv__footacts">
-							{isFreelancer && !creating && !dirty && active.length > 0
+							{
+								/* No hold, no work (#165): a submission comes after Start work, never instead of it. */
+							}
+							{isFreelancer && !creating && !dirty && active.length > 0 && !startPending
 								? (
 									<Button
 										variant="filled"

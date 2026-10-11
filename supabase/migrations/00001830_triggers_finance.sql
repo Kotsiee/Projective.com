@@ -89,3 +89,12 @@ CREATE TRIGGER trg_freelancer_profiles_verification_stamp
     FOR EACH ROW
     EXECUTE FUNCTION org.trg_freelancer_profiles_verification_stamp ();
 -- #endregion
+
+-- #region Wallet watch — auto-fund retries and the low-balance warning (00001250, Decision #172)
+-- Every ledger line on a business wallet: a credit retries the From-wallet auto-fund queue, a debit
+-- that crosses the business's balance floor warns once and runs any floor top-up.
+CREATE TRIGGER trg_transactions_wallet_watch
+    AFTER INSERT ON finance.transactions
+    FOR EACH ROW
+    EXECUTE FUNCTION finance.fn_wallet_watch ();
+-- #endregion

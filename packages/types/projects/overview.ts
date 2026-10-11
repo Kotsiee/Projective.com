@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MoneyViewSchema } from "../finance/wallet.ts";
+import { FundingRollupSchema, FundingStatusSchema } from "../finance/funding.ts";
 import { ChannelKind } from "./detail.ts";
 import { SystemActivityType } from "./messages.ts";
 import { TicketStatus } from "./board.ts";
@@ -123,6 +124,8 @@ export const ProjectAssignmentSchema = z.object({
 	/** Pre-formatted due label ("Due Fri, 12 Sep"); `null` = undated, which is not the same as overdue. */
 	dueLabel: z.string().max(40).nullable(),
 	href: z.string().min(1).max(300),
+	/** Is the money held, and may work start (`deriveFundingState`)? `null` when it could not be read. */
+	funding: FundingStatusSchema.nullable().default(null),
 });
 export type ProjectAssignment = z.infer<typeof ProjectAssignmentSchema>;
 // #endregion
@@ -161,6 +164,8 @@ export const ProjectOverviewSchema = z.object({
 	channels: z.array(ProjectOverviewChannelSchema).max(50),
 	assignments: z.array(ProjectAssignmentSchema).max(100),
 	finance: ProjectOverviewFinanceSchema,
+	/** The viewer's own tickets rolled up (`rollupFundingState`); `null` while they hold none. */
+	funding: FundingRollupSchema.nullable().default(null),
 });
 export type ProjectOverview = z.infer<typeof ProjectOverviewSchema>;
 // #endregion

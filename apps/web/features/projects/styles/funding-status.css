@@ -1,0 +1,142 @@
+/*
+ * FundingStatus — one ticket's payment & work-start line (PRODUCT_MANAGEMENT §3.6).
+ *
+ *   §B.11  The tag is a LIFECYCLE STATUS, the one kind of non-control fact a fill may carry. It is a
+ *          solid role fill, never a wash (§B.11.6), on the `.pjd-status` recipe — the role mixed 70%
+ *          toward `--on-surface`, ink `--on-<role>` — so `status-fill.test.ts` measures this pill too
+ *          (≥ 4.5:1 in all four mode/contrast states).
+ *   §A.4   The sentence is Body register; the amount inside it is a changing figure, so the whole
+ *          line is `tabular-nums`.
+ *   §B.12  Press feedback is the `Button`'s own `transform: scale()` — nothing here moves a box.
+ *
+ * Unboxed: the line sits in whatever region hosts it (a footer, a tab, an inspector) and separates by
+ * spacing, never a border of its own (§B.4).
+ */
+
+/* #region Line */
+.fst {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2) var(--space-3);
+	min-inline-size: 0;
+}
+
+.fst__line {
+	flex: 1 1 14rem;
+	min-inline-size: 0;
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+	font-variant-numeric: tabular-nums;
+}
+
+.fst__acts {
+	flex: none;
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+
+.fst__acts:empty {
+	display: none;
+}
+/* #endregion */
+
+/* #region Status tag */
+.fst-tag {
+	--fst-role: var(--info);
+	--fst-ink: var(--on-info);
+	--fst-fill: color-mix(in srgb, var(--fst-role) 70%, var(--on-surface));
+
+	display: inline-flex;
+	align-items: center;
+	flex: none;
+	padding: var(--space-1) var(--space-3);
+	border-radius: var(--radius-full);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-wide);
+	line-height: var(--leading-snug);
+	text-transform: uppercase;
+	white-space: nowrap;
+	background: var(--fst-fill);
+	color: var(--fst-ink);
+}
+
+.fst-tag[data-tone="success"] {
+	--fst-role: var(--success);
+	--fst-ink: var(--on-success);
+}
+
+.fst-tag[data-tone="warning"] {
+	--fst-role: var(--warning);
+	--fst-ink: var(--on-warning);
+}
+
+.fst-tag[data-tone="danger"] {
+	--fst-role: var(--danger);
+	--fst-ink: var(--on-danger);
+}
+
+/* Nothing here asks for attention — the `.pjd-status` neutral fill. */
+.fst-tag[data-tone="neutral"] {
+	--fst-ink: var(--surface);
+	--fst-fill: color-mix(in srgb, var(--on-surface-variant) 80%, var(--surface));
+}
+
+/* The board card's foot: the same pill at the card's own label size. */
+.fst-tag--compact {
+	padding: 0 var(--space-2);
+	font-size: var(--text-2xs, var(--text-xs));
+	letter-spacing: var(--tracking-normal, 0.04em);
+}
+
+/* Funded on a card is an icon-only mark beside the price, so the foot never carries two fills. */
+.fst-mark {
+	display: inline-flex;
+	align-items: center;
+	color: color-mix(in srgb, var(--success) 70%, var(--on-surface));
+}
+
+/* #endregion */
+
+/* #region Placements */
+/*
+ * The ticket modal footer: the line takes the slot the readiness line leaves on a saved ticket, so the
+ * money leads, the sentence explains, and the one action sits at the end. Below 900px the footer wraps
+ * and the line drops to its own row, as the readiness line does.
+ */
+.fst.tkv__fund {
+	flex: 1 1 auto;
+	flex-wrap: nowrap;
+	justify-content: flex-end;
+}
+
+/* The sentence shrinks and wraps inside its own box, so the tag stays beside it. */
+.tkv__fund .fst__line {
+	flex: 0 1 auto;
+	text-align: end;
+	color: var(--text-secondary);
+}
+
+/* The stage inspector: under the stage's price, on the panel's own inset. */
+.tkc-insp__funding {
+	flex: none;
+	padding: 0 var(--space-4) var(--space-3);
+}
+
+@media (max-width: 900px) {
+	.fst.tkv__fund {
+		order: 4;
+		flex-basis: 100%;
+		flex-wrap: wrap;
+		justify-content: space-between;
+	}
+
+	.tkv__fund .fst__line {
+		text-align: start;
+	}
+}
+/* #endregion */

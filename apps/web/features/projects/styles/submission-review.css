@@ -571,6 +571,15 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	font-size: var(--text-sm);
 	color: var(--text-secondary);
 }
+/* "1 of 2 free revisions used" (Decision #167) — meta text beside the controls, a changing figure. */
+.subm-review__allotment {
+	flex: none;
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
 /* A refused or failed verdict — the same slot as the hint, so the footer never reflows around it. */
 .subm-review__error {
 	flex: 1 1 auto;
@@ -653,5 +662,9 @@ a.subm-ctx__who:hover .subm-ctx__name {
 	.subm-work__feedback {
 		grid-template-columns: 1fr;
 		max-block-size: 50%;
+	}
+	/* The hint, the allotment line and the two controls no longer fit one row on a phone. */
+	.subm-review__foot {
+		flex-wrap: wrap;
 	}
 }

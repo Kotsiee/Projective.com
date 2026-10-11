@@ -24,6 +24,11 @@ export interface TabMenuProps {
 	itemTemplate?: (item: MenuItem, index: number) => VNode;
 	/** Accessible label for the tab strip (default `"Tabs"`). */
 	"aria-label"?: string;
+	/**
+	 * Tablist mode: the id of the one `role="tabpanel"` the caller renders for the active tab. Every tab
+	 * names it in `aria-controls`, completing the WAI-ARIA tabs pattern.
+	 */
+	panelId?: string;
 	class?: string;
 }
 // #endregion
@@ -50,6 +55,7 @@ export function TabMenu(props: TabMenuProps): JSX.Element {
 		scrollable = true,
 		itemTemplate,
 		"aria-label": ariaLabel = "Tabs",
+		panelId,
 		class: className,
 	} = props;
 
@@ -204,6 +210,7 @@ export function TabMenu(props: TabMenuProps): JSX.Element {
 											type="button"
 											role="tab"
 											aria-selected={isActive}
+											aria-controls={panelId}
 											disabled={disabled}
 											onClick={() => goTo(i)}
 										>

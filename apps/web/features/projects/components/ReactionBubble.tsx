@@ -3,6 +3,7 @@ import { useSignal } from "@preact/signals";
 import { useLayoutEffect, useRef } from "preact/hooks";
 import "../styles/message-interactions.css";
 import { BodyPortal } from "@projective/ui/overlay";
+import { useDismiss, useOverlayStack } from "@projective/ui/hooks";
 import { QUICK_EMOJI } from "./MessageActions.tsx";
 
 /**
@@ -13,7 +14,7 @@ import { QUICK_EMOJI } from "./MessageActions.tsx";
  * owner's scoped extension of DESIGN_SYSTEM.md §B.4.3; the blur sits on a `::before` underlay and
  * falls back to an opaque fill). Centred above the held message's bubble, or below it when the
  * message is too close to the top of the screen; portalled so the blurred rows around it cannot blur
- * it too.
+ * it too. Escape closes it through the shared overlay stack.
  */
 
 export interface ReactionBubbleProps {
@@ -22,14 +23,21 @@ export interface ReactionBubbleProps {
 	/** The surface root the message row is in. */
 	rootRef: RefObject<HTMLElement>;
 	onReact: (emoji: string) => void;
+	/** Close the bubble (Escape). */
+	onDismiss: () => void;
 }
 
 /** Room kept between the bubble, the message and the viewport edge (px). */
 const GAP = 8;
 
-export function ReactionBubble({ messageId, rootRef, onReact }: ReactionBubbleProps): JSX.Element {
+export function ReactionBubble(
+	{ messageId, rootRef, onReact, onDismiss }: ReactionBubbleProps,
+): JSX.Element {
 	const ref = useRef<HTMLDivElement>(null);
 	const pos = useSignal<{ x: number; y: number } | null>(null);
+	const stack = useOverlayStack({ active: true });
+	// Outside presses stay with the selection's own listener, which already ends the hold.
+	useDismiss({ open: true, enabled: stack.isTop, onDismiss, panelRef: ref, closeOnOutside: false });
 
 	useLayoutEffect(() => {
 		function place(): void {
@@ -66,7 +74,9 @@ export function ReactionBubble({ messageId, rootRef, onReact }: ReactionBubblePr
 				aria-label="React to message"
 				data-msg-ui="true"
 				data-placed={p ? "true" : undefined}
-				style={p ? { "--glass-x": `${p.x}px`, "--glass-y": `${p.y}px` } : undefined}
+				style={p
+					? { "--glass-x": `${p.x}px`, "--glass-y": `${p.y}px`, "--z-portal": String(stack.zIndex) }
+					: undefined}
 			>
 				{QUICK_EMOJI.map((emoji) => (
 					<button

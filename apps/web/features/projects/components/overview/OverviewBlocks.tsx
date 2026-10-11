@@ -5,6 +5,7 @@ import {
 	type NextAction,
 	type NextActionKind,
 	type ProjectStatus,
+	type ReadyStep,
 	WORKSPACE_PERSON_ROLE_LABEL,
 	WORKSPACE_STAGE_STATE_LABEL,
 	type WorkspacePeople,
@@ -75,6 +76,42 @@ export function NextActionsBlock(
 						))}
 					</ul>
 				)}
+		</Block>
+	);
+}
+// #endregion
+
+// #region Ready to start
+/**
+ * "Ready to start?" — the owner's four steps from a brief to work under way, each a row that goes
+ * where the step is done. Its state is in words beside each step as well as in the glyph, so it reads
+ * the same without colour or a screen. The block leaves once work has started (`readiness` is null).
+ */
+export function ReadyBlock({ steps }: { steps: readonly ReadyStep[] }): JSX.Element {
+	return (
+		<Block title="Ready to start?">
+			<ol class="pjd-list pjd-ready">
+				{steps.map((step) => {
+					const body = (
+						<>
+							<span class="pjd-row__icon pjd-ready__mark" data-done={step.done} aria-hidden="true">
+								<Icon name={step.done ? "check" : "clock"} size="sm" />
+							</span>
+							<span class="pjd-row__body">
+								<span class="pjd-row__title">{step.label}</span>
+								<span class="pjd-row__sub">{step.done ? "Done" : "Not yet"}</span>
+							</span>
+						</>
+					);
+					return (
+						<li key={step.key}>
+							{!step.done && step.href
+								? <a class="pjd-row" href={step.href}>{body}</a>
+								: <div class="pjd-row">{body}</div>}
+						</li>
+					);
+				})}
+			</ol>
 		</Block>
 	);
 }

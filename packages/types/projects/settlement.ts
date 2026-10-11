@@ -68,6 +68,29 @@ export const SubmissionReviewedSchema = z.object({
 	status: SubmissionStatus,
 });
 export type SubmissionReviewed = z.infer<typeof SubmissionReviewedSchema>;
+
+/**
+ * Raise a PAID revision round on a submission once its stage's free rounds are used (Decision #167),
+ * through `projects.request_paid_revision`. Nothing is charged: the round waits `awaiting_payment` until
+ * its `paid_revision` basket line is paid, and only then is the work sent back. Notes are required for
+ * the reason a free round requires them.
+ */
+export const RequestPaidRevisionSchema = z.object({
+	projectId: ProjectRef,
+	stageId: StageRef,
+	submissionId: z.string().min(1).max(120),
+	notes: z.string().trim().min(1, "Say what needs to change before buying a revision.").max(4000),
+});
+export type RequestPaidRevision = z.infer<typeof RequestPaidRevisionSchema>;
+
+/** The raised round — what the Buy Now line names (`itemType: "paid_revision"`, `itemId: revisionId`). */
+export const PaidRevisionRaisedSchema = z.object({
+	revisionId: z.string().uuid(),
+	priceMinor: z.number().int().positive(),
+	currency: z.string().length(3),
+	title: z.string().min(1).max(200),
+});
+export type PaidRevisionRaised = z.infer<typeof PaidRevisionRaisedSchema>;
 // #endregion
 
 // #region Stage approval

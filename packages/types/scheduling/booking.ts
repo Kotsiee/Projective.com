@@ -35,11 +35,12 @@ import { CallRefusalReason, CallType } from "./calls.ts";
  * Re-uses {@link CallRefusalReason} verbatim for the rules the in-DB gate already names, so the
  * picker's pre-flight check and `scheduling.fn_call_request_refusal` cannot drift into two
  * vocabularies for one refusal. `taken` / `blackout` / `past` are grid-only additions: that function
- * answers about ONE proposed slot, and none of the three is a reason it can return.
+ * answers about ONE proposed slot, and none of the three is a reason it can return. `full` is a cohort
+ * occurrence whose every seat is paid for or held (Decision #171).
  */
 export const SlotUnavailableReason = z.union([
 	CallRefusalReason,
-	z.enum(["taken", "blackout", "past"]),
+	z.enum(["taken", "blackout", "past", "full"]),
 ]);
 export type SlotUnavailableReason = z.infer<typeof SlotUnavailableReason>;
 

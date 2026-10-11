@@ -22,9 +22,17 @@ import { multiplierLabel } from "../../../core/ticket-view.ts";
  * The **movements** section is the audit history: what has been held, adjusted, charged and
  * released. An unpriced stage renders as "No rate", never as $0 — a price nobody has set and a price
  * of nothing are different facts, and a total that silently absorbs the first is a lie.
+ *
+ * Above both sits the ticket's funding line — is the money held, and may work start — with its one
+ * action, so the tab that explains the money is also where it can be paid.
  */
 export interface TicketFinanceTabProps {
 	card: BoardCard;
+	/**
+	 * The ticket's funding line (`FundingStatus`) with its one action, built by the host so the tab and
+	 * the footer share one instance's handlers. While this tab is open it is the line's only home.
+	 */
+	funding?: JSX.Element | null;
 }
 
 const MOVEMENT_ICON: Record<TicketPaymentKind, IconName> = {
@@ -48,6 +56,14 @@ export function TicketFinanceTab(props: TicketFinanceTabProps): JSX.Element {
 
 	return (
 		<div class="tkv-fin">
+			{props.funding
+				? (
+					<section class="tkv-doc__sec" aria-labelledby="tkv-fin-fund">
+						<h3 class="tkv-h" id="tkv-fin-fund">Payment &amp; work start</h3>
+						{props.funding}
+					</section>
+				)
+				: null}
 			<section class="tkv-doc__sec" aria-label="Cost breakdown">
 				<h3 class="tkv-h">
 					How this price is made
@@ -128,33 +144,32 @@ export function TicketFinanceTab(props: TicketFinanceTabProps): JSX.Element {
 							</span>
 						</dd>
 					</div>
-					<div class="tkv-facts__row">
-						<dt>Funding</dt>
-						<dd>
-							{TICKET_PAYMENT_SCOPE_LABEL[card.paymentScope]}
-							<span class="tkv-facts__note">
-								{card.paymentScope === "per_stage"
-									? `${card.paidStageIds.length} of ${card.stages.length} ${
-										card.stages.length === 1 ? "stage" : "stages"
-									} paid · ${
-										ticketPaidHere(card) ? "paid where it sits" : "not paid for its current stage"
-									}`
-									: card.paymentScope === "full"
-									? "claimable in every stage"
-									: "not visible to freelancers until it is paid for"}
-							</span>
-						</dd>
-					</div>
-					<div class="tkv-facts__row">
-						<dt>Escrow</dt>
-						<dd>
-							{card.escrowHeld
-								? "Held against this ticket"
-								: card.status === "completed"
-								? "Released on approval"
-								: "Not yet held — escrow starts at claim"}
-						</dd>
-					</div>
+					{/* The funding line above speaks for the money; these two facts are its fallback. */}
+					{props.funding ? null : (
+						<div class="tkv-facts__row">
+							<dt>Funding</dt>
+							<dd>
+								{TICKET_PAYMENT_SCOPE_LABEL[card.paymentScope]}
+								<span class="tkv-facts__note">
+									{card.paymentScope === "per_stage"
+										? `${card.paidStageIds.length} of ${card.stages.length} ${
+											card.stages.length === 1 ? "stage" : "stages"
+										} paid · ${
+											ticketPaidHere(card) ? "paid where it sits" : "not paid for its current stage"
+										}`
+										: card.paymentScope === "full"
+										? "claimable in every stage"
+										: "not visible to freelancers until it is paid for"}
+								</span>
+							</dd>
+						</div>
+					)}
+					{props.funding ? null : (
+						<div class="tkv-facts__row">
+							<dt>Escrow</dt>
+							<dd>{card.escrowHeld ? "Held against this ticket" : "Not held"}</dd>
+						</div>
+					)}
 				</dl>
 			</section>
 
@@ -163,7 +178,7 @@ export function TicketFinanceTab(props: TicketFinanceTabProps): JSX.Element {
 				{card.payments.length === 0
 					? (
 						<p class="tkv-empty tkv-empty--inline">
-							No money has moved on this ticket yet. Escrow is held when a freelancer claims it.
+							No money has moved on this ticket yet.
 						</p>
 					)
 					: (

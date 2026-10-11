@@ -38,6 +38,7 @@ import {
 	setMemberRoleRow,
 } from "./live-membership.ts";
 import { fetchProjectOverview } from "./live-overview.ts";
+import { rollupFundingState } from "../finance/funding-state.ts";
 import {
 	applyProjectUpdate,
 	archiveProjectRow,
@@ -124,11 +125,18 @@ import { findFixtureRequest, findMemberRoster } from "./members-fixtures.ts";
 import { findStubLinkRequest, stubLinkRequests } from "./invite-link-store.ts";
 import { archiveDraft, getDraft, instantiateDraft, sweepStaleDrafts } from "./draft-store.ts";
 import { composeLoadedViewPage } from "../explore/live-view.ts";
-import { approveStageRow, exitStageRow, reviewSubmissionRow } from "./live-settlement.ts";
+import {
+	approveStageRow,
+	exitStageRow,
+	requestPaidRevisionRow,
+	reviewSubmissionRow,
+} from "./live-settlement.ts";
 import { recordStubReview } from "./write-store.ts";
 import type {
 	ApproveStage,
 	CancelStageFairExit,
+	PaidRevisionRaised,
+	RequestPaidRevision,
 	ReviewSubmission,
 	StageApproved,
 	StageExited,
@@ -589,6 +597,20 @@ function noSuchProject<T>(id: string): ServiceResult<T> {
 	return fail<T>(404, { message: `No project found for "${id}".` });
 }
 
+const WORK_STATUSES: ReadonlySet<string> = new Set(["claimed", "in_progress", "in_review"]);
+
+/**
+ * The no-hold-no-work gate (`trg_ticket_escrow_sync`, Decision #165), mirrored so the stub refuses
+ * what the database refuses: entering work from outside it needs a held escrow.
+ */
+function needsFunding<T>(from: string | null, to: string, escrowHeld: boolean): ServiceResult<T> | null {
+	if (escrowHeld || !WORK_STATUSES.has(to) || (from !== null && WORK_STATUSES.has(from))) return null;
+	return fail<T>(402, {
+		message: "Needs funding — work can't start on this ticket until its escrow is held.",
+		errors: { status: "needs_funding" },
+	});
+}
+
 /**
  * The thing a write could not find, named for the reader.
  *
@@ -687,6 +709,7 @@ function draftStageRef(id: string, input: CreateStageInput, order: number): Boar
 		categoryWeight: 1,
 		members: [],
 		ticketCount: 0,
+		funding: null,
 		assignmentMode: "open_pull",
 		maxConcurrentIntensity: null,
 		startAt: null,
@@ -1102,7 +1125,11 @@ export class ProjectBackendService {
 		if (!detail) {
 			return fail(404, { message: `No project found for slug "${slug}".` });
 		}
-		return ok({ detail: overlayDetail(detail, actor) });
+		// The fixture board is already provider-scoped, so this rolls up what this viewer may see.
+		const board = findBoardPage({ projectId: slug, view: "stages" });
+		const cards = board ? overlayBoardPage(board, actor).cards : [];
+		const funding = rollupFundingState(cards.flatMap((c) => (c.funding ? [c.funding] : [])));
+		return ok({ detail: { ...overlayDetail(detail, actor), funding } });
 	}
 
 	/**
@@ -2867,6 +2894,13 @@ export class ProjectBackendService {
 		const owner = writeOwnerOf(actor);
 		const existing = storedTicketCard(owner, input.projectId, input.clientId) ??
 			page.cards.find((card) => card.id === input.clientId);
+		// A new ticket is inserted in `backlog` and then moved, exactly as the live path does.
+		const unfunded = needsFunding<{ card: BoardCard }>(
+			existing?.status ?? "backlog",
+			input.status,
+			existing?.escrowHeld ?? false,
+		);
+		if (unfunded) return unfunded;
 		const id = existing?.id ?? mintTicketId();
 		const card = buildStubCard(input, page.stages, existing, id, Date.now());
 		putTicketCard(owner, input.projectId, card);
@@ -2920,6 +2954,8 @@ export class ProjectBackendService {
 		const current = storedTicketCard(owner, input.projectId, input.ticketId) ??
 			page.cards.find((card) => card.id === input.ticketId);
 		if (!current) return fail(404, { message: "That ticket is no longer on this board." });
+		const unfunded = needsFunding<{ card: BoardCard }>(current.status, input.status, current.escrowHeld);
+		if (unfunded) return unfunded;
 
 		const card = movedStubCard(current, input, Date.now());
 		putTicketCard(owner, input.projectId, card);
@@ -3083,6 +3119,28 @@ export class ProjectBackendService {
 			{ submissionId: input.submissionId, stageId: input.stageId, status },
 			{ message: input.decision === "accept" ? "Submission accepted." : "Revision requested." },
 		);
+	}
+
+	/**
+	 * Raise a paid revision round once a stage's free ones are used (`projects.request_paid_revision`,
+	 * Decision #167). It charges nothing: the answer names the round the review's Buy Now then pays
+	 * for. Live only — the stub store has no basket to pay it from, so it refuses rather than pretend.
+	 */
+	static async requestPaidRevision(
+		input: RequestPaidRevision,
+		actor: ReadActor,
+	): Promise<ServiceResult<PaidRevisionRaised>> {
+		const denied = settlementDenied<PaidRevisionRaised>(actor, "buy a revision");
+		if (denied) return denied;
+		const live = await liveWrite<PaidRevisionRaised>(
+			"requestPaidRevision",
+			actor,
+			input.submissionId,
+			"Revision ready to pay for.",
+			(a) => requestPaidRevisionRow(a, input),
+			"submission",
+		);
+		return live ?? fail(503, { message: "Paid revisions need the live backend." });
 	}
 
 	/**

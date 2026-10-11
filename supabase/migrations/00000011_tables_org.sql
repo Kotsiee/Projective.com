@@ -248,6 +248,15 @@ CREATE TABLE org.business_profiles (
     system_penalty_score numeric(6,2) NOT NULL DEFAULT 0,
     invoicing_mode text NOT NULL DEFAULT 'per_transaction'::text CHECK (invoicing_mode IN ('per_transaction', 'intervaled_monthly')),
     billing_day smallint CHECK (billing_day BETWEEN 1 AND 28),
+    -- What happens when one of this business's project tickets enters Needs funding (PRODUCT_SPEC
+    -- §Escrow, Wallets & Finance #4 "Auto-funding"): nothing (`off`), the ticket is added to the
+    -- business's basket (`add_to_basket`), or it joins the auto-fund queue that every credit to the
+    -- business wallet retries (`from_wallet`). A project may override it (`projects.auto_fund_override`).
+    auto_fund_mode text NOT NULL DEFAULT 'off'
+        CHECK (auto_fund_mode IN ('off', 'add_to_basket', 'from_wallet')),
+    -- The balance floor of the wallet in `default_currency`, in its minor units; NULL is no floor.
+    -- A debit that takes the balance from at-or-above it to below it warns (`wallet.low_balance`).
+    low_balance_floor_cents bigint CHECK (low_balance_floor_cents IS NULL OR low_balance_floor_cents > 0),
     active_project_count integer DEFAULT 0,
     total_project_count integer DEFAULT 0,
     service_count integer DEFAULT 0,

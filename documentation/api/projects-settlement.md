@@ -13,7 +13,8 @@ engagement cannot be addressed through this one's URL.
 
 | Method + path | Zod (`@projective/types/projects`) | Service → Postgres | Answers |
 | :-- | :-- | :-- | :-- |
-| `POST /api/projects/:id/stages/:stageId/submissions/:submissionId/review` | `ReviewSubmissionSchema` → `SubmissionReviewed` | `reviewSubmission` → `projects.review_submission` | `decision: accept \| request_revision`. A revision **requires** `notes` (422 on `notes`), stored as `feedback.global`. The submission must belong to `:stageId` (else 404). |
+| `POST /api/projects/:id/stages/:stageId/submissions/:submissionId/review` | `ReviewSubmissionSchema` → `SubmissionReviewed` | `reviewSubmission` → `projects.review_submission` | `decision: accept \| request_revision`. A revision **requires** `notes` (422 on `notes`), stored as `feedback.global`. The submission must belong to `:stageId` (else 404). Past the stage's free rounds a revision is `402` (`errors.decision = "paid_revision_required"`, Decision #167). |
+| `POST /api/projects/:id/stages/:stageId/submissions/:submissionId/paid-revision` | `RequestPaidRevisionSchema` → `PaidRevisionRaised` | `requestPaidRevision` → `projects.request_paid_revision` | Raises a paid round `awaiting_payment` (Decision #167); charges nothing. `notes` required. Answers `{ revisionId, priceMinor, currency, title }` — the `paid_revision` line Buy Now then pays for. Live only (`503` on the stub store). |
 | `POST /api/projects/:id/stages/:stageId/approve` | `ApproveStageSchema` → `StageApproved` | `approveStage` → `projects.approve_stage` | Releases every held escrow on the stage; the stage settles straight to `paid`. `handoverUnlocked` reports the Contact Handover. |
 | `POST /api/projects/:id/stages/:stageId/cancel` | `CancelStageFairExitSchema` → `StageExited` | `cancelStageFairExit` → `projects.cancel_stage_fair_exit` | `tier: 25 \| 50 \| 75` — the freelancer's share in percent; the remainder is refunded to the payer. |
 
@@ -27,7 +28,9 @@ and by the function's wording second:
 | `42501` | 403 | Not signed in, or not the client/owner. The payee included. |
 | `P0002` | 404 | Stage or submission not found. An address the viewer cannot see also resolves to 404. |
 | `22023`, `23514` | 422 | Invalid tier or decision. |
-| `55000` | 409 | Nothing held to release or cancel, or the submission is not awaiting review. |
+| `55000`, `PC409` | 409 | Nothing held to release or cancel, the submission is not awaiting review, or a free revision is still left. |
+| `PU422` | 422 | The stage sells no extra revision rounds. |
+| `PR402` | 402 | The stage's free revision rounds are used — buy one (`paid_revision_required`). |
 | stale JWT | 401 | `apiFetch` refreshes the session and retries. |
 
 **Fail-closed.** With `PROJECTS_BACKEND_LIVE` on, none of these writes ever reaches the stub. A

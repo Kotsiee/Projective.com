@@ -7,6 +7,9 @@ CREATE INDEX IF NOT EXISTS idx_wallets_owner ON finance.wallets (owner_type, own
 CREATE INDEX IF NOT EXISTS idx_transactions_wallet_created ON finance.transactions (wallet_id, created_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_escrows_stage ON finance.escrows (project_stage_id);
 CREATE INDEX IF NOT EXISTS idx_escrows_ticket ON finance.escrows (ticket_id);
+-- A seat's escrow (Decision #171) — the cancel, join and auto-release reads all start from the seat.
+CREATE INDEX IF NOT EXISTS idx_escrows_cohort_membership ON finance.escrows (cohort_membership_id)
+    WHERE cohort_membership_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_escrows_payer_business ON finance.escrows (payer_business_id);
 CREATE INDEX IF NOT EXISTS idx_escrows_payer_user ON finance.escrows (payer_user_id) WHERE payer_user_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_escrows_payee ON finance.escrows (payee_type, payee_id);
@@ -80,6 +83,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_basket_default_per_owner
 CREATE INDEX IF NOT EXISTS idx_basket_items_basket ON finance.basket_items (basket_id);
 -- Answers "is this listing already in one of my baskets?" without scanning every line.
 CREATE INDEX IF NOT EXISTS idx_basket_items_item ON finance.basket_items (item_type, item_id);
+-- The dedupe key for a ticket line (Decision #166): one LIVE line per ticket per basket, parked or not.
+-- Adding a ticket already in the basket re-selects that line instead of a second charge for one hold.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_basket_items_live_ticket
+    ON finance.basket_items (basket_id, ticket_id)
+    WHERE ticket_id IS NOT NULL AND removed_at IS NULL AND purchased_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_saved_cards_owner ON finance.saved_cards (owner_type, owner_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_saved_card_default_per_owner

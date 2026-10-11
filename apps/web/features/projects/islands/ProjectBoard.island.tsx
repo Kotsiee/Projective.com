@@ -26,8 +26,8 @@ import {
 	type BoardStageRef,
 	type BoardView,
 	buildBoardColumns,
+	formatTicketMoney,
 	providerVisibleCards,
-	ticketPaidHere,
 	type TicketStatus,
 	ticketWorkLocked,
 } from "../types/projects-types.ts";
@@ -73,6 +73,7 @@ import {
 	filesAtPath,
 	firstUnitUnder,
 	openTicketFile,
+	pushTicketBuy,
 	registerTicketFileHost,
 	reviewForPath,
 	type TicketMode,
@@ -88,6 +89,12 @@ import {
 } from "../core/board-access.ts";
 import { resolveSessionKind } from "../core/session-model.ts";
 import { checkoutStepHref } from "@web/features/checkout/core/basket-model.ts";
+import { BasketService } from "@web/features/checkout/core/BasketService.ts";
+import { currentCheckoutContext } from "@web/features/checkout/core/basket-state.ts";
+import { buyNowOpen, requestBuyNow } from "@web/features/checkout/core/buy-now-state.ts";
+import BuyNowModal from "@web/features/checkout/islands/BuyNowModal.island.tsx";
+import { InlineNotice } from "@projective/ui/feedback";
+import { fundingRollup } from "../core/funding-ui.ts";
 
 /**
  * ProjectBoard — the single island the Kanban board routes mount, for the project pipeline
@@ -190,6 +197,8 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	 */
 	const composing = useSignal<BoardCard | null>(null);
 	const savingId = useSignal<string | null>(null);
+	/** A Start work write is in flight — the funding line's control shows its spinner. */
+	const starting = useSignal(false);
 	const stageModalOpen = useSignal(false);
 	/** Expanded tree keys for the review modal's own navigator (its own state, not the ticket's). */
 	const reviewExpanded = useSignal<Set<string>>(new Set());
@@ -295,18 +304,16 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		sortDir.value,
 	);
 
-	// The basket holds what still needs BUYING: described, unclaimed, and not yet paid for the stage
-	// it sits in. A ticket already paid where it is has nothing to check out, whatever lane it is in.
-	const needsFunding = (c: BoardCard): boolean =>
-		c.hasDescription && !c.claimed && !ticketPaidHere(c);
-	const basketCount = cards.value.filter(needsFunding).length;
+	// What still needs BUYING is the server's funding state (`BoardCard.funding`, Decision #165), summed
+	// here and never re-derived: the island cannot see a hold.
+	const rollup = fundingRollup(cards.value);
 	// #endregion
 
 	// #region Cross-island coordination (publish caps · consume footer intents · cleanup)
 	useSignalEffect(() => {
 		// Re-read `cards` + `access` so the footer republishes as tickets change AND as the developer
 		// flips a persona — the rig is a separate hydration root and this signal is its only input.
-		const basket = cards.value.filter(needsFunding).length;
+		const basket = fundingRollup(cards.value).count;
 		const a = access.value;
 		publishBoardCaps({
 			isClient: a.isClient,
@@ -326,6 +333,11 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 			createStageOpen.value = false;
 			if (access.value.isClient && boardKind === "project") stageModalOpen.value = true;
 		}
+	});
+	// Buy Now closed over a ticket: restore the ticket it replaced.
+	useSignalEffect(() => {
+		const open = buyNowOpen.value;
+		if (!open && ticketStack.top.value?.kind === "buy") ticketStack.back();
 	});
 	useSignalEffect(() => {
 		if (checkoutOpen.value) {
@@ -442,20 +454,90 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	}
 
 	/**
-	 * Hand the buyer to the checkout, narrowed to this project's lines (`?project_id=` — the
-	 * preselect a "pay for this project's tickets" link exists for), so the rest of their basket is
-	 * left intact. The board commits no escrow itself: what is owed and what it funds are the
-	 * checkout's to price and the payment rails' to settle, never a count this island holds.
+	 * Put each unfunded ticket in the basket as its own line (Decision #166), then hand the buyer to
+	 * the checkout narrowed to this project's lines (`?project_id=`), leaving the rest of their basket
+	 * intact. The board commits no escrow itself: the server prices each line from its ticket and the
+	 * payment rails settle it. Adding a ticket already in the basket re-selects it, so a second press
+	 * adds nothing twice; if no ticket could be added the refusal is said here and nothing navigates.
 	 */
-	function doCheckout(): void {
-		if (basketCount === 0) {
+	async function doCheckout(): Promise<void> {
+		const ids = rollup.ids;
+		if (ids.length === 0) {
 			toast("Nothing to check out yet — add tickets with a description.");
+			return;
+		}
+		const ctx = currentCheckoutContext();
+		const added = await Promise.all(
+			ids.map((id) => BasketService.addTicket(id, props.projectId, ctx)),
+		);
+		const refused = added.filter((res) => !res.ok);
+		if (refused.length === added.length) {
+			toast(refused[0]?.message ?? "Those tickets couldn't be added to your basket — try again.");
 			return;
 		}
 		globalThis.location.assign(
 			checkoutStepHref("basket", null, null, { projectId: props.projectId }),
 		);
 	}
+
+	// #region Funding actions (the ticket modal's FundingStatus)
+	/**
+	 * Open Buy Now on one ticket. It REPLACES the ticket in the chain (a `buy` frame, §B.10.9) and the
+	 * ticket comes back when it closes; when the payment settles the card is re-read, so the funding
+	 * line moves on in place with the server's answer.
+	 */
+	function buyTicket(card: BoardCard): void {
+		// Open first: the frame-pop effect below reads a `buy` frame with Buy Now closed as "just closed".
+		requestBuyNow({
+			itemId: props.projectId,
+			itemType: "project_ticket",
+			title: card.title,
+			sellerName: card.assignee?.name ?? null,
+			signInHref: "/login",
+			ticket: { ticketId: card.id, projectId: props.projectId, onSettled: () => void reread(card) },
+		}, true);
+		pushTicketBuy();
+	}
+
+	async function basketTicket(card: BoardCard): Promise<void> {
+		const res = await BasketService.addTicket(card.id, props.projectId, currentCheckoutContext());
+		toast(
+			res.ok ? `${card.title} is in your basket.` : res.message ?? "That ticket couldn't be added.",
+		);
+	}
+
+	/** Replace one card with the server's current reading of it (its funding state included). */
+	async function reread(card: BoardCard): Promise<void> {
+		if (!card.slug) return;
+		const res = await BoardService.ticket(card.slug);
+		if (res.ok && res.data) {
+			const fresh = res.data.card;
+			cards.value = cards.value.map((c) => (c.id === fresh.id ? fresh : c));
+		}
+	}
+
+	/**
+	 * The payee starts work on a funded ticket — the `funded → in_progress` step, written as the same
+	 * status move a stage board's drag makes. The server refuses an unheld ticket (#165), and says why.
+	 */
+	async function startWork(card: BoardCard): Promise<void> {
+		starting.value = true;
+		const res = await BoardService.move({
+			projectId: props.projectId,
+			ticketId: card.id,
+			status: "in_progress",
+			stageId: card.stageId,
+			sortOrder: null,
+		});
+		starting.value = false;
+		if (res.ok && res.data) {
+			const saved = res.data.card;
+			cards.value = cards.value.map((c) => (c.id === saved.id ? saved : c));
+			return;
+		}
+		toast(res.message ?? "Work couldn't be started.");
+	}
+	// #endregion
 
 	/**
 	 * Splice the card into its new lane, optimistically.
@@ -844,6 +926,25 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	return (
 		<div class="brd" data-scope={scope}>
 			{toolbar()}
+			{
+				/*
+				 * The board's money sentence: what is waiting on the client before work can start. One quiet line
+				 * with one text action — Fund all hands the tickets to the basket; it commits nothing itself.
+				 */
+			}
+			{access.value.isClient && rollup.count > 0
+				? (
+					<InlineNotice
+						class="brd-funding"
+						align="start"
+						text={`${rollup.count} ${rollup.count === 1 ? "ticket needs" : "tickets need"} ${
+							formatTicketMoney(rollup.totalMinor, rollup.currency ?? undefined)
+						} to start.`}
+						actionLabel="Fund all"
+						onAction={() => void doCheckout()}
+					/>
+				)
+				: null}
 			<div class="brd-workspace">
 				{skeleton.visible.value
 					? (
@@ -865,6 +966,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 								<TicketCard
 									card={c}
 									lockedForClient={access.value.isClient && ticketWorkLocked(c)}
+									side={access.value.isClient ? "client" : "provider"}
 								/>
 							)}
 							onItemActivate={openDetail}
@@ -920,6 +1022,10 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 						onSubmit={commitTicket}
 						onOpenSubmission={(path) => openSubmission(viewing.id, path)}
 						onCreateSubmission={onCreateSubmission}
+						onBuyNow={buyTicket}
+						onAddToBasket={(c) => void basketTicket(c)}
+						onStartWork={(c) => void startWork(c)}
+						fundingBusy={starting.value}
 					/>
 				)
 				: null}
@@ -967,6 +1073,8 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 			{frame?.kind === "picker" && !frame.input?.standalone
 				? <TicketPickerFrame key={frame.uid} uid={frame.uid} />
 				: null}
+
+			<BuyNowModal host="body" />
 
 			<CreateStageModal
 				open={stageModalOpen}

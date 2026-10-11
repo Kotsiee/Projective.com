@@ -218,6 +218,13 @@ export interface ServerEnv {
 	 * (`files/link-reputation.ts`), and an absent key skips the reputation check rather than failing it.
 	 */
 	linkSafetyApiKey: string | undefined;
+	/**
+	 * The Secret Token of the Zoom app's Event Subscription, from `ZOOM_WEBHOOK_SECRET` (Decision #171).
+	 * Server-only. It signs every `POST {APP_URL}/api/sessions/webhooks/zoom` delivery (`x-zm-signature`)
+	 * and answers Zoom's endpoint validation challenge; while it is unset or the `XXXX-XXXX`
+	 * placeholder, the route refuses every delivery rather than trusting an unsigned one.
+	 */
+	zoomWebhookSecret: string | undefined;
 }
 
 /** Resolve the current server environment from the canonical Environment Variable Contract names. */
@@ -251,5 +258,6 @@ export function serverEnv(): ServerEnv {
 		financeCronSecret: firstEnv("FINANCE_CRON_SECRET"),
 		accountCronSecret: firstEnv("ACCOUNT_CRON_SECRET"),
 		linkSafetyApiKey: firstEnv("LINK_SAFETY_API_KEY"),
+		zoomWebhookSecret: firstEnv("ZOOM_WEBHOOK_SECRET"),
 	};
 }

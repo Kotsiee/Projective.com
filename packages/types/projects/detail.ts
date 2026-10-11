@@ -7,8 +7,9 @@ import {
 	ProjectStatus,
 	ProjectViewerRole,
 } from "./summary.ts";
-import { isTaskProject, ProjectStructure } from "./setup.ts";
+import { isTaskProject, ProjectSessionKind, ProjectStructure } from "./setup.ts";
 import { ProjectAccess } from "./access.ts";
+import { FundingRollupSchema } from "../finance/funding.ts";
 
 /**
  * projects.detail — the Zod SSOT for the RICH single-engagement projection the Project Details
@@ -233,6 +234,12 @@ export const ProjectDetailSchema = z.object({
 	 * and they render different lanes, view links and channel tabs (`isTaskProject`).
 	 */
 	structure: ProjectStructure,
+	/**
+	 * `projects.session_kind` — 1-1 (`normal`) versus cohort (`group`) for a `session` engagement,
+	 * `none` on every other format. The STORED axis (Decision #171): `resolveSessionKind` reads it
+	 * rather than guessing from the format.
+	 */
+	sessionKind: ProjectSessionKind.default("none"),
 	status: ProjectStatus,
 	/** Human type badge (e.g. "Brand Identity", "Web App"). */
 	typeLabel: z.string().min(1).max(60),
@@ -271,6 +278,11 @@ export const ProjectDetailSchema = z.object({
 	bannerImage: z.string().max(400).nullable(),
 	members: z.array(ProjectMemberSchema),
 	channels: ProjectChannelsSchema,
+	/**
+	 * The engagement's funding roll-up (`rollupFundingState`): the client side sees every ticket, a
+	 * provider only the ones they hold. `null` when there is nothing to roll up.
+	 */
+	funding: FundingRollupSchema.nullable().default(null),
 });
 export type ProjectDetail = z.infer<typeof ProjectDetailSchema>;
 // #endregion

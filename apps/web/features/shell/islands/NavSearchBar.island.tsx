@@ -1,6 +1,8 @@
 import { useSignal } from "@preact/signals";
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect } from "preact/hooks";
 import "@web/features/shell/styles/user-shell.css";
+import { useDismiss, useEdgeDetection, useOverlayStack } from "@projective/ui/hooks";
+import { BodyPortal } from "@projective/ui/overlay";
 import {
 	DEFAULT_SEARCH_SCOPE,
 	SEARCH_SCOPES,
@@ -32,7 +34,6 @@ export default function NavSearchBar() {
 	const category = useSignal<SearchScope>(DEFAULT_SEARCH_SCOPE);
 	const menuOpen = useSignal(false);
 	const query = useSignal("");
-	const menuRef = useRef<HTMLDivElement>(null);
 
 	// Reflect the active /explore search when the shell renders over the results page.
 	useEffect(() => {
@@ -42,16 +43,21 @@ export default function NavSearchBar() {
 		category.value = toScope((sp.get("category") ?? sp.get("type") ?? "").toLowerCase());
 	}, []);
 
-	// Close the scope menu on outside click.
-	useEffect(() => {
-		const onDoc = (e: MouseEvent) => {
-			if (menuOpen.value && menuRef.current && !menuRef.current.contains(e.target as Node)) {
-				menuOpen.value = false;
-			}
-		};
-		document.addEventListener("click", onDoc);
-		return () => document.removeEventListener("click", onDoc);
-	}, []);
+	// Outside press and Escape through the shared overlay stack, which also sets its z-index.
+	const stack = useOverlayStack({ active: menuOpen.value });
+	// Portalled and anchored, so no sticky or glass ancestor can clip the list or re-base it (§B.10.4).
+	const menu = useEdgeDetection<HTMLButtonElement, HTMLUListElement>({
+		open: menuOpen.value,
+		offset: 8,
+		zIndex: stack.zIndex,
+	});
+	useDismiss({
+		open: menuOpen.value,
+		enabled: stack.isTop,
+		onDismiss: () => (menuOpen.value = false),
+		panelRef: menu.ref,
+		triggerRef: menu.triggerRef,
+	});
 
 	/** Navigate to `/explore` with the active scope + query (omitting the neutral `all` + empty query). */
 	function go(q: string) {
@@ -71,8 +77,9 @@ export default function NavSearchBar() {
 				go(query.value.trim());
 			}}
 		>
-			<div class="shell-search__entity" ref={menuRef}>
+			<div class="shell-search__entity">
 				<button
+					ref={menu.triggerRef}
 					type="button"
 					class="shell-search__entity-btn"
 					aria-haspopup="listbox"
@@ -83,30 +90,38 @@ export default function NavSearchBar() {
 					<span class="shell-search__chevron" aria-hidden="true" />
 				</button>
 				{menuOpen.value && (
-					<ul class="shell-search__entity-menu" role="listbox" aria-label="Search scope">
-						{SEARCH_SCOPES.map((opt) => (
-							<li
-								key={opt.value}
-								role="option"
-								aria-selected={category.value === opt.value}
-								class="shell-search__entity-option"
-								tabIndex={0}
-								onClick={() => {
-									category.value = opt.value;
-									menuOpen.value = false;
-								}}
-								onKeyDown={(e) => {
-									if (e.key === "Enter" || e.key === " ") {
-										e.preventDefault();
+					<BodyPortal>
+						<ul
+							ref={menu.ref}
+							class="ui-anchored shell-search__entity-menu"
+							role="listbox"
+							aria-label="Search scope"
+							style={menu.style}
+						>
+							{SEARCH_SCOPES.map((opt) => (
+								<li
+									key={opt.value}
+									role="option"
+									aria-selected={category.value === opt.value}
+									class="shell-search__entity-option"
+									tabIndex={0}
+									onClick={() => {
 										category.value = opt.value;
 										menuOpen.value = false;
-									}
-								}}
-							>
-								{opt.label}
-							</li>
-						))}
-					</ul>
+									}}
+									onKeyDown={(e) => {
+										if (e.key === "Enter" || e.key === " ") {
+											e.preventDefault();
+											category.value = opt.value;
+											menuOpen.value = false;
+										}
+									}}
+								>
+									{opt.label}
+								</li>
+							))}
+						</ul>
+					</BodyPortal>
 				)}
 			</div>
 

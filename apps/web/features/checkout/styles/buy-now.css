@@ -302,3 +302,14 @@
 		justify-content: center;
 	}
 }
+
+/* #region Ticket funding — the escrow terms line (Decision #166) */
+.bnow__escrow {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+/* #endregion */

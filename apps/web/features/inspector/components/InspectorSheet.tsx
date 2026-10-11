@@ -1,7 +1,8 @@
 import type { ComponentChildren, JSX } from "preact";
 import { type Signal, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
-import { useDismiss } from "@projective/ui/hooks";
+import { useDismiss, useOverlayStack } from "@projective/ui/hooks";
+import { Portal } from "@projective/ui/overlay";
 import {
 	type DragSample,
 	releaseVelocity,
@@ -11,6 +12,7 @@ import {
 	type SheetSnap,
 } from "../core/sheet-gesture.ts";
 import { ToolButton } from "./controls/ToolButton.tsx";
+import { InspectorActionsContext, useInspectorActions } from "./InspectorContext.ts";
 
 /** Props for {@link InspectorSheet}. */
 export interface InspectorSheetProps {
@@ -68,11 +70,14 @@ function layoutTop(panel: HTMLElement, offset: number): number {
 }
 
 /**
- * The details panel as a bottom sheet over its host (not portalled; fills the nearest positioned
- * ancestor). Swipe the grip down to dismiss or up to expand; Escape, the scrim and the close button
- * dismiss it too, each through its own Escape layer so a host modal stays open. Focus moves into the
- * sheet on open and back to whatever had it on close. Motion is transform-only and dropped under
- * reduced motion.
+ * The details panel as a bottom sheet. It renders on the shared overlay layer — {@link Portal} into
+ * `document.body` at a `useOverlayStack` modal slot — so it rises above the preview modal it opens
+ * from and no ancestor can clip or re-base it (§B.10.4). Its hosts only mount it below `--bp-md`,
+ * where both of them already fill the viewport, so the sheet's geometry is unchanged. The portal is a
+ * new Preact root, so the workspace's {@link InspectorActionsContext} is handed across explicitly.
+ * Swipe the grip down to dismiss or up to expand; Escape, the scrim and the close button dismiss it
+ * too, through its own Escape layer so a host modal stays open. Focus moves into the sheet on open and
+ * back to whatever had it on close. Motion is transform-only and dropped under reduced motion.
  */
 export function InspectorSheet(props: InspectorSheetProps): JSX.Element | null {
 	const { open, label, id, scrim = "solid", children } = props;
@@ -83,6 +88,8 @@ export function InspectorSheet(props: InspectorSheetProps): JSX.Element | null {
 	const drag = useRef<Drag | null>(null);
 	const offset = useRef(0);
 	const pending = useRef<(() => void) | null>(null);
+	const actions = useInspectorActions();
+	const stack = useOverlayStack({ active: isOpen, layer: "modal" });
 
 	function setOffset(px: number): void {
 		offset.current = px;
@@ -163,7 +170,13 @@ export function InspectorSheet(props: InspectorSheetProps): JSX.Element | null {
 		});
 	}
 
-	useDismiss({ open: isOpen, onDismiss: requestClose, panelRef, closeOnOutside: false });
+	useDismiss({
+		open: isOpen,
+		enabled: stack.isTop,
+		onDismiss: requestClose,
+		panelRef,
+		closeOnOutside: false,
+	});
 
 	// #region Focus
 	useEffect(() => {
@@ -252,39 +265,47 @@ export function InspectorSheet(props: InspectorSheetProps): JSX.Element | null {
 	const full = snap.value === "full";
 
 	return (
-		<div class="ins-sheet" data-state={closing.value ? "closing" : "open"}>
-			<div
-				class={`ins-sheet__scrim ins-sheet__scrim--${scrim}`}
-				aria-hidden="true"
-				onClick={requestClose}
-			/>
-			<div
-				ref={panelRef}
-				id={id}
-				class="ins-sheet__panel"
-				role="dialog"
-				aria-modal="false"
-				aria-label={label}
-				tabIndex={-1}
-				data-snap={snap.value}
-			>
-				<div
-					class="ins-sheet__head"
-					onPointerDown={onPointerDown}
-					onPointerMove={onPointerMove}
-					onPointerUp={onPointerEnd}
-					onPointerCancel={onPointerEnd}
-				>
-					<span class="ins-sheet__grip" aria-hidden="true" />
-					<ToolButton
-						icon={full ? "collapse" : "expand"}
-						label={full ? "Shrink sheet" : "Expand sheet"}
-						onClick={() => settle(full ? "half" : "full")}
+		<Portal zIndex={stack.zIndex}>
+			<InspectorActionsContext.Provider value={actions}>
+				<div class="ins-sheet" data-state={closing.value ? "closing" : "open"}>
+					<div
+						class={`ins-sheet__scrim ins-sheet__scrim--${scrim}`}
+						aria-hidden="true"
+						onClick={requestClose}
 					/>
-					<ToolButton icon="close" label={`Close ${label.toLowerCase()}`} onClick={requestClose} />
+					<div
+						ref={panelRef}
+						id={id}
+						class="ins-sheet__panel"
+						role="dialog"
+						aria-modal="false"
+						aria-label={label}
+						tabIndex={-1}
+						data-snap={snap.value}
+					>
+						<div
+							class="ins-sheet__head"
+							onPointerDown={onPointerDown}
+							onPointerMove={onPointerMove}
+							onPointerUp={onPointerEnd}
+							onPointerCancel={onPointerEnd}
+						>
+							<span class="ins-sheet__grip" aria-hidden="true" />
+							<ToolButton
+								icon={full ? "collapse" : "expand"}
+								label={full ? "Shrink sheet" : "Expand sheet"}
+								onClick={() => settle(full ? "half" : "full")}
+							/>
+							<ToolButton
+								icon="close"
+								label={`Close ${label.toLowerCase()}`}
+								onClick={requestClose}
+							/>
+						</div>
+						<div class="ins-sheet__body">{children}</div>
+					</div>
 				</div>
-				<div class="ins-sheet__body">{children}</div>
-			</div>
-		</div>
+			</InspectorActionsContext.Provider>
+		</Portal>
 	);
 }

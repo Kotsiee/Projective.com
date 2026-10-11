@@ -31,6 +31,12 @@ import {
 	toStageProjectStatus,
 } from "./live-support.ts";
 import { fetchProjectBySlug } from "./live-queries.ts";
+import {
+	deriveFundingState,
+	fundingTicketOf,
+	type FundingTicketRow,
+	rollupFundingState,
+} from "../finance/funding-state.ts";
 
 /**
  * live-detail — the RLS-scoped Postgres read path for `ProjectBackendService.detail(slug)`, the deep
@@ -98,6 +104,8 @@ interface DetailRow {
 	description_text: string | null;
 	client_business_id: string | null;
 	structure_variation: string | null;
+	session_kind: string | null;
+	currency: string | null;
 }
 
 /** One `projects.project_stages` row, reduced to what the stage tree renders. */
@@ -108,6 +116,14 @@ interface StageRow {
 	name: string;
 	sort_order: number;
 	status: string;
+	/** What a ticket here is held at when it carries no rate of its own (`fn_hold_ticket_escrow`). */
+	unit_price_cents: number | string | null;
+}
+
+/** One `projects.tickets` row, reduced to what the funding roll-up reads. */
+interface FundingRow extends FundingTicketRow {
+	current_stage_id: string | null;
+	current_assignee_id: string | null;
 }
 
 /**
@@ -480,7 +496,7 @@ function buildTeamChannels(
 async function fetchDetailRow(db: SupabaseClient, projectKey: string): Promise<DetailRow | null> {
 	const { data, error } = await db
 		.from("projects")
-		.select("owner_user_id, description_text, client_business_id, structure_variation")
+		.select("owner_user_id, description_text, client_business_id, structure_variation, session_kind, currency")
 		.eq("slug", projectKey)
 		.maybeSingle();
 	if (error || !data) return null;
@@ -496,12 +512,25 @@ async function fetchDetailRow(db: SupabaseClient, projectKey: string): Promise<D
 async function fetchStages(db: SupabaseClient, projectId: string): Promise<StageRow[]> {
 	const { data, error } = await db
 		.from("project_stages")
-		.select("id, slug, name, sort_order, status")
+		.select("id, slug, name, sort_order, status, unit_price_cents")
 		.eq("project_id", projectId)
 		.is("archived_at", null)
 		.order("sort_order", { ascending: true });
 	if (error) throw new Error(`projects.project_stages read failed: ${error.message}`);
 	return (data ?? []) as unknown as StageRow[];
+}
+
+/**
+ * The tickets the funding roll-up reads. Degrades to empty: a sidebar with no funding line says less,
+ * not something false.
+ */
+async function fetchFundingRows(db: SupabaseClient, projectId: string): Promise<FundingRow[]> {
+	const { data, error } = await db
+		.from("tickets")
+		.select("status, payment_status, text_description, unit_price_cents, current_stage_id, current_assignee_id")
+		.eq("project_id", projectId);
+	if (error) return [];
+	return (data ?? []) as unknown as FundingRow[];
 }
 
 /**
@@ -832,13 +861,14 @@ export async function fetchProjectDetail(
 	const db = projectsDb(actor);
 	// Six independent reads over one project. Issued together because none depends on another's
 	// result, and awaiting them in series would add all six latencies to every sidebar render.
-	const [detailRow, stages, participants, channelRows, hired, hasAccess] = await Promise.all([
+	const [detailRow, stages, participants, channelRows, hired, hasAccess, fundingRows] = await Promise.all([
 		fetchDetailRow(db, slug),
 		fetchStages(db, summary.id),
 		fetchParticipants(db, summary.id),
 		fetchChannels(actor, summary.id),
 		fetchViewerHiredTeams(db, summary.id),
 		fetchHasAccess(db, summary.id),
+		fetchFundingRows(db, summary.id),
 	]);
 
 	const { general, stageAll, privateRooms } = partitionChannels(channelRows);
@@ -872,6 +902,18 @@ export async function fetchProjectDetail(
 	const viewerIsClient = resolveViewerIsClient(actor, ownerUserId, participants);
 	const viewerCanConfigure = await resolveReviewAuthority(actor, ownerUserId, clientBusinessId);
 
+	// The client side rolls up every ticket; a provider only the ones they hold, so an unpaid ticket's
+	// price never reaches a seat the board would withhold it from.
+	const stagePrices = new Map(stages.map((s) => [s.id, s.unit_price_cents]));
+	const currency = detailRow?.currency?.trim().toUpperCase() || "USD";
+	const funding = rollupFundingState(
+		fundingRows
+			.filter((row) => viewerIsClient || viewerCanConfigure || row.current_assignee_id === actor.userId)
+			.map((row) =>
+				deriveFundingState(fundingTicketOf(row, stagePrices.get(row.current_stage_id ?? ""), currency))
+			),
+	);
+
 	return {
 		id: summary.id,
 		slug: summary.slug,
@@ -879,6 +921,12 @@ export async function fetchProjectDetail(
 		kind: summary.kind,
 		format: summary.format,
 		structure: toProjectStructure(detailRow?.structure_variation),
+		// The stored axis (Decision #171); `none` off a session whatever the column says.
+		sessionKind: summary.format !== "session"
+			? "none"
+			: detailRow?.session_kind === "group"
+			? "group"
+			: "normal",
 		status: summary.status,
 		typeLabel: typeLabelFor(summary),
 		description: clamp(detailRow?.description_text, 2000),
@@ -908,6 +956,7 @@ export async function fetchProjectDetail(
 			// See the docblock: a DM thread has no reproducible unified id on the live path.
 			dms: [],
 		},
+		funding,
 	};
 }
 

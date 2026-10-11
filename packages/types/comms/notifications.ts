@@ -111,15 +111,31 @@ export const NotificationListParamsSchema = z.object({
 	contextType: NotificationContextType.optional(),
 	contextId: uuid.optional(),
 	unreadOnly: z.boolean().optional(),
+	/** The Archived view: dismissed rows instead of live ones (`unreadOnly` is ignored). */
+	archived: z.boolean().optional(),
 	/** Keyset pagination — rows strictly older than this instant. */
 	before: timestamp.optional(),
 	limit: z.number().int().min(1).max(100).optional(),
 });
 export type NotificationListParams = z.infer<typeof NotificationListParamsSchema>;
 
+/** Who caused a notification, as the inbox row draws them (from `org.get_party_cards`). */
+export const NotificationActorSchema = z.object({
+	name: z.string(),
+	/** `null` = the default picture. */
+	avatar: z.string().nullable(),
+});
+export type NotificationActor = z.infer<typeof NotificationActorSchema>;
+
+/** A feed row as the inbox API answers it: the read model plus its actor, `null` for the platform. */
+export const NotificationInboxItemSchema = NotificationFeedItemSchema.extend({
+	actor: NotificationActorSchema.nullable(),
+});
+export type NotificationInboxItem = z.infer<typeof NotificationInboxItemSchema>;
+
 /** One page of the inbox. */
 export const NotificationPageSchema = z.object({
-	items: z.array(NotificationFeedItemSchema),
+	items: z.array(NotificationInboxItemSchema),
 	summary: NotificationSummarySchema,
 	nextCursor: timestamp.nullable(),
 });

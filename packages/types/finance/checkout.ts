@@ -194,6 +194,12 @@ export interface ProviderContext {
 	kybStatus: KycStatus | null;
 	/** The entity's verification tier — Level 3 is Business/KYB (`PRODUCT_SPEC` §Identity). */
 	verificationTier: number | null;
+	/**
+	 * A business's standing for paying on account (PRODUCT_SPEC §Escrow, Wallets & Finance #4): on
+	 * monthly invoicing, with an overdue invoice or not, and how much more it may owe in this currency.
+	 * Absent or `null` for anyone who cannot pay on account.
+	 */
+	onAccount?: { monthly: boolean; overdue: boolean; headroomMinor: number } | null;
 }
 
 /** Owner types whose money belongs to an entity rather than to the acting individual. */
@@ -292,6 +298,26 @@ export function availableProviders(ctx: ProviderContext): ProviderAvailability[]
 						provider,
 						available: false,
 						reason: "Complete business verification (KYB) to pay by invoice.",
+					});
+				} else if (!ctx.onAccount?.monthly) {
+					offer.push({
+						provider,
+						available: false,
+						reason: "Switch this business to monthly invoicing in Billing to pay by invoice.",
+					});
+				} else if (ctx.onAccount.overdue) {
+					offer.push({
+						provider,
+						available: false,
+						reason: "Pay the overdue invoice in Billing before buying on account again.",
+					});
+				} else if (ctx.onAccount.headroomMinor < ctx.totalMinor) {
+					offer.push({
+						provider,
+						available: false,
+						reason: `This would pass the business's on-account limit — ${
+							money(Math.max(ctx.onAccount.headroomMinor, 0))
+						} left. Pay from the wallet instead.`,
 					});
 				} else {
 					offer.push({ provider, available: true, reason: null });

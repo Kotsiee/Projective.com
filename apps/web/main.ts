@@ -1,6 +1,7 @@
 import { App, staticFiles, trailingSlashes } from "fresh";
 import { load } from "@std/dotenv";
 import type { State } from "@web/utils/state.ts";
+import { assertStripeKeyAllowed } from "@server/services/finance/PaymentBackendService.ts";
 
 // Populate Deno.env from the workspace `.env` before any route/service resolves the Environment
 // Variable Contract (packages/backend/core/env.ts). Without this the server only sees vars already
@@ -13,6 +14,7 @@ import type { State } from "@web/utils/state.ts";
 // `export: true` never overwrites. A missing file loads as `{}`.
 await load({ envPath: ".env.local", export: true });
 await load({ export: true });
+assertStripeKeyAllowed();
 
 /**
  * Projective server entry (Fresh 2.x + Vite).

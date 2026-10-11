@@ -40,10 +40,12 @@ import type {
 	SubmissionNote,
 	SubmissionReview,
 	SubmissionStatus,
+	SubmissionTicketOption,
 	SubmissionTreeNode,
 	SubmissionUnit,
 	SubmissionUnitKind,
 } from "@projective/types/projects";
+import { formatMoney } from "@projective/types/finance";
 import { isDiscussionRef, isTaskProject, rootStageOf } from "@projective/types/projects";
 import { UUID_RE } from "./live-support.ts";
 
@@ -136,10 +138,12 @@ const DEFAULT_LIMIT = 60;
 
 /** The `projects.projects` columns this read needs. */
 const PROJECT_COLUMNS =
-	"id, slug, title, format, structure_variation, owner_user_id, client_business_id";
+	"id, slug, title, format, structure_variation, owner_user_id, client_business_id, currency";
 
 /** The `projects.project_stages` columns the tree roots and the review projection need. */
-const STAGE_COLUMNS = "id, slug, name, status, sort_order, description_text";
+const STAGE_COLUMNS =
+	"id, slug, name, status, sort_order, description_text, file_revisions_allowed, revisions_used, " +
+	"extra_revision_price_cents";
 
 /** The `projects.stage_submissions` columns one unit needs. */
 const SUBMISSION_COLUMNS = [
@@ -223,6 +227,7 @@ interface ProjectRow {
 	structure_variation: string | null;
 	owner_user_id: string;
 	client_business_id: string | null;
+	currency: string | null;
 }
 
 /** One `projects.project_stages` row as selected by {@link STAGE_COLUMNS}. */
@@ -234,6 +239,10 @@ interface StageRow {
 	status: string | null;
 	sort_order: number | null;
 	description_text: string | null;
+	/** The revision allotment (Decision #167): free rounds (`null` = unlimited), used, extra price. */
+	file_revisions_allowed: number | null;
+	revisions_used: number | null;
+	extra_revision_price_cents: number | string | null;
 }
 
 /** One `projects.stage_submissions` row as selected by {@link SUBMISSION_COLUMNS}. */
@@ -563,6 +572,8 @@ interface UnitContext {
 	ticketSummary: string | null;
 	notes: SubmissionNote[];
 	createdMs: number;
+	/** An open PAID revision round is raised on this submission — funded, so work can start. */
+	paidRevision: boolean;
 }
 
 function recFiles(node: Node): FileItem[] {
@@ -937,6 +948,60 @@ async function fetchTickets(
 }
 
 /**
+ * The open revision rounds on these stages (Decision #167): the submissions a PAID round is open on
+ * (the freelancer's "funded, you can start"), and the tickets any round is open on (a `revision` option
+ * in the Create Submission dropdown). Secondary: a withheld read degrades to no rounds.
+ */
+async function fetchOpenRounds(
+	db: SupabaseClient,
+	stageIds: readonly string[],
+): Promise<{ paidSubmissions: Set<string>; revisionTickets: Set<string> }> {
+	const out = { paidSubmissions: new Set<string>(), revisionTickets: new Set<string>() };
+	if (stageIds.length === 0) return out;
+	const { data, error } = await db
+		.from("stage_revision_requests")
+		.select("submission_id, ticket_id, request_type")
+		.in("project_stage_id", stageIds as string[])
+		.eq("status", "open");
+	if (error) return out;
+	type Row = { submission_id: string | null; ticket_id: string; request_type: string };
+	for (const row of (data ?? []) as unknown as Row[]) {
+		out.revisionTickets.add(row.ticket_id);
+		if (row.request_type === "paid_revision" && row.submission_id) {
+			out.paidSubmissions.add(row.submission_id);
+		}
+	}
+	return out;
+}
+
+/**
+ * The viewer's own open tickets on these stages — the Create Submission dropdown, read rather than
+ * invented. A ticket with an open revision round is offered as a `revision`. Secondary.
+ */
+async function fetchViewerTickets(
+	db: SupabaseClient,
+	stageIds: readonly string[],
+	viewerId: string,
+	revisionTickets: ReadonlySet<string>,
+): Promise<SubmissionTicketOption[]> {
+	if (stageIds.length === 0) return [];
+	const { data, error } = await db
+		.from("tickets")
+		.select("id, title")
+		.in("current_stage_id", stageIds as string[])
+		.eq("current_assignee_id", viewerId)
+		.not("status", "in", "(completed,cancelled)")
+		.order("created_at", { ascending: true })
+		.limit(200);
+	if (error) return [];
+	return ((data ?? []) as unknown as { id: string; title: string | null }[]).map((row) => ({
+		id: row.id,
+		title: clampOr(row.title, 200, "Untitled ticket"),
+		kind: revisionTickets.has(row.id) ? "revision" : "ticket",
+	}));
+}
+
+/**
  * How many distinct providers are STAFFED on each stage.
  *
  * Used only to decide whether the submitter level collapses. Staffing is the honest input to that
@@ -1034,6 +1099,8 @@ interface BuildContext {
 	providers: Map<string, Set<string>>;
 	projectScope: boolean;
 	isolated: boolean;
+	/** Submissions carrying an open paid revision round (Decision #167). */
+	paidRevisions: Set<string>;
 }
 
 /** One submission → a `unit` node holding its files directly (there is no `dir` level; see the docblock). */
@@ -1080,6 +1147,7 @@ function buildUnitNode(row: SubmissionRow, stage: StageRow, ctx: BuildContext): 
 			ticketSummary: ticket?.summary ? ticket.summary : null,
 			notes: notesFrom(row, ctx.parties, ctx.nowMs),
 			createdMs,
+			paidRevision: ctx.paidRevisions.has(row.id),
 		},
 	};
 }
@@ -1167,6 +1235,7 @@ function buildUnit(node: Node, path: readonly string[]): SubmissionUnit | null {
 		dateLabel: clamp(fmtDateTime(ctx.createdMs), 28),
 		fileCount: recCount(node),
 		noteCount: ctx.notes.length,
+		paidRevision: ctx.paidRevision && ctx.status === "revision_requested",
 	};
 }
 
@@ -1183,9 +1252,12 @@ function buildUnit(node: Node, path: readonly string[]): SubmissionUnit | null {
  * status vocabulary as the tree node above it. The raw `stage_status` member would not: the two enums
  * overlap on `cancelled` and nothing else.
  */
-function buildReview(node: Node, unit: SubmissionUnit): SubmissionReview | null {
+function buildReview(node: Node, unit: SubmissionUnit, currency: string): SubmissionReview | null {
 	const ctx = node.unit;
 	if (!ctx) return null;
+	const price = ctx.stage.extra_revision_price_cents === null
+		? null
+		: Math.max(0, Math.trunc(Number(ctx.stage.extra_revision_price_cents)) || 0);
 	return {
 		unit,
 		stageName: clamp(ctx.stage.name, 120),
@@ -1194,6 +1266,13 @@ function buildReview(node: Node, unit: SubmissionUnit): SubmissionReview | null 
 		ticketTitle: ctx.ticketTitle,
 		ticketSummary: ctx.ticketSummary,
 		notes: ctx.notes,
+		revisions: {
+			used: Math.max(0, ctx.stage.revisions_used ?? 0),
+			allowed: ctx.stage.file_revisions_allowed,
+			priceMinor: price,
+			currency,
+			priceLabel: price === null ? null : clamp(formatMoney(price, currency), 40),
+		},
 	};
 }
 
@@ -1243,7 +1322,7 @@ export async function fetchSubmissionPage(
 
 	// Five independent lookups over the same page, issued together: none depends on another's result,
 	// and awaiting them in series would add all five latencies to every navigation.
-	const [filesBySubmission, parties, tickets, channels, providers] = await Promise.all([
+	const [filesBySubmission, parties, tickets, channels, providers, rounds] = await Promise.all([
 		fetchSubmissionFiles(actor, db, submissionIds),
 		fetchParties(actor, [
 			...submissions.map((row) => row.submitted_by),
@@ -1252,7 +1331,15 @@ export async function fetchSubmissionPage(
 		fetchTickets(db, ticketIds),
 		fetchStageChannels(actor, project.id),
 		fetchStageProviders(db, stageIds),
+		fetchOpenRounds(db, stageIds),
 	]);
+	const viewerTickets = await fetchViewerTickets(
+		db,
+		stageIds,
+		actor.userId,
+		rounds.revisionTickets,
+	);
+	const currency = (project.currency ?? "USD").toUpperCase();
 
 	const ctx: BuildContext = {
 		viewerId: actor.userId,
@@ -1264,6 +1351,7 @@ export async function fetchSubmissionPage(
 		providers,
 		projectScope,
 		isolated: isolate,
+		paidRevisions: rounds.paidSubmissions,
 	};
 
 	const byStage = new Map<string, SubmissionRow[]>();
@@ -1319,7 +1407,7 @@ export async function fetchSubmissionPage(
 		const unit = buildUnit(chain[i], resolvedPath.slice(0, i + 1));
 		if (unit) {
 			activeUnit = unit;
-			review = buildReview(chain[i], unit);
+			review = buildReview(chain[i], unit, currency);
 		}
 		break;
 	}
@@ -1376,6 +1464,7 @@ export async function fetchSubmissionPage(
 		// is what tells the explorer so.
 		singleFreelancer: isolate ||
 			(everyStageCollapsed && allSubmitters.size <= 1 && allProviders.size <= 1),
+		tickets: viewerTickets,
 	};
 }
 

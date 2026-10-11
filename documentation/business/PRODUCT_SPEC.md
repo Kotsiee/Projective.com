@@ -280,14 +280,14 @@ navigation is simplified to match:
   than as a stage. A Task or a Session is presented as exactly one shared room named "Discussion" on
   every surface (the file explorer, the Overview's Messages, the files index); the stored rooms are
   unchanged (Decision #163).
-- **A project lane for the work, not for channels.** Beneath the lane's top tier — Discussion ·
-  Files · Submissions · Members, with no Board, Timeline or Calendar; its Discussion is a Chat view
-  alone (Decision #134); the configuration is the lane footer's Edit project control, as on every
-  type (Decision #163) — the lane shows what a Task's
-  reader checks: an **overview** (status · due date · owner · the person holding the ticket) and its
-  **task lists** (the ticket's checklist and its delivery steps, with a switcher between lists and an
-  "open only" filter — read-only, because completion is claimed at submission). The roster is the
-  top tier's Members view (Decision #133).
+- **A project lane that is only its top tier.** Discussion · Files · Submissions · Members, with no
+  Board, Timeline or Calendar; its Discussion is a Chat view alone (Decision #134); the
+  configuration is the lane footer's Edit project control, as on every type (Decision #163). There
+  is **no lane body** — no channel tree and no Task overview or task lists (Decision #164, which
+  removed the body #121 gave it): the Task's status and parties are on its Overview. The roster is
+  the top tier's Members view (Decision #133). The Overview does not
+  speak of stages for a Task — its one stage IS the Task, so the hero states no stage count and
+  draws no stage meter.
 - **The absent views answer, they do not 404.** A request for a Task's `timeline` or `calendar`
   (project- or channel-level) is sent to the page it would have been a view of — the project, or the
   room — so an old link still lands somewhere useful.
@@ -1107,11 +1107,23 @@ Freelancer—it is held by the platform’s secure ledger.
 | Project Type  | Lock Trigger                                                               | Release Trigger                                                                                       |
 | :------------ | :------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------- |
 | **One-Off**¹  | **Upfront:** When the project or first stage begins.                       | **Manual:** Upon Client approval of the final deliverable.                                            |
-| **Pipelines** | **Just-In-Time (JIT):** When a freelancer moves a ticket to "In Progress." | **Chain Reaction:** Approval of Ticket A releases payout and automatically locks Escrow for Ticket B. |
+| **Pipelines** | **Just-In-Time (JIT):** When a freelancer **claims** the ticket (§Escrow Lifecycle for Tickets is the authoritative wording). | **Chain Reaction:** Approval of Ticket A releases payout and automatically locks Escrow for Ticket B. |
 | **Sessions**  | **Booking:** When the time slot is confirmed.                              | **Negative Consent:** 24 hours after the session ends (assuming no "No-Show" claim).                  |
 
 ¹ A **Task** is a one-off without milestones (`format = one_off`), so it follows the One-Off row:
 its single stage is its first and final deliverable.
+
+**No hold, no work (root CLAUDE.md §8 Decision #165).** A freelancer may claim or start a ticket
+only once its escrow is held. When the lock trigger above fires and the hold cannot be made — no
+price, no payer wallet in the project's currency, or a payer (individual or business) who cannot
+cover it — the claim is **refused**, not waved through, and the ticket moves to **Needs funding**:
+it leaves every freelancer's board until the client clears it with a wallet hold or a card Buy Now.
+The same rule holds however a ticket is put to work — a self-claim, the owner's manual, round-robin or
+parallel assignment, or a drag into In progress — and for the next stage of a One-Off approved in
+sequence, which waits as Needs funding rather than starting on unheld money (the approved stage is
+still paid). The client is told when a hold is refused, with the reason and the amount; the freelancer
+is told "Funded — you can start" the moment the escrow is held. The full per-ticket sequence is in
+`PRODUCT_MANAGEMENT.md` §3.6.
 
 #### 3. Finance Tracking & Analytics
 
@@ -1133,11 +1145,56 @@ To bridge the gap between "Marketplace Speed" and "Corporate Accounting," Busine
 
 - **Monthly Consolidation:** Instead of triggering a credit card charge for every $50 ticket,
   Projective tracks all Escrow activity within a 30-day window.
-- **Consolidated Statement:** On the 1st of each month, the Business receives a single, legally
-  compliant invoice covering all successful payouts and platform fees.
+- **Consolidated Invoice:** Once a month, on the Business's **billing day** (1–28, chosen in
+  its invoicing terms; the 1st when it has not chosen), a Business in intervaled invoicing mode
+  receives one legally compliant invoice **per currency** it spent in. **Projective is always the
+  issuer**; the Business is the party billed. The 28th cap keeps every month's run on a real date.
+  The invoice lists every escrow **released** in the period — counted by the date it was released,
+  never the date it was funded — with its deadline bonus, the platform fee and tax as lines. Its
+  total is escrow + bonus + tax: the platform fee is deducted from the payee at release, so the
+  invoice shows it as the part of the total the platform kept and never adds it on top. Payment is
+  due a fixed number of days after issue (`finance-model.md` §15); an invoice still unpaid after its
+  due date is **Overdue**. A run never bills twice: there is at most one invoice per Business,
+  period and currency, and a re-run returns the one already issued. Issuing tells the Business's
+  billing members (`invoice.issued`). The wallet **statement** (`finance.statements`) is a separate
+  document — each wallet's opening and closing balance, money in, money out and fees for the month,
+  as a PDF — and stays on the 1st (root CLAUDE.md §8 Decision #168).
+- **What an invoice asks for:** escrow held from the Business wallet was paid when it was held, so
+  those lines are already settled. The amount **due** is only what the Business bought **on
+  account** in the period (below). An invoice with nothing on account is issued **Paid** — it is the
+  month's tax document. A billing member pays an amount due from the Business wallet or by card
+  (**Pay**).
+- **Paying on account:** a KYB-verified Business in intervaled invoicing mode may choose **Invoice**
+  at checkout. The platform credits the Business wallet with the order's amount as an on-account
+  credit and the order is paid from the wallet as usual — so every hold still comes from a wallet
+  (no hold, no work) — and the amount is added to that period's invoice as due. On-account spend is
+  capped per Business (`finance-model.md` §15), and an Overdue invoice withdraws the Invoice option
+  until it is paid.
 - **Over-Budget Safeguards:** If a Business attempts to lock Escrow for a project that exceeds their
   pre-approved monthly credit or current Wallet balance, the system prompts for a "Top-Up" or a
   budget increase before work can proceed.
+- **Auto-funding:** a Business chooses what happens when one of its projects' tickets cannot start
+  for want of money — when the ticket enters **Needs funding** (`PRODUCT_MANAGEMENT.md` §3.6):
+  - **Off** (the default) — the project owner is told and funds it by hand.
+  - **Add to basket** — the ticket is added to the project owner's basket as a single-ticket
+    purchase (Decision #166), ready to pay in one step.
+  - **From wallet** — the ticket joins the Business's **auto-fund queue** and is funded from the
+    Business wallet as soon as the wallet can cover it, oldest first: every credit to the wallet (a
+    top-up, a refund, a recurring deposit) retries the queue. Funding means the hold when the ticket
+    has a payee, or — for an unclaimed Pipeline ticket — returning it to the boards so its next claim
+    holds. An automatic hold stays inside the project owner's spending limit, and one at or above
+    the wallet's approval threshold raises a spend approval instead and is made once approved.
+
+  The Business sets the mode for all its projects (the `manage_billing` grant); a project may
+  override it in its settings or inherit it. Every automatic action leaves an entry on the ticket's
+  activity and tells the project owner. A project paid for by an individual is never auto-funded.
+- **Low-balance warning:** a Business may set a **balance floor** on its wallet in its default
+  currency. When a payment out of the wallet takes the balance from at-or-above the floor to below
+  it, everyone who can add funds to the wallet is told (`wallet.low_balance`) — once per crossing:
+  the warning re-arms only when the balance is back at or above the floor. The same warning fires
+  when the From-wallet auto-fund queue grows past what the wallet holds. A Business may also keep a
+  **floor top-up** — a recurring deposit from a saved card that runs each time the balance crosses
+  below the floor (`finance-model.md` §13).
 
 #### 5. Funding, Payout Readiness & the "No Forever-Escrow" Guarantee
 
@@ -1667,6 +1724,47 @@ a Business Wallet incrementally, or partial pre-authorization on Maintenance-cyc
 | **Buy Now**         | Immediate, single-ticket purchase and escrow lock.                                                                  |
 | **Basket Checkout** | Batch-purchase multiple tickets across one or more stages/projects in a single checkout flow.                       |
 | **Invoicing**       | For verified Business accounts (KYB Level 3) — routes through Intervaled Invoicing rather than an immediate charge. |
+| **Paid revision**   | One extra revision round on a ticket once its free rounds are used, at the source listing's extra-revision price.   |
+
+- **Buy Now funds one ticket, not its stage (Decision #166).** When the ticket already has a payee
+  (it is claimed, or its stage seat is held), the purchase holds escrow for that ticket alone. When
+  it has none — an unclaimed Pipeline ticket, where nobody can yet be paid — the money is credited
+  to the payer's wallet and the ticket's funding scope is set; the escrow is then held at claim
+  under the work-start gate (§Escrow, Wallets & Finance #2). Funding a whole stage remains a
+  separate action.
+  - **As built (2026-10-10).** One ticket is bought three ways, and every way holds exactly that
+    ticket's escrow at its own price (else its stage's) and leaves the stage's status alone — a
+    stage with some tickets funded is simply partially funded: **Buy Now by card** (an escrow lock
+    naming the ticket), **Basket Checkout** (one basket line per ticket — the board's "Checkout N"
+    adds each unfunded ticket — paid from the wallet, or by a card top-up of that wallet that the
+    signed webhook then settles, as for any order), and the wallet directly. A ticket line is never
+    discounted by a promo code, and only the project's own client (its business, or its owner as an
+    individual) can pay for it. The **Purchasing Gate** (§5) is enforced at every one of them.
+  - **Not built yet — flagged.** A payee today means the ticket is claimed or its stage holds an
+    accepted **team** seat; a single freelancer's stage seat is not yet a payee. A ticket with no
+    payee is refused at payment with "it can be bought once it's claimed" rather than prepaid: the
+    prepayment path above needs a stored funding scope that does not exist yet (Decision #165 flag
+    (a), #166 flag (a)). The basket says so on the line before Pay.
+- **Paid revisions (Decision #167).** A client may buy one revision round at a time against an
+  open revision request on a ticket, only after the free rounds the listing promised
+  (`free_revisions`) are used. The price is the project's source blueprint's
+  `extra_revision_price_cents`: `0` makes extra rounds free, and a project with no source listing,
+  or a listing that left the price unstated, cannot sell paid revisions. The payment is held as
+  escrow on the ticket and released when the revised work is approved, like any other ticket
+  escrow.
+  - **As built (2026-10-10).** The allotment is a **stage** term: when an engagement is created from
+    a blueprint (every creation path — create, add stage, hire, purchase), the stage copies the
+    seller's free rounds and extra-round price — the blueprint's, else its published listing's, with
+    the listing page's own fallbacks (once either is declared, an undeclared free count reads 0 and
+    an undeclared price reads the stage's ticket price) — and the terms are then **frozen**: neither
+    the buyer who owns the project nor a later reprice changes them. An owner-authored stage keeps
+    the owner's terms and is **unlimited** by default. Each free round the client requests is
+    counted (`used of allowed`); past the allotment, "Request revision" becomes **"Buy a revision ·
+    {price}"**. Buying raises the round **awaiting payment** at that price and sends nothing back;
+    Buy Now (wallet or card) holds the round's escrow on the ticket, and only then is the work
+    returned and the freelancer told **"Paid revision, funded, you can start."** A bought round
+    does not consume the free allotment. A verdict on the submission cancels a round still awaiting
+    payment. A stage whose price is unstated after its free rounds cannot be sent back again.
 
 ##### Escrow Lifecycle for Tickets
 
@@ -1681,6 +1779,9 @@ the **Claimed** step, not at the subsequent "In Progress" transition.
 > describe the same moment — but this section is the precise statement: the lock is tied to the
 > **Claim**, not the later status change. Treat this section as the authoritative wording if the two
 > ever need to be reconciled in code.
+
+A claim whose escrow cannot be held is refused and the ticket moves to **Needs funding** (Decision
+#165, §Escrow, Wallets & Finance #2). The claim never succeeds on an unheld ticket.
 
 ##### Ticket Movement, Placement & Default Stage Selection
 
@@ -2623,7 +2724,7 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `members`                | View business members                                                                          |
 |               |                           | `settings`               | Edit business settings                                                                         |
 |               |                           | `projects`               | View business projects                                                                         |
-|               |                           | `billing`                | Stripe Connect integration                                                                     |
+|               |                           | `billing`                | Invoices (with **Pay**), statement PDFs, invoicing terms, auto-funding and the balance floor (§Escrow, Wallets & Finance #4) |
 |               |                           | `invoices`               |                                                                                                |
 |               | `/connections`            | `index`                  | View network connections                                                                       |
 |               | `/calendar`               | `index`                  | Personal agenda — the union of every engagement the account is on, over its own working hours, call windows and booked leave. The same occurrence as on `/projects/[project id]/calendar`, not a copy |

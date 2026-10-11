@@ -96,3 +96,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_stage_invite_links_active
 CREATE INDEX IF NOT EXISTS idx_project_applications_invite_link
     ON projects.project_applications (invite_link_id)
     WHERE invite_link_id IS NOT NULL;
+
+-- #region Sessions & cohorts (Decision #171)
+CREATE INDEX IF NOT EXISTS idx_cohorts_project ON projects.cohorts (project_id);
+CREATE INDEX IF NOT EXISTS idx_cohorts_stage ON projects.cohorts (project_stage_id);
+CREATE INDEX IF NOT EXISTS idx_cohort_memberships_user ON projects.cohort_memberships (user_id);
+-- One live reservation per buyer per cohort: reserve_seat renews it instead of stacking a second, and
+-- this is what makes that a rule rather than a habit.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cohort_seat_holds_live
+    ON projects.cohort_seat_holds (cohort_id, user_id)
+    WHERE status = 'held';
+CREATE INDEX IF NOT EXISTS idx_session_events_cohort_start ON projects.session_events (cohort_id, start_time);
+-- The sweep's "ended sittings" scan and the join-window reads.
+CREATE INDEX IF NOT EXISTS idx_session_events_scheduled_end
+    ON projects.session_events (end_time)
+    WHERE status = 'scheduled';
+CREATE INDEX IF NOT EXISTS idx_curriculum_modules_stage
+    ON projects.curriculum_modules (project_stage_id, position) WHERE project_stage_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_curriculum_modules_cohort
+    ON projects.curriculum_modules (cohort_id, position) WHERE cohort_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_curriculum_lessons_module ON projects.curriculum_lessons (module_id, position);
+CREATE INDEX IF NOT EXISTS idx_lesson_progress_user ON projects.lesson_progress (user_id);
+-- #endregion

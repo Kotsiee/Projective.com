@@ -1,0 +1,109 @@
+/*
+ * workspace-billing.css — the business console's Billing module (`.wsp-billing`): monthly invoices
+ * with Pay, statement PDFs, invoicing terms, auto-funding and the balance floor (PRODUCT_SPEC §Escrow,
+ * Wallets & Finance #4). Token-only, strict BEM, logical properties only. Rows are separated by one
+ * hairline, never boxed (§B.4 anti-card); figures are tabular.
+ */
+
+.wsp-billing {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wsp-billing__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.wsp-billing__row {
+	display: grid;
+	grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--space-3);
+	min-block-size: var(--wsp-rowh);
+	padding-block: var(--space-2);
+	padding-inline: var(--space-2);
+	border-block-start: var(--hairline);
+}
+
+.wsp-billing__row:first-child {
+	border-block-start: none;
+}
+
+.wsp-billing__ident {
+	display: flex;
+	flex-direction: column;
+	min-inline-size: 0;
+}
+
+.wsp-billing__name {
+	font-size: var(--wsp-fs-body);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.wsp-billing__meta {
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+.wsp-billing__figure {
+	font-size: var(--wsp-fs-body);
+	color: var(--on-surface);
+	font-variant-numeric: tabular-nums;
+}
+
+.wsp-billing__acts {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-2);
+}
+
+.wsp-billing__settings {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--wsp-field)), 1fr));
+	gap: var(--space-5);
+	min-inline-size: 0;
+}
+
+.wsp-billing__field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.wsp-billing__note {
+	margin: 0;
+	max-inline-size: var(--wsp-prose);
+	font-size: var(--wsp-fs-micro);
+	color: var(--text-secondary);
+}
+
+.wsp-billing__warning {
+	margin: 0;
+	font-size: var(--wsp-fs-body);
+	color: var(--on-surface);
+}
+
+@media (max-width: 767px) {
+	.wsp-billing__row {
+		grid-template-columns: minmax(0, 1fr) auto;
+	}
+
+	.wsp-billing__row > .wsp-billing__figure {
+		grid-column: 1;
+	}
+}

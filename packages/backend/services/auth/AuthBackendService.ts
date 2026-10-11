@@ -351,7 +351,7 @@ export class AuthBackendService {
 	 *
 	 * When a standard (email/password) individual signs up with an address whose domain matches an
 	 * existing Organisation's registered domain (e.g. `ada@acme.com` ↔ an org whose website is
-	 * `acme.com`), drop an in-app `comms.notifications` entry to that org's owners and admins so they
+	 * `acme.com`), notify that org's owners and admins (catalog key `org.domain_colleague`) so they
 	 * can invite or approve the new colleague. Sub-domains (`ada@eu.acme.com`) match too. Live-only,
 	 * best-effort, and non-blocking — every failure is swallowed so it can never affect account
 	 * creation.
@@ -385,20 +385,24 @@ export class AuthBackendService {
 					.eq("status", "active")
 					.in("role", ["owner", "admin"]);
 
-				const rows = (members ?? [])
+				const recipients = (members ?? [])
 					// Don't notify the joiner about themselves (e.g. an org owner re-registering).
-					.filter((m) => m.user_id !== newUserId)
-					.map((m) => ({
-						user_id: m.user_id as string,
-						type: "organisation.domain_member_signup",
-						title: "Someone from your domain just joined",
-						body: `${email} signed up on Projective using your ${dom} domain.`,
-						entity_table: "org.organisations",
-						entity_id: org.id as string,
-					}));
+					.filter((m) => m.user_id !== newUserId);
 
-				if (rows.length > 0) {
-					await db.schema("comms").from("notifications").insert(rows);
+				// Through the router, not a raw insert: comms.fn_notify applies the catalog row (category,
+				// channels, the 1-day collapse window) and the recipient's preferences.
+				for (const m of recipients) {
+					await db.schema("comms").rpc("fn_notify", {
+						p_user_id: m.user_id as string,
+						p_type: "org.domain_colleague",
+						p_title: "Someone from your domain just joined",
+						p_body: `${email} signed up on Projective using your ${dom} domain.`,
+						p_entity_table: "org.organisations",
+						p_entity_id: org.id as string,
+						p_context_type: "organisation",
+						p_context_id: org.id as string,
+						p_group_key: `org-domain:${org.id}`,
+					});
 				}
 			}
 		} catch {

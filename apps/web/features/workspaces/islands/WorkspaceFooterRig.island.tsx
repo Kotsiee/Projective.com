@@ -175,7 +175,7 @@ export default function WorkspaceFooterRig(props: WorkspaceFooterRigProps): JSX.
 					))}
 
 				{!onRoster && props.canManageMoney &&
-					(module === "payouts" || module === "spend") && (
+					(module === "payouts" || module === "spend" || module === "billing") && (
 					<Tooltip
 						content={dirty ? "Save the policy" : "Nothing to save yet"}
 						placement="top"

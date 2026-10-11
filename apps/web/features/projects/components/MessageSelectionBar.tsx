@@ -1,4 +1,6 @@
 import { cloneElement, type JSX } from "preact";
+import { useRef } from "preact/hooks";
+import { useDismiss, useOverlayStack } from "@projective/ui/hooks";
 import "../styles/message-interactions.css";
 import { BodyPortal } from "@projective/ui/overlay";
 import type { ChatMessage } from "../types/projects-types.ts";
@@ -21,6 +23,8 @@ import { CopyIcon, ReplyIcon } from "./chat-glyphs.tsx";
  *   blurred ancestor can re-base it (DESIGN_SYSTEM.md §B.10).
  *
  * Both mark themselves `data-msg-ui` so a press on them is not read as a press outside the surface.
+ * Either form is the selection's Escape-stack layer: Escape ends the selection and goes no further,
+ * so a feed shown inside a modal or drawer keeps it open.
  */
 
 export interface MessageSelectionBarProps {
@@ -38,14 +42,24 @@ export interface MessageSelectionBarProps {
 export function MessageSelectionBar(props: MessageSelectionBarProps): JSX.Element | null {
 	const { selection, messages, canPin, mobile } = props;
 	const ids = selection.selected.value;
-	if (!selection.active.value || ids.length === 0) return null;
+	const shown = selection.active.value && ids.length > 0;
+	const barRef = useRef<HTMLDivElement>(null);
+	const stack = useOverlayStack({ active: shown });
+	useDismiss({
+		open: shown,
+		enabled: stack.isTop,
+		onDismiss: () => selection.exit(),
+		panelRef: barRef,
+		closeOnOutside: false,
+	});
+	if (!shown) return null;
 	const count = ids.length;
 	const single = count === 1 ? messages.find((m) => m.id === ids[0]) ?? null : null;
 	const countLabel = `${count} selected`;
 
 	if (!mobile) {
 		return (
-			<div class="msg-selbar" data-msg-ui="true">
+			<div ref={barRef} class="msg-selbar" data-msg-ui="true">
 				<div class="msg-selbar__pill" role="toolbar" aria-label="Selected messages">
 					<span class="msg-selbar__count" aria-hidden="true">{countLabel}</span>
 					<button
@@ -73,7 +87,9 @@ export function MessageSelectionBar(props: MessageSelectionBarProps): JSX.Elemen
 	return (
 		<BodyPortal>
 			<div
+				ref={barRef}
 				class="msg-mbar"
+				style={{ "--z-portal": String(stack.zIndex) }}
 				role="toolbar"
 				aria-label={`${countLabel} — message actions`}
 				data-msg-ui="true"

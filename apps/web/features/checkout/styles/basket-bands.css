@@ -198,13 +198,19 @@
 }
 
 /* The lane's own breakpoint — see the note at the top of this file. */
-.cko-band__btn--browse {
+.cko-band__switch {
     display: none;
 }
 
+/* Icon-only (`compact`), so the transfer costs the step trail no room. */
 @media (max-width: 767px) {
-    .cko-band__btn--browse {
+    .cko-band__switch {
         display: flex;
+        flex: none;
+    }
+
+    .cko-band__switch .bsk-switch {
+        min-inline-size: 0;
     }
 }
 

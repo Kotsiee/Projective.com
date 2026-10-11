@@ -49,11 +49,11 @@ export const PROVIDER_LABEL: Record<PaymentProvider, string> = {
  * than a question asked before it. The `express` route (Apple Pay, Google Pay, PayPal through Stripe's
  * Express Checkout Element) is an ACTION: pressing one of its buttons starts a payment immediately in
  * the wallet's own sheet, so it is never a selection that sits waiting for a separate Buy Now.
- * `invoice` is not a route the buyer picks here at all — consolidated monthly billing is arranged
- * once, on the Details step, and offering it as a per-purchase instrument would imply it can be
- * chosen per basket.
+ * `invoice` — paying on account (PRODUCT_SPEC §Escrow, Wallets & Finance #4, Decision #172) — is
+ * selectable only once consolidated monthly billing has been arranged, on the Details step: the
+ * arrangement is still made once; the per-purchase choice is whether THIS basket goes on account.
  */
-export const SELECTABLE_ROUTES: readonly PaymentProvider[] = ["wallet", "card"];
+export const SELECTABLE_ROUTES: readonly PaymentProvider[] = ["wallet", "card", "invoice"];
 
 /** Whether a route is one the instrument list can hold a selection for. */
 export function isSelectableRoute(provider: PaymentProvider | null): boolean {
@@ -70,7 +70,7 @@ export function isSelectableRoute(provider: PaymentProvider | null): boolean {
  * which is what makes "either the wallet or a card, never both" true by construction rather than by
  * two components remembering to clear each other.
  */
-export type PaymentMethodId = "wallet" | `card:${string}`;
+export type PaymentMethodId = "wallet" | "invoice" | `card:${string}`;
 
 /** The instrument currently selected, or `null` when the pair does not name one. */
 export function methodIdOf(
@@ -78,6 +78,7 @@ export function methodIdOf(
 	cardId: string | null,
 ): PaymentMethodId | null {
 	if (provider === "wallet") return "wallet";
+	if (provider === "invoice") return "invoice";
 	if (provider === "card" && cardId) return `card:${cardId}`;
 	return null;
 }
@@ -87,8 +88,8 @@ export function routeOfMethod(id: PaymentMethodId): {
 	provider: PaymentProvider;
 	cardId: string | null;
 } {
-	return id === "wallet"
-		? { provider: "wallet", cardId: null }
+	return id === "wallet" || id === "invoice"
+		? { provider: id, cardId: null }
 		: { provider: "card", cardId: id.slice("card:".length) };
 }
 

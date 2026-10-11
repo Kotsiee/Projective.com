@@ -42,6 +42,8 @@ import { BasketBackendService } from "../finance/BasketBackendService.ts";
 import type { BasketQuery } from "../finance/basket-query.ts";
 import { MessagingBackendService } from "../messaging/MessagingBackendService.ts";
 import type { ReadActor } from "../read-actor.ts";
+import { SessionBackendService } from "../sessions/SessionBackendService.ts";
+import type { CohortOffer, ReserveSeatInput, SeatHold } from "@projective/types/projects";
 
 /**
  * BookingBackendService — the FAT service behind every conversion CTA on a listing page.
@@ -250,14 +252,19 @@ function isScheduled(format: ServiceBookingFormat): boolean {
  * for a service whose page says 90.
  *
  * A session with no stated length is booked at an hour, and the page says so beside it; nothing here
- * invents a second number.
+ * invents a second number. A cohort's seats are the cohort's REAL remaining seats (`cohort`), and a
+ * group session with no enrolling cohort offers none.
  */
-function gridInputFor(view: EntityView, format: ServiceBookingFormat): SlotGridRequest {
+function gridInputFor(
+	view: EntityView,
+	format: ServiceBookingFormat,
+	cohort: CohortOffer | null = null,
+): SlotGridRequest {
 	const svc = view.service;
 	return {
 		sessionCount: format === "set_session" ? (svc?.sessionCount ?? 1) : 1,
 		durationMinutes: svc?.sessionMinutes ?? 60,
-		seatsPerSession: format === "cohort" ? (svc?.seatsPerSession ?? null) : null,
+		seatsPerSession: format === "cohort" ? (cohort?.seats.remaining ?? 0) : null,
 	};
 }
 
@@ -326,22 +333,22 @@ function contactOfferFor(
 
 // #region Capacity
 /**
- * Cohort seats. The sentence is built HERE because it is the accessible fact: a segmented meter
- * cannot be read aloud.
- *
- * Every seat is reported open: no seat of a future occurrence is held by anything the platform
- * records yet (a seat is held at checkout), so a fill level here would be invented.
+ * The cohort a group-session listing seats into, with its REAL occupancy — paid seats plus unexpired
+ * holds (`projects.get_cohort_offer`, Decision #171). `null` for every other format, for a listing
+ * with no enrolling cohort, and when the database could not answer (no seat figure beats an invented
+ * one). Its `seats.sentence` is the accessible fact the decorative meter stands beside.
  */
-function capacityFor(view: EntityView, format: ServiceBookingFormat) {
-	if (format !== "cohort") return null;
-	const total = view.service?.seatsPerSession ?? 0;
-	if (total <= 0) return null;
-	return {
-		total,
-		taken: 0,
-		remaining: total,
-		sentence: `${total} ${plural(total, "seat")} per session`,
-	};
+async function cohortFor(
+	view: EntityView,
+	format: ServiceBookingFormat,
+	owner: ListingOwner,
+): Promise<CohortOffer | null> {
+	if (format !== "cohort" || !owner.blueprintId) return null;
+	const cohort = await SessionBackendService.cohortOffer(owner.blueprintId, {
+		listingId: view.item.id,
+		maxSeats: view.service?.seatsPerSession ?? 0,
+	});
+	return cohort ?? null;
 }
 // #endregion
 
@@ -365,7 +372,8 @@ export class BookingBackendService {
 
 		const view = buildViewPage(item);
 		const format = formatOf(view);
-		const capacity = capacityFor(view, format);
+		const cohort = await cohortFor(view, format, owner);
+		const capacity = cohort?.seats ?? null;
 
 		// A failed read of the call offer leaves the call row out rather than failing the whole page:
 		// the listing is still buyable, and "takes no calls" is the safer thing to show than a row whose
@@ -387,12 +395,14 @@ export class BookingBackendService {
 				format,
 				sessionCount: format === "set_session" ? (view.service?.sessionCount ?? 1) : 1,
 				seatsRemaining: capacity?.remaining ?? null,
+				cohortOpen: format !== "cohort" || cohort !== null,
 				draftHref: draft?.boardHref ?? null,
 				bookingsOpen,
 				scheduleHref: scheduleHrefFor(item, opts.handle ?? null),
 			}),
 			contact: contactOfferFor(item, actor, signInHref, callOffer),
 			capacity,
+			cohort,
 			draft,
 			sessionCount: format === "set_session" ? (view.service?.sessionCount ?? 1) : 1,
 			durationMinutes: view.service?.bookable ? (view.service.sessionMinutes ?? 60) : null,
@@ -465,7 +475,7 @@ export class BookingBackendService {
 				errors: { subjectId: "not_bookable" },
 			});
 		}
-		return ScheduleBackendService.slots(query, gridInputFor(view, format), {
+		return ScheduleBackendService.slots(query, gridInputFor(view, format, await cohortFor(view, format, owner)), {
 			owner: owner.schedule,
 			kind: "working_hours",
 		});
@@ -500,10 +510,32 @@ export class BookingBackendService {
 			});
 		}
 
+		// A cohort has its own sittings, so a seat is reserved on it rather than picked from the grid.
+		if (format === "cohort") {
+			const reserved = await BookingBackendService.reserveSeat(
+				{ subjectId: input.subjectId, seats: input.seats ?? 1 },
+				actor,
+			);
+			if (!reserved.ok || !reserved.data) {
+				return fail(reserved.status, { message: reserved.message, errors: reserved.errors, details: reserved.details });
+			}
+			const { hold, basketItemId, firstStartsAt } = reserved.data;
+			return ok({
+				outcome: {
+					subjectId: item.id,
+					format,
+					basketItemId,
+					route: "/checkout",
+					summary: `Seat${hold.seats > 1 ? "s" : ""} reserved. Complete checkout to confirm.`,
+					scheduled: { booked: 0, total: 1, firstStartsAt: firstStartsAt ? Date.parse(firstStartsAt) : null },
+				},
+			}, { status: 201 });
+		}
+
 		const gridInput = gridInputFor(view, format);
 		const query: SlotQuery = {
 			subjectId: input.subjectId,
-			purpose: format === "cohort" ? "cohort" : format === "set_session" ? "set_session" : "session",
+			purpose: format === "set_session" ? "set_session" : "session",
 			timezone: input.timezone,
 			days: 60,
 		};
@@ -537,14 +569,7 @@ export class BookingBackendService {
 		}
 		resolved.sort((a, b) => a.startsAt - b.startsAt);
 
-		const seats = format === "cohort" ? input.seats : 1;
 		const first = resolved[0];
-		if (format === "cohort" && first.seatsRemaining !== null && seats > first.seatsRemaining) {
-			return fail(409, {
-				message: `Only ${first.seatsRemaining} ${plural(first.seatsRemaining, "seat")} left in that session.`,
-				errors: { seats: "insufficient_seats" },
-			});
-		}
 
 		const itemType = purchaseKindOf(format);
 		if (!itemType) return fail(422, { message: "This listing cannot be booked." });
@@ -558,7 +583,7 @@ export class BookingBackendService {
 			// instant the buyer picked.
 			scheduledAt: new Date(first.startsAt).toISOString(),
 			timezone: input.timezone ?? null,
-			seats,
+			seats: 1,
 			metadata: {
 				serviceId: item.id,
 				sourceType: item.type,
@@ -584,14 +609,58 @@ export class BookingBackendService {
 				format,
 				basketItemId: line?.id ?? null,
 				route: "/checkout",
-				summary: format === "cohort"
-					? `Seat${seats > 1 ? "s" : ""} selected. Complete checkout to confirm.`
-					: total > 1
+				summary: total > 1
 					? `First session selected. Complete checkout to confirm all ${total}.`
 					: "Time selected. Complete checkout to confirm.",
 				scheduled: { booked: resolved.length, total, firstStartsAt: first.startsAt },
 			},
 		}, { status: 201 });
+	}
+
+	/**
+	 * Reserve seats on a group-session listing's current cohort and put the seat line in the buyer's
+	 * basket (Decision #171): `projects.reserve_seat` places the TTL hold under a row lock, and the line
+	 * carries it (`metadata.holdId`) so the Buy Now panel or `/checkout` pays exactly that reservation —
+	 * `finance.place_wallet_order` turns it into a membership and the seat's escrow. Reserving again
+	 * renews the hold and replaces the line's seats.
+	 */
+	static async reserveSeat(
+		input: ReserveSeatInput,
+		actor: BookingActor = ANONYMOUS_ACTOR,
+	): Promise<ServiceResult<{ hold: SeatHold; basketItemId: string | null; firstStartsAt: string | null }>> {
+		if (!actor.userId) return fail(401, { message: "Sign in to reserve a seat." });
+		const item = findItem(input.subjectId);
+		if (!item) return fail(404, { message: `No listing found for id "${input.subjectId}".` });
+		const owner = listingOwner(item.id);
+		if (!owner?.blueprintId) return fail(404, { message: `No listing found for id "${input.subjectId}".` });
+		const view = buildViewPage(item);
+		if (formatOf(view) !== "cohort") {
+			return fail(422, { message: "Only a group session has seats to reserve.", errors: { subjectId: "not_seated" } });
+		}
+
+		const reserved = await SessionBackendService.reserveSeat(owner.blueprintId, input.seats, readerOf(actor));
+		if (!reserved.ok || !reserved.data) {
+			return fail(reserved.status, { message: reserved.message, details: reserved.details });
+		}
+		const { hold, firstStartsAt } = reserved.data;
+
+		const write = await BasketBackendService.addItem({
+			basketId: null,
+			itemType: "course_group_session",
+			itemId: item.id,
+			quantity: 1,
+			// The cohort's first sitting rides the line, so the checkout confirms (and later invoices) it.
+			scheduledAt: firstStartsAt,
+			timezone: null,
+			seats: hold.seats,
+			metadata: { serviceId: item.id, sourceType: item.type, bookingFormat: "cohort", holdId: hold.holdId },
+		}, basketQueryFor(actor, item.id), readerOf(actor));
+		if (!write.ok || !write.data) {
+			return fail(write.status, { message: write.message, errors: write.errors });
+		}
+		const line = write.data.basket.items.find((l) => l.itemId === item.id && l.metadata.holdId === hold.holdId) ??
+			null;
+		return ok({ hold, basketItemId: line?.id ?? null, firstStartsAt }, { status: 201 });
 	}
 
 	/**

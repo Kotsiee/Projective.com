@@ -80,6 +80,10 @@ CREATE TABLE finance.escrows (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
     project_stage_id uuid NOT NULL REFERENCES projects.project_stages (id) ON DELETE RESTRICT,
     ticket_id uuid REFERENCES projects.tickets (id) ON DELETE SET NULL,
+    -- The seat this escrow pays for (Decision #171): a session's escrow is held at booking, one per
+    -- membership, against the cohort's stage. RESTRICT: a seat with money behind it is cancelled,
+    -- never removed. A ticket escrow and a seat escrow are different subjects (ck_escrows_one_subject).
+    cohort_membership_id uuid REFERENCES projects.cohort_memberships (id) ON DELETE RESTRICT,
     -- The payer is EITHER a client business OR an individual client (a project with no
     -- client_business_id is paid for by its owner, PRODUCT_SPEC §Escrow, Wallets & Finance #5: an
     -- individual client needs no business profile). Exactly one is set (ck_escrows_one_payer); the
@@ -95,12 +99,17 @@ CREATE TABLE finance.escrows (
     currency text NOT NULL,
     status text NOT NULL DEFAULT 'funded',
     created_at timestamptz NOT NULL DEFAULT now(),
+    -- When it was released to the payee — what a consolidated invoice selects its period by.
+    released_at timestamptz,
+    -- Held by the From-wallet auto-fund queue (finance.fn_auto_fund_drain) rather than by a person.
+    auto_funded boolean NOT NULL DEFAULT false,
     -- Folded (20260723090000): FX snapshot captured at commit (NULL when same-currency).
     -- Immutable once written — settlement reproduces the escrow at the rate it was funded at.
     fx_rate numeric(20, 10),
     fx_base char(3) DEFAULT 'GBP',
     fx_as_of timestamptz,
-    CONSTRAINT ck_escrows_one_payer CHECK (num_nonnulls (payer_business_id, payer_user_id) = 1)
+    CONSTRAINT ck_escrows_one_payer CHECK (num_nonnulls (payer_business_id, payer_user_id) = 1),
+    CONSTRAINT ck_escrows_one_subject CHECK (num_nonnulls (ticket_id, cohort_membership_id) <= 1)
 );
 
 CREATE TABLE finance.payout_accounts (
@@ -128,11 +137,14 @@ CREATE TABLE finance.invoices (
     -- Nullable: a consolidated monthly invoice spans many stages (constraint relaxed, not dropped).
     project_stage_id uuid REFERENCES projects.project_stages (id) ON DELETE CASCADE,
     issue_to_business_id uuid NOT NULL REFERENCES org.business_profiles (id) ON DELETE RESTRICT,
-    issue_from_profile uuid NOT NULL,
+    -- NULL: issued by the platform (Projective) — every consolidated invoice (PRODUCT_SPEC §Escrow,
+    -- Wallets & Finance #4). A profile id only for a per-stage invoice a seller issues.
+    issue_from_profile uuid,
     invoice_type text NOT NULL DEFAULT 'per_stage' CHECK (invoice_type IN ('per_stage', 'consolidated_monthly')),
     billing_period_start timestamptz,
     billing_period_end timestamptz,
-    amount_cents bigint NOT NULL CHECK (amount_cents > 0),
+    -- The invoice's figure — its total. Zero on a month that only bought on account.
+    amount_cents bigint NOT NULL CHECK (amount_cents >= 0),
     subtotal_cents bigint NOT NULL DEFAULT 0,
     platform_fee_cents bigint NOT NULL DEFAULT 0,
     tax_cents bigint NOT NULL DEFAULT 0,
@@ -142,7 +154,12 @@ CREATE TABLE finance.invoices (
     due_date timestamptz,
     paid_at timestamptz,
     pdf_file_id uuid REFERENCES files.items (id) ON DELETE SET NULL,
-    created_at timestamptz NOT NULL DEFAULT now()
+    created_at timestamptz NOT NULL DEFAULT now(),
+    -- What is still owed: the period's on-account credit (`on_account_credit` lines), until paid.
+    -- Escrow held from the wallet was paid when held, so an invoice with nothing on account is 0.
+    amount_due_cents bigint NOT NULL DEFAULT 0 CHECK (amount_due_cents >= 0),
+    -- One run per business, period and currency: the billing run is idempotent on it.
+    CONSTRAINT uq_invoices_business_period_currency UNIQUE (issue_to_business_id, billing_period_start, currency)
 );
 
 CREATE TABLE finance.disputes (
@@ -245,7 +262,7 @@ CREATE TABLE finance.spending_limits (
 CREATE TABLE finance.invoice_line_items (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
     invoice_id uuid NOT NULL REFERENCES finance.invoices (id) ON DELETE CASCADE,
-    ref_type text NOT NULL CHECK (ref_type IN ('escrow', 'bonus', 'platform_fee', 'refund', 'tax')),
+    ref_type text NOT NULL CHECK (ref_type IN ('escrow', 'bonus', 'platform_fee', 'refund', 'tax', 'on_account')),
     ref_id uuid,
     description text NOT NULL,
     amount_cents bigint NOT NULL,
@@ -754,11 +771,16 @@ CREATE TABLE finance.basket_items (
     -- NULL: if the stage is gone the line is no longer purchasable, and a stage-less ticket line
     -- would be a silently wrong basket entry rather than an honest absence.
     stage_id uuid REFERENCES projects.project_stages (id) ON DELETE CASCADE,
-    -- ⚠️ NOT foreign-keyed, unlike stage_id, because its target is genuinely ambiguous today:
-    -- `projects.stage_revision_requests` (a client-requested revision round) and a submission
-    -- revision are two different things and the purchasable one has not been settled. Left as a
-    -- bare uuid rather than guessing a table; flagged for a human (root CLAUDE.md §8).
-    revision_id uuid,
+    -- The ONE ticket this line buys (Decision #166) — a board ticket's Buy now / Checkout. NULL for a
+    -- line that buys a whole project, a listing or a session. CASCADE for the same reason as stage_id:
+    -- a ticket that no longer exists is not purchasable. One live line per ticket per basket
+    -- (uq_basket_items_live_ticket, cat 4) — a ticket is bought once, never in quantity.
+    ticket_id uuid REFERENCES projects.tickets (id) ON DELETE CASCADE,
+    -- The paid revision round this line buys (Decision #167): a client-requested round on a ticket,
+    -- raised `awaiting_payment` by projects.request_paid_revision and opened when its escrow is held.
+    -- Set exactly on a `paid_revision` line, where it equals `item_id` (basket_item_revision_line).
+    -- CASCADE for stage_id's reason: a round that no longer exists is not purchasable.
+    revision_id uuid REFERENCES projects.stage_revision_requests (id) ON DELETE CASCADE,
     title text NOT NULL,                           -- display snapshot, so a renamed listing cannot rewrite history
     subtitle text,
     unit_price_minor bigint NOT NULL CHECK (unit_price_minor >= 0),
@@ -811,6 +833,17 @@ CREATE TABLE finance.basket_items (
     -- A discount may never exceed the line it discounts, so a basket total can never go negative.
     CONSTRAINT basket_item_discount_within_line CHECK (
         discount_amount_minor <= unit_price_minor * quantity
+    ),
+    -- A ticket line buys project work, exactly one of it.
+    CONSTRAINT basket_item_ticket_is_project_work CHECK (
+        ticket_id IS NULL OR (
+            item_type IN ('project_ticket', 'one_off_project', 'one_off_task') AND quantity = 1
+        )
+    ),
+    -- A paid revision line names its round, once; no other kind names one.
+    CONSTRAINT basket_item_revision_line CHECK (
+        (item_type = 'paid_revision') = (revision_id IS NOT NULL)
+        AND (revision_id IS NULL OR (revision_id = item_id AND quantity = 1))
     )
 );
 
@@ -948,6 +981,8 @@ CREATE TABLE finance.order_lines (
     licence text,
     -- Engagement fulfilment.
     stage_id uuid REFERENCES projects.project_stages (id) ON DELETE SET NULL,
+    -- The ticket whose escrow this line held (Decision #166). SET NULL: the receipt outlives the ticket.
+    ticket_id uuid REFERENCES projects.tickets (id) ON DELETE SET NULL,
     -- Session fulfilment.
     scheduled_at timestamptz,
     timezone text,
@@ -1037,6 +1072,9 @@ CREATE TABLE finance.inbound_payments (
     -- The stage an `escrow_lock` payment funds. SET NULL so a stage retired later keeps the payment
     -- history; which is also why the rule below is one-directional (a top-up never names a stage).
     project_stage_id uuid REFERENCES projects.project_stages (id) ON DELETE SET NULL,
+    -- The ONE ticket an `escrow_lock` funds (Decision #166): only that ticket's escrow is held, at its
+    -- own price. NULL funds every assigned, unfunded ticket of the stage (projects.fund_stage).
+    ticket_id uuid REFERENCES projects.tickets (id) ON DELETE SET NULL,
     amount_cents bigint NOT NULL CHECK (amount_cents > 0),
     currency char(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
     -- What the processor reports it actually received. NULL until settlement; the ledger is credited
@@ -1099,6 +1137,9 @@ CREATE TABLE finance.inbound_payments (
     -- A top-up never names a stage (an escrow lock may lose its stage later, hence one-directional).
     CONSTRAINT inbound_payments_stage_only_for_locks CHECK (
         purpose = 'escrow_lock' OR project_stage_id IS NULL
+    ),
+    CONSTRAINT inbound_payments_ticket_only_for_locks CHECK (
+        purpose = 'escrow_lock' OR ticket_id IS NULL
     ),
     -- The lock state is meaningful exactly for escrow locks.
     CONSTRAINT inbound_payments_lock_matches_purpose CHECK (

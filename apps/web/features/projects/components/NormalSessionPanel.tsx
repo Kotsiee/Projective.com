@@ -32,7 +32,7 @@ export interface NormalSessionPanelProps {
 
 export function NormalSessionPanel(props: NormalSessionPanelProps): JSX.Element {
 	const { data, calendarHref, filesHref } = props;
-	const badge = bookingBadge(data.upcoming.bookingStatus);
+	const badge = data.upcoming ? bookingBadge(data.upcoming.bookingStatus) : null;
 
 	return (
 		<div class="proj-sess proj-sess--normal">
@@ -41,15 +41,19 @@ export function NormalSessionPanel(props: NormalSessionPanelProps): JSX.Element 
 				<div class="sess-next__head">
 					<span class="sess-next__icon" aria-hidden="true">{VideoIcon}</span>
 					<span class="sess-next__eyebrow">Next session</span>
-					<span class="sess-badge" data-tone={badge.tone}>{badge.label}</span>
+					{badge && <span class="sess-badge" data-tone={badge.tone}>{badge.label}</span>}
 				</div>
-				<div class="sess-next__when">
-					<span class="sess-next__time">{data.upcoming.label}</span>
-					<span class="sess-next__rel">
-						{data.upcoming.relativeLabel} · {data.upcoming.durationLabel}
-					</span>
-				</div>
-				<p class="sess-next__note">{badge.note}</p>
+				{data.upcoming
+					? (
+						<div class="sess-next__when">
+							<span class="sess-next__time">{data.upcoming.label}</span>
+							<span class="sess-next__rel">
+								{data.upcoming.relativeLabel} · {data.upcoming.durationLabel}
+							</span>
+						</div>
+					)
+					: <p class="sess-next__note">No session is scheduled yet.</p>}
+				{badge && <p class="sess-next__note">{badge.note}</p>}
 				<a class="sess-next__cta" href={calendarHref}>
 					<span class="sess-next__cta-icon" aria-hidden="true">{CalendarPlusIcon}</span>
 					<span>Propose time</span>
@@ -61,7 +65,7 @@ export function NormalSessionPanel(props: NormalSessionPanelProps): JSX.Element 
 				<span class="sess-counter__label">Package</span>
 				<span
 					class="sess-counter__value"
-					data-open={data.counter.payPerSession ? "true" : undefined}
+					data-open={data.counter.empty ? "true" : undefined}
 				>
 					{data.counter.label}
 				</span>

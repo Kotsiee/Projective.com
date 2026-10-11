@@ -85,6 +85,11 @@ export const BookingActionKind = z.enum([
 	/** Open the scope/funding + brief composer. */
 	"open_scope",
 	/**
+	 * Hold a seat on the cohort (`POST /api/sessions/reserve`) and open instant checkout on the held
+	 * line (Decision #171) — a cohort's sittings are fixed, so there is no time to pick.
+	 */
+	"reserve_seat",
+	/**
 	 * Navigate to the listing's full-page schedule leaf (`/view/[id]/schedule`). The Proactive
 	 * Calendar entry for a scheduled format — a SECONDARY that navigates, never the primary, because
 	 * the in-page slot picker is the flow that actually reaches checkout.
@@ -102,7 +107,7 @@ export type BookingActionKind = z.infer<typeof BookingActionKind>;
  */
 export const BookingCtaSchema = z.object({
 	kind: BookingActionKind,
-	/** The visible label. Already interpolated (`Book 6 sessions`, `Join cohort (3 spots left)`). */
+	/** The visible label. Already interpolated (`Book 6 sessions`, `Reserve seat`). */
 	label: z.string().min(1).max(60),
 	/**
 	 * The accessible name when it must say more than the label does — a count that a sighted reader
@@ -166,6 +171,12 @@ export interface CtaInput {
 	sessionCount: number;
 	/** Cohort seats left, or `null` for a format with no finite capacity. */
 	seatsRemaining: number | null;
+	/**
+	 * Whether a group-session listing has an enrolling cohort at all. Optional (absent reads as open) so
+	 * every non-cohort caller is unchanged; `false` refuses the primary with its own reason, because "no
+	 * cohort open yet" and "this cohort is full" are different facts.
+	 */
+	cohortOpen?: boolean;
 	/** The board href of an existing pipeline draft, or `null` when there is none. */
 	draftHref: string | null;
 	/** Whether the provider is currently accepting bookings at all. */
@@ -216,7 +227,8 @@ function scheduleLink(scheduleHref: string | null | undefined): BookingCta | nul
  * and is exhausted, and those are different facts.
  */
 export function resolveCta(input: CtaInput): ServiceCtaRig {
-	const { format, sessionCount, seatsRemaining, draftHref, bookingsOpen, scheduleHref } = input;
+	const { format, sessionCount, seatsRemaining, draftHref, bookingsOpen, scheduleHref, cohortOpen = true } =
+		input;
 
 	const basket: BookingCta = {
 		kind: "add_to_basket",
@@ -308,14 +320,27 @@ export function resolveCta(input: CtaInput): ServiceCtaRig {
 		case "cohort": {
 			const left = seatsRemaining ?? 0;
 			const full = left <= 0;
+			if (!cohortOpen) {
+				return {
+					format,
+					primary: {
+						kind: "unavailable",
+						label: "No cohort open",
+						href: null,
+						disabled: true,
+						disabledReason: "This listing has no cohort taking bookings yet.",
+					},
+					secondary: scheduleLink(scheduleHref),
+				};
+			}
 			return {
 				format,
 				primary: {
-					kind: full ? "unavailable" : "open_scheduler",
-					label: full ? "Cohort full" : `Join cohort (${left} ${plural(left, "spot")} left)`,
+					kind: full ? "unavailable" : "reserve_seat",
+					label: full ? "Cohort full" : "Reserve seat",
 					ariaLabel: full
 						? "This cohort is full"
-						: `Join this cohort — ${left} ${plural(left, "spot")} remaining`,
+						: `Reserve a seat — ${left} ${plural(left, "seat")} remaining`,
 					href: null,
 					disabled: full,
 					disabledReason: full ? "Every seat in this cohort is taken." : null,

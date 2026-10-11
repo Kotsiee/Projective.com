@@ -20,6 +20,7 @@ export type {
 	Basket,
 	BasketGroup,
 	BasketItem,
+	BasketOwnerSummary,
 	BasketSummary,
 	CardArtConfig,
 	CardBrand,

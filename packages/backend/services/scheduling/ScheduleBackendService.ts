@@ -353,7 +353,7 @@ export interface SlotGridRequest {
 	sessionCount: number;
 	/** Each slot's length. Provider-set; never buyer-chosen. */
 	durationMinutes: number;
-	/** Cohort capacity per occurrence, or `null` for a one-to-one grid. */
+	/** Seats still free per cohort occurrence (real occupancy), or `null` for a one-to-one grid. */
 	seatsPerSession: number | null;
 }
 
@@ -434,6 +434,7 @@ function scheduleUnavailable<T>(): ServiceResult<T> {
  */
 const SLOT_REFUSAL_COPY: Partial<Record<string, string>> = {
 	taken: "Someone booked that time first. Pick another slot.",
+	full: "Every seat in that session is taken.",
 	past: "That time has already passed.",
 	blackout: "The provider is away then.",
 	slot_unavailable: "That time is no longer available.",

@@ -39,6 +39,13 @@ The `WITH CHECK` clause on the update policy is what stops a client rewriting `u
 notification to someone else. Both refusals are verified: a forged insert and a reassignment attempt
 each fail with _"new row violates row-level security policy"_.
 
+**Which columns** the policy admits is a GRANT question, not a policy one. `00002500` grants `ALL`
+on every comms table to `authenticated`, so the own-row policy alone let a recipient rewrite their
+own `title`, `body`, `action_url` — forging a platform message inside the trusted inbox. `00002520`
+§2 revokes table-level `UPDATE` and grants `UPDATE (read_at, seen_at, archived_at)` only; any other
+column fails with `42501` _permission denied_. The writer (`comms.fn_notify`, SECURITY DEFINER) is
+unaffected. Proven by `supabase/probes/comms_column_grants.sql`.
+
 ### Preferences — full self-service, scoped to the owner
 
 | Table                               | Commands                     | Rule                   |
@@ -130,6 +137,11 @@ so an edit cannot outlive the sender's membership of the room.
 
 Soft delete goes through this same policy (`deleted_at`); nothing here is hard-deleted (root
 `CLAUDE.md` §5).
+
+The writable columns are fixed by GRANT, not by the policy: `authenticated` holds
+`UPDATE (body, body_delta, edited_at, deleted_at)` only (`00002520` §2). Without it the blanket comms
+grant let a sender clear `pii_masked` / `pii_categories`, backdate `created_at`, or flip
+`has_attachments` / `is_audio` on their own message.
 
 What the policy cannot hold is a REPLY staying in its room: it admits any column the sender owns,
 `reply_to_id` and `channel_id` included, so an edit could point a reply's quote at a message from a

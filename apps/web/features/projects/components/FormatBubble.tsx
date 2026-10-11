@@ -1,4 +1,6 @@
 import type { JSX } from "preact";
+import { useRef } from "preact/hooks";
+import { useDismiss, useOverlayStack } from "@projective/ui/hooks";
 import "../styles/message-interactions.css";
 import { BodyPortal } from "@projective/ui/overlay";
 import type { MessageMark } from "@projective/types/projects";
@@ -18,6 +20,8 @@ import type { MessageMark } from "@projective/types/projects";
  * editor keeps its focus and its selection while the mark is applied. Keyboard users have the same
  * four marks on Ctrl+B / Ctrl+I / Ctrl+U / Ctrl+Shift+X without leaving the field — which is why the
  * buttons stay out of the tab order rather than becoming a stop that pulls focus off the text.
+ * Escape hides the bubble first through the shared overlay stack, so a composer inside a modal does
+ * not lose the modal to the same press.
  */
 
 export interface FormatBubbleProps {
@@ -25,6 +29,8 @@ export interface FormatBubbleProps {
 	rect: { left: number; top: number; width: number };
 	marks: Record<MessageMark, boolean>;
 	onToggle: (mark: MessageMark) => void;
+	/** Hide the bubble (Escape). */
+	onDismiss: () => void;
 }
 
 interface MarkButton {
@@ -49,16 +55,24 @@ const BUTTONS: readonly MarkButton[] = [
 	{ mark: "underline", label: "Underline", shortcut: "Ctrl+U", keys: "Control+U", glyph: "U" },
 ];
 
-export function FormatBubble({ rect, marks, onToggle }: FormatBubbleProps): JSX.Element {
+export function FormatBubble({ rect, marks, onToggle, onDismiss }: FormatBubbleProps): JSX.Element {
+	const ref = useRef<HTMLDivElement>(null);
+	const stack = useOverlayStack({ active: true });
+	useDismiss({ open: true, enabled: stack.isTop, onDismiss, panelRef: ref, closeOnOutside: false });
 	const x = rect.left + rect.width / 2;
 	return (
 		<BodyPortal>
 			<div
+				ref={ref}
 				class="msg-glass msg-format"
 				role="toolbar"
 				aria-label="Text formatting"
 				data-msg-ui="true"
-				style={{ "--glass-x": `${x}px`, "--glass-y": `${rect.top}px` }}
+				style={{
+					"--glass-x": `${x}px`,
+					"--glass-y": `${rect.top}px`,
+					"--z-portal": String(stack.zIndex),
+				}}
 			>
 				{BUTTONS.map((b) => (
 					<button

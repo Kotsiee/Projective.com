@@ -23,6 +23,13 @@ CREATE TRIGGER trg_products_derived
     BEFORE INSERT OR UPDATE ON catalogue.products
     FOR EACH ROW EXECUTE FUNCTION security.fn_guard_derived_columns('rating_average', 'rating_count');
 
+-- The free revision rounds a stage has consumed (Decision #167). The owner may edit their stage, never
+-- this count: only projects.review_submission (definer, under a row lock) moves it.
+DROP TRIGGER IF EXISTS trg_project_stages_derived ON projects.project_stages;
+CREATE TRIGGER trg_project_stages_derived
+    BEFORE INSERT OR UPDATE ON projects.project_stages
+    FOR EACH ROW EXECUTE FUNCTION security.fn_guard_derived_columns('revisions_used');
+
 -- A quote request is between a buyer and the seller of one blueprint. Either may move its status;
 -- neither may re-address it or point it at another listing (`security.fn_guard_immutable_columns`).
 DROP TRIGGER IF EXISTS trg_quote_requests_parties ON marketplace.quote_requests;

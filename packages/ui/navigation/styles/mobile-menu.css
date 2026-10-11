@@ -1,4 +1,4 @@
-/* MobileMenu — hamburger trigger + glass pull-out drawer (Part D.3). */
+/* MobileMenu — hamburger trigger + pull-out drawer (Part D.3). */
 .ui-mobile-menu__trigger {
 	display: inline-flex;
 	align-items: center;
@@ -20,7 +20,7 @@
 .ui-mobile-menu {
 	position: fixed;
 	inset: 0;
-	z-index: var(--z-overlay, 1100);
+	z-index: var(--z-portal, var(--z-overlay));
 	display: flex;
 }
 
@@ -32,20 +32,21 @@
 	position: absolute;
 	inset: 0;
 	border: 0;
-	background: color-mix(in srgb, #000 40%, transparent);
+	/* The one scrim recipe (§B.10.2), never a literal black. */
+	background: color-mix(in srgb, var(--scrim) var(--scrim-tint), transparent);
 	backdrop-filter: blur(var(--scrim-blur));
 	-webkit-backdrop-filter: blur(var(--scrim-blur));
 }
 
 .ui-mobile-menu__drawer {
 	position: relative;
-	inline-size: min(84vw, 320px);
+	inline-size: var(--drawer-w);
 	block-size: 100%;
 	padding: var(--space-4) var(--space-2);
 	overflow: auto;
-	background: color-mix(in srgb, var(--surface) var(--glass-veil-sheet), transparent);
-	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+	/* Solid, like every drawer (§B.4.2): a translucent fill over a scrim that already blurs adds
+	   nothing but a second full-viewport composite. */
+	background: var(--surface);
 	border-start-end-radius: var(--radius-container-lg);
 	border-end-end-radius: var(--radius-container-lg);
 	box-shadow: var(--elevation-high);

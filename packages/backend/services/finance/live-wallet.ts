@@ -188,6 +188,8 @@ async function peopleFaces(ctx: WalletContext, userIds: readonly string[]): Prom
 interface EscrowRow {
 	id: string;
 	project_stage_id: string;
+	/** The ticket this escrow holds for, when it is one ticket's hold (`finance.escrows.ticket_id`). */
+	ticket_id: string | null;
 	payer_business_id: string | null;
 	/** An INDIVIDUAL client who paid (Decision #126); exactly one payer column is set. */
 	payer_user_id: string | null;
@@ -209,7 +211,7 @@ interface EscrowRow {
 async function escrowsFor(ctx: WalletContext, account: WalletAccount): Promise<EscrowRow[]> {
 	let q = getUserClient(ctx.actor.accessToken).schema("finance").from("escrows")
 		.select(
-			"id, project_stage_id, payer_business_id, payer_user_id, payee_type, payee_id, amount_cents, platform_fee_cents, currency, status, created_at",
+			"id, project_stage_id, ticket_id, payer_business_id, payer_user_id, payee_type, payee_id, amount_cents, platform_fee_cents, currency, status, created_at",
 		);
 	switch (account.scope) {
 		case "personal":
@@ -266,6 +268,24 @@ async function pendingFor(ctx: WalletContext, account: WalletAccount): Promise<P
 		.eq("state", "pending");
 	if (error) throw new Error(`finance.pending_releases read failed: ${error.message}`);
 	return ((data ?? []) as PendingRow[]).map((p) => ({ ...p, amount_cents: Number(p.amount_cents) || 0 }));
+}
+
+/** The `tkt-…` slug and title of each ticket an escrow holds for, read as the viewer. */
+async function ticketFacts(
+	ctx: WalletContext,
+	ticketIds: readonly (string | null)[],
+): Promise<Map<string, { slug: string; title: string }>> {
+	const out = new Map<string, { slug: string; title: string }>();
+	const ids = [...new Set(ticketIds.filter((id): id is string => !!id))];
+	if (ids.length === 0) return out;
+	const { data, error } = await getUserClient(ctx.actor.accessToken).schema("projects")
+		.from("tickets").select("id, slug, title").in("id", ids);
+	// A ticket the viewer cannot read falls back to its stage's row rather than failing the wallet.
+	if (error) return out;
+	for (const t of (data ?? []) as { id: string; slug: string | null; title: string }[]) {
+		if (t.slug) out.set(t.id, { slug: t.slug, title: t.title });
+	}
+	return out;
 }
 // #endregion
 
@@ -671,7 +691,7 @@ export async function fundableStages(ctx: WalletContext, account: WalletAccount)
 		.select("current_stage_id, unit_price_cents")
 		.in("current_stage_id", stages.map((s) => s.id))
 		.not("current_assignee_id", "is", null)
-		.eq("payment_status", "unpaid");
+		.in("payment_status", ["unpaid", "needs_funding"]);
 	if (ticketsRes.error) throw new Error(`projects.tickets read failed: ${ticketsRes.error.message}`);
 	const tickets = (ticketsRes.data ?? []) as { current_stage_id: string; unit_price_cents: number | null }[];
 
@@ -834,40 +854,65 @@ export async function overviewOf(ctx: WalletContext): Promise<WalletOverview> {
 		}).map((r) => ({ minor: r.amount_cents, currency: r.currency })),
 	);
 
-	const stages = await stageFacts(ctx, [...liveEscrows, ...escrows].map((e) => e.project_stage_id));
+	const [stages, tickets] = await Promise.all([
+		stageFacts(ctx, [...liveEscrows, ...escrows].map((e) => e.project_stage_id)),
+		ticketFacts(ctx, escrows.map((e) => e.ticket_id)),
+	]);
+	const escrowById = new Map(escrows.map((e) => [e.id, e]));
+	/** A held amount links to the ticket it holds for (`?tkv=` opens it anywhere), else to its stage. */
+	const ticketLink = (e: EscrowRow | undefined) => {
+		const t = e?.ticket_id ? tickets.get(e.ticket_id) : undefined;
+		const facts = e ? stages.get(e.project_stage_id) : undefined;
+		return t && facts
+			? {
+				label: `${facts.projectTitle} · ${t.title}`,
+				href: `/projects/${facts.projectSlug}/board?tkv=${encodeURIComponent(t.slug)}`,
+			}
+			: null;
+	};
 	const incoming: IncomingItem[] = [];
 	if (account.scope !== "business") {
-		const byStage = new Map<string, EscrowRow[]>();
-		for (const e of liveEscrows) byStage.set(e.project_stage_id, [...(byStage.get(e.project_stage_id) ?? []), e]);
-		for (const [stageId, group] of [...byStage].slice(0, 8)) {
+		// One row per ticket hold; a stage-wide hold (no ticket) keeps its stage's row.
+		const byKey = new Map<string, EscrowRow[]>();
+		for (const e of liveEscrows) {
+			const key = e.ticket_id && tickets.has(e.ticket_id) ? `t:${e.ticket_id}` : e.project_stage_id;
+			byKey.set(key, [...(byKey.get(key) ?? []), e]);
+		}
+		for (const [key, group] of [...byKey].slice(0, 8)) {
+			const stageId = group[0].project_stage_id;
 			const facts = stages.get(stageId);
+			const link = key.startsWith("t:") ? ticketLink(group[0]) : null;
 			incoming.push({
-				id: `escrow-${stageId}`,
+				id: `escrow-${key.replace("t:", "ticket-")}`,
 				kind: "escrow_funded",
-				label: clip(facts ? `${facts.projectTitle} · ${facts.stageName}` : "Escrow funded", 160),
+				label: clip(
+					link?.label ?? (facts ? `${facts.projectTitle} · ${facts.stageName}` : "Escrow funded"),
+					160,
+				),
 				amount: sumOf(ctx.money, group.map((e) => ({ minor: escrowValue(account, e), currency: e.currency }))),
 				state: "locked",
 				clearingLabel: "On active stage",
 				clearingAt: null,
 				clearingFraction: 0,
-				href: facts ? clip(stageHref(facts), 200) : null,
+				href: link ? clip(link.href, 200) : facts ? clip(stageHref(facts), 200) : null,
 			});
 		}
 	}
 	for (const p of pending.slice(0, 12 - incoming.length)) {
+		const link = ticketLink(p.escrow_id ? escrowById.get(p.escrow_id) : undefined);
 		const releasedAt = Date.parse(p.released_at);
 		const availableAt = Date.parse(p.available_at);
 		const span = Math.max(1, availableAt - releasedAt);
 		incoming.push({
 			id: `pending-${p.id}`,
 			kind: "pending_release",
-			label: "Release clearing",
+			label: clip(link ? `Release clearing · ${link.label}` : "Release clearing", 160),
 			amount: money(ctx, p.amount_cents, p.currency),
 			state: "pending",
 			clearingLabel: clearingLabel(availableAt),
 			clearingAt: new Date(availableAt).toISOString(),
 			clearingFraction: Math.min(1, Math.max(0, (Date.now() - releasedAt) / span)),
-			href: "/wallet/transactions",
+			href: link ? clip(link.href, 200) : "/wallet/transactions",
 		});
 	}
 
@@ -1472,7 +1517,7 @@ export async function fundingOf(ctx: WalletContext): Promise<FundingView> {
 		source_method_id: string | null;
 		amount_cents: number;
 		currency: string;
-		interval: "weekly" | "monthly";
+		interval: "weekly" | "monthly" | "below_floor";
 		next_run_at: string | null;
 		active: boolean;
 		failure_count: number;
@@ -1484,7 +1529,10 @@ export async function fundingOf(ctx: WalletContext): Promise<FundingView> {
 			amount: money(ctx, Number(r.amount_cents) || 0, r.currency),
 			interval: r.interval,
 			sourceLabel: source ? methodLabel(source) : null,
-			nextRunLabel: r.next_run_at
+			// A floor top-up is parked at 'infinity' between crossings — it runs on the balance, not a date.
+			nextRunLabel: r.interval === "below_floor"
+				? "When the balance falls below the floor"
+				: r.next_run_at
 				? clip(dateLabel(r.next_run_at, Date.now(), ctx.timezone), 60)
 				: "Not scheduled",
 			active: r.active,

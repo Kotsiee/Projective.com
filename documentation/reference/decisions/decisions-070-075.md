@@ -93,7 +93,35 @@ escrows at the freelancer's Claim, and a digital product has no documented escro
 `finance.orders` / `finance.buyer_details` are the deferred live-path tables; field names were
 chosen so they can adopt them verbatim. (j) Inherited and untouched: Decision #68's `authenticated`
 has no `USAGE` on the `finance` schema, `platform_fee_bp` seeded `0`, and the three overlapping
-instrument tables. | `DESIGN_SYSTEM.md` **Part D.6** · `ROUTING.md` · `PRODUCT_SPEC.md` §Sitemap ·
+instrument tables. **(k) The basket switcher (2026-10-11).** The header basket drawer was redesigned to
+§B.10 on the Drawer `footer` slot, and its plain "Basket · {name}" title became `BasketSwitcher`: a
+grouped `Select` over every owner the buyer can buy for (`BasketBackendService.owners` →
+`GET /api/basket/owners`, reusing `listOwners` narrowed to `actingIsMember`; `BasketOwnerSummary` in
+`packages/types/finance/basket.ts`), each with its baskets and lists, counts and selected subtotal, and
+"New list" (`createList`) last. The same control replaces the mobile band's Browse popover below
+`--bp-md` (`compact`), so a phone switches owners as well as lists. On checkout routes a switch
+navigates (the URL is the selection); elsewhere it is a per-viewer preference (`LocalKeys.BASKET_OWNER`),
+dropped on a context change or when the owner is no longer listed. **A write-echo defect fixed:**
+`withContext` sent neither `basketId` nor a `personal` owner, and the live writes answered with the
+CHANGED line's basket — so a move out of a named list re-pointed the drawer at the destination, a write
+on a derived ticket/session view replaced it with a stored basket, and a personal write while the shell
+acted as a team was read back under the team (an absent owner defaults to the context). Every write now
+carries `basketId` + `owner` and answers with the viewed basket (`echoBasketId`); `?owner=personal` is
+kept in links and reads (pinned by `basket-model.test.ts` + `basket-echo.test.ts`). **Proceed to Checkout
+now opens step 1** (`/checkout`), not `/checkout/payment`: the drawer is a peek and the basket step is
+where selection is reviewed; Buy Now keeps `checkoutHref()` → payment on purpose. Every drawer figure
+now renders through `Amount` (this row's (D) was still open in the drawer: `.display` strings at five
+sites in the island and two in the row). A ticket line says "Funds {freelancer} to start {ticket}. Held in
+escrow until you approve the work." (`fundingNote`; the payee's name is derived server-side into
+`metadata.payeeName` from `current_assignee_id`) and a session line "Held in escrow until after the
+session." — the two kinds whose escrow PRODUCT_SPEC times at or before payment; per (i), no other kind
+claims one. The drawer's 20rem container query was replaced by an intrinsic layout (CTAs wrap on token
+flex-bases) because `@container` conditions cannot read a token. New Dev axis `basketScenario`
+(`empty` · `multi_owner` · `unavailable`), client-side substitution of the drawer's read only.
+**Flagged:** (k1) the mobile shell has no visible Basket entry point (the header button is the desktop
+slot), so the drawer itself is unreachable on a phone — pre-existing, not changed here. (k2) The owners
+read is one account read per owner on every drawer open; fine at today's counts, a candidate for a
+single RPC if owners grow. | `DESIGN_SYSTEM.md` **Part D.6** · `ROUTING.md` · `PRODUCT_SPEC.md` §Sitemap ·
 `SYSTEM_ARCHITECTURE.md` §Backend Services ·
 `packages/types/finance/{buyer,order,checkout,basket,fx}.ts` ·
 `packages/backend/services/finance/{buyer,order,basket,wallet}-fixtures.ts` +

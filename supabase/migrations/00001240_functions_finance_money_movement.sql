@@ -637,6 +637,16 @@ BEGIN
     IF pg_catalog.upper(v_wallet.currency) <> v_currency THEN
         RAISE EXCEPTION 'currency: this wallet holds %', pg_catalog.upper(v_wallet.currency) USING ERRCODE = '22023';
     END IF;
+    -- A floor top-up runs when the balance crosses the business's floor (finance.fn_wallet_watch), so
+    -- it needs a business wallet in the default currency with a floor set.
+    IF p_interval = 'below_floor' AND NOT EXISTS (
+        SELECT 1 FROM org.business_profiles b
+         WHERE v_wallet.owner_type = 'business' AND b.id = v_wallet.owner_id
+           AND b.low_balance_floor_cents IS NOT NULL
+           AND pg_catalog.upper(COALESCE(b.default_currency, 'USD')) = pg_catalog.upper(v_wallet.currency)
+    ) THEN
+        RAISE EXCEPTION 'interval: set a balance floor on this business wallet first' USING ERRCODE = '22023';
+    END IF;
 
     SELECT * INTO v_method FROM finance.payment_methods WHERE id = p_source_method_id;
     IF NOT FOUND OR v_method.status <> 'active' OR v_method.provider <> 'stripe'
@@ -654,7 +664,11 @@ BEGIN
         wallet_id, source_method_id, amount_cents, currency, interval, next_run_at, active, created_by
     ) VALUES (
         v_wallet.id, v_method.id, p_amount, v_currency, p_interval,
-        pg_catalog.now() + CASE p_interval WHEN 'weekly' THEN interval '1 week' ELSE interval '1 month' END,
+        CASE p_interval
+            WHEN 'weekly' THEN pg_catalog.now() + interval '1 week'
+            WHEN 'below_floor' THEN 'infinity'::timestamptz
+            ELSE pg_catalog.now() + interval '1 month'
+        END,
         true, v_uid
     )
     RETURNING * INTO v_rule;
@@ -695,11 +709,16 @@ BEGIN
          LIMIT GREATEST(COALESCE(p_limit, 50), 1)
            FOR UPDATE SKIP LOCKED
     LOOP
-        v_step := CASE r.interval WHEN 'weekly' THEN interval '1 week' ELSE interval '1 month' END;
-        v_next := r.next_run_at + v_step;
-        WHILE v_next <= pg_catalog.now() LOOP
-            v_next := v_next + v_step;
-        END LOOP;
+        IF r.interval = 'below_floor' THEN
+            -- Runs once per crossing: fn_wallet_watch sets next_run_at to the crossing, this parks it.
+            v_next := 'infinity'::timestamptz;
+        ELSE
+            v_step := CASE r.interval WHEN 'weekly' THEN interval '1 week' ELSE interval '1 month' END;
+            v_next := r.next_run_at + v_step;
+            WHILE v_next <= pg_catalog.now() LOOP
+                v_next := v_next + v_step;
+            END LOOP;
+        END IF;
         v_key := 'deposit:' || r.id::text || ':' || pg_catalog.to_char(r.next_run_at AT TIME ZONE 'UTC', 'YYYYMMDDHH24MISS');
 
         SELECT * INTO v_wallet FROM finance.wallets WHERE id = r.wallet_id;

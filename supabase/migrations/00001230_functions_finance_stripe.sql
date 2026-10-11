@@ -111,6 +111,8 @@ $$;
 --                  finance.fn_hold_ticket_escrow will hold, read from the same columns;
 --                  `p_expected_amount` is only what the payer was shown, and a mismatch refuses
 --                  rather than charging an amount nobody saw.
+--                  With `p_ticket_id` (Decision #166) it funds ONE ticket instead: projects.fund_ticket's
+--                  gates, and the amount is that ticket's own price (else its stage's).
 --
 -- Idempotent on the caller's attempt key (finance.idempotency_keys, scope `card_payment:<uid>`): the
 -- same key and request replays the recorded attempt; the same key with a different request refuses.
@@ -121,7 +123,8 @@ CREATE OR REPLACE FUNCTION finance.begin_card_payment(
     p_stage_id uuid,
     p_expected_amount bigint,
     p_currency text,
-    p_idempotency_key text
+    p_idempotency_key text,
+    p_ticket_id uuid DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -143,6 +146,7 @@ DECLARE
     v_stage_status public.stage_status;
     v_project_currency text;
     v_amount bigint;
+    v_ticket record;
     v_payment finance.inbound_payments;
 BEGIN
     IF v_uid IS NULL THEN
@@ -161,8 +165,9 @@ BEGIN
     END IF;
 
     v_scope := 'card_payment:' || v_uid::text;
+    -- concat_ws skips NULLs, so a stage or top-up attempt hashes exactly as it did before p_ticket_id.
     v_hash := pg_catalog.md5(pg_catalog.concat_ws('|',
-        p_purpose, p_wallet_id, p_project_id, p_stage_id, p_expected_amount, v_currency));
+        p_purpose, p_wallet_id, p_project_id, p_stage_id, p_expected_amount, v_currency, p_ticket_id));
 
     SELECT * INTO v_prior FROM finance.idempotency_keys WHERE key = p_idempotency_key;
     IF FOUND THEN
@@ -181,7 +186,7 @@ BEGIN
         IF p_wallet_id IS NULL THEN
             RAISE EXCEPTION 'walletId: choose the wallet to top up' USING ERRCODE = '22023';
         END IF;
-        IF p_project_id IS NOT NULL OR p_stage_id IS NOT NULL THEN
+        IF p_project_id IS NOT NULL OR p_stage_id IS NOT NULL OR p_ticket_id IS NOT NULL THEN
             RAISE EXCEPTION 'stageId: a top-up does not fund a stage' USING ERRCODE = '22023';
         END IF;
         IF p_expected_amount IS NULL OR p_expected_amount <= 0 THEN
@@ -232,6 +237,52 @@ BEGIN
         ELSIF v_owner IS NULL OR v_owner IS DISTINCT FROM v_uid THEN
             RAISE EXCEPTION 'auth: only the project''s owner can fund this stage' USING ERRCODE = '42501';
         END IF;
+        IF p_ticket_id IS NOT NULL THEN
+            -- ONE ticket (Decision #166): projects.fund_ticket's gates, evaluated now so nobody is charged
+            -- for a hold that could not be made — and again at settlement. Its own price, else its stage's.
+            SELECT tk.text_description, tk.payment_status::text AS payment_status,
+                   tk.current_assignee_id AS assignee, ps.status::text AS stage_status,
+                   COALESCE(tk.unit_price_cents, ps.unit_price_cents) AS amount
+              INTO v_ticket
+              FROM projects.tickets tk
+              JOIN projects.project_stages ps ON ps.id = tk.current_stage_id
+             WHERE tk.id = p_ticket_id AND tk.project_id = p_project_id AND tk.current_stage_id = p_stage_id;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'ticketId: that ticket is not in this stage' USING ERRCODE = 'P0002';
+            END IF;
+            IF pg_catalog.btrim(v_ticket.text_description) = '' THEN
+                RAISE EXCEPTION 'ticketId: add a description before this ticket can be bought' USING ERRCODE = 'PC409';
+            END IF;
+            IF v_ticket.payment_status NOT IN ('unpaid', 'needs_funding') OR EXISTS (
+                SELECT 1 FROM finance.escrows e WHERE e.ticket_id = p_ticket_id AND e.status = 'held'
+            ) THEN
+                RAISE EXCEPTION 'ticketId: this ticket is already paid for' USING ERRCODE = 'PC409';
+            END IF;
+            IF v_ticket.stage_status IN ('approved', 'paid', 'cancelled') THEN
+                RAISE EXCEPTION 'stageId: that stage has finished' USING ERRCODE = 'PC409';
+            END IF;
+            IF v_ticket.assignee IS NULL AND NOT EXISTS (
+                SELECT 1 FROM projects.stage_assignments sa
+                 WHERE sa.project_stage_id = p_stage_id AND sa.assignee_type = 'team'
+                   AND sa.status = 'accepted' AND sa.team_id IS NOT NULL
+            ) THEN
+                RAISE EXCEPTION 'ticketId: nobody can be paid for this ticket yet — it can be bought once it is claimed'
+                    USING ERRCODE = 'PC409';
+            END IF;
+            v_amount := COALESCE(v_ticket.amount, 0);
+            IF v_amount <= 0 THEN
+                RAISE EXCEPTION 'ticketId: this ticket has no price yet' USING ERRCODE = 'PC409';
+            END IF;
+            IF pg_catalog.upper(COALESCE(v_project_currency, 'USD')) <> v_currency THEN
+                RAISE EXCEPTION 'currency: this project is priced in %', pg_catalog.upper(COALESCE(v_project_currency, 'USD'))
+                    USING ERRCODE = '22023';
+            END IF;
+            IF p_expected_amount IS DISTINCT FROM v_amount THEN
+                RAISE EXCEPTION 'expectedAmountMinor: the amount to fund changed — it is now % minor units of %',
+                    v_amount, v_currency USING ERRCODE = 'PC409';
+            END IF;
+        ELSE
+        -- The whole stage, unchanged.
         SELECT ps.status INTO v_stage_status
           FROM projects.project_stages ps
          WHERE ps.id = p_stage_id AND ps.project_id = p_project_id;
@@ -253,7 +304,7 @@ BEGIN
           LEFT JOIN projects.project_stages ps ON ps.id = t.current_stage_id
          WHERE t.current_stage_id = p_stage_id
            AND t.current_assignee_id IS NOT NULL
-           AND t.payment_status = 'unpaid'::public.payment_status
+           AND t.payment_status IN ('unpaid'::public.payment_status, 'needs_funding'::public.payment_status)
            AND COALESCE(t.unit_price_cents, ps.unit_price_cents) > 0;
         IF v_amount <= 0 THEN
             RAISE EXCEPTION 'stageId: no assigned, unfunded tickets are waiting for escrow in this stage'
@@ -262,6 +313,7 @@ BEGIN
         IF p_expected_amount IS DISTINCT FROM v_amount THEN
             RAISE EXCEPTION 'expectedAmountMinor: the amount to fund changed — it is now % minor units of %',
                 v_amount, v_currency USING ERRCODE = 'PC409';
+        END IF;
         END IF;
         -- The wallet the hold will debit: the paying business's — or the individual owner's own person
         -- wallet (finance.fn_escrow_payer_wallet_type, the type fn_hold_ticket_escrow debits) — in the
@@ -275,11 +327,12 @@ BEGIN
     END IF;
 
     INSERT INTO finance.inbound_payments (
-        purpose, wallet_id, project_stage_id, amount_cents, currency, lock_status, idempotency_key, created_by
+        purpose, wallet_id, project_stage_id, ticket_id, amount_cents, currency, lock_status, idempotency_key, created_by
     ) VALUES (
         p_purpose,
         v_wallet_id,
         CASE WHEN p_purpose = 'escrow_lock' THEN p_stage_id END,
+        p_ticket_id,
         v_amount,
         v_currency,
         CASE WHEN p_purpose = 'escrow_lock' THEN 'pending' ELSE 'not_applicable' END,
@@ -562,14 +615,19 @@ BEGIN
             v_prev_sub := pg_catalog.current_setting('request.jwt.claim.sub', true);
             BEGIN
                 PERFORM pg_catalog.set_config('request.jwt.claim.sub', v_payment.created_by::text, true);
-                PERFORM projects.fund_stage(v_project, v_payment.project_stage_id);
-                -- now() is the transaction's start instant, so equality picks out exactly the escrows this
-                -- settlement created — the ones a chargeback against this payment must freeze.
-                SELECT COALESCE(pg_catalog.array_agg(e.id ORDER BY e.id), '{}') INTO v_escrows
-                  FROM finance.escrows e
-                 WHERE e.project_stage_id = v_payment.project_stage_id
-                   AND e.status = 'held'
-                   AND e.created_at = pg_catalog.now();
+                IF v_payment.ticket_id IS NOT NULL THEN
+                    -- One ticket (Decision #166): only its escrow is held; the stage's status is untouched.
+                    v_escrows := ARRAY[(projects.fund_ticket(v_project, v_payment.ticket_id) ->> 'escrow_id')::uuid];
+                ELSE
+                    PERFORM projects.fund_stage(v_project, v_payment.project_stage_id);
+                    -- now() is the transaction's start instant, so equality picks out exactly the escrows
+                    -- this settlement created — the ones a chargeback against this payment must freeze.
+                    SELECT COALESCE(pg_catalog.array_agg(e.id ORDER BY e.id), '{}') INTO v_escrows
+                      FROM finance.escrows e
+                     WHERE e.project_stage_id = v_payment.project_stage_id
+                       AND e.status = 'held'
+                       AND e.created_at = pg_catalog.now();
+                END IF;
                 v_lock_status := 'locked';
             EXCEPTION WHEN OTHERS THEN
                 v_lock_status := 'failed';
@@ -1185,7 +1243,12 @@ BEGIN
               FROM finance.payout_accounts a
               JOIN finance.wallets w ON w.id = v_payout.wallet_id
              WHERE a.provider = 'stripe' AND a.account_id = p_destination
-               AND a.owner_type = w.owner_type AND a.owner_id = w.owner_id
+               AND a.owner_id = w.owner_id
+               -- The same person-type rule finance.fn_payout_destination chose the account by.
+               AND (
+                    a.owner_type = w.owner_type
+                    OR (w.owner_type IN ('user', 'freelancer') AND a.owner_type IN ('user', 'freelancer'))
+               )
        ) THEN
         RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
             'outcome', 'unmatched', 'detail', 'the transfer does not agree with the payout it names',

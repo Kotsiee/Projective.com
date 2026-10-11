@@ -9,7 +9,7 @@ import { OrderSummaryHeader } from "../components/OrderSummaryHeader.tsx";
 import { OrderLineRow } from "../components/OrderLineRow.tsx";
 import { OrderInvoicePanel } from "../components/OrderInvoicePanel.tsx";
 import { Amount } from "../components/Amount.tsx";
-import type { OrderPage } from "../types/checkout-types.ts";
+import type { OrderLine, OrderPage } from "../types/checkout-types.ts";
 
 /**
  * CheckoutConfirmationScreen — the `/checkout/confirmation` BODY: step 4, the post-purchase hub.
@@ -67,6 +67,7 @@ export default function CheckoutConfirmationScreen(
 
 	const { order, recent } = initial;
 	const others = recent.filter((entry) => entry.id !== order.id);
+	const tickets = order.lines.filter((line) => line.itemType === "project_ticket");
 
 	return (
 		<div class="cko-order">
@@ -78,6 +79,32 @@ export default function CheckoutConfirmationScreen(
 					{order.lines.map((line) => <OrderLineRow key={line.id} line={line} />)}
 				</ul>
 			</section>
+
+			{
+				/*
+				 * What a funded ticket means for the work: who can start now. A ticket is bought only once it
+				 * has a payee (Decision #166 flag (d)), so every ticket line here names one.
+				 */
+			}
+			{tickets.length > 0
+				? (
+					<section class="cko-order__section" aria-labelledby="cko-order-next-head">
+						<h3 class="cko-order__head" id="cko-order-next-head">What happens next</h3>
+						<ul class="cko-order__lines">
+							{tickets.map((line) => (
+								<li key={line.id} class="cko-order__line">
+									<div class="cko-order__body">
+										{line.engagementHref
+											? <a class="cko-order__linetitle" href={line.engagementHref}>{line.title}</a>
+											: <p class="cko-order__linetitle">{line.title}</p>}
+										<p class="cko-order__linesub">{nextFor(line)}</p>
+									</div>
+								</li>
+							))}
+						</ul>
+					</section>
+				)
+				: null}
 
 			{order.invoice
 				? <OrderInvoicePanel invoice={order.invoice} currency={order.currency} />
@@ -128,6 +155,11 @@ export default function CheckoutConfirmationScreen(
  * that failing to display an order neither creates nor cancels one, and that the reference is in the
  * confirmation email. Anything stronger would be a reassurance the surface cannot back.
  */
+/** The one sentence a funded ticket line reads under "What happens next". */
+function nextFor(line: OrderLine): string {
+	return `${line.payeeName ?? "Your freelancer"} has been notified and can start now.`;
+}
+
 function EmptyOrder(): JSX.Element {
 	return (
 		<div class="cko-order">

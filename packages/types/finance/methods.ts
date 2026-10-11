@@ -43,8 +43,11 @@ export type PaymentMethod = z.infer<typeof PaymentMethodSchema>;
 // #endregion
 
 // #region Recurring deposits (standing instructions)
-/** `finance.deposit_interval`. */
-export const DepositInterval = z.enum(["weekly", "monthly"]);
+/**
+ * `finance.deposit_interval`. `below_floor` is a floor top-up: it runs each time a business wallet's
+ * balance crosses below its low-balance floor, not on a calendar.
+ */
+export const DepositInterval = z.enum(["weekly", "monthly", "below_floor"]);
 export type DepositInterval = z.infer<typeof DepositInterval>;
 
 /** A row of `finance.deposit_rules` — a standing top-up into a wallet from a funding method. */

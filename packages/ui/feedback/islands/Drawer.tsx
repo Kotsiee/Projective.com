@@ -14,6 +14,7 @@ import { useId } from "../../hooks/useId.ts";
 import type { Edge } from "../../types/mod.ts";
 import type { Bindable } from "../../fields/types/mod.ts";
 import { Icon } from "../../icons/mod.ts";
+import { DrawerRegions } from "../components/DrawerRegions.tsx";
 
 // #region Props
 /** Props for {@link Drawer} (aliased as {@link Sidebar}). */
@@ -34,7 +35,10 @@ export interface DrawerProps {
 	blockScroll?: boolean;
 	/** Close on Escape when top-most (default `true`). */
 	closeOnEscape?: boolean;
-	/** Panel extent along its docking axis (CSS length; width for left/right, height for top/bottom). */
+	/**
+	 * Panel extent along its docking axis (CSS length; width for left/right, height for top/bottom).
+	 * Omit it: the default is the `--drawer-w` / `--drawer-h` contract every drawer shares (§B.10.1).
+	 */
 	size?: string;
 	/** Fired whenever visibility changes. */
 	onVisibleChange?: (visible: boolean) => void;
@@ -42,6 +46,11 @@ export interface DrawerProps {
 	class?: string;
 	/** Drawer body. */
 	children?: ComponentChildren;
+	/**
+	 * Actions pinned below the scrolling body, behind one `--hairline` — never inside it, so a commit
+	 * button cannot scroll out of view (§B.10.8).
+	 */
+	footer?: ComponentChildren;
 }
 // #endregion
 
@@ -66,6 +75,7 @@ export function Drawer(props: DrawerProps): JSX.Element | null {
 		onVisibleChange,
 		class: className,
 		children,
+		footer,
 	} = props;
 
 	const ctrl = useControllable<boolean>(visible, false, onVisibleChange);
@@ -128,7 +138,7 @@ export function Drawer(props: DrawerProps): JSX.Element | null {
 						)}
 					</div>
 				)}
-				<div class="ui-drawer__body">{children}</div>
+				<DrawerRegions footer={footer}>{children}</DrawerRegions>
 			</div>
 		</Portal>
 	);

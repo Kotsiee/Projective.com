@@ -37,7 +37,7 @@ import {
  * a ticket REPLACES the ticket rather than covering it, so one backdrop blur is ever composited, and
  * dismissing the review restores the ticket at the tab and scroll offset it was left at.
  */
-export type TicketFrameKind = "ticket" | "review" | "file" | "picker";
+export type TicketFrameKind = "ticket" | "review" | "file" | "picker" | "buy";
 
 /** Open-time input for a frame. Live UI state lives in the stack's cache, not here. */
 export interface TicketFrameInput {
@@ -96,14 +96,16 @@ export function ticketFileInput(
 }
 
 /**
- * The frame whose address the URL carries: the nearest frame under any file or picker frames. Neither
- * writes the URL, so `?tkv=` (or a review's own address) stays while a preview or the picker shows.
+ * The frame whose address the URL carries: the nearest frame under any file, picker or buy frames. None
+ * writes the URL, so `?tkv=` (or a review's own address) stays while a preview, the picker or Buy Now
+ * shows.
  */
 export function addressingFrame<K extends string, I>(
 	frames: readonly ModalFrame<K, I>[],
 ): ModalFrame<K, I> | null {
 	for (let i = frames.length - 1; i >= 0; i--) {
-		if (frames[i].kind !== "file" && frames[i].kind !== "picker") return frames[i];
+		const k = frames[i].kind;
+		if (k !== "file" && k !== "picker" && k !== "buy") return frames[i];
 	}
 	return null;
 }
@@ -139,6 +141,24 @@ export function openTicketFile(files: readonly AssetItem[], fileId: string): boo
 	const top = ticketStack.top.peek();
 	if (!top || !ticketFileHosted(top.input?.standalone === true)) return false;
 	openFileFrame(ticketStack, "file", ticketFileInput(top.input, fileId), files, fileId);
+	return true;
+}
+// #endregion
+
+// #region Buy frames
+/**
+ * Replace the ticket with Buy Now (§B.10.9 — a second modal replaces the first). The `buy` frame carries
+ * the ticket's address so `?tkv=` stays; the Buy Now modal itself is the frame's one surface, and its
+ * host pops the frame when it closes. Refuses unless a ticket is on top.
+ */
+export function pushTicketBuy(): boolean {
+	const top = ticketStack.top.peek();
+	if (!top || top.kind !== "ticket") return false;
+	const input: TicketFrameInput = {};
+	if (top.input?.ticketId) input.ticketId = top.input.ticketId;
+	if (top.input?.slug) input.slug = top.input.slug;
+	if (top.input?.standalone) input.standalone = true;
+	ticketStack.push("buy", "buy-now", input);
 	return true;
 }
 // #endregion
@@ -435,6 +455,7 @@ export function reviewForPath(
 			dateLabel: card.dateLabel,
 			fileCount: files.length,
 			noteCount: 0,
+			paidRevision: false,
 		},
 		stageName: stageRef?.name ?? null,
 		stageStatus: stageRef?.status ?? null,
@@ -444,6 +465,8 @@ export function reviewForPath(
 		ticketSummary: card.description ??
 			"This ticket has no description yet.",
 		notes: [],
+		// The board card carries no revision terms; the submissions page's review does (Decision #167).
+		revisions: null,
 	};
 }
 // #endregion

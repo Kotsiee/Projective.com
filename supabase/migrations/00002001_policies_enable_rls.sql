@@ -106,6 +106,14 @@ ALTER TABLE projects.cohort_memberships ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE projects.cohorts ENABLE ROW LEVEL SECURITY;
 
+ALTER TABLE projects.cohort_seat_holds ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE projects.curriculum_modules ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE projects.curriculum_lessons ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE projects.lesson_progress ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE projects.maintenance_contracts ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE projects.project_activity ENABLE ROW LEVEL SECURITY;

@@ -82,6 +82,9 @@ slug text NOT NULL,
 -- be found, which is safe to default precisely because it is intent and not state.
 publish_visibility visibility NOT NULL DEFAULT 'public'::visibility,
   currency text NOT NULL DEFAULT 'USD'::text,
+  -- This project's auto-funding, overriding its client business's `auto_fund_mode`; NULL inherits it.
+  -- Meaningless (and ignored) on a project with no client business: an individual is never auto-funded.
+  auto_fund_override text CHECK (auto_fund_override IS NULL OR auto_fund_override IN ('off', 'add_to_basket', 'from_wallet')),
 
 -- The project-level budget. `CreateProjectSchema` has carried this pair since it shipped and
 -- `projects.create_project` discarded both halves, so a figure the client typed had nowhere to
@@ -294,7 +297,16 @@ unit_price_cents bigint CHECK (unit_price_cents IS NULL OR unit_price_cents >= 0
   start_dependency_lag_days integer DEFAULT 0,
   hire_trigger_active boolean NOT NULL DEFAULT true,
 
-  file_revisions_allowed integer DEFAULT 0,
+  -- Revision allotment (Decision #167). `file_revisions_allowed` is the number of FREE revision rounds
+  -- the stage carries; NULL is unlimited (an owner-authored stage, today's behaviour). On a project
+  -- with a `source_blueprint_id` both terms are the seller's commitment, copied from the blueprint
+  -- (else its listing) at insert and frozen afterwards by `projects.fn_stage_revision_terms`.
+  -- `extra_revision_price_cents` prices one round past the free ones: NULL = not for sale, 0 = extra
+  -- rounds are free. `revisions_used` counts free rounds consumed; only `review_submission` writes it,
+  -- under a row lock, so two concurrent requests cannot both take the last free round.
+  file_revisions_allowed integer CHECK (file_revisions_allowed IS NULL OR file_revisions_allowed >= 0),
+  extra_revision_price_cents bigint CHECK (extra_revision_price_cents IS NULL OR extra_revision_price_cents >= 0),
+  revisions_used integer NOT NULL DEFAULT 0 CHECK (revisions_used >= 0),
   -- Which of `file_due_date` / `file_duration_days` / neither actually governs the deadline. Free
   -- text with a constrained vocabulary rather than an enum only because it predates the enum
   -- convention here; the CHECK is what makes it a vocabulary rather than a suggestion, and it is
@@ -695,38 +707,102 @@ CREATE TABLE projects.stage_revision_requests (
   reason text NOT NULL,
   status text NOT NULL DEFAULT 'open'::text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  -- Set when the freelancer resubmits against the round (`submit_deliverable`).
   resolved_at timestamp with time zone,
+  -- The submission the round was raised on; the resubmission's `stage_submissions.revision_of`.
+  submission_id uuid,
+  -- What a paid round costs, snapshotted from `project_stages.extra_revision_price_cents` when it is
+  -- raised, so the basket prices exactly what the client was shown. NULL on a free round.
+  price_cents bigint CHECK (price_cents IS NULL OR price_cents > 0),
 
   CONSTRAINT stage_revision_requests_pkey PRIMARY KEY (id),
   CONSTRAINT stage_revision_requests_requested_by_fkey FOREIGN KEY (requested_by) REFERENCES org.users_public(user_id),
-  CONSTRAINT stage_revision_requests_ticket_id_fkey FOREIGN KEY (ticket_id) REFERENCES projects.tickets(id)
+  CONSTRAINT stage_revision_requests_ticket_id_fkey FOREIGN KEY (ticket_id) REFERENCES projects.tickets(id),
+  CONSTRAINT stage_revision_requests_stage_fkey FOREIGN KEY (project_stage_id) REFERENCES projects.project_stages(id),
+  CONSTRAINT stage_revision_requests_submission_fkey FOREIGN KEY (submission_id) REFERENCES projects.stage_submissions(id),
+  -- awaiting_payment (a paid round raised, not yet funded) → open (being worked) → resolved
+  -- (resubmitted); cancelled for a paid round abandoned before payment. Decision #167.
+  CONSTRAINT stage_revision_requests_status_check
+    CHECK (status IN ('awaiting_payment', 'open', 'resolved', 'cancelled')),
+  CONSTRAINT stage_revision_requests_type_check CHECK (request_type IN ('revision', 'paid_revision')),
+  -- A paid round always carries its price; a free one never does.
+  CONSTRAINT stage_revision_requests_paid_price CHECK ((request_type = 'paid_revision') = (price_cents IS NOT NULL)),
+  CONSTRAINT stage_revision_requests_resolved_at CHECK ((status = 'resolved') = (resolved_at IS NOT NULL))
 );
 
 
+-- A seated, scheduled group (Decision #171). A 1-1 session is a cohort of one seat, so both session
+-- kinds share one machinery. The cohort hangs off a STAGE, not just the project: a session's escrow is
+-- a `finance.escrows` row, and an escrow is always held against a stage (`project_stage_id NOT NULL`).
+-- That link is also how a stage is known to be session-based — there is no `stage_type` column
+-- (`flows/Projects.md` §6.0): a stage some cohort points at is a session stage.
 CREATE TABLE projects.cohorts (
 	id uuid NOT NULL DEFAULT gen_random_uuid(),
 	project_id uuid NOT NULL,
+	project_stage_id uuid NOT NULL,
 	name text NOT NULL,
+	-- Bounded by the same 500 the basket's `seats` CHECK uses, so any seat count a line can carry fits.
 	max_seats integer NOT NULL DEFAULT 1,
 	status projects.cohort_status NOT NULL DEFAULT 'enrolling'::projects.cohort_status,
 	created_at timestamp with time zone NOT NULL DEFAULT now(),
 
 	CONSTRAINT cohorts_pkey PRIMARY KEY (id),
-	CONSTRAINT cohorts_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects(id)
+	CONSTRAINT cohorts_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects(id),
+	CONSTRAINT cohorts_project_stage_id_fkey FOREIGN KEY (project_stage_id) REFERENCES projects.project_stages(id),
+	CONSTRAINT ck_cohorts_max_seats CHECK (max_seats BETWEEN 1 AND 500)
 );
 
 
+-- A confirmed seat. Written only by `projects.fn_confirm_seat` when the order that paid for it
+-- settles (the provider may also comp one under "Manage cohort memberships"); a hold that was never
+-- paid for is `cohort_seat_holds`, never a membership.
 CREATE TABLE projects.cohort_memberships (
 	id uuid NOT NULL DEFAULT gen_random_uuid(),
 	cohort_id uuid NOT NULL,
 	user_id uuid NOT NULL,
+	-- One person may buy several seats in one order (`basket_items.seats`); occupancy sums this.
+	seats integer NOT NULL DEFAULT 1,
 	status text NOT NULL DEFAULT 'active'::text,
+	-- The order line that paid for the seat. FK in 00000032 (finance is created after projects).
+	order_line_id uuid,
 	joined_at timestamp with time zone NOT NULL DEFAULT now(),
+	cancelled_at timestamp with time zone,
 
 	CONSTRAINT cohort_memberships_pkey PRIMARY KEY (id),
 	CONSTRAINT cohort_memberships_cohort_id_fkey FOREIGN KEY (cohort_id) REFERENCES projects.cohorts(id),
 	CONSTRAINT cohort_memberships_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public(user_id),
-	CONSTRAINT cohort_memberships_unique_user UNIQUE (cohort_id, user_id)
+	CONSTRAINT cohort_memberships_unique_user UNIQUE (cohort_id, user_id),
+	-- active (seat held, escrow held) → cancelled (left: refunded, or forfeited inside 24h) | completed
+	-- (escrow released after the last session).
+	CONSTRAINT ck_cohort_memberships_status CHECK (status IN ('active', 'cancelled', 'completed')),
+	CONSTRAINT ck_cohort_memberships_seats CHECK (seats BETWEEN 1 AND 500),
+	CONSTRAINT ck_cohort_memberships_cancelled_at CHECK ((status = 'cancelled') = (cancelled_at IS NOT NULL))
+);
+
+
+-- A seat reserved while the buyer pays (Decision #171). `projects.reserve_seat` writes it under a row
+-- lock on the cohort, so two buyers racing for the last seat cannot both get one; `fn_confirm_seat`
+-- turns it into a membership when the order settles. A hold past `expires_at` stops counting toward
+-- occupancy without anything having to sweep it — the instant is the state, so a stalled job can never
+-- leave seats blocked. Nothing is deleted: a released or converted hold stays as the record.
+CREATE TABLE projects.cohort_seat_holds (
+	id uuid NOT NULL DEFAULT gen_random_uuid(),
+	cohort_id uuid NOT NULL,
+	user_id uuid NOT NULL,
+	seats integer NOT NULL DEFAULT 1,
+	status text NOT NULL DEFAULT 'held'::text,
+	expires_at timestamp with time zone NOT NULL,
+	membership_id uuid,
+	created_at timestamp with time zone NOT NULL DEFAULT now(),
+	updated_at timestamp with time zone NOT NULL DEFAULT now(),
+
+	CONSTRAINT cohort_seat_holds_pkey PRIMARY KEY (id),
+	CONSTRAINT cohort_seat_holds_cohort_id_fkey FOREIGN KEY (cohort_id) REFERENCES projects.cohorts(id),
+	CONSTRAINT cohort_seat_holds_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public(user_id),
+	CONSTRAINT cohort_seat_holds_membership_id_fkey FOREIGN KEY (membership_id) REFERENCES projects.cohort_memberships(id),
+	CONSTRAINT ck_cohort_seat_holds_status CHECK (status IN ('held', 'converted', 'released')),
+	CONSTRAINT ck_cohort_seat_holds_seats CHECK (seats BETWEEN 1 AND 500),
+	CONSTRAINT ck_cohort_seat_holds_converted CHECK ((status = 'converted') = (membership_id IS NOT NULL))
 );
 
 
@@ -744,8 +820,17 @@ CREATE TABLE projects.session_events (
 	start_time timestamp with time zone NOT NULL,
 	end_time timestamp with time zone NOT NULL,
 
+	-- Neither URL is client-readable (00002520 grants every other column): `projects.session_join_link`
+	-- hands the caller THEIR link, and only once the seat is funded and the join window is open.
 	host_join_url text,
 	attendee_join_url text,
+
+	-- The conferencing room behind the URLs, as the provider names it — what a presence webhook carries
+	-- to find this sitting (`projects.record_presence`). Same vocabulary as
+	-- `scheduling.events.meeting_provider`. NULL for a room nothing reports presence from (a custom
+	-- link), where the 15-minute rule cannot be judged and is not.
+	meeting_provider text,
+	provider_meeting_id text,
 
 	status projects.session_event_status NOT NULL DEFAULT 'scheduled'::projects.session_event_status,
 	created_at timestamp with time zone NOT NULL DEFAULT now(),
@@ -757,21 +842,100 @@ CREATE TABLE projects.session_events (
 	-- same alphabet and the same cross-check as `ck_projects_slug_shape`.
 	CONSTRAINT ck_session_events_slug_shape
 		CHECK (slug ~ '^ssn-[23456789abcdefghjkmnopqrstuvwxyz]{10}$'),
-	CONSTRAINT session_events_cohort_id_fkey FOREIGN KEY (cohort_id) REFERENCES projects.cohorts(id)
+	CONSTRAINT session_events_cohort_id_fkey FOREIGN KEY (cohort_id) REFERENCES projects.cohorts(id),
+	-- Strict, unlike `scheduling.events`' `>=`: a sitting is a meeting with a length, never a deadline.
+	CONSTRAINT ck_session_events_span CHECK (end_time > start_time),
+	CONSTRAINT ck_session_events_meeting_provider CHECK (
+		meeting_provider IS NULL
+		OR meeting_provider IN ('google', 'outlook', 'zoom', 'microsoft_teams', 'discord', 'custom')
+	),
+	CONSTRAINT ck_session_events_provider_room CHECK (
+		provider_meeting_id IS NULL OR meeting_provider IS NOT NULL
+	),
+	CONSTRAINT uq_session_events_provider_room UNIQUE (meeting_provider, provider_meeting_id)
 );
 
+-- Presence evidence, one row per person per sitting: `joined_at` is the FIRST join, `left_at` the
+-- latest leave (NULL while they are in the room). Written only by definers — `record_presence` from
+-- the provider's signed webhook (`webhook`), `record_host_attendance` when the host vouches for
+-- someone the room could not report (`host`). A dispute audits these rows, so no client verb writes
+-- them (00002520).
 CREATE TABLE projects.session_attendance (
     id uuid NOT NULL DEFAULT gen_random_uuid (),
     session_event_id uuid NOT NULL,
     user_id uuid NOT NULL,
-    joined_at timestamp
-    with
-        time zone NOT NULL DEFAULT now(),
-        ip_address inet,
-        CONSTRAINT session_attendance_pkey PRIMARY KEY (id),
-        CONSTRAINT session_attendance_event_id_fkey FOREIGN KEY (session_event_id) REFERENCES projects.session_events (id),
-        CONSTRAINT session_attendance_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public (user_id)
+    joined_at timestamp with time zone NOT NULL DEFAULT now(),
+    left_at timestamp with time zone,
+    source text NOT NULL DEFAULT 'webhook'::text,
+    -- The provider's id for the event that last wrote this row, so a redelivered webhook is a replay
+    -- rather than a second join.
+    provider_event_id text,
+    ip_address inet,
+    CONSTRAINT session_attendance_pkey PRIMARY KEY (id),
+    CONSTRAINT session_attendance_event_id_fkey FOREIGN KEY (session_event_id) REFERENCES projects.session_events (id),
+    CONSTRAINT session_attendance_user_id_fkey FOREIGN KEY (user_id) REFERENCES org.users_public (user_id),
+    CONSTRAINT uq_session_attendance_event_user UNIQUE (session_event_id, user_id),
+    CONSTRAINT ck_session_attendance_source CHECK (source IN ('webhook', 'host')),
+    CONSTRAINT ck_session_attendance_span CHECK (left_at IS NULL OR left_at >= joined_at)
 );
+
+-- #region Curriculum (Decision #171)
+-- What a session engagement teaches, in order. A module belongs to a STAGE (the listing's standing
+-- lesson plan, which every cohort on that stage follows) or to one COHORT (a plan written for that
+-- group), never both. `session_event_id` dates the module: the curriculum timeline (DESIGN_SYSTEM
+-- §D.8.4) prints the sitting's date where a stage ledger prints a step number.
+CREATE TABLE projects.curriculum_modules (
+	id uuid NOT NULL DEFAULT gen_random_uuid(),
+	project_stage_id uuid,
+	cohort_id uuid,
+	session_event_id uuid,
+	title text NOT NULL,
+	summary text NOT NULL DEFAULT ''::text,
+	position integer NOT NULL DEFAULT 0,
+	created_at timestamp with time zone NOT NULL DEFAULT now(),
+	updated_at timestamp with time zone NOT NULL DEFAULT now(),
+
+	CONSTRAINT curriculum_modules_pkey PRIMARY KEY (id),
+	CONSTRAINT curriculum_modules_stage_fkey FOREIGN KEY (project_stage_id) REFERENCES projects.project_stages(id),
+	CONSTRAINT curriculum_modules_cohort_fkey FOREIGN KEY (cohort_id) REFERENCES projects.cohorts(id),
+	CONSTRAINT curriculum_modules_event_fkey FOREIGN KEY (session_event_id) REFERENCES projects.session_events(id) ON DELETE SET NULL,
+	CONSTRAINT ck_curriculum_modules_owner CHECK (num_nonnulls(project_stage_id, cohort_id) = 1),
+	CONSTRAINT ck_curriculum_modules_title CHECK (char_length(title) BETWEEN 1 AND 160),
+	CONSTRAINT ck_curriculum_modules_position CHECK (position >= 0)
+);
+
+CREATE TABLE projects.curriculum_lessons (
+	id uuid NOT NULL DEFAULT gen_random_uuid(),
+	module_id uuid NOT NULL,
+	title text NOT NULL,
+	summary text NOT NULL DEFAULT ''::text,
+	duration_minutes integer,
+	position integer NOT NULL DEFAULT 0,
+	created_at timestamp with time zone NOT NULL DEFAULT now(),
+
+	CONSTRAINT curriculum_lessons_pkey PRIMARY KEY (id),
+	CONSTRAINT curriculum_lessons_module_fkey FOREIGN KEY (module_id) REFERENCES projects.curriculum_modules(id),
+	CONSTRAINT ck_curriculum_lessons_title CHECK (char_length(title) BETWEEN 1 AND 160),
+	CONSTRAINT ck_curriculum_lessons_duration CHECK (duration_minutes IS NULL OR duration_minutes BETWEEN 1 AND 1440),
+	CONSTRAINT ck_curriculum_lessons_position CHECK (position >= 0)
+);
+
+-- One row per member per lesson they have touched; `completed_at` set = done. Written only by
+-- `projects.complete_lesson`, which holds the writer to a seat on a cohort that follows the lesson.
+-- Un-ticking clears the instant rather than deleting the row (root CLAUDE.md §5).
+CREATE TABLE projects.lesson_progress (
+	id uuid NOT NULL DEFAULT gen_random_uuid(),
+	lesson_id uuid NOT NULL,
+	user_id uuid NOT NULL,
+	completed_at timestamp with time zone,
+	updated_at timestamp with time zone NOT NULL DEFAULT now(),
+
+	CONSTRAINT lesson_progress_pkey PRIMARY KEY (id),
+	CONSTRAINT lesson_progress_lesson_fkey FOREIGN KEY (lesson_id) REFERENCES projects.curriculum_lessons(id),
+	CONSTRAINT lesson_progress_user_fkey FOREIGN KEY (user_id) REFERENCES org.users_public(user_id),
+	CONSTRAINT uq_lesson_progress UNIQUE (lesson_id, user_id)
+);
+-- #endregion
 
 
 CREATE TABLE projects.waitlists (

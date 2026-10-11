@@ -31,6 +31,7 @@ import {
 export const KNOWN_NOTIFICATION_TYPES = [
 	// money
 	"escrow.funded",
+	"escrow.needs_funding",
 	"escrow.released",
 	"escrow.refunded",
 	"escrow.disputed",
@@ -46,6 +47,8 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"invoice.overdue",
 	"statement.ready",
 	"chargeback.opened",
+	"chargeback.won",
+	"chargeback.lost",
 	"spend_approval.requested",
 	"spend.approved",
 	"spend.rejected",

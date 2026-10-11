@@ -4,7 +4,6 @@ import { LaneSections } from "@projective/ui/navigation";
 import { AccordionGroup, DmRow } from "./ChannelTree.tsx";
 import { DmIcon, HashIcon } from "./detail-glyphs.tsx";
 import { ContinuationIcon, LevelsIcon, OverlapIcon, PollIcon } from "./session-glyphs.tsx";
-import { channelHref } from "../core/chat-context.ts";
 import type { GroupSessionData, SubGroup } from "../core/session-model.ts";
 import { conditionalChannelGroups } from "@projective/types/projects";
 import type { ProjectDetail } from "../types/projects-types.ts";
@@ -40,17 +39,18 @@ export interface GroupSessionPanelProps {
 	onContinuation: () => void;
 }
 
-/** A sub-group channel row — a `#` channel with a proficiency tag + an overlap indicator. */
+/** A cohort row — its name, real seat count and an overlap indicator; it opens the calendar. */
 function SubGroupRow({ group, slug }: { group: SubGroup; slug: string }): JSX.Element {
 	return (
 		<a
 			class="proj-chan proj-chan--subgroup"
-			href={channelHref(slug, group.id)}
+			href={`/projects/${slug}/calendar`}
 			data-joined={group.joined ? "true" : "false"}
+			title={group.nextLabel ? `Next: ${group.nextLabel}` : undefined}
 		>
 			<span class="proj-chan__glyph" aria-hidden="true">{HashIcon}</span>
 			<span class="proj-chan__name">{group.name}</span>
-			<span class="sess-tag" data-level={group.level.toLowerCase()}>{group.level}</span>
+			<span class="sess-tags__name">{group.seatsLabel}</span>
 			{group.overlapping && (
 				<Tooltip content="Overlapping schedule" placement="top">
 					<span class="proj-chan__overlap" role="img" aria-label="Overlapping schedule">
@@ -58,7 +58,6 @@ function SubGroupRow({ group, slug }: { group: SubGroup; slug: string }): JSX.El
 					</span>
 				</Tooltip>
 			)}
-			{group.unread && <span class="proj-chan__dot" role="status" aria-label="unread" />}
 		</a>
 	);
 }
@@ -68,9 +67,8 @@ export function GroupSessionPanel(
 ): JSX.Element {
 	const { dms: projectDms } = conditionalChannelGroups(detail.channels);
 	const joined = data.subGroups.filter((g) => g.joined);
-	const votePct = data.vote.total > 0
-		? Math.round((data.vote.accepted / data.vote.total) * 100)
-		: 0;
+	const vote = data.vote;
+	const votePct = vote && vote.total > 0 ? Math.round((vote.accepted / vote.total) * 100) : 0;
 	const open = (key: string) => !!openGroups[key];
 
 	return (
@@ -85,7 +83,6 @@ export function GroupSessionPanel(
 					<ul class="sess-tags__list">
 						{joined.map((g) => (
 							<li key={g.id} class="sess-tags__item">
-								<span class="sess-tag" data-level={g.level.toLowerCase()}>{g.level}</span>
 								<span class="sess-tags__name">{g.name}</span>
 								{g.overlapping && (
 									<Tooltip content="Overlapping schedule" placement="top">
@@ -100,14 +97,15 @@ export function GroupSessionPanel(
 				</section>
 			)}
 
-			{/* Live reschedule vote */}
+			{/* Live reschedule vote — only while one is open. */}
+			{vote && (
 			<section class="sess-vote" aria-label="Reschedule vote">
 				<div class="sess-vote__head">
 					<span class="sess-vote__icon" aria-hidden="true">{PollIcon}</span>
 					<span class="sess-vote__title">Reschedule proposal</span>
-					<span class="sess-vote__tally">{data.vote.accepted}/{data.vote.total}</span>
+					<span class="sess-vote__tally">{vote.accepted}/{vote.total}</span>
 				</div>
-				<p class="sess-vote__prompt">{data.vote.prompt}</p>
+				<p class="sess-vote__prompt">{vote.prompt}</p>
 				<div
 					class="sess-vote__track"
 					role="progressbar"
@@ -118,8 +116,9 @@ export function GroupSessionPanel(
 				>
 					<span class="sess-vote__fill" style={`inline-size:${votePct}%`} />
 				</div>
-				<span class="sess-vote__result">{data.vote.accepted} of {data.vote.total} accepted</span>
+				<span class="sess-vote__result">{vote.accepted} of {vote.total} accepted</span>
 			</section>
+			)}
 
 			{/* Channel tree — Sub-groups · Private messages */}
 			<LaneSections class="sess-tree">
@@ -129,7 +128,7 @@ export function GroupSessionPanel(
 					label="Sub-groups"
 					open={open("subgroups")}
 					onToggle={() => onToggleGroup("subgroups")}
-					hasUnread={data.subGroups.some((g) => g.unread)}
+					hasUnread={false}
 				>
 					{data.subGroups.map((g) => <SubGroupRow key={g.id} group={g} slug={detail.slug} />)}
 				</AccordionGroup>

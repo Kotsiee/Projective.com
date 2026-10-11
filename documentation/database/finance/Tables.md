@@ -381,7 +381,8 @@ graph.
 | `item_type`                | `finance.purchasable_item_kind` | NOT NULL. A real enum, not a text CHECK — shared with the Zod SSOT member-for-member.       |
 | `item_id`                  | uuid                            | NOT NULL. **Polymorphic; deliberately not FK'd** — its target is chosen by `item_type`.     |
 | `stage_id`                 | uuid                            | NULL. FK → `projects.project_stages` (**CASCADE**) — see the note below.                    |
-| `revision_id`              | uuid                            | NULL. **Deliberately not FK'd** — target unsettled, see the note below.                     |
+| `ticket_id`                | uuid                            | NULL. FK → `projects.tickets` (**CASCADE**). The ONE board ticket the line buys (Decision #166); only on `project_ticket` / `one_off_project` / `one_off_task` with `quantity = 1` (CHECK `basket_item_ticket_is_project_work`). |
+| `revision_id`              | uuid                            | NULL. FK → `projects.stage_revision_requests.id` `ON DELETE CASCADE` (Decision #167). Set exactly on a `paid_revision` line, equal to `item_id` (`basket_item_revision_line`). |
 | `title`                    | text                            | NOT NULL. Display snapshot.                                                                 |
 | `subtitle`                 | text                            | NULL.                                                                                       |
 | `unit_price_minor`         | bigint                          | NOT NULL, `CHECK >= 0`. No default — a writer must state a price (0 for a wishlist line).   |
@@ -399,6 +400,17 @@ graph.
 The discount CHECK is what makes a basket total structurally unable to go negative: a discount can
 never exceed the line it discounts.
 
+**Ticket lines (Decision #166).** A line with `ticket_id` buys that one ticket: the basket prices it
+from the ticket (its own `unit_price_cents`, else its stage's) and checkout settles it by holding that
+ticket's escrow (`projects.fund_ticket` via `finance.place_wallet_order`). The dedupe key is the
+partial UNIQUE index `uq_basket_items_live_ticket (basket_id, ticket_id) WHERE ticket_id IS NOT NULL
+AND removed_at IS NULL AND purchased_at IS NULL` — one live line per ticket per basket, parked or not;
+adding it again re-selects that line. The PRODUCT_SPEC §5 purchasing gate (no description, not
+purchasable) is enforced where money moves (`fund_ticket`, `begin_card_payment`) and said on the line
+before Pay. The order line it becomes carries the same ticket: `finance.order_lines.ticket_id` (NULL,
+FK → `projects.tickets`, `SET NULL` so the receipt outlives the ticket), with `fulfilment =
+'engagement'`, its `stage_id`, and `line_total_minor` = the escrow held.
+
 > **Bounds that exist so the Zod SSOT and the column agree.** `quantity` is bounded at **both** ends
 > (`BETWEEN 1 AND 999`) to match `BasketItemSchema.quantity`, so a value that validates is always
 > storable and a value that is stored always parses back out; it also keeps
@@ -414,15 +426,21 @@ never exceed the line it discounts.
 > refusal at INSERT, because refusing to add a long-titled listing to a basket is a worse outcome
 > than storing a shortened snapshot of its name.
 
-> **Why `stage_id` is FK'd and `revision_id` is not.** A stage reference is only meaningful for the
+> **Why `stage_id` and `revision_id` are FK'd.** A stage reference is only meaningful for the
 > ticket kinds, and every other kind leaves it NULL — but an FK only constrains **non-NULL** values,
 > so keying it to the one unambiguous target (`projects.project_stages`) is both safe and correct.
 > `ON DELETE CASCADE`, not `SET NULL`: if the stage is gone the line is not purchasable, and a
 > stage-less ticket line would be a silently wrong basket entry rather than an honest absence.
-> `revision_id` has **no single correct target today** — `projects.stage_revision_requests` (a
-> client-requested revision round) and a submission revision are different things, and which one is
-> purchasable is unsettled. It is left a bare uuid rather than guessing, and is **flagged** (root
-> `CLAUDE.md` §8).
+> `revision_id` targets `projects.stage_revision_requests` (a client-requested revision round), as
+> Decision #167 settled, with the same CASCADE reasoning.
+
+**Paid revision lines (Decision #167).** A `paid_revision` line names the round it pays for
+(`item_id = revision_id`, quantity 1, `stage_id` = the round's stage). The basket prices it from the
+round's snapshotted `price_cents` and refuses it unless the round is `awaiting_payment` and the
+paying account is the project's client; checkout settles it like a ticket line — the round's escrow is
+held on its ticket by `projects.fund_paid_revision` via `finance.place_wallet_order` — and the order
+line is `item_type = 'paid_revision'`, `fulfilment = 'engagement'`, `line_total_minor` = the escrow
+held.
 
 ### `finance.saved_cards`
 
@@ -499,12 +517,13 @@ Zod `InboundPaymentStatus` (`payments.contract.test.ts` reads the migration and 
 
 `digital_product` · `project_ticket` · `one_off_project` · `one_off_task` · `service_ticket` ·
 `one_off_service` · `single_service_task` · `service_session` · `set_session` ·
-`course_group_session`
+`course_group_session` · `paid_revision`
 
 A **closed** vocabulary, in this exact order, mirrored member-for-member by the Zod SSOT. It encodes
 three axes at once: **what** is bought (product · ticket · whole project/service · session), **who**
 delivers it (a project the buyer owns vs a seller's catalogue service), and **how** it is delivered
-(pipeline ticket · one-off · single task · session · set of sessions · cohort).
+(pipeline ticket · one-off · single task · session · set of sessions · cohort). `paid_revision`
+(Decision #167, appended last) is one extra revision round on a ticket.
 
 ### `finance.card_brand`
 
@@ -549,6 +568,7 @@ would leave no trace; `finance.orders` records basket purchases, not top-ups or 
 | `purpose`               | text                             | `wallet_topup` or `escrow_lock` (CHECK).                                                                                                                                                                                 |
 | `wallet_id`             | uuid                             | NOT NULL. FK → `finance.wallets` (**RESTRICT** — a wallet that has taken money must not take the record of it with it). The payer's own wallet for a top-up; the paying business's for an escrow lock.               |
 | `project_stage_id`      | uuid                             | NULL. FK → `projects.project_stages` (`SET NULL`). Only an `escrow_lock` may name one (one-directional CHECK, because a stage retired later keeps its payment history).                                                 |
+| `ticket_id`             | uuid                             | NULL. FK → `projects.tickets` (`SET NULL`). The ONE ticket an `escrow_lock` funds (Decision #166): the amount is that ticket's price and settlement holds only its escrow (`projects.fund_ticket`). NULL funds the whole stage. Only an `escrow_lock` may name one (CHECK `inbound_payments_ticket_only_for_locks`). |
 | `amount_cents`          | bigint                           | NOT NULL, `> 0`. What the payer was asked to pay.                                                                                                                                                                        |
 | `currency`              | char(3)                          | NOT NULL, `^[A-Z]{3}$`. Always the receiving wallet's currency.                                                                                                                                                          |
 | `amount_received_cents` | bigint                           | NULL until settlement. What Stripe reports it received — **the ledger is credited with this**, because it is the money that exists.                                                                                      |

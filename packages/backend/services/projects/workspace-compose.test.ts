@@ -163,6 +163,7 @@ Deno.test("claimable tickets are ready, described, open-pull, on the viewer's st
 			status: "in_progress" as const,
 			dueLabel: null,
 			href: "/x",
+			funding: null,
 		}],
 	};
 	const ws = composeWorkspace(base, { ...s, board });
@@ -203,4 +204,35 @@ Deno.test("active submissions walk the viewer's tree, returned work first, draft
 
 	const owner = composeWorkspace(s.base, { ...s, viewer: "owner", submissions });
 	assertEquals(owner.submissions, []);
+});
+
+Deno.test("Ready to start? walks brief → freelancer → first stage funded, and leaves once work starts", () => {
+	const slug = pipelineSlug();
+	const s = sources(slug, "owner");
+	assert(s.board);
+	const first = { ...s.board.stages[0], id: "s1", order: 0, members: [] };
+	const funded = {
+		state: "funded" as const,
+		amountMinor: 45000,
+		currency: "USD",
+		amountLabel: "$450",
+		canStart: true,
+		nextAction: "start_work" as const,
+		reason: null,
+	};
+	const board = (cards: BoardCard[]): BoardPage => ({ ...s.board!, stages: [first], cards });
+
+	const waiting = composeWorkspace(s.base, { ...s, board: board([card({ id: "a" })]) });
+	assertEquals(waiting.readiness?.map((step) => step.done), [true, false, false, false]);
+
+	const ana = { name: "Ana", avatar: null, handle: "ana" };
+	const ready = composeWorkspace(s.base, {
+		...s,
+		board: board([card({ id: "a", assignee: ana, funding: funded })]),
+	});
+	assertEquals(ready.readiness?.map((step) => step.done), [true, true, true, false]);
+
+	const started = composeWorkspace(s.base, { ...s, board: board([card({ id: "a", status: "in_progress" })]) });
+	assertEquals(started.readiness, null);
+	assertEquals(composeWorkspace(s.base, sources(slug, "participant")).readiness, null);
 });

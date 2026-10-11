@@ -8,6 +8,7 @@ import { useId } from "../../hooks/useId.ts";
 import { useFloating } from "../../hooks/useFloating.ts";
 import { useDismiss } from "../../hooks/useDismiss.ts";
 import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
+import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
 import { useListNavigation } from "../../hooks/useListNavigation.ts";
 import type { Placement } from "../../types/mod.ts";
 import type { MenuItem } from "../../types/mod.ts";
@@ -112,9 +113,9 @@ export function Menu(props: MenuProps): JSX.Element {
 	const { rows, items } = buildRows(model);
 	const nav = useListNavigation(() => items.length, (i) => !!items[i]?.disabled);
 
-	// The popup claims a stack slot so it both outranks whatever is already open and DEMOTES it: the
-	// panel is rendered inline (not portalled), so without a claim its `--z-overlay` sat at the popover
-	// base and it also kept Escape ownership from anything opened on top of it.
+	// The popup claims a stack slot so it both outranks whatever is already open and DEMOTES it:
+	// without a claim its `--z-overlay` sat at the popover base and it also kept Escape ownership from
+	// anything opened on top of it.
 	const stack = useOverlayStack({ active: popup && open.value, layer: "popover" });
 	const floating = useFloating({
 		open: popup && open.value,
@@ -295,20 +296,22 @@ export function Menu(props: MenuProps): JSX.Element {
 				{trigger ?? <span aria-hidden="true">⋯</span>}
 			</button>
 			{open.value && (
-				<div
-					ref={panelRef}
-					class={cx(
-						"ui-menu__panel",
-						floating?.placement.startsWith("top") && "ui-menu__panel--top",
-					)}
-					style={styleVars({
-						"--float-top": floating ? `${floating.top}px` : undefined,
-						"--float-left": floating ? `${floating.left}px` : undefined,
-						"--z-portal": String(stack.zIndex),
-					})}
-				>
-					{list}
-				</div>
+				<BodyPortal>
+					<div
+						ref={panelRef}
+						class={cx(
+							"ui-menu__panel",
+							floating?.placement.startsWith("top") && "ui-menu__panel--top",
+						)}
+						style={styleVars({
+							"--float-top": floating ? `${floating.top}px` : undefined,
+							"--float-left": floating ? `${floating.left}px` : undefined,
+							"--z-portal": String(stack.zIndex),
+						})}
+					>
+						{list}
+					</div>
+				</BodyPortal>
 			)}
 		</span>
 	);

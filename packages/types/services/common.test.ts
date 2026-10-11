@@ -71,8 +71,9 @@ Deno.test("only the scheduled formats take the schedule leaf; the primary never 
 	for (const format of ["session", "set_session", "cohort"] as const) {
 		const rig = resolveCta({ ...base, format, seatsRemaining: 3, scheduleHref });
 		assertEquals(rig.secondary?.kind, "view_schedule", `${format} secondary`);
-		// The in-page picker is the flow that reaches checkout; the leaf is the calendar, not the sale.
-		assertEquals(rig.primary.kind, "open_scheduler", `${format} primary`);
+		// The in-page flow is what reaches checkout (a slot picker, or a cohort's seat hold); the leaf is
+		// the calendar, not the sale.
+		assertEquals(rig.primary.kind, format === "cohort" ? "reserve_seat" : "open_scheduler", `${format} primary`);
 		assertEquals(rig.primary.href, null, `${format} primary href`);
 	}
 	for (const format of ["pipeline", "one_off", "single_task", "product"] as const) {
@@ -93,15 +94,22 @@ Deno.test("a set-session block names its size and pluralises correctly", () => {
 	assertEquals(resolveCta({ ...base, format: "set_session", sessionCount: 1 }).primary.label, "Book session");
 });
 
-Deno.test("a cohort counts its remaining seats, singular at one", () => {
+Deno.test("a cohort's primary is Reserve seat, and its name counts the seats left, singular at one", () => {
+	const seven = resolveCta({ ...base, format: "cohort", seatsRemaining: 7 }).primary;
+	assertEquals(seven.label, "Reserve seat");
+	assertEquals(seven.kind, "reserve_seat");
+	assertEquals(seven.ariaLabel, "Reserve a seat — 7 seats remaining");
 	assertEquals(
-		resolveCta({ ...base, format: "cohort", seatsRemaining: 7 }).primary.label,
-		"Join cohort (7 spots left)",
+		resolveCta({ ...base, format: "cohort", seatsRemaining: 1 }).primary.ariaLabel,
+		"Reserve a seat — 1 seat remaining",
 	);
-	assertEquals(
-		resolveCta({ ...base, format: "cohort", seatsRemaining: 1 }).primary.label,
-		"Join cohort (1 spot left)",
-	);
+});
+
+Deno.test("a group session with no enrolling cohort is refused as not open, not as full", () => {
+	const rig = resolveCta({ ...base, format: "cohort", seatsRemaining: 0, cohortOpen: false });
+	assertEquals(rig.primary.disabled, true);
+	assertEquals(rig.primary.label, "No cohort open");
+	assertEquals((rig.primary.disabledReason ?? "").length > 0, true);
 });
 
 Deno.test("a full cohort is REFUSED with a reason, not hidden", () => {

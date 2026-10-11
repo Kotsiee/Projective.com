@@ -606,7 +606,9 @@ events reuse `projects.has_project_access`; the knobs go in the existing `securi
 (mirrored, never replaced) and `org.freelancer_profiles.availability_status` stays the coarse
 ranking cache. **Flagged conflicts (surface, do NOT resolve):** (a) **Paid calls have no escrow
 path** — `finance.escrows` requires BOTH `project_stage_id` and `payer_business_id` NOT NULL, so a
-standalone 1-1 paid call is inexpressible; `escrow_id` is nullable and set only for an
+standalone 1-1 paid call is inexpressible [**stale since 2026-09-29:** `payer_business_id` is
+nullable under `ck_escrows_one_payer` (Decision #126, re-confirmed #165); only `project_stage_id`
+is still NOT NULL]; `escrow_id` is nullable and set only for an
 already-funded stage. Relaxing those columns (a **protected** table, §1) or auto-provisioning a
 session-format micro-project both need human sign-off. (b) **Cancellation economics** — the
 pre-existing `finance-model.md` §4 (50%) vs `PRODUCT_SPEC.md` §Sessions (full forfeit) conflict is

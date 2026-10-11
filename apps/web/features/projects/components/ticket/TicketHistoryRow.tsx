@@ -40,6 +40,7 @@ export const HISTORY_ICON: Record<TicketHistoryKind, IconName> = {
 	intensity: "analytics",
 	priority: "flag",
 	due: "calendar",
+	funding: "wallet",
 };
 
 export function TicketHistoryRow(props: TicketHistoryRowProps): JSX.Element {

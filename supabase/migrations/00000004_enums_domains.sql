@@ -13,7 +13,9 @@ CREATE TYPE finance.kyc_status AS ENUM ('unverified', 'pending', 'verified', 're
 
 CREATE TYPE finance.method_role AS ENUM ('funding', 'payout', 'both');
 
-CREATE TYPE finance.deposit_interval AS ENUM ('weekly', 'monthly');
+-- `below_floor`: a floor top-up — runs each time the wallet's balance crosses below its business's
+-- low-balance floor (`org.business_profiles.low_balance_floor_cents`) rather than on a calendar.
+CREATE TYPE finance.deposit_interval AS ENUM ('weekly', 'monthly', 'below_floor');
 
 CREATE TYPE finance.payout_mode AS ENUM ('manual', 'scheduled_weekly', 'scheduled_monthly', 'threshold');
 
@@ -116,7 +118,10 @@ CREATE TYPE finance.purchasable_item_kind AS ENUM (
     'single_service_task',
     'service_session',
     'set_session',
-    'course_group_session'
+    'course_group_session',
+    -- An extra revision round bought after a stage's free rounds are used (Decision #167). Its
+    -- `basket_items.revision_id` names the `projects.stage_revision_requests` row it pays for.
+    'paid_revision'
 );
 
 -- `card_brand` — the safe DISPLAY fragment Stripe returns for a saved instrument. It is a display

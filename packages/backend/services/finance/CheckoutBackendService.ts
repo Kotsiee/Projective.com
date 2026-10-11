@@ -12,6 +12,7 @@ import type {
 	MoneyView,
 	MonthlyInvoicing,
 	ProviderAvailability,
+	ProviderContext,
 	SaveBuyerDetails,
 	SavedCard,
 	SpendLimitBlock,
@@ -79,11 +80,26 @@ function processorConnected(): boolean {
 	return isPaymentsLive();
 }
 
+/** The project kinds a line may buy ONE board ticket as (Decision #166). */
+const TICKET_KINDS: ReadonlySet<BasketItem["itemType"]> = new Set([
+	"project_ticket",
+	"one_off_project",
+	"one_off_task",
+]);
+
 /**
- * The purchase kinds the wallet can settle in one transaction (`finance.place_wallet_order`). Every
- * other kind is paid into escrow against a project stage, which a basket line does not carry.
+ * Whether the wallet — and so a card or express top-up of it — can settle this line in one transaction
+ * (`finance.place_wallet_order`): a digital product, or ONE board ticket, which settles by holding that
+ * ticket's escrow from the wallet rather than by a sale (Decision #166), or a paid revision round, held
+ * the same way on its ticket (Decision #167), or a cohort seat carrying its reservation (`holdId`,
+ * Decision #171), held as the seat's escrow. A whole project, a service or a 1-1 slot still escrows
+ * against something a basket line does not carry.
  */
-const WALLET_SETTLES: ReadonlySet<BasketItem["itemType"]> = new Set(["digital_product"]);
+function walletSettles(item: BasketItem): boolean {
+	return item.itemType === "digital_product" || item.itemType === "paid_revision" ||
+		(!!item.ticketId && TICKET_KINDS.has(item.itemType)) ||
+		(item.itemType === "course_group_session" && typeof item.metadata.holdId === "string");
+}
 // #endregion
 
 // #region Session
@@ -96,6 +112,8 @@ interface Resolved {
 	cards: SavedCard[];
 	walletMinor: number;
 	basketId: string;
+	/** A business's standing for paying on account, in the display currency; `null` for anyone else. */
+	onAccount: ProviderContext["onAccount"];
 }
 
 /** Narrow a basket's lines to what a checkout is paying for: active lines, then the deep link. */
@@ -189,13 +207,15 @@ function blockersFor(
 
 	for (const item of eligible) {
 		const meta = itemKindMeta(item.itemType);
-		// Said before Pay rather than refused at it: the one provider that can settle here is the wallet,
-		// and it pays for digital products only — every other kind escrows against a project stage and
-		// a business payer (Decision #56(a)), which a basket line does not have.
-		if (!WALLET_SETTLES.has(item.itemType)) {
+		// Said before Pay rather than refused at it: the wallet (topped up by card when it must be) pays
+		// for digital products and single board tickets — every other kind escrows against something a
+		// basket line does not carry.
+		if (!walletSettles(item)) {
 			blockers.push({
 				code: "no_provider",
-				message: `${item.title} can't be paid for here yet — only digital products can. Save it for later to pay for the rest.`,
+				message: item.itemType === "course_group_session"
+					? `Reserve a seat for ${item.title} from its listing before paying.`
+					: `${item.title} can't be paid for here yet — only digital products, project tickets and reserved seats can. Save it for later to pay for the rest.`,
 				itemId: item.id,
 			});
 		}
@@ -274,9 +294,9 @@ function blockersFor(
  *
  * A processor-backed route (a card, the express wallets) is refused with the processor reason when the
  * processor is not connected, whatever the account rules said — including when they would have said
- * "add a card", which would send the buyer to a control that refuses them next. Invoicing keeps an
- * account-level refusal (it is true and says who invoicing is for) and otherwise states that it is not
- * wired here, because an invoiced order needs the monthly statement run that settles it.
+ * "add a card", which would send the buyer to a control that refuses them next. Invoicing needs no
+ * processor — it is an on-account credit and a wallet order (`finance.place_on_account_order`), billed
+ * on the business's monthly invoice — so its account-level answer stands as given.
  *
  * **The display currency no longer gates a card** (Decision #153, resolving #126(g)). A processor
  * charge is made in the listings' own currency and the buyer is SHOWN that figure — the session's
@@ -288,9 +308,6 @@ function settleableHere(offer: ProviderAvailability[]): ProviderAvailability[] {
 		if (PROCESSOR_ROUTES.has(entry.provider) && !connected) {
 			return { ...entry, available: false, reason: PROCESSOR_REASON };
 		}
-		if (entry.provider === "invoice" && entry.available) {
-			return { ...entry, available: false, reason: INVOICE_REASON };
-		}
 		return entry;
 	});
 }
@@ -298,8 +315,6 @@ function settleableHere(offer: ProviderAvailability[]): ProviderAvailability[] {
 const PROCESSOR_ROUTES: ReadonlySet<ProviderAvailability["provider"]> = new Set(["card", "express"]);
 const PROCESSOR_REASON =
 	"Needs a payment processor, which isn't connected in this environment — pay from your Projective wallet.";
-const INVOICE_REASON =
-	"Invoiced payments aren't available in this environment yet — pay from your Projective wallet.";
 
 /** The one currency a card would be charged in — every line's own — or null when the lines mix currencies. */
 function chargeCurrencyOf(items: readonly BasketItem[]): string | null {
@@ -323,6 +338,7 @@ function offerFor(resolved: Resolved, totalMinor: number): ProviderAvailability[
 		savedCards: resolved.cards,
 		kybStatus: resolved.owner.kybStatus,
 		verificationTier: resolved.owner.verificationTier,
+		onAccount: resolved.onAccount,
 	}));
 }
 
@@ -368,9 +384,10 @@ async function resolve(query: BasketQuery, actor: ReadActor): Promise<Resolved |
 	const read = await readBasket(query, actor);
 	if (!read.ok) return null;
 	const view = read.value;
-	const [cards, walletMinor] = await Promise.all([
+	const [cards, walletMinor, onAccount] = await Promise.all([
 		listCards(view.owner, actor),
 		walletAvailableMinor(view.owner, view.money, actor),
+		onAccountStanding(view.owner, view.money.display, actor),
 	]);
 	return {
 		view,
@@ -380,6 +397,29 @@ async function resolve(query: BasketQuery, actor: ReadActor): Promise<Resolved |
 		items: narrow(view.basket.items, query.projectId ?? null, query.serviceId ?? null),
 		cards,
 		walletMinor,
+		onAccount,
+	};
+}
+
+/**
+ * A business's standing for paying on account (`finance.get_on_account_standing`), read as the caller.
+ * `null` for a person, a team or an organisation, and on any failure — the Invoice route then reads as
+ * unavailable, and `finance.place_on_account_order` re-checks every gate at payment anyway.
+ */
+async function onAccountStanding(
+	owner: ResolvedOwner,
+	currency: string,
+	actor: ReadActor,
+): Promise<ProviderContext["onAccount"]> {
+	if (owner.ownerType !== "business" || !actor.accessToken) return null;
+	const { data, error } = await getUserClient(actor.accessToken).schema("finance")
+		.rpc("get_on_account_standing", { p_business_id: owner.ownerId, p_currency: currency });
+	if (error || !data) return null;
+	const s = data as { monthly?: unknown; overdue?: unknown; headroom_minor?: unknown };
+	return {
+		monthly: s.monthly === true,
+		overdue: s.overdue === true,
+		headroomMinor: Number(s.headroom_minor) || 0,
 	};
 }
 
@@ -643,9 +683,11 @@ export class CheckoutBackendService {
 			if (blocking.length > 0) return refusal(blocking[0].message, blocking);
 
 			// A card and the express wallets are the same charge path: a processor top-up of the paying
-			// wallet, then the wallet order. Only a card can name a saved instrument.
+			// wallet, then the wallet order. Only a card can name a saved instrument. Invoice is the wallet
+			// order too, after an on-account credit (PRODUCT_SPEC §Escrow, Wallets & Finance #4).
 			const byProcessor = input.provider === "card" || input.provider === "express";
-			if (input.provider !== "wallet" && !byProcessor) {
+			const onAccount = input.provider === "invoice";
+			if (input.provider !== "wallet" && !byProcessor && !onAccount) {
 				const offered = providers.find((p) => p.provider === input.provider);
 				const message = offered?.reason ?? PROCESSOR_REASON;
 				return refusal(message, [blocker("no_provider", message)]);
@@ -689,6 +731,37 @@ export class CheckoutBackendService {
 				}
 				chargeCurrency = currency;
 				units[item.id] = item.unitPrice.origin?.minor ?? item.unitPrice.minor;
+			}
+
+			const rpcArgs = {
+				p_basket_id: resolved.basketId,
+				p_item_ids: eligible.map((item) => item.id),
+				p_currency: chargeCurrency,
+				p_units: units,
+				p_promo_code: appliedCode,
+				p_idempotency_key: input.idempotencyKey,
+			};
+
+			if (onAccount) {
+				// Credited on account in the lines' OWN currency — exactly what place_wallet_order then
+				// debits, computed by the same function a card charge uses — in one database transaction.
+				const charge = await chargeFor(query, actor, resolved, eligible, () => totals.total);
+				if (!charge) {
+					const message = "This basket mixes currencies. Pay for each currency separately.";
+					return refusal(message, [blocker("price_changed", message)]);
+				}
+				const { data, error } = await getUserClient(actor.accessToken).schema("finance").rpc(
+					"place_on_account_order",
+					{ ...rpcArgs, p_amount: charge.minor },
+				);
+				if (error) {
+					const code = BLOCKER_FOR_SQLSTATE[error.code ?? ""] ?? (error.code === "22023" ? "no_provider" : undefined);
+					if (!code) throw new Error(`finance.place_on_account_order failed: ${error.message}`);
+					const message = error.message.slice(0, 200);
+					return refusal(message, [blocker(code, message)]);
+				}
+				const result = succeeded(data as PlacedOrder);
+				return ok({ result }, { message: `${result.message} It will be on the next monthly invoice.` });
 			}
 
 			if (byProcessor) {

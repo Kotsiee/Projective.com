@@ -6,9 +6,12 @@ import "../styles/checkout.css";
 import { Icon } from "@projective/ui/icons";
 import { Drawer, Message } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
+import { LocalKeys, readStored, removeStored, writeStored } from "@web/utils/storage-keys.ts";
+import { readDevSeam, subscribeDevSeam } from "@web/utils/dev-seam.ts";
 import { type BasketPayload, BasketService } from "../core/BasketService.ts";
-import { basketHref, checkoutHref, isCheckoutPath } from "../core/basket-model.ts";
+import { basketHref, isCheckoutPath, ownerKindOf } from "../core/basket-model.ts";
 import {
+	activeBasketId,
 	activeLines,
 	activeOwner,
 	applyBasket,
@@ -22,36 +25,44 @@ import {
 	currentCheckoutContext,
 	endLineWrite,
 	isSelected,
+	owners as ownersSignal,
 	promo as promoSignal,
+	rememberedBasketId,
 	resetAttempt,
 	savedLines,
 } from "../core/basket-state.ts";
+import { devBasket, devOwners, devReadScope, isDevOwner } from "../core/dev-basket.ts";
+import { Amount } from "../components/Amount.tsx";
 import { BasketDrawerRow } from "../components/BasketDrawerRow.tsx";
+import { BasketSwitcher } from "../components/BasketSwitcher.tsx";
+import { NewListDialog } from "../components/NewListDialog.tsx";
 import { GroupIcon } from "../components/checkout-glyphs.tsx";
-import type { BasketItem, BasketSummary } from "../types/checkout-types.ts";
+import type { BasketItem, BasketOwnerSummary, BasketSummary } from "../types/checkout-types.ts";
 import type { CheckoutResponse } from "../types/results.ts";
 
 /**
- * BasketDrawer — the header Basket utility's right-side sliding drawer (DESIGN_SYSTEM Part D.1).
+ * BasketDrawer — the header Basket utility's right-side sliding drawer (DESIGN_SYSTEM Part D.1,
+ * §B.10 overlay family).
  *
- * It replaces the inline `nav-fixtures` list that used to live in `UserActions`, which drew three
- * hard-coded rows with hard-coded prices and no relationship to anything the buyer could pay for. This
- * one reads the REAL basket through the thin {@link BasketService}, groups it exactly as the server
- * grouped it, and hands off to the two surfaces that can act on it.
+ * Three regions: the header is a {@link BasketSwitcher} over every account the buyer can buy for and
+ * each one's baskets and lists; the body is the open basket grouped exactly as the server grouped it,
+ * plus the saved-for-later shelf; the footer is the Drawer's pinned slot (§B.10.8) — totals, "View all
+ * baskets" and "Proceed to Checkout" — so a long basket never scrolls its commitment away.
  *
- * **It is a peek, not a region.** The four-region contract (lane · header band · footer band · body)
- * governs the `/basket` middle-nav surface; this is a header overlay, so it deliberately carries both
- * the facts and the two navigations — but it still holds no primary money control of its own. Pay lives
- * on `/checkout`, behind an explicit step, because a payment reachable from a drawer that opens on
- * every page is a payment reachable by accident.
+ * **It is a peek, not a region.** It holds no money control of its own: "Proceed to Checkout" opens
+ * step 1 of `/checkout` (Decision #70(k)), and Pay lives behind the flow, because a payment reachable
+ * from a drawer that opens on every page is a payment reachable by accident.
  *
- * **Money rule.** Every figure below is a server-computed `MoneyView` printed through its `display`
- * string. Nothing here sums, discounts, converts or formats one — including the group subtotals, which
- * the server resolved alongside the groups themselves.
+ * **Scope.** On the checkout routes the URL owns `?owner=` / `?basket=`, so switching navigates. Off
+ * them the switcher's choice is a per-viewer preference (`LocalKeys.BASKET_OWNER`), cleared when the
+ * shell's acting context changes.
+ *
+ * **Money rule.** Every figure is a server-computed `MoneyView` rendered through {@link Amount}, so it
+ * carries `data-money-*` and follows a currency switch (Decision #70(D)). Nothing here sums, discounts,
+ * converts or formats one.
  *
  * **Degradation.** A failed read renders the server's own sentence plus a Retry, and NEVER the empty
- * state: "your basket is empty" and "we could not read your basket" are opposite facts, and showing the
- * first for the second is how a buyer concludes their selection was lost and re-adds everything.
+ * state: "your basket is empty" and "we could not read your basket" are opposite facts.
  */
 
 // #region Props
@@ -62,8 +73,8 @@ export interface BasketDrawerProps {
 	/**
 	 * The acting account's basket scope (`personal` · `team:{id}` · …), derived from the hydrated
 	 * `UserContext` by the shell. Seeded into the shared store only on a surface that does not own its
-	 * own scope — `/basket` and `/checkout` resolve theirs from the URL, and a drawer overwriting that
-	 * would silently re-point the page under the reader.
+	 * own scope — `/checkout` resolves its scope from the URL, and a drawer overwriting that would
+	 * silently re-point the page under the reader.
 	 */
 	owner: string;
 }
@@ -77,18 +88,74 @@ export default function BasketDrawer(props: BasketDrawerProps): JSX.Element {
 	const phase = useSignal<LoadPhase>("idle");
 	const failure = useSignal<string | null>(null);
 	const notice = useSignal<string>("");
+	const scenario = useSignal(readDevSeam()?.basketScenario);
+	const createOpen = useSignal(false);
+	const createName = useSignal("");
+	const creating = useSignal(false);
+	const shellOwner = useRef(owner);
+	shellOwner.current = owner;
 
 	/**
-	 * Re-read the basket for whatever scope is currently live.
+	 * The switcher's model: the owners read, with the OPEN owner's baskets taken from the latest basket
+	 * read or write (whose `baskets` is that owner's, server-computed) so counts and subtotals never lag
+	 * a write by a round trip. Before the owners read lands, the open owner alone.
+	 */
+	const switcherOwners = (): readonly BasketOwnerSummary[] => {
+		const live = basketsSignal.value;
+		const current = activeOwner.value;
+		const real: readonly BasketOwnerSummary[] = ownersSignal.value.length > 0
+			? ownersSignal.value
+			: live.length > 0
+			? [{
+				owner: current,
+				kind: ownerKindOf(current),
+				name: "This account",
+				avatar: null,
+				baskets: [],
+			}]
+			: [];
+		const fresh = real.map((entry) =>
+			entry.owner === current && !isDevOwner(current) && live.length > 0
+				? { ...entry, baskets: [...live] }
+				: entry
+		);
+		return devOwners(fresh, scenario.value);
+	};
+
+	/**
+	 * Re-read the basket for whatever scope is currently live, and the owners for the switcher.
 	 *
 	 * The outcome is recorded locally as well as folded into the shared store: `checkoutError` is
-	 * shared with `/basket`'s body, and a drawer that rendered it directly would show — or clear — an
+	 * shared with `/checkout`'s body, and a drawer that rendered it directly would show — or clear — an
 	 * error that belonged to another region's write.
 	 */
-	const load = useCallback(async () => {
+	const load = useCallback(async (): Promise<void> => {
 		if (phase.value !== "ready") phase.value = "loading";
-		const res = await BasketService.get(currentCheckoutContext());
-		const landed = applyResponse(res, applyBasket);
+		const ctx = currentCheckoutContext();
+		const [res, ownersRes] = await Promise.all([
+			BasketService.get({ ...ctx, ...devReadScope(ctx.owner, ctx.basketId, ownersSignal.peek()) }),
+			BasketService.owners(ctx),
+		]);
+		if (ownersRes.ok && ownersRes.data) ownersSignal.value = ownersRes.data;
+		const listed = devOwners(ownersSignal.value, scenario.value)
+			.find((entry) => entry.owner === ctx.owner);
+		// A remembered owner the buyer can no longer buy for (they left the team) is dropped, and the
+		// read repeats under the shell's own context rather than showing a basket no switcher row names.
+		if (
+			ownersRes.ok && !listed && ctx.owner !== shellOwner.current &&
+			!isCheckoutPath(globalThis.location.pathname)
+		) {
+			removeStored("local", LocalKeys.BASKET_OWNER);
+			activeOwner.value = shellOwner.current;
+			activeBasketId.value = null;
+			return load();
+		}
+		const asked = listed?.baskets.find((b) => b.id === ctx.basketId) ?? null;
+		const landed = applyResponse(res, (data: BasketPayload) =>
+			applyBasket({
+				...data,
+				basket: devBasket(data.basket, scenario.value, { ...ctx, summary: asked }),
+			}));
 		failure.value = landed ? null : (res.message ?? "We couldn't read your basket just now.");
 		phase.value = landed ? "ready" : "error";
 	}, []);
@@ -96,19 +163,30 @@ export default function BasketDrawer(props: BasketDrawerProps): JSX.Element {
 	// #region Scope and refresh wiring
 	const lastOwner = useRef<string | null>(null);
 	useEffect(() => {
-		// `/basket` and `/checkout` own their scope (they resolve `?owner=` server-side and seed it
-		// themselves). Everywhere else the shell's context is the only scope there is.
+		// `/checkout` owns its scope (it resolves `?owner=` server-side and seeds it itself). Everywhere
+		// else the switcher's remembered choice wins, then the shell's context.
 		const path = globalThis.location?.pathname ?? "";
-		if (!isCheckoutPath(path) && owner) activeOwner.value = owner;
+		const onCheckout = isCheckoutPath(path);
+		const first = lastOwner.current === null;
+		const rescoped = !first && lastOwner.current !== owner;
+		lastOwner.current = owner;
+
+		if (!onCheckout && first) {
+			const remembered = readStored("local", LocalKeys.BASKET_OWNER);
+			activeOwner.value = remembered || owner;
+			activeBasketId.value = remembered ? rememberedBasketId() : null;
+		}
 
 		/**
-		 * A changed owner re-scopes WHOSE money this is, which invalidates the composition wholesale: the
-		 * chosen provider and card belong to the previous principal, and the attempt key must not survive
-		 * a change to what is being bought (the SSOT's own rule). The first run is not a change.
+		 * A changed shell context re-scopes WHOSE money this is, which invalidates the composition
+		 * wholesale: the chosen provider and card belong to the previous principal, the attempt key must
+		 * not survive a change to what is being bought, and the switcher's remembered choice belonged to
+		 * the previous context.
 		 */
-		const rescoped = lastOwner.current !== null && lastOwner.current !== owner;
-		lastOwner.current = owner;
-		if (rescoped && !isCheckoutPath(path)) {
+		if (rescoped && !onCheckout) {
+			removeStored("local", LocalKeys.BASKET_OWNER);
+			activeOwner.value = owner;
+			activeBasketId.value = null;
 			chosenProvider.value = null;
 			chosenCardId.value = null;
 			resetAttempt();
@@ -116,23 +194,24 @@ export default function BasketDrawer(props: BasketDrawerProps): JSX.Element {
 		}
 
 		/*
-		 * Skip the read when a surface has already painted a basket into the store — the header dot and
-		 * the page body would otherwise both ask for the same thing on every navigation.
-		 *
-		 * The `isCheckoutPath` half of that guard is load-bearing, not belt-and-braces. Emptiness alone
-		 * cannot decide it: a page body seeds the store from an EFFECT, so on `/basket` this drawer
-		 * hydrates first, sees `null`, and asks for the acting account's DEFAULT basket — then its answer
-		 * lands after the body's seed and overwrites it. Measured before the guard:
-		 * `/basket?basket=bk-wishlist` SSR'd the wishlist and was replaced client-side by the default
-		 * basket, under a header band still naming the wishlist. On those two routes the page owns the
-		 * scope (the comment above already says so), so the drawer reads what the page published instead
-		 * of racing it for a different answer.
+		 * Skip the read when a surface has already painted a basket into the store. On `/checkout` the
+		 * page owns the scope: a page body seeds the store from an EFFECT, so this drawer hydrates first,
+		 * sees `null`, and would ask for the DEFAULT basket — then its answer would land after the
+		 * body's seed and overwrite it (measured: `?basket=bk-wishlist` replaced client-side by the
+		 * default under a header still naming the wishlist).
 		 */
-		if (!rescoped && basketSignal.value === null && !isCheckoutPath(path)) void load();
+		if (!rescoped && basketSignal.value === null && !onCheckout) void load();
 
 		const onRefresh = () => void load();
 		globalThis.addEventListener?.(BASKET_REFRESH_EVENT, onRefresh);
-		return () => globalThis.removeEventListener?.(BASKET_REFRESH_EVENT, onRefresh);
+		const unsubscribe = subscribeDevSeam((seam) => {
+			scenario.value = seam?.basketScenario;
+			void load();
+		});
+		return () => {
+			globalThis.removeEventListener?.(BASKET_REFRESH_EVENT, onRefresh);
+			unsubscribe();
+		};
 	}, [owner, load]);
 
 	// Opening always re-reads: the basket may have changed in another tab, and a stale peek at what is
@@ -140,6 +219,42 @@ export default function BasketDrawer(props: BasketDrawerProps): JSX.Element {
 	useEffect(() => {
 		if (open.value) void load();
 	}, [open.value, load]);
+	// #endregion
+
+	// #region Switching
+	/** Open another owner's basket or list. */
+	const switchTo = (nextOwner: string, nextBasketId: string) => {
+		if (isCheckoutPath(globalThis.location.pathname)) {
+			globalThis.location.assign(basketHref(nextBasketId, nextOwner));
+			return;
+		}
+		if (nextOwner !== activeOwner.value) {
+			chosenProvider.value = null;
+			chosenCardId.value = null;
+			resetAttempt();
+		}
+		activeOwner.value = nextOwner;
+		activeBasketId.value = nextBasketId;
+		writeStored("local", LocalKeys.BASKET_OWNER, nextOwner);
+		void load();
+	};
+
+	/** Create a list for the open owner, then open it. */
+	const createList = async () => {
+		const name = createName.value.trim();
+		if (name === "" || creating.value) return;
+		creating.value = true;
+		const res = await BasketService.createList({ name }, currentCheckoutContext());
+		creating.value = false;
+		const created = res.ok ? res.data?.lists.activeId : null;
+		if (!created) {
+			failure.value = res.message ?? "We couldn't create that list just now.";
+			return;
+		}
+		createOpen.value = false;
+		createName.value = "";
+		switchTo(activeOwner.value, created);
+	};
 	// #endregion
 
 	// #region Line writes
@@ -205,11 +320,8 @@ export default function BasketDrawer(props: BasketDrawerProps): JSX.Element {
 	}).filter((entry) => entry.rows.length > 0);
 
 	/**
-	 * Lines the server's grouping did not claim.
-	 *
-	 * `buildGroups` covers every active line today, so this is normally empty — it exists because the
-	 * alternative failure mode is a line silently vanishing from a basket the buyer is about to pay
-	 * for, and an unexpected extra heading is a far cheaper wrong answer than a missing charge.
+	 * Lines the server's grouping did not claim. Normally empty — it exists because a line silently
+	 * vanishing from a basket the buyer is about to pay for is a far worse answer than an extra heading.
 	 */
 	const ungrouped = lines.filter((line) => !grouped.has(line.id));
 
@@ -219,16 +331,124 @@ export default function BasketDrawer(props: BasketDrawerProps): JSX.Element {
 	const basketId = current?.id ?? null;
 	const ownerParam = activeOwner.value;
 	const selectedCount = current?.selectedCount ?? 0;
+	const promo = promoSignal.value;
+	const hasPromo = promo?.valid === true && promo.amount.minor > 0;
 	const close = () => (open.value = false);
+	const ownersModel = switcherOwners();
+
+	const rowsOf = (rows: readonly BasketItem[]) =>
+		rows.map((line) => (
+			<BasketDrawerRow
+				key={line.id}
+				line={line}
+				destinations={destinationsFor(line)}
+				onToggleSelected={toggleSelected}
+				onPark={park}
+				onMove={move}
+				onRemove={remove}
+				onNavigate={close}
+			/>
+		));
 	// #endregion
 
 	return (
 		<Drawer
 			visible={open}
 			position="right"
-			header={current?.name ? `Basket · ${current.name}` : "Basket"}
+			header={
+				<span class="bskd__head">
+					<span class="bskd__head-label">Basket</span>
+					{ownersModel.length > 0
+						? (
+							<BasketSwitcher
+								owners={ownersModel}
+								owner={ownerParam}
+								basketId={basketId}
+								onSwitch={switchTo}
+								onNewList={() => (createOpen.value = true)}
+							/>
+						)
+						: null}
+				</span>
+			}
 			class="shell-drawer"
-			size="min(27rem, 94vw)"
+			footer={current !== null && (lines.length > 0 || parked.length > 0)
+				? (
+					<div class="bskd__foot">
+						<dl class="bskd__totals">
+							<div class="bskd__total-row">
+								<dt>Subtotal</dt>
+								<dd>
+									<Amount value={current.subtotal} hideOrigin />
+								</dd>
+							</div>
+							{current.creatorDiscounts.minor > 0
+								? (
+									<div class="bskd__total-row">
+										<dt>Creator discounts</dt>
+										<dd>
+											<Amount
+												value={current.creatorDiscounts}
+												sign="−"
+												tone="credit"
+												hideOrigin
+											/>
+										</dd>
+									</div>
+								)
+								: null}
+							<div class="bskd__total-row bskd__total-row--net">
+								<dt>Total before fees</dt>
+								<dd>
+									<Amount value={current.net} size="lead" />
+								</dd>
+							</div>
+						</dl>
+						{
+							/* `net` excludes the promo by definition (it is what the promo is applied
+							   against), so the promo is a saving still to come, never a third row. */
+						}
+						{hasPromo
+							? (
+								<p class="bskd__note">
+									{promo.label} takes a further{" "}
+									<Amount value={promo.amount} tone="credit" hideOrigin /> off at checkout.
+								</p>
+							)
+							: null}
+
+						<div class="bskd__ctas">
+							<a
+								class="bskd__cta"
+								href={basketHref(null, ownerParam)}
+								onClick={close}
+							>
+								<Icon name="basket" size="sm" />
+								<span>View all baskets</span>
+							</a>
+							<Button
+								fluid
+								rounded
+								disabled={selectedCount === 0}
+								aria-describedby={selectedCount === 0 ? "bskd-proceed-why" : undefined}
+								icon={<Icon name="wallet" size="sm" />}
+								label="Proceed to Checkout"
+								onClick={() => {
+									close();
+									globalThis.location.href = basketHref(basketId, ownerParam);
+								}}
+							/>
+						</div>
+						{selectedCount === 0
+							? (
+								<p class="bskd__note" id="bskd-proceed-why" role="status">
+									Nothing is ticked. Tick at least one item to take it through to checkout.
+								</p>
+							)
+							: null}
+					</div>
+				)
+				: null}
 		>
 			<div class="bskd">
 				{failure.value
@@ -267,7 +487,7 @@ export default function BasketDrawer(props: BasketDrawerProps): JSX.Element {
 					? (
 						<div class="bskd__empty" role="status">
 							<Icon name="basket" size="xl" />
-							<p class="bskd__empty-title">Your basket is empty</p>
+							<p class="bskd__empty-title">This basket is empty</p>
 							<p class="bskd__empty-note">
 								Anything you add from a listing lands here, ready to pay for together.
 							</p>
@@ -287,22 +507,9 @@ export default function BasketDrawer(props: BasketDrawerProps): JSX.Element {
 								{group.caption ? <span class="bskd__group-caption">{group.caption}</span> : null}
 							</span>
 							{/* The server's group subtotal, printed verbatim. */}
-							<span class="bskd__group-total">{group.subtotal.display}</span>
+							<Amount class="bskd__group-total" value={group.subtotal} hideOrigin />
 						</h3>
-						<ul class="bskd__lines">
-							{rows.map((line) => (
-								<BasketDrawerRow
-									key={line.id}
-									line={line}
-									destinations={destinationsFor(line)}
-									onToggleSelected={toggleSelected}
-									onPark={park}
-									onMove={move}
-									onRemove={remove}
-									onNavigate={close}
-								/>
-							))}
-						</ul>
+						<ul class="bskd__lines">{rowsOf(rows)}</ul>
 					</section>
 				))}
 
@@ -317,20 +524,7 @@ export default function BasketDrawer(props: BasketDrawerProps): JSX.Element {
 									<span class="bskd__group-label">Other items</span>
 								</span>
 							</h3>
-							<ul class="bskd__lines">
-								{ungrouped.map((line) => (
-									<BasketDrawerRow
-										key={line.id}
-										line={line}
-										destinations={destinationsFor(line)}
-										onToggleSelected={toggleSelected}
-										onPark={park}
-										onMove={move}
-										onRemove={remove}
-										onNavigate={close}
-									/>
-								))}
-							</ul>
+							<ul class="bskd__lines">{rowsOf(ungrouped)}</ul>
 						</section>
 					)
 					: null}
@@ -347,20 +541,7 @@ export default function BasketDrawer(props: BasketDrawerProps): JSX.Element {
 									<span class="bskd__group-caption">Not part of the next payment</span>
 								</span>
 							</h3>
-							<ul class="bskd__lines">
-								{parked.map((line) => (
-									<BasketDrawerRow
-										key={line.id}
-										line={line}
-										destinations={destinationsFor(line)}
-										onToggleSelected={toggleSelected}
-										onPark={park}
-										onMove={move}
-										onRemove={remove}
-										onNavigate={close}
-									/>
-								))}
-							</ul>
+							<ul class="bskd__lines">{rowsOf(parked)}</ul>
 						</section>
 					)
 					: null}
@@ -368,67 +549,12 @@ export default function BasketDrawer(props: BasketDrawerProps): JSX.Element {
 				<p class="ui-visually-hidden" role="status" aria-live="polite">{notice.value}</p>
 			</div>
 
-			{current !== null && (lines.length > 0 || parked.length > 0)
-				? (
-					<div class="bskd__foot">
-						<dl class="bskd__totals">
-							<div class="bskd__total-row">
-								<dt>Subtotal</dt>
-								<dd>{current.subtotal.display}</dd>
-							</div>
-							{current.creatorDiscounts.minor > 0
-								? (
-									<div class="bskd__total-row">
-										<dt>Creator discounts</dt>
-										<dd>−{current.creatorDiscounts.display}</dd>
-									</div>
-								)
-								: null}
-							{promoSignal.value?.valid
-								? (
-									<div class="bskd__total-row">
-										<dt>{promoSignal.value.label}</dt>
-										<dd>−{promoSignal.value.amount.display}</dd>
-									</div>
-								)
-								: null}
-							<div class="bskd__total-row bskd__total-row--net">
-								<dt>Total before fees</dt>
-								<dd>{current.net.display}</dd>
-							</div>
-						</dl>
-
-						<div class="bskd__ctas">
-							<a
-								class="bskd__cta"
-								href={basketHref(basketId, ownerParam)}
-								onClick={close}
-							>
-								<Icon name="basket" size="sm" />
-								<span>Go to Basket</span>
-							</a>
-							<Button
-								fluid
-								rounded
-								disabled={selectedCount === 0}
-								icon={<Icon name="wallet" size="sm" />}
-								label="Proceed to Checkout"
-								onClick={() => {
-									close();
-									globalThis.location.href = checkoutHref(basketId, ownerParam);
-								}}
-							/>
-						</div>
-						{selectedCount === 0
-							? (
-								<p class="bskd__note" role="status">
-									Tick at least one item to take it through to checkout.
-								</p>
-							)
-							: null}
-					</div>
-				)
-				: null}
+			<NewListDialog
+				visible={createOpen}
+				name={createName}
+				creating={creating.value}
+				onCreate={() => void createList()}
+			/>
 		</Drawer>
 	);
 }

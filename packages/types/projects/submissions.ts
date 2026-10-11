@@ -124,8 +124,38 @@ export const SubmissionUnitSchema = z.object({
 	dateLabel: z.string().max(28),
 	fileCount: z.number().int().min(0),
 	noteCount: z.number().int().min(0),
+	/**
+	 * The unit's open revision round is a PAID one whose escrow is held (Decision #167) — the freelancer
+	 * is told "Paid revision, funded, you can start."
+	 */
+	paidRevision: z.boolean().default(false),
 });
 export type SubmissionUnit = z.infer<typeof SubmissionUnitSchema>;
+
+/**
+ * A stage's revision allotment as the review modal states it (Decision #167): free rounds used of the
+ * rounds the stage carries, and what one more costs once they are gone.
+ */
+export const SubmissionRevisionsSchema = z.object({
+	/** Free rounds consumed on the stage (`project_stages.revisions_used`). */
+	used: z.number().int().min(0),
+	/** Free rounds the stage carries; `null` = unlimited. */
+	allowed: z.number().int().min(0).nullable(),
+	/** One extra round in minor units; `null` = not for sale, `0` = extra rounds are free. */
+	priceMinor: z.number().int().min(0).nullable(),
+	currency: z.string().length(3),
+	/** `priceMinor` formatted for display ("$120"); `null` when not for sale. */
+	priceLabel: z.string().max(40).nullable(),
+});
+export type SubmissionRevisions = z.infer<typeof SubmissionRevisionsSchema>;
+
+/** Whether the next round is free — the rule `projects.review_submission` applies under its row lock. */
+export function revisionIsFree(
+	revisions: Pick<SubmissionRevisions, "used" | "allowed" | "priceMinor">,
+): boolean {
+	return revisions.allowed === null || revisions.used < revisions.allowed ||
+		revisions.priceMinor === 0;
+}
 
 /** One review note / annotation on a submission (the modal's Notes tab + per-file annotations). */
 export const SubmissionNoteSchema = z.object({
@@ -155,8 +185,21 @@ export const SubmissionReviewSchema = z.object({
 	ticketSummary: z.string().max(1200).nullable(),
 	/** Existing review notes (Notes tab + the badge counter). */
 	notes: z.array(SubmissionNoteSchema),
+	/** The stage's revision allotment; `null` when it cannot be read. */
+	revisions: SubmissionRevisionsSchema.nullable().default(null),
 });
 export type SubmissionReview = z.infer<typeof SubmissionReviewSchema>;
+
+/**
+ * A ticket the viewer can fulfil with a new submission (the Create Submission modal's dropdown): their
+ * own open ticket in the stage, or a `revision` one the client sent back for changes.
+ */
+export const SubmissionTicketOptionSchema = z.object({
+	id: z.string().min(1).max(80),
+	title: z.string().min(1).max(200),
+	kind: z.enum(["ticket", "revision"]),
+});
+export type SubmissionTicketOption = z.infer<typeof SubmissionTicketOptionSchema>;
 // #endregion
 
 // #region Request params
@@ -235,6 +278,8 @@ export const SubmissionListPageSchema = z.object({
 	viewerIsClient: z.boolean(),
 	/** Whether the single-freelancer override collapsed the submitter level (Part 3). */
 	singleFreelancer: z.boolean(),
+	/** The viewer's open tickets in the anchored stage(s), revision rounds marked — never invented. */
+	tickets: z.array(SubmissionTicketOptionSchema).max(200).default([]),
 });
 export type SubmissionListPage = z.infer<typeof SubmissionListPageSchema>;
 // #endregion

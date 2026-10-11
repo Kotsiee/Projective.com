@@ -1,12 +1,9 @@
 import type { JSX } from "preact";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
-import {
-	type BoardCard,
-	TICKET_INTENSITY_LABEL,
-	TICKET_PAYMENT_SCOPE_LABEL,
-	ticketPaidHere,
-} from "../types/projects-types.ts";
+import { type BoardCard, TICKET_INTENSITY_LABEL } from "../types/projects-types.ts";
+import { asksToFund, type FundingSide } from "../core/funding-ui.ts";
+import { FundingStatus } from "./FundingStatus.tsx";
 import { priorityLabel, priorityTone } from "../core/board-model.ts";
 import { isOverdue } from "../core/ticket-model.ts";
 import { StageStatusIcon } from "./StageStatusIcon.tsx";
@@ -20,12 +17,11 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  * second focusable root inside the card would make every ticket two tab stops that both open it.
  *
  * Icon-first (§B.6): the priority flag, the stage activity signal, the client's drag lock and the
- * draft / frozen states are icon-only or a short chip with a portal Tooltip. Two lifecycle facts earn
- * a container (§B.11.3): **Draft** — the purchasing gate, a title-only ticket that cannot be bought
- * or claimed yet — and **Unpaid** — a described ticket sitting in a stage nobody has paid for, which
- * no freelancer can see. A ticket that IS paid where it sits shows an icon-only check beside its
- * price rather than a second pill, so a card never carries two adjacent fills (§3 gate 7). The two
- * badges live at opposite ends of the foot for the same reason.
+ * frozen state are icon-only or a short chip with a portal Tooltip. The ticket's funding state is the
+ * compact `FundingStatus` — a lifecycle status, so it earns a container (§B.11.3) — with its sentence
+ * in the tooltip; a funded ticket shows an icon-only check beside its price rather than a second pill,
+ * so a card never carries two adjacent fills (§3 gate 7). Frozen and funding sit at opposite ends of
+ * the foot for the same reason.
  */
 export interface TicketCardProps {
 	card: BoardCard;
@@ -35,21 +31,21 @@ export interface TicketCardProps {
 	 * rendered-and-explained rather than silently made undraggable (Decision #60's two gates).
 	 */
 	lockedForClient?: boolean;
+	/** Whose sentence the funding tooltip reads — the client's, or the payee's. */
+	side?: FundingSide;
 }
 
-export function TicketCard({ card, lockedForClient = false }: TicketCardProps): JSX.Element {
+export function TicketCard(
+	{ card, lockedForClient = false, side = "client" }: TicketCardProps,
+): JSX.Element {
 	const showPriority = card.priority === "high" || card.priority === "urgent";
 	const overdue = isOverdue(card.dueDate) && card.status !== "completed";
-	const paidHere = ticketPaidHere(card);
-	// Funding is only a fact about a ticket that CAN be bought — a draft has nothing to be paid for,
-	// and its Draft chip already says so.
-	const showFunding = card.hasDescription;
 	return (
 		<div
 			class="tkt"
 			data-priority={priorityTone(card.priority)}
 			data-frozen={card.frozen || undefined}
-			data-unpaid={showFunding && !paidHere ? "" : undefined}
+			data-unpaid={card.funding && asksToFund(card.funding) ? "" : undefined}
 		>
 			<div class="tkt__head">
 				{showPriority
@@ -152,19 +148,6 @@ export function TicketCard({ card, lockedForClient = false }: TicketCardProps): 
 							</span>
 						)
 						: null}
-					{!card.hasDescription
-						? (
-							<Tooltip content="Draft — add a description before it can be purchased or claimed">
-								<span
-									class="tkt__flag tkt__flag--draft"
-									tabIndex={0}
-									aria-label="Draft ticket — needs a description"
-								>
-									Draft
-								</span>
-							</Tooltip>
-						)
-						: null}
 					{card.frozen
 						? (
 							<Tooltip content="Frozen — a workload report paused this ticket for 48 hours">
@@ -176,44 +159,12 @@ export function TicketCard({ card, lockedForClient = false }: TicketCardProps): 
 						: null}
 				</div>
 				<div class="tkt__end">
-					{showFunding
-						? paidHere
-							? (
-								<Tooltip
-									content={card.paymentScope === "full"
-										? "Paid in full — claimable in every stage"
-										: "Paid for this stage — claimable here"}
-								>
-									<span
-										class="tkt__pay tkt__pay--paid"
-										role="img"
-										aria-label={`${
-											TICKET_PAYMENT_SCOPE_LABEL[card.paymentScope]
-										} — paid for this stage`}
-										tabIndex={0}
-									>
-										<Icon name="check" size="2xs" />
-									</span>
-								</Tooltip>
-							)
-							: (
-								<Tooltip
-									content={card.paymentScope === "per_stage"
-										? "Paid per stage, but not for this one — hidden from freelancers until this stage is funded"
-										: "Not paid yet — hidden from freelancers until it is funded"}
-								>
-									<span
-										class="tkt__pay tkt__pay--unpaid"
-										tabIndex={0}
-										aria-label={card.paymentScope === "per_stage"
-											? "Unpaid for this stage"
-											: "Unpaid ticket"}
-									>
-										Unpaid
-									</span>
-								</Tooltip>
-							)
-						: null}
+					<FundingStatus
+						compact
+						funding={card.funding}
+						side={side}
+						freelancer={card.assignee?.name ?? null}
+					/>
 					{card.budgetLabel ? <span class="tkt__budget">{card.budgetLabel}</span> : null}
 					{card.assignee
 						? (

@@ -202,7 +202,9 @@ one row, so a stage's kind is implicit in which columns the owner filled (see
 | `start_dependency_stage_id` | uuid                             | FK → `projects.project_stages.id` (self).                                                 |
 | `start_dependency_lag_days` | integer                          | `DEFAULT 0`.                                                                              |
 | `hire_trigger_active`       | boolean                          | NOT NULL `DEFAULT true`.                                                                  |
-| `file_revisions_allowed`    | integer                          | `DEFAULT 0`.                                                                              |
+| `file_revisions_allowed`    | integer                          | CHECK `NULL` or ≥ 0. Free revision rounds; `NULL` = unlimited (Decision #167). On a blueprint engagement copied from the blueprint (else its listing) at insert and frozen (`trg_stage_revision_terms`). |
+| `extra_revision_price_cents` | bigint                          | CHECK `NULL` or ≥ 0. One round past the free ones: `NULL` = not for sale, `0` = free. Copied and frozen like `file_revisions_allowed`. |
+| `revisions_used`            | integer                          | NOT NULL `DEFAULT 0`, CHECK ≥ 0. Free rounds consumed; derived (`trg_project_stages_derived`), written only by `review_submission` under the stage's row lock. |
 | `file_duration_mode`        | text                             | CHECK `NULL` or `fixed_deadline` \| `relative_duration` \| `no_due_date`.                 |
 | `file_duration_days`        | integer                          |                                                                                           |
 | `file_due_date`             | timestamptz                      |                                                                                           |
@@ -228,8 +230,10 @@ one row, so a stage's kind is implicit in which columns the owner filled (see
 `trg_stage_reorder_lock` (BEFORE UPDATE OF `sort_order`) · `trg_stage_delete_cascade` (BEFORE DELETE:
 releases held escrow for its active tickets, scrubs the stage from other tickets' `required_stages`,
 nulls dependants' `start_dependency_stage_id`) · `trg_enforce_structure_variation_stages` (BEFORE
-INSERT: `single_task`/`single_stage` projects hold one non-archived stage). In the
-`supabase_realtime` publication.
+INSERT: `single_task`/`single_stage` projects hold one non-archived stage) ·
+`trg_stage_revision_terms` (BEFORE INSERT OR UPDATE OF the two revision terms: copies / freezes the
+seller's allotment on a blueprint engagement) · `trg_project_stages_derived` (`revisions_used`). In
+the `supabase_realtime` publication.
 
 **`archived_at`: a retired stage that carries history (Decision #163).** When a save leaves the
 project a Task, `projects.sanitize_single_room_topology` retires every stage but the root (lowest
@@ -576,7 +580,7 @@ The unit of work a client commissions and a freelancer claims. Its lifecycle col
 | `tasks`               | jsonb                    | NOT NULL | `'[]'`                   | The ticket's own checklist: `[{"id", "text", "done", "completed_by": [...]}]`, order-significant. Seeded from the stage's `default_tasks`; distinct from `stage_submissions.checked_item_ids`. |
 | `due_date`            | timestamptz              | null     | —                        | Refused unless the project has `allow_deadline_bonuses = true` (`trg_enforce_ticket_due_date`).                              |
 | `workload_intensity`  | numeric(4,2)             | NOT NULL | `1.00`                   | The agreed capacity cost $W_i$ (the multiplier's RESULT, not the multiplier). Summed into the assignee's `org.freelancer_profiles.current_workload_intensity`. |
-| `payment_status`      | payment_status           | NOT NULL | `'unpaid'`               | `unpaid`, `escrow_funded`, `partially_released`, `released`, `refunded`.                                                     |
+| `payment_status`      | payment_status           | NOT NULL | `'unpaid'`               | `unpaid`, `needs_funding` (a lock trigger fired and the hold was refused — Decision #165), `escrow_funded`, `partially_released`, `released`, `refunded`. |
 | `unit_price_cents`    | bigint                   | null     | —                        | The agreed per-ticket price, minor units. No CHECK.                                                                          |
 | `total_amount_paid`   | bigint                   | NOT NULL | `0`                      | CHECK `>= 0`. Running total paid, minor units.                                                                               |
 | `sort_order`          | integer                  | null     | —                        | Manual order — valid only while `status = 'backlog'` (`trg_ticket_ordering_guard`); other lanes order by `updated_at DESC`. |
@@ -738,19 +742,27 @@ The submission → `files.items` link. Carried by reference, like every asset li
 
 ### `projects.stage_revision_requests`
 
-Tracks requests for changes following a submission.
+One revision round a client sends back on a submission (Decision #167; lifecycle in
+`PRODUCT_MANAGEMENT.md` §3.7). A `paid_revision` round is what a `paid_revision` basket line pays for
+(`finance.basket_items.revision_id`).
 
 | Column             | Type        | Notes                                                                       |
 | :----------------- | :---------- | :-------------------------------------------------------------------------- |
 | `id`               | uuid        | PK, `DEFAULT gen_random_uuid()`.                                            |
-| `project_stage_id` | uuid        | NOT NULL. **No FK.**                                                        |
+| `project_stage_id` | uuid        | NOT NULL. FK → `projects.project_stages.id` (`stage_revision_requests_stage_fkey`). |
 | `ticket_id`        | uuid        | NOT NULL. FK → `projects.tickets.id` (no action).                           |
 | `requested_by`     | uuid        | NOT NULL. FK → `org.users_public.user_id`.                                  |
-| `request_type`     | text        | NOT NULL, no CHECK. `review_submission` writes `revision`.                  |
-| `reason`           | text        | NOT NULL.                                                                   |
-| `status`           | text        | NOT NULL `DEFAULT 'open'`, no CHECK.                                        |
+| `request_type`     | text        | NOT NULL, CHECK `revision` \| `paid_revision`.                              |
+| `reason`           | text        | NOT NULL. The client's feedback (`feedback->>'global'`).                    |
+| `status`           | text        | NOT NULL `DEFAULT 'open'`, CHECK `awaiting_payment` \| `open` \| `resolved` \| `cancelled`. |
 | `created_at`       | timestamptz | NOT NULL `DEFAULT now()`.                                                   |
-| `resolved_at`      | timestamptz |                                                                             |
+| `resolved_at`      | timestamptz | Set exactly when `status = 'resolved'` (by `submit_deliverable`).           |
+| `submission_id`    | uuid        | FK → `projects.stage_submissions.id`. The submission the round was raised on — the resubmission's `revision_of`. |
+| `price_cents`      | bigint      | CHECK `NULL` or > 0. A paid round's price, snapshotted from the stage when raised; set exactly on `paid_revision`. |
+
+**Constraints:** `stage_revision_requests_status_check` · `stage_revision_requests_type_check` ·
+`stage_revision_requests_paid_price` (`(request_type = 'paid_revision') = (price_cents IS NOT NULL)`) ·
+`stage_revision_requests_resolved_at` (`(status = 'resolved') = (resolved_at IS NOT NULL)`).
 
 ---
 

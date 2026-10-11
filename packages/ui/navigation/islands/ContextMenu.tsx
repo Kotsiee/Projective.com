@@ -8,6 +8,7 @@ import { useId } from "../../hooks/useId.ts";
 import { useFloating } from "../../hooks/useFloating.ts";
 import { useDismiss } from "../../hooks/useDismiss.ts";
 import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
+import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
 import type { Placement } from "../../types/mod.ts";
 import type { MenuItem } from "../../types/mod.ts";
 import { activate, hasChildren, isSeparator, itemKey, visibleItems } from "../core/menu.ts";
@@ -300,24 +301,26 @@ export function ContextMenu(props: ContextMenuProps): JSX.Element {
 	return (
 		<>
 			{open.value && (
-				<div
-					id={rootId}
-					ref={panelRef}
-					class={cx("ui-contextmenu__panel", className)}
-					style={styleVars({
-						"--float-top": `${pos.value.y}px`,
-						"--float-left": `${pos.value.x}px`,
-						"--z-portal": String(stack.zIndex),
-					})}
-				>
-					<CtxLevel
-						items={model}
-						idPrefix={rootId}
-						itemTemplate={itemTemplate}
-						onCloseAll={() => (open.value = false)}
-						ariaLabel={ariaLabel ?? "Context menu"}
-					/>
-				</div>
+				<BodyPortal>
+					<div
+						id={rootId}
+						ref={panelRef}
+						class={cx("ui-contextmenu__panel", className)}
+						style={styleVars({
+							"--float-top": `${pos.value.y}px`,
+							"--float-left": `${pos.value.x}px`,
+							"--z-portal": String(stack.zIndex),
+						})}
+					>
+						<CtxLevel
+							items={model}
+							idPrefix={rootId}
+							itemTemplate={itemTemplate}
+							onCloseAll={() => (open.value = false)}
+							ariaLabel={ariaLabel ?? "Context menu"}
+						/>
+					</div>
+				</BodyPortal>
 			)}
 		</>
 	);

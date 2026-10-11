@@ -46,7 +46,7 @@ DECLARE
 BEGIN
     v_entering_checkout :=
         (NEW.payment_status = 'escrow_funded'::payment_status
-            AND OLD.payment_status = 'unpaid'::payment_status)
+            AND OLD.payment_status IN ('unpaid'::payment_status, 'needs_funding'::payment_status))
         OR (NEW.status IN ('claimed'::ticket_status, 'in_progress'::ticket_status)
             AND OLD.status NOT IN ('claimed'::ticket_status, 'in_progress'::ticket_status));
 
@@ -114,14 +114,30 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Escrow money movement (funds delegated to finance.* SECURITY DEFINER helpers in 0009).
+-- Escrow money movement (funds delegated to finance.* SECURITY DEFINER helpers in 0009), and the
+-- work-start gate: no hold, no work (Decision #165). On the trigger rather than in each RPC so every
+-- path into work — claim_ticket, the owner's routing RPCs, move_ticket and a direct row write under
+-- RLS — meets the same refusal.
 CREATE OR REPLACE FUNCTION projects.fn_ticket_escrow_sync()
 RETURNS TRIGGER AS $$
 BEGIN
-    -- Claim -> move ticket funds into the escrow pool (held).
-    IF (OLD.current_assignee_id IS NULL AND NEW.current_assignee_id IS NOT NULL)
-        OR (OLD.status <> 'claimed'::ticket_status AND NEW.status = 'claimed'::ticket_status) THEN
+    -- Claim -> move ticket funds into the escrow pool (held). Refuses (PF402) when the hold can't be
+    -- made, which aborts the claim. Without an assignee there is no payee; the gate below refuses.
+    IF ((OLD.current_assignee_id IS NULL AND NEW.current_assignee_id IS NOT NULL)
+        OR (OLD.status <> 'claimed'::ticket_status AND NEW.status = 'claimed'::ticket_status))
+        AND NEW.current_assignee_id IS NOT NULL THEN
         PERFORM finance.fn_hold_ticket_escrow(NEW.id);
+    END IF;
+
+    -- Entering work from outside it needs a held escrow. Moves between work states (in_review back to
+    -- in_progress on a revision) are not an entry, and keep whatever is held.
+    IF NEW.status IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status)
+        AND OLD.status NOT IN ('claimed'::ticket_status, 'in_progress'::ticket_status, 'in_review'::ticket_status)
+        AND NOT EXISTS (SELECT 1 FROM finance.escrows e WHERE e.ticket_id = NEW.id AND e.status = 'held') THEN
+        RAISE EXCEPTION USING
+            ERRCODE = 'PF402',
+            MESSAGE = 'Needs funding — work can''t start on this ticket until its escrow is held.',
+            DETAIL = jsonb_build_object('state', 'needs_funding', 'reason', 'not_held')::text;
     END IF;
 
     -- Stage-completion approval -> release payout to the payee.

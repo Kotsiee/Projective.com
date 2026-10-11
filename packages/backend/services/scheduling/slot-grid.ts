@@ -91,7 +91,10 @@ export interface GridRequest {
 	sessionCount: number;
 	/** Each slot's length. Provider-set; never buyer-chosen. */
 	durationMinutes: number;
-	/** Cohort capacity per occurrence, or `null` for a one-to-one grid. */
+	/**
+	 * Seats still free per cohort occurrence — the cohort's REAL occupancy (paid seats + unexpired holds,
+	 * `projects.get_cohort_offer`), not its capacity — or `null` for a one-to-one grid.
+	 */
 	seatsPerSession: number | null;
 	/** The instant the grid is evaluated at. */
 	now: number;
@@ -156,10 +159,13 @@ function judgeSlot(
 	if (source.busy.some((b) => overlaps(guarded, b))) {
 		return { ...base, available: false, reason: "taken" };
 	}
-	// A cohort occurrence reports its seats. No seat is held by anything this reader can see yet, so
-	// every seat an open occurrence has is offered — a count, never an invented fill level.
+	// A cohort occurrence reports the seats really left; one with none left is full, not "taken" — the
+	// provider is free, the room is not.
 	if (request.seatsPerSession !== null) {
-		return { ...base, available: true, reason: null, seatsRemaining: request.seatsPerSession };
+		const left = Math.max(0, request.seatsPerSession);
+		return left === 0
+			? { ...base, available: false, reason: "full", seatsRemaining: 0 }
+			: { ...base, available: true, reason: null, seatsRemaining: left };
 	}
 	return { ...base, available: true, reason: null };
 }

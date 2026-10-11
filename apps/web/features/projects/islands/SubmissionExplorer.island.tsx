@@ -28,6 +28,7 @@ import type {
 	SubmissionReview,
 	SubmissionReviewDecision,
 	SubmissionStatus,
+	SubmissionTicketOption,
 	SubmissionTreeNode,
 	SubmissionUnit,
 } from "../types/projects-types.ts";
@@ -47,12 +48,13 @@ import {
 	nodeShowsChildCards,
 	submissionHref,
 	submissionsBase,
-	submissionTickets,
 } from "../core/submission-model.ts";
 import {
 	type DevSeamState,
 	effectiveFormat,
 	effectiveHasTasks,
+	effectivePaidRevision,
+	effectiveRevisions,
 	effectiveUnitStatus,
 	fulfilsTickets,
 	readDevSeam,
@@ -93,6 +95,8 @@ import { FileFrame } from "../components/FileFrame.tsx";
 import { REVIEW_FRAME_KEYS, SubmissionReviewModal } from "../components/SubmissionReviewModal.tsx";
 import { ApproveStageDialog } from "../components/ApproveStageDialog.tsx";
 import { SettlementService, submissionIdOf } from "../core/SettlementService.ts";
+import BuyNowModal from "@features/checkout/islands/BuyNowModal.island.tsx";
+import { buyNowOpen, requestBuyNow } from "@features/checkout/core/buy-now-state.ts";
 import {
 	CreateSubmissionModal,
 	type CreateSubmissionPayload,
@@ -303,6 +307,10 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	const breadcrumbs = useSignal<SubmissionCrumb[]>(initial?.breadcrumbs ?? []);
 	const activeUnit = useSignal<SubmissionUnit | null>(initial?.activeUnit ?? null);
 	const review = useSignal<SubmissionReview | null>(initial?.review ?? null);
+	/** The viewer's open tickets in this scope — the Create Submission dropdown (read, not invented). */
+	const pageTickets = useSignal<SubmissionTicketOption[]>(initial?.tickets ?? []);
+	/** A paid revision's Buy Now is open from this review; its close re-reads the page. */
+	const buyingRevision = useSignal(false);
 	const cursor = useSignal<string | null>(initial?.nextCursor ?? null);
 	const hasMore = useSignal<boolean>(initial?.hasMore ?? false);
 	const total = useSignal<number>(initial?.total ?? 0);
@@ -406,7 +414,11 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	const currentStageName =
 		breadcrumbs.value.find((c) => c.kind === "stage" && c.path.length > 0)?.label ?? null;
 	const seedKey = `${projectId}:${channelId ?? ""}:${path.value.join("/")}`;
-	const tickets = submissionTickets(seedKey, { hasTickets: fulfilsTickets(format) });
+	const tickets = fulfilsTickets(format) ? pageTickets.value : [];
+	const revisions = effectiveRevisions(review.value?.revisions ?? null, seam.value);
+	// The freelancer's side of a paid round (Decision #167): its escrow is held, so the work can start.
+	const paidRoundOpen = viewer.isFreelancer && effStatus === "revision_requested" &&
+		effectivePaidRevision(activeUnit.value?.paidRevision ?? false, seam.value);
 	const draftName = localDraft.value?.name ?? activeUnit.value?.name ?? "Submission";
 	// #endregion
 
@@ -450,6 +462,7 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 			breadcrumbs.value = page.breadcrumbs;
 			activeUnit.value = page.activeUnit;
 			review.value = page.review;
+			pageTickets.value = page.tickets;
 			cursor.value = page.nextCursor;
 			hasMore.value = page.hasMore;
 			total.value = page.total;
@@ -609,6 +622,39 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	}
 	function onRequestRevision(payload: { notes: string }): void {
 		void decide("request_revision", payload.notes);
+	}
+
+	/**
+	 * Buy a revision once the stage's free rounds are used (Decision #167): raise the round
+	 * `awaiting_payment`, then hand it to Buy Now as a `paid_revision` line. Nothing is sent back to the
+	 * freelancer until that payment holds the round's escrow; the page is re-read when Buy Now closes.
+	 */
+	async function onBuyRevision(payload: { notes: string }): Promise<void> {
+		const unit = activeUnit.value;
+		const submissionId = unit ? submissionIdOf(unit) : null;
+		if (!unit || !submissionId || !unit.stageId || reviewBusy.value) return;
+		reviewBusy.value = true;
+		reviewError.value = null;
+		const res = await SettlementService.requestPaidRevision(
+			projectId,
+			unit.stageId,
+			submissionId,
+			payload.notes,
+		);
+		reviewBusy.value = false;
+		if (!res.ok || !res.data) {
+			reviewError.value = res.message ?? "That revision could not be prepared — please try again.";
+			return;
+		}
+		closeReview();
+		buyingRevision.value = true;
+		requestBuyNow({
+			itemId: res.data.revisionId,
+			itemType: "paid_revision",
+			title: res.data.title,
+			sellerName: unit.submitter.name,
+			signInHref: "/login",
+		}, true);
 	}
 	function onAccept(): void {
 		void decide("accept", "");
@@ -845,6 +891,15 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 		return watchDevSeam(sync);
 	}, []);
 
+	// A paid revision's Buy Now closing — paid or not — re-reads the page, so the unit shows what the
+	// payment did (the round opened and the work sent back) rather than the state before it.
+	useEffect(() => {
+		if (buyingRevision.peek() && !buyNowOpen.value) {
+			buyingRevision.value = false;
+			void reload(path.value);
+		}
+	}, [buyNowOpen.value]);
+
 	// Rebuild the task checklist when the node / format changes (resets the freelancer's ticks).
 	useEffect(() => {
 		checklist.value = buildTaskChecklist(seedKey, { hasTickets: fulfilsTickets(format) });
@@ -1000,6 +1055,11 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 								{workflowError.value}
 							</Message>
 						)}
+						{paidRoundOpen && (
+							<Message severity="success" variant="subtle" size="sm">
+								Paid revision, funded, you can start.
+							</Message>
+						)}
 						{!workflowError.value && workflowNotice.value && (
 							<Message
 								severity="success"
@@ -1071,6 +1131,8 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 						onNavigate={(p) => navigate(p)}
 						onRequestRevision={onRequestRevision}
 						onAccept={onAccept}
+						revisions={revisions}
+						onBuyRevision={(payload) => void onBuyRevision(payload)}
 						busy={reviewBusy.value}
 						error={reviewError.value}
 					/>
@@ -1083,6 +1145,9 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 				onClose={() => (approveOpen.value = false)}
 				onConfirm={() => void approveActiveStage()}
 			/>
+
+			{/* The paid revision's checkout (Decision #167). The workspace mounts no other Buy Now host. */}
+			<BuyNowModal host="body" />
 
 			<CreateSubmissionModal
 				open={createOpen}

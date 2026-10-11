@@ -119,7 +119,9 @@ no context would otherwise render as `/projects/`).
 | `comms.revoke_device(id, reason)`              | `boolean` | Soft-revokes and clears the Web Push keys.                                         |
 
 These run as the caller, so the policies in [Policies.md](Policies.md) are the real boundary; the
-explicit `auth.uid()` predicates are belt-and-braces.
+explicit `auth.uid()` predicates are belt-and-braces. They write only `read_at` / `seen_at` /
+`archived_at`, the three columns `authenticated` holds `UPDATE` on (`00002520` §2). The app reaches
+the first five through `NotificationInboxBackendService` (`/api/notifications/*`).
 
 **Not granted to `authenticated`:** `fn_notify`, `fn_notify_many`, `fn_enqueue`, `fn_cancel_queued`,
 `fn_process_queue`, `fn_resolve_channels`, `fn_is_quiet_hours`, `fn_is_suppressed`. A client that

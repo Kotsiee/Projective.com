@@ -17,7 +17,8 @@
 /* #region Glass (formatting + reaction bubbles) */
 .msg-glass {
 	position: fixed;
-	z-index: calc(var(--z-draggable) + 1);
+	/* From the shared stack, so it rises above a pop-out window or a modal it was opened in. */
+	z-index: var(--z-portal, var(--z-popover));
 	isolation: isolate;
 	display: flex;
 	align-items: center;
@@ -153,7 +154,7 @@
 	position: fixed;
 	left: var(--ctx-x, 0);
 	top: var(--ctx-y, 0);
-	z-index: calc(var(--z-draggable) + 1);
+	z-index: var(--z-portal, var(--z-popover));
 	display: flex;
 	flex-direction: column;
 	min-inline-size: 13rem;
@@ -363,7 +364,7 @@
 	position: fixed;
 	inset-block-start: 0;
 	inset-inline: 0;
-	z-index: var(--z-overlay);
+	z-index: var(--z-portal, var(--z-popover));
 	display: flex;
 	align-items: center;
 	gap: var(--space-1);

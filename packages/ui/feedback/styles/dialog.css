@@ -147,8 +147,8 @@
 	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
 }
 .ui-dialog__action:focus-visible {
-	outline: none;
-	box-shadow: none;
+	outline: var(--overlay-focus-ring);
+	outline-offset: var(--overlay-focus-offset);
 }
 .ui-dialog__close {
 	font-size: var(--text-lg);
@@ -176,6 +176,8 @@
 	justify-content: flex-end;
 	gap: var(--space-2);
 	padding: var(--space-4) var(--space-5);
+	/* Zero on desktop; on a phone the bottom sheet's footer clears the home indicator. */
+	padding-block-end: max(var(--space-4), env(safe-area-inset-bottom));
 	border-block-start: var(--hairline);
 }
 .ui-dialog__grip {

@@ -155,7 +155,7 @@ Deno.test("a moved ticket keeps its new column across a fresh board read", async
 	const moved = await ProjectBackendService.moveTicket({
 		projectId: SLUG,
 		ticketId: target.id,
-		status: "in_progress",
+		status: "todo",
 		stageId: "stage-1",
 		sortOrder: null,
 	}, ALICE);
@@ -163,8 +163,26 @@ Deno.test("a moved ticket keeps its new column across a fresh board read", async
 
 	const after = await ProjectBackendService.board({ projectId: SLUG, view: "stages" }, ALICE);
 	const reread = after.data!.page.cards.find((c) => c.id === target.id)!;
-	assertEquals(reread.status, "in_progress");
+	assertEquals(reread.status, "todo");
 	assertEquals(reread.stageId, "stage-1");
+});
+
+Deno.test("the stub refuses work on an unheld ticket, mirroring the no-hold-no-work gate", async () => {
+	// `trg_ticket_escrow_sync` raises PF402 on entering claimed / in_progress / in_review without a held
+	// escrow (Decision #165); the stub answers the same refusal rather than moving the card.
+	resetWriteStore();
+	const board = await ProjectBackendService.board({ projectId: SLUG, view: "stages" }, ALICE);
+	const target = board.data!.page.cards.find((c) => c.status === "backlog" && !c.escrowHeld)!;
+	assertEquals(target.funding?.canStart, false);
+
+	const refused = await ProjectBackendService.moveTicket({
+		projectId: SLUG,
+		ticketId: target.id,
+		status: "in_progress",
+		stageId: "stage-1",
+		sortOrder: null,
+	}, ALICE);
+	assertEquals([refused.ok, refused.status, refused.errors?.status], [false, 402, "needs_funding"]);
 });
 
 Deno.test("a move applies sortOrder only in the backlog lane, mirroring the ordering guard", async () => {
@@ -177,7 +195,7 @@ Deno.test("a move applies sortOrder only in the backlog lane, mirroring the orde
 	const outside = await ProjectBackendService.moveTicket({
 		projectId: SLUG,
 		ticketId: target.id,
-		status: "in_review",
+		status: "todo",
 		stageId: "stage-1",
 		sortOrder: 9,
 	}, ALICE);
@@ -396,6 +414,7 @@ Deno.test("a ticket's cost comes from the stage's rate, never from the payload",
 			categoryWeight: 1.2,
 			members: [],
 			ticketCount: 0,
+			funding: null,
 			assignmentMode: "open_pull",
 			maxConcurrentIntensity: null,
 			startAt: null,
@@ -424,6 +443,7 @@ Deno.test("intensity is the one lever that moves both the cost and the capacity"
 		categoryWeight: 1,
 		members: [],
 		ticketCount: 0,
+		funding: null,
 		assignmentMode: "open_pull" as const,
 		maxConcurrentIntensity: null,
 		startAt: null,

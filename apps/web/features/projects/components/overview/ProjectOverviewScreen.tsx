@@ -19,7 +19,13 @@ import {
 	UpdatesBlock,
 	WorkBlock,
 } from "../dashboard/DashboardBlocks.tsx";
-import { NextActionsBlock, OverviewNotice, PeopleBlock, StageRunBlock } from "./OverviewBlocks.tsx";
+import {
+	NextActionsBlock,
+	OverviewNotice,
+	PeopleBlock,
+	ReadyBlock,
+	StageRunBlock,
+} from "./OverviewBlocks.tsx";
 import { BriefBlock, TermsBlock } from "./BriefBlocks.tsx";
 import { ClaimableBlock, SubmissionsBlock } from "./WorkSignalBlocks.tsx";
 
@@ -30,10 +36,10 @@ import { ClaimableBlock, SubmissionsBlock } from "./WorkSignalBlocks.tsx";
  * It answers the question a command center exists for: what needs me, and where does everything
  * stand. Two columns from `55rem` of container width, one below it, in this reading order:
  *
- *   • **Main** — Needs you · the Brief · Inclusions & terms · Project files · the stage run · Recent
- *     updates.
+ *   • **Main** — Needs you · the Brief · Project files · the stage run · Recent updates.
  *   • **Aside** — a participant's Active submissions, Claimable tasks, Your work and Your earnings ·
- *     Messages (only when there is more than the one Discussion the lane already links) · People.
+ *     Messages (only when there is more than the one Discussion the lane already links) · Inclusions
+ *     & terms · People.
  *
  * The owner is not shown a money block: the live overview's finance is a neutral placeholder (all
  * zeros), and "$0 in escrow" on a funded engagement would be a false statement, not a missing one.
@@ -103,9 +109,13 @@ export function ProjectOverviewScreen(
 		roster,
 		submissions,
 		claimable,
+		task,
+		readiness,
 	} = workspace;
 	const participant = viewer === "participant";
 	const hasRun = stages.length > 0;
+	// The run already states stage progress, and a Task has no stages to report — its one stage IS it.
+	const showStageMeter = !hasRun && !task;
 	// The lane already links the Discussion; a list holding that one room restates it.
 	const showMessages = channels.length > 1;
 
@@ -129,9 +139,9 @@ export function ProjectOverviewScreen(
 
 				<div class="pjd__layout">
 					<div class="pjd__main">
+						{readiness && !isClosedStatus(hero.status) && <ReadyBlock steps={readiness} />}
 						<NextActionsBlock actions={nextActions} closed={isClosedStatus(hero.status)} />
 						{brief && <BriefBlock brief={brief} />}
-						{brief && <TermsBlock brief={brief} />}
 						<Block title="Project files">
 							<ProjectAttachments projectSlug={slug} initial={attachments} />
 						</Block>
@@ -144,13 +154,13 @@ export function ProjectOverviewScreen(
 						{participant && (
 							<WorkBlock
 								assignments={assignments}
-								// The run already states stage progress; the meter would say it twice.
-								completedStages={hasRun ? null : hero.completedStages}
-								totalStages={hasRun ? null : hero.totalStages}
+								completedStages={showStageMeter ? hero.completedStages : null}
+								totalStages={showStageMeter ? hero.totalStages : null}
 							/>
 						)}
 						{participant && <EarningsBlock finance={finance} />}
 						{showMessages && <MessagesBlock channels={channels} />}
+						{brief && <TermsBlock brief={brief} />}
 						{people && (
 							<PeopleBlock people={people} roster={roster} slug={slug} viewer={viewer} />
 						)}

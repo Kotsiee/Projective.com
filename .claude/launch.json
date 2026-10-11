@@ -140,6 +140,46 @@
 				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13060'; deno task dev --port 13060 --strictPort"
 			],
 			"port": 13060
+		},
+		{
+			"name": "web-funding-mock",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = 13070; deno task dev:mock --port 13070 --strictPort"
+			],
+			"port": 13070
+		},
+		{
+			"name": "web-overlay-mock",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = 13080; deno task dev:mock --port 13080 --strictPort"
+			],
+			"port": 13080
+		},
+		{
+			"name": "web-notifications-mock",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$env:PORT = 13090; deno task dev:mock --port 13090 --strictPort"
+			],
+			"port": 13090
+		},
+		{
+			"name": "web-notifications",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13091'; deno task dev --port 13091 --strictPort"
+			],
+			"port": 13091
 		}
 	]
 }

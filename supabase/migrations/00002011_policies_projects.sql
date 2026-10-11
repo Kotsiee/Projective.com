@@ -214,18 +214,50 @@ SELECT TO authenticated USING (
         projects.has_project_access (id)
     );
 
-CREATE POLICY "Manage own revisions" ON projects.stage_revision_requests FOR ALL TO public USING (requested_by = auth.uid ());
+-- INSERT only: reads are "View revisions", and status/resolution changes go through the definer
+-- RPCs (00001150), so a requester can no longer edit or delete a round once raised.
+CREATE POLICY "Request own revisions" ON projects.stage_revision_requests FOR
+INSERT
+    TO authenticated
+WITH
+    CHECK (
+        requested_by = auth.uid ()
+        AND EXISTS (
+            SELECT 1
+            FROM projects.project_stages s
+            WHERE
+                s.id = stage_revision_requests.project_stage_id
+                AND projects.can_review_project (s.project_id)
+        )
+    );
 
+-- Readers (Decision #167): whoever may review the project (owner or a member of the paying client
+-- business — any of them may pay for a round another raised), and the freelancer a round is raised
+-- AGAINST: the ticket's assignee, or whoever submitted the work it was raised on. They are the one asked
+-- to revise, and the paid round's "funded, you can start" state is theirs to see.
 CREATE POLICY "View revisions" ON projects.stage_revision_requests FOR
 SELECT TO public USING (
         requested_by = auth.uid ()
         OR EXISTS (
             SELECT 1
             FROM projects.project_stages s
-                JOIN projects.projects p ON p.id = s.project_id
             WHERE
                 s.id = stage_revision_requests.project_stage_id
-                AND p.owner_user_id = auth.uid ()
+                AND projects.can_review_project (s.project_id)
+        )
+        OR EXISTS (
+            SELECT 1
+            FROM projects.tickets t
+            WHERE
+                t.id = stage_revision_requests.ticket_id
+                AND t.current_assignee_id = auth.uid ()
+        )
+        OR EXISTS (
+            SELECT 1
+            FROM projects.stage_submissions ss
+            WHERE
+                ss.id = stage_revision_requests.submission_id
+                AND ss.submitted_by = auth.uid ()
         )
     );
 
@@ -400,15 +432,11 @@ SELECT TO public USING (
         )
     );
 
+-- Member arm via the definer helper: an inline EXISTS on cohort_memberships recurses through its
+-- owner arm (which reads cohorts). The argument is qualified — a bare `id` bound to cm.id.
 CREATE POLICY "View cohorts" ON projects.cohorts FOR
 SELECT TO public USING (
-        EXISTS (
-            SELECT 1
-            FROM projects.cohort_memberships cm
-            WHERE
-                cm.cohort_id = id
-                AND cm.user_id = auth.uid ()
-        )
+        projects.is_cohort_member (cohorts.id)
         OR EXISTS (
             SELECT 1
             FROM projects.projects p
@@ -455,15 +483,11 @@ CREATE POLICY "Manage cohort memberships" ON projects.cohort_memberships FOR ALL
     )
 );
 
+-- Member arm qualified to this row's cohort: a bare `cohort_id` bound to cm.cohort_id, letting any
+-- cohort member read every event (host_join_url included).
 CREATE POLICY "View session events" ON projects.session_events FOR
 SELECT TO public USING (
-        EXISTS (
-            SELECT 1
-            FROM projects.cohort_memberships cm
-            WHERE
-                cm.cohort_id = cohort_id
-                AND cm.user_id = auth.uid ()
-        )
+        projects.is_cohort_member (session_events.cohort_id)
         OR EXISTS (
             SELECT 1
             FROM projects.cohorts c
@@ -499,11 +523,95 @@ SELECT TO public USING (
         )
     );
 
-CREATE POLICY "Log own attendance" ON projects.session_attendance FOR
-INSERT
-    TO public
-WITH
-    CHECK (user_id = auth.uid ());
+-- No client INSERT policy: attendance is evidence, written only by a SECURITY DEFINER door
+-- (record_presence) that checks cohort membership and the event window.
+
+-- #region Seat holds, curriculum, lesson progress (Decision #171)
+-- A buyer sees their own holds; the provider sees every hold on their cohorts (what is reserved but
+-- unpaid). No write policy: holds are written only by projects.reserve_seat / fn_confirm_seat.
+CREATE POLICY "View seat holds" ON projects.cohort_seat_holds FOR
+SELECT TO public USING (
+        cohort_seat_holds.user_id = auth.uid ()
+        OR EXISTS (
+            SELECT 1
+            FROM projects.cohorts c
+                JOIN projects.projects p ON p.id = c.project_id
+            WHERE
+                c.id = cohort_seat_holds.cohort_id
+                AND p.owner_user_id = auth.uid ()
+        )
+    );
+
+-- The curriculum is the engagement's content: its parties read it (the public listing reads its
+-- module titles through the get_cohort_offer definer instead), its owner writes it.
+CREATE POLICY "View curriculum modules" ON projects.curriculum_modules FOR
+SELECT TO public USING (
+        EXISTS (
+            SELECT 1 FROM projects.project_stages ps
+            WHERE ps.id = curriculum_modules.project_stage_id
+                AND projects.has_project_access (ps.project_id)
+        )
+        OR EXISTS (
+            SELECT 1 FROM projects.cohorts c
+            WHERE c.id = curriculum_modules.cohort_id
+                AND projects.has_project_access (c.project_id)
+        )
+    );
+
+CREATE POLICY "Manage curriculum modules" ON projects.curriculum_modules FOR ALL TO public USING (
+    EXISTS (
+        SELECT 1
+        FROM projects.projects p
+        WHERE
+            p.owner_user_id = auth.uid ()
+            AND p.id IN (
+                SELECT ps.project_id FROM projects.project_stages ps WHERE ps.id = curriculum_modules.project_stage_id
+                UNION ALL
+                SELECT c.project_id FROM projects.cohorts c WHERE c.id = curriculum_modules.cohort_id
+            )
+    )
+);
+
+CREATE POLICY "View curriculum lessons" ON projects.curriculum_lessons FOR
+SELECT TO public USING (
+        EXISTS (SELECT 1 FROM projects.curriculum_modules m WHERE m.id = curriculum_lessons.module_id)
+    );
+
+CREATE POLICY "Manage curriculum lessons" ON projects.curriculum_lessons FOR ALL TO public USING (
+    EXISTS (
+        SELECT 1
+        FROM projects.curriculum_modules m
+            JOIN projects.projects p ON p.owner_user_id = auth.uid ()
+        WHERE
+            m.id = curriculum_lessons.module_id
+            AND p.id IN (
+                SELECT ps.project_id FROM projects.project_stages ps WHERE ps.id = m.project_stage_id
+                UNION ALL
+                SELECT c.project_id FROM projects.cohorts c WHERE c.id = m.cohort_id
+            )
+    )
+);
+
+-- Progress is the attendee's own; the provider reads it for their cohorts. Written only by
+-- projects.complete_lesson.
+CREATE POLICY "View lesson progress" ON projects.lesson_progress FOR
+SELECT TO public USING (
+        lesson_progress.user_id = auth.uid ()
+        OR EXISTS (
+            SELECT 1
+            FROM projects.curriculum_lessons l
+                JOIN projects.curriculum_modules m ON m.id = l.module_id
+                JOIN projects.projects p ON p.owner_user_id = auth.uid ()
+            WHERE
+                l.id = lesson_progress.lesson_id
+                AND p.id IN (
+                    SELECT ps.project_id FROM projects.project_stages ps WHERE ps.id = m.project_stage_id
+                    UNION ALL
+                    SELECT c.project_id FROM projects.cohorts c WHERE c.id = m.cohort_id
+                )
+        )
+    );
+-- #endregion
 
 CREATE POLICY "View waitlists" ON projects.waitlists FOR
 SELECT TO public USING (

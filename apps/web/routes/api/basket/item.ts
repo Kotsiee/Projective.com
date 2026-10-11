@@ -19,6 +19,7 @@ import { readActor } from "@web/utils/api-session.ts";
  *
  * - `POST` — add a purchasable ({@link AddBasketItemSchema}). A `null` `basketId` lands in the acting
  *   account's default basket, so an add-to-basket from anywhere on the platform needs no prior lookup.
+ *   With `ticketId` it adds ONE board ticket (`BasketBackendService.addTicket`, Decision #166).
  * - `PATCH` — patch a line ({@link UpdateBasketItemSchema}): quantity, selection, parking, delivery
  *   address, booked slot, routed stage or seats.
  * - `DELETE` — remove a line ({@link RemoveBasketItemSchema}); soft server-side, nothing is destroyed.
@@ -44,12 +45,16 @@ export const handler = define.handlers({
 		if (raw === null || typeof raw !== "object") return malformedBody();
 		const parsed = AddBasketItemSchema.safeParse(raw);
 		if (!parsed.success) return invalidPayload(parsed.error);
+		const query = basketQueryFromBody(raw as Record<string, unknown>, context);
 		return toCheckoutResponse(
-			await BasketBackendService.addItem(
-				parsed.data,
-				basketQueryFromBody(raw as Record<string, unknown>, context),
-				readActor(ctx),
-			),
+			parsed.data.ticketId
+				? await BasketBackendService.addTicket(
+					parsed.data.ticketId,
+					query,
+					readActor(ctx),
+					parsed.data,
+				)
+				: await BasketBackendService.addItem(parsed.data, query, readActor(ctx)),
 		);
 	},
 

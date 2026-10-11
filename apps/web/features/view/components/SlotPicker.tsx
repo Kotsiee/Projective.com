@@ -153,6 +153,8 @@ function slotSummary(slot: BookableSlot, grid: SlotGrid): string {
 			? "too soon to book"
 			: slot.reason === "past"
 			? "already passed"
+			: slot.reason === "full"
+			? "every seat taken"
 			: "unavailable";
 		return `${time}, ${why}`;
 	}

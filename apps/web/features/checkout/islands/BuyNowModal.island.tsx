@@ -11,6 +11,9 @@ import { BasketService } from "../core/BasketService.ts";
 import { CheckoutService } from "../core/CheckoutService.ts";
 import { checkoutHref } from "../core/basket-model.ts";
 import { CardChooser } from "../components/PaymentChoice.tsx";
+import { StripeElementPanel } from "@features/payments/components/StripeElementPanel.tsx";
+import { PaymentsService } from "@features/payments/core/PaymentsService.ts";
+import { loadStripe } from "@features/payments/core/stripe-js.ts";
 import {
 	activeBasketId,
 	activeOwner,
@@ -31,6 +34,7 @@ import {
 	type BuyNowHost,
 	buyNowHost,
 	buyNowOpen,
+	type BuyNowTarget,
 	buyNowTarget,
 	closeBuyNow,
 	registerBuyNowHost,
@@ -102,9 +106,21 @@ function buyNowOffer(providers: readonly ProviderAvailability[]): ProviderAvaila
 /** How far along one instant-purchase attempt is. */
 type BuyPhase = "preparing" | "ready" | "failed" | "done";
 
+/**
+ * The checkout scope one attempt runs in. A listing narrows by its `serviceId` token; a TICKET narrows
+ * to its project (Decision #166), so the session prices exactly the lines that fund that project.
+ */
+function scopeOf(base: CheckoutContext, target: BuyNowTarget): CheckoutContext {
+	return target.ticket
+		? { ...base, projectId: target.ticket.projectId, serviceId: null }
+		: { ...base, serviceId: target.itemId, projectId: null };
+}
+
 export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.Element | null {
 	const phase = useSignal<BuyPhase>("preparing");
 	const failure = useSignal<string | null>(null);
+	/** A card charge is confirmed; waiting for the webhook to credit the wallet before the order. */
+	const settling = useSignal(false);
 	const confirmRef = useRef<HTMLDivElement>(null);
 
 	// #region Host election
@@ -127,19 +143,20 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 		// A previous attempt's key must never be replayed against a different purchase.
 		resetAttempt();
 
-		const base = currentCheckoutContext();
-		const scoped: CheckoutContext = { ...base, serviceId: target.itemId, projectId: null };
+		const scoped = scopeOf(currentCheckoutContext(), target);
 
-		const add = await BasketService.addItem(
-			{
-				basketId: activeBasketId.value,
-				itemType: target.itemType,
-				itemId: target.itemId,
-				quantity: 1,
-				metadata: { serviceId: target.itemId },
-			},
-			scoped,
-		);
+		const add = target.ticket
+			? await BasketService.addTicket(target.ticket.ticketId, target.ticket.projectId, scoped)
+			: await BasketService.addItem(
+				{
+					basketId: activeBasketId.value,
+					itemType: target.itemType,
+					itemId: target.itemId,
+					quantity: 1,
+					metadata: { serviceId: target.itemId },
+				},
+				scoped,
+			);
 		if (!applyResponse(add, applyBasket)) {
 			failure.value = add.message ?? "We couldn't add that to your basket.";
 			phase.value = "failed";
@@ -172,12 +189,25 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 
 	// #endregion
 
+	const dismiss = useCallback(() => {
+		closeBuyNow();
+		lastResult.value = null;
+		phase.value = "preparing";
+		failure.value = null;
+		settling.value = false;
+	}, []);
+
 	// #region Confirm
-	const confirm = useCallback(async () => {
+	/**
+	 * Charge the purchase — or, with `override`, place the WALLET order that completes a card charge,
+	 * under the charge's own attempt key (the checkout's `finishByCard` model): a card tops the paying
+	 * wallet up, the webhook credits it, and only then is the order placed from the wallet.
+	 */
+	const confirm = useCallback(async (override?: { provider: "wallet" }) => {
 		const view = sessionSignal.value;
 		const target = buyNowTarget.value;
 		if (!view || !target || submitting.value) return;
-		const provider = chosenProvider.value;
+		const provider = override?.provider ?? chosenProvider.value;
 		if (!provider) {
 			failure.value = "Choose how you'd like to pay first.";
 			return;
@@ -211,7 +241,7 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 			// `price_changed`.
 			processingContributionMinor: 0,
 			idempotencyKey: newAttemptKey(),
-		}, { ...base, serviceId: target.itemId, projectId: null });
+		}, scopeOf(base, target));
 		submitting.value = false;
 
 		const landed = applyResponse(res, (data) => {
@@ -223,14 +253,66 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 		}
 		phase.value = "done";
 		notifyBasketChanged();
+		const result = lastResult.value;
+		// A saved card the bank wants confirmed (3-D Secure) is answered in place, then settles like any card.
+		if (
+			result?.status === "requires_action" && result.payment &&
+			result.payment.confirmation !== "collect"
+		) {
+			void finishByCard(
+				result.payment.paymentId,
+				result.payment.confirmation === "authenticate"
+					? {
+						publishableKey: result.payment.publishableKey,
+						clientSecret: result.payment.clientSecret,
+					}
+					: null,
+			);
+		}
+		// A funded ticket goes back to its line, which re-reads the server and says Funded in place.
+		if (result?.status === "succeeded" && target.ticket) {
+			target.ticket.onSettled?.();
+			dismiss();
+		}
 	}, []);
 
-	const dismiss = useCallback(() => {
-		closeBuyNow();
-		lastResult.value = null;
-		phase.value = "preparing";
+	/**
+	 * A card the bank accepted: wait for the signed webhook to credit the wallet, then place the order
+	 * from it. Nothing is ordered on the browser's word, and a charge that has not cleared is said aloud.
+	 */
+	const finishByCard = useCallback(async (
+		paymentId: string,
+		authenticate: { publishableKey: string | null; clientSecret: string } | null,
+	) => {
+		settling.value = true;
 		failure.value = null;
+		if (authenticate) {
+			try {
+				const stripe = await loadStripe(authenticate.publishableKey);
+				const { error } = await stripe.handleNextAction({
+					clientSecret: authenticate.clientSecret,
+				});
+				if (error) throw new Error(error.message ?? "Your bank didn't confirm the payment.");
+			} catch (error) {
+				settling.value = false;
+				failure.value = `${
+					error instanceof Error ? error.message : "Your bank didn't confirm the payment."
+				} Nothing was charged.`;
+				resetAttempt();
+				return;
+			}
+		}
+		const settled = await PaymentsService.waitForSettlement(paymentId);
+		settling.value = false;
+		if (settled !== "succeeded") {
+			failure.value = settled === "failed"
+				? "The card payment didn't go through. Nothing was charged."
+				: "Your bank accepted the payment, but it hasn't reached your wallet yet. It completes automatically when it arrives.";
+			return;
+		}
+		await confirm({ provider: "wallet" });
 	}, []);
+
 	// #endregion
 
 	if (!elected) return null;
@@ -296,7 +378,34 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 							{result.status === "succeeded"
 								? <p class="bnow__result-amount">{result.charged.display}</p>
 								: null}
-							{result.nextActionUrl
+							{
+								/*
+								 * A card nobody has entered yet is collected HERE, in Stripe's Payment Element, against the
+								 * intent the server just opened (its publishable key comes from the server's env with it).
+								 */
+							}
+							{result.status === "requires_action" && result.payment
+								? settling.value || result.payment.confirmation !== "collect"
+									? (
+										<p class="bnow__pending" role="status">
+											Confirming the payment with your bank…
+										</p>
+									)
+									: (
+										<StripeElementPanel
+											mode="payment"
+											clientSecret={result.payment.clientSecret}
+											publishableKey={result.payment.publishableKey}
+											submitLabel={`Pay ${result.payment.amount.display}`}
+											busy={submitting.value}
+											onOutcome={(outcome) => {
+												if (outcome.ok && result.payment) {
+													void finishByCard(result.payment.paymentId, null);
+												}
+											}}
+										/>
+									)
+								: result.nextActionUrl
 								? (
 									<a class="bnow__next" href={result.nextActionUrl} rel="noopener noreferrer">
 										Continue
@@ -443,6 +552,44 @@ export default function BuyNowModal({ host = "lane" }: BuyNowModalProps): JSX.El
 									)
 									: null}
 							</section>
+
+							{
+								/*
+								 * Funding a ticket states its terms and where the money comes from. The hold always debits a
+								 * wallet (Decision #125): one that covers the total pays it; otherwise a card pays the total
+								 * into the wallet first. Every figure is the server's, never a sum made here.
+								 */
+							}
+							{target?.ticket
+								? (
+									<>
+										<p class="bnow__escrow">
+											<Icon name="lock" size="sm" />
+											<span>Held in escrow, released only when you approve.</span>
+										</p>
+										<dl class="bnow__totals" aria-label="How this is paid">
+											<div class="bnow__total-row">
+												<dt>Wallet balance</dt>
+												<dd>{view.wallet.available.display}</dd>
+											</div>
+											{view.wallet.covers ? null : (
+												<div class="bnow__total-row">
+													<dt>Wallet short by</dt>
+													<dd>{view.wallet.shortfall.display}</dd>
+												</div>
+											)}
+											<div class="bnow__total-row">
+												<dt>
+													{view.wallet.covers
+														? "Paid from your wallet"
+														: "Paid by card, into your wallet"}
+												</dt>
+												<dd>{view.totals.total.display}</dd>
+											</div>
+										</dl>
+									</>
+								)
+								: null}
 
 							<dl class="bnow__totals">
 								<div class="bnow__total-row">

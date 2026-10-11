@@ -45,6 +45,18 @@ import {
 } from "./live-support.ts";
 import { fetchProjectBySlug } from "./live-queries.ts";
 import { isSlug } from "@projective/types/slugs";
+import {
+	deriveFundingState,
+	fundingTicketOf,
+	rollupFundingState,
+	withBillingFacts,
+} from "../finance/funding-state.ts";
+import {
+	latestLockPayments,
+	type LockPayments,
+	ticketBillingFacts,
+	type TicketBillingFacts,
+} from "../finance/live-payments.ts";
 
 /**
  * live-board — the RLS-scoped Postgres read path for `ProjectBackendService.board`.
@@ -730,6 +742,8 @@ function toStageRef(stage: StageRow, ctx: StageContext): BoardStageRef {
 		categoryWeight: NEUTRAL_CATEGORY_WEIGHT,
 		members: (ctx.rosters.get(stage.id) ?? []).slice(0, 50),
 		ticketCount: inStage.length,
+		// Rolled up from the cards once they exist — see `fundedStages` in {@link fetchBoardPage}.
+		funding: null,
 		assignmentMode: toAssignmentMode(stage.assignment_mode),
 		maxConcurrentIntensity: toCapacityCap(stage.max_concurrent_intensity),
 		startAt: ctx.windows.get(stage.id)?.startAt ?? null,
@@ -920,6 +934,12 @@ function toHistoryKind(raw: string | null | undefined): TicketHistoryKind {
 		case "due":
 		case "due_date":
 			return "due";
+		case "auto_funded":
+		case "auto_fund_queued":
+		case "auto_fund_basketed":
+		case "auto_fund_approval_requested":
+		case "auto_fund_returned":
+			return "funding";
 		default:
 			return "edited";
 	}
@@ -978,6 +998,20 @@ function historySummary(
 			return "changed the priority";
 		case "due":
 			return "changed the due date";
+		case "funding":
+			// Written by finance.fn_auto_fund_on_needs_funding / fn_auto_fund_drain as the project owner.
+			switch (row.action_type) {
+				case "auto_funded":
+					return "auto-funded this ticket from the business wallet";
+				case "auto_fund_queued":
+					return "queued this ticket to auto-fund from the business wallet";
+				case "auto_fund_basketed":
+					return "added this ticket to the business basket";
+				case "auto_fund_approval_requested":
+					return "asked for approval to auto-fund this ticket";
+				default:
+					return "reopened this ticket for claims now the wallet covers it";
+			}
 		default:
 			return "updated the ticket";
 	}
@@ -1183,6 +1217,10 @@ interface CardContext {
 	currency: string;
 	/** One clock for the whole page. See {@link isFrozen}. */
 	nowMs: number;
+	/** The newest card payments funding each ticket and stage, where the viewer can read them (the payer side). */
+	lockPayments: LockPayments;
+	/** Auto-funded escrows and the business's open billing period (PRODUCT_SPEC §Escrow, Wallets & Finance #4). */
+	billing: TicketBillingFacts;
 }
 
 /**
@@ -1246,6 +1284,20 @@ function toCard(ticket: TicketRow, ctx: CardContext): BoardCard {
 		claimedAt: ticket.claimed_at,
 		escrowHeld: escrowHeldOf(ticket.payment_status),
 		...fundingOf(ticket.payment_status, ticket.current_stage_id),
+		funding: withBillingFacts(
+			deriveFundingState(
+				fundingTicketOf(ticket, ctx.stagesById.get(ticket.current_stage_id ?? "")?.unit_price_cents, ctx.currency),
+				null,
+				// A payment naming this ticket (#166), else its stage's — which locks only tickets with a payee.
+				ctx.lockPayments.byTicket.get(ticket.id) ??
+					(ticket.current_assignee_id ? ctx.lockPayments.byStage.get(ticket.current_stage_id ?? "") ?? null : null),
+			),
+			{
+				autoFunded: ctx.billing.escrows.get(ticket.id)?.autoFunded ?? false,
+				releasedAt: ctx.billing.escrows.get(ticket.id)?.releasedAt ?? null,
+				invoicePeriod: ctx.billing.invoicePeriod,
+			},
+		),
 		priority: toPriority(ticket.priority),
 		intensity: NEUTRAL_INTENSITY,
 		workload: Math.max(0, num(ticket.workload_intensity) ?? 0),
@@ -1366,6 +1418,8 @@ function matches(card: BoardCard, params: BoardListParams): boolean {
 interface ProjectFacts {
 	currency: string;
 	structure: ProjectStructure;
+	/** The paying client business, whose billing facts the funding lines read; `null` for an individual. */
+	clientBusinessId: string | null;
 }
 
 /**
@@ -1382,14 +1436,19 @@ interface ProjectFacts {
 async function fetchProjectFacts(db: SupabaseClient, projectId: string): Promise<ProjectFacts> {
 	const { data, error } = await db
 		.from("projects")
-		.select("currency, structure_variation")
+		.select("currency, structure_variation, client_business_id")
 		.eq("id", projectId)
 		.maybeSingle();
-	if (error || !data) return { currency: "USD", structure: "standard" };
-	const row = data as { currency: string | null; structure_variation: string | null };
+	if (error || !data) return { currency: "USD", structure: "standard", clientBusinessId: null };
+	const row = data as {
+		currency: string | null;
+		structure_variation: string | null;
+		client_business_id: string | null;
+	};
 	return {
 		currency: row.currency && row.currency.length === 3 ? row.currency.toUpperCase() : "USD",
 		structure: toProjectStructure(row.structure_variation),
+		clientBusinessId: row.client_business_id ?? null,
 	};
 }
 
@@ -1558,7 +1617,7 @@ export async function fetchBoardPage(
 	const db = projectsDb(actor);
 
 	// Wave 2 — everything keyed on the project id.
-	const [{ currency, structure }, stageRows, ticketRows] = await Promise.all([
+	const [{ currency, structure, clientBusinessId }, stageRows, ticketRows] = await Promise.all([
 		fetchProjectFacts(db, summary.id),
 		fetchStages(db, summary.id),
 		fetchTickets(db, summary.id),
@@ -1568,10 +1627,12 @@ export async function fetchBoardPage(
 	const ticketIds = ticketRows.map((t) => t.id);
 
 	// Wave 3 — everything keyed on the ids wave 2 returned.
-	const [historyRows, participantRows, assignmentRows] = await Promise.all([
+	const [historyRows, participantRows, assignmentRows, lockPayments, billing] = await Promise.all([
 		fetchHistoryRows(db, ticketIds),
 		fetchParticipants(db, summary.id),
 		fetchAssignments(db, stageIds),
+		latestLockPayments(actor.accessToken, stageIds),
+		ticketBillingFacts(actor.accessToken, ticketIds, clientBusinessId, new Date(nowMs)),
 	]);
 
 	// Wave 4 — one party lookup for every person named anywhere on the page.
@@ -1637,6 +1698,8 @@ export async function fetchBoardPage(
 		history: historyByTicket,
 		currency,
 		nowMs,
+		lockPayments,
+		billing,
 	};
 
 	const allCards = ticketRows.map((ticket) => toCard(ticket, cardContext));
@@ -1703,6 +1766,15 @@ export async function fetchBoardPage(
 		]),
 	].map((id) => clamp(id, 80));
 	if (!viewerIsClient) cards = providerVisibleCards(cards, viewerStageIds);
+
+	// A stage's funding rolls up what this viewer may see, before the list filters narrow the page.
+	const visible = viewerIsClient ? placed : providerVisibleCards(placed, viewerStageIds);
+	const fundedStages = stages.map((stage) => ({
+		...stage,
+		funding: rollupFundingState(
+			visible.flatMap((c) => (c.stageId === stage.id && c.funding ? [c.funding] : [])),
+		),
+	}));
 	// #endregion
 
 	// #region Seats
@@ -1754,7 +1826,7 @@ export async function fetchBoardPage(
 		viewerStageIds,
 		columns,
 		cards,
-		stages,
+		stages: fundedStages,
 		assignees,
 		workspaceKind: summary.scopeType,
 		workspaceLabel: clampOr(summary.scopeLabel, 120, "Personal"),

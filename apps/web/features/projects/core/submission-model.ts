@@ -1,5 +1,6 @@
 import type {
 	SubmissionNodeKind,
+	SubmissionRevisions,
 	SubmissionStatus,
 	SubmissionTreeNode,
 } from "../types/projects-types.ts";
@@ -75,6 +76,19 @@ export function statusTone(status: SubmissionStatus): "warning" | "danger" | "su
 	}
 }
 
+/**
+ * The review modal's allotment line — "1 of 2 free revisions used" (Decision #167) — or `null` when the
+ * stage's free rounds are unlimited and there is nothing to count. Used rounds never read past the
+ * allotment: rounds bought after it are paid, not free.
+ */
+export function revisionAllowanceLabel(
+	revisions: Pick<SubmissionRevisions, "used" | "allowed">,
+): string | null {
+	if (revisions.allowed === null) return null;
+	const used = Math.min(revisions.used, revisions.allowed);
+	return `${used} of ${revisions.allowed} free revision${revisions.allowed === 1 ? "" : "s"} used`;
+}
+
 /** Human label for a tree-node kind (a11y / tooltips). */
 export function nodeKindLabel(kind: SubmissionNodeKind): string {
 	switch (kind) {
@@ -122,60 +136,5 @@ export function childNodesAt(tree: SubmissionTreeNode[], path: string[]): Submis
 export function nodeShowsChildCards(node: SubmissionTreeNode | null): boolean {
 	if (!node) return true;
 	return node.kind !== "unit" && node.kind !== "dir";
-}
-// #endregion
-
-// #region Create-submission tickets (Create Submission Modal, §4)
-/**
- * A ticket the freelancer can fulfil with a new submission — a normal `ticket`, or a `revision` ticket
- * (the client returned an earlier submission for changes). One-off engagements have no tickets.
- */
-export interface SubmissionTicketOption {
-	id: string;
-	title: string;
-	kind: "ticket" | "revision";
-}
-
-/** A tiny stable hash → non-negative int (no RNG; stable per seed). */
-function hashKey(s: string): number {
-	let h = 0;
-	for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-	return h;
-}
-
-const TICKET_TITLES = [
-	"Revise the landing hero",
-	"Ship the icon set",
-	"Polish the checkout flow",
-	"Refine the motion pass",
-	"Finalise the brand system",
-];
-
-/**
- * The freelancer's open tickets in the active stage — the Create Submission modal's ticket dropdown
- * (root task §4). Pipeline/session engagements fulfil tickets (1–3, sometimes a revision ticket among
- * them); a one-off has none (returns `[]`, so the modal shows no dropdown and defaults the name to the
- * stage/project). Derived deterministically from the seed so the list is stable per stage.
- */
-export function submissionTickets(
-	seedKey: string,
-	opts: { hasTickets: boolean },
-): SubmissionTicketOption[] {
-	if (!opts.hasTickets) return [];
-	const seed = hashKey(seedKey);
-	const count = 1 + (seed % 3); // 1–3 tickets
-	const out: SubmissionTicketOption[] = [];
-	for (let i = 0; i < count; i++) {
-		const kind: SubmissionTicketOption["kind"] = i === count - 1 && seed % 2 === 0
-			? "revision"
-			: "ticket";
-		const num = 100 + ((seed + i * 37) % 800);
-		out.push({
-			id: `TCK-${num}`,
-			title: `TCK-${num} · ${TICKET_TITLES[(seed + i) % TICKET_TITLES.length]}`,
-			kind,
-		});
-	}
-	return out;
 }
 // #endregion

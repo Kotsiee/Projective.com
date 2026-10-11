@@ -1,5 +1,6 @@
 import { getWorkspace, postWorkspace, queryOf } from "./api.ts";
 import type { UserContext } from "@projective/types/auth";
+import type { BusinessBillingView, UpdateBillingInput } from "@projective/types/finance";
 import type {
 	ActingOrganisation,
 	ArchiveRoleInput,
@@ -164,6 +165,16 @@ export const WorkspaceService = {
 	/** Write a business's spend policy — approval threshold, approvers, contributors, per-member limits. */
 	updateSpend(input: UpdateSpendInput): Promise<WorkspaceResult<WorkspaceDetail>> {
 		return postWorkspace<WorkspaceDetail>(WORKSPACE_ENDPOINTS.spend, input);
+	},
+
+	/** Save a business's Billing module settings (invoicing terms · auto-funding · balance floor). */
+	updateBilling(input: UpdateBillingInput): Promise<WorkspaceResult<BusinessBillingView>> {
+		return postWorkspace<BusinessBillingView>("/api/finance/billing", input);
+	},
+
+	/** Pay a business invoice's amount due from the business wallet. */
+	payInvoice(invoiceId: string): Promise<WorkspaceResult<BusinessBillingView>> {
+		return postWorkspace<BusinessBillingView>(`/api/finance/invoices/${encodeURIComponent(invoiceId)}/pay`, {});
 	},
 
 	/** Approve or decline an outstanding spend request on a business's pooled wallet. */

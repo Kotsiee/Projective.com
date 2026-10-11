@@ -360,15 +360,12 @@
 	opacity: 0.6;
 }
 
+/* Body-portalled; `.ui-anchored` + `useEdgeDetection` own position and the stack's z-index. */
 .site-header__entity-menu {
-	position: absolute;
-	inset-block-start: calc(100% + var(--space-2));
-	inset-inline-start: 0;
 	min-inline-size: 11rem;
 	margin: 0;
 	padding: var(--space-1);
 	list-style: none;
-	z-index: 5;
 	background: var(--surface-2);
 	border: 1px solid var(--hairline-color);
 	border-radius: var(--radius-lg);
@@ -554,64 +551,9 @@
 }
 /* #endregion */
 
-/* #region Mobile drawer + dismiss backdrop */
-/* Dismiss backdrop — clicking anywhere off the drawer closes it. Rendered persistently and toggled
-   with `.is-open` so open AND close both animate; inert (pointer-events:none) while hidden. */
-.site-header__backdrop {
-	pointer-events: none;
-	position: fixed;
-	inset: 0;
-	z-index: var(--z-backdrop, 1000);
-	background: color-mix(in srgb, var(--surface) var(--tint-strong), rgba(0, 0, 0, 0.45));
-	backdrop-filter: blur(var(--scrim-blur));
-	-webkit-backdrop-filter: blur(var(--scrim-blur));
-	opacity: 0;
-	transition: opacity var(--dur-medium) var(--ease-standard);
-}
-
-.site-header__backdrop.is-open {
-	pointer-events: auto;
-	opacity: 1;
-}
-
-/* Slide-out drawer — off-canvas to the right, springs in on open. Full viewport height, capped width. */
-.site-header__drawer {
-	pointer-events: auto;
-	position: fixed;
-	inset-block: 0;
-	inset-inline-end: 0;
-	z-index: var(--z-overlay, 1100);
-	inline-size: min(84vw, 20rem);
-	max-inline-size: 100%;
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-5);
-	padding: calc(var(--site-bar-h) + var(--space-6)) var(--space-5) var(--space-6);
-	background: color-mix(in srgb, var(--surface) var(--glass-veil-sheet), transparent);
-	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-	border-inline-start: 1px solid var(--hairline-color);
-	box-shadow: var(--elevation-high);
-	transform: translateX(100%);
-	transition: transform var(--dur-medium) var(--spring-standard);
-	overflow-y: auto;
-}
-
-.site-header__drawer.is-open {
-	transform: translateX(0);
-}
-
-.site-header__drawer:focus-visible {
-	outline: none;
-}
-
-.site-header__drawer-brand {
-	font-weight: 700;
-	font-size: 1.15rem;
-	letter-spacing: -0.01em;
-	color: var(--on-surface);
-}
-
+/* #region Mobile drawer */
+/* The panel, scrim, z-index, focus trap and scroll lock are the shared `Drawer`'s (§B.10); this file
+   styles only what sits inside it. */
 .site-header__drawer-nav {
 	display: flex;
 	flex-direction: column;
@@ -764,6 +706,7 @@
 	display: flex;
 	align-items: center;
 	gap: var(--space-3);
+	margin-block-start: var(--space-5);
 	padding-block: var(--space-3);
 	border-block: 1px solid var(--hairline-color);
 }
@@ -778,7 +721,6 @@
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-3);
-	margin-block-start: auto;
 }
 
 /* Full-width block variants of the header actions, used inside the drawer. */
@@ -842,18 +784,6 @@
 	.site-header--menu-open .site-header__search {
 		display: none;
 	}
-
-	/* Float the header (and its morphing X) above the backdrop/drawer so it stays tappable. */
-	.site-header--menu-open {
-		z-index: calc(var(--z-overlay, 1100) + 50);
-	}
 }
 
-/* Above the mobile breakpoint the drawer machinery is fully inert — never rendered/interactive. */
-@media (min-width: 901px) {
-	.site-header__backdrop,
-	.site-header__drawer {
-		display: none;
-	}
-}
 /* #endregion */

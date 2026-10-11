@@ -2,6 +2,8 @@ import type { JSX } from "preact";
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { Icon } from "@projective/ui/icons";
+import { useDismiss, useEdgeDetection, useOverlayStack } from "@projective/ui/hooks";
+import { BodyPortal } from "@projective/ui/overlay";
 import {
 	DEFAULT_SEARCH_SCOPE,
 	SEARCH_SCOPES,
@@ -40,7 +42,6 @@ export function ResultsHeader(
 	const draft = useSignal(query);
 	const scope = useSignal<SearchScope>(scopeOf(category));
 	const menuOpen = useSignal(false);
-	const entityRef = useRef<HTMLDivElement>(null);
 	const optionRefs = useRef<Array<HTMLLIElement | null>>([]);
 
 	useEffect(() => {
@@ -50,23 +51,21 @@ export function ResultsHeader(
 		scope.value = scopeOf(category);
 	}, [category]);
 
-	// Close the scope menu on an outside click or Escape — the header's own behaviour.
-	useEffect(() => {
-		const onDoc = (e: MouseEvent) => {
-			if (menuOpen.value && entityRef.current && !entityRef.current.contains(e.target as Node)) {
-				menuOpen.value = false;
-			}
-		};
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape" && menuOpen.value) menuOpen.value = false;
-		};
-		document.addEventListener("click", onDoc);
-		document.addEventListener("keydown", onKey);
-		return () => {
-			document.removeEventListener("click", onDoc);
-			document.removeEventListener("keydown", onKey);
-		};
-	}, []);
+	// Outside press and Escape through the shared overlay stack, which also sets its z-index.
+	const stack = useOverlayStack({ active: menuOpen.value });
+	// Portalled and anchored, so no sticky or glass ancestor can clip the list or re-base it (§B.10.4).
+	const menu = useEdgeDetection<HTMLButtonElement, HTMLUListElement>({
+		open: menuOpen.value,
+		offset: 8,
+		zIndex: stack.zIndex,
+	});
+	useDismiss({
+		open: menuOpen.value,
+		enabled: stack.isTop,
+		onDismiss: () => (menuOpen.value = false),
+		panelRef: menu.ref,
+		triggerRef: menu.triggerRef,
+	});
 
 	const submit = (e: JSX.TargetedEvent<HTMLFormElement>) => {
 		e.preventDefault();
@@ -117,8 +116,9 @@ export function ResultsHeader(
 		<header class="ex-results-head">
 			<h1 class="ex-results-head__q">{title}</h1>
 			<form class="ex-results-head__search" role="search" onSubmit={submit}>
-				<div class="ex-results-head__entity" ref={entityRef}>
+				<div class="ex-results-head__entity">
 					<button
+						ref={menu.triggerRef}
 						type="button"
 						class="ex-results-head__entity-btn"
 						aria-haspopup="listbox"
@@ -137,24 +137,32 @@ export function ResultsHeader(
 						<Icon name="chevron-down" size="2xs" class="ex-results-head__entity-caret" />
 					</button>
 					{menuOpen.value && (
-						<ul class="ex-results-head__entity-menu" role="listbox" aria-label="Search scope">
-							{SEARCH_SCOPES.map((opt, i) => (
-								<li
-									key={opt.value}
-									ref={(el) => {
-										optionRefs.current[i] = el;
-									}}
-									role="option"
-									aria-selected={scope.value === opt.value}
-									class="ex-results-head__entity-option"
-									tabIndex={0}
-									onClick={() => pick(opt.value)}
-									onKeyDown={onOptionKey(i, opt.value)}
-								>
-									{opt.label}
-								</li>
-							))}
-						</ul>
+						<BodyPortal>
+							<ul
+								ref={menu.ref}
+								class="ui-anchored ex-results-head__entity-menu"
+								role="listbox"
+								aria-label="Search scope"
+								style={menu.style}
+							>
+								{SEARCH_SCOPES.map((opt, i) => (
+									<li
+										key={opt.value}
+										ref={(el) => {
+											optionRefs.current[i] = el;
+										}}
+										role="option"
+										aria-selected={scope.value === opt.value}
+										class="ex-results-head__entity-option"
+										tabIndex={0}
+										onClick={() => pick(opt.value)}
+										onKeyDown={onOptionKey(i, opt.value)}
+									>
+										{opt.label}
+									</li>
+								))}
+							</ul>
+						</BodyPortal>
 					)}
 				</div>
 				<input

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ServiceBookingFormat, ServiceCtaRigSchema } from "./common.ts";
 import { ContactOfferSchema } from "./contact.ts";
 import { PipelineDraftSchema } from "./pipeline.ts";
+import { CohortOfferSchema } from "../projects/sessions.ts";
 
 /**
  * services.offer — the **resolved commercial offer** for one listing and one viewer: what the primary
@@ -54,6 +55,12 @@ export const ServiceBookingOfferSchema = z.object({
 	contact: ContactOfferSchema,
 	/** Cohort seats, or `null` for every format without finite capacity. */
 	capacity: CohortCapacitySchema.nullable(),
+	/**
+	 * The cohort a group-session listing seats into right now — its real occupancy, sittings and
+	 * curriculum (`projects.get_cohort_offer`, Decision #171). `null` for every other format, and for
+	 * a group session with no enrolling cohort (which then cannot be reserved).
+	 */
+	cohort: CohortOfferSchema.nullable().default(null),
 	/**
 	 * The pipeline draft this buyer already has for this service, or `null`.
 	 *

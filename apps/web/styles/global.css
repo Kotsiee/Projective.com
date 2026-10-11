@@ -345,4 +345,25 @@ summary:focus-visible,
 	box-shadow: var(--fld-focus-glow) !important;
 }
 
+/*
+ * OVERLAYS keep a focus ring (Decision #163, the owner's scoped exception to the region above).
+ *
+ * Everything portalled into `document.body` — every Dialog, Drawer, menu, palette and sheet — mounts
+ * under a `[data-ui-portal]` host, so this one selector covers the family without listing members. A
+ * keyboard user in a drawer has no page context to orient by, and Escape/Tab inside a trapped panel is
+ * unusable without knowing where focus sits. An OUTLINE so the elevation restores above still own
+ * `box-shadow`; the fields' own glow controls and text inputs are excluded so nothing is ringed twice.
+ */
+[data-ui-portal] :is(a[href], button, summary, [tabindex]:not([tabindex="-1"])):focus-visible:not(
+	.ui-switch__track,
+	.ui-select-button__option,
+	.pjc__type,
+	.wlt-ruler__cell,
+	.apk-main__back,
+	.pf-media__iconbtn
+) {
+	outline: var(--overlay-focus-ring) !important;
+	outline-offset: var(--overlay-focus-offset) !important;
+}
+
 /* #endregion */

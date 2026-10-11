@@ -17,6 +17,7 @@ import {
 } from "../core/resize-geometry.ts";
 import { usePresence } from "../core/usePresence.ts";
 import { useControllable } from "../../hooks/useControllable.ts";
+import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import { useId } from "../../hooks/useId.ts";
 import type { Bindable } from "../../fields/types/mod.ts";
 
@@ -122,22 +123,6 @@ interface ResizeCue {
 	visible: boolean;
 }
 /**
- * Highest offset currently claimed by an open window, so the most-recently-touched one floats above
- * its siblings. Bounded on purpose: an unreleased running counter climbs one step per interaction, and
- * since `--z-draggable` (1500) sits only 100 below `--z-toast` and 200 below `--z-tooltip`, a couple of
- * hundred clicks in a long-lived panel used to lift the window above both.
- */
-let zTop = 0;
-/** Offsets held by currently-mounted windows — `zTop` is derived from these, never accumulated. */
-const liveZ = new Set<number>();
-
-/** Recompute the ceiling from live windows; resets to 0 once the last one closes. */
-function releaseZ(mine: number): void {
-	liveZ.delete(mine);
-	zTop = liveZ.size === 0 ? 0 : Math.max(...liveZ);
-}
-
-/**
  * DraggablePopover — a **non-modal**, freely draggable floating window. Deliberately unlike
  * {@link Drawer}/{@link Dialog}: there is **no backdrop and no focus trap**, so the page beneath stays
  * 100% interactive (scroll, click, type) while the window is open — the use-case is a persistent
@@ -152,7 +137,7 @@ function releaseZ(mine: number): void {
  * neighbours fading) that holds for the whole drag. The bottom inline-end corner is the one grip in
  * the tab order (arrow keys, `Shift` for a larger step). The body scrolls internally on overflow.
  * `onPositionChange`/`onSizeChange` fire at the end of a move/resize so the caller can persist them.
- * Touching any part of a window lifts it above the others (a shared z-counter).
+ * Touching any part of a window lifts it above the others (a passive claim in the overlay stack).
  *
  * **A11y.** `role="dialog"` with `aria-modal="false"` (explicitly non-blocking) + `aria-labelledby`.
  * The drag handle is a `role="button"` with a descriptive `aria-label`; the close control is a sibling
@@ -190,7 +175,6 @@ export function DraggablePopover(props: DraggablePopoverProps): JSX.Element | nu
 	const [size, setSizeState] = useState<PopoverSize | null>(sizeRef.current);
 	const resizeDrag = useRef<ResizeDrag | null>(null);
 	const cue = useSignal<ResizeCue>({ grip: KEYBOARD_GRIP, visible: false });
-	const [z, setZ] = useState(0);
 	const titleId = useId(undefined, "dpopover") + "-title";
 
 	const setPos = (next: PopoverPosition) => {
@@ -215,21 +199,12 @@ export function DraggablePopover(props: DraggablePopoverProps): JSX.Element | nu
 		};
 	};
 
-	const lift = () => {
-		setZ((prev) => {
-			if (prev !== 0 && prev === zTop) return prev; // already on top — don't burn a step
-			liveZ.delete(prev);
-			const next = ++zTop;
-			liveZ.add(next);
-			return next;
-		});
-	};
-
-	// Release this window's claim on unmount so the ceiling falls back with it (and resets to 0 once
-	// the last window closes) instead of ratcheting up for the life of the session.
-	const zRef = useRef(z);
-	zRef.current = z;
-	useEffect(() => () => releaseZ(zRef.current), []);
+	// A PASSIVE claim in the shared stack: touching the window raises it above its siblings and a
+	// dropdown opened inside it steps above it, yet it never takes Escape (`isTop`) from a modal beside
+	// it — the window is persistent and non-modal. The ceiling is derived from live claims, so it can
+	// never climb past the toast and tooltip bands however long the panel stays open.
+	const stack = useOverlayStack({ active: mounted, layer: "draggable", passive: true });
+	const lift = stack.raise;
 	const close = () => ctrl.set(false);
 
 	// #region Docking + viewport changes
@@ -436,7 +411,7 @@ export function DraggablePopover(props: DraggablePopoverProps): JSX.Element | nu
 				style={styleVars({
 					"--dd-x": `${pos.x}px`,
 					"--dd-y": `${pos.y}px`,
-					"--dd-z": z,
+					"--z-portal": String(stack.zIndex),
 					"--ddp-w": size ? `${size.w}px` : width,
 					"--ddp-h": size ? `${size.h}px` : height,
 				})}

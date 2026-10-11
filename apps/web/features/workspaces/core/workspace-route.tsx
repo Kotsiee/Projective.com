@@ -6,6 +6,8 @@ import {
 	type WorkspaceRoster as RosterPage,
 } from "@projective/types/workspace";
 import type { ReadActor } from "@server/services/read-actor.ts";
+import type { BusinessBillingView } from "@projective/types/finance";
+import { BillingBackendService } from "@server/services/finance/BillingBackendService.ts";
 import { isModuleKey, type ModuleKey } from "./module-registry.tsx";
 import { resolveRoster, resolveWorkspaceConsole } from "./workspace-ssr.ts";
 import { toModuleTab, toRosterTab } from "./workspace-model.ts";
@@ -31,6 +33,8 @@ export interface ConsoleData {
 	workspace: WorkspaceDetail;
 	module: ModuleKey;
 	view: string | null;
+	/** The Billing module's projection — read only for a business's `billing` module, else `null`. */
+	billing?: BusinessBillingView | null;
 }
 
 /**
@@ -100,12 +104,17 @@ export async function consoleOutcome(
 		return { kind: "redirect", to: bootstrap.redirectedFrom ? to : `${to}${url.search}` };
 	}
 
+	const billing = kind === "business" && bootstrap.activeModule === "billing"
+		? (await BillingBackendService.view(workspace.id, actor)).data ?? null
+		: null;
+
 	return {
 		kind: "data",
 		data: {
 			workspace,
 			module: bootstrap.activeModule,
 			view: toModuleTab(bootstrap.activeModule, kind, url.searchParams.get("view")),
+			billing,
 		},
 	};
 }

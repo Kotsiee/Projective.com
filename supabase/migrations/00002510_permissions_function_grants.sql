@@ -715,6 +715,17 @@ EXECUTE ON FUNCTION finance.set_invoicing_terms (text, uuid, text, integer) TO a
 -- moves money only through the service-role primitives it calls as its owner.
 GRANT EXECUTE ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text) TO authenticated;
 
+-- Auto-funding and billing doors (00001250). Each authorises the caller itself: billing controls and
+-- paying an invoice on manage_billing; paying on account on fn_can_manage_basket + KYB + monthly
+-- invoicing + the on-account limit, crediting only through the primitives it calls as its owner; the
+-- standing read answers only for a business the caller can see. Everything else in 00001250 (the
+-- queue drain, the wallet watch, the billing run, the statement generator) stays service-role only.
+GRANT EXECUTE ON FUNCTION finance.get_billing_settings(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.set_billing_controls(uuid, text, bigint) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.place_on_account_order(uuid, uuid[], text, jsonb, text, text, bigint) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.get_on_account_standing(uuid, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION finance.pay_invoice(uuid) TO authenticated;
+
 -- The wallet's own movements (00001210 §12) — the same posture: each checks the caller's capability on
 -- the wallet money leaves and membership of the wallet it lands in, then moves money only through the
 -- primitives it calls as its owner. Deciding a spend request moves nothing; it is gated on
@@ -787,6 +798,9 @@ FROM authenticated;
 REVOKE ALL ON FUNCTION finance.fn_hold_ticket_escrow (uuid)
 FROM authenticated;
 
+REVOKE ALL ON FUNCTION finance.fn_hold_revision_escrow (uuid)
+FROM authenticated;
+
 REVOKE ALL ON FUNCTION finance.fn_release_ticket_escrow (uuid)
 FROM authenticated;
 
@@ -813,8 +827,11 @@ FROM authenticated;
 -- --- finance: the Stripe fiat rails (00001230, Decision #125) ---
 -- USER doors: each authorises the caller with auth.uid() and records a REQUEST — it can never mark
 -- money received, an account payable or an identity verified.
-REVOKE ALL ON FUNCTION finance.begin_card_payment (text, uuid, uuid, uuid, bigint, text, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION finance.begin_card_payment (text, uuid, uuid, uuid, bigint, text, text) TO authenticated;
+REVOKE ALL ON FUNCTION finance.begin_card_payment (text, uuid, uuid, uuid, bigint, text, text, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.begin_card_payment (text, uuid, uuid, uuid, bigint, text, text, uuid) TO authenticated;
+-- Single-ticket funding (Decision #166): a signed-in payer's door, never anon's.
+REVOKE ALL ON FUNCTION projects.fund_ticket (uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.fund_ticket (uuid, uuid) TO authenticated;
 REVOKE ALL ON FUNCTION finance.attach_card_payment (uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.attach_card_payment (uuid, text) TO authenticated;
 REVOKE ALL ON FUNCTION finance.abandon_card_payment (uuid, text) FROM PUBLIC, anon;
@@ -1012,8 +1029,21 @@ GRANT EXECUTE ON FUNCTION projects.cancel_stage_fair_exit (uuid, uuid, integer) 
 REVOKE ALL ON FUNCTION projects.fn_release_expired_claims (timestamptz) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.fn_release_expired_claims (timestamptz) TO service_role;
 
+-- Internal to the claim paths (Decision #165): callable directly, anybody could mark any unfunded
+-- ticket Needs funding and notify its owner at will.
+REVOKE ALL ON FUNCTION projects.fn_mark_needs_funding (uuid, jsonb) FROM PUBLIC, anon, authenticated;
+
 -- Trigger function: EXECUTE is checked at CREATE TRIGGER, so no role needs it.
 REVOKE ALL ON FUNCTION projects.fn_ticket_settlement_guard () FROM PUBLIC, anon, authenticated;
+
+-- Paid revisions (Decision #167). The two doors check review authority / the payer rule themselves;
+-- the notifier and the terms trigger are internal (a direct call could notify anybody about anything).
+REVOKE ALL ON FUNCTION projects.request_paid_revision (uuid, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.request_paid_revision (uuid, jsonb) TO authenticated;
+REVOKE ALL ON FUNCTION projects.fund_paid_revision (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.fund_paid_revision (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION projects.fn_notify_revision (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.fn_stage_revision_terms () FROM PUBLIC, anon, authenticated;
 
 -- --- membership doors (00001135) ---
 
@@ -1464,4 +1494,42 @@ GRANT EXECUTE ON FUNCTION security.purge_due_account_deletions (integer) TO serv
 -- default, Decision #151(c)).
 REVOKE ALL ON FUNCTION comms.fn_auto_reply_status (uuid, text, timestamptz) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION comms.tg_dm_auto_reply () FROM PUBLIC, anon, authenticated;
+-- #endregion
+
+-- #region Sessions & cohorts (00001155, Decision #171)
+-- `projects` does not revoke PUBLIC by default, so every function here is stated. The internal
+-- primitives — above all fn_confirm_seat, which mints a membership and debits a wallet for whatever
+-- it is handed — are reachable only from the definers that call them.
+REVOKE ALL ON FUNCTION projects.fn_session_param (text, integer) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.fn_is_session_host (uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.fn_cohort_seats_taken (uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.fn_confirm_seat (uuid, uuid, text, uuid, bigint, text, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.fn_session_presence (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.fn_session_presence (uuid) TO service_role;
+REVOKE ALL ON FUNCTION finance.fn_release_seat_escrow (uuid, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_refund_seat_escrow (uuid) FROM PUBLIC, anon, authenticated;
+-- The listing's public seat count and curriculum: guests read the entity view.
+REVOKE ALL ON FUNCTION projects.get_cohort_offer (uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION projects.get_cohort_offer (uuid) TO anon, authenticated, service_role;
+-- Signed-in doors; each authorises the caller with auth.uid().
+REVOKE ALL ON FUNCTION projects.reserve_seat (uuid, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.reserve_seat (uuid, integer) TO authenticated;
+REVOKE ALL ON FUNCTION projects.cancel_cohort_membership (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.cancel_cohort_membership (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION projects.record_host_attendance (uuid, uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.record_host_attendance (uuid, uuid) TO authenticated;
+REVOKE ALL ON FUNCTION projects.claim_session_no_show (uuid, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.claim_session_no_show (uuid, text) TO authenticated;
+REVOKE ALL ON FUNCTION projects.session_join_link (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.session_join_link (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION projects.complete_lesson (uuid, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.complete_lesson (uuid, boolean) TO authenticated;
+REVOKE ALL ON FUNCTION projects.get_session_workspace (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION projects.get_session_workspace (uuid) TO authenticated;
+-- Presence is the provider's signed webhook, through the app's service-role door — nobody else.
+REVOKE ALL ON FUNCTION projects.record_presence (text, text, text, text, timestamptz, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.record_presence (text, text, text, text, timestamptz, text) TO service_role;
+-- The sweep pg_cron runs (as its owner); the service role may run it by hand.
+REVOKE ALL ON FUNCTION finance.auto_release_session_escrow (timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.auto_release_session_escrow (timestamptz) TO service_role;
 -- #endregion

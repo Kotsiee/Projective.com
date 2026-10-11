@@ -7,6 +7,8 @@
 
 .ui-toast {
 	position: fixed;
+	/* Static by design (§B.10.3): the toast band outranks every class `useOverlayStack` allocates,
+	   and a toast region never nests another overlay or owns Escape. */
 	z-index: var(--z-toast);
 	display: flex;
 	flex-direction: column;

@@ -204,6 +204,7 @@ column for them.** Their canonical definitions are the enum + doc listed:
 | **Verification stamp** (Decision #155) | A DERIVED projection, never a stored transition: a person's `none → id_verified → vault_verified` follows their KYC status and payout readiness (a lapse moves it back down), re-derived by trigger on every KYC/payout write and on every Standing recompute; a business's or organisation's `corporate_verified` is read live from its KYB | `org.entity_standing.verification_stamp` · `org.fn_verification_stamp` · `packages/types/org/standing.ts` |
 | **Trust signals** (Decision #155) | DERIVED, not a lifecycle: earned and lost with the delivery record at each Standing recompute; at most one per dimension | `org.entity_standing.active_adornments` · `org.fn_refresh_active_adornments` |
 | **Fund state**             | `locked → pending → available`; `on_hold` (dispute)        | `finance.fund_state` · `finance-model.md` §7         |
+| **Payment & work-start** (per ticket — Decisions #165–#167) | `Draft → Needs funding → Payment processing → Funded → In progress → In review → Released`; `Failed` (retryable) · `Refunded` (terminal per escrow). No hold, no work | §3.6 · `PRODUCT_SPEC.md` §Escrow, Wallets & Finance #2 · §Purchase Methods |
 | **Invoice**                | `draft → issued → paid`; `overdue` / `void`                | `finance.invoices.status` · `finance-model.md` §15   |
 | **Statement**              | `draft → issued → final`                                   | `finance.statement_status` · `finance-model.md` §15  |
 | **Dispute**                | `open → under_review → resolved` / `refunded`              | `dispute_status` · `brain.md` §Disputes              |
@@ -386,6 +387,113 @@ is hard-deleted — a retired verification/invoice/dispute goes to a terminal st
 (§5.4); (3) a change to any of these transitions updates its canonical home **and** this row in the
 same change (§5.1). The build state-machine's own **Disputed** state and **Review/Escrow-Locked**
 substates (§3.3) _mirror_ the product's escrow semantics but remain build-tracker states, not these.
+
+### 3.6 Payment & work-start lifecycle (per ticket)
+
+A product domain lifecycle in the §3.5 sense — **not** a board column, and its `Draft` is not the
+§3.1 `Draft` nor `project_status = 'draft'`. It answers one question per ticket: _is the money held,
+and may work start?_ The rule it encodes is root CLAUDE.md §8 Decision #165: **no hold, no work.**
+Single-ticket funding is Decision #166, paid revisions #167. Canonical business text:
+`PRODUCT_SPEC.md` §Escrow, Wallets & Finance #2 and §Purchase Methods.
+
+```text
+Draft ──(lock trigger, hold made)──────────────────────────────► Funded (escrow held)
+Draft ──(lock trigger, hold refused)───────────────────────────► Needs funding
+Needs funding ──(wallet hold, ticket has a payee)──────────────► Funded
+Needs funding ──(funds in place, no payee yet — Pipeline)──────► Draft
+Needs funding ──(card Buy Now started)─────────────────────────► Payment processing
+Needs funding ──(auto-fund: wallet credit covers it, payee)────► Funded   (Decision #172)
+Needs funding ──(auto-fund: wallet credit covers it, no payee)─► Draft
+Payment processing ──(webhook succeeded + lock locked)─────────► Funded
+Payment processing ──(payment failed / lock refused)───────────► Failed
+Payment processing ──(payer abandons)──────────────────────────► Needs funding
+Failed ──(retry card)──────────────────────────────────────────► Payment processing
+Failed ──(hold from the wallet the failed lock credited)───────► Funded
+Funded ──(payee starts work)───────────────────────────────────► In progress
+In progress ──(payee submits)──────────────────────────────────► In review
+In review ──(changes requested)────────────────────────────────► In progress
+In review ──(client approves)──────────────────────────────────► Released   (terminal per escrow)
+
+Funded · In progress · In review ──(claim TTL expiry · cancellation · dispute refund ·
+                                    fair exit's refund share)───► Refunded   (terminal per escrow)
+Refunded ──(client re-pools the ticket)────────────────────────► Draft
+```
+
+**Lock triggers** (when `Draft` is left): **One-Off / Task** — when the project or its first stage
+begins (its seat is hired by then, so the escrow has a payee); **Pipeline** — at **claim**
+(`PRODUCT_SPEC.md` §Escrow Lifecycle for Tickets is authoritative over the older "In Progress"
+wording); **Sessions** — when the booking is confirmed.
+
+**Auto-funding** (Decision #172, `PRODUCT_SPEC.md` §Escrow, Wallets & Finance #4): on a business
+project in `from_wallet` mode a ticket entering Needs funding joins the auto-fund queue, and the
+**system** moves it on the next wallet credit that covers it — held as the project owner (inside their
+spending limit; a spend approval first at or above the threshold), or back to Draft without a payee.
+In `add_to_basket` mode it is added to the business basket instead. Each act is a `ticket_history`
+entry (`auto_fund_*`).
+
+| State | Meaning | Who can act | What unlocks the next state | Stored as (today / planned) |
+| :-- | :-- | :-- | :-- | :-- |
+| **Draft** | No escrow is owed yet: the lock trigger has not fired. Includes a Pipeline ticket the client has already paid for (money in the payer wallet, funding scope set) that nobody has claimed — escrow needs a payee. | **Client side** (owner, admin, manager): price, publish, fund ahead. **Freelancer**: claim a ticket on their board (only paid, onboarded tickets are visible). | The lock trigger fires. If the hold is made → **Funded**; if it cannot be made (no price, no payer wallet in the project currency, payer cannot cover it, spending limit) → **Needs funding**. | `payment_status = 'unpaid'` |
+| **Needs funding** | The lock trigger fired and the hold was refused. The claim did **not** succeed; the ticket is off every freelancer's board. | **Client side only** — whoever may spend from the paying wallet (the project owner's spending envelope on a business wallet; the owner's own wallet for an individual client). Freelancers cannot act. | **Wallet hold** (top-up, then hold) → **Funded** when the ticket has a payee. **Card Buy Now** started → **Payment processing**. If funds are put in place but the ticket has **no payee** (an unclaimed Pipeline ticket) → back to **Draft**, on freelancers' boards again; the next claim holds. | `payment_status = 'needs_funding'` — written by `projects.fn_mark_needs_funding` when a claim's or a chain's hold is refused; cleared by the next successful hold |
+| **Payment processing** | A card payment (`inbound_payments`, purpose `escrow_lock`, scoped to this ticket by `ticket_id` under #166) is in flight. | **Nobody in the app**: only the signed Stripe webhook moves it. The payer may abandon. | Webhook `succeeded` **and** `lock_status = 'locked'` → **Funded**. Payment `failed`, or settled with `lock_status = 'failed'` → **Failed**. Abandoned → **Needs funding**. | `inbound_payment_status` `requires_payment` / `processing`; `lock_status = 'pending'` |
+| **Failed** | The card payment failed, or it settled but the lock was refused (the money stays in the paying wallet, `lock_error` says why). **Not terminal.** | **Client side**: retry the card, or hold from the wallet the failed lock already credited. | Retry → **Payment processing**. Wallet hold → **Funded**. | `inbound_payment_status = 'failed'` or `lock_status = 'failed'` |
+| **Funded (escrow held)** | Escrow is held for this ticket and payee. For a Pipeline ticket this is the same instant as the claim. | **Freelancer / team (payee)**: start work. **Client side**: may no longer drag the ticket (`ticketWorkLocked`). **System**: the claim TTL. | Payee starts → **In progress**. An unstarted claim past `claim_ttl_minutes` → **Refunded** (`fn_release_expired_claims` → `fn_refund_ticket_escrow`, ticket reset to `backlog` / `unpaid`). | `finance.escrows.status = 'held'`; `payment_status = 'escrow_funded'`; `ticket_status` `claimed` |
+| **In progress** | Work under way against held money. | **Payee**: deliver, submit. **Either party**: raise a dispute (funds go `on_hold`, §3.5 Fund state). | Submit → **In review**. Cancellation / fair exit → **Refunded** (the refund share) and **Released** (the payee's share). | `ticket_status = 'in_progress'` |
+| **In review** | Delivered; awaiting the client's verdict. A **paid revision** (#167) bought here adds its own held escrow to the ticket, at the stage's frozen extra-round price, only after the free rounds are used (§3.7). | **Client side** (review authority): approve, request changes, buy a paid revision. **Payee**: wait / respond. | Approve → **Released**. Changes requested → **In progress** (escrow stays held). Dispute upheld for the client → **Refunded**. | `ticket_status = 'in_review'` |
+| **Released** | Escrow paid to the payee less the platform fee; the payee's money then follows the §3.5 Fund state (`locked → pending → available`). Terminal for this escrow. A Pipeline approval may lock the next ticket's escrow (the Chain Reaction), which starts **that** ticket's lifecycle. | Nobody (terminal). | — | `escrows.status = 'released'`; `payment_status` `released` / `partially_released` |
+| **Refunded** | The held amount (or the fair exit's refund share) is back in the payer wallet; no fee is charged on a refund. Terminal for this escrow. | Nobody (terminal). The client may re-pool the ticket. | A re-pooled ticket starts again at **Draft**. | `escrows.status = 'refunded'`; `payment_status = 'refunded'` |
+
+**Rules.** (1) A claim never succeeds on an unheld ticket: `fn_hold_ticket_escrow` refuses with
+`PF402` (`needs_funding` + reason + amount), and no path enters `claimed` / `in_progress` /
+`in_review` from outside work without a held escrow (the gate on `trg_ticket_escrow_sync`, #165). (2) The money that funds a hold always comes from a wallet; a card payment tops the
+wallet up first (Decision #125). (3) `Failed` is never terminal; `Released` and `Refunded` are
+terminal **per escrow**, not per ticket. (4) A dispute is a hold on the funds (Fund state `on_hold`),
+not a state of this machine. (5) Nothing here is hard-deleted (§5.4).
+
+**How it is built (#165).** One pure derivation, `deriveFundingState(ticket, escrow, inboundPayment)`
+(`packages/backend/services/finance/funding-state.ts`, schema `FundingStatusSchema` in
+`@projective/types/finance`), returns `{state, amountMinor, currency, amountLabel, canStart, nextAction,
+reason}` and is stamped server-side on the board card (`BoardCard.funding`), each stage
+(`BoardStageRef.funding`, a roll-up), the overview's assignments and roll-up, and the project detail —
+so every surface reads one answer. `canStart` is true only in **Funded**. A pending card payment is
+polled at `GET /api/finance/payments/[id]/status`. Notifications: a refused hold tells the client
+(`escrow.needs_funding`, with the reason and amount); a hold tells the payee "Funded — you can start"
+and the client (`escrow.funded`). **Not built:** the **Needs funding → Draft** edge (funds put in place
+with no payee yet) is not automatic — the ticket stays `needs_funding` until a hold succeeds, and a
+claim still holds if the money is there; the **Payment processing** step reads a stage-scoped card
+payment until #166's `ticket_id` scoping is read by the board. The Dev Context Switcher's **Funding
+state** axis (`fundingState`) substitutes the rendered state.
+
+### 3.7 Revision round lifecycle (per round)
+
+A product domain lifecycle in the §3.5 sense (Decision #167), stored as
+`projects.stage_revision_requests.status` under a CHECK. One row per round a client sends back; the
+submission's own `stage_submissions.status` keeps its four states and the mapper below names them.
+
+```text
+(free round requested, allotment left)  ───────────────────────► Open
+(round past the allotment — "Buy a revision") ─────────────────► Awaiting payment
+Awaiting payment ──(Buy Now settles: escrow held on the ticket)─► Open
+Awaiting payment ──(the submission is accepted or a free round opens)► Cancelled (terminal)
+Open ──(the freelancer resubmits on the ticket)────────────────► Resolved (terminal)
+```
+
+| State | Meaning | Who can act | What unlocks the next state |
+| :-- | :-- | :-- | :-- |
+| **Awaiting payment** | A paid round is raised at the stage's frozen extra-round price; nothing has been sent back. The submission stays `pending_review`. | **Client side** (review authority): pay (Buy Now, wallet or card), or decide the submission instead. | Payment holds the round's escrow → **Open**. A verdict on the submission → **Cancelled**. |
+| **Open** | The work is back with the freelancer (`revisions_requested`, ticket `in_progress`). A paid one is funded: "Paid revision, funded, you can start." | **Payee**: revise and resubmit. | `submit_deliverable` on the ticket → **Resolved** (`resolved_at` set; the new submission's `revision_of` names the one sent back). |
+| **Resolved** | Revised work was resubmitted. Terminal. | Nobody. | — |
+| **Cancelled** | A paid round abandoned before payment. Terminal; no money moved. | Nobody. | — |
+
+**The cap.** A stage's free rounds are `project_stages.file_revisions_allowed` (`NULL` = unlimited;
+copied from the blueprint and frozen on a blueprint engagement); `revisions_used` counts the free
+rounds taken, inside `review_submission` under the stage's row lock. A round is free while the
+allotment is unlimited, not used up, or the extra-round price is `0`; past it `review_submission`
+refuses with `PR402 paid_revision_required` and the price. A bought round never consumes the
+allotment. **Spelling:** the submission status is stored `revisions_requested` and spoken
+`revision_requested` in Zod; the one mapper (`toSubmissionStatus`, `live-support.ts`) translates,
+and the database spelling is kept (renaming it would touch the CHECK, the standing and nav-activity
+functions and the seeds for no behaviour change).
 
 ---
 

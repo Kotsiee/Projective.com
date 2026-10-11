@@ -1176,7 +1176,9 @@ server doors feed it, and they keep the two halves of the rule above apart:
   internal origin instead of a `302` to a signed URL, so the page never sees a storage host, bucket,
   path or signed URL. Range / conditional requests pass through (206 · 304 · 416), headers are built
   from an allowlist with a never-`text/html` type policy and a sandbox CSP on anything not
-  inline-safe, a share read is `no-store`, and a read never counts a download. Full contract:
+  inline-safe, a share read is `no-store`, and a read never counts a download. A top-level
+  navigation to the proxy ("Open image in new tab") is a `303` to `/inspect/[fileId]` unless
+  `?raw=1` / `?download=1` (`features/inspector/core/proxy-navigation.ts`). Full contract:
   `documentation/database/files/Storage.md` §The upload pipeline. It sits under `/api/media/*` because
   the media services own byte delivery (`ROUTING.md` §Profile and media API). Since Decision #162 it
   is also the address every stored asset's preview and grid thumbnail carries (below); the redirect
@@ -1346,7 +1348,7 @@ deferred live path behind the same gate with zero shape churn.
 
 | Half        | Client (thin)      | Routes (thin)                                                        | Service (fat)                |
 | :---------- | :----------------- | :-------------------------------------------------------------------- | :--------------------------- |
-| The basket  | `BasketService`    | `/api/basket/{index,item,move,promo,lists}`                          | `BasketBackendService`       |
+| The basket  | `BasketService`    | `/api/basket/{index,item,move,promo,lists,owners}`                   | `BasketBackendService`       |
 | The flow    | `CheckoutService`  | `/api/checkout/{session,create,details,order,calendar/[orderId]/[lineId]}` | `CheckoutBackendService` |
 | The wallet of cards | `CardsService` | `/api/cards/{index,[id],default}`                                  | `CardsBackendService`        |
 
@@ -1838,7 +1840,7 @@ Migrations `20260724090000`–`20260724094000`. Zod SSOT `@projective/types/comm
 [`database/comms/`](../database/comms/Tables.md).
 
 **Routing policy is data, not code.** `comms.notification_types` holds one row per event key
-(81 seeded) declaring its category, urgency, default channel fan-out, mute-ability, quiet-hours
+(94 seeded) declaring its category, urgency, default channel fan-out, mute-ability, quiet-hours
 override, dedupe window and audit flag. `comms.fn_resolve_channels` intersects that with the
 recipient's global / per-category / per-type preferences, their quiet hours and their digest cadence.
 Adding an event is a catalog row, not a code change in every emit site.
@@ -1861,7 +1863,13 @@ pg_cron ─ fn_process_queue · fn_escalate_unread · fn_build_digests · sweeps
   `comms.notification_feed` view, which filters on `in_app` membership.
 - **Clients cannot write notifications.** There is no `INSERT` policy; rows come from the
   SECURITY DEFINER writer or the service role, so _"Payout sent"_ cannot be spoofed. The only client
-  write is flipping read/seen/archived on your own row.
+  write is flipping read/seen/archived on your own row — a column-scoped `UPDATE` grant
+  (`00002520` §2), since an own-row policy cannot stop a rewrite of the row's title or link. The app
+  goes through the inbox RPCs via `NotificationInboxBackendService` (`/api/notifications/*`).
+- **The app does not subscribe to Realtime for the inbox.** The header drawer and `/notifications`
+  poll `/api/notifications/summary` (30 s, visible tabs only, one poller per page) and re-read the
+  list head when it rises — Decision #173. The table stays in the Realtime publication for any
+  future server-side consumer.
 - **`mandatory` types bypass preferences entirely** — security, money-movement, legal and moderation
   events are not suppressible, and a `marketing_only` unsubscribe can never silence them.
 - **Webhook idempotency is a unique index.** `comms.delivery_events (provider, provider_event_id)`
@@ -2307,7 +2315,7 @@ incorrect API flows.
 
 | Capability | Thin route | Fat method (`PaymentBackendService`) | Database doors (`00001230`) |
 | :--------- | :--------- | :----------------------------------- | :-------------------------- |
-| Fund a stage's escrow by card (One-Off upfront lock · Pipeline "Buy Now") | `POST /api/finance/escrow/intent` | `createEscrowLockIntent` | `begin_card_payment` · `attach_card_payment` · `abandon_card_payment` |
+| Fund a stage's escrow by card (One-Off upfront lock · Pipeline "Buy Now") — or ONE ticket with `ticketId` (Decision #166: that ticket's price, only its escrow held at settlement via `projects.fund_ticket`) | `POST /api/finance/escrow/intent` | `createEscrowLockIntent` | `begin_card_payment` (`p_ticket_id`) · `attach_card_payment` · `abandon_card_payment` |
 | Top a wallet up by card | `POST /api/finance/topup/intent` | `createTopUpIntent` | the same three |
 | Payout account (Connect) onboarding | `POST /api/finance/connect/onboarding` · `GET …/refresh` (Stripe's `refresh_url`) · `GET …/return` (`return_url`) · `GET …/status` | `startConnectOnboarding` · `refreshConnectOnboarding` · `connectStatus` | `payout_account_for` · `record_payout_account` · `sync_payout_account` (service role) |
 | Identity (Level-2 KYC) | `POST /api/finance/identity/session` | `createIdentitySession` | `begin_identity_verification` · `attach_identity_session` · `abandon_identity_verification` |
@@ -2343,13 +2351,14 @@ The same two-door order as §1.1; the new database doors are `00001240_functions
 | :--------- | :--------- | :--------- | :------------- |
 | Withdraw to the payout account | `POST /api/wallet/payouts` (and the wallet's `withdraw` action) | `WalletBackendService.withdraw` → `PaymentBackendService.withdraw` | `begin_payout` (user) · `complete_payout` · `fail_payout` (service role) |
 | Save a card (SetupIntent) | `GET /api/finance/cards/setup` (the publishable key for deferred Elements, Decision #152) · `POST /api/finance/cards/setup` · `POST /api/finance/cards/confirm` (and the wallet's `add_method` action) | `cardSetupConfig` · `createCardSetup` · `confirmCardSetup` | `card_owner_for` · `record_processor_customer` (user) · `record_saved_card` (service role) |
-| Pay at checkout by card or express wallet | `POST /api/checkout/create` (`provider: "card"` · `"express"`) → `GET /api/finance/payments/[id]` | `CheckoutBackendService.create` → `createCheckoutCardPayment` | `ensure_purchase_wallet` + the §1.1 card doors + `attach_checkout_order` (user, Decision #153), then `place_wallet_order` — by the browser AND by `settle_card_payment`, under one key |
+| Pay at checkout by card or express wallet | `POST /api/checkout/create` (`provider: "card"` · `"express"`) → `GET /api/finance/payments/[id]` | `CheckoutBackendService.create` → `createCheckoutCardPayment` | `ensure_purchase_wallet` + the §1.1 card doors + `attach_checkout_order` (user, Decision #153), then `place_wallet_order` — by the browser AND by `settle_card_payment`, under one key. A one-ticket line (Decision #166) settles inside it by `projects.fund_ticket` (an escrow hold from the topped-up wallet), not a sale |
 | Recurring deposits | the wallet's `new_recurring` action · `POST /api/finance/cron/deposits` (bearer `FINANCE_CRON_SECRET`, 404 otherwise) | `processDueDeposits` | `create_deposit_rule` (user) · `claim_due_deposit_rules` · `bind_scheduled_payment` (service role) |
 | Income Smoother enrolment | the wallet's `enrol_smoother` action | `WalletBackendService.enrolSmoother` | `set_income_smoother` (user) |
 | Verification console (`/settings/verification`) | `GET /api/finance/verify/status` · `POST /api/finance/verify/kyc` · `POST /api/finance/verify/kyb` | `verificationStatus` · `createIdentitySession` · `startKybOnboarding` | `my_verification_status` · the §1.1 identity + Connect doors |
 | Dispute outcome | the snapshot webhook (`charge.dispute.closed`) | `handleStripeWebhook` | `record_dispute_closed` (service role) |
 | Connect status sync | both webhooks (`account.updated`; thin v2 events) | `handleStripeWebhook` · `handleStripeThinWebhook` | `sync_payout_account` (service role) |
 | Invoice / statement PDF | `GET /api/finance/invoices/[id]/pdf` · `GET /api/finance/statements/[id]/pdf` | `WalletBackendService.documentPdf` | RLS-scoped reads (`View invoices you are party to`) |
+| Poll a pending escrow-lock card payment as a funding state (Decision #170) | `GET /api/finance/payments/[id]/status` → `{paymentId, status, lockStatus, funding}` (a top-up is a 404) | `PaymentBackendService.paymentFunding` → `paymentFundingState` (the one `deriveFundingState`) | RLS-scoped read of `finance.inbound_payments` |
 
 - **A card or express checkout is a top-up, then a wallet order** (Decision #153 revises Decision
   #126 here). The processor charge tops up the PAYING account's wallet (created in the charge currency if
@@ -2387,6 +2396,73 @@ The same two-door order as §1.1; the new database doors are `00001240_functions
   pays out yet, so no fee is charged), the Instant Payout fee (undecided, #55(c)), clawing a LOST
   dispute back from escrow already released to a freelancer, passing Stripe's dispute fee on, the
   scheduled payout-schedule run, stored PDFs (they are rendered per request), and a nonce-based CSP.
+
+#### 1.3 Test-mode verification and the smoke test (2026-10-10)
+
+**Automated: `deno task smoke:stripe`** (`scripts/stripe-smoke.ts` + `scripts/stripe-smoke.sql`). Needs
+the seeded local stack (`deno task db:reset`) and stripe-mock
+(`docker run -d -p 12111:12111 stripe/stripe-mock`). It creates the escrow PaymentIntent and the payout
+Transfer through the real `stripe-rails.ts` builders against stripe-mock, checks the webhook contract
+in-process (missing/forged signature → 400 on both endpoints, unknown event → 200 `ignored`, wrong mode
+→ `ignored`), then runs the ledger half as the real roles (`authenticated` with the payer's claims for
+user doors, `service_role` for processor doors) in one transaction that is **rolled back**:
+
+| Path | What it checks |
+| :--- | :------------- |
+| Decline (`4000 0000 0000 9995`) | `payment_failed` leaves the lock `pending`; `canceled` sets `lock_status = failed` with a reason; no money moves |
+| "Less arrived than the stage needs" | the amount received is credited to the wallet; nothing is held; `lock_error` is readable by the payer under RLS (what `GET /api/finance/payments/[id]` returns to the polling UI) |
+| "The stage no longer exists" | `project_stage_id` set NULL (the FK's `ON DELETE SET NULL`) → lock `failed`, the full amount is in the wallet |
+| Success (`4242…`; `3155` after its 3-D Secure challenge) | `inbound_payments.lock_status = locked`, its `locked_escrow_ids` are `held`, credit + hold net to zero |
+| Idempotency | the same event replayed and a second event for the same PaymentIntent both answer `replayed`; no ledger row, no balance change |
+| Top-up | credited once; the replay is ignored |
+| Payout | release credits the freelancer; `begin_payout` is refused until **both** halves of `fn_freelancer_payout_ready` hold (a verified payout account alone is not enough); then the payout goes to the verified account, `complete_payout` binds the Transfer, `transfer.created` is `applied` then `replayed`; the wallet is debited once |
+| Reconciliation | `finance.v_wallet_reconciliation` shows no drift |
+
+stripe-mock serves no Accounts v2 (`/v2/core/accounts`), so the smoke records Connect onboarding through
+its doors (`record_payout_account` → `sync_payout_account`), exactly as `account.updated` would.
+
+**Manual: real test mode with the Stripe CLI.** The CLI signs every forwarded delivery with ONE secret
+per `listen` session, so both webhook secrets take the same value locally.
+
+1. `.env.local` (never committed): `STRIPE_SECRET_KEY=rk_test_…` (a restricted key is preferred) or
+   `sk_test_…`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_…`, `FINANCE_BACKEND_LIVE=true`,
+   `DENO_ENV=development`, `APP_URL=http://localhost:<port>`, no `STRIPE_API_BASE`.
+2. `stripe login`, then forward both endpoints. `listen` forwards Connect events to `--forward-to`
+   too; in the Dashboard, by contrast, `account.updated` for a connected account reaches only a
+   destination whose events come from **connected accounts**, so production needs that destination in
+   addition to the account-events one.
+
+   ```bash
+   stripe listen --forward-to localhost:<port>/api/finance/webhooks/stripe --forward-thin-to localhost:<port>/api/finance/webhooks/stripe-v2 --thin-events "v2.core.account[configuration.recipient].capability_status_updated,v2.core.account.updated"
+   ```
+
+   Copy the printed `whsec_…` into both `STRIPE_WEBHOOK_SECRET` and `STRIPE_THIN_WEBHOOK_SECRET`, then
+   start `deno task dev`.
+3. Card escrow: open an assigned stage's lock (`POST /api/finance/escrow/intent`), pay with `4242 4242
+   4242 4242`, `4000 0025 0000 3155` (approve the challenge) and `4000 0000 0000 9995`; watch
+   `GET /api/finance/payments/[id]`. Replay a delivery with `stripe events resend evt_…` — the answer
+   is `replayed` and no ledger row is added.
+4. Connect: `POST /api/finance/connect/onboarding` → finish the hosted test onboarding (test data,
+   `000-000` SMS code, `000000000` SSN digits) → `account.updated` and the thin capability event sync
+   `payout_ready`. Withdraw from the freelancer wallet (`POST /api/wallet/payouts`).
+5. **Transfers need AVAILABLE platform balance.** A `4242` charge lands in the *pending* balance, so a
+   test-mode Transfer right after it fails `balance_insufficient` (the payout is failed and the money
+   returned to the wallet — correct, but not the path you meant to test). Fund the test balance first
+   with a `4000 0000 0000 0077` charge (available immediately).
+
+**Findings (2026-10-10).** Signature verification (raw body, 300 s tolerance, Web Crypto), event-id
+idempotency (`stripe:<evt>` claimed in the same transaction as the effects), the 2xx-on-unknown rule, the
+settle-only-on-webhook rule, the subtransaction that keeps a refused lock's money in the wallet and
+the payout gate were verified by the smoke test; the checkout-via-top-up order placement (Decision
+#153: both the browser and `settle_card_payment` place the order under one key) by code review only.
+Fixed in this pass:
+(a) nothing stopped a LIVE key outside production — the server now refuses to boot
+(`assertStripeKeyAllowed`); (b) `record_transfer_created` matched the destination account by strict
+`owner_type` while `fn_payout_destination` treats `user`/`freelancer` as one person, so a payout whose
+Transfer call timed out (the 202 path, where `transfer.created` is the only closer) could be left
+`pending` with the money debited — it now uses the same rule. Not exercised against real Stripe from
+this machine (no test keys or CLI were installed): the hosted onboarding, the 3-D Secure challenge UI,
+and the live `stripe listen` forwarding — run the manual steps above.
 
 ### 2. Conferencing (Session Engine)
 
@@ -2556,9 +2632,10 @@ Courtesy Calls for the business rules and
 - **A discovery call is a `booking`, not a tenth `CalendarEventKind`.** Adding a kind would break
   the shipped calendar engine's exhaustive `Record<CalendarEventKind, …>` maps, turning a data
   change into a design-system change (root `CLAUDE.md` §3).
-- **⚠️ Paid calls have no escrow path yet.** `finance.escrows` requires both `project_stage_id` and
-  `payer_business_id` NOT NULL, so a standalone 1-1 paid call between an individual client and a
-  freelancer has no legal escrow row. `discovery_calls.escrow_id` is nullable and set only when a
+- **⚠️ Paid calls have no escrow path yet.** `finance.escrows` requires `project_stage_id` NOT NULL,
+  so a standalone 1-1 paid call between an individual client and a freelancer has no legal escrow
+  row. (The payer is no longer the blocker: since Decision #126 `payer_business_id` is nullable and
+  `ck_escrows_one_payer` admits an individual `payer_user_id` instead — re-confirmed in Decision #165.) `discovery_calls.escrow_id` is nullable and set only when a
   call attaches to an already-funded stage. Relaxing those columns (a **protected** table) or
   auto-provisioning a session-format micro-project both need human sign-off — flagged, not chosen.
 
@@ -2653,7 +2730,9 @@ S3_SECRET_ACCESS_KEY=XXXX-XXXX
 LINK_SAFETY_API_KEY=XXXX-XXXX
 
 # Stripe (Finance) — read only by packages/backend/core/stripe.ts; a value not shaped like its key
-# (sk_/rk_, whsec_, pk_) counts as absent, so the placeholder degrades to "not connected here"
+# (sk_/rk_, whsec_, pk_) counts as absent, so the placeholder degrades to "not connected here".
+# A LIVE key (sk_live_/rk_live_) with DENO_ENV other than "production" stops the server at boot
+# (assertStripeKeyAllowed, called from apps/web/main.ts). Locally, put test keys in .env.local only.
 STRIPE_SECRET_KEY=XXXX-XXXX
 STRIPE_WEBHOOK_SECRET=XXXX-XXXX
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=XXXX-XXXX

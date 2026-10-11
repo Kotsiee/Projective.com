@@ -33,11 +33,13 @@ export const InvoiceSchema = z.object({
 	id: uuid,
 	projectStageId: uuid.nullable(),
 	issueToBusinessId: uuid,
-	issueFromProfile: uuid,
+	/** `null`: issued by the platform — every consolidated invoice (PRODUCT_SPEC §Escrow, Wallets & Finance #4). */
+	issueFromProfile: uuid.nullable(),
 	invoiceType: InvoiceType,
 	billingPeriodStart: timestamp.nullable(),
 	billingPeriodEnd: timestamp.nullable(),
-	amountCents: minorUnitsPositive,
+	/** The invoice's figure — its total; `0` on a month that only bought on account. */
+	amountCents: minorUnitsNonNeg,
 	subtotalCents: minorUnitsNonNeg,
 	platformFeeCents: minorUnitsNonNeg,
 	taxCents: minorUnitsNonNeg,
@@ -48,6 +50,8 @@ export const InvoiceSchema = z.object({
 	paidAt: timestamp.nullable(),
 	pdfFileId: uuid.nullable(),
 	createdAt: timestamp,
+	/** What was owed — the period's on-account credit; settled when `status` is `paid`. */
+	amountDueCents: minorUnitsNonNeg,
 });
 export type Invoice = z.infer<typeof InvoiceSchema>;
 
@@ -55,13 +59,22 @@ export type Invoice = z.infer<typeof InvoiceSchema>;
 export const InvoiceLineItemSchema = z.object({
 	id: uuid,
 	invoiceId: uuid,
-	refType: z.enum(["escrow", "bonus", "platform_fee", "refund", "tax"]),
+	refType: z.enum(["escrow", "bonus", "platform_fee", "refund", "tax", "on_account"]),
 	refId: uuid.nullable(),
 	description: z.string().max(400),
 	amountCents: minorUnits,
 	currency,
 });
 export type InvoiceLineItem = z.infer<typeof InvoiceLineItemSchema>;
+// #endregion
+
+// #region Auto-funding (PRODUCT_SPEC §Escrow, Wallets & Finance #4)
+/**
+ * What happens when a business project's ticket enters Needs funding —
+ * `org.business_profiles.auto_fund_mode`, overridden per project by `projects.auto_fund_override`.
+ */
+export const AutoFundMode = z.enum(["off", "add_to_basket", "from_wallet"]);
+export type AutoFundMode = z.infer<typeof AutoFundMode>;
 // #endregion
 
 // #region Disputes (existing)

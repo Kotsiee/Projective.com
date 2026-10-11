@@ -1,16 +1,16 @@
 /*
  * DraggablePopover (ui-draggable-popover) — a non-modal, draggable, resizable floating window.
  * Token-only, BEM. Positioned by the `--dd-x`/`--dd-y` custom properties the island writes (viewport
- * px, clamped in JS); `--dd-z` lifts the most-recently-touched window above its siblings. No backdrop
- * — the page underneath stays interactive. A full border is permitted here: this is an interactive
- * surface (DESIGN_SYSTEM.md §B.4).
+ * px, clamped in JS); the stack's `--z-portal` lifts the most-recently-touched window above its
+ * siblings. No backdrop — the page underneath stays interactive. A full border is permitted here:
+ * this is an interactive surface (DESIGN_SYSTEM.md §B.4).
  */
 
 .ui-draggable-popover {
 	position: fixed;
 	inset-block-start: var(--dd-y, 88px);
 	inset-inline-start: var(--dd-x, 24px);
-	z-index: calc(var(--z-draggable) + var(--dd-z, 0));
+	z-index: var(--z-portal, var(--z-draggable));
 	display: flex;
 	flex-direction: column;
 	inline-size: var(--ddp-w, 22rem);

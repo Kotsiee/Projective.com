@@ -884,9 +884,17 @@ manage_billing on the business; the monthly mode additionally requires KYB verif
 -- was shown are only ever COMPARED with what the catalogue says now, and any difference refuses.
 --
 -- Scope, stated rather than discovered:
---   * Digital products only. A service or session purchase needs escrow, and `finance.escrows`
---     requires a project stage and a business payer (root CLAUDE.md §8, #56(a)) — so those lines are
---     refused here rather than paid into nowhere.
+--   * Digital products, and ONE-TICKET project lines (Decision #166). A ticket line (a project kind
+--     carrying `ticket_id`) is not a sale: it settles by holding that ticket's escrow from this same
+--     wallet (projects.fund_ticket — no seller credit, no fee until release), so the order is its
+--     receipt. The paying account must be the project's client, a promo never discounts an escrow, and
+--     a card checkout reaches here through the #153 webhook exactly as a product order does. A
+--     `paid_revision` line (Decision #167) settles the same way, through projects.fund_paid_revision,
+--     priced from its round's snapshotted price. A `course_group_session` line (a seat, Decision #171)
+--     settles the same way too: priced from its listing's session price × seats, it must carry the
+--     buyer's live `metadata.holdId` (projects.reserve_seat), and projects.fn_confirm_seat turns the
+--     hold into a membership and holds the seat's escrow from this wallet. Every other kind (a whole
+--     project, a service, a 1-1 session slot) is still refused (PS501) rather than paid into nowhere.
 --   * The charge is made in the lines' own currency, which must be one the paying wallet holds. The
 --     display-currency figure the buyer saw is a conversion the application verifies separately; the
 --     money that moves is integer minor units with no FX in it.
@@ -941,6 +949,11 @@ DECLARE
     v_seller_type text;
     v_seller_id uuid;
     v_manifest jsonb;
+    v_escrow_total bigint := 0;
+    v_rev record;
+    v_seat record;
+    v_seat_unit bigint;
+    v_order_line uuid;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'Sign in to pay' USING ERRCODE = '42501';
@@ -1005,12 +1018,150 @@ BEGIN
         SELECT bi.id, bi.item_type, bi.item_id, bi.quantity, bi.discount_amount_minor,
                bi.currency AS line_currency, bi.destination_email, bi.title, bi.position, bi.created_at,
                p.id AS product_id, p.title AS product_title, p.price_cents, p.currency AS product_currency,
-               p.owner_user_id, p.owner_team_id, p.licence, p.format::text AS format, p.file_manifest
+               p.owner_user_id, p.owner_team_id, p.licence, p.format::text AS format, p.file_manifest,
+               bi.ticket_id, bi.stage_id AS line_stage_id, tk.project_id AS ticket_project_id,
+               tk.title AS ticket_title, tk.current_stage_id AS ticket_stage_id,
+               COALESCE(tk.unit_price_cents, ts.unit_price_cents) AS ticket_price,
+               pr.currency AS project_currency, pr.client_business_id, pr.owner_user_id AS project_owner,
+               bi.seats, bi.metadata
           FROM finance.basket_items bi
           LEFT JOIN catalogue.products p ON p.id = bi.item_id AND bi.item_type = 'digital_product'
+          LEFT JOIN projects.tickets tk ON tk.id = bi.ticket_id
+          LEFT JOIN projects.project_stages ts ON ts.id = tk.current_stage_id
+          LEFT JOIN projects.projects pr ON pr.id = tk.project_id
          WHERE bi.basket_id = v_basket.id AND bi.id = ANY (v_wanted)
          ORDER BY bi.position, bi.created_at, bi.id
     LOOP
+        -- A paid revision line (Decision #167): priced from its round's snapshot and paid by the project's
+        -- own client, held as escrow on the ticket by projects.fund_paid_revision below.
+        IF v_line.item_type = 'paid_revision' THEN
+            SELECT rv.status, rv.price_cents, pr.currency AS project_currency, pr.client_business_id,
+                   pr.owner_user_id AS project_owner, ps.name AS stage_name
+              INTO v_rev
+              FROM projects.stage_revision_requests rv
+              JOIN projects.project_stages ps ON ps.id = rv.project_stage_id
+              JOIN projects.projects pr ON pr.id = ps.project_id
+             WHERE rv.id = v_line.item_id;
+            IF NOT FOUND OR v_rev.status <> 'awaiting_payment' THEN
+                RAISE EXCEPTION '% is no longer waiting for payment', v_line.title USING ERRCODE = 'PC409';
+            END IF;
+            IF NOT (
+                (v_basket.owner_type = 'business' AND v_rev.client_business_id = v_basket.owner_id)
+                OR (v_basket.owner_type IN ('user', 'freelancer') AND v_rev.client_business_id IS NULL
+                    AND v_rev.project_owner = v_basket.owner_id)
+            ) THEN
+                RAISE EXCEPTION 'Pay for % from the account that owns its project', v_line.title
+                    USING ERRCODE = 'PU422';
+            END IF;
+            IF pg_catalog.upper(COALESCE(v_rev.project_currency, 'USD')) <> v_currency THEN
+                RAISE EXCEPTION 'This order is priced in %, not %', pg_catalog.upper(COALESCE(v_rev.project_currency, 'USD')), v_currency
+                    USING ERRCODE = 'PC409';
+            END IF;
+            IF p_units IS NULL OR (p_units ->> v_line.id::text) IS NULL
+               OR (p_units ->> v_line.id::text)::bigint <> v_rev.price_cents THEN
+                RAISE EXCEPTION 'The price of % changed while you were paying — review the total and try again', v_line.title
+                    USING ERRCODE = 'PC409';
+            END IF;
+            v_subtotal := v_subtotal + v_rev.price_cents;
+            v_escrow_total := v_escrow_total + v_rev.price_cents;
+            v_lines := v_lines || pg_catalog.jsonb_build_object(
+                'id', v_line.id,
+                'item_id', v_line.item_id,
+                'item_type', v_line.item_type,
+                'title', v_line.title,
+                'quantity', 1,
+                'gross', v_rev.price_cents,
+                'creator', 0,
+                'revision_id', v_line.item_id
+            );
+            CONTINUE;
+        END IF;
+        -- A ticket line (Decision #166): priced from the ticket NOW and paid by the project's own client,
+        -- whose wallet the hold debits; its gates (description, unpaid, payee) are fund_ticket's below.
+        IF v_line.ticket_id IS NOT NULL THEN
+            IF v_line.ticket_project_id IS DISTINCT FROM v_line.item_id
+               OR (v_line.line_stage_id IS NOT NULL AND v_line.line_stage_id IS DISTINCT FROM v_line.ticket_stage_id) THEN
+                RAISE EXCEPTION '% moved since you added it — review your basket and try again', v_line.title
+                    USING ERRCODE = 'PC409';
+            END IF;
+            IF NOT (
+                (v_basket.owner_type = 'business' AND v_line.client_business_id = v_basket.owner_id)
+                OR (v_basket.owner_type IN ('user', 'freelancer') AND v_line.client_business_id IS NULL
+                    AND v_line.project_owner = v_basket.owner_id)
+            ) THEN
+                RAISE EXCEPTION 'Pay for % from the account that owns its project', v_line.title
+                    USING ERRCODE = 'PU422';
+            END IF;
+            IF pg_catalog.upper(COALESCE(v_line.project_currency, 'USD')) <> v_currency THEN
+                RAISE EXCEPTION 'This order is priced in %, not %', pg_catalog.upper(COALESCE(v_line.project_currency, 'USD')), v_currency
+                    USING ERRCODE = 'PC409';
+            END IF;
+            IF v_line.ticket_price IS NULL OR p_units IS NULL OR (p_units ->> v_line.id::text) IS NULL
+               OR (p_units ->> v_line.id::text)::bigint <> v_line.ticket_price THEN
+                RAISE EXCEPTION 'The price of % changed while you were paying — review the total and try again', v_line.title
+                    USING ERRCODE = 'PC409';
+            END IF;
+            v_subtotal := v_subtotal + v_line.ticket_price;
+            v_escrow_total := v_escrow_total + v_line.ticket_price;
+            v_lines := v_lines || pg_catalog.jsonb_build_object(
+                'id', v_line.id,
+                'item_id', v_line.item_id,
+                'item_type', v_line.item_type,
+                'title', COALESCE(v_line.ticket_title, v_line.title),
+                'quantity', 1,
+                'gross', v_line.ticket_price,
+                'creator', 0,
+                'ticket_id', v_line.ticket_id,
+                'stage_id', v_line.ticket_stage_id
+            );
+            CONTINUE;
+        END IF;
+        -- A cohort seat (Decision #171): priced from its listing NOW (session price × the held seats),
+        -- and only against the buyer's own reservation on that listing's cohort. Its share leaves the
+        -- wallet as the seat's escrow hold (projects.fn_confirm_seat below), never as a seller credit.
+        IF v_line.item_type = 'course_group_session' THEN
+            SELECT h.id AS hold_id, h.seats AS hold_seats, h.user_id, h.status, c.project_stage_id,
+                   sb.id AS blueprint_id, sb.currency AS listing_currency,
+                   COALESCE(sb.session_price_cents, sb.price_cents) AS session_price
+              INTO v_seat
+              FROM projects.cohort_seat_holds h
+              JOIN projects.cohorts c ON c.id = h.cohort_id
+              JOIN projects.projects sp ON sp.id = c.project_id
+              JOIN marketplace.service_blueprints sb ON sb.id = sp.source_blueprint_id
+             WHERE (v_line.metadata ->> 'holdId') ~ '^[0-9a-fA-F-]{36}$'
+               AND h.id = (v_line.metadata ->> 'holdId')::uuid;
+            IF NOT FOUND OR v_seat.user_id IS DISTINCT FROM v_uid OR v_seat.status <> 'held'
+               OR v_seat.blueprint_id IS DISTINCT FROM v_line.item_id
+               OR v_seat.hold_seats IS DISTINCT FROM COALESCE(v_line.seats, 1) THEN
+                RAISE EXCEPTION 'Your seat reservation for % is no longer held — reserve the seat again', v_line.title
+                    USING ERRCODE = 'PC409';
+            END IF;
+            IF pg_catalog.upper(v_seat.listing_currency) <> v_currency THEN
+                RAISE EXCEPTION 'This order is priced in %, not %', pg_catalog.upper(v_seat.listing_currency), v_currency
+                    USING ERRCODE = 'PC409';
+            END IF;
+            v_seat_unit := v_seat.session_price * v_seat.hold_seats;
+            IF p_units IS NULL OR (p_units ->> v_line.id::text) IS NULL
+               OR (p_units ->> v_line.id::text)::bigint <> v_seat_unit THEN
+                RAISE EXCEPTION 'The price of % changed while you were paying — review the total and try again', v_line.title
+                    USING ERRCODE = 'PC409';
+            END IF;
+            v_subtotal := v_subtotal + v_seat_unit;
+            v_escrow_total := v_escrow_total + v_seat_unit;
+            v_lines := v_lines || pg_catalog.jsonb_build_object(
+                'id', v_line.id,
+                'item_id', v_line.item_id,
+                'item_type', v_line.item_type,
+                'title', v_line.title,
+                'quantity', 1,
+                'gross', v_seat_unit,
+                'creator', 0,
+                'hold_id', v_seat.hold_id,
+                'seats', v_seat.hold_seats,
+                'seat_stage_id', v_seat.project_stage_id
+            );
+            CONTINUE;
+        END IF;
         IF v_line.item_type <> 'digital_product' THEN
             RAISE EXCEPTION 'Only digital products can be paid for from the wallet here'
                 USING ERRCODE = 'PS501';
@@ -1073,6 +1224,11 @@ BEGIN
     -- payment. One was → it must still be the basket's, still valid and still applicable to these
     -- lines, or the payment refuses rather than charging more than the buyer was shown.
     IF NULLIF(pg_catalog.btrim(COALESCE(p_promo_code, '')), '') IS NOT NULL THEN
+        -- An escrow is the freelancer's whole price; a promo would be a saving nobody funds.
+        IF v_escrow_total > 0 THEN
+            RAISE EXCEPTION 'Promo codes don''t apply to project tickets — remove the code to pay for them'
+                USING ERRCODE = 'PC409';
+        END IF;
         IF pg_catalog.upper(pg_catalog.btrim(p_promo_code))
            IS DISTINCT FROM pg_catalog.upper(pg_catalog.btrim(COALESCE(v_basket.promo_code, ''))) THEN
             RAISE EXCEPTION 'Your promo code changed while you were paying — review the total and try again'
@@ -1146,8 +1302,11 @@ BEGIN
         0, v_net, v_net, 'wallet', 'Projective wallet', p_idempotency_key
     );
 
-    PERFORM finance.fn_wallet_debit (v_wallet.owner_id, v_wallet.owner_type, v_currency, v_net,
-        'order_payment', 'orders', v_order_id);
+    -- The products are paid here; each ticket line's share leaves the wallet as its escrow hold below.
+    IF v_net - v_escrow_total > 0 THEN
+        PERFORM finance.fn_wallet_debit (v_wallet.owner_id, v_wallet.owner_type, v_currency,
+            v_net - v_escrow_total, 'order_payment', 'orders', v_order_id);
+    END IF;
 
     -- Each line: its share of the promo (pro rata by what the line costs after creator discounts, the
     -- remainder on the last line so the shares sum exactly), the fee on what was actually paid for it,
@@ -1157,6 +1316,56 @@ BEGIN
     FOR v_line IN SELECT value AS l, ordinality AS n FROM pg_catalog.jsonb_array_elements(v_lines) WITH ORDINALITY
     LOOP
         v_i := v_line.n;
+        IF v_line.l ? 'revision_id' THEN
+            PERFORM projects.fund_paid_revision((v_line.l ->> 'revision_id')::uuid);
+            INSERT INTO finance.order_lines (
+                order_id, basket_item_id, item_type, item_id, title, subtitle, quantity, line_total_minor,
+                currency, fulfilment, position
+            ) VALUES (
+                v_order_id, (v_line.l ->> 'id')::uuid, 'paid_revision', (v_line.l ->> 'item_id')::uuid,
+                v_line.l ->> 'title', 'Escrow held', 1, (v_line.l ->> 'gross')::bigint, v_currency,
+                'engagement', v_i - 1
+            );
+            UPDATE finance.basket_items
+               SET purchased_at = pg_catalog.now(), updated_at = pg_catalog.now()
+             WHERE id = (v_line.l ->> 'id')::uuid;
+            CONTINUE;
+        END IF;
+        IF v_line.l ? 'ticket_id' THEN
+            PERFORM projects.fund_ticket((v_line.l ->> 'item_id')::uuid, (v_line.l ->> 'ticket_id')::uuid);
+            INSERT INTO finance.order_lines (
+                order_id, basket_item_id, item_type, item_id, title, subtitle, quantity, line_total_minor,
+                currency, fulfilment, stage_id, ticket_id, position
+            ) VALUES (
+                v_order_id, (v_line.l ->> 'id')::uuid, (v_line.l ->> 'item_type')::finance.purchasable_item_kind,
+                (v_line.l ->> 'item_id')::uuid, v_line.l ->> 'title', 'Escrow held', 1,
+                (v_line.l ->> 'gross')::bigint, v_currency, 'engagement',
+                (v_line.l ->> 'stage_id')::uuid, (v_line.l ->> 'ticket_id')::uuid, v_i - 1
+            );
+            UPDATE finance.basket_items
+               SET purchased_at = pg_catalog.now(), updated_at = pg_catalog.now()
+             WHERE id = (v_line.l ->> 'id')::uuid;
+            CONTINUE;
+        END IF;
+        -- A seat: the order line is its receipt, written first so the membership can name it.
+        IF v_line.l ? 'hold_id' THEN
+            INSERT INTO finance.order_lines (
+                order_id, basket_item_id, item_type, item_id, title, subtitle, quantity, line_total_minor,
+                currency, fulfilment, stage_id, seats, position
+            ) VALUES (
+                v_order_id, (v_line.l ->> 'id')::uuid, 'course_group_session', (v_line.l ->> 'item_id')::uuid,
+                v_line.l ->> 'title', 'Seat confirmed · escrow held', 1, (v_line.l ->> 'gross')::bigint,
+                v_currency, 'session', (v_line.l ->> 'seat_stage_id')::uuid, (v_line.l ->> 'seats')::integer,
+                v_i - 1
+            )
+            RETURNING id INTO v_order_line;
+            PERFORM projects.fn_confirm_seat((v_line.l ->> 'hold_id')::uuid, v_uid, v_wallet.owner_type,
+                v_wallet.owner_id, (v_line.l ->> 'gross')::bigint, v_currency, v_order_line);
+            UPDATE finance.basket_items
+               SET purchased_at = pg_catalog.now(), updated_at = pg_catalog.now()
+             WHERE id = (v_line.l ->> 'id')::uuid;
+            CONTINUE;
+        END IF;
         IF v_i = pg_catalog.jsonb_array_length(v_lines) OR v_eligible_base = 0 THEN
             v_share := v_remaining_promo;
         ELSE
@@ -1220,11 +1429,14 @@ COMMENT ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, 
 'Pay for the submitted basket lines from the caller''s Projective wallet, atomically: re-price every
 line from the catalogue against the unit price the buyer was shown, re-validate the promo code they saw
 applied (none sent → none applied), debit the wallet, credit each seller net of the 5% platform fee,
-write the order and its lines, consume the basket lines. Digital products only (services and sessions
-need escrow, which requires a project stage). Idempotent on the key. Refusal SQLSTATEs: 42501 not
-allowed · PK403 verification · PB404 basket gone · PC409 basket/price/promo changed · PD422 a line needs
-a delivery address · PU422 your own listing · PS501 not payable here · PF402 wallet · PA403 spend
-limit/approval · 22023 bad attempt key.';
+write the order and its lines, consume the basket lines. Digital products, and one-ticket project lines
+(Decision #166), which settle by holding that ticket''s escrow (projects.fund_ticket) instead of a
+seller credit, and cohort seats (Decision #171), which settle through the buyer''s seat hold into a
+membership and a seat escrow (projects.fn_confirm_seat); every other kind is refused. Idempotent on the
+key. Refusal SQLSTATEs: 42501 not allowed · PK403 verification · PB404 basket gone · PC409
+basket/price/promo/seat hold changed · PD422 a line needs a delivery address · PU422 your own listing,
+or a ticket not purchasable / not this account''s · PS409 the cohort filled or closed · PS501 not
+payable here · PF402 wallet · PA403 spend limit/approval · 22023 bad attempt key.';
 -- #endregion
 
 -- #region 12. Wallet movements — transfers, team distributions, spend decisions (2026-09-23)
@@ -1540,6 +1752,10 @@ BEGIN
             'spend_approvals',
             v_row.id
         );
+        -- An approved auto-fund request (finance.fn_auto_fund_drain) is made now, not on the next credit.
+        IF v_status = 'approved' AND v_row.ref_table = 'tickets' THEN
+            PERFORM finance.fn_auto_fund_drain(v_row.wallet_id);
+        END IF;
     END IF;
 
     RETURN pg_catalog.jsonb_build_object('id', v_row.id, 'status', v_status);

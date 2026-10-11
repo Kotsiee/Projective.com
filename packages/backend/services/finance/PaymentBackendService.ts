@@ -18,6 +18,7 @@ import {
 	isHandledStripeThinEvent,
 	type KybOnboardingInput,
 	type OnboardingReturn,
+	type PaymentFundingPoll,
 	type PayoutAccountScope,
 	payoutAccountStatusFor,
 	type PayoutResult,
@@ -36,6 +37,8 @@ import {
 	verifyStripeEvent,
 } from "../../core/stripe.ts";
 import { isFinanceBackendLive } from "../../core/supabase.ts";
+// Re-exported for the app's boot (apps/web/main.ts), which reaches the backend only through @server/services.
+export { assertStripeKeyAllowed } from "../../core/stripe.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import {
@@ -82,6 +85,7 @@ import {
 	type StripeFailure,
 } from "./stripe-rails.ts";
 import { applyStripePlan, planStripeEvent, syncConnectAccount } from "./stripe-webhook.ts";
+import { paymentFundingState } from "./funding-state.ts";
 
 /**
  * PaymentBackendService — the FAT half of the Stripe fiat rails, Phase 1 (root CLAUDE.md §8
@@ -343,6 +347,7 @@ export class PaymentBackendService {
 	 * database computes the amount (the sum the escrow hold will take) and refuses if it differs from
 	 * what the payer was shown. On `payment_intent.succeeded` the money is credited to the paying
 	 * business's wallet and the stage is funded from it, as the payer, re-authorised at that moment.
+	 * With `ticketId` (Decision #166) only that ticket is funded, at its own price.
 	 */
 	static createEscrowLockIntent(
 		input: CreateEscrowLockIntent,
@@ -353,6 +358,7 @@ export class PaymentBackendService {
 			walletId: null,
 			projectId: input.projectId,
 			stageId: input.stageId,
+			ticketId: input.ticketId ?? null,
 			expectedAmountMinor: input.expectedAmountMinor,
 			currency: input.currency,
 			idempotencyKey: input.idempotencyKey,
@@ -434,6 +440,24 @@ export class PaymentBackendService {
 			console.error("[payments:status]", error instanceof Error ? error.message : error);
 			return fail(503, { message: "Couldn't read that payment just now." });
 		}
+	}
+
+	/**
+	 * The poll a surface runs while a card payment for a ticket's escrow is pending: the payment's own
+	 * status beside the funding state it leaves the ticket in (`paymentFundingState`, one derivation
+	 * with the board). Same gate and RLS as {@link paymentStatus}; a top-up funds no escrow and is a 404.
+	 */
+	static async paymentFunding(paymentId: string, actor: ReadActor): Promise<Result<PaymentFundingPoll>> {
+		const read = await PaymentBackendService.paymentStatus(paymentId, actor);
+		if (!read.ok || !read.data) return read as Result<never>;
+		const { payment } = read.data;
+		if (payment.purpose !== "escrow_lock") return fail(404, { message: "That payment doesn't fund an escrow." });
+		return ok({
+			paymentId: payment.id,
+			status: payment.status,
+			lockStatus: payment.lockStatus,
+			funding: paymentFundingState(payment),
+		});
 	}
 	// #endregion
 

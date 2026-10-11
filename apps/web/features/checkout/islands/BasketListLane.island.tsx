@@ -13,11 +13,11 @@ import {
 	LaneSection,
 	LaneSections,
 } from "@projective/ui/navigation";
-import { Button, InputText } from "@projective/ui/fields";
-import { Dialog, Popover, Tooltip } from "@projective/ui/feedback";
+import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon, type IconName } from "@projective/ui/icons";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { Amount } from "../components/Amount.tsx";
+import { NewListDialog } from "../components/NewListDialog.tsx";
 import { CollapseGlyph } from "../components/checkout-glyphs.tsx";
 import { BasketService } from "../core/BasketService.ts";
 import { basketHref } from "../core/basket-model.ts";
@@ -467,49 +467,12 @@ export default function BasketListLane(props: BasketListLaneProps): JSX.Element 
 				</div>
 			</div>
 
-			<Dialog
+			<NewListDialog
 				visible={createOpen}
-				header="New list"
-				width="26rem"
-				onVisibleChange={(open) => {
-					if (!open) createName.value = "";
-				}}
-				footer={
-					<>
-						<Button
-							variant="text"
-							severity="secondary"
-							disabled={creating.value}
-							onClick={() => (createOpen.value = false)}
-						>
-							Cancel
-						</Button>
-						<Button
-							variant="filled"
-							severity="primary"
-							loading={creating.value}
-							disabled={createName.value.trim() === ""}
-							onClick={() => void createList()}
-						>
-							Create list
-						</Button>
-					</>
-				}
-			>
-				<p class="bsk-lane__dialognote">
-					A list is a basket you have named. Anything parked in one stays there until you move it
-					back, and nothing in it is charged for.
-				</p>
-				<label class="bsk-lane__dialoglabel" for="bsk-new-list">List name</label>
-				<InputText
-					id="bsk-new-list"
-					fluid
-					placeholder="3D assets"
-					autoComplete="off"
-					value={createName}
-					disabled={creating.value}
-				/>
-			</Dialog>
+				name={createName}
+				creating={creating.value}
+				onCreate={() => void createList()}
+			/>
 		</div>
 	);
 }

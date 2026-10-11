@@ -314,14 +314,14 @@ the definer doors in `00001135` §4 (Decision #145).
 | `projects.project_participants`           | Owner, or public-active project.                         | Owner (`FOR ALL`).                          |
 | `projects.project_applications`           | The applicant, or `can_manage_project_members`.          | Definer RPCs only.                          |
 | `projects.project_application_targets`    | Follows the parent application.                          | Definer RPCs only.                          |
-| `projects.stage_revision_requests`        | Requester, or project owner.                             | Requester (`FOR ALL`).                      |
+| `projects.stage_revision_requests`        | Requester, review authority (`can_review_project`), the ticket's assignee, or the submitter of the work it was raised on (Decision #167). | `INSERT` as self with `can_review_project` on the stage's project; no client `UPDATE` / `DELETE` (definer RPCs). |
 | `projects.ticket_workload_reports`        | Reporter, project owner, or project access.              | `INSERT` by the assignee only.              |
 | `projects.project_activity`               | Project owner.                                           | `INSERT` as self.                           |
 | `projects.project_status_history`         | Actor, project access, owner, or client-business member. | Definer RPCs only.                          |
-| `projects.cohorts`                        | Member (arm broken — see Findings), owner, or a project with `visibility = 'public'` (any status). | Owner (`FOR ALL`).                          |
+| `projects.cohorts`                        | Member (`is_cohort_member(cohorts.id)`), owner, or a project with `visibility = 'public'` (any status). | Owner (`FOR ALL`).                          |
 | `projects.cohort_memberships`             | Self, or the cohort's project owner.                     | Owner (`FOR ALL`).                          |
-| `projects.session_events`                 | Cohort member (arm is a tautology — see Findings), or project owner. | Owner (`FOR ALL`).                          |
-| `projects.session_attendance`             | Self, or project owner.                                  | `INSERT` as self.                           |
+| `projects.session_events`                 | Member of **this row's** cohort (`is_cohort_member(session_events.cohort_id)`), or project owner. | Owner (`FOR ALL`).                          |
+| `projects.session_attendance`             | Self, or project owner.                                  | Definer only (`record_presence`); no client `INSERT`. |
 | `projects.waitlists`                      | Self, or the blueprint's freelancer.                     | Join/leave as self; either side may update. |
 | `projects.maintenance_contracts`          | Freelancer or project owner (`FOR ALL`).                 | Same.                                       |
 | `projects.project_attachments`            | `has_project_access` or `can_review_project`.            | `can_review_project` `INSERT` / `DELETE`; no `UPDATE`. |
@@ -329,11 +329,11 @@ the definer doors in `00001135` §4 (Decision #145).
 Policy names, in table order: _View assignments_ / _Owner manage assignments_; _View seats public or
 own_ / _Manage seats own_; _View seat skills_; _View roles public or own_ / _Manage roles own_; _View
 budget rules_ / _Owner manage budget rules_; _View participants_ / _Owner manage participants_; _View
-own or owned applications_; _View application targets_; _View revisions_ / _Manage own revisions_;
+own or owned applications_; _View application targets_; _View revisions_ / _Request own revisions_ (`INSERT`);
 _View workload reports_ / _File workload report_; _Project owner can view activity_ / _Users can
 insert their own activity_; _View project status history_; _View cohorts_ / _Manage cohorts_; _View
 cohort memberships_ / _Manage cohort memberships_; _View session events_ / _Manage session events_;
-_View own attendance_ / _Log own attendance_; _View waitlists_ / _Join waitlist_ / _Manage waitlists_
+_View own attendance_; _View waitlists_ / _Join waitlist_ / _Manage waitlists_
 (`UPDATE`) / _Leave waitlist_ (`DELETE`); _Users can view/manage own contracts_; and the three
 attachment policies below. The public-active read arms are `status = 'active' AND visibility =
 'public'`; _View seat skills_ is wider — project access **or any `active` project** whatever its
@@ -379,7 +379,7 @@ the two owner write policies above.)
 - Several older `FOR ALL` policies carry a `USING` clause and **no `WITH CHECK`**
   (`stage_assignments`, `stage_budget_rules`, `stage_open_seats`, `project_participants`,
   `stage_staffing_roles`, `project_stages`, `cohorts`, `cohort_memberships`, `session_events`,
-  `maintenance_contracts`, `stage_revision_requests`). As the `projects.projects` note above
+  `maintenance_contracts`). As the `projects.projects` note above
   verifies, Postgres reuses `USING` as the post-image check, so an `UPDATE` cannot move a row out of
   the tenancy `USING` validated — these are not open. Each may still deserve a narrower post-image
   predicate, and needs its own read before being tightened, because that predicate is not always
@@ -411,23 +411,25 @@ and at least one policy in `00002011`; none is RLS-off and none is RLS-on with z
 | `project_applications`        |        1 | `project_application_targets` |      1 |
 | `project_activity`            |        2 | `project_status_history`    |        1 |
 | `cohorts`                     |        2 | `cohort_memberships`        |        2 |
-| `session_events`              |        2 | `session_attendance`        |        2 |
+| `session_events`              |        2 | `session_attendance`        |        1 |
 | `waitlists`                   |        4 | `maintenance_contracts`     |        1 |
 | `stage_invite_links`          |        1 | `view_reads`                |        1 |
 
 Tables whose only writes are definer functions (no client write policy, by design): `ticket_history`,
 `project_applications`, `project_application_targets`, `stage_open_seat_skills`,
-`project_status_history`, `stage_invite_links`.
+`project_status_history`, `stage_invite_links`, `session_attendance`.
 
 **Policy defects.**
 
-1. 🚨 **_View session events_ is open to any cohort member on the platform.** Its member arm is
+1. ~~🚨 **_View session events_ is open to any cohort member on the platform.**~~ — resolved
+   2026-10-10 (see the note after this list). Its member arm is
    `EXISTS (SELECT 1 FROM projects.cohort_memberships cm WHERE cm.cohort_id = cohort_id AND cm.user_id =
    auth.uid())`. `cohort_memberships` has its own `cohort_id` column, so the unqualified `cohort_id`
    binds to `cm.cohort_id` and the join is a tautology: a caller with **any** cohort membership reads
    **every** `session_events` row, `host_join_url` and `attendee_join_url` included. Needs
    `cm.cohort_id = session_events.cohort_id`.
-2. **_View cohorts_' member arm can never match.** `cm.cohort_id = id` binds `id` to `cm.id`. Fails
+2. ~~**_View cohorts_' member arm can never match.**~~ — resolved 2026-10-10 (member arm only;
+   the public arm's missing `status` test stands). `cm.cohort_id = id` binds `id` to `cm.id`. Fails
    closed (members just cannot see their cohort unless the project is public or theirs) — the
    opposite failure of #1, same cause. Its public arm checks `visibility = 'public'` with no `status`
    test, unlike every other public arm in the schema.
@@ -437,6 +439,29 @@ Tables whose only writes are definer functions (no client write policy, by desig
 4. The public-project read arms on `stage_assignments`, `stage_budget_rules`, `project_participants`,
    `tickets` and `cohorts` never reach a guest: `anon` holds `SELECT` on
    only six tables (top of this page). Not a hole — but the policy text overstates who can read.
+
+**Fix of 2026-10-10** (`00001100`, `00002011` edited in place):
+
+- #1 and #2 shared a cause: an unqualified column inside the `EXISTS` bound to `cm`, not the outer
+  row. On a live database neither was reachable: `cohorts` → `cohort_memberships` (owner arm) →
+  `cohorts` was a policy cycle, so every authenticated read of `cohorts`, `cohort_memberships` and
+  `session_events` failed with "infinite recursion detected in policy". The silent `null` from
+  `live-members.ts` `fetchSessionSeats` came from this. Both member arms now call
+  `projects.is_cohort_member(<table>.cohort id)`, a `SECURITY DEFINER` predicate with a qualified
+  argument. That removes the cycle and the misbinding together.
+- _Log own attendance_ was dropped. It let a caller insert attendance for any event. Attendance is
+  written only by the `record_presence` definer door, which checks membership and the event window.
+- _Manage own revisions_ (`FOR ALL`) became _Request own revisions_: `INSERT TO authenticated` as
+  self, with `can_review_project` on the stage's project. Reads stay with _View revisions_. Updates and
+  deletes go through the definer RPCs (`00001150`).
+- A sweep of all eleven `0000201x`/`00002020` policy files re-bound every subquery column against the
+  deparsed `pg_policies` text. No other unqualified reference binds to an inner alias.
+- **Verification.** `supabase/probes/cohort_session_isolation.sql` is one rolled-back transaction.
+  It builds two cohorts with one member each and asserts that a member of cohort A cannot read cohort
+  B or its events, can read their own, cannot insert attendance, cannot raise a revision without
+  review authority, and cannot update or delete their own revision. If the original
+  _View session events_ text is restored, the probe fails with `FAIL member of cohort A reads cohort
+  B's session event`.
 
 **Functions callable by `anon` that write data** (default `PUBLIC` `EXECUTE`, `SECURITY DEFINER`, no
 `auth.uid()` test — details in [Functions.md](Functions.md)):

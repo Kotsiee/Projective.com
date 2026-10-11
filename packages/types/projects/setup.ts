@@ -9,6 +9,7 @@ import {
 } from "./create.ts";
 import { ProjectFormat, ProjectStatus } from "./summary.ts";
 import { hasRichTextProse } from "../richtext/plain-text.ts";
+import { AutoFundMode } from "../finance/billing.ts";
 
 /**
  * projects.setup — the Zod SSOT for the project **configuration** projection: what the owner's
@@ -534,6 +535,12 @@ export const ProjectRulesSchema = z.object({
 	allowDeadlineBonuses: z.boolean(),
 	locationRestriction: z.array(z.string().min(1).max(60)).max(20),
 	languageRequirement: z.array(z.string().min(1).max(60)).max(20),
+	/**
+	 * This project's auto-funding (`projects.projects.auto_fund_override`), overriding its client
+	 * business's mode; `null` inherits it. Meaningless without a client business (PRODUCT_SPEC §Escrow,
+	 * Wallets & Finance #4).
+	 */
+	autoFundOverride: AutoFundMode.nullable().optional(),
 });
 export type ProjectRules = z.infer<typeof ProjectRulesSchema>;
 
@@ -737,6 +744,11 @@ export const ProjectSetupSchema = z.object({
 	onboardedCount: z.number().int().min(0).default(0),
 	/** Re-derived server-side; never trusted from the client (root CLAUDE.md §6). */
 	viewerIsClient: z.boolean(),
+	/**
+	 * The client business's auto-fund mode, which {@link ProjectRules.autoFundOverride} `null` inherits.
+	 * `null` (or absent) when no business pays for the project — the override control is then hidden.
+	 */
+	autoFundInherited: AutoFundMode.nullable().optional(),
 	/** The ladder, in display order. */
 	steps: z.array(ProjectSetupStepSchema),
 	/** 0..100, integer. Server-computed so the bar and the gate cannot disagree. */
@@ -1577,6 +1589,8 @@ export function reconcileSetup(
 		// below it exist to refuse.
 		onboardedCount: base.onboardedCount ?? 0,
 		viewerIsClient: patch.viewerIsClient ?? base.viewerIsClient ?? false,
+		// From the BASE alone: it is the paying business's setting, not something the form edits.
+		autoFundInherited: base.autoFundInherited ?? null,
 	};
 
 	const steps = setupSteps(merged);

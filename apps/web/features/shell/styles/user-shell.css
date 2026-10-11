@@ -104,12 +104,8 @@
     opacity: 0.6;
 }
 
+/* Body-portalled; `.ui-anchored` + `useEdgeDetection` own position and the stack's z-index. */
 .shell-search__entity-menu {
-    position: absolute;
-    inset-block-start: calc(100% + var(--space-2));
-    inset-inline-start: 0;
-    /* Guest uses z-index 5; the authed shell's glass chrome needs the overlay layer to sit above it. */
-    z-index: var(--z-overlay);
     min-inline-size: 11rem;
     margin: 0;
     padding: var(--space-1);
@@ -1079,97 +1075,10 @@ a.shell-setup__step:hover {
 /* #endregion */
 
 /* #region Notifications + Basket drawers */
-.shell-drawer {
-    /* A premium glass panel over the base backdrop blur. */
-    background: color-mix(in srgb, var(--surface) var(--glass-veil-sheet), transparent);
-    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
-}
-
-.shell-feed {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-}
-
-.shell-feed__item {
-    position: relative;
-    display: flex;
-    gap: var(--space-3);
-    padding: var(--space-3);
-    border-radius: var(--radius-base);
-}
-
-.shell-feed__item--unread {
-    background: color-mix(in srgb, var(--primary) var(--tint-soft), transparent);
-}
-
-.shell-feed__lead {
-    flex: 0 0 auto;
-}
-
-.shell-feed__body {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-inline-size: 0;
-}
-
-.shell-feed__title {
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: var(--on-surface);
-}
-
-.shell-feed__text {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-}
-
-.shell-feed__time {
-    font-size: 0.75rem;
-    color: var(--on-surface-variant, var(--text-secondary));
-}
-
-.shell-feed__dot {
-    position: absolute;
-    inset-block-start: var(--space-3);
-    inset-inline-end: var(--space-3);
-    inline-size: 8px;
-    block-size: 8px;
-    border-radius: var(--radius-full);
-    background: var(--primary);
-}
-
-.shell-drawer__all,
-.shell-drawer__cta {
-    display: block;
-    margin-block-start: var(--space-4);
-    padding: var(--space-3);
-    border-radius: var(--radius-base);
-    text-align: center;
-    text-decoration: none;
-    font-weight: 500;
-    font-size: 0.9rem;
-}
-
-.shell-drawer__all {
-    color: var(--primary);
-    border: var(--hairline);
-}
-
-.shell-drawer__cta {
-    color: var(--on-primary);
-    background: var(--primary);
-}
-
-.shell-drawer__all:focus-visible,
-.shell-drawer__cta:focus-visible {
-    outline: none;
-}
+/* `.shell-drawer` paints the Drawer's own solid `--surface` (§B.4.2). The 92% veil + blur it used to
+   lay on the element itself was a translucent region fill, and a blur behind a solid panel renders
+   nothing, so there is no underlay worth moving it to. The notification rows and the drawer's footer
+   link are the notifications feature's own (`features/notifications/styles/`, DESIGN_SYSTEM §D.9). */
 
 /* #endregion */
 

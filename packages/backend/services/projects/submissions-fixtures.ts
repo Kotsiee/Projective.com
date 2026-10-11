@@ -18,6 +18,7 @@ import type {
 } from "@projective/types/projects";
 import { categorizeFile, messageAttachmentFacets } from "@projective/types/files";
 import { findProjectDetail } from "./detail-fixtures.ts";
+import { findBoardPage } from "./board-fixtures.ts";
 import { mockAvatar, mockCover } from "../../mocks/assets.ts";
 import { expandChannelRef, findStageChannel } from "@projective/types/projects";
 
@@ -680,6 +681,7 @@ function toUnit(node: Node): SubmissionUnit | null {
 		dateLabel: fmtDateTime(u.createdAt),
 		fileCount: recCount(node),
 		noteCount: u.notes.length,
+		paidRevision: false,
 	};
 }
 
@@ -703,6 +705,9 @@ function buildReview(unitNode: Node, unit: SubmissionUnit): SubmissionReview {
 		ticketTitle: u.ticketTitle,
 		ticketSummary,
 		notes: u.notes,
+		// The fixture corpus declares no revision terms, so every stage is unlimited (Decision #167);
+		// the Dev Context Switcher's "revisions exhausted" simulates the other side.
+		revisions: { used: 0, allowed: null, priceMinor: null, currency: "USD", priceLabel: null },
 	};
 }
 // #endregion
@@ -816,6 +821,13 @@ export function findSubmissionPage(params: SubmissionListParams): SubmissionList
 		viewerId: isolateFreelancer ? self.id : VIEWER.id,
 		viewerIsClient: isolateFreelancer ? false : detail.viewerIsClient,
 		singleFreelancer,
+		// The claimed, still-open tickets of the same scope's fixture board — the corpus's own tickets.
+		tickets: (findBoardPage({ projectId: params.projectId, channelId })?.cards ?? [])
+			.filter((card) =>
+				card.claimed && (card.status === "claimed" || card.status === "in_progress")
+			)
+			.slice(0, 200)
+			.map((card) => ({ id: card.id, title: card.title, kind: "ticket" as const })),
 	};
 }
 // #endregion

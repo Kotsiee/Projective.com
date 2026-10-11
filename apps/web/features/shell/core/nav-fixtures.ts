@@ -64,24 +64,6 @@ export interface AccountCapabilities {
 	businessAccountEnabled: boolean;
 }
 
-/** A row in the header Notifications drawer. */
-export interface NotificationItem {
-	/** Stable id. */
-	id: string;
-	/** Short headline. */
-	title: string;
-	/** Supporting line. */
-	body: string;
-	/** Relative time label (pre-formatted — no client clock). */
-	time: string;
-	/** Unseen — drives the pulsing tray dot + a per-row accent. */
-	unread?: boolean;
-	/** Actor avatar (Unsplash face) shown as the leading circle. */
-	avatar?: string;
-	/** Actor display name (avatar alt / initials fallback). */
-	actor?: string;
-}
-
 // #endregion
 
 // #region Fixtures
@@ -143,75 +125,6 @@ const ACCOUNT_CAPABILITIES: AccountCapabilities = {
 	businessAccountEnabled: true,
 };
 
-const NOTIFICATIONS: readonly NotificationItem[] = [
-	{
-		id: "n1",
-		title: "Mara approved a milestone",
-		body: "Aurora Rebrand · Stage 2 payment released from escrow.",
-		time: "12m",
-		unread: true,
-		actor: "Mara Ellison",
-		avatar: FACE("photo-1494790108377-be9c29b29330"),
-	},
-	{
-		id: "n2",
-		title: "New message from Daniel",
-		body: "“Can we hop on a quick call about the handoff?”",
-		time: "1h",
-		unread: true,
-		actor: "Daniel Okafor",
-		avatar: FACE("photo-1500648767791-00dcc994a43e"),
-	},
-	{
-		id: "n3",
-		title: "Priya left a 5-star review",
-		body: "Monarch Labs · “Exceptional, delivered ahead of schedule.”",
-		time: "3h",
-		actor: "Priya Nair",
-		avatar: FACE("photo-1438761681033-6461ffad8d80"),
-	},
-	{
-		id: "n4",
-		title: "Weekly summary ready",
-		body: "3 projects advanced · 2 invoices settled.",
-		time: "1d",
-		actor: "Projective",
-	},
-	// Finance events surfaced (read-only) into the existing notification tray — escrow / payout /
-	// funding / invoice / cap / approval (Wallet & Finance, root CLAUDE.md §8 Decision #55).
-	{
-		id: "n5",
-		title: "Escrow funded",
-		body: "Helia wallet redesign · Stage 2 escrow is now funded.",
-		time: "20m",
-		unread: true,
-		actor: "Projective",
-	},
-	{
-		id: "n6",
-		title: "Payout cleared",
-		body: "£945.71 landed in your bank account.",
-		time: "5h",
-		actor: "Projective",
-	},
-	{
-		id: "n7",
-		title: "Deposit failed",
-		body: "Recurring top-up declined — update your funding card.",
-		time: "1d",
-		unread: true,
-		actor: "Projective",
-	},
-	{
-		id: "n8",
-		title: "Spend approval requested",
-		body: "Tomas requested £3,400 to fund a stage on Monarch Labs.",
-		time: "1d",
-		actor: "Tomas P.",
-		avatar: FACE("photo-1500648767791-00dcc994a43e"),
-	},
-];
-
 // #endregion
 
 /** Most-recently-active projects for the Projects disclosure. Swap for `/api/workspaces/recent`. */
@@ -227,9 +140,4 @@ export function getOfferings(): readonly OfferingSublink[] {
 /** The account's standing navigation capabilities. Swap for `/api/account/capabilities`. */
 export function getAccountCapabilities(): AccountCapabilities {
 	return ACCOUNT_CAPABILITIES;
-}
-
-/** Header notifications. Swap for `/api/notifications`. */
-export function getNotifications(): readonly NotificationItem[] {
-	return NOTIFICATIONS;
 }

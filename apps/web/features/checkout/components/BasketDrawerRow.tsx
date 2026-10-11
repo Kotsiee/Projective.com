@@ -3,7 +3,8 @@ import { useRef } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import { Icon } from "@projective/ui/icons";
 import { Popover, Tooltip } from "@projective/ui/feedback";
-import { itemHref, itemKindLabel, sellerHref } from "../core/basket-model.ts";
+import { fundingNote, itemHref, itemKindLabel, sellerHref } from "../core/basket-model.ts";
+import { Amount } from "./Amount.tsx";
 import { isSelected, pendingLines } from "../core/basket-state.ts";
 import { groupIconName } from "./checkout-glyphs.tsx";
 import { itemKindMeta } from "@projective/types/finance";
@@ -17,9 +18,13 @@ import type { BasketItem, BasketSummary } from "../types/checkout-types.ts";
  * row exists to state. The row's own status — unavailable, parked, mid-write — is iconographic for the
  * same reason, with the words in the tooltip.
  *
- * **No figure on this row is computed here.** `lineTotal` and `originalPrice` are server-formatted
- * `MoneyView`s printed through their `display` string; the row never multiplies a unit price by a
- * quantity, because that is the second arithmetic path a money surface cannot afford.
+ * **No figure on this row is computed here.** `lineTotal` and `originalPrice` are server-computed
+ * `MoneyView`s rendered through {@link Amount}, so they follow a currency switch; the row never
+ * multiplies a unit price by a quantity, because that is the second arithmetic path a money surface
+ * cannot afford.
+ *
+ * A ticket or session line says what paying does with the money ({@link fundingNote}): whom it funds
+ * and that it is held in escrow. Plain meta text, not a tag (§3 gate 7).
  */
 
 // #region Props
@@ -52,6 +57,7 @@ export function BasketDrawerRow(props: BasketDrawerRowProps): JSX.Element {
 	const selected = isSelected(line);
 	const seller = sellerHref(line);
 	const kindLabel = itemKindLabel(line);
+	const funding = fundingNote(line);
 	const parkLabel = parked
 		? `Move ${line.title} back to the basket`
 		: `Save ${line.title} for later`;
@@ -96,13 +102,17 @@ export function BasketDrawerRow(props: BasketDrawerRowProps): JSX.Element {
 			</a>
 
 			<span class="bskd-line__prices">
-				<span class="bskd-line__price">{line.lineTotal.display}</span>
+				<Amount class="bskd-line__price" value={line.lineTotal} hideOrigin />
 				{line.originalPrice
 					? (
-						<s class="bskd-line__was">
-							<span class="ui-visually-hidden">Was</span>
-							{line.originalPrice.display}
-						</s>
+						<Amount
+							class="bskd-line__was"
+							value={line.originalPrice}
+							size="micro"
+							tone="struck"
+							srLabel="Was"
+							hideOrigin
+						/>
 					)
 					: null}
 			</span>
@@ -140,6 +150,8 @@ export function BasketDrawerRow(props: BasketDrawerRowProps): JSX.Element {
 					)
 					: null}
 			</span>
+
+			{funding ? <p class="bskd-line__funding">{funding}</p> : null}
 
 			<span class="bskd-line__actions">
 				<Tooltip content={parked ? "Move back to basket" : "Save for later"} placement="top">

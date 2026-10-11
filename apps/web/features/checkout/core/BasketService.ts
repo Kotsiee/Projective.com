@@ -6,6 +6,7 @@ import type {
 	AppliedPromo,
 	Basket,
 	BasketLists,
+	BasketOwnerSummary,
 	BasketSummary,
 	CheckoutContext,
 	CreateBasketList,
@@ -55,6 +56,16 @@ export const BasketService = {
 		return getCheckout(`/api/basket${qs(ctx)}`);
 	},
 
+	/**
+	 * Every account the caller can buy for, each with its baskets and lists, counts and selected
+	 * subtotals in the context's display currency — the basket switcher's model.
+	 */
+	owners(ctx: CheckoutContext): Promise<CheckoutResponse<BasketOwnerSummary[]>> {
+		return getCheckout(
+			`/api/basket/owners${ctx.display ? `?display=${encodeURIComponent(ctx.display)}` : ""}`,
+		);
+	},
+
 	/** Create a further named basket for the acting account. */
 	createBasket(
 		input: CreateBasketInput,
@@ -100,6 +111,21 @@ export const BasketService = {
 	 */
 	addItem(input: AddBasketItem, ctx: CheckoutContext): Promise<CheckoutResponse<BasketPayload>> {
 		return postCheckout("/api/basket/item", withContext({ ...input }, ctx));
+	},
+
+	/**
+	 * Add ONE board ticket (Decision #166) to the default basket. The server reads the kind, stage and
+	 * price off the ticket; `projectId` only names the project it must belong to.
+	 */
+	addTicket(
+		ticketId: string,
+		projectId: string,
+		ctx: CheckoutContext,
+	): Promise<CheckoutResponse<BasketPayload>> {
+		return BasketService.addItem(
+			{ basketId: null, itemType: "project_ticket", itemId: projectId, ticketId },
+			ctx,
+		);
 	},
 
 	/** Patch one line — quantity, selection, parking, delivery address, slot, stage or seats. */

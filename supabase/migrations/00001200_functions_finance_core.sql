@@ -309,14 +309,16 @@ AS $$
     END;
 $$;
 
--- Ticket claim -> hold funds in escrow. Skips gracefully (returns NULL) when prerequisites are absent
--- — no unit price, no payee, no payer wallet in the project's currency — rather than blocking the
--- claim. The payer is the project's client business or, when the project has none, its owner as an
--- INDIVIDUAL client (PRODUCT_SPEC §Escrow, Wallets & Finance #5: an individual client needs no business
--- profile). A payer wallet that does not exist is a skip, never a hold: fn_wallet_debit is a silent
--- no-op on a missing wallet, so inserting the escrow first minted held money nobody paid. An individual
--- whose wallet cannot cover the hold is also skipped (the ticket stays unpaid and is funded by card
--- instead); a business that cannot cover it still refuses, as before.
+-- Lock trigger -> hold funds in escrow (no hold, no work — Decision #165, PRODUCT_MANAGEMENT §3.6).
+-- A hold that cannot be made is REFUSED, never skipped: SQLSTATE PF402, a "Needs funding — …" message,
+-- and DETAIL = {state: 'needs_funding', reason, amount_minor, currency} for the caller to read. Reasons:
+-- `no_price` · `no_wallet` (no payer wallet in the project's currency) · `insufficient_funds` ·
+-- `spending_limit` (the project owner's envelope on a business wallet). A missing stage or payee is not
+-- a funding problem and raises check_violation. Already held -> NULL, the one early return (#165(A)). The
+-- payer is the project's client business or, when the project has none, its owner as an INDIVIDUAL
+-- client (PRODUCT_SPEC §Escrow, Wallets & Finance #5). The wallet and balance are checked before the
+-- escrow row is written: fn_wallet_debit is a silent no-op on a missing wallet, so inserting first
+-- minted held money nobody paid. On success the payee and the client are told (`escrow.funded`).
 CREATE OR REPLACE FUNCTION finance.fn_hold_ticket_escrow(p_ticket_id uuid)
 RETURNS uuid AS $$
 DECLARE
@@ -332,6 +334,8 @@ DECLARE
     v_currency text;
     v_wallet uuid;
     v_balance bigint;
+    v_reason text;
+    v_href text;
 BEGIN
     SELECT
         t.current_stage_id AS stage_id,
@@ -339,7 +343,11 @@ BEGIN
         COALESCE(t.unit_price_cents, ps.unit_price_cents) AS amount,
         p.client_business_id AS payer,
         p.owner_user_id AS spender,
-        p.currency AS currency
+        p.currency AS currency,
+        p.id AS project_id,
+        p.slug AS project_slug,
+        t.slug AS ticket_slug,
+        t.title AS ticket_title
     INTO v
     FROM projects.tickets t
     JOIN projects.projects p ON p.id = t.project_id
@@ -367,34 +375,52 @@ BEGIN
         v_payee_id := v.payee_id;
     END IF;
 
-    v_payer_id := COALESCE(v.payer, v.spender);
-    IF v_payer_id IS NULL OR v.stage_id IS NULL OR v_payee_id IS NULL
-        OR v_amount IS NULL OR v_amount <= 0 THEN
-        RETURN NULL;
-    END IF;
-    v_payer_user := CASE WHEN v.payer IS NULL THEN v.spender END;
-    v_payer_type := finance.fn_escrow_payer_wallet_type(v.payer, v_payer_user);
-    v_currency := upper(COALESCE(v.currency, 'USD'));
-
     IF EXISTS (SELECT 1 FROM finance.escrows WHERE ticket_id = p_ticket_id AND status = 'held') THEN
         RETURN NULL;
     END IF;
 
-    SELECT w.id, w.balance_cents INTO v_wallet, v_balance
-      FROM finance.wallets w
-     WHERE w.owner_type = v_payer_type AND w.owner_id = v_payer_id AND w.currency = v_currency;
-    IF v_wallet IS NULL THEN
-        RETURN NULL;
-    END IF;
-    IF v_payer_type <> 'business' AND v_balance < v_amount THEN
-        RETURN NULL;
+    IF v.stage_id IS NULL OR v_payee_id IS NULL THEN
+        RAISE EXCEPTION 'An escrow is held for a ticket on a stage with a payee; this ticket has %.',
+            CASE WHEN v.stage_id IS NULL THEN 'no stage' ELSE 'no payee' END
+            USING ERRCODE = 'check_violation';
     END IF;
 
-    -- The envelope is the SPENDER's: the project owner who commits the business's money. auth.uid()
-    -- here is the freelancer whose claim triggered the hold, who never has an envelope on the payer's
-    -- wallet, so checking them waved every hold through. An individual's own wallet has no envelope.
-    IF v_payer_type = 'business' AND NOT finance.fn_check_spending_limit(v_wallet, v.spender, v_amount) THEN
-        RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'spend: this would exceed the project owner''s spending limit on the business wallet';
+    v_payer_id := COALESCE(v.payer, v.spender);
+    v_payer_user := CASE WHEN v.payer IS NULL THEN v.spender END;
+    v_payer_type := finance.fn_escrow_payer_wallet_type(v.payer, v_payer_user);
+    v_currency := upper(COALESCE(v.currency, 'USD'));
+
+    IF v_amount IS NULL OR v_amount <= 0 THEN
+        v_reason := 'no_price';
+    ELSE
+        SELECT w.id, w.balance_cents INTO v_wallet, v_balance
+          FROM finance.wallets w
+         WHERE w.owner_type = v_payer_type AND w.owner_id = v_payer_id AND w.currency = v_currency;
+        IF v_wallet IS NULL THEN
+            v_reason := 'no_wallet';
+        ELSIF v_balance < v_amount THEN
+            v_reason := 'insufficient_funds';
+        -- The envelope is the SPENDER's: the project owner who commits the business's money. auth.uid()
+        -- here is the freelancer whose claim triggered the hold, who never has an envelope on the payer's
+        -- wallet, so checking them waved every hold through. An individual's own wallet has no envelope.
+        ELSIF v_payer_type = 'business' AND NOT finance.fn_check_spending_limit(v_wallet, v.spender, v_amount) THEN
+            v_reason := 'spending_limit';
+        END IF;
+    END IF;
+
+    IF v_reason IS NOT NULL THEN
+        RAISE EXCEPTION USING
+            ERRCODE = 'PF402',
+            MESSAGE = 'Needs funding — ' || CASE v_reason
+                WHEN 'no_price' THEN 'this ticket has no price to hold in escrow yet.'
+                WHEN 'no_wallet' THEN 'the client has no wallet in ' || v_currency || ' to hold this ticket''s escrow from.'
+                WHEN 'insufficient_funds' THEN 'the client''s wallet doesn''t hold enough for this ticket''s escrow.'
+                ELSE 'this would exceed the project owner''s spending limit on the business wallet.'
+            END,
+            DETAIL = jsonb_build_object(
+                'state', 'needs_funding', 'reason', v_reason,
+                'amount_minor', v_amount, 'currency', v_currency
+            )::text;
     END IF;
 
     INSERT INTO finance.escrows (
@@ -410,6 +436,126 @@ BEGIN
     PERFORM finance.fn_wallet_debit(v_payer_id, v_payer_type, v_currency, v_amount, 'escrow_hold', 'escrows', v_escrow_id);
 
     UPDATE projects.tickets SET payment_status = 'escrow_funded'::payment_status WHERE id = p_ticket_id;
+
+    -- "Funded, you can start" to the payee; the client hears it too unless they made the hold themselves.
+    v_href := '/projects/' || v.project_slug || '/board?tkv=' || v.ticket_slug;
+    IF v.payee_id IS NOT NULL THEN
+        PERFORM comms.fn_notify(
+            v.payee_id, 'escrow.funded', 'Funded — you can start',
+            format('Escrow is held for "%s". Work can begin.', v.ticket_title),
+            'projects.tickets', p_ticket_id,
+            jsonb_build_object('escrow_id', v_escrow_id, 'amount_minor', v_amount, 'currency', v_currency),
+            auth.uid(), 'project', v.project_id, NULL, v_href
+        );
+    END IF;
+    IF v.spender IS DISTINCT FROM auth.uid() THEN
+        PERFORM comms.fn_notify(
+            v.spender, 'escrow.funded', 'Escrow held',
+            format('Escrow for "%s" is held from your wallet. Work can begin.', v.ticket_title),
+            'projects.tickets', p_ticket_id,
+            jsonb_build_object('escrow_id', v_escrow_id, 'amount_minor', v_amount, 'currency', v_currency),
+            auth.uid(), 'project', v.project_id, NULL, v_href
+        );
+    END IF;
+    RETURN v_escrow_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects, org, comms, auth;
+
+-- A paid revision round (Decision #167) -> one MORE escrow on its ticket, beside the one already held
+-- for the work, at the round's snapshotted price. Same payee rule and the same PF402 refusal shape as
+-- fn_hold_ticket_escrow (#165), so the TS side reads one vocabulary; fn_release_ticket_escrow already
+-- releases every held row of a ticket on approval, and refunds treat it like any ticket escrow.
+-- Internal; projects.fund_paid_revision is the door: it locks the round, holds only one still
+-- `awaiting_payment` (so a replay cannot hold twice), and has checked the caller may spend the payer's money.
+CREATE OR REPLACE FUNCTION finance.fn_hold_revision_escrow(p_revision_id uuid)
+RETURNS uuid AS $$
+DECLARE
+    v record;
+    v_escrow_id uuid;
+    v_team_id uuid;
+    v_payee_type assignment_type;
+    v_payee_id uuid;
+    v_payer_type text;
+    v_payer_id uuid;
+    v_payer_user uuid;
+    v_currency text;
+    v_wallet uuid;
+    v_balance bigint;
+    v_reason text;
+BEGIN
+    SELECT rv.id, rv.ticket_id, rv.project_stage_id AS stage_id, rv.price_cents AS amount,
+           t.current_assignee_id AS assignee,
+           p.client_business_id AS payer, p.owner_user_id AS spender, p.currency
+      INTO v
+      FROM projects.stage_revision_requests rv
+      JOIN projects.tickets t ON t.id = rv.ticket_id
+      JOIN projects.projects p ON p.id = t.project_id
+     WHERE rv.id = p_revision_id;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Revision round % not found.', p_revision_id USING ERRCODE = 'no_data_found';
+    END IF;
+
+    SELECT sa.team_id INTO v_team_id
+      FROM projects.stage_assignments sa
+     WHERE sa.project_stage_id = v.stage_id AND sa.assignee_type = 'team'
+       AND sa.status = 'accepted' AND sa.team_id IS NOT NULL
+     LIMIT 1;
+    IF v_team_id IS NOT NULL THEN
+        v_payee_type := 'team'::assignment_type;
+        v_payee_id := v_team_id;
+    ELSE
+        v_payee_type := 'freelancer'::assignment_type;
+        v_payee_id := v.assignee;
+    END IF;
+    IF v_payee_id IS NULL THEN
+        RAISE EXCEPTION 'A paid revision is held for the ticket''s payee; this ticket has none.'
+            USING ERRCODE = 'check_violation';
+    END IF;
+
+    v_payer_id := COALESCE(v.payer, v.spender);
+    v_payer_user := CASE WHEN v.payer IS NULL THEN v.spender END;
+    v_payer_type := finance.fn_escrow_payer_wallet_type(v.payer, v_payer_user);
+    v_currency := upper(COALESCE(v.currency, 'USD'));
+
+    IF v.amount IS NULL OR v.amount <= 0 THEN
+        v_reason := 'no_price';
+    ELSE
+        SELECT w.id, w.balance_cents INTO v_wallet, v_balance
+          FROM finance.wallets w
+         WHERE w.owner_type = v_payer_type AND w.owner_id = v_payer_id AND w.currency = v_currency;
+        IF v_wallet IS NULL THEN
+            v_reason := 'no_wallet';
+        ELSIF v_balance < v.amount THEN
+            v_reason := 'insufficient_funds';
+        ELSIF v_payer_type = 'business' AND NOT finance.fn_check_spending_limit(v_wallet, v.spender, v.amount) THEN
+            v_reason := 'spending_limit';
+        END IF;
+    END IF;
+    IF v_reason IS NOT NULL THEN
+        RAISE EXCEPTION USING
+            ERRCODE = 'PF402',
+            MESSAGE = 'Needs funding — ' || CASE v_reason
+                WHEN 'no_price' THEN 'this revision has no price to hold in escrow.'
+                WHEN 'no_wallet' THEN 'the client has no wallet in ' || v_currency || ' to hold this revision''s escrow from.'
+                WHEN 'insufficient_funds' THEN 'the client''s wallet doesn''t hold enough for this revision''s escrow.'
+                ELSE 'this would exceed the project owner''s spending limit on the business wallet.'
+            END,
+            DETAIL = jsonb_build_object(
+                'state', 'needs_funding', 'reason', v_reason,
+                'amount_minor', v.amount, 'currency', v_currency
+            )::text;
+    END IF;
+
+    INSERT INTO finance.escrows (
+        project_stage_id, ticket_id, payer_business_id, payer_user_id,
+        payee_type, payee_id, amount_cents, currency, status
+    ) VALUES (
+        v.stage_id, v.ticket_id, v.payer, v_payer_user,
+        v_payee_type, v_payee_id, v.amount, v_currency, 'held'
+    )
+    RETURNING id INTO v_escrow_id;
+
+    PERFORM finance.fn_wallet_debit(v_payer_id, v_payer_type, v_currency, v.amount, 'escrow_hold', 'escrows', v_escrow_id);
     RETURN v_escrow_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects, org, auth;
@@ -460,7 +606,7 @@ BEGIN
         v_payout := r.amount_cents + COALESCE(r.deadline_bonus_cents, 0) - v_fee;
         IF v_payout < 0 THEN v_payout := 0; END IF;
 
-        UPDATE finance.escrows SET status = 'released', platform_fee_cents = v_fee WHERE id = r.id;
+        UPDATE finance.escrows SET status = 'released', platform_fee_cents = v_fee, released_at = now() WHERE id = r.id;
 
         IF r.payee_type = 'team'::assignment_type THEN
             PERFORM finance.fn_split_team_payout(r.id, r.payee_id, v_payout, r.currency);
@@ -481,67 +627,140 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects, security, org;
 
--- Consolidate a period's released escrows/fees/bonuses into one itemized monthly invoice.
+-- Consolidate a business's billing period into one invoice PER CURRENCY (PRODUCT_SPEC §Escrow, Wallets
+-- & Finance #4): every escrow RELEASED in [p_start, p_end) — by released_at, never created_at — as
+-- escrow / deadline-bonus / platform-fee lines, and every on-account credit as an `on_account` line.
+-- Projective is the issuer (issue_from_profile NULL). total = escrow + bonus + tax: the platform fee
+-- was deducted from the payee at release, so it is shown, never added. amount_due = the on-account
+-- credit, the only part not already paid from the wallet; with nothing due the invoice is issued Paid.
+-- Due `invoice_due_days` after issue (finance-model §15). Idempotent on
+-- uq_invoices_business_period_currency: a re-run returns the invoices already issued and writes
+-- nothing. A new invoice tells the business's billing members (`invoice.issued`). Returns the
+-- period's invoice ids.
 CREATE OR REPLACE FUNCTION finance.fn_generate_consolidated_invoice(
     p_business_id uuid, p_start timestamptz, p_end timestamptz
-) RETURNS uuid AS $$
+) RETURNS uuid[] AS $$
 DECLARE
+    v_ids uuid[] := '{}';
     v_invoice uuid;
-    v_subtotal bigint;
-    v_fee bigint;
-    v_currency text;
+    v_due_days integer;
+    v_tax bigint := 0; -- shortcut: no tax is computed yet; becomes Stripe Tax's figure when tax collection lands.
+    v_slug text;
+    v_member uuid;
+    c record;
     r record;
 BEGIN
-    SELECT
-        COALESCE(SUM(amount_cents + deadline_bonus_cents), 0),
-        COALESCE(SUM(platform_fee_cents), 0),
-        MAX(currency)
-    INTO v_subtotal, v_fee, v_currency
-    FROM finance.escrows
-    WHERE payer_business_id = p_business_id
-        AND status = 'released'
-        AND created_at >= p_start AND created_at < p_end;
+    SELECT (value #>> '{}')::integer INTO v_due_days
+      FROM security.platform_params WHERE key = 'invoice_due_days';
+    v_due_days := COALESCE(v_due_days, 14);
+    SELECT slug INTO v_slug FROM org.business_profiles WHERE id = p_business_id;
 
-    IF v_subtotal IS NULL OR v_subtotal = 0 THEN
-        RETURN NULL;
-    END IF;
-
-    INSERT INTO finance.invoices (
-        project_stage_id, issue_to_business_id, issue_from_profile, invoice_type,
-        billing_period_start, billing_period_end, amount_cents, subtotal_cents,
-        platform_fee_cents, tax_cents, total_cents, currency, status
-    )
-    VALUES (
-        NULL, p_business_id, p_business_id, 'consolidated_monthly',
-        p_start, p_end, v_subtotal, v_subtotal,
-        v_fee, 0, v_subtotal, COALESCE(v_currency, 'USD'), 'issued'
-    )
-    RETURNING id INTO v_invoice;
-
-    FOR r IN
-        SELECT id, amount_cents, deadline_bonus_cents, platform_fee_cents, currency
-        FROM finance.escrows
-        WHERE payer_business_id = p_business_id
-            AND status = 'released'
-            AND created_at >= p_start AND created_at < p_end
+    FOR c IN
+        WITH spend AS (
+            SELECT upper(e.currency) AS currency,
+                   SUM(e.amount_cents + e.deadline_bonus_cents) AS subtotal,
+                   SUM(e.platform_fee_cents) AS fee
+              FROM finance.escrows e
+             WHERE e.payer_business_id = p_business_id AND e.status = 'released'
+               AND e.released_at >= p_start AND e.released_at < p_end
+             GROUP BY 1
+        ), credit AS (
+            SELECT upper(t.currency) AS currency, SUM(t.amount_cents) AS due
+              FROM finance.transactions t
+              JOIN finance.wallets w ON w.id = t.wallet_id
+             WHERE w.owner_type = 'business' AND w.owner_id = p_business_id
+               AND t.direction = 'credit' AND t.reason = 'on_account_credit'
+               AND t.created_at >= p_start AND t.created_at < p_end
+             GROUP BY 1
+        )
+        SELECT COALESCE(s.currency, k.currency) AS currency,
+               COALESCE(s.subtotal, 0)::bigint AS subtotal,
+               COALESCE(s.fee, 0)::bigint AS fee,
+               COALESCE(k.due, 0)::bigint AS due
+          FROM spend s FULL JOIN credit k ON k.currency = s.currency
     LOOP
+        CONTINUE WHEN c.subtotal = 0 AND c.due = 0;
+        v_invoice := NULL;
+        INSERT INTO finance.invoices (
+            project_stage_id, issue_to_business_id, issue_from_profile, invoice_type,
+            billing_period_start, billing_period_end, amount_cents, subtotal_cents,
+            platform_fee_cents, tax_cents, total_cents, amount_due_cents, currency, status, due_date, paid_at
+        )
+        VALUES (
+            NULL, p_business_id, NULL, 'consolidated_monthly',
+            p_start, p_end, c.subtotal + v_tax, c.subtotal,
+            c.fee, v_tax, c.subtotal + v_tax, c.due, c.currency,
+            CASE WHEN c.due > 0 THEN 'issued' ELSE 'paid' END,
+            now() + make_interval(days => v_due_days),
+            CASE WHEN c.due > 0 THEN NULL ELSE now() END
+        )
+        ON CONFLICT ON CONSTRAINT uq_invoices_business_period_currency DO NOTHING
+        RETURNING id INTO v_invoice;
+
+        IF v_invoice IS NULL THEN
+            SELECT id INTO v_invoice FROM finance.invoices
+             WHERE issue_to_business_id = p_business_id AND billing_period_start = p_start AND currency = c.currency;
+            v_ids := v_ids || v_invoice;
+            CONTINUE;
+        END IF;
+
+        FOR r IN
+            SELECT id, amount_cents, deadline_bonus_cents, platform_fee_cents, upper(currency) AS currency
+            FROM finance.escrows
+            WHERE payer_business_id = p_business_id
+                AND status = 'released'
+                AND released_at >= p_start AND released_at < p_end
+                AND upper(currency) = c.currency
+            ORDER BY released_at, id
+        LOOP
+            INSERT INTO finance.invoice_line_items (invoice_id, ref_type, ref_id, description, amount_cents, currency)
+            VALUES (v_invoice, 'escrow', r.id, 'Released escrow', r.amount_cents, r.currency);
+
+            IF r.deadline_bonus_cents > 0 THEN
+                INSERT INTO finance.invoice_line_items (invoice_id, ref_type, ref_id, description, amount_cents, currency)
+                VALUES (v_invoice, 'bonus', r.id, 'Deadline bonus', r.deadline_bonus_cents, r.currency);
+            END IF;
+
+            IF r.platform_fee_cents > 0 THEN
+                INSERT INTO finance.invoice_line_items (invoice_id, ref_type, ref_id, description, amount_cents, currency)
+                VALUES (v_invoice, 'platform_fee', r.id, 'Platform fee (included, deducted from the payee)', r.platform_fee_cents, r.currency);
+            END IF;
+        END LOOP;
+
         INSERT INTO finance.invoice_line_items (invoice_id, ref_type, ref_id, description, amount_cents, currency)
-        VALUES (v_invoice, 'escrow', r.id, 'Released escrow', r.amount_cents, r.currency);
+        SELECT v_invoice, 'on_account', t.id, 'Bought on account', t.amount_cents, upper(t.currency)
+          FROM finance.transactions t
+          JOIN finance.wallets w ON w.id = t.wallet_id
+         WHERE w.owner_type = 'business' AND w.owner_id = p_business_id
+           AND t.direction = 'credit' AND t.reason = 'on_account_credit'
+           AND t.created_at >= p_start AND t.created_at < p_end
+           AND upper(t.currency) = c.currency;
 
-        IF r.deadline_bonus_cents > 0 THEN
-            INSERT INTO finance.invoice_line_items (invoice_id, ref_type, ref_id, description, amount_cents, currency)
-            VALUES (v_invoice, 'bonus', r.id, 'Deadline bonus', r.deadline_bonus_cents, r.currency);
-        END IF;
+        FOR v_member IN
+            SELECT DISTINCT vp.member_user_id FROM finance.vault_permissions vp
+              JOIN finance.wallets w ON w.id = vp.wallet_id
+             WHERE w.owner_type = 'business' AND w.owner_id = p_business_id
+               AND 'manage_billing'::finance.vault_capability = ANY (vp.capabilities)
+        LOOP
+            PERFORM comms.fn_notify(
+                v_member, 'invoice.issued', 'Monthly invoice issued',
+                CASE WHEN c.due > 0
+                    THEN format('Your %s invoice is ready, with an amount due for what was bought on account.', c.currency)
+                    ELSE format('Your %s invoice is ready. Everything on it was paid from the wallet.', c.currency)
+                END,
+                'invoices', v_invoice,
+                jsonb_build_object('total_minor', c.subtotal + v_tax, 'amount_due_minor', c.due, 'currency', c.currency),
+                NULL, 'business', p_business_id, NULL,
+                '/businesses/' || COALESCE(v_slug, p_business_id::text) || '/billing'
+            );
+        END LOOP;
 
-        IF r.platform_fee_cents > 0 THEN
-            INSERT INTO finance.invoice_line_items (invoice_id, ref_type, ref_id, description, amount_cents, currency)
-            VALUES (v_invoice, 'platform_fee', r.id, 'Platform fee', r.platform_fee_cents, r.currency);
-        END IF;
+        v_ids := v_ids || v_invoice;
     END LOOP;
 
-    RETURN v_invoice;
+    RETURN v_ids;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, org;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, org, security, comms;
 
 -- #endregion
 
@@ -569,7 +788,7 @@ BEGIN
         v_refund := r.amount_cents - v_share;                -- unearned remainder -> client
         IF v_refund < 0 THEN v_refund := 0; END IF;
 
-        UPDATE finance.escrows SET status = 'released', platform_fee_cents = v_fee WHERE id = r.id;
+        UPDATE finance.escrows SET status = 'released', platform_fee_cents = v_fee, released_at = now() WHERE id = r.id;
 
         IF r.payee_type = 'team'::assignment_type THEN
             PERFORM finance.fn_split_team_payout(r.id, r.payee_id, v_payout, r.currency, 'fair_exit_release');

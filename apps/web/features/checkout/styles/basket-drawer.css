@@ -1,14 +1,15 @@
 /**
  * basket-drawer.css — the header Basket utility's right-side drawer (`.bskd-*`).
  *
- * **Every width rule here is a container query.** The drawer is `min(27rem, 94vw)`, so its content box
- * never matches the viewport: a media query at 480px would fire on a phone whose panel is 352px wide
- * and stay silent on a desktop whose panel is 432px — asking about the wrong box in both directions.
- * `container-type: inline-size` on the root makes `@container` ask about the panel itself.
+ * **No width rule here asks about the viewport.** The drawer is `--drawer-w`, so its content box never
+ * matches the viewport: a media query at 480px would fire on a phone whose panel is 352px wide and stay
+ * silent on a desktop whose panel is 432px. Narrow panels are handled intrinsically instead — the
+ * footer's two CTAs wrap on token flex-bases, and a line keeps one grid whose title ellipsises — so
+ * every size is a token and no container breakpoint needs a literal.
  *
  * **Separation is spacing and one hairline, never a box** (§B.4): a basket line is not interactive
  * chrome, so it gets a single leading hairline between siblings and tonal weight on its group heading —
- * not four-sided borders per row, which would turn a 27rem panel into a stack of cards with no room
+ * not four-sided borders per row, which would turn a 30rem panel into a stack of cards with no room
  * left for the fact each one states.
  */
 
@@ -22,6 +23,14 @@
 	padding-block-end: var(--space-4);
 }
 
+/* The drawer portals outside the page's reset, so its own headings, lists and paragraphs drop the UA
+   margins and list indent here — spacing comes from the gaps below, never from the user agent. */
+.bskd :where(h3, ul, p),
+.bskd__foot :where(dl, dd, p) {
+	margin: 0;
+	padding: 0;
+}
+
 .bskd__error {
 	display: flex;
 	flex-wrap: wrap;
@@ -30,7 +39,7 @@
 }
 
 .bskd__error-text {
-	flex: 1 1 12rem;
+	flex: 1 1 var(--fld-panel-minw);
 	min-inline-size: 0;
 }
 
@@ -83,7 +92,7 @@
 }
 
 .bskd__empty-note {
-	max-inline-size: 22rem;
+	max-inline-size: var(--measure-narrow);
 	font-size: var(--text-sm);
 }
 
@@ -222,8 +231,8 @@
 	align-items: center;
 	justify-content: center;
 	overflow: hidden;
-	inline-size: 2.5rem;
-	block-size: 2.5rem;
+	inline-size: var(--fld-h-md);
+	block-size: var(--fld-h-md);
 	border-radius: var(--radius-base);
 	background: var(--surface-2);
 	color: var(--text-secondary);
@@ -288,6 +297,14 @@
 	color: var(--text-secondary);
 	font-size: var(--text-2xs);
 	font-variant-numeric: tabular-nums;
+}
+
+/* What paying does with the money — meta text under the row, never a tag (§3 gate 7). Auto-placed in
+   its own implicit row, so a line without one gains no empty track. */
+.bskd-line__funding {
+	grid-column: 2 / -1;
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
 }
 
 /* Seller identity and the unavailable mark share one grid cell, so a template change moves both. */
@@ -388,7 +405,7 @@
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-1);
-	min-inline-size: 12rem;
+	min-inline-size: var(--fld-panel-minw);
 	list-style: none;
 }
 
@@ -425,13 +442,85 @@
 }
 /* #endregion */
 
+/* #region Header switcher */
+.bskd__head {
+	display: flex;
+	gap: var(--space-3);
+	align-items: center;
+	min-inline-size: 0;
+}
+
+.bskd__head-label {
+	flex: none;
+}
+
+.bskd__head .bsk-switch {
+	flex: 1 1 auto;
+	min-inline-size: 0;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-normal);
+}
+/* #endregion */
+
+/* #region Basket switcher (shared with the checkout header band below --bp-md) */
+.bsk-switch__value,
+.bsk-switch__row {
+	display: flex;
+	gap: var(--space-2);
+	align-items: baseline;
+	min-inline-size: 0;
+}
+
+.bsk-switch__row {
+	align-items: center;
+	inline-size: 100%;
+}
+
+.bsk-switch__name {
+	overflow: hidden;
+	color: var(--on-surface);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bsk-switch__owner,
+.bsk-switch__meta {
+	flex: none;
+	color: var(--text-secondary);
+	font-size: var(--text-2xs);
+	font-variant-numeric: tabular-nums;
+}
+
+.bsk-switch__row .bsk-switch__name {
+	flex: 1 1 auto;
+}
+
+/* On a narrow trigger the owner gives way before the basket name does. */
+.bsk-switch__value .bsk-switch__owner {
+	flex: 0 3 auto;
+	min-inline-size: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bsk-switch__row--new {
+	color: var(--primary);
+}
+
+.bsk-switch__row--new .bsk-switch__name {
+	color: inherit;
+}
+/* #endregion */
+
 /* #region Footer */
+/* Rendered in the Drawer's pinned `footer` slot, which already draws the hairline and padding
+   (§B.10.8). It sits outside `.bskd`, so it is its own query container for the narrow tier below. */
 .bskd__foot {
+	container-type: inline-size;
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-3);
-	padding-block-start: var(--space-4);
-	border-block-start: var(--hairline);
 }
 
 .bskd__totals {
@@ -461,15 +550,22 @@
 	font-weight: var(--fw-semibold);
 }
 
+/* Wraps to two full-width rows when the panel cannot hold both at their token bases. */
 .bskd__ctas {
 	display: flex;
+	flex-wrap: wrap;
 	gap: var(--space-2);
 	align-items: center;
 }
 
+.bskd__ctas > .ui-button {
+	flex: 1 1 var(--fld-panel-minw);
+}
+
 .bskd__cta {
 	display: inline-flex;
-	flex: none;
+	flex: 1 0 auto;
+	justify-content: center;
 	gap: var(--space-2);
 	align-items: center;
 	min-block-size: var(--fld-hit);
@@ -496,38 +592,4 @@
 	font-size: var(--text-2xs);
 }
 
-/*
- * At the panel's own narrow tier the two CTAs stack rather than compete for a 20rem row: "Go to Basket"
- * would otherwise ellipsise and the pay-path button would carry the whole width of a control the buyer
- * has not chosen yet.
- */
-@container (max-width: 20rem) {
-	.bskd__ctas {
-		flex-direction: column;
-		align-items: stretch;
-	}
-
-	.bskd__cta {
-		justify-content: center;
-	}
-
-	.bskd-line {
-		grid-template-areas:
-			"check link"
-			"check sub"
-			"check price"
-			"check actions";
-		grid-template-columns: auto minmax(0, 1fr);
-	}
-
-	.bskd-line__prices {
-		flex-direction: row;
-		gap: var(--space-2);
-		align-items: baseline;
-	}
-
-	.bskd-line__actions {
-		justify-content: flex-start;
-	}
-}
 /* #endregion */

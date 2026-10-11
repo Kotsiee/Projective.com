@@ -92,10 +92,10 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		label: "Authentication & session",
 		gate: "AUTH_BACKEND_LIVE",
 		liveImplemented: true,
-		modules: [],
-		schemas: ["auth", "org", "security"],
+		modules: ["services/comms/notification-fixtures.ts"],
+		schemas: ["auth", "org", "security", "comms"],
 		description:
-			"Sign-in, join, OAuth, verification, refresh and sign-out. One of only three services with a real GoTrue/Supabase path.",
+			"Sign-in, join, OAuth, verification, refresh and sign-out. One of only three services with a real GoTrue/Supabase path. Also gates the notification centre and the /api/notifications inbox.",
 	},
 	explore: {
 		domain: "explore",

@@ -85,6 +85,8 @@ export function customStartProblem(
 			return "Further ahead than this provider's calendar is open.";
 		case "blackout":
 			return "The provider is away then.";
+		case "full":
+			return "Every seat in that session is taken.";
 		default:
 			return "That time is not available.";
 	}

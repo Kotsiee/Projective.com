@@ -296,6 +296,76 @@
 .cko-methods__reason {
 	color: var(--warning);
 }
+
+/*
+ * Paying on account (Decision #172): an instrument row with no plate — there is no card behind it —
+ * selected with the wallet's channels (tint, `--primary` border, drawn tick). Interactive, so the
+ * four-sided border is permitted (§B.4); press feedback is a scale only (§3 gate 12).
+ */
+.cko-invoice-opt {
+	appearance: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	padding: var(--space-3) var(--space-4);
+	border: var(--hairline);
+	border-radius: var(--radius-lg);
+	background: var(--surface-1);
+	color: var(--on-surface);
+	font: inherit;
+	text-align: start;
+	cursor: pointer;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.cko-invoice-opt:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), var(--surface-1));
+}
+
+.cko-invoice-opt:active {
+	transform: scale(0.99);
+}
+
+.cko-invoice-opt[data-checked="true"] {
+	border-color: var(--primary);
+	background: color-mix(in srgb, var(--primary) var(--tint-subtle), var(--surface-1));
+}
+
+.cko-invoice-opt[aria-disabled="true"] {
+	cursor: not-allowed;
+	color: var(--text-secondary);
+}
+
+.cko-invoice-opt__text {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-inline-size: 0;
+}
+
+.cko-invoice-opt__name {
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+}
+
+.cko-invoice-opt__note {
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cko-invoice-opt:active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .cko-invoice-opt:active {
+	transform: none;
+}
 /* #endregion */
 
 /* #region The wallet, as one option of that list */

@@ -20,6 +20,7 @@ import { INTENSITY_OPTIONS } from "../../core/ticket-model.ts";
 import type { TicketStageView } from "../../core/ticket-view.ts";
 import { TaskListEditor } from "./TaskListEditor.tsx";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
+import { fundingRollup } from "../../core/funding-ui.ts";
 
 /**
  * StageInspector — the modal's right panel while a stage is selected on the Stages tab.
@@ -43,6 +44,11 @@ export interface StageInspectorProps {
 	editable: boolean;
 	onClose: () => void;
 	onPatch: (patch: Partial<TicketStageRef>) => void;
+	/**
+	 * This ticket's funding line, when the inspected stage is the one the ticket sits in — status only:
+	 * the footer owns the action, so the panel never offers it a second time.
+	 */
+	funding?: JSX.Element | null;
 }
 
 /** A stage's lifecycle reads in the client's words, not the enum's. */
@@ -80,6 +86,7 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 	const tabId = (t: string) => `tkc-insp-${t}`;
 	const panelId = (t: string) => `tkc-insp-panel-${t}`;
 	const baseCents = ref.unitPriceCents ?? stage?.unitPriceCents ?? null;
+	const owed = fundingRollup(stageTickets);
 
 	return (
 		<aside class="tkc-insp" aria-label={`${ref.name} details`}>
@@ -110,6 +117,7 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 						} intensity`}
 				</span>
 			</div>
+			{props.funding ? <div class="tkc-insp__funding">{props.funding}</div> : null}
 
 			<div class="tkc-insp__tabs" role="tablist" aria-label="Stage panel">
 				<button
@@ -257,6 +265,15 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 										<h4 class="tkc-insp__sectitle">
 											Tickets in this stage ({stageTickets.length})
 										</h4>
+										{owed.count > 0
+											? (
+												<p class="tkc-insp__none">
+													{owed.count} {owed.count === 1 ? "needs" : "need"}{" "}
+													{formatTicketMoney(owed.totalMinor, owed.currency ?? undefined)}{" "}
+													before work can start.
+												</p>
+											)
+											: null}
 										{stageTickets.length === 0
 											? <p class="tkc-insp__none">Nothing routed here yet.</p>
 											: (

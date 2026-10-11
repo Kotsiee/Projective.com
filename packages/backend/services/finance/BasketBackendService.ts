@@ -5,6 +5,7 @@ import type {
 	ApplyPromoCode,
 	Basket,
 	BasketLists,
+	BasketOwnerSummary,
 	BasketSummary,
 	CreateBasketList,
 	MoveBasketItem,
@@ -89,6 +90,18 @@ export class BasketBackendService {
 	}
 
 	/**
+	 * Every account the actor can buy for — themselves, then each team, business and organisation they
+	 * may spend from — with each one's baskets and lists, item counts and selected subtotals, in the
+	 * query's display currency. The basket switcher's whole model in one read.
+	 */
+	static owners(
+		query: BasketQuery,
+		actor: ReadActor,
+	): Promise<ServiceResult<BasketOwnerSummary[]>> {
+		return settle(() => live.readOwners(query, actor), (owners) => owners);
+	}
+
+	/**
 	 * The basket lane's navigation model: the account's named lists (default first, the parked shelf
 	 * trailing), plus the engagement-derived Tickets and Sessions groups over the ACTIVE basket — in ONE
 	 * pass, so the three sections cannot disagree about a line's membership.
@@ -135,6 +148,20 @@ export class BasketBackendService {
 		actor: ReadActor,
 	): Promise<ServiceResult<BasketWritePayload>> {
 		return settle(() => live.addItem(input, query, actor), payloadOf);
+	}
+
+	/**
+	 * Add ONE board ticket (`tkt-…` or its uuid) — the board's Buy now / Checkout hand-off (Decision
+	 * #166). The kind, project, stage and price come from the ticket, and a ticket already in the basket
+	 * is re-selected rather than added twice. `basketId`/`itemId` are optional context from the caller.
+	 */
+	static addTicket(
+		ticketId: string,
+		query: BasketQuery,
+		actor: ReadActor,
+		input: Pick<AddBasketItem, "basketId" | "itemId"> = { basketId: null, itemId: "" },
+	): Promise<ServiceResult<BasketWritePayload>> {
+		return settle(() => live.addTicket(ticketId, input, query, actor), payloadOf);
 	}
 
 	/** Patch one line — quantity, selection, parking, delivery address, slot, stage or seats. */

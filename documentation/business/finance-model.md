@@ -319,7 +319,9 @@ stored — only an opaque Stripe reference + safe display fragments (`brand`, `l
 
 ## 13. Money-Movement Rules
 
-- **Recurring deposits** (`finance.deposit_rules`): standing top-ups (weekly/monthly) from a funding
+- **Recurring deposits** (`finance.deposit_rules`): standing top-ups (weekly/monthly, or `below_floor` — a
+  business **floor top-up** that runs each time its default-currency wallet crosses below
+  `low_balance_floor_cents`, Decision #172) from a funding
   method; consecutive failures increment `failure_count` (drives dunning / auto-pause).
 - **Payout schedules** (`finance.payout_schedules`): `manual` · `scheduled_weekly` ·
   `scheduled_monthly` · `threshold` (pay out when Available ≥ `threshold_cents`). **Instant Payout**
@@ -367,9 +369,23 @@ Governs shared wallets (Business / Team / Organisation).
 ## 15. Invoicing, Statements, Refunds, Reconciliation & Idempotency
 
 - **Intervaled invoicing** (`finance.invoices`, existing) — see `brain.md` §Business Invoicing:
-  per-payout lines consolidated into a `consolidated_monthly` invoice.
-- **Statements** (`finance.statements`): a monthly consolidated statement over the 30-day window,
-  issued on the **1st**, PDF-ready (`opening`/`closing`/`total_in`/`total_out`/`total_fees`).
+  per-payout lines consolidated into a `consolidated_monthly` invoice, issued on the business's
+  `org.business_profiles.billing_day` (1–28, set through `finance.set_invoicing_terms`; the 1st
+  when NULL) — Decision #168. One invoice per currency, Projective as issuer, escrows selected by
+  `released_at`; total = escrow + bonus + tax (the fee is shown, already inside); **due 14 days after
+  issue** (`invoice_due_days`); idempotent per business, period and currency. Run daily by
+  `finance.fn_run_billing_cycle` (pg_cron 02:20 UTC), which also marks overdue invoices — Decision #172.
+- **Paying on account** (Decision #172): `finance.place_on_account_order` credits the business wallet
+  (`on_account_credit`) and pays the order from it; the period's credit is the invoice's amount due,
+  settled by `finance.pay_invoice` (`invoice_payment`). **Limit: 25,000.00 owed per currency**
+  (`on_account_limit_cents` = 2 500 000 minor units, product owner 2026-10-10); an overdue invoice
+  withdraws the route.
+- **Auto-funding & low balance** (Decision #172): `auto_fund_mode` (`off` · `add_to_basket` ·
+  `from_wallet`) per business, `projects.auto_fund_override` per project; `low_balance_floor_cents`
+  warns once per crossing (`wallet.low_balance`).
+- **Statements** (`finance.statements`): a monthly consolidated statement over the calendar month,
+  issued on the **1st** for every wallet by `finance.fn_generate_statement`, PDF-ready
+  (`opening`/`closing`/`total_in`/`total_out`/`total_fees`).
 - **Refunds & chargebacks:** recorded as **negative** `finance.transactions` lines
   (`reason ∈ refund | chargeback | escrow_refund | fair_exit_refund`); the chargeback **case**
   (Stripe dispute) is tracked in `finance.chargebacks`.

@@ -29,6 +29,17 @@ export interface BuyNowTarget {
 	sellerName: string | null;
 	/** Where a signed-out visitor is sent, returning here afterwards. */
 	signInHref: string;
+	/**
+	 * Funding ONE project ticket (Decision #166) rather than buying a listing: the line is added by
+	 * ticket, the session is narrowed to the project, and the panel states the escrow terms. Optional,
+	 * so every listing caller is unchanged.
+	 */
+	ticket?: {
+		ticketId: string;
+		projectId: string;
+		/** Called once the ticket's payment has settled, so the host re-reads its funding state. */
+		onSettled?: () => void;
+	};
 }
 
 /** Whether the Buy-Now modal is open. */

@@ -37,5 +37,5 @@ export const handler = define.handlers({
 });
 
 export default define.page<typeof handler>(function BusinessModulePage({ data }) {
-	return <ModuleScreen workspace={data.workspace} module={data.module} view={data.view} />;
+	return <ModuleScreen workspace={data.workspace} module={data.module} view={data.view} billing={data.billing} />;
 });

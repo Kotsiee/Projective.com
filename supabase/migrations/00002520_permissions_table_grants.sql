@@ -220,6 +220,39 @@ GRANT SELECT ON TABLE comms.channel_suppressions TO authenticated;
 GRANT ALL ON TABLE comms.channel_suppressions TO service_role;
 
 GRANT ALL ON TABLE comms.delivery_events TO service_role;
+-- #endregion
+
+-- #region 2. Column-scoped UPDATE — what an own-row UPDATE policy cannot say
+-- 00002500 grants `ALL ON ALL TABLES IN SCHEMA comms` to `authenticated`. An UPDATE policy answers
+-- WHOSE row may change, never WHICH columns, so on the two comms tables carrying an own-row UPDATE
+-- policy over server-authored content the blanket grant made that content writable:
+--
+--  · comms.notifications ("Users update own notification state", 00002012) — a recipient could
+--    rewrite their own title, body, action_url, category or payload, i.e. forge a platform message
+--    (a fake "Payout failed — re-enter your bank details at <url>") inside the trusted inbox. The
+--    recipient's genuine state is three timestamps; everything else is written by comms.fn_notify
+--    (SECURITY DEFINER), which runs as its owner and is unaffected. The inbox RPCs in 00001310 §8 are
+--    SECURITY INVOKER and touch only these three columns.
+--  · comms.project_messages ("edit_own_messages", 00002012) — a sender could clear pii_masked /
+--    pii_categories (unmasking during the protected phase), backdate created_at, flip
+--    has_attachments / is_audio, or re-home the message to another channel they belong to. Editing is
+--    body + Delta + the two soft-state stamps.
+--
+-- Audited and left as they are: notification_prefs, notification_category_prefs,
+-- notification_type_mutes, auto_responses and device_tokens are the caller's own settings with no
+-- server-authored column a rewrite could forge (device_tokens.failure_count is also reset by
+-- comms.register_device, so writing it grants nothing new). Every other comms table has no UPDATE
+-- policy, which RLS reads as deny.
+--
+-- Order matters: revoking the table-level privilege also drops column-level ones, so REVOKE first.
+REVOKE UPDATE ON TABLE comms.notifications FROM authenticated;
+
+GRANT UPDATE (read_at, seen_at, archived_at) ON TABLE comms.notifications TO authenticated;
+
+REVOKE UPDATE ON TABLE comms.project_messages FROM authenticated;
+
+GRANT UPDATE (body, body_delta, edited_at, deleted_at) ON TABLE comms.project_messages TO authenticated;
+-- #endregion
 
 -- comms notification view grants → 00003005_permissions_view_grants.sql (views, Category 3).
 
@@ -599,3 +632,34 @@ projects.stage_staffing_roles,
 projects.stage_open_seats,
 projects.stage_open_seat_skills,
 projects.project_required_skills TO anon;
+
+
+-- --- projects: sessions & cohorts (00001155, Decision #171) ---
+--
+-- Evidence and money-adjacent state is definer-written only: a seat hold is placed by
+-- projects.reserve_seat (under a row lock) and converted by fn_confirm_seat, attendance by
+-- record_presence / record_host_attendance, progress by complete_lesson. 00002500's blanket grant is
+-- narrowed back to SELECT for the client roles.
+REVOKE INSERT, UPDATE, DELETE ON projects.cohort_seat_holds,
+projects.session_attendance,
+projects.lesson_progress FROM anon, authenticated;
+
+-- The two join URLs are handed out only by projects.session_join_link — to the right party, once the
+-- seat is funded and the join window is open — so no client role may SELECT them; every other column
+-- of a sitting stays readable under its policy. The owner keeps INSERT/UPDATE (it schedules sittings)
+-- and must write with `return=minimal`, since a representation would SELECT the URLs back.
+REVOKE SELECT ON projects.session_events FROM anon, authenticated;
+
+GRANT SELECT (
+    id,
+    cohort_id,
+    title,
+    slug,
+    start_time,
+    end_time,
+    meeting_provider,
+    provider_meeting_id,
+    status,
+    created_at,
+    updated_at
+) ON projects.session_events TO authenticated;

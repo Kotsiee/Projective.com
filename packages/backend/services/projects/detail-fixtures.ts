@@ -327,6 +327,8 @@ function buildDetail(row: ProjectSummary): ProjectDetail {
 		kind: row.kind,
 		format: row.format,
 		structure,
+		// A session a workspace buys enrols a cohort; one a person books for themselves is 1-1.
+		sessionKind: row.format !== "session" ? "none" : row.scopeType === "personal" ? "normal" : "group",
 		status: row.status,
 		typeLabel: typeLabelFor(row),
 		description: describe(row),
@@ -350,6 +352,8 @@ function buildDetail(row: ProjectSummary): ProjectDetail {
 			teams: teamChannels(row, stages),
 			dms: dmChannels(row),
 		},
+		// Rolled up from the fixture board by `ProjectBackendService.detail` (this corpus has no tickets).
+		funding: null,
 	};
 }
 

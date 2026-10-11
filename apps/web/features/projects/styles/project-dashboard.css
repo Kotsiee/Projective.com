@@ -71,8 +71,9 @@
 }
 
 /*
- * Two columns — the main column (Needs you · the stage run · Recent updates) and the aside (the
- * viewer's own work and money · Messages · People) — from `55rem` of container width, one below it.
+ * Two columns — the main column (Needs you · the Brief · Project files · the stage run · Recent
+ * updates) and the aside (the viewer's own work and money · Messages · Inclusions & terms · People)
+ * — from `55rem` of container width, one below it.
  * Each column is a flex stack whose `gap` is the whole boundary between its blocks. The DOM order IS
  * the reading order at every width (main, then aside), so a screen reader and the keyboard meet the
  * blocks in the order the eye does.
@@ -167,13 +168,19 @@
 
 /* #region Status — the ONE fill this sheet permits (§B.11.3)
  *
- * The ink mixes the role toward `--on-surface` rather than using the paired `--on-<role>`, because
- * four of the theme's seven pairs measure ~3.17:1 in LIGHT mode. The mix is self-correcting in both
- * themes: `--on-surface` is near-white in dark and near-black in light, so it always moves the ink
- * away from the fill.
+ * A SOLID role fill under the role's own `--on-<role>` ink (Decision #164, §B.11.6). The raw pair
+ * cannot be used as-is: the semantic roles measure ~3.17:1 under their ink in LIGHT mode. So the fill
+ * is the role mixed 30% toward `--on-surface`, which is self-correcting in both themes — near-black
+ * in light (the fill darkens under a white ink), near-white in dark (it lightens under a dark ink) —
+ * and measures ≥ 5.15:1 in all four mode/contrast states (§3 gate 12).
+ *
+ * The neutral states (on hold · completed) carry no role: a solid `--on-surface-variant` step over
+ * `--surface` ink, ≥ 5.30:1 in all four states.
  */
 .pjd-status {
 	--pjd-status-role: var(--info);
+	--pjd-status-ink: var(--on-info);
+	--pjd-status-fill: color-mix(in srgb, var(--pjd-status-role) 70%, var(--on-surface));
 
 	display: inline-flex;
 	align-items: center;
@@ -186,25 +193,31 @@
 	line-height: var(--leading-snug);
 	text-transform: uppercase;
 	white-space: nowrap;
-	background: color-mix(in srgb, var(--pjd-status-role) 16%, var(--surface-1));
-	color: color-mix(in srgb, var(--pjd-status-role) 28%, var(--on-surface));
+	background: var(--pjd-status-fill);
+	color: var(--pjd-status-ink);
 }
 
 .pjd-status[data-status="active"] {
 	--pjd-status-role: var(--success);
+	--pjd-status-ink: var(--on-success);
 }
 
-.pjd-status[data-status="on_hold"] {
+/* Setup incomplete — the one state that asks the owner to act, so it takes the warning role. */
+.pjd-status[data-status="draft"] {
 	--pjd-status-role: var(--warning);
+	--pjd-status-ink: var(--on-warning);
 }
 
 .pjd-status[data-status="cancelled"] {
 	--pjd-status-role: var(--danger);
+	--pjd-status-ink: var(--on-danger);
 }
 
-/* A draft has no semantic colour to spend — it is the absence of a state, not a state. */
-.pjd-status[data-status="draft"] {
-	--pjd-status-role: var(--on-surface-variant);
+/* Inactive — paused or closed. Muted gray: nothing here is asking for attention. */
+.pjd-status[data-status="on_hold"],
+.pjd-status[data-status="completed"] {
+	--pjd-status-ink: var(--surface);
+	--pjd-status-fill: color-mix(in srgb, var(--on-surface-variant) 80%, var(--surface));
 }
 /* #endregion */
 
@@ -635,6 +648,14 @@ a.pjd-row:focus-visible {
 		gap: var(--space-1);
 	}
 }
+
+/* In the two-column layout the terms sit in the ~19rem aside, too narrow for a term column. */
+@container pjd (min-width: 55rem) {
+	.pjd__aside .pjd-terms__row {
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-1);
+	}
+}
 /* #endregion */
 
 /* #region Project files */
@@ -651,8 +672,8 @@ a.pjd-row:focus-visible {
 
 .pjd-files__grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
-	gap: var(--space-4);
+	grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+	gap: var(--space-3);
 	margin: 0;
 	padding: 0;
 	list-style: none;
@@ -735,6 +756,13 @@ a.pjd-row:focus-visible {
  */
 .pjd-next__go {
 	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Ready to start — a done step's mark takes the success role, mixed toward the ink so it
+   clears contrast in both themes; the word beside it carries the state without colour. */
+.pjd-ready__mark[data-done="true"] {
+	color: color-mix(in srgb, var(--success) 70%, var(--on-surface));
 }
 /* #endregion */
 

@@ -72,8 +72,7 @@ function pick<T>(list: readonly T[], seed: string): T {
  * it lists hired teams the viewer belongs to, and a cohort's sub-groups are not hired teams.
  */
 function sessionKindOf(format: ProjectFormat, detail: ProjectDetail): ProjectSessionKind {
-	if (format !== "session") return "none";
-	return detail.scopeType === "personal" ? "normal" : "group";
+	return format === "session" ? detail.sessionKind : "none";
 }
 // #endregion
 

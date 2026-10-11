@@ -11,6 +11,14 @@ INSERT INTO security.platform_params (key, value, description) VALUES
         'Minutes a claimed ticket may sit idle before auto-release to the backlog.'),
     ('session_payout_hours', '24'::jsonb,
         'Negative-consent window (hours) after a session completes before payout auto-releases.'),
+    ('seat_hold_minutes', '15'::jsonb,
+        'Minutes a reserved cohort seat is held for its buyer while they pay (projects.reserve_seat, Decision #171).'),
+    ('session_join_lead_minutes', '10'::jsonb,
+        'Minutes before a sitting starts that its join link opens (projects.session_join_link).'),
+    ('session_presence_minutes', '15'::jsonb,
+        'The presence window: provider and attendee must join within this many minutes of the start for a sitting to count as successful (PRODUCT_SPEC §Session-Based B).'),
+    ('session_cancel_notice_hours', '24'::jsonb,
+        'An attendee who cancels a seat less than this many hours before the cohort''s first sitting forfeits it to the provider; earlier is a full refund (PRODUCT_SPEC §Session-Based C).'),
     ('platform_fee_bp', '500'::jsonb,
         'Platform service fee in basis points: 5% (root CLAUDE.md §8 Decision #2 — finance-model.md is canonical; Stripe processing fees are passed through separately). An admin-approved finance.negotiated_rates row may override it per payer (finance.fn_effective_platform_fee_bp).'),
     ('freelancer_bad_faith_penalty', '0'::jsonb,
@@ -49,6 +57,14 @@ ON CONFLICT (key) DO NOTHING;
 INSERT INTO security.platform_params (key, value, description) VALUES
     ('vault_approval_threshold_cents', '0'::jsonb,
         'Wallet spend amount (minor units) at or above which a second approver is required (in addition to per-member spending caps). Magnitude in finance-model.md §Vault Permissions, Caps & Approvals; default 0 = disabled.')
+ON CONFLICT (key) DO NOTHING;
+
+-- Business billing (PRODUCT_SPEC §Escrow, Wallets & Finance #4; finance-model.md §15; Decision #172)
+INSERT INTO security.platform_params (key, value, description) VALUES
+    ('invoice_due_days', '14'::jsonb,
+        'Days after issue a consolidated business invoice is due (finance.fn_generate_consolidated_invoice). finance-model.md §15.'),
+    ('on_account_limit_cents', '2500000'::jsonb,
+        'Most a business may owe on account at once, per currency, in that currency''s minor units (finance.place_on_account_order). Product-owner figure 25,000.00 (2026-10-10). finance-model.md §15.')
 ON CONFLICT (key) DO NOTHING;
 
 -- from 20260723094000

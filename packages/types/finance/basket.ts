@@ -99,6 +99,7 @@ export const PurchasableItemKind = z.enum([
 	"service_session",
 	"set_session",
 	"course_group_session",
+	"paid_revision",
 ]);
 export type PurchasableItemKind = z.infer<typeof PurchasableItemKind>;
 
@@ -201,6 +202,14 @@ const ITEM_KIND_META: Record<PurchasableItemKind, ItemKindMeta> = {
 		needsSchedule: true,
 		needsStage: false,
 	},
+	// An extra revision round past a stage's free ones (Decision #167); the round already knows its stage.
+	paid_revision: {
+		label: "Paid revision",
+		group: "project",
+		needsEmail: false,
+		needsSchedule: false,
+		needsStage: false,
+	},
 };
 
 /**
@@ -249,6 +258,8 @@ export const BasketItemSchema = z.object({
 	itemId: reference,
 	/** Which stage a purchased ticket routes through; `null` for every kind whose meta says so. */
 	stageId: reference.nullable(),
+	/** The ONE board ticket this line buys (`tkt-…`, Decision #166); `null` for every other line. */
+	ticketId: reference.nullable().optional(),
 	/** The revision this line re-purchases, when the line is a paid revision; else `null`. */
 	revisionId: reference.nullable(),
 	title: z.string().min(1).max(200),
@@ -455,6 +466,24 @@ export const BasketSummarySchema = z.object({
 	updatedAt: timestamp,
 });
 export type BasketSummary = z.infer<typeof BasketSummarySchema>;
+
+/** Which kind of principal an owner scope names — the `?owner=` prefix (`personal` has none). */
+export const BasketOwnerKind = z.enum(["personal", "team", "business", "organisation"]);
+export type BasketOwnerKind = z.infer<typeof BasketOwnerKind>;
+
+/**
+ * One account the caller can buy for, with every basket and list it keeps — the basket switcher's
+ * group. `owner` is the scope key a read or write names (`personal` · `team:{id}` · `business:{id}` ·
+ * `organisation:{id}`, ROUTING.md §Checkout); each basket carries its own count and selected subtotal.
+ */
+export const BasketOwnerSummarySchema = z.object({
+	owner: z.string().min(1).max(160),
+	kind: BasketOwnerKind,
+	name: z.string().min(1).max(120),
+	avatar: z.string().max(600).nullable(),
+	baskets: z.array(BasketSummarySchema).max(40),
+});
+export type BasketOwnerSummary = z.infer<typeof BasketOwnerSummarySchema>;
 // #endregion
 
 // #region Basket write payloads
@@ -471,6 +500,12 @@ export const AddBasketItemSchema = z.object({
 	itemId: reference,
 	stageId: reference.nullable().optional(),
 	revisionId: reference.nullable().optional(),
+	/**
+	 * One board ticket (`tkt-…` or its uuid, Decision #166). When set the server derives the kind, the
+	 * project, the stage and the price from the ticket itself; `itemType` / `itemId` are only checked
+	 * against it.
+	 */
+	ticketId: reference.nullable().optional(),
 	quantity: z.number().int().min(1).max(999).optional(),
 	destinationEmail: destinationEmail.nullable().optional(),
 	scheduledAt: timestamp.nullable().optional(),

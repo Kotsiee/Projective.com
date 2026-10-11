@@ -8,6 +8,7 @@ import { useId } from "../../hooks/useId.ts";
 import { useOverlayStack } from "../../hooks/useOverlayStack.ts";
 import { useFocusTrap } from "../../hooks/useFocusTrap.ts";
 import { useDismiss } from "../../hooks/useDismiss.ts";
+import { BodyPortal } from "../../overlay/components/BodyPortal.tsx";
 import { useBackdropPress } from "../../overlay/hooks/useBackdropPress.ts";
 import { useListNavigation } from "../../hooks/useListNavigation.ts";
 import type { Bindable } from "../../fields/types/mod.ts";
@@ -256,52 +257,55 @@ export function CommandPalette(props: CommandPaletteProps): JSX.Element | null {
 	// #endregion
 
 	return (
-		<div class={cx("ui-cmdk", className)} style={styleVars({ "--cmdk-z": stack.zIndex })}>
-			<div class="ui-cmdk__backdrop" aria-hidden="true" {...backdropPress} />
-			<div
-				ref={panelRef}
-				class="ui-cmdk__panel"
-				role="dialog"
-				aria-modal="true"
-				aria-label="Command palette"
-			>
-				<div class="ui-cmdk__search">
-					<span class="ui-cmdk__search-icon" aria-hidden="true">⌕</span>
-					<input
-						ref={inputRef}
-						id={inputId}
-						type="text"
-						class="ui-cmdk__input"
-						role="combobox"
-						aria-expanded="true"
-						aria-controls={listId}
-						aria-activedescendant={activeDescendant}
-						aria-autocomplete="list"
-						aria-label={placeholder}
-						placeholder={placeholder}
-						autocomplete="off"
-						spellcheck={false}
-						value={query}
-						onInput={(e) => setQuery(e.currentTarget.value)}
-						onKeyDown={onKeyDown}
-					/>
-				</div>
+		<BodyPortal>
+			<div class={cx("ui-cmdk", className)} style={styleVars({ "--cmdk-z": stack.zIndex })}>
+				<div class="ui-cmdk__backdrop" aria-hidden="true" {...backdropPress} />
+				<div
+					ref={panelRef}
+					class="ui-cmdk__panel"
+					role="dialog"
+					aria-modal="true"
+					aria-label="Command palette"
+				>
+					<div class="ui-cmdk__search">
+						<span class="ui-cmdk__search-icon" aria-hidden="true">⌕</span>
+						<input
+							ref={inputRef}
+							id={inputId}
+							type="text"
+							class="ui-cmdk__input"
+							role="combobox"
+							aria-expanded="true"
+							aria-controls={listId}
+							aria-activedescendant={activeDescendant}
+							aria-autocomplete="list"
+							aria-label={placeholder}
+							placeholder={placeholder}
+							autocomplete="off"
+							spellcheck={false}
+							value={query}
+							onInput={(e) => setQuery(e.currentTarget.value)}
+							onKeyDown={onKeyDown}
+						/>
+					</div>
 
-				<ul id={listId} role="listbox" class="ui-cmdk__list" aria-label="Commands">
-					{flat.length === 0 && <li class="ui-cmdk__empty" role="presentation">{emptyMessage}</li>}
-					{groups.map((g, gi) => {
-						const base = groups.slice(0, gi).reduce((n, gg) => n + gg.items.length, 0);
-						return (
-							<li key={g.label ?? gi} role="presentation" class="ui-cmdk__group">
-								{g.label && <div class="ui-cmdk__group-label" role="presentation">{g.label}</div>}
-								<ul role="presentation" class="ui-cmdk__group-items">
-									{g.items.map((item, oi) => renderRow(item, base + oi))}
-								</ul>
-							</li>
-						);
-					})}
-				</ul>
+					<ul id={listId} role="listbox" class="ui-cmdk__list" aria-label="Commands">
+						{flat.length === 0 && <li class="ui-cmdk__empty" role="presentation">{emptyMessage}
+						</li>}
+						{groups.map((g, gi) => {
+							const base = groups.slice(0, gi).reduce((n, gg) => n + gg.items.length, 0);
+							return (
+								<li key={g.label ?? gi} role="presentation" class="ui-cmdk__group">
+									{g.label && <div class="ui-cmdk__group-label" role="presentation">{g.label}</div>}
+									<ul role="presentation" class="ui-cmdk__group-items">
+										{g.items.map((item, oi) => renderRow(item, base + oi))}
+									</ul>
+								</li>
+							);
+						})}
+					</ul>
+				</div>
 			</div>
-		</div>
+		</BodyPortal>
 	);
 }

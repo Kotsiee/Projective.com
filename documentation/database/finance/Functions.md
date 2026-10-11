@@ -64,12 +64,27 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
 
 ## Escrow lifecycle (migrations `0009`, `0305`, `0310`)
 
-- **`finance.fn_hold_ticket_escrow(ticket_id)`** → escrow id — holds escrow at claim (spending-cap
-  checked; debits the payer business wallet; prefers an accepted team assignment as payee). The
-  envelope checked is the **SPENDER's — the project owner** (`projects.projects.owner_user_id`) who
-  commits the business's money (fixed 2026-09-28): it used to check `auth.uid()`, which here is the
-  freelancer whose claim triggered the hold and who never has an envelope on the payer's wallet, so
-  every hold was waved through. Over the envelope now raises `55000` (`spend: …`).
+- **`finance.fn_hold_ticket_escrow(ticket_id)`** → escrow id — holds escrow when a lock trigger
+  fires (debits the payer wallet; prefers an accepted team assignment as payee). **A hold that cannot
+  be made is refused, never skipped (Decision #165):** `PF402`, a "Needs funding — …" message, and
+  `DETAIL` = `{state: 'needs_funding', reason, amount_minor, currency}` with `reason` one of `no_price`
+  · `no_wallet` (no payer wallet in the project's currency) · `insufficient_funds` (checked for both
+  wallet types — a business no longer relies on the `balance_cents` CHECK) · `spending_limit`. A missing
+  stage or payee is not a funding problem → `check_violation`. Already held → `NULL`, the one early
+  return. The envelope checked is the **SPENDER's — the project owner**
+  (`projects.projects.owner_user_id`) who commits the business's money (fixed 2026-09-28): it used to
+  check `auth.uid()`, which here is the freelancer whose claim triggered the hold. On success it sets
+  `payment_status = 'escrow_funded'` and notifies the payee ("Funded — you can start") and, unless the
+  client made the hold themselves (`auth.uid()`), the project owner, both `escrow.funded` with a
+  `?tkv=` ticket link. `search_path = public, finance, projects, org, comms, auth`.
+- **`finance.fn_hold_revision_escrow(revision_id)`** → escrow id (Decision #167) — one MORE held
+  escrow on a paid revision round's ticket, at the round's `price_cents`, beside the one already held
+  for the work. Same payee rule (an accepted team seat, else the ticket's assignee; none →
+  `check_violation`) and the same refusal shape as `fn_hold_ticket_escrow` under #165: `PF402` with
+  `DETAIL` `{state: 'needs_funding', reason: no_price | no_wallet | insufficient_funds |
+  spending_limit, amount_minor, currency}`. Internal (`EXECUTE` revoked from `authenticated`); only
+  `projects.fund_paid_revision` calls it, under a lock on the round. Released with the ticket's other
+  held rows by `fn_release_ticket_escrow`.
 - **`finance.fn_release_ticket_escrow(ticket_id)`** — releases held escrow to the payee, applying
   the canonical **5%** fee (`security.platform_params.platform_fee_bp = 500`, set in `0305`) and
   routing team payees through `fn_split_team_payout`.
@@ -512,9 +527,9 @@ Pays for the submitted basket lines from the caller's Projective wallet, in **on
    organisation payer must be KYB-verified (`PK403`).
 3. **The lines are exactly the submitted ones** — live, selected, not parked, not purchased — or the
    call refuses (`PC409`). A basket changed in another tab cannot widen or narrow the charge.
-4. **Every line is re-priced from the catalogue.** Digital products only (`PS501` otherwise — a
-   service or session needs escrow, which requires a project stage and a business payer, root
-   CLAUDE.md §8 #56(a)); the listing must still be published; its currency must be `p_currency`; it
+4. **Every line is re-priced from the catalogue.** Digital products, and **one-ticket project lines**
+   (Decision #166, below); every other kind is `PS501` (a whole project, a service or a session
+   escrows against something a basket line does not carry). For a product the listing must still be published; its currency must be `p_currency`; it
    needs a delivery address (`PD422`); a buyer cannot buy their own listing (`PU422`); and
    `p_units ->> line_id` — the unit price the buyer was **shown**, in the listing's own currency — must
    equal the catalogue price now (`PC409`). The stored basket snapshot is never charged.
@@ -539,6 +554,26 @@ Pays for the submitted basket lines from the caller's Projective wallet, in **on
 Returns `{ order_id, reference, status, charged_minor, currency, replayed }` — the charge in the
 currency the wallet actually moved, never re-converted.
 
+**Ticket lines (Decision #166).** A `project_ticket` / `one_off_project` / `one_off_task` line that
+carries `ticket_id` is not a sale. It is priced from the ticket NOW (`COALESCE(ticket.unit_price_cents,
+stage.unit_price_cents)`, compared with `p_units` like any line), its ticket must still belong to the
+line's project and stage (`PC409` "moved"), and the basket's owner must be the project's client — its
+business, or its owner as an individual (`PU422`). It settles by **`projects.fund_ticket`** in step 7:
+that one ticket's escrow is held from the same wallet (`escrow_hold`), so the `order_payment` debit is
+only the products' share (`v_net − v_escrow_total`) and no seller is credited and no fee is taken (the
+fee is charged at release). Its `order_lines` row is `fulfilment = 'engagement'` with `stage_id` and
+`ticket_id`. `fund_ticket`'s gates (description, unpaid, payee, wallet) refuse the whole order. A promo
+on an order with a ticket line is `PC409` — an escrow is the freelancer's whole price. A card checkout
+reaches here through the #153 webhook exactly as a product order does.
+
+**Paid revision lines (Decision #167).** A `paid_revision` line (its `item_id` is the
+`projects.stage_revision_requests` round) settles the same way: priced from the round's snapshotted
+`price_cents` (compared with `p_units`), refused unless the round is still `awaiting_payment` (`PC409`)
+and the basket's owner is the project's client (`PU422`), added to `v_escrow_total` so the wallet pays
+it once, and settled in step 7 by **`projects.fund_paid_revision`** — the round's escrow is held on its
+ticket and the round opens. Its order line is `item_type = 'paid_revision'`, `fulfilment =
+'engagement'`. The same promo refusal applies.
+
 | SQLSTATE | Meaning                                        | Checkout blocker        |
 | :------- | :--------------------------------------------- | :---------------------- |
 | `42501`  | not signed in / may not spend / key not yours  | `not_authorised`        |
@@ -546,7 +581,7 @@ currency the wallet actually moved, never re-converted.
 | `PB404`  | the basket no longer exists                    | `price_changed`         |
 | `PC409`  | the basket, a price or the promo changed       | `price_changed`         |
 | `PD422`  | a line needs a delivery address                | `missing_email`         |
-| `PU422`  | the buyer's own listing                        | `unavailable_item`      |
+| `PU422`  | the buyer's own listing; a ticket not purchasable (no description, no payee) or not this account's | `unavailable_item` |
 | `PS501`  | a line the wallet cannot settle here           | `no_provider`           |
 | `PF402`  | no wallet in the currency, or not enough in it | `insufficient_funds`    |
 | `PA403`  | approval threshold or spending limit           | `spend_limit`           |
@@ -777,7 +812,7 @@ never guessed at.
 
 ### Card payments — user doors
 
-#### `finance.begin_card_payment(p_purpose, p_wallet_id, p_project_id, p_stage_id, p_expected_amount, p_currency, p_idempotency_key)` → jsonb
+#### `finance.begin_card_payment(p_purpose, p_wallet_id, p_project_id, p_stage_id, p_expected_amount, p_currency, p_idempotency_key, p_ticket_id DEFAULT NULL)` → jsonb
 
 Opens (or replays) one `finance.inbound_payments` row and registers the attempt key
 (`card_payment:<uid>`, 7 days, hashed with the request — the same key with a different request is
@@ -792,6 +827,13 @@ the existing row with `replayed: true`.
   stage was re-priced since the payer looked, `PC409` says what it costs now. The caller needs project
   access and the `spend` capability on the client business's wallet (created on demand); the stage
   must be `assigned`; `p_wallet_id` must be NULL (the money is paid into the client's wallet).
+- **`escrow_lock` with `p_ticket_id`** (Decision #166) — funds ONE ticket instead: the amount is that
+  ticket's `COALESCE(unit_price_cents, stage.unit_price_cents)`, and `projects.fund_ticket`'s gates are
+  checked now (the ticket sits in `p_stage_id`, has a description, is `unpaid`/`needs_funding` with no
+  held escrow, has a payee — claimed or a team seat — and the stage is not finished; each `PC409`), so
+  nobody is charged for a hold that cannot be made. The stage may be in any unfinished status. The row
+  records `ticket_id`; the stage path above is unchanged. `p_ticket_id` is part of the request hash
+  (NULLs are skipped, so an older stage or top-up attempt key hashes as before).
 
 #### `finance.attach_card_payment(p_payment_id, p_provider_ref)` → jsonb
 
@@ -827,7 +869,9 @@ credit. For an `escrow_lock` it then runs `projects.fund_stage` **as the payer w
 (`request.jwt.claim.sub` set to `created_by` for the call, restored after), inside a subtransaction:
 the lock re-checks that person's access and spend right NOW, and a refusal rolls back only the lock —
 the money stays in the wallet and `lock_error` says why. A short arrival fails the lock the same way.
-The escrows it created are recorded in `locked_escrow_ids`. For a `wallet_topup` carrying a
+The escrows it created are recorded in `locked_escrow_ids`. A lock that names a `ticket_id` runs
+`projects.fund_ticket` instead (same claim swap and subtransaction): only that ticket's escrow is held,
+`locked_escrow_ids` is that one escrow, and the stage's status does not move. For a `wallet_topup` carrying a
 `checkout` (Decision #153) it then runs `finance.place_wallet_order` **as the payer**, the same claim
 swap and subtransaction, under the checkout's `order_key` — the key the browser places the same order
 under, so whichever arrives second replays and exactly one order exists; a refusal rolls back only the
@@ -866,7 +910,8 @@ after the payment settled changes nothing. Notifies `wallet.topup_failed` on a f
 
 `transfer.created`. Binds the Transfer id to the `finance.payouts` row its metadata names
 (`projective_payout_id`) only when that payout exists, is unbound, and its amount, currency and the
-destination account's owner all agree; anything else is `unmatched`. Moves no money — the payout's own
+destination account's owner all agree (by the same person-type rule `finance.fn_payout_destination`
+chose it with: `user` and `freelancer` are one person); anything else is `unmatched`. Moves no money — the payout's own
 flow owns the ledger debit. Since Decision #126 withdrawals create transfers
 (`finance.begin_payout` → Stripe Transfer → `finance.complete_payout`); this event is also the
 recovery path — a still-`pending` payout it binds is marked `paid`, because the transfer is the fact.
@@ -905,8 +950,9 @@ pinned by `payments.contract.test.ts`) apply what Stripe reported or the schedul
   payer's active `finance.negotiated_rates` row via `finance.fn_effective_platform_fee_bp`, else
   `security.platform_params.platform_fee_bp` (**500 = 5 %**, Decision #2 — was seeded 0).
 - `finance.fn_hold_ticket_escrow` — the payer is the client business, or the project's owner as an
-  individual client. A missing payer wallet is a skip, never a hold (the old body minted held money
-  on a missing wallet); an individual who cannot cover the hold is skipped.
+  individual client. A missing payer wallet or one that cannot cover the hold is a `PF402` refusal
+  (Decision #165), checked before the escrow row is written (the old body minted held money on a
+  missing wallet).
 - `fn_release_ticket_escrow` / `fn_fair_exit_release` — credit an individual payee to the person
   wallet they hold (created if missing); the old hard-coded `freelancer` credit vanished for a person
   holding only a `user` wallet.

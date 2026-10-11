@@ -288,7 +288,11 @@ export function upcomingItems(src: UpcomingSources): UpcomingItem[] {
 		items.push({
 			id: `rule-${rule.id}`,
 			kind: "recurring",
-			title: rule.interval === "weekly" ? "Weekly top-up" : "Monthly top-up",
+			title: rule.interval === "weekly"
+				? "Weekly top-up"
+				: rule.interval === "below_floor"
+				? "Floor top-up"
+				: "Monthly top-up",
 			meta: rule.failureNote ?? (rule.sourceLabel ? `From ${rule.sourceLabel}` : null),
 			when: rule.active ? rule.nextRunLabel : "Paused",
 			amount: rule.amount,

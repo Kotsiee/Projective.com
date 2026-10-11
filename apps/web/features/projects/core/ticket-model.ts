@@ -119,6 +119,8 @@ export function newTicketCard(
 		escrowHeld: false,
 		paymentScope: "unpaid",
 		paidStageIds: [],
+		// The server's to state (`deriveFundingState`); a draft has not been read back yet.
+		funding: null,
 		priority: "normal",
 		intensity: "standard",
 		workload: 0,

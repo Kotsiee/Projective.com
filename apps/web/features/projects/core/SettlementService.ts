@@ -1,6 +1,7 @@
 import { postProjects } from "./api.ts";
 import type {
 	FairExitTier,
+	PaidRevisionRaised,
 	StageApproved,
 	StageExited,
 	SubmissionReviewDecision,
@@ -43,6 +44,20 @@ export const SettlementService = {
 		return postProjects<SubmissionReviewed>(
 			`${stageBase(projectId, stageId)}/submissions/${encodeURIComponent(submissionId)}/review`,
 			{ decision, notes },
+		);
+	},
+
+	/** Raise a paid revision round (Decision #167); the answer names what Buy Now pays for. */
+	requestPaidRevision(
+		projectId: string,
+		stageId: string,
+		submissionId: string,
+		notes: string,
+	): Promise<ProjectsResult<PaidRevisionRaised>> {
+		const submission = encodeURIComponent(submissionId);
+		return postProjects<PaidRevisionRaised>(
+			`${stageBase(projectId, stageId)}/submissions/${submission}/paid-revision`,
+			{ notes },
 		);
 	},
 

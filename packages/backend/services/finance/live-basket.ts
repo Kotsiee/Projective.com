@@ -7,6 +7,8 @@ import type {
 	BasketItem,
 	BasketListEntry,
 	BasketLists,
+	BasketOwnerKind,
+	BasketOwnerSummary,
 	BasketSummary,
 	MoveBasketItem,
 	PurchasableItemGroup,
@@ -30,7 +32,8 @@ import {
 } from "../explore/live-catalog.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { type MoneyProjector, moneyProjector } from "./commerce-money.ts";
-import { resolveOwner, type ResolvedOwner } from "./commerce-owner.ts";
+import { listOwners, type ResolvedOwner, resolveOwner } from "./commerce-owner.ts";
+import { fetchPartyRows } from "../profile/party-cards.ts";
 import type { BasketQuery } from "./basket-query.ts";
 
 /**
@@ -82,13 +85,17 @@ const MAX_BASKETS = 39;
 
 const BASKET_COLS = "id, owner_type, owner_id, name, is_default, promo_code, created_at, updated_at";
 const LINE_COLS =
-	"id, basket_id, item_type, item_id, stage_id, revision_id, title, subtitle, unit_price_minor, " +
+	"id, basket_id, item_type, item_id, stage_id, ticket_id, revision_id, title, subtitle, unit_price_minor, " +
 	"original_price_minor, currency, quantity, discount_code, discount_amount_minor, " +
 	"is_selected_for_checkout, saved_for_later, position, scheduled_at, timezone, seats, " +
 	"destination_email, metadata, created_at, updated_at";
 const PROJECT_COLS =
 	"id, slug, title, status, currency, budget_amount_cents, owner_user_id, owner_team_id, " +
-	"client_business_id, owner_organisation_id, source_blueprint_id";
+	"client_business_id, owner_organisation_id, source_blueprint_id, format, structure_variation";
+const TICKET_COLS =
+	"id, slug, project_id, title, text_description, payment_status, current_stage_id, " +
+	"current_assignee_id, unit_price_cents";
+const REVISION_COLS = "id, status, price_cents, project_stage_id";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -116,6 +123,7 @@ interface LineRow {
 	item_type: PurchasableItemKind;
 	item_id: string;
 	stage_id: string | null;
+	ticket_id: string | null;
 	revision_id: string | null;
 	title: string;
 	subtitle: string | null;
@@ -149,6 +157,29 @@ interface ProjectFact {
 	client_business_id: string | null;
 	owner_organisation_id: string | null;
 	source_blueprint_id: string | null;
+	format: string;
+	structure_variation: string;
+}
+
+/** A board ticket a line buys (Decision #166). */
+export interface TicketFact {
+	id: string;
+	slug: string;
+	project_id: string;
+	title: string;
+	text_description: string;
+	payment_status: string;
+	current_stage_id: string | null;
+	current_assignee_id: string | null;
+	unit_price_cents: number | string | null;
+}
+
+/** A paid revision round a line buys (Decision #167). */
+export interface RevisionFact {
+	id: string;
+	status: string;
+	price_cents: number | string | null;
+	project_stage_id: string;
 }
 
 interface StageFact {
@@ -178,6 +209,7 @@ const FAMILY: Record<PurchasableItemKind, Family> = {
 	service_session: "service",
 	set_session: "service",
 	course_group_session: "service",
+	paid_revision: "project",
 };
 
 /**
@@ -502,6 +534,80 @@ function unitPriceOf(
 			return { minor: b.price_cents, currency: b.currency };
 	}
 }
+
+/** Whether this owner is the project's client — its business, else its owner as an individual. */
+function paysFor(
+	project: Pick<ProjectFact, "client_business_id" | "owner_user_id">,
+	owner: Pick<ResolvedOwner, "ownerType" | "ownerId" | "isEntity">,
+): boolean {
+	return owner.isEntity
+		? owner.ownerType === "business" && project.client_business_id === owner.ownerId
+		: !project.client_business_id && project.owner_user_id === owner.ownerId;
+}
+
+/**
+ * Whether a paid revision round (Decision #167) can be bought by this owner now — the gates
+ * `projects.fund_paid_revision` applies at payment, as far as the basket can see them. The price is the
+ * round's own snapshot, taken when the client raised it. `closed` is `null` while it can be bought.
+ */
+export function revisionPurchase(
+	revision: Pick<RevisionFact, "status" | "price_cents">,
+	project: Pick<ProjectFact, "client_business_id" | "owner_user_id" | "currency">,
+	owner: Pick<ResolvedOwner, "ownerType" | "ownerId" | "isEntity">,
+): { price: Price | null; closed: string | null } {
+	const minor = revision.price_cents === null ? null : Number(revision.price_cents);
+	const price = minor !== null && minor > 0 ? { minor, currency: project.currency } : null;
+	const closed = !paysFor(project, owner)
+		? "Pay for this revision from the account that owns its project."
+		: revision.status !== "awaiting_payment"
+		? "This revision is no longer waiting for payment."
+		: !price
+		? "This revision isn't priced."
+		: null;
+	return { price, closed };
+}
+
+/** The purchasable kind a ticket of this project is bought as (Decision #166). */
+export function ticketKindOf(project: Pick<ProjectFact, "format" | "structure_variation">): PurchasableItemKind {
+	if (project.format !== "one_off") return "project_ticket";
+	return project.structure_variation === "single_task" ? "one_off_task" : "one_off_project";
+}
+
+/**
+ * Whether ONE board ticket can be bought by this owner now, and what its escrow would hold — the gates
+ * `projects.fund_ticket` applies at payment, so the basket says before Pay what the database would
+ * refuse at it. The price is the ticket's own, else its stage's: exactly that one ticket's hold, never
+ * the stage's sum. `closed` is `null` while it can be bought.
+ */
+export function ticketPurchase(
+	ticket: TicketFact,
+	stage: Pick<StageFact, "id" | "status" | "unitPriceCents"> | null,
+	project: Pick<ProjectFact, "client_business_id" | "owner_user_id" | "currency">,
+	owner: Pick<ResolvedOwner, "ownerType" | "ownerId" | "isEntity">,
+	teamSeated: boolean,
+): { price: Price | null; closed: string | null } {
+	const own = ticket.unit_price_cents === null ? null : Number(ticket.unit_price_cents);
+	const minor = own ?? stage?.unitPriceCents ?? null;
+	const price = minor !== null && minor > 0 ? { minor, currency: project.currency } : null;
+	const closed = !paysFor(project, owner)
+		? "Pay for this ticket from the account that owns its project."
+		: !ticket.text_description.trim()
+		? "Add a description to this ticket before it can be bought."
+		: !["unpaid", "needs_funding"].includes(ticket.payment_status)
+		? "This ticket is already paid for."
+		: !ticket.current_stage_id
+		? "Move this ticket into a stage before buying it."
+		: !stage || stage.id !== ticket.current_stage_id
+		? "This ticket moved to another stage — remove it and add it again."
+		: CLOSED_STAGE.has(stage.status)
+		? "That stage has finished."
+		: !price
+		? "This ticket isn't priced yet."
+		: !ticket.current_assignee_id && !teamSeated
+		? "Nobody can be paid for this ticket yet — it can be bought once it's claimed."
+		: null;
+	return { price, closed };
+}
 // #endregion
 
 // #region Resolution
@@ -513,6 +619,50 @@ interface LineFacts {
 	boardProjectSlug: string | null;
 	/** Why the line cannot be bought today; `null` while it can. */
 	closed: string | null;
+	/**
+	 * The one ticket a ticket line buys, its price now (Decision #166) and the name of whoever holds it
+	 * (`null` for a team seat or an unreadable profile); `null` for any other line.
+	 */
+	ticket?: { fact: TicketFact; price: Price | null; payeeName: string | null } | null;
+	/** A paid revision line's price now (Decision #167); `null` for any other line. */
+	revision?: { price: Price | null } | null;
+}
+
+/** Paid revision rounds by id. RLS lets the project's reviewers read them. */
+async function readRevisions(session: Session, ids: readonly string[]): Promise<RevisionFact[]> {
+	if (ids.length === 0) return [];
+	const { data, error } = await session.db.schema("projects").from("stage_revision_requests")
+		.select(REVISION_COLS)
+		.in("id", [...ids]);
+	if (error) throw new Error(`projects.stage_revision_requests read failed: ${error.message}`);
+	return (data ?? []) as unknown as RevisionFact[];
+}
+
+/** Tickets by id or slug. */
+async function readTickets(
+	session: Session,
+	column: "id" | "slug",
+	values: readonly string[],
+): Promise<TicketFact[]> {
+	if (values.length === 0) return [];
+	const { data, error } = await session.db.schema("projects").from("tickets")
+		.select(TICKET_COLS)
+		.in(column, [...values]);
+	if (error) throw new Error(`projects.tickets read failed: ${error.message}`);
+	return (data ?? []) as unknown as TicketFact[];
+}
+
+/** The stages among these that hold an accepted team seat — a payee before anybody claims. */
+async function teamSeatedStages(session: Session, stageIds: readonly string[]): Promise<Set<string>> {
+	if (stageIds.length === 0) return new Set();
+	const { data, error } = await session.db.schema("projects").from("stage_assignments")
+		.select("project_stage_id")
+		.in("project_stage_id", [...stageIds])
+		.eq("assignee_type", "team")
+		.eq("status", "accepted")
+		.not("team_id", "is", null);
+	if (error) throw new Error(`projects.stage_assignments read failed: ${error.message}`);
+	return new Set(((data ?? []) as { project_stage_id: string }[]).map((r) => r.project_stage_id));
 }
 
 /** The resolution maps for a set of lines. */
@@ -542,12 +692,38 @@ async function resolveLines(session: Session, lines: readonly LineRow[]): Promis
 		if (line.stage_id) stageIds.add(line.stage_id);
 	}
 
+	const revisions = await readRevisions(
+		session,
+		lines.flatMap((line) => (line.revision_id ? [line.revision_id] : [])),
+	);
+	const revisionById = new Map(revisions.map((r) => [r.id, r]));
+
 	const stages = await readStages(session, "id", [...stageIds]);
 	const stageById = new Map(stages.map((s) => [s.id, s]));
 	// A service ticket's stage lives on the buyer's own project — read it too, for its board slug.
 	for (const stage of stages) projectIds.add(stage.projectId);
 	const projects = await readProjects(session, "id", [...projectIds]);
 	const projectById = new Map(projects.map((p) => [p.id, p]));
+	const tickets = await readTickets(
+		session,
+		"id",
+		lines.flatMap((line) => (line.ticket_id ? [line.ticket_id] : [])),
+	);
+	const ticketById = new Map(tickets.map((t) => [t.id, t]));
+	const seated = await teamSeatedStages(
+		session,
+		[...new Set(tickets.flatMap((t) => (t.current_stage_id ? [t.current_stage_id] : [])))],
+	);
+	// Who a ticket line funds, for the drawer's "Funds {freelancer} to start {ticket}". A failed read
+	// degrades to no name, never to a wrong one.
+	const payees = await fetchPartyRows(session.db, tickets.map((t) => t.current_assignee_id));
+	const payeeOf = (id: string | null): string | null => {
+		const row = id ? payees?.get(id) : undefined;
+		if (!row) return null;
+		const full = [row.first_name, row.last_name].map((p) => p?.trim() ?? "").filter(Boolean)
+			.join(" ");
+		return clip(full || row.username?.trim() || "", 120) || null;
+	};
 
 	const facts = new Map<string, LineFacts>();
 	const parents = new Map<string, Parent>();
@@ -556,7 +732,10 @@ async function resolveLines(session: Session, lines: readonly LineRow[]): Promis
 		const family = FAMILY[line.item_type];
 		let purchasable: Purchasable | null = null;
 		if (family === "project") {
-			const project = projectById.get(line.item_id);
+			// A paid revision line names its round, not a project; the project is its stage's.
+			const project = projectById.get(
+				line.revision_id ? stageById.get(line.stage_id ?? "")?.projectId ?? "" : line.item_id,
+			);
 			purchasable = project ? projectPurchasable(project, owner) : null;
 		} else if (catalog) {
 			purchasable = listingPurchasable(catalog, family, line.item_id);
@@ -589,11 +768,45 @@ async function resolveLines(session: Session, lines: readonly LineRow[]): Promis
 			closed = "That time has passed — pick a new one.";
 		}
 
+		let ticket: LineFacts["ticket"] = null;
+		if (line.ticket_id) {
+			const fact = ticketById.get(line.ticket_id);
+			const project = purchasable?.project;
+			if (!fact || !project || fact.project_id !== project.id) {
+				closed ??= "That ticket no longer exists.";
+			} else {
+				const bought = ticketPurchase(
+					fact,
+					stage,
+					project,
+					owner,
+					!!fact.current_stage_id && seated.has(fact.current_stage_id),
+				);
+				closed ??= bought.closed;
+				ticket = { fact, price: bought.price, payeeName: payeeOf(fact.current_assignee_id) };
+			}
+		}
+
+		let revision: LineFacts["revision"] = null;
+		if (line.revision_id) {
+			const fact = revisionById.get(line.revision_id);
+			const project = purchasable?.project;
+			if (!fact || !project || fact.project_stage_id !== line.stage_id) {
+				closed ??= "That revision no longer exists.";
+			} else {
+				const bought = revisionPurchase(fact, project, owner);
+				closed ??= bought.closed;
+				revision = { price: bought.price };
+			}
+		}
+
 		facts.set(line.id, {
 			purchasable,
 			stage,
 			boardProjectSlug: line.item_type === "service_ticket" ? stageProject?.slug ?? null : null,
 			closed,
+			ticket,
+			revision,
 		});
 
 		if (purchasable && !parents.has(purchasable.slug)) {
@@ -656,7 +869,14 @@ function toItem(line: LineRow, facts: LineFacts, money: MoneyProjector): BasketI
 
 	// The price comes from the listing as it stands now; the row's own figure only stands in for a
 	// listing that can no longer be priced, and such a line is never payable.
-	const current = p ? unitPriceOf(line.item_type, p, stage, line.seats) : null;
+	// A ticket line is priced from its ticket (its own price, else its stage's) — never the project's.
+	const current = line.revision_id
+		? facts.revision?.price ?? null
+		: line.ticket_id
+		? facts.ticket?.price ?? null
+		: p
+		? unitPriceOf(line.item_type, p, stage, line.seats)
+		: null;
 	let closed = facts.closed ?? (current ? null : "This isn't priced yet.");
 	const unitSource: Price = current ??
 		{ minor: Number(line.unit_price_minor) || 0, currency: line.currency };
@@ -686,9 +906,14 @@ function toItem(line: LineRow, facts: LineFacts, money: MoneyProjector): BasketI
 	delete metadata.projectId;
 	delete metadata.serviceId;
 	delete metadata.boardProjectId;
+	delete metadata.payeeName;
+	if (facts.ticket?.payeeName) metadata.payeeName = facts.ticket.payeeName;
 	if (p?.family === "project") metadata.projectId = p.slug;
 	if (p?.family === "service") metadata.serviceId = p.slug;
 	if (facts.boardProjectSlug) metadata.boardProjectId = facts.boardProjectSlug;
+	// A paid revision is bought on its own from the review (Buy Now narrows by `serviceId`), and its
+	// round id is that token; it still groups under its project.
+	if (line.revision_id) metadata.serviceId = line.revision_id;
 	if (line.item_type === "set_session" && p?.blueprint) {
 		metadata.sessions = Math.max(1, p.blueprint.session_count ?? 1);
 	}
@@ -697,10 +922,15 @@ function toItem(line: LineRow, facts: LineFacts, money: MoneyProjector): BasketI
 		id: line.id,
 		basketId: line.basket_id,
 		itemType: line.item_type,
-		itemId: p?.slug ?? line.item_id,
+		itemId: line.revision_id ?? p?.slug ?? line.item_id,
 		stageId: stage?.slug ?? line.stage_id,
+		ticketId: facts.ticket?.fact.slug ?? line.ticket_id,
 		revisionId: line.revision_id,
-		title: clip(p?.title ?? line.title ?? "Unavailable item", 200) || "Unavailable item",
+		title: clip(
+			facts.ticket?.fact.title ?? (line.revision_id ? null : p?.title) ?? line.title ??
+				"Unavailable item",
+			200,
+		) || "Unavailable item",
 		subtitle: line.subtitle ? clip(line.subtitle, 200) : (stageLabel ?? meta.label),
 		unitPrice: unit,
 		quantity: line.quantity,
@@ -1249,9 +1479,60 @@ export async function readLists(
 	};
 }
 
+/** The switcher's kind for an owner scope key. */
+function ownerKindOf(key: string): BasketOwnerKind {
+	const prefix = key.slice(0, key.indexOf(":"));
+	return prefix === "team" || prefix === "business" || prefix === "organisation" ? prefix : "personal";
+}
+
+/**
+ * Every account the caller can buy for (`listOwners`, narrowed to those they may SPEND from), each with
+ * its baskets, counts and selected subtotals — the basket switcher. One account read per owner, in
+ * parallel; the catalogue is loaded once and shared.
+ */
+export async function readOwners(
+	query: BasketQuery,
+	actor: ReadActor,
+): Promise<BasketOutcome<BasketOwnerSummary[]>> {
+	if (!canReadLive(actor)) return SIGNED_OUT;
+	const [owners, catalog] = await Promise.all([
+		listOwners(query, actor),
+		loadCatalog().catch(() => null),
+	]);
+	const db = getUserClient(actor.accessToken);
+	const value = await Promise.all(
+		owners.filter((owner) => owner.actingIsMember).map(async (owner) => {
+			const account = await readAccount({
+				db,
+				actor,
+				owner,
+				money: await moneyProjector(owner.display),
+				catalog,
+			});
+			return {
+				owner: owner.key,
+				kind: ownerKindOf(owner.key),
+				name: clip(owner.name, 120) || "Account",
+				avatar: owner.avatar,
+				baskets: summariesOf(account),
+			};
+		}),
+	);
+	return { ok: true, message: null, value };
+}
+
 // #endregion
 
 // #region Writes
+/**
+ * The basket a write answers with: the one the caller is LOOKING AT (`query.basketId`, which may be a
+ * named list or a derived view), else the basket the write changed. Answering with the changed basket
+ * instead would re-point the surface — a move out of a list would open the destination.
+ */
+export function echoBasketId(query: Pick<BasketQuery, "basketId">, changed: string): string {
+	return query.basketId || changed;
+}
+
 /** Refuse an entity write by somebody who may not spend its money. */
 function spendGate(session: Session): BasketOutcome<never> | null {
 	if (session.owner.actingIsMember) return null;
@@ -1386,6 +1667,9 @@ export async function addItem(
 	query: BasketQuery,
 	actor: ReadActor,
 ): Promise<BasketOutcome<BasketView>> {
+	if (input.itemType === "paid_revision") {
+		return addRevision(input.revisionId ?? input.itemId, input, query, actor);
+	}
 	const session = await openSession({ ...query, basketId: input.basketId }, actor);
 	if (!session) return SIGNED_OUT;
 	const gate = spendGate(session);
@@ -1436,6 +1720,7 @@ export async function addItem(
 		.eq("item_type", input.itemType)
 		.eq("item_id", p.uuid)
 		.eq("saved_for_later", false)
+		.is("ticket_id", null)
 		.is("removed_at", null)
 		.is("purchased_at", null);
 	existingQuery = stage ? existingQuery.eq("stage_id", stage.id) : existingQuery.is("stage_id", null);
@@ -1448,8 +1733,22 @@ export async function addItem(
 		);
 
 	if (match) {
+		// A seat line is one booking of N seats against ONE hold (Decision #171): reserving again replaces
+		// the seats and the hold it names, never stacks a quantity the hold does not cover.
+		const patch = input.itemType === "course_group_session"
+			? {
+				seats: seats ?? 1,
+				// The engagement keys are derived at read time, never stored (as on insert below).
+				metadata: Object.fromEntries(
+					Object.entries(input.metadata ?? {}).filter(([k]) =>
+						k !== "projectId" && k !== "serviceId" && k !== "boardProjectId"
+					),
+				),
+				updated_at: new Date().toISOString(),
+			}
+			: { quantity: Math.min(match.quantity + quantity, 999), updated_at: new Date().toISOString() };
 		const { error } = await items()
-			.update({ quantity: Math.min(match.quantity + quantity, 999), updated_at: new Date().toISOString() })
+			.update(patch)
 			.eq("id", match.id);
 		if (error) return writeFailure(error);
 		await touch(session, basket.id);
@@ -1460,12 +1759,7 @@ export async function addItem(
 		};
 	}
 
-	const positions = await items().select("position").eq("basket_id", basket.id)
-		.order("position", { ascending: false }).limit(1);
-	const nextPosition = Math.min(
-		(((positions.data ?? []) as { position: number }[])[0]?.position ?? -1) + 1,
-		32_767,
-	);
+	const nextPosition = await nextPositionIn(session, basket.id);
 
 	const metadata: Record<string, unknown> = { ...(input.metadata ?? {}) };
 	// Derived at read time from the row itself; never stored where the buyer could re-point them.
@@ -1498,6 +1792,163 @@ export async function addItem(
 	return {
 		ok: true,
 		message: `Added ${clip(p.title, 80)} to ${clip(basket.name, 60)}.`,
+		value: await viewOf(session, basket.id),
+	};
+}
+
+/** The position a new line takes at the end of a basket. */
+async function nextPositionIn(session: Session, basketId: string): Promise<number> {
+	const positions = await session.db.schema("finance").from("basket_items").select("position")
+		.eq("basket_id", basketId)
+		.order("position", { ascending: false }).limit(1);
+	return Math.min((((positions.data ?? []) as { position: number }[])[0]?.position ?? -1) + 1, 32_767);
+}
+
+/**
+ * Add ONE board ticket to a basket (Decision #166).
+ *
+ * The kind, the project, the stage and the price are read from the ticket itself; an `itemId` the
+ * caller sends must name the ticket's project. The PRODUCT_SPEC §5 purchasing gate refuses a ticket
+ * with no description, and one that is already paid for, priced at nothing or in a finished stage is
+ * refused too. A ticket nobody can be paid for YET is still added — adding is not paying — and the
+ * basket says it can be bought once it is claimed. One live line per ticket
+ * (`uq_basket_items_live_ticket`): adding it again re-selects the line already there.
+ */
+export async function addTicket(
+	ticketRef: string,
+	input: Pick<AddBasketItem, "basketId" | "itemId">,
+	query: BasketQuery,
+	actor: ReadActor,
+): Promise<BasketOutcome<BasketView>> {
+	const session = await openSession({ ...query, basketId: input.basketId }, actor);
+	if (!session) return SIGNED_OUT;
+	const gate = spendGate(session);
+	if (gate) return gate;
+
+	const [ticket] = await readTickets(session, UUID_RE.test(ticketRef) ? "id" : "slug", [ticketRef]);
+	const [project] = ticket ? await readProjects(session, "id", [ticket.project_id]) : [];
+	if (!ticket || !project) {
+		return refuse(404, "We couldn't find that ticket — it may have been removed.", {
+			ticketId: "not_found",
+		});
+	}
+	if (input.itemId && input.itemId !== project.id && input.itemId !== project.slug) {
+		return refuse(422, "That ticket isn't part of this project.", { ticketId: "invalid" });
+	}
+	const p = projectPurchasable(project, session.owner);
+	if (p.closed) return refuse(409, p.closed, { ticketId: "unavailable" });
+	const [stage] = ticket.current_stage_id ? await readStages(session, "id", [ticket.current_stage_id]) : [];
+	// The payee is the one gate a claim can still clear, so it is not checked here.
+	const { price, closed } = ticketPurchase(ticket, stage ?? null, project, session.owner, true);
+	if (closed || !price) {
+		return refuse(ticket.text_description.trim() ? 409 : 422, closed ?? "This ticket isn't priced yet.", {
+			ticketId: "unavailable",
+		});
+	}
+
+	const basket = await writeTarget(session, input.basketId);
+	const items = () => session.db.schema("finance").from("basket_items");
+	const reselect = async (): Promise<BasketOutcome<BasketView> | null> => {
+		const found = await items().select("id").eq("basket_id", basket.id).eq("ticket_id", ticket.id)
+			.is("removed_at", null).is("purchased_at", null).maybeSingle();
+		if (found.error) throw new Error(`finance.basket_items read failed: ${found.error.message}`);
+		if (!found.data) return null;
+		const { error } = await items()
+			.update({ saved_for_later: false, is_selected_for_checkout: true, updated_at: new Date().toISOString() })
+			.eq("id", (found.data as { id: string }).id);
+		if (error) return writeFailure(error);
+		return {
+			ok: true,
+			message: `${clip(ticket.title, 80)} is already in your basket.`,
+			value: await viewOf(session, basket.id),
+		};
+	};
+	const already = await reselect();
+	if (already) return already;
+
+	const { error } = await items().insert({
+		basket_id: basket.id,
+		item_type: ticketKindOf(project),
+		item_id: project.id,
+		stage_id: ticket.current_stage_id,
+		ticket_id: ticket.id,
+		title: clip(ticket.title, 200),
+		subtitle: stage ? stageLabelOf(stage) : null,
+		unit_price_minor: price.minor,
+		currency: price.currency,
+		quantity: 1,
+		position: await nextPositionIn(session, basket.id),
+		metadata: {},
+	});
+	// A concurrent add of the same ticket won the dedupe key — answer with its line.
+	if (error?.code === "23505") return (await reselect()) ?? writeFailure(error);
+	if (error) return writeFailure(error);
+	await touch(session, basket.id);
+	return {
+		ok: true,
+		message: `Added ${clip(ticket.title, 80)} to ${clip(basket.name, 60)}.`,
+		value: await viewOf(session, basket.id),
+	};
+}
+
+/**
+ * Add ONE paid revision round (Decision #167) — the review's "Buy a revision". The round was raised
+ * `awaiting_payment` by `projects.request_paid_revision`; its stage, project and snapshotted price are
+ * read from the round, never the caller. A round already in the basket is re-selected, not added twice.
+ */
+async function addRevision(
+	revisionRef: string,
+	input: Pick<AddBasketItem, "basketId">,
+	query: BasketQuery,
+	actor: ReadActor,
+): Promise<BasketOutcome<BasketView>> {
+	const session = await openSession({ ...query, basketId: input.basketId }, actor);
+	if (!session) return SIGNED_OUT;
+	const gate = spendGate(session);
+	if (gate) return gate;
+
+	const [revision] = UUID_RE.test(revisionRef) ? await readRevisions(session, [revisionRef]) : [];
+	const [stage] = revision ? await readStages(session, "id", [revision.project_stage_id]) : [];
+	const [project] = stage ? await readProjects(session, "id", [stage.projectId]) : [];
+	if (!revision || !stage || !project) {
+		return refuse(404, "We couldn't find that revision — it may have been withdrawn.", {
+			itemId: "not_found",
+		});
+	}
+	const { price, closed } = revisionPurchase(revision, project, session.owner);
+	if (closed || !price) {
+		return refuse(409, closed ?? "This revision isn't priced.", { itemId: "unavailable" });
+	}
+
+	const basket = await writeTarget(session, input.basketId);
+	const items = () => session.db.schema("finance").from("basket_items");
+	const found = await items().select("id").eq("basket_id", basket.id).eq("revision_id", revision.id)
+		.is("removed_at", null).is("purchased_at", null).limit(1);
+	if (found.error) throw new Error(`finance.basket_items read failed: ${found.error.message}`);
+	const existing = ((found.data ?? []) as { id: string }[])[0];
+	const { error } = existing
+		? await items()
+			.update({ saved_for_later: false, is_selected_for_checkout: true, updated_at: new Date().toISOString() })
+			.eq("id", existing.id)
+		: await items().insert({
+			basket_id: basket.id,
+			item_type: "paid_revision",
+			item_id: revision.id,
+			stage_id: stage.id,
+			revision_id: revision.id,
+			title: clip(`Paid revision · ${stage.name}`, 200),
+			subtitle: clip(project.title, 200),
+			unit_price_minor: price.minor,
+			currency: price.currency,
+			quantity: 1,
+			position: await nextPositionIn(session, basket.id),
+			metadata: {},
+		});
+	if (error) return writeFailure(error);
+	await touch(session, basket.id);
+	return {
+		ok: true,
+		message: `Added a paid revision to ${clip(basket.name, 60)}.`,
 		value: await viewOf(session, basket.id),
 	};
 }
@@ -1574,7 +2025,11 @@ export async function updateItem(
 		.eq("id", line.id);
 	if (error) return writeFailure(error);
 	await touch(session, line.basket_id);
-	return { ok: true, message: "Basket updated.", value: await viewOf(session, line.basket_id) };
+	return {
+		ok: true,
+		message: "Basket updated.",
+		value: await viewOf(session, echoBasketId(query, line.basket_id)),
+	};
 }
 
 /**
@@ -1598,7 +2053,11 @@ export async function removeItem(
 		.eq("id", line.id);
 	if (error) return writeFailure(error);
 	await touch(session, line.basket_id);
-	return { ok: true, message: "Removed from your basket.", value: await viewOf(session, line.basket_id) };
+	return {
+		ok: true,
+		message: "Removed from your basket.",
+		value: await viewOf(session, echoBasketId(query, line.basket_id)),
+	};
 }
 
 /** Move a line between baskets and/or park it. Nothing is removed by a move. */
@@ -1631,7 +2090,7 @@ export async function moveItem(
 	return {
 		ok: true,
 		message: to.id === line.basket_id ? "Basket updated." : `Moved to ${clip(to.name, 60)}.`,
-		value: await viewOf(session, to.id),
+		value: await viewOf(session, echoBasketId(query, to.id)),
 	};
 }
 

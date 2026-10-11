@@ -426,6 +426,7 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 					messageId={reactFor}
 					rootRef={rootRef}
 					onReact={(emoji) => react(reactFor, emoji)}
+					onDismiss={() => (sel.reactFor.value = null)}
 				/>
 			)}
 

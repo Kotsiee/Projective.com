@@ -34,12 +34,19 @@ import {
 	type DevProjectOnboarding,
 	type DevProjectType,
 	type DevProposalAllowance,
+	type DevRevisionAllotment,
+	type DevAutoFundMode,
+	type DevLowBalance,
+	type DevNotifications,
+	type DevSessionState,
+	type DevBasketScenario,
 	type DevSeamRole,
 	type DevServiceType,
 	type DevSessionBookingStatus,
 	type DevSettingsAttention,
 	type DevStageAssignment,
 	type DevSubmissionState,
+	type DevFundingState,
 	type DevTrustAdornments,
 	type DevVerificationStamp,
 	type DevWalletAurora,
@@ -69,11 +76,18 @@ export type {
 	DevProfileSetup,
 	DevProjectType,
 	DevProposalAllowance,
+	DevRevisionAllotment,
+	DevAutoFundMode,
+	DevLowBalance,
+	DevNotifications,
+	DevSessionState,
+	DevBasketScenario,
 	DevServiceType,
 	DevSessionBookingStatus,
 	DevSettingsAttention,
 	DevStageAssignment,
 	DevSubmissionState,
+	DevFundingState,
 	DevTrustAdornments,
 	DevVerificationStamp,
 	DevWalletAurora,
@@ -216,6 +230,45 @@ export interface DevOverrides {
 	verificationStamp: DevVerificationStamp;
 	/** The earned trust signals the profile hero lists (Decision #155): stored, none, first-tier or top-tier. */
 	trustAdornments: DevTrustAdornments;
+	/**
+	 * The per-ticket funding state the funding status line renders (Decision #165): `auto` shows the
+	 * server's `deriveFundingState`; any state renders that state with the card's real amount. Its own
+	 * axis because a hold, a refused hold and a pending card payment move money to reach.
+	 */
+	fundingState: DevFundingState;
+	/**
+	 * The submission review's revision allotment (Decision #167): `auto` shows the stage's real terms,
+	 * `exhausted` uses the free rounds up (Buy a revision), `paid` opens a funded paid round on the
+	 * active unit (the freelancer's "you can start"). Its own axis because both move only on a real
+	 * review or a real payment.
+	 */
+	revisionAllotment: DevRevisionAllotment;
+	/**
+	 * The business auto-fund mode the Billing module shows (PRODUCT_SPEC §Escrow, Wallets & Finance #4);
+	 * `from_wallet` also previews a funded ticket's "Auto-funded from wallet" line. Its own axis because the
+	 * real mode only acts on a refused hold.
+	 */
+	autoFundMode: DevAutoFundMode;
+	/** The Billing module's low-balance warning: `below` shows it, `above` hides it, `auto` reads the floor. */
+	lowBalance: DevLowBalance;
+	/**
+	 * A session's server-only facts (Decision #171): a full cohort, a sitting in progress, every sitting
+	 * over, and a seat escrow waiting out the 24-hour window. Each takes a real booking, a real clock or
+	 * the auto-release sweep to reach, so the listing lane and the session sidebar preview them here.
+	 */
+	sessionState: DevSessionState;
+	/**
+	 * The header drawer's and `/notifications`' inbox (DESIGN_SYSTEM §D.9): the real one, none at all,
+	 * many unread across every category, or a realtime burst of arrivals. Its own axis because an
+	 * empty inbox, a full one and a run of new events all need someone else's actions to reach.
+	 */
+	notifications: DevNotifications;
+	/**
+	 * The header basket drawer: the real basket, an empty one, a switcher holding personal + team +
+	 * business baskets, or a basket with an unavailable line. Its own axis because a second paying
+	 * account and a delisted item both take other people's actions to reach.
+	 */
+	basketScenario: DevBasketScenario;
 }
 
 /** Selectable option metadata for the switcher UI. */
@@ -256,6 +309,13 @@ export const DEV_DEFAULTS: DevOverrides = {
 	proposalAllowance: "auto",
 	verificationStamp: "auto",
 	trustAdornments: "auto",
+	fundingState: "auto",
+	revisionAllotment: "auto",
+	autoFundMode: "auto",
+	lowBalance: "auto",
+	sessionState: "auto",
+	notifications: "auto",
+	basketScenario: "auto",
 };
 
 /** Account-type options in display order. */
@@ -444,6 +504,67 @@ export const DEV_TRUST_ADORNMENTS: ReadonlyArray<DevOption<DevTrustAdornments>> 
 	{ value: "top", label: "Top tier" },
 ];
 
+/** Ticket funding-state options in lifecycle order (PRODUCT_MANAGEMENT §3.6). */
+export const DEV_FUNDING_STATES: ReadonlyArray<DevOption<DevFundingState>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "draft", label: "Draft" },
+	{ value: "needs_funding", label: "Needs funding" },
+	{ value: "processing", label: "Processing" },
+	{ value: "failed", label: "Failed" },
+	{ value: "funded", label: "Funded" },
+	{ value: "in_progress", label: "In progress" },
+	{ value: "in_review", label: "In review" },
+	{ value: "released", label: "Released" },
+	{ value: "refunded", label: "Refunded" },
+];
+
+/** Revision-allotment options (Decision #167). */
+export const DEV_REVISION_ALLOTMENTS: ReadonlyArray<DevOption<DevRevisionAllotment>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "exhausted", label: "Exhausted" },
+	{ value: "paid", label: "Paid round open" },
+];
+
+/** Business auto-fund mode options (PRODUCT_SPEC §Escrow, Wallets & Finance #4). */
+export const DEV_AUTO_FUND_MODES: ReadonlyArray<DevOption<DevAutoFundMode>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "off", label: "Off" },
+	{ value: "add_to_basket", label: "Basket" },
+	{ value: "from_wallet", label: "Wallet" },
+];
+
+/** Low-balance warning options. */
+export const DEV_LOW_BALANCES: ReadonlyArray<DevOption<DevLowBalance>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "below", label: "Below floor" },
+	{ value: "above", label: "Above floor" },
+];
+
+/** Notification inbox options (DESIGN_SYSTEM §D.9). */
+export const DEV_NOTIFICATIONS: ReadonlyArray<DevOption<DevNotifications>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "empty", label: "None" },
+	{ value: "many", label: "Many unread" },
+	{ value: "burst", label: "Realtime burst" },
+];
+
+/** Basket drawer scenarios. */
+export const DEV_BASKET_SCENARIOS: ReadonlyArray<DevOption<DevBasketScenario>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "empty", label: "Empty" },
+	{ value: "multi_owner", label: "Personal + team + business" },
+	{ value: "unavailable", label: "Unavailable item" },
+];
+
+/** Session state options (Decision #171). */
+export const DEV_SESSION_STATES: ReadonlyArray<DevOption<DevSessionState>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "seat_full", label: "Seat full" },
+	{ value: "live", label: "Live" },
+	{ value: "ended", label: "Ended" },
+	{ value: "release_pending", label: "Auto-release pending" },
+];
+
 // #endregion
 
 // #region Store
@@ -528,6 +649,21 @@ function reflect(next: DevOverrides): void {
 		} else delete root.dataset.devVerificationStamp;
 		if (next.trustAdornments !== "auto") root.dataset.devTrustAdornments = next.trustAdornments;
 		else delete root.dataset.devTrustAdornments;
+		if (next.fundingState !== "auto") root.dataset.devFundingState = next.fundingState;
+		else delete root.dataset.devFundingState;
+		if (next.revisionAllotment !== "auto") {
+			root.dataset.devRevisionAllotment = next.revisionAllotment;
+		} else delete root.dataset.devRevisionAllotment;
+		if (next.autoFundMode !== "auto") root.dataset.devAutoFundMode = next.autoFundMode;
+		else delete root.dataset.devAutoFundMode;
+		if (next.lowBalance !== "auto") root.dataset.devLowBalance = next.lowBalance;
+		else delete root.dataset.devLowBalance;
+		if (next.sessionState !== "auto") root.dataset.devSessionState = next.sessionState;
+		else delete root.dataset.devSessionState;
+		if (next.notifications !== "auto") root.dataset.devNotifications = next.notifications;
+		else delete root.dataset.devNotifications;
+		if (next.basketScenario !== "auto") root.dataset.devBasketScenario = next.basketScenario;
+		else delete root.dataset.devBasketScenario;
 		root.dataset.devDirection = next.layoutDirection;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
 		// properties everywhere mean the shell and every surface mirror to the opposite edge.
@@ -561,6 +697,13 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devProposalAllowance;
 		delete root.dataset.devVerificationStamp;
 		delete root.dataset.devTrustAdornments;
+		delete root.dataset.devFundingState;
+		delete root.dataset.devRevisionAllotment;
+		delete root.dataset.devAutoFundMode;
+		delete root.dataset.devLowBalance;
+		delete root.dataset.devSessionState;
+		delete root.dataset.devNotifications;
+		delete root.dataset.devBasketScenario;
 		delete root.dataset.devDirection;
 		// Restore the document's natural direction (the pref-driven default, LtR here).
 		root.removeAttribute("dir");

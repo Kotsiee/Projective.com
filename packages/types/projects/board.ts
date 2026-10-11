@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ContextType } from "../auth/mod.ts";
+import { FundingRollupSchema, FundingStatusSchema } from "../finance/funding.ts";
 import { ProjectFormat, ProjectPartySchema, ProjectStatus } from "./summary.ts";
 import { ProjectStructure } from "./setup.ts";
 import { StageActivity } from "./detail.ts";
@@ -198,6 +199,8 @@ export const TicketHistoryKind = z.enum([
 	"intensity",
 	"priority",
 	"due",
+	/** An automatic funding act — auto-fund queued, held, basketed or sent for approval (PRODUCT_SPEC §Escrow, Wallets & Finance #4). */
+	"funding",
 ]);
 export type TicketHistoryKind = z.infer<typeof TicketHistoryKind>;
 
@@ -613,6 +616,12 @@ export const BoardCardSchema = z.object({
 	paymentScope: TicketPaymentScope.default("unpaid"),
 	/** For `per_stage`: the stage ids the client has paid for. Empty otherwise. */
 	paidStageIds: z.array(z.string().max(80)).max(50).default([]),
+	/**
+	 * Is the money held, and may work start (`PRODUCT_MANAGEMENT.md` §3.6)? Stamped by the board read
+	 * from `deriveFundingState`, never derived in an island. `null` on a card the server has not
+	 * resolved (an optimistic row awaiting its answer).
+	 */
+	funding: FundingStatusSchema.nullable().default(null),
 	priority: TicketPriority,
 	/** The client's difficulty multiplier — the ticket's own default for every stage it touches. */
 	intensity: TicketIntensity,
@@ -758,6 +767,11 @@ export const BoardStageRefSchema = z.object({
 	members: z.array(ProjectPartySchema).max(50),
 	/** Live ticket count already routed through this stage (the inspector's load figure). */
 	ticketCount: z.number().int().min(0),
+	/**
+	 * The stage's funding roll-up — its most urgent ticket funding state (`rollupFundingState`), over
+	 * the tickets this viewer may see. `null` for a stage with no visible tickets.
+	 */
+	funding: FundingRollupSchema.nullable().default(null),
 	/** How the stage routes work to its roster. */
 	assignmentMode: StageAssignmentMode,
 	/** The Project Hard Cap on summed $W_i$ per freelancer in this stage; `null` = unlimited. */

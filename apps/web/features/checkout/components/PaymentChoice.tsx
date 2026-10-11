@@ -29,9 +29,9 @@ import type { CheckoutWallet, ProviderAvailability, SavedCard } from "../types/c
  *   rail above Buy Now (Decision #153). Each is a button that starts a payment, never an option that
  *   waits for one; the hand-made vendor buttons and their hex livery that used to stand here are gone.
  *
- * `invoice` appears in neither: consolidated monthly billing is arranged once, on the Details step,
- * and offering it as a per-purchase instrument would imply it can be picked per basket. The
- * `InvoicingAction` on the payment step is the honest route to it.
+ * `invoice` — paying on account (Decision #172) — joins the radiogroup only once consolidated monthly
+ * billing is arranged (`onAccountNote`); the arrangement itself is still made once, on the Details
+ * step, and the `InvoicingAction` on the payment step is the route to it.
  *
  * **A refused route is still rendered, disabled, and still carries its reason** in both regions.
  * `availableProviders` returns every route with a sentence on each refusal, and a payment method that
@@ -134,6 +134,11 @@ export interface PaymentMethodChooserProps {
 	 * the "Add new card" action stays under the reason rather than vanishing with the list.
 	 */
 	canAddCard: boolean;
+	/**
+	 * When the paying business settles on a monthly invoice, the line the Invoice option carries ("Billed
+	 * on your Nov 15 invoice"); `null` or absent hides the option — paying on account is arranged first.
+	 */
+	onAccountNote?: string | null;
 }
 
 /** The DOM id of one instrument option, so roving focus moves without a ref per cell. */
@@ -150,9 +155,11 @@ function optionId(method: PaymentMethodId): string {
 function focusOrder(
 	walletUsable: boolean,
 	cards: readonly SavedCard[],
+	invoiceUsable = false,
 ): PaymentMethodId[] {
 	const order: PaymentMethodId[] = walletUsable ? ["wallet"] : [];
 	for (const card of cards) if (!card.isExpired) order.push(`card:${card.id}`);
+	if (invoiceUsable) order.push("invoice");
 	return order;
 }
 
@@ -298,8 +305,11 @@ export function PaymentMethodChooser(props: PaymentMethodChooserProps): JSX.Elem
 
 	const walletOffer = providers.find((entry) => entry.provider === "wallet");
 	const cardOffer = providers.find((entry) => entry.provider === "card");
+	const invoiceOffer = providers.find((entry) => entry.provider === "invoice");
 	const walletUsable = walletOffer?.available ?? false;
 	const cardsUsable = cardOffer?.available ?? false;
+	const showsInvoice = !!props.onAccountNote;
+	const invoiceUsable = showsInvoice && (invoiceOffer?.available ?? false);
 
 	if (providers.length === 0) {
 		return (
@@ -309,7 +319,7 @@ export function PaymentMethodChooser(props: PaymentMethodChooserProps): JSX.Elem
 		);
 	}
 
-	const order = focusOrder(walletUsable, cardsUsable ? cards : []);
+	const order = focusOrder(walletUsable, cardsUsable ? cards : [], invoiceUsable);
 	// With nothing selected the FIRST usable instrument holds the group's single tab stop, so the
 	// group is always reachable — an all-`-1` group is a radiogroup the keyboard cannot enter.
 	const focusTarget = (selected && order.includes(selected) ? selected : order[0]) ?? null;
@@ -415,6 +425,37 @@ export function PaymentMethodChooser(props: PaymentMethodChooserProps): JSX.Elem
 						</>
 					)}
 			</div>
+
+			{showsInvoice && (
+				<div class="cko-methods__cards">
+					<h3 class="cko__subhead" id="cko-invoice-head">On account</h3>
+					<button
+						type="button"
+						role="radio"
+						id={optionId("invoice")}
+						class="cko-invoice-opt"
+						aria-checked={selected === "invoice"}
+						aria-disabled={!invoiceUsable}
+						aria-describedby={invoiceUsable ? undefined : "cko-method-invoice-reason"}
+						data-checked={selected === "invoice" ? "true" : "false"}
+						tabIndex={focusTarget === "invoice" ? 0 : -1}
+						onClick={invoiceUsable ? () => props.onSelect("invoice") : undefined}
+					>
+						<Icon name="document" />
+						<span class="cko-invoice-opt__text">
+							<span class="cko-invoice-opt__name">Invoice</span>
+							<span class="cko-invoice-opt__note">{props.onAccountNote}</span>
+						</span>
+						{selected === "invoice" && <Icon name="check" />}
+					</button>
+					{!invoiceUsable && invoiceOffer?.reason && (
+						<p class="cko-methods__reason" id="cko-method-invoice-reason">
+							<Icon name="lock" />
+							<span>{invoiceOffer.reason}</span>
+						</p>
+					)}
+				</div>
+			)}
 		</div>
 	);
 }

@@ -28,6 +28,59 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- The revision allotment of an engagement instantiated from a blueprint is the SELLER's commitment
+-- (Decision #167): copied in at insert, frozen afterwards, so neither the buyer who owns the project nor
+-- a later reprice rewrites the terms the purchase was made under. Every creation path — create_project,
+-- create_stage, the hire and purchase paths — passes through this one trigger. The source is the
+-- blueprint, else its published listing, with the listing page's own fallbacks (`revisionsOf`,
+-- live-view.ts): once either term is declared, undeclared free rounds read as 0 and an undeclared price
+-- as the stage's ticket price; with neither declared the stage stays unlimited. An owner-authored stage
+-- (no blueprint) keeps what its owner set.
+CREATE OR REPLACE FUNCTION projects.fn_stage_revision_terms()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_blueprint uuid;
+    v_free integer;
+    v_price bigint;
+BEGIN
+    SELECT p.source_blueprint_id INTO v_blueprint FROM projects.projects p WHERE p.id = NEW.project_id;
+    IF v_blueprint IS NULL THEN
+        RETURN NEW;
+    END IF;
+    IF TG_OP = 'UPDATE' THEN
+        NEW.file_revisions_allowed := OLD.file_revisions_allowed;
+        NEW.extra_revision_price_cents := OLD.extra_revision_price_cents;
+        RETURN NEW;
+    END IF;
+
+    SELECT COALESCE(b.free_revisions, l.free_revisions),
+           COALESCE(b.extra_revision_price_cents, l.extra_revision_price_cents)
+      INTO v_free, v_price
+      FROM marketplace.service_blueprints b
+      LEFT JOIN LATERAL (
+          SELECT cl.free_revisions, cl.extra_revision_price_cents
+            FROM catalogue.listings cl
+           WHERE cl.service_blueprint_id = b.id AND cl.status = 'published'
+           ORDER BY cl.updated_at DESC
+           LIMIT 1
+      ) l ON true
+     WHERE b.id = v_blueprint;
+
+    IF v_free IS NULL AND v_price IS NULL THEN
+        NEW.file_revisions_allowed := NULL;
+        NEW.extra_revision_price_cents := NULL;
+    ELSE
+        NEW.file_revisions_allowed := COALESCE(v_free, 0);
+        NEW.extra_revision_price_cents := COALESCE(v_price, NEW.unit_price_cents);
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
 -- Deleting a stage releases held escrow for its active tickets and scrubs the stage id from any
 -- other ticket that lists it as a required prerequisite.
 CREATE OR REPLACE FUNCTION projects.fn_stage_delete_cascade()
@@ -267,7 +320,8 @@ BEGIN
     v_dependency,
     COALESCE(NULLIF(v_bag->>'start_dependency_lag_days', '')::integer, 0),
     COALESCE(NULLIF(v_bag->>'hire_trigger_active', '')::boolean, true),
-    COALESCE(NULLIF(v_bag->>'file_revisions_allowed', '')::integer, 0),
+    -- NULL = unlimited free rounds; on a blueprint engagement fn_stage_revision_terms overwrites it.
+    NULLIF(v_bag->>'file_revisions_allowed', '')::integer,
     NULLIF(v_bag->>'file_duration_mode', ''),
     NULLIF(v_bag->>'file_duration_days', '')::integer,
     NULLIF(v_bag->>'file_due_date', '')::timestamptz,
@@ -561,6 +615,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, auth;
 -- Client override that approves the current phase: release the held installment for the current
 -- stage, then advance to the next required stage and fund its installment — or, on the final stage,
 -- complete the whole ticket. Returns the new current_stage_id (NULL once the ticket is completed).
+-- No hold, no work (#165): when the next stage's hold is refused the approval still stands and the
+-- installment already earned is still paid; the ticket waits in that stage as `todo`, Needs funding.
 --
 -- 🚨 A CLIENT override, so the guard is review authority (`can_review_project`), not
 -- `has_project_access`: the assignee has project access, and under that guard could approve their
@@ -574,6 +630,7 @@ DECLARE
     v_project_id uuid;
     v_next uuid;
     v_current_ord int;
+    v_detail text;
 BEGIN
     IF auth.uid() IS NULL THEN
         RAISE EXCEPTION 'Sign in to complete a stage.' USING ERRCODE = '42501';
@@ -621,7 +678,13 @@ BEGIN
         updated_at = now()
     WHERE id = p_ticket_id;
 
-    PERFORM finance.fn_hold_ticket_escrow(p_ticket_id);
+    BEGIN
+        PERFORM finance.fn_hold_ticket_escrow(p_ticket_id);
+    EXCEPTION WHEN SQLSTATE 'PF402' THEN
+        GET STACKED DIAGNOSTICS v_detail = PG_EXCEPTION_DETAIL;
+        UPDATE projects.tickets SET status = 'todo'::ticket_status, updated_at = now() WHERE id = p_ticket_id;
+        PERFORM projects.fn_mark_needs_funding(p_ticket_id, NULLIF(v_detail, '')::jsonb);
+    END;
     RETURN v_next;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, org, auth;

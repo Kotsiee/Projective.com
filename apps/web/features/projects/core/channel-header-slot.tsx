@@ -121,7 +121,7 @@ export async function channelHeaderFor(
 	const base = `/projects/${projectId}/${channelId}`;
 	// SSR-resolved service archetype baseline (task §2): a `session`-format engagement is a 1-1 session,
 	// anything else a standard project. The island re-derives it live from the dev Context Switcher.
-	const sessionKind = resolveSessionKind(detail.format, null);
+	const sessionKind = resolveSessionKind(detail.format, null, detail.sessionKind);
 	// SSR-resolved tab visibility from the REAL session (Stage Access + Session matrix): a reviewer is
 	// the client; a real freelancer opening a stage channel is assigned to it. The island re-derives this
 	// live from the dev Context Switcher after hydration, so the first byte matches the real capabilities.

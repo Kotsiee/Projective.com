@@ -831,6 +831,17 @@
 	is painted underneath the solid ring and is simply invisible. */
     --focus-ring-glow: 0 0 5px calc(var(--focus-ring-offset) + var(--focus-ring-w)) var(--focus-ring-tint);
 
+    /*
+	* The overlay family's focus indicator (§B.10.6, Decision #163). A separate pair from
+	* `--focus-ring-*` on purpose: the app neutralises those product-wide (152a27a) but keeps a visible
+	* ring inside every portalled overlay, where a keyboard user has no page context to fall back on.
+	* An OUTLINE, not a shadow, so it never fights a control's elevation and is not clipped by the
+	* panel's scroller. `--fld-focus-fg` measures 6.25:1 dark / 6.93:1 light on `--surface`; high
+	* contrast widens it to a 3px `--on-surface` contour below.
+	*/
+    --overlay-focus-ring: 2px solid var(--fld-focus-fg);
+    --overlay-focus-offset: 2px;
+
     /* Color tokens (--primary, --surface*, --on-*, --outline, semantic ramps) are emitted at
 	runtime by @projective/ui/system (Material You engine). Static fallbacks live alongside. */
 }
@@ -858,6 +869,7 @@
     /* Matches the geometry step `focusShadow()` already makes for the box-shadow composite, so the
 	outline-drawn ring and the shadow-drawn ring stay the same thickness as each other. */
     --focus-ring-w: 2px;
+    --overlay-focus-ring: 3px solid var(--on-surface);
 }
 
 /*

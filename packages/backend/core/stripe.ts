@@ -127,6 +127,22 @@ export function stripeSettings(): StripeSettings | null {
 	});
 }
 
+/**
+ * Refuse to boot with a LIVE Stripe secret key anywhere but `DENO_ENV=production`: a development or
+ * staging process must never be able to move real money. Called once by `apps/web/main.ts` after the
+ * env files load; throws, so the server never starts listening.
+ */
+export function assertStripeKeyAllowed(
+	env: { stripeSecretKey?: string; appEnv?: string } = serverEnv(),
+): void {
+	if (env.appEnv !== "production" && /^(sk|rk)_live_/.test(env.stripeSecretKey?.trim() ?? "")) {
+		throw new Error(
+			`Refusing to start: STRIPE_SECRET_KEY is a LIVE key but DENO_ENV is "${env.appEnv}". ` +
+				"Use a test key (sk_test_/rk_test_) outside production.",
+		);
+	}
+}
+
 /** True when a well-formed Stripe secret key is present. Says nothing about the finance gate. */
 export function isStripeConfigured(): boolean {
 	return stripeSettings() !== null;

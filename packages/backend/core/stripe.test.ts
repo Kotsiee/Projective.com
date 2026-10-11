@@ -1,6 +1,11 @@
-import { assert, assertEquals, assertRejects } from "@std/assert";
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
 import Stripe from "stripe";
-import { parseStripeSettings, stripeIdempotencyKey, verifyStripeEvent } from "./stripe.ts";
+import {
+	assertStripeKeyAllowed,
+	parseStripeSettings,
+	stripeIdempotencyKey,
+	verifyStripeEvent,
+} from "./stripe.ts";
 
 // Shape-valid fakes: long enough to pass the key-shape rules, never real credentials.
 const SK_TEST = "sk_test_" + "a".repeat(24);
@@ -16,6 +21,14 @@ Deno.test("a placeholder or a missing secret key is NOT a configured Stripe", ()
 	assertEquals(parseStripeSettings({ secretKey: "pk_test_" + "a".repeat(24) }), null);
 	// A webhook secret on its own configures nothing.
 	assertEquals(parseStripeSettings({ webhookSecret: WHSEC }), null);
+});
+
+Deno.test("a LIVE secret key refuses to boot outside production; a test key never does", () => {
+	assertThrows(() => assertStripeKeyAllowed({ stripeSecretKey: RK_LIVE, appEnv: "development" }));
+	assertThrows(() => assertStripeKeyAllowed({ stripeSecretKey: "sk_live_x", appEnv: undefined }));
+	assertStripeKeyAllowed({ stripeSecretKey: RK_LIVE, appEnv: "production" });
+	assertStripeKeyAllowed({ stripeSecretKey: SK_TEST, appEnv: "development" });
+	assertStripeKeyAllowed({ stripeSecretKey: undefined, appEnv: "development" });
 });
 
 Deno.test("the mode and key kind come from the secret key's prefix", () => {

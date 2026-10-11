@@ -13,7 +13,7 @@
  *  2. **Nesting still works** — a dropdown opened INSIDE an open modal steps above the modal rather
  *     than dropping to the popover base, so it is never swallowed by its own parent surface.
  */
-import { useEffect, useLayoutEffect, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { createScrollLock } from "./scroll-lock.ts";
 
 // #region Module-level shared state
@@ -32,6 +32,7 @@ const Z_STEP = 10;
 /** One live overlay's claim on the stack. */
 interface StackEntry {
 	z: number;
+	passive: boolean;
 	setIsTop: (v: boolean) => void;
 }
 
@@ -49,7 +50,9 @@ function currentTop(): number {
 
 /** Push `isTop` to every live overlay so Escape ownership follows the real top, not mount order. */
 function syncTop(): void {
-	for (let i = 0; i < stack.length; i++) stack[i].setIsTop(i === stack.length - 1);
+	let top = stack.length - 1;
+	while (top >= 0 && stack[top].passive) top--;
+	for (let i = 0; i < stack.length; i++) stack[i].setIsTop(i === top);
 }
 
 /** How long a release waits when the double frame never comes (a backgrounded tab). */
@@ -113,6 +116,12 @@ export interface OverlayStackOptions {
 	lockScroll?: boolean;
 	/** Stacking class this overlay belongs to (default `popover`). */
 	layer?: OverlayLayer;
+	/**
+	 * Claim a z-slot but never `isTop` — for a persistent non-modal window (`DraggablePopover`). It
+	 * still raises the ceiling, so a dropdown opened inside it steps above it, but a modal beside it
+	 * keeps Escape ownership.
+	 */
+	passive?: boolean;
 }
 
 export interface OverlayStackState {
@@ -120,20 +129,24 @@ export interface OverlayStackState {
 	zIndex: number;
 	/** True only for the top-most currently-active overlay (drives Escape ownership). */
 	isTop: boolean;
+	/** Move this claim to the top of the stack (a window touched to the front). No-op when closed. */
+	raise: () => void;
 }
 
 export function useOverlayStack(opts: OverlayStackOptions): OverlayStackState {
-	const { active, lockScroll = false, layer = "popover" } = opts;
+	const { active, lockScroll = false, layer = "popover", passive = false } = opts;
 	const base = LAYER_BASE[layer];
 	const [zIndex, setZIndex] = useState(base);
 	const [isTop, setIsTop] = useState(false);
+	const entryRef = useRef<StackEntry | null>(null);
 
 	useEffect(() => {
 		if (!active) return;
 		// Start from the class base, but never below an overlay that is already open — so a dropdown
 		// inside a modal steps ABOVE it instead of falling back to the popover band.
 		const mine = Math.max(base, currentTop() + Z_STEP);
-		const entry: StackEntry = { z: mine, setIsTop };
+		const entry: StackEntry = { z: mine, passive, setIsTop };
+		entryRef.current = entry;
 		stack.push(entry);
 		setZIndex(mine);
 		syncTop();
@@ -145,10 +158,22 @@ export function useOverlayStack(opts: OverlayStackOptions): OverlayStackState {
 			// the draggable, toast and tooltip bands — inverting the class hierarchy this module promises.
 			const i = stack.indexOf(entry);
 			if (i >= 0) stack.splice(i, 1);
+			entryRef.current = null;
 			setIsTop(false);
 			syncTop();
 		};
-	}, [active, base]);
+	}, [active, base, passive]);
+
+	const raise = () => {
+		const entry = entryRef.current;
+		if (!entry || stack[stack.length - 1] === entry) return;
+		stack.splice(stack.indexOf(entry), 1);
+		// Re-derived from live claims, like the first claim — raising never accumulates.
+		entry.z = Math.max(base, currentTop() + Z_STEP);
+		stack.push(entry);
+		setZIndex(entry.z);
+		syncTop();
+	};
 
 	// The lock is claimed in the commit that mounts the overlay, so a frame swap's incoming claim
 	// lands in the same task as the outgoing release and cancels it, whatever runs before paint.
@@ -158,5 +183,5 @@ export function useOverlayStack(opts: OverlayStackOptions): OverlayStackState {
 		return () => bodyLock.release();
 	}, [active, lockScroll]);
 
-	return { zIndex, isTop };
+	return { zIndex, isTop, raise };
 }

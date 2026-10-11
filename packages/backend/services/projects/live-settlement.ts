@@ -2,6 +2,8 @@ import type { SupabaseClient } from "supabaseClient";
 import type {
 	ApproveStage,
 	CancelStageFairExit,
+	PaidRevisionRaised,
+	RequestPaidRevision,
 	ReviewSubmission,
 	StageApproved,
 	StageExited,
@@ -75,10 +77,24 @@ export function settlementRefusal(error: PgError, field?: string): WriteRefusal 
 				errors: keyed("not_allowed"),
 			};
 		case "55000":
+		case "PC409":
 			return {
 				status: 409,
 				message: say("That is no longer possible."),
 				errors: keyed("conflict"),
+			};
+		case "PU422":
+			return {
+				status: 422,
+				message: say("That request is not valid."),
+				errors: keyed("not_allowed"),
+			};
+		// The stage's free revision rounds are used (Decision #167): the client can buy one instead.
+		case "PR402":
+			return {
+				status: 402,
+				message: say("The free revisions on this stage are used — buy a revision to send it back."),
+				errors: keyed("paid_revision_required"),
 			};
 	}
 
@@ -201,6 +217,47 @@ export async function reviewSubmissionRow(
 			status: toSubmissionStatus(
 				payload?.status ?? (input.decision === "accept" ? "accepted" : "revisions_requested"),
 			),
+		},
+	};
+}
+
+/**
+ * Raise a paid revision round through `projects.request_paid_revision` (Decision #167) — the review's
+ * "Buy a revision". Addressed like a verdict (the submission must belong to the URL's stage); the
+ * function checks review authority, that the free rounds are used and that the stage sells one.
+ */
+export async function requestPaidRevisionRow(
+	actor: ReadActor & { accessToken: string },
+	input: RequestPaidRevision,
+): Promise<WriteOutcome<PaidRevisionRaised>> {
+	if (!UUID_RE.test(input.submissionId)) return null;
+	const db = projectsDb(actor);
+	const target = await resolveTarget(db, input.projectId, input.stageId);
+	if (!target) return null;
+
+	const row = await db
+		.from("stage_submissions")
+		.select("id, project_stage_id")
+		.eq("id", input.submissionId)
+		.maybeSingle();
+	if (row.error) throw new Error(`projects.stage_submissions read failed: ${row.error.message}`);
+	if ((row.data as { project_stage_id?: string } | null)?.project_stage_id !== target.stageId) {
+		return null;
+	}
+
+	const { data, error } = await db.rpc("request_paid_revision", {
+		p_submission_id: input.submissionId,
+		p_feedback: { global: input.notes.trim() },
+	});
+	if (error) return { refusal: settlementRefusal(error, "decision") };
+
+	const payload = (data ?? {}) as Record<string, unknown>;
+	return {
+		data: {
+			revisionId: String(payload.revision_id ?? ""),
+			priceMinor: cents(payload.price_minor),
+			currency: clampOr(String(payload.currency ?? ""), 3, "USD"),
+			title: clampOr(String(payload.title ?? ""), 200, "Paid revision"),
 		},
 	};
 }

@@ -379,7 +379,9 @@ BEGIN
                 NULLIF(v_stage->>'fixed_start_date', '')::timestamptz,
                 COALESCE(NULLIF(v_stage->>'start_dependency_lag_days', '')::integer, 0),
                 COALESCE(NULLIF(v_stage->>'hire_trigger_active', '')::boolean, true),
-                COALESCE(NULLIF(v_stage->>'file_revisions_allowed', '')::integer, 0),
+                -- NULL = unlimited free rounds; on a blueprint engagement fn_stage_revision_terms
+                -- overwrites it with the seller's terms.
+                NULLIF(v_stage->>'file_revisions_allowed', '')::integer,
                 NULLIF(v_stage->>'file_duration_mode', ''),
                 NULLIF(v_stage->>'file_duration_days', '')::integer,
                 NULLIF(v_stage->>'file_due_date', '')::timestamptz,
@@ -725,6 +727,19 @@ BEGIN
     RETURN true;
   END IF;
 
+  -- A paid seat on one of the engagement's cohorts (Decision #171): a session's attendees reach its
+  -- workspace through their membership, never through a participant row. A cancelled seat does not.
+  IF EXISTS (
+    SELECT 1
+    FROM projects.cohort_memberships cm
+    JOIN projects.cohorts c ON c.id = cm.cohort_id
+    WHERE c.project_id = _project_id
+      AND cm.user_id = auth.uid()
+      AND cm.status <> 'cancelled'
+  ) THEN
+    RETURN true;
+  END IF;
+
   RETURN false;
 END;
 $$;
@@ -943,6 +958,24 @@ AS $$
                 AND pp.profile_id = auth.uid()
                 AND pp.role IN ('admin', 'manager')
         );
+$$;
+
+-- TRUE when the caller holds a membership of the cohort. SECURITY DEFINER so the member arms of the
+-- cohorts / session_events policies do not read cohort_memberships through its own policy, whose
+-- owner arm reads cohorts — that cycle raised "infinite recursion detected in policy".
+CREATE OR REPLACE FUNCTION projects.is_cohort_member(_cohort_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public, projects, org, auth
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM projects.cohort_memberships cm
+        WHERE cm.cohort_id = _cohort_id
+            AND cm.user_id = auth.uid()
+            AND cm.status <> 'cancelled'
+    );
 $$;
 
 -- #endregion

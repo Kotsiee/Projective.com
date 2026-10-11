@@ -664,6 +664,9 @@ export default function CheckoutPaymentScreen(props: CheckoutPaymentScreenProps)
 										addMethodOpen.value = true;
 									}}
 									canAddCard={view.cardsConnected}
+									onAccountNote={view.invoicing.mode === "intervaled_monthly"
+										? `Billed on your ${view.invoicing.nextStatementLabel ?? "next monthly invoice"}`
+										: null}
 								/>
 
 								{

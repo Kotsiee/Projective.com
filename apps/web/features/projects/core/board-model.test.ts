@@ -91,6 +91,7 @@ function stage(id: string, status: ProjectStatus, order: number): BoardStageRef 
 		categoryWeight: 1,
 		members: [],
 		ticketCount: 0,
+		funding: null,
 		assignmentMode: "open_pull",
 		maxConcurrentIntensity: null,
 		startAt: null,

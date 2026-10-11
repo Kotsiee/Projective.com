@@ -10,7 +10,9 @@ import {
 import ThemeToggle from "@web/features/theme/islands/ThemeToggle.island.tsx";
 import { MEGA_MENUS, SECONDARY_LINKS } from "../core/megamenu-data.ts";
 import { Icon } from "@projective/ui/icons";
-import { useBackdropPress } from "@projective/ui/overlay";
+import { BodyPortal } from "@projective/ui/overlay";
+import { Drawer } from "@projective/ui/feedback";
+import { useDismiss, useEdgeDetection, useOverlayStack } from "@projective/ui/hooks";
 import { Logo } from "@web/components/Logo.tsx";
 import { withRedirect } from "@features/auth/core/redirect.ts";
 
@@ -45,9 +47,6 @@ export default function SiteHeader(
 	const entityOpen = useSignal(false);
 	const activeMenu = useSignal<string | null>(null); // open desktop megamenu pillar
 	const openAccordion = useSignal<string | null>(null); // expanded mobile drawer accordion
-	const entityRef = useRef<HTMLDivElement>(null);
-	const drawerRef = useRef<HTMLElement>(null);
-	const burgerRef = useRef<HTMLButtonElement>(null);
 	const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // hover-intent grace timer for the megamenu
 
 	// #region Megamenu hover intent — a short grace on leave tolerates the trigger→panel gap so the
@@ -97,16 +96,21 @@ export default function SiteHeader(
 		return () => globalThis.removeEventListener("popstate", sync);
 	}, []);
 
-	// Close the header entity menu on outside click.
-	useEffect(() => {
-		const onDoc = (e: MouseEvent) => {
-			if (entityOpen.value && entityRef.current && !entityRef.current.contains(e.target as Node)) {
-				entityOpen.value = false;
-			}
-		};
-		document.addEventListener("click", onDoc);
-		return () => document.removeEventListener("click", onDoc);
-	}, []);
+	// The header entity menu: portalled and anchored (the scrolled header is glass, which would re-base
+	// a fixed list onto its own box, §B.10.4), dismissed through the shared overlay stack.
+	const entityStack = useOverlayStack({ active: entityOpen.value });
+	const entityMenu = useEdgeDetection<HTMLButtonElement, HTMLUListElement>({
+		open: entityOpen.value,
+		offset: 8,
+		zIndex: entityStack.zIndex,
+	});
+	useDismiss({
+		open: entityOpen.value,
+		enabled: entityStack.isTop,
+		onDismiss: () => (entityOpen.value = false),
+		panelRef: entityMenu.ref,
+		triggerRef: entityMenu.triggerRef,
+	});
 
 	// Escape dismisses any open megamenu; clean up the hover-intent timer on unmount.
 	useEffect(() => {
@@ -120,24 +124,6 @@ export default function SiteHeader(
 		};
 	}, []);
 
-	// Drawer: lock body scroll, close on Escape, and manage focus (open → drawer, close → burger).
-	useEffect(() => {
-		if (menuOpen.value) {
-			const prevOverflow = document.body.style.overflow;
-			document.body.style.overflow = "hidden";
-			drawerRef.current?.focus();
-			const onKey = (e: KeyboardEvent) => {
-				if (e.key === "Escape") menuOpen.value = false;
-			};
-			document.addEventListener("keydown", onKey);
-			return () => {
-				document.body.style.overflow = prevOverflow;
-				document.removeEventListener("keydown", onKey);
-				burgerRef.current?.focus();
-			};
-		}
-	}, [menuOpen.value]);
-
 	function submitSearch(e: Event) {
 		e.preventDefault();
 		const q = query.value.trim();
@@ -149,7 +135,6 @@ export default function SiteHeader(
 	}
 
 	const closeMenu = () => (menuOpen.value = false);
-	const backdropPress = useBackdropPress(closeMenu);
 
 	return (
 		<header
@@ -230,8 +215,9 @@ export default function SiteHeader(
 				</nav>
 
 				<form class="site-header__search" role="search" onSubmit={submitSearch}>
-					<div class="site-header__entity" ref={entityRef}>
+					<div class="site-header__entity">
 						<button
+							ref={entityMenu.triggerRef}
 							type="button"
 							class="site-header__entity-btn"
 							aria-haspopup="listbox"
@@ -242,29 +228,37 @@ export default function SiteHeader(
 							<span class="site-header__chevron" aria-hidden="true" />
 						</button>
 						{entityOpen.value && (
-							<ul class="site-header__entity-menu" role="listbox" aria-label="Search scope">
-								{SEARCH_SCOPES.map((opt) => (
-									<li
-										key={opt.value}
-										role="option"
-										aria-selected={entity.value === opt.value}
-										class="site-header__entity-option"
-										tabIndex={0}
-										onClick={() => {
-											entity.value = opt.value;
-											entityOpen.value = false;
-										}}
-										onKeyDown={(e) => {
-											if (e.key === "Enter" || e.key === " ") {
+							<BodyPortal>
+								<ul
+									ref={entityMenu.ref}
+									class="ui-anchored site-header__entity-menu"
+									role="listbox"
+									aria-label="Search scope"
+									style={entityMenu.style}
+								>
+									{SEARCH_SCOPES.map((opt) => (
+										<li
+											key={opt.value}
+											role="option"
+											aria-selected={entity.value === opt.value}
+											class="site-header__entity-option"
+											tabIndex={0}
+											onClick={() => {
 												entity.value = opt.value;
 												entityOpen.value = false;
-											}
-										}}
-									>
-										{opt.label}
-									</li>
-								))}
-							</ul>
+											}}
+											onKeyDown={(e) => {
+												if (e.key === "Enter" || e.key === " ") {
+													entity.value = opt.value;
+													entityOpen.value = false;
+												}
+											}}
+										>
+											{opt.label}
+										</li>
+									))}
+								</ul>
+							</BodyPortal>
 						)}
 					</div>
 					<input
@@ -308,11 +302,9 @@ export default function SiteHeader(
 
 				<button
 					type="button"
-					ref={burgerRef}
 					class={`site-header__burger${menuOpen.value ? " is-open" : ""}`}
 					aria-label={menuOpen.value ? "Close menu" : "Open menu"}
 					aria-expanded={menuOpen.value}
-					aria-controls="site-drawer"
 					onClick={() => (menuOpen.value = !menuOpen.value)}
 				>
 					<span aria-hidden="true" />
@@ -320,24 +312,32 @@ export default function SiteHeader(
 				</button>
 			</div>
 
-			<div
-				class={`site-header__backdrop${menuOpen.value ? " is-open" : ""}`}
-				aria-hidden="true"
-				{...backdropPress}
-			/>
-
-			<aside
-				id="site-drawer"
-				ref={drawerRef}
-				class={`site-header__drawer${menuOpen.value ? " is-open" : ""}`}
-				role="dialog"
-				aria-modal="true"
-				aria-label="Menu"
-				tabIndex={-1}
-				inert={menuOpen.value ? undefined : true}
+			{
+				/* The shared Drawer: portal, scrim, focus trap, scroll lock, Escape stack (§B.10). The sign-in /
+			    get-started actions are its pinned footer, so they never scroll out of reach. */
+			}
+			<Drawer
+				visible={menuOpen}
+				position="right"
+				header="Menu"
+				class="site-header__drawer"
+				footer={
+					<div class="site-header__drawer-actions">
+						{authenticated
+							? <a class="site-header__cta site-header__cta--block" href="/projects">Dashboard</a>
+							: (
+								<>
+									<a class="site-header__signin site-header__signin--block" href={signInHref}>
+										Sign in
+									</a>
+									<a class="site-header__cta site-header__cta--block" href={joinHref}>
+										Get started
+									</a>
+								</>
+							)}
+					</div>
+				}
 			>
-				<span class="site-header__drawer-brand">Projective</span>
-
 				<nav class="site-header__drawer-nav" aria-label="Mobile">
 					{MEGA_MENUS.map((menu) => {
 						const open = openAccordion.value === menu.key;
@@ -403,22 +403,7 @@ export default function SiteHeader(
 					<ThemeToggle />
 					<span class="site-header__drawer-theme-label">Light / dark theme</span>
 				</div>
-
-				<div class="site-header__drawer-actions">
-					{authenticated
-						? <a class="site-header__cta site-header__cta--block" href="/projects">Dashboard</a>
-						: (
-							<>
-								<a class="site-header__signin site-header__signin--block" href={signInHref}>
-									Sign in
-								</a>
-								<a class="site-header__cta site-header__cta--block" href={joinHref}>
-									Get started
-								</a>
-							</>
-						)}
-				</div>
-			</aside>
+			</Drawer>
 		</header>
 	);
 }

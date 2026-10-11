@@ -3,7 +3,7 @@ import { useEffect, useRef } from "preact/hooks";
 import { Icon } from "@projective/ui/icons";
 import { Tooltip } from "@projective/ui/feedback";
 import { BodyPortal } from "@projective/ui/overlay";
-import { useEdgeDetection } from "@projective/ui/hooks";
+import { useDismiss, useEdgeDetection, useOverlayStack } from "@projective/ui/hooks";
 import { Button } from "@ui/fields/components/Button.tsx";
 import { requestShare } from "@web/features/share/core/share-request.ts";
 
@@ -51,10 +51,12 @@ export default function CardActions(
 	 * lower edge — the same trap Decision #50 portalled every shared overlay out of. `bottom-end`
 	 * keeps it under the kebab; `useEdgeDetection` flips and clamps it at the viewport.
 	 */
+	const stack = useOverlayStack({ active: open.value });
 	const menu = useEdgeDetection<HTMLButtonElement, HTMLDivElement>({
 		open: open.value,
 		placement: "bottom-end",
 		offset: 8,
+		zIndex: stack.zIndex,
 	});
 
 	/*
@@ -73,26 +75,15 @@ export default function CardActions(
 		return () => menu.triggerRef.current?.focus();
 	}, [open.value]);
 
-	// Close the menu on outside click / Escape. The panel lives outside `rootRef` now that it is
-	// portalled, so it needs its own containment test or a click inside the menu would dismiss it.
-	useEffect(() => {
-		const onDoc = (e: MouseEvent) => {
-			if (!open.value) return;
-			const t = e.target as Node;
-			const inRoot = rootRef.current?.contains(t) ?? false;
-			const inPanel = menu.ref.current?.contains(t) ?? false;
-			if (!inRoot && !inPanel) open.value = false;
-		};
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") open.value = false;
-		};
-		document.addEventListener("click", onDoc);
-		document.addEventListener("keydown", onKey);
-		return () => {
-			document.removeEventListener("click", onDoc);
-			document.removeEventListener("keydown", onKey);
-		};
-	}, []);
+	// Outside press and Escape through the shared overlay stack: a card inside a drawer or dialog
+	// closes only this menu on Escape, never the surface it was opened over.
+	useDismiss({
+		open: open.value,
+		enabled: stack.isTop,
+		onDismiss: () => (open.value = false),
+		panelRef: menu.ref,
+		triggerRef: menu.triggerRef,
+	});
 
 	function announce(msg: string) {
 		status.value = msg;

@@ -8,7 +8,7 @@ import {
 	SelectButton,
 	ToggleSwitch,
 } from "@projective/ui/fields";
-import { DISPLAY_CURRENCIES } from "@projective/types/finance";
+import { type AutoFundMode, DISPLAY_CURRENCIES } from "@projective/types/finance";
 import { Icon } from "@projective/ui/icons";
 import AssetPicker from "@web/features/files/islands/AssetPicker.island.tsx";
 import { openPicker } from "@web/features/files/core/files-state.ts";
@@ -42,6 +42,42 @@ import { DropZone, NDA_PICKER, PendingFileRow } from "./SetupAttachmentsSection.
  * location and language gates, and under Advanced options the NDA, the currency, ownership of the work,
  * portfolio rights and the deadline-bonus rule.
  */
+
+// #region Auto-funding
+/** What each auto-fund mode does, in the words the Billing module uses (PRODUCT_SPEC §Escrow, Wallets & Finance #4). */
+export const AUTO_FUND_LABEL: Record<AutoFundMode, string> = {
+	off: "Off — fund each ticket by hand",
+	add_to_basket: "Add to basket",
+	from_wallet: "Fund from the business wallet",
+};
+
+/**
+ * This project's auto-funding: inherit the paying business's mode, or override it. Rendered only on a
+ * business-paid project (`autoFundInherited` is null for an individual, who is never auto-funded).
+ */
+function AutoFundField({ setup }: { setup: ProjectSetup }): JSX.Element | null {
+	const inherited = setup.autoFundInherited;
+	if (!inherited) return null;
+	const options = [
+		{ label: `Business default — ${AUTO_FUND_LABEL[inherited]}`, value: "inherit" },
+		...(Object.keys(AUTO_FUND_LABEL) as AutoFundMode[]).map((value) => ({ label: AUTO_FUND_LABEL[value], value })),
+	];
+	return (
+		<Field
+			label="Auto-funding"
+			hint="When a ticket can't start for want of money: queue it to fund from the business wallet, add it to the basket, or leave it to you."
+		>
+			<Select
+				options={options}
+				value={setup.rules.autoFundOverride ?? "inherit"}
+				onValueChange={(v: string) =>
+					patchSetup({ rules: { autoFundOverride: v === "inherit" ? null : v as AutoFundMode } })}
+				aria-label="Auto-funding"
+			/>
+		</Field>
+	);
+}
+// #endregion
 
 // #region NDA
 /**
@@ -370,6 +406,8 @@ export function RulesSection(
 			}
 			<Disclosure label="Advanced options">
 				<NdaFields setup={setup} />
+
+				<AutoFundField setup={setup} />
 
 				<Field
 					label="Currency"

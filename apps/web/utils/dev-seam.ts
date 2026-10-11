@@ -18,6 +18,7 @@
  * Reading it grants no access; it only changes what the developer's own browser draws.
  */
 
+import type { AutoFundMode, FundingState } from "@projective/types/finance";
 import { IS_DEV } from "./dev.ts";
 
 // #region Contract
@@ -127,6 +128,66 @@ export type DevVerificationStamp = "auto" | "none" | "id_verified" | "vault_veri
  * own axis because every signal is derived from months of delivery history.
  */
 export type DevTrustAdornments = "auto" | "none" | "earned" | "top";
+
+/**
+ * The simulated per-ticket funding state on the funding status line (Decision #165,
+ * `PRODUCT_MANAGEMENT.md` §3.6): `auto` shows the server's `deriveFundingState`; any other value renders
+ * that state with the card's real amount. Its own axis because a hold, a refused hold and a pending card
+ * payment are server facts no page control reaches without moving money.
+ */
+export type DevFundingState = "auto" | FundingState;
+
+/**
+ * The simulated revision allotment on the submission review (Decision #167): `auto` shows the stage's
+ * real terms; `exhausted` uses up the free rounds so "Request revision" becomes "Buy a revision · price";
+ * `paid` puts a funded paid round on the active unit, so the freelancer sees "Paid revision, funded, you
+ * can start." Its own axis because the count is consumed only by real reviews and a paid round only by a
+ * real payment. Client-side: the server still answers from the real allotment.
+ */
+export type DevRevisionAllotment = "auto" | "exhausted" | "paid";
+
+/**
+ * The simulated session state (Decision #171) — the facts a session's surfaces branch on that only a
+ * real booking, a real clock or the auto-release sweep can produce: `seat_full` fills the listing's
+ * cohort (Reserve seat becomes "Cohort full"); `live` puts the next sitting in progress (join window
+ * open); `ended` puts every sitting behind it; `release_pending` holds the seat's escrow inside the
+ * 24-hour negative-consent window. `auto` shows the server's answer. Client-side only: the database
+ * still refuses a full cohort and withholds a join URL outside its window.
+ */
+export type DevSessionState = "auto" | "seat_full" | "live" | "ended" | "release_pending";
+
+/**
+ * The simulated business auto-fund mode (PRODUCT_SPEC §Escrow, Wallets & Finance #4): `auto` shows the
+ * business's real setting; any mode renders the Billing module as if it were set, and `from_wallet`
+ * previews a funded ticket's "Auto-funded from wallet" line. Its own axis because the real mode acts
+ * only when a ticket enters Needs funding — a refused hold — which no page control reaches. Client-side:
+ * the server still auto-funds from the stored mode.
+ */
+export type DevAutoFundMode = "auto" | AutoFundMode;
+
+/**
+ * The simulated low-balance state on the Billing module: `auto` compares the real balance with the real
+ * floor; `below` shows the low-balance warning, `above` hides it. Its own axis because crossing the
+ * floor means spending real money. Client-side: notifications still come from real debits.
+ */
+export type DevLowBalance = "auto" | "below" | "above";
+
+/**
+ * The simulated notification inbox (DESIGN_SYSTEM §D.9): `empty` answers no notifications at all;
+ * `many` answers a large unread set spread over every inbox category (tab counts, paging, bulk
+ * select); `burst` keeps the real inbox and lands a run of new arrivals a second apart (the live
+ * merge, the header dot and the rate-limited announcement). `auto` shows the real inbox. Client-side
+ * only: the thin `NotificationService` substitutes its answers; nothing is written to the server.
+ */
+export type DevNotifications = "auto" | "empty" | "many" | "burst";
+
+/**
+ * The simulated basket (the header drawer and its switcher): `empty` answers a basket with no lines;
+ * `multi_owner` adds a team and a business account, each with a basket and a list, to the switcher;
+ * `unavailable` marks the first line no longer buyable. `auto` shows the real basket. Client-side
+ * only: the drawer substitutes its read; every write still goes to the server.
+ */
+export type DevBasketScenario = "auto" | "empty" | "multi_owner" | "unavailable";
 
 /**
  * How the `/wallet` hero's live aurora is chosen. `auto` runs the shipping gates (reduced motion, data
@@ -242,6 +303,20 @@ export interface DevSeamState {
 	verificationStamp?: DevVerificationStamp;
 	/** The simulated trust signals. Optional like `walletAurora`; absent reads as `auto`. */
 	trustAdornments?: DevTrustAdornments;
+	/** The simulated ticket funding state. Optional like `walletAurora`; absent reads as `auto`. */
+	fundingState?: DevFundingState;
+	/** The simulated revision allotment. Optional like `walletAurora`; absent reads as `auto`. */
+	revisionAllotment?: DevRevisionAllotment;
+	/** The simulated business auto-fund mode. Optional like `walletAurora`; absent reads as `auto`. */
+	autoFundMode?: DevAutoFundMode;
+	/** The simulated low-balance state. Optional like `walletAurora`; absent reads as `auto`. */
+	lowBalance?: DevLowBalance;
+	/** The simulated session state. Optional like `walletAurora`; absent reads as `auto`. */
+	sessionState?: DevSessionState;
+	/** The simulated notification inbox. Optional like `walletAurora`; absent reads as `auto`. */
+	notifications?: DevNotifications;
+	/** The simulated basket. Optional like `walletAurora`; absent reads as `auto`. */
+	basketScenario?: DevBasketScenario;
 }
 // #endregion
 
@@ -356,6 +431,25 @@ const VERIFICATION_STAMPS: readonly DevVerificationStamp[] = [
 	"corporate_verified",
 ];
 const TRUST_ADORNMENTS: readonly DevTrustAdornments[] = ["auto", "none", "earned", "top"];
+const FUNDING_STATES: readonly DevFundingState[] = [
+	"auto",
+	"draft",
+	"needs_funding",
+	"processing",
+	"funded",
+	"in_progress",
+	"in_review",
+	"released",
+	"failed",
+	"refunded",
+];
+
+const REVISION_ALLOTMENTS: readonly DevRevisionAllotment[] = ["auto", "exhausted", "paid"];
+const SESSION_STATES: readonly DevSessionState[] = ["auto", "seat_full", "live", "ended", "release_pending"];
+const AUTO_FUND_MODES: readonly DevAutoFundMode[] = ["auto", "off", "add_to_basket", "from_wallet"];
+const LOW_BALANCES: readonly DevLowBalance[] = ["auto", "below", "above"];
+const NOTIFICATION_SIMS: readonly DevNotifications[] = ["auto", "empty", "many", "burst"];
+const BASKET_SCENARIOS: readonly DevBasketScenario[] = ["auto", "empty", "multi_owner", "unavailable"];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */
 function coerce<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -405,6 +499,13 @@ export function readDevSeam(): DevSeamState | null {
 		proposalAllowance: coerce(ds.devProposalAllowance, PROPOSAL_ALLOWANCES, "auto"),
 		verificationStamp: coerce(ds.devVerificationStamp, VERIFICATION_STAMPS, "auto"),
 		trustAdornments: coerce(ds.devTrustAdornments, TRUST_ADORNMENTS, "auto"),
+		fundingState: coerce(ds.devFundingState, FUNDING_STATES, "auto"),
+		revisionAllotment: coerce(ds.devRevisionAllotment, REVISION_ALLOTMENTS, "auto"),
+		autoFundMode: coerce(ds.devAutoFundMode, AUTO_FUND_MODES, "auto"),
+		lowBalance: coerce(ds.devLowBalance, LOW_BALANCES, "auto"),
+		sessionState: coerce(ds.devSessionState, SESSION_STATES, "auto"),
+		notifications: coerce(ds.devNotifications, NOTIFICATION_SIMS, "auto"),
+		basketScenario: coerce(ds.devBasketScenario, BASKET_SCENARIOS, "auto"),
 	};
 }
 

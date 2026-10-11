@@ -6,8 +6,21 @@ import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import CheckoutCurrencySelect from "./CheckoutCurrencySelect.island.tsx";
 import { CheckoutStepper } from "../components/CheckoutStepper.tsx";
-import { type CheckoutStep, checkoutStepHref, isFocusStep } from "../core/basket-model.ts";
-import { basketSearch, notifyBasketChanged } from "../core/basket-state.ts";
+import { BasketSwitcher } from "../components/BasketSwitcher.tsx";
+import { NewListDialog } from "../components/NewListDialog.tsx";
+import { BasketService } from "../core/BasketService.ts";
+import {
+	type CheckoutStep,
+	checkoutStepHref,
+	isFocusStep,
+	ownerKindOf,
+} from "../core/basket-model.ts";
+import {
+	basketSearch,
+	currentCheckoutContext,
+	notifyBasketChanged,
+	owners as ownersSignal,
+} from "../core/basket-state.ts";
 import { reachedStep, seedStep } from "../core/checkout-state.ts";
 import { useCheckoutContextPassive } from "../core/checkout-context.ts";
 import type { BasketSummary, CheckoutOwner } from "../types/checkout-types.ts";
@@ -19,7 +32,7 @@ import type { BasketSummary, CheckoutOwner } from "../types/checkout-types.ts";
  * The band is the {@link CheckoutStepper} alone, left-aligned at the content column's own inline
  * padding, vertically centred in the fixed `--shell-midnav-header-h` strip. On the two focus steps
  * (`details`, `payment`) that is the whole band. On the basket step a small control cluster sits at
- * the far inline end — find-in-basket, the mobile Browse transfer, and the display-currency selector
+ * the far inline end — find-in-basket, the mobile basket switcher, and the display-currency selector
  * — placed there precisely so it cannot crowd the trail.
  *
  * It carries **no action that moves money and no primary CTA** — those are the footer rig's — and no
@@ -51,15 +64,15 @@ import type { BasketSummary, CheckoutOwner } from "../types/checkout-types.ts";
  *    the frame's `minmax(0, 1fr)` content track — `/wallet` shipped without it and one rig raised the
  *    whole surface's floor to 739px, crushing the lane to 2px.
  *
- * 2. **The ≤767px Browse duty-transfer.** `.ui-middle-nav__lane` is `display: none` below 767px, and
+ * 2. **The ≤767px switcher duty-transfer.** `.ui-middle-nav__lane` is `display: none` below 767px, and
  *    on the basket step the lane is the only route between the account's baskets. A responsibility
- *    cannot evaporate at a breakpoint, so at that width the band grows a Browse control holding
- *    exactly the lane's scope duty. It is **icon-only** at every width it appears, so the transfer
- *    costs the trail no room. It is gated by a **viewport** media query rather than a container
+ *    cannot evaporate at a breakpoint, so at that width the band grows the header drawer's
+ *    {@link BasketSwitcher} — every owner's baskets and lists, plus New list. It is gated by a
+ *    **viewport** media query rather than a container
  *    query, deliberately: it mirrors the lane's own `@media (max-width: 767px)` rule, so the two are
  *    decided by the same measurement and cannot disagree. Everything sized against the band's own
  *    width uses a container query, because that width depends on whether the lane is there.
- *    On the two focus steps there is no lane to inherit from, so there is no Browse control either.
+ *    On the two focus steps there is no lane to inherit from, so there is no switcher either.
  *
  * 3. **`reached` comes from the store, not from the URL.** A buyer whose details were already saved is
  *    redirected past Details; walking back to the basket must still show Details as a step they have
@@ -88,7 +101,7 @@ export interface CheckoutStepperBandProps {
 	basketName?: string;
 	/** The open basket's id, carried through every step link so the flow stays on one basket. */
 	basketId: string | null;
-	/** The acting account's baskets — the mobile Browse control's contents. */
+	/** The acting account's baskets — the mobile switcher's contents until every owner is read. */
 	baskets: BasketSummary[];
 	/**
 	 * The display currency SSR formatted every figure in; seeds the selector.
@@ -106,8 +119,10 @@ export interface CheckoutStepperBandProps {
 // #endregion
 
 export default function CheckoutStepperBand(props: CheckoutStepperBandProps): JSX.Element {
-	const browseOpen = useSignal(false);
 	const findOpen = useSignal(false);
+	const createOpen = useSignal(false);
+	const createName = useSignal("");
+	const creating = useSignal(false);
 	/**
 	 * Whether the client store may be read yet.
 	 *
@@ -128,6 +143,29 @@ export default function CheckoutStepperBand(props: CheckoutStepperBandProps): JS
 		seedStep(props.step);
 		mounted.value = true;
 	}, [props.step]);
+
+	// The mobile switcher is the lane's duty below 767px, so only a phone pays for the owners read.
+	// shortcut: decided once at mount; a desktop window narrowed later switches within this owner only.
+	useEffect(() => {
+		if (isFocusStep(props.step) || !globalThis.matchMedia?.("(max-width: 767px)").matches) return;
+		void BasketService.owners(currentCheckoutContext()).then((res) => {
+			if (res.ok && res.data) ownersSignal.value = res.data;
+		});
+	}, [props.step]);
+
+	/** Open another basket or list — on the checkout routes the URL is the selection. */
+	const switchTo = (owner: string, basketId: string) =>
+		globalThis.location.assign(checkoutStepHref("basket", basketId, owner));
+
+	const createList = async () => {
+		const name = createName.value.trim();
+		if (name === "" || creating.value) return;
+		creating.value = true;
+		const res = await BasketService.createList({ name }, currentCheckoutContext());
+		creating.value = false;
+		const created = res.ok ? res.data?.lists.activeId : null;
+		if (created) switchTo(props.ownerParam, created);
+	};
 
 	/**
 	 * Narrowing is a BODY concern the band merely opens, so the query goes into the shared store and the
@@ -208,43 +246,30 @@ export default function CheckoutStepperBand(props: CheckoutStepperBandProps): JS
 					</Popover>
 				)}
 
-				{/* Mobile-only: the scope duty the lane owns above 767px, transferred rather than dropped. */}
+				{/* Mobile-only: the lane's scope duty below 767px — the drawer's switcher, every owner. */}
 				{hasLane && (
-					<Popover
-						open={browseOpen}
-						placement="bottom-end"
-						label="Browse baskets"
-						class="bsk-menu"
-						trigger={(api) => (
-							<Tooltip content="Browse baskets" placement="bottom">
-								<button
-									type="button"
-									class="cko-band__btn cko-band__btn--browse"
-									aria-label="Browse baskets"
-									aria-haspopup="dialog"
-									aria-expanded={api.expanded ? "true" : "false"}
-									aria-controls={api.panelId}
-									onClick={api.toggle}
-									ref={api.ref as RefObject<HTMLButtonElement>}
-								>
-									<Icon name="menu" />
-								</button>
-							</Tooltip>
-						)}
-					>
-						{props.baskets.map((entry) => (
-							<a
-								key={entry.id}
-								class="bsk-menu__item"
-								href={checkoutStepHref("basket", entry.id, props.ownerParam)}
-								aria-current={entry.id === props.basketId ? "page" : undefined}
-							>
-								<Icon name={entry.isDefault ? "basket" : "bookmark"} />
-								<span>{entry.name}</span>
-								<span class="bsk-menu__count">{entry.itemCount}</span>
-							</a>
-						))}
-					</Popover>
+					<span class="cko-band__switch">
+						<BasketSwitcher
+							owners={ownersSignal.value.length > 0 ? ownersSignal.value : [{
+								owner: props.ownerParam,
+								kind: ownerKindOf(props.ownerParam),
+								name: "This account",
+								avatar: null,
+								baskets: props.baskets,
+							}]}
+							owner={props.ownerParam}
+							basketId={props.basketId}
+							onSwitch={switchTo}
+							onNewList={() => (createOpen.value = true)}
+							compact
+						/>
+						<NewListDialog
+							visible={createOpen}
+							name={createName}
+							creating={creating.value}
+							onCreate={() => void createList()}
+						/>
+					</span>
 				)}
 
 				{searchable && <CheckoutCurrencySelect initial={props.display} />}

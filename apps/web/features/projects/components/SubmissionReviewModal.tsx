@@ -15,10 +15,16 @@ import { ProgressiveImage } from "@projective/ui/display/image";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { assetMediaSrc, assetPlaceholder } from "@features/files/core/asset-media.ts";
-import type { FileItem, SubmissionReview, SubmissionTreeNode } from "../types/projects-types.ts";
+import type {
+	FileItem,
+	SubmissionReview,
+	SubmissionRevisions,
+	SubmissionTreeNode,
+} from "../types/projects-types.ts";
+import { revisionIsFree } from "@projective/types/projects";
 import { fileTabHref, openFileInTab, useFileTriggerFocus } from "../hooks/useFileTiles.ts";
 import { kindLabel } from "../core/file-model.ts";
-import { statusLabel, statusTone } from "../core/submission-model.ts";
+import { revisionAllowanceLabel, statusLabel, statusTone } from "../core/submission-model.ts";
 import { profileHref } from "../core/routing.ts";
 import { FilePreview } from "./FilePreview.tsx";
 import { SubmissionTree } from "./SubmissionTree.tsx";
@@ -70,6 +76,16 @@ export interface SubmissionReviewModalProps {
 	onRequestRevision: (payload: { guidelines: string; annotations: number; notes: string }) => void;
 	/** Accept the submission (escrow release). */
 	onAccept: () => void;
+	/**
+	 * The stage's revision allotment as the host resolved it (Decision #167, dev override applied);
+	 * `null`/absent = unknown, and the revision control behaves as before.
+	 */
+	revisions?: SubmissionRevisions | null;
+	/**
+	 * Buy a revision once the free rounds are used — same feedback payload as a request. Absent: no
+	 * purchase is offered, and an exhausted allotment leaves the control disabled with the reason.
+	 */
+	onBuyRevision?: (payload: { guidelines: string; annotations: number; notes: string }) => void;
 	/** A verdict is in flight — both decision controls are disabled so one press cannot become two. */
 	busy?: boolean;
 	/** Why the last verdict did not land, rendered in the footer as an alert; null when there is none. */
@@ -119,6 +135,8 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 		onNavigate,
 		onRequestRevision,
 		onAccept,
+		revisions = null,
+		onBuyRevision,
 		busy = false,
 		error = null,
 		frame,
@@ -188,7 +206,12 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 
 	// A verdict is only owed on a unit awaiting review; after one, the workspace is read-only.
 	const decidable = unit.status === "pending_review";
-	const canRequestRevision = decidable &&
+	// Past the free rounds a revision is bought, not requested (Decision #167); one the stage does not
+	// sell cannot be sent back at all, so the control stays disabled and the hint says why.
+	const exhausted = revisions !== null && !revisionIsFree(revisions);
+	const buyable = exhausted && !!onBuyRevision && !!revisions?.priceMinor && !!revisions.priceLabel;
+	const allotment = revisions ? revisionAllowanceLabel(revisions) : null;
+	const canRequestRevision = decidable && (!exhausted || buyable) &&
 		(annotations.value.length > 0 || guidelines.value.trim().length > 0);
 
 	const addAnnotation = () => {
@@ -208,7 +231,9 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 			overall,
 			...annotations.value.map((a) => `${a.fileName}: ${a.text}`),
 		].filter(Boolean).join("\n");
-		onRequestRevision({ guidelines: overall, annotations: annotations.value.length, notes });
+		const payload = { guidelines: overall, annotations: annotations.value.length, notes };
+		if (exhausted) onBuyRevision?.(payload);
+		else onRequestRevision(payload);
 	};
 
 	// #region Tabs
@@ -605,11 +630,16 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 										? "Recording your decision…"
 										: !decidable
 										? "This submission has already been reviewed."
+										: exhausted && !buyable
+										? "Every free revision is used and this stage sells no extra rounds."
+										: canRequestRevision && exhausted
+										? "Ready — your feedback is sent once the revision is paid for."
 										: canRequestRevision
 										? "Ready — your feedback will be sent with the revision request."
 										: "Add a file annotation or overall guidelines to request a revision."}
 								</p>
 							)}
+						{allotment && <p class="subm-review__allotment">{allotment}</p>}
 						<div class="subm-review__actions" aria-busy={busy}>
 							<button
 								type="button"
@@ -617,7 +647,7 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 								disabled={!canRequestRevision || busy}
 								onClick={requestRevision}
 							>
-								Request Revision
+								{buyable ? `Buy a revision · ${revisions?.priceLabel}` : "Request Revision"}
 							</button>
 							<button
 								type="button"

@@ -36,8 +36,33 @@ import {
 	expandChannelRef,
 	findStageChannel,
 	providerVisibleCards,
+	ticketPaidHere,
 	type TicketPaymentScope,
 } from "@projective/types/projects";
+import type { FundingStatus } from "@projective/types/finance";
+import { deriveFundingState, rollupFundingState } from "../finance/funding-state.ts";
+
+/**
+ * The stub path's `deriveFundingState`, read off the card's own facts: the corpus has no
+ * `payment_status`, so held escrow stands for `escrow_funded` and a completed ticket for `released`.
+ * The amount is the current stage's cost, which is what the live hold takes.
+ */
+export function fixtureFunding(
+	card: Pick<
+		BoardCard,
+		"status" | "escrowHeld" | "hasDescription" | "budgetCents" | "stageId" | "stages" | "paymentScope" | "paidStageIds"
+	>,
+): FundingStatus {
+	return deriveFundingState({
+		status: card.status,
+		paymentStatus: card.status === "completed" ? "released" : card.escrowHeld ? "escrow_funded" : "unpaid",
+		hasDescription: card.hasDescription,
+		amountMinor: card.stages.find((s) => s.stageId === card.stageId)?.costCents ?? card.budgetCents,
+		currency: "USD",
+		// The corpus carries purchases made ahead of a claim; the live schema has no record of one yet.
+		paidAhead: ticketPaidHere(card),
+	});
+}
 
 /**
  * projects board fixtures — the fat {@link ProjectBackendService}'s in-memory answer for the Kanban
@@ -851,6 +876,16 @@ function makeCard(c: CardSeed): BoardCard {
 		escrowHeld,
 		paymentScope: funding.scope,
 		paidStageIds: funding.paidStageIds,
+		funding: fixtureFunding({
+			status: c.status,
+			escrowHeld,
+			hasDescription: c.hasDesc,
+			budgetCents,
+			stageId: c.stageId,
+			stages,
+			paymentScope: funding.scope,
+			paidStageIds: funding.paidStageIds,
+		}),
 		priority: PRIORITIES[c.seed % PRIORITIES.length],
 		intensity: c.intensity,
 		workload,
@@ -1120,6 +1155,7 @@ export function findBoardPage(params: BoardListParams): BoardPage | null {
 	// HERE, on the read, and not only in the island — a client that hides a card it was handed is
 	// not withholding it (root task §5).
 	if (!detail.viewerIsClient) cards = providerVisibleCards(cards, viewerStageIds);
+	const visible = detail.viewerIsClient ? all : providerVisibleCards(all, viewerStageIds);
 
 	const pool = assigneePool(detail);
 	const windows = stageWindows(detail);
@@ -1144,6 +1180,10 @@ export function findBoardPage(params: BoardListParams): BoardPage | null {
 			categoryWeight: econ.categoryWeight,
 			members,
 			ticketCount: all.filter((c) => c.stageId === s.id).length,
+			// Over what this viewer may see before the list filters narrow the page, like the live board.
+			funding: rollupFundingState(
+				visible.flatMap((c) => (c.stageId === s.id && c.funding ? [c.funding] : [])),
+			),
 			assignmentMode: econ.assignmentMode,
 			maxConcurrentIntensity: econ.maxConcurrentIntensity,
 			startAt: window.startAt,

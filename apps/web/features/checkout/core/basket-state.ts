@@ -4,6 +4,7 @@ import type {
 	AppliedPromo,
 	Basket,
 	BasketItem,
+	BasketOwnerSummary,
 	BasketSummary,
 	CheckoutContext,
 	CheckoutResult,
@@ -87,6 +88,8 @@ export function rememberedBasketId(): string | null {
 export const basket = signal<Basket | null>(null);
 /** Every basket the acting account keeps — the lane's switcher. */
 export const baskets = signal<readonly BasketSummary[]>([]);
+/** Every account the caller can buy for, with its baskets — the basket switcher's model. */
+export const owners = signal<readonly BasketOwnerSummary[]>([]);
 /** The promo attached to the open basket, valid or refused. */
 export const promo = signal<AppliedPromo | null>(null);
 /** The whole checkout projection — owner, lines, providers, wallet, totals, blockers. */

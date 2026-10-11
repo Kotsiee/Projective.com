@@ -104,6 +104,11 @@ export const OrderLineSchema = z.object({
 	thumbnail: z.string().max(600).nullable(),
 	sellerHandle: z.string().max(40).nullable(),
 	sellerName: z.string().max(120).nullable(),
+	/**
+	 * For a line that funded ONE ticket (Decision #166): the ticket's payee, who can start once the hold
+	 * lands — named on the confirmation's "What happens next". `null` for every other line.
+	 */
+	payeeName: z.string().max(120).nullable().default(null),
 	quantity: z.number().int().min(1).max(999),
 	/** What this line was charged, server-computed. */
 	lineTotal: MoneyViewSchema,

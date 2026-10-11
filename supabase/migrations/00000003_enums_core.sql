@@ -78,7 +78,9 @@ CREATE TYPE project_format AS ENUM ('one_off', 'pipeline', 'session');
 
 CREATE TYPE ticket_status AS ENUM ('backlog', 'todo', 'claimed', 'in_progress', 'in_review', 'completed', 'cancelled', 'reported_hidden');
 
-CREATE TYPE payment_status AS ENUM ('unpaid', 'escrow_funded', 'partially_released', 'released', 'refunded');
+-- `needs_funding`: a lock trigger fired and the hold was refused (no hold, no work — Decision #165,
+-- PRODUCT_MANAGEMENT §3.6). Unfunded like `unpaid`; cleared by the next successful hold.
+CREATE TYPE payment_status AS ENUM ('unpaid', 'needs_funding', 'escrow_funded', 'partially_released', 'released', 'refunded');
 
 CREATE TYPE projects.structure_variation AS ENUM ('standard', 'one_off', 'single_task', 'single_stage');
 

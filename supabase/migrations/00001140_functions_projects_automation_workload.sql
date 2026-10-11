@@ -22,8 +22,10 @@ BEGIN
     SET status = 'dismissed_bad_faith'::projects.workload_report_status, resolved_at = now()
     WHERE id = p_report_id;
 
+    -- Filing the report evicted the assignee and released the escrow, so the ticket stays in the
+    -- backlog with its countdown lifted; resuming it to in_progress would be work with no hold (#165).
     UPDATE projects.tickets
-    SET status = 'in_progress'::ticket_status, hidden_until = NULL
+    SET hidden_until = NULL
     WHERE id = v_ticket;
 
     INSERT INTO security.penalties (
@@ -308,10 +310,53 @@ $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, projects, 
 -- #endregion
 
 -- #region 5. Shared assignment core (capacity-enforcing) + reworked self-claim
+-- A lock trigger fired and the hold was refused (Decision #165): the ticket becomes Needs funding and
+-- the client side is told what to fund. `p_detail` is fn_hold_ticket_escrow's PF402 DETAIL. Only an
+-- unfunded ticket moves; one that is held, released or refunded keeps its state. A ticket ENTERING
+-- Needs funding on a business project is handed to its auto-funding (finance.fn_auto_fund_on_needs_
+-- funding — PRODUCT_SPEC §Escrow, Wallets & Finance #4), and the notice says what that did.
+CREATE OR REPLACE FUNCTION projects.fn_mark_needs_funding(p_ticket_id uuid, p_detail jsonb)
+RETURNS void AS $$
+DECLARE
+    v record;
+    v_entered boolean := false;
+    v_auto text;
+BEGIN
+    UPDATE projects.tickets t
+    SET payment_status = 'needs_funding'::payment_status
+    WHERE t.id = p_ticket_id
+      AND t.payment_status IN ('unpaid'::payment_status, 'partially_released'::payment_status)
+    RETURNING true INTO v_entered;
+    IF v_entered THEN
+        v_auto := finance.fn_auto_fund_on_needs_funding(p_ticket_id);
+    END IF;
+
+    SELECT t.title, t.slug AS ticket_slug, p.id AS project_id, p.slug AS project_slug, p.owner_user_id
+    INTO v
+    FROM projects.tickets t JOIN projects.projects p ON p.id = t.project_id
+    WHERE t.id = p_ticket_id;
+
+    PERFORM comms.fn_notify(
+        v.owner_user_id, 'escrow.needs_funding', 'Needs funding',
+        format('"%s" can''t start until its escrow is held.', v.title) || CASE v_auto
+            WHEN 'basketed' THEN ' It''s in the business basket, ready to pay.'
+            WHEN 'queued' THEN ' It will be funded from the business wallet as soon as the wallet covers it.'
+            ELSE '' END,
+        'projects.tickets', p_ticket_id, COALESCE(p_detail, '{}'::jsonb),
+        auth.uid(), 'project', v.project_id, NULL,
+        '/projects/' || v.project_slug || '/board?tkv=' || v.ticket_slug
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, comms, auth;
+
 -- Every path that attaches a freelancer to a ticket funnels through fn_assign_ticket_core: it locks
 -- the row, re-validates the claim preconditions (unclaimed, has a description), enforces the
 -- concurrency caps, stamps the claim and holds escrow. Routing RPCs that have already chosen a
 -- capacity-cleared assignee pass p_enforce_capacity = false to avoid a redundant second check.
+-- No hold, no work (#165): when trg_ticket_escrow_sync refuses the hold (PF402) the assignment is
+-- rolled back, the ticket is recorded as Needs funding (fn_mark_needs_funding) and NULL is returned —
+-- the claim did not happen. A refusal cannot both be recorded and raised in one transaction, so a NULL
+-- here is the refusal; on success the held escrow's id is returned.
 CREATE OR REPLACE FUNCTION projects.fn_assign_ticket_core(
     p_ticket_id uuid,
     p_assignee_id uuid,
@@ -322,6 +367,7 @@ DECLARE
     v_desc     jsonb;
     v_assignee uuid;
     v_verdict  jsonb;
+    v_detail   text;
 BEGIN
     SELECT description, current_assignee_id INTO v_desc, v_assignee
     FROM projects.tickets WHERE id = p_ticket_id FOR UPDATE;
@@ -339,14 +385,23 @@ BEGIN
         END IF;
     END IF;
 
-    UPDATE projects.tickets
-    SET current_assignee_id = p_assignee_id,
-        claimed_at = now(),
-        status = 'claimed'::ticket_status,
-        updated_at = now()
-    WHERE id = p_ticket_id;
+    BEGIN
+        UPDATE projects.tickets
+        SET current_assignee_id = p_assignee_id,
+            claimed_at = now(),
+            status = 'claimed'::ticket_status,
+            updated_at = now()
+        WHERE id = p_ticket_id;
+    EXCEPTION WHEN SQLSTATE 'PF402' THEN
+        GET STACKED DIAGNOSTICS v_detail = PG_EXCEPTION_DETAIL;
+        PERFORM projects.fn_mark_needs_funding(p_ticket_id, NULLIF(v_detail, '')::jsonb);
+        RETURN NULL;
+    END;
 
-    RETURN finance.fn_hold_ticket_escrow(p_ticket_id);
+    -- The claim's own trigger made the hold; return it.
+    RETURN (SELECT e.id FROM finance.escrows e
+             WHERE e.ticket_id = p_ticket_id AND e.status = 'held'
+             ORDER BY e.created_at DESC LIMIT 1);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, org, security, auth;
 
@@ -412,7 +467,8 @@ BEGIN
       AND current_assignee_id IS NULL
       AND status IN ('backlog'::ticket_status, 'todo'::ticket_status)
       AND description IS DISTINCT FROM '{}'::jsonb
-    ORDER BY COALESCE(sort_order, 2147483647), created_at
+    -- Needs-funding tickets last, so one the client hasn't funded doesn't stall the queue behind it.
+    ORDER BY (payment_status = 'needs_funding'::payment_status), COALESCE(sort_order, 2147483647), created_at
     LIMIT 1;
 
     IF v_ticket IS NULL THEN
@@ -440,7 +496,10 @@ BEGIN
         RETURN jsonb_build_object('assigned', false, 'reason', 'No eligible roster member has capacity for the next ticket.');
     END IF;
 
-    PERFORM projects.fn_assign_ticket_core(v_ticket, v_assignee, false);
+    IF projects.fn_assign_ticket_core(v_ticket, v_assignee, false) IS NULL THEN
+        RETURN jsonb_build_object('assigned', false, 'ticket_id', v_ticket, 'needs_funding', true,
+            'reason', 'The next ticket needs funding before anyone can start it.');
+    END IF;
     RETURN jsonb_build_object('assigned', true, 'ticket_id', v_ticket, 'assignee_id', v_assignee);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, org, security, auth;
@@ -482,8 +541,10 @@ BEGIN
             ORDER BY load.wi ASC, r.profile_id
         LOOP
             IF (projects.check_ticket_capacity(t.id, m.uid)->>'allowed')::boolean THEN
-                PERFORM projects.fn_assign_ticket_core(t.id, m.uid, false);
-                v_count := v_count + 1;
+                -- A refused hold leaves the ticket in the pool as Needs funding; no other member fixes that.
+                IF projects.fn_assign_ticket_core(t.id, m.uid, false) IS NOT NULL THEN
+                    v_count := v_count + 1;
+                END IF;
                 EXIT;
             END IF;
         END LOOP;

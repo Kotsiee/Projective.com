@@ -66,6 +66,8 @@ import {
 	toSubmissionStatus,
 } from "./live-support.ts";
 import { insertWithSlugRetry } from "../../core/slug-retry.ts";
+import { getUserClient } from "../../core/supabase.ts";
+import { AutoFundMode } from "@projective/types/finance";
 import { resolveChannelRef, UUID_RE } from "./live-support.ts";
 import { fetchMessageAttachments } from "./message-attachments.ts";
 import {
@@ -175,6 +177,7 @@ interface SetupProjectRow {
 	owner_user_id: string;
 	client_business_id: string | null;
 	archived_at: string | null;
+	auto_fund_override?: string | null;
 }
 
 /**
@@ -253,6 +256,7 @@ const SETUP_PROJECT_COLUMNS = [
 	"owner_user_id",
 	"client_business_id",
 	"archived_at",
+	"auto_fund_override",
 ].join(", ");
 
 /** The stage columns the setup form reads and writes. */
@@ -525,6 +529,7 @@ function toRules(row: SetupProjectRow): ProjectRules {
 		allowDeadlineBonuses: row.allow_deadline_bonuses,
 		locationRestriction: (row.location_restriction ?? []).map((v) => clamp(v, 60)),
 		languageRequirement: (row.language_requirement ?? []).map((v) => clamp(v, 60)),
+		autoFundOverride: AutoFundMode.safeParse(row.auto_fund_override).data ?? null,
 	};
 }
 
@@ -542,6 +547,7 @@ function toSetup(
 	attachments: readonly ProjectAttachment[],
 	viewerCanConfigure: boolean,
 	onboarded: OnboardedCounts,
+	autoFundInherited: AutoFundMode | null = null,
 ): ProjectSetup {
 	const rolesByStage = groupRolesByStage(roles);
 	return reconcileSetup({
@@ -587,6 +593,7 @@ function toSetup(
 		// business — the same predicate `create_stage`, `reorder_stages` and the write policies use, so
 		// the controls drawn are exactly the ones the database accepts.
 		viewerIsClient: viewerCanConfigure,
+		autoFundInherited,
 	});
 }
 // #endregion
@@ -805,13 +812,30 @@ async function composeSetup(
 	// Sequential because the role and assignment reads are keyed on the stage ids the previous read
 	// returned; the attachment read is independent, so it runs alongside them rather than after.
 	const stageIds = stages.map((s) => s.id);
-	const [roles, attachments, onboarded, viewerCanConfigure] = await Promise.all([
+	const [roles, attachments, onboarded, viewerCanConfigure, autoFundInherited] = await Promise.all([
 		fetchStaffingRoles(actor, stageIds),
 		fetchProjectAttachments(actor, row.id),
 		fetchOnboardedCounts(actor, stageIds),
 		resolveReviewAuthority(actor, row.owner_user_id, row.client_business_id),
+		inheritedAutoFund(actor, row.client_business_id),
 	]);
-	return toSetup(row, stages, roles, attachments, viewerCanConfigure, onboarded);
+	return toSetup(row, stages, roles, attachments, viewerCanConfigure, onboarded, autoFundInherited);
+}
+
+/**
+ * The paying business's auto-fund mode — what the project's override inherits — through
+ * `finance.get_billing_settings` (its members only). `null` with no client business, which hides the
+ * control: an individual is never auto-funded.
+ */
+async function inheritedAutoFund(
+	actor: ReadActor & { accessToken: string },
+	businessId: string | null,
+): Promise<AutoFundMode | null> {
+	if (!businessId) return null;
+	const { data, error } = await getUserClient(actor.accessToken).schema("finance")
+		.rpc("get_billing_settings", { p_business_id: businessId });
+	if (error || !data) return "off";
+	return AutoFundMode.safeParse((data as { auto_fund_mode?: unknown }).auto_fund_mode).data ?? "off";
 }
 // #endregion
 
@@ -850,6 +874,16 @@ export function refusalFrom(message: string, field?: string): WriteRefusal {
 			status: 403,
 			message: clampOr(message, 200, "You cannot make that change."),
 			errors: field ? { [field]: "not_permitted" } : undefined,
+		};
+	}
+
+	// No hold, no work (Decision #165): `fn_hold_ticket_escrow` and the ticket's work gate raise PF402
+	// with a "Needs funding — …" sentence. Payment required, not a fault: the client funds, then retries.
+	if (message.startsWith("Needs funding")) {
+		return {
+			status: 402,
+			message: clampOr(message, 200, "This ticket needs funding before work can start."),
+			errors: field ? { [field]: "needs_funding" } : undefined,
 		};
 	}
 
@@ -1088,6 +1122,7 @@ function projectColumnPatch(input: UpdateProject): Record<string, unknown> {
 	if (rules?.languageRequirement !== undefined) {
 		patch.language_requirement = rules.languageRequirement;
 	}
+	if (rules?.autoFundOverride !== undefined) patch.auto_fund_override = rules.autoFundOverride;
 	// `last_activity_at` is not `updated_at`: any write touches the latter, so idleness has to mean
 	// "nothing has HAPPENED here" or the stale-draft sweep spares a project that was merely renamed.
 	if (Object.keys(patch).length > 0) patch.last_activity_at = new Date().toISOString();
@@ -2891,6 +2926,7 @@ export async function insertSubmission(
 			dateLabel: dayLabel(createdAt, now),
 			fileCount: fileIds.length,
 			noteCount: 0,
+			paidRevision: false,
 		},
 	};
 }

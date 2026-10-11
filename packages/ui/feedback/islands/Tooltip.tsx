@@ -58,6 +58,9 @@ export function Tooltip(props: TooltipProps): JSX.Element {
 	const tipId = useId(undefined, "tooltip");
 
 	const [open, setOpen] = useState(false);
+	// Exempt from `useOverlayStack` (§B.10.3): a tooltip sits in the static `--z-tooltip` band at the
+	// top of the z-scale, above every class the stack allocates, takes no focus and never nests another
+	// overlay — a claim would only steal `isTop`, and with it Escape, from the dialog it is shown inside.
 	const floating = useFloating({ open, triggerRef, panelRef, placement, offset });
 	const { mounted, state } = usePresence(open, 150);
 

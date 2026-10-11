@@ -1,4 +1,5 @@
 import {
+	billingPeriod,
 	type CardOwnerScope,
 	type CheckoutOrderLink,
 	type InboundPayment,
@@ -18,6 +19,7 @@ import {
 } from "@projective/types/finance";
 import { getServiceClient, getUserClient } from "../../core/supabase.ts";
 import type { FieldErrors } from "../ServiceResult.ts";
+import type { FundingPaymentInput } from "./funding-state.ts";
 
 /**
  * live-payments — the DATABASE half of the Stripe fiat rails: one typed wrapper per door in
@@ -133,6 +135,7 @@ export function inboundPaymentOf(row: Row): InboundPayment {
 		purpose: row.purpose,
 		walletId: row.wallet_id,
 		projectStageId: row.project_stage_id ?? null,
+		ticketId: row.ticket_id ?? null,
 		amountCents: num(row.amount_cents),
 		currency: row.currency,
 		amountReceivedCents: num(row.amount_received_cents),
@@ -230,6 +233,8 @@ export function beginCardPayment(
 		walletId: string | null;
 		projectId: string | null;
 		stageId: string | null;
+		/** One ticket to fund instead of the whole stage (Decision #166). */
+		ticketId?: string | null;
 		expectedAmountMinor: number;
 		currency: string;
 		idempotencyKey: string;
@@ -243,6 +248,8 @@ export function beginCardPayment(
 		p_expected_amount: args.expectedAmountMinor,
 		p_currency: args.currency,
 		p_idempotency_key: args.idempotencyKey,
+		// Sent only when set, so a stage lock or a top-up still resolves the function by its old arguments.
+		...(args.ticketId ? { p_ticket_id: args.ticketId } : {}),
 	}, (row) => ({ payment: inboundPaymentOf(row), replayed: row.replayed === true }));
 }
 
@@ -482,7 +489,7 @@ export function createDepositRule(
 		walletId: string;
 		amountMinor: number;
 		currency: string;
-		interval: "weekly" | "monthly";
+		interval: "weekly" | "monthly" | "below_floor";
 		sourceMethodId: string;
 	},
 ): Promise<DbResult<{ id: string; nextRunAt: string }>> {
@@ -530,6 +537,92 @@ export async function readInboundPayment(accessToken: string, paymentId: string)
 		.select("*").eq("id", paymentId).maybeSingle();
 	if (error) throw new Error(`finance.inbound_payments read failed: ${error.message}`);
 	return data ? inboundPaymentOf(data as Row) : null;
+}
+
+/** The newest escrow-lock card payments on a board: one naming a ticket (#166), else one per stage. */
+export interface LockPayments {
+	byTicket: Map<string, FundingPaymentInput>;
+	byStage: Map<string, FundingPaymentInput>;
+}
+
+/**
+ * The newest `escrow_lock` card payment per ticket and per stage — the payment half of
+ * `deriveFundingState` on the board. RLS admits only the readers of the paying wallet, so anybody else
+ * gets empty maps, as does a failed read: a payment that can't be seen reads as the ticket's own facts,
+ * never as a fault.
+ */
+export async function latestLockPayments(
+	accessToken: string,
+	stageIds: readonly string[],
+): Promise<LockPayments> {
+	const out: LockPayments = { byTicket: new Map(), byStage: new Map() };
+	if (stageIds.length === 0) return out;
+	const { data, error } = await getUserClient(accessToken).schema("finance").from("inbound_payments")
+		.select("project_stage_id, ticket_id, status, lock_status, lock_error, failure_reason")
+		.eq("purpose", "escrow_lock")
+		.in("project_stage_id", stageIds as string[])
+		.order("created_at", { ascending: false })
+		.limit(200);
+	if (error) return out;
+	for (const row of (data ?? []) as Row[]) {
+		const [key, map] = row.ticket_id
+			? [String(row.ticket_id), out.byTicket]
+			: [String(row.project_stage_id), out.byStage];
+		if (map.has(key)) continue;
+		map.set(key, {
+			status: row.status as FundingPaymentInput["status"],
+			lockStatus: row.lock_status as FundingPaymentInput["lockStatus"],
+			lockError: (row.lock_error as string | null) ?? null,
+			failureReason: (row.failure_reason as string | null) ?? null,
+		});
+	}
+	return out;
+}
+
+/** What `withBillingFacts` reads for a board: each ticket's newest escrow and the open billing period. */
+export interface TicketBillingFacts {
+	escrows: Map<string, { autoFunded: boolean; releasedAt: string | null }>;
+	/** The client business's open billing period, when it settles on a monthly invoice. */
+	invoicePeriod: { start: Date; end: Date } | null;
+}
+
+/**
+ * The billing facts behind a board's funding lines (PRODUCT_SPEC §Escrow, Wallets & Finance #4), read
+ * as the caller: escrows through `View escrows` (the payee or the payer side), the business's terms
+ * through `finance.get_billing_settings` (its members). Fails open to "no facts" — the funding state
+ * itself never depends on them.
+ */
+export async function ticketBillingFacts(
+	accessToken: string,
+	ticketIds: readonly string[],
+	clientBusinessId: string | null,
+	now: Date = new Date(),
+): Promise<TicketBillingFacts> {
+	const out: TicketBillingFacts = { escrows: new Map(), invoicePeriod: null };
+	if (ticketIds.length === 0) return out;
+	const finance = getUserClient(accessToken).schema("finance");
+	const [escrows, settings] = await Promise.all([
+		finance.from("escrows").select("ticket_id, auto_funded, released_at")
+			.in("ticket_id", ticketIds as string[])
+			.order("created_at", { ascending: false })
+			.limit(500),
+		clientBusinessId
+			? finance.rpc("get_billing_settings", { p_business_id: clientBusinessId })
+			: Promise.resolve({ data: null, error: null }),
+	]);
+	for (const row of ((escrows.error ? [] : escrows.data) ?? []) as Row[]) {
+		const id = String(row.ticket_id);
+		if (out.escrows.has(id)) continue;
+		out.escrows.set(id, {
+			autoFunded: row.auto_funded === true,
+			releasedAt: typeof row.released_at === "string" ? row.released_at : null,
+		});
+	}
+	const s = (settings.error ? null : settings.data) as Row | null;
+	if (s?.invoicing_mode === "intervaled_monthly") {
+		out.invoicePeriod = billingPeriod(typeof s.billing_day === "number" ? s.billing_day : null, now);
+	}
+	return out;
 }
 
 /** The caller's raw verification picture (`finance.my_verification_status`). */

@@ -2,6 +2,7 @@ import { define, type State } from "@web/utils/state.ts";
 import { FILE_OBJECT_TIERS, type FileObjectTier } from "@projective/types/files";
 import { MediaBackendService } from "@server/services/media/MediaBackendService.ts";
 import { readActor } from "@web/utils/api-session.ts";
+import { inspectRedirect } from "@features/inspector/core/proxy-navigation.ts";
 
 /**
  * `GET|HEAD /api/media/proxy/[fileId]?tier=&download=1&share=` — an asset's bytes, streamed through the
@@ -11,6 +12,10 @@ import { readActor } from "@web/utils/api-session.ts";
  * `If-None-Match` and `If-Modified-Since` are forwarded so media seeks and revalidation work; the abort
  * signal cancels the upstream read when the browser goes away. Downloads are never counted here — the
  * Download action records through `POST /api/files/download-record`.
+ *
+ * A top-level navigation (`Sec-Fetch-Dest: document`, "Open image in new tab") is a `303` to
+ * `/inspect/[fileId]`; `?raw=1` or `?download=1` opts out. Bytes vary on `Sec-Fetch-Dest` so a cached
+ * `<img>` response never answers a navigation.
  *
  * Every refusal is the same bodiless 404 (429 past the rate ceiling, 503 when storage is unreachable).
  */
@@ -24,6 +29,13 @@ interface ProxyContext {
 
 async function proxy(ctx: ProxyContext, method: "GET" | "HEAD"): Promise<Response> {
 	const sp = ctx.url.searchParams;
+	const inspect = inspectRedirect(ctx.req, ctx.url, ctx.params.fileId ?? "");
+	if (inspect) {
+		return new Response(null, {
+			status: 303,
+			headers: { location: inspect, "cache-control": "no-store", vary: "sec-fetch-dest, accept" },
+		});
+	}
 	const tierRaw = sp.get("tier");
 	const tier = tierRaw && (FILE_OBJECT_TIERS as readonly string[]).includes(tierRaw)
 		? tierRaw as FileObjectTier
@@ -53,6 +65,7 @@ async function proxy(ctx: ProxyContext, method: "GET" | "HEAD"): Promise<Respons
 	}
 
 	const { status, headers, body } = result.data;
+	headers.append("vary", "sec-fetch-dest");
 	return new Response(method === "HEAD" ? null : body, { status, headers });
 }
 

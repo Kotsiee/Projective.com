@@ -110,15 +110,12 @@
 	transform: rotate(180deg);
 }
 
+/* Body-portalled; `.ui-anchored` + `useEdgeDetection` own position and the stack's z-index. */
 .hero-search__menu {
-	position: absolute;
-	inset-block-start: calc(100% + var(--space-2));
-	inset-inline-start: 0;
 	min-inline-size: 12rem;
 	margin: 0;
 	padding: var(--space-1);
 	list-style: none;
-	z-index: var(--z-popover);
 	background: var(--surface-2);
 	border: 1px solid var(--hairline-color);
 	border-radius: var(--radius-lg);

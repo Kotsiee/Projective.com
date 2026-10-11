@@ -2,14 +2,12 @@ import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import type { JSX } from "preact";
 import "../styles/project-sidebar.css";
-import "../styles/task-lane.css";
 import { SidebarHeader, type SidebarMenuAction } from "../components/SidebarHeader.tsx";
 import { ProjectContextCard } from "../components/ProjectContextCard.tsx";
 import { type ChannelFilterKey, ChannelQuickFilters } from "../components/ChannelQuickFilters.tsx";
 import { ChannelTree } from "../components/ChannelTree.tsx";
 import { NormalSessionPanel } from "../components/NormalSessionPanel.tsx";
 import { GroupSessionPanel } from "../components/GroupSessionPanel.tsx";
-import { TaskLanePanel } from "../components/task-lane/TaskLanePanel.tsx";
 import { ProjectNavSection } from "../components/ProjectNavSection.tsx";
 import { ProjectRail } from "../components/ProjectRail.tsx";
 import { CreateStageModal } from "../components/CreateStageModal.tsx";
@@ -32,14 +30,17 @@ import { Toast, useToast } from "@projective/ui/feedback";
 import { logger } from "@web/utils/logger.ts";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import {
-	deriveGroupSession,
-	deriveNormalSession,
 	type DevSeamState,
+	emptyWorkspace,
+	groupSessionView,
 	liveSessionKind,
+	normalSessionView,
+	previewWorkspace,
 	readDevSeam,
 	type SessionKind,
 	subscribeDevSeam,
 } from "../core/session-model.ts";
+import type { SessionWorkspace } from "@projective/types/projects";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
 import { activeChannelIdOf } from "../core/chat-context.ts";
@@ -47,22 +48,16 @@ import { projectSidebarProjection } from "../core/sidebar-overlay.ts";
 import { setupBaseline, setupCommitEpoch, setupDraft } from "../core/setup-store.ts";
 import { ProjectSidebarService } from "../core/ProjectSidebarService.ts";
 import { isTaskDetail } from "../core/task-project.ts";
-import { buildTaskLane, type TaskLane } from "../core/task-lane.ts";
 import { isOwnerRole, QUIET_NAV_ACTIVITY } from "../types/projects-types.ts";
 import type { ProjectDetail, ProjectNavActivity } from "../types/projects-types.ts";
 import { currentNavView } from "../core/nav-activity-model.ts";
 
-/**
- * SSR default open-set — the highest-traffic groups (Stages/Sub-groups) lead expanded, and a Task's
- * two sections both do: each is a short summary, and a Task's body has nothing else in it.
- */
+/** SSR default open-set — the highest-traffic groups (Stages/Sub-groups) lead expanded. */
 const DEFAULT_GROUPS: Record<string, boolean> = {
 	stages: true,
 	subgroups: true,
 	teams: false,
 	dms: false,
-	"task-overview": true,
-	"task-lists": true,
 };
 
 /**
@@ -92,11 +87,11 @@ const DEFAULT_GROUPS: Record<string, boolean> = {
  *     session widget + session counter + shared-resources links (no stage tree).
  *   - **Group session** (`group`) — {@link GroupSessionPanel}: Sub-groups + Private-messages tree,
  *     cohort vote alert, and a 1-1 continuation CTA.
- *   - **Task** (a standard engagement whose type is Task) — {@link TaskLanePanel}: its overview and its
- *     task lists in place of the channel tree. Its one conversation and its roster are top-tier links.
- *     Keyed on the engagement with the draft folded on, so switching an unsaved form's type swaps the
- *     body AND the top tier live; a session archetype still wins, so the dev switcher can simulate one
- *     on any row.
+ *   - **Task** (a standard engagement whose type is Task) — NO body (Decision #164). Its one
+ *     conversation and its roster are top-tier links and its status and parties are on the
+ *     Overview, so the lane ends at the top tier. Keyed on the engagement with the
+ *     draft folded on, so switching an unsaved form's type drops the body AND swaps the top tier
+ *     live; a session archetype still wins, so the dev switcher can simulate one on any row.
  *
  * Both presentations are rendered; CSS reveals exactly one, so no client width-observer is needed and
  * the collapse toggles are deterministic (the footer always collapses, the rail always expands).
@@ -134,20 +129,20 @@ export interface ProjectSidebarProps {
 	 */
 	sessionKind?: SessionKind;
 	/**
-	 * A Task's lane projection — its ticket, due date and task lists — resolved server-side from the
-	 * board read. `null` for every other engagement (they draw a channel tree, not this), and rebuilt
-	 * empty on the client when an unsaved setup form turns a non-Task into one.
-	 */
-	taskLane?: TaskLane | null;
-	/**
 	 * The viewer's activity across the lane views since they last opened each, resolved server-side.
 	 * The view being opened right now is drawn without its mark and recorded as seen on arrival.
 	 */
 	navActivity?: ProjectNavActivity;
+	/**
+	 * The session workspace (Decision #171) — cohorts, sittings, the viewer's seat, the curriculum —
+	 * resolved server-side for a `session` engagement; `null` otherwise. A dev-simulated session over a
+	 * non-session row shows an empty one rather than invented sittings.
+	 */
+	sessionWorkspace?: SessionWorkspace | null;
 }
 
 export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element {
-	const { detail, sessionKind = "none", navActivity = QUIET_NAV_ACTIVITY } = props;
+	const { detail, sessionKind = "none", navActivity = QUIET_NAV_ACTIVITY, sessionWorkspace = null } = props;
 
 	const starred = useSignal<boolean>(detail?.starred ?? false);
 	// General + Stages/Sub-groups open by default; Teams + DMs collapsed. SSR paints these defaults; the
@@ -426,8 +421,16 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 
 	// The session projection recomputes when the archetype or the dev seam changes (both signals). It
 	// derives from the immutable `slug`, so folding the draft in cannot shuffle it as the owner types.
-	const normalData = activeKind === "normal" ? deriveNormalSession(view, seam.value) : null;
-	const groupData = activeKind === "group" ? deriveGroupSession(view, seam.value) : null;
+	const now = Date.now();
+	const workspace = activeKind === "none"
+		? null
+		: previewWorkspace(sessionWorkspace ?? emptyWorkspace(view, activeKind), seam.value?.sessionState, now);
+	const normalData = activeKind === "normal" && workspace
+		? normalSessionView(workspace, view, seam.value, now)
+		: null;
+	const groupData = activeKind === "group" && workspace ? groupSessionView(workspace, seam.value) : null;
+	// A Task's lane ends at the top tier (Decision #164) — no body, so no divider above one.
+	const bodyless = !normalData && !groupData && isTaskDetail(view);
 	// The top tier follows the same projection, so an unsaved type switch moves it with the body. The
 	// view being opened right now carries no mark: arriving is what clears it.
 	const views = projectViewLinks(view, navActivity, activeKind).map((link) =>
@@ -464,7 +467,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 
 					<ProjectNavSection links={views} base={base} currentPath={currentPath.value} />
 
-					<hr class="proj-detail__divider" />
+					{!bodyless && <hr class="proj-detail__divider" />}
 
 					{normalData
 						? (
@@ -484,16 +487,8 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 								onContinuation={() => go(calendarHref)}
 							/>
 						)
-						: isTaskDetail(view)
-						? (
-							<TaskLanePanel
-								detail={view}
-								lane={props.taskLane ?? buildTaskLane(view, null)}
-								path={currentPath.value}
-								openGroups={openGroups.value}
-								onToggleGroup={toggleGroup}
-							/>
-						)
+						: bodyless
+						? null
 						: (
 							<>
 								<ChannelQuickFilters active={filters.value} onToggle={toggleFilter} />

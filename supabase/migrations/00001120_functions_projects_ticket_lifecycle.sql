@@ -313,6 +313,8 @@ $$;
 --   • Any transition        -> caller must have project access (has_project_access).
 --   • -> Done (completed)    -> caller must additionally hold review authority (can_review_project):
 --                              a freelancer cannot self-confirm milestone delivery / release escrow.
+--   • -> claimed / in_progress / in_review from outside work -> an escrow must be held: the
+--                              no-hold-no-work gate in trg_ticket_escrow_sync raises PF402 (#165).
 -- The status write cascades through the existing ticket triggers (escrow release on completed,
 -- submission ledger on in_review). Every move is written to projects.ticket_history for the timeline.
 --
@@ -411,7 +413,8 @@ $$;
 
 -- Reworked self-claim (supersedes 0115): a freelancer may only self-claim when the stage is in
 -- 'open_pull' mode; every other mode routes work through the owner/system RPCs below. Capacity is
--- always enforced. Signature and return value (escrow id) are unchanged.
+-- always enforced. Returns the held escrow's id, or NULL when the hold was refused: the claim did not
+-- happen and the ticket is now Needs funding (fn_assign_ticket_core, Decision #165).
 CREATE OR REPLACE FUNCTION projects.claim_ticket(p_ticket_id uuid, p_assignee_id uuid)
 RETURNS uuid AS $$
 DECLARE

@@ -9,8 +9,7 @@ import { resolveProjectsFeed } from "@web/features/projects/core/feed-ssr.ts";
 import { resolveProjectDetail } from "@web/features/projects/core/detail-ssr.ts";
 import { resolveNavActivity } from "@web/features/projects/core/nav-activity-ssr.ts";
 import { resolveSessionKind } from "@web/features/projects/core/session-model.ts";
-import { isTaskDetail } from "@web/features/projects/core/task-project.ts";
-import { resolveTaskLane } from "@web/features/projects/core/task-lane-ssr.ts";
+import { SessionBackendService } from "@server/services/sessions/SessionBackendService.ts";
 import {
 	channelHeaderFor,
 	channelPanelFor,
@@ -241,19 +240,23 @@ async function laneFor(
 		]);
 		// The SSR archetype baseline (from the engagement format); the island re-derives it live from
 		// the dev Context Switcher so a simulated session swaps the sidebar body without a reload.
-		const sessionKind = detail ? resolveSessionKind(detail.format, null) : "none";
-		// A Task's lane draws its ticket and task lists instead of a channel tree, so it needs the board
-		// read — and only a Task pays for it. Resolved after the detail rather than beside it because the
-		// detail is what says whether this engagement is one.
-		const taskLane = detail && isTaskDetail(detail) ? await resolveTaskLane(detail, actor) : null;
+		const sessionKind = detail ? resolveSessionKind(detail.format, null, detail.sessionKind) : "none";
+		// A session's sidebar is built from its real cohorts, sittings and seat (Decision #171).
+		const sessionWorkspace = detail && sessionKind !== "none"
+			? (await SessionBackendService.workspace(detail.slug, actor, {
+				projectId: detail.id,
+				kind: sessionKind,
+				viewerIsClient: detail.viewerIsClient,
+			})).data?.workspace ?? null
+			: null;
 		return (
 			<ProjectSidebar
 				detail={detail}
 				slug={projectId}
 				path={url.pathname}
 				sessionKind={sessionKind}
-				taskLane={taskLane}
 				navActivity={navActivity}
+				sessionWorkspace={sessionWorkspace}
 			/>
 		);
 	}

@@ -101,6 +101,8 @@ export const InboundPaymentSchema = z.object({
 	purpose: InboundPaymentPurpose,
 	walletId: uuid,
 	projectStageId: uuid.nullable(),
+	/** The ONE ticket an `escrow_lock` funds (Decision #166); `null` funds the whole stage. */
+	ticketId: uuid.nullable().optional(),
 	amountCents: minorUnitsPositive,
 	currency,
 	amountReceivedCents: minorUnitsNonNeg.nullable(),
@@ -135,10 +137,12 @@ export type InboundPayment = z.infer<typeof InboundPaymentSchema>;
  * (PRODUCT_SPEC §Escrow Lifetimes). The AMOUNT is computed by the database from the same columns the
  * escrow hold reads; `expectedAmountMinor` is only what the payer was SHOWN, compared with it so a
  * price that moved between showing and paying refuses instead of charging an amount nobody saw.
+ * With `ticketId` (Decision #166) only that ticket is funded, at its own price; the stage stays as is.
  */
 export const CreateEscrowLockIntentSchema = z.object({
 	projectId: uuid,
 	stageId: uuid,
+	ticketId: uuid.nullable().optional(),
 	expectedAmountMinor: minorUnitsPositive,
 	currency,
 	idempotencyKey: attemptKey,

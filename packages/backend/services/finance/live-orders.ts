@@ -45,7 +45,7 @@ const ORDER_COLS =
 const LINE_COLS =
 	"id, order_id, basket_item_id, item_type, item_id, title, subtitle, quantity, line_total_minor, " +
 	"currency, fulfilment, asset_id, download_name, download_bytes, download_format, licence, " +
-	"stage_id, scheduled_at, timezone, duration_minutes, seats, conferencing_provider, position";
+	"stage_id, scheduled_at, timezone, duration_minutes, seats, conferencing_provider, position, ticket_id";
 
 interface OrderRow {
 	id: string;
@@ -94,6 +94,8 @@ interface LineRow {
 	seats: number | null;
 	conferencing_provider: string | null;
 	position: number;
+	/** The one ticket this line funded (Decision #166); `null` for every other line. */
+	ticket_id: string | null;
 }
 // #endregion
 
@@ -182,6 +184,8 @@ interface LineContext {
 	catalog: Catalog | null;
 	projects: Map<string, { slug: string; title: string }>;
 	stages: Map<string, { slug: string; projectId: string; name: string; position: number }>;
+	/** A funded ticket's payee, by ticket id — who "can start now" on the confirmation. */
+	payees: Map<string, string>;
 }
 
 /** The public face of a purchased listing, when the catalogue still carries it. */
@@ -248,7 +252,46 @@ async function lineContext(actor: ReadActor & { accessToken: string }, lines: re
 		}
 	}
 
-	return { catalog: await loadCatalog().catch(() => null), projects, stages };
+	return {
+		catalog: await loadCatalog().catch(() => null),
+		projects,
+		stages,
+		payees: await payeesOf(actor, lines),
+	};
+}
+
+/** The display name of each funded ticket's payee, read as the buyer — an unreadable one is absent. */
+async function payeesOf(
+	actor: ReadActor & { accessToken: string },
+	lines: readonly LineRow[],
+): Promise<Map<string, string>> {
+	const out = new Map<string, string>();
+	const ticketIds = [...new Set(lines.map((l) => l.ticket_id).filter((id): id is string => !!id))];
+	if (ticketIds.length === 0) return out;
+	const db = getUserClient(actor.accessToken);
+	const { data: tickets } = await db.schema("projects").from("tickets")
+		.select("id, current_assignee_id").in("id", ticketIds);
+	const rows = (tickets ?? []) as { id: string; current_assignee_id: string | null }[];
+	const userIds = [...new Set(rows.map((t) => t.current_assignee_id).filter((id): id is string => !!id))];
+	if (userIds.length === 0) return out;
+	const { data: users } = await db.schema("org").from("users_public")
+		.select("user_id, username, first_name, last_name").in("user_id", userIds);
+	const names = new Map<string, string>();
+	type UserRow = {
+		user_id: string;
+		username: string | null;
+		first_name: string | null;
+		last_name: string | null;
+	};
+	for (const u of (users ?? []) as UserRow[]) {
+		const full = [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
+		if (full || u.username) names.set(u.user_id, clip(full || `@${u.username}`, 120));
+	}
+	for (const t of rows) {
+		const name = t.current_assignee_id ? names.get(t.current_assignee_id) : undefined;
+		if (name) out.set(t.id, name);
+	}
+	return out;
 }
 // #endregion
 
@@ -323,6 +366,7 @@ function toLine(line: LineRow, order: OrderRow, ctx: LineContext): OrderLine {
 		thumbnail: face.thumbnail,
 		sellerHandle: face.sellerHandle,
 		sellerName: face.sellerName,
+		payeeName: line.ticket_id ? ctx.payees.get(line.ticket_id) ?? null : null,
 		quantity: line.quantity,
 		lineTotal: receipt(line.line_total_minor, line.currency),
 		fulfilment: natural,

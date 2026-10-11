@@ -4,7 +4,7 @@ import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { Button, InputText, Select } from "@projective/ui/fields";
 import { Dialog } from "@projective/ui/feedback";
-import type { SubmissionTicketOption } from "../core/submission-model.ts";
+import type { SubmissionTicketOption } from "../types/projects-types.ts";
 import { PlusGlyph } from "./submission-glyphs.tsx";
 
 /**

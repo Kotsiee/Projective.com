@@ -382,7 +382,8 @@ export async function fetchParties(
  *
  * Both spellings are accepted on the way in. The DB one is what exists today; the Zod one is what
  * the column would hold if the two were ever reconciled in the other direction, and accepting it
- * costs nothing while making this function survive that change.
+ * costs nothing while making this function survive that change. Keeping the two spellings behind
+ * this one mapper is the recorded choice (Decision #167(I), `PRODUCT_MANAGEMENT.md` §3.7).
  */
 export function toSubmissionStatus(
 	raw: string | null | undefined,

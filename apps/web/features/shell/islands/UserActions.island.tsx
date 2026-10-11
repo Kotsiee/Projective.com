@@ -15,7 +15,6 @@ import { Button } from "@projective/ui/fields";
 import { cycleThemePreference, type ThemePreference, themePreference } from "@projective/ui/system";
 import { type IconName, NavIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { createMenuOptions, profileLinks } from "@web/features/shell/core/actions-model.ts";
-import { getNotifications } from "@web/features/shell/core/nav-fixtures.ts";
 import {
 	type ActingOrganisation,
 	roleLabel as workspaceRoleLabel,
@@ -26,6 +25,8 @@ import {
 import { WorkspaceService } from "@web/features/workspaces/core/WorkspaceService.ts";
 import { useContextSwitch } from "@web/features/workspaces/core/useContextSwitch.ts";
 import BasketDrawer from "@web/features/checkout/islands/BasketDrawer.island.tsx";
+import NotificationDrawer from "@web/features/notifications/islands/NotificationDrawer.island.tsx";
+import { inboxSummary } from "@web/features/notifications/core/notification-state.ts";
 import { basketCount } from "@web/features/checkout/core/basket-state.ts";
 import { defaultOwnerParam, isCheckoutPath } from "@web/features/checkout/core/basket-model.ts";
 import { AccountService } from "@web/features/shell/core/AccountService.ts";
@@ -206,8 +207,9 @@ export default function UserActions(
 
 	const createOptions = createMenuOptions(effCtx);
 	const links = profileLinks(effCtx);
-	const notifications = getNotifications();
-	const hasUnread = notifications.some((n) => n.unread);
+	// The real inbox's unseen count, published by the drawer's `/summary` poller. Drives the dot and the
+	// accessible name only — DESIGN_SYSTEM §D.1: a dot, never a count.
+	const hasUnseen = (inboxSummary.value?.unseen ?? 0) > 0;
 
 	// The REAL basket line count, read by the drawer through the thin `BasketService` and published on
 	// the shared store. Drives the Basket control's state dot and its accessible name only — the figure
@@ -776,12 +778,12 @@ export default function UserActions(
 			<button
 				type="button"
 				class="shell-util__btn"
-				aria-label={hasUnread ? "Notifications — new updates" : "Notifications"}
+				aria-label={hasUnseen ? "Notifications — new updates" : "Notifications"}
 				aria-haspopup="dialog"
 				onClick={() => (notifOpen.value = true)}
 			>
 				<NavIcon name="notifications" />
-				{hasUnread ? <span class="shell-util__dot" aria-hidden="true" /> : null}
+				{hasUnseen ? <span class="shell-util__dot" aria-hidden="true" /> : null}
 			</button>
 
 			{
@@ -862,37 +864,14 @@ export default function UserActions(
 				position="right"
 				header="Account"
 				class="shell-drawer shell-drawer--account"
-				size="min(20rem, 88vw)"
 			>
 				<div class="shell-account shell-account--sheet">
 					{accountBody(() => (accountOpen.value = false))}
 				</div>
 			</Drawer>
 
-			<Drawer
-				visible={notifOpen}
-				position="right"
-				header="Notifications"
-				class="shell-drawer"
-				size="min(25rem, 92vw)"
-			>
-				<ul class="shell-feed">
-					{notifications.map((n) => (
-						<li key={n.id} class={`shell-feed__item${n.unread ? " shell-feed__item--unread" : ""}`}>
-							<span class="shell-feed__lead">
-								<UserAvatar image={n.avatar} alt={n.actor ?? ""} label={n.actor ?? ""} size="sm" />
-							</span>
-							<span class="shell-feed__body">
-								<span class="shell-feed__title">{n.title}</span>
-								<span class="shell-feed__text">{n.body}</span>
-								<span class="shell-feed__time">{n.time} ago</span>
-							</span>
-							{n.unread ? <span class="shell-feed__dot" aria-hidden="true" /> : null}
-						</li>
-					))}
-				</ul>
-				<a class="shell-drawer__all" href="/notifications">View all notifications</a>
-			</Drawer>
+			{/* The real inbox (DESIGN_SYSTEM §D.9); mounted always, as it runs the dot's poller. */}
+			<NotificationDrawer open={notifOpen} />
 
 			{
 				/*

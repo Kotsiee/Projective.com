@@ -260,6 +260,22 @@ export type WorkspaceClaimable = z.infer<typeof WorkspaceClaimableSchema>;
 export const MAX_WORK_SIGNALS = 6;
 // #endregion
 
+// #region Ready to start
+/** The four steps between a brief and work under way (Decision #165: no hold, no work). */
+export const ReadyStepKey = z.enum(["brief", "freelancer", "funded", "started"]);
+export type ReadyStepKey = z.infer<typeof ReadyStepKey>;
+
+/** One step of the owner's "Ready to start?" checklist. */
+export const ReadyStepSchema = z.object({
+	key: ReadyStepKey,
+	label: z.string().min(1).max(60),
+	done: z.boolean(),
+	/** Where the step is done; `null` for the step nobody but the freelancer can take. */
+	href: z.string().max(300).nullable(),
+});
+export type ReadyStep = z.infer<typeof ReadyStepSchema>;
+// #endregion
+
 // #region Envelope
 /** The whole Overview read: the base overview plus what the composition adds. */
 export const ProjectWorkspaceSchema = ProjectOverviewSchema.extend({
@@ -280,6 +296,11 @@ export const ProjectWorkspaceSchema = ProjectOverviewSchema.extend({
 	submissions: z.array(WorkspaceSubmissionSchema).max(MAX_WORK_SIGNALS).default([]),
 	/** Tickets ready for an open claim within the viewer's capacity — participant only. */
 	claimable: z.array(WorkspaceClaimableSchema).max(MAX_WORK_SIGNALS).default([]),
+	/**
+	 * "Ready to start?" — owner only, and only until work has started; `null` otherwise, or when the
+	 * board or configuration could not be read (an unknown step is not drawn as undone).
+	 */
+	readiness: z.array(ReadyStepSchema).max(4).nullable().default(null),
 });
 export type ProjectWorkspace = z.infer<typeof ProjectWorkspaceSchema>;
 // #endregion
@@ -395,6 +416,49 @@ function stageRun(slug: string, sources: WorkspaceSources): WorkspaceStage[] {
 			href: `/projects/${slug}/${encodeURIComponent(stage.slug)}`,
 		};
 	});
+}
+
+/** Funding states in which the escrow is held or has paid out — a stage that has been funded. */
+const FUNDED: ReadonlySet<string> = new Set(["funded", "in_progress", "in_review", "released"]);
+
+/**
+ * The owner's path from a brief to work under way: brief written → a freelancer on a stage → the
+ * first stage funded (read off the server's ticket funding state, never re-derived) → work started.
+ * Gone once any ticket is under way — the question it asks has been answered.
+ */
+export function readinessOf(
+	slug: string,
+	sources: WorkspaceSources,
+	brief: WorkspaceBrief | null,
+): ReadyStep[] | null {
+	const { board } = sources;
+	if (sources.viewer !== "owner" || !board || !brief) return null;
+	const cards = board.cards.filter((card) => !OUT_OF_RUN.has(card.status));
+	const working = new Set(["in_progress", "in_review", "completed"]);
+	if (cards.some((card) => working.has(card.status))) return null;
+	const first = [...board.stages].sort((a, b) => a.order - b.order)[0];
+	return [
+		{
+			key: "brief",
+			label: "Brief written",
+			done: brief.description.trim() !== "",
+			href: `/projects/${slug}/details`,
+		},
+		{
+			key: "freelancer",
+			label: "Freelancer assigned",
+			done: board.stages.some((s) => s.members.length > 0) || cards.some((card) => card.assignee),
+			href: `/projects/${slug}/members`,
+		},
+		{
+			key: "funded",
+			label: "First stage funded",
+			done: !!first &&
+				cards.some((card) => card.stageId === first.id && FUNDED.has(card.funding?.state ?? "")),
+			href: `/projects/${slug}/board`,
+		},
+		{ key: "started", label: "Work started", done: false, href: null },
+	];
 }
 
 /** The owner's queue: review, then applications, then pricing. */
@@ -739,6 +803,7 @@ export function composeWorkspace(
 	const task = sources.setup
 		? isTaskProject(sources.setup.format, sources.setup.structure)
 		: sources.board?.structure === "single_task";
+	const brief = sources.setup ? briefOf(sources.setup) : null;
 	return {
 		...base,
 		viewer: sources.viewer,
@@ -751,11 +816,12 @@ export function composeWorkspace(
 				pendingInvitations: roster.invites.filter((invite) => invite.status === "pending").length,
 			}
 			: null,
-		brief: sources.setup ? briefOf(sources.setup) : null,
+		brief,
 		task,
 		roster: rosterOf(roster, task),
 		submissions: participant ? submissionsOf(slug, sources.submissions) : [],
 		claimable: participant ? claimableOf(slug, base, sources.board) : [],
+		readiness: readinessOf(slug, sources, brief),
 	};
 }
 // #endregion

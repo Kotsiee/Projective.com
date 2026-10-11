@@ -1,4 +1,4 @@
-import { formatMoney, type MoneyView } from "@projective/types/finance";
+import { formatMoney, type FundingStatus, type MoneyView } from "@projective/types/finance";
 import type {
 	ChannelKind,
 	ProjectAssignment,
@@ -13,10 +13,17 @@ import type {
 import {
 	DISCUSSION_REF,
 	isSingleRoomEngagement,
+	isTaskProject,
 	ProjectFormat,
 	SINGLE_ROOM_NAME,
 } from "@projective/types/projects";
 import type { ReadActor } from "../read-actor.ts";
+import {
+	deriveFundingState,
+	fundingTicketOf,
+	type FundingTicketRow,
+	rollupFundingState,
+} from "../finance/funding-state.ts";
 import {
 	clamp,
 	clampOr,
@@ -105,6 +112,8 @@ interface StageRow {
 	slug: string;
 	name: string;
 	status: string;
+	/** What a ticket here is held at when it carries no rate of its own. */
+	unit_price_cents: number | string | null;
 }
 
 /** One `comms.project_channels` row. */
@@ -117,7 +126,7 @@ interface ChannelRow {
 }
 
 /** One `projects.tickets` row assigned to the viewer. */
-interface TicketRow {
+interface TicketRow extends FundingTicketRow {
 	id: string;
 	title: string;
 	status: string;
@@ -281,7 +290,7 @@ async function fetchStages(
 ): Promise<StageRow[]> {
 	const { data, error } = await projectsDb(actor)
 		.from("project_stages")
-		.select("id, slug, name, status")
+		.select("id, slug, name, status, unit_price_cents")
 		.eq("project_id", projectId)
 		.is("archived_at", null)
 		.order("sort_order", { ascending: true });
@@ -317,7 +326,9 @@ async function fetchAssignments(
 ): Promise<TicketRow[]> {
 	const { data, error } = await projectsDb(actor)
 		.from("tickets")
-		.select("id, title, status, current_stage_id, due_date, updated_at")
+		.select(
+			"id, title, status, current_stage_id, due_date, updated_at, payment_status, text_description, unit_price_cents",
+		)
 		.eq("project_id", projectId)
 		.eq("current_assignee_id", actor.userId)
 		.order("updated_at", { ascending: false })
@@ -396,6 +407,7 @@ function assignmentsOf(
 	slug: string,
 	rows: readonly TicketRow[],
 	stageNames: ReadonlyMap<string, string>,
+	funding: ReadonlyMap<string, FundingStatus>,
 ): ProjectAssignment[] {
 	return rows
 		.filter((row) => !CLOSED_TICKET.has(row.status))
@@ -407,6 +419,7 @@ function assignmentsOf(
 			status: toTicketStatus(row.status) as TicketStatus,
 			dueLabel: row.due_date ? dueLabel(row.due_date) : null,
 			href: clamp(`/projects/${slug}/board`, HREF_MAX),
+			funding: funding.get(row.id) ?? null,
 		}));
 }
 
@@ -460,10 +473,10 @@ export async function fetchProjectOverview(
 	if (!project) return null;
 
 	const format = ProjectFormat.safeParse(project.format);
-	const singleRoom = format.success && isSingleRoomEngagement({
-		format: format.data,
-		structure: toProjectStructure(project.structure_variation),
-	});
+	const structure = toProjectStructure(project.structure_variation);
+	const singleRoom = format.success && isSingleRoomEngagement({ format: format.data, structure });
+	// A Task's one stage IS the Task, so "1 stage" would describe plumbing the reader never sees.
+	const task = format.success && isTaskProject(format.data, structure);
 	const [stages, channels, tickets, activity, owner, singleRoomId] = await Promise.all([
 		fetchStages(actor, project.id),
 		fetchChannels(actor, project.id),
@@ -488,10 +501,19 @@ export async function fetchProjectOverview(
 	// Built ONCE and both counted and rendered, rather than counted from the raw fetch and rendered
 	// from a filtered projection. The raw rows include closed tickets and are read past the display
 	// limit, so the hero was announcing "3 assigned to you" above a list of one.
-	const assignments = assignmentsOf(project.slug, tickets, stageNames);
+	const stagePrices = new Map(stages.map((s) => [s.id, s.unit_price_cents]));
+	const funding = new Map(
+		tickets.map((row) => [
+			row.id,
+			deriveFundingState(fundingTicketOf(row, stagePrices.get(row.current_stage_id ?? ""), currency.toUpperCase())),
+		]),
+	);
+	const assignments = assignmentsOf(project.slug, tickets, stageNames, funding);
 
 	const meta: string[] = [];
-	if (totalStages > 0) meta.push(`${totalStages} ${totalStages === 1 ? "stage" : "stages"}`);
+	if (totalStages > 0 && !task) {
+		meta.push(`${totalStages} ${totalStages === 1 ? "stage" : "stages"}`);
+	}
 	if (assignments.length > 0) meta.push(`${assignments.length} assigned to you`);
 
 	return {
@@ -513,6 +535,7 @@ export async function fetchProjectOverview(
 		channels: channelsOf(project.slug, channels, stages, singleRoomId),
 		assignments,
 		finance: neutralFinance(currency),
+		funding: rollupFundingState([...funding.values()]),
 	};
 }
 // #endregion

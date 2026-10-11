@@ -6,7 +6,7 @@
 Zod-only** pass (NO UI / islands / routes / features / backend services), mirroring the Decision #54
 / #56 shape. Adds **5 additive, timestamped migrations** (`20260724090000`–`094000`) — (1) the
 **`comms.notification_types` catalog** (routing policy as data: category · urgency · default channel
-fan-out · mute-ability · quiet-hours override · dedupe window · audit flag; **81 event keys
+fan-out · mute-ability · quiet-hours override · dedupe window · audit flag; **94 event keys
 seeded**) plus the additive event-envelope columns on `comms.notifications` (`category`, `urgency`,
 `actor_user_id`, `context_type`/`context_id`, `action_url`, `payload`, `group_key`/`group_count`,
 `channels`, `seen_at`, `archived_at`, `expires_at`) and 9 partial indexes; (2) **preference

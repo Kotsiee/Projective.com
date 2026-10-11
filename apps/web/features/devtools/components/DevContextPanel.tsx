@@ -15,6 +15,12 @@ import {
 	DEV_PROJECT_STATUSES,
 	DEV_PROJECT_TYPES,
 	DEV_PROPOSAL_ALLOWANCES,
+	DEV_REVISION_ALLOTMENTS,
+	DEV_AUTO_FUND_MODES,
+	DEV_LOW_BALANCES,
+	DEV_SESSION_STATES,
+	DEV_NOTIFICATIONS,
+	DEV_BASKET_SCENARIOS,
 	DEV_ROLES,
 	DEV_SERVICE_TYPES,
 	DEV_SESSION_BOOKINGS,
@@ -22,6 +28,7 @@ import {
 	DEV_STAGE_ASSIGNMENTS,
 	DEV_SUBMISSION_STATES,
 	DEV_TRUST_ADORNMENTS,
+	DEV_FUNDING_STATES,
 	DEV_VERIFICATION_STAMPS,
 	DEV_WALLET_AURORAS,
 	type DevOption,
@@ -484,6 +491,104 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.trustAdornments}
 						disabled={!o.enabled}
 						onChange={(trustAdornments) => patchDevContext({ trustAdornments })}
+					/>
+				</Field>
+
+				{
+					/* The ticket funding line (Decision #165). Holds, refused holds and card payments are
+				    server facts, so this substitutes the STATE; the card's real amount still shows. */
+				}
+				<Field label="Funding state" hint="ticket funding line">
+					<Segment
+						name="Funding state"
+						options={DEV_FUNDING_STATES}
+						value={o.fundingState}
+						disabled={!o.enabled}
+						onChange={(fundingState) => patchDevContext({ fundingState })}
+					/>
+				</Field>
+
+				{
+					/* The submission review's revision allotment (Decision #167). Free rounds are used only
+				    by real reviews and a paid round opens only on a real payment, so this substitutes the
+				    review's view of them; the server still refuses from the real allotment. */
+				}
+				<Field label="Revisions" hint="submission review allotment">
+					<Segment
+						name="Revisions"
+						options={DEV_REVISION_ALLOTMENTS}
+						value={o.revisionAllotment}
+						disabled={!o.enabled}
+						onChange={(revisionAllotment) => patchDevContext({ revisionAllotment })}
+					/>
+				</Field>
+
+				{
+					/* Business billing (PRODUCT_SPEC §Escrow, Wallets & Finance #4). The real auto-fund mode
+				    acts only on a refused hold and the floor only on a real debit, so these substitute the
+				    Billing module's (and the funded line's) view of them; the server is unchanged. */
+				}
+				<Field label="Auto-fund" hint="billing module · funded line">
+					<Segment
+						name="Auto-fund"
+						options={DEV_AUTO_FUND_MODES}
+						value={o.autoFundMode}
+						disabled={!o.enabled}
+						onChange={(autoFundMode) => patchDevContext({ autoFundMode })}
+					/>
+				</Field>
+				<Field label="Low balance" hint="billing module warning">
+					<Segment
+						name="Low balance"
+						options={DEV_LOW_BALANCES}
+						value={o.lowBalance}
+						disabled={!o.enabled}
+						onChange={(lowBalance) => patchDevContext({ lowBalance })}
+					/>
+				</Field>
+
+				{
+					/* A session's server-only facts (Decision #171): a full cohort on the listing lane, a
+				    sitting in progress or over (the join control, the counter), and a seat escrow inside
+				    the 24-hour negative-consent window (the session funding line). The database still
+				    refuses a full cohort and withholds a join URL outside its window. */
+				}
+				<Field label="Session" hint="seats · join window · auto-release">
+					<Segment
+						name="Session state"
+						options={DEV_SESSION_STATES}
+						value={o.sessionState}
+						disabled={!o.enabled}
+						onChange={(sessionState) => patchDevContext({ sessionState })}
+					/>
+				</Field>
+
+				{
+					/* The notification inbox (DESIGN_SYSTEM §D.9) — the header drawer and `/notifications`.
+				    An empty inbox, a full one and a run of live arrivals all wait on other people's actions,
+				    so the thin service substitutes them here; nothing is written to the server. */
+				}
+				<Field label="Notifications" hint="drawer · inbox page · live arrivals">
+					<Segment
+						name="Notifications"
+						options={DEV_NOTIFICATIONS}
+						value={o.notifications}
+						disabled={!o.enabled}
+						onChange={(notifications) => patchDevContext({ notifications })}
+					/>
+				</Field>
+
+				{
+					/* The header basket drawer. A second paying account and a delisted line both wait on
+				    other people, so the drawer substitutes its read here; writes still reach the server. */
+				}
+				<Field label="Basket" hint="drawer · switcher · unavailable line">
+					<Segment
+						name="Basket"
+						options={DEV_BASKET_SCENARIOS}
+						value={o.basketScenario}
+						disabled={!o.enabled}
+						onChange={(basketScenario) => patchDevContext({ basketScenario })}
 					/>
 				</Field>
 

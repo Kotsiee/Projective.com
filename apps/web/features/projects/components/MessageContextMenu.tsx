@@ -3,6 +3,7 @@ import { useSignal } from "@preact/signals";
 import { useEffect, useLayoutEffect, useRef } from "preact/hooks";
 import "../styles/message-interactions.css";
 import { BodyPortal } from "@projective/ui/overlay";
+import { useDismiss, useOverlayStack } from "@projective/ui/hooks";
 import type { ChatMessage } from "../types/projects-types.ts";
 import { placeMenu } from "../core/message-selection.ts";
 import { FlagIcon, StarIcon } from "./glyphs.tsx";
@@ -24,6 +25,10 @@ import { QUICK_EMOJI } from "./MessageActions.tsx";
  * where Up/Down rove the items and Escape (or Shift+Tab off the first item) hands focus back to the
  * message. With several messages selected, Reply is shown disabled with the reason — replying to
  * several at once is not supported — and Copy copies them all; the single-message actions step aside.
+ *
+ * That Escape is an Escape-stack layer claimed only while focus is INSIDE the menu: it is then the
+ * newest layer, so the press hands focus back and goes no further — not to the selection (which a
+ * second Escape from the row ends) and not to a modal the feed is shown in.
  */
 
 export interface MessageContextMenuProps {
@@ -47,7 +52,11 @@ export function MessageContextMenu(props: MessageContextMenuProps): JSX.Element 
 	const { message, count, canPin, anchorRef, rowRef } = props;
 	const menuRef = useRef<HTMLDivElement>(null);
 	const pos = useSignal<{ x: number; y: number } | null>(null);
+	const focused = useSignal(false);
 	const single = count <= 1;
+	const stack = useOverlayStack({ active: true });
+	const toRow = () => rowRef.current?.focus({ preventScroll: true });
+	useDismiss({ open: focused.value, onDismiss: toRow, panelRef: menuRef, closeOnOutside: false });
 
 	// #region Placement (beside the bubble; follows scroll and resize)
 	useLayoutEffect(() => {
@@ -100,10 +109,10 @@ export function MessageContextMenu(props: MessageContextMenuProps): JSX.Element 
 		} else if (e.key === "Home" || e.key === "End") {
 			e.preventDefault();
 			(e.key === "Home" ? items[0] : items[items.length - 1])?.focus();
-		} else if (e.key === "Escape" || (e.key === "Tab" && e.shiftKey && at <= 0)) {
+		} else if (e.key === "Tab" && e.shiftKey && at <= 0) {
 			e.preventDefault();
 			e.stopPropagation();
-			rowRef.current?.focus({ preventScroll: true });
+			toRow();
 		}
 	}
 	// #endregion
@@ -118,8 +127,18 @@ export function MessageContextMenu(props: MessageContextMenuProps): JSX.Element 
 				aria-label={single ? "Message actions" : `Actions for ${count} messages`}
 				data-msg-ui="true"
 				data-placed={place ? "true" : undefined}
-				style={place ? { "--ctx-x": `${place.x}px`, "--ctx-y": `${place.y}px` } : undefined}
+				style={place
+					? {
+						"--ctx-x": `${place.x}px`,
+						"--ctx-y": `${place.y}px`,
+						"--z-portal": String(stack.zIndex),
+					}
+					: undefined}
 				onKeyDown={onMenuKeyDown}
+				onFocusIn={() => (focused.value = true)}
+				onFocusOut={(e) => {
+					if (!e.currentTarget.contains(e.relatedTarget as Node | null)) focused.value = false;
+				}}
 			>
 				{single && (
 					<div class="msg-cmenu__react" role="group" aria-label="React">

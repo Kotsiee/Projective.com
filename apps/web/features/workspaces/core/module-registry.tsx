@@ -267,7 +267,7 @@ export const MODULES: readonly WorkspaceModule[] = [
 		glyph: BillingGlyph,
 		kinds: BUSINESS,
 		permission: () => "manage_finances",
-		blurb: "Plan, invoices and what the platform charged, itemised.",
+		blurb: "Invoices to pay, statements, auto-funding and the balance floor.",
 	},
 
 	// --- Growth -----------------------------------------------------------------------------------

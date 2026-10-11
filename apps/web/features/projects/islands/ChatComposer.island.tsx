@@ -573,6 +573,7 @@ export default function ChatComposer(
 					rect={formatRect}
 					marks={editor.marks.value}
 					onToggle={(mark) => editor.toggleMark(mark)}
+					onDismiss={() => (editor.range.value = null)}
 				/>
 			)}
 

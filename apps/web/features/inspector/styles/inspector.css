@@ -393,10 +393,10 @@
 	gap: var(--space-1);
 }
 
+/* Fills the shared `.ui-portal` layer, which carries the stack-allocated z-index. */
 .ins-sheet {
 	position: absolute;
 	inset: 0;
-	z-index: var(--z-overlay);
 	display: flex;
 	flex-direction: column;
 	justify-content: flex-end;

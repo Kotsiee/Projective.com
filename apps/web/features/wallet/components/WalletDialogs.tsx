@@ -47,6 +47,7 @@ import type {
 	WalletSwitcher,
 } from "../types/wallet-types.ts";
 import type { WalletResult } from "../types/results.ts";
+import type { DepositInterval } from "@projective/types/finance";
 import {
 	type CardOwnerScope,
 	incomeSmootherFeeMinor,
@@ -635,6 +636,9 @@ const INTERVALS = [
 	{ label: "Monthly", value: "monthly" },
 ];
 
+/** A business wallet's floor top-up: runs each time the balance crosses below its floor (Billing). */
+const BUSINESS_INTERVALS = [...INTERVALS, { label: "Below the floor", value: "below_floor" }];
+
 const PAYOUT_MODES = [
 	{ label: "Manual", value: "manual" },
 	{ label: "Weekly", value: "scheduled_weekly" },
@@ -700,7 +704,7 @@ function ConfigDialog(
 				...base,
 				amountMinor: minor,
 				currency,
-				interval: interval.value as "weekly" | "monthly",
+				interval: interval.value as DepositInterval,
 				sourceMethodId: source.value || null,
 			})
 			: action === "set_payout"
@@ -770,7 +774,7 @@ function ConfigDialog(
 									{({ id }) => (
 										<SelectButton
 											id={id}
-											options={INTERVALS}
+											options={overview.ref.scope === "business" ? BUSINESS_INTERVALS : INTERVALS}
 											value={interval.value}
 											onValueChange={(v) => {
 												if (typeof v === "string") interval.value = v;

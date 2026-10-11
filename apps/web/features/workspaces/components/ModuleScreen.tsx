@@ -7,6 +7,8 @@ import MembersScreen from "../islands/MembersScreen.island.tsx";
 import RolesMatrix from "../islands/RolesMatrix.island.tsx";
 import PayoutPolicyScreen from "../islands/PayoutPolicyScreen.island.tsx";
 import SpendPolicyScreen from "../islands/SpendPolicyScreen.island.tsx";
+import BillingScreen from "../islands/BillingScreen.island.tsx";
+import type { BusinessBillingView } from "@projective/types/finance";
 
 /**
  * ModuleScreen — the single dispatcher from a module key to its body.
@@ -27,6 +29,8 @@ export interface ModuleScreenProps {
 	module: ModuleKey;
 	/** The resolved `?view=` sub-view, when the module has tabs. */
 	view?: string | null;
+	/** The Billing module's projection, read server-side for a business's `billing` module. */
+	billing?: BusinessBillingView | null;
 }
 
 /** Render the body for one module. */
@@ -66,6 +70,15 @@ export function ModuleScreen(props: ModuleScreenProps): JSX.Element {
 					kind={ws.kind}
 					module={mod!}
 					note="This entity has no spend policy."
+				/>
+			);
+
+		case "billing":
+			return props.billing ? <BillingScreen workspace={ws} billing={props.billing} /> : (
+				<ModulePlaceholder
+					kind={ws.kind}
+					module={mod!}
+					note={`Billing for ${ws.name} couldn't be read just now. Try again in a moment.`}
 				/>
 			);
 
