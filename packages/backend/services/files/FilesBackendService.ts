@@ -54,6 +54,7 @@ import {
 	renameAsset,
 	revokeShare,
 	setVisibility,
+	starAsset,
 } from "./live-library-writes.ts";
 import { completeUpload, initUpload } from "./live-uploads.ts";
 import { objectUrlFor } from "./live-objects.ts";
@@ -232,6 +233,11 @@ export class FilesBackendService {
 	/** Rename an asset (the extension is kept). */
 	static rename(input: RenameAsset, actor: ReadActor): Promise<Result<AssetItem>> {
 		return signedIn("rename", actor, async (a) => toResult(await renameAsset(a, input)));
+	}
+
+	/** Star or unstar an asset the caller owns (`files.items.starred`, the owner's shelf mark). */
+	static star(assetId: string, starred: boolean, actor: ReadActor): Promise<Result<{ starred: boolean }>> {
+		return signedIn("star", actor, async (a) => toResult(await starAsset(a, assetId, starred)));
 	}
 
 	/** Move assets within the acting library. */

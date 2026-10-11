@@ -51,6 +51,7 @@ import { isTaskDetail } from "../core/task-project.ts";
 import { isOwnerRole, QUIET_NAV_ACTIVITY } from "../types/projects-types.ts";
 import type { ProjectDetail, ProjectNavActivity } from "../types/projects-types.ts";
 import { currentNavView } from "../core/nav-activity-model.ts";
+import { toggleSaved } from "@features/saved/core/saved-state.ts";
 
 /** SSR default open-set — the highest-traffic groups (Stages/Sub-groups) lead expanded. */
 const DEFAULT_GROUPS: Record<string, boolean> = {
@@ -311,8 +312,11 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 		);
 	}
 
-	function toggleStar(): void {
-		starred.value = !starred.value;
+	/** Star or unstar the engagement through the saved system (Decision #174), optimistic with rollback. */
+	async function toggleStar(): Promise<void> {
+		if (!detail) return;
+		const out = await toggleSaved("project", detail.slug, !starred.value, (v) => (starred.value = v));
+		if (out.message) notify(out.ok ? "success" : "danger", out.message);
 	}
 
 	function toggleGroup(key: string): void {

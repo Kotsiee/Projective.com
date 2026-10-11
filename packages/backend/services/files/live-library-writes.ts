@@ -150,6 +150,23 @@ export async function renameAsset(actor: Actor, input: RenameAsset): Promise<Res
 }
 
 /**
+ * Star or unstar an asset. `files.items.starred` is its OWNER's shelf mark, so only the owner's own
+ * row matches; anyone else's star is a 404, the same answer as a file they cannot see.
+ */
+export async function starAsset(actor: Actor, assetId: string, starred: boolean): Promise<Result<{ starred: boolean }>> {
+	const { data, error } = await filesDb(actor).from("items")
+		.update({ starred })
+		.eq("id", assetId).eq("owner_user_id", actor.userId).is("deleted_at", null)
+		.select("id");
+	if (error) {
+		if (error.code === "22P02") return { ok: false, status: 404, message: "No such file." };
+		throw new Error(`files.items star failed: ${error.message}`);
+	}
+	if ((data ?? []).length === 0) return { ok: false, status: 404, message: "Only a file's owner can star it." };
+	return { ok: true, data: { starred }, message: starred ? "Starred." : "Unstarred." };
+}
+
+/**
  * Move assets into a folder of the SAME library (`null` = its root). Reports the count that actually
  * moved rather than failing the batch: a mixed selection with one read-only mount should move the rest.
  */

@@ -27,6 +27,8 @@ import { MessagingIcon } from "./messaging-glyphs.tsx";
 import type { ChatMessage, MessagePage } from "../types/messaging-types.ts";
 import type { PopoutState } from "../core/popout-state.ts";
 import { offlineOr } from "@web/utils/use-offline-stall.ts";
+import { toggleSaved } from "@features/saved/core/saved-state.ts";
+import { toggleMessagePin } from "../core/message-pins.ts";
 
 /**
  * PopoutChat — the message stream + composer inside the floating "Pop Out Chat" popover (task §1).
@@ -222,13 +224,21 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 	function done(): void {
 		if (sel.active.value) sel.exit();
 	}
-	function toggleFavorite(id: string): void {
-		updateMessage(id, (m) => ({ ...m, favorited: !m.favorited }));
+	/** Favourite (save) a message through the saved system (Decision #174), optimistic with rollback. */
+	async function toggleFavorite(id: string): Promise<void> {
+		const m = messages.value.find((x) => x.id === id);
 		done();
+		if (!m) return;
+		const out = await toggleSaved("message", id, !m.favorited, (v) => updateMessage(id, (x) => ({ ...x, favorited: v })));
+		if (out.message) sel.status.value = out.message;
 	}
-	function togglePin(id: string): void {
-		updateMessage(id, (m) => ({ ...m, pinned: !m.pinned }));
+	/** Pin or unpin for the whole room (`/api/messages/[id]/pin`), optimistic with rollback. */
+	async function togglePin(id: string): Promise<void> {
+		const m = messages.value.find((x) => x.id === id);
 		done();
+		if (!m) return;
+		const out = await toggleMessagePin(id, !m.pinned, (v) => updateMessage(id, (x) => ({ ...x, pinned: v })));
+		if (out.message) sel.status.value = out.message;
 	}
 	function react(id: string, emoji: string): void {
 		updateMessage(id, (m) => {

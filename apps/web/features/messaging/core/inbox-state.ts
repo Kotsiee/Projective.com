@@ -85,35 +85,40 @@ export const inboxTotal = signal(0);
 // #endregion
 
 // #region Local per-conversation preferences (optimistic, persisted by the body)
-/** Viewer-local overrides layered over the server row. */
+/** Viewer-local overrides layered over the server row (the star is server state, Decision #174). */
 export interface ConvPref {
-	starred?: boolean;
 	muted?: boolean;
 	deleted?: boolean;
 }
 
 export const inboxPrefs = signal<Record<string, ConvPref>>({});
 
-/** Apply the local preference overlay to a server row. */
+/** Optimistic stars over the server rows, until the next read carries them. Never persisted. */
+export const inboxStars = signal<Record<string, boolean>>({});
+
+/** Apply the local preference overlay and the optimistic star to a server row. */
 export function mergePref(
 	c: ConversationSummary,
 	prefs: Record<string, ConvPref>,
+	stars: Record<string, boolean> = {},
 ): ConversationSummary {
 	const p = prefs[c.id];
-	if (!p) return c;
+	const starred = stars[c.id];
+	if (!p && starred === undefined) return c;
 	return {
 		...c,
-		starred: p.starred ?? c.starred,
-		muted: p.muted ?? c.muted,
+		starred: starred ?? c.starred,
+		muted: p?.muted ?? c.muted,
 	};
 }
 
 /** The pref-merged, folder-moved, non-deleted set — the basis for every count and every partition. */
 export const inboxMerged = computed<ConversationSummary[]>(() => {
 	const prefs = inboxPrefs.value;
+	const stars = inboxStars.value;
 	const moved = folderOverrides.value;
 	return inboxAll.value.filter((c) => !prefs[c.id]?.deleted).map((c) =>
-		withFolder(mergePref(c, prefs), moved)
+		withFolder(mergePref(c, prefs, stars), moved)
 	);
 });
 // #endregion

@@ -40,6 +40,7 @@ import {
 	type DevNotifications,
 	type DevSessionState,
 	type DevBasketScenario,
+	type DevSaved,
 	type DevSeamRole,
 	type DevServiceType,
 	type DevSessionBookingStatus,
@@ -82,6 +83,7 @@ export type {
 	DevNotifications,
 	DevSessionState,
 	DevBasketScenario,
+	DevSaved,
 	DevServiceType,
 	DevSessionBookingStatus,
 	DevSettingsAttention,
@@ -269,6 +271,12 @@ export interface DevOverrides {
 	 * account and a delisted item both take other people's actions to reach.
 	 */
 	basketScenario: DevBasketScenario;
+	/**
+	 * The saved set behind `/saved` and every star / save control: the real one, nothing saved, or
+	 * saved items of every kind in two collections (Decision #174). Its own axis because filling every
+	 * kind by hand takes a project, a conversation, a file and a listing.
+	 */
+	saved: DevSaved;
 }
 
 /** Selectable option metadata for the switcher UI. */
@@ -316,6 +324,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	sessionState: "auto",
 	notifications: "auto",
 	basketScenario: "auto",
+	saved: "auto",
 };
 
 /** Account-type options in display order. */
@@ -556,6 +565,13 @@ export const DEV_BASKET_SCENARIOS: ReadonlyArray<DevOption<DevBasketScenario>> =
 	{ value: "unavailable", label: "Unavailable item" },
 ];
 
+/** Saved-set scenarios (Decision #174). */
+export const DEV_SAVED: ReadonlyArray<DevOption<DevSaved>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "empty", label: "Nothing saved" },
+	{ value: "many", label: "Every type" },
+];
+
 /** Session state options (Decision #171). */
 export const DEV_SESSION_STATES: ReadonlyArray<DevOption<DevSessionState>> = [
 	{ value: "auto", label: "Auto" },
@@ -664,6 +680,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devNotifications;
 		if (next.basketScenario !== "auto") root.dataset.devBasketScenario = next.basketScenario;
 		else delete root.dataset.devBasketScenario;
+		if (next.saved !== "auto") root.dataset.devSaved = next.saved;
+		else delete root.dataset.devSaved;
 		root.dataset.devDirection = next.layoutDirection;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
 		// properties everywhere mean the shell and every surface mirror to the opposite edge.
@@ -704,6 +722,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devSessionState;
 		delete root.dataset.devNotifications;
 		delete root.dataset.devBasketScenario;
+		delete root.dataset.devSaved;
 		delete root.dataset.devDirection;
 		// Restore the document's natural direction (the pref-driven default, LtR here).
 		root.removeAttribute("dir");

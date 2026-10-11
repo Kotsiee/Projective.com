@@ -20,10 +20,13 @@ import {
 	saveShowcaseGrid,
 	setFollow,
 } from "./live-profile-writes.ts";
+import { fetchConnections } from "./live-follows.ts";
 import { fetchOwnerAvailability, saveOwnerAvailability } from "../scheduling/live-owner-availability.ts";
 import { readPublicCallOffer } from "../scheduling/live-call-offer.ts";
 import {
 	type ApplyMedia,
+	type ProfileConnections,
+	type ProfileConnectionsParams,
 	isReservedHandle,
 	type ProfileEditModel,
 	type ProfileSavePatch,
@@ -112,6 +115,27 @@ export class ProfileBackendService {
 		if (profile === undefined) return unavailable();
 		if (profile === null) return notFound(handle);
 		return ok({ profile });
+	}
+
+	/**
+	 * One page of the people behind the profile's follower / following counts. A follow is a public
+	 * edge, so a guest may read it; a profile the caller may not see is left out of the list.
+	 */
+	static async connections(
+		handle: string,
+		params: ProfileConnectionsParams,
+		actor: ReadActor = ANONYMOUS_READER,
+	): Promise<ServiceResult<ProfileConnections>> {
+		if (isReservedHandle(handle)) return reserved(handle);
+		const profile = await fetchProfileView(handle, actor);
+		if (profile === undefined) return unavailable();
+		if (profile === null || !profile.owner) return notFound(handle);
+		try {
+			const client = canReadLive(actor) ? getUserClient(actor.accessToken) : getAnonClient();
+			return ok(await fetchConnections(client, profile.owner, params.direction, params.cursor));
+		} catch {
+			return unavailable();
+		}
 	}
 
 	/**

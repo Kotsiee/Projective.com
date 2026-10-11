@@ -1,5 +1,5 @@
 import type { JoinStore, StepId } from "./wizardStore.ts";
-import { AGE_MESSAGES, bracketFromDob } from "./age.ts";
+import { AGE_MESSAGES, bracketFromDob } from "@projective/types/auth";
 import {
 	confirmError,
 	emailError,

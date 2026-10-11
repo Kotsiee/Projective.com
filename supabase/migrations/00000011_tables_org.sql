@@ -517,11 +517,24 @@ CREATE TABLE org.user_skills (
     CONSTRAINT user_skills_skill_id_fkey FOREIGN KEY (skill_id) REFERENCES org.skills (id)
 );
 
+-- A user's named saved collection (Decision #174). A bookmark sits in at most one; an unfiled
+-- bookmark has a NULL collection_id. Deleting a collection unfiles its bookmarks, never deletes them.
+CREATE TABLE org.user_bookmark_collections (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    user_id uuid NOT NULL REFERENCES org.users_public (user_id) ON DELETE CASCADE,
+    name text NOT NULL CHECK (length(btrim(name)) BETWEEN 1 AND 60),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT user_bookmark_collections_name_unique UNIQUE (user_id, name),
+    -- The target of user_bookmarks' composite FK, which keeps a bookmark out of someone else's collection.
+    CONSTRAINT user_bookmark_collections_owner_unique UNIQUE (id, user_id)
+);
+
 CREATE TABLE org.user_bookmarks (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
     user_id uuid NOT NULL REFERENCES org.users_public (user_id) ON DELETE CASCADE,
     entity_type org.bookmark_entity_type NOT NULL,
     entity_id uuid NOT NULL,
+    collection_id uuid,
     created_at timestamp
     with
         time zone DEFAULT now(),
@@ -529,7 +542,9 @@ CREATE TABLE org.user_bookmarks (
             user_id,
             entity_type,
             entity_id
-        )
+        ),
+        CONSTRAINT user_bookmarks_collection_fkey FOREIGN KEY (collection_id, user_id)
+            REFERENCES org.user_bookmark_collections (id, user_id) ON DELETE SET NULL (collection_id)
 );
 
 -- #region Profile detail (structured tab entries + the public follow graph)

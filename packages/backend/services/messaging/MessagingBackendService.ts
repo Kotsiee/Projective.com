@@ -38,6 +38,7 @@ import {
 	cacheKey,
 	invalidatePrefix,
 	messagingReadCache,
+	projectsReadCache,
 	tenantPrefix,
 } from "../../core/cache.ts";
 import { canReadLive, type ReadActor, tenantOf } from "../read-actor.ts";
@@ -101,7 +102,8 @@ import {
 import { promoteStubOnSend, setStubFolder, withStubFolder } from "./folder-store.ts";
 import { inPartition } from "./partition.ts";
 import { resolveThreadRef, virtualSummary } from "./live-threads.ts";
-import { setLiveFolder } from "./live-folders.ts";
+import { setLiveFolder, setLiveStarred } from "./live-folders.ts";
+import { setMessagePin } from "./live-message-marks.ts";
 import { postRequestMessage, type RequestPosted } from "./live-requests.ts";
 import { fetchConversationContext } from "./live-context.ts";
 import { findConversationContext } from "./context-fixtures.ts";
@@ -510,6 +512,55 @@ export class MessagingBackendService {
 		}
 		setStubFolder(writeOwnerOf(actor), conversationId, folder);
 		return ok({ id: conversationId, folder }, { message: "Conversation moved." });
+	}
+
+	/**
+	 * Star or unstar a conversation for the viewer — the conversation half of `/api/saved`
+	 * (`SavedBackendService` dispatches here). Live only, through `comms.set_dm_starred`; there is no
+	 * stub, so a conversation with no live thread is a 404 and an unreachable database a 503.
+	 */
+	static async setStarred(
+		conversationId: string,
+		starred: boolean,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ starred: boolean }>> {
+		if (!canReadLive(actor)) return fail(401, { message: "Sign in to star conversations." });
+		if (!isMessagingBackendLive()) return fail(503, { message: "Starring needs the live backend." });
+		try {
+			const outcome = await setLiveStarred(actor, conversationId, starred);
+			if (outcome === null) return fail(404, { message: "No such conversation." });
+			if ("refusal" in outcome) return fail(outcome.refusal.status, { message: outcome.refusal.message });
+			invalidatePrefix(messagingReadCache, tenantPrefix(tenantOf(actor)));
+			return ok(outcome.data, { message: starred ? "Conversation starred." : "Star removed." });
+		} catch (error) {
+			liveFailed("setStarred", error);
+			return fail(502, { message: "That star could not be saved — please try again." });
+		}
+	}
+
+	/**
+	 * Pin or unpin a message for everyone in its room (`POST|DELETE /api/messages/[id]/pin`), a DM's
+	 * or a project room's alike. Live only (`comms.message_pins`).
+	 */
+	static async setPinned(
+		messageId: string,
+		pinned: boolean,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ pinned: boolean }>> {
+		if (!canReadLive(actor)) return fail(401, { message: "Sign in to pin messages." });
+		if (!isMessagingBackendLive()) return fail(503, { message: "Pinning needs the live backend." });
+		try {
+			const outcome = await setMessagePin(actor, messageId, pinned);
+			if (outcome === null) return fail(404, { message: "No such message." });
+			if ("refusal" in outcome) return fail(outcome.refusal.status, { message: outcome.refusal.message });
+			const tenant = tenantPrefix(tenantOf(actor));
+			invalidatePrefix(messagingReadCache, tenant);
+			invalidatePrefix(projectsReadCache, tenant);
+			return ok(outcome.data, { message: pinned ? "Message pinned." : "Message unpinned." });
+		} catch (error) {
+			liveFailed("setPinned", error);
+			return fail(502, { message: "That pin could not be saved — please try again." });
+		}
 	}
 
 	/**

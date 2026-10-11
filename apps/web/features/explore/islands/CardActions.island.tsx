@@ -1,118 +1,62 @@
 import { useSignal } from "@preact/signals";
-import { useEffect, useRef } from "preact/hooks";
 import { Icon } from "@projective/ui/icons";
 import { Tooltip } from "@projective/ui/feedback";
-import { BodyPortal } from "@projective/ui/overlay";
-import { useDismiss, useEdgeDetection, useOverlayStack } from "@projective/ui/hooks";
+import type { ExploreEntity } from "@projective/types/explore";
 import { Button } from "@ui/fields/components/Button.tsx";
 import { requestShare } from "@web/features/share/core/share-request.ts";
+import { savedFlag, savedTypeOf, toggleFlag } from "@features/saved/core/saved-state.ts";
 
 /**
- * CardActions — the per-card utility cluster in the card's top-right corner: **Share · Star · kebab**,
- * as one horizontal row.
- *
- * Share and Star used to live inside the kebab menu, which cost two interactions and a decision for
- * the two things a reader does most on a discovery card. They are now direct controls; the menu keeps
- * what is either rare (Report) or contextual (Add to project on a helper card), so the row stays three
- * wide on every card in the family rather than four on some.
+ * CardActions — the per-card utility cluster in the card's top-right corner: **Share · Save**, as one
+ * horizontal row.
  *
  * Every button is icon-only, so each carries all three things §B.8.5 makes a merge gate: an
  * `aria-label`, a portal `Tooltip` (never a native `title`), and a hit target past the 24px floor —
- * 32×32 here. Three unlabelled 16px glyphs in a row is exactly the case the rule exists for: a mouse
- * user has no way to tell Share from Star from More without one.
+ * 32×32 here.
  *
- * The cluster is revealed on card hover/focus via CSS and pinned open once the menu is engaged. Dumb
- * island: it owns only local interaction state and, for the stub, optimistic client feedback (the
- * share modal for Share, a local toggle for Star). Star and Add-to-project are auth-gated — a signed-out
- * reader gets a sign-in link rather than a control that silently does nothing. Swap the optimistic
- * handlers for internal API-route calls (`/api/explore/bookmark`, `/report`, `/projects/add`) when
- * those land; islands fetch routes only.
+ * Save is the shared saved system (Decision #174): the card's flag comes from one batched
+ * `/api/saved/state` read for the whole grid, a press writes `/api/saved` optimistically and rolls back
+ * on refusal, and the outcome is announced. A signed-out reader gets a sign-in link in the same slot
+ * rather than a control that silently does nothing. The kebab's Report and Add-to-project were stubs
+ * with no backend and are gone (UI gate 11, as Decision #140); hiring into a project lives on the
+ * profile's own Add-to-project flow.
+ *
+ * The cluster is revealed on card hover/focus via CSS. Dumb island: it fetches internal routes only.
  */
 export default function CardActions(
-	{ title, href, authed = false, helper = false }: {
+	{ title, href, id, type, authed = false }: {
 		/** The card's title — used in share metadata + action labels. */
 		title: string;
 		/** The card's canonical relative href — used to build the absolute share URL. */
 		href: string;
-		/** Whether the current visitor is signed in (gates Star + Add-to-project). */
+		/** The item's id — its slug, or a profile's handle (what `/api/saved` takes as `ref`). */
+		id: string;
+		/** The item's Explore type, which decides what kind of save it is. */
+		type: ExploreEntity;
+		/** Whether the current visitor is signed in (gates Save). */
 		authed?: boolean;
-		/** Offer "Add to project" in the menu (freelancer/team cards). */
-		helper?: boolean;
 	},
 ) {
-	const open = useSignal(false);
-	const starred = useSignal(false);
 	const status = useSignal(""); // polite aria-live confirmation
-	const rootRef = useRef<HTMLDivElement>(null);
-
-	/*
-	 * The panel is body-portalled, not absolutely positioned inside the card. `.ex-card` is
-	 * `overflow: clip`, so an in-tree menu was clipped by the card box whenever it opened near the
-	 * lower edge — the same trap Decision #50 portalled every shared overlay out of. `bottom-end`
-	 * keeps it under the kebab; `useEdgeDetection` flips and clamps it at the viewport.
-	 */
-	const stack = useOverlayStack({ active: open.value });
-	const menu = useEdgeDetection<HTMLButtonElement, HTMLDivElement>({
-		open: open.value,
-		placement: "bottom-end",
-		offset: 8,
-		zIndex: stack.zIndex,
-	});
-
-	/*
-	 * Move focus INTO the panel when it opens, and back to the trigger when it closes.
-	 *
-	 * The panel is body-portalled, so in DOM order it is the last child of `<body>` while its trigger
-	 * sits inside a card — measured, 348 tab stops apart on a full Explore page. Without this a
-	 * keyboard reader who opens the menu has to tab past every remaining control on the page to reach
-	 * the two actions it holds, and `.ex-card:focus-within` stops matching the moment they leave the
-	 * card, so the trigger row fades out from under them while the panel stays up.
-	 */
-	useEffect(() => {
-		if (!open.value) return;
-		const first = menu.ref.current?.querySelector<HTMLElement>('[role="menuitem"]');
-		first?.focus();
-		return () => menu.triggerRef.current?.focus();
-	}, [open.value]);
-
-	// Outside press and Escape through the shared overlay stack: a card inside a drawer or dialog
-	// closes only this menu on Escape, never the surface it was opened over.
-	useDismiss({
-		open: open.value,
-		enabled: stack.isTop,
-		onDismiss: () => (open.value = false),
-		panelRef: menu.ref,
-		triggerRef: menu.triggerRef,
-	});
-
-	function announce(msg: string) {
-		status.value = msg;
-		open.value = false;
-	}
+	const kind = savedTypeOf(type);
+	const saved = authed ? savedFlag(kind, id) : null;
 
 	/** Open the unified share modal (people on Projective · external apps · copy · the device sheet). */
 	function share() {
 		requestShare({ href, title });
-		announce("");
+		status.value = "";
 	}
 
-	function star() {
-		starred.value = !starred.value;
-		announce(starred.value ? "Saved" : "Removed from saved");
-	}
-
-	function report() {
-		announce("Report received — thanks, we'll take a look");
-	}
-
-	function addToProject() {
-		announce(`${title} added to your active project`);
+	async function save() {
+		const out = await toggleFlag(kind, id);
+		if (out.message) status.value = out.message;
 	}
 
 	const signIn = `/login?redirectTo=${encodeURIComponent(href)}`;
+	const on = saved?.value === true;
 
 	return (
-		<div class="ex-actions" ref={rootRef} data-stop>
+		<div class="ex-actions" data-stop>
 			<Tooltip content="Share">
 				<Button
 					type="button"
@@ -126,22 +70,23 @@ export default function CardActions(
 
 			{
 				/*
-				 * Star is a claim on the reader's own account, so a signed-out visitor gets the sign-in
+				 * Save is a claim on the reader's own account, so a signed-out visitor gets the sign-in
 				 * link in the same slot rather than a control that toggles and forgets. Same shape, same
 				 * position — only the destination differs.
 				 */
 			}
-			{authed
+			{saved
 				? (
-					<Tooltip content={starred.value ? "Saved" : "Save"}>
+					<Tooltip content={on ? "Saved" : "Save"}>
 						<Button
 							type="button"
 							class="ex-actions__btn"
-							aria-label={starred.value ? `Remove ${title} from saved` : `Save ${title}`}
-							aria-pressed={starred.value}
-							onClick={star}
+							aria-label={on ? `Remove ${title} from saved` : `Save ${title}`}
+							aria-pressed={on}
+							aria-busy={saved.value === null}
+							onClick={save}
 						>
-							<Icon name="star" filled={starred.value} />
+							<Icon name="star" filled={on} />
 						</Button>
 					</Tooltip>
 				)
@@ -152,66 +97,6 @@ export default function CardActions(
 						</a>
 					</Tooltip>
 				)}
-
-			<div class="ex-actions__menu-wrap">
-				<Tooltip content="More actions">
-					<Button
-						type="button"
-						ref={menu.triggerRef}
-						class="ex-actions__btn"
-						aria-haspopup="menu"
-						aria-expanded={open.value}
-						aria-label="More actions"
-						onClick={() => (open.value = !open.value)}
-					>
-						<Icon name="kebab" />
-					</Button>
-				</Tooltip>
-
-				{open.value && (
-					<BodyPortal>
-						<div
-							ref={menu.ref}
-							class="ui-anchored ex-actions__menu"
-							style={menu.style}
-							data-placement={menu.placement}
-							role="menu"
-							aria-label="Card actions"
-						>
-							{helper && (
-								authed
-									? (
-										<Button
-											type="button"
-											class="ex-actions__item"
-											role="menuitem"
-											onClick={addToProject}
-										>
-											<Icon name="plus" />
-											<span>Add to project</span>
-										</Button>
-									)
-									: (
-										<a class="ex-actions__item" role="menuitem" href={signIn}>
-											<Icon name="plus" />
-											<span>Sign in to add to a project</span>
-										</a>
-									)
-							)}
-
-							<Button
-								type="button"
-								class="ex-actions__item ex-actions__item--danger"
-								role="menuitem"
-								onClick={report}
-							>
-								<Icon name="flag" />
-								<span>Report</span>
-							</Button>
-						</div>
-					</BodyPortal>
-				)}
-			</div>
 
 			<span class="ex-actions__status" role="status" aria-live="polite">{status.value}</span>
 		</div>

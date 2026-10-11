@@ -9,6 +9,7 @@ import {
 } from "../../core/supabase.ts";
 import { serverEnv } from "../../core/env.ts";
 import type { CreateOrganisation } from "@projective/types/org";
+import { bracketFromDob, isJoinable, MIN_AGE } from "@projective/types/auth";
 
 // #region GoTrue mapping helpers
 /** A GoTrue session's token subset (the client returns a wider object). */
@@ -116,10 +117,10 @@ export function usernameCandidates(typed: string): string[] {
  * paths — gated on {@link isAuthBackendLive} — mark exactly where the Supabase work slots in, and
  * are wired to real client provisioning so implementing them is a fill-in, not a re-architecture.
  *
- * Note on the boundary: input *guarding* that depends on feature-local pure helpers (the DoB
- * age-gate, password-required-unless-OAuth) stays in the route per `SYSTEM_ARCHITECTURE.md` §2
- * ("routes do … auth guarding"); it will consolidate into `@projective/types` alongside the Zod
- * schemas when that package lands. This service owns everything downstream of a validated request.
+ * Note on the boundary: account ELIGIBILITY (the DoB age-gate from `@projective/types/auth`,
+ * password-required-unless-OAuth) is enforced here, in {@link AuthBackendService.provisionAccount},
+ * on both the stub and live paths — the route only parses and delegates, and the client's own flags
+ * are never trusted.
  */
 
 // #region Input / output contracts
@@ -257,6 +258,17 @@ export class AuthBackendService {
 	 * Supabase.
 	 */
 	static async provisionAccount(input: ProvisionAccountInput): Promise<ServiceResult<AuthPayload>> {
+		if (input.type === "individual") {
+			// Age-gate is re-derived server-side; the client's `restricted` flag is never trusted.
+			if (!isJoinable(bracketFromDob(input.dob))) {
+				return fail(422, { errors: { dob: `You need to be at least ${MIN_AGE} to join Projective.` } });
+			}
+			// Password is required unless this is an SSO/OAuth signup (which sets its own credential).
+			if (!input.oauth && (!input.password || input.password.length < 8)) {
+				return fail(422, { errors: { password: "Use at least 8 characters." } });
+			}
+		}
+
 		if (!isAuthBackendLive()) {
 			return ok({
 				requiresVerification: true,

@@ -44,6 +44,7 @@ import { FileTable } from "../components/FileTable.tsx";
 import { FileChannelTree, type FileTreeSelection } from "../components/FileChannelTree.tsx";
 import { AttachmentPreviewModal } from "../components/AttachmentPreviewModal.tsx";
 import { SearchIcon } from "../components/file-glyphs.tsx";
+import { starFile } from "@features/files/core/star-file.ts";
 
 /**
  * FileExplorer — the File Explorer workspace: the single island the `/files` routes mount, hosting the
@@ -336,8 +337,9 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 	function renameFile(id: string, name: string): void {
 		items.value = items.value.map((f) => (f.id === id ? { ...f, name } : f));
 	}
-	function toggleStar(id: string): void {
-		items.value = items.value.map((f) => (f.id === id ? { ...f, starred: !f.starred } : f));
+	/** Star or unstar a file the viewer owns, persisted through the saved system (Decision #174). */
+	function toggleStar(id: string) {
+		return starFile(items, id);
 	}
 
 	const openFile = openId.value ? items.value.find((f) => f.id === openId.value) : undefined;

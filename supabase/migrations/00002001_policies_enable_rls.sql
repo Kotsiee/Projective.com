@@ -88,6 +88,8 @@ ALTER TABLE org.teams ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE org.user_bookmarks ENABLE ROW LEVEL SECURITY;
 
+ALTER TABLE org.user_bookmark_collections ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE org.user_emails ENABLE ROW LEVEL SECURITY;
 
 -- Definer-only (00001050): RLS on with NO policy, so no client role reads or writes a row.

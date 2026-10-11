@@ -6,6 +6,7 @@ import { Icon } from "@projective/ui/icons";
 import type { AssetItem } from "../../types/projects-types.ts";
 import type { PreviewIconName } from "./preview-model.ts";
 import { PreviewAction, PreviewLinkAction } from "./PreviewAction.tsx";
+import type { ToggleOutcome } from "@features/saved/core/optimistic.ts";
 
 /** Props for {@link PreviewHeader}. */
 export interface PreviewHeaderProps {
@@ -17,7 +18,8 @@ export interface PreviewHeaderProps {
 	meta: string;
 	canRename: boolean;
 	onRename: (name: string) => void;
-	onToggleStar: () => void;
+	/** Star or unstar; resolves with the sentence to announce. Absent when the viewer cannot star the file. */
+	onToggleStar?: () => Promise<ToggleOutcome | void> | void;
 	/** Where the original downloads from; null hides the control. */
 	downloadHref: string | null;
 	/** Record-then-download for stored bytes; without it the link downloads directly. */
@@ -174,14 +176,19 @@ export function PreviewHeader(props: PreviewHeaderProps): JSX.Element {
 				{meta ? <p class="fx-modal__meta">{meta}</p> : null}
 			</div>
 			<div class="fx-modal__actions">
-				<PreviewAction
-					icon="star"
-					label={file.starred ? "Unstar" : "Star"}
-					pressed={file.starred}
-					filled={file.starred}
-					class="fx-modal__action--star"
-					onClick={onToggleStar}
-				/>
+				{onToggleStar && (
+					<PreviewAction
+						icon="star"
+						label={file.starred ? "Unstar" : "Star"}
+						pressed={file.starred}
+						filled={file.starred}
+						class="fx-modal__action--star"
+						onClick={async () => {
+							const out = await onToggleStar();
+							if (out?.message) status.value = out.message;
+						}}
+					/>
+				)}
 				{downloadHref && onDownload
 					? <PreviewAction icon="download" label="Download" onClick={onDownload} />
 					: downloadHref

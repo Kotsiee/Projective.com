@@ -21,6 +21,8 @@ import { OwnerAvatarEdit } from "../components/OwnerAvatarEdit.tsx";
 import { ProfileMetrics } from "../components/ProfileMetrics.tsx";
 import { ProfileRig } from "../components/ProfileRig.tsx";
 import { ProfileShowcase } from "../components/ProfileShowcase.tsx";
+import { ConnectionsDialog } from "../components/ConnectionsDialog.tsx";
+import type { FollowDirection } from "@projective/types/profile";
 import { ENTITY_META } from "../components/profile-glyphs.tsx";
 import { adornmentItems, shownAdornments } from "../core/trust-signals.ts";
 import { useTrustSignalOverride } from "../hooks/useTrustSignalOverride.ts";
@@ -33,6 +35,7 @@ import { announce, NOTE_TTL_MS } from "../core/rig-actions.ts";
 import {
 	addMenuOpen,
 	consultOpen,
+	followerCount,
 	hireMenuOpen,
 	pickedProject,
 	pickedService,
@@ -127,6 +130,16 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 	/** The database's verdict, never the chrome token: only the owner gets the photo's edit control. */
 	const owner = profile.viewer?.isOwner === true;
 	const lightboxOpen = useSignal(false);
+	/** The followers / following list, opened from the counts on the meta line. */
+	const connectionsOpen = useSignal(false);
+	const connections = useSignal<FollowDirection>("followers");
+	const followers = followerCount.value ?? profile.followers;
+	/** Only a person follows, so only a person's profile has a following list. */
+	const person = profile.kind === "freelancer" || profile.kind === "client";
+	function showConnections(direction: FollowDirection): void {
+		connections.value = direction;
+		connectionsOpen.value = true;
+	}
 	/**
 	 * The toast stack the assignment flow reports into. Mounted lazily and only when no other island
 	 * has put one up: every `<Toast>` renders the SAME module-level list, so a second stack at another
@@ -286,6 +299,18 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 						<span class="pf-hero__handle">{profile.handle}</span>
 						<span class="pf-hero__dot" aria-hidden="true">·</span>
 						<span>{ENTITY_META[profile.kind].label}</span>
+						<span class="pf-hero__dot" aria-hidden="true">·</span>
+						<button type="button" class="pf-hero__count" onClick={() => showConnections("followers")}>
+							{followers} {followers === 1 ? "follower" : "followers"}
+						</button>
+						{person && (
+							<>
+								<span class="pf-hero__dot" aria-hidden="true">·</span>
+								<button type="button" class="pf-hero__count" onClick={() => showConnections("following")}>
+									{profile.following} following
+								</button>
+							</>
+						)}
 					</p>
 
 					<TrustAdornments items={adornments} class="pf-hero__trust" />
@@ -318,6 +343,12 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 				)}
 			</header>
 
+			<ConnectionsDialog
+				open={connectionsOpen}
+				direction={connections.value}
+				handle={profile.handle}
+				name={profile.name}
+			/>
 			{!preview && authed && <ProfileMessagePopover profile={profile} />}
 			{seller && (
 				<>

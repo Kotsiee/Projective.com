@@ -39,6 +39,7 @@ import { PreviewHeader } from "./PreviewHeader.tsx";
 import { PreviewStage } from "./PreviewStage.tsx";
 import { PreviewAside, type PreviewNotesState } from "./PreviewAside.tsx";
 import { PreviewTray } from "./PreviewTray.tsx";
+import type { ToggleOutcome } from "@features/saved/core/optimistic.ts";
 
 /** The modal-stack frame a preview renders as, when it is one. */
 export interface PreviewFrame {
@@ -55,7 +56,8 @@ export interface PreviewSessionProps {
 	notesMode: boolean;
 	onClose: () => void;
 	onRename: (fileId: string, name: string) => void;
-	onToggleStar: (fileId: string) => void;
+	/** Star or unstar; offered only on a file the viewer may star (its owner — see `canRenameFile`). */
+	onToggleStar: (fileId: string) => Promise<ToggleOutcome | void> | void;
 	onSaveNote?: (fileId: string, text: string) => void;
 	frame?: PreviewFrame;
 	context?: PreviewContext;
@@ -334,7 +336,7 @@ export function PreviewSession(props: PreviewSessionProps): JSX.Element {
 				meta={previewMetaLine(file, dto, liveHost?.shell.facts.value)}
 				canRename={canRenameFile(file, viewerId)}
 				onRename={(name) => onRename(file.id, name)}
-				onToggleStar={() => onToggleStar(file.id)}
+				onToggleStar={canRenameFile(file, viewerId) ? () => onToggleStar(file.id) : undefined}
 				downloadHref={downloadHref}
 				onDownload={onDownload}
 				inspectHref={previewInspectHref(file)}

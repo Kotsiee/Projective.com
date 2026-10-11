@@ -32,6 +32,7 @@ import {
 	inboxMerged,
 	inboxNarrowed,
 	inboxPrefs,
+	inboxStars,
 	inboxQuery,
 	inboxRelation,
 	inboxRole,
@@ -46,6 +47,7 @@ import {
 	InboxFolder,
 	type MessagingRole,
 } from "../types/messaging-types.ts";
+import { toggleSaved } from "@features/saved/core/saved-state.ts";
 
 /**
  * InboxView — the `/messages` BODY. This is the surface: the conversation list renders here, in the
@@ -257,6 +259,8 @@ export default function InboxView(props: InboxViewProps): JSX.Element {
 	 * The row COUNT is a different question, and there emptiness is exactly the right input: the
 	 * placeholder mirrors the list it is replacing so the swap costs no height.
 	 */
+	/** The last star outcome, for the polite live region. */
+	const said = useSignal("");
 	const skeleton = useSignal(false);
 	const skeletonRows = useSignal(0);
 
@@ -285,8 +289,16 @@ export default function InboxView(props: InboxViewProps): JSX.Element {
 	function find(id: string) {
 		return inboxAll.value.find((x) => x.id === id);
 	}
-	const toggleStar = (id: string) =>
-		updatePref(id, { starred: !flag(id, "starred", find(id)?.starred ?? false) });
+	/** Star or unstar through the saved system (Decision #174), optimistic with rollback. */
+	const toggleStar = async (id: string) => {
+		const c = inboxMerged.value.find((x) => x.id === id);
+		if (!c) return;
+		const out = await toggleSaved("conversation", id, !c.starred, (v) => {
+			inboxStars.value = { ...inboxStars.value, [id]: v };
+		});
+		if (out.ok) said.value = out.message;
+		else if (out.message) inboxError.value = out.message;
+	};
 	const move = async (id: string, to: InboxFolder) => {
 		const from = inboxMerged.value.find((x) => x.id === id)?.folder;
 		if (!from || from === to) return;
@@ -310,6 +322,7 @@ export default function InboxView(props: InboxViewProps): JSX.Element {
 				 */
 			}
 			<InboxLoadingStatus busy={skeleton.value} label="Loading conversations…" />
+			<p class="ui-visually-hidden" role="status" aria-live="polite">{said.value}</p>
 
 			{/* Error — a failed refine must never render as an empty inbox. */}
 			{inboxError.value && (

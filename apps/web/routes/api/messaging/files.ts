@@ -3,7 +3,8 @@ import { readActor } from "@web/utils/api-session.ts";
 import { defineReadRoute } from "@web/utils/read-endpoint.ts";
 import { toMessagingBody } from "@features/messaging/core/respond.ts";
 import { MessagingBackendService } from "@server/services/messaging/MessagingBackendService.ts";
-import type { FileKind, FileListPage, FileSortDir, FileSortKey } from "@projective/types/projects";
+import { FileKind, FileSortDir, FileSortKey } from "@projective/types/projects";
+import type { FileListPage } from "@projective/types/projects";
 
 /**
  * `/api/messaging/files` — the thin route for the conversation-scoped File Explorer read. HTTP parse +
@@ -21,17 +22,6 @@ import type { FileKind, FileListPage, FileSortDir, FileSortKey } from "@projecti
  * resolver, so `HEAD` reports the same `400` with the body stripped rather than leaking one.
  */
 
-const SORT_KEYS: readonly FileSortKey[] = ["name", "date", "size", "sender", "type"];
-const KINDS: readonly FileKind[] = [
-	"image",
-	"video",
-	"audio",
-	"pdf",
-	"doc",
-	"code",
-	"archive",
-	"file",
-];
 
 export const handler = define.handlers(
 	defineReadRoute<{ page: FileListPage }>({
@@ -49,14 +39,12 @@ export const handler = define.handlers(
 			const limitRaw = sp.get("limit");
 			const limit = limitRaw ? Number.parseInt(limitRaw, 10) : undefined;
 
-			const sort = sortRaw && SORT_KEYS.includes(sortRaw as FileSortKey)
-				? (sortRaw as FileSortKey)
-				: undefined;
-			const dir = dirRaw === "asc" || dirRaw === "desc" ? (dirRaw as FileSortDir) : undefined;
+			const sort = FileSortKey.safeParse(sortRaw).data;
+			const dir = FileSortDir.safeParse(dirRaw).data;
 			const kinds = (sp.get("kinds") ?? "")
 				.split(",")
 				.map((k) => k.trim())
-				.filter((k): k is FileKind => KINDS.includes(k as FileKind));
+				.filter((k): k is FileKind => FileKind.safeParse(k).success);
 
 			return MessagingBackendService.files({
 				projectId: conversationId,

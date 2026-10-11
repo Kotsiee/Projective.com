@@ -3,11 +3,8 @@ import { readActor } from "@web/utils/api-session.ts";
 import { defineReadRoute } from "@web/utils/read-endpoint.ts";
 import { toProjectsBody } from "@features/projects/core/respond.ts";
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
-import type {
-	MemberRosterPage,
-	MemberRosterParams,
-	ProjectFormat,
-} from "@projective/types/projects";
+import { MemberRosterParamsSchema, ProjectFormat } from "@projective/types/projects";
+import type { MemberRosterPage } from "@projective/types/projects";
 
 /**
  * `GET | HEAD | OPTIONS /api/projects/members` — the thin route for the Members roster read. HTTP
@@ -27,13 +24,6 @@ import type {
  * ignores them (the real viewer role + engagement format + invitation table are authoritative).
  */
 
-const SIM_VIEWERS: readonly NonNullable<MemberRosterParams["simViewer"]>[] = [
-	"owner_admin",
-	"manager",
-	"freelancer_assigned",
-	"freelancer_unassigned",
-];
-const FORMATS: readonly ProjectFormat[] = ["one_off", "pipeline", "session"];
 
 export const handler = define.handlers(
 	defineReadRoute<{ page: MemberRosterPage }>({
@@ -50,12 +40,8 @@ export const handler = define.handlers(
 			const simInvitesRaw = sp.get("simPendingInvites");
 			const simRequestsRaw = sp.get("simPendingRequests");
 
-			const simViewer = simViewerRaw && SIM_VIEWERS.includes(simViewerRaw as never)
-				? (simViewerRaw as MemberRosterParams["simViewer"])
-				: undefined;
-			const simProjectType = simTypeRaw && FORMATS.includes(simTypeRaw as ProjectFormat)
-				? (simTypeRaw as ProjectFormat)
-				: undefined;
+			const simViewer = MemberRosterParamsSchema.shape.simViewer.safeParse(simViewerRaw).data;
+			const simProjectType = ProjectFormat.safeParse(simTypeRaw).data;
 			const simPendingInvites = simInvitesRaw === null
 				? undefined
 				: simInvitesRaw === "true" || simInvitesRaw === "1";

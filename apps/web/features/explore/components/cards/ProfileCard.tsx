@@ -70,8 +70,9 @@ export function ProfileCard(
 			<CardActions
 				title={item.title}
 				href={itemHref(item, ctx)}
+				id={item.id}
+				type={item.type}
 				authed={authed}
-				helper={item.type === "freelancers" || item.type === "teams"}
 			/>
 
 			<div class="ex-pcard__banner">

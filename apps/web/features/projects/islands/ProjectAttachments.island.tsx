@@ -9,6 +9,7 @@ import { FILE_KIND_OPTIONS } from "../core/file-model.ts";
 import { FileCard } from "../components/FileCard.tsx";
 import { AttachmentPreviewModal } from "../components/AttachmentPreviewModal.tsx";
 import { SearchIcon } from "../components/file-glyphs.tsx";
+import { starFile } from "@features/files/core/star-file.ts";
 
 /**
  * ProjectAttachments — the Overview's reference files: the briefs and documents the client attached to
@@ -104,8 +105,7 @@ export default function ProjectAttachments(
 				onClose={() => (openId.value = null)}
 				onRename={(id, name) =>
 					items.value = items.value.map((f) => (f.id === id ? { ...f, name } : f))}
-				onToggleStar={(id) =>
-					items.value = items.value.map((f) => (f.id === id ? { ...f, starred: !f.starred } : f))}
+				onToggleStar={(id) => starFile(items, id)}
 				context={{ kind: "project", projectSlug }}
 			/>
 		</div>

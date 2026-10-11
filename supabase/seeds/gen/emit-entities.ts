@@ -4,7 +4,7 @@
  */
 
 import { ago, ahead, arr, enumArr, HEADER, id, insert, jsonb, num, q, uuidFor } from "./sql.ts";
-import { persona, project, type World } from "./resolve.ts";
+import { persona, type World } from "./resolve.ts";
 import { BOOKMARKS, FOLLOWS } from "./world.ts";
 
 /**
@@ -398,15 +398,12 @@ export function emitEntities(world: World): string {
 			BOOKMARKS.map((b) => {
 				let target: string;
 				switch (b.type) {
-					case "freelancer":
+					case "user":
 						target = persona(world, b.target).userId;
 						break;
 					case "team":
 					case "business":
 						target = world.entities.get(b.target)!.entityId;
-						break;
-					case "project":
-						target = project(world, b.target).projectId;
 						break;
 					case "service_blueprint":
 						target = world.serviceId(b.target);

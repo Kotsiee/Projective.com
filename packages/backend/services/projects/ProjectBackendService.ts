@@ -56,7 +56,6 @@ import {
 	applyOnboardingSim,
 	effectiveOnboardingSim,
 	findProjectSetup,
-	type OnboardingSim,
 } from "./setup-fixtures.ts";
 import { findProjectOverview } from "./overview-fixtures.ts";
 import {
@@ -191,7 +190,13 @@ import {
 } from "@projective/types/projects";
 import { intakeRefusal, normaliseIntakeAnswers } from "@projective/types/services";
 import { plainTextToHtml } from "@projective/types/richtext";
-import { allowanceNotice, allowanceNoticeText, toMinorUnits } from "@projective/types/finance";
+import {
+	allowanceNotice,
+	allowanceNoticeText,
+	isDisplayCurrency,
+	toDisplayCurrency,
+	toMinorUnits,
+} from "@projective/types/finance";
 import {
 	AllowanceAccessError,
 	readProposalAllowance,
@@ -2584,14 +2589,15 @@ export class ProjectBackendService {
 		slug: string,
 		actor: ReadActor,
 		/**
-		 * A DEV-ONLY onboarding simulation from the Context Switcher, or absent.
+		 * A DEV-ONLY onboarding simulation from the Context Switcher — the raw `sim` query value, or
+		 * absent. An unrecognised value is treated as no simulation.
 		 *
 		 * Deliberately not applied to the live branch below. It decides what a client may still edit,
 		 * and a switch on somebody's own machine must not be able to tell a real database that a real
 		 * freelancer does or does not exist. `effectiveOnboardingSim` discards it outside development
 		 * as a second line, so a stray query param on a deployed instance changes nothing.
 		 */
-		sim?: OnboardingSim,
+		sim?: string | null,
 	): Promise<ServiceResult<{ setup: ProjectSetup }>> {
 		const live = await liveRead(
 			"setup",
@@ -2726,7 +2732,7 @@ export class ProjectBackendService {
 		 * disagree: the form would draw a lock the write then allowed, or refuse a field the form left
 		 * open. Ignored on the live branch and outside development, exactly as on the read.
 		 */
-		sim?: OnboardingSim,
+		sim?: string | null,
 	): Promise<ServiceResult<{ setup: ProjectSetup }>> {
 		const denied = requireIdentity<{ setup: ProjectSetup }>(actor, "edit this project");
 		if (denied) return denied;
@@ -3226,11 +3232,25 @@ export class ProjectBackendService {
 	 * stub did not do: it shaped a slug, persisted nothing, and returned success, so the modal
 	 * navigated to a page that answered 404. On the stub path the draft is written into the per-process
 	 * write store; on the live path it is inserted through the RLS-scoped client.
+	 *
+	 * **The currency is the client's choice, narrowed to a closed set the server already knows.** It
+	 * is the denomination every ticket price and escrow hold against this engagement is expressed in,
+	 * so it is validated rather than ignored: the modal ships a currency selector, and overwriting the
+	 * body unconditionally would silently discard that selection (root CLAUDE.md §3 gate 11). The body
+	 * wins when it names a member of `DISPLAY_CURRENCIES`; otherwise `fallbackCurrency` — the site-wide
+	 * money context the global middleware resolves, which honours a guest's cookie where the JWT claim
+	 * does not — narrowed to the platform base rather than refused, because a currency the caller never
+	 * typed is not a field they can correct.
 	 */
 	static async create(
-		input: CreateProject,
+		body: CreateProject,
 		actor: ReadActor,
+		fallbackCurrency?: string | null,
 	): Promise<ServiceResult<CreatedProject>> {
+		const chosen = body.currency.toUpperCase();
+		const currency = isDisplayCurrency(chosen) ? chosen : toDisplayCurrency(fallbackCurrency);
+		const input: CreateProject = { ...body, currency };
+
 		// A create genuinely needs an identity: `owner_user_id` is the column RLS checks against, and
 		// there is no coherent draft to mint without one. The reads answer a guest from the fixtures;
 		// this cannot.

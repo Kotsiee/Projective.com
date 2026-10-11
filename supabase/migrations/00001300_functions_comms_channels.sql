@@ -896,6 +896,43 @@ $$;
 COMMENT ON FUNCTION comms.set_dm_inbox_folder(uuid, text) IS
 'Set the caller''s own inbox folder (primary | requests | archived) for a thread they are an undeleted participant of. SECURITY DEFINER because dm_participants carries no client UPDATE policy.';
 
+-- Star or unstar a conversation for the caller only (the /saved system, Decision #174). Idempotent:
+-- setting the state it already has succeeds.
+CREATE OR REPLACE FUNCTION comms.set_dm_starred(
+    p_thread_id uuid,
+    p_starred boolean
+) RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, comms, auth
+AS $$
+DECLARE
+    v_me uuid := auth.uid();
+BEGIN
+    IF v_me IS NULL THEN
+        RAISE EXCEPTION 'set_dm_starred: no acting user' USING ERRCODE = '42501';
+    END IF;
+    IF p_starred IS NULL THEN
+        RAISE EXCEPTION 'starred: required' USING ERRCODE = '22023';
+    END IF;
+
+    UPDATE comms.dm_participants p
+    SET is_starred = p_starred
+    WHERE p.thread_id = p_thread_id
+      AND p.user_id = v_me
+      AND p.deleted_at IS NULL;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Not a participant of this conversation' USING ERRCODE = '42501';
+    END IF;
+
+    RETURN p_starred;
+END;
+$$;
+
+COMMENT ON FUNCTION comms.set_dm_starred(uuid, boolean) IS
+'Set the caller''s own star on a thread they are an undeleted participant of. SECURITY DEFINER because dm_participants carries no client UPDATE policy.';
+
 -- Post the opening message of a hiring request into the pair's DM, opening the thread if there is
 -- none. The caller must hold an OPEN engagement with the recipient on `p_project_id` — a pending
 -- invitation they issued, or a pending application of theirs to the recipient's project — so the

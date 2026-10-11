@@ -48,6 +48,7 @@ import type {
 } from "../types/projects-types.ts";
 import { IS_DEV } from "@web/utils/dev.ts";
 import { logger } from "@web/utils/logger.ts";
+import { toggleSaved } from "@features/saved/core/saved-state.ts";
 import {
 	type DevPersona,
 	type DevSeamState,
@@ -344,11 +345,16 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 		apply({ ...params.value, serviceId });
 	}
 
-	function onToggleStar(id: string): void {
-		// Optimistic UI flip; real persistence lands with the live backend (fixtures are immutable).
-		const flip = (rows: ProjectSummary[]) =>
-			rows.map((r) => (r.id === id ? { ...r, starred: !r.starred } : r));
-		payload.value = { ...payload.value, items: flip(payload.value.items) };
+	/** Star or unstar a project through the saved system (Decision #174), optimistic with rollback. */
+	async function onToggleStar(id: string): Promise<void> {
+		const row = payload.value.items.find((r) => r.id === id);
+		if (!row) return;
+		const set = (starred: boolean) => {
+			const rows = (items: ProjectSummary[]) => items.map((r) => (r.id === id ? { ...r, starred } : r));
+			payload.value = { ...payload.value, items: rows(payload.value.items) };
+		};
+		const out = await toggleSaved("project", row.slug, !row.starred, set);
+		if (out.message) notify(out.ok ? "success" : "danger", out.message);
 	}
 
 	function onMenuAction(id: string, action: CardMenuAction): void {

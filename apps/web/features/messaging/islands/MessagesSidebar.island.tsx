@@ -56,6 +56,7 @@ import {
 	InboxFolder,
 	type MessagingRole,
 } from "../types/messaging-types.ts";
+import { toggleSaved } from "@features/saved/core/saved-state.ts";
 
 /**
  * MessagesSidebar — the `/messages` inbox lane, the messaging counterpart of the `/projects` feed lane.
@@ -87,9 +88,8 @@ export interface MessagesSidebarProps {
 	path: string;
 }
 
-/** Local per-conversation state overrides. */
+/** Local per-conversation state overrides (the star is server state, Decision #174). */
 interface ConvPref {
-	starred?: boolean;
 	muted?: boolean;
 	deleted?: boolean;
 }
@@ -145,6 +145,10 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 	// The unfiltered full set — the source for the advanced-filter option lists (services/products/…).
 	const optionSource = useSignal<ConversationSummary[]>(props.initial.conversations);
 	const prefs = useSignal<Record<string, ConvPref>>({});
+	/** Optimistic stars over the server rows, until the next read carries them. */
+	const stars = useSignal<Record<string, boolean>>({});
+	/** The last star outcome, for the polite live region. */
+	const said = useSignal("");
 	const folder = useSignal<InboxFolder>("primary");
 	const view = useSignal<ConversationView>("inbox");
 	const q = useSignal("");
@@ -270,13 +274,14 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 	// #region Derived (merge prefs + folder moves → folder → view → quick filters)
 	const merged = useComputed<ConversationSummary[]>(() => {
 		const p = prefs.value;
+		const s = stars.value;
 		const moved = folderOverrides.value;
 		return serverList.value
 			.filter((c) => !p[c.id]?.deleted)
 			.map((c) =>
 				withFolder({
 					...c,
-					starred: p[c.id]?.starred ?? c.starred,
+					starred: s[c.id] ?? c.starred,
 					muted: p[c.id]?.muted ?? c.muted,
 				}, moved)
 			);
@@ -334,17 +339,18 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 	// #endregion
 
 	// #region Conversation-state actions (optimistic, persisted locally)
-	function mergedFlag(id: string, key: keyof ConvPref, base: boolean): boolean {
-		return prefs.value[id]?.[key] ?? base;
-	}
 	function updatePref(id: string, patch: ConvPref): void {
 		const next = { ...prefs.value, [id]: { ...prefs.value[id], ...patch } };
 		prefs.value = next;
 		writeStored("local", LocalKeys.CONVERSATION_PREFS, JSON.stringify(next));
 	}
-	function toggleStar(id: string): void {
-		const c = serverList.value.find((x) => x.id === id);
-		updatePref(id, { starred: !mergedFlag(id, "starred", c?.starred ?? false) });
+	/** Star or unstar through the saved system (Decision #174), optimistic with rollback. */
+	async function toggleStar(id: string): Promise<void> {
+		const c = merged.value.find((x) => x.id === id);
+		if (!c) return;
+		const out = await toggleSaved("conversation", id, !c.starred, (v) => (stars.value = { ...stars.value, [id]: v }));
+		if (out.ok) said.value = out.message;
+		else if (out.message) error.value = out.message;
 	}
 	async function move(id: string, to: InboxFolder): Promise<void> {
 		const from = merged.value.find((x) => x.id === id)?.folder;
@@ -486,6 +492,7 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 				}
 				<LaneList label="Conversations" busy={loading.value && !skeleton.value}>
 					<InboxLoadingStatus busy={skeleton.value} label="Loading conversations…" />
+					<p class="ui-visually-hidden" role="status" aria-live="polite">{said.value}</p>
 					{error.value && (
 						<div class="msg-lane-error" role="alert">
 							<p class="msg-lane-error__text">{error.value}</p>

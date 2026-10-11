@@ -18,6 +18,7 @@ import type {
 	TransactionListParams,
 	TransactionPage,
 	TransferInput,
+	WalletActionRequest,
 	WalletOverview,
 	WalletQuery,
 	WalletSwitcher,
@@ -243,6 +244,38 @@ export class WalletBackendService {
 
 	static enrolSmoother(input: IncomeSmootherEnrolInput, query: WalletQuery, actor: ReadActor) {
 		return write("smoother", () => actions.enrolSmoother(input, query, actor));
+	}
+
+	/** Perform one validated {@link WalletActionRequest} — the single dispatch behind `POST /api/wallet/action`. */
+	static perform(
+		input: WalletActionRequest,
+		query: WalletQuery,
+		actor: ReadActor,
+	): Promise<Result<{ result: WalletActionOutcome }>> {
+		switch (input.action) {
+			case "top_up":
+				return WalletBackendService.topUp(input, query, actor);
+			case "withdraw":
+				return WalletBackendService.withdraw(input, query, actor);
+			case "transfer":
+				return WalletBackendService.transfer(input, query, actor);
+			case "distribute":
+				return WalletBackendService.distribute(input, query, actor);
+			case "fund_escrow":
+				return WalletBackendService.fundEscrow(input, query, actor);
+			case "new_recurring":
+				return WalletBackendService.addRecurring(input, query, actor);
+			case "add_method":
+				return WalletBackendService.addMethod(input, query, actor);
+			case "set_payout":
+				return WalletBackendService.setPayout(input, query, actor);
+			case "request_spend":
+				return WalletBackendService.requestSpend(input, query, actor);
+			case "spend_decision":
+				return WalletBackendService.decideSpend(input, query, actor);
+			case "enrol_smoother":
+				return WalletBackendService.enrolSmoother(input, query, actor);
+		}
 	}
 	// #endregion
 

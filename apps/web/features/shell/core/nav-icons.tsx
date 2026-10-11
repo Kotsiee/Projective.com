@@ -41,11 +41,14 @@ export type IconName =
 	| "sun"
 	| "moon"
 	| "monitor"
-	| "clock";
+	| "clock"
+	| "saved";
 // #endregion
 
 const PATHS: Record<IconName, VNode> = {
 	home: <path d="M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z" />,
+	// The /saved destination — a bookmark, so it never reads as a rating star.
+	saved: <path d="M6 4.5h12v15l-6-4-6 4z" />,
 	explore: (
 		<>
 			<circle cx="12" cy="12" r="9" />

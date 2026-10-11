@@ -17,7 +17,7 @@ import { GoogleGlyph, InfoIcon, WarnIcon } from "./icons.tsx";
 import type { JoinStore } from "../core/wizardStore.ts";
 import { buildPayload, hasErrors, validateStep } from "../core/wizardValidation.ts";
 import { chainUnitOf, ENTER_CHAIN_SELECTOR, resolveEnterMove } from "../core/enter-chain.ts";
-import { AGE_MESSAGES, bracketFromDob } from "../core/age.ts";
+import { AGE_MESSAGES, bracketFromDob } from "@projective/types/auth";
 import { sanitizeHandle, suggestHandle } from "../core/validate.ts";
 import { COUNTRIES, EMPLOYEE_TIERS, INDUSTRIES } from "../core/options.ts";
 import { PURPOSES, SKILLS } from "../core/onboarding-data.ts";

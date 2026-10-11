@@ -12,6 +12,7 @@ import type {
 import type { ImagePlaceholder } from "@projective/types/files";
 import type { OwnerAvailability } from "@projective/types/scheduling";
 import type { ProfileResult } from "../types/results.ts";
+import type { FollowDirection, ProfileConnections } from "@projective/types/profile";
 
 /**
  * ProfileService — the THIN client profile service.
@@ -69,6 +70,17 @@ export const ProfileService = {
 			"PUT",
 			value,
 		);
+	},
+
+	/** One page of the profile's followers or (a person's) following. */
+	connections(
+		handle: string,
+		direction: FollowDirection,
+		cursor?: string | null,
+	): Promise<ProfileResult<ProfileConnections>> {
+		const q = new URLSearchParams({ direction });
+		if (cursor) q.set("cursor", cursor);
+		return getProfile<ProfileConnections>(`${base(handle)}/connections?${q}`);
 	},
 
 	/** Follow or unfollow the profile. */

@@ -357,6 +357,63 @@ export const AssetListParamsSchema = z.object({
 });
 export type AssetListParams = z.infer<typeof AssetListParamsSchema>;
 
+/** Split a comma-separated filter, keeping only recognised members; `undefined` when nothing survives. */
+function csvOf<T extends string>(allowed: readonly T[]) {
+	return z.string().optional().transform((raw) => {
+		const kept = raw?.split(",").map((value) => value.trim()).filter((value): value is T =>
+			(allowed as readonly string[]).includes(value)
+		);
+		return kept?.length ? kept : undefined;
+	});
+}
+
+/** A query param where an empty value means absent. */
+const queryText = z.string().optional().transform((raw) => raw || undefined);
+
+/**
+ * The `/api/files/list` QUERY STRING, decoded into {@link AssetListParamsSchema}. Input is the
+ * search params as a record (first value per key).
+ *
+ * An unrecognised filter value is DROPPED rather than failing the read: a stale bookmark carrying a
+ * retired kind should show the library, not an error page. Only a missing/unknown `scope` (the issue
+ * path the route reports separately) or an out-of-range value is refused.
+ */
+export const AssetListQuerySchema = z.object({
+	scope: FileScope,
+	subjectId: queryText,
+	channelId: queryText,
+	folderId: queryText,
+	/**
+	 * The deep-link path (`/files/a/b/c`). Each segment was encoded INDEPENDENTLY by the client, so a
+	 * folder literally named `a/b` cannot be read back as the nested pair `["a", "b"]`. A segment that
+	 * will not decode is kept verbatim: a malformed crumb should resolve to "no such folder", not a 500.
+	 */
+	path: z.string().optional().transform((raw) => {
+		const parts = (raw ?? "").split("/").filter((part) => part.length > 0).map((part) => {
+			try {
+				return decodeURIComponent(part);
+			} catch {
+				return part;
+			}
+		});
+		return parts.length > 0 ? parts : undefined;
+	}),
+	sort: FileSortKey.optional().catch(undefined),
+	dir: FileSortDir.optional().catch(undefined),
+	kinds: csvOf(FileKind.options),
+	sources: csvOf(AssetSource.options),
+	visibility: csvOf(AssetVisibility.options),
+	query: queryText,
+	cursor: z.string().optional().transform((raw) => raw || null),
+	limit: z.string().optional().transform((raw) => {
+		const limit = raw ? Number.parseInt(raw, 10) : undefined;
+		return Number.isFinite(limit) ? limit : undefined;
+	}),
+})
+	// Typed as the target's input, which Zod 4 `.pipe` requires; the values already fit it.
+	.transform((query): z.input<typeof AssetListParamsSchema> => query)
+	.pipe(AssetListParamsSchema);
+
 // #region Pure display helpers
 
 /** Human label for an asset's storage source — the byline fallback when there is no sender. */

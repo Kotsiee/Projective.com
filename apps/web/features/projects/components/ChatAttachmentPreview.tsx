@@ -8,6 +8,7 @@ import {
 	chatPreviewContext,
 } from "../core/chat-attachments.ts";
 import { AttachmentPreviewModal } from "./AttachmentPreviewModal.tsx";
+import { toggleSaved } from "@features/saved/core/saved-state.ts";
 
 /** One request to preview a message's attachments. */
 export interface ChatPreviewRequest {
@@ -74,7 +75,10 @@ export function ChatAttachmentPreview(
 			onRename={(fileId, name) => (names.value = { ...names.value, [fileId]: name })}
 			onToggleStar={(fileId) => {
 				const file = files.find((f) => f.id === fileId);
-				starred.value = { ...starred.value, [fileId]: !(file?.starred ?? false) };
+				if (!file) return;
+				return toggleSaved("file", file.assetId ?? file.id, !file.starred, (v) => {
+					starred.value = { ...starred.value, [fileId]: v };
+				});
 			}}
 			onGoToMessage={onGoToMessage}
 		/>

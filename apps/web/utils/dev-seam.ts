@@ -190,6 +190,14 @@ export type DevNotifications = "auto" | "empty" | "many" | "burst";
 export type DevBasketScenario = "auto" | "empty" | "multi_owner" | "unavailable";
 
 /**
+ * The simulated saved set (`/saved` and every star / save control, Decision #174): `empty` answers
+ * nothing saved; `many` answers saved items of every kind, in two collections, with follows. `auto`
+ * uses the real saved set. Client-side only: the thin `SavedService` substitutes its answers, and
+ * its writes change the simulated set, never the server.
+ */
+export type DevSaved = "auto" | "empty" | "many";
+
+/**
  * How the `/wallet` hero's live aurora is chosen. `auto` runs the shipping gates (reduced motion, data
  * saver, device memory, core count, page visibility) and the performance watchdog; `static` never
  * mounts the canvas, so the resting CSS gradient is what shows; `animated` skips the hardware and
@@ -317,6 +325,8 @@ export interface DevSeamState {
 	notifications?: DevNotifications;
 	/** The simulated basket. Optional like `walletAurora`; absent reads as `auto`. */
 	basketScenario?: DevBasketScenario;
+	/** The simulated saved set. Optional like `walletAurora`; absent reads as `auto`. */
+	saved?: DevSaved;
 }
 // #endregion
 
@@ -450,6 +460,7 @@ const AUTO_FUND_MODES: readonly DevAutoFundMode[] = ["auto", "off", "add_to_bask
 const LOW_BALANCES: readonly DevLowBalance[] = ["auto", "below", "above"];
 const NOTIFICATION_SIMS: readonly DevNotifications[] = ["auto", "empty", "many", "burst"];
 const BASKET_SCENARIOS: readonly DevBasketScenario[] = ["auto", "empty", "multi_owner", "unavailable"];
+const SAVED_SIMS: readonly DevSaved[] = ["auto", "empty", "many"];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */
 function coerce<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -506,6 +517,7 @@ export function readDevSeam(): DevSeamState | null {
 		sessionState: coerce(ds.devSessionState, SESSION_STATES, "auto"),
 		notifications: coerce(ds.devNotifications, NOTIFICATION_SIMS, "auto"),
 		basketScenario: coerce(ds.devBasketScenario, BASKET_SCENARIOS, "auto"),
+		saved: coerce(ds.devSaved, SAVED_SIMS, "auto"),
 	};
 }
 

@@ -217,6 +217,9 @@ Deno.test("the simulation is refused outside development", () => {
 		// `auto` and absence are the same request either way.
 		assertEquals(effectiveOnboardingSim(undefined), "auto");
 		assertEquals(effectiveOnboardingSim("auto"), "auto");
+		// The raw query value is validated here, so an unknown one is no simulation even in development.
+		assertEquals(effectiveOnboardingSim("bogus"), "auto");
+		assertEquals(effectiveOnboardingSim(null), "auto");
 	} finally {
 		if (prior === undefined) Deno.env.delete("DENO_ENV");
 		else Deno.env.set("DENO_ENV", prior);

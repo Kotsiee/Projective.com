@@ -327,15 +327,15 @@ function rolesFor(structure: ProjectStructure, slug: string): ProjectRoleSetup[]
  *
  * The union is declared HERE rather than imported from `apps/web/utils/dev-seam.ts` because the
  * boundary runs the other way: `@projective/backend` is a workspace member the app depends on, and
- * an import back into `apps/web` would invert it (root CLAUDE.md §2). The thin route validates the
- * incoming string against these members, so the two cannot drift without failing a type check.
+ * an import back into `apps/web` would invert it (root CLAUDE.md §2). {@link effectiveOnboardingSim}
+ * validates the raw query string against these members, so routes never import this module.
  *
  * `auto` is the absence of a simulation and is spelled out rather than left to `undefined` so the
  * switcher's default and the wire's default are one value.
  */
 export type OnboardingSim = "auto" | "none" | "first_stage" | "all_stages";
 
-/** Whether a string is one of them — the route's guard, so a caller cannot smuggle anything else. */
+/** Whether a string is one of them, so a caller cannot smuggle anything else. */
 export function isOnboardingSim(raw: string): raw is OnboardingSim {
 	return raw === "auto" || raw === "none" || raw === "first_stage" || raw === "all_stages";
 }
@@ -351,8 +351,8 @@ export function isOnboardingSim(raw: string): raw is OnboardingSim {
  * The server decides, never the client: `DENO_ENV` is read here rather than trusted from a header,
  * because a switch that a caller could assert into existence is not a gate.
  */
-export function effectiveOnboardingSim(sim: OnboardingSim | undefined): OnboardingSim {
-	if (!sim || sim === "auto") return "auto";
+export function effectiveOnboardingSim(sim: string | null | undefined): OnboardingSim {
+	if (!sim || !isOnboardingSim(sim) || sim === "auto") return "auto";
 	return serverEnv().appEnv === "development" ? sim : "auto";
 }
 

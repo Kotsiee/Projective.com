@@ -84,7 +84,13 @@ export function ProductCard(
 				onSelect={onSelect}
 				label={`${item.title} by ${item.owner.name} — ${item.price}`}
 			/>
-			<CardActions title={item.title} href={itemHref(item, ctx)} authed={authed} />
+			<CardActions
+				title={item.title}
+				href={itemHref(item, ctx)}
+				id={item.id}
+				type={item.type}
+				authed={authed}
+			/>
 
 			<div class="ex-media ex-media--product">
 				<ProgressiveImage
