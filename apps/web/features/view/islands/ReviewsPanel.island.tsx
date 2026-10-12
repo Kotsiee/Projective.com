@@ -208,7 +208,7 @@ function ReviewCard({ review }: { review: EntityReview }): JSX.Element {
 					<span class="vw-review__id">
 						<span class="vw-review__name">
 							{a.name}
-							{a.verified ? <VerifiedBadge size="sm" kind={a.kind} /> : null}
+							<VerifiedBadge owner={a} size="sm" />
 						</span>
 						<span class="vw-review__handle">{a.handle}</span>
 					</span>

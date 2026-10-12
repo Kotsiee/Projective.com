@@ -408,11 +408,11 @@
     color: var(--on-surface);
 }
 
-.pf .ex-verified {
-    --icon-knockout: var(--surface);
-
-    color: var(--on-surface);
-}
+/*
+ * The verification crest is deliberately NOT monochromed here. It is a claim, not chrome: the hero
+ * above draws it in the shared stamp ink (`verification-stamp.css`, Decision #155), and the same
+ * owner's crest on a reused card must read as the same mark on this page and on /explore.
+ */
 
 .pf .ex-stars--single,
 .pf .ex-stars__fill {

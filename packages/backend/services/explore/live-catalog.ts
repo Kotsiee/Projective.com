@@ -16,6 +16,7 @@ import type {
 } from "@projective/types/explore";
 import type { ImagePlaceholder } from "@projective/types/files";
 import { currencyExponent, toMajorUnits } from "@projective/types/finance";
+import { type VerificationStamp, VerificationStampSchema } from "@projective/types/org";
 
 /**
  * live-catalog — the discovery corpus, read from Postgres.
@@ -53,6 +54,15 @@ import { currencyExponent, toMajorUnits } from "@projective/types/finance";
  */
 
 // #region Row shapes (the columns this module selects)
+
+/**
+ * A directory row's `verification_stamp`, parsed. An unknown value is ABSENT, never `none`, so the
+ * renderer falls back to `stampForVerifiedOwner` rather than erasing a crest it cannot read.
+ */
+export function stampOf(raw: string | null | undefined): VerificationStamp | undefined {
+	const parsed = VerificationStampSchema.safeParse(raw);
+	return parsed.success ? parsed.data : undefined;
+}
 
 /** One row of the public profile directory (`org.profiles_index`). */
 export interface ProfileRow {
@@ -99,6 +109,8 @@ export interface ProfileRow {
 	 */
 	standing_level: number | null;
 	standing_label: string | null;
+	/** The owner's verification crest — the same derivation `org.get_profile_view` uses. */
+	verification_stamp: string | null;
 }
 
 interface ListingRow {
@@ -427,7 +439,7 @@ async function readCatalog(): Promise<Catalog> {
 		await Promise
 			.all([
 				db.schema("org").from("profiles_index").select(
-					"entity_id, entity_type, handle, name, headline, languages, location, city, rating_as_client, reviews_as_client, rating_as_freelancer, reviews_as_freelancer, active_project_count, total_project_count, member_count, listed, avatar_bucket, avatar_path, banner_bucket, banner_path, verified, skills, workload, joined_at, verification_tier, language_codes, delivered_count, showcase_bucket, showcase_path, standing_level, standing_label",
+					"entity_id, entity_type, handle, name, headline, languages, location, city, rating_as_client, reviews_as_client, rating_as_freelancer, reviews_as_freelancer, active_project_count, total_project_count, member_count, listed, avatar_bucket, avatar_path, banner_bucket, banner_path, verified, skills, workload, joined_at, verification_tier, language_codes, delivered_count, showcase_bucket, showcase_path, standing_level, standing_label, verification_stamp",
 				),
 				db.schema("catalogue").from("listings").select(
 					"id, owner_user_id, owner_team_id, kind, service_blueprint_id, product_id, title, description_text, category, delivery_label, amount_cents, currency, ticket_price_cents, session_price_cents, seats_per_session, free_revisions, extra_revision_price_cents, promoted, published_at, created_at",
@@ -791,6 +803,7 @@ export function assemble(input: Inputs): Catalog {
 			avatar: publicObjectUrl(row.avatar_bucket, row.avatar_path) ?? "",
 			kind: row.entity_type,
 			verified: row.verified,
+			verificationStamp: stampOf(row.verification_stamp),
 		};
 	};
 
@@ -1059,6 +1072,7 @@ export function assemble(input: Inputs): Catalog {
 				avatar: publicObjectUrl(p.avatar_bucket, p.avatar_path) ?? "",
 				kind: p.entity_type,
 				verified: p.verified,
+				verificationStamp: stampOf(p.verification_stamp),
 			},
 			skills,
 			rating: dualRating(p),

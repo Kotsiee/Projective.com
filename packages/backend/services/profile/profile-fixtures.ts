@@ -354,10 +354,12 @@ function tierFor(kind: ProfileKind, verified: boolean, seed: number): Verificati
 	return "L1";
 }
 
-/** The crest, consistent with {@link tierFor}: an entity is corporate, a verified person half payout. */
-function stampFor(kind: ProfileKind, verified: boolean, seed: number): VerificationStamp {
+/** The crest: the discovery row's own when it has one; else a verified entity is corporate, a verified person half payout. */
+function stampFor(owner: ExploreOwner, kind: ProfileKind, seed: number): VerificationStamp {
+	// The discovery row's own crest wins, so a card and the profile it opens draw the same mark.
+	if (owner.verificationStamp) return owner.verificationStamp;
+	if (!owner.verified) return "none";
 	if (kind === "business" || kind === "organisation") return "corporate_verified";
-	if (!verified) return "none";
 	return seed % 2 === 0 ? "vault_verified" : "id_verified";
 }
 
@@ -584,7 +586,7 @@ export function findProfile(handle: string): ProfileView | null {
 		verified,
 		tier,
 		verifications: tiersUpTo(tier),
-		verificationStamp: stampFor(kind, verified, seed),
+		verificationStamp: stampFor(owner, kind, seed),
 		adornments: adornmentsFor(kind, seed),
 		followers: 120 + (seed % 900),
 		following: 40 + (seed % 300),

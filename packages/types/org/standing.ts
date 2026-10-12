@@ -121,6 +121,23 @@ export function stampForVerifiedOwner(verified: boolean | undefined, kind: strin
 	if (!verified) return "none";
 	return kind === "business" || kind === "organisation" ? "corporate_verified" : "id_verified";
 }
+
+/** The verification facts any owner attribution carries (an explore owner, a review author, a seller line). */
+export interface VerifiableOwner {
+	verified?: boolean;
+	kind: string;
+	verificationStamp?: VerificationStamp;
+}
+
+/**
+ * The ONE crest an owner attribution renders: its projected stamp when the producer read one (the
+ * same authority the owner's profile hero draws), else {@link stampForVerifiedOwner}. Every crest
+ * beside an owner's name resolves through here, so the profile and the discovery surfaces cannot
+ * disagree about the same person.
+ */
+export function ownerVerificationStamp(owner: VerifiableOwner): VerificationStamp {
+	return owner.verificationStamp ?? stampForVerifiedOwner(owner.verified, owner.kind);
+}
 // #endregion
 
 // #region Trust signals — adornments

@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { Avatar, RatingStars, VerificationStampBadge } from "@projective/ui/display";
-import { stampForVerifiedOwner } from "@projective/types/org";
+import { ownerVerificationStamp } from "@projective/types/org";
 // `profile-skeleton.css` is load-bearing here, not cosmetic reuse: the GUEST shell keys its sub-header glass
 // underlay, hairline and elevation off the literal selector
 // `.guest-shell__subheader:has(.pf-stickyhead[data-condensed="true"])`, and `profile-skeleton.css` supplies the
@@ -110,7 +110,7 @@ export default function EntityStickyHeader(
 					/>
 					<span class="evp-stickyhead__handle">@{handle}</span>
 					<VerificationStampBadge
-						stamp={stampForVerifiedOwner(owner.verified, owner.kind)}
+						stamp={ownerVerificationStamp(owner)}
 						size="xs"
 						mode="decorative"
 						class="evp-stickyhead__crest"

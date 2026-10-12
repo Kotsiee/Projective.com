@@ -1,5 +1,5 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
-import { type Catalog, loadCatalog, readProjectPreview } from "./live-catalog.ts";
+import { type Catalog, loadCatalog, readProjectPreview, stampOf } from "./live-catalog.ts";
 import { getAnonClient } from "../../core/supabase.ts";
 import { publicObjectUrl } from "../../core/storage-url.ts";
 import { buildLiveViewPage, composeViewPage, NO_REVIEWS } from "./live-view.ts";
@@ -373,6 +373,7 @@ export class ExploreBackendService {
 						avatar: publicObjectUrl(author.avatar_bucket, author.avatar_path) ?? "",
 						kind: author.entity_type,
 						verified: author.verified,
+						verificationStamp: stampOf(author.verification_stamp),
 					},
 					role: author.headline ?? "",
 				});

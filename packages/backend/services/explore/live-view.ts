@@ -4,7 +4,7 @@ import { PIPELINE_HIGH, PIPELINE_LOW } from "./pricing.ts";
 import { lowestActivePrice } from "./query.ts";
 import { resolveSkill } from "./skills.ts";
 import type { Catalog, CatalogMedia, ProfileRow } from "./live-catalog.ts";
-import { displayPrice, peekCatalog } from "./live-catalog.ts";
+import { displayPrice, peekCatalog, stampOf } from "./live-catalog.ts";
 import {
 	type ArticleAsset,
 	type ArticleBlock,
@@ -364,6 +364,7 @@ function authorOf(row: ProfileRow | undefined): ExploreOwner {
 		avatar: publicObjectUrl(row.avatar_bucket, row.avatar_path) ?? "",
 		kind: row.entity_type,
 		verified: row.verified,
+		verificationStamp: stampOf(row.verification_stamp),
 	};
 }
 

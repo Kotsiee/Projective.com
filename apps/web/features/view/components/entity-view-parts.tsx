@@ -3,7 +3,7 @@ import { Icon } from "@projective/ui/icons";
 import { Avatar, RatingStars, VerificationStampBadge } from "@projective/ui/display";
 import { displayCurrency, displayLocale, formatMoney } from "@projective/ui/display/money";
 import type { EntitySeller, EntityView } from "@projective/types/explore";
-import { stampForVerifiedOwner } from "@projective/types/org";
+import { ownerVerificationStamp } from "@projective/types/org";
 import type { SeatCapacity } from "../core/entity-archetype.ts";
 import { OWNER_KIND_LABEL, sellerBadges } from "../core/view-model.ts";
 import { personFallbackImage } from "@web/components/UserAvatar.tsx";
@@ -381,7 +381,7 @@ export function SellerLine(
 				)}
 				<span class="evp-seller__name">{item.owner.name}</span>
 				<VerificationStampBadge
-					stamp={stampForVerifiedOwner(item.owner.verified, item.owner.kind)}
+					stamp={ownerVerificationStamp(item.owner)}
 					size="sm"
 					class="evp-seller__crest"
 				/>

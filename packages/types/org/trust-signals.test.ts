@@ -4,7 +4,9 @@ import {
 	AdornmentDimension,
 	AdornmentSlugSchema,
 	PUBLIC_ADORNMENT_LIMIT,
+	ownerVerificationStamp,
 	rankAdornments,
+	stampForVerifiedOwner,
 	stampRank,
 	VERIFICATION_STAMP_META,
 	VerificationStampSchema,
@@ -78,3 +80,21 @@ Deno.test("verification stamps — each earned stamp has its own crest", () => {
 	assertEquals(new Set(glyphs).size, glyphs.length);
 	for (const meta of Object.values(VERIFICATION_STAMP_META)) assert(meta.authority.length > 0);
 });
+
+// #region Owner crest resolution
+Deno.test("ownerVerificationStamp — a projected stamp wins, so a card draws the profile's crest", () => {
+	assertEquals(
+		ownerVerificationStamp({ verified: true, kind: "freelancer", verificationStamp: "vault_verified" }),
+		"vault_verified",
+	);
+	// A projected `none` is authoritative too: the profile hero draws nothing for this owner.
+	assertEquals(ownerVerificationStamp({ verified: true, kind: "freelancer", verificationStamp: "none" }), "none");
+});
+
+Deno.test("ownerVerificationStamp — without a stamp it falls back to the identity ⁄ corporate rule", () => {
+	for (const kind of ["user", "freelancer", "team", "business", "organisation"]) {
+		assertEquals(ownerVerificationStamp({ verified: true, kind }), stampForVerifiedOwner(true, kind));
+		assertEquals(ownerVerificationStamp({ verified: false, kind }), "none");
+	}
+});
+// #endregion

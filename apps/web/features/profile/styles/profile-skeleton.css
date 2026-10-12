@@ -354,19 +354,6 @@
     white-space: nowrap;
 }
 
-/*
- * On the ramp, not near it. 0.95rem resolves to 15.2px, and a fractional box half-pixels the crest's
- * stroke on every device-pixel boundary it crosses (§B.7.3) — a mark whose whole job is to look
- * authoritative rendered slightly soft. `--icon-sm` is 1rem, the nearest step.
- */
-.pf-stickyhead__verified {
-    inline-size: var(--icon-sm);
-    block-size: var(--icon-sm);
-    color: var(--primary);
-    /* The ground the knocked-out check is cut out of — see `icon.css`'s knockout channel. */
-    --icon-knockout: var(--on-primary);
-}
-
 .pf-stickyhead__handle {
     font-size: 0.8rem;
     color: var(--text-secondary);

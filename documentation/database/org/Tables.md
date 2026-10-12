@@ -727,7 +727,7 @@ may only add trailing columns):
 | `city`                              | The location line's city.                                                                            |
 | `avatar_bucket` / `avatar_path`     | The avatar's storage object — only for a file that is itself `public`. Never a URL: the URL is a deployment fact built by `packages/backend/core/storage-url.ts`. |
 | `banner_bucket` / `banner_path`     | Same, for the banner.                                                                               |
-| `verified`                          | The verified crest.                                                                                  |
+| `verified`                          | KYC/KYB passed (the "Verified only" filter); the crest drawn is `verification_stamp`.                                                                                  |
 | `skills`                            | `org.skills` slugs.                                                                                  |
 | `workload`                          | Current workload intensity (the card's capacity meter).                                              |
 | `joined_at`                         |                                                                                                      |
@@ -736,6 +736,7 @@ may only add trailing columns):
 | `delivered_count`                   | Completed `projects.stage_assignments` for the freelancer or the team; 0 for a business.            |
 | `showcase_bucket` / `showcase_path` | _(appended 2026-09-23)_ Showcase **slot 1** — the profile's primary thumbnail — as a storage object: the `org.profile_showcase_items` row at position 1, joined to a live, `public` file. The discovery card leads with it and falls back to the banner (`live-catalog.ts`); NULL when the slot is empty. |
 | `standing_level` / `standing_label` | _(appended 2026-09-23)_ A SELLER's earned Standing rung (a freelancer or a team) from `org.entity_standing` joined to `org.standing_levels`. `org.entity_standing` is readable only by a signed-in caller, so this is how a guest sees the rung a listing and a card print. Same rule as `org.get_public_profile`: a seller with no computed row reads as level 1 ("New"); a buyer-only account and a business carry NULL. |
+| `verification_stamp` | _(appended 2026-10-12)_ The owner's verification crest (Decision #155): a person's `org.entity_standing.verification_stamp` (`none` when no row exists, read whether or not they sell), a business's `corporate_verified` once its KYB is `verified`, and `none` for a team. The same rule `org.get_profile_view` applies, so explore cards, review bylines and listing seller lines draw the crest the profile hero draws (resolves Decision #155(g)). |
 
 ---
 

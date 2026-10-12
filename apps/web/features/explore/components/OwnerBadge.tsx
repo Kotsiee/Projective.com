@@ -69,7 +69,7 @@ export function OwnerBadge(
 						<span class="ex-owner__nametext">{owner.name}</span>
 					</span>
 				</a>
-				{owner.verified && <VerifiedBadge size="sm" kind={owner.kind} />}
+				<VerifiedBadge owner={owner} size="sm" />
 			</span>
 		);
 	}
@@ -90,7 +90,7 @@ export function OwnerBadge(
 			<span class="ex-owner__id">
 				<span class="ex-owner__name">
 					<span class="ex-owner__nametext">{owner.name}</span>
-					{owner.verified && <VerifiedBadge size={size === "md" ? "md" : "sm"} kind={owner.kind} />}
+					<VerifiedBadge owner={owner} size={size === "md" ? "md" : "sm"} />
 				</span>
 				<a class="ex-owner__handle" href={href}>{owner.handle}</a>
 			</span>

@@ -58,6 +58,7 @@ const OWNERS = {
 		avatarPlaceholder: placeholder("1600880292203-757bb62b4baf", 160, 160),
 		kind: "team",
 		verified: true,
+		verificationStamp: "id_verified",
 	},
 	maris: {
 		handle: "@marisdelacroix",
@@ -66,6 +67,7 @@ const OWNERS = {
 		avatarPlaceholder: placeholder("1494790108377-be9c29b29330", 160, 160),
 		kind: "freelancer",
 		verified: true,
+		verificationStamp: "vault_verified",
 	},
 	north: {
 		handle: "@northloop",
@@ -81,6 +83,7 @@ const OWNERS = {
 		avatarPlaceholder: placeholder("1507003211169-0a1dd7228f2d", 160, 160),
 		kind: "freelancer",
 		verified: true,
+		verificationStamp: "id_verified",
 	},
 	fern: {
 		handle: "@studiofern",
@@ -103,6 +106,7 @@ const OWNERS = {
 		avatarPlaceholder: placeholder("1611974789855-9c2a0a7236a3", 160, 160),
 		kind: "business",
 		verified: true,
+		verificationStamp: "corporate_verified",
 	},
 	atlas: {
 		handle: "@atlaslabs",
