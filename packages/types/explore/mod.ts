@@ -8,3 +8,4 @@ export * from "./suggest.ts";
 export * from "./telemetry.ts";
 export * from "./signals.ts";
 export * from "./bookmarks.ts";
+export * from "./embeddings.ts";

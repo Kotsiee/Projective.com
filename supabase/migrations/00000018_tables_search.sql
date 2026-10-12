@@ -4,6 +4,8 @@
 --       interest_events), 0219_search_engine_weights.sql (search_weights).
 -- Folded ALTER:
 --   * search.query_logs += entity_type, duration_ms, result_count, matched_density  (0218)
+-- Embeddings (Decision #179): voyage-4 at 1024 dimensions, unit length, nullable until the backfill
+-- runs. Written only by search.fn_set_embedding; never selectable by anon/authenticated (00002520).
 -- =============================================================================================
 
 CREATE TABLE search.profiles_index (
@@ -12,7 +14,10 @@ CREATE TABLE search.profiles_index (
     display_name text NOT NULL,
     headline text,
     fts tsvector,
-    embedding vector(1536),
+    embedding vector(1024),
+    embedding_model text,
+    embedding_hash text,
+    embedded_at timestamp with time zone,
     metadata jsonb DEFAULT '{}'::jsonb,
 
     rating_average numeric(3,2) DEFAULT 0.0,
@@ -30,7 +35,10 @@ CREATE TABLE search.projects_index (
     project_id uuid PRIMARY KEY REFERENCES projects.projects (id) ON DELETE CASCADE,
     title text NOT NULL,
     fts tsvector,
-    embedding vector (1536),
+    embedding vector(1024),
+    embedding_model text,
+    embedding_hash text,
+    embedded_at timestamp with time zone,
     industry_category_id uuid,
     status text,
     target_start_date timestamp
@@ -46,13 +54,32 @@ CREATE TABLE search.services_index (
     service_id uuid PRIMARY KEY REFERENCES marketplace.service_blueprints (id) ON DELETE CASCADE,
     title text NOT NULL,
     fts tsvector,
-    embedding vector (1536),
+    embedding vector(1024),
+    embedding_model text,
+    embedding_hash text,
+    embedded_at timestamp with time zone,
     is_public boolean DEFAULT true,
     rating_average numeric(3, 2) DEFAULT 0.0,
     rating_count integer DEFAULT 0,
     updated_at timestamp
     with
         time zone DEFAULT now()
+);
+
+-- Products and articles — the two discovery entities no other index covers (Decision #179). One table
+-- for both, keyed like profiles_index; kept by the catalogue.listings / catalogue.articles triggers.
+CREATE TABLE search.catalogue_index (
+    entity_type text NOT NULL CHECK (entity_type IN ('product', 'article')),
+    entity_id uuid NOT NULL,
+    title text NOT NULL,
+    fts tsvector,
+    embedding vector(1024),
+    embedding_model text,
+    embedding_hash text,
+    embedded_at timestamp with time zone,
+    is_public boolean NOT NULL DEFAULT false,
+    updated_at timestamp with time zone DEFAULT now(),
+    PRIMARY KEY (entity_type, entity_id)
 );
 
 CREATE TABLE search.user_affinity (
@@ -70,7 +97,7 @@ CREATE TABLE search.query_logs (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id uuid REFERENCES org.users_public(user_id),
     search_query text NOT NULL,
-    query_embedding vector(1536),
+    query_embedding vector(1024),
     filters_applied jsonb DEFAULT '{}'::jsonb,
     created_at timestamp with time zone DEFAULT now(),
     -- Folded (0218): execution analytics columns.

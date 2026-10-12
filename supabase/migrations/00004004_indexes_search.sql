@@ -1,11 +1,14 @@
 -- Indexes: search (from 0010, 0218)
 
-CREATE INDEX idx_profiles_vector ON search.profiles_index USING hnsw (embedding vector_cosine_ops);
+-- voyage-4 vectors are unit length, so inner product ranks as cosine (Decision #179).
+CREATE INDEX idx_profiles_vector ON search.profiles_index USING hnsw (embedding vector_ip_ops);
 CREATE INDEX idx_profiles_fts ON search.profiles_index USING GIN (fts);
-CREATE INDEX idx_projects_vector ON search.projects_index USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX idx_projects_vector ON search.projects_index USING hnsw (embedding vector_ip_ops);
 CREATE INDEX idx_projects_fts ON search.projects_index USING GIN (fts);
-CREATE INDEX idx_services_vector ON search.services_index USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX idx_services_vector ON search.services_index USING hnsw (embedding vector_ip_ops);
 CREATE INDEX idx_services_fts ON search.services_index USING GIN (fts);
+CREATE INDEX idx_catalogue_vector ON search.catalogue_index USING hnsw (embedding vector_ip_ops);
+CREATE INDEX idx_catalogue_fts ON search.catalogue_index USING GIN (fts);
 CREATE INDEX idx_user_affinity ON search.user_affinity (user_id, affinity_score DESC);
 CREATE INDEX idx_query_logs_string ON search.query_logs (search_query);
 

@@ -19,7 +19,11 @@
  */
 
 import type { AutoFundMode, FundingState } from "@projective/types/finance";
-import type { DiscoveryActivitySim, DiscoveryViewerSim } from "@projective/types/explore";
+import type {
+	DiscoveryActivitySim,
+	DiscoveryViewerSim,
+	EmbeddingsOverride,
+} from "@projective/types/explore";
 import { IS_DEV } from "./dev.ts";
 
 // #region Contract
@@ -214,6 +218,14 @@ export type DevDiscoveryViewer = DiscoveryViewerSim;
 export type DevDiscoveryActivity = DiscoveryActivitySim;
 
 /**
+ * Discovery's embeddings switch (Decision #179): `auto` follows `EMBEDDINGS_ENABLED`; `on` / `off`
+ * override it for this browser. SERVER-side: the switcher mirrors it into the `pj.dev.embeddings`
+ * cookie, which only a development build reads, and a discovery page reloads to apply it. Turning it
+ * on still needs `VOYAGE_API_KEY`.
+ */
+export type DevEmbeddings = "auto" | EmbeddingsOverride;
+
+/**
  * How the `/wallet` hero's live aurora is chosen. `auto` runs the shipping gates (reduced motion, data
  * saver, device memory, core count, page visibility) and the performance watchdog; `static` never
  * mounts the canvas, so the resting CSS gradient is what shows; `animated` skips the hardware and
@@ -347,6 +359,8 @@ export interface DevSeamState {
 	discoveryViewer?: DevDiscoveryViewer;
 	/** The simulated discovery activity cold start. Optional like `walletAurora`; absent reads as `auto`. */
 	discoveryActivity?: DevDiscoveryActivity;
+	/** The embeddings switch override. Optional like `walletAurora`; absent reads as `auto`. */
+	embeddings?: DevEmbeddings;
 }
 // #endregion
 
@@ -483,6 +497,7 @@ const BASKET_SCENARIOS: readonly DevBasketScenario[] = ["auto", "empty", "multi_
 const PROMO_DISMISSALS: readonly DevPromoDismissal[] = ["auto", "visible", "dismissed"];
 const DISCOVERY_VIEWERS: readonly DevDiscoveryViewer[] = ["auto", "no_history", "no_signals"];
 const DISCOVERY_ACTIVITIES: readonly DevDiscoveryActivity[] = ["auto", "quiet"];
+const EMBEDDINGS_MODES: readonly DevEmbeddings[] = ["auto", "on", "off"];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */
 function coerce<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -542,6 +557,7 @@ export function readDevSeam(): DevSeamState | null {
 		promoDismissal: coerce(ds.devPromoDismissal, PROMO_DISMISSALS, "auto"),
 		discoveryViewer: coerce(ds.devDiscoveryViewer, DISCOVERY_VIEWERS, "auto"),
 		discoveryActivity: coerce(ds.devDiscoveryActivity, DISCOVERY_ACTIVITIES, "auto"),
+		embeddings: coerce(ds.devEmbeddings, EMBEDDINGS_MODES, "auto"),
 	};
 }
 

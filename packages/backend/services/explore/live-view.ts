@@ -4,7 +4,9 @@ import { PIPELINE_HIGH, PIPELINE_LOW } from "./pricing.ts";
 import { lowestActivePrice } from "./query.ts";
 import { resolveSkill } from "./skills.ts";
 import type { Catalog, CatalogMedia, ProfileRow } from "./live-catalog.ts";
-import { displayPrice, peekCatalog } from "./live-catalog.ts";
+import { displayPrice, entityKey, peekCatalog } from "./live-catalog.ts";
+import { nearestToEntity } from "../search/embedding-index.ts";
+import { reportEmbeddingFallback } from "../search/EmbeddingBackendService.ts";
 import {
 	type ArticleAsset,
 	type ArticleBlock,
@@ -277,6 +279,8 @@ function moreByOwner(catalog: Catalog, item: ExploreItem): ExploreItem[] {
 		.slice(0, 8);
 }
 
+const SIMILAR_LIMIT = 8;
+
 /** The lower-cased skill labels an item lists — the overlap key the project "Similar" rail ranks on. */
 function skillKeys(it: ExploreItem): Set<string> {
 	return new Set(it.skills.map((s) => s.label.trim().toLowerCase()).filter((k) => k.length > 0));
@@ -310,7 +314,7 @@ function similarTo(catalog: Catalog, item: ExploreItem): ExploreItem[] {
 			})
 			.filter((s) => s.shared > 0)
 			.sort((a, b) => b.score - a.score)
-			.slice(0, 8)
+			.slice(0, SIMILAR_LIMIT)
 			.map((s) => s.it);
 	}
 	const category = (it: ExploreItem) =>
@@ -324,8 +328,44 @@ function similarTo(catalog: Catalog, item: ExploreItem): ExploreItem[] {
 				(it.owner.verified ? 1 : 0),
 		}))
 		.sort((a, b) => b.score - a.score)
-		.slice(0, 8)
+		.slice(0, SIMILAR_LIMIT)
 		.map((s) => s.it);
+}
+
+/**
+ * The "Similar" rail from voyage-4 vectors (Decision #179): the same type's public items nearest this
+ * item's STORED vector (`search.fn_nearest_to_entity`), excluding the item and everything its owner
+ * published, best first, topped up from {@link similarTo} under the same exclusions. `null` — the
+ * caller then keeps the heuristic rail — when the item has no vector yet or any read fails (logged).
+ */
+export async function semanticSimilarTo(
+	catalog: Catalog,
+	item: ExploreItem,
+): Promise<ExploreItem[] | null> {
+	const entity = catalog.entityById.get(item.id);
+	if (!entity) return null;
+	const sameOwner = (it: ExploreItem) => it.owner.handle === item.owner.handle;
+	try {
+		const owned = catalog.items.filter(sameOwner).flatMap((it) => {
+			const e = catalog.entityById.get(it.id);
+			return e ? [e.id] : [];
+		});
+		const rows = await nearestToEntity(entity, [entity.kind], owned, SIMILAR_LIMIT * 2);
+		const picks: ExploreItem[] = [];
+		for (const row of rows) {
+			const id = catalog.itemIdByEntity.get(entityKey(row.entity_type, row.entity_id));
+			const it = id ? catalog.byId.get(id) : undefined;
+			if (it && it.id !== item.id && it.type === item.type && !sameOwner(it)) picks.push(it);
+			if (picks.length === SIMILAR_LIMIT) break;
+		}
+		if (picks.length === 0) return null;
+		const chosen = new Set(picks.map((it) => it.id));
+		const topUp = similarTo(catalog, item).filter((it) => !chosen.has(it.id) && !sameOwner(it));
+		return [...picks, ...topUp].slice(0, SIMILAR_LIMIT);
+	} catch (error) {
+		reportEmbeddingFallback("the Similar rail", error);
+		return null;
+	}
 }
 
 // #endregion

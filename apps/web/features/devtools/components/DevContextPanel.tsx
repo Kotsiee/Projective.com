@@ -1,4 +1,4 @@
-import type { JSX } from "preact";
+import type { ComponentChildren, JSX } from "preact";
 import "../styles/dev-context.css";
 import type { UserContext } from "@projective/types/auth";
 import {
@@ -24,6 +24,7 @@ import {
 	DEV_PROMO_DISMISSALS,
 	DEV_DISCOVERY_VIEWERS,
 	DEV_DISCOVERY_ACTIVITIES,
+	DEV_EMBEDDINGS,
 	DEV_ROLES,
 	DEV_SERVICE_TYPES,
 	DEV_SESSION_BOOKINGS,
@@ -43,6 +44,7 @@ import {
 } from "../core/dev-context.ts";
 import { openMoneyFlow } from "@features/checkout/core/money-flow-state.ts";
 import { DevThemeControls } from "./DevThemeControls.tsx";
+import { DevEmbeddingsStatus } from "./DevEmbeddingsStatus.tsx";
 
 // #region Props
 /** Props for {@link DevContextPanel}. */
@@ -53,7 +55,7 @@ export interface DevContextPanelProps {
 // #endregion
 
 /** A labelled row wrapping a segmented control or toggle. */
-function Field(props: { label: string; hint?: string; children: JSX.Element }): JSX.Element {
+function Field(props: { label: string; hint?: string; children: ComponentChildren }): JSX.Element {
 	return (
 		<div class="dev-ctx__field">
 			<div class="dev-ctx__label">
@@ -80,6 +82,11 @@ function reloadProjectPage(): void {
  */
 function reloadExplorePage(): void {
 	if (globalThis.location?.pathname === "/explore") globalThis.location.reload();
+}
+
+function reloadDiscoveryPage(): void {
+	const path = globalThis.location?.pathname ?? "";
+	if (path === "/explore" || path.includes("/view/")) globalThis.location.reload();
 }
 
 /** A segmented single-choice control. */
@@ -642,6 +649,20 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 							reloadExplorePage();
 						}}
 					/>
+				</Field>
+
+				<Field label="Embeddings" hint="voyage-4 ranking · reloads">
+					<Segment
+						name="Embeddings"
+						options={DEV_EMBEDDINGS}
+						value={o.embeddings}
+						disabled={!o.enabled}
+						onChange={(embeddings) => {
+							patchDevContext({ embeddings });
+							reloadDiscoveryPage();
+						}}
+					/>
+					<DevEmbeddingsStatus mode={o.embeddings} enabled={o.enabled} />
 				</Field>
 
 				{

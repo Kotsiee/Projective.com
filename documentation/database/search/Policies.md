@@ -26,3 +26,20 @@ governs direct PostgREST writes, not the app path.
 Grants: `INSERT` to `anon` and `authenticated`, `SELECT` to `authenticated`, `ALL` to
 `service_role`. There is no UPDATE or DELETE policy: rows are append-only. A writer can attribute a
 row to themselves or to nobody, never to someone else.
+
+## `search.profiles_index` · `projects_index` · `services_index` · `catalogue_index`
+
+| Table             | Policy                                 | Command | Rule                                |
+| :---------------- | :------------------------------------- | :------ | :---------------------------------- |
+| `profiles_index`  | Public can view profile search index   | SELECT  | `is_active = true`                  |
+| `projects_index`  | Public can view project search index   | SELECT  | `is_active = true`                  |
+| `services_index`  | Public can view service search index   | SELECT  | `is_public = true`                  |
+| `catalogue_index` | Public can view catalogue search index | SELECT  | `is_public = true` (Decision #179)  |
+
+**Column grants (Decision #179, `00002520`).** The rows are public; their vectors are not. The
+table-level SELECT `00002500` gives `anon` and `authenticated` on every `search` table is revoked on
+these four and on `query_logs`, then granted again column by column without `embedding`,
+`embedding_model`, `embedding_hash` and `embedded_at` (`query_embedding` on `query_logs`). A PostgREST
+select naming one of them — or `*` — is refused with `42501`; the discovery catalogue's penalty read
+(`entity_id, discovery_penalty`) is unaffected. `service_role` keeps `ALL`. There is no write policy:
+the sync triggers and `search.fn_set_embedding` are definers.

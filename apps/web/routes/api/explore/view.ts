@@ -1,5 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { toExploreResponse } from "@features/explore/core/respond.ts";
+import { semanticRankingFor } from "@features/explore/core/discovery-ranking.ts";
 import { ExploreBackendService } from "@server/services/explore/ExploreBackendService.ts";
 
 /**
@@ -17,6 +18,10 @@ export const handler = define.handlers({
 		if (!id) {
 			return Response.json({ ok: false, message: "Missing item id." }, { status: 400 });
 		}
-		return toExploreResponse(await ExploreBackendService.viewPage(id));
+		const result = await ExploreBackendService.viewPage(id, {
+			semantic: semanticRankingFor(ctx.req),
+		});
+		ctx.state.discoveryRanking = result.ranking;
+		return toExploreResponse(result);
 	},
 });

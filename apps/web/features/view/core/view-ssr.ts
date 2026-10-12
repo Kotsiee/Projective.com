@@ -1,5 +1,5 @@
 import { ExploreBackendService } from "@server/services/explore/ExploreBackendService.ts";
-import type { EntityView } from "@projective/types/explore";
+import type { DiscoveryRanking, EntityView } from "@projective/types/explore";
 import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
@@ -44,14 +44,16 @@ function remember(id: string, view: EntityView | null): void {
  * Resolve the composed view page for `id` — the route handler's call. `error` distinguishes "this
  * listing does not exist" (404, render not-found) from "the marketplace could not be read" (503,
  * render the error state), which are different pages for a reader and must not share one.
+ * `semantic` is the request's embeddings switch; `ranking` says how the "Similar" rail was chosen.
  */
 export async function resolveViewPage(
 	id: string,
-): Promise<{ view: EntityView | undefined; status: number }> {
-	const result = await ExploreBackendService.viewPage(id);
+	semantic = false,
+): Promise<{ view: EntityView | undefined; status: number; ranking: DiscoveryRanking }> {
+	const result = await ExploreBackendService.viewPage(id, { semantic });
 	const view = result.ok ? result.data : undefined;
 	remember(id, view ?? null);
-	return { view, status: result.status };
+	return { view, status: result.status, ranking: result.ranking };
 }
 
 /**

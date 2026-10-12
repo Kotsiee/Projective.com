@@ -9,6 +9,7 @@ import type {
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { invalidateCatalog } from "../explore/live-catalog.ts";
+import { reembedInBackground } from "../search/embedding-sync.ts";
 import {
 	createListing,
 	listingDetail,
@@ -42,6 +43,14 @@ const UNREACHABLE = fail(503, { message: "We couldn't reach your catalogue just 
  */
 function published<T>(result: Result<T>): Result<T> {
 	if (result.ok) invalidateCatalog();
+	return result;
+}
+
+function reembedded(
+	result: Result<{ listing: ListingDetail }>,
+	reason: string,
+): Result<{ listing: ListingDetail }> {
+	if (result.ok && result.data) reembedInBackground([result.data.listing.id], reason);
 	return result;
 }
 
@@ -87,7 +96,11 @@ export class CatalogueBackendService {
 
 	/** Persist an editable patch over a listing (autosave / manual save). */
 	static update(patch: UpdateListingInput, actor: ReadActor): Promise<Result<{ listing: ListingDetail }>> {
-		return guarded("update", actor, async (a) => published(await updateListing(patch, a)));
+		return guarded(
+			"update",
+			actor,
+			async (a) => reembedded(published(await updateListing(patch, a)), "a listing save"),
+		);
 	}
 
 	/**
@@ -95,6 +108,10 @@ export class CatalogueBackendService {
 	 * the gate (title + a price + ≥1 image) in the database and answers 422 with what is missing.
 	 */
 	static setStatus(input: SetListingStatusInput, actor: ReadActor): Promise<Result<{ listing: ListingDetail }>> {
-		return guarded("status", actor, async (a) => published(await setListingStatus(input, a)));
+		return guarded(
+			"status",
+			actor,
+			async (a) => reembedded(published(await setListingStatus(input, a)), "a listing status change"),
+		);
 	}
 }

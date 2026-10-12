@@ -125,6 +125,7 @@ import { findFixtureRequest, findMemberRoster } from "./members-fixtures.ts";
 import { findStubLinkRequest, stubLinkRequests } from "./invite-link-store.ts";
 import { archiveDraft, getDraft, instantiateDraft, sweepStaleDrafts } from "./draft-store.ts";
 import { composeLoadedViewPage } from "../explore/live-view.ts";
+import { reembedInBackground } from "../search/embedding-sync.ts";
 import {
 	approveStageRow,
 	exitStageRow,
@@ -2742,6 +2743,7 @@ export class ProjectBackendService {
 				return { data: { setup: outcome.data } };
 			},
 		);
+		if (live?.ok && live.data) reembedInBackground([live.data.setup.slug], "a project save");
 		if (live) return live;
 
 		const owner = writeOwnerOf(actor);

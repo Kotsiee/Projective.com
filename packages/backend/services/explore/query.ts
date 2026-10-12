@@ -151,6 +151,17 @@ export function inCategory(item: ExploreItem, category: ExploreParams["category"
 	return (CATEGORY_TYPES[category] ?? [category]).includes(item.type);
 }
 
+/** The entity formats a category covers, or `null` for `all` — the same scopes as {@link inCategory}. */
+export function categoryEntities(category: ExploreParams["category"]): ExploreEntity[] | null {
+	if (category === "all") return null;
+	return CATEGORY_TYPES[category] ?? [category];
+}
+
+/** Whether a sort is one a reader chose; every other value is the default "recommended" order. */
+export function isExplicitSort(sort: string): boolean {
+	return sort === "rating" || sort === "price_asc" || sort === "newest";
+}
+
 function matchesQuery(item: ExploreItem, q: string): boolean {
 	if (!q) return true;
 	const hay = [

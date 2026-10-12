@@ -5,6 +5,7 @@ import { resolveViewPage } from "@features/view/core/view-ssr.ts";
 import { resolveEntityCommerce } from "@features/view/core/booking-ssr.ts";
 import { viewerFromState } from "@features/calendar/core/viewer.ts";
 import { recordViewInBackground } from "@features/explore/core/record-view.ts";
+import { rankingHeaders, semanticRankingFor } from "@features/explore/core/discovery-ranking.ts";
 
 /**
  * `/view/[item_id]?type=[entity_type]` — the public standalone Entity View page (the Explore click
@@ -16,7 +17,10 @@ import { recordViewInBackground } from "@features/explore/core/record-view.ts";
  */
 export const handler = define.handlers({
 	async GET(ctx) {
-		const { view, status } = await resolveViewPage(ctx.params.entity);
+		const { view, status, ranking } = await resolveViewPage(
+			ctx.params.entity,
+			semanticRankingFor(ctx.req),
+		);
 		ctx.state.title = view ? `${view.item.title} · Projective` : "Not found · Projective";
 		if (view) {
 			ctx.state.description = view.item.summary;
@@ -40,7 +44,7 @@ export const handler = define.handlers({
 			schedule: commerce.schedule,
 			// The page renders its own not-found / unavailable state, and the STATUS says so too — a
 			// crawler or a link checker must not record a missing listing as a live 200.
-		}, { status: view ? 200 : status });
+		}, { status: view ? 200 : status, headers: rankingHeaders(ranking) });
 	},
 });
 

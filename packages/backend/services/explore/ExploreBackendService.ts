@@ -1,6 +1,7 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import {
 	type Catalog,
+	entityKey,
 	loadCatalog,
 	type PlacementSurface,
 	readProjectPreview,
@@ -8,14 +9,23 @@ import {
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
 import { serverEnv } from "../../core/env.ts";
 import { publicObjectUrl } from "../../core/storage-url.ts";
-import { buildLiveViewPage, composeViewPage, NO_REVIEWS } from "./live-view.ts";
+import { buildLiveViewPage, composeViewPage, NO_REVIEWS, semanticSimilarTo } from "./live-view.ts";
 import { ANONYMOUS_READER, canReadLive, type ReadActor } from "../read-actor.ts";
 import { logDiscoveryQuery } from "../search/query-log.ts";
+import { EmbeddingBackendService, reportEmbeddingFallback } from "../search/EmbeddingBackendService.ts";
+import { nearestTo } from "../search/embedding-index.ts";
 import { getResults, groupResults, rankRecommended, relatedSearches } from "./query.ts";
+import {
+	nearestKindsFor,
+	SEMANTIC_POOL,
+	semanticResults,
+	type SemanticSimilarity,
+	similarityFrom,
+} from "./semantic.ts";
 import { suggestFrom } from "./suggest.ts";
 import { NO_PERSONAL_RAILS, personalRails, topicsOf, trendingRail } from "./personalise.ts";
 import { ownHandlesOf, readViewerSignals } from "./viewer-signals.ts";
-import { type DiscoverySim, NO_DISCOVERY_SIM } from "@projective/types/explore";
+import { type DiscoveryRanking, type DiscoverySim, NO_DISCOVERY_SIM } from "@projective/types/explore";
 import type {
 	ArticleItem,
 	CtaPromo,
@@ -95,6 +105,36 @@ const HOME_SURFACE: PlacementSurface = "explore_home";
 // #endregion
 
 // #region Composition
+
+/**
+ * A result that also says how its discovery content was ordered (Decision #179). Transport metadata on
+ * the envelope, like `session`: the route turns it into the development-only `x-discovery-ranking`
+ * header and it never reaches the JSON body.
+ */
+export type RankedResult<T> = ServiceResult<T> & { ranking: DiscoveryRanking };
+
+function ranked<T>(result: ServiceResult<T>, ranking: DiscoveryRanking): RankedResult<T> {
+	return { ...result, ranking };
+}
+
+async function querySimilarity(
+	catalog: Catalog,
+	params: ExploreParams,
+): Promise<{ similarity: SemanticSimilarity; vector: number[] } | null> {
+	try {
+		const embedded = await EmbeddingBackendService.embedQuery(params.q);
+		if (!embedded.ok || !embedded.data) {
+			reportEmbeddingFallback("search", embedded.message ?? "no query vector");
+			return null;
+		}
+		const rows = await nearestTo(embedded.data, nearestKindsFor(params.category), [], SEMANTIC_POOL);
+		const similarity = similarityFrom(rows, (kind, id) => catalog.itemIdByEntity.get(entityKey(kind, id)));
+		return similarity.size > 0 ? { similarity, vector: embedded.data } : null;
+	} catch (error) {
+		reportEmbeddingFallback("search", error);
+		return null;
+	}
+}
 
 /** The error every read returns when the discovery load itself failed. */
 function unavailable<T>(error: unknown): ServiceResult<T> {
@@ -221,8 +261,11 @@ function searchFrom(
 	params: ExploreParams,
 	offset: number,
 	limit: number,
+	similarity?: SemanticSimilarity,
 ): SearchPayload {
-	const results = getResults(catalog.items, params, catalog.scoreById);
+	const results = similarity
+		? semanticResults(catalog.items, params, catalog.scoreById, similarity)
+		: getResults(catalog.items, params, catalog.scoreById);
 	const related = relatedSearches(catalog.items, params);
 	if (params.category === "all") {
 		return {
@@ -252,16 +295,30 @@ export class ExploreBackendService {
 	/**
 	 * Run a discovery search. Returns the grouped merged sections (cross-category) or a single page of
 	 * the isolated-category feed, plus the real count and related terms.
+	 *
+	 * `semantic` is the caller's `isEmbeddingsLive(req)` (Decision #179): when it holds and there is a
+	 * query, the results are re-ranked and topped up with voyage-4 similarity; any Voyage or database
+	 * failure falls back to the heuristic search for this request (logged once), and `ranking` says
+	 * which one ran.
 	 */
 	static async search(
-		input: { params: ExploreParams; offset?: number; limit?: number; actor?: ReadActor },
-	): Promise<ServiceResult<SearchPayload>> {
+		input: {
+			params: ExploreParams;
+			offset?: number;
+			limit?: number;
+			actor?: ReadActor;
+			semantic?: boolean;
+		},
+	): Promise<RankedResult<SearchPayload>> {
 		const offset = Math.max(0, input.offset ?? 0);
 		const limit = Math.min(FEED_MAX, Math.max(1, input.limit ?? FEED_PAGE));
 		const started = performance.now();
 		try {
 			const catalog = await loadCatalog();
-			const payload = searchFrom(catalog, input.params, offset, limit);
+			const semantic = input.semantic && input.params.q.trim()
+				? await querySimilarity(catalog, input.params)
+				: null;
+			const payload = searchFrom(catalog, input.params, offset, limit, semantic?.similarity);
 			// A later page of the same feed is not a new search, so only the first page is logged.
 			if (offset === 0) {
 				const { category } = input.params;
@@ -272,11 +329,12 @@ export class ExploreBackendService {
 						? catalog.items.length
 						: catalog.items.filter((it) => it.type === category).length,
 					durationMs: performance.now() - started,
+					queryEmbedding: semantic?.vector,
 				}).catch((error) => console.error("[explore] search.fn_log_query failed", error));
 			}
-			return ok(payload);
+			return ranked(ok(payload), semantic ? "semantic" : "heuristic");
 		} catch (error) {
-			return unavailable(error);
+			return ranked(unavailable(error), "heuristic");
 		}
 	}
 
@@ -307,6 +365,8 @@ export class ExploreBackendService {
 		if (!canReadLive(input.actor)) return ok(feed);
 		try {
 			const signals = await readViewerSignals(input.actor, catalog, sim.viewer, Date.now());
+			// #region Semantic personalisation hook (ranking-v1: user vectors re-rank the personal rails)
+			// #endregion
 			return ok({ ...feed, personal: personalRails(catalog, signals, catalog.weights) });
 		} catch (error) {
 			console.error("[explore] the viewer pass failed; serving the shared Home feed", error);
@@ -412,18 +472,29 @@ export class ExploreBackendService {
 	/**
 	 * The composed Entity View page (`/view/[id]`): the item plus its gallery, resolved pricing/trust
 	 * facts, deliverables, cross-sell rails, reviews and its type-specific extension.
+	 *
+	 * With `semantic` (the caller's `isEmbeddingsLive(req)`), the "Similar" rail comes from the item's
+	 * stored voyage-4 vector instead of the heuristic, which stays the answer when the item has no
+	 * vector or the read fails; `ranking` says which one ran.
 	 */
-	static async viewPage(id: string): Promise<ServiceResult<EntityView>> {
+	static async viewPage(
+		id: string,
+		options: { semantic?: boolean } = {},
+	): Promise<RankedResult<EntityView>> {
 		try {
 			const catalog = await loadCatalog();
 			const item = catalog.byId.get(id);
 			if (!item || item.type === "users" || item.type === "freelancers" ||
 				item.type === "teams" || item.type === "businesses") {
-				return fail(404, { message: `No item found for id "${id}".` });
+				return ranked(fail(404, { message: `No item found for id "${id}".` }), "heuristic");
 			}
-			return ok(await buildLiveViewPage(catalog, item));
+			const [view, similar] = await Promise.all([
+				buildLiveViewPage(catalog, item),
+				options.semantic ? semanticSimilarTo(catalog, item) : Promise.resolve(null),
+			]);
+			return similar ? ranked(ok({ ...view, similar }), "semantic") : ranked(ok(view), "heuristic");
 		} catch (error) {
-			return unavailable(error);
+			return ranked(unavailable(error), "heuristic");
 		}
 	}
 

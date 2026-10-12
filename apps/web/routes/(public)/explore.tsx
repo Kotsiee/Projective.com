@@ -8,6 +8,7 @@ import { resolveTokenContext } from "@web/utils/user-context.ts";
 import { ExploreScreen } from "@features/explore/components/ExploreScreen.tsx";
 import { isResultsMode, parseExploreParams } from "@features/explore/core/explore-state.ts";
 import { DISCOVERY_SIM_COOKIE, parseDiscoverySim } from "@features/explore/core/discovery-sim.ts";
+import { rankingHeaders, semanticRankingFor } from "@features/explore/core/discovery-ranking.ts";
 import { ExploreBackendService } from "@server/services/explore/ExploreBackendService.ts";
 import { NO_DISCOVERY_SIM } from "@projective/types/explore";
 
@@ -44,14 +45,18 @@ export const handler = define.handlers({
 			const label = params.q || params.category;
 			ctx.state.title = `${label} · Explore · Projective`;
 			ctx.state.description = `Search results for ${label} on Projective.`;
-			const res = await ExploreBackendService.search({ params, actor: readActor(ctx) });
+			const res = await ExploreBackendService.search({
+				params,
+				actor: readActor(ctx),
+				semantic: semanticRankingFor(ctx.req),
+			});
 			return page({
 				params,
 				initial: res.ok ? res.data : undefined,
 				home: undefined,
 				authed,
 				viewerFreelancer,
-			}, { headers });
+			}, { headers: [...headers, ...rankingHeaders(res.ranking)] });
 		}
 
 		ctx.state.title = "Explore · Projective";
@@ -67,7 +72,7 @@ export const handler = define.handlers({
 			home: res.ok ? res.data : undefined,
 			authed,
 			viewerFreelancer,
-		}, { headers });
+		}, { headers: [...headers, ...rankingHeaders("heuristic")] });
 	},
 });
 

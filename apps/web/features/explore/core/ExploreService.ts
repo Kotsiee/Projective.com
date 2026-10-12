@@ -4,6 +4,7 @@ import { BACKGROUND_HEADER } from "@web/utils/offline.ts";
 import { logger } from "@web/utils/logger.ts";
 import type { ExploreParams } from "../types/explore-types.ts";
 import type {
+	EmbeddingsStatus,
 	EntityView,
 	ExploreItem,
 	HomeFeed,
@@ -108,6 +109,15 @@ export const ExploreService = {
 				reason: error instanceof Error ? error.message : String(error),
 			})
 		);
+	},
+
+	/**
+	 * DEVELOPMENT ONLY — the embeddings switch as the server resolves it for this browser, with what
+	 * decided it (Decision #179): the Dev Context Switcher's status line. The route answers 404 in a
+	 * production build.
+	 */
+	ranking(): Promise<ExploreResult<EmbeddingsStatus>> {
+		return getExplore<EmbeddingsStatus>("/api/explore/ranking");
 	},
 };
 

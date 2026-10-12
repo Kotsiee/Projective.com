@@ -25,6 +25,12 @@ FOR EACH ROW EXECUTE FUNCTION search.sync_business_to_index();
 CREATE TRIGGER trg_sync_service_search AFTER INSERT OR UPDATE ON marketplace.service_blueprints
 FOR EACH ROW EXECUTE FUNCTION search.sync_service_to_index();
 
+CREATE TRIGGER trg_sync_product_listing_search AFTER INSERT OR UPDATE ON catalogue.listings
+FOR EACH ROW EXECUTE FUNCTION search.sync_product_listing_to_index();
+
+CREATE TRIGGER trg_sync_article_search AFTER INSERT OR UPDATE ON catalogue.articles
+FOR EACH ROW EXECUTE FUNCTION search.sync_article_to_index();
+
 CREATE TRIGGER trg_update_ratings
 AFTER INSERT OR UPDATE OR DELETE ON reviews.entity_reviews
 FOR EACH ROW EXECUTE FUNCTION reviews.recalculate_entity_rating();
@@ -32,15 +38,3 @@ FOR EACH ROW EXECUTE FUNCTION reviews.recalculate_entity_rating();
 CREATE TRIGGER trg_update_project_counts
 AFTER INSERT OR UPDATE OF status OR DELETE ON projects.projects
 FOR EACH ROW EXECUTE FUNCTION projects.update_entity_project_counts();
-
-CREATE TRIGGER trg_fill_embedding_profiles
-  BEFORE INSERT OR UPDATE ON search.profiles_index
-  FOR EACH ROW EXECUTE FUNCTION search.fn_fill_mock_embedding('display_name', 'entity_id');
-
-CREATE TRIGGER trg_fill_embedding_projects
-  BEFORE INSERT OR UPDATE ON search.projects_index
-  FOR EACH ROW EXECUTE FUNCTION search.fn_fill_mock_embedding('title', 'project_id');
-
-CREATE TRIGGER trg_fill_embedding_services
-  BEFORE INSERT OR UPDATE ON search.services_index
-  FOR EACH ROW EXECUTE FUNCTION search.fn_fill_mock_embedding('title', 'service_id');

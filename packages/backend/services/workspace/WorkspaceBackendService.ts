@@ -21,6 +21,7 @@ import { callRpc, isLive, type LiveActor, signedOut, unavailable } from "./live-
 import { readRoster } from "./live-roster.ts";
 import { readDetail } from "./live-detail.ts";
 import * as writes from "./live-writes.ts";
+import { reembedInBackground } from "../search/embedding-sync.ts";
 
 /**
  * WorkspaceBackendService — the FAT half of the multi-member entity console (`/teams`, `/businesses`),
@@ -99,12 +100,19 @@ export class WorkspaceBackendService {
 		return guarded("create", actor, (live) => writes.createWorkspace(input, live));
 	}
 
-	/** Patch identity (name · tagline) through `update_workspace`, lifecycle through `set_workspace_status`. */
+	/**
+	 * Patch identity (name · tagline) through `update_workspace`, lifecycle through `set_workspace_status`.
+	 * A committed change refreshes the entity's discovery vector in the background (Decision #179).
+	 */
 	static update(
 		input: UpdateWorkspaceInput,
 		actor: ReadActor,
 	): Promise<ServiceResult<WorkspaceDetail>> {
-		return guarded("update", actor, (live) => writes.updateWorkspace(input, live));
+		return guarded("update", actor, async (live) => {
+			const res = await writes.updateWorkspace(input, live);
+			if (res.ok && res.data) reembedInBackground([res.data.handle], "a workspace update");
+			return res;
+		});
 	}
 
 	// #endregion

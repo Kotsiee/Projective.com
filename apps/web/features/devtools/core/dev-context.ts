@@ -21,6 +21,7 @@ import type { ContextRole, ContextType, UserContext } from "@projective/types/au
 import type { ProjectAccess, ProjectStatus } from "@projective/types/projects";
 import { encodeLandingSim, LANDING_SIM_COOKIE } from "@features/projects/core/landing-sim.ts";
 import { DISCOVERY_SIM_COOKIE, encodeDiscoverySim } from "@features/explore/core/discovery-sim.ts";
+import { EMBEDDINGS_OVERRIDE_COOKIE } from "@projective/types/explore";
 import { logger } from "@web/utils/logger.ts";
 import { readStored, removeStored, SessionKeys, writeStored } from "@web/utils/storage-keys.ts";
 import {
@@ -44,6 +45,7 @@ import {
 	type DevPromoDismissal,
 	type DevDiscoveryViewer,
 	type DevDiscoveryActivity,
+	type DevEmbeddings,
 	type DevSeamRole,
 	type DevServiceType,
 	type DevSessionBookingStatus,
@@ -97,6 +99,7 @@ export type {
 	DevWalletAurora,
 	DevDiscoveryViewer,
 	DevDiscoveryActivity,
+	DevEmbeddings,
 };
 
 /** The full override set. `enabled` is the master switch — when off, {@link applyDevContext} is a pass-through. */
@@ -293,6 +296,12 @@ export interface DevOverrides {
 	 * Server-side, through the same cookie; otherwise three accounts must open the same thing to flip it.
 	 */
 	discoveryActivity: DevDiscoveryActivity;
+	/**
+	 * Discovery's voyage-4 ranking (Decision #179): follow `EMBEDDINGS_ENABLED`, or force it on or off
+	 * for this browser — search re-ranking and the `/view` "Similar" rail. Server-side, through the
+	 * `pj.dev.embeddings` cookie; otherwise flipping it means editing the environment and restarting.
+	 */
+	embeddings: DevEmbeddings;
 }
 
 /** Selectable option metadata for the switcher UI. */
@@ -343,6 +352,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	promoDismissal: "auto",
 	discoveryViewer: "auto",
 	discoveryActivity: "auto",
+	embeddings: "auto",
 };
 
 /** Account-type options in display order. */
@@ -612,6 +622,13 @@ export const DEV_DISCOVERY_ACTIVITIES: ReadonlyArray<DevOption<DevDiscoveryActiv
 	{ value: "quiet", label: "Quiet platform" },
 ];
 
+/** Discovery embeddings options (Decision #179). `Follow env` defers to `EMBEDDINGS_ENABLED`. */
+export const DEV_EMBEDDINGS: ReadonlyArray<DevOption<DevEmbeddings>> = [
+	{ value: "auto", label: "Follow env" },
+	{ value: "on", label: "On" },
+	{ value: "off", label: "Off" },
+];
+
 // #endregion
 
 // #region Store
@@ -718,6 +735,8 @@ function reflect(next: DevOverrides): void {
 		if (next.discoveryActivity !== "auto") {
 			root.dataset.devDiscoveryActivity = next.discoveryActivity;
 		} else delete root.dataset.devDiscoveryActivity;
+		if (next.embeddings !== "auto") root.dataset.devEmbeddings = next.embeddings;
+		else delete root.dataset.devEmbeddings;
 		root.dataset.devDirection = next.layoutDirection;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
 		// properties everywhere mean the shell and every surface mirror to the opposite edge.
@@ -761,13 +780,21 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devPromoDismissal;
 		delete root.dataset.devDiscoveryViewer;
 		delete root.dataset.devDiscoveryActivity;
+		delete root.dataset.devEmbeddings;
 		delete root.dataset.devDirection;
 		// Restore the document's natural direction (the pref-driven default, LtR here).
 		root.removeAttribute("dir");
 	}
 	writeLandingCookie(next);
 	writeDiscoveryCookie(next);
+	writeEmbeddingsCookie(next);
 	globalThis.dispatchEvent?.(new CustomEvent(DEV_SEAM_EVENT, { detail: next }));
+}
+
+function writeEmbeddingsCookie(next: DevOverrides): void {
+	document.cookie = next.enabled && next.embeddings !== "auto"
+		? `${EMBEDDINGS_OVERRIDE_COOKIE}=${next.embeddings}; path=/; samesite=lax`
+		: `${EMBEDDINGS_OVERRIDE_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 /**

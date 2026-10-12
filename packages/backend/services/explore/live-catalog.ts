@@ -450,14 +450,17 @@ export async function warmCatalog(): Promise<void> {
 }
 
 /**
- * Install a catalogue as the latest snapshot WITHOUT reading the database — for unit tests of the
- * synchronous resolvers (`findItem`, `composeLoadedViewPage`) and nothing else. Build one from rows
- * with {@link assemble}. `null` clears it. The next awaited {@link loadCatalog} still reads the
- * database: this only changes what {@link peekCatalog} answers.
+ * Install a catalogue as the latest snapshot WITHOUT reading the database — for unit tests only. Build
+ * one from rows with {@link assemble}. `null` clears it. By default the next awaited
+ * {@link loadCatalog} still reads the database and only {@link peekCatalog} changes; with `serve` the
+ * awaited loads answer with it too for one TTL, for service-level tests that must not reach Postgres.
  */
-export function primeCatalogForTesting(catalog: Catalog | null): void {
+export function primeCatalogForTesting(
+	catalog: Catalog | null,
+	options: { serve?: boolean } = {},
+): void {
 	latest = catalog;
-	cached = null;
+	cached = catalog && options.serve ? { at: Date.now(), value: Promise.resolve(catalog) } : null;
 }
 
 // #endregion

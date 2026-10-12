@@ -33,12 +33,6 @@ EXECUTE ON ALL FUNCTIONS IN SCHEMA search TO anon,
 authenticated,
 service_role;
 
--- --- from 0217_search_engine_pgvector.sql ---
-
-GRANT
-EXECUTE ON FUNCTION search.fn_mock_embedding (text) TO authenticated,
-service_role;
-
 -- --- from 0219_search_engine_weights.sql ---
 
 GRANT
@@ -66,7 +60,8 @@ EXECUTE ON FUNCTION search.fn_search_entities (
     text,
     integer,
     integer,
-    uuid
+    uuid,
+    public.vector
 ) TO anon,
 authenticated,
 service_role;
@@ -84,7 +79,8 @@ EXECUTE ON FUNCTION search.fn_log_query (
     integer,
     integer,
     integer,
-    uuid
+    uuid,
+    public.vector
 ) TO anon,
 authenticated,
 service_role;
@@ -112,6 +108,20 @@ GRANT EXECUTE ON FUNCTION search.trending_entities (integer, integer) TO anon, a
 REVOKE EXECUTE ON FUNCTION search.record_view (text, uuid, text[]) FROM PUBLIC, anon;
 
 GRANT EXECUTE ON FUNCTION search.record_view (text, uuid, text[]) TO authenticated, service_role;
+-- #endregion
+
+-- #region search: embeddings (00001400, Decision #179)
+-- Read doors over public index rows: ids and scores only, never a vector. The discovery service
+-- calls them as `anon`, like the rest of the shared catalogue.
+GRANT EXECUTE ON FUNCTION search.fn_nearest (public.vector, text[], uuid[], integer) TO anon, authenticated, service_role;
+
+GRANT EXECUTE ON FUNCTION search.fn_nearest_to_entity (text, uuid, text[], uuid[], integer) TO anon, authenticated, service_role;
+
+-- The only writer of the embedding columns: the backfill script and the post-commit re-embed, both
+-- with the service-role key. The schema-wide grant above reached PUBLIC, anon and authenticated.
+REVOKE EXECUTE ON FUNCTION search.fn_set_embedding (text, uuid, public.vector, text, text) FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION search.fn_set_embedding (text, uuid, public.vector, text, text) TO service_role;
 -- #endregion
 
 -- --- from 0304_onboarding_session_and_audit.sql ---

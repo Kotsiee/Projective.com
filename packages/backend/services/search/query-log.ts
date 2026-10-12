@@ -2,6 +2,7 @@ import type { ExploreParams } from "@projective/types/explore";
 import { isExploreBackendLive } from "../../core/supabase.ts";
 import type { ReadActor } from "../read-actor.ts";
 import { writeTelemetry } from "../telemetry-writer.ts";
+import { vectorLiteral } from "./embedding-index.ts";
 
 /** One executed discovery query, as `search.fn_log_query` records it. */
 export interface DiscoveryQueryLog {
@@ -10,6 +11,8 @@ export interface DiscoveryQueryLog {
 	/** Items in the searched category before filtering — the `matched_density` denominator. */
 	candidatePool: number;
 	durationMs: number;
+	/** The voyage-4 query vector, when semantic ranking ran (Decision #179); otherwise absent. */
+	queryEmbedding?: readonly number[];
 }
 
 /**
@@ -29,5 +32,6 @@ export async function logDiscoveryQuery(actor: ReadActor, log: DiscoveryQueryLog
 			p_result_count: log.resultCount,
 			p_duration_ms: Math.round(log.durationMs),
 			p_candidate_pool: log.candidatePool,
+			...(log.queryEmbedding ? { p_query_embedding: vectorLiteral(log.queryEmbedding) } : {}),
 		}));
 }

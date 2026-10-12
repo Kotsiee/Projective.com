@@ -18,8 +18,9 @@ import { EntityCard } from "../components/cards/EntityCard.tsx";
 import { ProductMasonryGrid } from "../components/collections/ProductMasonryGrid.tsx";
 import { ProjectsList } from "../components/collections/ProjectsList.tsx";
 import { ArticlesGrid } from "../components/collections/ArticlesGrid.tsx";
-import { DetailPanel } from "../components/DetailPanel.tsx";
+import { ResultDetailDrawer } from "../components/ResultDetailDrawer.tsx";
 import { CardSkeletonGrid } from "../components/CardSkeleton.tsx";
+import { resultOrder } from "../core/detail-nav.ts";
 import { activeFilterConfigs } from "../core/filter-config.ts";
 import { ExploreService } from "../core/ExploreService.ts";
 import { bridgeCommit, bridgeFacets, bridgeParams } from "../core/filter-bridge.ts";
@@ -33,6 +34,7 @@ import {
 } from "../core/explore-state.ts";
 import type { HrefContext } from "../core/routing.ts";
 import { recordSearch } from "../core/search-history.ts";
+import { useDetailRoute } from "../hooks/useDetailRoute.ts";
 import type {
 	ArticleItem,
 	ExploreCategory,
@@ -485,18 +487,13 @@ function SearchDashboardView(
 				</Drawer>
 			)}
 
-			<Drawer
-				visible={drawerOpen}
-				position="right"
-				header={selected.value?.title ?? "Details"}
-				size="min(34rem, 96vw)"
-				onVisibleChange={(v) => {
-					drawerOpen.value = v;
-					if (!v) selected.value = null;
-				}}
-			>
-				{selected.value && <DetailPanel item={selected.value} ctx={ctx} />}
-			</Drawer>
+			<ResultDetailDrawer
+				route={detail}
+				order={resultOrder(payload.value, items.value)}
+				ctx={ctx}
+				authed={authed}
+				sheet={isMobile}
+			/>
 		</div>
 	);
 }

@@ -147,52 +147,47 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, search, marketplace;
 
 -- -----------------------------------------------------------------------------
--- Deterministic mock embedding: a stable pseudo-random vector(1536) derived from
--- a text seed. Deterministic (IMMUTABLE) so the same entity/query always yields
--- the same vector — cosine distance is therefore stable and reproducible in tests.
--- Each component ∈ [-1, 1) via a 64-bit hash of (seed, dimension_index).
+-- search.catalogue_index sync (Decision #179). A product's discovery facts live on
+-- its LISTING (title, description, status); an article is its own row. Visibility is
+-- the source's `published` status. Definers, for the reason given above the project
+-- sync. The embedding columns are left alone: a stale text is caught by its hash.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION search.fn_mock_embedding(p_seed text)
-RETURNS public.vector
-LANGUAGE sql
-IMMUTABLE
-PARALLEL SAFE
-SET search_path = public
+CREATE OR REPLACE FUNCTION search.sync_product_listing_to_index() RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, search, catalogue
 AS $$
-  SELECT (
-    '[' || string_agg(
-      to_char(
-        ((hashtextextended(coalesce(p_seed, 'discovery'), g) & 65535)::double precision / 32768.0) - 1.0,
-        'FM990.000000'
-      ),
-      ','
-    ) || ']'
-  )::public.vector
-  FROM generate_series(1, 1536) AS g;
+BEGIN
+    IF NEW.kind <> 'product' OR NEW.product_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+    INSERT INTO search.catalogue_index (entity_type, entity_id, title, fts, is_public, updated_at)
+    VALUES (
+        'product', NEW.product_id, NEW.title,
+        to_tsvector('english', NEW.title || ' ' || coalesce(NEW.description_text, '') || ' ' || coalesce(NEW.category, '')),
+        NEW.status = 'published', now()
+    )
+    ON CONFLICT (entity_type, entity_id) DO UPDATE SET
+        title = EXCLUDED.title, fts = EXCLUDED.fts, is_public = EXCLUDED.is_public, updated_at = now();
+    RETURN NEW;
+END;
 $$;
 
-COMMENT ON FUNCTION search.fn_mock_embedding(text) IS
-  'Deterministic mock vector(1536) seeded from text. Placeholder until a real embedding model is wired in.';
-
--- -----------------------------------------------------------------------------
--- Generic BEFORE INSERT/UPDATE trigger that fills a NULL embedding using the
--- table''s text seed column. TG_ARGV[0]/[1] name the primary + fallback seed
--- columns; `to_jsonb(NEW) ->> col` avoids statically referencing columns that
--- don''t exist on every index table.
--- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION search.fn_fill_mock_embedding()
-RETURNS trigger
+CREATE OR REPLACE FUNCTION search.sync_article_to_index() RETURNS TRIGGER
 LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, search, catalogue
 AS $$
-DECLARE
-  v_row jsonb := to_jsonb(NEW);
-  v_seed text;
 BEGIN
-  IF NEW.embedding IS NULL THEN
-    v_seed := coalesce(v_row ->> TG_ARGV[0], v_row ->> TG_ARGV[1], gen_random_uuid()::text);
-    NEW.embedding := search.fn_mock_embedding(v_seed);
-  END IF;
-  RETURN NEW;
+    INSERT INTO search.catalogue_index (entity_type, entity_id, title, fts, is_public, updated_at)
+    VALUES (
+        'article', NEW.id, NEW.title,
+        to_tsvector('english', NEW.title || ' ' || coalesce(NEW.topic, '') || ' ' || coalesce(NEW.summary, '')),
+        NEW.status = 'published', now()
+    )
+    ON CONFLICT (entity_type, entity_id) DO UPDATE SET
+        title = EXCLUDED.title, fts = EXCLUDED.fts, is_public = EXCLUDED.is_public, updated_at = now();
+    RETURN NEW;
 END;
 $$;
 
@@ -229,15 +224,18 @@ $$;
 -- fn_search_entities — single-entity ranked search (filters + sort UNLOCKED).
 -- Returns a uniform row shape across services / profiles / projects so the API
 -- can map straight to PartialEntityResponse, plus per-row score + breakdown.
+-- p_query_embedding is the caller's voyage-4 query vector; NULL (or a row with no
+-- vector yet) scores the vector term 0 rather than guessing one.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION search.fn_search_entities(
-  p_entity_type text,
-  p_query       text    DEFAULT '',
-  p_filters     jsonb   DEFAULT '{}'::jsonb,
-  p_sort        text    DEFAULT 'recommended',
-  p_limit       integer DEFAULT 24,
-  p_offset      integer DEFAULT 0,
-  p_user_id     uuid    DEFAULT auth.uid()
+  p_entity_type     text,
+  p_query           text    DEFAULT '',
+  p_filters         jsonb   DEFAULT '{}'::jsonb,
+  p_sort            text    DEFAULT 'recommended',
+  p_limit           integer DEFAULT 24,
+  p_offset          integer DEFAULT 0,
+  p_user_id         uuid    DEFAULT auth.uid(),
+  p_query_embedding public.vector(1024) DEFAULT NULL
 )
 RETURNS TABLE (
   id uuid, entity_type text, title text, subtitle text, description text,
@@ -255,7 +253,7 @@ DECLARE
   w        jsonb;
   q        text := coalesce(trim(p_query), '');
   tsq      tsquery := CASE WHEN q = '' THEN NULL ELSE websearch_to_tsquery('english', q) END;
-  emb      public.vector := search.fn_mock_embedding(CASE WHEN q = '' THEN 'discovery' ELSE q END);
+  emb      public.vector := p_query_embedding;
   cat      text := lower(coalesce(p_entity_type, 'all'));
   v_types  search.profile_entity_type[];
   f_rating numeric := coalesce((p_filters->>'min_rating')::numeric, 0);
@@ -299,7 +297,7 @@ BEGIN
     CROSS JOIN LATERAL (
       SELECT
         (w->>'text_relevance')::numeric   * (CASE WHEN q = '' THEN 0.5 ELSE search.fn_norm(ts_rank(si.fts, tsq) * 10, 1) END) AS c_text,
-        (w->>'vector_similarity')::numeric* greatest(0, 1 - (si.embedding <=> emb))::numeric                                          AS c_vec,
+        (w->>'vector_similarity')::numeric* (CASE WHEN emb IS NULL OR si.embedding IS NULL THEN 0 ELSE greatest(0, -(si.embedding <#> emb)) END)::numeric AS c_vec,
         (w->>'query_interest')::numeric   * (CASE WHEN q <> '' AND si.title ILIKE '%' || q || '%' THEN 1 ELSE 0 END)         AS c_qi,
         (w->>'review_sentiment')::numeric * search.fn_norm(si.rating_average, 5)                                             AS c_rev,
         (w->>'review_count')::numeric     * search.fn_norm(si.rating_count, 50)                                              AS c_rc,
@@ -372,7 +370,7 @@ BEGIN
     CROSS JOIN LATERAL (
       SELECT
         (w->>'text_relevance')::numeric   * (CASE WHEN q = '' THEN 0.5 ELSE search.fn_norm(ts_rank(pri.fts, tsq) * 10, 1) END) AS c_text,
-        (w->>'vector_similarity')::numeric* greatest(0, 1 - (pri.embedding <=> emb))::numeric                                           AS c_vec,
+        (w->>'vector_similarity')::numeric* (CASE WHEN emb IS NULL OR pri.embedding IS NULL THEN 0 ELSE greatest(0, -(pri.embedding <#> emb)) END)::numeric AS c_vec,
         (w->>'query_interest')::numeric   * (CASE WHEN q <> '' AND (pri.title ILIKE '%' || q || '%' OR agg.skills && ARRAY[q]) THEN 1 ELSE 0 END) AS c_qi,
         (w->>'review_sentiment')::numeric * 0                                                                          AS c_rev,
         (w->>'interest_history')::numeric * search.fn_norm(sig.pop, 10)                                                        AS c_int,
@@ -447,7 +445,7 @@ BEGIN
     CROSS JOIN LATERAL (
       SELECT
         (w->>'text_relevance')::numeric   * (CASE WHEN q = '' THEN 0.5 ELSE search.fn_norm(ts_rank(pi.fts, tsq) * 10, 1) END) AS c_text,
-        (w->>'vector_similarity')::numeric* greatest(0, 1 - (pi.embedding <=> emb))::numeric                                           AS c_vec,
+        (w->>'vector_similarity')::numeric* (CASE WHEN emb IS NULL OR pi.embedding IS NULL THEN 0 ELSE greatest(0, -(pi.embedding <#> emb)) END)::numeric AS c_vec,
         (w->>'query_interest')::numeric   * (CASE WHEN q <> '' AND coalesce(fp.skills,'{}') && ARRAY[q] THEN 1 ELSE 0 END)     AS c_qi,
         (w->>'verification')::numeric     * (CASE WHEN coalesce(ts.is_verified,false) THEN 1 ELSE 0 END)                       AS c_ver,
         (w->>'review_sentiment')::numeric * search.fn_norm(pi.rating_average, 5)                                              AS c_rev,
@@ -543,7 +541,8 @@ END;
 $$;
 
 -- -----------------------------------------------------------------------------
--- fn_log_query — write search execution telemetry (guest-safe).
+-- fn_log_query — write search execution telemetry (guest-safe). p_query_embedding is
+-- the voyage-4 query vector when semantic ranking ran, else NULL.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION search.fn_log_query(
   p_query       text,
@@ -552,7 +551,8 @@ CREATE OR REPLACE FUNCTION search.fn_log_query(
   p_result_count integer,
   p_duration_ms  integer,
   p_candidate_pool integer DEFAULT NULL,
-  p_user_id     uuid DEFAULT auth.uid()
+  p_user_id     uuid DEFAULT auth.uid(),
+  p_query_embedding public.vector(1024) DEFAULT NULL
 )
 RETURNS void
 LANGUAGE sql
@@ -562,7 +562,7 @@ AS $$
   INSERT INTO search.query_logs
     (user_id, search_query, query_embedding, filters_applied, entity_type, duration_ms, result_count, matched_density)
   VALUES
-    (p_user_id, coalesce(p_query, ''), search.fn_mock_embedding(coalesce(p_query, 'discovery')),
+    (p_user_id, coalesce(p_query, ''), p_query_embedding,
      coalesce(p_filters, '{}'::jsonb), p_entity_type, p_duration_ms, p_result_count,
      CASE WHEN p_candidate_pool > 0 THEN round(p_result_count::numeric / p_candidate_pool, 4) ELSE NULL END);
 $$;
@@ -772,4 +772,165 @@ BEGIN
            updated_at = now();
   END LOOP;
 END;
+$$;
+
+-- =============================================================================
+-- Embeddings — voyage-4, 1024 dimensions, unit length (Decision #179). Inner
+-- product therefore ranks exactly as cosine similarity; the HNSW indexes use
+-- vector_ip_ops (00004004). Vectors are written by fn_set_embedding alone and
+-- leave the database only as ids + scores.
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- fn_set_embedding — store one entity's vector, the model that made it and the
+-- hash of the text it was made from (so an unchanged text is never re-embedded).
+-- service_role only (00002510). FALSE when the entity has no index row.
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION search.fn_set_embedding(
+  p_entity_type text,
+  p_entity_id   uuid,
+  p_embedding   public.vector(1024),
+  p_model       text,
+  p_hash        text
+)
+RETURNS boolean
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = search, public
+AS $$
+BEGIN
+  IF p_embedding IS NULL OR public.vector_dims(p_embedding) <> 1024 THEN
+    RAISE EXCEPTION 'fn_set_embedding: a 1024-dimension vector is required' USING ERRCODE = '22023';
+  END IF;
+  IF coalesce(btrim(p_model), '') = '' OR coalesce(btrim(p_hash), '') = '' THEN
+    RAISE EXCEPTION 'fn_set_embedding: the model and the text hash are required' USING ERRCODE = '22023';
+  END IF;
+
+  CASE p_entity_type
+    WHEN 'service_blueprint' THEN
+      UPDATE search.services_index
+         SET embedding = p_embedding, embedding_model = p_model, embedding_hash = p_hash, embedded_at = now()
+       WHERE service_id = p_entity_id;
+    WHEN 'project' THEN
+      UPDATE search.projects_index
+         SET embedding = p_embedding, embedding_model = p_model, embedding_hash = p_hash, embedded_at = now()
+       WHERE project_id = p_entity_id;
+    WHEN 'user', 'freelancer', 'team', 'business' THEN
+      UPDATE search.profiles_index
+         SET embedding = p_embedding, embedding_model = p_model, embedding_hash = p_hash, embedded_at = now()
+       WHERE entity_id = p_entity_id AND entity_type = p_entity_type::search.profile_entity_type;
+    WHEN 'product', 'article' THEN
+      UPDATE search.catalogue_index
+         SET embedding = p_embedding, embedding_model = p_model, embedding_hash = p_hash, embedded_at = now()
+       WHERE entity_type = p_entity_type AND entity_id = p_entity_id;
+    ELSE
+      RAISE EXCEPTION 'fn_set_embedding: unknown entity type %', p_entity_type USING ERRCODE = '22023';
+  END CASE;
+  RETURN FOUND;
+END;
+$$;
+
+-- -----------------------------------------------------------------------------
+-- fn_nearest — the public rows closest to p_embedding, best first, as
+-- (entity_type, entity_id, score = cosine similarity). Visibility is each index's
+-- own public rule — the USING clause of its anon SELECT policy (00002014) — so it
+-- answers nothing anon could not already read, and never a vector. p_types NULL =
+-- every type (the discovery vocabulary: service_blueprint · product · article ·
+-- project · user · freelancer · team · business); p_limit is clamped to 1..100.
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION search.fn_nearest(
+  p_embedding public.vector(1024),
+  p_types     text[]  DEFAULT NULL,
+  p_exclude   uuid[]  DEFAULT '{}'::uuid[],
+  p_limit     integer DEFAULT 24
+)
+RETURNS TABLE (entity_type text, entity_id uuid, score double precision)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = search, public
+AS $$
+  SELECT n.entity_type, n.entity_id, n.score
+    FROM (
+      (SELECT 'service_blueprint'::text AS entity_type, si.service_id AS entity_id,
+              -(si.embedding <#> p_embedding) AS score
+         FROM search.services_index si
+        WHERE p_embedding IS NOT NULL AND si.is_public AND si.embedding IS NOT NULL
+          AND (p_types IS NULL OR 'service_blueprint' = ANY (p_types))
+          AND si.service_id <> ALL (coalesce(p_exclude, '{}'::uuid[]))
+        ORDER BY si.embedding <#> p_embedding
+        LIMIT least(greatest(coalesce(p_limit, 24), 1), 100))
+      UNION ALL
+      (SELECT 'project'::text, pr.project_id, -(pr.embedding <#> p_embedding)
+         FROM search.projects_index pr
+        WHERE p_embedding IS NOT NULL AND pr.is_active AND pr.embedding IS NOT NULL
+          AND (p_types IS NULL OR 'project' = ANY (p_types))
+          AND pr.project_id <> ALL (coalesce(p_exclude, '{}'::uuid[]))
+        ORDER BY pr.embedding <#> p_embedding
+        LIMIT least(greatest(coalesce(p_limit, 24), 1), 100))
+      UNION ALL
+      (SELECT pi.entity_type::text, pi.entity_id, -(pi.embedding <#> p_embedding)
+         FROM search.profiles_index pi
+        WHERE p_embedding IS NOT NULL AND pi.is_active AND pi.embedding IS NOT NULL
+          AND (p_types IS NULL OR pi.entity_type::text = ANY (p_types))
+          AND pi.entity_id <> ALL (coalesce(p_exclude, '{}'::uuid[]))
+        ORDER BY pi.embedding <#> p_embedding
+        LIMIT least(greatest(coalesce(p_limit, 24), 1), 100))
+      UNION ALL
+      (SELECT ci.entity_type, ci.entity_id, -(ci.embedding <#> p_embedding)
+         FROM search.catalogue_index ci
+        WHERE p_embedding IS NOT NULL AND ci.is_public AND ci.embedding IS NOT NULL
+          AND (p_types IS NULL OR ci.entity_type = ANY (p_types))
+          AND ci.entity_id <> ALL (coalesce(p_exclude, '{}'::uuid[]))
+        ORDER BY ci.embedding <#> p_embedding
+        LIMIT least(greatest(coalesce(p_limit, 24), 1), 100))
+    ) n
+   ORDER BY n.score DESC, n.entity_type, n.entity_id
+   LIMIT least(greatest(coalesce(p_limit, 24), 1), 100);
+$$;
+
+-- -----------------------------------------------------------------------------
+-- fn_nearest_to_entity — fn_nearest seeded with one PUBLIC entity's stored vector
+-- (a /view page's "Similar" rail). The vector is read here, inside the database, so
+-- it never crosses the wire and the server needs no service-role read on a public
+-- page (Decision #178(b)). The entity itself is always excluded; empty when it is
+-- not public or has no vector yet.
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION search.fn_nearest_to_entity(
+  p_entity_type text,
+  p_entity_id   uuid,
+  p_types       text[]  DEFAULT NULL,
+  p_exclude     uuid[]  DEFAULT '{}'::uuid[],
+  p_limit       integer DEFAULT 24
+)
+RETURNS TABLE (entity_type text, entity_id uuid, score double precision)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = search, public
+AS $$
+  WITH source AS (
+    SELECT CASE
+      WHEN p_entity_type = 'service_blueprint' THEN
+        (SELECT si.embedding FROM search.services_index si
+          WHERE si.service_id = p_entity_id AND si.is_public)
+      WHEN p_entity_type = 'project' THEN
+        (SELECT pr.embedding FROM search.projects_index pr
+          WHERE pr.project_id = p_entity_id AND pr.is_active)
+      WHEN p_entity_type IN ('user', 'freelancer', 'team', 'business') THEN
+        (SELECT pi.embedding FROM search.profiles_index pi
+          WHERE pi.entity_id = p_entity_id AND pi.entity_type::text = p_entity_type AND pi.is_active)
+      WHEN p_entity_type IN ('product', 'article') THEN
+        (SELECT ci.embedding FROM search.catalogue_index ci
+          WHERE ci.entity_type = p_entity_type AND ci.entity_id = p_entity_id AND ci.is_public)
+    END AS v
+  )
+  SELECT n.entity_type, n.entity_id, n.score
+    FROM source
+   CROSS JOIN LATERAL search.fn_nearest(
+     source.v, p_types, array_append(coalesce(p_exclude, '{}'::uuid[]), p_entity_id), p_limit
+   ) n
+   WHERE source.v IS NOT NULL
+   ORDER BY n.score DESC, n.entity_type, n.entity_id;
 $$;

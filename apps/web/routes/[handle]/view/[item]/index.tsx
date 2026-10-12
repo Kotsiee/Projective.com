@@ -5,6 +5,7 @@ import { resolveViewPage } from "@features/view/core/view-ssr.ts";
 import { resolveEntityCommerce } from "@features/view/core/booking-ssr.ts";
 import { viewerFromState } from "@features/calendar/core/viewer.ts";
 import { recordViewInBackground } from "@features/explore/core/record-view.ts";
+import { rankingHeaders, semanticRankingFor } from "@features/explore/core/discovery-ranking.ts";
 
 /**
  * `/[handle]/view/[item_id]?type=[entity_type]` — the profile-scoped Entity View page. This is the
@@ -15,7 +16,10 @@ import { recordViewInBackground } from "@features/explore/core/record-view.ts";
  */
 export const handler = define.handlers({
 	async GET(ctx) {
-		const { view, status } = await resolveViewPage(ctx.params.item);
+		const { view, status, ranking } = await resolveViewPage(
+			ctx.params.item,
+			semanticRankingFor(ctx.req),
+		);
 		ctx.state.title = view ? `${view.item.title} · ${ctx.params.handle}` : "Not found · Projective";
 		if (view) {
 			ctx.state.description = view.item.summary;
@@ -35,7 +39,7 @@ export const handler = define.handlers({
 			authed: !!ctx.state.isAuthenticated,
 			offer: commerce.offer,
 			schedule: commerce.schedule,
-		}, { status: view ? 200 : status });
+		}, { status: view ? 200 : status, headers: rankingHeaders(ranking) });
 	},
 });
 

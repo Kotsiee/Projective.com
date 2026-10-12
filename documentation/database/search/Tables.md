@@ -39,7 +39,7 @@ search and is not logged. Gated by `EXPLORE_BACKEND_LIVE` (off ⇒ nothing is wr
 | :---------------- | :------------------------------------------------------------------------------------------- |
 | `user_id`         | `auth.uid()` of the caller, NULL for a guest (the RPC resolves it; the app never passes it). |
 | `search_query`    | The trimmed `?q=`; `''` for a category browse.                                               |
-| `query_embedding` | `search.fn_mock_embedding(query)` until real embeddings exist.                               |
+| `query_embedding` | The `voyage-4` query vector (1024) when semantic ranking ran, NULL otherwise (Decision #179). Not selectable by `anon`/`authenticated`. |
 | `filters_applied` | The rest of `ExploreParams` (`category`, `sort`, `filters`).                                 |
 | `entity_type`     | The searched category (`all`, `services`, `freelancers`, …).                                 |
 | `duration_ms`     | Catalogue load + filter + rank, measured in the fat service.                                 |
@@ -115,3 +115,45 @@ same decay to now. It drives "Picked for you" when a person has no usable "Becau
 severity of a subject's `security.penalties`). The discovery catalogue reads the positive rows as
 `anon` (policy "Public can view profile search index", `is_active`) and subtracts the penalty from
 the owner's items — for a project, the worse of its poster's and its client business's.
+
+## Embeddings on the discovery indexes (Decision #179)
+
+`search.profiles_index`, `search.projects_index`, `search.services_index` and `search.catalogue_index`
+each hold one Voyage AI `voyage-4` vector per public entity, with its bookkeeping (migration
+`00000018`; HNSW `vector_ip_ops` indexes in `00004004`). Zod: `packages/types/explore/embeddings.ts`.
+
+| Column            | Meaning                                                                                                                                                       |
+| :---------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `embedding`       | `vector(1024)`, unit length, so inner product ranks exactly as cosine. NULL until `deno task embeddings:backfill` or a post-commit re-embed writes it — `db:reset` leaves every one empty. |
+| `embedding_model` | The model that made it (`voyage-4`); a different model makes the row stale.                                                                                  |
+| `embedding_hash`  | SHA-256 of the exact text embedded (`packages/backend/core/embedding-text.ts`). A row whose hash and model still match is never re-embedded.                   |
+| `embedded_at`     | When `search.fn_set_embedding` wrote it — set exactly when a vector is.                                                                                      |
+
+Only `search.fn_set_embedding` (service role) writes these columns, and `anon` / `authenticated`
+cannot select any of them: `00002520` replaces their table-level SELECT with column grants that leave
+them out, so `select=embedding` — or `select=*` — is refused. Vectors leave the database only as ids
+and scores (`search.fn_nearest`, `search.fn_nearest_to_entity`; [Functions.md](Functions.md)). The mock
+embeddings (`search.fn_mock_embedding` and the `trg_fill_embedding_*` triggers) are gone.
+
+## `search.catalogue_index` — products and articles (Decision #179)
+
+Migration `00000018`; RLS "Public can view catalogue search index" (`is_public`, `00002014`); column
+grants in `00002520`; `idx_catalogue_vector` (HNSW) and `idx_catalogue_fts` (GIN) in `00004004`. Zod:
+`CatalogueIndexRowSchema`.
+
+The two discovery entities no other index covered. Keyed `(entity_type, entity_id)` like
+`profiles_index`, because one table files two kinds; `services_index` could not take them, since its
+key REFERENCES `marketplace.service_blueprints`.
+
+| Column        | Meaning                                                                                   |
+| :------------ | :---------------------------------------------------------------------------------------- |
+| `entity_type` | `product` · `article` (CHECK).                                                            |
+| `entity_id`   | `catalogue.products.id` / `catalogue.articles.id` — the ids discovery's entity vocabulary uses. |
+| `title`       | A product's LISTING title (what its card shows); an article's own.                        |
+| `fts`         | `tsvector` of the title, the description or summary, and the category or topic.          |
+| `is_public`   | The source is `published` — a product's listing, an article itself.                      |
+| `updated_at`  | The last sync.                                                                            |
+
+Kept by `search.sync_product_listing_to_index` (on `catalogue.listings`, product rows) and
+`search.sync_article_to_index` (on `catalogue.articles`), both definers; `seeds/09_search.sql`
+backstops the seed. Plus the embedding columns above.

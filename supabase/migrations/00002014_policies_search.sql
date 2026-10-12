@@ -16,6 +16,10 @@ SELECT TO public USING (is_active = true);
 CREATE POLICY "Public can view service search index" ON search.services_index FOR
 SELECT TO public USING (is_public = true);
 
+-- Decision #179: products and articles, public once their source is published.
+CREATE POLICY "Public can view catalogue search index" ON search.catalogue_index FOR
+SELECT TO public USING (is_public = true);
+
 CREATE POLICY "Users manage own affinity" ON search.user_affinity FOR ALL TO public USING (user_id = auth.uid ());
 
 CREATE POLICY "Users view own query logs" ON search.query_logs FOR

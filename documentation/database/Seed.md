@@ -29,6 +29,18 @@ deno task db:seed:generate   # rewrites supabase/seeds/*.sql + supabase/seed-ass
 deno task db:reset           # supabase db reset --local --yes
 ```
 
+**Embeddings are not seeded.** `db:reset` leaves every discovery vector (`search.*_index.embedding`)
+empty, so semantic ranking has nothing to rank with — search and the `/view` "Similar" rails keep
+their heuristic order even with the switch on — until the backfill runs (Decision #179):
+
+```sh
+deno task embeddings:backfill --dry-run   # entity count, token estimate, cost — no Voyage call
+deno task embeddings:backfill             # needs VOYAGE_API_KEY in .env.local; skips unchanged items
+```
+
+On the seed world that is 49 public entities and about 1.6K tokens (≈ $0.0001); a second run embeds
+nothing.
+
 ## Sign-in
 
 Every account uses the password **`password123`** at `<username>@projective.dev`. The access-token
@@ -68,7 +80,7 @@ every persona lands on the authenticated shell directly.
 | `07_finance.sql`       | Wallets (and each team's `treasury_wallet_id`), a **computed** ledger, escrows (funded + released), team payout splits, invoices with line items, orders + lines (products, services, a booked session, a refund), baskets, cards, payment methods, payout accounts/schedules/payouts, subscriptions, a spending cap, a pending spend approval, the vault audit trail (`finance.ledger_audit`, **derived** from the ledger — see below), Income Smoother, pots — plus the checkout's own states (see [§ Checkout states](#checkout-states)). **No `finance.vault_permissions` rows are written**: the wallet insert trigger projects them from the workspace roles (`org.fn_sync_vault_permissions`), so the seed cannot disagree with the console about who may spend |
 | `08_comms.sql`         | General + per-stage project channels with messages and participants, DM/group/service-inquiry threads with per-participant read state, 44 catalog-typed notifications (16 unread), auto-responses |
 | `08_scheduling.sql`    | Ten schedules (nine published, Chloe's a draft) in their owners' own timezones: 65 weekly bands (50 `working_hours`, 15 `call_window`), three blackouts (one private label, two public), eight call-settings rows with twelve platforms, eight events (five busy blocks, two syncs, and Chloe's booked review at the same instant as her order line), and four discovery calls — one proposed, two confirmed (one paid) and one completed |
-| `09_search.sql`        | Hand-written projection of everything above into the `search.*` indexes                                                                                  |
+| `09_search.sql`        | Hand-written projection of everything above into the `search.*` indexes — products and articles into `search.catalogue_index` (Decision #179). No vectors: see the backfill above |
 | `10_profiles.sql`      | The public profile's presentation layer (`gen/profiles.ts`): 30 showcase slots across seven freelancers and three teams (slot 1 always a still), 12 "Selected work" pieces with covers, 4 certifications (two platform-verified), and 4 privacy rows — Maris and Juno allow their photo to be opened full size, Ren hides the local clock, Theo hides the location line |
 | `11_standing.sql`      | Hand-written: every seller's Standing inputs **derived from the seeded record**, then the rung computed by the platform's own `org.fn_recompute_standing` (see [§ Standing](#standing)) |
 

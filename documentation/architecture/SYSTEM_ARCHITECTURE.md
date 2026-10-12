@@ -788,6 +788,27 @@ project, a freelancer/team/business profile — because `org.bookmark_entity_typ
 product, an article or a buyer. On the client every `CardActions` island reads one page-wide
 `core/bookmark-state.ts` store (one `GET` per page, optimistic toggles reverted on refusal). With the
 gate off, saves are kept in process memory per user.
+**Semantic ranking (Decision #179).** Discovery can rank with Voyage AI `voyage-4` vectors (1024
+dimensions, unit length — inner product ranks as cosine) behind one switch, `isEmbeddingsLive(req?)`
+(`core/supabase.ts`): not mocked, Supabase configured, `VOYAGE_API_KEY` present, and
+`EMBEDDINGS_ENABLED` — or, in development only, the Dev Context Switcher's `pj.dev.embeddings` cookie
+(`on` | `off`), which the routes forward only under `IS_DEV` and the gate honours only under
+`DENO_ENV=development`. Off, discovery is byte-for-byte the heuristic path and nothing calls Voyage.
+On, `ExploreBackendService.search` embeds the query (`services/search/EmbeddingBackendService.ts`:
+plain `fetch`, batching, a timeout and a deadline, at most two retries on 429 / 5xx / network, an LRU +
+TTL query cache), asks `search.fn_nearest` for the category's nearest public entities, and the pure
+`services/explore/semantic.ts` re-ranks the JS candidate set on the default sort through
+`SEMANTIC_BLEND_WEIGHT` and adds up to 12 high-similarity neighbours that pass the same facets; the
+`/view` "Similar" rail reads `search.fn_nearest_to_entity` (the item's stored vector, its owner's
+items excluded) and keeps the heuristic rail when there is no vector. Any Voyage or database failure
+falls back to the heuristic for that request with one `[embeddings]` server-log line. Vectors are
+written by `deno task embeddings:backfill` and re-embedded fire-and-forget after a committed listing,
+profile, project or workspace write (`services/search/embedding-sync.ts`); both skip an item whose
+stored text hash and model still match, and both write through the service-role-only
+`search.fn_set_embedding`. In development `/explore`, the `/view` pages and every `/api/explore/*`
+response carry `x-discovery-ranking: semantic | heuristic`, and the switcher shows the effective state
+(`GET /api/explore/ranking`, 404 in production). Home personalisation and user vectors are the
+separate ranking-v1 task.
 
 ### Discovery telemetry & client observability
 
@@ -1476,6 +1497,12 @@ live since the 2026-09-23 ledger pass — see `database/finance/Policies.md`.)
 `EXPLORE_BACKEND_LIVE`, and it is the clearest instance of the slot-resolver pattern doing real
 architectural work rather than layout plumbing.
 
+> ⚠️ **Flagged, not resolved here (§8 Decision #179(c)).** `viewPage` no longer sits behind
+> `EXPLORE_BACKEND_LIVE`: every discovery read is live with no fixture fallback
+> (`ExploreBackendService`), and the flag now gates only the discovery telemetry writes and
+> stub-mode saves. The sentence above, the Environment Variable Contract's gate comment and Decision
+> #12 still describe the stub-first design. A human decides how to reword them.
+
 **The archetype is resolved server-side, once.** A pure `resolveArchetype(item, view)` maps a
 listing's delivery model onto one of five bodies — `pipeline` · `one_off` · `session` · `cohort` ·
 `product` — and both the canvas and the conversion lane are driven from that single answer. It keys
@@ -1860,7 +1887,15 @@ combined with `pgvector`.
 
 - **Performance:** We avoid searching across complex JOIN views. Instead, dedicated search tables
   are populated via DB triggers whenever source records change.
-- **Vector Encoding:** The system uses `pgvector` to store high-dimensional embeddings of text data.
+- **Vector Encoding:** `pgvector` columns hold Voyage AI `voyage-4` embeddings — 1024 dimensions,
+  unit length, so the HNSW indexes use `vector_ip_ops` and inner product ranks as cosine (Decision
+  #179). Every public discovery entity has one, in `search.profiles_index` · `projects_index` ·
+  `services_index` · `catalogue_index` (products and articles). **Write path:** `deno task
+  embeddings:backfill` and the post-commit re-embed → `search.fn_set_embedding` (service role only),
+  skipping a text whose SHA-256 and model are unchanged. **Read path:** `search.fn_nearest` (a query
+  vector) and `search.fn_nearest_to_entity` (an item's stored vector) answer ids and scores over public
+  rows; `anon` and `authenticated` cannot select a vector column. **Gate:** `isEmbeddingsLive(req?)` —
+  see §Discovery (Explore) services.
 - **Context-Aware Ranking:** The recommender system performs weighted vector similarity searches
   taking into account:
   - **User Context:** Preferences, interaction history, and search history.
@@ -2801,6 +2836,17 @@ S3_SECRET_ACCESS_KEY=XXXX-XXXX
 # time and never inlined; absent or the placeholder → no reputation lookup (the scan's own guards
 # still run). The lookup sends the full URL to Google (Decision #128).
 LINK_SAFETY_API_KEY=XXXX-XXXX
+
+# Discovery embeddings — Voyage AI voyage-4 (Decision #179). EMBEDDINGS_ENABLED is a boolean, default
+# false like the gates below: off, discovery ranks heuristically and nothing calls Voyage. In
+# development the Dev Context Switcher overrides it per browser (`pj.dev.embeddings`); production
+# never reads that cookie. The key is a secret, server-only. An Atlas model API key is answered by
+# https://ai.mongodb.com, a Voyage platform key (pa-…) by https://api.voyageai.com; the client picks
+# the host from the key unless VOYAGE_API_BASE names one. `db:reset` leaves every vector empty — run
+# `deno task embeddings:backfill` after it.
+EMBEDDINGS_ENABLED=false
+VOYAGE_API_KEY=XXXX-XXXX
+# VOYAGE_API_BASE=https://ai.mongodb.com
 
 # Stripe (Finance) — read only by packages/backend/core/stripe.ts; a value not shaped like its key
 # (sk_/rk_, whsec_, pk_) counts as absent, so the placeholder degrades to "not connected here".
