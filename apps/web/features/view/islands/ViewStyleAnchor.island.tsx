@@ -2,6 +2,9 @@ import { Avatar, RatingStars, Tag } from "@projective/ui/display";
 import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import { EmptyState } from "@projective/ui/utils";
+import "@features/explore/styles/explore.css";
+import "@features/explore/styles/explore-home.css";
+import "@features/explore/styles/rail.css";
 import "../styles/view.css";
 // The not-found branch renders no lane, and the lane island is what delivers `entity-view.css` on
 // every other branch — so without this import the one state that most needs a working next action
@@ -17,6 +20,9 @@ import "../styles/entity-view.css";
  * `CardStyleAnchor`). The lower-body recommendation rails reuse the Explore cards, which are SERVER
  * components, so the card primitives (`Avatar` · `RatingStars` · `Tag`) are imported here purely so
  * their stylesheets bundle once per page regardless of which card types the rails render.
+ *
+ * It also carries the Explore rail sheets, because a cross-sell made only of project blocks renders
+ * `HomeGrid` (a server component) and mounts no `HomeRail` island to deliver them.
  *
  * It also carries `view.css`, `Button` and `EmptyState`. Those are not for the rails — they are for the
  * **not-found branch**, which renders no lane. Every app-local sheet on this surface is otherwise

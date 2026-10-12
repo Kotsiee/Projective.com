@@ -20,6 +20,7 @@ import { signal } from "@preact/signals";
 import type { ContextRole, ContextType, UserContext } from "@projective/types/auth";
 import type { ProjectAccess, ProjectStatus } from "@projective/types/projects";
 import { encodeLandingSim, LANDING_SIM_COOKIE } from "@features/projects/core/landing-sim.ts";
+import { DISCOVERY_SIM_COOKIE, encodeDiscoverySim } from "@features/explore/core/discovery-sim.ts";
 import { logger } from "@web/utils/logger.ts";
 import { readStored, removeStored, SessionKeys, writeStored } from "@web/utils/storage-keys.ts";
 import {
@@ -40,6 +41,9 @@ import {
 	type DevNotifications,
 	type DevSessionState,
 	type DevBasketScenario,
+	type DevPromoDismissal,
+	type DevDiscoveryViewer,
+	type DevDiscoveryActivity,
 	type DevSeamRole,
 	type DevServiceType,
 	type DevSessionBookingStatus,
@@ -91,6 +95,8 @@ export type {
 	DevTrustAdornments,
 	DevVerificationStamp,
 	DevWalletAurora,
+	DevDiscoveryViewer,
+	DevDiscoveryActivity,
 };
 
 /** The full override set. `enabled` is the master switch — when off, {@link applyDevContext} is a pass-through. */
@@ -269,6 +275,24 @@ export interface DevOverrides {
 	 * account and a delisted item both take other people's actions to reach.
 	 */
 	basketScenario: DevBasketScenario;
+	/**
+	 * The Explore Home's dismissible promo slots: the device's stored dismissals, every slot shown, or
+	 * every slot dismissed. Its own axis because a dismissal lives in one browser's storage, and undoing
+	 * it otherwise means clearing site data.
+	 */
+	promoDismissal: DevPromoDismissal;
+	/**
+	 * The Explore Home's personal rails as a cold-start viewer would see them: the real history, no
+	 * history (so "Picked for you" falls back to stated interests), or no signals at all. Server-side —
+	 * mirrored into the `pj.dev.discovery` cookie — because a fresh account is otherwise the only way
+	 * to reach it.
+	 */
+	discoveryViewer: DevDiscoveryViewer;
+	/**
+	 * The Trending rail on a quiet platform: real activity, or none (the "New on Projective" fallback).
+	 * Server-side, through the same cookie; otherwise three accounts must open the same thing to flip it.
+	 */
+	discoveryActivity: DevDiscoveryActivity;
 }
 
 /** Selectable option metadata for the switcher UI. */
@@ -316,6 +340,9 @@ export const DEV_DEFAULTS: DevOverrides = {
 	sessionState: "auto",
 	notifications: "auto",
 	basketScenario: "auto",
+	promoDismissal: "auto",
+	discoveryViewer: "auto",
+	discoveryActivity: "auto",
 };
 
 /** Account-type options in display order. */
@@ -565,6 +592,26 @@ export const DEV_SESSION_STATES: ReadonlyArray<DevOption<DevSessionState>> = [
 	{ value: "release_pending", label: "Auto-release pending" },
 ];
 
+/** Explore Home promo dismissal options. */
+export const DEV_PROMO_DISMISSALS: ReadonlyArray<DevOption<DevPromoDismissal>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "visible", label: "Never dismissed" },
+	{ value: "dismissed", label: "Dismissed" },
+];
+
+/** Explore Home cold-start viewer options (the personal rails). */
+export const DEV_DISCOVERY_VIEWERS: ReadonlyArray<DevOption<DevDiscoveryViewer>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "no_history", label: "No history" },
+	{ value: "no_signals", label: "No signals" },
+];
+
+/** Explore Home Trending activity options. */
+export const DEV_DISCOVERY_ACTIVITIES: ReadonlyArray<DevOption<DevDiscoveryActivity>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "quiet", label: "Quiet platform" },
+];
+
 // #endregion
 
 // #region Store
@@ -664,6 +711,13 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devNotifications;
 		if (next.basketScenario !== "auto") root.dataset.devBasketScenario = next.basketScenario;
 		else delete root.dataset.devBasketScenario;
+		if (next.promoDismissal !== "auto") root.dataset.devPromoDismissal = next.promoDismissal;
+		else delete root.dataset.devPromoDismissal;
+		if (next.discoveryViewer !== "auto") root.dataset.devDiscoveryViewer = next.discoveryViewer;
+		else delete root.dataset.devDiscoveryViewer;
+		if (next.discoveryActivity !== "auto") {
+			root.dataset.devDiscoveryActivity = next.discoveryActivity;
+		} else delete root.dataset.devDiscoveryActivity;
 		root.dataset.devDirection = next.layoutDirection;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
 		// properties everywhere mean the shell and every surface mirror to the opposite edge.
@@ -704,12 +758,30 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devSessionState;
 		delete root.dataset.devNotifications;
 		delete root.dataset.devBasketScenario;
+		delete root.dataset.devPromoDismissal;
+		delete root.dataset.devDiscoveryViewer;
+		delete root.dataset.devDiscoveryActivity;
 		delete root.dataset.devDirection;
 		// Restore the document's natural direction (the pref-driven default, LtR here).
 		root.removeAttribute("dir");
 	}
 	writeLandingCookie(next);
+	writeDiscoveryCookie(next);
 	globalThis.dispatchEvent?.(new CustomEvent(DEV_SEAM_EVENT, { detail: next }));
+}
+
+/**
+ * Mirror the discovery cold-start pair into the `pj.dev.discovery` cookie — the only channel that
+ * reaches `/explore`'s SERVER-composed personal and Trending rails. Written while simulation is on and
+ * an axis is not `auto`; removed otherwise. The server reads it only in development.
+ */
+function writeDiscoveryCookie(next: DevOverrides): void {
+	const value = next.enabled
+		? encodeDiscoverySim({ viewer: next.discoveryViewer, activity: next.discoveryActivity })
+		: null;
+	document.cookie = value
+		? `${DISCOVERY_SIM_COOKIE}=${encodeURIComponent(value)}; path=/; samesite=lax`
+		: `${DISCOVERY_SIM_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 /**

@@ -25,6 +25,16 @@ export interface DrawerProps {
 	position?: Edge;
 	/** Header content — plain title string or a full node. */
 	header?: string | VNode;
+	/**
+	 * Controls for the header bar, placed before the close button — never inside the title heading
+	 * (e.g. a record viewer's previous/next stepper).
+	 */
+	actions?: ComponentChildren;
+	/**
+	 * Id of the element that names the dialog when the name lives in the body rather than in
+	 * `header` — a detail panel whose own title is the one heading. Wins over `header`.
+	 */
+	labelledBy?: string;
 	/** Render a backdrop + trap focus + lock scroll (default `true`). */
 	modal?: boolean;
 	/** Allow outside-pointer / backdrop dismissal (default `true`). */
@@ -66,6 +76,8 @@ export function Drawer(props: DrawerProps): JSX.Element | null {
 		visible,
 		position = "left",
 		header,
+		actions,
+		labelledBy,
 		modal = true,
 		dismissable = true,
 		closable = true,
@@ -117,15 +129,16 @@ export function Drawer(props: DrawerProps): JSX.Element | null {
 				ref={panelRef}
 				role="dialog"
 				aria-modal={modal || undefined}
-				aria-labelledby={header !== undefined ? titleId : undefined}
+				aria-labelledby={labelledBy ?? (header !== undefined ? titleId : undefined)}
 				data-state={state}
 				class={cx("ui-drawer", `ui-drawer--${position}`, className)}
 				style={sizeVars}
 				tabIndex={-1}
 			>
-				{(header !== undefined || closable) && (
+				{(header !== undefined || closable || actions != null) && (
 					<div class="ui-drawer__header">
 						{header !== undefined && <h2 id={titleId} class="ui-drawer__title">{header}</h2>}
+						{actions != null && <div class="ui-drawer__actions">{actions}</div>}
 						{closable && (
 							<button
 								type="button"

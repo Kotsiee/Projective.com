@@ -7,7 +7,8 @@ import { StatusChip } from "../StatusChip.tsx";
 import { VerifiedBadge } from "../VerifiedBadge.tsx";
 import CardActions from "../../islands/CardActions.island.tsx";
 import { cardAccent } from "../../core/accent.ts";
-import { languageSummary, profileMetrics, profileSignals } from "../../core/card-signals.ts";
+import { CardReveal, NewFact } from "../CardReveal.tsx";
+import { isNew, languageSummary, profileMetrics, profileSignals } from "../../core/card-signals.ts";
 import { itemHref } from "../../core/routing.ts";
 import type { HrefContext } from "../../core/routing.ts";
 import type { ExploreItem, ProfileItem } from "../../types/explore-types.ts";
@@ -57,6 +58,7 @@ export function ProfileCard(
 	// middot span (the profile hero's own `@handle · kind` idiom), so a screen reader hears two facts
 	// rather than a bullet character read aloud between them.
 	const meta = [item.location, languages].filter((s): s is string => !!s);
+	const fresh = isNew(item.createdAt);
 
 	return (
 		<article
@@ -68,6 +70,8 @@ export function ProfileCard(
 		>
 			<CardLink item={item} ctx={ctx} onSelect={onSelect} label={`${item.title} — ${item.craft}`} />
 			<CardActions
+				itemId={item.id}
+				itemType={item.type}
 				title={item.title}
 				href={itemHref(item, ctx)}
 				authed={authed}
@@ -110,7 +114,7 @@ export function ProfileCard(
 
 				<p class="ex-pcard__headline">{item.craft}</p>
 
-				{meta.length > 0 && (
+				{(meta.length > 0 || fresh) && (
 					<p class="ex-pcard__meta">
 						{meta.map((fact, i) => (
 							<span class="ex-pcard__metaitem" key={`${i}:${fact}`}>
@@ -124,6 +128,7 @@ export function ProfileCard(
 								{fact}
 							</span>
 						))}
+						{fresh && <NewFact separated={meta.length > 0} />}
 					</p>
 				)}
 
@@ -138,7 +143,9 @@ export function ProfileCard(
 								label={`Rated ${helper.value.toFixed(1)} out of 5 from ${helper.count} reviews`}
 							/>
 						)
-						: <span class="ex-muted">{item.delivered} delivered</span>}
+						: item.delivered > 0
+						? <span class="ex-muted">{item.delivered} delivered</span>
+						: <span />}
 
 					{metrics.length > 0 && (
 						<ul class="ex-pcard__metrics" role="list">
@@ -152,6 +159,7 @@ export function ProfileCard(
 					)}
 				</div>
 			</div>
+			<CardReveal text={item.summary} />
 		</article>
 	);
 }

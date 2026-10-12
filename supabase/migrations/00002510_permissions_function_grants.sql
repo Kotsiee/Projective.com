@@ -101,6 +101,19 @@ GRANT
 EXECUTE ON FUNCTION search.fn_set_weight (text, numeric) TO authenticated,
 service_role;
 
+-- #region search: discovery signals (00001400)
+-- Coefficients and k-anonymous aggregates: the guest catalogue reads both as `anon`.
+GRANT EXECUTE ON FUNCTION search.ranking_weights () TO anon, authenticated, service_role;
+
+GRANT EXECUTE ON FUNCTION search.trending_entities (integer, integer) TO anon, authenticated, service_role;
+
+-- A viewing history belongs to a signed-in person. The schema-wide grant above reached `anon` and
+-- PUBLIC too; the definer also refuses a NULL auth.uid(), but no guest should reach it at all.
+REVOKE EXECUTE ON FUNCTION search.record_view (text, uuid, text[]) FROM PUBLIC, anon;
+
+GRANT EXECUTE ON FUNCTION search.record_view (text, uuid, text[]) TO authenticated, service_role;
+-- #endregion
+
 -- --- from 0304_onboarding_session_and_audit.sql ---
 
 GRANT

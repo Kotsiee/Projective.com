@@ -29,8 +29,14 @@ migration mid-feature) but every name the platform emits is registered here.
 | `property_keys` | text[]                     | Documented keys expected inside `events.properties`. |
 | `is_active`     | boolean                    | Default `true`.                                      |
 
-Seeded with the 15 events of the billing / allowance / standing systems (see
-[Functions.md](Functions.md) for the emit contract).
+Seeded (`00005050_seed_reference_data.sql`) with the 15 events of the billing / allowance / standing
+systems (see [Functions.md](Functions.md) for the emit contract), the `storage.*` / `link.*` asset
+events, and the four **`discovery.*`** events: `discovery.search`, `discovery.impression`,
+`discovery.click` and `discovery.rail_depth` (domain `discovery`). The discovery rows document a
+stream that is **not** written to `analytics.events`: queries land in `search.query_logs` and the
+rest in `search.interest_events` (see [../search/Tables.md](../search/Tables.md)), because they are
+mostly anonymous and `fn_emit` is executable by `authenticated` only. They are the vocabulary those
+tables roll up under and the typed `discovery.*` members of `KnownAnalyticsEvent`.
 
 ---
 

@@ -117,7 +117,19 @@ u.active_project_count,
     fs.storage_path as showcase_path,
     -- A freelancer's earned rung; NULL for a buyer-only account, which has no seller standing.
     sl.level as standing_level,
-    sl.label::text as standing_label
+    sl.label::text as standing_label,
+    -- The rung's discovery multiplier, which scales a seller's discovery score
+    -- (packages/backend/services/explore/ranking.ts). NULL for a buyer.
+    sl.discovery_weight_bp,
+    -- The Global Intensity Cap `workload` is measured against: the person's own override, else the
+    -- platform default (security.platform_params, which only this owner-run view can read for a
+    -- guest). At the cap a seller's ranking is temporarily lowered. NULL for a buyer.
+    CASE WHEN u.is_freelancer THEN COALESCE(
+        f.max_workload_intensity,
+        (SELECT (pp.value #>> '{}')::numeric FROM security.platform_params pp
+          WHERE pp.key = 'global_workload_cap_default'),
+        10.00
+    ) END::numeric as workload_cap
 FROM org.users_public u
     LEFT JOIN org.freelancer_profiles f ON u.user_id = f.user_id
     LEFT JOIN org.entity_standing es ON u.is_freelancer
@@ -184,7 +196,9 @@ b.active_project_count,
     fs.storage_path as showcase_path,
     -- A business buys, so it has no seller standing.
     NULL::smallint as standing_level,
-    NULL::text as standing_label
+    NULL::text as standing_label,
+    NULL::integer as discovery_weight_bp,
+    NULL::numeric as workload_cap
 FROM org.business_profiles b
     LEFT JOIN files.items fa ON fa.id = b.logo_file_id AND fa.visibility = 'public' AND fa.deleted_at IS NULL
     LEFT JOIN files.items fb ON fb.id = b.banner_file_id AND fb.visibility = 'public' AND fb.deleted_at IS NULL
@@ -242,7 +256,18 @@ t.active_project_count,
     fs.bucket_id as showcase_bucket,
     fs.storage_path as showcase_path,
     sl.level as standing_level,
-    sl.label::text as standing_label
+    sl.label::text as standing_label,
+    sl.discovery_weight_bp,
+    -- The W_i cap is per PERSON (projects.check_ticket_capacity), so a team's ceiling is its active
+    -- members' default caps combined.
+    (COALESCE(
+        (SELECT (pp.value #>> '{}')::numeric FROM security.platform_params pp
+          WHERE pp.key = 'global_workload_cap_default'),
+        10.00
+    ) * GREATEST(
+        (SELECT COUNT(*) FROM org.team_members tm WHERE tm.team_id = t.id AND tm.status = 'active'),
+        1
+    ))::numeric as workload_cap
 FROM org.teams t
     LEFT JOIN org.entity_standing es ON es.subject_type = 'team'::org.standing_subject AND es.subject_id = t.id
     LEFT JOIN org.standing_levels sl ON sl.level = COALESCE(es.level, 1)

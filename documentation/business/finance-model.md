@@ -578,3 +578,27 @@ one place a surprise platform-initiated debit would be least forgivable.
 Storage is deliberately **not sold à la carte**, for the same reason proposals are not (§16.2): the
 moment bytes can be topped up per-gigabyte, the plan ladder stops describing the product and starts
 describing a meter.
+
+### 16.7 Discovery ranking dials
+
+The concrete numbers behind `PRODUCT_SPEC.md` §Reputation & Discovery 2 (Decision #178). The
+COEFFICIENTS live in `search.search_weights` and are tuned live by an admin (`search.fn_set_weight`),
+with no deploy; the thresholds are code constants in `packages/backend/services/explore/ranking.ts`
+and `personalise.ts`.
+
+| Dial                     | Value                                                                       |
+| :----------------------- | :-------------------------------------------------------------------------- |
+| Coefficients (seeded)    | `review_sentiment` 1.75 · `review_count` 1.00 · `workload` 1.50 · `discovery_boost` 1.25 · `penalty` 2.50 · `interest_history` 1.25 |
+| Cold-start prior         | 5 pseudo-reviews at the track's corpus mean (delivery reviews and client reviews kept apart) |
+| Review volume            | Logarithmic, saturating at 50 reviews                                       |
+| Availability             | The free share of the Global Intensity Cap; zero at the cap                 |
+| Discovery Boost          | Joined ≤ 90 days **or** still on L1 · nothing claimed against the cap · no active penalty · no rating below 4.0 |
+| Standing multiplier      | The rung's discovery weight, §16.3 (1.00× – 1.20×); never applied to a penalty |
+| Trust penalty            | Active `discovery_rank` severity, at full strength from 10                  |
+| Trending                 | 7-day window · views count 1, saves 2 · at least 3 distinct people per item |
+| New on Projective        | Published in the last 30 days                                               |
+| Personal rails           | 3 items to show, 12 at most · "Because you viewed" anchors on the last 3 views |
+| Topic affinity           | +1 per opening, decaying with a 14-day half-life                            |
+
+**What never moves the score:** verification (discovery weight comes from Standing alone, §16.5) and
+any plan or payment. Paid visibility is the labelled sponsored placement (§1.4), never rank.

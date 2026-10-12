@@ -701,6 +701,55 @@ CREATE TYPE org.achievement_tier  AS ENUM ('milestone', 'bronze', 'silver', 'gol
 
 ---
 
+## 🔖 Discovery signals — saves and viewing history
+
+What a signed-in person has saved and opened: the inputs of their own Explore Home rails ("Because
+you viewed", "Picked for you", "Saved") and, aggregated past a floor of three people, of the shared
+Trending rail (`search.trending_entities`, [search/Functions.md](../search/Functions.md)). Both are
+polymorphic over the discovery entities by a bare `entity_id` (no FK) and are read-own. The discovery
+service reads them under the person's own JWT in a per-request viewer pass that is never cached
+(`packages/backend/services/explore/viewer-signals.ts`, Decision #178). Zod:
+`packages/types/explore/signals.ts`.
+
+### `org.user_bookmarks`
+
+A person's saved items — a card's Star (`/api/explore/bookmark`). Policy "Users manage own bookmarks"
+(`FOR ALL`, own rows).
+
+| Column        | Type                       | Notes                                                                                 |
+| :------------ | :------------------------- | :------------------------------------------------------------------------------------ |
+| `id`          | uuid                       | PK.                                                                                   |
+| `user_id`     | uuid                       | FK → `org.users_public.user_id` `ON DELETE CASCADE`.                                  |
+| `entity_type` | `org.bookmark_entity_type` | `project` · `service_blueprint` · `freelancer` · `business` · `team`.                 |
+| `entity_id`   | uuid                       | The saved entity (a blueprint, project, or profile entity id). No FK: polymorphic.    |
+| `created_at`  | timestamptz                | `DEFAULT now()`. "Saved" reads newest first (`idx_user_bookmarks_user_created`); Trending counts the window's saves (`idx_user_bookmarks_created`). |
+
+`UNIQUE (user_id, entity_type, entity_id)` — a save is idempotent.
+
+### `org.recent_views`
+
+A person's discovery history: ONE row per person per entity, so it grows with what they have opened,
+never with how often. **Read-own and clear-own; definer-written.** Policies "Users can view their own
+recent views" (SELECT) and "Users can clear their own recent views" (DELETE), both `user_id =
+auth.uid()`; `INSERT`/`UPDATE` revoked from the client roles and nothing at all for `anon` (00002520).
+The only writer is `search.record_view` (00001400), which takes the person from `auth.uid()` and
+stamps both times itself — a client-written `viewed_at` in the future would hold an item inside the
+Trending window forever.
+
+| Column            | Type        | Notes                                                                                         |
+| :---------------- | :---------- | :-------------------------------------------------------------------------------------------- |
+| `id`              | uuid        | PK.                                                                                           |
+| `user_id`         | uuid        | FK → `org.users_public.user_id` `ON DELETE CASCADE`.                                          |
+| `entity_type`     | text        | `recent_views_entity_type_check`: the bookmark vocabulary plus `product` · `article` · `user` (things a person can open but not save). A CHECK rather than widening the enum, which would make them bookmarkable. |
+| `entity_id`       | uuid        | The opened entity. No FK: polymorphic.                                                        |
+| `view_count`      | integer     | `NOT NULL DEFAULT 1`, `≥ 1`. A repeat view increments it.                                     |
+| `first_viewed_at` | timestamptz | `NOT NULL DEFAULT now()`.                                                                     |
+| `viewed_at`       | timestamptz | `NOT NULL DEFAULT now()`, `≥ first_viewed_at`. The latest opening — "Because you viewed" reads a person's newest (`idx_recent_views_user_viewed`); Trending scans the window (`idx_recent_views_viewed`). |
+
+`UNIQUE (user_id, entity_type, entity_id)` (`uq_recent_views`) — the upsert key.
+
+---
+
 ## 🔎 `org.profiles_index` — the public profile directory (view)
 
 Migration [`00003001_views_profiles_business.sql`](../../../supabase/migrations/00003001_views_profiles_business.sql).
@@ -736,6 +785,8 @@ may only add trailing columns):
 | `delivered_count`                   | Completed `projects.stage_assignments` for the freelancer or the team; 0 for a business.            |
 | `showcase_bucket` / `showcase_path` | _(appended 2026-09-23)_ Showcase **slot 1** — the profile's primary thumbnail — as a storage object: the `org.profile_showcase_items` row at position 1, joined to a live, `public` file. The discovery card leads with it and falls back to the banner (`live-catalog.ts`); NULL when the slot is empty. |
 | `standing_level` / `standing_label` | _(appended 2026-09-23)_ A SELLER's earned Standing rung (a freelancer or a team) from `org.entity_standing` joined to `org.standing_levels`. `org.entity_standing` is readable only by a signed-in caller, so this is how a guest sees the rung a listing and a card print. Same rule as `org.get_public_profile`: a seller with no computed row reads as level 1 ("New"); a buyer-only account and a business carry NULL. |
+| `discovery_weight_bp`               | _(appended 2026-10-12, Decision #178)_ The seller's rung's discovery multiplier (`org.standing_levels.discovery_weight_bp`, 10000 = 1.0×), which scales their discovery score. NULL for a buyer and a business. |
+| `workload_cap`                      | _(appended 2026-10-12, Decision #178)_ The Global Intensity Cap `workload` is measured against: a person's `max_workload_intensity`, else `security.platform_params.global_workload_cap_default` (read here because a guest cannot read that table); a team's is its active members' defaults combined, since the W_i cap is per person. NULL for a buyer and a business. The discovery card's meter and the ranking's availability term both read `workload` as a share of it. |
 
 ---
 

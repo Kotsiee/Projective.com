@@ -6,6 +6,7 @@ import CurrencyBridge from "@web/features/shell/islands/CurrencyBridge.island.ts
 import ServiceWorkerBridge from "@web/features/shell/islands/ServiceWorkerBridge.island.tsx";
 import ImageFallbackBridge from "@web/features/shell/islands/ImageFallbackBridge.island.tsx";
 import OfflineBridge from "@web/features/shell/islands/OfflineBridge.island.tsx";
+import WebVitalsBridge from "@web/features/shell/islands/WebVitalsBridge.island.tsx";
 import ExploreHistoryTracker from "@web/features/explore/islands/ExploreHistoryTracker.island.tsx";
 import { DevMount } from "@web/features/devtools/components/DevMount.tsx";
 import { a11yRootAttributes, DEFAULT_A11Y } from "@web/utils/a11y-context.ts";
@@ -217,6 +218,12 @@ export default define.page(function App({ Component, state }) {
 				    dropped connection is a property of the session, not of a route. */
 				}
 				<OfflineBridge />
+				{
+					/* Core Web Vitals (CLS, LCP, INP) for every page, reported once when the page is first
+				    hidden — beaconed to `/api/logs/vitals` in production, written to the log inspector in
+				    development. Renders nothing. */
+				}
+				<WebVitalsBridge />
 				{
 					/* The Explore tree's visit stack — what the contextual Back control on a profile or a
 				    listing walks. Records every page (an excursion outside the tree marks the chain as

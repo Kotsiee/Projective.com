@@ -20,6 +20,20 @@ Parenthesized folders group routes **without** adding a URL segment:
 
 - `routes/_app.tsx` — root `<html>` shell + pre-paint theme + corner-curve app frame.
 - `routes/_middleware.ts` — global security headers (no auth).
+- `routes/_error.tsx` — the root error route for every uncaught `HttpError` or exception. A 404
+  renders "This page doesn’t exist", a 5xx renders "Something went wrong" and is recorded through
+  `LogBackendService.recordServerError` (the console with its stack, plus an `ops.log_entries` row
+  when `LOGGING_BACKEND_LIVE` is on). It renders inside `_app` only, with no group shell. Under
+  `/api/*` it answers the JSON failure envelope `{ ok: false, message }` instead of a page.
+- Telemetry beacons, all `POST`, guest-reachable, written to with `navigator.sendBeacon`:
+  `/api/logs` (the logger's production `warn`/`error` batches), `/api/logs/vitals` (one page view's
+  CLS · LCP · INP from the shell's `WebVitalsBridge`) and `/api/explore/events` (the
+  `ImpressionTracker`'s `discovery.*` batches). See SYSTEM_ARCHITECTURE §Discovery telemetry.
+- `/api/explore/views` — `POST { id }`, SIGNED-IN only (a guest gets 401): the results drawer's
+  in-place open, recorded as a view by a background beacon (`ExploreService.recordView`). A page a
+  reader navigates to — `/view/[entity]`, `/[handle]/view/[item]`, `/[handle]` — records itself
+  server-side instead. `/explore` renews a lapsed session in its handler (the `[handle]` model) because
+  its Home feed is personalised. See SYSTEM_ARCHITECTURE §Discovery (Explore) services, Decision #178.
 - `routes/(dashboard)/_middleware.ts` — **auth guard** (skeleton: session-cookie check → `/login`;
   swap in real Supabase JWT verification via `@server/services`).
 - `routes/(public)/(auth)/_middleware.ts` — the **inverse guard**: an already-authenticated visitor

@@ -102,12 +102,16 @@ CREATE TABLE search.interest_events (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id      uuid REFERENCES org.users_public(user_id) ON DELETE SET NULL,  -- NULL for guests
   session_id   text,                                                          -- anonymous session key
+  -- 'rail_depth' is the one event with no entity: how far a reader scrolled one discovery rail.
   event_type   text NOT NULL CHECK (event_type IN
-                 ('impression','click','search','save','hire','apply','message')),
+                 ('impression','click','search','save','hire','apply','message','rail_depth')),
   entity_id    uuid,
-  entity_type  text,        -- 'service' | 'project' | 'user' | 'freelancer' | 'team' | 'business'
+  entity_type  text,        -- 'service' | 'product' | 'article' | 'project' | 'user' | 'freelancer' | 'team' | 'business'
   query        text,
   weight       numeric(6,2) NOT NULL DEFAULT 1.0,
+  -- Where the event happened: { surface, rail?, position?, depth?, items? }. Position is what makes
+  -- a click-through rate correctable for the slot it was shown in.
+  context      jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at   timestamptz NOT NULL DEFAULT now()
 );
 -- #endregion

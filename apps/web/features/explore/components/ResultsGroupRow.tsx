@@ -5,12 +5,13 @@ import { RailCell } from "./RailCell.tsx";
 import { HomeGrid } from "./HomeGrid.tsx";
 import { EntityCard } from "./cards/EntityCard.tsx";
 import { resultHeading } from "../core/home-model.ts";
+import { RESULTS_RAIL_CAP } from "../core/detail-nav.ts";
 import type { HrefContext } from "../core/routing.ts";
 import type { ExploreItem, ResultGroup } from "../types/explore-types.ts";
 
 /** Cap on how many cards a merged section reveals before "Show all" takes over. Even, so the grid
- * variant never ends on a ragged half row. */
-const RAIL_CAP = 12;
+ * variant never ends on a ragged half row; the drawer's step order stops at the same card. */
+const RAIL_CAP = RESULTS_RAIL_CAP;
 
 /**
  * ResultsGroupRow — one merged section in the cross-category ("all") Search Results feed, reached

@@ -19,6 +19,7 @@
  */
 
 import type { AutoFundMode, FundingState } from "@projective/types/finance";
+import type { DiscoveryActivitySim, DiscoveryViewerSim } from "@projective/types/explore";
 import { IS_DEV } from "./dev.ts";
 
 // #region Contract
@@ -190,6 +191,29 @@ export type DevNotifications = "auto" | "empty" | "many" | "burst";
 export type DevBasketScenario = "auto" | "empty" | "multi_owner" | "unavailable";
 
 /**
+ * The Explore Home's dismissible promo slots: `visible` ignores this device's stored dismissals,
+ * `dismissed` hides every dismissible slot as if each had been dismissed. `auto` reads the stored
+ * dismissals. Client-side only; the audience gate (a freelancer never sees "Become a Freelancer")
+ * follows the persona axis, not this one.
+ */
+export type DevPromoDismissal = "auto" | "visible" | "dismissed";
+
+/**
+ * The Explore Home's discovery cold start, viewer half: `no_history` drops the viewer's views, saves
+ * and affinity, so "Because you viewed" falls back to "Picked for you" from their stated interests;
+ * `no_signals` drops those too, leaving only the shared rails. `auto` reads the real history.
+ * SERVER-side: the switcher mirrors it into the `pj.dev.discovery` cookie
+ * (`features/explore/core/discovery-sim.ts`) and `/explore` re-renders.
+ */
+export type DevDiscoveryViewer = DiscoveryViewerSim;
+
+/**
+ * The platform half: `quiet` ignores Trending's activity so the rail falls back to "New on
+ * Projective". Server-side, through the same cookie.
+ */
+export type DevDiscoveryActivity = DiscoveryActivitySim;
+
+/**
  * How the `/wallet` hero's live aurora is chosen. `auto` runs the shipping gates (reduced motion, data
  * saver, device memory, core count, page visibility) and the performance watchdog; `static` never
  * mounts the canvas, so the resting CSS gradient is what shows; `animated` skips the hardware and
@@ -317,6 +341,12 @@ export interface DevSeamState {
 	notifications?: DevNotifications;
 	/** The simulated basket. Optional like `walletAurora`; absent reads as `auto`. */
 	basketScenario?: DevBasketScenario;
+	/** The simulated promo dismissals. Optional like `walletAurora`; absent reads as `auto`. */
+	promoDismissal?: DevPromoDismissal;
+	/** The simulated discovery viewer cold start. Optional like `walletAurora`; absent reads as `auto`. */
+	discoveryViewer?: DevDiscoveryViewer;
+	/** The simulated discovery activity cold start. Optional like `walletAurora`; absent reads as `auto`. */
+	discoveryActivity?: DevDiscoveryActivity;
 }
 // #endregion
 
@@ -450,6 +480,9 @@ const AUTO_FUND_MODES: readonly DevAutoFundMode[] = ["auto", "off", "add_to_bask
 const LOW_BALANCES: readonly DevLowBalance[] = ["auto", "below", "above"];
 const NOTIFICATION_SIMS: readonly DevNotifications[] = ["auto", "empty", "many", "burst"];
 const BASKET_SCENARIOS: readonly DevBasketScenario[] = ["auto", "empty", "multi_owner", "unavailable"];
+const PROMO_DISMISSALS: readonly DevPromoDismissal[] = ["auto", "visible", "dismissed"];
+const DISCOVERY_VIEWERS: readonly DevDiscoveryViewer[] = ["auto", "no_history", "no_signals"];
+const DISCOVERY_ACTIVITIES: readonly DevDiscoveryActivity[] = ["auto", "quiet"];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */
 function coerce<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -506,6 +539,9 @@ export function readDevSeam(): DevSeamState | null {
 		sessionState: coerce(ds.devSessionState, SESSION_STATES, "auto"),
 		notifications: coerce(ds.devNotifications, NOTIFICATION_SIMS, "auto"),
 		basketScenario: coerce(ds.devBasketScenario, BASKET_SCENARIOS, "auto"),
+		promoDismissal: coerce(ds.devPromoDismissal, PROMO_DISMISSALS, "auto"),
+		discoveryViewer: coerce(ds.devDiscoveryViewer, DISCOVERY_VIEWERS, "auto"),
+		discoveryActivity: coerce(ds.devDiscoveryActivity, DISCOVERY_ACTIVITIES, "auto"),
 	};
 }
 

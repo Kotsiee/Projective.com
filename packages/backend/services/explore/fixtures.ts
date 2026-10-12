@@ -1,15 +1,12 @@
 import { resolveSkills } from "./skills.ts";
 import type {
 	ArticleItem,
-	CtaBanner,
 	DualRating,
-	HelpArticle,
 	ProductItem,
 	ProfileItem,
 	ProjectItem,
 	ServiceItem,
 	ServiceType,
-	SponsoredSlot,
 } from "@projective/types/explore";
 import { aspectRatioOf } from "@projective/types/files";
 import { mockCover, mockCoverPlaceholder } from "../../mocks/assets.ts";
@@ -47,6 +44,13 @@ const dual = (helper: [number, number], client: [number, number]): DualRating =>
 });
 const helperOnly = (v: number, c: number): DualRating => ({ asHelper: { value: v, count: c } });
 const clientOnly = (v: number, c: number): DualRating => ({ asClient: { value: v, count: c } });
+
+/**
+ * The corpus's quoted currency. Every seeded `price` string is a plain USD figure, so this is stated
+ * once here rather than repeated on each row — and stated at all, because "the number with a dollar
+ * sign in front" is not a currency until something says which dollar.
+ */
+const CORPUS_CURRENCY = "USD";
 // #endregion
 
 // #region Owners
@@ -132,6 +136,7 @@ export const FREELANCERS: ProfileItem[] = [
 		sponsored: true,
 		// Includes a $5 loss-leader that the IQR fence trims, so the floor reads $120, not $5.
 		servicePrices: [5, 120, 130, 140, 150, 160],
+		serviceCurrency: CORPUS_CURRENCY,
 		products: 9,
 		languages: ["EN", "FR"],
 		highlights: [
@@ -157,6 +162,7 @@ export const FREELANCERS: ProfileItem[] = [
 		skills: resolveSkills(["WebGL", "Blender", "Three.js"]),
 		rating: dual([4.9, 44], [4.8, 9]),
 		servicePrices: [8, 150, 160, 170, 180, 200],
+		serviceCurrency: CORPUS_CURRENCY,
 		products: 6,
 		languages: ["EN", "JP"],
 		highlights: [
@@ -182,6 +188,7 @@ export const FREELANCERS: ProfileItem[] = [
 		skills: resolveSkills(["Preact", "Signals", "A11y"]),
 		rating: dual([5.0, 70], [4.7, 15]),
 		servicePrices: [90, 130, 135, 175],
+		serviceCurrency: CORPUS_CURRENCY,
 		products: 3,
 		languages: ["EN", "KR"],
 		highlights: [
@@ -500,13 +507,6 @@ const SERVICE_UNIT_PRICE: Record<
 };
 
 /**
- * The corpus's quoted currency. Every seeded `price` string is a plain USD figure, so this is stated
- * once here rather than repeated on each row — and stated at all, because "the number with a dollar
- * sign in front" is not a currency until something says which dollar.
- */
-const CORPUS_CURRENCY = "USD";
-
-/**
  * Parse a seeded price string ("$1,800") into integer minor units.
  *
  * Done ONCE, at fixture construction, on the server — never at render time. A formatted currency
@@ -636,6 +636,8 @@ export const PROJECTS: ProjectItem[] = PROJECT_SEED.map(
 		org: OWNERS[owner].name,
 		stage,
 		budget,
+		budgetMinor: priceMinorOf(budget),
+		currency: CORPUS_CURRENCY,
 		classification,
 		roles,
 		phases,
@@ -801,53 +803,4 @@ export const ARTICLES: ArticleItem[] = ARTICLE_SEED.map(
 		createdAt: `2026-06-2${(i % 9) + 0}`,
 	}),
 );
-// #endregion
-
-// #region Promos + home feed
-export const SPONSORED: SponsoredSlot[] = [
-	{
-		id: "sp-nova",
-		eyebrow: "Promoted",
-		title: "Book Atelier Nova's brand sprint",
-		body: "A ten-day identity system with motion and a Webflow handoff. Two slots left this month.",
-		media: unsplash("1626785774573-4b799315345d", 900, 600),
-		mediaPlaceholder: placeholder("1626785774573-4b799315345d", 900, 600),
-		owner: OWNERS.nova,
-		href: "/view/sv-brand-identity-sprint?type=services",
-		cta: "View the sprint",
-	},
-];
-
-export const HELP_ARTICLES: HelpArticle[] = [
-	{ id: "hp-1", title: "How hiring a team works", minutes: 4, href: "/help/hiring" },
-	{ id: "hp-2", title: "Keeping your payments safe", minutes: 3, href: "/help/payments" },
-	{
-		id: "hp-3",
-		title: "Your first project, start to finish",
-		minutes: 6,
-		href: "/help/first-project",
-	},
-];
-
-export const CTAS: Record<"freelancer" | "team", CtaBanner> = {
-	freelancer: {
-		id: "cta-freelancer",
-		eyebrow: "Offer your skills",
-		title: "Become a Freelancer",
-		body:
-			"Turn your craft into income. Set up services, get hired, and get paid safely at each step.",
-		href: "/join?intent=freelancer",
-		cta: "Start freelancing",
-		tone: "primary",
-	},
-	team: {
-		id: "cta-team",
-		eyebrow: "Build together",
-		title: "Launch a Team",
-		body: "Assemble a micro-agency, take on bigger projects, and share the work — and the reward.",
-		href: "/join?intent=team",
-		cta: "Launch a team",
-		tone: "neutral",
-	},
-};
 // #endregion

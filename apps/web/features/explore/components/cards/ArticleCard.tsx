@@ -46,7 +46,13 @@ export function ArticleCard(
 			data-item-type={item.type}
 		>
 			<CardLink item={item} ctx={ctx} label={item.title} />
-			<CardActions title={item.title} href={itemHref(item, ctx)} authed={authed} />
+			<CardActions
+				itemId={item.id}
+				itemType={item.type}
+				title={item.title}
+				href={itemHref(item, ctx)}
+				authed={authed}
+			/>
 			<div class="ex-art__frame">
 				<div class="ex-media ex-art__media">
 					<ProgressiveImage src={item.media} placeholder={item.mediaPlaceholder} loading="lazy" />

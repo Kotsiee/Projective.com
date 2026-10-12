@@ -4,6 +4,7 @@ import { EntityViewPage } from "@features/view/components/EntityViewPage.tsx";
 import { resolveViewPage } from "@features/view/core/view-ssr.ts";
 import { resolveEntityCommerce } from "@features/view/core/booking-ssr.ts";
 import { viewerFromState } from "@features/calendar/core/viewer.ts";
+import { recordViewInBackground } from "@features/explore/core/record-view.ts";
 
 /**
  * `/view/[item_id]?type=[entity_type]` — the public standalone Entity View page (the Explore click
@@ -17,7 +18,10 @@ export const handler = define.handlers({
 	async GET(ctx) {
 		const { view, status } = await resolveViewPage(ctx.params.entity);
 		ctx.state.title = view ? `${view.item.title} · Projective` : "Not found · Projective";
-		if (view) ctx.state.description = view.item.summary;
+		if (view) {
+			ctx.state.description = view.item.summary;
+			recordViewInBackground(ctx, view.item.id);
+		}
 		// The booking offer and a session's schedule are resolved HERE, server-side: the CTA is the reason
 		// this route exists, and it must be correct in the first byte rather than after a round trip that
 		// changes it under the reader's cursor.

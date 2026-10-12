@@ -1,13 +1,14 @@
-import { useSignal, useSignalEffect } from "@preact/signals";
+import { batch, useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import type { ComponentChildren, VNode } from "preact";
 import { Grid } from "@projective/ui/layout";
 import { Button } from "@projective/ui/fields";
-import { Drawer, InlineNotice } from "@projective/ui/feedback";
+import { Drawer, ErrorBoundary, InlineNotice } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { EmptyState } from "@projective/ui/utils";
 import { useMediaQuery } from "@projective/ui/hooks";
 import { OFFLINE_NOTICE_TEXT } from "@web/utils/offline.ts";
+import { logger } from "@web/utils/logger.ts";
 import { useOfflineStall } from "@web/utils/use-offline-stall.ts";
 import { FilterPanel } from "../components/FilterPanel.tsx";
 import { SortControl } from "../components/SortControl.tsx";
@@ -18,6 +19,7 @@ import { ProductMasonryGrid } from "../components/collections/ProductMasonryGrid
 import { ProjectsList } from "../components/collections/ProjectsList.tsx";
 import { ArticlesGrid } from "../components/collections/ArticlesGrid.tsx";
 import { DetailPanel } from "../components/DetailPanel.tsx";
+import { CardSkeletonGrid } from "../components/CardSkeleton.tsx";
 import { activeFilterConfigs } from "../core/filter-config.ts";
 import { ExploreService } from "../core/ExploreService.ts";
 import { bridgeCommit, bridgeFacets, bridgeParams } from "../core/filter-bridge.ts";
@@ -30,6 +32,7 @@ import {
 	withFilter,
 } from "../core/explore-state.ts";
 import type { HrefContext } from "../core/routing.ts";
+import { recordSearch } from "../core/search-history.ts";
 import type {
 	ArticleItem,
 	ExploreCategory,
@@ -41,6 +44,9 @@ import type {
 } from "../types/explore-types.ts";
 
 /** Human title for the Dribbble-style results header when there is no free-text query. */
+/** How long a refinement may run before its results area is swapped for skeletons. */
+const SKELETON_DELAY_MS = 200;
+
 const CATEGORY_TITLE: Record<ExploreCategory, string> = {
 	all: "Everything",
 	users: "People & Businesses",
@@ -110,48 +116,109 @@ const EMPTY_PAYLOAD: SearchPayload = {
 };
 // #endregion
 
-export default function SearchDashboard(
-	{ initialParams, initial, ctx = { scope: "explore" }, authed = false }: {
-		initialParams: ExploreParams;
-		initial?: SearchPayload;
-		ctx?: HrefContext;
-		authed?: boolean;
-	},
+interface SearchDashboardProps {
+	initialParams: ExploreParams;
+	initial?: SearchPayload;
+	ctx?: HrefContext;
+	authed?: boolean;
+	/** The item `?item=` addressed, resolved by the route — the drawer opens on it in the first byte. */
+	initialItem?: ExploreItem;
+}
+
+export default function SearchDashboard(props: SearchDashboardProps) {
+	return (
+		<ErrorBoundary
+			message="Search results couldn’t be shown."
+			onError={(error, info) =>
+				logger.error("SearchDashboard render failed", {
+					scope: "explore.search",
+					message: error instanceof Error ? error.message : String(error),
+					stack: error instanceof Error ? error.stack : undefined,
+					componentStack: info.componentStack,
+				})}
+		>
+			<SearchDashboardView {...props} />
+		</ErrorBoundary>
+	);
+}
+
+function SearchDashboardView(
+	{ initialParams, initial, ctx = { scope: "explore" }, authed = false, initialItem }:
+		SearchDashboardProps,
 ) {
 	const params = useSignal<ExploreParams>(initialParams);
 	const payload = useSignal<SearchPayload>(initial ?? EMPTY_PAYLOAD);
 	/** Isolated-feed accumulated items (first page from SSR, appended as pages load). */
 	const items = useSignal<ExploreItem[]>(initial?.items ?? []);
-	const selected = useSignal<ExploreItem | null>(null);
-	const drawerOpen = useSignal(false);
 	const mobileFilters = useSignal(false);
 	/** True only while a feed page is actively being appended — gates the infinite-scroll spinner. */
 	const loadingMore = useSignal(false);
+	/** The last refinement's failure; the results area shows it in place of stale results. */
+	const searchError = useSignal<string | null>(null);
+	const searching = useSignal(false);
+	/** Set once a refinement has been in flight past {@link SKELETON_DELAY_MS}; swaps results for skeletons. */
+	const showSkeleton = useSignal(false);
+	/** Bumped per refinement; an answer (or appended page) for an older one is dropped. */
+	const searchSeq = useRef(0);
+	const searchAbort = useRef<AbortController | null>(null);
 
 	const isMobile = useMediaQuery("(max-width: 767.98px)");
 
 	// #region URL sync + fetching
-	/** Fetch a fresh result set for `next` params, optionally pushing a shareable URL. */
+	/**
+	 * Fetch a fresh result set for `next` params, optionally pushing a shareable URL. A newer call
+	 * aborts this one, and an answer that lands after a newer call started is dropped, so a slow
+	 * response can never repaint results for a query the reader has already left.
+	 */
 	async function runSearch(next: ExploreParams, push: boolean) {
 		params.value = next;
 		if (push && typeof globalThis.history !== "undefined") {
 			globalThis.history.pushState(null, "", serializeExploreParams(next));
 		}
-		const res = await ExploreService.search(next);
-		if (res.ok && res.data) {
-			payload.value = res.data;
-			items.value = res.data.items;
-		}
+		const id = ++searchSeq.current;
+		searchAbort.current?.abort();
+		const ac = new AbortController();
+		searchAbort.current = ac;
+		searching.value = true;
+		setTimeout(() => {
+			if (id === searchSeq.current && searching.value) showSkeleton.value = true;
+		}, SKELETON_DELAY_MS);
+		const res = await ExploreService.search(next, undefined, ac.signal);
+		if (id !== searchSeq.current || ac.signal.aborted) return;
+		searchAbort.current = null;
+		batch(() => {
+			searching.value = false;
+			showSkeleton.value = false;
+			if (res.ok && res.data) {
+				payload.value = res.data;
+				items.value = res.data.items;
+				searchError.value = null;
+			} else {
+				searchError.value = res.message ?? "Search is unavailable right now.";
+			}
+		});
 	}
 
-	/** Commit a refinement: fetch + push a shareable URL. */
+	/** Commit a refinement: fetch + push a shareable URL, remembering a new free-text query. */
 	function commit(next: ExploreParams) {
-		runSearch(next, true);
+		if (next.q && next.q !== params.peek().q) recordSearch(next.q);
+		void runSearch(next, true);
 	}
 
-	// Keep signals in step with browser back/forward.
+	function retrySearch() {
+		void runSearch(params.peek(), false);
+	}
+
+	useEffect(() => () => searchAbort.current?.abort(), []);
+
+	// Keep signals in step with browser back/forward. A traversal that only opens or closes the drawer
+	// (`?item=`) leaves the result set as it is — `useDetailRoute` answers that one.
 	useEffect(() => {
-		const onPop = () => runSearch(parseExploreParams(globalThis.location.search), false);
+		const onPop = () => {
+			const next = parseExploreParams(globalThis.location.search);
+			if (serializeExploreParams(next) === serializeExploreParams(params.peek())) return;
+			void runSearch(next, false);
+		};
 		globalThis.addEventListener("popstate", onPop);
 		return () => globalThis.removeEventListener("popstate", onPop);
 	}, []);
@@ -191,9 +258,19 @@ export default function SearchDashboard(
 	// #endregion
 
 	// #region Selection
+	// A drawer open — and each step to another result — is a "view" that feeds the Home's "Because you
+	// viewed" rail (Decision #178).
+	const detail = useDetailRoute({
+		initial: initialItem ?? null,
+		resolve: (id) =>
+			items.peek().find((it) => it.id === id) ??
+				payload.peek().groups.flatMap((g) => g.items).find((it) => it.id === id),
+		onView: (item) => {
+			if (authed) ExploreService.recordView(item.id);
+		},
+	});
 	function onSelect(item: ExploreItem) {
-		selected.value = item;
-		drawerOpen.value = true;
+		detail.open(item);
 	}
 	// #endregion
 
@@ -209,10 +286,16 @@ export default function SearchDashboard(
 		// intersection change of a sentinel that is still in view.
 		if (loadingMore.value || stall.blocked.value || !pl.isolated || !pl.hasMore) return;
 		loadingMore.value = true;
+		const id = searchSeq.current;
 		const res = await ExploreService.search(params.value, {
 			offset: items.value.length,
 			limit: FEED_PAGE,
 		});
+		if (id !== searchSeq.current) {
+			loadingMore.value = false;
+			stall.settle(res.ok);
+			return;
+		}
 		if (res.ok && res.data) {
 			items.value = [...items.value, ...res.data.items];
 			payload.value = { ...pl, hasMore: res.data.hasMore, poolTotal: res.data.poolTotal };
@@ -280,15 +363,17 @@ export default function SearchDashboard(
 				<div class="ex-dash__content">
 					<div class="ex-dash__bar">
 						<div class="ex-dash__lead">
-							<p class="ex-dash__count">
-								<strong>{pl.count}</strong> {pl.count === 1 ? "result" : "results"}
-								{p.q && (
-									<>
-										{" "}
-										<span class="ex-muted">for "{p.q}"</span>
-									</>
-								)}
-							</p>
+							{!searchError.value && (
+								<p class="ex-dash__count" aria-live="polite">
+									<strong>{pl.count}</strong> {pl.count === 1 ? "result" : "results"}
+									{p.q && (
+										<>
+											{" "}
+											<span class="ex-muted">for "{p.q}"</span>
+										</>
+									)}
+								</p>
+							)}
 							{
 								/* The guest desktop sidebar toggle sits directly beside the count as a quiet, labelled
 					    ghost control — the label carries the state and the applied count, so it needs neither a
@@ -328,7 +413,16 @@ export default function SearchDashboard(
 
 					<div class="ex-dash__grid">
 						<div class="ex-dash__main">
-							{pl.count === 0
+							{showSkeleton.value ? <CardSkeletonGrid /> : searchError.value
+								? (
+									<InlineNotice
+										text={searchError.value}
+										actionLabel="Retry"
+										onAction={retrySearch}
+										busy={searching.value}
+									/>
+								)
+								: pl.count === 0
 								? (
 									<EmptyState
 										title="No results yet"

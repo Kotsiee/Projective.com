@@ -1,4 +1,5 @@
 import { define } from "@web/utils/state.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import { LogBatchSchema } from "@projective/types/logging";
 import { LogBackendService } from "@server/services/logging/LogBackendService.ts";
 
@@ -16,7 +17,7 @@ export const handler = define.handlers({
 		if (!parsed.success) {
 			return Response.json({ ok: false }, { status: 422 });
 		}
-		const result = LogBackendService.ingest(parsed.data);
+		const result = await LogBackendService.ingest(parsed.data, readActor(ctx));
 		return Response.json(
 			{ ok: result.ok, accepted: result.data?.accepted ?? 0 },
 			{ status: result.status },

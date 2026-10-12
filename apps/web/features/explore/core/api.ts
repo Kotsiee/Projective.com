@@ -4,11 +4,18 @@ import type { ExploreResult } from "../types/results.ts";
  * Explore transport primitive — a single `fetch` helper the thin {@link ExploreService} composes over.
  *
  * All discovery reads are GETs. Any network/parse failure degrades to a soft `{ ok: false, message }`
- * rather than throwing, so islands stay dumb (mirrors the auth feature's `api.ts`).
+ * rather than throwing, so islands stay dumb (mirrors the auth feature's `api.ts`). An aborted
+ * request degrades the same way; a caller that aborts reads its own `signal.aborted`, not the body.
  */
-export async function getExplore<T>(path: string): Promise<ExploreResult<T>> {
+export async function getExplore<T>(
+	path: string,
+	init?: { signal?: AbortSignal },
+): Promise<ExploreResult<T>> {
 	try {
-		const res = await fetch(path, { headers: { accept: "application/json" } });
+		const res = await fetch(path, {
+			headers: { accept: "application/json" },
+			signal: init?.signal,
+		});
 		const body = await res.json().catch(() => null);
 		if (body && typeof body.ok === "boolean") return body as ExploreResult<T>;
 		return { ok: false, message: "Unexpected response from the discovery service." };

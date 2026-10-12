@@ -11,7 +11,7 @@ import { styleVars } from "../../core/style.ts";
 
 // #region Props
 export type SkeletonShape = "rect" | "circle" | "text";
-export type SkeletonAnimation = "pulse" | "wave" | "none";
+export type SkeletonAnimation = "pulse" | "wave" | "shimmer" | "none";
 
 export interface SkeletonProps {
 	/** Placeholder shape (default `rect`). `circle` forces a 1:1 aspect ratio. */
@@ -24,7 +24,10 @@ export interface SkeletonProps {
 	radius?: string;
 	/** Number of stacked rows for `shape="text"` (default `1`). */
 	lines?: number;
-	/** Shimmer treatment (default `pulse`). `none` also applies automatically under reduced-motion. */
+	/**
+	 * Loading treatment (default `pulse`). `shimmer` sweeps a `--surface-2` band across a `--surface-1`
+	 * block. Every treatment is static under either reduced-motion channel.
+	 */
 	animation?: SkeletonAnimation;
 	id?: string;
 	class?: string;

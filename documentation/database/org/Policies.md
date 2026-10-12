@@ -336,6 +336,33 @@ follow has no mutable column — you follow or you do not — and an `UPDATE` th
 
 ---
 
+## 🔖 Discovery signals — saves and viewing history (Decision #178)
+
+Both are private to their person; the only cross-person reader is `search.trending_entities`, a
+definer that returns aggregates over at least three people ([search/Functions.md](../search/Functions.md)).
+
+```sql
+CREATE POLICY "Users manage own bookmarks"
+ON org.user_bookmarks FOR ALL TO public
+USING (user_id = auth.uid());
+
+CREATE POLICY "Users can view their own recent views"
+ON org.recent_views FOR SELECT TO authenticated
+USING (user_id = auth.uid());
+
+CREATE POLICY "Users can clear their own recent views"
+ON org.recent_views FOR DELETE TO authenticated
+USING (user_id = auth.uid());
+```
+
+**`org.recent_views` has no `INSERT` or `UPDATE` policy, and both grants are revoked** (`anon` holds
+nothing at all, 00002520). Its one writer is the `search.record_view` definer, which takes the person
+from `auth.uid()` and stamps `viewed_at` itself: a client-written future timestamp would hold an item
+inside the Trending window forever, and one row per person per entity is what keeps each person to a
+single vote.
+
+---
+
 ## ⚠️ Security Notes
 
 - **Recursive Triggers**: The `is_active_team_member` helper must be used carefully to avoid

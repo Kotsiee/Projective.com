@@ -3,6 +3,7 @@ import { useEffect } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import HomeRail from "./HomeRail.island.tsx";
 import { EntityCard } from "../components/cards/EntityCard.tsx";
+import { CardSkeleton } from "../components/CardSkeleton.tsx";
 import { ExploreService } from "../core/ExploreService.ts";
 import { readViewHistory } from "../core/view-history.ts";
 import type { ExploreItem } from "../types/explore-types.ts";
@@ -16,11 +17,11 @@ import "../styles/explore-home.css";
  *
  * The history lives in `localStorage`, which the server cannot read, so this section cannot be part of
  * the first byte. That is not a limitation to work around — it is the honest shape of the feature.
- * There is no server-side view history anywhere in this product: no view/impression analytics event,
- * no `discovery.recent_views` table, and `ExploreBackendService.home()` takes no viewer argument. So
- * the section returns `null` until it has hydrated, read a non-empty list, and resolved it. A
- * "Continue where you left off" heading standing over an empty row would be claiming a history the
- * reader does not have, and a skeleton would claim one is loading when there may be none.
+ * It reads the device's history — the one every reader has, a guest included — not the signed-in
+ * server history behind "Because you viewed" (`org.recent_views`). So the section returns `null`
+ * until it has hydrated and read a non-empty list. A "Continue where you
+ * left off" heading over an empty row would claim a history the reader does not have, so the
+ * shimmer skeleton appears only once a stored list exists and stands in while it resolves.
  *
  * The consequence, stated rather than hidden: this is per-device recency. A phone and a laptop
  * disagree, and a private window has none. It is never presented as "recommended for you".
@@ -49,28 +50,58 @@ import "../styles/explore-home.css";
  * current price, and an item that no longer exists simply drops out of the row instead of rendering
  * from a stale cache.
  */
+/** Placeholder cells shown while the stored history resolves. */
+const SKELETON_CELLS = 4;
+
 export default function ContinueRail({ authed = false }: { authed?: boolean }): JSX.Element | null {
 	const items = useSignal<ExploreItem[]>([]);
+	const pending = useSignal(0);
 
 	useEffect(() => {
 		const refs = readViewHistory();
 		if (refs.length === 0) return;
+		pending.value = Math.min(refs.length, SKELETON_CELLS);
 		let live = true;
 		ExploreService.items(refs.map((r) => r.id)).then((res) => {
 			// A failed resolve leaves the section absent rather than rendering an error. This is a
 			// convenience row on a discovery page; a reader who cannot see it has lost nothing they
 			// came for, and a red message where their recent work should be is worse than silence.
 			if (live && res.ok && res.data) items.value = res.data;
+			if (live) pending.value = 0;
 		});
 		return () => {
 			live = false;
 		};
 	}, []);
 
-	if (items.value.length === 0) return null;
+	if (items.value.length === 0 && pending.value === 0) return null;
+
+	if (items.value.length === 0) {
+		const cells = Array.from({ length: pending.value }, (_, i) => i);
+		return (
+			<>
+				<HomeRail
+					key="loading"
+					id="continue"
+					lead="Continue"
+					tail="where you left off"
+					modifier="ex-continue"
+					label="your recent items"
+				>
+					{cells.map((i) => (
+						<div class="ex-rail__cell" aria-hidden="true" key={i}>
+							<CardSkeleton />
+						</div>
+					))}
+				</HomeRail>
+				<span class="ui-visually-hidden" role="status">Loading your recent items</span>
+			</>
+		);
+	}
 
 	return (
 		<HomeRail
+			key="ready"
 			id="continue"
 			lead="Continue"
 			tail="where you left off"

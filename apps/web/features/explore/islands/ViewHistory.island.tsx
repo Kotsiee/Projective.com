@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import { recordView } from "../core/view-history.ts";
+import { armHeroMorph, bindHeroMorph } from "../core/hero-morph.ts";
 import type { ExploreEntity } from "../types/explore-types.ts";
 
 /**
@@ -49,12 +50,21 @@ export default function ViewHistory({ item }: ViewHistoryProps): JSX.Element | n
 			// Only the card's own stretched link opens the item. The whitespace between the title and the
 			// price navigates nowhere, and a sub-anchor — the creator's profile, a skill filter — goes
 			// somewhere ELSE, so neither is a view of this item.
-			if (!target.closest("a[href]")?.classList.contains("ex-card__link")) return;
+			const link = target.closest("a[href]");
+			if (!link?.classList.contains("ex-card__link")) return;
 			recordView({ id, type });
+			const plain = e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
+			if (card && plain && !e.defaultPrevented && link.getAttribute("href")?.includes("/view/")) {
+				armHeroMorph(card);
+			}
 		};
 
 		document.addEventListener("click", onClick);
-		return () => document.removeEventListener("click", onClick);
+		const unbindMorph = bindHeroMorph();
+		return () => {
+			document.removeEventListener("click", onClick);
+			unbindMorph();
+		};
 	}, [item?.id]);
 
 	return null;

@@ -1,6 +1,7 @@
 import "../styles/explore.css";
 import "../styles/explore-results.css";
 import { Avatar, RatingStars } from "@projective/ui/display";
+import { EmptyState } from "@projective/ui/utils";
 
 /**
  * CardStyleAnchor — a zero-UI style anchor for the Explore feed.
@@ -26,7 +27,8 @@ import { Avatar, RatingStars } from "@projective/ui/display";
  * both dev servers before this import existed (`.ex-filters__summary` resolved `list-style:
  * disclosure-open`).
  *
- * This island therefore imports `explore.css` plus the two library components purely so their
+ * This island therefore imports `explore.css` plus the library components (Avatar, RatingStars, and
+ * the EmptyState the Home renders when its feed cannot be resolved) purely so their
  * stylesheets are bundled once per Explore page. It renders a `hidden`, `aria-hidden` stub — never
  * visible and out of the accessibility tree — whose only job is to keep those modules (and thus their
  * CSS) in the island bundle.
@@ -36,6 +38,7 @@ export default function CardStyleAnchor() {
 		<div hidden aria-hidden="true">
 			<Avatar size="sm" />
 			<RatingStars value={0} />
+			<EmptyState title="" />
 		</div>
 	);
 }

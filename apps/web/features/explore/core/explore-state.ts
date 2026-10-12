@@ -10,8 +10,11 @@ export type { ExploreParams };
  */
 
 // #region Types
-/** Reserved keys owned by the parser; everything else is treated as an adaptive filter facet. */
-const RESERVED = new Set(["q", "category", "type", "sort"]);
+/**
+ * Reserved keys owned by the parser; everything else is treated as an adaptive filter facet. `item`
+ * addresses the open detail drawer (`detail-nav.ts`), not the result set.
+ */
+const RESERVED = new Set(["q", "category", "type", "sort", "item"]);
 
 const CATEGORIES = new Set<ExploreCategory>([
 	"all",

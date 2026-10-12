@@ -1,5 +1,8 @@
 import type { ComponentChildren, JSX } from "preact";
-import { RailHeading } from "./RailHeading.tsx";
+import { RailHeading, type RailHeadingLevel } from "./RailHeading.tsx";
+
+/** Cards per row in a {@link HomeGrid} at full width. */
+export type HomeGridColumns = 2 | 3;
 
 /**
  * HomeGrid — a Home section laid out as a fixed grid instead of a scrolling rail.
@@ -18,14 +21,21 @@ import { RailHeading } from "./RailHeading.tsx";
  *
  * The Search Results feed renders its projects section here too, for the same reason Home does — and
  * passes an `action`, which Home does not. There the heading link is not the only way to reach the
- * full category, and "show all of this" is a primary act rather than a footnote.
+ * full category, and "show all of this" is a primary act rather than a footnote. The `/view` cross-sell
+ * renders its project blocks here as well, three-up where a project page's "Similar" asks for it.
  */
 export function HomeGrid(
-	{ id, lead, tail, href, action, children }: {
+	{ id, lead, tail, href, subtitle, level, columns = 2, action, children }: {
 		id: string;
 		lead: string;
-		tail: string;
+		tail?: string;
 		href?: string;
+		/** A Meta-register line under the heading — see {@link RailFrame}'s `subtitle`. */
+		subtitle?: string;
+		/** The heading's document level — see {@link RailHeading}. */
+		level?: RailHeadingLevel;
+		/** Cards per row at full width; both collapse to one column below the phone cusp. */
+		columns?: HomeGridColumns;
 		/** Optional trailing affordance in the header — see {@link RailFrame}'s `action`. */
 		action?: ComponentChildren;
 		children: ComponentChildren;
@@ -34,10 +44,13 @@ export function HomeGrid(
 	return (
 		<section class="ex-rail" id={`ex-${id}`} aria-labelledby={`ex-${id}-title`}>
 			<header class="ex-rail__head">
-				<RailHeading id={id} lead={lead} tail={tail} href={href} />
+				<RailHeading id={id} lead={lead} tail={tail} href={href} level={level} />
 				{action}
 			</header>
-			<div class="ex-rail__grid" role="list">{children}</div>
+			{subtitle ? <p class="ex-rail__sub">{subtitle}</p> : null}
+			<div class={columns === 3 ? "ex-rail__grid ex-rail__grid--3" : "ex-rail__grid"} role="list">
+				{children}
+			</div>
 		</section>
 	);
 }

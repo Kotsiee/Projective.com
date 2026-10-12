@@ -1,115 +1,160 @@
-import type { JSX } from "preact";
+import type { ComponentChildren, JSX } from "preact";
 import { Icon } from "@projective/ui/icons";
+import { EntityCard } from "@features/explore/components/cards/EntityCard.tsx";
+import { HomeGrid, type HomeGridColumns } from "@features/explore/components/HomeGrid.tsx";
+import { RailCell } from "@features/explore/components/RailCell.tsx";
+import { RailHeading, type RailHeadingLevel } from "@features/explore/components/RailHeading.tsx";
+import HomeRail from "@features/explore/islands/HomeRail.island.tsx";
 import type { HrefContext } from "@features/explore/core/routing.ts";
 import type { ExploreItem } from "@projective/types/explore";
 import { type EntityGroup, groupItemsByType } from "../core/view-model.ts";
-import RelatedCarousel from "../islands/RelatedCarousel.island.tsx";
 
 /**
  * The most single-type blocks one recommendation section may render.
  *
  * The cross-sell measured 73% of total page height — two sections, each fanning out into up to five
- * labelled blocks. The height came from the number of BLOCKS, not the number of items: a carousel pages,
- * so items are free, while every extra block adds a label and a full row. Two blocks keeps a section's
- * "more of the same, plus one adjacent thing" shape and bounds it; the rest is one click away behind
- * "See all". `groupItemsByType` already orders transactional formats first, so the survivors are the
- * commercially useful ones.
+ * labelled blocks. The height came from the number of BLOCKS, not the number of items: a rail scrolls,
+ * so items are free, while every extra block adds a heading and a full row. Two blocks keeps a
+ * section's "more of the same, plus one adjacent thing" shape and bounds it; the rest is one click
+ * away behind "See all". `groupItemsByType` already orders transactional formats first, so the
+ * survivors are the commercially useful ones.
  */
 const MAX_GROUPS = 2;
 
+const GRID_ROWS = 2;
+
+/** Props for {@link RelatedSection}. */
+export interface RelatedSectionProps {
+	/** Stable section id — the rail anchors and heading ids derive from it (`ex-{id}`). */
+	id: string;
+	title: string;
+	subtitle?: string;
+	items: ExploreItem[];
+	ctx: HrefContext;
+	authed: boolean;
+	seeAllHref?: string;
+	/** Cards per row for a PROJECT block — a project page's "Similar" runs three-up. */
+	columns?: HomeGridColumns;
+}
+
 /**
- * RelatedSection — a titled recommendation section ("More by this creator" / "Similar & recommended",
- * Part 3.1/3.2) whose items are grouped by entity type, capped at {@link MAX_GROUPS} blocks. Every
- * format now renders through the reusable {@link Carousel} (`@projective/ui/display`) via
- * {@link RelatedCarousel}, including products: the staggered masonry is right on Explore, where products
- * ARE the feed, but in a cross-sell footnote it was the one block whose height nothing bounded. Each
- * item keeps its native discovery {@link EntityCard}, inside the `.ex` token context the cards expect.
+ * RelatedSection — a titled recommendation section ("More by this creator" / "Similar & recommended")
+ * built from Explore's own section module: every non-project block is a {@link HomeRail} in its
+ * `contained` variant holding server-rendered {@link RailCell}s, and a project block is a
+ * {@link HomeGrid}, exactly as on `/explore`. A section with one format IS that rail; a section with
+ * two is a titled set whose blocks take level-3 headings. "See all" rides the module's action slot.
  * Renders nothing when there are no items.
  */
 export function RelatedSection(
-	{ title, subtitle, items, ctx, authed, seeAllHref, columns }: {
-		title: string;
-		subtitle?: string;
-		items: ExploreItem[];
-		ctx: HrefContext;
-		authed: boolean;
-		seeAllHref?: string;
-		/** Cards per row — a host rendering into a narrow column passes a lower count. */
-		columns?: number;
-	},
+	{ id, title, subtitle, items, ctx, authed, seeAllHref, columns }: RelatedSectionProps,
 ): JSX.Element | null {
 	if (items.length === 0) return null;
 	const groups = groupItemsByType(items).slice(0, MAX_GROUPS);
-	// With a single format the section title already names it — the per-block label would be redundant.
-	const showGroupLabels = groups.length > 1;
+	const seeAll = seeAllHref ? <SeeAll href={seeAllHref} /> : undefined;
 
-	/*
-	 * The section is NOT `.ex`. That class is the Explore PAGE root — `explore.css` says so in its own
-	 * header — and carries `min-block-size: 100vh` plus `background: var(--surface)`. It was used here
-	 * purely to inherit the `--ex-*` card tokens, and those moved to `:root` when the card system was
-	 * unified. What was left behind was a **one-viewport floor on every recommendation section**:
-	 * measured, each of the two sections stood at exactly 900px in a 900px window while its real content
-	 * was 439px and 786px. That single stray class was the largest contributor to the cross-sell owning
-	 * 73% of the page.
-	 */
-	return (
-		<section class="vw-related" aria-label={title}>
-			<div class="vw-related__head">
-				<div class="vw-related__heading">
-					<h2 class="vw-related__title">{title}</h2>
-					{subtitle ? <p class="vw-related__sub">{subtitle}</p> : null}
-				</div>
-				{seeAllHref
-					? (
-						<a class="vw-related__all" href={seeAllHref}>
-							<span>See all</span>
-							<Icon name="arrow-right" size="xs" class="vw-related__allarrow" />
-						</a>
-					)
-					: null}
+	if (groups.length === 1) {
+		return (
+			<div class="vw-related">
+				<RelatedGroup
+					group={groups[0]}
+					id={id}
+					lead={title}
+					subtitle={subtitle}
+					href={seeAllHref}
+					action={seeAll}
+					level={2}
+					ctx={ctx}
+					authed={authed}
+					columns={columns}
+				/>
 			</div>
+		);
+	}
 
-			<div class="vw-related__groups">
+	return (
+		<div class="vw-related">
+			<section class="vw-related__set" aria-labelledby={`ex-${id}-title`}>
+				<header class="ex-rail__head">
+					<RailHeading id={id} lead={title} href={seeAllHref} />
+					{seeAll}
+				</header>
+				{subtitle ? <p class="ex-rail__sub">{subtitle}</p> : null}
 				{groups.map((group) => (
 					<RelatedGroup
 						key={group.type}
 						group={group}
+						id={`${id}-${group.type}`}
+						lead={group.label}
+						level={3}
 						ctx={ctx}
 						authed={authed}
-						showLabel={showGroupLabels}
 						columns={columns}
 					/>
 				))}
-			</div>
-		</section>
+			</section>
+		</div>
 	);
 }
 
-/**
- * RelatedGroup — one single-type block, always a {@link RelatedCarousel} (`@projective/ui/display`
- * {@link Carousel}). One idiom per section means the reader learns the interaction once instead of
- * scanning a rail, then a masonry, then a rail down a page a third of a screen tall.
- */
+function SeeAll({ href }: { href: string }): JSX.Element {
+	return (
+		<a class="ex-viewall ex-rail__action" href={href}>
+			<span>See all</span>
+			<Icon name="arrow-right" aria-hidden />
+		</a>
+	);
+}
+
 function RelatedGroup(
-	{ group, ctx, authed, showLabel, columns }: {
+	{ group, id, lead, subtitle, href, action, level, ctx, authed, columns = 2 }: {
 		group: EntityGroup;
+		id: string;
+		lead: string;
+		subtitle?: string;
+		href?: string;
+		action?: ComponentChildren;
+		level: RailHeadingLevel;
 		ctx: HrefContext;
 		authed: boolean;
-		showLabel: boolean;
-		columns?: number;
+		columns?: HomeGridColumns;
 	},
 ): JSX.Element {
-	return (
-		<div class="vw-group" data-type={group.type}>
-			{showLabel ? <h3 class="vw-group__label">{group.label}</h3> : null}
-			<RelatedCarousel
-				items={group.items}
-				ctx={ctx}
-				authed={authed}
-				kind={group.type}
-				label={group.label}
+	if (group.type === "projects") {
+		return (
+			<HomeGrid
+				id={id}
+				lead={lead}
+				href={href}
+				subtitle={subtitle}
+				level={level}
 				columns={columns}
-			/>
-		</div>
+				action={action}
+			>
+				{group.items.slice(0, columns * GRID_ROWS).map((item) => (
+					<div class="ex-rail__gridcell" role="listitem" key={item.id}>
+						<EntityCard item={item} ctx={ctx} authed={authed} />
+					</div>
+				))}
+			</HomeGrid>
+		);
+	}
+
+	return (
+		<HomeRail
+			id={id}
+			lead={lead}
+			href={href}
+			subtitle={subtitle}
+			level={level}
+			variant="contained"
+			action={action}
+			label={group.label}
+		>
+			{group.items.map((item) => (
+				<RailCell key={item.id}>
+					<EntityCard item={item} ctx={ctx} authed={authed} productLayout="fixed" />
+				</RailCell>
+			))}
+		</HomeRail>
 	);
 }

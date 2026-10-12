@@ -87,6 +87,11 @@ A card renders the "AD" disclosure only when an ACTIVE placement exists for it
 nothing. The seed writes one placement per sponsored corpus listing (a 30-day window starting a week
 ago).
 
+`surface` is read by the discovery load (`live-catalog.ts`, oldest `starts_at` first): the Explore
+Home features each active `explore_home` placement as a sponsored `PromoSlot` inside the rail of the
+listing it promotes, one slot per listing, any number of slots (Decision #175). `explore_results` and
+`view_rail` are read but not yet rendered.
+
 ## `marketplace.quote_requests` — "Request a custom quote"
 
 A buyer (`requester_user_id`) describes a `scope` against a published blueprint (`blueprint_id`) and

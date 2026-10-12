@@ -21,6 +21,9 @@ import {
 	DEV_SESSION_STATES,
 	DEV_NOTIFICATIONS,
 	DEV_BASKET_SCENARIOS,
+	DEV_PROMO_DISMISSALS,
+	DEV_DISCOVERY_VIEWERS,
+	DEV_DISCOVERY_ACTIVITIES,
 	DEV_ROLES,
 	DEV_SERVICE_TYPES,
 	DEV_SESSION_BOOKINGS,
@@ -69,6 +72,14 @@ function Field(props: { label: string; hint?: string; children: JSX.Element }): 
  */
 function reloadProjectPage(): void {
 	if (globalThis.location?.pathname.startsWith("/projects/")) globalThis.location.reload();
+}
+
+/**
+ * Reload when the open page is `/explore`, so a server-side discovery simulation re-composes its rails
+ * at once. Elsewhere nothing reads it until the next `/explore` request.
+ */
+function reloadExplorePage(): void {
+	if (globalThis.location?.pathname === "/explore") globalThis.location.reload();
 }
 
 /** A segmented single-choice control. */
@@ -589,6 +600,47 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.basketScenario}
 						disabled={!o.enabled}
 						onChange={(basketScenario) => patchDevContext({ basketScenario })}
+					/>
+				</Field>
+
+				{
+					/* The Explore Home's dismissible promo slots. A dismissal lives in this browser's storage,
+				    so this is the only way back to a dismissed slot short of clearing site data. The
+				    freelancer audience gate follows the Account type above. */
+				}
+				<Field label="Explore promos" hint="dismissible slots">
+					<Segment
+						name="Explore promos"
+						options={DEV_PROMO_DISMISSALS}
+						value={o.promoDismissal}
+						disabled={!o.enabled}
+						onChange={(promoDismissal) => patchDevContext({ promoDismissal })}
+					/>
+				</Field>
+
+				<Field label="Discovery viewer" hint="personal rails cold start">
+					<Segment
+						name="Discovery viewer"
+						options={DEV_DISCOVERY_VIEWERS}
+						value={o.discoveryViewer}
+						disabled={!o.enabled}
+						onChange={(discoveryViewer) => {
+							patchDevContext({ discoveryViewer });
+							reloadExplorePage();
+						}}
+					/>
+				</Field>
+
+				<Field label="Trending" hint="platform activity">
+					<Segment
+						name="Trending"
+						options={DEV_DISCOVERY_ACTIVITIES}
+						value={o.discoveryActivity}
+						disabled={!o.enabled}
+						onChange={(discoveryActivity) => {
+							patchDevContext({ discoveryActivity });
+							reloadExplorePage();
+						}}
 					/>
 				</Field>
 

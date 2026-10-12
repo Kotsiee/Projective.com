@@ -53,6 +53,14 @@ REVOKE INSERT, UPDATE, DELETE ON TABLE org.deletion_requests FROM anon, authenti
 REVOKE ALL ON TABLE org.handle_changes, org.deletion_requests FROM anon;
 -- #endregion
 
+-- #region org: discovery history (00001400 search.record_view)
+-- Read and clear your own through the two policies (00002010); written only by the definer, so the
+-- client keeps SELECT + DELETE and a guest holds nothing at all.
+REVOKE INSERT, UPDATE ON TABLE org.recent_views FROM anon, authenticated;
+
+REVOKE ALL ON TABLE org.recent_views FROM anon;
+-- #endregion
+
 -- #region Finance: escrow visibility (writes are SECURITY DEFINER only)
 GRANT SELECT ON TABLE finance.escrows TO authenticated;
 
@@ -70,6 +78,15 @@ GRANT INSERT ON search.interest_events TO anon, authenticated;
 GRANT SELECT ON search.interest_events TO authenticated;
 
 GRANT ALL ON search.interest_events TO service_role;
+
+
+-- --- ops.log_entries (production log + web-vitals ingestion) ---
+
+GRANT INSERT ON ops.log_entries TO anon, authenticated;
+
+GRANT SELECT ON ops.log_entries TO authenticated;
+
+GRANT ALL ON ops.log_entries TO service_role;
 
 
 -- --- from 0219_search_engine_weights.sql ---

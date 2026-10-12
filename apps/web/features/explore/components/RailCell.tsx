@@ -9,7 +9,25 @@ import type { ComponentChildren, JSX } from "preact";
  * or dropped `role="listitem"` in one of them would break the uniform-height contract on exactly the
  * surface nobody was looking at. The width itself is the track's (`--ex-cell-w`), so a host narrows a
  * whole rail in one declaration.
+ *
+ * `featured` spans two cells (capped at the track's width) and is the container a sponsored
+ * `PromoSlot` reflows against.
  */
-export function RailCell({ children }: { children: ComponentChildren }): JSX.Element {
-	return <div class="ex-rail__cell" role="listitem">{children}</div>;
+export function RailCell(
+	{ featured = false, facet, children }: {
+		featured?: boolean;
+		/** The value a rail's facet chips match this cell on (`data-facet`). */
+		facet?: string;
+		children: ComponentChildren;
+	},
+): JSX.Element {
+	return (
+		<div
+			class={featured ? "ex-rail__cell ex-rail__cell--featured" : "ex-rail__cell"}
+			role="listitem"
+			data-facet={facet}
+		>
+			{children}
+		</div>
+	);
 }

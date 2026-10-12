@@ -6,6 +6,8 @@ import { BodyPortal } from "@projective/ui/overlay";
 import { useDismiss, useEdgeDetection, useOverlayStack } from "@projective/ui/hooks";
 import { Button } from "@ui/fields/components/Button.tsx";
 import { requestShare } from "@web/features/share/core/share-request.ts";
+import { isSaveableEntity } from "@projective/types/explore";
+import { hydrateSaved, savedIds, setSaved } from "../core/bookmark-state.ts";
 
 /**
  * CardActions — the per-card utility cluster in the card's top-right corner: **Share · Star · kebab**,
@@ -13,8 +15,9 @@ import { requestShare } from "@web/features/share/core/share-request.ts";
  *
  * Share and Star used to live inside the kebab menu, which cost two interactions and a decision for
  * the two things a reader does most on a discovery card. They are now direct controls; the menu keeps
- * what is either rare (Report) or contextual (Add to project on a helper card), so the row stays three
- * wide on every card in the family rather than four on some.
+ * what is either rare (Report) or contextual (Add to project on a helper card). The Star renders only
+ * where it can be kept — a card whose type `org.user_bookmarks` can name (`isSaveableEntity`); a product, an
+ * article and a buyer's profile carry Share and the kebab alone.
  *
  * Every button is icon-only, so each carries all three things §B.8.5 makes a merge gate: an
  * `aria-label`, a portal `Tooltip` (never a native `title`), and a hit target past the 24px floor —
@@ -22,14 +25,18 @@ import { requestShare } from "@web/features/share/core/share-request.ts";
  * user has no way to tell Share from Star from More without one.
  *
  * The cluster is revealed on card hover/focus via CSS and pinned open once the menu is engaged. Dumb
- * island: it owns only local interaction state and, for the stub, optimistic client feedback (the
- * share modal for Share, a local toggle for Star). Star and Add-to-project are auth-gated — a signed-out
- * reader gets a sign-in link rather than a control that silently does nothing. Swap the optimistic
- * handlers for internal API-route calls (`/api/explore/bookmark`, `/report`, `/projects/add`) when
- * those land; islands fetch routes only.
+ * island: Star persists through `/api/explore/bookmark` via the page-wide `bookmark-state` store
+ * (optimistic, reverted on refusal); Share opens the share modal. Star and Add-to-project are
+ * auth-gated — a signed-out reader gets a sign-in link rather than a control that silently does
+ * nothing. Report and Add to project are still optimistic stubs; swap them for internal API-route
+ * calls (`/report`, `/projects/add`) when those land; islands fetch routes only.
  */
 export default function CardActions(
-	{ title, href, authed = false, helper = false }: {
+	{ itemId, itemType, title, href, authed = false, helper = false }: {
+		/** The card's discovery id (slug or handle) — what the Star saves. */
+		itemId: string;
+		/** The card's discovery type — decides whether it carries a Star at all. */
+		itemType: string;
 		/** The card's title — used in share metadata + action labels. */
 		title: string;
 		/** The card's canonical relative href — used to build the absolute share URL. */
@@ -41,9 +48,14 @@ export default function CardActions(
 	},
 ) {
 	const open = useSignal(false);
-	const starred = useSignal(false);
+	const saveable = isSaveableEntity(itemType);
+	const starred = savedIds.value.has(itemId);
 	const status = useSignal(""); // polite aria-live confirmation
 	const rootRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		if (authed && saveable) void hydrateSaved();
+	}, [authed, saveable]);
 
 	/*
 	 * The panel is body-portalled, not absolutely positioned inside the card. `.ex-card` is
@@ -96,9 +108,9 @@ export default function CardActions(
 		announce("");
 	}
 
-	function star() {
-		starred.value = !starred.value;
-		announce(starred.value ? "Saved" : "Removed from saved");
+	async function star() {
+		const res = await setSaved(itemId, !starred);
+		announce(res.message);
 	}
 
 	function report() {
@@ -131,17 +143,17 @@ export default function CardActions(
 				 * position — only the destination differs.
 				 */
 			}
-			{authed
+			{!saveable ? null : authed
 				? (
-					<Tooltip content={starred.value ? "Saved" : "Save"}>
+					<Tooltip content={starred ? "Saved" : "Save"}>
 						<Button
 							type="button"
 							class="ex-actions__btn"
-							aria-label={starred.value ? `Remove ${title} from saved` : `Save ${title}`}
-							aria-pressed={starred.value}
+							aria-label={starred ? `Remove ${title} from saved` : `Save ${title}`}
+							aria-pressed={starred}
 							onClick={star}
 						>
-							<Icon name="star" filled={starred.value} />
+							<Icon name="star" filled={starred} />
 						</Button>
 					</Tooltip>
 				)

@@ -289,8 +289,12 @@ export function attachDragScroll(el: HTMLElement): () => void {
 	};
 }
 
-/** Scroll a track by roughly one viewport-width page in the given direction, ending any glide first. */
+/**
+ * Scroll a track by roughly one viewport-width page in the given LOGICAL direction (`1` = towards the
+ * inline end), ending any glide first. A right-to-left track pages through negative `scrollLeft`.
+ */
 export function pageScroll(el: HTMLElement, dir: 1 | -1): void {
 	activeGlides.get(el)?.(false);
-	el.scrollBy({ left: dir * el.clientWidth * 0.82, behavior: reducedMotion() ? "auto" : "smooth" });
+	const physical = getComputedStyle(el).direction === "rtl" ? -dir : dir;
+	el.scrollBy({ left: physical * el.clientWidth * 0.82, behavior: reducedMotion() ? "auto" : "smooth" });
 }

@@ -1,4 +1,5 @@
 import { define } from "@web/utils/state.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import { parseExploreParams } from "@features/explore/core/explore-state.ts";
 import { toExploreResponse } from "@features/explore/core/respond.ts";
 import { ExploreBackendService } from "@server/services/explore/ExploreBackendService.ts";
@@ -19,6 +20,7 @@ export const handler = define.handlers({
 			params,
 			offset: Number.isFinite(offsetRaw) ? offsetRaw : 0,
 			limit: Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : undefined,
+			actor: readActor(ctx),
 		}));
 	},
 });

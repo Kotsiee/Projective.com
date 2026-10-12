@@ -658,3 +658,118 @@ BEGIN
   RETURN row;
 END;
 $$;
+
+-- =============================================================================
+-- Discovery signals — the personalised Home feed and the catalogue's quality score
+-- (PRODUCT_SPEC §Reputation & Discovery; packages/backend/services/explore/ranking.ts).
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- ranking_weights — the scoring matrix's COEFFICIENTS, for the discovery catalogue.
+-- The table stays admin-read (00002014): its rows also name who tuned them. This door
+-- projects only what a reader of the ranking needs — the key, the weight, whether the
+-- factor is on — and is a definer because the guest catalogue reads it as `anon`.
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION search.ranking_weights()
+RETURNS TABLE (key text, weight numeric, is_active boolean)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = search, public
+AS $$
+  SELECT w.key, w.weight, w.is_active FROM search.search_weights w ORDER BY w.key;
+$$;
+
+-- -----------------------------------------------------------------------------
+-- trending_entities — what the marketplace is opening right now: per entity, the
+-- distinct people who viewed it (org.recent_views) or saved it (org.user_bookmarks)
+-- inside the window, a save counting double. AGGREGATES ONLY, and only past a floor
+-- of three distinct people, so no row can be traced back to one person's history —
+-- which is what lets it run as a definer for `anon` while both tables stay read-own.
+-- The window is clamped to 1..30 days and the answer to 1..100 rows.
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION search.trending_entities(
+  p_days  integer DEFAULT 7,
+  p_limit integer DEFAULT 24
+)
+RETURNS TABLE (entity_type text, entity_id uuid, people integer, score numeric)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = org, public
+AS $$
+  WITH win AS (
+    SELECT now() - make_interval(days => least(greatest(coalesce(p_days, 7), 1), 30)) AS since
+  ),
+  signals AS (
+    SELECT rv.user_id, rv.entity_type, rv.entity_id, 1.0 AS weight
+      FROM org.recent_views rv, win
+     WHERE rv.viewed_at >= win.since
+    UNION ALL
+    SELECT ub.user_id, ub.entity_type::text, ub.entity_id, 2.0
+      FROM org.user_bookmarks ub, win
+     WHERE ub.created_at >= win.since
+  )
+  SELECT s.entity_type, s.entity_id, count(DISTINCT s.user_id)::integer, sum(s.weight)
+    FROM signals s
+   GROUP BY s.entity_type, s.entity_id
+  HAVING count(DISTINCT s.user_id) >= 3
+   ORDER BY sum(s.weight) DESC, count(DISTINCT s.user_id) DESC, s.entity_id
+   LIMIT least(greatest(coalesce(p_limit, 24), 1), 100);
+$$;
+
+-- -----------------------------------------------------------------------------
+-- record_view — the SIGNED-IN caller opened a discovery item: move it to the top of
+-- their history and lean their affinity toward its topics.
+--
+-- The only writer of org.recent_views (00002520 revokes the client's INSERT/UPDATE),
+-- because it stamps the times itself: a client-written `viewed_at` in the future
+-- would hold an item inside the Trending window forever. The person is auth.uid(),
+-- never a parameter, so nobody records a view as somebody else. The discovery service
+-- resolves the entity from the PUBLISHED catalogue before calling, so the id names a
+-- live listing or profile; a direct call can only ever add to the caller's own rows.
+--
+-- Affinity (search.user_affinity, one row per topic) decays with a 14-day half-life
+-- before each +1, so last month's browsing fades instead of outvoting this week's —
+-- the reader applies the same decay. At most eight topics of 60 characters count.
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION search.record_view(
+  p_entity_type text,
+  p_entity_id   uuid,
+  p_topics      text[] DEFAULT '{}'::text[]
+)
+RETURNS void
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = org, search, public
+AS $$
+DECLARE
+  v_user  uuid := auth.uid();
+  v_topic text;
+BEGIN
+  IF v_user IS NULL THEN
+    RAISE EXCEPTION 'record_view: sign in to keep a viewing history' USING ERRCODE = '42501';
+  END IF;
+
+  INSERT INTO org.recent_views (user_id, entity_type, entity_id)
+  VALUES (v_user, p_entity_type, p_entity_id)
+  ON CONFLICT (user_id, entity_type, entity_id) DO UPDATE
+     SET viewed_at = now(), view_count = org.recent_views.view_count + 1;
+
+  FOR v_topic IN
+    SELECT DISTINCT left(lower(btrim(t)), 60)
+      FROM unnest(coalesce(p_topics, '{}'::text[])) AS t
+     WHERE btrim(t) <> ''
+     LIMIT 8
+  LOOP
+    INSERT INTO search.user_affinity (user_id, category_slug, affinity_score, updated_at)
+    VALUES (v_user, v_topic, 1, now())
+    ON CONFLICT (user_id, category_slug) DO UPDATE
+       SET affinity_score = search.user_affinity.affinity_score
+             * power(0.5, extract(epoch FROM now() - coalesce(search.user_affinity.updated_at, now())) / 1209600.0)
+             + 1,
+           updated_at = now();
+  END LOOP;
+END;
+$$;

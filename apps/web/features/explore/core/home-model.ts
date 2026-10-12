@@ -18,6 +18,8 @@ export interface CategoryChip {
 	id: string;
 	label: string;
 	href: string;
+	/** The Home shelf (`data-shelf`) this chip filters to in place; a chip without one navigates. */
+	shelf?: string;
 }
 
 /**
@@ -39,9 +41,24 @@ export interface CategoryChip {
  * choice they make after they can see both.
  */
 export const CATEGORY_CHIPS: CategoryChip[] = [
-	{ id: "freelancers", label: "Freelancers", href: filterHref({ category: "freelancers" }) },
-	{ id: "services", label: "Services", href: filterHref({ category: "services" }) },
-	{ id: "products", label: "Products", href: filterHref({ category: "products" }) },
+	{
+		id: "freelancers",
+		label: "Freelancers",
+		href: filterHref({ category: "freelancers" }),
+		shelf: "freelancers",
+	},
+	{
+		id: "services",
+		label: "Services",
+		href: filterHref({ category: "services" }),
+		shelf: "services",
+	},
+	{
+		id: "products",
+		label: "Products",
+		href: filterHref({ category: "products" }),
+		shelf: "products",
+	},
 	{
 		id: "sessions",
 		label: "Sessions",
@@ -52,11 +69,21 @@ export const CATEGORY_CHIPS: CategoryChip[] = [
 			filters: { model: ["Session", "Group Session"] },
 		}),
 	},
-	{ id: "projects", label: "Projects", href: filterHref({ category: "projects" }) },
+	{
+		id: "projects",
+		label: "Projects",
+		href: filterHref({ category: "projects" }),
+		shelf: "projects",
+	},
 	{ id: "teams", label: "Teams", href: filterHref({ category: "teams" }) },
 	{ id: "businesses", label: "Businesses", href: filterHref({ category: "businesses" }) },
 	{ id: "users", label: "People", href: filterHref({ category: "users" }) },
-	{ id: "articles", label: "Articles", href: filterHref({ category: "articles" }) },
+	{
+		id: "articles",
+		label: "Articles",
+		href: filterHref({ category: "articles" }),
+		shelf: "articles",
+	},
 ];
 // #endregion
 

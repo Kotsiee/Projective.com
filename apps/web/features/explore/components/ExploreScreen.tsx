@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { EmptyState } from "@projective/ui/utils";
 import "../styles/explore.css";
 import "../styles/explore-results.css";
 import { ExploreHome } from "./ExploreHome.tsx";
@@ -6,6 +7,7 @@ import SearchDashboard from "../islands/SearchDashboard.island.tsx";
 import CardStyleAnchor from "../islands/CardStyleAnchor.island.tsx";
 import AmbientPalette from "../islands/AmbientPalette.island.tsx";
 import ViewHistory from "../islands/ViewHistory.island.tsx";
+import ImpressionTracker from "../islands/ImpressionTracker.island.tsx";
 import { isResultsMode } from "../core/explore-state.ts";
 import type { ExploreParams } from "../core/explore-state.ts";
 import type { HomeFeed, SearchPayload } from "../types/explore-types.ts";
@@ -19,12 +21,14 @@ import type { HrefContext } from "../core/routing.ts";
  * active query lives in the global nav header). Full-bleed inside the public shell's `.site__main`.
  */
 export function ExploreScreen(
-	{ params, home, initial, ctx = { scope: "explore" }, authed = false }: {
+	{ params, home, initial, ctx = { scope: "explore" }, authed = false, viewerFreelancer = false }: {
 		params: ExploreParams;
 		home?: HomeFeed;
 		initial?: SearchPayload;
 		ctx?: HrefContext;
 		authed?: boolean;
+		/** Whether the viewer can already sell — see {@link ExploreHome}. */
+		viewerFreelancer?: boolean;
 	},
 ): JSX.Element {
 	const results = isResultsMode(params);
@@ -47,6 +51,11 @@ export function ExploreScreen(
 			    cards stay server components. */
 			}
 			<ViewHistory />
+			{
+				/* Discovery telemetry: impressions, card clicks and rail depth, beaconed to
+				    `/api/explore/events`. Renders nothing; one observer for every card on the page. */
+			}
+			<ImpressionTracker surface={results ? "explore.results" : "explore.home"} />
 			{results
 				? (
 					<SearchDashboard
@@ -57,8 +66,27 @@ export function ExploreScreen(
 					/>
 				)
 				: home
-				? <ExploreHome feed={home} authed={authed} />
-				: null}
+				? <ExploreHome feed={home} authed={authed} viewerFreelancer={viewerFreelancer} />
+				: <HomeUnavailable />}
+		</div>
+	);
+}
+
+function HomeUnavailable(): JSX.Element {
+	return (
+		<div class="ex-unavailable">
+			<EmptyState
+				title="Explore didn’t load"
+				description="We couldn’t reach the discovery feed just now. It’s usually back in a moment."
+				actions={
+					<a
+						class="ui-button ui-button--primary ui-button--outlined ui-button--size-md ui-button--rounded"
+						href="/explore"
+					>
+						Try again
+					</a>
+				}
+			/>
 		</div>
 	);
 }

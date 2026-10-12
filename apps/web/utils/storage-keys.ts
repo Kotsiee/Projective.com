@@ -84,6 +84,11 @@ export const SessionKeys = {
 	 */
 	EXPLORE_HISTORY_POP: "pj.session.explore.historyPop",
 	/**
+	 * The anonymous per-tab key discovery telemetry stamps on `search.interest_events.session_id`, so
+	 * one browsing session's impressions, clicks and rail depths join without identifying anyone.
+	 */
+	DISCOVERY_SESSION: "pj.session.explore.discoverySession",
+	/**
 	 * The place a profile TAB switch leaves from — `{ handle, offset, at }`, the reader's distance
 	 * below the tab bar's natural top —
 	 * written by the tab bar just before its anchor navigates and read (then removed) by the tab bar
@@ -141,10 +146,10 @@ export const LocalKeys = {
 	 * rendered from a cache the corpus has since changed).
 	 *
 	 * It backs the Explore Home's "Continue where you left off" rail and the footer's "Recently
-	 * viewed" stack. It is deliberately CLIENT-ONLY and deliberately named for what it is: there is
-	 * no server-side view history anywhere in the product (no `analytics` view event, no
-	 * `discovery.recent_views` table, and `ExploreBackendService.home()` takes no viewer argument),
-	 * so this is per-device recency and nothing else. It cannot be read during SSR, so both surfaces
+	 * viewed" stack. It is deliberately CLIENT-ONLY and deliberately named for what it is: per-device
+	 * recency, kept for every reader, a guest included. A signed-in person's server-side history
+	 * (`org.recent_views`) is a separate record that only the Home's "Because you viewed" rail
+	 * reads. This one cannot be read during SSR, so both surfaces
 	 * paint nothing on the first byte and reveal only after hydration — a surface that renders an
 	 * empty "Continue" heading would be claiming a history the viewer does not have.
 	 */
@@ -153,6 +158,12 @@ export const LocalKeys = {
 	EXPLORE_LAYOUT: "pj.local.explore.layout",
 	/** Preferred Explore results sort key — remembered across sessions. */
 	EXPLORE_SORT: "pj.local.explore.sort",
+	/**
+	 * The Explore Home promo slots this DEVICE has dismissed — a JSON array of slot ids
+	 * (`PromoSlot.id`, e.g. `cta-freelancer`). Read after hydration by `PromoGate`; the Dev Context
+	 * Switcher's `promoDismissal` axis can force every dismissible slot shown or dismissed.
+	 */
+	EXPLORE_DISMISSED_PROMOS: "pj.local.explore.dismissedPromos",
 	/**
 	 * Desktop global-sidebar collapsed vs expanded rail preference (`"1"` collapsed | `"0"` expanded).
 	 * Read pre-paint in `_app.tsx` to set `data-sidebar` before first paint (no flash-of-wrong-width).

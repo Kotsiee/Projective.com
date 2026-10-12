@@ -93,6 +93,8 @@ function primePipelineListing(): void {
 			showcase_path: null,
 			standing_level: 1,
 			standing_label: "New",
+			discovery_weight_bp: 10_000,
+			workload_cap: 10,
 		}],
 		listings: [{
 			id: "00000000-0000-4000-8000-0000000000c1",

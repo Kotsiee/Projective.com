@@ -117,8 +117,8 @@ export interface ServerEnv {
 	catalogueBackendLive: boolean;
 	/**
 	 * Master switch for LIVE logging-backend behaviour. Defaults **off**: {@link LogBackendService}
-	 * accepts the production `error`/`warn` ingest into a no-op stub (console echo) until the
-	 * `logging.entries` table lands, then flip per environment. Orthogonal to `DENO_ENV` — this gates
+	 * acknowledges the production `error`/`warn`, web-vitals and server-error ingest with a console
+	 * echo; on, it inserts into `ops.log_entries`. Orthogonal to `DENO_ENV` — this gates
 	 * *persistence*, `appEnv` gates *verbosity*.
 	 */
 	loggingBackendLive: boolean;

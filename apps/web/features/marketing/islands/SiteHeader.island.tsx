@@ -23,8 +23,9 @@ import { withRedirect } from "@features/auth/core/redirect.ts";
  *
  * Desktop keeps the full row (wordmark · discovery megamenu nav · search · actions). The four
  * discovery pillars (Helpers · Services · Projects · Products) reveal wide **glassmorphic megamenu**
- * panels on hover/focus, with a transparent hover-bridge so the panel never vanishes as the pointer
- * travels down into it. On mobile it collapses to a strict **three-element** layout — icon-only mark,
+ * panels on hover or on the trigger's Enter/Space, with a transparent hover-bridge so the panel never
+ * vanishes as the pointer travels down into it. A closed panel is `inert`, so Tab crosses the four
+ * triggers rather than every link behind them. On mobile it collapses to a strict **three-element** layout — icon-only mark,
  * a compressed search field (still carrying its entity selector), and a veggie-burger that morphs
  * into an "X" and toggles a right-hand **slide-out drawer**; there the megamenus become collapsible
  * accordions. The theme toggle lives in the desktop actions and inside the drawer, never as a fourth
@@ -112,10 +113,15 @@ export default function SiteHeader(
 		triggerRef: entityMenu.triggerRef,
 	});
 
-	// Escape dismisses any open megamenu; clean up the hover-intent timer on unmount.
+	// Escape dismisses any open megamenu and hands focus back to its trigger, since the panel it sat in
+	// turns inert; clean up the hover-intent timer on unmount.
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") activeMenu.value = null;
+			if (e.key !== "Escape" || activeMenu.value === null) return;
+			const active = document.activeElement as HTMLElement | null;
+			const pillar = active?.closest(".site-header__pillar");
+			pillar?.querySelector<HTMLButtonElement>(".site-header__pillar-trigger")?.focus();
+			activeMenu.value = null;
 		};
 		document.addEventListener("keydown", onKey);
 		return () => {
@@ -157,6 +163,10 @@ export default function SiteHeader(
 								class={`site-header__pillar${open ? " is-open" : ""}`}
 								onMouseEnter={() => openMenu(menu.key)}
 								onMouseLeave={scheduleClose}
+								onFocusOut={(e) => {
+									const next = e.relatedTarget as Node | null;
+									if (open && (!next || !e.currentTarget.contains(next))) activeMenu.value = null;
+								}}
 							>
 								<button
 									type="button"
@@ -164,7 +174,6 @@ export default function SiteHeader(
 									aria-haspopup="true"
 									aria-expanded={open}
 									aria-controls={`mega-${menu.key}`}
-									onFocus={() => openMenu(menu.key)}
 									onClick={() => toggleMenu(menu.key)}
 								>
 									{menu.label}
@@ -176,6 +185,7 @@ export default function SiteHeader(
 									class="site-header__mega"
 									role="region"
 									aria-label={`${menu.label} — discovery`}
+									inert={!open}
 								>
 									<div class="site-header__mega-inner">
 										<p class="site-header__mega-tagline">{menu.tagline}</p>

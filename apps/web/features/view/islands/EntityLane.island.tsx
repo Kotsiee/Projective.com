@@ -109,8 +109,8 @@ export default function EntityLane(
 	const added = basketIds.value.includes(item.id);
 
 	useEffect(() => {
-		hydrateBasket();
-	}, []);
+		hydrateBasket(authed);
+	}, [authed]);
 
 	// #region Actions
 	function announce(msg: string): void {

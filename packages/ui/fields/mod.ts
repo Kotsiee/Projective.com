@@ -162,6 +162,7 @@ export { Listbox, type ListboxProps } from "./islands/Listbox.tsx";
 export {
 	AutoComplete,
 	type AutoCompleteProps,
+	type AutoCompleteSection,
 	type AutoCompleteValue,
 	type Suggestion,
 } from "./islands/AutoComplete.tsx";

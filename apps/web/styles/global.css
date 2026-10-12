@@ -366,4 +366,17 @@ summary:focus-visible,
 	outline-offset: var(--overlay-focus-offset) !important;
 }
 
+.ex-railbtn:focus-visible,
+.ex-promo--sponsored:focus-visible,
+.ui-carousel__nav:focus-visible,
+.ui-carousel__indicator:focus-visible {
+	outline: var(--overlay-focus-ring) !important;
+	outline-offset: var(--overlay-focus-offset) !important;
+}
+
+.ex-card__link:focus-visible {
+	outline: var(--overlay-focus-ring) !important;
+	outline-offset: calc(var(--overlay-focus-offset) * -2) !important;
+}
+
 /* #endregion */

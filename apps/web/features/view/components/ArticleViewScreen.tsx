@@ -10,6 +10,7 @@ import ArticleMediaGallery from "../islands/ArticleMediaGallery.island.tsx";
 import ArticleComments from "../islands/ArticleComments.island.tsx";
 import { RelatedSection } from "./RelatedRail.tsx";
 import { backHrefFor, backLabelFor, ENTITY_LABEL, signInHref } from "../core/view-model.ts";
+import { ownerShortName } from "../core/entity-archetype.ts";
 import ExploreBackNav from "@features/explore/islands/ExploreBackNav.island.tsx";
 import type { ArticleViewExtra, EntityView } from "@projective/types/explore";
 import type { HrefContext } from "@features/explore/core/routing.ts";
@@ -34,15 +35,15 @@ export function ArticleViewScreen(
 ): JSX.Element {
 	const { item, moreByOwner, similar } = view;
 	const owner = item.owner;
-	const ownerFirst = owner.name.split(/\s+/)[0] ?? owner.name;
+	const ownerName = ownerShortName(owner);
 
 	// "More articles by uploader": the owner's own articles; fall back to their other work if they have
 	// only this one. "Suggested" is the topical cross-sell — other articles, excluding the owner's.
 	const ownerArticles = moreByOwner.filter((i) => i.type === "articles");
 	const moreItems = ownerArticles.length > 0 ? ownerArticles : moreByOwner.slice(0, 6);
 	const moreTitle = ownerArticles.length > 0
-		? `More articles by ${ownerFirst}`
-		: `More from ${ownerFirst}`;
+		? `More articles by ${ownerName}`
+		: `More from ${ownerName}`;
 	const suggested = similar.filter((i) => i.type === "articles" && i.id !== item.id).slice(0, 8);
 
 	return (
@@ -118,25 +119,21 @@ export function ArticleViewScreen(
 
 			<div class="vw-body art-bottom">
 				<RelatedSection
+					id="more-by"
 					title={moreTitle}
-					subtitle={`More work from ${ownerFirst}`}
+					subtitle={`More work from ${ownerName}`}
 					items={moreItems}
 					ctx={ctx}
 					authed={authed}
 					seeAllHref={`/${owner.handle}`}
-					columns={2}
 				/>
-				{
-					/* The article runs its rails inside a `--measure-wide` column, so 3-up would render 197px
-				    cards. The host knows it is narrow; the carousel cannot. */
-				}
 				<RelatedSection
+					id="suggested"
 					title="Suggested articles"
 					subtitle="More reading picked for this topic"
 					items={suggested}
 					ctx={ctx}
 					authed={authed}
-					columns={2}
 				/>
 				<ArticleComments
 					comments={article.comments}

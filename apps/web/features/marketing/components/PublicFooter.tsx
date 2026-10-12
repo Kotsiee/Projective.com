@@ -1,14 +1,8 @@
 import type { JSX } from "preact";
 import NewsletterForm from "../islands/NewsletterForm.island.tsx";
 import RecentlyViewed from "../islands/RecentlyViewed.island.tsx";
-import {
-	ChevronIcon,
-	DribbbleIcon,
-	GitHubIcon,
-	HelpIcon,
-	LinkedInIcon,
-	XIcon,
-} from "./footer-icons.tsx";
+import FooterLinkGroups, { type FooterLinkGroup } from "../islands/FooterLinkGroups.island.tsx";
+import { DribbbleIcon, GitHubIcon, HelpIcon, LinkedInIcon, XIcon } from "./footer-icons.tsx";
 import { Logo } from "@web/components/Logo.tsx";
 import "../styles/footer.css";
 
@@ -25,9 +19,9 @@ import "../styles/footer.css";
  * secondary row (onboarding entry points + a recently-viewed rail) and a thin utility bar (copyright,
  * legal, a live "systems operational" indicator). Copy avoids enterprise jargon ("safe & easy
  * payments", never "escrow"). The link stacks are native `<details>` so they collapse into accessible
- * accordions on mobile with zero JS; the CSS force-opens them on desktop. Two islands, both dumb — the
- * newsletter (`fetch`es `/api/newsletter/subscribe`) and the recently-viewed rail (reads per-device
- * history, resolves it through `/api/explore/item`).
+ * accordions below `--bp-md`; from there up they render open (`FooterLinkGroups`). Three islands, all
+ * dumb — the link stacks, the newsletter (`fetch`es `/api/newsletter/subscribe`) and the
+ * recently-viewed rail (reads per-device history, resolves it through `/api/explore/item`).
  *
  * Token-only, strict BEM; non-interactive groups separate by spacing + weight, never boxed (§B.4) —
  * the secondary row is set off by the grid's own row gap alone, deliberately without a hairline, since
@@ -35,10 +29,8 @@ import "../styles/footer.css";
  */
 
 // #region Config
-type LinkGroup = { title: string; links: { label: string; href: string }[] };
-
 /** The three navigation stacks. ELI5 labels — friendly, jargon-free (root guardrail + §B.4). */
-const GROUPS: LinkGroup[] = [
+const GROUPS: FooterLinkGroup[] = [
 	{
 		title: "For helpers",
 		links: [
@@ -134,23 +126,7 @@ export function PublicFooter(): JSX.Element {
 				{/* #endregion */}
 
 				{/* #region Columns 2–4 — the quick-link stacks (accordions on mobile) */}
-				<nav class="lp-footer__nav" aria-label="Quick links">
-					{GROUPS.map((g) => (
-						<details class="lp-footer__group" key={g.title}>
-							<summary class="lp-footer__group-head">
-								<span class="lp-footer__group-title">{g.title}</span>
-								<ChevronIcon class="lp-footer__group-chevron" />
-							</summary>
-							<ul class="lp-footer__links">
-								{g.links.map((l) => (
-									<li key={l.label}>
-										<a class="lp-footer__link" href={l.href}>{l.label}</a>
-									</li>
-								))}
-							</ul>
-						</details>
-					))}
-				</nav>
+				<FooterLinkGroups groups={GROUPS} />
 				{/* #endregion */}
 
 				{/* #region Column 5 — newsletter capture */}

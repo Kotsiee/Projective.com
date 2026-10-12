@@ -4,6 +4,7 @@ import { EntityViewPage } from "@features/view/components/EntityViewPage.tsx";
 import { resolveViewPage } from "@features/view/core/view-ssr.ts";
 import { resolveEntityCommerce } from "@features/view/core/booking-ssr.ts";
 import { viewerFromState } from "@features/calendar/core/viewer.ts";
+import { recordViewInBackground } from "@features/explore/core/record-view.ts";
 
 /**
  * `/[handle]/view/[item_id]?type=[entity_type]` — the profile-scoped Entity View page. This is the
@@ -16,7 +17,10 @@ export const handler = define.handlers({
 	async GET(ctx) {
 		const { view, status } = await resolveViewPage(ctx.params.item);
 		ctx.state.title = view ? `${view.item.title} · ${ctx.params.handle}` : "Not found · Projective";
-		if (view) ctx.state.description = view.item.summary;
+		if (view) {
+			ctx.state.description = view.item.summary;
+			recordViewInBackground(ctx, view.item.id);
+		}
 		const commerce = view
 			? await resolveEntityCommerce(view, {
 				context: ctx.state.userContext,

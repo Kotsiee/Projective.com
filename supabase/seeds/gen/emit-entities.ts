@@ -5,7 +5,7 @@
 
 import { ago, ahead, arr, enumArr, HEADER, id, insert, jsonb, num, q, uuidFor } from "./sql.ts";
 import { persona, project, type World } from "./resolve.ts";
-import { BOOKMARKS, FOLLOWS } from "./world.ts";
+import { BOOKMARKS, FOLLOWS, RECENT_VIEWS } from "./world.ts";
 
 /**
  * The preset roles every entity is created with (org.fn_seed_preset_roles). A preset row stores NO
@@ -417,6 +417,33 @@ export function emitEntities(world: World): string {
 					id(persona(world, b.persona).userId),
 					q(b.type),
 					id(target),
+				];
+			}),
+			"(user_id, entity_type, entity_id)",
+		),
+	);
+
+	out.push(
+		insert(
+			"org.recent_views",
+			["id", "user_id", "entity_type", "entity_id", "view_count", "first_viewed_at", "viewed_at"],
+			RECENT_VIEWS.map((v) => {
+				const target = v.type === "freelancer"
+					? persona(world, v.target).userId
+					: v.type === "team"
+					? world.entities.get(v.target)!.entityId
+					: v.type === "project"
+					? project(world, v.target).projectId
+					: world.serviceId(v.target);
+				const count = v.count ?? 1;
+				return [
+					id(uuidFor("recent_view", `${v.persona}:${v.type}:${v.target}`)),
+					id(persona(world, v.persona).userId),
+					q(v.type),
+					id(target),
+					num(count),
+					ago(v.daysAgo + (count - 1)),
+					ago(v.daysAgo),
 				];
 			}),
 			"(user_id, entity_type, entity_id)",

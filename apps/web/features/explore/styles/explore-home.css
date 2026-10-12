@@ -96,15 +96,15 @@
 	-webkit-mask-image: linear-gradient(
 		to right,
 		transparent 0,
-		#000 var(--ex-fade-s),
-		#000 calc(100% - var(--ex-fade-e)),
+		var(--ex-fade-ink) var(--ex-fade-s),
+		var(--ex-fade-ink) calc(100% - var(--ex-fade-e)),
 		transparent 100%
 	);
 	mask-image: linear-gradient(
 		to right,
 		transparent 0,
-		#000 var(--ex-fade-s),
-		#000 calc(100% - var(--ex-fade-e)),
+		var(--ex-fade-ink) var(--ex-fade-s),
+		var(--ex-fade-ink) calc(100% - var(--ex-fade-e)),
 		transparent 100%
 	);
 }
@@ -113,15 +113,15 @@
 	-webkit-mask-image: linear-gradient(
 		to left,
 		transparent 0,
-		#000 var(--ex-fade-s),
-		#000 calc(100% - var(--ex-fade-e)),
+		var(--ex-fade-ink) var(--ex-fade-s),
+		var(--ex-fade-ink) calc(100% - var(--ex-fade-e)),
 		transparent 100%
 	);
 	mask-image: linear-gradient(
 		to left,
 		transparent 0,
-		#000 var(--ex-fade-s),
-		#000 calc(100% - var(--ex-fade-e)),
+		var(--ex-fade-ink) var(--ex-fade-s),
+		var(--ex-fade-ink) calc(100% - var(--ex-fade-e)),
 		transparent 100%
 	);
 }
@@ -232,6 +232,83 @@
    there it is a scroll AFFORDANCE paired with the fade, and the two must agree. */
 .ex-chips .ex-railbtn:disabled {
 	visibility: hidden;
+}
+
+.ex-chip[aria-current="true"],
+.ex-chip[aria-pressed="true"],
+.ex-chip[aria-current="true"]:hover,
+.ex-chip[aria-pressed="true"]:hover {
+	background: var(--on-surface);
+	color: var(--surface);
+}
+
+.ex-chip {
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.ex-chip:active {
+	transform: scale(var(--ex-press-scale));
+	transition-duration: var(--dur-press);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ex-chip:active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .ex-chip:active {
+	transform: none;
+}
+/* #endregion */
+
+/* #region Shelves — the sticky chip bar over the Recommended panel and the body */
+.ex-shelves {
+	--ex-chipbar-top: var(--shell-topbar-h, 3rem);
+	--ex-chipbar-ground: var(--frame-surface, var(--surface));
+
+	display: block;
+}
+
+.guest-shell .ex-shelves {
+	--ex-chipbar-top: var(--site-header-pinned-h, 4.25rem);
+}
+
+.ex-chipbar {
+	position: sticky;
+	inset-block-start: var(--ex-chipbar-top);
+	z-index: var(--z-sticky);
+	padding: var(--space-2) var(--ex-pad-x);
+	background: var(--ex-chipbar-ground);
+	border-block-end: 1px solid transparent;
+	transition: border-color var(--dur-fast) var(--ease-standard);
+}
+
+.ex-chipbar[data-stuck="true"] {
+	border-block-end-color: var(--ex-hair);
+}
+
+.ex-fold--rec {
+	padding-block-start: var(--space-2);
+}
+
+.ex-home[data-filter] > :not([data-shelf]) {
+	display: none;
+}
+
+.ex-home[data-filter="freelancers"] > [data-shelf]:not([data-shelf="freelancers"]),
+.ex-home[data-filter="services"] > [data-shelf]:not([data-shelf="services"]),
+.ex-home[data-filter="products"] > [data-shelf]:not([data-shelf="products"]),
+.ex-home[data-filter="projects"] > [data-shelf]:not([data-shelf="projects"]),
+.ex-home[data-filter="articles"] > [data-shelf]:not([data-shelf="articles"]) {
+	display: none;
+}
+
+.ex-home {
+	scroll-margin-block-start: calc(var(--ex-chipbar-top) + 3.5rem);
 }
 /* #endregion */
 
@@ -419,7 +496,7 @@
 	flex: 0 1 auto;
 	min-inline-size: 0;
 	margin: 0;
-	font-size: clamp(1.05rem, 0.9rem + 0.5vw, 1.4rem);
+	font-size: var(--ex-rail-title-size);
 	line-height: var(--leading-snug);
 	letter-spacing: var(--tracking-tight);
 	white-space: nowrap;
@@ -443,9 +520,9 @@
 	border-radius: var(--radius-xs);
 }
 
-/* The category half — bold italic, the strong statement of what this row is. */
+/* The category half — italic, the strong statement of what this row is. */
 .ex-rail__lead {
-	font-weight: var(--fw-bold);
+	font-weight: var(--fw-medium);
 	font-style: italic;
 	color: var(--on-surface);
 }
@@ -541,6 +618,66 @@
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+@media (hover: hover) and (pointer: fine) {
+	.ex-rail__nav {
+		opacity: 0;
+	}
+
+	.ex-rail:hover .ex-rail__nav,
+	.ex-rail:focus-within .ex-rail__nav {
+		opacity: 1;
+	}
+}
+
+.ex-rail__cell[hidden] {
+	display: none;
+}
+
+.ex-rail__facets {
+	display: flex;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.ex-rail__facets::-webkit-scrollbar {
+	display: none;
+}
+
+.ex-skel {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	inline-size: 100%;
+	padding: var(--space-2);
+}
+
+.ex-skel .ex-skel__media {
+	block-size: auto;
+	aspect-ratio: 16 / 10;
+}
+
+.ex-skel__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding: var(--space-2);
+}
+
+.ex-skel__foot {
+	display: flex;
+	justify-content: space-between;
+	padding-block-start: var(--space-3);
+}
+
+.ex-skelgrid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+	gap: var(--space-5);
 }
 
 /* The inline section search — currently the Articles section only. */
@@ -649,6 +786,15 @@
 	min-inline-size: 0;
 	display: flex;
 	scroll-snap-align: start;
+}
+
+/*
+ * A featured cell spans two cells and the gap between them, never wider than the track, and is the
+ * `expromo` container its sponsored slot reflows against.
+ */
+.ex-rail__cell--featured {
+	inline-size: min(calc(var(--ex-cell-w) * 2 + var(--space-4)), 100%);
+	container: expromo / inline-size;
 }
 
 /*
@@ -811,7 +957,7 @@
 .ex-home {
 	display: flex;
 	flex-direction: column;
-	gap: clamp(2rem, 3.5vw, 3.25rem);
+	gap: var(--ex-section-gap);
 	padding-block: clamp(1.5rem, 3vw, 2.75rem);
 }
 
@@ -822,6 +968,10 @@
 	padding-inline: var(--ex-pad-x);
 	box-sizing: border-box;
 	min-inline-size: 0;
+}
+
+.ex-home__section--promo {
+	container: expromo / inline-size;
 }
 
 /*
@@ -901,8 +1051,84 @@
 		display: none;
 	}
 
-	.ex-rail__search {
-		flex-basis: 9rem;
+	.ex-rail__head {
+		flex-wrap: wrap;
+		row-gap: var(--space-2);
 	}
+
+	.ex-rail__title {
+		flex: 1 1 0;
+	}
+
+	.ex-rail__search {
+		order: 1;
+		flex: 1 1 100%;
+	}
+
+	.ex-chipbar {
+		padding-inline: 0;
+	}
+
+	.ex-chips {
+		justify-content: flex-start;
+	}
+
+	.ex-chips > :not(.ex-chips__scroller) {
+		display: none;
+	}
+
+	.ex-chips__scroller {
+		flex: 1 1 auto;
+		padding-inline: var(--ex-pad-x);
+		scroll-padding-inline: var(--ex-pad-x);
+	}
+
+	.ex-rec__tab {
+		flex: 1 1 0;
+		justify-content: center;
+		min-inline-size: 0;
+		padding-inline: var(--space-2);
+	}
+
+	.ex-card {
+		--card-pad-media: var(--space-3);
+	}
+}
+
+@media (max-width: 479.98px) {
+	.ex-rec__tab-icon {
+		display: none;
+	}
+}
+/* #endregion */
+
+/* #region Hover-intent reserve (Decision #174) */
+@media (hover: hover) and (pointer: fine) {
+	.ex-rail__track {
+		padding-block-end: calc(var(--space-4) + var(--ex-reveal-reserve));
+	}
+
+	.ex-fold .ex-rail__track {
+		padding-block-end: calc(var(--space-3) + var(--ex-reveal-reserve));
+	}
+}
+/* #endregion */
+
+/* #region Card to /view hero morph (Decision #174) */
+@media (prefers-reduced-motion: no-preference) {
+	@view-transition {
+		navigation: auto;
+	}
+}
+
+::view-transition-group(ex-hero-media) {
+	animation-duration: var(--dur-slow);
+	animation-timing-function: var(--spring-standard);
+}
+
+:root[data-motion="reduced"]::view-transition-group(*),
+:root[data-motion="reduced"]::view-transition-old(*),
+:root[data-motion="reduced"]::view-transition-new(*) {
+	animation: none;
 }
 /* #endregion */

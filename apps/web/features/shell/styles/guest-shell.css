@@ -282,3 +282,23 @@
 		transition: none;
 	}
 }
+
+.guest-shell__skip {
+	position: fixed;
+	inset-block-start: var(--space-2);
+	inset-inline-start: var(--space-2);
+	z-index: var(--z-tooltip);
+	padding: var(--space-2) var(--space-4);
+	border-radius: var(--radius-full);
+	background: var(--on-surface);
+	color: var(--surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	text-decoration: none;
+	transform: translateY(calc(-100% - var(--space-4)));
+}
+
+.guest-shell__skip:focus,
+.guest-shell__skip:focus-visible {
+	transform: none;
+}

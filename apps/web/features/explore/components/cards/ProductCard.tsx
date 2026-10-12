@@ -8,7 +8,8 @@ import { PromotedBadge } from "../PromotedBadge.tsx";
 import { StatusChip } from "../StatusChip.tsx";
 import CardActions from "../../islands/CardActions.island.tsx";
 import { cardAccent } from "../../core/accent.ts";
-import { ratingSignals } from "../../core/card-signals.ts";
+import { CardReveal, NewFact } from "../CardReveal.tsx";
+import { isNew, ratingSignals } from "../../core/card-signals.ts";
 import { itemHref, profileHref } from "../../core/routing.ts";
 import type { HrefContext } from "../../core/routing.ts";
 import type { ExploreItem, ProductItem } from "../../types/explore-types.ts";
@@ -84,7 +85,13 @@ export function ProductCard(
 				onSelect={onSelect}
 				label={`${item.title} by ${item.owner.name} — ${item.price}`}
 			/>
-			<CardActions title={item.title} href={itemHref(item, ctx)} authed={authed} />
+			<CardActions
+				itemId={item.id}
+				itemType={item.type}
+				title={item.title}
+				href={itemHref(item, ctx)}
+				authed={authed}
+			/>
 
 			<div class="ex-media ex-media--product">
 				<ProgressiveImage
@@ -112,6 +119,7 @@ export function ProductCard(
 					</a>
 					<span class="ex-prod__sep" aria-hidden="true">·</span>
 					<span class="ex-prod__kind">{item.category}</span>
+					{isNew(item.createdAt) && <NewFact />}
 				</p>
 
 				<div class="ex-prod__foot">
@@ -143,6 +151,7 @@ export function ProductCard(
 					</span>
 				</div>
 			</div>
+			<CardReveal text={item.summary} />
 		</article>
 	);
 }

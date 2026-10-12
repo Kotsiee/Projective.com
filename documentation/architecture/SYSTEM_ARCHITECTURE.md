@@ -747,16 +747,89 @@ lands. Everything downstream of a validated request belongs to the service.
 ### Discovery (Explore) services
 
 The Explore feature is the second, **read-only** implementation of the contract: `ExploreService`
-(client) → `/api/explore/{search,item,related}` (thin) → `services/explore/ExploreBackendService.ts`
+(client) → `/api/explore/{search,item,related,suggest}` (thin) → `services/explore/ExploreBackendService.ts`
 (fat) → `ServiceResult<T>`. The fat service owns the whole discovery query — filtering, ranking,
-merged-section grouping, item lookup, and paged feed expansion — over curated fixtures
-(`services/explore/fixtures.ts` + `query.ts` + the server-side `skills.ts` resolver), which the app
+merged-section grouping, item lookup, and paged feed expansion — over the LIVE catalogue
+(`services/explore/live-catalog.ts`: one `anon` read of the public marketplace, cached 30 s and
+shared by every visitor) with `query.ts` and the server-side `skills.ts` resolver, which the app
 **never** imports. The `/explore` route and `/view/[id]` call the service directly for SSR first
 paint; the `SearchDashboard` island refines client-side via `ExploreService` (filter/sort changes,
 infinite-scroll pages, drawer refresh). Cross-boundary shapes — `ExploreItem`, `ExploreParams`,
-`ResultGroup`, `SearchPayload`, `HomeFeed` — are the Zod SSOT at **`@projective/types/explore`**.
-Stub-first behind **`EXPLORE_BACKEND_LIVE`** (default off), gated by `isExploreBackendLive()`; the
-live path (Supabase discovery tables + search embeddings) slots in behind that guard.
+`ResultGroup`, `SearchPayload`, `HomeFeed`, `SuggestQuery`/`Suggestions` — are the Zod SSOT at
+**`@projective/types/explore`**. Typeahead: `GET /api/explore/suggest?q=&scope=` Zod-validates
+`SuggestQuerySchema` (422 on failure) and calls `ExploreBackendService.suggest`, which runs the pure
+prefix ranker `services/explore/suggest.ts` over the TTL-cached catalogue (top hits per listing type,
+matched skills/categories, matched `@handle`s; an empty `q` returns trending — the skills and
+categories of the catalogue's trending items (`catalog.trending`, the same signal as Home's rail),
+topped up by those most listed in scope over 30 days when the platform is quiet). The client
+side is `useSearchSuggest` over the pure `core/suggest-controller.ts` (200ms debounce, one
+`AbortController` per request, a request sequence number), rendered by `SearchSuggest`; recent
+searches are per-device (`core/search-history.ts`, `LocalKeys.EXPLORE_RECENT_SEARCHES`).
+`SearchDashboard.runSearch` aborts and sequence-guards its own refinements and shows a Retry notice
+on failure instead of stale results.
+**Ranking and personalisation (Decision #178).** The catalogue load also reads the ranking signals —
+penalised `search.profiles_index` rows, `search.ranking_weights()` and `search.trending_entities()`
+(definers projecting coefficients and an aggregate floored at three people) — and scores every item
+once (`ranking.ts`), so the catalogue is assembled best-first and every "recommended" order reads
+`catalog.scoreById`. `home({ actor, sim })` composes the SHARED feed (sections, promos, the
+Recommended lists, Trending) from that cache, then, for a signed-in viewer, runs a VIEWER-SCOPED pass
+(`viewer-signals.ts`): `org.recent_views`, `org.user_bookmarks`, `search.user_affinity` and their
+stated interests, read with `getUserClient(jwt)` per request and never cached, composed into the
+personal rails by the pure `personalise.ts`; a failed pass is logged and the shared feed served. A view
+is recorded by `recordView` → `search.record_view` (a definer, the only writer of `org.recent_views`),
+fired in the background by the `/view/[entity]`, `/[handle]/view/[item]` and `/[handle]` routes and,
+for the results drawer's in-place open, `POST /api/explore/views`. `/explore` renews a lapsed session
+in place and forwards the Dev Context Switcher's `pj.dev.discovery` cookie in development only.
+Saves: a card's Star writes through `GET|POST /api/explore/bookmark` (`{ itemId, saved }`, Zod
+`BookmarkWriteSchema`) → `services/explore/ExploreBookmarkService.ts`, which resolves the discovery id
+against the catalogue (`bookmark-target.ts`) and upserts or deletes the caller's
+`org.user_bookmarks` row under their own JWT. Only `SaveableEntity` types carry a Star — a service, a
+project, a freelancer/team/business profile — because `org.bookmark_entity_type` cannot name a
+product, an article or a buyer. On the client every `CardActions` island reads one page-wide
+`core/bookmark-state.ts` store (one `GET` per page, optimistic toggles reverted on refusal). With the
+gate off, saves are kept in process memory per user.
+
+### Discovery telemetry & client observability
+
+Four write paths. They share one transport rule and one table discipline, and add no vendor:
+web vitals are measured with the browser's own `PerformanceObserver`, not the `web-vitals`
+package.
+
+| Signal | Client | Thin route | Fat service | Table | Gate |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| Impressions · card clicks · rail depth (`discovery.*`) | `features/explore/islands/ImpressionTracker.island.tsx` | `POST /api/explore/events` | `services/search/InterestBackendService.ts` | `search.interest_events` | `EXPLORE_BACKEND_LIVE` |
+| Discovery queries (`discovery.search`) | (server-side) | `/explore` SSR · `GET /api/explore/search` | `ExploreBackendService.search` → `services/search/query-log.ts` → `search.fn_log_query` | `search.query_logs` | `EXPLORE_BACKEND_LIVE` |
+| Production `warn`/`error` logs | `utils/logger.ts` | `POST /api/logs` | `services/logging/LogBackendService.ingest` | `ops.log_entries` | `LOGGING_BACKEND_LIVE` |
+| Core Web Vitals (CLS · LCP · INP) | `features/shell/islands/WebVitalsBridge.island.tsx` (mounted in `_app`) | `POST /api/logs/vitals` | `LogBackendService.ingestVitals` | `ops.log_entries` (`level = 'metric'`) | `LOGGING_BACKEND_LIVE` |
+| Server 5xx | `routes/_error.tsx` | (none) | `LogBackendService.recordServerError` | `ops.log_entries` (`source = 'server'`) | `LOGGING_BACKEND_LIVE` (the console line is unconditional) |
+
+- **Impression definition.** ONE page-level `IntersectionObserver` over every `[data-item-id]`
+  card (a `MutationObserver` picks up cards a refinement adds). A card at least 50% visible for 1 s
+  in a visible tab counts once per placement (rail + item) per page view. Rails are the
+  `[data-rail-id]` tracks `RailFrame` renders; their depth comes from one capturing `scroll` listener.
+  Batches flush at 20 events, on a 10 s heartbeat, on `visibilitychange → hidden` and on `pagehide`.
+- **Transport.** `navigator.sendBeacon` with a JSON blob (same-origin, so the session cookie rides
+  along and the route resolves the actor with `readActor`). The fallback, when the beacon is refused,
+  is `fetch(…, { keepalive: true })` with `x-pj-background: 1`, which the offline guard never blocks.
+  The routes answer `202`/`422`/`429`/`503` for logs; nothing reads them.
+- **Identity.** Every insert runs under the caller's JWT (`services/telemetry-writer.ts`), so RLS
+  pins `user_id` to `auth.uid()` or NULL. A refused attributed write (an expired token, a forged
+  decode) is retried once as `anon` with `user_id` NULL rather than losing the rows. No path uses the
+  service role.
+- **Trust.** The client sends public slugs/handles; `InterestBackendService` resolves them against
+  the cached public catalogue and drops any id that is not in it, taking the entity type from the
+  catalogue, not the request. A per-process `SlidingWindowLimiter` (30 batches/min per user or
+  session) bounds a runaway tab.
+- **Development.** The logger and `WebVitalsBridge` never call the server in development (vitals
+  go to the Dev Tools log inspector). The `ImpressionTracker` does beacon, and the service
+  acknowledges without writing unless `EXPLORE_BACKEND_LIVE` is on.
+- **Client render failures.** `ErrorBoundary` (`@projective/ui/feedback`) contains a broken island
+  subtree and reports through `logger.error` (and so `/api/logs` in production). The
+  `SearchDashboard` island is wrapped in one.
+- **`ops` is a PostgREST-exposed schema** for `ops.log_entries` alone (`supabase/config.toml`
+  `[api].schemas`; `USAGE` granted, every other `ops` table still revoked). A hosted project must
+  add `ops` to **Settings → API → Exposed schemas** too, or every live log insert fails with
+  `PGRST106` and is echoed to the console instead.
 
 ### Newsletter services
 

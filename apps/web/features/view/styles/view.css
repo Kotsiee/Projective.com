@@ -420,7 +420,7 @@
 /*
  * The cross-sell used to be 73% of the page: two sections, each fanning out into up to five labelled
  * single-type blocks, one of them an unbounded product masonry. The height came from the number of
- * BLOCKS, not the number of items — a carousel pages, a stack of blocks does not — so the cap is on
+ * BLOCKS, not the number of items — a rail scrolls, a stack of blocks does not — so the cap is on
  * blocks, and the masonry is gone from this surface (it belongs on Explore, where products are the
  * feed rather than a footnote).
  *
@@ -434,107 +434,23 @@
     margin-block-start: var(--vw-region-gap, var(--space-8));
 }
 
-/* A titled section ("More by …" / "Similar"), holding at most two single-type blocks. */
 .vw-related {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-}
-
-.vw-related__head {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: var(--space-3);
-}
-
-.vw-related__title {
-    margin: 0;
-    font-size: var(--text-lg);
-    font-weight: var(--fw-medium);
-    line-height: var(--leading-tight);
-    color: var(--on-surface);
-}
-
-.vw-related__sub {
-    margin: var(--space-px) 0 0;
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-}
-
-.vw-related__all {
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    font-size: var(--text-sm);
-    font-weight: var(--fw-semibold);
-    color: var(--primary);
-    text-decoration: none;
-}
-
-.vw-related__all:hover {
-    text-decoration: underline;
-}
-
-[dir="rtl"] .vw-related__allarrow {
-    transform: scaleX(-1);
-}
-
-.vw-related__groups {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-5);
-}
-
-/* One single-type block. */
-.vw-group {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
+    container-type: inline-size;
     min-inline-size: 0;
 }
 
-.vw-group__label {
-    margin: 0;
-    font-size: var(--text-xs);
-    font-weight: var(--fw-semibold);
-    letter-spacing: var(--tracking-wide);
-    text-transform: uppercase;
-    color: var(--text-secondary);
+.vw-related__set {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
 }
 
-/*
- * Every format rides the `@projective/ui/display` Carousel. Each slide holds one native card; the
- * card's own `inline-size: 100%` fills the slot the library sizes.
- *
- * The width CAP is load-bearing. `RelatedCarousel` caps `numVisible` to the item count so a lone card
- * "fills the viewport" — which meant a group of ONE rendered a 1017px-wide slide, and a card whose
- * media is 16:10 turned that into a 773px-tall block for a single recommendation. Measured: the
- * one-article group was the tallest thing in the entire cross-sell, taller than the stage showcase.
- * A card is a card at any group size; the slot may be wide, the card may not.
- */
-.vw-slide {
-    block-size: 100%;
+.vw-related__set > .ex-rail:first-of-type {
+    margin-block-start: var(--space-2);
 }
 
-.vw-slide>.ex-card {
-    block-size: 100%;
-    max-inline-size: 24rem;
-}
-
-/* Projects are divider-rows, not fixed cards — they earn the wider slot. */
-.vw-slide--projects>.ex-projrow {
-    max-inline-size: none;
-}
-
-/* Projects are divider-rows, not fixed cards — frame the row inside its (wider) slide. */
-.vw-slide--projects .ex-projrow {
-    block-size: 100%;
-    border-block-end: none;
-    background: var(--surface-1);
-    border-radius: var(--card-radius);
-    padding: var(--card-pad);
+.vw-related__set > .ex-rail + .ex-rail {
+    margin-block-start: var(--space-3);
 }
 
 /* #endregion */

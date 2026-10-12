@@ -70,8 +70,15 @@ export async function syncBasket(): Promise<void> {
 /**
  * Restore the persisted mirror, then reconcile it against the server. Safe to call repeatedly — the
  * server read runs once per page, from whichever CTA mounts first.
+ *
+ * A guest has no basket, so `authed: false` empties the mirror and never calls `/api/basket`: that
+ * read answers a guest with a 401, which `apiFetch` turns into a hard redirect to `/login`.
  */
-export function hydrateBasket(): void {
+export function hydrateBasket(authed: boolean): void {
+	if (!authed) {
+		basketIds.value = [];
+		return;
+	}
 	if (hydrated) return;
 	hydrated = true;
 	try {
