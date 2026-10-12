@@ -29,6 +29,18 @@ deno task db:seed:generate   # rewrites supabase/seeds/*.sql + supabase/seed-ass
 deno task db:reset           # supabase db reset --local --yes
 ```
 
+**Embeddings are not seeded.** `db:reset` leaves every discovery vector (`search.*_index.embedding`)
+empty, so semantic ranking has nothing to rank with — search and the `/view` "Similar" rails keep
+their heuristic order even with the switch on — until the backfill runs (Decision #179):
+
+```sh
+deno task embeddings:backfill --dry-run   # entity count, token estimate, cost — no Voyage call
+deno task embeddings:backfill             # needs VOYAGE_API_KEY in .env.local; skips unchanged items
+```
+
+On the seed world that is 49 public entities and about 1.6K tokens (≈ $0.0001); a second run embeds
+nothing.
+
 ## Sign-in
 
 Every account uses the password **`password123`** at `<username>@projective.dev`. The access-token
@@ -61,14 +73,14 @@ every persona lands on the authenticated shell directly.
 | :--------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `01_identities.sql`    | `auth.users` + `auth.identities`, `org.users_public`, emails, preferences (display currency/locale), freelancer profiles (KYC), skills, languages, links, KYC cases |
 | `02_assets.sql`        | One `files.items` row per image (real size, SHA-256, dimensions in a schema-valid `AssetMetadata` envelope); avatar/banner links; education + experience (with employer logos) |
-| `03_entities.sql`      | Teams + businesses (brand marks); each entity's **preset** role rows (Owner · Admin · Lead · Member for a team, no Lead for a business — name, summary, `preset` = `base_preset`, no stored capabilities, exactly what `org.fn_seed_preset_roles` writes); memberships with titles, the held `role_id`, and per-member `granted_capabilities` (Miguel's two); seven `reports_to` org-chart edges (written after both rosters exist — Lena → Inês, Aiko → Lena, Samuel → Kwame, Tomasz → Samuel, Aiko → Saoirse, Hannah → Priya, Miguel → Daniel); team contribution splits (no stake starts `held`) + split rules; KYB cases; two pending invitations (Studio Fern → Chloe, Helia Finance → Noor) addressed through `team_role_id` / `business_role_id`; follows, bookmarks |
+| `03_entities.sql`      | Teams + businesses (brand marks); each entity's **preset** role rows (Owner · Admin · Lead · Member for a team, no Lead for a business — name, summary, `preset` = `base_preset`, no stored capabilities, exactly what `org.fn_seed_preset_roles` writes); memberships with titles, the held `role_id`, and per-member `granted_capabilities` (Miguel's two); seven `reports_to` org-chart edges (written after both rosters exist — Lena → Inês, Aiko → Lena, Samuel → Kwame, Tomasz → Samuel, Aiko → Saoirse, Hannah → Priya, Miguel → Daniel); team contribution splits (no stake starts `held`) + split rules; KYB cases; two pending invitations (Studio Fern → Chloe, Helia Finance → Noor) addressed through `team_role_id` / `business_role_id`; follows, bookmarks; **recent views** (`org.recent_views`, Decision #178 — Noor's and Maris's histories anchor "Because you viewed" for a client and a freelancer, and four people on the brand sprint plus three each on Maris and the Helia wallet put three items past Trending's three-person floor; times are relative to the reset, so after a week Trending falls back to "New on Projective") |
 | `04_marketplace.sql`   | Nine service blueprints (all five delivery models, team-owned where the corpus says so) with covers, stage templates (priced per stage), intake questions, team roles, deliverables and session terms |
 | `05_catalogue.sql`     | Products (`prd-…` slugs, format, file manifest, specs, compatibility, licence), articles (`art-…` slugs, block bodies whose images are storage objects, covers), a published listing per product AND per service with its gallery (`file_id`), skills and tags, the listing reviews, and paid placements for the sponsored listings |
 | `06_projects.sql`      | Seven projects with stable `prj-…` slugs, stages, participants, assignments (individual + team), invitations (pending/accepted/declined/placeholder), applications, tickets with history, submissions with deliverable files and a revision chain, starred projects, dual-track reviews |
 | `07_finance.sql`       | Wallets (and each team's `treasury_wallet_id`), a **computed** ledger, escrows (funded + released), team payout splits, invoices with line items, orders + lines (products, services, a booked session, a refund), baskets, cards, payment methods, payout accounts/schedules/payouts, subscriptions, a spending cap, a pending spend approval, the vault audit trail (`finance.ledger_audit`, **derived** from the ledger — see below), Income Smoother, pots — plus the checkout's own states (see [§ Checkout states](#checkout-states)). **No `finance.vault_permissions` rows are written**: the wallet insert trigger projects them from the workspace roles (`org.fn_sync_vault_permissions`), so the seed cannot disagree with the console about who may spend |
 | `08_comms.sql`         | General + per-stage project channels with messages and participants, DM/group/service-inquiry threads with per-participant read state, 44 catalog-typed notifications (16 unread), auto-responses |
 | `08_scheduling.sql`    | Ten schedules (nine published, Chloe's a draft) in their owners' own timezones: 65 weekly bands (50 `working_hours`, 15 `call_window`), three blackouts (one private label, two public), eight call-settings rows with twelve platforms, eight events (five busy blocks, two syncs, and Chloe's booked review at the same instant as her order line), and four discovery calls — one proposed, two confirmed (one paid) and one completed |
-| `09_search.sql`        | Hand-written projection of everything above into the `search.*` indexes                                                                                  |
+| `09_search.sql`        | Hand-written projection of everything above into the `search.*` indexes — products and articles into `search.catalogue_index` (Decision #179). No vectors: see the backfill above |
 | `10_profiles.sql`      | The public profile's presentation layer (`gen/profiles.ts`): 30 showcase slots across seven freelancers and three teams (slot 1 always a still), 12 "Selected work" pieces with covers, 4 certifications (two platform-verified), and 4 privacy rows — Maris and Juno allow their photo to be opened full size, Ren hides the local clock, Theo hides the location line |
 | `11_standing.sql`      | Hand-written: every seller's Standing inputs **derived from the seeded record**, then the rung computed by the platform's own `org.fn_recompute_standing` (see [§ Standing](#standing)) |
 

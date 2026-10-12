@@ -345,7 +345,7 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 		apply({ ...params.value, serviceId });
 	}
 
-	/** Star or unstar a project through the saved system (Decision #174), optimistic with rollback. */
+	/** Star or unstar a project through the saved system (Decision #180), optimistic with rollback. */
 	async function onToggleStar(id: string): Promise<void> {
 		const row = payload.value.items.find((r) => r.id === id);
 		if (!row) return;

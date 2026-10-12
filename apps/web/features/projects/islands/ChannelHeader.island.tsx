@@ -55,7 +55,7 @@ import { channelStarOverrides } from "../core/channel-stars.ts";
  * the Chat view from 1280px by toggling the middle-nav frame's docked right panel (`channelPanelFor`
  * registers it, the shell's `context-panel-state` carries the choice), everywhere else by opening a
  * right slide-over `Drawer` with the same {@link ChannelDetailBody}. Dumb island: no DB/Supabase, no `@server`; the star
- * is a `project_channel` bookmark written through `/api/saved` (Decision #175), while mute and pin
+ * is a `project_channel` bookmark written through `/api/saved` (Decision #181), while mute and pin
  * still persist to `localStorage` until the live backend owns them.
  *
  * The three-region flow is a left identity block (flex 1) · centred underlined view tabs · right icon
@@ -130,7 +130,7 @@ function MarkGlyph({ kind }: { kind: ChannelMeta["kind"] }): JSX.Element {
 	return cloneElement(kind === "dm" ? DmIcon : HashIcon);
 }
 
-// #region Channel preference persistence (mute / pin — the star is server state, Decision #175)
+// #region Channel preference persistence (mute / pin — the star is server state, Decision #181)
 interface ChannelPref {
 	muted?: boolean;
 	pinned?: boolean;
@@ -224,7 +224,7 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 
 	const shownTabs = CHANNEL_TABS.filter((t) => tabKeys.value.includes(t.key));
 
-	/** Star or unstar the room — a `project_channel` bookmark (Decision #175), optimistic with rollback. */
+	/** Star or unstar the room — a `project_channel` bookmark (Decision #181), optimistic with rollback. */
 	async function toggleStar(): Promise<void> {
 		const out = await toggleSaved("project_channel", meta.channelId, !isStarred.value, (v) => {
 			isStarred.value = v;

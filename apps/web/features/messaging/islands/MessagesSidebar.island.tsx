@@ -88,7 +88,7 @@ export interface MessagesSidebarProps {
 	path: string;
 }
 
-/** Local per-conversation state overrides (the star is server state, Decision #174). */
+/** Local per-conversation state overrides (the star is server state, Decision #180). */
 interface ConvPref {
 	muted?: boolean;
 	deleted?: boolean;
@@ -344,7 +344,7 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 		prefs.value = next;
 		writeStored("local", LocalKeys.CONVERSATION_PREFS, JSON.stringify(next));
 	}
-	/** Star or unstar through the saved system (Decision #174), optimistic with rollback. */
+	/** Star or unstar through the saved system (Decision #180), optimistic with rollback. */
 	async function toggleStar(id: string): Promise<void> {
 		const c = merged.value.find((x) => x.id === id);
 		if (!c) return;

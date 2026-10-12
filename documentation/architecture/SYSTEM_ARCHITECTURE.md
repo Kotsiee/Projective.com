@@ -747,16 +747,110 @@ lands. Everything downstream of a validated request belongs to the service.
 ### Discovery (Explore) services
 
 The Explore feature is the second, **read-only** implementation of the contract: `ExploreService`
-(client) → `/api/explore/{search,item,related}` (thin) → `services/explore/ExploreBackendService.ts`
+(client) → `/api/explore/{search,item,related,suggest}` (thin) → `services/explore/ExploreBackendService.ts`
 (fat) → `ServiceResult<T>`. The fat service owns the whole discovery query — filtering, ranking,
-merged-section grouping, item lookup, and paged feed expansion — over curated fixtures
-(`services/explore/fixtures.ts` + `query.ts` + the server-side `skills.ts` resolver), which the app
+merged-section grouping, item lookup, and paged feed expansion — over the LIVE catalogue
+(`services/explore/live-catalog.ts`: one `anon` read of the public marketplace, cached 30 s and
+shared by every visitor) with `query.ts` and the server-side `skills.ts` resolver, which the app
 **never** imports. The `/explore` route and `/view/[id]` call the service directly for SSR first
 paint; the `SearchDashboard` island refines client-side via `ExploreService` (filter/sort changes,
 infinite-scroll pages, drawer refresh). Cross-boundary shapes — `ExploreItem`, `ExploreParams`,
-`ResultGroup`, `SearchPayload`, `HomeFeed` — are the Zod SSOT at **`@projective/types/explore`**.
-Stub-first behind **`EXPLORE_BACKEND_LIVE`** (default off), gated by `isExploreBackendLive()`; the
-live path (Supabase discovery tables + search embeddings) slots in behind that guard.
+`ResultGroup`, `SearchPayload`, `HomeFeed`, `SuggestQuery`/`Suggestions` — are the Zod SSOT at
+**`@projective/types/explore`**. Typeahead: `GET /api/explore/suggest?q=&scope=` Zod-validates
+`SuggestQuerySchema` (422 on failure) and calls `ExploreBackendService.suggest`, which runs the pure
+prefix ranker `services/explore/suggest.ts` over the TTL-cached catalogue (top hits per listing type,
+matched skills/categories, matched `@handle`s; an empty `q` returns trending — the skills and
+categories of the catalogue's trending items (`catalog.trending`, the same signal as Home's rail),
+topped up by those most listed in scope over 30 days when the platform is quiet). The client
+side is `useSearchSuggest` over the pure `core/suggest-controller.ts` (200ms debounce, one
+`AbortController` per request, a request sequence number), rendered by `SearchSuggest`; recent
+searches are per-device (`core/search-history.ts`, `LocalKeys.EXPLORE_RECENT_SEARCHES`).
+`SearchDashboard.runSearch` aborts and sequence-guards its own refinements and shows a Retry notice
+on failure instead of stale results.
+**Ranking and personalisation (Decision #178).** The catalogue load also reads the ranking signals —
+penalised `search.profiles_index` rows, `search.ranking_weights()` and `search.trending_entities()`
+(definers projecting coefficients and an aggregate floored at three people) — and scores every item
+once (`ranking.ts`), so the catalogue is assembled best-first and every "recommended" order reads
+`catalog.scoreById`. `home({ actor, sim })` composes the SHARED feed (sections, promos, the
+Recommended lists, Trending) from that cache, then, for a signed-in viewer, runs a VIEWER-SCOPED pass
+(`viewer-signals.ts`): `org.recent_views`, `org.user_bookmarks`, `search.user_affinity` and their
+stated interests, read with `getUserClient(jwt)` per request and never cached, composed into the
+personal rails by the pure `personalise.ts`; a failed pass is logged and the shared feed served. A view
+is recorded by `recordView` → `search.record_view` (a definer, the only writer of `org.recent_views`),
+fired in the background by the `/view/[entity]`, `/[handle]/view/[item]` and `/[handle]` routes and,
+for the results drawer's in-place open, `POST /api/explore/views`. `/explore` renews a lapsed session
+in place and forwards the Dev Context Switcher's `pj.dev.discovery` cookie in development only.
+Saves: a card's Star writes through `GET|POST /api/explore/bookmark` (`{ itemId, saved }`, Zod
+`BookmarkWriteSchema`) → `services/explore/ExploreBookmarkService.ts`, which resolves the discovery id
+against the catalogue (`bookmark-target.ts`) and upserts or deletes the caller's
+`org.user_bookmarks` row under their own JWT. Only `SaveableEntity` types carry a Star — a service, a
+project, a freelancer/team/business profile — because `org.bookmark_entity_type` cannot name a
+product, an article or a buyer. On the client every `CardActions` island reads one page-wide
+`core/bookmark-state.ts` store (one `GET` per page, optimistic toggles reverted on refusal). With the
+gate off, saves are kept in process memory per user.
+**Semantic ranking (Decision #179).** Discovery can rank with Voyage AI `voyage-4` vectors (1024
+dimensions, unit length — inner product ranks as cosine) behind one switch, `isEmbeddingsLive(req?)`
+(`core/supabase.ts`): not mocked, Supabase configured, `VOYAGE_API_KEY` present, and
+`EMBEDDINGS_ENABLED` — or, in development only, the Dev Context Switcher's `pj.dev.embeddings` cookie
+(`on` | `off`), which the routes forward only under `IS_DEV` and the gate honours only under
+`DENO_ENV=development`. Off, discovery is byte-for-byte the heuristic path and nothing calls Voyage.
+On, `ExploreBackendService.search` embeds the query (`services/search/EmbeddingBackendService.ts`:
+plain `fetch`, batching, a timeout and a deadline, at most two retries on 429 / 5xx / network, an LRU +
+TTL query cache), asks `search.fn_nearest` for the category's nearest public entities, and the pure
+`services/explore/semantic.ts` re-ranks the JS candidate set on the default sort through
+`SEMANTIC_BLEND_WEIGHT` and adds up to 12 high-similarity neighbours that pass the same facets; the
+`/view` "Similar" rail reads `search.fn_nearest_to_entity` (the item's stored vector, its owner's
+items excluded) and keeps the heuristic rail when there is no vector. Any Voyage or database failure
+falls back to the heuristic for that request with one `[embeddings]` server-log line. Vectors are
+written by `deno task embeddings:backfill` and re-embedded fire-and-forget after a committed listing,
+profile, project or workspace write (`services/search/embedding-sync.ts`); both skip an item whose
+stored text hash and model still match, and both write through the service-role-only
+`search.fn_set_embedding`. In development `/explore`, the `/view` pages and every `/api/explore/*`
+response carry `x-discovery-ranking: semantic | heuristic`, and the switcher shows the effective state
+(`GET /api/explore/ranking`, 404 in production). Home personalisation and user vectors are the
+separate ranking-v1 task.
+
+### Discovery telemetry & client observability
+
+Four write paths. They share one transport rule and one table discipline, and add no vendor:
+web vitals are measured with the browser's own `PerformanceObserver`, not the `web-vitals`
+package.
+
+| Signal | Client | Thin route | Fat service | Table | Gate |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| Impressions · card clicks · rail depth (`discovery.*`) | `features/explore/islands/ImpressionTracker.island.tsx` | `POST /api/explore/events` | `services/search/InterestBackendService.ts` | `search.interest_events` | `EXPLORE_BACKEND_LIVE` |
+| Discovery queries (`discovery.search`) | (server-side) | `/explore` SSR · `GET /api/explore/search` | `ExploreBackendService.search` → `services/search/query-log.ts` → `search.fn_log_query` | `search.query_logs` | `EXPLORE_BACKEND_LIVE` |
+| Production `warn`/`error` logs | `utils/logger.ts` | `POST /api/logs` | `services/logging/LogBackendService.ingest` | `ops.log_entries` | `LOGGING_BACKEND_LIVE` |
+| Core Web Vitals (CLS · LCP · INP) | `features/shell/islands/WebVitalsBridge.island.tsx` (mounted in `_app`) | `POST /api/logs/vitals` | `LogBackendService.ingestVitals` | `ops.log_entries` (`level = 'metric'`) | `LOGGING_BACKEND_LIVE` |
+| Server 5xx | `routes/_error.tsx` | (none) | `LogBackendService.recordServerError` | `ops.log_entries` (`source = 'server'`) | `LOGGING_BACKEND_LIVE` (the console line is unconditional) |
+
+- **Impression definition.** ONE page-level `IntersectionObserver` over every `[data-item-id]`
+  card (a `MutationObserver` picks up cards a refinement adds). A card at least 50% visible for 1 s
+  in a visible tab counts once per placement (rail + item) per page view. Rails are the
+  `[data-rail-id]` tracks `RailFrame` renders; their depth comes from one capturing `scroll` listener.
+  Batches flush at 20 events, on a 10 s heartbeat, on `visibilitychange → hidden` and on `pagehide`.
+- **Transport.** `navigator.sendBeacon` with a JSON blob (same-origin, so the session cookie rides
+  along and the route resolves the actor with `readActor`). The fallback, when the beacon is refused,
+  is `fetch(…, { keepalive: true })` with `x-pj-background: 1`, which the offline guard never blocks.
+  The routes answer `202`/`422`/`429`/`503` for logs; nothing reads them.
+- **Identity.** Every insert runs under the caller's JWT (`services/telemetry-writer.ts`), so RLS
+  pins `user_id` to `auth.uid()` or NULL. A refused attributed write (an expired token, a forged
+  decode) is retried once as `anon` with `user_id` NULL rather than losing the rows. No path uses the
+  service role.
+- **Trust.** The client sends public slugs/handles; `InterestBackendService` resolves them against
+  the cached public catalogue and drops any id that is not in it, taking the entity type from the
+  catalogue, not the request. A per-process `SlidingWindowLimiter` (30 batches/min per user or
+  session) bounds a runaway tab.
+- **Development.** The logger and `WebVitalsBridge` never call the server in development (vitals
+  go to the Dev Tools log inspector). The `ImpressionTracker` does beacon, and the service
+  acknowledges without writing unless `EXPLORE_BACKEND_LIVE` is on.
+- **Client render failures.** `ErrorBoundary` (`@projective/ui/feedback`) contains a broken island
+  subtree and reports through `logger.error` (and so `/api/logs` in production). The
+  `SearchDashboard` island is wrapped in one.
+- **`ops` is a PostgREST-exposed schema** for `ops.log_entries` alone (`supabase/config.toml`
+  `[api].schemas`; `USAGE` granted, every other `ops` table still revoked). A hosted project must
+  add `ops` to **Settings → API → Exposed schemas** too, or every live log insert fails with
+  `PGRST106` and is echoed to the console instead.
 
 ### Newsletter services
 
@@ -1092,7 +1186,7 @@ deferred live path behind the same gate. The wallet is the **finance face of the
 Full feature detail is logged in the root `CLAUDE.md` §8 Decision #55; the single-page presentation
 that replaced the deep pages is Decision #122.
 
-### Saved services (the one saved / favourites system, Decision #174)
+### Saved services (the one saved / favourites system, Decision #180)
 
 Every star, save and favourite control writes through ONE path: `SavedService` (client,
 `features/saved/core/`) → `/api/saved` (thin) → `services/saved/SavedBackendService.ts` (fat) →
@@ -1419,6 +1513,12 @@ live since the 2026-09-23 ledger pass — see `database/finance/Policies.md`.)
 `/view/[entity]` is a **read** surface over `ExploreBackendService.viewPage(id)` behind
 `EXPLORE_BACKEND_LIVE`, and it is the clearest instance of the slot-resolver pattern doing real
 architectural work rather than layout plumbing.
+
+> ⚠️ **Flagged, not resolved here (§8 Decision #179(c)).** `viewPage` no longer sits behind
+> `EXPLORE_BACKEND_LIVE`: every discovery read is live with no fixture fallback
+> (`ExploreBackendService`), and the flag now gates only the discovery telemetry writes and
+> stub-mode saves. The sentence above, the Environment Variable Contract's gate comment and Decision
+> #12 still describe the stub-first design. A human decides how to reword them.
 
 **The archetype is resolved server-side, once.** A pure `resolveArchetype(item, view)` maps a
 listing's delivery model onto one of five bodies — `pipeline` · `one_off` · `session` · `cohort` ·
@@ -1804,7 +1904,15 @@ combined with `pgvector`.
 
 - **Performance:** We avoid searching across complex JOIN views. Instead, dedicated search tables
   are populated via DB triggers whenever source records change.
-- **Vector Encoding:** The system uses `pgvector` to store high-dimensional embeddings of text data.
+- **Vector Encoding:** `pgvector` columns hold Voyage AI `voyage-4` embeddings — 1024 dimensions,
+  unit length, so the HNSW indexes use `vector_ip_ops` and inner product ranks as cosine (Decision
+  #179). Every public discovery entity has one, in `search.profiles_index` · `projects_index` ·
+  `services_index` · `catalogue_index` (products and articles). **Write path:** `deno task
+  embeddings:backfill` and the post-commit re-embed → `search.fn_set_embedding` (service role only),
+  skipping a text whose SHA-256 and model are unchanged. **Read path:** `search.fn_nearest` (a query
+  vector) and `search.fn_nearest_to_entity` (an item's stored vector) answer ids and scores over public
+  rows; `anon` and `authenticated` cannot select a vector column. **Gate:** `isEmbeddingsLive(req?)` —
+  see §Discovery (Explore) services.
 - **Context-Aware Ranking:** The recommender system performs weighted vector similarity searches
   taking into account:
   - **User Context:** Preferences, interaction history, and search history.
@@ -2745,6 +2853,17 @@ S3_SECRET_ACCESS_KEY=XXXX-XXXX
 # time and never inlined; absent or the placeholder → no reputation lookup (the scan's own guards
 # still run). The lookup sends the full URL to Google (Decision #128).
 LINK_SAFETY_API_KEY=XXXX-XXXX
+
+# Discovery embeddings — Voyage AI voyage-4 (Decision #179). EMBEDDINGS_ENABLED is a boolean, default
+# false like the gates below: off, discovery ranks heuristically and nothing calls Voyage. In
+# development the Dev Context Switcher overrides it per browser (`pj.dev.embeddings`); production
+# never reads that cookie. The key is a secret, server-only. An Atlas model API key is answered by
+# https://ai.mongodb.com, a Voyage platform key (pa-…) by https://api.voyageai.com; the client picks
+# the host from the key unless VOYAGE_API_BASE names one. `db:reset` leaves every vector empty — run
+# `deno task embeddings:backfill` after it.
+EMBEDDINGS_ENABLED=false
+VOYAGE_API_KEY=XXXX-XXXX
+# VOYAGE_API_BASE=https://ai.mongodb.com
 
 # Stripe (Finance) — read only by packages/backend/core/stripe.ts; a value not shaped like its key
 # (sk_/rk_, whsec_, pk_) counts as absent, so the placeholder degrades to "not connected here".

@@ -1,5 +1,5 @@
 import { destinationEmail, isCheckoutEligible, itemKindMeta } from "@projective/types/finance";
-import type { IconName } from "@projective/ui/icons";
+import type { IconName } from "@ui/icons/core/paths.tsx";
 import type {
 	BasketItem,
 	CheckoutBlocker,

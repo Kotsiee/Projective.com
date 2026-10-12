@@ -1,4 +1,4 @@
-import type { EntityView, ExploreItem, ServiceViewExtra } from "@projective/types/explore";
+import type { EntityView, ExploreOwner, ServiceViewExtra } from "@projective/types/explore";
 
 /**
  * View feature — the polymorphic archetype resolver for `/view/[entity]`.
@@ -381,8 +381,12 @@ export function scopeHeadingFor(archetype: EntityArchetype): string {
 	}
 }
 
-/** Split an owner's display name into a first name, for the "More by …" rail's subtitle. */
-export function firstNameOf(item: ExploreItem): string {
-	return item.owner.name.split(/\s+/)[0] ?? item.owner.name;
+/**
+ * How the "More by …" rails name an owner: a person by their first name, a team or business by its
+ * full name — "North Studio" is one name, and "More from North" names nobody.
+ */
+export function ownerShortName(owner: Pick<ExploreOwner, "name" | "kind">): string {
+	if (owner.kind === "team" || owner.kind === "business") return owner.name;
+	return owner.name.trim().split(/\s+/)[0] || owner.name;
 }
 // #endregion

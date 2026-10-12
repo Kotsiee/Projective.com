@@ -39,7 +39,7 @@ export async function setLiveFolder(
 
 /**
  * Star or unstar a conversation for the caller through `comms.set_dm_starred` (the /saved system,
- * Decision #174). A conversation with no thread yet has nothing to star and reads as a miss.
+ * Decision #180). A conversation with no thread yet has nothing to star and reads as a miss.
  */
 export async function setLiveStarred(
 	actor: ReadActor & { accessToken: string },

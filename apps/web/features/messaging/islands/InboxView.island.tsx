@@ -289,7 +289,7 @@ export default function InboxView(props: InboxViewProps): JSX.Element {
 	function find(id: string) {
 		return inboxAll.value.find((x) => x.id === id);
 	}
-	/** Star or unstar through the saved system (Decision #174), optimistic with rollback. */
+	/** Star or unstar through the saved system (Decision #180), optimistic with rollback. */
 	const toggleStar = async (id: string) => {
 		const c = inboxMerged.value.find((x) => x.id === id);
 		if (!c) return;

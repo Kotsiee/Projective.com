@@ -11,7 +11,7 @@ import {
 import type { DevSaved } from "@web/utils/dev-seam.ts";
 
 /**
- * saved-sim — the Dev Context Switcher's saved set (`saved` axis, Decision #174). When the axis is not
+ * saved-sim — the Dev Context Switcher's saved set (`saved` axis, Decision #180). When the axis is not
  * `auto`, {@link SavedService} answers from here in the API's own shapes, and its writes change this
  * set — never the server. Development only: the seam reads `null` in production.
  */

@@ -4,6 +4,7 @@ import type { ProfileTabPayload } from "@projective/types/profile";
 import { resolveProfileTab } from "@features/profile/core/profile-ssr.ts";
 import { ProfileTabContent } from "@features/profile/components/ProfileTabContent.tsx";
 import { readActor } from "@web/utils/api-session.ts";
+import { recordViewInBackground } from "@features/explore/core/record-view.ts";
 
 /**
  * `/[handle]` — the profile index, which IS the Work section (root CLAUDE.md §8 Decision #96). The
@@ -19,7 +20,10 @@ export const handler = define.handlers({
 		ctx.state.title = profile
 			? `${profile.name} (${profile.handle}) · Projective`
 			: "Profile · Projective";
-		if (profile) ctx.state.description = profile.headline;
+		if (profile) {
+			ctx.state.description = profile.headline;
+			recordViewInBackground(ctx, profile.handle.replace(/^@/, ""));
+		}
 		const payload = profile ? await resolveProfileTab(profile.handle, "work", readActor(ctx)) : null;
 		return page({ payload });
 	},

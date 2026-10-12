@@ -137,3 +137,19 @@ VALUES
   ('3e6483c5-db17-42ac-a327-b0b72f5cf30e', '2bdebf14-f7dc-40af-acd8-fe22cb9916fd', 'service_blueprint', '7b1b3f95-50bb-4b14-a1fa-457bd622993a'),
   ('57f8dbdb-d8ae-4bb2-a1e9-bdfdf7d9ed84', '35ce4987-15b3-4c38-a438-2bb9c35df15a', 'team', 'edc2d943-8062-426a-a6f2-29fdc6b4363c')
 ON CONFLICT (user_id, entity_type, entity_id) DO NOTHING;
+
+INSERT INTO org.recent_views (id, user_id, entity_type, entity_id, view_count, first_viewed_at, viewed_at)
+VALUES
+  ('f7cda1fa-d6b7-4361-af85-70784e4c0407', '1fee216e-a637-4619-a90a-4ae03bb1ed8b', 'service_blueprint', '11c2391b-1568-4ee2-aa84-10dd81d8ccf4', 3, now() - interval '50 hours', now() - interval '2 hours'),
+  ('f130d6e3-d378-421c-a10c-a09165f87a4a', '1fee216e-a637-4619-a90a-4ae03bb1ed8b', 'freelancer', '6ce1906f-caab-4708-a19e-df3d8960666e', 1, now() - interval '12 hours', now() - interval '12 hours'),
+  ('52f6fcd5-8041-4154-acc2-e0976014713e', '1fee216e-a637-4619-a90a-4ae03bb1ed8b', 'service_blueprint', '56b1183a-92e4-4f4d-a30e-1e983a201c6b', 1, now() - interval '36 hours', now() - interval '36 hours'),
+  ('7d2c8fe8-10cc-42eb-a1c0-5a02cc7209b5', '2bdebf14-f7dc-40af-acd8-fe22cb9916fd', 'service_blueprint', '11c2391b-1568-4ee2-aa84-10dd81d8ccf4', 1, now() - interval '19 hours', now() - interval '19 hours'),
+  ('10cd5b41-f379-4806-ac2b-433bf2ad3d88', '2bdebf14-f7dc-40af-acd8-fe22cb9916fd', 'freelancer', '6ce1906f-caab-4708-a19e-df3d8960666e', 1, now() - interval '48 hours', now() - interval '48 hours'),
+  ('5a2f63f3-9ab8-40ee-afe1-acbd148038a0', '950d68d1-8777-4bbe-ae59-3343e3e7f858', 'service_blueprint', '11c2391b-1568-4ee2-aa84-10dd81d8ccf4', 2, now() - interval '53 hours', now() - interval '29 hours'),
+  ('8df7adee-b477-41d1-af99-eb842464c387', '35ce4987-15b3-4c38-a438-2bb9c35df15a', 'service_blueprint', '11c2391b-1568-4ee2-aa84-10dd81d8ccf4', 1, now() - interval '72 hours', now() - interval '72 hours'),
+  ('ffe8619c-e392-4c9d-af07-0b5a5b73ddab', 'de29f2ce-0f36-4db5-a417-4edc88cedf83', 'freelancer', '6ce1906f-caab-4708-a19e-df3d8960666e', 1, now() - interval '60 hours', now() - interval '60 hours'),
+  ('5de07d70-2c41-4995-af79-54ea463ef7df', '6ce1906f-caab-4708-a19e-df3d8960666e', 'project', 'f64b99ba-0ab3-4c4f-ac7b-5a88f2577625', 2, now() - interval '29 hours', now() - interval '5 hours'),
+  ('e5dc7c2e-e322-4bad-a93a-cd2cc24b243b', '6ce1906f-caab-4708-a19e-df3d8960666e', 'project', 'af6c1867-2b94-49f4-ad1f-12c10c4ab616', 1, now() - interval '24 hours', now() - interval '24 hours'),
+  ('c4089866-8f17-4955-a927-c44077a602f7', '45a4c6ae-d818-45fd-a62b-db44f1f69eab', 'project', 'f64b99ba-0ab3-4c4f-ac7b-5a88f2577625', 1, now() - interval '14 hours', now() - interval '14 hours'),
+  ('2ab3690b-6f2e-412a-afae-9555ca29d03c', 'bdff9d38-7124-4a49-af5d-c88eb4fe8b57', 'project', 'f64b99ba-0ab3-4c4f-ac7b-5a88f2577625', 1, now() - interval '34 hours', now() - interval '34 hours')
+ON CONFLICT (user_id, entity_type, entity_id) DO NOTHING;

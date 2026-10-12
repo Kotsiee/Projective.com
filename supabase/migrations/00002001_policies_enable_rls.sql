@@ -63,6 +63,8 @@ ALTER TABLE marketplace.service_blueprints ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE ops.admin_users ENABLE ROW LEVEL SECURITY;
 
+ALTER TABLE ops.log_entries ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE org.business_profiles ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE org.freelancer_profiles ENABLE ROW LEVEL SECURITY;
@@ -89,6 +91,9 @@ ALTER TABLE org.teams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE org.user_bookmarks ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE org.user_bookmark_collections ENABLE ROW LEVEL SECURITY;
+
+-- Read-own, definer-written (search.record_view, 00001400).
+ALTER TABLE org.recent_views ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE org.user_emails ENABLE ROW LEVEL SECURITY;
 
@@ -212,6 +217,8 @@ ALTER TABLE search.profiles_index ENABLE ROW LEVEL SECURITY;
 ALTER TABLE search.projects_index ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE search.services_index ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE search.catalogue_index ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE search.user_affinity ENABLE ROW LEVEL SECURITY;
 

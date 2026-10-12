@@ -59,7 +59,7 @@ export default function ProjectLane(
 	const saved = authed ? savedFlag("project", item.id) : null;
 	const status = useSignal("");
 
-	/** Save the project (its star, Decision #174); a guest is sent to sign in first. */
+	/** Save the project (its star, Decision #180); a guest is sent to sign in first. */
 	async function save(): Promise<void> {
 		if (!saved) {
 			globalThis.location.assign(signInHref(item, ctx));

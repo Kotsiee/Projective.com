@@ -310,7 +310,7 @@
 
 /* #endregion */
 
-/* #region Follower counts + the connections list (Decision #174) */
+/* #region Follower counts + the connections list (Decision #180) */
 /* The counts are controls in the meta register: the line's own size and colour, a tabular figure,
    an underline on hover. They open the followers / following list. */
 .pf-hero__count {

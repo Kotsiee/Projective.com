@@ -2,6 +2,7 @@ import { createDefine } from "fresh";
 import type { UserContext } from "@projective/types/auth";
 import type { FxRateTable } from "@projective/types/finance";
 import type { ProfileView } from "@projective/types/profile";
+import type { DiscoveryRanking } from "@projective/types/explore";
 import type { A11yOverlays } from "@web/utils/a11y-context.ts";
 import type {
 	ProjectAccess,
@@ -102,6 +103,11 @@ export interface State {
 	 * so the Overview's arrival highlight and the lane's marks answer from the same instant.
 	 */
 	projectNavActivity?: { slug: string; activity: ProjectNavActivity };
+	/**
+	 * How an `/api/explore/*` handler ordered its discovery content (Decision #179), for
+	 * `routes/api/explore/_middleware.ts` to report in development. Absent = heuristic.
+	 */
+	discoveryRanking?: DiscoveryRanking;
 }
 
 /** The typed `define` helper (`define.page` · `define.handlers` · `define.middleware`). */

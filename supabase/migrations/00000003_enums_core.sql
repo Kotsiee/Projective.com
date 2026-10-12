@@ -42,7 +42,7 @@ CREATE TYPE public.start_trigger_type AS ENUM ('fixed_date', 'on_project_start',
 -- #endregion
 
 -- #region org
--- What an `org.user_bookmarks` row can point at (Decision #174). People use the follow graph's
+-- What an `org.user_bookmarks` row can point at (Decision #180). People use the follow graph's
 -- vocabulary — 'user', never 'freelancer'/'client' — so one person is one saveable target. A project
 -- is NOT here: saving a project is its star, `projects.user_preferences.is_starred`, one store per kind.
 CREATE TYPE org.bookmark_entity_type AS ENUM (

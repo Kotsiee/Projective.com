@@ -423,7 +423,7 @@ resolves `files.fn_public_media_ref` at run time — that function is created la
 
 ### `org.get_profile_cards(p_types text[], p_ids uuid[])` — the same identity for any profile kind
 
-`STABLE` · `SECURITY DEFINER` · granted to `anon`, `authenticated` and `service_role` (Decision #174).
+`STABLE` · `SECURITY DEFINER` · granted to `anon`, `authenticated` and `service_role` (Decision #180).
 Pairs are `(p_types[i], p_ids[i])` over the polymorphic owner vocabulary (`user` · `team` · `business` ·
 `organisation`), at most **500**. Returns `(owner_type, owner_id, kind, handle, name, avatar,
 oauth_avatar)` — `kind` is `freelancer` / `client` for a person, else the entity kind; `avatar` a

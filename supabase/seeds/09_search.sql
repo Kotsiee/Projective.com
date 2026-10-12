@@ -114,4 +114,29 @@ FROM marketplace.service_blueprints
 ON CONFLICT (service_id) DO NOTHING;
 -- #endregion
 
+-- #region Catalogue: products (through their listing) and articles — Decision #179
+INSERT INTO search.catalogue_index (entity_type, entity_id, title, fts, is_public, updated_at)
+SELECT
+    'product',
+    product_id,
+    title,
+    to_tsvector('english', title || ' ' || coalesce(description_text, '') || ' ' || coalesce(category, '')),
+    status = 'published',
+    now()
+FROM catalogue.listings
+WHERE kind = 'product' AND product_id IS NOT NULL
+ON CONFLICT (entity_type, entity_id) DO NOTHING;
+
+INSERT INTO search.catalogue_index (entity_type, entity_id, title, fts, is_public, updated_at)
+SELECT
+    'article',
+    id,
+    title,
+    to_tsvector('english', title || ' ' || coalesce(topic, '') || ' ' || coalesce(summary, '')),
+    status = 'published',
+    now()
+FROM catalogue.articles
+ON CONFLICT (entity_type, entity_id) DO NOTHING;
+-- #endregion
+
 COMMIT;

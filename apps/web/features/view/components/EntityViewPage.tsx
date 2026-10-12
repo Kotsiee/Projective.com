@@ -34,8 +34,8 @@ import {
 import { headlinePriceFor } from "../core/view-pricing.ts";
 import {
 	type EntityArchetype,
-	firstNameOf,
 	inlineMetaFor,
+	ownerShortName,
 	resolveArchetype,
 	scopeHeadingFor,
 	seatCapacityFor,
@@ -151,6 +151,7 @@ export function EntityViewPage(
 	}
 
 	const { item, gallery, deliverables, moreByOwner, similar, reviews } = view;
+	const ownerName = ownerShortName(item.owner);
 	const project = archetype === "project" ? view.project : undefined;
 	const isProject = !!project;
 	const meta = inlineMetaFor(view, archetype);
@@ -376,23 +377,25 @@ export function EntityViewPage(
 
 						  A project's rails are the client's OTHER briefs and briefs that hire for the same
 						  skills — composed as projects in `live-view.ts`, never a seller's catalogue. "More
-						  by" leads at the project carousel's two-up base so the client's own work outranks
+						  by" leads at the project grid's two-up base so the client's own work outranks
 						  the generic suggestions, which drop to three-up beneath it.
 						*/
 					}
 					{rails && (
 						<div class="evp-body">
 							<RelatedSection
+								id="more-by"
 								title={`More by ${item.owner.name}`}
 								subtitle={isProject
-									? `Other projects ${firstNameOf(item)} is staffing, and the stage each is on`
-									: `More work from ${firstNameOf(item)}, grouped by type`}
+									? `Other projects ${ownerName} is staffing, and the stage each is on`
+									: `More work from ${ownerName}, grouped by type`}
 								items={moreByOwner}
 								ctx={ctx}
 								authed={authed}
 								seeAllHref={`/${item.owner.handle}`}
 							/>
 							<RelatedSection
+								id="similar"
 								title="Similar & recommended"
 								subtitle={isProject
 									? "Briefs hiring for the same skills"
@@ -442,7 +445,7 @@ export function EntityViewPage(
 								list={reviews.list}
 								title={`${item.owner.name} as a client`}
 								subtitle="What freelancers said about working for this client: payment, briefing and communication"
-								emptyText={`No freelancer has reviewed ${firstNameOf(item)} as a client yet.`}
+								emptyText={`No freelancer has reviewed ${ownerName} as a client yet.`}
 							/>
 						)
 						: <ReviewsPanel summary={reviews.summary} list={reviews.list} />}

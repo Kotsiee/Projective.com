@@ -7,7 +7,7 @@ import {
 import { relativeAge } from "@features/explore/core/card-signals.ts";
 
 /**
- * saved-model — the pure half of `/saved` (Decision #174): the tab vocabulary, the deep link
+ * saved-model — the pure half of `/saved` (Decision #180): the tab vocabulary, the deep link
  * (`?tab=&collection=`), the meta line and the empty-state sentences. Testable without a DOM.
  */
 

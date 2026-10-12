@@ -266,4 +266,19 @@ export function activeFilterConfigs(
 ): Facet[] {
 	return mergeFacets(FILTER_CONFIG[category], dynamic);
 }
+
+/**
+ * The reader-facing label for a stored facet value — `web` → "Web", `ui-kit` → "UI kits" — read from
+ * the facet's own options, so a fact and the filter chip that selects it say the same word. A value
+ * no option names is humanised (`getting-started` → "Getting started") rather than printed raw.
+ */
+export function facetValueLabel(category: ExploreCategory, facetId: string, value: string): string {
+	const facet = FILTER_CONFIG[category].find((f) => f.id === facetId);
+	const option = facet && "options" in facet
+		? facet.options.find((o) => String(o.value) === value)
+		: undefined;
+	if (option) return option.label;
+	const words = value.replace(/[-_]+/g, " ").trim();
+	return words ? words[0].toUpperCase() + words.slice(1) : value;
+}
 // #endregion

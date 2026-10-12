@@ -1,4 +1,4 @@
-/* Saved — `/saved`, the collection picker, and a profile's followers / following list (Decision #174).
+/* Saved — `/saved`, the collection picker, and a profile's followers / following list (Decision #180).
    Token-only BEM. Rows are separated by ONE hairline, never boxed (§B.9); metadata is one inline
    `--text-secondary` line, never pills (§B.11). The only containers are the controls themselves. */
 

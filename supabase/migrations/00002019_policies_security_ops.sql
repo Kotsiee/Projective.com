@@ -26,3 +26,16 @@ SELECT TO authenticated USING (
 
 CREATE POLICY "Read platform params" ON security.platform_params FOR
 SELECT TO authenticated USING (true);
+
+
+-- --- ops.log_entries (production log + web-vitals ingestion) ---
+
+-- `/api/logs` is reachable from public surfaces, so an anonymous row is the normal case. A signed-in
+-- writer may only attribute a row to themselves; nobody may attribute one to someone else.
+CREATE POLICY "Insert own or anonymous log entries" ON ops.log_entries FOR
+INSERT TO anon, authenticated WITH CHECK (user_id IS NULL OR user_id = auth.uid ());
+
+-- Diagnostics carry paths, user agents and payloads: admins only. No UPDATE/DELETE policy —
+-- entries are append-only and the retention sweep runs as the service role.
+CREATE POLICY "Admins read log entries" ON ops.log_entries FOR
+SELECT TO authenticated USING (security.is_admin ());

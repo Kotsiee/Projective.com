@@ -32,7 +32,7 @@ import {
 } from "./live-saved.ts";
 
 /**
- * SavedBackendService — the one saved / favourites system (Decision #174): every star, save and
+ * SavedBackendService — the one saved / favourites system (Decision #180): every star, save and
  * favourite control writes through {@link toggle}, and `/saved` reads {@link list}.
  *
  * A save is kept in the store its kind already had, one store per kind — `org.user_bookmarks` for

@@ -10,6 +10,7 @@ import {
 	type SearchScope,
 	searchScopeLabel,
 } from "@features/marketing/core/landing-data.ts";
+import SearchSuggest from "../islands/SearchSuggest.island.tsx";
 import type { ExploreCategory } from "../types/explore-types.ts";
 
 /** The scope the results page is currently in, or the neutral default when it names no scope. */
@@ -23,9 +24,9 @@ function scopeOf(category: ExploreCategory): SearchScope {
  * (`site-header__search`: a fused scope selector → the field → a submit glyph, plus a clear control
  * once something is typed), and a minimal row of clickable "Related" search tags. The scope
  * vocabulary is the shared `SEARCH_SCOPES`, so the two bars offer the same choices and the results
- * page can re-scope in place. Presentational — the parent island owns the query state; `onSearch`
- * re-runs the search with a term + scope (Enter, a scope pick, or the clear control), and
- * `onRelated` re-runs it for a tag.
+ * page can re-scope in place. The field is the shared `SearchSuggest` typeahead. Presentational —
+ * the parent island owns the query state; `onSearch` re-runs the search with a term + scope (Enter,
+ * a suggestion, a scope pick, or the clear control), and `onRelated` re-runs it for a tag.
  */
 export function ResultsHeader(
 	{ title, query, category, related, onSearch, onRelated }: {
@@ -43,6 +44,7 @@ export function ResultsHeader(
 	const scope = useSignal<SearchScope>(scopeOf(category));
 	const menuOpen = useSignal(false);
 	const optionRefs = useRef<Array<HTMLLIElement | null>>([]);
+	const formRef = useRef<HTMLFormElement>(null);
 
 	useEffect(() => {
 		draft.value = query;
@@ -115,7 +117,7 @@ export function ResultsHeader(
 	return (
 		<header class="ex-results-head">
 			<h1 class="ex-results-head__q">{title}</h1>
-			<form class="ex-results-head__search" role="search" onSubmit={submit}>
+			<form ref={formRef} class="ex-results-head__search" role="search" onSubmit={submit}>
 				<div class="ex-results-head__entity">
 					<button
 						ref={menu.triggerRef}
@@ -165,15 +167,15 @@ export function ResultsHeader(
 						</BodyPortal>
 					)}
 				</div>
-				<input
-					class="ex-results-head__input"
-					type="text"
+				<SearchSuggest
+					value={draft}
+					scope={scope.value}
 					name="q"
-					autoComplete="off"
-					value={draft.value}
+					inputClass="ex-results-head__input"
+					anchorRef={formRef}
 					placeholder="Refine this search…"
 					aria-label="Search within results"
-					onInput={(e) => (draft.value = (e.currentTarget as HTMLInputElement).value)}
+					onSearch={(term) => onSearch(term, scope.value)}
 				/>
 				{draft.value.length > 0 && (
 					<button

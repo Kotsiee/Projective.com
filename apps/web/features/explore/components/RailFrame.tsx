@@ -5,15 +5,24 @@ import { Icon } from "@projective/ui/icons";
 import { Tooltip } from "@projective/ui/feedback";
 import { useCarousel } from "@features/marketing/core/useCarousel.ts";
 import { vars } from "@features/marketing/core/style.ts";
-import { RailHeading } from "./RailHeading.tsx";
+import { RailHeading, type RailHeadingLevel } from "./RailHeading.tsx";
 import { filterHref } from "../core/routing.ts";
+import { withViewTransition } from "../core/view-transition.ts";
 import type { ExploreEntity } from "../types/explore-types.ts";
 import "../styles/explore.css";
 import "../styles/explore-home.css";
+import "../styles/rail.css";
 
 /**
- * RailFrame — the ONE horizontal section module on Explore, shared by the discovery Home and the
- * cross-category Search Results feed.
+ * How a rail meets its host's edge. `bleed` (Home, Results) lets the track run past the page gutter
+ * so the next card peeks at the viewport edge; `contained` (the `/view` cross-sell) stops at its
+ * column and sizes cells to the nearest `container-type` ancestor instead of the viewport.
+ */
+export type RailFrameVariant = "bleed" | "contained";
+
+/**
+ * RailFrame — the ONE horizontal section module on Explore, shared by the discovery Home, the
+ * cross-category Search Results feed and the `/view` "More by" / "Similar" cross-sell.
  *
  * Anatomy, left to right across the header: the two-tone title (a bold-italic category and a regular
  * muted qualifier), an optional inline search, the scroll-progress separator, an optional trailing
@@ -41,7 +50,7 @@ import "../styles/explore-home.css";
  * `overflow: clip` viewport, so it has no `scrollLeft` to read and a continuous progress fill on top
  * of it would be a fiction — the best it could honestly report is `page / pages`. It also commits a
  * drag on a threshold rather than panning 1:1, keys its responsive columns to the VIEWPORT (wrong on a
- * laned surface, a trap `RelatedCarousel` already had to work around), renders its arrows internally
+ * laned surface, a trap the retired `/view` `RelatedCarousel` had to work around), renders its arrows internally
  * with no external handle, and duplicates edge slides in circular mode — which would duplicate the
  * `CardActions` island every explore card mounts.
  *
@@ -52,18 +61,24 @@ import "../styles/explore-home.css";
  * conscious call, recorded here rather than discovered later.
  *
  * This module is also the CSS carrier for the rail sheet. Component CSS reaches a page only through
- * an island bundle, and both hosts reach this file from one — Home through {@link HomeRail}, Results
- * through `SearchDashboard`.
+ * an island bundle, and every host reaches this file from one — Home and `/view` through
+ * {@link HomeRail}, Results through `SearchDashboard`.
  */
 export interface RailFrameProps {
 	/** Stable id — used for the heading's `aria-labelledby` and the section anchor. */
 	id: string;
 	/** The bold-italic half of the heading — the category. */
 	lead: string;
-	/** The regular muted half — what the reader gets from it. */
-	tail: string;
+	/** The regular muted half — what the reader gets from it. Omit for a one-part heading. */
+	tail?: string;
 	/** Where the whole heading links, i.e. "see all of this category". */
 	href?: string;
+	/** A Meta-register line under the header saying whose or why these cards are. */
+	subtitle?: string;
+	/** The heading's document level — 3 for a block inside a titled section (see {@link RailHeading}). */
+	level?: RailHeadingLevel;
+	/** How the track meets its host's edge — see {@link RailFrameVariant}. */
+	variant?: RailFrameVariant;
 	/**
 	 * Render an inline search field in the header. It filters the rail's own cells as the reader
 	 * types and submits to the full results page — so a search that finds nothing here still has
@@ -95,6 +110,13 @@ export interface RailFrameProps {
 	modifier?: string;
 	/** Accessible label for the paging controls, e.g. "Services". */
 	label?: string;
+	/**
+	 * Filter chips under the header. Each value matches the `data-facet` of the cells it keeps; "All"
+	 * clears it. A cell with no facet (a featured promo) shows only under "All".
+	 */
+	facets?: string[];
+	/** Accessible name of the facet chip group. */
+	facetLabel?: string;
 	children: ComponentChildren;
 }
 
@@ -104,17 +126,23 @@ export function RailFrame(
 		lead,
 		tail,
 		href,
+		subtitle,
+		level,
+		variant = "bleed",
 		search = false,
 		searchPlaceholder = "Search…",
 		searchCategory,
 		action,
 		modifier = "",
 		label,
+		facets = [],
+		facetLabel,
 		children,
 	}: RailFrameProps,
 ): JSX.Element {
 	const { trackRef, prev, next, atStart, atEnd, progress } = useCarousel();
 	const query = useSignal("");
+	const facet = useSignal<string | null>(null);
 	// `true` until measured. A rail that has not been measured yet must not paint a disabled Next —
 	// on a track that does overflow, that is a control the reader would find dead on arrival.
 	const scrollable = useSignal(true);
@@ -166,18 +194,37 @@ export function RailFrame(
 		if (empty) empty.hidden = shown > 0;
 		el.scrollLeft = 0;
 	}
+
+	function applyFacet(value: string | null) {
+		withViewTransition(() => {
+			facet.value = value;
+			const el = trackRef.current;
+			if (!el) return;
+			for (const cell of Array.from(el.children)) {
+				if (!(cell instanceof HTMLElement)) continue;
+				cell.hidden = value !== null && cell.dataset.facet !== value;
+			}
+			el.scrollLeft = 0;
+			const chips = rootRef.current?.querySelectorAll<HTMLElement>("[data-facet-chip]") ?? [];
+			for (const chip of chips) {
+				chip.setAttribute("aria-pressed", String((chip.dataset.facetChip || null) === value));
+			}
+		});
+	}
 	// #endregion
 
 	return (
 		<section
-			class={`ex-rail${modifier ? ` ${modifier}` : ""}`}
+			class={`ex-rail${variant === "contained" ? " ex-rail--contained" : ""}${
+				modifier ? ` ${modifier}` : ""
+			}`}
 			id={`ex-${id}`}
 			aria-labelledby={`ex-${id}-title`}
 			data-scrollable={scrollable.value ? "true" : "false"}
 			ref={rootRef}
 		>
 			<header class="ex-rail__head">
-				<RailHeading id={id} lead={lead} tail={tail} href={href} />
+				<RailHeading id={id} lead={lead} tail={tail} href={href} level={level} />
 
 				{search && (
 					<form
@@ -236,7 +283,26 @@ export function RailFrame(
 				</div>
 			</header>
 
-			<div class="ex-rail__track" role="list" ref={trackRef}>{children}</div>
+			{subtitle ? <p class="ex-rail__sub">{subtitle}</p> : null}
+
+			{facets.length > 1 && (
+				<div class="ex-rail__facets" role="group" aria-label={facetLabel ?? `Filter ${lead}`}>
+					{[null, ...facets].map((value) => (
+						<button
+							type="button"
+							class="ex-chip"
+							key={value ?? "all"}
+							data-facet-chip={value ?? ""}
+							aria-pressed={facet.value === value}
+							onClick={() => applyFacet(value)}
+						>
+							{value ? value.charAt(0).toUpperCase() + value.slice(1) : "All"}
+						</button>
+					))}
+				</div>
+			)}
+
+			<div class="ex-rail__track" role="list" ref={trackRef} data-rail-id={id}>{children}</div>
 
 			{search && <p class="ex-rail__empty" hidden>Nothing here matches that.</p>}
 		</section>

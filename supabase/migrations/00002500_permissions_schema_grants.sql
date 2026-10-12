@@ -190,6 +190,10 @@ EXECUTE ON ROUTINES TO anon,
 authenticated,
 service_role;
 
+-- ops is exposed through PostgREST for ops.log_entries ingestion only. USAGE grants no table
+-- privilege: every ops table stays revoked above unless 00002520 grants it by name.
+GRANT USAGE ON SCHEMA ops TO anon, authenticated, service_role;
+
 GRANT USAGE ON SCHEMA marketplace TO anon, authenticated;
 
 GRANT ALL ON ALL TABLES IN SCHEMA marketplace TO anon, authenticated;

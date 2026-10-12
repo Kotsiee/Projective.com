@@ -27,34 +27,34 @@
  * prefixed so the global namespace stays legible.
  * ========================================================================== */
 :root {
-    /* The page's own rhythm. `--evp-gap-section` is the tier-1 separator and is deliberately ~4x
+	/* The page's own rhythm. `--evp-gap-section` is the tier-1 separator and is deliberately ~4x
 	* `--evp-gap-heading`: if the two are within 2x of each other, spacing has stopped doing tier-1
 	* work and a hairline will be reached for next. */
-    --evp-gap-section: var(--space-7);
-    --evp-gap-heading: var(--space-3);
-    --evp-gap-row: var(--space-4);
+	--evp-gap-section: var(--space-7);
+	--evp-gap-heading: var(--space-3);
+	--evp-gap-row: var(--space-4);
 
-    /* Prose measure. Read from the global contract rather than restated as a pixel width. */
-    --evp-measure: var(--measure);
+	/* Prose measure. Read from the global contract rather than restated as a pixel width. */
+	--evp-measure: var(--measure);
 
-    /* The timeline track (§D.8.1). */
-    --evp-track-node: 1.75rem;
-    --evp-track-gutter: 2.75rem;
+	/* The timeline track (§D.8.1). */
+	--evp-track-node: 1.75rem;
+	--evp-track-gutter: 2.75rem;
 
-    /* The seat meter (§D.8.4) — segment height and the graphical seam between marks. */
-    --evp-seat-h: 0.5rem;
-    --evp-seat-gap: var(--space-px);
+	/* The seat meter (§D.8.4) — segment height and the graphical seam between marks. */
+	--evp-seat-h: 0.5rem;
+	--evp-seat-gap: var(--space-px);
 
-    /*
+	/*
 	* THE THREE-TRACK FRAME: media · hero · conversion lane (the back control is the frame's first ROW).
 	*
 	* The lane is no longer a shell slot, so its width is stated HERE rather than passed to a
 	* splitter — one number for both shells, which is the point of moving it into the page.
 	*/
-    --evp-lane-pad: var(--space-5);
-    --evp-lane-w: 22rem;
-    --evp-frame-gap: var(--space-5);
-    /*
+	--evp-lane-pad: var(--space-5);
+	--evp-lane-w: 22rem;
+	--evp-frame-gap: var(--space-5);
+	/*
 	* The lead-in above the archetype body — the space between the hero row and the Stages section.
 	*
 	* It is ON TOP of `--evp-frame-gap`, not instead of it, because the frame's gap is a GRID gap and
@@ -62,18 +62,18 @@
 	* horizontally as well. This is the one boundary that wanted more air: the hero is the overview and
 	* the section below it is the substance, which is a bigger step than one column to the next.
 	*/
-    --evp-main-lead: var(--space-5);
+	--evp-main-lead: var(--space-5);
 
-    /*
+	/*
 	* The thumbnail rail. `--evp-rail-min` is the CARD FLOOR the island measures against to decide the
 	* slot count — it is read off the rendered element (`getComputedStyle`), so this declaration is
 	* the single authority and the JS carries no duplicate number. `--evp-rail-h` reserves the rail's
 	* height at SSR so a late-decoding thumbnail cannot shift the display above it.
 	*/
-    --evp-rail-min: 4.5rem;
-    --evp-rail-h: 4.25rem;
+	--evp-rail-min: 4.5rem;
+	--evp-rail-h: 4.25rem;
 
-    /*
+	/*
 	* THE ACTION RIG (§D.7.7). The numbers below are measured, not chosen.
 	*
 	* The PRIMARY is inverted — the page's ink colour as its fill. It is expressed as the pair
@@ -117,18 +117,18 @@
 	* and one of which adds to a basket, is worse than either colour choice — and §B.8.2 caps a region
 	* at one `filled` control regardless.
 	*/
-    --evp-cta-h: 2.25rem;
-    --evp-cta-fs: var(--text-sm);
-    --evp-cta-primary-fill: var(--primary);
-    --evp-cta-primary-ink: var(--on-primary);
-    --evp-cta-brand-fill: var(--primary);
-    --evp-cta-brand-ink: var(--primary);
+	--evp-cta-h: 2.25rem;
+	--evp-cta-fs: var(--text-sm);
+	--evp-cta-primary-fill: var(--primary);
+	--evp-cta-primary-ink: var(--on-primary);
+	--evp-cta-brand-fill: var(--primary);
+	--evp-cta-brand-ink: var(--primary);
 
-    /* The migrated sticky header. Its height is the band's, so the two cannot disagree. */
-    --evp-stickyhead-h: var(--shell-midnav-header-h);
-    --evp-stickyhead-title: 24ch;
+	/* The migrated sticky header. Its height is the band's, so the two cannot disagree. */
+	--evp-stickyhead-h: var(--shell-midnav-header-h);
+	--evp-stickyhead-title: 24ch;
 
-    /*
+	/*
 	* THE BAND OFFSET — how far the page's own pinned panels stand clear of the revealed header band.
 	*
 	* `0px` here is the resting value and the value every other surface in the product keeps; the
@@ -145,18 +145,18 @@
 	* the smoothness lives on the two properties that READ it, which are real lengths and transition
 	* normally. Both consumers use the band's own duration and easing, so the three move as one.
 	*/
-    --evp-band-offset: 0px;
+	--evp-band-offset: 0px;
 
-    /* The full-bleed session scheduler (§D.8.3). The floor is what a week grid needs before the
+	/* The full-bleed session scheduler (§D.8.3). The floor is what a week grid needs before the
 	* engine starts dropping its own side panel; below it the mini-month and availability panel go. */
-    --evp-sched-min-h: 34rem;
+	--evp-sched-min-h: 34rem;
 }
 
 /* ============================================================================
  * Page frame
  * ========================================================================== */
 .evp {
-    /*
+	/*
 	* THE FRAME'S HEIGHT TOKENS LIVE HERE, NOT ON `:root`, and that is a correctness requirement
 	* rather than tidiness.
 	*
@@ -202,22 +202,22 @@
 	* The column height subtracts the pin line, not the frame top, so a pinned lane's foot lands exactly
 	* one page-gutter above the viewport floor and can never push the document taller than the screen.
 	*/
-    --evp-chrome-h: var(--site-header-h, 5.5rem);
-    --evp-frame-top: calc(var(--evp-chrome-h) + var(--space-5));
-    --evp-pin-top: var(--evp-chrome-h);
-    --evp-pin-lift: var(--space-5);
-    --evp-col-h: calc(100dvh - var(--evp-pin-top) - var(--space-5));
+	--evp-chrome-h: var(--site-header-h, 5.5rem);
+	--evp-frame-top: calc(var(--evp-chrome-h) + var(--space-5));
+	--evp-pin-top: var(--evp-chrome-h);
+	--evp-pin-lift: var(--space-5);
+	--evp-col-h: calc(100dvh - var(--evp-pin-top) - var(--space-5));
 
-    display: flex;
-    flex-direction: column;
-    gap: var(--evp-gap-section);
-    padding-block: var(--space-5) var(--space-7);
-    padding-inline: var(--space-5);
-    font-family: var(--font-sans);
-    /* No `max-inline-size`. The shell already insets the content region — the guest gutter or the
+	display: flex;
+	flex-direction: column;
+	gap: var(--evp-gap-section);
+	padding-block: var(--space-5) var(--space-7);
+	padding-inline: var(--space-5);
+	font-family: var(--font-sans);
+	/* No `max-inline-size`. The shell already insets the content region — the guest gutter or the
 	* L-shell's rail and frame — and capping it a second time strands width while the shell is still
 	* reserving its own inset outside that cap (the /explore finding, Decision #77). */
-    color: var(--on-surface);
+	color: var(--on-surface);
 }
 
 /*
@@ -231,10 +231,10 @@
  * see the note there for what happens when they are not.
  */
 .ui-page-canvas__body .evp {
-    --evp-chrome-h: var(--shell-topbar-h);
-    /* The band is in-flow here and the hero starts one page-gutter below it — pin to the hero. */
-    --evp-pin-top: var(--evp-frame-top);
-    --evp-pin-lift: 0px;
+	--evp-chrome-h: var(--shell-topbar-h);
+	/* The band is in-flow here and the hero starts one page-gutter below it — pin to the hero. */
+	--evp-pin-top: var(--evp-frame-top);
+	--evp-pin-lift: 0px;
 }
 
 /*
@@ -243,7 +243,7 @@
  * as the band takes over from the shell's `migrating-back.css`. This sheet only PLACES the page copy.
  */
 .evp__back {
-    align-self: flex-start;
+	align-self: flex-start;
 }
 
 /*
@@ -290,41 +290,41 @@
  * base case and the desktop tracks are the addition rather than the other way round.
  * ========================================================================== */
 .evp-frame {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-        "back"
-        "hero"
-        "media"
-        "main";
-    gap: var(--evp-frame-gap);
-    min-inline-size: 0;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	grid-template-areas:
+		"back"
+		"hero"
+		"media"
+		"main";
+	gap: var(--evp-frame-gap);
+	min-inline-size: 0;
 }
 
 .evp-frame > .evp__back {
-    grid-area: back;
-    /* A grid item is stretched by default — the link's hit area is its content, not the whole row. */
-    justify-self: start;
+	grid-area: back;
+	/* A grid item is stretched by default — the link's hit area is its content, not the whole row. */
+	justify-self: start;
 }
 
 .evp-hero {
-    grid-area: hero;
-    position: relative;
-    min-inline-size: 0;
+	grid-area: hero;
+	position: relative;
+	min-inline-size: 0;
 }
 
 .evp-media {
-    grid-area: media;
-    min-inline-size: 0;
+	grid-area: media;
+	min-inline-size: 0;
 }
 
 .evp-main {
-    grid-area: main;
-    display: flex;
-    flex-direction: column;
-    gap: var(--evp-gap-section);
-    min-inline-size: 0;
-    padding-block-start: var(--evp-main-lead);
+	grid-area: main;
+	display: flex;
+	flex-direction: column;
+	gap: var(--evp-gap-section);
+	min-inline-size: 0;
+	padding-block-start: var(--evp-main-lead);
 }
 
 /*
@@ -336,7 +336,7 @@
  * number restored on top of it.
  */
 .evp-reviewsrow {
-    min-inline-size: 0;
+	min-inline-size: 0;
 }
 
 /*
@@ -345,13 +345,13 @@
  * animates for a reader who set the preference through `[data-motion="reduced"]` instead (§B.12).
  */
 @media (prefers-reduced-motion: reduce) {
-    .evp-laneslot {
-        transition: none;
-    }
+	.evp-laneslot {
+		transition: none;
+	}
 }
 
 [data-motion="reduced"] .evp-laneslot {
-    transition: none;
+	transition: none;
 }
 
 /*
@@ -373,33 +373,33 @@
  * for why the threshold is a CONTAINER width and not a viewport one.
  */
 @container evp-body (min-width: 1040px) {
-    /*
-     * The back link is the frame's FIRST row, spanning the two content tracks; the lane spans every
-     * row from the first, so its pinned top and the back link's top sit on one line at rest.
-     */
-    .evp-frame {
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr) var(--evp-lane-w);
-        grid-template-areas:
-            "back  back lane"
-            "media hero lane"
-            "main  main lane";
-        align-items: start;
-    }
+	/*
+	 * The back link is the frame's FIRST row, spanning the two content tracks; the lane spans every
+	 * row from the first, so its pinned top and the back link's top sit on one line at rest.
+	 */
+	.evp-frame {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr) var(--evp-lane-w);
+		grid-template-areas:
+			"back  back lane"
+			"media hero lane"
+			"main  main lane";
+		align-items: start;
+	}
 
-    /*
-     * No media column: the hero takes both content tracks. A session's artefact is the full-width
-     * scheduler stage below the hero, and a project has no gallery at all — its identity is the
-     * seller line inside the hero (the banner strip was removed by Decision #142).
-     */
-    .evp-frame--nomedia {
-        grid-template-columns: minmax(0, 1fr) var(--evp-lane-w);
-        grid-template-areas:
-            "back lane"
-            "hero lane"
-            "main lane";
-    }
+	/*
+	 * No media column: the hero takes both content tracks. A session's artefact is the full-width
+	 * scheduler stage below the hero, and a project has no gallery at all — its identity is the
+	 * seller line inside the hero (the banner strip was removed by Decision #142).
+	 */
+	.evp-frame--nomedia {
+		grid-template-columns: minmax(0, 1fr) var(--evp-lane-w);
+		grid-template-areas:
+			"back lane"
+			"hero lane"
+			"main lane";
+	}
 
-    /*
+	/*
 	* ---- THE MEDIA COLUMN HAS NO VIEWPORT HEIGHT ----
 	*
 	* It used to be `block-size: var(--evp-col-h)` — a viewport-locked slab whose display took whatever
@@ -411,9 +411,9 @@
 	* listing has one shape everywhere. `start` keeps the column from stretching to its grid row, which
 	* would reintroduce the same dependency by the back door — the row is as tall as the hero.
 	*/
-    .evp-media {
-        align-self: start;
-    }
+	.evp-media {
+		align-self: start;
+	}
 }
 
 /*
@@ -431,12 +431,12 @@
  * marks the boundary the band condenses at, and must not participate in the grid's track sizing.
  */
 .evp-hero__probe {
-    position: absolute;
-    inset-block-end: 0;
-    inset-inline-start: 0;
-    inline-size: 1px;
-    block-size: 1px;
-    pointer-events: none;
+	position: absolute;
+	inset-block-end: 0;
+	inset-inline-start: 0;
+	inline-size: 1px;
+	block-size: 1px;
+	pointer-events: none;
 }
 
 /*
@@ -449,8 +449,8 @@
  * which is exactly the kind of dead rule that survives review.
  */
 .evp {
-    container-type: inline-size;
-    container-name: evp-body;
+	container-type: inline-size;
+	container-name: evp-body;
 }
 
 /*
@@ -466,10 +466,10 @@
  * on the reader's window.
  */
 .evp-canvas {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
 }
 
 /*
@@ -483,37 +483,38 @@
  * letterboxed against a ratio nothing was authored to.
  */
 .evp-canvas__stage {
-    position: relative;
-    flex: none;
-    aspect-ratio: 4 / 3;
-    inline-size: 100%;
-    /*
+	position: relative;
+	flex: none;
+	aspect-ratio: 4 / 3;
+	inline-size: 100%;
+	/*
 	* `0`, not `auto`. A flex item's automatic minimum is its min-content size, and the image inside
 	* transfers its own intrinsic ratio — which OUT-RANKS `aspect-ratio` and would silently re-shape
 	* the box to whatever was uploaded.
 	*/
-    min-block-size: 0;
-    padding: 0;
-    border: none;
-    overflow: clip;
-    /*
+	min-block-size: 0;
+	padding: 0;
+	border: none;
+	overflow: clip;
+	/*
 	* The primary canvas takes the CONTAINER curvature, not a card corner: it is the one boxed region
 	* the page has, and `--radius-container-xl` is the fluid ramp the nav shell already curves its
 	* panels on, so the artefact's frame and the frame the page sits in read as one geometry.
 	*/
-    border-radius: var(--radius-container-xl);
-    background: var(--surface-1);
+	border-radius: var(--radius-container-xl);
+	background: var(--surface-1);
+	view-transition-name: ex-hero-media;
 }
 
 /* The display is a real button when the artefact is a still image (it opens the lightbox). */
 .evp-canvas__stage--open {
-    display: block;
-    cursor: zoom-in;
+	display: block;
+	cursor: zoom-in;
 }
 
 .evp-canvas__stage--open:focus-visible {
-    outline: none;
-    box-shadow: none;
+	outline: none;
+	box-shadow: none;
 }
 
 /*
@@ -525,32 +526,32 @@
  * when this was tried on the /explore hero pills (Decision #77).
  */
 .evp-canvas__zoom {
-    position: absolute;
-    inset-block-end: var(--space-3);
-    inset-inline-end: var(--space-3);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: 2rem;
-    block-size: 2rem;
-    border-radius: var(--radius-full);
-    color: var(--on-scrim);
-    background: color-mix(in srgb, var(--scrim) 62%, transparent);
-    backdrop-filter: blur(var(--glass-blur));
-    -webkit-backdrop-filter: blur(var(--glass-blur));
-    opacity: 0;
-    transition: opacity var(--dur-fast) var(--ease-standard);
+	position: absolute;
+	inset-block-end: var(--space-3);
+	inset-inline-end: var(--space-3);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	border-radius: var(--radius-full);
+	color: var(--on-scrim);
+	background: color-mix(in srgb, var(--scrim) 62%, transparent);
+	backdrop-filter: blur(var(--glass-blur));
+	-webkit-backdrop-filter: blur(var(--glass-blur));
+	opacity: 0;
+	transition: opacity var(--dur-fast) var(--ease-standard);
 }
 
 .evp-canvas__stage--open:hover .evp-canvas__zoom,
 .evp-canvas__stage--open:focus-visible .evp-canvas__zoom {
-    opacity: 1;
+	opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .evp-canvas__zoom {
-        transition: none;
-    }
+	.evp-canvas__zoom {
+		transition: none;
+	}
 }
 
 /*
@@ -564,42 +565,42 @@
  * The cost is letterboxing on an off-ratio asset, which the stage's own `--surface-1` ground absorbs.
  */
 .evp-canvas__img {
-    inline-size: 100%;
-    block-size: 100%;
-    object-fit: contain;
-    display: block;
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: contain;
+	display: block;
 }
 
 .evp-canvas__player {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: 100%;
-    block-size: 100%;
-    padding: var(--space-5);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 100%;
+	block-size: 100%;
+	padding: var(--space-5);
 }
 
 /* The video preview fills the stage absolutely — the stage's height comes from its aspect ratio,
    and an in-flow child asking for 100% of it is the one place that percentage can fail to resolve —
    and inherits the stage's ground so a letterboxed frame sits on the same tone as a still. */
 .evp-canvas__video {
-    position: absolute;
-    inset: 0;
-    background: transparent;
+	position: absolute;
+	inset: 0;
+	background: transparent;
 }
 
 .evp-canvas__code {
-    inline-size: 100%;
-    block-size: 100%;
-    margin: 0;
-    padding: var(--space-5);
-    overflow: auto;
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    line-height: var(--leading-normal);
-    color: var(--on-surface);
-    background: var(--surface-1);
-    tab-size: 2;
+	inline-size: 100%;
+	block-size: 100%;
+	margin: 0;
+	padding: var(--space-5);
+	overflow: auto;
+	font-family: var(--font-mono);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--on-surface);
+	background: var(--surface-1);
+	tab-size: 2;
 }
 
 /*
@@ -625,42 +626,42 @@
  * height and the rail spilled over the stage flow beneath it.
  */
 .evp-canvas__strip {
-    flex: none;
-    display: grid;
-    grid-template-columns: repeat(var(--evp-rail-n, 4), minmax(0, 1fr));
-    grid-template-rows: minmax(0, 1fr);
-    gap: var(--space-2);
-    block-size: var(--evp-rail-h);
+	flex: none;
+	display: grid;
+	grid-template-columns: repeat(var(--evp-rail-n, 4), minmax(0, 1fr));
+	grid-template-rows: minmax(0, 1fr);
+	gap: var(--space-2);
+	block-size: var(--evp-rail-h);
 }
 
 .evp-canvas__thumb {
-    position: relative;
-    inline-size: 100%;
-    block-size: 100%;
-    min-inline-size: 0;
-    padding: 0;
-    overflow: clip;
-    border: none;
-    border-radius: var(--radius-base);
-    background: var(--surface-1);
-    cursor: pointer;
-    opacity: 0.62;
-    transition: opacity var(--dur-fast) var(--ease-standard);
+	position: relative;
+	inline-size: 100%;
+	block-size: 100%;
+	min-inline-size: 0;
+	padding: 0;
+	overflow: clip;
+	border: none;
+	border-radius: var(--radius-base);
+	background: var(--surface-1);
+	cursor: pointer;
+	opacity: 0.62;
+	transition: opacity var(--dur-fast) var(--ease-standard);
 }
 
 .evp-canvas__thumb:hover,
 .evp-canvas__thumb[aria-current="true"] {
-    opacity: 1;
+	opacity: 1;
 }
 
 .evp-canvas__thumb:focus-visible {
-    outline: none;
-    box-shadow: none;
+	outline: none;
+	box-shadow: none;
 }
 
 /* The overflow card. Full opacity at rest: it is a control, not a de-emphasised thumbnail. */
 .evp-canvas__thumb--more {
-    opacity: 1;
+	opacity: 1;
 }
 
 /*
@@ -669,31 +670,31 @@
  * darkening. Measured against a blown-out white thumbnail this is the worst case the rail has.
  */
 .evp-canvas__more {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--on-scrim);
-    background: color-mix(in srgb, var(--scrim) 62%, transparent);
-    font-size: var(--text-sm);
-    font-weight: var(--fw-medium);
-    font-variant-numeric: tabular-nums;
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--on-scrim);
+	background: color-mix(in srgb, var(--scrim) 62%, transparent);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	font-variant-numeric: tabular-nums;
 }
 
 .evp-canvas__thumbimg {
-    inline-size: 100%;
-    block-size: 100%;
-    object-fit: cover;
-    display: block;
+	inline-size: 100%;
+	block-size: 100%;
+	object-fit: cover;
+	display: block;
 }
 
 /* ---- Overview column -------------------------------------------------- */
 .evp-overview {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	min-inline-size: 0;
 }
 
 /*
@@ -702,84 +703,84 @@
  * anywhere left to sit.
  */
 .evp-overview__title {
-    margin: 0;
-    font-size: var(--text-3xl);
-    font-weight: var(--fw-medium);
-    line-height: var(--leading-tight);
-    letter-spacing: var(--tracking-tight);
-    color: var(--on-surface);
-    text-wrap: balance;
+	margin: 0;
+	font-size: var(--text-3xl);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
+	color: var(--on-surface);
+	text-wrap: balance;
 }
 
 .evp-overview__summary {
-    margin: 0;
-    max-inline-size: var(--evp-measure);
-    font-size: var(--text-base);
-    line-height: var(--leading-relaxed);
-    color: var(--text-secondary);
+	margin: 0;
+	max-inline-size: var(--evp-measure);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	color: var(--text-secondary);
 }
 
 /* Seller line — avatar, name, one compact rating, then earned signals as TEXT (§B.11.4). */
 .evp-seller {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    padding-block: var(--space-2);
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+	padding-block: var(--space-2);
 }
 
 .evp-seller__link {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-md);
-    font-weight: var(--fw-medium);
-    color: var(--on-surface);
-    text-decoration: none;
-    border-radius: var(--radius-sm);
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	text-decoration: none;
+	border-radius: var(--radius-sm);
 }
 
 .evp-seller__link:hover .evp-seller__name {
-    text-decoration: underline;
-    text-underline-offset: 0.2em;
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
 }
 
 .evp-seller__link:focus-visible {
-    outline: none;
-    box-shadow: none;
+	outline: none;
+	box-shadow: none;
 }
 
 .evp-seller__crest {
-    flex: none;
-    --icon-knockout: var(--surface);
+	flex: none;
+	--icon-knockout: var(--surface);
 }
 
 /* The aggregate score is one anchor to the reviews — stars, figure and count together, never a
    count that navigates beside stars that do not. */
 .evp-seller__rating {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    color: var(--on-surface);
-    text-decoration: none;
-    border-radius: var(--radius-sm);
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	color: var(--on-surface);
+	text-decoration: none;
+	border-radius: var(--radius-sm);
 }
 
 .evp-seller__rating:hover .evp-seller__ratingcount {
-    text-decoration: underline;
-    text-underline-offset: 0.2em;
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
 }
 
 .evp-seller__ratingcount {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    font-variant-numeric: tabular-nums;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
 }
 
 /* The owner's role line — Meta register, beside the name. A fact, so no container (§B.11.2). */
 .evp-seller__headline {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
 }
 
 /*
@@ -789,34 +790,34 @@
  * Standing rung in particular is EARNED and can never be bought, so it is stated, not badged.
  */
 .evp-seller__meta {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: var(--space-2);
-    flex-basis: 100%;
-    margin: 0;
-    font-size: var(--text-sm);
-    line-height: var(--leading-snug);
-    color: var(--text-secondary);
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-2);
+	flex-basis: 100%;
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-snug);
+	color: var(--text-secondary);
 }
 
 .evp-seller__handle {
-    font-variant-numeric: tabular-nums;
+	font-variant-numeric: tabular-nums;
 }
 
 .evp-seller__dot {
-    color: var(--on-surface-variant);
+	color: var(--on-surface-variant);
 }
 
 .evp-seller__standing {
-    color: var(--on-surface);
-    font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	font-weight: var(--fw-medium);
 }
 
 /* The word that says WHAT the rung is — the metric caption of the profile strip, inline. It sits
    one sub-step closer to its value than the row gap, so the pair reads as one fact. */
 .evp-seller__standingnote {
-    margin-inline-start: calc(var(--space-px) - var(--space-2));
+	margin-inline-start: calc(var(--space-px) - var(--space-2));
 }
 
 /* ============================================================================
@@ -828,46 +829,46 @@
  * in it, so it is the one thing that carries the brand tone.
  * ========================================================================== */
 .evp-previewnote {
-    grid-area: back;
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--space-1) var(--space-2);
-    margin: 0;
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
+	grid-area: back;
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-2);
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
 }
 
 .evp-previewnote__icon {
-    flex: none;
-    color: var(--text-secondary);
+	flex: none;
+	color: var(--text-secondary);
 }
 
 .evp-previewnote__link {
-    color: var(--primary);
-    font-weight: var(--fw-medium);
-    text-decoration: none;
-    border-radius: var(--radius-sm);
+	color: var(--primary);
+	font-weight: var(--fw-medium);
+	text-decoration: none;
+	border-radius: var(--radius-sm);
 }
 
 .evp-previewnote__link:hover {
-    text-decoration: underline;
-    text-underline-offset: 0.2em;
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
 }
 
 /* The roles a brief is hiring for — one inline metadata line (§B.11.2), at Body size so it reads as
    the section's content rather than as a footnote to it. */
 .evp-roles {
-    font-size: var(--text-base);
-    color: var(--on-surface);
+	font-size: var(--text-base);
+	color: var(--on-surface);
 }
 
 /* ============================================================================
  * Section — asymmetric spacing IS the separator (§B.4.1)
  * ========================================================================== */
 .evp-section {
-    display: block;
-    /*
+	display: block;
+	/*
 	* NO `margin-block-start` here. `.evp` is a flex column with `gap: var(--evp-gap-section)`, and a
 	* flex container never collapses item margins — the gap and a margin ADD, so declaring both gave
 	* 6rem between sections against 0.75rem below a heading: an 8:1 ratio where this sheet's own
@@ -880,50 +881,50 @@
 }
 
 .evp-section__head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-4);
-    margin-block-end: var(--evp-gap-heading);
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-4);
+	margin-block-end: var(--evp-gap-heading);
 }
 
 /* The SECTION-HEADER register (§A.4): a boundary that costs no ink. */
 .evp-section__title {
-    margin: 0;
-    font-size: var(--text-xs);
-    font-weight: var(--fw-semibold);
-    letter-spacing: var(--tracking-wide);
-    text-transform: uppercase;
-    color: var(--text-secondary);
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
 }
 
 .evp-section__aside {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
 }
 
 /* ============================================================================
  * Inline metadata (§B.11.2) — the replacement for the badge row
  * ========================================================================== */
 .evp-meta {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0;
-    margin: 0;
-    font-size: var(--text-sm);
-    line-height: var(--leading-normal);
-    color: var(--text-secondary);
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0;
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
 }
 
 .evp-meta__item {
-    display: inline-flex;
-    align-items: baseline;
+	display: inline-flex;
+	align-items: baseline;
 }
 
 .evp-meta__sep {
-    padding-inline: var(--space-2);
-    color: var(--on-surface-variant);
+	padding-inline: var(--space-2);
+	color: var(--on-surface-variant);
 }
 
 /* ============================================================================
@@ -935,167 +936,167 @@
  * the ink AWAY from the fill.
  * ========================================================================== */
 .evp-status {
-    display: inline-flex;
-    align-items: center;
-    padding: var(--space-1) var(--space-3);
-    border-radius: var(--radius-full);
-    font-size: var(--text-xs);
-    font-weight: var(--fw-medium);
-    letter-spacing: var(--tracking-wide);
-    text-transform: uppercase;
-    background: color-mix(in srgb, var(--evp-status-role) 16%, var(--surface-1));
-    color: color-mix(in srgb, var(--evp-status-role) 28%, var(--on-surface));
-    --evp-status-role: var(--info);
+	display: inline-flex;
+	align-items: center;
+	padding: var(--space-1) var(--space-3);
+	border-radius: var(--radius-full);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	background: color-mix(in srgb, var(--evp-status-role) 16%, var(--surface-1));
+	color: color-mix(in srgb, var(--evp-status-role) 28%, var(--on-surface));
+	--evp-status-role: var(--info);
 }
 
 .evp-status[data-tone="success"] {
-    --evp-status-role: var(--success);
+	--evp-status-role: var(--success);
 }
 
 .evp-status[data-tone="warning"] {
-    --evp-status-role: var(--warning);
+	--evp-status-role: var(--warning);
 }
 
 .evp-status[data-tone="danger"] {
-    --evp-status-role: var(--danger);
+	--evp-status-role: var(--danger);
 }
 
 .evp-status[data-tone="neutral"] {
-    --evp-status-role: var(--outline);
+	--evp-status-role: var(--outline);
 }
 
 /* ============================================================================
  * Scope checklist (§B.9.8) — glyph + text, never a row of boxes
  * ========================================================================== */
 .evp-check {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    margin: 0;
-    padding: 0;
-    max-inline-size: var(--evp-measure);
-    list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	margin: 0;
+	padding: 0;
+	max-inline-size: var(--evp-measure);
+	list-style: none;
 }
 
 .evp-check--dense {
-    gap: var(--space-2);
+	gap: var(--space-2);
 }
 
 .evp-check__row {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-3);
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-3);
 }
 
 .evp-check__mark {
-    flex: none;
-    margin-block-start: 0.15em;
-    color: var(--primary);
+	flex: none;
+	margin-block-start: 0.15em;
+	color: var(--primary);
 }
 
 .evp-check__text {
-    font-size: var(--text-base);
-    line-height: var(--leading-relaxed);
-    color: var(--on-surface);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	color: var(--on-surface);
 }
 
 .evp-check--dense .evp-check__text {
-    font-size: var(--text-md);
-    line-height: var(--leading-normal);
+	font-size: var(--text-md);
+	line-height: var(--leading-normal);
 }
 
 /* ============================================================================
  * Specification ledger — a <dl>, one hairline per boundary (§B.9.3)
  * ========================================================================== */
 .evp-ledger {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
-    margin: 0;
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: 0;
+	margin: 0;
 }
 
 @container evp-body (min-width: 44rem) {
-    .evp-ledger--cols {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        column-gap: var(--space-6);
-    }
+	.evp-ledger--cols {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		column-gap: var(--space-6);
+	}
 }
 
 .evp-ledger__row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-4);
-    padding-block: var(--space-3);
-    /* One hairline, on ONE edge. Not a box, not a table. */
-    border-block-end: var(--hairline);
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-4);
+	padding-block: var(--space-3);
+	/* One hairline, on ONE edge. Not a box, not a table. */
+	border-block-end: var(--hairline);
 }
 
 .evp-ledger__label {
-    flex: none;
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
+	flex: none;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
 }
 
 .evp-ledger__value {
-    margin: 0;
-    text-align: end;
-    font-size: var(--text-md);
-    color: var(--on-surface);
-    font-variant-numeric: tabular-nums;
+	margin: 0;
+	text-align: end;
+	font-size: var(--text-md);
+	color: var(--on-surface);
+	font-variant-numeric: tabular-nums;
 }
 
 .evp-ledger__value--key {
-    color: var(--primary);
-    font-weight: var(--fw-medium);
+	color: var(--primary);
+	font-weight: var(--fw-medium);
 }
 
 /* ============================================================================
  * Licence permissions — both states carry a glyph AND the word
  * ========================================================================== */
 .evp-perms {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    margin: 0;
-    padding: 0;
-    list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0;
+	list-style: none;
 }
 
 .evp-perms__row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    padding-block: var(--space-2);
-    border-block-end: var(--hairline);
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding-block: var(--space-2);
+	border-block-end: var(--hairline);
 }
 
 .evp-perms__mark {
-    flex: none;
+	flex: none;
 }
 
 .evp-perms__row[data-allowed="yes"] .evp-perms__mark {
-    color: var(--success);
+	color: var(--success);
 }
 
 .evp-perms__row[data-allowed="no"] .evp-perms__mark {
-    color: var(--on-surface-variant);
+	color: var(--on-surface-variant);
 }
 
 .evp-perms__text {
-    flex: 1 1 auto;
-    font-size: var(--text-md);
-    color: var(--on-surface);
+	flex: 1 1 auto;
+	font-size: var(--text-md);
+	color: var(--on-surface);
 }
 
 .evp-perms__state {
-    flex: none;
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
+	flex: none;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
 }
 
 .evp-perms__row[data-allowed="no"] .evp-perms__text {
-    color: var(--text-secondary);
+	color: var(--text-secondary);
 }
 
 /* ============================================================================
@@ -1106,74 +1107,74 @@
  * interface states something false about availability (Decision #60).
  * ========================================================================== */
 .evp-seats {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    max-inline-size: 32rem;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	max-inline-size: 32rem;
 }
 
 .evp-seats__track {
-    display: flex;
-    gap: var(--evp-seat-gap);
-    block-size: var(--evp-seat-h);
-    border-radius: var(--radius-full);
-    overflow: clip;
-    background: var(--track-recessed);
+	display: flex;
+	gap: var(--evp-seat-gap);
+	block-size: var(--evp-seat-h);
+	border-radius: var(--radius-full);
+	overflow: clip;
+	background: var(--track-recessed);
 }
 
 .evp-seats__seg {
-    flex: 1 1 0;
-    block-size: 100%;
+	flex: 1 1 0;
+	block-size: 100%;
 }
 
 .evp-seats__seg[data-state="taken"] {
-    background: var(--primary);
+	background: var(--primary);
 }
 
 .evp-seats__seg[data-state="open"] {
-    background: var(--track-meter);
+	background: var(--track-meter);
 }
 
 .evp-seats__fact {
-    margin: 0;
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    font-variant-numeric: tabular-nums;
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
 }
 
 /* ============================================================================
  * Trust signals (§B.11.4) — text links, not badges
  * ========================================================================== */
 .evp-signals {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    margin: 0;
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
 }
 
 .evp-signals__item {
-    display: inline-flex;
-    align-items: baseline;
+	display: inline-flex;
+	align-items: baseline;
 }
 
 .evp-signals__sep {
-    padding-inline: var(--space-2);
-    color: var(--on-surface-variant);
+	padding-inline: var(--space-2);
+	color: var(--on-surface-variant);
 }
 
 .evp-signals__text {
-    color: var(--primary);
-    cursor: help;
-    text-decoration-line: underline;
-    text-decoration-style: dotted;
-    text-underline-offset: 0.25em;
-    text-decoration-color: color-mix(in srgb, var(--primary) 40%, transparent);
+	color: var(--primary);
+	cursor: help;
+	text-decoration-line: underline;
+	text-decoration-style: dotted;
+	text-underline-offset: 0.25em;
+	text-decoration-color: color-mix(in srgb, var(--primary) 40%, transparent);
 }
 
 .evp-signals__text:hover {
-    text-decoration-style: solid;
+	text-decoration-style: solid;
 }
 
 /* ============================================================================
@@ -1184,35 +1185,35 @@
  * stops reading as a sequence — which is the only thing the track was drawn to communicate.
  * ========================================================================== */
 .evp-track {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-5);
-    margin: 0;
-    padding: 0;
-    list-style: none;
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	margin: 0;
+	padding: 0;
+	list-style: none;
 }
 
 .evp-track__rule {
-    position: absolute;
-    inset-block: calc(var(--evp-track-node) / 2) calc(var(--evp-track-node) / 2);
-    inset-inline-start: calc(var(--evp-track-node) / 2);
-    inline-size: 1px;
-    background: var(--hairline-color);
-    pointer-events: none;
+	position: absolute;
+	inset-block: calc(var(--evp-track-node) / 2) calc(var(--evp-track-node) / 2);
+	inset-inline-start: calc(var(--evp-track-node) / 2);
+	inline-size: 1px;
+	background: var(--hairline-color);
+	pointer-events: none;
 }
 
 /* A single-stage run has no sequence to draw. */
 .evp-track[data-count="1"] .evp-track__rule {
-    display: none;
+	display: none;
 }
 
 .evp-track__item {
-    position: relative;
-    display: grid;
-    grid-template-columns: var(--evp-track-node) minmax(0, 1fr);
-    column-gap: calc(var(--evp-track-gutter) - var(--evp-track-node));
-    align-items: start;
+	position: relative;
+	display: grid;
+	grid-template-columns: var(--evp-track-node) minmax(0, 1fr);
+	column-gap: calc(var(--evp-track-gutter) - var(--evp-track-node));
+	align-items: start;
 }
 
 /*
@@ -1221,114 +1222,114 @@
  * numeral sits on the surface pair instead.
  */
 .evp-track__node {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    inline-size: var(--evp-track-node);
-    block-size: var(--evp-track-node);
-    border-radius: var(--radius-full);
-    border: 1px solid var(--outline);
-    background: var(--bg);
-    color: var(--text-secondary);
-    font-size: var(--text-xs);
-    font-weight: var(--fw-medium);
-    font-variant-numeric: tabular-nums;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--evp-track-node);
+	block-size: var(--evp-track-node);
+	border-radius: var(--radius-full);
+	border: 1px solid var(--outline);
+	background: var(--bg);
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	font-variant-numeric: tabular-nums;
 }
 
 .evp-track__node[data-status="active"] {
-    border-color: var(--primary);
-    color: var(--primary);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent);
+	border-color: var(--primary);
+	color: var(--primary);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent);
 }
 
 .evp-track__node[data-status="completed"] {
-    border-color: color-mix(in srgb, var(--success) 55%, var(--outline));
-    color: var(--success);
+	border-color: color-mix(in srgb, var(--success) 55%, var(--outline));
+	color: var(--success);
 }
 
 .evp-track__body {
-    min-inline-size: 0;
+	min-inline-size: 0;
 }
 
 .evp-track__summary {
-    display: flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: var(--space-2) var(--space-4);
-    padding-block: var(--space-1);
-    cursor: pointer;
-    list-style: none;
-    border-radius: var(--radius-sm);
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: var(--space-2) var(--space-4);
+	padding-block: var(--space-1);
+	cursor: pointer;
+	list-style: none;
+	border-radius: var(--radius-sm);
 }
 
 .evp-track__summary::-webkit-details-marker {
-    display: none;
+	display: none;
 }
 
 .evp-track__summary:focus-visible {
-    outline: none;
-    box-shadow: none;
+	outline: none;
+	box-shadow: none;
 }
 
 .evp-track__heads {
-    display: flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    flex: 1 1 auto;
-    min-inline-size: 0;
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+	flex: 1 1 auto;
+	min-inline-size: 0;
 }
 
 .evp-track__name {
-    font-size: var(--text-lg);
-    font-weight: var(--fw-medium);
-    line-height: var(--leading-snug);
-    color: var(--on-surface);
+	font-size: var(--text-lg);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
 }
 
 /* A stage's lifecycle position is a STATE, so it may carry colour — but as ink, not a fill: the
  * track already spends a device on this boundary and §B.9.3 allows exactly one. */
 .evp-track__status {
-    font-size: var(--text-xs);
-    font-weight: var(--fw-semibold);
-    letter-spacing: var(--tracking-wide);
-    text-transform: uppercase;
-    color: var(--text-secondary);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
 }
 
 .evp-track__status[data-status="active"] {
-    color: var(--primary);
+	color: var(--primary);
 }
 
 .evp-track__status[data-status="completed"] {
-    color: var(--success);
+	color: var(--success);
 }
 
 .evp-track__price {
-    display: inline-flex;
-    align-items: baseline;
-    gap: var(--space-1);
-    font-variant-numeric: tabular-nums;
-    color: var(--on-surface);
+	display: inline-flex;
+	align-items: baseline;
+	gap: var(--space-1);
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface);
 }
 
 .evp-track__pricesep {
-    color: var(--on-surface-variant);
+	color: var(--on-surface-variant);
 }
 
 .evp-track__priceunit {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
 }
 
 .evp-track__caret {
-    flex: none;
-    color: var(--text-secondary);
-    transition: transform var(--dur-medium) var(--spring-standard);
+	flex: none;
+	color: var(--text-secondary);
+	transition: transform var(--dur-medium) var(--spring-standard);
 }
 
 .evp-track__body[open] .evp-track__caret {
-    transform: rotate(180deg);
+	transform: rotate(180deg);
 }
 
 /*
@@ -1359,101 +1360,101 @@
  * the correct degradation of a decoration.
  */
 .evp-track__body::details-content {
-    display: grid;
-    grid-template-rows: 0fr;
-    transition:
-        grid-template-rows var(--dur-medium) var(--spring-standard),
-        content-visibility var(--dur-medium) var(--spring-standard) allow-discrete;
+	display: grid;
+	grid-template-rows: 0fr;
+	transition:
+		grid-template-rows var(--dur-medium) var(--spring-standard),
+		content-visibility var(--dur-medium) var(--spring-standard) allow-discrete;
 }
 
 .evp-track__body[open]::details-content {
-    grid-template-rows: 1fr;
+	grid-template-rows: 1fr;
 }
 
 .evp-track__reveal {
-    min-block-size: 0;
-    overflow: clip;
-    opacity: 0;
-    transition: opacity var(--dur-medium) var(--spring-standard);
+	min-block-size: 0;
+	overflow: clip;
+	opacity: 0;
+	transition: opacity var(--dur-medium) var(--spring-standard);
 }
 
 .evp-track__body[open] .evp-track__reveal {
-    opacity: 1;
+	opacity: 1;
 }
 
 /* Jump-to-final on BOTH reduced-motion channels (§B.12): the system query and the in-app overlay. */
 @media (prefers-reduced-motion: reduce) {
-    .evp-track__body::details-content,
-    .evp-track__reveal,
-    .evp-track__caret {
-        transition: none;
-    }
+	.evp-track__body::details-content,
+	.evp-track__reveal,
+	.evp-track__caret {
+		transition: none;
+	}
 }
 
 [data-motion="reduced"] .evp-track__body::details-content,
 [data-motion="reduced"] .evp-track__reveal,
 [data-motion="reduced"] .evp-track__caret {
-    transition: none;
+	transition: none;
 }
 
 .evp-track__detail {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    padding-block: var(--space-3) var(--space-2);
-    max-inline-size: var(--evp-measure);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding-block: var(--space-3) var(--space-2);
+	max-inline-size: var(--evp-measure);
 }
 
 .evp-track__desc {
-    margin: 0;
-    font-size: var(--text-md);
-    line-height: var(--leading-relaxed);
-    color: var(--text-secondary);
+	margin: 0;
+	font-size: var(--text-md);
+	line-height: var(--leading-relaxed);
+	color: var(--text-secondary);
 }
 
 .evp-track__subhead {
-    margin: var(--space-2) 0 0;
-    font-size: var(--text-xs);
-    font-weight: var(--fw-semibold);
-    letter-spacing: var(--tracking-wide);
-    text-transform: uppercase;
-    color: var(--text-secondary);
+	margin: var(--space-2) 0 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
 }
 
 .evp-track__roles {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    margin: 0;
-    padding: 0;
-    list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+	margin: 0;
+	padding: 0;
+	list-style: none;
 }
 
 .evp-track__role {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-4);
-    padding-block: var(--space-2);
-    border-block-end: var(--hairline);
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-4);
+	padding-block: var(--space-2);
+	border-block-end: var(--hairline);
 }
 
 .evp-track__rolename {
-    font-size: var(--text-md);
-    color: var(--on-surface);
+	font-size: var(--text-md);
+	color: var(--on-surface);
 }
 
 .evp-track__rolemeta {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    font-variant-numeric: tabular-nums;
-    text-align: end;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+	text-align: end;
 }
 
 .evp-track__seatsummary,
 .evp-track__facts,
 .evp-track__skills {
-    margin: 0;
+	margin: 0;
 }
 
 /*
@@ -1462,37 +1463,37 @@
  * assert it is a different KIND of thing from the line above it (§B.11.2).
  */
 .evp-track__revisions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0;
-    margin: 0;
-    font-size: var(--text-sm);
-    line-height: var(--leading-normal);
-    color: var(--text-secondary);
-    font-variant-numeric: tabular-nums;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0;
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
 }
 
 /* The included allowance is the commitment; it carries the page's ink so it reads first. */
 .evp-track__revfree {
-    color: var(--on-surface);
+	color: var(--on-surface);
 }
 
 .evp-track__revsep {
-    padding-inline: var(--space-2);
-    color: var(--on-surface-variant);
+	padding-inline: var(--space-2);
+	color: var(--on-surface-variant);
 }
 
 .evp-track__revextra {
-    display: inline-flex;
-    align-items: baseline;
-    gap: var(--space-1);
+	display: inline-flex;
+	align-items: baseline;
+	gap: var(--space-1);
 }
 
 /* `MoneyView` sizes its own amount; this line is Meta register, so it is told so. */
 .evp-track__revextra .ui-money__amount {
-    font-size: var(--text-sm);
-    font-weight: var(--fw-normal);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-normal);
 }
 
 /* ============================================================================
@@ -1509,48 +1510,48 @@
  * reader decides, not at the moment they happen to have scrolled back to the top.
  */
 .evp-laneslot {
-    display: none;
-    grid-area: lane;
-    position: sticky;
-    /*
-	 * Pinned to the middle-nav header band's top line, and LIFTED to it at rest in the shell where
-	 * those two are not the same number — see the `--evp-pin-*` note in the token block. The height
-	 * subtracts the same pin line, so a pinned lane's foot lands one page-gutter above the viewport
-	 * floor and can never make the document taller than the screen.
-	 */
-    inset-block-start: calc(var(--evp-pin-top) + var(--evp-band-offset));
-    margin-block-start: calc(-1 * var(--evp-pin-lift));
-    /*
-	 * The band's height comes off the top AND out of the height, so the pinned foot lands in the same
-	 * place either way — subtracting only from one would push the lane's bottom off the viewport by
-	 * exactly the band's height the moment it revealed.
-	 */
-    block-size: calc(var(--evp-col-h) - var(--evp-band-offset));
-    min-inline-size: 0;
-    /*
-	 * Matched to `.pf-stickyhead`'s own reveal (`--dur-medium` / `--spring-standard`) so the band
-	 * growing and the lane stepping down are read as one movement rather than two. `--spring-standard`
-	 * is critically damped (`cubic-bezier(0.22, 1, 0.36, 1)`) — no overshoot, per §B.5.
-	 */
-    transition:
-        inset-block-start var(--dur-medium) var(--spring-standard),
-        block-size var(--dur-medium) var(--spring-standard);
-    /*
-	 * One step above the pinned header bands, which are `--z-sticky`.
-	 *
-	 * Both bands' BOXES now stop short of this column (see the band block below), so they no longer
-	 * overlap it and this is belt-and-braces rather than the fix it once was. It stays because the
-	 * inset is a viewport-gated approximation of a container-gated layout: in the ~60px window where
-	 * the two disagree, the band is momentarily full width, and a lane that lost that race would have
-	 * its identity row covered by an opaque strip. Losing is a defect; winning costs nothing.
-	 */
-    z-index: calc(var(--z-sticky) + 1);
+	display: none;
+	grid-area: lane;
+	position: sticky;
+	/*
+	* Pinned to the middle-nav header band's top line, and LIFTED to it at rest in the shell where
+	* those two are not the same number — see the `--evp-pin-*` note in the token block. The height
+	* subtracts the same pin line, so a pinned lane's foot lands one page-gutter above the viewport
+	* floor and can never make the document taller than the screen.
+	*/
+	inset-block-start: calc(var(--evp-pin-top) + var(--evp-band-offset));
+	margin-block-start: calc(-1 * var(--evp-pin-lift));
+	/*
+	* The band's height comes off the top AND out of the height, so the pinned foot lands in the same
+	* place either way — subtracting only from one would push the lane's bottom off the viewport by
+	* exactly the band's height the moment it revealed.
+	*/
+	block-size: calc(var(--evp-col-h) - var(--evp-band-offset));
+	min-inline-size: 0;
+	/*
+	* Matched to `.pf-stickyhead`'s own reveal (`--dur-medium` / `--spring-standard`) so the band
+	* growing and the lane stepping down are read as one movement rather than two. `--spring-standard`
+	* is critically damped (`cubic-bezier(0.22, 1, 0.36, 1)`) — no overshoot, per §B.5.
+	*/
+	transition:
+		inset-block-start var(--dur-medium) var(--spring-standard),
+		block-size var(--dur-medium) var(--spring-standard);
+	/*
+	* One step above the pinned header bands, which are `--z-sticky`.
+	*
+	* Both bands' BOXES now stop short of this column (see the band block below), so they no longer
+	* overlap it and this is belt-and-braces rather than the fix it once was. It stays because the
+	* inset is a viewport-gated approximation of a container-gated layout: in the ~60px window where
+	* the two disagree, the band is momentarily full width, and a lane that lost that race would have
+	* its identity row covered by an opaque strip. Losing is a defect; winning costs nothing.
+	*/
+	z-index: calc(var(--z-sticky) + 1);
 }
 
 @container evp-body (min-width: 1040px) {
-    .evp-laneslot {
-        display: block;
-    }
+	.evp-laneslot {
+		display: block;
+	}
 }
 
 /*
@@ -1565,7 +1566,7 @@
  * fixed, inset clear of the lane, and the race the note above describes is real there.
  */
 .ui-page-canvas__body .evp-laneslot {
-    z-index: var(--z-raised);
+	z-index: var(--z-raised);
 }
 
 /*
@@ -1581,22 +1582,22 @@
  * a shrinking flex item can.
  */
 .evp[data-archetype="project"] .evp-laneslot {
-    flex-direction: column;
-    block-size: auto;
-    max-block-size: var(--evp-col-h);
+	flex-direction: column;
+	block-size: auto;
+	max-block-size: var(--evp-col-h);
 }
 
 .evp[data-archetype="project"] .evp-laneslot > .pf-lane,
 .evp[data-archetype="project"] .evp-laneslot .pf-lane__full {
-    flex: 0 1 auto;
-    block-size: auto;
-    min-block-size: 0;
+	flex: 0 1 auto;
+	block-size: auto;
+	min-block-size: 0;
 }
 
 @container evp-body (min-width: 1040px) {
-    .evp[data-archetype="project"] .evp-laneslot {
-        display: flex;
-    }
+	.evp[data-archetype="project"] .evp-laneslot {
+		display: flex;
+	}
 }
 
 /*
@@ -1609,43 +1610,43 @@
  * same line plus one step, so the docked panel's foot sits one step above the viewport floor.
  */
 .ui-page-canvas__body .evp[data-archetype="project"] .evp-laneslot {
-    inset-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h) + var(--space-4));
-    margin-block-start: 0;
-    max-block-size: calc(
-        100dvh - var(--shell-topbar-h) - var(--shell-midnav-header-h) - var(--space-4) * 2
-    );
-    transition: none;
+	inset-block-start: calc(var(--shell-topbar-h) + var(--shell-midnav-header-h) + var(--space-4));
+	margin-block-start: 0;
+	max-block-size: calc(
+		100dvh - var(--shell-topbar-h) - var(--shell-midnav-header-h) - var(--space-4) * 2
+	);
+	transition: none;
 }
 
 /* ---- Identity band: the uploader's face and NAME, with their earned badges ---- */
 .evp-lane__id {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--space-2);
-    padding: var(--evp-lane-pad) var(--evp-lane-pad) var(--space-4);
-    border-block-end: var(--hairline);
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--space-2);
+	padding: var(--evp-lane-pad) var(--evp-lane-pad) var(--space-4);
+	border-block-end: var(--hairline);
 }
 
 .evp-lane__owner {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    min-inline-size: 0;
-    color: var(--on-surface);
-    text-decoration: none;
-    border-radius: var(--radius-sm);
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	min-inline-size: 0;
+	color: var(--on-surface);
+	text-decoration: none;
+	border-radius: var(--radius-sm);
 }
 
 .evp-lane__avatar {
-    flex: none;
+	flex: none;
 }
 
 .evp-lane__identity {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
 }
 
 /*
@@ -1654,26 +1655,26 @@
  * out-rank.
  */
 .evp-lane__name {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-inline-size: 0;
-    font-size: var(--text-md);
-    font-weight: var(--fw-medium);
-    line-height: var(--leading-tight);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-tight);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .evp-lane__owner:hover .evp-lane__name {
-    text-decoration: underline;
-    text-underline-offset: 0.2em;
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
 }
 
 .evp-lane__owner:focus-visible {
-    outline: none;
-    box-shadow: none;
+	outline: none;
+	box-shadow: none;
 }
 
 /*
@@ -1681,56 +1682,56 @@
  * reader cannot finish reading, and the panel would rather be a line taller.
  */
 .evp-lane__badges {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1);
-    min-inline-size: 0;
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1);
+	min-inline-size: 0;
 }
 
 .evp-lane__crest {
-    flex: none;
+	flex: none;
 }
 
 .evp-lane__kebab {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: none;
-    inline-size: 2rem;
-    block-size: 2rem;
-    padding: 0;
-    border: none;
-    border-radius: var(--radius-full);
-    background: transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: none;
+	inline-size: 2rem;
+	block-size: 2rem;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	cursor: pointer;
 }
 
 .evp-lane__kebab:hover {
-    background: color-mix(in srgb, var(--on-surface) 8%, transparent);
-    color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	color: var(--on-surface);
 }
 
 .evp-lane__kebab:focus-visible {
-    outline: none;
-    box-shadow: none;
+	outline: none;
+	box-shadow: none;
 }
 
 .evp-lane__scroll {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-5);
-    padding: var(--evp-lane-pad);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	padding: var(--evp-lane-pad);
 }
 
 /* ---- Price (§D.7.2 item 2) --------------------------------------------
  * Two registers, one figure. Never two equally-weighted numbers, which reads as two prices.
  * -------------------------------------------------------------------- */
 .evp-price {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-1);
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-1);
 }
 
 /*
@@ -1740,24 +1741,24 @@
  * baseline with the currency symbol, where it read as a word inside the figure.
  */
 .evp-price__from {
-    font-size: var(--text-xs);
-    font-weight: var(--fw-medium);
-    letter-spacing: var(--tracking-wide);
-    text-transform: uppercase;
-    color: var(--text-secondary);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
 }
 
 .evp-price__figure {
-    display: inline-flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    color: var(--on-surface);
-    font-variant-numeric: tabular-nums;
+	display: inline-flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	color: var(--on-surface);
+	font-variant-numeric: tabular-nums;
 }
 
 .evp-price__money {
-    color: inherit;
+	color: inherit;
 }
 
 /*
@@ -1781,29 +1782,29 @@
  * string.
  */
 .evp-price .evp-price__money .ui-money__amount {
-    font-size: var(--text-3xl);
-    font-weight: var(--fw-light);
-    line-height: var(--leading-tight);
-    letter-spacing: var(--tracking-tight);
+	font-size: var(--text-3xl);
+	font-weight: var(--fw-light);
+	line-height: var(--leading-tight);
+	letter-spacing: var(--tracking-tight);
 }
 
 .evp-price__unit {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
 }
 
 .evp-price__figure--quote {
-    font-size: var(--text-xl);
-    font-weight: var(--fw-medium);
+	font-size: var(--text-xl);
+	font-weight: var(--fw-medium);
 }
 
 /* The creator's original currency — the second register, and a full line of its own so it can never
  * be mistaken for a competing figure. */
 .evp-price__origin {
-    flex-basis: 100%;
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    font-variant-numeric: tabular-nums;
+	flex-basis: 100%;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
 }
 
 /* ============================================================================
@@ -1821,9 +1822,9 @@
  * beat the base rule — the height, the weight and the hover.
  * ========================================================================== */
 .evp-cta {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
 }
 
 /*
@@ -1835,25 +1836,25 @@
  * geometry rather than a nested component's.
  */
 .evp-cta__link {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-2);
-    inline-size: 100%;
-    min-block-size: var(--evp-cta-h);
-    padding-inline: var(--space-4);
-    text-decoration: none;
-    border-radius: var(--radius-full);
-    font-size: var(--evp-cta-fs);
-    font-weight: var(--fw-medium);
-    letter-spacing: var(--tracking-normal);
-    background: var(--evp-cta-primary-fill);
-    color: var(--evp-cta-primary-ink);
-    transition: background-color var(--dur-fast) var(--ease-standard);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	inline-size: 100%;
+	min-block-size: var(--evp-cta-h);
+	padding-inline: var(--space-4);
+	text-decoration: none;
+	border-radius: var(--radius-full);
+	font-size: var(--evp-cta-fs);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-normal);
+	background: var(--evp-cta-primary-fill);
+	color: var(--evp-cta-primary-ink);
+	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .evp-cta__link:hover {
-    background: color-mix(in srgb, var(--evp-cta-primary-fill) 88%, var(--bg));
+	background: color-mix(in srgb, var(--evp-cta-primary-fill) 88%, var(--bg));
 }
 
 /*
@@ -1864,24 +1865,24 @@
  * button beside it to the pixel.
  */
 .evp-cta__link--outlined {
-    border: var(--fld-bw) solid var(--evp-cta-brand-ink);
-    background: transparent;
-    color: var(--evp-cta-brand-ink);
+	border: var(--fld-bw) solid var(--evp-cta-brand-ink);
+	background: transparent;
+	color: var(--evp-cta-brand-ink);
 }
 
 .evp-cta__link--outlined:hover {
-    background: color-mix(in srgb, var(--evp-cta-brand-ink) var(--tint-soft), transparent);
+	background: color-mix(in srgb, var(--evp-cta-brand-ink) var(--tint-soft), transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .evp-cta__link {
-        transition: none;
-    }
+	.evp-cta__link {
+		transition: none;
+	}
 }
 
 .evp-cta__link:focus-visible {
-    outline: none;
-    box-shadow: none;
+	outline: none;
+	box-shadow: none;
 }
 
 /*
@@ -1891,18 +1892,18 @@
  * token and not a prop, so `--fw-medium` is unreachable through the component.
  */
 .ui-button.evp-cta__btn {
-    --btn-height: var(--evp-cta-h);
-    --btn-font: var(--evp-cta-fs);
-    --btn-radius: var(--radius-full);
-    font-weight: var(--fw-medium);
-    letter-spacing: var(--tracking-normal);
+	--btn-height: var(--evp-cta-h);
+	--btn-font: var(--evp-cta-fs);
+	--btn-radius: var(--radius-full);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-normal);
 }
 
 /* The inverted primary. */
 .ui-button.evp-cta__btn--inverted,
 a.evp-cta__btn--inverted {
-    --btn-accent: var(--evp-cta-primary-fill);
-    --btn-on: var(--evp-cta-primary-ink);
+	--btn-accent: var(--evp-cta-primary-fill);
+	--btn-on: var(--evp-cta-primary-ink);
 }
 
 /*
@@ -1914,8 +1915,8 @@ a.evp-cta__btn--inverted {
  * ranking still reads primary → secondary → tertiary, now by weight instead of by hue.
  */
 .ui-button.evp-cta__btn--brand {
-    --btn-accent: var(--evp-cta-brand-fill);
-    --btn-on: var(--evp-cta-brand-ink);
+	--btn-accent: var(--evp-cta-brand-fill);
+	--btn-on: var(--evp-cta-brand-ink);
 }
 
 /*
@@ -1931,13 +1932,13 @@ a.evp-cta__btn--inverted {
  * of its own for it.
  */
 .ui-button.evp-cta__btn.ui-button--filled:not(:disabled):hover {
-    filter: none;
-    background: color-mix(in srgb, var(--btn-accent) 88%, var(--bg));
+	filter: none;
+	background: color-mix(in srgb, var(--btn-accent) 88%, var(--bg));
 }
 
 .ui-button.evp-cta__btn.ui-button--filled:not(:disabled):active {
-    filter: none;
-    background: color-mix(in srgb, var(--btn-accent) 80%, var(--bg));
+	filter: none;
+	background: color-mix(in srgb, var(--btn-accent) 80%, var(--bg));
 }
 
 /*
@@ -1949,32 +1950,32 @@ a.evp-cta__btn--inverted {
  * is untouched and the ranking still reads primary → secondary → tertiary.
  */
 .evp-cta__ghost {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-2);
-    inline-size: 100%;
-    min-block-size: var(--evp-cta-h);
-    padding-inline: var(--space-3);
-    border: none;
-    border-radius: var(--radius-full);
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: var(--evp-cta-fs);
-    font-weight: var(--fw-normal);
-    cursor: pointer;
-    transition: color var(--dur-fast) var(--ease-standard),
-        background-color var(--dur-fast) var(--ease-standard);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	inline-size: 100%;
+	min-block-size: var(--evp-cta-h);
+	padding-inline: var(--space-3);
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	font-size: var(--evp-cta-fs);
+	font-weight: var(--fw-normal);
+	cursor: pointer;
+	transition: color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard);
 }
 
 .evp-cta__ghost:hover {
-    background: color-mix(in srgb, var(--on-surface) 6%, transparent);
-    color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	color: var(--on-surface);
 }
 
 .evp-cta__ghost:focus-visible {
-    outline: none;
-    box-shadow: none;
+	outline: none;
+	box-shadow: none;
 }
 
 /*
@@ -1984,70 +1985,70 @@ a.evp-cta__btn--inverted {
  * here without being handed a button that refuses.
  */
 .evp-cta__previewlead {
-    margin: 0;
-    font-size: var(--text-xs);
-    font-weight: var(--fw-medium);
-    letter-spacing: var(--tracking-wide);
-    text-transform: uppercase;
-    color: var(--text-secondary);
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
 }
 
 .evp-cta__previewlist {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    margin: 0;
-    padding: 0;
-    list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding: 0;
+	list-style: none;
 }
 
 .evp-cta__previewitem {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--evp-cta-fs);
-    color: var(--on-surface);
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--evp-cta-fs);
+	color: var(--on-surface);
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .evp-cta__ghost {
-        transition: none;
-    }
+	.evp-cta__ghost {
+		transition: none;
+	}
 }
 
 /* ---- Lane seat meter --------------------------------------------------- */
 .evp-lane__seats {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
 }
 
 .evp-lane__seatstrack {
-    display: flex;
-    gap: var(--evp-seat-gap);
-    block-size: var(--evp-seat-h);
-    border-radius: var(--radius-full);
-    overflow: clip;
-    background: var(--track-recessed);
+	display: flex;
+	gap: var(--evp-seat-gap);
+	block-size: var(--evp-seat-h);
+	border-radius: var(--radius-full);
+	overflow: clip;
+	background: var(--track-recessed);
 }
 
 .evp-lane__seatseg {
-    flex: 1 1 0;
+	flex: 1 1 0;
 }
 
 .evp-lane__seatseg[data-state="taken"] {
-    background: var(--primary);
+	background: var(--primary);
 }
 
 .evp-lane__seatseg[data-state="open"] {
-    background: var(--track-meter);
+	background: var(--track-meter);
 }
 
 .evp-lane__seatsfact {
-    margin: 0;
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    font-variant-numeric: tabular-nums;
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
 }
 
 /* ---- Summary ledger (§D.7.2 item 5) — facts, not chips ----------------- */
@@ -2061,50 +2062,50 @@ a.evp-cta__btn--inverted {
  * line at all.
  */
 .evp-lane__meta {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
 }
 
 .evp-stages + .evp-lane__meta {
-    padding-block-start: var(--space-5);
-    border-block-start: var(--hairline);
+	padding-block-start: var(--space-5);
+	border-block-start: var(--hairline);
 }
 
 .evp-lane__ledger {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    margin: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	margin: 0;
 }
 
 .evp-lane__ledgerrow {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: var(--space-4);
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-4);
 }
 
 /* The value column: the fact, then its qualifier beneath it — both aligned to the END edge. */
 .evp-lane__ledgervalue {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: var(--space-px);
-    min-inline-size: 0;
-    margin: 0;
-    text-align: end;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: var(--space-px);
+	min-inline-size: 0;
+	margin: 0;
+	text-align: end;
 }
 
 .evp-lane__ledgerfact {
-    font-size: var(--text-sm);
-    font-weight: var(--fw-medium);
-    color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
 }
 
 .evp-lane__ledgernote {
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
 }
 
 /* ---- Reputation: the listing's aggregate and its sample size ----
@@ -2121,55 +2122,55 @@ a.evp-cta__btn--inverted {
  * the click handler only upgrades the jump to an offset-aware smooth scroll.
  */
 .evp-lane__rating {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-    align-self: flex-start;
-    margin-inline: calc(var(--space-2) * -1);
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-base);
-    color: var(--on-surface);
-    text-decoration: none;
-    transition: background-color var(--dur-fast) var(--ease-standard);
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex-wrap: wrap;
+	align-self: flex-start;
+	margin-inline: calc(var(--space-2) * -1);
+	padding: var(--space-1) var(--space-2);
+	border-radius: var(--radius-base);
+	color: var(--on-surface);
+	text-decoration: none;
+	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .evp-lane__rating:hover {
-    background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
 }
 
 .evp-lane__rating:hover .evp-lane__ratingcount {
-    color: var(--on-surface);
-    text-decoration: underline;
-    text-underline-offset: 0.2em;
+	color: var(--on-surface);
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
 }
 
 .evp-lane__rating:focus-visible {
-    outline: none;
-    box-shadow: none;
+	outline: none;
+	box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .evp-lane__rating {
-        transition: none;
-    }
+	.evp-lane__rating {
+		transition: none;
+	}
 }
 
 .evp-lane__ratingvalue {
-    font-size: var(--text-sm);
-    font-weight: var(--fw-medium);
-    color: var(--on-surface);
-    font-variant-numeric: tabular-nums;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+	font-variant-numeric: tabular-nums;
 }
 
 .evp-lane__ratingcount {
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
-    font-variant-numeric: tabular-nums;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
 }
 
 .evp-lane__ledgerrow:last-child {
-    border-block-end: none;
+	border-block-end: none;
 }
 
 /*
@@ -2182,10 +2183,10 @@ a.evp-cta__btn--inverted {
  * enough to say which side is which.
  */
 .evp-lane__ledgerlabel {
-    flex: none;
-    font-size: var(--text-sm);
-    font-weight: var(--fw-normal);
-    color: var(--text-secondary);
+	flex: none;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-normal);
+	color: var(--text-secondary);
 }
 
 /* ---- THE STAGE LIST ---------------------------------------------------
@@ -2197,73 +2198,73 @@ a.evp-cta__btn--inverted {
  * and it belongs to the meta block that follows.
  * -------------------------------------------------------------------- */
 .evp-stages {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-px);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
 }
 
 .evp-stages__item {
-    display: grid;
-    grid-template-columns: 1.5rem minmax(0, 1fr) auto;
-    align-items: center;
-    gap: var(--space-3);
-    inline-size: 100%;
-    /* Inset by the same amount the row is padded, so hover tints a box that lines up with the
-       identity band above rather than a stripe indented from it. */
-    margin-inline: calc(var(--space-2) * -1);
-    padding: var(--space-3) var(--space-2);
-    border: none;
-    border-radius: var(--radius-base);
-    background: transparent;
-    color: var(--on-surface);
-    text-align: start;
-    cursor: pointer;
-    transition: background-color var(--dur-fast) var(--ease-standard);
+	display: grid;
+	grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	/* Inset by the same amount the row is padded, so hover tints a box that lines up with the
+	   identity band above rather than a stripe indented from it. */
+	margin-inline: calc(var(--space-2) * -1);
+	padding: var(--space-3) var(--space-2);
+	border: none;
+	border-radius: var(--radius-base);
+	background: transparent;
+	color: var(--on-surface);
+	text-align: start;
+	cursor: pointer;
+	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .evp-stages__item:hover {
-    background: color-mix(in srgb, var(--on-surface) 6%, transparent);
+	background: color-mix(in srgb, var(--on-surface) 6%, transparent);
 }
 
 .evp-stages__item:hover .evp-stages__chevron {
-    color: var(--on-surface);
+	color: var(--on-surface);
 }
 
 .evp-stages__item:focus-visible {
-    outline: none;
-    box-shadow: none;
+	outline: none;
+	box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .evp-stages__item {
-        transition: none;
-    }
+	.evp-stages__item {
+		transition: none;
+	}
 }
 
 /* The ordinal. A plain numeral in the secondary ink — no ring, no fill: the sequence is the fact and
    a bordered circle around a single digit is a container asserting interactivity (§B.11). */
 .evp-stages__n {
-    font-size: var(--text-sm);
-    font-weight: var(--fw-normal);
-    color: var(--text-secondary);
-    font-variant-numeric: tabular-nums;
-    text-align: center;
+	font-size: var(--text-sm);
+	font-weight: var(--fw-normal);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+	text-align: center;
 }
 
 .evp-stages__body {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-px);
-    min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-px);
+	min-inline-size: 0;
 }
 
 .evp-stages__name {
-    font-size: var(--text-md);
-    font-weight: var(--fw-medium);
-    line-height: var(--leading-snug);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 /*
@@ -2280,13 +2281,13 @@ a.evp-cta__btn--inverted {
  * only ever falls at the separator, never inside an amount.
  */
 .evp-stages__price {
-    display: inline-flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: var(--space-1);
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
-    font-variant-numeric: tabular-nums;
+	display: inline-flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: var(--space-1);
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
 }
 
 /*
@@ -2301,23 +2302,23 @@ a.evp-cta__btn--inverted {
  * package rule and resolve on stylesheet order, which is decided by island bundling rather than by us.
  */
 .evp-stages .evp-stages__price .ui-money__amount {
-    font-size: var(--text-xs);
-    font-weight: var(--fw-normal);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-normal);
 }
 
 .evp-stages__pricesep {
-    color: var(--text-secondary);
+	color: var(--text-secondary);
 }
 
 /* The free-revision count rides the same subtext line as the stage price — one fact, one register. */
 .evp-stages__revisions {
-    color: var(--text-secondary);
+	color: var(--text-secondary);
 }
 
 .evp-stages__chevron {
-    flex: none;
-    color: var(--text-secondary);
-    transition: color var(--dur-fast) var(--ease-standard);
+	flex: none;
+	color: var(--text-secondary);
+	transition: color var(--dur-fast) var(--ease-standard);
 }
 
 /*
@@ -2328,13 +2329,13 @@ a.evp-cta__btn--inverted {
  * reader travels.
  */
 [dir="rtl"] .evp-stages__chevron {
-    transform: scaleX(-1);
+	transform: scaleX(-1);
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .evp-stages__chevron {
-        transition: none;
-    }
+	.evp-stages__chevron {
+		transition: none;
+	}
 }
 
 /*
@@ -2347,16 +2348,16 @@ a.evp-cta__btn--inverted {
  */
 .evp-track__item,
 #evp-reviews {
-    scroll-margin-block-start: calc(
-        var(--shell-topbar-h) + var(--shell-midnav-header-h) + var(--space-4)
-    );
+	scroll-margin-block-start: calc(
+		var(--shell-topbar-h) + var(--shell-midnav-header-h) + var(--space-4)
+	);
 }
 
 .guest-shell .evp-track__item,
 .guest-shell #evp-reviews {
-    scroll-margin-block-start: calc(
-        var(--site-header-h, 5.5rem) + var(--shell-midnav-header-h) + var(--space-4)
-    );
+	scroll-margin-block-start: calc(
+		var(--site-header-h, 5.5rem) + var(--shell-midnav-header-h) + var(--space-4)
+	);
 }
 
 /* ---- Kebab menu -------------------------------------------------------- */
@@ -2366,47 +2367,47 @@ a.evp-cta__btn--inverted {
  * overlay keeps the default `--space-4` box, which is why both panels looked over-padded.
  */
 .evp-menu .ui-popover__content {
-    padding: var(--space-1);
+	padding: var(--space-1);
 }
 
 .evp-inquiry .ui-draggable-popover__body {
-    padding: 0;
+	padding: 0;
 }
 
 .evp-menu__list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-inline-size: 13rem;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-inline-size: 13rem;
 }
 
 .evp-menu__item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    inline-size: 100%;
-    padding: var(--space-2) var(--space-3);
-    border: none;
-    border-radius: var(--radius-base);
-    background: transparent;
-    color: var(--on-surface);
-    font-size: var(--text-sm);
-    text-align: start;
-    text-decoration: none;
-    cursor: pointer;
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	inline-size: 100%;
+	padding: var(--space-2) var(--space-3);
+	border: none;
+	border-radius: var(--radius-base);
+	background: transparent;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	text-align: start;
+	text-decoration: none;
+	cursor: pointer;
 }
 
 .evp-menu__item:hover {
-    background: color-mix(in srgb, var(--on-surface) 8%, transparent);
+	background: color-mix(in srgb, var(--on-surface) 8%, transparent);
 }
 
 .evp-menu__item:focus-visible {
-    outline: none;
-    box-shadow: none;
+	outline: none;
+	box-shadow: none;
 }
 
 .evp-menu__item[data-danger="true"] {
-    color: var(--danger);
+	color: var(--danger);
 }
 
 /* ============================================================================
@@ -2434,9 +2435,9 @@ a.evp-cta__btn--inverted {
  * currently only being tolerated. The solid step reads identically and is measurable.
  */
 .evp-lane__full {
-    background: var(--surface-1);
-    border-radius: var(--radius-container-lg);
-    overflow: hidden;
+	/* background: var(--surface-1); */
+	border-radius: var(--radius-container-lg);
+	overflow: hidden;
 }
 
 /* ---- The pinned action footer -------------------------------------------
@@ -2445,10 +2446,10 @@ a.evp-cta__btn--inverted {
  * because the rig it holds is itself a column and would otherwise be a flex ITEM sized to content.
  */
 .evp-lane__footer {
-    display: block;
-    padding: var(--evp-lane-pad);
-    background: var(--surface-1);
-    border-block-start: var(--hairline);
+	display: block;
+	padding: var(--evp-lane-pad);
+	/* background: var(--surface-1); */
+	border-block-start: var(--hairline);
 }
 
 /* ============================================================================
@@ -2461,12 +2462,12 @@ a.evp-cta__btn--inverted {
  * render the band unstyled for guests while looking correct when signed in.
  * ========================================================================== */
 .evp-stickyhead {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-    inline-size: 100%;
-    min-inline-size: 0;
-    /* The inline inset is the skeleton's (`.pf-stickyhead`), declared once for every band. */
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	inline-size: 100%;
+	min-inline-size: 0;
+	/* The inline inset is the skeleton's (`.pf-stickyhead`), declared once for every band. */
 }
 
 /*
@@ -2511,12 +2512,12 @@ a.evp-cta__btn--inverted {
  * wide and would be crushed to nothing by a 376px reservation.
  */
 @media (min-width: 1075px) {
-    .guest-shell:has(.evp-laneslot) .guest-shell__subheader {
-        inset-inline-start: var(--space-5);
-        inset-inline-end: calc(
-            var(--space-5) + var(--evp-lane-w) + var(--evp-frame-gap)
-        );
-    }
+	.guest-shell:has(.evp-laneslot) .guest-shell__subheader {
+		inset-inline-start: var(--space-5);
+		inset-inline-end: calc(
+			var(--space-5) + var(--evp-lane-w) + var(--evp-frame-gap)
+		);
+	}
 }
 
 /*
@@ -2547,15 +2548,15 @@ a.evp-cta__btn--inverted {
  * a profile — which mounts the same `.pf-stickyhead` — cannot pick up an offset meant for this frame.
  */
 .ui-middle-nav:has(.evp-laneslot):has(.pf-stickyhead[data-condensed="true"]) {
-    --evp-band-offset: var(--shell-midnav-header-h);
+	--evp-band-offset: var(--shell-midnav-header-h);
 }
 
 .evp-stickyhead__lead {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-3);
-    min-inline-size: 0;
-    flex: 1 1 auto;
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-3);
+	min-inline-size: 0;
+	flex: 1 1 auto;
 }
 
 /*
@@ -2564,24 +2565,24 @@ a.evp-cta__btn--inverted {
  * the item refuses to shrink below its content and the ellipsis never appears.
  */
 .evp-stickyhead__title {
-    max-inline-size: var(--evp-stickyhead-title);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: var(--text-md);
-    font-weight: var(--fw-medium);
-    color: var(--on-surface);
+	max-inline-size: var(--evp-stickyhead-title);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
 }
 
 /* The archetype, unboxed — a category is what a thing permanently is, so it is text (§B.11.2). */
 .evp-stickyhead__kind {
-    flex: none;
-    font-size: var(--text-xs);
-    font-weight: var(--fw-normal);
-    letter-spacing: var(--tracking-wide);
-    text-transform: uppercase;
-    color: var(--text-secondary);
-    white-space: nowrap;
+	flex: none;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-normal);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+	white-space: nowrap;
 }
 
 /*
@@ -2592,22 +2593,22 @@ a.evp-cta__btn--inverted {
  * with the writing mode, where a physical `margin-left` would strand the block on the wrong side.
  */
 .evp-stickyhead__end {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-4);
-    flex: none;
-    min-inline-size: 0;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-4);
+	flex: none;
+	min-inline-size: 0;
 }
 
 .evp-stickyhead__seller {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex: none;
-    color: var(--text-secondary);
-    text-decoration: none;
-    font-size: var(--text-sm);
-    border-radius: var(--radius-sm);
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex: none;
+	color: var(--text-secondary);
+	text-decoration: none;
+	font-size: var(--text-sm);
+	border-radius: var(--radius-sm);
 }
 
 /*
@@ -2619,36 +2620,36 @@ a.evp-cta__btn--inverted {
  * clears the pinned chrome.
  */
 .evp-stickyhead__rating {
-    display: inline-flex;
-    align-items: center;
-    flex: none;
-    color: var(--text-secondary);
-    text-decoration: none;
-    border-radius: var(--radius-sm);
+	display: inline-flex;
+	align-items: center;
+	flex: none;
+	color: var(--text-secondary);
+	text-decoration: none;
+	border-radius: var(--radius-sm);
 }
 
 .evp-stickyhead__rating:hover {
-    color: var(--on-surface);
+	color: var(--on-surface);
 }
 
 .evp-stickyhead__rating:focus-visible {
-    outline: none;
-    box-shadow: none;
+	outline: none;
+	box-shadow: none;
 }
 
 .evp-stickyhead__seller:hover .evp-stickyhead__handle {
-    color: var(--on-surface);
-    text-decoration: underline;
-    text-underline-offset: 0.2em;
+	color: var(--on-surface);
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
 }
 
 .evp-stickyhead__seller:focus-visible {
-    outline: none;
-    box-shadow: none;
+	outline: none;
+	box-shadow: none;
 }
 
 .evp-stickyhead__crest {
-    flex: none;
+	flex: none;
 }
 
 /*
@@ -2658,28 +2659,28 @@ a.evp-cta__btn--inverted {
  * category, and a category is the first thing worth losing when the row runs out of width.
  */
 @media (max-width: 900px) {
-    .evp-stickyhead__kind {
-        display: none;
-    }
+	.evp-stickyhead__kind {
+		display: none;
+	}
 }
 
 /* ============================================================================
  * FULL-WIDTH SESSION SCHEDULER (§D.8.3 / §D.8.4)
  * ========================================================================== */
 .evp-scheduler {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    inline-size: 100%;
-    min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	inline-size: 100%;
+	min-inline-size: 0;
 }
 
 .evp-scheduler__bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: var(--space-3);
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: var(--space-3);
 }
 
 /*
@@ -2689,46 +2690,46 @@ a.evp-cta__btn--inverted {
  * not get back to the gallery without reloading.
  */
 .evp-scheduler__switch {
-    display: inline-flex;
-    gap: var(--space-px);
-    padding: var(--space-px);
-    border-radius: var(--radius-full);
-    background: var(--surface-2);
+	display: inline-flex;
+	gap: var(--space-px);
+	padding: var(--space-px);
+	border-radius: var(--radius-full);
+	background: var(--surface-2);
 }
 
 .evp-scheduler__tab {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-block-size: var(--evp-cta-h);
-    padding-inline: var(--space-4);
-    border: none;
-    border-radius: var(--radius-full);
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: var(--text-sm);
-    font-weight: var(--fw-normal);
-    cursor: pointer;
-    white-space: nowrap;
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-block-size: var(--evp-cta-h);
+	padding-inline: var(--space-4);
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-normal);
+	cursor: pointer;
+	white-space: nowrap;
 }
 
 .evp-scheduler__tab[data-active] {
-    background: var(--surface);
-    color: var(--on-surface);
-    font-weight: var(--fw-medium);
-    box-shadow: var(--elevation-low);
+	background: var(--surface);
+	color: var(--on-surface);
+	font-weight: var(--fw-medium);
+	box-shadow: var(--elevation-low);
 }
 
 .evp-scheduler__tab:focus-visible {
-    outline: none;
-    box-shadow: none;
+	outline: none;
+	box-shadow: none;
 }
 
 /* The timezone disclosure — a fact, so Meta register and no container. */
 .evp-scheduler__zones {
-    margin: 0;
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
 }
 
 /*
@@ -2742,80 +2743,80 @@ a.evp-cta__btn--inverted {
  * the provider's working hours are explained.
  */
 .evp-scheduler__cal {
-    inline-size: 100%;
-    min-inline-size: 0;
-    min-block-size: var(--evp-sched-min-h);
-    /* The scheduler stage stands where the media canvas stands, so it takes the same curvature. */
-    border-radius: var(--radius-container-xl);
-    overflow: hidden;
-    background: var(--surface-1);
+	inline-size: 100%;
+	min-inline-size: 0;
+	min-block-size: var(--evp-sched-min-h);
+	/* The scheduler stage stands where the media canvas stands, so it takes the same curvature. */
+	border-radius: var(--radius-container-xl);
+	overflow: hidden;
+	background: var(--surface-1);
 }
 
 .evp-scheduler__gallery {
-    inline-size: 100%;
-    min-inline-size: 0;
+	inline-size: 100%;
+	min-inline-size: 0;
 }
 
 /* ============================================================================
  * SELLER INQUIRY COMPOSER
  * ========================================================================== */
 .evp-inquiry__body {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    padding: var(--space-4);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding: var(--space-4);
 }
 
 .evp-inquiry__about {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
 }
 
 .evp-inquiry__abouticon {
-    flex: none;
+	flex: none;
 }
 
 .evp-inquiry__aboutitem {
-    color: var(--on-surface);
+	color: var(--on-surface);
 }
 
 .evp-inquiry__hint {
-    margin: 0;
-    font-size: var(--text-sm);
-    line-height: var(--leading-normal);
-    color: var(--text-secondary);
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
 }
 
 .evp-inquiry__text {
-    inline-size: 100%;
-    min-block-size: 6rem;
-    padding: var(--space-3);
-    border: var(--hairline);
-    border-radius: var(--radius-base);
-    background: var(--surface);
-    color: var(--on-surface);
-    font: inherit;
-    font-size: var(--text-md);
-    line-height: var(--leading-normal);
-    resize: vertical;
+	inline-size: 100%;
+	min-block-size: 6rem;
+	padding: var(--space-3);
+	border: var(--hairline);
+	border-radius: var(--radius-base);
+	background: var(--surface);
+	color: var(--on-surface);
+	font: inherit;
+	font-size: var(--text-md);
+	line-height: var(--leading-normal);
+	resize: vertical;
 }
 
 .evp-inquiry__text:focus-visible {
-    outline: none;
-    box-shadow: none;
+	outline: none;
+	box-shadow: none;
 }
 
 .evp-inquiry__error {
-    margin: 0;
-    font-size: var(--text-sm);
-    color: var(--danger);
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--danger);
 }
 
 .evp-inquiry__actions {
-    display: flex;
+	display: flex;
 }
 
 /* ============================================================================
@@ -2825,26 +2826,26 @@ a.evp-cta__btn--inverted {
 
 /* The lower rails + reviews had ZERO gap between them. */
 .evp-body {
-    display: flex;
-    flex-direction: column;
-    gap: var(--evp-gap-section);
+	display: flex;
+	flex-direction: column;
+	gap: var(--evp-gap-section);
 }
 
 /* A ledger value that stacks a summary over its own meta line (the team-roles block). */
 .evp-ledger__stack {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    align-items: flex-end;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	align-items: flex-end;
 }
 
 /* Running prose inside an archetype body — capped at the measure, like every other prose block. */
 .evp-prose {
-    margin: 0;
-    max-inline-size: var(--evp-measure);
-    font-size: var(--text-md);
-    line-height: var(--leading-relaxed);
-    color: var(--text-secondary);
+	margin: 0;
+	max-inline-size: var(--evp-measure);
+	font-size: var(--text-md);
+	line-height: var(--leading-relaxed);
+	color: var(--text-secondary);
 }
 
 /*
@@ -2853,17 +2854,17 @@ a.evp-cta__btn--inverted {
  * silently moves the other.
  */
 .evp-buybar__note {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    margin: 0;
-    font-size: var(--text-sm);
-    color: var(--text-secondary);
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
 }
 
 .evp-buybar__note svg {
-    flex: none;
-    color: var(--success);
+	flex: none;
+	color: var(--success);
 }
 
 /* ============================================================================
@@ -2879,41 +2880,41 @@ a.evp-cta__btn--inverted {
  * is not a better outcome than one that has moved somewhere it fits.
  * ========================================================================== */
 .evp-buybar {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    padding-block: var(--space-5);
-    border-block: var(--hairline);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	padding-block: var(--space-5);
+	border-block: var(--hairline);
 }
 
 @container evp-body (min-width: 1040px) {
-    .evp-buybar {
-        display: none;
-    }
+	.evp-buybar {
+		display: none;
+	}
 }
 
 @media (max-width: 767px) {
-    .evp {
-        padding-inline: var(--space-4);
-    }
+	.evp {
+		padding-inline: var(--space-4);
+	}
 
-    .evp-overview__title {
-        font-size: var(--text-2xl);
-    }
+	.evp-overview__title {
+		font-size: var(--text-2xl);
+	}
 
-    .evp-track__item {
-        --evp-track-gutter: 2.25rem;
-    }
+	.evp-track__item {
+		--evp-track-gutter: 2.25rem;
+	}
 }
 
 /* ============================================================================
  * Reduced motion — jump to final (§A.5)
  * ========================================================================== */
 @media (prefers-reduced-motion: reduce) {
-    .evp-canvas__thumb,
-    .evp-track__caret {
-        transition: none;
-    }
+	.evp-canvas__thumb,
+	.evp-track__caret {
+		transition: none;
+	}
 }
 
 /* ============================================================================
@@ -2926,77 +2927,96 @@ a.evp-cta__btn--inverted {
  * on the profile, on Explore and here.
  * ========================================================================== */
 .evp-preview {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    min-inline-size: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	min-inline-size: 0;
 }
 
 .evp-preview__cover {
-    aspect-ratio: 16 / 10;
-    overflow: clip;
-    border-radius: var(--card-radius-media, var(--radius-lg));
-    background: var(--surface-1);
-    /* A flex item's `min-block-size: auto` would let the photograph's own height win (Decision #100). */
-    min-block-size: 0;
+	aspect-ratio: 16 / 10;
+	overflow: clip;
+	border-radius: var(--card-radius-media, var(--radius-lg));
+	background: var(--surface-1);
+	/* A flex item's `min-block-size: auto` would let the photograph's own height win (Decision #100). */
+	min-block-size: 0;
 }
 
 .evp-preview__img {
-    inline-size: 100%;
-    block-size: 100%;
+	inline-size: 100%;
+	block-size: 100%;
 }
 
 .evp-preview__title {
-    margin: 0;
-    font-size: var(--text-lg);
-    font-weight: var(--fw-medium);
-    line-height: var(--leading-snug);
-    color: var(--on-surface);
-    text-wrap: balance;
+	margin: 0;
+	font-size: var(--text-lg);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+	text-wrap: balance;
 }
 
 .evp-preview__summary {
-    margin: 0;
-    font-size: var(--text-sm);
-    line-height: var(--leading-relaxed);
-    color: var(--text-secondary);
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-relaxed);
+	color: var(--text-secondary);
 }
 
 .evp-preview__summary--empty {
-    color: var(--on-surface-variant);
+	color: var(--on-surface-variant);
 }
 
 .evp-preview__section {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    margin-block-start: var(--space-3);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin-block-start: var(--space-3);
 }
 
 .evp-preview__heading {
-    margin: 0;
-    font-size: var(--text-xs);
-    font-weight: var(--fw-semibold);
-    letter-spacing: var(--tracking-wide);
-    text-transform: uppercase;
-    color: var(--text-secondary);
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
 }
 
 .evp-preview__more {
-    margin: 0;
-    font-size: var(--text-xs);
-    color: var(--text-secondary);
+	margin: 0;
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
 }
 
 /* The seller line at preview scale keeps its geometry; only the earned-signal row tightens. */
 .evp-preview .evp-seller {
-    row-gap: var(--space-1);
+	row-gap: var(--space-1);
 }
 
 .evp-preview .evp-ledger__row {
-    padding-block: var(--space-2);
+	padding-block: var(--space-2);
 }
 
 .evp-preview .evp-ledger__value {
-    font-size: var(--text-sm);
+	font-size: var(--text-sm);
 }
+
+/* #region Card to /view hero morph (Decision #174) */
+@media (prefers-reduced-motion: no-preference) {
+	@view-transition {
+		navigation: auto;
+	}
+}
+
+::view-transition-group(ex-hero-media) {
+	animation-duration: var(--dur-slow);
+	animation-timing-function: var(--spring-standard);
+}
+
+:root[data-motion="reduced"]::view-transition-group(*),
+:root[data-motion="reduced"]::view-transition-old(*),
+:root[data-motion="reduced"]::view-transition-new(*) {
+	animation: none;
+}
+/* #endregion */

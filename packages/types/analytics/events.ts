@@ -33,7 +33,8 @@ export const AnalyticsSubjectKind = z.enum([
 export type AnalyticsSubjectKind = z.infer<typeof AnalyticsSubjectKind>;
 
 /**
- * The registered event names emitted by the subscription / Standing / allowance systems.
+ * The registered event names emitted by the subscription / Standing / allowance systems, plus the
+ * `discovery.*` vocabulary whose rows land in `search.*` (see `@projective/types/explore` telemetry).
  *
  * The DB column is deliberately `text` (a new event must never require an enum migration mid-feature)
  * and `analytics.event_catalogue` is the registry; this enum is the *typed* subset the app emits and
@@ -58,6 +59,11 @@ export const KnownAnalyticsEvent = z.enum([
 	"achievement.awarded",
 	"streak.extended",
 	"streak.broken",
+	// Discovery (stored in search.interest_events / search.query_logs)
+	"discovery.search",
+	"discovery.impression",
+	"discovery.click",
+	"discovery.rail_depth",
 ]);
 export type KnownAnalyticsEvent = z.infer<typeof KnownAnalyticsEvent>;
 // #endregion

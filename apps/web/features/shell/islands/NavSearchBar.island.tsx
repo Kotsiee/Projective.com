@@ -1,6 +1,8 @@
 import { useSignal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import "@web/features/shell/styles/user-shell.css";
+import SearchSuggest from "@features/explore/islands/SearchSuggest.island.tsx";
+import { recordSearch } from "@features/explore/core/search-history.ts";
 import { useDismiss, useEdgeDetection, useOverlayStack } from "@projective/ui/hooks";
 import { BodyPortal } from "@projective/ui/overlay";
 import {
@@ -18,7 +20,8 @@ import {
  * so the authenticated shell's discovery search reads exactly as the guest's. The scope vocabulary is
  * shared via `landing-data`, so selector + `/explore?category=` navigation stay in lockstep with the
  * guest header; submitting or picking a scope is a real navigation to `/explore`, so the server
- * re-renders the correct results layout. Dumb island — routes only, no data access.
+ * re-renders the correct results layout. The field is the shared `SearchSuggest` typeahead. Dumb
+ * island — routes only, no data access.
  */
 
 /** The guest header's filled magnifier path — reused verbatim so the submit glyph matches 1:1. */
@@ -34,6 +37,7 @@ export default function NavSearchBar() {
 	const category = useSignal<SearchScope>(DEFAULT_SEARCH_SCOPE);
 	const menuOpen = useSignal(false);
 	const query = useSignal("");
+	const formRef = useRef<HTMLFormElement>(null);
 
 	// Reflect the active /explore search when the shell renders over the results page.
 	useEffect(() => {
@@ -63,13 +67,17 @@ export default function NavSearchBar() {
 	function go(q: string) {
 		const params = new URLSearchParams();
 		if (category.value !== "all") params.set("category", category.value);
-		if (q) params.set("q", q);
+		if (q) {
+			params.set("q", q);
+			recordSearch(q);
+		}
 		const qs = params.toString();
 		globalThis.location.href = qs ? `/explore?${qs}` : "/explore";
 	}
 
 	return (
 		<form
+			ref={formRef}
 			class="shell-search"
 			role="search"
 			onSubmit={(e) => {
@@ -131,15 +139,15 @@ export default function NavSearchBar() {
 				</svg>
 			</button>
 
-			<input
-				class="shell-search__search-input"
-				type="search"
+			<SearchSuggest
+				value={query}
+				scope={category.value}
 				name="q"
-				value={query.value}
+				inputClass="shell-search__search-input"
+				anchorRef={formRef}
 				placeholder="Search Projective…"
 				aria-label={`Search ${searchScopeLabel(category.value).toLowerCase()}`}
-				autoComplete="off"
-				onInput={(e) => (query.value = (e.currentTarget as HTMLInputElement).value)}
+				onSearch={go}
 			/>
 		</form>
 	);

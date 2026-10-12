@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /**
  * Saved — the one saved / favourites system behind `/saved` and every star or save control
- * (Decision #174).
+ * (Decision #180).
  *
  * A save is stored where its kind already keeps one, one store per kind: listings, people and project
  * channels are `org.user_bookmarks` rows (fileable into `org.user_bookmark_collections`); a project is

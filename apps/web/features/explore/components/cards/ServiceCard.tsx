@@ -8,7 +8,8 @@ import { PromotedBadge } from "../PromotedBadge.tsx";
 import { StatusChip } from "../StatusChip.tsx";
 import CardActions from "../../islands/CardActions.island.tsx";
 import { cardAccent } from "../../core/accent.ts";
-import { ratingSignals, serviceTypeLabel } from "../../core/card-signals.ts";
+import { CardReveal, NewFact } from "../CardReveal.tsx";
+import { isNew, ratingSignals, serviceTypeLabel } from "../../core/card-signals.ts";
 import { serviceStartingPrice } from "../../core/pricing.ts";
 import { itemHref } from "../../core/routing.ts";
 import type { HrefContext } from "../../core/routing.ts";
@@ -47,6 +48,7 @@ export function ServiceCard(
 	// One figure, never a range, and never a conversion tail — see the price block below.
 	const price = serviceStartingPrice(item);
 	const signals = ratingSignals(item.rating);
+	const fresh = isNew(item.createdAt);
 
 	return (
 		<article
@@ -96,7 +98,12 @@ export function ServiceCard(
 						 * secondary fact instead of a fabricated one. See the note in the summary.
 						 */
 					}
-					{item.delivery && <span class="ex-card__aside">{item.delivery}</span>}
+					{(item.delivery || fresh) && (
+						<span class="ex-card__aside">
+							{item.delivery}
+							{fresh && <NewFact separated={!!item.delivery} />}
+						</span>
+					)}
 				</div>
 
 				<div class="ex-card__foot">
@@ -150,6 +157,7 @@ export function ServiceCard(
 					</span>
 				</div>
 			</div>
+			<CardReveal text={item.summary} />
 		</article>
 	);
 }

@@ -742,7 +742,7 @@ async function fetchBusinesses(
 }
 
 /**
- * The viewer's starred project channels — their `project_channel` bookmarks (Decision #175). Read
+ * The viewer's starred project channels — their `project_channel` bookmarks (Decision #181). Read
  * whole rather than per project: a person stars few rooms, and the read then joins the first wave. A
  * failed read stars nothing.
  */
@@ -860,7 +860,7 @@ function buildMembers(
  * - **`bannerImage` is always `null`.** No banner column exists on `projects.projects`, and the
  *   service blueprint that would carry one lives in `marketplace`, which PostgREST does not expose.
  * - **`starred`** is inherited from the summary (`projects.user_preferences.is_starred`); each
- *   channel's `starred` is the viewer's `project_channel` bookmark (Decision #175).
+ *   channel's `starred` is the viewer's `project_channel` bookmark (Decision #181).
  * - **Every channel's `unread` is `false`** — there is no per-viewer read watermark for a project
  *   channel; see `NO_UNREAD_SIGNAL`.
  * - **Avatars are resolved, never composed** — a person's through `org.get_party_cards`, a team's or

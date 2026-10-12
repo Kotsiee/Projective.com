@@ -10,7 +10,7 @@ interface Starrable {
 }
 
 /**
- * Star or unstar the file `id` in a list signal through the saved system (Decision #174): the row
+ * Star or unstar the file `id` in a list signal through the saved system (Decision #180): the row
  * flips at once, `/api/saved` persists the owner's mark (`files.items.starred`), and a refusal flips it
  * back. `onApplied` hears every visible change, rollback included. Answers the sentence to announce.
  */

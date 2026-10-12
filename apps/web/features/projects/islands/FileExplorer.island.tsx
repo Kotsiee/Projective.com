@@ -337,7 +337,7 @@ export default function FileExplorer(props: FileExplorerProps): JSX.Element {
 	function renameFile(id: string, name: string): void {
 		items.value = items.value.map((f) => (f.id === id ? { ...f, name } : f));
 	}
-	/** Star or unstar a file the viewer owns, persisted through the saved system (Decision #174). */
+	/** Star or unstar a file the viewer owns, persisted through the saved system (Decision #180). */
 	function toggleStar(id: string) {
 		return starFile(items, id);
 	}

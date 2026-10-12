@@ -1,5 +1,6 @@
 import { parsePriceMajor, PIPELINE_LOW } from "./pricing.ts";
 import { peekCatalog } from "./live-catalog.ts";
+import { byScore } from "./ranking.ts";
 import { toMajorUnits } from "@projective/types/finance";
 import type {
 	ExploreEntity,
@@ -44,24 +45,37 @@ function topScore(item: ExploreItem): number {
 }
 
 /**
- * The `recommended` ordering: verified owners first, then by best rating track.
+ * The `recommended` ordering: the discovery quality score (`./ranking.ts`), best first, against the
+ * catalogue's `scoreById`.
  *
- * A marketplace-wide quality heuristic, not a personalisation — nothing here reads a viewer. Exported
- * so the Home feed's Recommended lists and a `?sort=recommended` search rank through one comparator:
- * two copies of "what we put forward" would eventually disagree, and the disagreement would show up
- * as the same corpus ordered two ways on two surfaces a reader moves between in one click.
+ * A marketplace-wide quality score, not a personalisation — nothing here reads a viewer. Exported so
+ * the Home feed's Recommended lists, a `?sort=recommended` search and the typeahead's tie-break rank
+ * through one ordering: two copies of "what we put forward" would eventually disagree, and the
+ * disagreement would show up as the same corpus ordered two ways on two surfaces a reader moves
+ * between in one click.
+ *
+ * Without `scores` every pair ties, so a stable sort keeps the list in the order it was handed — which,
+ * for anything filtered from the catalogue, IS the recommended order, because the catalogue is
+ * assembled best-first.
  */
-export function compareRecommended(a: ExploreItem, b: ExploreItem): number {
-	return (Number(b.owner.verified ?? false) - Number(a.owner.verified ?? false)) ||
-		(topScore(b) - topScore(a));
+export function compareRecommended(
+	a: ExploreItem,
+	b: ExploreItem,
+	scores?: ReadonlyMap<string, number>,
+): number {
+	return scores ? byScore(scores)(a, b) : 0;
 }
 
 /**
- * Rank a list by {@link compareRecommended}, returning a copy. Generic over the element type so a
- * caller holding a narrowed list (`ServiceItem[]`, `ProfileItem[]`) gets that type back.
+ * Rank a list by its scores (see {@link compareRecommended}), returning a copy. Generic over the
+ * element type so a caller holding a narrowed list (`ServiceItem[]`, `ProfileItem[]`) gets that type
+ * back.
  */
-export function rankRecommended<T extends ExploreItem>(items: readonly T[]): T[] {
-	return [...items].sort(compareRecommended);
+export function rankRecommended<T extends ExploreItem>(
+	items: readonly T[],
+	scores: ReadonlyMap<string, number>,
+): T[] {
+	return [...items].sort(byScore(scores));
 }
 // #endregion
 
@@ -132,9 +146,20 @@ const CATEGORY_TYPES: Partial<Record<ExploreParams["category"], ExploreEntity[]>
 };
 
 /** Whether an item belongs to a selected top-level category (`all` matches everything). */
-function inCategory(item: ExploreItem, category: ExploreParams["category"]): boolean {
+export function inCategory(item: ExploreItem, category: ExploreParams["category"]): boolean {
 	if (category === "all") return true;
 	return (CATEGORY_TYPES[category] ?? [category]).includes(item.type);
+}
+
+/** The entity formats a category covers, or `null` for `all` — the same scopes as {@link inCategory}. */
+export function categoryEntities(category: ExploreParams["category"]): ExploreEntity[] | null {
+	if (category === "all") return null;
+	return CATEGORY_TYPES[category] ?? [category];
+}
+
+/** Whether a sort is one a reader chose; every other value is the default "recommended" order. */
+export function isExplicitSort(sort: string): boolean {
+	return sort === "rating" || sort === "price_asc" || sort === "newest";
 }
 
 function matchesQuery(item: ExploreItem, q: string): boolean {
@@ -152,9 +177,14 @@ function matchesQuery(item: ExploreItem, q: string): boolean {
 
 /**
  * The discovery query. Filters the corpus by free-text `q` and top-level `category`, then applies the
- * adaptive facet filters and the `sort`.
+ * adaptive facet filters and the `sort`. The default (`recommended`) sort ranks by `scores` — the
+ * catalogue's `scoreById`; without them the corpus keeps its own order (see {@link compareRecommended}).
  */
-export function getResults(corpus: readonly ExploreItem[], params: ExploreParams): ExploreItem[] {
+export function getResults(
+	corpus: readonly ExploreItem[],
+	params: ExploreParams,
+	scores?: ReadonlyMap<string, number>,
+): ExploreItem[] {
 	const category = params.category;
 	let items = corpus.filter((it) => inCategory(it, category) && matchesQuery(it, params.q));
 
@@ -215,7 +245,7 @@ export function getResults(corpus: readonly ExploreItem[], params: ExploreParams
 			sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 			break;
 		default:
-			sorted.sort(compareRecommended);
+			if (scores) sorted.sort(byScore(scores));
 	}
 	return sorted;
 }

@@ -9,6 +9,15 @@ CREATE INDEX idx_user_bookmarks_lookup ON org.user_bookmarks (user_id, entity_ty
 CREATE INDEX idx_user_bookmarks_collection ON org.user_bookmarks (collection_id) WHERE collection_id IS NOT NULL;
 -- (No separate token index: `token` is UNIQUE, which is already an index.)
 
+-- #region Discovery signals (search.record_view · search.trending_entities, 00001400)
+-- The Home feed's viewer pass reads a person's latest views and saves; Trending scans the window's
+-- views and saves across everyone (the UNIQUE (user_id, entity_type, entity_id) keys serve neither).
+CREATE INDEX idx_recent_views_user_viewed ON org.recent_views (user_id, viewed_at DESC);
+CREATE INDEX idx_recent_views_viewed ON org.recent_views (viewed_at DESC);
+CREATE INDEX idx_user_bookmarks_user_created ON org.user_bookmarks (user_id, created_at DESC);
+CREATE INDEX idx_user_bookmarks_created ON org.user_bookmarks (created_at DESC);
+-- #endregion
+
 -- #region Email addresses (00001050)
 -- One row per address per person (case-insensitively — an address is), and at most one primary per
 -- person. The primary index is partial and so never deferrable, which is why org.set_primary_email

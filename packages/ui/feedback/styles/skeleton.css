@@ -71,9 +71,46 @@
 		animation: none;
 		opacity: 0.75;
 	}
-	.ui-skeleton--wave::after {
+	.ui-skeleton--wave::after,
+	.ui-skeleton--shimmer::after {
 		animation: none;
 		display: none;
 	}
+}
+
+.ui-skeleton--shimmer {
+	position: relative;
+	overflow: hidden;
+	background: var(--surface-1);
+}
+.ui-skeleton--shimmer::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(90deg, transparent, var(--surface-2), transparent);
+	transform: translateX(-100%);
+	animation: ui-skeleton-wave var(--dur-highlight) var(--ease-standard) infinite;
+}
+[dir="rtl"] .ui-skeleton--shimmer::after {
+	animation-direction: reverse;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-skeleton--shimmer {
+		background: var(--surface-2);
+	}
+}
+
+:root[data-motion="reduced"] .ui-skeleton--pulse {
+	animation: none;
+	opacity: 0.75;
+}
+:root[data-motion="reduced"] .ui-skeleton--wave::after,
+:root[data-motion="reduced"] .ui-skeleton--shimmer::after {
+	animation: none;
+	display: none;
+}
+:root[data-motion="reduced"] .ui-skeleton--shimmer {
+	background: var(--surface-2);
 }
 /* #endregion */

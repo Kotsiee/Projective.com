@@ -117,8 +117,8 @@ export interface ServerEnv {
 	catalogueBackendLive: boolean;
 	/**
 	 * Master switch for LIVE logging-backend behaviour. Defaults **off**: {@link LogBackendService}
-	 * accepts the production `error`/`warn` ingest into a no-op stub (console echo) until the
-	 * `logging.entries` table lands, then flip per environment. Orthogonal to `DENO_ENV` — this gates
+	 * acknowledges the production `error`/`warn`, web-vitals and server-error ingest with a console
+	 * echo; on, it inserts into `ops.log_entries`. Orthogonal to `DENO_ENV` — this gates
 	 * *persistence*, `appEnv` gates *verbosity*.
 	 */
 	loggingBackendLive: boolean;
@@ -157,6 +157,27 @@ export interface ServerEnv {
 	 * would make enabling the hub silently enable outbound calls carrying someone else's token.
 	 */
 	integrationsBackendLive: boolean;
+	/**
+	 * Whether discovery ranks with voyage-4 vectors (Decision #179), from `EMBEDDINGS_ENABLED`.
+	 * Defaults **off**: search and the "Similar" rails keep their heuristic order and nothing calls
+	 * Voyage. In development the Dev Context Switcher's `pj.dev.embeddings` cookie may override it per
+	 * request; production never reads the cookie. Read it through `isEmbeddingsLive`
+	 * (`core/supabase.ts`), which also requires the key, Supabase and no `USE_MOCKS`.
+	 */
+	embeddingsEnabled: boolean;
+	/**
+	 * The Voyage AI key, from `VOYAGE_API_KEY`. Server-only: it is sent only as the `Authorization`
+	 * header of `POST {host}/v1/embeddings` and is never logged, echoed in an error or sent to a client.
+	 * The `XXXX-XXXX` placeholder counts as absent. A MongoDB Atlas model API key is answered by
+	 * `https://ai.mongodb.com`; a Voyage platform key (`pa-…`) only by `https://api.voyageai.com` — the
+	 * client picks the host from the key unless {@link voyageApiBase} names one.
+	 */
+	voyageApiKey: string | undefined;
+	/**
+	 * Optional explicit embeddings host (`https://ai.mongodb.com`, `https://api.voyageai.com`, or a mock),
+	 * from `VOYAGE_API_BASE`. Absent: chosen from the key's kind (`services/search/voyage-client.ts`).
+	 */
+	voyageApiBase: string | undefined;
 	/**
 	 * The Stripe secret — or, preferably, RESTRICTED — API key (`sk_…` / `rk_…`), from
 	 * `STRIPE_SECRET_KEY`. Server-only: it can move money, so it is never logged, never echoed in an
@@ -250,6 +271,9 @@ export function serverEnv(): ServerEnv {
 		filesBackendLive: (firstEnv("FILES_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		integrationsBackendLive: (firstEnv("INTEGRATIONS_BACKEND_LIVE") ?? "false").toLowerCase() ===
 			"true",
+		embeddingsEnabled: (firstEnv("EMBEDDINGS_ENABLED") ?? "false").toLowerCase() === "true",
+		voyageApiKey: firstEnv("VOYAGE_API_KEY"),
+		voyageApiBase: firstEnv("VOYAGE_API_BASE"),
 		stripeSecretKey: firstEnv("STRIPE_SECRET_KEY"),
 		stripeWebhookSecret: firstEnv("STRIPE_WEBHOOK_SECRET"),
 		stripePublishableKey: firstEnv("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"),

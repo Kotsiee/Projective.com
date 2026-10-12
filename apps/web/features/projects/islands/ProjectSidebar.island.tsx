@@ -312,7 +312,7 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 		);
 	}
 
-	/** Star or unstar the engagement through the saved system (Decision #174), optimistic with rollback. */
+	/** Star or unstar the engagement through the saved system (Decision #180), optimistic with rollback. */
 	async function toggleStar(): Promise<void> {
 		if (!detail) return;
 		const out = await toggleSaved("project", detail.slug, !starred.value, (v) => (starred.value = v));

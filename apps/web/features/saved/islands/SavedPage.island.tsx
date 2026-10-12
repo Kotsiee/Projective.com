@@ -38,7 +38,7 @@ const PANEL_ID = "svd-panel";
 const ALL = "";
 
 /**
- * SavedPage — `/saved` (Decision #174): everything the viewer has saved, starred, favourited or
+ * SavedPage — `/saved` (Decision #180): everything the viewer has saved, starred, favourited or
  * followed, by tab (All · Services & products · People · Projects · Messages · Files), newest save
  * first, with "People you follow" after the saves. Bookmark kinds can be narrowed to one named
  * collection and filed into one from the row; any row can be removed in place (optimistic, rolled back

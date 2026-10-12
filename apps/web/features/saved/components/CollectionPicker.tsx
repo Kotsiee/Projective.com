@@ -22,7 +22,7 @@ const UNKNOWN = "?";
 
 /**
  * CollectionPicker — file a saved bookmark into one of the caller's named collections, or none
- * (Decision #174). Saving through it saves the thing too, so the listing lane's "Add to collection…"
+ * (Decision #180). Saving through it saves the thing too, so the listing lane's "Add to collection…"
  * works whether or not it was saved before. A new collection is created in place and selected.
  * Answers the outcome sentence through `onDone` for the opener to announce.
  */

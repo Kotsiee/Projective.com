@@ -1,4 +1,4 @@
-import type { JSX } from "preact";
+import type { ComponentChildren, JSX } from "preact";
 import "../styles/dev-context.css";
 import type { UserContext } from "@projective/types/auth";
 import {
@@ -21,6 +21,10 @@ import {
 	DEV_SESSION_STATES,
 	DEV_NOTIFICATIONS,
 	DEV_BASKET_SCENARIOS,
+	DEV_PROMO_DISMISSALS,
+	DEV_DISCOVERY_VIEWERS,
+	DEV_DISCOVERY_ACTIVITIES,
+	DEV_EMBEDDINGS,
 	DEV_ROLES,
 	DEV_SAVED,
 	DEV_SERVICE_TYPES,
@@ -41,6 +45,7 @@ import {
 } from "../core/dev-context.ts";
 import { openMoneyFlow } from "@features/checkout/core/money-flow-state.ts";
 import { DevThemeControls } from "./DevThemeControls.tsx";
+import { DevEmbeddingsStatus } from "./DevEmbeddingsStatus.tsx";
 
 // #region Props
 /** Props for {@link DevContextPanel}. */
@@ -51,7 +56,7 @@ export interface DevContextPanelProps {
 // #endregion
 
 /** A labelled row wrapping a segmented control or toggle. */
-function Field(props: { label: string; hint?: string; children: JSX.Element }): JSX.Element {
+function Field(props: { label: string; hint?: string; children: ComponentChildren }): JSX.Element {
 	return (
 		<div class="dev-ctx__field">
 			<div class="dev-ctx__label">
@@ -70,6 +75,19 @@ function Field(props: { label: string; hint?: string; children: JSX.Element }): 
  */
 function reloadProjectPage(): void {
 	if (globalThis.location?.pathname.startsWith("/projects/")) globalThis.location.reload();
+}
+
+/**
+ * Reload when the open page is `/explore`, so a server-side discovery simulation re-composes its rails
+ * at once. Elsewhere nothing reads it until the next `/explore` request.
+ */
+function reloadExplorePage(): void {
+	if (globalThis.location?.pathname === "/explore") globalThis.location.reload();
+}
+
+function reloadDiscoveryPage(): void {
+	const path = globalThis.location?.pathname ?? "";
+	if (path === "/explore" || path.includes("/view/")) globalThis.location.reload();
 }
 
 /** A segmented single-choice control. */
@@ -605,6 +623,61 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						disabled={!o.enabled}
 						onChange={(saved) => patchDevContext({ saved })}
 					/>
+				</Field>
+
+				{
+					/* The Explore Home's dismissible promo slots. A dismissal lives in this browser's storage,
+				    so this is the only way back to a dismissed slot short of clearing site data. The
+				    freelancer audience gate follows the Account type above. */
+				}
+				<Field label="Explore promos" hint="dismissible slots">
+					<Segment
+						name="Explore promos"
+						options={DEV_PROMO_DISMISSALS}
+						value={o.promoDismissal}
+						disabled={!o.enabled}
+						onChange={(promoDismissal) => patchDevContext({ promoDismissal })}
+					/>
+				</Field>
+
+				<Field label="Discovery viewer" hint="personal rails cold start">
+					<Segment
+						name="Discovery viewer"
+						options={DEV_DISCOVERY_VIEWERS}
+						value={o.discoveryViewer}
+						disabled={!o.enabled}
+						onChange={(discoveryViewer) => {
+							patchDevContext({ discoveryViewer });
+							reloadExplorePage();
+						}}
+					/>
+				</Field>
+
+				<Field label="Trending" hint="platform activity">
+					<Segment
+						name="Trending"
+						options={DEV_DISCOVERY_ACTIVITIES}
+						value={o.discoveryActivity}
+						disabled={!o.enabled}
+						onChange={(discoveryActivity) => {
+							patchDevContext({ discoveryActivity });
+							reloadExplorePage();
+						}}
+					/>
+				</Field>
+
+				<Field label="Embeddings" hint="voyage-4 ranking · reloads">
+					<Segment
+						name="Embeddings"
+						options={DEV_EMBEDDINGS}
+						value={o.embeddings}
+						disabled={!o.enabled}
+						onChange={(embeddings) => {
+							patchDevContext({ embeddings });
+							reloadDiscoveryPage();
+						}}
+					/>
+					<DevEmbeddingsStatus mode={o.embeddings} enabled={o.enabled} />
 				</Field>
 
 				{

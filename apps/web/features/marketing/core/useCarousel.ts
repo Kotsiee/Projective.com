@@ -30,11 +30,12 @@ export function useCarousel() {
 
 		const sync = () => {
 			const max = el.scrollWidth - el.clientWidth;
-			atStart.value = el.scrollLeft <= 2;
-			atEnd.value = el.scrollLeft >= max - 2;
-			// `scrollLeft` runs negative in an RTL track in this engine, so the ratio is taken on the
-			// absolute distance travelled — progress means "how far through", never "which way".
-			progress.value = max > 0 ? Math.min(1, Math.abs(el.scrollLeft) / max) : 0;
+			// `scrollLeft` runs 0 → -max in an RTL track, so every edge and ratio is taken on the absolute
+			// distance travelled — "how far through", never "which way".
+			const travelled = Math.abs(el.scrollLeft);
+			atStart.value = travelled <= 2;
+			atEnd.value = travelled >= max - 2;
+			progress.value = max > 0 ? Math.min(1, travelled / max) : 0;
 		};
 
 		sync();

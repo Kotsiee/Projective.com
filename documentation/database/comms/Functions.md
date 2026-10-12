@@ -415,7 +415,7 @@ message from another room would show that room's words to readers who may not be
 the guard's refusal of a cross-room reply and of a self-reply, an `UPDATE` moving a reply out of its
 room, a soft-deleted original accepted, and `body_delta` nulled by both mask triggers.
 
-## Conversation stars (`00001300`, Decision #174)
+## Conversation stars (`00001300`, Decision #180)
 
 ### `comms.set_dm_starred(p_thread_id uuid, p_starred boolean) → boolean`
 
@@ -427,7 +427,7 @@ that column. Idempotent. `42501` when there is no acting user or the caller is n
 Called by `MessagingBackendService.setStarred`, which `SavedBackendService` dispatches the
 conversation kind to; the inbox reads the star back through `is_starred` as before.
 
-## Message favourites and pins (Decision #174)
+## Message favourites and pins (Decision #180)
 
 No new function: `comms.message_favorites` (the caller's own, listed on `/saved`) and
 `comms.message_pins` (room-wide) are written directly under the caller's JWT through their existing

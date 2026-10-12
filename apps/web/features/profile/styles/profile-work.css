@@ -424,7 +424,7 @@
 }
 
 .pf .ex-actions__btn:hover {
-    background: color-mix(in srgb, var(--on-surface) 12%, var(--ex-glass));
+    --ex-actions-fill: color-mix(in srgb, var(--on-surface) 12%, var(--ex-glass));
 }
 
 .pf .ex-actions__btn[aria-pressed="true"] {

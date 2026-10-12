@@ -53,6 +53,14 @@ REVOKE INSERT, UPDATE, DELETE ON TABLE org.deletion_requests FROM anon, authenti
 REVOKE ALL ON TABLE org.handle_changes, org.deletion_requests FROM anon;
 -- #endregion
 
+-- #region org: discovery history (00001400 search.record_view)
+-- Read and clear your own through the two policies (00002010); written only by the definer, so the
+-- client keeps SELECT + DELETE and a guest holds nothing at all.
+REVOKE INSERT, UPDATE ON TABLE org.recent_views FROM anon, authenticated;
+
+REVOKE ALL ON TABLE org.recent_views FROM anon;
+-- #endregion
+
 -- #region Finance: escrow visibility (writes are SECURITY DEFINER only)
 GRANT SELECT ON TABLE finance.escrows TO authenticated;
 
@@ -72,11 +80,49 @@ GRANT SELECT ON search.interest_events TO authenticated;
 GRANT ALL ON search.interest_events TO service_role;
 
 
+-- --- ops.log_entries (production log + web-vitals ingestion) ---
+
+GRANT INSERT ON ops.log_entries TO anon, authenticated;
+
+GRANT SELECT ON ops.log_entries TO authenticated;
+
+GRANT ALL ON ops.log_entries TO service_role;
+
+
 -- --- from 0219_search_engine_weights.sql ---
 
 GRANT SELECT ON search.search_weights TO authenticated;
 
 GRANT ALL ON search.search_weights TO service_role;
+
+
+-- #region search: embedding columns (Decision #179)
+-- The index rows are public reads; their vectors are not. 00002500 granted SELECT on every search
+-- table, so the table-level grant is taken back and re-issued per column without embedding ·
+-- embedding_model · embedding_hash · embedded_at (query_embedding on query_logs). A PostgREST select
+-- of any of them — or of * — is then refused for anon and authenticated; vectors leave the database
+-- only as ids + scores (search.fn_nearest). service_role keeps ALL for the backfill.
+REVOKE SELECT ON search.profiles_index, search.projects_index, search.services_index,
+    search.catalogue_index, search.query_logs FROM anon, authenticated;
+
+GRANT SELECT (entity_id, entity_type, display_name, headline, fts, metadata, rating_average,
+    rating_count, current_workload_intensity, available_since, discovery_penalty, is_active, updated_at)
+    ON search.profiles_index TO anon, authenticated;
+
+GRANT SELECT (project_id, title, fts, industry_category_id, status, target_start_date, is_active,
+    updated_at)
+    ON search.projects_index TO anon, authenticated;
+
+GRANT SELECT (service_id, title, fts, is_public, rating_average, rating_count, updated_at)
+    ON search.services_index TO anon, authenticated;
+
+GRANT SELECT (entity_type, entity_id, title, fts, is_public, updated_at)
+    ON search.catalogue_index TO anon, authenticated;
+
+GRANT SELECT (id, user_id, search_query, filters_applied, created_at, entity_type, duration_ms,
+    result_count, matched_density)
+    ON search.query_logs TO anon, authenticated;
+-- #endregion
 
 
 -- NOTE: grants on views live in 00003005_permissions_view_grants.sql (they must run after the views

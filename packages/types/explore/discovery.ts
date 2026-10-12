@@ -3,14 +3,12 @@ import type { Facet } from "./facets.ts";
 import { ExploreCategory, ExploreEntity, ExploreItemSchema } from "./items.ts";
 import type {
 	ArticleItem,
-	CtaBanner,
 	ExploreItem,
-	HelpArticle,
 	ProductItem,
 	ProfileItem,
 	ProjectItem,
+	PromoSlot,
 	ServiceItem,
-	SponsoredSlot,
 } from "./items.ts";
 
 /**
@@ -137,15 +135,17 @@ export interface HomeFeed {
 	projects: ProjectItem[];
 	products: ProductItem[];
 	articles: ArticleItem[];
-	sponsored: SponsoredSlot[];
-	helpArticles: HelpArticle[];
-	ctas: { freelancer: CtaBanner; team: CtaBanner };
 	/**
-	 * The Recommended panel's four ranked lists. Ranked by the SAME global quality heuristic the
-	 * search path's default sort uses — verified first, then rating/score — NOT by anything
-	 * per-viewer: `homeFeed()` takes no viewer argument and there is no view history on the server.
-	 * It is "recommended" in the sense of "what this marketplace would put forward", and the surface
-	 * must not imply otherwise.
+	 * The reserved promo slots, in feed order: paid placements featured inside their rail, and the
+	 * conversion and editorial breaks placed after the section each names.
+	 */
+	promos: PromoSlot[];
+	/**
+	 * The Recommended panel's four ranked lists. Ranked by the SAME discovery quality score the
+	 * search path's default sort uses (cold-start prior, workload, Discovery Boost, Standing, trust
+	 * penalty — `services/explore/ranking.ts`) — NOT by anything per-viewer. It is "recommended" in
+	 * the sense of "what this marketplace would put forward", and the surface must not imply
+	 * otherwise; the viewer's own rails are {@link HomeFeed.personal}.
 	 */
 	recommended: {
 		services: ServiceItem[];
@@ -153,5 +153,37 @@ export interface HomeFeed {
 		projects: ProjectItem[];
 		people: ProfileItem[];
 	};
+	/** The signed-in viewer's own rails, read under their JWT; both `null` for a guest. */
+	personal: PersonalRails;
+	/**
+	 * What the marketplace is opening this week (`trending`: three or more people per item), or —
+	 * below that floor — what is new (`new`); `null` when neither has enough to fill a rail. The same
+	 * for every viewer.
+	 */
+	trending: DiscoveryRail | null;
+}
+
+/**
+ * What filled a discovery rail. The app words the heading from it, so a heading only ever claims
+ * what the data supports: "Trending" only past the activity floor, "New on Projective" below it.
+ */
+export type DiscoveryRailKind = "because_viewed" | "for_you" | "saved" | "trending" | "new";
+
+/** A rail the discovery service composed — the Home feed's personal and trending rails. */
+export interface DiscoveryRail {
+	kind: DiscoveryRailKind;
+	/** `because_viewed`: the item the picks resemble; the heading names it. */
+	anchor?: { id: string; title: string };
+	/** `for_you`: what the picks matched — the viewer's recent activity, or their stated interests and skills. */
+	basis?: "activity" | "interests";
+	items: ExploreItem[];
+}
+
+/** The viewer's own rails (PRODUCT_SPEC §Reputation & Discovery 2, Recommender Logic). */
+export interface PersonalRails {
+	/** "Because you viewed …" — or "Picked for you" when there is no usable history. */
+	viewed: DiscoveryRail | null;
+	/** What the viewer saved, newest first. */
+	saved: DiscoveryRail | null;
 }
 // #endregion

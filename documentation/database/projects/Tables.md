@@ -907,7 +907,7 @@ RLS — see [Policies.md](Policies.md). Composite PK (`user_id`, `project_id`).
 | :--------------- | :---------- | :------------------------------------------ |
 | `user_id`        | uuid        | NOT NULL, PK. FK → `org.users_public.user_id`. |
 | `project_id`     | uuid        | NOT NULL, PK. FK → `projects.projects.id`.  |
-| `is_starred`     | boolean     | `DEFAULT false` (nullable). **The project's save** (Decision #174): written by `SavedBackendService` (an upsert under the own-row policy), read into every summary's `starred` by `live-queries.ts` `fetchStarredProjectIds`, so the `/projects` Starred filter and `/saved` agree. |
+| `is_starred`     | boolean     | `DEFAULT false` (nullable). **The project's save** (Decision #180): written by `SavedBackendService` (an upsert under the own-row policy), read into every summary's `starred` by `live-queries.ts` `fetchStarredProjectIds`, so the `/projects` Starred filter and `/saved` agree. |
 | `is_archived`    | boolean     | `DEFAULT false` (nullable).                 |
 | `last_viewed_at` | timestamptz | `DEFAULT now()` (nullable).                 |
 

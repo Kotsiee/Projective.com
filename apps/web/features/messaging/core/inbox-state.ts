@@ -85,7 +85,7 @@ export const inboxTotal = signal(0);
 // #endregion
 
 // #region Local per-conversation preferences (optimistic, persisted by the body)
-/** Viewer-local overrides layered over the server row (the star is server state, Decision #174). */
+/** Viewer-local overrides layered over the server row (the star is server state, Decision #180). */
 export interface ConvPref {
 	muted?: boolean;
 	deleted?: boolean;

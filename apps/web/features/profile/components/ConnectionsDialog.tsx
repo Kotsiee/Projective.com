@@ -11,7 +11,7 @@ import { ENTITY_META } from "./profile-glyphs.tsx";
 import { ProfileService } from "../core/ProfileService.ts";
 
 /**
- * ConnectionsDialog — the people behind a profile's follower / following counts (Decision #174). Rows
+ * ConnectionsDialog — the people behind a profile's follower / following counts (Decision #180). Rows
  * are hairline-separated links to each profile — avatar, name, one inline meta line (`@handle · kind`)
  * — never cards; "Load more" pages by the follow instant. A profile the viewer may not see is simply
  * not in the list (the server drops it), so a count can read higher than the rows.

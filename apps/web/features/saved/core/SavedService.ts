@@ -20,7 +20,7 @@ import {
 } from "./saved-sim.ts";
 
 /**
- * SavedService — the THIN client for `/api/saved/*` (served by `SavedBackendService`, Decision #174).
+ * SavedService — the THIN client for `/api/saved/*` (served by `SavedBackendService`, Decision #180).
  * Every star, save and favourite control and the `/saved` page call this, never Supabase. While the
  * Dev Context Switcher's `saved` axis is set, every call is answered by `saved-sim` instead.
  */

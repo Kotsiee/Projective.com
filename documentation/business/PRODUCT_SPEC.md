@@ -2054,7 +2054,7 @@ When a project-derived asset is sold, the marketplace logic can be configured to
 
 ---
 
-### Saved & Favourites (Decision #174)
+### Saved & Favourites (Decision #180)
 
 One saved system, one page. Whatever a person stars, saves or favourites lands on **`/saved`**
 (the account menu's **Saved**), and every star / save control on the platform writes the same way:
@@ -2065,7 +2065,7 @@ it changes at once, persists, and — if the platform refuses — changes back a
 | A service, product or article | The Explore card's star; the listing page's **Save** and **Add to collection…** | A bookmark. |
 | A person, team, business or organisation | The Explore card's star | A bookmark — private. **Following** is separate and public (the profile's Follow); the people someone follows are listed on `/saved` under **People you follow**, and unfollowing there is the same unfollow. |
 | A project | The star on `/projects` cards and the project header; **Save project** on its public page | The project's star — the `/projects` **Starred** filter and `/saved` agree. |
-| A project room | The channel header's star | The room tree's **Starred** filter reads it (Decision #175). |
+| A project room | The channel header's star | The room tree's **Starred** filter reads it (Decision #181). |
 | A conversation | The conversation header, row menu and inbox row | The `/messages` **Starred** view reads it. |
 | A message | Favourite in the message menu | Private to the person. (Pin is different: it is shared with the whole room.) |
 | A file | The star in a file's preview | The **owner's** mark — the star is offered only on files the viewer owns. |
@@ -2118,7 +2118,30 @@ To prevent "Marketplace Entrenchment," the search algorithm is **Workload-Aware*
 - **Recommender Logic:** For freelancers browsing the "Explore" page, the system utilises their
   project history and "Saved" preferences to surface Pipelines and One-Offs that match their
   demonstrated skill set. _How a save weighs in the ranking is not yet specified, so the saved signal
-  does not feed Explore ranking yet — Decision #174 flag (c)._
+  does not feed Explore ranking yet — Decision #180 flag (c)._
+
+How these apply (Decision #178; the concrete dials are in `finance-model.md` §16.7):
+
+- **One score, every surface.** Every "recommended" order — the Explore Home's lists, a recommended
+  search — ranks by one quality score: the reviews that speak for the item (a seller's delivery
+  reviews; for a project, its client's), pulled toward the marketplace average until there are
+  enough of them to speak for themselves, so a newcomer starts at the average and never at zero;
+  review volume with diminishing returns; availability against the Global Intensity Cap; the
+  Discovery Boost; the Standing rung's discovery weighting; and any active discovery-rank penalty,
+  which a rung never offsets. Verification and payment never move it.
+- **The Discovery Boost is earned, never sold.** It goes to a seller who is new or still on the first
+  Standing rung, has nothing claimed against their cap, and carries no penalty and no rating below
+  the clean bar. No plan buys it.
+- **Personal rails.** A signed-in person's Explore Home adds "Because you viewed …" — relatives of
+  something they recently opened, or, without such history, picks matched to what they have been
+  exploring and else to their stated skills and interests: briefs for someone who takes work, what
+  to hire or buy for anyone else — and "Saved". Everyone sees "Trending": what several people opened
+  or saved this week, shown only once enough distinct people agree that no one's history can be
+  inferred, and otherwise "New on Projective". A rail with nothing honest to show is not shown, the
+  personal rails never recommend a person's own work back to them, and their own visits never count
+  toward Trending.
+- **A viewing history is private.** It is recorded only for a signed-in person, read only by them,
+  and never shown to anyone else; Trending is an aggregate over at least three people.
 
 #### 3. Reciprocal Reviews
 
@@ -2644,7 +2667,7 @@ before it is obstructive. Turning refusal on is a deliberate decision, never a s
 ### The showcase band
 
 An image is measured once, at upload, and its width, height and aspect ratio are stored with the
-asset. Every **showcase tile** — a product's cover in a masonry, a rail or a cross-sell carousel — is
+asset. Every **showcase tile** — a product's cover in a masonry, a rail or a cross-sell rail — is
 sized from that measured ratio, **clamped into one band: 4:5 (portrait) to 16:9 (landscape)**. A
 picture inside the band is drawn whole at its own shape, which is what lets a masonry interlock; a
 picture outside it is drawn in the nearer bound and cropped to fit (`object-fit: cover`), so a tower

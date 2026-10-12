@@ -8,7 +8,7 @@ import { SavedBackendService } from "@server/services/saved/SavedBackendService.
 const SaveSchema = SavedToggleSchema.omit({ saved: true });
 
 /**
- * `/api/saved` — thin routes over {@link SavedBackendService} (Decision #174). The actor comes from the
+ * `/api/saved` — thin routes over {@link SavedBackendService} (Decision #180). The actor comes from the
  * session; the service answers 401 for a guest and 503 without the live backend.
  *
  * - `GET ?tab=&collection=&cursor=&limit=` — one page of saved things + the caller's collections.

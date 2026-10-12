@@ -26,10 +26,10 @@ import "../styles/explore-home.css";
  *
  * ## "Recommended" means what the marketplace puts forward, not what it knows about you
  *
- * The ranking behind these lists is a global quality heuristic — verified entities first, then score.
- * `homeFeed()` takes no viewer argument and there is no server-side view history anywhere in this
- * product, so nothing here is personalised, and the label is deliberately a quiet muted eyebrow
- * rather than a headline that would imply otherwise.
+ * The ranking behind these lists is the global discovery quality score (`services/explore/ranking.ts`)
+ * — the same for every reader. Nothing here is personalised (the viewer's own rails are the body's
+ * "Because you viewed" and "Saved"), and the label is deliberately a quiet muted eyebrow rather than
+ * a headline that would imply otherwise.
  *
  * ## Why this does not reuse {@link HomeRail}
  *

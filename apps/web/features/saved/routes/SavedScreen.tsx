@@ -4,7 +4,7 @@ import { parseCollection, parseTab } from "../core/saved-model.ts";
 import SavedPage from "../islands/SavedPage.island.tsx";
 
 /**
- * `/saved` — everything the viewer saved (Decision #174), re-exported by
+ * `/saved` — everything the viewer saved (Decision #180), re-exported by
  * `routes/(dashboard)/saved/index.tsx`. Thin controller: decode the deep link (`?tab=&collection=`;
  * anything unknown falls back to All) and hand it to the island, which reads `/api/saved`. The
  * `(dashboard)` guard has already required a session.

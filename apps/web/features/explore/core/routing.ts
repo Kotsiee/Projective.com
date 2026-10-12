@@ -56,9 +56,17 @@ export function profileHandleOf(pathname: string): string | null {
  * `/[handle]/view/[id]?type=[entity]` (profiles still route to their own `/[handle]`).
  */
 export function itemHref(item: ExploreItem, ctx: HrefContext = { scope: "explore" }): string {
-	if (isProfileEntity(item.type)) return profileHref(item.owner.handle);
-	const q = `/view/${item.id}?type=${item.type}`;
-	return ctx.scope === "profile" ? `/${ctx.handle}/view/${item.id}?type=${item.type}` : q;
+	return entityHref({ id: item.id, type: item.type, ownerHandle: item.owner.handle }, ctx);
+}
+
+/** {@link itemHref} for a bare reference — a typeahead hit carries no whole item. */
+export function entityHref(
+	ref: { id: string; type: ExploreEntity; ownerHandle: string },
+	ctx: HrefContext = { scope: "explore" },
+): string {
+	if (isProfileEntity(ref.type)) return profileHref(ref.ownerHandle);
+	const q = `/view/${ref.id}?type=${ref.type}`;
+	return ctx.scope === "profile" ? `/${ctx.handle}/view/${ref.id}?type=${ref.type}` : q;
 }
 
 /**

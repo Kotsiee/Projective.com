@@ -841,7 +841,7 @@ END;
 $$;
 
 -- The same public identity for a profile of ANY kind — a person, team, business or organisation — as
--- the /saved page and a profile's followers / following lists show it (Decision #174). Pairs are
+-- the /saved page and a profile's followers / following lists show it (Decision #180). Pairs are
 -- (p_types[i], p_ids[i]); a pair the caller may not see (org.fn_profile_visible) is simply absent, so
 -- a private profile never leaks through someone's saved list or follow graph. PL/pgSQL for the same
 -- file-order reason as get_party_cards.

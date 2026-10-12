@@ -15,14 +15,11 @@ CREATE TABLE ops.admin_users (
 );
 
 -- #region Log ingestion (production client/server diagnostics)
--- SCHEMA DECISION — FLAGGED. The gap audit proposed a dedicated `logging` schema holding this one
--- table, and `packages/backend/services/logging/LogBackendService.ts` + `packages/backend/core/env.ts`
--- both still name `logging.entries` as the live insert target. It lands here as `ops.log_entries`
--- instead: `ops` is already the operational/admin namespace, and a fourteenth schema created to hold a
--- single table buys a search_path entry, a grant surface and a policy file for isolation a table name
--- already gives us. Those two docstrings are the only references, neither is executable, and the live
--- branch of `LogBackendService.ingest` is still a fall-through — so nothing breaks until the insert is
--- actually wired, at which point both must be repointed at `ops.log_entries`.
+-- SCHEMA DECISION. The gap audit proposed a dedicated `logging` schema holding this one table. It
+-- lands here as `ops.log_entries` instead: `ops` is already the operational/admin namespace, and a
+-- fourteenth schema created to hold a single table buys a search_path entry, a grant surface and a
+-- policy file for isolation a table name already gives us. `LogBackendService` inserts here through
+-- PostgREST, which is why `ops` is in `supabase/config.toml` [api].schemas.
 CREATE TABLE ops.log_entries (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   -- LogEntry.id, generated in the browser. Kept beside our own `id` rather than used as the PK: it
@@ -30,9 +27,11 @@ CREATE TABLE ops.log_entries (
   -- session's in-browser inspector history to a stored row — never an identity we key on or trust.
   client_id text NOT NULL,
   -- The Zod LogLevel enum has five members but only the two durable ones are ever persisted
-  -- (`debug`/`info`/`network` are dev-inspector noise, see packages/types/logging/mod.ts). Modelled as
-  -- text + CHECK rather than a Postgres enum: an enum would either mirror all five and need this same
-  -- CHECK anyway, or diverge from the SSOT's name for its own domain.
+  -- (`debug`/`info`/`network` are dev-inspector noise, see packages/types/logging/mod.ts). The third
+  -- stored level, `metric`, is not a LogLevel at all: it is a Core Web Vitals sample
+  -- (`PersistedLogLevel` in the same SSOT), whose figures live in `data`. Modelled as text + CHECK
+  -- rather than a Postgres enum: an enum would either mirror all five and need this same CHECK anyway,
+  -- or diverge from the SSOT's name for its own domain.
   level text NOT NULL,
   message text NOT NULL,
   -- Client-supplied event time (LogEntry.at, epoch ms) and therefore UNTRUSTED — a skewed browser clock
@@ -71,7 +70,7 @@ CREATE TABLE ops.log_entries (
   -- length or range CHECKs mirroring the SSOT's max() caps: ingest must never fail loudly (the service
   -- contract is that a logging failure is invisible to the user), so a boundary bug should truncate at
   -- the service, not turn into a rejected insert on the one path that reports our other failures.
-  CONSTRAINT log_entries_level_check CHECK (level = ANY (ARRAY['warn'::text, 'error'::text])),
+  CONSTRAINT log_entries_level_check CHECK (level = ANY (ARRAY['warn'::text, 'error'::text, 'metric'::text])),
   CONSTRAINT log_entries_source_check CHECK (source = ANY (ARRAY['client'::text, 'server'::text]))
 );
 -- No `updated_at`: an entry is append-only, so the column would be a permanent duplicate of

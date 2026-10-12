@@ -1,0 +1,62 @@
+/* #region Rail module — host variants, sub-levels and edge states */
+.ex-rail__track {
+	overscroll-behavior-x: contain;
+}
+
+.ex-rail__nav {
+	margin-inline-start: auto;
+}
+
+.ex-rail[data-scrollable="false"] .ex-rail__nav,
+.ex-rail:has(> .ex-rail__track > .ex-rail__cell:only-child) .ex-rail__nav,
+.ex-rail:has(> .ex-rail__track > .ex-rail__cell:only-child) .ex-rail__progress {
+	visibility: hidden;
+}
+
+[dir="rtl"] .ex-railbtn .ui-icon,
+[dir="rtl"] .ex-rail__action .ui-icon {
+	transform: scaleX(-1);
+}
+
+.ex-rail__sub {
+	margin: calc(var(--space-1) - var(--space-3)) 0 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.ex-rail__title.ex-rail__title--sub {
+	font-size: var(--text-xs);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+}
+
+.ex-rail__title--sub .ex-rail__lead {
+	font-weight: var(--fw-semibold);
+	font-style: normal;
+	color: var(--text-secondary);
+}
+
+.ex-rail--contained .ex-rail__track {
+	--ex-cell-w: clamp(17rem, 30cqi, 19rem);
+
+	margin-inline-end: 0;
+	padding-inline-end: 0;
+}
+
+.ex-rail__grid.ex-rail__grid--3 {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@container (max-width: 44rem) {
+	.ex-rail__grid.ex-rail__grid--3 {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@media (max-width: 767.98px) {
+	.ex-rail__grid.ex-rail__grid--3 {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+/* #endregion */

@@ -14,7 +14,7 @@ import { savedFlag, savedTypeOf, toggleFlag } from "@features/saved/core/saved-s
  * `aria-label`, a portal `Tooltip` (never a native `title`), and a hit target past the 24px floor —
  * 32×32 here.
  *
- * Save is the shared saved system (Decision #174): the card's flag comes from one batched
+ * Save is the shared saved system (Decision #180): the card's flag comes from one batched
  * `/api/saved/state` read for the whole grid, a press writes `/api/saved` optimistically and rolls back
  * on refusal, and the outcome is announced. A signed-out reader gets a sign-in link in the same slot
  * rather than a control that silently does nothing. The kebab's Report and Add-to-project were stubs

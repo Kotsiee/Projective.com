@@ -517,7 +517,7 @@ CREATE TABLE org.user_skills (
     CONSTRAINT user_skills_skill_id_fkey FOREIGN KEY (skill_id) REFERENCES org.skills (id)
 );
 
--- A user's named saved collection (Decision #174). A bookmark sits in at most one; an unfiled
+-- A user's named saved collection (Decision #180). A bookmark sits in at most one; an unfiled
 -- bookmark has a NULL collection_id. Deleting a collection unfiles its bookmarks, never deletes them.
 CREATE TABLE org.user_bookmark_collections (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
@@ -545,6 +545,33 @@ CREATE TABLE org.user_bookmarks (
         ),
         CONSTRAINT user_bookmarks_collection_fkey FOREIGN KEY (collection_id, user_id)
             REFERENCES org.user_bookmark_collections (id, user_id) ON DELETE SET NULL (collection_id)
+);
+
+-- A signed-in person's own discovery history: the anchor of their "Because you viewed" rail and,
+-- aggregated past a floor of three people, the Trending rail (search.trending_entities). ONE row per
+-- person per entity — a repeat view moves `viewed_at` and counts `view_count` — so the table grows
+-- with what a person has opened, never with how often. Polymorphic like org.user_bookmarks (a bare
+-- `entity_id`, no FK) and in the same vocabulary, widened by the three things a person can open but
+-- not bookmark: a product, an article and a buyer's profile. A CHECK rather than widening
+-- org.bookmark_entity_type, which would make those bookmarkable too. Read-own; the only writer is the
+-- search.record_view definer (00001400), which stamps both times itself.
+CREATE TABLE org.recent_views (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    user_id uuid NOT NULL REFERENCES org.users_public (user_id) ON DELETE CASCADE,
+    entity_type text NOT NULL,
+    entity_id uuid NOT NULL,
+    view_count integer NOT NULL DEFAULT 1,
+    first_viewed_at timestamptz NOT NULL DEFAULT now(),
+    viewed_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT recent_views_entity_type_check CHECK (
+        entity_type IN (
+            'project', 'service_blueprint', 'freelancer', 'business', 'team',
+            'product', 'article', 'user'
+        )
+    ),
+    CONSTRAINT recent_views_view_count_check CHECK (view_count >= 1),
+    CONSTRAINT recent_views_order_check CHECK (viewed_at >= first_viewed_at),
+    CONSTRAINT uq_recent_views UNIQUE (user_id, entity_type, entity_id)
 );
 
 -- #region Profile detail (structured tab entries + the public follow graph)

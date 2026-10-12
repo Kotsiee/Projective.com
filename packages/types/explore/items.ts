@@ -156,6 +156,12 @@ export const ProfileItemSchema = z.object({
 	highlights: z.array(z.string()).optional(),
 	/** Freelancers only: prices of active linked services (the card derives a fenced floor). */
 	servicePrices: z.array(z.number()).optional(),
+	/**
+	 * Freelancers only: the ISO-4217 currency every `servicePrices` entry is quoted in. Absent when
+	 * the active services span more than one currency — a floor taken across currencies is not a
+	 * price, so a surface that needs one shows none rather than a figure in the wrong money.
+	 */
+	serviceCurrency: z.string().min(3).max(3).optional(),
 	/** Freelancers only: count of currently listed digital products. */
 	products: z.number().optional(),
 	/** Freelancers only: current booking load + availability detail. */
@@ -191,9 +197,9 @@ export const ServiceItemSchema = z.object({
 	category: z.string(),
 	serviceType: ServiceType,
 	/**
-	 * Pipeline services only — the standard per-ticket price. The card shows a workload-intensity RANGE
-	 * around it (0.5× low → 2.0× high), never a single fixed figure, since a pipeline is billed per
-	 * ticket at variable intensity.
+	 * Pipeline services only — the standard per-ticket price. A pipeline is billed per ticket at the
+	 * client's chosen intensity (PRODUCT_SPEC §The Architect's Override: Low 0.5× · Standard 1× ·
+	 * High 2×), so the card and the search drawer quote its Low-intensity FLOOR ("From …").
 	 */
 	ticketPrice: z.number().optional(),
 	/**
@@ -253,7 +259,16 @@ export const ProjectItemSchema = z.object({
 	type: z.literal("projects"),
 	org: z.string(),
 	stage: z.string(),
+	/** The escrow budget, pre-formatted in its own currency — the fallback when `budgetMinor` is absent. */
 	budget: z.string(),
+	/**
+	 * The escrow budget as STRUCTURED money (integer minor units in {@link currency}), so a surface
+	 * renders it through `MoneyView` in the viewer's display currency. Absent when the brief has no
+	 * budget yet.
+	 */
+	budgetMinor: z.number().int().optional(),
+	/** The ISO-4217 currency `budgetMinor` is quoted in. */
+	currency: z.string().min(3).max(3).optional(),
 	/** Pipeline (staged) vs One-Off (single deliverable) — the prominent project classification. */
 	classification: ProjectClassification,
 	roles: z.array(z.string()),
@@ -344,10 +359,28 @@ export type ExploreItem = z.infer<typeof ExploreItemSchema>;
 // #endregion
 
 // #region Promos
-/** A promoted/sponsored frame reserved in the feed. */
-export const SponsoredSlotSchema = z.object({
+/** The Home sections a promo can join (`sponsored`) or follow (`cta` · `editorial`). */
+export const PromoAnchorSchema = z.enum(["services", "freelancers", "projects", "products", "articles"]);
+export type PromoAnchor = z.infer<typeof PromoAnchorSchema>;
+
+/** A help/support article listed by an editorial promo. */
+export const HelpArticleSchema = z.object({
 	id: z.string(),
-	eyebrow: z.string(),
+	title: z.string(),
+	minutes: z.number(),
+	href: z.string(),
+});
+export type HelpArticle = z.infer<typeof HelpArticleSchema>;
+
+/**
+ * A paid placement (`marketplace.promoted_placements`, surface `explore_home`), featured as a wide
+ * cell inside the rail of the item it promotes. `itemId` de-duplicates it against that rail.
+ */
+export const SponsoredPromoSchema = z.object({
+	variant: z.literal("sponsored"),
+	id: z.string(),
+	rail: z.enum(["services", "products"]),
+	itemId: z.string(),
 	title: z.string(),
 	body: z.string(),
 	media: z.string(),
@@ -357,26 +390,42 @@ export const SponsoredSlotSchema = z.object({
 	href: z.string(),
 	cta: z.string(),
 });
-export type SponsoredSlot = z.infer<typeof SponsoredSlotSchema>;
+export type SponsoredPromo = z.infer<typeof SponsoredPromoSchema>;
 
-/** A help/support article surfaced as an informative feed break. */
-export const HelpArticleSchema = z.object({
+/** A conversion call-to-action ("Become a Freelancer" / "Launch a Team"). */
+export const CtaPromoSchema = z.object({
+	variant: z.literal("cta"),
 	id: z.string(),
-	title: z.string(),
-	minutes: z.number(),
-	href: z.string(),
-});
-export type HelpArticle = z.infer<typeof HelpArticleSchema>;
-
-/** A conversion call-to-action banner ("Become a Freelancer" / "Launch a Team"). */
-export const CtaBannerSchema = z.object({
-	id: z.string(),
+	after: PromoAnchorSchema,
 	eyebrow: z.string(),
 	title: z.string(),
 	body: z.string(),
 	href: z.string(),
 	cta: z.string(),
-	tone: z.enum(["primary", "neutral"]),
+	/** `non_freelancers` withholds the slot from a viewer who can already sell. */
+	audience: z.enum(["everyone", "non_freelancers"]),
+	dismissible: z.boolean(),
 });
-export type CtaBanner = z.infer<typeof CtaBannerSchema>;
+export type CtaPromo = z.infer<typeof CtaPromoSchema>;
+
+/** An editorial break — a titled list of help reads. */
+export const EditorialPromoSchema = z.object({
+	variant: z.literal("editorial"),
+	id: z.string(),
+	after: PromoAnchorSchema,
+	lead: z.string(),
+	tail: z.string(),
+	href: z.string(),
+	hrefLabel: z.string(),
+	articles: z.array(HelpArticleSchema),
+});
+export type EditorialPromo = z.infer<typeof EditorialPromoSchema>;
+
+/** One reserved Home promo slot, discriminated by `variant`. */
+export const PromoSlotSchema = z.discriminatedUnion("variant", [
+	SponsoredPromoSchema,
+	CtaPromoSchema,
+	EditorialPromoSchema,
+]);
+export type PromoSlot = z.infer<typeof PromoSlotSchema>;
 // #endregion

@@ -2,6 +2,7 @@ import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
 import { ANONYMOUS_READER, canReadLive, type ReadActor } from "../read-actor.ts";
 import { ExploreBackendService } from "../explore/ExploreBackendService.ts";
+import { reembedInBackground } from "../search/embedding-sync.ts";
 import {
 	fetchEditModel,
 	fetchExperience,
@@ -296,6 +297,7 @@ export class ProfileBackendService {
 		if (!target.ok || !target.data) return fail(target.status, { message: target.message });
 		const saved = await saveProfile(target.data.owner, patch, actor);
 		if (!saved.ok) return fail(saved.status, { message: saved.message, errors: saved.errors });
+		reembedInBackground([handle.replace(/^@/, "")], "a profile save");
 		const model = await fetchEditModel(handle, actor);
 		if (!model) return unavailable();
 		return ok({ model }, { message: "Profile saved." });

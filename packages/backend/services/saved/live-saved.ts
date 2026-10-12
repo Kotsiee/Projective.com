@@ -20,7 +20,7 @@ import { setMessageFavourite } from "../messaging/live-message-marks.ts";
 import { MessagingBackendService } from "../messaging/MessagingBackendService.ts";
 
 /**
- * live-saved — the per-kind stores behind `SavedBackendService` (Decision #174). Each kind keeps its
+ * live-saved — the per-kind stores behind `SavedBackendService` (Decision #180). Each kind keeps its
  * save where it already lived; this module resolves a surface's `ref` to that store's key, writes it,
  * reads the caller's saved rows back and resolves them for display. Every query runs under the
  * caller's own JWT, so RLS decides what they may save and see.

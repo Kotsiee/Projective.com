@@ -224,7 +224,7 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 	function done(): void {
 		if (sel.active.value) sel.exit();
 	}
-	/** Favourite (save) a message through the saved system (Decision #174), optimistic with rollback. */
+	/** Favourite (save) a message through the saved system (Decision #180), optimistic with rollback. */
 	async function toggleFavorite(id: string): Promise<void> {
 		const m = messages.value.find((x) => x.id === id);
 		done();

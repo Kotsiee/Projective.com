@@ -1,7 +1,9 @@
 import "../styles/hero-search.css";
 import { useSignal } from "@preact/signals";
-import { useEffect } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import { Icon } from "@projective/ui/icons";
+import SearchSuggest from "@features/explore/islands/SearchSuggest.island.tsx";
+import { recordSearch } from "@features/explore/core/search-history.ts";
 import { useDismiss, useEdgeDetection, useOverlayStack } from "@projective/ui/hooks";
 import { BodyPortal } from "@projective/ui/overlay";
 import {
@@ -24,7 +26,7 @@ import {
  * than the header's hand-authored ones. Submitting or
  * choosing a category/trending tag navigates to `/explore` with `?category=` + `?q=` — a real
  * navigation, so the server re-renders the correct layout (Home ↔ Search Results). Reduced-motion
- * shows a static placeholder.
+ * shows a static placeholder. The field is the shared `SearchSuggest` typeahead.
  */
 
 // #region Static config
@@ -92,6 +94,7 @@ export default function SearchBar({
 	const menuOpen = useSignal(false);
 	const query = useSignal(initialQuery);
 	const typed = useSignal("");
+	const formRef = useRef<HTMLFormElement>(null);
 
 	// #region Typewriter placeholder
 	// Retype/erase the phrases for the active category; restarts when the category flips.
@@ -148,7 +151,10 @@ export default function SearchBar({
 	function go(q: string) {
 		const params = new URLSearchParams();
 		if (category.value !== "all") params.set("category", category.value);
-		if (q) params.set("q", q);
+		if (q) {
+			params.set("q", q);
+			recordSearch(q);
+		}
 		const qs = params.toString();
 		globalThis.location.href = qs ? `/explore?${qs}` : "/explore";
 	}
@@ -156,6 +162,7 @@ export default function SearchBar({
 	return (
 		<div class={`hero-search hero-search--${variant}`}>
 			<form
+				ref={formRef}
 				class="hero-search__bar"
 				role="search"
 				onSubmit={(e) => {
@@ -211,12 +218,13 @@ export default function SearchBar({
 				</div>
 
 				<div class="hero-search__field">
-					<input
-						class="hero-search__input"
-						type="search"
-						value={query.value}
+					<SearchSuggest
+						value={query}
+						scope={category.value}
+						inputClass="hero-search__input"
+						anchorRef={formRef}
 						aria-label={`Search ${searchScopeLabel(category.value).toLowerCase()}`}
-						onInput={(e) => (query.value = (e.currentTarget as HTMLInputElement).value)}
+						onSearch={go}
 					/>
 					{query.value === "" && (
 						<span class="hero-search__ghost" aria-hidden="true">

@@ -2,17 +2,29 @@ import type { SupabaseClient } from "supabaseClient";
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
 import { publicObjectUrl } from "../../core/storage-url.ts";
 import { resolveSkill } from "./skills.ts";
+import {
+	byScore,
+	priorMeanOf,
+	type RankingWeights,
+	type RankSignals,
+	resolveWeights,
+	scoreItem,
+} from "./ranking.ts";
+import { workloadPercent } from "../workspace/mappers.ts";
 import type {
 	ArticleItem,
+	DiscoveryEntityKind,
 	DualRating,
 	ExploreItem,
 	ExploreOwner,
 	ProductItem,
 	ProfileItem,
 	ProjectItem,
+	RankingWeightRow,
 	ServiceItem,
 	ServiceType,
 	SkillRef,
+	TrendingEntityRow,
 } from "@projective/types/explore";
 import type { ImagePlaceholder } from "@projective/types/files";
 import { currencyExponent, toMajorUnits } from "@projective/types/finance";
@@ -36,6 +48,16 @@ import { currencyExponent, toMajorUnits } from "@projective/types/finance";
  * would let their own drafts leak into a cache every other visitor is served from. RLS still decides
  * what `anon` sees (00002020 · 00002011 · 00002018), and the profile directory is the column-level
  * definer view `org.profiles_index` (00003001) — this module never touches `org.users_public`.
+ *
+ * ## Ranked at load
+ *
+ * The same load reads the ranking signals — active discovery-rank penalties (`search.profiles_index`),
+ * the coefficients (`search.ranking_weights()`) and the k-anonymous Trending aggregate
+ * (`search.trending_entities()`) — and scores every item once (`./ranking.ts`), so `items` arrives in
+ * recommended order and no request re-scores. Each is public by construction (a cache, a definer door
+ * projecting coefficients, an aggregate floored at three people), which is what keeps this load
+ * anonymous and its cache shared. Anything about ONE viewer belongs to the viewer pass
+ * (`./viewer-signals.ts`), read under that viewer's own token and never cached here.
  *
  * ## Never invent
  *
@@ -99,6 +121,14 @@ export interface ProfileRow {
 	 */
 	standing_level: number | null;
 	standing_label: string | null;
+	/** The rung's discovery multiplier in basis points (10000 = 1.0×); `null` for a buyer. */
+	discovery_weight_bp: number | null;
+	/**
+	 * The Global Intensity Cap `workload` is measured against — the seller's own override, else the
+	 * platform default; a team's is its members' combined. `null` for a buyer. `numeric`, so PostgREST
+	 * may send it as text.
+	 */
+	workload_cap: number | string | null;
 }
 
 interface ListingRow {
@@ -261,6 +291,22 @@ export interface FileRow {
 interface PlacementRow {
 	entity_type: string;
 	entity_id: string;
+	surface: PlacementSurface;
+}
+
+/** The inventory slot a placement was bought for (`promoted_placements_surface_check`). */
+export type PlacementSurface = "explore_home" | "explore_results" | "view_rail";
+
+/** One active paid placement, resolved to the discovery item it promotes. */
+export interface CatalogPlacement {
+	surface: PlacementSurface;
+	itemId: string;
+}
+
+/** A penalised entity's active discovery-rank severity (`search.profiles_index`, positive rows only). */
+export interface PenaltyRow {
+	entity_id: string;
+	discovery_penalty: number | string;
 }
 
 // #endregion
@@ -276,10 +322,38 @@ export interface CatalogMedia {
 	height: number | null;
 }
 
+/** The database entity behind a discovery item, in the discovery-signal vocabulary (views, saves). */
+export interface CatalogEntity {
+	kind: DiscoveryEntityKind;
+	/** The entity's uuid — a blueprint, product, article, project, or profile entity id. */
+	id: string;
+}
+
+/** The lookup key {@link Catalog.itemIdByEntity} is keyed by. */
+export function entityKey(kind: string, id: string): string {
+	return `${kind}:${id}`;
+}
+
 /** Everything a discovery surface reads, loaded once and shared. */
 export interface Catalog {
-	/** Every discoverable item, in a stable order (the query layer ranks it). */
+	/**
+	 * Every discoverable item, in RECOMMENDED order — best discovery score first (`./ranking.ts`), so a
+	 * filter over it keeps that order and a stable sort's ties fall back to it.
+	 */
 	items: ExploreItem[];
+	/** Item id → its discovery quality score. */
+	scoreById: Map<string, number>;
+	/** The coefficients that score was computed with — the viewer pass ranks with the same ones. */
+	weights: RankingWeights;
+	/** Item id → the database entity behind it. */
+	entityById: Map<string, CatalogEntity>;
+	/** {@link entityKey} → item id: resolves a view, a save or a trending row back to a live item. */
+	itemIdByEntity: Map<string, string>;
+	/**
+	 * What three or more people opened or saved in the last {@link TRENDING_WINDOW_DAYS} days, most
+	 * active first, as item ids (`search.trending_entities`). Anything no longer published is dropped.
+	 */
+	trending: string[];
 	/** Item id (slug / handle) → item. */
 	byId: Map<string, ExploreItem>;
 	/** Service item id → its blueprint row (the view page's service extension reads it). */
@@ -303,12 +377,23 @@ export interface Catalog {
 	profileById: Map<string, ProfileRow>;
 	/** The subject ids (blueprint / product uuid) of every active paid placement. */
 	sponsoredSubjects: Set<string>;
+	/** Every active placement on a published listing, oldest flight first. */
+	placements: CatalogPlacement[];
 	/** When this load completed. */
 	loadedAt: number;
 }
 
 /** How long one load serves every request. Short: a seller's publish should appear quickly. */
 export const CATALOG_TTL_MS = 30_000;
+
+/** The Trending window, in days. */
+export const TRENDING_WINDOW_DAYS = 7;
+
+/** How many trending entities one load asks for — more than a rail shows, since some may be unpublished. */
+const TRENDING_READ_LIMIT = 48;
+
+/** Logged once per process, not once per load: a database seeded before a coefficient existed. */
+let reportedMissingWeights = false;
 
 let cached: { at: number; value: Promise<Catalog> } | null = null;
 /** The last catalogue that loaded successfully — served by {@link peekCatalog} even once expired. */
@@ -365,14 +450,17 @@ export async function warmCatalog(): Promise<void> {
 }
 
 /**
- * Install a catalogue as the latest snapshot WITHOUT reading the database — for unit tests of the
- * synchronous resolvers (`findItem`, `composeLoadedViewPage`) and nothing else. Build one from rows
- * with {@link assemble}. `null` clears it. The next awaited {@link loadCatalog} still reads the
- * database: this only changes what {@link peekCatalog} answers.
+ * Install a catalogue as the latest snapshot WITHOUT reading the database — for unit tests only. Build
+ * one from rows with {@link assemble}. `null` clears it. By default the next awaited
+ * {@link loadCatalog} still reads the database and only {@link peekCatalog} changes; with `serve` the
+ * awaited loads answer with it too for one TTL, for service-level tests that must not reach Postgres.
  */
-export function primeCatalogForTesting(catalog: Catalog | null): void {
+export function primeCatalogForTesting(
+	catalog: Catalog | null,
+	options: { serve?: boolean } = {},
+): void {
 	latest = catalog;
-	cached = null;
+	cached = catalog && options.serve ? { at: Date.now(), value: Promise.resolve(catalog) } : null;
 }
 
 // #endregion
@@ -423,31 +511,64 @@ async function byIds<T>(
 async function readCatalog(): Promise<Catalog> {
 	const db = getAnonClient();
 
-	const [profilesRes, listingsRes, articlesRes, projectsRes, placementsRes, skillsRes] =
-		await Promise
-			.all([
-				db.schema("org").from("profiles_index").select(
-					"entity_id, entity_type, handle, name, headline, languages, location, city, rating_as_client, reviews_as_client, rating_as_freelancer, reviews_as_freelancer, active_project_count, total_project_count, member_count, listed, avatar_bucket, avatar_path, banner_bucket, banner_path, verified, skills, workload, joined_at, verification_tier, language_codes, delivered_count, showcase_bucket, showcase_path, standing_level, standing_label",
-				),
-				db.schema("catalogue").from("listings").select(
-					"id, owner_user_id, owner_team_id, kind, service_blueprint_id, product_id, title, description_text, category, delivery_label, amount_cents, currency, ticket_price_cents, session_price_cents, seats_per_session, free_revisions, extra_revision_price_cents, promoted, published_at, created_at",
-				).eq("status", "published"),
-				db.schema("catalogue").from("articles").select(
-					"id, slug, owner_user_id, owner_team_id, title, topic, summary, body, cover_file_id, read_minutes, published_at, created_at",
-				).eq("status", "published"),
-				db.schema("projects").from("projects").select(PROJECT_COLUMNS).eq("status", "active").eq(
-					"visibility",
-					"public",
-				),
-				db.schema("marketplace").from("promoted_placements").select("entity_type, entity_id"),
-				db.schema("org").from("skills").select("id, slug, label"),
-			]);
+	const [
+		profilesRes,
+		listingsRes,
+		articlesRes,
+		projectsRes,
+		placementsRes,
+		skillsRes,
+		penaltiesRes,
+		weightsRes,
+		trendingRes,
+	] = await Promise
+		.all([
+			db.schema("org").from("profiles_index").select(
+				"entity_id, entity_type, handle, name, headline, languages, location, city, rating_as_client, reviews_as_client, rating_as_freelancer, reviews_as_freelancer, active_project_count, total_project_count, member_count, listed, avatar_bucket, avatar_path, banner_bucket, banner_path, verified, skills, workload, joined_at, verification_tier, language_codes, delivered_count, showcase_bucket, showcase_path, standing_level, standing_label, discovery_weight_bp, workload_cap",
+			),
+			db.schema("catalogue").from("listings").select(
+				"id, owner_user_id, owner_team_id, kind, service_blueprint_id, product_id, title, description_text, category, delivery_label, amount_cents, currency, ticket_price_cents, session_price_cents, seats_per_session, free_revisions, extra_revision_price_cents, promoted, published_at, created_at",
+			).eq("status", "published"),
+			db.schema("catalogue").from("articles").select(
+				"id, slug, owner_user_id, owner_team_id, title, topic, summary, body, cover_file_id, read_minutes, published_at, created_at",
+			).eq("status", "published"),
+			db.schema("projects").from("projects").select(PROJECT_COLUMNS).eq("status", "active").eq(
+				"visibility",
+				"public",
+			),
+			db.schema("marketplace").from("promoted_placements")
+				.select("entity_type, entity_id, surface")
+				.order("starts_at", { ascending: true }),
+			db.schema("org").from("skills").select("id, slug, label"),
+			// The trust penalty's denormalised cache (security.fn_recalc_penalty_aggregates keeps it).
+			db.schema("search").from("profiles_index").select("entity_id, discovery_penalty")
+				.gt("discovery_penalty", 0),
+			db.schema("search").rpc("ranking_weights"),
+			db.schema("search").rpc("trending_entities", {
+				p_days: TRENDING_WINDOW_DAYS,
+				p_limit: TRENDING_READ_LIMIT,
+			}),
+		]);
 	if (profilesRes.error) fail("org.profiles_index", profilesRes.error.message);
 	if (listingsRes.error) fail("catalogue.listings", listingsRes.error.message);
 	if (articlesRes.error) fail("catalogue.articles", articlesRes.error.message);
 	if (projectsRes.error) fail("projects.projects", projectsRes.error.message);
 	if (placementsRes.error) fail("marketplace.promoted_placements", placementsRes.error.message);
 	if (skillsRes.error) fail("org.skills", skillsRes.error.message);
+	if (penaltiesRes.error) fail("search.profiles_index", penaltiesRes.error.message);
+	if (weightsRes.error) fail("search.ranking_weights()", weightsRes.error.message);
+	if (trendingRes.error) fail("search.trending_entities()", trendingRes.error.message);
+
+	const weightRows = (weightsRes.data ?? []) as RankingWeightRow[];
+	const { missing } = resolveWeights(weightRows);
+	if (missing.length > 0 && !reportedMissingWeights) {
+		reportedMissingWeights = true;
+		console.warn(
+			`[explore] search.search_weights holds no row for ${
+				missing.join(", ")
+			}; those factors score 0 until the reference seed (00005050) is applied.`,
+		);
+	}
 
 	const profiles = (profilesRes.data ?? []) as ProfileRow[];
 	const listings = (listingsRes.data ?? []) as ListingRow[];
@@ -553,6 +674,9 @@ async function readCatalog(): Promise<Catalog> {
 		requiredSkills,
 		skillRows,
 		placements,
+		penalties: (penaltiesRes.data ?? []) as PenaltyRow[],
+		weights: weightRows,
+		trending: (trendingRes.data ?? []) as TrendingEntityRow[],
 	});
 }
 
@@ -747,6 +871,26 @@ function workloadStatus(level: number): string {
 	return "Light";
 }
 
+/**
+ * How much of a seller's Global Intensity Cap their active tickets use, 0–100 — the scale the card's
+ * meter and the ranking's availability term both read. `undefined` for a buyer, who has no cap.
+ */
+function utilisationOf(p: ProfileRow): number | undefined {
+	if (p.entity_type !== "freelancer" && p.entity_type !== "team") return undefined;
+	const cap = num(p.workload_cap);
+	return cap > 0 ? workloadPercent(p.workload, cap) : undefined;
+}
+
+/** The discovery-signal kind a directory row is viewed and saved as. */
+const PROFILE_ENTITY: Record<ProfileRow["entity_type"], DiscoveryEntityKind> = {
+	user: "user",
+	freelancer: "freelancer",
+	team: "team",
+	business: "business",
+};
+
+const DAY_MS = 86_400_000;
+
 /** The raw reads {@link assemble} maps — exported so a test can build a catalogue from rows. */
 export type CatalogInputs = Inputs;
 
@@ -766,6 +910,12 @@ interface Inputs {
 	requiredSkills: Array<{ project_id: string; skill_id: string }>;
 	skillRows: Array<{ id: string; slug: string; label: string }>;
 	placements: PlacementRow[];
+	/** Penalised entities; absent = nobody is penalised. */
+	penalties?: PenaltyRow[];
+	/** `search.ranking_weights()`; absent = every factor off, so every item scores 0. */
+	weights?: RankingWeightRow[];
+	/** `search.trending_entities()`, most active first; absent = no activity. */
+	trending?: TrendingEntityRow[];
 }
 
 /** Assemble the mapped catalogue from the raw reads. Pure — every read has already happened. */
@@ -834,6 +984,7 @@ export function assemble(input: Inputs): Catalog {
 	const blueprintBySlug = new Map<string, BlueprintRow>();
 	const productBySlug = new Map<string, ProductRow>();
 	const servicePricesByOwner = new Map<string, number[]>();
+	const serviceCurrenciesByOwner = new Map<string, Set<string>>();
 	const productCountByOwner = new Map<string, number>();
 	const highlightsByOwner = new Map<string, string[]>();
 
@@ -895,6 +1046,9 @@ export function assemble(input: Inputs): Catalog {
 				const list = servicePricesByOwner.get(ownerKey) ?? [];
 				list.push(unit);
 				servicePricesByOwner.set(ownerKey, list);
+				const currencies = serviceCurrenciesByOwner.get(ownerKey) ?? new Set<string>();
+				currencies.add(l.currency.toUpperCase());
+				serviceCurrenciesByOwner.set(ownerKey, currencies);
 			}
 		} else if (l.kind === "product" && l.product_id) {
 			const pr = productById.get(l.product_id);
@@ -1019,6 +1173,8 @@ export function assemble(input: Inputs): Catalog {
 			budget: p.budget_amount_cents !== null && p.budget_amount_cents !== undefined
 				? displayPrice(p.budget_amount_cents, p.currency)
 				: "",
+			budgetMinor: p.budget_amount_cents ?? undefined,
+			currency: p.currency.toUpperCase(),
 			classification: p.format === "pipeline" ? "pipeline" : "one-off",
 			roles: [...new Set(stageRoles.map((r) => r.role_title))],
 			phases: stages.map((s) => s.name),
@@ -1049,6 +1205,8 @@ export function assemble(input: Inputs): Catalog {
 		const skills = (p.skills ?? []).map((slug) => resolveSkill(skillLabelBySlug.get(slug) ?? slug));
 		const seller = p.entity_type === "freelancer" || p.entity_type === "team";
 		const prices = servicePricesByOwner.get(handle) ?? [];
+		const priceCurrencies = serviceCurrenciesByOwner.get(handle);
+		const load = utilisationOf(p) ?? 0;
 		const item: ProfileItem = {
 			id: p.handle,
 			type,
@@ -1074,9 +1232,12 @@ export function assemble(input: Inputs): Catalog {
 			languages: p.language_codes ?? [],
 			highlights: seller ? highlightsByOwner.get(handle) : undefined,
 			servicePrices: p.entity_type === "freelancer" && prices.length ? prices : undefined,
+			serviceCurrency: p.entity_type === "freelancer" && priceCurrencies?.size === 1
+				? [...priceCurrencies][0]
+				: undefined,
 			products: p.entity_type === "freelancer" ? productCountByOwner.get(handle) ?? 0 : undefined,
 			workload: p.entity_type === "freelancer"
-				? { level: p.workload ?? 0, status: workloadStatus(p.workload ?? 0) }
+				? { level: load, status: workloadStatus(load) }
 				: undefined,
 			createdAt: p.joined_at,
 		};
@@ -1084,15 +1245,63 @@ export function assemble(input: Inputs): Catalog {
 	}
 	// #endregion
 
-	const items: ExploreItem[] = [
+	const itemIdBySubject = new Map<string, string>();
+	for (const [itemId, bp] of blueprintBySlug) itemIdBySubject.set(bp.id, itemId);
+	for (const [itemId, pr] of productBySlug) itemIdBySubject.set(pr.id, itemId);
+	const placements: CatalogPlacement[] = input.placements.flatMap((p) => {
+		const itemId = itemIdBySubject.get(p.entity_id);
+		return itemId ? [{ surface: p.surface, itemId }] : [];
+	});
+
+	const unranked: ExploreItem[] = [
 		...profileItems,
 		...services,
 		...projectItems,
 		...products,
 		...articles,
 	];
+
+	// #region Discovery entities + ranking
+	const entityById = new Map<string, CatalogEntity>();
+	for (const [itemId, bp] of blueprintBySlug) {
+		entityById.set(itemId, { kind: "service_blueprint", id: bp.id });
+	}
+	for (const [itemId, pr] of productBySlug) entityById.set(itemId, { kind: "product", id: pr.id });
+	for (const [itemId, a] of articleBySlug) entityById.set(itemId, { kind: "article", id: a.id });
+	for (const [itemId, p] of projectBySlug) {
+		entityById.set(itemId, { kind: "project", id: p.row.id });
+	}
+	for (const it of profileItems) {
+		const row = profileByHandle.get(`@${it.id}`);
+		if (row) entityById.set(it.id, { kind: PROFILE_ENTITY[row.entity_type], id: row.entity_id });
+	}
+	const itemIdByEntity = new Map(
+		[...entityById].map(([itemId, e]) => [entityKey(e.kind, e.id), itemId]),
+	);
+
+	const { weights } = resolveWeights(input.weights ?? []);
+	const scoreById = scoreCatalog(unranked, {
+		profileByHandle,
+		profileById,
+		projectBySlug,
+		penalties: input.penalties ?? [],
+		weights,
+		now: Date.now(),
+	});
+	const items = [...unranked].sort(byScore(scoreById));
+	const trending = (input.trending ?? []).flatMap((t) => {
+		const itemId = itemIdByEntity.get(entityKey(t.entity_type, t.entity_id));
+		return itemId ? [itemId] : [];
+	});
+	// #endregion
+
 	return {
 		items,
+		scoreById,
+		weights,
+		entityById,
+		itemIdByEntity,
+		trending,
 		byId: new Map(items.map((it) => [it.id, it])),
 		blueprintBySlug,
 		productBySlug,
@@ -1103,8 +1312,91 @@ export function assemble(input: Inputs): Catalog {
 		profileByHandle,
 		profileById,
 		sponsoredSubjects,
+		placements,
 		loadedAt: Date.now(),
 	};
+}
+
+/** Which reputation track speaks for an item: a seller's delivery reviews, or a buyer's client reviews. */
+type Track = "helper" | "client";
+
+const CLIENT_TRACK = new Set<ExploreItem["type"]>(["users", "businesses", "projects"]);
+const AVAILABILITY_TYPES = new Set<ExploreItem["type"]>(["freelancers", "teams", "services"]);
+const STANDING_TYPES = new Set<ExploreItem["type"]>([
+	"freelancers",
+	"teams",
+	"services",
+	"products",
+]);
+
+/**
+ * Score every item (`./ranking.ts`) from its own reviews and its owner's directory row: the seller's
+ * workload against their cap, Standing rung and multiplier, tenure, and active discovery-rank
+ * penalty. A project speaks with its CLIENT's reviews and carries the worse of its poster's and its
+ * client business's penalty — "their project posts are de-ranked" (§Reputation & Discovery 3).
+ */
+function scoreCatalog(
+	items: readonly ExploreItem[],
+	context: {
+		profileByHandle: Map<string, ProfileRow>;
+		profileById: Map<string, ProfileRow>;
+		projectBySlug: Catalog["projectBySlug"];
+		penalties: readonly PenaltyRow[];
+		weights: RankingWeights;
+		now: number;
+	},
+): Map<string, number> {
+	const penaltyById = new Map<string, number>();
+	for (const p of context.penalties) {
+		const severity = num(p.discovery_penalty);
+		penaltyById.set(p.entity_id, Math.max(penaltyById.get(p.entity_id) ?? 0, severity));
+	}
+	const penaltyOf = (row: ProfileRow | undefined): number =>
+		row ? penaltyById.get(row.entity_id) ?? 0 : 0;
+	const clientTrack = (row: ProfileRow | undefined) =>
+		row && (row.reviews_as_client ?? 0) > 0
+			? { value: num(row.rating_as_client), count: row.reviews_as_client ?? 0 }
+			: undefined;
+
+	const signals = items.map((item): { item: ExploreItem; track: Track; signals: RankSignals } => {
+		const owner = context.profileByHandle.get(item.owner.handle);
+		const project = item.type === "projects" ? context.projectBySlug.get(item.id) : undefined;
+		const clientId = project?.row.client_business_id;
+		const client = clientId ? context.profileById.get(clientId) : owner;
+		const joined = owner ? Date.parse(owner.joined_at) : Number.NaN;
+		const track: Track = CLIENT_TRACK.has(item.type) ? "client" : "helper";
+		const seller = STANDING_TYPES.has(item.type);
+		return {
+			item,
+			track,
+			signals: {
+				rating: item.type === "projects"
+					? clientTrack(client)
+					: track === "client"
+					? item.rating?.asClient
+					: item.rating?.asHelper,
+				utilisation: AVAILABILITY_TYPES.has(item.type) && owner ? utilisationOf(owner) : undefined,
+				standingLevel: seller ? owner?.standing_level ?? undefined : undefined,
+				standingWeightBp: seller ? owner?.discovery_weight_bp ?? undefined : undefined,
+				penalty: Math.max(penaltyOf(owner), item.type === "projects" ? penaltyOf(client) : 0),
+				tenureDays: Number.isFinite(joined)
+					? Math.max(0, Math.floor((context.now - joined) / DAY_MS))
+					: Number.POSITIVE_INFINITY,
+			},
+		};
+	});
+
+	const weights = context.weights;
+	const prior = {
+		helper: priorMeanOf(signals.filter((s) => s.track === "helper").map((s) => s.signals.rating)),
+		client: priorMeanOf(signals.filter((s) => s.track === "client").map((s) => s.signals.rating)),
+	};
+	return new Map(
+		signals.map((s) => [
+			s.item.id,
+			scoreItem(s.signals, { weights, priorMean: prior[s.track] }).total,
+		]),
+	);
 }
 
 // #endregion

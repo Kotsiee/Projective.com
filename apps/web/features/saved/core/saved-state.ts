@@ -8,7 +8,7 @@ import { optimistic, type ToggleOutcome } from "./optimistic.ts";
 export type { ToggleOutcome };
 
 /**
- * saved-state — the client half every star / save control shares (Decision #174).
+ * saved-state — the client half every star / save control shares (Decision #180).
  *
  * {@link toggleSaved} is the one optimistic write: flip at once, persist through `/api/saved`, roll
  * back on refusal, and hand back the sentence to announce. Controls whose own read already carries the

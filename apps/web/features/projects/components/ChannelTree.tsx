@@ -246,7 +246,7 @@ export function ChannelTree(
 	// #region Quick-filter application (OR-combined; an active row narrows the tree to its matches)
 	const filtering = filters.length > 0;
 	const has = (k: ChannelFilterKey) => filters.includes(k);
-	// `starred` is the viewer's room star (a `project_channel` bookmark, Decision #175). A project DM is
+	// `starred` is the viewer's room star (a `project_channel` bookmark, Decision #181). A project DM is
 	// starred as a conversation, not as a room, so it never matches it.
 	const matchChannel = (c: ProjectChannel) =>
 		!filtering || (has("unread") && c.unread) || (has("starred") && isChannelStarred(c));

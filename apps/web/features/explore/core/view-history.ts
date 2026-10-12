@@ -6,12 +6,12 @@ import type { ExploreEntity } from "../types/explore-types.ts";
  *
  * ## What this is, stated plainly
  *
- * There is no server-side view history anywhere in this product. `ExploreBackendService.home()`
- * takes no viewer argument, `KnownAnalyticsEvent` has no view/impression member, there is no
- * `discovery.recent_views` table, and `/explore` is a public surface where the viewer may not be
- * signed in at all. So this module is `localStorage`, and it is honest about the three things that
- * makes true: it is per-device (a phone and a laptop disagree), it is cleared by private browsing,
- * and it cannot be read during SSR.
+ * This is the DEVICE's history, kept for every reader — a guest included. A signed-in person also has
+ * a server-side history (`org.recent_views`, recorded when they open an item and read under their own
+ * token for the Home's "Because you viewed" rail), but `/explore` is a public surface where the viewer
+ * may not be signed in at all, so "Continue" and the footer's "Recently viewed" read this one. It is
+ * `localStorage`, and it is honest about the three things that makes true: it is per-device (a phone
+ * and a laptop disagree), it is cleared by private browsing, and it cannot be read during SSR.
  *
  * That last one is a design constraint, not a footnote. A "Continue where you left off" heading
  * rendered on the server would be claiming a history the server cannot see — so every consumer here

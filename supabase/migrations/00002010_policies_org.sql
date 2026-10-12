@@ -59,12 +59,21 @@ SELECT TO authenticated USING (
 
 CREATE POLICY "Users manage own bookmarks" ON org.user_bookmarks FOR ALL TO public USING (user_id = auth.uid ());
 
--- Collections are private like the bookmarks they hold (Decision #174); the composite FK on
+-- Collections are private like the bookmarks they hold (Decision #180); the composite FK on
 -- user_bookmarks keeps a bookmark out of a collection its owner does not own.
 CREATE POLICY "Users manage own bookmark collections" ON org.user_bookmark_collections FOR ALL TO authenticated
 USING (user_id = auth.uid ())
 WITH
     CHECK (user_id = auth.uid ());
+
+-- A person reads and clears their OWN discovery history. NO INSERT or UPDATE policy: the one writer is
+-- search.record_view (00001400), a definer that stamps `viewed_at` itself — a client-written time in
+-- the future would hold an item inside the Trending window forever. Write grants revoked in 00002520.
+CREATE POLICY "Users can view their own recent views" ON org.recent_views FOR
+SELECT TO authenticated USING (user_id = auth.uid ());
+
+CREATE POLICY "Users can clear their own recent views" ON org.recent_views FOR
+DELETE TO authenticated USING (user_id = auth.uid ());
 
 
 -- --- from 0209_teams.sql ---
@@ -155,11 +164,13 @@ UPDATE TO authenticated USING (user_id = auth.uid ())
 WITH
     CHECK (user_id = auth.uid ());
 
+
 CREATE POLICY "Users can insert own preferences" ON org.user_preferences FOR
 INSERT
     TO authenticated
 WITH
     CHECK (user_id = auth.uid ());
+
 
 
 -- --- from 0314_organisations.sql ---

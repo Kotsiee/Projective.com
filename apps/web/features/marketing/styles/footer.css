@@ -516,23 +516,7 @@
 	}
 }
 
-@media (max-width: 640px) {
-	.lp-footer__inner {
-		grid-template-columns: 1fr;
-	}
-
-	/* One column: the two secondary blocks stack, and both are pinned to it explicitly for the same
-	   reason as above. The gap tightens to the section rhythm — at this width the masthead clamp is
-	   generous enough to read as a page break rather than a group separation. */
-	.lp-footer__aux {
-		grid-template-columns: 1fr;
-		gap: var(--space-7);
-	}
-	.lp-footer__setup,
-	.lp-footer__recent {
-		grid-column: 1;
-	}
-
+@media (max-width: 767px) {
 	/* The link stacks become real accordions: chevron shown, summary tappable, a hairline per row. */
 	.lp-footer__nav {
 		grid-template-columns: 1fr;
@@ -559,6 +543,24 @@
 	.lp-footer__group .lp-footer__links {
 		margin-block: 0 var(--space-4);
 	}
+}
+
+@media (max-width: 640px) {
+	.lp-footer__inner {
+		grid-template-columns: 1fr;
+	}
+
+	/* One column: the two secondary blocks stack, and both are pinned to it explicitly for the same
+	   reason as above. The gap tightens to the section rhythm — at this width the masthead clamp is
+	   generous enough to read as a page break rather than a group separation. */
+	.lp-footer__aux {
+		grid-template-columns: 1fr;
+		gap: var(--space-7);
+	}
+	.lp-footer__setup,
+	.lp-footer__recent {
+		grid-column: 1;
+	}
 
 	.lp-footer__base {
 		flex-direction: column;
@@ -571,10 +573,10 @@
 	}
 }
 
-/* Desktop / tablet: force the `<details>` stacks open regardless of toggle state (they are only
-   collapsible at ≤640px). The `!important` deliberately overrides the UA "closed details hides its
-   content" rule so the columns always render expanded above the accordion breakpoint. */
-@media (min-width: 641px) {
+@media (min-width: 768px) {
+	.lp-footer__group::details-content {
+		content-visibility: visible;
+	}
 	.lp-footer__group > .lp-footer__links {
 		display: flex !important;
 	}

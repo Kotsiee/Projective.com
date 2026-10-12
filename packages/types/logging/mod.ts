@@ -91,4 +91,42 @@ export interface LogIngestResult {
 	/** How many entries were accepted for persistence. */
 	accepted: number;
 }
+
+/**
+ * The levels `ops.log_entries.level` stores: the two durable {@link LogLevel}s plus `metric`, a
+ * Core Web Vitals sample. `metric` is not a logger level — nothing calls `logger.metric`.
+ */
+export const PersistedLogLevel = z.enum(["warn", "error", "metric"]);
+export type PersistedLogLevel = z.infer<typeof PersistedLogLevel>;
+// #endregion
+
+// #region Web vitals
+/** The three Core Web Vitals the shell measures: layout shift, largest paint, interaction latency. */
+export const WebVitalName = z.enum(["CLS", "LCP", "INP"]);
+export type WebVitalName = z.infer<typeof WebVitalName>;
+
+/** The published Core Web Vitals bands. */
+export const WebVitalRating = z.enum(["good", "needs-improvement", "poor"]);
+export type WebVitalRating = z.infer<typeof WebVitalRating>;
+
+/** One final metric value for one page view. CLS is unitless; LCP and INP are milliseconds. */
+export const WebVitalSchema = z.object({
+	name: WebVitalName,
+	value: z.number().min(0).max(600_000),
+	rating: WebVitalRating,
+	/** Page-view id shared by the vitals of one load, so the three can be joined. */
+	id: z.string().min(1).max(64),
+	/** `PerformanceNavigationTiming.type` (`navigate` · `reload` · `back_forward` · `prerender`). */
+	navigationType: z.string().max(24).optional(),
+	/** Epoch ms when the value was finalised. */
+	at: z.number(),
+});
+export type WebVital = z.infer<typeof WebVitalSchema>;
+
+/** The `POST /api/logs/vitals` body: at most one sample per metric per page view. */
+export const WebVitalsBatchSchema = z.object({
+	vitals: z.array(WebVitalSchema).min(1).max(3),
+	meta: LogBatchMetaSchema.optional(),
+});
+export type WebVitalsBatch = z.infer<typeof WebVitalsBatchSchema>;
 // #endregion

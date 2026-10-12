@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
 import {
+	isNew,
 	languageName,
 	languageSummary,
 	postedLabel,
@@ -145,6 +146,17 @@ Deno.test("publishedLabel prints a stable UTC calendar date and drops an unusabl
 	assertEquals(publishedLabel("2026-05-12T23:59:00Z"), "12 May 2026");
 	assertEquals(publishedLabel("2025-12-31T00:00:00Z"), "31 Dec 2025");
 	assertEquals(publishedLabel("not-a-date"), "");
+});
+// #endregion
+
+// #region New
+Deno.test("isNew holds for fourteen days and never for a future or unusable date", () => {
+	const now = Date.parse("2026-10-12T12:00:00Z");
+	assertEquals(isNew("2026-10-12T11:00:00Z", now), true);
+	assertEquals(isNew("2026-09-29T12:00:01Z", now), true);
+	assertEquals(isNew("2026-09-28T12:00:00Z", now), false);
+	assertEquals(isNew("2026-10-13T00:00:00Z", now), false);
+	assertEquals(isNew("not-a-date", now), false);
 });
 // #endregion
 

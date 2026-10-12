@@ -114,8 +114,8 @@ export default function EntityLane(
 	const added = basketIds.value.includes(item.id);
 
 	useEffect(() => {
-		hydrateBasket();
-	}, []);
+		hydrateBasket(authed);
+	}, [authed]);
 
 	// #region Actions
 	function announce(msg: string): void {
@@ -134,7 +134,7 @@ export default function EntityLane(
 		return false;
 	}
 
-	/** Save or un-save the listing (a bookmark, Decision #174). */
+	/** Save or un-save the listing (a bookmark, Decision #180). */
 	async function save(): Promise<void> {
 		if (!signedIn()) return;
 		const out = await toggleFlag(kind, item.id);

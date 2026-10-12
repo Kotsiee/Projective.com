@@ -139,6 +139,20 @@ export function relativeAge(iso: string, now: number = Date.now()): string {
 	return `${years} ${years === 1 ? "year" : "years"}`;
 }
 
+/** How long a listing or profile reads as "New" after it is created. */
+export const NEW_WINDOW_DAYS = 14;
+
+/**
+ * Whether `createdAt` falls inside the last {@link NEW_WINDOW_DAYS} days. A future or unparseable
+ * date is never new.
+ */
+export function isNew(createdAt: string, now: number = Date.now()): boolean {
+	const then = Date.parse(createdAt);
+	if (Number.isNaN(then)) return false;
+	const delta = now - then;
+	return delta >= 0 && delta < NEW_WINDOW_DAYS * DAY;
+}
+
 /** The project card's header timestamp — `Posted 3 days ago`, or `""` when the date is unusable. */
 export function postedLabel(iso: string, now: number = Date.now()): string {
 	const age = relativeAge(iso, now);

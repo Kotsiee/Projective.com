@@ -125,7 +125,7 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 		return null;
 	}
 
-	// Layer the persisted mute preference on after hydration (the star is server state, Decision #174).
+	// Layer the persisted mute preference on after hydration (the star is server state, Decision #180).
 	useEffect(() => {
 		const pref = readPrefs()[detail.id];
 		if (pref?.muted !== undefined) isMuted.value = pref.muted;

@@ -60,8 +60,8 @@ export default function EntityBuyBar(
 	const added = basketIds.value.includes(item.id);
 
 	useEffect(() => {
-		hydrateBasket();
-	}, []);
+		hydrateBasket(authed);
+	}, [authed]);
 
 	const purchaseKind = purchasableKindOf(item);
 

@@ -1,13 +1,35 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
-import { type Catalog, loadCatalog, readProjectPreview } from "./live-catalog.ts";
-import { getAnonClient } from "../../core/supabase.ts";
+import {
+	type Catalog,
+	entityKey,
+	loadCatalog,
+	type PlacementSurface,
+	readProjectPreview,
+} from "./live-catalog.ts";
+import { getAnonClient, getUserClient } from "../../core/supabase.ts";
+import { serverEnv } from "../../core/env.ts";
 import { publicObjectUrl } from "../../core/storage-url.ts";
-import { buildLiveViewPage, composeViewPage, NO_REVIEWS } from "./live-view.ts";
-import { canReadLive, type ReadActor } from "../read-actor.ts";
+import { buildLiveViewPage, composeViewPage, NO_REVIEWS, semanticSimilarTo } from "./live-view.ts";
+import { ANONYMOUS_READER, canReadLive, type ReadActor } from "../read-actor.ts";
+import { logDiscoveryQuery } from "../search/query-log.ts";
+import { EmbeddingBackendService, reportEmbeddingFallback } from "../search/EmbeddingBackendService.ts";
+import { nearestTo } from "../search/embedding-index.ts";
 import { getResults, groupResults, rankRecommended, relatedSearches } from "./query.ts";
+import {
+	nearestKindsFor,
+	SEMANTIC_POOL,
+	semanticResults,
+	type SemanticSimilarity,
+	similarityFrom,
+} from "./semantic.ts";
+import { suggestFrom } from "./suggest.ts";
+import { NO_PERSONAL_RAILS, personalRails, topicsOf, trendingRail } from "./personalise.ts";
+import { ownHandlesOf, readViewerSignals } from "./viewer-signals.ts";
+import { type DiscoveryRanking, type DiscoverySim, NO_DISCOVERY_SIM } from "@projective/types/explore";
 import type {
 	ArticleItem,
-	CtaBanner,
+	CtaPromo,
+	EditorialPromo,
 	EntityView,
 	ExploreItem,
 	ExploreParams,
@@ -18,9 +40,12 @@ import type {
 	ProductItem,
 	ProfileItem,
 	ProjectItem,
+	PromoSlot,
 	SearchPayload,
 	ServiceItem,
-	SponsoredSlot,
+	SponsoredPromo,
+	SuggestQuery,
+	Suggestions,
 	Testimonial,
 } from "@projective/types/explore";
 
@@ -46,33 +71,70 @@ const FEED_PAGE = 18;
 const FEED_MAX = 60;
 
 /**
- * The two conversion banners Home interleaves between sections — product COPY, not data: what the
- * platform invites a visitor to do is decided by the platform, not derived from any row.
+ * The two conversion slots Home places between sections — product COPY, not data: what the platform
+ * invites a visitor to do is decided by the platform, not derived from any row.
  */
-const CTAS: { freelancer: CtaBanner; team: CtaBanner } = {
-	freelancer: {
-		id: "cta-freelancer",
-		eyebrow: "Offer your skills",
-		title: "Become a Freelancer",
-		body:
-			"Turn your craft into income. Set up services, get hired, and get paid safely at each step.",
-		href: "/join?intent=freelancer",
-		cta: "Start freelancing",
-		tone: "primary",
-	},
-	team: {
-		id: "cta-team",
-		eyebrow: "Build together",
-		title: "Launch a Team",
-		body: "Assemble a micro-agency, take on bigger projects, and share the work — and the reward.",
-		href: "/join?intent=team",
-		cta: "Launch a team",
-		tone: "neutral",
-	},
+const CTA_FREELANCER: CtaPromo = {
+	variant: "cta",
+	id: "cta-freelancer",
+	after: "freelancers",
+	eyebrow: "Offer your skills",
+	title: "Become a Freelancer",
+	body: "Turn your craft into income. Set up services, get hired, and get paid safely at each step.",
+	href: "/join?intent=freelancer",
+	cta: "Start freelancing",
+	audience: "non_freelancers",
+	dismissible: true,
 };
+
+const CTA_TEAM: CtaPromo = {
+	variant: "cta",
+	id: "cta-team",
+	after: "articles",
+	eyebrow: "Build together",
+	title: "Launch a Team",
+	body: "Assemble a micro-agency, take on bigger projects, and share the work — and the reward.",
+	href: "/join?intent=team",
+	cta: "Launch a team",
+	audience: "everyone",
+	dismissible: true,
+};
+
+/** The placement inventory the Home feed sells (`marketplace.promoted_placements.surface`). */
+const HOME_SURFACE: PlacementSurface = "explore_home";
 // #endregion
 
 // #region Composition
+
+/**
+ * A result that also says how its discovery content was ordered (Decision #179). Transport metadata on
+ * the envelope, like `session`: the route turns it into the development-only `x-discovery-ranking`
+ * header and it never reaches the JSON body.
+ */
+export type RankedResult<T> = ServiceResult<T> & { ranking: DiscoveryRanking };
+
+function ranked<T>(result: ServiceResult<T>, ranking: DiscoveryRanking): RankedResult<T> {
+	return { ...result, ranking };
+}
+
+async function querySimilarity(
+	catalog: Catalog,
+	params: ExploreParams,
+): Promise<{ similarity: SemanticSimilarity; vector: number[] } | null> {
+	try {
+		const embedded = await EmbeddingBackendService.embedQuery(params.q);
+		if (!embedded.ok || !embedded.data) {
+			reportEmbeddingFallback("search", embedded.message ?? "no query vector");
+			return null;
+		}
+		const rows = await nearestTo(embedded.data, nearestKindsFor(params.category), [], SEMANTIC_POOL);
+		const similarity = similarityFrom(rows, (kind, id) => catalog.itemIdByEntity.get(entityKey(kind, id)));
+		return similarity.size > 0 ? { similarity, vector: embedded.data } : null;
+	} catch (error) {
+		reportEmbeddingFallback("search", error);
+		return null;
+	}
+}
 
 /** The error every read returns when the discovery load itself failed. */
 function unavailable<T>(error: unknown): ServiceResult<T> {
@@ -87,18 +149,24 @@ const ofType = <T extends ExploreItem["type"]>(catalog: Catalog, type: T) =>
 	catalog.items.filter((it): it is Extract<ExploreItem, { type: T }> => it.type === type);
 
 /**
- * The reserved sponsored frames — one per ACTIVE paid placement, built from the listing it promotes.
- * A placement with no published listing behind it is skipped: an advert for something a visitor
- * cannot open is not a placement worth showing.
+ * The sponsored slots — one per ACTIVE placement bought for `surface`, oldest flight first, each built
+ * from the listing it promotes. A placement whose item is not a sponsored service or product is
+ * skipped: an advert for something a visitor cannot open, or that carries no disclosure, is not one
+ * worth showing. A listing placed twice on the same surface is featured once.
  */
-function sponsoredSlots(catalog: Catalog): SponsoredSlot[] {
-	return catalog.items
-		.filter((it): it is ServiceItem | ProductItem =>
-			(it.type === "services" || it.type === "products") && !!it.sponsored
-		)
-		.map((it) => ({
+function sponsoredPromos(catalog: Catalog, surface: PlacementSurface): SponsoredPromo[] {
+	const seen = new Set<string>();
+	const out: SponsoredPromo[] = [];
+	for (const placement of catalog.placements) {
+		if (placement.surface !== surface || seen.has(placement.itemId)) continue;
+		const it = catalog.byId.get(placement.itemId);
+		if (!it || (it.type !== "services" && it.type !== "products") || !it.sponsored) continue;
+		seen.add(it.id);
+		out.push({
+			variant: "sponsored",
 			id: `sp-${it.id}`,
-			eyebrow: "Sponsored",
+			rail: it.type,
+			itemId: it.id,
 			title: it.title,
 			body: it.summary,
 			media: it.media ?? "",
@@ -106,25 +174,61 @@ function sponsoredSlots(catalog: Catalog): SponsoredSlot[] {
 			owner: it.owner,
 			href: `/view/${it.id}`,
 			cta: it.type === "services" ? "View service" : "View product",
-		}));
+		});
+	}
+	return out;
 }
 
-/** The help reads Home surfaces between sections — the published articles, newest first. */
-function helpArticles(catalog: Catalog): HelpArticle[] {
-	return ofType(catalog, "articles")
+/** The editorial break — the published articles, newest first; absent when there are none. */
+function helpPromo(catalog: Catalog): EditorialPromo | null {
+	const articles: HelpArticle[] = ofType(catalog, "articles")
 		.slice()
 		.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-		.slice(0, 4)
+		.slice(0, 3)
 		.map((a: ArticleItem) => ({
 			id: a.id,
 			title: a.title,
 			minutes: a.readMinutes,
 			href: `/view/${a.id}`,
 		}));
+	if (articles.length === 0) return null;
+	return {
+		variant: "editorial",
+		id: "ed-help",
+		after: "products",
+		lead: "New here?",
+		tail: "Start with these",
+		href: "/help",
+		hrefLabel: "All help articles",
+		articles,
+	};
 }
 
-/** The composed Home feed, from one catalogue load. */
-function homeFeedFrom(catalog: Catalog): HomeFeed {
+/** Every Home promo slot, in feed order. */
+function homePromos(catalog: Catalog): PromoSlot[] {
+	const help = helpPromo(catalog);
+	return [
+		...sponsoredPromos(catalog, HOME_SURFACE),
+		CTA_FREELANCER,
+		...(help ? [help] : []),
+		CTA_TEAM,
+	];
+}
+
+/**
+ * The cold-start simulation that may apply — development only, decided here rather than trusted from
+ * the request: a switch a caller could assert into existence in production is not a gate.
+ */
+function effectiveDiscoverySim(sim: DiscoverySim | undefined): DiscoverySim {
+	if (!sim || serverEnv().appEnv !== "development") return NO_DISCOVERY_SIM;
+	return sim;
+}
+
+/**
+ * The SHARED Home feed, from one catalogue load: the same for every viewer, so it is computed from the
+ * anon-cached catalogue alone. The personal rails start empty; the viewer pass fills them.
+ */
+function homeFeedFrom(catalog: Catalog, sim: DiscoverySim): HomeFeed {
 	const services = ofType(catalog, "services") as ServiceItem[];
 	const products = ofType(catalog, "products") as ProductItem[];
 	const projects = ofType(catalog, "projects") as ProjectItem[];
@@ -139,15 +243,15 @@ function homeFeedFrom(catalog: Catalog): HomeFeed {
 		projects,
 		products,
 		articles: ofType(catalog, "articles") as ArticleItem[],
-		sponsored: sponsoredSlots(catalog),
-		helpArticles: helpArticles(catalog),
-		ctas: CTAS,
+		promos: homePromos(catalog),
 		recommended: {
-			services: rankRecommended(services),
-			products: rankRecommended(products),
-			projects: rankRecommended(projects),
-			people: rankRecommended([...freelancers, ...teams]),
+			services: rankRecommended(services, catalog.scoreById),
+			products: rankRecommended(products, catalog.scoreById),
+			projects: rankRecommended(projects, catalog.scoreById),
+			people: rankRecommended([...freelancers, ...teams], catalog.scoreById),
 		},
+		personal: NO_PERSONAL_RAILS,
+		trending: trendingRail(catalog, Date.now(), sim.activity === "quiet"),
 	};
 }
 
@@ -157,8 +261,11 @@ function searchFrom(
 	params: ExploreParams,
 	offset: number,
 	limit: number,
+	similarity?: SemanticSimilarity,
 ): SearchPayload {
-	const results = getResults(catalog.items, params);
+	const results = similarity
+		? semanticResults(catalog.items, params, catalog.scoreById, similarity)
+		: getResults(catalog.items, params, catalog.scoreById);
 	const related = relatedSearches(catalog.items, params);
 	if (params.category === "all") {
 		return {
@@ -188,26 +295,119 @@ export class ExploreBackendService {
 	/**
 	 * Run a discovery search. Returns the grouped merged sections (cross-category) or a single page of
 	 * the isolated-category feed, plus the real count and related terms.
+	 *
+	 * `semantic` is the caller's `isEmbeddingsLive(req)` (Decision #179): when it holds and there is a
+	 * query, the results are re-ranked and topped up with voyage-4 similarity; any Voyage or database
+	 * failure falls back to the heuristic search for this request (logged once), and `ranking` says
+	 * which one ran.
 	 */
 	static async search(
-		input: { params: ExploreParams; offset?: number; limit?: number },
-	): Promise<ServiceResult<SearchPayload>> {
+		input: {
+			params: ExploreParams;
+			offset?: number;
+			limit?: number;
+			actor?: ReadActor;
+			semantic?: boolean;
+		},
+	): Promise<RankedResult<SearchPayload>> {
 		const offset = Math.max(0, input.offset ?? 0);
 		const limit = Math.min(FEED_MAX, Math.max(1, input.limit ?? FEED_PAGE));
+		const started = performance.now();
 		try {
-			return ok(searchFrom(await loadCatalog(), input.params, offset, limit));
+			const catalog = await loadCatalog();
+			const semantic = input.semantic && input.params.q.trim()
+				? await querySimilarity(catalog, input.params)
+				: null;
+			const payload = searchFrom(catalog, input.params, offset, limit, semantic?.similarity);
+			// A later page of the same feed is not a new search, so only the first page is logged.
+			if (offset === 0) {
+				const { category } = input.params;
+				logDiscoveryQuery(input.actor ?? ANONYMOUS_READER, {
+					params: input.params,
+					resultCount: payload.count,
+					candidatePool: category === "all"
+						? catalog.items.length
+						: catalog.items.filter((it) => it.type === category).length,
+					durationMs: performance.now() - started,
+					queryEmbedding: semantic?.vector,
+				}).catch((error) => console.error("[explore] search.fn_log_query failed", error));
+			}
+			return ranked(ok(payload), semantic ? "semantic" : "heuristic");
 		} catch (error) {
-			return unavailable(error);
+			return ranked(unavailable(error), "heuristic");
 		}
 	}
 
-	/** The composed Home discovery feed (sections + reserved promos) for State A first paint. */
-	static async home(): Promise<ServiceResult<HomeFeed>> {
+	/**
+	 * The composed Home discovery feed (State A first paint), in two passes.
+	 *
+	 * The SHARED pass — sections, promos, the Recommended lists and Trending — comes from the
+	 * anon-cached catalogue and is identical for every visitor. For a signed-in viewer, a
+	 * VIEWER-SCOPED pass then reads their own views, saves and affinity under their token
+	 * (`./viewer-signals.ts`) and composes "Because you viewed" / "Picked for you" and "Saved". A guest
+	 * gets the shared feed with empty personal rails.
+	 *
+	 * A failed viewer pass is logged and the shared feed is served: personalisation is never worth
+	 * taking discovery down for. `sim` is the Dev Context Switcher's cold-start simulation, honoured in
+	 * development only.
+	 */
+	static async home(
+		input: { actor: ReadActor; sim?: DiscoverySim },
+	): Promise<ServiceResult<HomeFeed>> {
+		const sim = effectiveDiscoverySim(input.sim);
+		let catalog: Catalog;
 		try {
-			return ok(homeFeedFrom(await loadCatalog()));
+			catalog = await loadCatalog();
 		} catch (error) {
 			return unavailable(error);
 		}
+		const feed = homeFeedFrom(catalog, sim);
+		if (!canReadLive(input.actor)) return ok(feed);
+		try {
+			const signals = await readViewerSignals(input.actor, catalog, sim.viewer, Date.now());
+			// #region Semantic personalisation hook (ranking-v1: user vectors re-rank the personal rails)
+			// #endregion
+			return ok({ ...feed, personal: personalRails(catalog, signals, catalog.weights) });
+		} catch (error) {
+			console.error("[explore] the viewer pass failed; serving the shared Home feed", error);
+			return ok(feed);
+		}
+	}
+
+	/**
+	 * Record that a signed-in viewer opened a discovery item — their "Because you viewed" anchor, a
+	 * lean of their affinity toward its topics, and one vote toward Trending (`search.record_view`,
+	 * under their own token). The id is resolved against the PUBLISHED catalogue first, so a stale or
+	 * invented id records nothing. Opening your own listing or profile is not a view of interest and is
+	 * not recorded (`recorded: false`), so nobody can nudge their own work toward Trending.
+	 */
+	static async recordView(
+		input: { id: string; actor: ReadActor },
+	): Promise<ServiceResult<{ recorded: boolean }>> {
+		const actor = input.actor;
+		if (!canReadLive(actor)) return fail(401, { message: "Sign in to keep a viewing history." });
+		let catalog: Catalog;
+		try {
+			catalog = await loadCatalog();
+		} catch (error) {
+			return unavailable(error);
+		}
+		const item = catalog.byId.get(input.id);
+		const entity = catalog.entityById.get(input.id);
+		if (!item || !entity) return fail(404, { message: `No item found for id "${input.id}".` });
+		if (ownHandlesOf(actor, catalog).has(item.owner.handle)) return ok({ recorded: false });
+
+		const { error } = await getUserClient(actor.accessToken).schema("search").rpc("record_view", {
+			p_entity_type: entity.kind,
+			p_entity_id: entity.id,
+			p_topics: topicsOf(item),
+		});
+		if (!error) return ok({ recorded: true });
+		if (error.code === "42501") return fail(401, { message: "Sign in to keep a viewing history." });
+		if (error.code === "23503") {
+			return fail(409, { message: "Finish setting up your account to keep a viewing history." });
+		}
+		return unavailable(error);
 	}
 
 	/** Look up a single item by id — backs the detail drawer + SEO/title resolution. */
@@ -272,18 +472,29 @@ export class ExploreBackendService {
 	/**
 	 * The composed Entity View page (`/view/[id]`): the item plus its gallery, resolved pricing/trust
 	 * facts, deliverables, cross-sell rails, reviews and its type-specific extension.
+	 *
+	 * With `semantic` (the caller's `isEmbeddingsLive(req)`), the "Similar" rail comes from the item's
+	 * stored voyage-4 vector instead of the heuristic, which stays the answer when the item has no
+	 * vector or the read fails; `ranking` says which one ran.
 	 */
-	static async viewPage(id: string): Promise<ServiceResult<EntityView>> {
+	static async viewPage(
+		id: string,
+		options: { semantic?: boolean } = {},
+	): Promise<RankedResult<EntityView>> {
 		try {
 			const catalog = await loadCatalog();
 			const item = catalog.byId.get(id);
 			if (!item || item.type === "users" || item.type === "freelancers" ||
 				item.type === "teams" || item.type === "businesses") {
-				return fail(404, { message: `No item found for id "${id}".` });
+				return ranked(fail(404, { message: `No item found for id "${id}".` }), "heuristic");
 			}
-			return ok(await buildLiveViewPage(catalog, item));
+			const [view, similar] = await Promise.all([
+				buildLiveViewPage(catalog, item),
+				options.semantic ? semanticSimilarTo(catalog, item) : Promise.resolve(null),
+			]);
+			return similar ? ranked(ok({ ...view, similar }), "semantic") : ranked(ok(view), "heuristic");
 		} catch (error) {
-			return unavailable(error);
+			return ranked(unavailable(error), "heuristic");
 		}
 	}
 
@@ -415,11 +626,12 @@ export class ExploreBackendService {
 	 * Everything the public landing page renders, in one call: the live home feed (its showcase
 	 * sections), real testimonials, the platform's running totals and the hero backdrop. A failure of
 	 * any read fails the whole — the landing page then renders its error state rather than a mix of real
-	 * sections and silently empty ones.
+	 * sections and silently empty ones. The landing page is the same for everyone, so its feed is the
+	 * shared one: no viewer pass runs here.
 	 */
 	static async landing(): Promise<ServiceResult<LandingPayload>> {
 		const [home, testimonials, stats] = await Promise.all([
-			ExploreBackendService.home(),
+			ExploreBackendService.home({ actor: ANONYMOUS_READER }),
 			ExploreBackendService.testimonials(),
 			ExploreBackendService.stats(),
 		]);
@@ -432,6 +644,21 @@ export class ExploreBackendService {
 			stats: stats.ok && stats.data ? stats.data : null,
 			heroImage: publicObjectUrl("public_assets", "platform/marketing/hero.webp"),
 		});
+	}
+
+	/**
+	 * Search-as-you-type for the three discovery bars: top hits per listing type, matched skills and
+	 * categories, and matched `@handle`s for a typed prefix — or the trending terms when `q` is empty,
+	 * led by the topics of the catalogue's trending items so the dropdown agrees with Home's rail.
+	 * Reads the same TTL-cached catalogue as {@link search}, so a keystroke never reaches Postgres.
+	 */
+	static async suggest(query: SuggestQuery): Promise<ServiceResult<Suggestions>> {
+		try {
+			const catalog = await loadCatalog();
+			return ok(suggestFrom(catalog.items, query, Date.now(), catalog.trending));
+		} catch (error) {
+			return unavailable(error);
+		}
 	}
 
 	/** Related search terms for a query/scope — the results-header "Related" row. */

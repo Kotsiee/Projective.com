@@ -1,13 +1,18 @@
-import { toMinorUnits } from "@projective/types/finance";
-import type { ProfileItem, ServiceItem } from "../types/explore-types.ts";
+import { currencyExponent, toMinorUnits } from "@projective/types/finance";
+import { INTENSITY_MULTIPLIER } from "@projective/types/projects";
+import type { ProfileItem, ProjectItem, ServiceItem } from "../types/explore-types.ts";
 
 /**
  * Explore — client-side price DISPLAY helpers.
  *
- * A freelancer has no stored rate: their card shows a derived "from $…" floor computed from their
- * active linked-service prices, with statistical outliers trimmed. This is pure presentation (the
- * cards + detail panel render it), so it lives feature-side; the backend has its own numeric copy for
- * sorting/filtering. Both derive the same fenced floor.
+ * Every figure leaves here STRUCTURED — integer minor units plus the currency they are quoted in — so
+ * the surface renders it through `MoneyView` and follows the viewer's display currency. Nothing here
+ * formats a currency symbol for the reader: a figure printed in its origin money beside a converted one
+ * is two prices for one thing.
+ *
+ * A freelancer has no stored rate: their floor is derived from their active linked-service prices,
+ * with statistical outliers trimmed. The backend has its own numeric copy for sorting/filtering; both
+ * derive the same fenced floor.
  */
 
 /**
@@ -32,33 +37,6 @@ export function lowestActivePrice(prices: number[]): number | null {
 	return kept.length ? kept[0] : s[0];
 }
 
-/** Format a whole-dollar amount, e.g. `95` → `"$95"`. */
-export function money(n: number): string {
-	return `$${n.toLocaleString("en-US")}`;
-}
-
-/** The "from $…" floor a freelancer card displays, or `null` when no active services. */
-export function freelancerFloor(item: ProfileItem): string | null {
-	if (!item.servicePrices?.length) return null;
-	const low = lowestActivePrice(item.servicePrices);
-	return low === null ? null : `from ${money(low)}`;
-}
-
-/** Workload-intensity multipliers bracketing a Pipeline service's standard ticket price. */
-const PIPELINE_LOW = 0.5;
-const PIPELINE_HIGH = 2.0;
-
-/**
- * The price a service card / detail panel displays, resolved by engagement model:
- *
- * - **Pipeline** — a per-ticket RANGE, not a single figure: the standard `ticketPrice` scaled by the
- *   low (`0.5×`) and high (`2.0×`) workload intensity, e.g. `$120 – $480` with the `ticket` unit.
- * - **Session** — a per-session price, e.g. `$180` with the `session` unit.
- * - **Group Session** — a per-attendee price, e.g. `$90` with the `seat` unit.
- * - **One-Off / Direct Deliverable** (or missing unit data) — the fixed `price` string as-is, no unit.
- *
- * `unit`, when present, is rendered as a muted `/ ticket` · `/ session` suffix by the caller.
- */
 /** One structured money figure — integer minor units plus the currency it is quoted in. */
 export interface PriceAmount {
 	minor: number;
@@ -66,13 +44,49 @@ export interface PriceAmount {
 }
 
 /**
- * The same pricing decision as {@link servicePricing}, but resolved to STRUCTURED amounts so a card
- * can render `MoneyView` and follow the viewer's display currency.
+ * A freelancer's fenced floor as structured money, or `null` when they have no active services or
+ * their services span more than one currency (`serviceCurrency` absent) — a floor across currencies
+ * is not a price.
+ */
+export function freelancerFloorAmount(item: ProfileItem): PriceAmount | null {
+	if (!item.servicePrices?.length || !item.serviceCurrency) return null;
+	const low = lowestActivePrice(item.servicePrices);
+	const minor = low === null ? null : toMinorUnits(low, item.serviceCurrency);
+	return minor === null ? null : { minor, currency: item.serviceCurrency };
+}
+
+/**
+ * The "from …" floor as a string in its own currency, for the server-rendered landing showcase that
+ * has no `MoneyView` slot. `null` when {@link freelancerFloorAmount} has no figure.
+ */
+export function freelancerFloor(item: ProfileItem): string | null {
+	const floor = freelancerFloorAmount(item);
+	if (!floor) return null;
+	const digits = currencyExponent(floor.currency);
+	const amount = new Intl.NumberFormat("en-US", {
+		style: "currency",
+		currency: floor.currency,
+		minimumFractionDigits: 0,
+		maximumFractionDigits: digits,
+	}).format(floor.minor / 10 ** digits);
+	return `from ${amount}`;
+}
+
+/** A project's escrow budget as structured money, or `null` when the brief carries none. */
+export function projectBudgetAmount(item: ProjectItem): PriceAmount | null {
+	return typeof item.budgetMinor === "number"
+		? { minor: item.budgetMinor, currency: item.currency ?? "USD" }
+		: null;
+}
+
+/**
+ * A service's price resolved by engagement model, as STRUCTURED amounts:
  *
- * It deliberately mirrors `servicePricing`'s branches one-for-one rather than replacing it: the
- * string form is still what every not-yet-migrated surface renders, and two functions that disagree
- * about which figure a Pipeline service shows would be worse than one that is merely duplicated.
- * Both read the same fields and apply the same multipliers, so they resolve to the same money.
+ * - **Pipeline** — billed per ticket at the client's chosen intensity (PRODUCT_SPEC §The Architect's
+ *   Override), so `from` is the Low-intensity price and `to` the High-intensity one, unit `ticket`.
+ * - **Session** — a per-session price, unit `session`.
+ * - **Group Session** — a per-attendee price, unit `seat`.
+ * - **One-Off / Direct Deliverable** — the fixed `priceMinor`, no `to`.
  *
  * `null` when the item carries no structured price (a fixture without `priceMinor`, a "Contact us"
  * listing) — the caller falls back to the formatted string rather than to a fabricated zero.
@@ -87,8 +101,8 @@ export function servicePriceParts(
 
 	if (item.serviceType === "Pipeline" && item.ticketPrice) {
 		return {
-			from: { minor: minor(item.ticketPrice * PIPELINE_LOW), currency },
-			to: { minor: minor(item.ticketPrice * PIPELINE_HIGH), currency },
+			from: { minor: minor(item.ticketPrice * INTENSITY_MULTIPLIER.low), currency },
+			to: { minor: minor(item.ticketPrice * INTENSITY_MULTIPLIER.high), currency },
 			unit: "ticket",
 		};
 	}
@@ -119,7 +133,7 @@ const SERVICE_UNITS: Record<string, string> = {
 	"Direct Deliverable": "deliverable",
 };
 
-/** One service card's price line: the starting figure, its unit, and whether the figure is a FLOOR. */
+/** One service's price line: the starting figure, its unit, and whether the figure is a FLOOR. */
 export interface ServiceStartingPrice {
 	/** The structured amount to render through `MoneyView`, or `null` for a listing with no figure. */
 	amount: PriceAmount | null;
@@ -137,16 +151,9 @@ export interface ServiceStartingPrice {
 }
 
 /**
- * The STARTING rate a service card displays — one figure, never a range.
- *
- * A card's job is to make listings comparable at a glance, and a range makes two listings hard to
- * compare because the reader has to decide which end to compare against. So the card shows the floor
- * and says so; the full Pipeline range still lives on `/view/[id]` and in the search drawer, where
- * there is room to explain what moves it (see {@link servicePricing}, which is unchanged and remains
- * what those surfaces render).
- *
- * This does NOT re-derive the price: it reads {@link servicePriceParts}, so a card and the page it
- * links to cannot disagree about what a service costs.
+ * The STARTING rate a service displays — one figure, never a range. The card and the search drawer
+ * both render this, so the two cannot disagree about what a service costs; the full Pipeline range
+ * stays on `/view/[id]`, where the stage ledger explains what moves it.
  */
 export function serviceStartingPrice(item: ServiceItem): ServiceStartingPrice {
 	const parts = servicePriceParts(item);
@@ -157,19 +164,4 @@ export function serviceStartingPrice(item: ServiceItem): ServiceStartingPrice {
 		unit,
 		isFloor: !!parts?.to,
 	};
-}
-
-export function servicePricing(item: ServiceItem): { amount: string; unit?: string } {
-	if (item.serviceType === "Pipeline" && item.ticketPrice) {
-		const lo = money(Math.round(item.ticketPrice * PIPELINE_LOW));
-		const hi = money(Math.round(item.ticketPrice * PIPELINE_HIGH));
-		return { amount: `${lo} – ${hi}`, unit: "ticket" };
-	}
-	if (item.serviceType === "Session" && item.sessionPrice) {
-		return { amount: money(item.sessionPrice), unit: "session" };
-	}
-	if (item.serviceType === "Group Session" && item.sessionPrice) {
-		return { amount: money(item.sessionPrice), unit: "seat" };
-	}
-	return { amount: item.price };
 }

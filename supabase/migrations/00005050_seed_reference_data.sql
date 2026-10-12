@@ -22,6 +22,7 @@ INSERT INTO search.search_weights (key, label, description, scope, weight) VALUE
   ('member_count',     'Team size',           'Team/business capacity signal',                    'talent',    0.50),
   ('rating_freelancer','Freelancer rating',   'Historical rating in the freelancer role',         'talent',    1.50),
   ('rating_client',    'Client rating',       'Historical rating in the client role',             'talent',    0.75),
+  ('discovery_boost',  'Discovery Boost',     'New or first-rung talent, fully available, clean record (earned, never sold)', 'talent', 1.25),
   -- Opportunity / asset metrics (projects / services) ------------------------
   ('open_seats',       'Open seats',          'Available seats / open roles',                     'opportunity', 1.25),
   ('stage_count',      'Project stages',      'Structured scope depth',                           'opportunity', 0.50),
@@ -85,7 +86,18 @@ INSERT INTO analytics.event_catalogue (name, domain, description, subject_kinds,
         '{item_id,via,share_slug,anonymous,repeat_download,size_bytes}'),
     ('link.scan_blocked', 'storage', 'The link-safety pipeline refused a URL asset.',
         '{user,freelancer,team,business,organisation}',
-        '{item_id,link_domain,scan_status,reason}')
+        '{item_id,link_domain,scan_status,reason}'),
+    -- Discovery — the ranking and placement substrate. Rows land in search.interest_events
+    -- (impression/click/rail_depth) and search.query_logs (search), not analytics.events; these
+    -- entries are the vocabulary those streams are rolled up under.
+    ('discovery.search', 'discovery', 'A discovery query ran (first page only; paging is not a new search).',
+        '{platform}', '{query,category,filters,result_count,duration_ms,matched_density}'),
+    ('discovery.impression', 'discovery', 'A listing card was at least half visible for one second.',
+        '{listing,project,user,freelancer,team,business}', '{surface,rail,position,query,session_id}'),
+    ('discovery.click', 'discovery', 'A listing card''s own link was opened from a discovery surface.',
+        '{listing,project,user,freelancer,team,business}', '{surface,rail,position,query,session_id}'),
+    ('discovery.rail_depth', 'discovery', 'The furthest a reader scrolled one horizontal rail, as a 0-1 fraction.',
+        '{platform}', '{surface,rail,depth,items,session_id}')
 ON CONFLICT (name) DO NOTHING;
 -- #endregion
 

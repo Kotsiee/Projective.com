@@ -896,7 +896,7 @@ $$;
 COMMENT ON FUNCTION comms.set_dm_inbox_folder(uuid, text) IS
 'Set the caller''s own inbox folder (primary | requests | archived) for a thread they are an undeleted participant of. SECURITY DEFINER because dm_participants carries no client UPDATE policy.';
 
--- Star or unstar a conversation for the caller only (the /saved system, Decision #174). Idempotent:
+-- Star or unstar a conversation for the caller only (the /saved system, Decision #180). Idempotent:
 -- setting the state it already has succeeds.
 CREATE OR REPLACE FUNCTION comms.set_dm_starred(
     p_thread_id uuid,

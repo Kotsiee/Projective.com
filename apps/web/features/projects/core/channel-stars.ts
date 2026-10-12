@@ -2,7 +2,7 @@ import { signal } from "@preact/signals";
 import type { ProjectChannel, ProjectDetail } from "@projective/types/projects";
 
 /**
- * channel-stars — the viewer's starred project rooms (a `project_channel` bookmark, Decision #175).
+ * channel-stars — the viewer's starred project rooms (a `project_channel` bookmark, Decision #181).
  * The server's answer rides each channel's `starred`; a star toggled in the channel header lands here
  * at once so the sidebar tree's Starred filter (a different island on the same page) agrees without a
  * reload. Never persisted on the client: the next read carries the server's state.

@@ -1,5 +1,7 @@
 import { createClient, type SupabaseClient } from "supabaseClient";
+import type { EmbeddingsStatus } from "@projective/types/explore";
 import { serverEnv } from "./env.ts";
+import { hasVoyageKey, readEmbeddingsOverride, resolveEmbeddingsGate } from "./embeddings-gate.ts";
 
 /**
  * supabase.ts — server-side Supabase client provisioning for the fat service layer.
@@ -99,6 +101,33 @@ export function isFilesBackendLive(): boolean {
  */
 export function isIntegrationsBackendLive(): boolean {
 	return !useMocks() && serverEnv().integrationsBackendLive && isSupabaseConfigured();
+}
+
+/**
+ * True when discovery may rank with voyage-4 vectors for this request (Decision #179): not mocked,
+ * Supabase configured, `VOYAGE_API_KEY` present, and the effective setting on.
+ *
+ * The setting is `EMBEDDINGS_ENABLED`, unless `req` carries the Dev Context Switcher's
+ * `pj.dev.embeddings` cookie (`on` | `off`). The cookie counts only under `DENO_ENV=development`, and
+ * the routes pass `req` only from a development build (`IS_DEV`, like `pj.dev.landing`), so production
+ * ignores it twice over. An override can turn the switch on, but never without the key. Callers with
+ * no request — the post-commit re-embed, the backfill — get the environment's answer.
+ */
+export function isEmbeddingsLive(req?: Request): boolean {
+	return embeddingsStatus(req).ranking === "semantic";
+}
+
+/** The same decision as {@link isEmbeddingsLive}, with every input that made it (the switcher's status line). */
+export function embeddingsStatus(req?: Request): EmbeddingsStatus {
+	const env = serverEnv();
+	return resolveEmbeddingsGate({
+		useMocks: env.useMocks,
+		supabaseConfigured: isSupabaseConfigured(),
+		keyPresent: hasVoyageKey(env.voyageApiKey),
+		envEnabled: env.embeddingsEnabled,
+		development: env.appEnv === "development",
+		override: req ? readEmbeddingsOverride(req.headers.get("cookie")) : null,
+	});
 }
 
 /**

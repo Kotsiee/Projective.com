@@ -1,5 +1,5 @@
 /**
- * optimistic — the write discipline every star / save control shares (Decision #174), kept free of the
+ * optimistic — the write discipline every star / save control shares (Decision #180), kept free of the
  * dev seam so it is testable under `deno test`: show the new state at once, persist, put the old one
  * back if the server refuses, and drop a second press on the same key while the first is in flight.
  */

@@ -562,7 +562,7 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 		}
 	}
 
-	/** Star or unstar — the owner's mark, persisted through the saved system (Decision #174). */
+	/** Star or unstar — the owner's mark, persisted through the saved system (Decision #180). */
 	function toggleStar(assetId: string) {
 		return starFile(items, assetId);
 	}

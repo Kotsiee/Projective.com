@@ -5,7 +5,7 @@ import { SavedCollectionCreateSchema } from "@projective/types/org";
 import { SavedBackendService } from "@server/services/saved/SavedBackendService.ts";
 
 /**
- * `/api/saved/collections` — the caller's named saved collections (Decision #174).
+ * `/api/saved/collections` — the caller's named saved collections (Decision #180).
  *
  * - `GET` — `{ collections }`.
  * - `POST { name }` — create one; a name already in use is a 409.

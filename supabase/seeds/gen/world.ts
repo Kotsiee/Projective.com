@@ -828,6 +828,48 @@ export const BOOKMARKS: Array<
 	{ persona: "theo", type: "service_blueprint", target: "sv-packaging-art-direction" },
 	{ persona: "hannah", type: "team", target: "north" },
 ];
+
+/**
+ * `org.recent_views`: what each persona has opened, never their own work (Decision #178). Noor's and
+ * Maris's histories anchor "Because you viewed" for a client and a freelancer; four people on the
+ * brand sprint and three each on Maris and the Helia wallet clear Trending's three-person floor.
+ * `daysAgo` places `viewed_at` relative to the reset, so a fresh world is trending and a week-old one
+ * falls back to "New on Projective".
+ */
+export const RECENT_VIEWS: Array<
+	{
+		persona: string;
+		type: "freelancer" | "team" | "project" | "service_blueprint";
+		target: string;
+		daysAgo: number;
+		count?: number;
+	}
+> = [
+	{
+		persona: "noor",
+		type: "service_blueprint",
+		target: "sv-brand-identity-sprint",
+		daysAgo: 0.1,
+		count: 3,
+	},
+	{ persona: "noor", type: "freelancer", target: "maris", daysAgo: 0.5 },
+	{ persona: "noor", type: "service_blueprint", target: "sv-landing-page-in-a-week", daysAgo: 1.5 },
+	{ persona: "theo", type: "service_blueprint", target: "sv-brand-identity-sprint", daysAgo: 0.8 },
+	{ persona: "theo", type: "freelancer", target: "maris", daysAgo: 2 },
+	{
+		persona: "chloe",
+		type: "service_blueprint",
+		target: "sv-brand-identity-sprint",
+		daysAgo: 1.2,
+		count: 2,
+	},
+	{ persona: "hannah", type: "service_blueprint", target: "sv-brand-identity-sprint", daysAgo: 3 },
+	{ persona: "priya", type: "freelancer", target: "maris", daysAgo: 2.5 },
+	{ persona: "maris", type: "project", target: "helia-wallet", daysAgo: 0.2, count: 2 },
+	{ persona: "maris", type: "project", target: "meridian-ds", daysAgo: 1 },
+	{ persona: "juno", type: "project", target: "helia-wallet", daysAgo: 0.6 },
+	{ persona: "ren", type: "project", target: "helia-wallet", daysAgo: 1.4 },
+];
 // #endregion
 
 // #region Media assignments

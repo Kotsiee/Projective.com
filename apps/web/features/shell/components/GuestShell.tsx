@@ -1,4 +1,5 @@
 import type { ComponentChildren, JSX } from "preact";
+import { PAGE_CANVAS_MAIN_ID } from "@projective/ui/navigation";
 import SiteHeader from "@features/marketing/islands/SiteHeader.island.tsx";
 import { PublicFooter } from "@features/marketing/components/PublicFooter.tsx";
 import GuestAside from "@web/features/shell/islands/GuestAside.island.tsx";
@@ -50,6 +51,9 @@ export interface GuestShellProps {
  * the floating aside / sub-header / body gutters layer on via `guest-shell.css` only when a route
  * supplies a lane. Guests therefore never render the full-bleed `ui-shell-topbar` or the full-height
  * `ui-app-shell__sidebar` — that nested L-shell is reserved for authenticated users.
+ *
+ * Its first Tab stop is a "Skip to content" link to the `<main>` landmark (`PAGE_CANVAS_MAIN_ID`, the
+ * same target `AppShell`'s `skipTo` uses), off-screen until it takes focus — WCAG 2.4.1.
  */
 export function GuestShell(
 	{ lane, header, footer = true, returnTo, children }: GuestShellProps,
@@ -61,6 +65,7 @@ export function GuestShell(
 			data-has-aside={hasAside ? "true" : "false"}
 			data-has-subheader={header ? "true" : "false"}
 		>
+			<a class="guest-shell__skip" href={`#${PAGE_CANVAS_MAIN_ID}`}>Skip to content</a>
 			<SiteHeader authenticated={false} returnTo={returnTo} />
 			{/* The one share modal every Share control on the page opens; a guest gets the sign-in route inside it. */}
 			<ShareHost authed={false} returnTo={returnTo ?? "/"} />
@@ -72,14 +77,16 @@ export function GuestShell(
 					<>
 						<div class="guest-shell__region">
 							<GuestAside>{lane}</GuestAside>
-							<main class="site__main guest-shell__body">{children}</main>
+							<main class="site__main guest-shell__body" id={PAGE_CANVAS_MAIN_ID} tabIndex={-1}>
+								{children}
+							</main>
 						</div>
 						{footer ? <PublicFooter /> : null}
 					</>
 				)
 				: (
 					// Lane-less routes: unchanged — the footer stays at the body's end (already full-width).
-					<main class="site__main guest-shell__body">
+					<main class="site__main guest-shell__body" id={PAGE_CANVAS_MAIN_ID} tabIndex={-1}>
 						{children}
 						{footer ? <PublicFooter /> : null}
 					</main>

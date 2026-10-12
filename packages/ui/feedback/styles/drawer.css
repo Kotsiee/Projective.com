@@ -93,8 +93,16 @@
 	font-weight: var(--fw-semibold);
 	line-height: var(--leading-tight);
 }
+.ui-drawer__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	min-inline-size: 0;
+	margin-inline-end: auto;
+}
 .ui-drawer__close {
 	flex: 0 0 auto;
+	margin-inline-start: auto;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
