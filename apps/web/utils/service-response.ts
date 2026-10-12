@@ -21,3 +21,28 @@ export function serviceResponse<T extends object>(result: ServiceResult<T>): Res
 export function invalidBody(field: string, message: string): Response {
 	return Response.json({ ok: false, message, errors: { [field]: message } }, { status: 422 });
 }
+
+/**
+ * Fold Zod issues into a `{ "path.to.field": message }` record (`form` for a whole-object refusal).
+ * First issue per key wins — a form shows one message per input and the rest would never be read.
+ */
+export function fieldErrors(
+	issues: ReadonlyArray<{ path: ReadonlyArray<PropertyKey>; message: string }>,
+): Record<string, string> {
+	const errors: Record<string, string> = {};
+	for (const issue of issues) {
+		const key = issue.path.map(String).join(".") || "form";
+		if (!errors[key]) errors[key] = issue.message;
+	}
+	return errors;
+}
+
+/** The field-keyed 422 a malformed body earns. */
+export function invalidFields(
+	issues: ReadonlyArray<{ path: ReadonlyArray<PropertyKey>; message: string }>,
+): Response {
+	return Response.json(
+		{ ok: false, message: "Check the highlighted fields.", errors: fieldErrors(issues) },
+		{ status: 422 },
+	);
+}

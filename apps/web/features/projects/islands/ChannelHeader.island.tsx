@@ -38,6 +38,8 @@ import {
 	type ChannelDetailInfo,
 } from "../components/ChannelDetailBody.tsx";
 import { ChannelTabStrip } from "../components/ChannelTabStrip.tsx";
+import { toggleSaved } from "@features/saved/core/saved-state.ts";
+import { channelStarOverrides } from "../core/channel-stars.ts";
 
 /**
  * ChannelHeader — the contextual header for a project channel/chat engagement
@@ -52,8 +54,9 @@ import { ChannelTabStrip } from "../components/ChannelTabStrip.tsx";
  * kebab opens a contextual menu, and the middle "details" control shows the channel's details — on
  * the Chat view from 1280px by toggling the middle-nav frame's docked right panel (`channelPanelFor`
  * registers it, the shell's `context-panel-state` carries the choice), everywhere else by opening a
- * right slide-over `Drawer` with the same {@link ChannelDetailBody}. Dumb island: no DB/Supabase, no `@server`; the star/mute/pin preferences persist optimistically
- * to `localStorage` until the live backend owns them.
+ * right slide-over `Drawer` with the same {@link ChannelDetailBody}. Dumb island: no DB/Supabase, no `@server`; the star
+ * is a `project_channel` bookmark written through `/api/saved` (Decision #175), while mute and pin
+ * still persist to `localStorage` until the live backend owns them.
  *
  * The three-region flow is a left identity block (flex 1) · centred underlined view tabs · right icon
  * actions (flex 1) so the tab strip stays visually centred. Tabs are real anchors — the active underline
@@ -127,9 +130,8 @@ function MarkGlyph({ kind }: { kind: ChannelMeta["kind"] }): JSX.Element {
 	return cloneElement(kind === "dm" ? DmIcon : HashIcon);
 }
 
-// #region Channel preference persistence (star / mute / pin)
+// #region Channel preference persistence (mute / pin — the star is server state, Decision #175)
 interface ChannelPref {
-	starred?: boolean;
 	muted?: boolean;
 	pinned?: boolean;
 }
@@ -171,6 +173,8 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 	// Interactive action state — the Star reflects the persisted preference (layered after hydration),
 	// the details drawer opens on the middle control.
 	const isStarred = useSignal<boolean>(starred);
+	/** The last star outcome, for the polite live region. */
+	const said = useSignal("");
 	const isMuted = useSignal<boolean>(false);
 	const isPinned = useSignal<boolean>(false);
 	const detailsOpen = useSignal<boolean>(false);
@@ -210,20 +214,23 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 		props.format,
 	]);
 
-	// Layer the persisted star/mute/pin preference on after hydration (never during SSR).
+	// Layer the persisted mute/pin preference on after hydration (never during SSR).
 	useEffect(() => {
 		const pref = readPrefs()[meta.channelId];
 		if (!pref) return;
-		if (pref.starred !== undefined) isStarred.value = pref.starred;
 		if (pref.muted !== undefined) isMuted.value = pref.muted;
 		if (pref.pinned !== undefined) isPinned.value = pref.pinned;
 	}, [meta.channelId]);
 
 	const shownTabs = CHANNEL_TABS.filter((t) => tabKeys.value.includes(t.key));
 
-	function toggleStar(): void {
-		isStarred.value = !isStarred.value;
-		writePref(meta.channelId, { starred: isStarred.value });
+	/** Star or unstar the room — a `project_channel` bookmark (Decision #175), optimistic with rollback. */
+	async function toggleStar(): Promise<void> {
+		const out = await toggleSaved("project_channel", meta.channelId, !isStarred.value, (v) => {
+			isStarred.value = v;
+			channelStarOverrides.value = { ...channelStarOverrides.value, [meta.channelId]: v };
+		});
+		if (out.message) said.value = out.message;
 	}
 
 	function toggleMute(): void {
@@ -301,6 +308,7 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 
 			{/* Right — icon-only actions (§1: star toggle · details drawer · kebab menu) */}
 			<div class="chan-header__actions">
+				<span class="ui-visually-hidden" role="status" aria-live="polite">{said.value}</span>
 				<button
 					type="button"
 					class="chan-action chan-action--star chan-action--desktop"

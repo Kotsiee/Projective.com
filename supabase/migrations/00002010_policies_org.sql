@@ -59,6 +59,13 @@ SELECT TO authenticated USING (
 
 CREATE POLICY "Users manage own bookmarks" ON org.user_bookmarks FOR ALL TO public USING (user_id = auth.uid ());
 
+-- Collections are private like the bookmarks they hold (Decision #174); the composite FK on
+-- user_bookmarks keeps a bookmark out of a collection its owner does not own.
+CREATE POLICY "Users manage own bookmark collections" ON org.user_bookmark_collections FOR ALL TO authenticated
+USING (user_id = auth.uid ())
+WITH
+    CHECK (user_id = auth.uid ());
+
 
 -- --- from 0209_teams.sql ---
 
@@ -230,8 +237,8 @@ SELECT TO authenticated, anon USING (true);
 -- none: any caller — including a signed-OUT one — could INSERT a row naming
 -- somebody else as `follower_user_id`, delete anybody's follows, or rewrite the
 -- graph wholesale. The follower count on every profile was therefore forgeable
--- by anyone with the URL. Found by the ranked contact picker, which is the first
--- reader of this table (the profile's Follow control is still a client stub).
+-- by anyone with the URL. Found by the ranked contact picker, the table's first
+-- reader; the profile's Follow control now writes through these policies.
 --
 -- SELECT is public on purpose: the table's own comment calls a follow "a public,
 -- counted edge", the profile prints the count to guests, and the picker needs

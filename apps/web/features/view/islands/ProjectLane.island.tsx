@@ -17,7 +17,8 @@ import {
 	PriceBlock,
 } from "../components/lane-parts.tsx";
 import { ProjectCtaRig, ProjectPreviewCta } from "../components/ProjectCtaRig.tsx";
-import { sellerBadges } from "../core/view-model.ts";
+import { sellerBadges, signInHref } from "../core/view-model.ts";
+import { savedFlag, toggleFlag } from "@features/saved/core/saved-state.ts";
 import {
 	projectCurrency,
 	projectLaneRows,
@@ -55,11 +56,17 @@ export default function ProjectLane(
 	{ view, project, authed, ctx, preview = false }: ProjectLaneProps,
 ): JSX.Element {
 	const { item } = view;
-	const saved = useSignal(false);
+	const saved = authed ? savedFlag("project", item.id) : null;
 	const status = useSignal("");
 
-	function announce(msg: string): void {
-		status.value = msg;
+	/** Save the project (its star, Decision #174); a guest is sent to sign in first. */
+	async function save(): Promise<void> {
+		if (!saved) {
+			globalThis.location.assign(signInHref(item, ctx));
+			return;
+		}
+		const out = await toggleFlag("project", item.id);
+		if (out.message) status.value = out.message;
 	}
 
 	/** Open the unified share modal (people on Projective · external apps · copy · the device sheet). */
@@ -71,19 +78,9 @@ export default function ProjectLane(
 		{ key: "share", label: "Share project", icon: "share", onSelect: share },
 		{
 			key: "save",
-			label: saved.value ? "Remove from list" : "Save to custom list",
-			icon: "bookmark",
-			onSelect: () => {
-				saved.value = !saved.value;
-				announce(saved.value ? "Saved to your list" : "Removed from your list");
-			},
-		},
-		{
-			key: "report",
-			label: "Report project",
-			icon: "flag",
-			danger: true,
-			onSelect: () => announce("Report submitted for review"),
+			label: saved?.value ? "Remove from saved" : "Save project",
+			icon: "star",
+			onSelect: () => void save(),
 		},
 	];
 

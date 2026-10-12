@@ -3,12 +3,8 @@ import { readActor } from "@web/utils/api-session.ts";
 import { defineReadRoute } from "@web/utils/read-endpoint.ts";
 import { toProjectsBody } from "@features/projects/core/respond.ts";
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
-import type {
-	FileKind,
-	FileSortDir,
-	FileSortKey,
-	SubmissionListPage,
-} from "@projective/types/projects";
+import { FileKind, FileSortDir, FileSortKey } from "@projective/types/projects";
+import type { SubmissionListPage } from "@projective/types/projects";
 
 /**
  * `GET | HEAD | OPTIONS /api/projects/submissions` — the thin route for the Submissions explorer
@@ -27,17 +23,6 @@ import type {
  * a verb that must not carry one.
  */
 
-const SORT_KEYS: readonly FileSortKey[] = ["name", "date", "size", "sender", "type"];
-const KINDS: readonly FileKind[] = [
-	"image",
-	"video",
-	"audio",
-	"pdf",
-	"doc",
-	"code",
-	"archive",
-	"file",
-];
 
 export const handler = define.handlers(
 	defineReadRoute<{ page: SubmissionListPage }>({
@@ -64,14 +49,12 @@ export const handler = define.handlers(
 			const limitRaw = sp.get("limit");
 			const limit = limitRaw ? Number.parseInt(limitRaw, 10) : undefined;
 
-			const sort = sortRaw && SORT_KEYS.includes(sortRaw as FileSortKey)
-				? (sortRaw as FileSortKey)
-				: undefined;
-			const dir = dirRaw === "asc" || dirRaw === "desc" ? (dirRaw as FileSortDir) : undefined;
+			const sort = FileSortKey.safeParse(sortRaw).data;
+			const dir = FileSortDir.safeParse(dirRaw).data;
 			const kinds = (sp.get("kinds") ?? "")
 				.split(",")
 				.map((k) => k.trim())
-				.filter((k): k is FileKind => KINDS.includes(k as FileKind));
+				.filter((k): k is FileKind => FileKind.safeParse(k).success);
 
 			return ProjectBackendService.submissions({
 				projectId,

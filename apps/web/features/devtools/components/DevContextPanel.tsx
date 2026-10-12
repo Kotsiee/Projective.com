@@ -22,6 +22,7 @@ import {
 	DEV_NOTIFICATIONS,
 	DEV_BASKET_SCENARIOS,
 	DEV_ROLES,
+	DEV_SAVED,
 	DEV_SERVICE_TYPES,
 	DEV_SESSION_BOOKINGS,
 	DEV_SETTINGS_ATTENTIONS,
@@ -589,6 +590,20 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.basketScenario}
 						disabled={!o.enabled}
 						onChange={(basketScenario) => patchDevContext({ basketScenario })}
+					/>
+				</Field>
+
+				{
+					/* The saved set. Every kind (a listing, a person, a project, a room, a message, a file)
+				    takes its own surface to save, so `SavedService` substitutes the whole set here. */
+				}
+				<Field label="Saved" hint="/saved · stars · save buttons">
+					<Segment
+						name="Saved"
+						options={DEV_SAVED}
+						value={o.saved}
+						disabled={!o.enabled}
+						onChange={(saved) => patchDevContext({ saved })}
 					/>
 				</Field>
 

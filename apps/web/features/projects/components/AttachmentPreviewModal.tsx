@@ -7,6 +7,7 @@ import type { AssetItem } from "../types/projects-types.ts";
 import type { PreviewContext } from "./preview/preview-model.ts";
 import { type PreviewFrame, PreviewSession } from "./preview/PreviewSession.tsx";
 import { PreviewShell } from "./preview/PreviewShell.tsx";
+import type { ToggleOutcome } from "@features/saved/core/optimistic.ts";
 
 export type { PreviewContext } from "./preview/preview-model.ts";
 export type { PreviewFrame } from "./preview/PreviewSession.tsx";
@@ -26,7 +27,7 @@ export interface AttachmentPreviewModalProps {
 	notesMode?: boolean;
 	onClose: () => void;
 	onRename: (fileId: string, name: string) => void;
-	onToggleStar: (fileId: string) => void;
+	onToggleStar: (fileId: string) => Promise<ToggleOutcome | void> | void;
 	/** Persist a review note; the modal also keeps the session's notes itself. */
 	onSaveNote?: (fileId: string, text: string) => void;
 	/** When rendered as a frame of a modal stack: state is cached per frame and the stack owns dismissal. */

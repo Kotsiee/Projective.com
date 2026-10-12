@@ -367,3 +367,16 @@ rung, because no `INSERT`/`UPDATE` grant or policy exists for `authenticated` on
 **Grants.** `authenticated` gets `SELECT` only, plus `EXECUTE` on the two read helpers
 (`org.fn_level_for_score`, `org.fn_standing_level`). The four mutating functions are `REVOKE`d from
 `public` and granted to `service_role` alone — see [Functions.md](Functions.md).
+
+---
+
+## ⭐ Saved — bookmarks and collections (Decision #174)
+
+| Table                           | Policy                                  | Effect                                                                                                                                                         |
+| :------------------------------ | :-------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `org.user_bookmarks`            | `Users manage own bookmarks`            | `FOR ALL USING (user_id = auth.uid())` (also the implicit `WITH CHECK`) — a bookmark is private; nobody else can read or write it.                             |
+| `org.user_bookmark_collections` | `Users manage own bookmark collections` | `FOR ALL TO authenticated USING / WITH CHECK (user_id = auth.uid())`. The composite FK on `user_bookmarks` keeps a bookmark out of another user's collection. |
+
+Grants come from the org schema's blanket table grant (`00002500`); RLS is the boundary. The follow
+graph's policies (`org.profile_follows`: public `SELECT`, own-edge `INSERT` / `DELETE`) are unchanged —
+the profile's Follow control and the new followers / following lists read and write through them.

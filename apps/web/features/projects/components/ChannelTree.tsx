@@ -12,6 +12,7 @@ import type { SidebarStageRow } from "../core/sidebar-overlay.ts";
 import { conditionalChannelGroups } from "@projective/types/projects";
 import type { DmChannel, ProjectChannel, ProjectDetail } from "../types/projects-types.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
+import { isChannelStarred } from "../core/channel-stars.ts";
 
 /**
  * ChannelTree — the staged engagement's contextual body in the Project Details lane: its Stages and —
@@ -245,9 +246,10 @@ export function ChannelTree(
 	// #region Quick-filter application (OR-combined; an active row narrows the tree to its matches)
 	const filtering = filters.length > 0;
 	const has = (k: ChannelFilterKey) => filters.includes(k);
-	// `starred` has no channel-level backing yet (deferred to the live backend), so it matches nothing
-	// on its own — the empty state below explains a no-result filter.
-	const matchChannel = (c: ProjectChannel) => !filtering || (has("unread") && c.unread);
+	// `starred` is the viewer's room star (a `project_channel` bookmark, Decision #175). A project DM is
+	// starred as a conversation, not as a room, so it never matches it.
+	const matchChannel = (c: ProjectChannel) =>
+		!filtering || (has("unread") && c.unread) || (has("starred") && isChannelStarred(c));
 	// A stage with no channel yet has no unread, no ticket and no revision, so it matches nothing while
 	// a filter is on — which is the right answer rather than a special case: the filters ask what is
 	// awaiting the viewer, and nothing can be awaiting them in a conversation that does not exist.
@@ -256,6 +258,7 @@ export function ChannelTree(
 		const s = row.channel;
 		if (!s) return false;
 		return (has("unread") && s.channel.unread) ||
+			(has("starred") && isChannelStarred(s.channel)) ||
 			(has("tickets") && s.activity === "new_ticket") ||
 			(has("revisions") && s.activity === "revision_requested");
 	};

@@ -92,6 +92,7 @@ import { AssetBreadcrumbs } from "../components/AssetBreadcrumbs.tsx";
 import { type AssetActivation, AssetCard } from "../components/AssetCard.tsx";
 import { AssetFolderCard } from "../components/AssetFolderCard.tsx";
 import { InspectPanel } from "../components/InspectPanel.tsx";
+import { starFile } from "@features/files/core/star-file.ts";
 
 /**
  * FilesHub — the BODY of the `/files` asset hub: the breadcrumb trail, the zoom-driven workspace, and
@@ -561,14 +562,9 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 		}
 	}
 
-	/**
-	 * Star, optimistically and only locally.
-	 *
-	 * There is no star endpoint in the files contract yet, so this is honest session state rather than a
-	 * write pretending to persist — it lands with the rest of the surface behind `FILES_BACKEND_LIVE`.
-	 */
-	function toggleStar(assetId: string): void {
-		items.value = items.value.map((a) => (a.id === assetId ? { ...a, starred: !a.starred } : a));
+	/** Star or unstar — the owner's mark, persisted through the saved system (Decision #174). */
+	function toggleStar(assetId: string) {
+		return starFile(items, assetId);
 	}
 
 	/** Download: record the copy, then hand the bytes over. The guard/ledger is the server's business. */

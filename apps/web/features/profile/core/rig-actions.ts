@@ -11,6 +11,7 @@ import {
 	consultOpen,
 	flowOpener,
 	followCelebrating,
+	followerCount,
 	following,
 	pickedProject,
 	pickedService,
@@ -164,6 +165,7 @@ export function toggleFollow(viewer: RigViewer): void {
 		followInFlight = false;
 		if (res.ok && res.data) {
 			following.value = res.data.follows;
+			followerCount.value = res.data.followers;
 			return;
 		}
 		following.value = previous;

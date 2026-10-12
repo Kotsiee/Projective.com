@@ -1307,7 +1307,7 @@
 
 /* #endregion */
 
-/* #region Card actions (Share · Star · kebab) */
+/* #region Card actions (Share · Save) */
 .ex-actions {
 	position: absolute;
 	inset-block-start: var(--space-3);
@@ -1320,7 +1320,7 @@
 	transition: opacity var(--dur-fast) var(--ease-standard);
 }
 
-/* Utility actions are revealed only on hover/focus of the card (or when the menu is engaged). */
+/* Utility actions are revealed only on hover/focus of the card. */
 .ex-card:hover .ex-actions,
 .ex-card:focus-within .ex-actions,
 .ex-actions:focus-within {
@@ -1334,13 +1334,10 @@
 }
 
 /*
- * ONE control shape for the whole row. Share, Star and the kebab are three peers now — the row used to
- * mix a filled `--primary` circle (the helper quick-action) with a glass one (the kebab) side by side,
- * which said the two were different KINDS of control when they are the same kind at different
- * frequencies. The helper action moved into the menu; what is left is three identical affordances, so
- * the row reads as a toolbar rather than as a button plus some chrome.
+ * ONE control shape for the whole row: Share and Save are peers, two identical affordances, so the row
+ * reads as a toolbar rather than as a button plus some chrome.
  *
- * They float over uploaded photography, so they take the glass treatment the kebab already had — this
+ * They float over uploaded photography, so they take the glass treatment — this
  * is a CONTROL rather than a label, which is the distinction `--chip-on-media` draws: a control
  * announces itself by shape and position and does not have to be read at a glance, and the border plus
  * the blur hold it apart from any image beneath.
@@ -1392,66 +1389,8 @@
 	color: var(--primary);
 }
 
-.ex-actions__btn:focus-visible,
-.ex-actions__item:focus-visible {
+.ex-actions__btn:focus-visible {
 	outline: none;
-}
-
-.ex-actions__menu-wrap {
-	position: relative;
-}
-
-/* Positioning comes from `.ui-anchored` + `useEdgeDetection` (fixed, `--float-*`, `--z-portal`) —
-   the panel is body-portalled out of `.ex-card`'s `overflow: clip`, so it must NOT re-declare
-   `position`/`inset`/`z-index` here or it would fight the hook's resolved coordinates. */
-.ex-actions__menu {
-	min-inline-size: 12rem;
-	padding: var(--space-1);
-	background: var(--surface-2);
-	border: 1px solid var(--ex-hair);
-	border-radius: var(--ex-r-md);
-	box-shadow: var(--elevation-high);
-}
-
-.ex-actions__item {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	inline-size: 100%;
-	padding: var(--space-2) var(--space-3);
-	border: 0;
-	border-radius: var(--radius-base);
-	background: none;
-	color: var(--on-surface);
-	font: inherit;
-	font-size: var(--text-md);
-	text-align: start;
-	text-decoration: none;
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.ex-actions__item:hover {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
-}
-
-.ex-actions__item svg {
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
-	flex: 0 0 auto;
-	color: var(--on-surface-variant);
-}
-
-.ex-actions__item--danger {
-	color: var(--danger);
-}
-
-.ex-actions__item--danger svg {
-	color: var(--danger);
-}
-
-.ex-actions__item[aria-pressed="true"] svg {
-	color: var(--primary);
 }
 
 .ex-actions__status {

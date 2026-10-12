@@ -1,5 +1,5 @@
 /**
- * Age-gate — the Date-of-Birth guardrail shared by the client islands and the server API stubs
+ * Age-gate — the Date-of-Birth guardrail shared by the client islands and `AuthBackendService`
  * (single source of truth so the two layers can never drift).
  *
  * Business rule (PRODUCT_SPEC.md §Account Age Guardrails):

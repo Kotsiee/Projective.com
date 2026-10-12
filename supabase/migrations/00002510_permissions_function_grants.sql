@@ -971,6 +971,10 @@ REVOKE ALL ON FUNCTION comms.set_dm_inbox_folder(uuid, text) FROM public, anon;
 
 GRANT EXECUTE ON FUNCTION comms.set_dm_inbox_folder(uuid, text) TO authenticated;
 
+REVOKE ALL ON FUNCTION comms.set_dm_starred(uuid, boolean) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION comms.set_dm_starred(uuid, boolean) TO authenticated;
+
 REVOKE ALL ON FUNCTION comms.send_request_message(uuid, text, uuid) FROM public, anon;
 
 GRANT EXECUTE ON FUNCTION comms.send_request_message(uuid, text, uuid) TO authenticated;
@@ -1147,6 +1151,12 @@ service_role;
 REVOKE ALL ON FUNCTION org.get_party_cards(uuid[]) FROM public, anon;
 
 GRANT EXECUTE ON FUNCTION org.get_party_cards(uuid[]) TO authenticated, service_role;
+
+-- Followers / following lists are public (a follow is a public edge), so anon may read the cards too;
+-- the function itself drops every profile the caller may not see.
+REVOKE ALL ON FUNCTION org.get_profile_cards(text[], uuid[]) FROM public;
+
+GRANT EXECUTE ON FUNCTION org.get_profile_cards(text[], uuid[]) TO anon, authenticated, service_role;
 
 -- The owner write path: a signed-in caller only; each function checks the caller manages the profile.
 REVOKE ALL ON FUNCTION org.can_manage_profile (text, uuid)

@@ -477,6 +477,20 @@ function buildTeamChannels(
 	return out;
 }
 
+/** Mark every channel in the tree the viewer has starred. */
+function withChannelStars(
+	channels: ProjectDetail["channels"],
+	starred: ReadonlySet<string>,
+): ProjectDetail["channels"] {
+	const mark = (c: ProjectChannel): ProjectChannel => ({ ...c, starred: starred.has(c.id) });
+	return {
+		...channels,
+		general: channels.general.map(mark),
+		stages: channels.stages.map((s) => ({ ...s, channel: mark(s.channel) })),
+		teams: channels.teams.map((t) => ({ ...t, channels: t.channels.map(mark) })),
+	};
+}
+
 // #endregion
 
 // #region Queries
@@ -727,6 +741,20 @@ async function fetchBusinesses(
 	return out;
 }
 
+/**
+ * The viewer's starred project channels — their `project_channel` bookmarks (Decision #175). Read
+ * whole rather than per project: a person stars few rooms, and the read then joins the first wave. A
+ * failed read stars nothing.
+ */
+async function fetchStarredChannelIds(actor: ReadActor & { accessToken: string }): Promise<Set<string>> {
+	const { data, error } = await getUserClient(actor.accessToken).schema("org").from("user_bookmarks")
+		.select("entity_id")
+		.eq("user_id", actor.userId)
+		.eq("entity_type", "project_channel")
+		.limit(500);
+	return new Set(error ? [] : ((data ?? []) as { entity_id: string }[]).map((r) => r.entity_id));
+}
+
 // #endregion
 
 // #region Assembly
@@ -831,7 +859,8 @@ function buildMembers(
  *   the Private Messages group is simply not drawn on this path, rather than drawn with dead links.
  * - **`bannerImage` is always `null`.** No banner column exists on `projects.projects`, and the
  *   service blueprint that would carry one lives in `marketplace`, which PostgREST does not expose.
- * - **`starred` is always `false`**, inherited from the summary: there is no `project_stars` table.
+ * - **`starred`** is inherited from the summary (`projects.user_preferences.is_starred`); each
+ *   channel's `starred` is the viewer's `project_channel` bookmark (Decision #175).
  * - **Every channel's `unread` is `false`** — there is no per-viewer read watermark for a project
  *   channel; see `NO_UNREAD_SIGNAL`.
  * - **Avatars are resolved, never composed** — a person's through `org.get_party_cards`, a team's or
@@ -861,15 +890,17 @@ export async function fetchProjectDetail(
 	const db = projectsDb(actor);
 	// Six independent reads over one project. Issued together because none depends on another's
 	// result, and awaiting them in series would add all six latencies to every sidebar render.
-	const [detailRow, stages, participants, channelRows, hired, hasAccess, fundingRows] = await Promise.all([
-		fetchDetailRow(db, slug),
-		fetchStages(db, summary.id),
-		fetchParticipants(db, summary.id),
-		fetchChannels(actor, summary.id),
-		fetchViewerHiredTeams(db, summary.id),
-		fetchHasAccess(db, summary.id),
-		fetchFundingRows(db, summary.id),
-	]);
+	const [detailRow, stages, participants, channelRows, hired, hasAccess, fundingRows, starredRooms] =
+		await Promise.all([
+			fetchDetailRow(db, slug),
+			fetchStages(db, summary.id),
+			fetchParticipants(db, summary.id),
+			fetchChannels(actor, summary.id),
+			fetchViewerHiredTeams(db, summary.id),
+			fetchHasAccess(db, summary.id),
+			fetchFundingRows(db, summary.id),
+			fetchStarredChannelIds(actor),
+		]);
 
 	const { general, stageAll, privateRooms } = partitionChannels(channelRows);
 
@@ -949,13 +980,13 @@ export async function fetchProjectDetail(
 		client: clientPartyOf(clientBusinessId, businesses, marks),
 		bannerImage: null,
 		members: buildMembers(summary, ownerUserId, participants, parties, businesses, marks),
-		channels: {
+		channels: withChannelStars({
 			general: general.map((row) => toProjectChannel(row, "general", null)),
 			stages: buildStageChannels(stages, stageAll),
 			teams: buildTeamChannels(hired, privateRooms, stageNames, teamNames, marks),
 			// See the docblock: a DM thread has no reproducible unified id on the live path.
 			dms: [],
-		},
+		}, starredRooms),
 		funding,
 	};
 }

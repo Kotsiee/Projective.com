@@ -414,3 +414,23 @@ message from another room would show that room's words to readers who may not be
 **Not yet verified by execution** against a local Postgres (no database was run for this change):
 the guard's refusal of a cross-room reply and of a self-reply, an `UPDATE` moving a reply out of its
 room, a soft-deleted original accepted, and `body_delta` nulled by both mask triggers.
+
+## Conversation stars (`00001300`, Decision #174)
+
+### `comms.set_dm_starred(p_thread_id uuid, p_starred boolean) → boolean`
+
+`SECURITY DEFINER`, modelled on `comms.set_dm_inbox_folder`: `comms.dm_participants` has no client
+`UPDATE` policy (a policy wide enough to write `is_starred` would also reach `last_read_at` and
+`deleted_at`), so this door writes exactly the caller's own undeleted participant row and exactly
+that column. Idempotent. `42501` when there is no acting user or the caller is not a participant
+(the service answers 404); `22023 starred: required` for a `NULL`. Granted to `authenticated` only.
+Called by `MessagingBackendService.setStarred`, which `SavedBackendService` dispatches the
+conversation kind to; the inbox reads the star back through `is_starred` as before.
+
+## Message favourites and pins (Decision #174)
+
+No new function: `comms.message_favorites` (the caller's own, listed on `/saved`) and
+`comms.message_pins` (room-wide) are written directly under the caller's JWT through their existing
+policies (`user_id = auth.uid() AND comms.can_read_message(...)` and `pinned_by_user_id = auth.uid()
+AND comms.can_read_message(...)`). `packages/backend/services/messaging/live-message-marks.ts` first
+finds which message table holds the id, as the caller, so a message they cannot read is a 404.

@@ -27,6 +27,7 @@ import {
 	toggleContextPanel,
 } from "@web/features/shell/core/context-panel-state.ts";
 import { LocalKeys, readStored, writeStored } from "@web/utils/storage-keys.ts";
+import { toggleSaved } from "@features/saved/core/saved-state.ts";
 import type { ConversationDetail, GroupPhotoInput } from "../types/messaging-types.ts";
 
 /**
@@ -57,7 +58,6 @@ export interface ConversationHeaderProps {
 
 // #region Per-conversation preference persistence (shared key with the sidebar)
 interface ConvPref {
-	starred?: boolean;
 	archived?: boolean;
 	muted?: boolean;
 	deleted?: boolean;
@@ -125,17 +125,18 @@ export default function ConversationHeader(props: ConversationHeaderProps): JSX.
 		return null;
 	}
 
-	// Layer the persisted star/mute preference on after hydration.
+	// Layer the persisted mute preference on after hydration (the star is server state, Decision #174).
 	useEffect(() => {
 		const pref = readPrefs()[detail.id];
-		if (!pref) return;
-		if (pref.starred !== undefined) isStarred.value = pref.starred;
-		if (pref.muted !== undefined) isMuted.value = pref.muted;
+		if (pref?.muted !== undefined) isMuted.value = pref.muted;
 	}, [detail.id]);
 
-	function toggleStar(): void {
-		isStarred.value = !isStarred.value;
-		writePref(detail.id, { starred: isStarred.value });
+	/** Star or unstar the conversation through the saved system, optimistic with rollback. */
+	async function toggleStar(): Promise<void> {
+		const out = await toggleSaved("conversation", detail.id, !isStarred.value, (v) => (isStarred.value = v));
+		if (!out.message) return;
+		if (!document.querySelector(".ui-toast")) toastMounted.value = true;
+		toast.show({ severity: out.ok ? "success" : "danger", summary: out.message, life: out.ok ? 3000 : 6000 });
 	}
 	function toggleMute(): void {
 		isMuted.value = !isMuted.value;

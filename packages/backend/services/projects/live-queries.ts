@@ -289,6 +289,8 @@ export interface SummaryContext {
 	stages: Map<string, [number, number]>;
 	/** Owner rows by `user_id`, from the separate `org.users_public` read. */
 	owners: Map<string, OwnerRow>;
+	/** The project ids the viewer has starred (`projects.user_preferences.is_starred`). */
+	starred: ReadonlySet<string>;
 	/**
 	 * The acting viewer's user id, compared against `owner_user_id`. Empty for an anonymous read,
 	 * which then matches nothing — see {@link resolveSummaryRole}.
@@ -299,10 +301,10 @@ export interface SummaryContext {
 /**
  * Map one database row onto the feed's {@link ProjectSummary} projection.
  *
- * Several fields on that projection have no column anywhere and are genuinely per-viewer derived
- * state — `unread`, `starred`, `activity`. There is no `project_stars` table, no read watermark for
- * a project (only for a DM thread), and no materialised activity signal. They are therefore returned
- * as their NEUTRAL values (`false` / `null`) rather than being synthesised from something adjacent
+ * Two fields on that projection have no column anywhere and are genuinely per-viewer derived state —
+ * `unread` and `activity`. There is no read watermark for a project (only for a DM thread) and no
+ * materialised activity signal. They are therefore returned as their NEUTRAL values (`false` /
+ * `null`) rather than being synthesised from something adjacent
  * like `last_activity_at`, which would produce a pulsing unread dot on every project the viewer had
  * simply not opened today. A missing signal that renders as "nothing awaiting you" is wrong in the
  * quiet direction; an invented one is wrong in the direction the user acts on.
@@ -333,7 +335,7 @@ export function toSummary(row: ProjectRow, ctx: SummaryContext): ProjectSummary 
 		counterparty: null,
 		serviceId: row.source_blueprint_id,
 		unread: false,
-		starred: false,
+		starred: ctx.starred.has(row.id),
 		completedStages: isSession ? null : completed,
 		totalStages: isSession ? null : total,
 		activity: null,
@@ -554,11 +556,12 @@ export async function fetchProjectRows(
 	// Three independent lookups over the same page. Issued together rather than sequentially: none
 	// depends on another's result, and awaiting them in series would add all three latencies to every
 	// feed render.
-	const [roles, stages, owners, names] = await Promise.all([
+	const [roles, stages, owners, names, starred] = await Promise.all([
 		fetchViewerRoles(db, actor, ids),
 		fetchStageCounts(db, ids),
 		fetchParties(actor, rows.map((r) => r.owner_user_id)),
 		fetchScopeLabels(actor, rows),
+		fetchStarredProjectIds(db, actor, ids),
 	]);
 
 	const scopeLabels = new Map<string, string>();
@@ -569,8 +572,30 @@ export async function fetchProjectRows(
 	}
 
 	return rows.map((row) =>
-		toSummary(row, { roles, scopeLabels, stages, owners, viewerId: actor.userId })
+		toSummary(row, { roles, scopeLabels, stages, owners, starred, viewerId: actor.userId })
 	);
+}
+
+/**
+ * The ids among `projectIds` the viewer has starred. A failed read stars nothing — the quiet
+ * direction, like {@link fetchViewerRoles}.
+ */
+export async function fetchStarredProjectIds(
+	db: SupabaseClient,
+	actor: ReadActor,
+	projectIds: readonly string[],
+): Promise<Set<string>> {
+	const starred = new Set<string>();
+	if (!actor.userId || projectIds.length === 0) return starred;
+	const { data, error } = await db
+		.from("user_preferences")
+		.select("project_id")
+		.eq("user_id", actor.userId)
+		.eq("is_starred", true)
+		.in("project_id", projectIds as string[]);
+	if (error) return starred;
+	for (const row of (data ?? []) as { project_id: string }[]) starred.add(row.project_id);
+	return starred;
 }
 
 /**
@@ -698,16 +723,17 @@ export async function fetchProjectBySlug(
 	if (!data) return null;
 
 	const row = data as unknown as ProjectRow;
-	const [roles, stages, owners] = await Promise.all([
+	const [roles, stages, owners, starred] = await Promise.all([
 		fetchViewerRoles(db, actor, [row.id]),
 		fetchStageCounts(db, [row.id]),
 		fetchParties(actor, [row.owner_user_id]),
+		fetchStarredProjectIds(db, actor, [row.id]),
 	]);
 	const { scopeType, scopeId } = scopeOf(row);
 	const names = await fetchScopeLabels(actor, [row]);
 	const scopeLabels = new Map([[scopeId, names.get(scopeId) ?? fallbackScopeLabel(scopeType)]]);
 
-	return toSummary(row, { roles, scopeLabels, stages, owners, viewerId: actor.userId });
+	return toSummary(row, { roles, scopeLabels, stages, owners, starred, viewerId: actor.userId });
 }
 
 /**

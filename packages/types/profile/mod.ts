@@ -9,3 +9,4 @@ export * from "./profile.ts";
 export * from "./tabs.ts";
 export * from "./reserved.ts";
 export * from "./edit.ts";
+export * from "./connections.ts";

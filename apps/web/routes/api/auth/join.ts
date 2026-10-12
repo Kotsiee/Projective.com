@@ -1,6 +1,5 @@
 import { define } from "@web/utils/state.ts";
 import { fieldErrors, JoinSchema } from "@features/auth/core/schema.ts";
-import { bracketFromDob, isJoinable, MIN_AGE } from "@features/auth/core/age.ts";
 import { safeRedirect } from "@features/auth/core/redirect.ts";
 import { toAuthResponse } from "@features/auth/core/respond.ts";
 import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts";
@@ -19,8 +18,8 @@ function readAccessToken(req: Request): string | undefined {
 
 /**
  * `POST /api/auth/join` — thin route: parse + Zod-validate the individual OR organisation payload,
- * re-enforce the server-side age-gate (never trust the client's flags), then delegate provisioning
- * to the fat {@link AuthBackendService}. Islands are dumb: they POST here and act on the result.
+ * then delegate to the fat {@link AuthBackendService}, which enforces eligibility (age-gate, password
+ * rule) and provisions. Islands are dumb: they POST here and act on the result.
  */
 export const handler = define.handlers({
 	async POST(ctx) {
@@ -38,20 +37,6 @@ export const handler = define.handlers({
 		const redirectTo = safeRedirect(data.redirectTo);
 
 		if (data.type === "individual") {
-			// Age-gate is re-derived server-side; the client's `restricted` flag is never trusted.
-			if (!isJoinable(bracketFromDob(data.dob))) {
-				return Response.json(
-					{ ok: false, errors: { dob: `You need to be at least ${MIN_AGE} to join Projective.` } },
-					{ status: 422 },
-				);
-			}
-			// Password is required unless this is an SSO/OAuth signup (which sets its own credential).
-			if (!data.oauth && (!data.password || data.password.length < 8)) {
-				return Response.json(
-					{ ok: false, errors: { password: "Use at least 8 characters." } },
-					{ status: 422 },
-				);
-			}
 			return toAuthResponse(
 				await AuthBackendService.provisionAccount({
 					type: "individual",

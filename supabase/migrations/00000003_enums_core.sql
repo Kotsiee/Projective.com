@@ -42,7 +42,19 @@ CREATE TYPE public.start_trigger_type AS ENUM ('fixed_date', 'on_project_start',
 -- #endregion
 
 -- #region org
-CREATE TYPE org.bookmark_entity_type AS ENUM ('project', 'service_blueprint', 'freelancer', 'business', 'team');
+-- What an `org.user_bookmarks` row can point at (Decision #174). People use the follow graph's
+-- vocabulary — 'user', never 'freelancer'/'client' — so one person is one saveable target. A project
+-- is NOT here: saving a project is its star, `projects.user_preferences.is_starred`, one store per kind.
+CREATE TYPE org.bookmark_entity_type AS ENUM (
+    'service_blueprint',
+    'product',
+    'article',
+    'user',
+    'team',
+    'business',
+    'organisation',
+    'project_channel'
+);
 
 -- `org.team_permission` / `org.business_permission` were retired (2026-09-28): two older
 -- per-kind vocabularies that nothing read, and that could not express a custom role. A role's

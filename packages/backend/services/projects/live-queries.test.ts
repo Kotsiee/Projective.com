@@ -49,6 +49,7 @@ function ctx(over: Partial<SummaryContext> = {}): SummaryContext {
 		scopeLabels: new Map(),
 		stages: new Map(),
 		owners: new Map(),
+		starred: new Set(),
 		viewerId: OWNER,
 		...over,
 	};
@@ -98,4 +99,9 @@ Deno.test("ownership resolves the same way on a service-kind engagement", () => 
 	const s = toSummary(row({ source_blueprint_id: "bp1" }), ctx());
 	assertEquals(s.kind, "service");
 	assertEquals(s.viewerRole, "owner");
+});
+
+Deno.test("starred reads the viewer's own project star", () => {
+	assertEquals(toSummary(row(), ctx()).starred, false);
+	assertEquals(toSummary(row(), ctx({ starred: new Set([row().id]) })).starred, true);
 });

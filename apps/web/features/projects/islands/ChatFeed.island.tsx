@@ -31,6 +31,8 @@ import {
 import { useMessageSelection } from "../hooks/useMessageSelection.ts";
 import { chatFeedScope } from "../core/chat-attachments.ts";
 import { messageAnchorOf, withoutMessageAnchor } from "../core/chat-context.ts";
+import { toggleSaved } from "@features/saved/core/saved-state.ts";
+import { toggleMessagePin } from "@features/messaging/core/message-pins.ts";
 
 /**
  * ChatFeed — the bottom-up, virtualized message stream for a channel's Chat tab
@@ -352,13 +354,21 @@ export default function ChatFeed(
 	function done(): void {
 		if (sel.active.value) sel.exit();
 	}
-	function toggleFavorite(id: string): void {
-		updateMessage(id, (m) => ({ ...m, favorited: !m.favorited }));
+	/** Favourite (save) a message through the saved system (Decision #174), optimistic with rollback. */
+	async function toggleFavorite(id: string): Promise<void> {
+		const m = messages.value.find((x) => x.id === id);
 		done();
+		if (!m) return;
+		const out = await toggleSaved("message", id, !m.favorited, (v) => updateMessage(id, (x) => ({ ...x, favorited: v })));
+		if (out.message) sel.status.value = out.message;
 	}
-	function togglePin(id: string): void {
-		updateMessage(id, (m) => ({ ...m, pinned: !m.pinned }));
+	/** Pin or unpin for the whole room (`/api/messages/[id]/pin`), optimistic with rollback. */
+	async function togglePin(id: string): Promise<void> {
+		const m = messages.value.find((x) => x.id === id);
 		done();
+		if (!m) return;
+		const out = await toggleMessagePin(id, !m.pinned, (v) => updateMessage(id, (x) => ({ ...x, pinned: v })));
+		if (out.message) sel.status.value = out.message;
 	}
 	function react(id: string, emoji: string): void {
 		updateMessage(id, (m) => {

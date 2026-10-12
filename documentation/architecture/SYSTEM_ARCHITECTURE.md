@@ -1092,6 +1092,23 @@ deferred live path behind the same gate. The wallet is the **finance face of the
 Full feature detail is logged in the root `CLAUDE.md` §8 Decision #55; the single-page presentation
 that replaced the deep pages is Decision #122.
 
+### Saved services (the one saved / favourites system, Decision #174)
+
+Every star, save and favourite control writes through ONE path: `SavedService` (client,
+`features/saved/core/`) → `/api/saved` (thin) → `services/saved/SavedBackendService.ts` (fat) →
+`ServiceResult<T>`. The fat service keeps each kind's save in the store it already had — bookmarks
+(`org.user_bookmarks`, fileable into `org.user_bookmark_collections`) for listings, people and
+project channels; the project star (`projects.user_preferences`); the conversation star (dispatched to
+`MessagingBackendService.setStarred` → `comms.set_dm_starred`); message favourites; the file owner's
+star (dispatched to `FilesBackendService.star`) — and every write evicts the tenant's projects and
+messaging read caches so the next read agrees. Follows stay `ProfileBackendService`'s; `/saved`
+lists them read-only. **Live only** (like Profile and Files): there are no fixtures to save into, so
+`dev:mock` answers 503 and the client rolls back; the Dev Context Switcher's `saved` axis substitutes
+the set client-side. The client half is one optimistic discipline (`features/saved/core/optimistic.ts`:
+apply → persist → roll back → announce) and one batched `/api/saved/state` lookup for the cards and
+lanes whose own read carries no flag. Routes: ROUTING.md §Saved API. Zod SSOT:
+`@projective/types/org` (`saved.ts`).
+
 ### Asset Management (`/files`) — two services, two gates
 
 The asset hub is **two** thin/fat slices that share one screen, deliberately kept apart because they

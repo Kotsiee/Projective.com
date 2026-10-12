@@ -1309,6 +1309,25 @@ export const IncomeSmootherEnrolInputSchema = z.object({
 });
 export type IncomeSmootherEnrolInput = z.infer<typeof IncomeSmootherEnrolInputSchema>;
 
+/**
+ * The `POST /api/wallet/action` body: one of the mutation payloads above, discriminated by `action`.
+ * Each member's field errors keep the same paths as its own schema.
+ */
+export const WalletActionRequestSchema = z.discriminatedUnion("action", [
+	TopUpInputSchema.extend({ action: z.literal("top_up") }),
+	WithdrawInputSchema.extend({ action: z.literal("withdraw") }),
+	TransferInputSchema.extend({ action: z.literal("transfer") }),
+	DistributeInputSchema.extend({ action: z.literal("distribute") }),
+	FundEscrowInputSchema.extend({ action: z.literal("fund_escrow") }),
+	DepositRuleInputSchema.extend({ action: z.literal("new_recurring") }),
+	AddMethodInputSchema.extend({ action: z.literal("add_method") }),
+	PayoutScheduleInputSchema.extend({ action: z.literal("set_payout") }),
+	SpendRequestInputSchema.extend({ action: z.literal("request_spend") }),
+	SpendDecisionInputSchema.extend({ action: z.literal("spend_decision") }),
+	IncomeSmootherEnrolInputSchema.extend({ action: z.literal("enrol_smoother") }),
+]);
+export type WalletActionRequest = z.infer<typeof WalletActionRequestSchema>;
+
 /** The uniform outcome of a wallet action — the refreshed overview + a human note. */
 export const WalletActionResultSchema = z.object({
 	overview: WalletOverviewSchema,

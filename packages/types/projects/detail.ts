@@ -53,6 +53,8 @@ export const ProjectChannelSchema = z.object({
 	sublabel: z.string().max(120).nullable().optional(),
 	/** Unseen activity — a pulsing dot, never a count (DESIGN_SYSTEM.md Part D). */
 	unread: z.boolean(),
+	/** The viewer starred this room (a `project_channel` bookmark, Decision #175). Absent = not starred. */
+	starred: z.boolean().optional(),
 });
 export type ProjectChannel = z.infer<typeof ProjectChannelSchema>;
 

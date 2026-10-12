@@ -569,8 +569,9 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	function renameFile(id: string, name: string): void {
 		items.value = items.value.map((f) => (f.id === id ? { ...f, name } : f));
 	}
-	function toggleStar(id: string): void {
-		items.value = items.value.map((f) => (f.id === id ? { ...f, starred: !f.starred } : f));
+	/** Mirror a star the file frame persisted (or rolled back) into this list. */
+	function toggleStar(id: string, starred: boolean): void {
+		items.value = items.value.map((f) => (f.id === id ? { ...f, starred } : f));
 	}
 	// #endregion
 

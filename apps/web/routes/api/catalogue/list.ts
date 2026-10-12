@@ -5,12 +5,8 @@ import { readActor } from "@web/utils/api-session.ts";
 import { toCatalogueResponse } from "@features/catalogue/core/respond.ts";
 import { toSort, toTypeFilter } from "@features/catalogue/core/catalogue-model.ts";
 import { CatalogueBackendService } from "@server/services/catalogue/CatalogueBackendService.ts";
-import type {
-	CatalogueListParams,
-	CatalogueSortDir,
-	ListingStatus,
-	ServiceType,
-} from "@projective/types/catalogue";
+import { ListingStatus, ServiceType } from "@projective/types/catalogue";
+import type { CatalogueListParams, CatalogueSortDir } from "@projective/types/catalogue";
 
 /**
  * `GET /api/catalogue/list?type=&status=&model=&search=&sort=&period=&attention=1&promoted=1&cursor=&limit=`
@@ -20,14 +16,6 @@ import type {
  * Islands never reach the backend — they fetch this via the dumb `CatalogueService`.
  */
 
-const STATUSES: readonly ListingStatus[] = ["draft", "published", "paused", "archived"];
-const MODELS: readonly ServiceType[] = [
-	"Pipeline",
-	"One-Off",
-	"Direct Deliverable",
-	"Session",
-	"Group Session",
-];
 
 export const handler = define.handlers({
 	async GET(ctx) {
@@ -41,12 +29,8 @@ export const handler = define.handlers({
 
 		const params: CatalogueListParams = {
 			type: toTypeFilter(sp.get("type")),
-			status: statusRaw && STATUSES.includes(statusRaw as ListingStatus)
-				? (statusRaw as ListingStatus)
-				: undefined,
-			model: modelRaw && MODELS.includes(modelRaw as ServiceType)
-				? (modelRaw as ServiceType)
-				: undefined,
+			status: ListingStatus.safeParse(statusRaw).data,
+			model: ServiceType.safeParse(modelRaw).data,
 			search: sp.get("search") || undefined,
 			sort: toSort(sp.get("sort")),
 			dir: sp.get("dir") === "asc" || sp.get("dir") === "desc"

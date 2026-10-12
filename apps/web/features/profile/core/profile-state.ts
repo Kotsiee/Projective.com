@@ -74,6 +74,12 @@ export const flowOpener: { current: HTMLElement | null } = { current: null };
 export const following = signal<boolean | null>(null);
 
 /**
+ * The profile's follower count as the last follow write answered it — `null` until then, so readers
+ * fall through to the server's `profile.followers` and the SSR and hydrated paints agree.
+ */
+export const followerCount = signal<number | null>(null);
+
+/**
  * Whether the profile's floating quick-message popover is open. The hero's Message control sets it;
  * the single `ProfileMessagePopover` mounted beside the hero reads it. Resets on navigation.
  */

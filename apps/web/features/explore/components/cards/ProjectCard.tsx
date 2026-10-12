@@ -47,7 +47,13 @@ export function ProjectCard(
 				onSelect={onSelect}
 				label={`${item.title} for ${item.org} — ${item.budget}`}
 			/>
-			<CardActions title={item.title} href={itemHref(item, ctx)} authed={authed} />
+			<CardActions
+				title={item.title}
+				href={itemHref(item, ctx)}
+				id={item.id}
+				type={item.type}
+				authed={authed}
+			/>
 
 			<div class="ex-proj__head">
 				<OwnerBadge owner={item.owner} variant="creator" />

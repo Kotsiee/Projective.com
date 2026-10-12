@@ -21,6 +21,9 @@ import {
 import { basketIds, hydrateBasket, toggleBasket } from "../core/basket-state.ts";
 import { scrollToId } from "../core/scroll-to.ts";
 import { sellerBadges, signInHref } from "../core/view-model.ts";
+import { savedFlag, savedTypeOf, toggleFlag } from "@features/saved/core/saved-state.ts";
+import { CollectionPicker } from "@features/saved/components/CollectionPicker.tsx";
+import "@features/saved/styles/saved.css";
 import { BookingCtaRig } from "../components/BookingCtaRig.tsx";
 import BookingPanels from "./BookingPanels.island.tsx";
 import { announce as announceBooking, openBookingPanel } from "../core/booking-state.ts";
@@ -104,7 +107,9 @@ export default function EntityLane(
 	const capacity = seatCapacityFor(view, archetype);
 	const hasStages = !!stages?.length;
 
-	const saved = useSignal(false);
+	const kind = savedTypeOf(item.type);
+	const saved = authed ? savedFlag(kind, item.id) : null;
+	const picking = useSignal(false);
 	const status = useSignal("");
 	const added = basketIds.value.includes(item.id);
 
@@ -122,15 +127,34 @@ export default function EntityLane(
 		requestShare({ href: globalThis.location?.href ?? "", title: item.title, noun: "listing" });
 	}
 
+	/** A guest's save is a sign-in first — the save is a claim on their own account. */
+	function signedIn(): boolean {
+		if (saved) return true;
+		globalThis.location.assign(signInHref(item, ctx));
+		return false;
+	}
+
+	/** Save or un-save the listing (a bookmark, Decision #174). */
+	async function save(): Promise<void> {
+		if (!signedIn()) return;
+		const out = await toggleFlag(kind, item.id);
+		if (out.message) announce(out.message);
+	}
+
 	const menu: LaneMenuItem[] = [
 		{ key: "share", label: "Share listing", icon: "share", onSelect: share },
 		{
 			key: "save",
-			label: saved.value ? "Remove from list" : "Save to custom list",
+			label: saved?.value ? "Remove from saved" : "Save",
+			icon: "star",
+			onSelect: () => void save(),
+		},
+		{
+			key: "collection",
+			label: "Add to collection…",
 			icon: "bookmark",
 			onSelect: () => {
-				saved.value = !saved.value;
-				announce(saved.value ? "Saved to your list" : "Removed from your list");
+				if (signedIn()) picking.value = true;
 			},
 		},
 		{
@@ -138,13 +162,6 @@ export default function EntityLane(
 			label: "Request custom scope",
 			icon: "edit",
 			onSelect: () => openBookingPanel("quote"),
-		},
-		{
-			key: "report",
-			label: "Report listing",
-			icon: "flag",
-			danger: true,
-			onSelect: () => announce("Report submitted for review"),
 		},
 	];
 
@@ -377,6 +394,17 @@ export default function EntityLane(
 				stages={view.service?.stages}
 				currency={item.type === "services" || item.type === "products" ? item.currency : undefined}
 			/>
+
+			{saved && (
+				<CollectionPicker
+					open={picking}
+					target={{ type: kind, ref: item.id, title: item.title }}
+					onDone={(_collection, message) => {
+						saved.value = true;
+						announce(message);
+					}}
+				/>
+			)}
 
 			<p class="ui-visually-hidden" role="status" aria-live="polite">{status.value}</p>
 		</div>

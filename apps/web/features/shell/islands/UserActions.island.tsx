@@ -490,6 +490,12 @@ export default function UserActions(
 					</a>
 				)
 				: null}
+			<a class="shell-menu__item" href="/saved" onClick={onNavigate}>
+				<span class="shell-menu__icon">
+					<NavIcon name="saved" />
+				</span>
+				<span class="shell-menu__label">Saved</span>
+			</a>
 			<a class="shell-menu__item" href="/wallet" onClick={onNavigate}>
 				<span class="shell-menu__icon">
 					<NavIcon name="wallet" />

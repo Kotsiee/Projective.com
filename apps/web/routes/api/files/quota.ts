@@ -1,5 +1,5 @@
 import { define } from "@web/utils/state.ts";
-import type { AssetOwnerType } from "@projective/types/files";
+import { AssetOwnerType } from "@projective/types/files";
 import { toFilesResponse } from "@features/files/core/respond.ts";
 import { FilesBackendService } from "@server/services/files/FilesBackendService.ts";
 import { readActor } from "@web/utils/api-session.ts";
@@ -13,14 +13,13 @@ import { readActor } from "@web/utils/api-session.ts";
  * refuses anyone else's too. Delegates to the fat {@link FilesBackendService.quota}.
  */
 
-const OWNER_TYPES: readonly AssetOwnerType[] = ["user", "team", "business", "organisation"];
 
 export const handler = define.handlers({
 	async GET(ctx) {
 		const sp = ctx.url.searchParams;
 		const ownerType = sp.get("ownerType");
 		const ownerId = sp.get("ownerId");
-		if ((ownerType || ownerId) && (!ownerType || !ownerId || !OWNER_TYPES.includes(ownerType as AssetOwnerType))) {
+		if ((ownerType || ownerId) && (!ownerType || !ownerId || !AssetOwnerType.safeParse(ownerType).success)) {
 			return Response.json({ ok: false, message: "Name both an owner type and an owner, or neither." }, {
 				status: 400,
 			});

@@ -3,6 +3,7 @@ import { type ModalStack, useFrameState } from "@projective/ui/overlay";
 import type { AssetItem } from "../types/projects-types.ts";
 import { FILE_FRAME_FILES, fileFrameSeed, patchFile } from "../core/file-frame.ts";
 import { AttachmentPreviewModal, type PreviewContext } from "./AttachmentPreviewModal.tsx";
+import { starFile } from "@features/files/core/star-file.ts";
 
 /** Props for {@link FileFrame}. */
 export interface FileFrameProps {
@@ -20,8 +21,8 @@ export interface FileFrameProps {
 	onClose: () => void;
 	/** Called after the frame's own copy of the file is renamed. */
 	onRename?: (fileId: string, name: string) => void;
-	/** Called after the frame's own copy of the file is starred or unstarred. */
-	onToggleStar?: (fileId: string) => void;
+	/** Hears every change to the frame's copy of a file's star (the frame persists it), rollback included. */
+	onToggleStar?: (fileId: string, starred: boolean) => void;
 	onSaveNote?: (fileId: string, text: string) => void;
 }
 
@@ -50,10 +51,7 @@ export function FileFrame(props: FileFrameProps): JSX.Element | null {
 				files.value = patchFile(files.value, fileId, (f) => ({ ...f, name }));
 				onRename?.(fileId, name);
 			}}
-			onToggleStar={(fileId) => {
-				files.value = patchFile(files.value, fileId, (f) => ({ ...f, starred: !f.starred }));
-				onToggleStar?.(fileId);
-			}}
+			onToggleStar={(fileId) => starFile(files, fileId, (starred) => onToggleStar?.(fileId, starred))}
 			onSaveNote={props.onSaveNote}
 		/>
 	);

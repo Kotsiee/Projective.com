@@ -3,7 +3,8 @@ import { readActor } from "@web/utils/api-session.ts";
 import { defineReadRoute } from "@web/utils/read-endpoint.ts";
 import { toProjectsBody } from "@features/projects/core/respond.ts";
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
-import type { BoardPage, BoardView, TicketPriority } from "@projective/types/projects";
+import { BoardView, TicketPriority } from "@projective/types/projects";
+import type { BoardPage } from "@projective/types/projects";
 
 /**
  * `GET | HEAD | OPTIONS /api/projects/board` — the thin route for the Kanban board read. HTTP parse +
@@ -21,8 +22,6 @@ import type { BoardPage, BoardView, TicketPriority } from "@projective/types/pro
  * with the body stripped by the factory. See that module for the caching and CORS decisions.
  */
 
-const VIEWS: readonly BoardView[] = ["stages", "statuses"];
-const PRIORITIES: readonly TicketPriority[] = ["low", "normal", "high", "urgent"];
 
 export const handler = define.handlers(
 	defineReadRoute<{ page: BoardPage }>({
@@ -37,12 +36,8 @@ export const handler = define.handlers(
 			const viewRaw = sp.get("view");
 			const priorityRaw = sp.get("priority");
 
-			const view = viewRaw && VIEWS.includes(viewRaw as BoardView)
-				? (viewRaw as BoardView)
-				: undefined;
-			const priority = priorityRaw && PRIORITIES.includes(priorityRaw as TicketPriority)
-				? (priorityRaw as TicketPriority)
-				: undefined;
+			const view = BoardView.safeParse(viewRaw).data;
+			const priority = TicketPriority.safeParse(priorityRaw).data;
 
 			return ProjectBackendService.board({
 				projectId,

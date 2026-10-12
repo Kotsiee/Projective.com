@@ -5,6 +5,8 @@ CREATE INDEX idx_business_members_user ON org.business_members (user_id);
 CREATE INDEX idx_team_roles_team ON org.team_roles (team_id);
 CREATE INDEX idx_team_members_user ON org.team_members (user_id);
 CREATE INDEX idx_user_bookmarks_lookup ON org.user_bookmarks (user_id, entity_type);
+-- Serves the collection FK's ON DELETE SET NULL and the /saved collection filter.
+CREATE INDEX idx_user_bookmarks_collection ON org.user_bookmarks (collection_id) WHERE collection_id IS NOT NULL;
 -- (No separate token index: `token` is UNIQUE, which is already an index.)
 
 -- #region Email addresses (00001050)

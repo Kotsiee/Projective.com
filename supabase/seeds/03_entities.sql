@@ -132,9 +132,8 @@ ON CONFLICT (follower_user_id, target_entity_type, target_entity_id) DO NOTHING;
 
 INSERT INTO org.user_bookmarks (id, user_id, entity_type, entity_id)
 VALUES
-  ('d244e61c-48c2-4a69-a3ac-4316b7ecc143', '1fee216e-a637-4619-a90a-4ae03bb1ed8b', 'freelancer', '6ce1906f-caab-4708-a19e-df3d8960666e'),
+  ('e82d20fa-883f-4f0b-ac2e-75b831fa4799', '1fee216e-a637-4619-a90a-4ae03bb1ed8b', 'user', '6ce1906f-caab-4708-a19e-df3d8960666e'),
   ('aa3e8ca6-a02a-485d-a427-c4c45468e743', '1fee216e-a637-4619-a90a-4ae03bb1ed8b', 'team', '213dc9f8-3ad7-4f35-ac4b-baa674bf48b3'),
   ('3e6483c5-db17-42ac-a327-b0b72f5cf30e', '2bdebf14-f7dc-40af-acd8-fe22cb9916fd', 'service_blueprint', '7b1b3f95-50bb-4b14-a1fa-457bd622993a'),
-  ('6b067942-3f98-43a1-aaa7-a5e8df643177', '950d68d1-8777-4bbe-ae59-3343e3e7f858', 'project', 'f64b99ba-0ab3-4c4f-ac7b-5a88f2577625'),
   ('57f8dbdb-d8ae-4bb2-a1e9-bdfdf7d9ed84', '35ce4987-15b3-4c38-a438-2bb9c35df15a', 'team', 'edc2d943-8062-426a-a6f2-29fdc6b4363c')
 ON CONFLICT (user_id, entity_type, entity_id) DO NOTHING;

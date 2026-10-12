@@ -1,11 +1,11 @@
-import { define } from "@web/utils/state.ts";
+import type { Context } from "fresh";
+import { define, type State } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { corsHeaders, READ_ALLOWED_HEADERS } from "@web/utils/read-endpoint.ts";
+import { invalidFields } from "@web/utils/service-response.ts";
 import { ArchiveProjectSchema, UpdateProjectSchema } from "@projective/types/projects";
 import { toProjectsResponse } from "@features/projects/core/respond.ts";
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
-import { isOnboardingSim } from "@server/services/projects/setup-fixtures.ts";
-import type { ReadActor } from "@server/services/read-actor.ts";
 
 /**
  * `PUT | PATCH | DELETE | OPTIONS /api/projects/:id` — the owner's configuration write path behind
@@ -29,98 +29,55 @@ import type { ReadActor } from "@server/services/read-actor.ts";
  * the reads, which are deliberately reachable by a guest.
  */
 
-// #region Validation
-/**
- * Fold Zod issues into the field-keyed 422 envelope every `/api/projects/*` write answers with.
- * First issue per key wins — a field with three complaints gets the first one, because a form shows
- * one message per input and the rest would never be read.
- */
-function fieldErrors(
-	issues: ReadonlyArray<{ path: ReadonlyArray<PropertyKey>; message: string }>,
-): Record<string, string> {
-	const errors: Record<string, string> = {};
-	for (const issue of issues) {
-		const key = issue.path.map(String).join(".") || "form";
-		if (!errors[key]) errors[key] = issue.message;
-	}
-	return errors;
-}
-
-/** The 422 a malformed body earns. */
-function invalid(errors: Record<string, string>): Response {
-	return Response.json(
-		{ ok: false, message: "Check the highlighted fields.", errors },
-		{ status: 422 },
-	);
-}
-
-/** The 401 an unattributable write earns, shaped like every other `ProjectsResult` failure. */
-function unauthenticated(): Response {
-	return Response.json(
-		{ ok: false, message: "Sign in to change this project." },
-		{ status: 401 },
-	);
-}
-// #endregion
-
 // #region Handlers
-/**
- * Parse an edit body and delegate. Shared by `PUT` and `PATCH` so the two cannot diverge on parsing
- * or on refusals — they differ in exactly one thing, and it is passed explicitly.
- *
- * `replace` is what separates the two verbs, and it is the destructive half: a `PUT` says "here is
- * the whole resource", so a stage or role it does not mention is gone; a `PATCH` says "here is the
- * part that changed", so an absent stage means nothing at all. Collapsing that distinction made a
- * title-only save capable of deleting a project's entire pipeline — and deleting a stage releases the
- * escrow held against it.
- */
-async function applyUpdate(
-	req: Request,
-	url: URL,
-	slug: string,
-	actor: ReadActor,
-	replace: boolean,
-): Promise<Response> {
-	const raw = await req.json().catch(() => null);
-	const parsed = UpdateProjectSchema.safeParse(raw);
-	if (!parsed.success) return invalid(fieldErrors(parsed.error.issues));
+/** The 401 an unattributable write earns, shaped like every other `ProjectsResult` failure. */
+const UNAUTHENTICATED = { ok: false, message: "Sign in to change this project." };
 
-	// The same DEV-ONLY simulation the setup READ takes, carried on the query string rather than in
-	// the body: it is not part of the configuration being saved, and putting it in `UpdateProject`
-	// would make a developer's switch a field of the resource. It has to travel at all because the
-	// lock guard is evaluated here — a write judged against the real counts while the form was drawn
-	// against simulated ones is a form whose disabled controls and refusals disagree.
-	const simRaw = url.searchParams.get("sim");
-	const sim = simRaw && isOnboardingSim(simRaw) ? simRaw : undefined;
+/**
+ * `PUT` and `PATCH`: parse the edit body and delegate.
+ *
+ * The verb is the `replace` flag, and it is the destructive half: a `PUT` says "here is the whole
+ * resource", so a stage or role it does not mention is gone; a `PATCH` says "here is the part that
+ * changed", so an absent stage means nothing at all. Collapsing that distinction made a title-only
+ * save capable of deleting a project's entire pipeline — and deleting a stage releases the escrow
+ * held against it.
+ *
+ * The DEV-ONLY `sim` rides the query string rather than the body — it is not part of the
+ * configuration being saved — and is passed through raw: the service validates it and discards it
+ * outside development.
+ */
+async function update(ctx: Context<State>): Promise<Response> {
+	const actor = readActor(ctx);
+	if (!actor.userId) return Response.json(UNAUTHENTICATED, { status: 401 });
+
+	const parsed = UpdateProjectSchema.safeParse(await ctx.req.json().catch(() => null));
+	if (!parsed.success) return invalidFields(parsed.error.issues);
 
 	return toProjectsResponse(
-		await ProjectBackendService.updateProject(slug, parsed.data, actor, replace, sim),
+		await ProjectBackendService.updateProject(
+			ctx.params.id,
+			parsed.data,
+			actor,
+			ctx.req.method === "PUT",
+			ctx.url.searchParams.get("sim"),
+		),
 	);
 }
 
 export const handler = define.handlers({
-	PUT(ctx) {
-		const actor = readActor(ctx);
-		if (!actor.userId) return unauthenticated();
-		return applyUpdate(ctx.req, ctx.url, ctx.params.id, actor, true);
-	},
-
-	PATCH(ctx) {
-		const actor = readActor(ctx);
-		if (!actor.userId) return unauthenticated();
-		return applyUpdate(ctx.req, ctx.url, ctx.params.id, actor, false);
-	},
+	PUT: update,
+	PATCH: update,
 
 	async DELETE(ctx) {
 		const actor = readActor(ctx);
-		if (!actor.userId) return unauthenticated();
+		if (!actor.userId) return Response.json(UNAUTHENTICATED, { status: 401 });
 
 		// A DELETE legitimately carries no body, and every field of the archive payload is optional —
 		// so an absent or unreadable body means "archive it, no reason given" rather than a 422. Parsing
 		// `null` would fail the object check and turn the ordinary case into an error.
 		const raw = await ctx.req.json().catch(() => null);
 		const parsed = ArchiveProjectSchema.safeParse(raw ?? {});
-		if (!parsed.success) return invalid(fieldErrors(parsed.error.issues));
+		if (!parsed.success) return invalidFields(parsed.error.issues);
 
 		return toProjectsResponse(
 			await ProjectBackendService.archiveProject(ctx.params.id, parsed.data, actor),

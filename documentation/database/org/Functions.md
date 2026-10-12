@@ -421,6 +421,18 @@ Wrapped caller-side by `packages/backend/services/profile/party-cards.ts` (`fetc
 through it, and falls back to names alone if it cannot be read. PL/pgSQL rather than SQL so its body
 resolves `files.fn_public_media_ref` at run time — that function is created later, in `00001160`.
 
+### `org.get_profile_cards(p_types text[], p_ids uuid[])` — the same identity for any profile kind
+
+`STABLE` · `SECURITY DEFINER` · granted to `anon`, `authenticated` and `service_role` (Decision #174).
+Pairs are `(p_types[i], p_ids[i])` over the polymorphic owner vocabulary (`user` · `team` · `business` ·
+`organisation`), at most **500**. Returns `(owner_type, owner_id, kind, handle, name, avatar,
+oauth_avatar)` — `kind` is `freelancer` / `client` for a person, else the entity kind; `avatar` a
+`files.fn_public_media_ref`; `oauth_avatar` a person's raw sign-in picture (rendered only through the
+allowlist, as for `get_party_cards`). **A pair the caller may not see (`org.fn_profile_visible`) is
+absent**, so a private profile never surfaces through someone's `/saved` page or a followers /
+following list. `anon` may call it because a follow is a public edge and the lists are public. Wrapped
+by `packages/backend/services/profile/live-follows.ts` (`fetchProfileCards`).
+
 ### The owner write path (`authenticated`)
 
 All three are `VOLATILE` · `SECURITY DEFINER` and check `org.fn_profile_manages` first

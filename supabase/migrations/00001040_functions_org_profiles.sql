@@ -839,6 +839,56 @@ BEGIN
     WHERE u.user_id = ANY (p_user_ids[1:500]);
 END;
 $$;
+
+-- The same public identity for a profile of ANY kind — a person, team, business or organisation — as
+-- the /saved page and a profile's followers / following lists show it (Decision #174). Pairs are
+-- (p_types[i], p_ids[i]); a pair the caller may not see (org.fn_profile_visible) is simply absent, so
+-- a private profile never leaks through someone's saved list or follow graph. PL/pgSQL for the same
+-- file-order reason as get_party_cards.
+CREATE OR REPLACE FUNCTION org.get_profile_cards(p_types text[], p_ids uuid[])
+RETURNS TABLE (
+    owner_type text,
+    owner_id uuid,
+    kind text,
+    handle text,
+    name text,
+    avatar jsonb,
+    oauth_avatar text
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    RETURN QUERY
+    WITH pairs AS (
+        SELECT DISTINCT t.owner_type, t.owner_id
+        FROM unnest(p_types[1:500], p_ids[1:500]) AS t (owner_type, owner_id)
+        WHERE org.fn_profile_visible (t.owner_type, t.owner_id)
+    )
+    SELECT p.owner_type, p.owner_id,
+           CASE WHEN u.is_freelancer THEN 'freelancer' ELSE 'client' END,
+           u.username,
+           COALESCE(NULLIF(btrim(concat_ws(' ', u.first_name, u.last_name)), ''), u.username),
+           files.fn_public_media_ref (u.avatar_file_id),
+           COALESCE(NULLIF(au.raw_user_meta_data->>'avatar_url', ''), NULLIF(au.raw_user_meta_data->>'picture', ''))
+    FROM pairs p
+    JOIN org.users_public u ON p.owner_type = 'user' AND u.user_id = p.owner_id
+    LEFT JOIN auth.users au ON au.id = u.user_id
+    UNION ALL
+    SELECT p.owner_type, p.owner_id, 'team', t.slug, t.name, files.fn_public_media_ref (t.avatar_file_id), NULL
+    FROM pairs p JOIN org.teams t ON p.owner_type = 'team' AND t.id = p.owner_id
+    UNION ALL
+    SELECT p.owner_type, p.owner_id, 'business', b.slug, b.name, files.fn_public_media_ref (b.logo_file_id), NULL
+    FROM pairs p JOIN org.business_profiles b ON p.owner_type = 'business' AND b.id = p.owner_id
+    UNION ALL
+    SELECT p.owner_type, p.owner_id, 'organisation', o.handle,
+           COALESCE(NULLIF(btrim(o.trading_name), ''), o.legal_name),
+           files.fn_public_media_ref (o.logo_file_id), NULL
+    FROM pairs p JOIN org.organisations o ON p.owner_type = 'organisation' AND o.id = p.owner_id;
+END;
+$$;
 -- #endregion
 
 -- #region 5. The owner write path

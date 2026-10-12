@@ -464,6 +464,54 @@ CREATE TABLE org.profile_links (
 
 ---
 
+## ⭐ Saved — bookmarks and collections (Decision #174)
+
+The bookmark half of the one saved system (`SavedBackendService`, `/api/saved`). A save lives in the
+store its kind already had: listings, people and project channels are bookmark rows here; a project
+is its star (`projects.user_preferences.is_starred`), a conversation its participant star
+(`comms.dm_participants.is_starred`), a message a `comms.message_favorites` row, a file its owner's
+`files.items.starred`. Zod SSOT: `packages/types/org/saved.ts` (`SavedEntityType`, `SavedToggle`,
+`SavedItem`, `SavedCollection`).
+
+### `org.user_bookmark_collections`
+
+A user's named collection. A bookmark sits in at most one; deleting a collection unfiles its
+bookmarks (the FK sets them `NULL`), never deletes them.
+
+| Column       | Type        | Notes                                                                         |
+| :----------- | :---------- | :---------------------------------------------------------------------------- |
+| `id`         | uuid        | PK.                                                                           |
+| `user_id`    | uuid        | FK → `org.users_public.user_id` (CASCADE).                                    |
+| `name`       | text        | 1–60 characters after trimming. `UNIQUE (user_id, name)` — a 409 on a repeat. |
+| `created_at` | timestamptz | `NOT NULL DEFAULT now()` — collections list oldest first.                      |
+
+`UNIQUE (id, user_id)` exists only as the target of `user_bookmarks`' composite FK.
+
+### `org.user_bookmarks`
+
+| Column          | Type                       | Notes                                                                                                                                                                                                     |
+| :-------------- | :------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`            | uuid                       | PK.                                                                                                                                                                                                       |
+| `user_id`       | uuid                       | FK → `org.users_public.user_id` (CASCADE).                                                                                                                                                                |
+| `entity_type`   | `org.bookmark_entity_type` | What it points at — see the enum below.                                                                                                                                                                   |
+| `entity_id`     | uuid                       | Polymorphic by `entity_type`, so no FK. `UNIQUE (user_id, entity_type, entity_id)` — saving twice is idempotent.                                                                                         |
+| `collection_id` | uuid                       | Nullable (`NULL` = unfiled). FK `(collection_id, user_id)` → `user_bookmark_collections (id, user_id)` `ON DELETE SET NULL (collection_id)`: a bookmark can only sit in its owner's own collection. |
+| `created_at`    | timestamptz                | Default `now()` — the saved-at instant `/saved` sorts by.                                                                                                                                                 |
+
+```sql
+CREATE TYPE org.bookmark_entity_type AS ENUM (
+    'service_blueprint', 'product', 'article', 'user', 'team', 'business', 'organisation', 'project_channel'
+);
+```
+
+People use the follow graph's vocabulary — `'user'`, never `'freelancer'`/`'client'` — so one person
+is one saveable target (Decision #174 replaced `'freelancer'`). `'project'` was removed: a project's
+save is its star. `'project_channel'` is the channel star (Decision #175). Indexes:
+`idx_user_bookmarks_lookup (user_id, entity_type)` and `idx_user_bookmarks_collection (collection_id)`,
+partial on non-null.
+
+---
+
 ## ⚙️ Preferences
 
 ### `org.user_preferences`

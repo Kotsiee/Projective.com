@@ -6,6 +6,7 @@ import { activeTabOf, resolveChannelMeta, visibleChannelTabKeys } from "./channe
 import { resolveSessionKind } from "./session-model.ts";
 import { resolveProjectDetail } from "./detail-ssr.ts";
 import { isTaskDetail } from "./task-project.ts";
+import { channelStarredIn } from "./channel-stars.ts";
 import { isDiscussionRef } from "@projective/types/projects";
 import type { ChannelMeta } from "./channel-view.ts";
 import type { ProjectDetail, ProjectStatus } from "../types/projects-types.ts";
@@ -150,7 +151,7 @@ export async function channelHeaderFor(
 			base={base}
 			meta={meta}
 			activeTab={activeTabOf(url.pathname, base)}
-			starred={detail.starred}
+			starred={channelStarredIn(detail, meta.channelId)}
 			visibleTabs={visibleTabs}
 			viewerIsClient={detail.viewerIsClient}
 			canConfigure={canConfigure}

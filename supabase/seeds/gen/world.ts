@@ -819,14 +819,13 @@ export const FOLLOWS: Array<[follower: string, target: string]> = [
 export const BOOKMARKS: Array<
 	{
 		persona: string;
-		type: "freelancer" | "team" | "business" | "project" | "service_blueprint";
+		type: "user" | "team" | "business" | "service_blueprint";
 		target: string;
 	}
 > = [
-	{ persona: "noor", type: "freelancer", target: "maris" },
+	{ persona: "noor", type: "user", target: "maris" },
 	{ persona: "noor", type: "team", target: "nova" },
 	{ persona: "theo", type: "service_blueprint", target: "sv-packaging-art-direction" },
-	{ persona: "chloe", type: "project", target: "helia-wallet" },
 	{ persona: "hannah", type: "team", target: "north" },
 ];
 // #endregion

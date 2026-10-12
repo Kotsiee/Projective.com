@@ -309,3 +309,83 @@
 }
 
 /* #endregion */
+
+/* #region Follower counts + the connections list (Decision #174) */
+/* The counts are controls in the meta register: the line's own size and colour, a tabular figure,
+   an underline on hover. They open the followers / following list. */
+.pf-hero__count {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    color: inherit;
+    cursor: pointer;
+}
+
+.pf-hero__count:hover {
+    color: var(--on-surface);
+    text-decoration: underline;
+}
+
+.pf-conn__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.pf-conn__row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    border-block-end: var(--hairline);
+}
+
+.pf-conn__row:last-child {
+    border-block-end: 0;
+}
+
+.pf-conn__link {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: var(--space-3);
+    min-inline-size: 0;
+    padding-block: var(--space-2);
+    color: inherit;
+    text-decoration: none;
+}
+
+.pf-conn__link:hover .pf-conn__name {
+    text-decoration: underline;
+}
+
+.pf-conn__body {
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    flex: 1 1 auto;
+}
+
+.pf-conn__name {
+    font-size: var(--text-md);
+    font-weight: var(--fw-medium);
+    color: var(--on-surface);
+}
+
+.pf-conn__meta {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+
+.pf-conn__ph {
+    flex: 0 0 auto;
+    inline-size: var(--space-6);
+}
+
+.pf-conn__more {
+    display: flex;
+    justify-content: center;
+    padding-block-start: var(--space-2);
+}
+/* #endregion */

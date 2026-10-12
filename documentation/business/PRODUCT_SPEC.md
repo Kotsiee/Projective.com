@@ -2054,6 +2054,34 @@ When a project-derived asset is sold, the marketplace logic can be configured to
 
 ---
 
+### Saved & Favourites (Decision #174)
+
+One saved system, one page. Whatever a person stars, saves or favourites lands on **`/saved`**
+(the account menu's **Saved**), and every star / save control on the platform writes the same way:
+it changes at once, persists, and — if the platform refuses — changes back and says why.
+
+| What is saved | Where the control lives | Notes |
+| :-- | :-- | :-- |
+| A service, product or article | The Explore card's star; the listing page's **Save** and **Add to collection…** | A bookmark. |
+| A person, team, business or organisation | The Explore card's star | A bookmark — private. **Following** is separate and public (the profile's Follow); the people someone follows are listed on `/saved` under **People you follow**, and unfollowing there is the same unfollow. |
+| A project | The star on `/projects` cards and the project header; **Save project** on its public page | The project's star — the `/projects` **Starred** filter and `/saved` agree. |
+| A project room | The channel header's star | The room tree's **Starred** filter reads it (Decision #175). |
+| A conversation | The conversation header, row menu and inbox row | The `/messages` **Starred** view reads it. |
+| A message | Favourite in the message menu | Private to the person. (Pin is different: it is shared with the whole room.) |
+| A file | The star in a file's preview | The **owner's** mark — the star is offered only on files the viewer owns. |
+
+- **Collections.** Saved listings, people and rooms can be filed into **named collections** (one
+  collection each, or none); `/saved` can be narrowed to one. Deleting a collection never un-saves
+  what is in it. A basket's named lists stay what they are (Decision #70): purchasables waiting to be
+  bought, not saves.
+- **The page.** Tabs All · Services & products · People · Projects · Messages · Files; newest save
+  first; rows are removed in place; nothing is boxed or tagged (DESIGN_SYSTEM §C.1, Saved).
+- **Followers / following.** A profile's follower and following counts open the list of the people
+  behind them (a person's profile only has a following list — teams, businesses and organisations do
+  not follow). A profile the viewer may not see is left out of every list.
+
+---
+
 ### Reputation & Discovery
 
 Projective is a meritocracy. Discovery is driven by a combination of verified performance data,
@@ -2089,7 +2117,8 @@ To prevent "Marketplace Entrenchment," the search algorithm is **Workload-Aware*
   (even if short) track record receive a "Discovery Boost."
 - **Recommender Logic:** For freelancers browsing the "Explore" page, the system utilises their
   project history and "Saved" preferences to surface Pipelines and One-Offs that match their
-  demonstrated skill set.
+  demonstrated skill set. _How a save weighs in the ranking is not yet specified, so the saved signal
+  does not feed Explore ranking yet — Decision #174 flag (c)._
 
 #### 3. Reciprocal Reviews
 
@@ -2735,6 +2764,7 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `files/[file id]`        | View specific file                                                                             |
 |               | `/files`                  | `index`                  | Asset hub — personal/entity library + read-only mounted project & channel attachments          |
 |               |                           | `[...path]`              | Folder navigation (deep-linkable; the tree, breadcrumbs and URL address the same node)         |
+|               | `/saved`                  | `index`                  | Everything the account saved, starred, favourited or followed (`?tab=` · `?collection=`) — Saved & Favourites |
 |               | `/settings`               | `index`                  | The Settings hub: a search over every setting, what needs your attention, the profile completeness tracker, and every section as a card (§Settings) |
 |               |                           | `[section]`              | One section: account · profile · workspaces · language & region · appearance · notifications · messaging · scheduling & calls · billing |
 |               |                           | `verification`           | Verification & payouts — identity check, payout account, business verification                 |

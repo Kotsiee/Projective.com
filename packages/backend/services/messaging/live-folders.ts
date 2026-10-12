@@ -36,3 +36,25 @@ export async function setLiveFolder(
 	}
 	return { data: { id: conversationId, folder } };
 }
+
+/**
+ * Star or unstar a conversation for the caller through `comms.set_dm_starred` (the /saved system,
+ * Decision #174). A conversation with no thread yet has nothing to star and reads as a miss.
+ */
+export async function setLiveStarred(
+	actor: ReadActor & { accessToken: string },
+	conversationId: string,
+	starred: boolean,
+): Promise<WriteOutcome<{ starred: boolean }>> {
+	const ref = await resolveThreadRef(actor, conversationId);
+	if (!ref || ref.kind === "virtual") return null;
+	const { error } = await commsClient(actor).rpc("set_dm_starred", {
+		p_thread_id: ref.threadId,
+		p_starred: starred,
+	});
+	if (error) {
+		if (error.code === "42501") return null;
+		throw new Error(`comms.set_dm_starred failed: ${error.message}`);
+	}
+	return { data: { starred } };
+}

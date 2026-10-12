@@ -2622,6 +2622,36 @@ Retry · empty state · hairline rows · Load more · the polite live region), a
 (`NotificationService`, `notification-model`, `notification-state`, `useNotificationFeed`,
 `notification-sim`). Replaces the `nav-fixtures` notification list and the `.shell-feed` rows.
 
+**Saved (`features/saved/`, Decisions #174 / #175).** The one saved system's client half.
+`SavedService` (thin client over `/api/saved/*`, substituted by `saved-sim` while the Dev Context
+Switcher's `saved` axis is set — Auto · Nothing saved · Every type), `optimistic` (THE star / save
+write discipline: apply at once → persist → roll back on refusal → hand back the sentence to
+announce; one press in flight per key) and `saved-state` (`toggleSaved`; `savedFlag` — one shared
+signal per listing / profile / project, answered for a whole Explore grid by ONE batched
+`/api/saved/state` read; `savedTypeOf` maps an Explore entity to its kind). Every star control
+(`CardActions`, the view lanes, `ProjectCard` / `SidebarHeader`, the conversation header / row menu
+/ inbox row, `ChatFeed` / `PopoutChat` favourite, the file `PreviewHeader`, `ChannelHeader`) keeps
+`aria-pressed` and announces its outcome in a polite region or toast. Components:
+`CollectionPicker` (a `Dialog`: a `RadioGroup` of No collection + the viewer's collections, nothing
+preselected when the current one is unknown, an inline **New collection** field, Cancel / Save;
+saving through it saves the thing too) and `SavedRow` (lead picture — a person's `UserAvatar`, a
+thumbnail, else the kind's glyph on `--surface-2` — · the title as the row's link · ONE inline
+`--text-secondary` meta line, kind · owner or place · when saved; Add to collection and Remove are
+sibling icon-only text `Button`s named with the row's title, never inside the link). The island
+`SavedPage` (`/saved`): display title; a `TabMenu` tablist (All · Services & products · People ·
+Projects · Messages · Files) deep-linked with `?tab=`; a collection `Select` (+ Delete collection)
+only on a tab with a collectable kind and only once a collection exists; hairline rows, **never
+cards or chips**; **People you follow** as its own labelled section after the saves; loading
+placeholders, an error `InlineNotice` with Try again, an `EmptyState` (`star`) whose sentence names
+the tab; removal in place, rolled back and explained on refusal; Load more. Elsewhere in the same
+change: Explore's `CardActions` is **Share · Save** — the kebab and its Report / Add to project stubs
+are gone (§3 gate 11, as Decision #140); the file preview's star renders only for a file the viewer
+may star (its owner); `projects/core/channel-stars` carries a room star from the channel header to
+the sidebar tree's **Starred** filter without a reload; the profile hero's meta line gains the
+follower / following counts (`tabular-nums` text controls) that open `ConnectionsDialog`
+(`features/profile/components/`, hairline rows of avatar · name · `@handle · kind`, Load more); the
+account menu gains **Saved** (`NavIcon` `saved`, a bookmark glyph).
+
 **`FundingStatus` (`features/projects/components/`, Decision #169).** One ticket's payment &
 work-start line (PRODUCT_MANAGEMENT §3.6): props `funding` (the server-derived `FundingStatus` from
 `@projective/types/finance`, never derived in an island), `side` (`client` · `provider`),
@@ -3528,8 +3558,10 @@ buyer see the same offer in the same place. Its anatomy is fixed, top to bottom:
 
 1. **Identity band.** The creator's `@handle` as a link to `/[handle]` (canonical, §8 Decision #3),
    the verification crest as an `Icon` (never a pill — §B.11.4), and an overflow kebab. **Secondary
-   actions live in the kebab, not on the lane**: _Share listing · Save to custom list · Request
-   custom scope · Report listing_. Each is one decision the buyer is not currently making, and every
+   actions live in the kebab, not on the lane**: _Share listing · Save · Add to collection… · Request
+   custom scope_ (a project lane: _Share project · Save project_). Save is a bookmark (the project's
+   star on a project), filed into a named collection through `CollectionPicker` (Decision #174);
+   Report was removed with no backend behind it (§3 gate 11). Each is one decision the buyer is not currently making, and every
    one promoted to a visible button competes with the one they are.
 2. **Price.** The converted local figure in **`--text-2xl` (1.75rem), `--fw-medium`, `tabular-nums`**
    through `MoneyView` (§C.1) — so a currency switch re-projects it and the origin is disclosed
