@@ -19,6 +19,12 @@ export interface GridProps extends Omit<HTMLAttributes<HTMLElement>, "style" | "
 	 * cards never over-narrow into a cramped many-column row. Pure CSS (RAM formula) — no measurement.
 	 */
 	maxCols?: number;
+	/**
+	 * Keep empty tracks (`auto-fill`) instead of collapsing them (`auto-fit`), so a row with fewer
+	 * cells than fit keeps every cell at full-row track width, aligned to the start. Only meaningful
+	 * with `minChildWidth`.
+	 */
+	fill?: boolean;
 	/** Gap between cells. */
 	gap?: Space;
 	align?: GridPlacement;
@@ -34,6 +40,7 @@ export function Grid(props: GridProps): JSX.Element {
 		cols,
 		minChildWidth,
 		maxCols,
+		fill = false,
 		gap,
 		align,
 		justify,
@@ -59,6 +66,7 @@ export function Grid(props: GridProps): JSX.Element {
 				"ui-grid",
 				auto && "ui-grid--auto",
 				capped && "ui-grid--capped",
+				auto && fill && "ui-grid--fill",
 				className as string,
 			)}
 			style={styleVars(vars, style)}

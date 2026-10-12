@@ -7,9 +7,22 @@
 	justify-items: var(--grid-justify, stretch);
 }
 
-/* Responsive auto-fit: fills as many `--grid-min`-wide tracks as fit, no media queries needed. */
+/*
+ * Responsive auto-fit: fills as many `--grid-min`-wide tracks as fit, no media queries needed. The
+ * repeat keyword is `--grid-repeat` so `--fill` can swap it without restating either track formula.
+ */
 .ui-grid--auto {
-	grid-template-columns: repeat(auto-fit, minmax(min(var(--grid-min, 16rem), 100%), 1fr));
+	--grid-repeat: auto-fit;
+	grid-template-columns: repeat(var(--grid-repeat), minmax(min(var(--grid-min, 16rem), 100%), 1fr));
+}
+
+/*
+ * Fill, not fit: `auto-fill` keeps the empty tracks a short row leaves behind, so one or two cells
+ * keep the width a full row gives them and sit at the start instead of stretching across the row.
+ * Below the point where only one track fits, a cell is full width either way.
+ */
+.ui-grid--fill {
+	--grid-repeat: auto-fill;
 }
 
 /*
@@ -20,7 +33,7 @@
  */
 .ui-grid--capped {
 	grid-template-columns: repeat(
-		auto-fit,
+		var(--grid-repeat),
 		minmax(
 			max(
 				min(var(--grid-min, 16rem), 100%),
