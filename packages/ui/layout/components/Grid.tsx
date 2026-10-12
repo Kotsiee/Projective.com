@@ -25,6 +25,12 @@ export interface GridProps extends Omit<HTMLAttributes<HTMLElement>, "style" | "
 	 * scales cards continuously instead of in column-count jumps.
 	 */
 	fit?: "stretch" | "exact";
+	/**
+	 * Keep empty tracks (`auto-fill`) instead of collapsing them (`auto-fit`), so a row with fewer
+	 * cells than fit keeps every cell at full-row track width, aligned to the start. Only meaningful
+	 * with `minChildWidth`.
+	 */
+	fill?: boolean;
 	/** Gap between cells. */
 	gap?: Space;
 	align?: GridPlacement;
@@ -41,6 +47,7 @@ export function Grid(props: GridProps): JSX.Element {
 		minChildWidth,
 		maxCols,
 		fit = "stretch",
+		fill = false,
 		gap,
 		align,
 		justify,
@@ -68,6 +75,7 @@ export function Grid(props: GridProps): JSX.Element {
 				auto && "ui-grid--auto",
 				capped && "ui-grid--capped",
 				exact && "ui-grid--exact",
+				auto && fill && "ui-grid--fill",
 				className as string,
 			)}
 			style={styleVars(vars, style)}
