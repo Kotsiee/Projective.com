@@ -1251,7 +1251,7 @@ non-fill weights above, named for the jobs the matrix reserves them for.
 
 | Tier                                   | Fill · ink                                                                                                  | Shape                                              | Use for                                                                   | Examples                                                                                                         |
 | :------------------------------------- | :---------------------------------------------------------------------------------------------------------- | :------------------------------------------------- | :------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------- |
-| **1. Terminal financial / conversion** | `severity="accent"` (Button-only, `filled` only): solid `--accent` · `--on-accent` (§A.1.2)                 | pill — `rounded` (`--radius-full`)                 | A commit inside a financial / conversion flow, or the act that starts one | Checkout Pay / Place Order and every checkout commit · profile hero Hire · Fund Escrow                           |
+| **1. Terminal financial / conversion** | `severity="accent"` (Button-only, `filled` only): solid `--accent` · `--on-accent` (§A.1.2)                 | pill — `rounded` (`--radius-full`)                 | A commit inside a financial / conversion flow, or the act that starts one | Checkout Pay / Place Order and every checkout commit · Fund Escrow                                               |
 | **2. Primary structural commitment**   | monochrome inverted: solid `--on-surface` · `--surface` ink (§D.7.7)                                        | per surface (§D.7.7: pill)                         | Commits to structure, not money                                           | Add to project · primary creation triggers (Create project, `LaneCreateButton`)                                  |
 | **3. Brand primary**                   | `severity="primary"`: solid `--primary` · mode-invariant `--on-primary`                                     | the radius ramp (B.8.4)                            | Major navigation active states (§B.4.2), core workflow commits            | Save photo · Attach Selected                                                                                     |
 | **4. Neutral outlined**                | `severity="neutral" variant="outlined"` (Button-only): border `var(--hairline-strong)` · `--on-surface` ink | the radius ramp; icon-only may be a circle (B.8.4) | Utility actions — **mandatory** for them                                  | Asset-picker Upload · Show more · Try again · profile media upload · profile Message · Follow · Settings · Share |
@@ -1265,7 +1265,8 @@ navigation and workflow voice. That is what makes tier 1 safe beside tier 2 (B.8
 
 **The tier-1 test, stated once.** Tier 1 is **a commit inside a financial or conversion flow, or
 the act that starts one**: every commit of the checkout — Continue, Save details, the Add-card
-actions, Pay / Place Order (B.8.4) — the profile's Hire, which starts a hire, and Fund Escrow. It is
+actions, Pay / Place Order (B.8.4) — and Fund Escrow. (The profile's Hire, which starts a hire, passes
+this test but is the one ruled exception: it renders brand primary, Decision #175.) It is
 never borrowed for a commit outside such a flow: an amber "Save" on a settings form teaches the
 reader that amber means nothing. Every other statement of tier 1's scope in this document, in
 `PRODUCT_SPEC.md` §Visual Identity and in the B.8 gate reads from this sentence. The narrower
@@ -1273,7 +1274,7 @@ reading — amber for the money-moving commit alone (Pay / Place Order, Fund Esc
 other commits in tier 2 — is open as Decision #157 flag (j); the docs follow the directive's
 "every checkout commit" until it is ruled.
 
-**Where tier 1 renders today.** Beyond the checkout (B.8.4) and the profile's Hire (§D.7.7):
+**Where tier 1 renders today.** Beyond the checkout (B.8.4):
 
 - the basket summary's **Proceed to Checkout** link (`bsk-summary__cta`) — the act that starts the
   checkout flow;
@@ -1337,8 +1338,9 @@ noise, and it makes the row's _content_ the least prominent thing in the row.
 > protect the reader's ability to rank the actions. Where a decision region genuinely holds a
 > terminal financial commit AND a structural commitment, the two may both be filled because the
 > matrix ranks them by **hue** — amber tier 1 against monochrome tier 2 — rather than by emphasis,
-> so the ranking survives. The canonical case is the profile action rig: **Hire** (amber accent)
-> beside **Add to project** (monochrome inverted). The entity view's conversion lane (monochrome
+> so the ranking survives. The profile action rig holds the one ruled exception (Decision #175):
+> **Hire** in brand primary (teal) beside **Add to project** (monochrome inverted) — still ranked
+> by hue, chromatic against achromatic. The entity view's conversion lane (monochrome
 > commit + teal basket) predates the matrix and is held as shipped, scoped to that lane, pending a
 > ruling (§D.7.7). Two fills of the SAME colour — or any two tiers other than the amber/monochrome
 > pair — is the case the cap was written for, and remains a finding.
@@ -3678,7 +3680,7 @@ Button Interaction Matrix (§B.8.1, Decision #157) is stated per control:
 
 | Rig                                | Control                                                                 | Tier (§B.8.1)                         | Treatment                           |
 | :--------------------------------- | :---------------------------------------------------------------------- | :------------------------------------ | :---------------------------------- |
-| Profile hero + band (`ProfileRig`) | **Hire**                                                                | 1 · terminal conversion               | amber `--accent` pill               |
+| Profile hero + band (`ProfileRig`) | **Hire**                                                                | 1 by the matrix — **ruled exception** | solid `--primary` pill (#175)       |
 | Profile hero + band (`ProfileRig`) | **Add to project** — beside Hire or alone                               | 2 · structural commitment             | monochrome inverted pill            |
 | Profile hero + band (`ProfileRig`) | Seller rig: Message · Follow                                            | 4 · neutral outlined, icon-only       | `neutral` `outlined` circle         |
 | Profile hero + band (`ProfileRig`) | Buyer rig: Message · Follow                                             | 4 · neutral outlined                  | `neutral` `outlined` text pill      |
@@ -3688,10 +3690,11 @@ Button Interaction Matrix (§B.8.1, Decision #157) is stated per control:
 | Entity-view lane (§D.7.2 item 4)   | _Add to basket_                                                         | ranked below the primary by hue       | solid `--primary` pill              |
 | Entity-view lane (§D.7.2 item 5)   | _Message seller_                                                        | 5 · ghost                             | `text`                              |
 
-The profile rig is the matrix's canonical two-fill case: amber Hire beside monochrome Add to
-project, ranked by hue (§B.8.2). Nothing on the profile rig is tier 3, and the buyer and owner rigs
+The profile rig is the matrix's two-fill exception: brand-primary Hire beside monochrome Add to
+project, ranked by hue (§B.8.2) — Hire left amber for teal at the product owner's direction
+(Decision #175), scoped to this rig and to Hire alone. Nothing on the profile rig is tier 3, and the buyer and owner rigs
 have no filled control at all — §B.8.2 caps fills at one and sets no minimum. The markup per tier:
-Hire is the bare `ui-button--accent ui-button--filled ui-button--rounded` class set on a native
+Hire is the bare `ui-button--primary ui-button--filled ui-button--rounded` class set on a native
 `<button>` (its `Popover` needs the ref `Button` does not forward), with no rig-local colour
 override; Add to project is `ui-button--primary ui-button--filled` plus `.pf-rig__cta--mono`, the
 inverted override, wherever it renders; every tier-4 control is the shared
@@ -3715,8 +3718,8 @@ correct in both directions: near-white on near-black in light, near-black on nea
 accessibility carve-out and is unaffected by the colour-blindness overlays, being achromatic.
 
 **In the entity-view lane**, the secondary carries the brand teal, and **its ink is `--surface`
-too** — which is the whole trick. (The profile rig has no teal fill; its second fill is amber Hire
-on `--on-accent`, §A.1.2.)
+too** — which is the whole trick. (The profile rig's teal fill is Hire, on the `--on-primary` token
+pair — the Decision #175 exception, which inherits that pair's open dark-mode measurement.)
 Solid `--primary` with white text measures **5.38:1 in light** (correct, and literally white) but
 **3.75:1 in dark**, and the token pair `--on-primary` measures **3.57:1** there. Both then *collapse*
 under `data-contrast="high"` in dark — **2.52:1** and **1.75:1** — so the overlay meant to rescue
@@ -3748,12 +3751,14 @@ gain the step rather than each surface re-declaring it.
 
 > **§B.8.2 note.** Both rigs can render two solid fills (the profile's seller rig does; its buyer and
 > owner rigs render none), which the one-`filled`-per-decision-region cap
-> reads as a violation. The profile rig is the sanctioned case the matrix names: amber Hire against
+> reads as a violation. The profile rig is the sanctioned case the matrix names: brand-primary Hire
+> (Decision #175; amber before it) against
 > monochrome Add to project, ranked by HUE rather than by emphasis, so the hierarchy a reader
 > perceives is intact — which is what the cap protects. The entity-view lane's monochrome commit
 > against a brand basket predates the matrix and is held as shipped, scoped to this lane, pending
 > Decision #157 flag (f). Neither generalises: two fills of the same colour, or any pair other
-> than amber + monochrome, remains a finding on every other surface.
+> than amber + monochrome, remains a finding on every other surface — the profile rig's teal +
+> monochrome pair is a ruling for that rig alone.
 
 **D.7.8 The canvas is content-first.**
 

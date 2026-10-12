@@ -35,8 +35,9 @@ import type { ProfileView, ServiceItem } from "../types/profile-types.ts";
  * Which controls render is `rigFor`'s decision (root CLAUDE.md §8 Decision #108): a SELLER leads
  * with **Hire** and **Add to project** with Message + Follow as icon-only secondaries; a BUYER sees
  * Message + Follow as text; the OWNER sees Settings + Share. Fills follow the Button Interaction
- * Matrix (DESIGN_SYSTEM §B.8.1 / §D.7.7): Hire is the amber accent pill, Add to project the
- * monochrome inverted pill wherever it renders, every other control neutral outlined. Hire renders
+ * Matrix (DESIGN_SYSTEM §B.8.1 / §D.7.7) with one ruled exception: Hire is the brand primary pill
+ * (`--primary` · `--on-primary`, Decision #175) rather than the matrix's amber tier 1, Add to project
+ * the monochrome inverted pill wherever it renders, every other control neutral outlined. Hire renders
  * for a guest (a listing's preview is public) but its PRESS opens the sign-in prompt in place of the
  * listings popover; Add to project is withheld from a guest outright, because its rows are the
  * viewer's own projects.
@@ -121,8 +122,6 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 	const celebrating = followCelebrating.value;
 	const followLabel = isFollowing ? `Following ${profile.name}` : `Follow ${profile.name}`;
 	const followText = isFollowing ? "Following" : "Follow";
-	const accent =
-		`ui-button ui-button--accent ui-button--filled ui-button--size-${size} ui-button--rounded`;
 	const filled =
 		`ui-button ui-button--primary ui-button--filled ui-button--size-${size} ui-button--rounded`;
 	const outlined =
@@ -225,7 +224,7 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 									<button
 										type="button"
 										ref={api.ref as RefObject<HTMLButtonElement>}
-										class={`${accent} pf-rig__cta pf-rig__cta--hire`}
+										class={`${filled} pf-rig__cta pf-rig__cta--hire`}
 										aria-haspopup="dialog"
 										aria-expanded={api.expanded ? "true" : "false"}
 										aria-controls={api.panelId}
