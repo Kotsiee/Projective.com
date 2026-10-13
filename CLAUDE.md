@@ -20,8 +20,8 @@ for fiat rails. Every rule below is a merge gate; the full text lives in
 | Rebuild local DB + seeds + assets | `deno task db:reset` |
 | Regenerate committed seed SQL | `deno task db:seed:generate` |
 
-Secrets go in `.env.local` (server loads only `.env.local` then `.env`). Four
-`theme-engine.test.ts` failures are pre-existing (Decision #96(a)).
+Secrets go in `.env.local` (server loads only `.env.local` then `.env`); `.env.example` is the only
+committed env file. Four `theme-engine.test.ts` failures are pre-existing (Decision #96(a)).
 
 ## Core Conventions
 

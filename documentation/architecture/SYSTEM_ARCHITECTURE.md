@@ -724,7 +724,8 @@ logic** along a hard line, with a symmetrical service on each side of the networ
 Follows the standard seven-folder shape; populated as needed:
 
 - `core/env.ts` — the single, lazy, typed reader of the Environment Variable Contract (never throws
-  at import; accepts the documented **and** the `.env.development` key names — see §8 row 11).
+  at import; reads only the canonical contract names — the old `.env.development` aliases were
+  renamed, Decision #11).
 - `core/supabase.ts` — on-demand client provisioning: `getUserClient(jwt)` (RLS-scoped, the default)
   vs `getServiceClient()` (service-role, RLS-bypassing, narrow/audited use only), gated by
   `isSupabaseConfigured()` / `isAuthBackendLive()`.
@@ -2793,10 +2794,12 @@ The application relies on a strict set of environment variables. The canonical s
 > **Where real values go.** `apps/web/main.ts` loads exactly two files from the repo root —
 > `.env.local` first, then `.env` (`@std/dotenv` `export: true` never overwrites, so the first file
 > and the process environment win). `.env.development` / `.env.production` are **not** loaded by the
-> app. Secrets belong in `.env.local`: `.env`, `.env.development` and `.env.production` are
-> **tracked** in this repository despite `.gitignore` (an ignore rule does not apply to a tracked
-> file — root `CLAUDE.md` §8 Decision #125), so a key written there is committed by the next
-> `git add`.
+> app. Secrets belong in `.env.local`. **`.env.example` is the only committed env file**: `.env`,
+> `.env.local`, `.env.development` and `.env.production` are git-ignored and untracked
+> (Decision #125(i)), so a fresh clone starts by copying `.env.example` to `.env.local`. No
+> `deno task`, script or CI job reads a tracked env file. The Supabase CLI resolves `env(...)` in `supabase/config.toml`
+> (Google sign-in, Twilio, Apple, S3) from the process environment and the dotenv files it finds in
+> `supabase/` and the repo root, `.env.local` included.
 
 > **Outbound email — none configured yet (Decision #57(f), #151).**
 > `packages/backend/services/mail/verification-mailer.ts` is the only seam an email-verification link
@@ -2820,6 +2823,7 @@ SUPABASE_URL=XXXX-XXXX
 SUPABASE_PUBLIC_URL=XXXX-XXXX
 SUPABASE_ANON_KEY=XXXX-XXXX
 SUPABASE_SERVICE_ROLE_KEY=XXXX-XXXX
+JWT_SECRET=XXXX-XXXX            # not read by any code today
 
 # Authentication (OAuth) — SIGN-IN only; GoTrue owns this and retains no API token
 GOOGLE_CLIENT_ID=XXXX-XXXX

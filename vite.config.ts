@@ -13,7 +13,7 @@ const ROOT = process.cwd();
 
 /**
  * The dev server's port: the shell's `PORT`, else `.env.local` (untracked, per machine), else
- * `.env` (committed), else 3000. Read without exporting, so the app's own `.env` loading in
+ * `.env` (untracked), else 3000. Read without exporting, so the app's own `.env` loading in
  * `apps/web/main.ts` is unaffected. `APP_URL` defaults from the same `PORT`, which keeps auth and
  * email links on the origin the browser actually reaches.
  */
