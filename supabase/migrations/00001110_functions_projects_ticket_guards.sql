@@ -121,12 +121,20 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION projects.fn_ticket_escrow_sync()
 RETURNS TRIGGER AS $$
 BEGIN
+    -- A personal project carries no money, so its work moves without a hold (Decision #192).
+    IF projects.fn_is_personal_project(NEW.project_id) THEN
+        RETURN NULL;
+    END IF;
+
     -- Claim -> move ticket funds into the escrow pool (held). Refuses (PF402) when the hold can't be
     -- made, which aborts the claim. Without an assignee there is no payee; the gate below refuses.
     IF ((OLD.current_assignee_id IS NULL AND NEW.current_assignee_id IS NOT NULL)
         OR (OLD.status <> 'claimed'::ticket_status AND NEW.status = 'claimed'::ticket_status))
         AND NEW.current_assignee_id IS NOT NULL THEN
-        PERFORM finance.fn_hold_ticket_escrow(NEW.id);
+        -- A prepaid escrow (Decision #197) only needs its payee named; otherwise the hold is made now.
+        IF finance.fn_bind_ticket_escrow(NEW.id) IS NULL THEN
+            PERFORM finance.fn_hold_ticket_escrow(NEW.id);
+        END IF;
     END IF;
 
     -- Entering work from outside it needs a held escrow. Moves between work states (in_review back to
@@ -159,6 +167,9 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance
 CREATE OR REPLACE FUNCTION projects.fn_ticket_delete_protocol()
 RETURNS TRIGGER AS $$
 BEGIN
+    IF projects.fn_is_personal_project(OLD.project_id) THEN
+        RETURN OLD;
+    END IF;
     IF OLD.current_assignee_id IS NOT NULL
         OR EXISTS (
             SELECT 1 FROM finance.escrows e

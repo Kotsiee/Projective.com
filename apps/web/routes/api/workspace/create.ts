@@ -1,5 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
+import { refuseIfPayoutNotReady } from "@web/utils/payout-gate.ts";
 import { CreateWorkspaceInputSchema } from "@projective/types/workspace";
 import {
 	guestRefusal,
@@ -25,6 +26,10 @@ export const handler = define.handlers({
 		if (!canReadLive(actor)) return guestRefusal();
 		const parsed = CreateWorkspaceInputSchema.safeParse(await ctx.req.json().catch(() => null));
 		if (!parsed.success) return invalidPayload(parsed.error);
+		if (parsed.data.kind === "team") {
+			const unpayable = refuseIfPayoutNotReady(ctx.req);
+			if (unpayable) return unpayable;
+		}
 		return toWorkspaceResponse(await WorkspaceBackendService.create(parsed.data, actor));
 	},
 });

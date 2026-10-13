@@ -51,11 +51,14 @@ This format is used for tangible work outcomes. It merges traditional "File-base
 - **Evidence:** While some stages require **Artifacts** (Files), others may only require **Proof of
   Action** (e.g., a screenshot or a simple "Task Complete" confirmation).
 - **Workflow:**
-  1. **Initiation:** Escrow is locked when the Freelancer moves the ticket to "In Progress."
+  1. **Initiation:** Escrow is held before work starts — when the Client funds the ticket or its whole
+     stage (prepaid, Decision #197), or at the latest when the Freelancer claims it. A ticket cannot
+     move to "In Progress" without it (§Escrow Lifecycle for Tickets).
   2. **Submission:** Freelancer checks off completed tasks and attaches any relevant files.
   3. **Review:** Client reviews the submission against the checklist.
-  4. **Resolution:** Client Approves (Releases Payout) or Requests Revision (Moves back to In
-     Progress).
+  4. **Resolution:** Client Accepts the submission (the ticket completes and its escrow is released
+     to the payee) or Requests Revision (Moves back to In Progress). Approving the stage pays out any
+     escrow still held and closes the stage (Decision #194).
 
 ##### 2. Session-Based (Services)
 
@@ -527,7 +530,10 @@ project takes a **placeholder assignment** — the seller is attached to the sta
 are settled when the client prices and publishes. Picking Create opens a two-step wizard — a type
 card (Task · One-off project · Pipeline) with a prominent glyph, then the same lightweight setup the
 projects lane's Quick-Init collects (a name, an optional one-line brief, the currency and an optional
-baseline price) — that mints the draft and sends the client to its setup page. A **guest** sees the
+baseline price) — that mints the draft, invites the seller onto it as a placeholder assignment
+(settled at publish, exactly as Add-to-project does), and sends the client to its setup page. If the
+invitation is refused — the seller's intake has a required question, or a re-invitation cooldown is
+running — the draft is kept and the client is told why. A **guest** sees the
 same controls in the same places: the popovers and the modals open (a listing's preview and a
 provider's availability are public), and every claim on the reader's own account — Follow, Message,
 a modal's primary, Create — opens a sign-in prompt explaining what the action needs, with the
@@ -1107,7 +1113,7 @@ Freelancer—it is held by the platform’s secure ledger.
 | Project Type  | Lock Trigger                                                               | Release Trigger                                                                                       |
 | :------------ | :------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------- |
 | **One-Off**¹  | **Upfront:** When the project or first stage begins.                       | **Manual:** Upon Client approval of the final deliverable.                                            |
-| **Pipelines** | **Just-In-Time (JIT):** When a freelancer **claims** the ticket (§Escrow Lifecycle for Tickets is the authoritative wording). | **Chain Reaction:** Approval of Ticket A releases payout and automatically locks Escrow for Ticket B. |
+| **Pipelines** | **Just-In-Time (JIT):** When a freelancer **claims** the ticket at the latest — or earlier, when the client prepays the ticket or its whole stage (Decision #197) (§Escrow Lifecycle for Tickets is the authoritative wording). | **Chain Reaction:** Approval of Ticket A releases payout and automatically locks Escrow for Ticket B. |
 | **Sessions**  | **Booking:** When the time slot is confirmed.                              | **Negative Consent:** 24 hours after the session ends (assuming no "No-Show" claim).                  |
 
 ¹ A **Task** is a one-off without milestones (`format = one_off`), so it follows the One-Off row:
@@ -1205,7 +1211,9 @@ Money enters and leaves the platform through two deliberately asymmetric paths:
   Buying should never require onboarding. Behind the scenes a card payment is credited to a wallet the
   platform opens for the payer automatically (the wallet is the ledger of record), and the purchase or
   escrow is paid from it — so a card buyer and a wallet buyer are one ledger, and nothing is asked of
-  the buyer to make that true (root `CLAUDE.md` §8 Decision #126).
+  the buyer to make that true (root `CLAUDE.md` §8 Decision #126). A card payment that arrives is
+  always kept: if what it was for can no longer be completed (a price moved, the stage moved on), the
+  money stays in the payer's wallet and the payer is told so, never silently dropped (Decision #200).
 - **A purchase is charged in the currency the seller priced it in, and the buyer sees both
   figures** (Decision #153). Browsing in another currency never blocks paying by card: checkout shows
   the total in the buyer's currency beside the exact amount that will be charged in the seller's
@@ -1237,8 +1245,13 @@ Money enters and leaves the platform through two deliberately asymmetric paths:
   freelancer is clawed back is **not yet decided** — today it is not (flagged in root `CLAUDE.md` §8
   Decision #126 for a human).
 - **Freelancers must be _payout-ready before they earn_.** Identity verification (KYC) **and** a
-  configured payout method are **onboarding gates**: a freelancer cannot land a gig or join a team
-  until both are in place. This is the platform's **No Forever-Escrow Guarantee** — because every
+  verified payout account are **onboarding gates**: a freelancer cannot apply for or accept paid work,
+  be assigned or claim a ticket, or create or join a team until both are in place (Decision #196). A
+  team is seated only when everyone with a share of its earnings is payout-ready; a team that already
+  holds a stage keeps working on it. Earnings that reach a person's own wallet or a team vault leave
+  only with a payout-ready withdrawer; a buyer's refund balance never needs ID. Whoever is refused is
+  told who has to act, and is linked to Settings → Verification when it is them. This is the
+  platform's **No Forever-Escrow Guarantee** — because every
   earner is payable before any work is accepted, funds can never become locked in a permanent,
   un-releasable escrow state.
 - **Business owners verify to operate the pool.** Wallet verification (KYB) is required to _operate_
@@ -1771,16 +1784,30 @@ a Business Wallet incrementally, or partial pre-authorization on Maintenance-cyc
     counted (`used of allowed`); past the allotment, "Request revision" becomes **"Buy a revision ·
     {price}"**. Buying raises the round **awaiting payment** at that price and sends nothing back;
     Buy Now (wallet or card) holds the round's escrow on the ticket, and only then is the work
-    returned and the freelancer told **"Paid revision, funded, you can start."** A bought round
+    returned and the freelancer told **"Paid revision, funded, you can start."** The round is
+    bought straight from the review (Decision #199) — **Pay from wallet** (the Available balance,
+    never money still clearing) or **Pay by card** (a card payment the signed webhook settles into
+    the same hold) — or added to the basket as a `paid_revision` line; every way charges the
+    round's own snapshotted price, only the project's client may pay, and none opens the round
+    before its escrow is held. A bought round
     does not consume the free allotment. A verdict on the submission cancels a round still awaiting
     payment. A stage whose price is unstated after its free rounds cannot be sent back again.
 
 ##### Escrow Lifecycle for Tickets
 
-Funds enter escrow the moment a freelancer **claims** the ticket, and are released upon completion
-(client approval) of the relevant stage. This is the same trigger already described under "Resource
-Allocation & Ticketing" §1 (Claim-and-Commit Protocol) — the ticket-specific escrow is committed at
-the **Claimed** step, not at the subsequent "In Progress" transition.
+Funds enter escrow no later than the moment a freelancer **claims** the ticket, and are released upon
+completion (client approval) of the relevant stage. This is the same trigger already described under
+"Resource Allocation & Ticketing" §1 (Claim-and-Commit Protocol) — the ticket-specific escrow is
+committed at the **Claimed** step at the latest, never at the subsequent "In Progress" transition.
+
+**Prepaid escrow (Decision #197).** A client may fund a ticket — or a whole stage, every ticket in it
+nobody has paid for yet — before anybody claims it, from the paying wallet or by card, while the stage
+is open, assigned or in progress. Individual and business clients alike. The money is held in escrow
+at once, with no payee yet; the claim (or the owner's assignment) names the payee without charging
+again, and the freelancer is told they can start. A prepaid escrow nobody claimed is never paid out:
+if its ticket is completed, removed or its stage cancelled, it is refunded to the payer in full. A
+stage cannot be funded as a whole while any of its tickets has no price — the card checkout refuses
+it before anything is charged, so a card payment can never land in the wallet unheld.
 
 > **Note on existing terminology:** The "Escrow Lifetimes by Project Type" table (under "Escrow,
 > Wallets & Finance" §2) describes the Pipeline lock trigger as "when a freelancer moves a ticket to
@@ -1885,9 +1912,10 @@ more:
 | **Currency**     | Seeded from the viewer's display preference, then **fixed to the project**.                |
 | **Baseline**     | ONE price: a pipeline's default ticket rate, or a one-off's escrow budget. Optional.       |
 
-On submit the backend mints the row as `status = 'draft'`, `visibility = 'unlisted'`, provisions
-**one root stage** so tickets, submissions and escrow have somewhere to hang, and the client lands
-on the configuration workspace at the project's UUID.
+On submit the backend mints the row as `status = 'draft'`, `visibility = 'unlisted'` and provisions
+**one root stage** (and its rooms) so tickets, submissions and escrow have somewhere to hang — all in
+one transaction, so a draft never exists without its stage — and the client lands on the
+configuration workspace at the project's `prj-` address (Decision #195).
 
 **Why a modal and not a page.** A creation form that collects a stage architecture has to be closed
 before the client can look anything up, and a half-filled one loses everything on dismiss. A draft
@@ -2443,7 +2471,9 @@ _Added 2026-07-13 (see root `CLAUDE.md` §8, decisions 5–7). Governs `/join`, 
 
 MVP auth is **Google OAuth + email/password** (per `SYSTEM_ARCHITECTURE.md` §Authentication). The
 password sign-in asks for **one identifier — an email or a `@handle` username** — plus the
-password, and never says which half was wrong. Canonical routes: **`/join`** (account creation),
+password, and never says which half was wrong. **Keep me signed in** (on by default) keeps the
+session on this device for 30 days between visits. Unticked, the session ends when the browser is
+closed (Decision #201). Canonical routes: **`/join`** (account creation),
 `/login`, `/forgot-password`, `/verify` (6-digit
 email code — the `CodeField` OTP pattern). Email confirmation still ultimately rides on GoTrue's
 single-use token; the 6-digit entry is the in-app confirmation surface. `/verify` also notices a
@@ -2513,6 +2543,48 @@ The `restricted` state is **re-derived server-side from DoB** (never trusted fro
 every check rather than stored as a flag, so buy/sell capability unlocks automatically at 18. (Constants:
 `MIN_AGE = 13`, `ADULT_AGE = 18`.) This state is capability-scoped and does not add a column to the
 work/delivery status machine in `PRODUCT_MANAGEMENT.md`.
+
+**Birthdays turn over on the person's own date.** An age is whole years counted on today's date in
+the person's time zone — the zone their browser reports at sign-up, stored as the profile's time
+zone (UTC when unknown). The join form, the API and the database all apply that one rule, so a 13th
+or 18th birthday unlocks at the same moment everywhere rather than hours apart. A 29 February
+birthday turns over on 1 March in a common year.
+
+**A restricted account sees only what it can use** (Decision #192). Anything it cannot use is left
+out rather than shown and refused:
+
+- **Hidden:** Wallet, Businesses, the basket and checkout, the Catalogue (and creating services or
+  products), Teams, Analytics, Become a Freelancer, and Settings → Billing and Verification & payouts.
+  A typed or stale link to one of these goes to Home.
+- **Browsing stays open:** Explore, profiles and listings read as normal. Where a listing or project
+  page would offer Buy, Book, Hire or Apply, one line explains that buying services and selling work
+  unlock on the 18th birthday; the profile's Hire and Add-to-project controls are absent, and the
+  "Become a Freelancer" promotion is withheld. Messaging is not buying and stays available.
+- **Sign-up:** choosing "I want to work" under 18 starts the account as a client; the seller persona
+  becomes available at 18 through Become a Freelancer.
+- **Settings → Account** names the account "Limited account" with the same sentence, in place of
+  the upgrade.
+
+**Personal projects.** A restricted account can still create projects, as personal management tools:
+
+- Every project it creates is **personal** — owned by that one person, never public or listed (and
+  never under a business, team or organisation), with stages, tickets, a board, files and a timeline
+  but **no money at all**: no prices, budget, funding, escrow, payments or paid revisions. Work moves
+  across the board without a hold, because nothing is held.
+- **Nobody joins it:** no members, invitations, invite links, open seats, staffing roles, applications
+  or hiring. Its workspace shows none of those controls — no Members or Preview views, no pricing,
+  terms or visibility settings, no Publish.
+- A project created at 17 **stays personal** after the 18th birthday; an adult starts a new project
+  to hire.
+- A restricted account never joins **anyone else's** project — it cannot apply, be invited, accept
+  an invitation or be assigned work.
+
+**Guardian-consented selling — post-MVP, disabled.** A future release will let an older minor (the
+exact age band is still to be decided) start selling with permission from an adult **aged 21 or
+over**, who must pass an **ID check**, provide **personal details** and **sign a consent form** for
+that minor. While a minor sells under that consent, their **messages and attachments are monitored and
+checked**, including inside project stages. This is **not built for the MVP**: there is no consent
+flow and no monitoring, and every account under 18 stays restricted until its 18th birthday.
 
 ### Individual onboarding — "quick to onboard, slow to set up"
 
@@ -2632,6 +2704,10 @@ full **Settings console** (`/settings`), one page per section. One search finds 
   are shown as locked, always-on rows ("Required for financial and account security") — never as
   switches that look as though they could stop them (§Notifications — what we tell you, and what
   you can turn off).
+- **A new account starts where the person is.** Signing up takes the browser's language and region
+  as the account's locale, its time zone for notifications, and that region's display currency —
+  each only when Projective offers it, otherwise English (United Kingdom), UTC and pounds sterling.
+  An organisation owner's account starts the same way. All of it is changeable in Settings.
 - **Display currency is presentation only** (§Global Multi-Currency & Localized Money): it changes
   how prices read, never what is charged or paid.
 

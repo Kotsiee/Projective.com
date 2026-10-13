@@ -171,6 +171,10 @@ INSERT
 WITH
     CHECK (user_id = auth.uid ());
 
+-- Reference data (Decision #207): anyone may read the offered locales; only the seed writes them.
+CREATE POLICY "Anyone can read supported locales" ON org.supported_locales FOR
+SELECT TO anon, authenticated USING (true);
+
 
 
 -- --- from 0314_organisations.sql ---

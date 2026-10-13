@@ -1,20 +1,22 @@
 import type { ServiceResult } from "@server/services/ServiceResult.ts";
 
+/** The flat JSON envelope of a {@link ServiceResult}: `{ ok, message, errors, details, ...data }`. */
+export function serviceBody<T extends object>(result: ServiceResult<T>): Record<string, unknown> {
+	return {
+		ok: result.ok,
+		message: result.message,
+		errors: result.errors,
+		details: result.details,
+		...(result.data ?? {}),
+	};
+}
+
 /**
- * Map a {@link ServiceResult} to the flat JSON envelope the app's thin routes answer with:
- * `{ ok, message, errors, details, ...data }` at the service's suggested status.
+ * Map a {@link ServiceResult} to the flat JSON envelope the app's thin routes answer with
+ * ({@link serviceBody}) at the service's suggested status.
  */
 export function serviceResponse<T extends object>(result: ServiceResult<T>): Response {
-	return Response.json(
-		{
-			ok: result.ok,
-			message: result.message,
-			errors: result.errors,
-			details: result.details,
-			...(result.data ?? {}),
-		},
-		{ status: result.status },
-	);
+	return Response.json(serviceBody(result), { status: result.status });
 }
 
 /** The 422 a route answers when its body fails validation, keyed to one field. */

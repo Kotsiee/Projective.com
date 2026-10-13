@@ -47,7 +47,7 @@ import type {
 	WalletSwitcher,
 } from "../types/wallet-types.ts";
 import type { WalletResult } from "../types/results.ts";
-import type { DepositInterval } from "@projective/types/finance";
+import { type DepositInterval, unpricedTicketsSentence } from "@projective/types/finance";
 import {
 	type CardOwnerScope,
 	incomeSmootherFeeMinor,
@@ -62,6 +62,7 @@ import {
 	withoutStripeReturn,
 } from "@features/payments/core/stripe-flow.ts";
 import { useStripeCardSetup } from "@features/payments/hooks/useStripeElement.ts";
+import { stageLockSentence } from "@features/payments/core/stage-funding.ts";
 import { ActionIcon, CategoryIcon } from "./wallet-glyphs.tsx";
 
 /** The data every wallet dialog draws from. */
@@ -205,7 +206,7 @@ type MoveStep = "compose" | "review" | "sending" | "card" | "settling" | "done" 
 const CONSEQUENCE: Readonly<Partial<Record<WalletAction, string>>> = {
 	distribute: "Each member is credited immediately by their agreed share. This can't be reversed.",
 	fund_escrow:
-		"The amount moves into escrow for the stage and is released to the freelancer when their work is approved.",
+		"The amount moves into escrow for the stage and is released to whoever does the work when you approve it. Tickets nobody has claimed yet are paid to whoever claims them.",
 	withdraw:
 		"The money leaves Projective for your payout account, which pays it to your bank. This can't be reversed.",
 	transfer: "The money moves between your wallets straight away. This can't be reversed.",
@@ -228,6 +229,7 @@ function MoveDialog(
 	const destination = useSignal("");
 	const method = useSignal("");
 	const stageId = useSignal(props.stageId ?? "");
+	const payBy = useSignal<"wallet" | "card">("wallet");
 	const note = useSignal("");
 	const problems = useSignal<Problems<"amount" | "to" | "stage">>({});
 	const outcome = useSignal<string | null>(null);
@@ -236,7 +238,9 @@ function MoveDialog(
 	const formRef = useRef<HTMLDivElement>(null);
 
 	const held = heldIn(overview.available);
-	const fundable: FundableStage[] = overview.business?.fundable ?? [];
+	const fundable: FundableStage[] = overview.business?.fundable ?? overview.personal?.fundable ??
+		[];
+	const byCard = action === "fund_escrow" && payBy.value === "card";
 	const stage = fundable.find((s) => s.stageId === stageId.value) ?? null;
 	const currency = action === "fund_escrow" && stage
 		? heldIn(stage.amount).currency
@@ -263,14 +267,17 @@ function MoveDialog(
 		: action === "fund_escrow"
 		? (stage ? `${stage.stageName} · ${stage.projectTitle}` : "escrow")
 		: walletName;
-	const fromLabel = action === "top_up" ? "A card you enter next" : walletName;
+	const fromLabel = action === "top_up" || byCard ? "A card you enter next" : walletName;
 
 	const review = () => {
 		const found: Problems<"amount" | "to" | "stage"> = {};
 		if (action === "fund_escrow" && !stage) found.stage = "Choose a stage to fund.";
+		else if (action === "fund_escrow" && stage && stage.unpricedCount > 0) {
+			found.stage = unpricedTicketsSentence(stage.unpricedCount);
+		}
 		if (action === "transfer" && !destination.value) found.to = "Choose where the money is going.";
 		if (action !== "fund_escrow" && minor <= 0) found.amount = "Enter an amount.";
-		else if (action !== "top_up" && minor > held.minor) {
+		else if (action !== "top_up" && !byCard && minor > held.minor) {
 			found[action === "fund_escrow" ? "stage" : "amount"] = "That's more than this wallet holds.";
 		}
 		problems.value = found;
@@ -334,6 +341,23 @@ function MoveDialog(
 
 	const commit = async () => {
 		step.value = "sending";
+		if (byCard && stage) {
+			const intent = await PaymentsService.escrowLockIntent({
+				projectId: stage.projectRowId,
+				stageId: stage.stageId,
+				expectedAmountMinor: minor,
+				currency,
+				idempotencyKey: attempt.current,
+			}).catch(() => null);
+			if (intent?.ok && intent.data) {
+				handoff.value = intent.data;
+				step.value = "card";
+				return;
+			}
+			outcome.value = intent?.message ?? "The card payment couldn't be started.";
+			step.value = "error";
+			return;
+		}
 		const res = await send().catch(() => null);
 		if (res?.ok && action === "top_up" && res.data?.result?.payment) {
 			// Nothing has been charged yet: the card is entered in Stripe's Element next.
@@ -357,6 +381,14 @@ function MoveDialog(
 	 */
 	const settle = async (paymentId: string) => {
 		step.value = "settling";
+		if (action === "fund_escrow") {
+			const { outcome: lock, reason } = await PaymentsService.waitForLock(paymentId);
+			const after = await WalletService.overview(props.query).catch(() => null);
+			if (after?.ok && after.data) props.onChanged(after.data.overview);
+			outcome.value = stageLockSentence(lock, reason);
+			step.value = lock === "locked" || lock === "timeout" ? "done" : "error";
+			return;
+		}
 		const settled = await PaymentsService.waitForSettlement(paymentId);
 		const fresh = await WalletService.overview(props.query).catch(() => null);
 		if (fresh?.ok && fresh.data) props.onChanged(fresh.data.overview);
@@ -372,7 +404,9 @@ function MoveDialog(
 	};
 
 	// A top-up's review step charges nothing yet — the card is entered next — so it says so.
-	const verb = action === "top_up" ? "Continue to payment" : `${ACTION_LABEL[action]} ${figure}`;
+	const verb = action === "top_up" || byCard
+		? "Continue to payment"
+		: `${ACTION_LABEL[action]} ${figure}`;
 	const footer = step.value === "compose"
 		? (
 			<>
@@ -491,7 +525,7 @@ function MoveDialog(
 									stage.ticketCount === 1 ? "ticket" : "tickets"
 								} at their agreed prices`
 								: fundable.length === 0
-								? "No assigned stage is waiting for its escrow."
+								? "No stage is waiting for funding."
 								: undefined}
 							error={errorFor("stage")}
 							status={errorFor("stage") ? "invalid" : "default"}
@@ -518,9 +552,25 @@ function MoveDialog(
 
 					{action === "fund_escrow"
 						? stage && (
-							<p class="wlt-dlg__amountline">
-								<MoneyView value={stage.amount} size="figure" />
-							</p>
+							<>
+								<p class="wlt-dlg__amountline">
+									<MoneyView value={stage.amount} size="figure" />
+								</p>
+								<FormControl label="Pay">
+									{() => (
+										<SelectButton
+											options={[
+												{ label: "From this wallet", value: "wallet" },
+												{ label: "By card", value: "card" },
+											]}
+											value={payBy.value}
+											onValueChange={(v) => {
+												payBy.value = v === "card" ? "card" : "wallet";
+											}}
+										/>
+									)}
+								</FormControl>
+							</>
 						)
 						: (
 							<FormControl

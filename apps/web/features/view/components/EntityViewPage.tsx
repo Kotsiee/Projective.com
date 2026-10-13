@@ -22,6 +22,7 @@ import { ArticleViewScreen } from "./ArticleViewScreen.tsx";
 import { StageProgressLedger } from "./StageProgressLedger.tsx";
 import { PreviewNotice, ProjectBody, ProjectHero } from "./project-view-parts.tsx";
 import { BackLink } from "./BackLink.tsx";
+import { RestrictedLaneNotice } from "./RestrictedLaneNotice.tsx";
 import {
 	MetaLine,
 	PermissionLedger,
@@ -127,6 +128,11 @@ export interface EntityViewPageProps {
 	mode?: "public" | "preview";
 	/** The owner's Details page — where the preview notice sends them to change what they see. */
 	editHref?: string;
+	/**
+	 * The viewer is a restricted (13–17) account (Decision #192): the lane and its body block say why
+	 * there is nothing to buy, book or apply for, instead of offering it.
+	 */
+	restricted?: boolean;
 }
 
 export function EntityViewPage(
@@ -139,6 +145,7 @@ export function EntityViewPage(
 		unavailable = false,
 		mode = "public",
 		editHref,
+		restricted = false,
 	}: EntityViewPageProps,
 ): JSX.Element {
 	if (!view) return <NotFound ctx={ctx} unavailable={unavailable} />;
@@ -171,6 +178,8 @@ export function EntityViewPage(
 	 */
 	const noMedia = scheduled || isProject;
 	const preview = mode === "preview";
+	// A restricted viewer's lane explains instead of transacting; an owner's preview shows applicants.
+	const blocked = restricted && !preview && (!!project || !!offer);
 	/*
 	 * The rails and reviews, decided once. The archetype says whether this KIND of page carries them;
 	 * the mode says whether this RENDERING does — the owner's preview never does, whatever the archetype.
@@ -277,7 +286,12 @@ export function EntityViewPage(
 				  body-side block takes the duty.
 				*/
 				}
-				{project && (
+				{blocked && (
+					<aside class="evp-laneslot" aria-label={`Why ${item.title} is unavailable to you`}>
+						<RestrictedLaneNotice placement="lane" />
+					</aside>
+				)}
+				{project && !blocked && (
 					<aside
 						class="evp-laneslot"
 						aria-label={preview ? `How applicants see ${item.title}` : `Apply to ${item.title}`}
@@ -291,7 +305,7 @@ export function EntityViewPage(
 						/>
 					</aside>
 				)}
-				{offer && (
+				{offer && !blocked && (
 					<aside class="evp-laneslot" aria-label={`Purchase ${item.title}`}>
 						<EntityLane
 							view={view}
@@ -335,7 +349,8 @@ export function EntityViewPage(
 					  this branch has already returned for.
 					*/
 					}
-					{project && (
+					{blocked && <RestrictedLaneNotice placement="body" />}
+					{project && !blocked && (
 						<ProjectApplyBar
 							view={view}
 							project={project}
@@ -352,10 +367,10 @@ export function EntityViewPage(
 					  nothing, so neither mounts it.
 					*/
 					}
-					{project && authed && !preview && (
+					{project && authed && !preview && !blocked && (
 						<ProjectApplyModal projectSlug={item.id} title={item.title} stages={project.stages} />
 					)}
-					{offer && (
+					{offer && !blocked && (
 						<EntityBuyBar
 							view={view}
 							archetype={archetype}

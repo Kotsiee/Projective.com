@@ -140,13 +140,22 @@ Deno.test("paymentFundingState: the poll's answer from the payment alone", () =>
 	assertEquals([funded.state, funded.canStart, funded.amountMinor, funded.currency], ["funded", true, 45_000, "GBP"]);
 	assertEquals(paymentFundingState(p({ status: "failed" })).state, "failed");
 	assertEquals(paymentFundingState(p({ status: "succeeded", lockStatus: "failed" })).state, "failed");
+	// Decision #200: a lock refused after the credit settles as settled_unapplied — the same Failed state.
+	const unapplied = paymentFundingState(
+		p({ status: "settled_unapplied", lockStatus: "failed", lockError: "The stage moved on." }),
+	);
+	assertEquals(
+		[unapplied.state, unapplied.nextAction, unapplied.reason],
+		["failed", "retry_payment", "The stage moved on."],
+	);
 	assertEquals(paymentFundingState(p({ status: "canceled", lockStatus: "failed" })).state, "needs_funding");
 });
 
-Deno.test("Draft, paid ahead: nothing left to fund until somebody claims it (#166, §3.6 Draft)", () => {
+Deno.test("Funded, paid ahead of any claim: the prepaid escrow is held and the claim binds it (#197)", () => {
 	const ahead = deriveFundingState(ticket({ paidAhead: true }));
-	assertEquals([ahead.state, ahead.nextAction, ahead.canStart], ["draft", "none", false]);
-	// A claim refused after the money was spent elsewhere (#165 flag (b)) still needs funding.
-	assertEquals(stateOf(ticket({ paidAhead: true, paymentStatus: "needs_funding" })), "needs_funding");
+	assertEquals([ahead.state, ahead.nextAction, ahead.canStart], ["funded", "start_work", true]);
+	// Live reads carry no flag: a prepaid ticket is simply `escrow_funded` with nobody on it.
+	assertEquals(stateOf(ticket({ status: "todo", paymentStatus: "escrow_funded" })), "funded");
+	// The money is held, so a claim never re-asks for it.
 	assertEquals(stateOf(ticket({ paidAhead: true, status: "claimed", paymentStatus: "escrow_funded" })), "funded");
 });

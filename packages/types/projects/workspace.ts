@@ -6,6 +6,7 @@ import {
 	type BoardCard,
 	type BoardPage,
 	type BoardStageRef,
+	isSelfClaimable,
 	TICKET_INTENSITY_LABEL,
 } from "./board.ts";
 import type { MemberRosterPage } from "./members.ts";
@@ -281,6 +282,11 @@ export type ReadyStep = z.infer<typeof ReadyStepSchema>;
 export const ProjectWorkspaceSchema = ProjectOverviewSchema.extend({
 	/** Which of the two Overviews this is. */
 	viewer: WorkspaceViewer,
+	/**
+	 * A personal project (Decision #192): one person, no money, never listed. The Overview leaves out
+	 * the People, Terms and "Ready to start?" blocks and every pricing or hiring action.
+	 */
+	personal: z.boolean().default(false),
 	nextActions: z.array(NextActionSchema).max(MAX_NEXT_ACTIONS),
 	/** The run in order. Empty for a Task (its one stage IS the Task) or when no stage is readable. */
 	stages: z.array(WorkspaceStageSchema).max(50),
@@ -761,10 +767,9 @@ function claimableOf(slug: string, base: ProjectOverview, board: BoardPage | nul
 	}
 	const out: WorkspaceClaimable[] = [];
 	for (const card of board.cards) {
-		if (card.status !== "todo" || card.claimed || !card.hasDescription || !card.stageId) continue;
+		const stage = card.stageId ? stages.get(card.stageId) : undefined;
+		if (!stage || !card.stageId || !isSelfClaimable(card, stage)) continue;
 		if (!seated.has(card.stageId)) continue;
-		const stage = stages.get(card.stageId);
-		if (!stage || stage.assignmentMode !== "open_pull") continue;
 		const cap = stage.maxConcurrentIntensity;
 		if (cap !== null && (held.get(card.stageId) ?? 0) + card.workload > cap) continue;
 		const units = card.workload === 1 ? "1 unit" : `${card.workload} units`;
@@ -789,15 +794,20 @@ function claimableOf(slug: string, base: ProjectOverview, board: BoardPage | nul
  * Pure and total: a source that failed arrives as `null` and its part of the page degrades to
  * "unknown" (no run, no people, fewer actions) rather than to a confident zero.
  */
+/** The actions a personal project never asks for: it is priced by nobody and applied to by nobody. */
+const PERSONAL_DROPPED_ACTIONS: ReadonlySet<NextActionKind> = new Set(["set_pricing", "decide_applications"]);
+
 export function composeWorkspace(
 	base: ProjectOverview,
 	sources: WorkspaceSources,
 ): ProjectWorkspace {
 	const slug = base.slug;
 	const stages = stageRun(slug, sources);
-	const nextActions = sources.viewer === "owner"
+	const personal = sources.setup?.personal === true;
+	const nextActions = (sources.viewer === "owner"
 		? ownerActions(slug, sources, stages)
-		: participantActions(slug, base, sources);
+		: participantActions(slug, base, sources))
+		.filter((action) => !personal || !PERSONAL_DROPPED_ACTIONS.has(action.kind));
 	const roster = sources.roster;
 	const participant = sources.viewer === "participant";
 	const task = sources.setup
@@ -807,6 +817,7 @@ export function composeWorkspace(
 	return {
 		...base,
 		viewer: sources.viewer,
+		personal,
 		nextActions: nextActions.slice(0, MAX_NEXT_ACTIONS),
 		stages,
 		people: roster
@@ -821,7 +832,7 @@ export function composeWorkspace(
 		roster: rosterOf(roster, task),
 		submissions: participant ? submissionsOf(slug, sources.submissions) : [],
 		claimable: participant ? claimableOf(slug, base, sources.board) : [],
-		readiness: readinessOf(slug, sources, brief),
+		readiness: personal ? null : readinessOf(slug, sources, brief),
 	};
 }
 // #endregion

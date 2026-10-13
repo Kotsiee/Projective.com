@@ -139,8 +139,6 @@ export {
 export const UserPreferencesSchema = z.object({
 	userId: z.string(),
 	theme: z.string().max(20),
-	notificationEmail: z.boolean(),
-	notificationPush: z.boolean(),
 	/** BCP-47 locale (language + region), e.g. `en-GB`. */
 	locale: z.string().max(20),
 	/** Presentational display-conversion target (ISO-4217); `null` = follow the origin/locale default. */
@@ -158,16 +156,16 @@ export type UserPreferences = z.infer<typeof UserPreferencesSchema>;
 
 /**
  * The `PATCH /api/user/preferences` payload — a **partial** update, so a caller changing only the
- * display currency cannot accidentally clear a locale or a notification toggle it never sent. Every
- * field is optional and validated independently; the fat service applies exactly what is present.
+ * display currency cannot accidentally clear a locale or a theme it never sent. Every field is
+ * optional and validated independently; the fat service applies exactly what is present. Strict: the
+ * email/push toggles are refused here — they are `comms.notification_prefs`, saved through
+ * `NotificationCenterUpdateSchema` (Decision #204).
  *
  * `preferredDisplayCurrency` accepts `null` explicitly (the "follow the origin currency" state), so
  * clearing the preference is expressible and is not the same message as omitting the field.
  */
 export const UserPreferencesUpdateSchema = z.object({
 	theme: ThemeChoice.optional(),
-	notificationEmail: z.boolean().optional(),
-	notificationPush: z.boolean().optional(),
 	locale: z.string().max(20).optional(),
 	preferredDisplayCurrency: z.string().min(3).max(3).nullable().optional(),
 	layoutDirection: LayoutDirection.optional(),
@@ -184,8 +182,19 @@ export type UserPreferencesUpdate = z.infer<typeof UserPreferencesUpdateSchema>;
 export const APPEARANCE_KEYS = ["theme", "contrast", "font", "cvd", "motion"] as const;
 
 /**
+ * The preference keys the access-token hook stamps into `active_context` (`displayCurrency`,
+ * `locale`, `dateFormat`) — a save that changes one needs a re-minted token to take effect.
+ */
+export const CLAIM_PREFERENCE_KEYS = ["locale", "preferredDisplayCurrency", "dateFormat"] as const;
+
+/** Whether a preferences patch changes anything the access token carries. */
+export function touchesTokenClaims(patch: UserPreferencesUpdate): boolean {
+	return CLAIM_PREFERENCE_KEYS.some((key) => patch[key] !== undefined);
+}
+
+/**
  * Split a preferences patch into its appearance half and its display half (currency · locale ·
- * direction · the legacy notification toggles). Pure; an empty half comes back as `{}`.
+ * direction · date format). Pure; an empty half comes back as `{}`.
  */
 export function splitPreferencesPatch(
 	patch: UserPreferencesUpdate,

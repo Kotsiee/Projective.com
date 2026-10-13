@@ -18,7 +18,7 @@ data remains isolated while providing a searchable directory for the platform.
 | `avatar_file_id` / `banner_file_id`      | uuid    | FK → `files.items.id`, `ON DELETE SET NULL`. The avatar is an `avatar` RENDITION, set only by `org.set_profile_avatar`; read through `files.fn_public_media_ref`. |
 | `headline`                               | text    | `NOT NULL DEFAULT ''`.                                                                                                                                 |
 | `bio`                                    | jsonb   | The story, as `{"text": …}`.                                                                                                                           |
-| `city` / `country` / `timezone`          | text    | The location line and the live local clock; `city` nullable so "never stated" stays distinct from "cleared".                                          |
+| `city` / `country` / `timezone`          | text    | The location line and the live local clock; `city` nullable so "never stated" stays distinct from "cleared". `timezone` is seeded at sign-up with the browser's IANA zone and is the zone this person's birthdays are counted in (`org.fn_age_years`, Decision #192). |
 | `languages`                              | text[]  | `NOT NULL DEFAULT '{}'`.                                                                                                                               |
 | `dob`                                    | date    | `NOT NULL`, `CHECK (dob >= '1900-01-01')` (`users_public_dob_check`; also the erasure sentinel). `trg_users_public_dob_guard` (BEFORE INSERT / UPDATE OF `dob`) runs `org.fn_check_dob`: not in the future (`22023`), at least 13 (`PM422`). The source of the 13–17 restriction, which is derived, never stored (Decision #190). Never projected to anyone but its owner. |
 | `visibility`                             | text    | `NOT NULL DEFAULT 'public'`, `CHECK IN ('public','unlisted','private')` (`users_public_visibility_check`) — see below.                                 |
@@ -517,17 +517,16 @@ partial on non-null.
 ### `org.user_preferences`
 
 Per-user preferences (one row per user, seeded by the `org.seed_user_preferences` trigger — Decision
-#47 — which inserts only the PK and relies on column DEFAULTs). Zod SSOT in
-`packages/types/org/preferences.ts`.
+#47 — which starts it from the supported sign-up hints, Decision #207, else the column DEFAULTs). Zod SSOT in
+`packages/types/org/preferences.ts`. The email/push notification toggles are NOT here — their one
+source is `comms.notification_prefs` (Decision #204).
 
 | Column                       | Type                   | Notes                                                                                                                                                                                                                                                                                                          |
 | :--------------------------- | :--------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `user_id`                    | uuid                   | PK, FK → `auth.users.id` (CASCADE).                                                                                                                                                                                                                                                                            |
 | `theme`                      | text                   | `system` (default) / `light` / `dark` — `CHECK` (`user_preferences_theme_check`, 2026-10-06; nullable). `system` follows `prefers-color-scheme` live.                                                                                                                                                         |
-| `notification_email`         | boolean                | Default `true`.                                                                                                                                                                                                                                                                                                |
-| `notification_push`          | boolean                | Default `false`.                                                                                                                                                                                                                                                                                               |
-| `locale`                     | text                   | BCP-47 locale (language + region), default `en-GB`. **This is the language source.**                                                                                                                                                                                                                           |
-| `preferred_display_currency` | char(3)                | **Additive (`20260723090000`).** Presentational display-conversion target (ISO-4217), `DEFAULT 'GBP'`, `CHECK ~ '^[A-Z]{3}$'`; `NULL` = follow origin (an explicitly cleared preference, distinct from the default). Never affects stored/settled amounts. Stamped into the JWT by `custom_access_token_hook`. |
+| `locale`                     | text                   | BCP-47 locale (language + region), default `en-GB`; sign-up seeds the browser's locale when `org.supported_locales` lists it (Decision #207). **This is the language source.**                                                                                                                                                                                                                           |
+| `preferred_display_currency` | char(3)                | **Additive (`20260723090000`).** Presentational display-conversion target (ISO-4217), `DEFAULT 'GBP'`, `CHECK ~ '^[A-Z]{3}$'`; `NULL` = follow origin (an explicitly cleared preference, distinct from the default). Sign-up seeds the browser region's currency when it is offered (Decision #207). Never affects stored/settled amounts. Stamped into the JWT by `custom_access_token_hook`. |
 | `layout_direction`           | `org.layout_direction` | **Additive.** `auto` (default) / `ltr` / `rtl`. Chosen INDEPENDENT of language; `auto` → the locale's natural direction, resolved from its script (`localeDirection`, Decision #156: `ar` · `he` · `fa` · `ur` … and any `-Arab` · `-Hebr` subtag lay out right to left). See `DESIGN_SYSTEM.md` §A.6.                                                                                       |
 | `ui_settings`                | jsonb                  | Misc client UI state.                                                                                                                                                                                                                                                                                          |
 | `contrast`                   | text                   | **2026-10-06.** `NOT NULL DEFAULT 'standard'`, `CHECK IN ('standard','high')`. `high` forces the AAA overlay.                                                                                                                                                                                                 |
@@ -550,6 +549,21 @@ Per-user preferences (one row per user, seeded by the `org.seed_user_preferences
 > automatically — no trigger change was required.
 
 ---
+
+### `org.supported_locales`
+
+The formatting locales the platform offers (Settings → Language & region) — reference data seeded in
+`00005050`, the same list as `SUPPORTED_LOCALES` in `packages/types/org/locales.ts` and the Settings
+`LOCALES` (both pinned by tests). Sign-up keeps a browser locale only when it is listed here
+(`org.fn_supported_locale`, Decision #207). Readable by everyone, written only by the seed
+([Policies.md](Policies.md#-orgsupported_locales--public-reference-data)).
+
+| Column | Type | Notes |
+| :-- | :-- | :-- |
+| `tag` | text | PK. BCP-47 language + region, `CHECK (tag ~ '^[a-z]{2,3}-[A-Z]{2}$')`. |
+
+`org.user_preferences.locale` carries no FK onto it: a Settings write is not checked against the
+list (Decision #207 flag).
 
 ## 🏢 Organisations (client/buyer-only)
 

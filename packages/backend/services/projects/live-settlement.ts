@@ -2,13 +2,19 @@ import type { SupabaseClient } from "supabaseClient";
 import type {
 	ApproveStage,
 	CancelStageFairExit,
+	FairExitBlocked,
+	FairExitPreview,
+	FairExitQuote,
+	FairExitTier,
 	PaidRevisionRaised,
+	PreviewStageFairExit,
 	RequestPaidRevision,
 	ReviewSubmission,
 	StageApproved,
 	StageExited,
 	SubmissionReviewed,
 } from "@projective/types/projects";
+import { formatMoney } from "@projective/types/finance";
 import type { ReadActor } from "../read-actor.ts";
 import { clampOr, projectsDb, toSubmissionStatus, UUID_RE } from "./live-support.ts";
 import { refusalFrom, type WriteOutcome, type WriteRefusal } from "./live-writes.ts";
@@ -173,9 +179,10 @@ function cents(value: unknown): number {
 /**
  * Record a reviewer's verdict on one submission through `projects.review_submission`.
  *
- * The function updates the submission, raises a `stage_revision_requests` row and bounces the ticket
- * back into progress on a revision, and writes the activity row — all in one transaction. The notes
- * travel as `{ global }`, the one feedback key the schema reads back.
+ * The function updates the submission and writes the activity row; on a revision it raises a
+ * `stage_revision_requests` row and bounces the ticket back into progress, and on an acceptance it
+ * settles the ticket through the guarded status path and releases its held escrow (Decision #194) —
+ * all in one transaction. The notes travel as `{ global }`, the one feedback key the schema reads back.
  *
  * One check runs BEFORE the call, and it is about the address rather than authority: the submission
  * must belong to the stage the URL names, otherwise the URL is lying about what is being reviewed.
@@ -209,7 +216,7 @@ export async function reviewSubmissionRow(
 	});
 	if (error) return { refusal: settlementRefusal(error, "decision") };
 
-	const payload = data as { status?: string } | null;
+	const payload = data as { status?: string; released_count?: unknown } | null;
 	return {
 		data: {
 			submissionId: input.submissionId,
@@ -217,6 +224,7 @@ export async function reviewSubmissionRow(
 			status: toSubmissionStatus(
 				payload?.status ?? (input.decision === "accept" ? "accepted" : "revisions_requested"),
 			),
+			releasedCount: cents(payload?.released_count),
 		},
 	};
 }
@@ -265,9 +273,10 @@ export async function requestPaidRevisionRow(
 
 // #region Stage approval
 /**
- * Approve a stage through `projects.approve_stage`: release every held escrow on it (fee and team
- * splits applied by the finance engine), mark it `paid`, notify its assignees, and — when it was the
- * project's last unsettled stage — fire the Contact Handover.
+ * Approve a stage through `projects.approve_stage`: complete every ticket still holding escrow on it
+ * and release that escrow (fee and team splits applied by the finance engine), mark it `paid`, notify
+ * the payees, every team-split recipient and the client, and — when it was the project's last
+ * unsettled stage — fire the Contact Handover. The figures cover only this call's releases.
  */
 export async function approveStageRow(
 	actor: ReadActor & { accessToken: string },
@@ -298,10 +307,122 @@ export async function approveStageRow(
 // #endregion
 
 // #region Fair Exit
+const FAIR_EXIT_TIERS: readonly FairExitTier[] = [25, 50, 75];
+
+/** A three-letter currency code from the payload, or the fallback. */
+function currencyOf(value: unknown, fallback = "USD"): string {
+	const code = String(value ?? "").trim().toUpperCase();
+	return /^[A-Z]{3}$/.test(code) ? code : fallback;
+}
+
+/**
+ * Map `projects.cancel_stage_fair_exit`'s answer onto {@link StageExited}. Exported for its tests: the
+ * keys are the SQL function's, and a renamed key would otherwise read as a silent zero.
+ */
+export function toStageExited(
+	payload: Record<string, unknown>,
+	stageId: string,
+	tier: FairExitTier,
+): StageExited {
+	return {
+		stageId,
+		status: "cancelled",
+		tier,
+		cancelledCount: cents(payload.cancelled_count),
+		ticketsCancelled: cents(payload.tickets_cancelled),
+		freelancerPaidCents: cents(payload.freelancer_paid_cents),
+		feeCents: cents(payload.fee_cents),
+		clientRefundedCents: cents(payload.client_refunded_cents),
+		currency: currencyOf(payload.currency),
+	};
+}
+
+/** The notice a settled Fair Exit answers with — the figures that moved, in the stage's currency. */
+export function fairExitMessage(exited: StageExited): string {
+	const paid = formatMoney(exited.freelancerPaidCents, exited.currency);
+	const refunded = formatMoney(exited.clientRefundedCents, exited.currency);
+	const closed = exited.ticketsCancelled === 0
+		? ""
+		: exited.ticketsCancelled === 1
+		? "; 1 open ticket was cancelled"
+		: `; ${exited.ticketsCancelled} open tickets were cancelled`;
+	return `Stage ended — ${paid} paid to the freelancer, ${refunded} refunded${closed}.`;
+}
+
+/** One tier's quote, labelled in the stage's currency. */
+function toFairExitQuote(raw: Record<string, unknown>, tier: FairExitTier, currency: string): FairExitQuote {
+	const freelancerPaidCents = cents(raw.freelancer_paid_cents);
+	const feeCents = cents(raw.fee_cents);
+	const clientRefundedCents = cents(raw.client_refunded_cents);
+	return {
+		tier,
+		ticketCount: cents(raw.ticket_count),
+		freelancerPaidCents,
+		feeCents,
+		clientRefundedCents,
+		freelancerPaidLabel: clampOr(formatMoney(freelancerPaidCents, currency), 40, ""),
+		feeLabel: clampOr(formatMoney(feeCents, currency), 40, ""),
+		clientRefundedLabel: clampOr(formatMoney(clientRefundedCents, currency), 40, ""),
+	};
+}
+
+/**
+ * Map `projects.preview_stage_fair_exit`'s answer onto {@link FairExitPreview}, labelling every figure
+ * server-side. Each tier is looked up by its own `tier` key rather than its position, and a tier the
+ * function did not answer reads as an empty quote — exported for its tests for the same reason as
+ * {@link toStageExited}.
+ */
+export function toFairExitPreview(payload: Record<string, unknown>, stageId: string): FairExitPreview {
+	const currency = currencyOf(payload.currency);
+	const raw = Array.isArray(payload.tiers) ? payload.tiers as Record<string, unknown>[] : [];
+	const quoteOf = (tier: FairExitTier) => raw.find((q) => Number(q?.tier) === tier) ?? {};
+	const blocked: FairExitBlocked | null = payload.blocked === "settled" || payload.blocked === "nothing_held"
+		? payload.blocked
+		: null;
+	const heldCents = cents(payload.held_cents);
+	const prepaidCents = cents(quoteOf(50).prepaid_cents);
+	return {
+		stageId,
+		stageName: clampOr(String(payload.stage_name ?? ""), 200, "This stage"),
+		currency,
+		exitable: payload.exitable === true && blocked === null,
+		blocked,
+		heldCents,
+		heldLabel: clampOr(formatMoney(heldCents, currency), 40, ""),
+		prepaidCents,
+		prepaidLabel: clampOr(formatMoney(prepaidCents, currency), 40, ""),
+		ticketsToCancel: cents(payload.tickets_to_cancel),
+		tiers: FAIR_EXIT_TIERS.map((tier) => toFairExitQuote(quoteOf(tier), tier, currency)),
+	};
+}
+
+/**
+ * Read what ending a stage under Fair Exit would settle at each tier, through
+ * `projects.preview_stage_fair_exit` — the same quote the door reports, so the confirmation and the
+ * settlement agree to the cent. The function checks review authority itself (a 403 for anyone else);
+ * the address resolves like every settlement route's.
+ */
+export async function previewFairExitRow(
+	actor: ReadActor & { accessToken: string },
+	input: PreviewStageFairExit,
+): Promise<WriteOutcome<FairExitPreview>> {
+	const db = projectsDb(actor);
+	const target = await resolveTarget(db, input.projectId, input.stageId);
+	if (!target) return null;
+
+	const { data, error } = await db.rpc("preview_stage_fair_exit", {
+		p_project_id: target.projectId,
+		p_stage_id: target.stageId,
+	});
+	if (error) return { refusal: settlementRefusal(error, "stageId") };
+	return { data: toFairExitPreview((data ?? {}) as Record<string, unknown>, target.stageId) };
+}
+
 /**
  * Cancel a stage under the Fair Exit split through `projects.cancel_stage_fair_exit`: the freelancer
  * is paid `tier`% of each held escrow's principal (net of the fee), the remainder is refunded to the
- * payer, and the stage is marked `cancelled`.
+ * payer, the stage is marked `cancelled`, the tickets left on it close as `cancelled`, and both sides
+ * are notified (Decision #198).
  */
 export async function exitStageRow(
 	actor: ReadActor & { accessToken: string },
@@ -318,16 +439,6 @@ export async function exitStageRow(
 	});
 	if (error) return { refusal: settlementRefusal(error, "tier") };
 
-	const payload = (data ?? {}) as Record<string, unknown>;
-	return {
-		data: {
-			stageId: target.stageId,
-			status: "cancelled",
-			tier: input.tier,
-			cancelledCount: cents(payload.cancelled_count),
-			freelancerPaidCents: cents(payload.freelancer_paid_cents),
-			clientRefundedCents: cents(payload.client_refunded_cents),
-		},
-	};
+	return { data: toStageExited((data ?? {}) as Record<string, unknown>, target.stageId, input.tier) };
 }
 // #endregion

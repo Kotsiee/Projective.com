@@ -33,7 +33,9 @@ export function ApproveStageDialog(
 			message={
 				<>
 					Approving <strong>{stageName || "this stage"}</strong>{" "}
-					releases its held escrow to the freelancers who worked it. This cannot be undone.
+					releases any escrow still held on it to the freelancers who worked it and closes the
+					stage. Submissions you already accepted were paid when you accepted them. This cannot be
+					undone.
 				</>
 			}
 			rejectLabel="Cancel"

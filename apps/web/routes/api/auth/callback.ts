@@ -48,7 +48,7 @@ export const handler = define.handlers({
 			cookies: readCookies(ctx.req),
 		});
 		// Clear the spent verifier cookie(s) regardless of outcome.
-		const clearVerifier = oauthStoreCookies(result.store.diff(), 0);
+		const clearVerifier = oauthStoreCookies(ctx.req, result.store.diff(), 0);
 
 		if (result.error || !result.session) {
 			return redirect(
@@ -57,7 +57,7 @@ export const handler = define.handlers({
 			);
 		}
 
-		const cookies = [...clearVerifier, ...sessionSetCookies(result.session)];
+		const cookies = [...clearVerifier, ...sessionSetCookies(ctx.req, result.session)];
 
 		if (result.isNewUser) {
 			// Through the shared builder, because this is not the only place that address gets built:

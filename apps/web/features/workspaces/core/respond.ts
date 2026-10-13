@@ -19,6 +19,7 @@ export function toWorkspaceBody<T>(result: ServiceResult<T>): WorkspaceResult<T>
 		ok: result.ok,
 		message: result.message,
 		errors: result.errors,
+		details: result.details,
 		data: result.data,
 	};
 }

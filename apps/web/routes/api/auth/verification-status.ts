@@ -1,11 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { safeRedirect } from "@features/auth/core/redirect.ts";
 import { toAuthResponse } from "@features/auth/core/respond.ts";
-import {
-	hasSessionCookie,
-	PENDING_VERIFICATION_COOKIE,
-	readCookies,
-} from "@web/utils/auth-cookies.ts";
+import { PENDING_VERIFICATION_COOKIE, readCookies } from "@web/utils/auth-cookies.ts";
 import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts";
 
 /** The caller's transport address, the rate-limit key for a poll no valid cookie names. */
@@ -23,7 +19,7 @@ function clientKey(remote: Deno.Addr): string {
  * are rate-limited (429).
  *
  * It never signs anyone in. When the account is confirmed it reports `signedIn`: `true` when this
- * request already carries a session (the code was entered, or the email link was opened in this
+ * request already carries a verified session (the code was entered, or the email link was opened in this
  * browser) so the page continues in, `false` when the link was opened elsewhere so the page asks the
  * reader to sign in.
  */
@@ -32,10 +28,10 @@ export const handler = define.handlers({
 		const result = await AuthBackendService.getVerificationStatus({
 			pendingToken: readCookies(ctx.req)[PENDING_VERIFICATION_COOKIE],
 			clientKey: clientKey(ctx.info.remoteAddr),
-			hasSession: hasSessionCookie(ctx.req),
+			hasSession: ctx.state.isAuthenticated === true,
 			redirectTo: safeRedirect(ctx.url.searchParams.get("redirectTo")),
 		});
-		const res = toAuthResponse(result);
+		const res = toAuthResponse(ctx.req, result);
 		res.headers.set("cache-control", "no-store");
 		return res;
 	},

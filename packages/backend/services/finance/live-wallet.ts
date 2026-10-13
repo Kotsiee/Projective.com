@@ -366,8 +366,10 @@ function actionsFor(
 	// Money leaves a vault only for someone who may withdraw from it; a person's own wallet always.
 	if (personal || caps.includes("withdraw")) offered.push("transfer");
 	if (variant === "team" && caps.includes("distribute")) offered.push("distribute");
-	// Escrow is paid by a business (`finance.escrows.payer_business_id`), so only its vault funds stages.
+	// Escrow is paid by a client business's vault, or by an individual owner's own wallet (Decision #197) —
+	// offered on a person's wallet only while one of their projects has a stage waiting.
 	if (account.scope === "business" && caps.includes("spend")) offered.push("fund_escrow");
+	if (personal && fundable.length > 0) offered.push("fund_escrow");
 	if (caps.includes("add_funds")) offered.push("new_recurring");
 	if (personal || caps.includes("manage_billing")) offered.push("add_method");
 	if (caps.includes("withdraw")) offered.push("set_payout");
@@ -382,7 +384,7 @@ function actionsFor(
 			continue;
 		}
 		if (action === "fund_escrow" && fundable.length === 0) {
-			unavailable.push({ action, reason: "No assigned stage is waiting for its escrow." });
+			unavailable.push({ action, reason: "No stage is waiting for funding." });
 		}
 		if (action === "distribute") {
 			if (!splitAgreed) unavailable.push({ action, reason: "Agree how this team splits its income first." });
@@ -487,6 +489,7 @@ async function personalExtras(
 				? clip([source.brand ?? source.label ?? "Card", source.last4 ? `·· ${source.last4}` : null].filter(Boolean).join(" "), 120)
 				: null,
 			spentThisMonth: ctx.money.derived(spent),
+			fundable: await fundableStages(ctx, account),
 		};
 	}
 
@@ -526,6 +529,7 @@ async function personalExtras(
 		projectedFromLocked: lockedNet,
 		fundingSource: null,
 		spentThisMonth: null,
+		fundable: await fundableStages(ctx, account),
 	};
 }
 // #endregion
@@ -665,11 +669,29 @@ async function teamExtras(
 // #endregion
 
 // #region Business extras
-/** Stages this business may fund right now: assigned, with assigned and unpaid tickets. */
+/** The stage statuses a stage can be funded in (Decision #197) — `projects.fund_stage`'s own list. */
+const FUNDABLE_STAGE_STATUSES = ["open", "assigned", "in_progress"] as const;
+
+/**
+ * Stages this wallet may fund right now (Decision #197): a business vault funds its client projects, a
+ * person's own wallet the projects they own with no client business. A stage qualifies while open,
+ * assigned or in progress with tickets nobody has paid for — claimed or not — priced as
+ * `projects.fn_stage_funding_need` prices them. A stage with an unpriced ticket is listed with its
+ * `unpricedCount` so the dialog can say why it cannot be funded yet; the figure a payer commits is
+ * re-quoted by the database at the press (`wallet-actions.fundEscrow`).
+ */
 export async function fundableStages(ctx: WalletContext, account: WalletAccount): Promise<FundableStage[]> {
-	if (account.scope !== "business" || !account.capabilities.includes("spend")) return [];
+	if (!account.capabilities.includes("spend")) return [];
+	if (account.scope !== "business" && account.scope !== "personal") return [];
 	const db = getUserClient(ctx.actor.accessToken).schema("projects");
-	const projectsRes = await db.from("projects").select("id, slug, title, currency").eq("client_business_id", account.id);
+	const projectsRes = account.scope === "business"
+		? await db.from("projects").select("id, slug, title, currency").eq(
+			"client_business_id",
+			account.id,
+		)
+		: await db.from("projects").select("id, slug, title, currency")
+			.eq("owner_user_id", ctx.viewer.userId)
+			.is("client_business_id", null);
 	if (projectsRes.error) throw new Error(`projects.projects read failed: ${projectsRes.error.message}`);
 	const projects = (projectsRes.data ?? []) as { id: string; slug: string; title: string; currency: string | null }[];
 	if (projects.length === 0) return [];
@@ -677,32 +699,35 @@ export async function fundableStages(ctx: WalletContext, account: WalletAccount)
 		.select("id, name, project_id, unit_price_cents")
 		.in("project_id", projects.map((p) => p.id))
 		.is("archived_at", null)
-		.eq("status", "assigned");
+		.in("status", [...FUNDABLE_STAGE_STATUSES]);
 	if (stagesRes.error) throw new Error(`projects.project_stages read failed: ${stagesRes.error.message}`);
 	const stages = (stagesRes.data ?? []) as { id: string; name: string; project_id: string; unit_price_cents: number | null }[];
 	if (stages.length === 0) return [];
 	const ticketsRes = await db.from("tickets")
 		.select("current_stage_id, unit_price_cents")
 		.in("current_stage_id", stages.map((s) => s.id))
-		.not("current_assignee_id", "is", null)
-		.in("payment_status", ["unpaid", "needs_funding"]);
+		.in("payment_status", ["unpaid", "needs_funding"])
+		.not("status", "in", "(completed,cancelled,reported_hidden)");
 	if (ticketsRes.error) throw new Error(`projects.tickets read failed: ${ticketsRes.error.message}`);
 	const tickets = (ticketsRes.data ?? []) as { current_stage_id: string; unit_price_cents: number | null }[];
 
 	const out: FundableStage[] = [];
 	for (const stage of stages) {
 		const own = tickets.filter((t) => t.current_stage_id === stage.id);
+		if (own.length === 0) continue;
 		// Priced exactly as `fn_hold_ticket_escrow` will price it: the ticket's own rate, else the stage's.
-		const amount = own.reduce((sum, t) => sum + (Number(t.unit_price_cents ?? stage.unit_price_cents ?? 0) || 0), 0);
-		if (own.length === 0 || amount <= 0) continue;
+		const prices = own.map((t) => Number(t.unit_price_cents ?? stage.unit_price_cents ?? 0) || 0);
+		const amount = prices.reduce((sum, p) => sum + (p > 0 ? p : 0), 0);
 		const project = projects.find((p) => p.id === stage.project_id)!;
 		out.push({
 			projectId: clip(project.slug, 64),
+			projectRowId: project.id,
 			projectTitle: clip(project.title, 160),
 			stageId: stage.id,
 			stageName: clip(stage.name, 120),
 			amount: money(ctx, amount, (project.currency ?? "USD").toUpperCase()),
 			ticketCount: own.length,
+			unpricedCount: prices.filter((p) => p <= 0).length,
 		});
 	}
 	return out.slice(0, 40);
@@ -927,7 +952,7 @@ export async function overviewOf(ctx: WalletContext): Promise<WalletOverview> {
 		account,
 		ctx.accounts,
 		personal?.incomeSmoother ?? null,
-		business?.fundable ?? [],
+		business?.fundable ?? personal?.fundable ?? [],
 		vaultHolds,
 		splitAgreed,
 	);
@@ -1612,7 +1637,7 @@ export async function payoutsOf(ctx: WalletContext): Promise<PayoutsView> {
 		destination_method_id: string | null;
 		amount_cents: number;
 		currency: string;
-		status: "pending" | "paid" | "failed" | "cancelled";
+		status: "pending" | "paid" | "failed" | "cancelled" | "reversed";
 		created_at: string;
 	}[]).map((p) => ({
 		id: p.id,

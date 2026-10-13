@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ContextType } from "../auth/mod.ts";
+import { slugPattern } from "../slugs/mod.ts";
 
 /**
  * projects.create — the Zod SSOT for the **Quick-Init** Create-Project modal payload.
@@ -14,10 +15,11 @@ import { ContextType } from "../auth/mod.ts";
  * can look anything up, and a half-filled one loses everything on dismiss; a draft row loses
  * nothing. So the modal's only job is to reach a URL, and the URL is where the work happens.
  *
- * Every field below is create-BLOCKING except `baselineAmountCents`, and each maps onto a
- * `projects.projects` column that already exists — `title`, `format`, `currency` — or onto the one
- * auto-provisioned root stage the service creates alongside the row. The DB derives id, owner,
- * status, visibility, slug and timestamps; the client never proposes any of them.
+ * `title`, `format` and `currency` are create-BLOCKING; `description`, `baselineAmountCents` and
+ * `inviteeHandle` are optional. Each maps onto a `projects.projects` column, onto the one root stage
+ * `projects.create_project` creates in the same transaction, or (the invitee) onto the hire path's
+ * invitation once the draft exists. The DB derives id, owner, status, visibility, slug and
+ * timestamps; the client never proposes any of them.
  */
 
 // #region Engagement terms
@@ -263,13 +265,18 @@ export const CreateProjectSchema = z.object({
 	 */
 	description: z.string().trim().max(2000, "Keep the brief under 2000 characters.").default(""),
 	/**
-	 * ISO-4217, upper-case. Validated for SHAPE here only; the modal seeds it from the viewer's resolved
-	 * money context (already narrowed to the offerable set), and the create write stores what arrives
-	 * after `normalisedCurrency`.
+	 * ISO-4217, upper-case. Validated for SHAPE here only; the modal's selector offers
+	 * `DISPLAY_CURRENCIES`, seeded from the viewer's `preferred_display_currency`, and the fat service
+	 * narrows anything outside that set to the request's resolved money context.
 	 */
 	currency: z.string().trim().length(3, "Choose a currency.").toUpperCase(),
-	/** The one baseline figure, in MINOR units. `null` = not priced yet. */
+	/** The one baseline figure, in MINOR units of `currency`. `null` = not priced yet. */
 	baselineAmountCents: z.number().int().min(0).nullable().default(null),
+	/**
+	 * The seller's `@handle` when the modal was opened from their profile. Once the draft exists the
+	 * service invites them through the same `hire` path the profile's Add-to-project flow uses.
+	 */
+	inviteeHandle: z.string().trim().min(1).max(41).optional(),
 	/** Which workspace to create the engagement under; defaults to the actor's active context. */
 	scopeType: ContextType.default("personal"),
 	scopeId: z.string().max(64).default(""),
@@ -277,17 +284,33 @@ export const CreateProjectSchema = z.object({
 export type CreateProject = z.infer<typeof CreateProjectSchema>;
 
 /**
+ * How the invitation a profile-opened create sends ended.
+ *
+ * `staged` is the hire path's placeholder: the invitee is attached to a draft and the terms settle
+ * at publish. `refused` means the project exists but nobody was invited, with the hire path's reason.
+ */
+export const CreatedInvitationOutcome = z.enum(["sent", "staged", "refused"]);
+export type CreatedInvitationOutcome = z.infer<typeof CreatedInvitationOutcome>;
+
+/** The invitation half of a create, when the payload named an invitee. */
+export const CreatedInvitationSchema = z.object({
+	handle: z.string().min(1).max(41),
+	outcome: CreatedInvitationOutcome,
+	message: z.string().max(400),
+});
+export type CreatedInvitation = z.infer<typeof CreatedInvitationSchema>;
+
+/**
  * What a successful create returns.
  *
- * BOTH identifiers, deliberately. `id` is the canonical address the client navigates to — a uuid
- * cannot collide, cannot be squatted and cannot change when the owner renames the project, which a
- * title-derived slug does on the first rename. `slug` rides along because every projection in this
- * domain carries it and a caller that wants a readable link should not have to fetch the row again
- * to get one.
+ * `slug` is the address the client navigates to: the minted `prj-` slug is immutable through every
+ * rename (`ck_projects_slug_shape`), and the uuid does not route at all (Decision #88, ROUTING.md).
+ * `id` rides along for callers that write by id.
  */
 export const CreatedProjectSchema = z.object({
 	id: z.string().uuid(),
-	slug: z.string().min(1).max(120),
+	slug: z.string().regex(slugPattern("project")),
+	invitation: CreatedInvitationSchema.nullable().default(null),
 });
 export type CreatedProject = z.infer<typeof CreatedProjectSchema>;
 // #endregion

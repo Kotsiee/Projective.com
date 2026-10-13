@@ -5,13 +5,20 @@ import {
 	type EventOutcome,
 	recordCardPaymentFailure,
 	recordDisputeClosed,
+	recordBankPayout,
 	recordDisputeOpened,
 	recordSavedCard,
 	recordTransferCreated,
+	recordTransferReversed,
 	settleCardPayment,
 	syncPayoutAccount,
 } from "./live-payments.ts";
-import { type ConfirmedCard, confirmedCardOf, retrieveTransfersCapability } from "./stripe-rails.ts";
+import {
+	bankPayoutContents,
+	type ConfirmedCard,
+	confirmedCardOf,
+	retrieveTransfersCapability,
+} from "./stripe-rails.ts";
 
 /**
  * stripe-webhook — what a VERIFIED Stripe event means for the ledger, as a pure plan, and the one
@@ -52,6 +59,25 @@ export type StripePlan =
 		payoutId: string | null;
 	}
 	| {
+		kind: "transfer_reversed";
+		transfer: string;
+		destination: string | null;
+		amount: number;
+		/** The transfer's CUMULATIVE reversed amount at the time of the event. */
+		amountReversed: number;
+		currency: string;
+		payoutId: string | null;
+	}
+	| {
+		kind: "bank_payout";
+		eventType: "payout.paid" | "payout.failed";
+		/** The connected account the payout ran on (`event.account`). */
+		account: string;
+		payout: string;
+		status: "paid" | "failed";
+		failureCode: string | null;
+	}
+	| {
 		kind: "dispute_created";
 		dispute: string;
 		paymentIntent: string | null;
@@ -89,6 +115,12 @@ export function planStripeEvent(event: Stripe.Event): StripePlan {
 			const intent = event.data.object;
 			if (!intent.id || !Number.isInteger(intent.amount_received) || !intent.currency) {
 				return { kind: "ignore", reason: "the PaymentIntent is missing its amount or currency" };
+			}
+			// Every intent Projective creates names its payment (stripe-rails `paymentIntentParams`); one
+			// that does not was charged by something else on the account, and retrying it cannot credit it.
+			const paymentId = text(intent.metadata?.projective_payment_id, 64);
+			if (!paymentId || !UUID_RE.test(paymentId)) {
+				return { kind: "ignore", reason: "the PaymentIntent is not one Projective created" };
 			}
 			return {
 				kind: "payment_succeeded",
@@ -140,6 +172,43 @@ export function planStripeEvent(event: Stripe.Event): StripePlan {
 				payoutId: payoutId && UUID_RE.test(payoutId) ? payoutId : null,
 			};
 		}
+		case "transfer.reversed": {
+			const transfer = event.data.object;
+			if (
+				!transfer.id || !Number.isInteger(transfer.amount) || !Number.isInteger(transfer.amount_reversed) ||
+				!transfer.currency
+			) {
+				return { kind: "ignore", reason: "the reversed transfer is missing its amounts or currency" };
+			}
+			const payoutId = text(transfer.metadata?.projective_payout_id, 64);
+			return {
+				kind: "transfer_reversed",
+				transfer: transfer.id,
+				destination: idOf(transfer.destination),
+				amount: transfer.amount,
+				amountReversed: transfer.amount_reversed,
+				currency: transfer.currency.toUpperCase(),
+				payoutId: payoutId && UUID_RE.test(payoutId) ? payoutId : null,
+			};
+		}
+		case "payout.paid":
+		case "payout.failed": {
+			// A payout without `event.account` is the PLATFORM's own payout to its bank, not a withdrawal.
+			const account = text(event.account, 255);
+			if (!account || !account.startsWith("acct_")) {
+				return { kind: "ignore", reason: "a platform payout, not a connected account's" };
+			}
+			const payout = event.data.object;
+			if (!payout?.id) return { kind: "ignore", reason: "the payout event carries no payout id" };
+			return {
+				kind: "bank_payout",
+				eventType: event.type,
+				account,
+				payout: payout.id,
+				status: event.type === "payout.paid" ? "paid" : "failed",
+				failureCode: event.type === "payout.failed" ? text(payout.failure_code, 80) : null,
+			};
+		}
 		case "charge.dispute.created": {
 			const dispute = event.data.object;
 			return {
@@ -178,6 +247,20 @@ export function planStripeEvent(event: Stripe.Event): StripePlan {
 
 // #region Carrying a plan out
 /**
+ * A settlement is acknowledged only once its ledger row exists (Decision #200): `settle_card_payment`
+ * reports the `transaction_id` on every outcome it completes, and releases its event claim on the
+ * ones it cannot credit yet. Anything without one throws, so the webhook answers 5xx and Stripe
+ * redelivers the event instead of it being dropped.
+ */
+export function requireLedgerRow(outcome: EventOutcome): EventOutcome {
+	const tx = outcome.raw.transaction_id;
+	const acknowledged = outcome.outcome === "applied" || outcome.outcome === "replayed";
+	if (acknowledged && typeof tx === "string" && tx.length > 0) return outcome;
+	const detail = outcome.detail ?? "no detail";
+	throw new Error(`no ledger row yet (${outcome.outcome}: ${detail}); Stripe will retry`);
+}
+
+/**
  * Apply a plan through its processor door. Throws when the database could not be reached or refused
  * the call — the webhook must then answer 5xx so Stripe redelivers the event, which the door's event
  * claim makes safe.
@@ -195,7 +278,7 @@ export function applyStripePlan(
 				amountReceived: plan.amountReceived,
 				currency: plan.currency,
 				livemode,
-			});
+			}).then(requireLedgerRow);
 		case "payment_failed":
 			return recordCardPaymentFailure({
 				eventId,
@@ -222,6 +305,19 @@ export function applyStripePlan(
 				payoutId: plan.payoutId,
 				livemode,
 			});
+		case "transfer_reversed":
+			return recordTransferReversed({
+				eventId,
+				transfer: plan.transfer,
+				destination: plan.destination,
+				amount: plan.amount,
+				amountReversed: plan.amountReversed,
+				currency: plan.currency,
+				payoutId: plan.payoutId,
+				livemode,
+			});
+		case "bank_payout":
+			return applyBankPayout(eventId, plan, livemode);
 		case "dispute_created":
 			return recordDisputeOpened({
 				eventId,
@@ -265,6 +361,30 @@ export async function syncConnectAccount(accountId: string): Promise<EventOutcom
 		}
 		throw error;
 	}
+}
+
+/**
+ * Record a connected account's bank payout outcome on the withdrawals it carried. Which transfers it
+ * carried is read from Stripe (the payout's balance transactions, on the connected account), so a
+ * Stripe outage throws and the event is redelivered; the door is idempotent on the event id.
+ */
+async function applyBankPayout(
+	eventId: string,
+	plan: Extract<StripePlan, { kind: "bank_payout" }>,
+	livemode: boolean,
+): Promise<EventOutcome> {
+	const contents = await bankPayoutContents(getStripe(), plan.account, plan.payout);
+	return recordBankPayout({
+		eventId,
+		eventType: plan.eventType,
+		account: plan.account,
+		bankPayout: plan.payout,
+		status: plan.status,
+		failureCode: plan.failureCode,
+		transfers: contents.transfers,
+		priorPayouts: contents.priorPayouts,
+		livemode,
+	});
 }
 
 /**

@@ -83,9 +83,13 @@ Deno.test("gates — acting as a team admits the seller entries", () => {
 	assert(sectionEntries("scheduling", team).some((e) => e.anchor === "calls"));
 });
 
-Deno.test("gates — every section stays visible (a gated entry never hides its page)", () => {
+Deno.test("gates — an unrestricted person sees every section (a gated entry never hides its page)", () => {
 	assertEquals(visibleSections(person()).length, SETTINGS_SECTIONS.length);
-	assertEquals(visibleSections(null).length, SETTINGS_SECTIONS.length);
+	assertEquals(
+		visibleSections(null).map((s) => s.key),
+		SETTINGS_SECTIONS.filter((s) => !s.gate).map((s) => s.key),
+		"only the adult-only sections are gated, and an unknown viewer is not admitted to them",
+	);
 });
 // #endregion
 
@@ -150,3 +154,15 @@ Deno.test("addresses — hrefs, path parsing and anchors", () => {
 	assertEquals(entryByAnchor("missing"), null);
 });
 // #endregion
+
+Deno.test("a restricted (13–17) account sees no Billing, no Verification & payouts and no Businesses", () => {
+	const minor = person({ restricted: true });
+	const keys = visibleSections(minor).map((s) => s.key);
+	assert(!keys.includes("billing"));
+	assert(!keys.includes("verification"));
+	assert(!sectionEntries("workspaces", minor).some((e) => e.anchor === "businesses"));
+	assertEquals(searchSettings("payout", minor).some((hit) => hit.section.key === "verification"), false);
+	const adult = person({ restricted: false });
+	assert(visibleSections(adult).some((s) => s.key === "billing"));
+	assert(sectionEntries("workspaces", adult).some((e) => e.anchor === "businesses"));
+});

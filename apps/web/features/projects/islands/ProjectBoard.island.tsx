@@ -18,7 +18,7 @@ import "../styles/file-card.css";
 import "../styles/submission-review.css";
 import { KanbanBoard, type KanbanColumnModel, type KanbanItemMove } from "@projective/ui/kanban";
 import type { KanbanColumnMove } from "@projective/ui/kanban";
-import { InputText, MultiSelect, SortControl } from "@projective/ui/fields";
+import { Button, InputText, MultiSelect, SortControl } from "@projective/ui/fields";
 import {
 	type BoardCard,
 	type BoardColumn,
@@ -37,8 +37,10 @@ import {
 	boardCardColumn,
 	classifyMove,
 	filterCards,
+	isClaimDrop,
 	PRIORITY_OPTIONS,
 	sortCards,
+	viewerCanClaim,
 } from "../core/board-model.ts";
 import {
 	boardGrouping,
@@ -95,6 +97,8 @@ import { buyNowOpen, requestBuyNow } from "@web/features/checkout/core/buy-now-s
 import BuyNowModal from "@web/features/checkout/islands/BuyNowModal.island.tsx";
 import { InlineNotice } from "@projective/ui/feedback";
 import { fundingRollup } from "../core/funding-ui.ts";
+import { FundStageDialog } from "@web/features/payments/components/FundStageDialog.tsx";
+import { PAYOUT_SETUP_ACTION, readPayoutGateDetails } from "@projective/types/finance";
 
 /**
  * ProjectBoard — the single island the Kanban board routes mount, for the project pipeline
@@ -199,7 +203,12 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	const savingId = useSignal<string | null>(null);
 	/** A Start work write is in flight — the funding line's control shows its spinner. */
 	const starting = useSignal(false);
+	/** The ticket a Claim write is in flight for — its control shows the spinner, the others wait. */
+	const claimingId = useSignal<string | null>(null);
+	/** A claim the earning gate refused: the sentence and the viewer's own fix link. */
+	const claimGate = useSignal<{ message: string; href: string } | null>(null);
 	const stageModalOpen = useSignal(false);
+	const fundStageOpen = useSignal(false);
 	/** Expanded tree keys for the review modal's own navigator (its own state, not the ticket's). */
 	const reviewExpanded = useSignal<Set<string>>(new Set());
 	/** A submission verdict is in flight from the review frame. */
@@ -401,7 +410,9 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	 * Record a verdict on the submission the review frame shows, through the same settlement route
 	 * the Submissions explorer uses. Not optimistic: the modal holds its controls disabled while the
 	 * write is in flight and keeps a refusal (403 for a non-reviewer, 409 when it was already decided)
-	 * in its footer; only a recorded verdict updates the card's tree and closes the frame.
+	 * in its footer; only a recorded verdict updates the card's tree and closes the frame. An acceptance
+	 * also completes the ticket and releases its escrow (Decision #194), so the card is re-read and
+	 * leaves Review with the payment state the server settled.
 	 */
 	async function decideReview(
 		unit: SubmissionUnit,
@@ -439,6 +450,19 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		);
 		toast(res.message ?? "Decision recorded.");
 		popFrame();
+		const settled = decision === "accept"
+			? cards.value.find((c) => c.id === unit.ticketId)
+			: undefined;
+		if (settled) void reread(settled);
+	}
+
+	/** Re-read the board after money moved, keeping the cards on screen while it loads. */
+	async function refreshBoard(): Promise<void> {
+		const res = await BoardService.list({ projectId: props.projectId, channelId: boardStageId });
+		if (res.ok && res.data) {
+			cards.value = res.data.page.cards;
+			stages.value = res.data.page.stages;
+		}
 	}
 
 	async function loadFallback(): Promise<void> {
@@ -537,6 +561,36 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		}
 		toast(res.message ?? "Work couldn't be started.");
 	}
+
+	/**
+	 * A freelancer self-claims an `open_pull` ticket through `claim_ticket` — never `move_ticket`, which
+	 * cannot set the assignee the escrow hold needs. Not optimistic: the claim takes an escrow hold, so
+	 * the card moves only when the server's claimed card comes back. A refusal is said in the server's
+	 * words; the earning gate's keeps its fix link on screen, and a needs-funding answer re-reads the
+	 * card, whose funding state the refused hold has just changed.
+	 */
+	async function claimTicket(card: BoardCard): Promise<void> {
+		if (claimingId.value) return;
+		claimingId.value = card.id;
+		claimGate.value = null;
+		const res = await BoardService.claim({ projectId: props.projectId, ticketId: card.id });
+		claimingId.value = null;
+		if (res.ok && res.data) {
+			const saved = res.data.card;
+			cards.value = cards.value.map((c) => (c.id === saved.id ? saved : c));
+			toast(res.message ?? "Ticket claimed.");
+			return;
+		}
+		const gate = readPayoutGateDetails(res.details);
+		if (gate?.href) {
+			const message = res.message ?? "Set up payouts to claim paid work.";
+			claimGate.value = { message, href: gate.href };
+			if (ticketStack.top.peek()) toast(message);
+			return;
+		}
+		if (res.errors?.ticket === "needs_funding") void reread(card);
+		toast(res.message ?? "That ticket couldn't be claimed.");
+	}
 	// #endregion
 
 	/**
@@ -624,6 +678,16 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		// stale board, must refuse here as well — the gate on the handle is not the gate on the write.
 		if (access.value.isClient && ticketWorkLocked(card)) {
 			toast("A freelancer is working this ticket — it can be moved once the work is handed back.");
+			return;
+		}
+		// Work starts with a claim, and only a claim sets the assignee its escrow is held against. A
+		// personal project moves no money, so its owner's drag stays an ordinary move.
+		if (isClaimDrop(card, to) && !card.personal) {
+			if (access.value.isClient) {
+				toast("A freelancer starts this ticket by claiming it.");
+				return;
+			}
+			void claimTicket(card);
 			return;
 		}
 		const kind = classifyMove(card, move.fromColumn, move.toColumn, boardColumns);
@@ -926,10 +990,23 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 	return (
 		<div class="brd" data-scope={scope}>
 			{toolbar()}
+			{claimGate.value
+				? (
+					<InlineNotice
+						class="brd-funding"
+						align="start"
+						assertive
+						text={claimGate.value.message}
+						actionLabel={PAYOUT_SETUP_ACTION}
+						onAction={() => globalThis.location.assign(claimGate.value?.href ?? "")}
+					/>
+				)
+				: null}
 			{
 				/*
 				 * The board's money sentence: what is waiting on the client before work can start. One quiet line
-				 * with one text action — Fund all hands the tickets to the basket; it commits nothing itself.
+				 * with one text action — on a stage's board Fund stage funds the whole stage, wallet or card
+				 * (FundStageDialog, Decision #197); on the project board Fund all hands the tickets to the basket.
 				 */
 			}
 			{access.value.isClient && rollup.count > 0
@@ -940,8 +1017,11 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 						text={`${rollup.count} ${rollup.count === 1 ? "ticket needs" : "tickets need"} ${
 							formatTicketMoney(rollup.totalMinor, rollup.currency ?? undefined)
 						} to start.`}
-						actionLabel="Fund all"
-						onAction={() => void doCheckout()}
+						actionLabel={boardStageId ? "Fund stage" : "Fund all"}
+						onAction={() => {
+							if (boardStageId) fundStageOpen.value = true;
+							else void doCheckout();
+						}}
 					/>
 				)
 				: null}
@@ -970,6 +1050,21 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 								/>
 							)}
 							onItemActivate={openDetail}
+							renderItemActions={(c) =>
+								viewerCanClaim(c, stages.value, providerStageIds, access.value.isClient)
+									? (
+										<Button
+											variant="outlined"
+											size="sm"
+											rounded
+											label="Claim"
+											aria-label={`Claim ${c.title}`}
+											loading={claimingId.value === c.id}
+											disabled={claimingId.value !== null && claimingId.value !== c.id}
+											onClick={() => void claimTicket(c)}
+										/>
+									)
+									: null}
 							renderColumnHeader={(ctx) => (
 								<BoardColumnHeader
 									ctx={ctx}
@@ -1026,6 +1121,10 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 						onAddToBasket={(c) => void basketTicket(c)}
 						onStartWork={(c) => void startWork(c)}
 						fundingBusy={starting.value}
+						onClaim={viewerCanClaim(viewing, stages.value, providerStageIds, access.value.isClient)
+							? (c) => void claimTicket(c)
+							: undefined}
+						claimBusy={claimingId.value === viewing.id}
 					/>
 				)
 				: null}
@@ -1075,6 +1174,17 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 				: null}
 
 			<BuyNowModal host="body" />
+
+			{boardStageId && access.value.isClient
+				? (
+					<FundStageDialog
+						visible={fundStageOpen}
+						project={props.projectId}
+						stage={boardStageId}
+						onFunded={() => void refreshBoard()}
+					/>
+				)
+				: null}
 
 			<CreateStageModal
 				open={stageModalOpen}

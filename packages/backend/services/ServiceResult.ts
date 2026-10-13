@@ -26,6 +26,11 @@ export interface SessionTokens {
 	refreshToken: string;
 	/** Seconds until the access token expires. */
 	expiresIn?: number;
+	/**
+	 * Whether the session outlives the browser session (a 30-day refresh cookie). Set by a sign-in that
+	 * asked ("Keep me signed in"); unset on a renewal, which keeps the lifetime the session already has.
+	 */
+	remember?: boolean;
 }
 
 /** The outcome of a service call. `ok` discriminates success (`data`) from failure. */

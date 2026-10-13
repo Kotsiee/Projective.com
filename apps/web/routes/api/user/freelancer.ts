@@ -1,5 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
+import { respondWithReissuedSession } from "@web/utils/session.ts";
 import { refuseIfRestricted } from "@web/utils/age-gate.ts";
 import { EnableFreelancerInputSchema } from "@projective/types/user";
 import { UserBackendService } from "@server/services/user/UserBackendService.ts";
@@ -10,8 +11,10 @@ import { UserBackendService } from "@server/services/user/UserBackendService.ts"
  *
  * Thin by contract: resolve the actor from the SESSION (never the body), Zod-validate the starter
  * skills, delegate to the fat {@link UserBackendService.enableFreelancer}, map the result. The access
- * token this request carried still says `isFreelancer: false` afterwards — the caller refreshes the
- * session (`POST /api/auth/refresh`) so the hook re-mints the claims before it navigates.
+ * token this request carried still says `isFreelancer: false` afterwards, so a successful unlock
+ * re-issues the session server-side and mints the re-stamped cookies onto this response
+ * ({@link respondWithReissuedSession}); a failed renewal keeps the old cookies and answers
+ * `claimsStale: true`.
  *
  * Self-authorising like the other `/api/user/*` routes: a guest gets the service's 401, which the
  * client's interceptor routes through a silent refresh + retry.
@@ -35,9 +38,13 @@ export const handler = define.handlers({
 		}
 
 		const result = await UserBackendService.enableFreelancer(readActor(ctx), parsed.data);
-		return Response.json(
-			{ ok: result.ok, message: result.message, errors: result.errors, ...(result.data ?? {}) },
-			{ status: result.status },
-		);
+		const body = {
+			ok: result.ok,
+			message: result.message,
+			errors: result.errors,
+			...(result.data ?? {}),
+		};
+		if (!result.ok) return Response.json(body, { status: result.status });
+		return respondWithReissuedSession(ctx.req, body, result.status);
 	},
 });

@@ -1210,3 +1210,64 @@ BEGIN
 END;
 $$;
 -- #endregion
+
+-- #region Direct-message shielding for under-18 accounts (Decision #208)
+-- UK Children's Code: a restricted (13–17) account is not messaged by — and does not message —
+-- arbitrary people. A direct thread that includes a minor holds only people who follow each other.
+-- Two triggers enforce it on every path: a participant row may join a thread only if it is allowed
+-- with every participant already there (get_or_create_dm_thread, create_group_thread,
+-- add_dm_thread_members, send_request_message all write participants), and a message may be sent
+-- only while its sender is still allowed with every other participant (an unfollow ends it).
+-- Project and stage channels are a separate table and unaffected; a minor is never on anyone
+-- else's project anyway.
+CREATE OR REPLACE FUNCTION comms.fn_is_mutual_follow(p_a uuid, p_b uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM org.profile_follows f
+         WHERE f.follower_user_id = p_a AND f.target_entity_type = 'user' AND f.target_entity_id = p_b
+    ) AND EXISTS (
+        SELECT 1 FROM org.profile_follows f
+         WHERE f.follower_user_id = p_b AND f.target_entity_type = 'user' AND f.target_entity_id = p_a
+    );
+$$;
+
+-- Whether two people may share a direct thread: always, unless one is a minor — then only when they
+-- follow each other.
+CREATE OR REPLACE FUNCTION comms.fn_dm_allowed(p_a uuid, p_b uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT p_a = p_b
+        OR NOT (org.fn_is_minor(p_a) OR org.fn_is_minor(p_b))
+        OR comms.fn_is_mutual_follow(p_a, p_b);
+$$;
+
+CREATE OR REPLACE FUNCTION comms.trg_dm_shield()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_person uuid := (pg_catalog.to_jsonb(NEW) ->> CASE WHEN TG_TABLE_NAME = 'dm_messages' THEN 'sender_user_id' ELSE 'user_id' END)::uuid;
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM comms.dm_participants p
+         WHERE p.thread_id = NEW.thread_id AND p.user_id <> v_person
+           AND NOT comms.fn_dm_allowed(v_person, p.user_id)
+    ) THEN
+        RAISE EXCEPTION 'messages: people under 18 can message only people they follow who follow them back'
+            USING ERRCODE = 'PM403';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+-- #endregion

@@ -34,12 +34,21 @@ Parenthesized folders group routes **without** adding a URL segment:
   reader navigates to — `/view/[entity]`, `/[handle]/view/[item]`, `/[handle]` — records itself
   server-side instead. `/explore` renews a lapsed session in its handler (the `[handle]` model) because
   its Home feed is personalised. See SYSTEM_ARCHITECTURE §Discovery (Explore) services, Decision #178.
-- `routes/(dashboard)/_middleware.ts` — **auth guard** (skeleton: session-cookie check → `/login`;
-  swap in real Supabase JWT verification via `@server/services`).
-- `routes/(public)/(auth)/_middleware.ts` — the **inverse guard**: an already-authenticated visitor
-  to `/login` or `/join` is returned to their captured `redirectTo` (or `/home`) instead of being
-  asked to authenticate again or walked back through onboarding. `/join?oauth=…` is exempt — the
-  OAuth callback signs a NEW identity in and then sends them there to create their profile.
+- `routes/_middleware.ts` — stamps `isAuthenticated` / `userContext` on every request from the
+  `sb-access-token` cookie only once it **verifies** (`session.ts` `resolveRequestViewer` →
+  `AuthBackendService.verifyAccessToken`: signature against the project JWKS or the HS256
+  `SUPABASE_JWT_SECRET`, expiry, `sub` + `aud: authenticated`; local, cached keys, Decision #205). A
+  tampered or expired cookie is a guest here; it never renews.
+- `routes/(dashboard)/_middleware.ts` — **auth guard**: a verified access token passes; an invalid
+  or expired one with a refresh cookie renews in place; with none it is cleared and sent to
+  `/login?redirectTo=`; unobtainable signing keys or an unreachable GoTrue answer `503` with the
+  cookies kept.
+- `routes/(public)/(auth)/_middleware.ts` — the **inverse guard**: a visitor with a VALID session on
+  `/login` or `/join` is returned to their captured `redirectTo` (or `/home`) instead of being asked
+  to authenticate again or walked back through onboarding. A tampered or expired cookie is not
+  bounced, so no loop forms with the guard above (`safeRedirect` also refuses auth paths).
+  `/join?oauth=…` is exempt — the OAuth callback signs a NEW identity in and then sends them there
+  to create their profile.
 - `routes/(standalone)/_middleware.ts` — renews the session without redirecting (the
   `[handle]/_middleware.ts` model: `ensureSession`, then `accessToken`, `isAuthenticated` and a
   refreshed `userContext`, and the set/clear cookies appended to the response), so an expired access
@@ -528,7 +537,9 @@ team the caller is not in, `no-store` because the read pays out the drip (Decisi
 `UserBackendService.enableFreelancer(readActor(ctx), input)` → `org.enable_freelancer_profile`
 in the caller's JWT. `201` on a fresh unlock, `200` when it was already unlocked, `401` / `403`
 (onboarding incomplete) / `422` (refused skills) / `503` otherwise; the body carries the person's
-`handle`. The client then `POST`s `/api/auth/refresh` and hard-navigates to `/[handle]/edit`.
+`handle`. A successful unlock re-issues the session on the same response (re-stamped `sb-*`
+cookies, or `claimsStale: true` with the old cookies kept; Decision #193), and the client
+hard-navigates to `/[handle]/edit`.
 `/become-partner` itself reads the setup facts and the skills taxonomy server-side
 (`UserBackendService.setup` / `starterSkills`) and hands them to `BecomePartnerWizard` as props.
 
@@ -554,7 +565,7 @@ when no host claims it the bridge navigates to `/settings/:section` instead).
 | Route                                    | Method | Service → database |
 | :--------------------------------------- | :----- | :----------------- |
 | `/api/settings/[section]`                | `GET`  | `resolveSettingsSection` (`features/settings/core/settings-ssr.ts`) — the section's payload (`SettingsSectionEnvelope`, `@projective/types/settings`), composed from the services that own each section's data. `404` unknown section · `401` guest · `no-store`. `error` names a PART that could not be read; the request itself still succeeds. |
-| `/api/user/preferences`                  | `GET` · `PATCH` | `PATCH` takes `UserPreferencesUpdateSchema` (strict: display currency · locale · direction · theme · `contrast` · `font` · `cvd` · `motion`) → `SettingsBackendService.updatePreferences`, which splits it: the display half through `UserBackendService.updatePreferences`, the appearance half into the four `org.user_preferences` columns. Answers `{ preferences, appearance, appearancePersisted }` and, whenever the appearance or direction changed, **`Set-Cookie: pj.a11y=…`** (`utils/a11y-context.ts`) so the next response is server-rendered in the new overlays. `GET` adds `{ appearance, appearanceLive }`. |
+| `/api/user/preferences`                  | `GET` · `PATCH` | `PATCH` takes `UserPreferencesUpdateSchema` (strict: display currency · locale · direction · theme · `contrast` · `font` · `cvd` · `motion`) → `SettingsBackendService.updatePreferences`, which splits it: the display half through `UserBackendService.updatePreferences`, the appearance half into the four `org.user_preferences` columns. Answers `{ preferences, appearance, appearancePersisted }` and, whenever the appearance or direction changed, **`Set-Cookie: pj.a11y=…`** (`utils/a11y-context.ts`) so the next response is server-rendered in the new overlays. A patch that touches a claim (`touchesTokenClaims`: locale · display currency · date format) re-issues the session on the same response (`claimsStale: true` when it could not; Decision #193). `GET` adds `{ appearance, appearanceLive }`. |
 | `/api/user/emails`                       | `GET` · `POST` `{ email }` | `EmailsBackendService.list` → `org.get_my_emails` · `.add` → `org.add_user_email`, then the token through the SERVICE client `security.issue_email_verification` and `services/mail/verification-mailer.ts`. `POST` → `201 { emails, delivery }` (`sent` · `logged` · `unavailable`); 422 `errors.email`; 429 `details.retryAt` (5 sends per 15 min). The raw token never reaches a browser. |
 | `/api/user/emails/[id]`                  | `DELETE` | `EmailsBackendService.remove` → `org.remove_user_email` (never the primary or the sign-in address) |
 | `/api/user/emails/[id]/primary`          | `POST` | `EmailsBackendService.setPrimary` → `org.set_primary_email` (verified addresses only) |
@@ -562,8 +573,8 @@ when no host claims it the bridge navigates to `/settings/:section` instead).
 | `/api/user/emails/verify`                | `GET` `?token=` | The mailed link: `org.confirm_user_email` for the signed-in account (it renews the session itself), then **303→** `/settings/account?email=<EmailVerifyOutcome>`; signed out **303→** `/login?redirectTo=…`. `no-store`, `no-referrer`. Refusals carry `details.refusal` (an `EmailRefusal` code); a non-uuid `:id` is 404. |
 | `/api/user/notifications`                | `GET` · `PUT` | `NotificationCenterBackendService` over `comms.notification_prefs` / `notification_category_prefs` / `notification_types` in the caller's JWT. `PUT` = `NotificationCenterUpdateSchema` (partial; `resetChannels` sets a channel back to `null` on every category row so a master toggle is not outranked). 401 guest · 422 invalid / quiet hours incomplete · 503 not live. |
 | `/api/settings/attention`               | `GET`  | `attentionFactsFor` — the attention FACTS (`SettingsAttentionFacts`) for the contextual modal's section marks (Decision #156). `401` guest · `no-store`. |
-| `/api/user/handle`                      | `GET` · `POST` `{ handle }` | `AccountLifecycleBackendService.handlePolicy` → `org.get_handle_policy` · `.changeHandle` → `org.change_username` (two changes in three days, then a 90-day lock; a released handle is held 90 days). Answers `{ policy, previous }`; refusals carry `details.refusal` and a namespace refusal `errors.handle`. The client renews the session after a change (the token carries the handle). |
-| `/api/user/lifecycle`                   | `GET` · `POST` `{ scope, confirmation }` · `DELETE ?scope=` | `AccountLifecycleBackendService` → `org.get_account_lifecycle` · `org.schedule_freelancer_removal` / `org.schedule_account_deletion` (typed `CONFIRM`; 409 `details.blockers` while anything blocks) · `org.cancel_deletion_request`. Answers `{ lifecycle }`. |
+| `/api/user/handle`                      | `GET` · `POST` `{ handle }` | `AccountLifecycleBackendService.handlePolicy` → `org.get_handle_policy` · `.changeHandle` → `org.change_username` (two changes in three days, then a 90-day lock; a released handle is held 90 days). Answers `{ policy, previous }`; refusals carry `details.refusal` and a namespace refusal `errors.handle`. A change re-issues the session on the same response (the token carries the handle; `claimsStale: true` when it could not; Decision #193). |
+| `/api/user/lifecycle`                   | `GET` · `POST` `{ scope, confirmation }` · `DELETE ?scope=` | `AccountLifecycleBackendService` → `org.get_account_lifecycle` · `org.schedule_freelancer_removal` / `org.schedule_account_deletion` (typed `CONFIRM`; 409 `details.blockers` while anything blocks) · `org.cancel_deletion_request`. Answers `{ lifecycle }`; a `freelancer_profile` schedule or cancel re-issues the session (`isFreelancer` rides the token; `claimsStale: true` when it could not; Decision #193). |
 | `/api/user/identities`                  | `GET`  | `IdentitiesBackendService.list` — `{ identities, available, canDisconnect }` (GoTrue identities; providers on in this environment from GoTrue `/settings`). |
 | `/api/user/identities/[id]`             | `DELETE` | `IdentitiesBackendService.unlink` — 409 for the email identity and for the last way to sign in; answers the remaining list. |
 | `/api/user/identities/link/[provider]`  | `GET`  | Starts a PKCE `linkIdentity` for the signed-in person, sets ONLY the code-verifier cookie, **303→** the provider; the shared `/api/auth/callback` completes it and returns to `/settings/account?connect=<provider>#connected-accounts` (a failure → `?connect=failed`, never the sign-in page). |
@@ -638,8 +649,9 @@ themselves or left in a transfer), so an island adopts the server's state. RPC r
 | `/api/context/organisations`         | `GET`                 | RLS reads of `org.organisation_members` (own active rows) + `org.organisations` — the orgs the caller owns or actively belongs to, archived excluded (the account switcher's third list; Decision #149) |
 
 An over-limit spend REQUEST is not a workspace route: it is filed from the wallet surface through
-`finance.request_spend_approval`. A context switch re-stamps the JWT: the caller then refreshes the session (`/api/auth/refresh`) and
-navigates, because the access-token hook is what turns the stored context into claims.
+`finance.request_spend_approval`. A context switch re-stamps the JWT: the route re-issues the session on its own response (or answers
+`claimsStale: true`, Decision #193) and the caller hard-navigates, because the access-token hook is what
+turns the stored context into claims.
 
 The reserved-word denylist is **implemented** as the SSOT const + guard
 **`RESERVED_HANDLES`/`isReservedHandle`** in

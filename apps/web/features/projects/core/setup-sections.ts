@@ -82,6 +82,9 @@ export interface SetupSectionMeta {
  * the description IS the scope and these are its terms — the two read as one statement of the work.
  * The staged branch keeps its list in the same slot, where a run of priced stages belongs.
  */
+/** The sections a personal project's form leaves out: money, hiring and the terms of a hire. */
+const PERSONAL_HIDDEN_SECTIONS: ReadonlySet<SetupSectionKey> = new Set(["budget", "roles", "rules"]);
+
 export function setupSections(setup: ProjectSetup): SetupSectionMeta[] {
 	const roleStaffed = setup.structure === "single_task";
 	const flat = !roleStaffed && !hasStages(setup.structure);
@@ -114,7 +117,8 @@ export function setupSections(setup: ProjectSetup): SetupSectionMeta[] {
 		{ key: "attachments", label: "Attachments", icon: "attachment" },
 		{ key: "rules", label: "Terms & visibility", icon: "shield" },
 	);
-	return sections;
+	// A personal project (Decision #192) is priced by nobody, staffed by nobody and listed nowhere.
+	return setup.personal ? sections.filter((s) => !PERSONAL_HIDDEN_SECTIONS.has(s.key)) : sections;
 }
 
 /**

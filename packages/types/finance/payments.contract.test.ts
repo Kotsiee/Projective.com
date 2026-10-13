@@ -16,9 +16,11 @@ import {
 	HANDLED_STRIPE_EVENTS,
 	InboundPaymentPurpose,
 	InboundPaymentStatus,
+	isSettledPaymentStatus,
 	PayoutAccountOwnerType,
 	PayoutAccountStatus,
 	PayoutStatus,
+	SETTLED_PAYMENT_STATUSES,
 } from "./payments.ts";
 
 const REPO = new URL("../../../", import.meta.url);
@@ -49,6 +51,30 @@ Deno.test("finance.inbound_payment_status is InboundPaymentStatus, member for me
 	assertEquals(
 		literalsAfter(ENUMS_SQL, /CREATE TYPE finance\.inbound_payment_status AS ENUM/),
 		[...InboundPaymentStatus.options],
+	);
+});
+
+Deno.test("a settled payment IS its ledger credit, in SQL and in the SSOT alike (Decision #200)", () => {
+	const body = tableBody("finance.inbound_payments");
+	assertEquals(literalsAfter(body, /IS NOT NULL\) = \(status IN/), [...SETTLED_PAYMENT_STATUSES]);
+	assertEquals(literalsAfter(body, /\(status IN \('succeeded'/), [...SETTLED_PAYMENT_STATUSES]);
+	assert(
+		/\(status = 'settled_unapplied'\) = \(unapplied_reason IS NOT NULL\)/.test(body),
+		"missing the reason CHECK",
+	);
+	for (const status of InboundPaymentStatus.options) {
+		assertEquals(isSettledPaymentStatus(status), SETTLED_PAYMENT_STATUSES.includes(status), status);
+	}
+	// The settle and failure doors read the same pair as already settled.
+	const settle = FUNCTIONS_SQL.slice(
+		FUNCTIONS_SQL.indexOf("CREATE OR REPLACE FUNCTION finance.settle_card_payment("),
+	);
+	assertEquals(literalsAfter(settle, /IF v_payment\.status IN \(/), [...SETTLED_PAYMENT_STATUSES]);
+	// The claim release is internal: no role, the service role included, may call it.
+	assert(
+		/REVOKE ALL ON FUNCTION finance\.fn_release_stripe_event \(text\) FROM PUBLIC, anon, authenticated, service_role;/
+			.test(GRANTS_SQL),
+		"fn_release_stripe_event is not revoked from every role",
 	);
 });
 

@@ -1,6 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
 import { refuseIfRestricted } from "@web/utils/age-gate.ts";
+import { refuseIfPayoutNotReady } from "@web/utils/payout-gate.ts";
 import { ApplyToProjectSchema } from "@projective/types/projects";
 import { toProjectsResponse } from "@features/projects/core/respond.ts";
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
@@ -24,6 +25,8 @@ export const handler = define.handlers({
 		}
 		const restricted = refuseIfRestricted(ctx.req, ctx.state.userContext);
 		if (restricted) return restricted;
+		const unpayable = refuseIfPayoutNotReady(ctx.req);
+		if (unpayable) return unpayable;
 		const parsed = ApplyToProjectSchema.safeParse(await ctx.req.json().catch(() => null));
 		if (!parsed.success) {
 			const errors: Record<string, string> = {};

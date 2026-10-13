@@ -154,6 +154,11 @@ Deno.test("search words reach reason labels and the viewer's own accounts; famil
 	assertEquals(walletsMatching(accounts, "atlas"), ["w1", "w2"]);
 });
 
+Deno.test("the retired opening credit is neither searchable nor part of the top-up family", () => {
+	assertEquals(reasonsMatching("opening"), []);
+	assertEquals(reasonsForKinds(["topup"]), ["topup"]);
+});
+
 Deno.test("settlement follows the escrow, the clearing window and any open card dispute", () => {
 	const facts = {
 		escrows: new Map([

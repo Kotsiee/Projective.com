@@ -99,8 +99,11 @@ CREATE TABLE finance.escrows (
     -- product owner's instruction (root CLAUDE.md §8 Decision #126), closing #56(a) / #125(b).
     payer_business_id uuid REFERENCES org.business_profiles (id) ON DELETE RESTRICT,
     payer_user_id uuid REFERENCES org.users_public (user_id) ON DELETE RESTRICT,
-    payee_type assignment_type NOT NULL,
-    payee_id uuid NOT NULL,
+    -- Who the escrow pays. NULL on a PREPAID ticket escrow (Decision #197): the client funded a ticket
+    -- nobody has claimed yet, and the claim names the payee (finance.fn_bind_ticket_escrow). An unbound
+    -- escrow is never released — it is bound, or refunded to its payer (ck_escrows_unbound).
+    payee_type assignment_type,
+    payee_id uuid,
     amount_cents bigint NOT NULL CHECK (amount_cents > 0),
     platform_fee_cents bigint NOT NULL DEFAULT 0 CHECK (platform_fee_cents >= 0),
     deadline_bonus_cents bigint NOT NULL DEFAULT 0 CHECK (deadline_bonus_cents >= 0),
@@ -117,7 +120,15 @@ CREATE TABLE finance.escrows (
     fx_base char(3) DEFAULT 'GBP',
     fx_as_of timestamptz,
     CONSTRAINT ck_escrows_one_payer CHECK (num_nonnulls (payer_business_id, payer_user_id) = 1),
-    CONSTRAINT ck_escrows_one_subject CHECK (num_nonnulls (ticket_id, cohort_membership_id) <= 1)
+    CONSTRAINT ck_escrows_one_subject CHECK (num_nonnulls (ticket_id, cohort_membership_id) <= 1),
+    CONSTRAINT ck_escrows_payee_pair CHECK (num_nulls (payee_type, payee_id) IN (0, 2)),
+    CONSTRAINT ck_escrows_unbound CHECK (
+        payee_id IS NOT NULL
+        OR (
+            revision_id IS NULL AND cohort_membership_id IS NULL
+            AND (status = 'refunded' OR (status = 'held' AND ticket_id IS NOT NULL))
+        )
+    )
 );
 
 CREATE TABLE finance.payout_accounts (
@@ -489,15 +500,45 @@ CREATE TABLE finance.payouts (
     initiated_at timestamptz NOT NULL DEFAULT now(),
     settled_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
+    -- The connected account (`acct_…`) the transfer goes to, fixed when the payout begins, so the
+    -- stale-payout sweep looks for the transfer where it was actually sent (Decision #202).
+    destination_account text,
+    -- How much of the transfer the platform has reversed (`transfer.reversed`), each part returned to
+    -- the wallet as a `payout_reversal` credit. Equal to the amount exactly when the status is `reversed`.
+    reversed_cents bigint NOT NULL DEFAULT 0,
+    -- The connected account's onward payout to the bank (Connect `payout.paid` / `payout.failed`).
+    -- Separate from `status`: the money has left Projective either way, and after a bank failure it
+    -- waits in the connected account's Stripe balance until the owner fixes their bank details.
+    bank_status text CHECK (bank_status IN ('paid', 'failed')),
+    bank_payout_ref text,                     -- Stripe Payout id on the connected account; XXXX-XXXX in docs
+    bank_failure_code text,                   -- Stripe's failure CODE, never its prose
+    bank_status_at timestamptz,
+    -- The stale-pending sweep's lease (finance.fn_claim_stale_payouts): when it last claimed the row,
+    -- and how many times it has.
+    swept_at timestamptz,
+    sweep_attempts integer NOT NULL DEFAULT 0 CHECK (sweep_attempts >= 0),
     -- A reason only ever accompanies a failure; anything else is a stale field contradicting a
     -- successful row.
     CONSTRAINT payouts_reason_only_when_failed CHECK (
         failure_reason IS NULL OR status = 'failed'
     ),
-    -- Settlement and the 'paid' state are the same fact stated twice, so they may never disagree:
-    -- a paid payout has landed and carries an instant, and nothing else has.
+    -- A sent payout carries the instant it was sent, and nothing else does: `paid`, or `reversed`
+    -- (sent, then wholly returned).
     CONSTRAINT payouts_settled_matches_status CHECK (
-        (status = 'paid') = (settled_at IS NOT NULL)
+        (status IN ('paid', 'reversed')) = (settled_at IS NOT NULL)
+    ),
+    CONSTRAINT payouts_reversed_within_amount CHECK (
+        reversed_cents >= 0 AND reversed_cents <= amount_cents
+    ),
+    CONSTRAINT payouts_reversed_matches_status CHECK (
+        (status = 'reversed') = (reversed_cents = amount_cents)
+    ),
+    -- Only a sent transfer can reach a bank, and only a failed bank payout has a failure code.
+    CONSTRAINT payouts_bank_status_only_when_sent CHECK (
+        bank_status IS NULL OR status IN ('paid', 'reversed')
+    ),
+    CONSTRAINT payouts_bank_failure_only_when_failed CHECK (
+        bank_failure_code IS NULL OR bank_status = 'failed'
     )
 );
 
@@ -1113,6 +1154,10 @@ CREATE TABLE finance.inbound_payments (
     -- The ONE ticket an `escrow_lock` funds (Decision #166): only that ticket's escrow is held, at its
     -- own price. NULL funds every assigned, unfunded ticket of the stage (projects.fund_stage).
     ticket_id uuid REFERENCES projects.tickets (id) ON DELETE SET NULL,
+    -- The paid revision round an `escrow_lock` pays for (Decision #199): settlement runs
+    -- projects.fund_paid_revision for it instead of a ticket or stage hold, at the round's price.
+    -- RESTRICT, not SET NULL: a nulled round would settle as a whole-stage lock.
+    revision_id uuid REFERENCES projects.stage_revision_requests (id) ON DELETE RESTRICT,
     amount_cents bigint NOT NULL CHECK (amount_cents > 0),
     currency char(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
     -- What the processor reports it actually received. NULL until settlement; the ledger is credited
@@ -1156,6 +1201,9 @@ CREATE TABLE finance.inbound_payments (
     -- Why the webhook could not place it (a price that moved, a line no longer for sale). The money
     -- stays in the wallet; the browser's own attempt re-asks under the same key.
     order_error text,
+    -- Why a settled payment's purpose was not applied (`settled_unapplied`, Decision #200): the lock or
+    -- the order refused after the credit, which is kept. The detail stays in lock_error / order_error.
+    unapplied_reason text,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     succeeded_at timestamptz,
@@ -1179,6 +1227,10 @@ CREATE TABLE finance.inbound_payments (
     CONSTRAINT inbound_payments_ticket_only_for_locks CHECK (
         purpose = 'escrow_lock' OR ticket_id IS NULL
     ),
+    -- A revision round is funded on its own, never alongside a named ticket hold.
+    CONSTRAINT inbound_payments_revision_only_for_locks CHECK (
+        revision_id IS NULL OR (purpose = 'escrow_lock' AND ticket_id IS NULL)
+    ),
     -- The lock state is meaningful exactly for escrow locks.
     CONSTRAINT inbound_payments_lock_matches_purpose CHECK (
         (purpose = 'wallet_topup') = (lock_status = 'not_applicable')
@@ -1186,12 +1238,17 @@ CREATE TABLE finance.inbound_payments (
     CONSTRAINT inbound_payments_lock_error_only_when_failed CHECK (
         lock_error IS NULL OR lock_status = 'failed'
     ),
-    -- Settlement and the 'succeeded' state are the same fact stated twice, so they may never disagree.
+    -- Settlement and the settled states are the same fact stated twice, so they may never disagree.
     CONSTRAINT inbound_payments_succeeded_matches_status CHECK (
-        (status = 'succeeded') = (succeeded_at IS NOT NULL)
+        (status IN ('succeeded', 'settled_unapplied')) = (succeeded_at IS NOT NULL)
     ),
+    -- A settled payment IS its ledger credit (Decision #200): no settled row without one, no credit
+    -- on an unsettled row.
     CONSTRAINT inbound_payments_credit_only_when_succeeded CHECK (
-        transaction_id IS NULL OR status = 'succeeded'
+        (transaction_id IS NOT NULL) = (status IN ('succeeded', 'settled_unapplied'))
+    ),
+    CONSTRAINT inbound_payments_unapplied_has_reason CHECK (
+        (status = 'settled_unapplied') = (unapplied_reason IS NOT NULL)
     ),
     CONSTRAINT inbound_payments_reason_only_when_unpaid CHECK (
         failure_reason IS NULL OR status IN ('failed', 'canceled')

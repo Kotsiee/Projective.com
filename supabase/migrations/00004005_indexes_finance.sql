@@ -109,6 +109,9 @@ CREATE INDEX IF NOT EXISTS idx_inbound_payments_wallet
 -- The escrow-lock payments a stage has had.
 CREATE INDEX IF NOT EXISTS idx_inbound_payments_stage
     ON finance.inbound_payments (project_stage_id) WHERE project_stage_id IS NOT NULL;
+-- The card payments a paid revision round has had (Decision #199).
+CREATE INDEX IF NOT EXISTS idx_inbound_payments_revision
+    ON finance.inbound_payments (revision_id) WHERE revision_id IS NOT NULL;
 -- One ACTIVE Stripe payout account per owner. Partial, so a disabled account's history stays beside
 -- its replacement; record_payout_account returns the existing active account rather than racing it.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_payout_accounts_owner_active
@@ -123,3 +126,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_chargebacks_provider_ref
     ON finance.chargebacks (provider_ref) WHERE provider_ref IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_payouts_provider_ref
     ON finance.payouts (provider, provider_ref) WHERE provider_ref IS NOT NULL;
+-- The stale-pending sweep's scan (finance.fn_claim_stale_payouts, Decision #202), and the payouts a
+-- connected account's bank payout carried (finance.record_bank_payout).
+CREATE INDEX IF NOT EXISTS idx_payouts_pending_initiated
+    ON finance.payouts (initiated_at) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_payouts_bank_payout_ref
+    ON finance.payouts (bank_payout_ref) WHERE bank_payout_ref IS NOT NULL;

@@ -22,6 +22,7 @@ export const handler = define.handlers({
 		}
 
 		return toAuthResponse(
+			ctx.req,
 			await AuthBackendService.resetPassword({
 				email: parsed.data.email,
 				code: parsed.data.code,

@@ -363,12 +363,20 @@ export interface PayoutTransfer {
 	/** The owner's VERIFIED Connect account (`acct_…`). */
 	destination: string;
 	walletId: string;
+	/** The payout method the owner chose (`finance.payment_methods`), when they named one. */
+	destinationMethodId?: string | null;
+}
+
+/** The transfer group one withdrawal's transfer carries — an exact key the stale-payout sweep lists by. */
+export function payoutTransferGroup(payoutId: string): string {
+	return `projective_payout_${payoutId}`;
 }
 
 /**
  * The Transfer for one withdrawal: from the platform balance to the owner's connected account, which
  * pays their bank on Stripe's own schedule (Separate Charges & Transfers). The metadata's
- * `projective_payout_id` is what `transfer.created` binds back to the payout.
+ * `projective_payout_id` is what `transfer.created` binds back to the payout; the transfer group lets
+ * the sweep find it without scanning (Decision #202).
  */
 export function transferParams(payout: PayoutTransfer): TransferCreateParams {
 	return {
@@ -376,7 +384,12 @@ export function transferParams(payout: PayoutTransfer): TransferCreateParams {
 		currency: payout.currency.toLowerCase(),
 		destination: payout.destination,
 		description: "Projective withdrawal",
-		metadata: { projective_payout_id: payout.payoutId, projective_wallet_id: payout.walletId },
+		transfer_group: payoutTransferGroup(payout.payoutId),
+		metadata: {
+			projective_payout_id: payout.payoutId,
+			projective_wallet_id: payout.walletId,
+			...(payout.destinationMethodId ? { projective_destination_method_id: payout.destinationMethodId } : {}),
+		},
 	};
 }
 
@@ -386,6 +399,97 @@ export async function createTransfer(stripe: Stripe, payout: PayoutTransfer): Pr
 		idempotencyKey: stripeIdempotencyKey("payout_transfer", payout.payoutId),
 	});
 	return { id: transfer.id };
+}
+
+/** A transfer found for a payout, as the sweep needs it. */
+export interface FoundTransfer {
+	id: string;
+	amount: number;
+	currency: string;
+	destination: string | null;
+}
+
+/** How far back from a payout's start the destination scan looks, and how many transfers it reads. */
+const SCAN_SLACK_SECONDS = 3600;
+const SCAN_LIMIT = 500;
+
+function foundOf(transfer: Stripe.Transfer): FoundTransfer {
+	const destination = transfer.destination;
+	return {
+		id: transfer.id,
+		amount: transfer.amount,
+		currency: transfer.currency.toUpperCase(),
+		destination: typeof destination === "string" ? destination : destination?.id ?? null,
+	};
+}
+
+/**
+ * Find the transfer Stripe made for a payout, by the metadata Projective stamped on it: first by its
+ * transfer group (exact), then — for a transfer created before groups were set — by scanning the
+ * destination's transfers from shortly before the payout began. `null` when none exists.
+ */
+export async function findPayoutTransfer(
+	stripe: Stripe,
+	payout: { payoutId: string; destination: string; initiatedAt: string },
+): Promise<FoundTransfer | null> {
+	const ours = (t: Stripe.Transfer) => t.metadata?.projective_payout_id === payout.payoutId;
+	const grouped = await stripe.transfers.list({ transfer_group: payoutTransferGroup(payout.payoutId), limit: 10 });
+	const hit = grouped.data.find(ours);
+	if (hit) return foundOf(hit);
+
+	const since = Math.floor(Date.parse(payout.initiatedAt) / 1000) - SCAN_SLACK_SECONDS;
+	let read = 0;
+	for await (
+		const transfer of stripe.transfers.list({
+			destination: payout.destination,
+			created: { gte: Number.isFinite(since) ? since : 0 },
+			limit: 100,
+		})
+	) {
+		if (ours(transfer)) return foundOf(transfer);
+		if (++read >= SCAN_LIMIT) break;
+	}
+	return null;
+}
+
+/** What a connected account's bank payout carried: Projective transfers, and earlier failed payouts it re-pays. */
+export interface BankPayoutContents {
+	transfers: string[];
+	priorPayouts: string[];
+}
+
+/**
+ * Read a connected account's bank payout back into the transfers it carried, through its balance
+ * transactions (`payout` filter, on the connected account): an incoming transfer is a `payment` whose
+ * source charge names its `source_transfer`; a `payout_failure` is an earlier bank payout's money
+ * coming back to be paid again. Stripe lists balance transactions by payout for AUTOMATIC payouts only.
+ */
+export async function bankPayoutContents(
+	stripe: Stripe,
+	account: string,
+	payoutId: string,
+): Promise<BankPayoutContents> {
+	const transfers = new Set<string>();
+	const priorPayouts = new Set<string>();
+	for await (
+		const txn of stripe.balanceTransactions.list(
+			{ payout: payoutId, limit: 100, expand: ["data.source"] },
+			{ stripeAccount: account },
+		)
+	) {
+		const source = txn.source as unknown;
+		const sourceId = typeof source === "string" ? source : (source as { id?: unknown } | null)?.id;
+		if (typeof sourceId === "string" && sourceId.startsWith("tr_")) transfers.add(sourceId);
+		if (txn.type === "payout_failure" && typeof sourceId === "string" && sourceId.startsWith("po_")) {
+			priorPayouts.add(sourceId);
+		}
+		const sourceTransfer = (source as { source_transfer?: unknown } | null)?.source_transfer;
+		const transferId = typeof sourceTransfer === "string"
+			? sourceTransfer
+			: (sourceTransfer as { id?: unknown } | null)?.id;
+		if (typeof transferId === "string" && transferId.startsWith("tr_")) transfers.add(transferId);
+	}
+	return { transfers: [...transfers], priorPayouts: [...priorPayouts] };
 }
 // #endregion
 

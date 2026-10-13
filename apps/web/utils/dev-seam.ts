@@ -250,6 +250,14 @@ export type DevEmailConfirmation = "auto" | "pending" | "confirmed" | "confirmed
 export type DevAgeRestriction = "auto" | "minor" | "adult";
 
 /**
+ * The earning gate (Decision #196): `auto` lets the database decide; `not_ready` acts as a person
+ * without verified identity and payout account, so every route that lands a gig or creates a team
+ * answers the payout 403 with its Settings → Verification link. Reaches the server through the
+ * `pj.dev.payout` cookie, which only a development build reads.
+ */
+export type DevPayoutReadiness = "auto" | "not_ready";
+
+/**
  * How the `/wallet` hero's live aurora is chosen. `auto` runs the shipping gates (reduced motion, data
  * saver, device memory, core count, page visibility) and the performance watchdog; `static` never
  * mounts the canvas, so the resting CSS gradient is what shows; `animated` skips the hardware and
@@ -391,6 +399,8 @@ export interface DevSeamState {
 	emailConfirmation?: DevEmailConfirmation;
 	/** The simulated age restriction. Optional like `walletAurora`; absent reads as `auto`. */
 	ageRestriction?: DevAgeRestriction;
+	/** The simulated earning gate. Optional like `walletAurora`; absent reads as `auto`. */
+	payoutReadiness?: DevPayoutReadiness;
 }
 // #endregion
 
@@ -536,6 +546,7 @@ const EMAIL_CONFIRMATIONS: readonly DevEmailConfirmation[] = [
 	"confirmed_signed_in",
 ];
 const AGE_RESTRICTIONS: readonly DevAgeRestriction[] = ["auto", "minor", "adult"];
+const PAYOUT_READINESS: readonly DevPayoutReadiness[] = ["auto", "not_ready"];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */
 function coerce<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -599,6 +610,7 @@ export function readDevSeam(): DevSeamState | null {
 		embeddings: coerce(ds.devEmbeddings, EMBEDDINGS_MODES, "auto"),
 		emailConfirmation: coerce(ds.devEmailConfirmation, EMAIL_CONFIRMATIONS, "auto"),
 		ageRestriction: coerce(ds.devAgeRestriction, AGE_RESTRICTIONS, "auto"),
+		payoutReadiness: coerce(ds.devPayoutReadiness, PAYOUT_READINESS, "auto"),
 	};
 }
 

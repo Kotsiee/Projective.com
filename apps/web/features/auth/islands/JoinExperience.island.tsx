@@ -1,4 +1,6 @@
-import { useMemo } from "preact/hooks";
+import { useEffect, useMemo } from "preact/hooks";
+import { AGE_MESSAGES } from "@projective/types/auth";
+import { isJoinAgeLocked } from "../core/age-lock.ts";
 import { AuthShell } from "../components/AuthShell.tsx";
 import { SummaryPanel } from "../components/SummaryPanel.tsx";
 import { StepForm } from "../components/StepForm.tsx";
@@ -23,9 +25,19 @@ export default function JoinExperience(props: JoinFormProps) {
 		[],
 	);
 
+	useEffect(() => {
+		if (isJoinAgeLocked()) store.ageLocked.value = true;
+	}, []);
+
 	return (
 		<AuthShell wide aside={<SummaryPanel store={store} />}>
-			<StepForm store={store} />
+			{store.ageLocked.value
+				? (
+					<div class="auth-agenote auth-agenote--blocked" role="alert">
+						<span>{AGE_MESSAGES.blocked}</span>
+					</div>
+				)
+				: <StepForm store={store} />}
 		</AuthShell>
 	);
 }

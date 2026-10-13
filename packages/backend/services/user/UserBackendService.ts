@@ -114,8 +114,6 @@ function resolvePreferences(
 function toColumnPatch(patch: UserPreferencesUpdate): Record<string, unknown> {
 	const columns: Record<string, unknown> = {};
 	if (patch.theme !== undefined) columns.theme = patch.theme;
-	if (patch.notificationEmail !== undefined) columns.notification_email = patch.notificationEmail;
-	if (patch.notificationPush !== undefined) columns.notification_push = patch.notificationPush;
 	if (patch.locale !== undefined) columns.locale = patch.locale;
 	if (patch.layoutDirection !== undefined) columns.layout_direction = patch.layoutDirection;
 	if (patch.dateFormat !== undefined) columns.date_format = patch.dateFormat;

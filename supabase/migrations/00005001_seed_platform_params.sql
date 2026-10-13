@@ -73,6 +73,16 @@ INSERT INTO security.platform_params (key, value, description) VALUES
         'Length (days) of the post-escrow-release safety window before funds become Available/withdrawable (finance-model.md §7 "Pending" state).')
 ON CONFLICT (key) DO NOTHING;
 
+-- Withdrawals (Decision #202). The minimum is per currency, in each currency's own minor units (JPY has
+-- none), so one flat figure would be a floor of ₹10 in INR and ¥10 in JPY; each is roughly £10.
+INSERT INTO security.platform_params (key, value, description) VALUES
+    ('min_withdrawal_minor',
+        '{"default": 1000, "GBP": 1000, "USD": 1000, "EUR": 1000, "CHF": 1000, "CAD": 1500, "AUD": 2000, "SGD": 1500, "JPY": 2000, "INR": 100000, "ZAR": 20000, "NGN": 2000000, "AED": 4500}'::jsonb,
+        'Smallest withdrawal (finance.begin_payout), per currency in that currency''s minor units, with a "default" for any currency not listed. finance-model.md §13.'),
+    ('payout_stale_minutes', '15'::jsonb,
+        'Minutes a withdrawal may sit pending (its transfer''s answer lost) before the stale-payout sweep reconciles it with Stripe (finance.fn_claim_stale_payouts); also the lease between two sweeps of one payout. finance-model.md §13.')
+ON CONFLICT (key) DO NOTHING;
+
 -- Stripe fiat rails (Decision #125)
 INSERT INTO security.platform_params (key, value, description) VALUES
     ('identity_sessions_per_day', '5'::jsonb,

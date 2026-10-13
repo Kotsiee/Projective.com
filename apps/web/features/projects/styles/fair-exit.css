@@ -1,0 +1,80 @@
+.fexit__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.fexit__lede {
+	margin: 0;
+	max-inline-size: var(--measure-narrow);
+	color: var(--on-surface);
+	line-height: var(--leading-normal);
+}
+
+.fexit__tiers {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.fexit__label {
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.fexit__figures {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+}
+
+.fexit__row {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-4);
+}
+
+.fexit__term {
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.fexit__value {
+	margin: 0;
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface);
+}
+
+.fexit__row--total {
+	padding-block-start: var(--space-2);
+	border-block-start: var(--hairline);
+}
+
+.fexit__row--total .fexit__term,
+.fexit__row--total .fexit__value {
+	font-size: var(--text-base);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.fexit__meta {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.fexit__notice {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.fexit__actions {
+	display: contents;
+}

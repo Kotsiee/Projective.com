@@ -364,13 +364,16 @@ export function projectViewLinks(
 			status: viewStatusOf("submissions", activity),
 		});
 	}
-	links.push({
-		key: "members",
-		label: "Members",
-		icon: MembersIcon,
-		seg: "members",
-		status: viewStatusOf("members", activity),
-	});
+	// A personal project (Decision #192) is one person's: it has no roster to open.
+	if (!detail.personal) {
+		links.push({
+			key: "members",
+			label: "Members",
+			icon: MembersIcon,
+			seg: "members",
+			status: viewStatusOf("members", activity),
+		});
+	}
 	return links;
 }
 

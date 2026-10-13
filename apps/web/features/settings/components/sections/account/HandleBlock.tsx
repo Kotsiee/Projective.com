@@ -62,11 +62,13 @@ export function HandleBlock(props: HandleBlockProps): JSX.Element {
 		}
 		policy.value = res.data.policy;
 		draft.value = res.data.policy.handle;
-		await SettingsService.renewSession();
+		const lag = res.data.claimsStale
+			? " Some pages may show your old handle for up to an hour."
+			: "";
 		status.value = {
 			tone: "saved",
 			text:
-				`Your handle is now @${res.data.policy.handle}. @${res.data.previous} is held for you for ${HANDLE_POLICY.holdDays} days.`,
+				`Your handle is now @${res.data.policy.handle}. @${res.data.previous} is held for you for ${HANDLE_POLICY.holdDays} days.${lag}`,
 		};
 	}
 

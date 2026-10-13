@@ -23,6 +23,7 @@ import { encodeLandingSim, LANDING_SIM_COOKIE } from "@features/projects/core/la
 import { DISCOVERY_SIM_COOKIE, encodeDiscoverySim } from "@features/explore/core/discovery-sim.ts";
 import { EMBEDDINGS_OVERRIDE_COOKIE } from "@projective/types/explore";
 import { AGE_OVERRIDE_COOKIE } from "@projective/types/auth";
+import { PAYOUT_OVERRIDE_COOKIE } from "@projective/types/finance";
 import { logger } from "@web/utils/logger.ts";
 import { readStored, removeStored, SessionKeys, writeStored } from "@web/utils/storage-keys.ts";
 import {
@@ -50,6 +51,7 @@ import {
 	type DevEmbeddings,
 	type DevEmailConfirmation,
 	type DevAgeRestriction,
+	type DevPayoutReadiness,
 	type DevSeamRole,
 	type DevServiceType,
 	type DevSessionBookingStatus,
@@ -107,6 +109,7 @@ export type {
 	DevEmbeddings,
 	DevEmailConfirmation,
 	DevAgeRestriction,
+	DevPayoutReadiness,
 };
 
 /** The full override set. `enabled` is the master switch — when off, {@link applyDevContext} is a pass-through. */
@@ -327,6 +330,12 @@ export interface DevOverrides {
 	 * meets the database's own refusal. Server-side, through the `pj.dev.age` cookie.
 	 */
 	ageRestriction: DevAgeRestriction;
+	/**
+	 * The earning gate (Decision #196): let the database decide, or act as a person who has not verified
+	 * their identity and payout account, so every route that lands a gig or creates a team answers the
+	 * payout 403 with its Settings → Verification link. Server-side, through the `pj.dev.payout` cookie.
+	 */
+	payoutReadiness: DevPayoutReadiness;
 }
 
 /** Selectable option metadata for the switcher UI. */
@@ -381,6 +390,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	embeddings: "auto",
 	emailConfirmation: "auto",
 	ageRestriction: "auto",
+	payoutReadiness: "auto",
 };
 
 /** Account-type options in display order. */
@@ -679,6 +689,12 @@ export const DEV_AGE_RESTRICTIONS: ReadonlyArray<DevOption<DevAgeRestriction>> =
 	{ value: "adult", label: "Adult" },
 ];
 
+/** Earning-gate positions (Decision #196). `Database` lets `finance.fn_assert_payout_ready` decide. */
+export const DEV_PAYOUT_READINESS: ReadonlyArray<DevOption<DevPayoutReadiness>> = [
+	{ value: "auto", label: "Database" },
+	{ value: "not_ready", label: "Not ready" },
+];
+
 // #endregion
 
 // #region Store
@@ -794,6 +810,8 @@ function reflect(next: DevOverrides): void {
 		} else delete root.dataset.devEmailConfirmation;
 		if (next.ageRestriction !== "auto") root.dataset.devAgeRestriction = next.ageRestriction;
 		else delete root.dataset.devAgeRestriction;
+		if (next.payoutReadiness !== "auto") root.dataset.devPayoutReadiness = next.payoutReadiness;
+		else delete root.dataset.devPayoutReadiness;
 		root.dataset.devDirection = next.layoutDirection;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
 		// properties everywhere mean the shell and every surface mirror to the opposite edge.
@@ -841,6 +859,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devEmbeddings;
 		delete root.dataset.devEmailConfirmation;
 		delete root.dataset.devAgeRestriction;
+		delete root.dataset.devPayoutReadiness;
 		delete root.dataset.devDirection;
 		// Restore the document's natural direction (the pref-driven default, LtR here).
 		root.removeAttribute("dir");
@@ -849,6 +868,7 @@ function reflect(next: DevOverrides): void {
 	writeDiscoveryCookie(next);
 	writeEmbeddingsCookie(next);
 	writeAgeCookie(next);
+	writePayoutCookie(next);
 	globalThis.dispatchEvent?.(new CustomEvent(DEV_SEAM_EVENT, { detail: next }));
 }
 
@@ -860,6 +880,12 @@ function writeAgeCookie(next: DevOverrides): void {
 	document.cookie = next.enabled && next.ageRestriction !== "auto"
 		? `${AGE_OVERRIDE_COOKIE}=${next.ageRestriction}; path=/; samesite=lax`
 		: `${AGE_OVERRIDE_COOKIE}=; path=/; max-age=0; samesite=lax`;
+}
+
+function writePayoutCookie(next: DevOverrides): void {
+	document.cookie = next.enabled && next.payoutReadiness !== "auto"
+		? `${PAYOUT_OVERRIDE_COOKIE}=${next.payoutReadiness}; path=/; samesite=lax`
+		: `${PAYOUT_OVERRIDE_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 function writeEmbeddingsCookie(next: DevOverrides): void {

@@ -47,3 +47,47 @@ CREATE TRIGGER trg_projects_touch_updated_at
     BEFORE UPDATE ON projects.projects
     FOR EACH ROW
     EXECUTE FUNCTION projects.fn_touch_updated_at ();
+
+-- #region Personal projects and under-18 accounts (Decision #192)
+CREATE TRIGGER trg_projects_personal_guard
+    BEFORE INSERT OR UPDATE ON projects.projects
+    FOR EACH ROW EXECUTE FUNCTION projects.trg_projects_personal_guard();
+
+CREATE TRIGGER trg_stages_personal_money_guard
+    BEFORE INSERT OR UPDATE ON projects.project_stages
+    FOR EACH ROW EXECUTE FUNCTION projects.trg_stages_personal_money_guard();
+
+CREATE TRIGGER trg_tickets_personal_guard
+    BEFORE INSERT OR UPDATE ON projects.tickets
+    FOR EACH ROW EXECUTE FUNCTION projects.trg_tickets_personal_guard();
+
+CREATE TRIGGER trg_personal_project_closed BEFORE INSERT ON projects.project_participants
+    FOR EACH ROW EXECUTE FUNCTION projects.trg_personal_project_closed();
+CREATE TRIGGER trg_personal_project_closed BEFORE INSERT ON projects.stage_assignments
+    FOR EACH ROW EXECUTE FUNCTION projects.trg_personal_project_closed();
+CREATE TRIGGER trg_personal_project_closed BEFORE INSERT ON projects.stage_open_seats
+    FOR EACH ROW EXECUTE FUNCTION projects.trg_personal_project_closed();
+CREATE TRIGGER trg_personal_project_closed BEFORE INSERT ON projects.stage_staffing_roles
+    FOR EACH ROW EXECUTE FUNCTION projects.trg_personal_project_closed();
+CREATE TRIGGER trg_personal_project_closed BEFORE INSERT ON projects.stage_budget_rules
+    FOR EACH ROW EXECUTE FUNCTION projects.trg_personal_project_closed();
+CREATE TRIGGER trg_personal_project_closed BEFORE INSERT ON projects.maintenance_contracts
+    FOR EACH ROW EXECUTE FUNCTION projects.trg_personal_project_closed();
+CREATE TRIGGER trg_personal_project_closed BEFORE INSERT ON projects.stage_invite_links
+    FOR EACH ROW EXECUTE FUNCTION projects.trg_personal_project_closed();
+CREATE TRIGGER trg_personal_project_closed BEFORE INSERT ON projects.project_applications
+    FOR EACH ROW EXECUTE FUNCTION projects.trg_personal_project_closed();
+CREATE TRIGGER trg_personal_project_closed BEFORE INSERT ON projects.project_invitations
+    FOR EACH ROW EXECUTE FUNCTION projects.trg_personal_project_closed();
+CREATE TRIGGER trg_personal_project_closed BEFORE INSERT ON projects.cohorts
+    FOR EACH ROW EXECUTE FUNCTION projects.trg_personal_project_closed();
+
+CREATE TRIGGER trg_project_joiner_adult BEFORE INSERT OR UPDATE OF target_user_id ON projects.project_invitations
+    FOR EACH ROW EXECUTE FUNCTION projects.trg_project_joiner_adult('target_user_id');
+CREATE TRIGGER trg_project_joiner_adult BEFORE INSERT ON projects.project_applications
+    FOR EACH ROW EXECUTE FUNCTION projects.trg_project_joiner_adult('applicant_user_id');
+CREATE TRIGGER trg_project_joiner_adult BEFORE INSERT ON projects.project_participants
+    FOR EACH ROW EXECUTE FUNCTION projects.trg_project_joiner_adult('profile_id');
+CREATE TRIGGER trg_project_joiner_adult BEFORE INSERT ON projects.stage_assignments
+    FOR EACH ROW EXECUTE FUNCTION projects.trg_project_joiner_adult('freelancer_profile_id');
+-- #endregion

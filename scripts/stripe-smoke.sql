@@ -6,7 +6,8 @@
 -- ONE transaction that is ROLLED BACK, so the seeded database is left exactly as it was.
 --
 -- psql variables (set by the runner): pi (a PaymentIntent id stripe-mock created through
--- createPaymentIntent) and tr (a Transfer id it created through createTransfer).
+-- createPaymentIntent), and tr / tr2 (Transfer ids it created through createTransfer; tr2 carries the
+-- payout transfer group, Decision #202).
 \set ON_ERROR_STOP on
 \set QUIET on
 BEGIN;
@@ -249,6 +250,69 @@ SELECT pg_temp.ok((SELECT status = 'paid' AND provider_ref = pg_temp.s('tr') FRO
     WHERE id = pg_temp.s('payout')::uuid), 'transfer: the payout is paid through the stripe-mock transfer');
 SELECT pg_temp.ok(pg_temp.s('out') = 'applied' AND pg_temp.s('out2') = 'replayed', 'transfer.created: applied, then replayed');
 SELECT pg_temp.ok(pg_temp.bal(pg_temp.s('pw')) = pg_temp.s('b0')::bigint - 1000, 'transfer: the wallet is debited exactly once');
+-- #endregion
+
+-- #region 5b. After the transfer (Decision #202): minimum, reversal, bank payout, stale sweep
+SELECT pg_catalog.set_config('smoke.tr2', :'tr2', true);
+SELECT finance.fn_wallet_credit(pg_temp.s('payee')::uuid, 'freelancer', 'USD', 10000, 'topup', 'smoke', NULL);
+CREATE FUNCTION pg_temp.try_withdraw(p_amount bigint, p_key text) RETURNS text LANGUAGE plpgsql AS $$
+DECLARE v jsonb;
+BEGIN
+    v := finance.begin_payout(pg_temp.s('pw')::uuid, p_amount, 'USD', false, p_key || '-' || pg_temp.s('pi'));
+    RETURN 'ok:' || (v ->> 'id');
+EXCEPTION WHEN OTHERS THEN
+    RETURN 'refused:' || SQLERRM;
+END $$;
+GRANT EXECUTE ON FUNCTION pg_temp.try_withdraw(bigint, text) TO authenticated;
+
+SELECT pg_temp.act(pg_temp.s('payee')); SET LOCAL ROLE authenticated;
+SELECT pg_catalog.set_config('smoke.out', pg_temp.try_withdraw(finance.fn_min_withdrawal_minor('USD') - 1, 'smoke-min'), true);
+RESET ROLE;
+SELECT pg_temp.ok(pg_temp.s('out') LIKE 'refused:amountMinor:%smallest withdrawal%', 'minimum: a withdrawal below it is refused');
+
+-- transfer.reversed: 400 of the first payout's 1000 comes back, once.
+SELECT pg_catalog.set_config('smoke.b1', pg_temp.bal(pg_temp.s('pw'))::text, true);
+SET LOCAL ROLE service_role;
+SELECT pg_catalog.set_config('smoke.out', finance.record_transfer_reversed('evt_smoke_rev', pg_temp.s('tr'),
+    pg_temp.s('acct'), 1000, 400, 'USD', pg_temp.s('payout')::uuid, false) ->> 'outcome', true);
+SELECT pg_catalog.set_config('smoke.out2', finance.record_transfer_reversed('evt_smoke_rev', pg_temp.s('tr'),
+    pg_temp.s('acct'), 1000, 400, 'USD', pg_temp.s('payout')::uuid, false) ->> 'outcome', true);
+RESET ROLE;
+SELECT pg_temp.ok(pg_temp.s('out') = 'applied' AND pg_temp.s('out2') = 'replayed', 'transfer.reversed: applied, then replayed');
+SELECT pg_temp.ok(pg_temp.bal(pg_temp.s('pw')) = pg_temp.s('b1')::bigint + 400, 'transfer.reversed: only the reversed part is credited');
+SELECT pg_temp.ok((SELECT status = 'paid' AND reversed_cents = 400 FROM finance.payouts WHERE id = pg_temp.s('payout')::uuid),
+    'transfer.reversed: a partial reversal stays paid');
+
+-- A connected account's bank payout fails, then a later one re-pays it.
+SELECT pg_temp.act(pg_temp.s('payee')); SET LOCAL ROLE authenticated;
+SELECT pg_catalog.set_config('smoke.p2', pg_catalog.substr(pg_temp.try_withdraw(1000, 'smoke-payout-2'), 4), true);
+RESET ROLE;
+SET LOCAL ROLE service_role;
+SELECT finance.complete_payout(pg_temp.s('p2')::uuid, pg_temp.s('tr2'));
+SELECT finance.record_bank_payout('evt_smoke_po_failed', 'payout.failed', pg_temp.s('acct'), 'po_smoke_1', 'failed',
+    'account_closed', ARRAY[pg_temp.s('tr2')], ARRAY[]::text[], false);
+RESET ROLE;
+SELECT pg_temp.ok((SELECT status = 'paid' AND bank_status = 'failed' FROM finance.payouts WHERE id = pg_temp.s('p2')::uuid),
+    'payout.failed: the bank failure is recorded, the transfer stands');
+SELECT pg_temp.ok(EXISTS (SELECT 1 FROM comms.notifications WHERE user_id = pg_temp.s('payee')::uuid AND type = 'payout.failed'),
+    'payout.failed: the owner is told');
+SET LOCAL ROLE service_role;
+SELECT finance.record_bank_payout('evt_smoke_po_paid', 'payout.paid', pg_temp.s('acct'), 'po_smoke_2', 'paid',
+    NULL, ARRAY[]::text[], ARRAY['po_smoke_1'], false);
+RESET ROLE;
+SELECT pg_temp.ok((SELECT bank_status = 'paid' AND bank_payout_ref = 'po_smoke_2' FROM finance.payouts WHERE id = pg_temp.s('p2')::uuid),
+    'payout.paid: the re-paying bank payout marks it paid');
+
+-- A payout whose transfer answer was lost is claimed by the sweep once its window passes.
+SELECT pg_temp.act(pg_temp.s('payee')); SET LOCAL ROLE authenticated;
+SELECT pg_catalog.set_config('smoke.p3', pg_catalog.substr(pg_temp.try_withdraw(1000, 'smoke-payout-3'), 4), true);
+RESET ROLE;
+UPDATE finance.payouts SET initiated_at = pg_catalog.now() - interval '1 hour' WHERE id = pg_temp.s('p3')::uuid;
+SET LOCAL ROLE service_role;
+SELECT pg_catalog.set_config('smoke.claim', finance.fn_claim_stale_payouts(50)::text, true);
+RESET ROLE;
+SELECT pg_temp.ok(pg_temp.s('claim')::jsonb @> pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
+    'id', pg_temp.s('p3'), 'destination_account', pg_temp.s('acct'))), 'sweep: the stale payout is claimed with its destination');
 -- #endregion
 
 -- #region 6. Reconciliation

@@ -46,7 +46,7 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  * full-height navigation tree) from the large RIGHT interactive workspace (a top-right expand-to-
  * fullscreen toggle + open-in-new-tab, over a media preview + asset metadata / client-feedback panel).
  * Hard min/max % on both panes preserve the large-workspace ⁄ small-context ratio. The modal footer
- * enforces the review controls: **Accept Submission** is always available; **Request Revision** is
+ * enforces the review controls: **Accept & release payment** is always available; **Request Revision** is
  * blocked until at least one text annotation OR global guideline has been provided.
  *
  * Mounted through {@link BodyPortal} (NOT the in-tree Portal) so its `position: fixed` never re-bases
@@ -74,7 +74,7 @@ export interface SubmissionReviewModalProps {
 	 * the file it is about.
 	 */
 	onRequestRevision: (payload: { guidelines: string; annotations: number; notes: string }) => void;
-	/** Accept the submission (escrow release). */
+	/** Accept the submission: completes its ticket and releases that ticket's held escrow (Decision #194). */
 	onAccept: () => void;
 	/**
 	 * The stage's revision allotment as the host resolved it (Decision #167, dev override applied);
@@ -657,7 +657,7 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 									if (!busy && decidable) onAccept();
 								}}
 							>
-								Accept Submission
+								Accept & release payment
 							</button>
 						</div>
 					</footer>

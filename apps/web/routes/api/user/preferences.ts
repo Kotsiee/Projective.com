@@ -1,7 +1,8 @@
 import { define } from "@web/utils/state.ts";
 import { readCookies, SB_ACCESS_COOKIE } from "@web/utils/auth-cookies.ts";
 import { resolveRequestContext } from "@web/utils/user-context.ts";
-import { UserPreferencesUpdateSchema } from "@projective/types/org";
+import { touchesTokenClaims, UserPreferencesUpdateSchema } from "@projective/types/org";
+import { respondWithReissuedSession } from "@web/utils/session.ts";
 import { UserBackendService } from "@server/services/user/UserBackendService.ts";
 import { SettingsBackendService } from "@server/services/user/SettingsBackendService.ts";
 import { readActor } from "@web/utils/api-session.ts";
@@ -17,7 +18,10 @@ import type { ServiceResult } from "@server/services/ServiceResult.ts";
  * `SettingsBackendService.updatePreferences`, which splits the patch between the two halves. No
  * preference logic, no column mapping, and no capability decision lives here. The one HTTP concern it
  * adds is the `pj.a11y` cookie: a save that touched the appearance answers with `Set-Cookie`, so the
- * next request is server-rendered in the new overlays (Decision #150).
+ * next request is server-rendered in the new overlays (Decision #150). The other is the session: a
+ * save that changed a claim the token carries ({@link touchesTokenClaims} — locale, display
+ * currency, date format) re-issues it on the same response, `claimsStale: true` when it could not
+ * (Decision #193).
  *
  * **`PATCH`, not `POST`** — the body is a genuine partial (see `UserPreferencesUpdateSchema`), and a
  * caller changing only their currency must not have to resend a locale it never intended to touch.
@@ -29,10 +33,11 @@ import type { ServiceResult } from "@server/services/ServiceResult.ts";
 
 /** Map a {@link ServiceResult} to the flat JSON envelope every thin route in this app returns. */
 function respond<T>(result: ServiceResult<T>): Response {
-	return Response.json(
-		{ ok: result.ok, message: result.message, errors: result.errors, ...(result.data ?? {}) },
-		{ status: result.status },
-	);
+	return Response.json(bodyOf(result), { status: result.status });
+}
+
+function bodyOf<T>(result: ServiceResult<T>): Record<string, unknown> {
+	return { ok: result.ok, message: result.message, errors: result.errors, ...(result.data ?? {}) };
 }
 
 /** Resolve `{ context, accessToken }` for a request — the same pair `/api/user/me` resolves. */
@@ -77,7 +82,9 @@ export const handler = define.handlers({
 			patch: parsed.data,
 			device: ctx.state.a11y,
 		});
-		const response = respond(result);
+		const response = result.ok && touchesTokenClaims(parsed.data)
+			? await respondWithReissuedSession(ctx.req, bodyOf(result), result.status)
+			: respond(result);
 		// The per-device mirror the server paints the next first byte from — set whether or not the
 		// account write landed, because the overlays (and the direction) are already in force on this
 		// device either way. Fields the save did not touch keep the device's current values.

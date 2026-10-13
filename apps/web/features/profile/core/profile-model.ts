@@ -179,18 +179,24 @@ export interface RigInput {
 	offersConsultation: boolean;
 	/** Whether the viewer is signed in — Add-to-project lists THEIR projects, so a guest has none. */
 	authed: boolean;
+	/**
+	 * Whether the viewer is a restricted (13–17) account, who cannot hire or bring anyone into a
+	 * project (Decision #192). Absent reads as unrestricted.
+	 */
+	restricted?: boolean;
 }
 
 export function rigFor(kind: ProfileKind, input: RigInput): ProfileRig {
 	if (!isSellerKind(kind)) {
 		return { layout: "buyer", hire: false, addToProject: false, primary: "message" };
 	}
-	const hire = input.hasServices || input.offersConsultation;
-	const addToProject = input.authed;
+	const hire = !input.restricted && (input.hasServices || input.offersConsultation);
+	const addToProject = input.authed && !input.restricted;
 	// With neither control (a guest on a seller with nothing to hire for) the row holds only the
 	// icon pair; `primary` then names a control that does not render, and the hero draws nothing
 	// filled — an honest absence, not a promoted secondary.
-	return { layout: "seller", hire, addToProject, primary: hire ? "hire" : "add" };
+	const primary = hire ? "hire" : input.restricted ? "message" : "add";
+	return { layout: "seller", hire, addToProject, primary };
 }
 
 /**

@@ -23,6 +23,7 @@ export const handler = define.handlers({
 		}
 
 		return toAuthResponse(
+			ctx.req,
 			await AuthBackendService.authenticate({
 				identifier: parsed.data.identifier,
 				password: parsed.data.password,

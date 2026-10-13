@@ -6,6 +6,7 @@ import { resolveEntityCommerce } from "@features/view/core/booking-ssr.ts";
 import { viewerFromState } from "@features/calendar/core/viewer.ts";
 import { recordViewInBackground } from "@features/explore/core/record-view.ts";
 import { rankingHeaders, semanticRankingFor } from "@features/explore/core/discovery-ranking.ts";
+import { isRestrictedRequest } from "@web/utils/age-gate.ts";
 
 /**
  * `/[handle]/view/[item_id]?type=[entity_type]` — the profile-scoped Entity View page. This is the
@@ -25,11 +26,13 @@ export const handler = define.handlers({
 			ctx.state.description = view.item.summary;
 			recordViewInBackground(ctx, view.item.id);
 		}
+		const restricted = isRestrictedRequest(ctx.req, ctx.state.userContext);
 		const commerce = view
 			? await resolveEntityCommerce(view, {
 				context: ctx.state.userContext,
 				handle: ctx.params.handle,
 				viewer: viewerFromState(ctx.state),
+				restricted,
 			})
 			: { offer: null, schedule: null };
 		return page({
@@ -39,6 +42,7 @@ export const handler = define.handlers({
 			authed: !!ctx.state.isAuthenticated,
 			offer: commerce.offer,
 			schedule: commerce.schedule,
+			restricted,
 		}, { status: view ? 200 : status, headers: rankingHeaders(ranking) });
 	},
 });
@@ -52,6 +56,7 @@ export default define.page<typeof handler>(function ProfileEntityViewPage({ data
 			authed={data.authed}
 			offer={data.offer}
 			schedule={data.schedule}
+			restricted={data.restricted}
 		/>
 	);
 });

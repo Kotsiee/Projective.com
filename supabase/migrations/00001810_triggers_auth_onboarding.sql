@@ -20,12 +20,33 @@ CREATE TRIGGER on_users_public_created_notification_prefs
     AFTER INSERT ON org.users_public
     FOR EACH ROW EXECUTE FUNCTION comms.seed_notification_prefs();
 
+-- An organisation owner gets no org.users_public row; the owner membership seeds their preferences
+-- (Decision #207).
+CREATE TRIGGER on_organisation_owner_created
+    AFTER INSERT ON org.organisation_members
+    FOR EACH ROW
+    WHEN (NEW.role = 'owner')
+    EXECUTE FUNCTION org.seed_owner_preferences();
+
 -- #region Age guardrails (Decision #190)
 CREATE TRIGGER trg_users_public_dob_guard
     BEFORE INSERT OR UPDATE OF dob ON org.users_public
     FOR EACH ROW EXECUTE FUNCTION org.trg_users_public_dob_guard();
 
+CREATE TRIGGER trg_users_public_minor_visibility
+    BEFORE INSERT OR UPDATE OF visibility ON org.users_public
+    FOR EACH ROW EXECUTE FUNCTION org.trg_users_public_minor_visibility();
+
 CREATE TRIGGER trg_listings_publish_age_gate
     BEFORE INSERT OR UPDATE OF status ON catalogue.listings
     FOR EACH ROW EXECUTE FUNCTION catalogue.trg_listings_publish_age_gate();
+
+CREATE TRIGGER trg_workspace_member_adult BEFORE INSERT OR UPDATE OF user_id ON org.team_members
+    FOR EACH ROW EXECUTE FUNCTION org.trg_workspace_member_adult('user_id');
+CREATE TRIGGER trg_workspace_member_adult BEFORE INSERT OR UPDATE OF user_id ON org.business_members
+    FOR EACH ROW EXECUTE FUNCTION org.trg_workspace_member_adult('user_id');
+CREATE TRIGGER trg_workspace_member_adult BEFORE INSERT OR UPDATE OF user_id ON org.organisation_members
+    FOR EACH ROW EXECUTE FUNCTION org.trg_workspace_member_adult('user_id');
+CREATE TRIGGER trg_workspace_member_adult BEFORE INSERT OR UPDATE OF target_user_id ON org.org_invitations
+    FOR EACH ROW EXECUTE FUNCTION org.trg_workspace_member_adult('target_user_id');
 -- #endregion

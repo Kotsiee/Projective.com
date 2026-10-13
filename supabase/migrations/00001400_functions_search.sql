@@ -562,7 +562,9 @@ AS $$
   INSERT INTO search.query_logs
     (user_id, search_query, query_embedding, filters_applied, entity_type, duration_ms, result_count, matched_density)
   VALUES
-    (p_user_id, coalesce(p_query, ''), p_query_embedding,
+    -- A minor's searches are logged anonymously, with no query vector (Decision #208).
+    (CASE WHEN org.fn_is_minor(p_user_id) THEN NULL ELSE p_user_id END, coalesce(p_query, ''),
+     CASE WHEN org.fn_is_minor(p_user_id) THEN NULL ELSE p_query_embedding END,
      coalesce(p_filters, '{}'::jsonb), p_entity_type, p_duration_ms, p_result_count,
      CASE WHEN p_candidate_pool > 0 THEN round(p_result_count::numeric / p_candidate_pool, 4) ELSE NULL END);
 $$;
@@ -751,6 +753,10 @@ BEGIN
   IF v_user IS NULL THEN
     RAISE EXCEPTION 'record_view: sign in to keep a viewing history' USING ERRCODE = '42501';
   END IF;
+  -- No behavioural profile of a minor (UK Children's Code, Decision #208): nothing is recorded.
+  IF org.fn_is_minor(v_user) THEN
+    RETURN;
+  END IF;
 
   INSERT INTO org.recent_views (user_id, entity_type, entity_id)
   VALUES (v_user, p_entity_type, p_entity_id)
@@ -934,3 +940,21 @@ AS $$
    WHERE source.v IS NOT NULL
    ORDER BY n.score DESC, n.entity_type, n.entity_id;
 $$;
+
+-- #region Profiling off for under-18 accounts (Decision #208)
+-- `search.interest_events` is written directly under RLS (InterestBackendService), so a minor's
+-- impressions, clicks and searches are dropped here rather than refused — the page never notices.
+CREATE OR REPLACE FUNCTION search.trg_interest_events_minor()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF NEW.user_id IS NOT NULL AND org.fn_is_minor(NEW.user_id) THEN
+        RETURN NULL;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+-- #endregion

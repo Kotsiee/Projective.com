@@ -131,7 +131,7 @@ export default function ProjectSetupHeader(
 					<span class="proj-pvtab__label">Details</span>
 				</a>
 
-				{locked
+				{live.personal ? null : locked
 					? (
 						<Tooltip content={lockReason} placement="bottom">
 							<button

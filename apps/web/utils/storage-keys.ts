@@ -31,6 +31,8 @@ export const SessionKeys = {
 	VERIFY_RESEND_DEADLINE: "pj.session.verifyResendDeadline",
 	/** The `/join` wizard's current step id — lets a refresh land the user back where they were. */
 	ONBOARDING_STAGE: "pj.session.onboardingStage",
+	/** `"1"` once an under-13 date of birth was submitted in this tab — the join form stays closed. */
+	JOIN_AGE_LOCK: "pj.session.joinAgeLock",
 	/** Opaque anti-forgery value round-tripped through an OAuth/SSO `state` parameter. */
 	OAUTH_STATE: "pj.session.oauthState",
 	/** The last Explore search scope selected in-tab (restores the entity dropdown after a reload). */
@@ -416,13 +418,10 @@ export const LocalKeys = {
 
 // #region Cookies (some HttpOnly + server-owned — documented here for the whole team)
 /**
- * Cookie names. The auth-session/refresh cookies are `HttpOnly` and written server-side (GoTrue +
- * `(dashboard)` middleware); they are unreadable from JS by design and listed here for reference and
- * for the server helpers that set/clear them. CSRF + active-context are app-owned.
+ * Cookie names. The session cookies themselves are `sb-access-token` / `sb-refresh-token`, owned by
+ * `auth-cookies.ts` (HttpOnly, server-set, unreadable from JS). CSRF + active-context are app-owned.
  */
 export const CookieKeys = {
-	/** App session token cookie (HttpOnly, server-set). Do not attempt to read from the client. */
-	AUTH_SESSION_TOKEN: "pj_auth_session",
 	/** App refresh token cookie (HttpOnly, server-set). */
 	AUTH_REFRESH_TOKEN: "pj_auth_refresh",
 	/** Double-submit CSRF token (readable, paired with a server-checked header). */

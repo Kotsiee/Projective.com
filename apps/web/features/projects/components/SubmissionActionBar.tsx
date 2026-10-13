@@ -4,6 +4,7 @@ import type { WorkflowActions } from "../core/submission-access.ts";
 import { statusTone } from "../core/submission-model.ts";
 import {
 	AcceptedGlyph,
+	ExitGlyph,
 	PlusGlyph,
 	ReviewGlyph,
 	SendGlyph,
@@ -17,7 +18,9 @@ import {
  * bar (`subm-crumbbar`), driven by the resolved {@link WorkflowActions} state machine (root task §3):
  *
  * - **Reviewer** viewing a submitted item → **Review Submission**; once the unit is accepted, also
- *   **Approve Stage** (releases the stage's held escrow, behind a confirmation).
+ *   **Approve Stage** (releases any escrow still held on the stage and closes it, behind a confirmation).
+ * - **Reviewer** anywhere inside a stage → **End Stage (Fair Exit)**, which opens the tier preview
+ *   (Decision #198).
  * - **Freelancer** at the root → **Create New Submission**.
  * - **Freelancer** inside an unsubmitted draft → **Upload Files** · **Delete Submission** ·
  *   **Submit for Review**.
@@ -38,6 +41,8 @@ export interface SubmissionActionBarProps {
 	onApproveStage: () => void;
 	/** A stage approval is in flight — the control is disabled and says so. */
 	approveBusy?: boolean;
+	/** Open the Fair Exit confirmation (reviewer, a stage in scope). */
+	onEndStage: () => void;
 }
 
 /** The freelancer's post-submission badge label (root task §3.3 wording). */
@@ -67,10 +72,11 @@ function StatusBadge({ status }: { status: SubmissionStatus }): JSX.Element {
 }
 
 export function SubmissionActionBar(props: SubmissionActionBarProps): JSX.Element | null {
-	const { actions, onReview, onCreate, onUpload, onDelete, onSubmit, onApproveStage } = props;
+	const { actions, onReview, onCreate, onUpload, onDelete, onSubmit, onApproveStage, onEndStage } =
+		props;
 	const approveBusy = props.approveBusy === true;
 
-	if (actions.review || actions.approveStage) {
+	if (actions.review || actions.approveStage || actions.endStage) {
 		return (
 			<div class="subm-actions">
 				{actions.review
@@ -86,6 +92,22 @@ export function SubmissionActionBar(props: SubmissionActionBarProps): JSX.Elemen
 								<ReviewGlyph size={16} />
 							</span>
 							Review Submission
+						</button>
+					)
+					: null}
+				{actions.endStage
+					? (
+						<button
+							type="button"
+							class="subm-actions__btn subm-actions__btn--danger"
+							aria-label="End stage (Fair Exit)"
+							aria-haspopup="dialog"
+							onClick={onEndStage}
+						>
+							<span class="subm-actions__icon" aria-hidden="true">
+								<ExitGlyph size={16} />
+							</span>
+							<span class="subm-actions__btnlabel">End Stage (Fair Exit)</span>
 						</button>
 					)
 					: null}

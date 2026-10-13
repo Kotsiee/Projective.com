@@ -5,6 +5,7 @@ import {
 	SentApplicationSchema,
 } from "@projective/types/projects";
 import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
+import { isPayoutNotReady, type PayoutGateError, payoutNotReadyRefusal } from "../../core/payout-gate.ts";
 import type { ReadActor } from "../read-actor.ts";
 import { projectsDb } from "./live-support.ts";
 import { refusalFrom, type WriteOutcome, type WriteRefusal } from "./live-writes.ts";
@@ -49,7 +50,7 @@ export interface AppliedRow {
  * shared `refusalFrom`, which never passes an internal message through.
  */
 export function handshakeRefusal(
-	error: { code?: string; message: string },
+	error: PayoutGateError & { message: string },
 	field: string,
 ): WriteRefusal {
 	const message = error.message.replace(/^ERROR:\s*/i, "").trim();
@@ -64,6 +65,10 @@ export function handshakeRefusal(
 			message: AGE_RESTRICTED.message,
 			errors: { [field]: AGE_RESTRICTED.reason },
 		};
+	}
+	if (isPayoutNotReady(error)) {
+		const refusal = payoutNotReadyRefusal(error);
+		return { ...refusal, errors: { [field]: refusal.details.reason } };
 	}
 	if (error.code === "42501") return { status: 403, message, errors: { [field]: "not_permitted" } };
 	return refusalFrom(error.message, field);

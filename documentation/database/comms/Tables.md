@@ -127,7 +127,7 @@ back-references, context scoping, the expiry sweep and the escalation job.
 ### `comms.notification_prefs`
 
 Per-user delivery configuration. One row per user, seeded on signup by
-`comms.seed_notification_prefs`.
+`comms.seed_notification_prefs` — in the person's zone and supported locale (Decision #207).
 
 | Column                              | Type                     | Notes                                                                  |
 | :---------------------------------- | :----------------------- | :--------------------------------------------------------------------- |
@@ -154,9 +154,10 @@ Rule but are no longer the source of truth:
 - `digest boolean` is superseded by `digest_frequency`, which is **backfilled** from it (`true` →
   `daily`) so nobody silently loses an opted-in digest.
 
-⚠️ Also flagged: `org.user_preferences` (0213) carries `notification_email` / `notification_push` —
-a second, coarser copy of the same two toggles. `comms.notification_prefs` is the engine's source of
-truth; the two are **not reconciled** (that is a data decision) — reconcile with a human.
+`email` / `push` here are the platform's **only** email/push toggles. The coarser copy that
+`org.user_preferences` used to carry (`notification_email` / `notification_push`, flagged by #57(d))
+was removed in place; Settings → Notifications (`PUT /api/user/notifications`) is the one writer
+(Decision #204).
 
 ### `comms.notification_category_prefs`
 

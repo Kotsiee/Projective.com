@@ -6,6 +6,7 @@ import { resolveEntityCommerce } from "@features/view/core/booking-ssr.ts";
 import { viewerFromState } from "@features/calendar/core/viewer.ts";
 import { recordViewInBackground } from "@features/explore/core/record-view.ts";
 import { rankingHeaders, semanticRankingFor } from "@features/explore/core/discovery-ranking.ts";
+import { isRestrictedRequest } from "@web/utils/age-gate.ts";
 
 /**
  * `/view/[item_id]?type=[entity_type]` — the public standalone Entity View page (the Explore click
@@ -29,11 +30,13 @@ export const handler = define.handlers({
 		// The booking offer and a session's schedule are resolved HERE, server-side: the CTA is the reason
 		// this route exists, and it must be correct in the first byte rather than after a round trip that
 		// changes it under the reader's cursor.
+		const restricted = isRestrictedRequest(ctx.req, ctx.state.userContext);
 		const commerce = view
 			? await resolveEntityCommerce(view, {
 				context: ctx.state.userContext,
 				handle: null,
 				viewer: viewerFromState(ctx.state),
+				restricted,
 			})
 			: { offer: null, schedule: null };
 		return page({
@@ -42,6 +45,7 @@ export const handler = define.handlers({
 			authed: !!ctx.state.isAuthenticated,
 			offer: commerce.offer,
 			schedule: commerce.schedule,
+			restricted,
 			// The page renders its own not-found / unavailable state, and the STATUS says so too — a
 			// crawler or a link checker must not record a missing listing as a live 200.
 		}, { status: view ? 200 : status, headers: rankingHeaders(ranking) });
@@ -57,6 +61,7 @@ export default define.page<typeof handler>(function PublicEntityViewRoute({ data
 			authed={data.authed}
 			offer={data.offer}
 			schedule={data.schedule}
+			restricted={data.restricted}
 		/>
 	);
 });

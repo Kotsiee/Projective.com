@@ -22,8 +22,15 @@ export interface WorkspaceResult<T> {
 	message?: string;
 	/** Field-keyed validation errors, when the route rejected the payload. */
 	errors?: Record<string, string>;
+	/** Structured facts about a refusal, e.g. the earning gate's fix link (`readPayoutGateDetails`). */
+	details?: Record<string, string | number | boolean | null>;
 	/** The success payload; present when `ok`. */
 	data?: T;
+	/**
+	 * Set by a claim-changing route (`/api/context/switch`): `true` when the change landed but the
+	 * server could not re-issue the session, so the browser's token still carries the old claims.
+	 */
+	claimsStale?: boolean;
 }
 
 /**

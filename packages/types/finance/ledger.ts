@@ -104,8 +104,9 @@ export const EscrowSchema = z.object({
 	/** The paid revision round this escrow pays for; `null` is the ticket's base escrow (one held per ticket). */
 	revisionId: uuid.nullable(),
 	payerBusinessId: uuid,
-	payeeType: EscrowPayeeType,
-	payeeId: uuid,
+	/** Both `null` on a PREPAID escrow nobody has claimed yet; the claim binds them (Decision #197). */
+	payeeType: EscrowPayeeType.nullable(),
+	payeeId: uuid.nullable(),
 	amountCents: minorUnitsPositive,
 	platformFeeCents: minorUnitsNonNeg,
 	deadlineBonusCents: minorUnitsNonNeg,

@@ -54,7 +54,8 @@ export const handler = define.handlers({
 
 		const resolved = await resolveProjectAccess(ctx, slug);
 		if (!resolved) return seeOther(projectsNoticeHref("project-not-found"));
-		if (!resolved.canConfigure) return seeOther(projectHref(slug));
+		// A personal project (Decision #192) has no applicants to preview it for.
+		if (!resolved.canConfigure || resolved.personal) return seeOther(projectHref(slug));
 
 		const actor = readActor(ctx);
 		const { setup } = await resolveProjectSetup(slug, actor);

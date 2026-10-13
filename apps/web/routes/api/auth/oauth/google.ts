@@ -27,7 +27,7 @@ export const handler = define.handlers({
 		if (url) {
 			const res = new Response(null, { status: 303, headers: { location: url } });
 			// The verifier only needs to survive the trip to Google and back.
-			for (const cookie of oauthStoreCookies(store.diff(), 600)) {
+			for (const cookie of oauthStoreCookies(ctx.req, store.diff(), 600)) {
 				res.headers.append("set-cookie", cookie);
 			}
 			return res;

@@ -60,12 +60,16 @@ export interface PromoVisibilityInput {
 	dismissed: readonly string[];
 	/** Whether the viewer can already sell (real session, or the simulated persona). */
 	viewerFreelancer: boolean;
+	/** Whether the viewer is a restricted (13–17) account, who cannot become a seller (Decision #192). */
+	viewerRestricted: boolean;
 	mode: PromoDismissalMode;
 }
 
 /** Whether a gated promo slot renders. The audience gate holds whatever the dismissal mode. */
 export function promoVisible(input: PromoVisibilityInput): boolean {
-	if (input.audience === "non_freelancers" && input.viewerFreelancer) return false;
+	if (input.audience === "non_freelancers" && (input.viewerFreelancer || input.viewerRestricted)) {
+		return false;
+	}
 	if (!input.dismissible || input.mode === "visible") return true;
 	if (input.mode === "dismissed") return false;
 	return !input.dismissed.includes(input.id);

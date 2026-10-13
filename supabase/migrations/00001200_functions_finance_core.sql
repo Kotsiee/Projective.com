@@ -318,12 +318,44 @@ AS $$
     END;
 $$;
 
+-- Who a ticket's escrow pays — the one rule the hold and the claim-time bind (Decision #197) share: an
+-- accepted team seat on the ticket's stage, so the payout splits across the team at release
+-- (fn_split_team_payout keys off payee_type = 'team'), else the ticket's assignee. Both NULL when
+-- neither exists: a prepaid escrow then waits unbound for its claim.
+CREATE OR REPLACE FUNCTION finance.fn_ticket_payee(
+    p_stage_id uuid,
+    p_assignee_id uuid,
+    OUT payee_type assignment_type,
+    OUT payee_id uuid
+)
+AS $$
+DECLARE
+    v_team uuid;
+BEGIN
+    SELECT sa.team_id INTO v_team
+      FROM projects.stage_assignments sa
+     WHERE sa.project_stage_id = p_stage_id
+       AND sa.assignee_type = 'team'
+       AND sa.status = 'accepted'
+       AND sa.team_id IS NOT NULL
+     LIMIT 1;
+    IF v_team IS NOT NULL THEN
+        payee_type := 'team'::assignment_type;
+        payee_id := v_team;
+    ELSIF p_assignee_id IS NOT NULL THEN
+        payee_type := 'freelancer'::assignment_type;
+        payee_id := p_assignee_id;
+    END IF;
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, projects;
+
 -- Lock trigger -> hold funds in escrow (no hold, no work — Decision #165, PRODUCT_MANAGEMENT §3.6).
 -- A hold that cannot be made is REFUSED, never skipped: SQLSTATE PF402, a "Needs funding — …" message,
 -- and DETAIL = {state: 'needs_funding', reason, amount_minor, currency} for the caller to read. Reasons:
 -- `no_price` · `no_wallet` (no payer wallet in the project's currency) · `insufficient_funds` ·
--- `spending_limit` (the project owner's envelope on a business wallet). A missing stage or payee is not
--- a funding problem and raises check_violation. Already held -> NULL, the one early return (#165(A)),
+-- `spending_limit` (the project owner's envelope on a business wallet). A missing stage is not a funding
+-- problem and raises check_violation; a missing payee is a PREPAID hold (Decision #197), whose payee
+-- the claim binds (fn_bind_ticket_escrow). Already held -> NULL, the one early return (#165(A)),
 -- also when a concurrent hold commits first (uq_escrows_ticket_base_held, #189: nothing is debited). The
 -- payer is the project's client business or, when the project has none, its owner as an INDIVIDUAL
 -- client (PRODUCT_SPEC §Escrow, Wallets & Finance #5). The wallet and balance are checked before the
@@ -335,7 +367,6 @@ DECLARE
     v record;
     v_amount bigint;
     v_escrow_id uuid;
-    v_team_id uuid;
     v_payee_type assignment_type;
     v_payee_id uuid;
     v_payer_type text;
@@ -367,33 +398,16 @@ BEGIN
 
     v_amount := v.amount;
 
-    -- Prefer an accepted team assignment on the ticket's current stage so the payout splits
-    -- across the team at release (fn_split_team_payout keys off escrow.payee_type = 'team').
-    -- Otherwise the payee is the individual freelancer assigned to the ticket.
-    SELECT sa.team_id INTO v_team_id
-    FROM projects.stage_assignments sa
-    WHERE sa.project_stage_id = v.stage_id
-        AND sa.assignee_type = 'team'
-        AND sa.status = 'accepted'
-        AND sa.team_id IS NOT NULL
-    LIMIT 1;
-
-    IF v_team_id IS NOT NULL THEN
-        v_payee_type := 'team'::assignment_type;
-        v_payee_id := v_team_id;
-    ELSE
-        v_payee_type := 'freelancer'::assignment_type;
-        v_payee_id := v.payee_id;
-    END IF;
+    SELECT tp.payee_type, tp.payee_id INTO v_payee_type, v_payee_id
+      FROM finance.fn_ticket_payee(v.stage_id, v.payee_id) tp;
 
     IF EXISTS (SELECT 1 FROM finance.escrows
                 WHERE ticket_id = p_ticket_id AND status = 'held' AND revision_id IS NULL) THEN
         RETURN NULL;
     END IF;
 
-    IF v.stage_id IS NULL OR v_payee_id IS NULL THEN
-        RAISE EXCEPTION 'An escrow is held for a ticket on a stage with a payee; this ticket has %.',
-            CASE WHEN v.stage_id IS NULL THEN 'no stage' ELSE 'no payee' END
+    IF v.stage_id IS NULL THEN
+        RAISE EXCEPTION 'An escrow is held for a ticket on a stage; this ticket has no stage.'
             USING ERRCODE = 'check_violation';
     END IF;
 
@@ -471,10 +485,61 @@ BEGIN
     IF v.spender IS DISTINCT FROM auth.uid() THEN
         PERFORM comms.fn_notify(
             v.spender, 'escrow.funded', 'Escrow held',
-            format('Escrow for "%s" is held from your wallet. Work can begin.', v.ticket_title),
+            format('Escrow for "%s" is held from your wallet. %s', v.ticket_title,
+                CASE WHEN v_payee_id IS NULL THEN 'It is paid to whoever claims it.' ELSE 'Work can begin.' END),
             'projects.tickets', p_ticket_id,
             jsonb_build_object('escrow_id', v_escrow_id, 'amount_minor', v_amount, 'currency', v_currency),
             auth.uid(), 'project', v.project_id, NULL, v_href
+        );
+    END IF;
+    RETURN v_escrow_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects, org, comms, auth;
+
+-- Bind a PREPAID ticket escrow (Decision #197) to the payee a claim or an assignment just gave its
+-- ticket (finance.fn_ticket_payee). projects.fn_ticket_escrow_sync calls it before it would hold: an
+-- unbound held escrow needs no debit, only a payee, and the work gate then finds it held. Returns the
+-- bound escrow, or NULL when there was nothing to bind (the hold runs instead). The new payee is told
+-- they can start, as a hold tells them.
+CREATE OR REPLACE FUNCTION finance.fn_bind_ticket_escrow(p_ticket_id uuid)
+RETURNS uuid AS $$
+DECLARE
+    v record;
+    v_payee_type assignment_type;
+    v_payee_id uuid;
+    v_escrow_id uuid;
+    v_amount bigint;
+    v_currency text;
+BEGIN
+    SELECT t.current_stage_id AS stage_id, t.current_assignee_id AS assignee, t.title, t.slug AS ticket_slug,
+           p.id AS project_id, p.slug AS project_slug
+      INTO v
+      FROM projects.tickets t
+      JOIN projects.projects p ON p.id = t.project_id
+     WHERE t.id = p_ticket_id;
+
+    SELECT tp.payee_type, tp.payee_id INTO v_payee_type, v_payee_id
+      FROM finance.fn_ticket_payee(v.stage_id, v.assignee) tp;
+    IF v_payee_id IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    UPDATE finance.escrows e
+       SET payee_type = v_payee_type, payee_id = v_payee_id
+     WHERE e.ticket_id = p_ticket_id AND e.status = 'held' AND e.revision_id IS NULL AND e.payee_id IS NULL
+    RETURNING e.id, e.amount_cents, e.currency INTO v_escrow_id, v_amount, v_currency;
+    IF v_escrow_id IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    IF v.assignee IS NOT NULL THEN
+        PERFORM comms.fn_notify(
+            v.assignee, 'escrow.funded', 'Funded — you can start',
+            format('Escrow is held for "%s". Work can begin.', v.title),
+            'projects.tickets', p_ticket_id,
+            jsonb_build_object('escrow_id', v_escrow_id, 'amount_minor', v_amount, 'currency', v_currency),
+            auth.uid(), 'project', v.project_id, NULL,
+            '/projects/' || v.project_slug || '/board?tkv=' || v.ticket_slug
         );
     END IF;
     RETURN v_escrow_id;
@@ -621,6 +686,14 @@ DECLARE
     v_payee_wallet text;
     v_flipped uuid;
 BEGIN
+    -- A prepaid escrow nobody claimed has nobody to pay (Decision #197): it goes back to its payer.
+    PERFORM 1 FROM projects.tickets WHERE id = p_ticket_id FOR UPDATE;
+    IF EXISTS (SELECT 1 FROM finance.escrows
+                WHERE ticket_id = p_ticket_id AND status = 'held' AND payee_id IS NULL) THEN
+        PERFORM finance.fn_refund_ticket_escrow(p_ticket_id);
+        RETURN;
+    END IF;
+
     SELECT status INTO v_ticket_status FROM projects.tickets WHERE id = p_ticket_id FOR UPDATE;
 
     FOR r IN
@@ -795,6 +868,29 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, org, sec
 -- #endregion
 
 -- #region US-007 AC4 — Fair-exit cancellation split (net-new).
+-- The arithmetic of one escrow's fair-exit split, shared by fn_fair_exit_release (which moves the money)
+-- and projects.fn_fair_exit_quote (which previews it), so the confirmation a reviewer reads can never
+-- disagree with the settlement (Decision #198). The payee earns p_bp basis points of the principal less
+-- the platform fee on that share; the unearned remainder goes back to the payer, fee-free. Truncates like
+-- every fee (Decision #187).
+CREATE OR REPLACE FUNCTION finance.fn_fair_exit_split(
+    p_amount_cents bigint,
+    p_bp integer,
+    p_fee_bp integer,
+    OUT share_cents bigint,
+    OUT fee_cents bigint,
+    OUT payout_cents bigint,
+    OUT refund_cents bigint
+)
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT s.share, s.fee, GREATEST(s.share - s.fee, 0), GREATEST(p_amount_cents - s.share, 0)
+      FROM (SELECT (p_amount_cents * p_bp) / 10000 AS share,
+                   (((p_amount_cents * p_bp) / 10000) * p_fee_bp) / 10000 AS fee) s
+$$;
+
 -- Pays the payee p_bp basis-points of each held escrow's principal (net of the platform fee) and
 -- refunds the unearned remainder to the client (payer) business wallet. Locked and guarded exactly as
 -- fn_release_ticket_escrow (Decision #188), so a racing release or second split settles nothing.
@@ -802,8 +898,6 @@ CREATE OR REPLACE FUNCTION finance.fn_fair_exit_release(p_ticket_id uuid, p_bp i
 RETURNS void AS $$
 DECLARE
     r record;
-    v_fee_bp integer;
-    v_share bigint;
     v_fee bigint;
     v_payout bigint;
     v_refund bigint;
@@ -811,6 +905,14 @@ DECLARE
     v_payer_wallet text;
     v_flipped uuid;
 BEGIN
+    -- Nothing was earned on a prepaid escrow nobody claimed (Decision #197): all of it goes back.
+    PERFORM 1 FROM projects.tickets WHERE id = p_ticket_id FOR UPDATE;
+    IF EXISTS (SELECT 1 FROM finance.escrows
+                WHERE ticket_id = p_ticket_id AND status = 'held' AND payee_id IS NULL) THEN
+        PERFORM finance.fn_refund_ticket_escrow(p_ticket_id);
+        RETURN;
+    END IF;
+
     PERFORM 1 FROM projects.tickets WHERE id = p_ticket_id FOR UPDATE;
 
     FOR r IN
@@ -818,13 +920,9 @@ BEGIN
         ORDER BY id
         FOR UPDATE
     LOOP
-        v_fee_bp := finance.fn_escrow_fee_bp(r.payer_business_id, r.payer_user_id);
-        v_share := (r.amount_cents * p_bp) / 10000;          -- earned portion by progress tier
-        v_fee := (v_share * v_fee_bp) / 10000;               -- platform fee on the earned portion
-        v_payout := v_share - v_fee;
-        IF v_payout < 0 THEN v_payout := 0; END IF;
-        v_refund := r.amount_cents - v_share;                -- unearned remainder -> client
-        IF v_refund < 0 THEN v_refund := 0; END IF;
+        SELECT s.fee_cents, s.payout_cents, s.refund_cents INTO v_fee, v_payout, v_refund
+          FROM finance.fn_fair_exit_split(
+                   r.amount_cents, p_bp, finance.fn_escrow_fee_bp(r.payer_business_id, r.payer_user_id)) s;
 
         UPDATE finance.escrows SET status = 'released', platform_fee_cents = v_fee, released_at = now()
         WHERE id = r.id AND status = 'held'
@@ -979,16 +1077,6 @@ COMMENT ON FUNCTION finance.fn_reconcile_wallets() IS
 ledger rows or from its newest balance_after_cents into ops.log_entries. Read-only on finance;
 service role / pg_cron only.';
 
--- Nightly at 03:40 UTC, after the 02:20 billing run, guarded like the other pg_cron registrations
--- (00000002): where pg_cron is absent the run is called by hand (`SELECT finance.fn_reconcile_wallets();`).
-DO $$
-BEGIN
-    PERFORM cron.schedule(
-        'finance-reconcile-wallets',
-        '40 3 * * *',
-        $cron$SELECT finance.fn_reconcile_wallets();$cron$
-    );
-EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'pg_cron unavailable — finance.fn_reconcile_wallets must be scheduled manually.';
-END $$;
+-- Scheduled nightly at 03:40 UTC, after the 02:20 billing run, as `finance-reconcile-wallets` by the
+-- job registry (`ops.scheduled_jobs`, 00005060).
 -- #endregion

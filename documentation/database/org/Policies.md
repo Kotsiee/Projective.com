@@ -363,6 +363,20 @@ single vote.
 
 ---
 
+## 🌐 `org.supported_locales` — public reference data
+
+```sql
+CREATE POLICY "Anyone can read supported locales"
+ON org.supported_locales FOR SELECT TO anon, authenticated
+USING (true);
+```
+
+The offered locale tags (Decision #207) — no owner and nothing personal, so `anon` reads them too.
+`INSERT` / `UPDATE` / `DELETE` are revoked from both client roles (`00002520`); only the seed
+writes the list.
+
+---
+
 ## ⚠️ Security Notes
 
 - **Recursive Triggers**: The `is_active_team_member` helper must be used carefully to avoid

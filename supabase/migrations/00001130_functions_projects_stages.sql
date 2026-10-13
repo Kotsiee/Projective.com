@@ -866,6 +866,7 @@ BEGIN
             RAISE EXCEPTION 'You may only apply as yourself.' USING ERRCODE = 'insufficient_privilege';
         END IF;
     END IF;
+    PERFORM finance.fn_assert_payout_ready(p_applicant_type, p_applicant_profile_id);
 
     -- No duplicate live application from the same applicant to the same seat.
     IF EXISTS (
@@ -980,6 +981,10 @@ BEGIN
     ELSIF NOT EXISTS (SELECT 1 FROM org.freelancer_profiles fp WHERE fp.user_id = v_actor) THEN
         RAISE EXCEPTION 'Set up your freelancer profile before applying.' USING ERRCODE = 'check_violation';
     END IF;
+    -- Whoever acceptance would seat must be able to be paid (Decision #196).
+    PERFORM finance.fn_assert_payout_ready(
+        CASE WHEN p_team_id IS NULL THEN 'freelancer' ELSE 'team' END, COALESCE(p_team_id, v_actor)
+    );
 
     SELECT * INTO v_stage FROM projects.project_stages s
      WHERE s.project_id = v_project.id AND (s.slug = p_stage OR s.id::text = p_stage);
@@ -1385,6 +1390,9 @@ BEGIN
         v_lock_key := 'team:' || v_profile::text;
     END IF;
 
+    -- The seat is paid work: the candidate must be payout-ready now, not only when they applied (#196).
+    PERFORM finance.fn_assert_payout_ready(v_assignee_type::text, v_profile);
+
     -- Serialise concurrent accepts of this candidate before the conflict checks (AC6 atomicity).
     PERFORM pg_advisory_xact_lock(hashtext(v_lock_key));
 
@@ -1771,27 +1779,9 @@ $$;
 COMMENT ON FUNCTION projects.fn_archive_stale_service_drafts (timestamptz) IS
 'Soft-archives instantiated pipeline drafts idle for `service_draft_idle_days` (default 30) with no funded stage. Never deletes. Returns the number archived.';
 
--- Scheduled registration.
---
--- Guarded end to end, matching the `pg_cron` block in `00000002_extensions_core.sql`: the extension
--- may not be installed (a local `supabase start` does not ship it), and `cron.schedule` needs
--- privileges a migration run may not have. A failure here must not block the rest of the migration —
--- the job can be scheduled by hand afterwards, and the application-side twin
--- (`ProjectBackendService.sweepStaleDrafts`) covers the fixture path where there is no database at
--- all.
---
--- Daily at 03:10 UTC. The window is thirty days, so the hour is irrelevant to correctness and is
--- chosen to sit away from the top of an hour where every other job clusters.
-DO $$
-BEGIN
-    PERFORM cron.schedule (
-        'archive-stale-service-drafts',
-        '10 3 * * *',
-        $cron$SELECT projects.fn_archive_stale_service_drafts();$cron$
-    );
-EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'pg_cron unavailable — projects.fn_archive_stale_service_drafts must be scheduled manually.';
-END $$;
+-- Scheduled daily as `archive-stale-service-drafts` by the job registry (`ops.scheduled_jobs`,
+-- 00005060). The application-side twin (`ProjectBackendService.sweepStaleDrafts`) covers the fixture
+-- path where there is no database at all.
 
 -- #region 10. Project invitations — issue, answer, and the removal that undoes an acceptance
 --
@@ -2076,6 +2066,11 @@ BEGIN
         v_title := format('%s declined your invitation to %s',
             COALESCE(v_invitee_name, 'The freelancer'), COALESCE(v_stage_name, v_project.title));
     ELSE
+        -- A freelancer invitation is an offer of paid work; a manager's is not (Decision #196).
+        IF v_inv.role = 'freelancer' THEN
+            PERFORM finance.fn_assert_payout_ready('freelancer', v_inv.target_user_id);
+        END IF;
+
         UPDATE projects.project_invitations
         SET status = 'accepted', accepted_at = now()
         WHERE id = p_invitation_id;
@@ -2546,4 +2541,147 @@ COMMENT ON FUNCTION projects.get_engagement_context(uuid) IS
 REVOKE ALL ON FUNCTION projects.get_engagement_context(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION projects.get_engagement_context(uuid) TO authenticated;
 
+-- #endregion
+
+-- #region Personal projects and under-18 accounts (Decision #192)
+-- A restricted (13–17) account may create projects only as PERSONAL management tools: one person, no
+-- money, never listed. `projects.projects.is_personal` is set on insert whenever the owner is a minor
+-- and never changes afterwards, so a project started at 17 stays personal after the 18th birthday
+-- (its tickets moved without escrow, and turning that off would leave work no hold ever covered).
+-- Every rule is a table trigger, because the app writes these tables directly under RLS and an owner
+-- holds FOR ALL policies on most of them — an RPC-only check is one PATCH away from being skipped.
+--   * The project: one owner (no business, team or organisation), visibility pinned to `invite_only`
+--     (only an active+public project is world-readable, and nobody can be invited), no sessions, no
+--     budget, no auto-fund, no deadline bonuses.
+--   * Its stages and tickets: prices forced empty, hiring off; only the owner may hold a ticket.
+--   * Nobody joins it: seats, roles, budget rules, maintenance contracts, invite links, invitations,
+--     applications, cohorts, participants and assignments are refused (PM403).
+--   * Work moves without money: fn_ticket_escrow_sync and fn_ticket_delete_protocol skip it.
+-- And the other direction: a minor never joins anyone else's project — an invitation addressed to
+-- one, an application from one, and a participant or assignment row naming one are refused.
+
+CREATE OR REPLACE FUNCTION projects.fn_is_personal_project(p_project uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE((SELECT p.is_personal FROM projects.projects p WHERE p.id = p_project), false);
+$$;
+
+CREATE OR REPLACE FUNCTION projects.trg_projects_personal_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        NEW.is_personal := NEW.is_personal OR org.fn_is_minor(NEW.owner_user_id);
+    ELSIF NEW.is_personal IS DISTINCT FROM OLD.is_personal THEN
+        RAISE EXCEPTION 'project: a personal project stays personal' USING ERRCODE = 'PM403';
+    ELSIF NOT NEW.is_personal AND NEW.owner_user_id IS DISTINCT FROM OLD.owner_user_id
+          AND org.fn_is_minor(NEW.owner_user_id) THEN
+        RAISE EXCEPTION 'project: a project cannot be handed to someone under 18' USING ERRCODE = 'PM403';
+    END IF;
+
+    IF NOT NEW.is_personal THEN
+        RETURN NEW;
+    END IF;
+    IF NEW.client_business_id IS NOT NULL OR NEW.owner_team_id IS NOT NULL
+       OR NEW.owner_organisation_id IS NOT NULL THEN
+        RAISE EXCEPTION 'project: a personal project belongs to one person, not a business, team or organisation'
+            USING ERRCODE = 'PM403';
+    END IF;
+    NEW.visibility := 'invite_only'::public.visibility;
+    NEW.publish_visibility := 'invite_only'::public.visibility;
+    NEW.session_kind := 'none';
+    NEW.budget_amount_cents := NULL;
+    NEW.auto_fund_override := NULL;
+    NEW.allow_deadline_bonuses := false;
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION projects.trg_stages_personal_money_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF projects.fn_is_personal_project(NEW.project_id) THEN
+        NEW.unit_price_cents := NULL;
+        NEW.extra_revision_price_cents := NULL;
+        NEW.hire_trigger_active := false;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION projects.trg_tickets_personal_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF projects.fn_is_personal_project(NEW.project_id) THEN
+        NEW.unit_price_cents := NULL;
+        IF NEW.current_assignee_id IS NOT NULL AND NOT EXISTS (
+            SELECT 1 FROM projects.projects p
+             WHERE p.id = NEW.project_id AND p.owner_user_id = NEW.current_assignee_id
+        ) THEN
+            RAISE EXCEPTION 'ticket: only the owner works on a personal project' USING ERRCODE = 'PM403';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+-- Refuses a row that would bring anyone, or any money, into a personal project. Reads the row as jsonb
+-- so one function serves tables keyed by `project_id` and tables keyed by `project_stage_id`.
+CREATE OR REPLACE FUNCTION projects.trg_personal_project_closed()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_row jsonb := pg_catalog.to_jsonb(NEW);
+    v_project uuid := (v_row ->> 'project_id')::uuid;
+BEGIN
+    IF v_project IS NULL AND v_row ? 'project_stage_id' THEN
+        SELECT s.project_id INTO v_project
+          FROM projects.project_stages s
+         WHERE s.id = (v_row ->> 'project_stage_id')::uuid;
+    END IF;
+    IF projects.fn_is_personal_project(v_project) THEN
+        RAISE EXCEPTION 'project: a personal project has no members, hiring or payments'
+            USING ERRCODE = 'PM403';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+-- Refuses a row that would seat a minor in a project. TG_ARGV[0] names the column holding the
+-- person: an invitation's target, an application's applicant, a participant's profile (a business
+-- profile id names no person, so it passes) or an assignment's freelancer.
+CREATE OR REPLACE FUNCTION projects.trg_project_joiner_adult()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_person uuid := (pg_catalog.to_jsonb(NEW) ->> TG_ARGV[0])::uuid;
+BEGIN
+    IF v_person IS NOT NULL AND org.fn_is_minor(v_person) THEN
+        RAISE EXCEPTION 'project: people under 18 cannot join someone else''s project'
+            USING ERRCODE = 'PM403';
+    END IF;
+    RETURN NEW;
+END;
+$$;
 -- #endregion

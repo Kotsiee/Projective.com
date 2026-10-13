@@ -263,3 +263,33 @@ VALUES
     ('AED', 'GBP', 0.2145922747, TIMESTAMPTZ '2026-08-01 00:00:00+00', 'seed')
 ON CONFLICT (base, quote, as_of) DO NOTHING;
 -- #endregion
+
+-- #region org.supported_locales — the offered formatting locales (Decision #207)
+-- Settings → Language & region, in its order. SUPPORTED_LOCALES in @projective/types/org must list
+-- exactly these (locales.contract.test.ts).
+INSERT INTO org.supported_locales (tag) VALUES
+    ('en-GB'),
+    ('en-US'),
+    ('en-CA'),
+    ('en-AU'),
+    ('en-IN'),
+    ('fr-FR'),
+    ('de-DE'),
+    ('es-ES'),
+    ('es-MX'),
+    ('it-IT'),
+    ('nl-NL'),
+    ('pl-PL'),
+    ('pt-PT'),
+    ('pt-BR'),
+    ('sv-SE'),
+    ('tr-TR'),
+    ('ar-AE'),
+    ('he-IL'),
+    ('ur-PK'),
+    ('hi-IN'),
+    ('zh-CN'),
+    ('ja-JP'),
+    ('ko-KR')
+ON CONFLICT (tag) DO NOTHING;
+-- #endregion

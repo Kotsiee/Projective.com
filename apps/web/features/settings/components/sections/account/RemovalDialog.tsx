@@ -53,7 +53,8 @@ export interface RemovalDialogProps {
 	scope: DeletionScope;
 	/** What would refuse the schedule right now — the confirm stays off while any remain. */
 	blockers: readonly DeletionBlocker[];
-	onScheduled: (lifecycle: AccountLifecycle) => void;
+	/** `claimsStale`: the removal landed but the session could not be re-issued (Decision #193). */
+	onScheduled: (lifecycle: AccountLifecycle, claimsStale: boolean) => void;
 }
 
 /**
@@ -94,7 +95,7 @@ export function RemovalDialog(props: RemovalDialogProps): JSX.Element {
 			return;
 		}
 		props.open.value = false;
-		props.onScheduled(res.data.lifecycle);
+		props.onScheduled(res.data.lifecycle, res.data.claimsStale === true);
 	}
 
 	return (

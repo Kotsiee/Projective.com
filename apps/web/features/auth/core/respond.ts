@@ -11,9 +11,13 @@ import type { AuthResult } from "../types/mod.ts";
  *
  * When the service returns a `session` (a successful sign-in), its GoTrue tokens are minted into
  * HttpOnly `sb-*` session cookies here and kept OUT of the JSON body. The browser stores them from
- * the fetch response, so the island's subsequent `location.href` navigation is authenticated.
+ * the fetch response, so the island's subsequent `location.href` navigation is authenticated. The
+ * request decides the cookies' `Secure` attribute and, on a renewal, their lifetime.
  */
-export function toAuthResponse<T extends object>(result: ServiceResult<T>): Response {
+export function toAuthResponse<T extends object>(
+	req: Request,
+	result: ServiceResult<T>,
+): Response {
 	const body: AuthResult = {
 		ok: result.ok,
 		message: result.message,
@@ -22,14 +26,18 @@ export function toAuthResponse<T extends object>(result: ServiceResult<T>): Resp
 	};
 	const res = Response.json(body, { status: result.status });
 	if (result.session) {
-		for (const cookie of sessionSetCookies(result.session)) {
+		for (const cookie of sessionSetCookies(req, result.session)) {
 			res.headers.append("set-cookie", cookie);
 		}
 	}
 	if (result.pendingVerification) {
 		res.headers.append(
 			"set-cookie",
-			pendingVerificationSetCookie(result.pendingVerification, PENDING_VERIFICATION_TTL_SECONDS),
+			pendingVerificationSetCookie(
+				req,
+				result.pendingVerification,
+				PENDING_VERIFICATION_TTL_SECONDS,
+			),
 		);
 	}
 	return res;

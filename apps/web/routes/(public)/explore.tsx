@@ -11,6 +11,7 @@ import { DISCOVERY_SIM_COOKIE, parseDiscoverySim } from "@features/explore/core/
 import { rankingHeaders, semanticRankingFor } from "@features/explore/core/discovery-ranking.ts";
 import { ExploreBackendService } from "@server/services/explore/ExploreBackendService.ts";
 import { NO_DISCOVERY_SIM } from "@projective/types/explore";
+import { isRestrictedRequest } from "@web/utils/age-gate.ts";
 
 /**
  * `/explore` — the dual-layout discovery surface. Thin route: parse the URL query into
@@ -40,6 +41,7 @@ export const handler = define.handlers({
 		const params = parseExploreParams(ctx.url.searchParams);
 		const authed = ctx.state.isAuthenticated ?? false;
 		const viewerFreelancer = ctx.state.userContext?.isFreelancer ?? false;
+		const viewerRestricted = isRestrictedRequest(ctx.req, ctx.state.userContext);
 
 		if (isResultsMode(params)) {
 			const label = params.q || params.category;
@@ -56,6 +58,7 @@ export const handler = define.handlers({
 				home: undefined,
 				authed,
 				viewerFreelancer,
+				viewerRestricted,
 			}, { headers: [...headers, ...rankingHeaders(res.ranking)] });
 		}
 
@@ -72,6 +75,7 @@ export const handler = define.handlers({
 			home: res.ok ? res.data : undefined,
 			authed,
 			viewerFreelancer,
+			viewerRestricted,
 		}, { headers: [...headers, ...rankingHeaders("heuristic")] });
 	},
 });
@@ -84,6 +88,7 @@ export default define.page<typeof handler>(function ExplorePage({ data }) {
 			initial={data.initial}
 			authed={data.authed}
 			viewerFreelancer={data.viewerFreelancer}
+			viewerRestricted={data.viewerRestricted}
 		/>
 	);
 });

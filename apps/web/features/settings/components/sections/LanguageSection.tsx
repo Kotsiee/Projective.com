@@ -120,10 +120,11 @@ export function LanguageSection(props: LanguageSectionProps): JSX.Element {
 			status.value = { tone: "error", text: res.message };
 			return;
 		}
-		await SettingsService.renewSession();
 		status.value = {
 			tone: "saved",
-			text: before.dateFormat
+			text: res.data.claimsStale
+				? "Saved." + " Some pages may keep the old format for up to an hour."
+				: before.dateFormat
 				? "Saved. Numbers and prices use the new format from the next page."
 				: "Saved. Numbers, prices and dates use the new format from the next page.",
 		};
@@ -140,10 +141,11 @@ export function LanguageSection(props: LanguageSectionProps): JSX.Element {
 			status.value = { tone: "error", text: res.message };
 			return;
 		}
-		await SettingsService.renewSession();
 		status.value = {
 			tone: "saved",
-			text: value
+			text: res.data.claimsStale
+				? "Saved." + " Some pages may keep the old format for up to an hour."
+				: value
 				? `Saved. Dates are written ${DATE_FORMAT_PATTERN[value]} from the next page.`
 				: "Saved. Dates follow your language from the next page.",
 		};

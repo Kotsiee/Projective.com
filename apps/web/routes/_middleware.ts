@@ -1,6 +1,5 @@
 import { define } from "@web/utils/state.ts";
-import { hasSessionCookie } from "@web/utils/auth-cookies.ts";
-import { resolveRequestContext } from "@web/utils/user-context.ts";
+import { resolveRequestViewer } from "@web/utils/session.ts";
 import { resolveCurrencyContext, runWithCurrency } from "@web/utils/currency-context.ts";
 import { resolveA11yContext } from "@web/utils/a11y-context.ts";
 import { cspHeaderFor } from "@web/utils/csp.ts";
@@ -9,12 +8,12 @@ import { cspHeaderFor } from "@web/utils/csp.ts";
  * Global middleware — runs for every request. Resolves auth **site-wide** (chrome only) and adds
  * baseline security headers.
  *
- * `isAuthenticated` is set from a skeleton session-cookie presence check, and `userContext` from an
- * unverified decode of the session JWT's claims (User Context Hydration), so EVERY route — including
- * the public Home/Explore surfaces — can render the correct navigation shell and skeletons in SSR
- * (guest vs unified user L-shell, and which structural context to frame). Both are presence/skeleton
- * signals: they do NOT verify the JWT and grant no access; the `(dashboard)/_middleware.ts` guard +
- * RLS remain the real gates. The Content-Security-Policy (SYSTEM_ARCHITECTURE §Runtime & API Security)
+ * `isAuthenticated` and `userContext` (User Context Hydration) come from the session JWT only once it
+ * verifies ({@link resolveRequestViewer}: signature, expiry, a user session's claims — locally, against
+ * cached keys), so EVERY route — including the public Home/Explore surfaces — renders the correct
+ * navigation shell and skeletons in SSR, and a tampered or expired cookie paints a guest. An expired
+ * session is not renewed here; a guard or a page that needs the viewer renews it (`ensureSession`).
+ * RLS remains the backstop. The Content-Security-Policy (SYSTEM_ARCHITECTURE §Runtime & API Security)
  * is set here too — see `utils/csp.ts`.
  *
  * **The CSP is a default a route may tighten** (like `referrer-policy`): a route that answers with its
@@ -29,8 +28,9 @@ import { cspHeaderFor } from "@web/utils/csp.ts";
  * route may raise, never one it can lower, since nothing removes the header.
  */
 export default define.middleware(async (ctx) => {
-	ctx.state.isAuthenticated = hasSessionCookie(ctx.req);
-	ctx.state.userContext = resolveRequestContext(ctx.req);
+	const viewer = await resolveRequestViewer(ctx.req);
+	ctx.state.isAuthenticated = viewer.isAuthenticated;
+	ctx.state.userContext = viewer.userContext;
 	// The money-presentation context (currency · locale · rate table), resolved for EVERY route
 	// including public ones — a signed-out visitor browsing Explore needs prices in their currency
 	// exactly as much as a signed-in one. Cached for 15 minutes inside the FX engine, and total: it

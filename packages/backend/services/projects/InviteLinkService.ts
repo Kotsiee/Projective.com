@@ -150,6 +150,7 @@ export class InviteLinkService {
 				return fail(live.refusal.status, {
 					message: live.refusal.message,
 					errors: live.refusal.errors,
+					details: live.refusal.details,
 				});
 			}
 			return ok(live.data, { message, status: 201 });

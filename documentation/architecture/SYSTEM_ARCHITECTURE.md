@@ -729,6 +729,9 @@ Follows the standard seven-folder shape; populated as needed:
 - `core/supabase.ts` — on-demand client provisioning: `getUserClient(jwt)` (RLS-scoped, the default)
   vs `getServiceClient()` (service-role, RLS-bypassing, narrow/audited use only), gated by
   `isSupabaseConfigured()` / `isAuthBackendLive()`.
+- `core/access-token.ts` — local access-token verification (`createAccessTokenVerifier`: JWKS or
+  HS256 by `alg`, expiry, session claims, a cached JWKS), reached only through
+  `AuthBackendService.verifyAccessToken` (Decision #205).
 - `services/ServiceResult.ts` — the uniform result envelope + `ok()` / `fail()` builders.
 - `services/<domain>/<Name>BackendService.ts` — the fat services. Reference implementations:
   `services/auth/AuthBackendService.ts` (mutating, session-bearing),
@@ -1761,31 +1764,72 @@ the command palette.
   HttpOnly cookies `sb-access-token` / `sb-refresh-token` (the names the `(dashboard)` middleware
   checks) via `apps/web/utils/auth-cookies.ts`, folded in by `toAuthResponse`. Islands `fetch` the
   route, the browser stores the cookies, and the island's `location.href` navigation is
-  authenticated.
+  authenticated. Every builder takes the request (Decision #201). `Secure` is set in production,
+  on an `https:` request, or when `X-Forwarded-Proto` reports `https` from a TLS-terminating
+  proxy. Plain `http://localhost` stays insecure for development.
+- **Session lifetime ("Keep me signed in").** `LoginSchema.remember` reaches
+  `AuthBackendService.authenticate`, which stamps it on `SessionTokens.remember`. Remembered, the
+  refresh cookie lives 30 days. Not remembered, it has no `Max-Age` and ends with the browser
+  session, and an HttpOnly browser-session flag `pj_session_transient=1` is set beside it. A renewal
+  leaves `remember` unset and inherits the flag, so the lifetime survives every refresh. A browser
+  with no flag is a remembered session. Sign-out clears the flag.
 - **Session lifecycle & silent refresh.** The access token is short-lived (~1h, GoTrue
-  `expires_in`); the refresh token lives 30 days. A session must be **renewed**, not dropped, when
+  `expires_in`); the refresh token lives 30 days when remembered, or the browser session otherwise. A session must be **renewed**, not dropped, when
   the access cookie expires. The single renewal primitive is fat
   `AuthBackendService.refreshSession(refreshToken)` (live GoTrue `refreshSession({ refresh_token })`
   → rotated tokens; stub re-mints so the path is testable without a wired GoTrue — it grants no
   access, and is only reachable when a refresh cookie is actually presented). It feeds two consumers
-  via `apps/web/utils/session.ts` `ensureSession(req)` — fast path (access cookie present) →
-  **refresh-before-redirect** (access gone + refresh present → renew in place) → **fail-closed**
-  (spent/invalid refresh → clear both cookies):
+  via `apps/web/utils/session.ts` `ensureSession(req)` — fast path (access cookie **verified**, see
+  "Access-token verification" below) → **refresh-before-redirect** (access gone, or present but
+  invalid or expired, + refresh present → renew in place; an invalid access cookie with no refresh
+  cookie → clear both and bounce) → **fail-closed on a refusal only** (a refused grant — spent/revoked refresh token, GoTrue `400`/`401`/`403` → clear both
+  cookies; an unreachable or failing GoTrue → `503`, cookies kept, so an outage never signs anyone out;
+  `services/auth/refresh-outcome.ts`, Decision #193):
   - **Server (the `(dashboard)` guard).** `routes/(dashboard)/_middleware.ts` calls `ensureSession`,
     re-mints the renewed `sb-*` cookies onto the proceeding response, re-derives
     `ctx.state.userContext` from the fresh token (so a just-renewed request never paints guest
     chrome), and — only for a genuinely dead session — redirects to `/login` capturing the **full**
-    target (`pathname + search`) as `redirectTo` for a loss-free return.
+    target (`pathname + search`) as `redirectTo` for a loss-free return. When GoTrue cannot answer
+    (`ensureSession` → `unavailable`) it throws a `503` instead: `_error.tsx` offers "Try again" on
+    the same URL, and the cookies are kept.
   - **Client (the 401 interceptor).** `POST /api/auth/refresh` (thin, NOT behind the guard — it must
-    be reachable when the access token has expired) renews the cookies via `toAuthResponse`. The
-    shared `apps/web/utils/api-client.ts` `apiFetch()` wraps `fetch`: on a `401` it triggers a
-    single shared refresh, retries the original request, and only routes to
-    `/login?redirectTo=<path>` if the session is truly gone. Feature `api.ts` transports adopt it by
-    swapping `fetch`→`apiFetch` (done for `features/projects/core/api.ts`).
+    be reachable when the access token has expired) renews the cookies via `toAuthResponse`; it
+    answers `401` and clears the cookies only on a refused grant, `503` with the cookies kept
+    otherwise. The shared `apps/web/utils/api-client.ts` `apiFetch()` wraps `fetch`: on a `401` it
+    triggers a single shared refresh, retries the original request, and routes to
+    `/login?redirectTo=<path>` only when the refresh answered `401` (a `503` or a dropped connection
+    hands the original `401` back instead). Feature `api.ts` transports adopt it by swapping
+    `fetch`→`apiFetch` (done for `features/projects/core/api.ts`).
+  - **Claim-changing mutations re-issue the session themselves.** `POST /api/context/switch`,
+    `POST /api/user/freelancer`, `POST /api/user/handle`, a freelancer-profile `POST`/`DELETE
+    /api/user/lifecycle`, and a `PATCH /api/user/preferences` touching locale · display currency ·
+    date format (`touchesTokenClaims`) change what the access-token hook stamps, so after a
+    successful mutation the route renews the session server-side (`session.ts`
+    `respondWithReissuedSession`, over `renewSession`) and mints the rotated cookies onto the same
+    response. A failed renewal keeps the old cookies and answers `claimsStale: true`. The clients
+    never call `/api/auth/refresh` themselves: `useContextSwitch` and `partner-service` report a
+    stale answer and do not navigate; Settings says the old value may show for up to an hour (the
+    access token's lifetime) and skips its reload. Any caller of these routes, not just the app's
+    clients, leaves with fresh claims (Decision #193).
 
-  This closes session **persistence** only; real signed-JWT **verification** via `@server/services`
-  (this section's remaining TODO) is where any _access_ decision must still re-validate — the guard
-  and RLS remain the real gates, per root CLAUDE.md Decisions #14/#16. See Decision #46.
+  See Decision #46.
+- **Access-token verification (Decision #205).** The `sb-access-token` cookie is never trusted by
+  presence. `AuthBackendService.verifyAccessToken(token)` checks it locally
+  (`packages/backend/core/access-token.ts`): the key is chosen strictly by the token's `alg` —
+  `ES256` / `RS256` against the project's public JWKS (`{SUPABASE_URL}/auth/v1/.well-known/jwks.json`,
+  matched by `kid`), `HS256` against `SUPABASE_JWT_SECRET` — then `exp` (30 s leeway), and a user
+  session's claims (`sub`, `aud` `authenticated`, which refuses a legacy anon/service key). The local
+  CLI stack signs `ES256`. The JWKS is cached 10 minutes; an unknown `kid` refetches at most once per
+  30 s (rotation); a failed refetch keeps the keys already held; never having obtained them is an
+  outage (`503`), not a verdict. `session.ts` `verifyAccessCookie` runs it once per request (a
+  `WeakMap` on the `Request`), shared by the global middleware (`resolveRequestViewer`: a tampered or
+  expired cookie paints guest chrome and `isAuthenticated: false`, so the auth-screen guard bounces
+  only a valid session) and `ensureSession`. **Stub mode** — the auth backend not live, outside
+  `DENO_ENV=production` — trusts presence (`verified: false`): `dev:mock` and stub sessions are opaque
+  or hand-made tokens with no issuer to check. Production always verifies. **Residual:** local
+  verification cannot see revocation — an access token whose session was revoked elsewhere (a global
+  sign-out, a copied cookie) passes until its `exp` (≤ 1 h); its refresh token is dead, so the
+  session ends there, and RLS remains the backstop for data in between.
 - **Sign-out & the account projection (Decision #47).** `AuthService.logout()` →
   `POST /api/auth/logout` (thin) → fat `AuthBackendService.signOut(accessToken)` (live: best-effort
   GoTrue **global** revocation; stub: no-op) → the route **unconditionally clears** both `sb-*`
@@ -1848,11 +1892,11 @@ the command palette.
   `org.enable_freelancer_profile` in the caller's JWT, which creates the freelancer profile with its
   starter skills, flips `is_freelancer`, and switches the acting context to the freelancer persona
   through `security.fn_set_session_context` (clearing any team or organisation slot). The claims
-  then lag the database exactly as after a context switch, so the client runs the same sequence as
-  `useContextSwitch`: `POST /api/auth/refresh` (the hook re-mints `active_context.isFreelancer`),
-  then a hard navigation to `/[handle]/edit` so the server-painted chrome (sidebar Services/Teams,
-  the Create menu's seller items, the popover's role) re-derives from the new token. A failed
-  refresh is reported, never navigated past (Decision #150).
+  then lag the database exactly as after a context switch, so the route re-issues the session on
+  the same response (the hook re-mints `active_context.isFreelancer`; Decision #193) and the client
+  hard-navigates to `/[handle]/edit` so the server-painted chrome (sidebar Services/Teams, the
+  Create menu's seller items, the popover's role) re-derives from the new token. A `claimsStale`
+  answer is reported, never navigated past (Decision #150).
 - **Google OAuth (PKCE).** `/api/auth/oauth/google` begins the Supabase handshake and persists the
   PKCE **code-verifier** in a short-lived cookie (a `CookieStore` storage adapter on the anon
   client); `/api/auth/callback` exchanges the `code` for a session, mints the `sb-*` cookies, clears
@@ -1945,6 +1989,68 @@ viruses.
    always lands in a **private** library first, and screening there would scan the private zone the
    Two-Zone model exempts. See §Backend Services → Content moderation.
 
+### Scheduled jobs (pg_cron + pg_net, Decision #203)
+
+Every recurring job is one row of **`ops.scheduled_jobs`**, seeded by
+`supabase/migrations/00005060_seed_scheduled_jobs.sql`. That row is the only place a cadence is
+set: an `INSERT`, `UPDATE` or `enabled = false` on it schedules, reschedules or unschedules the
+pg_cron job in the same transaction (`ops.tg_scheduled_jobs_apply`), and an invalid cron expression
+is refused with the write. The seed sets the default on every reset; on a running database change
+it in SQL:
+
+```sql
+UPDATE ops.scheduled_jobs SET schedule = '30 * * * *' WHERE name = 'finance-recurring-deposits';
+UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  -- pause
+```
+
+- **Two kinds.** A `sql` job runs its single `SELECT` in the database as the pg_cron owner. An
+  `http` job calls `ops.fn_dispatch_http_job`, which POSTs to `CRON_APP_URL` + the row's `path`
+  through **pg_net** with `Authorization: Bearer <secret>`. Both values are read from **Supabase
+  Vault**, never from a migration. The bearer's Vault name is the row's `secret_name`, the same
+  key the app reads from its env, so the route and the dispatcher compare one value from two stores.
+  A route keeps its own guard (404 unless the bearer matches, Decision #125), so the jobs are safe to
+  call more often than scheduled. An http job's batch size is the `limit` in its `path`.
+- **Nothing is silent.** Every skip and failure raises a `WARNING` and writes an
+  `ops.log_entries` row with `scope = 'ops.scheduler'` and `client_id = 'scheduler:<job>:<reason>'`:
+  - `pg_cron_unavailable`, `schedule_failed` — at registration (`ops.fn_schedule_job`);
+  - `pg_net_unavailable`, `vault_unavailable`, `app_url_missing`, `secret_missing` — at
+    dispatch, at most one row a day per job and reason;
+  - `dispatch_failed`, `http_failed` (non-2xx, transport error or timeout), `no_response`;
+  - `run_failed` — a sql job that raised (read from `cron.job_run_details`, once per run).
+  pg_net answers asynchronously and keeps a response for 6 hours, so every dispatch is recorded in
+  `ops.http_job_dispatches`, and `ops-watch-jobs` copies each outcome there and logs the failures
+  together with the failed pg_cron runs. `00000002` also warns when it cannot create pg_cron or pg_net, but the `ops` tables
+  do not exist yet at that point, so that skip is logged per job by the seed.
+- **Run any job by hand:** `deno task cron:run <job>` (`--list` prints the registry). A sql job runs
+  through `ops.run_job` (service role only). An http job is POSTed to `APP_URL` + its path with the
+  bearer from `.env.local`, exactly as the scheduler sends it, so the app must be running. This is
+  also the path for a database without pg_cron.
+- **Environments.** The Supabase Postgres image ships pg_cron, pg_net and Vault, local
+  `supabase start` included (measured 2026-10-13: pg_cron 1.6.4, pg_net 0.20.4), so every sql job
+  runs locally as it does when hosted. The http jobs skip (and log) until the Vault secrets below
+  exist. Locally `CRON_APP_URL` is `http://host.docker.internal:<PORT>`, because pg_net runs
+  inside the database container.
+
+| Job                               | Cadence (UTC)       | Runs                                                                   | Owner                                                    | Idempotency                                                                                                         |
+| :-------------------------------- | :------------------ | :--------------------------------------------------------------------- | :------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------ |
+| `finance-billing-cycle`           | daily 02:20         | `finance.fn_run_billing_cycle()`                                       | Finance — billing (`00001250`)                           | One invoice per business per billing day and one statement per wallet per month; a missed day is caught up, a re-run adds nothing. |
+| `archive-stale-service-drafts`    | daily 03:10         | `projects.fn_archive_stale_service_drafts()`                           | Projects — service pipeline (`00001130`)                 | Archives only `draft` rows still idle with no funded stage; never deletes.                                         |
+| `finance-reconcile-wallets`       | daily 03:40         | `finance.fn_reconcile_wallets()`                                       | Finance — ledger (Decision #186)                         | Read-only on finance; a persisting drift is re-reported each run (one ops row per drifted wallet).                  |
+| `finance-mature-pending-releases` | hourly :05          | `finance.fn_mature_pending_releases()`                                 | Finance — pending window (Decision #191)                 | `FOR UPDATE SKIP LOCKED` batches; a matured row is closed and never credited twice.                                 |
+| `auto-release-session-escrow`     | every 15 min        | `finance.auto_release_session_escrow()`                                | Sessions & cohorts (`00001155`, Decision #171)           | State-gated: only `scheduled` sittings complete and only `held` seat escrows of `active` memberships move.         |
+| `finance-recurring-deposits`      | hourly :15          | `POST /api/finance/cron/deposits?limit=50` · `FINANCE_CRON_SECRET`     | Finance — `PaymentBackendService.processDueDeposits`     | A period is claimed once (`finance.claim_due_deposit_rules`) and each charge carries a Stripe idempotency key.      |
+| `account-erasures`                | daily 04:10         | `POST /api/user/cron/erasures?limit=100` · `ACCOUNT_CRON_SECRET`       | Account — `AccountLifecycleBackendService.sweepDue` (#156) | A request completes once; one whose blockers came back is deferred, not forced.                                     |
+| `ops-watch-jobs`                  | every 10 min        | `ops.fn_watch_jobs()`                                                  | Ops — the registry itself                                | `SKIP LOCKED`; a dispatch is settled (and reported) once, a failed run is reported once (keyed by run id).          |
+
+`finance-reconcile-wallets` and `finance-mature-pending-releases` are seeded only where their
+function exists (M3 / M4 reached `main` separately), so the seed holds whichever order they land in.
+
+**Implemented but not registered (Decision #203 flag (a), awaiting a human):** the comms engine's
+`fn_process_queue`, `fn_escalate_unread`, `fn_build_digests` (daily and weekly), `fn_sweep_expired` and
+`fn_compact_delivery_events` (their intended cadences are in `database/comms/Functions.md`), and
+`projects.fn_release_expired_claims` and `projects.fn_resolve_expired_workload_reports`. No
+migration has ever scheduled them. Each is one registry row once its go-live is decided.
+
 ### Edge Functions & Webhooks
 
 Edge Functions act as the serverless orchestration layer for the platform, handling event-driven
@@ -1982,7 +2088,7 @@ Event (RPC / trigger / cron)
                       ├─ INSERT comms.notification_deliveries (per channel/device)
                       │     └─ AFTER INSERT trigger ──► dispatch Edge Function (push · email · SMS)
                       └─ security.audit_logs                                    (financial/security events)
-pg_cron ─ fn_process_queue · fn_escalate_unread · fn_build_digests · sweeps
+pg_cron ─ fn_process_queue · fn_escalate_unread · fn_build_digests · sweeps   (not registered yet — §Scheduled jobs)
 ```
 
 **Boundaries that matter:**
@@ -2047,8 +2153,10 @@ ensure that security is not an afterthought but a core architectural constraint.
 The platform utilizes Supabase Auth for identity management, integrated directly into the Fresh
 request lifecycle.
 
-- **Auth Guards:** All routes within `./apps/web/routes/` are protected by a global `_middleware.ts`
-  that validates the user's JWT before the handler is invoked.
+- **Auth Guards:** The global `routes/_middleware.ts` verifies the session JWT (signature, expiry,
+  session claims) before any handler runs and resolves a tampered or expired one to a guest; the
+  `(dashboard)` guard admits only a verified session, renewing or clearing the rest (§Sessions,
+  "Access-token verification", Decision #205).
 - **Role-Based Access Control (RBAC):** Permissions are checked at the Service layer using custom
   claims within the JWT (e.g., `org_role`), ensuring that "Projective" users can only access
   resources within their authorized organizations.
@@ -2208,8 +2316,8 @@ PostgreSQL RLS.
   `org.user_emails.verified_at` unlocks invitations sent to an address (`projects.project_invitations`,
   `org.fn_is_invitee`, `projects.invite_by_email`), so clients have SELECT only on the table and every
   write is a definer: `org.add_user_email` files it unverified; `security.issue_email_verification`
-  (service role ONLY — the app decodes JWTs without verifying them, so the function takes an email id
-  and mails the row's own address, never a caller-supplied identity) mints a single-use 24-hour token
+  (service role ONLY — so it never trusts a caller-supplied identity: the function takes an email id
+  and mails the row's own address) mints a single-use 24-hour token
   and stores only its SHA-256; `org.confirm_user_email`, called by the signed-in owner holding the
   token, is the one path that stamps `verified_at`. An INVOKER guard trigger refuses any client-role
   change to `verified_at` · `email` · `is_primary` · `user_id` even if a policy is ever re-added. The
@@ -2234,6 +2342,21 @@ PostgreSQL RLS.
   form's own copy; a client-sent `restricted` flag is stripped and never read. The Dev Context
   Switcher's **Age** axis drives the mirror through the `pj.dev.age` cookie, honoured only when
   `DENO_ENV` is `development`.
+- **Restricted accounts see only what they can use (Decision #192).** Ages are counted on today's date
+  in the person's own IANA zone — `computeAge(dob, timeZone)` in `@projective/types/auth` and
+  `org.fn_age_years(dob, zone)` in Postgres apply one rule; the join form sends the browser's zone,
+  provisioning stores it as `users_public.timezone`, UTC when unknown. The chrome hides every surface
+  `isRestrictedPath` names (`apps/web/features/shell/core/restricted-surfaces.ts` — Wallet, Businesses,
+  basket/checkout, Catalogue, Services/Products, Teams, Analytics, Become a Freelancer, Settings →
+  Billing / Verification) from the rail, the create menu and the account popover, and the
+  `(dashboard)` middleware's third gate 303s a direct visit home. In-page buy/sell controls are
+  replaced by one `InlineNotice` (`/view` lane and body block, profile rig, project create modal,
+  Settings → Account); islands read the flag through `useEffectiveContext` / `useRestricted`, routes
+  through `isRestrictedRequest`. A minor's projects are **personal** (`projects.is_personal`, table
+  triggers in `00001130`): one person, no money, never listed, no members; the reads stamp
+  `personal` on `ProjectDetail`, `ProjectSetup`, `ProjectWorkspace` and `BoardCard`, and the
+  workspace drops Members, Preview, pricing, terms, Publish and every funding line. Guardian-consented
+  selling for older minors is specified in PRODUCT_SPEC §Age guardrails and **disabled for the MVP**.
 
 ---
 
@@ -2492,7 +2615,9 @@ incorrect API flows.
   liveness check; **Stripe Connect** onboarding performs business KYB. The verdicts are mirrored
   into the app-owned caches (`org.freelancer_profiles.kyc_*`, `org.business_profiles.kyb_*`) and the
   `finance.verification_cases` trail — **only opaque provider references are stored, never PII**.
-  The freelancer payout-ready gate (`finance.fn_freelancer_payout_ready`) is the "no forever-escrow"
+  The freelancer payout-ready gate (`finance.fn_freelancer_payout_ready`, enforced at every door that
+  lands a gig or seats a team member by `finance.fn_assert_payout_ready` — `PK403 payout_not_ready`,
+  Decision #196) is the "no forever-escrow"
   guarantee.
 - **Idempotency:** every money-mutating call carries a `finance.idempotency_keys` key (and Stripe's
   own `Idempotency-Key` header) so a retried webhook or request **never double-moves money**.
@@ -2533,8 +2658,10 @@ incorrect API flows.
 
 | Capability | Thin route | Fat method (`PaymentBackendService`) | Database doors (`00001230`) |
 | :--------- | :--------- | :----------------------------------- | :-------------------------- |
-| Fund a stage's escrow by card (One-Off upfront lock · Pipeline "Buy Now") — or ONE ticket with `ticketId` (Decision #166: that ticket's price, only its escrow held at settlement via `projects.fund_ticket`) | `POST /api/finance/escrow/intent` | `createEscrowLockIntent` | `begin_card_payment` (`p_ticket_id`) · `attach_card_payment` · `abandon_card_payment` |
-| Top a wallet up by card | `POST /api/finance/topup/intent` | `createTopUpIntent` | the same three |
+| Fund a stage's escrow by card — every unfunded ticket in an open, assigned or in-progress stage, claimed or not, held PREPAID until claimed; refused up front while any ticket is unpriced (Decision #197; UI: the stage board's `FundStageDialog` and the wallet's Fund a stage) — or ONE ticket with `ticketId` (Decision #166: that ticket's price, only its escrow held at settlement via `projects.fund_ticket`) | `POST /api/finance/escrow/intent` | `createEscrowLockIntent` | `begin_card_payment` (`p_ticket_id`) · `attach_card_payment` · `abandon_card_payment` |
+| Pay for ONE paid revision round by card (Decision #199: the round's snapshotted price; settlement runs `projects.fund_paid_revision` as the payer, which holds the round's escrow and opens it) — or from the wallet, straight through `fund_paid_revision` | `POST /api/projects/:id/stages/:stageId/submissions/:submissionId/paid-revision/fund` | `createPaidRevisionIntent` (via `RevisionPurchaseBackendService.fundPaidRevision`, `revision-purchase.ts`) | `begin_card_payment` (`p_revision_id`) · `attach_card_payment` · `abandon_card_payment` |
+| What funding a stage takes for the payer (Decision #197): unfunded tickets, unpriced ones, the paying wallet and its balance | `GET /api/finance/escrow/quote?project=&stage=` | `StageFundingBackendService.quote` (`stage-funding.ts`) | `projects.get_stage_funding_quote` → `projects.fn_stage_funding_need` |
+| Top a wallet up by card | the wallet's `top_up` action (`POST /api/wallet/action`) — the only door; the standalone `/api/finance/topup/intent` was retired with no caller | `WalletBackendService.topUp` → `createTopUpIntent` | the same three |
 | Payout account (Connect) onboarding | `POST /api/finance/connect/onboarding` · `GET …/refresh` (Stripe's `refresh_url`) · `GET …/return` (`return_url`) · `GET …/status` | `startConnectOnboarding` · `refreshConnectOnboarding` · `connectStatus` | `payout_account_for` · `record_payout_account` · `sync_payout_account` (service role) |
 | Identity (Level-2 KYC) | `POST /api/finance/identity/session` | `createIdentitySession` | `begin_identity_verification` · `attach_identity_session` · `abandon_identity_verification` |
 | The webhook | `POST /api/finance/webhooks/stripe` | `handleStripeWebhook` | `settle_card_payment` · `record_card_payment_failure` · `apply_identity_event` · `record_transfer_created` · `record_dispute_opened` (service role) |
@@ -2548,6 +2675,15 @@ incorrect API flows.
   `projects.fund_stage` **as the payer who authorised it** (`request.jwt.claim.sub` set to the row's
   `created_by` inside the definer), in a subtransaction: a lock refused at settlement never rolls back
   the credit.
+- **A settlement is acknowledged only with its ledger row (Decision #200).** `settle_card_payment`
+  returns `transaction_id` on every outcome it completes; a lock or order refused after the credit
+  leaves the payment `settled_unapplied` (with `unapplied_reason`) and the payer is told the funds are
+  in their wallet. A success it cannot credit yet (no payment bound to the intent, or an amount /
+  currency that disagrees) releases its event claim, so the webhook answers 5xx
+  (`requireLedgerRow` in `stripe-webhook.ts`) and Stripe's retry is processed, not replayed; a
+  mismatch is also written to `ops.log_entries`. A `payment_intent.succeeded` without
+  `metadata.projective_payment_id` was not created by Projective and is acknowledged as ignored.
+  `finance.v_ops_unledgered_payments` (service role) lists any settled payment without its ledger credit.
 - **Every processor door is idempotent on the Stripe event id** (`stripe:<evt>` in
   `finance.idempotency_keys`, claimed in the same transaction as the effects). Handled events:
   the four above plus `payment_intent.payment_failed`/`.canceled` and
@@ -2656,7 +2792,7 @@ per `listen` session, so both webhook secrets take the same value locally.
 
    Copy the printed `whsec_…` into both `STRIPE_WEBHOOK_SECRET` and `STRIPE_THIN_WEBHOOK_SECRET`, then
    start `deno task dev`.
-3. Card escrow: open an assigned stage's lock (`POST /api/finance/escrow/intent`), pay with `4242 4242
+3. Card escrow: open a stage's lock (`POST /api/finance/escrow/intent`), pay with `4242 4242
    4242 4242`, `4000 0025 0000 3155` (approve the challenge) and `4000 0000 0000 9995`; watch
    `GET /api/finance/payments/[id]`. Replay a delivery with `stripe events resend evt_…` — the answer
    is `replayed` and no ledger row is added.
@@ -2915,7 +3051,9 @@ SUPABASE_URL=XXXX-XXXX
 SUPABASE_PUBLIC_URL=XXXX-XXXX
 SUPABASE_ANON_KEY=XXXX-XXXX
 SUPABASE_SERVICE_ROLE_KEY=XXXX-XXXX
-JWT_SECRET=XXXX-XXXX            # not read by any code today
+# Legacy HS256 JWT secret, server-only: verifies an HS256 access token (`core/access-token.ts`). A
+# project on asymmetric keys (the local CLI stack) verifies against its JWKS and needs none.
+SUPABASE_JWT_SECRET=XXXX-XXXX
 
 # Authentication (OAuth) — SIGN-IN only; GoTrue owns this and retains no API token
 GOOGLE_CLIENT_ID=XXXX-XXXX
@@ -2977,6 +3115,14 @@ FINANCE_CRON_SECRET=XXXX-XXXX
 # Bearer token (≥ 32 characters) the scheduler presents to POST /api/user/cron/erasures, which runs the
 # account and freelancer-profile erasures that have come due (Decision #156); 404 otherwise.
 ACCOUNT_CRON_SECRET=XXXX-XXXX
+# Scheduled jobs (§Scheduled jobs, Decision #203) — these are SUPABASE VAULT secrets, not app env keys.
+# pg_net reads them inside the database to call the two routes above; set them per environment with
+#   SELECT vault.create_secret('<value>', '<NAME>');   -- vault.update_secret(id, '<value>') to rotate
+# and never in a migration or a seed. Until they exist, each http job skips and logs instead of running.
+#   CRON_APP_URL         the origin the DATABASE reaches the app on (public APP_URL when hosted;
+#                        http://host.docker.internal:<PORT> locally)
+#   FINANCE_CRON_SECRET  the same value as the env key above
+#   ACCOUNT_CRON_SECRET  the same value as the env key above
 # Optional, development only: stripe-mock origin; ignored for live keys and under DENO_ENV=production
 # STRIPE_API_BASE=http://localhost:12111
 

@@ -3,8 +3,8 @@ import {
 	type ChatMessage,
 	type CommitTicket,
 	countsAsOnboarded,
-	CREATED_PUBLISH_VISIBILITY,
 	type CreatedProject,
+	CreatedProjectSchema,
 	type CreateProject,
 	type CreateSubmission,
 	cumulativeStageCents,
@@ -65,7 +65,6 @@ import {
 	senderOf,
 	toSubmissionStatus,
 } from "./live-support.ts";
-import { insertWithSlugRetry } from "../../core/slug-retry.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { AutoFundMode } from "@projective/types/finance";
 import { resolveChannelRef, UUID_RE } from "./live-support.ts";
@@ -149,6 +148,8 @@ const RICH_TEXT_MAX = 8000;
 
 /** The `projects.projects` columns the setup projection is built from. */
 interface SetupProjectRow {
+	/** A personal project (Decision #192); optional so a row read before the column existed parses. */
+	is_personal?: boolean | null;
 	id: string;
 	slug: string;
 	title: string;
@@ -257,6 +258,7 @@ const SETUP_PROJECT_COLUMNS = [
 	"client_business_id",
 	"archived_at",
 	"auto_fund_override",
+	"is_personal",
 ].join(", ");
 
 /** The stage columns the setup form reads and writes. */
@@ -594,6 +596,7 @@ function toSetup(
 		// the controls drawn are exactly the ones the database accepts.
 		viewerIsClient: viewerCanConfigure,
 		autoFundInherited,
+		personal: row.is_personal === true,
 	});
 }
 // #endregion
@@ -1893,133 +1896,59 @@ const ROOT_STAGE_NAME: Record<ProjectCreateFormat, string> = {
 };
 
 /**
- * Mint the draft and its one root stage.
+ * The `projects.create_project` payload for a Quick-Init draft.
  *
- * ## Why this does NOT call `projects.create_project`
+ * The root stage is sent explicitly rather than left to the RPC's implicit one, which is always named
+ * "Delivery" and copies the project's brief. A pipeline's baseline is a per-ticket rate, so it prices
+ * the stage only; a one-off's is the whole escrow figure, so it is also the project budget.
+ */
+export function createProjectPayload(input: CreateProject): Record<string, unknown> {
+	const columns = createFormatToColumns(input.format, input.hasStages);
+	const descriptionHtml = plainTextToHtml(input.description);
+	return {
+		title: clamp(input.title.trim(), TITLE_MAX),
+		format: columns.format,
+		structure_variation: columns.structure,
+		...(descriptionHtml
+			? {
+				description: { html: descriptionHtml },
+				description_text: flattenRichText(descriptionHtml),
+			}
+			: {}),
+		currency: input.currency,
+		budget_type: "fixed_price",
+		budget_amount_cents: input.format === "one_off" ? input.baselineAmountCents : null,
+		stages: [{
+			name: ROOT_STAGE_NAME[input.format],
+			description: { html: "" },
+			description_text: "",
+			unit_price_cents: input.baselineAmountCents,
+		}],
+	};
+}
+
+/**
+ * Mint the draft, its root stage, that stage's room and the project-wide Discussion room in ONE
+ * transaction through `projects.create_project`.
  *
- * The RPC exists and is unusable for this flow, in three independent ways (it now hardcodes
- * `visibility = 'unlisted'`, which closed a fourth). It reads the row id out of its own payload with
- * no fallback, so `gen_random_uuid()` never fires and the insert has no id. It supplies neither `status` nor the budget
- * pair, so the row lands with no price. And its nested stage insert carries neither
- * `unit_price_cents` nor `milestone`, so the one figure the modal collected would be discarded on the
- * way in.
- *
- * A direct insert through the RLS-scoped client is what the sibling writes in this module already do,
- * and RLS permits it: `"Users can create projects"` is `WITH CHECK (auth.uid() = owner_user_id)`.
- *
- * ## There is no transaction across the two statements
- *
- * PostgREST gives one statement per request (module docblock), so the stage insert is a second
- * commit and can fail after the project row has landed. It is NOT compensated by deleting the
- * project: a delete is a destructive statement issued in response to a failure whose cause is
- * unknown, and if THAT fails the owner is left with a row nobody told them about. Instead the create
- * SUCCEEDS with the project, because the project is the thing the client is about to navigate to and
- * a stage-less draft is a legitimate, editable state the Stage-2 surface already renders — its stage
- * list is simply empty, and the setup ladder already exists to say so. The stage is a convenience,
- * not a correctness requirement, and it can be added by the one control that adds stages.
- *
- * ## The address is minted HERE, and retried here
- *
- * The slug used to be a parameter, threaded down from the service so the stub and live branches could
- * share one title-derived value. It is minted inside the insert now, because the retry has to be: a
- * collision is only knowable from `projects_slug_key` refusing the write, and by the time this
- * function has folded that error into a `WriteRefusal` the caller can no longer tell an unavailable
- * address from a genuine 422. `insertWithSlugRetry` re-mints and re-attempts while — and only while —
- * that specific index is the thing objecting; every other error is returned as itself.
+ * Any failure rolls the whole create back, so a project without its stage or rooms cannot exist. The
+ * RPC owns the row as `auth.uid()`, pins `status = 'draft'` / `visibility = 'unlisted'` (what
+ * `liveVisibilityFor("draft", …)` derives; `publish_visibility` keeps its `'public'` default, which is
+ * `CREATED_PUBLISH_VISIBILITY`), mints the opaque `prj-` slug and retries its own collisions.
  */
 export async function insertProject(
 	actor: ReadActor & { accessToken: string },
 	input: CreateProject,
 ): Promise<WriteOutcome<CreatedProject>> {
-	const db = projectsDb(actor);
-	const title = clamp(input.title.trim(), TITLE_MAX);
-	// The wizard's choice onto the stored pair, through the ONE mapping the setup form reads back
-	// with — a "Task" card mints `single_task`, an ordinary one-off `one_off`.
-	const columns = createFormatToColumns(input.format, input.hasStages);
-	// The one-line brief as the escaped paragraph the rich-text column stores; `""` stays a NULL
-	// body so an unwritten brief does not tick the description step off.
-	const descriptionHtml = plainTextToHtml(input.description);
-
-	const { data, error } = await insertWithSlugRetry("project", "projects_slug_key", (slug) =>
-		db
-			.from("projects")
-			.insert({
-				owner_user_id: actor.userId,
-				title,
-				slug,
-				// The identity map. `ProjectCreateFormat` was narrowed to the two members `project_format`
-				// also carries, so there is no bridge here to go stale.
-				format: columns.format,
-				structure_variation: columns.structure,
-				...(descriptionHtml
-					? { description: { html: descriptionHtml }, description_text: flattenRichText(descriptionHtml) }
-					: {}),
-				currency: input.currency,
-				// A draft that nobody can discover, deliberately: the cost of getting this default wrong is
-				// a half-written engagement on Explore, and the Rules section is where an owner opens it up.
-				//
-				// The pair is the two-column model in miniature. `visibility` is derived — and derived by
-				// the same function the update path promotes with, so the state a project is minted in and
-				// the state it is later reconciled to cannot come from two different rules. The INTENT is
-				// `public`, which is what somebody creating a project to hire against is asking for, and it
-				// is safe to default precisely because it is not yet in effect.
-				status: "draft",
-				visibility: liveVisibilityFor("draft", CREATED_PUBLISH_VISIBILITY),
-				publish_visibility: CREATED_PUBLISH_VISIBILITY,
-				budget_type: "fixed_price",
-				// The project-level budget is the ONE-OFF's whole escrow figure. A pipeline's baseline is a
-				// per-ticket RATE, which belongs on the stage below and would read as a project total here —
-				// so it is deliberately left null rather than copied into a column that means something else.
-				budget_amount_cents: input.format === "one_off" ? input.baselineAmountCents : null,
-			})
-			.select("id, slug")
-			.maybeSingle());
-
+	const { data, error } = await projectsDb(actor).rpc("create_project", {
+		payload: createProjectPayload(input),
+	});
 	if (error) return { refusal: refusalFrom(error.message, "title") };
-	// Under RLS an insert the policy refuses returns no row rather than raising, so the absence IS the
-	// refusal — reporting success here would tell the client to navigate to a project that never
-	// existed (the `notWritten` reasoning, on the one statement that has no id to select back).
-	if (!data) return { refusal: notWritten("title") };
-
-	const created = data as unknown as { id: string; slug: string };
-
-	// Through `create_stage` rather than a direct insert, because it provisions the stage's channel in
-	// the same transaction. A stage with no room is omitted from the channel tree, so a directly
-	// inserted one would be invisible in the sidebar that exists to show it.
-	const { error: stageError } = await db.rpc("create_stage", {
-		p_project_id: created.id,
-		p_name: ROOT_STAGE_NAME[input.format],
-		p_description: { html: "" },
-		p_description_text: "",
-		p_unit_price_cents: input.baselineAmountCents,
-	});
-	if (stageError) {
-		// Warned, not raised — see the docblock. The owner gets their project; the stage list is the one
-		// thing they arrive able to fix.
-		console.warn(
-			`[insertProject] project ${created.id} created without its root stage: ${stageError.message}`,
-		);
+	const created = CreatedProjectSchema.safeParse(data);
+	if (!created.success) {
+		return { refusal: refusalFrom("create_project returned no project", "title") };
 	}
-
-	// The project-wide room — what `/projects/{slug}/discussion` opens on every engagement that is not a
-	// Task. Nothing else provisions it on this path (`create_stage` opens only the stage's own rooms),
-	// so without this call a project created here has no discussion at all and the lane has no link to
-	// offer. Opened for a Task too: its discussion is its stage's room today, but a Task converted into
-	// a pipeline in settings needs the room the moment it becomes one. Through the definer RPC, which
-	// checks the caller's access to the `project_all` scope and dedupes, so a retry cannot mint two.
-	// Warned, not raised, for the root stage's reason: the project exists and is what the owner needs.
-	const { error: roomError } = await commsDb(actor).rpc("get_or_create_project_channel", {
-		p_project_id: created.id,
-		p_stage_id: null,
-		p_name: "Discussion",
-	});
-	if (roomError) {
-		console.warn(
-			`[insertProject] project ${created.id} created without its discussion room: ${roomError.message}`,
-		);
-	}
-
-	return { data: { id: created.id, slug: created.slug } };
+	return { data: created.data };
 }
 // #endregion
 
@@ -2789,14 +2718,60 @@ export async function insertProjectMessage(
 // #endregion
 
 // #region Submissions
+const SUBMISSION_FILE_UNKNOWN =
+	"One of the attached files no longer exists — remove it and submit again.";
+
+/**
+ * The refusal a submission write deserves, keyed on the review door's own sentences
+ * (`submit_deliverable` / `send_submission_draft` / `submission_files`); anything else falls through to
+ * {@link refusalFrom}.
+ */
+export function submissionRefusalFrom(message: string): WriteRefusal {
+	if (message.includes("That draft can no longer be submitted")) {
+		return {
+			status: 409,
+			message: "That draft can no longer be submitted.",
+			errors: { title: "not_draft" },
+		};
+	}
+	if (
+		message.includes("Only the ticket's assignee") ||
+		message.includes("You do not have access to submit")
+	) {
+		return {
+			status: 403,
+			message: clampOr(message, 200, "You cannot submit work on this ticket."),
+			errors: { ticketId: "not_permitted" },
+		};
+	}
+	if (message.includes("is not part of this stage")) {
+		return {
+			status: 422,
+			message: "That ticket is not part of this stage.",
+			errors: { ticketId: "ticket_not_in_stage" },
+		};
+	}
+	if (message.includes(SUBMISSION_FILE_UNKNOWN) || message.includes("fk_sub_file_item")) {
+		return { status: 422, message: SUBMISSION_FILE_UNKNOWN, errors: { fileIds: "file_unknown" } };
+	}
+	if (message.includes("is not your file to submit")) {
+		return {
+			status: 422,
+			message: clampOr(message, 200, "One of the attached files is not yours to submit."),
+			errors: { fileIds: "file_foreign" },
+		};
+	}
+	return refusalFrom(message, "title");
+}
+
 /**
  * Create one submission unit and return it as the explorer renders it.
  *
- * `submit` is the whole difference between two write paths. Sending for review goes through
- * `projects.submit_deliverable`, which numbers the submission, links its files and moves the ticket
- * into Review in one transaction. A DRAFT cannot use it — the function hard-codes `pending_review`,
- * which is a delivery claim the freelancer has not made — so a draft is a direct INSERT under the
- * caller's own policy.
+ * Anything bound for review goes through the database's review door, which checks the caller is the
+ * ticket's assignee (or on the stage's team), validates every file, resolves open revision rounds and
+ * moves the ticket into Review in one transaction: `projects.submit_deliverable` for a new submission,
+ * `projects.send_submission_draft` for a draft that already exists. Saving a DRAFT is a direct INSERT
+ * under the caller's own policy, because a draft is not yet a delivery claim.
  *
  * `projects.stage_submissions.ticket_id` is `NOT NULL`, so a submission with no ticket is not
  * representable at all. It is refused with a field error rather than being attached to an arbitrary
@@ -2818,56 +2793,42 @@ export async function insertSubmission(
 	}
 	if (!UUID_RE.test(input.stageId)) return null;
 
+	if (input.fileIds.some((id) => !UUID_RE.test(id))) {
+		return { refusal: submissionRefusalFrom(SUBMISSION_FILE_UNKNOWN) };
+	}
+
 	const db = projectsDb(actor);
 	const html = clamp(input.description, RICH_TEXT_MAX);
-	const fileIds = input.fileIds.filter((id) => UUID_RE.test(id));
+	const fileIds = [...new Set(input.fileIds)];
 	const title = clampOr(input.title, 200, "Submission");
 
 	let submissionId: string | null = null;
 	let status: string = input.submit ? "pending_review" : "draft";
+	let fileCount = fileIds.length;
 
-	if (input.submit && input.submissionId && UUID_RE.test(input.submissionId)) {
-		// SENDING an existing draft — a status transition, not a create. `submit_deliverable` always
-		// inserts, so routing here through it would file the same delivery a second time; the policy
-		// (`Submit own draft submissions`) bounds this to the caller's own row while it is still a draft
-		// and to `pending_review` as the only reachable post-image.
-		const { data, error } = await db
-			.from("stage_submissions")
-			.update({ status: "pending_review", checked_item_ids: input.checkedItemIds })
-			.eq("id", input.submissionId)
-			.select("id")
-			.maybeSingle();
-		if (error) return { refusal: refusalFrom(error.message, "title") };
-		// No row came back: the draft is gone, already sent, or was never the caller's. RLS reports all
-		// three the same way, so it is refused rather than guessed at.
-		if (!data) {
-			return {
-				refusal: {
-					status: 409,
-					message: "That draft can no longer be submitted.",
-					errors: { title: "not_draft" },
-				},
-			};
-		}
-		submissionId = input.submissionId;
-		if (fileIds.length > 0) {
-			await db.from("submission_files").insert(
-				fileIds.map((fileId) => ({ submission_id: submissionId, file_id: fileId })),
-			);
-		}
-	} else if (input.submit) {
-		const { data, error } = await db.rpc("submit_deliverable", {
-			p_ticket_id: input.ticketId,
-			p_stage_id: input.stageId,
-			p_title: title,
-			p_description: { html },
-			p_checked_item_ids: input.checkedItemIds,
-			p_file_ids: fileIds,
-		});
-		if (error) return { refusal: refusalFrom(error.message, "title") };
-		const payload = data as { id?: string; status?: string } | null;
+	if (input.submit) {
+		// A named draft is SENT, never re-filed: `submit_deliverable` always inserts, so routing a draft
+		// through it would file the same delivery twice.
+		const sending = input.submissionId !== null && UUID_RE.test(input.submissionId);
+		const { data, error } = sending
+			? await db.rpc("send_submission_draft", {
+				p_submission_id: input.submissionId,
+				p_checked_item_ids: input.checkedItemIds,
+				p_file_ids: fileIds,
+			})
+			: await db.rpc("submit_deliverable", {
+				p_ticket_id: input.ticketId,
+				p_stage_id: input.stageId,
+				p_title: title,
+				p_description: { html },
+				p_checked_item_ids: input.checkedItemIds,
+				p_file_ids: fileIds,
+			});
+		if (error) return { refusal: submissionRefusalFrom(error.message) };
+		const payload = data as { id?: string; status?: string; files?: unknown[] } | null;
 		submissionId = payload?.id ?? null;
 		status = payload?.status ?? "pending_review";
+		fileCount = Array.isArray(payload?.files) ? payload.files.length : fileCount;
 	} else {
 		const { data, error } = await db
 			.from("stage_submissions")
@@ -2887,9 +2848,10 @@ export async function insertSubmission(
 		if (error) return { refusal: refusalFrom(error.message, "title") };
 		submissionId = (data as { id?: string } | null)?.id ?? null;
 		if (submissionId && fileIds.length > 0) {
-			await db.from("submission_files").insert(
+			const { error: attachError } = await db.from("submission_files").insert(
 				fileIds.map((fileId) => ({ submission_id: submissionId, file_id: fileId })),
 			);
+			if (attachError) return { refusal: submissionRefusalFrom(attachError.message) };
 		}
 	}
 
@@ -2924,7 +2886,7 @@ export async function insertSubmission(
 			ticketTitle: null,
 			createdAt,
 			dateLabel: dayLabel(createdAt, now),
-			fileCount: fileIds.length,
+			fileCount,
 			noteCount: 0,
 			paidRevision: false,
 		},

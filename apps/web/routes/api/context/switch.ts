@@ -4,9 +4,11 @@ import { SwitchContextInputSchema } from "@projective/types/workspace";
 import {
 	guestRefusal,
 	invalidPayload,
+	toWorkspaceBody,
 	toWorkspaceResponse,
 } from "@features/workspaces/core/respond.ts";
 import { resolveRequestContext } from "@web/utils/user-context.ts";
+import { respondWithReissuedSession } from "@web/utils/session.ts";
 import { canReadLive } from "@server/services/read-actor.ts";
 import { ContextBackendService } from "@server/services/context/ContextBackendService.ts";
 
@@ -17,10 +19,12 @@ import { ContextBackendService } from "@server/services/context/ContextBackendSe
  * acting identity at a time is a schema invariant, not a UI convention). `contextId` is the entity's row
  * id; `null` returns to acting personally.
  *
- * **This route is only step one of three.** The acting context is stamped into the access token by the
- * GoTrue custom access-token hook, not read per request, so on its own a successful switch changes nothing
- * the browser can see. The caller MUST follow with `POST /api/auth/refresh` and then a **hard**
- * navigation; `useContextSwitch` owns that sequence and is the only sanctioned caller.
+ * **The route re-issues the session itself.** The acting context is stamped into the access token by the
+ * GoTrue custom access-token hook, not read per request, so a switch alone changes nothing the browser
+ * can see. After a successful switch the route renews the session server-side and mints the rotated
+ * cookies onto this response ({@link respondWithReissuedSession}); if that renewal fails the old cookies
+ * stay and the body says `claimsStale: true`. The caller still owes a **hard** navigation, which
+ * `useContextSwitch` owns.
  *
  * It lives at `/api/context/*` rather than under `/api/workspace/*` because the acting context is a
  * session-wide concern (it also drives the header account popover, the sidebar's gating and every
@@ -42,6 +46,7 @@ export const handler = define.handlers({
 			context,
 			accessToken: actor.accessToken,
 		});
-		return toWorkspaceResponse(result);
+		if (!result.ok) return toWorkspaceResponse(result);
+		return respondWithReissuedSession(ctx.req, toWorkspaceBody(result), result.status);
 	},
 });

@@ -6,26 +6,32 @@
  * `sb-refresh-token` HttpOnly cookies (the names the `(dashboard)` middleware checks) rather than
  * leaning on any client library's storage keys, so password, OTP, and OAuth flows all converge on
  * one session representation. Tokens are HttpOnly — never readable from JS, never in a JSON body.
+ *
+ * Every builder takes the request it answers: `Secure` follows the scheme the browser actually used
+ * ({@link isSecureRequest}), and a renewal keeps the lifetime the sign-in chose ({@link SessionTokens}
+ * `remember`, carried between requests by {@link SESSION_TRANSIENT_COOKIE}).
  */
+
+import type { SessionTokens } from "@server/services/ServiceResult.ts";
+
+export type { SessionTokens };
 
 /** Canonical session cookie names (checked by `routes/(dashboard)/_middleware.ts`). */
 export const SB_ACCESS_COOKIE = "sb-access-token";
 export const SB_REFRESH_COOKIE = "sb-refresh-token";
 
-/** Refresh-token lifetime (30 days) — the access token is short-lived and refreshed against it. */
+/**
+ * Present (HttpOnly, browser-session lifetime) while the signed-in session was started WITHOUT "Keep
+ * me signed in". Its absence means a remembered session, so sessions minted before it existed keep
+ * their 30-day refresh cookie.
+ */
+export const SESSION_TRANSIENT_COOKIE = "pj_session_transient";
+
+/** Refresh-token lifetime for a remembered session (30 days). */
 const REFRESH_MAX_AGE = 60 * 60 * 24 * 30;
 /** Fallback access-token lifetime when GoTrue doesn't report `expires_in` (1 hour). */
 const DEFAULT_ACCESS_MAX_AGE = 3600;
 
-/** The GoTrue tokens a successful auth yields. */
-export interface SessionTokens {
-	accessToken: string;
-	refreshToken: string;
-	/** Seconds until the access token expires. */
-	expiresIn?: number;
-}
-
-/** Whether we're in a production deployment (drives the `Secure` cookie attribute). */
 function isProduction(): boolean {
 	try {
 		const env = (Deno.env.get("DENO_ENV") ?? "").toLowerCase();
@@ -35,21 +41,55 @@ function isProduction(): boolean {
 	}
 }
 
-function attributes(maxAge: number): string {
-	const base = `Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
-	return isProduction() ? `${base}; Secure` : base;
+/**
+ * Whether cookies minted for this request must carry `Secure`: always in production, otherwise
+ * whenever the browser reached us over HTTPS — directly, or through a TLS-terminating proxy that
+ * reports it in `X-Forwarded-Proto` (first hop wins). Plain `http://localhost` stays insecure.
+ */
+export function isSecureRequest(req: Request): boolean {
+	if (isProduction()) return true;
+	if (new URL(req.url).protocol === "https:") return true;
+	const forwarded = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim().toLowerCase();
+	return forwarded === "https";
 }
 
-/** Build the `Set-Cookie` strings that establish a session. */
-export function sessionSetCookies(tokens: SessionTokens): string[] {
-	return [
+/**
+ * Whether the request belongs to a remembered session (no {@link SESSION_TRANSIENT_COOKIE}) — the
+ * lifetime a renewal re-mints when the tokens themselves don't say.
+ */
+export function isRememberedSession(req: Request): boolean {
+	return !readCookies(req)[SESSION_TRANSIENT_COOKIE];
+}
+
+function attributes(secure: boolean, maxAge: number | null): string {
+	const base = "Path=/; HttpOnly; SameSite=Lax";
+	const lifetime = maxAge === null ? base : `${base}; Max-Age=${maxAge}`;
+	return secure ? `${lifetime}; Secure` : lifetime;
+}
+
+/**
+ * Build the `Set-Cookie` strings that establish (or renew) a session. A remembered session's refresh
+ * cookie lives 30 days; otherwise it has no `Max-Age` and ends with the browser session, and the
+ * transient flag is set beside it so the next renewal keeps it that way. `tokens.remember` decides
+ * when present; a renewal leaves it unset and inherits the request's choice.
+ */
+export function sessionSetCookies(req: Request, tokens: SessionTokens): string[] {
+	const secure = isSecureRequest(req);
+	const remember = tokens.remember ?? isRememberedSession(req);
+	const cookies = [
 		`${SB_ACCESS_COOKIE}=${encodeURIComponent(tokens.accessToken)}; ${
-			attributes(tokens.expiresIn ?? DEFAULT_ACCESS_MAX_AGE)
+			attributes(secure, tokens.expiresIn ?? DEFAULT_ACCESS_MAX_AGE)
 		}`,
 		`${SB_REFRESH_COOKIE}=${encodeURIComponent(tokens.refreshToken)}; ${
-			attributes(REFRESH_MAX_AGE)
+			attributes(secure, remember ? REFRESH_MAX_AGE : null)
 		}`,
 	];
+	if (!remember) {
+		cookies.push(`${SESSION_TRANSIENT_COOKIE}=1; ${attributes(secure, null)}`);
+	} else if (!isRememberedSession(req)) {
+		cookies.push(`${SESSION_TRANSIENT_COOKIE}=; ${attributes(secure, 0)}`);
+	}
+	return cookies;
 }
 
 /**
@@ -60,19 +100,28 @@ export function sessionSetCookies(tokens: SessionTokens): string[] {
 export const PENDING_VERIFICATION_COOKIE = "pj_pending_verification";
 
 /** Build the `Set-Cookie` string that stores a pending-verification token for `maxAge` seconds. */
-export function pendingVerificationSetCookie(token: string, maxAge: number): string {
+export function pendingVerificationSetCookie(
+	req: Request,
+	token: string,
+	maxAge: number,
+): string {
 	const base = `${PENDING_VERIFICATION_COOKIE}=${
 		encodeURIComponent(token)
 	}; Path=/api/auth; HttpOnly; SameSite=Strict; Max-Age=${maxAge}`;
-	return isProduction() ? `${base}; Secure` : base;
+	return isSecureRequest(req) ? `${base}; Secure` : base;
 }
 
-/** Build the `Set-Cookie` strings that clear a session (sign-out). */
-export function sessionClearCookies(): string[] {
-	return [
-		`${SB_ACCESS_COOKIE}=; ${attributes(0)}`,
-		`${SB_REFRESH_COOKIE}=; ${attributes(0)}`,
+/** Build the `Set-Cookie` strings that clear a session (sign-out), its transient flag included. */
+export function sessionClearCookies(req: Request): string[] {
+	const secure = isSecureRequest(req);
+	const cookies = [
+		`${SB_ACCESS_COOKIE}=; ${attributes(secure, 0)}`,
+		`${SB_REFRESH_COOKIE}=; ${attributes(secure, 0)}`,
 	];
+	if (!isRememberedSession(req)) {
+		cookies.push(`${SESSION_TRANSIENT_COOKIE}=; ${attributes(secure, 0)}`);
+	}
+	return cookies;
 }
 
 /**
@@ -81,29 +130,16 @@ export function sessionClearCookies(): string[] {
  * clears (`Max-Age=0`); present values are set with `maxAge`. HttpOnly + Lax like the session cookies.
  */
 export function oauthStoreCookies(
+	req: Request,
 	diff: Array<{ key: string; value: string | null }>,
 	maxAge: number,
 ): string[] {
+	const secure = isSecureRequest(req);
 	return diff.map(({ key, value }) =>
 		value === null
-			? `${key}=; ${attributes(0)}`
-			: `${key}=${encodeURIComponent(value)}; ${attributes(maxAge)}`
+			? `${key}=; ${attributes(secure, 0)}`
+			: `${key}=${encodeURIComponent(value)}; ${attributes(secure, maxAge)}`
 	);
-}
-
-/**
- * Whether the request carries a session (presence of the access-token cookie). This is a **skeleton**
- * signal — it does NOT verify the JWT, so it may only decide chrome (guest vs user shell) and MUST NOT
- * grant access on its own; the `(dashboard)` guard + RLS remain the real gates. Real verification via
- * `@server/services` is the TODO (SYSTEM_ARCHITECTURE §Security).
- *
- * NOTE (flagged inconsistency): the real session cookie is {@link SB_ACCESS_COOKIE} (`sb-access-token`,
- * set by {@link sessionSetCookies}). `storage-keys.ts` `CookieKeys.AUTH_SESSION_TOKEN` documents a
- * different name (`pj_auth_session`) that nothing sets — see root CLAUDE.md §8 #14. This helper keys
- * off the cookie actually written, so it stays consistent with the dashboard guard.
- */
-export function hasSessionCookie(req: Request): boolean {
-	return Boolean(readCookies(req)[SB_ACCESS_COOKIE]);
 }
 
 /** Parse a request's `Cookie` header into a plain record. */

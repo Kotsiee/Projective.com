@@ -9,6 +9,11 @@ import {
 } from "../../core/supabase.ts";
 import { serverEnv } from "../../core/env.ts";
 import {
+	type AccessTokenVerifier,
+	createAccessTokenVerifier,
+	jwksUrlFor,
+} from "../../core/access-token.ts";
+import {
 	mintPendingVerification,
 	pendingVerificationKey,
 } from "../../core/pending-verification.ts";
@@ -18,11 +23,13 @@ import {
 	type VerificationPollInput,
 	verificationPollLimiter,
 } from "./verification-status.ts";
+import { refreshFailure, SESSION_EXPIRED_MESSAGE } from "./refresh-outcome.ts";
 import type { CreateOrganisation } from "@projective/types/org";
 import {
 	AGE_SQLSTATE,
 	bracketFromDob,
 	isJoinable,
+	UNDER_MINIMUM_REASON,
 	UNDER_MINIMUM_REFUSAL,
 } from "@projective/types/auth";
 
@@ -153,10 +160,16 @@ export interface ProvisionIndividualInput {
 	lastName: string;
 	username: string;
 	dob: string;
+	/** The browser's IANA zone: the profile's `timezone`, and the zone its birthdays are counted in. */
+	timeZone?: string;
 	intent: "client" | "freelancer";
 	skills?: string[];
 	/** The onboarding "purpose" tags → `org.users_public.interests`. */
 	interests?: string[];
+	/** A supported browser locale → `org.user_preferences.locale` (Decision #207). */
+	locale?: string;
+	/** An offerable display currency → `org.user_preferences.preferred_display_currency`. */
+	displayCurrency?: string;
 	/** Server-sanitised return path. */
 	redirectTo: string;
 }
@@ -166,6 +179,10 @@ export interface ProvisionOrganisationInput {
 	type: "organization";
 	corporateEmail: string;
 	password: string;
+	/** The owner's supported browser locale → their `org.user_preferences.locale` (Decision #207). */
+	locale?: string;
+	/** An offerable display currency → the owner's `org.user_preferences.preferred_display_currency`. */
+	displayCurrency?: string;
 	/**
 	 * The validated organisation to provision (the {@link CreateOrganisation} SSOT shape from
 	 * `@projective/types`). The live path admin-creates the owner identity, then inserts it into
@@ -185,6 +202,7 @@ export interface AuthenticateInput {
 	/** An email address OR a username — the service tells them apart and resolves the latter. */
 	identifier: string;
 	password: string;
+	/** "Keep me signed in": `false` (the default) ends the session with the browser session. */
 	remember?: boolean;
 	redirectTo: string;
 }
@@ -237,6 +255,32 @@ export interface AuthPayload {
 	 */
 	verificationSent?: boolean;
 }
+
+/** The outcome of {@link AuthBackendService.verifyAccessToken} that admits the token. */
+export interface AccessTokenCheck {
+	/** `true` when the signature was checked; `false` when a dev stub session is trusted by presence. */
+	verified: boolean;
+}
+// #endregion
+
+// #region Access-token verification
+const SESSION_UNAVAILABLE_MESSAGE =
+	"We couldn't check your session right now. Try again in a moment.";
+
+let verifier: { config: string; instance: AccessTokenVerifier } | null = null;
+
+function projectVerifier(): AccessTokenVerifier {
+	const { supabaseUrl, supabaseJwtSecret } = serverEnv();
+	const jwksUrl = supabaseUrl ? jwksUrlFor(supabaseUrl) : undefined;
+	const config = `${jwksUrl ?? ""}\n${supabaseJwtSecret ?? ""}`;
+	if (verifier?.config !== config) {
+		verifier = {
+			config,
+			instance: createAccessTokenVerifier({ jwksUrl, hsSecret: supabaseJwtSecret }),
+		};
+	}
+	return verifier.instance;
+}
 // #endregion
 
 /** Sentinel code the MVP stubs treat as the deterministic failure path. */
@@ -271,11 +315,39 @@ export class AuthBackendService {
 	 * Stub path (default): reports `requiresVerification: true` and a simulated send without touching
 	 * Supabase.
 	 */
+	/**
+	 * Refuse an under-13 date of birth and keep nothing (Decision #208). An email sign-up has written
+	 * nothing yet; an OAuth sign-up's identity already exists, so it is deleted through
+	 * `public.discard_underage_signup` — the caller's own, profile-less identity only. The refusal
+	 * carries {@link UNDER_MINIMUM_REASON} (the route locks this browser session) and whether the
+	 * identity went (the route then clears its session cookies). Nothing about the person is logged.
+	 */
+	static async refuseUnderMinimum(
+		input: Pick<ProvisionIndividualInput, "oauth" | "accessToken" | "dob" | "timeZone">,
+	): Promise<ServiceResult<AuthPayload>> {
+		let discarded = false;
+		if (input.oauth && input.accessToken && isAuthBackendLive()) {
+			const { data, error } = await getUserClient(input.accessToken).rpc("discard_underage_signup", {
+				p_dob: input.dob,
+				p_zone: input.timeZone ?? null,
+			});
+			if (error) {
+				console.error("[auth:discard-underage]", error.code);
+				return fail(503, { message: "We couldn't finish this just now. Please try again in a moment." });
+			}
+			discarded = data === true;
+		}
+		return fail(422, {
+			errors: { dob: UNDER_MINIMUM_REFUSAL },
+			details: { reason: UNDER_MINIMUM_REASON, discarded },
+		});
+	}
+
 	static async provisionAccount(input: ProvisionAccountInput): Promise<ServiceResult<AuthPayload>> {
 		if (input.type === "individual") {
 			// Age-gate is re-derived server-side; the client's `restricted` flag is never trusted.
-			if (!isJoinable(bracketFromDob(input.dob))) {
-				return fail(422, { errors: { dob: UNDER_MINIMUM_REFUSAL } });
+			if (!isJoinable(bracketFromDob(input.dob, input.timeZone))) {
+				return AuthBackendService.refuseUnderMinimum(input);
 			}
 			// Password is required unless this is an SSO/OAuth signup (which sets its own credential).
 			if (!input.oauth && (!input.password || input.password.length < 8)) {
@@ -298,7 +370,11 @@ export class AuthBackendService {
 					email: input.corporateEmail,
 					password: input.password,
 					email_confirm: false,
-					user_metadata: { objective: "organization" },
+					user_metadata: {
+						objective: "organization",
+						locale: input.locale ?? null,
+						display_currency: input.displayCurrency ?? null,
+					},
 				});
 				if (error || !created?.user) {
 					return fail(422, {
@@ -328,9 +404,12 @@ export class AuthBackendService {
 				last_name: input.lastName,
 				username: input.username,
 				dob: input.dob,
+				timezone: input.timeZone ?? null,
 				objective: input.intent === "freelancer" ? "freelancer" : "client",
 				skills: input.skills ?? [],
 				interests: input.interests ?? [],
+				locale: input.locale ?? null,
+				display_currency: input.displayCurrency ?? null,
 			};
 
 			if (input.oauth) {
@@ -340,7 +419,7 @@ export class AuthBackendService {
 				const user = getUserClient(input.accessToken);
 				const { error } = await user.rpc("complete_onboarding", { p_payload: meta });
 				if (error?.code === AGE_SQLSTATE.underMinimum) {
-					return fail(422, { errors: { dob: UNDER_MINIMUM_REFUSAL } });
+					return AuthBackendService.refuseUnderMinimum(input);
 				}
 				if (error) {
 					return fail(422, {
@@ -480,9 +559,10 @@ export class AuthBackendService {
 				}
 				return fail(401, { message: INVALID_CREDENTIALS });
 			}
+			const session = toSession(data.session);
 			return ok(
 				{ requiresVerification: false, redirectTo: input.redirectTo },
-				{ session: toSession(data.session) },
+				{ session: session && { ...session, remember: input.remember ?? false } },
 			);
 		} catch (e) {
 			return fail(500, { message: e instanceof Error ? e.message : "Sign-in failed." });
@@ -512,6 +592,31 @@ export class AuthBackendService {
 	}
 
 	/**
+	 * Verify a presented access token locally — signature (project JWKS, or HS256 with
+	 * `SUPABASE_JWT_SECRET`), expiry, and that it is a signed-in user's session token
+	 * (`core/access-token.ts`). No GoTrue round trip on the common path: the JWKS is cached.
+	 *
+	 * `ok` with `verified: true` → trust it. `401` → refused (tampered, expired, foreign, or no key to
+	 * check it with). `503` → the keys could not be obtained; nothing is known about the token.
+	 *
+	 * Stub (auth backend not live, outside production): `ok` with `verified: false` — there is no
+	 * issuer to verify against, and the stub and `dev:mock` sessions are opaque or hand-made tokens, so
+	 * presence is all there is. Production always verifies, whatever the gate says.
+	 */
+	static async verifyAccessToken(token: string): Promise<ServiceResult<AccessTokenCheck>> {
+		if (!token) return fail(401, { message: SESSION_EXPIRED_MESSAGE });
+		if (!isAuthBackendLive() && serverEnv().appEnv !== "production") {
+			return ok({ verified: false });
+		}
+		const verdict = await projectVerifier().verify(token);
+		if (verdict.status === "valid") return ok({ verified: true });
+		if (verdict.status === "unavailable") {
+			return fail(503, { message: SESSION_UNAVAILABLE_MESSAGE });
+		}
+		return fail(401, { message: SESSION_EXPIRED_MESSAGE, details: { reason: verdict.reason } });
+	}
+
+	/**
 	 * Renew a session from its refresh token — the previously-missing half of the session lifecycle.
 	 *
 	 * The access token is short-lived (~1h; GoTrue's `expires_in`) while the refresh token lives 30
@@ -521,15 +626,16 @@ export class AuthBackendService {
 	 * success the caller mints fresh `sb-*` cookies from the returned {@link SessionTokens}.
 	 *
 	 * Live (`AUTH_BACKEND_LIVE=true`): GoTrue `refreshSession({ refresh_token })` → rotated tokens; a
-	 * spent/revoked refresh token yields a 401 so the caller clears the session and bounces to sign-in.
-	 * Stub (default): re-mints the (opaque) session so the silent-refresh path is exercisable without a
-	 * wired GoTrue. It grants **no access** — RLS + the `(dashboard)` guard remain the real gates — and
+	 * spent/revoked refresh token yields a 401 so the caller clears the session and bounces to sign-in,
+	 * while an unreachable or failing GoTrue yields a 503 and the caller keeps the cookies
+	 * ({@link refreshFailure}). Stub (default): re-mints the (opaque) session so the silent-refresh
+	 * path is exercisable without a wired GoTrue. It grants **no access** — RLS + the `(dashboard)` guard remain the real gates — and
 	 * is only ever reached when a `sb-refresh-token` cookie is actually presented (the stub sign-in
 	 * sets none), so a normal dev session never triggers it.
 	 */
 	static async refreshSession(refreshToken: string): Promise<ServiceResult<AuthPayload>> {
 		if (!refreshToken) {
-			return fail(401, { message: "Your session has expired. Please sign in again." });
+			return fail(401, { message: SESSION_EXPIRED_MESSAGE });
 		}
 		if (!isAuthBackendLive()) {
 			return ok({}, {
@@ -540,12 +646,11 @@ export class AuthBackendService {
 			const anon = getAnonClient();
 			const { data, error } = await anon.auth.refreshSession({ refresh_token: refreshToken });
 			const session = toSession(data?.session);
-			if (error || !session) {
-				return fail(401, { message: "Your session has expired. Please sign in again." });
-			}
+			if (error || !session) return refreshFailure(error);
 			return ok({}, { session });
 		} catch (e) {
-			return fail(500, { message: e instanceof Error ? e.message : "Session refresh failed." });
+			console.error("[auth:refresh]", e instanceof Error ? e.message : e);
+			return refreshFailure(e);
 		}
 	}
 

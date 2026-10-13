@@ -57,16 +57,30 @@ export type InboundPaymentPurpose = z.infer<typeof InboundPaymentPurpose>;
 /**
  * `finance.inbound_payment_status` — the lifecycle of money entering from an external instrument.
  * `succeeded` is written by the signed webhook ONLY: a browser's "payment confirmed" is a claim, the
- * `payment_intent.succeeded` event is the fact.
+ * `payment_intent.succeeded` event is the fact. `settled_unapplied` is the same fact for a payment
+ * whose escrow lock or checkout order was refused after the credit: the money is in the wallet's
+ * ledger, the purpose was not applied (Decision #200).
  */
 export const InboundPaymentStatus = z.enum([
 	"requires_payment",
 	"processing",
 	"succeeded",
+	"settled_unapplied",
 	"failed",
 	"canceled",
 ]);
 export type InboundPaymentStatus = z.infer<typeof InboundPaymentStatus>;
+
+/** The statuses of a payment whose money arrived and is credited to its wallet (one ledger row each). */
+export const SETTLED_PAYMENT_STATUSES: readonly InboundPaymentStatus[] = [
+	"succeeded",
+	"settled_unapplied",
+];
+
+/** Whether a payment's money has landed in its wallet — `succeeded` or `settled_unapplied`. */
+export function isSettledPaymentStatus(status: InboundPaymentStatus | null | undefined): boolean {
+	return status === "succeeded" || status === "settled_unapplied";
+}
 
 /**
  * `finance.inbound_payments.lock_status` — for an `escrow_lock` payment, whether the settled money
@@ -103,6 +117,8 @@ export const InboundPaymentSchema = z.object({
 	projectStageId: uuid.nullable(),
 	/** The ONE ticket an `escrow_lock` funds (Decision #166); `null` funds the whole stage. */
 	ticketId: uuid.nullable().optional(),
+	/** The paid revision round an `escrow_lock` pays for (Decision #199); `null` for every other lock. */
+	revisionId: uuid.nullable().optional(),
 	amountCents: minorUnitsPositive,
 	currency,
 	amountReceivedCents: minorUnitsNonNeg.nullable(),
@@ -126,6 +142,8 @@ export const InboundPaymentSchema = z.object({
 	orderId: uuid.nullable().optional(),
 	/** Why the settling webhook could not place the order; the money stays in the wallet. */
 	orderError: z.string().max(400).nullable().optional(),
+	/** Why a `settled_unapplied` payment's lock or order was not applied; `null` on every other status. */
+	unappliedReason: z.string().max(400).nullable().optional(),
 	createdAt: timestamp,
 	updatedAt: timestamp,
 	succeededAt: timestamp.nullable(),
@@ -148,6 +166,47 @@ export const CreateEscrowLockIntentSchema = z.object({
 	idempotencyKey: attemptKey,
 });
 export type CreateEscrowLockIntent = z.infer<typeof CreateEscrowLockIntentSchema>;
+
+/**
+ * What funding one stage takes, for the payer about to fund it (`projects.get_stage_funding_quote`,
+ * Decision #197): the stage's unfunded tickets at their prices — claimed or not — and the wallet it is
+ * paid from with that wallet's balance, so the surface offers the wallet when it covers the stage and a
+ * card when it does not. Amounts are in the project's currency, never re-converted; `fund_stage` and
+ * `begin_card_payment` re-check everything.
+ */
+export const StageFundingQuoteSchema = z.object({
+	/** The project's row id — what the card intent names; never routed (Decision #88). */
+	projectId: uuid,
+	stageId: uuid,
+	stageName: z.string().max(120),
+	/** `project_stages.status` as stored. */
+	stageStatus: z.string().max(20),
+	/** Open, assigned or in progress — the statuses a stage can be funded in. */
+	fundable: z.boolean(),
+	ticketCount: z.number().int().min(0),
+	/** Tickets with no price; while any remain the stage cannot be funded. */
+	unpricedCount: z.number().int().min(0),
+	amountMinor: minorUnitsNonNeg,
+	currency,
+	/** The wallet the escrow is held from: the client business's, else the owner's own. */
+	payer: z.object({ scope: z.enum(["business", "personal"]), id: uuid }),
+	walletBalanceMinor: z.number().int(),
+});
+export type StageFundingQuote = z.infer<typeof StageFundingQuoteSchema>;
+
+/** Why a stage with unpriced tickets cannot be funded yet — one sentence for every surface that says so. */
+export function unpricedTicketsSentence(count: number): string {
+	return count === 1
+		? "A ticket in this stage has no price yet — price it before funding the stage."
+		: `${count} tickets in this stage have no price yet — price them before funding the stage.`;
+}
+
+/** `GET /api/finance/escrow/quote` — the project's `prj-…` slug and the stage's `stg-…` slug (or row id). */
+export const StageFundingQuoteQuerySchema = z.object({
+	project: z.string().min(1).max(64),
+	stage: z.string().min(1).max(80),
+});
+export type StageFundingQuoteQuery = z.infer<typeof StageFundingQuoteQuerySchema>;
 
 /** Top a wallet up by card. The wallet's own currency is the only currency it can be paid in. */
 export const CreateTopUpIntentSchema = z.object({
@@ -185,6 +244,36 @@ export const CardPaymentHandoffSchema = z.object({
 	confirmation: z.enum(["collect", "authenticate", "none"]).default("collect"),
 });
 export type CardPaymentHandoff = z.infer<typeof CardPaymentHandoffSchema>;
+
+/** How a client pays for a paid revision round directly (Decision #199). */
+export const PaidRevisionFundingMethod = z.enum(["wallet", "card"]);
+export type PaidRevisionFundingMethod = z.infer<typeof PaidRevisionFundingMethod>;
+
+/**
+ * Pay for ONE paid revision round (Decision #167) straight from the review, not through a basket
+ * (Decision #199): `wallet` holds the round's escrow from the payer's Available balance through
+ * `projects.fund_paid_revision`; `card` starts a PaymentIntent (`finance.begin_card_payment` revision
+ * mode) that the signed webhook settles into the same function. The project and stage are the route's
+ * address; the amount is the round's snapshot, and `expectedAmountMinor` is what the payer was SHOWN.
+ */
+export const FundPaidRevisionSchema = z.object({
+	projectId: z.string().min(1).max(120),
+	stageId: z.string().min(1).max(120),
+	submissionId: uuid,
+	revisionId: uuid,
+	method: PaidRevisionFundingMethod,
+	expectedAmountMinor: minorUnitsPositive,
+	currency,
+	idempotencyKey: attemptKey,
+});
+export type FundPaidRevision = z.infer<typeof FundPaidRevisionSchema>;
+
+/** The answer: the round opened from the wallet, or the card handoff the Payment Element confirms. */
+export const PaidRevisionFundingSchema = z.discriminatedUnion("method", [
+	z.object({ method: z.literal("wallet"), revisionId: uuid, escrowId: uuid.nullable() }),
+	z.object({ method: z.literal("card"), revisionId: uuid, handoff: CardPaymentHandoffSchema }),
+]);
+export type PaidRevisionFunding = z.infer<typeof PaidRevisionFundingSchema>;
 // #endregion
 
 // #region Payout accounts — Stripe Connect (finance.payout_accounts)
@@ -221,15 +310,25 @@ export type PayoutAccount = z.infer<typeof PayoutAccountSchema>;
 /**
  * `finance.payout_status` — the in-flight lifecycle of a withdrawal, member for member with the
  * Postgres enum (spelled `cancelled`, unlike the processor-facing `canceled` of
- * {@link InboundPaymentStatus}, because the column predates this module).
+ * {@link InboundPaymentStatus}, because the column predates this module). `reversed`: sent, then
+ * wholly reversed by the platform and returned to the wallet (Decision #202).
  */
-export const PayoutStatus = z.enum(["pending", "paid", "failed", "cancelled"]);
+export const PayoutStatus = z.enum(["pending", "paid", "failed", "cancelled", "reversed"]);
 export type PayoutStatus = z.infer<typeof PayoutStatus>;
+
+/**
+ * The connected account's own payout to the bank (`finance.payouts.bank_status`, from Connect
+ * `payout.paid` / `payout.failed`). `null` until Stripe reports it.
+ */
+export const BankPayoutStatus = z.enum(["paid", "failed"]);
+export type BankPayoutStatus = z.infer<typeof BankPayoutStatus>;
 
 /**
  * A row of `finance.payouts` — one attempt to move money OUT of a wallet, the twin of
  * {@link InboundPaymentSchema}. `providerRef` is the Stripe Transfer id the `transfer.created` webhook
- * binds; `transactionId` is the ledger debit, `null` while in flight and forever on a failure.
+ * binds; `transactionId` is the ledger debit. After the transfer (Decision #202): `reversedCents` is
+ * what `transfer.reversed` has returned to the wallet, and `bankStatus` is the connected account's
+ * onward payout to the bank.
  */
 export const PayoutSchema = z.object({
 	id: uuid,
@@ -247,6 +346,18 @@ export const PayoutSchema = z.object({
 	initiatedAt: timestamp,
 	settledAt: timestamp.nullable(),
 	createdAt: timestamp,
+	/** The connected account (`acct_…`) the transfer goes to; `null` on rows from before it was recorded. */
+	destinationAccount: z.string().max(255).nullable(),
+	reversedCents: minorUnitsNonNeg,
+	bankStatus: BankPayoutStatus.nullable(),
+	/** The connected account's Stripe Payout id (`po_…`). */
+	bankPayoutRef: z.string().max(255).nullable(),
+	/** Stripe's failure CODE for a failed bank payout (`account_closed`, …) — never its prose. */
+	bankFailureCode: z.string().max(80).nullable(),
+	bankStatusAt: timestamp.nullable(),
+	/** The stale-payout sweep's lease and attempt count (`finance.fn_claim_stale_payouts`). */
+	sweptAt: timestamp.nullable(),
+	sweepAttempts: z.number().int().min(0),
 });
 export type Payout = z.infer<typeof PayoutSchema>;
 
@@ -515,6 +626,30 @@ export const PayoutResultSchema = z.object({
 	replayed: z.boolean(),
 });
 export type PayoutResult = z.infer<typeof PayoutResultSchema>;
+
+/**
+ * What the stale-payout sweep did with one payout stuck in `pending` (`POST /api/finance/cron/payouts`,
+ * Decision #202): `completed` (its transfer was found, or re-sent under the same idempotency key),
+ * `failed` (Stripe refused, or no transfer exists past the key's 24-hour life — the money is back in
+ * the wallet), `retry` (Stripe could not be reached; the next sweep tries again).
+ */
+export const StalePayoutOutcome = z.enum(["completed", "failed", "retry"]);
+export type StalePayoutOutcome = z.infer<typeof StalePayoutOutcome>;
+
+/** One sweep's answer: how many payouts it claimed, and what happened to each. */
+export const StalePayoutSweepSchema = z.object({
+	claimed: z.number().int().min(0),
+	completed: z.number().int().min(0),
+	failed: z.number().int().min(0),
+	retry: z.number().int().min(0),
+	results: z.array(z.object({
+		payoutId: uuid,
+		outcome: StalePayoutOutcome,
+		transfer: z.string().max(255).nullable(),
+		detail: z.string().max(200).nullable(),
+	})).max(200),
+});
+export type StalePayoutSweep = z.infer<typeof StalePayoutSweepSchema>;
 // #endregion
 
 // #region Card-backed wallet actions
@@ -563,6 +698,11 @@ export const HANDLED_STRIPE_EVENTS = [
 	"charge.dispute.closed",
 	"account.updated",
 	"setup_intent.succeeded",
+	// Decision #202: the withdrawal after its transfer — a platform reversal, and the connected
+	// account's own payout to its bank (Connect events, delivered with `event.account`).
+	"transfer.reversed",
+	"payout.paid",
+	"payout.failed",
 ] as const;
 export type HandledStripeEvent = (typeof HANDLED_STRIPE_EVENTS)[number];
 

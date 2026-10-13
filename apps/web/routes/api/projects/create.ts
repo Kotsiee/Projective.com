@@ -7,8 +7,8 @@ import { ProjectBackendService } from "@server/services/projects/ProjectBackendS
 /**
  * `POST /api/projects/create` — the Quick-Init write. Thin: parse, Zod-validate, resolve the acting
  * identity, then delegate to the fat {@link ProjectBackendService}, which narrows the currency (the
- * body's choice, else `ctx.state.currency?.displayCurrency`), mints the draft row and its one
- * auto-provisioned root stage.
+ * body's choice, else `ctx.state.currency?.displayCurrency`), mints the draft, its root stage and
+ * rooms in one transaction, then invites `inviteeHandle` when the body names one.
  *
  * **No capability guard.** A server-side `isFreelancer`/owner bounce is forbidden on this surface —
  * the Dev Context Switcher's persona is a client seam the server never sees, so such a gate would

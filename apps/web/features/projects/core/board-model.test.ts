@@ -18,11 +18,13 @@ import {
 	boardCardColumn,
 	classifyMove,
 	filterCards,
+	isClaimDrop,
 	priorityLabel,
 	priorityTone,
 	sortCards,
 	statusLabel,
 	statusTone,
+	viewerCanClaim,
 } from "./board-model.ts";
 
 /**
@@ -363,5 +365,39 @@ Deno.test("any other key sorts by last update", () => {
 
 Deno.test("a single-card column sorts to itself", () => {
 	assertEquals(order(sortCards([SORTABLE[0]], "priority", "desc")), ["a"]);
+});
+// #endregion
+
+// #region Claim
+const CLAIMABLE = card({ status: "todo", stageId: "b", hasDescription: true });
+const SEATED = ["b"];
+
+Deno.test("a seated provider is offered Claim on a described, ready, open-pull ticket", () => {
+	assert(viewerCanClaim(CLAIMABLE, STAGES, SEATED, false));
+});
+
+Deno.test("Claim is withheld from the client side and from unseated providers", () => {
+	assert(!viewerCanClaim(CLAIMABLE, STAGES, SEATED, true));
+	assert(!viewerCanClaim(CLAIMABLE, STAGES, [], false));
+});
+
+Deno.test("Claim is withheld from tickets the database would refuse on sight", () => {
+	const roundRobin = { ...STAGES[1], assignmentMode: "round_robin" as const };
+	const routed = STAGES.map((s) => (s.id === "b" ? roundRobin : s));
+	assert(!viewerCanClaim(CLAIMABLE, routed, SEATED, false));
+	assert(!viewerCanClaim({ ...CLAIMABLE, claimed: true }, STAGES, SEATED, false));
+	assert(!viewerCanClaim({ ...CLAIMABLE, hasDescription: false }, STAGES, SEATED, false));
+	assert(!viewerCanClaim({ ...CLAIMABLE, status: "backlog" }, STAGES, SEATED, false));
+	assert(!viewerCanClaim({ ...CLAIMABLE, frozen: true }, STAGES, SEATED, false));
+	assert(!viewerCanClaim({ ...CLAIMABLE, personal: true }, STAGES, SEATED, false));
+});
+
+Deno.test("only an unclaimed card dropped into In Progress is a claim", () => {
+	const inProgress = STAGE_BOARD.find((c) => c.id === statusColumnId("in_progress"))!;
+	const review = STAGE_BOARD.find((c) => c.id === statusColumnId("in_review"))!;
+	assert(isClaimDrop(CLAIMABLE, inProgress));
+	assert(!isClaimDrop({ ...CLAIMABLE, claimed: true }, inProgress));
+	assert(!isClaimDrop(CLAIMABLE, review));
+	assert(!isClaimDrop(CLAIMABLE, PIPELINE.find((c) => c.id === stageColumnId("b"))!));
 });
 // #endregion

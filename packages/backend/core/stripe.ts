@@ -47,6 +47,11 @@ export interface StripeSettings {
 	/** The v2 thin-event destination's signing secret, or `null` (the v2 endpoint then answers 503). */
 	thinWebhookSecret: string | null;
 	/**
+	 * The Connect event destination's signing secret, or `null`. The snapshot endpoint accepts a delivery
+	 * signed with either this or {@link webhookSecret} (Decision #202).
+	 */
+	connectWebhookSecret: string | null;
+	/**
 	 * The publishable key, or `null` when absent, malformed, or from the OTHER mode than the secret key —
 	 * a `pk_live` beside an `sk_test` would confirm a test PaymentIntent against the live account, which
 	 * fails at Stripe with an error nobody can act on from the page.
@@ -75,6 +80,7 @@ export function parseStripeSettings(raw: {
 	secretKey?: string;
 	webhookSecret?: string;
 	thinWebhookSecret?: string;
+	connectWebhookSecret?: string;
 	publishableKey?: string;
 	apiBase?: string;
 	appEnv?: string;
@@ -95,6 +101,9 @@ export function parseStripeSettings(raw: {
 		webhookSecret: WEBHOOK_SECRET_RE.test(webhook) ? webhook : null,
 		thinWebhookSecret: WEBHOOK_SECRET_RE.test(raw.thinWebhookSecret?.trim() ?? "")
 			? raw.thinWebhookSecret!.trim()
+			: null,
+		connectWebhookSecret: WEBHOOK_SECRET_RE.test(raw.connectWebhookSecret?.trim() ?? "")
+			? raw.connectWebhookSecret!.trim()
 			: null,
 		publishableKey: pk && pk[1] === mode ? publishable : null,
 		apiBase: mode === "test" && raw.appEnv !== "production" ? parseApiBase(raw.apiBase) : null,
@@ -121,6 +130,7 @@ export function stripeSettings(): StripeSettings | null {
 		secretKey: env.stripeSecretKey,
 		webhookSecret: env.stripeWebhookSecret,
 		thinWebhookSecret: env.stripeThinWebhookSecret,
+		connectWebhookSecret: env.stripeConnectWebhookSecret,
 		publishableKey: env.stripePublishableKey,
 		apiBase: env.stripeApiBase,
 		appEnv: env.appEnv,
@@ -237,6 +247,27 @@ export function verifyStripeEvent(
 		300,
 		Stripe.createSubtleCryptoProvider(),
 	);
+}
+
+/**
+ * Verify a delivery signed by any one of several endpoint secrets — the account destination and the
+ * Connect destination may share one URL (Decision #202). Throws the last verification error when none
+ * matches, so a forgery is refused exactly as with one secret.
+ */
+export async function verifyStripeEventWithAny(
+	payload: string,
+	signature: string,
+	webhookSecrets: readonly string[],
+): Promise<Stripe.Event> {
+	let last: unknown = new Error("No webhook secret is configured.");
+	for (const secret of webhookSecrets) {
+		try {
+			return await verifyStripeEvent(payload, signature, secret);
+		} catch (error) {
+			last = error;
+		}
+	}
+	throw last;
 }
 // #endregion
 

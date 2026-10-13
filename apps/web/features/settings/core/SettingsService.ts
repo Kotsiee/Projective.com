@@ -36,6 +36,15 @@ export type SettingsResult<T> =
 	| { ok: true; data: T; message?: string }
 	| { ok: false; status: number; message: string; errors?: Record<string, string> };
 
+/**
+ * Set on a write that changed a claim the access token carries (handle, persona, locale, currency,
+ * date format): the route re-issues the session itself, and `claimsStale` is `true` when it could
+ * not — the change landed, but pages read the old value until the session next renews (≤ 1 hour).
+ */
+export interface ClaimsReissue {
+	claimsStale?: boolean;
+}
+
 const OFFLINE = "You seem to be offline. Your change wasn't saved.";
 
 async function call<T>(
@@ -81,7 +90,7 @@ const json = (method: string, payload: unknown): RequestInit => ({
 // #endregion
 
 /** What a preferences save answers with. */
-export interface PreferencesSaved {
+export interface PreferencesSaved extends ClaimsReissue {
 	preferences: DisplayPreferences | null;
 	appearance: AppearancePreferences | null;
 	appearancePersisted: boolean;
@@ -116,11 +125,11 @@ export const SettingsService = {
 	// #endregion
 
 	// #region Handle
-	/** Change the @handle. The caller renews the session afterwards — the token carries it. */
+	/** Change the @handle. The route re-issues the session — the token carries it. */
 	changeHandle(
 		handle: string,
-	): Promise<SettingsResult<{ policy: HandlePolicy; previous: string }>> {
-		return call<{ policy: HandlePolicy; previous: string }>(
+	): Promise<SettingsResult<{ policy: HandlePolicy; previous: string } & ClaimsReissue>> {
+		return call<{ policy: HandlePolicy; previous: string } & ClaimsReissue>(
 			"/api/user/handle",
 			json("POST", { handle }),
 			"Your handle couldn't be changed.",
@@ -132,16 +141,18 @@ export const SettingsService = {
 	/** Schedule a freelancer-profile removal or the account's deletion. */
 	scheduleDeletion(
 		input: ScheduleDeletion,
-	): Promise<SettingsResult<{ lifecycle: AccountLifecycle }>> {
-		return call<{ lifecycle: AccountLifecycle }>(
+	): Promise<SettingsResult<{ lifecycle: AccountLifecycle } & ClaimsReissue>> {
+		return call<{ lifecycle: AccountLifecycle } & ClaimsReissue>(
 			"/api/user/lifecycle",
 			json("POST", input),
 			"That couldn't be scheduled.",
 		);
 	},
 	/** Cancel a scheduled removal inside its window. */
-	cancelDeletion(scope: DeletionScope): Promise<SettingsResult<{ lifecycle: AccountLifecycle }>> {
-		return call<{ lifecycle: AccountLifecycle }>(
+	cancelDeletion(
+		scope: DeletionScope,
+	): Promise<SettingsResult<{ lifecycle: AccountLifecycle } & ClaimsReissue>> {
+		return call<{ lifecycle: AccountLifecycle } & ClaimsReissue>(
 			`/api/user/lifecycle?scope=${encodeURIComponent(scope)}`,
 			{ method: "DELETE" },
 			"That couldn't be cancelled.",
@@ -172,23 +183,6 @@ export const SettingsService = {
 			json("PATCH", patch),
 			"Your preference couldn't be saved.",
 		);
-	},
-
-	/**
-	 * Renew the session so the access token is re-stamped from the preferences row (the locale and the
-	 * display currency ride the token's claims). Best effort: a failure only delays the new format until
-	 * the session renews on its own.
-	 */
-	async renewSession(): Promise<boolean> {
-		try {
-			const res = await fetch("/api/auth/refresh", {
-				method: "POST",
-				headers: { accept: "application/json" },
-			});
-			return res.ok;
-		} catch {
-			return false;
-		}
 	},
 	// #endregion
 

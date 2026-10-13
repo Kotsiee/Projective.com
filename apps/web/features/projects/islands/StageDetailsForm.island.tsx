@@ -211,6 +211,7 @@ export default function StageDetailsForm({ setup, stageId }: StageDetailsFormPro
 					projectRequiresNda={live.rules.ndaRequired}
 					priceLocked={lockedStagePriceIds(live, live.stages).has(stageId)}
 					timed={stageTimingApplies(live.structure, live.stages)}
+					personal={live.personal === true}
 					onPatch={onPatch}
 				/>
 			</Section>

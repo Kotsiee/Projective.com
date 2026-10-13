@@ -145,6 +145,9 @@ nda_document_id uuid,
   language_requirement text[] DEFAULT '{}'::text[],
   screening_questions jsonb DEFAULT '[]'::jsonb,
   allow_deadline_bonuses boolean NOT NULL DEFAULT false,
+  -- A personal management project (Decision #192): one person, no money, never listed. Set on insert
+  -- whenever the owner is under 18, and permanent — projects.trg_projects_personal_guard (00001130).
+  is_personal boolean NOT NULL DEFAULT false,
 
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),

@@ -57,6 +57,7 @@ function gate(over: Partial<PromoVisibilityInput> = {}): PromoVisibilityInput {
 		dismissible: true,
 		dismissed: [],
 		viewerFreelancer: false,
+		viewerRestricted: false,
 		mode: "auto",
 		...over,
 	};
@@ -100,6 +101,13 @@ Deno.test("a freelancer never sees a non-freelancer slot, whatever the dismissal
 	assertEquals(promoVisible(input), false);
 	assertEquals(promoVisible({ ...input, mode: "visible" }), false);
 	assertEquals(promoVisible({ ...input, viewerFreelancer: false }), true);
+});
+
+Deno.test("a restricted (13–17) viewer never sees a non-freelancer slot — they cannot become one", () => {
+	const input = gate({ audience: "non_freelancers", viewerRestricted: true });
+	assertEquals(promoVisible(input), false);
+	assertEquals(promoVisible({ ...input, mode: "visible" }), false);
+	assertEquals(promoVisible({ ...input, audience: "everyone" }), true);
 });
 
 Deno.test("a stored dismissal hides a dismissible slot only in auto mode", () => {

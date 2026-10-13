@@ -140,6 +140,7 @@ export function inboundPaymentOf(row: Row): InboundPayment {
 		walletId: row.wallet_id,
 		projectStageId: row.project_stage_id ?? null,
 		ticketId: row.ticket_id ?? null,
+		revisionId: row.revision_id ?? null,
 		amountCents: num(row.amount_cents),
 		currency: row.currency,
 		amountReceivedCents: num(row.amount_received_cents),
@@ -158,6 +159,7 @@ export function inboundPaymentOf(row: Row): InboundPayment {
 		checkout: checkoutLinkOf(row.checkout),
 		orderId: row.order_id ?? null,
 		orderError: row.order_error ?? null,
+		unappliedReason: row.unapplied_reason ?? null,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 		succeededAt: row.succeeded_at ?? null,
@@ -239,6 +241,8 @@ export function beginCardPayment(
 		stageId: string | null;
 		/** One ticket to fund instead of the whole stage (Decision #166). */
 		ticketId?: string | null;
+		/** One paid revision round to pay for instead (Decision #199). */
+		revisionId?: string | null;
 		expectedAmountMinor: number;
 		currency: string;
 		idempotencyKey: string;
@@ -254,6 +258,7 @@ export function beginCardPayment(
 		p_idempotency_key: args.idempotencyKey,
 		// Sent only when set, so a stage lock or a top-up still resolves the function by its old arguments.
 		...(args.ticketId ? { p_ticket_id: args.ticketId } : {}),
+		...(args.revisionId ? { p_revision_id: args.revisionId } : {}),
 	}, (row) => ({ payment: inboundPaymentOf(row), replayed: row.replayed === true }));
 }
 
@@ -411,6 +416,14 @@ export function payoutOf(row: Row): Payout {
 		initiatedAt: row.initiated_at,
 		settledAt: row.settled_at ?? null,
 		createdAt: row.created_at,
+		destinationAccount: row.destination_account ?? null,
+		reversedCents: num(row.reversed_cents) ?? 0,
+		bankStatus: row.bank_status ?? null,
+		bankPayoutRef: row.bank_payout_ref ?? null,
+		bankFailureCode: row.bank_failure_code ?? null,
+		bankStatusAt: row.bank_status_at ?? null,
+		sweptAt: row.swept_at ?? null,
+		sweepAttempts: num(row.sweep_attempts) ?? 0,
 	});
 }
 
@@ -424,7 +437,14 @@ export interface BegunPayout {
 /** Start a withdrawal (`finance.begin_payout`) — debits the wallet at once. */
 export function beginPayout(
 	accessToken: string,
-	args: { walletId: string; amountMinor: number; currency: string; instant: boolean; idempotencyKey: string },
+	args: {
+		walletId: string;
+		amountMinor: number;
+		currency: string;
+		instant: boolean;
+		idempotencyKey: string;
+		destinationMethodId: string | null;
+	},
 ): Promise<DbResult<BegunPayout>> {
 	return userRpc(accessToken, "begin_payout", {
 		p_wallet_id: args.walletId,
@@ -432,6 +452,7 @@ export function beginPayout(
 		p_currency: args.currency,
 		p_instant: args.instant,
 		p_idempotency_key: args.idempotencyKey,
+		p_destination_method_id: args.destinationMethodId,
 	}, (row) => ({
 		payout: payoutOf(row),
 		destination: typeof row.destination === "string" ? row.destination : null,
@@ -564,6 +585,7 @@ export async function latestLockPayments(
 	const { data, error } = await getUserClient(accessToken).schema("finance").from("inbound_payments")
 		.select("project_stage_id, ticket_id, status, lock_status, lock_error, failure_reason")
 		.eq("purpose", "escrow_lock")
+		.is("revision_id", null)
 		.in("project_stage_id", stageIds as string[])
 		.order("created_at", { ascending: false })
 		.limit(200);
@@ -855,6 +877,87 @@ export async function failPayout(payoutId: string, reason: string): Promise<Payo
 	return payoutOf(
 		await serviceRpc("fail_payout", { p_payout_id: payoutId, p_reason: reason.slice(0, 400) }),
 	);
+}
+
+/** `transfer.reversed` → `finance.record_transfer_reversed` (credits only what is newly reversed). */
+export async function recordTransferReversed(args: {
+	eventId: string;
+	transfer: string;
+	destination: string | null;
+	amount: number;
+	amountReversed: number;
+	currency: string;
+	payoutId: string | null;
+	livemode: boolean;
+}): Promise<EventOutcome> {
+	return outcomeOf(
+		await serviceRpc("record_transfer_reversed", {
+			p_event_id: args.eventId,
+			p_transfer_ref: args.transfer,
+			p_destination: args.destination,
+			p_amount: args.amount,
+			p_amount_reversed: args.amountReversed,
+			p_currency: args.currency,
+			p_payout_id: args.payoutId,
+			p_livemode: args.livemode,
+		}),
+	);
+}
+
+/** Connect `payout.paid` / `payout.failed` → `finance.record_bank_payout`. */
+export async function recordBankPayout(args: {
+	eventId: string;
+	eventType: "payout.paid" | "payout.failed";
+	account: string;
+	bankPayout: string;
+	status: "paid" | "failed";
+	failureCode: string | null;
+	transfers: string[];
+	priorPayouts: string[];
+	livemode: boolean;
+}): Promise<EventOutcome> {
+	return outcomeOf(
+		await serviceRpc("record_bank_payout", {
+			p_event_id: args.eventId,
+			p_event_type: args.eventType,
+			p_account: args.account,
+			p_bank_payout_ref: args.bankPayout,
+			p_status: args.status,
+			p_failure_code: args.failureCode,
+			p_transfer_refs: args.transfers,
+			p_prior_payout_refs: args.priorPayouts,
+			p_livemode: args.livemode,
+		}),
+	);
+}
+
+/** A payout stuck in `pending`, as `finance.fn_claim_stale_payouts` leased it to the sweep. */
+export interface StalePayout {
+	id: string;
+	walletId: string;
+	amountCents: number;
+	currency: string;
+	/** Where its transfer goes; `null` when the owner no longer has a verified account. */
+	destination: string | null;
+	destinationMethodId: string | null;
+	initiatedAt: string;
+	sweepAttempts: number;
+}
+
+/** Lease up to `limit` stale pending payouts to the sweep (`finance.fn_claim_stale_payouts`). */
+export async function claimStalePayouts(limit: number): Promise<StalePayout[]> {
+	const { data, error } = await getServiceClient().schema("finance").rpc("fn_claim_stale_payouts", { p_limit: limit });
+	if (error) throw new Error(`finance.fn_claim_stale_payouts failed (${error.code ?? "no code"}): ${error.message}`);
+	return ((data ?? []) as Row[]).map((row) => ({
+		id: String(row.id),
+		walletId: String(row.wallet_id),
+		amountCents: num(row.amount_cents) ?? 0,
+		currency: String(row.currency).toUpperCase(),
+		destination: typeof row.destination_account === "string" ? row.destination_account : null,
+		destinationMethodId: typeof row.destination_method_id === "string" ? row.destination_method_id : null,
+		initiatedAt: String(row.initiated_at),
+		sweepAttempts: num(row.sweep_attempts) ?? 0,
+	}));
 }
 
 /** Record a card a confirmed SetupIntent saved (`finance.record_saved_card`). */

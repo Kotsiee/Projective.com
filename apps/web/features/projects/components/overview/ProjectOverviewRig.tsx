@@ -41,7 +41,7 @@ export function ProjectOverviewRig(
 		? { label: "Open discussion", href: projectHref(slug, "discussion") }
 		: null;
 	const primary: RigLink | null = top ? { label: top.label, href: top.href } : room;
-	const secondary: RigLink | null = workspace.viewer === "owner"
+	const secondary: RigLink | null = workspace.viewer === "owner" && !workspace.personal
 		? { label: "Invite people", href: `${projectHref(slug, "members")}?view=invitations` }
 		: top
 		? room

@@ -56,7 +56,7 @@ export const handler = define.handlers({
 			return seeOther(`${SETTINGS}?email=${result.data.outcome}`, session.setCookies);
 		}
 		if (result.status === 401) {
-			return seeOther(withRedirect("/login", here), sessionClearCookies());
+			return seeOther(withRedirect("/login", here), sessionClearCookies(ctx.req));
 		}
 		return seeOther(`${SETTINGS}?email=unavailable`, session.setCookies);
 	},

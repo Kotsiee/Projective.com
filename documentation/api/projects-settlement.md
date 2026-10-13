@@ -1,6 +1,7 @@
 # Projects — settlement endpoints
 
-The three client decisions that move deliverables and money. Each is a thin route over one fat
+The three client decisions that move deliverables and money, plus the Fair Exit confirmation's
+read. Each is a thin route over one fat
 `ProjectBackendService` method, and each method makes **one** call to a guarded `SECURITY DEFINER`
 door under the caller's own JWT. The door's review-authority check (`projects.can_review_project`)
 is the security of the path: no route or service repeats it (Decision #53(b)). Function contracts:
@@ -15,8 +16,10 @@ engagement cannot be addressed through this one's URL.
 | :-- | :-- | :-- | :-- |
 | `POST /api/projects/:id/stages/:stageId/submissions/:submissionId/review` | `ReviewSubmissionSchema` → `SubmissionReviewed` | `reviewSubmission` → `projects.review_submission` | `decision: accept \| request_revision`. A revision **requires** `notes` (422 on `notes`), stored as `feedback.global`. The submission must belong to `:stageId` (else 404). Past the stage's free rounds a revision is `402` (`errors.decision = "paid_revision_required"`, Decision #167). |
 | `POST /api/projects/:id/stages/:stageId/submissions/:submissionId/paid-revision` | `RequestPaidRevisionSchema` → `PaidRevisionRaised` | `requestPaidRevision` → `projects.request_paid_revision` | Raises a paid round `awaiting_payment` (Decision #167); charges nothing. `notes` required. Answers `{ revisionId, priceMinor, currency, title }` — the `paid_revision` line Buy Now then pays for. Live only (`503` on the stub store). |
+| `POST /api/projects/:id/stages/:stageId/submissions/:submissionId/paid-revision/fund` | `FundPaidRevisionSchema` → `PaidRevisionFunding` (`@projective/types/finance`) | `RevisionPurchaseBackendService.fundPaidRevision` (`services/finance/revision-purchase.ts`) → `projects.fund_paid_revision` · `finance.begin_card_payment` (`p_revision_id`) | Pays a raised round directly (Decision #199). Body `{ revisionId, method: wallet \| card, expectedAmountMinor, currency, idempotencyKey }`; the round must belong to the address and still cost what was shown (`409` with the current price). `wallet` holds the escrow from the payer's Available balance and answers `{ method: "wallet", revisionId, escrowId }` once the work is sent back (`402` when the balance or a spending limit does not cover it). `card` answers `{ method: "card", revisionId, handoff }` for the Payment Element; the signed webhook holds the escrow and opens the round. `no-store`; `503` where finance is not live. |
 | `POST /api/projects/:id/stages/:stageId/approve` | `ApproveStageSchema` → `StageApproved` | `approveStage` → `projects.approve_stage` | Releases every held escrow on the stage; the stage settles straight to `paid`. `handoverUnlocked` reports the Contact Handover. |
-| `POST /api/projects/:id/stages/:stageId/cancel` | `CancelStageFairExitSchema` → `StageExited` | `cancelStageFairExit` → `projects.cancel_stage_fair_exit` | `tier: 25 \| 50 \| 75` — the freelancer's share in percent; the remainder is refunded to the payer. |
+| `GET /api/projects/:id/stages/:stageId/fair-exit` | `PreviewStageFairExitSchema` → `FairExitPreview` | `previewStageFairExit` → `projects.preview_stage_fair_exit` | What ending the stage would settle at each tier (Decision #198): `tiers[]` (25, 50, 75 — `freelancerPaidCents`, `feeCents`, `clientRefundedCents` and their server-formatted labels), `heldLabel`, `prepaidLabel`, `ticketsToCancel`, and `exitable` / `blocked` (`settled` · `nothing_held`). Moves nothing. Live only (`503` on the stub store). |
+| `POST /api/projects/:id/stages/:stageId/cancel` | `CancelStageFairExitSchema` → `StageExited` | `cancelStageFairExit` → `projects.cancel_stage_fair_exit` | `tier: 25 \| 50 \| 75` — the freelancer's share in percent; the remainder is refunded to the payer. Answers the same quote the preview showed (`freelancerPaidCents`, `feeCents`, `clientRefundedCents`, `currency`), `cancelledCount` (tickets settled) and `ticketsCancelled` (tickets closed); the message names the money that moved. |
 
 ## Status mapping
 
@@ -36,4 +39,5 @@ and by the function's wording second:
 **Fail-closed.** With `PROJECTS_BACKEND_LIVE` on, none of these writes ever reaches the stub. A
 thrown write is a 502, and a signed-in caller without an access token gets a 401 rather than the
 in-memory store. With the gate off, the stub records a submission verdict (folded onto the
-explorer's read) and reports zero money moved for an approval or a Fair Exit.
+explorer's read) and reports zero money moved for an approval or a Fair Exit. The Fair Exit preview has no stub: it
+answers `503`, because fixture figures would promise a settlement nothing could match.

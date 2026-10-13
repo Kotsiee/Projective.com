@@ -81,6 +81,40 @@ $$;
 -- call terms) so the booking grid can render, but never an unpublished one, and never the schedule of
 -- a profile the reader may not see (a `private` individual, a suspended team): publishing a schedule
 -- does not publish a profile its owner has hidden.
+-- #region Scheduling and under-18 accounts (Decision #208)
+-- A restricted (13–17) account schedules nothing with other people: it never publishes working hours,
+-- never takes discovery calls, and never books one or holds a session seat (request_discovery_call /
+-- projects.reserve_seat). Its private calendar is untouched. The schedule tables are written directly
+-- under RLS (`save_owner_availability` is an invoker), so publishing is refused by a trigger, and
+-- fn_schedule_is_public never answers true for a minor's schedule whatever the row says.
+CREATE OR REPLACE FUNCTION scheduling.trg_schedule_age_gate()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_type text;
+    v_owner uuid;
+    v_offers boolean;
+BEGIN
+    IF TG_TABLE_NAME = 'schedules' THEN
+        v_type := NEW.owner_type::text;
+        v_owner := NEW.owner_id;
+        v_offers := NEW.is_published;
+    ELSE
+        SELECT s.owner_type::text, s.owner_id INTO v_type, v_owner
+          FROM scheduling.schedules s WHERE s.id = NEW.schedule_id;
+        v_offers := NEW.accepts_calls;
+    END IF;
+    IF v_offers AND v_type IN ('user', 'freelancer') AND org.fn_is_minor(v_owner) THEN
+        RAISE EXCEPTION 'scheduling: publishing hours and taking calls unlock at 18' USING ERRCODE = 'PM403';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+-- #endregion
+
 CREATE OR REPLACE FUNCTION scheduling.fn_schedule_is_public(p_schedule uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -94,6 +128,8 @@ AS $$
                CASE WHEN s.owner_type IN ('user', 'freelancer') THEN 'user' ELSE s.owner_type::text END,
                s.owner_id
            )
+           -- A minor's schedule is never public (Decision #208).
+           AND NOT (s.owner_type IN ('user', 'freelancer') AND org.fn_is_minor (s.owner_id))
           FROM scheduling.schedules s WHERE s.id = p_schedule
     ), false);
 $$;

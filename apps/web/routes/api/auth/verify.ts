@@ -22,6 +22,7 @@ export const handler = define.handlers({
 		}
 
 		return toAuthResponse(
+			ctx.req,
 			await AuthBackendService.confirmEmail({
 				code: parsed.data.code,
 				email: parsed.data.email,

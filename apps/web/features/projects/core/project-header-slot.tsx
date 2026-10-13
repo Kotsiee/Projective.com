@@ -74,7 +74,7 @@ export async function projectHeaderFor(
 				slug={slug}
 				title={resolved.title}
 				owner={owner}
-				canPreview={owner && previewAllowed(resolved.status, ladderDone)}
+				canPreview={owner && !resolved.personal && previewAllowed(resolved.status, ladderDone)}
 			/>
 		);
 	}

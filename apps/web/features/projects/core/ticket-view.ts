@@ -266,8 +266,11 @@ export function ticketTabs(
 			iconOnly: false,
 		});
 	}
+	// A personal project's ticket (Decision #192) has no money to show.
+	if (!card.personal) {
+		tabs.push({ key: "finances", label: "Finances", icon: "wallet", count: null, iconOnly: false });
+	}
 	tabs.push(
-		{ key: "finances", label: "Finances", icon: "wallet", count: null, iconOnly: false },
 		{
 			key: "attachments",
 			label: "Attachments",

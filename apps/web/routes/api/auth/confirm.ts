@@ -34,7 +34,7 @@ export const handler = define.handlers({
 
 		return redirect(
 			result.data?.redirectTo ?? DEFAULT_REDIRECT,
-			result.session ? sessionSetCookies(result.session) : [],
+			result.session ? sessionSetCookies(ctx.req, result.session) : [],
 		);
 	},
 });

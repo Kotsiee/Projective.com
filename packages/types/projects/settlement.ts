@@ -61,11 +61,18 @@ export const ReviewSubmissionSchema = z
 	});
 export type ReviewSubmission = z.infer<typeof ReviewSubmissionSchema>;
 
-/** What a recorded verdict answers with — the submission's new review state. */
+/**
+ * What a recorded verdict answers with — the submission's new review state.
+ *
+ * An acceptance settles the ticket and releases its held escrow in the same transaction (Decision
+ * #194); `releasedCount` is how many escrows that release paid out — 0 for a revision request, an
+ * unfunded ticket, or the stub path, which moves no money.
+ */
 export const SubmissionReviewedSchema = z.object({
 	submissionId: z.string().min(1).max(120),
 	stageId: z.string().min(1).max(80),
 	status: SubmissionStatus,
+	releasedCount: z.number().int().min(0),
 });
 export type SubmissionReviewed = z.infer<typeof SubmissionReviewedSchema>;
 
@@ -94,7 +101,7 @@ export type PaidRevisionRaised = z.infer<typeof PaidRevisionRaisedSchema>;
 // #endregion
 
 // #region Stage approval
-/** Approve a stage and release every held escrow on it. The address is the whole payload. */
+/** Approve a stage and release every escrow still held on it. The address is the whole payload. */
 export const ApproveStageSchema = z.object({
 	projectId: ProjectRef,
 	stageId: StageRef,
@@ -105,8 +112,10 @@ export type ApproveStage = z.infer<typeof ApproveStageSchema>;
  * The settlement `projects.approve_stage` reports.
  *
  * `status` is `paid`, not `approved`: the function releases the escrow and settles the stage in one
- * transaction, so there is no intermediate approved-but-unpaid state to report. `handoverUnlocked` is
- * true when this was the project's last unsettled stage and the Contact Handover fired.
+ * transaction, so there is no intermediate approved-but-unpaid state to report. The counts and sums
+ * cover only what THIS approval released: a ticket an earlier acceptance paid is not in them, so a
+ * stage every acceptance already paid out settles with `releasedCount` 0. `handoverUnlocked` is true
+ * when this was the project's last unsettled stage and the Contact Handover fired.
  */
 export const StageApprovedSchema = z.object({
 	stageId: z.string().min(1).max(80),
@@ -132,14 +141,76 @@ export const CancelStageFairExitSchema = z.object({
 });
 export type CancelStageFairExit = z.infer<typeof CancelStageFairExitSchema>;
 
-/** The settlement a Fair Exit reports: what the freelancer was paid and what the client got back. */
+/**
+ * The settlement a Fair Exit reports: what the freelancer was paid and what the client got back.
+ *
+ * The figures are the door's own quote (`projects.fn_fair_exit_quote`), taken under the ticket locks
+ * the split then settles, so they are exactly what moved — the same arithmetic the preview showed.
+ * `cancelledCount` is the tickets whose escrow the split settled; `ticketsCancelled` is the tickets
+ * left on the stage that closed as `cancelled` (Decision #198). The stub path moves nothing and reports
+ * zeros.
+ */
 export const StageExitedSchema = z.object({
 	stageId: z.string().min(1).max(80),
 	status: z.literal("cancelled"),
 	tier: FairExitTier,
 	cancelledCount: z.number().int().min(0),
+	ticketsCancelled: z.number().int().min(0),
 	freelancerPaidCents: z.number().int().min(0),
+	feeCents: z.number().int().min(0),
 	clientRefundedCents: z.number().int().min(0),
+	currency: z.string().length(3),
 });
 export type StageExited = z.infer<typeof StageExitedSchema>;
+
+/** Read the Fair Exit preview for a stage. The address is the whole request. */
+export const PreviewStageFairExitSchema = z.object({
+	projectId: ProjectRef,
+	stageId: StageRef,
+});
+export type PreviewStageFairExit = z.infer<typeof PreviewStageFairExitSchema>;
+
+/**
+ * What one tier would settle — `projects.fn_fair_exit_quote`, the same figures the door reports.
+ *
+ * Minor units for the record, plus labels the server formats, so the confirmation renders money and
+ * never computes it. `clientRefundedCents` includes `prepaidCents`: a ticket prepaid but never claimed
+ * earned nothing and goes back whole at every tier (Decision #197).
+ */
+export const FairExitQuoteSchema = z.object({
+	tier: FairExitTier,
+	ticketCount: z.number().int().min(0),
+	freelancerPaidCents: z.number().int().min(0),
+	feeCents: z.number().int().min(0),
+	clientRefundedCents: z.number().int().min(0),
+	freelancerPaidLabel: z.string().max(40),
+	feeLabel: z.string().max(40),
+	clientRefundedLabel: z.string().max(40),
+});
+export type FairExitQuote = z.infer<typeof FairExitQuoteSchema>;
+
+/** Why a stage cannot be ended under Fair Exit — the two states `cancel_stage_fair_exit` refuses. */
+export const FairExitBlocked = z.enum(["settled", "nothing_held"]);
+export type FairExitBlocked = z.infer<typeof FairExitBlocked>;
+
+/**
+ * The Fair Exit confirmation's read (`projects.preview_stage_fair_exit`, Decision #198): one quote per
+ * tier, in tier order, and what else ending the stage does. `exitable` is false, with `blocked` set,
+ * when the door would refuse; the island then offers no confirm.
+ */
+export const FairExitPreviewSchema = z.object({
+	stageId: z.string().min(1).max(80),
+	stageName: z.string().min(1).max(200),
+	currency: z.string().length(3),
+	exitable: z.boolean(),
+	blocked: FairExitBlocked.nullable(),
+	heldCents: z.number().int().min(0),
+	heldLabel: z.string().max(40),
+	prepaidCents: z.number().int().min(0),
+	prepaidLabel: z.string().max(40),
+	/** Tickets still standing on the stage that the exit closes as `cancelled`. */
+	ticketsToCancel: z.number().int().min(0),
+	tiers: z.array(FairExitQuoteSchema).length(3),
+});
+export type FairExitPreview = z.infer<typeof FairExitPreviewSchema>;
 // #endregion

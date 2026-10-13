@@ -142,6 +142,10 @@ export interface TicketViewProps {
 	onStartWork?: (card: BoardCard) => void;
 	/** A funding write the host started is in flight. */
 	fundingBusy?: boolean;
+	/** Self-claim this ticket; passed only while the viewer may claim it. */
+	onClaim?: (card: BoardCard) => void;
+	/** A claim the host started is in flight. */
+	claimBusy?: boolean;
 }
 
 export function TicketView(props: TicketViewProps): JSX.Element {
@@ -238,7 +242,7 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 	const server = props.card;
 	const funding = !creating && !dirty ? server.funding : null;
 	const fundingSide = isFreelancer ? "provider" : "client";
-	const startPending = isFreelancer && funding !== null &&
+	const startPending = isFreelancer && server.claimed && funding !== null &&
 		(fundingAction(funding, "provider") ?? "").startsWith("start");
 	const fundingLine = (extra?: string, actions = true) =>
 		funding && !actions
@@ -266,7 +270,7 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 						: undefined}
 					onRetry={isClient && props.onBuyNow ? () => props.onBuyNow?.(server) : undefined}
 					onReview={isClient ? () => (tab.value = "submissions") : undefined}
-					onStart={isFreelancer && props.onStartWork
+					onStart={isFreelancer && server.claimed && props.onStartWork
 						? () => props.onStartWork?.(server)
 						: undefined}
 				/>
@@ -762,6 +766,18 @@ export function TicketView(props: TicketViewProps): JSX.Element {
 							{
 								/* No hold, no work (#165): a submission comes after Start work, never instead of it. */
 							}
+							{props.onClaim && !creating && !dirty
+								? (
+									<Button
+										variant="filled"
+										size="sm"
+										loading={props.claimBusy}
+										onClick={() => props.onClaim?.(server)}
+									>
+										Claim ticket
+									</Button>
+								)
+								: null}
 							{isFreelancer && !creating && !dirty && active.length > 0 && !startPending
 								? (
 									<Button

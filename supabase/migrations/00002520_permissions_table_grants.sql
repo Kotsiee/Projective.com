@@ -61,6 +61,11 @@ REVOKE INSERT, UPDATE ON TABLE org.recent_views FROM anon, authenticated;
 REVOKE ALL ON TABLE org.recent_views FROM anon;
 -- #endregion
 
+-- #region org: supported locales (00005050 reference data, Decision #207)
+-- Readable by everyone through its policy (00002010); written only by the seed.
+REVOKE INSERT, UPDATE, DELETE ON TABLE org.supported_locales FROM anon, authenticated;
+-- #endregion
+
 -- #region Finance: escrow visibility (writes are SECURITY DEFINER only)
 GRANT SELECT ON TABLE finance.escrows TO authenticated;
 
@@ -87,6 +92,16 @@ GRANT INSERT ON ops.log_entries TO anon, authenticated;
 GRANT SELECT ON ops.log_entries TO authenticated;
 
 GRANT ALL ON ops.log_entries TO service_role;
+
+
+-- --- ops.scheduled_jobs / ops.http_job_dispatches (the job registry, Decision #203) ---
+
+GRANT SELECT ON ops.scheduled_jobs TO authenticated;
+
+-- UPDATE is how a cadence changes or a job pauses; new jobs arrive with a migration.
+GRANT SELECT, UPDATE ON ops.scheduled_jobs TO service_role;
+
+GRANT SELECT ON ops.http_job_dispatches TO authenticated, service_role;
 
 
 -- --- from 0219_search_engine_weights.sql ---

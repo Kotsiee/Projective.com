@@ -3,12 +3,9 @@
  *
  * The HTTP-layer bridge between the session cookie and the pure `@projective/types/auth` resolver:
  * read the `sb-access-token` JWT, decode its payload, and map the claims to the chrome-only context
- * that layouts/islands render from. This is the same **presence-only / skeleton** philosophy as
- * {@link hasSessionCookie} — we decode the payload *without verifying the signature* because the
- * result decides chrome only (which shell + skeletons to paint), never access. RLS and the
- * `(dashboard)` guard remain the real gates; a forged token merely changes what the tamperer's own
- * browser draws. Real signature verification via `@server/services` is the TODO where any *access*
- * decision is made (SYSTEM_ARCHITECTURE §Security).
+ * that layouts/islands render from. The decode here does not check the signature itself: its callers
+ * hand it a token that has already been verified (`session.ts` `verifyAccessCookie`, which the global
+ * middleware and every guard go through) or that GoTrue has just minted on a renewal.
  *
  * Fully defensive: in skeleton/dev the cookie may be an opaque non-JWT value, so every failure path
  * degrades to {@link GUEST_CONTEXT} rather than throwing.

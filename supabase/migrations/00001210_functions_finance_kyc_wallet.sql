@@ -7,10 +7,11 @@
 -- #endregion
 
 -- #region 5. Gating predicates (the checks the hire/join/fund functions MUST enforce)
--- These are the in-DB gates. They are provided as pure, reusable predicates; wiring them INTO the
--- existing money-movement functions (projects.claim_ticket / finance.fn_hold_ticket_escrow /
--- projects.fund_stage and the hire/join RPCs) is a behavioural change to escrow/stage flow and is
--- FLAGGED for human sign-off (root CLAUDE.md §8) rather than applied here.
+-- The earning gate is wired (Decision #196): every door that lands a gig or seats a team member calls
+-- finance.fn_assert_payout_ready — apply_to_seat · apply_to_project · redeem_invite_link ·
+-- assign_from_application · fn_apply_invitation_decision · fn_assign_ticket_core (claim, manual pin,
+-- round-robin, parallel stream) · org.create_workspace (team) · org.respond_to_workspace_invitation
+-- (team). Withdrawing earnings from a `user` or `team` wallet needs it too (finance.begin_payout).
 
 -- A freelancer may earn (land a gig / join a team) only when KYC-verified AND payout-ready.
 CREATE OR REPLACE FUNCTION finance.fn_freelancer_payout_ready(p_user uuid)
@@ -25,6 +26,96 @@ AS $$
         FROM org.freelancer_profiles fp
         WHERE fp.user_id = p_user
     ), false);
+$$;
+
+-- The people a team's release would pay a share to (finance.fn_team_split_plan): every active member
+-- holding a contribution stake, plus the finder under a finders_fee rule. A benevolent_dictator team
+-- pays only its vault, so it has none.
+CREATE OR REPLACE FUNCTION finance.fn_team_shareholders(p_team uuid)
+RETURNS SETOF uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT ca.member_user_id
+      FROM finance.contribution_agreements ca
+      JOIN org.team_members tm
+        ON tm.team_id = ca.team_id AND tm.user_id = ca.member_user_id AND tm.status = 'active'
+     WHERE ca.team_id = p_team AND ca.percent_bp > 0
+       AND NOT EXISTS (
+           SELECT 1 FROM finance.split_rules r
+            WHERE r.team_id = p_team AND r.active AND r.rule_type = 'benevolent_dictator'
+       )
+    UNION
+    SELECT r.finder_user_id
+      FROM finance.split_rules r
+     WHERE r.team_id = p_team AND r.active AND r.rule_type = 'finders_fee'
+       AND r.finder_user_id IS NOT NULL AND COALESCE(r.finder_bp, 0) > 0;
+$$;
+
+-- The earning gate (Decision #196). A `freelancer` payee must hold both halves of
+-- fn_freelancer_payout_ready; a `team` payee needs every shareholder to. Refuses with PK403 and a
+-- `payout_not_ready:` message; HINT says who has to act — `self` (the caller, so the app offers
+-- Settings → Verification), `other` (a named freelancer) or `team` (other shareholders). DETAIL lists
+-- the unready shareholders' handles to a member who can commit the team to work, and is empty for
+-- anyone else.
+CREATE OR REPLACE FUNCTION finance.fn_assert_payout_ready(p_payee_type text, p_payee_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_unready uuid[];
+    v_handles text;
+BEGIN
+    IF p_payee_type = 'team' THEN
+        SELECT COALESCE(array_agg(s.uid), '{}') INTO v_unready
+          FROM finance.fn_team_shareholders(p_payee_id) AS s(uid)
+         WHERE NOT finance.fn_freelancer_payout_ready(s.uid);
+        IF cardinality(v_unready) = 0 THEN
+            RETURN;
+        END IF;
+        IF v_uid = ANY (v_unready) THEN
+            RAISE EXCEPTION USING ERRCODE = 'PK403', HINT = 'self',
+                MESSAGE = 'payout_not_ready: verify your identity and add a payout account — your team can take on paid work once everyone with a share has';
+        END IF;
+        IF org.is_team_lead(p_payee_id) THEN
+            SELECT string_agg('@' || u.username, ', ' ORDER BY u.username) INTO v_handles
+              FROM org.users_public u WHERE u.user_id = ANY (v_unready);
+        END IF;
+        RAISE EXCEPTION USING ERRCODE = 'PK403', HINT = 'team', DETAIL = COALESCE(v_handles, ''),
+            MESSAGE = 'payout_not_ready: ' || cardinality(v_unready)
+                || CASE WHEN cardinality(v_unready) = 1 THEN ' member' ELSE ' members' END
+                || ' of this team with a share of its earnings still need to verify their identity and add a payout account';
+    END IF;
+
+    IF finance.fn_freelancer_payout_ready(p_payee_id) THEN
+        RETURN;
+    END IF;
+    IF p_payee_id = v_uid THEN
+        RAISE EXCEPTION USING ERRCODE = 'PK403', HINT = 'self',
+            MESSAGE = 'payout_not_ready: verify your identity and add a payout account before you take on paid work or join a team';
+    END IF;
+    RAISE EXCEPTION USING ERRCODE = 'PK403', HINT = 'other',
+        MESSAGE = 'payout_not_ready: this freelancer needs to verify their identity and add a payout account before they can take on paid work';
+END;
+$$;
+
+-- A wallet holds earnings once any credit to it has gone through the pending window (Decision #191):
+-- an escrow release, a team share or vault cut, a finder's fee, a fair-exit payout or a product sale.
+-- A top-up, refund or transfer never does.
+CREATE OR REPLACE FUNCTION finance.fn_wallet_holds_earnings(p_wallet uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT EXISTS (SELECT 1 FROM finance.pending_releases pr WHERE pr.wallet_id = p_wallet);
 $$;
 
 -- A pooled Business Wallet may be operated (funds spent/held) only once the business is KYB-verified.

@@ -1,5 +1,6 @@
 import type { UserContext } from "@projective/types/auth";
 import type { IconName } from "./nav-icons.tsx";
+import { isRestrictedPath } from "./restricted-surfaces.ts";
 
 /**
  * actions-model — the header utility tray's data model: the context-aware **Create** menu and the
@@ -28,6 +29,8 @@ export interface CreateOption {
  *  - **Team** — hidden inside an `organisation` context (an org is its own tenant, not a team).
  *  - **Business**, **Service**, **Product** — seller surfaces → shown only when `isFreelancer`, so a
  *    client/buyer-only profile (e.g. an organisation) never sees "Create Product".
+ *  - A **restricted** (13–17) account keeps only Project and Article: every other target is a
+ *    surface it cannot see (Decision #192).
  */
 export function createMenuOptions(context: UserContext): CreateOption[] {
 	const { isFreelancer, contextType } = context;
@@ -51,7 +54,9 @@ export function createMenuOptions(context: UserContext): CreateOption[] {
 			: null,
 		{ key: "article", label: "Create Article", href: "/articles/new", icon: "article" },
 	];
-	return options.filter((o): o is CreateOption => o !== null);
+	return options.filter((o): o is CreateOption =>
+		o !== null && !(context.restricted && isRestrictedPath(o.href))
+	);
 }
 // #endregion
 

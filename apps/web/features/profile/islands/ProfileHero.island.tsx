@@ -105,6 +105,11 @@ export interface ProfileHeroProps {
 	preview: boolean;
 	/** Whether the viewer is signed in — a guest's account-bound presses open the sign-in prompt. */
 	authed: boolean;
+	/**
+	 * The viewer is a restricted (13–17) account (Decision #192): Hire and Add-to-project are left
+	 * out, because both lead only to buying.
+	 */
+	restricted?: boolean;
 	/** The seller's active listings — the Hire popover's rows. */
 	services: ServiceItem[];
 	/** The seller's public call offer, or `null` when they take no calls — the popover's footer row. */
@@ -325,6 +330,7 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 							canEdit={false}
 							preview={preview}
 							authed={authed}
+							restricted={props.restricted}
 							services={services}
 							consultation={consultation}
 							hireProjects={hireProjects}
@@ -394,10 +400,9 @@ export default function ProfileHero(props: ProfileHeroProps): JSX.Element {
 						 * one and the lane did not, so the same product arrived in two shapes depending on
 						 * which page the client happened to start from.
 						 *
-						 * It still redirects rather than assigning, which is a product rule and not a
-						 * shortcut: a seller cannot be attached to an engagement with no scope and no price,
-						 * so the modal's job is to reach the workspace where those are decided. The invited
-						 * freelancer row says who is waiting at the other end of it.
+						 * The seller is SENT, not just shown (Decision #195): once the draft exists the
+						 * service invites them through the same hire path as Add-to-project, staged until
+						 * the client publishes. A refused invite keeps the draft and the modal says why.
 						 */
 						<ProjectCreateModal
 							open={wizardOpen.value}

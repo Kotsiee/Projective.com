@@ -213,13 +213,19 @@ Deno.test("only a simulated freelancer's unit status is overridden", () => {
 // #endregion
 
 // #region Action state machine
-type Group = "review" | "approveStage" | "create" | "draftEdit" | "statusBadge";
+type Group = "review" | "approveStage" | "endStage" | "create" | "draftEdit" | "statusBadge";
 
-function active(viewer: EffectiveViewer, hasActiveUnit: boolean, s: SubmissionStatus | null) {
-	const a = resolveWorkflowActions({ viewer, hasActiveUnit, effectiveStatus: s });
+function active(
+	viewer: EffectiveViewer,
+	hasActiveUnit: boolean,
+	s: SubmissionStatus | null,
+	hasStage = false,
+) {
+	const a = resolveWorkflowActions({ viewer, hasActiveUnit, effectiveStatus: s, hasStage });
 	const on: Group[] = [];
 	if (a.review) on.push("review");
 	if (a.approveStage) on.push("approveStage");
+	if (a.endStage) on.push("endStage");
 	if (a.create) on.push("create");
 	if (a.draftEdit) on.push("draftEdit");
 	if (a.statusBadge !== null) on.push("statusBadge");
@@ -239,6 +245,23 @@ Deno.test("a reviewer reviews a submitted unit, and approves the stage only once
 	assertEquals(active(REVIEWER, true, "pending_review").on, ["review"]);
 	assertEquals(active(REVIEWER, true, "revision_requested").on, ["review"]);
 	assertEquals(active(REVIEWER, true, "accepted").on, ["review", "approveStage"]);
+});
+
+Deno.test("a reviewer inside a stage may end it early, with or without a unit or a verdict", () => {
+	assertEquals(active(REVIEWER, false, null, true).on, ["endStage"]);
+	assertEquals(active(REVIEWER, true, "draft", true).on, ["endStage"]);
+	assertEquals(active(REVIEWER, true, "pending_review", true).on, ["review", "endStage"]);
+	assertEquals(active(REVIEWER, true, "accepted", true).on, ["review", "approveStage", "endStage"]);
+});
+
+Deno.test("no stage in scope, no Fair Exit", () => {
+	for (const s of STATUSES) assertEquals(active(REVIEWER, true, s, false).a.endStage, false, `${s}`);
+});
+
+Deno.test("a freelancer is never offered Fair Exit", () => {
+	for (const unit of [true, false]) {
+		for (const s of STATUSES) assertEquals(active(FREELANCER, unit, s, true).a.endStage, false);
+	}
 });
 
 Deno.test("a reviewer is never handed a freelancer control", () => {

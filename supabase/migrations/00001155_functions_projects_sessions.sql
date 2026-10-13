@@ -16,7 +16,7 @@
 --   9. No-show claim       claim_session_no_show — a finance.disputes row that stops auto-release
 --  10. Join link           session_join_link     — the caller's URL, only when funded and in the window
 --  11. Curriculum          complete_lesson
---  12. Auto-release        finance.auto_release_session_escrow (+ pg_cron)
+--  12. Auto-release        finance.auto_release_session_escrow (scheduled in 00005060)
 --  13. Workspace read      get_session_workspace — one definer read behind the session sidebars
 --
 -- The escrow lifetime is PRODUCT_SPEC §Escrow Lifetimes' Sessions row: locked at booking, released
@@ -190,6 +190,7 @@ BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'Sign in to reserve a seat' USING ERRCODE = '42501';
     END IF;
+    PERFORM org.fn_assert_adult(v_uid);
     IF p_seats IS NULL OR p_seats < 1 OR p_seats > 500 THEN
         RAISE EXCEPTION 'Reserve between 1 and 500 seats' USING ERRCODE = '22023';
     END IF;
@@ -1143,16 +1144,6 @@ COMMENT ON FUNCTION finance.auto_release_session_escrow(timestamptz) IS
 tracked sitting had a provider no-show (15-minute rule), and releases a seat escrow session_payout_hours
 after its cohort''s last sitting ended unless a no-show claim (finance.disputes open|under_review) is open.';
 
--- Every 15 minutes. Guarded like every other job here (00000002): pg_cron may be absent locally, and a
--- failure must not stop the migration.
-DO $$
-BEGIN
-    PERFORM cron.schedule (
-        'auto-release-session-escrow',
-        '*/15 * * * *',
-        $cron$SELECT finance.auto_release_session_escrow();$cron$
-    );
-EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'pg_cron unavailable — finance.auto_release_session_escrow must be scheduled manually.';
-END $$;
+-- Scheduled every 15 minutes as `auto-release-session-escrow` by the job registry
+-- (`ops.scheduled_jobs`, 00005060).
 -- #endregion

@@ -366,26 +366,9 @@ WITH
         )
     );
 
--- A freelancer sends their OWN submission for review, and only while it is still a draft.
---
--- Narrow on purpose, in both directions. `USING` bounds the PRE-image to a draft the caller wrote, so
--- one member cannot send another's work and nobody can reopen a delivery the client is already
--- reviewing. `WITH CHECK` bounds the POST-image to `pending_review` on the same row, so the statement
--- that is allowed to send a draft cannot also re-point it at another stage, re-attribute it, or mark
--- it accepted -- a review verdict belongs to `projects.review_submission`, never to the submitter.
---
--- Postgres would otherwise reuse `USING` as the check, which reads as symmetric and is not: it would
--- permit an UPDATE whose post-image is still a draft, i.e. silent edits to a row after the fact.
-CREATE POLICY "Submit own draft submissions" ON projects.stage_submissions FOR
-UPDATE TO authenticated USING (
-    submitted_by = auth.uid ()
-    AND status = 'draft'
-)
-WITH
-    CHECK (
-        submitted_by = auth.uid ()
-        AND status = 'pending_review'
-    );
+-- No client UPDATE on projects.stage_submissions. Sending a draft is projects.send_submission_draft,
+-- which moves the ticket, resolves revision rounds and validates files in the same transaction; a bare
+-- status UPDATE did none of that. Verdicts belong to projects.review_submission.
 
 -- Only the ticket's current assignee (the working freelancer) may flag a workload mismatch.
 CREATE POLICY "File workload report" ON projects.ticket_workload_reports FOR
@@ -892,6 +875,9 @@ SELECT TO public USING (
 -- Authority is the PARENT submission's author, not project access. A deliverable is a claim about
 -- what one person delivered, so attaching a file to somebody else's submission would let a third
 -- party alter the evidence a client reviews and a dispute is settled against.
+--
+-- Drafts only. Once sent, the file set is the evidence under review: later files ride in through the
+-- review door (send_submission_draft / submit_deliverable), which validates each one.
 CREATE POLICY "Attach files to own submissions" ON projects.submission_files FOR
 INSERT
     TO authenticated
@@ -903,6 +889,7 @@ WITH
             WHERE
                 ss.id = submission_files.submission_id
                 AND ss.submitted_by = auth.uid ()
+                AND ss.status = 'draft'
         )
     );
 
@@ -916,6 +903,7 @@ CREATE POLICY "Detach files from own submissions" ON projects.submission_files F
         WHERE
             ss.id = submission_files.submission_id
             AND ss.submitted_by = auth.uid ()
+            AND ss.status = 'draft'
     )
 );
 

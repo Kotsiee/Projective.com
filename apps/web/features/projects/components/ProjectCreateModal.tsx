@@ -6,9 +6,11 @@ import { Backdrop, BodyPortal, usePresence } from "@projective/ui/overlay";
 import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks";
 import { Button, InputText, Textarea } from "@projective/ui/fields";
 import type { FieldStatus } from "@projective/ui/fields";
-import { toDisplayCurrency } from "@projective/types/finance";
+import { toDisplayCurrency, toMinorUnits } from "@projective/types/finance";
+import { PERSONAL_PROJECT_NOTE } from "@projective/types/auth";
+import { InlineNotice } from "@projective/ui/feedback";
 import { createInputForType, PROJECT_TYPE_LABEL } from "../types/projects-types.ts";
-import type { CreateProject, ProjectTypeChoice } from "../types/projects-types.ts";
+import type { CreatedProject, CreateProject, ProjectTypeChoice } from "../types/projects-types.ts";
 import { ProjectSidebarService } from "../core/ProjectSidebarService.ts";
 import { formFocusEntry, formKeyNav, formPointerDown } from "../core/form-keys.ts";
 import { CloseIcon } from "./glyphs.tsx";
@@ -18,6 +20,8 @@ import {
 	TypeRadioGroup,
 	TypeStepCards,
 } from "./ProjectCreateTypeCards.tsx";
+import { ProjectCreatePricingFields } from "./ProjectCreatePricingFields.tsx";
+import type { PricingFieldKey } from "./ProjectCreatePricingFields.tsx";
 
 /**
  * ProjectCreateModal — the ONE surface that mints a project, wherever the client starts from.
@@ -28,15 +32,18 @@ import {
  * chances to disagree about what a project needs before it can exist — and they already had: the
  * wizard's Task card minted one structure while the lane's had no Task at all.
  *
- * Four fields, and every one of them is something the client already knows at the moment they press
- * Create:
+ * The fields, each something the client already knows at the moment they press Create:
  *
  *  - **Title** — the address bar, the feed card and the channel header;
  *  - **Description** — one or two lines, optional, so the workspace opens on the sentence they
  *    already wrote rather than an empty editor;
+ *  - **Currency** and an optional **baseline price** ({@link ProjectCreatePricingFields}) — the
+ *    currency is seeded from the viewer's `preferred_display_currency`, and the baseline is a
+ *    per-ticket rate on a pipeline and the escrow budget on a one-off or Task;
  *  - **Type** — Task · One-off · Pipeline, the three the product offers ({@link ProjectTypeChoice});
- *  - **Invited freelancer** — CONTEXTUAL, and read-only: rendered only when the modal was opened
- *    from a seller's profile, where the answer is already settled by the page it was opened from.
+ *  - **Invited freelancer** — CONTEXTUAL: rendered only when the modal was opened from a seller's
+ *    profile, and SENT — once the draft exists the service invites them through the hire path
+ *    (Decision #195). A refused invitation keeps the draft and says why before navigating.
  *
  * # One form, two pacings
  *
@@ -47,12 +54,6 @@ import {
  * is changes what every field after it means. The fields, the payload, the keyboard rule and the
  * refusal handling are identical either way; only the pacing differs, which is what keeps a Task
  * minted from a profile the same row as a Task minted from the lane.
- *
- * Currency and the baseline price are deliberately NOT here. Neither blocks a coherent draft, both
- * are decisions about money that deserve the workspace's own Advanced options, and asking for a
- * figure before the brief is written is asking somebody to price work they have not described. The
- * currency still travels in the payload — it prices escrow for the life of the engagement, so it
- * cannot be absent — seeded from the viewer's resolved money context and changed later in Rules.
  *
  * Rendered through {@link BodyPortal} so its `position: fixed` chrome never re-bases onto the blurred
  * shell (the glass-blur trap), with a SELF-CLEARING enter transform so any portalled panel a field
@@ -83,15 +84,19 @@ export interface ProjectCreateModalProps {
 	/** Preset type from the lane's create menu; the selector can still change it. */
 	initialType: ProjectTypeChoice;
 	/**
-	 * The currency the project is SEEDED in — the viewer's resolved money context, threaded from SSR.
-	 * A seed, not a presentation preference: what is stored here prices escrow for the life of the
-	 * engagement, and it is the workspace's Advanced options that change it afterwards.
+	 * The currency selector's SEED — the viewer's `preferred_display_currency`, threaded from SSR and
+	 * narrowed to `DISPLAY_CURRENCIES`. What is submitted prices escrow for the life of the engagement.
 	 */
 	defaultCurrency: string;
 	/** Active workspace id → the created engagement's `scopeId`. */
 	scopeId: string;
 	/** Present only when opened from a `/[handle]` profile — renders the invited-freelancer row. */
 	seller?: CreateModalSeller;
+	/**
+	 * The creator is a restricted (13–17) account (Decision #192): the project will be personal, so
+	 * the pricing fields are left out and one line says what the project will be.
+	 */
+	restricted?: boolean;
 	/**
 	 * How the form is PACED — see the module docblock.
 	 *
@@ -103,22 +108,27 @@ export interface ProjectCreateModalProps {
 	flow?: "single" | "stepped";
 	onClose: () => void;
 	/**
-	 * Called with the created project's **slug** once the write succeeds — never the uuid, which no
-	 * longer routes at all (Decision #88): handing one to this callback navigates the client straight
-	 * from a successful create to a 404.
+	 * Called with the created project's minted `prj-` **slug** — the only project address that routes
+	 * and the one that survives every rename (Decision #88). Never the uuid, which 404s.
 	 */
 	onCreated: (slug: string) => void;
 }
 
 /** Which control a server-side field error belongs to. */
-type FieldKey = "title" | "description" | "format";
+type FieldKey = "title" | "description" | "format" | PricingFieldKey;
 
 /**
- * The refusal paths this surface can render. A Zod issue whose path names anything else (`currency`,
- * `scopeId`, `form`) has no control to land on, so it stays in the footer message rather than being
- * pinned to an unrelated field.
+ * The refusal paths this surface can render. A Zod issue whose path names anything else (`scopeId`,
+ * `inviteeHandle`, `form`) has no control to land on, so it stays in the footer message rather than
+ * being pinned to an unrelated field.
  */
-const FIELD_KEYS: ReadonlySet<string> = new Set<FieldKey>(["title", "description", "format"]);
+const FIELD_KEYS: ReadonlySet<string> = new Set<FieldKey>([
+	"title",
+	"description",
+	"format",
+	"currency",
+	"baselineAmountCents",
+]);
 
 /** Mount once; drive it with `open`. */
 export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element | null {
@@ -163,6 +173,11 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 	const step = useSignal<1 | 2>(stepped ? 1 : 2);
 	const title = useSignal("");
 	const brief = useSignal("");
+	const currency = useSignal(toDisplayCurrency(defaultCurrency));
+	/** The baseline in MAJOR units of {@link currency}, converted once at submit. */
+	const amount = useSignal<number | null>(null);
+	/** Set only when the draft exists but its invitation was refused, so the reader sees why first. */
+	const created = useSignal<CreatedProject | null>(null);
 	/**
 	 * Null only on a `stepped` first visit: the type step opens NEUTRAL, so the reader's press is the
 	 * answer rather than the confirmation of one already made for them. Non-null everywhere a payload
@@ -191,13 +206,16 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 		step.value = stepped ? 1 : 2;
 		title.value = "";
 		brief.value = "";
+		currency.value = toDisplayCurrency(defaultCurrency);
+		amount.value = null;
+		created.value = null;
 		type.value = stepped ? null : initialType;
 		touched.value = {};
 		focused.value = null;
 		fieldErrors.value = {};
 		submitting.value = false;
 		formError.value = null;
-	}, [open, initialType, stepped]);
+	}, [open, initialType, stepped, defaultCurrency]);
 
 	/** The title's own verdict, independent of whether it has been shown yet. */
 	const titleVerdict = useComputed<FieldStatus>(() => {
@@ -260,6 +278,16 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 	const onBriefChange = (value: string) => {
 		brief.value = value;
 		clearFieldError("description");
+	};
+
+	const onCurrencyChange = (code: string) => {
+		currency.value = code;
+		clearFieldError("currency");
+	};
+
+	const onAmountChange = (value: number | null) => {
+		amount.value = value;
+		clearFieldError("baselineAmountCents");
 	};
 
 	const focusTitleField = () => {
@@ -325,10 +353,9 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 			format,
 			hasStages,
 			description: brief.value.trim(),
-			// Seeded, never asked (see the module docblock). `toDisplayCurrency` narrows a preference
-			// the viewer may hold in a currency the platform cannot price in.
-			currency: toDisplayCurrency(defaultCurrency),
-			baselineAmountCents: null,
+			currency: currency.value,
+			baselineAmountCents: toMinorUnits(amount.value, currency.value),
+			inviteeHandle: seller?.handle,
 			scopeType: "personal",
 			scopeId,
 		};
@@ -351,6 +378,16 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 		const res = await ProjectSidebarService.create(buildPayload(chosen));
 		submitting.value = false;
 		if (res.ok && res.data) {
+			if (res.data.invitation?.outcome === "refused") {
+				created.value = res.data;
+				setTimeout(() => {
+					const actions = panelRef.current?.querySelectorAll<HTMLButtonElement>(
+						".pjc__actions button",
+					);
+					actions?.[actions.length - 1]?.focus();
+				}, 0);
+				return;
+			}
 			onCreated(res.data.slug);
 			return;
 		}
@@ -373,13 +410,18 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 	};
 	// #endregion
 
-	const blocked = !onTypeStep && (titleError !== null || formError.value !== null);
-	const note = onTypeStep
+	const drafted = created.value;
+	const blocked = drafted !== null ||
+		(!onTypeStep && (titleError !== null || formError.value !== null));
+	const note = drafted
+		? `Project created, but ${seller?.name ?? "the freelancer"} wasn't invited.`
+		: onTypeStep
 		? "You can change the type later in the project's settings."
 		: (formError.value ?? titleError ??
 			(seller
-				? `A draft. Finish the setup on its page, then bring ${seller.name} in from the roster.`
+				? `${seller.name} is invited as soon as the draft exists — staged until you publish.`
 				: "You can add the stages, the pricing and the rules straight after this."));
+	const format = picked ? createInputForType(picked)[0] : null;
 
 	/** The heading names what is being made, once the reader has said what it is. */
 	const heading = stepped && !onTypeStep && picked
@@ -413,7 +455,7 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 							<h2 class="pjc__heading">{heading}</h2>
 							{stepped && (
 								<p class="pjc__step" aria-live="polite">
-									{onTypeStep ? "Step 1 of 2 · Choose a type" : "Step 2 of 2 · Name it"}
+									{onTypeStep ? "Step 1 of 2 · Choose a type" : "Step 2 of 2 · Details"}
 								</p>
 							)}
 						</div>
@@ -423,7 +465,13 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 					</header>
 
 					<div class="pjc__body">
-						{onTypeStep && (
+						{drafted?.invitation && (
+							<p class="pjc__lead">
+								{drafted.invitation.message} You can invite them from the project's roster.
+							</p>
+						)}
+
+						{!drafted && onTypeStep && (
 							<>
 								<p class="pjc__lead">
 									{seller
@@ -439,7 +487,7 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 							</>
 						)}
 
-						{!onTypeStep && (
+						{!drafted && !onTypeStep && (
 							<>
 								<div ref={titleFieldRef} {...fieldProps("title")}>
 									<label class="pjc__label" for={TITLE_ID}>Project name</label>
@@ -489,6 +537,24 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 									/>
 								)}
 
+								{format && props.restricted && (
+									<InlineNotice align="start" text={PERSONAL_PROJECT_NOTE} />
+								)}
+								{format && !props.restricted && (
+									<ProjectCreatePricingFields
+										format={format}
+										currency={currency.value}
+										amount={amount.value}
+										onCurrencyChange={onCurrencyChange}
+										onAmountChange={onAmountChange}
+										field={fieldProps}
+										currencyStatus={statusOf("currency")}
+										amountStatus={statusOf("baselineAmountCents")}
+										currencyError={fieldErrors.value.currency}
+										amountError={fieldErrors.value.baselineAmountCents}
+									/>
+								)}
+
 								{seller && (
 									<InvitedFreelancerField
 										name={seller.name}
@@ -504,28 +570,42 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 						<p class="pjc__note" role="status" data-tone={blocked ? "error" : "muted"}>
 							{note}
 						</p>
-						<div class="pjc__actions">
-							{stepped && !onTypeStep
-								? <Button variant="text" label="Back" onClick={stepBack} />
-								: <Button variant="text" label="Cancel" onClick={onClose} />}
-							{
-								/*
-								 * Absent on the type step rather than disabled: there is nothing to create yet, and a
-								 * control that renders and refuses advertises a capability it does not have. The
-								 * cards ARE this step's action.
-								 */
-							}
-							{!onTypeStep && (
-								<Button
-									variant="filled"
-									severity="primary"
-									label={submitting.value ? "Creating…" : "Create project"}
-									loading={submitting.value}
-									disabled={submitting.value}
-									onClick={submit}
-								/>
+						{drafted
+							? (
+								<div class="pjc__actions">
+									<Button variant="text" label="Close" onClick={onClose} />
+									<Button
+										variant="filled"
+										severity="primary"
+										label="Open project"
+										onClick={() => onCreated(drafted.slug)}
+									/>
+								</div>
+							)
+							: (
+								<div class="pjc__actions">
+									{stepped && !onTypeStep
+										? <Button variant="text" label="Back" onClick={stepBack} />
+										: <Button variant="text" label="Cancel" onClick={onClose} />}
+									{
+										/*
+										 * Absent on the type step rather than disabled: there is nothing to create yet, and a
+										 * control that renders and refuses advertises a capability it does not have. The
+										 * cards ARE this step's action.
+										 */
+									}
+									{!onTypeStep && (
+										<Button
+											variant="filled"
+											severity="primary"
+											label={submitting.value ? "Creating…" : "Create project"}
+											loading={submitting.value}
+											disabled={submitting.value}
+											onClick={submit}
+										/>
+									)}
+								</div>
 							)}
-						</div>
 					</footer>
 				</div>
 			</div>

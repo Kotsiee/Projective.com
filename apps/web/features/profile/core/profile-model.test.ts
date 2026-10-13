@@ -13,6 +13,13 @@ import {
 	rigFor,
 } from "./profile-model.ts";
 
+Deno.test("rigFor: a restricted (13–17) viewer gets neither Hire nor Add-to-project, and Message leads", () => {
+	assertEquals(
+		rigFor("freelancer", { hasServices: true, offersConsultation: true, authed: true, restricted: true }),
+		{ layout: "seller", hire: false, addToProject: false, primary: "message" },
+	);
+});
+
 Deno.test("rigFor: a seller with something to hire for leads with Hire; Add-to-project is there for a member", () => {
 	// A listing or a consultation is something the Hire popover can show.
 	assertEquals(

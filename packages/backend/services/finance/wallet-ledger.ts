@@ -100,8 +100,6 @@ export function reasonMeta(reason: string, direction: "credit" | "debit"): Reaso
 			return { category: "spend", label: "Order payment", refKind: null };
 		case "topup":
 			return { category: "deposit", label: "Wallet top-up", refKind: "deposit" };
-		case "demo_opening_credit":
-			return { category: "deposit", label: "Opening balance", refKind: "deposit" };
 		case "payout":
 			return { category: "payout", label: "Payout to bank", refKind: "payout" };
 		case "payout_reversal":

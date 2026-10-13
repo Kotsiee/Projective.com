@@ -11,9 +11,11 @@ import { resolveAuthScreenBounce } from "@features/auth/core/auth-routing.ts";
  * again and, on `/join`, is walked back through onboarding they have already completed.
  *
  * The decision itself lives in {@link resolveAuthScreenBounce} (pure, unit-tested, and the owner of
- * the OAuth-signup exemption); this is only the HTTP plumbing around it. It reads nothing but the
- * session-cookie presence the global middleware already resolved, so it stays network-free: this is
- * chrome-level routing, not an access decision — RLS and the dashboard guard remain the real gates.
+ * the OAuth-signup exemption); this is only the HTTP plumbing around it. It reads only the VERIFIED
+ * session the global middleware already resolved, so it bounces a valid token alone: a tampered,
+ * expired or foreign cookie reaches the sign-in screen it needs instead of being sent to `/home`.
+ * Never a loop — the dashboard guard admits exactly the tokens this bounces, and `safeRedirect`
+ * refuses auth paths as a `redirectTo`.
  */
 export default define.middleware((ctx) => {
 	const bounce = resolveAuthScreenBounce(ctx.url, !!ctx.state.isAuthenticated);

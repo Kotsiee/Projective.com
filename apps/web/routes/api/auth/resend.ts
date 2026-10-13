@@ -13,6 +13,7 @@ export const handler = define.handlers({
 		const body = await ctx.req.json().catch(() => ({}));
 		const parsed = ResendSchema.safeParse(body);
 		return toAuthResponse(
+			ctx.req,
 			await AuthBackendService.resendVerification({
 				email: parsed.success ? parsed.data.email : undefined,
 			}),

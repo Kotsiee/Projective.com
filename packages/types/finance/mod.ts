@@ -11,6 +11,7 @@ export * from "./common.ts";
 export * from "./ledger.ts";
 export * from "./fx.ts";
 export * from "./verification.ts";
+export * from "./payout-gate.ts";
 export * from "./methods.ts";
 export * from "./vault.ts";
 export * from "./billing.ts";

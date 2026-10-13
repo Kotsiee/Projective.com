@@ -975,8 +975,14 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = v_uid) THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: finish setting up your account first';
     END IF;
+    -- A team or business holds a pooled wallet and signs for work: an adult's (Decision #208).
+    PERFORM org.fn_assert_adult(v_uid);
     IF length(v_name) < 2 OR length(v_name) > 80 THEN
         RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'name: give it a name between 2 and 80 characters';
+    END IF;
+    -- A team earns as one; everyone in it must be payable before it exists (Decision #196).
+    IF p_kind = 'team' THEN
+        PERFORM finance.fn_assert_payout_ready('freelancer', v_uid);
     END IF;
 
     PERFORM pg_advisory_xact_lock(hashtext('handle:' || v_handle));
@@ -1397,6 +1403,8 @@ BEGIN
         UPDATE org.org_invitations SET status = 'declined', responded_at = now() WHERE id = p_invitation;
         RETURN jsonb_build_object('status', 'declined', 'kind', v_kind, 'id', v_entity);
     END IF;
+    -- Declining stays open to anyone; joining a team or business is an adult's (Decision #208).
+    PERFORM org.fn_assert_adult(v_uid);
 
     SELECT x.slug, x.status, x.name INTO v_handle, v_status, v_name FROM (
         SELECT t.slug, t.status, t.name FROM org.teams t WHERE t.id = v_inv.team_id
@@ -1408,6 +1416,9 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = v_uid) THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: finish setting up your account first';
+    END IF;
+    IF v_kind = 'team' THEN
+        PERFORM finance.fn_assert_payout_ready('freelancer', v_uid);
     END IF;
     IF EXISTS (SELECT 1 FROM org.fn_role_of_entity(v_kind, v_entity, v_role) r WHERE r.archived) THEN
         RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'invitation: the role offered no longer exists — ask for a new invitation';

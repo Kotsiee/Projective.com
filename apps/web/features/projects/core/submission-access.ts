@@ -142,11 +142,17 @@ export interface WorkflowActions {
 	/** Reviewer viewing a submitted item → "Review Submission". */
 	review: boolean;
 	/**
-	 * Reviewer viewing an ACCEPTED item → "Approve stage", which releases the stage's held escrow.
-	 * Offered only once a deliverable has been accepted, so the money decision follows the review
-	 * decision instead of standing in for it. Whether this viewer may approve is the server's call.
+	 * Reviewer viewing an ACCEPTED item → "Approve stage", which releases any escrow still held on the
+	 * stage and closes it. Offered only once a deliverable has been accepted — the acceptance already
+	 * paid that ticket (Decision #194). Whether this viewer may approve is the server's call.
 	 */
 	approveStage: boolean;
+	/**
+	 * Reviewer anywhere inside a stage → "End stage (Fair Exit)", which settles the stage's held escrow
+	 * at a chosen tier and closes it (Decision #198). Not tied to a unit: ending early is for a stage
+	 * that never reached an acceptance. Whether the stage can still be ended is the preview's answer.
+	 */
+	endStage: boolean;
 	/** Freelancer at the root (no active submission) → "Create New Submission". */
 	create: boolean;
 	/** Freelancer inside an unsubmitted draft → Upload · Delete · Submit for Review. */
@@ -155,16 +161,22 @@ export interface WorkflowActions {
 	statusBadge: SubmissionStatus | null;
 }
 
-/** Resolve the active action group (root task §3 state machine). */
-export function resolveWorkflowActions(args: {
+/** What {@link resolveWorkflowActions} decides from. */
+export interface WorkflowContext {
 	viewer: EffectiveViewer;
 	hasActiveUnit: boolean;
 	effectiveStatus: SubmissionStatus | null;
-}): WorkflowActions {
-	const { viewer, hasActiveUnit, effectiveStatus } = args;
+	/** A stage is in scope — a stage channel, or a stage node (or anything under one) in project scope. */
+	hasStage: boolean;
+}
+
+/** Resolve the active action group (root task §3 state machine). */
+export function resolveWorkflowActions(args: WorkflowContext): WorkflowActions {
+	const { viewer, hasActiveUnit, effectiveStatus, hasStage } = args;
 	const none: WorkflowActions = {
 		review: false,
 		approveStage: false,
+		endStage: false,
 		create: false,
 		draftEdit: false,
 		statusBadge: null,
@@ -173,11 +185,12 @@ export function resolveWorkflowActions(args: {
 	if (viewer.isReviewer) {
 		// A reviewer reviews a SUBMITTED item — never a bare draft (nothing to review yet). The
 		// workspace stays reachable after a verdict, to read the work; an accepted unit additionally
-		// offers the stage approval.
+		// offers the stage approval, and any stage in scope can be ended early.
 		return {
 			...none,
 			review: hasActiveUnit && !!effectiveStatus && effectiveStatus !== "draft",
 			approveStage: hasActiveUnit && effectiveStatus === "accepted",
+			endStage: hasStage,
 		};
 	}
 	// Freelancer.

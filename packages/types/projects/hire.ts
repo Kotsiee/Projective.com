@@ -494,6 +494,26 @@ export function hireInvitationRefusal(
 }
 
 /**
+ * The invitation a Quick-Init create sends to the seller it was opened from.
+ *
+ * Every stage of the brief at its configured terms (a fresh draft has exactly its root stage), or the
+ * whole project for a `task` model. No intro and no intake answers: the create modal collects
+ * neither, so a seller whose intake has a required question refuses through `hire`'s own rule.
+ */
+export function hireForCreatedProject(brief: HireBrief, handle: string): HireInvitation {
+	return {
+		projectId: brief.projectId,
+		handle,
+		message: "",
+		stages: brief.pricingModel === "task"
+			? []
+			: brief.stages.map((stage) => ({ stageId: stage.id, priceCents: null })),
+		taskPriceCents: null,
+		answers: {},
+	};
+}
+
+/**
  * The sum of everything offered, in minor units — the figure the modal's footer prints.
  *
  * A pipeline's per-ticket rates are summed as ONE ticket per selected stage, which is what "the

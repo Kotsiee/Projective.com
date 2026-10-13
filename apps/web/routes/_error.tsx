@@ -20,8 +20,15 @@ const SERVER_ERROR: ErrorCopy = {
 	description: "We couldn’t load this page. It’s been reported, and it’s usually back in a moment.",
 };
 
+const UNAVAILABLE: ErrorCopy = {
+	title: "Projective is briefly unavailable",
+	description:
+		"We couldn’t check your sign-in just now. You’re still signed in — try again in a moment.",
+};
+
 function copyFor(status: number): ErrorCopy {
 	if (status === 404) return NOT_FOUND;
+	if (status === 503) return UNAVAILABLE;
 	if (status >= 500) return SERVER_ERROR;
 	return { title: "This page can’t be shown", description: "The request couldn’t be completed." };
 }
@@ -45,11 +52,13 @@ export const handler = define.handlers(async (ctx) => {
 		return Response.json({ ok: false, message: copyFor(status).title }, { status });
 	}
 	ctx.state.title = `${copyFor(status).title} · Projective`;
-	return page({ status }, { status });
+	const retryHref = status === 503 ? ctx.url.pathname + ctx.url.search : null;
+	return page({ status, retryHref }, { status });
 });
 
 export default define.page<typeof handler>(function ErrorPage({ data }) {
 	const { title, description } = copyFor(data.status);
+	const href = data.retryHref ?? "/";
 	return (
 		<Container as="main" size="md" class="page">
 			<EmptyState
@@ -59,9 +68,9 @@ export default define.page<typeof handler>(function ErrorPage({ data }) {
 				actions={
 					<a
 						class="ui-button ui-button--primary ui-button--outlined ui-button--size-md ui-button--rounded"
-						href="/"
+						href={href}
 					>
-						Go home
+						{data.retryHref ? "Try again" : "Go home"}
 					</a>
 				}
 			/>

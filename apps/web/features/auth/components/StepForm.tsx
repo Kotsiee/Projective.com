@@ -17,7 +17,13 @@ import { GoogleGlyph, InfoIcon, WarnIcon } from "./icons.tsx";
 import type { JoinStore } from "../core/wizardStore.ts";
 import { buildPayload, hasErrors, validateStep } from "../core/wizardValidation.ts";
 import { chainUnitOf, ENTER_CHAIN_SELECTOR, resolveEnterMove } from "../core/enter-chain.ts";
-import { AGE_MESSAGES, bracketFromDob } from "@projective/types/auth";
+import {
+	AGE_MESSAGES,
+	bracketFromDob,
+	browserTimeZone,
+	UNDER_MINIMUM_REFUSAL,
+} from "@projective/types/auth";
+import { lockJoinAge } from "../core/age-lock.ts";
 import { sanitizeHandle, suggestHandle } from "../core/validate.ts";
 import { COUNTRIES, EMPLOYEE_TIERS, INDUSTRIES } from "../core/options.ts";
 import { PURPOSES, SKILLS } from "../core/onboarding-data.ts";
@@ -203,7 +209,7 @@ function DobField(
 	{ store, dobDate }: { store: JoinStore; dobDate: Signal<DateValue> },
 ): JSX.Element {
 	const e = store.errors.value as Err;
-	const bracket = bracketFromDob(store.dob.value);
+	const bracket = bracketFromDob(store.dob.value, browserTimeZone());
 	return (
 		<>
 			<Row>
@@ -681,9 +687,15 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 		store.formError.value = null;
 		const errs = validateStep(store, step.id);
 		store.errors.value = errs;
+		if (errs.dob === AGE_MESSAGES.blocked) return lockForAge();
 		if (hasErrors(errs)) return;
 		if (!last) commitStep(store.stepIndex.value + 1, 1);
 		else void submit();
+	}
+
+	function lockForAge() {
+		lockJoinAge();
+		store.ageLocked.value = true;
 	}
 
 	function goPrev() {
@@ -712,6 +724,7 @@ export function StepForm({ store }: { store: JoinStore }): JSX.Element {
 		store.submitting.value = true;
 		const result = await AuthService.join(buildPayload(store));
 		store.submitting.value = false;
+		if (result.errors?.dob === UNDER_MINIMUM_REFUSAL) return lockForAge();
 		if (!result.ok) {
 			if (result.errors) store.errors.value = { ...store.errors.value, ...result.errors };
 			store.formError.value = result.message ??

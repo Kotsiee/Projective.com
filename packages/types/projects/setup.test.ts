@@ -1035,3 +1035,22 @@ Deno.test("stage timing agrees with hasStages wherever hasStages has an opinion"
 	}
 });
 // #endregion
+
+// #region Personal projects (Decision #192)
+Deno.test("setupSteps: a personal project's ladder has no pricing, roles, terms or publish rung", () => {
+	const keys = setupSteps({ ...base, personal: true }).map((s) => s.key);
+	for (const dropped of ["pricing", "roles", "rules", "publish"]) {
+		assertFalse(keys.includes(dropped as ProjectSetupStep["key"]), dropped);
+	}
+	assert(keys.includes("title"));
+	assert(setupSteps(base).some((s) => s.key === "pricing"), "an ordinary project keeps its pricing rung");
+});
+
+Deno.test("reconcileSetup: personal comes from the base alone — a patch cannot switch it", () => {
+	const personal = reconcileSetup({ ...patchOf(), personal: true });
+	assertEquals(personal.personal, true);
+	assertEquals(reconcileSetup(patchOf(), { personal: true }).personal, false);
+	assertEquals(reconcileSetup({ ...patchOf(), personal: true }, { personal: false }).personal, true);
+	assert(personal.steps.every((s) => s.key !== "pricing"));
+});
+// #endregion

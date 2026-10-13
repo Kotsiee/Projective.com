@@ -47,6 +47,7 @@ import type {
 	ScopeOption,
 } from "../types/projects-types.ts";
 import { IS_DEV } from "@web/utils/dev.ts";
+import { useRestricted } from "@web/features/shell/hooks/useRestricted.ts";
 import { logger } from "@web/utils/logger.ts";
 import { toggleSaved } from "@features/saved/core/saved-state.ts";
 import {
@@ -151,9 +152,12 @@ export interface ProjectsLaneProps {
 	defaultCurrency: string;
 	/** Pathname at SSR — seeds the focused-card highlight. */
 	path: string;
+	/** The viewer is a restricted (13–17) account, as the server resolved it (Decision #192). */
+	restricted: boolean;
 }
 
 export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
+	const restricted = useRestricted(props.restricted);
 	const params = useSignal<ProjectFeedParams>(props.initialParams);
 	const payload = useSignal<ProjectFeedPayload>(props.initial);
 	const queryText = useSignal<string>(props.initialParams.q);
@@ -578,6 +582,7 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 				initialType={modalType.value}
 				defaultCurrency={props.defaultCurrency}
 				scopeId={props.activeContextId}
+				restricted={restricted}
 				onClose={() => (modalOpen.value = false)}
 				onCreated={onCreated}
 			/>

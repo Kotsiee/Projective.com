@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "supabaseClient";
 import { fail, type FieldErrors, type ServiceResult } from "../ServiceResult.ts";
 import { getUserClient } from "../../core/supabase.ts";
+import { isPayoutNotReady, payoutNotReadyRefusal } from "../../core/payout-gate.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 
 /**
@@ -110,6 +111,7 @@ export function splitRefusal(message: string): { field: string; reason: string }
 /**
  * Map a database refusal onto the result a route returns.
  *
+ * The earning gate's `PK403 payout_not_ready` → 403 with its fix link (`core/payout-gate.ts`) ·
  * `22023`/`23514`/`22P02` → 422 (field-keyed when the message names a field) · `42501` → 403 (401 when
  * the message is the "sign in" refusal) · `P0002` → 404 · `23505` → 409 (field-keyed) · `55000` → 409.
  * A JWT failure is a 401. Anything else is an error this layer cannot explain to a reader: it is logged
@@ -123,6 +125,10 @@ export function refusalFrom(
 	const message = error?.message ?? "";
 	if (code === "PGRST301" || code === "PGRST302" || /\bjwt\b/i.test(message)) {
 		return fail(401, { message: "Your session has expired. Sign in again." });
+	}
+	if (error && isPayoutNotReady(error)) {
+		const refusal = payoutNotReadyRefusal(error);
+		return fail(refusal.status, { message: refusal.message, details: refusal.details });
 	}
 	const parts = splitRefusal(message);
 	const reason = sentence(parts?.reason ?? message);

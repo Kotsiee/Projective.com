@@ -65,8 +65,9 @@ SELECT
     u.headline,
     u.bio,
     u.languages,
-    u.timezone,
-    u.country as location,
+    -- A minor's location and local time are never broadcast (Decision #208).
+    CASE WHEN org.fn_is_minor(u.user_id) THEN NULL ELSE u.timezone END as timezone,
+    CASE WHEN org.fn_is_minor(u.user_id) THEN NULL ELSE u.country END as location,
 
 -- Split Ratings
 u.rating_average as rating_as_client,
@@ -86,7 +87,7 @@ u.active_project_count,
 
 -- Public directory facts (appended)
     u.visibility = 'public' as listed,
-    u.city,
+    CASE WHEN org.fn_is_minor(u.user_id) THEN NULL ELSE u.city END as city,
     fa.bucket_id as avatar_bucket,
     fa.storage_path as avatar_path,
     fb.bucket_id as banner_bucket,

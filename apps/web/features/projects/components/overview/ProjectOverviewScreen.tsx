@@ -111,6 +111,7 @@ export function ProjectOverviewScreen(
 		claimable,
 		task,
 		readiness,
+		personal,
 	} = workspace;
 	const participant = viewer === "participant";
 	const hasRun = stages.length > 0;
@@ -160,8 +161,8 @@ export function ProjectOverviewScreen(
 						)}
 						{participant && <EarningsBlock finance={finance} />}
 						{showMessages && <MessagesBlock channels={channels} />}
-						{brief && <TermsBlock brief={brief} />}
-						{people && (
+						{brief && !personal && <TermsBlock brief={brief} />}
+						{people && !personal && (
 							<PeopleBlock people={people} roster={roster} slug={slug} viewer={viewer} />
 						)}
 					</div>

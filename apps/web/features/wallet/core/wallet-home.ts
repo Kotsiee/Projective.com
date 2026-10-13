@@ -250,7 +250,7 @@ export function upcomingItems(src: UpcomingSources): UpcomingItem[] {
 			attention: true,
 		});
 	}
-	for (const stage of business?.fundable ?? []) {
+	for (const stage of business?.fundable ?? overview.personal?.fundable ?? []) {
 		items.push({
 			id: `fundable-${stage.stageId}`,
 			kind: "fundable",

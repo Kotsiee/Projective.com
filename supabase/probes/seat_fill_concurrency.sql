@@ -50,6 +50,8 @@ WHERE NOT EXISTS (
         WHERE sa.freelancer_profile_id = fp.user_id
             AND sa.status NOT IN ('released', 'cancelled', 'declined', 'completed'))
     AND NOT EXISTS (SELECT 1 FROM projects.projects p WHERE p.owner_user_id = fp.user_id)
+    -- A seat is paid work: an unready candidate is refused by the earning gate first (Decision #196).
+    AND finance.fn_freelancer_payout_ready(fp.user_id)
 ORDER BY fp.user_id
 LIMIT 4;
 

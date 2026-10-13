@@ -120,6 +120,12 @@ An unanswered invitation is not an assignment and never appears.
 The one atomic write behind `POST /api/projects/create`. Inserts the project row, its stages, their
 staffing roles, the participant record and a readable unique slug in a single transaction.
 
+**Caller.** `insertProject` (`packages/backend/services/projects/live-writes.ts`) sends the Quick-Init
+payload built by `createProjectPayload` — title, `format` / `structure_variation`, the optional brief,
+`currency`, the `fixed_price` budget pair, and ONE explicit root stage carrying the baseline price —
+so the root stage, its room and the Discussion room commit with the row or not at all (Decision #195).
+`live-create.test.ts` holds every payload key against the keys this body reads.
+
 **Why an RPC rather than four table writes.** PostgREST gives the application one statement per
 round trip and no transaction around them, so a TypeScript create would be four calls with no way to
 undo the first three when the fourth is refused — leaving an engagement the client has already
@@ -589,6 +595,15 @@ or `NULL` when the hold was **refused** — the claim did not happen and the tic
 A signed-in caller cannot attach another person to a ticket — and so cannot hold the client's escrow
 against them; `supabase/probes/function_grants.sql` is the regression check.
 
+**App caller:** `POST /api/projects/ticket/claim` `{ projectId, ticketId }` (`ClaimTicketSchema`) →
+`ProjectBackendService.claimTicket` → `live-claim.ts` `claimTicketRow`, in the caller's JWT with
+`p_assignee_id` always the session's own user. The board's **Claim** control and a provider's drag of
+an unclaimed card into In Progress both land here — never on `move_ticket`, which sets no assignee and
+so always meets `PF402` from the escrow sync. `claimRefusal` words each refusal: `NULL` → 402
+`needs_funding`; `PK403 payout_not_ready` → 403 with the payout gate's `details` (fix link for
+`self`); `PM403` → the age gate's 403; a cap breach → 409 `over_capacity` in the database's own
+sentence; a lost race → 409 `already_claimed`; no description → 422; not `open_pull` → 422.
+
 **Ticket triggers** (`00001110`, bound in `00001850`). The settlement guard is under
 [Escrow settlement doors](#escrow-settlement-doors). The rest below are all `FOR EACH ROW` on
 `projects.tickets`, `EXECUTE` moot (triggers), with no caller check unless stated.
@@ -669,13 +684,38 @@ Grants are in `00002510` ("escrow settlement doors").
 | `projects.complete_ticket(p_ticket_id uuid) → void`                              | `00001120` | Ticket → `completed`; releases all its held escrow             | `authenticated`                  | signed in + `can_review_project`                             |
 | `projects.delete_ticket(p_ticket_id uuid) → void`                                | `00001120` | Releases a claimed ticket's escrow, then hard-deletes the row  | `authenticated`                  | signed in + `can_review_project`                             |
 | `projects.force_complete_stage(p_ticket_id uuid) → uuid`                         | `00001130` | Releases the current installment, advances (and funds) the next | `authenticated`                  | signed in + `can_review_project`                             |
-| `projects.approve_stage(p_project_id uuid, p_stage_id uuid) → jsonb`             | `00001150` | Releases every held escrow on the stage; stage → `paid`        | `authenticated`                  | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
-| `projects.cancel_stage_fair_exit(p_project_id uuid, p_stage_id uuid, p_tier integer) → jsonb` | `00001150` | Pays the tier (25/50/75 %) out, refunds the rest; stage → `cancelled` | `authenticated`        | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
+| `projects.approve_stage(p_project_id uuid, p_stage_id uuid) → jsonb`             | `00001150` | Completes every ticket still holding escrow on the stage (via `fn_settle_ticket_stage`), releasing it; stage → `paid` (#194) | `authenticated`                  | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
+| `projects.cancel_stage_fair_exit(p_project_id uuid, p_stage_id uuid, p_tier integer) → jsonb` | `00001150` | Pays the tier (25/50/75 %) out, refunds the rest; stage → `cancelled`; the tickets left on it → `cancelled`; both sides notified (#198) | `authenticated`        | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
 | `projects.move_ticket(…)` (→ `completed`)                                        | `00001120` | Via `trg_ticket_escrow_sync`                                   | `authenticated`, `service_role`  | `has_project_access`, plus `can_review_project` for Done     |
 | `projects.delete_stage(p_project_id uuid, p_stage_id uuid) → void`               | `00001130` | Releases claimed tickets' escrow in the stage                  | `authenticated`, `service_role`  | signed in + `can_review_project` (Decision #163)             |
 | `projects.remove_project_member(…)`                                              | `00001130` | Via `release_ticket_to_backlog`                                | `authenticated`, `service_role`  | project owner                                                |
 | `projects.release_ticket_to_backlog(p_ticket_id uuid) → void`                    | `00001120` | Releases a ticket's escrow, resets it to New                   | **none** (owner-only, internal)  | none — reachable only through `remove_project_member`        |
 | `projects.fn_release_expired_claims(p_now timestamptz DEFAULT now()) → integer`  | `00001140` | **Refunds** every claim older than the TTL                     | **`service_role`** only          | none — a cron job                                            |
+
+**Fair Exit — the quote, the preview and the door (Decision #198).**
+`projects.fn_fair_exit_quote(p_stage_id uuid, p_tier integer) → jsonb` (`00001150`, internal, no
+grant) reads — without moving anything — what a Fair Exit at `p_tier` settles: every escrow still
+held on the tickets that hold escrow on the stage, split by `finance.fn_fair_exit_split` exactly as
+`finance.fn_fair_exit_release` splits it, a ticket holding a prepaid (unclaimed) escrow refunded
+whole. It answers `{ tier, ticket_count, held_cents, prepaid_cents, freelancer_paid_cents,
+fee_cents, client_refunded_cents }` (`client_refunded_cents` includes the prepaid money).
+`projects.preview_stage_fair_exit(p_project_id uuid, p_stage_id uuid) → jsonb` (`00001150`,
+`authenticated`; signed in + `can_review_project`, `42501` otherwise; `P0002` for a stage outside
+the project) is the confirmation's read: `{ stage_id, stage_name, stage_status, currency,
+exitable, blocked, held_cents, tickets_to_cancel, tiers }`, `tiers` holding the quote at 25, 50
+and 75. `blocked` is `settled` for a stage outside the unsettled set and `nothing_held` when
+nothing is held — the two states the door refuses. `cancel_stage_fair_exit` locks the stage, then
+the tickets it will settle in id order, takes the same quote, runs the split, and reports
+`{ tier, cancelled_count, tickets_cancelled, freelancer_paid_cents, fee_cents,
+client_refunded_cents, currency, stage_status }` from that quote (the old figures summed
+`finance.transactions`, which has no row for a payout still in its pending window since #191). It
+then closes every ticket still standing on the stage (not `completed` / `cancelled` /
+`reported_hidden`) as `cancelled` with a `ticket_history` row (`reason: fair_exit`, `tier`),
+cancels any paid revision round still `awaiting_payment`, and notifies both sides with
+`stage_cancelled` (`stage.cancelled` in the catalog): every payee and team-split recipient the
+split paid plus the stage's assignees (`fn_notify_payees`), and the project owner plus the reviewer
+who ended it (payload: the quote, `currency`, `tickets_cancelled`). Probe:
+`supabase/probes/fair_exit_settlement.sql`.
 
 **Authority is review authority, never project access.** `has_project_access` is true for the
 assignee — the payee — so every door that settles money asks `projects.can_review_project` (the
@@ -690,6 +730,19 @@ that hold is refused (`PF402`, Decision #165) the approval still stands and the 
 earned is still released, but the ticket waits in the next stage as `todo`, `needs_funding`
 (`fn_mark_needs_funding`), instead of `in_progress` on unheld money.
 
+**Settlement completes the ticket (Decision #194).** `approve_stage` and `review_submission('accept')`
+settle each ticket through `projects.fn_settle_ticket_stage(p_ticket_id, p_stage_id, p_reason) → uuid[]`:
+it locks the ticket, snapshots its held escrows and, when the ticket stands on that stage, calls
+`force_complete_stage` — on the final required stage that is the `completed` status write, so the
+settlement guard and `trg_ticket_escrow_sync` release the escrow and `payment_status` lands
+`released`. It writes a `ticket_history` row (`changes.reason`) and, on completion, a
+`milestone_confirmed` activity row, releases anything from the snapshot still held directly, and
+returns only the escrows this call released — which is what `approve_stage` sums into
+`total_paid_cents` / `fee_cents` / `splits`. `projects.fn_notify_payees(...)` notifies each
+individual payee and every `finance.payout_splits` recipient once. Both are internal (no `EXECUTE`
+grant). `approve_stage` also notifies the project owner and, when another client member approved,
+that approver.
+
 `approve_stage`'s handover check (the last settled stage completes the project) ignores archived
 stages (`archived_at`, Decision #163), so a retired stage never holds the handover open.
 
@@ -703,7 +756,7 @@ stages (`archived_at`, Decision #163), so a retired stage never holds the handov
 | Signed in, no review authority (assignee)  | `Only the client/owner may …`                                                               |
 | Unknown ticket id                          | `no_data_found` (`P0002`). `delete_ticket` used to return silently; it now refuses.         |
 | Stage not in the project (`approve_stage`, `cancel_stage_fair_exit`, also `fund_stage` / `get_stage_finance`) | `no_data_found` (`P0002`). |
-| No held escrow on the stage; `fund_stage` on a stage not `assigned` | `object_not_in_prerequisite_state` (`55000`). |
+| Nothing ever funded on the stage (none held, none released — a stage its acceptances already paid settles, #194); `fund_stage` on a stage not `open` / `assigned` / `in_progress` (#197) | `object_not_in_prerequisite_state` (`55000`). |
 | Stage already settled — `approve_stage` on a stage not `open` / `assigned` / `in_progress` / `submitted` / `revisions` / `approved`; `cancel_stage_fair_exit` on one not in that set less `approved` (Decision #188) | `object_not_in_prerequisite_state` (`55000`) — "This stage is already paid / cancelled …". |
 | `cancel_stage_fair_exit` tier not 25/50/75 | `invalid_parameter_value` (`22023`).                                                         |
 
@@ -768,6 +821,18 @@ live (claimed / in-progress / in-review) intensity excluding this ticket, plus t
 `P0001`. `STABLE`, `search_path = public, projects, org, security, auth`; `EXECUTE`: `service_role`
 only — no client grant. **No caller check** — moot for clients, because no client role holds
 `EXECUTE`; a caller can evaluate any user against any ticket.
+
+### The earning gate on the staffing doors (Decision #196)
+
+Every door that lands a gig calls `finance.fn_assert_payout_ready` (`database/finance/Functions.md`):
+`apply_to_seat` and `apply_to_project` (the person, or the team's shareholders), `redeem_invite_link`,
+`assign_from_application` (re-checked at acceptance), `fn_apply_invitation_decision` (accepting a
+`freelancer`-role invitation; a manager's and any decline are not gated) and
+`fn_assign_ticket_core`. The core asks `projects.fn_ticket_assignee_payout_ready(ticket, assignee)`
+→ boolean first: true when a team holds the ticket's stage (an `accepted` team assignment — the
+escrow's payee is then the team, cleared when it was seated), else `fn_freelancer_payout_ready`.
+`auto_assign_round_robin` and `assign_parallel_stream` use the same predicate to SKIP an unready
+roster member rather than fail the run. The predicate has no client grant.
 
 ### `projects.fn_assign_ticket_core(p_ticket_id uuid, p_assignee_id uuid, p_enforce_capacity boolean DEFAULT true) → uuid`
 
@@ -884,23 +949,48 @@ no admin test.
 
 ## Deliverables
 
-### `projects.submit_deliverable(...) → jsonb`
+### The review door — `submit_deliverable` · `send_submission_draft`
 
-Files a submission against a stage, links its `files.items` ids (tolerantly — an id with no row is
-logged and skipped) and moves the ticket into `in_review`. Guarded by `has_project_access` plus a
-stage-belongs-to-project check. Idempotent with `projects.fn_ticket_review_submission`, the trigger
-that auto-files a ledger row when a card is dragged into Review: whichever runs first, the other
-no-ops.
+The only two ways a submission reaches `pending_review` (there is no client `UPDATE` on
+`stage_submissions` — [Policies.md](Policies.md)). Both run the same three internal steps, so a sent
+draft and a fresh submission leave identical state; `00001150` region 4, probe
+`supabase/probes/submission_door.sql`.
 
-Full signature: `submit_deliverable(p_ticket_id uuid, p_stage_id uuid, p_title text, p_description
-jsonb DEFAULT '{}', p_checked_item_ids jsonb DEFAULT '[]', p_file_ids uuid[] DEFAULT '{}') → jsonb`
-(the `fn_serialize_submission` shape). `SECURITY DEFINER`, `search_path = public, projects, org,
-files, auth`; `EXECUTE`: `authenticated`, `service_role`. Refusals: unknown ticket `P0002`; no
-project access `42501`; foreign stage `23514`. Project access, not stage assignment, is the test — any
-project participant may file — and the `files.items` ids are linked without checking who owns them. A
-resubmission resolves every `open` revision round on the ticket (`status = 'resolved'`,
-`resolved_at`) and writes the newest round's `submission_id` into the new row's `revision_of`
-(Decision #167).
+**`projects.submit_deliverable(...) → jsonb`** — files a new submission. Full signature:
+`submit_deliverable(p_ticket_id uuid, p_stage_id uuid, p_title text, p_description jsonb DEFAULT '{}',
+p_checked_item_ids jsonb DEFAULT '[]', p_file_ids uuid[] DEFAULT '{}') → jsonb`. Inserts a
+`pending_review` row with the stage's next `number`, then the three steps.
+
+**`projects.send_submission_draft(p_submission_id uuid, p_checked_item_ids jsonb DEFAULT NULL,
+p_file_ids uuid[] DEFAULT '{}') → jsonb`** — sends a draft. Locks the row; it must be the caller's own
+and still `draft`, else `PC409` "That draft can no longer be submitted." (missing, foreign and already
+sent read the same). Sets `pending_review`, numbers it if the draft had no `number`, replaces
+`checked_item_ids` unless `NULL`, links `p_file_ids` (the files staged since the draft was saved), then
+the three steps.
+
+Both: `SECURITY DEFINER`, `search_path = public, projects, org, files, auth`; `EXECUTE`:
+`authenticated`, `service_role`; return the `fn_serialize_submission` shape. Idempotent with
+`projects.fn_ticket_review_submission`, the trigger that auto-files a ledger row when a card is dragged
+into Review: the submission is `pending_review` before the ticket flips, so the trigger no-ops.
+
+The internal steps (`EXECUTE`: owner only):
+
+- **`fn_assert_can_submit(p_ticket_id, p_stage_id) → uuid`** — locks the ticket; unknown ticket
+  `P0002`; no project access `42501`; stage outside the project `23514`; ticket not in that stage
+  (`current_stage_id`) `23514` "That ticket is not part of this stage."; caller neither the ticket's
+  `current_assignee_id` nor an active member (`org.is_active_team_member`) of the stage's accepted team
+  assignment (the payee `fn_hold_ticket_escrow` resolves) `42501` "Only the ticket's assignee can
+  submit work on it." The client/owner is refused here: project access is not enough.
+- **`fn_link_submission_files(p_submission_id, p_file_ids) → integer`** — checks every new id **and**
+  every file the submission already links (a draft's earlier attachments). A missing or soft-deleted
+  `files.items` row raises `PU422` (`DETAIL.code = 'file_unknown'`); a file neither `owner_user_id =
+  auth.uid()` nor team-owned by a team the caller is active in raises `PU422` (`file_foreign`, the
+  message names the file). Nothing is skipped. New ids are linked once each; returns the linked count.
+- **`fn_enter_review(p_submission_id) → void`** — resolves every `open` revision round on the ticket
+  (`status = 'resolved'`, `resolved_at`), writes the newest round's `submission_id` into the
+  submission's `revision_of` (Decision #167), and moves the ticket to `in_review` unless it is
+  `completed`/`cancelled`. Leaving `in_progress` without a held escrow raises `PF402` from
+  `trg_ticket_escrow_sync` (#165); the whole call rolls back.
 
 ### Paid revisions — `request_paid_revision` · `fund_paid_revision` · `fn_notify_revision` · `fn_stage_revision_terms`
 
@@ -915,7 +1005,8 @@ function (`00001130`).
   currency, title, stage_id, ticket_id}`. Sends nothing back. `EXECUTE`: `authenticated`,
   `service_role`.
 - **`fund_paid_revision(p_revision_id uuid) → jsonb`** — run by `finance.place_wallet_order` for a
-  `paid_revision` line, as the payer. `fund_ticket`'s payer rule (`42501`); round not
+  `paid_revision` line, by `finance.settle_card_payment` for a card payment naming the round, and
+  directly by the review's "Pay from wallet" (Decision #199) — always as the payer. `fund_ticket`'s payer rule (`42501`); round not
   `awaiting_payment` or submission already decided `PC409`; not a `paid_revision`, or its
   `price_cents` no longer the stage's `extra_revision_price_cents`, `PC409` (raise it again). Holds the round's escrow
   (`finance.fn_hold_revision_escrow`, `PF402` + `DETAIL` like #165), then opens the round: submission
@@ -951,22 +1042,30 @@ Signatures: `review_submission(p_submission_id uuid, p_decision text, p_feedback
 jsonb` and `fund_stage(p_project_id uuid, p_stage_id uuid) → jsonb`. Both `SECURITY DEFINER`;
 `EXECUTE`: `authenticated`, `service_role`. `review_submission` (`search_path = public, projects, org, auth`): unknown
 submission `P0002`, non-reviewer `42501`, not `pending_review` `55000`, decision other than `accept` /
-`request_revision` `23514`; a revision request also files a `stage_revision_requests` row and moves the
-ticket back to `in_progress`. **Revision allotment (Decision #167):** a `request_revision` locks the
+`request_revision` `23514`, a stage already `paid` / `cancelled` `55000` (the stage row is locked for
+either verdict, #194); a revision request also files a `stage_revision_requests` row and moves the
+ticket back to `in_progress`; an acceptance settles the ticket through `fn_settle_ticket_stage`
+(completed, escrow released), notifies the submitter and every payee (`submission.accepted`), and adds
+`released_count` to the returned submission. **Revision allotment (Decision #167):** a `request_revision` locks the
 stage row and is free while `file_revisions_allowed` is `NULL`, `revisions_used < file_revisions_allowed`
 or `extra_revision_price_cents = 0` — then it increments `revisions_used`, links the round to the
 submission (`submission_id`) and calls `fn_notify_revision`. Past the allotment it raises **`PR402`**
 before writing anything, `DETAIL` = `{code: 'paid_revision_required', price_minor, currency, used,
 allowed}`. Either verdict cancels a round still `awaiting_payment` on the submission. `fund_stage` (`search_path = public, projects, finance, comms, org,
-auth`): payer refusals `42501`; foreign stage `P0002`; stage not `assigned` `55000`; an individual
+auth`): payer refusals `42501`; foreign stage `P0002`; stage not `open`, `assigned` or `in_progress`
+`55000` (Decision #197); any ticket with no price `PC409` before anything moves; an individual
 owner's wallet short of the stage total `PF402`, and any ticket's own hold refusal (`PF402`, Decision
-#165) aborts the whole stage; nothing fundable `P0001`. Fundable means assigned and `unpaid` or
-`needs_funding`. On success the stage moves to `in_progress`; each hold notifies its assignee and the
+#165) aborts the whole stage; nothing fundable `PC409`. Fundable means in the stage, `unpaid` or
+`needs_funding`, not `completed`/`cancelled`/`reported_hidden`, **claimed or not** — priced by
+`projects.fn_stage_funding_need`, the definition `finance.begin_card_payment` charges by. A ticket
+nobody has claimed is held PREPAID (no payee) and bound at its claim. On success an `assigned` stage
+moves to `in_progress` (an open or in-progress stage keeps its status) and the answer carries
+`awaiting_claim_count`; each hold notifies its assignee and the
 client itself (`escrow.funded`), so `fund_stage` sends no `stage_funded` of its own. **Concurrency
 (Decision #189):** the fundable tickets are locked `FOR UPDATE` in id order before any hold or the
 individual's wallet check, and only that locked set is held. A second `fund_stage` (or a `fund_ticket`)
 on the same tickets waits, re-reads them as `escrow_funded` once the first commits, and holds nothing
-(`P0001`, nothing fundable). Ticket locks are always taken before a hold touches the payer's wallet row,
+(`PC409`, nothing fundable). Ticket locks are always taken before a hold touches the payer's wallet row,
 so the doors never deadlock on each other. `finance.uq_escrows_ticket_base_held` is the backstop.
 
 ### `projects.fund_ticket(p_project_id uuid, p_ticket_id uuid)` → jsonb (Decision #166)
@@ -975,12 +1074,31 @@ Funds ONE ticket's escrow — the single-ticket Buy Now and a basket ticket line
 as `fund_stage` (`42501`), then the PRODUCT_SPEC §5 purchasing gate and the hold's prerequisites, in
 order: ticket not in the project `P0002`; no description `PU422`; already paid (`payment_status` not
 `unpaid`/`needs_funding`, or a held escrow) `PC409`; not in a stage, or the stage `approved`/`paid`/
-`cancelled` `PC409`; no price (own, else the stage's) `PC409`; no payee — unclaimed and no accepted team
-seat on the stage — `PU422`; an individual owner's wallet short of the price `PF402`. Then exactly one
+`cancelled` `PC409`; no price (own, else the stage's) `PC409`; an individual owner's wallet short of
+the price `PF402`. A ticket nobody has claimed is held PREPAID and bound at its claim (Decision #197;
+before it, `PU422` "Nobody can be paid … yet"). Then exactly one
 `finance.fn_hold_ticket_escrow`. **The stage's status is not moved** — its other tickets are still
 unfunded, so it stays partially funded; `fund_stage` remains the whole-stage action. Returns
-`{ticket_id, escrow_id, stage_id, amount_cents, currency}`. `SECURITY DEFINER` (`search_path = public,
+`{ticket_id, escrow_id, stage_id, amount_cents, currency, prepaid}`. `SECURITY DEFINER` (`search_path = public,
 projects, finance, comms, org, auth`), `EXECUTE`: `authenticated`, `service_role` (`00002510`).
+
+### `projects.fn_stage_funding_need(p_stage_id uuid)` → jsonb (Decision #197)
+
+What funding a stage takes: `{ticket_count, unpriced_count, amount_cents}` over every ticket in the
+stage that is `unpaid`/`needs_funding`, not `completed`/`cancelled`/`reported_hidden`, with no held
+base escrow — claimed or not — at `COALESCE(ticket.unit_price_cents, stage.unit_price_cents)`;
+`amount_cents` sums the priced ones. THE definition `fund_stage` holds by and
+`finance.begin_card_payment` charges by, so a card payment can never settle into a stage that then
+refuses it. `SQL STABLE SECURITY DEFINER`, `search_path = ''`; internal (`EXECUTE` revoked from
+`PUBLIC`, `anon`, `authenticated`).
+
+### `projects.get_stage_funding_quote(p_project_id uuid, p_stage_id uuid)` → jsonb (Decision #197)
+
+The payer's read before funding a stage (the wallet's Fund a stage, the board's Fund stage via
+`GET /api/finance/escrow/quote`): `fn_stage_funding_need` plus `{stage_id, stage_name, stage_status,
+fundable (open · assigned · in_progress), currency, payer_scope ('business' | 'personal'), payer_id,
+wallet_balance_cents}`. `fund_stage`'s access and payer rule (`42501`); a foreign stage `P0002`.
+Read-only; the doors re-check everything. `STABLE SECURITY DEFINER`; `EXECUTE`: `authenticated`.
 Called as the payer by `finance.place_wallet_order` (a ticket line) and `finance.settle_card_payment` (a card lock
 naming a ticket). Proven by `supabase/probes/single_ticket_purchase.sql`.
 
@@ -1092,11 +1210,10 @@ job does not honour.
 Nothing is deleted. `status` becomes `archived` and `archived_at` is stamped; the project, its
 stages and their history stay (root `CLAUDE.md` §7).
 
-`SECURITY DEFINER`, `search_path = ''`, every reference schema-qualified. Registered with `pg_cron`
-daily at 03:10 UTC by a guarded `DO` block beside the definition — guarded end to end, because the
-extension may be absent and `cron.schedule` needs privileges a migration run may not have, and a
-failure there must not block the rest of the migration. `EXECUTE`: `service_role` only — no client
-grant.
+`SECURITY DEFINER`, `search_path = ''`, every reference schema-qualified. Scheduled daily at 03:10
+UTC as `archive-stale-service-drafts`, a row of the job registry (`ops.scheduled_jobs`, `00005060`;
+Decision #203); `deno task cron:run archive-stale-service-drafts` runs it by hand. `EXECUTE`:
+`service_role` only — no client grant.
 
 🚨 **No caller check** — moot for clients, because no client role holds `EXECUTE`. `p_now` is
 caller-supplied, so a caller can pass a far-future instant and soft-archive every un-funded
@@ -1471,3 +1588,28 @@ security, analytics, public`; `EXECUTE` moot (a trigger).
 `trg_refund_withdrawn_application` — `AFTER UPDATE OF status ON projects.project_applications`, bound
 in `00001820`. On the transition into `withdrawn`, returns the unit (`finance.fn_refund_allowance`).
 `search_path = projects, finance, public`; `EXECUTE` moot (a trigger).
+
+## Personal projects and under-18 accounts (`00001130`, Decision #192)
+
+A restricted (13–17) account creates projects only as **personal** management tools — one person, no
+money, never listed — and never joins anybody else's. Every rule is a table trigger (bound in
+`00001820`), because the app writes these tables directly under RLS and an owner holds `FOR ALL`
+policies on most of them. All are `SECURITY DEFINER`, `search_path = ''`, and granted to no client.
+
+| Function | Bound as | Rule |
+| :------- | :------- | :--- |
+| `projects.fn_is_personal_project(p_project uuid) → boolean` | — | `projects.is_personal` for the id, `false` for none. |
+| `projects.trg_projects_personal_guard()` | `trg_projects_personal_guard` BEFORE INSERT OR UPDATE on `projects.projects` | On insert, `is_personal := is_personal OR org.fn_is_minor(owner_user_id)`; afterwards it cannot change (`PM403`), and a non-personal project cannot be handed to a minor (`PM403`). A personal project refuses a client business, owning team or organisation (`PM403`) and is coerced to `visibility` = `publish_visibility` = `invite_only`, `session_kind = 'none'`, no budget, no auto-fund, no deadline bonuses. |
+| `projects.trg_stages_personal_money_guard()` | BEFORE INSERT OR UPDATE on `project_stages` | On a personal project: `unit_price_cents` and `extra_revision_price_cents` are `NULL`, `hire_trigger_active` is false. |
+| `projects.trg_tickets_personal_guard()` | BEFORE INSERT OR UPDATE on `tickets` | On a personal project: `unit_price_cents` is `NULL`, and only the owner may be `current_assignee_id` (`PM403`). |
+| `projects.trg_personal_project_closed()` | BEFORE INSERT on `project_participants`, `stage_assignments`, `stage_open_seats`, `stage_staffing_roles`, `stage_budget_rules`, `maintenance_contracts`, `stage_invite_links`, `project_applications`, `project_invitations`, `cohorts` | Refuses any row on a personal project (`PM403`) — nobody joins it and nothing is sold on it. Resolves the project from `project_id` or `project_stage_id`. |
+| `projects.trg_project_joiner_adult(column)` | BEFORE INSERT on `project_applications` (`applicant_user_id`), `project_participants` (`profile_id`), `stage_assignments` (`freelancer_profile_id`); BEFORE INSERT OR UPDATE OF `target_user_id` on `project_invitations` | Refuses a row that would seat a minor in a project (`PM403`) — every join path (apply, apply to a seat, an invite link, an invitation and its acceptance, an assignment) and a direct table write alike. |
+
+Work on a personal project moves without money: `projects.fn_ticket_escrow_sync` and
+`fn_ticket_delete_protocol` (`00001110`) return at once for it, so entering `claimed` /
+`in_progress` / `in_review` needs no held escrow and completing or deleting releases nothing, and
+`fn_assign_ticket_core` skips its `org.fn_assert_adult` check there (only the owner can hold the
+ticket anyway). The reads stamp it for the workspace: `ProjectDetail.personal`,
+`ProjectSetup.personal` (the form drops Budget, Roles and Terms & visibility, and the ladder its
+pricing, roles, rules and publish rungs), `ProjectWorkspace.personal` and `BoardCard.personal`
+(`funding` is `null`, no Finances tab). Probe: `supabase/probes/personal_projects.sql`.

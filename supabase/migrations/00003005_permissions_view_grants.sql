@@ -36,6 +36,8 @@ authenticated;
 -- only via a SECURITY DEFINER wrapper / service-role — matching the hidden-ledger posture. Exposed to
 -- service_role for the reconciliation job / admin tooling.
 GRANT SELECT ON finance.v_wallet_reconciliation TO service_role;
+REVOKE ALL ON finance.v_ops_unledgered_payments FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON finance.v_ops_unledgered_payments TO service_role;
 -- #endregion
 
 -- #region analytics

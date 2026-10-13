@@ -201,6 +201,18 @@ export function TrashGlyph({ size = 18, class: c }: GlyphProps): JSX.Element {
 		</>,
 	);
 }
+/** Exit — an arrow leaving a door (End Stage, Fair Exit). */
+export function ExitGlyph({ size = 18, class: c }: GlyphProps): JSX.Element {
+	return svg(
+		size,
+		c,
+		<>
+			<path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" />
+			<path d="M10 16l-4-4 4-4" />
+			<path d="M6 12h10" />
+		</>,
+	);
+}
 /** Send — a paper plane (Submit for Review / Confirm & Submit). */
 export function SendGlyph({ size = 18, class: c }: GlyphProps): JSX.Element {
 	return svg(

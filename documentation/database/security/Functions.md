@@ -269,7 +269,8 @@ let those columns be set at birth were removed in the same change (`org/Policies
 §6 · `SECURITY DEFINER` · **Grant:** `service_role` only (`REVOKE ALL` from `PUBLIC`, `anon`,
 `authenticated` in `00002510`). The service role's door to `org.fn_purge_due_deletions` — it holds
 `USAGE` on `security` and not on `org`. Called by `POST /api/user/cron/erasures` (bearer
-`ACCOUNT_CRON_SECRET`); answers how many requests completed.
+`ACCOUNT_CRON_SECRET`); answers how many requests completed. That route is dispatched daily at 04:10
+UTC by the `account-erasures` job (`ops.scheduled_jobs`, pg_cron + pg_net, Decision #203).
 
 ## Email verification tokens (2026-10-06)
 

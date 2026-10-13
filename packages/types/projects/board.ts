@@ -622,6 +622,11 @@ export const BoardCardSchema = z.object({
 	 * resolved (an optimistic row awaiting its answer).
 	 */
 	funding: FundingStatusSchema.nullable().default(null),
+	/**
+	 * The ticket belongs to a personal project (Decision #192): no money, so no funding line and no
+	 * Finances tab. Stamped by the board read; absent reads as `false`.
+	 */
+	personal: z.boolean().optional(),
 	priority: TicketPriority,
 	/** The client's difficulty multiplier — the ticket's own default for every stage it touches. */
 	intensity: TicketIntensity,
@@ -1120,6 +1125,31 @@ export const MoveTicketSchema = z.object({
 	sortOrder: z.number().int().min(0).nullable(),
 });
 export type MoveTicket = z.infer<typeof MoveTicketSchema>;
+
+/**
+ * A freelancer's self-claim of one `open_pull` ticket (`projects.claim_ticket`). There is no assignee
+ * field: the claimant is always the session's own user, so a payload cannot name anyone else.
+ */
+export const ClaimTicketSchema = z.object({
+	projectId: z.string().min(1).max(120),
+	ticketId: z.string().min(1).max(120),
+});
+export type ClaimTicket = z.infer<typeof ClaimTicketSchema>;
+
+/**
+ * Whether a ticket is open for a self-claim: Ready (`todo`), unclaimed, described (the purchasing
+ * gate), not on a personal project (only its owner holds those) and on a stage whose routing is an
+ * open pull. Capacity, funding and payout readiness are the server's to answer, so they are not
+ * guessed here.
+ */
+export function isSelfClaimable(
+	card: Pick<BoardCard, "status" | "claimed" | "hasDescription" | "stageId" | "personal">,
+	stage: Pick<BoardStageRef, "assignmentMode"> | undefined,
+): boolean {
+	if (card.status !== "todo" || card.claimed || !card.hasDescription || !card.stageId) return false;
+	if (card.personal) return false;
+	return stage?.assignmentMode === "open_pull";
+}
 // #endregion
 
 // #region Create stage (write)

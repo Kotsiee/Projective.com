@@ -206,6 +206,48 @@ export function toDisplayCurrency(code: string | null | undefined): string {
 	const upper = (code ?? "").trim().toUpperCase();
 	return isDisplayCurrency(upper) ? upper : PLATFORM_BASE_CURRENCY;
 }
+
+/** The euro area plus the territories that use the euro without being members. */
+const EURO_REGIONS: ReadonlySet<string> = new Set([
+	"AT",
+	"BE",
+	"BG",
+	"CY",
+	"DE",
+	"EE",
+	"ES",
+	"FI",
+	"FR",
+	"GR",
+	"HR",
+	"IE",
+	"IT",
+	"LT",
+	"LU",
+	"LV",
+	"MT",
+	"NL",
+	"PT",
+	"SI",
+	"SK",
+	"AD",
+	"MC",
+	"ME",
+	"SM",
+	"VA",
+	"XK",
+]);
+
+/**
+ * The offerable display currency a region (ISO 3166-1 alpha-2) uses, else `undefined` — a sign-up
+ * hint, never a charge currency.
+ */
+export function displayCurrencyForRegion(region: string | null | undefined): string | undefined {
+	const upper = region?.trim().toUpperCase();
+	if (!upper) return undefined;
+	if (EURO_REGIONS.has(upper)) return "EUR";
+	return DISPLAY_CURRENCIES.find((c) => c.country === upper)?.code;
+}
 // #endregion
 
 // #region Pure conversion math (shared server + client)

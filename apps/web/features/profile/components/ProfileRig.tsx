@@ -69,6 +69,11 @@ export interface ProfileRigProps {
 	preview?: boolean;
 	/** Whether the viewer is signed in — a guest's account-bound presses open the sign-in prompt. */
 	authed: boolean;
+	/**
+	 * The viewer is a restricted (13–17) account (Decision #192): Hire and Add-to-project are left
+	 * out, because both lead only to buying.
+	 */
+	restricted?: boolean;
 	/** The seller's active listings — the Hire popover's rows. */
 	services: ServiceItem[];
 	/** The seller's LIVE call offer, or `null` when they take no calls — the popover's footer row. */
@@ -117,6 +122,7 @@ export function ProfileRig(props: ProfileRigProps): JSX.Element {
 		hasServices: services.length > 0,
 		offersConsultation: consultation !== null,
 		authed,
+		restricted: props.restricted,
 	});
 	const isFollowing = followsNow(viewer);
 	const celebrating = followCelebrating.value;

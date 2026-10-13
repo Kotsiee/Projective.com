@@ -46,13 +46,14 @@ export function WorkspacesSection(props: WorkspacesSectionProps): JSX.Element {
 	const { switching, error, switchTo, exitToPersonal } = useContextSwitch();
 	const ctx = props.context;
 	const showsTeams = sectionEntries("workspaces", ctx).some((e) => e.anchor === "teams");
+	const showsBusinesses = sectionEntries("workspaces", ctx).some((e) => e.anchor === "businesses");
 
 	useEffect(() => {
 		let live = true;
 		const roster = (kind: WorkspaceKind) => WorkspaceService.roster(kind);
 		Promise.all([
 			showsTeams ? roster("team") : Promise.resolve(null),
-			roster("business"),
+			showsBusinesses ? roster("business") : Promise.resolve(null),
 			WorkspaceService.actingOrganisations(),
 		])
 			.then(([teams, businesses, orgs]) => {
@@ -61,10 +62,14 @@ export function WorkspacesSection(props: WorkspacesSectionProps): JSX.Element {
 					items.filter((item) => item.status !== "archived");
 				lists.value = {
 					team: teams && teams.ok && teams.data ? keep(teams.data.items) : showsTeams ? null : [],
-					business: businesses.ok && businesses.data ? keep(businesses.data.items) : null,
+					business: businesses && businesses.ok && businesses.data
+						? keep(businesses.data.items)
+						: showsBusinesses
+						? null
+						: [],
 					organisations: orgs.ok && orgs.data ? orgs.data.organisations : null,
 				};
-				if (!businesses.ok) {
+				if (businesses && !businesses.ok) {
 					failed.value = businesses.message ?? "Your workspaces couldn't be loaded just now.";
 				}
 			});
@@ -194,25 +199,29 @@ export function WorkspacesSection(props: WorkspacesSectionProps): JSX.Element {
 				)
 				: null}
 
-			<SettingsBlock
-				anchor="businesses"
-				title="Businesses"
-				description="Client businesses you buy for."
-			>
-				<List
-					label="Your businesses"
-					empty="You're not part of a business yet."
-					items={l.business?.map((b) => ({
-						id: b.id,
-						name: b.name,
-						meta: roleMeta(b),
-						href: `/businesses/${b.handle}`,
-						type: "business" as const,
-						handle: b.handle,
-					})) ?? null}
-				/>
-				<OutLink href="/businesses">Manage businesses</OutLink>
-			</SettingsBlock>
+			{showsBusinesses
+				? (
+					<SettingsBlock
+						anchor="businesses"
+						title="Businesses"
+						description="Client businesses you buy for."
+					>
+						<List
+							label="Your businesses"
+							empty="You're not part of a business yet."
+							items={l.business?.map((b) => ({
+								id: b.id,
+								name: b.name,
+								meta: roleMeta(b),
+								href: `/businesses/${b.handle}`,
+								type: "business" as const,
+								handle: b.handle,
+							})) ?? null}
+						/>
+						<OutLink href="/businesses">Manage businesses</OutLink>
+					</SettingsBlock>
+				)
+				: null}
 
 			<SettingsBlock anchor="organisations" title="Organisations">
 				<List

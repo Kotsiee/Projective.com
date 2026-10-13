@@ -6,12 +6,11 @@
  *
  * `finance.transactions.balance_after_cents` is a materialised running balance (finance-model §7).
  * A hand-written ledger drifts from its own wallet balance the first time anybody edits a row, so
- * this emitter collects every money movement the world implies — opening credits, top-ups, escrow
+ * this emitter collects every money movement the world implies — opening deposits, top-ups, escrow
  * holds, releases, team splits, product sales, refunds, payouts — sorts each wallet's events
  * chronologically, walks them, and refuses to emit if any balance would go negative. The wallet row
- * is written with the final balance; the trigger that would otherwise mint a 25,000.00 opening
- * credit at `now()` is disabled around the insert and replaced by an explicit, DATED opening credit,
- * so the history reads in order.
+ * is written with the final balance. Nothing is minted: each entity wallet opens with a dated
+ * `topup` from its owner's funding card on the day the entity was created.
  *
  * The platform fee is the SSOT's `PLATFORM_FEE_BP` (500 = 5%, pinned to the seeded
  * `security.platform_params.platform_fee_bp` by a unit test), truncated by `platformFeeFor` exactly

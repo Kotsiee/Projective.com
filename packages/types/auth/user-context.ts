@@ -9,8 +9,8 @@ import { DateFormat } from "../org/preferences.ts";
  * on the server (from the session JWT's claims) and shipped into SSR so the correct navigation shell
  * and skeletons render in the very first byte of HTML, with no client-side round-trip.
  *
- * It is deliberately **non-authoritative**: like the app's `hasSessionCookie` presence check, it only
- * decides *chrome* (which sidebar/skeleton to paint). It grants no access — RLS and the `(dashboard)`
+ * It is deliberately **non-authoritative**: although it is read only from a verified session token, it
+ * decides only *chrome* (which sidebar/skeleton to paint). It grants no access — RLS and the `(dashboard)`
  * guard remain the real gates, and every state change must re-validate server-side. A user who tampers
  * with the hydrated HTML only changes what their own browser draws, never what the backend permits.
  *

@@ -23,6 +23,7 @@ import { viewHeaderFor } from "@features/view/core/view-header-slot.tsx";
 import { publicFooterFor } from "@features/marketing/core/footer-slot.tsx";
 import { readActor } from "@web/utils/api-session.ts";
 import { toDisplayCurrency } from "@projective/types/finance";
+import { isRestrictedRequest } from "@web/utils/age-gate.ts";
 import {
 	resolveConsultationOffer,
 	resolveHireProjects,
@@ -221,7 +222,8 @@ export default define.page(async function ProfileLayout(ctx) {
 	const consultation = seller ? await resolveConsultationOffer(profile, actor) : null;
 	// Only a signed-in VISITOR of a seller can add them to a project, so only that viewer pays for
 	// the read.
-	const hireProjects = authed && !owner && seller
+	const restricted = isRestrictedRequest(ctx.req, context);
+	const hireProjects = authed && !owner && seller && !restricted
 		? await resolveHireProjects(actor, profile.handle)
 		: [];
 	// The migrated sticky header — resolved HERE, from the same reads the hero takes, so the band's
@@ -231,6 +233,7 @@ export default define.page(async function ProfileLayout(ctx) {
 			profile={profile}
 			preview={owner}
 			authed={authed}
+			restricted={restricted}
 			services={services}
 			consultation={consultation}
 			hireProjects={hireProjects}
@@ -247,6 +250,7 @@ export default define.page(async function ProfileLayout(ctx) {
 					spend={estimatedSpendFor(services)}
 					preview={owner}
 					authed={authed}
+					restricted={restricted}
 					hireProjects={hireProjects}
 					defaultCurrency={toDisplayCurrency(context?.displayCurrency)}
 					scopeId={context?.contextId ?? ""}

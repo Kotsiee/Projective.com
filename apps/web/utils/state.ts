@@ -90,6 +90,11 @@ export interface State {
 		canConfigure: boolean;
 		/** Whether the engagement has its discussion room (`discussionOf`), so a band may link it. */
 		discussion: boolean;
+		/**
+		 * A personal management project (Decision #192): the workspace hides every member, hiring and
+		 * money control, and the database refuses them regardless.
+		 */
+		personal: boolean;
 		/** Whether a development-only landing simulation changed either value. */
 		simulated: boolean;
 	};

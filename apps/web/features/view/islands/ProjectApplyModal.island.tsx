@@ -24,6 +24,7 @@ import {
 	withdrawProposal,
 } from "@features/proposals/core/allowance-state.ts";
 import { AllowanceNotice } from "@features/proposals/components/AllowanceNotice.tsx";
+import { PayoutGateLink } from "@features/settings/components/PayoutGateLink.tsx";
 import { CtaButton } from "../components/CtaButton.tsx";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
 import { applyOpen, applyProjectSlug } from "../core/view-state.ts";
@@ -78,6 +79,7 @@ export default function ProjectApplyModal(
 	const readError = useSignal<string | null>(null);
 	const reading = useSignal(false);
 	const error = useSignal<string | null>(null);
+	const errorDetails = useSignal<unknown>(null);
 	const confirming = useSignal<string | null>(null);
 	const withdrawing = useSignal<string | null>(null);
 	const announcement = useSignal("");
@@ -123,6 +125,7 @@ export default function ProjectApplyModal(
 		if (open.value) return;
 		note.value = "";
 		error.value = null;
+		errorDetails.value = null;
 		confirming.value = null;
 		cta.reset();
 	});
@@ -145,6 +148,7 @@ export default function ProjectApplyModal(
 	async function submit(): Promise<boolean> {
 		if (!chosenStage) return false;
 		error.value = null;
+		errorDetails.value = null;
 		const res = await AllowanceService.apply({
 			projectId: projectSlug,
 			stageId: chosenStage.id,
@@ -154,6 +158,7 @@ export default function ProjectApplyModal(
 		});
 		if (!res.ok) {
 			error.value = res.message ?? "That application couldn't be sent.";
+			errorDetails.value = res.details ?? null;
 			// A refusal from the gate means the meter moved under us — show the current figures.
 			if (res.errors?.allowance) void readApplicant();
 			return false;
@@ -336,7 +341,13 @@ export default function ProjectApplyModal(
 
 					{snapshot.value ? <AllowanceNotice snapshot={snapshot.value} /> : null}
 					{readError.value ? <p class="pam__error" role="alert">{readError.value}</p> : null}
-					{error.value ? <p class="pam__error" role="alert">{error.value}</p> : null}
+					{error.value
+						? (
+							<p class="pam__error" role="alert">
+								{error.value} <PayoutGateLink details={errorDetails.value} />
+							</p>
+						)
+						: null}
 				</div>
 			</Dialog>
 			<p class="ui-visually-hidden" role="status" aria-live="polite">{announcement.value}</p>

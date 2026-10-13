@@ -39,3 +39,14 @@ INSERT TO anon, authenticated WITH CHECK (user_id IS NULL OR user_id = auth.uid 
 -- entries are append-only and the retention sweep runs as the service role.
 CREATE POLICY "Admins read log entries" ON ops.log_entries FOR
 SELECT TO authenticated USING (security.is_admin ());
+
+
+-- --- ops.scheduled_jobs / ops.http_job_dispatches (the job registry, Decision #203) ---
+
+-- Admins read the registry and every dispatch outcome. No client write policy: a cadence is changed
+-- by the service role or in SQL (the registry trigger reschedules pg_cron), never as a signed-in user.
+CREATE POLICY "Admins read scheduled jobs" ON ops.scheduled_jobs FOR
+SELECT TO authenticated USING (security.is_admin ());
+
+CREATE POLICY "Admins read http job dispatches" ON ops.http_job_dispatches FOR
+SELECT TO authenticated USING (security.is_admin ());

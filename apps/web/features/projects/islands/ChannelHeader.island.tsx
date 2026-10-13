@@ -88,6 +88,8 @@ const TAB_ICONS: Record<string, JSX.Element> = {
 export type { ChannelDetailInfo } from "../components/ChannelDetailBody.tsx";
 
 export interface ChannelHeaderProps {
+	/** A personal project (Decision #192): the room has no Members tab. */
+	personal: boolean;
 	/** The channel base path — `/projects/{projectId}/{channelId}`. Tab hrefs hang off this. */
 	base: string;
 	/** The resolved channel identity (title · sub-line · kind). */
@@ -200,6 +202,7 @@ export default function ChannelHeader(props: ChannelHeaderProps): JSX.Element {
 				isTask: props.isTask,
 				format: props.format,
 				isDiscussion: isDiscussionRef(meta.ref),
+				personal: props.personal,
 			});
 		};
 		recompute();

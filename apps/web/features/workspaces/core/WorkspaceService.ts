@@ -188,8 +188,8 @@ export const WorkspaceService = {
 
 	/**
 	 * Re-stamp the session's acting context. Call this through {@link useContextSwitch}, never directly:
-	 * on its own it changes server-side session state while the browser still holds a token carrying the
-	 * OLD claims. The hook owns the switch → refresh → hard-navigation sequence.
+	 * the route re-issues the session, but the server-painted chrome still shows the OLD context until
+	 * a hard navigation, which the hook owns (and withholds when the answer says `claimsStale`).
 	 */
 	switchContext(input: SwitchContextInput): Promise<WorkspaceResult<{ context?: UserContext }>> {
 		return postWorkspace<{ context?: UserContext }>(WORKSPACE_ENDPOINTS.contextSwitch, input);

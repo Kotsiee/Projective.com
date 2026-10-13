@@ -38,3 +38,8 @@ FOR EACH ROW EXECUTE FUNCTION reviews.recalculate_entity_rating();
 CREATE TRIGGER trg_update_project_counts
 AFTER INSERT OR UPDATE OF status OR DELETE ON projects.projects
 FOR EACH ROW EXECUTE FUNCTION projects.update_entity_project_counts();
+
+-- #region Profiling off for under-18 accounts (Decision #208)
+CREATE TRIGGER trg_interest_events_minor BEFORE INSERT ON search.interest_events
+FOR EACH ROW EXECUTE FUNCTION search.trg_interest_events_minor();
+-- #endregion

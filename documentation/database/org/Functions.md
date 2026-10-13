@@ -59,8 +59,9 @@ Returns `{ freelancer_profile_id, handle, created, is_freelancer }` — `handle`
 `@username` (the client navigates to `/[handle]/edit`); `created` is `false` when the profile
 already existed (the call is then a no-op re-activation). Raises `28000` when unauthenticated,
 `42501` when the caller has not completed onboarding (no `users_public` row), `PM403` when the
-caller is under 18 (`org.fn_assert_adult`, Decision #190) and `22023` for a refused skill list. The access token is NOT re-minted here: the client must
-`POST /api/auth/refresh` so the hook stamps `active_context.isFreelancer = true`.
+caller is under 18 (`org.fn_assert_adult`, Decision #190) and `22023` for a refused skill list. The access token is NOT re-minted here: `POST /api/user/freelancer`
+re-issues the session after it returns so the hook stamps `active_context.isFreelancer = true`
+(Decision #193).
 
 > Note: `org.freelancer_profiles` no longer carries an `hourly_rate` column — rates are not a
 > platform signalling field (see `org/Tables.md`).
@@ -112,23 +113,42 @@ UI (Decision #150 flag).
 
 ## `org.seed_user_preferences() → trigger`
 
-**Migration:** `supabase/migrations/20260722120000_seed_user_preferences.sql` · **Security:**
-`SECURITY DEFINER`, `SET search_path = ''` · **Trigger:** `on_users_public_created`
+**Migration:** `supabase/migrations/00001010_functions_org_onboarding.sql` §1 (trigger in `00001810`) ·
+**Security:** `SECURITY DEFINER`, `SET search_path = ''` · **Trigger:** `on_users_public_created`
 (`AFTER INSERT ON org.users_public FOR EACH ROW`).
 
 Seeds a default `org.user_preferences` row whenever a public profile is created, so a fresh account
-has preference defaults from the first byte instead of only once it first writes one. It fills just
-the key — the table's own column defaults supply the values (`theme = 'system'`,
-`notification_email = true`, `notification_push = false`, `locale = 'en-GB'`, `ui_settings = '{}'`).
+has preference defaults from the first byte instead of only once it first writes one. Every column
+starts at the table's own default (`theme = 'system'`,
+`locale = 'en-GB'`, `ui_settings = '{}'`). The email/push toggles are seeded separately, in
+`comms.notification_prefs` by `comms.seed_notification_prefs` (Decision #204).
 
 Attaching to `org.users_public` (rather than re-declaring
 `provision_user_profile`/`complete_onboarding`) covers **both** signup paths in one place: the
-email/password path (`0304`'s `provision_user_profile`, which never created a preferences row) and
-the OAuth completion path (`complete_onboarding`). Idempotent — `ON CONFLICT (user_id) DO NOTHING`
-never clobbers a row already created lazily via the INSERT-own-preferences RLS policy (`0213`). The
-migration also runs a one-time `ON CONFLICT DO NOTHING` backfill for pre-existing profiles. Purely
-additive (root CLAUDE.md Decision #47); reads/writes for own preferences remain owner-scoped per
-`org/Policies.md`.
+email/password path (the `on_auth_user_created` trigger's `provision_user_profile`) and the OAuth
+completion path (`complete_onboarding`). Idempotent — a row that already exists (created lazily
+through the INSERT-own-preferences policy, or chosen in Settings) is never touched. Reads/writes for
+own preferences remain owner-scoped per `org/Policies.md` (Decision #47).
+
+### Sign-up hints and organisation owners (Decision #207)
+
+A new row then takes the browser's hints from the sign-up metadata — `locale` and
+`display_currency`, sent by `/join` (`preferenceHints` in `@projective/types/org`, validated again
+by the join schema) — each kept only when the platform offers it, else left at the column default.
+An organisation owner gets no `org.users_public` row (Decision #87 flag (b)), so their owner
+membership seeds theirs.
+
+| Function | Role |
+| :-- | :-- |
+| `org.fn_supported_locale(p_locale text) → text` | The `org.supported_locales` tag `p_locale` names, ignoring case and `_` / `-`; else `NULL`. `STABLE`. |
+| `org.fn_supported_display_currency(p_code text) → text` | `p_code` upper-cased when it is the platform base (`security.platform_params.base_currency`) or has a seeded `finance.fx_rates` row both ways against it — the `DISPLAY_CURRENCIES` rule; else `NULL`. `STABLE`. |
+| `org.fn_signup_meta(p_user_id uuid) → jsonb` | The metadata a person is provisioned from: the payload `public.provision_user_profile` publishes for the transaction (setting `projective.signup_meta`, keyed by user — `complete_onboarding`'s payload never reaches `auth.users`), else `auth.users.raw_user_meta_data`; `'{}'` when neither. `SECURITY DEFINER`. |
+| `org.fn_seed_user_preferences(p_user_id uuid, p_meta jsonb) → void` | Inserts the row and, only when it is new, applies the supported hints. Called by both seed triggers. |
+| `org.seed_owner_preferences() → trigger` | `on_organisation_owner_created`, `AFTER INSERT ON org.organisation_members` `WHEN (NEW.role = 'owner')` (`00001810`): seeds the owner's preferences from the metadata `AuthBackendService` gives the owner identity. `comms.notification_prefs` is seeded here only when the owner already has a profile row — that table keys onto `org.users_public`, so a profile-less owner's row waits for one (Decision #207 flag). `SECURITY DEFINER`. |
+
+None is granted to a client role (`org` is deny-by-default, `00002510`). The notification side is
+`comms.fn_seed_notification_prefs` ([comms/Functions.md](../comms/Functions.md#triggers)). Probe:
+`supabase/probes/signup_preferences.sql`.
 
 ## `org.is_organisation_member(p_org uuid, p_min_role org.organisation_role = 'member') → boolean`
 
@@ -195,16 +215,20 @@ PRODUCT_SPEC §Age guardrails, held in the database: under 13 cannot hold an acc
 **restricted** — no buying and no selling — until the 18th birthday; 18 and over is unrestricted. The
 thresholds mirror `MIN_AGE` / `ADULT_AGE` in `@projective/types/auth/age.ts`. Restriction is never
 stored: it is derived from `users_public.dob` at every read, so it lifts on the birthday with nothing
-to run. Ages are whole years against the database's `CURRENT_DATE` (UTC), so a birthday near
-midnight can flip a few hours before or after the person's local date. None of these is granted to a
-client role (`org` is deny-by-default), so no caller can ask whether somebody else is a minor.
+to run. Ages are whole years on today's date **in the person's own zone** (`users_public.timezone`,
+UTC when unknown — Decision #192): the same rule `computeAge` applies in the join form and the API, so
+every layer turns a birthday over at the same moment. Provisioning stores the browser's zone from the
+sign-up metadata (`timezone`, dropped when Postgres does not recognise it). None of these is granted to
+a client role (`org` is deny-by-default), so no caller can ask whether somebody else is a minor.
 
 | Function                                     | Role                                                                                                                                         |
 | :------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
-| `org.fn_age_years(p_dob date) → integer`     | Whole years since `p_dob` (`age(CURRENT_DATE, p_dob)`). `STABLE`.                                                                            |
-| `org.fn_check_dob(p_dob date) → void`        | The one date-of-birth rule: `22023` when missing, in the future or before 1900; `PM422` under 13. Called by `provision_user_profile` and the trigger below. |
-| `org.trg_users_public_dob_guard() → trigger` | `trg_users_public_dob_guard`, BEFORE INSERT / UPDATE OF `dob` on `org.users_public`: runs `fn_check_dob` on every write path.                |
-| `org.fn_is_minor(p_user uuid) → boolean`     | Whether the person is 13–17 today; `false` without a profile row. `SECURITY DEFINER`. Read by `public.custom_access_token_hook` (`isRestricted`). |
+| `org.fn_valid_time_zone(p_zone text) → text` | `p_zone` when Postgres resolves it, else `NULL` — a bad zone degrades to UTC rather than raising. |
+| `org.fn_today_in(p_zone text DEFAULT NULL) → date` | Today's calendar date in `p_zone` (UTC when absent or unknown). |
+| `org.fn_age_years(p_dob date, p_zone text DEFAULT NULL) → integer` | Whole years since `p_dob` on `fn_today_in(p_zone)` (`age()`, so a 29 February birthday turns over on 1 March). `STABLE`. |
+| `org.fn_check_dob(p_dob date, p_zone text DEFAULT NULL) → void` | The one date-of-birth rule: `22023` when missing, in the future (in `p_zone`) or before 1900; `PM422` under 13. Called by `provision_user_profile` and the trigger below. |
+| `org.trg_users_public_dob_guard() → trigger` | `trg_users_public_dob_guard`, BEFORE INSERT / UPDATE OF `dob` on `org.users_public`: runs `fn_check_dob(NEW.dob, NEW.timezone)` on every write path.                |
+| `org.fn_is_minor(p_user uuid) → boolean`     | Whether the person is 13–17 today in their own zone; `false` without a profile row. `SECURITY DEFINER`. Read by `public.custom_access_token_hook` (`isRestricted`), the seller-persona rule in `provision_user_profile` (a minor who chose "freelancer" starts as a client) and `fn_compute_profile_setup_progress` (never suggests `become_partner` to a minor). |
 | `org.fn_assert_adult(p_user uuid) → void`    | The one buy/sell gate: raises `PM403` for a minor; a `NULL` user (the service role) passes. `SECURITY DEFINER`.                              |
 
 `org.fn_assert_adult` is called with the acting person by every door that spends, earns, sells or
@@ -216,6 +240,10 @@ assignment) and `projects.assign_from_application`; and with the listing's owner
 `catalogue.trg_listings_publish_age_gate` on any move to `published`. The API routes mirror it
 (`apps/web/utils/age-gate.ts`) and the services map `PM403` to one 403
 (`packages/backend/core/age-gate.ts`). Probe: `supabase/probes/age_guardrails.sql`.
+
+A minor's projects are **personal** and a minor never joins anyone else's project — see
+[projects/Functions.md § Personal projects](../projects/Functions.md#personal-projects-and-under-18-accounts-00001130-decision-192)
+and `supabase/probes/personal_projects.sql` (Decision #192).
 
 ---
 
@@ -629,7 +657,8 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   Member). Internal.
 - **`fn_refresh_membership_flags(user)`** — keeps `users_public.has_team` / `has_business` true to
   ACTIVE membership. Internal.
-- **`create_workspace(kind, name, handle) → {id, kind, handle}`** — `authenticated`. The ONE create
+- **`create_workspace(kind, name, handle) → {id, kind, handle}`** — `authenticated`. A `team` needs
+  its creator payout-ready (`finance.fn_assert_payout_ready`, `PK403 payout_not_ready`, Decision #196). The ONE create
   door. Requires a `users_public` row; name 2–80; the handle passes `fn_handle_refusal` under the
   advisory lock; the plan's `teams_owned` / `businesses_owned` entitlement (`fn_effective_limit` vs
   `fn_footprint_usage`) → `55000` when full. In one transaction: the entity row at **`draft`**, the
@@ -670,6 +699,7 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   their **VERIFIED** `org.user_emails` (never an unverified one — registering someone else's address
   must not intercept their invitations). Internal.
 - **`respond_to_workspace_invitation(invitation, accept) → {status, kind, id, handle?, member_id?}`**
+  (accepting a TEAM invitation needs the invitee payout-ready — `PK403 payout_not_ready`, Decision #196)
   — `authenticated`, invitee only (anyone else gets `P0002`). Refuses an answered (`55000`) or expired
   (`55000`) invitation. Decline → `declined` + `responded_at`. Accept additionally refuses an archived
   entity, an account with no profile, and an archived role; re-checks the seat cap (the invitation

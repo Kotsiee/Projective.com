@@ -73,7 +73,9 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   `DETAIL` = `{state: 'needs_funding', reason, amount_minor, currency}` with `reason` one of `no_price`
   · `no_wallet` (no payer wallet in the project's currency) · `insufficient_funds` (checked for both
   wallet types — a business no longer relies on the `balance_cents` CHECK) · `spending_limit`. A missing
-  stage or payee is not a funding problem → `check_violation`. Already held (a held escrow with no
+  stage is not a funding problem → `check_violation`; a missing payee is a **prepaid** hold (Decision
+  #197): the escrow is written with `payee_type`/`payee_id` NULL, only the client is told ("It is
+  paid to whoever claims it."), and the claim binds it. The payee is `finance.fn_ticket_payee`. Already held (a held escrow with no
   `revision_id`) → `NULL`, the one early return. **Concurrent holds (Decision #189):** the check
   cannot see a sibling transaction's uncommitted hold, so the INSERT is the arbiter —
   `uq_escrows_ticket_base_held` makes the later one wait, and once the first commits it gets
@@ -84,6 +86,15 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   `payment_status = 'escrow_funded'` and notifies the payee ("Funded — you can start") and, unless the
   client made the hold themselves (`auth.uid()`), the project owner, both `escrow.funded` with a
   `?tkv=` ticket link. `search_path = public, finance, projects, org, comms, auth`.
+- **`finance.fn_ticket_payee(stage_id, assignee_id)`** → `(payee_type, payee_id)` (Decision #197) —
+  the one payee rule the hold and the bind share: an accepted team seat on the stage, else the
+  assignee; both NULL when neither exists. Internal (`EXECUTE` revoked from `PUBLIC`, `anon`,
+  `authenticated`).
+- **`finance.fn_bind_ticket_escrow(ticket_id)`** → escrow id or `NULL` (Decision #197) — names the
+  payee of a PREPAID held escrow when a claim or assignment gives its ticket one. Called by
+  `projects.fn_ticket_escrow_sync` before it would hold; `NULL` (nothing unbound, or still no payee)
+  lets the ordinary hold run. Debits nothing; tells the new payee "Funded — you can start"
+  (`escrow.funded`). Internal, revoked as above.
 - **`finance.fn_hold_revision_escrow(revision_id)`** → escrow id (Decision #167) — one MORE held
   escrow on a paid revision round's ticket, at the round's `price_cents`, beside the one already held
   for the work. The row names its round (`revision_id`), so it is never taken for the base escrow and
@@ -101,12 +112,21 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   settled it first, and nothing is credited. Before #188 the loop read without a lock and the flip
   did not re-check `status`, so two concurrent settlements of one ticket under READ COMMITTED (two
   `approve_stage` calls, or `complete_ticket` racing `approve_stage`) both paid the payee.
+  **Unbound (Decision #197):** a held escrow with no payee — prepaid, never claimed — is refunded to
+  its payer (`fn_refund_ticket_escrow`, under the ticket lock) instead, so a completed, removed or
+  cancelled ticket nobody claimed never pays out to nobody.
 - **`finance.fn_refund_ticket_escrow(ticket_id)`** (`0310`) — refunds held escrow to the payer (used
   by claim-TTL "parking" auto-release); no fee is applied to a refund. Locked and guarded as
   `fn_release_ticket_escrow` (#188): a refund racing a release, or a second refund, returns nothing.
 - **`finance.fn_fair_exit_release(ticket_id, bp)`** (`0305`) — the 25/50/75 fair-exit split: pays
   the payee `bp` basis-points of the principal (net of fee), refunds the remainder to the client.
-  Locked and guarded as `fn_release_ticket_escrow` (#188).
+  Locked and guarded as `fn_release_ticket_escrow` (#188). An unbound (prepaid, unclaimed) escrow
+  earned nothing and is refunded in full (Decision #197). Its arithmetic is
+  **`finance.fn_fair_exit_split(amount_cents bigint, bp integer, fee_bp integer)`** (`00001200`,
+  `IMMUTABLE`, internal) → `(share_cents, fee_cents, payout_cents, refund_cents)`: share = amount ×
+  bp / 10000, fee = share × fee_bp / 10000, payout = share − fee, refund = amount − share, each
+  truncated (#187). `projects.fn_fair_exit_quote` uses the same helper, so the Fair Exit preview
+  and the settlement cannot disagree (Decision #198).
 
   **Verification:** `supabase/probes/escrow_release_concurrency.sql` races two real sessions
   (dblink) on one ticket for each of these, and on the stage doors that call them, and asserts the
@@ -123,6 +143,22 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
 
 ### Authorization / gating predicates
 
+- **`finance.fn_assert_payout_ready(payee_type, payee_id)`** → void (`00001210` §5, Decision #196) —
+  THE earning gate. A `freelancer` payee must pass `fn_freelancer_payout_ready`; a `team` payee needs
+  every shareholder to. Refuses `PK403` with a `payout_not_ready: …` message; HINT `self` (the
+  caller — the app links Settings → Verification) · `other` (a freelancer an owner tried to seat) ·
+  `team`; DETAIL is the unready shareholders' `@handles` for a member who may commit the team
+  (`org.is_team_lead`), else empty. Called by `projects.apply_to_seat` · `apply_to_project` ·
+  `redeem_invite_link` · `assign_from_application` · `fn_apply_invitation_decision` (freelancer
+  role) · `fn_assign_ticket_core` · `org.create_workspace` (team) · `org.respond_to_workspace_invitation`
+  (team). No client grant.
+- **`finance.fn_team_shareholders(team)`** → setof uuid (`00001210` §5) — the people
+  `fn_team_split_plan` would pay: active members with `percent_bp > 0` (none under
+  `benevolent_dictator`) plus the `finders_fee` finder. No client grant.
+- **`finance.fn_wallet_holds_earnings(wallet)`** → boolean (`00001210` §5) — any
+  `finance.pending_releases` row for the wallet, i.e. it has received earned money (Decision #191).
+  `begin_payout` requires a payout-ready withdrawer for a `user` or `team` wallet that holds
+  earnings. No client grant.
 - **`finance.fn_owner_visible(owner_type, owner_id)`** → boolean (`20260723092000`) — can the caller
   see this owner's finances? (self / active-member / admin). Basis for the wallet-scoped RLS
   policies.
@@ -143,7 +179,8 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   ⚠️ **Fails closed** like `fn_can_manage_basket`: a shared owner with no wallet has nobody who
   holds the capability.
 - **`finance.fn_freelancer_payout_ready(user_id)`** → boolean (`20260723091000`) — true only when
-  the freelancer is KYC-`verified` AND `payout_ready`. **The onboarding gate.**
+  the freelancer is KYC-`verified` AND `payout_ready`. **The onboarding gate**, enforced through
+  `fn_assert_payout_ready` (below, Decision #196).
 - **`finance.fn_business_kyb_verified(business_id)`** → boolean — true when the business is
   KYB-`verified` (required to operate the pooled Business Wallet).
 
@@ -184,8 +221,9 @@ the ledger must be the one record nobody can rewrite, and the cache must be chec
   `wallet_id`, `owner_type`, `owner_id`, `currency`, `balance_cents`, `ledger_sum_cents`,
   `latest_balance_after_cents`); the run raises a `WARNING` and returns the number of drifted
   wallets. Read-only on `finance`: drift is reported for a human, never auto-corrected. Service role
-  only (`00002510`). Scheduled nightly at 03:40 UTC as pg_cron job `finance-reconcile-wallets`
-  (guarded like `finance-billing-cycle`; where pg_cron is absent, run it by hand).
+  only (`00002510`). Scheduled nightly at 03:40 UTC as `finance-reconcile-wallets`, a row of the job
+  registry (`ops.scheduled_jobs`, Decision #203); `deno task cron:run finance-reconcile-wallets` runs it
+  by hand.
 
 ## Stage-level wrappers (in `projects`, invoke this engine — migration `0305`)
 
@@ -857,7 +895,9 @@ three internal helpers are executable by no role at all (`00002510`).
 redelivered event returns the first outcome (`fn_stripe_event_replay`) and moves nothing. Each returns
 `{ outcome, detail?, … }` with `outcome` ∈ `applied` · `replayed` · `unmatched` · `ignored`; an
 `unmatched` event (no row bound to it, or amounts that disagree) is recorded for reconciliation and
-never guessed at.
+never guessed at — except a card SETTLEMENT, which is acknowledged only with its ledger row
+(Decision #200): an unmatched `payment_intent.succeeded` releases its claim
+(`fn_release_stripe_event`) so Stripe's retry is processed, and the webhook answers 5xx.
 
 ### Event bookkeeping (internal)
 
@@ -866,10 +906,11 @@ never guessed at.
 | `finance.fn_claim_stripe_event(event_id, type)`   | boolean | Inserts `stripe:<event_id>` (scope `stripe.webhook`, expiring in 30 days); `false` when the event was already claimed. |
 | `finance.fn_complete_stripe_event(event_id, out)` | jsonb   | Stores the outcome on the claimed key and returns it.                                                                  |
 | `finance.fn_stripe_event_replay(event_id)`        | jsonb   | The stored outcome with `outcome = 'replayed'`. `LANGUAGE sql`.                                                        |
+| `finance.fn_release_stripe_event(event_id)`       | void    | Deletes the `stripe:<event_id>` claim (scope `stripe.webhook`) so the next delivery is processed, not replayed (Decision #200). |
 
 ### Card payments — user doors
 
-#### `finance.begin_card_payment(p_purpose, p_wallet_id, p_project_id, p_stage_id, p_expected_amount, p_currency, p_idempotency_key, p_ticket_id DEFAULT NULL)` → jsonb
+#### `finance.begin_card_payment(p_purpose, p_wallet_id, p_project_id, p_stage_id, p_expected_amount, p_currency, p_idempotency_key, p_ticket_id DEFAULT NULL, p_revision_id DEFAULT NULL)` → jsonb
 
 **Age gate:** a caller under 18 is refused `PM403` for either purpose (`org.fn_assert_adult`, Decision #190).
 
@@ -880,19 +921,30 @@ the existing row with `replayed: true`.
 
 - **`wallet_topup`** — the caller's own wallet or a vault they may `add_funds` to; the currency must be
   the wallet's; the amount is the caller's.
-- **`escrow_lock`** — the amount is **never the caller's**: it is the SUM of
-  `COALESCE(ticket.unit_price_cents, stage.unit_price_cents)` over the stage's assigned, unfunded
-  tickets — the rule `projects.fund_stage` escrows by. `p_expected_amount` is only a check: if the
-  stage was re-priced since the payer looked, `PC409` says what it costs now. The caller needs project
-  access and the `spend` capability on the client business's wallet (created on demand); the stage
-  must be `assigned`; `p_wallet_id` must be NULL (the money is paid into the client's wallet).
+- **`escrow_lock`** — the amount is **never the caller's**: it is `projects.fn_stage_funding_need`'s
+  `amount_cents` — every ticket in the stage that is `unpaid`/`needs_funding`, not finished and with
+  no held escrow, **claimed or not**, at `COALESCE(ticket.unit_price_cents, stage.unit_price_cents)` —
+  the one definition `projects.fund_stage` holds by (Decision #197). A stage with any unpriced ticket
+  is refused **here**, `PC409`, before anything is charged (before #197 the intent skipped it and
+  `fund_stage` then refused the settled money, which stayed in the wallet). `p_expected_amount` is
+  only a check: if the stage was re-priced since the payer looked, `PC409` says what it costs now. The
+  caller needs project access and the `spend` capability on the client business's wallet, or is the
+  owner of a project with no client business (created on demand); the stage must be `open`,
+  `assigned` or `in_progress`; `p_wallet_id` must be NULL (the money is paid into the payer's wallet).
 - **`escrow_lock` with `p_ticket_id`** (Decision #166) — funds ONE ticket instead: the amount is that
   ticket's `COALESCE(unit_price_cents, stage.unit_price_cents)`, and `projects.fund_ticket`'s gates are
   checked now (the ticket sits in `p_stage_id`, has a description, is `unpaid`/`needs_funding` with no
-  held escrow, has a payee — claimed or a team seat — and the stage is not finished; each `PC409`), so
+  held escrow, and the stage is not finished; each `PC409` — an unclaimed ticket is held prepaid, #197), so
   nobody is charged for a hold that cannot be made. The stage may be in any unfinished status. The row
   records `ticket_id`; the stage path above is unchanged. `p_ticket_id` is part of the request hash
   (NULLs are skipped, so an older stage or top-up attempt key hashes as before).
+- **`escrow_lock` with `p_revision_id`** (Decision #199) — pays for ONE paid revision round instead:
+  the amount is the round's `price_cents`, and `projects.fund_paid_revision`'s gates are checked now —
+  the round sits in `p_stage_id` of `p_project_id` (`P0002`), is `awaiting_payment`, its submission is
+  still `pending_review`, its price is still the stage's `extra_revision_price_cents`, and the ticket
+  has a payee (assignee or accepted team seat), each `PC409`. `p_ticket_id` must be NULL (`22023`).
+  The payer rule and currency check are the stage path's. The row records `revision_id`;
+  `p_revision_id` joins the request hash the same way.
 
 #### `finance.attach_card_payment(p_payment_id, p_provider_ref)` → jsonb
 
@@ -930,13 +982,30 @@ the lock re-checks that person's access and spend right NOW, and a refusal rolls
 the money stays in the wallet and `lock_error` says why. A short arrival fails the lock the same way.
 The escrows it created are recorded in `locked_escrow_ids`. A lock that names a `ticket_id` runs
 `projects.fund_ticket` instead (same claim swap and subtransaction): only that ticket's escrow is held,
-`locked_escrow_ids` is that one escrow, and the stage's status does not move. For a `wallet_topup` carrying a
+`locked_escrow_ids` is that one escrow, and the stage's status does not move. A lock that names a
+`revision_id` (Decision #199, checked first) runs `projects.fund_paid_revision` the same way: the round's
+escrow is held, the round opens and the work is sent back. For a `wallet_topup` carrying a
 `checkout` (Decision #153) it then runs `finance.place_wallet_order` **as the payer**, the same claim
 swap and subtransaction, under the checkout's `order_key` — the key the browser places the same order
 under, so whichever arrives second replays and exactly one order exists; a refusal rolls back only the
 order, recorded in `order_error`, and the money stays in the wallet. Notifies `escrow.funded` or
 `wallet.topup_succeeded` (with the lock failure, the placed order, or the order refusal spelled out).
 Returns `order_id` / `order_error` beside the lock outcome.
+
+**Always a ledger row, or loud (Decision #200).** The wallet is re-read `FOR UPDATE` and confirmed
+through `finance.fn_ensure_wallet` (owner, payment currency) before the credit; a missing wallet, or a
+credit that left no ledger row, raises (`PW404` / `PL404`) and rolls the whole call back with its claim.
+A lock or order refused after the credit keeps the credit and sets `status = 'settled_unapplied'` with
+`unapplied_reason`; the payer's notification is titled "Payment received — the funds are in your
+wallet". An `unmatched` settlement — no payment bound to the intent yet (an off-session deposit's
+success can beat `bind_scheduled_payment`), or an amount / currency that does not match — releases
+its claim instead of completing it; a mismatch also writes an `error` row to `ops.log_entries`
+(`scope = 'finance.settle_card_payment'`, the figures in `data`) and a WARNING on every delivery. A
+replayed event answers with the payment's `transaction_id`; a completed claim whose payment has no
+ledger row is released and processed again (the payment's own status is what stops a second credit).
+Every acknowledged outcome carries `transaction_id`, plus `status` and `unapplied_reason`. Proven by
+`supabase/probes/card_settlement_ledger.sql`; failures past this point are listed by
+`finance.v_ops_unledgered_payments`.
 
 #### `finance.record_card_payment_failure(p_event_id, p_provider_ref, p_status, p_reason, p_livemode)` → jsonb
 

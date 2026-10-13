@@ -437,7 +437,9 @@ CREATE TYPE projects.ticket_priority AS ENUM ('low', 'normal', 'high', 'urgent')
 -- It exists because `finance.transactions` records only COMPLETED movements: a pending payout has
 -- nowhere to live, and a failed one moves no money and so leaves no trace at all. Without this table
 -- and enum the buyer-visible "your payout failed" row could not be produced.
-CREATE TYPE finance.payout_status AS ENUM ('pending', 'paid', 'failed', 'cancelled');
+-- `reversed`: the transfer was sent and the platform later reversed ALL of it (`transfer.reversed`),
+-- so the whole amount is back in the wallet; a partial reversal stays `paid` (Decision #202).
+CREATE TYPE finance.payout_status AS ENUM ('pending', 'paid', 'failed', 'cancelled', 'reversed');
 
 -- `inbound_payment_status` — the lifecycle of money ENTERING the platform from an external instrument
 -- (finance.inbound_payments), the twin of `payout_status`. Mirrors @projective/types/finance
@@ -447,8 +449,10 @@ CREATE TYPE finance.payout_status AS ENUM ('pending', 'paid', 'failed', 'cancell
 -- the way `payout_status` spells its own `cancelled`: this vocabulary is written from processor events,
 -- and a translation step between two spellings of one word is where a status silently fails to match.
 -- `succeeded` is written by the signed webhook ONLY — a browser saying "payment confirmed" is a claim.
+-- `settled_unapplied` is the same fact (the money arrived and is in the wallet's ledger) for a payment
+-- whose purpose — the escrow lock or the checkout order — was refused after the credit (Decision #200).
 CREATE TYPE finance.inbound_payment_status AS ENUM (
-    'requires_payment', 'processing', 'succeeded', 'failed', 'canceled'
+    'requires_payment', 'processing', 'succeeded', 'settled_unapplied', 'failed', 'canceled'
 );
 
 -- `order_status` — mirrors @projective/types/finance OrderStatus, member for member.

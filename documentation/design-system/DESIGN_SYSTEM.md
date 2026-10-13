@@ -1298,6 +1298,7 @@ other commits in tier 2 — is open as Decision #157 flag (j); the docs follow t
   commit — _Fund escrow €X_, _Withdraw €X_, _Transfer €X_, _Split €X_, _Continue to payment_;
 - the shared `StripeElementPanel`'s **Pay £X** confirm in payment mode — the wallet top-up's card
   step and the `/checkout/payment` card step;
+- `FundStageDialog`'s commit — _Fund €X_ from the wallet or _Continue to payment_ (Decision #197);
 - the DM context drawer's **Fund escrow & confirm seat** — both the `fund_escrow` link and the
   `confirm_seat` Button;
 - the project board footer's **Checkout N** pill (`.brd-rig__action--accent`, a feature-local
@@ -2434,7 +2435,12 @@ mutates the model — it emits `KanbanItemMove`/`KanbanColumnMove` on drop, so
 a consumer can commit immediately OR intercept a move behind a confirmation modal (the projects
 board's stage-reorder / claimed-ticket / revision warnings). §B.4: columns are non-interactive
 containers (tonal tint + a single hairline, no box); cards are interactive (surface + radius +
-resting elevation).
+resting elevation). A card that needs a REAL control (the projects board's **Claim**) gets it through
+`renderItemActions(item)`: `KanbanColumn` draws it in `.ui-kanban__card-actions`, a sibling of the
+card inside the same `listitem` and outside its `role="button"` root, so the control is its own tab
+stop, a press on it neither starts a drag nor activates the card, and its press feedback stays
+`Button`'s own `scale()` (§3 gates 11–12). Return `null` for an item with none; the drag ghost never
+carries it.
 
 Calendar additions (root CLAUDE.md §8 Decision #37): one NEW sub-path **`@projective/ui/calendar`**
 — a high-performance, generic, **controlled** Calendar & Schedule engine (Google-Calendar /
@@ -2635,12 +2641,44 @@ Switcher's `revisionAllotment` applied) and `onBuyRevision?` (same feedback payl
 revisions used", `--text-secondary`, `tabular-nums`; absent when unlimited), beside the hint; the
 footer wraps below `--bp-md`. Past the allotment the revision control reads **"Buy a revision ·
 {price}"** and calls `onBuyRevision` (the host raises the round, then opens Buy Now for a
-`paid_revision` line through a `BuyNowModal host="body"` it mounts); with no price or no handler it
+`paid_revision` line through a `BuyNowModal host="body"` it mounts — since Decision #199 through
+`PaidRevisionPayDialog` first); with no price or no handler it
 stays disabled and the hint says why (§3 gate 11). `revisionIsFree` (`@projective/types/projects`)
 and `revisionAllowanceLabel` (`core/submission-model.ts`) are the one rule and the one sentence. The
 freelancer's side is a `Message` (success, subtle) in the explorer: "Paid revision, funded, you can
-start." `CreateSubmissionModal`'s tickets are now the page's `tickets` (the viewer's open tickets,
+start."
+
+**`PaidRevisionPayDialog` (`features/projects/components/`, Decision #199).** Opens once a paid
+round is raised: `open`, `round` (`PaidRevisionRaised`), the route address (`projectId`, `stageId`,
+`submissionId`) and `onClose` / `onFunded(message)` / `onAddToBasket`. Built on the shared `Dialog`
+with the `subm-modal` classes (no CSS of its own). The note states the price and that it is held in
+escrow until the revised work is approved. Footer: **Add to basket** (text) · **Pay by card**
+(outlined) · **Pay from wallet** (filled), one in flight at a time and the dialog not dismissable
+while one is. Card mounts `StripeElementPanel` ("Pay {price}") and polls `waitForLock`: `locked` →
+`onFunded`; declined or lock-failed → back to the choice with the reason; slow → a status line saying
+the round opens when the payment clears. `CreateSubmissionModal`'s tickets are now the page's `tickets` (the viewer's open tickets,
 revision rounds marked) — the hash-generated `submissionTickets` is gone.
+
+**`FairExitDialog` (`features/projects/components/`, Decision #198).** The reviewer's "End stage
+(Fair Exit)" confirmation. `SubmissionActionBar` gains `onEndStage` and renders **End Stage (Fair
+Exit)** — the `--danger` text button with a new `ExitGlyph`, its word dropped below 1100px like
+Delete's (`aria-label` kept) — whenever a stage is in scope (`WorkflowActions.endStage`: a reviewer
+on a stage channel or under a stage node; not tied to a unit, because ending early is for a stage
+that never reached an acceptance). Built on `Dialog` (`alertdialog`, 34rem), not `ConfirmDialog`,
+which closes on accept and cannot hold a disabled or loading confirm. Props: `open:
+Signal<boolean>`, `projectId`, `stageId` (uuid or `stg-…`), `stageName`, `onExited(result,
+message)`. It owns its read (`GET …/stages/:stageId/fair-exit` on open; a superseded answer is
+dropped), its tier (`SelectButton` 25 · 50 · 75 %, opening on 50) and its write. The figures are a
+`dl` of three rows — paid to the freelancer · platform fee · refunded to the client — with
+meta-register terms, `tabular-nums` values and the one hairline above the refund row; under them a
+meta line (held amount · tickets that close · prepaid money returned whole · "this cannot be
+undone"). Every amount arrives formatted by the server; the island does no money math
+(`core/fair-exit-model.ts` only picks the chosen tier's quote and decides when the confirm may fire).
+A settled stage, or one with nothing held, shows an info `Message` and a disabled confirm; a failed
+read a danger `Message` with **Try again**; a refused exit stays in the dialog beside the confirm.
+Initial focus lands on **Keep stage open**. On success the explorer states the server's notice in
+its bar and re-reads the page. Styles: `styles/fair-exit.css`. Not a conversion-lane surface
+(§3 gate 10 governs entity-view routes only).
 
 **`PromoSlot` (`features/explore/components/promos/`, Decision #175).** The Explore Home's one promo
 surface; it replaces `SponsoredFrame`, `CtaBanner` (both "Become a Freelancer" and "Launch a Team")
@@ -2656,7 +2694,8 @@ family's AD badge (`PromotedBadge`, aria "Sponsored"), with no separate "Sponsor
 `non_freelancers`) and `dismissible` are enforced by the **`PromoGate`** island
 (`features/explore/islands/`), which owns the slot's `.ex-home__section`, withholds a
 `non_freelancers` slot from a viewer who can sell (`userContext.isFreelancer`, or the simulated
-persona), and renders an icon-only ghost dismiss `Button` that stores the slot id in
+persona) or who is a restricted (13–17) account and so cannot become a seller (`viewerRestricted`, or
+the switcher's Age axis — Decision #192), and renders an icon-only ghost dismiss `Button` that stores the slot id in
 `LocalKeys.EXPLORE_DISMISSED_PROMOS` (applied after hydration; the Dev Context Switcher's
 `promoDismissal` axis forces every dismissible slot shown or dismissed). **`editorial`** — the shared
 `RailHeading` (lead · tail) with a "view all" link over a list of help reads. Every variant is a solid
@@ -2732,6 +2771,25 @@ follower / following counts (`tabular-nums` text controls) that open `Connection
 (`features/profile/components/`, hairline rows of avatar · name · `@handle · kind`, Load more); the
 account menu gains **Saved** (`NavIcon` `saved`, a bookmark glyph).
 
+**`FundStageDialog` (`features/payments/components/`, Decision #197).** The client funds a whole
+stage — every ticket in it nobody has paid for, claimed or not — from the stage board's money sentence
+("{n} tickets need {total} to start." → **Fund stage**; the project board keeps **Fund all**, the
+basket hand-off). Props `visible` (a `Signal<boolean>`), `project` (`prj-…`), `stage` (`stg-…` or
+row id), `onFunded`. It renders on the shared `Dialog` at `--overlay-w-sm`: the stage name (Meta),
+the server's figure (`--text-2xl`, `--fw-medium`, `tabular-nums` — never computed in the island; read
+from `GET /api/finance/escrow/quote`), the ticket count, a `SelectButton` **From wallet · By card**
+only when the paying wallet covers the stage (else the card alone), one `--text-secondary` sentence
+on where the money sits, and one tier-1 `accent` commit (_Fund €X_ or _Continue to payment_). The card
+path mounts `StripeElementPanel` (payment mode) on the escrow intent's PaymentIntent and then waits
+for the webhook (`PaymentsService.waitForLock`), saying which of locked · declined (nothing charged)
+· lock failed (the money is in the wallet) · still clearing happened. A stage with an unpriced ticket,
+a finished stage or one with nothing waiting shows a warning `Alert` and no commit (§3 gate 11).
+Copy and the method rule live in `payments/core/stage-funding.ts` (tested), shared with the wallet's
+**Fund a stage** dialog, which gains the same **From this wallet · By card** choice and now lists
+an individual owner's stages on their personal wallet. Not a conversion-lane control: `/projects`
+routes are a workspace, not an entity view (§D.7.10). Styles `payments/styles/stage-fund.css`
+(`.sfd*`), token-only, no box around static text.
+
 **`FundingStatus` (`features/projects/components/`, Decision #169).** One ticket's payment &
 work-start line (PRODUCT_MANAGEMENT §3.6): props `funding` (the server-derived `FundingStatus` from
 `@projective/types/finance`, never derived in an island), `side` (`client` · `provider`),
@@ -2751,7 +2809,10 @@ the Finances tab while that tab is open, status-only in `StageInspector` (prop `
 change adds `TicketView`'s `onBuyNow?` · `onAddToBasket?` · `onStartWork?` · `fundingBusy?`,
 `TicketFinanceTab`'s `funding?`, `TicketCard`'s `side?`, the ticket chain's REPLACING `buy` frame
 (`pushTicketBuy`, §B.10.9), `BuyNowTarget.ticket?` (a ticket purchase with the Payment Element in the
-modal), and the Overview's `ReadyBlock` ("Ready to start?").
+modal), and the Overview's `ReadyBlock` ("Ready to start?"). The freelancer's self-claim adds
+`TicketView`'s `onClaim?` · `claimBusy?` (a filled **Claim ticket** in the footer actions, passed only
+while `viewerCanClaim` holds); `onStart` is now offered only on a CLAIMED ticket, because Start work
+on an unassigned one is a `move_ticket` the escrow sync must refuse.
 
 **Presence must never depend on a frame.** Every panel's resting CSS is `opacity: 0`, corrected only
 by `[data-state="open"]` — so the enter flip in `usePresence` (and the initial focus move, and the
@@ -3689,6 +3750,11 @@ _Message_ all at `0×0`. A single body-side transactional block is revealed by m
 where the lane is not**, so the two are mutually exclusive by `display` and only ever one is in the
 accessibility tree. Both derive their offer from the same resolver, so they cannot drift. This is the
 same pattern as the `/wallet` header switcher (§8 Decision #63): **a duty removed from one region is re-homed in another, never rendered twice.**
+For a restricted (13–17) viewer (Decision #192) the duty is an EXPLANATION, not a transaction: the lane
+and the body-side block each hold one unboxed `InlineNotice` ("Buying services and selling work unlock
+on your 18th birthday…", `RESTRICTED_REFUSAL`) instead of the price and the Buy / Book / Apply controls
+(`RestrictedLaneNotice`, `placement` `lane` | `body`, the body one riding `.evp-buybar`'s
+breakpoint) — still one region at a time, and no control that would only be refused (§3 gate 11).
 
 **D.7.5 Resolution is a per-URL slot resolver, and it dispatches on the item's type.**
 `viewLaneFor(url, authed)` is a member of the `laneFor` / `middleNavHeaderFor` / `middleNavFooterFor`
@@ -3917,6 +3983,15 @@ learns the drag, the progress separator and the arrows once.
 - **Carriers.** `RailFrame` imports `explore.css` · `explore-home.css` · `rail.css`.
   `ViewStyleAnchor` imports them too, because a cross-sell made only of project grids mounts no rail
   island.
+
+**D.7.10 A project's workspace is not an entity view.** The lane gate governs `/view/[entity]` and
+`/[handle]/view/[item]`, where a buyer evaluates an offer. `/projects/[slug]/…` is the participants'
+workspace for work already bought, and funding a stage there (Decision #197) is not a listing
+purchase: it lives in the stage board's one-line money sentence and opens `FundStageDialog` — never a
+sticky column, never a price in the board's header band, and never on `/view`. The `/view` pipeline
+lane's **Fund Stage 1** stays what it is, the listing's purchase through checkout. One transaction
+still has one home per surface: the stage board offers **Fund stage**, the project board **Fund all**,
+never both on one board.
 
 > **Merge gate.** A view-page PR is not mergeable if it introduces a third sticky column, renders a
 > price or a purchase control in the main stage on desktop, adds a THIRD fill or a SECOND ghost to

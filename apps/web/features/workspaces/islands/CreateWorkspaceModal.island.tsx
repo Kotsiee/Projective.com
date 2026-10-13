@@ -15,6 +15,7 @@ import { WorkspaceService } from "../core/WorkspaceService.ts";
 import { closeCreate, createModalOpen, createSeedKind } from "../core/workspace-state.ts";
 import { initialsOf } from "../core/workspace-model.ts";
 import { CheckGlyph, cloneGlyph, DeclineGlyph } from "../core/workspace-glyphs.tsx";
+import { PayoutGateLink } from "@features/settings/components/PayoutGateLink.tsx";
 
 /**
  * CreateWorkspaceModal — the Draft-First creation dialog for a team or a business.
@@ -77,6 +78,7 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 	const suggestions = useSignal<readonly string[]>([]);
 	const submitting = useSignal(false);
 	const formError = useSignal<string | null>(null);
+	const formErrorDetails = useSignal<unknown>(null);
 
 	/** The debounce timer, so a fresh keystroke supersedes an in-flight wait. */
 	const probeTimer = useRef<number | null>(null);
@@ -192,14 +194,17 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 		});
 		if (!parsed.success) {
 			formError.value = parsed.error.issues[0]?.message ?? "Check the highlighted fields.";
+			formErrorDetails.value = null;
 			return;
 		}
 
 		submitting.value = true;
 		formError.value = null;
+		formErrorDetails.value = null;
 		const res = await WorkspaceService.create(parsed.data);
 		if (!res.ok || !res.data) {
 			submitting.value = false;
+			formErrorDetails.value = res.details ?? null;
 			// A handle taken between the probe and the submit is the one race worth naming precisely.
 			formError.value = res.errors?.handle ?? res.message ??
 				"Could not create it — please try again.";
@@ -378,7 +383,11 @@ export default function CreateWorkspaceModal(props: CreateWorkspaceModalProps): 
 				</span>
 			</div>
 
-			{formError.value && <p class="wsp-create__error" role="alert">{formError.value}</p>}
+			{formError.value && (
+				<p class="wsp-create__error" role="alert">
+					{formError.value} <PayoutGateLink details={formErrorDetails.value} />
+				</p>
+			)}
 		</Dialog>
 	);
 }

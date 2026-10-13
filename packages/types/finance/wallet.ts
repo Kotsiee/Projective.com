@@ -7,6 +7,7 @@ import {
 	minorUnitsNonNeg,
 	minorUnitsPositive,
 	timestamp,
+	uuid,
 } from "./common.ts";
 import { TransactionDirection, WalletBalancesSchema } from "./ledger.ts";
 import { type ConvertedAmount, DEFAULT_LOCALE } from "./fx.ts";
@@ -244,7 +245,7 @@ export const LEDGER_KIND_REASONS: Readonly<Record<LedgerKind, readonly string[]>
 	product_sale: ["product_sale", "product_sale_vault_retention"],
 	order_payment: ["order_payment"],
 	platform_fee: ["platform_fee", "instant_payout_fee"],
-	topup: ["topup", "demo_opening_credit"],
+	topup: ["topup"],
 	payout: ["payout", "payout_reversal"],
 	transfer: ["transfer_in", "transfer_out", "team_distribution"],
 	refund: ["refund", "escrow_refund", "fair_exit_refund", "chargeback"],
@@ -380,6 +381,30 @@ export const WalletPotViewSchema = z.object({
 export type WalletPotView = z.infer<typeof WalletPotViewSchema>;
 
 /** Overview extras for a personal wallet — freelancer earner cards + client spend context. */
+/**
+ * A stage waiting for its escrow — what "Fund a stage" can fund (Decision #197): open, assigned or in
+ * progress, with tickets nobody has paid for, claimed or not. The amount is the stage's own requirement
+ * (those tickets at their agreed prices), never a figure the buyer types: funding commits exactly what
+ * the work was priced at. A stage with an unpriced ticket is listed but cannot be funded until it is
+ * priced (`unpricedCount`).
+ */
+export const FundableStageSchema = z.object({
+	/** The project's `prj-…` slug (the canonical `/projects/{slug}` address). */
+	projectId: z.string().max(64),
+	/** The project's row id — what the card intent names; never routed (Decision #88). */
+	projectRowId: uuid,
+	projectTitle: z.string().max(160),
+	/** The stage's row id — what the funding call names. */
+	stageId: z.string().max(64),
+	stageName: z.string().max(120),
+	amount: MoneyViewSchema,
+	/** How many unfunded tickets the funding covers; those nobody has claimed are held prepaid. */
+	ticketCount: z.number().int().min(0),
+	/** Tickets with no price — while any remain the stage cannot be funded. */
+	unpricedCount: z.number().int().min(0).default(0),
+});
+export type FundableStage = z.infer<typeof FundableStageSchema>;
+
 export const PersonalExtrasSchema = z.object({
 	incomeSmoother: IncomeSmootherStateSchema.nullable(),
 	taxPot: WalletPotViewSchema.nullable(),
@@ -389,6 +414,8 @@ export const PersonalExtrasSchema = z.object({
 	fundingSource: z.string().max(120).nullable(),
 	/** Client spend so far this month. */
 	spentThisMonth: MoneyViewSchema.nullable(),
+	/** Stages of the viewer's own projects (no client business) they may fund from this wallet. */
+	fundable: z.array(FundableStageSchema).max(40).default([]),
 });
 export type PersonalExtras = z.infer<typeof PersonalExtrasSchema>;
 // #endregion
@@ -474,24 +501,6 @@ export const SpendingCapViewSchema = z.object({
 	resetsLabel: z.string().max(40).nullable(),
 });
 export type SpendingCapView = z.infer<typeof SpendingCapViewSchema>;
-
-/**
- * An assigned stage waiting for its escrow — what "Fund escrow" can fund. The amount is the stage's
- * own requirement (its assigned, unpaid tickets at their agreed prices), never a figure the buyer
- * types: funding commits exactly what the work was priced at.
- */
-export const FundableStageSchema = z.object({
-	/** The project's `prj-…` slug (the canonical `/projects/{slug}` address). */
-	projectId: z.string().max(64),
-	projectTitle: z.string().max(160),
-	/** The stage's row id — what the funding call names. */
-	stageId: z.string().max(64),
-	stageName: z.string().max(120),
-	amount: MoneyViewSchema,
-	/** How many assigned, unpaid tickets the funding covers. */
-	ticketCount: z.number().int().min(0),
-});
-export type FundableStage = z.infer<typeof FundableStageSchema>;
 
 /** Overview extras for a business wallet. */
 export const BusinessExtrasSchema = z.object({
@@ -989,7 +998,7 @@ export const PayoutHistoryRowSchema = z.object({
 	id: z.string().max(64),
 	amount: MoneyViewSchema,
 	/** Member for member with `finance.payout_status` (#125(e): the projection once said `in_transit`, which the table cannot hold, and had no `cancelled`). */
-	status: z.enum(["pending", "paid", "failed", "cancelled"]),
+	status: z.enum(["pending", "paid", "failed", "cancelled", "reversed"]),
 	destinationLabel: z.string().max(120),
 	at: timestamp,
 	dateLabel: z.string().max(40),
@@ -1190,7 +1199,11 @@ export const WithdrawInputSchema = z.object({
 	...targetShape,
 	amountMinor: minorUnitsPositive,
 	currency,
-	destinationId: z.string().max(64).nullable(),
+	/**
+	 * One of the owner's active payout methods (`finance.payment_methods`), or `null` for the default.
+	 * Validated and recorded by `finance.begin_payout` (Decision #202).
+	 */
+	destinationId: uuid.nullable(),
 	instant: z.boolean(),
 	idempotencyKey: z.string().min(8).max(120),
 });
@@ -1232,9 +1245,10 @@ export const DistributeInputSchema = z.object({
 export type DistributeInput = z.infer<typeof DistributeInputSchema>;
 
 /**
- * Fund an assigned stage's escrow from the wallet. `amountMinor` + `currency` are the stage's
- * requirement as the buyer was SHOWN it (a {@link FundableStage}); the server refuses when the stage
- * would now commit a different figure, rather than committing one nobody confirmed.
+ * Fund a stage's escrow from the wallet — a business vault, or the viewer's own wallet for a project
+ * with no client business (Decision #197). `amountMinor` + `currency` are the stage's requirement as
+ * the buyer was SHOWN it (a {@link FundableStage}); the server refuses when the stage would now commit
+ * a different figure, rather than committing one nobody confirmed.
  */
 export const FundEscrowInputSchema = z.object({
 	...targetShape,

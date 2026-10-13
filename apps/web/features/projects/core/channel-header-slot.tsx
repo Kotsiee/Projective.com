@@ -144,6 +144,7 @@ export async function channelHeaderFor(
 		isTask,
 		format: detail.format,
 		isDiscussion: isDiscussionRef(meta.ref),
+		personal: detail.personal === true,
 	});
 
 	return (
@@ -158,6 +159,7 @@ export async function channelHeaderFor(
 			sessionKind={sessionKind}
 			isTask={isTask}
 			format={detail.format}
+			personal={detail.personal === true}
 			detailInfo={buildDetailInfo(detail, meta)}
 		/>
 	);

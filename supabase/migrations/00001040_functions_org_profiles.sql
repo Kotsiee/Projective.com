@@ -195,9 +195,10 @@ BEGIN
             'headline', COALESCE(u.headline, ''),
             'bio', u.bio,
             'visibility', u.visibility,
-            'city', u.city,
-            'country', u.country,
-            'timezone', u.timezone,
+            -- A minor's location and local time are never broadcast (Decision #208); the owner sees them.
+            'city', CASE WHEN org.fn_is_minor(u.user_id) AND NOT v_owner THEN NULL ELSE u.city END,
+            'country', CASE WHEN org.fn_is_minor(u.user_id) AND NOT v_owner THEN NULL ELSE u.country END,
+            'timezone', CASE WHEN org.fn_is_minor(u.user_id) AND NOT v_owner THEN NULL ELSE u.timezone END,
             'language_names', to_jsonb(u.languages),
             'languages', COALESCE((
                 SELECT jsonb_agg(

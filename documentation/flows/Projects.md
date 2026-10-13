@@ -12,8 +12,8 @@ truth for the `projects` and `finance` schemas.
 > the `FieldTier` / `FIELD_TIERS` / `fieldTier` / `blocksPosting` / `TierRule` taxonomy,
 > `CreateProjectStageSchema`, `effectiveVisibility`, the `direct_deliverable` create format — no
 > longer exists, and neither do the `ck_projects_title_len`, `ck_projects_currency` and
-> `ck_projects_deadline_bonus_format` CHECKs it described. The live create path does not call
-> `projects.create_project` (§2.4), there is no `nda_mode` column (§4.3), and
+> `ck_projects_deadline_bonus_format` CHECKs it described. The live create path is one
+> `projects.create_project` transaction (§2.4, Decision #195), there is no `nda_mode` column (§4.3), and
 > `file_upload_required` defaults to `false` at the column (§4.1). The 2026-09-02 pass's `stage_type`
 > reconciliation (§6.0) is unchanged. Field names below are the Zod SSOT's
 > (`packages/types/projects/create.ts`, `setup.ts`); column names are `projects.projects` /
@@ -29,8 +29,10 @@ loses nothing. So the modal's only job is to reach a URL, and the URL is where t
 
 ```mermaid
 flowchart TD
-    A["1. Quick-Init modal<br/>Title · Description · Type"] -->|"POST /api/projects/create"| B["Draft row<br/>status draft · visibility unlisted<br/>+ root stage + Discussion room"]
-    B -->|"navigate to /projects/[projectSlug]"| C["2. Setup configuration<br/>sections registered in setup-sections.ts"]
+    A["1. Quick-Init modal<br/>Title · Description · Type · Currency · Baseline price"] -->|"POST /api/projects/create"| B["projects.create_project — one transaction<br/>draft row · status draft · visibility unlisted<br/>+ root stage + its room + Discussion room"]
+    B -->|"opened from a profile"| I["hire path → projects.invite_to_project<br/>staged invitation to the seller"]
+    B -->|"navigate to /projects/[projectSlug]"| C
+    I -->|"navigate to /projects/[projectSlug]"| C["2. Setup configuration<br/>sections registered in setup-sections.ts"]
     C -->|"Save · autosave-on-blur<br/>PATCH /api/projects/:slug"| C
     C -->|"Publish — every required ladder row done"| D["projects.set_project_status(…, 'active')"]
 ```
@@ -45,25 +47,34 @@ project, wherever the client starts from (Decision #117). Its fields:
   opens on the sentence the client already wrote.
 - **Type** — Task · One-off · Pipeline (`ProjectTypeChoice`, labels `PROJECT_TYPE_LABEL`, hints
   `PROJECT_TYPE_HINT`; §2).
-- **Invited freelancer** — contextual and read-only, rendered only when the modal is opened from a
-  seller's `/[handle]` profile. It is displayed, not sent (Decisions #117(c) / #118(c)).
+- **Currency** — required, a `CurrencySelect` over `DISPLAY_CURRENCIES` (the set the workspace's
+  Rules section offers), seeded from the viewer's `preferred_display_currency` through
+  `toDisplayCurrency`. It prices escrow for the life of the engagement (Decision #195).
+- **Baseline price** — optional (`baselineAmountCents`, minor units; `null` = not priced yet).
+  Labelled `BASELINE_PRICE_LABEL[format]`: the per-ticket rate on a pipeline, the escrow budget on a
+  one-off or Task (§2.4 for where it lands).
+- **Invited freelancer** — contextual, rendered only when the modal is opened from a seller's
+  `/[handle]` profile, and **sent** as `inviteeHandle` (Decision #195, superseding #117(c) / #118(c)).
+  Once the draft exists, `ProjectBackendService.create` reads its hire brief and calls
+  `ProjectBackendService.hire` with `hireForCreatedProject(brief, handle)` — every stage at configured
+  terms, or the whole project on a Task — so the row goes through `projects.invite_to_project` exactly
+  as Add-to-project does. On a draft it is a staged (placeholder) invitation. A refused invitation
+  (the seller's required intake, a cooldown, the hire rate limit, an unknown handle) never fails the
+  create: it comes back as `invitation.outcome = "refused"` with the reason, and the modal shows it
+  with an **Open project** action instead of navigating straight away.
 
 **Pacing** is a prop, never a second modal (Decision #118): `flow: "single"` on the `/projects` lane,
 whose create menu has already settled the type (the selector can still change it), and
 `flow: "stepped"` on a profile, where the type gets its own neutral first screen and the details
 follow.
 
-**Not asked:** currency and a baseline price (Decision #117, not reversed by #118). The payload still
-carries `currency` — seeded from the viewer's resolved money context through `toDisplayCurrency`,
-because it prices escrow for the life of the engagement — and sends `baselineAmountCents: null`; both
-are changed later in the workspace.
-
 The payload is `CreateProjectSchema` (`packages/types/projects/create.ts`), its `format` + `hasStages`
 pair produced by `createInputForType(type)`. `ProjectSidebarService.create` posts it to
 `POST /api/projects/create` → `ProjectBackendService.create` → `insertProject`
 (`packages/backend/services/projects/live-writes.ts`) on the live path, or the stub write-store
-otherwise. It returns `CreatedProjectSchema` `{ id, slug }`, and the modal navigates by **slug**
-(Decision #88).
+otherwise. It returns `CreatedProjectSchema` `{ id, slug, invitation }`, and the modal navigates by
+the minted `prj-` **slug** — immutable through every rename, while the uuid does not route
+(Decision #88, `ROUTING.md`).
 
 ### 1.2 Step 2 — continuous configuration on the workspace
 
@@ -207,31 +218,29 @@ The two directions are deliberately **not** inverses, and `packages/backend/serv
 pins the asymmetry: `createFormatToColumns("pipeline", false)` yields `single_stage`, which still has a
 stage, so `hasStagesFor` correctly answers `true` for it.
 
-### 2.4 The root stage is minted by the fat service
+### 2.4 The draft and its root stage are one transaction
 
-`insertProject` (`live-writes.ts`) **does not call `projects.create_project`** — its docblock records
-why (the RPC reads the row id from its payload, supplies no budget pair, and its nested stage insert
-drops the price and milestone). It inserts the row directly under RLS (`"Users can create projects"`,
-`WITH CHECK (auth.uid() = owner_user_id)`) at `status = 'draft'`, `visibility = 'unlisted'`,
-`publish_visibility = 'public'` (§5), `budget_type = 'fixed_price'` and `budget_amount_cents` = the
-baseline on a one-off (otherwise `NULL`; the modal sends `null`). Then:
+`insertProject` (`live-writes.ts`) makes **one** call, `projects.create_project(payload)`
+(`00001100`, SECURITY DEFINER, `owner_user_id = auth.uid()`), with the payload `createProjectPayload`
+builds (Decision #195). The objections that once kept the create path off this RPC — no id fallback,
+no budget pair, a nested stage insert without price or milestone — are all fixed in the function, and
+it stores exactly what the old direct insert did: `status = 'draft'`, `visibility = 'unlisted'`
+(what `liveVisibilityFor("draft", …)` derives), `publish_visibility` at its column default `'public'`
+(`CREATED_PUBLISH_VISIBILITY`, §5), `budget_type = 'fixed_price'` and `budget_amount_cents` = the
+baseline on a one-off (otherwise `NULL`). Inside the same transaction it:
 
-1. `projects.create_stage` mints **one root stage** — `Delivery` on a one-off (Task included),
-   `Stage 1` on a pipeline (`ROOT_STAGE_NAME`) — with an empty scope and
-   `unit_price_cents = baselineAmountCents`. `create_stage` provisions the stage's room in the same
-   transaction, which is why it is used rather than a direct insert.
-2. `comms.get_or_create_project_channel(project, NULL, 'Discussion')` opens the project-wide room behind
-   `/projects/[slug]/discussion` (Decision #133).
+1. inserts the **one root stage** the payload names explicitly — `Delivery` on a one-off (Task
+   included), `Stage 1` on a pipeline (`ROOT_STAGE_NAME`) — with an empty scope and
+   `unit_price_cents = baselineAmountCents`, and opens that stage's room;
+2. opens the project-wide room behind `/projects/[slug]/discussion` (Decision #133) through
+   `comms.get_or_create_project_channel(project, NULL, 'Discussion')`;
+3. mints the opaque `prj-` slug (`security.mint_slug`) and retries its own collisions.
 
-There is **no transaction across the statements**. A failed stage or room insert is warned, not
-raised: the owner still gets their draft, the `stages` ladder row says what is missing, and
-`set_project_status` refuses to activate a project with no stage. The stub write-store mirrors the
-one root stage.
-
-`projects.create_project(payload jsonb)` still exists in `00001100_functions_projects_read_access.sql`
-(it stores `draft` / `unlisted` and mints an implicit `Delivery` stage), but nothing on the create path
-calls it. Either way the island never mints a stage — root `CLAUDE.md` §2, fat services and dumb
-islands.
+Any failure rolls the whole create back, so a stage-less or room-less draft cannot be produced; the
+RPC's raised refusals reach the client through `refusalFrom` (workspace membership → 403, an empty
+name or exhausted slug retries → 422). `live-create.test.ts` pins the single call and holds every key
+the payload sends against the keys the SQL reads. The stub write-store mirrors the one root stage.
+Either way the island never mints a stage — root `CLAUDE.md` §2, fat services and dumb islands.
 
 ---
 
@@ -518,6 +527,10 @@ Proof of Work: A final submission is uploaded and the client clicks "Approve".
 Escrow & "Fair Exit" Policy: Funds are locked in escrow upon hire. If the stage is cancelled early,
 a time-based split applies:
 
+(As built — Decision #198: the client's reviewer picks the 25 / 50 / 75 % tier in the Submissions
+explorer's **End Stage (Fair Exit)** dialog against a server-computed preview; the stage and every
+ticket left on it become `cancelled`, and both sides are notified. See `finance-model.md` §3.)
+
 ```
 stateDiagram-v2 [*] --> EscrowFunded: Client Approves Hire EscrowFunded --> ActiveWorkspace
 
@@ -599,7 +612,7 @@ relative vs none), `file_duration_days`, `file_due_date`, plus the delivery cont
 > (`set_project_status`, `can_review_project`, `get_project_card_summary`),
 > `00001120_functions_projects_ticket_lifecycle.sql` (`move_ticket`, `fn_ticket_review_submission`),
 > `00001150_functions_projects_stage_funding_submissions.sql` (`submit_deliverable`,
-> `review_submission`, `approve_stage`), `00001820_triggers_projects.sql`
+> `send_submission_draft`, `review_submission`, `approve_stage`), `00001820_triggers_projects.sql`
 > (`trg_ticket_review_submission`), `00000015_tables_projects.sql` (`project_status_history`) and
 > `00002011_policies_projects.sql` (its RLS). All mutations flow through SECURITY DEFINER `projects.*`
 > RPCs (finance stays unexposed) and are called from the fat `ProjectBackendService`
@@ -626,7 +639,7 @@ Columns are the `ticket_status` enum (Backlog=backlog, To Do=todo, In Progress=i
 Review=in_review, Done=completed).
 
 - **→ Review**: an `AFTER UPDATE` trigger auto-generates a `stage_submissions` ledger row for the
-  ticket's current stage (idempotent with an explicit `submit_deliverable`).
+  ticket's current stage (idempotent with an explicit `submit_deliverable` / `send_submission_draft`).
 - **→ Done**: requires **client/owner review authority** (`projects.can_review_project`); a
   freelancer cannot self-confirm delivery. Confirming a Done move settles the installment (existing
   escrow-sync trigger) and logs a `milestone_confirmed` activity. Every move is written to
@@ -634,8 +647,10 @@ Review=in_review, Done=completed).
 
 ### 7.3 Submissions & Deliverables (`submit_deliverable` / `review_submission`)
 
-- **Submit** (freelancer / project participant): files a deliverable + links already-uploaded file
-  ids and pushes the ticket into Review. Status vocabulary:
+- **Submit** (the ticket's assignee, or an active member of the stage's accepted team — project
+  access alone is refused): files a deliverable + links already-uploaded file ids (every id must
+  exist and be the submitter's or their team's) and pushes the ticket into Review. A saved draft is
+  sent with `send_submission_draft`, which runs the same checks and transitions. Status vocabulary:
   `draft | pending_review | accepted |
   revisions_requested`.
 - **Review** (client / owner only, guarded by `projects.can_review_project`): `accept` → `accepted`;
@@ -661,9 +676,8 @@ seller's `/[handle]` profile. `/projects/create` under `routes/(dashboard)/` is 
 /projects` shim with no page; it must stay a **static** sibling of `[projectSlug]` so `create` is
 never captured as a project slug. See [`../architecture/ROUTING.md`](../architecture/ROUTING.md).
 
-The write is `POST /api/projects/create` → `ProjectBackendService.create` → `insertProject` (§2.4): a
-direct RLS-scoped insert of the draft, then `projects.create_stage` for the root stage and
-`comms.get_or_create_project_channel` for the Discussion room — **not** one transaction, and **not**
-`projects.create_project`, which still exists but is not called. Owner, status and live visibility
-are set by the fat service (`owner_user_id = auth.uid()` under the `"Users can create projects"`
-policy), never taken from the payload.
+The write is `POST /api/projects/create` → `ProjectBackendService.create` → `insertProject` (§2.4):
+one `projects.create_project` transaction for the draft, its root stage and both rooms, then — when
+the modal was opened from a profile — the seller's invitation through the hire path (§1.1). Owner,
+status and live visibility are set by the function (`owner_user_id = auth.uid()`), never taken from
+the payload.

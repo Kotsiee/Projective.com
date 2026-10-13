@@ -83,7 +83,8 @@ export interface SetupChecklistLine {
 /** The whole checklist for a progress answer, done and pending, in checklist order. */
 export function setupChecklist(progress: ProfileSetupProgress): SetupChecklistLine[] {
 	const done = new Set(progress.completedKeys);
-	return SETUP_STEP_ORDER.map((key) => ({
+	const notApplicable = new Set(progress.notApplicableKeys ?? []);
+	return SETUP_STEP_ORDER.filter((key) => !notApplicable.has(key)).map((key) => ({
 		key,
 		label: SETUP_STEP_LABEL[key],
 		done: done.has(key),

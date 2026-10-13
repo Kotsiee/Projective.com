@@ -653,7 +653,7 @@ END;
 $$;
 -- #endregion
 
--- #region 7. The billing run (daily; pg_cron below)
+-- #region 7. The billing run (daily; scheduled in 00005060)
 -- One pass, safe to repeat (every write is idempotent on its unique key):
 --  1. every business on monthly invoicing gets the invoice for its last CLOSED billing period
 --     (finance.fn_generate_consolidated_invoice) — a missed day catches up on the next run;
@@ -746,16 +746,6 @@ COMMENT ON FUNCTION finance.fn_run_billing_cycle(timestamptz) IS
 'The daily billing run: monthly business invoices on each billing_day (catching up a missed day),
 last month''s wallet statements from the 1st, and the overdue sweep. Idempotent; service role / pg_cron only.';
 
--- Daily at 02:20 UTC, guarded like the other pg_cron registrations (00000002): a local `supabase start`
--- has no pg_cron, so there the run is called by hand (`SELECT finance.fn_run_billing_cycle();`).
-DO $$
-BEGIN
-    PERFORM cron.schedule(
-        'finance-billing-cycle',
-        '20 2 * * *',
-        $cron$SELECT finance.fn_run_billing_cycle();$cron$
-    );
-EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'pg_cron unavailable — finance.fn_run_billing_cycle must be scheduled manually.';
-END $$;
+-- Scheduled daily at 02:20 UTC as `finance-billing-cycle` by the job registry (`ops.scheduled_jobs`,
+-- 00005060).
 -- #endregion

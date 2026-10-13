@@ -68,6 +68,11 @@ export interface ProfileStickyHeaderProps {
 	preview: boolean;
 	/** Whether the viewer is signed in. */
 	authed: boolean;
+	/**
+	 * The viewer is a restricted (13–17) account (Decision #192): Hire and Add-to-project are left
+	 * out, because both lead only to buying.
+	 */
+	restricted?: boolean;
 	/** The seller's active listings — the Hire popover's rows. */
 	services: ServiceItem[];
 	/** The seller's public call offer, or `null` — the popover's consultation row. */
@@ -174,6 +179,7 @@ export default function ProfileStickyHeader(props: ProfileStickyHeaderProps): JS
 				canEdit={false}
 				preview={preview}
 				authed={authed}
+				restricted={props.restricted}
 				services={services}
 				consultation={consultation}
 				hireProjects={hireProjects}

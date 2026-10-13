@@ -155,8 +155,6 @@ CREATE TABLE org.deletion_requests (
 CREATE TABLE org.user_preferences (
     user_id uuid NOT NULL,
     theme text DEFAULT 'system',
-    notification_email boolean DEFAULT true,
-    notification_push boolean DEFAULT false,
     locale text DEFAULT 'en-GB',
     ui_settings jsonb NOT NULL DEFAULT '{}'::jsonb,
     -- Folded (20260723090000): presentational display-conversion target + document layout direction.
@@ -188,6 +186,15 @@ CREATE TABLE org.user_preferences (
     CONSTRAINT user_preferences_cvd_check CHECK (cvd IN ('none', 'protan', 'deutan', 'tritan')),
     CONSTRAINT user_preferences_motion_check CHECK (motion IN ('standard', 'reduced')),
     CONSTRAINT user_preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users (id) ON DELETE CASCADE
+);
+
+-- The formatting locales the platform offers (Settings → Language & region): reference data seeded in
+-- 00005050 and mirrored by SUPPORTED_LOCALES in @projective/types/org. Sign-up seeding keeps a
+-- browser locale only when it is listed here (org.fn_supported_locale, Decision #207).
+CREATE TABLE org.supported_locales (
+    tag text NOT NULL,
+    CONSTRAINT supported_locales_pkey PRIMARY KEY (tag),
+    CONSTRAINT supported_locales_tag_check CHECK (tag ~ '^[a-z]{2,3}-[A-Z]{2}$')
 );
 
 CREATE TABLE org.freelancer_profiles (

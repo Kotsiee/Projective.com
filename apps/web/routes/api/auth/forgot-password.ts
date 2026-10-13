@@ -24,6 +24,7 @@ export const handler = define.handlers({
 		}
 
 		return toAuthResponse(
+			ctx.req,
 			await AuthBackendService.requestPasswordReset({
 				email: parsed.data.email,
 				redirectTo: safeRedirect(parsed.data.redirectTo),

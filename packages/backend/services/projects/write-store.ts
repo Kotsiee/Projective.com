@@ -23,6 +23,7 @@ import {
 	type ProjectFeedPayload,
 	type ProjectMemberRow,
 	type ProjectOverview,
+	type ProjectParty,
 	type ProjectSetup,
 	type ProjectSetupPatch,
 	type ProjectSummary,
@@ -1841,6 +1842,27 @@ export function movedStubCard(card: BoardCard, input: MoveTicket, now: number): 
 			? input.sortOrder
 			: card.sortOrder,
 		updatedAt: new Date(now).toISOString(),
+		dateLabel: dateLabelOf(now),
+	};
+}
+
+/**
+ * Apply a self-claim to a card: claimed, held by `assignee`, in the `claimed` status. The escrow flag
+ * is left as it was, because the stub moves no money; the funding facts are re-derived from it.
+ */
+export function claimedStubCard(card: BoardCard, assignee: ProjectParty, now: number): BoardCard {
+	const iso = new Date(now).toISOString();
+	const claimed: BoardCard = {
+		...card,
+		status: "claimed",
+		claimed: true,
+		claimedAt: iso,
+		assignee,
+	};
+	return {
+		...claimed,
+		funding: fixtureFunding(claimed),
+		updatedAt: iso,
 		dateLabel: dateLabelOf(now),
 	};
 }

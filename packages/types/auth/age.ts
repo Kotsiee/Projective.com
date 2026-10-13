@@ -16,26 +16,78 @@ export const ADULT_AGE = 18;
 /** The earliest plausible date of birth — the floor `org.users_public.dob` is CHECKed against. */
 export const DOB_FLOOR = "1900-01-01";
 
+/**
+ * The zone an age is counted in when the person's own is unknown — the same fallback
+ * `org.fn_age_years` uses, so every layer agrees on which day a birthday falls.
+ */
+export const AGE_FALLBACK_TIME_ZONE = "UTC";
+
 /** The four possible evaluations of a supplied Date of Birth. */
 export type AgeBracket = "unknown" | "blocked" | "restricted" | "full";
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Whether `timeZone` is an IANA zone this runtime resolves. */
+export function isTimeZone(timeZone: string | null | undefined): timeZone is string {
+	if (!timeZone) return false;
+	try {
+		new Intl.DateTimeFormat("en-US", { timeZone });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 /**
- * Compute a whole-year age from an ISO `YYYY-MM-DD` date-of-birth string.
+ * The browser's IANA zone — what the join form sends, and what the database then counts this
+ * person's birthdays in. Client-side only: on the server it would answer the server's own zone.
+ */
+export function browserTimeZone(): string {
+	const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+	return isTimeZone(zone) ? zone : AGE_FALLBACK_TIME_ZONE;
+}
+
+/** Today's calendar date (`YYYY-MM-DD`) in `timeZone`; an absent or unknown zone counts in UTC. */
+export function todayIn(timeZone: string | null | undefined, now: Date = new Date()): string {
+	const zone = isTimeZone(timeZone) ? timeZone : AGE_FALLBACK_TIME_ZONE;
+	const parts = new Intl.DateTimeFormat("en-CA", {
+		timeZone: zone,
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+	}).formatToParts(now);
+	const part = (type: Intl.DateTimeFormatPartTypes) =>
+		parts.find((p) => p.type === type)?.value ?? "";
+	return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+/**
+ * Compute a whole-year age from an ISO `YYYY-MM-DD` date of birth, counted on today's date in the
+ * person's own zone — the rule `org.fn_age_years` applies, so a birthday turns over at the same
+ * moment in the form, the API and the database. A 29 February birthday turns over on 1 March in a
+ * common year, as Postgres `age()` does.
  *
  * @param dob ISO date string from a native `<input type="date">` (empty ⇒ `null`).
- * @param now Reference "today" (injectable for deterministic tests).
- * @returns Whole years, or `null` when the input is empty / unparseable / in the future / before
+ * @param timeZone The person's IANA zone; absent or unknown counts in {@link AGE_FALLBACK_TIME_ZONE}.
+ * @param now Reference instant (injectable for deterministic tests).
+ * @returns Whole years, or `null` when the input is empty / not a real date / in the future / before
  * {@link DOB_FLOOR}.
  */
-export function computeAge(dob: string, now: Date = new Date()): number | null {
-	if (!dob || dob < DOB_FLOOR) return null;
-	const d = new Date(`${dob}T00:00:00`);
-	if (Number.isNaN(d.getTime())) return null;
-	if (d.getTime() > now.getTime()) return null;
-	let age = now.getFullYear() - d.getFullYear();
-	const monthDelta = now.getMonth() - d.getMonth();
-	if (monthDelta < 0 || (monthDelta === 0 && now.getDate() < d.getDate())) age--;
-	return age;
+export function computeAge(
+	dob: string,
+	timeZone?: string | null,
+	now: Date = new Date(),
+): number | null {
+	if (!ISO_DATE.test(dob) || dob < DOB_FLOOR) return null;
+	const [by, bm, bd] = dob.split("-").map(Number);
+	const real = new Date(Date.UTC(by, bm - 1, bd));
+	if (real.getUTCFullYear() !== by || real.getUTCMonth() !== bm - 1 || real.getUTCDate() !== bd) {
+		return null;
+	}
+	const today = todayIn(timeZone, now);
+	if (dob > today) return null;
+	const [ty, tm, td] = today.split("-").map(Number);
+	return ty - by - (tm < bm || (tm === bm && td < bd) ? 1 : 0);
 }
 
 /** Map a computed age to its capability bracket. */
@@ -46,9 +98,9 @@ export function ageBracket(age: number | null): AgeBracket {
 	return "full";
 }
 
-/** Convenience: evaluate a bracket straight from a DoB string. */
-export function bracketFromDob(dob: string, now?: Date): AgeBracket {
-	return ageBracket(computeAge(dob, now));
+/** Convenience: evaluate a bracket straight from a DoB string, in the person's zone. */
+export function bracketFromDob(dob: string, timeZone?: string | null, now?: Date): AgeBracket {
+	return ageBracket(computeAge(dob, timeZone, now));
 }
 
 /** Whether a DoB bracket is allowed to proceed with account creation. */
@@ -82,6 +134,19 @@ export const AGE_RESTRICTED_REASON = "age_restricted";
 /** The 403 copy every buy/sell door answers a restricted account with. */
 export const RESTRICTED_REFUSAL =
 	`Buying services and selling work unlock on your ${ADULT_AGE}th birthday. Until then you can explore and build your profile.`;
+
+/** What a restricted account is told when it creates a project (Decision #192). */
+export const PERSONAL_PROJECT_NOTE =
+	`Projects you create stay private to you until you're ${ADULT_AGE}: no members, hiring or payments.`;
+
+/** The `details.reason` a join refused for an under-13 date of birth carries. */
+export const UNDER_MINIMUM_REASON = "under_minimum";
+
+/**
+ * The HttpOnly session cookie the join route sets once it has refused an under-13 date of birth, and
+ * refuses every further individual sign-up while it lasts (Decision #208). It carries no data.
+ */
+export const JOIN_AGE_LOCK_COOKIE = "pj_join_age_lock";
 
 /** The join-form copy for a date of birth under {@link MIN_AGE}. */
 export const UNDER_MINIMUM_REFUSAL = `You need to be at least ${MIN_AGE} to join Projective.`;

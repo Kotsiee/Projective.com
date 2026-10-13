@@ -65,6 +65,10 @@ ALTER TABLE ops.admin_users ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE ops.log_entries ENABLE ROW LEVEL SECURITY;
 
+ALTER TABLE ops.scheduled_jobs ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE ops.http_job_dispatches ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE org.business_profiles ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE org.freelancer_profiles ENABLE ROW LEVEL SECURITY;
@@ -261,6 +265,8 @@ ALTER TABLE org.business_roles ENABLE ROW LEVEL SECURITY;
 -- --- from 0213_user_preferences.sql ---
 
 ALTER TABLE org.user_preferences ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE org.supported_locales ENABLE ROW LEVEL SECURITY;
 
 
 -- --- from 0218_search_engine_signals.sql ---

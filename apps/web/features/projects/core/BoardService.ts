@@ -4,6 +4,7 @@ import type {
 	BoardCard,
 	BoardListParams,
 	BoardPage,
+	ClaimTicket,
 	CommitTicket,
 	CreatedStage,
 	CreateStageInput,
@@ -83,5 +84,13 @@ export const BoardService = {
 	 */
 	move(payload: MoveTicket): Promise<ProjectsResult<{ card: BoardCard }>> {
 		return postProjects<{ card: BoardCard }>("/api/projects/ticket/move", payload);
+	},
+
+	/**
+	 * Self-claim an `open_pull` ticket. Not optimistic: the answer is the claimed card as the server
+	 * holds it, or a refusal whose `details` may carry the payout gate's fix link.
+	 */
+	claim(payload: ClaimTicket): Promise<ProjectsResult<{ card: BoardCard }>> {
+		return postProjects<{ card: BoardCard }>("/api/projects/ticket/claim", payload);
 	},
 };

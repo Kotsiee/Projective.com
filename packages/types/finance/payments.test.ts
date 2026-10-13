@@ -3,6 +3,7 @@ import {
 	CardPaymentHandoffSchema,
 	ConnectOnboardingInputSchema,
 	CreateEscrowLockIntentSchema,
+	FundPaidRevisionSchema,
 	isHandledStripeEvent,
 	PayoutAccountScopeSchema,
 	payoutAccountStatusFor,
@@ -95,4 +96,23 @@ Deno.test("a handoff only ever carries a PaymentIntent id, never another Stripe 
 	assert(CardPaymentHandoffSchema.safeParse(handoff).success);
 	assert(!CardPaymentHandoffSchema.safeParse({ ...handoff, providerRef: "ch_3Pqexample" }).success);
 	assert(!CardPaymentHandoffSchema.safeParse({ ...handoff, clientSecret: "" }).success);
+});
+
+Deno.test("a direct paid revision payment names its round, a method and what was shown", () => {
+	const body = {
+		projectId: "prj-xyz789",
+		stageId: "stg-abc123",
+		submissionId: UUID,
+		revisionId: UUID,
+		method: "wallet",
+		expectedAmountMinor: 5000,
+		currency: "USD",
+		idempotencyKey: "rev-attempt-0001",
+	};
+	assert(FundPaidRevisionSchema.safeParse(body).success);
+	assert(FundPaidRevisionSchema.safeParse({ ...body, method: "card" }).success);
+	assert(!FundPaidRevisionSchema.safeParse({ ...body, method: "basket" }).success);
+	assert(!FundPaidRevisionSchema.safeParse({ ...body, revisionId: "not-a-uuid" }).success);
+	assert(!FundPaidRevisionSchema.safeParse({ ...body, expectedAmountMinor: 0 }).success);
+	assert(!FundPaidRevisionSchema.safeParse({ ...body, idempotencyKey: "short" }).success);
 });

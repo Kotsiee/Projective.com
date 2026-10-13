@@ -6,6 +6,7 @@ import { Icon } from "@projective/ui/icons";
 import type { InviteLinkView } from "../types/projects-types.ts";
 import { RequestService } from "../core/RequestService.ts";
 import { inviteLinkCopy } from "../core/invite-link-copy.ts";
+import { PayoutGateLink } from "@features/settings/components/PayoutGateLink.tsx";
 
 /**
  * InviteLinkLanding — the `/invite/[token]` page (Decision #145): where a stage invite link leads, who
@@ -24,6 +25,7 @@ export default function InviteLinkLanding(props: InviteLinkLandingProps): JSX.El
 	const note = useSignal("");
 	const busy = useSignal(false);
 	const error = useSignal<string | null>(null);
+	const errorDetails = useSignal<unknown>(null);
 
 	const copy = inviteLinkCopy(view.value);
 
@@ -38,6 +40,7 @@ export default function InviteLinkLanding(props: InviteLinkLandingProps): JSX.El
 			return;
 		}
 		error.value = res.message ?? "Your request could not be sent — please try again.";
+		errorDetails.value = res.details ?? null;
 	}
 
 	return (
@@ -76,7 +79,11 @@ export default function InviteLinkLanding(props: InviteLinkLandingProps): JSX.El
 					/>
 				</div>
 			)}
-			{error.value && <p class="invite-landing__error" role="alert">{error.value}</p>}
+			{error.value && (
+				<p class="invite-landing__error" role="alert">
+					{error.value} <PayoutGateLink details={errorDetails.value} />
+				</p>
+			)}
 			{copy.next && (
 				<a class="invite-landing__next" href={copy.next.href}>
 					{copy.next.label}

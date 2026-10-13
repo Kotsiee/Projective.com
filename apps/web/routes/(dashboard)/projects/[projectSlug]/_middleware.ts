@@ -34,6 +34,10 @@ export default define.middleware(async (ctx) => {
 	const exit = workspaceExitFor(resolved.access, resolved.status);
 	const location = exit ? landingHref({ kind: exit }, slug) : null;
 	if (location) return seeOther(location);
+	// A personal project (Decision #192) is one person's: it has no member roster to show.
+	if (resolved.personal && (segs[2] === "members" || segs[3] === "members")) {
+		return seeOther(`/projects/${slug}`);
+	}
 
 	// Every workspace page used to title its tab just "Projective". A route that knows more (the
 	// Overview, Details, a stage's configuration) overrides this in its own handler, which runs after.

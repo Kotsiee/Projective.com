@@ -16,6 +16,7 @@ import {
 	type InboundPayment,
 	isHandledStripeEvent,
 	isHandledStripeThinEvent,
+	isSettledPaymentStatus,
 	type KybOnboardingInput,
 	type OnboardingReturn,
 	type PaymentFundingPoll,
@@ -23,6 +24,8 @@ import {
 	payoutAccountStatusFor,
 	type PayoutResult,
 	type SavedCardResult,
+	type StalePayoutOutcome,
+	type StalePayoutSweep,
 	type StripeWebhookOutcome,
 	type StripeWebhookReceipt,
 	type TransfersCapabilityStatus,
@@ -32,9 +35,10 @@ import { serverEnv } from "../../core/env.ts";
 import { isBearerAuthorised } from "../../core/bearer.ts";
 import {
 	getStripe,
+	type Stripe,
 	type StripeSettings,
 	stripeSettings,
-	verifyStripeEvent,
+	verifyStripeEventWithAny,
 } from "../../core/stripe.ts";
 import { isFinanceBackendLive } from "../../core/supabase.ts";
 // Re-exported for the app's boot (apps/web/main.ts), which reaches the backend only through @server/services.
@@ -53,6 +57,7 @@ import {
 	bindScheduledPayment,
 	cardOwnerFor,
 	claimDueDepositRules,
+	claimStalePayouts,
 	completePayout,
 	type DbRefusal,
 	ensurePurchaseWallet,
@@ -64,6 +69,7 @@ import {
 	recordProcessorCustomer,
 	readInboundPayment,
 	recordSavedCard,
+	type StalePayout,
 	syncPayoutAccount,
 } from "./live-payments.ts";
 import {
@@ -78,6 +84,7 @@ import {
 	createPaymentIntent,
 	createSetupIntent,
 	createTransfer,
+	findPayoutTransfer,
 	type IntentHandle,
 	retrieveConfirmedCard,
 	retrievePaymentIntent,
@@ -85,6 +92,7 @@ import {
 	type StripeFailure,
 } from "./stripe-rails.ts";
 import { applyStripePlan, planStripeEvent, syncConnectAccount } from "./stripe-webhook.ts";
+import { planStalePayout } from "./payout-sweep.ts";
 import { paymentFundingState } from "./funding-state.ts";
 
 /**
@@ -114,6 +122,56 @@ import { paymentFundingState } from "./funding-state.ts";
 type Result<T> = ServiceResult<T>;
 
 // #region Plumbing
+/** Close one leased stale payout: complete it, re-send it, return it, or leave it for the next sweep. */
+async function settleStalePayout(stripe: Stripe, payout: StalePayout): Promise<StalePayoutSweep["results"][number]> {
+	const result = (outcome: StalePayoutOutcome, transfer: string | null, detail: string) => ({
+		payoutId: payout.id,
+		outcome,
+		transfer,
+		detail,
+	});
+	try {
+		const found = payout.destination
+			? await findPayoutTransfer(stripe, {
+				payoutId: payout.id,
+				destination: payout.destination,
+				initiatedAt: payout.initiatedAt,
+			})
+			: null;
+		const action = planStalePayout(payout, found, Date.now());
+		if (action.kind === "complete") {
+			await completePayout(payout.id, action.transfer);
+			return result("completed", action.transfer, "its transfer was found");
+		}
+		if (action.kind === "fail" || !payout.destination) {
+			const reason = action.kind === "fail" ? action.reason : "no verified payout account to send it to";
+			await failPayout(payout.id, reason);
+			return result("failed", null, reason);
+		}
+		try {
+			const sent = await createTransfer(stripe, {
+				payoutId: payout.id,
+				amountMinor: payout.amountCents,
+				currency: payout.currency,
+				destination: payout.destination,
+				walletId: payout.walletId,
+				destinationMethodId: payout.destinationMethodId,
+			});
+			await completePayout(payout.id, sent.id);
+			return result("completed", sent.id, "re-sent under its idempotency key");
+		} catch (error) {
+			const failure = classifyStripeError(error);
+			if (failure.kind !== "refused") throw error;
+			const reason = failure.code ?? "refused by the processor";
+			await failPayout(payout.id, reason);
+			return result("failed", null, reason);
+		}
+	} catch (error) {
+		console.error("[payments:payout-sweep]", payout.id, error instanceof Error ? error.message : error);
+		return result("retry", null, "left for the next sweep");
+	}
+}
+
 const NOT_CONNECTED = "Card payments aren't connected in this environment.";
 
 function signedOut<T>(message = "Sign in to continue."): Result<T> {
@@ -242,7 +300,7 @@ async function cardPayment(
 
 	// A replayed key names an attempt that already ended one way or another; its key cannot start
 	// another payment, and saying so is better than handing back a secret for a dead intent.
-	if (payment.status === "succeeded") {
+	if (isSettledPaymentStatus(payment.status)) {
 		return fail(409, { message: "This payment has already been made." });
 	}
 	if (payment.status === "canceled") {
@@ -361,6 +419,35 @@ export class PaymentBackendService {
 			ticketId: input.ticketId ?? null,
 			expectedAmountMinor: input.expectedAmountMinor,
 			currency: input.currency,
+			idempotencyKey: input.idempotencyKey,
+		});
+	}
+
+	/**
+	 * Pay for ONE paid revision round by card (Decision #199). The database prices it from the round's
+	 * snapshot and applies `projects.fund_paid_revision`'s gates before any intent exists; on
+	 * `payment_intent.succeeded` the payer's wallet is credited and the round's escrow is held from it,
+	 * as the payer, which is what opens the round. `projectId` and `stageId` are row ids.
+	 */
+	static createPaidRevisionIntent(
+		input: {
+			projectId: string;
+			stageId: string;
+			revisionId: string;
+			expectedAmountMinor: number;
+			currency: string;
+			idempotencyKey: string;
+		},
+		actor: ReadActor,
+	): Promise<Result<CardPaymentHandoff>> {
+		return cardPayment(actor, {
+			purpose: "escrow_lock",
+			walletId: null,
+			projectId: input.projectId,
+			stageId: input.stageId,
+			revisionId: input.revisionId,
+			expectedAmountMinor: input.expectedAmountMinor,
+			currency: input.currency.toUpperCase(),
 			idempotencyKey: input.idempotencyKey,
 		});
 	}
@@ -719,13 +806,22 @@ export class PaymentBackendService {
 	// #region Money out — withdrawals
 	/**
 	 * Withdraw from a wallet to its owner's verified Connect account. The database authorises, applies
-	 * the earning gates and DEBITS the wallet (`finance.begin_payout`); then the Transfer is created,
-	 * idempotent on the payout id. A definitive Stripe refusal returns the money (`finance.fail_payout`);
-	 * an unknown answer (network, 5xx) leaves the payout pending with the money held — retrying the same
-	 * attempt key re-sends the SAME transfer request, and `transfer.created` closes it either way.
+	 * the earning gates and the minimum, checks a named destination is one of the owner's active payout
+	 * methods, and DEBITS the wallet (`finance.begin_payout`); then the Transfer is created, idempotent on
+	 * the payout id. A definitive Stripe refusal returns the money (`finance.fail_payout`); an unknown
+	 * answer (network, 5xx) leaves the payout pending with the money held — retrying the same attempt key
+	 * re-sends the SAME transfer request, `transfer.created` closes it either way, and the stale-payout
+	 * sweep ({@link sweepStalePayouts}) closes it if neither does.
 	 */
 	static async withdraw(
-		input: { walletId: string; amountMinor: number; currency: string; instant: boolean; idempotencyKey: string },
+		input: {
+			walletId: string;
+			amountMinor: number;
+			currency: string;
+			instant: boolean;
+			idempotencyKey: string;
+			destinationMethodId: string | null;
+		},
 		actor: ReadActor,
 	): Promise<Result<PayoutResult>> {
 		if (!canReadLive(actor)) return signedOut("Sign in to withdraw.");
@@ -746,6 +842,7 @@ export class PaymentBackendService {
 				currency: payout.currency,
 				destination,
 				walletId: payout.walletId,
+				destinationMethodId: payout.destinationMethodId,
 			})).id;
 		} catch (error) {
 			const failure = classifyStripeError(error);
@@ -923,6 +1020,31 @@ export class PaymentBackendService {
 	}
 	// #endregion
 
+	// #region Stale payouts
+	/**
+	 * Reconcile withdrawals stuck in `pending` — their transfer's answer was lost and no
+	 * `transfer.created` closed them — run by the scheduler (`POST /api/finance/cron/payouts`, Decision
+	 * #202). Each leased payout (`finance.fn_claim_stale_payouts`) is matched to the transfer Stripe made
+	 * for it and completed; with none, it is re-sent under the same idempotency key inside the key's
+	 * 24-hour life, and returned to the wallet after it. A Stripe outage leaves it for the next sweep.
+	 */
+	static async sweepStalePayouts(limit = 50): Promise<Result<StalePayoutSweep>> {
+		if (!liveSettings()) return notConnected("Withdrawals aren't connected in this environment.");
+		const claimed = await claimStalePayouts(limit);
+		const stripe = getStripe();
+		const results: StalePayoutSweep["results"] = [];
+		for (const payout of claimed) results.push(await settleStalePayout(stripe, payout));
+		const count = (outcome: StalePayoutOutcome) => results.filter((r) => r.outcome === outcome).length;
+		return ok({
+			claimed: claimed.length,
+			completed: count("completed"),
+			failed: count("failed"),
+			retry: count("retry"),
+			results,
+		});
+	}
+	// #endregion
+
 	// #region Webhook
 	/**
 	 * Verify and apply one Stripe webhook delivery. `payload` must be the RAW body — the signature is an
@@ -932,7 +1054,9 @@ export class PaymentBackendService {
 	 * 503 while webhooks are not configured here, 500 when the ledger could not record the event (so it
 	 * is redelivered — safe, because every door is idempotent on the event id), and 200 for everything
 	 * else, INCLUDING an event this endpoint ignores or cannot match: acknowledging it is what stops the
-	 * retries, and the claim row keeps it for reconciliation.
+	 * retries, and the claim row keeps it for reconciliation. The one exception is a card settlement,
+	 * acknowledged only once its ledger row exists (Decision #200): one that cannot be credited yet
+	 * released its claim, so it answers 500 and Stripe's retry settles it.
 	 */
 	static async handleStripeWebhook(
 		payload: string,
@@ -944,7 +1068,8 @@ export class PaymentBackendService {
 
 		let event;
 		try {
-			event = await verifyStripeEvent(payload, signature, settings.webhookSecret);
+			const secrets = [settings.webhookSecret, settings.connectWebhookSecret].filter((s): s is string => !!s);
+			event = await verifyStripeEventWithAny(payload, signature, secrets);
 		} catch (error) {
 			const reason = error instanceof Error ? error.message.split("\n")[0] : String(error);
 			console.warn("[payments:webhook] rejected delivery:", reason);

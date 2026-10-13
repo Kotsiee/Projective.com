@@ -58,15 +58,20 @@ export async function resolveBookingOffer(
  */
 export async function resolveEntityCommerce(
 	view: EntityView,
-	opts: BookingOfferOptions & { viewer: SchedulingViewer },
+	opts: BookingOfferOptions & {
+		viewer: SchedulingViewer;
+		/** A restricted (13–17) viewer sees the schedule but cannot book a slot (Decision #192). */
+		restricted?: boolean;
+	},
 ): Promise<{ offer: ServiceBookingOffer | null; schedule: SchedulePage | null }> {
 	const archetype = resolveArchetype(view);
 	if (archetype === "project" || archetype === "article") return { offer: null, schedule: null };
-	const [offer, schedule] = await Promise.all([
+	const [offer, page] = await Promise.all([
 		resolveBookingOffer(view.item.id, opts),
 		showsScheduler(archetype)
 			? resolveSchedulePage(view.item.id, opts.viewer).then((r) => r.page)
 			: Promise.resolve(null),
 	]);
+	const schedule = page && opts.restricted ? { ...page, viewerCanBook: false } : page;
 	return { offer, schedule };
 }

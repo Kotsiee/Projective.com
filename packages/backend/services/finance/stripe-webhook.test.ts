@@ -1,6 +1,7 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertThrows } from "@std/assert";
 import type { Stripe } from "../../core/stripe.ts";
-import { planStripeEvent } from "./stripe-webhook.ts";
+import type { EventOutcome } from "./live-payments.ts";
+import { planStripeEvent, requireLedgerRow } from "./stripe-webhook.ts";
 
 /** A minimal event of a given type around a data object — the fields the planner reads, no more. */
 function event(type: string, object: Record<string, unknown>): Stripe.Event {
@@ -24,8 +25,63 @@ Deno.test("payment_intent.succeeded settles what was RECEIVED, in upper-case cur
 			amount: 5000,
 			amount_received: 4900,
 			currency: "usd",
+			metadata: { projective_payment_id: "6f1f0d7e-2b0a-4c1e-9d6a-3b8e5f2a1c90" },
 		})),
 		{ kind: "payment_succeeded", paymentIntent: "pi_1", amountReceived: 4900, currency: "USD" },
+	);
+});
+
+Deno.test("a succeeded intent Projective did not create is acknowledged as ignored, never retried", () => {
+	const base = { id: "pi_1", amount: 5000, amount_received: 5000, currency: "usd" };
+	assertEquals(planStripeEvent(event("payment_intent.succeeded", base)).kind, "ignore");
+	assertEquals(
+		planStripeEvent(
+			event("payment_intent.succeeded", { ...base, metadata: { projective_payment_id: "nope" } }),
+		).kind,
+		"ignore",
+	);
+});
+
+const outcome = (over: Partial<EventOutcome>): EventOutcome => ({
+	outcome: "applied",
+	detail: null,
+	raw: {},
+	...over,
+});
+
+Deno.test("a settlement is acknowledged only with the ledger row it produced (Decision #200)", () => {
+	const tx = "0b5c8a1e-7f2d-4e3a-9c6b-1d2e3f4a5b6c";
+	const applied = outcome({
+		raw: { outcome: "applied", transaction_id: tx, status: "settled_unapplied" },
+	});
+	assertEquals(requireLedgerRow(applied), applied);
+	const replayed = outcome({
+		outcome: "replayed",
+		raw: { outcome: "replayed", transaction_id: tx },
+	});
+	assertEquals(requireLedgerRow(replayed), replayed);
+});
+
+Deno.test("a settlement without a ledger row throws, so the webhook answers 5xx and Stripe retries", () => {
+	// Not bound yet (an off-session deposit's success beat its bind), or the amount / currency differ.
+	assertThrows(() =>
+		requireLedgerRow(
+			outcome({
+				outcome: "unmatched",
+				detail: "no inbound payment is bound to this PaymentIntent yet",
+				raw: { transaction_id: null },
+			}),
+		)
+	);
+	// A replay whose first delivery left no ledger row is not an acknowledgement either.
+	assertThrows(() =>
+		requireLedgerRow(outcome({ outcome: "replayed", raw: { first: { outcome: "unmatched" } } }))
+	);
+	assertThrows(() =>
+		requireLedgerRow(outcome({ outcome: "applied", raw: { transaction_id: "" } }))
+	);
+	assertThrows(() =>
+		requireLedgerRow(outcome({ outcome: "ignored", raw: { transaction_id: "x" } }))
 	);
 });
 
@@ -187,4 +243,64 @@ Deno.test("setup_intent.succeeded saves a card only for a SetupIntent Projective
 		metadata: {},
 	}));
 	assertEquals(foreign.kind, "ignore");
+});
+
+/** A Connect event: delivered to the platform's Connect endpoint on behalf of a connected account. */
+function connectEvent(type: string, account: string | null, object: Record<string, unknown>): Stripe.Event {
+	return { ...event(type, object), ...(account ? { account } : {}) } as unknown as Stripe.Event;
+}
+
+Deno.test("transfer.reversed carries the CUMULATIVE amount reversed, so a replay credits nothing twice", () => {
+	assertEquals(
+		planStripeEvent(event("transfer.reversed", {
+			id: "tr_1",
+			amount: 5000,
+			amount_reversed: 2000,
+			reversed: false,
+			currency: "gbp",
+			destination: "acct_1",
+			metadata: { projective_payout_id: "00000000-0000-4000-8000-00000000abcd" },
+		})),
+		{
+			kind: "transfer_reversed",
+			transfer: "tr_1",
+			destination: "acct_1",
+			amount: 5000,
+			amountReversed: 2000,
+			currency: "GBP",
+			payoutId: "00000000-0000-4000-8000-00000000abcd",
+		},
+	);
+	const unreadable = planStripeEvent(event("transfer.reversed", { id: "tr_1", amount: 5000, currency: "gbp" }));
+	assertEquals(unreadable.kind, "ignore");
+});
+
+Deno.test("a connected account's payout.failed carries the account, the payout and the failure CODE", () => {
+	assertEquals(
+		planStripeEvent(connectEvent("payout.failed", "acct_1", {
+			id: "po_1",
+			amount: 4000,
+			currency: "gbp",
+			status: "failed",
+			failure_code: "account_closed",
+			failure_message: "The bank account has been closed.",
+		})),
+		{
+			kind: "bank_payout",
+			eventType: "payout.failed",
+			account: "acct_1",
+			payout: "po_1",
+			status: "failed",
+			failureCode: "account_closed",
+		},
+	);
+	assertEquals(
+		planStripeEvent(connectEvent("payout.paid", "acct_1", { id: "po_2", amount: 4000, currency: "gbp", status: "paid" })),
+		{ kind: "bank_payout", eventType: "payout.paid", account: "acct_1", payout: "po_2", status: "paid", failureCode: null },
+	);
+});
+
+Deno.test("the platform's OWN payout to its bank is not a withdrawal and is ignored", () => {
+	const plan = planStripeEvent(connectEvent("payout.failed", null, { id: "po_1", amount: 4000, currency: "gbp" }));
+	assertEquals(plan.kind, "ignore");
 });

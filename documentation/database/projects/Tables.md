@@ -47,6 +47,7 @@ and high-level metadata.
 | `language_requirement`      | text[]                        | `DEFAULT '{}'` (nullable).                                                                              |
 | `screening_questions`       | jsonb                         | `DEFAULT '[]'` (nullable).                                                                              |
 | `allow_deadline_bonuses`    | boolean                       | NOT NULL `DEFAULT false`. A ticket `due_date` is refused unless this is true (`trg_enforce_ticket_due_date`). |
+| `is_personal`               | boolean                       | NOT NULL `DEFAULT false`. A personal management project (Decision #192): set on insert whenever the owner is under 18, and permanent. One owner (no business, team or organisation), `visibility`/`publish_visibility` pinned to `invite_only`, no sessions, budget, auto-fund or deadline bonuses, no prices on its stages or tickets, nobody joins it, and its tickets move without escrow — `trg_projects_personal_guard` and the triggers in [Functions.md](Functions.md#personal-projects-and-under-18-accounts-00001130-decision-192). |
 | `created_at`                | timestamptz                   | NOT NULL `DEFAULT now()`.                                                                               |
 | `updated_at`                | timestamptz                   | NOT NULL `DEFAULT now()`.                                                                               |
 | `handover_unlocked_at`      | timestamptz                   | Protected-phase handover; stamped by `trg_project_handover_on_complete` on entering `completed`.       |
@@ -717,12 +718,15 @@ The formal handover of work for review — one row per delivery against a (stage
 (`ticket_id, created_at DESC`). No trigger fires **on** this table; it is in the `supabase_realtime`
 publication.
 
-**Writers.** `projects.submit_deliverable` inserts a `pending_review` row with the next `number`,
-links its files into `submission_files` (skipping unknown ids), then moves the ticket to
-`in_review`. `trg_ticket_review_submission` (on `projects.tickets`) files a placeholder
-`pending_review` row when a ticket enters `in_review` with none pending — idempotent with
-`submit_deliverable`, which inserts first. The fat service inserts `draft` rows directly under RLS
-and sends a draft by UPDATE to `pending_review`. `projects.review_submission` (review authority only,
+**Writers.** The review door ([Functions.md](Functions.md#the-review-door--submit_deliverable--send_submission_draft))
+is the only path to `pending_review`: `projects.submit_deliverable` inserts a row with the next
+`number`, `projects.send_submission_draft` promotes the caller's own `draft` (numbering it if
+needed). Both refuse a caller who is not the ticket's assignee (or on the stage's accepted team) and a
+ticket outside the stage, refuse unknown or foreign files rather than skip them, set `revision_of`
+from the open revision round they resolve, and move the ticket to `in_review`.
+`trg_ticket_review_submission` (on `projects.tickets`) files a placeholder `pending_review` row when a
+ticket enters `in_review` with none pending — idempotent with the door, which writes first. The fat
+service inserts `draft` rows directly under RLS; there is no client `UPDATE`. `projects.review_submission` (review authority only,
 `pending_review` rows only) sets `accepted` or `revisions_requested` with `reviewed_by`/`reviewed_at`/
 `feedback`; a revision request also inserts a `stage_revision_requests` row and bounces the ticket
 from `in_review` to `in_progress`. The Zod `SubmissionStatus` spells the last state
@@ -756,7 +760,7 @@ One revision round a client sends back on a submission (Decision #167; lifecycle
 | `reason`           | text        | NOT NULL. The client's feedback (`feedback->>'global'`).                    |
 | `status`           | text        | NOT NULL `DEFAULT 'open'`, CHECK `awaiting_payment` \| `open` \| `resolved` \| `cancelled`. |
 | `created_at`       | timestamptz | NOT NULL `DEFAULT now()`.                                                   |
-| `resolved_at`      | timestamptz | Set exactly when `status = 'resolved'` (by `submit_deliverable`).           |
+| `resolved_at`      | timestamptz | Set exactly when `status = 'resolved'` (by the review door's `fn_enter_review`). |
 | `submission_id`    | uuid        | FK → `projects.stage_submissions.id`. The submission the round was raised on — the resubmission's `revision_of`. |
 | `price_cents`      | bigint      | CHECK `NULL` or > 0. A paid round's price, snapshotted from the stage when raised; set exactly on `paid_revision`. |
 

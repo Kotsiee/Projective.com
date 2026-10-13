@@ -52,6 +52,11 @@ export const ProfileSetupProgressSchema = z.object({
 	score: z.number().int().min(0).max(100),
 	/** The steps already done, in checklist order. */
 	completedKeys: z.array(SetupStepKeySchema),
+	/**
+	 * The steps that do not apply to this person — working hours for an under-18 account, which
+	 * publishes none (Decision #208). They leave the checklist, and the score is taken without them.
+	 */
+	notApplicableKeys: z.array(SetupStepKeySchema).optional(),
 	/** The next step worth taking, or `null` when nothing is left. */
 	nextSuggestedAction: SetupActionSchema.nullable(),
 });
@@ -62,17 +67,19 @@ export const ProfileSetupProgressRowSchema = z
 	.object({
 		score: z.number().int().min(0).max(100),
 		completed_keys: z.array(SetupStepKeySchema),
+		not_applicable_keys: z.array(SetupStepKeySchema).default([]),
 		next_suggested_action: SetupActionSchema.nullable(),
 	})
 	.transform((row): ProfileSetupProgress => ({
 		score: row.score,
 		completedKeys: row.completed_keys,
+		notApplicableKeys: row.not_applicable_keys,
 		nextSuggestedAction: row.next_suggested_action,
 	}));
 
 /** The steps still to do, in checklist order. */
 export function pendingSetupSteps(progress: ProfileSetupProgress): SetupStepKey[] {
-	const done = new Set(progress.completedKeys);
-	return SETUP_STEP_ORDER.filter((key) => !done.has(key));
+	const settled = new Set([...progress.completedKeys, ...(progress.notApplicableKeys ?? [])]);
+	return SETUP_STEP_ORDER.filter((key) => !settled.has(key));
 }
 // #endregion

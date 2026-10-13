@@ -60,7 +60,7 @@ export function fixtureFunding(
 		hasDescription: card.hasDescription,
 		amountMinor: card.stages.find((s) => s.stageId === card.stageId)?.costCents ?? card.budgetCents,
 		currency: "USD",
-		// The corpus carries purchases made ahead of a claim; the live schema has no record of one yet.
+		// The corpus carries purchases made ahead of a claim — a prepaid escrow on the live path (#197).
 		paidAhead: ticketPaidHere(card),
 	});
 }

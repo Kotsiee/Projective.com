@@ -147,7 +147,7 @@ SELECT pg_temp.ok((SELECT bool_and(n = 1) FROM (
                            ON e.ticket_id = t.id AND e.status = 'held'
                         GROUP BY t.id) c),
     'race 2: exactly one held base escrow on each of tickets 1 and 2');
-SELECT pg_temp.ok(:'race2_b' LIKE 'ERROR:%No assigned, unfunded tickets%',
+SELECT pg_temp.ok(:'race2_b' LIKE 'ERROR:%Nothing in this stage is waiting for funding%',
     'race 2: B found nothing left to fund');
 SELECT pg_temp.ok((SELECT :before2 - w.balance_cents = sum(e.amount_cents) - :held_before2
                      FROM finance.wallets w, finance.escrows e

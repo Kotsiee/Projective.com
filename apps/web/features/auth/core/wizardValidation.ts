@@ -1,5 +1,6 @@
 import type { JoinStore, StepId } from "./wizardStore.ts";
-import { AGE_MESSAGES, bracketFromDob } from "@projective/types/auth";
+import { preferenceHints } from "@projective/types/org";
+import { AGE_MESSAGES, bracketFromDob, browserTimeZone } from "@projective/types/auth";
 import {
 	confirmError,
 	emailError,
@@ -22,7 +23,7 @@ import {
  */
 function dobError(store: JoinStore): string | null {
 	if (!store.dob.value) return "Date of birth is required.";
-	return bracketFromDob(store.dob.value) === "blocked" ? AGE_MESSAGES.blocked : null;
+	return bracketFromDob(store.dob.value, browserTimeZone()) === "blocked" ? AGE_MESSAGES.blocked : null;
 }
 
 export function validateStep(store: JoinStore, id: StepId): Record<string, string | null> {
@@ -91,6 +92,10 @@ export function hasErrors(errors: Record<string, string | null>): boolean {
 	return Object.values(errors).some(Boolean);
 }
 
+function browserPreferenceHints() {
+	return preferenceHints(navigator.languages?.length ? navigator.languages : [navigator.language]);
+}
+
 /** Assemble the API payload from the completed wizard state. */
 export function buildPayload(store: JoinStore): Record<string, unknown> {
 	if (store.isOrg.value) {
@@ -117,6 +122,7 @@ export function buildPayload(store: JoinStore): Record<string, unknown> {
 			industryOther: store.industry.value === "other" ? store.industryOther.value.trim() : "",
 			departments: store.departments.value,
 			purpose: store.purpose.value,
+			...browserPreferenceHints(),
 			password: store.password.value,
 			redirectTo: store.redirectTo,
 		};
@@ -129,10 +135,12 @@ export function buildPayload(store: JoinStore): Record<string, unknown> {
 		username: store.username.value.trim(),
 		email: store.email.value.trim(),
 		dob: store.dob.value,
+		timeZone: browserTimeZone(),
 		password: store.isOAuth ? undefined : store.password.value,
 		oauth: store.isOAuth,
 		purpose: store.purpose.value,
 		skills: store.skills.value,
+		...browserPreferenceHints(),
 		redirectTo: store.redirectTo,
 	};
 }

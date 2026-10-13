@@ -21,7 +21,15 @@ import type { HrefContext } from "../core/routing.ts";
  * active query lives in the global nav header). Full-bleed inside the public shell's `.site__main`.
  */
 export function ExploreScreen(
-	{ params, home, initial, ctx = { scope: "explore" }, authed = false, viewerFreelancer = false }: {
+	{
+		params,
+		home,
+		initial,
+		ctx = { scope: "explore" },
+		authed = false,
+		viewerFreelancer = false,
+		viewerRestricted = false,
+	}: {
 		params: ExploreParams;
 		home?: HomeFeed;
 		initial?: SearchPayload;
@@ -29,6 +37,8 @@ export function ExploreScreen(
 		authed?: boolean;
 		/** Whether the viewer can already sell — see {@link ExploreHome}. */
 		viewerFreelancer?: boolean;
+		/** Whether the viewer is a restricted (13–17) account — see {@link ExploreHome}. */
+		viewerRestricted?: boolean;
 	},
 ): JSX.Element {
 	const results = isResultsMode(params);
@@ -66,7 +76,14 @@ export function ExploreScreen(
 					/>
 				)
 				: home
-				? <ExploreHome feed={home} authed={authed} viewerFreelancer={viewerFreelancer} />
+				? (
+					<ExploreHome
+						feed={home}
+						authed={authed}
+						viewerFreelancer={viewerFreelancer}
+						viewerRestricted={viewerRestricted}
+					/>
+				)
 				: <HomeUnavailable />}
 		</div>
 	);

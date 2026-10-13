@@ -102,11 +102,14 @@ BEGIN
         RAISE EXCEPTION 'FAIL a description-less ticket was funded';
     EXCEPTION WHEN SQLSTATE 'PU422' THEN RAISE NOTICE 'PASS purchasing gate: no description, not purchasable (PU422)';
     END;
-    BEGIN
-        PERFORM projects.fund_ticket(v_project, v_free);
-        RAISE EXCEPTION 'FAIL an unclaimed ticket was funded';
-    EXCEPTION WHEN SQLSTATE 'PU422' THEN RAISE NOTICE 'PASS no payee yet is refused (PU422)';
-    END;
+    -- No payee yet is a PREPAID hold since Decision #197: held now, its payee bound at the claim.
+    v_out := projects.fund_ticket(v_project, v_free);
+    IF NOT (v_out ->> 'prepaid')::boolean OR NOT EXISTS (
+        SELECT 1 FROM finance.escrows e WHERE e.ticket_id = v_free AND e.status = 'held' AND e.payee_id IS NULL
+    ) THEN
+        RAISE EXCEPTION 'FAIL an unclaimed ticket was not held prepaid: %', v_out;
+    END IF;
+    RAISE NOTICE 'PASS an unclaimed ticket is held prepaid, payee unbound (Decision #197)';
     -- #endregion
 
     -- #region 2. A card escrow_lock naming ticket A

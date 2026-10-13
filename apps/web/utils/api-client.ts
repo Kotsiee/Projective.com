@@ -27,18 +27,26 @@
  */
 import { browserIsOffline, refuseOfflineWrite } from "./offline-guards.ts";
 
-/** A single shared refresh promise so N concurrent 401s trigger exactly one `/api/auth/refresh`. */
-let refreshInFlight: Promise<boolean> | null = null;
+/**
+ * What a refresh attempt established: a new session, a session the server REFUSED (dead — sign in
+ * again), or nothing at all (the server or network could not answer; the session may be fine).
+ */
+type RefreshOutcome = "renewed" | "refused" | "unavailable";
 
-/** Renew the session cookies. Resolves `true` when the refresh endpoint re-issued a session. */
-function refreshSession(): Promise<boolean> {
+/** A single shared refresh promise so N concurrent 401s trigger exactly one `/api/auth/refresh`. */
+let refreshInFlight: Promise<RefreshOutcome> | null = null;
+
+/** Renew the session cookies. Only a `401` from the refresh endpoint means the session is gone. */
+function refreshSession(): Promise<RefreshOutcome> {
 	if (!refreshInFlight) {
 		refreshInFlight = fetch("/api/auth/refresh", {
 			method: "POST",
 			headers: { accept: "application/json" },
 		})
-			.then((res) => res.ok)
-			.catch(() => false)
+			.then((res): RefreshOutcome =>
+				res.ok ? "renewed" : res.status === 401 ? "refused" : "unavailable"
+			)
+			.catch((): RefreshOutcome => "unavailable")
 			.finally(() => {
 				refreshInFlight = null;
 			});
@@ -65,16 +73,17 @@ export async function apiFetch(input: string, init?: RequestInit): Promise<Respo
 	const res = await fetch(input, init);
 	if (res.status !== 401) return res;
 
-	const recovered = await refreshSession();
-	if (recovered) {
+	const outcome = await refreshSession();
+	if (outcome === "renewed") {
 		const retry = await fetch(input, init);
 		if (retry.status !== 401) return retry;
 	}
 
-	// A refresh that could not be ASKED is not a refresh that was refused: if the connection dropped
-	// between the 401 and the renewal, the session may be perfectly good, and sending the reader to
-	// `/login` — a page that is not stored — would only land them on the offline fallback.
-	if (browserIsOffline()) return res;
+	// A refresh that could not be ANSWERED is not a refresh that was refused: if the connection dropped
+	// or GoTrue failed between the 401 and the renewal, the session may be perfectly good, and sending
+	// the reader to `/login` would sign them out over an outage. The 401 reaches the caller's soft
+	// error handling instead, and the cookies survive for the next attempt.
+	if (outcome === "unavailable" || browserIsOffline()) return res;
 
 	// Still unauthorized after a refresh attempt → the session is genuinely gone.
 	redirectToLogin();

@@ -146,6 +146,7 @@ function renderSection(
 					data={data}
 					locale={props.context.locale}
 					dateFormat={props.context.dateFormat ?? null}
+					restricted={props.context.restricted}
 				/>
 			);
 		case "profile":

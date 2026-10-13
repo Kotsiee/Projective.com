@@ -97,6 +97,11 @@ export interface StageFieldsProps {
 	 * has, and both callers already hold the configuration it is read from.
 	 */
 	timed: boolean;
+	/**
+	 * A personal project (Decision #192): no price, skills, capacity, roles or NDA — the fields of a
+	 * hire — only what the owner plans their own work with.
+	 */
+	personal: boolean;
 	/** Fold an edit into the stage. The caller owns the identity match against the stage list. */
 	onPatch: (patch: Partial<StageSetup>) => void;
 }
@@ -145,7 +150,7 @@ export function StageFields(props: StageFieldsProps): JSX.Element {
 	// A frozen price is not an unfinished one, so the gate stands down rather than accusing a field the
 	// owner is forbidden to complete. Unlocked, this is the original verdict unchanged.
 	const price = useFieldValidation({
-		problem: priced || props.priceLocked ? null : `Give this ${itemLabel} a price.`,
+		problem: priced || props.priceLocked || props.personal ? null : `Give this ${itemLabel} a price.`,
 		reveal: setupReveal,
 		problemStatus: "gate",
 	});
@@ -201,7 +206,7 @@ export function StageFields(props: StageFieldsProps): JSX.Element {
 
 			<TaskList stage={stage} itemLabel={props.itemLabel} onPatch={props.onPatch} />
 
-			{!session && (
+			{!session && !props.personal && (
 				<Field
 					label="Required skills"
 					hint="Up to ten. A stage asking for twenty is asking for nobody."
@@ -226,7 +231,7 @@ export function StageFields(props: StageFieldsProps): JSX.Element {
 				 * the board should draw.
 				 */
 			}
-			<PairRow paired={props.oneOff}>
+			<PairRow paired={props.oneOff && !props.personal}>
 				{
 					/*
 					 * The lock reason arrives as the `hint`, so it is announced through the control's own
@@ -235,12 +240,13 @@ export function StageFields(props: StageFieldsProps): JSX.Element {
 					 * carries no hint otherwise, so nothing is displaced to make room for it.
 					 */
 				}
-				<Field
-					label={priceLabel}
-					htmlFor={fieldId("price")}
-					validation={price}
-					hint={props.priceLocked ? STAGE_PRICE_LOCK_REASON : undefined}
-				>
+				{!props.personal && (
+					<Field
+						label={priceLabel}
+						htmlFor={fieldId("price")}
+						validation={price}
+						hint={props.priceLocked ? STAGE_PRICE_LOCK_REASON : undefined}
+					>
 					<NumberInput
 						{...MONEY_FIELD}
 						id={fieldId("price")}
@@ -254,7 +260,8 @@ export function StageFields(props: StageFieldsProps): JSX.Element {
 						disabled={props.priceLocked}
 						status={price.status.value}
 					/>
-				</Field>
+					</Field>
+				)}
 
 				{props.oneOff && (
 					<Field label="Delivery date" hint="Leave empty for no fixed date.">
@@ -328,6 +335,7 @@ export function StageFields(props: StageFieldsProps): JSX.Element {
 				</FieldGroup>
 			)}
 
+			{!props.personal && (
 			<FieldGroup id={fieldId("capacity-head")} label="Capacity & resourcing">
 				<PairRow paired={stage.capacity === "limited"}>
 					<Field label="Capacity">
@@ -363,6 +371,7 @@ export function StageFields(props: StageFieldsProps): JSX.Element {
 
 				<StageRoleList stage={stage} currency={currency} onPatch={props.onPatch} />
 			</FieldGroup>
+			)}
 
 			<Disclosure label="Advanced settings">
 				<div class="psu-row">
@@ -380,14 +389,16 @@ export function StageFields(props: StageFieldsProps): JSX.Element {
 						/>
 					</Field>
 
-					<Field label="NDA">
-						<Select
-							options={ndaOverrideOptions(props.projectRequiresNda)}
-							value={ndaOverrideValue(stage.ndaRequired)}
-							onValueChange={(v: string) => props.onPatch({ ndaRequired: ndaOverrideFrom(v) })}
-							aria-label={`NDA for ${stage.name || props.itemLabel}`}
-						/>
-					</Field>
+					{!props.personal && (
+						<Field label="NDA">
+							<Select
+								options={ndaOverrideOptions(props.projectRequiresNda)}
+								value={ndaOverrideValue(stage.ndaRequired)}
+								onValueChange={(v: string) => props.onPatch({ ndaRequired: ndaOverrideFrom(v) })}
+								aria-label={`NDA for ${stage.name || props.itemLabel}`}
+							/>
+						</Field>
+					)}
 				</div>
 			</Disclosure>
 		</>

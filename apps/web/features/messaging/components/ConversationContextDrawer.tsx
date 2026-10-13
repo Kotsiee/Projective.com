@@ -3,6 +3,7 @@ import { Avatar, Tag } from "@projective/ui/display";
 import { Button, type Severity } from "@projective/ui/fields";
 import { DEFAULT_AVATAR_URL } from "@projective/types/user";
 import { profileHref } from "@web/features/projects/core/routing.ts";
+import { PayoutGateLink } from "@features/settings/components/PayoutGateLink.tsx";
 import type {
 	ContextAction,
 	ContextActionKind,
@@ -25,6 +26,8 @@ export interface ConversationContextDrawerProps {
 	/** The action in flight, if any — every control holds while one runs. */
 	busy: ContextActionKind | null;
 	error: string | null;
+	/** The refusal's `details`, read for the earning gate's fix link. */
+	errorDetails?: unknown;
 	onAction: (action: ContextAction) => void;
 }
 // #endregion
@@ -158,7 +161,11 @@ function Request({ engagement: e }: { engagement: ConversationEngagement }): JSX
 function Rig(props: ConversationContextDrawerProps): JSX.Element {
 	return (
 		<div class="msg-ctx__rig">
-			{props.error && <p class="msg-ctx__error" role="alert">{props.error}</p>}
+			{props.error && (
+				<p class="msg-ctx__error" role="alert">
+					{props.error} <PayoutGateLink details={props.errorDetails} />
+				</p>
+			)}
 			{props.context.actions.map((a) => (
 				<div class="msg-ctx__act" key={a.kind}>
 					{a.kind === "fund_escrow" && a.href

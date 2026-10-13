@@ -4,6 +4,25 @@ import { safeRedirect } from "@features/auth/core/redirect.ts";
 import { toAuthResponse } from "@features/auth/core/respond.ts";
 import { AuthBackendService } from "@server/services/auth/AuthBackendService.ts";
 import type { EmployeeScale } from "@projective/types/org";
+import { JOIN_AGE_LOCK_COOKIE, UNDER_MINIMUM_REASON, UNDER_MINIMUM_REFUSAL } from "@projective/types/auth";
+import { fail, type ServiceResult } from "@server/services/ServiceResult.ts";
+import { isSecureRequest, readCookies, sessionClearCookies } from "@web/utils/auth-cookies.ts";
+
+/**
+ * Answer an individual join, and when it was refused for an under-13 date of birth, lock this browser
+ * session against another attempt (Decision #208) and — if the OAuth identity was discarded — clear
+ * the session cookies that pointed at it. The lock cookie carries no data.
+ */
+function withAgeLock<T extends object>(req: Request, result: ServiceResult<T>): Response {
+	const res = toAuthResponse(req, result);
+	if (result.details?.reason !== UNDER_MINIMUM_REASON) return res;
+	const secure = isSecureRequest(req) ? "; Secure" : "";
+	res.headers.append("set-cookie", `${JOIN_AGE_LOCK_COOKIE}=1; Path=/; HttpOnly; SameSite=Lax${secure}`);
+	if (result.details.discarded === true) {
+		for (const cookie of sessionClearCookies(req)) res.headers.append("set-cookie", cookie);
+	}
+	return res;
+}
 
 /** Pull the Supabase access token off the request cookies (present for an OAuth completion). */
 function readAccessToken(req: Request): string | undefined {
@@ -28,7 +47,23 @@ export const handler = define.handlers({
 			return Response.json({ ok: false, message: "Invalid request body." }, { status: 400 });
 		}
 
+		const individual = typeof body === "object" && body.type === "individual";
+		if (individual && readCookies(ctx.req)[JOIN_AGE_LOCK_COOKIE] === "1") {
+			return toAuthResponse(ctx.req, fail(422, { errors: { dob: UNDER_MINIMUM_REFUSAL } }));
+		}
+
 		const parsed = JoinSchema.safeParse(body);
+		if (individual && !parsed.success && fieldErrors(parsed.error).dob === UNDER_MINIMUM_REFUSAL) {
+			return withAgeLock(
+				ctx.req,
+				await AuthBackendService.refuseUnderMinimum({
+					oauth: body.oauth === true,
+					accessToken: readAccessToken(ctx.req),
+					dob: String(body.dob),
+					timeZone: typeof body.timeZone === "string" ? body.timeZone : undefined,
+				}),
+			);
+		}
 		if (!parsed.success) {
 			return Response.json({ ok: false, errors: fieldErrors(parsed.error) }, { status: 422 });
 		}
@@ -37,7 +72,8 @@ export const handler = define.handlers({
 		const redirectTo = safeRedirect(data.redirectTo);
 
 		if (data.type === "individual") {
-			return toAuthResponse(
+			return withAgeLock(
+				ctx.req,
 				await AuthBackendService.provisionAccount({
 					type: "individual",
 					email: data.email,
@@ -48,19 +84,25 @@ export const handler = define.handlers({
 					lastName: data.lastName,
 					username: data.username,
 					dob: data.dob,
+					timeZone: data.timeZone,
 					intent: data.intent,
 					skills: data.skills,
 					interests: data.purpose,
+					locale: data.locale,
+					displayCurrency: data.displayCurrency,
 					redirectTo,
 				}),
 			);
 		}
 
 		return toAuthResponse(
+			ctx.req,
 			await AuthBackendService.provisionAccount({
 				type: "organization",
 				corporateEmail: data.corporateEmail,
 				password: data.password,
+				locale: data.locale,
+				displayCurrency: data.displayCurrency,
 				organisation: {
 					legalName: data.legalName,
 					tradingName: data.tradingName,

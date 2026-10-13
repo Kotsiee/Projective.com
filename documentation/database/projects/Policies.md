@@ -192,12 +192,13 @@ their authority is their own body guard plus an `authenticated`-only `EXECUTE` g
 | :----------------------- | :------- | :-------------------------------------------------------------------------------- |
 | _View submissions_       | `SELECT` | Submitter · project access · project owner · active client-business member.       |
 | _Insert own submissions_ | `INSERT` | `submitted_by = auth.uid()` **AND** `projects.has_stage_access(project_stage_id)` |
-| _Submit own draft submissions_ | `UPDATE` (`TO authenticated`) | `USING (submitted_by = auth.uid() AND status = 'draft')` · `WITH CHECK (submitted_by = auth.uid() AND status = 'pending_review')` |
 
-The `UPDATE` policy is the only client path that moves a submission: its own author sending a
-`draft` for review. The two arms differ on purpose — a `USING`-only form would let the post-image stay
-a draft (silent edits after the fact) — and the verdict (`accepted` / `revisions_requested`) belongs
-to `projects.review_submission` alone. There is no client `DELETE`.
+There is no client `UPDATE` and no client `DELETE`. The `INSERT` policy is how a freelancer saves a
+`draft`; sending it is `projects.send_submission_draft`, which moves the ticket, resolves revision
+rounds and validates files in one transaction (the review door,
+[Functions.md](Functions.md#the-review-door--submit_deliverable--send_submission_draft)). The retired
+_Submit own draft submissions_ `UPDATE` policy flipped `status` alone and left all three undone. The
+verdict (`accepted` / `revisions_requested`) belongs to `projects.review_submission` alone.
 
 ⚠️ **The stage-access arm is load-bearing.** `submitted_by = auth.uid()` proves only that the row is
 not being attributed to somebody else; it says nothing about _where_ the row lands, so any
@@ -211,14 +212,21 @@ they worked with), so unguessability was never the protection.
 | Policy                            | Command  | Rule                                                         |
 | :-------------------------------- | :------- | :----------------------------------------------------------- |
 | _View submission files_           | `SELECT` | Submitter · project access · owner · client-business member. |
-| _Attach files to own submissions_ | `INSERT` | The parent submission's `submitted_by = auth.uid()`.         |
+| _Attach files to own submissions_ | `INSERT` | Parent is the caller's own `draft` (`submitted_by`).         |
 | _Detach files from own…_          | `DELETE` | Same predicate.                                              |
+
+A sent submission's file set is the evidence under review, so neither write reaches it: files added at
+send time go through the review door, which validates each one. Before the `draft` arm, the author could
+attach an unvalidated (even foreign) file to, or strip one from, a `pending_review` or approved
+submission directly.
 
 This table had `SELECT` and nothing else, so a submission could be read with its files and never
 created with them — the write path existed only inside `projects.submit_deliverable`'s definer
 context. Authority is the **parent submission's author**, not project access: a deliverable is a
 claim about what one person delivered, so letting a third party attach to it would let them alter
-the evidence a client reviews and a dispute is settled against. `DELETE` removes only the **link**;
+the evidence a client reviews and a dispute is settled against. The policy does not check who owns the
+`files.items` row, so a draft can hold a foreign file; the review door re-checks every linked file when
+the draft is sent and refuses it (`PU422 file_foreign`). `DELETE` removes only the **link**;
 the `files.items` row is untouched and stays in the submitter's library, so this is not the hard
 deletion root `CLAUDE.md` §7 forbids.
 

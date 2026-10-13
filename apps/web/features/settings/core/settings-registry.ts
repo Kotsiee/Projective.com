@@ -70,6 +70,8 @@ export interface SettingsSectionMeta {
 const isSeller: SettingsGate = (ctx) => ctx.isFreelancer || ctx.contextType === "team";
 /** May run a micro-agency team — mirrors the sidebar's Teams gate. */
 const mayRunTeams: SettingsGate = (ctx) => ctx.isFreelancer || ctx.contextType === "team";
+/** Not a restricted (13–17) account — money and buyer workspaces are hidden from one (Decision #192). */
+const adultOnly: SettingsGate = (ctx) => !ctx.restricted;
 // #endregion
 
 // #region Sections
@@ -146,6 +148,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
 		icon: "wallet",
 		keywords: ["payment", "checkout", "purchase", "subscription"],
 		surface: "modal",
+		gate: adultOnly,
 	},
 	{
 		key: "verification",
@@ -154,6 +157,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
 		icon: "shield",
 		keywords: ["kyc", "kyb", "stripe", "compliance"],
 		surface: "status-escalate",
+		gate: adultOnly,
 	},
 	{
 		key: "integrations",
@@ -321,6 +325,7 @@ export const SETTINGS_REGISTRY: readonly SettingsRegistryEntry[] = [
 		icon: "building",
 		keywords: ["business", "company", "client business", "employer"],
 		surface: "modal",
+		gate: adultOnly,
 		anchor: "businesses",
 	},
 	{

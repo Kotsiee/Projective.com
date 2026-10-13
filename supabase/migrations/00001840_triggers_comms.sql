@@ -81,3 +81,10 @@ CREATE TRIGGER trg_notification_digests_touch
 CREATE TRIGGER on_notification_created_dispatch
     AFTER INSERT ON comms.notifications
     FOR EACH ROW EXECUTE FUNCTION comms.fn_dispatch_notification();
+
+-- #region Direct-message shielding for under-18 accounts (Decision #208)
+CREATE TRIGGER trg_dm_shield BEFORE INSERT ON comms.dm_participants
+    FOR EACH ROW EXECUTE FUNCTION comms.trg_dm_shield();
+CREATE TRIGGER trg_dm_shield BEFORE INSERT ON comms.dm_messages
+    FOR EACH ROW EXECUTE FUNCTION comms.trg_dm_shield();
+-- #endregion

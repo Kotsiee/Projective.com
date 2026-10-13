@@ -1,8 +1,10 @@
 import {
 	type BoardCard,
 	type BoardColumn,
+	type BoardStageRef,
 	type BoardView,
 	cardColumnId,
+	isSelfClaimable,
 	type ProjectParty,
 	TICKET_PRIORITY_LABEL,
 	type TicketPriority,
@@ -119,6 +121,34 @@ export function classifyMove(
 	const toDone = to.kind === "completed" || (to.kind === "status" && to.status === "completed");
 	if (card.claimed && (toDone || to.kind === "stage")) return "claimed";
 	return "free";
+}
+// #endregion
+
+// #region Claim
+/**
+ * Whether this viewer is offered Claim on a card: a provider seat, onboarded to the card's stage, on a
+ * ticket {@link isSelfClaimable} says is open. The server re-checks all of it and adds capacity,
+ * funding and payout readiness.
+ */
+export function viewerCanClaim(
+	card: BoardCard,
+	stages: readonly BoardStageRef[],
+	seatedStageIds: readonly string[],
+	isClient: boolean,
+): boolean {
+	if (isClient || card.frozen || !card.stageId || !seatedStageIds.includes(card.stageId)) {
+		return false;
+	}
+	return isSelfClaimable(card, stages.find((s) => s.id === card.stageId));
+}
+
+/**
+ * Whether a drop is a claim rather than a move: an unclaimed card landing in the In Progress lane,
+ * where `claimed` work is drawn. Only `claim_ticket` sets an assignee, so `move_ticket` there can
+ * never succeed (the escrow sync refuses an unassigned hold).
+ */
+export function isClaimDrop(card: BoardCard, to: BoardColumn): boolean {
+	return !card.claimed && to.kind === "status" && to.status === "in_progress";
 }
 // #endregion
 

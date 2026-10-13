@@ -1,8 +1,10 @@
 /**
  * `deno task smoke:stripe` — the Stripe rails smoke test: card escrow round trip (begin → PaymentIntent
  * → signed webhook → settle → locked/held, plus decline, short-payment and stage-gone failures,
- * replays and a top-up) and the payout path (release → fn_freelancer_payout_ready gate → Connect
- * account → Transfer → transfer.created), then reconciliation.
+ * replays and a top-up), the payout path (release → fn_freelancer_payout_ready gate → Connect
+ * account → Transfer → transfer.created) and its lifecycle after the transfer (Decision #202: the
+ * minimum, a named destination, transfer.reversed, a connected account's payout.failed / payout.paid
+ * and the stale-payout sweep's claim and Stripe lookups), then reconciliation.
  *
  * Needs the local Supabase stack (`deno task db:reset` seed) and stripe-mock:
  *   docker run -d -p 12111:12111 stripe/stripe-mock
@@ -15,7 +17,14 @@
 import Stripe from "stripe";
 import { load } from "@std/dotenv";
 import type { InboundPayment } from "@projective/types/finance";
-import { createPaymentIntent, createTransfer } from "@server/services/finance/stripe-rails.ts";
+import {
+	bankPayoutContents,
+	createPaymentIntent,
+	createTransfer,
+	findPayoutTransfer,
+	payoutTransferGroup,
+	transferParams,
+} from "@server/services/finance/stripe-rails.ts";
 import { PaymentBackendService } from "@server/services/finance/PaymentBackendService.ts";
 
 await load({ envPath: ".env.local", export: true });
@@ -26,9 +35,11 @@ const DB_CONTAINER = Deno.env.get("SMOKE_DB_CONTAINER") ?? "supabase_db_Projecti
 // Shape-valid fakes for stripe-mock (it accepts any key); never real credentials.
 const KEY = "sk_test_smoke" + "0".repeat(20);
 const WHSEC = "whsec_smoke" + "0".repeat(24);
+const CONNECT_WHSEC = "whsec_smokeconnect" + "0".repeat(20);
 Deno.env.set("STRIPE_SECRET_KEY", KEY);
 Deno.env.set("STRIPE_WEBHOOK_SECRET", WHSEC);
 Deno.env.set("STRIPE_THIN_WEBHOOK_SECRET", WHSEC);
+Deno.env.set("STRIPE_CONNECT_WEBHOOK_SECRET", CONNECT_WHSEC);
 Deno.env.set("STRIPE_API_BASE", MOCK);
 Deno.env.set("FINANCE_BACKEND_LIVE", "true");
 Deno.env.delete("USE_MOCKS");
@@ -73,6 +84,43 @@ const transfer = await createTransfer(stripe, {
 	walletId: crypto.randomUUID(),
 });
 check(/^tr_/.test(transfer.id), "stripe-mock: payout Transfer created");
+
+// Decision #202: the transfer carries a group the sweep can list by, and the sweep's lookups and the
+// bank-payout resolution are shaped as Stripe's spec expects (stripe-mock answers with fixtures, so
+// only the request shapes and the parsing are proven here, not a real match).
+const sweptPayout = crypto.randomUUID();
+check(
+	transferParams({
+		payoutId: sweptPayout,
+		amountMinor: 1000,
+		currency: "USD",
+		destination: "acct_smoke",
+		walletId: crypto.randomUUID(),
+		destinationMethodId: crypto.randomUUID(),
+	}).transfer_group === payoutTransferGroup(sweptPayout),
+	"transfer: grouped by its payout for the sweep",
+);
+const regrouped = await createTransfer(stripe, {
+	payoutId: sweptPayout,
+	amountMinor: 1000,
+	currency: "USD",
+	destination: "acct_smoke",
+	walletId: crypto.randomUUID(),
+	destinationMethodId: crypto.randomUUID(),
+});
+check(/^tr_/.test(regrouped.id), "stripe-mock: a Transfer with a group and a destination method is accepted");
+const found = await findPayoutTransfer(stripe, {
+	payoutId: sweptPayout,
+	destination: "acct_smoke",
+	initiatedAt: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
+}).catch((e) => e);
+check(found === null, "sweep: the transfer lookup (group, then destination scan) matches only its own metadata", found);
+const contents = await bankPayoutContents(stripe, "acct_smoke", "po_smoke").catch((e) => e);
+check(
+	Array.isArray(contents?.transfers) && Array.isArray(contents?.priorPayouts),
+	"bank payout: balance transactions on the connected account resolve to transfers",
+	contents,
+);
 // #endregion
 
 // #region Webhook contract (signature, unknown events, mode) — answers before any ledger write
@@ -141,6 +189,25 @@ check(
 	"webhook v2: an unknown thin event is 2xx and ignored",
 	r,
 );
+const payoutEvent = (type: string, account: string | null, object: Record<string, unknown>) => ({
+	...snapshot(type),
+	...(account ? { account } : {}),
+	data: { object },
+});
+r = await deliver(payoutEvent("payout.failed", null, { id: "po_smoke", object: "payout", amount: 1000, currency: "usd" }), {
+	secret: CONNECT_WHSEC,
+});
+check(
+	r.status === 200 && r.data?.outcome === "ignored",
+	"webhook: a delivery signed by the Connect destination verifies, and the platform's own payout is ignored",
+	r,
+);
+r = await deliver(payoutEvent("transfer.reversed", null, { id: transfer.id, object: "transfer", currency: "usd" }));
+check(
+	r.status === 200 && r.data?.outcome === "ignored",
+	"webhook: a transfer.reversed without its amounts is ignored, never half-applied",
+	r,
+);
 // #endregion
 
 // #region The ledger half, rolled back
@@ -166,6 +233,8 @@ const psql = new Deno.Command("docker", {
 		`pi=${intent.id}`,
 		"-v",
 		`tr=${transfer.id}`,
+		"-v",
+		`tr2=${regrouped.id}`,
 	],
 	stdin: "piped",
 	stdout: "piped",

@@ -58,11 +58,13 @@ import type {
  * why that bar carries more than the four chips the design calls out), and from the footer.
  */
 export function ExploreHome(
-	{ feed, authed = false, viewerFreelancer = false }: {
+	{ feed, authed = false, viewerFreelancer = false, viewerRestricted = false }: {
 		feed: HomeFeed;
 		authed?: boolean;
 		/** Whether the viewer can already sell — withholds the "Become a Freelancer" slot. */
 		viewerFreelancer?: boolean;
+		/** Whether the viewer is a restricted (13–17) account — withholds the same slot. */
+		viewerRestricted?: boolean;
 	},
 ): JSX.Element {
 	// The Recommended panel's People toggle mixes freelancers and teams — the Home's own long-standing
@@ -71,7 +73,11 @@ export function ExploreHome(
 	const services = featureInRail(feed.services, feed.promos, "services");
 	const products = featureInRail(feed.products, feed.promos, "products");
 	const after = (anchor: PromoAnchor) => (
-		<Promos slots={promosAfter(feed.promos, anchor)} viewerFreelancer={viewerFreelancer} />
+		<Promos
+			slots={promosAfter(feed.promos, anchor)}
+			viewerFreelancer={viewerFreelancer}
+			viewerRestricted={viewerRestricted}
+		/>
 	);
 
 	return (
@@ -229,7 +235,11 @@ export function ExploreHome(
  * go through {@link PromoGate}, which owns their section so a withheld slot leaves no empty gap.
  */
 function Promos(
-	{ slots, viewerFreelancer }: { slots: PromoSlotModel[]; viewerFreelancer: boolean },
+	{ slots, viewerFreelancer, viewerRestricted }: {
+		slots: PromoSlotModel[];
+		viewerFreelancer: boolean;
+		viewerRestricted: boolean;
+	},
 ): JSX.Element {
 	return (
 		<>
@@ -243,6 +253,7 @@ function Promos(
 							audience={slot.audience}
 							dismissible={slot.dismissible}
 							viewerFreelancer={viewerFreelancer}
+							viewerRestricted={viewerRestricted}
 						>
 							<PromoSlot slot={slot} />
 						</PromoGate>

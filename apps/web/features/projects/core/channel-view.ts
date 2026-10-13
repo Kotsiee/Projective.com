@@ -110,6 +110,8 @@ export function channelArchetype(
 
 /** The viewer capabilities that decide stage-tab visibility (resolved by the caller). */
 export interface ChannelTabAccess {
+	/** A personal project (Decision #192): its rooms have no Members tab. Absent reads as `false`. */
+	personal?: boolean;
 	/** The channel's tree group — the gated tabs only ever apply on a `stage` channel. */
 	channelKind: ChannelKind;
 	/**
@@ -173,6 +175,7 @@ export function visibleChannelTabKeys(access: ChannelTabAccess): string[] {
 
 	return CHANNEL_TABS.filter((t) => {
 		if (!allowed.includes(t.key)) return false;
+		if (t.key === "members" && access.personal) return false;
 		if (!stageRoom) return true;
 		if (t.key === "details") return access.canConfigure;
 		if (stageGated.has(t.key)) return seated;

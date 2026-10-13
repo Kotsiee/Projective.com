@@ -15,6 +15,7 @@ Deno.test("setup progress — the RPC row parses into camelCase", () => {
 	assertEquals(parsed.data, {
 		score: 40,
 		completedKeys: ["account", "email_verified", "skills"],
+		notApplicableKeys: [],
 		nextSuggestedAction: "add_photo",
 	});
 });
@@ -40,6 +41,19 @@ Deno.test("setup progress — refuses an unknown step, action or out-of-range sc
 	);
 	assert(!ProfileSetupProgressRowSchema.safeParse({ ...base, score: 140 }).success);
 	assert(!ProfileSetupProgressRowSchema.safeParse({ ...base, score: 40.5 }).success);
+});
+
+Deno.test("setup progress — a step that does not apply is neither pending nor counted against the person", () => {
+	const parsed = ProfileSetupProgressRowSchema.parse({
+		score: 50,
+		completed_keys: ["account", "email_verified"],
+		not_applicable_keys: ["working_hours"],
+		next_suggested_action: "add_photo",
+	});
+	assertEquals(parsed.notApplicableKeys, ["working_hours"]);
+	assert(!pendingSetupSteps(parsed).includes("working_hours"));
+	const legacy = ProfileSetupProgressRowSchema.parse({ score: 40, completed_keys: [], next_suggested_action: null });
+	assertEquals(legacy.notApplicableKeys, []);
 });
 
 Deno.test("pendingSetupSteps — checklist order, whatever order the keys arrive in", () => {

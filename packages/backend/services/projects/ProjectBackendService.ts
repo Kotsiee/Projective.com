@@ -52,6 +52,7 @@ import {
 	type WriteRefusal,
 } from "./live-writes.ts";
 import { lockStateOf, onboardingLockRefusal, touchesLockableFields } from "./live-writes.ts";
+import { CLAIM_REFUSAL, claimTicketRow } from "./live-claim.ts";
 import {
 	applyOnboardingSim,
 	effectiveOnboardingSim,
@@ -65,6 +66,7 @@ import {
 	buildStubCard,
 	buildStubMessage,
 	buildStubSubmissionUnit,
+	claimedStubCard,
 	createdDetail,
 	createdMemberRoster,
 	createdSummary,
@@ -128,6 +130,8 @@ import { reembedInBackground } from "../search/embedding-sync.ts";
 import {
 	approveStageRow,
 	exitStageRow,
+	fairExitMessage,
+	previewFairExitRow,
 	requestPaidRevisionRow,
 	reviewSubmissionRow,
 } from "./live-settlement.ts";
@@ -135,7 +139,9 @@ import { recordStubReview } from "./write-store.ts";
 import type {
 	ApproveStage,
 	CancelStageFairExit,
+	FairExitPreview,
 	PaidRevisionRaised,
+	PreviewStageFairExit,
 	RequestPaidRevision,
 	ReviewSubmission,
 	StageApproved,
@@ -143,6 +149,7 @@ import type {
 	SubmissionReviewed,
 } from "@projective/types/projects";
 import {
+	type ClaimTicket,
 	composeWorkspace,
 	type ProjectWorkspace,
 	type WorkspaceViewer,
@@ -176,6 +183,7 @@ import {
 	DEFAULT_PROJECT_RULES,
 	HIRE_RATE_LIMIT,
 	HIRE_RATE_LIMIT_MESSAGE,
+	hireForCreatedProject,
 	hireInvitationRefusal,
 	inviteActionFor,
 	invitesForScope,
@@ -251,6 +259,7 @@ import type {
 	BoardStageRef,
 	ChatMessage,
 	CommitTicket,
+	CreatedInvitation,
 	CreatedProject,
 	CreatedStage,
 	CreateProject,
@@ -818,7 +827,7 @@ async function liveWrite<T>(
 	method: string,
 	actor: ReadActor,
 	subject: string,
-	message: string,
+	message: string | ((data: T) => string),
 	run: (actor: ReadActor & { accessToken: string }) => Promise<WriteOutcome<T>>,
 	/** What `subject` names — see {@link notFound}. Defaults to a project, which most writes resolve. */
 	noun = "project",
@@ -832,7 +841,9 @@ async function liveWrite<T>(
 		if (outcome === null) return notFound<T>(noun, subject);
 		if ("refusal" in outcome) return refused<T>(outcome.refusal);
 		invalidateProjects(actor);
-		return ok(outcome.data, { message });
+		return ok(outcome.data, {
+			message: typeof message === "function" ? message(outcome.data) : message,
+		});
 	} catch (error) {
 		liveFailed(method, error);
 		return fail<T>(502, { message: "That change could not be saved — please try again." });
@@ -887,9 +898,8 @@ function mintProjectSlug(taken: (slug: string) => boolean): string {
  * this domain has been careful to keep single.
  *
  * The one root stage mirrors what {@link insertProject} provisions on the live path, so the two
- * branches do not disagree about what a new project contains. It is deliberately UNPRICED for a
- * pipeline — the baseline is a per-ticket rate, which the stage carries — and unpriced for a one-off,
- * whose figure is the PROJECT budget below it.
+ * branches do not disagree about what a new project contains: the stage carries the baseline on
+ * both formats, and only a one-off's baseline is also the PROJECT budget.
  */
 function buildCreatedSetup(input: CreateProject, slug: string): ProjectSetup {
 	const id = crypto.randomUUID();
@@ -931,6 +941,14 @@ function buildCreatedSetup(input: CreateProject, slug: string): ProjectSetup {
 		// The creator is the client. Nothing else could be true of a project one statement old.
 		viewerIsClient: true,
 	});
+}
+
+function refusedInvitation(handle: string, message: string | undefined): CreatedInvitation {
+	return {
+		handle,
+		outcome: "refused",
+		message: (message ?? "They could not be invited.").slice(0, 400),
+	};
 }
 
 /**
@@ -2972,6 +2990,60 @@ export class ProjectBackendService {
 	}
 
 	/**
+	 * A freelancer self-claims one `open_pull` ticket.
+	 *
+	 * The live path is `projects.claim_ticket` in the caller's JWT and never `move_ticket`: only the
+	 * claim sets an assignee, which is what lets `trg_ticket_escrow_sync` hold (or bind a prepaid)
+	 * escrow. Capacity, payout readiness and the hold are the database's; {@link claimRefusal} words
+	 * each refusal. The stub mirrors the board-visible rules and moves no money.
+	 */
+	static async claimTicket(
+		input: ClaimTicket,
+		actor: ReadActor,
+	): Promise<ServiceResult<{ card: BoardCard }>> {
+		const denied = requireIdentity<{ card: BoardCard }>(actor, "claim a ticket");
+		if (denied) return denied;
+
+		const live = await liveWrite<{ card: BoardCard }>(
+			"claimTicket",
+			actor,
+			input.ticketId,
+			"Ticket claimed — it's yours.",
+			async (a) => {
+				const outcome = await claimTicketRow(a, input);
+				if (outcome === null || "refusal" in outcome) return outcome;
+				invalidateProjects(a);
+				const page = await fetchBoardPage(a, { projectId: input.projectId, view: "stages" });
+				const card = page?.cards.find((c) => c.id === outcome.data);
+				if (!card) return { refusal: { status: 502, message: "Ticket claimed but not readable." } };
+				return { data: { card } };
+			},
+			"ticket",
+		);
+		if (live) return live;
+
+		const board = findBoardPage({ projectId: input.projectId, view: "stages" });
+		if (!board) return noSuchProject(input.projectId);
+		const owner = writeOwnerOf(actor);
+		const page = overlayBoardPage(board, actor);
+		const current = storedTicketCard(owner, input.projectId, input.ticketId) ??
+			page.cards.find((card) => card.id === input.ticketId);
+		if (!current) return fail(404, { message: "That ticket is no longer on this board." });
+		if (current.claimed) return refused(CLAIM_REFUSAL.alreadyClaimed);
+		if (!current.hasDescription) return refused(CLAIM_REFUSAL.undescribed);
+		const stage = page.stages.find((s) => s.id === current.stageId);
+		if (stage && stage.assignmentMode !== "open_pull") return refused(CLAIM_REFUSAL.notOpenPull);
+		if (!current.escrowHeld && current.funding?.state !== "funded") {
+			return refused(CLAIM_REFUSAL.needsFunding);
+		}
+
+		const card = claimedStubCard(current, { name: "You", avatar: null, handle: null }, Date.now());
+		putTicketCard(owner, input.projectId, card);
+		invalidateProjects(actor);
+		return ok({ card }, { message: "Ticket claimed — it's yours." });
+	}
+
+	/**
 	 * Post one message into a project channel.
 	 *
 	 * Attachments arrive as `files.items` ids, never as bytes: the device upload already went through
@@ -3095,8 +3167,9 @@ export class ProjectBackendService {
 	/**
 	 * Record a reviewer's verdict on one submission (`projects.review_submission`).
 	 *
-	 * `accept` marks the deliverable accepted; `request_revision` records the notes as a formal
-	 * revision request and returns the ticket to In Progress. Review authority is the FUNCTION's check
+	 * `accept` marks the deliverable accepted, completes its ticket and releases the ticket's held
+	 * escrow (Decision #194); `request_revision` records the notes as a formal revision request and
+	 * returns the ticket to In Progress. Review authority is the FUNCTION's check
 	 * (owner or active client-business member); a freelancer, including the submitter, is refused 403.
 	 *
 	 * The stub records the verdict over the unit and moves nothing else — no revision request, no
@@ -3113,7 +3186,12 @@ export class ProjectBackendService {
 			"reviewSubmission",
 			actor,
 			input.submissionId,
-			input.decision === "accept" ? "Submission accepted." : "Revision requested.",
+			(data) =>
+				input.decision !== "accept"
+					? "Revision requested."
+					: data.releasedCount > 0
+					? "Submission accepted — payment released."
+					: "Submission accepted.",
 			(a) => reviewSubmissionRow(a, input),
 			"submission",
 		);
@@ -3124,8 +3202,12 @@ export class ProjectBackendService {
 		recordStubReview(writeOwnerOf(actor), input.projectId, input.submissionId, status);
 		invalidateProjects(actor);
 		return ok(
-			{ submissionId: input.submissionId, stageId: input.stageId, status },
-			{ message: input.decision === "accept" ? "Submission accepted." : "Revision requested." },
+			{ submissionId: input.submissionId, stageId: input.stageId, status, releasedCount: 0 },
+			{
+				message: input.decision === "accept"
+					? "Submission accepted (simulated — no escrow moved)."
+					: "Revision requested.",
+			},
 		);
 	}
 
@@ -3152,7 +3234,8 @@ export class ProjectBackendService {
 	}
 
 	/**
-	 * Approve a stage and release every held escrow on it (`projects.approve_stage`).
+	 * Approve a stage and release every escrow still held on it (`projects.approve_stage`), completing
+	 * those tickets; tickets an acceptance already paid are not paid again.
 	 *
 	 * The stage settles straight to `paid` — release and settlement are one transaction — and when it
 	 * was the project's last unsettled stage the Contact Handover fires. Only the client/owner may do
@@ -3172,7 +3255,10 @@ export class ProjectBackendService {
 			"approveStage",
 			actor,
 			input.stageId,
-			"Stage approved — escrow released.",
+			(data) =>
+				data.releasedCount > 0
+					? "Stage approved — escrow released."
+					: "Stage approved and closed — every ticket was already paid on acceptance.",
 			(a) => approveStageRow(a, input),
 			"stage",
 		);
@@ -3190,8 +3276,38 @@ export class ProjectBackendService {
 	}
 
 	/**
+	 * What ending a stage under Fair Exit would settle at each tier (`projects.preview_stage_fair_exit`,
+	 * Decision #198) — the confirmation's figures, formatted here so the island does no money math.
+	 * Client/owner only, refused 403 by the function for anyone else.
+	 *
+	 * Live only, like {@link requestPaidRevision}: the stub store holds no escrow, and a preview built
+	 * from fixtures would show figures no settlement could ever match. A thrown read is a `502`, never a
+	 * fallback, for the same reason.
+	 */
+	static async previewStageFairExit(
+		input: PreviewStageFairExit,
+		actor: ReadActor,
+	): Promise<ServiceResult<FairExitPreview>> {
+		const denied = settlementDenied<FairExitPreview>(actor, "end a stage");
+		if (denied) return denied;
+		if (!isProjectsBackendLive() || !canReadLive(actor)) {
+			return fail(503, { message: "Fair Exit figures need the live backend." });
+		}
+		try {
+			const outcome = await previewFairExitRow(actor, input);
+			if (outcome === null) return notFound<FairExitPreview>("stage", input.stageId);
+			if ("refusal" in outcome) return refused<FairExitPreview>(outcome.refusal);
+			return ok(outcome.data);
+		} catch (error) {
+			liveFailed("previewStageFairExit", error);
+			return fail(502, { message: "The Fair Exit figures could not be read — please try again." });
+		}
+	}
+
+	/**
 	 * Cancel a stage under the Fair Exit split (`projects.cancel_stage_fair_exit`): the freelancer is
-	 * paid `tier`% of each held escrow, net of the fee, and the remainder is refunded to the payer.
+	 * paid `tier`% of each held escrow, net of the fee, the remainder is refunded to the payer, the
+	 * tickets left on the stage close as `cancelled`, and both sides are notified (Decision #198).
 	 * Client/owner only, refused 403 by the function for anyone else.
 	 */
 	static async cancelStageFairExit(
@@ -3205,7 +3321,7 @@ export class ProjectBackendService {
 			"cancelStageFairExit",
 			actor,
 			input.stageId,
-			"Stage cancelled — the Fair Exit split was settled.",
+			fairExitMessage,
 			(a) => exitStageRow(a, input),
 			"stage",
 		);
@@ -3217,32 +3333,30 @@ export class ProjectBackendService {
 			status: "cancelled",
 			tier: input.tier,
 			cancelledCount: 0,
+			ticketsCancelled: 0,
 			freelancerPaidCents: 0,
+			feeCents: 0,
 			clientRefundedCents: 0,
+			currency: "USD",
 		}, { message: "Stage cancelled (simulated — no escrow moved)." });
 	}
 	// #endregion
 
 	/**
-	 * Mint a draft engagement from the Quick-Init modal, and return BOTH its identifiers.
+	 * Mint a draft engagement from the Quick-Init modal, then invite the seller it was opened from.
 	 *
-	 * The client navigates to `id`. That is the whole reason this returns a pair: a title-derived slug
-	 * moves on the first rename, so a URL built on it dies the moment the owner edits the title — and
-	 * the very next thing the owner does on the Stage-2 surface is write a real title.
+	 * The live branch is ONE `projects.create_project` transaction — the row, its root stage and both
+	 * rooms land together or not at all; the stub writes the same shape into the per-process store.
+	 * Callers navigate by the returned `slug`, the only project address that routes (Decision #88).
 	 *
-	 * Both branches produce a project that can actually be OPENED, which is the one thing the previous
-	 * stub did not do: it shaped a slug, persisted nothing, and returned success, so the modal
-	 * navigated to a page that answered 404. On the stub path the draft is written into the per-process
-	 * write store; on the live path it is inserted through the RLS-scoped client.
+	 * **The currency is the client's choice from the modal's selector**, held to `DISPLAY_CURRENCIES`.
+	 * Anything outside it falls back to `fallbackCurrency` — the site-wide money context the global
+	 * middleware resolves — narrowed to the platform base rather than refused, because a currency the
+	 * caller never typed is not a field they can correct.
 	 *
-	 * **The currency is the client's choice, narrowed to a closed set the server already knows.** It
-	 * is the denomination every ticket price and escrow hold against this engagement is expressed in,
-	 * so it is validated rather than ignored: the modal ships a currency selector, and overwriting the
-	 * body unconditionally would silently discard that selection (root CLAUDE.md §3 gate 11). The body
-	 * wins when it names a member of `DISPLAY_CURRENCIES`; otherwise `fallbackCurrency` — the site-wide
-	 * money context the global middleware resolves, which honours a guest's cookie where the JWT claim
-	 * does not — narrowed to the platform base rather than refused, because a currency the caller never
-	 * typed is not a field they can correct.
+	 * The invitation is a follow-up through {@link hire}, never part of the create: a refused invite
+	 * (the seller's required intake, a cooldown, the rate limit) leaves the draft in place and is
+	 * reported in `invitation` instead of failing the request.
 	 */
 	static async create(
 		body: CreateProject,
@@ -3253,41 +3367,54 @@ export class ProjectBackendService {
 		const currency = isDisplayCurrency(chosen) ? chosen : toDisplayCurrency(fallbackCurrency);
 		const input: CreateProject = { ...body, currency };
 
-		// A create genuinely needs an identity: `owner_user_id` is the column RLS checks against, and
-		// there is no coherent draft to mint without one. The reads answer a guest from the fixtures;
-		// this cannot.
 		const denied = requireIdentity<CreatedProject>(actor, "create a project");
 		if (denied) return denied;
 
 		const owner = writeOwnerOf(actor);
+		let created: CreatedProject;
 
 		if (isProjectsBackendLive() && canReadLive(actor)) {
 			try {
-				// No slug is threaded in: the live insert mints its own so it can RETRY on the unique index,
-				// which is the only authority on whether an address is free at the instant of the write.
 				const outcome = await insertProject(actor, input);
 				if (outcome === null) return notFound<CreatedProject>("project", input.title);
 				if ("refusal" in outcome) return refused<CreatedProject>(outcome.refusal);
-				invalidateProjects(actor);
-				return ok(outcome.data, { status: 201, message: "Project drafted." });
+				created = outcome.data;
 			} catch (error) {
-				// A thrown live WRITE never falls back to the stub (see {@link liveWrite}): storing it in
-				// memory and answering `ok` would report a project Postgres never accepted, and the client
-				// would navigate to an id that exists nowhere.
+				// A thrown live WRITE never falls back to the stub (see {@link liveWrite}).
 				liveFailed("create", error);
 				return fail<CreatedProject>(502, {
 					message: "That project could not be created — please try again.",
 				});
 			}
+		} else {
+			const setup = buildCreatedSetup(input, mintProjectSlug((c) => stubSlugTaken(owner, c)));
+			recordCreatedProject(owner, setup);
+			created = { id: setup.id, slug: setup.slug, invitation: null };
 		}
-
-		const setup = buildCreatedSetup(input, mintProjectSlug((c) => stubSlugTaken(owner, c)));
-		recordCreatedProject(owner, setup);
 		invalidateProjects(actor);
-		return ok({ id: setup.id, slug: setup.slug }, {
-			status: 201,
-			message: "Project drafted.",
-		});
+
+		const invitation = input.inviteeHandle
+			? await this.inviteOnCreate(created.slug, input.inviteeHandle, actor)
+			: null;
+		return ok({ ...created, invitation }, { status: 201, message: "Project drafted." });
+	}
+
+	/** Invite `handle` into a just-created draft through {@link hire}, reporting a refusal instead of failing. */
+	private static async inviteOnCreate(
+		slug: string,
+		handle: string,
+		actor: ReadActor,
+	): Promise<CreatedInvitation> {
+		const bare = handle.replace(/^@+/, "");
+		const read = await this.hireBrief(slug, actor, bare);
+		if (!read.ok || !read.data) return refusedInvitation(bare, read.message);
+		const sent = await this.hire(hireForCreatedProject(read.data.brief, bare), actor);
+		if (!sent.ok || !sent.data) return refusedInvitation(bare, sent.message);
+		return {
+			handle: bare,
+			outcome: sent.data.placeholder ? "staged" : "sent",
+			message: sent.message ?? "Invitation sent.",
+		};
 	}
 
 	/**

@@ -246,7 +246,7 @@ BEGIN
                 timeline_preset, target_project_start_date,
                 ip_ownership_mode, nda_required, nda_source, nda_document_id,
                 portfolio_display_rights, allow_deadline_bonuses,
-                location_restriction, language_requirement, screening_questions
+                location_restriction, language_requirement, screening_questions, is_personal
             ) VALUES (
                 v_project_id, v_owner_id, v_business_id, v_team_id, v_org_id,
                 v_title, v_slug,
@@ -292,7 +292,10 @@ BEGIN
                 COALESCE(NULLIF(payload->>'allow_deadline_bonuses', '')::boolean, false),
                 projects.fn_payload_text_array(payload->'location_restriction'),
                 projects.fn_payload_text_array(payload->'language_requirement'),
-                COALESCE(payload->'screening_questions', '[]'::jsonb)
+                COALESCE(payload->'screening_questions', '[]'::jsonb),
+                -- Anyone may choose a personal project (Decision #208); a minor's always is one, which
+                -- projects.trg_projects_personal_guard decides whatever is sent here.
+                COALESCE(NULLIF(payload->>'is_personal', '')::boolean, false)
             );
             EXIT;
         EXCEPTION WHEN unique_violation THEN

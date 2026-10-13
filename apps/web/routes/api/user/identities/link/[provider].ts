@@ -37,7 +37,9 @@ export const handler = define.handlers({
 		}
 		const res = new Response(null, { status: 303, headers: { location: result.data.url } });
 		const verifier = result.data.store.diff().filter(({ key }) => key.endsWith("-code-verifier"));
-		for (const cookie of oauthStoreCookies(verifier, 600)) res.headers.append("set-cookie", cookie);
+		for (const cookie of oauthStoreCookies(ctx.req, verifier, 600)) {
+			res.headers.append("set-cookie", cookie);
+		}
 		return res;
 	},
 });

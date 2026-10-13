@@ -78,3 +78,51 @@ CREATE TABLE ops.log_entries (
 -- this schema, because unbounded growth is the failure mode a log table has to be swept for, and a
 -- tombstone flag would leave the rows behind that the sweep exists to remove.
 -- #endregion
+
+-- #region Scheduled jobs (Decision #203)
+-- The one registry of recurring work. Each row is a pg_cron job: inserting, updating or disabling it
+-- schedules, reschedules or unschedules the job in the same transaction (`ops.tg_scheduled_jobs_apply`,
+-- 00001897), so the cadence written here is the cadence that runs. A `sql` job runs its `command` in
+-- the database; an `http` job POSTs to the app at `path`, dispatched by pg_net with a bearer read from
+-- Vault (`ops.fn_dispatch_http_job`, 00001650). The jobs are seeded by 00005060.
+CREATE TABLE ops.scheduled_jobs (
+  name text NOT NULL,
+  kind text NOT NULL,
+  -- Five-field cron, UTC. pg_cron validates it when the row is applied; an invalid value is refused
+  -- together with the write.
+  schedule text NOT NULL,
+  -- A single SELECT, so `ops.run_job` can return its result.
+  command text,
+  path text,
+  -- The bearer's Vault secret name, which is also the app's env key: the dispatcher and the route
+  -- each read the same value from their own store.
+  secret_name text,
+  description text NOT NULL,
+  enabled boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT scheduled_jobs_pkey PRIMARY KEY (name),
+  CONSTRAINT scheduled_jobs_name_check CHECK (name ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+  CONSTRAINT scheduled_jobs_kind_check CHECK (kind = ANY (ARRAY['sql'::text, 'http'::text])),
+  CONSTRAINT scheduled_jobs_target_check CHECK (
+    (kind = 'sql' AND command ~ '^SELECT [^;]+;?$' AND path IS NULL AND secret_name IS NULL)
+    OR (kind = 'http' AND command IS NULL AND path ~ '^/api/\S*$' AND secret_name ~ '^[A-Z][A-Z0-9_]*$')
+  )
+);
+
+-- One row per HTTP dispatch. pg_net answers asynchronously and keeps a response for six hours
+-- (`pg_net.ttl`), so `ops.fn_settle_http_dispatches` copies each outcome here and reports a non-2xx,
+-- a transport error or a response that never came. Written once, settled once; never deleted.
+CREATE TABLE ops.http_job_dispatches (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  job_name text NOT NULL,
+  -- `net.http_request_queue.id`, which becomes `net._http_response.id`.
+  request_id bigint NOT NULL,
+  dispatched_at timestamp with time zone NOT NULL DEFAULT now(),
+  settled_at timestamp with time zone,
+  status_code integer,
+  error text,
+  CONSTRAINT http_job_dispatches_pkey PRIMARY KEY (id),
+  CONSTRAINT http_job_dispatches_job_name_fkey FOREIGN KEY (job_name) REFERENCES ops.scheduled_jobs (name) ON UPDATE CASCADE ON DELETE RESTRICT
+);
+-- #endregion

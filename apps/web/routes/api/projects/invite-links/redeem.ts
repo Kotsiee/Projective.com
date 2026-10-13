@@ -1,5 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
+import { refuseIfPayoutNotReady } from "@web/utils/payout-gate.ts";
 import { RedeemInviteLinkSchema } from "@projective/types/projects";
 import { toProjectsResponse } from "@features/projects/core/respond.ts";
 import { InviteLinkService } from "@server/services/projects/InviteLinkService.ts";
@@ -18,6 +19,8 @@ export const handler = define.handlers({
 				status: 401,
 			});
 		}
+		const unpayable = refuseIfPayoutNotReady(ctx.req);
+		if (unpayable) return unpayable;
 		const parsed = RedeemInviteLinkSchema.safeParse(await ctx.req.json().catch(() => null));
 		if (!parsed.success) {
 			return Response.json(

@@ -18,7 +18,7 @@ export const handler = define.handlers({
 		await AuthBackendService.signOut({ accessToken });
 
 		const res = Response.json({ ok: true }, { status: 200 });
-		for (const cookie of sessionClearCookies()) res.headers.append("set-cookie", cookie);
+		for (const cookie of sessionClearCookies(ctx.req)) res.headers.append("set-cookie", cookie);
 		return res;
 	},
 });

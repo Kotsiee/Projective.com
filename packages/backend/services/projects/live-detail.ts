@@ -106,6 +106,7 @@ interface DetailRow {
 	structure_variation: string | null;
 	session_kind: string | null;
 	currency: string | null;
+	is_personal: boolean | null;
 }
 
 /** One `projects.project_stages` row, reduced to what the stage tree renders. */
@@ -510,7 +511,9 @@ function withChannelStars(
 async function fetchDetailRow(db: SupabaseClient, projectKey: string): Promise<DetailRow | null> {
 	const { data, error } = await db
 		.from("projects")
-		.select("owner_user_id, description_text, client_business_id, structure_variation, session_kind, currency")
+		.select(
+			"owner_user_id, description_text, client_business_id, structure_variation, session_kind, currency, is_personal",
+		)
 		.eq("slug", projectKey)
 		.maybeSingle();
 	if (error || !data) return null;
@@ -964,6 +967,7 @@ export async function fetchProjectDetail(
 		viewerRole: summary.viewerRole,
 		viewerIsClient,
 		viewerCanConfigure,
+		personal: detailRow?.is_personal === true,
 		// Review authority is the client side too: a member of the paying business owns the configuration.
 		viewerAccess: resolveViewerAccess(
 			viewerIsClient || viewerCanConfigure,

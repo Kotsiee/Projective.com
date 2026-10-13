@@ -56,7 +56,8 @@ Reachable only through `SECURITY DEFINER` functions and the service role; no cli
 server-side), `finance.ratings` (nothing reads it), `finance.idempotency_keys` (system table),
 `finance.processor_customers` (the Stripe Customer each owner's cards attach to — reached only through
 `card_owner_for` / `record_processor_customer` / `claim_due_deposit_rules`, Decision #126), and the
-`finance.v_wallet_reconciliation` view (service role only).
+`finance.v_wallet_reconciliation` view (service role only), as is the
+`finance.v_ops_unledgered_payments` ops view (Decision #200).
 
 > **Changed 2026-09-23.** `wallets`, `transactions`, `payouts`, `payout_accounts`, `orders`,
 > `order_lines`, `invoices`, `invoice_line_items`, `disputes`, `dispute_messages`,
@@ -279,7 +280,7 @@ wallet with any amount. So (`00002510`):
   are revoked from `PUBLIC`, `anon` **and `authenticated`** and granted to `service_role` alone: they
   say that money arrived or that a person is verified, facts only the signature-checked webhook may
   assert. The internal helpers (`fn_claim_stripe_event`, `fn_complete_stripe_event`,
-  `fn_stripe_event_replay`, `fn_payout_owner`) are revoked from every role including `service_role`
+  `fn_stripe_event_replay`, `fn_release_stripe_event`, `fn_payout_owner`) are revoked from every role including `service_role`
   — only the definer doors call them. `payments.contract.test.ts` reads this file and fails if a
   processor door is ever granted to a client role.
 - **`finance.inbound_payments`** carries `SELECT` for `authenticated` (bounded by its policy) and

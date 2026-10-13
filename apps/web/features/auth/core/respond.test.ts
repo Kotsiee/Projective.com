@@ -2,8 +2,11 @@ import { assert, assertEquals } from "@std/assert";
 import { ok } from "@server/services/ServiceResult.ts";
 import { toAuthResponse } from "./respond.ts";
 
+const REQ = new Request("http://localhost:5373/api/auth/join");
+
 Deno.test("a pending-verification token becomes an HttpOnly cookie and never reaches the body", async () => {
 	const res = toAuthResponse(
+		REQ,
 		ok({ requiresVerification: true, redirectTo: "/home" }, { pendingVerification: "v1.token" }),
 	);
 	const cookie = res.headers.get("set-cookie") ?? "";
@@ -16,6 +19,6 @@ Deno.test("a pending-verification token becomes an HttpOnly cookie and never rea
 });
 
 Deno.test("no token, no cookie", () => {
-	const res = toAuthResponse(ok({ verified: false, redirectTo: "/home" }));
+	const res = toAuthResponse(REQ, ok({ verified: false, redirectTo: "/home" }));
 	assertEquals(res.headers.get("set-cookie"), null);
 });

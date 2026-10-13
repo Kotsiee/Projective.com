@@ -11,28 +11,24 @@ import type { SwitchContextInput } from "@projective/types/workspace";
  * identically, so the sequence lives here once rather than being re-implemented on each side and slowly
  * diverging.
  *
- * ## The sequence, and why all three steps are mandatory
+ * ## The sequence
  *
  * ```
- *   POST /api/context/switch   →   POST /api/auth/refresh   →   hard navigation
- *   (server session state)         (re-mint the token)           (re-render everything)
+ *   POST /api/context/switch                          →   hard navigation
+ *   (server session state + re-issued session)            (re-render everything)
  * ```
  *
- * **1. Switch.** `/api/context/switch` writes the acting context server-side (`security.session_context`,
- * via the fat service). On its own this changes *nothing the browser can see*.
+ * **1. Switch and re-issue.** `/api/context/switch` writes the acting context server-side
+ * (`security.session_context`, via the fat service) and then renews the session itself (Decision #193).
+ * The acting context is not read from a database on every request; it is stamped into the access token by
+ * the Supabase custom access-token hook (`public.custom_access_token_hook`, Decision #17) and read back
+ * from `app_metadata.active_context` to resolve `ctx.state.userContext` (Decision #16). Until the token is
+ * re-minted every band — the global sidebar's gated rail, the header's Create menu, the account badge, the
+ * lane's module list — keeps rendering the PREVIOUS context, and RLS (which reads the same token's claims)
+ * enforces the old context underneath. The route's response carries the re-stamped cookies, or
+ * `claimsStale: true` when the renewal failed.
  *
- * **2. Refresh — the step that is easy to omit and fatal to omit.** The acting context is not read from a
- * database on every request; it is stamped into the access token by the Supabase custom access-token hook
- * (`public.custom_access_token_hook`, Decision #17) and read back from `app_metadata.active_context` to
- * resolve `ctx.state.userContext` (Decision #16). The token the browser is holding was minted *before*
- * the switch, so until it is re-minted every band — the global sidebar's gated rail, the header's Create
- * menu, the account badge, the lane's module list — keeps rendering the PREVIOUS context. The user would
- * be acting as their team while the entire chrome insists they are acting personally: the UI would be
- * lying, and RLS (which reads the same token's claims) would be enforcing the old context underneath.
- * `POST /api/auth/refresh` exchanges the refresh token for a freshly-stamped access token, so the claims
- * and the session finally agree.
- *
- * **3. Hard navigation.** `globalThis.location.assign()`, never a client-side route change. The context
+ * **2. Hard navigation.** `globalThis.location.assign()`, never a client-side route change. The context
  * is resolved *server-side during SSR* and threaded into every shell slot; a soft navigation would
  * re-render islands while leaving the server-painted chrome (lane, header band, footer band, sidebar
  * gating) exactly as it was. A full document load is the only thing that re-derives all of it from the new
@@ -40,10 +36,11 @@ import type { SwitchContextInput } from "@projective/types/workspace";
  *
  * ## Failure is surfaced, never navigated past
  *
- * If the refresh fails, the hook **does not navigate**. The session and the token now disagree, and
- * loading a workspace under the previous identity would produce a screen that is wrong in a way the reader
- * cannot see — half the chrome from one context, half the permissions from another. Reporting it and
- * letting them retry is the honest outcome.
+ * If the server could not re-issue the session (`claimsStale`), the hook **does not navigate**. The session
+ * and the token now disagree, and loading a workspace under the previous identity would produce a screen
+ * that is wrong in a way the reader cannot see — half the chrome from one context, half the permissions
+ * from another. Reporting it and letting them retry is the honest outcome: switching again is safe, and
+ * re-issues the session again.
  *
  * ## The caller's obligation
  *
@@ -97,26 +94,6 @@ export interface ContextSwitchApi {
 }
 // #endregion
 
-// #region Token refresh
-/**
- * Re-mint the access token so the newly-stamped context claims reach the browser.
- *
- * Deliberately a bare `fetch`, not `apiFetch`: `apiFetch`'s own recovery path is a call to this very
- * endpoint, so routing through it would nest a refresh inside a refresh.
- */
-async function remintSession(): Promise<boolean> {
-	try {
-		const res = await fetch("/api/auth/refresh", {
-			method: "POST",
-			headers: { accept: "application/json" },
-		});
-		return res.ok;
-	} catch {
-		return false;
-	}
-}
-// #endregion
-
 // #region Hook
 /** The shared acting-context switcher. See the module header for the sequence and its rationale. */
 export function useContextSwitch(): ContextSwitchApi {
@@ -140,11 +117,8 @@ export function useContextSwitch(): ContextSwitchApi {
 			return false;
 		}
 
-		// Without this the browser keeps a token stamped with the OLD context and every band lies.
-		const reminted = await remintSession();
-		if (!reminted) {
-			error.value =
-				"Switched, but your session could not be refreshed. Reload the page to finish switching.";
+		if (result.claimsStale) {
+			error.value = "Switched, but your session couldn't be updated yet. Try switching again.";
 			switching.value = false;
 			return false;
 		}

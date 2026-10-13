@@ -1221,6 +1221,8 @@ interface CardContext {
 	lockPayments: LockPayments;
 	/** Auto-funded escrows and the business's open billing period (PRODUCT_SPEC §Escrow, Wallets & Finance #4). */
 	billing: TicketBillingFacts;
+	/** A personal project (Decision #192): its cards carry no funding line. */
+	personal: boolean;
 }
 
 /**
@@ -1284,13 +1286,15 @@ function toCard(ticket: TicketRow, ctx: CardContext): BoardCard {
 		claimedAt: ticket.claimed_at,
 		escrowHeld: escrowHeldOf(ticket.payment_status),
 		...fundingOf(ticket.payment_status, ticket.current_stage_id),
-		funding: withBillingFacts(
+		personal: ctx.personal,
+		funding: ctx.personal ? null : withBillingFacts(
 			deriveFundingState(
 				fundingTicketOf(ticket, ctx.stagesById.get(ticket.current_stage_id ?? "")?.unit_price_cents, ctx.currency),
 				null,
-				// A payment naming this ticket (#166), else its stage's — which locks only tickets with a payee.
+				// A payment naming this ticket (#166), else its stage's — which locks every unfunded ticket in
+				// the stage, claimed or not (#197).
 				ctx.lockPayments.byTicket.get(ticket.id) ??
-					(ticket.current_assignee_id ? ctx.lockPayments.byStage.get(ticket.current_stage_id ?? "") ?? null : null),
+					ctx.lockPayments.byStage.get(ticket.current_stage_id ?? "") ?? null,
 			),
 			{
 				autoFunded: ctx.billing.escrows.get(ticket.id)?.autoFunded ?? false,
@@ -1420,6 +1424,8 @@ interface ProjectFacts {
 	structure: ProjectStructure;
 	/** The paying client business, whose billing facts the funding lines read; `null` for an individual. */
 	clientBusinessId: string | null;
+	/** A personal project (Decision #192): no money, so no card carries a funding line. */
+	personal: boolean;
 }
 
 /**
@@ -1436,19 +1442,23 @@ interface ProjectFacts {
 async function fetchProjectFacts(db: SupabaseClient, projectId: string): Promise<ProjectFacts> {
 	const { data, error } = await db
 		.from("projects")
-		.select("currency, structure_variation, client_business_id")
+		.select("currency, structure_variation, client_business_id, is_personal")
 		.eq("id", projectId)
 		.maybeSingle();
-	if (error || !data) return { currency: "USD", structure: "standard", clientBusinessId: null };
+	if (error || !data) {
+		return { currency: "USD", structure: "standard", clientBusinessId: null, personal: false };
+	}
 	const row = data as {
 		currency: string | null;
 		structure_variation: string | null;
 		client_business_id: string | null;
+		is_personal: boolean | null;
 	};
 	return {
 		currency: row.currency && row.currency.length === 3 ? row.currency.toUpperCase() : "USD",
 		structure: toProjectStructure(row.structure_variation),
 		clientBusinessId: row.client_business_id ?? null,
+		personal: row.is_personal === true,
 	};
 }
 
@@ -1617,7 +1627,7 @@ export async function fetchBoardPage(
 	const db = projectsDb(actor);
 
 	// Wave 2 — everything keyed on the project id.
-	const [{ currency, structure, clientBusinessId }, stageRows, ticketRows] = await Promise.all([
+	const [{ currency, structure, clientBusinessId, personal }, stageRows, ticketRows] = await Promise.all([
 		fetchProjectFacts(db, summary.id),
 		fetchStages(db, summary.id),
 		fetchTickets(db, summary.id),
@@ -1700,6 +1710,7 @@ export async function fetchBoardPage(
 		nowMs,
 		lockPayments,
 		billing,
+		personal,
 	};
 
 	const allCards = ticketRows.map((ticket) => toCard(ticket, cardContext));

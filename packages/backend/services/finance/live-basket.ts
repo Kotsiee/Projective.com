@@ -33,6 +33,7 @@ import {
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { type MoneyProjector, moneyProjector } from "./commerce-money.ts";
 import { listOwners, type ResolvedOwner, resolveOwner } from "./commerce-owner.ts";
+import { paysFor, type RevisionFact, revisionPurchase } from "./revision-purchase.ts";
 import { fetchPartyRows } from "../profile/party-cards.ts";
 import type { BasketQuery } from "./basket-query.ts";
 
@@ -172,14 +173,6 @@ export interface TicketFact {
 	current_stage_id: string | null;
 	current_assignee_id: string | null;
 	unit_price_cents: number | string | null;
-}
-
-/** A paid revision round a line buys (Decision #167). */
-export interface RevisionFact {
-	id: string;
-	status: string;
-	price_cents: number | string | null;
-	project_stage_id: string;
 }
 
 interface StageFact {
@@ -533,38 +526,6 @@ function unitPriceOf(
 		default:
 			return { minor: b.price_cents, currency: b.currency };
 	}
-}
-
-/** Whether this owner is the project's client — its business, else its owner as an individual. */
-function paysFor(
-	project: Pick<ProjectFact, "client_business_id" | "owner_user_id">,
-	owner: Pick<ResolvedOwner, "ownerType" | "ownerId" | "isEntity">,
-): boolean {
-	return owner.isEntity
-		? owner.ownerType === "business" && project.client_business_id === owner.ownerId
-		: !project.client_business_id && project.owner_user_id === owner.ownerId;
-}
-
-/**
- * Whether a paid revision round (Decision #167) can be bought by this owner now — the gates
- * `projects.fund_paid_revision` applies at payment, as far as the basket can see them. The price is the
- * round's own snapshot, taken when the client raised it. `closed` is `null` while it can be bought.
- */
-export function revisionPurchase(
-	revision: Pick<RevisionFact, "status" | "price_cents">,
-	project: Pick<ProjectFact, "client_business_id" | "owner_user_id" | "currency">,
-	owner: Pick<ResolvedOwner, "ownerType" | "ownerId" | "isEntity">,
-): { price: Price | null; closed: string | null } {
-	const minor = revision.price_cents === null ? null : Number(revision.price_cents);
-	const price = minor !== null && minor > 0 ? { minor, currency: project.currency } : null;
-	const closed = !paysFor(project, owner)
-		? "Pay for this revision from the account that owns its project."
-		: revision.status !== "awaiting_payment"
-		? "This revision is no longer waiting for payment."
-		: !price
-		? "This revision isn't priced."
-		: null;
-	return { price, closed };
 }
 
 /** The purchasable kind a ticket of this project is bought as (Decision #166). */

@@ -3,6 +3,7 @@ import { PERSONAL_MEMBER_CONTEXT } from "@projective/types/auth";
 import type { IconName } from "./nav-icons.tsx";
 import { getAccountCapabilities, getOfferings, getRecentWorkspaces } from "./nav-fixtures.ts";
 import { isExploreSurface } from "./explore-surface.ts";
+import { isRestrictedPath } from "./restricted-surfaces.ts";
 
 /**
  * nav-model — the single source of truth for the global sidebar's destinations, their glyphs, active
@@ -65,6 +66,8 @@ function isActive(path: string, base: string): boolean {
  *    capability), or when acting inside a `business` context.
  *  - **Analytics** (replaces the generic Dashboard) → freelancers, teams, businesses, or anyone who
  *    belongs to a team/business.
+ *  - A **restricted** (13–17) account loses every entry {@link isRestrictedPath} names — Wallet,
+ *    Businesses, Catalogue, Teams, Analytics — whatever else it holds (Decision #192).
  *
  * `context` defaults to {@link PERSONAL_MEMBER_CONTEXT} so a caller that hasn't resolved one yet
  * still gets a populated authenticated rail.
@@ -251,5 +254,8 @@ export function globalNav(
 		},
 	];
 
-	return items.filter((item): item is NavModelItem => item !== null);
+	// A restricted (13–17) account sees no money, selling or workspace surface (Decision #192).
+	return items.filter((item): item is NavModelItem =>
+		item !== null && !(context.restricted && isRestrictedPath(item.href))
+	);
 }

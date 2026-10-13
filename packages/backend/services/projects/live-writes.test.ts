@@ -24,6 +24,7 @@ import {
 	planAttachments,
 	planStageRoles,
 	stageTermsPatch,
+	submissionRefusalFrom,
 	touchesLockableFields,
 } from "./live-writes.ts";
 
@@ -426,5 +427,62 @@ Deno.test("a STAGED engagement's project amount is never refused", () => {
 		onboardingLockRefusal({ budget: { amountCents: 900_00 } }, lockState()),
 		null,
 	);
+});
+// #endregion
+
+// #region Submission refusals
+Deno.test("submissionRefusalFrom: a draft that is gone, sent or not the caller's is one 409", () => {
+	const refusal = submissionRefusalFrom("That draft can no longer be submitted.");
+	assertEquals(refusal.status, 409);
+	assertEquals(refusal.errors, { title: "not_draft" });
+});
+
+Deno.test("submissionRefusalFrom: a caller who is not the ticket's assignee is a 403 on the ticket", () => {
+	for (
+		const message of [
+			"Only the ticket's assignee can submit work on it.",
+			"You do not have access to submit on this project.",
+		]
+	) {
+		const refusal = submissionRefusalFrom(message);
+		assertEquals(refusal.status, 403);
+		assertEquals(refusal.message, message);
+		assertEquals(refusal.errors, { ticketId: "not_permitted" });
+	}
+});
+
+Deno.test("submissionRefusalFrom: a ticket outside the stage is a 422 on the ticket", () => {
+	const refusal = submissionRefusalFrom("That ticket is not part of this stage.");
+	assertEquals(refusal.status, 422);
+	assertEquals(refusal.errors, { ticketId: "ticket_not_in_stage" });
+});
+
+Deno.test("submissionRefusalFrom: an unknown file is a 422 on fileIds, from the door or the link table", () => {
+	for (
+		const message of [
+			"One of the attached files no longer exists — remove it and submit again.",
+			'insert or update on table "submission_files" violates foreign key constraint "fk_sub_file_item"',
+		]
+	) {
+		const refusal = submissionRefusalFrom(message);
+		assertEquals(refusal.status, 422);
+		assertEquals(refusal.errors, { fileIds: "file_unknown" });
+		assert(!refusal.message.includes("submission_files"));
+	}
+});
+
+Deno.test("submissionRefusalFrom: somebody else's file is a 422 that names it", () => {
+	const refusal = submissionRefusalFrom('"brief.pdf" is not your file to submit.');
+	assertEquals(refusal.status, 422);
+	assertEquals(refusal.message, '"brief.pdf" is not your file to submit.');
+	assertEquals(refusal.errors, { fileIds: "file_foreign" });
+});
+
+Deno.test("submissionRefusalFrom: the funding gate and stale sessions keep refusalFrom's mapping", () => {
+	assertEquals(
+		submissionRefusalFrom("Needs funding — fund this ticket before work can start.").status,
+		402,
+	);
+	assertEquals(submissionRefusalFrom("JWT expired").status, 401);
 });
 // #endregion

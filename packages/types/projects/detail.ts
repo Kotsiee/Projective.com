@@ -268,6 +268,12 @@ export const ProjectDetailSchema = z.object({
 	 * falls back to `member`, the same value a hire carries.
 	 */
 	viewerAccess: ProjectAccess,
+	/**
+	 * A personal management project (`projects.projects.is_personal`, Decision #192): one person, no
+	 * money, never listed — what an under-18 account creates. Its workspace leaves out every member,
+	 * hiring and money control. Absent reads as `false`.
+	 */
+	personal: z.boolean().optional(),
 	scopeType: ContextType,
 	scopeLabel: z.string().min(1).max(120),
 	/** Whether the actor starred this engagement (drives the header Star toggle). */

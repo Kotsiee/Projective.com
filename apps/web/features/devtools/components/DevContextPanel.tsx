@@ -26,6 +26,7 @@ import {
 	DEV_DISCOVERY_ACTIVITIES,
 	DEV_EMAIL_CONFIRMATIONS,
 	DEV_AGE_RESTRICTIONS,
+	DEV_PAYOUT_READINESS,
 	DEV_EMBEDDINGS,
 	DEV_ROLES,
 	DEV_SAVED,
@@ -699,6 +700,16 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.ageRestriction}
 						disabled={!o.enabled}
 						onChange={(ageRestriction) => patchDevContext({ ageRestriction })}
+					/>
+				</Field>
+
+				<Field label="Payout-ready" hint="earning 403">
+					<Segment
+						name="Payout-ready"
+						options={DEV_PAYOUT_READINESS}
+						value={o.payoutReadiness}
+						disabled={!o.enabled}
+						onChange={(payoutReadiness) => patchDevContext({ payoutReadiness })}
 					/>
 				</Field>
 

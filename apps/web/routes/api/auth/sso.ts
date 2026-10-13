@@ -42,7 +42,7 @@ export const handler = define.handlers({
 			{ status: 200 },
 		);
 		// The verifier only needs to survive the trip to the IdP and back to /api/auth/callback.
-		for (const cookie of oauthStoreCookies(store.diff(), 600)) {
+		for (const cookie of oauthStoreCookies(ctx.req, store.diff(), 600)) {
 			res.headers.append("set-cookie", cookie);
 		}
 		return res;

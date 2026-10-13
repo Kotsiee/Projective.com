@@ -50,6 +50,12 @@ export interface ServerEnv {
 	/** Supabase service-role key — bypasses RLS; server-only, never sent to the client. */
 	supabaseServiceRoleKey: string | undefined;
 	/**
+	 * The project's legacy HS256 JWT secret, from `SUPABASE_JWT_SECRET` — server-only. Verifies an
+	 * access token signed `HS256`; a project on asymmetric signing keys verifies against its JWKS and
+	 * needs none (`core/access-token.ts`). The `XXXX-XXXX` placeholder counts as absent.
+	 */
+	supabaseJwtSecret: string | undefined;
+	/**
 	 * The MASTER mock switch, and the only flag that can override every other gate.
 	 *
 	 * `true` forces every domain to its fixture path regardless of that domain's own
@@ -221,9 +227,18 @@ export interface ServerEnv {
 	 */
 	stripeThinWebhookSecret: string | undefined;
 	/**
-	 * The bearer token the scheduler presents to `POST /api/finance/cron/deposits`, from
-	 * `FINANCE_CRON_SECRET`. The route charges saved cards off-session, so it answers 404 (not 401) to
-	 * anything else — including every request while this is unset or shorter than 32 characters.
+	 * The signing secret of the platform's CONNECT event destination, from
+	 * `STRIPE_CONNECT_WEBHOOK_SECRET` (`whsec_…`). Events that happen ON a connected account — its
+	 * `payout.paid` / `payout.failed` and its `account.updated` — are delivered to a Connect
+	 * destination with its own secret; it may point at the same `/api/finance/webhooks/stripe` URL,
+	 * which verifies against either secret (Decision #202). Absent: those events are refused as unsigned.
+	 */
+	stripeConnectWebhookSecret: string | undefined;
+	/**
+	 * The bearer token the scheduler presents to `POST /api/finance/cron/deposits` and
+	 * `POST /api/finance/cron/payouts`, from `FINANCE_CRON_SECRET`. The routes charge saved cards and
+	 * send transfers, so they answer 404 (not 401) to anything else — including every request while this
+	 * is unset or shorter than 32 characters.
 	 */
 	financeCronSecret: string | undefined;
 	/**
@@ -257,6 +272,7 @@ export function serverEnv(): ServerEnv {
 		supabasePublicUrl: firstEnv("SUPABASE_PUBLIC_URL", "SUPABASE_URL"),
 		supabaseAnonKey: firstEnv("SUPABASE_ANON_KEY"),
 		supabaseServiceRoleKey: firstEnv("SUPABASE_SERVICE_ROLE_KEY"),
+		supabaseJwtSecret: firstEnv("SUPABASE_JWT_SECRET"),
 		useMocks: (firstEnv("USE_MOCKS", "VITE_USE_MOCKS") ?? "false").toLowerCase() === "true",
 		authBackendLive: (firstEnv("AUTH_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
 		exploreBackendLive: (firstEnv("EXPLORE_BACKEND_LIVE") ?? "false").toLowerCase() === "true",
@@ -279,6 +295,7 @@ export function serverEnv(): ServerEnv {
 		stripePublishableKey: firstEnv("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY"),
 		stripeApiBase: firstEnv("STRIPE_API_BASE"),
 		stripeThinWebhookSecret: firstEnv("STRIPE_THIN_WEBHOOK_SECRET"),
+		stripeConnectWebhookSecret: firstEnv("STRIPE_CONNECT_WEBHOOK_SECRET"),
 		financeCronSecret: firstEnv("FINANCE_CRON_SECRET"),
 		accountCronSecret: firstEnv("ACCOUNT_CRON_SECRET"),
 		linkSafetyApiKey: firstEnv("LINK_SAFETY_API_KEY"),

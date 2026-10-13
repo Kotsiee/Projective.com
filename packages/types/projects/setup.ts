@@ -745,6 +745,12 @@ export const ProjectSetupSchema = z.object({
 	/** Re-derived server-side; never trusted from the client (root CLAUDE.md §6). */
 	viewerIsClient: z.boolean(),
 	/**
+	 * A personal management project (`projects.projects.is_personal`, Decision #192) — what an
+	 * under-18 account creates: one person, no money, never listed. Its form has no pricing, hiring or
+	 * terms, and its ladder no rung for them. Read from the BASE alone; absent reads as `false`.
+	 */
+	personal: z.boolean().optional(),
+	/**
 	 * The client business's auto-fund mode, which {@link ProjectRules.autoFundOverride} `null` inherits.
 	 * `null` (or absent) when no business pays for the project — the override control is then hidden.
 	 */
@@ -791,6 +797,8 @@ export type ProjectSetupStepsInput = {
 	roles: readonly ProjectRoleSetup[];
 	rules: ProjectRules;
 	status?: ProjectStatus;
+	/** A personal project (Decision #192): no pricing, staffing-by-roles, terms or publish rung. */
+	personal?: boolean;
 };
 
 /**
@@ -1321,6 +1329,14 @@ export const PUBLISH_LOCK_NOTICES: readonly string[] = [
  * pretending emptiness is incompleteness. It stays on the ladder because the form has a Rules section
  * and a section with no row would read as an omission from the ladder itself.
  */
+/** The rungs a personal project's ladder leaves out (Decision #192). */
+const PERSONAL_DROPPED_STEPS: ReadonlySet<ProjectSetupStep["key"]> = new Set([
+	"pricing",
+	"roles",
+	"rules",
+	"publish",
+]);
+
 export function setupSteps(input: ProjectSetupStepsInput): ProjectSetupStep[] {
 	const byRoles = staffedByRoles(input.structure);
 	const rolesRequired = teamRolesRequired(input.format, input.structure);
@@ -1407,7 +1423,9 @@ export function setupSteps(input: ProjectSetupStepsInput): ProjectSetupStep[] {
 		},
 	];
 
-	return steps;
+	// A personal project (Decision #192) is never priced, staffed by roles, offered on terms or listed,
+	// so those rungs would be requirements it can never meet.
+	return input.personal ? steps.filter((step) => !PERSONAL_DROPPED_STEPS.has(step.key)) : steps;
 }
 
 /**
@@ -1591,6 +1609,8 @@ export function reconcileSetup(
 		viewerIsClient: patch.viewerIsClient ?? base.viewerIsClient ?? false,
 		// From the BASE alone: it is the paying business's setting, not something the form edits.
 		autoFundInherited: base.autoFundInherited ?? null,
+		// From the BASE alone, like `viewerIsClient`'s authority: a fact about the row a patch cannot assert.
+		personal: base.personal ?? false,
 	};
 
 	const steps = setupSteps(merged);

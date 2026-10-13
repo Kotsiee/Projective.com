@@ -18,7 +18,9 @@ import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
-import { fundableStages, overviewOf } from "./live-wallet.ts";
+import { formatMoney, unpricedTicketsSentence } from "@projective/types/finance";
+import { overviewOf } from "./live-wallet.ts";
+import { readStageFundingQuote } from "./stage-funding.ts";
 import { createDepositRule, setIncomeSmoother } from "./live-payments.ts";
 import { PaymentBackendService } from "./PaymentBackendService.ts";
 import { resolveWalletContext, type WalletAccount, type WalletContext, type WalletRow } from "./wallet-scope.ts";
@@ -182,7 +184,10 @@ export async function topUp(input: TopUpInput, query: WalletQuery, actor: ReadAc
 	}, intent.status);
 }
 
-/** Withdraw to the owner's verified Connect account: the wallet is debited, then a Transfer is sent. */
+/**
+ * Withdraw to the owner's verified Connect account: the wallet is debited, then a Transfer is sent. A
+ * chosen destination is validated and recorded by the database (Decision #202).
+ */
 export async function withdraw(input: WithdrawInput, query: WalletQuery, actor: ReadActor): Promise<Result> {
 	const resolved = await contextFor(query, actor, keyOf(input.scope, input.contextId));
 	if (isResult(resolved)) return resolved;
@@ -195,6 +200,7 @@ export async function withdraw(input: WithdrawInput, query: WalletQuery, actor: 
 		currency: row.currency.toUpperCase(),
 		instant: input.instant,
 		idempotencyKey: input.idempotencyKey,
+		destinationMethodId: input.destinationId,
 	}, actor);
 	if (!sent.ok || !sent.data) return carried(sent);
 	const message = sent.data.payout.status === "paid"
@@ -319,35 +325,59 @@ export async function distribute(input: DistributeInput, query: WalletQuery, act
 }
 
 /**
- * Fund an assigned stage's escrow. The stage's requirement is recomputed and must equal what the
- * buyer was shown, so a ticket added or re-priced between the page and the press refuses rather than
- * committing a figure nobody confirmed.
+ * Fund a stage's escrow from this wallet — a business vault for its client projects, or a person's own
+ * wallet for the projects they own with no client business (Decision #197). The database re-quotes the
+ * stage (`projects.get_stage_funding_quote`) and it must still cost what the buyer was shown, so a
+ * ticket added or re-priced between the page and the press refuses rather than committing a figure
+ * nobody confirmed. Tickets nobody has claimed are held prepaid and bound to whoever claims them.
  */
 export async function fundEscrow(input: FundEscrowInput, query: WalletQuery, actor: ReadActor): Promise<Result> {
 	const resolved = await contextFor(query, actor, keyOf(input.scope, input.contextId));
 	if (isResult(resolved)) return resolved;
 	const { ctx, account } = resolved;
-	if (account.scope !== "business") return refuse(422, "Escrow is funded from a business wallet.");
-
-	const stage = (await fundableStages(ctx, account)).find((s) => s.stageId === input.stageId);
-	if (!stage) return refuse(409, "That stage isn't waiting for its escrow any more.");
-	const shown = stage.amount.origin ?? stage.amount;
-	if (shown.minor !== input.amountMinor || shown.currency.toUpperCase() !== input.currency.toUpperCase()) {
-		return refuse(409, `This stage's funding changed — it's now ${stage.amount.display}. Review it and try again.`);
+	if (account.scope !== "business" && account.scope !== "personal") {
+		return refuse(422, "A stage is funded from a business wallet or your own.");
 	}
 
 	const db = getUserClient(ctx.actor.accessToken).schema("projects");
 	const { data: stageRow, error: readError } = await db.from("project_stages")
-		.select("project_id").eq("id", stage.stageId).maybeSingle();
+		.select("project_id").eq("id", input.stageId).maybeSingle();
 	if (readError) throw new Error(`projects.project_stages read failed: ${readError.message}`);
 	if (!stageRow) return refuse(404, "That stage no longer exists.");
+	const projectId = (stageRow as { project_id: string }).project_id;
 
-	const { error } = await db.rpc("fund_stage", {
-		p_project_id: (stageRow as { project_id: string }).project_id,
-		p_stage_id: stage.stageId,
+	const quoted = await readStageFundingQuote(ctx.actor.accessToken, projectId, input.stageId);
+	if (!quoted.ok) return refuse(quoted.refusal.status, quoted.refusal.message);
+	const quote = quoted.value;
+	const payerId = account.scope === "business" ? account.id : ctx.viewer.userId;
+	if (quote.payer.scope !== account.scope || quote.payer.id !== payerId) {
+		return refuse(409, "This stage is paid for from another wallet.");
+	}
+	if (quote.unpricedCount > 0) return refuse(409, unpricedTicketsSentence(quote.unpricedCount));
+	if (quote.amountMinor !== input.amountMinor || quote.currency !== input.currency.toUpperCase()) {
+		return refuse(
+			409,
+			`This stage's funding changed — it's now ${
+				formatMoney(quote.amountMinor, quote.currency)
+			}. Review it and try again.`,
+		);
+	}
+
+	const { data, error } = await db.rpc("fund_stage", {
+		p_project_id: projectId,
+		p_stage_id: input.stageId,
 	});
 	if (error) return refuse(statusFor(error.code), messageFor(error));
-	return after(query, actor, account.key, `Escrow funded for ${stage.stageName}.`);
+	const waiting =
+		Number((data as { awaiting_claim_count?: number | string } | null)?.awaiting_claim_count) || 0;
+	const note = waiting === 0
+		? ""
+		: ` ${
+			waiting === 1
+				? "One ticket nobody has claimed is"
+				: `${waiting} tickets nobody has claimed are`
+		} held for whoever claims ${waiting === 1 ? "it" : "them"}.`;
+	return after(query, actor, account.key, `Escrow funded for ${quote.stageName}.${note}`);
 }
 // #endregion
 

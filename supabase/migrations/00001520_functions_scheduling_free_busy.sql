@@ -144,6 +144,8 @@ BEGIN
     IF v_requester IS NULL THEN
         RAISE EXCEPTION 'Discovery call refused: not_signed_in' USING ERRCODE = 'check_violation';
     END IF;
+    -- Booking a call with a seller is the start of buying (Decision #208).
+    PERFORM org.fn_assert_adult(v_requester);
 
     IF NOT scheduling.fn_schedule_is_public (p_schedule) THEN
         RAISE EXCEPTION 'Discovery call refused: calls_not_offered' USING ERRCODE = 'check_violation';

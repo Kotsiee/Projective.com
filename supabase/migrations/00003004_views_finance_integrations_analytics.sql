@@ -14,6 +14,36 @@ FROM finance.wallets w
 LEFT JOIN finance.transactions t ON t.wallet_id = w.id
 GROUP BY w.id, w.owner_type, w.owner_id, w.currency, w.balance_cents;
 
+-- Ops (Decision #200): every settled card payment without the ledger credit it is — no
+-- transaction_id, or one that is not this payment's credit of what arrived into its wallet. Empty
+-- while finance.settle_card_payment and the inbound_payments CHECKs hold; service role only.
+CREATE OR REPLACE VIEW finance.v_ops_unledgered_payments AS
+SELECT
+    p.id AS payment_id,
+    p.status,
+    p.purpose,
+    p.wallet_id,
+    p.created_by,
+    p.provider_ref,
+    p.amount_cents,
+    p.amount_received_cents,
+    p.currency,
+    p.transaction_id,
+    p.unapplied_reason,
+    p.succeeded_at,
+    CASE WHEN t.id IS NULL THEN 'no_ledger_row' ELSE 'ledger_row_mismatch' END AS problem
+FROM finance.inbound_payments p
+LEFT JOIN finance.transactions t ON t.id = p.transaction_id
+WHERE p.status IN ('succeeded', 'settled_unapplied')
+  AND (
+        t.id IS NULL
+     OR t.wallet_id <> p.wallet_id
+     OR t.direction <> 'credit'
+     OR t.amount_cents IS DISTINCT FROM p.amount_received_cents
+     OR t.ref_table IS DISTINCT FROM 'inbound_payments'
+     OR t.ref_id IS DISTINCT FROM p.id
+  );
+
 -- The ONLY connection shape a client sees: a definer view (runs as owner, reads the un-policied
 -- base table) filtered to the caller. It cannot project a token — the token vault
 -- (integrations.connection_secrets) is a separate table this view never joins.

@@ -154,8 +154,8 @@ export class SettingsBackendService {
 	}
 
 	/**
-	 * Apply a preferences patch: the display half (currency · locale · direction · the legacy
-	 * notification toggles) through {@link UserBackendService.updatePreferences}, the appearance half
+	 * Apply a preferences patch: the display half (currency · locale · direction · date format)
+	 * through {@link UserBackendService.updatePreferences}, the appearance half
 	 * here. Each half reports what actually persisted; the appearance half folds the patch over the
 	 * device copy when the account write fails, and says `appearancePersisted: false` rather than
 	 * claiming a durability it did not get.

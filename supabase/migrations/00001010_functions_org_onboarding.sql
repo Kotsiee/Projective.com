@@ -44,6 +44,7 @@ DECLARE
     v_skills text[];
     v_interests text[];
     v_avatar_file_id uuid;
+    v_timezone text;
     v_active_profile_type public.profile_type;
     v_active_profile_id uuid;
 BEGIN
@@ -51,13 +52,19 @@ BEGIN
     v_last_name := p_meta->>'last_name';
     v_username := p_meta->>'username';
     v_dob := (p_meta->>'dob')::date;
+    -- The browser's zone becomes the profile's, and is the zone its birthdays are counted in
+    -- (Decision #192); an unknown one is dropped and the age counts in UTC.
+    v_timezone := org.fn_valid_time_zone(NULLIF(p_meta->>'timezone', ''));
     -- Every path lands here — the GoTrue signup trigger and complete_onboarding alike — so the age
     -- floor holds even for a client that skips /join (Decision #190).
-    PERFORM org.fn_check_dob(v_dob);
+    PERFORM org.fn_check_dob(v_dob, v_timezone);
     v_objective := p_meta->>'objective';
     v_avatar_file_id := NULLIF(p_meta->>'avatar_file_id', '')::uuid;
 
-    IF v_objective = 'freelancer' OR v_objective = 'seller' THEN
+    -- A seller persona needs an adult: someone under 18 who chose "I want to work" starts as a client
+    -- and unlocks selling at 18 (Decisions #190, #192).
+    IF (v_objective = 'freelancer' OR v_objective = 'seller')
+       AND org.fn_age_years(v_dob, v_timezone) >= 18 THEN
         v_is_freelancer := true;
     END IF;
 
@@ -73,12 +80,18 @@ BEGIN
         v_interests := '{}'::text[];
     END IF;
 
+    -- The preference seeders on org.users_public read this payload: complete_onboarding's never
+    -- reaches auth.users (org.fn_signup_meta, Decision #207).
+    PERFORM pg_catalog.set_config(
+        'projective.signup_meta', jsonb_build_object('user_id', p_user_id, 'meta', p_meta)::text, true
+    );
+
     -- 1. Core profile
     INSERT INTO org.users_public (
-        user_id, first_name, last_name, username, dob, visibility,
+        user_id, first_name, last_name, username, dob, timezone, visibility,
         interests, is_freelancer, avatar_file_id
     ) VALUES (
-        p_user_id, v_first_name, v_last_name, v_username, v_dob, 'unlisted',
+        p_user_id, v_first_name, v_last_name, v_username, v_dob, v_timezone, 'unlisted',
         v_interests, v_is_freelancer, v_avatar_file_id
     );
 
@@ -184,6 +197,35 @@ BEGIN
     FROM auth.users WHERE id = v_uid;
 
     PERFORM public.provision_user_profile(v_uid, v_email, v_confirmed, p_payload);
+END;
+$$;
+
+-- Under 13, nothing is kept (Decision #208). An OAuth sign-up exists in auth.users before /join asks
+-- for a date of birth, so refusing provisioning is not enough: the identity, its email and its
+-- sessions go too. Only the caller's own identity, only while it has no profile, and only for a date
+-- of birth that is under 13 in the given zone — so an onboarded account can never be deleted through
+-- this door, and a future or implausible date deletes nothing.
+CREATE OR REPLACE FUNCTION public.discard_underage_signup(p_dob date, p_zone text DEFAULT NULL)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid();
+    v_zone text := org.fn_valid_time_zone(p_zone);
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Not authenticated' USING ERRCODE = '28000';
+    END IF;
+    IF p_dob IS NULL OR p_dob > org.fn_today_in(v_zone) OR org.fn_age_years(p_dob, v_zone) >= 13 THEN
+        RETURN false;
+    END IF;
+    IF EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = v_uid) THEN
+        RETURN false;
+    END IF;
+    DELETE FROM auth.users WHERE id = v_uid;
+    RETURN true;
 END;
 $$;
 
@@ -332,19 +374,112 @@ $$;
 -- `security.session_context`, and the OAuth completion path (`public.complete_onboarding`) creates
 -- the same `org.users_public` row — but NEITHER seeds an `org.user_preferences` row. Preferences were
 -- created only lazily (an INSERT-own-preferences RLS policy), so a fresh account had no defaults for
--- theme / notification channels / locale until it first wrote one.
+-- theme / locale until it first wrote one.
 --
 -- Rather than re-declare either provisioning routine (and risk drift), this attaches a small, focused
 -- trigger to `org.users_public` itself: whenever a public profile row is created — by the email path,
 -- the OAuth completion path, or any future path — a default `org.user_preferences` row is seeded. The
--- table's own column defaults supply the values (`theme='system'`, `notification_email=true`,
--- `notification_push=false`, `locale='en-GB'`, `ui_settings='{}'`), so this inserts only the key.
+-- table's own column defaults supply the values (`theme='system'`, `locale='en-GB'`,
+-- `ui_settings='{}'`), so this inserts only the key. The email/push toggles live in
+-- `comms.notification_prefs`, seeded by `comms.seed_notification_prefs` (Decision #204).
 --
--- Purely additive: a new function + a new trigger + a one-time backfill. No table, column, FK, policy,
--- or existing function/trigger is dropped or altered (the Additive Rule). Timestamped so it runs after
--- every 0xxx migration and the prior 20260715 hook migration.
+-- The row starts from the browser's hints in the sign-up metadata (Decision #207): `locale` and
+-- `display_currency`, each kept only when the platform supports it — a locale listed in
+-- org.supported_locales, a display currency with seeded rates both ways in finance.fx_rates — and
+-- otherwise left to the column default. A row that already exists is never touched.
+--
+-- An organisation owner gets no org.users_public row (Decision #87 flag (b)), so the owner membership
+-- public.create_organisation writes seeds theirs (org.seed_owner_preferences). Their
+-- comms.notification_prefs waits for a profile row, because that table keys onto org.users_public.
 
--- #region 1. Seed-on-profile-create trigger function
+-- #region 1. Sign-up preference seeding
+-- The supported locale a tag names, matched ignoring case and `_` / `-`, in its canonical form.
+CREATE OR REPLACE FUNCTION org.fn_supported_locale(p_locale text)
+RETURNS text
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT l.tag
+    FROM org.supported_locales l
+    WHERE pg_catalog.lower(l.tag)
+        = pg_catalog.lower(pg_catalog.replace(pg_catalog.btrim(p_locale), '_', '-'));
+$$;
+
+-- An offerable display currency (the DISPLAY_CURRENCIES rule in @projective/types/finance): the
+-- platform base, or a code with a seeded rate both ways against it. Upper-cased; NULL otherwise.
+CREATE OR REPLACE FUNCTION org.fn_supported_display_currency(p_code text)
+RETURNS text
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    WITH c AS (
+        SELECT
+            pg_catalog.upper(pg_catalog.btrim(p_code)) AS code,
+            COALESCE(
+                (SELECT p.value #>> '{}' FROM security.platform_params p WHERE p.key = 'base_currency'),
+                'GBP'
+            ) AS base
+    )
+    SELECT c.code
+    FROM c
+    WHERE c.code ~ '^[A-Z]{3}$'
+      AND (
+          c.code = c.base
+          OR (
+              EXISTS (SELECT 1 FROM finance.fx_rates r WHERE r.base = c.base AND r.quote = c.code)
+              AND EXISTS (SELECT 1 FROM finance.fx_rates r WHERE r.base = c.code AND r.quote = c.base)
+          )
+      );
+$$;
+
+-- The sign-up metadata a person is being provisioned from: the payload public.provision_user_profile
+-- publishes for the transaction (keyed by user, so it never applies to anybody else), else the
+-- identity's raw_user_meta_data — the organisation owner's path. '{}' when there is neither.
+CREATE OR REPLACE FUNCTION org.fn_signup_meta(p_user_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_pending jsonb := NULLIF(pg_catalog.current_setting('projective.signup_meta', true), '')::jsonb;
+BEGIN
+    IF v_pending ->> 'user_id' = p_user_id::text THEN
+        RETURN COALESCE(v_pending -> 'meta', '{}'::jsonb);
+    END IF;
+    RETURN COALESCE(
+        (SELECT u.raw_user_meta_data FROM auth.users u WHERE u.id = p_user_id),
+        '{}'::jsonb
+    );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION org.fn_seed_user_preferences(p_user_id uuid, p_meta jsonb)
+RETURNS void
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    INSERT INTO org.user_preferences (user_id)
+    VALUES (p_user_id)
+    ON CONFLICT (user_id) DO NOTHING;
+    IF NOT FOUND THEN
+        RETURN;
+    END IF;
+
+    UPDATE org.user_preferences
+       SET locale = COALESCE(org.fn_supported_locale(p_meta ->> 'locale'), locale),
+           preferred_display_currency = COALESCE(
+               org.fn_supported_display_currency(p_meta ->> 'display_currency'),
+               preferred_display_currency
+           )
+     WHERE user_id = p_user_id;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION org.seed_user_preferences()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -352,17 +487,33 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 BEGIN
-  -- Idempotent: the profile→preferences relationship is 1:1 on user_id, and a lazily-created row (via
-  -- the INSERT-own-preferences RLS policy) must not be clobbered.
-  INSERT INTO org.user_preferences (user_id)
-  VALUES (NEW.user_id)
-  ON CONFLICT (user_id) DO NOTHING;
-  RETURN NEW;
+    PERFORM org.fn_seed_user_preferences(NEW.user_id, org.fn_signup_meta(NEW.user_id));
+    RETURN NEW;
 END;
 $$;
 
 COMMENT ON FUNCTION org.seed_user_preferences() IS
-  'Seeds a default org.user_preferences row when a public profile is created (email + OAuth signup). Idempotent (ON CONFLICT DO NOTHING). See root CLAUDE.md Decision #47.';
+  'Seeds org.user_preferences when a public profile is created (email + OAuth signup), from the supported sign-up locale and display-currency hints. Idempotent. Decisions #47, #207.';
+
+CREATE OR REPLACE FUNCTION org.seed_owner_preferences()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_meta jsonb := org.fn_signup_meta(NEW.user_id);
+BEGIN
+    PERFORM org.fn_seed_user_preferences(NEW.user_id, v_meta);
+    IF EXISTS (SELECT 1 FROM org.users_public u WHERE u.user_id = NEW.user_id) THEN
+        PERFORM comms.fn_seed_notification_prefs(NEW.user_id, v_meta);
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION org.seed_owner_preferences() IS
+  'Seeds an organisation owner''s org.user_preferences from their owner membership (they get no public profile), and their comms.notification_prefs when a profile exists. Idempotent. Decision #207.';
 -- #endregion
 
 -- #region 2. Profile setup progress (Decision #155)
@@ -425,6 +576,9 @@ DECLARE
     v_score integer := 0;
     v_keys text[] := '{}'::text[];
     v_next text;
+    -- A minor publishes no hours (Decision #208), so the step does not apply: it leaves the ladder
+    -- (`not_applicable_keys`) and the score is taken over the 80 points that remain.
+    v_minor boolean := org.fn_is_minor(p_user_id);
 BEGIN
     IF v_uid IS NOT NULL AND v_uid IS DISTINCT FROM p_user_id THEN
         RAISE EXCEPTION 'auth: you can only read your own setup progress' USING ERRCODE = '42501';
@@ -458,7 +612,8 @@ BEGIN
     IF v_skills THEN v_score := v_score + 10; v_keys := v_keys || 'skills'::text; END IF;
     IF v_avatar THEN v_score := v_score + 20; v_keys := v_keys || 'avatar'::text; END IF;
     IF v_copy THEN v_score := v_score + 20; v_keys := v_keys || 'profile_copy'::text; END IF;
-    IF v_hours THEN v_score := v_score + 20; v_keys := v_keys || 'working_hours'::text; END IF;
+    IF v_hours AND NOT v_minor THEN v_score := v_score + 20; v_keys := v_keys || 'working_hours'::text; END IF;
+    IF v_minor THEN v_score := round(v_score * 100.0 / 80)::integer; END IF;
 
     v_next := CASE
         WHEN NOT v_email THEN 'verify_email'
@@ -466,16 +621,18 @@ BEGIN
         WHEN v_seller AND NOT v_fp.payout_ready THEN 'add_payout'
         WHEN NOT v_avatar THEN 'add_photo'
         WHEN NOT v_copy THEN 'write_profile'
-        WHEN NOT v_hours THEN 'publish_hours'
+        WHEN NOT v_hours AND NOT v_minor THEN 'publish_hours'
         WHEN NOT v_skills THEN 'add_skills'
         WHEN NOT v_account THEN 'complete_account'
-        WHEN NOT v_seller THEN 'become_partner'
+        -- Selling unlocks at 18, so a minor is never pointed at it (Decision #192).
+        WHEN NOT v_seller AND NOT v_minor THEN 'become_partner'
         ELSE NULL
     END;
 
     RETURN jsonb_build_object(
         'score', v_score,
         'completed_keys', to_jsonb(v_keys),
+        'not_applicable_keys', CASE WHEN v_minor THEN '["working_hours"]'::jsonb ELSE '[]'::jsonb END,
         'next_suggested_action', v_next
     );
 END;
@@ -487,22 +644,56 @@ $$;
 -- (PM422); 13–17 is RESTRICTED — no buying and no selling (PM403); 18 and over is unrestricted. The
 -- thresholds are MIN_AGE / ADULT_AGE in @projective/types/auth/age.ts. Restriction is never stored:
 -- it is derived from org.users_public.dob on every read, so it lifts on the 18th birthday with
--- nothing to run. Whole years against the database's CURRENT_DATE (UTC). None of these is granted to
--- a client role (org is deny-by-default, 00002510), so no caller can ask whether somebody else is a
--- minor; definers, triggers and the access-token hook call them.
-CREATE OR REPLACE FUNCTION org.fn_age_years(p_dob date)
+-- nothing to run. Whole years on today's date in the person's own zone (users_public.timezone, UTC
+-- when unknown) — the rule computeAge applies in the form and the API, so every layer turns a
+-- birthday over at the same moment (Decision #192). None of these is granted to a client role (org
+-- is deny-by-default, 00002510), so no caller can ask whether somebody else is a minor; definers,
+-- triggers and the access-token hook call them.
+
+-- An IANA zone Postgres resolves, else NULL — so a bad zone degrades to UTC rather than raising.
+CREATE OR REPLACE FUNCTION org.fn_valid_time_zone(p_zone text)
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+SET search_path = ''
+AS $$
+BEGIN
+    IF p_zone IS NULL OR pg_catalog.btrim(p_zone) = '' THEN
+        RETURN NULL;
+    END IF;
+    PERFORM pg_catalog.now() AT TIME ZONE p_zone;
+    RETURN p_zone;
+EXCEPTION
+    WHEN invalid_parameter_value THEN
+        RETURN NULL;
+END;
+$$;
+
+-- Today's calendar date in a zone; an absent or unknown zone is UTC.
+CREATE OR REPLACE FUNCTION org.fn_today_in(p_zone text DEFAULT NULL)
+RETURNS date
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT (pg_catalog.now() AT TIME ZONE COALESCE(org.fn_valid_time_zone(p_zone), 'UTC'))::date;
+$$;
+
+CREATE OR REPLACE FUNCTION org.fn_age_years(p_dob date, p_zone text DEFAULT NULL)
 RETURNS integer
 LANGUAGE sql
 STABLE
 SET search_path = ''
 AS $$
-    SELECT pg_catalog.date_part('year', pg_catalog.age(CURRENT_DATE::timestamp, p_dob::timestamp))::integer;
+    SELECT pg_catalog.date_part(
+        'year', pg_catalog.age(org.fn_today_in(p_zone)::timestamp, p_dob::timestamp)
+    )::integer;
 $$;
 
 -- The one date-of-birth rule for a profile row: present, not in the future, not before 1900, and at
--- least 13 years ago. Provisioning calls it before writing anything; org.trg_users_public_dob_guard
--- calls it on every insert and every dob change.
-CREATE OR REPLACE FUNCTION org.fn_check_dob(p_dob date)
+-- least 13 years ago — "today" in the person's zone. Provisioning calls it before writing anything;
+-- org.trg_users_public_dob_guard calls it on every insert and every dob change.
+CREATE OR REPLACE FUNCTION org.fn_check_dob(p_dob date, p_zone text DEFAULT NULL)
 RETURNS void
 LANGUAGE plpgsql
 STABLE
@@ -512,10 +703,10 @@ BEGIN
     IF p_dob IS NULL THEN
         RAISE EXCEPTION 'dob: enter your date of birth' USING ERRCODE = '22023';
     END IF;
-    IF p_dob > CURRENT_DATE OR p_dob < DATE '1900-01-01' THEN
+    IF p_dob > org.fn_today_in(p_zone) OR p_dob < DATE '1900-01-01' THEN
         RAISE EXCEPTION 'dob: enter a real date of birth' USING ERRCODE = '22023';
     END IF;
-    IF org.fn_age_years(p_dob) < 13 THEN
+    IF org.fn_age_years(p_dob, p_zone) < 13 THEN
         RAISE EXCEPTION 'dob: you need to be at least 13 to join Projective' USING ERRCODE = 'PM422';
     END IF;
 END;
@@ -528,7 +719,22 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 BEGIN
-    PERFORM org.fn_check_dob(NEW.dob);
+    PERFORM org.fn_check_dob(NEW.dob, NEW.timezone);
+    RETURN NEW;
+END;
+$$;
+
+-- A minor's profile is never in the public directory (Decision #208): unlisted or private only.
+CREATE OR REPLACE FUNCTION org.trg_users_public_minor_visibility()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF NEW.visibility = 'public' AND org.fn_age_years(NEW.dob, NEW.timezone) < 18 THEN
+        RAISE EXCEPTION 'visibility: profiles of people under 18 stay unlisted' USING ERRCODE = 'PM403';
+    END IF;
     RETURN NEW;
 END;
 $$;
@@ -542,7 +748,7 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
     SELECT COALESCE(
-        (SELECT org.fn_age_years(u.dob) < 18 FROM org.users_public u WHERE u.user_id = p_user),
+        (SELECT org.fn_age_years(u.dob, u.timezone) < 18 FROM org.users_public u WHERE u.user_id = p_user),
         false
     );
 $$;
@@ -562,6 +768,26 @@ BEGIN
         RAISE EXCEPTION 'age: buying and selling unlock on the account holder''s 18th birthday'
             USING ERRCODE = 'PM403';
     END IF;
+END;
+$$;
+
+-- Refuses a row that would put a minor in a team, business or organisation, or address an invitation
+-- to one (Decision #208) — every path in, the definers' upserts included. TG_ARGV[0] names the column
+-- holding the person.
+CREATE OR REPLACE FUNCTION org.trg_workspace_member_adult()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_person uuid := (pg_catalog.to_jsonb(NEW) ->> TG_ARGV[0])::uuid;
+BEGIN
+    IF v_person IS NOT NULL AND org.fn_is_minor(v_person) THEN
+        RAISE EXCEPTION 'workspace: people under 18 cannot join a team, business or organisation'
+            USING ERRCODE = 'PM403';
+    END IF;
+    RETURN NEW;
 END;
 $$;
 -- #endregion

@@ -1,7 +1,9 @@
 import { assert, assertEquals, assertNotEquals } from "@std/assert";
 import { z } from "zod";
-import { ProjectBackendService } from "./ProjectBackendService.ts";
+import { hireLimiter, ProjectBackendService } from "./ProjectBackendService.ts";
 import { resetWriteStore } from "./write-store.ts";
+import { JUNO_HIRE_INTAKE, stubProfileOverview } from "../profile/test-doubles.ts";
+import { isSlug } from "@projective/types/slugs";
 import { findProjectSetup } from "./setup-fixtures.ts";
 import {
 	createFormatToColumns,
@@ -419,6 +421,102 @@ Deno.test("a freshly created project can be archived", async () => {
 	// the feed the moment it is archived.
 	const feed = await ProjectBackendService.list(feedParams(), ALICE);
 	assertEquals(feed.data?.items.some((item) => item.slug === created.data!.slug), false);
+});
+// #endregion
+
+// #region The invited freelancer
+/** Run `body` with `@nova` (no intake) and `@juno` (one required intake question) as known sellers. */
+async function withSellers(body: () => Promise<void>): Promise<void> {
+	resetWriteStore();
+	hireLimiter.reset();
+	const restore = stubProfileOverview({ nova: {}, juno: { hireIntake: JUNO_HIRE_INTAKE } });
+	try {
+		await body();
+	} finally {
+		restore();
+	}
+}
+
+Deno.test("a create with no invitee reports no invitation and a prj- address", async () => {
+	resetWriteStore();
+	const created = await ProjectBackendService.create(payloadOf(), ALICE);
+	assert(created.ok && created.data, created.message);
+	assertEquals(created.data.invitation, null);
+	assert(isSlug(created.data.slug, "project"), `not a prj- address: ${created.data.slug}`);
+});
+
+Deno.test("a profile-opened create invites the seller onto the new draft's root stage", async () => {
+	await withSellers(async () => {
+		const created = await ProjectBackendService.create(
+			payloadOf({ inviteeHandle: "@nova", baselineAmountCents: 40_000 }),
+			ALICE,
+		);
+		assert(created.ok && created.data, created.message);
+		assertEquals(created.data.invitation?.handle, "nova");
+		// A draft's invitation is the hire path's placeholder — attached now, settled at publish.
+		assertEquals(created.data.invitation?.outcome, "staged");
+
+		const roster = await ProjectBackendService.members({ projectId: created.data.slug }, ALICE);
+		assert(roster.ok && roster.data, roster.message);
+		const invite = roster.data.page.invites.find((i) => i.handle?.replace(/^@/, "") === "nova");
+		assert(invite, "the invitation must be on the new project's roster");
+	});
+});
+
+Deno.test("a Task's invitation is the whole-project offer", async () => {
+	await withSellers(async () => {
+		const created = await ProjectBackendService.create(
+			payloadOf({ format: "one_off", hasStages: false, inviteeHandle: "nova" }),
+			ALICE,
+		);
+		assert(created.ok && created.data, created.message);
+		assertEquals(created.data.invitation?.outcome, "staged");
+	});
+});
+
+Deno.test("a refused invitation keeps the draft and says why", async () => {
+	await withSellers(async () => {
+		// Juno's intake has a required question the create modal does not ask, so `hire` refuses.
+		const created = await ProjectBackendService.create(
+			payloadOf({ inviteeHandle: "@juno" }),
+			ALICE,
+		);
+		assert(created.ok && created.data, created.message);
+		assertEquals(created.status, 201);
+		assertEquals(created.data.invitation?.outcome, "refused");
+		assert((created.data.invitation?.message ?? "").length > 0);
+
+		const read = await ProjectBackendService.setup(created.data.slug, ALICE);
+		assert(read.ok, "the draft must exist even though nobody was invited");
+		assertEquals(read.data?.setup.stages.length, 1);
+	});
+});
+
+Deno.test("an unknown invitee is refused without failing the create", async () => {
+	await withSellers(async () => {
+		const created = await ProjectBackendService.create(
+			payloadOf({ inviteeHandle: "@ghost" }),
+			ALICE,
+		);
+		assert(created.ok && created.data, created.message);
+		assertEquals(created.data.invitation?.outcome, "refused");
+	});
+});
+
+Deno.test("the chosen currency is stored when it is offerable, and narrowed when it is not", async () => {
+	resetWriteStore();
+	const euro = await createAndRead({ currency: "EUR" });
+	assertEquals(euro.setup.budget.currency, "EUR");
+	const unknown = await createAndRead({ currency: "XYZ", title: "Odd money" });
+	assertEquals(unknown.setup.budget.currency, "GBP");
+});
+
+Deno.test("the invitee field is optional, and blank is not a handle", () => {
+	assertEquals(payloadOf().inviteeHandle, undefined);
+	assertEquals(
+		CreateProjectSchema.safeParse({ ...payloadOf(), inviteeHandle: "  " }).success,
+		false,
+	);
 });
 // #endregion
 

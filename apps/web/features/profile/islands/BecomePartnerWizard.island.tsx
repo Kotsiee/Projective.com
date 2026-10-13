@@ -63,8 +63,12 @@ export default function BecomePartnerWizard(props: BecomePartnerWizardProps): JS
 		error.value = null;
 	}
 
-	async function submit(event: JSX.TargetedEvent<HTMLFormElement>) {
+	function submit(event: JSX.TargetedEvent<HTMLFormElement>) {
 		event.preventDefault();
+		void unlock();
+	}
+
+	async function unlock() {
 		if (busy.value || count.value === 0) return;
 		busy.value = true;
 		error.value = null;
@@ -183,8 +187,9 @@ export default function BecomePartnerWizard(props: BecomePartnerWizardProps): JS
 												type="button"
 												variant="outlined"
 												size="sm"
-												label="Reload"
-												onClick={() => globalThis.location.reload()}
+												label="Try again"
+												loading={busy.value}
+												onClick={() => void unlock()}
 											/>
 										)
 										: undefined}

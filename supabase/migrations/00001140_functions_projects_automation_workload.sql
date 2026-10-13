@@ -349,6 +349,25 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, comms, auth;
 
+-- Can this ticket be given to this person without seating an unpayable payee (Decision #196)? The
+-- escrow's payee is the person unless a team holds the ticket's stage (the escrow hold's own rule), and
+-- a team was cleared when it was seated, so a member's claim on its stage is not re-checked.
+CREATE OR REPLACE FUNCTION projects.fn_ticket_assignee_payout_ready(p_ticket_id uuid, p_assignee_id uuid)
+RETURNS boolean AS $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+          FROM projects.tickets t
+          JOIN projects.stage_assignments sa ON sa.project_stage_id = t.current_stage_id
+         WHERE t.id = p_ticket_id
+           AND sa.assignee_type = 'team' AND sa.status = 'accepted' AND sa.team_id IS NOT NULL
+    ) THEN
+        RETURN true;
+    END IF;
+    RETURN finance.fn_freelancer_payout_ready(p_assignee_id);
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, projects, finance, auth;
+
 -- Every path that attaches a freelancer to a ticket funnels through fn_assign_ticket_core: it locks
 -- the row, re-validates the claim preconditions (unclaimed, has a description), enforces the
 -- concurrency caps, stamps the claim and holds escrow. Routing RPCs that have already chosen a
@@ -377,8 +396,15 @@ BEGIN
     IF v_desc IS NULL OR v_desc = '{}'::jsonb THEN
         RAISE EXCEPTION 'A comprehensive description is required before a ticket can be claimed/funded.';
     END IF;
-    -- Whoever routes the work, the person given it must be 18 or over (Decision #190).
-    PERFORM org.fn_assert_adult(p_assignee_id);
+    -- Whoever routes the work, the person given it must be 18 or over (Decision #190) — unless the
+    -- ticket is on a personal project, which only its owner ever holds (Decision #192).
+    IF NOT projects.fn_is_personal_project((SELECT t.project_id FROM projects.tickets t WHERE t.id = p_ticket_id)) THEN
+        PERFORM org.fn_assert_adult(p_assignee_id);
+        -- ...and payable, unless a team holds the stage (Decision #196).
+        IF NOT projects.fn_ticket_assignee_payout_ready(p_ticket_id, p_assignee_id) THEN
+            PERFORM finance.fn_assert_payout_ready('freelancer', p_assignee_id);
+        END IF;
+    END IF;
 
     IF p_enforce_capacity THEN
         v_verdict := projects.check_ticket_capacity(p_ticket_id, p_assignee_id);
@@ -488,14 +514,15 @@ BEGIN
         ) load ON true
         ORDER BY load.wi ASC, r.profile_id
     LOOP
-        IF (projects.check_ticket_capacity(v_ticket, m.uid)->>'allowed')::boolean THEN
+        IF projects.fn_ticket_assignee_payout_ready(v_ticket, m.uid)
+           AND (projects.check_ticket_capacity(v_ticket, m.uid)->>'allowed')::boolean THEN
             v_assignee := m.uid;
             EXIT;
         END IF;
     END LOOP;
 
     IF v_assignee IS NULL THEN
-        RETURN jsonb_build_object('assigned', false, 'reason', 'No eligible roster member has capacity for the next ticket.');
+        RETURN jsonb_build_object('assigned', false, 'reason', 'No payout-ready roster member has capacity for the next ticket.');
     END IF;
 
     IF projects.fn_assign_ticket_core(v_ticket, v_assignee, false) IS NULL THEN
@@ -542,7 +569,8 @@ BEGIN
             ) load ON true
             ORDER BY load.wi ASC, r.profile_id
         LOOP
-            IF (projects.check_ticket_capacity(t.id, m.uid)->>'allowed')::boolean THEN
+            IF projects.fn_ticket_assignee_payout_ready(t.id, m.uid)
+               AND (projects.check_ticket_capacity(t.id, m.uid)->>'allowed')::boolean THEN
                 -- A refused hold leaves the ticket in the pool as Needs funding; no other member fixes that.
                 IF projects.fn_assign_ticket_core(t.id, m.uid, false) IS NOT NULL THEN
                     v_count := v_count + 1;

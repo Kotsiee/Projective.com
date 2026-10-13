@@ -2915,6 +2915,10 @@ a.evp-cta__btn--mono {
  * ~350px — narrower than the same page renders at 390px. A transaction that is present but unreadable
  * is not a better outcome than one that has moved somewhere it fits.
  * ========================================================================== */
+.evp-restricted {
+	padding-block: var(--space-5);
+}
+
 .evp-buybar {
 	display: flex;
 	flex-direction: column;

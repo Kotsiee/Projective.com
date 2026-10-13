@@ -73,12 +73,9 @@ export const ProjectSidebarService = {
 	/**
 	 * Mint a draft from the Quick-Init payload.
 	 *
-	 * Returns BOTH identifiers. `id` is the canonical address the caller navigates to — a uuid cannot
-	 * collide, cannot be squatted, and does not change when the owner renames the project, which a
-	 * title-derived slug does on the first rename, i.e. almost immediately on a surface whose whole
-	 * purpose is to finish configuring what was just created. `slug` rides along because every other
-	 * projection in this domain carries one and a caller that wants a readable link should not have to
-	 * re-read the row to get it.
+	 * Navigate by the returned `slug`: the minted `prj-` address is immutable through every rename,
+	 * and the uuid does not route (Decision #88). `invitation` reports the invite a profile-opened
+	 * create sends, when the payload named one.
 	 */
 	create(payload: CreateProject): Promise<ProjectsResult<CreatedProject>> {
 		return postProjects<CreatedProject>("/api/projects/create", payload);

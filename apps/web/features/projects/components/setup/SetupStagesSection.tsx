@@ -80,6 +80,8 @@ function StageRow(props: {
 	priceLocked: boolean;
 	/** Whether this engagement has a sequence for the stage to sit in — {@link stageTimingApplies}. */
 	timed: boolean;
+	/** A personal project (Decision #192): the row asks for no price. */
+	personal: boolean;
 	open: boolean;
 	onToggle: () => void;
 	onPatch: (patch: Partial<StageSetup>) => void;
@@ -98,7 +100,7 @@ function StageRow(props: {
 	// says "Needs pricing" beside a control that explains it can never be priced again.
 	const outstandingNotes = [
 		!scoped && "Needs scope",
-		!priced && !props.priceLocked && "Needs pricing",
+		!priced && !props.priceLocked && !props.personal && "Needs pricing",
 	].filter(Boolean);
 
 	return (
@@ -162,6 +164,7 @@ function StageRow(props: {
 						projectRequiresNda={props.projectRequiresNda}
 						priceLocked={props.priceLocked}
 						timed={props.timed}
+						personal={props.personal}
 						onPatch={props.onPatch}
 					/>
 				</div>
@@ -273,6 +276,7 @@ export function StageListSection(
 							projectRequiresNda={setup.rules.ndaRequired}
 							priceLocked={lockedPrices.has(stage.id)}
 							timed={timed}
+							personal={setup.personal === true}
 							open={open.value === stage.id}
 							onToggle={() => (open.value = open.value === stage.id ? null : stage.id)}
 							onPatch={(patch) => patchRow(stage.id, patch)}
@@ -281,7 +285,7 @@ export function StageListSection(
 					))}
 					{setup.stages.length === 0 && (
 						<li class="psu-list__empty">
-							No {itemLabel}s yet. Freelancers cannot be hired until there is at least one.
+							No {itemLabel}s yet.{setup.personal ? "" : " Freelancers cannot be hired until there is at least one."}
 						</li>
 					)}
 				</ul>
@@ -347,7 +351,7 @@ export function FlatDetailsSection(
 	// A frozen price is not an unfinished one; the gate stands down rather than accusing a field the
 	// owner is forbidden to complete. Unlocked, this is the original verdict unchanged.
 	const price = useFieldValidation({
-		problem: priced || priceLocked ? null : "Give this project a price.",
+		problem: priced || priceLocked || setup.personal ? null : "Give this project a price.",
 		reveal: setupReveal,
 		problemStatus: "gate",
 	});
@@ -376,40 +380,44 @@ export function FlatDetailsSection(
 		<Section sectionKey="details" title="Details" hint={hint}>
 			<TaskList stage={root} itemLabel={itemLabel} onPatch={patchRoot} />
 
-			<Field
-				label="Required skills"
-				hint="Up to ten. A project asking for twenty is asking for nobody."
-			>
-				<Chips
-					value={root.skills}
-					onValueChange={(skills: string[]) => patchRoot({ skills })}
-					placeholder="Add a skill…"
-					max={MAX_STAGE_SKILLS}
-					addOnBlur
-					aria-label="Required skills"
-				/>
-			</Field>
+			{!setup.personal && (
+				<Field
+					label="Required skills"
+					hint="Up to ten. A project asking for twenty is asking for nobody."
+				>
+					<Chips
+						value={root.skills}
+						onValueChange={(skills: string[]) => patchRoot({ skills })}
+						placeholder="Add a skill…"
+						max={MAX_STAGE_SKILLS}
+						addOnBlur
+						aria-label="Required skills"
+					/>
+				</Field>
+			)}
 
-			<Field
-				label={priceLabel}
-				htmlFor="psu-details-price"
-				validation={price}
-				hint={priceLocked ? priceLockReasonFor(setup.structure) : undefined}
-			>
-				<NumberInput
-					{...MONEY_FIELD}
-					id="psu-details-price"
-					value={toMajor(root.unitPriceCents, currency)}
-					onValueChange={(v: number | null) =>
-						patchRoot({ unitPriceCents: toMinorUnits(v, currency) })}
-					currency={currency}
-					maxFractionDigits={exponent}
-					minFractionDigits={exponent}
-					precisionStep={minorUnit(currency)}
-					disabled={priceLocked}
-					status={price.status.value}
-				/>
-			</Field>
+			{!setup.personal && (
+				<Field
+					label={priceLabel}
+					htmlFor="psu-details-price"
+					validation={price}
+					hint={priceLocked ? priceLockReasonFor(setup.structure) : undefined}
+				>
+					<NumberInput
+						{...MONEY_FIELD}
+						id="psu-details-price"
+						value={toMajor(root.unitPriceCents, currency)}
+						onValueChange={(v: number | null) =>
+							patchRoot({ unitPriceCents: toMinorUnits(v, currency) })}
+						currency={currency}
+						maxFractionDigits={exponent}
+						minFractionDigits={exponent}
+						precisionStep={minorUnit(currency)}
+						disabled={priceLocked}
+						status={price.status.value}
+					/>
+				</Field>
+			)}
 
 			{
 				/*

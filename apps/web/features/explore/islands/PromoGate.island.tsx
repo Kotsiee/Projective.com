@@ -22,6 +22,8 @@ export interface PromoGateProps {
 	dismissible: boolean;
 	/** Whether the signed-in viewer can already sell, as the server resolved it. */
 	viewerFreelancer: boolean;
+	/** Whether the viewer is a restricted (13–17) account, as the server resolved it. */
+	viewerRestricted: boolean;
 	children: ComponentChildren;
 }
 
@@ -33,7 +35,7 @@ export interface PromoGateProps {
  * the fold, so the reveal-then-hide happens out of view.
  */
 export default function PromoGate(
-	{ id, title, audience, dismissible, viewerFreelancer, children }: PromoGateProps,
+	{ id, title, audience, dismissible, viewerFreelancer, viewerRestricted, children }: PromoGateProps,
 ): JSX.Element {
 	const dismissed = useSignal<string[]>([]);
 	const seam = useSignal<DevSeamState | null>(null);
@@ -55,6 +57,9 @@ export default function PromoGate(
 		viewerFreelancer: seam.value
 			? personaCapabilities(seam.value.persona).isFreelancer
 			: viewerFreelancer,
+		viewerRestricted: seam.value?.ageRestriction && seam.value.ageRestriction !== "auto"
+			? seam.value.ageRestriction === "minor"
+			: viewerRestricted,
 		mode: seam.value?.promoDismissal ?? "auto",
 	});
 

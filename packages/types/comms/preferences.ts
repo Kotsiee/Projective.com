@@ -26,9 +26,8 @@ import {
  *   * `quiet_hours tstzrange` (absolute) → {@link NotificationPrefs.quietHoursStart}/`End` +
  *     `timezone`, which express a RECURRING nightly window.
  *   * `digest boolean` → {@link NotificationPrefs.digestFrequency} (backfilled from it).
- * A second, coarser copy of the email/push toggles also lives on `org.user_preferences`
- * (`notification_email` / `notification_push`); `comms.notification_prefs` is the engine's source
- * of truth and the two are NOT reconciled — reconcile with a human.
+ * `email` / `push` here are the platform's only email/push toggles — `org.user_preferences` carries
+ * no copy (Decision #204).
  */
 
 // #region Global preferences

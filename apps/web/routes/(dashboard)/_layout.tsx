@@ -271,6 +271,7 @@ async function laneFor(
 			canOfferServices={feed.canOfferServices}
 			defaultCurrency={feed.defaultCurrency}
 			path={url.pathname}
+			restricted={context.restricted}
 		/>
 	);
 }

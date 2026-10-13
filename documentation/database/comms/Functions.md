@@ -132,9 +132,11 @@ could call `fn_notify` could spoof any notification to any user; one that could 
 
 ## Scheduled jobs (`pg_cron`)
 
-Registration is fully guarded — the extension may be absent locally, and `cron.schedule` needs
-privileges a migration run may not have. A failure only raises a `NOTICE`; the jobs can be scheduled
-by hand from the same statements.
+> ⚠️ **None of these jobs is registered** (Decision #203 flag (a)): no migration has ever scheduled
+> them, so the table below is the intended cadence, not running work. Every recurring job is now a
+> row of `ops.scheduled_jobs` (`00005060`); registering one of these is one row there, and it then
+> runs in every environment and can be run by hand with `deno task cron:run <job>`. See
+> `SYSTEM_ARCHITECTURE.md` §Scheduled jobs.
 
 | Job                     | Schedule     | Function                       | What it does                                                                                       |
 | :---------------------- | :----------- | :----------------------------- | :------------------------------------------------------------------------------------------------- |
@@ -175,7 +177,14 @@ under §Replies stay in their room.
 
 `seed_notification_prefs` mirrors `org.seed_user_preferences` (Decision #47) — a focused
 `AFTER INSERT` trigger under a **separate name**, so the existing `on_users_public_created` trigger
-is untouched. `comms.fn_ensure_notification_prefs(user_id)` is the callable equivalent.
+is untouched. It calls `comms.fn_seed_notification_prefs(p_user_id uuid, p_meta jsonb)` with the
+sign-up metadata (`org.fn_signup_meta`), which inserts the row and, only when it is new, sets
+`timezone` to the profile's zone, else the sign-up `timezone` hint — only a zone Postgres resolves,
+because quiet hours and digests run `AT TIME ZONE` it, otherwise the `UTC` default — and `locale` to
+the supported sign-up locale (`org.fn_supported_locale`), else `NULL` (Decision #207). An invoker
+function: a client calling it directly meets the INSERT-own policy. `org.seed_owner_preferences` calls
+it for an organisation owner who already has a profile row ([org/Functions.md](../org/Functions.md)).
+`comms.fn_ensure_notification_prefs(user_id)` is the callable defaults-only equivalent.
 
 ### The dispatch webhook
 

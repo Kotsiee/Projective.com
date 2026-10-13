@@ -1,5 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
+import { refuseIfPayoutNotReady } from "@web/utils/payout-gate.ts";
 import { RespondToInvitationSchema } from "@projective/types/projects";
 import { toProjectsResponse } from "@features/projects/core/respond.ts";
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
@@ -28,6 +29,10 @@ export const handler = define.handlers({
 				},
 				{ status: 422 },
 			);
+		}
+		if (parsed.data.accept) {
+			const unpayable = refuseIfPayoutNotReady(ctx.req);
+			if (unpayable) return unpayable;
 		}
 		return toProjectsResponse(await ProjectBackendService.respondToInvitations(parsed.data, actor));
 	},

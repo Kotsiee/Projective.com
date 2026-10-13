@@ -157,7 +157,8 @@ export default function ProjectSetupRig({ setup }: ProjectSetupRigProps): JSX.El
 		});
 	}
 
-	if (isDraft) {
+	// A personal project (Decision #192) is never listed, so it has nothing to publish.
+	if (isDraft && !live.personal) {
 		actions.push({
 			key: "publish",
 			label: "Publish",

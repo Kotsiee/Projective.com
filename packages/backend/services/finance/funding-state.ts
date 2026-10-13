@@ -6,6 +6,7 @@ import {
 	type FundingStatus,
 	formatMoney,
 	type InboundPaymentStatus,
+	isSettledPaymentStatus,
 } from "@projective/types/finance";
 import { TicketStatus } from "@projective/types/projects";
 
@@ -33,8 +34,8 @@ export interface FundingTicketInput {
 	amountMinor: number | null;
 	currency: string;
 	/**
-	 * Paid for in its current stage ahead of a claim (#166): the money waits in the payer wallet and the
-	 * escrow is held when somebody claims it. Still §3.6 Draft, but there is nothing left to fund.
+	 * Paid for ahead of any claim: a PREPAID escrow is held and the claim binds its payee (Decision #197),
+	 * so the ticket is Funded. Live reads see it as `escrow_funded`; the stub corpus sets this flag.
 	 */
 	paidAhead?: boolean;
 }
@@ -124,7 +125,9 @@ export function deriveFundingState(
 		return status("refunded", "none");
 	}
 
-	const held = escrow ? HELD_ESCROW.has(escrow.status) : ticket.paymentStatus === "escrow_funded";
+	const held = escrow
+		? HELD_ESCROW.has(escrow.status)
+		: ticket.paymentStatus === "escrow_funded" || ticket.paidAhead === true;
 	if (held) {
 		if (ticket.status === "in_review") return status("in_review", "review");
 		if (ticket.status === "in_progress") return status("in_progress", "submit");
@@ -139,14 +142,14 @@ export function deriveFundingState(
 		if (payment.status === "failed") {
 			return status("failed", "retry_payment", payment.failureReason ?? "The card payment didn't go through.");
 		}
-		if (payment.status === "succeeded" && payment.lockStatus === "failed") {
+		if (isSettledPaymentStatus(payment.status) && payment.lockStatus === "failed") {
 			return status(
 				"failed",
 				"retry_payment",
 				payment.lockError ?? "The payment arrived but the escrow couldn't be held; the money is in the wallet.",
 			);
 		}
-		if (payment.status === "succeeded" && payment.lockStatus === "pending") {
+		if (isSettledPaymentStatus(payment.status) && payment.lockStatus === "pending") {
 			return status("processing", "await_payment", "The payment arrived and the escrow is being held.");
 		}
 		// `canceled` (abandoned) and a lock that funded other tickets fall through to the ticket's own facts.
@@ -163,9 +166,6 @@ export function deriveFundingState(
 				? "Price this ticket so its escrow can be held; work can't start until it is."
 				: "The escrow couldn't be held, so work can't start until the ticket is funded.",
 		);
-	}
-	if (ticket.paidAhead) {
-		return status("draft", "none", "Paid for — the escrow is held when a freelancer claims it.");
 	}
 	if (!ticket.hasDescription) {
 		return status("draft", "describe", "Add a description so this ticket can be funded and claimed.");
@@ -213,7 +213,7 @@ export function paymentFundingState(payment: {
 	amountCents: number;
 	currency: string;
 }): FundingStatus {
-	const locked = payment.status === "succeeded" && payment.lockStatus === "locked";
+	const locked = isSettledPaymentStatus(payment.status) && payment.lockStatus === "locked";
 	return deriveFundingState(
 		{
 			status: "todo",

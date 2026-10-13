@@ -18,6 +18,8 @@ export interface KanbanColumnItem {
 	render: (ctx: KanbanItemRenderCtx) => ComponentChildren;
 	/** Activate the card (click / Enter) — the whole card is the control, so the card owns this. */
 	onActivate?: () => void;
+	/** Controls drawn beside the card, outside its `role="button"` root; `null` for none. */
+	actions?: ComponentChildren;
 }
 
 /**
@@ -118,6 +120,7 @@ export function KanbanColumn<C>(props: KanbanColumnProps<C>): JSX.Element {
 								render={it.render}
 								onActivate={it.onActivate}
 							/>
+							{it.actions ? <div class="ui-kanban__card-actions">{it.actions}</div> : null}
 						</div>
 					</>
 				))}

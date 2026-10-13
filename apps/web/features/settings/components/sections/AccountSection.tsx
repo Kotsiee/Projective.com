@@ -34,6 +34,8 @@ export interface AccountSectionProps {
 	data: SettingsSectionDataOf<"account">;
 	locale: string;
 	dateFormat: DateFormat | null;
+	/** A restricted (13–17) account: the account type says what is locked and offers no upgrade. */
+	restricted: boolean;
 }
 
 export function AccountSection(props: AccountSectionProps): JSX.Element {
@@ -56,6 +58,7 @@ export function AccountSection(props: AccountSectionProps): JSX.Element {
 				data={data}
 				locale={props.locale}
 				dateFormat={props.dateFormat}
+				restricted={props.restricted}
 			/>
 		</div>
 	);
@@ -74,7 +77,7 @@ function AccountBlocks(props: AccountSectionProps): JSX.Element {
 				dateFormat={props.dateFormat}
 			/>
 			<HandleBlock policy={props.data.handlePolicy} locale={props.locale} />
-			<AccountTypeBlock lifecycle={lifecycle} locale={props.locale} />
+			<AccountTypeBlock lifecycle={lifecycle} locale={props.locale} restricted={props.restricted} />
 			<EmailsBlock emails={emails} />
 			<PasswordBlock signIn={signIn} />
 			<ConnectedAccountsBlock connected={props.data.connected} />

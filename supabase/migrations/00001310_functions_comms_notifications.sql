@@ -39,10 +39,54 @@ $$;
 
 -- #endregion
 
--- #region 5. Preference provisioning — seed on signup, plus a one-time backfill
--- Mirrors org.seed_user_preferences (migration 20260722120000, Decision #47): a focused AFTER
--- INSERT trigger on org.users_public rather than re-declaring either provisioning routine. A
--- SEPARATE trigger name is used — `on_users_public_created` already exists and is not touched.
+-- #region 5. Preference provisioning — seed on signup
+-- Mirrors org.seed_user_preferences (Decision #47): a focused AFTER INSERT trigger on
+-- org.users_public rather than re-declaring either provisioning routine. A SEPARATE trigger name is
+-- used — `on_users_public_created` already exists and is not touched. The row starts in the person's
+-- zone and supported locale (Decision #207); every other column keeps its default (in_app + email on,
+-- push off, digest off, no quiet hours).
+
+-- Seed a person's notification prefs; a row that already exists is never touched. The zone is the
+-- profile's, else the sign-up hint, and only one Postgres resolves — quiet hours and digests run
+-- `AT TIME ZONE` it — otherwise the `UTC` default. An unsupported locale leaves `locale` NULL.
+CREATE OR REPLACE FUNCTION comms.fn_seed_notification_prefs(p_user_id uuid, p_meta jsonb)
+RETURNS void
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+DECLARE
+    v_candidate text;
+    v_zone text;
+BEGIN
+    INSERT INTO comms.notification_prefs (user_id)
+    VALUES (p_user_id)
+    ON CONFLICT (user_id) DO NOTHING;
+    IF NOT FOUND THEN
+        RETURN;
+    END IF;
+
+    FOREACH v_candidate IN ARRAY ARRAY[
+        (SELECT u.timezone FROM org.users_public u WHERE u.user_id = p_user_id),
+        pg_catalog.btrim(p_meta ->> 'timezone')
+    ] LOOP
+        CONTINUE WHEN NULLIF(v_candidate, '') IS NULL;
+        BEGIN
+            PERFORM pg_catalog.now() AT TIME ZONE v_candidate;
+            v_zone := v_candidate;
+            EXIT;
+        EXCEPTION
+            WHEN invalid_parameter_value THEN
+                CONTINUE;
+        END;
+    END LOOP;
+
+    UPDATE comms.notification_prefs
+       SET timezone = COALESCE(v_zone, timezone),
+           locale = org.fn_supported_locale(p_meta ->> 'locale')
+     WHERE user_id = p_user_id;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION comms.seed_notification_prefs()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -50,17 +94,13 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 BEGIN
-    -- Idempotent: 1:1 on user_id, and a lazily-created row must not be clobbered. Column defaults
-    -- supply the values (in_app + email on, push off, digest off, no quiet hours).
-    INSERT INTO comms.notification_prefs (user_id)
-    VALUES (NEW.user_id)
-    ON CONFLICT (user_id) DO NOTHING;
+    PERFORM comms.fn_seed_notification_prefs(NEW.user_id, org.fn_signup_meta(NEW.user_id));
     RETURN NEW;
 END;
 $$;
 
 COMMENT ON FUNCTION comms.seed_notification_prefs() IS
-    'Seeds a default comms.notification_prefs row when a public profile is created (email + OAuth signup paths). Idempotent. Companion to org.seed_user_preferences (Decision #47).';
+    'Seeds comms.notification_prefs when a public profile is created (email + OAuth signup paths), in the person''s zone and supported locale. Idempotent. Companion to org.seed_user_preferences (Decisions #47, #207).';
 
 -- Callable ensure-helper for any path that needs prefs to exist right now (the API's
 -- read-then-write settings flow, the digest builder).

@@ -8,17 +8,18 @@ import {
 /**
  * partner-service — the "Become a Partner" client transport (thin: no business rule lives here).
  *
- * The unlock is the same three-step sequence as an acting-context switch (`useContextSwitch`):
+ * The unlock is the same sequence as an acting-context switch (`useContextSwitch`):
  *
  * ```
- *   POST /api/user/freelancer   →   POST /api/auth/refresh   →   hard navigation
- *   (convert, server side)          (re-mint the claims)          (re-render the chrome)
+ *   POST /api/user/freelancer                         →   hard navigation
+ *   (convert + re-issue the session, server side)         (re-render the chrome)
  * ```
  *
- * The conversion changes the database; the browser's access token still carries
- * `active_context.isFreelancer: false` until the hook re-mints it, so without the refresh the sidebar,
- * the Create menu and the account popover would keep the buyer chrome. A failed refresh is reported,
- * never navigated past — the profile IS unlocked by then, so the message says so and a reload finishes.
+ * The conversion changes the database; the access token still carries `active_context.isFreelancer:
+ * false` until the hook re-mints it, so the route re-issues the session on the same response (Decision
+ * #193). When it could not, the answer says `claimsStale` and the unlock is reported, never navigated
+ * past — the sidebar, the Create menu and the account popover would keep the buyer chrome. The profile
+ * IS unlocked by then, and unlocking again is idempotent, so a retry re-issues the session.
  */
 
 // #region Types
@@ -33,26 +34,10 @@ export type UnlockOutcome =
 export function profileSetupPath(handle: string): string {
 	return `/${encodeURIComponent(handle)}/edit`;
 }
-
-/**
- * Re-mint the access token. A bare `fetch`, not `apiFetch`: `apiFetch`'s own recovery path is this
- * endpoint, so routing through it would nest a refresh inside a refresh.
- */
-async function remintSession(): Promise<boolean> {
-	try {
-		const res = await fetch("/api/auth/refresh", {
-			method: "POST",
-			headers: { accept: "application/json" },
-		});
-		return res.ok;
-	} catch {
-		return false;
-	}
-}
 // #endregion
 
 // #region Unlock
-/** Convert the acting person, then re-mint their session. Never throws. */
+/** Convert the acting person; the route re-issues their session on the same response. Never throws. */
 export async function unlockFreelancer(input: EnableFreelancerInput): Promise<UnlockOutcome> {
 	let body: Record<string, unknown> | null = null;
 	try {
@@ -86,12 +71,12 @@ export async function unlockFreelancer(input: EnableFreelancerInput): Promise<Un
 		};
 	}
 
-	if (!(await remintSession())) {
+	if (body.claimsStale === true) {
 		return {
 			ok: false,
 			unlocked: true,
-			message: "Your freelancer profile is unlocked, but your session couldn't be refreshed. " +
-				"Reload the page to finish.",
+			message: "Your freelancer profile is unlocked, but your session couldn't be updated yet. " +
+				"Try again in a moment.",
 		};
 	}
 

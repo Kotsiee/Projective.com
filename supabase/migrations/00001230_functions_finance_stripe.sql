@@ -79,6 +79,22 @@ BEGIN
 END;
 $$;
 
+-- Give a claim back so the event is processed again on Stripe's next delivery. For a door that ends
+-- without the effect it exists for (a settlement with no ledger row, Decision #200): completing the
+-- claim would turn every retry into a replay of the miss.
+CREATE OR REPLACE FUNCTION finance.fn_release_stripe_event(p_event_id text)
+RETURNS void
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    DELETE FROM finance.idempotency_keys
+     WHERE key = 'stripe:' || p_event_id AND scope = 'stripe.webhook';
+END;
+$$;
+
 -- The answer for a redelivered event: `replayed`, carrying what the first delivery did.
 CREATE OR REPLACE FUNCTION finance.fn_stripe_event_replay(p_event_id text)
 RETURNS jsonb
@@ -113,6 +129,8 @@ $$;
 --                  rather than charging an amount nobody saw.
 --                  With `p_ticket_id` (Decision #166) it funds ONE ticket instead: projects.fund_ticket's
 --                  gates, and the amount is that ticket's own price (else its stage's).
+--                  With `p_revision_id` (Decision #199) it pays for ONE paid revision round:
+--                  projects.fund_paid_revision's gates, and the amount is the round's snapshotted price.
 --
 -- Idempotent on the caller's attempt key (finance.idempotency_keys, scope `card_payment:<uid>`): the
 -- same key and request replays the recorded attempt; the same key with a different request refuses.
@@ -124,7 +142,8 @@ CREATE OR REPLACE FUNCTION finance.begin_card_payment(
     p_expected_amount bigint,
     p_currency text,
     p_idempotency_key text,
-    p_ticket_id uuid DEFAULT NULL
+    p_ticket_id uuid DEFAULT NULL,
+    p_revision_id uuid DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -147,7 +166,10 @@ DECLARE
     v_project_currency text;
     v_amount bigint;
     v_ticket record;
+    v_round record;
     v_payment finance.inbound_payments;
+    v_need jsonb;
+    v_unpriced int;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'auth: sign in to pay' USING ERRCODE = '42501';
@@ -166,9 +188,11 @@ BEGIN
     END IF;
 
     v_scope := 'card_payment:' || v_uid::text;
-    -- concat_ws skips NULLs, so a stage or top-up attempt hashes exactly as it did before p_ticket_id.
+    -- concat_ws skips NULLs, so a stage or top-up attempt hashes exactly as it did before p_ticket_id
+    -- and p_revision_id.
     v_hash := pg_catalog.md5(pg_catalog.concat_ws('|',
-        p_purpose, p_wallet_id, p_project_id, p_stage_id, p_expected_amount, v_currency, p_ticket_id));
+        p_purpose, p_wallet_id, p_project_id, p_stage_id, p_expected_amount, v_currency, p_ticket_id,
+        p_revision_id));
 
     SELECT * INTO v_prior FROM finance.idempotency_keys WHERE key = p_idempotency_key;
     IF FOUND THEN
@@ -187,7 +211,8 @@ BEGIN
         IF p_wallet_id IS NULL THEN
             RAISE EXCEPTION 'walletId: choose the wallet to top up' USING ERRCODE = '22023';
         END IF;
-        IF p_project_id IS NOT NULL OR p_stage_id IS NOT NULL OR p_ticket_id IS NOT NULL THEN
+        IF p_project_id IS NOT NULL OR p_stage_id IS NOT NULL OR p_ticket_id IS NOT NULL
+           OR p_revision_id IS NOT NULL THEN
             RAISE EXCEPTION 'stageId: a top-up does not fund a stage' USING ERRCODE = '22023';
         END IF;
         IF p_expected_amount IS NULL OR p_expected_amount <= 0 THEN
@@ -238,7 +263,57 @@ BEGIN
         ELSIF v_owner IS NULL OR v_owner IS DISTINCT FROM v_uid THEN
             RAISE EXCEPTION 'auth: only the project''s owner can fund this stage' USING ERRCODE = '42501';
         END IF;
-        IF p_ticket_id IS NOT NULL THEN
+        IF p_revision_id IS NOT NULL THEN
+            -- ONE paid revision round (Decision #199): projects.fund_paid_revision's gates, evaluated now
+            -- so nobody is charged for a round that could not open — and again at settlement.
+            IF p_ticket_id IS NOT NULL THEN
+                RAISE EXCEPTION 'ticketId: a revision is paid for on its own, not with a ticket'
+                    USING ERRCODE = '22023';
+            END IF;
+            SELECT rv.status, rv.request_type, rv.price_cents, rv.ticket_id,
+                   ps.extra_revision_price_cents AS stage_price, ss.status AS submission_status,
+                   tk.current_assignee_id AS assignee,
+                   EXISTS (
+                       SELECT 1 FROM projects.stage_assignments sa
+                        WHERE sa.project_stage_id = ps.id AND sa.assignee_type = 'team'
+                          AND sa.status = 'accepted' AND sa.team_id IS NOT NULL
+                   ) AS team_seated
+              INTO v_round
+              FROM projects.stage_revision_requests rv
+              JOIN projects.project_stages ps ON ps.id = rv.project_stage_id
+              JOIN projects.tickets tk ON tk.id = rv.ticket_id
+              LEFT JOIN projects.stage_submissions ss ON ss.id = rv.submission_id
+             WHERE rv.id = p_revision_id AND ps.id = p_stage_id AND ps.project_id = p_project_id;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'revisionId: that revision is not in this stage' USING ERRCODE = 'P0002';
+            END IF;
+            IF v_round.status <> 'awaiting_payment' THEN
+                RAISE EXCEPTION 'revisionId: this revision is already paid for or was withdrawn' USING ERRCODE = 'PC409';
+            END IF;
+            IF v_round.submission_status IS DISTINCT FROM 'pending_review' THEN
+                RAISE EXCEPTION 'revisionId: the submission this revision was for has already been decided'
+                    USING ERRCODE = 'PC409';
+            END IF;
+            IF v_round.request_type <> 'paid_revision' OR v_round.price_cents IS DISTINCT FROM v_round.stage_price THEN
+                RAISE EXCEPTION 'revisionId: this revision''s price no longer matches the stage''s terms — raise it again'
+                    USING ERRCODE = 'PC409';
+            END IF;
+            IF v_round.assignee IS NULL AND NOT v_round.team_seated THEN
+                RAISE EXCEPTION 'revisionId: this ticket has nobody to pay for the revision' USING ERRCODE = 'PC409';
+            END IF;
+            v_amount := COALESCE(v_round.price_cents, 0);
+            IF v_amount <= 0 THEN
+                RAISE EXCEPTION 'revisionId: this revision isn''t priced' USING ERRCODE = 'PC409';
+            END IF;
+            IF pg_catalog.upper(COALESCE(v_project_currency, 'USD')) <> v_currency THEN
+                RAISE EXCEPTION 'currency: this project is priced in %', pg_catalog.upper(COALESCE(v_project_currency, 'USD'))
+                    USING ERRCODE = '22023';
+            END IF;
+            IF p_expected_amount IS DISTINCT FROM v_amount THEN
+                RAISE EXCEPTION 'expectedAmountMinor: the amount to fund changed — it is now % minor units of %',
+                    v_amount, v_currency USING ERRCODE = 'PC409';
+            END IF;
+        ELSIF p_ticket_id IS NOT NULL THEN
             -- ONE ticket (Decision #166): projects.fund_ticket's gates, evaluated now so nobody is charged
             -- for a hold that could not be made — and again at settlement. Its own price, else its stage's.
             SELECT tk.text_description, tk.payment_status::text AS payment_status,
@@ -262,14 +337,6 @@ BEGIN
             IF v_ticket.stage_status IN ('approved', 'paid', 'cancelled') THEN
                 RAISE EXCEPTION 'stageId: that stage has finished' USING ERRCODE = 'PC409';
             END IF;
-            IF v_ticket.assignee IS NULL AND NOT EXISTS (
-                SELECT 1 FROM projects.stage_assignments sa
-                 WHERE sa.project_stage_id = p_stage_id AND sa.assignee_type = 'team'
-                   AND sa.status = 'accepted' AND sa.team_id IS NOT NULL
-            ) THEN
-                RAISE EXCEPTION 'ticketId: nobody can be paid for this ticket yet — it can be bought once it is claimed'
-                    USING ERRCODE = 'PC409';
-            END IF;
             v_amount := COALESCE(v_ticket.amount, 0);
             IF v_amount <= 0 THEN
                 RAISE EXCEPTION 'ticketId: this ticket has no price yet' USING ERRCODE = 'PC409';
@@ -290,26 +357,30 @@ BEGIN
         IF NOT FOUND THEN
             RAISE EXCEPTION 'stageId: stage not found for this project' USING ERRCODE = 'P0002';
         END IF;
-        IF v_stage_status <> 'assigned'::public.stage_status THEN
-            RAISE EXCEPTION 'stageId: the stage must be assigned before its escrow can be funded (it is %)',
+        IF v_stage_status NOT IN ('open'::public.stage_status, 'assigned'::public.stage_status,
+                                  'in_progress'::public.stage_status) THEN
+            RAISE EXCEPTION 'stageId: only an open, assigned or in-progress stage can be funded (this one is %)',
                 v_stage_status USING ERRCODE = 'PC409';
         END IF;
         IF pg_catalog.upper(COALESCE(v_project_currency, 'USD')) <> v_currency THEN
             RAISE EXCEPTION 'currency: this project is priced in %', pg_catalog.upper(COALESCE(v_project_currency, 'USD'))
                 USING ERRCODE = '22023';
         END IF;
-        -- Exactly what fn_hold_ticket_escrow will hold, ticket by ticket: every assigned, unfunded ticket
-        -- of the stage at its own price, else the stage's.
-        SELECT COALESCE(SUM(COALESCE(t.unit_price_cents, ps.unit_price_cents)), 0) INTO v_amount
-          FROM projects.tickets t
-          LEFT JOIN projects.project_stages ps ON ps.id = t.current_stage_id
-         WHERE t.current_stage_id = p_stage_id
-           AND t.current_assignee_id IS NOT NULL
-           AND t.payment_status IN ('unpaid'::public.payment_status, 'needs_funding'::public.payment_status)
-           AND COALESCE(t.unit_price_cents, ps.unit_price_cents) > 0;
-        IF v_amount <= 0 THEN
-            RAISE EXCEPTION 'stageId: no assigned, unfunded tickets are waiting for escrow in this stage'
+        -- Exactly what projects.fund_stage will hold — the one definition both read (Decision #197). A
+        -- ticket without a price is refused HERE, before anything is charged: fund_stage refuses the same
+        -- stage, and a payment it refused at settlement would only land in the wallet.
+        v_need := projects.fn_stage_funding_need(p_stage_id);
+        v_unpriced := (v_need ->> 'unpriced_count')::int;
+        IF v_unpriced > 0 THEN
+            RAISE EXCEPTION 'stageId: % — price % before funding the stage',
+                CASE WHEN v_unpriced = 1 THEN 'a ticket in this stage has no price yet'
+                     ELSE v_unpriced || ' tickets in this stage have no price yet' END,
+                CASE WHEN v_unpriced = 1 THEN 'it' ELSE 'them' END
                 USING ERRCODE = 'PC409';
+        END IF;
+        v_amount := (v_need ->> 'amount_cents')::bigint;
+        IF v_amount <= 0 THEN
+            RAISE EXCEPTION 'stageId: nothing in this stage is waiting for funding' USING ERRCODE = 'PC409';
         END IF;
         IF p_expected_amount IS DISTINCT FROM v_amount THEN
             RAISE EXCEPTION 'expectedAmountMinor: the amount to fund changed — it is now % minor units of %',
@@ -328,12 +399,14 @@ BEGIN
     END IF;
 
     INSERT INTO finance.inbound_payments (
-        purpose, wallet_id, project_stage_id, ticket_id, amount_cents, currency, lock_status, idempotency_key, created_by
+        purpose, wallet_id, project_stage_id, ticket_id, revision_id, amount_cents, currency, lock_status,
+        idempotency_key, created_by
     ) VALUES (
         p_purpose,
         v_wallet_id,
         CASE WHEN p_purpose = 'escrow_lock' THEN p_stage_id END,
         p_ticket_id,
+        p_revision_id,
         v_amount,
         v_currency,
         CASE WHEN p_purpose = 'escrow_lock' THEN 'pending' ELSE 'not_applicable' END,
@@ -527,6 +600,14 @@ $$;
 -- implementation. It runs in a SUBTRANSACTION: a lock refused at settlement (the stage moved on, a
 -- spending limit bit, the member lost the right to spend) rolls back only the lock, never the credit —
 -- the money stays in the wallet as the payer's funds, and the refusal is recorded on the row.
+--
+-- A settlement is acknowledged only once its ledger row exists (Decision #200). The credit commits or
+-- the whole call raises (the claim rolls back with it); a lock or order refused after the credit marks
+-- the payment `settled_unapplied` with its `unapplied_reason` and tells the payer the money is in the
+-- wallet. A success that cannot be credited yet — no payment bound to the intent (an off-session
+-- deposit's success can beat bind_scheduled_payment), or an amount / currency that does not match —
+-- releases its claim instead of completing it, so Stripe's retry is processed rather than replayed; a
+-- mismatch is also written to ops.log_entries. Every acknowledged outcome carries `transaction_id`.
 CREATE OR REPLACE FUNCTION finance.settle_card_payment(
     p_event_id text,
     p_provider_ref text,
@@ -553,9 +634,23 @@ DECLARE
     v_order jsonb;
     v_order_id uuid;
     v_order_error text;
+    v_unapplied text;
 BEGIN
     IF NOT finance.fn_claim_stripe_event(p_event_id, 'payment_intent.succeeded') THEN
-        RETURN finance.fn_stripe_event_replay(p_event_id);
+        -- A completed claim. It is answered with the ledger row it produced; one without (an earlier
+        -- build acknowledged unmatched settlements) is released and processed now — the payment row's
+        -- status below, not the claim, is what stops a second credit.
+        SELECT p.transaction_id INTO v_tx
+          FROM finance.inbound_payments p
+         WHERE p.provider = 'stripe' AND p.provider_ref = p_provider_ref;
+        IF v_tx IS NOT NULL THEN
+            RETURN finance.fn_stripe_event_replay(p_event_id)
+                || pg_catalog.jsonb_build_object('transaction_id', v_tx);
+        END IF;
+        PERFORM finance.fn_release_stripe_event(p_event_id);
+        IF NOT finance.fn_claim_stripe_event(p_event_id, 'payment_intent.succeeded') THEN
+            RAISE EXCEPTION 'event: % could not be re-claimed', p_event_id USING ERRCODE = '40001';
+        END IF;
     END IF;
 
     SELECT * INTO v_payment
@@ -563,22 +658,54 @@ BEGIN
      WHERE provider = 'stripe' AND provider_ref = p_provider_ref
        FOR UPDATE;
     IF NOT FOUND THEN
-        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
-            'outcome', 'unmatched', 'detail', 'no inbound payment is bound to this PaymentIntent'));
+        PERFORM finance.fn_release_stripe_event(p_event_id);
+        RETURN pg_catalog.jsonb_build_object(
+            'outcome', 'unmatched', 'detail', 'no inbound payment is bound to this PaymentIntent yet',
+            'transaction_id', NULL);
     END IF;
-    IF v_payment.status = 'succeeded' THEN
+    IF v_payment.status IN ('succeeded', 'settled_unapplied') THEN
         RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
-            'outcome', 'replayed', 'detail', 'this payment was already settled', 'payment_id', v_payment.id));
+            'outcome', 'replayed', 'detail', 'this payment was already settled', 'payment_id', v_payment.id,
+            'status', v_payment.status, 'transaction_id', v_payment.transaction_id));
     END IF;
     -- A settlement in another currency, or of nothing, is a reconciliation case, not a credit: the
     -- ledger records money in the currency it arrived in, and this row does not describe that money.
     IF v_currency <> v_payment.currency OR p_amount_received IS NULL OR p_amount_received <= 0 THEN
-        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+        PERFORM finance.fn_release_stripe_event(p_event_id);
+        INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+        VALUES (
+            'stripe:' || p_event_id,
+            'error',
+            pg_catalog.format('Card payment %s settled as %s %s but was started as %s %s; nothing was credited',
+                v_payment.id, COALESCE(p_amount_received::text, 'nothing'), v_currency,
+                v_payment.amount_cents, v_payment.currency),
+            pg_catalog.now(),
+            'server',
+            'finance.settle_card_payment',
+            pg_catalog.jsonb_build_object(
+                'event_id', p_event_id,
+                'payment_id', v_payment.id,
+                'provider_ref', p_provider_ref,
+                'amount_received_cents', p_amount_received,
+                'currency_received', v_currency,
+                'amount_cents', v_payment.amount_cents,
+                'currency', v_payment.currency
+            )
+        );
+        RAISE WARNING 'finance.settle_card_payment: payment % does not match event % — claim released', v_payment.id, p_event_id;
+        RETURN pg_catalog.jsonb_build_object(
             'outcome', 'unmatched', 'detail', 'settled amount or currency does not match the payment',
-            'payment_id', v_payment.id));
+            'payment_id', v_payment.id, 'transaction_id', NULL);
     END IF;
 
     SELECT * INTO v_wallet FROM finance.wallets WHERE id = v_payment.wallet_id FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'wallet: payment % names no wallet to credit', v_payment.id USING ERRCODE = 'PW404';
+    END IF;
+    IF finance.fn_ensure_wallet(v_wallet.owner_type, v_wallet.owner_id, v_payment.currency) IS DISTINCT FROM v_wallet.id THEN
+        RAISE EXCEPTION 'wallet: payment % is in % but its wallet is not', v_payment.id, v_payment.currency
+            USING ERRCODE = 'PW404';
+    END IF;
     PERFORM finance.fn_wallet_credit(
         v_wallet.owner_id, v_wallet.owner_type, v_wallet.currency, p_amount_received,
         'topup', 'inbound_payments', v_payment.id
@@ -591,6 +718,9 @@ BEGIN
        AND t.direction = 'credit'
      ORDER BY t.created_at DESC
      LIMIT 1;
+    IF v_tx IS NULL THEN
+        RAISE EXCEPTION 'ledger: the credit for payment % left no ledger row', v_payment.id USING ERRCODE = 'PL404';
+    END IF;
 
     UPDATE finance.inbound_payments
        SET status = 'succeeded',
@@ -616,7 +746,10 @@ BEGIN
             v_prev_sub := pg_catalog.current_setting('request.jwt.claim.sub', true);
             BEGIN
                 PERFORM pg_catalog.set_config('request.jwt.claim.sub', v_payment.created_by::text, true);
-                IF v_payment.ticket_id IS NOT NULL THEN
+                IF v_payment.revision_id IS NOT NULL THEN
+                    -- One paid revision round (Decision #199): its escrow is held and the round opens.
+                    v_escrows := ARRAY[(projects.fund_paid_revision(v_payment.revision_id) ->> 'escrow_id')::uuid];
+                ELSIF v_payment.ticket_id IS NOT NULL THEN
                     -- One ticket (Decision #166): only its escrow is held; the stage's status is untouched.
                     v_escrows := ARRAY[(projects.fund_ticket(v_project, v_payment.ticket_id) ->> 'escrow_id')::uuid];
                 ELSE
@@ -664,6 +797,9 @@ BEGIN
                 v_payment.checkout ->> 'order_key'
             );
             v_order_id := (v_order ->> 'order_id')::uuid;
+            IF v_order_id IS NULL THEN
+                v_order_error := 'The order could not be confirmed.';
+            END IF;
         EXCEPTION WHEN OTHERS THEN
             v_order_error := pg_catalog.left(SQLERRM, 400);
         END;
@@ -676,32 +812,47 @@ BEGIN
         RETURNING * INTO v_payment;
     END IF;
 
+    v_unapplied := CASE
+        WHEN v_lock_status = 'failed' THEN 'The escrow could not be held: ' || COALESCE(v_lock_error, 'unknown reason')
+        WHEN v_order_error IS NOT NULL THEN 'The order could not be placed: ' || v_order_error
+    END;
+    IF v_unapplied IS NOT NULL THEN
+        UPDATE finance.inbound_payments
+           SET status = 'settled_unapplied',
+               unapplied_reason = pg_catalog.left(v_unapplied, 400),
+               updated_at = pg_catalog.now()
+         WHERE id = v_payment.id
+        RETURNING * INTO v_payment;
+    END IF;
+
     PERFORM comms.fn_notify(
         v_payment.created_by,
         CASE WHEN v_lock_status = 'locked' THEN 'escrow.funded' ELSE 'wallet.topup_succeeded' END,
         CASE
             WHEN v_lock_status = 'locked' THEN 'Stage funded'
-            WHEN v_lock_status = 'failed' THEN 'Payment received — stage not funded'
+            WHEN v_unapplied IS NOT NULL THEN 'Payment received — the funds are in your wallet'
             WHEN v_order_id IS NOT NULL THEN 'Payment received — order placed'
-            WHEN v_order_error IS NOT NULL THEN 'Payment received — order not placed'
             ELSE 'Top-up received'
         END,
         CASE
             WHEN v_lock_status = 'locked' THEN 'Your card payment arrived and the stage''s escrow is secured.'
-            WHEN v_lock_status = 'failed' THEN 'Your card payment is in the wallet, but the stage could not be funded: ' || COALESCE(v_lock_error, 'unknown reason')
+            WHEN v_lock_status = 'failed' THEN 'Your card payment arrived and the funds are in your wallet, but the escrow could not be held: ' || COALESCE(v_lock_error, 'unknown reason')
+            WHEN v_order_error IS NOT NULL THEN 'Your payment arrived and the funds are in your wallet, but the order could not be placed: ' || v_order_error
             WHEN v_order_id IS NOT NULL THEN 'Your payment arrived and your order has been placed.'
-            WHEN v_order_error IS NOT NULL THEN 'Your payment is in your wallet, but the order could not be placed: ' || v_order_error
             ELSE 'Your card payment has been added to your wallet.'
         END,
         'inbound_payments',
         v_payment.id,
-        pg_catalog.jsonb_build_object('amount_cents', p_amount_received, 'currency', v_payment.currency)
+        pg_catalog.jsonb_build_object('amount_cents', p_amount_received, 'currency', v_payment.currency,
+            'status', v_payment.status)
     );
 
     RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
         'outcome', 'applied',
         'payment_id', v_payment.id,
         'transaction_id', v_tx,
+        'status', v_payment.status,
+        'unapplied_reason', v_payment.unapplied_reason,
         'lock_status', v_payment.lock_status,
         'locked_escrow_ids', pg_catalog.to_jsonb(v_payment.locked_escrow_ids),
         'order_id', v_payment.order_id,
@@ -745,7 +896,7 @@ BEGIN
         RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
             'outcome', 'unmatched', 'detail', 'no inbound payment is bound to this PaymentIntent'));
     END IF;
-    IF v_payment.status = 'succeeded' THEN
+    IF v_payment.status IN ('succeeded', 'settled_unapplied') THEN
         RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
             'outcome', 'ignored', 'detail', 'the payment had already settled', 'payment_id', v_payment.id));
     END IF;
@@ -1109,6 +1260,8 @@ DECLARE
     v_owner record;
     v_account finance.payout_accounts;
 BEGIN
+    -- A Stripe connected account needs an adult account holder (Decision #208).
+    PERFORM org.fn_assert_adult(auth.uid());
     IF p_account_id IS NULL OR p_account_id !~ '^acct_[A-Za-z0-9]{1,250}$' THEN
         RAISE EXCEPTION 'accountId: expected a Stripe connected-account id' USING ERRCODE = '22023';
     END IF;
@@ -1258,6 +1411,20 @@ BEGIN
     IF v_payout.provider_ref IS NOT NULL AND v_payout.provider_ref <> p_transfer_ref THEN
         RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
             'outcome', 'unmatched', 'detail', 'the payout is already bound to a different transfer',
+            'transfer', p_transfer_ref, 'payout_id', p_payout_id));
+    END IF;
+    -- A transfer for a payout already returned to its wallet means the money left twice (Decision #202):
+    -- nothing is bound, and ops is told to reverse the transfer.
+    IF v_payout.status IN ('failed', 'cancelled') THEN
+        INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+        VALUES (
+            'payout:' || v_payout.id::text, 'error',
+            pg_catalog.format('Transfer %s exists for payout %s, which was already returned to its wallet', p_transfer_ref, v_payout.id),
+            pg_catalog.now(), 'server', 'finance.payouts',
+            pg_catalog.jsonb_build_object('payout_id', v_payout.id, 'transfer', p_transfer_ref, 'amount_cents', p_amount)
+        );
+        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+            'outcome', 'unmatched', 'detail', 'the payout was already returned to its wallet',
             'transfer', p_transfer_ref, 'payout_id', p_payout_id));
     END IF;
 

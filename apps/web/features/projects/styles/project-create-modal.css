@@ -188,6 +188,19 @@
 .pjc__hint--error {
 	color: var(--danger);
 }
+
+.pjc__row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: var(--space-3);
+}
+
+@media (max-width: 420px) {
+	.pjc__row {
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-5);
+	}
+}
 /* #endregion */
 
 /* #region Type cards */

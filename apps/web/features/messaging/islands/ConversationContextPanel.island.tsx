@@ -51,6 +51,7 @@ export default function ConversationContextPanel(
 	const folder = useSignal<InboxFolder>(props.folder);
 	const busy = useSignal<ContextActionKind | null>(null);
 	const error = useSignal<string | null>(null);
+	const errorDetails = useSignal<unknown>(null);
 	const loadFailed = useSignal(props.initial === null);
 	const inflow = useMediaQuery(CONTEXT_PANEL_INFLOW_QUERY);
 
@@ -74,12 +75,14 @@ export default function ConversationContextPanel(
 	async function run(action: ContextAction): Promise<void> {
 		busy.value = action.kind;
 		error.value = null;
+		errorDetails.value = null;
 		try {
 			if (action.kind === "accept_invitation" || action.kind === "decline_invitation") {
 				const accept = action.kind === "accept_invitation";
 				const res = await RequestService.respond(action.engagementIds, accept);
 				if (!res.ok) {
 					error.value = res.message ?? "That answer didn't go through. Try again.";
+					errorDetails.value = res.details ?? null;
 					return;
 				}
 				error.value = await fileTo(accept ? "primary" : "archived");
@@ -90,6 +93,7 @@ export default function ConversationContextPanel(
 				const res = await RequestService.acceptApplication(action.engagementIds[0]);
 				if (!res.ok || !res.data) {
 					error.value = res.message ?? "The seat couldn't be confirmed. Try again.";
+					errorDetails.value = res.details ?? null;
 					return;
 				}
 				await fileTo("primary");
@@ -107,6 +111,7 @@ export default function ConversationContextPanel(
 					context={context.value}
 					busy={busy.value}
 					error={error.value}
+					errorDetails={errorDetails.value}
 					onAction={(a) => void run(a)}
 				/>
 			)

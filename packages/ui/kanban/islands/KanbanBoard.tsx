@@ -45,6 +45,12 @@ export interface KanbanBoardProps<T, C = unknown> {
 	 * `renderItem` content must stay non-interactive and route its "open" through this instead.
 	 */
 	onItemActivate?: (item: T) => void;
+	/**
+	 * Real controls for one item (e.g. a Claim button), rendered BESIDE the card rather than inside
+	 * it, so each is its own tab stop and a press neither starts a drag nor activates the card.
+	 * Return `null` for an item with none.
+	 */
+	renderItemActions?: (item: T) => ComponentChildren;
 	onItemMove?: (move: KanbanItemMove) => void;
 	onColumnMove?: (move: KanbanColumnMove) => void;
 	/** Enable column drag-reorder board-wide (per-column still gated by `column.reorderable`). */
@@ -294,6 +300,7 @@ function KanbanBoardInner<T, C>(props: KanbanBoardProps<T, C>): JSX.Element {
 			draggable: props.itemDraggable ? props.itemDraggable(it) : true,
 			render: (ctx) => props.renderItem(it, ctx),
 			onActivate: props.onItemActivate ? () => props.onItemActivate?.(it) : undefined,
+			actions: props.renderItemActions?.(it) ?? null,
 		}));
 
 	const colIndicator = (key: string) => (

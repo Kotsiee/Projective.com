@@ -20,3 +20,17 @@ RLS enabled in `00002001`; policies in `00002019_policies_security_ops.sql`; gra
 
 No UPDATE or DELETE policy. A writer can attribute a row to themselves or to nobody, never to
 someone else, and only an admin can read diagnostics back.
+
+## `ops.scheduled_jobs` · `ops.http_job_dispatches` (Decision #203)
+
+RLS enabled in `00002001`; policies in `00002019`; grants in `00002520`: `SELECT` to `authenticated` on both,
+`SELECT, UPDATE` on `scheduled_jobs` and `SELECT` on `http_job_dispatches` to `service_role`.
+
+| Policy                          | Table                 | Command | Role            | Rule                  |
+| :------------------------------ | :-------------------- | :------ | :-------------- | :-------------------- |
+| Admins read scheduled jobs      | `scheduled_jobs`      | SELECT  | `authenticated` | `security.is_admin()` |
+| Admins read http job dispatches | `http_job_dispatches` | SELECT  | `authenticated` | `security.is_admin()` |
+
+No client write policy. A cadence changes through the service role or SQL (the registry trigger
+reschedules pg_cron in the same transaction); new jobs arrive with a migration. Dispatch rows are
+written only by the definer dispatcher.

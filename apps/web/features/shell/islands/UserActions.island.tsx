@@ -235,6 +235,8 @@ export default function UserActions(
 	const roleKey = devOverride ? fallbackBadge.role : (acct?.role ?? fallbackBadge.role);
 	// A client context gets the "Become a Freelancer" action.
 	const isClient = roleKey === "client";
+	// A restricted (13–17) account sees no money, selling or workspace surface (Decision #192).
+	const restricted = effCtx.restricted;
 
 	// The PERSON's handle. In an entity context `UserContext.handle` is the entity's slug, so only the
 	// setup read (or a personal context) can name the person.
@@ -462,7 +464,7 @@ export default function UserActions(
 				</span>
 				<span class="shell-menu__label">View profile</span>
 			</a>
-			{isClient
+			{isClient && !restricted
 				? (
 					<a
 						class="shell-menu__item shell-menu__item--accent"
@@ -496,12 +498,14 @@ export default function UserActions(
 				</span>
 				<span class="shell-menu__label">Saved</span>
 			</a>
-			<a class="shell-menu__item" href="/wallet" onClick={onNavigate}>
-				<span class="shell-menu__icon">
-					<NavIcon name="wallet" />
-				</span>
-				<span class="shell-menu__label">Wallet &amp; payouts</span>
-			</a>
+			{restricted ? null : (
+				<a class="shell-menu__item" href="/wallet" onClick={onNavigate}>
+					<span class="shell-menu__icon">
+						<NavIcon name="wallet" />
+					</span>
+					<span class="shell-menu__label">Wallet &amp; payouts</span>
+				</a>
+			)}
 			<a class="shell-menu__item" href={links.settings} onClick={onNavigate}>
 				<span class="shell-menu__icon">
 					<NavIcon name="settings" />
@@ -623,9 +627,9 @@ export default function UserActions(
 		const orgs = organisations.value;
 		// Teams are the freelancer side of the platform (PRODUCT_SPEC §Freelancer-Only Space), gated
 		// exactly as the sidebar gates its Teams entry.
-		const showTeams = effCtx.isFreelancer || effCtx.contextType === "team";
+		const showTeams = !restricted && (effCtx.isFreelancer || effCtx.contextType === "team");
 		const canCreateTeam = showTeams && effCtx.contextType !== "organisation";
-		const canCreateBusiness = effCtx.isFreelancer;
+		const canCreateBusiness = !restricted && effCtx.isFreelancer;
 
 		return (
 			<div class="shell-subview">
@@ -661,7 +665,7 @@ export default function UserActions(
 							workspaceRows("team"),
 						)
 						: null}
-					{contextSection(
+					{restricted ? null : contextSection(
 						"Businesses",
 						{ href: "/businesses", label: "Manage" },
 						onNavigate,
@@ -803,21 +807,23 @@ export default function UserActions(
 			  for a figure this control cannot keep live between reads.
 			*/
 			}
-			<button
-				type="button"
-				class={`shell-util__btn shell-util__slot--desktop${
-					onBasketFlow ? " shell-util__btn--active" : ""
-				}`}
-				aria-label={basketLines > 0
-					? `Basket — ${basketLines} ${basketLines === 1 ? "item" : "items"}`
-					: "Basket"}
-				aria-current={onBasketFlow ? "page" : undefined}
-				aria-haspopup="dialog"
-				onClick={() => (basketOpen.value = true)}
-			>
-				<NavIcon name="basket" />
-				{basketLines > 0 ? <span class="shell-util__dot" aria-hidden="true" /> : null}
-			</button>
+			{restricted ? null : (
+				<button
+					type="button"
+					class={`shell-util__btn shell-util__slot--desktop${
+						onBasketFlow ? " shell-util__btn--active" : ""
+					}`}
+					aria-label={basketLines > 0
+						? `Basket — ${basketLines} ${basketLines === 1 ? "item" : "items"}`
+						: "Basket"}
+					aria-current={onBasketFlow ? "page" : undefined}
+					aria-haspopup="dialog"
+					onClick={() => (basketOpen.value = true)}
+				>
+					<NavIcon name="basket" />
+					{basketLines > 0 ? <span class="shell-util__dot" aria-hidden="true" /> : null}
+				</button>
+			)}
 
 			{/* Profile (desktop) — the ringed avatar opening the account Popover */}
 			<button

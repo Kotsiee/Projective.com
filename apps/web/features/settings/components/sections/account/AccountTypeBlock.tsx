@@ -3,6 +3,7 @@ import { type Signal, useSignal } from "@preact/signals";
 import { Button } from "@projective/ui/fields";
 import { InlineNotice } from "@projective/ui/feedback";
 import type { AccountLifecycle } from "@projective/types/org";
+import { RESTRICTED_REFUSAL } from "@projective/types/auth";
 import {
 	IDLE,
 	type SaveState,
@@ -16,6 +17,8 @@ import { longDate } from "../../../core/settings-dates.ts";
 
 /** Props for {@link AccountTypeBlock}. */
 export interface AccountTypeBlockProps {
+	/** A restricted (13–17) account: the block names the limit instead of offering an upgrade. */
+	restricted: boolean;
 	lifecycle: Signal<AccountLifecycle | null>;
 	locale: string;
 }
@@ -42,14 +45,23 @@ export function AccountTypeBlock(props: AccountTypeBlockProps): JSX.Element {
 			return;
 		}
 		props.lifecycle.value = res.data.lifecycle;
-		await SettingsService.renewSession();
-		globalThis.location.reload();
+		settle("Your freelancer profile is restored.", res.data.claimsStale === true);
 	}
 
-	async function scheduled(next: AccountLifecycle): Promise<void> {
+	function scheduled(next: AccountLifecycle, claimsStale: boolean): void {
 		props.lifecycle.value = next;
-		status.value = { tone: "busy", text: "Switching you to client only…" };
-		await SettingsService.renewSession();
+		settle("You're switched to client only.", claimsStale);
+	}
+
+	function settle(done: string, claimsStale: boolean): void {
+		if (claimsStale) {
+			status.value = {
+				tone: "saved",
+				text: `${done} Menus may show your old account type for up to an hour.`,
+			};
+			return;
+		}
+		status.value = { tone: "busy", text: "Updating your menus…" };
 		globalThis.location.reload();
 	}
 
@@ -74,6 +86,8 @@ export function AccountTypeBlock(props: AccountTypeBlockProps): JSX.Element {
 				}
 			/>
 		);
+	} else if (props.restricted) {
+		body = <SettingsRow label="Limited account" description={RESTRICTED_REFUSAL} control={null} />;
 	} else if (life.isFreelancer) {
 		body = (
 			<SettingsRow

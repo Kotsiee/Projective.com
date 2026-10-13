@@ -69,3 +69,13 @@ CREATE OR REPLACE TRIGGER trg_stamp_vote_deadline
     WHEN (NEW.status = 'voting' AND OLD.status IS DISTINCT FROM 'voting')
     EXECUTE FUNCTION scheduling.fn_stamp_vote_deadline ();
 
+-- #region Scheduling and under-18 accounts (Decision #208)
+CREATE OR REPLACE TRIGGER trg_schedule_age_gate
+    BEFORE INSERT OR UPDATE OF is_published, owner_id ON scheduling.schedules
+    FOR EACH ROW EXECUTE FUNCTION scheduling.trg_schedule_age_gate ();
+
+CREATE OR REPLACE TRIGGER trg_call_settings_age_gate
+    BEFORE INSERT OR UPDATE OF accepts_calls ON scheduling.call_settings
+    FOR EACH ROW EXECUTE FUNCTION scheduling.trg_schedule_age_gate ();
+-- #endregion
+

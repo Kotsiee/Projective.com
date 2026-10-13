@@ -5,6 +5,7 @@ import {
 	cooldownActive,
 	cooldownDateLabel,
 	type HireBrief,
+	hireForCreatedProject,
 	type HireInvitation,
 	hireInvitationRefusal,
 	hireInvitationTotalCents,
@@ -145,6 +146,32 @@ Deno.test("buildHireBrief: a single-stage one-off exposes its root stage and a t
 	assertEquals(brief.pricingModel, "task");
 	assertEquals(brief.stages.length, 1);
 	assertEquals(brief.taskPriceCents, 90_000);
+});
+
+Deno.test("hireForCreatedProject: a fresh draft's every stage at configured terms, and the rule accepts it", () => {
+	const brief = buildHireBrief(
+		setupFor("pipeline", "standard", [priced("stg-root", 0, null)], "draft"),
+		roster,
+	);
+	const input = hireForCreatedProject(brief, "nova");
+	assertEquals(input.projectId, brief.projectId);
+	assertEquals(input.stages, [{ stageId: "stg-root", priceCents: null }]);
+	assertEquals(input.taskPriceCents, null);
+	assertEquals(input.message, "");
+	assertEquals(input.answers, {});
+	assertEquals(hireInvitationRefusal(brief, input), null);
+	assertEquals(resolveHireOffer(brief, input).placeholder, true);
+});
+
+Deno.test("hireForCreatedProject: a task model sends the whole-project offer with no stages", () => {
+	const brief = buildHireBrief(
+		setupFor("one_off", "single_task", [priced("stg-root", 0, null)], "draft"),
+		roster,
+	);
+	assertEquals(brief.pricingModel, "task");
+	const input = hireForCreatedProject(brief, "nova");
+	assertEquals(input.stages, []);
+	assertEquals(hireInvitationRefusal(brief, input), null);
 });
 
 Deno.test("buildHireBrief: a Direct Deliverable is priced at the project level", () => {

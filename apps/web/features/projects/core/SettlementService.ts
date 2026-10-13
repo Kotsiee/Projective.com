@@ -1,5 +1,6 @@
-import { postProjects } from "./api.ts";
+import { getProjects, postProjects } from "./api.ts";
 import type {
+	FairExitPreview,
 	FairExitTier,
 	PaidRevisionRaised,
 	StageApproved,
@@ -9,6 +10,10 @@ import type {
 	SubmissionUnit,
 } from "../types/projects-types.ts";
 import type { ProjectsResult } from "../types/results.ts";
+import type { FundPaidRevision, PaidRevisionFunding } from "@projective/types/finance";
+
+/** The body of a direct paid revision payment; the address supplies the rest. */
+export type PaidRevisionFundingRequest = Omit<FundPaidRevision, "projectId" | "stageId" | "submissionId">;
 
 /**
  * SettlementService — the dumb client service for the three client decisions that move deliverables
@@ -61,6 +66,23 @@ export const SettlementService = {
 		);
 	},
 
+	/**
+	 * Pay for a raised round directly (Decision #199): from the wallet now, or by card — the answer's
+	 * handoff is confirmed by the Payment Element and the webhook holds the round's escrow.
+	 */
+	fundPaidRevision(
+		projectId: string,
+		stageId: string,
+		submissionId: string,
+		body: PaidRevisionFundingRequest,
+	): Promise<ProjectsResult<PaidRevisionFunding>> {
+		const submission = encodeURIComponent(submissionId);
+		return postProjects<PaidRevisionFunding>(
+			`${stageBase(projectId, stageId)}/submissions/${submission}/paid-revision/fund`,
+			body,
+		);
+	},
+
 	/** Approve a stage and release its held escrow. */
 	approveStage(projectId: string, stageId: string): Promise<ProjectsResult<StageApproved>> {
 		return postProjects<StageApproved>(`${stageBase(projectId, stageId)}/approve`, {});
@@ -73,5 +95,10 @@ export const SettlementService = {
 		tier: FairExitTier,
 	): Promise<ProjectsResult<StageExited>> {
 		return postProjects<StageExited>(`${stageBase(projectId, stageId)}/cancel`, { tier });
+	},
+
+	/** What ending a stage under Fair Exit would settle at each tier — figures formatted server-side. */
+	previewFairExit(projectId: string, stageId: string): Promise<ProjectsResult<FairExitPreview>> {
+		return getProjects<FairExitPreview>(`${stageBase(projectId, stageId)}/fair-exit`);
 	},
 };

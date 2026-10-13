@@ -4,7 +4,8 @@
 --
 --   1. Dispute resolution   — `charge.dispute.closed`: won unfreezes, lost claws back.
 --   2. Withdrawals          — a payout debits the wallet, then leaves as a Stripe Transfer to the
---                             owner's Connect account (Separate Charges & Transfers).
+--                             owner's Connect account (Separate Charges & Transfers); a reversal,
+--                             the bank payout's outcome and the stale-pending sweep (Decision #202).
 --   3. Saved cards          — the Stripe Customer an owner's cards attach to, and the processor door
 --                             that records a card a SetupIntent confirmed.
 --   4. Recurring deposits   — a standing top-up rule and the scheduler door that charges it off-session.
@@ -173,6 +174,40 @@ $$;
 -- #endregion
 
 -- #region 2. Withdrawals
+-- The smallest withdrawal in a currency, in its minor units (`security.platform_params.min_withdrawal_minor`,
+-- an object keyed by currency with a `default`; Decision #202). 0 when unset. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_min_withdrawal_minor(p_currency text)
+RETURNS bigint
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT GREATEST(COALESCE(
+        (SELECT (pp.value ->> pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, ''))))::bigint
+           FROM security.platform_params pp WHERE pp.key = 'min_withdrawal_minor'),
+        (SELECT (pp.value ->> 'default')::bigint
+           FROM security.platform_params pp WHERE pp.key = 'min_withdrawal_minor'),
+        0
+    ), 0);
+$$;
+
+-- A minor-unit amount in major units for a refusal sentence ("10.00", or "1500" for a zero-decimal
+-- currency — Stripe's list). Internal.
+CREATE OR REPLACE FUNCTION finance.fn_minor_units_text(p_amount bigint, p_currency text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT CASE
+        WHEN pg_catalog.upper(p_currency) IN (
+            'BIF', 'CLP', 'DJF', 'GNF', 'JPY', 'KMF', 'KRW', 'MGA', 'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF'
+        ) THEN p_amount::text
+        ELSE pg_catalog.to_char(p_amount / 100.0, 'FM999999999990.00')
+    END;
+$$;
+
 -- The destination a wallet pays out to: its owner's VERIFIED Stripe Connect account (a person's own
 -- account for a person wallet, whichever person type they hold). NULL when there is none. Internal.
 CREATE OR REPLACE FUNCTION finance.fn_payout_destination(p_wallet finance.wallets)
@@ -201,7 +236,13 @@ $$;
 -- fat service then creates the Stripe Transfer and closes the payout through complete_payout, or
 -- returns the money through fail_payout when Stripe definitively refused.
 --
--- Idempotent on the caller's attempt key (scope `payout:<uid>`), exactly like begin_card_payment.
+-- The amount must reach the currency's minimum (finance.fn_min_withdrawal_minor). A named destination
+-- (`p_destination_method_id`) must be one of the wallet owner's ACTIVE payout methods; it is recorded
+-- on the payout and stamped on the transfer. The transfer itself always goes to the owner's verified
+-- Connect account, recorded as `destination_account` (Decision #202).
+--
+-- Idempotent on the caller's attempt key (scope `payout:<uid>`), exactly like begin_card_payment; the
+-- key binds the destination too.
 -- An Instant payout is recorded (`instant`) but carries no fee here: the Instant Payout fee magnitude
 -- is still undecided platform-wide (Decision #55(c)), and a fee nobody set must not be charged.
 CREATE OR REPLACE FUNCTION finance.begin_payout(
@@ -209,7 +250,8 @@ CREATE OR REPLACE FUNCTION finance.begin_payout(
     p_amount bigint,
     p_currency text,
     p_instant boolean,
-    p_idempotency_key text
+    p_idempotency_key text,
+    p_destination_method_id uuid DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -225,6 +267,8 @@ DECLARE
     v_prior finance.idempotency_keys;
     v_wallet finance.wallets;
     v_destination text;
+    v_method finance.payment_methods;
+    v_min bigint;
     v_payout finance.payouts;
     v_tx uuid;
 BEGIN
@@ -243,9 +287,16 @@ BEGIN
     IF v_currency !~ '^[A-Z]{3}$' THEN
         RAISE EXCEPTION 'currency: expected a three-letter currency code' USING ERRCODE = '22023';
     END IF;
+    v_min := finance.fn_min_withdrawal_minor(v_currency);
+    IF p_amount < v_min THEN
+        RAISE EXCEPTION 'amountMinor: the smallest withdrawal is % %', finance.fn_minor_units_text(v_min, v_currency), v_currency
+            USING ERRCODE = '22023';
+    END IF;
 
     v_scope := 'payout:' || v_uid::text;
-    v_hash := pg_catalog.md5(pg_catalog.concat_ws('|', p_wallet_id, p_amount, v_currency, COALESCE(p_instant, false)));
+    v_hash := pg_catalog.md5(pg_catalog.concat_ws(
+        '|', p_wallet_id, p_amount, v_currency, COALESCE(p_instant, false), p_destination_method_id
+    ));
     SELECT * INTO v_prior FROM finance.idempotency_keys WHERE key = p_idempotency_key;
     IF FOUND THEN
         IF v_prior.scope <> v_scope OR v_prior.request_hash <> v_hash THEN
@@ -278,6 +329,14 @@ BEGIN
         RAISE EXCEPTION 'verification: verify your identity and set up payouts before withdrawing'
             USING ERRCODE = 'PK403';
     END IF;
+    -- Earnings that reached a person's `user` wallet (a team share, a finder's fee) or a team vault
+    -- leave only with a verified withdrawer (Decision #196); a buyer's refund balance never needs ID.
+    IF v_wallet.owner_type IN ('user', 'team')
+       AND finance.fn_wallet_holds_earnings(v_wallet.id)
+       AND NOT finance.fn_freelancer_payout_ready(v_uid) THEN
+        RAISE EXCEPTION 'verification: verify your identity and set up payouts before withdrawing money you earned'
+            USING ERRCODE = 'PK403';
+    END IF;
     IF v_wallet.owner_type = 'business' AND NOT finance.fn_business_kyb_verified(v_wallet.owner_id) THEN
         RAISE EXCEPTION 'verification: this business must be verified (KYB) before its vault can pay out'
             USING ERRCODE = 'PK403';
@@ -287,12 +346,34 @@ BEGIN
         RAISE EXCEPTION 'destinationId: set up a verified payout account before withdrawing'
             USING ERRCODE = 'PA403';
     END IF;
+    -- A named destination: the wallet owner's own (by the person-type rule fn_payout_destination uses),
+    -- and one that can receive payouts. Somebody else's method reads exactly like one that does not exist.
+    IF p_destination_method_id IS NOT NULL THEN
+        SELECT * INTO v_method FROM finance.payment_methods m
+         WHERE m.id = p_destination_method_id
+           AND m.owner_id = v_wallet.owner_id
+           AND (
+                m.owner_type = v_wallet.owner_type
+                OR (v_wallet.owner_type IN ('user', 'freelancer') AND m.owner_type IN ('user', 'freelancer'))
+           );
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'destinationId: choose one of this wallet''s payout accounts' USING ERRCODE = '42501';
+        END IF;
+        IF v_method.method_role NOT IN ('payout', 'both') OR v_method.status <> 'active' THEN
+            RAISE EXCEPTION 'destinationId: that payout account can''t receive payouts — choose another'
+                USING ERRCODE = 'PA403';
+        END IF;
+    END IF;
     IF v_wallet.balance_cents < p_amount THEN
         RAISE EXCEPTION 'amountMinor: that is more than this wallet holds' USING ERRCODE = 'PF402';
     END IF;
 
-    INSERT INTO finance.payouts (wallet_id, amount_cents, currency, status, instant, provider)
-    VALUES (v_wallet.id, p_amount, v_currency, 'pending', COALESCE(p_instant, false), 'stripe')
+    INSERT INTO finance.payouts (
+        wallet_id, destination_method_id, amount_cents, currency, status, instant, provider, destination_account
+    ) VALUES (
+        v_wallet.id, p_destination_method_id, p_amount, v_currency, 'pending', COALESCE(p_instant, false), 'stripe',
+        v_destination
+    )
     RETURNING * INTO v_payout;
 
     PERFORM finance.fn_wallet_debit(
@@ -364,9 +445,10 @@ BEGIN
 END;
 $$;
 
--- The processor definitively refused the transfer (processor door): return the debited money to the
--- wallet (reason `payout_reversal`) and record the reason. Only a still-pending payout can fail — a
--- paid one is reversed through the processor, never here. Idempotent.
+-- The processor definitively refused the transfer, or the stale-payout sweep found none to complete it
+-- with (processor door): return the debited money to the wallet (reason `payout_reversal`), record the
+-- reason and tell a person owner. Only a still-pending payout can fail — a paid one is reversed
+-- through the processor (record_transfer_reversed), never here. Idempotent.
 CREATE OR REPLACE FUNCTION finance.fail_payout(p_payout_id uuid, p_reason text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -400,7 +482,293 @@ BEGIN
            failure_reason = NULLIF(pg_catalog.left(pg_catalog.btrim(COALESCE(p_reason, '')), 400), '')
      WHERE id = v_payout.id
     RETURNING * INTO v_payout;
+    IF v_wallet.owner_type IN ('user', 'freelancer') THEN
+        PERFORM comms.fn_notify(
+            v_wallet.owner_id, 'payout.failed', 'Your withdrawal couldn''t be sent',
+            'Stripe couldn''t send this withdrawal. The money is back in your wallet.',
+            'payouts', v_payout.id,
+            pg_catalog.jsonb_build_object('amount_cents', v_payout.amount_cents, 'currency', v_payout.currency)
+        );
+    END IF;
     RETURN pg_catalog.to_jsonb(v_payout) || pg_catalog.jsonb_build_object('replayed', false);
+END;
+$$;
+
+-- `transfer.reversed` (processor door): the platform pulled some or all of a payout's transfer back
+-- from the connected account. The event carries the transfer's CUMULATIVE `amount_reversed`, so the
+-- door credits only what is newly reversed (reason `payout_reversal`) — a replay, a duplicate or an
+-- out-of-order lower total credits nothing. A full reversal makes the payout `reversed`; a partial one
+-- stays `paid` with `reversed_cents`. The transfer must agree with the payout it names (as in
+-- record_transfer_created); a reversal of a payout already returned by fail_payout is logged for ops
+-- and moves nothing. Idempotent on the event id and by value (Decision #202).
+CREATE OR REPLACE FUNCTION finance.record_transfer_reversed(
+    p_event_id text,
+    p_transfer_ref text,
+    p_destination text,
+    p_amount bigint,
+    p_amount_reversed bigint,
+    p_currency text,
+    p_payout_id uuid,
+    p_livemode boolean
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_payout finance.payouts;
+    v_wallet finance.wallets;
+    v_currency text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, '')));
+    v_total bigint;
+    v_delta bigint;
+    v_owner uuid;
+BEGIN
+    IF NOT finance.fn_claim_stripe_event(p_event_id, 'transfer.reversed') THEN
+        RETURN finance.fn_stripe_event_replay(p_event_id);
+    END IF;
+
+    SELECT * INTO v_payout FROM finance.payouts
+     WHERE id = COALESCE(
+        (SELECT p.id FROM finance.payouts p WHERE p.provider = 'stripe' AND p.provider_ref = p_transfer_ref),
+        p_payout_id
+     )
+       FOR UPDATE;
+    IF NOT FOUND THEN
+        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+            'outcome', 'unmatched', 'detail', 'the reversed transfer names no Projective payout',
+            'transfer', p_transfer_ref));
+    END IF;
+    IF v_payout.provider <> 'stripe'
+       OR v_payout.amount_cents <> p_amount
+       OR pg_catalog.upper(v_payout.currency) <> v_currency
+       OR p_amount_reversed IS NULL OR p_amount_reversed < 0
+       OR (v_payout.provider_ref IS NOT NULL AND v_payout.provider_ref <> p_transfer_ref)
+       OR NOT EXISTS (
+            SELECT 1
+              FROM finance.payout_accounts a
+              JOIN finance.wallets w ON w.id = v_payout.wallet_id
+             WHERE a.provider = 'stripe' AND a.account_id = p_destination
+               AND a.owner_id = w.owner_id
+               AND (
+                    a.owner_type = w.owner_type
+                    OR (w.owner_type IN ('user', 'freelancer') AND a.owner_type IN ('user', 'freelancer'))
+               )
+       ) THEN
+        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+            'outcome', 'unmatched', 'detail', 'the reversed transfer does not agree with the payout it names',
+            'transfer', p_transfer_ref, 'payout_id', v_payout.id));
+    END IF;
+    IF v_payout.status IN ('failed', 'cancelled') THEN
+        INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+        VALUES (
+            'payout:' || v_payout.id::text, 'error',
+            pg_catalog.format('Transfer %s was reversed for payout %s, which was already returned to its wallet', p_transfer_ref, v_payout.id),
+            pg_catalog.now(), 'server', 'finance.payouts',
+            pg_catalog.jsonb_build_object('payout_id', v_payout.id, 'transfer', p_transfer_ref, 'amount_reversed', p_amount_reversed)
+        );
+        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+            'outcome', 'unmatched', 'detail', 'the payout was already returned to its wallet',
+            'transfer', p_transfer_ref, 'payout_id', v_payout.id));
+    END IF;
+
+    v_total := LEAST(p_amount_reversed, v_payout.amount_cents);
+    v_delta := v_total - v_payout.reversed_cents;
+    IF v_delta <= 0 THEN
+        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+            'outcome', 'applied', 'detail', 'nothing more was reversed',
+            'transfer', p_transfer_ref, 'payout_id', v_payout.id));
+    END IF;
+
+    SELECT * INTO v_wallet FROM finance.wallets WHERE id = v_payout.wallet_id FOR UPDATE;
+    PERFORM finance.fn_wallet_credit(
+        v_wallet.owner_id, v_wallet.owner_type, v_wallet.currency, v_delta, 'payout_reversal', 'payouts', v_payout.id
+    );
+    UPDATE finance.payouts
+       SET provider_ref = p_transfer_ref,
+           reversed_cents = v_total,
+           status = CASE WHEN v_total = amount_cents THEN 'reversed'::finance.payout_status
+                         ELSE 'paid'::finance.payout_status END,
+           settled_at = COALESCE(settled_at, pg_catalog.now())
+     WHERE id = v_payout.id
+    RETURNING * INTO v_payout;
+
+    IF v_wallet.owner_type IN ('user', 'freelancer') THEN
+        v_owner := v_wallet.owner_id;
+        PERFORM comms.fn_notify(
+            v_owner, 'payout.reversed', 'Payout returned to your wallet',
+            CASE WHEN v_payout.status = 'reversed'
+                 THEN 'A withdrawal was reversed. The whole amount is back in your wallet.'
+                 ELSE 'Part of a withdrawal was reversed. That part is back in your wallet.' END,
+            'payouts', v_payout.id,
+            pg_catalog.jsonb_build_object('amount_cents', v_delta, 'currency', v_payout.currency)
+        );
+    END IF;
+    RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+        'outcome', 'applied', 'payout_id', v_payout.id, 'transfer', p_transfer_ref,
+        'credited_cents', v_delta, 'status', v_payout.status));
+END;
+$$;
+
+-- Connect `payout.paid` / `payout.failed` (processor door): the connected account's own payout to
+-- its bank. The fat service resolves which transfers that bank payout carried (its balance
+-- transactions) and any earlier failed bank payouts it re-pays; this door records the outcome on
+-- every Projective payout among them that belongs to the account's owner. Nothing moves in the
+-- ledger: the money left Projective with the transfer, and a failed bank payout returns to the
+-- connected account's Stripe balance until the owner fixes their bank details. A failure is final for
+-- its own bank payout (a late `paid` for it changes nothing); a later bank payout that re-pays it
+-- marks it paid. The account's person owner is told on a failure, and on a payout that landed.
+-- Idempotent on the event id (Decision #202).
+CREATE OR REPLACE FUNCTION finance.record_bank_payout(
+    p_event_id text,
+    p_event_type text,
+    p_account text,
+    p_bank_payout_ref text,
+    p_status text,
+    p_failure_code text,
+    p_transfer_refs text[],
+    p_prior_payout_refs text[],
+    p_livemode boolean
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_account finance.payout_accounts;
+    v_code text := NULLIF(pg_catalog.left(pg_catalog.btrim(COALESCE(p_failure_code, '')), 80), '');
+    v_ids uuid[];
+BEGIN
+    IF p_status IS NULL OR p_status NOT IN ('paid', 'failed') THEN
+        RAISE EXCEPTION 'status: expected paid or failed' USING ERRCODE = '22023';
+    END IF;
+    IF p_bank_payout_ref IS NULL OR p_bank_payout_ref !~ '^po_[A-Za-z0-9_]{1,250}$' THEN
+        RAISE EXCEPTION 'payout: expected a Stripe payout id' USING ERRCODE = '22023';
+    END IF;
+    IF NOT finance.fn_claim_stripe_event(p_event_id, p_event_type) THEN
+        RETURN finance.fn_stripe_event_replay(p_event_id);
+    END IF;
+
+    SELECT * INTO v_account FROM finance.payout_accounts
+     WHERE provider = 'stripe' AND account_id = p_account
+     ORDER BY updated_at DESC LIMIT 1;
+    IF NOT FOUND THEN
+        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+            'outcome', 'unmatched', 'detail', 'no payout account is recorded for that account',
+            'bank_payout', p_bank_payout_ref));
+    END IF;
+
+    WITH hit AS (
+        UPDATE finance.payouts p
+           SET bank_status = p_status,
+               bank_payout_ref = p_bank_payout_ref,
+               bank_failure_code = CASE WHEN p_status = 'failed' THEN v_code END,
+               bank_status_at = pg_catalog.now()
+          FROM finance.wallets w
+         WHERE w.id = p.wallet_id
+           AND p.provider = 'stripe'
+           AND p.status IN ('paid', 'reversed')
+           AND (
+                p.provider_ref = ANY (COALESCE(p_transfer_refs, '{}'::text[]))
+                OR p.bank_payout_ref = ANY (COALESCE(p_prior_payout_refs, '{}'::text[]))
+                OR p.bank_payout_ref = p_bank_payout_ref
+           )
+           AND w.owner_id = v_account.owner_id
+           AND (
+                w.owner_type = v_account.owner_type
+                OR (w.owner_type IN ('user', 'freelancer') AND v_account.owner_type IN ('user', 'freelancer'))
+           )
+           -- A failure is final for its own bank payout, and a failure of an earlier bank payout never
+           -- undoes a later one that paid.
+           AND NOT (p_status = 'paid' AND p.bank_status = 'failed' AND p.bank_payout_ref = p_bank_payout_ref)
+           AND NOT (p_status = 'failed' AND p.bank_status = 'paid' AND p.bank_payout_ref <> p_bank_payout_ref)
+        RETURNING p.id
+    )
+    SELECT pg_catalog.array_agg(hit.id) INTO v_ids FROM hit;
+
+    IF v_account.owner_type IN ('user', 'freelancer') THEN
+        IF p_status = 'failed' THEN
+            PERFORM comms.fn_notify(
+                v_account.owner_id, 'payout.failed', 'Your bank couldn''t accept a payout',
+                'Stripe couldn''t pay your bank account. Update your payout details — the money waits in your payout account until then.',
+                'payouts', v_ids[1],
+                pg_catalog.jsonb_build_object('failure_code', v_code, 'payouts', COALESCE(pg_catalog.cardinality(v_ids), 0))
+            );
+        ELSIF v_ids IS NOT NULL THEN
+            PERFORM comms.fn_notify(
+                v_account.owner_id, 'payout.paid', 'Payout arrived at your bank',
+                'Your withdrawal has reached your bank account.',
+                'payouts', v_ids[1],
+                pg_catalog.jsonb_build_object('payouts', pg_catalog.cardinality(v_ids))
+            );
+        END IF;
+    END IF;
+
+    IF v_ids IS NULL AND p_status = 'paid' THEN
+        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+            'outcome', 'unmatched', 'detail', 'the bank payout carried no Projective payout',
+            'bank_payout', p_bank_payout_ref));
+    END IF;
+    RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+        'outcome', 'applied', 'bank_payout', p_bank_payout_ref, 'status', p_status,
+        'payouts', COALESCE(pg_catalog.to_jsonb(v_ids), '[]'::jsonb)));
+END;
+$$;
+
+-- Claim the payouts stuck in `pending` (scheduler door): older than `payout_stale_minutes` and not
+-- claimed within that window, oldest first, at most `p_limit` (capped at 200). Each claim takes a
+-- lease (`swept_at`) and counts the attempt, under SKIP LOCKED, so two sweeps never work one payout.
+-- The fat service then finds the transfer at Stripe and completes or fails each one (Decision #202).
+-- Returns the claimed rows with the connected account each was sent to. Service role only.
+CREATE OR REPLACE FUNCTION finance.fn_claim_stale_payouts(p_limit integer DEFAULT 25)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_minutes integer;
+    v_cutoff timestamptz;
+    v_rows jsonb;
+BEGIN
+    SELECT (pp.value #>> '{}')::integer INTO v_minutes
+      FROM security.platform_params pp WHERE pp.key = 'payout_stale_minutes';
+    v_cutoff := pg_catalog.now() - pg_catalog.make_interval(mins => GREATEST(COALESCE(v_minutes, 15), 1));
+
+    WITH due AS (
+        SELECT p.id
+          FROM finance.payouts p
+         WHERE p.status = 'pending' AND p.provider = 'stripe'
+           AND p.initiated_at < v_cutoff
+           AND (p.swept_at IS NULL OR p.swept_at < v_cutoff)
+         ORDER BY p.initiated_at
+         LIMIT GREATEST(LEAST(COALESCE(p_limit, 25), 200), 1)
+           FOR UPDATE SKIP LOCKED
+    ), claimed AS (
+        UPDATE finance.payouts p
+           SET swept_at = pg_catalog.now(), sweep_attempts = p.sweep_attempts + 1
+          FROM due
+         WHERE p.id = due.id
+        RETURNING p.*
+    )
+    SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+               'id', c.id,
+               'wallet_id', c.wallet_id,
+               'amount_cents', c.amount_cents,
+               'currency', c.currency,
+               'destination_account', COALESCE(c.destination_account, finance.fn_payout_destination(w)),
+               'destination_method_id', c.destination_method_id,
+               'initiated_at', c.initiated_at,
+               'sweep_attempts', c.sweep_attempts
+           ) ORDER BY c.initiated_at), '[]'::jsonb)
+      INTO v_rows
+      FROM claimed c
+      JOIN finance.wallets w ON w.id = c.wallet_id;
+    RETURN v_rows;
 END;
 $$;
 -- #endregion
@@ -821,7 +1189,7 @@ BEGIN
         RETURNING * INTO v_payment;
         UPDATE finance.deposit_rules SET failure_count = 0, last_error = NULL WHERE id = v_payment.deposit_rule_id;
     ELSE
-        IF v_payment.status NOT IN ('succeeded') THEN
+        IF v_payment.status NOT IN ('succeeded', 'settled_unapplied') THEN
             UPDATE finance.inbound_payments
                SET status = 'failed', failure_reason = pg_catalog.left(p_error, 400), updated_at = pg_catalog.now(),
                    provider_ref = COALESCE(provider_ref, NULLIF(p_provider_ref, ''))
@@ -1154,16 +1522,6 @@ COMMENT ON FUNCTION finance.fn_mature_pending_releases(integer) IS
 to its wallet with the ledger row of its original reason, and closes it. SKIP LOCKED batches;
 idempotent. Service role / pg_cron only.';
 
--- Hourly at :05, guarded like the other pg_cron registrations (00000002): a local `supabase start` has no
--- pg_cron, so there the sweep is called by hand (`SELECT finance.fn_mature_pending_releases();`).
-DO $$
-BEGIN
-    PERFORM cron.schedule(
-        'finance-mature-pending-releases',
-        '5 * * * *',
-        $cron$SELECT finance.fn_mature_pending_releases();$cron$
-    );
-EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'pg_cron unavailable — finance.fn_mature_pending_releases must be scheduled manually.';
-END $$;
+-- Scheduled hourly at :05 as `finance-mature-pending-releases` by the job registry
+-- (`ops.scheduled_jobs`, 00005060).
 -- #endregion

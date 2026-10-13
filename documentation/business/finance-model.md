@@ -130,6 +130,13 @@ current time against `stage.deadline`:
 > stage `cancelled`. The automatic duration-thresholding above (`<25%` → full refund, `25–75%` →
 > 50/50, `>75%` → full payout) is **not yet wired**; the tier is currently supplied explicitly by
 > the cancelling client.
+>
+> **In the product (Decision #198):** the reviewer ends a stage from the Submissions explorer
+> (**End Stage (Fair Exit)**) after reading a server-computed preview of all three tiers
+> (`projects.preview_stage_fair_exit`, the same quote the settlement reports). The fee is charged
+> only on the earned share; the unearned remainder comes back fee-free as `fair_exit_refund`; a
+> prepaid ticket nobody claimed comes back whole. The tickets left on the stage close as
+> `cancelled`, and both sides are notified.
 
 ## 4. Session & Maintenance-Specific Exit Rules
 
@@ -272,7 +279,7 @@ gate**. Schema: `finance.verification_cases` + the `org.freelancer_profiles.kyc_
 
 | Actor                                      | Gate                                                                                              | Enforced before                                                 |
 | :----------------------------------------- | :------------------------------------------------------------------------------------------------ | :-------------------------------------------------------------- |
-| **Freelancer (earner)**                    | Government-ID verification (Stripe Identity) **AND** a payout-ready wallet (Connect account set). | Landing a gig or joining a team (`fn_freelancer_payout_ready`). |
+| **Freelancer (earner)**                    | Government-ID verification (Stripe Identity) **AND** a payout-ready wallet (Connect account set). | Applying, being seated or assigned, claiming, creating or joining a team (`fn_assert_payout_ready`, Decision #196). A team payee: every shareholder. Withdrawing earnings from a `user`/`team` wallet. |
 | **Client (individual buyer)**              | **None.** Tap-and-pay via Stripe (optional save-card for reuse). No ID, no wallet required.       | —                                                               |
 | **Business owner (incl. client-who-owns)** | KYB (corporate registration + UBO). `fn_business_kyb_verified`.                                   | Operating the pooled Business Wallet (fund/spend).              |
 

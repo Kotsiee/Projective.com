@@ -638,6 +638,7 @@ BEGIN
                              THEN 'unique_violation' ELSE 'check_violation' END,
               DETAIL = 'state=' || v_state;
     END IF;
+    PERFORM finance.fn_assert_payout_ready('freelancer', v_actor);
 
     SELECT * INTO v_project FROM projects.projects WHERE id = v_link.project_id;
     SELECT * INTO v_stage FROM projects.project_stages WHERE id = v_link.project_stage_id;

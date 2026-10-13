@@ -1,5 +1,7 @@
 import { z } from "zod";
-import { bracketFromDob, UNDER_MINIMUM_REFUSAL } from "./age.ts";
+import { isDisplayCurrency } from "../finance/fx.ts";
+import { toSupportedLocale } from "../org/locales.ts";
+import { bracketFromDob, isTimeZone, UNDER_MINIMUM_REFUSAL } from "./age.ts";
 
 /**
  * auth/join — the Zod SSOT for the `/join` request body (SYSTEM_ARCHITECTURE.md §Security: every API
@@ -55,23 +57,18 @@ const redirectTo = z.string().default("/home");
 const strList = z.array(z.string().trim().min(1).max(60)).max(50).default([]);
 
 /**
- * A date of birth old enough to hold an account (PRODUCT_SPEC §Age guardrails). Under 13 is refused
- * here with the copy the form shows; 13–17 passes and is restricted by the database, which derives
- * it from the stored date (`org.fn_is_minor`) — no client flag is read.
+ * The browser's formatting preferences, sent as hints for the new account's settings (Decision
+ * #207): an unsupported value is dropped, never refused, and the account keeps the default.
  */
+const locale = z.string().trim().max(35).optional().transform((tag) => toSupportedLocale(tag));
+const displayCurrency = z.string().trim().max(3).optional().transform((code) =>
+	isDisplayCurrency(code) ? code?.toUpperCase() : undefined
+);
+
 const dob = z.string().min(1, "Date of birth is required.").regex(
 	ISO_DATE_RE,
 	"Enter a real date of birth.",
-)
-	.superRefine((value, ctx) => {
-		const bracket = bracketFromDob(value);
-		if (bracket === "unknown") {
-			ctx.addIssue({ code: "custom", message: "Enter a real date of birth." });
-		}
-		if (bracket === "blocked") {
-			ctx.addIssue({ code: "custom", message: UNDER_MINIMUM_REFUSAL });
-		}
-	});
+);
 
 /**
  * Individual (quick) onboarding. `password` is optional because SSO/OAuth signups skip password
@@ -87,9 +84,29 @@ export const IndividualJoinSchema = z.object({
 	lastName: name,
 	username: z.string().trim().regex(USERNAME_RE, "Invalid username."),
 	dob,
+	/**
+	 * The browser's IANA zone. Stored as the profile's `timezone`, it is the zone every layer counts
+	 * this person's birthdays in; an unknown one is dropped and the age counts in UTC.
+	 */
+	timeZone: z.string().trim().max(64).optional().transform((zone) =>
+		isTimeZone(zone) ? zone : undefined
+	),
+	locale,
+	displayCurrency,
 	purpose: z.array(z.string().max(40)).max(20).default([]),
 	skills: z.array(z.string().max(40)).max(50).default([]),
 	redirectTo,
+}).superRefine((value, ctx) => {
+	// Old enough to hold an account (PRODUCT_SPEC §Age guardrails), counted in the person's zone.
+	// 13–17 passes: the database derives the restriction from the stored date (`org.fn_is_minor`),
+	// so no client flag is read.
+	const bracket = bracketFromDob(value.dob, value.timeZone);
+	if (bracket === "unknown") {
+		ctx.addIssue({ code: "custom", path: ["dob"], message: "Enter a real date of birth." });
+	}
+	if (bracket === "blocked") {
+		ctx.addIssue({ code: "custom", path: ["dob"], message: UNDER_MINIMUM_REFUSAL });
+	}
 });
 export type IndividualJoin = z.infer<typeof IndividualJoinSchema>;
 
@@ -119,6 +136,8 @@ export const OrganizationJoinSchema = z.object({
 	/** Free-text sector; only populated (and required by the client) when `industry === "other"`. */
 	industryOther: z.string().trim().max(80).default(""),
 	departments: strList,
+	locale,
+	displayCurrency,
 	purpose: z.array(z.string().max(40)).max(20).default([]),
 	password,
 	redirectTo,

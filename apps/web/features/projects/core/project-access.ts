@@ -108,6 +108,7 @@ export async function resolveProjectAccess(
 		// owner out of `/details` exactly as a real participant is.
 		canConfigure: sim.access ? sim.access === "owner" : detail.viewerCanConfigure,
 		discussion: discussionOf(detail) !== null,
+		personal: detail.personal === true,
 		simulated: isLandingSimActive(sim),
 	};
 	ctx.state.projectAccess = resolved;

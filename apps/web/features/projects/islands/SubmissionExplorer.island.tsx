@@ -23,6 +23,7 @@ import type {
 	FileKind,
 	FileSortDir,
 	FileSortKey,
+	PaidRevisionRaised,
 	SubmissionCrumb,
 	SubmissionListPage,
 	SubmissionReview,
@@ -94,6 +95,8 @@ import { SubmissionActionBar } from "../components/SubmissionActionBar.tsx";
 import { FileFrame } from "../components/FileFrame.tsx";
 import { REVIEW_FRAME_KEYS, SubmissionReviewModal } from "../components/SubmissionReviewModal.tsx";
 import { ApproveStageDialog } from "../components/ApproveStageDialog.tsx";
+import { FairExitDialog } from "../components/FairExitDialog.tsx";
+import { PaidRevisionPayDialog } from "../components/PaidRevisionPayDialog.tsx";
 import { SettlementService, submissionIdOf } from "../core/SettlementService.ts";
 import BuyNowModal from "@features/checkout/islands/BuyNowModal.island.tsx";
 import { buyNowOpen, requestBuyNow } from "@features/checkout/core/buy-now-state.ts";
@@ -311,6 +314,11 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	const pageTickets = useSignal<SubmissionTicketOption[]>(initial?.tickets ?? []);
 	/** A paid revision's Buy Now is open from this review; its close re-reads the page. */
 	const buyingRevision = useSignal(false);
+	/** The raised round the pay dialog is paying for (Decision #199), with the address it was raised on. */
+	const payingRound = useSignal<
+		{ round: PaidRevisionRaised; stageId: string; submissionId: string; sellerName: string | null } | null
+	>(null);
+	const payRoundOpen = useSignal(false);
 	const cursor = useSignal<string | null>(initial?.nextCursor ?? null);
 	const hasMore = useSignal<boolean>(initial?.hasMore ?? false);
 	const total = useSignal<number>(initial?.total ?? 0);
@@ -389,6 +397,8 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	const approveOpen = useSignal(false);
 	/** A stage approval is in flight. */
 	const approveBusy = useSignal(false);
+	/** The Fair Exit confirmation's visibility; the dialog owns its own read and write (Decision #198). */
+	const endStageOpen = useSignal(false);
 
 	/** The workspace a dismissed review left (draft feedback), restored when that unit reopens. */
 	const reviewDraft = useRef<{ unit: string; snapshot: FrameSnapshot } | null>(null);
@@ -406,7 +416,13 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	const effStatus: SubmissionStatus | null = activeUnit.value
 		? effectiveUnitStatus(activeUnit.value.status, viewer, seam.value)
 		: (localDraft.value ? localDraft.value.status : null);
-	const workflow = resolveWorkflowActions({ viewer, hasActiveUnit, effectiveStatus: effStatus });
+	const scopeStageId = activeStageId();
+	const workflow = resolveWorkflowActions({
+		viewer,
+		hasActiveUnit,
+		effectiveStatus: effStatus,
+		hasStage: scopeStageId !== null,
+	});
 
 	const rootCount = (tree.value ?? []).reduce((s, n) => s + n.fileCount, 0);
 	// The active stage's name — a real stage crumb (the synthetic root crumb also carries kind "stage"
@@ -586,9 +602,9 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	/**
 	 * Record a verdict on the active unit.
 	 *
-	 * NOT optimistic: a verdict is a decision about somebody's work and, on acceptance, the step
-	 * before their payout, so the surface reports what the server recorded rather than what was
-	 * pressed. While it is in flight the modal's controls are disabled; a refusal — a 403 when this
+	 * NOT optimistic: a verdict is a decision about somebody's work and, on acceptance, their payout —
+	 * the ticket completes and its held escrow is released (Decision #194) — so the surface reports
+	 * what the server recorded rather than what was pressed. While it is in flight the modal's controls are disabled; a refusal — a 403 when this
 	 * viewer may not review, a 409 when someone already did — stays in the modal footer as an alert,
 	 * next to the controls that produced it. On success the page is re-read so the tree, the unit and
 	 * the review notes all show the recorded state.
@@ -627,8 +643,8 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 
 	/**
 	 * Buy a revision once the stage's free rounds are used (Decision #167): raise the round
-	 * `awaiting_payment`, then hand it to Buy Now as a `paid_revision` line. Nothing is sent back to the
-	 * freelancer until that payment holds the round's escrow; the page is re-read when Buy Now closes.
+	 * `awaiting_payment`, then let the client pay for it from the wallet, by card, or through the basket
+	 * (Decision #199). Nothing is sent back to the freelancer until that payment holds the round's escrow.
 	 */
 	async function onBuyRevision(payload: { notes: string }): Promise<void> {
 		const unit = activeUnit.value;
@@ -648,12 +664,34 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 			return;
 		}
 		closeReview();
+		payingRound.value = {
+			round: res.data,
+			stageId: unit.stageId,
+			submissionId,
+			sellerName: unit.submitter.name,
+		};
+		payRoundOpen.value = true;
+	}
+	function closePayRound(): void {
+		payRoundOpen.value = false;
+		payingRound.value = null;
+	}
+	function onRoundFunded(message: string): void {
+		closePayRound();
+		workflowError.value = null;
+		workflowNotice.value = message;
+		void reload(path.value);
+	}
+	function addRoundToBasket(): void {
+		const paying = payingRound.peek();
+		if (!paying) return;
+		closePayRound();
 		buyingRevision.value = true;
 		requestBuyNow({
-			itemId: res.data.revisionId,
+			itemId: paying.round.revisionId,
 			itemType: "paid_revision",
-			title: res.data.title,
-			sellerName: unit.submitter.name,
+			title: paying.round.title,
+			sellerName: paying.sellerName,
 			signInHref: "/login",
 		}, true);
 	}
@@ -673,7 +711,8 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 	}
 
 	/**
-	 * Approve the active unit's stage — releasing its held escrow — after the confirmation.
+	 * Approve the active unit's stage — releasing any escrow still held on it and closing it — after
+	 * the confirmation.
 	 *
 	 * The result is stated in the bar either way: a refusal through the same danger message every
 	 * workflow write uses, a success as a notice naming what happened.
@@ -1042,6 +1081,7 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 								onSubmit={openPreSubmit}
 								onApproveStage={() => (approveOpen.value = true)}
 								approveBusy={approveBusy.value}
+								onEndStage={() => (endStageOpen.value = true)}
 							/>
 						</div>
 						{toolbar()}
@@ -1145,6 +1185,29 @@ export default function SubmissionExplorer(props: SubmissionExplorerProps): JSX.
 				stageName={activeUnit.value?.stageName ?? currentStageName}
 				onClose={() => (approveOpen.value = false)}
 				onConfirm={() => void approveActiveStage()}
+			/>
+
+			<FairExitDialog
+				open={endStageOpen}
+				projectId={projectId}
+				stageId={scopeStageId}
+				stageName={activeUnit.value?.stageName ?? currentStageName}
+				onExited={(_, message) => {
+					workflowError.value = null;
+					workflowNotice.value = message ?? "Stage ended under Fair Exit.";
+					void reload(path.value);
+				}}
+			/>
+
+			<PaidRevisionPayDialog
+				open={payRoundOpen}
+				round={payingRound.value?.round ?? null}
+				projectId={projectId}
+				stageId={payingRound.value?.stageId ?? null}
+				submissionId={payingRound.value?.submissionId ?? null}
+				onClose={closePayRound}
+				onFunded={onRoundFunded}
+				onAddToBasket={addRoundToBasket}
 			/>
 
 			{/* The paid revision's checkout (Decision #167). The workspace mounts no other Buy Now host. */}

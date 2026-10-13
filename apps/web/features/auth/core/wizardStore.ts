@@ -84,6 +84,8 @@ export interface JoinStore {
 	errors: Signal<Record<string, string | null>>;
 	formError: Signal<string | null>;
 	submitting: Signal<boolean>;
+	/** An under-13 date of birth was submitted in this browser session (Decision #208). */
+	ageLocked: Signal<boolean>;
 
 	// derived
 	steps: ReadonlySignal<StepMeta[]>;
@@ -220,6 +222,7 @@ export function createJoinStore(init: JoinInit): JoinStore {
 		errors: signal<Record<string, string | null>>({}),
 		formError: signal<string | null>(null),
 		submitting: signal(false),
+		ageLocked: signal(false),
 		steps,
 		current,
 		stepCount,
