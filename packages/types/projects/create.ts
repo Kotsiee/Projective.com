@@ -283,8 +283,9 @@ export const CreateProjectSchema = z.object({
 	/**
 	 * A personal project (Decision #208): one person, no money, never listed. Anyone may choose it; an
 	 * under-18 account's project is one whatever is sent (`projects.trg_projects_personal_guard`).
+	 * Absent reads as `false`.
 	 */
-	personal: z.boolean().default(false),
+	personal: z.boolean().optional(),
 });
 export type CreateProject = z.infer<typeof CreateProjectSchema>;
 

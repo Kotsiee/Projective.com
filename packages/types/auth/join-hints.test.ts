@@ -24,13 +24,21 @@ const organization = {
 };
 
 Deno.test("join hints: a supported locale and display currency are kept, canonical", () => {
-	const parsed = IndividualJoinSchema.parse({ ...individual, locale: "fr_fr", displayCurrency: "eur" });
+	const parsed = IndividualJoinSchema.parse({
+		...individual,
+		locale: "fr_fr",
+		displayCurrency: "eur",
+	});
 	assertEquals(parsed.locale, "fr-FR");
 	assertEquals(parsed.displayCurrency, "EUR");
 });
 
 Deno.test("join hints: unsupported values are dropped, never refused", () => {
-	const parsed = IndividualJoinSchema.safeParse({ ...individual, locale: "xx-YY", displayCurrency: "XYZ" });
+	const parsed = IndividualJoinSchema.safeParse({
+		...individual,
+		locale: "xx-YY",
+		displayCurrency: "XYZ",
+	});
 	assertEquals(parsed.success, true);
 	assertEquals(parsed.data?.locale, undefined);
 	assertEquals(parsed.data?.displayCurrency, undefined);
@@ -43,7 +51,11 @@ Deno.test("join hints: absent hints leave the account on the defaults", () => {
 });
 
 Deno.test("join hints: an organisation owner's hints are read too", () => {
-	const parsed = OrganizationJoinSchema.parse({ ...organization, locale: "ja-JP", displayCurrency: "JPY" });
+	const parsed = OrganizationJoinSchema.parse({
+		...organization,
+		locale: "ja-JP",
+		displayCurrency: "JPY",
+	});
 	assertEquals(parsed.locale, "ja-JP");
 	assertEquals(parsed.displayCurrency, "JPY");
 });

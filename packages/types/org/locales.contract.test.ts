@@ -7,7 +7,10 @@ import { assertEquals } from "@std/assert";
 import { DISPLAY_CURRENCIES, PLATFORM_BASE_CURRENCY } from "../finance/fx.ts";
 import { SUPPORTED_LOCALES } from "./locales.ts";
 
-const SEED = new URL("../../../supabase/migrations/00005050_seed_reference_data.sql", import.meta.url);
+const SEED = new URL(
+	"../../../supabase/migrations/00005050_seed_reference_data.sql",
+	import.meta.url,
+);
 const seed = Deno.readTextFileSync(SEED).replace(/\r\n/g, "\n");
 
 /** The text of the INSERT statement into `table`, up to its terminating `;`. */
@@ -24,11 +27,21 @@ Deno.test("org.supported_locales seeds exactly SUPPORTED_LOCALES, in order", () 
 
 Deno.test("finance.fx_rates seeds both directions for every offered display currency", () => {
 	const pairs = new Set(
-		[...insertInto("finance.fx_rates").matchAll(/\('([A-Z]{3})', '([A-Z]{3})'/g)].map((m) => `${m[1]}>${m[2]}`),
+		[...insertInto("finance.fx_rates").matchAll(/\('([A-Z]{3})', '([A-Z]{3})'/g)].map((m) =>
+			`${m[1]}>${m[2]}`
+		),
 	);
 	for (const { code } of DISPLAY_CURRENCIES) {
 		if (code === PLATFORM_BASE_CURRENCY) continue;
-		assertEquals(pairs.has(`${PLATFORM_BASE_CURRENCY}>${code}`), true, `${PLATFORM_BASE_CURRENCY}>${code}`);
-		assertEquals(pairs.has(`${code}>${PLATFORM_BASE_CURRENCY}`), true, `${code}>${PLATFORM_BASE_CURRENCY}`);
+		assertEquals(
+			pairs.has(`${PLATFORM_BASE_CURRENCY}>${code}`),
+			true,
+			`${PLATFORM_BASE_CURRENCY}>${code}`,
+		);
+		assertEquals(
+			pairs.has(`${code}>${PLATFORM_BASE_CURRENCY}`),
+			true,
+			`${code}>${PLATFORM_BASE_CURRENCY}`,
+		);
 	}
 });

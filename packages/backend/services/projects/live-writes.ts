@@ -1916,7 +1916,7 @@ export function createProjectPayload(input: CreateProject): Record<string, unkno
 			}
 			: {}),
 		currency: input.currency,
-		is_personal: input.personal,
+		is_personal: input.personal === true,
 		budget_type: "fixed_price",
 		budget_amount_cents: input.format === "one_off" && !input.personal ? input.baselineAmountCents : null,
 		stages: [{

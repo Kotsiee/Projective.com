@@ -6,7 +6,9 @@ const ago = (ms: number) => new Date(NOW - ms).toISOString();
 
 Deno.test("a transfer Stripe already made completes the payout, however old", () => {
 	assertEquals(
-		planStalePayout({ destination: "acct_1", initiatedAt: ago(3 * RESEND_WINDOW_MS) }, { id: "tr_1" }, NOW),
+		planStalePayout({ destination: "acct_1", initiatedAt: ago(3 * RESEND_WINDOW_MS) }, {
+			id: "tr_1",
+		}, NOW),
 		{ kind: "complete", transfer: "tr_1" },
 	);
 });
@@ -19,7 +21,11 @@ Deno.test("no transfer inside the idempotency window is re-sent under the same k
 });
 
 Deno.test("no transfer once the key has expired returns the money rather than risk a second transfer", () => {
-	const plan = planStalePayout({ destination: "acct_1", initiatedAt: ago(RESEND_WINDOW_MS) }, null, NOW);
+	const plan = planStalePayout(
+		{ destination: "acct_1", initiatedAt: ago(RESEND_WINDOW_MS) },
+		null,
+		NOW,
+	);
 	assertEquals(plan.kind, "fail");
 });
 
@@ -29,5 +35,8 @@ Deno.test("a payout with nowhere to go is returned to the wallet", () => {
 });
 
 Deno.test("an unreadable start time is treated as expired, never re-sent", () => {
-	assertEquals(planStalePayout({ destination: "acct_1", initiatedAt: "not a date" }, null, NOW).kind, "fail");
+	assertEquals(
+		planStalePayout({ destination: "acct_1", initiatedAt: "not a date" }, null, NOW).kind,
+		"fail",
+	);
 });

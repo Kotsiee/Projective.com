@@ -108,13 +108,20 @@ const regrouped = await createTransfer(stripe, {
 	walletId: crypto.randomUUID(),
 	destinationMethodId: crypto.randomUUID(),
 });
-check(/^tr_/.test(regrouped.id), "stripe-mock: a Transfer with a group and a destination method is accepted");
+check(
+	/^tr_/.test(regrouped.id),
+	"stripe-mock: a Transfer with a group and a destination method is accepted",
+);
 const found = await findPayoutTransfer(stripe, {
 	payoutId: sweptPayout,
 	destination: "acct_smoke",
 	initiatedAt: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
 }).catch((e) => e);
-check(found === null, "sweep: the transfer lookup (group, then destination scan) matches only its own metadata", found);
+check(
+	found === null,
+	"sweep: the transfer lookup (group, then destination scan) matches only its own metadata",
+	found,
+);
 const contents = await bankPayoutContents(stripe, "acct_smoke", "po_smoke").catch((e) => e);
 check(
 	Array.isArray(contents?.transfers) && Array.isArray(contents?.priorPayouts),
@@ -194,15 +201,25 @@ const payoutEvent = (type: string, account: string | null, object: Record<string
 	...(account ? { account } : {}),
 	data: { object },
 });
-r = await deliver(payoutEvent("payout.failed", null, { id: "po_smoke", object: "payout", amount: 1000, currency: "usd" }), {
-	secret: CONNECT_WHSEC,
-});
+r = await deliver(
+	payoutEvent("payout.failed", null, {
+		id: "po_smoke",
+		object: "payout",
+		amount: 1000,
+		currency: "usd",
+	}),
+	{
+		secret: CONNECT_WHSEC,
+	},
+);
 check(
 	r.status === 200 && r.data?.outcome === "ignored",
 	"webhook: a delivery signed by the Connect destination verifies, and the platform's own payout is ignored",
 	r,
 );
-r = await deliver(payoutEvent("transfer.reversed", null, { id: transfer.id, object: "transfer", currency: "usd" }));
+r = await deliver(
+	payoutEvent("transfer.reversed", null, { id: transfer.id, object: "transfer", currency: "usd" }),
+);
 check(
 	r.status === 200 && r.data?.outcome === "ignored",
 	"webhook: a transfer.reversed without its amounts is ignored, never half-applied",

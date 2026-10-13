@@ -555,3 +555,13 @@ start would rewrite the instant the decision was taken.
   is settled the next time anybody reads it (`settleVote` on the read path), so the event's position
   in the database is correct only once somebody has looked. Notifications that should fire at the
   deadline need a scheduled caller of `close_reschedule_round`; none exists.
+
+## Scheduling and under-18 accounts (`00001510`, Decision #208)
+
+A restricted (13–17) account schedules nothing with other people. `scheduling.trg_schedule_age_gate()`
+— `trg_schedule_age_gate` BEFORE INSERT / UPDATE OF `is_published`, `owner_id` on `schedules` and
+`trg_call_settings_age_gate` BEFORE INSERT / UPDATE OF `accepts_calls` on `call_settings`
+(`00001860`) — refuses a minor's person schedule being published or taking calls (`PM403`); the
+tables are written directly under RLS (`save_owner_availability` is an invoker), hence the trigger.
+`fn_schedule_is_public` never answers true for a minor's schedule, and `request_discovery_call`
+asserts the requester is an adult. A minor's private calendar is untouched.

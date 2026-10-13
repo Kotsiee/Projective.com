@@ -2038,6 +2038,7 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 | `finance-reconcile-wallets`       | daily 03:40         | `finance.fn_reconcile_wallets()`                                       | Finance — ledger (Decision #186)                         | Read-only on finance; a persisting drift is re-reported each run (one ops row per drifted wallet).                  |
 | `finance-mature-pending-releases` | hourly :05          | `finance.fn_mature_pending_releases()`                                 | Finance — pending window (Decision #191)                 | `FOR UPDATE SKIP LOCKED` batches; a matured row is closed and never credited twice.                                 |
 | `auto-release-session-escrow`     | every 15 min        | `finance.auto_release_session_escrow()`                                | Sessions & cohorts (`00001155`, Decision #171)           | State-gated: only `scheduled` sittings complete and only `held` seat escrows of `active` memberships move.         |
+| `finance-sweep-stale-payouts`     | every 10 min        | `POST /api/finance/cron/payouts?limit=50` · `FINANCE_CRON_SECRET`      | Finance — `PaymentBackendService.sweepStalePayouts`      | Each payout is leased once per window (`finance.fn_claim_stale_payouts`, `SKIP LOCKED`); every transfer carries its payout's Stripe idempotency key. Seeded only where the claim function exists (Decision #202). |
 | `finance-recurring-deposits`      | hourly :15          | `POST /api/finance/cron/deposits?limit=50` · `FINANCE_CRON_SECRET`     | Finance — `PaymentBackendService.processDueDeposits`     | A period is claimed once (`finance.claim_due_deposit_rules`) and each charge carries a Stripe idempotency key.      |
 | `account-erasures`                | daily 04:10         | `POST /api/user/cron/erasures?limit=100` · `ACCOUNT_CRON_SECRET`       | Account — `AccountLifecycleBackendService.sweepDue` (#156) | A request completes once; one whose blockers came back is deferred, not forced.                                     |
 | `ops-watch-jobs`                  | every 10 min        | `ops.fn_watch_jobs()`                                                  | Ops — the registry itself                                | `SKIP LOCKED`; a dispatch is settled (and reported) once, a failed run is reported once (keyed by run id).          |
@@ -2355,8 +2356,26 @@ PostgreSQL RLS.
   through `isRestrictedRequest`. A minor's projects are **personal** (`projects.is_personal`, table
   triggers in `00001130`): one person, no money, never listed, no members; the reads stamp
   `personal` on `ProjectDetail`, `ProjectSetup`, `ProjectWorkspace` and `BoardCard`, and the
-  workspace drops Members, Preview, pricing, terms, Publish and every funding line. Guardian-consented
-  selling for older minors is specified in PRODUCT_SPEC §Age guardrails and **disabled for the MVP**.
+  workspace drops Members, Preview, pricing, terms, Publish and every funding line.
+- **Age policy v2 (Decision #208).** PRODUCT_SPEC §Age guardrails' tiers, enforced in Postgres first.
+  **Under 13** leaves nothing: email sign-ups are refused before any write; an OAuth identity is
+  deleted by `public.discard_underage_signup` (the caller's own, profile-less identity, under-13 date
+  only) and `/api/auth/join` clears its session cookies; nothing about the attempt is logged; the
+  browser session is locked (`SessionKeys.JOIN_AGE_LOCK` client-side, the data-less HttpOnly
+  `pj_join_age_lock` cookie server-side). **13–17**: `trg_workspace_member_adult` refuses a minor on
+  `team_members` / `business_members` / `organisation_members` / `org_invitations`, and
+  `create_workspace`, `respond_to_workspace_invitation` and `finance.record_payout_account` assert an
+  adult; `scheduling.trg_schedule_age_gate` refuses published hours and accepted calls, and
+  `request_discovery_call` / `reserve_seat` assert an adult; `comms.trg_dm_shield` (on
+  `dm_participants` and `dm_messages`) admits a minor only between mutual follows; `search.record_view`
+  records nothing, `trg_interest_events_minor` drops interest events and `fn_log_query` logs a minor's
+  search anonymously; `get_profile_view` and `org.profiles_index` mask a minor's city, country and time
+  zone from everyone but the owner; `trg_users_public_minor_visibility` keeps a minor's profile out of
+  `public`. The app hides the matching surfaces (Scheduling settings, the availability editor and
+  hours links, the "Public" visibility option) and maps each `PM403` to one sentence
+  (`RESTRICTED_REFUSAL`, `DM_SHIELD_REFUSAL`). Any account may create a **personal** project
+  (`CreateProject.personal` → `create_project`'s `is_personal`), labelled "Personal" instead of
+  Draft. Teams and Businesses stay closed to minors; the 18+ proxy model is specified and disabled.
 
 ---
 
@@ -2625,8 +2644,11 @@ incorrect API flows.
   `fx_as_of` on the ledger row) so settlement is reproducible; display conversion is read-time only.
 - **Webhooks:** The `PaymentService` listens on TWO event destinations. The snapshot endpoint
   (`/api/finance/webhooks/stripe`, `STRIPE_WEBHOOK_SECRET`) takes `payment_intent.*`,
-  `identity.verification_session.*`, `transfer.created`, `charge.dispute.created`/`.closed`,
-  `account.updated` and `setup_intent.succeeded`; the Accounts v2 **thin**-event endpoint
+  `identity.verification_session.*`, `transfer.created`, `transfer.reversed`,
+  `charge.dispute.created`/`.closed`, `account.updated` and `setup_intent.succeeded`, and — signed by
+  the platform's CONNECT destination (`STRIPE_CONNECT_WEBHOOK_SECRET`, which may share the URL; the
+  endpoint verifies against either secret) — a connected account's `payout.paid` / `payout.failed`
+  (Decision #202; a payout event without `event.account` is the platform's own and is ignored); the Accounts v2 **thin**-event endpoint
   (`/api/finance/webhooks/stripe-v2`, `STRIPE_THIN_WEBHOOK_SECRET`) takes the recipient-capability and
   account-updated events, which carry only an id, so the handler re-reads the account from Stripe before
   applying anything. Both update the `transactions` ledger, the verification caches and
@@ -2664,7 +2686,7 @@ incorrect API flows.
 | Top a wallet up by card | the wallet's `top_up` action (`POST /api/wallet/action`) — the only door; the standalone `/api/finance/topup/intent` was retired with no caller | `WalletBackendService.topUp` → `createTopUpIntent` | the same three |
 | Payout account (Connect) onboarding | `POST /api/finance/connect/onboarding` · `GET …/refresh` (Stripe's `refresh_url`) · `GET …/return` (`return_url`) · `GET …/status` | `startConnectOnboarding` · `refreshConnectOnboarding` · `connectStatus` | `payout_account_for` · `record_payout_account` · `sync_payout_account` (service role) |
 | Identity (Level-2 KYC) | `POST /api/finance/identity/session` | `createIdentitySession` | `begin_identity_verification` · `attach_identity_session` · `abandon_identity_verification` |
-| The webhook | `POST /api/finance/webhooks/stripe` | `handleStripeWebhook` | `settle_card_payment` · `record_card_payment_failure` · `apply_identity_event` · `record_transfer_created` · `record_dispute_opened` (service role) |
+| The webhook | `POST /api/finance/webhooks/stripe` | `handleStripeWebhook` | `settle_card_payment` · `record_card_payment_failure` · `apply_identity_event` · `record_transfer_created` · `record_transfer_reversed` · `record_bank_payout` · `record_dispute_opened` (service role) |
 
 - **Order of every user-initiated call:** gate (signed in → 401; `FINANCE_BACKEND_LIVE` + a
   well-formed key → else 503) → **record the request** through a user door (authorised by
@@ -2707,6 +2729,7 @@ The same two-door order as §1.1; the new database doors are `00001240_functions
 | Save a card (SetupIntent) | `GET /api/finance/cards/setup` (the publishable key for deferred Elements, Decision #152) · `POST /api/finance/cards/setup` · `POST /api/finance/cards/confirm` (and the wallet's `add_method` action) | `cardSetupConfig` · `createCardSetup` · `confirmCardSetup` | `card_owner_for` · `record_processor_customer` (user) · `record_saved_card` (service role) |
 | Pay at checkout by card or express wallet | `POST /api/checkout/create` (`provider: "card"` · `"express"`) → `GET /api/finance/payments/[id]` | `CheckoutBackendService.create` → `createCheckoutCardPayment` | `ensure_purchase_wallet` + the §1.1 card doors + `attach_checkout_order` (user, Decision #153), then `place_wallet_order` — by the browser AND by `settle_card_payment`, under one key. A one-ticket line (Decision #166) settles inside it by `projects.fund_ticket` (an escrow hold from the topped-up wallet), not a sale |
 | Recurring deposits | the wallet's `new_recurring` action · `POST /api/finance/cron/deposits` (bearer `FINANCE_CRON_SECRET`, 404 otherwise) | `processDueDeposits` | `create_deposit_rule` (user) · `claim_due_deposit_rules` · `bind_scheduled_payment` (service role) |
+| Stale payouts | `POST /api/finance/cron/payouts` (bearer `FINANCE_CRON_SECRET`, 404 otherwise; R2 job `finance-sweep-stale-payouts`) | `sweepStalePayouts` | `fn_claim_stale_payouts` · `complete_payout` · `fail_payout` (service role) |
 | Income Smoother enrolment | the wallet's `enrol_smoother` action | `WalletBackendService.enrolSmoother` | `set_income_smoother` (user) |
 | Verification console (`/settings/verification`) | `GET /api/finance/verify/status` · `POST /api/finance/verify/kyc` · `POST /api/finance/verify/kyb` | `verificationStatus` · `createIdentitySession` · `startKybOnboarding` | `my_verification_status` · the §1.1 identity + Connect doors |
 | Dispute outcome | the snapshot webhook (`charge.dispute.closed`) | `handleStripeWebhook` | `record_dispute_closed` (service role) |
@@ -2739,6 +2762,15 @@ The same two-door order as §1.1; the new database doors are `00001240_functions
   created, so money in flight cannot be spent twice; a definitive Stripe refusal credits it back
   (`payout_reversal`); a transient failure leaves the payout `pending` for `transfer.created` to settle.
   `paid` means the Transfer exists; Stripe pays the bank on its own schedule.
+- **After the transfer (Decision #202).** A payout below `min_withdrawal_minor` is refused; a named
+  destination must be the owner's active payout method. Every transfer carries the group
+  `projective_payout_<id>` and its payout id in metadata. The stale sweep finds a stuck payout's
+  transfer by that group (then by scanning the destination's transfers for the metadata) and completes
+  it; with none it re-sends under the same idempotency key while Stripe still holds it (23 h), and
+  returns the money after. `transfer.reversed` credits back only the newly reversed amount. A connected
+  account's bank payout is resolved to the transfers it carried through its balance transactions
+  (`payout` filter, `Stripe-Account` header — automatic payouts only) and recorded as `bank_status`;
+  a restricted key needs Balance transactions (read).
 - **Individual clients escrow too.** `finance.escrows.payer_user_id` (one payer column set, never two)
   lets a project with no client business be funded — by card or from the owner's wallet — and every
   release, refund and fair-exit split returns money to the wallet type the payer holds. Releases charge
@@ -2770,6 +2802,7 @@ user doors, `service_role` for processor doors) in one transaction that is **rol
 | Idempotency | the same event replayed and a second event for the same PaymentIntent both answer `replayed`; no ledger row, no balance change |
 | Top-up | credited once; the replay is ignored |
 | Payout | release credits the freelancer; `begin_payout` is refused until **both** halves of `fn_freelancer_payout_ready` hold (a verified payout account alone is not enough); then the payout goes to the verified account, `complete_payout` binds the Transfer, `transfer.created` is `applied` then `replayed`; the wallet is debited once |
+| After the transfer (#202) | a withdrawal below the minimum is refused; a partial `transfer.reversed` credits only its part, once; a connected account's `payout.failed` is recorded (the transfer stands) and the owner told, and a later re-paying `payout.paid` marks it paid; a stale pending payout is claimed with its destination; against stripe-mock, the grouped transfer, the sweep's lookup and the bank payout's balance-transaction read are well-formed, and a Connect-signed delivery verifies |
 | Reconciliation | `finance.v_wallet_reconciliation` shows no drift |
 
 stripe-mock serves no Accounts v2 (`/v2/core/accounts`), so the smoke records Connect onboarding through
@@ -3109,8 +3142,13 @@ NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=XXXX-XXXX
 # The signing secret of the SECOND event destination, /api/finance/webhooks/stripe-v2 (Accounts v2 thin
 # events). Absent → that endpoint answers 503 and v2 capability changes are picked up by account.updated.
 STRIPE_THIN_WEBHOOK_SECRET=XXXX-XXXX
-# Bearer token (≥ 32 characters) the scheduler presents to POST /api/finance/cron/deposits; anything
-# else — including an unset secret — gets a 404, so the endpoint does not advertise that it exists.
+# The signing secret of the CONNECT event destination (events on connected accounts: payout.paid,
+# payout.failed, account.updated). It may share /api/finance/webhooks/stripe, which verifies against
+# either secret (Decision #202). Absent → those deliveries are refused as unsigned.
+STRIPE_CONNECT_WEBHOOK_SECRET=XXXX-XXXX
+# Bearer token (≥ 32 characters) the scheduler presents to POST /api/finance/cron/deposits and
+# POST /api/finance/cron/payouts; anything else — including an unset secret — gets a 404, so the
+# endpoints do not advertise that they exist.
 FINANCE_CRON_SECRET=XXXX-XXXX
 # Bearer token (≥ 32 characters) the scheduler presents to POST /api/user/cron/erasures, which runs the
 # account and freelancer-profile erasures that have come due (Decision #156); 404 otherwise.

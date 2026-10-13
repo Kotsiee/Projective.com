@@ -256,6 +256,11 @@ Breakdown: System Fee (5%) → £50 to the Fee Collection Account; Team Vault (1
   auto-paused and the freelancer is notified to stop work.
 - **Failed Withdrawal:** if a freelancer's bank account is closed/flagged by Stripe, funds bounce
   back to their Personal Wallet (Available state) with a dashboard prompt to update payment details.
+  > ⚠️ **Flagged, Decision #202 (a) — awaiting a human.** As built, a failed BANK payout (Connect
+  > `payout.failed`) is recorded and the owner is told, but the money stays in their Stripe payout
+  > account (where Stripe pays it again once the bank details are fixed); it does not return to the
+  > wallet. Money returns to the wallet only when the transfer itself is refused, never made
+  > (`fail_payout`), or reversed by the platform (`transfer.reversed`).
 
 ## 9. Stripe Integration & Tax Handling
 
@@ -338,6 +343,20 @@ stored — only an opaque Stripe reference + safe display fragments (`brand`, `l
   business **floor top-up** that runs each time its default-currency wallet crosses below
   `low_balance_floor_cents`, Decision #172) from a funding
   method; consecutive failures increment `failure_count` (drives dunning / auto-pause).
+- **Withdrawals** (`finance.begin_payout`, Decision #202): the wallet is debited, then a Stripe
+  Transfer leaves for the owner's verified Connect account, which pays their bank on Stripe's schedule.
+  - **Minimum** (`security.platform_params.min_withdrawal_minor`, per currency in its minor units,
+    roughly £10 each, pending product sign-off): GBP · USD · EUR · CHF 10.00; CAD · SGD 15.00; AUD
+    20.00; JPY ¥2,000; INR ₹1,000; ZAR R200; NGN ₦20,000; AED 45.00; any other currency 1000 minor units.
+  - **Destination:** a named payout method must be the owner's own and active; it is recorded on the
+    payout. The Transfer always goes to the Connect account.
+  - **Reversal** (`transfer.reversed`): the reversed part returns to the wallet (`payout_reversal`); a
+    full reversal makes the payout `reversed`.
+  - **Bank outcome** (Connect `payout.paid` / `payout.failed`): recorded beside the payout, owner told;
+    nothing moves in the ledger (see the §8 flag).
+  - **Stuck payouts:** one still `pending` after `payout_stale_minutes` (**15**) is reconciled by a
+    sweep every 10 minutes: completed from its Stripe transfer, re-sent under the same idempotency key
+    within 23 hours, or returned to the wallet after that.
 - **Payout schedules** (`finance.payout_schedules`): `manual` · `scheduled_weekly` ·
   `scheduled_monthly` · `threshold` (pay out when Available ≥ `threshold_cents`). **Instant Payout**
   (`instant = true`) charges `security.platform_params.instant_payout_fee_bp` to bypass the standard

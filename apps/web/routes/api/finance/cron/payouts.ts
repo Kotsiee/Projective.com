@@ -16,8 +16,13 @@ import { PaymentBackendService } from "@server/services/finance/PaymentBackendSe
  */
 export const handler = define.handlers({
 	async POST(ctx) {
-		if (!PaymentBackendService.isCronAuthorised(ctx.req.headers.get("authorization"))) return new Response(null, { status: 404 });
-		const limit = Math.min(Math.max(Number(ctx.url.searchParams.get("limit") ?? "50") || 50, 1), 200);
+		if (!PaymentBackendService.isCronAuthorised(ctx.req.headers.get("authorization"))) {
+			return new Response(null, { status: 404 });
+		}
+		const limit = Math.min(
+			Math.max(Number(ctx.url.searchParams.get("limit") ?? "50") || 50, 1),
+			200,
+		);
 		return toPaymentsResponse(await PaymentBackendService.sweepStalePayouts(limit));
 	},
 });

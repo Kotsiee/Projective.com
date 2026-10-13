@@ -287,11 +287,6 @@ BEGIN
     IF v_currency !~ '^[A-Z]{3}$' THEN
         RAISE EXCEPTION 'currency: expected a three-letter currency code' USING ERRCODE = '22023';
     END IF;
-    v_min := finance.fn_min_withdrawal_minor(v_currency);
-    IF p_amount < v_min THEN
-        RAISE EXCEPTION 'amountMinor: the smallest withdrawal is % %', finance.fn_minor_units_text(v_min, v_currency), v_currency
-            USING ERRCODE = '22023';
-    END IF;
 
     v_scope := 'payout:' || v_uid::text;
     v_hash := pg_catalog.md5(pg_catalog.concat_ws(
@@ -363,6 +358,12 @@ BEGIN
             RAISE EXCEPTION 'destinationId: that payout account can''t receive payouts — choose another'
                 USING ERRCODE = 'PA403';
         END IF;
+    END IF;
+    -- After the gates, so a person who cannot withdraw at all is told why before being told the amount.
+    v_min := finance.fn_min_withdrawal_minor(v_currency);
+    IF p_amount < v_min THEN
+        RAISE EXCEPTION 'amountMinor: the smallest withdrawal is % %', finance.fn_minor_units_text(v_min, v_currency), v_currency
+            USING ERRCODE = '22023';
     END IF;
     IF v_wallet.balance_cents < p_amount THEN
         RAISE EXCEPTION 'amountMinor: that is more than this wallet holds' USING ERRCODE = 'PF402';

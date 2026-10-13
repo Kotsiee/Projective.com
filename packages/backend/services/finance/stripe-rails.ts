@@ -388,7 +388,9 @@ export function transferParams(payout: PayoutTransfer): TransferCreateParams {
 		metadata: {
 			projective_payout_id: payout.payoutId,
 			projective_wallet_id: payout.walletId,
-			...(payout.destinationMethodId ? { projective_destination_method_id: payout.destinationMethodId } : {}),
+			...(payout.destinationMethodId
+				? { projective_destination_method_id: payout.destinationMethodId }
+				: {}),
 		},
 	};
 }
@@ -433,7 +435,10 @@ export async function findPayoutTransfer(
 	payout: { payoutId: string; destination: string; initiatedAt: string },
 ): Promise<FoundTransfer | null> {
 	const ours = (t: Stripe.Transfer) => t.metadata?.projective_payout_id === payout.payoutId;
-	const grouped = await stripe.transfers.list({ transfer_group: payoutTransferGroup(payout.payoutId), limit: 10 });
+	const grouped = await stripe.transfers.list({
+		transfer_group: payoutTransferGroup(payout.payoutId),
+		limit: 10,
+	});
 	const hit = grouped.data.find(ours);
 	if (hit) return foundOf(hit);
 
@@ -480,7 +485,9 @@ export async function bankPayoutContents(
 		const source = txn.source as unknown;
 		const sourceId = typeof source === "string" ? source : (source as { id?: unknown } | null)?.id;
 		if (typeof sourceId === "string" && sourceId.startsWith("tr_")) transfers.add(sourceId);
-		if (txn.type === "payout_failure" && typeof sourceId === "string" && sourceId.startsWith("po_")) {
+		if (
+			txn.type === "payout_failure" && typeof sourceId === "string" && sourceId.startsWith("po_")
+		) {
 			priorPayouts.add(sourceId);
 		}
 		const sourceTransfer = (source as { source_transfer?: unknown } | null)?.source_transfer;

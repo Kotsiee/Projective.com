@@ -34,7 +34,11 @@ Deno.test("displayCurrencyForRegion: an offered currency by its territory, the e
 
 Deno.test("preferenceHints: the first offered locale and the first stated region", () => {
 	assertEquals(preferenceHints(["en-US", "en"]), { locale: "en-US", displayCurrency: "USD" });
-	assertEquals(preferenceHints(["en-NZ", "de-AT"]), {}, "only the first stated region picks a currency");
+	assertEquals(
+		preferenceHints(["en-NZ", "de-AT"]),
+		{},
+		"only the first stated region picks a currency",
+	);
 });
 
 Deno.test("preferenceHints: an unsupported region leaves the currency to the default", () => {

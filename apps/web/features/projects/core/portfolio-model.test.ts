@@ -3,6 +3,7 @@ import type { ProjectSummary } from "@projective/types/projects";
 import {
 	aggregateBurn,
 	burnPercent,
+	statusLabelFor,
 	countByFilter,
 	filterPortfolio,
 	meterSegments,
@@ -89,4 +90,11 @@ Deno.test("meterSegments draws one segment per stage up to the cap, then quantis
 		filled: 5,
 		total: 20,
 	});
+});
+
+Deno.test("statusLabelFor — a personal project's standing draft reads Personal, nothing else changes", () => {
+	assertEquals(statusLabelFor("draft", true), "Personal");
+	assertEquals(statusLabelFor("draft", false), "Draft");
+	assertEquals(statusLabelFor("draft", undefined), "Draft");
+	assertEquals(statusLabelFor("completed", true), "Completed");
 });

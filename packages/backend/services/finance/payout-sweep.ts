@@ -29,7 +29,9 @@ export function planStalePayout(
 	now: number,
 ): StalePayoutAction {
 	if (found) return { kind: "complete", transfer: found.id };
-	if (!payout.destination) return { kind: "fail", reason: "no verified payout account to send it to" };
+	if (!payout.destination) {
+		return { kind: "fail", reason: "no verified payout account to send it to" };
+	}
 	const started = Date.parse(payout.initiatedAt);
 	if (!Number.isFinite(started) || now - started >= RESEND_WINDOW_MS) {
 		return { kind: "fail", reason: "no transfer was made and its idempotency key has expired" };

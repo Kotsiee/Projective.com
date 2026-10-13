@@ -26,11 +26,16 @@ Migrations `20260724090000`–`20260724094000`. Zod SSOT:
 
 ### `comms.notification_types`
 
-The routing matrix **as data**: one row per event key declaring how that event is delivered. 94 keys
+The routing matrix **as data**: one row per event key declaring how that event is delivered. 96 keys
 are seeded (money · work · messages · schedule · discovery · account · system · marketing).
 `packages/types/comms/catalog.contract.test.ts` fails when a `comms.fn_notify` call in a migration,
 or an `rpc("fn_notify")` in a backend service, emits a key (or alias) the seed does not carry, and
 when `KNOWN_NOTIFICATION_TYPES` drifts from the seed.
+
+**Added 2026-10-13 (Decision #202):** `payout.paid` (money · medium · in_app, digestible) — a
+connected account's bank payout landed; `payout.reversed` (money · high · in_app + email, mandatory) —
+a sent payout was reversed back to the wallet. `payout.failed`, seeded long before, now has senders
+(`fail_payout`, `record_bank_payout`).
 
 **Added 2026-10-10:** `chargeback.won` (money · high · in_app + email, mandatory) and
 `chargeback.lost` (money · critical · in_app + email, mandatory, pierces quiet hours), emitted by the

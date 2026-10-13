@@ -3,9 +3,9 @@ import { getStripe, type Stripe } from "../../core/stripe.ts";
 import {
 	applyIdentityEvent,
 	type EventOutcome,
+	recordBankPayout,
 	recordCardPaymentFailure,
 	recordDisputeClosed,
-	recordBankPayout,
 	recordDisputeOpened,
 	recordSavedCard,
 	recordTransferCreated,
@@ -175,10 +175,14 @@ export function planStripeEvent(event: Stripe.Event): StripePlan {
 		case "transfer.reversed": {
 			const transfer = event.data.object;
 			if (
-				!transfer.id || !Number.isInteger(transfer.amount) || !Number.isInteger(transfer.amount_reversed) ||
+				!transfer.id || !Number.isInteger(transfer.amount) ||
+				!Number.isInteger(transfer.amount_reversed) ||
 				!transfer.currency
 			) {
-				return { kind: "ignore", reason: "the reversed transfer is missing its amounts or currency" };
+				return {
+					kind: "ignore",
+					reason: "the reversed transfer is missing its amounts or currency",
+				};
 			}
 			const payoutId = text(transfer.metadata?.projective_payout_id, 64);
 			return {

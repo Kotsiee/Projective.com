@@ -241,6 +241,20 @@ assignment) and `projects.assign_from_application`; and with the listing's owner
 (`apps/web/utils/age-gate.ts`) and the services map `PM403` to one 403
 (`packages/backend/core/age-gate.ts`). Probe: `supabase/probes/age_guardrails.sql`.
 
+**Age policy v2 (Decision #208).**
+`public.discard_underage_signup(p_dob date, p_zone text) → boolean` (`authenticated`) deletes the
+CALLER's `auth.users` row — only while it has no `users_public` row and only for a date of birth
+under 13 in `p_zone` (a future or 13+ date answers `false`); `/api/auth/join` calls it when an OAuth
+sign-up gives an under-13 date. `org.trg_workspace_member_adult(column)` (BEFORE INSERT / UPDATE of
+the person column on `team_members`, `business_members`, `organisation_members` and
+`org_invitations`) refuses a minor (`PM403`); `create_workspace` and accepting through
+`respond_to_workspace_invitation` assert an adult first. `org.trg_users_public_minor_visibility`
+refuses a minor's profile going `public` (`PM403`). `fn_compute_profile_setup_progress` returns
+`not_applicable_keys` (`["working_hours"]` for a minor, who publishes no hours), takes the score over
+the remaining 80 points and never suggests `publish_hours` or `become_partner` to one.
+`get_profile_view` answers `city` / `country` / `timezone` as `NULL` for a minor's profile to anyone
+but its owner, as `org.profiles_index` does for everyone. Probe: `supabase/probes/age_policy_v2.sql`.
+
 A minor's projects are **personal** and a minor never joins anyone else's project — see
 [projects/Functions.md § Personal projects](../projects/Functions.md#personal-projects-and-under-18-accounts-00001130-decision-192)
 and `supabase/probes/personal_projects.sql` (Decision #192).

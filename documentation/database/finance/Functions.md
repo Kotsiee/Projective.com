@@ -1043,6 +1043,8 @@ chose it with: `user` and `freelancer` are one person); anything else is `unmatc
 flow owns the ledger debit. Since Decision #126 withdrawals create transfers
 (`finance.begin_payout` → Stripe Transfer → `finance.complete_payout`); this event is also the
 recovery path — a still-`pending` payout it binds is marked `paid`, because the transfer is the fact.
+A transfer naming a payout already `failed` (its money returned) is `unmatched` and written to
+`ops.log_entries` as an error, because the money then left twice (Decision #202).
 
 #### `finance.record_dispute_opened(p_event_id, p_dispute_ref, p_provider_ref, p_amount, p_currency, p_reason, p_livemode)` → jsonb
 
@@ -1102,7 +1104,11 @@ open by #191: only the payer's own wallet is recovered from).
 
 ### Withdrawals
 
-- `finance.begin_payout(p_wallet_id, p_amount, p_currency, p_instant, p_idempotency_key)` (user) — a
+- `finance.begin_payout(p_wallet_id, p_amount, p_currency, p_instant, p_idempotency_key, p_destination_method_id DEFAULT NULL)` (user) — an
+  amount below the currency's minimum is `22023` (`fn_min_withdrawal_minor`, Decision #202); a named
+  destination must be one of the wallet owner's ACTIVE `payout`/`both` methods (someone else's reads as
+  missing, `42501`; an inactive one `PA403`) and is recorded on the payout, hashed into the attempt key
+  and stamped on the transfer; the verified Connect account is recorded as `destination_account`; a
   caller under 18 is `PM403` (`org.fn_assert_adult`, Decision #190); a person wallet is self-only, a vault needs `withdraw`; a freelancer wallet needs
   `fn_freelancer_payout_ready`, a business vault `fn_business_kyb_verified` (`PK403`); a verified
   payout account (`PA403`); enough Available balance (`PF402` — money still in the pending window is
@@ -1110,8 +1116,30 @@ open by #191: only the payer's own wallet is recovered from).
   (`payout`) at once. Idempotent on the attempt key (scope `payout:<uid>`). No Instant fee is charged
   (its magnitude is undecided, #55(c)).
 - `finance.complete_payout(p_payout_id, p_transfer_ref)` (processor) — the Transfer exists: `paid`.
-- `finance.fail_payout(p_payout_id, p_reason)` (processor) — Stripe definitively refused: `failed`, and
-  a `payout_reversal` credit returns the money. Only a `pending` payout can fail.
+- `finance.fail_payout(p_payout_id, p_reason)` (processor) — Stripe definitively refused, or the stale
+  sweep found no transfer: `failed`, a `payout_reversal` credit returns the money, and a person owner is
+  told (`payout.failed`). Only a `pending` payout can fail.
+- `finance.record_transfer_reversed(p_event_id, p_transfer_ref, p_destination, p_amount, p_amount_reversed, p_currency, p_payout_id, p_livemode)`
+  (processor, Decision #202) — `transfer.reversed`. Finds the payout by its bound transfer, else the
+  metadata id; the transfer must agree with it as in `record_transfer_created`. Credits only what is
+  newly reversed (`LEAST(amount_reversed, amount) − reversed_cents`, reason `payout_reversal`), so a
+  replay, a duplicate or an out-of-order lower total credits nothing; a full reversal is `reversed`.
+  A reversal of a payout already `failed` moves nothing and writes an `ops.log_entries` error. Person
+  owners are told (`payout.reversed`). Idempotent on the event id and by value.
+- `finance.record_bank_payout(p_event_id, p_event_type, p_account, p_bank_payout_ref, p_status, p_failure_code, p_transfer_refs, p_prior_payout_refs, p_livemode)`
+  (processor, Decision #202) — a connected account's `payout.paid` / `payout.failed`. Records
+  `bank_status` on the account owner's sent payouts among `p_transfer_refs` (the transfers the bank
+  payout carried) and those already bound to a bank payout in `p_prior_payout_refs` (earlier failed
+  ones it re-pays). A failure is final for its own bank payout; a later one that re-pays it marks it
+  paid. Moves nothing in the ledger. Person owners are told (`payout.failed` / `payout.paid`). An
+  unknown account is `unmatched`.
+- `finance.fn_claim_stale_payouts(p_limit DEFAULT 25)` → jsonb (service role, Decision #202) — leases
+  up to `p_limit` (≤ 200) `pending` payouts older than `payout_stale_minutes` and not claimed within it,
+  oldest first, under `SKIP LOCKED` (`swept_at`, `sweep_attempts + 1`); returns each with its
+  `destination_account`. `PaymentBackendService.sweepStalePayouts` then completes, re-sends or fails it.
+- `finance.fn_min_withdrawal_minor(p_currency)` (internal) — `min_withdrawal_minor[currency]`, else its
+  `default`, else 0. `finance.fn_minor_units_text(p_amount, p_currency)` (internal) — the minimum in
+  major units for the refusal sentence.
 - `finance.fn_payout_destination(wallet)` (internal) — the owner's verified Connect account.
 
 ### The pending window (`00001240` §7, Decision #191)
@@ -1190,3 +1218,9 @@ the fee yet.
 | `PA403`  | no verified payout account for this wallet                      |
 | `PF402`  | the wallet does not hold enough                                 |
 | `PK403`  | an earning gate (KYC / KYB) or the Income Smoother's eligibility |
+
+## Under-18 accounts (Decision #208)
+
+`finance.record_payout_account` asserts an adult (`org.fn_assert_adult`, `PM403`): a Stripe connected
+account needs an account holder of 18 or over. Every other money door already refuses a minor
+(Decision #190).

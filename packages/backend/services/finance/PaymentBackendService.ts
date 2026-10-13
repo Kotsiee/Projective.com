@@ -123,7 +123,10 @@ type Result<T> = ServiceResult<T>;
 
 // #region Plumbing
 /** Close one leased stale payout: complete it, re-send it, return it, or leave it for the next sweep. */
-async function settleStalePayout(stripe: Stripe, payout: StalePayout): Promise<StalePayoutSweep["results"][number]> {
+async function settleStalePayout(
+	stripe: Stripe,
+	payout: StalePayout,
+): Promise<StalePayoutSweep["results"][number]> {
 	const result = (outcome: StalePayoutOutcome, transfer: string | null, detail: string) => ({
 		payoutId: payout.id,
 		outcome,
@@ -167,7 +170,11 @@ async function settleStalePayout(stripe: Stripe, payout: StalePayout): Promise<S
 			return result("failed", null, reason);
 		}
 	} catch (error) {
-		console.error("[payments:payout-sweep]", payout.id, error instanceof Error ? error.message : error);
+		console.error(
+			"[payments:payout-sweep]",
+			payout.id,
+			error instanceof Error ? error.message : error,
+		);
 		return result("retry", null, "left for the next sweep");
 	}
 }
@@ -1034,7 +1041,8 @@ export class PaymentBackendService {
 		const stripe = getStripe();
 		const results: StalePayoutSweep["results"] = [];
 		for (const payout of claimed) results.push(await settleStalePayout(stripe, payout));
-		const count = (outcome: StalePayoutOutcome) => results.filter((r) => r.outcome === outcome).length;
+		const count = (outcome: StalePayoutOutcome) =>
+			results.filter((r) => r.outcome === outcome).length;
 		return ok({
 			claimed: claimed.length,
 			completed: count("completed"),
@@ -1068,7 +1076,9 @@ export class PaymentBackendService {
 
 		let event;
 		try {
-			const secrets = [settings.webhookSecret, settings.connectWebhookSecret].filter((s): s is string => !!s);
+			const secrets = [settings.webhookSecret, settings.connectWebhookSecret].filter((
+				s,
+			): s is string => !!s);
 			event = await verifyStripeEventWithAny(payload, signature, secrets);
 		} catch (error) {
 			const reason = error instanceof Error ? error.message.split("\n")[0] : String(error);

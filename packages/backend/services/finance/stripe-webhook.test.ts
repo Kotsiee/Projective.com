@@ -246,7 +246,11 @@ Deno.test("setup_intent.succeeded saves a card only for a SetupIntent Projective
 });
 
 /** A Connect event: delivered to the platform's Connect endpoint on behalf of a connected account. */
-function connectEvent(type: string, account: string | null, object: Record<string, unknown>): Stripe.Event {
+function connectEvent(
+	type: string,
+	account: string | null,
+	object: Record<string, unknown>,
+): Stripe.Event {
 	return { ...event(type, object), ...(account ? { account } : {}) } as unknown as Stripe.Event;
 }
 
@@ -271,7 +275,9 @@ Deno.test("transfer.reversed carries the CUMULATIVE amount reversed, so a replay
 			payoutId: "00000000-0000-4000-8000-00000000abcd",
 		},
 	);
-	const unreadable = planStripeEvent(event("transfer.reversed", { id: "tr_1", amount: 5000, currency: "gbp" }));
+	const unreadable = planStripeEvent(
+		event("transfer.reversed", { id: "tr_1", amount: 5000, currency: "gbp" }),
+	);
 	assertEquals(unreadable.kind, "ignore");
 });
 
@@ -295,12 +301,28 @@ Deno.test("a connected account's payout.failed carries the account, the payout a
 		},
 	);
 	assertEquals(
-		planStripeEvent(connectEvent("payout.paid", "acct_1", { id: "po_2", amount: 4000, currency: "gbp", status: "paid" })),
-		{ kind: "bank_payout", eventType: "payout.paid", account: "acct_1", payout: "po_2", status: "paid", failureCode: null },
+		planStripeEvent(
+			connectEvent("payout.paid", "acct_1", {
+				id: "po_2",
+				amount: 4000,
+				currency: "gbp",
+				status: "paid",
+			}),
+		),
+		{
+			kind: "bank_payout",
+			eventType: "payout.paid",
+			account: "acct_1",
+			payout: "po_2",
+			status: "paid",
+			failureCode: null,
+		},
 	);
 });
 
 Deno.test("the platform's OWN payout to its bank is not a withdrawal and is ignored", () => {
-	const plan = planStripeEvent(connectEvent("payout.failed", null, { id: "po_1", amount: 4000, currency: "gbp" }));
+	const plan = planStripeEvent(
+		connectEvent("payout.failed", null, { id: "po_1", amount: 4000, currency: "gbp" }),
+	);
 	assertEquals(plan.kind, "ignore");
 });

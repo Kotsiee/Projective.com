@@ -443,3 +443,14 @@ No new function: `comms.message_favorites` (the caller's own, listed on `/saved`
 policies (`user_id = auth.uid() AND comms.can_read_message(...)` and `pinned_by_user_id = auth.uid()
 AND comms.can_read_message(...)`). `packages/backend/services/messaging/live-message-marks.ts` first
 finds which message table holds the id, as the caller, so a message they cannot read is a 404.
+
+## Direct-message shielding for under-18 accounts (`00001300`, Decision #208)
+
+| Function | Bound as | Rule |
+| :------- | :------- | :--- |
+| `comms.fn_is_mutual_follow(p_a uuid, p_b uuid) → boolean` | — | Both `org.profile_follows` edges exist (`target_entity_type = 'user'`). |
+| `comms.fn_dm_allowed(p_a uuid, p_b uuid) → boolean` | — | Always, unless either person is a minor — then only between mutual follows. |
+| `comms.trg_dm_shield()` | `trg_dm_shield` BEFORE INSERT on `dm_participants` and `dm_messages` (`00001840`) | A participant joins a direct thread only if allowed with every participant already there; a message is sent only while its sender is allowed with every other participant, so an unfollow ends it. `PM403` otherwise — every thread-creating RPC (`get_or_create_dm_thread`, `create_group_thread`, `add_dm_thread_members`, `send_request_message`) and the direct insert alike. |
+
+All `SECURITY DEFINER`, `search_path = ''`, granted to no client. The services map `PM403` to
+`DM_SHIELD_REFUSAL` (403). Project and stage channels are a different table and unaffected.

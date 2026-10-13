@@ -178,3 +178,11 @@ which also excludes everything the item's owner published.
 The two `search.catalogue_index` sync triggers in the table above — `SECURITY DEFINER`, like the other
 sync functions in `00001400`. They upsert the title, `fts` and `is_public` and leave the embedding
 columns alone: a changed text is caught by its hash on the next backfill or re-embed.
+
+## Profiling off for under-18 accounts (Decision #208)
+
+UK Children's Code: no behavioural profile of a minor. `search.record_view` records nothing for one
+(no `org.recent_views`, no `search.user_affinity`), `search.trg_interest_events_minor`
+(`trg_interest_events_minor` BEFORE INSERT on `search.interest_events`, `00001800`) drops a minor's
+events silently, and `search.fn_log_query` stores a minor's search with no `user_id` and no query
+vector. Personalised discovery therefore has nothing to read for a minor.

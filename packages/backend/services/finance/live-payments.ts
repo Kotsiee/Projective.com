@@ -946,15 +946,23 @@ export interface StalePayout {
 
 /** Lease up to `limit` stale pending payouts to the sweep (`finance.fn_claim_stale_payouts`). */
 export async function claimStalePayouts(limit: number): Promise<StalePayout[]> {
-	const { data, error } = await getServiceClient().schema("finance").rpc("fn_claim_stale_payouts", { p_limit: limit });
-	if (error) throw new Error(`finance.fn_claim_stale_payouts failed (${error.code ?? "no code"}): ${error.message}`);
+	const { data, error } = await getServiceClient().schema("finance").rpc("fn_claim_stale_payouts", {
+		p_limit: limit,
+	});
+	if (error) {
+		throw new Error(
+			`finance.fn_claim_stale_payouts failed (${error.code ?? "no code"}): ${error.message}`,
+		);
+	}
 	return ((data ?? []) as Row[]).map((row) => ({
 		id: String(row.id),
 		walletId: String(row.wallet_id),
 		amountCents: num(row.amount_cents) ?? 0,
 		currency: String(row.currency).toUpperCase(),
 		destination: typeof row.destination_account === "string" ? row.destination_account : null,
-		destinationMethodId: typeof row.destination_method_id === "string" ? row.destination_method_id : null,
+		destinationMethodId: typeof row.destination_method_id === "string"
+			? row.destination_method_id
+			: null,
 		initiatedAt: String(row.initiated_at),
 		sweepAttempts: num(row.sweep_attempts) ?? 0,
 	}));

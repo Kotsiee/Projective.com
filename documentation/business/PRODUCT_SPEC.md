@@ -1232,6 +1232,11 @@ Money enters and leaves the platform through two deliberately asymmetric paths:
 - **Money leaves only to a verified payout account.** Whoever withdraws — freelancer, business or a
   client taking a refund balance out — needs a Stripe payout account on file (Settings → Verification
   & payouts). The wallet is debited when the withdrawal starts and credited back if Stripe refuses it.
+  A withdrawal has a per-currency minimum (about £10, `finance-model.md` §13), may name one of the
+  owner's own payout methods, and is never left in limbo: one whose confirmation is lost is completed,
+  re-sent or returned to the wallet by a sweep within minutes. A withdrawal the platform later
+  reverses comes back to the wallet; a bank that refuses the payout is reported to the owner, who must
+  update their bank details (Decision #202).
 - **Earned money clears a 7-day safety window before it can be used** (root `CLAUDE.md` §8 Decision
   #191). A released escrow (a team's shares and vault cut included), a fair-exit or session payout and a
   product sale show as **Pending** for `pending_release_days` (7) and then become **Available**. Until
@@ -2531,60 +2536,100 @@ registry); names/email are length-clamped.
 
 ### Age guardrails (Date of Birth)
 
-Individual signup collects **Date of Birth** and enforces, on both client and server:
+The age policy (Decision #208) follows COPPA (16 C.F.R. § 312), the UK Data Protection Act 2018 and
+the ICO Age Appropriate Design Code ("Children's Code"), EU GDPR Article 8, minors' contract law (UK
+Minors' Contracts Act 1987, the US infancy doctrine — a minor's contracts are voidable) and the
+Stripe Connect terms (an account holder must be 18 or over). Individual sign-up collects **Date of
+Birth**, and the join form, the API and the database all enforce:
 
-| Age         | State          | Capability                                                                     |
-| :---------- | :------------- | :----------------------------------------------------------------------------- |
-| **< 13**    | **Blocked**    | Cannot create an account. A friendly minimum-age message is shown.             |
-| **13 – 17** | **Restricted** | Account is created but flagged: **cannot buy services or sell work until 18.** |
-| **≥ 18**    | **Full**       | Unrestricted access.                                                           |
+```
+[ 0 -------- 12 ] | [ 13 -------- 15 ] | [ 16 -------- 17 ] | [ 18+ ]
+    Under 13      |  Mid-minor tier    |  Upper-minor tier  |  Adult
+    (Blocked)     |       (Restricted — one rule set)       |  (Full)
+```
 
-The `restricted` state is **re-derived server-side from DoB** (never trusted from the client) at
-every check rather than stored as a flag, so buy/sell capability unlocks automatically at 18. (Constants:
-`MIN_AGE = 13`, `ADULT_AGE = 18`.) This state is capability-scoped and does not add a column to the
-work/delivery status machine in `PRODUCT_MANAGEMENT.md`.
+| Age                               | State          | In one line                                                                  |
+| :-------------------------------- | :------------- | :--------------------------------------------------------------------------- |
+| **< 13** (up to 12 years 364 days) | **Blocked**    | No account, and nothing about the attempt is kept.                           |
+| **13 – 17**                       | **Restricted** | Explore and build a private profile; no money, selling, workspaces or strangers. |
+| **≥ 18**                          | **Full**       | Unrestricted, subject to the ordinary KYC / KYB gates.                       |
+
+(`MIN_AGE = 13`, `ADULT_AGE = 18`.) The mid-minor (13–15) and upper-minor (16–17) tiers are a
+classification only: the platform applies one restricted rule set to both, and the EU's national
+digital-consent ages (13 to 16) are not applied separately. A 13th or 18th birthday changes the state
+automatically. None of this adds a column to the work/delivery status machine in
+`PRODUCT_MANAGEMENT.md`.
 
 **Birthdays turn over on the person's own date.** An age is whole years counted on today's date in
 the person's time zone — the zone their browser reports at sign-up, stored as the profile's time
-zone (UTC when unknown). The join form, the API and the database all apply that one rule, so a 13th
-or 18th birthday unlocks at the same moment everywhere rather than hours apart. A 29 February
-birthday turns over on 1 March in a common year.
+zone (UTC when unknown). Every layer applies that one rule, so a birthday unlocks at the same moment
+everywhere. A 29 February birthday turns over on 1 March in a common year.
 
-**A restricted account sees only what it can use** (Decision #192). Anything it cannot use is left
-out rather than shown and refused:
+#### Under 13 — Blocked
 
-- **Hidden:** Wallet, Businesses, the basket and checkout, the Catalogue (and creating services or
-  products), Teams, Analytics, Become a Freelancer, and Settings → Billing and Verification & payouts.
-  A typed or stale link to one of these goes to Home.
-- **Browsing stays open:** Explore, profiles and listings read as normal. Where a listing or project
-  page would offer Buy, Book, Hire or Apply, one line explains that buying services and selling work
-  unlock on the 18th birthday; the profile's Hire and Add-to-project controls are absent, and the
-  "Become a Freelancer" promotion is withheld. Messaging is not buying and stays available.
-- **Sign-up:** choosing "I want to work" under 18 starts the account as a client; the seller persona
-  becomes available at 18 through Become a Freelancer.
-- **Settings → Account** names the account "Limited account" with the same sentence, in place of
-  the upgrade.
+1. **No registration.** The date of birth is refused before anything is written: no profile, no email
+   confirmation, no account. A Google sign-up already holds an identity when `/join` asks for the date
+   of birth, so that identity is deleted, with its email and sessions.
+2. **No retention.** The refused date of birth, the IP address and the contact details are neither
+   stored nor logged.
+3. **No retry.** The browser session is locked once an under-13 date of birth is submitted: the join
+   page shows only the minimum-age message, and the server refuses further individual sign-ups from
+   that session, so stepping back and changing the birth year does not reopen the form.
 
-**Personal projects.** A restricted account can still create projects, as personal management tools:
+#### 13 – 17 — Restricted
 
-- Every project it creates is **personal** — owned by that one person, never public or listed (and
-  never under a business, team or organisation), with stages, tickets, a board, files and a timeline
-  but **no money at all**: no prices, budget, funding, escrow, payments or paid revisions. Work moves
-  across the board without a hold, because nothing is held.
+The `restricted` state is **re-derived server-side from the stored date of birth** at every check —
+never accepted from a request body, never stored as a flag — and lifts on the 18th birthday.
+
+1. **No commercial transactions.** No buying services, funding stages, locking escrow, claiming paid
+   tickets, selling, publishing listings, or booking calls or session seats.
+2. **No payout account, no wallet.** No Stripe Connect payout account, no linked bank or card details,
+   no withdrawals, no wallet. A restricted account never **creates or joins a Team, Business or
+   Organisation** (each holds a pooled wallet and signs for work).
+3. **High-privacy defaults (Children's Code).** No profiling or behavioural tracking — no viewing
+   history, no interest events, no personalised discovery, and searches are logged anonymously. The
+   profile's location and local time are never shown to anyone else. No published working hours,
+   availability or discovery calls; a personal calendar stays available.
+4. **Direct-message shielding.** Direct messages only between people who **follow each other**; an
+   unfollow ends the conversation. (Project workspaces are the other permitted context, and a minor is
+   never on anyone else's project.)
+5. **Portfolio drafting only.** The profile is **unlisted or private, never public** in the directory.
+   A restricted account may build its profile and portfolio, browse Explore and read articles, and
+   create **personal projects** (below).
+6. **Hidden, not refused.** Anything it cannot use is left out of the interface rather than shown and
+   refused: Wallet, Businesses, the basket and checkout, the Catalogue (and creating services or
+   products), Teams, Analytics, Become a Freelancer, and Settings → Billing, Verification & payouts and
+   Scheduling & calls. A typed or stale link to one of these goes to Home. Where a listing or project
+   page would offer Buy, Book, Hire or Apply, one line explains that buying services and selling work
+   unlock on the 18th birthday; Settings → Account names it a "Limited account". Choosing "I want to
+   work" at sign-up starts the account as a client.
+
+#### 18 and over — Full
+
+1. **Contracts.** Commissions work, hires, executes stage agreements and signs IP transfer deeds.
+2. **Marketplace and payouts.** Buys, sells, operates an individual vault and opens Team or Business
+   pooled wallets, subject to Level 2 KYC / Level 3 KYB verification.
+
+**Personal projects — every account.** Anyone can create a project as a **personal** management tool,
+and every project a restricted account creates is one:
+
+- Owned by one person, never public or listed (and never under a business, team or organisation),
+  with stages, tickets, a board, files and a timeline but **no money at all** — no prices, budget,
+  funding, escrow, payments or paid revisions. Work moves across the board without a hold.
 - **Nobody joins it:** no members, invitations, invite links, open seats, staffing roles, applications
-  or hiring. Its workspace shows none of those controls — no Members or Preview views, no pricing,
-  terms or visibility settings, no Publish.
-- A project created at 17 **stays personal** after the 18th birthday; an adult starts a new project
-  to hire.
-- A restricted account never joins **anyone else's** project — it cannot apply, be invited, accept
-  an invitation or be assigned work.
+  or hiring, and its workspace shows none of those controls (no Members or Preview, no pricing, terms
+  or visibility, no Publish). Never published, it is labelled **Personal** rather than Draft.
+- A project stays personal for life — a minor's after their 18th birthday too; a new project is
+  started to hire.
 
-**Guardian-consented selling — post-MVP, disabled.** A future release will let an older minor (the
-exact age band is still to be decided) start selling with permission from an adult **aged 21 or
-over**, who must pass an **ID check**, provide **personal details** and **sign a consent form** for
-that minor. While a minor sells under that consent, their **messages and attachments are monitored and
-checked**, including inside project stages. This is **not built for the MVP**: there is no consent
-flow and no monitoring, and every account under 18 stays restricted until its 18th birthday.
+**Legal responsibility for minors — the proxy model (post-MVP, disabled).** A future release may let a
+13–17-year-old contribute within a Team or Business. When it does, an **adult aged 18 or over** — the
+age of majority across the US, UK and EU, not a higher threshold — must hold the verified Team or
+Business vault, execute the stage contracts and assume full legal, contractual and IP-indemnification
+liability; the minor never holds money. **Raw guardian IDs are never stored for child freelancing**
+unless the platform is operating an enterprise entity proxy (GDPR Article 9 special-category
+exposure). For the MVP this is off: the database refuses every minor as a member of a Team, Business
+or Organisation (the owner's decision, 2026-10-13).
 
 ### Individual onboarding — "quick to onboard, slow to set up"
 

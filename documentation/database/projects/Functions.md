@@ -1589,7 +1589,11 @@ security, analytics, public`; `EXECUTE` moot (a trigger).
 in `00001820`. On the transition into `withdrawn`, returns the unit (`finance.fn_refund_allowance`).
 `search_path = projects, finance, public`; `EXECUTE` moot (a trigger).
 
-## Personal projects and under-18 accounts (`00001130`, Decision #192)
+## Personal projects and under-18 accounts (`00001130`, Decisions #192, #208)
+
+Any account may choose a personal project: `projects.create_project` reads `payload.is_personal`
+(default `false`), and the guard below forces it for a minor whatever is sent. `projects.reserve_seat`
+asserts an adult (`PM403`) before holding a session seat.
 
 A restricted (13–17) account creates projects only as **personal** management tools — one person, no
 money, never listed — and never joins anybody else's. Every rule is a table trigger (bound in
