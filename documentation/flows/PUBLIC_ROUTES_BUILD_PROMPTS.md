@@ -261,7 +261,7 @@ update the PRODUCT_SPEC sitemap and ROUTING.md accordingly.
 - Hub: display title "Legal"; a one-paragraph intro; then a plain list (NOT cards) of the six
   documents, each row showing title (section-header register), a one-line summary (body) and meta
   in mono ("v2.1 · Updated 2026-10-01"). Rows are links; hover is a tonal tint on --surface-1.
-  A side note links /contact?intent=legal.
+  A side note links /contact?intent=support for legal questions.
 - Document page = P0 DocumentLayout:
   * TOC rail: all six documents as a nav (current one expanded into its sections) — the
     "synchronized multi-document navigation".
