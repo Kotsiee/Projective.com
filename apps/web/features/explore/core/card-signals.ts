@@ -7,7 +7,7 @@
  * that says "Top rated" on one surface and nothing on another is a data question the reader cannot
  * answer.
  */
-import type { DualRating, ProfileItem } from "../types/explore-types.ts";
+import type { DualRating, ExploreItem, ProfileItem, RatingTrack } from "../types/explore-types.ts";
 
 // #region Languages
 /**
@@ -106,6 +106,23 @@ export function ratingSignals(rating: DualRating | undefined): CardSignal[] {
 		return [{ id: "top-rated", label: "Top rated" }];
 	}
 	return [];
+}
+
+/**
+ * The one rating an item's own page judges it by: a service's or product's OWN reviews (`asHelper`,
+ * the subject's denormalised average — never its seller's client track), or a project's owner as a
+ * client, as the project hero reads it. `null` for a profile, which carries two tracks of its own.
+ */
+export function subjectRating(item: ExploreItem): RatingTrack | null {
+	switch (item.type) {
+		case "services":
+		case "products":
+			return item.rating?.asHelper ?? null;
+		case "projects":
+			return item.rating?.asClient ?? item.rating?.asHelper ?? null;
+		default:
+			return null;
+	}
 }
 // #endregion
 

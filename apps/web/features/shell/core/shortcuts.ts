@@ -59,3 +59,15 @@ export function isFocusSearchShortcut(event: ShortcutKey): boolean {
 	if (event.ctrlKey || event.metaKey || event.altKey) return false;
 	return event.key === "/";
 }
+
+/**
+ * Ctrl+/ or Cmd+/ (exactly one) — "focus the site header's search" from anywhere, a field included:
+ * the command modifier means it is never text. Shift is allowed for layouts that type `/` with it.
+ * Matched by the produced `/` only, never by key position, so a layout whose Slash key is `-` keeps
+ * Ctrl+- as zoom out.
+ */
+export function isFocusHeaderSearchShortcut(event: ShortcutKey): boolean {
+	if (event.defaultPrevented || event.repeat || event.altKey) return false;
+	if (event.ctrlKey === event.metaKey) return false;
+	return event.key === "/";
+}

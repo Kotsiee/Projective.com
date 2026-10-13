@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import {
 	isEditableTarget,
+	isFocusHeaderSearchShortcut,
 	isFocusSearchShortcut,
 	isToggleSidebarShortcut,
 	type ShortcutKey,
@@ -89,5 +90,28 @@ Deno.test("isFocusSearchShortcut — a command modifier, a held key or a taken k
 	assertEquals(isFocusSearchShortcut(slash({ repeat: true })), false);
 	assertEquals(isFocusSearchShortcut(slash({ defaultPrevented: true })), false);
 	assertEquals(isFocusSearchShortcut(press({ key: "k", code: "KeyK", ctrlKey: false, metaKey: true })), false);
+});
+// #endregion
+
+// #region The header search
+Deno.test("isFocusHeaderSearchShortcut — Ctrl+/ or Cmd+/ focuses the header search", () => {
+	const slash = (patch: Partial<ShortcutKey>) =>
+		press({ key: "/", code: "Slash", ctrlKey: false, ...patch });
+	assertEquals(isFocusHeaderSearchShortcut(slash({ ctrlKey: true })), true);
+	assertEquals(isFocusHeaderSearchShortcut(slash({ metaKey: true })), true);
+	assertEquals(isFocusHeaderSearchShortcut(slash({ ctrlKey: true, shiftKey: true })), true);
+});
+
+Deno.test("isFocusHeaderSearchShortcut — a bare slash, both modifiers, Alt or another key does not", () => {
+	const slash = (patch: Partial<ShortcutKey>) =>
+		press({ key: "/", code: "Slash", ctrlKey: false, ...patch });
+	assertEquals(isFocusHeaderSearchShortcut(slash({})), false);
+	assertEquals(isFocusHeaderSearchShortcut(slash({ ctrlKey: true, metaKey: true })), false);
+	assertEquals(isFocusHeaderSearchShortcut(slash({ ctrlKey: true, altKey: true })), false);
+	assertEquals(isFocusHeaderSearchShortcut(slash({ ctrlKey: true, repeat: true })), false);
+	assertEquals(
+		isFocusHeaderSearchShortcut(press({ key: "-", code: "Slash", ctrlKey: true })),
+		false,
+	);
 });
 // #endregion

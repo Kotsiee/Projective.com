@@ -19,10 +19,13 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
 ## Ledger primitives (migration `0009`)
 
 - **`finance.fn_wallet_credit(owner_id, owner_type, currency, amount, reason, ref_table, ref_id)`**
-  — credit a wallet **if one exists** (silent no-op otherwise); increments `balance_cents` and
-  appends a `transactions` line with the new `balance_after_cents`.
+  — credit an **existing** wallet: increments `balance_cents` and appends a `transactions` line with
+  the new `balance_after_cents`. A missing wallet (owner · type · currency, matched exactly) raises
+  **`PW404`** (Decision #186) — it used to return silently, so a credit could vanish. A caller that
+  may be the first to pay an owner runs `fn_ensure_wallet` first. A non-positive amount is still a
+  no-op.
 - **`finance.fn_wallet_debit(...)`** — the debit counterpart (the `balance_cents >= 0` CHECK
-  enforces sufficient funds).
+  enforces sufficient funds; a missing wallet raises `PW404`).
 - **`finance.fn_check_spending_limit(wallet_id, member, amount)`** → boolean — enforces a member's
   `finance.spending_limits` envelope and counts the spend against it, **atomically** (rewritten
   2026-09-28, signed off by the product owner): the row is locked `FOR UPDATE`, the period is rolled
@@ -35,8 +38,8 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   holds: an existing `freelancer` wallet wins over a `user` one; with none, a freelancer profile means
   `freelancer`, else `user`.
 - **`finance.fn_ensure_wallet(owner_type, owner_id, currency)`** → uuid (2026-09-28) — the owner's
-  wallet in that currency, created if missing. Exists because `fn_wallet_credit` is a silent no-op on
-  a missing wallet, so a credit must never be aimed at one.
+  wallet in that currency, created if missing. Run before the first credit to an owner who may never
+  have held one, because `fn_wallet_credit` refuses a missing wallet (`PW404`).
 - **`finance.fn_team_split_plan(team_id, payout)`** → jsonb (2026-09-28) — the team payout plan
   (finance-model §5), **one implementation** read by the release and by the console's preview, so
   what a team is shown it will receive is what it receives. Integer arithmetic, floored at every cut:
@@ -70,8 +73,12 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   `DETAIL` = `{state: 'needs_funding', reason, amount_minor, currency}` with `reason` one of `no_price`
   · `no_wallet` (no payer wallet in the project's currency) · `insufficient_funds` (checked for both
   wallet types — a business no longer relies on the `balance_cents` CHECK) · `spending_limit`. A missing
-  stage or payee is not a funding problem → `check_violation`. Already held → `NULL`, the one early
-  return. The envelope checked is the **SPENDER's — the project owner**
+  stage or payee is not a funding problem → `check_violation`. Already held (a held escrow with no
+  `revision_id`) → `NULL`, the one early return. **Concurrent holds (Decision #189):** the check
+  cannot see a sibling transaction's uncommitted hold, so the INSERT is the arbiter —
+  `uq_escrows_ticket_base_held` makes the later one wait, and once the first commits it gets
+  `unique_violation`, which the function reads as "already held": `NULL`, nothing debited, no notice.
+  A `unique_violation` on any other constraint is re-raised. The envelope checked is the **SPENDER's — the project owner**
   (`projects.projects.owner_user_id`) who commits the business's money (fixed 2026-09-28): it used to
   check `auth.uid()`, which here is the freelancer whose claim triggered the hold. On success it sets
   `payment_status = 'escrow_funded'` and notifies the payee ("Funded — you can start") and, unless the
@@ -79,7 +86,8 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   `?tkv=` ticket link. `search_path = public, finance, projects, org, comms, auth`.
 - **`finance.fn_hold_revision_escrow(revision_id)`** → escrow id (Decision #167) — one MORE held
   escrow on a paid revision round's ticket, at the round's `price_cents`, beside the one already held
-  for the work. Same payee rule (an accepted team seat, else the ticket's assignee; none →
+  for the work. The row names its round (`revision_id`), so it is never taken for the base escrow and
+  a round is held once (`uq_escrows_revision`, Decision #189). Same payee rule (an accepted team seat, else the ticket's assignee; none →
   `check_violation`) and the same refusal shape as `fn_hold_ticket_escrow` under #165: `PF402` with
   `DETAIL` `{state: 'needs_funding', reason: no_price | no_wallet | insufficient_funds |
   spending_limit, amount_minor, currency}`. Internal (`EXECUTE` revoked from `authenticated`); only
@@ -87,11 +95,23 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   held rows by `fn_release_ticket_escrow`.
 - **`finance.fn_release_ticket_escrow(ticket_id)`** — releases held escrow to the payee, applying
   the canonical **5%** fee (`security.platform_params.platform_fee_bp = 500`, set in `0305`) and
-  routing team payees through `fn_split_team_payout`.
+  routing team payees through `fn_split_team_payout`. **Exactly once under concurrency** (Decision
+  #188): it locks the ticket row, then each held escrow `FOR UPDATE` in id order, and flips it with
+  `UPDATE … WHERE id = r.id AND status = 'held' RETURNING id`; no row back means another caller
+  settled it first, and nothing is credited. Before #188 the loop read without a lock and the flip
+  did not re-check `status`, so two concurrent settlements of one ticket under READ COMMITTED (two
+  `approve_stage` calls, or `complete_ticket` racing `approve_stage`) both paid the payee.
 - **`finance.fn_refund_ticket_escrow(ticket_id)`** (`0310`) — refunds held escrow to the payer (used
-  by claim-TTL "parking" auto-release); no fee is applied to a refund.
+  by claim-TTL "parking" auto-release); no fee is applied to a refund. Locked and guarded as
+  `fn_release_ticket_escrow` (#188): a refund racing a release, or a second refund, returns nothing.
 - **`finance.fn_fair_exit_release(ticket_id, bp)`** (`0305`) — the 25/50/75 fair-exit split: pays
   the payee `bp` basis-points of the principal (net of fee), refunds the remainder to the client.
+  Locked and guarded as `fn_release_ticket_escrow` (#188).
+
+  **Verification:** `supabase/probes/escrow_release_concurrency.sql` races two real sessions
+  (dblink) on one ticket for each of these, and on the stage doors that call them, and asserts the
+  second session adds no ledger row. It commits, so it runs against a disposable copy of the
+  database (recipe in its header), never the shared dev DB.
 - **`finance.fn_generate_consolidated_invoice(business_id, start, end)`** — consolidates a period's
   released escrows/fees/bonuses into one itemised `consolidated_monthly` invoice.
 - ~~`finance.fn_seed_business_wallet()`~~ — **removed 2026-09-28** with its trigger
@@ -143,6 +163,29 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
 
 - **`finance.v_wallet_reconciliation`** (`20260723094000`) — internal ledger self-consistency
   (`balance_cents` vs the running ledger sum → `drift_cents`, expected 0). `service_role`-only.
+  Read nightly by `fn_reconcile_wallets` (below).
+
+### Ledger integrity (Decision #186)
+
+`finance.wallets.balance_cents` is a cache written beside the ledger by the two primitives above, so
+the ledger must be the one record nobody can rewrite, and the cache must be checked against it.
+
+- **`finance.fn_transactions_append_only()`** → trigger (not definer) — raises `PL403`
+  (`ledger: finance.transactions is append-only — <op> refused`) unconditionally. Bound to
+  `finance.transactions` `BEFORE UPDATE OR DELETE` per row (`trg_transactions_append_only`) and
+  `BEFORE TRUNCATE` per statement (`trg_transactions_no_truncate`, since TRUNCATE skips row triggers)
+  in `00001830`. No function updates or deletes ledger rows; corrections are compensating rows.
+- **`finance.fn_reconcile_wallets()`** → integer — for every wallet, compares `balance_cents` with
+  the ledger sum (`v_wallet_reconciliation.drift_cents`) **and** with its newest row's
+  `balance_after_cents` (ordered `created_at DESC, id DESC`, as `list_ledger` pages), in one
+  statement so a movement committing mid-run is seen whole or not at all. Each drifted wallet becomes
+  one `ops.log_entries` row (`level = 'error'`, `source = 'server'`,
+  `scope = 'finance.reconcile_wallets'`, `client_id = 'reconcile:<run id>'`, `data` = `run_id`,
+  `wallet_id`, `owner_type`, `owner_id`, `currency`, `balance_cents`, `ledger_sum_cents`,
+  `latest_balance_after_cents`); the run raises a `WARNING` and returns the number of drifted
+  wallets. Read-only on `finance`: drift is reported for a human, never auto-corrected. Service role
+  only (`00002510`). Scheduled nightly at 03:40 UTC as pg_cron job `finance-reconcile-wallets`
+  (guarded like `finance-billing-cycle`; where pg_cron is absent, run it by hand).
 
 ## Stage-level wrappers (in `projects`, invoke this engine — migration `0305`)
 
@@ -483,6 +526,12 @@ application maps it once:
 `owner_type · owner_id · name · handle · avatar_bucket · avatar_path · is_member · can_spend ·
 kyb_status · currency · invoicing_mode · billing_day · billing · person · departments`
 
+`get_purchase_owner` (plpgsql, because the resolver lives in a later file) adds **`platform_fee_bp`**:
+the rate a payment from this owner is charged, `fn_effective_platform_fee_bp(owner_type, owner_id)`
+(a negotiated rate, else the param) — the rate `place_wallet_order` applies, so the checkout preview
+and the charge cannot disagree (Decision #187). It is `NULL` unless the caller passes
+`fn_owner_visible` for that owner: a negotiated rate is a commercial term, not part of the public face.
+
 | Owner kind     | Who gets an answer                    | What a non-member sees                                   |
 | :------------- | :------------------------------------ | :------------------------------------------------------- |
 | `user`         | the person themselves (or admin)      | `NULL` — a person answers only about themselves          |
@@ -518,6 +567,9 @@ same gate the checkout's `invoice` provider applies. Returns `{ invoicing_mode, 
 
 ### `finance.place_wallet_order(p_basket_id, p_item_ids, p_currency, p_units, p_promo_code, p_idempotency_key)` → jsonb
 
+**Age gate:** a caller under 18 is refused `PM403` right after the sign-in check (`org.fn_assert_adult`, Decision #190) —
+which covers `finance.place_on_account_order`, which pays through this function.
+
 Pays for the submitted basket lines from the caller's Projective wallet, in **one transaction**:
 
 1. **Idempotency first.** An order already carrying `p_idempotency_key` is returned with
@@ -541,12 +593,16 @@ Pays for the submitted basket lines from the caller's Projective wallet, in **on
    threshold and the member's spending limit (`PA403`).
 7. **Money moves through the ledger primitives**: `fn_wallet_debit(… 'order_payment', 'orders', id)`
    on the buyer; per line, a pro-rata share of the promo (the remainder on the last line, so shares
-   sum exactly), the 5% fee on what was actually paid for that line, and
+   sum exactly), the platform fee on what was actually paid for that line — the **payer's** effective
+   rate, `fn_effective_platform_fee_bp(basket owner_type, owner_id)` (a negotiated rate, else
+   `platform_fee_bp` = 500), the resolver an escrow release charges through `fn_escrow_fee_bp`, and
+   **truncated** (`(paid × bp) / 10000`, Decision #187) — and
    `fn_wallet_credit(… 'product_sale', 'orders', id)` of the rest to the seller — the owning team's
    wallet for a team listing, else the person's `freelancer`/`user` wallet. A seller with no wallet in
-   the currency gets one first, because `fn_wallet_credit` is a silent no-op on a missing wallet.
+   the currency gets one first, because `fn_wallet_credit` refuses a missing wallet (`PW404`).
 8. **The record**: `finance.orders` (status `confirmed`, provider `wallet`, reference
-   `PJ-YYYY-XXXXXX`, `platform_fee_minor` the summed per-line fees), one `finance.order_lines` row per
+   `PJ-YYYY-XXXXXX`, `platform_fee_minor` the summed per-line fees, `platform_fee_bp` the rate
+   charged), one `finance.order_lines` row per
    line (fulfilment `download`, the first manifest entry's name, size and format, the licence), each
    basket line stamped `purchased_at`, the basket's promo cleared, the code's `redemption_count`
    incremented when it saved anything.
@@ -585,14 +641,13 @@ ticket and the round opens. Its order line is `item_type = 'paid_revision'`, `fu
 | `PS501`  | a line the wallet cannot settle here           | `no_provider`           |
 | `PF402`  | no wallet in the currency, or not enough in it | `insufficient_funds`    |
 | `PA403`  | approval threshold or spending limit           | `spend_limit`           |
+| `PM403`  | the buyer is under 18 (Decision #190)          | `not_authorised`        |
 | `22023`  | a malformed attempt key                        | —                       |
 
-> **Flagged, not decided.** The fee is the documented 5% (Decision #2) as a constant, while
-> `security.platform_params.platform_fee_bp` — which governs escrow releases — is seeded `0`
-> (#68(b)). The fee is retained rather than credited anywhere, because the platform's Fee Collection
-> wallet is not materialised (#54(i)). And a sale credits the seller's **Available** balance:
-> `finance.pending_releases` is keyed to an escrow, which a product sale does not have, so the 7-day
-> pending window (#54(c)) cannot hold it yet.
+> **Flagged, not decided.** The fee is retained rather than credited anywhere, because the platform's Fee Collection
+> wallet is not materialised (#54(i)). A sale credits the seller through the 7-day pending window
+> (`fn_wallet_credit_pending`, keyed to the order — Decision #191), so it reaches their Available
+> balance only when it clears.
 
 ## 💸 Wallet movements (`00001210` §12)
 
@@ -631,7 +686,7 @@ protects it from the split rebalancer). Each share is floored to the minor unit;
 divide, and any stake the agreement leaves unallocated, stays in the vault, which is debited by exactly
 what was paid. Needs `distribute`; the vault must hold the amount (`PF402`); a team with no agreed
 split is refused (`PD422`). A member with no wallet in the vault's currency gets one first (the credit
-primitive is a silent no-op on a missing wallet). Every line carries `reason = 'team_distribution'`
+primitive refuses a missing wallet, `PW404`). Every line carries `reason = 'team_distribution'`
 and the distribution's id; the audit row records the requested amount and each share. Returns
 `{ distribution_id, distributed_minor, requested_minor, currency, shares[], replayed }`.
 
@@ -689,10 +744,12 @@ nothing deleted. Needs `manage_finances`. Audits `team.split_changed`.
 ### `finance.preview_team_split(p_team_id)` → jsonb
 
 What the team's NEXT release will pay, by `fn_team_split_plan`. Any active member may read it. The
-honest gross is the team's **oldest escrow still held** (principal + deadline bonus); the fee is
-`security.platform_params.platform_fee_bp` of the principal. A team with nothing held has no
-projection — `gross_minor`, `currency` and `fee_minor` are `NULL` (never an invented figure) and the
-plan is the zero plan. Returns `{escrow_id?, gross_minor, currency, fee_minor, plan}`.
+honest gross is the team's **oldest escrow still held** (principal + deadline bonus); the fee is that
+escrow's payer's rate, `fn_escrow_fee_bp(payer_business_id, payer_user_id)` (so a negotiated rate
+shows), on the principal, truncated — exactly what `fn_release_ticket_escrow` will charge (Decision
+#187). A team with nothing held has no projection — `gross_minor`, `currency`, `fee_minor` and
+`fee_bp` are `NULL` (never an invented figure) and the plan is the zero plan. Returns
+`{escrow_id?, gross_minor, currency, fee_minor, fee_bp, plan}`.
 
 ### `finance.save_spend_policy(p_business_id, p_patch)` → `{business_id, currency}`
 
@@ -813,6 +870,8 @@ never guessed at.
 ### Card payments — user doors
 
 #### `finance.begin_card_payment(p_purpose, p_wallet_id, p_project_id, p_stage_id, p_expected_amount, p_currency, p_idempotency_key, p_ticket_id DEFAULT NULL)` → jsonb
+
+**Age gate:** a caller under 18 is refused `PM403` for either purpose (`org.fn_assert_adult`, Decision #190).
 
 Opens (or replays) one `finance.inbound_payments` row and registers the attempt key
 (`card_payment:<uid>`, 7 days, hashed with the request — the same key with a different request is
@@ -964,23 +1023,53 @@ pinned by `payments.contract.test.ts`) apply what Stripe reported or the schedul
 
 `charge.dispute.closed`. `won` / `warning_closed` → the case is `won` and every escrow the payment funded
 returns from `disputed` to `held`. `lost` → each still-frozen escrow is refunded to the payer's wallet
-(`escrow_refund`, its ticket back to `unpaid`), then the disputed amount is debited from that wallet
-(`chargeback`); what the wallet can no longer cover is `unrecovered_cents` (never a negative balance).
-Idempotent on the event and on the case. An escrow already RELEASED to the freelancer is not clawed
-back from them (flagged — a product decision).
+(`escrow_refund`, its ticket back to `unpaid`), then the disputed amount is recovered from that wallet —
+first from its money still in the pending window (`fn_recover_from_pending`, Decision #191), then
+debited from its Available balance (`chargeback`); what the wallet can no longer cover is
+`unrecovered_cents` (never a negative balance). The outcome reports `recovered_cents` (both parts) and
+`recovered_pending_cents`. Idempotent on the event and on the case. An escrow already RELEASED to the
+freelancer is not clawed back from them, not even from their pending window (Decision #126 flag, kept
+open by #191: only the payer's own wallet is recovered from).
 
 ### Withdrawals
 
 - `finance.begin_payout(p_wallet_id, p_amount, p_currency, p_instant, p_idempotency_key)` (user) — a
-  person wallet is self-only, a vault needs `withdraw`; a freelancer wallet needs
+  caller under 18 is `PM403` (`org.fn_assert_adult`, Decision #190); a person wallet is self-only, a vault needs `withdraw`; a freelancer wallet needs
   `fn_freelancer_payout_ready`, a business vault `fn_business_kyb_verified` (`PK403`); a verified
-  payout account (`PA403`); enough balance (`PF402`). Inserts a `pending` payout and DEBITS the wallet
+  payout account (`PA403`); enough Available balance (`PF402` — money still in the pending window is
+  not in `balance_cents`, so it can never be withdrawn early). Inserts a `pending` payout and DEBITS the wallet
   (`payout`) at once. Idempotent on the attempt key (scope `payout:<uid>`). No Instant fee is charged
   (its magnitude is undecided, #55(c)).
 - `finance.complete_payout(p_payout_id, p_transfer_ref)` (processor) — the Transfer exists: `paid`.
 - `finance.fail_payout(p_payout_id, p_reason)` (processor) — Stripe definitively refused: `failed`, and
   a `payout_reversal` credit returns the money. Only a `pending` payout can fail.
 - `finance.fn_payout_destination(wallet)` (internal) — the owner's verified Connect account.
+
+### The pending window (`00001240` §7, Decision #191)
+
+Earned money clears `security.platform_params.pending_release_days` (7) before it is Available
+(`finance-model.md` §7). Top-ups, refunds, transfers and returned payouts are the payer's own money and
+stay immediate; pending money can be neither spent nor withdrawn.
+
+- `finance.fn_wallet_credit_pending(owner_id, owner_type, currency, amount, reason, ref_table, ref_id)`
+  (internal) — the pending twin of `fn_wallet_credit`, same arguments: writes a
+  `finance.pending_releases` row keyed to its source (`ref_table` must be `escrows` or `orders`,
+  else `22023`) with `available_at = now() + pending_release_days`, and no ledger line. A missing
+  wallet is `PW404`; a 0-day window credits at once. Called by `fn_release_ticket_escrow`
+  (`escrow_release`), `fn_fair_exit_release` (`fair_exit_release`), `fn_split_team_payout`
+  (`team_split` · `team_finder_fee` · `<reason>_vault_retention`), `fn_release_seat_escrow`
+  (its `p_reason`) and `place_wallet_order` (`product_sale`).
+- `finance.fn_mature_pending_releases(p_limit = 1000)` → integer (service role / pg_cron
+  `finance-mature-pending-releases`, hourly at :05) — credits every row past `available_at` through
+  `fn_wallet_credit` with its original `reason` and source reference, so a matured release reads in
+  the ledger exactly as an immediate credit did; sets `state = 'available'`, `matured_at`,
+  `transaction_id`. Claims rows `FOR UPDATE SKIP LOCKED`; a replay credits nothing twice. Returns the
+  rows matured.
+- `finance.fn_recover_from_pending(wallet_id, amount)` → bigint (internal) — takes up to `amount` from
+  the wallet's pending rows, soonest-to-clear first, into `recovered_cents`; an emptied row closes with
+  no credit. Used by the lost-dispute recovery above.
+
+Proven by `supabase/probes/pending_window.sql`.
 
 ### Saved cards
 

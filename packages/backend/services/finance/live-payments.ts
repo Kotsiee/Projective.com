@@ -17,6 +17,7 @@ import {
 	type VerificationCase,
 	VerificationCaseSchema,
 } from "@projective/types/finance";
+import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
 import { getServiceClient, getUserClient } from "../../core/supabase.ts";
 import type { FieldErrors } from "../ServiceResult.ts";
 import type { FundingPaymentInput } from "./funding-state.ts";
@@ -103,6 +104,9 @@ function statusForCode(code: string | undefined, reason: string): number {
  * does not recognise is NOT a sentence for a reader: it is reported generically and logged.
  */
 export function refusalOf(error: { code?: string; message: string }, label: string): DbRefusal {
+	if (isAgeRestricted(error)) {
+		return { status: AGE_RESTRICTED.status, message: AGE_RESTRICTED.message };
+	}
 	const match = /^([A-Za-z]+):\s*([\s\S]+)$/.exec(error.message.trim());
 	const prefix = match ? match[1] : null;
 	const raw = (match ? match[2] : error.message).replace(/\s+/g, " ").trim();

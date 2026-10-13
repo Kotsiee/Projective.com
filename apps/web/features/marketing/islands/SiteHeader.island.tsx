@@ -15,6 +15,8 @@ import { Drawer } from "@projective/ui/feedback";
 import { useDismiss, useEdgeDetection, useOverlayStack } from "@projective/ui/hooks";
 import { Logo } from "@web/components/Logo.tsx";
 import { withRedirect } from "@features/auth/core/redirect.ts";
+import { isFocusHeaderSearchShortcut } from "@features/shell/core/shortcuts.ts";
+import { useSearchShortcut } from "@features/shell/hooks/useSearchShortcut.ts";
 
 /**
  * SiteHeader — the public navigation. Full-width and **completely transparent/borderless at the top
@@ -49,6 +51,13 @@ export default function SiteHeader(
 	const activeMenu = useSignal<string | null>(null); // open desktop megamenu pillar
 	const openAccordion = useSignal<string | null>(null); // expanded mobile drawer accordion
 	const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // hover-intent grace timer for the megamenu
+	const searchRef = useRef<HTMLFormElement>(null);
+
+	useSearchShortcut({
+		scopeRef: searchRef,
+		matches: isFocusHeaderSearchShortcut,
+		fromFields: true,
+	});
 
 	// #region Megamenu hover intent — a short grace on leave tolerates the trigger→panel gap so the
 	// panel doesn't flicker shut while the pointer crosses the hover-bridge.
@@ -224,7 +233,7 @@ export default function SiteHeader(
 					})}
 				</nav>
 
-				<form class="site-header__search" role="search" onSubmit={submitSearch}>
+				<form ref={searchRef} class="site-header__search" role="search" onSubmit={submitSearch}>
 					<div class="site-header__entity">
 						<button
 							ref={entityMenu.triggerRef}

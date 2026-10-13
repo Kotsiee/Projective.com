@@ -1,3 +1,4 @@
+import { AGE_RESTRICTED } from "../../core/age-gate.ts";
 import { fail, type ServiceResult } from "../ServiceResult.ts";
 
 /**
@@ -21,6 +22,11 @@ export function freelancerUnlockFailure(
 		case "42501":
 			return fail(403, {
 				message: "Finish setting up your account before unlocking a freelancer profile.",
+			});
+		case "PM403":
+			return fail(AGE_RESTRICTED.status, {
+				message: AGE_RESTRICTED.message,
+				details: { reason: AGE_RESTRICTED.reason },
 			});
 		case "22023":
 			return fail(422, {

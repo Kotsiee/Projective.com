@@ -4,6 +4,7 @@ import {
 	type SentApplication,
 	SentApplicationSchema,
 } from "@projective/types/projects";
+import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
 import type { ReadActor } from "../read-actor.ts";
 import { projectsDb } from "./live-support.ts";
 import { refusalFrom, type WriteOutcome, type WriteRefusal } from "./live-writes.ts";
@@ -53,8 +54,16 @@ export function handshakeRefusal(
 ): WriteRefusal {
 	const message = error.message.replace(/^ERROR:\s*/i, "").trim();
 	if (error.code === "23505") return { status: 409, message, errors: { [field]: "duplicate" } };
+	if (error.code === "23P01") return { status: 409, message, errors: { [field]: "conflict" } };
 	if (error.code === "23514" || error.code === "22023") {
 		return { status: 422, message, errors: { [field]: "refused" } };
+	}
+	if (isAgeRestricted(error)) {
+		return {
+			status: AGE_RESTRICTED.status,
+			message: AGE_RESTRICTED.message,
+			errors: { [field]: AGE_RESTRICTED.reason },
+		};
 	}
 	if (error.code === "42501") return { status: 403, message, errors: { [field]: "not_permitted" } };
 	return refusalFrom(error.message, field);

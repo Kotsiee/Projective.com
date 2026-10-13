@@ -5,11 +5,13 @@ import { ProgressiveImage } from "@projective/ui/display/image";
 import { VideoPlayer } from "@projective/ui/display/video";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
+import { MediaLightbox } from "@features/view/components/MediaLightbox.tsx";
 import {
 	advancePlan,
 	dampedDrag,
 	resolveSwipe,
 	rovingFocusFor,
+	showcaseGallery,
 	slidesOf,
 	wrapIndex,
 } from "../core/showcase-model.ts";
@@ -107,10 +109,17 @@ export function ProfileShowcase({ showcase, name, reduced }: ProfileShowcaseProp
 	 * would await a video that can never end.
 	 */
 	const failed = useRef(new Set<number>());
+	const lightboxOpen = useSignal(false);
+	const lightboxActive = useSignal(0);
 
 	const index = wrapIndex(active.value, count);
 	const slide = slides[index];
-	const paused = hovering.value || focusWithin.value;
+	const paused = hovering.value || focusWithin.value || lightboxOpen.value;
+
+	function openLightbox(at: number): void {
+		lightboxActive.value = at;
+		lightboxOpen.value = true;
+	}
 
 	function go(next: number, announce = true): void {
 		const target = wrapIndex(next, count);
@@ -285,6 +294,8 @@ export function ProfileShowcase({ showcase, name, reduced }: ProfileShowcaseProp
 							index={i}
 							count={count}
 							active={i === index}
+							name={name}
+							onOpen={() => openLightbox(i)}
 							videoRef={(el) => {
 								videos.current[i] = el;
 							}}
@@ -359,6 +370,14 @@ export function ProfileShowcase({ showcase, name, reduced }: ProfileShowcaseProp
 			)}
 
 			<p class="ui-visually-hidden" role="status" aria-live="polite">{status.value}</p>
+
+			<MediaLightbox
+				open={lightboxOpen}
+				active={lightboxActive}
+				gallery={showcaseGallery(slides)}
+				title={`${name} — showcase`}
+				onClose={() => (lightboxOpen.value = false)}
+			/>
 		</div>
 	);
 }
@@ -369,6 +388,10 @@ interface SlideProps {
 	index: number;
 	count: number;
 	active: boolean;
+	/** The entity's name, the fallback accessible name of the open control. */
+	name: string;
+	/** Open the lightbox on this slide; only a still offers it. */
+	onOpen: () => void;
 	videoRef: (el: HTMLVideoElement | null) => void;
 	onPlay: () => void;
 	onPause: () => void;
@@ -407,18 +430,25 @@ function Slide(props: SlideProps): JSX.Element {
 					/>
 				)
 				: (
-					<ProgressiveImage
-						class="pf-showcase__media"
-						src={item.src}
-						srcset={item.srcset}
-						// The showcase column: about half the page on a desktop, the full width on a phone.
-						sizes="(min-width: 64rem) 55vw, 100vw"
-						alt={item.alt}
-						placeholder={item.placeholder}
-						loading={index === 0 ? "eager" : "lazy"}
-						decoding="async"
-						draggable={false}
-					/>
+					<button
+						type="button"
+						class="pf-showcase__open"
+						aria-label={`Open ${item.alt || props.name} full screen`}
+						onClick={props.onOpen}
+					>
+						<ProgressiveImage
+							class="pf-showcase__media"
+							src={item.src}
+							srcset={item.srcset}
+							// The showcase column: about half the page on a desktop, the full width on a phone.
+							sizes="(min-width: 64rem) 55vw, 100vw"
+							alt=""
+							placeholder={item.placeholder}
+							loading={index === 0 ? "eager" : "lazy"}
+							decoding="async"
+							draggable={false}
+						/>
+					</button>
 				)}
 		</li>
 	);

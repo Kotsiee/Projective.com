@@ -19,3 +19,13 @@ FOR EACH ROW EXECUTE FUNCTION org.seed_user_preferences();
 CREATE TRIGGER on_users_public_created_notification_prefs
     AFTER INSERT ON org.users_public
     FOR EACH ROW EXECUTE FUNCTION comms.seed_notification_prefs();
+
+-- #region Age guardrails (Decision #190)
+CREATE TRIGGER trg_users_public_dob_guard
+    BEFORE INSERT OR UPDATE OF dob ON org.users_public
+    FOR EACH ROW EXECUTE FUNCTION org.trg_users_public_dob_guard();
+
+CREATE TRIGGER trg_listings_publish_age_gate
+    BEFORE INSERT OR UPDATE OF status ON catalogue.listings
+    FOR EACH ROW EXECUTE FUNCTION catalogue.trg_listings_publish_age_gate();
+-- #endregion

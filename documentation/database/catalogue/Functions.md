@@ -39,6 +39,7 @@ put on a public page.
 | `22023`  | A malformed request — a blank title, an unknown kind, status or delivery model, a gallery that is not an array of up to 24. | 422  |
 | `PB404`  | No such listing (or one RLS hides from the caller).                                          | 404  |
 | `PG422`  | The publish gate. `DETAIL` lists what is missing, separated by `\|` (`a price\|at least one image`), which the console names back to the seller. | 422  |
+| `PM403`  | The seller is under 18. Raised by `catalogue.trg_listings_publish_age_gate` (BEFORE INSERT / UPDATE OF `status` on `catalogue.listings`) on any move to `published`, so no write path publishes past it (Decision #190). | 403  |
 
 **Grants** ([`00002510_permissions_function_grants.sql`](../../../supabase/migrations/00002510_permissions_function_grants.sql)):
 all four are `REVOKE`d from `public` and `anon` and `EXECUTE`-granted to `authenticated` and

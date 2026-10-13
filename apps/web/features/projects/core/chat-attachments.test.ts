@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import type { ChatMessage, MessageAttachment } from "@projective/types/projects";
 import {
+	attachmentGallery,
 	attachmentItems,
 	attachmentOpenHref,
 	attachmentPicture,
@@ -171,5 +172,46 @@ Deno.test("attachmentItems: a bubble kind backs up a name the taxonomy cannot pl
 	);
 	assertEquals(row.kind, "video");
 	assertEquals(row.thumbnailUrl, null);
+});
+// #endregion
+
+// #region Lightbox
+Deno.test("attachmentGallery: two or more pictures page as lg renditions over sm thumbnails", () => {
+	const other = "9c1d6b4f-2a3e-4d7c-8b8f-3e4a5b6c7d8e";
+	const gallery = attachmentGallery(
+		message([attachment(), attachment({ id: "row-2", assetId: other, name: " " })]),
+	);
+	assertEquals(gallery, [
+		{
+			kind: "image",
+			src: `/api/media/proxy/${ASSET}?tier=lg`,
+			thumb: `/api/media/proxy/${ASSET}?tier=sm`,
+			alt: "poster.png",
+		},
+		{
+			kind: "image",
+			src: `/api/media/proxy/${other}?tier=lg`,
+			thumb: `/api/media/proxy/${other}?tier=sm`,
+			alt: "Attachment",
+		},
+	]);
+});
+
+Deno.test("attachmentGallery: one picture, or any non-picture, keeps the file modal", () => {
+	assertEquals(attachmentGallery(message([attachment()])), null);
+	assertEquals(
+		attachmentGallery(
+			message([attachment(), attachment({ kind: "pdf", name: "a.pdf", ext: "pdf" })]),
+		),
+		null,
+	);
+});
+
+Deno.test("attachmentGallery: a fixture picture draws its own address", () => {
+	const url = "https://images.example/p.jpg";
+	const gallery = attachmentGallery(
+		message([attachment({ assetId: undefined, url }), attachment({ assetId: null, url })]),
+	);
+	assertEquals(gallery?.map((m) => [m.src, m.thumb]), [[url, url], [url, url]]);
 });
 // #endregion

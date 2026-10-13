@@ -539,7 +539,7 @@ export const SERVICES: ServiceItem[] = SERVICE_SEED.map(
 		currency: CORPUS_CURRENCY,
 		summary: blurb,
 		skills: resolveSkills([category, "design"]),
-		rating: OWNERS[owner].kind === "team" ? helperOnly(4.8, 40 + i) : dual([4.9, 30 + i], [4.7, 8]),
+		rating: OWNERS[owner].kind === "team" ? helperOnly(4.8, 40 + i) : helperOnly(4.9, 30 + i),
 		media: unsplash(photo, 800, 600),
 		mediaPlaceholder: placeholder(photo, 800, 600),
 		// The first service is a promoted placement — surfaced as a subtle "Promoted" card badge.

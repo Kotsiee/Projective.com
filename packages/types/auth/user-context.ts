@@ -77,6 +77,16 @@ export const UserContextSchema = z.object({
 	 * what actually holds.
 	 */
 	onboarded: z.boolean(),
+	/**
+	 * Whether the person is 13–17 — an account that may explore and build a profile but not buy or
+	 * sell until the 18th birthday (PRODUCT_SPEC §Age guardrails). The access-token hook derives it
+	 * from the stored date of birth at every mint (`org.fn_is_minor`); only an explicit `true`
+	 * restricts, so a legacy token reads unrestricted.
+	 *
+	 * Chrome only: it lets a buy/sell control explain itself before it is pressed. Every such door
+	 * refuses a minor in the database (`org.fn_assert_adult`, SQLSTATE `PM403`) whatever this says.
+	 */
+	restricted: z.boolean(),
 	/** The authenticated user's id (`sub`), or `null` for guests. */
 	userId: z.string().max(64).nullable(),
 	/**
@@ -148,6 +158,8 @@ export interface ActiveContextClaim {
 	 * {@link UserContextSchema.shape.onboarded}.
 	 */
 	onboarded?: boolean;
+	/** `org.fn_is_minor` at mint time — see {@link UserContextSchema.shape.restricted}. */
+	isRestricted?: boolean;
 	/** `org.user_preferences.preferred_display_currency` — the viewer's money FORMATTING target. */
 	displayCurrency?: string;
 	/** `org.user_preferences.locale` — the BCP-47 locale `Intl` formats with. */
@@ -168,6 +180,7 @@ export const GUEST_CONTEXT: UserContext = Object.freeze({
 	// A guest has no identity to be onboarded, and nothing gates on this outside the authenticated
 	// app -- `true` keeps the flag meaning "no unfinished onboarding is known", never "unknown".
 	onboarded: true,
+	restricted: false,
 	handle: null,
 	userId: null,
 	displayCurrency: PLATFORM_BASE_CURRENCY,
@@ -189,6 +202,7 @@ export const PERSONAL_MEMBER_CONTEXT: UserContext = Object.freeze({
 	// The opaque-cookie fallback learned nothing about a profile, so it must not assert one is
 	// missing -- unknown resolves to onboarded, exactly as an absent claim does.
 	onboarded: true,
+	restricted: false,
 	handle: null,
 	userId: null,
 	displayCurrency: PLATFORM_BASE_CURRENCY,
@@ -282,6 +296,7 @@ export function resolveUserContext(claims: AccessTokenClaims | null | undefined)
 	// middle one may gate anything. `!active.onboarded` would collapse the third into the second and
 	// send every holder of a pre-claim token back through onboarding they have already completed.
 	const onboarded = active.onboarded !== false;
+	const restricted = active.isRestricted === true;
 
 	// Presentation preferences. `toDisplayCurrency` is total: an absent, malformed or unsupported
 	// claim collapses to the platform base rather than to a code the FX table cannot price — the one
@@ -297,6 +312,7 @@ export function resolveUserContext(claims: AccessTokenClaims | null | undefined)
 		isClient,
 		isFreelancer,
 		onboarded,
+		restricted,
 		handle,
 		userId,
 		displayCurrency,

@@ -23,6 +23,7 @@ import type { ExploreOwner, SkillRef } from "@projective/types/explore";
 import { IntakeFieldSchema, type IntakeField } from "@projective/types/services";
 import { flattenRichText } from "@projective/types/richtext";
 import { PLATFORM_BASE_CURRENCY, toMajorUnits, toMinorUnits } from "@projective/types/finance";
+import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
 import { parsePublicObjectUrl, publicObjectUrl } from "../../core/storage-url.ts";
 import { resolveSkill } from "../explore/skills.ts";
@@ -657,6 +658,7 @@ export async function listingDetail(slug: string, actor: ReadActor & { accessTok
 // #region Writes
 /** The PostgREST error a door raised, as a refusal with its own sentence. */
 function refusalOf<T>(error: { code?: string; message: string; details?: string | null }): Result<T> {
+	if (isAgeRestricted(error)) return refuse(AGE_RESTRICTED.status, AGE_RESTRICTED.message);
 	const status = statusFor(error.code);
 	const message = error.message.replace(/\s+/g, " ").trim().slice(0, 200) || "That didn't save.";
 	if (error.code === "PG422") {

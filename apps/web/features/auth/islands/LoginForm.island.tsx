@@ -34,6 +34,15 @@ export default function LoginForm(
 				)
 				: null}
 
+			{notice === "confirmed"
+				? (
+					<div class="auth-banner auth-banner--success" role="status">
+						<span class="auth-banner__icon">{CheckIcon()}</span>
+						<span>Email confirmed. Sign in to continue.</span>
+					</div>
+				)
+				: null}
+
 			{notice === "confirm_failed"
 				? (
 					<div class="auth-banner auth-banner--error" role="alert">

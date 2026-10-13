@@ -197,17 +197,6 @@
 	transform: none;
 }
 
-.ex-btn--ghost {
-	background: var(--surface-1);
-	color: var(--on-surface);
-	border-color: var(--ex-hair-strong);
-}
-
-.ex-btn--ghost:hover {
-	border-color: var(--primary);
-	color: var(--primary);
-}
-
 .ex-btn:focus-visible {
 	outline: none;
 }

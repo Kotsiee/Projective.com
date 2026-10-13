@@ -39,3 +39,12 @@ Deno.test("only the body scrolls; the footer is pinned behind one hairline", () 
 	assert(footer.includes("env(safe-area-inset-bottom)"));
 	assertFalse(footer.includes("overflow"));
 });
+
+Deno.test("header tools sit against the close button at its size, in its muted ink", () => {
+	const tools = rule(".ui-drawer__tools");
+	assert(tools.includes("flex: none"));
+	assert(tools.includes("margin-inline-start: auto"));
+	assert(rule(".ui-drawer__tools + .ui-drawer__close").includes("margin-inline-start: 0"));
+	assert(rule(".ui-drawer__tools .ui-button--icon-only").includes("var(--overlay-action-size)"));
+	assert(rule(".ui-drawer__tools .ui-button--text").includes("var(--on-surface-variant)"));
+});

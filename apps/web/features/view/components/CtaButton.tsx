@@ -6,6 +6,13 @@ import { Icon } from "@projective/ui/icons";
 import type { CtaPhase } from "../core/cta-feedback.ts";
 
 /**
+ * A conversion control's fill ramp: `inverted` is the default teal + white primary (§D.7.7), `brand`
+ * the teal secondary, and `accent` (amber money verb) + `mono` (monochrome basket) the commerce rig's
+ * hue-ranked pair (§B.8.1).
+ */
+export type CtaTone = "inverted" | "brand" | "accent" | "mono";
+
+/**
  * CtaButton — a conversion control with the platform's calm positive-feedback cycle.
  *
  * `idle → pending → settled → idle`, driven by {@link useCtaFeedback}. The press gets a Material
@@ -41,8 +48,8 @@ export interface CtaButtonProps {
 	settledLabel?: string;
 	/** The leading icon at rest. Replaced by the spinner while pending and by a check while settled. */
 	icon?: JSX.Element;
-	/** `inverted` is the ranked PRIMARY (§D.7.7); `brand` is the secondary. */
-	tone?: "inverted" | "brand";
+	/** The fill ramp: {@link CtaTone}. */
+	tone?: CtaTone;
 	/**
 	 * The `Button` variant.
 	 *
@@ -123,7 +130,7 @@ export function CtaLink(
 		ariaLabel?: string;
 		href: string;
 		icon?: JSX.Element;
-		tone?: "inverted" | "brand";
+		tone?: CtaTone;
 		/**
 		 * `outlined` is the navigating SECONDARY (the schedule leaf beside "Book session") — the same
 		 * structural step-down `CtaButton` takes, so a link and a button rank identically in the rig.

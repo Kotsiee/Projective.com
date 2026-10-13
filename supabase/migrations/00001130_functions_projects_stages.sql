@@ -693,8 +693,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance
 
 -- #region 3. fn_stage_window — a stage's scheduled [start, end) slot
 -- Lower bound = the fixed start (if any); upper bound = the file due-date, else the session end-date.
--- Unbounded ends become +/-infinity. A fully-open (all-null) stage is [-inf, inf) and only conflicts
--- with another fully-open stage — the deterministic-but-conservative default when timing is unknown.
+-- Unbounded ends become +/-infinity. A fully-open (all-null) stage is [-inf, inf), which overlaps
+-- every other window — the conservative default when timing is unknown.
 CREATE OR REPLACE FUNCTION projects.fn_stage_window(p_stage_id uuid)
 RETURNS tstzrange
 LANGUAGE sql
@@ -943,6 +943,7 @@ BEGIN
     IF v_actor IS NULL THEN
         RAISE EXCEPTION 'Sign in to apply to a project.' USING ERRCODE = 'insufficient_privilege';
     END IF;
+    PERFORM org.fn_assert_adult(v_actor);
     IF v_message IS NOT NULL AND char_length(v_message) > 4000 THEN
         RAISE EXCEPTION 'message: too_long' USING ERRCODE = '22023';
     END IF;
@@ -1109,16 +1110,24 @@ GRANT EXECUTE ON FUNCTION projects.apply_to_project(text, text, uuid, text, uuid
 -- refilled it would let a sender notify the same client without limit.
 --
 -- The person who filed it may withdraw it, and so may anyone who could have filed it for the team
--- (`bind_seat`). Only a pending application can be withdrawn; an answered one is history.
+-- (`bind_seat`). Only a pending application can be withdrawn; an answered one is history. The owner
+-- who was told of the request (`application.received`) is told it was taken back
+-- (`application.withdrawn`), deep-linked to the conversation with the applicant.
 CREATE OR REPLACE FUNCTION projects.withdraw_application(p_application_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, projects, org, auth
+SET search_path = public, projects, comms, org, auth
 AS $$
 DECLARE
-    v_actor uuid := auth.uid();
-    v_app   projects.project_applications%ROWTYPE;
+    v_actor       uuid := auth.uid();
+    v_app         projects.project_applications%ROWTYPE;
+    v_owner       uuid;
+    v_slug        text;
+    v_title       text;
+    v_target_name text;
+    v_name        text;
+    v_username    text;
 BEGIN
     IF v_actor IS NULL THEN
         RAISE EXCEPTION 'Sign in to withdraw an application.' USING ERRCODE = 'insufficient_privilege';
@@ -1152,12 +1161,52 @@ BEGIN
         'projects.project_applications', v_app.id
     );
 
+    SELECT p.owner_user_id, p.slug, p.title INTO v_owner, v_slug, v_title
+    FROM projects.projects p WHERE p.id = v_app.project_id;
+
+    SELECT COALESCE(sr.role_title, s.name) INTO v_target_name
+    FROM projects.project_application_targets pat
+    LEFT JOIN projects.stage_staffing_roles sr ON pat.target_type = 'role' AND sr.id = pat.target_id
+    LEFT JOIN projects.stage_open_seats os ON pat.target_type = 'seat' AND os.id = pat.target_id
+    LEFT JOIN projects.project_stages s
+           ON s.id = CASE pat.target_type
+                        WHEN 'stage' THEN pat.target_id
+                        WHEN 'role' THEN sr.project_stage_id
+                        ELSE os.project_stage_id
+                     END
+    WHERE pat.application_id = v_app.id
+    ORDER BY CASE pat.target_type WHEN 'seat' THEN 0 WHEN 'role' THEN 1 ELSE 2 END
+    LIMIT 1;
+
+    SELECT NULLIF(trim(coalesce(up.first_name, '') || ' ' || coalesce(up.last_name, '')), ''), up.username
+      INTO v_name, v_username
+      FROM org.users_public up
+     WHERE up.user_id = v_app.applicant_user_id;
+    IF v_app.applicant_type = 'team' THEN
+        SELECT t.name INTO v_name FROM org.teams t WHERE t.id = v_app.applicant_profile_id;
+    END IF;
+
+    PERFORM comms.fn_notify(
+        v_owner,
+        'application.withdrawn',
+        format('%s withdrew their application to %s', COALESCE(v_name, 'A freelancer'), COALESCE(v_target_name, v_title)),
+        v_title || CASE WHEN v_target_name IS NOT NULL THEN ' · ' || v_target_name ELSE '' END,
+        'projects.project_applications',
+        v_app.id,
+        jsonb_build_object('project_slug', v_slug, 'project_title', v_title, 'target_name', v_target_name),
+        v_actor,
+        'project',
+        v_app.project_id,
+        NULL,
+        CASE WHEN v_username IS NOT NULL THEN '/messages/dm-' || v_username ELSE NULL END
+    );
+
     RETURN jsonb_build_object('id', v_app.id, 'status', 'withdrawn', 'refunded', 1);
 END;
 $$;
 
 COMMENT ON FUNCTION projects.withdraw_application(uuid) IS
-'The applicant (or a member who may bind the applying team) withdraws a pending application. The status flip refunds one weekly proposal unit through trg_refund_withdrawn_application; the anti-burst buffer token is not returned.';
+'The applicant (or a member who may bind the applying team) withdraws a pending application. The status flip refunds one weekly proposal unit through trg_refund_withdrawn_application; the anti-burst buffer token is not returned. The project owner is notified (application.withdrawn).';
 
 -- #endregion
 
@@ -1234,7 +1283,13 @@ COMMENT ON FUNCTION projects.list_my_applications(text) IS
 -- role's, or the stage itself (`apply_to_project`). The whole body runs in one transaction; a
 -- per-assignee advisory xact-lock serialises concurrent accepts of the *same* candidate so the
 -- conflict guard + unique index cannot be raced into a double-booking (AC6). Only a seat is FILLED
--- (and its other applicants rejected): a role or a stage can take more than one person.
+-- (and its other applicants rejected and told, `application.declined` with reason `seat_filled`): a
+-- role or a stage can take more than one person.
+--
+-- Lock order is seat row → application row → candidate advisory lock. Every accept of one seat queues
+-- on the seat row before it holds any application row, so two candidates accepted for one seat run
+-- one after the other and the winner's auto-reject never waits on a rival's application lock. The
+-- loser then finds the seat `filled` and is refused `unique_violation`, DETAIL `reason=seat_filled`.
 CREATE OR REPLACE FUNCTION projects.assign_from_application(p_application_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1260,10 +1315,14 @@ DECLARE
     v_slug       text;
     v_title      text;
     v_stage_name text;
+    v_seat_status text;
+    v_rows       integer;
+    v_owner_handle text;
+    v_declined   record;
 BEGIN
-    SELECT pa.project_id, pa.applicant_type, pa.applicant_profile_id, pa.applicant_user_id, pa.status,
+    SELECT pa.project_id, pa.applicant_type, pa.applicant_profile_id, pa.applicant_user_id,
            pat.target_type, pat.target_id
-        INTO v_project, v_type, v_profile, v_app_user, v_status, v_target_type, v_target_id
+        INTO v_project, v_type, v_profile, v_app_user, v_target_type, v_target_id
     FROM projects.project_applications pa
     JOIN projects.project_application_targets pat ON pat.application_id = pa.id
     WHERE pa.id = p_application_id
@@ -1279,21 +1338,42 @@ BEGIN
         RAISE EXCEPTION 'Only the project owner, an admin or a manager may accept requests.' USING ERRCODE = 'insufficient_privilege';
     END IF;
 
-    IF v_status <> 'pending' THEN
-        RAISE EXCEPTION 'This application has already been %.', v_status USING ERRCODE = 'check_violation';
-    END IF;
+    -- Accepting seats the applicant on paid work, which a minor cannot take (Decision #190).
+    PERFORM org.fn_assert_adult(v_app_user);
 
     IF v_target_type = 'seat' THEN
         v_seat := v_target_id;
-        SELECT s.project_stage_id INTO v_stage FROM projects.stage_open_seats s WHERE s.id = v_seat;
+        SELECT s.project_stage_id, s.status INTO v_stage, v_seat_status
+        FROM projects.stage_open_seats s
+        WHERE s.id = v_seat
+        FOR UPDATE;
     ELSIF v_target_type = 'role' THEN
         SELECT r.project_stage_id INTO v_stage FROM projects.stage_staffing_roles r WHERE r.id = v_target_id;
     ELSE
         v_stage := v_target_id;
     END IF;
 
+    SELECT pa.status INTO v_status
+    FROM projects.project_applications pa
+    WHERE pa.id = p_application_id
+    FOR UPDATE;
+
     IF v_stage IS NULL THEN
         RAISE EXCEPTION 'The stage this application named no longer exists.' USING ERRCODE = 'no_data_found';
+    END IF;
+
+    -- The loser of a two-candidate race was auto-rejected by the winner; it hears why, not "rejected".
+    IF v_seat_status = 'filled' AND v_status IN ('pending', 'rejected') THEN
+        RAISE EXCEPTION 'This seat has already been filled.'
+            USING ERRCODE = 'unique_violation', DETAIL = 'reason=seat_filled';
+    END IF;
+
+    IF v_status <> 'pending' THEN
+        RAISE EXCEPTION 'This application has already been %.', v_status USING ERRCODE = 'check_violation';
+    END IF;
+
+    IF v_seat IS NOT NULL AND v_seat_status <> 'open' THEN
+        RAISE EXCEPTION 'This seat is no longer open.' USING ERRCODE = 'check_violation';
     END IF;
 
     v_assignee_type := v_type::assignment_type;
@@ -1334,17 +1414,49 @@ BEGIN
     UPDATE projects.project_applications SET status = 'accepted', updated_at = now()
     WHERE id = p_application_id;
 
-    -- A seat holds one person: fill it and auto-reject its other pending applicants.
-    IF v_seat IS NOT NULL THEN
-        UPDATE projects.project_applications pa
-        SET status = 'rejected', updated_at = now()
-        FROM projects.project_application_targets pat
-        WHERE pat.application_id = pa.id AND pat.target_type = 'seat' AND pat.target_id = v_seat
-            AND pa.id <> p_application_id AND pa.status = 'pending';
+    SELECT p.slug, p.title, up.username INTO v_slug, v_title, v_owner_handle
+    FROM projects.projects p
+    LEFT JOIN org.users_public up ON up.user_id = p.owner_user_id
+    WHERE p.id = v_project;
+    SELECT s.name INTO v_stage_name FROM projects.project_stages s WHERE s.id = v_stage;
 
+    -- A seat holds one person: fill it, then auto-reject and tell its other pending applicants.
+    IF v_seat IS NOT NULL THEN
         UPDATE projects.stage_open_seats
         SET status = 'filled', filled_assignment_id = v_assignment
-        WHERE id = v_seat;
+        WHERE id = v_seat AND status = 'open';
+        GET DIAGNOSTICS v_rows = ROW_COUNT;
+        IF v_rows = 0 THEN
+            RAISE EXCEPTION 'This seat has already been filled.'
+                USING ERRCODE = 'unique_violation', DETAIL = 'reason=seat_filled';
+        END IF;
+
+        FOR v_declined IN
+            UPDATE projects.project_applications pa
+            SET status = 'rejected', updated_at = now()
+            FROM projects.project_application_targets pat
+            WHERE pat.application_id = pa.id AND pat.target_type = 'seat' AND pat.target_id = v_seat
+                AND pa.id <> p_application_id AND pa.status = 'pending'
+            RETURNING pa.id, pa.applicant_user_id
+        LOOP
+            PERFORM comms.fn_notify(
+                v_declined.applicant_user_id,
+                'application.declined',
+                format('Your application to %s was declined', COALESCE(v_stage_name, v_title)),
+                v_title || CASE WHEN v_stage_name IS NOT NULL THEN ' · ' || v_stage_name ELSE '' END
+                    || ' — the seat was filled.',
+                'projects.project_applications',
+                v_declined.id,
+                jsonb_build_object('project_slug', v_slug, 'project_title', v_title,
+                                   'stage_id', v_stage, 'stage_name', v_stage_name,
+                                   'reason', 'seat_filled'),
+                v_actor,
+                'project',
+                v_project,
+                NULL,
+                CASE WHEN v_owner_handle IS NOT NULL THEN '/messages/dm-' || v_owner_handle ELSE NULL END
+            );
+        END LOOP;
     END IF;
 
     -- Enrol the freelancer as a project participant so the roster / access checks pick them up.
@@ -1372,8 +1484,6 @@ BEGIN
     );
 
     -- Tell the applicant, through the router; they are a participant now, so the project routes.
-    SELECT p.slug, p.title INTO v_slug, v_title FROM projects.projects p WHERE p.id = v_project;
-    SELECT s.name INTO v_stage_name FROM projects.project_stages s WHERE s.id = v_stage;
     PERFORM comms.fn_notify(
         v_app_user,
         'application.accepted',
@@ -2000,6 +2110,11 @@ BEGIN
             IF NOT EXISTS (SELECT 1 FROM org.freelancer_profiles fp WHERE fp.user_id = v_inv.target_user_id) THEN
                 RAISE EXCEPTION 'This person does not have a freelancer profile yet.' USING ERRCODE = 'check_violation';
             END IF;
+
+            -- The application path's AC6 guard: the same per-candidate lock key, so an invitation and an
+            -- application (or two invitations) accepted at once are serialised before the overlap check.
+            PERFORM pg_advisory_xact_lock(hashtext('freelancer:' || v_inv.target_user_id::text));
+
             SELECT sa.id INTO v_assignment
             FROM projects.stage_assignments sa
             WHERE sa.project_stage_id = v_seat_stage
@@ -2007,6 +2122,10 @@ BEGIN
                 AND sa.freelancer_profile_id = v_inv.target_user_id
                 AND sa.status NOT IN ('released', 'cancelled', 'declined', 'completed');
             IF v_assignment IS NULL THEN
+                IF projects.fn_assignee_slot_conflict(v_seat_stage, 'freelancer', v_inv.target_user_id, NULL) THEN
+                    RAISE EXCEPTION 'You are already booked on an overlapping active stage.'
+                        USING ERRCODE = 'exclusion_violation';
+                END IF;
                 INSERT INTO projects.stage_assignments
                     (project_stage_id, assignee_type, freelancer_profile_id, team_id, assigned_by, is_client_managed, status)
                 VALUES
@@ -2063,7 +2182,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION projects.fn_apply_invitation_decision(uuid, boolean, uuid) IS
-'The one implementation of an invitation''s answer: records accept/decline with its timestamp, enrols an accepted freelancer as a participant and stage assignee, and notifies the inviter through comms.fn_notify. No client grant — reached through respond_to_project_invitation (the invitee) or the service role (development-only forcing).';
+'The one implementation of an invitation''s answer: records accept/decline with its timestamp, enrols an accepted freelancer as a participant and stage assignee (serialised per candidate and refused exclusion_violation on an overlapping live stage, as assign_from_application), and notifies the inviter through comms.fn_notify. No client grant — reached through respond_to_project_invitation (the invitee) or the service role (development-only forcing).';
 
 REVOKE ALL ON FUNCTION projects.fn_apply_invitation_decision(uuid, boolean, uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION projects.fn_apply_invitation_decision(uuid, boolean, uuid) TO service_role;

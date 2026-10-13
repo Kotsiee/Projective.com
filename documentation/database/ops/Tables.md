@@ -33,6 +33,11 @@ Three writers, one table:
 | The app logger (`apps/web/utils/logger.ts`), production only | `POST /api/logs`        | `warn` · `error` | `client` | caller-set   |
 | `WebVitalsBridge` (shell island), production only           | `POST /api/logs/vitals` | `metric`         | `client` | `web-vitals` |
 | `routes/_error.tsx` on a 5xx                                | (none: server-side)     | `error`          | `server` | `ssr`        |
+| `finance.fn_reconcile_wallets` (pg_cron, nightly — Decision #186) | (none: in-database) | `error`          | `server` | `finance.reconcile_wallets` |
+
+A reconciliation row is one drifted wallet: `client_id` is `reconcile:<run id>` and `data` carries
+the wallet and its three figures (see [finance Functions.md § Ledger integrity](../finance/Functions.md#ledger-integrity-decision-186)).
+A retention sweep may remove old rows; a drift that persists is re-reported by the next night's run.
 
 | Column                                                         | Meaning                                                                                                                                  |
 | :------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------- |

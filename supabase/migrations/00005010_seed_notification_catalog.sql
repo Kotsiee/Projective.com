@@ -51,6 +51,7 @@ VALUES
 ('application.received',     '{}',                'work',      'medium',   ARRAY['in_app','push']::comms.notification_channel[],         false, false, true,  false, '1 hour',          '/projects/{context_id}',                    NULL, 'Someone applied to your project or stage.'),
 ('application.accepted',     '{}',                'work',      'high',     ARRAY['in_app','push','email']::comms.notification_channel[], false, false, false, false, NULL,              '/projects/{context_id}',                    NULL, 'Your application was accepted.'),
 ('application.declined',     '{}',                'work',      'medium',   ARRAY['in_app','email']::comms.notification_channel[],        false, false, true,  false, NULL,              '/projects',                                 NULL, 'Your application was declined.'),
+('application.withdrawn',    '{}',                'work',      'low',      ARRAY['in_app']::comms.notification_channel[],                false, false, true,  false, NULL,              NULL,                                        NULL, 'An applicant withdrew their application to your project or stage.'),
 -- The inviter's side of `stage.invite`: the invitee's answer to an outbound invitation. The accept is
 -- high-signal (a seat just filled and money may move next); the decline is routine and digestible.
 -- Templates are NULL because the router cannot address a project by slug — the emitter passes an

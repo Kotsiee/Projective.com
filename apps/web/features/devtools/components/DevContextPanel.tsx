@@ -24,6 +24,8 @@ import {
 	DEV_PROMO_DISMISSALS,
 	DEV_DISCOVERY_VIEWERS,
 	DEV_DISCOVERY_ACTIVITIES,
+	DEV_EMAIL_CONFIRMATIONS,
+	DEV_AGE_RESTRICTIONS,
 	DEV_EMBEDDINGS,
 	DEV_ROLES,
 	DEV_SAVED,
@@ -678,6 +680,26 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						}}
 					/>
 					<DevEmbeddingsStatus mode={o.embeddings} enabled={o.enabled} />
+				</Field>
+
+				<Field label="Email confirmation" hint="/verify poll">
+					<Segment
+						name="Email confirmation"
+						options={DEV_EMAIL_CONFIRMATIONS}
+						value={o.emailConfirmation}
+						disabled={!o.enabled}
+						onChange={(emailConfirmation) => patchDevContext({ emailConfirmation })}
+					/>
+				</Field>
+
+				<Field label="Age" hint="buy/sell 403">
+					<Segment
+						name="Age"
+						options={DEV_AGE_RESTRICTIONS}
+						value={o.ageRestriction}
+						disabled={!o.enabled}
+						onChange={(ageRestriction) => patchDevContext({ ageRestriction })}
+					/>
 				</Field>
 
 				{

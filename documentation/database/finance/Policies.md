@@ -185,7 +185,7 @@ policy — except `buyer_details`, the buyer's own form.
 | Table                             | SELECT                                                                                    | Write |
 | :-------------------------------- | :---------------------------------------------------------------------------------------- | :---- |
 | `finance.wallets`                 | `fn_owner_visible(owner_type, owner_id)`                                                  | — |
-| `finance.transactions`            | `fn_can_view_wallet(wallet_id)`                                                           | — |
+| `finance.transactions`            | `fn_can_view_wallet(wallet_id)`                                                           | — (append-only for every role: UPDATE / DELETE / TRUNCATE raise `PL403`; the service role holds SELECT + INSERT only — Decision #186) |
 | `finance.payouts`                 | `fn_can_view_wallet(wallet_id)`                                                           | — |
 | `finance.inbound_payments`        | `fn_can_view_wallet(wallet_id)` — `"View visible inbound payments"`, `00002013` (Decision #125) | — (the Stripe doors, [Functions.md § Stripe fiat rails](Functions.md#-stripe-fiat-rails-00001230-decision-125)) |
 | `finance.payout_accounts`         | `fn_owner_visible(owner_type, owner_id)`                                                  | — (`record_payout_account` / `sync_payout_account`) |
@@ -237,6 +237,13 @@ wallet with any amount. So (`00002510`):
   removed 2026-09-28, `fn_seed_business_wallet`) — so no
   client role can be found holding one even if a broad grant lands later. Every SQL caller of them is
   `SECURITY DEFINER`, so revoking them changed nothing that worked.
+- **`fn_reconcile_wallets` is service-role only** (Decision #186) — it reads every wallet's figures
+  and writes `ops.log_entries`; `PUBLIC`, `anon` and `authenticated` are revoked explicitly. The
+  trigger function `fn_transactions_append_only` is revoked from the client roles too.
+- **The pending window's functions are internal or service-role** (Decision #191) —
+  `fn_wallet_credit_pending` and `fn_recover_from_pending` are revoked from `PUBLIC`, `anon` and
+  `authenticated` like the primitives; the sweep `fn_mature_pending_releases` is the service role's
+  and the pg_cron owner's.
 - **The subject-taking resolvers moved to the service role** — `fn_freelancer_payout_ready`,
   `fn_business_kyb_verified`, `fn_active_plan`, `fn_effective_limit`, `fn_has_entitlement`,
   `fn_effective_commission_bp`, `fn_effective_platform_fee_bp`, `fn_current_allowance`,

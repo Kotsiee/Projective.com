@@ -26,7 +26,7 @@ export function ExploreHomeHeader(): JSX.Element {
 			<div class="ex-hero__inner">
 				<h1 class="ex-hero__title">Find the people who make it real.</h1>
 				<div class="ex-hero__search">
-					<SearchBar variant="hero" />
+					<SearchBar variant="hero" slashFocus />
 				</div>
 				<nav class="ex-hero__quick" aria-label="Popular searches">
 					{HERO_QUICK_FILTERS.map((f) => (

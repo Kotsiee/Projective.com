@@ -26,6 +26,82 @@ GRANT EXECUTE ON FUNCTION org.is_active_business_member (uuid) TO anon, authenti
 GRANT EXECUTE ON FUNCTION org.is_organisation_member (uuid, org.organisation_role) TO anon, authenticated;
 -- #endregion
 
+-- #region projects — deny by default
+-- `projects` is exposed to PostgREST and `anon` holds USAGE on it (00002500), so the PUBLIC EXECUTE
+-- every new function receives made each definer here an RPC a signed-out caller could reach. EXECUTE
+-- is revoked from PUBLIC and `anon` on the whole schema before any per-function statement below, so
+-- the grants in this file (and the `authenticated` grants beside their functions in 00001130) are the
+-- complete list of client doors. A new projects function is unreachable until it is granted by name.
+-- PUBLIC's EXECUTE comes from the global default privileges, which no per-schema ALTER DEFAULT
+-- PRIVILEGES can revoke; this schema-wide REVOKE runs after every function exists, on every reset.
+REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA projects FROM PUBLIC, anon;
+
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA projects TO service_role;
+
+-- The RLS predicates: policies on the projects tables, storage.objects and scheduling.events call
+-- them, and a policy expression runs as the invoking role. Each answers only about auth.uid().
+GRANT EXECUTE ON FUNCTION projects.has_project_access (uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.has_stage_access (uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.can_review_project (uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.can_manage_project_members (uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.is_cohort_member (uuid) TO anon, authenticated;
+
+-- The doors the app calls with the user's JWT that are not granted elsewhere. Each resolves the caller
+-- from auth.uid() and checks its own authority (review, staffing or project access).
+GRANT EXECUTE ON FUNCTION projects.create_stage (uuid, text, jsonb, text, bigint, jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.delete_stage (uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.reorder_stages (uuid, uuid[]) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.set_project_status (uuid, public.project_status, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.sanitize_single_room_topology (uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.move_ticket (uuid, public.ticket_status, uuid, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.submit_deliverable (uuid, uuid, text, jsonb, jsonb, uuid[]) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.review_submission (uuid, text, jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.assign_from_application (uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.fund_stage (uuid, uuid) TO authenticated;
+
+-- The two assignment doors: a self-claim (00001120) and the reviewer's pin (00001140). The claim core
+-- they share, projects.fn_assign_ticket_core, takes any assignee and checks nothing, so it is not granted.
+GRANT EXECUTE ON FUNCTION projects.claim_ticket (uuid, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION projects.assign_ticket_manual (uuid, uuid) TO authenticated;
+-- #endregion
+
+-- #region public — deny by default
+-- PostgREST always exposes `public`, and Supabase's default privileges grant EXECUTE on every function
+-- postgres creates there to `anon` and `authenticated` on top of PUBLIC, so the provisioning definer
+-- public.provision_user_profile (a profile for any uid it is handed) was callable signed-out. Every
+-- app-owned function here is revoked from all three; the extension members (pgvector, pg_trgm) are
+-- owned by supabase_admin and skipped so their operators and the search doors keep working.
+DO $$
+DECLARE
+    v_fn regprocedure;
+BEGIN
+    FOR v_fn IN
+        SELECT p.oid::regprocedure
+        FROM pg_proc p
+        WHERE p.pronamespace = 'public'::regnamespace
+            AND NOT EXISTS (
+                SELECT 1 FROM pg_depend d
+                WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e'
+            )
+    LOOP
+        EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC, anon, authenticated', v_fn);
+        EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', v_fn);
+    END LOOP;
+END $$;
+
+-- Removes Supabase's explicit client-role default for future postgres-owned functions here; PUBLIC's
+-- comes from the global default and is closed by the loop above on every reset.
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+REVOKE EXECUTE ON FUNCTIONS FROM anon, authenticated;
+
+-- Stated per function too, so a later broad grant cannot hand them out. provision_user_profile runs
+-- only inside its two definer callers (handle_new_user, complete_onboarding), as their owner; the two
+-- auth.users trigger functions are checked once, at CREATE TRIGGER.
+REVOKE ALL ON FUNCTION public.provision_user_profile (uuid, text, timestamptz, jsonb) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.handle_new_user () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.handle_email_confirmed () FROM PUBLIC, anon, authenticated;
+-- #endregion
+
 -- --- from 0200_permissions.sql ---
 
 GRANT
@@ -400,8 +476,8 @@ service_role;
 -- The history probes behind projects.sanitize_single_room_topology are SECURITY DEFINER and answer
 -- for any id, so a direct caller could learn what lies behind a stage or room it cannot read. Only
 -- the sanitizer (which re-asks review authority) calls them, as their owner.
-REVOKE ALL ON FUNCTION projects.fn_room_has_history (uuid) FROM public, anon, authenticated;
-REVOKE ALL ON FUNCTION projects.fn_stage_has_history (uuid) FROM public, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.fn_room_has_history (uuid) FROM public, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_stage_has_history (uuid) FROM public, anon, authenticated, service_role;
 
 -- --- from 20260724104000_scheduling_booking_engine.sql ---
 
@@ -818,6 +894,25 @@ REVOKE ALL ON FUNCTION finance.fn_wallet_debit (
 )
 FROM authenticated;
 
+-- Ledger reconciliation (Decision #186): writes ops rows and reveals every wallet's figures — the
+-- service role and the pg_cron owner only.
+REVOKE ALL ON FUNCTION finance.fn_reconcile_wallets () FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION finance.fn_reconcile_wallets () TO service_role;
+
+REVOKE ALL ON FUNCTION finance.fn_transactions_append_only () FROM PUBLIC, anon, authenticated;
+
+-- The pending window (Decision #191): the pending twin of fn_wallet_credit and the chargeback recovery
+-- are internal like the primitives; the sweep is the service role's and the pg_cron owner's.
+REVOKE ALL ON FUNCTION finance.fn_wallet_credit_pending (uuid, text, text, bigint, text, text, uuid)
+FROM PUBLIC, anon, authenticated;
+
+REVOKE ALL ON FUNCTION finance.fn_recover_from_pending (uuid, bigint) FROM PUBLIC, anon, authenticated;
+
+REVOKE ALL ON FUNCTION finance.fn_mature_pending_releases (integer) FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION finance.fn_mature_pending_releases (integer) TO service_role;
+
 REVOKE ALL ON FUNCTION finance.fn_hold_ticket_escrow (uuid)
 FROM authenticated;
 
@@ -1012,7 +1107,7 @@ REVOKE ALL ON FUNCTION comms.tg_guard_message_reply() FROM public, anon, authent
 
 REVOKE ALL ON FUNCTION comms.tg_guard_dm_message_reply() FROM public, anon, authenticated;
 
-REVOKE ALL ON FUNCTION projects.fn_engaged_projects(uuid) FROM public, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.fn_engaged_projects(uuid) FROM public, anon, authenticated, service_role;
 
 -- --- freelancer removal (00001120: release_ticket_to_backlog) ---
 
@@ -1023,7 +1118,7 @@ REVOKE ALL ON FUNCTION projects.fn_engaged_projects(uuid) FROM public, anon, aut
 -- one reachable door is `projects.remove_project_member` (00001130), a DEFINER function whose
 -- owner still executes it after this revoke, and which checks project ownership first.
 REVOKE ALL ON FUNCTION projects.release_ticket_to_backlog (uuid)
-FROM public, anon, authenticated;
+FROM public, anon, authenticated, service_role;
 
 -- --- escrow settlement doors (00001120 / 00001130 / 00001150) ---
 
@@ -1035,19 +1130,19 @@ FROM public, anon, authenticated;
 -- caller with review authority (projects.can_review_project), and EXECUTE is held by
 -- `authenticated` alone. Not `service_role`: every one of them attributes the decision to
 -- auth.uid() and refuses without one, so a grant there could only ever produce a refusal.
-REVOKE ALL ON FUNCTION projects.complete_ticket (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.complete_ticket (uuid) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION projects.complete_ticket (uuid) TO authenticated;
 
-REVOKE ALL ON FUNCTION projects.delete_ticket (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.delete_ticket (uuid) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION projects.delete_ticket (uuid) TO authenticated;
 
-REVOKE ALL ON FUNCTION projects.force_complete_stage (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.force_complete_stage (uuid) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION projects.force_complete_stage (uuid) TO authenticated;
 
-REVOKE ALL ON FUNCTION projects.approve_stage (uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.approve_stage (uuid, uuid) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION projects.approve_stage (uuid, uuid) TO authenticated;
 
-REVOKE ALL ON FUNCTION projects.cancel_stage_fair_exit (uuid, uuid, integer) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.cancel_stage_fair_exit (uuid, uuid, integer) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION projects.cancel_stage_fair_exit (uuid, uuid, integer) TO authenticated;
 
 -- 🚨 The claim-TTL sweep REFUNDS every claimed ticket older than the TTL measured from `p_now` — a
@@ -1058,10 +1153,10 @@ GRANT EXECUTE ON FUNCTION projects.fn_release_expired_claims (timestamptz) TO se
 
 -- Internal to the claim paths (Decision #165): callable directly, anybody could mark any unfunded
 -- ticket Needs funding and notify its owner at will.
-REVOKE ALL ON FUNCTION projects.fn_mark_needs_funding (uuid, jsonb) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.fn_mark_needs_funding (uuid, jsonb) FROM PUBLIC, anon, authenticated, service_role;
 
 -- Trigger function: EXECUTE is checked at CREATE TRIGGER, so no role needs it.
-REVOKE ALL ON FUNCTION projects.fn_ticket_settlement_guard () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.fn_ticket_settlement_guard () FROM PUBLIC, anon, authenticated, service_role;
 
 -- Paid revisions (Decision #167). The two doors check review authority / the payer rule themselves;
 -- the notifier and the terms trigger are internal (a direct call could notify anybody about anything).
@@ -1069,8 +1164,8 @@ REVOKE ALL ON FUNCTION projects.request_paid_revision (uuid, jsonb) FROM PUBLIC,
 GRANT EXECUTE ON FUNCTION projects.request_paid_revision (uuid, jsonb) TO authenticated;
 REVOKE ALL ON FUNCTION projects.fund_paid_revision (uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.fund_paid_revision (uuid) TO authenticated;
-REVOKE ALL ON FUNCTION projects.fn_notify_revision (uuid) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION projects.fn_stage_revision_terms () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.fn_notify_revision (uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_stage_revision_terms () FROM PUBLIC, anon, authenticated, service_role;
 
 -- --- membership doors (00001135) ---
 
@@ -1102,7 +1197,7 @@ GRANT EXECUTE ON FUNCTION projects.redeem_invite_link (text, text) TO authentica
 
 -- Internal: called by the two doors above as their owner, never an RPC of its own.
 REVOKE ALL ON FUNCTION projects.fn_invite_link_state (projects.stage_invite_links, uuid)
-FROM PUBLIC, anon, authenticated;
+FROM PUBLIC, anon, authenticated, service_role;
 
 -- --- lane view activity marks (00001145) ---
 --
@@ -1114,7 +1209,7 @@ GRANT EXECUTE ON FUNCTION projects.get_nav_activity (text) TO authenticated;
 REVOKE ALL ON FUNCTION projects.mark_view_seen (text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION projects.mark_view_seen (text, text) TO authenticated;
 
-REVOKE ALL ON FUNCTION projects.fn_touch_updated_at () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.fn_touch_updated_at () FROM PUBLIC, anon, authenticated, service_role;
 
 -- --- the public profile read + owner write path (00001040) and the media projection (00001160) ---
 --
@@ -1533,10 +1628,10 @@ REVOKE ALL ON FUNCTION comms.tg_dm_auto_reply () FROM PUBLIC, anon, authenticate
 -- `projects` does not revoke PUBLIC by default, so every function here is stated. The internal
 -- primitives — above all fn_confirm_seat, which mints a membership and debits a wallet for whatever
 -- it is handed — are reachable only from the definers that call them.
-REVOKE ALL ON FUNCTION projects.fn_session_param (text, integer) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION projects.fn_is_session_host (uuid, uuid) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION projects.fn_cohort_seats_taken (uuid, uuid) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION projects.fn_confirm_seat (uuid, uuid, text, uuid, bigint, text, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION projects.fn_session_param (text, integer) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_is_session_host (uuid, uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_cohort_seats_taken (uuid, uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_confirm_seat (uuid, uuid, text, uuid, bigint, text, uuid) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION projects.fn_session_presence (uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION projects.fn_session_presence (uuid) TO service_role;
 REVOKE ALL ON FUNCTION finance.fn_release_seat_escrow (uuid, text) FROM PUBLIC, anon, authenticated;

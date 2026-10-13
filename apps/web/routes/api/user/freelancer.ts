@@ -1,5 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
+import { refuseIfRestricted } from "@web/utils/age-gate.ts";
 import { EnableFreelancerInputSchema } from "@projective/types/user";
 import { UserBackendService } from "@server/services/user/UserBackendService.ts";
 
@@ -17,6 +18,8 @@ import { UserBackendService } from "@server/services/user/UserBackendService.ts"
  */
 export const handler = define.handlers({
 	async POST(ctx) {
+		const restricted = refuseIfRestricted(ctx.req, ctx.state.userContext);
+		if (restricted) return restricted;
 		const raw = await ctx.req.json().catch(() => null);
 		const parsed = EnableFreelancerInputSchema.safeParse(raw);
 		if (!parsed.success) {

@@ -6,6 +6,8 @@ import SearchSuggest from "@features/explore/islands/SearchSuggest.island.tsx";
 import { recordSearch } from "@features/explore/core/search-history.ts";
 import { useDismiss, useEdgeDetection, useOverlayStack } from "@projective/ui/hooks";
 import { BodyPortal } from "@projective/ui/overlay";
+import { isFocusSearchShortcut } from "@features/shell/core/shortcuts.ts";
+import { useSearchShortcut } from "@features/shell/hooks/useSearchShortcut.ts";
 import {
 	DEFAULT_SEARCH_SCOPE,
 	SEARCH_SCOPES,
@@ -75,6 +77,8 @@ export interface SearchBarProps {
 	initialCategory?: string;
 	/** Pre-filled query (e.g. reflecting the current `/explore?q=`). */
 	initialQuery?: string;
+	/** Bind `/` to focus this bar — the one search a page owns (the Explore Home's). */
+	slashFocus?: boolean;
 }
 
 /**
@@ -89,12 +93,15 @@ export default function SearchBar({
 	variant = "hero",
 	initialCategory = DEFAULT_SEARCH_SCOPE,
 	initialQuery = "",
+	slashFocus = false,
 }: SearchBarProps) {
 	const category = useSignal<SearchScope>(toScope(initialCategory));
 	const menuOpen = useSignal(false);
 	const query = useSignal(initialQuery);
 	const typed = useSignal("");
 	const formRef = useRef<HTMLFormElement>(null);
+
+	useSearchShortcut({ scopeRef: formRef, matches: isFocusSearchShortcut, enabled: slashFocus });
 
 	// #region Typewriter placeholder
 	// Retype/erase the phrases for the active category; restarts when the category flips.

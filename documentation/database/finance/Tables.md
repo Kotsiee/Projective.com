@@ -21,11 +21,17 @@ governance, statements, and idempotency.
   append a `finance.transactions` line carrying `balance_after_cents`. This is a **per-wallet
   single-entry running ledger**, not the derived-balance double-entry model `finance-model.md` §7
   aspires to. The gap is documented, not silently "fixed"; converting to derived double-entry is a
-  future migration flagged for human sign-off (root `CLAUDE.md` §8).
+  future migration flagged for human sign-off (root `CLAUDE.md` §8). Because the cache can drift,
+  the ledger is **append-only** and `finance.fn_reconcile_wallets` checks nightly that every
+  `balance_cents` still equals its ledger (Decision #186, [Functions.md § Ledger integrity](Functions.md#ledger-integrity-decision-186)).
 - **Fund-state projection.** The three-state balance is a **projection**, never stored on the
   wallet: `locked` (in escrow) · `pending` (7-day window, `finance.pending_releases`) · `available`
   (`wallets.balance_cents`) · `on_hold` (Dispute Lockbox, `escrows.status='disputed'`). See
-  `finance.fund_state`.
+  `finance.fund_state`. **Earned money never enters `balance_cents` until it clears** (Decision #191):
+  escrow releases, team shares, fair-exit and seat payouts and product sales write a
+  `pending_releases` row, and `finance.fn_mature_pending_releases` credits the wallet (with its ledger
+  line) when the window passes. So `balance_cents` is the Available balance, the only money any spend
+  path or `begin_payout` can debit, and it still equals the ledger sum.
 - **Hidden-ledger posture.** Most `finance.*` tables are **definer-only** (RLS enabled, no policy,
   no `authenticated` grant) — reachable only through `SECURITY DEFINER` RPCs
   (the `projects.*` stage wrappers, the workspace console's `finance.save_team_split` /
@@ -60,9 +66,14 @@ The tiered vault. One row per `(owner_type, owner_id, currency)`.
 
 Append-only per-wallet ledger line with a running balance and (additively) an FX snapshot.
 
+**Append-only is enforced, not conventional** (Decision #186): `trg_transactions_append_only`
+(`BEFORE UPDATE OR DELETE`, per row) and `trg_transactions_no_truncate` (`BEFORE TRUNCATE`) raise
+`PL403` for every role — the table owner and the service role included. A mistake is corrected by a
+compensating row through `fn_wallet_credit` / `fn_wallet_debit`, never by an edit.
+
 | Column                | Type        | Notes                                                                           |
 | :-------------------- | :---------- | :------------------------------------------------------------------------------ |
-| `wallet_id`           | uuid        | FK → `finance.wallets` (CASCADE).                                               |
+| `wallet_id`           | uuid        | FK → `finance.wallets` (**RESTRICT**: a wallet with ledger history is never deleted). |
 | `direction`           | text        | `credit` / `debit`.                                                             |
 | `amount_cents`        | bigint      | `CHECK > 0`.                                                                    |
 | `currency`            | text        | Origin currency.                                                                |
@@ -98,6 +109,7 @@ Capital locked against a stage/ticket. Text `status`, values used by the engine:
 | :----------------------------- | :------------------- | :------------------------------------------------ |
 | `project_stage_id`             | uuid                 | FK → `projects.project_stages` (RESTRICT).        |
 | `ticket_id`                    | uuid                 | FK → `projects.tickets` (SET NULL).               |
+| `revision_id`                  | uuid                 | FK → `projects.stage_revision_requests` (RESTRICT). The paid revision round this escrow pays for (Decision #167), written by `finance.fn_hold_revision_escrow`; `NULL` = the ticket's **base** escrow. Decision #189. |
 | `payer_business_id`            | uuid                 | FK → `org.business_profiles` (RESTRICT). Nullable since Decision #126. |
 | `payer_user_id`                | uuid                 | FK → `org.users_public` (RESTRICT) — an INDIVIDUAL client (a project with no `client_business_id`). **Exactly one** payer column is set (`ck_escrows_one_payer`). Decision #126. |
 | `payee_type`,`payee_id`        | assignment_type,uuid | `freelancer` or `team` payee.                     |
@@ -107,6 +119,14 @@ Capital locked against a stage/ticket. Text `status`, values used by the engine:
 | `currency`                     | text                 | Origin currency.                                  |
 | `status`                       | text                 | `held`/`released`/`refunded`/`disputed`/`funded`. |
 | `fx_rate`,`fx_base`,`fx_as_of` | —                    | **Additive** FX snapshot (`20260723090000`).      |
+
+**One held base escrow per ticket (Decision #189).** `uq_escrows_ticket_base_held` is a partial
+UNIQUE index on `(ticket_id) WHERE status = 'held' AND ticket_id IS NOT NULL AND revision_id IS NULL`:
+the hold path checks, then inserts, so two concurrent holds both passed the check and debited the payer
+twice. A paid revision round's escrow (`revision_id` set) sits beside the base escrow, and a seat's
+escrow (`cohort_membership_id`) has no ticket, so neither collides. `uq_escrows_revision` (UNIQUE
+`(revision_id) WHERE revision_id IS NOT NULL`) holds a round once, whatever became of its escrow.
+`idx_escrows_ticket` stays for the all-status reads. Probe: `supabase/probes/escrow_uniqueness.sql`.
 
 ### Other existing engine tables
 
@@ -220,7 +240,7 @@ fragments (`brand`, `last4`).
 
 | Table / object                    | Purpose & key columns                                                                                                                                                                                                                                                                                                      |
 | :-------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `finance.pending_releases`        | One escrow release inside the 7-day safety window: `escrow_id`, `wallet_id`, `amount_cents`+`currency`, `released_at`, `available_at`, `state finance.fund_state`. Makes the "Pending" state first-class.                                                                                                                  |
+| `finance.pending_releases`        | One earned credit inside the safety window (Decision #191). Source: exactly one of `escrow_id` (a release, team share, fair-exit or seat payout) or `order_id` (a product sale), `ck_pending_releases_one_source`; all FKs `ON DELETE RESTRICT`. `wallet_id`, `reason` (the ledger reason the maturing credit is written with), `amount_cents`+`currency`, `recovered_cents` (taken back by a lost chargeback, `0 ≤ … ≤ amount_cents`), `released_at`, `available_at` (= `released_at` + `pending_release_days`), `state finance.fund_state` (`pending` in the window; `available` once closed, with `matured_at`, and `transaction_id` naming the credit unless a chargeback emptied it). Still pending = `amount_cents − recovered_cents` over `state = 'pending'`. |
 | `finance.statements`              | Monthly consolidated statement (30-day window, issued on the 1st): `owner_type`/`owner_id`, `period_start`/`period_end`, `opening`/`closing`/`total_in`/`total_out`/`total_fees` cents, `status` (draft/issued/final), `pdf_file_id`. Complements per-payout `finance.invoices`. `(owner, period_start, currency)` UNIQUE. |
 | `finance.chargebacks`             | The Stripe dispute case a negative ledger line references: `wallet_id`/`transaction_id`/`escrow_id`, `provider_ref`, `amount_cents`+`currency`, `status` (opened/under_review/won/lost/refunded). **One row per processor dispute** (`uq_chargebacks_provider_ref`, partial). Written by `finance.record_dispute_opened` from the `charge.dispute.created` webhook, which also freezes the escrows the disputed payment funded (`held` → `disputed`). |
 | `finance.idempotency_keys`        | Retries never double-move money: `key` (PK), `scope`, `request_hash`, `status`, `response`, `expires_at`. **Definer-only** (RLS on, no policy). Scopes in use: `transfer:<uid>` / `distribute:<uid>` (wallet movements), `card_payment:<uid>` (a card payment attempt, Decision #125) and `stripe.webhook` (key `stripe:<evt_id>`, one row per processed Stripe event, its `response` holding the outcome — `applied` · `replayed` · `unmatched` · `ignored` — for reconciliation, kept 30 days). |

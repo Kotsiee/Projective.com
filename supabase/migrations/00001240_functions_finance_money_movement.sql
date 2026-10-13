@@ -10,6 +10,7 @@
 --   4. Recurring deposits   — a standing top-up rule and the scheduler door that charges it off-session.
 --   5. The Income Smoother  — enrolment, gated on earning history, at the platform's fee.
 --   6. Verification status  — one read of the caller's KYC and the KYB of the businesses they manage.
+--   7. The pending window   — earned credits held for `pending_release_days`, then swept to Available.
 --
 -- The same two-door split as 00001230: USER doors (EXECUTE → authenticated) authorise the caller
 -- through auth.uid() and can never report that money arrived or left; PROCESSOR doors (EXECUTE →
@@ -24,9 +25,11 @@
 --   * every escrow the disputed payment funded that is still frozen is returned to the payer's wallet
 --     (reason `escrow_refund`, exactly as finance.fn_refund_ticket_escrow returns one) — the work it
 --     was holding for is no longer paid for — and its ticket drops back to `unpaid`;
---   * the disputed amount is then debited from that wallet with reason `chargeback`. Whatever the
---     wallet can no longer cover (the payer spent it) is recorded on the case as `unrecovered_cents`,
---     the platform's loss, never forced into a negative balance.
+--   * the disputed amount is then recovered from that wallet: first from its money still in the
+--     pending window (finance.fn_recover_from_pending, Decision #191), then debited from its Available
+--     balance with reason `chargeback`. Whatever the wallet can no longer cover (the payer spent it) is
+--     recorded on the case as `unrecovered_cents`, the platform's loss, never forced into a negative
+--     balance.
 --
 -- An escrow the payment funded that was ALREADY RELEASED to the freelancer before the dispute is not
 -- clawed back from the freelancer here: that recourse is a product decision (flagged in Decision #126).
@@ -54,6 +57,7 @@ DECLARE
     v_touched uuid[] := '{}';
     v_payer_wallet text;
     v_recover bigint := 0;
+    v_from_pending bigint := 0;
     v_short bigint := 0;
     v_notify uuid;
 BEGIN
@@ -134,7 +138,8 @@ BEGIN
         SELECT * INTO v_wallet FROM finance.wallets WHERE id = v_case.wallet_id FOR UPDATE;
     END IF;
     IF v_wallet.id IS NOT NULL AND pg_catalog.upper(v_wallet.currency) = pg_catalog.upper(v_case.currency) THEN
-        v_recover := LEAST(v_wallet.balance_cents, v_case.amount_cents);
+        v_from_pending := finance.fn_recover_from_pending(v_wallet.id, v_case.amount_cents);
+        v_recover := LEAST(v_wallet.balance_cents, v_case.amount_cents - v_from_pending);
         IF v_recover > 0 THEN
             PERFORM finance.fn_wallet_debit(
                 v_wallet.owner_id, v_wallet.owner_type, v_wallet.currency, v_recover,
@@ -142,7 +147,7 @@ BEGIN
             );
         END IF;
     END IF;
-    v_short := v_case.amount_cents - v_recover;
+    v_short := v_case.amount_cents - v_from_pending - v_recover;
 
     UPDATE finance.chargebacks
        SET status = 'lost', resolved_at = pg_catalog.now(), unrecovered_cents = v_short
@@ -154,14 +159,15 @@ BEGIN
             'Your bank upheld the dispute on a card payment. The disputed amount has been taken back from your wallet, and any stage it funded is no longer paid for.',
             'chargebacks', v_case.id,
             pg_catalog.jsonb_build_object('amount_cents', v_case.amount_cents, 'currency', v_case.currency,
-                'recovered_cents', v_recover, 'refunded_escrows', pg_catalog.cardinality(v_touched))
+                'recovered_cents', v_from_pending + v_recover, 'refunded_escrows', pg_catalog.cardinality(v_touched))
         );
     END IF;
 
     RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
         'outcome', 'applied', 'chargeback_id', v_case.id, 'status', 'lost',
         'refunded_escrow_ids', pg_catalog.to_jsonb(v_touched),
-        'recovered_cents', v_recover, 'unrecovered_cents', v_short));
+        'recovered_cents', v_from_pending + v_recover, 'recovered_pending_cents', v_from_pending,
+        'unrecovered_cents', v_short));
 END;
 $$;
 -- #endregion
@@ -225,6 +231,7 @@ BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'auth: sign in to withdraw' USING ERRCODE = '42501';
     END IF;
+    PERFORM org.fn_assert_adult(v_uid);
     IF p_idempotency_key IS NULL OR pg_catalog.length(p_idempotency_key) < 8
        OR pg_catalog.length(p_idempotency_key) > 120 THEN
         RAISE EXCEPTION 'idempotencyKey: a withdrawal needs an attempt key between 8 and 120 characters'
@@ -1002,4 +1009,161 @@ BEGIN
     RETURN finance.fn_ensure_wallet(v_type, p_owner_id, v_currency);
 END;
 $$;
+-- #endregion
+
+-- #region 7. The pending window (Decision #191)
+-- Earned money clears a safety window before it is Available (finance-model.md §7): an escrow release,
+-- each team share / finder fee / vault cut of one, a fair-exit payout, a seat release and a product sale
+-- are credited through finance.fn_wallet_credit_pending, which writes a finance.pending_releases row
+-- instead of moving the balance. Top-ups, refunds, transfers and returned payouts are the payer's own
+-- money and stay immediate. `balance_cents` is therefore the Available balance, and every spend path
+-- and finance.begin_payout — which all debit it — can only use Available money.
+
+-- The pending twin of finance.fn_wallet_credit, with the same arguments so a door swaps one name.
+-- Holds `p_amount` for `pending_release_days` against its source (`escrows` or `orders`); a window of
+-- 0 days credits at once. A missing wallet raises PW404, as the primitive does. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_wallet_credit_pending(
+    p_owner_id uuid, p_owner_type text, p_currency text, p_amount bigint,
+    p_reason text, p_ref_table text, p_ref_id uuid
+)
+RETURNS void
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_wallet finance.wallets;
+    v_days integer;
+BEGIN
+    IF p_amount IS NULL OR p_amount <= 0 THEN
+        RETURN;
+    END IF;
+    IF p_ref_table NOT IN ('escrows', 'orders') OR p_ref_id IS NULL THEN
+        RAISE EXCEPTION 'pending: an earned credit is keyed to an escrow or an order, not %', COALESCE(p_ref_table, 'nothing')
+            USING ERRCODE = '22023';
+    END IF;
+    SELECT * INTO v_wallet FROM finance.wallets
+     WHERE owner_type = p_owner_type AND owner_id = p_owner_id AND currency = p_currency;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'wallet: % % holds no % wallet', p_owner_type, p_owner_id, p_currency USING ERRCODE = 'PW404';
+    END IF;
+
+    v_days := GREATEST(COALESCE((
+        SELECT (pp.value #>> '{}')::integer FROM security.platform_params pp WHERE pp.key = 'pending_release_days'
+    ), 7), 0);
+    IF v_days = 0 THEN
+        PERFORM finance.fn_wallet_credit(p_owner_id, p_owner_type, p_currency, p_amount, p_reason, p_ref_table, p_ref_id);
+        RETURN;
+    END IF;
+
+    INSERT INTO finance.pending_releases (escrow_id, order_id, wallet_id, reason, amount_cents, currency, available_at)
+    VALUES (
+        CASE WHEN p_ref_table = 'escrows' THEN p_ref_id END,
+        CASE WHEN p_ref_table = 'orders' THEN p_ref_id END,
+        v_wallet.id, p_reason, p_amount, v_wallet.currency,
+        pg_catalog.now() + pg_catalog.make_interval(days => v_days)
+    );
+END;
+$$;
+
+-- Take up to `p_amount` back from a wallet's money still in the window, soonest-to-clear first, and
+-- return how much was taken. A row emptied this way closes (`available`, no credit). Called by the
+-- lost-chargeback recovery before it touches the Available balance. Internal.
+CREATE OR REPLACE FUNCTION finance.fn_recover_from_pending(p_wallet_id uuid, p_amount bigint)
+RETURNS bigint
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    r finance.pending_releases;
+    v_left bigint := GREATEST(COALESCE(p_amount, 0), 0);
+    v_take bigint;
+BEGIN
+    FOR r IN
+        SELECT * FROM finance.pending_releases
+         WHERE wallet_id = p_wallet_id AND state = 'pending' AND recovered_cents < amount_cents
+         ORDER BY available_at, id
+           FOR UPDATE
+    LOOP
+        EXIT WHEN v_left = 0;
+        v_take := LEAST(v_left, r.amount_cents - r.recovered_cents);
+        UPDATE finance.pending_releases
+           SET recovered_cents = recovered_cents + v_take,
+               state = CASE WHEN recovered_cents + v_take = amount_cents THEN 'available'::finance.fund_state ELSE state END,
+               matured_at = CASE WHEN recovered_cents + v_take = amount_cents THEN pg_catalog.now() ELSE matured_at END
+         WHERE id = r.id;
+        v_left := v_left - v_take;
+    END LOOP;
+    RETURN GREATEST(COALESCE(p_amount, 0), 0) - v_left;
+END;
+$$;
+
+-- The sweep: credit every row whose window has passed to its wallet, with the ledger row the immediate
+-- credit used to write (same reason, same escrow / order reference), and close it. A batch of at most
+-- `p_limit` rows, claimed FOR UPDATE SKIP LOCKED so overlapping runs never take the same row and a
+-- replay credits nothing twice. Returns how many rows matured. Service role / pg_cron only.
+CREATE OR REPLACE FUNCTION finance.fn_mature_pending_releases(p_limit integer DEFAULT 1000)
+RETURNS integer
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    r record;
+    v_amount bigint;
+    v_ref_table text;
+    v_ref_id uuid;
+    v_tx uuid;
+    v_count integer := 0;
+BEGIN
+    FOR r IN
+        SELECT pr.*, w.owner_id, w.owner_type
+          FROM finance.pending_releases pr
+          JOIN finance.wallets w ON w.id = pr.wallet_id
+         WHERE pr.state = 'pending' AND pr.available_at <= pg_catalog.now()
+         ORDER BY pr.available_at, pr.id
+         LIMIT GREATEST(COALESCE(p_limit, 1000), 1)
+           FOR UPDATE OF pr SKIP LOCKED
+    LOOP
+        v_amount := r.amount_cents - r.recovered_cents;
+        v_tx := NULL;
+        IF v_amount > 0 THEN
+            v_ref_table := CASE WHEN r.escrow_id IS NOT NULL THEN 'escrows' ELSE 'orders' END;
+            v_ref_id := COALESCE(r.escrow_id, r.order_id);
+            PERFORM finance.fn_wallet_credit(r.owner_id, r.owner_type, r.currency, v_amount, r.reason, v_ref_table, v_ref_id);
+            SELECT t.id INTO v_tx FROM finance.transactions t
+             WHERE t.wallet_id = r.wallet_id AND t.direction = 'credit' AND t.reason = r.reason
+               AND t.ref_table = v_ref_table AND t.ref_id = v_ref_id
+             ORDER BY t.created_at DESC, t.id DESC LIMIT 1;
+        END IF;
+        UPDATE finance.pending_releases
+           SET state = 'available', matured_at = pg_catalog.now(), transaction_id = v_tx
+         WHERE id = r.id;
+        v_count := v_count + 1;
+    END LOOP;
+    RETURN v_count;
+END;
+$$;
+
+COMMENT ON FUNCTION finance.fn_mature_pending_releases(integer) IS
+'The pending-window sweep (Decision #191): credits each finance.pending_releases row past available_at
+to its wallet with the ledger row of its original reason, and closes it. SKIP LOCKED batches;
+idempotent. Service role / pg_cron only.';
+
+-- Hourly at :05, guarded like the other pg_cron registrations (00000002): a local `supabase start` has no
+-- pg_cron, so there the sweep is called by hand (`SELECT finance.fn_mature_pending_releases();`).
+DO $$
+BEGIN
+    PERFORM cron.schedule(
+        'finance-mature-pending-releases',
+        '5 * * * *',
+        $cron$SELECT finance.fn_mature_pending_releases();$cron$
+    );
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'pg_cron unavailable — finance.fn_mature_pending_releases must be scheduled manually.';
+END $$;
 -- #endregion

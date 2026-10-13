@@ -13,13 +13,16 @@ migration-numbering and RLS conventions.
 > [§ The workspace console](#-the-workspace-console-00001020).
 >
 > **`EXECUTE` is deny-by-default on the whole `org` schema** (`00002510`, top of file): it is
-> revoked from `PUBLIC`, `anon` and `authenticated` on every function and on future ones
-> (`ALTER DEFAULT PRIVILEGES`), the service role keeps them all, and every function that SHOULD be
-> reachable is granted back by name. `org` is exposed to PostgREST, and Postgres grants `EXECUTE` to
-> `PUBLIC` by default — so before this every org function, predicate and internal helper was an RPC
-> anybody could call. The three membership predicates the policies are built from
-> (`is_active_team_member`, `is_active_business_member`, `is_organisation_member`) stay executable by
-> both client roles, because a policy expression runs as the invoking role.
+> revoked from `PUBLIC`, `anon` and `authenticated` on every function, the service role keeps them
+> all, and every function that SHOULD be reachable is granted back by name. The schema-wide `REVOKE`
+> runs after every function exists, so it closes the schema on every reset; the region's
+> `ALTER DEFAULT PRIVILEGES IN SCHEMA org … FROM PUBLIC` does not cover a function created later,
+> because PUBLIC's `EXECUTE` comes from the global default, which no per-schema statement can
+> revoke. `org` is exposed to PostgREST, and Postgres grants `EXECUTE` to `PUBLIC` by default — so
+> before this every org function, predicate and internal helper was an RPC anybody could call. The
+> three membership predicates the policies are built from (`is_active_team_member`,
+> `is_active_business_member`, `is_organisation_member`) stay executable by both client roles,
+> because a policy expression runs as the invoking role.
 
 ## `org.enable_freelancer_profile(p_payload jsonb) → jsonb`
 
@@ -55,8 +58,8 @@ than ten, or any slug the taxonomy does not hold, raises `22023`. In one transac
 Returns `{ freelancer_profile_id, handle, created, is_freelancer }` — `handle` is the person's
 `@username` (the client navigates to `/[handle]/edit`); `created` is `false` when the profile
 already existed (the call is then a no-op re-activation). Raises `28000` when unauthenticated,
-`42501` when the caller has not completed onboarding (no `users_public` row) and `22023` for a
-refused skill list. The access token is NOT re-minted here: the client must
+`42501` when the caller has not completed onboarding (no `users_public` row), `PM403` when the
+caller is under 18 (`org.fn_assert_adult`, Decision #190) and `22023` for a refused skill list. The access token is NOT re-minted here: the client must
 `POST /api/auth/refresh` so the hook stamps `active_context.isFreelancer = true`.
 
 > Note: `org.freelancer_profiles` no longer carries an `hourly_rate` column — rates are not a
@@ -165,6 +168,54 @@ a person's `@username` and the two fought over `/{handle}`.
 (`00002510`) — it trusts the `p_owner` it is handed, and Postgres grants a new `public` function to
 `PUBLIC`, so until 2026-10-06 any signed-out caller could mint an organisation owned by anybody.
 Owner-only (buyer) by construction — organisations carry no service/product surface.
+
+## Onboarding provisioning (`public`, `00001010`)
+
+`public` is deny-by-default too (`00002510` "public — deny by default"): every app-owned function
+there is revoked from `PUBLIC`, `anon` and `authenticated` and granted to `service_role`, then
+granted back by name. PostgREST always exposes `public`, and Supabase's default privileges hand
+every function `postgres` creates there to `anon` and `authenticated` as well as `PUBLIC`. The
+extension members (pgvector, pg_trgm) are owned by `supabase_admin` and keep their grants. All four
+functions below are `SECURITY DEFINER` with `SET search_path = public, org, pg_temp`.
+
+| Function                                                                                                             | Role                                                                                                                                                                                                                              | `EXECUTE`                                                                                                                                            |
+| :------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `public.provision_user_profile(p_user_id uuid, p_email text, p_email_confirmed_at timestamptz, p_meta jsonb) → void` | Creates `users_public`, the primary `user_emails` row, the freelancer profile (objective `freelancer`/`seller`), `security.session_context` and the `user.onboarded` audit entry for the uid it is handed. Trusts every argument but `dob`, which `org.fn_check_dob` refuses before any write: `22023` missing, in the future or before 1900; `PM422` under 13 (Decision #190). | `service_role` only, explicitly `REVOKE`d from `PUBLIC`, `anon`, `authenticated`. Its callers are the two definers below, which run it as its owner. |
+| `public.handle_new_user() → trigger`                                                                                 | `on_auth_user_created`: provisions at once when the sign-up metadata carries `username` and `dob` (the email/password wizard); OAuth sign-ups stay profile-less. An under-13 `dob` aborts the GoTrue sign-up itself (`PM422`; GoTrue answers "Database error saving new user"), so a direct GoTrue sign-up cannot skip the age floor. | trigger, revoked from every client role.                                                                                                             |
+| `public.complete_onboarding(p_payload jsonb) → void`                                                                 | `/join` completion for an OAuth sign-up: `28000` signed out, `23505` already onboarded, `22023` without `username`/`dob`; then provisions `auth.uid()` with the GoTrue email — so `PM422` for a `dob` under 13. | `authenticated`, `service_role`.                                                                                                                     |
+| `public.handle_email_confirmed() → trigger`                                                                          | Mirrors GoTrue's first `email_confirmed_at` into `org.user_emails.verified_at`.                                                                                                                                                   | trigger, revoked from every client role.                                                                                                             |
+
+`supabase/probes/function_grants.sql` asserts that no client role can execute
+`provision_user_profile` and that every `SECURITY DEFINER` in `public` and `projects` pins its
+`search_path`.
+
+## Age guardrails (`00001010` region 3, Decision #190)
+
+PRODUCT_SPEC §Age guardrails, held in the database: under 13 cannot hold an account; 13–17 is
+**restricted** — no buying and no selling — until the 18th birthday; 18 and over is unrestricted. The
+thresholds mirror `MIN_AGE` / `ADULT_AGE` in `@projective/types/auth/age.ts`. Restriction is never
+stored: it is derived from `users_public.dob` at every read, so it lifts on the birthday with nothing
+to run. Ages are whole years against the database's `CURRENT_DATE` (UTC), so a birthday near
+midnight can flip a few hours before or after the person's local date. None of these is granted to a
+client role (`org` is deny-by-default), so no caller can ask whether somebody else is a minor.
+
+| Function                                     | Role                                                                                                                                         |
+| :------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
+| `org.fn_age_years(p_dob date) → integer`     | Whole years since `p_dob` (`age(CURRENT_DATE, p_dob)`). `STABLE`.                                                                            |
+| `org.fn_check_dob(p_dob date) → void`        | The one date-of-birth rule: `22023` when missing, in the future or before 1900; `PM422` under 13. Called by `provision_user_profile` and the trigger below. |
+| `org.trg_users_public_dob_guard() → trigger` | `trg_users_public_dob_guard`, BEFORE INSERT / UPDATE OF `dob` on `org.users_public`: runs `fn_check_dob` on every write path.                |
+| `org.fn_is_minor(p_user uuid) → boolean`     | Whether the person is 13–17 today; `false` without a profile row. `SECURITY DEFINER`. Read by `public.custom_access_token_hook` (`isRestricted`). |
+| `org.fn_assert_adult(p_user uuid) → void`    | The one buy/sell gate: raises `PM403` for a minor; a `NULL` user (the service role) passes. `SECURITY DEFINER`.                              |
+
+`org.fn_assert_adult` is called with the acting person by every door that spends, earns, sells or
+takes paid work: `org.enable_freelancer_profile`, `projects.apply_to_project`,
+`projects.fund_stage` / `fund_ticket` / `fund_paid_revision`, `finance.place_wallet_order` (and so
+`place_on_account_order`), `finance.begin_card_payment` and `finance.begin_payout`; with the person
+being given the work by `projects.fn_assign_ticket_core` (claim, manual, round-robin and parallel
+assignment) and `projects.assign_from_application`; and with the listing's owner by
+`catalogue.trg_listings_publish_age_gate` on any move to `published`. The API routes mirror it
+(`apps/web/utils/age-gate.ts`) and the services map `PM403` to one 403
+(`packages/backend/core/age-gate.ts`). Probe: `supabase/probes/age_guardrails.sql`.
 
 ---
 

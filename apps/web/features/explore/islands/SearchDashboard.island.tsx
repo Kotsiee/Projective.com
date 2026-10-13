@@ -20,7 +20,7 @@ import { ProjectsList } from "../components/collections/ProjectsList.tsx";
 import { ArticlesGrid } from "../components/collections/ArticlesGrid.tsx";
 import { ResultDetailDrawer } from "../components/ResultDetailDrawer.tsx";
 import { CardSkeletonGrid } from "../components/CardSkeleton.tsx";
-import { resultOrder } from "../core/detail-nav.ts";
+import { adjacentScope, DRAWER_SCOPES, resultOrder } from "../core/detail-nav.ts";
 import { activeFilterConfigs } from "../core/filter-config.ts";
 import { ExploreService } from "../core/ExploreService.ts";
 import { bridgeCommit, bridgeFacets, bridgeParams } from "../core/filter-bridge.ts";
@@ -274,6 +274,40 @@ function SearchDashboardView(
 	function onSelect(item: ExploreItem) {
 		detail.open(item);
 	}
+
+	const switchingScope = useRef(false);
+
+	/**
+	 * Ctrl/Cmd + arrow from the drawer on a single-category feed: move the page to the neighbouring
+	 * entity scope (the scope menu's order, looping) and open its first result. The grouped feed
+	 * declines — the drawer steps its sections itself.
+	 */
+	function switchScope(dir: -1 | 1): Promise<ExploreItem | null> | null {
+		if (!payload.peek().isolated || switchingScope.current) return null;
+		switchingScope.current = true;
+		return probeScopes(params.peek(), dir).finally(() => {
+			switchingScope.current = false;
+		});
+	}
+
+	/** Walk the neighbouring scopes until one has a result to open; restore the start when none does. */
+	async function probeScopes(start: ExploreParams, dir: -1 | 1): Promise<ExploreItem | null> {
+		let category = start.category;
+		for (let i = 1; i < DRAWER_SCOPES.length; i++) {
+			category = adjacentScope(category, dir);
+			const next: ExploreParams = { ...start, category, filters: {} };
+			await runSearch(next, false);
+			if (params.peek() !== next || searchError.peek()) return null;
+			const first = resultOrder(payload.peek(), items.peek())[0];
+			if (first) {
+				globalThis.history.pushState(null, "", serializeExploreParams(next));
+				detail.open(first);
+				return first;
+			}
+		}
+		await runSearch(start, false);
+		return null;
+	}
 	// #endregion
 
 	// #region Infinite feed paging
@@ -493,6 +527,7 @@ function SearchDashboardView(
 				ctx={ctx}
 				authed={authed}
 				sheet={isMobile}
+				onSwitchScope={switchScope}
 			/>
 		</div>
 	);

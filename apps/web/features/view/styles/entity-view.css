@@ -112,10 +112,9 @@
 	* carries zero literal colours; marks that sit over photography take `--on-scrim`, the ink the
 	* design system already pairs with `--scrim`.
 	*
-	* Consequence handled, not inherited: the primary now occupies the brand fill the SECONDARY used
-	* to hold, so the secondary steps down to `outlined`. Two identical teal fills, one of which buys
-	* and one of which adds to a basket, is worse than either colour choice — and §B.8.2 caps a region
-	* at one `filled` control regardless.
+	* The commerce rig (`BookingCtaRig`) ranks by hue instead (§B.8.1, Decision #183): its money verb
+	* is the amber `accent` tone on `--on-accent`, and Add to basket the monochrome `mono` tone — the
+	* one sanctioned two-fill pair. Teal + white stays the default tone for every other CtaButton.
 	*/
 	--evp-cta-h: 2.25rem;
 	--evp-cta-fs: var(--text-sm);
@@ -123,6 +122,10 @@
 	--evp-cta-primary-ink: var(--on-primary);
 	--evp-cta-brand-fill: var(--primary);
 	--evp-cta-brand-ink: var(--primary);
+	--evp-cta-accent-fill: var(--accent);
+	--evp-cta-accent-ink: var(--on-accent);
+	--evp-cta-mono-fill: var(--on-surface);
+	--evp-cta-mono-ink: var(--surface);
 
 	/* The migrated sticky header. Its height is the band's, so the two cannot disagree. */
 	--evp-stickyhead-h: var(--shell-midnav-header-h);
@@ -1848,13 +1851,13 @@
 	font-size: var(--evp-cta-fs);
 	font-weight: var(--fw-medium);
 	letter-spacing: var(--tracking-normal);
-	background: var(--evp-cta-primary-fill);
-	color: var(--evp-cta-primary-ink);
+	background: var(--btn-accent);
+	color: var(--btn-on);
 	transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .evp-cta__link:hover {
-	background: color-mix(in srgb, var(--evp-cta-primary-fill) 88%, var(--bg));
+	background: color-mix(in srgb, var(--btn-accent) var(--btn-mix-hover), var(--btn-shade));
 }
 
 /*
@@ -1904,6 +1907,39 @@
 a.evp-cta__btn--inverted {
 	--btn-accent: var(--evp-cta-primary-fill);
 	--btn-on: var(--evp-cta-primary-ink);
+}
+
+a.evp-cta__btn--inverted {
+	--btn-shade: var(--bg);
+	--btn-mix-hover: 88%;
+}
+
+/*
+ * The commerce rig's hue-ranked pair (§B.8.1 tiers 1 and 2): the amber money verb and the monochrome
+ * basket. Each carries its own tonal ramp toward a pole away from its ink, so hover and press raise
+ * label contrast; the brand severity's border-channel hover is withdrawn, as the fill now moves.
+ */
+.ui-button.evp-cta__btn--accent,
+a.evp-cta__btn--accent {
+	--btn-accent: var(--evp-cta-accent-fill);
+	--btn-on: var(--evp-cta-accent-ink);
+	--btn-shade: var(--on-scrim);
+	--btn-mix-hover: 92%;
+	--btn-mix-active: 88%;
+}
+
+.ui-button.evp-cta__btn--mono,
+a.evp-cta__btn--mono {
+	--btn-accent: var(--evp-cta-mono-fill);
+	--btn-on: var(--evp-cta-mono-ink);
+	--btn-shade: var(--surface);
+	--btn-mix-hover: 88%;
+	--btn-mix-active: 80%;
+}
+
+.ui-button.evp-cta__btn--accent:hover:not(:disabled):not([aria-disabled="true"]):not(:focus-visible):not(.ui-button--outlined):not(.ui-button--text):not(.ui-button--link),
+.ui-button.evp-cta__btn--mono:hover:not(:disabled):not([aria-disabled="true"]):not(:focus-visible):not(.ui-button--outlined):not(.ui-button--text):not(.ui-button--link) {
+	border-color: transparent;
 }
 
 /*

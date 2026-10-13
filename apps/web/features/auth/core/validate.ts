@@ -1,23 +1,16 @@
 /**
  * Lightweight, dependency-free field validators for the auth islands (immediate client-side UX
- * feedback). The authoritative check is the Zod schema in {@link ./schema.ts} run at the API stub;
- * these mirror it so users get instant messages without shipping Zod into the island bundle.
+ * feedback). The authoritative check is the Zod schema in `@projective/types/auth` run at the API
+ * route; these read the same patterns so users get instant messages without shipping Zod into the
+ * island bundle.
  *
  * Every validator returns `null` when valid, or a short human-readable error string.
  */
 
+import { EMAIL_RE, PHONE_RE, USERNAME_RE } from "@projective/types/auth";
 import { RESERVED_HANDLES } from "./options.ts";
 
-/** Pragmatic email shape check (authoritative verification happens via the emailed link/code). */
-export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-/**
- * Handles/usernames: 3–30 chars, must start with a letter, then letters, numbers, or the permitted
- * separators `.`, `-`, `_`. Kept in lockstep with {@link sanitizeHandle} — anything the sanitiser
- * produces must pass this test.
- */
-export const USERNAME_RE = /^[a-z][a-z0-9._-]{2,29}$/i;
-/** Loose international phone shape: optional +, digits, spaces, dashes, parens. */
-export const PHONE_RE = /^[+]?[()\d\s-]{7,20}$/;
+export { EMAIL_RE, PHONE_RE, USERNAME_RE };
 /** A domain or URL — `example.com`, `www.example.com`, or `https://example.com/path`. */
 export const WEBSITE_RE = /^(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(\/\S*)?$/i;
 

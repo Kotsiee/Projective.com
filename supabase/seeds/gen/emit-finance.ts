@@ -13,12 +13,14 @@
  * credit at `now()` is disabled around the insert and replaced by an explicit, DATED opening credit,
  * so the history reads in order.
  *
- * The platform fee is 5% (SSOT `platform_fee_bp = 500`; the DB param ships at 0 per Decision #68(b)
- * and is not consulted here so the ledger matches the documented economics). Team income follows
+ * The platform fee is the SSOT's `PLATFORM_FEE_BP` (500 = 5%, pinned to the seeded
+ * `security.platform_params.platform_fee_bp` by a unit test), truncated by `platformFeeFor` exactly
+ * as every SQL fee path truncates (Decision #187); no seeded payer holds a negotiated rate. Team income follows
  * finance-model §5: 10% vault retention (`finance.split_rules.vault_bp`), the remainder split by
  * `contribution_agreements.percent_bp`, dust to the vault.
  */
 
+import { PLATFORM_FEE_BP, platformFeeFor } from "@projective/types/finance";
 import { PRODUCTS, SERVICES } from "./corpus.ts";
 import {
 	ago,
@@ -47,7 +49,6 @@ import {
 import { SCHEDULES } from "./schedules.ts";
 
 
-const PLATFORM_FEE_BP = 500;
 const VAULT_BP = 1000;
 const INSTANT_PAYOUT_FEE_BP = 100;
 
@@ -72,10 +73,9 @@ interface LedgerEvent {
 	order: number;
 }
 
-/** The platform fee, rounded half-up to the minor unit — the SSOT's `platformFeeFor` and the wallet
- * checkout's arithmetic, so a seeded sale and a live one are charged the same way. */
+/** The platform fee through the SSOT's `platformFeeFor`, so a seeded sale and a live one are charged the same way. */
 function fee(amount: number): number {
-	return Math.floor((amount * PLATFORM_FEE_BP + 5000) / 10000);
+	return platformFeeFor(amount, PLATFORM_FEE_BP);
 }
 
 function priceMinorOf(item: { priceMinor?: number; price?: string }): number {

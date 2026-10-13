@@ -6,6 +6,7 @@ import {
 	resolveSwipe,
 	rovingFocusFor,
 	SHOWCASE_DWELL_MS,
+	showcaseGallery,
 	slidesOf,
 	withPrimaryImage,
 	wrapIndex,
@@ -32,6 +33,19 @@ Deno.test("withPrimaryImage replaces only the lead still, and mints a set from n
 		primary: { kind: "image", src: "new.jpg", alt: "Ivy — showcase" },
 		extras: [],
 	});
+});
+
+Deno.test("showcaseGallery maps slides index for index, a video carrying its poster", () => {
+	const gallery = showcaseGallery([
+		{ kind: "image", src: "a-md.jpg", srcset: "a-sm.jpg 480w, a-lg.jpg 2400w", alt: "a" },
+		still("b.jpg"),
+		reel,
+	]);
+	assertEquals(gallery, [
+		{ kind: "image", src: "a-lg.jpg", thumb: "a-md.jpg", poster: undefined, alt: "a" },
+		{ kind: "image", src: "b.jpg", thumb: "b.jpg", poster: undefined, alt: "b.jpg" },
+		{ kind: "video", src: "reel.mp4", thumb: undefined, poster: "p.jpg", alt: "reel" },
+	]);
 });
 
 Deno.test("wrapIndex wraps both ways and tolerates an empty set", () => {

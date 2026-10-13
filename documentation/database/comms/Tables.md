@@ -49,6 +49,7 @@ emitted by a workspace or money RPC. `spend.approved` / `spend.rejected` were al
 | `team.ownership_transferred` / `business.ownership_transferred` | account · high · in_app + email | yes | `org.transfer_workspace_ownership`, to the successor |
 | `business.invite`                 | account · high · in_app + push + email     | no        | `org.invite_workspace_member` / `resend_workspace_invitation`      |
 | `business.member_joined`          | account · low · in_app (1-hour collapse)   | no        | `org.respond_to_workspace_invitation`, to the inviter              |
+| `application.withdrawn`           | work · low · in_app (digestible)           | no        | `projects.withdraw_application`, to the project owner (DM link to the applicant) |
 
 `team.invite` and `team.member_joined` already existed; their `action_url_template` moved from
 `/settings` to `/teams`, the new business keys point at `/businesses`, and

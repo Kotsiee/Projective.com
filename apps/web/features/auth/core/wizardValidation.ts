@@ -133,7 +133,6 @@ export function buildPayload(store: JoinStore): Record<string, unknown> {
 		oauth: store.isOAuth,
 		purpose: store.purpose.value,
 		skills: store.skills.value,
-		restricted: bracketFromDob(store.dob.value) === "restricted",
 		redirectTo: store.redirectTo,
 	};
 }

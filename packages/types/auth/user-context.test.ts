@@ -51,3 +51,21 @@ Deno.test("neither default context asserts an unfinished onboarding", () => {
 	assertEquals(PERSONAL_MEMBER_CONTEXT.onboarded, true);
 });
 // #endregion
+
+// #region restricted — only an explicit true restricts
+Deno.test("a token whose hook found a 13–17 profile resolves restricted", () => {
+	assertEquals(resolveUserContext(claims({ isRestricted: true })).restricted, true);
+});
+
+Deno.test("an absent or non-boolean restriction claim reads unrestricted", () => {
+	for (const value of [undefined, null, false, 1, "true"]) {
+		assertEquals(
+			resolveUserContext(claims({ isRestricted: value })).restricted,
+			false,
+			String(value),
+		);
+	}
+	assertEquals(GUEST_CONTEXT.restricted, false);
+	assertEquals(PERSONAL_MEMBER_CONTEXT.restricted, false);
+});
+// #endregion

@@ -370,12 +370,11 @@ the two owner write policies above.)
 ## Known gaps (surface, do not silently resolve)
 
 - ~~**`anon` has no `USAGE` on schema `projects`**~~ — resolved: `00002500` grants it (Decision
-  #85(e)) so the nine `FOR SELECT TO public` policies reach guests. The consequence for functions:
-  Postgres grants `EXECUTE` to `PUBLIC` by default and `projects` has no schema-wide revoke, so
-  **every `projects` function without an explicit `REVOKE` in `00002510` (or beside its definition in
-  `00001100` / `00001130`) is callable by `anon`**.
-  A `SECURITY DEFINER` function in this schema must either refuse a `NULL` `auth.uid()` itself or
-  carry a `REVOKE … FROM PUBLIC, anon` (the settlement doors now do both).
+  #85(e)) so the nine `FOR SELECT TO public` policies reach guests. Functions are deny-by-default:
+  `00002510` revokes `EXECUTE` from `PUBLIC` and `anon` on the whole schema, and a client role
+  reaches a function only where it is granted by name (the RLS predicates to `anon` and
+  `authenticated`, the app's doors to `authenticated`). A new `SECURITY DEFINER` door still refuses
+  a `NULL` `auth.uid()` itself and needs its own `GRANT` before any client can call it.
 - Several older `FOR ALL` policies carry a `USING` clause and **no `WITH CHECK`**
   (`stage_assignments`, `stage_budget_rules`, `stage_open_seats`, `project_participants`,
   `stage_staffing_roles`, `project_stages`, `cohorts`, `cohort_memberships`, `session_events`,
@@ -470,35 +469,42 @@ stored price) or an `open` free round past the stage's allotment. Every round is
 definer RPC, and `fund_paid_revision` refuses a round whose price is not the stage's
 `extra_revision_price_cents`. Verified by `supabase/probes/paid_revisions.sql` region 3b.
 
-**Functions callable by `anon` that write data** (default `PUBLIC` `EXECUTE`, `SECURITY DEFINER`, no
-`auth.uid()` test — details in [Functions.md](Functions.md)):
+~~**Functions callable by `anon` that write data**~~ — resolved 2026-10-13 (see the fix note below).
+They had default `PUBLIC` `EXECUTE`, were `SECURITY DEFINER` and had no `auth.uid()` test (details
+in [Functions.md](Functions.md)):
 
-- 🚨 `projects.fn_assign_ticket_core(uuid, uuid, boolean)` and `projects.claim_ticket(uuid, uuid)` —
-  attach **any** user to an unclaimed ticket (the core on any stage, `claim_ticket` on `open_pull`
-  stages) and hold the client's escrow against them; `p_enforce_capacity = false` skips the cap.
-- 🚨 `projects.fn_flag_bad_faith_report(uuid)` — dismisses a workload report and writes a
+- ~~🚨 `projects.fn_assign_ticket_core(uuid, uuid, boolean)` and
+  `projects.claim_ticket(uuid, uuid)`~~ — attached **any** user to an unclaimed ticket (the core on
+  any stage, `claim_ticket` on `open_pull` stages) and held the client's escrow against them;
+  `p_enforce_capacity = false` skipped the cap.
+- ~~🚨 `projects.fn_flag_bad_faith_report(uuid)`~~ — dismisses a workload report and writes a
   `security.penalties` row against its reporter.
-- 🚨 `projects.fn_archive_stale_service_drafts(timestamptz)` — caller-supplied `p_now`; a far-future
-  value soft-archives every un-funded instantiated draft platform-wide.
-- `projects.fn_resolve_expired_workload_reports()` — runs the expiry sweep (writes penalties), but
-  only for genuinely expired reports.
+- ~~🚨 `projects.fn_archive_stale_service_drafts(timestamptz)`~~ — caller-supplied `p_now`; a
+  far-future value soft-archives every un-funded instantiated draft platform-wide.
+- ~~`projects.fn_resolve_expired_workload_reports()`~~ — runs the expiry sweep (writes penalties),
+  but only for genuinely expired reports.
 
-Every other `anon`-reachable writer refuses a `NULL` `auth.uid()` or fails its owner /
-`can_review_project` / `has_project_access` test for a guest.
+~~**Functions with no caller check that `authenticated` (and `anon`) can call**~~ — resolved
+2026-10-13 for every client role, except `is_protected_phase`, which `authenticated` still holds.
+These are reads that bypass the table policies by id:
 
-**Functions with no caller check that `authenticated` (and `anon`) can call** — reads that bypass the
-table policies by id:
-
-- 🚨 `projects.get_stage_details(uuid, uuid)` — a stage's brief, budget, assignee and latest
-  submission notes for any (project, stage) pair.
+- `projects.get_stage_details(uuid, uuid)` — a stage's brief, budget, assignee and latest submission
+  notes for any (project, stage) pair.
 - `projects.get_stage_staffing(uuid, uuid)` checks access to `p_project_id` but never that
-  `p_stage_id` is in it — any project member reads any stage's seats, applicants and cover notes.
-- `projects.fn_serialize_submission`, `fn_serialize_application`, `fn_serialize_seat` — any row by id.
+  `p_stage_id` is in it. The body defect stands for whoever is granted it next.
+- `projects.fn_serialize_submission`, `fn_serialize_application`, `fn_serialize_seat` — any row by
+  id.
 - `projects.get_workload_capacity`, `check_ticket_capacity` — any user's workload figures.
-- `projects.fn_stage_window`, `fn_assignee_slot_conflict`, `is_protected_phase` — low-value oracles.
+- `projects.fn_stage_window`, `fn_assignee_slot_conflict` — low-value oracles; `is_protected_phase`
+  (one boolean per project id) is now `authenticated` only.
 
-The guarded definers with no explicit grant (`create_stage`, `delete_stage`, `reorder_stages`,
+**Fix of 2026-10-13** (`00002510`, `00001120` edited in place): `projects` is deny-by-default.
+`EXECUTE` is revoked from `PUBLIC` and `anon` on every function, `service_role` keeps them all, and
+`authenticated` is granted the RLS predicates plus the doors the app calls by name. That includes
+the guarded definers listed here before (`create_stage`, `delete_stage`, `reorder_stages`,
 `move_ticket`, `set_project_status`, `fund_stage`, `submit_deliverable`, `review_submission`,
-`assign_from_application`, `create_stage_open_seat`, `apply_to_seat`, the routing RPCs and the
-guarded read models) are safe on their body checks alone; narrowing them to `authenticated` would match the
-settlement doors' defence in depth.
+`assign_from_application`) and the two assignment doors, `claim_ticket` and `assign_ticket_manual`.
+Everything above, along with the unwired routing RPCs, read models, `create_stage_open_seat` and
+`apply_to_seat`, is now `service_role` only. A function gets a client grant when the app first calls
+it. `claim_ticket` is a self-claim: a signed-in caller who is the assignee and has project access
+(`42501` otherwise). Verified by `supabase/probes/function_grants.sql`.

@@ -107,10 +107,15 @@ export interface AuthResult {
 	 */
 	verificationSent?: boolean;
 	/**
-	 * Email-confirmation state, polled by `/verify`. `true` once the account's `email_verified`
-	 * (app-owned `org.user_emails.verified_at`) has flipped — the page then auto-logs the user in.
+	 * Email-confirmation state, polled by `/verify` (Decision #185). `true` once the account bound to
+	 * this browser's pending-verification cookie is confirmed; the poll itself never signs anyone in.
 	 */
 	verified?: boolean;
+	/**
+	 * Returned with `verified: true`: whether this browser already holds a session. `false` means the
+	 * email was confirmed elsewhere, so `/verify` shows "Email confirmed — sign in".
+	 */
+	signedIn?: boolean;
 	/**
 	 * An **external** identity-provider authorize URL (Enterprise SSO). Unlike `redirectTo` (a
 	 * sanitised same-origin path), this is a cross-origin GoTrue-generated URL the client navigates to

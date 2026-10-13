@@ -377,6 +377,8 @@ BEGIN
     IF v_desc IS NULL OR v_desc = '{}'::jsonb THEN
         RAISE EXCEPTION 'A comprehensive description is required before a ticket can be claimed/funded.';
     END IF;
+    -- Whoever routes the work, the person given it must be 18 or over (Decision #190).
+    PERFORM org.fn_assert_adult(p_assignee_id);
 
     IF p_enforce_capacity THEN
         v_verdict := projects.check_ticket_capacity(p_ticket_id, p_assignee_id);

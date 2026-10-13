@@ -101,6 +101,8 @@ export const EscrowSchema = z.object({
 	id: uuid,
 	projectStageId: uuid,
 	ticketId: uuid.nullable(),
+	/** The paid revision round this escrow pays for; `null` is the ticket's base escrow (one held per ticket). */
+	revisionId: uuid.nullable(),
 	payerBusinessId: uuid,
 	payeeType: EscrowPayeeType,
 	payeeId: uuid,
@@ -181,17 +183,33 @@ export const WalletBalancesSchema = z.object({
 });
 export type WalletBalances = z.infer<typeof WalletBalancesSchema>;
 
-/** A row of `finance.pending_releases` — one escrow release inside the 7-day safety window. */
+/**
+ * A row of `finance.pending_releases` — one earned credit inside the safety window (Decision #191):
+ * an escrow release, team share, fair-exit or seat payout (`escrowId`) or a product sale (`orderId`),
+ * exactly one. It reaches the Available balance at `availableAt`; `recoveredCents` is what a lost
+ * chargeback took back first. Still pending = `amountCents - recoveredCents` while `state` is `pending`.
+ */
 export const PendingReleaseSchema = z.object({
 	id: uuid,
-	escrowId: uuid,
+	escrowId: uuid.nullable(),
+	orderId: uuid.nullable(),
 	walletId: uuid,
+	reason: z.string().min(1),
 	amountCents: minorUnitsPositive,
+	recoveredCents: minorUnitsNonNeg,
 	currency,
 	releasedAt: timestamp,
 	availableAt: timestamp,
 	state: FundState,
+	maturedAt: timestamp.nullable(),
+	transactionId: uuid.nullable(),
 	createdAt: timestamp,
+}).refine((r) => (r.escrowId === null) !== (r.orderId === null), {
+	message: "A pending release is keyed to exactly one source: an escrow or an order",
+	path: ["escrowId"],
+}).refine((r) => r.recoveredCents <= r.amountCents, {
+	message: "recoveredCents cannot exceed amountCents",
+	path: ["recoveredCents"],
 });
 export type PendingRelease = z.infer<typeof PendingReleaseSchema>;
 // #endregion

@@ -15,6 +15,7 @@ import {
 	assetMediaSrc,
 	assetMediaSrcset,
 } from "@features/files/core/asset-media.ts";
+import type { LightboxMedia } from "@features/view/types/lightbox-types.ts";
 import type { PreviewContext } from "../components/preview/preview-model.ts";
 
 /**
@@ -56,6 +57,7 @@ export interface ChatTilePlaceholder {
 const TEXT_MAX = 4000;
 const DATE_LABEL_MAX = 28;
 const FALLBACK_NAME = "Attachment";
+const VECTOR_EXTENSIONS: ReadonlySet<string> = new Set(["svg", "svgz"]);
 
 function ownAddress(url: string): string | null {
 	const value = url.trim();
@@ -204,6 +206,35 @@ export function attachmentItems(message: ChatMessage, scope: ChatFeedScope): Ass
 			starred: false,
 		};
 	});
+}
+
+// #endregion
+
+// #region Lightbox
+
+/**
+ * A message's attachments as the shared lightbox's gallery, in the bubble's order, when they are two
+ * or more pictures and nothing else; `null` sends the message to the file modal. A stored raster
+ * draws the proxy's `lg` rendition (a vector its original bytes) over its `sm` thumbnail; a fixture
+ * or link picture draws its own address.
+ */
+export function attachmentGallery(message: ChatMessage): LightboxMedia[] | null {
+	if (message.attachments.length < 2) return null;
+	const gallery: LightboxMedia[] = [];
+	for (const att of message.attachments) {
+		if (classify(att).kind !== "image") return null;
+		const ref = tileRef(att);
+		const vector = VECTOR_EXTENSIONS.has(att.ext.toLowerCase());
+		const src = assetMediaSrc(ref, vector ? "original" : "lg");
+		if (!src) return null;
+		gallery.push({
+			kind: "image",
+			src,
+			thumb: (vector ? null : assetMediaSrc(ref, "sm")) ?? src,
+			alt: att.name.trim() || FALLBACK_NAME,
+		});
+	}
+	return gallery;
 }
 
 // #endregion

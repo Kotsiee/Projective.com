@@ -8,8 +8,23 @@ import {
 	isAuthBackendLive,
 } from "../../core/supabase.ts";
 import { serverEnv } from "../../core/env.ts";
+import {
+	mintPendingVerification,
+	pendingVerificationKey,
+} from "../../core/pending-verification.ts";
+export { PENDING_VERIFICATION_TTL_SECONDS } from "../../core/pending-verification.ts";
+import {
+	resolveVerificationStatus,
+	type VerificationPollInput,
+	verificationPollLimiter,
+} from "./verification-status.ts";
 import type { CreateOrganisation } from "@projective/types/org";
-import { bracketFromDob, isJoinable, MIN_AGE } from "@projective/types/auth";
+import {
+	AGE_SQLSTATE,
+	bracketFromDob,
+	isJoinable,
+	UNDER_MINIMUM_REFUSAL,
+} from "@projective/types/auth";
 
 // #region GoTrue mapping helpers
 /** A GoTrue session's token subset (the client returns a wider object). */
@@ -187,14 +202,6 @@ export interface ConfirmEmailLinkInput {
 	redirectTo: string;
 }
 
-/** A verification-status poll. */
-export interface VerificationStatusInput {
-	email?: string;
-	redirectTo: string;
-	/** The caller's access token, when available, for an RLS-scoped read. */
-	accessToken?: string;
-}
-
 /** A password-reset completion. */
 export interface ResetPasswordInput {
 	email: string;
@@ -207,7 +214,14 @@ export interface ResetPasswordInput {
 export interface AuthPayload {
 	redirectTo?: string;
 	requiresVerification?: boolean;
+	/** The `/verify` poll: whether the account bound to this browser's pending cookie is confirmed. */
 	verified?: boolean;
+	/**
+	 * Set only alongside `verified: true`: whether the polling request already carries a session.
+	 * `false` means the email was confirmed elsewhere (another device or browser), so the page asks
+	 * the reader to sign in instead of navigating into a guarded route that would bounce them.
+	 */
+	signedIn?: boolean;
 	/**
 	 * The account email a verification code was sent to. Returned ONLY on the
 	 * `requiresVerification` branch of a password sign-in, so a reader who signed in by USERNAME can
@@ -261,7 +275,7 @@ export class AuthBackendService {
 		if (input.type === "individual") {
 			// Age-gate is re-derived server-side; the client's `restricted` flag is never trusted.
 			if (!isJoinable(bracketFromDob(input.dob))) {
-				return fail(422, { errors: { dob: `You need to be at least ${MIN_AGE} to join Projective.` } });
+				return fail(422, { errors: { dob: UNDER_MINIMUM_REFUSAL } });
 			}
 			// Password is required unless this is an SSO/OAuth signup (which sets its own credential).
 			if (!input.oauth && (!input.password || input.password.length < 8)) {
@@ -305,7 +319,7 @@ export class AuthBackendService {
 					requiresVerification: true,
 					verificationSent: await AuthBackendService.dispatchConfirmation(input.corporateEmail),
 					redirectTo: input.redirectTo,
-				});
+				}, { pendingVerification: await AuthBackendService.pendingTokenFor(created.user.id) });
 			}
 
 			// Individual — build the profile metadata the 0304 provisioning reads.
@@ -325,6 +339,9 @@ export class AuthBackendService {
 				}
 				const user = getUserClient(input.accessToken);
 				const { error } = await user.rpc("complete_onboarding", { p_payload: meta });
+				if (error?.code === AGE_SQLSTATE.underMinimum) {
+					return fail(422, { errors: { dob: UNDER_MINIMUM_REFUSAL } });
+				}
 				if (error) {
 					return fail(422, {
 						message: error.message ?? "We couldn't finish setting up your account.",
@@ -350,7 +367,7 @@ export class AuthBackendService {
 				requiresVerification: true,
 				verificationSent: await AuthBackendService.dispatchConfirmation(input.email),
 				redirectTo: input.redirectTo,
-			});
+			}, { pendingVerification: await AuthBackendService.pendingTokenFor(created.user.id) });
 		} catch (e) {
 			return fail(500, {
 				message: e instanceof Error ? e.message : "Account provisioning failed.",
@@ -451,7 +468,15 @@ export class AuthBackendService {
 				// GoTrue reports an unconfirmed email distinctly (and only AFTER the password checks
 				// out); everything else is a credential failure, kept generic.
 				if (/confirm/i.test(error.message)) {
-					return ok({ requiresVerification: true, redirectTo: input.redirectTo, email });
+					const userId = await AuthBackendService.resolveSignInUserId(email);
+					return ok(
+						{ requiresVerification: true, redirectTo: input.redirectTo, email },
+						{
+							pendingVerification: userId
+								? await AuthBackendService.pendingTokenFor(userId)
+								: undefined,
+						},
+					);
 				}
 				return fail(401, { message: INVALID_CREDENTIALS });
 			}
@@ -606,25 +631,66 @@ export class AuthBackendService {
 	}
 
 	/**
-	 * Poll app-owned verification state — the "database listener" behind `/verify`. Live: read
-	 * `org.user_emails.verified_at` (kept in lockstep with GoTrue by migration 0312). Stub: not-yet.
+	 * The `/verify` confirmation poll (Decision #185). Answers only for the account named by this
+	 * browser's signed pending-verification cookie; any other caller gets the uniform
+	 * `{ verified: false }`, and every poll is rate-limited (see {@link resolveVerificationStatus}).
+	 * Live: confirmation is GoTrue's `email_confirmed_at` on that account. Stub: never confirmed.
 	 */
 	static async getVerificationStatus(
-		input: VerificationStatusInput,
+		input: VerificationPollInput,
 	): Promise<ServiceResult<AuthPayload>> {
-		if (isAuthBackendLive() && input.email) {
-			// Administrative read of the app-owned flag; the real flow prefers an RLS-scoped read via
-			// the caller's JWT once a pre-session token exists for the pending account.
+		return resolveVerificationStatus(input, {
+			key: await AuthBackendService.pendingKey(),
+			limiter: verificationPollLimiter,
+			isConfirmed: (userId) => AuthBackendService.isEmailConfirmed(userId),
+		});
+	}
+
+	private static async isEmailConfirmed(userId: string): Promise<boolean> {
+		if (!isAuthBackendLive()) return false;
+		const { data, error } = await getServiceClient().auth.admin.getUserById(userId);
+		if (error) {
+			if (error.status === 404) return false;
+			throw new Error(`Confirmation lookup failed: ${error.message}`, { cause: error });
+		}
+		return Boolean(data.user?.email_confirmed_at);
+	}
+
+	private static pendingKey(): Promise<CryptoKey | null> {
+		const root = serverEnv().supabaseServiceRoleKey;
+		return root ? pendingVerificationKey(root) : Promise.resolve(null);
+	}
+
+	private static async pendingTokenFor(userId: string): Promise<string | undefined> {
+		const key = await AuthBackendService.pendingKey();
+		return key ? await mintPendingVerification(userId, key) : undefined;
+	}
+
+	/**
+	 * The account whose GoTrue sign-in address is `email`, for an unconfirmed sign-in whose password
+	 * GoTrue already accepted. `org.user_emails` narrows the candidates (an address can also be another
+	 * person's secondary); the GoTrue identity decides. `null` when nothing matches or a read fails —
+	 * the caller then sets no pending cookie, and the code on `/verify` still works.
+	 */
+	private static async resolveSignInUserId(email: string): Promise<string | null> {
+		try {
 			const db = getServiceClient();
-			const { data } = await db
+			const { data, error } = await db
 				.schema("org")
 				.from("user_emails")
-				.select("verified_at")
-				.eq("email", input.email)
-				.maybeSingle();
-			return ok({ verified: !!data?.verified_at, redirectTo: input.redirectTo });
+				.select("user_id")
+				.in("email", [...new Set([email, email.toLowerCase()])])
+				.limit(5);
+			if (error || !data) return null;
+			const wanted = email.toLowerCase();
+			for (const row of data as Array<{ user_id: string }>) {
+				const { data: found } = await db.auth.admin.getUserById(row.user_id);
+				if (found?.user?.email?.toLowerCase() === wanted) return row.user_id;
+			}
+			return null;
+		} catch {
+			return null;
 		}
-		return ok({ verified: false, redirectTo: input.redirectTo });
 	}
 
 	/**

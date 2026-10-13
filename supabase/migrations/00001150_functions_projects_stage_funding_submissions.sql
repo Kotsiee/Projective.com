@@ -441,6 +441,7 @@ DECLARE
     v record;
     v_escrow uuid;
 BEGIN
+    PERFORM org.fn_assert_adult(auth.uid());
     SELECT rv.status, rv.reason, rv.requested_by, rv.submission_id, rv.ticket_id, rv.project_stage_id,
            rv.request_type, rv.price_cents, ps.extra_revision_price_cents AS stage_price,
            ps.project_id, p.client_business_id AS payer, p.owner_user_id AS owner, ss.status AS submission_status
@@ -512,7 +513,8 @@ DECLARE
     v_status stage_status;
     v_currency text;
     v_stage_name text;
-    t record;
+    v_tickets uuid[];
+    v_ticket uuid;
     v_escrow uuid;
     v_funded int := 0;
     v_total bigint := 0;
@@ -521,6 +523,7 @@ DECLARE
     v_needed bigint;
     v_available bigint;
 BEGIN
+    PERFORM org.fn_assert_adult(auth.uid());
     IF NOT projects.has_project_access(p_project_id) THEN
         RAISE EXCEPTION 'Not authorized for this project.' USING ERRCODE = '42501';
     END IF;
@@ -557,15 +560,28 @@ BEGIN
             USING ERRCODE = 'object_not_in_prerequisite_state';
     END IF;
 
+    -- Lock the candidate tickets before any hold, in id order (Decision #189): a concurrent fund_stage or
+    -- fund_ticket on the same ticket waits here, then re-reads it as funded and leaves it out. Every
+    -- ticket lock is taken before a hold touches the payer's wallet row, so two doors never wait on
+    -- each other.
+    SELECT COALESCE(array_agg(c.id ORDER BY c.id), '{}') INTO v_tickets
+      FROM (
+        SELECT tk.id
+          FROM projects.tickets tk
+         WHERE tk.current_stage_id = p_stage_id
+           AND tk.current_assignee_id IS NOT NULL
+           AND tk.payment_status IN ('unpaid'::payment_status, 'needs_funding'::payment_status)
+         ORDER BY tk.id
+           FOR UPDATE
+      ) c;
+
     -- Each hold refuses (PF402) on its own and the transaction makes the stage all or nothing; an
     -- individual's whole stage is checked first so the refusal names the stage, not one ticket.
     IF v_payer IS NULL THEN
         SELECT COALESCE(SUM(COALESCE(t2.unit_price_cents, ps2.unit_price_cents)), 0) INTO v_needed
           FROM projects.tickets t2
           LEFT JOIN projects.project_stages ps2 ON ps2.id = t2.current_stage_id
-         WHERE t2.current_stage_id = p_stage_id
-           AND t2.current_assignee_id IS NOT NULL
-           AND t2.payment_status IN ('unpaid'::payment_status, 'needs_funding'::payment_status);
+         WHERE t2.id = ANY (v_tickets);
         SELECT w.balance_cents INTO v_available
           FROM finance.wallets w
          WHERE w.owner_id = v_owner
@@ -581,13 +597,8 @@ BEGIN
     -- reuses fn_check_spending_limit (AC2), isolates the escrow to project_stage_id (AC3) and
     -- writes the wallet-debit ledger entry (AC6). Each hold also tells its assignee they can start
     -- (AC5, `escrow.funded`).
-    FOR t IN
-        SELECT id FROM projects.tickets
-        WHERE current_stage_id = p_stage_id
-          AND current_assignee_id IS NOT NULL
-          AND payment_status IN ('unpaid'::payment_status, 'needs_funding'::payment_status)
-    LOOP
-        v_escrow := finance.fn_hold_ticket_escrow(t.id);
+    FOREACH v_ticket IN ARRAY v_tickets LOOP
+        v_escrow := finance.fn_hold_ticket_escrow(v_ticket);
         IF v_escrow IS NOT NULL THEN
             v_funded := v_funded + 1;
         END IF;
@@ -633,6 +644,7 @@ DECLARE
     v_balance bigint;
     v_escrow uuid;
 BEGIN
+    PERFORM org.fn_assert_adult(auth.uid());
     IF NOT projects.has_project_access(p_project_id) THEN
         RAISE EXCEPTION 'Not authorized for this project.' USING ERRCODE = '42501';
     END IF;
@@ -714,10 +726,15 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, comms, org, auth;
 -- #endregion
 
+-- The stage row is locked before anything settles and only an unsettled stage (open, assigned,
+-- in_progress, submitted, revisions) may be cancelled, so two cancellations, or a cancellation racing
+-- approve_stage, settle the stage once: the second waits on the lock, then finds it cancelled or paid
+-- (Decision #188).
 CREATE OR REPLACE FUNCTION projects.cancel_stage_fair_exit(p_project_id uuid, p_stage_id uuid, p_tier integer)
 RETURNS jsonb AS $$
 DECLARE
     v_stage_name text;
+    v_stage_status stage_status;
     v_bp integer;
     t record;
     a record;
@@ -740,18 +757,25 @@ BEGIN
     END IF;
     v_bp := p_tier * 100;   -- percent -> basis points
 
-    SELECT name INTO v_stage_name
+    SELECT name, status INTO v_stage_name, v_stage_status
     FROM projects.project_stages
-    WHERE id = p_stage_id AND project_id = p_project_id;
+    WHERE id = p_stage_id AND project_id = p_project_id
+    FOR UPDATE;
 
     IF v_stage_name IS NULL THEN
         RAISE EXCEPTION 'Stage not found for this project.' USING ERRCODE = 'no_data_found';
+    END IF;
+    IF v_stage_status NOT IN ('open'::stage_status, 'assigned'::stage_status, 'in_progress'::stage_status,
+                              'submitted'::stage_status, 'revisions'::stage_status) THEN
+        RAISE EXCEPTION 'This stage is already % — only an unsettled stage can be cancelled.', v_stage_status
+            USING ERRCODE = 'object_not_in_prerequisite_state';
     END IF;
 
     FOR t IN
         SELECT DISTINCT ticket_id
         FROM finance.escrows
         WHERE project_stage_id = p_stage_id AND status = 'held' AND ticket_id IS NOT NULL
+        ORDER BY ticket_id
     LOOP
         PERFORM finance.fn_fair_exit_release(t.ticket_id, v_bp);
         v_cnt := v_cnt + 1;
@@ -910,11 +934,16 @@ $$;
 -- Re-creates projects.approve_stage (0305) verbatim, then appends the handover transition: once no
 -- stage of the project remains unsettled, the last escrow has just been released, so the protected
 -- phase is lifted for the whole project and every participant is notified of the Contact Handover.
+-- The stage row is locked before anything is released and only an unsettled stage (open, assigned,
+-- in_progress, submitted, revisions, approved) may be approved, so two approvals, or an approval racing
+-- cancel_stage_fair_exit, pay out once: the second waits on the lock, then finds it paid or cancelled
+-- (Decision #188).
 CREATE OR REPLACE FUNCTION projects.approve_stage(p_project_id uuid, p_stage_id uuid)
 RETURNS jsonb AS $$
 DECLARE
     v_currency text;
     v_stage_name text;
+    v_stage_status stage_status;
     t record;
     a record;
     v_released int := 0;
@@ -932,13 +961,19 @@ BEGIN
         RAISE EXCEPTION 'Only the client/owner may approve this stage.' USING ERRCODE = '42501';
     END IF;
 
-    SELECT ps.name, p.currency INTO v_stage_name, v_currency
+    SELECT ps.name, ps.status, p.currency INTO v_stage_name, v_stage_status, v_currency
     FROM projects.project_stages ps
     JOIN projects.projects p ON p.id = ps.project_id
-    WHERE ps.id = p_stage_id AND ps.project_id = p_project_id;
+    WHERE ps.id = p_stage_id AND ps.project_id = p_project_id
+    FOR UPDATE OF ps;
 
     IF v_stage_name IS NULL THEN
         RAISE EXCEPTION 'Stage not found for this project.' USING ERRCODE = 'no_data_found';
+    END IF;
+    IF v_stage_status NOT IN ('open'::stage_status, 'assigned'::stage_status, 'in_progress'::stage_status,
+                              'submitted'::stage_status, 'revisions'::stage_status, 'approved'::stage_status) THEN
+        RAISE EXCEPTION 'This stage is already % — only an unsettled stage can be approved.', v_stage_status
+            USING ERRCODE = 'object_not_in_prerequisite_state';
     END IF;
 
     -- Release every held escrow for this stage's tickets. fn_release_ticket_escrow applies the
@@ -947,6 +982,7 @@ BEGIN
         SELECT DISTINCT ticket_id
         FROM finance.escrows
         WHERE project_stage_id = p_stage_id AND status = 'held' AND ticket_id IS NOT NULL
+        ORDER BY ticket_id
     LOOP
         PERFORM finance.fn_release_ticket_escrow(t.ticket_id);
         v_released := v_released + 1;

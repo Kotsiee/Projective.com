@@ -26,10 +26,9 @@ export const AuthService = {
 		return postAuth("/api/auth/verify", payload);
 	},
 
-	/** Poll app-owned email-verification state (the `/verify` auto-login listener). */
-	verificationStatus(query: { email?: string; redirectTo?: string }): Promise<AuthResult> {
+	/** Poll the `/verify` confirmation state for the account this browser's pending cookie names. */
+	verificationStatus(query: { redirectTo?: string }): Promise<AuthResult> {
 		const qs = new URLSearchParams();
-		if (query.email) qs.set("email", query.email);
 		if (query.redirectTo) qs.set("redirectTo", query.redirectTo);
 		return getAuth(`/api/auth/verification-status?${qs.toString()}`);
 	},

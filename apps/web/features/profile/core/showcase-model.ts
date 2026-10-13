@@ -1,3 +1,5 @@
+import type { LightboxMedia } from "@features/view/types/lightbox-types.ts";
+import { largestCandidate } from "@features/view/core/lightbox-model.ts";
 import type { ProfileShowcase, ProfileShowcaseItem } from "../types/profile-types.ts";
 
 /**
@@ -38,6 +40,21 @@ export function withPrimaryImage(
 		alt: base?.primary.alt ?? alt,
 	};
 	return { primary, extras: base?.extras ?? [] };
+}
+
+/**
+ * The slides as the shared lightbox's gallery, index for index, so a still opened from slide `i`
+ * opens on item `i`. A still draws its widest rendition with the slide's own picture as the tray's
+ * thumbnail; a video carries its poster.
+ */
+export function showcaseGallery(slides: readonly ProfileShowcaseItem[]): LightboxMedia[] {
+	return slides.map((item) => ({
+		kind: item.kind,
+		src: (item.kind === "image" ? largestCandidate(item.srcset) : null) ?? item.src,
+		thumb: item.kind === "image" ? item.src : undefined,
+		poster: item.poster,
+		alt: item.alt,
+	}));
 }
 // #endregion
 

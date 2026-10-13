@@ -1,9 +1,15 @@
 import { assertEquals } from "@std/assert";
 import {
+	adjacentScope,
+	DETAIL_JUMP,
+	detailKeyIntent,
+	DRAWER_SCOPES,
 	readItemParam,
-	RESULTS_RAIL_CAP,
 	resultOrder,
-	stepFromKey,
+	RESULTS_RAIL_CAP,
+	scopeOf,
+	sectionJumpTarget,
+	stepIndex,
 	stepPosition,
 	withItemParam,
 } from "./detail-nav.ts";
@@ -72,10 +78,79 @@ Deno.test("stepPosition names neighbours and stops at both ends", () => {
 	assertEquals(stepPosition(order, "zz"), null);
 });
 
-Deno.test("stepFromKey follows the reading direction and ignores modified presses", () => {
-	assertEquals(stepFromKey({ ...KEY, key: "ArrowRight" }), 1);
-	assertEquals(stepFromKey({ ...KEY, key: "ArrowLeft" }), -1);
-	assertEquals(stepFromKey({ ...KEY, key: "ArrowLeft" }, "rtl"), 1);
-	assertEquals(stepFromKey({ ...KEY, key: "ArrowRight", altKey: true }), null);
-	assertEquals(stepFromKey({ ...KEY, key: "ArrowDown" }), null);
+Deno.test("detailKeyIntent steps with the arrows in the reading direction", () => {
+	assertEquals(detailKeyIntent({ ...KEY, key: "ArrowRight" }), { kind: "step", delta: 1 });
+	assertEquals(detailKeyIntent({ ...KEY, key: "ArrowLeft" }), { kind: "step", delta: -1 });
+	assertEquals(detailKeyIntent({ ...KEY, key: "ArrowLeft" }, "rtl"), { kind: "step", delta: 1 });
+	assertEquals(detailKeyIntent({ ...KEY, key: "ArrowRight", altKey: true }), null);
+});
+
+Deno.test("detailKeyIntent skips five with Shift and changes section with Ctrl or Cmd", () => {
+	assertEquals(
+		detailKeyIntent({ ...KEY, key: "ArrowRight", shiftKey: true }),
+		{ kind: "step", delta: DETAIL_JUMP },
+	);
+	assertEquals(
+		detailKeyIntent({ ...KEY, key: "ArrowLeft", shiftKey: true }),
+		{ kind: "step", delta: -DETAIL_JUMP },
+	);
+	assertEquals(
+		detailKeyIntent({ ...KEY, key: "ArrowRight", ctrlKey: true }),
+		{ kind: "section", dir: 1 },
+	);
+	assertEquals(
+		detailKeyIntent({ ...KEY, key: "ArrowLeft", metaKey: true }),
+		{ kind: "section", dir: -1 },
+	);
+	assertEquals(detailKeyIntent({ ...KEY, key: "ArrowRight", ctrlKey: true, metaKey: true }), null);
+	assertEquals(detailKeyIntent({ ...KEY, key: "ArrowRight", ctrlKey: true, shiftKey: true }), null);
+});
+
+Deno.test("detailKeyIntent scrolls with the vertical arrows and opens with a bare Enter", () => {
+	assertEquals(detailKeyIntent({ ...KEY, key: "ArrowDown" }), { kind: "scroll", dir: 1 });
+	assertEquals(detailKeyIntent({ ...KEY, key: "ArrowUp" }), { kind: "scroll", dir: -1 });
+	assertEquals(detailKeyIntent({ ...KEY, key: "Enter" }), { kind: "open" });
+	assertEquals(detailKeyIntent({ ...KEY, key: "Enter", shiftKey: true }), null);
+	assertEquals(detailKeyIntent({ ...KEY, key: "ArrowDown", ctrlKey: true }), null);
+	assertEquals(detailKeyIntent({ ...KEY, key: "Tab" }), null);
+});
+
+Deno.test("stepIndex clamps a skip to either end and reports no move at the boundary", () => {
+	assertEquals(stepIndex(2, DETAIL_JUMP, 20), 7);
+	assertEquals(stepIndex(17, DETAIL_JUMP, 20), 19);
+	assertEquals(stepIndex(3, -DETAIL_JUMP, 20), 0);
+	assertEquals(stepIndex(19, 1, 20), null);
+	assertEquals(stepIndex(0, -DETAIL_JUMP, 20), null);
+});
+
+Deno.test("scopeOf folds teams and businesses into their shared scopes", () => {
+	assertEquals(scopeOf("teams"), "freelancers");
+	assertEquals(scopeOf("businesses"), "users");
+	assertEquals(scopeOf("services"), "services");
+});
+
+Deno.test("adjacentScope loops through the scope menu's order without articles", () => {
+	assertEquals([...DRAWER_SCOPES], ["freelancers", "users", "services", "products", "projects"]);
+	assertEquals(adjacentScope("services", 1), "products");
+	assertEquals(adjacentScope("projects", 1), "freelancers");
+	assertEquals(adjacentScope("freelancers", -1), "projects");
+	assertEquals(adjacentScope("teams", 1), "users");
+	assertEquals(adjacentScope("all", 1), "freelancers");
+	assertEquals(adjacentScope("all", -1), "projects");
+});
+
+Deno.test("sectionJumpTarget lands on the first item of the neighbouring section, looping", () => {
+	const order = [
+		item("s1"),
+		item("s2"),
+		item("f1", "freelancers"),
+		item("t1", "teams"),
+		item("p1", "projects"),
+	];
+	assertEquals(sectionJumpTarget(order, 1, 1)?.id, "f1");
+	assertEquals(sectionJumpTarget(order, 3, 1)?.id, "p1");
+	assertEquals(sectionJumpTarget(order, 4, 1)?.id, "s1");
+	assertEquals(sectionJumpTarget(order, 3, -1)?.id, "s1");
+	assertEquals(sectionJumpTarget(order, 0, -1)?.id, "p1");
+	assertEquals(sectionJumpTarget([item("a"), item("b")], 0, 1), null);
 });

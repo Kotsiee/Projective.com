@@ -32,6 +32,7 @@ CREATE OR REPLACE FUNCTION public.provision_user_profile(
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, org, pg_temp
 AS $$
 DECLARE
     v_is_freelancer boolean := false;
@@ -50,6 +51,9 @@ BEGIN
     v_last_name := p_meta->>'last_name';
     v_username := p_meta->>'username';
     v_dob := (p_meta->>'dob')::date;
+    -- Every path lands here — the GoTrue signup trigger and complete_onboarding alike — so the age
+    -- floor holds even for a client that skips /join (Decision #190).
+    PERFORM org.fn_check_dob(v_dob);
     v_objective := p_meta->>'objective';
     v_avatar_file_id := NULLIF(p_meta->>'avatar_file_id', '')::uuid;
 
@@ -148,7 +152,7 @@ BEGIN
 
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, org, pg_temp;
 
 -- #endregion
 
@@ -157,6 +161,7 @@ CREATE OR REPLACE FUNCTION public.complete_onboarding(p_payload jsonb)
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, org, pg_temp
 AS $$
 DECLARE
     v_uid uuid := auth.uid();
@@ -207,6 +212,7 @@ CREATE OR REPLACE FUNCTION public.handle_email_confirmed()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, org, pg_temp
 AS $$
 BEGIN
     -- Fire only on the NULL -> timestamp transition (the first confirmation).
@@ -472,6 +478,90 @@ BEGIN
         'completed_keys', to_jsonb(v_keys),
         'next_suggested_action', v_next
     );
+END;
+$$;
+-- #endregion
+
+-- #region 3. Age guardrails (Decision #190)
+-- PRODUCT_SPEC §Age guardrails, held where no door can skip it: under 13 cannot hold an account
+-- (PM422); 13–17 is RESTRICTED — no buying and no selling (PM403); 18 and over is unrestricted. The
+-- thresholds are MIN_AGE / ADULT_AGE in @projective/types/auth/age.ts. Restriction is never stored:
+-- it is derived from org.users_public.dob on every read, so it lifts on the 18th birthday with
+-- nothing to run. Whole years against the database's CURRENT_DATE (UTC). None of these is granted to
+-- a client role (org is deny-by-default, 00002510), so no caller can ask whether somebody else is a
+-- minor; definers, triggers and the access-token hook call them.
+CREATE OR REPLACE FUNCTION org.fn_age_years(p_dob date)
+RETURNS integer
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT pg_catalog.date_part('year', pg_catalog.age(CURRENT_DATE::timestamp, p_dob::timestamp))::integer;
+$$;
+
+-- The one date-of-birth rule for a profile row: present, not in the future, not before 1900, and at
+-- least 13 years ago. Provisioning calls it before writing anything; org.trg_users_public_dob_guard
+-- calls it on every insert and every dob change.
+CREATE OR REPLACE FUNCTION org.fn_check_dob(p_dob date)
+RETURNS void
+LANGUAGE plpgsql
+STABLE
+SET search_path = ''
+AS $$
+BEGIN
+    IF p_dob IS NULL THEN
+        RAISE EXCEPTION 'dob: enter your date of birth' USING ERRCODE = '22023';
+    END IF;
+    IF p_dob > CURRENT_DATE OR p_dob < DATE '1900-01-01' THEN
+        RAISE EXCEPTION 'dob: enter a real date of birth' USING ERRCODE = '22023';
+    END IF;
+    IF org.fn_age_years(p_dob) < 13 THEN
+        RAISE EXCEPTION 'dob: you need to be at least 13 to join Projective' USING ERRCODE = 'PM422';
+    END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION org.trg_users_public_dob_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    PERFORM org.fn_check_dob(NEW.dob);
+    RETURN NEW;
+END;
+$$;
+
+-- Whether a person is 13–17 today. False for anyone without a profile row.
+CREATE OR REPLACE FUNCTION org.fn_is_minor(p_user uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE(
+        (SELECT org.fn_age_years(u.dob) < 18 FROM org.users_public u WHERE u.user_id = p_user),
+        false
+    );
+$$;
+
+-- The one buy/sell gate. Every door that spends, earns, sells or takes paid work calls it with the
+-- person acting (or, for an assignment, the person being given the work); a NULL user is the service
+-- role and passes.
+CREATE OR REPLACE FUNCTION org.fn_assert_adult(p_user uuid)
+RETURNS void
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF p_user IS NOT NULL AND org.fn_is_minor(p_user) THEN
+        RAISE EXCEPTION 'age: buying and selling unlock on the account holder''s 18th birthday'
+            USING ERRCODE = 'PM403';
+    END IF;
 END;
 $$;
 -- #endregion

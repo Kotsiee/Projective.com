@@ -27,6 +27,7 @@ import {
 	workloadIntensity,
 } from "@projective/types/projects";
 import { messageAttachmentFacets } from "@projective/types/files";
+import { PLATFORM_FEE_BP, platformFeeFor } from "@projective/types/finance";
 import type { ContextType } from "@projective/types/auth";
 import { findProjectDetail } from "./detail-fixtures.ts";
 import { allProjects } from "./fixtures.ts";
@@ -615,7 +616,8 @@ function firstUnitPath(tree: SubmissionTreeNode[]): string[] {
 /**
  * The ticket's escrow movements. Derived from the lifecycle it has actually been through, so the
  * Finances tab's audit history and the card's status can never tell different stories: nothing is
- * held before a claim, the platform's 5% is cut at release (root CLAUDE.md §8 Decision #2), and an
+ * held before a claim, the platform fee is cut at release through the SSOT's `platformFeeFor` (the
+ * seeded rate, truncated as the release truncates — Decisions #2, #187), and an
  * off-standard intensity leaves the adjustment that re-priced the hold.
  */
 function makePayments(
@@ -656,11 +658,11 @@ function makePayments(
 		});
 	}
 	if (status === "completed") {
-		const fee = Math.round(totalCents * 0.05);
+		const fee = platformFeeFor(totalCents);
 		rows.push({
 			kind: "fee",
 			state: "settled",
-			label: "Platform fee (5%)",
+			label: `Platform fee (${PLATFORM_FEE_BP / 100}%)`,
 			amountCents: -fee,
 			stageId: null,
 			party: null,

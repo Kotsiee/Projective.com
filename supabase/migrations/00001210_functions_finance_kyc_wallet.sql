@@ -674,23 +674,39 @@ themselves; a team or business answers its public face to anyone and its KYB, in
 facts to members only; an organisation answers members only. NULL when there is nothing the caller
 may know. The shape is identical for every kind.';
 
--- The owner a basket or checkout is scoped to.
+-- The owner a basket or checkout is scoped to, with the platform fee rate a payment from it is charged
+-- (finance.fn_effective_platform_fee_bp, the rate place_wallet_order applies) — told only to a caller
+-- who can see that owner's finances, since a negotiated rate is a commercial term. plpgsql, not sql:
+-- the resolver is declared in a later file (00001220), and a sql body is validated at CREATE.
 CREATE OR REPLACE FUNCTION finance.get_purchase_owner(p_owner_type text, p_owner_id uuid)
 RETURNS jsonb
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = finance, org, security, public
 AS $$
-    SELECT CASE
-        WHEN auth.uid () IS NULL THEN NULL
-        ELSE finance.fn_purchase_owner_json (p_owner_type, p_owner_id)
-    END;
+DECLARE
+    v_out jsonb;
+BEGIN
+    IF auth.uid () IS NULL THEN
+        RETURN NULL;
+    END IF;
+    v_out := finance.fn_purchase_owner_json (p_owner_type, p_owner_id);
+    IF v_out IS NULL THEN
+        RETURN NULL;
+    END IF;
+    RETURN v_out || pg_catalog.jsonb_build_object('platform_fee_bp',
+        CASE WHEN finance.fn_owner_visible (p_owner_type, p_owner_id)
+             THEN COALESCE(finance.fn_effective_platform_fee_bp (p_owner_type, p_owner_id), 0)
+        END);
+END;
 $$;
 
 COMMENT ON FUNCTION finance.get_purchase_owner(text, uuid) IS
-'One purchase owner''s checkout identity for the signed-in caller (see fn_purchase_owner_json).
-NULL for an anonymous caller.';
+'One purchase owner''s checkout identity for the signed-in caller (see fn_purchase_owner_json), plus
+`platform_fee_bp`: the effective platform fee rate a payment from this owner is charged
+(fn_effective_platform_fee_bp), or NULL when the caller cannot see the owner''s finances. NULL for an
+anonymous caller.';
 
 -- Every identity the caller may buy or bill as: themselves first, then each team, business and
 -- organisation they own or are an ACTIVE member of. The Details step's billing-identity switcher and
@@ -898,13 +914,14 @@ manage_billing on the business; the monthly mode additionally requires KYB verif
 --   * The charge is made in the lines' own currency, which must be one the paying wallet holds. The
 --     display-currency figure the buyer saw is a conversion the application verifies separately; the
 --     money that moves is integer minor units with no FX in it.
---   * The platform fee is the documented 5% (Decision #2, the rate the checkout displays), deducted
---     from each seller's credit. `security.platform_params.platform_fee_bp` is seeded 0 and governs
---     escrow releases; it is deliberately NOT read here — reconciling the two is flagged, not decided.
---     The fee is retained (debited from the buyer, not credited to a seller); the platform's own Fee
+--   * The platform fee is the PAYER's effective rate (finance.fn_effective_platform_fee_bp for the
+--     basket owner: an active negotiated rate, else `security.platform_params.platform_fee_bp`, 500 =
+--     5%, Decision #2) — the same resolver an escrow release charges through fn_escrow_fee_bp
+--     (Decision #187). It is charged per line on what was actually paid, truncated to the minor unit,
+--     and deducted from each seller's credit. The fee is retained (debited from the buyer, not credited to a seller); the platform's own Fee
 --     Collection wallet is not materialised yet (#54(i)).
---   * A sale credits the seller's AVAILABLE balance. `finance.pending_releases` is keyed to an escrow,
---     which a product sale does not have, so the 7-day pending window cannot hold it yet.
+--   * A sale credits the seller through the pending window (finance.fn_wallet_credit_pending, keyed to
+--     the order): it reaches their Available balance `pending_release_days` later (Decision #191).
 --   * A team-owned product credits the team's wallet; distributing it to members is the team's own
 --     Distribute action.
 CREATE OR REPLACE FUNCTION finance.place_wallet_order(
@@ -922,7 +939,7 @@ SECURITY DEFINER
 SET search_path = finance, catalogue, org, security, public
 AS $$
 DECLARE
-    c_fee_bp constant integer := 500;
+    v_fee_bp integer;
     v_uid uuid := auth.uid();
     v_currency text := pg_catalog.upper(pg_catalog.btrim(COALESCE(p_currency, '')));
     v_wanted uuid[];
@@ -958,6 +975,7 @@ BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'Sign in to pay' USING ERRCODE = '42501';
     END IF;
+    PERFORM org.fn_assert_adult(v_uid);
     IF p_idempotency_key IS NULL OR pg_catalog.length(p_idempotency_key) < 8 OR pg_catalog.length(p_idempotency_key) > 120 THEN
         RAISE EXCEPTION 'A payment attempt needs a key between 8 and 120 characters' USING ERRCODE = '22023';
     END IF;
@@ -1290,6 +1308,7 @@ BEGIN
 
     v_reference := 'PJ-' || pg_catalog.to_char(pg_catalog.now(), 'YYYY') || '-' ||
         pg_catalog.upper(pg_catalog.substr(pg_catalog.md5(v_order_id::text), 1, 6));
+    v_fee_bp := COALESCE(finance.fn_effective_platform_fee_bp (v_basket.owner_type, v_basket.owner_id), 0);
 
     INSERT INTO finance.orders (
         id, reference, status, placed_at, owner_type, owner_id, basket_id, currency, subtotal_minor,
@@ -1298,7 +1317,7 @@ BEGIN
         payment_provider, payment_method_label, idempotency_key
     ) VALUES (
         v_order_id, v_reference, 'confirmed', pg_catalog.now(), v_basket.owner_type, v_basket.owner_id,
-        v_basket.id, v_currency, v_subtotal, v_creator, v_promo_minor, 0, c_fee_bp, 'seller_deducted', 0,
+        v_basket.id, v_currency, v_subtotal, v_creator, v_promo_minor, 0, v_fee_bp, 'seller_deducted', 0,
         0, v_net, v_net, 'wallet', 'Projective wallet', p_idempotency_key
     );
 
@@ -1373,7 +1392,7 @@ BEGIN
         END IF;
         v_remaining_promo := v_remaining_promo - v_share;
         v_paid := (v_line.l ->> 'gross')::bigint - (v_line.l ->> 'creator')::bigint - v_share;
-        v_fee := (GREATEST(v_paid, 0) * c_fee_bp + 5000) / 10000;
+        v_fee := (GREATEST(v_paid, 0) * v_fee_bp) / 10000;
         v_fee_total := v_fee_total + v_fee;
 
         IF v_line.l ->> 'owner_team_id' IS NOT NULL THEN
@@ -1391,7 +1410,7 @@ BEGIN
         INSERT INTO finance.wallets (owner_type, owner_id, currency)
         VALUES (v_seller_type, v_seller_id, v_currency)
         ON CONFLICT (owner_type, owner_id, currency) DO NOTHING;
-        PERFORM finance.fn_wallet_credit (v_seller_id, v_seller_type, v_currency, v_paid - v_fee,
+        PERFORM finance.fn_wallet_credit_pending (v_seller_id, v_seller_type, v_currency, v_paid - v_fee,
             'product_sale', 'orders', v_order_id);
 
         v_manifest := v_line.l -> 'manifest' -> 0;
@@ -1428,7 +1447,7 @@ $$;
 COMMENT ON FUNCTION finance.place_wallet_order(uuid, uuid[], text, jsonb, text, text) IS
 'Pay for the submitted basket lines from the caller''s Projective wallet, atomically: re-price every
 line from the catalogue against the unit price the buyer was shown, re-validate the promo code they saw
-applied (none sent → none applied), debit the wallet, credit each seller net of the 5% platform fee,
+applied (none sent → none applied), debit the wallet, credit each seller net of the payer''s effective platform fee (truncated),
 write the order and its lines, consume the basket lines. Digital products, and one-ticket project lines
 (Decision #166), which settle by holding that ticket''s escrow (projects.fund_ticket) instead of a
 seller credit, and cohort seats (Decision #171), which settle through the buyer''s seat hold into a
@@ -1844,7 +1863,8 @@ $$;
 
 -- What the team's NEXT release will pay, by the same plan the release runs (fn_team_split_plan). The
 -- honest gross is the team's oldest escrow still held; a team with none has no projection (`gross`
--- NULL) rather than an invented one.
+-- NULL) rather than an invented one. The fee is that escrow's payer's rate (fn_escrow_fee_bp), the one
+-- the release will charge, truncated as the release truncates (Decision #187).
 CREATE OR REPLACE FUNCTION finance.preview_team_split(p_team_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1863,24 +1883,26 @@ BEGIN
     ) THEN
         RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'workspace: you are not a member of this team';
     END IF;
-    SELECT e.id, e.amount_cents, COALESCE(e.deadline_bonus_cents, 0) AS bonus, e.currency
+    SELECT e.id, e.amount_cents, COALESCE(e.deadline_bonus_cents, 0) AS bonus, e.currency,
+           e.payer_business_id, e.payer_user_id
       INTO v_escrow
       FROM finance.escrows e
      WHERE e.payee_type = 'team' AND e.payee_id = p_team_id AND e.status = 'held'
      ORDER BY e.created_at, e.id
      LIMIT 1;
     IF v_escrow.id IS NULL THEN
-        RETURN jsonb_build_object('gross_minor', NULL, 'currency', NULL, 'fee_minor', NULL, 'plan',
-            finance.fn_team_split_plan(p_team_id, 0));
+        RETURN jsonb_build_object('gross_minor', NULL, 'currency', NULL, 'fee_minor', NULL, 'fee_bp', NULL,
+            'plan', finance.fn_team_split_plan(p_team_id, 0));
     END IF;
-    SELECT (p.value #>> '{}')::integer INTO v_fee_bp FROM security.platform_params p WHERE p.key = 'platform_fee_bp';
-    v_fee := (v_escrow.amount_cents * COALESCE(v_fee_bp, 0)) / 10000;
+    v_fee_bp := finance.fn_escrow_fee_bp(v_escrow.payer_business_id, v_escrow.payer_user_id);
+    v_fee := (v_escrow.amount_cents * v_fee_bp) / 10000;
     v_payout := GREATEST(v_escrow.amount_cents + v_escrow.bonus - v_fee, 0);
     RETURN jsonb_build_object(
         'escrow_id', v_escrow.id,
         'gross_minor', v_escrow.amount_cents + v_escrow.bonus,
         'currency', v_escrow.currency,
         'fee_minor', v_fee,
+        'fee_bp', v_fee_bp,
         'plan', finance.fn_team_split_plan(p_team_id, v_payout)
     );
 END;

@@ -100,6 +100,26 @@
 	min-inline-size: 0;
 	margin-inline-end: auto;
 }
+.ui-drawer__tools {
+	flex: none;
+	display: flex;
+	align-items: center;
+	gap: var(--space-1);
+	margin-inline-start: auto;
+}
+.ui-drawer__tools + .ui-drawer__close {
+	margin-inline-start: 0;
+}
+.ui-drawer__tools .ui-button--text {
+	--btn-accent: var(--on-surface-variant);
+}
+.ui-drawer__tools .ui-button--icon-only {
+	--btn-height: var(--overlay-action-size);
+}
+.ui-drawer__tools .ui-button--text:hover:not(:disabled):not([aria-disabled="true"]) {
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
 .ui-drawer__close {
 	flex: 0 0 auto;
 	margin-inline-start: auto;

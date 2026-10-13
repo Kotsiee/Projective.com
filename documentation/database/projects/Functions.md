@@ -8,11 +8,13 @@ signature, security context, `EXECUTE` holders and caller check. Defined in `000
 trigger bindings in `00001800` / `00001820` / `00001850`; explicit grants in `00002510` and beside a
 handful of definitions.
 
-**Reading the `EXECUTE` line.** Postgres grants `EXECUTE` to `PUBLIC` on every new function, `projects`
-has no schema-wide revoke, and `anon` holds `USAGE` on the schema (Decision #85(e)) — so "default
-`PUBLIC`" below means **`anon`, `authenticated` and `service_role` can all call it over PostgREST**.
-For a trigger function that is moot: Postgres refuses to call one outside a trigger (`0A000`). An
-error marked `P0001` is a bare `RAISE EXCEPTION` with no `ERRCODE`.
+**Reading the `EXECUTE` line.** `projects` is **deny-by-default** (`00002510`, "projects — deny by
+default"): every function is revoked from `PUBLIC` and `anon` and granted to `service_role`, and a
+client role (`anon`, `authenticated`) holds `EXECUTE` only where it is granted by name — so each
+entry names its holders. "Owner only" means no client role and no `service_role`: only a `SECURITY
+DEFINER` caller, running as the owner, reaches it. For a trigger function `EXECUTE` is moot: Postgres
+refuses to call one outside a trigger (`0A000`). An error marked `P0001` is a bare `RAISE EXCEPTION`
+with no `ERRCODE`.
 
 ---
 
@@ -39,17 +41,18 @@ while `comms.has_channel_access` already refused them the meeting's own chat roo
 participant arms carry no status test: a `project_participants` row grants access for as long as it
 exists, which is why a whole-project removal deletes it (see `remove_project_member` below).
 
-`SECURITY DEFINER` (plpgsql, not `STABLE`), `search_path = public, projects, org, auth`; default
-`PUBLIC` `EXECUTE`. No caller check of its own — it answers for `auth.uid()`, so a guest gets `false`.
+`SECURITY DEFINER` (plpgsql, not `STABLE`), `search_path = public, projects, org, auth`; `EXECUTE`:
+`anon`, `authenticated`, `service_role` (a policy predicate, so it must run as the invoking role). No
+caller check of its own — it answers for `auth.uid()`, so a guest gets `false`.
 
 ### `projects.can_review_project(_project_id uuid) → boolean`
 
 `00001100` §2. The "client viewer" authority every money-moving and adjudicating door asks:
 `p.owner_user_id = auth.uid() OR (p.client_business_id IS NOT NULL AND
 org.is_active_business_member(p.client_business_id))`. Deliberately **not** true for an assignee.
-`LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`, `search_path = public, projects, org, auth`; default
-`PUBLIC` `EXECUTE` (it is a policy predicate, so it must run as the invoking role). An unknown id and a
-guest both answer `false`.
+`LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`, `search_path = public, projects, org, auth`; `EXECUTE`:
+`anon`, `authenticated`, `service_role` (it is a policy predicate, so it must run as the invoking
+role). An unknown id and a guest both answer `false`.
 
 ### `projects.can_manage_project_members(_project_id uuid) → boolean`
 
@@ -59,8 +62,8 @@ holds a person-participant row on the project whose `role` is `admin` or `manage
 dismissing invitations and managing a stage's invite link, and the SELECT arm on
 `project_invitations`, `project_applications`, `project_application_targets` and
 `stage_invite_links`. Appointing an admin or manager is NOT covered — each issuing door re-checks
-`can_review_project` for those two roles. `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`; default
-`PUBLIC` `EXECUTE` (a policy predicate).
+`can_review_project` for those two roles. `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`; `EXECUTE`:
+`anon`, `authenticated`, `service_role` (a policy predicate, so it must run as the invoking role).
 
 ### `projects.is_cohort_member(_cohort_id uuid) → boolean`
 
@@ -68,8 +71,9 @@ dismissing invitations and managing a stage's invite link, and the SELECT arm on
 member arm of _View cohorts_ and _View session events_. It is `SECURITY DEFINER` to break a policy
 cycle: an inline `EXISTS` on `cohort_memberships` re-enters that table's policy, whose owner arm reads
 `cohorts`, and Postgres refused every authenticated read of the three tables with "infinite recursion
-detected in policy". `LANGUAGE sql`, `STABLE`, `search_path = public, projects, org, auth`; default
-`PUBLIC` `EXECUTE` (a policy predicate). Answers only for `auth.uid()`; a guest gets `false`.
+detected in policy". `LANGUAGE sql`, `STABLE`, `search_path = public, projects, org, auth`; `EXECUTE`:
+`anon`, `authenticated`, `service_role` (a policy predicate, so it must run as the invoking role).
+Answers only for `auth.uid()`; a guest gets `false`.
 
 ### `projects.has_stage_access(p_stage_id uuid) → boolean`
 
@@ -77,22 +81,23 @@ detected in policy". `LANGUAGE sql`, `STABLE`, `search_path = public, projects, 
 policy: `false` for an unknown stage; else true when `can_review_project(stage's project)`, or the
 caller is a freelancer (`freelancer_profile_id = auth.uid()`) or an active member of a team holding an
 assignment on **that stage** whose status is not `released` / `cancelled` / `declined`. `STABLE`,
-`SECURITY DEFINER`, `search_path = public, projects, org, auth`; default `PUBLIC` `EXECUTE`.
+`SECURITY DEFINER`, `search_path = public, projects, org, auth`; `EXECUTE`: `anon`, `authenticated`,
+`service_role` (a policy predicate, so it must run as the invoking role).
 
 ### `projects.is_protected_phase(p_project_id uuid) → boolean`
 
 `00001100` (from `0311`). `COALESCE((SELECT handover_unlocked_at IS NULL FROM projects.projects WHERE
 id = p_project_id), true)` — true until the Projective Unlock, and **true for an unknown id**, so the
 PII mask fails closed. `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`, `search_path = public, projects`.
-`00002510` grants `EXECUTE` to `authenticated` explicitly, but nothing revokes the default `PUBLIC`
-grant, so `anon` can call it too (it discloses one boolean per project id). No caller check.
+`EXECUTE`: `authenticated`, `service_role` (`00002510`; it discloses one boolean per project id). No
+caller check.
 
 ### `projects.get_viewer_hired_teams(p_project_id uuid) → TABLE (team_id uuid, project_stage_id uuid)`
 
 One row per stage of the project held by a team the **caller** is an active member of
 (`org.team_members.status = 'active'`), through a live `assignee_type = 'team'` assignment. `SECURITY
-DEFINER`, `STABLE`, `search_path = ''`; `EXECUTE` to `authenticated` only (revoked from `public` and
-`anon`). Defined in `00001100`.
+DEFINER`, `STABLE`, `search_path = ''`; `EXECUTE`: `authenticated`, `service_role`. Defined in
+`00001100`.
 
 It drives the Project Details sidebar's **Teams** group, which renders only for a member of a hired
 team. A definer is required because the two facts sit behind policies that never meet for this caller:
@@ -236,7 +241,7 @@ boolean or timestamp cast a `''` it cannot parse (`22P02`), and a key holding a 
 `jsonb_array_elements_text` as a scalar (`22023`). Both are crashes a caller reaches directly rather
 than refusals, and neither is visible from reading the happy path.
 
-`EXECUTE` is granted to `authenticated` only.
+`EXECUTE`: `authenticated`, `service_role`.
 
 `SECURITY DEFINER`, `search_path = public, projects, org, comms, auth`. Refuses a `NULL` `auth.uid()`
 first with `28000` (`Not authenticated`), and a blank title with `23514`.
@@ -250,8 +255,8 @@ The bare `ARRAY(SELECT jsonb_array_elements_text(x))` idiom it replaces is corre
 ABSENT key. One function rather than a `jsonb_typeof` CASE repeated at six call sites, so "how do we
 read a list out of a payload" has one answer that cannot drift between the project and its stages.
 
-`LANGUAGE sql`, `SECURITY INVOKER`, no `search_path`; default `PUBLIC` `EXECUTE` (pure, touches no
-table).
+`LANGUAGE sql`, `SECURITY INVOKER`, no `search_path`; `EXECUTE`: `service_role` only — no client
+grant (pure, touches no table; `create_project` reaches it as its owner).
 
 ### `projects.update_entity_project_counts() → trigger`
 
@@ -261,7 +266,7 @@ in `00001800`. Recomputes `total_project_count` / `active_project_count` on the 
 (using `OLD` on delete). `SECURITY DEFINER`, `search_path = public, projects, org`: as `INVOKER` its
 update matched zero rows under the caller's RLS and its cascade into `search.sync_user_to_index()`
 raised `42501` on `search.profiles_index`, aborting every app-level project insert. No caller check
-(a trigger); default `PUBLIC` `EXECUTE`, moot.
+(a trigger); `EXECUTE` moot.
 
 ---
 
@@ -278,13 +283,13 @@ or a participant (`pp.profile_type = 'freelancer' AND pp.profile_id = auth.uid()
 participant the caller owns). The `stage_assignments` join is never referenced by the `WHERE`, so an
 assignee with no participant row is not listed. `p_category` filters `starred · unread · in-progress ·
 completed · archived` (default: not archived), plus `team` / `service` keyed on `p_category_id`.
-Default `PUBLIC` `EXECUTE`; a guest's `auth.uid()` is `NULL` and matches nothing.
+`EXECUTE`: `service_role` only — no client grant; a `NULL` `auth.uid()` matches nothing.
 
 ### `projects.get_project_details(p_project_id uuid) → TABLE (project_id uuid, title text, format text, status text, is_starred boolean, allow_deadline_bonuses boolean, target_project_start_date timestamptz, timeline_preset text, owner jsonb, viewer_context jsonb, stages jsonb)`
 
-`00001100` (from `0116`). `SECURITY DEFINER`, `search_path = public, projects, org, auth`; default
-`PUBLIC` `EXECUTE`. Resolves the caller's role first — `owner` (owner, or owner of the client
-business), else `collaborator` (a freelancer / owned-business participant, or **any**
+`00001100` (from `0116`). `SECURITY DEFINER`, `search_path = public, projects, org, auth`;
+`EXECUTE`: `service_role` only — no client grant. Resolves the caller's role first — `owner` (owner,
+or owner of the client business), else `collaborator` (a freelancer / owned-business participant, or **any**
 `stage_assignments` row for the caller or an active team of theirs — this arm has no status filter,
 unlike `has_project_access`) — and raises `Access Denied` (`P0001`) when neither applies.
 `viewer_context.permissions` lists `manage_settings` / `manage_members` / `view_financials` for the
@@ -294,8 +299,8 @@ owner only.
 
 `00001100` (from `0122`). The Quick Inspector blob: status, currency, stage count, live ticket column
 counts, `pending_submissions`, `held_escrows`, `next_milestone_at`. `STABLE`, `SECURITY DEFINER`,
-`search_path = public, projects, finance, org, auth`; default `PUBLIC` `EXECUTE`. Guard:
-`IF NOT projects.has_project_access(p_project_id)` → `insufficient_privilege` (`42501`); an unknown id
+`search_path = public, projects, finance, org, auth`; `EXECUTE`: `service_role` only — no client
+grant. Guard: `IF NOT projects.has_project_access(p_project_id)` → `insufficient_privilege` (`42501`); an unknown id
 fails that check first, so its `no_data_found` branch is unreachable in practice.
 
 ### `projects.get_project_roster(p_project_id uuid) → TABLE (profile_id uuid, name text, avatar jsonb, role text)`
@@ -303,38 +308,41 @@ fails that check first, so its `no_data_found` branch is unreachable in practice
 `00001100` (from `0118`). The ticket "Reassign" picker: freelancer participants plus every freelancer
 on a stage assignment, de-duplicated. The assignment arm has **no status filter**, so a declined or
 released freelancer still appears. `SECURITY DEFINER`, `search_path = public, projects, org, files,
-auth`; default `PUBLIC` `EXECUTE`. Guard: `has_project_access(p_project_id)` → `42501`. Also called
+auth`; `EXECUTE`: `service_role` only — no client grant. Guard: `has_project_access(p_project_id)` →
+`42501`. Also called
 inside `auto_assign_round_robin` / `assign_parallel_stream`, where the same guard applies to their
 caller.
 
 ### `projects.get_stage_details(p_project_id uuid, p_stage_id uuid) → TABLE (stage_id uuid, project_id uuid, title text, description jsonb, description_text text, sort_order int, status text, ip_mode text, file_upload_required boolean, default_tasks jsonb, skills text[], due_date timestamptz, scheduling jsonb, channel_id uuid, budget jsonb, assignee jsonb, latest_submission jsonb, viewer_context jsonb, assignment_mode text)`
 
-`00001100` (from `0104`). `SECURITY DEFINER`, `search_path = public, projects, org, auth`; default
-`PUBLIC` `EXECUTE`. 🚨 **No access check.** The only refusal is `Stage not found or access denied`
-(`P0001`) when the stage is not in the project; any caller — `anon` included — who holds a (project,
-stage) id pair reads the stage's brief, budget rule, assignee name/avatar, latest submission notes and
+`00001100` (from `0104`). `SECURITY DEFINER`, `search_path = public, projects, org, auth`;
+`EXECUTE`: `service_role` only — no client grant. 🚨 **No access check** — moot for clients, because
+no client role holds `EXECUTE`. The only refusal is `Stage not found or access denied` (`P0001`) when
+the stage is not in the project; a caller who holds a (project, stage) id pair reads the stage's brief, budget rule, assignee name/avatar, latest submission notes and
 room id. `viewer_context.role` (`owner` / `assignee` / `viewer`) only shapes the returned permission
 flags; it gates nothing.
 
 ### `projects.get_ticket_finance(p_ticket_id uuid) → TABLE (total_cost_cents bigint, paid_to_date_cents bigint, locked_escrow_cents bigint, remaining_cents bigint, currency text, installments jsonb)`
 
 `00001120` §2a. The ticket modal's Installment Monitor; prices mirror `finance.fn_hold_ticket_escrow`.
-`SECURITY DEFINER`, `search_path = public, projects, finance, org, auth`; default `PUBLIC` `EXECUTE`.
-Unknown ticket → `P0001`; then `has_project_access(ticket's project)` → `42501`.
+`SECURITY DEFINER`, `search_path = public, projects, finance, org, auth`; `EXECUTE`: `service_role`
+only — no client grant. Unknown ticket → `P0001`; then `has_project_access(ticket's project)` →
+`42501`.
 
 ### `projects.get_ticket_timeline(p_ticket_id uuid) → TABLE (id uuid, action_type text, previous_stage_id uuid, new_stage_id uuid, previous_status text, new_status text, changes jsonb, created_at timestamptz, actor_id uuid, actor_name text, actor_avatar_file_id uuid)`
 
 `00001120` §2b. `projects.ticket_history` newest first with the actor's public name. `SECURITY
-DEFINER`, `search_path = public, projects, org, auth`; default `PUBLIC` `EXECUTE`. Unknown ticket →
-`P0001`; then `has_project_access` → `42501` — the same scope as the _View ticket history_ policy.
+DEFINER`, `search_path = public, projects, org, auth`; `EXECUTE`: `service_role` only — no client
+grant. Unknown ticket → `P0001`; then `has_project_access` → `42501` — the same scope as the _View ticket history_ policy.
 
 ### `projects.get_workload_capacity(p_user_id uuid DEFAULT auth.uid(), p_project_id uuid DEFAULT NULL) → jsonb`
 
 `00001140` §4. The Workload Capacity Gauge: `{user_id, current, cap, ratio, ticket_count,
 project_current}` from live claimed / in-progress / in-review intensity. `STABLE`, `SECURITY DEFINER`,
-`search_path = public, projects, org, security, auth`; default `PUBLIC` `EXECUTE`. Returns `NULL` for a
-`NULL` user. **No caller check** — `p_user_id` is caller-supplied, so any caller can read any user's
-workload figures.
+`search_path = public, projects, org, security, auth`; `EXECUTE`: `service_role` only — no client
+grant. Returns `NULL` for a `NULL` user. **No caller check** — moot for clients, because no client
+role holds `EXECUTE`; `p_user_id` is caller-supplied, so a caller can read any user's workload
+figures.
 
 ---
 
@@ -342,8 +350,8 @@ workload figures.
 
 The Project Details lane's per-viewer activity marks (Decision #146). Both RPCs are **`SECURITY
 INVOKER`** with `search_path = ''`, so every count is taken under the caller's RLS — that is what splits
-the roles. `EXECUTE` narrowed to `authenticated` in `00002510` ("lane view activity marks"); each body
-also refuses a `NULL` `auth.uid()` with `42501`.
+the roles. `EXECUTE`: `authenticated`, `service_role` (`00002510`, "lane view activity marks"); each
+body also refuses a `NULL` `auth.uid()` with `42501`.
 
 ### `projects.get_nav_activity(p_slug text) → jsonb`
 
@@ -371,7 +379,7 @@ the Task discussion-room lookup and the deadline tone (Decision #163).
 ### `projects.fn_touch_updated_at() → trigger`
 
 `BEFORE UPDATE ON projects.projects` (`trg_projects_touch_updated_at`, `00001820`): `NEW.updated_at :=
-now()`. `EXECUTE` revoked from `PUBLIC`, `anon`, `authenticated`.
+now()`. `EXECUTE` moot (a trigger).
 
 ---
 
@@ -400,8 +408,8 @@ change what an existing call means.
 ⚠️ Adding a defaulted parameter changes the signature, and Postgres will **not** `CREATE OR REPLACE`
 across one — so this is `DROP FUNCTION IF EXISTS … (uuid, text, jsonb, text, bigint)` + `CREATE`.
 Every existing five-argument call still resolves against the new function because `p_payload`
-defaults; verified by executing one. The default `PUBLIC EXECUTE` grant is re-established by the
-`CREATE` (this function has no explicit grant in `00002510`).
+defaults; verified by executing one. `EXECUTE`: `authenticated`, `service_role`, granted by name on
+the six-argument signature in `00002510`.
 
 **A dependency must be a stage of THIS project.** Without the check a caller could point the new
 stage at a stage id from somebody else's pipeline: the foreign key is satisfied (it names the table,
@@ -430,17 +438,16 @@ Atomic bulk restamp of stage `sort_order`. Ticket order is independent of stage 
 column's internal ticket sequence is preserved automatically.
 
 🚨 **It shipped with no caller check at all.** It is `SECURITY DEFINER`, so the `UPDATE` runs as the
-owner and RLS never sees it, and it keeps the default `PUBLIC EXECUTE` grant the rest of this file
-relies on — so any signed-in caller who knew a project id and its stage ids could reorder somebody
-else's pipeline. Stage order is the execution sequence, so that is a change to what gets built when,
+owner and RLS never sees it, and `authenticated` holds `EXECUTE` — so without the check any signed-in
+caller who knew a project id and its stage ids could reorder somebody else's pipeline. Stage order is the execution sequence, so that is a change to what gets built when,
 not a cosmetic one.
 
 Authority is **review authority** (`projects.can_review_project`; ownership only before
 Decision #163), not `has_project_access`: an assigned freelancer legitimately reads the pipeline and
 must not be able to rewrite the client's sequencing. `search_path` includes `auth` so `auth.uid()` resolves.
 
-The check is now in place: `SECURITY DEFINER`, `search_path = public, projects, auth`, default `PUBLIC`
-`EXECUTE`; `auth.uid() IS NULL` → `42501`, not `can_review_project(p_project_id)` → `42501`. Ids that are
+The check is now in place: `SECURITY DEFINER`, `search_path = public, projects, auth`, `EXECUTE`:
+`authenticated`, `service_role`; `auth.uid() IS NULL` → `42501`, not `can_review_project(p_project_id)` → `42501`. Ids that are
 not stages of `p_project_id` are silently skipped. `trg_stage_reorder_lock` (below) raises if any
 stage whose position actually changes has already started.
 
@@ -456,8 +463,8 @@ scrubs before it included. The function's own comment (and this doc, until 2026-
 "are still released"; they are not. Any stage that ever held escrow therefore cannot be deleted here
 at all.
 
-`SECURITY DEFINER`, `search_path = public, projects, finance, auth`; default `PUBLIC` `EXECUTE`. Guard,
-in order: `auth.uid() IS NULL` → `42501`; not `can_review_project(p_project_id)` → `42501` (owner only
+`SECURITY DEFINER`, `search_path = public, projects, finance, auth`; `EXECUTE`: `authenticated`,
+`service_role`. Guard, in order: `auth.uid() IS NULL` → `42501`; not `can_review_project(p_project_id)` → `42501` (owner only
 before Decision #163); stage not in the project → `check_violation` (`23514`).
 
 ### `projects.sanitize_single_room_topology(p_project_id uuid) → jsonb`
@@ -473,8 +480,8 @@ stage's rooms) gets `archived_at = now()`. Returns `{sanitized: false}` for any 
 `{sanitized, deleted_stages, archived_stages, deleted_rooms, archived_rooms}`; a second call is a
 no-op.
 
-`SECURITY DEFINER`, `search_path = public, projects, comms, finance, auth`; default `PUBLIC`
-`EXECUTE`. Guard: `auth.uid() IS NULL` or not `can_review_project(p_project_id)` → `42501`; unknown
+`SECURITY DEFINER`, `search_path = public, projects, comms, finance, auth`; `EXECUTE`:
+`authenticated`, `service_role`. Guard: `auth.uid() IS NULL` or not `can_review_project(p_project_id)` → `42501`; unknown
 project → `P0002`.
 
 ### `projects.fn_stage_has_history(p_stage_id uuid) → boolean` / `projects.fn_room_has_history(p_channel_id uuid) → boolean`
@@ -485,7 +492,7 @@ stage has history when any ticket sits in it or requires it, any `ticket_history
 has a submission, assignment, open seat, invitation, invite link, escrow, invoice, basket item, order
 line or inbound payment — or any of its rooms has history. Staffing roles and budget rules are
 configuration, not history. `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`, `search_path = public`.
-**`EXECUTE` revoked from `public`, `anon` and `authenticated`** in `00002510`: they answer for any id,
+**`EXECUTE`: owner only** (`00002510`; no client role and no `service_role`): they answer for any id,
 so only the sanitizer (which re-asks review authority) calls them, as their owner.
 
 ### `projects.fn_stage_reorder_lock() → trigger`
@@ -493,16 +500,17 @@ so only the sanitizer (which re-asks review authority) calls them, as their owne
 `trg_stage_reorder_lock` — `BEFORE UPDATE OF sort_order ON projects.project_stages` (`00001850`). When
 `sort_order` actually changes, raises (`P0001`) if the stage is past `open` / `assigned`, has any
 ticket outside `backlog`, or has any `stage_assignments` row at all. `SECURITY INVOKER`, no
-`search_path`; default `PUBLIC` `EXECUTE`, moot.
+`search_path`; `EXECUTE` moot (a trigger).
 
 ### `projects.fn_stage_delete_cascade() → trigger`
 
 `trg_stage_delete_cascade` — `BEFORE DELETE ON projects.project_stages` (`00001850`). Calls
 `finance.fn_release_ticket_escrow` for every ticket whose `current_stage_id` is the stage, then strips
 the stage from every ticket's `required_stages`. `SECURITY DEFINER`, `search_path = public, projects,
-finance, org, auth`; no caller check (a trigger). Reached through `delete_stage` (which has already
-detached the tickets, so the release loop finds none) or a direct `DELETE` under the review-authority
-_Users can manage stages of own projects_ policy, where it **does** release the stage's escrow.
+finance, org, auth`; no caller check (a trigger), `EXECUTE` moot. Reached through `delete_stage`
+(which has already detached the tickets, so the release loop finds none) or a direct `DELETE` under
+the review-authority _Users can manage stages of own projects_ policy, where it **does** release the
+stage's escrow.
 
 ### `projects.fn_enforce_structure_variation() → trigger`
 
@@ -512,21 +520,24 @@ projects.project_stages`). Caps by `projects.structure_variation`: `one_off` ≤
 ≤ 1 stage and ≤ 1 ticket; `single_stage` ≤ 1 stage; `standard` / `NULL` unlimited. Archived stages
 (`archived_at`) are not counted (Decision #163). Raises `P0001`.
 `SECURITY INVOKER`, no `search_path`, so the counts are taken under the inserting role's RLS.
+`EXECUTE` moot (a trigger).
 
 ### `projects.fn_stage_window(p_stage_id uuid) → tstzrange`
 
 `00001130` §3. A stage's scheduled `[start, end)`: `fixed_start_date` (else `-infinity`) to
-`file_due_date`, else `session_end_date` (else `infinity`). `LANGUAGE sql`, `STABLE`, `SECURITY
-DEFINER`, `search_path = public, projects`; default `PUBLIC` `EXECUTE`; no caller check (discloses a
-stage's dates to anyone holding its id).
+`file_due_date`, else `session_end_date` (else `infinity`). An undated stage is therefore
+`[-infinity, infinity)` and overlaps every other window. `LANGUAGE sql`, `STABLE`, `SECURITY
+DEFINER`, `search_path = public, projects`; `EXECUTE`: `service_role` only — no client grant; no
+caller check (moot for clients; it discloses a stage's dates to a caller holding its id).
 
 ### `projects.fn_assignee_slot_conflict(p_stage_id uuid, p_assignee_type assignment_type, p_freelancer_id uuid, p_team_id uuid) → boolean`
 
-`00001130` §4, the double-booking guard `assign_from_application` uses: true when the freelancer /
+`00001130` §4, the double-booking guard `assign_from_application` and `fn_apply_invitation_decision`
+use: true when the freelancer /
 team holds a live assignment (not `released` / `cancelled` / `declined` / `completed`) on a
 **different** stage whose `fn_stage_window` overlaps this one's. `STABLE`, `SECURITY DEFINER`,
-`search_path = public, projects`; default `PUBLIC` `EXECUTE`; no caller check (an oracle on whether a
-named person is booked in a window).
+`search_path = public, projects`; `EXECUTE`: `service_role` only — no client grant; no caller check
+(moot for clients; an oracle on whether a named person is booked in a window).
 
 ---
 
@@ -557,30 +568,30 @@ so forwarding a position there would turn an ordinary drag into an error the boa
 Every move writes a `projects.ticket_history` row, which is why that table has no client write
 policy (see [Policies.md](Policies.md)).
 
-`SECURITY DEFINER`, `search_path = public, projects, finance, org, auth`; default `PUBLIC` `EXECUTE`.
-Refusals: unknown ticket `no_data_found` (`P0002`); the two authority guards `insufficient_privilege`
-(`42501`); a foreign stage `check_violation` (`23514`); entering work with no held escrow `PF402`
-("Needs funding — …", from the trigger).
+`SECURITY DEFINER`, `search_path = public, projects, finance, org, auth`; `EXECUTE`: `authenticated`,
+`service_role`. Refusals: unknown ticket `no_data_found` (`P0002`); the two authority guards
+`insufficient_privilege` (`42501`); a foreign stage `check_violation` (`23514`); entering work with no
+held escrow `PF402` ("Needs funding — …", from the trigger).
 
 ### `projects.claim_ticket(p_ticket_id uuid, p_assignee_id uuid) → uuid`
 
-`00001120` (reworked in `0310`). Self-claim, permitted only when the ticket's stage is in `open_pull`
-assignment mode (a ticket with no stage counts as `open_pull`); any other mode → `check_violation`.
-Delegates to `fn_assign_ticket_core(p_ticket_id, p_assignee_id, true)` and returns its answer: the held
-escrow's id, or `NULL` when the hold was **refused** — the claim did not happen and the ticket is now
+`00001120` (reworked in `0310`). Self-claim only. Guards, in order: `auth.uid() IS NULL` → `42501`
+("Sign in to claim a ticket."); `p_assignee_id` ≠ `auth.uid()` → `42501` (pinning someone else is
+`assign_ticket_manual`); unknown ticket → `no_data_found` (`P0002`); not
+`has_project_access(ticket's project)` → `42501`; the ticket's stage not in `open_pull` assignment
+mode (a ticket with no stage counts as `open_pull`) → `check_violation`. Then delegates to
+`fn_assign_ticket_core(p_ticket_id, p_assignee_id, true)` and returns its answer: the held escrow's id,
+or `NULL` when the hold was **refused** — the claim did not happen and the ticket is now
 `needs_funding` (Decision #165). `SECURITY DEFINER`,
-`search_path = public, projects, finance, org, security, auth`; default `PUBLIC` `EXECUTE`.
+`search_path = public, projects, finance, org, security, auth`; `EXECUTE`: `authenticated`,
+`service_role`.
 
-🚨 **No caller check, and the assignee is a parameter.** Nothing compares `p_assignee_id` with
-`auth.uid()`, checks it is a freelancer, or refuses a `NULL` `auth.uid()`; the core does not either.
-So any caller — `anon` included — can attach any user to any unclaimed, described ticket on an
-`open_pull` stage, which holds the client's money in escrow against that user
-(`finance.fn_hold_ticket_escrow` debits the payer wallet). See Findings in
-[Policies.md](Policies.md#findings).
+A signed-in caller cannot attach another person to a ticket — and so cannot hold the client's escrow
+against them; `supabase/probes/function_grants.sql` is the regression check.
 
 **Ticket triggers** (`00001110`, bound in `00001850`). The settlement guard is under
 [Escrow settlement doors](#escrow-settlement-doors). The rest below are all `FOR EACH ROW` on
-`projects.tickets`, default `PUBLIC` `EXECUTE` (moot), with no caller check unless stated.
+`projects.tickets`, `EXECUTE` moot (triggers), with no caller check unless stated.
 
 ### `projects.fn_enforce_ticket_due_date() → trigger`
 
@@ -658,11 +669,11 @@ Grants are in `00002510` ("escrow settlement doors").
 | `projects.complete_ticket(p_ticket_id uuid) → void`                              | `00001120` | Ticket → `completed`; releases all its held escrow             | `authenticated`                  | signed in + `can_review_project`                             |
 | `projects.delete_ticket(p_ticket_id uuid) → void`                                | `00001120` | Releases a claimed ticket's escrow, then hard-deletes the row  | `authenticated`                  | signed in + `can_review_project`                             |
 | `projects.force_complete_stage(p_ticket_id uuid) → uuid`                         | `00001130` | Releases the current installment, advances (and funds) the next | `authenticated`                  | signed in + `can_review_project`                             |
-| `projects.approve_stage(p_project_id uuid, p_stage_id uuid) → jsonb`             | `00001150` | Releases every held escrow on the stage; stage → `paid`        | `authenticated`                  | signed in + `can_review_project`; stage ∈ project            |
-| `projects.cancel_stage_fair_exit(p_project_id uuid, p_stage_id uuid, p_tier integer) → jsonb` | `00001150` | Pays the tier (25/50/75 %) out, refunds the rest; stage → `cancelled` | `authenticated`        | signed in + `can_review_project`; stage ∈ project            |
-| `projects.move_ticket(…)` (→ `completed`)                                        | `00001120` | Via `trg_ticket_escrow_sync`                                   | default                          | `has_project_access`, plus `can_review_project` for Done     |
-| `projects.delete_stage(p_project_id uuid, p_stage_id uuid) → void`               | `00001130` | Releases claimed tickets' escrow in the stage                  | default                          | signed in + `can_review_project` (Decision #163)             |
-| `projects.remove_project_member(…)`                                              | `00001130` | Via `release_ticket_to_backlog`                                | `authenticated`                  | project owner                                                |
+| `projects.approve_stage(p_project_id uuid, p_stage_id uuid) → jsonb`             | `00001150` | Releases every held escrow on the stage; stage → `paid`        | `authenticated`                  | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
+| `projects.cancel_stage_fair_exit(p_project_id uuid, p_stage_id uuid, p_tier integer) → jsonb` | `00001150` | Pays the tier (25/50/75 %) out, refunds the rest; stage → `cancelled` | `authenticated`        | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
+| `projects.move_ticket(…)` (→ `completed`)                                        | `00001120` | Via `trg_ticket_escrow_sync`                                   | `authenticated`, `service_role`  | `has_project_access`, plus `can_review_project` for Done     |
+| `projects.delete_stage(p_project_id uuid, p_stage_id uuid) → void`               | `00001130` | Releases claimed tickets' escrow in the stage                  | `authenticated`, `service_role`  | signed in + `can_review_project` (Decision #163)             |
+| `projects.remove_project_member(…)`                                              | `00001130` | Via `release_ticket_to_backlog`                                | `authenticated`, `service_role`  | project owner                                                |
 | `projects.release_ticket_to_backlog(p_ticket_id uuid) → void`                    | `00001120` | Releases a ticket's escrow, resets it to New                   | **none** (owner-only, internal)  | none — reachable only through `remove_project_member`        |
 | `projects.fn_release_expired_claims(p_now timestamptz DEFAULT now()) → integer`  | `00001140` | **Refunds** every claim older than the TTL                     | **`service_role`** only          | none — a cron job                                            |
 
@@ -693,7 +704,18 @@ stages (`archived_at`, Decision #163), so a retired stage never holds the handov
 | Unknown ticket id                          | `no_data_found` (`P0002`). `delete_ticket` used to return silently; it now refuses.         |
 | Stage not in the project (`approve_stage`, `cancel_stage_fair_exit`, also `fund_stage` / `get_stage_finance`) | `no_data_found` (`P0002`). |
 | No held escrow on the stage; `fund_stage` on a stage not `assigned` | `object_not_in_prerequisite_state` (`55000`). |
+| Stage already settled — `approve_stage` on a stage not `open` / `assigned` / `in_progress` / `submitted` / `revisions` / `approved`; `cancel_stage_fair_exit` on one not in that set less `approved` (Decision #188) | `object_not_in_prerequisite_state` (`55000`) — "This stage is already paid / cancelled …". |
 | `cancel_stage_fair_exit` tier not 25/50/75 | `invalid_parameter_value` (`22023`).                                                         |
+
+**Exactly once under concurrency (Decision #188).** `approve_stage` and `cancel_stage_fair_exit`
+take the stage row `FOR UPDATE` before anything settles and refuse a stage that is no longer
+unsettled, so a second approval, a second cancellation, or an approval racing a cancellation waits on
+the lock, then finds the stage `paid` / `cancelled` and is refused (`55000`) without moving money.
+Underneath, every release, refund and fair-exit split locks the ticket and its held escrow rows and
+flips each one only while it is still `held` (`database/finance/Functions.md`), which also covers
+the ticket-keyed doors racing a stage door. Lock order is stage → ticket → escrow → wallet. Before
+#188 neither door locked or checked the stage, so any stage with held escrow could be approved — even
+one already `paid` or `cancelled` — and two concurrent approvals both paid the payee.
 
 The three ticket-keyed doors take the ticket row `FOR UPDATE` before the check, so the authority
 decision and the release see the same row. `cancel_stage_fair_exit` also refuses a `NULL` tier.
@@ -722,14 +744,18 @@ before `trg_ticket_claim_before` and `trg_ticket_delete_protocol`, so it reads t
 subject-less `authenticated` caller and the assignee (including the direct `UPDATE`/`DELETE`), that
 the escrow is still held afterwards, that the assignee's ordinary status move still works, and that
 the owner's `approve_stage` and `complete_ticket` succeed and actually release the escrow.
+`supabase/probes/escrow_release_concurrency.sql` (Decision #188) races two real sessions on one stage
+— approve × 2, cancel × 2, cancel vs approve both ways — plus the finance functions on one ticket,
+asserts the second adds no ledger row, and that both doors refuse a `paid` / `cancelled` stage. It
+commits, so it runs against a disposable copy of the database (recipe in its header).
 
 ---
 
 ## Assignment routing & workload (`00001140`)
 
 How a freelancer comes to hold a ticket, the concurrency caps that bound it, and the workload-report
-loop. Every function here is `SECURITY DEFINER` except `file_workload_report`, and none carries an
-explicit grant — all keep the default `PUBLIC` `EXECUTE` except `fn_release_expired_claims` (under
+loop. Every function here is `SECURITY DEFINER` except `file_workload_report`; each entry names its
+`EXECUTE` holders (`fn_release_expired_claims` is under
 [Escrow settlement doors](#escrow-settlement-doors)).
 
 ### `projects.check_ticket_capacity(p_ticket_id uuid, p_user_id uuid) → jsonb`
@@ -739,10 +765,14 @@ global_current, global_projected, global_cap, stage_current, stage_projected, st
 live (claimed / in-progress / in-review) intensity excluding this ticket, plus this ticket's, against
 `org.freelancer_profiles.max_workload_intensity` (default `security.platform_params
 .global_workload_cap_default`, else `10`) and the stage's `max_concurrent_intensity`. Unknown ticket →
-`P0001`. `STABLE`, `search_path = public, projects, org, security, auth`. **No caller check**; any
-caller can evaluate any user against any ticket.
+`P0001`. `STABLE`, `search_path = public, projects, org, security, auth`; `EXECUTE`: `service_role`
+only — no client grant. **No caller check** — moot for clients, because no client role holds
+`EXECUTE`; a caller can evaluate any user against any ticket.
 
 ### `projects.fn_assign_ticket_core(p_ticket_id uuid, p_assignee_id uuid, p_enforce_capacity boolean DEFAULT true) → uuid`
+
+**Age gate:** an assignee under 18 is refused `PM403` (`org.fn_assert_adult`, Decision #190), so no self-claim, manual
+pin or routed assignment seats a minor on paid work.
 
 `00001140` §5. The one path that attaches an assignee: locks the ticket `FOR UPDATE`; refuses
 (`P0001`) an unknown, already-claimed or description-less (`description` `NULL` / `{}`) ticket; when
@@ -752,7 +782,15 @@ held escrow's id. **No hold, no work (Decision #165):** the assignment runs in a
 hold refuses (`PF402`) it is rolled back, `fn_mark_needs_funding` records the ticket as Needs funding
 and notifies the client, and the core returns `NULL` — a refusal cannot be both recorded and raised in
 one transaction, so `NULL` is the refusal. `search_path = public, projects, finance, org, security,
-auth`.
+auth`. `EXECUTE`: `service_role` only — no client role may call it, because it trusts its assignee
+argument.
+
+🚨 **No caller check** — moot for clients, because no client role holds `EXECUTE`. It is an internal
+primitive (`claim_ticket`, `assign_ticket_manual`, `auto_assign_round_robin`, `assign_parallel_stream`
+call it after their own checks, and the policies file names it as a `ticket_history` writer); called
+directly it takes any ticket and any assignee — on **any** stage, bypassing `claim_ticket`'s
+`open_pull` test too — and `p_enforce_capacity = false` skips the cap. The claim holds the client's
+escrow.
 
 ### `projects.fn_mark_needs_funding(p_ticket_id uuid, p_detail jsonb) → void`
 
@@ -760,22 +798,16 @@ auth`.
 `needs_funding` or `partially_released` (held, released or refunded tickets keep theirs), and sends the
 project owner `escrow.needs_funding` with the hold's `PF402` `DETAIL` (`reason`, `amount_minor`,
 `currency`) as its payload and a `?tkv=` link to the ticket. Called by `fn_assign_ticket_core` and
-`force_complete_stage`. `SECURITY DEFINER`, `search_path = public, projects, comms, auth`; `EXECUTE`
-revoked from `PUBLIC`, `anon`, `authenticated` (`00002510`) — callable, anyone could mark any unfunded
+`force_complete_stage`. `SECURITY DEFINER`, `search_path = public, projects, comms, auth`; `EXECUTE`:
+owner only (`00002510`; reached from its definer callers) — callable, anyone could mark any unfunded
 ticket and notify its owner at will.
-
-🚨 **No caller check and default `PUBLIC` `EXECUTE`.** It is an internal primitive (`claim_ticket`,
-`assign_ticket_manual`, `auto_assign_round_robin`, `assign_parallel_stream` call it after their own
-checks, and the policies file names it as a `ticket_history` writer), yet `anon` can call it directly
-with any ticket and any assignee — on **any** stage, bypassing `claim_ticket`'s `open_pull` test too —
-and pass `p_enforce_capacity = false` to skip the cap. The claim holds the client's escrow.
 
 ### `projects.set_stage_assignment_mode(p_stage_id uuid, p_mode text) → void`
 
 `00001140` §6. Sets `project_stages.assignment_mode` (`p_mode` cast to
 `projects.assignment_routing_mode`; a bad value raises `22P02`). Unknown stage → `P0001`; guard
 `projects.can_review_project(stage's project)` → `insufficient_privilege` (`42501`).
-`search_path = public, projects, auth`.
+`search_path = public, projects, auth`; `EXECUTE`: `service_role` only — no client grant.
 
 ### `projects.assign_ticket_manual(p_ticket_id uuid, p_assignee_id uuid) → uuid`
 
@@ -783,7 +815,7 @@ and pass `p_enforce_capacity = false` to skip the cap. The claim holds the clien
 `can_review_project(ticket's project)` → `42501`; then `fn_assign_ticket_core(…, true)` — capacity
 still enforced, and the same work-start gate: `NULL` when the hold was refused (the ticket is then
 `needs_funding`). Does not check that the assignee is on the roster. `search_path = public, projects,
-finance, org, security, auth`.
+finance, org, security, auth`; `EXECUTE`: `authenticated`, `service_role`.
 
 ### `projects.auto_assign_round_robin(p_stage_id uuid) → jsonb`
 
@@ -794,6 +826,7 @@ Returns `{assigned, ticket_id, assignee_id}`, `{assigned: false, reason}`, or �
 — `{assigned: false, ticket_id, needs_funding: true, reason}`. Unknown stage → `P0001`; guard `can_review_project` → `42501`. Because it reads the roster
 through `get_project_roster`, a caller must **also** pass `has_project_access` — a client-business
 member who is not the business's owner passes the first check and is refused (`42501`) by the second.
+`EXECUTE`: `service_role` only — no client grant.
 
 ### `projects.assign_parallel_stream(p_stage_id uuid) → integer`
 
@@ -801,23 +834,22 @@ member who is not the business's owner passes the first check and is refused (`4
 member with capacity; tickets nobody can take stay in the pool, as does a ticket whose hold is refused
 (now `needs_funding` — no other member would change that). Returns the count assigned. Same
 guards as `auto_assign_round_robin` (`can_review_project`, then `get_project_roster`'s
-`has_project_access`).
+`has_project_access`). `EXECUTE`: `service_role` only — no client grant.
 
 ### `projects.fn_sync_workload_intensity() → trigger`
 
 `trg_sync_workload_intensity` — `AFTER INSERT OR DELETE OR UPDATE OF current_assignee_id, status,
 workload_intensity ON projects.tickets` (`00001850`). Recomputes
 `org.freelancer_profiles.current_workload_intensity` (rounded live sum) for the old and new assignee.
-`search_path = public, projects, org`.
+`search_path = public, projects, org`; `EXECUTE` moot (a trigger).
 
 ### `projects.file_workload_report(p_ticket_id uuid, p_reason text, p_reported_intensity numeric DEFAULT NULL) → uuid`
 
 `00001140` §8. **`SECURITY INVOKER`** (`search_path = public, projects, auth`): inserts a
 `ticket_workload_reports` row with `reporter_user_id = auth.uid()` and the ticket's current intensity,
 so the authority is the _File workload report_ policy (reporter is self **and** the ticket's current
-assignee) — a non-assignee is refused by RLS (`42501`), and `anon`, which holds no `INSERT` on the
-table, by privilege. A blank reason, or a ticket the caller cannot see, → `P0001`. The insert fires
-`trg_open_workload_report`.
+assignee). `EXECUTE`: `service_role` only — no client grant. A blank reason, or a ticket the caller
+cannot see, → `P0001`. The insert fires `trg_open_workload_report`.
 
 ### `projects.fn_open_workload_report() → trigger`
 
@@ -825,16 +857,16 @@ table, by privilege. A blank reason, or a ticket the caller cannot see, → `P00
 Frozen rule: clears the ticket's assignee (cascading `fn_ticket_claim_before` → `backlog` and
 `fn_ticket_escrow_sync` → escrow **released** to the reporter), stamps `hidden_until = now() +
 workload_report_window_hours` (default 48) and `workload_report_id`. `search_path = public, projects,
-finance, security, org, auth`.
+finance, security, org, auth`; `EXECUTE` moot (a trigger).
 
 ### `projects.fn_resolve_expired_workload_reports() → integer`
 
 `00001140` §1b, the expiry sweep: every `open` report whose `hidden_until` has passed becomes
 `expired_penalized`, the ticket's `hidden_until` is lifted, and a `trust_score` `security.penalties`
 row (severity `client_no_adjust_penalty`) is written against the client business or owner. Returns
-the count. `search_path = public, projects, security`. **No caller check and default `PUBLIC`
-`EXECUTE`**: anyone can run the sweep early. It takes no arguments and only acts on reports that are
-genuinely expired, so the damage is timing, but it is an `anon`-callable write.
+the count. `search_path = public, projects, security`; `EXECUTE`: `service_role` only — no client
+grant. **No caller check** — moot for clients, because no client role holds `EXECUTE`. It takes no
+arguments and only acts on reports that are genuinely expired.
 
 ### `projects.fn_flag_bad_faith_report(p_report_id uuid) → void`
 
@@ -842,11 +874,11 @@ genuinely expired, so the damage is timing, but it is an `anon`-callable write.
 `hidden_until` (it stays in the backlog: filing evicted the assignee and released the escrow, and
 resuming it to `in_progress` with no hold would break the work-start gate, Decision #165), and inserts a `discovery_rank` `security.penalties`
 row (severity `freelancer_bad_faith_penalty`) against the **reporter**. `search_path = public,
-projects, security`.
+projects, security`; `EXECUTE`: `service_role` only — no client grant.
 
-🚨 **No caller check and default `PUBLIC` `EXECUTE`.** Anyone — `anon` included — who holds a report
-id can dismiss it and penalise the freelancer who filed it. It is an admin/audit action with no admin
-test.
+🚨 **No caller check** — moot for clients, because no client role holds `EXECUTE`. A caller who holds
+a report id can dismiss it and penalise the freelancer who filed it. It is an admin/audit action with
+no admin test.
 
 ---
 
@@ -863,9 +895,9 @@ no-ops.
 Full signature: `submit_deliverable(p_ticket_id uuid, p_stage_id uuid, p_title text, p_description
 jsonb DEFAULT '{}', p_checked_item_ids jsonb DEFAULT '[]', p_file_ids uuid[] DEFAULT '{}') → jsonb`
 (the `fn_serialize_submission` shape). `SECURITY DEFINER`, `search_path = public, projects, org,
-files, auth`; default `PUBLIC` `EXECUTE`. Refusals: unknown ticket `P0002`; no project access
-`42501`; foreign stage `23514`. Project access, not stage assignment, is the test — any project
-participant may file — and the `files.items` ids are linked without checking who owns them. A
+files, auth`; `EXECUTE`: `authenticated`, `service_role`. Refusals: unknown ticket `P0002`; no
+project access `42501`; foreign stage `23514`. Project access, not stage assignment, is the test — any
+project participant may file — and the `files.items` ids are linked without checking who owns them. A
 resubmission resolves every `open` revision round on the ticket (`status = 'resolved'`,
 `resolved_at`) and writes the newest round's `submission_id` into the new row's `revision_of`
 (Decision #167).
@@ -880,7 +912,8 @@ function (`00001130`).
   before the state checks; not `pending_review` `55000`; a free round still left `PC409`; a stage
   whose `extra_revision_price_cents` is `NULL` `PU422`. Raises (or, per submission, refreshes) one
   round `awaiting_payment` with `price_cents` snapshotted. Returns `{revision_id, price_minor,
-  currency, title, stage_id, ticket_id}`. Sends nothing back. `EXECUTE` → `authenticated` only.
+  currency, title, stage_id, ticket_id}`. Sends nothing back. `EXECUTE`: `authenticated`,
+  `service_role`.
 - **`fund_paid_revision(p_revision_id uuid) → jsonb`** — run by `finance.place_wallet_order` for a
   `paid_revision` line, as the payer. `fund_ticket`'s payer rule (`42501`); round not
   `awaiting_payment` or submission already decided `PC409`; not a `paid_revision`, or its
@@ -888,17 +921,20 @@ function (`00001130`).
   (`finance.fn_hold_revision_escrow`, `PF402` + `DETAIL` like #165), then opens the round: submission
   `revisions_requested` (feedback = the round's reason), ticket `in_review → in_progress`, a
   `submission_reviewed` activity row, `fn_notify_revision`. A refused hold rolls everything back.
-  Returns `{revision_id, escrow_id, status: 'open'}`. `EXECUTE` → `authenticated` only.
+  Returns `{revision_id, escrow_id, status: 'open'}`. `EXECUTE`: `authenticated`, `service_role`.
 - **`fn_notify_revision(p_revision_id uuid) → void`** — `submission.revision_requested` to the
   submitter ("Paid revision, funded, you can start." on a paid round) and `ticket.revision_requested`
-  to the ticket's assignee when that is someone else. Internal (`EXECUTE` revoked).
+  to the ticket's assignee when that is someone else. Internal (`EXECUTE`: owner only).
 - **`fn_stage_revision_terms() → trigger`** (`trg_stage_revision_terms`, `00001850`) — on a project
   with a `source_blueprint_id`, INSERT copies `free_revisions` / `extra_revision_price_cents` from the
   blueprint (else its newest published listing; once either is declared, free defaults to 0 and price
   to the stage's `unit_price_cents`; neither → `NULL`, unlimited); UPDATE keeps the old values.
-  Owner-authored stages pass through.
+  Owner-authored stages pass through. `EXECUTE` moot (a trigger).
 
 ### `projects.review_submission(...)` / `projects.fund_stage(...)`
+
+**Age gate:** `fund_stage`, `fund_ticket` and `fund_paid_revision` first refuse a caller under 18
+(`PM403`) (`org.fn_assert_adult`, Decision #190).
 
 Client-side adjudication and funding (`approve_stage`, which pays out, is under
 [Escrow settlement doors](#escrow-settlement-doors)). `review_submission` is guarded by
@@ -912,8 +948,8 @@ owner paying as an individual — since project access alone would let a hired f
 client's escrow from the client's wallet ([finance/Functions.md](../finance/Functions.md#stage-level-wrappers-in-projects-invoke-this-engine--migration-0305)).
 
 Signatures: `review_submission(p_submission_id uuid, p_decision text, p_feedback jsonb DEFAULT NULL) →
-jsonb` and `fund_stage(p_project_id uuid, p_stage_id uuid) → jsonb`. Both `SECURITY DEFINER`, default
-`PUBLIC` `EXECUTE`. `review_submission` (`search_path = public, projects, org, auth`): unknown
+jsonb` and `fund_stage(p_project_id uuid, p_stage_id uuid) → jsonb`. Both `SECURITY DEFINER`;
+`EXECUTE`: `authenticated`, `service_role`. `review_submission` (`search_path = public, projects, org, auth`): unknown
 submission `P0002`, non-reviewer `42501`, not `pending_review` `55000`, decision other than `accept` /
 `request_revision` `23514`; a revision request also files a `stage_revision_requests` row and moves the
 ticket back to `in_progress`. **Revision allotment (Decision #167):** a `request_revision` locks the
@@ -926,7 +962,12 @@ auth`): payer refusals `42501`; foreign stage `P0002`; stage not `assigned` `550
 owner's wallet short of the stage total `PF402`, and any ticket's own hold refusal (`PF402`, Decision
 #165) aborts the whole stage; nothing fundable `P0001`. Fundable means assigned and `unpaid` or
 `needs_funding`. On success the stage moves to `in_progress`; each hold notifies its assignee and the
-client itself (`escrow.funded`), so `fund_stage` sends no `stage_funded` of its own.
+client itself (`escrow.funded`), so `fund_stage` sends no `stage_funded` of its own. **Concurrency
+(Decision #189):** the fundable tickets are locked `FOR UPDATE` in id order before any hold or the
+individual's wallet check, and only that locked set is held. A second `fund_stage` (or a `fund_ticket`)
+on the same tickets waits, re-reads them as `escrow_funded` once the first commits, and holds nothing
+(`P0001`, nothing fundable). Ticket locks are always taken before a hold touches the payer's wallet row,
+so the doors never deadlock on each other. `finance.uq_escrows_ticket_base_held` is the backstop.
 
 ### `projects.fund_ticket(p_project_id uuid, p_ticket_id uuid)` → jsonb (Decision #166)
 
@@ -939,31 +980,32 @@ seat on the stage — `PU422`; an individual owner's wallet short of the price `
 `finance.fn_hold_ticket_escrow`. **The stage's status is not moved** — its other tickets are still
 unfunded, so it stays partially funded; `fund_stage` remains the whole-stage action. Returns
 `{ticket_id, escrow_id, stage_id, amount_cents, currency}`. `SECURITY DEFINER` (`search_path = public,
-projects, finance, comms, org, auth`), `EXECUTE` for `authenticated` only (`00002510`). Called as the
-payer by `finance.place_wallet_order` (a ticket line) and `finance.settle_card_payment` (a card lock
+projects, finance, comms, org, auth`), `EXECUTE`: `authenticated`, `service_role` (`00002510`).
+Called as the payer by `finance.place_wallet_order` (a ticket line) and `finance.settle_card_payment` (a card lock
 naming a ticket). Proven by `supabase/probes/single_ticket_purchase.sql`.
 
 ### `projects.fn_serialize_submission(p_submission_id uuid) → jsonb`
 
 `00001150` §2. The shared submission shape (title, description, checked items, status, author,
 feedback, `revisionOf`, files with name / MIME / size). `LANGUAGE sql`, `STABLE`, `SECURITY DEFINER`,
-`search_path = public, projects, org, files, auth`; default `PUBLIC` `EXECUTE`. **No caller check** —
-any caller holding a submission id reads it, bypassing _View submissions_.
+`search_path = public, projects, org, files, auth`; `EXECUTE`: `service_role` only — no client grant.
+**No caller check** — moot for clients, because no client role holds `EXECUTE`; a caller holding a
+submission id reads it, bypassing _View submissions_.
 
 ### `projects.get_stage_submissions(p_project_id uuid, p_stage_id uuid) → jsonb`
 
 `00001150` §3. Every submission on the stage, newest first, as `fn_serialize_submission` rows.
-`STABLE`, `SECURITY DEFINER`, `search_path = public, projects, org, files, auth`; default `PUBLIC`
-`EXECUTE`. Guard: `has_project_access(p_project_id)` → `42501`; the stage is filtered to that project
-in the `WHERE`, so a foreign stage reads as empty.
+`STABLE`, `SECURITY DEFINER`, `search_path = public, projects, org, files, auth`; `EXECUTE`:
+`service_role` only — no client grant. Guard: `has_project_access(p_project_id)` → `42501`; the stage
+is filtered to that project in the `WHERE`, so a foreign stage reads as empty.
 
 ### `projects.get_stage_finance(p_project_id uuid, p_stage_id uuid) → jsonb`
 
 `00001150`, the Finance tab: stage status, currency, the `accepted` assignment, escrowed / released /
 fee totals from `finance.escrows`, the stage's tickets with price and payment status, team payout
-splits, and `fundable`. `SECURITY DEFINER`, `search_path = public, projects, finance, org`; default
-`PUBLIC` `EXECUTE`. Guard: `has_project_access(p_project_id)` → `42501` (so an assignee reads the
-splits too); foreign stage → `P0002`.
+splits, and `fundable`. `SECURITY DEFINER`, `search_path = public, projects, finance, org`;
+`EXECUTE`: `service_role` only — no client grant. Guard: `has_project_access(p_project_id)` → `42501`
+(so an assignee reads the splits too); foreign stage → `P0002`.
 
 ---
 
@@ -996,23 +1038,23 @@ projects.projects`, fired only when either value actually changes; bound in `000
 `00001130` (Decision #163). Review authority may update the project row, but reassigning the owner or
 the paying business stays the owner's alone: a signed-in caller other than `OLD.owner_user_id` is
 refused (`insufficient_privilege`). A `NULL` `auth.uid()` (service role, seeds) passes. `SECURITY
-INVOKER`, `search_path = public, projects`; default `PUBLIC` `EXECUTE`, moot.
+INVOKER`, `search_path = public, projects`; `EXECUTE` moot (a trigger).
 
 `set_project_status` is `SECURITY DEFINER`, `search_path = public, projects, finance, org, auth`,
-default `PUBLIC` `EXECUTE`. Guard: unknown project `P0002`, then a `NULL` actor or not
+`EXECUTE`: `authenticated`, `service_role`. Guard: unknown project `P0002`, then a `NULL` actor or not
 `can_review_project(p_project_id)` → `insufficient_privilege` (`42501`) — the owner or the client
 business (owner only before Decision #163). Every
 transition refusal is `check_violation` (`23514`); `archived` is reachable from any non-terminal state
 and is itself terminal. `fn_project_shape_lock` is `SECURITY DEFINER`, `search_path = public,
-projects`, bound in `00001820`; default `PUBLIC` `EXECUTE`, moot.
+projects`, bound in `00001820`; `EXECUTE` moot (a trigger).
 
 ### `projects.tg_project_handover_on_complete() → trigger`
 
 `trg_project_handover_on_complete` — `BEFORE UPDATE OF status ON projects.projects WHEN (NEW.status =
 'completed')`, bound in `00001820`, defined in `00001150`. Stamps `handover_unlocked_at = now()` if
 unset, so a project completed through `set_project_status` lifts the protected phase just as
-`approve_stage`'s last release does. `SECURITY INVOKER`, no `search_path`; default `PUBLIC`
-`EXECUTE`, moot.
+`approve_stage`'s last release does. `SECURITY INVOKER`, no `search_path`; `EXECUTE` moot (a
+trigger).
 
 ### `projects.fn_check_public_project_footprint() → trigger`
 
@@ -1022,7 +1064,7 @@ projects.projects`, bound in `00001820`, defined in `00001140`. Only a row **bec
 business) or `active_public_projects` (owner), usage `finance.fn_footprint_usage`. At the limit it
 emits `entitlement.denied` and refuses with `check_violation` **only** when
 `security.platform_params.footprint_caps_enforced` is true. `SECURITY DEFINER`, `search_path =
-projects, finance, security, analytics, public`; default `PUBLIC` `EXECUTE`, moot.
+projects, finance, security, analytics, public`; `EXECUTE` moot (a trigger).
 
 ---
 
@@ -1053,12 +1095,12 @@ stages and their history stay (root `CLAUDE.md` §7).
 `SECURITY DEFINER`, `search_path = ''`, every reference schema-qualified. Registered with `pg_cron`
 daily at 03:10 UTC by a guarded `DO` block beside the definition — guarded end to end, because the
 extension may be absent and `cron.schedule` needs privileges a migration run may not have, and a
-failure there must not block the rest of the migration.
+failure there must not block the rest of the migration. `EXECUTE`: `service_role` only — no client
+grant.
 
-🚨 **No caller check and default `PUBLIC` `EXECUTE`** — nothing in `00002510` revokes it. `p_now` is
-caller-supplied, so any caller (`anon` included) can pass a far-future instant and soft-archive every
-un-funded instantiated draft on the platform in one call — the same class as `fn_release_expired_claims`
-before it was narrowed to `service_role`.
+🚨 **No caller check** — moot for clients, because no client role holds `EXECUTE`. `p_now` is
+caller-supplied, so a caller can pass a far-future instant and soft-archive every un-funded
+instantiated draft on the platform in one call — the same class as `fn_release_expired_claims`.
 
 ⚠️ **It has an application-side twin.** `ProjectBackendService.sweepStaleDrafts` implements the same
 rule in TypeScript, because with `PROJECTS_BACKEND_LIVE` off there is no database to run the job and
@@ -1102,7 +1144,7 @@ Why an RPC and not an owner-RLS INSERT from the fat service: `comms.fn_notify` i
 notification ROUTER — the one implementation of the recipient's channel, quiet-hours, mute and digest
 preferences. The notification's deep link is the inviter's DM (`/messages/dm-{username}`), where the
 invitee can answer today; the catalog's `/projects/{context_id}` template would mint a uuid address
-the router no longer serves (Decision #88). `EXECUTE` → `authenticated`.
+the router no longer serves (Decision #88). `EXECUTE`: `authenticated`, `service_role`.
 
 ### `projects.invite_by_email(p_project_id uuid, p_stage_id uuid, p_email text, p_role text) → uuid`
 
@@ -1118,7 +1160,7 @@ derived as `invite_to_project` derives it. Records `invitation_sent` on `project
 `project.member_invited` on `security.audit_logs`. The holder of a **verified** matching
 `org.user_emails` address (never the caller) is sent `stage.invite` through `comms.fn_notify` in the
 same transaction; nothing about whether anyone matched reaches the caller. Refuses a NULL `auth.uid()`
-first; `EXECUTE` revoked from `PUBLIC, anon`, granted to `authenticated`.
+first; `EXECUTE`: `authenticated`, `service_role`.
 
 ### `projects.set_member_role(p_project_id uuid, p_participant_id uuid, p_role text) → jsonb`
 
@@ -1132,8 +1174,8 @@ role verbatim. Idempotent (an unchanged role returns `changed: false` and writes
 `security.audit_logs` (`project.member_role_changed`, `{project_id, member_user_id, from, to}`) and
 `project_activity` (`member_role_changed`) in the same transaction. **A role is a permission label
 only** — no seat, ticket or escrow moves (that is `remove_project_member`). Returns
-`{participant_id, role, changed}`. Refuses a NULL `auth.uid()` first; `EXECUTE` revoked from
-`PUBLIC, anon`, granted to `authenticated`.
+`{participant_id, role, changed}`. Refuses a NULL `auth.uid()` first; `EXECUTE`: `authenticated`,
+`service_role`.
 
 ### `projects.fn_apply_invitation_decision(p_invitation_id uuid, p_accept boolean, p_actor uuid) → jsonb`
 
@@ -1144,7 +1186,11 @@ notifies the inviter (`invitation.declined`). An **accept** stamps `accepted_at`
 as a `project_participants` row (`role = 'assignee'` for a freelancer — the staffing RPC's own
 vocabulary — else the invitation's role verbatim), takes the stage seat for a freelancer invited to a
 stage (`stage_assignments`, `status = 'pending_funding'` while the project is a draft — publishing
-promotes it — else `assigned`; refuses a person with no `org.freelancer_profiles` row), moves an
+promotes it — else `assigned`; refuses a person with no `org.freelancer_profiles` row). Taking a seat
+holds the same per-candidate advisory lock as `assign_from_application` (`freelancer:{uid}`), so an
+invitation and an application, or two invitations, accepted at once are serialised; a new seat on a
+stage whose window overlaps another live assignment (`fn_assignee_slot_conflict`) is refused
+`exclusion_violation`. It then moves an
 `open` stage to `assigned` on a live project, logs `invitation_accepted`, and notifies the inviter (`invitation.accepted`) with the
 slug-addressed `/projects/{slug}/members`. A whole-project freelancer invitation (`project_stage_id` NULL) takes the
 project's only stage when it has exactly one (a Task, a flat one-off) and no seat otherwise — a
@@ -1159,7 +1205,8 @@ Invites window force an answer that writes exactly the rows a real answer writes
 ### `projects.respond_to_project_invitation(p_invitation_id uuid, p_accept boolean) → jsonb`
 
 The invitee's own door: the row must be addressed to `auth.uid()` (`insufficient_privilege`
-otherwise); delegates to `fn_apply_invitation_decision`. `EXECUTE` → `authenticated`. Reached by
+otherwise); delegates to `fn_apply_invitation_decision`. `EXECUTE`: `authenticated`, `service_role`.
+Reached by
 `POST /api/projects/invites/respond` — the conversation context panel's Accept request / Decline,
 which answers every invitation of one request together (Decision #128).
 
@@ -1177,7 +1224,7 @@ access. (The released assignments stopped granting access on their own on 2026-0
 stage-scoped removal leaves the participant row, and with it project access.) Logs
 `member_removed` / `member_unassigned`. Returns the counts it APPLIED (`claimed_tickets`,
 `submitted_tickets`, `started_stages`) so the confirmation the client saw can be read back against
-what happened. `EXECUTE` → `authenticated`.
+what happened. `EXECUTE`: `authenticated`, `service_role`.
 
 ## Applications (`00001130` §6b / §11, Decision #128)
 
@@ -1185,7 +1232,9 @@ The freelancer-led half of `PRODUCT_SPEC.md` §The Hiring Process ("The Inbound 
 
 ### `projects.apply_to_project(p_project text, p_stage text, p_role_id uuid DEFAULT NULL, p_message text DEFAULT NULL, p_team_id uuid DEFAULT NULL) → jsonb`
 
-`SECURITY DEFINER`, `EXECUTE` → `authenticated`. The caller applies to one stage (slug or id) of a
+**Age gate:** a signed-in caller under 18 is refused `PM403` before anything else (`org.fn_assert_adult`, Decision #190).
+
+`SECURITY DEFINER`, `EXECUTE`: `authenticated`, `service_role`. The caller applies to one stage (slug or id) of a
 project (slug or id), naming a staffing role where the stage lists them — as themselves, or with
 `p_team_id` on a TEAM's behalf (`applicant_type = 'team'`, the team as `applicant_profile_id`, so
 acceptance seats the team; Decision #154(D)). Refuses, in the database's
@@ -1209,18 +1258,21 @@ The app runs the allowance's pre-flight gate before calling it (`ProjectBackendS
 
 ### `projects.withdraw_application(p_application_id uuid) → jsonb`
 
-`00001130` §6c, `SECURITY DEFINER`; `EXECUTE` → `authenticated` (revoked from `public`/`anon` in
-`00002510`). The applicant takes a pending proposal back — the only way an application becomes
+`00001130` §6c, `SECURITY DEFINER`; `EXECUTE`: `authenticated`, `service_role` (`00002510`). The
+applicant takes a pending proposal back — the only way an application becomes
 `withdrawn`. Locks the row, then refuses: no caller (`insufficient_privilege`), an unknown id
 (`no_data_found`), a caller who neither filed it nor holds `bind_seat` on the applying team
 (`insufficient_privilege`), anything not `pending` (`check_violation`). Sets `withdrawn`, which
 `trg_refund_withdrawn_application` turns into a refund of one WEEKLY proposal unit in the same
 transaction; the anti-burst buffer token is deliberately not returned (Decision #154(E)). Logs
-`application_withdrawn` on `project_activity`. Returns `{ id, status: 'withdrawn', refunded: 1 }`.
+`application_withdrawn` on `project_activity` and notifies the project owner
+(`application.withdrawn`, titled with the team's name for a team, deep-linked to the conversation with
+the applicant). Returns `{ id, status: 'withdrawn', refunded: 1 }`.
 
 ### `projects.list_my_applications(p_project text DEFAULT NULL) → jsonb`
 
-`00001130` §6d, `SECURITY DEFINER`, `STABLE`; `EXECUTE` → `authenticated`. The proposals the caller
+`00001130` §6d, `SECURITY DEFINER`, `STABLE`; `EXECUTE`: `authenticated`, `service_role`. The
+proposals the caller
 has sent — every application they filed, plus those filed for a team they are an active member of —
 newest first (at most 200), as a JSON array of `{ id, status, applicantType, teamId, teamName,
 canWithdraw, projectSlug, projectTitle, stageSlug, stageName, roleTitle, createdAt }`. The rows are
@@ -1230,6 +1282,9 @@ project — the listing page's "have I applied here?". Backs `GET /api/projects/
 
 ### `projects.assign_from_application(p_application_id uuid) → jsonb`
 
+**Age gate:** after the staffing-authority check, an applicant under 18 is refused `PM403`
+(`org.fn_assert_adult`, Decision #190).
+
 The managing side confirms an applicant's seat — whatever the application targeted (a stage, a role,
 an open seat, or a stage through its invite link). Gated on **staffing authority** —
 `projects.can_manage_project_members(project)` (Decision #145), else `insufficient_privilege`; an
@@ -1238,15 +1293,26 @@ unknown id is `no_data_found`; anything not `pending` is a
 booked on an overlapping stage (`fn_assignee_slot_conflict`) `exclusion_violation`; accepts of one
 candidate are serialised by an advisory lock. A freelancer is also enrolled as a `project_participants`
 row (`role = 'assignee'`). `SECURITY DEFINER`, `search_path = public, projects, comms, org, auth`;
-default `PUBLIC` `EXECUTE` (no explicit grant). Takes the seat as a `stage_assignments` row (`assigned`), marks the application
-`accepted`, and — for a seat — fills it and marks that seat's other pending applications `rejected`;
-moves an `open` stage to `assigned`, and notifies the applicant (`application.accepted`, deep-linked
-to `/projects/{slug}`). The client lands on funding next — the seat is real once its escrow is.
+`EXECUTE`: `authenticated`, `service_role` (`00002510`). Takes the seat as a `stage_assignments` row
+(`assigned`), marks the application
+`accepted`, and — for a seat — fills it and marks that seat's other pending applications `rejected`,
+telling each (`application.declined`, payload `reason: 'seat_filled'`, deep-linked to their
+conversation with the owner); moves an `open` stage to `assigned`, and notifies the applicant
+(`application.accepted`, deep-linked to `/projects/{slug}`). The client lands on funding next — the
+seat is real once its escrow is.
+
+**Seat concurrency.** Locks are taken seat row → application row → candidate advisory lock, so every
+accept of one seat queues on the seat row before it holds an application row (no deadlock against the
+winner's auto-reject). The seat moves `open → filled` only `WHERE status = 'open'`, with a row-count
+check. A seat already filled — including the loser of a two-candidate race, whose application the
+winner auto-rejected — is refused `unique_violation` with DETAIL `reason=seat_filled` ("This seat has
+already been filled."), which the fat service returns as a 409; a `closed` seat is `check_violation`.
+Pinned by `supabase/probes/seat_fill_concurrency.sql`.
 
 ### `projects.reject_application(p_application_id uuid) → jsonb`
 
-`00001130` §7b, `SECURITY DEFINER`; `EXECUTE` → `authenticated` (revoked from `public`/`anon` in
-`00002510`). The managing side declines an applicant — the Members tab's Requests section. Locks the
+`00001130` §7b, `SECURITY DEFINER`; `EXECUTE`: `authenticated`, `service_role` (`00002510`). The
+managing side declines an applicant — the Members tab's Requests section. Locks the
 application row first (so a concurrent accept and decline cannot both land), then refuses: an unknown
 id (`no_data_found`), a caller without staffing authority (`can_manage_project_members`,
 `insufficient_privilege`), anything not
@@ -1266,7 +1332,7 @@ cannot manage (`can_manage_project_members`) is `no_data_found` like an unknown 
 learns nothing; the wrong act for the status is `check_violation`; an unknown action `22023`. Records
 `project.invitation_revoked` / `project.invitation_dismissed` on `security.audit_logs`. A door rather
 than a direct UPDATE because a delegate holding UPDATE on the row could rewrite its role or token.
-`SECURITY DEFINER`; `EXECUTE` → `authenticated`. Returns `{id, action, changed}`.
+`SECURITY DEFINER`; `EXECUTE`: `authenticated`, `service_role`. Returns `{id, action, changed}`.
 
 ### `projects.fn_invite_link_state(p_link projects.stage_invite_links, p_actor uuid) → text`
 
@@ -1275,8 +1341,8 @@ The ONE rule for what a stage invite link means to a person, read by both doors 
 approved/paid/cancelled) · `manager` (owner, or a participant admin/manager) · `member` (a live
 freelancer assignment on the stage) · `invited` (an open identity-addressed invitation to the stage)
 · `requested` (a pending application targeting the stage) · `no_profile` (no
-`org.freelancer_profiles` row) · `open`. `STABLE`, `SECURITY DEFINER`; **no client `EXECUTE`**
-(revoked from `PUBLIC, anon, authenticated`).
+`org.freelancer_profiles` row) · `open`. `STABLE`, `SECURITY DEFINER`; **`EXECUTE`: owner only**
+(no client role and no `service_role`; reached from the two doors below as their owner).
 
 ### `projects.get_stage_invite_link(p_stage_id uuid, p_rotate boolean DEFAULT false) → jsonb`
 
@@ -1285,19 +1351,21 @@ revokes the active row (`revoked_at`, `revoked_by`) and mints a replacement in t
 Staffing authority, else `insufficient_privilege`; a closed project or finished stage is
 `check_violation`. A concurrent first mint that loses `uq_stage_invite_links_active` re-reads the
 winner. Records `project.invite_link_created` / `project.invite_link_revoked` on
-`security.audit_logs`. Returns `{id, token, stageId, createdAt}`. `EXECUTE` → `authenticated`.
+`security.audit_logs`. Returns `{id, token, stageId, createdAt}`. `EXECUTE`: `authenticated`,
+`service_role`.
 
 ### `projects.revoke_stage_invite_link(p_stage_id uuid) → boolean`
 
 Turns the stage's active link off; `true` when one was active, `false` when there was nothing to
-revoke (not an error). Staffing authority. Audited as above. `EXECUTE` → `authenticated`.
+revoke (not an error). Staffing authority. Audited as above. `EXECUTE`: `authenticated`,
+`service_role`.
 
 ### `projects.resolve_invite_link(p_token text) → jsonb`
 
 The landing page's read: `{state, projectSlug, projectTitle, stageSlug, stageName, sharedByName,
 sharedByHandle}` for the signed-in caller (`fn_invite_link_state`); an unknown token answers
 `{"state":"invalid"}` only. Refuses a NULL `auth.uid()` (`42501`). `STABLE`, `SECURITY DEFINER`;
-`EXECUTE` → `authenticated`.
+`EXECUTE`: `authenticated`, `service_role`.
 
 ### `projects.redeem_invite_link(p_token text, p_message text DEFAULT NULL) → jsonb`
 
@@ -1309,11 +1377,13 @@ public listing or an open hire trigger: the link is the managers' own invitation
 lock per (stage, caller) makes a double press one request. Every state but `open` is refused with
 its sentence and `DETAIL = 'state=<state>'` (`unique_violation` for manager/member/invited/requested,
 `check_violation` otherwise); an unknown token is `no_data_found`; the note is masked during the
-protected phase and capped at 4,000 characters. Seats nobody. `EXECUTE` → `authenticated`.
+protected phase and capped at 4,000 characters. Seats nobody. `EXECUTE`: `authenticated`,
+`service_role`.
 
 ### `projects.get_engagement_context(p_counterpart uuid) → jsonb`
 
-`SECURITY DEFINER`, `EXECUTE` → `authenticated`. The conversation context panel's one read: between
+`SECURITY DEFINER`, `EXECUTE`: `authenticated`, `service_role`. The conversation context panel's one
+read: between
 the caller and one counterpart, every invitation (bar revoked ones) and application (bar withdrawn
 ones) in either direction, ten each, newest first, with the project's title, slug and visibility, the stage, role, offer and status, the
 intro or cover note, the brief, the target's intake answers and the assignment state; the milestones
@@ -1324,18 +1394,19 @@ It reads ONLY rows the caller is a party to — the inviter or invitee, the appl
 
 `00001100`. Every project a user is engaged in — owner, participant, live assignee or team member,
 pending/accepted invitee or applicant. Read by the DM contact filter
-(`comms.fn_dm_protected_project`). **No client role may execute it.**
+(`comms.fn_dm_protected_project`). **`EXECUTE`: owner only** — no client role and no `service_role`.
 
 🚨 **`projects.release_ticket_to_backlog(uuid)` had the default `PUBLIC` EXECUTE and no caller check
 of its own** — any signed-in caller who knew a ticket id could release its escrow and un-claim it (the
-`reorder_stages` class, Decision #84). It had no application caller. `00002510` now revokes its
-EXECUTE from `public`/`anon`/`authenticated`; `remove_project_member` still reaches it because a
+`reorder_stages` class, Decision #84). It had no application caller. `EXECUTE`: owner only
+(`00002510`; no client role and no `service_role`); `remove_project_member` still reaches it because a
 DEFINER function executes as its owner.
 
 ## Open seats & staffing (`00001130` §5–§8, `00001140` §7)
 
 The posted-seat half of staffing (US-006), its serializers, and the proposal-allowance meter. All
-`SECURITY DEFINER` with the default `PUBLIC` `EXECUTE` — none has an explicit grant.
+`SECURITY DEFINER`; none has a client grant — `EXECUTE` is `service_role` only, or moot for the
+triggers.
 
 ### `projects.create_stage_open_seat(p_stage_id uuid, p_description text, p_budget_min_cents bigint DEFAULT NULL, p_budget_max_cents bigint DEFAULT NULL, p_require_proposals boolean DEFAULT true, p_skill_ids uuid[] DEFAULT '{}') → jsonb`
 
@@ -1344,6 +1415,7 @@ The posted-seat half of staffing (US-006), its serializers, and the proposal-all
 `search_path = public, projects, org, auth`. Unknown stage → `no_data_found`; guard
 `can_review_project(stage's project)` → `insufficient_privilege`; min > max budget →
 `check_violation`. It is the only writer of `stage_open_seat_skills`, which has no client write policy.
+`EXECUTE`: `service_role` only — no client grant.
 
 ### `projects.apply_to_seat(p_seat_id uuid, p_applicant_type text, p_applicant_profile_id uuid, p_message text DEFAULT NULL) → jsonb`
 
@@ -1356,28 +1428,32 @@ application whose `p_applicant_profile_id <> auth.uid()` → `insufficient_privi
 pending application → `unique_violation`. Unlike `apply_to_project` it does **not** check that the
 project is `active` and discoverable, that the caller is not its owner, or that they have a freelancer
 profile, and it neither masks the note in the protected phase nor notifies the owner. Fires
-`trg_meter_application_allowance`.
+`trg_meter_application_allowance`. `EXECUTE`: `service_role` only — no client grant.
 
 ### `projects.fn_serialize_seat(p_seat_id uuid) → jsonb`
 
 `00001130` §8. A seat's description, budget range, `requireProposals`, status, filled assignment,
 required skills and pending-application count. `LANGUAGE sql`, `STABLE`, `search_path = public,
-projects, org`. **No caller check** — reads any seat by id, bypassing _View seats public or own_.
+projects, org`; `EXECUTE`: `service_role` only — no client grant. **No caller check** — moot for
+clients, because no client role holds `EXECUTE`; it reads any seat by id, bypassing _View seats public
+or own_.
 
 ### `projects.fn_serialize_application(p_application_id uuid) → jsonb`
 
 `00001130` §8. An application's project, seat, applicant type / profile / user / display name,
 `message` and status — the return shape of `apply_to_seat`, `assign_from_application` and
-`reject_application`. `LANGUAGE sql`, `STABLE`, `search_path = public, projects, org`. **No caller
-check** — any caller holding an application id reads the applicant and their cover note, bypassing
-_View own or owned applications_.
+`reject_application`. `LANGUAGE sql`, `STABLE`, `search_path = public, projects, org`; `EXECUTE`:
+`service_role` only — no client grant. **No caller check** — moot for clients, because no client role
+holds `EXECUTE`; a caller holding an application id reads the applicant and their cover note,
+bypassing _View own or owned applications_.
 
 ### `projects.get_stage_staffing(p_project_id uuid, p_stage_id uuid) → jsonb`
 
 `00001130` §8. `{seats: [seat + applications[]], assignments: [...]}` for one stage. `STABLE`,
-`search_path = public, projects, org, auth`. Guard: `has_project_access(p_project_id)` →
-`insufficient_privilege`. ⚠️ It never checks that `p_stage_id` belongs to `p_project_id`, so a caller
-with access to any one project can read another project's seats, applicants (with cover notes) and
+`search_path = public, projects, org, auth`; `EXECUTE`: `service_role` only — no client grant. Guard:
+`has_project_access(p_project_id)` → `insufficient_privilege`. ⚠️ It never checks that `p_stage_id`
+belongs to `p_project_id` — moot for clients, because no client role holds `EXECUTE`; a caller with
+access to any one project can read another project's seats, applicants (with cover notes) and
 assignments by pairing their own project id with a foreign stage id. `get_stage_submissions` and
 `get_stage_finance` both make that check.
 
@@ -1388,10 +1464,10 @@ assignments by pairing their own project id with a foreign stage id. `get_stage_
 the team when `applicant_type = 'team'`, else the user. When the allowance is exhausted it emits
 `entitlement.denied` and refuses with `check_violation` **only** when
 `security.platform_params.proposal_allowance_enforced` is true. `search_path = projects, finance,
-security, analytics, public`; default `PUBLIC` `EXECUTE`, moot.
+security, analytics, public`; `EXECUTE` moot (a trigger).
 
 ### `projects.fn_refund_withdrawn_application() → trigger`
 
 `trg_refund_withdrawn_application` — `AFTER UPDATE OF status ON projects.project_applications`, bound
 in `00001820`. On the transition into `withdrawn`, returns the unit (`finance.fn_refund_allowance`).
-`search_path = projects, finance, public`; default `PUBLIC` `EXECUTE`, moot.
+`search_path = projects, finance, public`; `EXECUTE` moot (a trigger).

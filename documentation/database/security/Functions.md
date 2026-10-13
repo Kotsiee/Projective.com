@@ -66,7 +66,7 @@ the token's claims:
 1. **Raw top-level claims** — `active_profile_type`, `active_profile_id`, `active_team_id`,
    `active_organisation_id` — the exact keys `security.current_context()` reads for RLS.
 2. **`app_metadata.active_context`** — the resolved presentation object
-   `{ type, id, role, handle, isClient, isFreelancer, onboarded, displayCurrency, locale }` the web
+   `{ type, id, role, handle, isClient, isFreelancer, onboarded, isRestricted, displayCurrency, locale }` the web
    app decodes for chrome (`@projective/types/auth` `ActiveContextClaim` / `resolveUserContext`).
    `type` is the four-context matrix (`personal` | `team` | `business` | `organisation`); `role`
    is `admin` for the owner and admin presets (the member row's derived `role`, maintained by
@@ -97,6 +97,11 @@ the token's claims:
 > never walk a fully set-up user back through onboarding. The hook re-runs on the **refresh** grant,
 > so a profile created after a token was minted is picked up by one renewal (which is exactly what
 > the guard does before acting on a `false`).
+
+> **`isRestricted` — the 13–17 claim (Decision #190).** `org.fn_is_minor(user_id)` at mint time,
+> `false` for a profile-less account. Derived from `users_public.dob` on every mint, so it clears at
+> the first refresh after the 18th birthday. Chrome only, like the rest: `resolveUserContext` reads
+> only an explicit `true`, and `org.fn_assert_adult` (`PM403`) is what refuses in every buy/sell door.
 
 > **Presentation, never settlement.** `displayCurrency` selects a **formatting** target only. Every
 > stored amount keeps its origin `(amount_minor, currency)`, and every settlement reproduces the

@@ -42,6 +42,11 @@ export interface FocusTrapOptions {
 	 * can point at an action group ("start on the safe button") without wiring a ref to the control.
 	 */
 	initialFocusRef?: RefObject<HTMLElement>;
+	/**
+	 * Focus `initialFocusRef` itself even when it is not tabbable — a `tabindex="-1"` reading region
+	 * that keyboard shortcuts act on — instead of resolving it to a descendant (default false).
+	 */
+	initialFocusSelf?: boolean;
 	/** Restore focus to the previously-focused element on deactivate (default true). */
 	restoreFocus?: boolean;
 	/**
@@ -96,6 +101,7 @@ export function useFocusTrap(opts: FocusTrapOptions): void {
 		active,
 		containerRef,
 		initialFocusRef,
+		initialFocusSelf = false,
 		restoreFocus = true,
 		inertBackground = true,
 	} = opts;
@@ -115,7 +121,7 @@ export function useFocusTrap(opts: FocusTrapOptions): void {
 			focused = true;
 			const explicit = initialFocusRef?.current;
 			const resolved = explicit
-				? (explicit.matches(FOCUSABLE) ? explicit : getTabbable(explicit)[0])
+				? (initialFocusSelf || explicit.matches(FOCUSABLE) ? explicit : getTabbable(explicit)[0])
 				: undefined;
 			const target = resolved ?? getTabbable(container)[0] ?? container;
 			target.focus({ preventScroll: true });
@@ -175,5 +181,5 @@ export function useFocusTrap(opts: FocusTrapOptions): void {
 				previouslyFocused.focus({ preventScroll: true });
 			}
 		};
-	}, [active, containerRef, initialFocusRef, restoreFocus, inertBackground]);
+	}, [active, containerRef, initialFocusRef, initialFocusSelf, restoreFocus, inertBackground]);
 }

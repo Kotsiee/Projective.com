@@ -29,6 +29,7 @@ import {
 	missingBuyerFields,
 	PLATFORM_FEE_BP,
 } from "@projective/types/finance";
+import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
@@ -130,14 +131,29 @@ function narrow(
 	});
 }
 
+/**
+ * The fee rate a checkout previews: the paying owner's effective rate from the server
+ * (`get_purchase_owner`), the rate `place_wallet_order` will charge; the SSOT constant labels only an
+ * owner whose rate the caller may not see.
+ */
+function feeBpOf(owner: ResolvedOwner): number {
+	return owner.platformFeeBp ?? PLATFORM_FEE_BP;
+}
+
 /** Wrap the SSOT's integer totals into the display-currency {@link CheckoutTotals} projection. */
 function toTotals(
 	items: readonly BasketItem[],
 	promoMinor: number,
 	money: MoneyProjector,
+	platformFeeBp: number,
 	processingContributionMinor = 0,
 ): CheckoutTotals {
-	const t = checkoutTotals({ items, promoDiscountMinor: promoMinor, processingContributionMinor });
+	const t = checkoutTotals({
+		items,
+		promoDiscountMinor: promoMinor,
+		platformFeeBp,
+		processingContributionMinor,
+	});
 	return {
 		subtotal: money.derived(t.subtotalMinor),
 		creatorDiscounts: money.derived(t.creatorDiscountMinor),
@@ -360,7 +376,7 @@ function offerFor(resolved: Resolved, totalMinor: number): ProviderAvailability[
 async function chargeFor(
 	query: BasketQuery,
 	actor: ReadActor,
-	resolved: Pick<Resolved, "basketId" | "money">,
+	resolved: Pick<Resolved, "basketId" | "money" | "owner">,
 	items: readonly BasketItem[],
 	displayTotal: () => MoneyView,
 ): Promise<MoneyView | null> {
@@ -376,7 +392,7 @@ async function chargeFor(
 	const lines = native.basket.items.filter((item) => wanted.has(item.id));
 	if (lines.length !== wanted.size) return null;
 	const promo = await native.resolvePromo(native.promoCode, lines);
-	return toTotals(lines, promoMinorFor(promo), native.money, 0).total;
+	return toTotals(lines, promoMinorFor(promo), native.money, feeBpOf(resolved.owner), 0).total;
 }
 
 /** Resolve the shared inputs every entry point needs. `null` for a caller who cannot be identified. */
@@ -485,6 +501,7 @@ export class CheckoutBackendService {
 				items,
 				promoMinorFor(promo),
 				money,
+				feeBpOf(owner),
 				processingOffer.optedIn ? processingOffer.amount.minor : 0,
 			);
 			const providers = offerFor(resolved, totals.total.minor);
@@ -493,7 +510,13 @@ export class CheckoutBackendService {
 			const [details, spendLimit, charge] = await Promise.all([
 				detailsFor(owner, query, actor),
 				spendLimitFor(owner, totals.total.minor, money, actor),
-				chargeFor(query, actor, resolved, items, () => toTotals(items, promoMinorFor(promo), money, 0).total),
+				chargeFor(
+					query,
+					actor,
+					resolved,
+					items,
+					() => toTotals(items, promoMinorFor(promo), money, feeBpOf(owner), 0).total,
+				),
 			]);
 
 			return ok({
@@ -672,7 +695,7 @@ export class CheckoutBackendService {
 			}
 
 			const promo = await view.resolvePromo(view.promoCode, eligible);
-			const totals = toTotals(eligible, promoMinorFor(promo), money, 0);
+			const totals = toTotals(eligible, promoMinorFor(promo), money, feeBpOf(owner), 0);
 			const priced: Resolved = { ...resolved, items: eligible };
 			const providers = offerFor(priced, totals.total.minor);
 			const [details, spendLimit] = await Promise.all([
@@ -757,7 +780,9 @@ export class CheckoutBackendService {
 				if (error) {
 					const code = BLOCKER_FOR_SQLSTATE[error.code ?? ""] ?? (error.code === "22023" ? "no_provider" : undefined);
 					if (!code) throw new Error(`finance.place_on_account_order failed: ${error.message}`);
-					const message = error.message.slice(0, 200);
+					const message = isAgeRestricted(error)
+						? AGE_RESTRICTED.message
+						: error.message.slice(0, 200);
 					return refusal(message, [blocker(code, message)]);
 				}
 				const result = succeeded(data as PlacedOrder);
@@ -852,7 +877,9 @@ export class CheckoutBackendService {
 			if (error) {
 				const code = BLOCKER_FOR_SQLSTATE[error.code ?? ""];
 				if (!code) throw new Error(`finance.place_wallet_order failed: ${error.message}`);
-				const message = error.message.slice(0, 200);
+				const message = isAgeRestricted(error)
+					? AGE_RESTRICTED.message
+					: error.message.slice(0, 200);
 				return refusal(message, [blocker(code, message)]);
 			}
 
@@ -877,6 +904,7 @@ const BLOCKER_FOR_SQLSTATE: Record<string, CheckoutBlocker["code"]> = {
 	PS501: "no_provider",
 	PF402: "insufficient_funds",
 	PA403: "spend_limit",
+	PM403: "not_authorised",
 };
 
 /** What `finance.place_wallet_order` answers with — and what a replayed key is re-read as. */
@@ -961,11 +989,3 @@ function failed(message: string, blockers: CheckoutBlocker[], money: MoneyProjec
 	};
 }
 // #endregion
-
-/**
- * The canonical platform fee rate this surface quotes, re-exported so a caller can label the fee line
- * without importing the SSOT twice. The DB's `security.platform_params.platform_fee_bp` is seeded `0`
- * while this constant is `500` (5%) — an open human decision logged in root CLAUDE.md; the SSOT
- * constant wins here until it is settled.
- */
-export { PLATFORM_FEE_BP };

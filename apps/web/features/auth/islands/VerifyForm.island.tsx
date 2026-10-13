@@ -3,11 +3,14 @@ import { useEffect } from "preact/hooks";
 import { Button } from "@projective/ui/fields";
 import { AuthHeading } from "../components/AuthShell.tsx";
 import { OtpField } from "../components/OtpField.tsx";
+import { EmailConfirmedPanel } from "../components/EmailConfirmedPanel.tsx";
 import { CheckIcon, WarnIcon } from "../components/icons.tsx";
 import { useOtpInput } from "../hooks/useOtpInput.ts";
+import { useVerifyPollSimulation } from "../hooks/useVerifyPollSimulation.ts";
 import { AuthService } from "../core/AuthService.ts";
 import { safeRedirect } from "../core/redirect.ts";
 import { resendDeadline } from "../core/resend-cooldown.ts";
+import { simulatedPollResult, verifyPollOutcome } from "../core/verify-poll.ts";
 import { readStored, removeStored, SessionKeys, writeStored } from "@web/utils/storage-keys.ts";
 
 /** How often the verification-status listener polls while the user waits (ms). */
@@ -16,10 +19,10 @@ const POLL_INTERVAL_MS = 4000;
 /**
  * VerifyForm — email confirmation with two parallel paths that share one screen:
  *
- *  1. **Passive auto-confirm (the "database listener").** On mount the island polls
- *     `/api/auth/verification-status`; when the account's `email_verified` flips (because the user
- *     clicked the magic link in their inbox, possibly on another device) the UI transitions to a
- *     success state and securely redirects them in — no manual refresh, no button.
+ *  1. **Passive confirmation poll.** On mount the island polls `/api/auth/verification-status`,
+ *     which answers only for the account this browser's HttpOnly pending-verification cookie names
+ *     (Decision #185). Once confirmed: if the link was opened in this browser (a session exists) the
+ *     page continues in; if it was opened elsewhere, it shows "Email confirmed — sign in".
  *  2. **Manual OTP entry.** The beautifully segmented 6-digit boxes auto-submit once complete for
  *     users who'd rather type the code than open the link.
  *
@@ -43,6 +46,8 @@ export default function VerifyForm(
 	const lastTried = useSignal("");
 	/** Flipped by either path on success — freezes polling and shows the "you're in" transition. */
 	const verified = useSignal(false);
+	const confirmedElsewhere = useSignal(false);
+	const simulation = useVerifyPollSimulation();
 
 	/** Kick off (or resume) the resend countdown to a given epoch-ms deadline, persisting it. */
 	function startCooldown(deadline: number) {
@@ -59,10 +64,14 @@ export default function VerifyForm(
 		tick();
 	}
 
-	function succeed(dest: string) {
-		verified.value = true;
+	function forgetPending() {
 		removeStored("session", SessionKeys.PENDING_VERIFICATION_EMAIL);
 		removeStored("session", SessionKeys.VERIFY_RESEND_DEADLINE);
+	}
+
+	function succeed(dest: string) {
+		verified.value = true;
+		forgetPending();
 		// Brief, felt success beat before the redirect so the state change is legible.
 		setTimeout(() => (globalThis.location.href = dest), 900);
 	}
@@ -104,15 +113,20 @@ export default function VerifyForm(
 			if (Number.isFinite(deadline) && deadline > Date.now()) startCooldown(deadline);
 		}
 
-		// Poll the "database listener" — auto-confirm when the email is verified out-of-band.
 		let stopped = false;
 		const id = setInterval(async () => {
-			if (stopped || verified.value || submitting.value) return;
-			const result = await AuthService.verificationStatus({ email, redirectTo });
-			if (result.ok && result.verified) {
-				stopped = true;
-				clearInterval(id);
+			if (stopped || verified.value || confirmedElsewhere.value || submitting.value) return;
+			const result = simulatedPollResult(simulation.value, redirectTo) ??
+				await AuthService.verificationStatus({ redirectTo });
+			const outcome = verifyPollOutcome(result);
+			if (stopped || verified.value || outcome === "pending") return;
+			stopped = true;
+			clearInterval(id);
+			if (outcome === "continue") {
 				succeed(safeRedirect(result.redirectTo, redirectTo));
+			} else {
+				forgetPending();
+				confirmedElsewhere.value = true;
 			}
 		}, POLL_INTERVAL_MS);
 
@@ -128,6 +142,10 @@ export default function VerifyForm(
 		unsent.value = false;
 		void AuthService.resend({ email });
 		startCooldown(resendDeadline(Date.now()));
+	}
+
+	if (confirmedElsewhere.value) {
+		return <EmailConfirmedPanel redirectTo={redirectTo} email={email} />;
 	}
 
 	if (verified.value) {

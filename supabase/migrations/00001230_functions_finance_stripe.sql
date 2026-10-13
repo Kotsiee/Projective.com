@@ -152,6 +152,7 @@ BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'auth: sign in to pay' USING ERRCODE = '42501';
     END IF;
+    PERFORM org.fn_assert_adult(v_uid);
     IF p_purpose IS NULL OR p_purpose NOT IN ('wallet_topup', 'escrow_lock') THEN
         RAISE EXCEPTION 'purpose: expected wallet_topup or escrow_lock' USING ERRCODE = '22023';
     END IF;
@@ -317,8 +318,8 @@ BEGIN
         END IF;
         -- The wallet the hold will debit: the paying business's — or the individual owner's own person
         -- wallet (finance.fn_escrow_payer_wallet_type, the type fn_hold_ticket_escrow debits) — in the
-        -- project's currency. Created here if it does not exist yet, because fn_wallet_credit is a
-        -- silent no-op on a missing wallet.
+        -- project's currency. Created here if it does not exist yet: settlement credits it, and
+        -- fn_wallet_credit refuses a wallet that does not exist (PW404).
         v_wallet_id := finance.fn_ensure_wallet(
             finance.fn_escrow_payer_wallet_type(v_payer, CASE WHEN v_payer IS NULL THEN v_owner END),
             COALESCE(v_payer, v_owner),

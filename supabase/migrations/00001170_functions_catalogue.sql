@@ -399,7 +399,7 @@ COMMENT ON FUNCTION catalogue.set_listing_status(uuid, text) IS
 'Move a listing to draft / published / paused / archived, as the seller who created it; a service''s
 blueprint follows. Publishing needs a title, a price and at least one image. Refusals: 42501 not the
 seller · 22023 unknown status · PB404 no such listing · PG422 the publish gate (DETAIL lists what is
-missing, separated by |).';
+missing, separated by |) · PM403 the seller is under 18 (catalogue.trg_listings_publish_age_gate).';
 -- #endregion
 
 -- #region Sales
@@ -438,4 +438,24 @@ COMMENT ON FUNCTION catalogue.get_listing_sales(uuid[], timestamptz) IS
 'Per listing, per currency, per week: completed (confirmed or invoiced) order lines and their gross, for
 the caller''s own listings only (owned, or of a team they are an active member of). p_since narrows to a
 window; NULL is all time.';
+-- #endregion
+
+-- #region Publish age gate (Decision #190)
+-- A seller under 18 cannot put a listing on sale. Held on the table rather than in set_listing_status
+-- so no write — this door, a direct PATCH, a future one — publishes past it; and as a trigger it can
+-- be a definer while the doors above stay invokers, so org.fn_assert_adult needs no client grant.
+CREATE OR REPLACE FUNCTION catalogue.trg_listings_publish_age_gate()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF NEW.status = 'published'::catalogue.listing_status
+       AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM NEW.status) THEN
+        PERFORM org.fn_assert_adult(NEW.owner_user_id);
+    END IF;
+    RETURN NEW;
+END;
+$$;
 -- #endregion

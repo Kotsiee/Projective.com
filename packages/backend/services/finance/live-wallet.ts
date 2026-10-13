@@ -40,14 +40,16 @@ import type {
 	WalletVariant,
 	WalletVerification,
 } from "@projective/types/finance";
-import {
-	allocationSlices,
-	currencyExponent,
-	PLATFORM_FEE_BP,
-	walletVariant,
-} from "@projective/types/finance";
+import { allocationSlices, currencyExponent, walletVariant } from "@projective/types/finance";
 import { getUserClient } from "../../core/supabase.ts";
 import { fetchPublicMedia, mediaUrl } from "../files/public-media.ts";
+import {
+	clearingKindLabel,
+	PENDING_ROW_COLUMNS,
+	type PendingRow,
+	type PendingRowRaw,
+	stillClearing,
+} from "./pending-window.ts";
 import {
 	addGrain,
 	bucketSeries,
@@ -92,10 +94,12 @@ import { standingFor } from "./wallet-standing.ts";
  *
  * **The four balances are a projection, never stored** (`documentation/database/finance/Tables.md`):
  *
- * - **Available** — `finance.wallets.balance_cents`, the materialised running balance.
+ * - **Available** — `finance.wallets.balance_cents`, the materialised running balance: the only money
+ *   that can be spent or withdrawn.
  * - **Locked** — escrow on active stages: for a seller, the escrows held for their work (what they
  *   will receive, net of the fee already set); for a paying business, the capital it has committed.
- * - **Pending** — releases inside the safety window (`finance.pending_releases`).
+ * - **Pending** — earned money (releases and product sales) inside the safety window, net of any
+ *   chargeback recovery (`finance.pending_releases`, `pending-window.ts`). Not in `balance_cents`.
  * - **On hold** — escrow under dispute (`escrows.status = 'disputed'`).
  *
  * Every figure is a stored amount converted once through the read's money projector; nothing here
@@ -249,25 +253,15 @@ function escrowValue(account: WalletAccount, e: EscrowRow): number {
 	return paid ? e.amount_cents : Math.max(0, e.amount_cents - e.platform_fee_cents);
 }
 
-interface PendingRow {
-	id: string;
-	escrow_id: string | null;
-	wallet_id: string;
-	amount_cents: number;
-	currency: string;
-	released_at: string;
-	available_at: string;
-}
-
 async function pendingFor(ctx: WalletContext, account: WalletAccount): Promise<PendingRow[]> {
 	const ids = walletIds(account);
 	if (ids.length === 0) return [];
 	const { data, error } = await getUserClient(ctx.actor.accessToken).schema("finance").from("pending_releases")
-		.select("id, escrow_id, wallet_id, amount_cents, currency, released_at, available_at")
+		.select(PENDING_ROW_COLUMNS)
 		.in("wallet_id", ids)
 		.eq("state", "pending");
 	if (error) throw new Error(`finance.pending_releases read failed: ${error.message}`);
-	return ((data ?? []) as PendingRow[]).map((p) => ({ ...p, amount_cents: Number(p.amount_cents) || 0 }));
+	return stillClearing((data ?? []) as PendingRowRaw[]);
 }
 
 /** The `tkt-…` slug and title of each ticket an escrow holds for, read as the viewer. */
@@ -608,8 +602,8 @@ async function teamExtras(
 	const rule = ruleRes.data as SplitRuleRow | null;
 	const currency = primaryCurrency(account) ?? ctx.money.display;
 	// The preview divides the team's most recent release the documented way (finance-model.md §5):
-	// the 5% platform fee off the gross, the vault's cut off the net, then each member's agreed stake,
-	// with anything that does not divide kept in the vault.
+	// the platform fee that release actually charged off the gross, the vault's cut off the net, then
+	// each member's agreed stake, with anything that does not divide kept in the vault.
 	const last = escrows.filter((e) => e.status === "released")
 		.sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
 	let splitRule: SplitRuleView;
@@ -639,7 +633,7 @@ async function teamExtras(
 		};
 	} else {
 		const gross = last.amount_cents;
-		const fee = Math.floor((gross * PLATFORM_FEE_BP + 5000) / 10000);
+		const fee = last.platform_fee_cents;
 		const net = gross - fee;
 		const vaultCut = Math.floor((net * (Number(rule.vault_bp) || 0)) / 10000);
 		const remainder = net - vaultCut;
@@ -906,7 +900,7 @@ export async function overviewOf(ctx: WalletContext): Promise<WalletOverview> {
 		incoming.push({
 			id: `pending-${p.id}`,
 			kind: "pending_release",
-			label: clip(link ? `Release clearing · ${link.label}` : "Release clearing", 160),
+			label: clip(link ? `Release clearing · ${link.label}` : clearingKindLabel(p), 160),
 			amount: money(ctx, p.amount_cents, p.currency),
 			state: "pending",
 			clearingLabel: clearingLabel(availableAt),
@@ -1325,7 +1319,7 @@ function releaseSchedule(
 		const stage = escrow ? stages.get(escrow.project_stage_id) : undefined;
 		items.push({
 			id: clip(`pending-${p.id}`, 64),
-			label: clip(stage ? `${stage.projectTitle} · ${stage.stageName}` : "Release clearing", 160),
+			label: clip(stage ? `${stage.projectTitle} · ${stage.stageName}` : clearingKindLabel(p), 160),
 			href: stage ? clip(stageHref(stage), 200) : null,
 			amount: money(ctx, p.amount_cents, p.currency),
 			state: "pending",

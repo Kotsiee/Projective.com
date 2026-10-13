@@ -1,6 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { CreateEscrowLockIntentSchema } from "@projective/types/finance";
 import { readActor } from "@web/utils/api-session.ts";
+import { refuseIfRestricted } from "@web/utils/age-gate.ts";
 import { invalidBody, readJson, toPaymentsResponse } from "@features/payments/core/respond.ts";
 import { PaymentBackendService } from "@server/services/finance/PaymentBackendService.ts";
 
@@ -19,6 +20,8 @@ import { PaymentBackendService } from "@server/services/finance/PaymentBackendSe
  */
 export const handler = define.handlers({
 	async POST(ctx) {
+		const restricted = refuseIfRestricted(ctx.req, ctx.state.userContext);
+		if (restricted) return restricted;
 		const parsed = CreateEscrowLockIntentSchema.safeParse(await readJson(ctx.req));
 		if (!parsed.success) return invalidBody(parsed.error);
 		return toPaymentsResponse(

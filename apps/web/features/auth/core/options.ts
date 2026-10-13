@@ -1,6 +1,8 @@
+import type { EmployeeTier, Industry } from "@projective/types/auth";
+
 /**
- * Static option sets and reserved words for the auth forms. Kept out of the islands so the same
- * lists back both the client UI and the server-side Zod schema (single source of truth).
+ * Static option sets and reserved words for the auth forms. The organisation tiers and industries
+ * label the values `@projective/types/auth` owns, which the join schema validates against.
  */
 
 /** A `<select>` / choice option. */
@@ -10,7 +12,7 @@ export interface Choice {
 }
 
 /** Estimated headcount tiers for the Organization onboarding "Scale" step. */
-export const EMPLOYEE_TIERS: readonly Choice[] = [
+export const EMPLOYEE_TIERS: readonly (Choice & { readonly value: EmployeeTier })[] = [
 	{ value: "1-50", label: "1–50 employees" },
 	{ value: "51-200", label: "51–200 employees" },
 	{ value: "201-500", label: "201–500 employees" },
@@ -18,7 +20,7 @@ export const EMPLOYEE_TIERS: readonly Choice[] = [
 ];
 
 /** Primary industry / sector options (extend as needed; "other" is the catch-all). */
-export const INDUSTRIES: readonly Choice[] = [
+export const INDUSTRIES: readonly (Choice & { readonly value: Industry })[] = [
 	{ value: "software", label: "Software & IT" },
 	{ value: "design", label: "Design & Creative" },
 	{ value: "marketing", label: "Marketing & Advertising" },

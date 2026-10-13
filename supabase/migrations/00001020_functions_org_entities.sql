@@ -74,6 +74,9 @@ BEGIN
             USING ERRCODE = '42501';
     END IF;
 
+    -- Selling unlocks at 18 (Decision #190).
+    PERFORM org.fn_assert_adult(v_uid);
+
     -- An account on its way out cannot take on a new persona (00001060).
     IF EXISTS (
         SELECT 1 FROM org.deletion_requests d

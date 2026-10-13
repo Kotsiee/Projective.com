@@ -44,12 +44,22 @@ export interface ServiceResult<T> {
 	details?: FailureDetails;
 	/** When present, the route mints session cookies from these tokens (kept out of the JSON body). */
 	session?: SessionTokens;
+	/**
+	 * A signed pending-verification token (Decision #185). The route mints it into an HttpOnly cookie
+	 * that binds `/verify`'s confirmation poll to this browser; it never reaches the JSON body.
+	 */
+	pendingVerification?: string;
 }
 
 /** Build a success result. */
 export function ok<T>(
 	data: T,
-	opts?: { status?: number; message?: string; session?: SessionTokens },
+	opts?: {
+		status?: number;
+		message?: string;
+		session?: SessionTokens;
+		pendingVerification?: string;
+	},
 ): ServiceResult<T> {
 	return {
 		ok: true,
@@ -57,6 +67,7 @@ export function ok<T>(
 		data,
 		message: opts?.message,
 		session: opts?.session,
+		pendingVerification: opts?.pendingVerification,
 	};
 }
 

@@ -28,7 +28,7 @@ and by the function's wording second:
 | `42501` | 403 | Not signed in, or not the client/owner. The payee included. |
 | `P0002` | 404 | Stage or submission not found. An address the viewer cannot see also resolves to 404. |
 | `22023`, `23514` | 422 | Invalid tier or decision. |
-| `55000`, `PC409` | 409 | Nothing held to release or cancel, the submission is not awaiting review, or a free revision is still left. |
+| `55000`, `PC409` | 409 | Nothing held to release or cancel, the stage is already `paid` / `cancelled` (also the loser of two concurrent settlements, Decision #188), the submission is not awaiting review, or a free revision is still left. |
 | `PU422` | 422 | The stage sells no extra revision rounds. |
 | `PR402` | 402 | The stage's free revision rounds are used — buy one (`paid_revision_required`). |
 | stale JWT | 401 | `apiFetch` refreshes the session and retries. |

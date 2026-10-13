@@ -169,6 +169,7 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 						label={cta.primary.label}
 						ariaLabel={cta.primary.ariaLabel}
 						href={cta.primary.href}
+						tone="accent"
 						icon={<Icon name="arrow-right" size="sm" aria-hidden />}
 					/>
 				)
@@ -178,6 +179,7 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 						ariaLabel={cta.primary.ariaLabel}
 						settledLabel={settledLabelFor(cta.primary.kind)}
 						phase={primary.phase}
+						tone="accent"
 						disabled={cta.primary.disabled}
 						icon={<Icon name={primaryGlyph(cta.primary.kind)} size="sm" aria-hidden />}
 						onClick={() => void primary.run(runPrimary)}
@@ -219,8 +221,7 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 				<CtaButton
 					label={inBasket ? "In basket" : cta.secondary.label}
 					settledLabel="Added"
-					tone="brand"
-					variant="outlined"
+					tone="mono"
 					phase={secondary.phase}
 					icon={<Icon name={inBasket ? "check" : "basket"} size="sm" aria-hidden />}
 					onClick={() =>

@@ -1,79 +1,19 @@
 import { z } from "zod";
-import { EMAIL_RE, isIdentifier, PHONE_RE, USERNAME_RE } from "./validate.ts";
-import { EMPLOYEE_TIERS, INDUSTRIES } from "./options.ts";
+import { EMAIL_RE } from "@projective/types/auth";
+import { isIdentifier } from "./validate.ts";
 
 /**
  * Zod request schemas for the auth API routes (SYSTEM_ARCHITECTURE.md §Security — every API handler
- * Zod-validates the body before touching a Service). Kept in the feature for now; migrates to
- * `@projective/types` with Supabase. Only regex/min/max/enum/literal primitives are used so the
- * schema is stable across Zod majors.
+ * Zod-validates the body before touching a Service). The `/join` body is the SSOT in
+ * `@projective/types/auth` and is re-exported here so every auth route imports from one place. Only
+ * regex/min/max/enum/literal primitives are used so the schema is stable across Zod majors.
  */
+
+export { IndividualJoinSchema, JoinSchema, OrganizationJoinSchema } from "@projective/types/auth";
 
 const email = z.string().trim().regex(EMAIL_RE, "Enter a valid email address.");
 const password = z.string().min(8, "Use at least 8 characters.").max(128);
-const name = z.string().trim().min(1).max(60);
 const redirectTo = z.string().default("/home");
-const strList = z.array(z.string().trim().min(1).max(60)).max(50).default([]);
-
-const employeeValues = EMPLOYEE_TIERS.map((t) => t.value) as [string, ...string[]];
-const industryValues = INDUSTRIES.map((i) => i.value) as [string, ...string[]];
-
-/**
- * Individual (quick) onboarding. `password` is optional because SSO/OAuth signups skip password
- * setup (`oauth: true`); the join handler requires it only when `oauth` is false. `restricted` is
- * re-derived server-side from `dob`, never trusted.
- */
-export const IndividualJoinSchema = z.object({
-	type: z.literal("individual"),
-	intent: z.enum(["client", "freelancer"]),
-	email,
-	password: z.string().max(128).optional(),
-	oauth: z.boolean().default(false),
-	firstName: name,
-	lastName: name,
-	username: z.string().trim().regex(USERNAME_RE, "Invalid username."),
-	dob: z.string().min(1, "Date of birth is required."),
-	purpose: z.array(z.string().max(40)).max(20).default([]),
-	skills: z.array(z.string().max(40)).max(50).default([]),
-	redirectTo,
-});
-
-/**
- * Organization (comprehensive, multi-step) onboarding. Organizations are **client/buyer-only** on
- * Projective (they hire, they don't sell), so `intent` is pinned to `client`. `website` is the
- * optional corporate web footprint.
- */
-export const OrganizationJoinSchema = z.object({
-	type: z.literal("organization"),
-	intent: z.literal("client").default("client"),
-	legalName: name,
-	tradingName: z.string().trim().max(120).default(""),
-	handle: z.string().trim().max(40).default(""),
-	registrationNumber: z.string().trim().max(60).default(""),
-	website: z.string().trim().max(200).default(""),
-	corporateEmail: email,
-	phone: z.string().trim().regex(PHONE_RE, "Enter a valid phone number."),
-	address: z.object({
-		street: z.string().trim().min(1).max(160),
-		city: z.string().trim().min(1).max(80),
-		postcode: z.string().trim().min(1).max(20),
-		country: z.string().trim().min(1).max(60),
-	}),
-	employeeTier: z.enum(employeeValues),
-	industry: z.enum(industryValues),
-	/** Free-text sector; only populated (and required by the client) when `industry === "other"`. */
-	industryOther: z.string().trim().max(80).default(""),
-	departments: strList,
-	purpose: z.array(z.string().max(40)).max(20).default([]),
-	password,
-	redirectTo,
-});
-
-/** Discriminated on `type` so one endpoint validates either onboarding shape. */
-export const JoinSchema = z.discriminatedUnion("type", [
-	IndividualJoinSchema,
-	OrganizationJoinSchema,
-]);
 
 /**
  * Password sign-in. `identifier` is an email OR a username in one field — the predicate is

@@ -20,7 +20,7 @@ data remains isolated while providing a searchable directory for the platform.
 | `bio`                                    | jsonb   | The story, as `{"text": …}`.                                                                                                                           |
 | `city` / `country` / `timezone`          | text    | The location line and the live local clock; `city` nullable so "never stated" stays distinct from "cleared".                                          |
 | `languages`                              | text[]  | `NOT NULL DEFAULT '{}'`.                                                                                                                               |
-| `dob`                                    | date    | `NOT NULL`. Never projected to anyone but its owner.                                                                                                   |
+| `dob`                                    | date    | `NOT NULL`, `CHECK (dob >= '1900-01-01')` (`users_public_dob_check`; also the erasure sentinel). `trg_users_public_dob_guard` (BEFORE INSERT / UPDATE OF `dob`) runs `org.fn_check_dob`: not in the future (`22023`), at least 13 (`PM422`). The source of the 13–17 restriction, which is derived, never stored (Decision #190). Never projected to anyone but its owner. |
 | `visibility`                             | text    | `NOT NULL DEFAULT 'public'`, `CHECK IN ('public','unlisted','private')` (`users_public_visibility_check`) — see below.                                 |
 | `interests`                              | text[]  | Discovery signal.                                                                                                                                      |
 | `rating_*` · `*_project_count` · `service_count` · `product_count` | numeric/int | Platform-computed; written only by definer triggers.                                                                          |
@@ -854,7 +854,9 @@ may only add trailing columns):
     `on_auth_user_confirmed` trigger (`public.handle_email_confirmed`,
     `migrations/0312_email_verification_sync.sql`) advances `verified_at` on the NULL→timestamp
     transition so it stays trustworthy. GoTrue still owns the single-use confirmation token for the
-    SIGN-IN address. The `/verify` page polls this via `api/v1/auth/verification-status`.
+    SIGN-IN address. The `/verify` page's poll (`/api/auth/verification-status`) does NOT read this
+    table: since Decision #185 it answers only for the account named by the browser's signed
+    pending-verification cookie, from GoTrue's `email_confirmed_at`.
   - _Since 2026-10-06_ a SECONDARY address is verified by the app's own token handshake
     (`org.email_verification_tokens`, hash-only — see above), because GoTrue knows nothing about
     secondary addresses. The table is read-only to clients; see `org.user_emails` above.

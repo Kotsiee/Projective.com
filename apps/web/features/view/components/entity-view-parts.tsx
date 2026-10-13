@@ -291,13 +291,18 @@ export function StatusMark(
  * first byte is already correct and hydration does not flip it.
  */
 export function PriceOrigin(
-	{ minor, currency }: { minor: number; currency: string },
+	{ minor, currency, class: cls = "evp-price__origin" }: {
+		minor: number;
+		currency: string;
+		/** The host surface's class for the line (default the lane's `evp-price__origin`). */
+		class?: string;
+	},
 ): JSX.Element | null {
 	const viewing = displayCurrency.value?.toUpperCase();
 	const origin = currency.toUpperCase();
 	if (!viewing || viewing === origin) return null;
 	return (
-		<span class="evp-price__origin">
+		<span class={cls}>
 			Orig. {formatMoney(minor, origin, displayLocale.value || "en-GB")} {origin}
 		</span>
 	);

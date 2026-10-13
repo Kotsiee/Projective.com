@@ -14,6 +14,7 @@ import type {
 	WalletQuery,
 	WithdrawInput,
 } from "@projective/types/finance";
+import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
 import { getUserClient } from "../../core/supabase.ts";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
@@ -49,6 +50,7 @@ function statusFor(code: string | undefined): number {
 		case "42501":
 		case "PK403":
 		case "PA403":
+		case "PM403":
 			return 403;
 		case "PB404":
 			return 404;
@@ -66,6 +68,7 @@ function statusFor(code: string | undefined): number {
 
 /** A refusal's sentence: the function's own, except where Postgres would speak in constraint names. */
 function messageFor(error: { code?: string; message: string }): string {
+	if (isAgeRestricted(error)) return AGE_RESTRICTED.message;
 	if (error.code === "23514" && /balance_cents/.test(error.message)) {
 		return "That wallet doesn't hold enough for this.";
 	}

@@ -90,6 +90,20 @@ CREATE TRIGGER trg_freelancer_profiles_verification_stamp
     EXECUTE FUNCTION org.trg_freelancer_profiles_verification_stamp ();
 -- #endregion
 
+-- #region Append-only ledger (00001200, Decision #186)
+-- A ledger row is never rewritten or removed, by any role: corrections are compensating rows.
+CREATE TRIGGER trg_transactions_append_only
+    BEFORE UPDATE OR DELETE ON finance.transactions
+    FOR EACH ROW
+    EXECUTE FUNCTION finance.fn_transactions_append_only ();
+
+-- TRUNCATE skips row triggers, so it is refused per statement.
+CREATE TRIGGER trg_transactions_no_truncate
+    BEFORE TRUNCATE ON finance.transactions
+    FOR EACH STATEMENT
+    EXECUTE FUNCTION finance.fn_transactions_append_only ();
+-- #endregion
+
 -- #region Wallet watch — auto-fund retries and the low-balance warning (00001250, Decision #172)
 -- Every ledger line on a business wallet: a credit retries the From-wallet auto-fund queue, a debit
 -- that crosses the business's balance floor warns once and runs any floor top-up.

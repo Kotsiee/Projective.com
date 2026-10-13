@@ -387,7 +387,7 @@ export function fundStateHint(state: FundState, overview: WalletOverview): strin
 				: "Held in escrow until work is approved";
 		}
 		case "pending":
-			return "Released, finishing the 7-day safety window";
+			return "Earned, clearing the 7-day safety window before it can be spent or withdrawn";
 		case "on_hold": {
 			const cases = overview.heldCaseCount;
 			return cases > 0

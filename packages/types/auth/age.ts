@@ -13,6 +13,8 @@
 export const MIN_AGE = 13;
 /** Age at which an account gains unrestricted (buy/sell) capability. */
 export const ADULT_AGE = 18;
+/** The earliest plausible date of birth — the floor `org.users_public.dob` is CHECKed against. */
+export const DOB_FLOOR = "1900-01-01";
 
 /** The four possible evaluations of a supplied Date of Birth. */
 export type AgeBracket = "unknown" | "blocked" | "restricted" | "full";
@@ -22,10 +24,11 @@ export type AgeBracket = "unknown" | "blocked" | "restricted" | "full";
  *
  * @param dob ISO date string from a native `<input type="date">` (empty ⇒ `null`).
  * @param now Reference "today" (injectable for deterministic tests).
- * @returns Whole years, or `null` when the input is empty / unparseable / in the future.
+ * @returns Whole years, or `null` when the input is empty / unparseable / in the future / before
+ * {@link DOB_FLOOR}.
  */
 export function computeAge(dob: string, now: Date = new Date()): number | null {
-	if (!dob) return null;
+	if (!dob || dob < DOB_FLOOR) return null;
 	const d = new Date(`${dob}T00:00:00`);
 	if (Number.isNaN(d.getTime())) return null;
 	if (d.getTime() > now.getTime()) return null;
@@ -61,3 +64,40 @@ export const AGE_MESSAGES: Record<Exclude<AgeBracket, "full">, string> = {
 	restricted:
 		`Since you're under ${ADULT_AGE}, we'll set up a limited account. You can explore and build your profile, but buying services and selling work unlock automatically on your ${ADULT_AGE}th birthday.`,
 };
+
+/**
+ * The SQLSTATEs the database raises for these rules (Decision #190), so a service maps a refusal
+ * without matching on message text.
+ */
+export const AGE_SQLSTATE = {
+	/** `org.fn_check_dob` — under {@link MIN_AGE}; the account is not provisioned. */
+	underMinimum: "PM422",
+	/** `org.fn_assert_adult` — a restricted (13–17) account reached a buy/sell door. */
+	restricted: "PM403",
+} as const;
+
+/** The reason key a restricted refusal carries (`details.reason` / a field error value). */
+export const AGE_RESTRICTED_REASON = "age_restricted";
+
+/** The 403 copy every buy/sell door answers a restricted account with. */
+export const RESTRICTED_REFUSAL =
+	`Buying services and selling work unlock on your ${ADULT_AGE}th birthday. Until then you can explore and build your profile.`;
+
+/** The join-form copy for a date of birth under {@link MIN_AGE}. */
+export const UNDER_MINIMUM_REFUSAL = `You need to be at least ${MIN_AGE} to join Projective.`;
+
+/**
+ * The Dev Context Switcher's override of the session's restriction: `minor` acts as a 13–17 account,
+ * `adult` as an unrestricted one. Absent = follow the token. The API routes' mirror honours it in
+ * development only; the database never reads it.
+ */
+export type AgeOverride = "minor" | "adult";
+
+/** The cookie that carries {@link AgeOverride}. */
+export const AGE_OVERRIDE_COOKIE = "pj.dev.age";
+
+/** Read the override from a cookie value; anything unrecognised means "no override". */
+export function parseAgeOverride(raw: string | null | undefined): AgeOverride | null {
+	const value = raw?.trim();
+	return value === "minor" || value === "adult" ? value : null;
+}

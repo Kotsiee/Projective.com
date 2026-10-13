@@ -234,6 +234,22 @@ export type DevDiscoveryActivity = DiscoveryActivitySim;
 export type DevEmbeddings = "auto" | EmbeddingsOverride;
 
 /**
+ * The `/verify` page's confirmation poll (Decision #185): `auto` asks the server; `pending` keeps
+ * waiting; `confirmed` answers "confirmed, but this tab holds no session" (the sign-in state);
+ * `confirmed_signed_in` answers "confirmed and signed in" (the auto-continue). The stub backend
+ * never confirms, so these are the only dev routes to either success state.
+ */
+export type DevEmailConfirmation = "auto" | "pending" | "confirmed" | "confirmed_signed_in";
+
+/**
+ * The age guardrail (Decision #190): `auto` follows the session token's `isRestricted` claim; `minor`
+ * acts as a 13–17 account, so every buy/sell API route answers its age 403; `adult` skips the routes'
+ * mirror for a real minor, so the database's own refusal (`PM403`) is what answers. Reaches the server
+ * through the `pj.dev.age` cookie, which only a development build reads.
+ */
+export type DevAgeRestriction = "auto" | "minor" | "adult";
+
+/**
  * How the `/wallet` hero's live aurora is chosen. `auto` runs the shipping gates (reduced motion, data
  * saver, device memory, core count, page visibility) and the performance watchdog; `static` never
  * mounts the canvas, so the resting CSS gradient is what shows; `animated` skips the hardware and
@@ -371,6 +387,10 @@ export interface DevSeamState {
 	discoveryActivity?: DevDiscoveryActivity;
 	/** The embeddings switch override. Optional like `walletAurora`; absent reads as `auto`. */
 	embeddings?: DevEmbeddings;
+	/** The simulated `/verify` poll answer. Optional like `walletAurora`; absent reads as `auto`. */
+	emailConfirmation?: DevEmailConfirmation;
+	/** The simulated age restriction. Optional like `walletAurora`; absent reads as `auto`. */
+	ageRestriction?: DevAgeRestriction;
 }
 // #endregion
 
@@ -509,6 +529,13 @@ const PROMO_DISMISSALS: readonly DevPromoDismissal[] = ["auto", "visible", "dism
 const DISCOVERY_VIEWERS: readonly DevDiscoveryViewer[] = ["auto", "no_history", "no_signals"];
 const DISCOVERY_ACTIVITIES: readonly DevDiscoveryActivity[] = ["auto", "quiet"];
 const EMBEDDINGS_MODES: readonly DevEmbeddings[] = ["auto", "on", "off"];
+const EMAIL_CONFIRMATIONS: readonly DevEmailConfirmation[] = [
+	"auto",
+	"pending",
+	"confirmed",
+	"confirmed_signed_in",
+];
+const AGE_RESTRICTIONS: readonly DevAgeRestriction[] = ["auto", "minor", "adult"];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */
 function coerce<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -570,6 +597,8 @@ export function readDevSeam(): DevSeamState | null {
 		discoveryViewer: coerce(ds.devDiscoveryViewer, DISCOVERY_VIEWERS, "auto"),
 		discoveryActivity: coerce(ds.devDiscoveryActivity, DISCOVERY_ACTIVITIES, "auto"),
 		embeddings: coerce(ds.devEmbeddings, EMBEDDINGS_MODES, "auto"),
+		emailConfirmation: coerce(ds.devEmailConfirmation, EMAIL_CONFIRMATIONS, "auto"),
+		ageRestriction: coerce(ds.devAgeRestriction, AGE_RESTRICTIONS, "auto"),
 	};
 }
 

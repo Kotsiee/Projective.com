@@ -7,6 +7,15 @@ CREATE INDEX IF NOT EXISTS idx_wallets_owner ON finance.wallets (owner_type, own
 CREATE INDEX IF NOT EXISTS idx_transactions_wallet_created ON finance.transactions (wallet_id, created_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_escrows_stage ON finance.escrows (project_stage_id);
 CREATE INDEX IF NOT EXISTS idx_escrows_ticket ON finance.escrows (ticket_id);
+-- One HELD base escrow per ticket (Decision #189). The hold checks, then inserts, so two concurrent holds
+-- both passed the check and the payer paid twice; this index is the arbiter, and fn_hold_ticket_escrow
+-- reads its violation as "already held". A paid revision round's escrow (revision_id) sits beside the
+-- base escrow, and a seat's escrow has no ticket.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_escrows_ticket_base_held ON finance.escrows (ticket_id)
+    WHERE status = 'held' AND ticket_id IS NOT NULL AND revision_id IS NULL;
+-- A paid revision round is paid for once, whatever became of its escrow.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_escrows_revision ON finance.escrows (revision_id)
+    WHERE revision_id IS NOT NULL;
 -- A seat's escrow (Decision #171) — the cancel, join and auto-release reads all start from the seat.
 CREATE INDEX IF NOT EXISTS idx_escrows_cohort_membership ON finance.escrows (cohort_membership_id)
     WHERE cohort_membership_id IS NOT NULL;

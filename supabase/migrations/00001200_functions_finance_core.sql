@@ -3,7 +3,10 @@
 -- Consolidated verbatim from: 0009_finance_tables.sql, 0305_stage_funding_payout.sql, 0309_business_finance_overview.sql, 0310_ticket_automation_engine.sql
 -- ============================================================================
 
--- Ledger helpers: credit / debit a wallet if one exists (balance CHECK enforces sufficient funds).
+-- Ledger primitives: credit / debit an EXISTING wallet and append its ledger row (the balance CHECK
+-- enforces sufficient funds). A missing wallet raises PW404 instead of returning: a credit with nowhere
+-- to land must fail its caller, never vanish (Decision #186). A caller that may be the first to pay an
+-- owner runs finance.fn_ensure_wallet before crediting.
 CREATE OR REPLACE FUNCTION finance.fn_wallet_credit(
     p_owner_id uuid, p_owner_type text, p_currency text, p_amount bigint,
     p_reason text, p_ref_table text, p_ref_id uuid
@@ -15,7 +18,10 @@ BEGIN
     IF p_amount IS NULL OR p_amount <= 0 THEN RETURN; END IF;
     SELECT id INTO v_wallet FROM finance.wallets
     WHERE owner_type = p_owner_type AND owner_id = p_owner_id AND currency = p_currency;
-    IF v_wallet IS NULL THEN RETURN; END IF;
+    IF v_wallet IS NULL THEN
+        RAISE EXCEPTION 'wallet: % has no % wallet in % to credit', p_owner_id, p_owner_type, p_currency
+            USING ERRCODE = 'PW404';
+    END IF;
 
     UPDATE finance.wallets SET balance_cents = balance_cents + p_amount
     WHERE id = v_wallet RETURNING balance_cents INTO v_balance;
@@ -36,7 +42,10 @@ BEGIN
     IF p_amount IS NULL OR p_amount <= 0 THEN RETURN; END IF;
     SELECT id INTO v_wallet FROM finance.wallets
     WHERE owner_type = p_owner_type AND owner_id = p_owner_id AND currency = p_currency;
-    IF v_wallet IS NULL THEN RETURN; END IF;
+    IF v_wallet IS NULL THEN
+        RAISE EXCEPTION 'wallet: % has no % wallet in % to debit', p_owner_id, p_owner_type, p_currency
+            USING ERRCODE = 'PW404';
+    END IF;
 
     UPDATE finance.wallets SET balance_cents = balance_cents - p_amount
     WHERE id = v_wallet RETURNING balance_cents INTO v_balance;
@@ -65,8 +74,8 @@ AS $$
     );
 $$;
 
--- Make sure an owner holds a wallet in a currency, creating it if not. A credit must never land on a
--- wallet that does not exist: fn_wallet_credit is a silent no-op then, and the money simply vanishes.
+-- Make sure an owner holds a wallet in a currency, creating it if not. Run it before the first credit to
+-- an owner who may never have held one: fn_wallet_credit refuses a wallet that does not exist (PW404).
 CREATE OR REPLACE FUNCTION finance.fn_ensure_wallet(p_owner_type text, p_owner_id uuid, p_currency text)
 RETURNS uuid
 LANGUAGE plpgsql
@@ -188,7 +197,7 @@ BEGIN
         PERFORM finance.fn_ensure_wallet(v_type, v_user, p_currency);
         INSERT INTO finance.payout_splits (escrow_id, member_user_id, amount_cents, currency)
         VALUES (p_escrow_id, v_user, v_amount, p_currency);
-        PERFORM finance.fn_wallet_credit(v_user, v_type, p_currency, v_amount, 'team_split', 'escrows', p_escrow_id);
+        PERFORM finance.fn_wallet_credit_pending(v_user, v_type, p_currency, v_amount, 'team_split', 'escrows', p_escrow_id);
     END LOOP;
 
     IF (v_plan->>'finder_minor')::bigint > 0 THEN
@@ -197,13 +206,13 @@ BEGIN
         PERFORM finance.fn_ensure_wallet(v_type, v_user, p_currency);
         INSERT INTO finance.payout_splits (escrow_id, member_user_id, amount_cents, currency)
         VALUES (p_escrow_id, v_user, (v_plan->>'finder_minor')::bigint, p_currency);
-        PERFORM finance.fn_wallet_credit(v_user, v_type, p_currency, (v_plan->>'finder_minor')::bigint, 'team_finder_fee', 'escrows', p_escrow_id);
+        PERFORM finance.fn_wallet_credit_pending(v_user, v_type, p_currency, (v_plan->>'finder_minor')::bigint, 'team_finder_fee', 'escrows', p_escrow_id);
     END IF;
 
     v_vault := (v_plan->>'vault_total_minor')::bigint;
     IF v_vault > 0 THEN
         PERFORM finance.fn_ensure_wallet('team', p_team_id, p_currency);
-        PERFORM finance.fn_wallet_credit(p_team_id, 'team', p_currency, v_vault, p_reason || '_vault_retention', 'escrows', p_escrow_id);
+        PERFORM finance.fn_wallet_credit_pending(p_team_id, 'team', p_currency, v_vault, p_reason || '_vault_retention', 'escrows', p_escrow_id);
     END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance;
@@ -314,7 +323,8 @@ $$;
 -- and DETAIL = {state: 'needs_funding', reason, amount_minor, currency} for the caller to read. Reasons:
 -- `no_price` · `no_wallet` (no payer wallet in the project's currency) · `insufficient_funds` ·
 -- `spending_limit` (the project owner's envelope on a business wallet). A missing stage or payee is not
--- a funding problem and raises check_violation. Already held -> NULL, the one early return (#165(A)). The
+-- a funding problem and raises check_violation. Already held -> NULL, the one early return (#165(A)),
+-- also when a concurrent hold commits first (uq_escrows_ticket_base_held, #189: nothing is debited). The
 -- payer is the project's client business or, when the project has none, its owner as an INDIVIDUAL
 -- client (PRODUCT_SPEC §Escrow, Wallets & Finance #5). The wallet and balance are checked before the
 -- escrow row is written: fn_wallet_debit is a silent no-op on a missing wallet, so inserting first
@@ -336,6 +346,7 @@ DECLARE
     v_balance bigint;
     v_reason text;
     v_href text;
+    v_constraint text;
 BEGIN
     SELECT
         t.current_stage_id AS stage_id,
@@ -375,7 +386,8 @@ BEGIN
         v_payee_id := v.payee_id;
     END IF;
 
-    IF EXISTS (SELECT 1 FROM finance.escrows WHERE ticket_id = p_ticket_id AND status = 'held') THEN
+    IF EXISTS (SELECT 1 FROM finance.escrows
+                WHERE ticket_id = p_ticket_id AND status = 'held' AND revision_id IS NULL) THEN
         RETURN NULL;
     END IF;
 
@@ -423,15 +435,23 @@ BEGIN
             )::text;
     END IF;
 
-    INSERT INTO finance.escrows (
-        project_stage_id, ticket_id, payer_business_id, payer_user_id,
-        payee_type, payee_id, amount_cents, currency, status
-    )
-    VALUES (
-        v.stage_id, p_ticket_id, v.payer, v_payer_user,
-        v_payee_type, v_payee_id, v_amount, v_currency, 'held'
-    )
-    RETURNING id INTO v_escrow_id;
+    BEGIN
+        INSERT INTO finance.escrows (
+            project_stage_id, ticket_id, payer_business_id, payer_user_id,
+            payee_type, payee_id, amount_cents, currency, status
+        )
+        VALUES (
+            v.stage_id, p_ticket_id, v.payer, v_payer_user,
+            v_payee_type, v_payee_id, v_amount, v_currency, 'held'
+        )
+        RETURNING id INTO v_escrow_id;
+    EXCEPTION WHEN unique_violation THEN
+        GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
+        IF v_constraint IS DISTINCT FROM 'uq_escrows_ticket_base_held' THEN
+            RAISE;
+        END IF;
+        RETURN NULL;
+    END;
 
     PERFORM finance.fn_wallet_debit(v_payer_id, v_payer_type, v_currency, v_amount, 'escrow_hold', 'escrows', v_escrow_id);
 
@@ -462,7 +482,8 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects, org, comms, auth;
 
 -- A paid revision round (Decision #167) -> one MORE escrow on its ticket, beside the one already held
--- for the work, at the round's snapshotted price. Same payee rule and the same PF402 refusal shape as
+-- for the work, at the round's snapshotted price, naming the round (`revision_id`) so it is never taken
+-- for the base escrow (#189). Same payee rule and the same PF402 refusal shape as
 -- fn_hold_ticket_escrow (#165), so the TS side reads one vocabulary; fn_release_ticket_escrow already
 -- releases every held row of a ticket on approval, and refunds treat it like any ticket escrow.
 -- Internal; projects.fund_paid_revision is the door: it locks the round, holds only one still
@@ -547,10 +568,10 @@ BEGIN
     END IF;
 
     INSERT INTO finance.escrows (
-        project_stage_id, ticket_id, payer_business_id, payer_user_id,
+        project_stage_id, ticket_id, revision_id, payer_business_id, payer_user_id,
         payee_type, payee_id, amount_cents, currency, status
     ) VALUES (
-        v.stage_id, v.ticket_id, v.payer, v_payer_user,
+        v.stage_id, v.ticket_id, p_revision_id, v.payer, v_payer_user,
         v_payee_type, v_payee_id, v.amount, v_currency, 'held'
     )
     RETURNING id INTO v_escrow_id;
@@ -586,6 +607,9 @@ $$;
 -- An individual payee is credited to the person wallet they actually hold (fn_person_wallet_type),
 -- created if missing: a hardcoded 'freelancer' credit onto a person who holds only a 'user' wallet was
 -- a silent no-op in fn_wallet_credit, and the released money vanished.
+-- Idempotent under concurrency (Decision #188): the ticket row, then each held escrow, is locked, and
+-- the flip to 'released' is conditional on the row still being 'held'. A second caller racing on the
+-- same ticket waits on the lock, then finds nothing held and credits nothing.
 CREATE OR REPLACE FUNCTION finance.fn_release_ticket_escrow(p_ticket_id uuid)
 RETURNS void AS $$
 DECLARE
@@ -595,25 +619,31 @@ DECLARE
     v_payout bigint;
     v_ticket_status ticket_status;
     v_payee_wallet text;
+    v_flipped uuid;
 BEGIN
-    SELECT status INTO v_ticket_status FROM projects.tickets WHERE id = p_ticket_id;
+    SELECT status INTO v_ticket_status FROM projects.tickets WHERE id = p_ticket_id FOR UPDATE;
 
     FOR r IN
         SELECT * FROM finance.escrows WHERE ticket_id = p_ticket_id AND status = 'held'
+        ORDER BY id
+        FOR UPDATE
     LOOP
         v_fee_bp := finance.fn_escrow_fee_bp(r.payer_business_id, r.payer_user_id);
         v_fee := (r.amount_cents * v_fee_bp) / 10000;
         v_payout := r.amount_cents + COALESCE(r.deadline_bonus_cents, 0) - v_fee;
         IF v_payout < 0 THEN v_payout := 0; END IF;
 
-        UPDATE finance.escrows SET status = 'released', platform_fee_cents = v_fee, released_at = now() WHERE id = r.id;
+        UPDATE finance.escrows SET status = 'released', platform_fee_cents = v_fee, released_at = now()
+        WHERE id = r.id AND status = 'held'
+        RETURNING id INTO v_flipped;
+        CONTINUE WHEN v_flipped IS NULL;
 
         IF r.payee_type = 'team'::assignment_type THEN
             PERFORM finance.fn_split_team_payout(r.id, r.payee_id, v_payout, r.currency);
         ELSE
             v_payee_wallet := finance.fn_person_wallet_type(r.payee_id);
             PERFORM finance.fn_ensure_wallet(v_payee_wallet, r.payee_id, r.currency);
-            PERFORM finance.fn_wallet_credit(r.payee_id, v_payee_wallet, r.currency, v_payout, 'escrow_release', 'escrows', r.id);
+            PERFORM finance.fn_wallet_credit_pending(r.payee_id, v_payee_wallet, r.currency, v_payout, 'escrow_release', 'escrows', r.id);
         END IF;
 
         UPDATE projects.tickets
@@ -766,7 +796,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, org, sec
 
 -- #region US-007 AC4 — Fair-exit cancellation split (net-new).
 -- Pays the payee p_bp basis-points of each held escrow's principal (net of the platform fee) and
--- refunds the unearned remainder to the client (payer) business wallet.
+-- refunds the unearned remainder to the client (payer) business wallet. Locked and guarded exactly as
+-- fn_release_ticket_escrow (Decision #188), so a racing release or second split settles nothing.
 CREATE OR REPLACE FUNCTION finance.fn_fair_exit_release(p_ticket_id uuid, p_bp integer)
 RETURNS void AS $$
 DECLARE
@@ -778,8 +809,15 @@ DECLARE
     v_refund bigint;
     v_payee_wallet text;
     v_payer_wallet text;
+    v_flipped uuid;
 BEGIN
-    FOR r IN SELECT * FROM finance.escrows WHERE ticket_id = p_ticket_id AND status = 'held' LOOP
+    PERFORM 1 FROM projects.tickets WHERE id = p_ticket_id FOR UPDATE;
+
+    FOR r IN
+        SELECT * FROM finance.escrows WHERE ticket_id = p_ticket_id AND status = 'held'
+        ORDER BY id
+        FOR UPDATE
+    LOOP
         v_fee_bp := finance.fn_escrow_fee_bp(r.payer_business_id, r.payer_user_id);
         v_share := (r.amount_cents * p_bp) / 10000;          -- earned portion by progress tier
         v_fee := (v_share * v_fee_bp) / 10000;               -- platform fee on the earned portion
@@ -788,14 +826,17 @@ BEGIN
         v_refund := r.amount_cents - v_share;                -- unearned remainder -> client
         IF v_refund < 0 THEN v_refund := 0; END IF;
 
-        UPDATE finance.escrows SET status = 'released', platform_fee_cents = v_fee, released_at = now() WHERE id = r.id;
+        UPDATE finance.escrows SET status = 'released', platform_fee_cents = v_fee, released_at = now()
+        WHERE id = r.id AND status = 'held'
+        RETURNING id INTO v_flipped;
+        CONTINUE WHEN v_flipped IS NULL;
 
         IF r.payee_type = 'team'::assignment_type THEN
             PERFORM finance.fn_split_team_payout(r.id, r.payee_id, v_payout, r.currency, 'fair_exit_release');
         ELSE
             v_payee_wallet := finance.fn_person_wallet_type(r.payee_id);
             PERFORM finance.fn_ensure_wallet(v_payee_wallet, r.payee_id, r.currency);
-            PERFORM finance.fn_wallet_credit(r.payee_id, v_payee_wallet, r.currency, v_payout, 'fair_exit_release', 'escrows', r.id);
+            PERFORM finance.fn_wallet_credit_pending(r.payee_id, v_payee_wallet, r.currency, v_payout, 'fair_exit_release', 'escrows', r.id);
         END IF;
 
         v_payer_wallet := finance.fn_escrow_payer_wallet_type(r.payer_business_id, r.payer_user_id);
@@ -819,17 +860,26 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects
 -- Distinct from finance.fn_release_ticket_escrow (which PAYS the payee). A parked claim never earned
 -- anything, so held escrow is returned to the paying business wallet and the ticket is reset to
 -- 'unpaid' so a future claim re-funds cleanly. Platform fee is only ever applied on release, so a
--- refund is exactly amount_cents back — no leakage.
+-- refund is exactly amount_cents back — no leakage. Locked and guarded as fn_release_ticket_escrow
+-- (Decision #188): a refund racing a release or a second refund returns nothing twice.
 CREATE OR REPLACE FUNCTION finance.fn_refund_ticket_escrow(p_ticket_id uuid)
 RETURNS void AS $$
 DECLARE
     r record;
     v_payer_wallet text;
+    v_flipped uuid;
 BEGIN
+    PERFORM 1 FROM projects.tickets WHERE id = p_ticket_id FOR UPDATE;
+
     FOR r IN
         SELECT * FROM finance.escrows WHERE ticket_id = p_ticket_id AND status = 'held'
+        ORDER BY id
+        FOR UPDATE
     LOOP
-        UPDATE finance.escrows SET status = 'refunded' WHERE id = r.id;
+        UPDATE finance.escrows SET status = 'refunded'
+        WHERE id = r.id AND status = 'held'
+        RETURNING id INTO v_flipped;
+        CONTINUE WHEN v_flipped IS NULL;
         v_payer_wallet := finance.fn_escrow_payer_wallet_type(r.payer_business_id, r.payer_user_id);
         PERFORM finance.fn_ensure_wallet(v_payer_wallet, COALESCE(r.payer_business_id, r.payer_user_id), r.currency);
         PERFORM finance.fn_wallet_credit(
@@ -844,3 +894,101 @@ BEGIN
       AND NOT EXISTS (SELECT 1 FROM finance.escrows WHERE ticket_id = p_ticket_id AND status = 'held');
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, finance, projects, org, auth;
+
+-- #region Ledger integrity — append-only rows and nightly reconciliation (Decision #186)
+-- The ledger is the record; a row is never rewritten or removed. Bound BEFORE UPDATE OR DELETE (per row)
+-- and BEFORE TRUNCATE (per statement) in 00001830, so it holds for every role — the table owner and
+-- the service role included, where a grant alone could not. A mistake is corrected by a compensating
+-- row through fn_wallet_credit / fn_wallet_debit.
+CREATE OR REPLACE FUNCTION finance.fn_transactions_append_only()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    RAISE EXCEPTION 'ledger: finance.transactions is append-only — % refused; post a compensating entry', TG_OP
+        USING ERRCODE = 'PL403';
+END;
+$$;
+
+-- finance.wallets.balance_cents is a cache written beside the ledger, so it can drift from it. Compares
+-- every wallet's cached balance with the SUM of its signed ledger rows (finance.v_wallet_reconciliation,
+-- 00003004) and with its newest row's balance_after_cents, in ONE statement so a movement committing
+-- mid-run is seen whole or not at all.
+-- Each drifted wallet becomes an `error` row in ops.log_entries (scope `finance.reconcile_wallets`,
+-- the figures in `data`) and the run raises a WARNING; returns the number of drifted wallets.
+-- Read-only on finance: drift is reported for a human, never auto-corrected.
+CREATE OR REPLACE FUNCTION finance.fn_reconcile_wallets()
+RETURNS integer
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_run uuid := pg_catalog.gen_random_uuid();
+    v_count integer;
+BEGIN
+    WITH drift AS (
+        SELECT r.wallet_id AS id, r.owner_type, r.owner_id, r.currency, r.balance_cents,
+               r.ledger_sum_cents,
+               latest.balance_after_cents AS latest_balance_after_cents
+          FROM finance.v_wallet_reconciliation r
+          LEFT JOIN LATERAL (
+                SELECT t.balance_after_cents
+                  FROM finance.transactions t
+                 WHERE t.wallet_id = r.wallet_id
+                 ORDER BY t.created_at DESC, t.id DESC
+                 LIMIT 1
+          ) latest ON true
+         WHERE r.drift_cents <> 0
+            OR r.balance_cents <> COALESCE(latest.balance_after_cents, 0)
+    ), logged AS (
+        INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+        SELECT 'reconcile:' || v_run::text,
+               'error',
+               pg_catalog.format('Wallet %s drifted from its ledger: cached %s, ledger sum %s, latest balance_after %s',
+                   d.id, d.balance_cents, d.ledger_sum_cents, COALESCE(d.latest_balance_after_cents::text, 'none')),
+               pg_catalog.now(),
+               'server',
+               'finance.reconcile_wallets',
+               pg_catalog.jsonb_build_object(
+                   'run_id', v_run,
+                   'wallet_id', d.id,
+                   'owner_type', d.owner_type,
+                   'owner_id', d.owner_id,
+                   'currency', d.currency,
+                   'balance_cents', d.balance_cents,
+                   'ledger_sum_cents', d.ledger_sum_cents,
+                   'latest_balance_after_cents', d.latest_balance_after_cents
+               )
+          FROM drift d
+        RETURNING 1
+    )
+    SELECT pg_catalog.count(*)::integer INTO v_count FROM logged;
+
+    IF v_count > 0 THEN
+        RAISE WARNING 'finance.fn_reconcile_wallets: % wallet(s) drifted from the ledger (run %)', v_count, v_run;
+    END IF;
+    RETURN v_count;
+END;
+$$;
+
+COMMENT ON FUNCTION finance.fn_reconcile_wallets() IS
+'Nightly ledger reconciliation: flags every wallet whose balance_cents differs from the sum of its
+ledger rows or from its newest balance_after_cents into ops.log_entries. Read-only on finance;
+service role / pg_cron only.';
+
+-- Nightly at 03:40 UTC, after the 02:20 billing run, guarded like the other pg_cron registrations
+-- (00000002): where pg_cron is absent the run is called by hand (`SELECT finance.fn_reconcile_wallets();`).
+DO $$
+BEGIN
+    PERFORM cron.schedule(
+        'finance-reconcile-wallets',
+        '40 3 * * *',
+        $cron$SELECT finance.fn_reconcile_wallets();$cron$
+    );
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'pg_cron unavailable — finance.fn_reconcile_wallets must be scheduled manually.';
+END $$;
+-- #endregion

@@ -81,6 +81,11 @@ export interface ResolvedOwner {
 	person: PurchasePerson | null;
 	/** The spend departments an organisation declares. */
 	departments: string[];
+	/**
+	 * The platform fee rate a payment from this owner is charged (`finance.fn_effective_platform_fee_bp`
+	 * via `get_purchase_owner`, so a negotiated rate shows); `null` when the caller cannot see it.
+	 */
+	platformFeeBp: number | null;
 }
 
 /** The raw object `finance.get_purchase_owner` / `list_purchase_owners` return. */
@@ -100,6 +105,7 @@ interface OwnerJson {
 	billing: Record<string, string | null> | null;
 	person: Record<string, string | null> | null;
 	departments: string[] | null;
+	platform_fee_bp?: number | null;
 }
 // #endregion
 
@@ -235,6 +241,7 @@ function toOwner(json: OwnerJson, display: string): ResolvedOwner | null {
 		departments: Array.isArray(json.departments)
 			? json.departments.filter((d): d is string => typeof d === "string")
 			: [],
+		platformFeeBp: typeof json.platform_fee_bp === "number" ? json.platform_fee_bp : null,
 	};
 }
 

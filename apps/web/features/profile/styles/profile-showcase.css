@@ -87,6 +87,22 @@
     background: var(--surface-1);
 }
 
+.pf-showcase__open {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+    padding: 0;
+    color: inherit;
+    background: none;
+    border: none;
+    cursor: zoom-in;
+}
+
+.pf-showcase__open:focus-visible {
+    outline: none;
+    box-shadow: none;
+}
+
 /* #endregion */
 
 /* #region Video slide */

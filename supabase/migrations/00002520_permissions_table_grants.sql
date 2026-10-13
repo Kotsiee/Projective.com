@@ -607,12 +607,16 @@ GRANT SELECT ON TABLE finance.spending_limits TO authenticated;
 
 GRANT SELECT, INSERT, UPDATE ON TABLE finance.buyer_details TO authenticated;
 
-GRANT ALL ON TABLE finance.wallets, finance.transactions, finance.payouts, finance.payout_accounts,
+GRANT ALL ON TABLE finance.wallets, finance.payouts, finance.payout_accounts,
     finance.orders, finance.order_lines, finance.invoices, finance.invoice_line_items,
     finance.disputes, finance.dispute_messages, finance.contribution_agreements,
     finance.payout_splits, finance.spending_limits, finance.buyer_details, finance.promo_codes,
     finance.ratings
 TO service_role;
+
+-- The ledger is append-only (Decision #186): the service role reads and appends, never rewrites. The
+-- trigger in 00001830 is the guarantee; this keeps the grant from claiming otherwise.
+GRANT SELECT, INSERT ON TABLE finance.transactions TO service_role;
 
 -- The inbound card-payment log (Stripe Phase 1, Decision #125): SELECT only, filtered by its policy
 -- in 00002013. Started, bound, settled and failed exclusively through the 00001230 definers.

@@ -1504,8 +1504,13 @@ bounce would make half the Dev Context Switcher unreachable (the switcher is a c
 cannot see). The ten checkout dev axes travel as validated `sim*` query params (`BasketSim`, parsed by
 `services/finance/basket-query.ts`) and are ignored on the live path.
 
-⚠ **Inherited and unresolved (§8 Decision #68(b)):** `platform_fee_bp` is seeded `0` while the SSOT
-says `500` — a money decision awaiting a human. (Decision #68(a), "`authenticated` has no `USAGE` on
+**Platform fee — one rate, one rounding rule (§8 Decision #187, closing #68(b)).** `platform_fee_bp`
+is seeded `500`. Every fee path resolves the PAYER's effective rate through
+`finance.fn_effective_platform_fee_bp` (escrow releases via `fn_escrow_fee_bp`, `place_wallet_order`
+for the basket owner, `preview_team_split` for the escrow's payer) and truncates
+(`(amount × bp) / 10000`). The checkout previews the rate `get_purchase_owner` returns as
+`platform_fee_bp` and rounds with the SSOT's `platformFeeFor`, which truncates the same way;
+`PLATFORM_FEE_BP` is a display fallback only, pinned to the seed by a unit test. (Decision #68(a), "`authenticated` has no `USAGE` on
 the `finance` schema", is **no longer true**: `00002500` grants it, and the finance policies have been
 live since the 2026-09-23 ledger pass — see `database/finance/Policies.md`.)
 
@@ -2061,6 +2066,42 @@ RLS is mandatory for all database tables to prevent cross-tenant data leakage.
 - **Bypassing:** Only the service-role key (used within authenticated Edge Functions) can bypass RLS
   for administrative tasks like file scanning.
 
+### Function `EXECUTE` grants (deny by default)
+
+Every schema in `supabase/config.toml` `[api].schemas` is an RPC surface: PostgREST serves any
+function a role may execute at `/rpc/<name>`. Postgres grants `EXECUTE` to `PUBLIC` on every new
+function, and Supabase additionally grants every `postgres`-created function in `public` to `anon`
+and `authenticated`, so an ungranted `SECURITY DEFINER` is a door anybody can open, signed out
+included.
+
+- **Deny by default.** `00002510_permissions_function_grants.sql` revokes `EXECUTE` schema-wide at
+  the top of the file, before any per-function statement: `org` (from `PUBLIC`, `anon`,
+  `authenticated`), `projects` (from `PUBLIC`, `anon`), `public` (from `PUBLIC`, `anon`,
+  `authenticated` on every function that is not an extension member), and `finance` later in the
+  file. `service_role` keeps them all. A client role then reaches a function only where it is
+  **granted by name**.
+- **What gets a grant.** `authenticated`: a door the app calls with the user's JWT, which resolves
+  the caller from `auth.uid()` and checks its own authority. `anon`: a guest read the public site
+  needs (e.g. `projects.get_cohort_offer`). Both client roles: a predicate an RLS policy calls,
+  because a policy expression runs as the invoking role (`projects.has_project_access`,
+  `org.is_active_team_member`, …). Nothing else: an internal helper, a primitive that trusts its
+  arguments (`projects.fn_assign_ticket_core`, `public.provision_user_profile`, the ledger
+  primitives) or a trigger function gets no client grant. Its definer callers run it as its owner.
+- **A new function is unreachable until granted.** The schema-wide revokes run after every function
+  exists, on every `supabase db reset`. They do not cover a function created afterwards: PUBLIC's
+  `EXECUTE` comes from the global default privileges, which no per-schema `ALTER DEFAULT PRIVILEGES`
+  can revoke. Add any new function to the consolidated `00001xxx` files, never after `00002510`.
+- **Pinned `search_path`.** A `SECURITY DEFINER` sets `search_path` (`''` or an explicit list of the
+  schemas it reads), so a caller's `search_path` cannot redirect an unqualified name. Every definer
+  in every exposed schema does, except `security.is_admin()`.
+- **An INVOKER calling a revoked function fails.** Its body, and an INVOKER trigger's, runs as the
+  invoking role, so a call it makes to a revoked function raises `permission denied` for that role.
+  Make the caller a definer rather than granting the callee (see `security.fn_slug_guard`).
+- **Verified by** `supabase/probes/function_grants.sql`: no app-owned function in `projects` or
+  `public` is executable by `PUBLIC`; no client role can execute `provision_user_profile` or the
+  claim core; `projects.claim_ticket` is a self-claim for a project participant; every definer in
+  both schemas pins its `search_path`; extension operators stay executable.
+
 ### Runtime & API Security
 
 Deno 2.x provides a hardened environment that we strictly configure through permission manifests.
@@ -2129,6 +2170,18 @@ PostgreSQL RLS.
   username answers the SAME generic refusal as a wrong password (the form must not be a
   handle-enumeration oracle), and the `requiresVerification` branch returns the resolved `email` so
   a username sign-in can still reach `/verify`.
+- **Email-confirmation poll (Decision #185):** `/verify` polls `GET /api/auth/verification-status`,
+  which takes **no email**. `POST /api/auth/join` (and a password sign-in GoTrue refuses only for an
+  unconfirmed email) sets `pj_pending_verification`: an HttpOnly, `SameSite=Strict`,
+  `Path=/api/auth`, one-hour cookie holding `v1.<userId>.<exp>.<HMAC-SHA256>`
+  (`packages/backend/core/pending-verification.ts`; key derived from `SUPABASE_SERVICE_ROLE_KEY`
+  under a fixed label). The poll answers only for that user id, from GoTrue's `email_confirmed_at`
+  (`auth.admin.getUserById`). No cookie, a forged, foreign or expired one, and a still-pending
+  account all receive the identical `{ verified: false }`, and every poll is rate-limited (30 a
+  minute per pending account, else per client address; 429). The poll never signs anyone in: a
+  confirmed answer carries `signedIn` (whether the request holds a session), so the page continues
+  in, or shows "Email confirmed — sign in" when the link was opened on another device. Resend and
+  forgot-password were already uniform.
 - **Extensibility:** The architecture must be built to support a unified integration model later. As
   traction builds, the platform will expand to include Microsoft (Azure AD), GitHub, and Apple SSO.
 - **Database Sync:** A Supabase trigger automatically creates a corresponding public `users` profile
@@ -2163,6 +2216,24 @@ PostgreSQL RLS.
   sign-in address is still confirmed by GoTrue (`public.handle_email_confirmed`). The link leaves
   through `packages/backend/services/mail/verification-mailer.ts` — see the Environment Variable
   Contract for its no-transport behaviour.
+- **Age guardrails are enforced in Postgres (Decision #190).** PRODUCT_SPEC §Age guardrails holds on
+  every path, not only `/join`: `public.provision_user_profile` runs `org.fn_check_dob` before any
+  write, so an under-13 date of birth is refused (`PM422`) whether it arrives through
+  `POST /api/auth/join`, a direct GoTrue sign-up (`handle_new_user` aborts the sign-up) or
+  `public.complete_onboarding`, and `trg_users_public_dob_guard` + `users_public_dob_check` keep
+  every later `dob` plausible. The 13–17 **restriction is derived, never stored**:
+  `org.fn_is_minor(uid)` reads `dob` at every call, so it lifts on the 18th birthday with nothing to
+  run. One gate, `org.fn_assert_adult`, raises `PM403` in every buy/sell door — become-partner,
+  apply, accept (the applicant), ticket assignment, listing publish (a trigger on
+  `catalogue.listings`), wallet and on-account orders, card payments, `fund_*` and payouts. The
+  access-token hook stamps `active_context.isRestricted` (`UserContext.restricted`, chrome only).
+  The API routes mirror the gate with `refuseIfRestricted` (`apps/web/utils/age-gate.ts`) and the
+  services map `PM403` through `packages/backend/core/age-gate.ts`, so both answer the same 403
+  (`RESTRICTED_REFUSAL`, reason `age_restricted`). The `/join` body is the
+  `@projective/types/auth` `JoinSchema`, which refuses an under-13 or implausible `dob` with the
+  form's own copy; a client-sent `restricted` flag is stripped and never read. The Dev Context
+  Switcher's **Age** axis drives the mirror through the `pj.dev.age` cookie, honoured only when
+  `DENO_ENV` is `development`.
 
 ---
 
@@ -2436,6 +2507,27 @@ incorrect API flows.
   applying anything. Both update the `transactions` ledger, the verification caches and
   `finance.chargebacks`. Reconciliation compares the Stripe balance against the internal escrow pool
   (and `finance.v_wallet_reconciliation` checks ledger self-consistency).
+- **Ledger integrity (Decision #186):** `finance.transactions` is the record and is **append-only
+  for every role**: a trigger refuses `UPDATE`, `DELETE` and `TRUNCATE` (`PL403`) even for the
+  table owner and the service role (which holds only `SELECT` + `INSERT`), `wallet_id` is
+  `ON DELETE RESTRICT`, and a correction is a compensating row. `finance.wallets.balance_cents` is a
+  cache written beside the ledger by `fn_wallet_credit` / `fn_wallet_debit` only, and both
+  **raise `PW404`** when the wallet is missing rather than returning, so a credit can never vanish:
+  a webhook settlement that hits it rolls back with its event claim, answers 5xx and is redelivered by
+  Stripe. Callers that may pay an owner for the first time run `fn_ensure_wallet` first.
+  `finance.fn_reconcile_wallets()` (service role, pg_cron `finance-reconcile-wallets` nightly at
+  03:40 UTC) compares each cache with the ledger sum and the newest `balance_after_cents`, writes one
+  `ops.log_entries` `error` row per drifted wallet (`scope = 'finance.reconcile_wallets'`) and never
+  corrects anything. Proven by `supabase/probes/ledger_immutability.sql`.
+- **The pending window (Decision #191):** earned credits (escrow releases and their team splits,
+  fair-exit and seat payouts, product sales) go through `finance.fn_wallet_credit_pending`, which
+  writes a `finance.pending_releases` row and no ledger line; `finance.fn_mature_pending_releases()`
+  (service role, pg_cron `finance-mature-pending-releases` hourly at :05, `SKIP LOCKED` batches)
+  credits each matured row through `fn_wallet_credit`. `balance_cents` is Available only, so every
+  spend door and `begin_payout` use Available money, and the reconciliation above still holds. A lost
+  chargeback recovers from the payer wallet's pending rows first (`fn_recover_from_pending`). The
+  wallet overview reads Pending as `amount_cents − recovered_cents` (`services/finance/pending-window.ts`).
+  Proven by `supabase/probes/pending_window.sql`.
 
 #### 1.1 What is implemented (Phase 1, 2026-09-29 — Decision #125)
 

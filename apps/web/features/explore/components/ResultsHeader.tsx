@@ -10,6 +10,8 @@ import {
 	type SearchScope,
 	searchScopeLabel,
 } from "@features/marketing/core/landing-data.ts";
+import { isFocusSearchShortcut } from "@features/shell/core/shortcuts.ts";
+import { useSearchShortcut } from "@features/shell/hooks/useSearchShortcut.ts";
 import SearchSuggest from "../islands/SearchSuggest.island.tsx";
 import type { ExploreCategory } from "../types/explore-types.ts";
 
@@ -24,7 +26,8 @@ function scopeOf(category: ExploreCategory): SearchScope {
  * (`site-header__search`: a fused scope selector → the field → a submit glyph, plus a clear control
  * once something is typed), and a minimal row of clickable "Related" search tags. The scope
  * vocabulary is the shared `SEARCH_SCOPES`, so the two bars offer the same choices and the results
- * page can re-scope in place. The field is the shared `SearchSuggest` typeahead. Presentational —
+ * page can re-scope in place. The field is the shared `SearchSuggest` typeahead; `/` focuses it from
+ * anywhere on the page outside a field. Presentational —
  * the parent island owns the query state; `onSearch` re-runs the search with a term + scope (Enter,
  * a suggestion, a scope pick, or the clear control), and `onRelated` re-runs it for a tag.
  */
@@ -45,6 +48,8 @@ export function ResultsHeader(
 	const menuOpen = useSignal(false);
 	const optionRefs = useRef<Array<HTMLLIElement | null>>([]);
 	const formRef = useRef<HTMLFormElement>(null);
+
+	useSearchShortcut({ scopeRef: formRef, matches: isFocusSearchShortcut });
 
 	useEffect(() => {
 		draft.value = query;

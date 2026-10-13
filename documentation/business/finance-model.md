@@ -209,9 +209,17 @@ Projective uses a tiered ledger, not a single monolithic wallet:
 > wallet's **Available** balance is currently _materialised_ (`finance.wallets.balance_cents`,
 > maintained alongside `finance.transactions.balance_after_cents`) — a per-wallet single-entry
 > running ledger, not derived double-entry, and the 7-day `pending` window + `on_hold` state are
-> additive (`20260723094000`). Escrow release presently credits **Available** directly; wiring the
-> ledger to credit `pending` → sweep to `available` after 7 days is a follow-up (root `CLAUDE.md`
-> §8).
+> additive (`20260723094000`). **The pending window is enforced (Decision #191):** an escrow release —
+> and each team share, finder fee and vault cut of one — a fair-exit or seat payout, and a **product
+> sale** write a `finance.pending_releases` row instead of crediting the wallet; an hourly sweep
+> (`finance.fn_mature_pending_releases`) credits Available, with its ledger line, once
+> `pending_release_days` have passed. `balance_cents` is therefore Available only, and pending money
+> can be **neither withdrawn nor spent** on the platform until it clears. **Top-ups are not held**: a
+> card payment is the payer's own money and is spent from the wallet the moment it settles (PRODUCT_SPEC
+> §5); refunds, transfers and returned payouts are immediate too. A lost card chargeback recovers from
+> the **payer's** wallet — its pending money first, then Available; a freelancer's earnings are not
+> clawed back (Decision #126's flag stays open). `on_hold` (a dispute freezing money mid-window) is not
+> wired yet.
 
 **Worked example — £1,000 stage approval with a 10% team vault cut:**
 
@@ -390,7 +398,9 @@ Governs shared wallets (Business / Team / Organisation).
   (`reason ∈ refund | chargeback | escrow_refund | fair_exit_refund`); the chargeback **case**
   (Stripe dispute) is tracked in `finance.chargebacks`.
 - **Reconciliation:** internal self-consistency via `finance.v_wallet_reconciliation` (materialised
-  balance vs ledger sum → `drift_cents` must be 0); external Stripe-balance-vs-escrow-pool
+  balance vs ledger sum → `drift_cents` must be 0), checked nightly with the running balance by
+  `finance.fn_reconcile_wallets`, which reports drift to ops and never corrects it; the ledger itself
+  is append-only (Decision #186); external Stripe-balance-vs-escrow-pool
   reconciliation is an ops job (`SYSTEM_ARCHITECTURE.md` §Integration Blueprints).
 - **Idempotency** (`finance.idempotency_keys`): every money-mutating request presents a key; a retry
   replays the stored response rather than re-executing — retries **never double-move money**.
@@ -512,6 +522,12 @@ with its `minimum_volume_cents` commitment and `contract_ref`.
 
 Keeping the flex in a contract table rather than a plan entitlement means the fee can never drift
 downward as a silent side effect of someone upgrading a subscription.
+
+**Whose rate, and how it rounds (Decision #187).** The rate is always the **payer's**: an escrow
+release charges the escrow's payer's effective rate, and a wallet product sale charges the buying
+account's, deducted from each seller's credit. The fee is computed in integer minor units and
+**truncated**: `fee = ⌊amount × bp / 10000⌋` (5% of 1,050 is 52, never 53). Every preview (checkout,
+team-split projection) uses the same rate and the same rule, so a previewed fee is the charged fee.
 
 ### 16.5 What the platform deliberately does not do
 

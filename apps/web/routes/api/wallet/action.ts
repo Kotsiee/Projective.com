@@ -2,6 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { WalletActionRequestSchema } from "@projective/types/finance";
 import { readActor } from "@web/utils/api-session.ts";
+import { refuseIfRestricted } from "@web/utils/age-gate.ts";
 import { invalidFields } from "@web/utils/service-response.ts";
 import { toWalletResponse } from "@features/wallet/core/respond.ts";
 import { walletQueryFrom } from "@features/wallet/core/wallet-model.ts";
@@ -15,6 +16,8 @@ import { WalletBackendService } from "@server/services/finance/WalletBackendServ
  * themselves, the settings through `finance.*` RLS. This route only parses, validates and forwards —
  * it holds no money logic and no capability guard of its own.
  */
+const AGE_GATED_ACTIONS: ReadonlySet<string> = new Set(["top_up", "withdraw", "fund_escrow"]);
+
 export const handler = define.handlers({
 	async POST(ctx) {
 		const body = await ctx.req.json().catch(() => null) as Record<string, unknown> | null;
@@ -33,6 +36,10 @@ export const handler = define.handlers({
 			);
 			if (unknown) return Response.json({ ok: false, message: "Unknown action." }, { status: 400 });
 			return invalidFields(parsed.error.issues);
+		}
+		if (AGE_GATED_ACTIONS.has(parsed.data.action)) {
+			const restricted = refuseIfRestricted(ctx.req, ctx.state.userContext);
+			if (restricted) return restricted;
 		}
 
 		// The refreshed Overview each action answers with is drawn in the currency the caller is viewing.

@@ -2,6 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
 import { WithdrawInputSchema } from "@projective/types/finance";
 import { readActor } from "@web/utils/api-session.ts";
+import { refuseIfRestricted } from "@web/utils/age-gate.ts";
 import { toFieldErrors, toWalletResponse } from "@features/wallet/core/respond.ts";
 import { walletQueryFrom } from "@features/wallet/core/wallet-model.ts";
 import { WalletBackendService } from "@server/services/finance/WalletBackendService.ts";
@@ -29,6 +30,8 @@ export const handler = define.handlers({
 		if (!actor.userId) {
 			return Response.json({ ok: false, message: "Sign in to withdraw." }, { status: 401 });
 		}
+		const restricted = refuseIfRestricted(ctx.req, ctx.state.userContext);
+		if (restricted) return restricted;
 		const body = await ctx.req.json().catch(() => null);
 		const parsed = WithdrawInputSchema.safeParse(body);
 		if (!parsed.success) {

@@ -3,11 +3,13 @@ import { type Signal, useSignal } from "@preact/signals";
 import { useRef } from "preact/hooks";
 import type { AssetItem, ChatMessage } from "../types/projects-types.ts";
 import {
+	attachmentGallery,
 	attachmentItems,
 	type ChatFeedScope,
 	chatPreviewContext,
 } from "../core/chat-attachments.ts";
 import { AttachmentPreviewModal } from "./AttachmentPreviewModal.tsx";
+import { ChatImageLightbox } from "./ChatImageLightbox.tsx";
 import { toggleSaved } from "@features/saved/core/saved-state.ts";
 
 /** One request to preview a message's attachments. */
@@ -35,10 +37,11 @@ export interface ChatAttachmentPreviewProps {
 const UNKNOWN_VIEWER = "viewer";
 
 /**
- * ChatAttachmentPreview — the file preview a chat feed opens from a bubble's tiles: the message's
- * attachments as one group, its sender and text as the source the side panel paints at once, and
- * "Go to message" as a jump inside the same feed. Renames and stars are kept for the session, as the
- * file explorer keeps them.
+ * ChatAttachmentPreview — the file preview a chat feed opens from a bubble's tiles. A message of two
+ * or more pictures and nothing else opens the shared media lightbox; any other opens the file modal:
+ * the message's attachments as one group, its sender and text as the source the side panel paints
+ * at once, and "Go to message" as a jump inside the same feed. Renames and stars are kept for the
+ * session, as the file explorer keeps them.
  */
 export function ChatAttachmentPreview(
 	{ request, messages, scope, onGoToMessage }: ChatAttachmentPreviewProps,
@@ -53,6 +56,19 @@ export function ChatAttachmentPreview(
 	if (!shown) return null;
 
 	const message = messages.find((m) => m.id === shown.messageId);
+	const gallery = message ? attachmentGallery(message) : null;
+	if (message && gallery) {
+		return (
+			<ChatImageLightbox
+				key={`${shown.messageId}:${shown.index}`}
+				request={request}
+				gallery={gallery}
+				startIndex={shown.index}
+				title={`${message.sender?.name ?? "Message"} — attachments`}
+			/>
+		);
+	}
+
 	const files: AssetItem[] = message
 		? attachmentItems(message, scope).map((file) => ({
 			...file,

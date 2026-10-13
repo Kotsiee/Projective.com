@@ -9,6 +9,7 @@ import {
 import { CheckoutBackendService } from "@server/services/finance/CheckoutBackendService.ts";
 import { basketQueryFromBody } from "@server/services/finance/basket-query.ts";
 import { readActor } from "@web/utils/api-session.ts";
+import { refuseIfRestricted } from "@web/utils/age-gate.ts";
 
 /**
  * `POST /api/checkout/create` — charge a checkout ({@link CreateCheckoutSchema}).
@@ -29,6 +30,8 @@ import { readActor } from "@web/utils/api-session.ts";
  */
 export const handler = define.handlers({
 	async POST(ctx) {
+		const restricted = refuseIfRestricted(ctx.req, ctx.state.userContext);
+		if (restricted) return restricted;
 		const context = asAuthenticatedContext(ctx.state.userContext);
 		const raw = await ctx.req.json().catch(() => null);
 		if (raw === null || typeof raw !== "object") return malformedBody();

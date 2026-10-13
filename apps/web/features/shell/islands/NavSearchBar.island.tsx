@@ -3,6 +3,8 @@ import { useEffect, useRef } from "preact/hooks";
 import "@web/features/shell/styles/user-shell.css";
 import SearchSuggest from "@features/explore/islands/SearchSuggest.island.tsx";
 import { recordSearch } from "@features/explore/core/search-history.ts";
+import { isFocusHeaderSearchShortcut } from "@web/features/shell/core/shortcuts.ts";
+import { useSearchShortcut } from "@web/features/shell/hooks/useSearchShortcut.ts";
 import { useDismiss, useEdgeDetection, useOverlayStack } from "@projective/ui/hooks";
 import { BodyPortal } from "@projective/ui/overlay";
 import {
@@ -20,8 +22,8 @@ import {
  * so the authenticated shell's discovery search reads exactly as the guest's. The scope vocabulary is
  * shared via `landing-data`, so selector + `/explore?category=` navigation stay in lockstep with the
  * guest header; submitting or picking a scope is a real navigation to `/explore`, so the server
- * re-renders the correct results layout. The field is the shared `SearchSuggest` typeahead. Dumb
- * island — routes only, no data access.
+ * re-renders the correct results layout. The field is the shared `SearchSuggest` typeahead, focused
+ * from anywhere by Ctrl+/ (Cmd+/ on macOS). Dumb island — routes only, no data access.
  */
 
 /** The guest header's filled magnifier path — reused verbatim so the submit glyph matches 1:1. */
@@ -38,6 +40,8 @@ export default function NavSearchBar() {
 	const menuOpen = useSignal(false);
 	const query = useSignal("");
 	const formRef = useRef<HTMLFormElement>(null);
+
+	useSearchShortcut({ scopeRef: formRef, matches: isFocusHeaderSearchShortcut, fromFields: true });
 
 	// Reflect the active /explore search when the shell renders over the results page.
 	useEffect(() => {

@@ -415,14 +415,37 @@ $$;
 -- 'open_pull' mode; every other mode routes work through the owner/system RPCs below. Capacity is
 -- always enforced. Returns the held escrow's id, or NULL when the hold was refused: the claim did not
 -- happen and the ticket is now Needs funding (fn_assign_ticket_core, Decision #165).
+--
+-- A self-claim only: the caller must be signed in, be the assignee, and have access to the ticket's
+-- project, because the claim takes an escrow hold on the client's wallet. Pinning someone else is
+-- projects.assign_ticket_manual (review authority).
 CREATE OR REPLACE FUNCTION projects.claim_ticket(p_ticket_id uuid, p_assignee_id uuid)
 RETURNS uuid AS $$
 DECLARE
-    v_stage uuid;
-    v_mode  projects.assignment_routing_mode;
+    v_actor   uuid := auth.uid();
+    v_project uuid;
+    v_stage   uuid;
+    v_mode    projects.assignment_routing_mode;
 BEGIN
-    SELECT current_stage_id INTO v_stage FROM projects.tickets WHERE id = p_ticket_id;
-    IF FOUND AND v_stage IS NOT NULL THEN
+    IF v_actor IS NULL THEN
+        RAISE EXCEPTION 'Sign in to claim a ticket.' USING ERRCODE = '42501';
+    END IF;
+
+    IF p_assignee_id IS DISTINCT FROM v_actor THEN
+        RAISE EXCEPTION 'You can only claim a ticket for yourself; the project owner assigns it to anyone else.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    SELECT project_id, current_stage_id INTO v_project, v_stage FROM projects.tickets WHERE id = p_ticket_id;
+    IF v_project IS NULL THEN
+        RAISE EXCEPTION 'Ticket % not found.', p_ticket_id USING ERRCODE = 'no_data_found';
+    END IF;
+
+    IF NOT projects.has_project_access(v_project) THEN
+        RAISE EXCEPTION 'You are not a participant of this project.' USING ERRCODE = '42501';
+    END IF;
+
+    IF v_stage IS NOT NULL THEN
         SELECT assignment_mode INTO v_mode FROM projects.project_stages WHERE id = v_stage;
     END IF;
     v_mode := COALESCE(v_mode, 'open_pull'::projects.assignment_routing_mode);

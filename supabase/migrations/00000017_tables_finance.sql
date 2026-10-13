@@ -37,9 +37,12 @@ CREATE TABLE finance.wallets (
     )
 );
 
+-- Append-only (Decision #186): trg_transactions_append_only (00001830) refuses UPDATE, DELETE and
+-- TRUNCATE for every role, so a correction is a compensating row, never an edit. RESTRICT, not
+-- CASCADE: a wallet that has ledger history is never hard-deleted.
 CREATE TABLE finance.transactions (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
-    wallet_id uuid NOT NULL REFERENCES finance.wallets (id) ON DELETE CASCADE,
+    wallet_id uuid NOT NULL REFERENCES finance.wallets (id) ON DELETE RESTRICT,
     direction text NOT NULL CHECK (
         direction IN ('credit', 'debit')
     ),
@@ -84,6 +87,11 @@ CREATE TABLE finance.escrows (
     -- membership, against the cohort's stage. RESTRICT: a seat with money behind it is cancelled,
     -- never removed. A ticket escrow and a seat escrow are different subjects (ck_escrows_one_subject).
     cohort_membership_id uuid REFERENCES projects.cohort_memberships (id) ON DELETE RESTRICT,
+    -- The paid revision round this escrow pays for (Decision #167), written by fn_hold_revision_escrow.
+    -- A round's escrow sits beside its ticket's base escrow, and this is what tells the two apart: NULL
+    -- is the base escrow, of which a ticket holds at most one (uq_escrows_ticket_base_held, #189).
+    -- RESTRICT: a round with money behind it is never removed.
+    revision_id uuid REFERENCES projects.stage_revision_requests (id) ON DELETE RESTRICT,
     -- The payer is EITHER a client business OR an individual client (a project with no
     -- client_business_id is paid for by its owner, PRODUCT_SPEC §Escrow, Wallets & Finance #5: an
     -- individual client needs no business profile). Exactly one is set (ck_escrows_one_payer); the
@@ -450,18 +458,6 @@ CREATE TABLE finance.ledger_audit (
 -- #endregion
 
 -- #region Statements & settlement (20260723094000)
-CREATE TABLE finance.pending_releases (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
-    escrow_id uuid NOT NULL REFERENCES finance.escrows (id) ON DELETE CASCADE,
-    wallet_id uuid NOT NULL REFERENCES finance.wallets (id) ON DELETE CASCADE,
-    amount_cents bigint NOT NULL CHECK (amount_cents > 0),
-    currency char(3) NOT NULL,
-    released_at timestamptz NOT NULL DEFAULT now(),
-    available_at timestamptz NOT NULL,           -- released_at + pending_release_days
-    state finance.fund_state NOT NULL DEFAULT 'pending',
-    created_at timestamptz NOT NULL DEFAULT now()
-);
-
 -- The EXECUTION log for money leaving the platform, and the only table that can hold a payout
 -- that has not arrived.
 --
@@ -1044,6 +1040,48 @@ CREATE TABLE finance.buyer_details (
     -- One record per identity per owner. The buyer edits it in place; there is no history here,
     -- because the version that mattered for a given purchase is snapshotted onto the order.
     CONSTRAINT uq_buyer_details_owner_context UNIQUE (owner_type, owner_id, context_id)
+);
+-- #endregion
+
+-- #region The pending window — earned money clearing to Available (finance-model.md §7, Decision #191)
+-- One earned credit inside its safety window. An escrow release (and each team share, finder fee and
+-- vault cut of one), a fair-exit payout, a seat release and a product sale write a row here INSTEAD of
+-- crediting the wallet; finance.fn_mature_pending_releases credits the wallet once `available_at`
+-- passes, writing the ledger row then. So `finance.wallets.balance_cents` stays the Available balance
+-- and still equals the ledger sum, and Pending is the sum of `amount_cents - recovered_cents` over
+-- this wallet's `state = 'pending'` rows.
+--
+-- Keyed to its SOURCE by a typed foreign key, exactly one of them: the escrow it was released from,
+-- or the order whose sale earned it.
+--
+-- `state` is where the row stands: `pending` inside the window, `available` once closed — matured
+-- (`transaction_id` names the credit) or fully recovered by a lost chargeback (`recovered_cents =
+-- amount_cents`, no credit). `on_hold` is reserved for a dispute freezing a release mid-window.
+CREATE TABLE finance.pending_releases (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    escrow_id uuid REFERENCES finance.escrows (id) ON DELETE RESTRICT,
+    order_id uuid REFERENCES finance.orders (id) ON DELETE RESTRICT,
+    wallet_id uuid NOT NULL REFERENCES finance.wallets (id) ON DELETE RESTRICT,
+    -- The ledger reason the maturing credit is written with (`escrow_release`, `team_split`, `product_sale` …),
+    -- so a matured release reads exactly as an immediate credit always did.
+    reason text NOT NULL,
+    amount_cents bigint NOT NULL CHECK (amount_cents > 0),
+    -- Taken back by a lost chargeback against this wallet before the row matured; the sweep credits the rest.
+    recovered_cents bigint NOT NULL DEFAULT 0,
+    currency char(3) NOT NULL,
+    released_at timestamptz NOT NULL DEFAULT now(),
+    available_at timestamptz NOT NULL,           -- released_at + pending_release_days
+    state finance.fund_state NOT NULL DEFAULT 'pending',
+    matured_at timestamptz,
+    transaction_id uuid REFERENCES finance.transactions (id) ON DELETE RESTRICT,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_pending_releases_one_source CHECK (num_nonnulls (escrow_id, order_id) = 1),
+    CONSTRAINT ck_pending_releases_recovered CHECK (recovered_cents BETWEEN 0 AND amount_cents),
+    CONSTRAINT ck_pending_releases_window CHECK (available_at >= released_at),
+    CONSTRAINT ck_pending_releases_closed CHECK (
+        (state = 'available') = (matured_at IS NOT NULL)
+        AND (transaction_id IS NULL OR state = 'available')
+    )
 );
 -- #endregion
 

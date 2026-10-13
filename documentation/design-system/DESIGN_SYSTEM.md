@@ -1265,11 +1265,11 @@ non-fill weights above, named for the jobs the matrix reserves them for.
 
 | Tier                                   | Fill · ink                                                                                                  | Shape                                              | Use for                                                                   | Examples                                                                                                         |
 | :------------------------------------- | :---------------------------------------------------------------------------------------------------------- | :------------------------------------------------- | :------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------- |
-| **1. Terminal financial / conversion** | `severity="accent"` (Button-only, `filled` only): solid `--accent` · `--on-accent` (§A.1.2)                 | pill — `rounded` (`--radius-full`)                 | A commit inside a financial / conversion flow, or the act that starts one | Checkout Pay / Place Order and every checkout commit · profile hero Hire · Fund Escrow                           |
-| **2. Primary structural commitment**   | monochrome inverted: solid `--on-surface` · `--surface` ink (§D.7.7)                                        | per surface (§D.7.7: pill)                         | Commits to structure, not money                                           | Add to project · primary creation triggers (Create project, `LaneCreateButton`)                                  |
-| **3. Brand primary**                   | `severity="primary"`: solid `--primary` · mode-invariant `--on-primary`                                     | the radius ramp (B.8.4)                            | Major navigation active states (§B.4.2), core workflow commits            | Save photo · Attach Selected                                                                                     |
+| **1. Terminal financial / conversion** | `severity="accent"` (Button-only, `filled` only): solid `--accent` · `--on-accent` (§A.1.2)                 | pill — `rounded` (`--radius-full`)                 | A commit inside a financial / conversion flow, or the act that starts one | Checkout Pay / Place Order and every checkout commit · the entity-view lane's money verb (Buy now · Book session · Reserve seat) · Fund Escrow |
+| **2. Primary structural commitment**   | monochrome inverted: solid `--on-surface` · `--surface` ink (§D.7.7)                                        | per surface (§D.7.7: pill)                         | Commits to structure, not money                                           | Add to project · the entity-view lane's Add to basket · primary creation triggers (Create project, `LaneCreateButton`) |
+| **3. Brand primary**                   | `severity="primary"`: solid `--primary` · mode-invariant `--on-primary`                                     | the radius ramp (B.8.4)                            | Major navigation active states (§B.4.2), core workflow commits            | Save photo · Attach Selected · profile hero Hire (Decision #183)                                                 |
 | **4. Neutral outlined**                | `severity="neutral" variant="outlined"` (Button-only): border `var(--hairline-strong)` · `--on-surface` ink | the radius ramp; icon-only may be a circle (B.8.4) | Utility actions — **mandatory** for them                                  | Asset-picker Upload · Show more · Try again · profile media upload · profile Message · Follow · Settings · Share |
-| **5. Ghost / bare**                    | `text`: transparent · a subtle tonal hover lift                                                             | the radius ramp                                    | Secondary toolbar tools, escape hatches                                   | Toolbar verbs · Cancel · the basket footer's Checkout pill (B.8.4)                                               |
+| **5. Ghost / bare**                    | `text`: transparent · a subtle tonal hover lift                                                             | the radius ramp                                    | Secondary toolbar tools, escape hatches                                   | Toolbar verbs · Cancel · the basket footer's Checkout pill (B.8.4) · a drawer header's icon-only Save / Share beside Close (Decision #182)                                               |
 
 Tier 2 has no severity of its own: it is the §D.7.7 override `--btn-accent: var(--on-surface);
 --btn-on: var(--surface)` on a `filled` Button, which swaps sides with the theme by construction.
@@ -1279,7 +1279,9 @@ navigation and workflow voice. That is what makes tier 1 safe beside tier 2 (B.8
 
 **The tier-1 test, stated once.** Tier 1 is **a commit inside a financial or conversion flow, or
 the act that starts one**: every commit of the checkout — Continue, Save details, the Add-card
-actions, Pay / Place Order (B.8.4) — the profile's Hire, which starts a hire, and Fund Escrow. It is
+actions, Pay / Place Order (B.8.4) — the entity-view lane's money verb, which starts a purchase, and
+Fund Escrow. The profile's Hire also starts a flow but is held at tier 3 by owner direction
+(Decision #183 flag (b)). It is
 never borrowed for a commit outside such a flow: an amber "Save" on a settings form teaches the
 reader that amber means nothing. Every other statement of tier 1's scope in this document, in
 `PRODUCT_SPEC.md` §Visual Identity and in the B.8 gate reads from this sentence. The narrower
@@ -1287,7 +1289,8 @@ reading — amber for the money-moving commit alone (Pay / Place Order, Fund Esc
 other commits in tier 2 — is open as Decision #157 flag (j); the docs follow the directive's
 "every checkout commit" until it is ruled.
 
-**Where tier 1 renders today.** Beyond the checkout (B.8.4) and the profile's Hire (§D.7.7):
+**Where tier 1 renders today.** Beyond the checkout (B.8.4) and the entity-view lane's money verb
+(§D.7.7):
 
 - the basket summary's **Proceed to Checkout** link (`bsk-summary__cta`) — the act that starts the
   checkout flow;
@@ -1351,11 +1354,11 @@ noise, and it makes the row's _content_ the least prominent thing in the row.
 > protect the reader's ability to rank the actions. Where a decision region genuinely holds a
 > terminal financial commit AND a structural commitment, the two may both be filled because the
 > matrix ranks them by **hue** — amber tier 1 against monochrome tier 2 — rather than by emphasis,
-> so the ranking survives. The canonical case is the profile action rig: **Hire** (amber accent)
-> beside **Add to project** (monochrome inverted). The entity view's conversion lane (monochrome
-> commit + teal basket) predates the matrix and is held as shipped, scoped to that lane, pending a
-> ruling (§D.7.7). Two fills of the SAME colour — or any two tiers other than the amber/monochrome
-> pair — is the case the cap was written for, and remains a finding.
+> so the ranking survives. The canonical case is the entity view's commerce lane: the **money
+> verb** (amber accent) beside **Add to basket** (monochrome inverted) (Decision #183). The profile
+> action rig's teal **Hire** beside monochrome **Add to project** is an owner-directed exception
+> scoped to `ProfileRig` (Decision #183 flag (a)), not a precedent. Two fills of the SAME colour — or
+> any other two tiers — is the case the cap was written for, and remains a finding.
 
 **Right** — `/checkout/payment` while a card step is pending (`cardStepPending`,
 `apps/web/features/checkout/core/card-step.ts`: a `requires_action` result carrying a payment
@@ -2317,7 +2320,9 @@ PrimeNG feature-parity, all type-check / lint / `deno fmt` clean:
   line with one underlined text action — the foot of a stalled list), Ribbon (the viewport-pinned
   bottom status strip for a session-wide fact, reserving `--ribbon-inset` for the pinned chrome
   beneath it while open), Toast (+`useToast`), the Dialog family (Dialog/DynamicDialog +
-  `useDialog`/ConfirmDialog/ConfirmPopup), Drawer (alias Sidebar, bottom-sheet under `--bp-md`),
+  `useDialog`/ConfirmDialog/ConfirmPopup), Drawer (alias Sidebar, bottom-sheet under `--bp-md`;
+  header `actions` at the start, icon-only `tools` before Close at its `--overlay-action-size` and
+  muted ink, and `initialFocusRef` focused itself — Decision #182),
   Tooltip, Popover (alias OverlayPanel), and the progress/placeholder set (ProgressBar/Spinner/Ring,
   Spinner/Loader, Skeleton).
 - **`overlay`** — Portal (in-tree fixed-layer, no `preact/compat`), BodyPortal (a real
@@ -3653,12 +3658,13 @@ buyer see the same offer in the same place. Its anatomy is fixed, top to bottom:
    (0.8125rem), `--text-secondary`** (`Orig. £76.99 GBP`). Two registers, one figure; never two
    equally-weighted numbers, which reads as two prices. A discount delta, where one applies, is a
    third line in Meta register carrying both the struck original and the saving — never a chip.
-3. **Primary CTA — one, full-width, INVERTED pill.** Its label is the archetype's actual verb:
-   **Buy now** · **Book session** · **Reserve seat** · **Fund Stage 1** · **Apply to project**. The
-   treatment is §D.7.7's monochrome fill, not `--primary` — held for the money verbs too, pending
-   the ruling recorded in §D.7.7 (Decision #157 flag (f)).
-4. **Secondary CTA — one, full-width, BRAND pill.** _Add to basket_. Solid `--primary`, same height
-   and radius as the primary, ranked below it by hue rather than by emphasis (§D.7.7).
+3. **Primary CTA — one, full-width pill.** Its label is the archetype's actual verb:
+   **Buy now** · **Book session** · **Reserve seat** · **Fund Stage 1** · **Apply to project**. A
+   money verb is tier 1 amber (`--accent` / `--on-accent`); _Apply to project_ is teal (§D.7.7,
+   Decision #183).
+4. **Secondary CTA — one, full-width, MONOCHROME pill.** _Add to basket_. Solid `--on-surface` on
+   `--surface`, same height and radius as the primary, ranked below it by hue rather than by emphasis
+   (§D.7.7).
 5. **Tertiary — one ghost action, and only ever this one.** _Message seller_, with its glyph. This is
    the single sanctioned exception to item 1's "secondary actions live in the kebab", and the reason
    is specific rather than general: every other kebab action is something the buyer does INSTEAD of
@@ -3788,33 +3794,34 @@ Button Interaction Matrix (§B.8.1, Decision #157) is stated per control:
 
 | Rig                                | Control                                                                 | Tier (§B.8.1)                         | Treatment                           |
 | :--------------------------------- | :---------------------------------------------------------------------- | :------------------------------------ | :---------------------------------- |
-| Profile hero + band (`ProfileRig`) | **Hire**                                                                | 1 · terminal conversion               | amber `--accent` pill               |
+| Profile hero + band (`ProfileRig`) | **Hire**                                                                | 3 · brand (Decision #183)             | teal `--primary` pill, white ink    |
 | Profile hero + band (`ProfileRig`) | **Add to project** — beside Hire or alone                               | 2 · structural commitment             | monochrome inverted pill            |
 | Profile hero + band (`ProfileRig`) | Seller rig: Message · Follow                                            | 4 · neutral outlined, icon-only       | `neutral` `outlined` circle         |
 | Profile hero + band (`ProfileRig`) | Buyer rig: Message · Follow                                             | 4 · neutral outlined                  | `neutral` `outlined` text pill      |
 | Profile hero + band (`ProfileRig`) | Owner rig: Settings (an `<a>`) · Share                                  | 4 · neutral outlined                  | `neutral` `outlined` pill           |
-| Entity-view lane (§D.7.2 item 3)   | Primary CTA, non-financial verb (_Apply to project_)                    | 2 · structural commitment             | monochrome inverted pill            |
-| Entity-view lane (§D.7.2 item 3)   | Primary CTA, money verb (_Buy now_ · _Book session_ · _Fund Stage 1_ …) | 1 by the matrix — **held as shipped** | monochrome inverted pill (flag (f)) |
-| Entity-view lane (§D.7.2 item 4)   | _Add to basket_                                                         | ranked below the primary by hue       | solid `--primary` pill              |
+| Entity-view lane (§D.7.2 item 3)   | Primary CTA, non-financial verb (_Apply to project_)                    | 3 · brand (Decision #183 flag (c))    | teal `--primary` pill               |
+| Entity-view lane (§D.7.2 item 3)   | Primary CTA, money verb (_Buy now_ · _Book session_ · _Fund Stage 1_ …) | 1 · terminal conversion               | amber `--accent` pill (`accent`)    |
+| Entity-view lane (§D.7.2 item 4)   | _Add to basket_                                                         | 2 · structural commitment             | monochrome inverted pill (`mono`)   |
 | Entity-view lane (§D.7.2 item 5)   | _Message seller_                                                        | 5 · ghost                             | `text`                              |
 
-The profile rig is the matrix's canonical two-fill case: amber Hire beside monochrome Add to
-project, ranked by hue (§B.8.2). Nothing on the profile rig is tier 3, and the buyer and owner rigs
-have no filled control at all — §B.8.2 caps fills at one and sets no minimum. The markup per tier:
-Hire is the bare `ui-button--accent ui-button--filled ui-button--rounded` class set on a native
-`<button>` (its `Popover` needs the ref `Button` does not forward), with no rig-local colour
-override; Add to project is `ui-button--primary ui-button--filled` plus `.pf-rig__cta--mono`, the
+The entity-view commerce lane is the matrix's canonical two-fill case: the amber money verb beside
+the monochrome Add to basket, ranked by hue (§B.8.2). The profile seller rig's teal Hire beside
+monochrome Add to project is an owner-directed exception scoped to `ProfileRig` (Decision #183
+flag (a)); the buyer and owner rigs have no filled control at all — §B.8.2 caps fills at one and
+sets no minimum. The markup per tier: Hire is the bare
+`ui-button--primary ui-button--filled ui-button--rounded` class set on a native `<button>` (its
+`Popover` needs the ref `Button` does not forward), with no rig-local colour override; Add to project is `ui-button--primary ui-button--filled` plus `.pf-rig__cta--mono`, the
 inverted override, wherever it renders; every tier-4 control is the shared
 `severity="neutral" variant="outlined"` preset (`ui-button--neutral ui-button--outlined` on the
 Settings anchor), the rig keeping only a muted ink for a pressed Follow
-(`.pf-rig__cta--neutral[aria-pressed="true"]`). The entity-view lane is not yet reconciled, and that is stated
-rather than resolved: the matrix puts a money verb in tier 1, but an amber primary beside the teal
-basket would be two fills that are not the amber/monochrome pair, and the matrix reserves teal for
-navigation and workflow commits, which _Add to basket_ is neither. Until a human rules
-(Decision #157 flag (f)), the lane renders as below — monochrome primary, teal basket — and is
-not a precedent for any other surface.
+(`.pf-rig__cta--neutral[aria-pressed="true"]`). The entity-view lane's tones are `CtaButton` /
+`CtaLink`'s `CtaTone`: `BookingCtaRig` passes `accent` to its primary (button and link forms alike)
+and `mono` to a `filled` Add to basket; each tone carries its own tonal ramp (`accent` the
+`.ui-button--accent` ramp toward `--on-scrim`, `mono` the `.pf-rig__cta--mono` ramp toward
+`--surface`) and withdraws the brand's border-channel hover. Every other `CtaButton` keeps the
+default teal `inverted` tone (Decision #183, resolving #157 flag (f)).
 
-The monochrome fill — the lane's primary, and the profile rig's Add to project — is **inverted**: the
+The monochrome fill — the lane's Add to basket, and the profile rig's Add to project — is **inverted**: the
 page's ink colour as its fill. Expressed as
 `--btn-accent: var(--on-surface); --btn-on: var(--surface)` — the inverted-surface idiom the system
 already has in `Tooltip` — the pair swaps sides with the theme by construction, so one declaration is
@@ -3824,9 +3831,9 @@ correct in both directions: near-white on near-black in light, near-black on nea
 **14.93:1** dark, and it *improves* under `data-contrast="high"` (~20:1 both), so it needs no
 accessibility carve-out and is unaffected by the colour-blindness overlays, being achromatic.
 
-**In the entity-view lane**, the secondary carries the brand teal, and **its ink is `--surface`
-too** — which is the whole trick. (The profile rig has no teal fill; its second fill is amber Hire
-on `--on-accent`, §A.1.2.)
+**Historical (pre-#183): in the entity-view lane**, the secondary carried the brand teal, and **its
+ink was `--surface` too**. (Since Decision #183 the lane's teal is gone and the profile's Hire is
+the teal fill, on the mode-invariant `--on-primary`.)
 Solid `--primary` with white text measures **5.38:1 in light** (correct, and literally white) but
 **3.75:1 in dark**, and the token pair `--on-primary` measures **3.57:1** there. Both then *collapse*
 under `data-contrast="high"` in dark — **2.52:1** and **1.75:1** — so the overlay meant to rescue
@@ -3858,12 +3865,12 @@ gain the step rather than each surface re-declaring it.
 
 > **§B.8.2 note.** Both rigs can render two solid fills (the profile's seller rig does; its buyer and
 > owner rigs render none), which the one-`filled`-per-decision-region cap
-> reads as a violation. The profile rig is the sanctioned case the matrix names: amber Hire against
-> monochrome Add to project, ranked by HUE rather than by emphasis, so the hierarchy a reader
-> perceives is intact — which is what the cap protects. The entity-view lane's monochrome commit
-> against a brand basket predates the matrix and is held as shipped, scoped to this lane, pending
-> Decision #157 flag (f). Neither generalises: two fills of the same colour, or any pair other
-> than amber + monochrome, remains a finding on every other surface.
+> reads as a violation. The entity-view lane is the sanctioned case the matrix names: the amber
+> money verb against the monochrome basket, ranked by HUE rather than by emphasis, so the hierarchy
+> a reader perceives is intact — which is what the cap protects. The profile rig's teal Hire against
+> monochrome Add to project is an owner-directed exception scoped to `ProfileRig` (Decision #183
+> flag (a)). Neither generalises: two fills of the same colour, or any pair other than amber +
+> monochrome, remains a finding on every other surface.
 
 **D.7.8 The canvas is content-first.**
 
@@ -3931,6 +3938,16 @@ it. The strip reserves its own height at SSR so a late-decoding image cannot shi
 audio or video artefact embeds `AudioVisualizer` or the `VideoPlayer` (`full`) **inside the same 16:10 box** —
 the box is the layout contract, the artefact is what fills it, so switching media type causes no
 reflow.
+
+Opening a still mounts the app's one media lightbox (`MediaLightbox`, `vw-lightbox`, its own
+`lightbox.css`; Decision #184), shared with the `/[handle]` showcase and chat messages of two or more
+images. It keeps only the embed container of the file modal (`.ins-embed`'s box: full viewport,
+`overflow: clip`, solid `--bg`), with no header and one floating Close. The picture fits, zooms
+and pans against the **viewport**, never inside a frame, through the inspector's `core/viewport.ts`.
+A bitmap is never upscaled to fit and never zoomed out past the fit. A click toggles fit ↔
+enlarged at the click point; wheel and pinch zoom at the pointer; a drag pans an enlarged picture and
+swipes the gallery while it is fitted. A bottom carousel (Previous · thumbnail strip with an
+`aria-current` ring · Next · `n / m`) is drawn only for two or more items.
 
 **D.8.1 Pipelines and multi-stage services.** The stage ledger is a **continuous vertical timeline
 track**: one hairline running the full height of the run, with each stage's step number in a small

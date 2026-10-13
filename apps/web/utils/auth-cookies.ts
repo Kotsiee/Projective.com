@@ -52,6 +52,21 @@ export function sessionSetCookies(tokens: SessionTokens): string[] {
 	];
 }
 
+/**
+ * The signed pending-verification cookie (Decision #185) that binds `/verify`'s confirmation poll to
+ * the browser that joined or signed in unconfirmed. Scoped to the auth API and `SameSite=Strict`: it
+ * is only ever sent by the poll's same-origin fetch.
+ */
+export const PENDING_VERIFICATION_COOKIE = "pj_pending_verification";
+
+/** Build the `Set-Cookie` string that stores a pending-verification token for `maxAge` seconds. */
+export function pendingVerificationSetCookie(token: string, maxAge: number): string {
+	const base = `${PENDING_VERIFICATION_COOKIE}=${
+		encodeURIComponent(token)
+	}; Path=/api/auth; HttpOnly; SameSite=Strict; Max-Age=${maxAge}`;
+	return isProduction() ? `${base}; Secure` : base;
+}
+
 /** Build the `Set-Cookie` strings that clear a session (sign-out). */
 export function sessionClearCookies(): string[] {
 	return [

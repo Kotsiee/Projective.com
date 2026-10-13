@@ -389,7 +389,7 @@ BEGIN
     ELSE
         v_wallet := finance.fn_person_wallet_type(r.payee_id);
         PERFORM finance.fn_ensure_wallet(v_wallet, r.payee_id, r.currency);
-        PERFORM finance.fn_wallet_credit(r.payee_id, v_wallet, r.currency, v_payout, p_reason, 'escrows', r.id);
+        PERFORM finance.fn_wallet_credit_pending(r.payee_id, v_wallet, r.currency, v_payout, p_reason, 'escrows', r.id);
     END IF;
     RETURN v_payout;
 END;

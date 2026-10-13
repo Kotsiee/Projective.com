@@ -9,8 +9,9 @@ import {
 	profileSignals,
 	relativeAge,
 	serviceTypeLabel,
+	subjectRating,
 } from "./card-signals.ts";
-import type { ProfileItem } from "../types/explore-types.ts";
+import type { ExploreItem, ProfileItem } from "../types/explore-types.ts";
 
 /**
  * The card family's derivation rules, pinned.
@@ -169,5 +170,20 @@ Deno.test("serviceTypeLabel reads naturally for every delivery model", () => {
 	assertEquals(serviceTypeLabel("Group Session"), "Group session");
 	// An unmapped model prints itself rather than an empty chip.
 	assertEquals(serviceTypeLabel("Retainer"), "Retainer");
+});
+// #endregion
+
+// #region Subject rating
+Deno.test("subjectRating reads a listing's own track and never its seller's client track", () => {
+	const helper = { value: 4.9, count: 31 };
+	const client = { value: 4.2, count: 8 };
+	const rated = (type: ExploreItem["type"], rating: ExploreItem["rating"]) =>
+		({ type, rating }) as ExploreItem;
+	assertEquals(subjectRating(rated("services", { asHelper: helper, asClient: client })), helper);
+	assertEquals(subjectRating(rated("services", { asClient: client })), null);
+	assertEquals(subjectRating(rated("products", { asHelper: helper })), helper);
+	assertEquals(subjectRating(rated("projects", { asHelper: helper, asClient: client })), client);
+	assertEquals(subjectRating(rated("freelancers", { asHelper: helper })), null);
+	assertEquals(subjectRating(rated("services", undefined)), null);
 });
 // #endregion

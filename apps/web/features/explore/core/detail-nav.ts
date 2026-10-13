@@ -1,4 +1,5 @@
-import type { ExploreItem, SearchPayload } from "../types/explore-types.ts";
+import { SEARCH_SCOPES } from "@features/marketing/core/landing-data.ts";
+import type { ExploreCategory, ExploreItem, SearchPayload } from "../types/explore-types.ts";
 
 /**
  * The Search Results detail drawer's address and reading order — pure and DOM-free, so the route
@@ -84,8 +85,64 @@ export function stepPosition(order: readonly ExploreItem[], id: string): StepPos
 	};
 }
 
-/** The modifier state a step key is read from. */
-export interface StepKeyEvent {
+/** The index `delta` items from `index`, clamped to the order's ends; `null` when it cannot move. */
+export function stepIndex(index: number, delta: number, total: number): number | null {
+	const next = Math.min(total - 1, Math.max(0, index + delta));
+	return next === index ? null : next;
+}
+// #endregion
+
+// #region Entity scopes
+/**
+ * The search scope an entity is browsed under: freelancers and teams share "Freelancers & Teams",
+ * people and businesses share "People & Businesses" (the backend's `CATEGORY_TYPES`).
+ */
+export function scopeOf(type: ExploreCategory): ExploreCategory {
+	if (type === "teams") return "freelancers";
+	if (type === "businesses") return "users";
+	return type;
+}
+
+/** The scopes the drawer browses, in the scope menu's order — articles never open here. */
+export const DRAWER_SCOPES: readonly ExploreCategory[] = SEARCH_SCOPES
+	.map((s) => s.value)
+	.filter((v) => v !== "all" && v !== "articles");
+
+/** The scope `dir` steps away from `category` in {@link DRAWER_SCOPES}, looping at either end. */
+export function adjacentScope(category: ExploreCategory, dir: -1 | 1): ExploreCategory {
+	const n = DRAWER_SCOPES.length;
+	const at = DRAWER_SCOPES.indexOf(scopeOf(category));
+	if (at === -1) return DRAWER_SCOPES[dir === 1 ? 0 : n - 1];
+	return DRAWER_SCOPES[(at + dir + n) % n];
+}
+
+/**
+ * The first item of the next (or previous) entity section in the reading order, looping past either
+ * end — the merged results' sections, in the order the page shows them. `null` when the order holds
+ * a single section, so the caller can switch the page's scope instead.
+ */
+export function sectionJumpTarget(
+	order: readonly ExploreItem[],
+	index: number,
+	dir: -1 | 1,
+): ExploreItem | null {
+	const starts: number[] = [];
+	order.forEach((it, i) => {
+		if (i === 0 || scopeOf(it.type) !== scopeOf(order[i - 1].type)) starts.push(i);
+	});
+	if (starts.length < 2) return null;
+	let current = 0;
+	for (let s = 0; s < starts.length; s++) if (starts[s] <= index) current = s;
+	return order[starts[(current + dir + starts.length) % starts.length]];
+}
+// #endregion
+
+// #region Keyboard
+/** Items `Shift` + an arrow skips. */
+export const DETAIL_JUMP = 5;
+
+/** The modifier state a drawer key is read from. */
+export interface DetailKeyEvent {
 	key: string;
 	altKey: boolean;
 	ctrlKey: boolean;
@@ -93,17 +150,38 @@ export interface StepKeyEvent {
 	shiftKey: boolean;
 }
 
+/** What a key press inside the open drawer asks for. */
+export type DetailKeyIntent =
+	| { kind: "step"; delta: number }
+	| { kind: "section"; dir: -1 | 1 }
+	| { kind: "scroll"; dir: -1 | 1 }
+	| { kind: "open" };
+
 /**
- * The step a key press asks for: `-1` previous, `1` next, `null` none. Arrow keys follow the reading
- * direction, so under `rtl` the left arrow moves forward. A modified press is the browser's or the
- * assistive technology's, never ours.
+ * The drawer action a key press asks for, or `null` when it is not the drawer's.
+ *
+ * `←`/`→` step one item and `Shift` skips {@link DETAIL_JUMP}; `Ctrl` or `Cmd` (exactly one) moves
+ * between entity sections. Arrows follow the reading direction, so under `rtl` the left arrow moves
+ * forward. `↑`/`↓` scroll and `Enter` opens the full page, both unmodified only. `Alt` is the
+ * browser's and the assistive technology's, never ours.
  */
-export function stepFromKey(e: StepKeyEvent, dir: "ltr" | "rtl" = "ltr"): -1 | 1 | null {
-	if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return null;
+export function detailKeyIntent(
+	e: DetailKeyEvent,
+	dir: "ltr" | "rtl" = "ltr",
+): DetailKeyIntent | null {
+	if (e.altKey || (e.ctrlKey && e.metaKey)) return null;
+	const command = e.ctrlKey || e.metaKey;
 	const forward = dir === "rtl" ? "ArrowLeft" : "ArrowRight";
 	const back = dir === "rtl" ? "ArrowRight" : "ArrowLeft";
-	if (e.key === forward) return 1;
-	if (e.key === back) return -1;
+	const sign = e.key === forward ? 1 : e.key === back ? -1 : 0;
+	if (sign !== 0) {
+		if (command) return e.shiftKey ? null : { kind: "section", dir: sign };
+		return { kind: "step", delta: sign * (e.shiftKey ? DETAIL_JUMP : 1) };
+	}
+	if (command || e.shiftKey) return null;
+	if (e.key === "ArrowDown") return { kind: "scroll", dir: 1 };
+	if (e.key === "ArrowUp") return { kind: "scroll", dir: -1 };
+	if (e.key === "Enter") return { kind: "open" };
 	return null;
 }
 // #endregion

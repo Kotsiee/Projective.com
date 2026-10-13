@@ -1,5 +1,6 @@
 import type { ServiceResult } from "@server/services/ServiceResult.ts";
-import { sessionSetCookies } from "@web/utils/auth-cookies.ts";
+import { pendingVerificationSetCookie, sessionSetCookies } from "@web/utils/auth-cookies.ts";
+import { PENDING_VERIFICATION_TTL_SECONDS } from "@server/services/auth/AuthBackendService.ts";
 import type { AuthResult } from "../types/mod.ts";
 
 /**
@@ -24,6 +25,12 @@ export function toAuthResponse<T extends object>(result: ServiceResult<T>): Resp
 		for (const cookie of sessionSetCookies(result.session)) {
 			res.headers.append("set-cookie", cookie);
 		}
+	}
+	if (result.pendingVerification) {
+		res.headers.append(
+			"set-cookie",
+			pendingVerificationSetCookie(result.pendingVerification, PENDING_VERIFICATION_TTL_SECONDS),
+		);
 	}
 	return res;
 }

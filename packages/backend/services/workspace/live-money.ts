@@ -78,6 +78,7 @@ export interface RawSplitPreview {
 	gross_minor: number | null;
 	currency: string | null;
 	fee_minor: number | null;
+	fee_bp?: number | null;
 	escrow_id?: string;
 	plan: {
 		payout_minor: number;

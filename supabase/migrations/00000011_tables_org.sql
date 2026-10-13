@@ -54,6 +54,11 @@ CREATE TABLE org.users_public (
     is_operator boolean NOT NULL DEFAULT false,
     CONSTRAINT users_public_pkey PRIMARY KEY (user_id),
     CONSTRAINT users_public_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+    -- The plausibility floor (Decision #190). `1900-01-01` is also the value account erasure writes
+    -- (org.fn_erase_account), so it must stay inside the range. "Not in the future" and the minimum
+    -- age depend on today's date, which a CHECK must not read, so org.trg_users_public_dob_guard holds
+    -- them (00001010 · 00001810).
+    CONSTRAINT users_public_dob_check CHECK (dob >= DATE '1900-01-01'),
     -- The profile's reach, and a closed vocabulary because three readers branch on it: the public
     -- directory view (org.profiles_index lists `public`, resolves `unlisted` by handle, omits the
     -- rest), the profile read (org.get_profile_view answers `private` to its owner alone) and the

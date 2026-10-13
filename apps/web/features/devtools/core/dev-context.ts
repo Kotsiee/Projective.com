@@ -22,6 +22,7 @@ import type { ProjectAccess, ProjectStatus } from "@projective/types/projects";
 import { encodeLandingSim, LANDING_SIM_COOKIE } from "@features/projects/core/landing-sim.ts";
 import { DISCOVERY_SIM_COOKIE, encodeDiscoverySim } from "@features/explore/core/discovery-sim.ts";
 import { EMBEDDINGS_OVERRIDE_COOKIE } from "@projective/types/explore";
+import { AGE_OVERRIDE_COOKIE } from "@projective/types/auth";
 import { logger } from "@web/utils/logger.ts";
 import { readStored, removeStored, SessionKeys, writeStored } from "@web/utils/storage-keys.ts";
 import {
@@ -47,6 +48,8 @@ import {
 	type DevDiscoveryViewer,
 	type DevDiscoveryActivity,
 	type DevEmbeddings,
+	type DevEmailConfirmation,
+	type DevAgeRestriction,
 	type DevSeamRole,
 	type DevServiceType,
 	type DevSessionBookingStatus,
@@ -102,6 +105,8 @@ export type {
 	DevDiscoveryViewer,
 	DevDiscoveryActivity,
 	DevEmbeddings,
+	DevEmailConfirmation,
+	DevAgeRestriction,
 };
 
 /** The full override set. `enabled` is the master switch — when off, {@link applyDevContext} is a pass-through. */
@@ -310,6 +315,18 @@ export interface DevOverrides {
 	 * `pj.dev.embeddings` cookie; otherwise flipping it means editing the environment and restarting.
 	 */
 	embeddings: DevEmbeddings;
+	/**
+	 * The `/verify` confirmation poll (Decision #185): the server's answer, or a substituted pending,
+	 * confirmed-without-session ("Email confirmed — sign in") or confirmed-and-signed-in answer. Its
+	 * own axis because confirming needs a real inbox and the stub backend never confirms.
+	 */
+	emailConfirmation: DevEmailConfirmation;
+	/**
+	 * The age guardrail (Decision #190): follow the token's `isRestricted` claim, act as a 13–17
+	 * account (every buy/sell route answers the age 403), or skip the routes' mirror so a real minor
+	 * meets the database's own refusal. Server-side, through the `pj.dev.age` cookie.
+	 */
+	ageRestriction: DevAgeRestriction;
 }
 
 /** Selectable option metadata for the switcher UI. */
@@ -362,6 +379,8 @@ export const DEV_DEFAULTS: DevOverrides = {
 	discoveryViewer: "auto",
 	discoveryActivity: "auto",
 	embeddings: "auto",
+	emailConfirmation: "auto",
+	ageRestriction: "auto",
 };
 
 /** Account-type options in display order. */
@@ -645,6 +664,21 @@ export const DEV_EMBEDDINGS: ReadonlyArray<DevOption<DevEmbeddings>> = [
 	{ value: "off", label: "Off" },
 ];
 
+/** `/verify` poll answers (Decision #185). `Server` asks the real endpoint. */
+export const DEV_EMAIL_CONFIRMATIONS: ReadonlyArray<DevOption<DevEmailConfirmation>> = [
+	{ value: "auto", label: "Server" },
+	{ value: "pending", label: "Pending" },
+	{ value: "confirmed", label: "Confirmed" },
+	{ value: "confirmed_signed_in", label: "Signed in" },
+];
+
+/** Age guardrail positions (Decision #190). `Token` follows the session's `isRestricted` claim. */
+export const DEV_AGE_RESTRICTIONS: ReadonlyArray<DevOption<DevAgeRestriction>> = [
+	{ value: "auto", label: "Token" },
+	{ value: "minor", label: "Minor (13–17)" },
+	{ value: "adult", label: "Adult" },
+];
+
 // #endregion
 
 // #region Store
@@ -755,6 +789,11 @@ function reflect(next: DevOverrides): void {
 		} else delete root.dataset.devDiscoveryActivity;
 		if (next.embeddings !== "auto") root.dataset.devEmbeddings = next.embeddings;
 		else delete root.dataset.devEmbeddings;
+		if (next.emailConfirmation !== "auto") {
+			root.dataset.devEmailConfirmation = next.emailConfirmation;
+		} else delete root.dataset.devEmailConfirmation;
+		if (next.ageRestriction !== "auto") root.dataset.devAgeRestriction = next.ageRestriction;
+		else delete root.dataset.devAgeRestriction;
 		root.dataset.devDirection = next.layoutDirection;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
 		// properties everywhere mean the shell and every surface mirror to the opposite edge.
@@ -800,6 +839,8 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devDiscoveryViewer;
 		delete root.dataset.devDiscoveryActivity;
 		delete root.dataset.devEmbeddings;
+		delete root.dataset.devEmailConfirmation;
+		delete root.dataset.devAgeRestriction;
 		delete root.dataset.devDirection;
 		// Restore the document's natural direction (the pref-driven default, LtR here).
 		root.removeAttribute("dir");
@@ -807,7 +848,18 @@ function reflect(next: DevOverrides): void {
 	writeLandingCookie(next);
 	writeDiscoveryCookie(next);
 	writeEmbeddingsCookie(next);
+	writeAgeCookie(next);
 	globalThis.dispatchEvent?.(new CustomEvent(DEV_SEAM_EVENT, { detail: next }));
+}
+
+/**
+ * Mirror the age axis into the `pj.dev.age` cookie — the channel that reaches the API routes' age
+ * mirror. Written while simulation is on and the axis is not `auto`; removed otherwise.
+ */
+function writeAgeCookie(next: DevOverrides): void {
+	document.cookie = next.enabled && next.ageRestriction !== "auto"
+		? `${AGE_OVERRIDE_COOKIE}=${next.ageRestriction}; path=/; samesite=lax`
+		: `${AGE_OVERRIDE_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 function writeEmbeddingsCookie(next: DevOverrides): void {
@@ -917,8 +969,9 @@ export function applyDevContext(base: UserContext): UserContext {
 	// Single-sourced from `personaCapabilities` so the chrome deriver and the `/projects` seam consumer
 	// agree — notably a **business is buyer-only** (`isFreelancer: false`, Decisions #9/#10/#16).
 	const { isClient, isFreelancer } = personaCapabilities(o.accountType);
+	const restricted = o.ageRestriction === "auto" ? base.restricted : o.ageRestriction === "minor";
 
-	return { ...base, contextType, role, isClient, isFreelancer };
+	return { ...base, contextType, role, isClient, isFreelancer, restricted };
 }
 
 /** The ownership override (`true`/`false`) when simulation is on, else `null` (defer to the real value). */

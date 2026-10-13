@@ -59,7 +59,10 @@ export function deriveEffectiveContext(base: UserContext, seam: DevSeamState | n
 		? "guest"
 		: "member";
 	const { isClient, isFreelancer } = personaCapabilities(seam.persona);
-	return { ...base, contextType, role, isClient, isFreelancer };
+	const restricted = !seam.ageRestriction || seam.ageRestriction === "auto"
+		? base.restricted
+		: seam.ageRestriction === "minor";
+	return { ...base, contextType, role, isClient, isFreelancer, restricted };
 }
 
 /**

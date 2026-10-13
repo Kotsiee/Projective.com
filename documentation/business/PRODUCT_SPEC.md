@@ -1224,10 +1224,16 @@ Money enters and leaves the platform through two deliberately asymmetric paths:
 - **Money leaves only to a verified payout account.** Whoever withdraws — freelancer, business or a
   client taking a refund balance out — needs a Stripe payout account on file (Settings → Verification
   & payouts). The wallet is debited when the withdrawal starts and credited back if Stripe refuses it.
+- **Earned money clears a 7-day safety window before it can be used** (root `CLAUDE.md` §8 Decision
+  #191). A released escrow (a team's shares and vault cut included), a fair-exit or session payout and a
+  product sale show as **Pending** for `pending_release_days` (7) and then become **Available**. Until
+  then they can be neither withdrawn nor spent on the platform. Money a person or business puts in
+  themselves (a top-up or card payment), a refund, a transfer and a returned payout are Available at
+  once, so paying by card is never delayed.
 - **A lost card dispute is recovered from the payer, not the freelancer.** When a client's bank wins a
   chargeback, the escrow that card payment funded (if still held) is refunded to the client's wallet
-  and the disputed amount is then taken back from that wallet; whatever the wallet cannot cover is the
-  platform's loss. A won dispute returns the escrow to held. Whether money ALREADY released to a
+  and the disputed amount is then taken back from that wallet (from anything it has still clearing
+  first, then from its Available balance); whatever the wallet cannot cover is the platform's loss. A won dispute returns the escrow to held. Whether money ALREADY released to a
   freelancer is clawed back is **not yet decided** — today it is not (flagged in root `CLAUDE.md` §8
   Decision #126 for a human).
 - **Freelancers must be _payout-ready before they earn_.** Identity verification (KYC) **and** a
@@ -1582,8 +1588,11 @@ To ensure the stage is properly funded, the system follows a **Cumulative Escrow
    conflict-guarded: the same freelancer or team may not hold two live assignments on the same
    stage, nor be booked on two different stages whose scheduled windows overlap. Concurrent accepts
    of the same candidate are serialised (per-candidate advisory lock) so a race cannot slip a
-   double-booking past the guard. (Enforced by `projects.assign_from_application` — advisory lock,
-   an active-assignee unique index, and `projects.fn_assignee_slot_conflict`.)
+   double-booking past the guard. Accepting an invitation onto a stage is held to the same guard,
+   and an open seat fills once: of two candidates accepted for it at once, one is seated and the
+   other refused. (Enforced by `projects.assign_from_application` and
+   `projects.fn_apply_invitation_decision` — the shared advisory lock, an active-assignee unique
+   index, `projects.fn_assignee_slot_conflict`, and a seat-row lock with an `open`-only fill.)
 5. **Resolution:** Payouts are released individually. If the "Junior" finishes their tasks and the
    client approves their contribution, their specific Escrow is released even if the "Senior" is
    still working on their part of the stage.
@@ -2437,7 +2446,11 @@ password sign-in asks for **one identifier — an email or a `@handle` username*
 password, and never says which half was wrong. Canonical routes: **`/join`** (account creation),
 `/login`, `/forgot-password`, `/verify` (6-digit
 email code — the `CodeField` OTP pattern). Email confirmation still ultimately rides on GoTrue's
-single-use token; the 6-digit entry is the in-app confirmation surface.
+single-use token; the 6-digit entry is the in-app confirmation surface. `/verify` also notices a
+confirmation made through the email's link, but only for the account this browser just created or
+signed in to, and it never reveals whether some other address has an account (Decision #185). If the
+link was opened in this browser, the page continues in. If it was opened on another device, the
+page says "Email confirmed" and asks the reader to sign in here.
 
 `/login` additionally offers an **Enterprise SSO** path (new, 2026-07-13): the user enters a
 corporate email **domain** (e.g. `company.com`) which is resolved to that organization's configured
@@ -2496,8 +2509,8 @@ Individual signup collects **Date of Birth** and enforces, on both client and se
 | **13 – 17** | **Restricted** | Account is created but flagged: **cannot buy services or sell work until 18.** |
 | **≥ 18**    | **Full**       | Unrestricted access.                                                           |
 
-The `restricted` flag is **re-derived server-side from DoB** (never trusted from the client) and
-persisted on the individual profile; buy/sell capability unlocks automatically at 18. (Constants:
+The `restricted` state is **re-derived server-side from DoB** (never trusted from the client) at
+every check rather than stored as a flag, so buy/sell capability unlocks automatically at 18. (Constants:
 `MIN_AGE = 13`, `ADULT_AGE = 18`.) This state is capability-scoped and does not add a column to the
 work/delivery status machine in `PRODUCT_MANAGEMENT.md`.
 
@@ -3071,7 +3084,8 @@ Hex values define the base visual target.
 - **Danger (#D94141):** Used for "Incomplete" status, errors, and no-show claims.
 - **Accent Amber (#D98216):** Terminal financial / conversion commits only — a commit inside a
   financial or conversion flow, or the act that starts one: every checkout commit (Pay / Place
-  Order), Hire, Fund Escrow (DESIGN_SYSTEM §B.8.1 tier 1; scope open as Decision #157 (j)).
+  Order), a listing's Buy now / Book / Reserve, Fund Escrow (DESIGN_SYSTEM §B.8.1 tier 1; scope
+  open as Decision #157 (j)). The profile's Hire is teal by owner direction (Decision #183).
 
 #### 2. Typography & Contrast
 

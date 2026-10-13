@@ -1,4 +1,4 @@
-import type { ComponentChildren, JSX, VNode } from "preact";
+import type { ComponentChildren, JSX, RefObject, VNode } from "preact";
 import { useRef } from "preact/hooks";
 import "../styles/drawer.css";
 import { cx } from "../../core/cx.ts";
@@ -30,6 +30,16 @@ export interface DrawerProps {
 	 * (e.g. a record viewer's previous/next stepper).
 	 */
 	actions?: ComponentChildren;
+	/**
+	 * Icon-only tools placed immediately before the close button (e.g. Share and Save on a record
+	 * viewer). Text-variant `Button`s here take the close button's size and muted ink (§B.8.5).
+	 */
+	tools?: ComponentChildren;
+	/**
+	 * Focus this element itself on open instead of the first tabbable — a `tabindex="-1"` reading
+	 * region can take focus without entering the tab order.
+	 */
+	initialFocusRef?: RefObject<HTMLElement>;
 	/**
 	 * Id of the element that names the dialog when the name lives in the body rather than in
 	 * `header` — a detail panel whose own title is the one heading. Wins over `header`.
@@ -77,6 +87,8 @@ export function Drawer(props: DrawerProps): JSX.Element | null {
 		position = "left",
 		header,
 		actions,
+		tools,
+		initialFocusRef,
 		labelledBy,
 		modal = true,
 		dismissable = true,
@@ -105,7 +117,13 @@ export function Drawer(props: DrawerProps): JSX.Element | null {
 	});
 	const close = () => ctrl.set(false);
 
-	useFocusTrap({ active: mounted && modal, containerRef: panelRef, inertBackground: modal });
+	useFocusTrap({
+		active: mounted && modal,
+		containerRef: panelRef,
+		initialFocusRef,
+		initialFocusSelf: true,
+		inertBackground: modal,
+	});
 	useDismiss({
 		open: mounted,
 		enabled: stack.isTop,
@@ -135,10 +153,11 @@ export function Drawer(props: DrawerProps): JSX.Element | null {
 				style={sizeVars}
 				tabIndex={-1}
 			>
-				{(header !== undefined || closable || actions != null) && (
+				{(header !== undefined || closable || actions != null || tools != null) && (
 					<div class="ui-drawer__header">
 						{header !== undefined && <h2 id={titleId} class="ui-drawer__title">{header}</h2>}
 						{actions != null && <div class="ui-drawer__actions">{actions}</div>}
+						{tools != null && <div class="ui-drawer__tools">{tools}</div>}
 						{closable && (
 							<button
 								type="button"

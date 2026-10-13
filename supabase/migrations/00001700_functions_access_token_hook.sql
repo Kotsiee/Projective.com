@@ -47,6 +47,10 @@ DECLARE
   -- every other claim here it is chrome only: it decides which screen is painted, never what the
   -- caller may do, and the foreign key stays the thing that actually holds.
   v_onboarded boolean := false;
+  -- Whether the person is 13–17 today (org.fn_is_minor, Decision #190) — derived from dob at every
+  -- mint, so it lifts on the 18th birthday at the next refresh. Chrome only: it lets the app explain a
+  -- locked buy/sell control up front; org.fn_assert_adult in each door is what refuses.
+  v_restricted boolean := false;
 
   -- Presentation preferences (org.user_preferences). Chrome-only: they decide which currency and
   -- locale the viewer's figures are FORMATTED in, never what any ledger row stores or settles at.
@@ -78,6 +82,7 @@ BEGIN
   -- somehow blank, and the column is NOT NULL, so the two differ only in the case where the answer
   -- matters.
   v_onboarded := FOUND;
+  v_restricted := v_onboarded AND org.fn_is_minor(v_user_id);
 
   -- Raw active-context state.
   SELECT sc.active_profile_type::text, sc.active_profile_id, sc.active_team_id, sc.active_organisation_id
@@ -205,6 +210,7 @@ BEGIN
       'isClient', v_ctx_is_client,
       'isFreelancer', v_ctx_is_freelancer,
       'onboarded', v_onboarded,
+      'isRestricted', v_restricted,
       'displayCurrency', v_display_currency,
       'locale', v_locale,
       'dateFormat', v_date_format
