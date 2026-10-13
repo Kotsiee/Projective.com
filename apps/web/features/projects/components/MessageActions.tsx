@@ -3,7 +3,7 @@ import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { Popover, Tooltip } from "@projective/ui/feedback";
 import type { ChatMessage } from "../types/projects-types.ts";
-import { FlagIcon, KebabIcon, StarIcon } from "./glyphs.tsx";
+import { KebabIcon, StarIcon } from "./glyphs.tsx";
 import { PinIcon } from "./channel-glyphs.tsx";
 import { CopyIcon, ReactIcon, ReplyIcon } from "./chat-glyphs.tsx";
 import { makeId } from "../core/composer-model.ts";
@@ -17,7 +17,7 @@ import { MESSAGE_MENU_OPEN_EVENT, type MessageMenuOpenDetail } from "@web/utils/
  * buttons are the only interactive surface, so only they take a tint, on hover. The rail is always in
  * the layout and only its opacity changes, so revealing it never reflows the feed.
  *
- * The meatball opens a Popover with Pin · Favourite · Report; React opens a small emoji quick-picker.
+ * The meatball opens a Popover with Pin · Favourite; React opens a small emoji quick-picker.
  * In highlight mode the same actions render as {@link MessageContextMenu} instead, and the feed hides
  * this toolbar, so a message never shows two menus.
  *
@@ -41,7 +41,6 @@ export interface MessageActionsProps {
 	onCopy: () => void;
 	onTogglePin: () => void;
 	onToggleFavorite: () => void;
-	onReport: () => void;
 	/** Fired when any owned popover opens/closes so the parent can pin the toolbar visible. */
 	onOpenChange: (open: boolean) => void;
 }
@@ -59,7 +58,6 @@ export function MessageActions(props: MessageActionsProps): JSX.Element {
 		onCopy,
 		onTogglePin,
 		onToggleFavorite,
-		onReport,
 	} = props;
 	const reactOpen = useSignal(false);
 	const menuOpen = useSignal(false);
@@ -196,19 +194,6 @@ export function MessageActions(props: MessageActionsProps): JSX.Element {
 						<span class="msg-menu__label">
 							{message.favorited ? "Remove favourite" : "Favourite"}
 						</span>
-					</button>
-					<button
-						type="button"
-						role="menuitem"
-						class="msg-menu__item"
-						data-danger="true"
-						onClick={() => {
-							onReport();
-							menuOpen.value = false;
-						}}
-					>
-						<span class="msg-menu__icon" aria-hidden="true">{FlagIcon}</span>
-						<span class="msg-menu__label">Report</span>
 					</button>
 				</div>
 			</Popover>

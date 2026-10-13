@@ -118,6 +118,43 @@ SELECT pg_temp.ok((SELECT status = 'pending_review' FROM projects.stage_submissi
     'paid round: nothing is sent back before payment');
 -- #endregion
 
+-- #region 3b. Rounds are raised only through the doors, and paid only at the stage's price
+SELECT pg_temp.act(pg_temp.s('owner')); SET LOCAL ROLE authenticated;
+DO $$
+BEGIN
+    INSERT INTO projects.stage_revision_requests
+        (project_stage_id, ticket_id, requested_by, request_type, reason, status, submission_id, price_cents)
+    VALUES (pg_temp.s('stage')::uuid, pg_temp.s('ticket')::uuid, pg_temp.s('owner')::uuid, 'paid_revision',
+            'One cent', 'awaiting_payment', pg_temp.s('sub2')::uuid, 1);
+    RAISE EXCEPTION 'PROBE FAIL: a client raised a paid round at its own price';
+EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM pg_temp.ok(true, 'guard: a client cannot insert a paid round at its own price (42501)');
+END $$;
+DO $$
+BEGIN
+    INSERT INTO projects.stage_revision_requests
+        (project_stage_id, ticket_id, requested_by, request_type, reason, status, submission_id)
+    VALUES (pg_temp.s('stage')::uuid, pg_temp.s('ticket')::uuid, pg_temp.s('owner')::uuid, 'revision',
+            'Free extra', 'open', pg_temp.s('sub2')::uuid);
+    RAISE EXCEPTION 'PROBE FAIL: a client opened a free round past its allotment';
+EXCEPTION WHEN insufficient_privilege THEN
+    PERFORM pg_temp.ok(true, 'guard: a client cannot insert a free round outside review_submission (42501)');
+END $$;
+RESET ROLE;
+
+UPDATE projects.stage_revision_requests SET price_cents = 1 WHERE id = pg_temp.s('rev')::uuid;
+SELECT pg_temp.act(pg_temp.s('owner')); SET LOCAL ROLE authenticated;
+DO $$
+BEGIN
+    PERFORM projects.fund_paid_revision(pg_temp.s('rev')::uuid);
+    RAISE EXCEPTION 'PROBE FAIL: a round was paid below the stage''s price';
+EXCEPTION WHEN SQLSTATE 'PC409' THEN
+    PERFORM pg_temp.ok(true, 'guard: a round whose price is not the stage''s is refused (PC409)');
+END $$;
+RESET ROLE;
+UPDATE projects.stage_revision_requests SET price_cents = 5000 WHERE id = pg_temp.s('rev')::uuid;
+-- #endregion
+
 -- #region 4. Buying it holds escrow on the ticket and only then opens the round
 DO $$
 DECLARE v_basket uuid; v_line uuid;

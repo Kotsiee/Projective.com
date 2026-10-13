@@ -442,6 +442,7 @@ DECLARE
     v_escrow uuid;
 BEGIN
     SELECT rv.status, rv.reason, rv.requested_by, rv.submission_id, rv.ticket_id, rv.project_stage_id,
+           rv.request_type, rv.price_cents, ps.extra_revision_price_cents AS stage_price,
            ps.project_id, p.client_business_id AS payer, p.owner_user_id AS owner, ss.status AS submission_status
       INTO v
       FROM projects.stage_revision_requests rv
@@ -466,6 +467,12 @@ BEGIN
     END IF;
     IF v.submission_status IS DISTINCT FROM 'pending_review' THEN
         RAISE EXCEPTION 'The submission this revision was for has already been decided.' USING ERRCODE = 'PC409';
+    END IF;
+    -- The escrow holds the round's snapshot, so the snapshot must still be the stage's price: a round
+    -- whose price no longer matches is raised again (request_paid_revision re-snapshots), never paid.
+    IF v.request_type <> 'paid_revision' OR v.price_cents IS DISTINCT FROM v.stage_price THEN
+        RAISE EXCEPTION 'This revision''s price no longer matches the stage''s terms — raise it again.'
+            USING ERRCODE = 'PC409';
     END IF;
 
     v_escrow := finance.fn_hold_revision_escrow(p_revision_id);

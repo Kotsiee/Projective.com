@@ -883,7 +883,8 @@ function (`00001130`).
   currency, title, stage_id, ticket_id}`. Sends nothing back. `EXECUTE` → `authenticated` only.
 - **`fund_paid_revision(p_revision_id uuid) → jsonb`** — run by `finance.place_wallet_order` for a
   `paid_revision` line, as the payer. `fund_ticket`'s payer rule (`42501`); round not
-  `awaiting_payment` or submission already decided `PC409`. Holds the round's escrow
+  `awaiting_payment` or submission already decided `PC409`; not a `paid_revision`, or its
+  `price_cents` no longer the stage's `extra_revision_price_cents`, `PC409` (raise it again). Holds the round's escrow
   (`finance.fn_hold_revision_escrow`, `PF402` + `DETAIL` like #165), then opens the round: submission
   `revisions_requested` (feedback = the round's reason), ticket `in_review → in_progress`, a
   `submission_reviewed` activity row, `fn_notify_revision`. A refused hold rolls everything back.

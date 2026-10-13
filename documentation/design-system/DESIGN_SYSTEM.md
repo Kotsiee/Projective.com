@@ -3291,8 +3291,9 @@ The routed tab body + `ChatComposer` flow in the canvas beneath it:
   the group-toward LEFT corners; own the RIGHT). Own messages align right, others left; bubbles cap
   at `max-width: 60%`. Each bubble sits on a **line** with a **side rail** literally beside it (on
   the bubble's inner side — right of another person's, left of the viewer's own): a **ghost**
-  Reply·React·Copy toolbar and a `…` menu (Pin·Favourite·Report; Pin gated by server-derived
-  `canPin` — anyone in a DM, owner-granted in a project/team channel) — no fill, border or shadow,
+  Reply·React·Copy toolbar and a `…` menu (Pin·Favourite; Pin gated by server-derived
+  `canPin` — anyone in a DM, owner-granted in a project/team channel; Report is absent until a
+  report flow exists, Decision #140(c), §3 gate 11) — no fill, border or shadow,
   only the buttons tint on hover — with the viewer's own sent time directly beneath it (Decision
   #131). The rail is always laid out and only fades on hover, so revealing it never shifts the feed;
   on touch (`hover: none`) it is not drawn at all — the long press and the swipe replace it. A favourited
@@ -3354,7 +3355,7 @@ The routed tab body + `ChatComposer` flow in the canvas beneath it:
   resistance and replies on release past the threshold — the reply cue appears at the edge it left;
   `touch-action: pan-y` keeps vertical scrolling. A **long press** selects the message, raises the
   glass **reaction bubble** above it, and enters tap-to-toggle selection; below `--bp-md` an action
-  bar (close · count · Reply for one · Copy · Pin · Favourite · Report) **replaces the site header**
+  bar (close · count · Reply for one · Copy · Pin · Favourite) **replaces the site header**
   at its own height and tone, fixed over its slot.
 - **Links in a bubble (Decision #128).** A written link is an underlined anchor in the text; a
   flagged one (suspicious · blocked) draws a wavy `--warning` underline. Beneath the text each link

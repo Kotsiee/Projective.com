@@ -5,7 +5,7 @@ import "../styles/message-interactions.css";
 import { BodyPortal } from "@projective/ui/overlay";
 import type { ChatMessage } from "../types/projects-types.ts";
 import type { MessageSelection } from "../hooks/useMessageSelection.ts";
-import { CloseIcon, FlagIcon, StarIcon } from "./glyphs.tsx";
+import { CloseIcon, StarIcon } from "./glyphs.tsx";
 import { PinIcon } from "./channel-glyphs.tsx";
 import { CopyIcon, ReplyIcon } from "./chat-glyphs.tsx";
 
@@ -18,7 +18,7 @@ import { CopyIcon, ReplyIcon } from "./chat-glyphs.tsx";
  *   feed down.
  * - **Mobile:** the WhatsApp-style action bar that REPLACES the site header while messages are being
  *   picked: close, the count, and the actions that apply — Reply only for exactly one message (never
- *   for several), Copy for any number, Pin · Favourite · Report for one. Fixed over the top bar's own
+ *   for several), Copy for any number, Pin · Favourite for one. Fixed over the top bar's own
  *   slot at the top bar's own height and tone, portalled to `document.body` so no transformed or
  *   blurred ancestor can re-base it (DESIGN_SYSTEM.md §B.10).
  *
@@ -36,7 +36,6 @@ export interface MessageSelectionBarProps {
 	onReply: (m: ChatMessage) => void;
 	onTogglePin: (id: string) => void;
 	onToggleFavorite: (id: string) => void;
-	onReport: (id: string) => void;
 }
 
 export function MessageSelectionBar(props: MessageSelectionBarProps): JSX.Element | null {
@@ -145,17 +144,6 @@ export function MessageSelectionBar(props: MessageSelectionBarProps): JSX.Elemen
 						onClick={() => props.onToggleFavorite(single.id)}
 					>
 						{cloneElement(StarIcon)}
-					</button>
-				)}
-				{single && (
-					<button
-						type="button"
-						class="msg-mbar__btn"
-						data-danger="true"
-						aria-label="Report"
-						onClick={() => props.onReport(single.id)}
-					>
-						{cloneElement(FlagIcon)}
 					</button>
 				)}
 			</div>

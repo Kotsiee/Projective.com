@@ -250,15 +250,6 @@
 	color: var(--text-secondary);
 }
 
-.msg-cmenu__item[data-danger="true"],
-.msg-cmenu__item[data-danger="true"] .msg-cmenu__icon {
-	color: var(--danger);
-}
-
-.msg-cmenu__item[data-danger="true"]:hover {
-	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
-}
-
 /* #endregion */
 
 /* #region Selection count pill (desktop / tablet) */
@@ -412,10 +403,6 @@
 
 .msg-mbar__btn[aria-pressed="true"] {
 	color: var(--primary);
-}
-
-.msg-mbar__btn[data-danger="true"] {
-	color: var(--danger);
 }
 
 .msg-mbar__btn:focus-visible {

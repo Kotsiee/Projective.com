@@ -852,15 +852,6 @@ button.msg-quote:focus-visible {
 	color: var(--text-secondary);
 }
 
-.msg-menu__item[data-danger="true"],
-.msg-menu__item[data-danger="true"] .msg-menu__icon {
-	color: var(--danger);
-}
-
-.msg-menu__item[data-danger="true"]:hover {
-	background: color-mix(in srgb, var(--danger) var(--tint), transparent);
-}
-
 /* #endregion */
 
 /* #region System activity notice */

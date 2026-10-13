@@ -6,7 +6,7 @@ import { BodyPortal } from "@projective/ui/overlay";
 import { useDismiss, useOverlayStack } from "@projective/ui/hooks";
 import type { ChatMessage } from "../types/projects-types.ts";
 import { placeMenu } from "../core/message-selection.ts";
-import { FlagIcon, StarIcon } from "./glyphs.tsx";
+import { StarIcon } from "./glyphs.tsx";
 import { PinIcon } from "./channel-glyphs.tsx";
 import { CopyIcon, ReplyIcon } from "./chat-glyphs.tsx";
 import { QUICK_EMOJI } from "./MessageActions.tsx";
@@ -45,7 +45,6 @@ export interface MessageContextMenuProps {
 	onCopy: () => void;
 	onTogglePin: () => void;
 	onToggleFavorite: () => void;
-	onReport: () => void;
 }
 
 export function MessageContextMenu(props: MessageContextMenuProps): JSX.Element {
@@ -210,20 +209,6 @@ export function MessageContextMenu(props: MessageContextMenuProps): JSX.Element 
 						<span class="msg-cmenu__label">
 							{message.favorited ? "Remove favourite" : "Favourite"}
 						</span>
-					</button>
-				)}
-
-				{single && (
-					<button
-						type="button"
-						role="menuitem"
-						class="msg-cmenu__item"
-						data-danger="true"
-						tabIndex={-1}
-						onClick={props.onReport}
-					>
-						<span class="msg-cmenu__icon" aria-hidden="true">{cloneElement(FlagIcon)}</span>
-						<span class="msg-cmenu__label">Report</span>
 					</button>
 				)}
 			</div>

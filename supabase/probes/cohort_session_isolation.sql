@@ -1,7 +1,7 @@
 -- =============================================================================================
 -- Probe: cohort / session isolation (projects.cohorts "View cohorts", projects.session_events
 -- "View session events", projects.session_attendance with no client INSERT, and
--- projects.stage_revision_requests "Request own revisions").
+-- projects.stage_revision_requests with no client INSERT).
 --
 -- Rollback-safe: one transaction, ends in ROLLBACK, writes nothing. Run against a migrated local DB:
 --   docker exec -i supabase_db_Projective psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
@@ -21,11 +21,15 @@ DECLARE
     v_stage uuid; v_ticket uuid;
 BEGIN
     SELECT p.id INTO v_pa FROM projects.projects p
-    WHERE p.visibility::text <> 'public' ORDER BY p.id LIMIT 1;
+    WHERE p.visibility::text <> 'public'
+        AND EXISTS (SELECT 1 FROM projects.project_stages s WHERE s.project_id = p.id)
+    ORDER BY p.id LIMIT 1;
     SELECT p.id INTO v_pb FROM projects.projects p
-    WHERE p.visibility::text <> 'public' AND p.id <> v_pa ORDER BY p.id LIMIT 1;
+    WHERE p.visibility::text <> 'public' AND p.id <> v_pa
+        AND EXISTS (SELECT 1 FROM projects.project_stages s WHERE s.project_id = p.id)
+    ORDER BY p.id LIMIT 1;
     IF v_pb IS NULL THEN
-        RAISE EXCEPTION 'FAIL no fixture: need two seeded private projects (deno task db:reset)';
+        RAISE EXCEPTION 'FAIL no fixture: need two seeded private projects with stages (deno task db:reset)';
     END IF;
 
     SELECT u.user_id INTO v_ua FROM org.users_public u
@@ -36,8 +40,12 @@ BEGIN
         AND u.user_id <> v_ua
     ORDER BY u.user_id LIMIT 1;
 
-    INSERT INTO projects.cohorts (project_id, name) VALUES (v_pa, 'Probe cohort A') RETURNING id INTO v_ca;
-    INSERT INTO projects.cohorts (project_id, name) VALUES (v_pb, 'Probe cohort B') RETURNING id INTO v_cb;
+    INSERT INTO projects.cohorts (project_id, project_stage_id, name)
+    SELECT v_pa, s.id, 'Probe cohort A' FROM projects.project_stages s WHERE s.project_id = v_pa ORDER BY s.id LIMIT 1
+    RETURNING id INTO v_ca;
+    INSERT INTO projects.cohorts (project_id, project_stage_id, name)
+    SELECT v_pb, s.id, 'Probe cohort B' FROM projects.project_stages s WHERE s.project_id = v_pb ORDER BY s.id LIMIT 1
+    RETURNING id INTO v_cb;
     INSERT INTO projects.cohort_memberships (cohort_id, user_id) VALUES (v_ca, v_ua), (v_cb, v_ub);
     INSERT INTO projects.session_events (cohort_id, title, start_time, end_time, host_join_url)
     VALUES (v_ca, 'Probe A', now(), now() + interval '1 hour', 'https://host.example/a')

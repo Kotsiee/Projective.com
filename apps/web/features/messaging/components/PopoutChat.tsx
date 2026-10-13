@@ -270,10 +270,6 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 		void sel.copy(ids);
 		done();
 	}
-	function report(_id: string): void {
-		// STUB: report/flag routes to moderation once the backend lands.
-		done();
-	}
 
 	/** Scroll to a quoted original, paging backward (within a budget) when it is not loaded yet. */
 	async function jumpTo(id: string): Promise<void> {
@@ -345,7 +341,6 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 					onCopy={copy}
 					onTogglePin={togglePin}
 					onToggleFavorite={toggleFavorite}
-					onReport={report}
 					onJump={(id) => void jumpTo(id)}
 					onOpenAttachment={openAttachment}
 					selection={sel.rowFor(row.message)}
@@ -381,7 +376,6 @@ export function PopoutChat({ state }: PopoutChatProps): JSX.Element {
 					onReply={(m) => sel.reply(m)}
 					onTogglePin={togglePin}
 					onToggleFavorite={toggleFavorite}
-					onReport={report}
 				/>
 				{loading.value
 					? <p class="pop-chat__hint">Loading conversation…</p>

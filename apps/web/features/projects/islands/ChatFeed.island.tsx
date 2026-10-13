@@ -401,10 +401,6 @@ export default function ChatFeed(
 		void sel.copy(ids);
 		done();
 	}
-	function report(_id: string): void {
-		// STUB: report/flag routes to moderation once the backend lands.
-		done();
-	}
 	// #endregion
 
 	// #region Jump to a (pinned or quoted) message
@@ -518,7 +514,6 @@ export default function ChatFeed(
 				onCopy={copy}
 				onTogglePin={togglePin}
 				onToggleFavorite={toggleFavorite}
-				onReport={report}
 				onJump={(id) => void jumpTo(id)}
 				onOpenAttachment={openAttachment}
 				selection={sel.rowFor(row.message)}
@@ -548,7 +543,6 @@ export default function ChatFeed(
 				onReply={(m) => sel.reply(m)}
 				onTogglePin={togglePin}
 				onToggleFavorite={toggleFavorite}
-				onReport={report}
 			/>
 
 			<div

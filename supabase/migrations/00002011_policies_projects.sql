@@ -214,23 +214,10 @@ SELECT TO authenticated USING (
         projects.has_project_access (id)
     );
 
--- INSERT only: reads are "View revisions", and status/resolution changes go through the definer
--- RPCs (00001150), so a requester can no longer edit or delete a round once raised.
-CREATE POLICY "Request own revisions" ON projects.stage_revision_requests FOR
-INSERT
-    TO authenticated
-WITH
-    CHECK (
-        requested_by = auth.uid ()
-        AND EXISTS (
-            SELECT 1
-            FROM projects.project_stages s
-            WHERE
-                s.id = stage_revision_requests.project_stage_id
-                AND projects.can_review_project (s.project_id)
-        )
-    );
-
+-- SELECT only. Every write goes through the definer RPCs (00001150): review_submission raises a free
+-- round against the allotment, request_paid_revision a paid one at the stage's price. A client INSERT
+-- door would let a reviewer raise a free round past the allotment, or a paid one at a price of their
+-- own choosing that the basket then charges.
 -- Readers (Decision #167): whoever may review the project (owner or a member of the paying client
 -- business — any of them may pay for a round another raised), and the freelancer a round is raised
 -- AGAINST: the ticket's assignee, or whoever submitted the work it was raised on. They are the one asked

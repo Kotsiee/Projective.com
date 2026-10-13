@@ -115,8 +115,8 @@ post-image is constrained — but it changed no behaviour.
 This matters for the eleven remaining `USING`-only `FOR ALL` policies in this schema
 (`project_stages`, `stage_assignments`, `stage_staffing_roles`, `stage_open_seats`,
 `project_participants`, `cohorts`, `cohort_memberships`, `session_events`, `maintenance_contracts`,
-`stage_revision_requests`, `stage_budget_rules` — `project_application_targets` has only a `SELECT`
-policy; the SQL comment's "twelve" counts it) plus the `USING`-only `UPDATE` _Manage waitlists_: **do not treat them
+`stage_budget_rules` — `project_application_targets` and `stage_revision_requests` have only a `SELECT`
+policy; the SQL comment's "twelve" counts the first, and the second had a `FOR ALL` until 2026-10-10) plus the `USING`-only `UPDATE` _Manage waitlists_: **do not treat them
 as open on the strength of a missing `WITH CHECK`.** Each may still deserve a NARROWER post-image
 predicate than its `USING` — that is a per-table judgement about which columns a caller may move a
 row across — but the default is a mirror, not an absence.
@@ -314,7 +314,7 @@ the definer doors in `00001135` §4 (Decision #145).
 | `projects.project_participants`           | Owner, or public-active project.                         | Owner (`FOR ALL`).                          |
 | `projects.project_applications`           | The applicant, or `can_manage_project_members`.          | Definer RPCs only.                          |
 | `projects.project_application_targets`    | Follows the parent application.                          | Definer RPCs only.                          |
-| `projects.stage_revision_requests`        | Requester, review authority (`can_review_project`), the ticket's assignee, or the submitter of the work it was raised on (Decision #167). | `INSERT` as self with `can_review_project` on the stage's project; no client `UPDATE` / `DELETE` (definer RPCs). |
+| `projects.stage_revision_requests`        | Requester, review authority (`can_review_project`), the ticket's assignee, or the submitter of the work it was raised on (Decision #167). | Definer RPCs only (`review_submission`, `request_paid_revision`, `fund_paid_revision`, `submit_deliverable`). |
 | `projects.ticket_workload_reports`        | Reporter, project owner, or project access.              | `INSERT` by the assignee only.              |
 | `projects.project_activity`               | Project owner.                                           | `INSERT` as self.                           |
 | `projects.project_status_history`         | Actor, project access, owner, or client-business member. | Definer RPCs only.                          |
@@ -329,7 +329,7 @@ the definer doors in `00001135` §4 (Decision #145).
 Policy names, in table order: _View assignments_ / _Owner manage assignments_; _View seats public or
 own_ / _Manage seats own_; _View seat skills_; _View roles public or own_ / _Manage roles own_; _View
 budget rules_ / _Owner manage budget rules_; _View participants_ / _Owner manage participants_; _View
-own or owned applications_; _View application targets_; _View revisions_ / _Request own revisions_ (`INSERT`);
+own or owned applications_; _View application targets_; _View revisions_;
 _View workload reports_ / _File workload report_; _Project owner can view activity_ / _Users can
 insert their own activity_; _View project status history_; _View cohorts_ / _Manage cohorts_; _View
 cohort memberships_ / _Manage cohort memberships_; _View session events_ / _Manage session events_;
@@ -453,7 +453,7 @@ Tables whose only writes are definer functions (no client write policy, by desig
   written only by the `record_presence` definer door, which checks membership and the event window.
 - _Manage own revisions_ (`FOR ALL`) became _Request own revisions_: `INSERT TO authenticated` as
   self, with `can_review_project` on the stage's project. Reads stay with _View revisions_. Updates and
-  deletes go through the definer RPCs (`00001150`).
+  deletes go through the definer RPCs (`00001150`). **Superseded 2026-10-12** (below).
 - A sweep of all eleven `0000201x`/`00002020` policy files re-bound every subquery column against the
   deparsed `pg_policies` text. No other unqualified reference binds to an inner alias.
 - **Verification.** `supabase/probes/cohort_session_isolation.sql` is one rolled-back transaction.
@@ -462,6 +462,13 @@ Tables whose only writes are definer functions (no client write policy, by desig
   review authority, and cannot update or delete their own revision. If the original
   _View session events_ text is restored, the probe fails with `FAIL member of cohort A reads cohort
   B's session event`.
+
+**Fix of 2026-10-12** (`00002011`, `00001150` edited in place): _Request own revisions_ was
+dropped. Its `WITH CHECK` tested only the requester and review authority, so a reviewer could insert
+a `paid_revision` round `awaiting_payment` at any `price_cents` (the basket charges the round's
+stored price) or an `open` free round past the stage's allotment. Every round is now raised by a
+definer RPC, and `fund_paid_revision` refuses a round whose price is not the stage's
+`extra_revision_price_cents`. Verified by `supabase/probes/paid_revisions.sql` region 3b.
 
 **Functions callable by `anon` that write data** (default `PUBLIC` `EXECUTE`, `SECURITY DEFINER`, no
 `auth.uid()` test — details in [Functions.md](Functions.md)):

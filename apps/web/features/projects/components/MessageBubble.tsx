@@ -48,7 +48,6 @@ export interface MessageBubbleProps {
 	onCopy: (id: string) => void;
 	onTogglePin: (id: string) => void;
 	onToggleFavorite: (id: string) => void;
-	onReport: (id: string) => void;
 	/** Jump to a quoted original (a reply's quote was pressed). */
 	onJump: (id: string) => void;
 	/**
@@ -157,7 +156,6 @@ export function MessageBubble(props: MessageBubbleProps): JSX.Element {
 							onCopy={() => props.onCopy(m.id)}
 							onTogglePin={() => props.onTogglePin(m.id)}
 							onToggleFavorite={() => props.onToggleFavorite(m.id)}
-							onReport={() => props.onReport(m.id)}
 							onOpenChange={(open) => (menuActive.value = open)}
 						/>
 						{own && <span class="msg-row__own-time" aria-hidden="true">{m.timeLabel}</span>}
@@ -197,7 +195,6 @@ export function MessageBubble(props: MessageBubbleProps): JSX.Element {
 					onCopy={() => props.onCopy(m.id)}
 					onTogglePin={() => props.onTogglePin(m.id)}
 					onToggleFavorite={() => props.onToggleFavorite(m.id)}
-					onReport={() => props.onReport(m.id)}
 				/>
 			)}
 		</div>

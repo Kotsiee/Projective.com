@@ -160,14 +160,6 @@ export const ShareIcon = (
 	</Svg>
 );
 
-/** Flag / report the engagement. */
-export const FlagIcon = (
-	<Svg>
-		<path d="M5 21V4" />
-		<path d="M5 5h11l-1.6 3L16 11H5" />
-	</Svg>
-);
-
 /** A waste bin — the destructive delete action. */
 export const TrashIcon = (
 	<Svg>
