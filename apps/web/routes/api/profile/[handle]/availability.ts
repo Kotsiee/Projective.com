@@ -1,5 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
+import { refuseIfRestricted } from "@web/utils/age-gate.ts";
 import { OwnerAvailabilitySchema } from "@projective/types/scheduling";
 import { parseBody, toProfileResponse } from "@features/profile/core/respond.ts";
 import { ProfileBackendService } from "@server/services/profile/ProfileBackendService.ts";
@@ -22,6 +23,8 @@ export const handler = define.handlers({
 		return res;
 	},
 	async PUT(ctx) {
+		const restricted = refuseIfRestricted(ctx.req, ctx.state.userContext);
+		if (restricted) return restricted;
 		const actor = readActor(ctx);
 		if (!actor.userId) {
 			return Response.json({ ok: false, message: "Sign in to manage availability." }, { status: 401 });

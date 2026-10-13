@@ -103,6 +103,7 @@ interface ProjectRow {
 	owner_user_id: string;
 	format: string;
 	structure_variation: string | null;
+	is_personal?: boolean | null;
 }
 
 /** One `projects.project_stages` row — the progress meter's two numbers come from these. */
@@ -272,7 +273,7 @@ async function fetchProject(
 ): Promise<ProjectRow | null> {
 	const base = projectsDb(actor)
 		.from("projects")
-		.select("id, slug, title, status, currency, owner_user_id, format, structure_variation");
+		.select("id, slug, title, status, currency, owner_user_id, format, structure_variation, is_personal");
 	// By slug and only by slug: a project has one public address, so there is no column to choose
 	// between and no shape to test. See `project-identity.ts` for why the branch this replaces was a
 	// standing hazard rather than a convenience.
@@ -526,7 +527,10 @@ export async function fetchProjectOverview(
 			owner: ownerParty,
 			handle: ownerParty.handle,
 			status: toProjectStatus(project.status),
-			statusLabel: STATUS_LABEL[project.status] ?? "Active",
+			// A personal project is never published: its standing draft reads "Personal" (Decision #208).
+			statusLabel: project.is_personal && project.status === "draft"
+				? "Personal"
+				: STATUS_LABEL[project.status] ?? "Active",
 			meta,
 			completedStages: totalStages > 0 ? completedStages : null,
 			totalStages: totalStages > 0 ? totalStages : null,

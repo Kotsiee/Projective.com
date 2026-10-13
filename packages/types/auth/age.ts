@@ -139,6 +139,10 @@ export const RESTRICTED_REFUSAL =
 export const PERSONAL_PROJECT_NOTE =
 	`Projects you create stay private to you until you're ${ADULT_AGE}: no members, hiring or payments.`;
 
+/** Why a direct message involving an under-18 account was refused (Decision #208). */
+export const DM_SHIELD_REFUSAL =
+	"People under 18 can message only people they follow who follow them back.";
+
 /** The `details.reason` a join refused for an under-13 date of birth carries. */
 export const UNDER_MINIMUM_REASON = "under_minimum";
 

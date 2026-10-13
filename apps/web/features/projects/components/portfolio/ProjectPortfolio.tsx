@@ -17,7 +17,7 @@ import {
 	ROLE_LABEL,
 	type StageBurn,
 	stageBurnOf,
-	STATUS_LABEL,
+	statusLabelFor,
 } from "../../core/portfolio-model.ts";
 
 /**
@@ -173,7 +173,7 @@ function PortfolioRow({ item }: { item: ProjectSummary }): JSX.Element {
 
 			<span class="prj-port__status" data-status={item.status}>
 				<span class="prj-port__dot" aria-hidden="true" />
-				{STATUS_LABEL[item.status]}
+				{statusLabelFor(item.status, item.personal)}
 			</span>
 
 			<span class="prj-port__burn">

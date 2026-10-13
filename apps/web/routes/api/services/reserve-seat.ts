@@ -4,6 +4,7 @@ import { BookingBackendService } from "@server/services/booking/BookingBackendSe
 import { bookingActorFrom } from "@features/view/core/booking-actor.ts";
 import { invalidPayload, toBookingResponse } from "@features/view/core/respond.ts";
 import { warmCatalog } from "@server/services/explore/live-catalog.ts";
+import { refuseIfRestricted } from "@web/utils/age-gate.ts";
 
 /**
  * `POST /api/services/reserve-seat` — hold seats on a group-session listing's current cohort and put
@@ -16,6 +17,8 @@ import { warmCatalog } from "@server/services/explore/live-catalog.ts";
  */
 export const handler = define.handlers({
 	async POST(ctx) {
+		const restricted = refuseIfRestricted(ctx.req, ctx.state.userContext);
+		if (restricted) return restricted;
 		await warmCatalog();
 		const raw = await ctx.req.json().catch(() => null);
 		const parsed = ReserveSeatInputSchema.safeParse(raw);

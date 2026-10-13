@@ -37,6 +37,8 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"escrow.disputed",
 	"payout.sent",
 	"payout.failed",
+	"payout.paid",
+	"payout.reversed",
 	"payout.method_required",
 	"wallet.topup_succeeded",
 	"wallet.topup_failed",

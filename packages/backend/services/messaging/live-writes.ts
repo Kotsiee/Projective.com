@@ -5,6 +5,10 @@ import { refusalFrom, type WriteOutcome } from "../projects/live-writes.ts";
 import { fetchMessageAttachments } from "../projects/message-attachments.ts";
 import { UUID_RE } from "../projects/live-support.ts";
 import { REPLY_REFUSAL_MESSAGE, replyRefusal } from "../projects/message-replies.ts";
+import { DM_SHIELDED, isAgeRestricted } from "../../core/age-gate.ts";
+
+/** The DM shield refused the thread (Decision #208) — distinct from "no such conversation". */
+const SHIELDED = Symbol("dm-shielded");
 import {
 	commsClient,
 	DM_MESSAGE_COLUMNS,
@@ -59,7 +63,7 @@ interface IdentityRow {
 async function resolveThreadId(
 	actor: ReadActor & { accessToken: string },
 	conversationId: string,
-): Promise<string | null> {
+): Promise<string | null | typeof SHIELDED> {
 	if (UUID_RE.test(conversationId)) return conversationId;
 	const handle = dmHandleOf(conversationId);
 	if (!handle) return null;
@@ -79,6 +83,7 @@ async function resolveThreadId(
 	const thread = await commsClient(actor).rpc("get_or_create_dm_thread", {
 		target_user_id: target,
 	});
+	if (isAgeRestricted(thread.error)) return SHIELDED;
 	if (thread.error) {
 		throw new Error(`comms.get_or_create_dm_thread failed: ${thread.error.message}`);
 	}
@@ -109,6 +114,7 @@ export async function insertDmMessage(
 	now: number = Date.now(),
 ): Promise<WriteOutcome<ChatMessage>> {
 	const threadId = await resolveThreadId(actor, input.conversationId);
+	if (threadId === SHIELDED) return { refusal: { ...DM_SHIELDED } };
 	if (!threadId) return null;
 
 	const db = commsClient(actor);
@@ -146,6 +152,7 @@ export async function insertDmMessage(
 		})
 		.select(DM_MESSAGE_COLUMNS)
 		.maybeSingle();
+	if (isAgeRestricted(error)) return { refusal: { ...DM_SHIELDED } };
 	if (error) {
 		const field = error.message.includes(REPLY_REFUSAL_MESSAGE) ? "replyToId" : "text";
 		return { refusal: refusalFrom(error.message, field) };

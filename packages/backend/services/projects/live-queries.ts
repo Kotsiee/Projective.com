@@ -121,6 +121,7 @@ const SUMMARY_COLUMNS = [
 	"source_blueprint_id",
 	"updated_at",
 	"last_activity_at",
+	"is_personal",
 ].join(", ");
 
 /** The `org.users_public` columns a display party needs. Verified against `00000011_tables_org.sql`. */
@@ -162,6 +163,7 @@ export interface ProjectRow {
 	source_blueprint_id: string | null;
 	updated_at: string;
 	last_activity_at: string | null;
+	is_personal?: boolean | null;
 }
 
 /** One `projects.project_participants` row, for the viewer's role and the roster. */
@@ -324,6 +326,7 @@ export function toSummary(row: ProjectRow, ctx: SummaryContext): ProjectSummary 
 		kind: (row.source_blueprint_id ? "service" : "project") as EngagementKind,
 		format: toFormat(row.format),
 		status: toStatus(row.status),
+		personal: row.is_personal === true,
 		viewerRole: resolveSummaryRole(row, ctx),
 		scopeType,
 		scopeId,

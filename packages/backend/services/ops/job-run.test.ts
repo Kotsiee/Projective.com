@@ -42,8 +42,11 @@ Deno.test("toScheduledJob — maps both kinds and refuses a row that breaks the 
 });
 
 Deno.test("planHttpRun — POSTs to the app origin plus the row's path with the named bearer", () => {
-	const plan = planHttpRun(httpJob(), "http://localhost:3000/ignored", (k) =>
-		k === "FINANCE_CRON_SECRET" ? ` ${BEARER} ` : undefined);
+	const plan = planHttpRun(
+		httpJob(),
+		"http://localhost:3000/ignored",
+		(k) => k === "FINANCE_CRON_SECRET" ? ` ${BEARER} ` : undefined,
+	);
 	assertEquals(plan, {
 		ok: true,
 		url: "http://localhost:3000/api/finance/cron/deposits?limit=50",

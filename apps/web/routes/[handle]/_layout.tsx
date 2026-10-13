@@ -187,7 +187,13 @@ export default define.page(async function ProfileLayout(ctx) {
 				{/* The owner nav is server-rendered; the sheet it needs rides this anchor even when the
 				    page below it (a refusal note) mounts no island. */}
 				<ProfileStyleAnchor />
-				{owner && <OwnerNav handle={profile.handle} active={tab} />}
+				{owner && (
+					<OwnerNav
+						handle={profile.handle}
+						active={tab}
+						scheduling={!isRestrictedRequest(ctx.req, ctx.state.userContext)}
+					/>
+				)}
 				<ctx.Component />
 			</div>,
 		);
@@ -241,7 +247,7 @@ export default define.page(async function ProfileLayout(ctx) {
 	);
 	return shell(
 		<div class="pf-scope">
-			{owner && <OwnerNav handle={profile.handle} active="preview" />}
+			{owner && <OwnerNav handle={profile.handle} active="preview" scheduling={!restricted} />}
 			<div class="pf">
 				<ProfileHero
 					profile={profile}

@@ -150,7 +150,7 @@ function renderSection(
 				/>
 			);
 		case "profile":
-			return <ProfileSection data={data} />;
+			return <ProfileSection data={data} restricted={props.context.restricted} />;
 		case "workspaces":
 			return <WorkspacesSection context={props.context} />;
 		case "language":

@@ -4,7 +4,7 @@ import { useComputed, useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import { Backdrop, BodyPortal, usePresence } from "@projective/ui/overlay";
 import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks";
-import { Button, InputText, Textarea } from "@projective/ui/fields";
+import { Button, Checkbox, InputText, Textarea } from "@projective/ui/fields";
 import type { FieldStatus } from "@projective/ui/fields";
 import { toDisplayCurrency, toMinorUnits } from "@projective/types/finance";
 import { PERSONAL_PROJECT_NOTE } from "@projective/types/auth";
@@ -176,6 +176,9 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 	const currency = useSignal(toDisplayCurrency(defaultCurrency));
 	/** The baseline in MAJOR units of {@link currency}, converted once at submit. */
 	const amount = useSignal<number | null>(null);
+	/** The creator's own choice of a personal project; a restricted account's is always one. */
+	const personalChoice = useSignal(false);
+	const personal = !!props.restricted || personalChoice.value;
 	/** Set only when the draft exists but its invitation was refused, so the reader sees why first. */
 	const created = useSignal<CreatedProject | null>(null);
 	/**
@@ -208,6 +211,7 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 		brief.value = "";
 		currency.value = toDisplayCurrency(defaultCurrency);
 		amount.value = null;
+		personalChoice.value = false;
 		created.value = null;
 		type.value = stepped ? null : initialType;
 		touched.value = {};
@@ -354,10 +358,11 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 			hasStages,
 			description: brief.value.trim(),
 			currency: currency.value,
-			baselineAmountCents: toMinorUnits(amount.value, currency.value),
+			baselineAmountCents: personal ? null : toMinorUnits(amount.value, currency.value),
 			inviteeHandle: seller?.handle,
 			scopeType: "personal",
 			scopeId,
+			personal,
 		};
 	};
 
@@ -540,7 +545,13 @@ export function ProjectCreateModal(props: ProjectCreateModalProps): JSX.Element 
 								{format && props.restricted && (
 									<InlineNotice align="start" text={PERSONAL_PROJECT_NOTE} />
 								)}
-								{format && !props.restricted && (
+								{format && !props.restricted && !seller && (
+									<Checkbox
+										value={personalChoice}
+										label="Personal project — private to you, with no members, hiring or payments"
+									/>
+								)}
+								{format && !personal && (
 									<ProjectCreatePricingFields
 										format={format}
 										currency={currency.value}

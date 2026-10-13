@@ -683,8 +683,14 @@ BEGIN
            )
            -- A failure is final for its own bank payout, and a failure of an earlier bank payout never
            -- undoes a later one that paid.
-           AND NOT (p_status = 'paid' AND p.bank_status = 'failed' AND p.bank_payout_ref = p_bank_payout_ref)
-           AND NOT (p_status = 'failed' AND p.bank_status = 'paid' AND p.bank_payout_ref <> p_bank_payout_ref)
+           AND NOT (
+                p_status = 'paid' AND p.bank_status IS NOT DISTINCT FROM 'failed'
+                AND p.bank_payout_ref IS NOT DISTINCT FROM p_bank_payout_ref
+           )
+           AND NOT (
+                p_status = 'failed' AND p.bank_status IS NOT DISTINCT FROM 'paid'
+                AND p.bank_payout_ref IS DISTINCT FROM p_bank_payout_ref
+           )
         RETURNING p.id
     )
     SELECT pg_catalog.array_agg(hit.id) INTO v_ids FROM hit;

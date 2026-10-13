@@ -91,6 +91,11 @@ export const ProjectSummarySchema = z.object({
 	kind: EngagementKind,
 	format: ProjectFormat,
 	status: ProjectStatus,
+	/**
+	 * A personal project (Decision #208): one person, no money, never listed — it is never published,
+	 * so its draft status reads "Personal". Absent reads as `false`.
+	 */
+	personal: z.boolean().optional(),
 	/** The acting user's role in THIS engagement (drives the role filter + a small role chip). */
 	viewerRole: ProjectViewerRole,
 	/** Which structural workspace the engagement belongs to — the partition axis for context scoping. */

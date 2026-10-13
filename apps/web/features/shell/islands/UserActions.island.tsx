@@ -395,7 +395,7 @@ export default function UserActions(
 						/>
 					</span>
 					{meta ? <span class="shell-account__meta">{meta}</span> : null}
-					{presence && setupHandle
+					{presence && setupHandle && !restricted
 						? (
 							<Tooltip content={presence.schedule} placement="bottom-start">
 								<a
@@ -478,7 +478,7 @@ export default function UserActions(
 					</a>
 				)
 				: null}
-			{setupHandle
+			{setupHandle && !restricted
 				? (
 					<a
 						class="shell-menu__item"

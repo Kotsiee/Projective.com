@@ -57,7 +57,7 @@ GRANT EXECUTE ON FUNCTION pg_temp.s(text) TO authenticated;
 -- An adult freelancer with a freelancer wallet, made payout-ready with a verified Connect account and
 -- an active payout method; a second person's method is the foreign destination.
 DO $$
-DECLARE r record; v_other uuid;
+DECLARE r record; v_method text;
 BEGIN
     SELECT w.id AS wallet, w.owner_id AS payee, pg_catalog.upper(w.currency) AS currency
       INTO r
@@ -68,8 +68,6 @@ BEGIN
     IF NOT FOUND THEN
         RAISE EXCEPTION 'FAIL fixtures: no adult freelancer wallet (run deno task db:reset)';
     END IF;
-    SELECT fp.user_id INTO v_other FROM org.freelancer_profiles fp WHERE fp.user_id <> r.payee
-     ORDER BY fp.user_id LIMIT 1;
 
     PERFORM pg_catalog.set_config('probe.wallet', r.wallet::text, true);
     PERFORM pg_catalog.set_config('probe.payee', r.payee::text, true);
@@ -84,17 +82,17 @@ BEGIN
 
     INSERT INTO finance.payment_methods (owner_type, owner_id, method_role, provider, external_ref, label, status)
     VALUES ('freelancer', r.payee, 'payout', 'stripe', 'ba_probe_own', 'Probe bank', 'active')
-    RETURNING id::text INTO STRICT v_other;
-    PERFORM pg_catalog.set_config('probe.method_own', v_other, true);
+    RETURNING id::text INTO STRICT v_method;
+    PERFORM pg_catalog.set_config('probe.method_own', v_method, true);
     INSERT INTO finance.payment_methods (owner_type, owner_id, method_role, provider, external_ref, label, status)
     VALUES ('freelancer', r.payee, 'payout', 'stripe', 'ba_probe_old', 'Closed bank', 'inactive')
-    RETURNING id::text INTO STRICT v_other;
-    PERFORM pg_catalog.set_config('probe.method_inactive', v_other, true);
+    RETURNING id::text INTO STRICT v_method;
+    PERFORM pg_catalog.set_config('probe.method_inactive', v_method, true);
     INSERT INTO finance.payment_methods (owner_type, owner_id, method_role, provider, external_ref, label, status)
     SELECT 'freelancer', fp.user_id, 'payout', 'stripe', 'ba_probe_foreign', 'Someone else', 'active'
       FROM org.freelancer_profiles fp WHERE fp.user_id <> r.payee ORDER BY fp.user_id LIMIT 1
-    RETURNING id::text INTO STRICT v_other;
-    PERFORM pg_catalog.set_config('probe.method_foreign', v_other, true);
+    RETURNING id::text INTO STRICT v_method;
+    PERFORM pg_catalog.set_config('probe.method_foreign', v_method, true);
 
     PERFORM finance.fn_wallet_credit(r.payee, 'freelancer', (SELECT currency FROM finance.wallets WHERE id = r.wallet),
         200000, 'topup', 'probe', NULL);
@@ -167,7 +165,7 @@ RESET ROLE;
 SELECT pg_temp.ok(pg_temp.bal() = pg_temp.s('b0')::bigint, 'a full reversal returns the whole amount, and a late lower total credits nothing');
 SELECT pg_temp.ok((pg_temp.payout(pg_temp.s('p1'))).status = 'reversed', 'a fully reversed payout is reversed');
 SELECT pg_temp.ok(EXISTS (SELECT 1 FROM comms.notifications WHERE user_id = pg_temp.s('payee')::uuid
-    AND type = 'payout.reversed' AND ref_id = pg_temp.s('p1')::uuid), 'the owner is told the payout came back');
+    AND type = 'payout.reversed' AND entity_id = pg_temp.s('p1')::uuid), 'the owner is told the payout came back');
 
 SET LOCAL ROLE service_role;
 SELECT pg_catalog.set_config('probe.out', finance.record_transfer_reversed('evt_probe_rev_wrong', 'tr_probe_other',

@@ -18,6 +18,8 @@ export interface OwnerNavProps {
 	/** The profile's `@handle`. */
 	handle: string;
 	active: OwnerNavTab;
+	/** Whether the Availability tab applies — never for an under-18 account (Decision #208). */
+	scheduling?: boolean;
 }
 
 const TABS: ReadonlyArray<{ id: OwnerNavTab; label: string; icon: "eye" | "edit" | "calendar"; path: string }> = [
@@ -26,12 +28,13 @@ const TABS: ReadonlyArray<{ id: OwnerNavTab; label: string; icon: "eye" | "edit"
 	{ id: "availability", label: "Availability", icon: "calendar", path: "/edit/availability" },
 ];
 
-export function OwnerNav({ handle, active }: OwnerNavProps): JSX.Element {
+export function OwnerNav({ handle, active, scheduling = true }: OwnerNavProps): JSX.Element {
+	const tabs = scheduling ? TABS : TABS.filter((tab) => tab.id !== "availability");
 	const base = `/${handle.startsWith("@") ? handle : `@${handle}`}`;
 	return (
 		<nav class="pf-ownernav" aria-label="Manage your profile">
 			<ul class="pf-ownernav__list" role="list">
-				{TABS.map((tab) => (
+				{tabs.map((tab) => (
 					<li key={tab.id} class="pf-ownernav__item">
 						<a
 							class="pf-ownernav__link"

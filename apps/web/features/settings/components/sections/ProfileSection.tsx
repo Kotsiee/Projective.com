@@ -64,6 +64,8 @@ function Switch(
 
 export interface ProfileSectionProps {
 	data: SettingsSectionDataOf<"profile">;
+	/** An under-18 account: its profile stays unlisted or private, so "Public" is not offered (Decision #208). */
+	restricted: boolean;
 }
 
 export function ProfileSection(props: ProfileSectionProps): JSX.Element {
@@ -123,7 +125,9 @@ export function ProfileSection(props: ProfileSectionProps): JSX.Element {
 					description={VISIBILITY_COPY[visibility.value]}
 					control={
 						<SelectButton
-							options={VISIBILITY_OPTIONS}
+							options={props.restricted
+								? VISIBILITY_OPTIONS.filter((o) => o.value !== "public")
+								: VISIBILITY_OPTIONS}
 							value={visibilityBound}
 							disabled={busy}
 							aria-label="Profile visibility"

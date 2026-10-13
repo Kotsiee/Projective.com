@@ -1,6 +1,7 @@
 import { page } from "fresh";
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
+import { isRestrictedRequest } from "@web/utils/age-gate.ts";
 import type { OwnerAvailability } from "@projective/types/scheduling";
 import { resolveOwnerAvailability } from "@features/profile/core/profile-ssr.ts";
 import AvailabilityEditor from "@features/profile/islands/AvailabilityEditor.island.tsx";
@@ -24,6 +25,10 @@ export const handler = define.handlers({
 		}
 		if (!profile.viewer?.isOwner) {
 			return new Response(null, { status: 303, headers: { location: `/${profile.handle}` } });
+		}
+		// An under-18 account publishes no hours and takes no calls (Decision #208).
+		if (isRestrictedRequest(ctx.req, ctx.state.userContext)) {
+			return new Response(null, { status: 303, headers: { location: `/${profile.handle}/edit` } });
 		}
 		const { availability, takesCalls, status } = await resolveOwnerAvailability(profile.handle, readActor(ctx));
 		if (!availability) {

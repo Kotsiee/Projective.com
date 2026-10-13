@@ -144,6 +144,14 @@ export const STATUS_LABEL: Record<ProjectStatus, string> = {
 	cancelled: "Cancelled",
 };
 
+/**
+ * A project's status in words, for its row and card. A personal project is never published, so its
+ * standing draft reads "Personal" rather than as unfinished business (Decision #208).
+ */
+export function statusLabelFor(status: ProjectStatus, personal: boolean | undefined): string {
+	return personal && status === "draft" ? "Personal" : STATUS_LABEL[status];
+}
+
 /** A work-flow format, in words. */
 export const FORMAT_LABEL: Record<ProjectFormat, string> = {
 	one_off: "One-off",

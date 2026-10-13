@@ -18,6 +18,7 @@ export const RESTRICTED_PATH_PREFIXES: readonly string[] = [
 	"/become-partner",
 	"/settings/verification",
 	"/settings/billing",
+	"/settings/scheduling",
 ];
 
 /** Whether `path` is, or sits under, one of {@link RESTRICTED_PATH_PREFIXES}. */

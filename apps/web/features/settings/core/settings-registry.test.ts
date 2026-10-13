@@ -160,6 +160,7 @@ Deno.test("a restricted (13–17) account sees no Billing, no Verification & pay
 	const keys = visibleSections(minor).map((s) => s.key);
 	assert(!keys.includes("billing"));
 	assert(!keys.includes("verification"));
+	assert(!keys.includes("scheduling"));
 	assert(!sectionEntries("workspaces", minor).some((e) => e.anchor === "businesses"));
 	assertEquals(searchSettings("payout", minor).some((hit) => hit.section.key === "verification"), false);
 	const adult = person({ restricted: false });

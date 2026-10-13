@@ -147,7 +147,9 @@ export function ProjectCard(
 				class="proj-card__link"
 				href={href}
 				aria-current={active ? "page" : undefined}
-				aria-label={`${item.title} — ${face.name} · ${STATUS_TITLE[item.status]}`}
+				aria-label={`${item.title} — ${face.name} · ${
+					item.personal && item.status === "draft" ? "Personal" : STATUS_TITLE[item.status]
+				}`}
 			>
 			</a>
 

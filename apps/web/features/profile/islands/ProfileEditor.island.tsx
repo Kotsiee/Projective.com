@@ -56,6 +56,8 @@ export interface ProfileEditorProps {
 	model: ProfileEditModel;
 	/** The signed-in owner's user id — whose account avatar a new photo updates. */
 	userId: string;
+	/** An under-18 owner: "Public" is not offered — the profile stays unlisted or private (Decision #208). */
+	restricted: boolean;
 }
 
 const VISIBILITY_OPTIONS: Array<{ label: string; value: ProfileVisibility }> = [
@@ -79,7 +81,7 @@ const TIME_ZONES = (() => {
 	}
 })();
 
-export default function ProfileEditor({ model, userId }: ProfileEditorProps): JSX.Element {
+export default function ProfileEditor({ model, userId, restricted }: ProfileEditorProps): JSX.Element {
 	const individual = model.ownerType === "user";
 	const sections = model.sections;
 	const baseline = useSignal<EditDraft>(draftOf(model));
@@ -465,7 +467,9 @@ export default function ProfileEditor({ model, userId }: ProfileEditorProps): JS
 								<SelectButton
 									aria-describedby={describedBy}
 									aria-label="Profile visibility"
-									options={VISIBILITY_OPTIONS}
+									options={restricted
+										? VISIBILITY_OPTIONS.filter((o) => o.value !== "public")
+										: VISIBILITY_OPTIONS}
 									value={d.visibility}
 									onValueChange={(v) => {
 										if (typeof v === "string") set("visibility", v as ProfileVisibility);

@@ -10,6 +10,7 @@ import type { ReadActor } from "../read-actor.ts";
 import { refusalFrom, type WriteOutcome, type WriteRefusal } from "../projects/live-writes.ts";
 import { UUID_RE } from "../projects/live-support.ts";
 import { commsClient, orgClient } from "./live-queries.ts";
+import { DM_SHIELDED, isAgeRestricted } from "../../core/age-gate.ts";
 import { insertDmMessage } from "./live-writes.ts";
 
 /**
@@ -100,7 +101,8 @@ async function resolveThreadId(actor: Actor, conversationId: string): Promise<st
 }
 
 /** The RPCs raise two sentences of their own; everything else goes through the shared mapper. */
-function rpcRefusal(message: string): WriteRefusal {
+function rpcRefusal(message: string, code?: string): WriteRefusal {
+	if (isAgeRestricted({ code })) return { ...DM_SHIELDED };
 	if (message.includes("Not a participant")) {
 		return { status: 403, message: "You can only add people to a conversation you're in." };
 	}
@@ -140,7 +142,7 @@ export async function createLiveConversation(
 			p_title: input.groupName ?? null,
 			p_member_ids: members,
 		});
-		if (res.error) return { refusal: rpcRefusal(res.error.message) };
+		if (res.error) return { refusal: rpcRefusal(res.error.message, res.error.code) };
 		const id = res.data as unknown;
 		if (typeof id !== "string" || !UUID_RE.test(id)) {
 			return { refusal: refusalFrom("create_group_thread returned no id", "contactIds") };
@@ -151,7 +153,7 @@ export async function createLiveConversation(
 	} else {
 		const before = now;
 		const res = await db.rpc("get_or_create_dm_thread", { target_user_id: members[0] });
-		if (res.error) return { refusal: rpcRefusal(res.error.message) };
+		if (res.error) return { refusal: rpcRefusal(res.error.message, res.error.code) };
 		const id = res.data as unknown;
 		if (typeof id !== "string" || !UUID_RE.test(id)) {
 			return { refusal: refusalFrom("get_or_create_dm_thread returned no id", "contactIds") };
@@ -209,7 +211,7 @@ export async function addLiveMembers(
 		p_thread_id: threadId,
 		p_member_ids: members,
 	});
-	if (res.error) return { refusal: rpcRefusal(res.error.message) };
+	if (res.error) return { refusal: rpcRefusal(res.error.message, res.error.code) };
 	const added = typeof res.data === "number" ? res.data : Number(res.data ?? 0);
 
 	const row = await db.from("dm_threads").select("kind").eq("id", threadId).maybeSingle();

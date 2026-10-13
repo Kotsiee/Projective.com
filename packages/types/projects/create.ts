@@ -280,6 +280,11 @@ export const CreateProjectSchema = z.object({
 	/** Which workspace to create the engagement under; defaults to the actor's active context. */
 	scopeType: ContextType.default("personal"),
 	scopeId: z.string().max(64).default(""),
+	/**
+	 * A personal project (Decision #208): one person, no money, never listed. Anyone may choose it; an
+	 * under-18 account's project is one whatever is sent (`projects.trg_projects_personal_guard`).
+	 */
+	personal: z.boolean().default(false),
 });
 export type CreateProject = z.infer<typeof CreateProjectSchema>;
 

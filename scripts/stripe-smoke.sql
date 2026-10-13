@@ -265,8 +265,9 @@ EXCEPTION WHEN OTHERS THEN
 END $$;
 GRANT EXECUTE ON FUNCTION pg_temp.try_withdraw(bigint, text) TO authenticated;
 
+SELECT pg_catalog.set_config('smoke.min', finance.fn_min_withdrawal_minor('USD')::text, true);
 SELECT pg_temp.act(pg_temp.s('payee')); SET LOCAL ROLE authenticated;
-SELECT pg_catalog.set_config('smoke.out', pg_temp.try_withdraw(finance.fn_min_withdrawal_minor('USD') - 1, 'smoke-min'), true);
+SELECT pg_catalog.set_config('smoke.out', pg_temp.try_withdraw(pg_temp.s('min')::bigint - 1, 'smoke-min'), true);
 RESET ROLE;
 SELECT pg_temp.ok(pg_temp.s('out') LIKE 'refused:amountMinor:%smallest withdrawal%', 'minimum: a withdrawal below it is refused');
 

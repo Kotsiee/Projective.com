@@ -140,6 +140,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
 		icon: "calendar",
 		keywords: ["availability", "booking", "calendar"],
 		surface: "page-only",
+		gate: adultOnly,
 	},
 	{
 		key: "billing",

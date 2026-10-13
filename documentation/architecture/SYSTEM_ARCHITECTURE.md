@@ -2046,8 +2046,8 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 function exists (M3 / M4 reached `main` separately), so the seed holds whichever order they land in.
 
 **Implemented but not registered (Decision #203 flag (a), awaiting a human):** the comms engine's
-`fn_process_queue`, `fn_escalate_unread`, `fn_build_digests` (daily and weekly), `fn_sweep_expired` and
-`fn_compact_delivery_events` (their intended cadences are in `database/comms/Functions.md`), and
+`fn_process_queue`, `fn_escalate_unread`, `fn_build_digests` (daily and weekly), `fn_sweep_expired`,
+`fn_reap_dead_devices` and `fn_compact_delivery_events` (their intended cadences are in `database/comms/Functions.md`), and
 `projects.fn_release_expired_claims` and `projects.fn_resolve_expired_workload_reports`. No
 migration has ever scheduled them. Each is one registry row once its go-live is decided.
 

@@ -4,6 +4,7 @@ import { BookingBackendService } from "@server/services/booking/BookingBackendSe
 import { bookingActorFrom } from "@features/view/core/booking-actor.ts";
 import { invalidPayload, toBookingResponse } from "@features/view/core/respond.ts";
 import { warmCatalog } from "@server/services/explore/live-catalog.ts";
+import { refuseIfRestricted } from "@web/utils/age-gate.ts";
 
 /**
  * `POST /api/services/book-session` — reserve the chosen slot(s) and stage the booking for checkout.
@@ -19,6 +20,8 @@ import { warmCatalog } from "@server/services/explore/live-catalog.ts";
  */
 export const handler = define.handlers({
 	async POST(ctx) {
+		const restricted = refuseIfRestricted(ctx.req, ctx.state.userContext);
+		if (restricted) return restricted;
 		// The service below resolves the listing synchronously from the loaded catalogue.
 		await warmCatalog();
 		const raw = await ctx.req.json().catch(() => null);

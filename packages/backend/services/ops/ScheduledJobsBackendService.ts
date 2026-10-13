@@ -46,7 +46,9 @@ export class ScheduledJobsBackendService {
 		const rows = (data ?? []) as ScheduledJobRow[];
 		const jobs = rows.map(toScheduledJob).filter((job): job is ScheduledJob => job !== null);
 		if (jobs.length !== rows.length) {
-			return fail(500, { message: "ops.scheduled_jobs holds a row the @projective/types/ops schema refuses." });
+			return fail(500, {
+				message: "ops.scheduled_jobs holds a row the @projective/types/ops schema refuses.",
+			});
 		}
 		return ok(jobs);
 	}
@@ -57,7 +59,10 @@ export class ScheduledJobsBackendService {
 	 * process's env (the key named by its `secretName`), exactly as the scheduler sends it, so the app
 	 * must be running. A non-2xx answer is a failure carrying the status.
 	 */
-	static async runJob(name: string, opts: JobRunOptions = {}): Promise<ServiceResult<JobRunReport>> {
+	static async runJob(
+		name: string,
+		opts: JobRunOptions = {},
+	): Promise<ServiceResult<JobRunReport>> {
 		if (!JOB_NAME_PATTERN.test(name)) return fail(422, { message: `"${name}" is not a job name.` });
 		if (!isSupabaseConfigured()) return fail(503, { message: "Supabase is not configured." });
 
@@ -102,7 +107,13 @@ export class ScheduledJobsBackendService {
 		} catch {
 			body = text;
 		}
-		const report: JobRunReport = { kind: "http", job: name, url: plan.url, status: response.status, body };
+		const report: JobRunReport = {
+			kind: "http",
+			job: name,
+			url: plan.url,
+			status: response.status,
+			body,
+		};
 		if (response.ok) return ok(report);
 		return fail(502, {
 			message: response.status === 404

@@ -1,6 +1,7 @@
 import { page } from "fresh";
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
+import { isRestrictedRequest } from "@web/utils/age-gate.ts";
 import type { ProfileEditModel } from "@projective/types/profile";
 import { resolveEditModel } from "@features/profile/core/profile-ssr.ts";
 import ProfileEditor from "@features/profile/islands/ProfileEditor.island.tsx";
@@ -47,12 +48,20 @@ export const handler = define.handlers({
 			return page({ model: null, userId: actor.userId }, { status: 503 });
 		}
 		ctx.state.title = `Edit profile · ${profile.name} · Projective`;
-		return page({ model, userId: actor.userId });
+		return page({
+			model,
+			userId: actor.userId,
+			restricted: isRestrictedRequest(ctx.req, ctx.state.userContext),
+		});
 	},
 });
 
 export default define.page<typeof handler>(function ProfileEditPage(ctx) {
-	const { model, userId } = ctx.data as { model: ProfileEditModel | null; userId: string };
+	const { model, userId, restricted = false } = ctx.data as {
+		model: ProfileEditModel | null;
+		userId: string;
+		restricted?: boolean;
+	};
 	if (!ctx.state.profile) return null; // the layout renders the not-found body
 	if (!model) {
 		return (
@@ -61,5 +70,5 @@ export default define.page<typeof handler>(function ProfileEditPage(ctx) {
 			</p>
 		);
 	}
-	return <ProfileEditor model={model} userId={userId} />;
+	return <ProfileEditor model={model} userId={userId} restricted={restricted} />;
 });
