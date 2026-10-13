@@ -1276,9 +1276,10 @@ TASK: Build the hero, whose core is a search bar that searches Explore.
   * search history (features/explore/core/search-history.ts).
   Import across features only through path aliases. If the landing island needs a different look,
   wrap the logic (headless) and give it lp- styling. Do not fork the logic.
-- APIs: GET /api/explore/suggest?q=&category (existing, Zod SuggestQuerySchema). Submit navigates
-  to explorePath(category, q) → /explore?category=…&q=… — the real contract (decision k). Never
-  invent a `scope` param.
+- APIs: GET /api/explore/suggest?q=&scope= (existing; Zod SuggestQuerySchema, where `scope` takes
+  the same ExploreCategory values). Submit navigates to explorePath(category, q) →
+  /explore?category=…&q=… — the page's real contract (decision k). The typeahead API says `scope`,
+  the Explore page says `category`; don't mix them up.
 
 2. LAYOUT & COMPONENT ARCHITECTURE
 - Hero copy from the LANDING.md copy deck: an eyebrow (optional), an h1, a subline, and two CTAs
