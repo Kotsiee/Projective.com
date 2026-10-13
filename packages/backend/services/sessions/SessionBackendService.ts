@@ -14,6 +14,7 @@ import {
 	seatCount,
 	type SessionWorkspace,
 } from "@projective/types/projects";
+import type { DisputeStatus } from "@projective/types/finance";
 import type { ReadActor } from "../read-actor.ts";
 import {
 	type RawCohortOffer,
@@ -37,6 +38,19 @@ import { PRESENCE_ADAPTERS } from "./presence/mod.ts";
  * Live behind `PROJECTS_BACKEND_LIVE`; the fixture world (`dev:mock`) is served from
  * `session-fixtures.ts` through the same mapper.
  */
+
+/**
+ * What cancelling a seat did with its money (`projects.cancel_cohort_membership`). `partial` is a 1-1
+ * block a client cancelled across the notice line (Decision #211): `refundedMinor` went back to the
+ * payer, `forfeitedMinor` (net of the fee) to the provider; `amountMinor` is their sum.
+ */
+export interface SeatCancellation {
+	outcome: "refunded" | "forfeited" | "partial";
+	amountMinor: number;
+	refundedMinor: number;
+	forfeitedMinor: number;
+	currency: string | null;
+}
 
 // #region Refusals
 /** A definer's refusal (SQLSTATE + message) onto a ServiceResult. */
@@ -66,6 +80,21 @@ function refusal<T>(error: { code?: string; message?: string; details?: string |
 
 function signedOut<T>(): ServiceResult<T> {
 	return fail(401, { message: "Sign in to continue." });
+}
+
+/** What a no-show claim's landing status means to the person who raised it. */
+function claimMessage(status: DisputeStatus): string {
+	switch (status) {
+		case "resolved_refund":
+			return "The room's logs show the provider never joined — your payment was refunded.";
+		case "resolved_release":
+		case "resolved_split":
+			return "The room's logs show you were both there, so the claim was dismissed.";
+		case "awaiting_response":
+			return "Claim filed. The provider has been asked to respond; your payment stays held.";
+		default:
+			return "Claim filed. Your payment stays held, and the room's logs are checked when the session ends.";
+	}
 }
 // #endregion
 
@@ -194,11 +223,13 @@ export class SessionBackendService {
 	/**
 	 * Cancel a seat under PRODUCT_SPEC's late-cancel rule (the provider's cancel always refunds; the
 	 * attendee's refunds until `session_cancel_notice_hours` before the first sitting, then forfeits).
+	 * A 1-1 booking is judged per sitting against each one's own start (Decision #211), so a client
+	 * cancelling a block can come out `partial`: the far sittings refunded, the near ones forfeited.
 	 */
 	static async cancelMembership(
 		membershipId: string,
 		actor: ReadActor,
-	): Promise<ServiceResult<{ outcome: "refunded" | "forfeited"; amountMinor: number; currency: string | null }>> {
+	): Promise<ServiceResult<SeatCancellation>> {
 		if (!isProjectsBackendLive()) {
 			return fail(503, { message: "Cancelling a seat needs the live database." });
 		}
@@ -208,16 +239,33 @@ export class SessionBackendService {
 			{ p_membership_id: membershipId },
 		);
 		if (error) return refusal(error);
-		const row = data as { outcome: "refunded" | "forfeited"; amount_minor: number; currency: string | null };
-		return ok({ outcome: row.outcome, amountMinor: Number(row.amount_minor) || 0, currency: row.currency });
+		const row = data as {
+			outcome: SeatCancellation["outcome"];
+			amount_minor: number;
+			refunded_minor?: number;
+			forfeited_minor?: number;
+			currency: string | null;
+		};
+		return ok({
+			outcome: row.outcome,
+			amountMinor: Number(row.amount_minor) || 0,
+			refundedMinor: Number(row.refunded_minor) || 0,
+			forfeitedMinor: Number(row.forfeited_minor) || 0,
+			currency: row.currency,
+		});
 	}
 
-	/** Claim the provider did not show for a sitting: stops the seat's auto-release until it is reviewed. */
+	/**
+	 * Claim the provider did not show for a sitting: stops the seat's auto-release, and — once the
+	 * sitting has ended — runs the attendance audit at once (Decision #212). `status` is where the claim
+	 * landed: `open` (the sitting is still running), `awaiting_response`, or a ruling the room's logs
+	 * already settled (`resolved_refund` / `resolved_release`).
+	 */
 	static async claimNoShow(
 		eventId: string,
 		reason: string | null,
 		actor: ReadActor,
-	): Promise<ServiceResult<{ disputeId: string }>> {
+	): Promise<ServiceResult<{ disputeId: string; status: DisputeStatus }>> {
 		if (!isProjectsBackendLive()) return fail(503, { message: "A claim needs the live database." });
 		if (!actor.accessToken) return signedOut();
 		const { data, error } = await getUserClient(actor.accessToken).schema("projects").rpc(
@@ -225,7 +273,8 @@ export class SessionBackendService {
 			{ p_event_id: eventId, p_reason: reason },
 		);
 		if (error) return refusal(error);
-		return ok({ disputeId: (data as { dispute_id: string }).dispute_id });
+		const row = data as { dispute_id: string; status: DisputeStatus };
+		return ok({ disputeId: row.dispute_id, status: row.status }, { message: claimMessage(row.status) });
 	}
 
 	/**

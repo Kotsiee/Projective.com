@@ -19,6 +19,7 @@ import {
 	DEV_AUTO_FUND_MODES,
 	DEV_LOW_BALANCES,
 	DEV_SESSION_STATES,
+	DEV_DISPUTE_STATES,
 	DEV_NOTIFICATIONS,
 	DEV_BASKET_SCENARIOS,
 	DEV_PROMO_DISMISSALS,
@@ -518,9 +519,11 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 
 				{
 					/* The ticket funding line (Decision #165). Holds, refused holds and card payments are
-				    server facts, so this substitutes the STATE; the card's real amount still shows. */
+				    server facts, so this substitutes the STATE; the card's real amount still shows. It also
+				    drives the board's column lock (Decision #210): a claimed card forced off Funded reads its
+				    work columns as locked, while the server still refuses from the real escrow. */
 				}
-				<Field label="Funding state" hint="ticket funding line">
+				<Field label="Funding state" hint="ticket funding line · board column lock">
 					<Segment
 						name="Funding state"
 						options={DEV_FUNDING_STATES}
@@ -582,6 +585,21 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.sessionState}
 						disabled={!o.enabled}
 						onChange={(sessionState) => patchDevContext({ sessionState })}
+					/>
+				</Field>
+
+				{
+					/* A session's no-show dispute (Decision #212): the Report no-show action and the dispute
+				    section's every status and ruling. The previewed case is client-side; every write still
+				    goes to the database. */
+				}
+				<Field label="Dispute" hint="no-show claim · response · ruling">
+					<Segment
+						name="Dispute state"
+						options={DEV_DISPUTE_STATES}
+						value={o.disputeState}
+						disabled={!o.enabled}
+						onChange={(disputeState) => patchDevContext({ disputeState })}
 					/>
 				</Field>
 

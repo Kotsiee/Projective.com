@@ -96,6 +96,7 @@ function stage(id: string, status: ProjectStatus, order: number): BoardStageRef 
 		funding: null,
 		assignmentMode: "open_pull",
 		maxConcurrentIntensity: null,
+		chainReaction: true,
 		startAt: null,
 		endAt: null,
 		dependsOnStageId: null,

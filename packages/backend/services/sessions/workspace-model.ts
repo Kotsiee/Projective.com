@@ -1,4 +1,10 @@
-import { type FundingState, type FundingStatus, formatMoney } from "@projective/types/finance";
+import {
+	type DisputeSummary,
+	DisputeStatus,
+	type FundingState,
+	type FundingStatus,
+	formatMoney,
+} from "@projective/types/finance";
 import {
 	type CohortOffer,
 	type CohortView,
@@ -99,6 +105,21 @@ export interface RawWorkspace {
 		votes: number;
 		voters: number;
 	} | null;
+	/** The no-show claims the viewer is party to (Decision #212). Absent on a pre-#212 database. */
+	disputes?: RawDisputeSummary[] | null;
+	/** The sitting the attendee may report now. */
+	claimable_sitting_id?: string | null;
+}
+
+/** One entry of `get_session_workspace.disputes`. */
+export interface RawDisputeSummary {
+	id: string;
+	status: string;
+	session_event_id: string | null;
+	respond_by: string | null;
+	opened_at: string;
+	resolved_at: string | null;
+	mine: boolean;
 }
 
 /** `projects.get_cohort_offer`'s answer. */
@@ -327,7 +348,31 @@ export function toSessionWorkspace(raw: RawWorkspace, now: number): SessionWorks
 			? (r.opened_by_host ? "host" : "attendee")
 			: null,
 		presetEnded: sittings.length > 0 && sittings.every((s) => s.phase === "ended" || s.phase === "cancelled"),
+		claimable: raw.role === "attendee" && raw.claimable_sitting_id
+			? sittings.find((s) => s.id === raw.claimable_sitting_id) ?? null
+			: null,
+		disputes: disputesOf(raw.disputes),
 	};
+}
+
+/** The workspace's claim list; an entry with a status this build does not know is dropped. */
+function disputesOf(raw: RawDisputeSummary[] | null | undefined): DisputeSummary[] {
+	const out: DisputeSummary[] = [];
+	for (const d of raw ?? []) {
+		const status = DisputeStatus.safeParse(d.status);
+		const openedAt = isoOf(d.opened_at);
+		if (!status.success || !openedAt) continue;
+		out.push({
+			id: d.id,
+			status: status.data,
+			sessionEventId: d.session_event_id ?? null,
+			respondBy: isoOf(d.respond_by),
+			openedAt,
+			resolvedAt: isoOf(d.resolved_at),
+			mine: !!d.mine,
+		});
+	}
+	return out.slice(0, 200);
 }
 // #endregion
 

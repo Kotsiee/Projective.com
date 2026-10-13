@@ -156,12 +156,15 @@ an already-published project's visibility change takes effect immediately. `visi
 written from a client payload; `publish_visibility` is the only half the form can set.
 
 **Service instantiation.** "Add to Projects" on a Pipeline listing copies the seller's blueprint
-into the buyer's workspace as `status = 'draft'`, `visibility = 'unlisted'`, with
-`source_blueprint_id` set and every `stage_assignments` row parked at `pending_funding`. No money
-moves and nothing is reserved: a pipeline is staffed and then bought against, one ticket at a time
-(`PRODUCT_SPEC.md` §Creation & Purchasing Gate). `source_blueprint_id` is what makes a repeated
-press idempotent — the app resolves an existing draft by `(owner, blueprint)` rather than creating a
-second identical pipeline.
+into the buyer's personal workspace as `status = 'draft'`, `visibility = 'unlisted'`, with
+`source_blueprint_id` set — one `marketplace.instantiate_service_blueprint` transaction (Decision
+#209; [`../marketplace/Functions.md`](../marketplace/Functions.md)) that also writes one stage per
+`stage_template` entry, one priced backlog ticket per stage, every room, and the request row in
+[`projects.service_instantiations`](#projectsservice_instantiations). No money moves, nothing is
+reserved and **no seat is minted** — a seat only ever comes from an accepted invitation or
+application, and a seat accepted on such a draft stays `pending_funding` until funded (Decision
+#139). Idempotency is two-step: the request's own key first (`service_instantiations`), then the
+buyer's live (`draft`/`active`, personal) project with this `source_blueprint_id`.
 
 **`archived` is soft deletion, and it is distinct from `cancelled`.** Nothing is hard-deleted (root
 `CLAUDE.md` §7). `cancelled` records a decision somebody made about live work; `archived` records
@@ -221,6 +224,7 @@ one row, so a stage's kind is implicit in which columns the owner filled (see
 | `ip_mode`                   | ip_option_mode                   | `DEFAULT 'exclusive_transfer'` (nullable). Override for stage-specific IP terms.          |
 | `assignment_mode`           | projects.assignment_routing_mode | NOT NULL `DEFAULT 'open_pull'`. `open_pull`, `round_robin`, `manual`, `parallel_stream`.  |
 | `max_concurrent_intensity`  | numeric(6,2)                     | Project Hard Cap on summed $W_i$.                                                         |
+| `chain_reaction`            | boolean                          | NOT NULL `DEFAULT true`. The Chain Reaction (Decision #210): a ticket arriving here by approval of its previous stage has this stage's escrow held at once (`force_complete_stage`); `false` = it waits here as Draft. Read on the RECEIVING stage. Zod: `StageSetup.chainReaction`, `BoardStageRef.chainReaction`. |
 | `capacity`                  | text                             | NOT NULL `DEFAULT 'unlimited'`, CHECK `unlimited` \| `limited`.                           |
 | `seat_count`                | integer                          | CHECK `NULL` or 1–99. Set iff `capacity = 'limited'`.                                     |
 
@@ -317,6 +321,30 @@ Link table from a project to the canonical `org.skills` vocabulary. Composite PK
 | :----------- | :--- | :------------------------------------- |
 | `project_id` | uuid | NOT NULL, PK. FK → `projects.projects.id`. |
 | `skill_id`   | uuid | NOT NULL, PK. FK → `org.skills.id`.    |
+
+### `projects.service_instantiations`
+
+The REQUEST behind a draft that "Add to Projects" minted (Decision #209): who asked, under which
+client key, with which intake answers, in which currency. One row per instantiated project, written
+only by `marketplace.instantiate_service_blueprint`; never edited or deleted — an archived draft keeps
+its row, so a replay of its key still resolves. A separate table rather than two more columns on
+`projects.projects` because the key and the answers describe the request, not the engagement. Zod:
+`ServiceInstantiationRowSchema` (`@projective/types/services`).
+
+| Column            | Type        | Notes                                                                                                    |
+| :---------------- | :---------- | :------------------------------------------------------------------------------------------------------- |
+| `id`              | uuid        | PK, `DEFAULT gen_random_uuid()`.                                                                         |
+| `project_id`      | uuid        | NOT NULL, UNIQUE. FK → `projects.projects.id`, `ON DELETE CASCADE`.                                      |
+| `blueprint_id`    | uuid        | FK → `marketplace.service_blueprints.id`, `ON DELETE SET NULL`.                                          |
+| `owner_user_id`   | uuid        | NOT NULL. FK → `org.users_public.user_id`. Always `auth.uid()` of the caller.                            |
+| `idempotency_key` | text        | NOT NULL, 8–120 chars. UNIQUE per owner (`service_instantiations_owner_key`): the client's own retry key. |
+| `intake_answers`  | jsonb       | NOT NULL `DEFAULT '{}'`, an object (`IntakeAnswersSchema`), reduced to the listing's own field ids.      |
+| `currency`        | text        | NOT NULL, `^[A-Z]{3}$` — always the listing's (a different code is refused, `PC409`).                     |
+| `created_at`      | timestamptz | NOT NULL `DEFAULT now()`.                                                                                |
+
+**RLS:** the owner reads their own rows (`"Owners view their service instantiations"`); no write
+policy — the definer door is the only writer. **Index:** `idx_service_instantiations_blueprint`
+(partial, `blueprint_id IS NOT NULL`) for the FK.
 
 ---
 

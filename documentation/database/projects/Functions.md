@@ -683,7 +683,7 @@ Grants are in `00002510` ("escrow settlement doors").
 | :------------------------------------------------------------------------------- | :--------- | :------------------------------------------------------------- | :------------------------------- | :----------------------------------------------------------- |
 | `projects.complete_ticket(p_ticket_id uuid) → void`                              | `00001120` | Ticket → `completed`; releases all its held escrow             | `authenticated`                  | signed in + `can_review_project`                             |
 | `projects.delete_ticket(p_ticket_id uuid) → void`                                | `00001120` | Releases a claimed ticket's escrow, then hard-deletes the row  | `authenticated`                  | signed in + `can_review_project`                             |
-| `projects.force_complete_stage(p_ticket_id uuid) → uuid`                         | `00001130` | Releases the current installment, advances (and funds) the next | `authenticated`                  | signed in + `can_review_project`                             |
+| `projects.force_complete_stage(p_ticket_id uuid) → uuid`                         | `00001130` | Releases the current installment, advances to the next and holds it (the Chain Reaction, when the next stage's `chain_reaction` is on) | `authenticated`                  | signed in + `can_review_project`                             |
 | `projects.approve_stage(p_project_id uuid, p_stage_id uuid) → jsonb`             | `00001150` | Completes every ticket still holding escrow on the stage (via `fn_settle_ticket_stage`), releasing it; stage → `paid` (#194) | `authenticated`                  | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
 | `projects.cancel_stage_fair_exit(p_project_id uuid, p_stage_id uuid, p_tier integer) → jsonb` | `00001150` | Pays the tier (25/50/75 %) out, refunds the rest; stage → `cancelled`; the tickets left on it → `cancelled`; both sides notified (#198) | `authenticated`        | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
 | `projects.move_ticket(…)` (→ `completed`)                                        | `00001120` | Via `trg_ticket_escrow_sync`                                   | `authenticated`, `service_role`  | `has_project_access`, plus `can_review_project` for Done     |
@@ -725,10 +725,16 @@ owner, or an active member of the paying client business). Until 2026-10-05 `com
 `PUBLIC` `EXECUTE` — with `anon` holding `USAGE` on `projects` (Decision #85(e)), anyone with a
 ticket id could release its escrow, and a freelancer could approve their own stage.
 
-`force_complete_stage` funds the next stage through `fn_hold_ticket_escrow` in a subtransaction: when
-that hold is refused (`PF402`, Decision #165) the approval still stands and the installment already
-earned is still released, but the ticket waits in the next stage as `todo`, `needs_funding`
-(`fn_mark_needs_funding`), instead of `in_progress` on unheld money.
+`force_complete_stage` is the Chain Reaction (Decision #210, PRODUCT_MANAGEMENT §3.6). After releasing
+the current installment it reads the NEXT stage's `project_stages.chain_reaction`. On (the default) it
+moves the ticket there `in_progress` and holds that stage's escrow through `fn_hold_ticket_escrow` in a
+subtransaction, from the paying wallet's live balance: when that hold is refused (`PF402`, Decision
+#165) the approval still stands and the installment already earned is still released, but the ticket
+waits in the next stage as `todo`, `needs_funding` (`fn_mark_needs_funding`, its DETAIL tagged
+`trigger: chain_reaction`), instead of `in_progress` on unheld money. Off, it moves the ticket there
+`todo` / `unpaid` (Draft) without a hold, for `fund_ticket` / `fund_stage` to fund later. Each outcome
+writes one `ticket_history` row — `chain_held` · `chain_needs_funding` · `chain_off` — and a wait
+(refused or off) tells the assignee `ticket.awaiting_funding`. Probe: `supabase/probes/chain_reaction.sql`.
 
 **Settlement completes the ticket (Decision #194).** `approve_stage` and `review_submission('accept')`
 settle each ticket through `projects.fn_settle_ticket_stage(p_ticket_id, p_stage_id, p_reason) → uuid[]`:
@@ -1617,3 +1623,28 @@ ticket anyway). The reads stamp it for the workspace: `ProjectDetail.personal`,
 `ProjectSetup.personal` (the form drops Budget, Roles and Terms & visibility, and the ladder its
 pricing, roles, rules and publish rungs), `ProjectWorkspace.personal` and `BoardCard.personal`
 (`funding` is `null`, no Finances tab). Probe: `supabase/probes/personal_projects.sql`.
+
+## Sessions — no-show claims (`00001155` §9 / §13, Decision #212)
+
+| Function | Door | What it does |
+| :-- | :-- | :-- |
+| `projects.claim_session_no_show(event, reason) → jsonb` | `authenticated` (a seated attendee) | Once the sitting has started, opens a `finance.disputes` row on the escrow that pays for THIS sitting (its own per-sitting escrow, else the seat's whole-cohort escrow) naming `session_event_id`, tells the owner (`dispute.opened`) and runs `finance.fn_advance_dispute` — after the sitting has ended the attendance audit rules at once. Idempotent: a live claim on the escrow, or a settled one on the same sitting, is returned; `uq_disputes_escrow_live` makes racing claims one. Returns `{dispute_id, escrow_id, status}`. The lifecycle and its doors are `database/finance/Functions.md` § Platform disputes. |
+| `projects.get_session_workspace(project) → jsonb` (dispute keys) | `authenticated` | `membership.escrow.claim_open` reads `finance.fn_escrow_has_open_dispute`; `disputes` lists the claims the caller is party to (their own; every claim on the engagement for the host) — `id`, `status`, `session_event_id`, `respond_by`, `opened_at`, `resolved_at`, `mine`; `claimable_sitting_id` is the latest started sitting an attendee may report now (its escrow held, no claim on it) — exactly what the claim would accept. |
+
+## Sessions — 1-1 settlement (`00001155`, Decision #211)
+
+A 1-1 session is a cohort of ONE seat, so it reuses the cohort machinery; its one difference is that
+it holds **one escrow per sitting** (`finance.escrows.session_event_id`). Probe:
+`supabase/probes/session_settlement.sql`.
+
+| Function | Door | What it does |
+| :-- | :-- | :-- |
+| `projects.fn_book_session_slot(blueprint, buyer, payer_type, payer_id, unit_amount, sittings, currency, starts_at, order_line_id) → jsonb` | Internal — only `finance.place_wallet_order` (a `service_session` line, `sittings = 1`; a `set_session` line, `sittings = session_count`). REVOKEd from every role. | Finds or makes the listing's session engagement (`fn_session_engagement_for`), re-tests the first slot against the provider's schedule under a row lock (conflict + blackout → `PS409`), seats the buyer on a one-seat `active` cohort, writes the sittings (the first at the picked time, each later one a week on), holds one escrow per sitting from the paying wallet, mirrors each sitting onto the provider's calendar (`scheduling.events.source_session_event_id`, host + client on the roster), and on a block opens a round-0 `counterparty` / `collecting` reschedule round on every provisional sitting, due `set_session_schedule_hours` (72) after payment and never later than `session_cancel_notice_hours` before it. Notifies `session.booked` and, on a block, `session.scheduling_requested` to both. Refusals roll the order back: `22023` · `PU422` · `PF402` · `PC409` (time passed / listing gone) · `PS409`. |
+| `projects.fn_session_engagement_for(blueprint) → (o_project_id, o_stage_id)` | Internal | ONE engagement per 1-1 listing (`format = 'session'`, `session_kind = 'normal'`, `unlisted`, `active`, one "Sessions" stage), made on the first booking under an advisory lock keyed to the listing. |
+| `projects.fn_session_host_schedule(project) → uuid` | Internal | The team's schedule for a team-owned engagement, else the owner's (freelancer first); `NULL` when none is published. |
+| `projects.fn_settle_membership_state(membership, now)` | Internal (also called by the dispute settlement) | Ends an `active` seat once nothing is left held on it: `completed` if any of its escrows was released, else `cancelled`. |
+| `projects.cancel_cohort_membership(membership) → jsonb` | `authenticated` (attendee or host) | PRODUCT_SPEC §Session-Based C. A cohort seat's one escrow is judged against the cohort's first sitting; a 1-1 seat's escrows **per sitting** against each one's own start — host cancel refunds every sitting not yet started, the client's refunds those more than the notice away and forfeits the rest. A started sitting is left to settle. Cancelled sittings become `cancelled_by_freelancer` / `cancelled_by_client`, leave the calendar, have their open round withdrawn; the one-seat cohort is cancelled. Returns `{outcome: refunded \| forfeited \| partial, amount_minor, refunded_minor, forfeited_minor, currency}`; `PS409` when every sitting has started. |
+| `finance.auto_release_session_escrow(now) → jsonb` | pg_cron (`auto-release-session-escrow`), `service_role` | Completes ended sittings; refunds the escrow behind any tracked sitting with a provider no-show, at any age; releases each escrow with no open dispute (`finance.fn_escrow_has_open_dispute`) `session_payout_hours` after its sitting — a 1-1 sitting's own end, a cohort seat's last sitting. |
+| `projects.fn_lapse_session_handshakes(now) → jsonb` | pg_cron (`session-scheduling-handshakes`), `service_role` | Reminds a provider once (`session.scheduling_reminder`) 24h before their booking's earliest open deadline, then lapses each open `counterparty` round on a scheduled sitting past `resolves_at` through `scheduling.close_reschedule_round` — the pencilled-in time stands — and tells both people (`session.scheduling_lapsed`). Returns `{reminded, lapsed}`. |
+| `projects.trg_sitting_follows_calendar()` | AFTER UPDATE OF `starts_at`, `ends_at` on `scheduling.events` (`00001860`) | A sitting's calendar mirror that moved (a round carried) moves the `scheduled` sitting with it — the join window, presence rule and payout clock read the sitting. |
+| `projects.trg_session_handshake_closed()` | AFTER UPDATE OF `status` on `scheduling.event_reschedules`, entering `resolved` / `lapsed` | Confirms a provisional (`tentative`) sitting mirror and the client's pending RSVP on it. |

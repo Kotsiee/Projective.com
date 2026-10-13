@@ -11,7 +11,7 @@ import type {
 	BookingOutcome,
 	ContactActionInput,
 	ContactActionResult,
-	InstantiateServiceInput,
+	InstantiateServiceRequest,
 	PipelineDraft,
 	ServiceBookingOffer,
 	ServiceBriefInput,
@@ -96,7 +96,7 @@ export const BookingService = {
 
 	/** Instantiate a pipeline template into the acting client's workspace as a draft project. */
 	instantiatePipeline(
-		input: InstantiateServiceInput,
+		input: InstantiateServiceRequest,
 	): Promise<BookingResult<{ draft: PipelineDraft; created: boolean }>> {
 		return postBooking<{ draft: PipelineDraft; created: boolean }>(
 			"/api/services/instantiate-pipeline",

@@ -1200,6 +1200,7 @@ function overlayStages(
 				unitPriceCents: stage.unitPriceCents !== undefined
 					? stage.unitPriceCents
 					: existing.unitPriceCents,
+				chainReaction: stage.chainReaction ?? existing.chainReaction,
 				ticketCount,
 			});
 			return;
@@ -1222,6 +1223,7 @@ function overlayStages(
 			funding: null,
 			assignmentMode: "open_pull",
 			maxConcurrentIntensity: null,
+			chainReaction: stage.chainReaction ?? true,
 			// A stage minted from a setup save has no schedule yet; the timeline draws it as an
 			// unscheduled lane rather than guessing a week for it.
 			startAt: null,
@@ -1635,6 +1637,7 @@ export function setupPatchFrom(input: UpdateProject, base: ProjectSetup): Projec
 				roles: stage.roles ?? base.roles,
 				allowedFileKinds: stage.allowedFileKinds ?? base.allowedFileKinds,
 				ndaRequired: stage.ndaRequired !== undefined ? stage.ndaRequired : base.ndaRequired,
+				chainReaction: stage.chainReaction ?? base.chainReaction,
 			};
 		});
 	}

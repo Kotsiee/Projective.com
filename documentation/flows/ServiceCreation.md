@@ -12,6 +12,22 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
 > call-platform picker exists. The reads are wired and fixture-backed behind the existing gates
 > (`CATALOGUE_BACKEND_LIVE` · `PROFILE_BACKEND_LIVE` · `EXPLORE_BACKEND_LIVE`), so the day an editor
 > writes a row, the buyer surfaces show it with no shape change.
+>
+> **Status (2026-10-13) — pipeline instantiation is a real transaction (Decision #209).** "Add to
+> Projects" is one `marketplace.instantiate_service_blueprint` call
+> ([`../database/marketplace/Functions.md`](../database/marketplace/Functions.md)): project, one
+> stage per `stage_template` entry at its standard price, one priced backlog ticket per stage, every
+> room and the request record, idempotent on the client's key and on the buyer's live draft. The
+> listing's CTA reads `marketplace.get_service_draft`, and "Remove draft" is
+> `marketplace.archive_service_draft`. Both services now resolve the listing they act on through
+> `resolveListing` (`packages/backend/services/explore/listing-source.ts`). With
+> `EXPLORE_BACKEND_LIVE` on, that is a fresh read of the published listing, blueprint, gallery and
+> skills, not the shared catalogue snapshot. The snapshot (and, with `PROJECTS_BACKEND_LIVE` off,
+> the in-memory draft store) remains only behind the `*_BACKEND_LIVE=false` seam. Verified by
+> `supabase/probes/service_instantiation.sql`, which runs 32 checks in a rolled-back transaction.
+> **Applied to the shared local DB by the 2026-10-13 reset.** The probe also passes 32/32 against
+> that live schema. The app → PostgREST → door path has not yet been run end to end with a real
+> session.
 
 ## 1. The five things a listing must carry
 
@@ -67,7 +83,7 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
 | :------------------------------------- | :-------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |
 | Service Detail → session booking       | `finance.basket_items` with `scheduled_at`, `timezone`, `metadata.answers`                                    | Stub (per-process store) — see `API_BACKLOG.md` P0 #12                                                                                     |
 | Service Detail → one-off / task brief  | `finance.basket_items` with `metadata.answers` + the brief                                                     | Stub                                                                                                                                         |
-| Service Detail → pipeline instantiate  | `projects.projects` (`source_blueprint_id`, `status='draft'`, `visibility='unlisted'`) + stages               | Stub (`draft-store` + `write-store`); RPC `projects.create_project` cannot set `source_blueprint_id` (Decision #85(b))                       |
+| Service Detail → pipeline instantiate  | `projects.projects` (`source_blueprint_id`, `status='draft'`, `visibility='unlisted'`) + stages + one priced ticket per stage + rooms + `projects.service_instantiations` (key, `answers`, currency) | **Live** — `marketplace.instantiate_service_blueprint`, one transaction (Decision #209); stub (`draft-store` + `write-store`) only with `PROJECTS_BACKEND_LIVE` off |
 | Project Assignment → hire invitation   | `projects.project_invitations` with `target_user_id`, `message`, `offer_price_cents`, `answers`, `placeholder` | Stub — the live INSERT needs a token minter; `resolveHireOffer` derives `placeholder` server-side and it is never accepted from the payload |
 | Consultation → discovery call          | `scheduling.discovery_calls` with `proposed_start/_end`, `provider_slug`, `service_blueprint_id` (NULL from a profile) | Stub (`call-store.ts`, whose row already mirrors every column)                                                                              |
 
@@ -91,3 +107,10 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
    seller wants role-specific questions.
 3. **A session listing reaching the Hire menu** (Decision #108(c)) — sessions are booked, not hired
    into; the menu should probably filter them.
+4. **Instantiation flags (Decision #209).** (a) A buyer currency other than the listing's is
+   refused (`PC409`), not converted — whether a buyer may instantiate a seller's pipeline in another
+   currency, and who carries the FX, is a business call. (b) Required intake answers are stored but
+   not enforced at instantiation: the `/view` CTA collects none, and the draft commits nobody — decide
+   whether the funding step (or the hire) should enforce them. (c) The seller cannot read the
+   instantiation's answers yet (`service_instantiations` RLS is owner-only). (d) A team or business
+   workspace is refused (`workspaceId` → 422); only a personal workspace instantiates.

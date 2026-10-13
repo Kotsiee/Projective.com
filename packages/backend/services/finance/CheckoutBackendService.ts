@@ -88,18 +88,26 @@ const TICKET_KINDS: ReadonlySet<BasketItem["itemType"]> = new Set([
 	"one_off_task",
 ]);
 
+/** The 1-1 kinds a booked time settles into a seat with per-sitting escrow (Decision #211). */
+const SESSION_KINDS: ReadonlySet<BasketItem["itemType"]> = new Set([
+	"service_session",
+	"set_session",
+]);
+
 /**
  * Whether the wallet — and so a card or express top-up of it — can settle this line in one transaction
  * (`finance.place_wallet_order`): a digital product, or ONE board ticket, which settles by holding that
  * ticket's escrow from the wallet rather than by a sale (Decision #166), or a paid revision round, held
  * the same way on its ticket (Decision #167), or a cohort seat carrying its reservation (`holdId`,
- * Decision #171), held as the seat's escrow. A whole project, a service or a 1-1 slot still escrows
+ * Decision #171), held as the seat's escrow, or a 1-1 session or set-session block carrying its picked
+ * time, held as one escrow per sitting (Decision #211). A whole project or a service still escrows
  * against something a basket line does not carry.
  */
 function walletSettles(item: BasketItem): boolean {
 	return item.itemType === "digital_product" || item.itemType === "paid_revision" ||
 		(!!item.ticketId && TICKET_KINDS.has(item.itemType)) ||
-		(item.itemType === "course_group_session" && typeof item.metadata.holdId === "string");
+		(item.itemType === "course_group_session" && typeof item.metadata.holdId === "string") ||
+		(SESSION_KINDS.has(item.itemType) && !!item.scheduledAt);
 }
 // #endregion
 
@@ -225,13 +233,13 @@ function blockersFor(
 		const meta = itemKindMeta(item.itemType);
 		// Said before Pay rather than refused at it: the wallet (topped up by card when it must be) pays
 		// for digital products and single board tickets — every other kind escrows against something a
-		// basket line does not carry.
-		if (!walletSettles(item)) {
+		// basket line does not carry. A 1-1 session missing its time is told so by `missing_schedule` below.
+		if (!walletSettles(item) && !SESSION_KINDS.has(item.itemType)) {
 			blockers.push({
 				code: "no_provider",
 				message: item.itemType === "course_group_session"
 					? `Reserve a seat for ${item.title} from its listing before paying.`
-					: `${item.title} can't be paid for here yet — only digital products, project tickets and reserved seats can. Save it for later to pay for the rest.`,
+					: `${item.title} can't be paid for here yet — only digital products, project tickets, reserved seats and booked sessions can. Save it for later to pay for the rest.`,
 				itemId: item.id,
 			});
 		}

@@ -304,6 +304,8 @@ export default function ServiceDetailModal(
 						serviceId: o.subjectId,
 						workspaceId: null,
 						idempotencyKey: `${o.subjectId}-${loadNonce()}`,
+						// Kept on the draft's request record (Decision #209) — the brief the seller reads.
+						answers: answers.value,
 					});
 					if (!res.ok || !res.data) {
 						error.value = res.message ?? "Could not add that to your projects.";

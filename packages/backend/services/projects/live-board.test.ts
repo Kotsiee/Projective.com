@@ -229,6 +229,7 @@ const STAGES = [
 		max_concurrent_intensity: -1,
 		start_dependency_stage_id: S1,
 		start_dependency_lag_days: 2,
+		chain_reaction: false,
 	}),
 	stage(S3, { name: null, sort_order: 2 }),
 ];
@@ -489,6 +490,43 @@ Deno.test("fetchBoardPage stage refs: order, price coercion, lock rule, roster, 
 		assertEquals(s1.endAt, "2026-11-07T00:00:00.000Z");
 		assertEquals(s2.startAt, "2026-11-09T00:00:00.000Z", "S1's end plus a two-day lag");
 		assertEquals(s2.dependsOnStageId, S1);
+		assertEquals(
+			[s1.chainReaction, s2.chainReaction],
+			[true, false],
+			"a row without the column chains, as the column default does",
+		);
+	});
+});
+
+Deno.test("fetchBoardPage: Chain Reaction history rows read as funding entries naming the stage", async () => {
+	const chain = (id: string, action_type: string, at: string) => ({
+		id,
+		ticket_id: T1,
+		actor_id: OWNER_ID,
+		action_type,
+		previous_stage_id: S1,
+		new_stage_id: S2,
+		previous_status: null,
+		new_status: null,
+		changes: { chain_reaction: true, outcome: action_type },
+		created_at: at,
+	});
+	const routes = boardRoutes({
+		"projects.ticket_history": [
+			chain("c3", "chain_off", "2026-10-05T10:00:00.000Z"),
+			chain("c2", "chain_needs_funding", "2026-10-04T10:00:00.000Z"),
+			chain("c1", "chain_held", "2026-10-03T10:00:00.000Z"),
+		],
+	});
+	await withPostgrest(routes, async () => {
+		const page = await fetchBoardPage(OWNER, { projectId: SLUG });
+		const card = page?.cards.find((c) => c.id === T1);
+		assert(card);
+		assertEquals(card.history.map((h) => [h.kind, h.summary]), [
+			["funding", "moved it on to the Delivery stage, to be funded there"],
+			["funding", "moved it on to the Delivery stage, where its escrow couldn't be held"],
+			["funding", "held its escrow for the Delivery stage on approval"],
+		]);
 	});
 });
 

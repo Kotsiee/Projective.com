@@ -196,7 +196,8 @@ policy — except `buyer_details`, the buyer's own form.
 | `finance.invoice_line_items`      | `EXISTS` over its invoice                                                                  | — |
 | `finance.buyer_details`           | `fn_owner_visible(owner_type, owner_id)`                                                  | INSERT / UPDATE, `fn_can_manage_basket(owner_type, owner_id)` — the same read/write split as the basket these details check out under |
 | `finance.disputes`                | admin, the opener, or a reader of the escrow (`EXISTS` under "View escrows")              | — |
-| `finance.dispute_messages`        | `EXISTS` over its dispute                                                                  | — |
+| `finance.dispute_messages`        | `EXISTS` over its dispute                                                                  | — (definer: `finance.respond_to_dispute`) |
+| `finance.dispute_evidence`        | `EXISTS` over its dispute (Decision #212)                                                  | — (definer: `finance.respond_to_dispute`) |
 | `finance.contribution_agreements` | admin or an active member of the team — each member sees the whole split                   | — (definer: `org.create_workspace`, acceptance, `org.fn_rebalance_departed_stake`, `finance.save_team_split`; total held at 10000 or 0 by a deferred constraint trigger) |
 | `finance.payout_splits`           | the member paid, or a reader of the escrow                                                 | — |
 | `finance.spending_limits`         | `fn_can_view_wallet(wallet_id)` — includes the member it binds                             | — |

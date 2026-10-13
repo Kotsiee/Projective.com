@@ -483,6 +483,20 @@ const STAFFING_ROLE_COLUMNS =
 const OPEN_SEAT_COLUMNS =
 	"id, project_stage_id, description_of_need, budget_min_cents, budget_max_cents, status";
 
+/*
+ * The listing-shaped column lists, named once for the same reason: the public catalogue load and the
+ * single-listing read ({@link readListing}) map a listing through one {@link assemble}, so they must
+ * select the same columns.
+ */
+const LISTING_COLUMNS =
+	"id, owner_user_id, owner_team_id, kind, service_blueprint_id, product_id, title, description_text, category, delivery_label, amount_cents, currency, ticket_price_cents, session_price_cents, seats_per_session, free_revisions, extra_revision_price_cents, promoted, published_at, created_at";
+const BLUEPRINT_COLUMNS =
+	"id, slug, owner_type, owner_team_id, freelancer_profile_id, delivery_model, price_cents, ticket_price_cents, session_price_cents, currency, free_revisions, extra_revision_price_cents, max_seats_per_cohort, intake_fields, stage_template, team_roles, deliverables, session_minutes, session_count, rating_average, rating_count";
+const PRODUCT_COLUMNS =
+	"id, slug, owner_user_id, owner_team_id, format, category, price_cents, currency, licence, attribution_required, file_manifest, compatibility, specs, span, rating_average, rating_count";
+const MEDIA_COLUMNS = "listing_id, file_id, url, alt_text, position";
+const FILE_COLUMNS = "id, bucket_id, storage_path, metadata";
+
 /** Throw a load failure with the table named, so a broken policy is diagnosable from the log. */
 function fail(table: string, message: string): never {
 	throw new Error(`explore catalogue: reading ${table} failed — ${message}`);
@@ -527,7 +541,7 @@ async function readCatalog(): Promise<Catalog> {
 				"entity_id, entity_type, handle, name, headline, languages, location, city, rating_as_client, reviews_as_client, rating_as_freelancer, reviews_as_freelancer, active_project_count, total_project_count, member_count, listed, avatar_bucket, avatar_path, banner_bucket, banner_path, verified, skills, workload, joined_at, verification_tier, language_codes, delivered_count, showcase_bucket, showcase_path, standing_level, standing_label, discovery_weight_bp, workload_cap",
 			),
 			db.schema("catalogue").from("listings").select(
-				"id, owner_user_id, owner_team_id, kind, service_blueprint_id, product_id, title, description_text, category, delivery_label, amount_cents, currency, ticket_price_cents, session_price_cents, seats_per_session, free_revisions, extra_revision_price_cents, promoted, published_at, created_at",
+				LISTING_COLUMNS,
 			).eq("status", "published"),
 			db.schema("catalogue").from("articles").select(
 				"id, slug, owner_user_id, owner_team_id, title, topic, summary, body, cover_file_id, read_minutes, published_at, created_at",
@@ -587,7 +601,7 @@ async function readCatalog(): Promise<Catalog> {
 			db,
 			"marketplace",
 			"service_blueprints",
-			"id, slug, owner_type, owner_team_id, freelancer_profile_id, delivery_model, price_cents, ticket_price_cents, session_price_cents, currency, free_revisions, extra_revision_price_cents, max_seats_per_cohort, intake_fields, stage_template, team_roles, deliverables, session_minutes, session_count, rating_average, rating_count",
+			BLUEPRINT_COLUMNS,
 			"id",
 			blueprintIds,
 		),
@@ -595,7 +609,7 @@ async function readCatalog(): Promise<Catalog> {
 			db,
 			"catalogue",
 			"products",
-			"id, slug, owner_user_id, owner_team_id, format, category, price_cents, currency, licence, attribution_required, file_manifest, compatibility, specs, span, rating_average, rating_count",
+			PRODUCT_COLUMNS,
 			"id",
 			productIds,
 		),
@@ -603,7 +617,7 @@ async function readCatalog(): Promise<Catalog> {
 			db,
 			"catalogue",
 			"listing_media",
-			"listing_id, file_id, url, alt_text, position",
+			MEDIA_COLUMNS,
 			"listing_id",
 			listingIds,
 		),
@@ -655,7 +669,7 @@ async function readCatalog(): Promise<Catalog> {
 			"project_stage_id",
 			stageIds,
 		),
-		byIds<FileRow>(db, "files", "items", "id, bucket_id, storage_path, metadata", "id", fileIds),
+		byIds<FileRow>(db, "files", "items", FILE_COLUMNS, "id", fileIds),
 	]);
 
 	return assemble({
@@ -768,6 +782,112 @@ export async function readProjectPreview(
 		...catalog,
 		byId: new Map(catalog.byId).set(item.id, item),
 		projectBySlug: new Map(catalog.projectBySlug).set(item.id, entry),
+	};
+}
+
+/**
+ * One PUBLISHED service or product listing, read fresh from Postgres and laid over the loaded
+ * catalogue — the source the booking and instantiate paths resolve a listing from when
+ * `EXPLORE_BACKEND_LIVE` is on.
+ *
+ * The shared catalogue is the wrong source for a WRITE: it can be a full TTL behind the seller (a
+ * repriced stage, a new intake question, an unpublish), and {@link peekCatalog} serves the last good
+ * load indefinitely when reloads fail. A buyer committing against a listing must be validated against
+ * the listing as it stands now. This reads the listing row, its subject (blueprint or product), its
+ * gallery and its skills — as `anon`, because a listing is public by definition and RLS decides what
+ * `anon` sees — and maps them through {@link assemble} beside the catalogue's profile directory, so
+ * the item, owner and stage template resolve exactly as the page that showed them did.
+ *
+ * Never merged into the shared snapshot: the overlay is a per-request copy of the maps the view
+ * composer and the booking service read. `null` when the id names no published listing.
+ */
+export async function readListing(itemId: string, catalog: Catalog): Promise<Catalog | null> {
+	const kind = itemId.startsWith("svc-") ? "service" : itemId.startsWith("prd-") ? "product" : null;
+	if (!kind) return null;
+	const db = getAnonClient();
+
+	let blueprint: BlueprintRow | null = null;
+	let product: ProductRow | null = null;
+	if (kind === "service") {
+		const { data, error } = await db.schema("marketplace").from("service_blueprints")
+			.select(BLUEPRINT_COLUMNS).eq("slug", itemId).maybeSingle();
+		if (error) fail("marketplace.service_blueprints", error.message);
+		blueprint = data as BlueprintRow | null;
+	} else {
+		const { data, error } = await db.schema("catalogue").from("products")
+			.select(PRODUCT_COLUMNS).eq("slug", itemId).maybeSingle();
+		if (error) fail("catalogue.products", error.message);
+		product = data as ProductRow | null;
+	}
+	const subjectId = blueprint?.id ?? product?.id;
+	if (!subjectId) return null;
+
+	const { data: listingData, error: listingError } = await db.schema("catalogue").from("listings")
+		.select(LISTING_COLUMNS)
+		.eq(kind === "service" ? "service_blueprint_id" : "product_id", subjectId)
+		.eq("status", "published")
+		.limit(1);
+	if (listingError) fail("catalogue.listings", listingError.message);
+	const listing = ((listingData ?? []) as ListingRow[])[0];
+	if (!listing) return null;
+
+	const [media, listingSkills, skillsRes] = await Promise.all([
+		byIds<MediaRow>(db, "catalogue", "listing_media", MEDIA_COLUMNS, "listing_id", [listing.id]),
+		byIds<{ listing_id: string; skill_id: string }>(
+			db,
+			"catalogue",
+			"listing_skills",
+			"listing_id, skill_id",
+			"listing_id",
+			[listing.id],
+		),
+		db.schema("org").from("skills").select("id, slug, label"),
+	]);
+	if (skillsRes.error) fail("org.skills", skillsRes.error.message);
+	const files = await byIds<FileRow>(
+		db,
+		"files",
+		"items",
+		FILE_COLUMNS,
+		"id",
+		media.map((m) => m.file_id).filter((x): x is string => !!x),
+	);
+
+	const single = assemble({
+		profiles: [...catalog.profileById.values()],
+		listings: [listing],
+		blueprints: blueprint ? [blueprint] : [],
+		products: product ? [product] : [],
+		articles: [],
+		projects: [],
+		stages: [],
+		roles: [],
+		seats: [],
+		media,
+		files,
+		listingSkills,
+		requiredSkills: [],
+		skillRows: (skillsRes.data ?? []) as Array<{ id: string; slug: string; label: string }>,
+		placements: [],
+	});
+	const item = single.byId.get(itemId);
+	if (!item) return null;
+
+	const entity: CatalogEntity = blueprint
+		? { kind: "service_blueprint", id: blueprint.id }
+		: { kind: "product", id: product!.id };
+	return {
+		...catalog,
+		byId: new Map(catalog.byId).set(item.id, item),
+		entityById: new Map(catalog.entityById).set(item.id, entity),
+		blueprintBySlug: blueprint
+			? new Map(catalog.blueprintBySlug).set(item.id, blueprint)
+			: catalog.blueprintBySlug,
+		productBySlug: product
+			? new Map(catalog.productBySlug).set(item.id, product)
+			: catalog.productBySlug,
+		galleryById: new Map(catalog.galleryById).set(item.id, single.galleryById.get(item.id) ?? []),
+		listingIdById: new Map(catalog.listingIdById).set(item.id, listing.id),
 	};
 }
 

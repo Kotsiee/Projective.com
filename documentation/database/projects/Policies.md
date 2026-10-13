@@ -308,6 +308,18 @@ The token is the capability to ASK to join a stage — redeeming it files a requ
 so it is still never a blanket read. No write policy: minting, resetting, revoking and redeeming are
 the definer doors in `00001135` §4 (Decision #145).
 
+### `projects.service_instantiations`
+
+| Policy                                     | Command  | Rule                          |
+| :----------------------------------------- | :------- | :---------------------------- |
+| _Owners view their service instantiations_ | `SELECT` | `owner_user_id = auth.uid()`. |
+
+The idempotency key and the intake answers are the buyer's alone; the seller does not read them
+here (Decision #209 flag). No write policy: the only writer is
+`marketplace.instantiate_service_blueprint` (`00001175`). Verified by execution
+(`supabase/probes/service_instantiation.sql`): the buyer reads exactly their row, a stranger reads
+none, and a direct `INSERT` is refused.
+
 ---
 
 ## Staffing, applications, sessions

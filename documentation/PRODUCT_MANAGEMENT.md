@@ -207,7 +207,7 @@ column for them.** Their canonical definitions are the enum + doc listed:
 | **Payment & work-start** (per ticket — Decisions #165–#167) | `Draft → Needs funding → Payment processing → Funded → In progress → In review → Released`; `Failed` (retryable) · `Refunded` (terminal per escrow). No hold, no work | §3.6 · `PRODUCT_SPEC.md` §Escrow, Wallets & Finance #2 · §Purchase Methods |
 | **Invoice**                | `draft → issued → paid`; `overdue` / `void`                | `finance.invoices.status` · `finance-model.md` §15   |
 | **Statement**              | `draft → issued → final`                                   | `finance.statement_status` · `finance-model.md` §15  |
-| **Dispute**                | `open → under_review → resolved` / `refunded`              | `dispute_status` · `brain.md` §Disputes              |
+| **Dispute** (Decision #212) | `open → awaiting_response → under_review → resolved_release` / `resolved_refund` / `resolved_split`; never deleted, terminal once resolved — the full machine is §3.8 | `dispute_status` · `finance.disputes` · `database/finance/Functions.md` § Platform disputes |
 | **Spend approval**         | `pending → approved` / `rejected` / `expired`. Filed by `finance.request_spend_approval` only when the spend genuinely needs one (over the per-transaction ceiling, over the remaining cap, or at/above the wallet's threshold), with the wallet's currency and **`expires_at = now() + 7 days`** set by the server; decided by a member holding **`approve_spend`** who is not the requester. `expired` is applied lazily, at the next decision attempt after `expires_at`; the TypeScript projection reads DB `rejected` as `declined` | `finance.approval_status` · `database/finance/Functions.md` § Workspace money governance · `finance-model.md` §14 |
 | **Workspace membership** (team / business seat) | `active → left`. A departure is a status with `left_at`, never a `DELETE`; a former member is **reactivated** by accepting a new invitation, never inserted twice. Exactly **one** active owner per entity, who can never leave or be removed — ownership moves only by **transfer** (`org.transfer_workspace_ownership`), after which the former owner holds the Admin preset or, in the same act, leaves. An invitation is **not** a member state (the former `invited` member status is gone) | `org.team_members` / `org.business_members` `status` (`CHECK IN ('active','left')`) · `packages/types/workspace` `MembershipState` · `database/org/Tables.md` § Workspace membership |
 | **Workspace invitation**   | `pending → accepted` / `declined` (the invitee) / `revoked` (the inviting side). Each has its own timestamp (`responded_at` / `revoked_at`), pinned by `ck_org_invitation_lifecycle`. **14-day expiry, DERIVED from `expires_at`, never a stored status** — a lapsed `pending` row stays in the queue and **resend renews** it (a fresh token and `expires_at = now() + 14 days`); an answered row cannot be resent or revoked. At most one pending invitation per entity per person or per address. Named people only — join requests and share links were cut (2026-09-28). Accepting a TEAM invitation needs the invitee payout-ready, as does creating a team (Decision #196) | `org.org_invitations.status` · `packages/types/workspace` `WorkspaceInvite` · `database/org/Functions.md` §12 |
@@ -225,6 +225,9 @@ column for them.** Their canonical definitions are the enum + doc listed:
 | **Discovery call**         | `proposed → confirmed → completed`; `declined` / `expired` / `cancelled` / `no_show` | `scheduling.call_status` · `PRODUCT_SPEC.md` §Discovery & Courtesy Calls |
 | **Event reschedule (per round)** | `none → collecting → awaiting_counterparty` \| `voting`; then `resolved` (a time carried) / `lapsed` (asked, no majority) / `withdrawn` (pulled). All three endings are terminal **for that round**; proposing again opens round `n + 1` | `RescheduleStatus` · `packages/types/scheduling/coordination.ts` · `PRODUCT_SPEC.md` §The Proactive Calendar |
 | **Event RSVP (per attendee)** | `pending ⇄ accepted` / `tentative` / `rejected`, freely revisable until the event starts | `RsvpResponse` · `packages/types/scheduling/coordination.ts` |
+| **Session seat** (a cohort membership — a group seat, or a 1-1 booking as a one-seat cohort, Decision #211) | `active → completed` (paid out) / `cancelled` (refunded or forfeited — `cancelled_at` set); never deleted. A group seat holds ONE escrow and settles after the cohort's last sitting; a 1-1 seat holds one escrow PER SITTING and ends only when nothing is left held — `completed` if any sitting paid the provider, else `cancelled` (`projects.fn_settle_membership_state`) | `projects.cohort_memberships.status` · `00001155` · `PRODUCT_SPEC.md` §Session-Based C |
+| **Session escrow** (per sitting on a 1-1 — Decision #211) | `held → released` (`session_payout_hours` after ITS sitting ended, no open dispute — negative consent) / `refunded` (provider no-show of any age; the provider cancelling a sitting not yet started; the client cancelling more than `session_cancel_notice_hours` before it). The client cancelling inside the notice **forfeits** it (`released`). A sitting that has started is never cancelled — it settles on its window or its dispute | `finance.escrows` (`session_event_id`) · `finance.auto_release_session_escrow` · `projects.cancel_cohort_membership` |
+| **Set-session scheduling handshake** (sittings 2…n of a block — Decision #211) | One **Event reschedule** round per provisional sitting (the row above), opened by the system at payment as round 0 `counterparty` / `collecting` with `resolves_at` = payment + `set_session_schedule_hours` (72), never later than `session_cancel_notice_hours` before the provisional start. Ends `resolved` (a time agreed — the sitting moves with it) / `lapsed` (deadline passed — `projects.fn_lapse_session_handshakes`; the pencilled-in weekly time stands) / `withdrawn` (the booking was cancelled). Either ending confirms the sitting's calendar entry; one reminder fires 24h before the earliest deadline | `scheduling.event_reschedules` · `projects.fn_book_session_slot` · job `session-scheduling-handshakes` |
 | **Integration connection** | `active → expired` (refreshable) / `revoked` (terminal); `error` | `integrations.connection_status` · `SYSTEM_ARCHITECTURE.md` §Conferencing 2.1 |
 | **Subscription**           | `trialing → active`; `active ⇄ past_due` / `paused`; `cancelled` / `expired` (terminal) | `finance.subscription_state` · `finance-model.md` §16 |
 | **Standing rung**          | `L1 New → L2 Established → L3 Trusted → L4 Expert → L5 Elite` (bidirectional — a rung can be lost) | `org.standing_levels` · `finance-model.md` §16.3 |
@@ -421,6 +424,10 @@ In review ──(client approves)───────────────�
 Funded · In progress · In review ──(claim TTL expiry · cancellation · dispute refund ·
                                     fair exit's refund share)───► Refunded   (terminal per escrow)
 Refunded ──(client re-pools the ticket)────────────────────────► Draft
+
+Released ──(Chain Reaction: next required stage, hold made)────► Funded → In progress   (next stage's escrow)
+Released ──(Chain Reaction: next required stage, hold refused)─► Needs funding           (next stage's escrow)
+Released ──(next required stage, Fund on arrival off)──────────► Draft                   (next stage's escrow)
 ```
 
 **Lock triggers** (when `Draft` is left): **One-Off / Task** — when the project or its first stage
@@ -429,7 +436,27 @@ begins (its seat is hired by then, so the escrow has a payee); **Pipeline** — 
 wording); **Sessions** — when the booking is confirmed. **Any ticket, earlier (Decision #197):** the
 client may prepay a ticket or a whole stage (open, assigned or in progress) — the escrow is held with
 no payee and the claim or assignment binds one (`finance.fn_bind_ticket_escrow`) without a second
-charge. A prepaid escrow nobody claimed is refunded, never released.
+charge. A prepaid escrow nobody claimed is refunded, never released. **Each later required stage of a
+multi-stage ticket — the Chain Reaction (Decision #210):** when the client approves the ticket's
+current stage (an accepted submission or `approve_stage`, both through
+`projects.fn_settle_ticket_stage` → `projects.force_complete_stage`), that stage's escrow is
+**Released**, the ticket moves to its next required stage, and the lock trigger fires there at once
+when that stage's `project_stages.chain_reaction` is on (the default): a hold from the paying wallet's
+live balance (no reservation) → **Funded**, the ticket stays `in_progress` with its payee; a refused
+hold → **Needs funding** (`todo`, `fn_mark_needs_funding` with `trigger: chain_reaction`, auto-funding
+as usual). With `chain_reaction` off the lock trigger does not fire: the ticket waits `todo` /
+`unpaid` (**Draft**) for the client to fund it (`fund_ticket` / `fund_stage`). The approved stage is
+paid in every case. Either wait tells the payee (`ticket.awaiting_funding`); each outcome is one
+`ticket_history` row (`chain_held` · `chain_needs_funding` · `chain_off`, read as funding entries).
+
+**Column lock (Decision #210)** — a DERIVED rule, never a stored column or a board column of its own:
+the board refuses a drop that would carry a **claimed** ticket into a work column (`claimed` /
+`in_progress` / `in_review`) from outside work while its escrow is not held (`workColumnLocked` in
+`@projective/types/projects`, read from `BoardCard.funding.canStart`). It mirrors the work-start gate
+on `trg_ticket_escrow_sync` (rule 1 below), which still refuses on the server. An unclaimed ticket is
+never locked out — its drop is the claim, which is the lock trigger. While such a card is dragged the
+refusing columns read locked with the reason (`KanbanBoard`'s `itemDropRefusal`); the Dev Context
+Switcher's **Funding state** axis drives it.
 
 **Auto-funding** (Decision #172, `PRODUCT_SPEC.md` §Escrow, Wallets & Finance #4): on a business
 project in `from_wallet` mode a ticket entering Needs funding joins the auto-fund queue, and the
@@ -448,7 +475,7 @@ entry (`auto_fund_*`).
 | **Funded (escrow held)** | Escrow is held for this ticket — with its payee, or PREPAID with none until a claim binds one (Decision #197). A prepaid ticket is on freelancers' boards; claiming it charges nothing more. | **Freelancer / team (payee)**: start work. **Client side**: may no longer drag the ticket (`ticketWorkLocked`). **System**: the claim TTL. | Payee starts → **In progress**. An unstarted claim past `claim_ttl_minutes` → **Refunded** (`fn_release_expired_claims` → `fn_refund_ticket_escrow`, ticket reset to `backlog` / `unpaid`). | `finance.escrows.status = 'held'`; `payment_status = 'escrow_funded'`; `ticket_status` `claimed` |
 | **In progress** | Work under way against held money. | **Payee**: deliver, submit. **Either party**: raise a dispute (funds go `on_hold`, §3.5 Fund state). | Submit → **In review**. Cancellation / fair exit → **Refunded** (the refund share) and **Released** (the payee's share); a fair exit also closes the ticket as `cancelled` (Decision #198). | `ticket_status = 'in_progress'` |
 | **In review** | Delivered; awaiting the client's verdict. A **paid revision** (#167) bought here adds its own held escrow to the ticket, at the stage's frozen extra-round price, only after the free rounds are used (§3.7). | **Client side** (review authority): accept, request changes, buy a paid revision. **Payee**: wait / respond. | Submission accepted → **Released**: the ticket moves to `completed` through the guarded status path and its held escrow is released (Decision #194); approving the stage does the same for every ticket still held. Changes requested → **In progress** (escrow stays held). Dispute upheld for the client → **Refunded**. | `ticket_status = 'in_review'` |
-| **Released** | Escrow paid to the payee less the platform fee; the payee's money then follows the §3.5 Fund state (`locked → pending → available`). Terminal for this escrow. A Pipeline approval may lock the next ticket's escrow (the Chain Reaction), which starts **that** ticket's lifecycle. | Nobody (terminal). | — | `escrows.status = 'released'`; `payment_status` `released` (a completed ticket — every acceptance and stage approval completes the ticket first, #194) / `partially_released` (an earlier installment of a multi-stage ticket, or a payee removed mid-work) |
+| **Released** | Escrow paid to the payee less the platform fee; the payee's money then follows the §3.5 Fund state (`locked → pending → available`). Terminal for this escrow. A Pipeline approval locks the escrow for the ticket's NEXT required stage (the Chain Reaction, Decision #210), which starts **that** escrow's lifecycle — Funded, Needs funding, or Draft when the next stage's Fund on arrival is off. | Nobody (terminal). | — | `escrows.status = 'released'`; `payment_status` `released` (a completed ticket — every acceptance and stage approval completes the ticket first, #194) / `partially_released` (an earlier installment of a multi-stage ticket, or a payee removed mid-work) |
 | **Refunded** | The held amount (or the fair exit's refund share) is back in the payer wallet; no fee is charged on a refund. Terminal for this escrow. | Nobody (terminal). The client may re-pool the ticket. | A re-pooled ticket starts again at **Draft**. | `escrows.status = 'refunded'`; `payment_status = 'refunded'` |
 
 **Rules.** (1) A claim never succeeds on an unheld ticket: `fn_hold_ticket_escrow` refuses with
@@ -505,6 +532,45 @@ allotment. **Spelling:** the submission status is stored `revisions_requested` a
 `revision_requested` in Zod; the one mapper (`toSubmissionStatus`, `live-support.ts`) translates,
 and the database spelling is kept (renaming it would touch the CHECK, the standing and nav-activity
 functions and the seeds for no behaviour change).
+
+### 3.8 Dispute lifecycle (per dispute)
+
+A product domain lifecycle in the §3.5 sense (Decision #212), stored as `finance.disputes.status`
+(the `dispute_status` enum). One row contests ONE held escrow; today the only door that opens one is
+a session attendee's **no-show claim** (`projects.claim_session_no_show`). It is not the §3.1
+`Disputed` build state and not a card chargeback (§3.5 Chargeback). Canonical business text:
+`PRODUCT_SPEC.md` §Dispute Resolution (Evidence Vault, the 48-hour cooling-off, the auditor, the
+session attendance audit) and §Session-Based B/D.
+
+```text
+(attendee reports a no-show, sitting started, seat escrow held) ───────────► Open
+Open ──(sitting ends: logs show the provider never joined in time)──────────► Resolved — refund
+Open ──(sitting ends: both in a tracked room ≥ 80 % of it — claim dismissed)► Resolved — release
+Open ──(sitting ends: logs ambiguous or the room untracked)─────────────────► Awaiting response
+Awaiting response ──(the provider responds with their account/evidence)────► Under review
+Awaiting response ──(either party escalates)────────────────────────────────► Under review
+Awaiting response ──(respond_by passes — 48 h, the auto-escalation)─────────► Under review
+Open | Awaiting response | Under review ──(a platform operator rules)───────► Resolved — release | refund | split
+Open | Awaiting response | Under review ──(the escrow settled on another path)► Resolved — as it settled
+```
+
+| State | Meaning | Who can act | What unlocks the next state |
+| :-- | :-- | :-- | :-- |
+| **Open** | The claim is raised and the seat's payment is held; the room's logs are not complete until the sitting ends. | **Either party**: add statements and evidence. **Operator**: rule. | The sitting ends → the attendance audit (`finance.fn_advance_dispute`, at once on a claim after the end, else the 15-minute sweep). |
+| **Awaiting response** | The logs did not settle it. The provider is asked to respond by `respond_by` (`dispute_response_hours`, 48). | **Respondent** (the provider — owner or active team member): respond. **Either party**: escalate. **Operator**: rule. | The respondent's statement, an escalation, or the deadline (the sweep) → **Under review**. |
+| **Under review** | A Projective auditor (an `ops.admin_users` operator) reviews the Evidence Vault. The payment stays held. | **Either party**: add evidence. **Operator**: rule. | `finance.resolve_dispute` → a Resolved state. |
+| **Resolved — release** | The claim was dismissed (by the audit or the auditor): the provider is paid. A whole-cohort seat with sittings still ahead is NOT paid early — it follows its normal release after the last sitting. Terminal. | Nobody. | — |
+| **Resolved — refund** | The claim was upheld: the payment went back to the attendee. Terminal. | Nobody. | — |
+| **Resolved — split** | An auditor divided the payment: the provider's share (less the platform fee) and the rest refunded. Terminal. | Nobody. | — |
+
+**Rules.** A dispute is **never deleted** and a resolved one is **final** — enforced by trigger for
+every role (§5.4); statements and evidence are append-only, and an evidence file cannot be deleted
+while its case is live. At most one live dispute per escrow. While a dispute is live the escrow is
+not released by any path (`finance.fn_escrow_has_open_dispute`). The seat follows its money: a refund
+ends it `cancelled`, a release or split `completed`, once nothing else is held on it. A provider
+cannot open a no-show claim: an attendee who does not come is paid out to the provider anyway
+(PRODUCT_SPEC §Session-Based C, Time Protection), so the provider's side of the lifecycle is the
+response.
 
 ---
 

@@ -284,6 +284,7 @@ const STAGE_COLUMNS = [
 	"unit_price_cents",
 	"assignment_mode",
 	"max_concurrent_intensity",
+	"chain_reaction",
 	"fixed_start_date",
 	"start_dependency_stage_id",
 	"start_dependency_lag_days",
@@ -348,6 +349,8 @@ interface StageRow {
 	unit_price_cents: number | string | null;
 	assignment_mode: string | null;
 	max_concurrent_intensity: number | string | null;
+	/** Optional so a test double written before the column still reads as the column default. */
+	chain_reaction?: boolean | null;
 	fixed_start_date: string | null;
 	start_dependency_stage_id: string | null;
 	start_dependency_lag_days: number | string | null;
@@ -746,6 +749,8 @@ function toStageRef(stage: StageRow, ctx: StageContext): BoardStageRef {
 		funding: null,
 		assignmentMode: toAssignmentMode(stage.assignment_mode),
 		maxConcurrentIntensity: toCapacityCap(stage.max_concurrent_intensity),
+		// The column's own default when a row says nothing: the stage chains.
+		chainReaction: stage.chain_reaction ?? true,
 		startAt: ctx.windows.get(stage.id)?.startAt ?? null,
 		endAt: ctx.windows.get(stage.id)?.endAt ?? null,
 		dependsOnStageId: stage.start_dependency_stage_id
@@ -939,6 +944,9 @@ function toHistoryKind(raw: string | null | undefined): TicketHistoryKind {
 		case "auto_fund_basketed":
 		case "auto_fund_approval_requested":
 		case "auto_fund_returned":
+		case "chain_held":
+		case "chain_needs_funding":
+		case "chain_off":
 			return "funding";
 		default:
 			return "edited";
@@ -998,9 +1006,29 @@ function historySummary(
 			return "changed the priority";
 		case "due":
 			return "changed the due date";
-		case "funding":
-			// Written by finance.fn_auto_fund_on_needs_funding / fn_auto_fund_drain as the project owner.
+		case "funding": {
+			// The Chain Reaction, written by projects.force_complete_stage as the approver; the rest by
+			// finance.fn_auto_fund_on_needs_funding / fn_auto_fund_drain as the project owner.
+			const next = stageName ?? "next";
 			switch (row.action_type) {
+				case "chain_held":
+					return clampOr(
+						`held its escrow for the ${next} stage on approval`,
+						200,
+						"held its escrow for the next stage on approval",
+					);
+				case "chain_needs_funding":
+					return clampOr(
+						`moved it on to the ${next} stage, where its escrow couldn't be held`,
+						200,
+						"moved it on, where its escrow couldn't be held",
+					);
+				case "chain_off":
+					return clampOr(
+						`moved it on to the ${next} stage, to be funded there`,
+						200,
+						"moved it on, to be funded there",
+					);
 				case "auto_funded":
 					return "auto-funded this ticket from the business wallet";
 				case "auto_fund_queued":
@@ -1012,6 +1040,7 @@ function historySummary(
 				default:
 					return "reopened this ticket for claims now the wallet covers it";
 			}
+		}
 		default:
 			return "updated the ticket";
 	}

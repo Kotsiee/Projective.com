@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { FundingStatusSchema } from "../finance/funding.ts";
+import { DisputeSummarySchema } from "../finance/disputes.ts";
 
 /**
  * projects.sessions — the Zod SSOT for session and group-session engagements (Decision #171): the
@@ -225,8 +226,22 @@ export const SessionWorkspaceSchema = z.object({
 	proposal: z.enum(["host", "attendee"]).nullable(),
 	/** Every sitting has ended (unlocks the 1-1 continuation). */
 	presetEnded: z.boolean(),
+	/**
+	 * The sitting an attendee may report a no-show on now (Decision #212): the latest started one whose
+	 * escrow is still held and carries no claim — `get_session_workspace.claimable_sitting_id`. Null for
+	 * a host, a prospect, or when nothing is reportable.
+	 */
+	claimable: SessionSittingSchema.nullable(),
+	/** The no-show claims the viewer is party to: their own, or every claim on the engagement (host). */
+	disputes: z.array(DisputeSummarySchema).max(200),
 });
 export type SessionWorkspace = z.infer<typeof SessionWorkspaceSchema>;
+
+/** `POST /api/sessions/sittings/[eventId]/no-show` — the attendee's account of the no-show. */
+export const NoShowClaimInputSchema = z.object({
+	reason: z.string().trim().max(480).nullable().default(null),
+});
+export type NoShowClaimInput = z.infer<typeof NoShowClaimInputSchema>;
 
 /** `POST /api/sessions/lessons/[lessonId]` — tick or un-tick a lesson. */
 export const LessonProgressInputSchema = z.object({ done: z.boolean() });

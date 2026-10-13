@@ -352,6 +352,11 @@ nda_required boolean,
   -- Folded (0310): per-stage assignment routing mode + Project Hard Cap on summed W_i.
   assignment_mode projects.assignment_routing_mode NOT NULL DEFAULT 'open_pull',
   max_concurrent_intensity numeric(6,2),
+  -- The Chain Reaction (PRODUCT_MANAGEMENT §3.6): when a ticket arrives in THIS stage because its
+  -- previous stage was approved, hold this stage's escrow for it at once, from the paying wallet's live
+  -- balance (projects.force_complete_stage). Off, the ticket waits here as Draft for the client to fund.
+  -- Read on the receiving stage because the hold is this stage's money and this stage's lock trigger.
+  chain_reaction boolean NOT NULL DEFAULT true,
 
 -- How many providers this stage takes: as many as apply, or a fixed number.
 --
@@ -1157,5 +1162,49 @@ dismissed_at timestamp with time zone,
   -- A dismissal is only ever of a record that is no longer an open offer. Dismissing a pending one
   -- would hide a live invitation from the one person who can withdraw it.
   CONSTRAINT ck_project_invitations_dismissed CHECK (dismissed_at IS NULL OR status <> 'pending')
+);
+-- #endregion
+-- #region Service instantiations ("Add to Projects" on a Pipeline listing)
+-- One row per project `marketplace.instantiate_service_blueprint` minted: the request that made it.
+--
+-- WHY A TABLE AND NOT TWO MORE COLUMNS ON `projects.projects`. The idempotency key and the buyer's
+-- intake answers describe the REQUEST, not the engagement. `source_blueprint_id` already says what a
+-- project was copied from; this says who asked, under which client key, with which answers — the
+-- three facts a retry and a later reader of the brief need — without widening the hottest table in
+-- the schema for a column only one write path ever fills.
+--
+-- `idempotency_key` is unique PER OWNER, because it is minted by the owner's own client: two buyers
+-- whose tabs happened to produce the same key are two requests. A replay of a key returns the project
+-- it created (whatever its status since), so a double-press or a retry after an unseen timeout can
+-- never leave two identical pipelines in someone's workspace.
+--
+-- `intake_answers` are the buyer's answers to the listing's own intake (`IntakeAnswersSchema`, keyed
+-- by `service_blueprints.intake_fields[].id`), reduced by the function to the ids the listing asks.
+-- `currency` is the one the engagement was priced in — always the listing's own (the function refuses
+-- any other), recorded so a later reprice of the listing cannot make the history ambiguous.
+--
+-- Written only by the definer function; the owner reads their own rows (00002011). Never deleted:
+-- an archived draft keeps its row, which is what lets a replay of its key still resolve.
+CREATE TABLE projects.service_instantiations (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL,
+  blueprint_id uuid,
+  owner_user_id uuid NOT NULL,
+  idempotency_key text NOT NULL,
+  intake_answers jsonb NOT NULL DEFAULT '{}'::jsonb,
+  currency text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+
+  CONSTRAINT service_instantiations_pkey PRIMARY KEY (id),
+  CONSTRAINT service_instantiations_project_key UNIQUE (project_id),
+  CONSTRAINT service_instantiations_owner_key UNIQUE (owner_user_id, idempotency_key),
+  CONSTRAINT service_instantiations_project_id_fkey FOREIGN KEY (project_id) REFERENCES projects.projects(id) ON DELETE CASCADE,
+  CONSTRAINT service_instantiations_blueprint_id_fkey FOREIGN KEY (blueprint_id) REFERENCES marketplace.service_blueprints(id) ON DELETE SET NULL,
+  CONSTRAINT service_instantiations_owner_user_id_fkey FOREIGN KEY (owner_user_id) REFERENCES org.users_public(user_id),
+  -- The Zod SSOT's bounds (`InstantiateServiceInputSchema.idempotencyKey`), restated only as the
+  -- outer limit no reader could interpret past.
+  CONSTRAINT ck_service_instantiations_key CHECK (char_length(idempotency_key) BETWEEN 8 AND 120),
+  CONSTRAINT ck_service_instantiations_answers CHECK (jsonb_typeof(intake_answers) = 'object'),
+  CONSTRAINT ck_service_instantiations_currency CHECK (currency ~ '^[A-Z]{3}$')
 );
 -- #endregion

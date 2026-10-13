@@ -28,7 +28,13 @@ CREATE TYPE project_status AS ENUM ('draft', 'active', 'on_hold', 'completed', '
 -- Folded: 0305 ALTER TYPE stage_status ADD VALUE 'cancelled'.
 CREATE TYPE stage_status AS ENUM ('open','assigned','in_progress','submitted','approved','revisions','paid','cancelled');
 
-CREATE TYPE dispute_status AS ENUM ('open', 'under_review', 'resolved', 'refunded');
+-- The platform dispute lifecycle (Decision #212, PRODUCT_MANAGEMENT §3.8): open (raised; the attendance
+-- audit waits for the sitting to end) → awaiting_response (the counterparty is asked, with a deadline)
+-- → under_review (an auditor rules) → one of three terminal rulings. The old `resolved` / `refunded`
+-- never had a writer and did not say where the money went.
+CREATE TYPE dispute_status AS ENUM (
+    'open', 'awaiting_response', 'under_review', 'resolved_release', 'resolved_refund', 'resolved_split'
+);
 
 CREATE TYPE public.timeline_preset AS ENUM ('sequential', 'simultaneous', 'staggered', 'custom');
 

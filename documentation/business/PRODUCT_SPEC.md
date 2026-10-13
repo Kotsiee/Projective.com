@@ -106,10 +106,24 @@ both the freelancer’s time and the client’s capital.
 | **Session Complete**        | T + 0                | **Pending Window:** 24-hour countdown begins.                                |
 | **Payout Release**          | T + 24h              | **Automatic Release:** Payment sent to Freelancer wallet (Negative Consent). |
 
+**Every sitting is its own transaction (Decision #211).** A 1-on-1 booking holds one escrow **per
+sitting**, so each row above is applied to each sitting against its own start and end: a block's
+first session pays out 24 hours after it ends, not after the last one, and an open No-Show claim
+holds only the sitting it is about. A cancellation never reaches back into a sitting that has already
+started — that one settles on its own window or its claim. A client cancelling a block can therefore
+come out **partly refunded**: the sittings more than 24 hours away are refunded, those inside it are
+forfeited. A group seat is one transaction for the whole cohort, timed from its first sitting and
+released after its last.
+
 ###### D. The Session Workflow
 
 1. **Booking:** Client selects/purchases session(s). Escrow is locked.
-2. **Coordination:** Parties finalize time/location via the Calendar Proposal interface.
+2. **Coordination:** Parties finalize time/location via the Calendar Proposal interface. A
+   **set-session block** is bought with ONE chosen time: that sitting is confirmed, and the rest are
+   pencilled in a week apart. The Freelancer then proposes the times that suit both parties, and the
+   Client approves or counter-proposes. Each pencilled-in time must be agreed within **72 hours** of
+   payment (never later than 24 hours before it). The Freelancer is reminded a day before that
+   deadline; past it, the pencilled-in time stands (Decision #211).
 3. **Execution:** Session occurs via the platform-generated link.
 4. **Validation:** System logs presence via Webhooks.
 5. **Resolution:** - **Success:** Client approves or stays silent for 24 hours $\rightarrow$ Payout.
@@ -1113,7 +1127,7 @@ Freelancer—it is held by the platform’s secure ledger.
 | Project Type  | Lock Trigger                                                               | Release Trigger                                                                                       |
 | :------------ | :------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------- |
 | **One-Off**¹  | **Upfront:** When the project or first stage begins.                       | **Manual:** Upon Client approval of the final deliverable.                                            |
-| **Pipelines** | **Just-In-Time (JIT):** When a freelancer **claims** the ticket at the latest — or earlier, when the client prepays the ticket or its whole stage (Decision #197) (§Escrow Lifecycle for Tickets is the authoritative wording). | **Chain Reaction:** Approval of Ticket A releases payout and automatically locks Escrow for Ticket B. |
+| **Pipelines** | **Just-In-Time (JIT):** When a freelancer **claims** the ticket at the latest — or earlier, when the client prepays the ticket or its whole stage (Decision #197) (§Escrow Lifecycle for Tickets is the authoritative wording). | **Chain Reaction:** Approving a ticket's stage releases that stage's payout and automatically locks the escrow for the same ticket's **next** required stage (Decision #210 — see below). |
 | **Sessions**  | **Booking:** When the time slot is confirmed.                              | **Negative Consent:** 24 hours after the session ends (assuming no "No-Show" claim).                  |
 
 ¹ A **Task** is a one-off without milestones (`format = one_off`), so it follows the One-Off row:
@@ -1130,6 +1144,25 @@ sequence, which waits as Needs funding rather than starting on unheld money (the
 still paid). The client is told when a hold is refused, with the reason and the amount; the freelancer
 is told "Funded — you can start" the moment the escrow is held. The full per-ticket sequence is in
 `PRODUCT_MANAGEMENT.md` §3.6.
+
+**The Chain Reaction (Decision #210).** A Pipeline ticket moves through its required stages in order.
+When the client approves its work on one stage — by accepting the submission or approving the stage —
+that stage's escrow is released to the payee and the ticket moves to its next required stage. If that
+next stage has **Fund on arrival** on (the default; the client may turn it off per stage in the
+stage's advanced settings), its escrow is held at once from the paying wallet's **current balance** —
+there is no pre-authorised budget or wallet reservation — and work carries on with the payee told
+"Funded — you can start". If the hold cannot be made, the approval still stands and the earned stage
+is still paid; the ticket waits in the next stage as **Needs funding**, the client is told (and a
+business's auto-funding takes it), and the payee is told the next stage is waiting on funding. With
+Fund on arrival off, the ticket waits there unfunded (**Draft**) until the client funds it by hand,
+and the payee is told the same. The first stage of a run is never "arrived at" by an approval, so the
+setting is not offered there; sessions and personal projects have no chained escrow.
+
+**Column lock (Decision #210).** A board's work columns (In Progress, Review) refuse a claimed ticket
+whose escrow is not held: the board shows those columns as locked while the card is dragged and says
+why, instead of accepting a drop the platform would refuse. It is the work-start rule above shown
+before the drop, not a separate setting. An unclaimed ticket is never locked out: dropping it into
+work is the claim, and the claim is what holds its escrow.
 
 #### 3. Finance Tracking & Analytics
 
@@ -3072,7 +3105,8 @@ are encapsulated in specialized Islands:
 - **Gantt Charts:** Custom D3 + Canvas implementation for One-Off project timelines.
 - **Pie/Donut Charts:** Business expenditure and budget burn-down.
 - **Line/Area Graphs:** Velocity tracking and revenue projections over time.
-- **Kanban Connectors:** Visual logic for "Chain Reaction" escrow locks in Pipelines.
+- **Kanban Connectors:** Visual logic for "Chain Reaction" escrow locks in Pipelines (the rule itself:
+  §Escrow, Wallets & Finance #2, Decision #210).
 
 ---
 

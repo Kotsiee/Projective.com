@@ -24,6 +24,13 @@ GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA org TO service_role;
 GRANT EXECUTE ON FUNCTION org.is_active_team_member (uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION org.is_active_business_member (uuid) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION org.is_organisation_member (uuid, org.organisation_role) TO anon, authenticated;
+
+-- org.profiles_index masks a minor's location with these, and a view's function calls run as the
+-- reader. They compute only on their arguments and read no table, so granting them exposes nothing;
+-- org.fn_is_minor, which reads a stored date of birth, stays service-role only.
+GRANT EXECUTE ON FUNCTION org.fn_valid_time_zone (text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION org.fn_today_in (text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION org.fn_age_years (date, text) TO anon, authenticated;
 -- #endregion
 
 -- #region projects — deny by default
@@ -1709,6 +1716,44 @@ GRANT EXECUTE ON FUNCTION projects.record_presence (text, text, text, text, time
 -- The sweep pg_cron runs (as its owner); the service role may run it by hand.
 REVOKE ALL ON FUNCTION finance.auto_release_session_escrow (timestamptz) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION finance.auto_release_session_escrow (timestamptz) TO service_role;
+-- 1-1 sessions (Decision #211). fn_book_session_slot mints an engagement, a seat and per-sitting escrows
+-- and debits whichever wallet it is handed, so only place_wallet_order reaches it; the helpers and the
+-- trigger functions are internal; the handshake sweep is pg_cron's, and the service role's by hand.
+REVOKE ALL ON FUNCTION projects.fn_session_engagement_for (uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_session_host_schedule (uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_settle_membership_state (uuid, timestamptz) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_book_session_slot (uuid, uuid, text, uuid, bigint, integer, text, timestamptz, uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.trg_sitting_follows_calendar () FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.trg_session_handshake_closed () FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION projects.fn_lapse_session_handshakes (timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION projects.fn_lapse_session_handshakes (timestamptz) TO service_role;
+-- #endregion
+
+-- #region Disputes (00001260, Decision #212)
+-- `finance` revokes PUBLIC by default (above); stated per function anyway. The internal steps move
+-- money or skip the party check — reachable only from the doors that call them, as their owner.
+REVOKE ALL ON FUNCTION finance.fn_dispute_context (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_dispute_party (uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_escrow_has_open_dispute (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_dispute_attendance_audit (uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_split_seat_escrow (uuid, integer) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_settle_dispute (uuid, text, integer, uuid, text) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_advance_dispute (uuid) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_notify_dispute_escalated (uuid, uuid, text) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_dispute_records_immutable () FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_guard_evidence_file () FROM PUBLIC, anon, authenticated, service_role;
+-- Signed-in doors; each authorises the caller with auth.uid() (a party, or security.is_admin()).
+REVOKE ALL ON FUNCTION finance.respond_to_dispute (uuid, text, uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.respond_to_dispute (uuid, text, uuid[]) TO authenticated;
+REVOKE ALL ON FUNCTION finance.escalate_dispute (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.escalate_dispute (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION finance.get_dispute (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.get_dispute (uuid) TO authenticated;
+REVOKE ALL ON FUNCTION finance.resolve_dispute (uuid, text, integer, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.resolve_dispute (uuid, text, integer, text) TO authenticated;
+-- The sweep pg_cron runs (as its owner); the service role may run it by hand.
+REVOKE ALL ON FUNCTION finance.sweep_disputes (timestamptz) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION finance.sweep_disputes (timestamptz) TO service_role;
 -- #endregion
 
 -- #region ops — the job registry (00001650, Decision #203)
@@ -1727,4 +1772,19 @@ REVOKE ALL ON FUNCTION ops.fn_report_failed_runs () FROM PUBLIC, anon, authentic
 REVOKE ALL ON FUNCTION ops.fn_watch_jobs () FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION ops.run_job (text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION ops.run_job (text) TO service_role;
+-- #endregion
+
+-- #region Service instantiation (00001175, Decision #209)
+-- `marketplace` has no deny-by-default sweep, so each function is stated. The three doors authorise the
+-- caller with auth.uid() inside; the projection runs only inside them, as their owner.
+REVOKE ALL ON FUNCTION marketplace.fn_service_draft_json (uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_service_draft_json (uuid) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.fn_plain_text_html (text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION marketplace.fn_plain_text_html (text) TO service_role;
+REVOKE ALL ON FUNCTION marketplace.get_service_draft (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION marketplace.get_service_draft (uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION marketplace.instantiate_service_blueprint (uuid, jsonb, text, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION marketplace.instantiate_service_blueprint (uuid, jsonb, text, text, text) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION marketplace.archive_service_draft (text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION marketplace.archive_service_draft (text, text) TO authenticated, service_role;
 -- #endregion

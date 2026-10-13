@@ -295,6 +295,7 @@ function fingerprint(setup: ProjectSetup): string {
 			s.roles.map((r) => [r.id, r.name, r.quantity, r.description, r.budgetCents]),
 			s.allowedFileKinds,
 			s.ndaRequired,
+			s.chainReaction,
 		]),
 		setup.roles.map((r) => [r.id, r.name, r.budgetCents, r.skills, r.description]),
 	]);

@@ -118,3 +118,9 @@ CREATE INDEX IF NOT EXISTS idx_curriculum_modules_cohort
 CREATE INDEX IF NOT EXISTS idx_curriculum_lessons_module ON projects.curriculum_lessons (module_id, position);
 CREATE INDEX IF NOT EXISTS idx_lesson_progress_user ON projects.lesson_progress (user_id);
 -- #endregion
+
+-- The request behind each instantiated draft: the blueprint FK is ON DELETE SET NULL, so a
+-- blueprint delete scans this column. Partial — a request whose listing is gone has nothing to find.
+CREATE INDEX IF NOT EXISTS idx_service_instantiations_blueprint
+    ON projects.service_instantiations (blueprint_id)
+    WHERE blueprint_id IS NOT NULL;

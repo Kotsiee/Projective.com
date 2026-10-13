@@ -69,6 +69,26 @@ CREATE OR REPLACE TRIGGER trg_stamp_vote_deadline
     WHEN (NEW.status = 'voting' AND OLD.status IS DISTINCT FROM 'voting')
     EXECUTE FUNCTION scheduling.fn_stamp_vote_deadline ();
 
+-- #region Session sittings follow their calendar entries (Decision #211)
+-- A reschedule round that carries moves `scheduling.events` (close_reschedule_round); a session's sitting
+-- is what the join window, presence rule and payout clock read, so it moves with its mirror
+-- (`projects.trg_sitting_follows_calendar`, 00001155 §14).
+CREATE OR REPLACE TRIGGER trg_sitting_follows_calendar
+    AFTER UPDATE OF starts_at, ends_at ON scheduling.events
+    FOR EACH ROW
+    WHEN (NEW.source_session_event_id IS NOT NULL
+          AND (NEW.starts_at IS DISTINCT FROM OLD.starts_at OR NEW.ends_at IS DISTINCT FROM OLD.ends_at))
+    EXECUTE FUNCTION projects.trg_sitting_follows_calendar ();
+
+-- A set-session block's scheduling handshake coming to rest confirms its provisional sitting and the
+-- client's place on it (`projects.trg_session_handshake_closed`).
+CREATE OR REPLACE TRIGGER trg_session_handshake_closed
+    AFTER UPDATE OF status ON scheduling.event_reschedules
+    FOR EACH ROW
+    WHEN (NEW.status IN ('resolved', 'lapsed') AND OLD.status IS DISTINCT FROM NEW.status)
+    EXECUTE FUNCTION projects.trg_session_handshake_closed ();
+-- #endregion
+
 -- #region Scheduling and under-18 accounts (Decision #208)
 CREATE OR REPLACE TRIGGER trg_schedule_age_gate
     BEFORE INSERT OR UPDATE OF is_published, owner_id ON scheduling.schedules

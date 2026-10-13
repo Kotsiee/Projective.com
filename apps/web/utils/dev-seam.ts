@@ -162,6 +162,26 @@ export type DevRevisionAllotment = "auto" | "exhausted" | "paid";
 export type DevSessionState = "auto" | "seat_full" | "live" | "ended" | "release_pending";
 
 /**
+ * The simulated no-show dispute on a session (Decision #212) — the states its sidebar section branches
+ * on, which only a real claim, a real room's logs, a counterparty and an operator can produce: `none`
+ * (no claim, nothing reportable), `reportable` (the attendee may report the current sitting), each live
+ * status (`open` · `awaiting_response` · `under_review`) and each ruling (`resolved_release` ·
+ * `resolved_refund` · `resolved_split`). `auto` shows the server's answer. Client-side only: the
+ * previewed case opens with sample statements and every write still goes to the database, which refuses
+ * a case that does not exist.
+ */
+export type DevDisputeState =
+	| "auto"
+	| "none"
+	| "reportable"
+	| "open"
+	| "awaiting_response"
+	| "under_review"
+	| "resolved_release"
+	| "resolved_refund"
+	| "resolved_split";
+
+/**
  * The simulated business auto-fund mode (PRODUCT_SPEC §Escrow, Wallets & Finance #4): `auto` shows the
  * business's real setting; any mode renders the Billing module as if it were set, and `from_wallet`
  * previews a funded ticket's "Auto-funded from wallet" line. Its own axis because the real mode acts
@@ -381,6 +401,8 @@ export interface DevSeamState {
 	lowBalance?: DevLowBalance;
 	/** The simulated session state. Optional like `walletAurora`; absent reads as `auto`. */
 	sessionState?: DevSessionState;
+	/** The simulated no-show dispute. Optional like `walletAurora`; absent reads as `auto`. */
+	disputeState?: DevDisputeState;
 	/** The simulated notification inbox. Optional like `walletAurora`; absent reads as `auto`. */
 	notifications?: DevNotifications;
 	/** The simulated basket. Optional like `walletAurora`; absent reads as `auto`. */
@@ -530,6 +552,17 @@ const FUNDING_STATES: readonly DevFundingState[] = [
 
 const REVISION_ALLOTMENTS: readonly DevRevisionAllotment[] = ["auto", "exhausted", "paid"];
 const SESSION_STATES: readonly DevSessionState[] = ["auto", "seat_full", "live", "ended", "release_pending"];
+const DISPUTE_STATES: readonly DevDisputeState[] = [
+	"auto",
+	"none",
+	"reportable",
+	"open",
+	"awaiting_response",
+	"under_review",
+	"resolved_release",
+	"resolved_refund",
+	"resolved_split",
+];
 const AUTO_FUND_MODES: readonly DevAutoFundMode[] = ["auto", "off", "add_to_basket", "from_wallet"];
 const LOW_BALANCES: readonly DevLowBalance[] = ["auto", "below", "above"];
 const NOTIFICATION_SIMS: readonly DevNotifications[] = ["auto", "empty", "many", "burst"];
@@ -601,6 +634,7 @@ export function readDevSeam(): DevSeamState | null {
 		autoFundMode: coerce(ds.devAutoFundMode, AUTO_FUND_MODES, "auto"),
 		lowBalance: coerce(ds.devLowBalance, LOW_BALANCES, "auto"),
 		sessionState: coerce(ds.devSessionState, SESSION_STATES, "auto"),
+		disputeState: coerce(ds.devDisputeState, DISPUTE_STATES, "auto"),
 		notifications: coerce(ds.devNotifications, NOTIFICATION_SIMS, "auto"),
 		basketScenario: coerce(ds.devBasketScenario, BASKET_SCENARIOS, "auto"),
 		saved: coerce(ds.devSaved, SAVED_SIMS, "auto"),

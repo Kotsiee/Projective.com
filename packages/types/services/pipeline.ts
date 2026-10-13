@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { IntakeAnswersSchema } from "./intake.ts";
 
 /**
  * services.pipeline — instantiating a **Pipeline** service into the client's workspace.
@@ -113,8 +114,40 @@ export const InstantiateServiceInputSchema = z.object({
 	/** Optional override for the project's title. Defaults to the service's own. */
 	title: z.string().max(200).optional(),
 	idempotencyKey: z.string().min(8).max(120),
+	/**
+	 * The buyer's answers to the listing's intake, keyed by field id. Normalised against the listing's
+	 * own fields server-side (unknown ids dropped) and kept on the instantiation record; never a gate
+	 * here — the draft commits nobody (Decision #209).
+	 */
+	answers: IntakeAnswersSchema.default({}),
+	/**
+	 * The currency the buyer expects the engagement in. Optional: absent means the listing's own.
+	 * A different code is REFUSED rather than converted — the seller's prices are a commitment in
+	 * their currency (`PC409`, Decision #209).
+	 */
+	currency: z.string().regex(/^[A-Za-z]{3}$/).optional(),
 });
 export type InstantiateServiceInput = z.infer<typeof InstantiateServiceInputSchema>;
+/** What a client SENDS — `answers` may be omitted and defaults to none. */
+export type InstantiateServiceRequest = z.input<typeof InstantiateServiceInputSchema>;
+
+/**
+ * One `projects.service_instantiations` row — the REQUEST behind an instantiated draft: who asked,
+ * under which client key, with which intake answers, in which currency. Written only by
+ * `marketplace.instantiate_service_blueprint`; the owner reads their own (RLS).
+ */
+export const ServiceInstantiationRowSchema = z.object({
+	id: z.string().uuid(),
+	project_id: z.string().uuid(),
+	/** NULL once the listing's blueprint is gone (`ON DELETE SET NULL`). */
+	blueprint_id: z.string().uuid().nullable(),
+	owner_user_id: z.string().uuid(),
+	idempotency_key: z.string().min(8).max(120),
+	intake_answers: IntakeAnswersSchema,
+	currency: z.string().regex(/^[A-Z]{3}$/),
+	created_at: z.string(),
+});
+export type ServiceInstantiationRow = z.infer<typeof ServiceInstantiationRowSchema>;
 
 /**
  * Archive a draft.

@@ -352,6 +352,43 @@ export function ticketWorkLocked(card: { claimed: boolean; status: TicketStatus 
 	return card.claimed && (card.status === "claimed" || card.status === "in_progress");
 }
 
+/** The ticket statuses that are work: entering one from outside them needs a held escrow (#165). */
+export const WORK_STATUSES: ReadonlySet<TicketStatus> = new Set([
+	"claimed",
+	"in_progress",
+	"in_review",
+]);
+
+/** The narrow projection the column lock reads. */
+export interface ColumnLockInput {
+	claimed: boolean;
+	status: TicketStatus;
+	escrowHeld: boolean;
+	/** The server's funding state (`BoardCard.funding`), or the Dev Context Switcher's forced one. */
+	funding: { canStart: boolean } | null;
+	personal?: boolean;
+}
+
+/**
+ * The column lock (`PRODUCT_MANAGEMENT.md` §3.6): whether a drop that would carry this ticket to
+ * `to` is refused because its escrow is not held — no hold, no work.
+ *
+ * A DERIVED rule, not a stored flag: it mirrors the work-start gate on `trg_ticket_escrow_sync`, which
+ * refuses entering `claimed` / `in_progress` / `in_review` from outside them without a held escrow, so
+ * the board can show a work column as locked before the drop rather than answer a refused write after
+ * it. Only a CLAIMED ticket is ever locked out: for an unclaimed one the drop is the claim, and the
+ * claim is itself the Pipeline lock trigger — it holds the escrow or sends the ticket to Needs funding.
+ * A move between work states is not an entry, and a personal project moves no money (Decision #192).
+ * The card's funding state answers "is it held" (`canStart` is true only in Funded); a card the server
+ * has not resolved yet falls back to its `escrowHeld` flag.
+ */
+export function workColumnLocked(card: ColumnLockInput, to: TicketStatus): boolean {
+	if (card.personal) return false;
+	if (!WORK_STATUSES.has(to) || WORK_STATUSES.has(card.status)) return false;
+	if (!card.claimed) return false;
+	return !(card.funding ? card.funding.canStart : card.escrowHeld);
+}
+
 /** The narrow projection the provider-visibility rule reads. */
 export interface ProviderVisibilityInput extends TicketFundingInput {
 	stageId: string | null;
@@ -781,6 +818,11 @@ export const BoardStageRefSchema = z.object({
 	assignmentMode: StageAssignmentMode,
 	/** The Project Hard Cap on summed $W_i$ per freelancer in this stage; `null` = unlimited. */
 	maxConcurrentIntensity: z.number().min(0).nullable(),
+	/**
+	 * The Chain Reaction (`project_stages.chain_reaction`): a ticket arriving here because its previous
+	 * stage was approved has this stage's escrow held at once. Off, it waits here as Draft.
+	 */
+	chainReaction: z.boolean().default(true),
 	/**
 	 * ISO instant the stage is scheduled to START, or `null` when nothing schedules it.
 	 *

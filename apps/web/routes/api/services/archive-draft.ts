@@ -1,7 +1,7 @@
 import { define } from "@web/utils/state.ts";
 import { ArchiveDraftInputSchema } from "@projective/types/services";
 import { ProjectBackendService } from "@server/services/projects/ProjectBackendService.ts";
-import { bookingActorFrom } from "@features/view/core/booking-actor.ts";
+import { readActor } from "@web/utils/api-session.ts";
 import { invalidPayload, toBookingResponse } from "@features/view/core/respond.ts";
 
 /**
@@ -23,12 +23,12 @@ export const handler = define.handlers({
 		const parsed = ArchiveDraftInputSchema.safeParse(raw);
 		if (!parsed.success) return invalidPayload(parsed.error);
 
-		const actor = bookingActorFrom(ctx);
+		const actor = readActor(ctx);
 		if (!actor.userId) {
 			return Response.json({ ok: false, message: "Sign in to manage your drafts." }, { status: 401 });
 		}
 		return toBookingResponse(
-			ProjectBackendService.archiveDraft(parsed.data, { userId: actor.userId }),
+			await ProjectBackendService.archiveDraft(parsed.data, actor),
 		);
 	},
 });

@@ -1195,3 +1195,11 @@ SELECT TO anon, authenticated USING (
                 AND p.visibility = 'public'::visibility
         )
     );
+
+-- --- service_instantiations: the buyer reads their own requests ---
+--
+-- The idempotency key and the intake answers are the buyer's. No write policy: the only writer is
+-- the definer `marketplace.instantiate_service_blueprint` (00001175), and the row is never edited.
+CREATE POLICY "Owners view their service instantiations" ON projects.service_instantiations FOR
+SELECT TO authenticated USING (owner_user_id = auth.uid ());
+

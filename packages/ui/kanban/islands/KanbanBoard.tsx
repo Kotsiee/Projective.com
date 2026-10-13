@@ -40,6 +40,13 @@ export interface KanbanBoardProps<T, C = unknown> {
 	/** Whether a given item can be picked up at all (default: all draggable). */
 	itemDraggable?: (item: T) => boolean;
 	/**
+	 * Why `column` refuses `item`, or `null` when it takes it (default: every column takes every item).
+	 * Asked per item, unlike `column.disabled`, which refuses everything. While that item is dragged a
+	 * refusing column is marked locked with the reason on screen, never shows a drop indicator, and
+	 * announces the reason instead of a position. The item's own column never refuses it.
+	 */
+	itemDropRefusal?: (item: T, column: KanbanColumnModel<C>) => string | null;
+	/**
 	 * Activate an item — a click that did not become a drag, or Enter on the focused card. The card
 	 * itself is the interactive element (the drag handle AND the tab stop), so the consumer's
 	 * `renderItem` content must stay non-interactive and route its "open" through this instead.
@@ -87,6 +94,15 @@ function KanbanBoardInner<T, C>(props: KanbanBoardProps<T, C>): JSX.Element {
 		(itemsByColumn.get(col) ?? itemsByColumn.set(col, []).get(col)!).push(it);
 	}
 	const renderedIds = (colId: string) => (itemsByColumn.get(colId) ?? []).map(idOf);
+	const itemById = new Map(props.items.map((it) => [idOf(it), it] as const));
+
+	/** Why `columnId` refuses the item being dragged, or `null`. */
+	const refusalFor = (itemId: string | undefined, columnId: string): string | null => {
+		if (!itemId || !props.itemDropRefusal || columnOfItem.get(itemId) === columnId) return null;
+		const it = itemById.get(itemId);
+		const col = columnById.get(columnId);
+		return it && col ? props.itemDropRefusal(it, col) : null;
+	};
 
 	const reorderableIdx = props.columns.flatMap((c, i) => (c.reorderable ? [i] : []));
 	const firstReorderable = reorderableIdx.length ? reorderableIdx[0] : 0;
@@ -123,6 +139,7 @@ function KanbanBoardInner<T, C>(props: KanbanBoardProps<T, C>): JSX.Element {
 		else columnId = columnOfItem.get(entry.id) ?? "";
 		const col = columnById.get(columnId);
 		if (!col || col.disabled) return null;
+		if (refusalFor(activeItemId, columnId) !== null) return null;
 
 		const list = renderedIds(columnId);
 		let renderIndex: number;
@@ -241,6 +258,22 @@ function KanbanBoardInner<T, C>(props: KanbanBoardProps<T, C>): JSX.Element {
 				const prevCol = dropTarget.value?.columnId;
 				const next = computeCardTarget(e.over, e.pointer, e.active);
 				dropTarget.value = next;
+				// Over a column that refuses this item: say why, once per column, instead of a position.
+				const overEntry = e.over ? idIndex.get(e.over) : undefined;
+				const overCol = overEntry?.kind === "column"
+					? overEntry.id
+					: overEntry
+					? columnOfItem.get(overEntry.id)
+					: undefined;
+				const refusal = overCol ? refusalFor(idIndex.get(e.active.id)?.id, overCol) : null;
+				if (!next && overCol && refusal) {
+					say(
+						`${columnById.get(overCol)?.title ?? ""} is locked. ${refusal}`,
+						`locked:${overCol}`,
+						e.active.sensor,
+						true,
+					);
+				}
 				if (next) {
 					const col = columnById.get(next.columnId);
 					say(
@@ -291,6 +324,9 @@ function KanbanBoardInner<T, C>(props: KanbanBoardProps<T, C>): JSX.Element {
 		}
 	}
 	const columnDragActive = active?.data.type === "column";
+	const draggedItemId = active && active.data.type !== "column"
+		? idIndex.get(active.id)?.id
+		: undefined;
 	// #endregion
 
 	const colItems = (col: KanbanColumnModel<C>): KanbanColumnItem[] =>
@@ -323,6 +359,7 @@ function KanbanBoardInner<T, C>(props: KanbanBoardProps<T, C>): JSX.Element {
 							column={col}
 							items={colItems(col)}
 							dropTarget={dropTarget}
+							refusal={refusalFor(draggedItemId, col.id)}
 							columnDragEnabled={!!props.columnsReorderable}
 							header={props.renderColumnHeader}
 							footer={props.renderColumnFooter}

@@ -21,7 +21,11 @@ for fiat rails. Every rule below is a merge gate; the full text lives in
 | Regenerate committed seed SQL | `deno task db:seed:generate` |
 
 Secrets go in `.env.local` (server loads only `.env.local` then `.env`); `.env.example` is the only
-committed env file. Four `theme-engine.test.ts` failures are pre-existing (Decision #96(a)).
+committed env file.
+
+**`deno task db:reset` is permitted at any time it is needed** (e.g. to apply migration edits to the
+local DB) — no per-run approval required. It rebuilds the shared local DB from migrations + seeds, so
+anything created by hand locally is lost; tell concurrent sessions when you run it. Four `theme-engine.test.ts` failures are pre-existing (Decision #96(a)).
 
 ## Core Conventions
 

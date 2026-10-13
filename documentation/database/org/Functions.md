@@ -218,8 +218,12 @@ stored: it is derived from `users_public.dob` at every read, so it lifts on the 
 to run. Ages are whole years on today's date **in the person's own zone** (`users_public.timezone`,
 UTC when unknown — Decision #192): the same rule `computeAge` applies in the join form and the API, so
 every layer turns a birthday over at the same moment. Provisioning stores the browser's zone from the
-sign-up metadata (`timezone`, dropped when Postgres does not recognise it). None of these is granted to
-a client role (`org` is deny-by-default), so no caller can ask whether somebody else is a minor.
+sign-up metadata (`timezone`, dropped when Postgres does not recognise it). Nothing that reads a stored
+date of birth is granted to a client role (`org` is deny-by-default), so no caller can ask whether
+somebody else is a minor. The three pure date helpers (`fn_valid_time_zone`, `fn_today_in`,
+`fn_age_years`) are granted to `anon` and `authenticated`: they compute only on their arguments, and
+`org.profiles_index` — whose function calls are checked against the reader — masks a minor's location
+with `fn_age_years(dob, timezone) < 18`, `fn_is_minor`'s rule spelled out.
 
 | Function                                     | Role                                                                                                                                         |
 | :------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------- |

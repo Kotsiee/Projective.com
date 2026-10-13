@@ -104,6 +104,29 @@ CREATE TRIGGER trg_transactions_no_truncate
     EXECUTE FUNCTION finance.fn_transactions_append_only ();
 -- #endregion
 
+-- #region Disputes — never deleted, terminal once resolved, evidence append-only (00001260, Decision #212)
+CREATE TRIGGER trg_disputes_immutable
+    BEFORE UPDATE OR DELETE ON finance.disputes
+    FOR EACH ROW
+    EXECUTE FUNCTION finance.fn_dispute_records_immutable ();
+
+CREATE TRIGGER trg_dispute_messages_immutable
+    BEFORE UPDATE OR DELETE ON finance.dispute_messages
+    FOR EACH ROW
+    EXECUTE FUNCTION finance.fn_dispute_records_immutable ();
+
+CREATE TRIGGER trg_dispute_evidence_immutable
+    BEFORE UPDATE OR DELETE ON finance.dispute_evidence
+    FOR EACH ROW
+    EXECUTE FUNCTION finance.fn_dispute_records_immutable ();
+
+-- TRUNCATE skips row triggers, so it is refused per statement.
+CREATE TRIGGER trg_disputes_no_truncate
+    BEFORE TRUNCATE ON finance.disputes
+    FOR EACH STATEMENT
+    EXECUTE FUNCTION finance.fn_dispute_records_immutable ();
+-- #endregion
+
 -- #region Wallet watch — auto-fund retries and the low-balance warning (00001250, Decision #172)
 -- Every ledger line on a business wallet: a credit retries the From-wallet auto-fund queue, a debit
 -- that crosses the business's balance floor warns once and runs any floor top-up.

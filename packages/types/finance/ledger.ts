@@ -103,6 +103,13 @@ export const EscrowSchema = z.object({
 	ticketId: uuid.nullable(),
 	/** The paid revision round this escrow pays for; `null` is the ticket's base escrow (one held per ticket). */
 	revisionId: uuid.nullable(),
+	/** The session seat this escrow pays for; a ticket escrow and a seat escrow never share a row. */
+	cohortMembershipId: uuid.nullable(),
+	/**
+	 * The ONE sitting a 1-1 seat escrow pays for — released 24h after it, cancelled against its start
+	 * (Decision #211). `null` on a cohort seat, which settles after the cohort's last sitting.
+	 */
+	sessionEventId: uuid.nullable(),
 	payerBusinessId: uuid,
 	/** Both `null` on a PREPAID escrow nobody has claimed yet; the claim binds them (Decision #197). */
 	payeeType: EscrowPayeeType.nullable(),

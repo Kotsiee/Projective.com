@@ -190,6 +190,26 @@
 				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13100'; deno task dev --port 13100 --strictPort"
 			],
 			"port": 13100
+		},
+		{
+			"name": "web-chain",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13210'; deno task dev --port 13210 --strictPort"
+			],
+			"port": 13210
+		},
+		{
+			"name": "web-disputes",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$line = Get-Content .env | Select-String \"^SUPABASE_SERVICE_ROLE_KEY=\"; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split(\"=\", 2)[1].Trim([char]34) }; $env:PORT = \"13011\"; deno task dev --port 13011 --strictPort"
+			],
+			"port": 13011
 		}
 	]
 }

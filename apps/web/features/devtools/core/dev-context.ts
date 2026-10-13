@@ -43,6 +43,7 @@ import {
 	type DevLowBalance,
 	type DevNotifications,
 	type DevSessionState,
+	type DevDisputeState,
 	type DevBasketScenario,
 	type DevSaved,
 	type DevPromoDismissal,
@@ -93,6 +94,7 @@ export type {
 	DevLowBalance,
 	DevNotifications,
 	DevSessionState,
+	DevDisputeState,
 	DevBasketScenario,
 	DevSaved,
 	DevServiceType,
@@ -277,6 +279,12 @@ export interface DevOverrides {
 	 */
 	sessionState: DevSessionState;
 	/**
+	 * A session's no-show dispute (Decision #212): nothing reportable, a sitting the attendee may report,
+	 * each live status and each ruling. Each takes a real claim, a room's logs, a counterparty or an
+	 * operator to reach, so the session sidebar's dispute section previews them here.
+	 */
+	disputeState: DevDisputeState;
+	/**
 	 * The header drawer's and `/notifications`' inbox (DESIGN_SYSTEM §D.9): the real one, none at all,
 	 * many unread across every category, or a realtime burst of arrivals. Its own axis because an
 	 * empty inbox, a full one and a run of new events all need someone else's actions to reach.
@@ -381,6 +389,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	autoFundMode: "auto",
 	lowBalance: "auto",
 	sessionState: "auto",
+	disputeState: "auto",
 	notifications: "auto",
 	basketScenario: "auto",
 	saved: "auto",
@@ -647,6 +656,19 @@ export const DEV_SESSION_STATES: ReadonlyArray<DevOption<DevSessionState>> = [
 	{ value: "release_pending", label: "Auto-release pending" },
 ];
 
+/** No-show dispute options (Decision #212). */
+export const DEV_DISPUTE_STATES: ReadonlyArray<DevOption<DevDisputeState>> = [
+	{ value: "auto", label: "Auto" },
+	{ value: "none", label: "None" },
+	{ value: "reportable", label: "Reportable" },
+	{ value: "open", label: "Open" },
+	{ value: "awaiting_response", label: "Awaiting response" },
+	{ value: "under_review", label: "Under review" },
+	{ value: "resolved_release", label: "Released" },
+	{ value: "resolved_refund", label: "Refunded" },
+	{ value: "resolved_split", label: "Split" },
+];
+
 /** Explore Home promo dismissal options. */
 export const DEV_PROMO_DISMISSALS: ReadonlyArray<DevOption<DevPromoDismissal>> = [
 	{ value: "auto", label: "Auto" },
@@ -790,6 +812,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devLowBalance;
 		if (next.sessionState !== "auto") root.dataset.devSessionState = next.sessionState;
 		else delete root.dataset.devSessionState;
+		if (next.disputeState !== "auto") root.dataset.devDisputeState = next.disputeState;
+		else delete root.dataset.devDisputeState;
 		if (next.notifications !== "auto") root.dataset.devNotifications = next.notifications;
 		else delete root.dataset.devNotifications;
 		if (next.basketScenario !== "auto") root.dataset.devBasketScenario = next.basketScenario;
@@ -850,6 +874,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devAutoFundMode;
 		delete root.dataset.devLowBalance;
 		delete root.dataset.devSessionState;
+		delete root.dataset.devDisputeState;
 		delete root.dataset.devNotifications;
 		delete root.dataset.devBasketScenario;
 		delete root.dataset.devSaved;

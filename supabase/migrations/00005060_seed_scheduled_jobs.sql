@@ -24,6 +24,9 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
     ('auto-release-session-escrow', 'sql', '*/15 * * * *',
         'SELECT finance.auto_release_session_escrow();', NULL, NULL,
         'Session negative-consent sweep: completes ended sittings, refunds provider no-shows, releases seat escrow after session_payout_hours.'),
+    ('finance-dispute-sweep', 'sql', '7,22,37,52 * * * *',
+        'SELECT finance.sweep_disputes();', NULL, NULL,
+        'Dispute sweep (Decision #212): closes disputes whose escrow already settled, audits no-show claims once their sitting ends, and auto-escalates awaiting_response cases past respond_by to an auditor.'),
     ('finance-recurring-deposits', 'http', '15 * * * *',
         NULL, '/api/finance/cron/deposits?limit=50', 'FINANCE_CRON_SECRET',
         'Charges every due recurring deposit off-session through Stripe (PaymentBackendService.processDueDeposits).'),
@@ -59,4 +62,13 @@ SELECT 'finance-sweep-stale-payouts', 'http', '*/10 * * * *', NULL, '/api/financ
        'FINANCE_CRON_SECRET',
        'Reconciles withdrawals stuck in pending with Stripe: completes them from their transfer, re-sends under the same idempotency key, or returns the money (PaymentBackendService.sweepStalePayouts).'
  WHERE pg_catalog.to_regprocedure('finance.fn_claim_stale_payouts(integer)') IS NOT NULL
+ON CONFLICT (name) DO NOTHING;
+
+-- 1-1 sessions (Decision #211). The handshake sweep reminds a provider once, a day before their block's
+-- earliest scheduling deadline, and lapses every set-session scheduling round still open at its
+-- deadline, so the pencilled-in time stands. Offset from the quarter hours the escrow sweep runs on.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('session-scheduling-handshakes', 'sql', '7,22,37,52 * * * *',
+        'SELECT projects.fn_lapse_session_handshakes();', NULL, NULL,
+        'Set-session scheduling handshakes: one reminder 24h before a booking''s earliest deadline, then each handshake still open at its deadline (set_session_schedule_hours) lapses — the pencilled-in sitting time stands and both people are told.')
 ON CONFLICT (name) DO NOTHING;

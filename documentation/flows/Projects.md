@@ -18,6 +18,11 @@ truth for the `projects` and `finance` schemas.
 > reconciliation (§6.0) is unchanged. Field names below are the Zod SSOT's
 > (`packages/types/projects/create.ts`, `setup.ts`); column names are `projects.projects` /
 > `projects.project_stages` in [`../database/projects/Tables.md`](../database/projects/Tables.md).
+>
+> **Status (2026-10-13).** A project has a second birth path besides Quick-Init: "Add to Projects"
+> on a Pipeline listing is one `marketplace.instantiate_service_blueprint` transaction (§2.5,
+> Decision #209). It was applied by the 2026-10-13 reset and probed live
+> (`supabase/probes/service_instantiation.sql`, 32/32).
 
 ## 1. The 2-Step Project Creation Flow
 
@@ -241,6 +246,30 @@ RPC's raised refusals reach the client through `refusalFrom` (workspace membersh
 name or exhausted slug retries → 422). `live-create.test.ts` pins the single call and holds every key
 the payload sends against the keys the SQL reads. The stub write-store mirrors the one root stage.
 Either way the island never mints a stage — root `CLAUDE.md` §2, fat services and dumb islands.
+
+### 2.5 The other birth path — instantiating a Pipeline listing
+
+"Add to Projects" on a Pipeline listing (`BookingCtaRig`, `ServiceDetailModal`) posts to
+`POST /api/services/instantiate-pipeline`, which calls `ProjectBackendService.instantiateService`.
+The service resolves the listing **live** (`resolveListing`, a fresh read of the published listing
+and its blueprint when `EXPLORE_BACKEND_LIVE` is on), normalises the intake answers against it, and
+makes **one** `marketplace.instantiate_service_blueprint` call (`00001175`, Decision #209). In one
+transaction that call writes:
+
+- the draft: personal workspace, `format = 'pipeline'`, `status = 'draft'`, `visibility =
+  'unlisted'`, `source_blueprint_id`, and the listing's brief and currency;
+- **one stage per `stage_template` entry**, priced at the stage's standard per-ticket price;
+- **one backlog ticket per stage**, priced the same and routed to that stage;
+- every stage's room and the Discussion room;
+- the request row (`projects.service_instantiations`).
+
+It writes no escrow and no seat. The seller is hired in through §1.1's hire path. The call is
+idempotent on the client's key and then on the buyer's live draft of the listing. The listing's
+"Open project →" reads `marketplace.get_service_draft`, and "Remove draft" is
+`marketplace.archive_service_draft`, which is refused once a stage is funded. Refusals map by
+SQLSTATE: own listing 422, wrong currency 409, unpublished 404, under 18 403. With
+`PROJECTS_BACKEND_LIVE` off, the in-memory draft store answers the same shapes. See
+[`../database/marketplace/Functions.md`](../database/marketplace/Functions.md).
 
 ---
 
@@ -672,7 +701,8 @@ deadline (soonest future ticket due date or stage file due date).
 ## 8. Where creation happens
 
 Creation happens in the Quick-Init modal (§1.1), opened from the `/projects` lane's create menu or a
-seller's `/[handle]` profile. `/projects/create` under `routes/(dashboard)/` is a retired `308 →
+seller's `/[handle]` profile. The only other way a project is born is from a Pipeline listing's "Add
+to Projects" (§2.5). `/projects/create` under `routes/(dashboard)/` is a retired `308 →
 /projects` shim with no page; it must stay a **static** sibling of `[projectSlug]` so `create` is
 never captured as a project slug. See [`../architecture/ROUTING.md`](../architecture/ROUTING.md).
 

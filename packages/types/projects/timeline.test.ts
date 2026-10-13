@@ -43,6 +43,7 @@ function stage(over: Partial<BoardStageRef> & { id: string; order: number }): Bo
 		ticketCount: 0,
 		assignmentMode: "open_pull",
 		maxConcurrentIntensity: null,
+		chainReaction: true,
 		...over,
 	});
 }

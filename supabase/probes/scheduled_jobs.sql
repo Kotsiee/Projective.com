@@ -38,6 +38,9 @@ BEGIN
     IF pg_catalog.to_regprocedure('finance.fn_claim_stale_payouts(integer)') IS NOT NULL THEN
         v_expected := v_expected || ARRAY[ARRAY['finance-sweep-stale-payouts', '*/10 * * * *']];
     END IF;
+    IF pg_catalog.to_regprocedure('finance.sweep_disputes(timestamptz)') IS NOT NULL THEN
+        v_expected := v_expected || ARRAY[ARRAY['finance-dispute-sweep', '7,22,37,52 * * * *']];
+    END IF;
     IF pg_catalog.to_regnamespace('cron') IS NULL THEN
         RAISE EXCEPTION 'FAIL 1: pg_cron is not installed in this database';
     END IF;

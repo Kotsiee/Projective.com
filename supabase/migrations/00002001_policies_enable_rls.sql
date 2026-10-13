@@ -200,6 +200,10 @@ ALTER TABLE projects.project_invitations ENABLE ROW LEVEL SECURITY;
 -- it directly (the definer doors in 00001135 §4 do).
 ALTER TABLE projects.stage_invite_links ENABLE ROW LEVEL SECURITY;
 
+-- The request behind an instantiated draft ("Add to Projects"); written only by the definer
+-- marketplace.instantiate_service_blueprint (00001175), read by its owner.
+ALTER TABLE projects.service_instantiations ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE finance.escrows ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE finance.spending_limits ENABLE ROW LEVEL SECURITY;
@@ -549,6 +553,10 @@ ALTER TABLE finance.buyer_details ENABLE ROW LEVEL SECURITY;
 ALTER TABLE finance.disputes ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE finance.dispute_messages ENABLE ROW LEVEL SECURITY;
+
+-- The Evidence Vault's files (Decision #212): read by the dispute's readers, written only by
+-- finance.respond_to_dispute (00001260).
+ALTER TABLE finance.dispute_evidence ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE finance.promo_codes ENABLE ROW LEVEL SECURITY;
 

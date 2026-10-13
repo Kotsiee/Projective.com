@@ -28,7 +28,9 @@
  * position `projects/detail`, `projects/messages` and `finance/wallet` occupied before their live
  * paths landed. The two schema changes this layer DOES require are folded into the consolidated
  * migrations (root CLAUDE.md §1): `project_status += 'archived'`, and
- * `projects.projects.source_blueprint_id` / `.archived_at` / `.last_activity_at`.
+ * `projects.projects.source_blueprint_id` / `.archived_at` / `.last_activity_at`. The one table it
+ * owns is the instantiation request, `projects.service_instantiations` (`ServiceInstantiationRowSchema`,
+ * Decision #209).
  */
 export * from "./common.ts";
 export * from "./offer.ts";

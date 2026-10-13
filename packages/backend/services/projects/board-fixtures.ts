@@ -1188,6 +1188,7 @@ export function findBoardPage(params: BoardListParams): BoardPage | null {
 			),
 			assignmentMode: econ.assignmentMode,
 			maxConcurrentIntensity: econ.maxConcurrentIntensity,
+			chainReaction: true,
 			startAt: window.startAt,
 			endAt: window.endAt,
 			dependsOnStageId: window.dependsOnStageId,

@@ -310,6 +310,17 @@ export const StageSetupSchema = z.object({
 	 */
 	ndaRequired: z.boolean().nullable(),
 	/**
+	 * The Chain Reaction (`project_stages.chain_reaction`, `PRODUCT_MANAGEMENT.md` §3.6): when a
+	 * ticket's previous stage is approved, hold THIS stage's escrow for it at once from the paying
+	 * wallet. Off, the ticket arrives here unfunded and waits for the client to fund it. On by default
+	 * ({@link blankStage}, the column default).
+	 *
+	 * Deliberately NOT `.default(true)`: {@link UpdateProjectSchema} is this schema `.partial()`, and
+	 * Zod 4 applies a default through `.partial()`, so a save that did not mention the toggle would
+	 * silently switch it back on.
+	 */
+	chainReaction: z.boolean(),
+	/**
 	 * How many providers have taken a seat on this stage — SERVER-derived, never editable, and the
 	 * reason this stage's own price may be locked. See {@link ONBOARDED_ASSIGNMENT_EXCLUDED}.
 	 *
@@ -443,6 +454,7 @@ export function blankStage(id: string, name: string, order: number): StageSetup 
 		roles: [],
 		allowedFileKinds: [],
 		ndaRequired: null,
+		chainReaction: true,
 		// Nobody can have joined a stage that did not exist a moment ago. Stated rather than left to
 		// the schema default, because {@link DEFAULT_STAGE_SETUP} is derived from this literal and a
 		// missing key there would spread `undefined` over a real count.

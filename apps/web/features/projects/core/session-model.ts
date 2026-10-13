@@ -176,6 +176,8 @@ export function emptyWorkspace(detail: ProjectDetail, kind: "normal" | "group"):
 		vote: null,
 		proposal: null,
 		presetEnded: false,
+		claimable: null,
+		disputes: [],
 	};
 }
 // #endregion

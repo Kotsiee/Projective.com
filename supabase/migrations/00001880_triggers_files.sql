@@ -51,3 +51,10 @@ CREATE TRIGGER trg_files_items_guard_pipeline
     BEFORE INSERT OR UPDATE ON files.items
     FOR EACH ROW EXECUTE FUNCTION files.fn_guard_pipeline_columns ();
 -- #endregion
+
+-- #region dispute evidence guard (00001260, Decision #212)
+-- A file filed as evidence in a live dispute is not deleted until the case is resolved.
+CREATE TRIGGER trg_files_items_guard_evidence
+    BEFORE UPDATE OF deleted_at ON files.items
+    FOR EACH ROW EXECUTE FUNCTION finance.fn_guard_evidence_file ();
+-- #endregion

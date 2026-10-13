@@ -198,6 +198,18 @@ BEGIN
         RETURN true;
     END IF;
 
+    -- Dispute evidence (Decision #212): a file filed in a dispute's Evidence Vault is uploaded into its
+    -- sender's private library, and is read by the dispute's parties and the platform's operators.
+    -- Filing cannot widen it: finance.respond_to_dispute files only the caller's own uploaded files.
+    IF EXISTS (
+        SELECT 1
+        FROM finance.dispute_evidence ev
+        WHERE ev.file_id = p_item_id
+          AND (finance.fn_dispute_party (ev.dispute_id, v_uid) IS NOT NULL OR security.is_admin ())
+    ) THEN
+        RETURN true;
+    END IF;
+
     RETURN false;
 END;
 $$;

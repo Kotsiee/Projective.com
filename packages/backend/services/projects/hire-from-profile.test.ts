@@ -304,54 +304,87 @@ Deno.test("a created draft's roster is invisible to another viewer", async () =>
 // #endregion
 
 // #region An instantiated pipeline is a project every read sees
-Deno.test("Add-to-projects mints a draft the feed, the detail and the hire brief all resolve", () => {
+/** Instantiate the primed pipeline as ALICE (the stub path: no `PROJECTS_BACKEND_LIVE` in tests). */
+function instantiate(idempotencyKey: string, over: { currency?: string } = {}) {
+	return ProjectBackendService.instantiateService(
+		{ serviceId: PIPELINE_SLUG, idempotencyKey, workspaceId: null, answers: {}, ...over },
+		ALICE,
+	);
+}
+
+Deno.test("Add-to-projects mints a draft the feed, the detail and the hire brief all resolve", async () => {
 	resetWriteStore();
 	resetDraftStore();
 	primePipelineListing();
-	const added = ProjectBackendService.instantiateService(
-		{ serviceId: PIPELINE_SLUG, idempotencyKey: "probe-key-1", workspaceId: null },
-		{ userId: ALICE.userId },
-	);
+	const added = await instantiate("probe-key-1");
 	assert(added.ok && added.data, added.message);
+	assertEquals(added.status, 201);
 	assertEquals(added.data.created, true);
 	const slug = added.data.draft.slug;
-	return (async () => {
-		const detail = await ProjectBackendService.detail(slug, ALICE);
-		assert(detail.ok && detail.data, `detail(${slug}) did not resolve`);
-		assertEquals(detail.data.detail.status, "draft");
-		assertEquals(detail.data.detail.format, "pipeline");
 
-		const setup = await ProjectBackendService.setup(slug, ALICE);
-		assert(setup.ok && setup.data);
-		// The blueprint's four stages, each at its own floor price in the listing's currency.
-		assertEquals(setup.data.setup.stages.length, 4);
-		assert(setup.data.setup.stages.every((s) => s.unitPriceCents !== null && s.unitPriceCents > 0));
-		assertEquals(setup.data.setup.budget.currency, "USD");
+	const detail = await ProjectBackendService.detail(slug, ALICE);
+	assert(detail.ok && detail.data, `detail(${slug}) did not resolve`);
+	assertEquals(detail.data.detail.status, "draft");
+	assertEquals(detail.data.detail.format, "pipeline");
 
-		const feed = await ProjectBackendService.list(feedParams(), ALICE);
-		assert(feed.ok && feed.data);
-		assert(feed.data.items.some((item) => item.slug === slug), "the draft is in the feed");
+	const setup = await ProjectBackendService.setup(slug, ALICE);
+	assert(setup.ok && setup.data);
+	// The blueprint's four stages, each at its STANDARD per-ticket price (the template's `priceCents`)
+	// — the figure `marketplace.instantiate_service_blueprint` copies, never the 0.5× range floor.
+	assertEquals(setup.data.setup.stages.map((s) => s.unitPriceCents), [
+		40_000,
+		60_000,
+		80_000,
+		100_000,
+	]);
+	assertEquals(setup.data.setup.budget.currency, "USD");
 
-		const brief = await ProjectBackendService.hireBrief(slug, ALICE);
-		assert(brief.ok && brief.data);
-		assertEquals(brief.data.brief.pricingModel, "per_ticket_stage");
-		assertEquals(brief.data.brief.stages.length, 4);
-	})();
+	const feed = await ProjectBackendService.list(feedParams(), ALICE);
+	assert(feed.ok && feed.data);
+	assert(feed.data.items.some((item) => item.slug === slug), "the draft is in the feed");
+
+	const brief = await ProjectBackendService.hireBrief(slug, ALICE);
+	assert(brief.ok && brief.data);
+	assertEquals(brief.data.brief.pricingModel, "per_ticket_stage");
+	assertEquals(brief.data.brief.stages.length, 4);
+});
+
+Deno.test("instantiation refuses a currency the listing is not priced in, as the door does (PC409)", async () => {
+	resetWriteStore();
+	resetDraftStore();
+	primePipelineListing();
+	const refused = await instantiate("probe-key-fx", { currency: "eur" });
+	assertEquals(refused.ok, false);
+	assertEquals(refused.status, 409);
+	assertEquals(refused.errors?.currency, "currency_mismatch");
+	// The listing's own code, in any case, is accepted.
+	const accepted = await instantiate("probe-key-fx2", { currency: "usd" });
+	assert(accepted.ok, accepted.message);
+});
+
+Deno.test("instantiation refuses a guest and an unknown listing", async () => {
+	resetDraftStore();
+	primePipelineListing();
+	const guest = await ProjectBackendService.instantiateService(
+		{ serviceId: PIPELINE_SLUG, idempotencyKey: "probe-key-g", workspaceId: null, answers: {} },
+		{ userId: "", contextId: "", contextType: "personal" },
+	);
+	assertEquals(guest.status, 401);
+	const missing = await ProjectBackendService.instantiateService(
+		{ serviceId: "svc-zzzzzzzzzz", idempotencyKey: "probe-key-m", workspaceId: null, answers: {} },
+		ALICE,
+	);
+	assertEquals(missing.status, 404);
 });
 
 Deno.test("a repeat instantiation returns the same draft and mints no second project", async () => {
 	resetWriteStore();
 	resetDraftStore();
 	primePipelineListing();
-	const first = ProjectBackendService.instantiateService(
-		{ serviceId: PIPELINE_SLUG, idempotencyKey: "probe-key-1", workspaceId: null },
-		{ userId: ALICE.userId },
-	);
-	const again = ProjectBackendService.instantiateService(
-		{ serviceId: PIPELINE_SLUG, idempotencyKey: "probe-key-1", workspaceId: null },
-		{ userId: ALICE.userId },
-	);
+	const first = await instantiate("probe-key-1");
+	const again = await instantiate("probe-key-1");
 	assert(first.ok && first.data && again.ok && again.data);
+	assertEquals(again.status, 200);
 	assertEquals(again.data.created, false);
 	assertEquals(again.data.draft.slug, first.data.draft.slug);
 	const feed = await ProjectBackendService.list(feedParams(), ALICE);
@@ -363,15 +396,10 @@ Deno.test("archiving an instantiated draft removes it from the feed", async () =
 	resetWriteStore();
 	resetDraftStore();
 	primePipelineListing();
-	const added = ProjectBackendService.instantiateService(
-		{ serviceId: PIPELINE_SLUG, idempotencyKey: "probe-key-2", workspaceId: null },
-		{ userId: ALICE.userId },
-	);
+	const added = await instantiate("probe-key-2");
 	assert(added.ok && added.data);
 	const slug = added.data.draft.slug;
-	const archived = ProjectBackendService.archiveDraft({ projectId: slug }, {
-		userId: ALICE.userId,
-	});
+	const archived = await ProjectBackendService.archiveDraft({ projectId: slug }, ALICE);
 	assert(archived.ok, archived.message);
 	const feed = await ProjectBackendService.list(feedParams(), ALICE);
 	assert(feed.ok && feed.data);

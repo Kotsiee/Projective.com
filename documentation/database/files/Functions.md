@@ -113,12 +113,18 @@ left open in the other (the `scheduling` refusal-function precedent).
 | `owner_type = 'organisation'` and `org.is_organisation_member(owner_entity_id)`     |
 | `bucket_id = 'project'` and `projects.has_project_access({project_id} path anchor)` |
 | attached (`comms.message_attachments`) to a message `comms.can_read_message()` admits |
+| filed as dispute evidence (`finance.dispute_evidence`) and the reader is a party (`finance.fn_dispute_party`) or `security.is_admin()` |
 
 The message arm (Decision #132) is what lets the person a chat file was SENT to read it: a chat
 upload lands in the sender's own `personal` library, private, so no other arm admits the recipient
 — the link row was visible and the file behind it was not. It cannot be used to reach somebody
 else's asset, because the INSERT policy on `comms.message_attachments` requires the linker to
 pass `fn_can_read` for the file already.
+
+The dispute-evidence arm (Decision #212) is the same shape: evidence is uploaded into its sender's
+private library, and the counterparty and the auditor must open it. Filing cannot widen it —
+`finance.respond_to_dispute` files only the caller's OWN uploaded files. While the dispute is live the
+file cannot be soft-deleted (`trg_files_items_guard_evidence`, `finance.fn_guard_evidence_file`).
 
 **Does not grant a read, deliberately:** `visibility = 'link'`. The opaque **slug** is the
 credential, not the item id. If `link` returned true here, any signed-in user could enumerate every

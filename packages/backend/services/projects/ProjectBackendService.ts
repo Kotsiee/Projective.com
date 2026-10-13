@@ -125,7 +125,6 @@ import { BOARD_FIXTURE_NOW, findBoardPage, findTicketProjectSlug } from "./board
 import { findFixtureRequest, findMemberRoster } from "./members-fixtures.ts";
 import { findStubLinkRequest, stubLinkRequests } from "./invite-link-store.ts";
 import { archiveDraft, getDraft, instantiateDraft, sweepStaleDrafts } from "./draft-store.ts";
-import { composeLoadedViewPage } from "../explore/live-view.ts";
 import { reembedInBackground } from "../search/embedding-sync.ts";
 import {
 	approveStageRow,
@@ -155,17 +154,10 @@ import {
 	type WorkspaceViewer,
 } from "@projective/types/projects";
 
-/**
- * The listing's composed page, from the catalogue snapshot `findItem` resolved it from a line
- * earlier — so the booking flow reads exactly the intake, session format and stage template the page
- * rendered. The throw is unreachable: `findItem` only returns an item when that snapshot exists.
- */
-function buildViewPage(item: ExploreItem): EntityView {
-	const view = composeLoadedViewPage(item);
-	if (!view) throw new Error("explore catalogue snapshot vanished between two reads");
-	return view;
-}
-import { findItem } from "../explore/query.ts";
+import { resolveListing } from "../explore/listing-source.ts";
+import type { BlueprintRow } from "../explore/live-catalog.ts";
+import { archiveServiceDraftRow, instantiateBlueprintRow } from "./live-instantiate.ts";
+import { BlueprintStageSchema } from "@projective/types/explore";
 import type {
 	ArchiveDraftInput,
 	InstantiateServiceInput,
@@ -204,7 +196,6 @@ import {
 	allowanceNoticeText,
 	isDisplayCurrency,
 	toDisplayCurrency,
-	toMinorUnits,
 } from "@projective/types/finance";
 import {
 	AllowanceAccessError,
@@ -213,7 +204,7 @@ import {
 	stubConsumeAllowance,
 	stubRefundAllowance,
 } from "../finance/proposal-allowance.ts";
-import type { EntityView, ExploreItem, ServiceItem } from "@projective/types/explore";
+import type { EntityView, ServiceItem } from "@projective/types/explore";
 import { ProfileBackendService } from "../profile/ProfileBackendService.ts";
 import { MessagingBackendService } from "../messaging/MessagingBackendService.ts";
 import { dmConversationId } from "@projective/types/messaging";
@@ -727,6 +718,7 @@ function draftStageRef(id: string, input: CreateStageInput, order: number): Boar
 		funding: null,
 		assignmentMode: "open_pull",
 		maxConcurrentIntensity: null,
+		chainReaction: true,
 		startAt: null,
 		endAt: null,
 		dependsOnStageId: null,
@@ -960,23 +952,31 @@ function refusedInvitation(handle: string, message: string | undefined): Created
  * draft already gets. Without it the board the buyer is sent to renders beside a lane reading
  * "Project not found", which is a project that exists for one read and not the next.
  *
- * Stages copy the blueprint's: name, brief, required skills, and the seat-pool ticket price in the
- * listing's own currency (a `TicketPrice` is MAJOR units, so it goes through the finance SSOT's
- * exponent-aware converter). A range prices at its floor — the figure the card and the lane print.
+ * Stages copy the blueprint's: name, brief, required skills, and the stage's STANDARD per-ticket
+ * price in minor units (`BlueprintStage.priceCents`, else the listing's `ticket_price_cents`, else
+ * unpriced) — the figure `marketplace.instantiate_service_blueprint` copies, so the stub and the live
+ * draft price the same board. Not the page's range floor: that is the 0.5× workload-intensity end of
+ * the band the card prints, and escrowing it would hold half the seller's price.
  */
 function buildInstantiatedSetup(
 	item: ServiceItem,
 	view: EntityView,
+	blueprint: BlueprintRow | undefined,
 	draft: { slug: string; title: string },
 ): ProjectSetup {
 	const id = crypto.randomUUID();
 	const currency = item.currency ?? "USD";
 	const columns = createFormatToColumns("pipeline", true);
-	const blueprint = view.service?.stages ?? [];
-	const stages = blueprint.map((stage, index) => ({
+	const template = Array.isArray(blueprint?.stage_template) ? blueprint.stage_template : [];
+	const standardPrice = (index: number): number | null => {
+		const parsed = BlueprintStageSchema.safeParse(template[index]);
+		return (parsed.success ? parsed.data.priceCents : undefined) ??
+			blueprint?.ticket_price_cents ?? null;
+	};
+	const stages = (view.service?.stages ?? []).map((stage, index) => ({
 		...blankStage(`${id}-stage-${index + 1}`, stage.name, index),
 		description: plainTextToHtml(stage.description),
-		unitPriceCents: toMinorUnits(stage.price.min, currency),
+		unitPriceCents: standardPrice(index),
 		skills: stage.skills.map((skill) => skill.label),
 	}));
 	return reconcileSetup({
@@ -3421,28 +3421,43 @@ export class ProjectBackendService {
 	 * Instantiate a **Pipeline service template** into the acting client's workspace as a draft
 	 * project — the write behind "Add to Projects".
 	 *
-	 * What the live path will do, and what the shapes here already promise:
-	 * - insert `projects.projects` with `status = 'draft'`, `visibility = 'unlisted'` and
-	 *   `source_blueprint_id` pointing at the service;
-	 * - copy the blueprint's stages into `projects.project_stages`;
-	 * - leave every `projects.stage_assignments` row at `pending_funding`, so nobody is committed to
-	 *   anything and no escrow exists until the client funds the first ticket.
+	 * **Live** (`PROJECTS_BACKEND_LIVE`): ONE `marketplace.instantiate_service_blueprint` transaction
+	 * under the buyer's JWT (Decision #209) — the project (`status = 'draft'`, `visibility =
+	 * 'unlisted'`, `source_blueprint_id`), one stage per `stage_template` entry at the stage's standard
+	 * price, one priced backlog ticket per stage, every room, and the request record. The door owns
+	 * every caller check (published, pipeline, not the buyer's own, adult, currency); this method owns
+	 * resolving the listing LIVE ({@link resolveListing}) and normalising the answers against its
+	 * intake. **Stub** otherwise: the draft store plus the write-store projection, as before.
 	 *
-	 * **No money moves and nothing is reserved.** That is the whole reason this is a draft rather than
-	 * a basket line: a pipeline is not bought, it is staffed and then bought against, one ticket at a
-	 * time (`PRODUCT_SPEC.md` §Creation & Purchasing Gate). A buyer must be able to open the board and
-	 * read the stages before deciding anything, which a basket line cannot hold.
+	 * **No money moves and nothing is reserved, and no seat is minted.** That is the whole reason this
+	 * is a draft rather than a basket line: a pipeline is not bought, it is staffed and then bought
+	 * against, one ticket at a time (`PRODUCT_SPEC.md` §Creation & Purchasing Gate). A buyer must be
+	 * able to open the board and read the stages before deciding anything, which a basket line cannot
+	 * hold. The seller joins through the hire path like anyone else.
 	 *
-	 * Idempotent on `input.idempotencyKey`: a repeat returns the SAME draft with `created: false`
-	 * rather than refusing, so a double-press or a retry after an unseen timeout cannot leave two
-	 * identical pipelines in someone's workspace.
+	 * Idempotent on `input.idempotencyKey`, then on the buyer's live draft of the listing: a repeat
+	 * returns the SAME draft with `created: false` rather than refusing, so a double-press or a retry
+	 * after an unseen timeout cannot leave two identical pipelines in someone's workspace.
+	 *
+	 * The intake answers are kept, never required here: the draft commits nobody, and the listing
+	 * page's "Add to Projects" collects none (Decision #209 flag).
 	 */
-	static instantiateService(
+	static async instantiateService(
 		input: InstantiateServiceInput,
-		actor: { userId: string | null },
-	): ServiceResult<{ draft: PipelineDraft; created: boolean }> {
-		const item = findItem(input.serviceId);
-		if (!item || item.type !== "services") {
+		actor: ReadActor,
+	): Promise<ServiceResult<{ draft: PipelineDraft; created: boolean }>> {
+		const denied = requireIdentity<{ draft: PipelineDraft; created: boolean }>(
+			actor,
+			"add this to your projects",
+		);
+		if (denied) return denied;
+
+		const listing = await resolveListing(input.serviceId);
+		if (listing === undefined) {
+			return fail(503, { message: "That service could not be read just now — please try again." });
+		}
+		const item = listing?.item;
+		if (!listing || !item || item.type !== "services") {
 			return fail(404, { message: `No service found for id "${input.serviceId}".` });
 		}
 		if (item.serviceType !== "Pipeline") {
@@ -3451,43 +3466,82 @@ export class ProjectBackendService {
 				errors: { serviceId: "not_a_pipeline" },
 			});
 		}
+		const { view, catalog } = listing;
+		const answers = normaliseIntakeAnswers(view.service?.intake ?? [], input.answers);
+		const currency = input.currency?.toUpperCase() ?? null;
+		const settled = (data: { draft: PipelineDraft; created: boolean }) =>
+			ok(data, {
+				status: data.created ? 201 : 200,
+				message: data.created
+					? "Added to your projects as a draft."
+					: "This service is already in your projects.",
+			});
 
-		const view = buildViewPage(item);
-		const stageCount = view.service?.stages.length ?? 0;
+		if (isProjectsBackendLive()) {
+			if (!canReadLive(actor)) {
+				return fail(401, { message: "Your session has expired — sign in again to add this." });
+			}
+			// Personal workspace only: the door files the draft under `auth.uid()` and nothing else, and
+			// silently filing a team's request under a person would be the wrong project, not a smaller one.
+			if (input.workspaceId) {
+				return fail(422, {
+					message: "Adding a service to a team or business workspace isn't available yet.",
+					errors: { workspaceId: "unsupported" },
+				});
+			}
+			const blueprintId = catalog.blueprintBySlug.get(item.id)?.id;
+			if (!blueprintId) {
+				return fail(404, { message: `No service found for id "${input.serviceId}".` });
+			}
+			try {
+				const outcome = await instantiateBlueprintRow(actor, {
+					blueprintId,
+					serviceId: item.id,
+					answers,
+					currency,
+					idempotencyKey: input.idempotencyKey,
+					title: input.title?.trim() || null,
+				});
+				if (outcome === null) return notFound("service", input.serviceId);
+				if ("refusal" in outcome) return refused(outcome.refusal);
+				if (outcome.data.created) invalidateProjects(actor);
+				return settled(outcome.data);
+			} catch (error) {
+				// A thrown live WRITE never falls back to the stub (see {@link liveWrite}).
+				liveFailed("instantiateService", error);
+				return fail(502, {
+					message: "That could not be added to your projects — please try again.",
+				});
+			}
+		}
 
+		// The stub mirrors the door's currency rule, so the two paths refuse the same request.
+		if (currency && currency !== (item.currency ?? "USD").toUpperCase()) {
+			return fail(409, {
+				message: `This service is priced in ${(item.currency ?? "USD").toUpperCase()}.`,
+				errors: { currency: "currency_mismatch" },
+			});
+		}
 		const result = instantiateDraft(input, {
 			serviceId: item.id,
 			title: item.title,
-			stageCount,
+			stageCount: view.service?.stages.length ?? 0,
 			userId: actor.userId,
 			workspaceId: input.workspaceId,
 		});
 		if (result.created) {
 			const owner = draftWriteOwner(actor, input.workspaceId);
-			recordCreatedProject(owner, buildInstantiatedSetup(item, view, result.draft));
+			recordCreatedProject(
+				owner,
+				buildInstantiatedSetup(item, view, catalog.blueprintBySlug.get(item.id), result.draft),
+			);
 			invalidateProjects({
-				userId: actor.userId ?? "",
-				contextId: input.workspaceId ?? actor.userId ?? "",
+				userId: actor.userId,
+				contextId: input.workspaceId ?? actor.userId,
 				contextType: input.workspaceId ? "team" : "personal",
 			});
 		}
-
-		if (!isProjectsBackendLive()) {
-			return ok(result, {
-				status: result.created ? 201 : 200,
-				message: result.created
-					? "Added to your projects as a draft."
-					: "This service is already in your projects.",
-			});
-		}
-		// LIVE: insert the project + copy the blueprint stages through the RLS-scoped RPC (not yet
-		// implemented) — fall through to the store so behaviour is preserved either side of the gate.
-		return ok(result, {
-			status: result.created ? 201 : 200,
-			message: result.created
-				? "Added to your projects as a draft."
-				: "This service is already in your projects.",
-		});
+		return settled(result);
 	}
 
 	/**
@@ -3500,11 +3554,27 @@ export class ProjectBackendService {
 	 * It refuses a draft that has already been funded. That is not caution — an archived project whose
 	 * stage holds escrowed money is a project whose money has nowhere to go, and the recovery path for
 	 * one is a support ticket rather than a button.
+	 *
+	 * Live, that check and the archive are one `marketplace.archive_service_draft` transaction (the
+	 * archive itself through `projects.set_project_status`), so a stage funded between a check here and
+	 * a write there cannot be archived with its money in it.
 	 */
-	static archiveDraft(
+	static async archiveDraft(
 		input: ArchiveDraftInput,
-		actor: { userId: string | null },
-	): ServiceResult<{ draft: PipelineDraft }> {
+		actor: ReadActor,
+	): Promise<ServiceResult<{ draft: PipelineDraft }>> {
+		const denied = requireIdentity<{ draft: PipelineDraft }>(actor, "manage your drafts");
+		if (denied) return denied;
+		const live = await liveWrite<{ draft: PipelineDraft }>(
+			"archiveDraft",
+			actor,
+			input.projectId,
+			"Draft archived.",
+			(a) => archiveServiceDraftRow(a, input.projectId, input.reason ?? null),
+			"draft",
+		);
+		if (live) return live;
+
 		const current = getDraft(input.projectId, actor.userId);
 		if (!current) return fail(404, { message: "That draft is no longer in your projects." });
 		if (current.fundedStageCount > 0) {

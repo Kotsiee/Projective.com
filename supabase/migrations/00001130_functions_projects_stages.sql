@@ -613,10 +613,18 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, auth;
 -- ---------------------------------------------------------------------------------------------
 -- 3. projects.force_complete_stage(p_ticket_id)
 -- Client override that approves the current phase: release the held installment for the current
--- stage, then advance to the next required stage and fund its installment — or, on the final stage,
--- complete the whole ticket. Returns the new current_stage_id (NULL once the ticket is completed).
--- No hold, no work (#165): when the next stage's hold is refused the approval still stands and the
--- installment already earned is still paid; the ticket waits in that stage as `todo`, Needs funding.
+-- stage, then advance to the next required stage — or, on the final stage, complete the whole ticket.
+-- Returns the new current_stage_id (NULL once the ticket is completed).
+--
+-- The Chain Reaction (PRODUCT_SPEC §Escrow, Wallets & Finance #2; PRODUCT_MANAGEMENT §3.6): the next
+-- stage's escrow is held at once, from the paying wallet's live balance, when that stage's
+-- `chain_reaction` is on (the default) — the payee is told "Funded — you can start" and work carries
+-- on. No hold, no work (#165): when the hold is refused the approval still stands and the installment
+-- already earned is still paid; the ticket waits in that stage as `todo`, Needs funding, and the
+-- client is told (fn_mark_needs_funding, which also hands a business project to its auto-funding).
+-- With `chain_reaction` off the ticket waits there as `todo`, Draft (`unpaid`), for the client to fund
+-- when they choose. Either wait tells the payee (`ticket.awaiting_funding`). Each outcome is one
+-- `ticket_history` row: `chain_held` · `chain_needs_funding` · `chain_off`.
 --
 -- 🚨 A CLIENT override, so the guard is review authority (`can_review_project`), not
 -- `has_project_access`: the assignee has project access, and under that guard could approve their
@@ -631,6 +639,13 @@ DECLARE
     v_next uuid;
     v_current_ord int;
     v_detail text;
+    v_chain boolean;
+    v_outcome text;
+    v_assignee uuid;
+    v_title text;
+    v_ticket_slug text;
+    v_project_slug text;
+    v_next_name text;
 BEGIN
     IF auth.uid() IS NULL THEN
         RAISE EXCEPTION 'Sign in to complete a stage.' USING ERRCODE = '42501';
@@ -669,25 +684,72 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    -- Intermediate stage: release the current installment, move to the next stage and fund it.
+    -- Intermediate stage: release the current installment and move to the next stage.
     PERFORM finance.fn_release_ticket_escrow(p_ticket_id);
 
-    UPDATE projects.tickets
-    SET current_stage_id = v_next,
-        status = 'in_progress'::ticket_status,
-        updated_at = now()
-    WHERE id = p_ticket_id;
+    SELECT ps.chain_reaction, ps.name INTO v_chain, v_next_name
+      FROM projects.project_stages ps WHERE ps.id = v_next;
 
-    BEGIN
-        PERFORM finance.fn_hold_ticket_escrow(p_ticket_id);
-    EXCEPTION WHEN SQLSTATE 'PF402' THEN
-        GET STACKED DIAGNOSTICS v_detail = PG_EXCEPTION_DETAIL;
-        UPDATE projects.tickets SET status = 'todo'::ticket_status, updated_at = now() WHERE id = p_ticket_id;
-        PERFORM projects.fn_mark_needs_funding(p_ticket_id, NULLIF(v_detail, '')::jsonb);
-    END;
+    IF COALESCE(v_chain, true) THEN
+        -- Chain Reaction: carry on in the next stage on a fresh hold. A move between work states is
+        -- not an entry into work, so the gate on trg_ticket_escrow_sync lets the write through and the
+        -- hold below decides whether the work really continues.
+        UPDATE projects.tickets
+        SET current_stage_id = v_next,
+            status = 'in_progress'::ticket_status,
+            updated_at = now()
+        WHERE id = p_ticket_id;
+
+        BEGIN
+            PERFORM finance.fn_hold_ticket_escrow(p_ticket_id);
+            v_outcome := 'chain_held';
+        EXCEPTION WHEN SQLSTATE 'PF402' THEN
+            GET STACKED DIAGNOSTICS v_detail = PG_EXCEPTION_DETAIL;
+            UPDATE projects.tickets SET status = 'todo'::ticket_status, updated_at = now() WHERE id = p_ticket_id;
+            PERFORM projects.fn_mark_needs_funding(
+                p_ticket_id,
+                COALESCE(NULLIF(v_detail, '')::jsonb, '{}'::jsonb) || jsonb_build_object('trigger', 'chain_reaction')
+            );
+            v_outcome := 'chain_needs_funding';
+        END;
+    ELSE
+        -- Chain off: nothing is owed in the next stage until the client funds it — Draft there.
+        UPDATE projects.tickets
+        SET current_stage_id = v_next,
+            status = 'todo'::ticket_status,
+            payment_status = 'unpaid'::payment_status,
+            updated_at = now()
+        WHERE id = p_ticket_id;
+        v_outcome := 'chain_off';
+    END IF;
+
+    INSERT INTO projects.ticket_history
+        (ticket_id, actor_id, action_type, previous_stage_id, new_stage_id, changes)
+    VALUES
+        (p_ticket_id, auth.uid(), v_outcome, v_current, v_next,
+         jsonb_build_object('chain_reaction', COALESCE(v_chain, true), 'outcome', v_outcome));
+
+    -- The payee whose work is waiting hears why; a hold already told them they can start.
+    IF v_outcome <> 'chain_held' THEN
+        SELECT t.current_assignee_id, t.title, t.slug, p.slug
+          INTO v_assignee, v_title, v_ticket_slug, v_project_slug
+          FROM projects.tickets t JOIN projects.projects p ON p.id = t.project_id
+         WHERE t.id = p_ticket_id;
+        IF v_assignee IS NOT NULL THEN
+            PERFORM comms.fn_notify(
+                v_assignee, 'ticket.awaiting_funding', 'Approved — next stage awaits funding',
+                format('"%s" moved on to %s. Its escrow isn''t held yet, so work there can''t start until the client funds it.',
+                       v_title, COALESCE(v_next_name, 'its next stage')),
+                'projects.tickets', p_ticket_id,
+                jsonb_build_object('stage_id', v_next, 'outcome', v_outcome),
+                auth.uid(), 'project', v_project_id, NULL,
+                '/projects/' || v_project_slug || '/board?tkv=' || v_ticket_slug
+            );
+        END IF;
+    END IF;
     RETURN v_next;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, org, auth;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, projects, finance, org, comms, auth;
 
 -- #endregion
 

@@ -30,6 +30,7 @@ import {
 	providerVisibleCards,
 	type TicketStatus,
 	ticketWorkLocked,
+	workColumnLocked,
 } from "../types/projects-types.ts";
 import {
 	assigneeOptions,
@@ -96,7 +97,7 @@ import { currentCheckoutContext } from "@web/features/checkout/core/basket-state
 import { buyNowOpen, requestBuyNow } from "@web/features/checkout/core/buy-now-state.ts";
 import BuyNowModal from "@web/features/checkout/islands/BuyNowModal.island.tsx";
 import { InlineNotice } from "@projective/ui/feedback";
-import { fundingRollup } from "../core/funding-ui.ts";
+import { fundingRollup, previewFunding } from "../core/funding-ui.ts";
 import { FundStageDialog } from "@web/features/payments/components/FundStageDialog.tsx";
 import { PAYOUT_SETUP_ACTION, readPayoutGateDetails } from "@projective/types/finance";
 
@@ -246,9 +247,15 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		sessionKind: resolveSessionKind(initial?.format ?? "pipeline", null),
 	};
 	const access = useSignal<BoardAccess>(resolveBoardAccess(ssrBaseline, null));
+	/** The Dev Context Switcher's forced funding state — it drives the column lock as it does the line. */
+	const forcedFunding = useSignal(readDevSeam()?.fundingState);
 
 	useEffect(() => {
-		const apply = () => (access.value = resolveBoardAccess(ssrBaseline, readDevSeam()));
+		const apply = () => {
+			const seam = readDevSeam();
+			access.value = resolveBoardAccess(ssrBaseline, seam);
+			forcedFunding.value = seam?.fundingState;
+		};
 		apply();
 		return watchDevSeam(apply);
 	}, [ssrBaseline.viewerIsClient, ssrBaseline.sessionKind]);
@@ -274,6 +281,19 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 		const a = access.value;
 		if (a.isClient) return !ticketWorkLocked(c);
 		return boardKind !== "project";
+	};
+
+	/**
+	 * The column lock (`workColumnLocked`, PRODUCT_MANAGEMENT §3.6): why `col` refuses this card, or
+	 * `null`. A claimed ticket whose escrow is not held — a chained stage that is waiting on funding —
+	 * cannot be carried into work, which the database refuses anyway (#165); the board says so before
+	 * the drop. Read through the forced funding state so the Dev Context Switcher can show it.
+	 */
+	const dropRefusal = (c: BoardCard, col: BoardColumn): string | null => {
+		const funding = c.funding ? previewFunding(c.funding, forcedFunding.value) : null;
+		return workColumnLocked({ ...c, funding }, columnTarget(c, col).status)
+			? "Escrow isn't held for this ticket here yet. Fund it before work starts."
+			: null;
 	};
 
 	const boardColumns = buildBoardColumns(stages.value, grouping, boardKind);
@@ -680,6 +700,12 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 			toast("A freelancer is working this ticket — it can be moved once the work is handed back.");
 			return;
 		}
+		// The column lock `itemDropRefusal` draws, re-checked here for a keyboard drop or a stale board.
+		const refusal = dropRefusal(card, to);
+		if (refusal) {
+			toast(refusal);
+			return;
+		}
 		// Work starts with a claim, and only a claim sets the assignee its escrow is held against. A
 		// personal project moves no money, so its owner's drag stays an ordinary move.
 		if (isClaimDrop(card, to) && !card.personal) {
@@ -1074,6 +1100,7 @@ export default function ProjectBoard(props: ProjectBoardProps): JSX.Element {
 								/>
 							)}
 							itemDraggable={canDrag}
+							itemDropRefusal={(c, col) => (col.data ? dropRefusal(c, col.data) : null)}
 							onItemMove={onItemMove}
 							onColumnMove={onColumnMove}
 							columnsReorderable={boardKind === "project" && grouping === "stages" &&

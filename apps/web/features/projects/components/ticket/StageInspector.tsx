@@ -315,6 +315,11 @@ export function StageInspector(props: StageInspectorProps): JSX.Element {
 													? "No stage cap"
 													: `W ${stage.maxConcurrentIntensity} per freelancer`}
 											</Fact>
+											<Fact label="Fund on arrival">
+												{stage.chainReaction
+													? "Held when the previous stage is approved"
+													: "Funded by hand"}
+											</Fact>
 											<Fact label="This ticket consumes">
 												<Tooltip content="The stage's category weight scaled by the intensity chosen for this ticket.">
 													<span tabIndex={0}>

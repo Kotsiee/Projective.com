@@ -1000,8 +1000,12 @@ manage_billing on the business; the monthly mode additionally requires KYB verif
 --     priced from its round's snapshotted price. A `course_group_session` line (a seat, Decision #171)
 --     settles the same way too: priced from its listing's session price × seats, it must carry the
 --     buyer's live `metadata.holdId` (projects.reserve_seat), and projects.fn_confirm_seat turns the
---     hold into a membership and holds the seat's escrow from this wallet. Every other kind (a whole
---     project, a service, a 1-1 session slot) is still refused (PS501) rather than paid into nowhere.
+--     hold into a membership and holds the seat's escrow from this wallet. A `service_session` or
+--     `set_session` line (a 1-1 session or a block, Decision #211) settles the same way: priced from
+--     its listing's session price (× session_count for a block) at the time the line carries
+--     (`scheduled_at`, still ahead), and projects.fn_book_session_slot seats the buyer on a one-seat
+--     cohort and holds ONE escrow PER SITTING from this wallet. Every other kind (a whole project, a
+--     service) is still refused (PS501) rather than paid into nowhere.
 --   * The charge is made in the lines' own currency, which must be one the paying wallet holds. The
 --     display-currency figure the buyer saw is a conversion the application verifies separately; the
 --     money that moves is integer minor units with no FX in it.
@@ -1062,6 +1066,10 @@ DECLARE
     v_seat record;
     v_seat_unit bigint;
     v_order_line uuid;
+    v_sess record;
+    v_sess_count integer;
+    v_sess_unit bigint;
+    v_booking jsonb;
 BEGIN
     IF v_uid IS NULL THEN
         RAISE EXCEPTION 'Sign in to pay' USING ERRCODE = '42501';
@@ -1132,7 +1140,7 @@ BEGIN
                tk.title AS ticket_title, tk.current_stage_id AS ticket_stage_id,
                COALESCE(tk.unit_price_cents, ts.unit_price_cents) AS ticket_price,
                pr.currency AS project_currency, pr.client_business_id, pr.owner_user_id AS project_owner,
-               bi.seats, bi.metadata
+               bi.seats, bi.metadata, bi.scheduled_at, bi.timezone
           FROM finance.basket_items bi
           LEFT JOIN catalogue.products p ON p.id = bi.item_id AND bi.item_type = 'digital_product'
           LEFT JOIN projects.tickets tk ON tk.id = bi.ticket_id
@@ -1268,6 +1276,62 @@ BEGIN
                 'hold_id', v_seat.hold_id,
                 'seats', v_seat.hold_seats,
                 'seat_stage_id', v_seat.project_stage_id
+            );
+            CONTINUE;
+        END IF;
+        -- A 1-1 session or a set-session block (Decision #211): priced from its listing NOW — the session
+        -- price, times the listing's session_count for a block — for the time the buyer picked, which
+        -- must still lie ahead. Its share leaves the wallet as one escrow hold PER SITTING
+        -- (projects.fn_book_session_slot below), never as a seller credit.
+        IF v_line.item_type IN ('service_session', 'set_session') THEN
+            SELECT sb.id, sb.currency AS listing_currency, sb.is_published,
+                   sb.delivery_model::text AS model, sb.freelancer_profile_id, sb.owner_team_id,
+                   sb.session_minutes,
+                   COALESCE(sb.session_price_cents, sb.price_cents) AS session_price,
+                   GREATEST(COALESCE(sb.session_count, 1), 1) AS session_count
+              INTO v_sess
+              FROM marketplace.service_blueprints sb
+             WHERE sb.id = v_line.item_id;
+            IF NOT FOUND OR NOT v_sess.is_published OR v_sess.model <> 'session' THEN
+                RAISE EXCEPTION '% is no longer offered', v_line.title USING ERRCODE = 'PC409';
+            END IF;
+            IF v_sess.session_price IS NULL OR v_sess.session_price <= 0 THEN
+                RAISE EXCEPTION '% has no price to hold in escrow', v_line.title USING ERRCODE = 'PS501';
+            END IF;
+            IF v_line.scheduled_at IS NULL OR v_line.scheduled_at <= pg_catalog.now() THEN
+                RAISE EXCEPTION 'Pick a new time for % — the one you chose has passed', v_line.title
+                    USING ERRCODE = 'PC409';
+            END IF;
+            IF v_sess.freelancer_profile_id = v_uid AND v_sess.owner_team_id IS NULL THEN
+                RAISE EXCEPTION 'You can''t book your own session — remove % to pay for the rest', v_line.title
+                    USING ERRCODE = 'PU422';
+            END IF;
+            IF pg_catalog.upper(v_sess.listing_currency) <> v_currency THEN
+                RAISE EXCEPTION 'This order is priced in %, not %', pg_catalog.upper(v_sess.listing_currency), v_currency
+                    USING ERRCODE = 'PC409';
+            END IF;
+            v_sess_count := CASE WHEN v_line.item_type = 'set_session' THEN v_sess.session_count ELSE 1 END;
+            v_sess_unit := v_sess.session_price * v_sess_count;
+            IF p_units IS NULL OR (p_units ->> v_line.id::text) IS NULL
+               OR (p_units ->> v_line.id::text)::bigint <> v_sess_unit THEN
+                RAISE EXCEPTION 'The price of % changed while you were paying — review the total and try again', v_line.title
+                    USING ERRCODE = 'PC409';
+            END IF;
+            v_subtotal := v_subtotal + v_sess_unit;
+            v_escrow_total := v_escrow_total + v_sess_unit;
+            v_lines := v_lines || pg_catalog.jsonb_build_object(
+                'id', v_line.id,
+                'item_id', v_line.item_id,
+                'item_type', v_line.item_type,
+                'title', v_line.title,
+                'quantity', 1,
+                'gross', v_sess_unit,
+                'creator', 0,
+                'session_unit', v_sess.session_price,
+                'session_count', v_sess_count,
+                'scheduled_at', v_line.scheduled_at,
+                'timezone', v_line.timezone,
+                'duration_minutes', COALESCE(v_sess.session_minutes, 60)
             );
             CONTINUE;
         END IF;
@@ -1457,6 +1521,32 @@ BEGIN
              WHERE id = (v_line.l ->> 'id')::uuid;
             CONTINUE;
         END IF;
+        -- A 1-1 session or block: the order line is its receipt, written first so the seat can name it;
+        -- the booking then names the stage the line fulfils.
+        IF v_line.l ? 'session_count' THEN
+            INSERT INTO finance.order_lines (
+                order_id, basket_item_id, item_type, item_id, title, subtitle, quantity, line_total_minor,
+                currency, fulfilment, scheduled_at, timezone, duration_minutes, seats, position
+            ) VALUES (
+                v_order_id, (v_line.l ->> 'id')::uuid, (v_line.l ->> 'item_type')::finance.purchasable_item_kind,
+                (v_line.l ->> 'item_id')::uuid, v_line.l ->> 'title',
+                CASE WHEN (v_line.l ->> 'session_count')::integer > 1
+                     THEN 'Block booked · escrow held per session' ELSE 'Session booked · escrow held' END,
+                1, (v_line.l ->> 'gross')::bigint, v_currency, 'session',
+                (v_line.l ->> 'scheduled_at')::timestamptz, v_line.l ->> 'timezone',
+                (v_line.l ->> 'duration_minutes')::integer, 1, v_i - 1
+            )
+            RETURNING id INTO v_order_line;
+            v_booking := projects.fn_book_session_slot((v_line.l ->> 'item_id')::uuid, v_uid,
+                v_wallet.owner_type, v_wallet.owner_id, (v_line.l ->> 'session_unit')::bigint,
+                (v_line.l ->> 'session_count')::integer, v_currency,
+                (v_line.l ->> 'scheduled_at')::timestamptz, v_order_line);
+            UPDATE finance.order_lines SET stage_id = (v_booking ->> 'stage_id')::uuid WHERE id = v_order_line;
+            UPDATE finance.basket_items
+               SET purchased_at = pg_catalog.now(), updated_at = pg_catalog.now()
+             WHERE id = (v_line.l ->> 'id')::uuid;
+            CONTINUE;
+        END IF;
         -- A seat: the order line is its receipt, written first so the membership can name it.
         IF v_line.l ? 'hold_id' THEN
             INSERT INTO finance.order_lines (
@@ -1542,11 +1632,14 @@ applied (none sent → none applied), debit the wallet, credit each seller net o
 write the order and its lines, consume the basket lines. Digital products, and one-ticket project lines
 (Decision #166), which settle by holding that ticket''s escrow (projects.fund_ticket) instead of a
 seller credit, and cohort seats (Decision #171), which settle through the buyer''s seat hold into a
-membership and a seat escrow (projects.fn_confirm_seat); every other kind is refused. Idempotent on the
-key. Refusal SQLSTATEs: 42501 not allowed · PK403 verification · PB404 basket gone · PC409
-basket/price/promo/seat hold changed · PD422 a line needs a delivery address · PU422 your own listing,
-or a ticket not purchasable / not this account''s · PS409 the cohort filled or closed · PS501 not
-payable here · PF402 wallet · PA403 spend limit/approval · 22023 bad attempt key.';
+membership and a seat escrow (projects.fn_confirm_seat), and 1-1 sessions and set-session blocks
+(Decision #211), which settle into a one-seat cohort with one escrow per sitting
+(projects.fn_book_session_slot); every other kind is refused. Idempotent on the key. Refusal
+SQLSTATEs: 42501 not allowed · PK403 verification · PB404 basket gone · PC409 basket/price/promo/seat
+hold changed, or a session time that passed · PD422 a line needs a delivery address · PU422 your own
+listing, or a ticket not purchasable / not this account''s · PS409 the cohort filled or closed, or the
+session time was taken · PS501 not payable here · PF402 wallet · PA403 spend limit/approval · 22023 bad
+attempt key.';
 -- #endregion
 
 -- #region 12. Wallet movements — transfers, team distributions, spend decisions (2026-09-23)

@@ -49,6 +49,26 @@
 	opacity: 0.4;
 }
 
+/* A column that refuses the card in flight (`itemDropRefusal`): it steps down the surface ramp
+   instead of taking the drop tint, its cards recede, and the reason sits under its header. */
+.ui-kanban__column[data-locked="true"],
+.ui-kanban__column[data-locked="true"][data-over="true"] {
+	background: var(--surface-2);
+	cursor: not-allowed;
+}
+
+.ui-kanban__column[data-locked="true"] .ui-kanban__col-body {
+	opacity: 0.5;
+}
+
+.ui-kanban__col-lock {
+	flex: none;
+	margin: 0;
+	padding: var(--space-2) var(--space-3) 0;
+	font-size: 0.75rem;
+	color: var(--text-secondary);
+}
+
 .ui-kanban__col-header {
 	flex: none;
 	display: flex;

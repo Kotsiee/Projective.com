@@ -206,6 +206,24 @@ SELECT pg_temp.ok((pg_temp.payout(pg_temp.s('p2'))).bank_status = 'paid'
 SELECT pg_temp.ok(pg_temp.s('out') = 'unmatched', 'a payout for an account Projective does not know is unmatched');
 -- #endregion
 
+-- #region 3b. Stripe refused the Transfer: fail_payout returns the money and tells the owner once
+SELECT pg_catalog.set_config('probe.b1', pg_temp.bal()::text, true);
+SELECT pg_temp.act(pg_temp.s('payee')); SET LOCAL ROLE authenticated;
+SELECT pg_catalog.set_config('probe.p5', pg_catalog.substr(pg_temp.withdraw(2500, 'probe-payout-refused', NULL), 4), true);
+RESET ROLE;
+SET LOCAL ROLE service_role;
+SELECT finance.fail_payout(pg_temp.s('p5')::uuid, 'account_invalid');
+SELECT pg_catalog.set_config('probe.out', finance.fail_payout(pg_temp.s('p5')::uuid, 'account_invalid') ->> 'replayed', true);
+RESET ROLE;
+SELECT pg_temp.ok((pg_temp.payout(pg_temp.s('p5'))).status = 'failed' AND pg_temp.s('out') = 'true',
+    'a refused withdrawal fails, and a second fail_payout is a replay');
+SELECT pg_temp.ok(pg_temp.bal() = pg_temp.s('b1')::bigint, 'the refused withdrawal is credited back to the wallet, once');
+SELECT pg_temp.ok((SELECT pg_catalog.count(*) = 1 FROM comms.notifications WHERE user_id = pg_temp.s('payee')::uuid
+        AND type = 'payout.failed' AND entity_id = pg_temp.s('p5')::uuid
+        AND (payload ->> 'amount_cents')::bigint = 2500),
+    'the owner is told the withdrawal could not be sent, once, with its amount');
+-- #endregion
+
 -- #region 4. The stale-pending sweep's claim
 SELECT pg_temp.act(pg_temp.s('payee')); SET LOCAL ROLE authenticated;
 SELECT pg_catalog.set_config('probe.p3', pg_catalog.substr(pg_temp.withdraw(3000, 'probe-payout-three', NULL), 4), true);

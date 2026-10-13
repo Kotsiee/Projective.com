@@ -87,6 +87,12 @@ CREATE TABLE finance.escrows (
     -- membership, against the cohort's stage. RESTRICT: a seat with money behind it is cancelled,
     -- never removed. A ticket escrow and a seat escrow are different subjects (ck_escrows_one_subject).
     cohort_membership_id uuid REFERENCES projects.cohort_memberships (id) ON DELETE RESTRICT,
+    -- The ONE sitting this seat escrow pays for (Decision #211). A 1-1 session holds one escrow per
+    -- sitting, so each sitting releases `session_payout_hours` after its own end and the 24-hour cancel
+    -- rule is judged per sitting; a cohort seat keeps it NULL and settles after the cohort's last
+    -- sitting. Only ever set beside `cohort_membership_id` (ck_escrows_sitting_on_seat). RESTRICT: a
+    -- sitting with money behind it is cancelled, never removed.
+    session_event_id uuid REFERENCES projects.session_events (id) ON DELETE RESTRICT,
     -- The paid revision round this escrow pays for (Decision #167), written by fn_hold_revision_escrow.
     -- A round's escrow sits beside its ticket's base escrow, and this is what tells the two apart: NULL
     -- is the base escrow, of which a ticket holds at most one (uq_escrows_ticket_base_held, #189).
@@ -121,6 +127,7 @@ CREATE TABLE finance.escrows (
     fx_as_of timestamptz,
     CONSTRAINT ck_escrows_one_payer CHECK (num_nonnulls (payer_business_id, payer_user_id) = 1),
     CONSTRAINT ck_escrows_one_subject CHECK (num_nonnulls (ticket_id, cohort_membership_id) <= 1),
+    CONSTRAINT ck_escrows_sitting_on_seat CHECK (session_event_id IS NULL OR cohort_membership_id IS NOT NULL),
     CONSTRAINT ck_escrows_payee_pair CHECK (num_nulls (payee_type, payee_id) IN (0, 2)),
     CONSTRAINT ck_escrows_unbound CHECK (
         payee_id IS NOT NULL
@@ -181,23 +188,63 @@ CREATE TABLE finance.invoices (
     CONSTRAINT uq_invoices_business_period_currency UNIQUE (issue_to_business_id, billing_period_start, currency)
 );
 
+-- One contested held escrow (Decision #212; lifecycle in PRODUCT_MANAGEMENT §3.8). Written only by the
+-- definers in 00001260 (and the no-show claim in 00001155); never deleted, and terminal once resolved
+-- (finance.fn_dispute_records_immutable, 00001830). At most one LIVE dispute per escrow
+-- (uq_disputes_escrow_live, 00004005).
 CREATE TABLE finance.disputes (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
-    escrow_id uuid NOT NULL REFERENCES finance.escrows (id) ON DELETE CASCADE,
+    -- RESTRICT, not CASCADE: a dispute is a record that outlives anything it is about.
+    escrow_id uuid NOT NULL REFERENCES finance.escrows (id) ON DELETE RESTRICT,
+    -- The sitting a no-show claim is about — what the attendance audit reads. NULL on any other dispute.
+    session_event_id uuid NULL REFERENCES projects.session_events (id) ON DELETE RESTRICT,
     opened_by_profile uuid NOT NULL,
     reason text NOT NULL,
     status dispute_status NOT NULL DEFAULT 'open',
+    -- The attendance audit's snapshot (finance.fn_dispute_attendance_audit), frozen when it ran.
+    audit jsonb NULL,
+    -- The auto-escalation deadline: an `awaiting_response` case past it goes to an auditor.
+    respond_by timestamptz NULL,
+    responded_at timestamptz NULL,
+    escalated_at timestamptz NULL,
     resolution_notes text NULL,
+    -- The operator who ruled; NULL when the platform's own audit (or the money's own path) settled it.
+    resolved_by uuid NULL REFERENCES auth.users (id) ON DELETE RESTRICT,
+    -- The provider's share of a split ruling, in basis points of the principal.
+    payee_share_bp integer NULL CHECK (payee_share_bp BETWEEN 1 AND 9999),
+    -- What the ruling moved: payee_minor · fee_minor · refund_minor · currency, or deferred / by_fact.
+    settlement jsonb NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
-    resolved_at timestamptz NULL
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    resolved_at timestamptz NULL,
+    CONSTRAINT ck_disputes_resolved_at CHECK (
+        (status IN ('resolved_release', 'resolved_refund', 'resolved_split')) = (resolved_at IS NOT NULL)
+    ),
+    CONSTRAINT ck_disputes_split_share CHECK ((status = 'resolved_split') = (payee_share_bp IS NOT NULL)),
+    CONSTRAINT ck_disputes_awaiting_deadline CHECK (status <> 'awaiting_response' OR respond_by IS NOT NULL)
 );
 
+-- A dispute's statements, append-only (00001830): one per submission, by either party or an operator.
 CREATE TABLE finance.dispute_messages (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
-    dispute_id uuid NOT NULL REFERENCES finance.disputes (id) ON DELETE CASCADE,
+    dispute_id uuid NOT NULL REFERENCES finance.disputes (id) ON DELETE RESTRICT,
     sender_user_id uuid NOT NULL REFERENCES auth.users (id) ON DELETE RESTRICT,
+    party text NOT NULL CHECK (party IN ('claimant', 'respondent', 'operator')),
     body text NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- The Evidence Vault's files (PRODUCT_SPEC §Dispute Resolution 1): each a `files.items` row its sender
+-- uploaded, filed with the statement it came with. Append-only; RESTRICT keeps a filed file's row from
+-- ever being removed, and files.fn_can_read (00001160) lets the dispute's readers open it.
+CREATE TABLE finance.dispute_evidence (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    dispute_id uuid NOT NULL REFERENCES finance.disputes (id) ON DELETE RESTRICT,
+    message_id uuid NOT NULL REFERENCES finance.dispute_messages (id) ON DELETE RESTRICT,
+    file_id uuid NOT NULL REFERENCES files.items (id) ON DELETE RESTRICT,
+    submitted_by uuid NOT NULL REFERENCES auth.users (id) ON DELETE RESTRICT,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_dispute_evidence_message_file UNIQUE (message_id, file_id)
 );
 
 CREATE TABLE finance.ratings (

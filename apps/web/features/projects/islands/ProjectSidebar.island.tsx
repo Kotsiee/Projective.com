@@ -8,6 +8,8 @@ import { type ChannelFilterKey, ChannelQuickFilters } from "../components/Channe
 import { ChannelTree } from "../components/ChannelTree.tsx";
 import { NormalSessionPanel } from "../components/NormalSessionPanel.tsx";
 import { GroupSessionPanel } from "../components/GroupSessionPanel.tsx";
+import { SessionDisputes } from "../components/SessionDisputes.tsx";
+import { previewDisputes } from "../core/dispute-view.ts";
 import { ProjectNavSection } from "../components/ProjectNavSection.tsx";
 import { ProjectRail } from "../components/ProjectRail.tsx";
 import { CreateStageModal } from "../components/CreateStageModal.tsx";
@@ -433,6 +435,8 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 		? normalSessionView(workspace, view, seam.value, now)
 		: null;
 	const groupData = activeKind === "group" && workspace ? groupSessionView(workspace, seam.value) : null;
+	// The no-show section (Decision #212) reads the same workspace under the dispute dev axis.
+	const disputeWorkspace = workspace ? previewDisputes(workspace, seam.value?.disputeState, now) : null;
 	// A Task's lane ends at the top tier (Decision #164) — no body, so no divider above one.
 	const bodyless = !normalData && !groupData && isTaskDetail(view);
 	// The top tier follows the same projection, so an unsaved type switch moves it with the body. The
@@ -508,6 +512,16 @@ export default function ProjectSidebar(props: ProjectSidebarProps): JSX.Element 
 								/>
 							</>
 						)}
+
+					{(normalData || groupData) && disputeWorkspace
+						? (
+							<SessionDisputes
+								workspace={disputeWorkspace}
+								onNotice={(message, severity) =>
+									notify(severity === "error" ? "danger" : "success", message)}
+							/>
+						)
+						: null}
 				</div>
 
 				{

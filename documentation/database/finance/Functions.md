@@ -1219,6 +1219,37 @@ the fee yet.
 | `PF402`  | the wallet does not hold enough                                 |
 | `PK403`  | an earning gate (KYC / KYB) or the Income Smoother's eligibility |
 
+## ⚖️ Platform disputes (`00001260`, Decision #212)
+
+A `finance.disputes` row contests ONE held escrow. Before #212 nothing ever moved one: a no-show
+claim (`projects.claim_session_no_show`) opened a row, the session sweep refused to release the seat,
+and no function, route or person could close it. The lifecycle is PRODUCT_MANAGEMENT §3.8; the
+business rules are PRODUCT_SPEC §Dispute Resolution (the Evidence Vault, the cooling-off window, the
+auditor, the session attendance audit). Distinct from a card **chargeback** (`finance.chargebacks`,
+above). Grants: `00002510` `#region Disputes`. Params: `dispute_response_hours` (48),
+`dispute_dismiss_presence_pct` (80).
+
+| Function | Door | What it does |
+| :-- | :-- | :-- |
+| `finance.fn_escrow_has_open_dispute(p_escrow_id)` → boolean | internal | THE live-dispute predicate (`open` · `awaiting_response` · `under_review`). Every release path asks it before paying out (`auto_release_session_escrow`'s three paths, the claim, the workspace's `claim_open`). |
+| `finance.fn_dispute_context(p_dispute_id)` → TABLE | internal | The escrow's project, slug, owner (the respondent of record), the claimant and the sitting's title. |
+| `finance.fn_dispute_party(p_dispute_id, p_user_id)` → text | internal | `claimant` (the opener), `respondent` (`projects.fn_is_session_host` — the owner or an active member of the owning team) or NULL. An operator is not a party. |
+| `finance.fn_dispute_attendance_audit(p_dispute_id)` → jsonb | internal | The deterministic ruling on the sitting's logs: `pending` (not ended) · `refund` (`fn_session_presence` says `provider_no_show`) · `dismiss` (a tracked room shows the host AND the claimant each in the room ≥ `dispute_dismiss_presence_pct` of the sitting — webhook rows only, so a host's attestation cannot dismiss a claim against them) · `ambiguous`. Time in the room is the row's first-join → last-leave span clipped to the sitting. |
+| `finance.fn_split_seat_escrow(p_escrow_id, p_bp)` → jsonb | internal | Divides one held seat escrow: the payee earns `p_bp` of the principal less the fee on that share (pending credit, `escrow_release`), the payer gets the rest fee-free (`escrow_refund`) — `fn_fair_exit_split`'s arithmetic. Only while `held`. |
+| `finance.fn_settle_dispute(p_dispute_id, p_outcome, p_bp, p_actor, p_notes)` → jsonb | internal | The ONE writer of a `resolved_*` status, under the dispute's then the escrow's row lock. `release` → `fn_release_seat_escrow`, except a whole-cohort seat escrow with sittings still ahead, which stays held for the session sweep (`settlement.deferred`). `refund` → `fn_refund_seat_escrow`. `split` → `fn_split_seat_escrow`. The seat follows through `projects.fn_settle_membership_state`. An escrow already `refunded` / `released` by another path is recorded as it settled (`settlement.by_fact`); a `disputed` (chargeback-frozen) one is refused `PS409`; a non-seat escrow is refused `PS409`. Notifies both parties `dispute.resolved`. `p_actor` NULL = the platform's audit. |
+| `finance.fn_advance_dispute(p_dispute_id)` → `dispute_status` | internal | Moves an `open` case: runs the audit and rules (`refund` / `dismiss`, as the platform) or hands it to the respondent — `awaiting_response`, `respond_by = now() + dispute_response_hours`, `dispute.response_requested` to the owner. A running sitting leaves it `open`. |
+| `finance.respond_to_dispute(p_dispute_id, p_statement, p_file_ids)` → jsonb | user | A party files a statement (1–4,000 chars) with up to ten of their OWN `uploaded`, undeleted `files.items` as evidence (`dispute_messages` + `dispute_evidence`). The respondent's statement on an `awaiting_response` case → `under_review` (`responded_at`, `escalated_at`, `dispute.escalated` to both). Not a party → `P0002`; resolved → `PS409`. |
+| `finance.escalate_dispute(p_dispute_id)` → jsonb | user | Either party sends an `awaiting_response` case to an auditor early. Idempotent on `under_review`; `open` → `PS409` (the audit has not run). |
+| `finance.get_dispute(p_dispute_id)` → jsonb | user | The case as a party or an operator may see it (NULL otherwise): status, role, deadlines, audit, settlement, the money at stake, the sitting, every statement with its files' metadata, and `can_respond` / `can_escalate` / `can_resolve`. |
+| `finance.resolve_dispute(p_dispute_id, p_outcome, p_payee_share_bp, p_notes)` → jsonb | operator | `security.is_admin()` only (`ops.admin_users`), else `42501`. `release` · `refund` · `split` (share 1–9,999 bp); reasons (3–2,000 chars) required — they are shown to both parties. Final. |
+| `finance.sweep_disputes(p_now)` → jsonb | scheduler | `finance-dispute-sweep` (`7,22,37,52 * * * *`): (a) closes live disputes whose escrow already settled; (b) audits `open` claims once their sitting ends; (c) auto-escalates `awaiting_response` past `respond_by` → `under_review` (`dispute.escalated`). Returns `{closed, audited, escalated}`. Service role may run it by hand. |
+| `finance.fn_dispute_records_immutable()` | trigger | `BEFORE UPDATE OR DELETE` on the three dispute tables (+ `BEFORE TRUNCATE` on `disputes`): nothing is deleted, statements and evidence never change, a resolved dispute is final — for every role. |
+| `finance.fn_guard_evidence_file()` | trigger | `BEFORE UPDATE OF deleted_at ON files.items`: a file filed in a LIVE dispute cannot be soft-deleted (`PS409`); after the ruling it is the owner's again. |
+
+Probe: `supabase/probes/dispute_resolution.sql` (59 checks — every audit ruling, the respond →
+review → operator split / refund / release paths, auto-escalation, settled-by-fact, per-sitting
+escrow, evidence access and immutability, the workspace fields, grants).
+
 ## Under-18 accounts (Decision #208)
 
 `finance.record_payout_account` asserts an adult (`org.fn_assert_adult`, `PM403`): a Stripe connected

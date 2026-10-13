@@ -9,6 +9,7 @@ import {
 	type Option,
 	Select,
 	SelectButton,
+	ToggleSwitch,
 	useFieldValidation,
 } from "@projective/ui/fields";
 import { RichTextEditor } from "@projective/ui/editor";
@@ -396,6 +397,27 @@ export function StageFields(props: StageFieldsProps): JSX.Element {
 								value={ndaOverrideValue(stage.ndaRequired)}
 								onValueChange={(v: string) => props.onPatch({ ndaRequired: ndaOverrideFrom(v) })}
 								aria-label={`NDA for ${stage.name || props.itemLabel}`}
+							/>
+						</Field>
+					)}
+
+					{
+						/*
+						 * The Chain Reaction (PRODUCT_MANAGEMENT §3.6). Read on the RECEIVING stage, so it
+						 * is not asked of the first stage, which no approval ever moves a ticket into, nor of
+						 * a session or a personal project, which hold no chained escrow.
+						 */
+					}
+					{!props.personal && !props.session && props.index > 0 && (
+						<Field
+							label="Fund on arrival"
+							hint="When the previous stage is approved, hold this stage's escrow from your wallet straight away so work carries on. Off, the ticket waits here until you fund it."
+						>
+							<ToggleSwitch
+								size="sm"
+								label="Hold escrow when a ticket arrives"
+								value={stage.chainReaction}
+								onValueChange={(chainReaction: boolean) => props.onPatch({ chainReaction })}
 							/>
 						</Field>
 					)}

@@ -204,6 +204,7 @@ interface SetupStageRow {
 	seat_count?: number | null;
 	allowed_file_kinds?: string[] | null;
 	nda_required?: boolean | null;
+	chain_reaction?: boolean | null;
 }
 
 /**
@@ -280,6 +281,7 @@ const SETUP_STAGE_COLUMNS = [
 	"seat_count",
 	"allowed_file_kinds",
 	"nda_required",
+	"chain_reaction",
 ].join(", ");
 
 /** The staffing-role columns, named once for the same reason the two lists above are. */
@@ -443,6 +445,8 @@ function toStageSetup(
 		// not exist yet: "this stage says nothing" is true either way, where `false` would assert a
 		// deliberate exemption nobody granted.
 		ndaRequired: row.nda_required ?? null,
+		// The column's own default: a row that says nothing chains, as the database does.
+		chainReaction: row.chain_reaction ?? true,
 		// Passed in rather than read here, because the count comes from a table this projection does
 		// not otherwise touch and one query answers it for every stage at once (see
 		// {@link fetchOnboardedCounts}).
@@ -1175,6 +1179,7 @@ export function stageTermsPatch(
 	}
 	if (stage.allowedFileKinds !== undefined) patch.allowed_file_kinds = stage.allowedFileKinds;
 	if (stage.ndaRequired !== undefined) patch.nda_required = stage.ndaRequired;
+	if (stage.chainReaction !== undefined) patch.chain_reaction = stage.chainReaction;
 	// Clamped per entry and emptied of blanks, matching what `toStage` reads back — a `Chips` control
 	// yields whatever was typed, and a skill that is whitespace is a row nobody can match against.
 	if (stage.skills !== undefined) {

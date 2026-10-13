@@ -2440,7 +2440,13 @@ resting elevation). A card that needs a REAL control (the projects board's **Cla
 card inside the same `listitem` and outside its `role="button"` root, so the control is its own tab
 stop, a press on it neither starts a drag nor activates the card, and its press feedback stays
 `Button`'s own `scale()` (§3 gates 11–12). Return `null` for an item with none; the drag ghost never
-carries it.
+carries it. A column that must refuse ONE item rather than all of them (`column.disabled` refuses
+everything) answers `itemDropRefusal(item, column) → reason | null` (Decision #210 — the projects
+board's column lock): while that item is dragged the refusing column takes `data-locked` (it steps
+down to `--surface-2` instead of the drop tint, its cards recede, `cursor: not-allowed`), states the
+reason in `.ui-kanban__col-lock` under its header, shows no drop indicator, and the live region
+announces "{column} is locked. {reason}" in place of a position. The item's own column never refuses
+it, and the consumer still re-checks on `onItemMove` (a keyboard drop, a stale board).
 
 Calendar additions (root CLAUDE.md §8 Decision #37): one NEW sub-path **`@projective/ui/calendar`**
 — a high-performance, generic, **controlled** Calendar & Schedule engine (Google-Calendar /
@@ -2679,6 +2685,33 @@ read a danger `Message` with **Try again**; a refused exit stays in the dialog b
 Initial focus lands on **Keep stage open**. On success the explorer states the server's notice in
 its bar and re-reads the page. Styles: `styles/fair-exit.css`. Not a conversion-lane surface
 (§3 gate 10 governs entity-view routes only).
+
+**`SessionDisputes` + `DisputeCaseDialog` (`features/projects/components/`, Decision #212).** A
+session engagement's no-show section and its case dialog. `SessionDisputes` mounts in
+`ProjectSidebar` under the Normal or Group session panel (props: `workspace` — the viewer's
+`SessionWorkspace` after the dev preview — and `onNotice(message, severity)`, the sidebar's toast).
+It is static text and controls, not a card (§3 gate 6): a meta-register label ("No-show claims")
+under one hairline, then **Report no-show** (`--danger` outlined `sm` button, with the sitting's title
+and UTC time as meta text) for an attendee on `workspace.claimable` only — the provider never sees it,
+because PRODUCT_SPEC lets only the client claim — and one row per live claim plus the latest ruling:
+the lifecycle `Tag` (`subtle`, rounded; warning for open / awaiting response, info under review,
+success released / refunded, secondary split — a lifecycle status, §3 gate 7), one sentence written
+for the viewer's side, and a **View case** text button. Report opens a `Dialog` (`alertdialog`,
+32rem; initial focus on the actions) that explains what happens to the money and how the claim is
+decided, with an optional reason `Textarea` (480); a refusal stays beside the confirm. After a claim
+or a statement the section re-reads the workspace (`SessionService.workspace`), so the list follows
+the act (§3 gate 11). Renders nothing with nothing to report and no claim.
+`DisputeCaseDialog` (`Dialog`, 36rem; props `open: Signal<boolean>`, `summary`, `workspace`,
+`onChanged`) is the status panel and the Evidence Vault: the `Tag` and sentence, a `dl` of facts
+(session · payment at stake · response due · paid to the provider / refunded to the attendee, every
+amount server-formatted, `tabular-nums`), the attendance-audit line, the ruling's reasons, then the
+statements (who · when · text, evidence files as links to `/api/files/object/:id`) and, while the
+case is live, the response form: `Textarea` (4,000) + `FileUpload` (advanced queue, `sm`, a secondary
+outlined **Attach evidence** in its header, `customUpload` → `uploadForProject` into the viewer's own
+library) + **Send response** / **File statement**; **Send to an auditor now** in the footer when the
+case is awaiting a response. A previewed case (the `disputeState` dev axis) is built client-side by
+`devDisputeCase` and never fetched. Model: `core/dispute-view.ts` (labels, tones, sentences, UTC
+times, the dev preview). Styles: `styles/session-disputes.css` (`sess-dispute*`, `dispute-dlg*`).
 
 **`PromoSlot` (`features/explore/components/promos/`, Decision #175).** The Explore Home's one promo
 surface; it replaces `SponsoredFrame`, `CtaBanner` (both "Become a Freelancer" and "Launch a Team")

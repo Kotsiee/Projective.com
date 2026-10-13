@@ -1,5 +1,5 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
-import { getAnonClient, getUserClient } from "../../core/supabase.ts";
+import { getAnonClient, getUserClient, isProjectsBackendLive } from "../../core/supabase.ts";
 import type {
 	AskQuestionInput,
 	BookingOutcome,
@@ -8,6 +8,7 @@ import type {
 	ContactActionResult,
 	ContactOffer,
 	DiscoveryCallRequest,
+	PipelineDraft,
 	QuoteRequestInput,
 	ServiceBookingFormat,
 	ServiceBookingOffer,
@@ -28,9 +29,10 @@ import type {
 } from "@projective/types/scheduling";
 import type { AddBasketItem, PurchasableItemKind } from "@projective/types/finance";
 import type { EntityView, ExploreItem } from "@projective/types/explore";
-import { findItem } from "../explore/query.ts";
-import { composeLoadedViewPage } from "../explore/live-view.ts";
-import { peekCatalog } from "../explore/live-catalog.ts";
+import { resolveListing } from "../explore/listing-source.ts";
+import type { Catalog } from "../explore/live-catalog.ts";
+import { canReadLive } from "../read-actor.ts";
+import { readServiceDraft } from "../projects/live-instantiate.ts";
 import {
 	ScheduleBackendService,
 	type SlotGridRequest,
@@ -117,12 +119,10 @@ interface ListingOwner {
 }
 
 /**
- * The owner of a listing, from the catalogue snapshot `findItem` resolved it from — the same rows the
- * page rendered, so the owner a question reaches is the owner the page named.
+ * The owner of a listing, from the catalogue the listing was resolved into (`resolveListing`) — the
+ * same rows its page composes from, so the owner a question reaches is the owner the page named.
  */
-function listingOwner(itemId: string): ListingOwner | null {
-	const catalog = peekCatalog();
-	if (!catalog) return null;
+function listingOwner(catalog: Catalog, itemId: string): ListingOwner | null {
 	const blueprint = catalog.blueprintBySlug.get(itemId);
 	if (blueprint) {
 		return {
@@ -171,6 +171,61 @@ function callOfferOf(owner: ScheduleOwner): Promise<PublicCallOffer | null | und
 
 function unavailable<T>(): ServiceResult<T> {
 	return fail(503, { message: "This provider's booking details could not be read. Please try again." });
+}
+
+/** A listing resolved for a booking flow: the item, its composed page, and who it belongs to. */
+interface BookableListing {
+	item: ExploreItem;
+	view: EntityView;
+	owner: ListingOwner;
+}
+
+/**
+ * Resolve the listing a flow acts on — LIVE when `EXPLORE_BACKEND_LIVE` is on (the seller's listing as
+ * published right now), the catalogue snapshot otherwise (`resolveListing`). A failure the caller
+ * returns as-is: `503` when the database could not answer, `404` when there is no such listing.
+ */
+async function listingOf<T>(subjectId: string): Promise<BookableListing | ServiceResult<T>> {
+	const resolved = await resolveListing(subjectId);
+	if (resolved === undefined) return unavailable<T>();
+	const owner = resolved ? listingOwner(resolved.catalog, resolved.item.id) : null;
+	if (!resolved || !owner) {
+		return fail<T>(404, { message: `No listing found for id "${subjectId}".` });
+	}
+	return { item: resolved.item, view: resolved.view, owner };
+}
+
+/** Narrow {@link listingOf}'s answer. */
+function isListing<T>(value: BookableListing | ServiceResult<T>): value is BookableListing {
+	return "item" in value;
+}
+
+/**
+ * The buyer's draft of a pipeline listing — what flips "Add to Projects" into "Open project →".
+ *
+ * Live (`PROJECTS_BACKEND_LIVE` and a session token): `marketplace.get_service_draft`, the same
+ * predicate the instantiate door dedupes on, so the control and the write agree. A failed read shows
+ * no draft rather than failing the page: "Add to Projects" stays safe to press, because the door
+ * returns the existing draft instead of minting a second. Stub otherwise: the draft store.
+ */
+async function draftOf(
+	item: ExploreItem,
+	owner: ListingOwner,
+	actor: BookingActor,
+): Promise<PipelineDraft | null> {
+	if (!actor.userId) return null;
+	const reader = readerOf(actor);
+	if (isProjectsBackendLive()) {
+		if (!canReadLive(reader) || !owner.blueprintId) return null;
+		try {
+			return await readServiceDraft(reader, owner.blueprintId, item.id);
+		} catch (error) {
+			const reason = error instanceof Error ? error.message : String(error);
+			console.warn(`[BookingBackendService.offer] draft read failed: ${reason}`);
+			return null;
+		}
+	}
+	return findDraft(item.id, actor.userId, actor.workspaceId ?? null);
 }
 // #endregion
 
@@ -365,12 +420,9 @@ export class BookingBackendService {
 		actor: BookingActor = ANONYMOUS_ACTOR,
 		opts: { handle?: string | null } = {},
 	): Promise<ServiceResult<{ offer: ServiceBookingOffer }>> {
-		const item = findItem(subjectId);
-		if (!item) return fail(404, { message: `No listing found for id "${subjectId}".` });
-		const owner = listingOwner(item.id);
-		if (!owner) return fail(404, { message: `No listing found for id "${subjectId}".` });
-
-		const view = buildViewPage(item);
+		const listing = await listingOf<{ offer: ServiceBookingOffer }>(subjectId);
+		if (!isListing(listing)) return listing;
+		const { item, view, owner } = listing;
 		const format = formatOf(view);
 		const cohort = await cohortFor(view, format, owner);
 		const capacity = cohort?.seats ?? null;
@@ -382,9 +434,7 @@ export class BookingBackendService {
 		const bookingsOpen = isScheduled(format) ? await publishesSchedule(owner.schedule) : true;
 
 		// The draft that flips "Add to Projects" into "Open Project →".
-		const draft = format === "pipeline"
-			? findDraft(item.id, actor.userId, actor.workspaceId ?? null)
-			: null;
+		const draft = format === "pipeline" ? await draftOf(item, owner, actor) : null;
 
 		const signInHref = signInHrefFor(item, opts.handle ?? null);
 		const offer: ServiceBookingOffer = {
@@ -463,11 +513,9 @@ export class BookingBackendService {
 			}, { owner, kind: "call_window" });
 		}
 
-		const item = findItem(query.subjectId);
-		if (!item) return fail(404, { message: `No listing found for id "${query.subjectId}".` });
-		const owner = listingOwner(item.id);
-		if (!owner) return fail(404, { message: `No listing found for id "${query.subjectId}".` });
-		const view = buildViewPage(item);
+		const listing = await listingOf<{ grid: SlotGrid }>(query.subjectId);
+		if (!isListing(listing)) return listing;
+		const { view, owner } = listing;
 		const format = formatOf(view);
 		if (!isScheduled(format)) {
 			return fail(422, {
@@ -497,11 +545,9 @@ export class BookingBackendService {
 	): Promise<ServiceResult<{ outcome: BookingOutcome }>> {
 		if (!actor.userId) return fail(401, { message: "Sign in to book a session." });
 
-		const item = findItem(input.subjectId);
-		if (!item) return fail(404, { message: `No listing found for id "${input.subjectId}".` });
-		const owner = listingOwner(item.id);
-		if (!owner) return fail(404, { message: `No listing found for id "${input.subjectId}".` });
-		const view = buildViewPage(item);
+		const listing = await listingOf<{ outcome: BookingOutcome }>(input.subjectId);
+		if (!isListing(listing)) return listing;
+		const { item, view, owner } = listing;
 		const format = formatOf(view);
 		if (!isScheduled(format)) {
 			return fail(422, {
@@ -629,11 +675,14 @@ export class BookingBackendService {
 		actor: BookingActor = ANONYMOUS_ACTOR,
 	): Promise<ServiceResult<{ hold: SeatHold; basketItemId: string | null; firstStartsAt: string | null }>> {
 		if (!actor.userId) return fail(401, { message: "Sign in to reserve a seat." });
-		const item = findItem(input.subjectId);
-		if (!item) return fail(404, { message: `No listing found for id "${input.subjectId}".` });
-		const owner = listingOwner(item.id);
-		if (!owner?.blueprintId) return fail(404, { message: `No listing found for id "${input.subjectId}".` });
-		const view = buildViewPage(item);
+		const listing = await listingOf<
+			{ hold: SeatHold; basketItemId: string | null; firstStartsAt: string | null }
+		>(input.subjectId);
+		if (!isListing(listing)) return listing;
+		const { item, view, owner } = listing;
+		if (!owner.blueprintId) {
+			return fail(404, { message: `No listing found for id "${input.subjectId}".` });
+		}
 		if (formatOf(view) !== "cohort") {
 			return fail(422, { message: "Only a group session has seats to reserve.", errors: { subjectId: "not_seated" } });
 		}
@@ -676,9 +725,9 @@ export class BookingBackendService {
 	): Promise<ServiceResult<{ outcome: BookingOutcome }>> {
 		if (!actor.userId) return fail(401, { message: "Sign in to continue." });
 
-		const item = findItem(input.subjectId);
-		if (!item) return fail(404, { message: `No listing found for id "${input.subjectId}".` });
-		const view = buildViewPage(item);
+		const listing = await listingOf<{ outcome: BookingOutcome }>(input.subjectId);
+		if (!isListing(listing)) return listing;
+		const { item, view } = listing;
 		const format = formatOf(view);
 		if (format !== "one_off" && format !== "single_task") {
 			return fail(422, {
@@ -859,12 +908,11 @@ async function bookDiscoveryCall(
 	let hostName = "The provider";
 	let blueprintId: string | null = null;
 	if (input.subjectId) {
-		const item = findItem(input.subjectId);
-		const lo = item ? listingOwner(item.id) : null;
-		if (!item || !lo) return fail(404, { message: `No listing found for id "${input.subjectId}".` });
-		owner = lo.schedule;
-		hostName = item.owner.name;
-		blueprintId = lo.blueprintId;
+		const listing = await listingOf<{ result: ContactActionResult }>(input.subjectId);
+		if (!isListing(listing)) return listing;
+		owner = listing.owner.schedule;
+		hostName = listing.item.owner.name;
+		blueprintId = listing.owner.blueprintId;
 	} else {
 		const resolved = await profileOwner(handle);
 		if (resolved === undefined) return unavailable();
@@ -979,9 +1027,9 @@ async function askQuestion(
 	input: AskQuestionInput,
 	actor: BookingActor,
 ): Promise<ServiceResult<{ result: ContactActionResult }>> {
-	const item = findItem(input.subjectId);
-	const owner = item ? listingOwner(item.id) : null;
-	if (!item || !owner) return fail(404, { message: `No listing found for id "${input.subjectId}".` });
+	const listing = await listingOf<{ result: ContactActionResult }>(input.subjectId);
+	if (!isListing(listing)) return listing;
+	const { owner } = listing;
 	if (owner.accountUserId === actor.userId) {
 		return fail(422, { message: "That is your own listing.", errors: { handle: "self_message" } });
 	}
@@ -1019,9 +1067,9 @@ async function requestQuote(
 	input: QuoteRequestInput,
 	actor: BookingActor,
 ): Promise<ServiceResult<{ result: ContactActionResult }>> {
-	const item = findItem(input.subjectId);
-	const owner = item ? listingOwner(item.id) : null;
-	if (!item || !owner) return fail(404, { message: `No listing found for id "${input.subjectId}".` });
+	const listing = await listingOf<{ result: ContactActionResult }>(input.subjectId);
+	if (!isListing(listing)) return listing;
+	const { item, owner } = listing;
 	if (!owner.blueprintId) {
 		return fail(422, {
 			message: "Custom quotes are for services.",
@@ -1068,17 +1116,6 @@ async function requestQuote(
 // #endregion
 
 // #region Helpers
-/**
- * The listing's composed page, from the catalogue snapshot `findItem` resolved it from a line
- * earlier — so the booking flow reads exactly the intake, session format and stage template the page
- * rendered. The throw is unreachable: `findItem` only returns an item when that snapshot exists.
- */
-function buildViewPage(item: ExploreItem): EntityView {
-	const view = composeLoadedViewPage(item);
-	if (!view) throw new Error("explore catalogue snapshot vanished between two reads");
-	return view;
-}
-
 /** Whether the owner publishes a schedule a session can be booked into. */
 async function publishesSchedule(owner: ScheduleOwner): Promise<boolean> {
 	return (await scheduleIdOf(owner)) ? true : false;

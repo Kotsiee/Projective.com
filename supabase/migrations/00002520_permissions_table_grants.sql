@@ -614,6 +614,8 @@ GRANT SELECT ON TABLE finance.disputes TO authenticated;
 
 GRANT SELECT ON TABLE finance.dispute_messages TO authenticated;
 
+GRANT SELECT ON TABLE finance.dispute_evidence TO authenticated;
+
 GRANT SELECT ON TABLE finance.contribution_agreements TO authenticated;
 
 GRANT SELECT ON TABLE finance.payout_splits TO authenticated;
@@ -624,7 +626,7 @@ GRANT SELECT, INSERT, UPDATE ON TABLE finance.buyer_details TO authenticated;
 
 GRANT ALL ON TABLE finance.wallets, finance.payouts, finance.payout_accounts,
     finance.orders, finance.order_lines, finance.invoices, finance.invoice_line_items,
-    finance.disputes, finance.dispute_messages, finance.contribution_agreements,
+    finance.disputes, finance.dispute_messages, finance.dispute_evidence, finance.contribution_agreements,
     finance.payout_splits, finance.spending_limits, finance.buyer_details, finance.promo_codes,
     finance.ratings
 TO service_role;

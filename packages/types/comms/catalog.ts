@@ -68,6 +68,7 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"ticket.claimed",
 	"ticket.revision_requested",
 	"ticket.completed",
+	"ticket.awaiting_funding",
 	"submission.received",
 	"submission.accepted",
 	"submission.revision_requested",
@@ -95,6 +96,9 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"session.reminder_15m",
 	"session.reminder_5m",
 	"session.reschedule_vote",
+	"session.scheduling_requested",
+	"session.scheduling_reminder",
+	"session.scheduling_lapsed",
 	"availability.booking_request",
 	// discovery
 	"catalogue.listing_published",
@@ -129,6 +133,8 @@ export const KNOWN_NOTIFICATION_TYPES = [
 	"system.policy_update",
 	"dispute.opened",
 	"dispute.resolved",
+	"dispute.response_requested",
+	"dispute.escalated",
 	"report.filed",
 	"moderation.action",
 	// marketing (opt-in only — a marketing type can never be mandatory)

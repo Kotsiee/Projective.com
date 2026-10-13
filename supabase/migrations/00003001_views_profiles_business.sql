@@ -65,9 +65,12 @@ SELECT
     u.headline,
     u.bio,
     u.languages,
-    -- A minor's location and local time are never broadcast (Decision #208).
-    CASE WHEN org.fn_is_minor(u.user_id) THEN NULL ELSE u.timezone END as timezone,
-    CASE WHEN org.fn_is_minor(u.user_id) THEN NULL ELSE u.country END as location,
+    -- A minor's location and local time are never broadcast (Decision #208). The rule is
+    -- org.fn_is_minor's, spelled out: a view's function calls are checked against the READER, and
+    -- fn_is_minor stays ungranted so no client can ask it about an arbitrary user id. The pure
+    -- date helpers it is built from are granted to both client roles (00002510).
+    CASE WHEN org.fn_age_years(u.dob, u.timezone) < 18 THEN NULL ELSE u.timezone END as timezone,
+    CASE WHEN org.fn_age_years(u.dob, u.timezone) < 18 THEN NULL ELSE u.country END as location,
 
 -- Split Ratings
 u.rating_average as rating_as_client,
@@ -87,7 +90,7 @@ u.active_project_count,
 
 -- Public directory facts (appended)
     u.visibility = 'public' as listed,
-    CASE WHEN org.fn_is_minor(u.user_id) THEN NULL ELSE u.city END as city,
+    CASE WHEN org.fn_age_years(u.dob, u.timezone) < 18 THEN NULL ELSE u.city END as city,
     fa.bucket_id as avatar_bucket,
     fa.storage_path as avatar_path,
     fb.bucket_id as banner_bucket,

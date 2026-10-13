@@ -1,5 +1,6 @@
 import { getProjects, postProjects } from "./api.ts";
 import type { SessionWorkspace } from "@projective/types/projects";
+import type { DisputeStatus } from "@projective/types/finance";
 import type { ProjectsResult } from "../types/results.ts";
 
 /**
@@ -19,15 +20,32 @@ export const SessionService = {
 		return postProjects(`/api/sessions/lessons/${encodeURIComponent(lessonId)}`, { done });
 	},
 
-	/** Give up the viewer's seat under the late-cancel rule; the answer names what happened to the money. */
+	/**
+	 * Give up the viewer's seat under the late-cancel rule; the answer names what happened to the money.
+	 * A 1-1 block is judged per sitting, so it can come back `partial` (Decision #211).
+	 */
 	cancelSeat(
 		membershipId: string,
-	): Promise<ProjectsResult<{ outcome: "refunded" | "forfeited"; amountMinor: number; currency: string | null }>> {
+	): Promise<
+		ProjectsResult<{
+			outcome: "refunded" | "forfeited" | "partial";
+			amountMinor: number;
+			refundedMinor: number;
+			forfeitedMinor: number;
+			currency: string | null;
+		}>
+	> {
 		return postProjects(`/api/sessions/memberships/${encodeURIComponent(membershipId)}/cancel`, {});
 	},
 
-	/** Claim the provider did not show for a sitting (holds the auto-release while it is reviewed). */
-	claimNoShow(eventId: string, reason: string | null): Promise<ProjectsResult<{ disputeId: string }>> {
+	/**
+	 * Claim the provider did not show for a sitting (holds the auto-release; once the sitting has ended
+	 * the room's attendance is audited at once). `status` is where the claim landed (Decision #212).
+	 */
+	claimNoShow(
+		eventId: string,
+		reason: string | null,
+	): Promise<ProjectsResult<{ disputeId: string; status: DisputeStatus }>> {
 		return postProjects(`/api/sessions/sittings/${encodeURIComponent(eventId)}/no-show`, { reason });
 	},
 };

@@ -35,6 +35,11 @@ export interface KanbanColumnProps<C> {
 	items: KanbanColumnItem[];
 	/** The board's card drop target — the column derives its own indicator index reactively. */
 	dropTarget: Signal<{ columnId: string; renderIndex: number } | null>;
+	/**
+	 * Why this column refuses the item being dragged (`KanbanBoardProps.itemDropRefusal`), or `null`.
+	 * Set only while such an item is in flight: the column reads locked and states the reason.
+	 */
+	refusal?: string | null;
 	/** Whether column reordering is enabled board-wide (per-column still gated by `reorderable`). */
 	columnDragEnabled: boolean;
 	header?: (ctx: KanbanColumnRenderCtx<C>) => ComponentChildren;
@@ -44,6 +49,7 @@ export interface KanbanColumnProps<C> {
 
 export function KanbanColumn<C>(props: KanbanColumnProps<C>): JSX.Element {
 	const { column, items, dropTarget, columnDragEnabled } = props;
+	const refusal = props.refusal ?? null;
 	const canReorder = columnDragEnabled && !!column.reorderable;
 
 	const body = useDroppable({
@@ -79,6 +85,7 @@ export function KanbanColumn<C>(props: KanbanColumnProps<C>): JSX.Element {
 			data-over={body.isOver.value || undefined}
 			data-overlimit={overLimit || undefined}
 			data-dragging={colDrag.isDragging.value || undefined}
+			data-locked={refusal !== null || undefined}
 			aria-label={column.title}
 		>
 			<header
@@ -95,6 +102,8 @@ export function KanbanColumn<C>(props: KanbanColumnProps<C>): JSX.Element {
 					</>
 				)}
 			</header>
+
+			{refusal !== null ? <p class="ui-kanban__col-lock">{refusal}</p> : null}
 
 			<div
 				// deno-lint-ignore no-explicit-any

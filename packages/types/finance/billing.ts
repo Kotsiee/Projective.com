@@ -10,8 +10,9 @@ import {
 } from "./common.ts";
 
 /**
- * finance billing — invoices, invoice line items, disputes, monthly statements, and chargebacks.
- * Mirrors the EXISTING `finance.invoices`/`invoice_line_items`/`disputes` (migration 0009) plus the
+ * finance billing — invoices, invoice line items, monthly statements, and chargebacks (platform
+ * disputes live in `disputes.ts`, Decision #212).
+ * Mirrors the EXISTING `finance.invoices`/`invoice_line_items` (migration 0009) plus the
  * additive `finance.statements` + `finance.chargebacks` (migration 20260723094000).
  *
  * Refunds & chargebacks are recorded as NEGATIVE-direction `finance.transactions` with canonical
@@ -75,25 +76,6 @@ export type InvoiceLineItem = z.infer<typeof InvoiceLineItemSchema>;
  */
 export const AutoFundMode = z.enum(["off", "add_to_basket", "from_wallet"]);
 export type AutoFundMode = z.infer<typeof AutoFundMode>;
-// #endregion
-
-// #region Disputes (existing)
-/** `dispute_status` (public enum). */
-export const DisputeStatus = z.enum(["open", "under_review", "resolved", "refunded"]);
-export type DisputeStatus = z.infer<typeof DisputeStatus>;
-
-/** A row of `finance.disputes` — a contested escrow (funds sit in the Dispute Lockbox while open). */
-export const DisputeSchema = z.object({
-	id: uuid,
-	escrowId: uuid,
-	openedByProfile: uuid,
-	reason: z.string().min(1),
-	status: DisputeStatus,
-	resolutionNotes: z.string().nullable(),
-	createdAt: timestamp,
-	resolvedAt: timestamp.nullable(),
-});
-export type Dispute = z.infer<typeof DisputeSchema>;
 // #endregion
 
 // #region Statements (additive)

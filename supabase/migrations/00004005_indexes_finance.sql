@@ -19,6 +19,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_escrows_revision ON finance.escrows (revisi
 -- A seat's escrow (Decision #171) — the cancel, join and auto-release reads all start from the seat.
 CREATE INDEX IF NOT EXISTS idx_escrows_cohort_membership ON finance.escrows (cohort_membership_id)
     WHERE cohort_membership_id IS NOT NULL;
+-- A sitting is paid for once (Decision #211): one escrow per 1-1 sitting, whatever became of it, so a
+-- replayed booking cannot debit the payer twice for the same sitting.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_escrows_session_event ON finance.escrows (session_event_id)
+    WHERE session_event_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_escrows_payer_business ON finance.escrows (payer_business_id);
 CREATE INDEX IF NOT EXISTS idx_escrows_payer_user ON finance.escrows (payer_user_id) WHERE payer_user_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_escrows_payee ON finance.escrows (payee_type, payee_id);
@@ -31,6 +35,17 @@ CREATE INDEX IF NOT EXISTS idx_invoices_stage ON finance.invoices (project_stage
 CREATE INDEX IF NOT EXISTS idx_disputes_escrow ON finance.disputes (escrow_id);
 CREATE INDEX IF NOT EXISTS idx_disputes_status ON finance.disputes (status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_dispute_messages_dispute_created ON finance.dispute_messages (dispute_id, created_at ASC);
+-- One LIVE dispute per escrow (Decision #212): two racing no-show claims cannot both open one.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_disputes_escrow_live ON finance.disputes (escrow_id)
+WHERE status IN ('open', 'awaiting_response', 'under_review');
+CREATE INDEX IF NOT EXISTS idx_disputes_session_event ON finance.disputes (session_event_id)
+WHERE session_event_id IS NOT NULL;
+-- The sweep's auto-escalation scan.
+CREATE INDEX IF NOT EXISTS idx_disputes_respond_by ON finance.disputes (respond_by)
+WHERE status = 'awaiting_response';
+CREATE INDEX IF NOT EXISTS idx_dispute_evidence_message ON finance.dispute_evidence (message_id);
+CREATE INDEX IF NOT EXISTS idx_dispute_evidence_file ON finance.dispute_evidence (file_id);
+CREATE INDEX IF NOT EXISTS idx_dispute_evidence_dispute ON finance.dispute_evidence (dispute_id);
 CREATE INDEX IF NOT EXISTS idx_ratings_ratee ON finance.ratings (ratee_type, ratee_id);
 CREATE INDEX IF NOT EXISTS idx_ratings_project ON finance.ratings (project_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_profile ON finance.subscriptions (profile_id, status);

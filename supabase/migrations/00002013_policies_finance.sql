@@ -255,6 +255,11 @@ SELECT TO authenticated USING (
 CREATE POLICY "View dispute messages" ON finance.dispute_messages FOR
 SELECT TO authenticated USING (EXISTS (SELECT 1 FROM finance.disputes d WHERE d.id = dispute_id));
 
+-- Evidence is read by whoever reads its dispute (the EXISTS runs under "View disputes you are party
+-- to"). No client write policy: filing goes through finance.respond_to_dispute.
+CREATE POLICY "View dispute evidence" ON finance.dispute_evidence FOR
+SELECT TO authenticated USING (EXISTS (SELECT 1 FROM finance.disputes d WHERE d.id = dispute_id));
+
 -- A team's split is its members' business, and each member sees the whole of it: a share is only
 -- intelligible as one of the set that sums to the total.
 CREATE POLICY "View team contribution agreements" ON finance.contribution_agreements FOR
