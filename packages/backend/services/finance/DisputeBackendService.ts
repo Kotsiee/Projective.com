@@ -2,16 +2,18 @@ import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { getUserClient, isFinanceBackendLive } from "../../core/supabase.ts";
 import type {
 	DisputeCase,
+	DisputeQueue,
+	DisputeQueueQuery,
 	DisputeResolveInput,
 	DisputeRespondInput,
 	DisputeStatus,
 } from "@projective/types/finance";
 import type { ReadActor } from "../read-actor.ts";
-import { type RawDispute, toDisputeCase } from "./dispute-model.ts";
+import { type RawDispute, type RawQueue, toDisputeCase, toDisputeQueue } from "./dispute-model.ts";
 
 /**
  * DisputeBackendService — the `DisputeService` PRODUCT_SPEC §Dispute Resolution names (Decision #212):
- * read a case, respond with evidence, escalate to an auditor, and an operator's ruling.
+ * read a case, respond with evidence, escalate to an auditor, and the operator's queue and ruling.
  *
  * It decides nothing. Every rule — who is a party, when a case escalates, what a ruling moves, the
  * attendance audit — is a definer in `00001260_functions_finance_disputes.sql`, called AS the caller
@@ -111,6 +113,25 @@ export class DisputeBackendService {
 		return ok({ status: (data as { status: DisputeStatus }).status }, {
 			message: "Sent to a Projective auditor.",
 		});
+	}
+
+	/**
+	 * The operator queue — every live case (or those in one live status), oldest-due first, with the
+	 * whole live set's counts. 403 for anyone but a platform operator (`finance.list_disputes_for_review`
+	 * checks `security.is_admin()`); the `/admin/disputes` page answers that with a 404.
+	 */
+	static async queue(
+		query: DisputeQueueQuery,
+		actor: ReadActor,
+	): Promise<ServiceResult<DisputeQueue>> {
+		const blocked = gate<DisputeQueue>(actor);
+		if (blocked) return blocked;
+		const { data, error } = await getUserClient(actor.accessToken!).schema("finance").rpc(
+			"list_disputes_for_review",
+			{ p_status: query.status ?? null },
+		);
+		if (error) return refusal(error);
+		return ok(toDisputeQueue(data as RawQueue | null));
 	}
 
 	/** A platform operator's ruling; 403 for anyone else (the definer checks `security.is_admin()`). */

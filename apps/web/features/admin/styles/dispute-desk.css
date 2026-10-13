@@ -1,0 +1,305 @@
+/*
+ * dispute-desk — the operator dispute desk (`/admin/disputes`) and its ruling dialog (Decision #212).
+ * Token-only, strict BEM. The queue is rows separated by ONE hairline, never boxed (§3 gate 6); a row's
+ * metadata is one inline `--text-secondary` line (§3 gate 7) — the only containers are the controls,
+ * the lifecycle status and the overdue disclosure. Figures that change are `tabular-nums`.
+ */
+
+/* #region Page */
+.ddesk {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	inline-size: 100%;
+	max-inline-size: var(--measure-wide);
+	margin-inline: auto;
+	padding: var(--space-5) var(--space-4);
+}
+
+.ddesk__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: var(--space-2) var(--space-4);
+}
+
+.ddesk__heading {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.ddesk__title {
+	margin: 0;
+	font-size: var(--text-3xl);
+	font-weight: var(--fw-medium);
+	letter-spacing: var(--tracking-tight);
+	line-height: var(--leading-tight);
+}
+
+.ddesk__lede {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.ddesk__live:empty {
+	display: none;
+}
+
+.ddesk__list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+/* #endregion */
+
+/* #region Rows */
+.ddesk-row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-4);
+	padding-block: var(--space-3);
+	border-block-end: var(--hairline);
+}
+
+.ddesk-row:last-child {
+	border-block-end: 0;
+}
+
+.ddesk-row__main {
+	flex: 1 1 auto;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.ddesk-row__tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+	margin-block-end: var(--space-1);
+}
+
+.ddesk-row__title {
+	margin: 0;
+	font-size: var(--text-base);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	color: var(--on-surface);
+	overflow-wrap: anywhere;
+}
+
+.ddesk-row__meta {
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.ddesk-row__figure {
+	color: var(--on-surface);
+}
+
+.ddesk-row__reason {
+	display: -webkit-box;
+	margin: 0;
+	max-inline-size: var(--measure);
+	overflow: hidden;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--on-surface);
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+}
+/* #endregion */
+
+/* #region Ruling dialog */
+.ddesk-dlg__body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.ddesk-dlg__status {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-2);
+}
+
+.ddesk-dlg__tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+
+.ddesk-dlg__lede {
+	margin: 0;
+	max-inline-size: var(--measure-narrow);
+	line-height: var(--leading-normal);
+	color: var(--on-surface);
+}
+
+.ddesk-dlg__facts {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+}
+
+.ddesk-dlg__fact {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-4);
+}
+
+.ddesk-dlg__term {
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.ddesk-dlg__value {
+	margin: 0;
+	text-align: end;
+	font-variant-numeric: tabular-nums;
+	color: var(--on-surface);
+	overflow-wrap: anywhere;
+}
+
+.ddesk-dlg__section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding-block-start: var(--space-3);
+	border-block-start: var(--hairline);
+}
+
+.ddesk-dlg__heading {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.ddesk-dlg__thread {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.ddesk-dlg__msg {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.ddesk-dlg__who {
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.ddesk-dlg__text {
+	margin: 0;
+	max-inline-size: var(--measure);
+	line-height: var(--leading-relaxed);
+	color: var(--on-surface);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.ddesk-dlg__files {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-3);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.ddesk-dlg__file {
+	font-size: var(--text-sm);
+	color: var(--primary);
+	overflow-wrap: anywhere;
+}
+
+.ddesk-dlg__meta {
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.ddesk-dlg__field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.ddesk-dlg__label {
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.ddesk-dlg__confirm {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.ddesk-dlg__actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: var(--space-2) var(--space-3);
+}
+
+.ddesk-dlg__actions > .ddesk-dlg__meta {
+	flex: 1 1 auto;
+}
+/* #endregion */
+
+/* #region Narrow */
+@media (max-width: 767px) {
+	.ddesk {
+		padding: var(--space-4) var(--space-3);
+	}
+
+	.ddesk__title {
+		font-size: var(--text-2xl);
+	}
+
+	.ddesk-row {
+		flex-direction: column;
+		align-items: stretch;
+		gap: var(--space-2);
+	}
+
+	.ddesk-dlg__fact {
+		flex-direction: column;
+		gap: 0;
+	}
+
+	.ddesk-dlg__value {
+		text-align: start;
+	}
+}
+/* #endregion */

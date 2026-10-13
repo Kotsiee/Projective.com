@@ -207,6 +207,12 @@ CREATE TABLE finance.disputes (
     respond_by timestamptz NULL,
     responded_at timestamptz NULL,
     escalated_at timestamptz NULL,
+    -- The review SLA: when an operator should have ruled on an `under_review` case, set as it enters
+    -- review (`dispute_review_hours`). A target, never a trigger: a case past it is NOT ruled — the
+    -- sweep raises an ops alert and tells the operators (finance.sweep_disputes), no money moves.
+    review_by timestamptz NULL,
+    -- When the sweep last raised the overdue alert for this case (at most once a day per case).
+    review_alerted_at timestamptz NULL,
     resolution_notes text NULL,
     -- The operator who ruled; NULL when the platform's own audit (or the money's own path) settled it.
     resolved_by uuid NULL REFERENCES auth.users (id) ON DELETE RESTRICT,
@@ -221,7 +227,8 @@ CREATE TABLE finance.disputes (
         (status IN ('resolved_release', 'resolved_refund', 'resolved_split')) = (resolved_at IS NOT NULL)
     ),
     CONSTRAINT ck_disputes_split_share CHECK ((status = 'resolved_split') = (payee_share_bp IS NOT NULL)),
-    CONSTRAINT ck_disputes_awaiting_deadline CHECK (status <> 'awaiting_response' OR respond_by IS NOT NULL)
+    CONSTRAINT ck_disputes_awaiting_deadline CHECK (status <> 'awaiting_response' OR respond_by IS NOT NULL),
+    CONSTRAINT ck_disputes_review_deadline CHECK (status <> 'under_review' OR review_by IS NOT NULL)
 );
 
 -- A dispute's statements, append-only (00001830): one per submission, by either party or an operator.

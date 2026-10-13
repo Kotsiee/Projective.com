@@ -15,12 +15,7 @@ import type {
 	ServiceBriefInput,
 	SessionBookingInput,
 } from "@projective/types/services";
-import {
-	intakeRefusal,
-	normaliseIntakeAnswers,
-	plural,
-	resolveCta,
-} from "@projective/types/services";
+import { intakeRefusal, normaliseIntakeAnswers, resolveCta } from "@projective/types/services";
 import type {
 	ConferencingProvider,
 	PublicCallOffer,

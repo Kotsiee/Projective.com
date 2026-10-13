@@ -202,7 +202,9 @@ END $$;
 ROLLBACK TO SAVEPOINT s_early;
 -- #endregion
 
--- #region 5. A settlement that does not match its payment is flagged in the ops log, claim released
+-- #region 5. A settlement that does not match its payment is flagged in the ops log and acknowledged
+-- into reconciliation: the claim is KEPT, so Stripe's redeliveries replay it rather than re-erroring
+-- (amended by the settlement-mismatch reconciliation change; see settlement_reconcile_deposit_retry.sql)
 SAVEPOINT s_mismatch;
 DO $$
 DECLARE
@@ -216,15 +218,17 @@ BEGIN
     IF v_out ->> 'outcome' <> 'unmatched' OR v_p.status::text <> 'processing' OR v_p.transaction_id IS NOT NULL THEN
         RAISE EXCEPTION 'FAIL mismatch: % status %', v_out, v_p.status;
     END IF;
-    IF EXISTS (SELECT 1 FROM finance.idempotency_keys WHERE key = 'stripe:evt_probe200_fx') THEN
-        RAISE EXCEPTION 'FAIL mismatch: the claim was kept — the event is acknowledged with no ledger row';
+    IF v_out ->> 'reconciliation' IS DISTINCT FROM 'settlement_mismatch'
+       OR NOT EXISTS (SELECT 1 FROM finance.idempotency_keys
+                       WHERE key = 'stripe:evt_probe200_fx' AND status::text = 'succeeded') THEN
+        RAISE EXCEPTION 'FAIL mismatch: not acknowledged into reconciliation with its claim kept: %', v_out;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM ops.log_entries l
                     WHERE l.scope = 'finance.settle_card_payment' AND l.level = 'error'
                       AND l.data ->> 'payment_id' = v_id::text) THEN
         RAISE EXCEPTION 'FAIL mismatch: nothing written to ops.log_entries';
     END IF;
-    RAISE NOTICE 'PASS a mismatched settlement credits nothing, keeps no claim and logs an ops error';
+    RAISE NOTICE 'PASS a mismatched settlement credits nothing, keeps its claim for reconciliation and logs an ops error';
 END $$;
 ROLLBACK TO SAVEPOINT s_mismatch;
 -- #endregion

@@ -1008,6 +1008,11 @@ export interface ClaimedDeposit {
 	ruleId: string;
 	customerRef: string;
 	paymentMethodRef: string;
+	/**
+	 * A run an earlier sweep claimed but never bound to a PaymentIntent, re-offered as the SAME payment
+	 * so it is re-sent under the same Stripe idempotency key (`false` for a period claimed just now).
+	 */
+	retry: boolean;
 }
 
 /** Claim the recurring deposits that are due (`finance.claim_due_deposit_rules`). */
@@ -1026,6 +1031,7 @@ export async function claimDueDepositRules(limit: number): Promise<ClaimedDeposi
 		ruleId: String(entry.rule_id),
 		customerRef: String(entry.customer_ref),
 		paymentMethodRef: String(entry.payment_method_ref),
+		retry: entry.retry === true,
 	}));
 }
 

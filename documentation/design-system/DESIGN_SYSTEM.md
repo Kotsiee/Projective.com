@@ -2652,7 +2652,10 @@ footer wraps below `--bp-md`. Past the allotment the revision control reads **"B
 stays disabled and the hint says why (§3 gate 11). `revisionIsFree` (`@projective/types/projects`)
 and `revisionAllowanceLabel` (`core/submission-model.ts`) are the one rule and the one sentence. The
 freelancer's side is a `Message` (success, subtle) in the explorer: "Paid revision, funded, you can
-start."
+start." Since Decision #213, **Accept & release payment** is the trigger of a `ConfirmPopup`
+(`placement="top"`, "Accepting releases this ticket's escrow to the freelancer now. This cannot be
+undone." · **Accept & release** / **Not yet**): acceptance moves money irreversibly (#194), so it is
+never one click; dismissal is rejection, and `onAccept` fires only from the popup's accept.
 
 **`PaidRevisionPayDialog` (`features/projects/components/`, Decision #199).** Opens once a paid
 round is raised: `open`, `round` (`PaidRevisionRaised`), the route address (`projectId`, `stageId`,
@@ -2712,6 +2715,48 @@ library) + **Send response** / **File statement**; **Send to an auditor now** in
 case is awaiting a response. A previewed case (the `disputeState` dev axis) is built client-side by
 `devDisputeCase` and never fetched. Model: `core/dispute-view.ts` (labels, tones, sentences, UTC
 times, the dev preview). Styles: `styles/session-disputes.css` (`sess-dispute*`, `dispute-dlg*`).
+
+**`DisputeDesk` + `DisputeRulingDialog` (`features/admin/`, Decision #212).** The platform operator's
+dispute desk at `/admin/disputes` — rendered only for `security.is_admin()` (the controller 404s
+anyone else, so no ruling control ever reaches a non-operator, §3 gate 11). `DisputeDesk`
+(`islands/`, props `initial: DisputeQueue`, `preview`) is a page, not a card (§3 gate 6): the display
+title with a meta-register lede and a text **Refresh** (it re-reads `GET /api/finance/disputes`), a
+warning `Message` while any review is overdue, a `TabMenu` (tablist mode, one `tabpanel`) — Under
+review · Awaiting response · Open · All live, each with the server's count as its badge (a count, §3
+gate 7) — then one hairline-separated row per case, oldest-due first: the case title (the sitting,
+else the engagement), one `--text-secondary` meta line (claimant v. respondent · the held amount,
+`tabular-nums` · the deadline that applies: ruling due / ruling overdue since / response due /
+raised), the claim reason clamped to two lines, a meta evidence count, and a secondary outlined `sm`
+**Review**. A row carries a lifecycle `Tag` only on All live (elsewhere the tab already says it) and a
+danger **Overdue** `Tag` when the review SLA has passed (a required disclosure). An empty tab is an
+`EmptyState` (`sm`). Below `--bp-md` rows stack with the button full-width. `DisputeRulingDialog`
+(`components/`, `Dialog` 40rem; props `open: Signal<boolean>`, `item`, `onRuled`) reads the case
+(`GET /api/finance/disputes/:id`): the status `Tag` (+ **Overdue**) and an operator sentence, a `dl` of
+facts (claimant · provider · session · payment held · raised · response due · under review since ·
+ruling due), the attendance-audit line, the claim and every statement with its evidence links
+(`/api/files/object/:id`), then — while `canResolve` — the ruling form: a `SelectButton` (Pay the
+provider · Refund the attendee · Split) with a one-line hint, a `NumberInput` for the provider's share
+in % (0.01–99.99, sent as basis points) on a split, a `Textarea` (2,000) for the reasons both parties
+read, the form's first problem as meta text, and **Record ruling**, which opens an in-place confirm
+(warning `Message` naming what moves and that it is final, **Back** · danger **Confirm ruling**). A
+refusal stays beside the form; a ruling closes the dialog, states the server's notice and re-reads
+the queue. The island does no money math: amounts are server-formatted. The `operatorDesk` dev axis
+renders sample cases (`previewQueue` / `previewCase`, never fetched; a ruling still meets the
+database's refusal). Model: `core/dispute-desk.ts` (tabs, counts, names, deadlines, the form's
+validity mirroring `DisputeResolveInputSchema`, the preview). Styles: `styles/dispute-desk.css`
+(`ddesk*`, `ddesk-row*`, `ddesk-dlg*`).
+
+**`ProjectCreatePricingFields` (`features/projects/components/`, Decision #195).** The Quick-Init
+create modal's money row: a `CurrencySelect` (`DISPLAY_CURRENCIES`, the set the workspace's Rules
+section offers and the fat service accepts; filterable, fluid) beside an optional baseline price
+`NumberInput` (`MONEY_FIELD`, the currency's own exponent and minor-unit step) whose label and hint
+follow the format (`BASELINE_PRICE_LABEL` / `BASELINE_PRICE_HINT`: a per-ticket rate or a whole
+escrow budget), marked **Optional** in `--text-secondary`. Props `format`, `currency`, `amount`
+(MAJOR units, `null` = unpriced), `onCurrencyChange`, `onAmountChange`, `field(key)` (the modal's
+focus-tracking wrapper, keyed `currency` · `baselineAmountCents` so a server refusal lands on its
+field), `currencyStatus` / `amountStatus` and optional `currencyError` / `amountError`, which replace
+the hint as an error line. Presentational only — the modal owns state and submits the minor amount.
+Styles: the modal's `pjc__row` / `pjc__label` / `pjc__hint` (`projects/styles/project-create-modal.css`), token-only.
 
 **`PromoSlot` (`features/explore/components/promos/`, Decision #175).** The Explore Home's one promo
 surface; it replaces `SponsoredFrame`, `CtaBanner` (both "Become a Freelancer" and "Launch a Team")

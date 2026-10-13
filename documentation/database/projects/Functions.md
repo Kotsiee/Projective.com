@@ -684,7 +684,7 @@ Grants are in `00002510` ("escrow settlement doors").
 | `projects.complete_ticket(p_ticket_id uuid) → void`                              | `00001120` | Ticket → `completed`; releases all its held escrow             | `authenticated`                  | signed in + `can_review_project`                             |
 | `projects.delete_ticket(p_ticket_id uuid) → void`                                | `00001120` | Releases a claimed ticket's escrow, then hard-deletes the row  | `authenticated`                  | signed in + `can_review_project`                             |
 | `projects.force_complete_stage(p_ticket_id uuid) → uuid`                         | `00001130` | Releases the current installment, advances to the next and holds it (the Chain Reaction, when the next stage's `chain_reaction` is on) | `authenticated`                  | signed in + `can_review_project`                             |
-| `projects.approve_stage(p_project_id uuid, p_stage_id uuid) → jsonb`             | `00001150` | Completes every ticket still holding escrow on the stage (via `fn_settle_ticket_stage`), releasing it; stage → `paid` (#194) | `authenticated`                  | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
+| `projects.approve_stage(p_project_id uuid, p_stage_id uuid) → jsonb`             | `00001150` | Completes every hired ticket still holding escrow on the stage (via `fn_settle_ticket_stage`), releasing it; refunds a still-unclaimed prepaid ticket without completing it; stage → `paid` (#194, #213). Returns `released_count` / `refunded_count` (tickets), `total_paid_cents`, `fee_cents`, `refunded_cents`, `splits` | `authenticated`                  | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
 | `projects.cancel_stage_fair_exit(p_project_id uuid, p_stage_id uuid, p_tier integer) → jsonb` | `00001150` | Pays the tier (25/50/75 %) out, refunds the rest; stage → `cancelled`; the tickets left on it → `cancelled`; both sides notified (#198) | `authenticated`        | signed in + `can_review_project`; stage ∈ project; stage row locked and unsettled (#188) |
 | `projects.move_ticket(…)` (→ `completed`)                                        | `00001120` | Via `trg_ticket_escrow_sync`                                   | `authenticated`, `service_role`  | `has_project_access`, plus `can_review_project` for Done     |
 | `projects.delete_stage(p_project_id uuid, p_stage_id uuid) → void`               | `00001130` | Releases claimed tickets' escrow in the stage                  | `authenticated`, `service_role`  | signed in + `can_review_project` (Decision #163)             |
@@ -747,7 +747,16 @@ returns only the escrows this call released — which is what `approve_stage` su
 `total_paid_cents` / `fee_cents` / `splits`. `projects.fn_notify_payees(...)` notifies each
 individual payee and every `finance.payout_splits` recipient once. Both are internal (no `EXECUTE`
 grant). `approve_stage` also notifies the project owner and, when another client member approved,
-that approver.
+that approver; the stage's assignees are read BEFORE settlement, since a Pipeline ticket advances to
+its next stage when this one completes (Decision #213).
+
+**Unbound prepaid escrow is not work (Decision #213).** A ticket whose held escrow on the stage has no
+payee (prepaid, nobody claimed it — Decision #197) is not settled through `fn_settle_ticket_stage`:
+`approve_stage` refunds it with `finance.fn_refund_ticket_escrow` and leaves the ticket's status where
+it stands (`payment_status` → `unpaid`). With no bound escrow on the stage at all — held or released —
+nobody was hired, and the approval is refused before anything moves. `released_count` counts the
+tickets this call paid, `refunded_count` / `refunded_cents` the ones it refunded; the owner's
+"Stage settled" notification carries both.
 
 `approve_stage`'s handover check (the last settled stage completes the project) ignores archived
 stages (`archived_at`, Decision #163), so a retired stage never holds the handover open.
@@ -763,6 +772,7 @@ stages (`archived_at`, Decision #163), so a retired stage never holds the handov
 | Unknown ticket id                          | `no_data_found` (`P0002`). `delete_ticket` used to return silently; it now refuses.         |
 | Stage not in the project (`approve_stage`, `cancel_stage_fair_exit`, also `fund_stage` / `get_stage_finance`) | `no_data_found` (`P0002`). |
 | Nothing ever funded on the stage (none held, none released — a stage its acceptances already paid settles, #194); `fund_stage` on a stage not `open` / `assigned` / `in_progress` (#197) | `object_not_in_prerequisite_state` (`55000`). |
+| `approve_stage` on a stage with no bound escrow — only prepaid escrow nobody has claimed (#213) | `object_not_in_prerequisite_state` (`55000`) — "Nobody has been hired on this stage …". |
 | Stage already settled — `approve_stage` on a stage not `open` / `assigned` / `in_progress` / `submitted` / `revisions` / `approved`; `cancel_stage_fair_exit` on one not in that set less `approved` (Decision #188) | `object_not_in_prerequisite_state` (`55000`) — "This stage is already paid / cancelled …". |
 | `cancel_stage_fair_exit` tier not 25/50/75 | `invalid_parameter_value` (`22023`).                                                         |
 

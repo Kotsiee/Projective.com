@@ -43,6 +43,9 @@ WHERE session_event_id IS NOT NULL;
 -- The sweep's auto-escalation scan.
 CREATE INDEX IF NOT EXISTS idx_disputes_respond_by ON finance.disputes (respond_by)
 WHERE status = 'awaiting_response';
+-- The sweep's review-SLA scan and the operator queue's oldest-due-first order.
+CREATE INDEX IF NOT EXISTS idx_disputes_review_by ON finance.disputes (review_by)
+WHERE status = 'under_review';
 CREATE INDEX IF NOT EXISTS idx_dispute_evidence_message ON finance.dispute_evidence (message_id);
 CREATE INDEX IF NOT EXISTS idx_dispute_evidence_file ON finance.dispute_evidence (file_id);
 CREATE INDEX IF NOT EXISTS idx_dispute_evidence_dispute ON finance.dispute_evidence (dispute_id);
@@ -127,6 +130,11 @@ CREATE INDEX IF NOT EXISTS idx_inbound_payments_stage
 -- The card payments a paid revision round has had (Decision #199).
 CREATE INDEX IF NOT EXISTS idx_inbound_payments_revision
     ON finance.inbound_payments (revision_id) WHERE revision_id IS NOT NULL;
+-- Scheduled deposit runs claimed but never bound to a PaymentIntent — what each deposit sweep
+-- re-offers (finance.claim_due_deposit_rules). Empty in steady state.
+CREATE INDEX IF NOT EXISTS idx_inbound_payments_unbound_deposits
+    ON finance.inbound_payments (created_at)
+    WHERE deposit_rule_id IS NOT NULL AND provider_ref IS NULL AND status = 'requires_payment';
 -- One ACTIVE Stripe payout account per owner. Partial, so a disabled account's history stays beside
 -- its replacement; record_payout_account returns the existing active account rather than racing it.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_payout_accounts_owner_active

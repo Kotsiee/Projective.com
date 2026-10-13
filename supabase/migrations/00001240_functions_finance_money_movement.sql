@@ -1058,12 +1058,77 @@ BEGIN
 END;
 $$;
 
+-- What a deposit rule's run would be charged to, re-authorised NOW (internal; revoked from every role).
+-- The rule's author is checked AS THEM (they may have lost the right to move this wallet's money), the
+-- card must still be active and attached to a Stripe Customer. Exactly one of `refusal` or the two refs
+-- is set; the refusal is the sentence the rule is paused with.
+CREATE OR REPLACE FUNCTION finance.fn_deposit_charge_target(
+    p_rule finance.deposit_rules,
+    OUT customer_ref text,
+    OUT payment_method_ref text,
+    OUT refusal text
+)
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_method finance.payment_methods;
+    v_wallet finance.wallets;
+    v_prev_sub text;
+    v_allowed boolean;
+BEGIN
+    SELECT * INTO v_wallet FROM finance.wallets WHERE id = p_rule.wallet_id;
+    SELECT * INTO v_method FROM finance.payment_methods WHERE id = p_rule.source_method_id;
+    IF p_rule.created_by IS NULL OR v_method.id IS NULL OR v_method.status <> 'active' THEN
+        refusal := 'Paused: the card or the person who set this up is no longer available.';
+        RETURN;
+    END IF;
+
+    v_prev_sub := pg_catalog.current_setting('request.jwt.claim.sub', true);
+    PERFORM pg_catalog.set_config('request.jwt.claim.sub', p_rule.created_by::text, true);
+    v_allowed := (v_wallet.owner_type IN ('user', 'freelancer') AND v_wallet.owner_id = p_rule.created_by)
+        OR finance.fn_has_vault_capability(v_wallet.id, p_rule.created_by, 'add_funds'::finance.vault_capability);
+    v_allowed := v_allowed AND (
+        (v_method.owner_type = v_wallet.owner_type AND v_method.owner_id = v_wallet.owner_id)
+        OR (v_method.owner_type IN ('user', 'freelancer') AND v_method.owner_id = p_rule.created_by)
+    );
+    PERFORM pg_catalog.set_config('request.jwt.claim.sub', COALESCE(v_prev_sub, ''), true);
+    IF NOT v_allowed THEN
+        refusal := 'Paused: the person who set this up can no longer add funds to this wallet.';
+        RETURN;
+    END IF;
+
+    SELECT c.customer_ref INTO customer_ref FROM finance.processor_customers c
+     WHERE c.provider = 'stripe' AND c.owner_type = v_method.owner_type AND c.owner_id = v_method.owner_id;
+    IF customer_ref IS NULL THEN
+        refusal := 'Paused: the saved card is not attached to a billing profile.';
+        RETURN;
+    END IF;
+    payment_method_ref := v_method.external_ref;
+END;
+$$;
+
 -- Claim the rules that are due (processor door, run by the scheduler). For each, re-authorises the
--- rule's author AS THEM at the moment of the charge (they may have lost the right to move this
--- wallet's money since), records the run as an inbound payment made by them, and advances the rule
--- past `now()` — missed periods are SKIPPED, never charged in a burst. The attempt key is the rule and
--- the period it is for, so a scheduler that runs twice cannot charge a period twice. Returns what the
--- fat service needs to create each off-session PaymentIntent.
+-- rule's author AS THEM at the moment of the charge (finance.fn_deposit_charge_target), records the
+-- run as an inbound payment made by them, and advances the rule past `now()` — missed periods are
+-- SKIPPED, never charged in a burst. The attempt key is the rule and the period it is for, so a
+-- scheduler that runs twice cannot charge a period twice. Returns what the fat service needs to create
+-- each off-session PaymentIntent.
+--
+-- It ALSO re-offers the runs a previous sweep claimed but never bound to a PaymentIntent (the
+-- processor could not be reached, the answer was lost, or the sweep died between claim and charge):
+-- a scheduled payment still `requires_payment` with no `provider_ref`. Each is returned with
+-- `retry = true` and the SAME payment, so the fat service re-sends it under the same Stripe
+-- idempotency key (`scheduled_deposit:<payment id>`) — Stripe answers with the intent it already made,
+-- or makes it now, and the period is charged exactly once instead of being lost with the advanced
+-- `next_run_at`. `updated_at` is the lease: a run is re-offered only when untouched for 15 minutes,
+-- and re-offering stamps it, so overlapping sweeps never send it together. Only inside 23 hours of
+-- the claim (Stripe keeps an idempotency key for 24): an older unbound run is failed rather than
+-- re-sent — a re-send past the key's life could charge twice — and an ops `error` row asks a human to
+-- check Stripe for an intent carrying its `projective_payment_id`. A run whose rule was stopped, or
+-- whose card or author no longer passes, is canceled with a `warn` row instead of being charged.
 CREATE OR REPLACE FUNCTION finance.claim_due_deposit_rules(p_limit integer)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1073,17 +1138,82 @@ SET search_path = ''
 AS $$
 DECLARE
     r finance.deposit_rules;
-    v_method finance.payment_methods;
-    v_wallet finance.wallets;
-    v_customer text;
+    v_target record;
     v_key text;
     v_next timestamptz;
     v_step interval;
     v_payment finance.inbound_payments;
-    v_prev_sub text;
-    v_allowed boolean;
+    v_refusal text;
     v_out jsonb := '[]'::jsonb;
 BEGIN
+    -- Runs claimed earlier and never bound: re-offered under the same payment (see above).
+    FOR v_payment IN
+        SELECT p.* FROM finance.inbound_payments p
+         WHERE p.deposit_rule_id IS NOT NULL
+           AND p.status = 'requires_payment'
+           AND p.provider_ref IS NULL
+           AND p.updated_at <= pg_catalog.now() - interval '15 minutes'
+         ORDER BY p.created_at
+         LIMIT GREATEST(COALESCE(p_limit, 50), 1)
+           FOR UPDATE SKIP LOCKED
+    LOOP
+        IF v_payment.created_at <= pg_catalog.now() - interval '23 hours' THEN
+            UPDATE finance.inbound_payments
+               SET status = 'failed',
+                   failure_reason = 'The card processor could not be reached for this scheduled deposit within a day; it was not sent again.',
+                   updated_at = pg_catalog.now()
+             WHERE id = v_payment.id;
+            INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+            VALUES (
+                'deposit:' || v_payment.id::text,
+                'error',
+                pg_catalog.format('Scheduled deposit %s was never bound to a PaymentIntent within its idempotency window; check Stripe for an intent with this projective_payment_id', v_payment.id),
+                pg_catalog.now(), 'server', 'finance.claim_due_deposit_rules',
+                pg_catalog.jsonb_build_object('payment_id', v_payment.id, 'rule_id', v_payment.deposit_rule_id,
+                    'amount_cents', v_payment.amount_cents, 'currency', v_payment.currency,
+                    'claimed_at', v_payment.created_at, 'reason', 'unbound_expired')
+            );
+            RAISE WARNING 'finance.claim_due_deposit_rules: scheduled deposit % expired unbound', v_payment.id;
+            CONTINUE;
+        END IF;
+
+        SELECT * INTO r FROM finance.deposit_rules WHERE id = v_payment.deposit_rule_id;
+        v_refusal := NULL;
+        v_target := NULL;
+        IF r.id IS NULL OR NOT r.active THEN
+            v_refusal := 'The recurring deposit was stopped before this run could be charged.';
+        ELSE
+            SELECT * INTO v_target FROM finance.fn_deposit_charge_target(r);
+            v_refusal := v_target.refusal;
+        END IF;
+        IF v_refusal IS NOT NULL THEN
+            UPDATE finance.inbound_payments
+               SET status = 'canceled', failure_reason = v_refusal, updated_at = pg_catalog.now()
+             WHERE id = v_payment.id;
+            INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+            VALUES (
+                'deposit:' || v_payment.id::text,
+                'warn',
+                pg_catalog.format('Scheduled deposit %s was canceled before it was bound to a PaymentIntent (%s); its first attempt may have reached Stripe', v_payment.id, v_refusal),
+                pg_catalog.now(), 'server', 'finance.claim_due_deposit_rules',
+                pg_catalog.jsonb_build_object('payment_id', v_payment.id, 'rule_id', v_payment.deposit_rule_id,
+                    'amount_cents', v_payment.amount_cents, 'currency', v_payment.currency,
+                    'claimed_at', v_payment.created_at, 'reason', 'unbound_canceled')
+            );
+            CONTINUE;
+        END IF;
+
+        UPDATE finance.inbound_payments SET updated_at = pg_catalog.now() WHERE id = v_payment.id
+        RETURNING * INTO v_payment;
+        v_out := v_out || pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
+            'payment', pg_catalog.to_jsonb(v_payment),
+            'rule_id', r.id,
+            'customer_ref', v_target.customer_ref,
+            'payment_method_ref', v_target.payment_method_ref,
+            'retry', true
+        ));
+    END LOOP;
+
     FOR r IN
         SELECT * FROM finance.deposit_rules d
          WHERE d.active AND d.next_run_at <= pg_catalog.now()
@@ -1103,39 +1233,10 @@ BEGIN
         END IF;
         v_key := 'deposit:' || r.id::text || ':' || pg_catalog.to_char(r.next_run_at AT TIME ZONE 'UTC', 'YYYYMMDDHH24MISS');
 
-        SELECT * INTO v_wallet FROM finance.wallets WHERE id = r.wallet_id;
-        SELECT * INTO v_method FROM finance.payment_methods WHERE id = r.source_method_id;
-        IF r.created_by IS NULL OR v_method.id IS NULL OR v_method.status <> 'active' THEN
+        SELECT * INTO v_target FROM finance.fn_deposit_charge_target(r);
+        IF v_target.refusal IS NOT NULL THEN
             UPDATE finance.deposit_rules
-               SET active = false, next_run_at = v_next,
-                   last_error = 'Paused: the card or the person who set this up is no longer available.'
-             WHERE id = r.id;
-            CONTINUE;
-        END IF;
-
-        v_prev_sub := pg_catalog.current_setting('request.jwt.claim.sub', true);
-        PERFORM pg_catalog.set_config('request.jwt.claim.sub', r.created_by::text, true);
-        v_allowed := (v_wallet.owner_type IN ('user', 'freelancer') AND v_wallet.owner_id = r.created_by)
-            OR finance.fn_has_vault_capability(v_wallet.id, r.created_by, 'add_funds'::finance.vault_capability);
-        v_allowed := v_allowed AND (
-            (v_method.owner_type = v_wallet.owner_type AND v_method.owner_id = v_wallet.owner_id)
-            OR (v_method.owner_type IN ('user', 'freelancer') AND v_method.owner_id = r.created_by)
-        );
-        PERFORM pg_catalog.set_config('request.jwt.claim.sub', COALESCE(v_prev_sub, ''), true);
-        IF NOT v_allowed THEN
-            UPDATE finance.deposit_rules
-               SET active = false, next_run_at = v_next,
-                   last_error = 'Paused: the person who set this up can no longer add funds to this wallet.'
-             WHERE id = r.id;
-            CONTINUE;
-        END IF;
-
-        SELECT c.customer_ref INTO v_customer FROM finance.processor_customers c
-         WHERE c.provider = 'stripe' AND c.owner_type = v_method.owner_type AND c.owner_id = v_method.owner_id;
-        IF v_customer IS NULL THEN
-            UPDATE finance.deposit_rules
-               SET active = false, next_run_at = v_next,
-                   last_error = 'Paused: the saved card is not attached to a billing profile.'
+               SET active = false, next_run_at = v_next, last_error = v_target.refusal
              WHERE id = r.id;
             CONTINUE;
         END IF;
@@ -1156,8 +1257,9 @@ BEGIN
         v_out := v_out || pg_catalog.jsonb_build_array(pg_catalog.jsonb_build_object(
             'payment', pg_catalog.to_jsonb(v_payment),
             'rule_id', r.id,
-            'customer_ref', v_customer,
-            'payment_method_ref', v_method.external_ref
+            'customer_ref', v_target.customer_ref,
+            'payment_method_ref', v_target.payment_method_ref,
+            'retry', false
         ));
     END LOOP;
     RETURN v_out;

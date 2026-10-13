@@ -57,8 +57,11 @@ This format is used for tangible work outcomes. It merges traditional "File-base
   2. **Submission:** Freelancer checks off completed tasks and attaches any relevant files.
   3. **Review:** Client reviews the submission against the checklist.
   4. **Resolution:** Client Accepts the submission (the ticket completes and its escrow is released
-     to the payee) or Requests Revision (Moves back to In Progress). Approving the stage pays out any
-     escrow still held and closes the stage (Decision #194).
+     to the payee) or Requests Revision (Moves back to In Progress). Accepting asks for one
+     confirmation first, since it releases money for good. Approving the stage pays out any escrow
+     still held and closes the stage (Decision #194). A stage nobody was ever hired on cannot be
+     approved — there is no one to pay — and a prepaid ticket still unclaimed when a hired stage is
+     approved is refunded to the Client and left open, not completed (Decision #213).
 
 ##### 2. Session-Based (Services)
 
@@ -1735,6 +1738,12 @@ the freelancer:
    tickets anywhere until they submit current work. The live figure feeds the **Workload Capacity
    Gauge** via `projects.get_workload_capacity`.
 
+$W_i$ is a sum over **tickets held**, not seats. Accepting an application or an invitation seats the
+freelancer on the stage's roster and hands them no ticket, so it adds nothing to their $W_i$ and is
+not capacity-checked; the caps bite at the claim or assignment that lands a ticket (Decision #214).
+A seat is still guarded against double-booking at acceptance (one live seat per stage,
+`fn_assignee_slot_conflict` for overlapping stages).
+
 #### 4. Assignment Modes
 
 Clients can configure how work is distributed within a stage:
@@ -1843,7 +1852,8 @@ nobody has paid for yet — before anybody claims it, from the paying wallet or 
 is open, assigned or in progress. Individual and business clients alike. The money is held in escrow
 at once, with no payee yet; the claim (or the owner's assignment) names the payee without charging
 again, and the freelancer is told they can start. A prepaid escrow nobody claimed is never paid out:
-if its ticket is completed, removed or its stage cancelled, it is refunded to the payer in full. A
+if its ticket is completed, removed or its stage cancelled or approved, it is refunded to the payer in
+full — approval never completes a ticket it has nobody to pay (Decision #213). A
 stage cannot be funded as a whole while any of its tickets has no price — the card checkout refuses
 it before anything is charged, so a card payment can never land in the wallet unheld.
 
@@ -2995,6 +3005,7 @@ Who can open a file in the modal is exactly who can read it, as on the inspector
 |               |                           | `[stage id]/submissions` | Stage deliverables                                                                             |
 |               | `/disputes`               | `index`                  |                                                                                                |
 |               |                           | `[dispute id]`           |                                                                                                |
+|               | `/admin/disputes`         |                          | **Operator dispute desk** (Decision #212) — platform operators only (`ops.admin_users`); 404 for anyone else. The live queue by status (Under review · Awaiting response · Open), oldest-due first with overdue reviews flagged; a case opens in a dialog (never its own URL) to read the Evidence Vault and rule release · refund · split, with reasons both parties read |
 |               | `/legal`                  | `index`                  |                                                                                                |
 |               |                           | `audit-packs`            |                                                                                                |
 |               |                           | `transfers`              |                                                                                                |

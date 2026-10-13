@@ -177,4 +177,94 @@ SELECT pg_temp.check(NOT has_function_privilege('authenticated', 'projects.fn_se
     'E grants: internal helpers not callable by clients');
 ROLLBACK TO e;
 
+-- ── F. prepaid, unbound escrow (Decision #197) is never settled as work (Decision #213) ──────────
+-- An open stage funded through fund_stage holds one escrow per ticket with no payee. Approving it with
+-- nobody hired is refused and moves nothing; once one ticket is claimed, approval pays that ticket,
+-- refunds the unclaimed one without completing it, and reports both counts.
+SAVEPOINT f;
+DO $f$
+DECLARE
+    v_project uuid; v_owner uuid; v_biz uuid; v_currency text; v_fl uuid;
+    v_stage uuid; v_t1 uuid; v_t2 uuid; v_status2 ticket_status;
+    v_before bigint; v_after bigint; v_out jsonb; v_msg text; r record;
+BEGIN
+    FOR r IN
+        SELECT p.id, p.owner_user_id, p.client_business_id, upper(COALESCE(p.currency, 'USD')) AS currency
+          FROM projects.projects p
+         WHERE p.client_business_id IS NOT NULL AND p.format = 'pipeline' AND p.structure_variation = 'standard'
+         ORDER BY p.id
+    LOOP
+        PERFORM set_config('request.jwt.claims', json_build_object('sub', r.owner_user_id, 'role', 'authenticated')::text, true);
+        IF finance.fn_owner_capability('business', r.client_business_id, 'spend'::finance.vault_capability) THEN
+            v_project := r.id; v_owner := r.owner_user_id; v_biz := r.client_business_id; v_currency := r.currency;
+            EXIT;
+        END IF;
+    END LOOP;
+    PERFORM set_config('request.jwt.claims', '', true);
+    IF v_project IS NULL THEN RAISE EXCEPTION 'ASSERT FAILED: F fixture: no business pipeline project whose owner can spend'; END IF;
+    SELECT fp.user_id INTO v_fl FROM org.freelancer_profiles fp
+     WHERE fp.user_id <> v_owner AND finance.fn_freelancer_payout_ready(fp.user_id)
+     ORDER BY fp.user_id LIMIT 1;
+    IF v_fl IS NULL THEN RAISE EXCEPTION 'ASSERT FAILED: F fixture: no payout-ready freelancer'; END IF;
+
+    PERFORM finance.fn_ensure_wallet('business', v_biz, v_currency);
+    PERFORM finance.fn_wallet_credit(v_biz, 'business', v_currency, 1000000, 'topup', 'inbound_payments', gen_random_uuid());
+    INSERT INTO projects.project_stages (project_id, name, sort_order, status, unit_price_cents)
+    VALUES (v_project, 'Probe unbound stage', 992, 'open', 50000) RETURNING id INTO v_stage;
+    INSERT INTO projects.tickets (project_id, current_stage_id, title, description, text_description)
+    VALUES (v_project, v_stage, 'Probe F1', '{"t":"x"}', 'A description.') RETURNING id INTO v_t1;
+    INSERT INTO projects.tickets (project_id, current_stage_id, title, description, text_description)
+    VALUES (v_project, v_stage, 'Probe F2', '{"t":"x"}', 'A description.') RETURNING id INTO v_t2;
+    SELECT status INTO v_status2 FROM projects.tickets WHERE id = v_t2;
+
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+    v_out := projects.fund_stage(v_project, v_stage);
+    PERFORM pg_temp.check((v_out ->> 'awaiting_claim_count')::int = 2, 'F fixture: open stage prepaid, 2 escrows awaiting a claim');
+
+    -- F1. Nobody hired: refused, nothing moves.
+    SELECT balance_cents INTO v_before FROM finance.wallets WHERE owner_type = 'business' AND owner_id = v_biz AND currency = v_currency;
+    BEGIN
+        PERFORM projects.approve_stage(v_project, v_stage);
+        RAISE EXCEPTION 'ASSERT FAILED: F1 approval of a stage nobody was hired on was not refused';
+    EXCEPTION WHEN object_not_in_prerequisite_state THEN v_msg := SQLERRM;
+    END;
+    PERFORM pg_temp.check(v_msg LIKE 'Nobody has been hired on this stage%', 'F1 refuse: "nobody has been hired on this stage"');
+    SELECT balance_cents INTO v_after FROM finance.wallets WHERE owner_type = 'business' AND owner_id = v_biz AND currency = v_currency;
+    PERFORM pg_temp.check(v_before = v_after
+        AND (SELECT count(*) = 2 FROM finance.escrows WHERE ticket_id IN (v_t1, v_t2) AND status = 'held')
+        AND NOT EXISTS (SELECT 1 FROM projects.tickets WHERE id IN (v_t1, v_t2) AND status = 'completed')
+        AND (SELECT status = 'open' FROM projects.project_stages WHERE id = v_stage),
+        'F1 refuse: escrows still held, no ticket completed, stage still open, wallet untouched');
+
+    -- F2. One ticket claimed: approval pays it and refunds the other without completing it.
+    INSERT INTO projects.stage_assignments (project_stage_id, assignee_type, freelancer_profile_id, assigned_by, is_client_managed, status)
+    VALUES (v_stage, 'freelancer', v_fl, v_owner, false, 'assigned');
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', v_fl, 'role', 'authenticated')::text, true);
+    PERFORM projects.claim_ticket(v_t1, v_fl);
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
+
+    SELECT balance_cents INTO v_before FROM finance.wallets WHERE owner_type = 'business' AND owner_id = v_biz AND currency = v_currency;
+    v_out := projects.approve_stage(v_project, v_stage);
+    SELECT balance_cents INTO v_after FROM finance.wallets WHERE owner_type = 'business' AND owner_id = v_biz AND currency = v_currency;
+
+    PERFORM pg_temp.check((v_out ->> 'released_count')::int = 1 AND (v_out ->> 'refunded_count')::int = 1
+        AND (v_out ->> 'refunded_cents')::bigint = 50000,
+        'F2 approve: released_count 1, refunded_count 1, refunded_cents 50000');
+    PERFORM pg_temp.check((SELECT status = 'completed' AND payment_status = 'released' FROM projects.tickets WHERE id = v_t1),
+        'F2 approve: the claimed ticket completed / released');
+    PERFORM pg_temp.check((SELECT status = v_status2 AND payment_status = 'unpaid' FROM projects.tickets WHERE id = v_t2),
+        'F2 approve: the unclaimed ticket keeps its status, payment unpaid (not completed)');
+    PERFORM pg_temp.check((SELECT status = 'refunded' FROM finance.escrows WHERE ticket_id = v_t2 AND project_stage_id = v_stage),
+        'F2 approve: the unbound escrow refunded');
+    PERFORM pg_temp.check(v_after - v_before = 50000, 'F2 approve: payer wallet refunded exactly the unclaimed ticket');
+    PERFORM pg_temp.check((SELECT count(*) = 1 FROM comms.notifications
+                            WHERE entity_id = v_stage AND type = 'stage.approved' AND user_id = v_fl),
+        'F2 approve: the claimant notified once');
+    PERFORM pg_temp.check((SELECT (payload ->> 'refunded_count')::int = 1 FROM comms.notifications
+                            WHERE entity_id = v_stage AND type = 'stage.approved' AND user_id = v_owner),
+        'F2 approve: the client told what was refunded');
+    PERFORM set_config('request.jwt.claims', '', true);
+END $f$;
+ROLLBACK TO f;
+
 ROLLBACK;

@@ -250,16 +250,34 @@ export function planStripeEvent(event: Stripe.Event): StripePlan {
 // #endregion
 
 // #region Carrying a plan out
+/** The marker `settle_card_payment` puts on a settlement it handed to a human instead of crediting. */
+export const SETTLEMENT_MISMATCH = "settlement_mismatch";
+
 /**
  * A settlement is acknowledged only once its ledger row exists (Decision #200): `settle_card_payment`
  * reports the `transaction_id` on every outcome it completes, and releases its event claim on the
- * ones it cannot credit yet. Anything without one throws, so the webhook answers 5xx and Stripe
+ * ones it cannot credit YET. Anything without one throws, so the webhook answers 5xx and Stripe
  * redelivers the event instead of it being dropped.
+ *
+ * The one acknowledged outcome without a ledger row is a settlement whose amount / currency can NEVER
+ * match its payment (`reconciliation: "settlement_mismatch"`, first delivery `unmatched`, redeliveries
+ * `replayed`): every redelivery carries the same figures, so retrying for Stripe's three-day window
+ * changes nothing. The database kept its event claim and wrote one ops row; the webhook answers 2xx.
  */
 export function requireLedgerRow(outcome: EventOutcome): EventOutcome {
 	const tx = outcome.raw.transaction_id;
 	const acknowledged = outcome.outcome === "applied" || outcome.outcome === "replayed";
 	if (acknowledged && typeof tx === "string" && tx.length > 0) return outcome;
+	if (
+		(outcome.outcome === "unmatched" || outcome.outcome === "replayed") &&
+		outcome.raw.reconciliation === SETTLEMENT_MISMATCH
+	) {
+		console.warn(
+			"[payments:webhook] settlement held for reconciliation:",
+			outcome.detail ?? "amount or currency mismatch",
+		);
+		return outcome;
+	}
 	const detail = outcome.detail ?? "no detail";
 	throw new Error(`no ledger row yet (${outcome.outcome}: ${detail}); Stripe will retry`);
 }

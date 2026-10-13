@@ -604,10 +604,15 @@ $$;
 -- A settlement is acknowledged only once its ledger row exists (Decision #200). The credit commits or
 -- the whole call raises (the claim rolls back with it); a lock or order refused after the credit marks
 -- the payment `settled_unapplied` with its `unapplied_reason` and tells the payer the money is in the
--- wallet. A success that cannot be credited yet — no payment bound to the intent (an off-session
--- deposit's success can beat bind_scheduled_payment), or an amount / currency that does not match —
--- releases its claim instead of completing it, so Stripe's retry is processed rather than replayed; a
--- mismatch is also written to ops.log_entries. Every acknowledged outcome carries `transaction_id`.
+-- wallet. A success that cannot be credited YET — no payment bound to the intent (an off-session
+-- deposit's success can beat bind_scheduled_payment) — releases its claim instead of completing it, so
+-- Stripe's retry is processed rather than replayed. A success that can NEVER be credited as it stands —
+-- an amount / currency that does not match the payment — is a reconciliation case, not a retry: no
+-- redelivery can change what Stripe settled, so its claim is COMPLETED (the outcome carries
+-- `reconciliation = 'settlement_mismatch'`), the webhook acknowledges it, one `ops.log_entries` error
+-- row is written for the event (redeliveries replay the claim and write nothing), the payment stays
+-- unsettled, and finance.v_ops_unledgered_payments lists it until a human resolves it. Every other
+-- acknowledged outcome carries `transaction_id`.
 CREATE OR REPLACE FUNCTION finance.settle_card_payment(
     p_event_id text,
     p_provider_ref text,
@@ -647,6 +652,17 @@ BEGIN
             RETURN finance.fn_stripe_event_replay(p_event_id)
                 || pg_catalog.jsonb_build_object('transaction_id', v_tx);
         END IF;
+        -- A mismatch already handed to reconciliation stays there: replayed and acknowledged, never
+        -- re-processed (which would log it again on every delivery and change nothing).
+        IF EXISTS (
+            SELECT 1 FROM finance.idempotency_keys k
+             WHERE k.key = 'stripe:' || p_event_id
+               AND k.status = 'succeeded'
+               AND k.response ->> 'reconciliation' = 'settlement_mismatch'
+        ) THEN
+            RETURN finance.fn_stripe_event_replay(p_event_id)
+                || pg_catalog.jsonb_build_object('reconciliation', 'settlement_mismatch', 'transaction_id', NULL);
+        END IF;
         PERFORM finance.fn_release_stripe_event(p_event_id);
         IF NOT finance.fn_claim_stripe_event(p_event_id, 'payment_intent.succeeded') THEN
             RAISE EXCEPTION 'event: % could not be re-claimed', p_event_id USING ERRCODE = '40001';
@@ -670,13 +686,16 @@ BEGIN
     END IF;
     -- A settlement in another currency, or of nothing, is a reconciliation case, not a credit: the
     -- ledger records money in the currency it arrived in, and this row does not describe that money.
+    -- It is deterministic — every redelivery carries the same figures — so retrying it only repeats
+    -- the miss for Stripe's whole retry window. The claim is COMPLETED (redeliveries replay it), one
+    -- ops row is written for a human (keyed on the event, so nothing writes it twice), and the payment
+    -- is left unsettled for finance.v_ops_unledgered_payments to list (`settlement_mismatch`).
     IF v_currency <> v_payment.currency OR p_amount_received IS NULL OR p_amount_received <= 0 THEN
-        PERFORM finance.fn_release_stripe_event(p_event_id);
         INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
-        VALUES (
+        SELECT
             'stripe:' || p_event_id,
             'error',
-            pg_catalog.format('Card payment %s settled as %s %s but was started as %s %s; nothing was credited',
+            pg_catalog.format('Card payment %s settled as %s %s but was started as %s %s; nothing was credited — reconcile it by hand',
                 v_payment.id, COALESCE(p_amount_received::text, 'nothing'), v_currency,
                 v_payment.amount_cents, v_payment.currency),
             pg_catalog.now(),
@@ -689,13 +708,19 @@ BEGIN
                 'amount_received_cents', p_amount_received,
                 'currency_received', v_currency,
                 'amount_cents', v_payment.amount_cents,
-                'currency', v_payment.currency
+                'currency', v_payment.currency,
+                'reconciliation', 'settlement_mismatch'
             )
+        WHERE NOT EXISTS (
+            SELECT 1 FROM ops.log_entries l
+             WHERE l.scope = 'finance.settle_card_payment' AND l.client_id = 'stripe:' || p_event_id
         );
-        RAISE WARNING 'finance.settle_card_payment: payment % does not match event % — claim released', v_payment.id, p_event_id;
-        RETURN pg_catalog.jsonb_build_object(
-            'outcome', 'unmatched', 'detail', 'settled amount or currency does not match the payment',
-            'payment_id', v_payment.id, 'transaction_id', NULL);
+        RAISE WARNING 'finance.settle_card_payment: payment % does not match event % — acknowledged for reconciliation', v_payment.id, p_event_id;
+        RETURN finance.fn_complete_stripe_event(p_event_id, pg_catalog.jsonb_build_object(
+            'outcome', 'unmatched', 'detail', 'settled amount or currency does not match the payment; held for reconciliation',
+            'reconciliation', 'settlement_mismatch',
+            'payment_id', v_payment.id, 'transaction_id', NULL,
+            'amount_received_cents', p_amount_received, 'currency_received', v_currency));
     END IF;
 
     SELECT * INTO v_wallet FROM finance.wallets WHERE id = v_payment.wallet_id FOR UPDATE;

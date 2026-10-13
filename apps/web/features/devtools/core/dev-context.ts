@@ -23,7 +23,7 @@ import { encodeLandingSim, LANDING_SIM_COOKIE } from "@features/projects/core/la
 import { DISCOVERY_SIM_COOKIE, encodeDiscoverySim } from "@features/explore/core/discovery-sim.ts";
 import { EMBEDDINGS_OVERRIDE_COOKIE } from "@projective/types/explore";
 import { AGE_OVERRIDE_COOKIE } from "@projective/types/auth";
-import { PAYOUT_OVERRIDE_COOKIE } from "@projective/types/finance";
+import { OPERATOR_DESK_OVERRIDE_COOKIE, PAYOUT_OVERRIDE_COOKIE } from "@projective/types/finance";
 import { logger } from "@web/utils/logger.ts";
 import { readStored, removeStored, SessionKeys, writeStored } from "@web/utils/storage-keys.ts";
 import {
@@ -53,6 +53,7 @@ import {
 	type DevEmailConfirmation,
 	type DevAgeRestriction,
 	type DevPayoutReadiness,
+	type DevOperatorDesk,
 	type DevSeamRole,
 	type DevServiceType,
 	type DevSessionBookingStatus,
@@ -112,6 +113,7 @@ export type {
 	DevEmailConfirmation,
 	DevAgeRestriction,
 	DevPayoutReadiness,
+	DevOperatorDesk,
 };
 
 /** The full override set. `enabled` is the master switch — when off, {@link applyDevContext} is a pass-through. */
@@ -344,6 +346,12 @@ export interface DevOverrides {
 	 * payout 403 with its Settings → Verification link. Server-side, through the `pj.dev.payout` cookie.
 	 */
 	payoutReadiness: DevPayoutReadiness;
+	/**
+	 * The operator dispute desk (Decision #212): let the database decide who is an operator, or render
+	 * `/admin/disputes` with sample cases (`queue`) or none (`empty`) for anyone. Grants nothing — a
+	 * ruling still goes to the database. Server-side, through the `pj.dev.operator` cookie.
+	 */
+	operatorDesk: DevOperatorDesk;
 }
 
 /** Selectable option metadata for the switcher UI. */
@@ -400,6 +408,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	emailConfirmation: "auto",
 	ageRestriction: "auto",
 	payoutReadiness: "auto",
+	operatorDesk: "auto",
 };
 
 /** Account-type options in display order. */
@@ -717,6 +726,13 @@ export const DEV_PAYOUT_READINESS: ReadonlyArray<DevOption<DevPayoutReadiness>> 
 	{ value: "not_ready", label: "Not ready" },
 ];
 
+/** Operator-desk previews (Decision #212). `Database` lets `security.is_admin()` decide. */
+export const DEV_OPERATOR_DESKS: ReadonlyArray<DevOption<DevOperatorDesk>> = [
+	{ value: "auto", label: "Database" },
+	{ value: "queue", label: "Sample queue" },
+	{ value: "empty", label: "Empty queue" },
+];
+
 // #endregion
 
 // #region Store
@@ -836,6 +852,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devAgeRestriction;
 		if (next.payoutReadiness !== "auto") root.dataset.devPayoutReadiness = next.payoutReadiness;
 		else delete root.dataset.devPayoutReadiness;
+		if (next.operatorDesk !== "auto") root.dataset.devOperatorDesk = next.operatorDesk;
+		else delete root.dataset.devOperatorDesk;
 		root.dataset.devDirection = next.layoutDirection;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
 		// properties everywhere mean the shell and every surface mirror to the opposite edge.
@@ -885,6 +903,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devEmailConfirmation;
 		delete root.dataset.devAgeRestriction;
 		delete root.dataset.devPayoutReadiness;
+		delete root.dataset.devOperatorDesk;
 		delete root.dataset.devDirection;
 		// Restore the document's natural direction (the pref-driven default, LtR here).
 		root.removeAttribute("dir");
@@ -894,6 +913,7 @@ function reflect(next: DevOverrides): void {
 	writeEmbeddingsCookie(next);
 	writeAgeCookie(next);
 	writePayoutCookie(next);
+	writeOperatorDeskCookie(next);
 	globalThis.dispatchEvent?.(new CustomEvent(DEV_SEAM_EVENT, { detail: next }));
 }
 
@@ -911,6 +931,13 @@ function writePayoutCookie(next: DevOverrides): void {
 	document.cookie = next.enabled && next.payoutReadiness !== "auto"
 		? `${PAYOUT_OVERRIDE_COOKIE}=${next.payoutReadiness}; path=/; samesite=lax`
 		: `${PAYOUT_OVERRIDE_COOKIE}=; path=/; max-age=0; samesite=lax`;
+}
+
+/** Mirror the operator-desk axis into `pj.dev.operator` — the only channel `/admin/disputes` reads. */
+function writeOperatorDeskCookie(next: DevOverrides): void {
+	document.cookie = next.enabled && next.operatorDesk !== "auto"
+		? `${OPERATOR_DESK_OVERRIDE_COOKIE}=${next.operatorDesk}; path=/; samesite=lax`
+		: `${OPERATOR_DESK_OVERRIDE_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 function writeEmbeddingsCookie(next: DevOverrides): void {

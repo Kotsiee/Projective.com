@@ -114,8 +114,11 @@ export type ApproveStage = z.infer<typeof ApproveStageSchema>;
  * `status` is `paid`, not `approved`: the function releases the escrow and settles the stage in one
  * transaction, so there is no intermediate approved-but-unpaid state to report. The counts and sums
  * cover only what THIS approval released: a ticket an earlier acceptance paid is not in them, so a
- * stage every acceptance already paid out settles with `releasedCount` 0. `handoverUnlocked` is true
- * when this was the project's last unsettled stage and the Contact Handover fired.
+ * stage every acceptance already paid out settles with `releasedCount` 0. `refundedCount` /
+ * `refundedCents` are prepaid tickets nobody claimed (Decision #197): they go back to the payer and
+ * keep their status — approval never completes a ticket it has nobody to pay (Decision #213).
+ * `handoverUnlocked` is true when this was the project's last unsettled stage and the Contact
+ * Handover fired.
  */
 export const StageApprovedSchema = z.object({
 	stageId: z.string().min(1).max(80),
@@ -123,6 +126,8 @@ export const StageApprovedSchema = z.object({
 	releasedCount: z.number().int().min(0),
 	totalPaidCents: z.number().int().min(0),
 	feeCents: z.number().int().min(0),
+	refundedCount: z.number().int().min(0),
+	refundedCents: z.number().int().min(0),
 	handoverUnlocked: z.boolean(),
 });
 export type StageApproved = z.infer<typeof StageApprovedSchema>;

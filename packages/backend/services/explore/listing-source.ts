@@ -40,9 +40,18 @@ export interface ResolvedListing {
 	catalog: Catalog;
 }
 
-/** Resolve one listing by its item id (`svc-…` / `prd-…`). See the module header for the seam. */
-export async function resolveListing(itemId: string): Promise<ResolvedListing | null | undefined> {
-	if (isExploreBackendLive()) {
+/**
+ * Resolve one listing by its item id (`svc-…` / `prd-…`). See the module header for the seam.
+ *
+ * `live` overrides which flag decides the seam. A write that commits under another domain's flag
+ * passes that flag, so the listing it validates against and the write it makes are both live or both
+ * stubbed — never a live listing driving a stub write, or a snapshot driving a live one.
+ */
+export async function resolveListing(
+	itemId: string,
+	live: boolean = isExploreBackendLive(),
+): Promise<ResolvedListing | null | undefined> {
+	if (live) {
 		let base: Catalog | null;
 		try {
 			base = await loadCatalog();

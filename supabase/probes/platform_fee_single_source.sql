@@ -81,9 +81,15 @@ BEGIN
 
     SELECT o.platform_fee_minor, o.platform_fee_bp INTO v_fee, v_fee_bp
       FROM finance.orders o WHERE o.id = (v_order ->> 'order_id')::uuid;
-    SELECT t.amount_cents INTO v_credit FROM finance.transactions t
-     WHERE t.ref_table = 'orders' AND t.ref_id = (v_order ->> 'order_id')::uuid
-       AND t.reason = 'product_sale' AND t.direction = 'credit';
+    -- A product sale is an earned credit: it waits out the pending window in finance.pending_releases
+    -- (Decision #191) and reaches finance.transactions only at maturity, so read both, once each.
+    SELECT (SELECT COALESCE(SUM(pr.amount_cents), 0) FROM finance.pending_releases pr
+             WHERE pr.order_id = (v_order ->> 'order_id')::uuid AND pr.reason = 'product_sale')
+         + (SELECT COALESCE(SUM(t.amount_cents), 0) FROM finance.transactions t
+             WHERE t.ref_table = 'orders' AND t.ref_id = (v_order ->> 'order_id')::uuid
+               AND t.reason = 'product_sale' AND t.direction = 'credit'
+               AND NOT EXISTS (SELECT 1 FROM finance.pending_releases pr WHERE pr.transaction_id = t.id))
+      INTO v_credit;
 
     IF v_fee_bp = 300 THEN
         RAISE NOTICE 'PASS place_wallet_order records the payer''s negotiated rate (300 bp)';

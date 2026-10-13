@@ -17,6 +17,10 @@ GROUP BY w.id, w.owner_type, w.owner_id, w.currency, w.balance_cents;
 -- Ops (Decision #200): every settled card payment without the ledger credit it is — no
 -- transaction_id, or one that is not this payment's credit of what arrived into its wallet. Empty
 -- while finance.settle_card_payment and the inbound_payments CHECKs hold; service role only.
+-- Plus every payment Stripe settled in an amount / currency that does not match it
+-- (`settlement_mismatch`): money that arrived and that settle_card_payment acknowledged for a human to
+-- reconcile rather than credit. Read from the completed event claim, so the row stays listed until the
+-- payment leaves `requires_payment` / `processing` (a human settles or closes it).
 CREATE OR REPLACE VIEW finance.v_ops_unledgered_payments AS
 SELECT
     p.id AS payment_id,
@@ -31,7 +35,10 @@ SELECT
     p.transaction_id,
     p.unapplied_reason,
     p.succeeded_at,
-    CASE WHEN t.id IS NULL THEN 'no_ledger_row' ELSE 'ledger_row_mismatch' END AS problem
+    CASE WHEN t.id IS NULL THEN 'no_ledger_row' ELSE 'ledger_row_mismatch' END AS problem,
+    NULL::text AS stripe_event_id,
+    NULL::bigint AS reported_amount_cents,
+    NULL::text AS reported_currency
 FROM finance.inbound_payments p
 LEFT JOIN finance.transactions t ON t.id = p.transaction_id
 WHERE p.status IN ('succeeded', 'settled_unapplied')
@@ -42,7 +49,31 @@ WHERE p.status IN ('succeeded', 'settled_unapplied')
      OR t.amount_cents IS DISTINCT FROM p.amount_received_cents
      OR t.ref_table IS DISTINCT FROM 'inbound_payments'
      OR t.ref_id IS DISTINCT FROM p.id
-  );
+  )
+UNION ALL
+SELECT
+    p.id AS payment_id,
+    p.status,
+    p.purpose,
+    p.wallet_id,
+    p.created_by,
+    p.provider_ref,
+    p.amount_cents,
+    p.amount_received_cents,
+    p.currency,
+    p.transaction_id,
+    p.unapplied_reason,
+    p.succeeded_at,
+    'settlement_mismatch' AS problem,
+    substr(k.key, 8) AS stripe_event_id,
+    (k.response ->> 'amount_received_cents')::bigint AS reported_amount_cents,
+    k.response ->> 'currency_received' AS reported_currency
+FROM finance.idempotency_keys k
+JOIN finance.inbound_payments p ON p.id::text = k.response ->> 'payment_id'
+WHERE k.scope = 'stripe.webhook'
+  AND k.status = 'succeeded'
+  AND k.response ->> 'reconciliation' = 'settlement_mismatch'
+  AND p.status IN ('requires_payment', 'processing');
 
 -- The ONLY connection shape a client sees: a definer view (runs as owner, reads the un-policied
 -- base table) filtered to the caller. It cannot project a token — the token vault

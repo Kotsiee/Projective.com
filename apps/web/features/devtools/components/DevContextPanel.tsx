@@ -28,6 +28,7 @@ import {
 	DEV_EMAIL_CONFIRMATIONS,
 	DEV_AGE_RESTRICTIONS,
 	DEV_PAYOUT_READINESS,
+	DEV_OPERATOR_DESKS,
 	DEV_EMBEDDINGS,
 	DEV_ROLES,
 	DEV_SAVED,
@@ -728,6 +729,21 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.payoutReadiness}
 						disabled={!o.enabled}
 						onChange={(payoutReadiness) => patchDevContext({ payoutReadiness })}
+					/>
+				</Field>
+
+				{
+					/* The operator dispute desk (`/admin/disputes`, Decision #212): only an `ops.admin_users` row
+				    opens it, and no page control writes one. Server-side via `pj.dev.operator`; reload to apply.
+				    Grants nothing — a ruling on a sample still meets the database refusal. */
+				}
+				<Field label="Operator desk" hint="/admin/disputes">
+					<Segment
+						name="Operator desk"
+						options={DEV_OPERATOR_DESKS}
+						value={o.operatorDesk}
+						disabled={!o.enabled}
+						onChange={(operatorDesk) => patchDevContext({ operatorDesk })}
 					/>
 				</Field>
 

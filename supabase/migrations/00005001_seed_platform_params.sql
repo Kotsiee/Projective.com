@@ -23,6 +23,8 @@ INSERT INTO security.platform_params (key, value, description) VALUES
         'Hours after a set-session block is paid for that the provider has to agree each remaining sitting''s time with the client before the provisional weekly time stands (projects.fn_book_session_slot, Decision #211). Capped at session_cancel_notice_hours before the provisional start.'),
     ('dispute_response_hours', '48'::jsonb,
         'Hours the respondent has to answer a dispute the attendance audit could not settle before it auto-escalates to an auditor (finance.sweep_disputes; PRODUCT_SPEC §Dispute Resolution 2, Decision #212).'),
+    ('dispute_review_hours', '72'::jsonb,
+        'The review SLA: hours an operator has to rule on a dispute once it is under review (finance.disputes.review_by). A target, never a ruling — a case past it stays held; the dispute sweep raises an ops alert and tells the operators, at most once a day per case (Decision #212(c)).'),
     ('dispute_dismiss_presence_pct', '80'::jsonb,
         'A no-show claim is dismissed by the attendance audit when the room''s logs show the provider and the claimant each present for at least this percentage of the sitting (PRODUCT_SPEC §Dispute Resolution 3, Decision #212).'),
     ('platform_fee_bp', '500'::jsonb,

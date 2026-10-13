@@ -35,6 +35,8 @@ Three writers, one table:
 | `routes/_error.tsx` on a 5xx                                | (none: server-side)     | `error`          | `server` | `ssr`        |
 | `finance.fn_reconcile_wallets` (pg_cron, nightly — Decision #186) | (none: in-database) | `error`          | `server` | `finance.reconcile_wallets` |
 | The job registry's functions (`ops.fn_log_scheduler_event` — Decision #203) | (none: in-database) | `warn` · `error` | `server` | `ops.scheduler` |
+| `finance.settle_card_payment` — a settlement whose amount / currency cannot match its payment, held for reconciliation (one row per Stripe event, `client_id = 'stripe:<evt_id>'`) | (none: in-database) | `error` | `server` | `finance.settle_card_payment` |
+| `finance.claim_due_deposit_rules` — an unbound scheduled-deposit run closed without being re-sent (`client_id = 'deposit:<payment id>'`; `data.reason` = `unbound_expired` / `unbound_canceled`) | (none: in-database) | `error` · `warn` | `server` | `finance.claim_due_deposit_rules` |
 
 A reconciliation row is one drifted wallet: `client_id` is `reconcile:<run id>` and `data` carries
 the wallet and its three figures (see [finance Functions.md § Ledger integrity](../finance/Functions.md#ledger-integrity-decision-186)).

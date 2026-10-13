@@ -1,4 +1,4 @@
-import type { JSX } from "preact";
+import type { JSX, RefObject } from "preact";
 import type { Signal } from "@preact/signals";
 import { useEffect, useMemo, useRef } from "preact/hooks";
 import { Splitter, SplitterPanel } from "@projective/ui/layout";
@@ -12,7 +12,7 @@ import {
 } from "@projective/ui/overlay";
 import { useDismiss, useFocusTrap, useOverlayStack } from "@projective/ui/hooks";
 import { ProgressiveImage } from "@projective/ui/display/image";
-import { Tooltip } from "@projective/ui/feedback";
+import { ConfirmPopup, Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { assetMediaSrc, assetPlaceholder } from "@features/files/core/asset-media.ts";
 import type {
@@ -46,8 +46,10 @@ import { UserAvatar } from "@web/components/UserAvatar.tsx";
  * full-height navigation tree) from the large RIGHT interactive workspace (a top-right expand-to-
  * fullscreen toggle + open-in-new-tab, over a media preview + asset metadata / client-feedback panel).
  * Hard min/max % on both panes preserve the large-workspace ⁄ small-context ratio. The modal footer
- * enforces the review controls: **Accept & release payment** is always available; **Request Revision** is
- * blocked until at least one text annotation OR global guideline has been provided.
+ * enforces the review controls: **Accept & release payment** is always available and asks once more
+ * before it fires — acceptance releases the ticket's escrow, which cannot be undone (Decision #213);
+ * **Request Revision** is blocked until at least one text annotation OR global guideline has been
+ * provided.
  *
  * Mounted through {@link BodyPortal} (NOT the in-tree Portal) so its `position: fixed` never re-bases
  * onto the transformed/blurred shell chrome (the glass-blur trap). Rendered by the SubmissionExplorer
@@ -649,16 +651,32 @@ export function SubmissionReviewModal(props: SubmissionReviewModalProps): JSX.El
 							>
 								{buyable ? `Buy a revision · ${revisions?.priceLabel}` : "Request Revision"}
 							</button>
-							<button
-								type="button"
-								class="subm-btn subm-btn--primary"
-								disabled={busy || !decidable}
-								onClick={() => {
+							<ConfirmPopup
+								label="Release payment"
+								message="Accepting releases this ticket's escrow to the freelancer now. This cannot be undone."
+								acceptLabel="Accept & release"
+								rejectLabel="Not yet"
+								placement="top"
+								onAccept={() => {
 									if (!busy && decidable) onAccept();
 								}}
-							>
-								Accept & release payment
-							</button>
+								trigger={(api) => (
+									<button
+										ref={api.ref as RefObject<HTMLButtonElement>}
+										type="button"
+										class="subm-btn subm-btn--primary"
+										disabled={busy || !decidable}
+										aria-haspopup="dialog"
+										aria-expanded={api.expanded}
+										aria-controls={api.panelId}
+										onClick={() => {
+											if (!busy && decidable) api.toggle();
+										}}
+									>
+										Accept & release payment
+									</button>
+								)}
+							/>
 						</div>
 					</footer>
 				</div>

@@ -691,6 +691,26 @@ A conversation addressed as `dm-{handle}` with no thread yet resolves to a VIRTU
 the live path (an empty page, never a minted thread), so an invitation notification's
 `/messages/dm-{inviter}` link always lands somewhere answerable.
 
+### Operator dispute desk (Decision #212)
+
+`/admin/disputes` (`routes/(dashboard)/admin/disputes.tsx` → `features/admin/routes/DisputeDeskScreen.tsx`)
+is the platform operator's dispute queue. It lives under the reserved `admin` segment (`RESERVED_HANDLES`,
+`org.fn_is_reserved_handle`), so no handle can shadow it and a bare `/admin` is a 404. **The queue read
+is the gate:** `finance.list_disputes_for_review` refuses anyone but `security.is_admin()`
+(`ops.admin_users`) and the controller turns that refusal — or no session, or no live database — into a
+**404**, so a non-operator never learns the desk exists and never receives a ruling control. A case
+is **never a URL**: it opens in a dialog over the queue and is read and ruled through the API by id
+(Decision #88 — a uuid does not route, and disputes carry no opaque slug). PRODUCT_SPEC's party-facing
+`/disputes` pages remain unbuilt; a party reads their case in the session sidebar. In development the
+Dev Context Switcher's `operatorDesk` axis (`pj.dev.operator`) renders sample cases instead; it grants
+nothing.
+
+| Path | Method / body | Delegates to |
+| :-- | :-- | :-- |
+| `/api/finance/disputes` | `GET` `?status=open\|awaiting_response\|under_review` (optional) | `DisputeBackendService.queue` → `finance.list_disputes_for_review` (operator only, else 403) |
+| `/api/finance/disputes/[disputeId]` | `GET` | `DisputeBackendService.get` → `finance.get_dispute` (a party or an operator; 404 otherwise) |
+| `/api/finance/disputes/[disputeId]/resolve` | `POST` `{ outcome, payeeShareBp, notes }` | `DisputeBackendService.resolve` → `finance.resolve_dispute` (operator only, else 403) |
+
 ## Thin controllers / fat services
 
 Routes only parse + validate + guard, then delegate. The handler → service → `page(data)` pattern is

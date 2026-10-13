@@ -204,6 +204,9 @@ export function devDisputeCase(
 		respondBy: summary.respondBy,
 		respondedAt: summary.status === "under_review" || !live ? summary.openedAt : null,
 		escalatedAt: summary.status === "under_review" || !live ? summary.openedAt : null,
+		reviewBy: summary.status === "under_review" || !live
+			? new Date(Date.parse(summary.openedAt) + 72 * 3_600_000).toISOString()
+			: null,
 		resolvedAt: summary.resolvedAt,
 		resolutionNotes: live
 			? null

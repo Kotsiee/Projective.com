@@ -300,6 +300,8 @@ export async function approveStageRow(
 			releasedCount: cents(payload.released_count),
 			totalPaidCents: cents(payload.total_paid_cents),
 			feeCents: cents(payload.fee_cents),
+			refundedCount: cents(payload.refunded_count),
+			refundedCents: cents(payload.refunded_cents),
 			handoverUnlocked: payload.handover_unlocked === true,
 		},
 	};

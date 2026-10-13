@@ -1,6 +1,11 @@
 import { assertEquals } from "@std/assert";
-import { DisputeCaseSchema } from "@projective/types/finance";
-import { type RawDispute, toDisputeCase } from "./dispute-model.ts";
+import { DisputeCaseSchema, DisputeQueueSchema } from "@projective/types/finance";
+import {
+	type RawDispute,
+	type RawQueueItem,
+	toDisputeCase,
+	toDisputeQueue,
+} from "./dispute-model.ts";
 
 /*
  * finance.get_dispute → DisputeCase (Decision #212). A wrong mapping here would show a reader the wrong
@@ -138,3 +143,70 @@ Deno.test("a live case carries the actions the database offers", () => {
 	assertEquals(d.settlement, null);
 	assertEquals([d.canRespond, d.canEscalate, d.canResolve], [true, true, false]);
 });
+
+Deno.test("the review SLA maps when present and reads null on an older row", () => {
+	assertEquals(
+		toDisputeCase(raw({ review_by: "2026-10-16T11:00:00.000Z" }))!.reviewBy,
+		"2026-10-16T11:00:00.000Z",
+	);
+	assertEquals(toDisputeCase(raw())!.reviewBy, null);
+});
+
+// #region The operator queue
+function queueItem(over: Partial<RawQueueItem> = {}): RawQueueItem {
+	return {
+		id: ID,
+		status: "under_review",
+		kind: "no_show",
+		reason: "The provider did not join the session.",
+		opened_at: "2026-10-13T10:00:00.000Z",
+		respond_by: "2026-10-15T10:00:00.000Z",
+		escalated_at: "2026-10-13T11:00:00.000Z",
+		review_by: "2026-10-16T11:00:00.000Z",
+		overdue: true,
+		amount_minor: 10000,
+		currency: "GBP",
+		project: { slug: "prj-abcdefghjk", title: "Coaching" },
+		sitting: {
+			title: "Kick-off",
+			starts_at: "2026-10-13T08:00:00.000Z",
+			ends_at: "2026-10-13T09:00:00.000Z",
+		},
+		claimant: { name: "  Ada Lovelace ", handle: "ada" },
+		respondent: { name: null, handle: null },
+		statements: 2,
+		evidence: 1,
+		...over,
+	};
+}
+
+Deno.test("a queue row maps with its money, parties, deadline and counts", () => {
+	const q = toDisputeQueue({
+		items: [queueItem()],
+		counts: { open: 1, awaiting_response: 2, under_review: 3, overdue: 1 },
+	});
+	assertEquals(DisputeQueueSchema.safeParse(q).success, true);
+	const item = q.items[0];
+	assertEquals(item.overdue, true);
+	assertEquals(item.reviewBy, "2026-10-16T11:00:00.000Z");
+	assertEquals(item.amountLabel.includes("100"), true);
+	assertEquals(item.claimant, { name: "Ada Lovelace", handle: "ada" });
+	assertEquals(item.respondent, { name: null, handle: null });
+	assertEquals([item.statementCount, item.evidenceCount], [2, 1]);
+	assertEquals(q.counts, { open: 1, awaitingResponse: 2, underReview: 3, overdue: 1 });
+});
+
+Deno.test("a queue drops a status it does not list and only an under-review case is overdue", () => {
+	const q = toDisputeQueue({
+		items: [
+			queueItem({ status: "resolved_refund" }),
+			queueItem({ status: "awaiting_response", overdue: true }),
+		],
+		counts: null,
+	});
+	assertEquals(q.items.length, 1);
+	assertEquals(q.items[0].overdue, false);
+	assertEquals(q.counts, { open: 0, awaitingResponse: 0, underReview: 0, overdue: 0 });
+	assertEquals(toDisputeQueue(null).items, []);
+});
+// #endregion

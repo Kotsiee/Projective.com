@@ -46,7 +46,11 @@ export async function standingFor(
 	rows: readonly TxnRow[],
 ): Promise<WalletStanding | null> {
 	const db = getUserClient(ctx.actor.accessToken);
-	const [levelsRes, tiersRes, standingRes] = await Promise.all([
+	// The flat platform fee as the database applies it to this subject: `get_purchase_owner` resolves
+	// `finance.fn_effective_platform_fee_bp` (a negotiated rate, else the platform param) for a caller
+	// who can see the subject's finances. A person is a `user` owner; a team vault is a `team`.
+	const ownerType = subject.type === "team" ? "team" : "user";
+	const [levelsRes, tiersRes, standingRes, feeRes] = await Promise.all([
 		db.schema("org").from("standing_levels").select("level, label, min_score, min_completed_stages").order("level"),
 		db.schema("finance").from("standing_commission_tiers").select("level, marketplace_commission_bp"),
 		db.schema("org").from("entity_standing")
@@ -54,10 +58,16 @@ export async function standingFor(
 			.eq("subject_type", subject.type)
 			.eq("subject_id", subject.id)
 			.maybeSingle(),
+		db.schema("finance").rpc("get_purchase_owner", {
+			p_owner_type: ownerType,
+			p_owner_id: subject.id,
+		}),
 	]);
 	if (levelsRes.error) throw new Error(`org.standing_levels read failed: ${levelsRes.error.message}`);
 	if (tiersRes.error) throw new Error(`finance.standing_commission_tiers read failed: ${tiersRes.error.message}`);
 	if (standingRes.error) throw new Error(`org.entity_standing read failed: ${standingRes.error.message}`);
+	if (feeRes.error) throw new Error(`finance.get_purchase_owner failed: ${feeRes.error.message}`);
+	const effectiveFeeBp = (feeRes.data as { platform_fee_bp?: number | null } | null)?.platform_fee_bp;
 
 	const commission = new Map<number, number>();
 	for (const t of (tiersRes.data ?? []) as { level: number; marketplace_commission_bp: number }[]) {
@@ -135,7 +145,7 @@ export async function standingFor(
 		blockedBy,
 		commissionBp: current.commissionBp,
 		nextCommissionBp: nextBp,
-		platformFeeBp: PLATFORM_FEE_BP,
+		platformFeeBp: typeof effectiveFeeBp === "number" ? effectiveFeeBp : PLATFORM_FEE_BP,
 		components,
 		commissionPaid: hasVolume ? ctx.money.derived(Math.round((volume * current.commissionBp) / 10000)) : null,
 		commissionAtNext: hasVolume && nextBp !== null

@@ -4,8 +4,9 @@
 --
 -- Two real sessions (dblink 'a' and 'b') settle the same escrow at once. A runs first and holds its
 -- locks; B is sent and the probe waits until B is blocked on one of A's locks; A commits; B finishes
--- and commits. Every credit and refund is a `finance.transactions` row referencing the escrow, so
--- the ledger rows B adds after A committed must be zero. A double payout shows as `FAIL … B added n`.
+-- and commits. Every credit and refund is a `finance.transactions` row referencing the escrow, or an
+-- earned credit pending in `finance.pending_releases` (Decision #191), so the movements B adds after
+-- A committed must be zero. A double payout shows as `FAIL … B added n`.
 -- The two stage doors also refuse a stage that is already `paid` / `cancelled`.
 --
 -- COMMITS. A race needs both sessions to commit, so this probe cannot run inside a rolled-back
@@ -90,10 +91,16 @@ BEGIN
     FROM probe_fx f WHERE ps.id = f.stage;
 END $$;
 
+-- Every money movement the escrows caused: ledger rows referencing them, plus earned credits still
+-- waiting out the pending window in finance.pending_releases (Decision #191), which reach the ledger
+-- only at maturity — a matured row is counted once, by its ledger row.
 CREATE FUNCTION pg_temp.probe_moves() RETURNS bigint
 LANGUAGE sql AS $$
-    SELECT count(*) FROM finance.transactions
-    WHERE ref_table = 'escrows' AND ref_id IN (SELECT id FROM probe_escrows);
+    SELECT (SELECT count(*) FROM finance.transactions t
+             WHERE t.ref_table = 'escrows' AND t.ref_id IN (SELECT id FROM probe_escrows)
+               AND NOT EXISTS (SELECT 1 FROM finance.pending_releases pr WHERE pr.transaction_id = t.id))
+         + (SELECT count(*) FROM finance.pending_releases pr
+             WHERE pr.escrow_id IN (SELECT id FROM probe_escrows));
 $$;
 
 -- Open a session that runs `q` through a catching wrapper (so a refusal is a result, not an

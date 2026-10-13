@@ -10,9 +10,13 @@
 --                                              ──► resolved_release  both in the room ≥ 80 % — dismissed
 --                                              ──► awaiting_response the logs are ambiguous
 --   awaiting_response ──(the counterparty responds | either party escalates | respond_by passes)
---                     ──► under_review
+--                     ──► under_review   (review_by = now + dispute_review_hours — the review SLA)
 --   open | awaiting_response | under_review ──(an operator rules)──► resolved_release | resolved_refund
 --                                                                  | resolved_split
+--
+-- The review SLA is a target, never a ruling: the platform does not rule on money without a human
+-- (Decision #212(c)). An `under_review` case past `review_by` stays held; the sweep raises an ops
+-- alert and tells every operator, at most once a day per case, until somebody rules.
 --
 -- A resolved row is terminal, and no row is ever deleted (finance.fn_dispute_records_immutable,
 -- bound in 00001830). Every money move goes through the per-escrow seat primitives in 00001155
@@ -25,12 +29,12 @@
 --   4. Settlement           fn_settle_dispute — the one writer of a resolved_* status
 --   5. Advance              fn_advance_dispute — open → audit → ruling or awaiting_response
 --   6. User doors           respond_to_dispute · escalate_dispute · get_dispute
---   7. Operator door        resolve_dispute — security.is_admin() only
+--   7. Operator doors       list_disputes_for_review · resolve_dispute — security.is_admin() only
 --   8. The sweep            sweep_disputes — scheduled every 15 minutes (00005060)
 --   9. Immutability         fn_dispute_records_immutable (trigger function)
 --
 -- Grants: 00002510 (#region Disputes). Params: `dispute_response_hours` (48),
--- `dispute_dismiss_presence_pct` (80) in 00005001.
+-- `dispute_review_hours` (72), `dispute_dismiss_presence_pct` (80) in 00005001.
 -- =============================================================================================
 
 -- #region 1. Context, party and the one "live dispute" predicate
@@ -107,6 +111,19 @@ BEGIN
     END IF;
     RETURN NULL;
 END;
+$$;
+
+-- The review SLA a case gets as it enters `under_review`: p_from + `dispute_review_hours` (72). Every
+-- door into review (the respondent's statement, an escalation, the sweep's auto-escalation) stamps it,
+-- so `ck_disputes_review_deadline` holds. A target for the operators, never a ruling.
+CREATE OR REPLACE FUNCTION finance.fn_dispute_review_by(p_from timestamptz)
+RETURNS timestamptz
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT p_from + pg_catalog.make_interval(hours => projects.fn_session_param('dispute_review_hours', 72));
 $$;
 -- #endregion
 
@@ -493,6 +510,8 @@ BEGIN
            SET responded_at = COALESCE(responded_at, pg_catalog.now()),
                status = CASE WHEN status = 'awaiting_response' THEN 'under_review'::public.dispute_status ELSE status END,
                escalated_at = CASE WHEN status = 'awaiting_response' THEN pg_catalog.now() ELSE escalated_at END,
+               review_by = CASE WHEN status = 'awaiting_response'
+                                THEN finance.fn_dispute_review_by(pg_catalog.now()) ELSE review_by END,
                updated_at = pg_catalog.now()
          WHERE id = v_d.id
         RETURNING status INTO v_status;
@@ -536,7 +555,8 @@ BEGIN
         RAISE EXCEPTION 'This dispute is closed' USING ERRCODE = 'PS409';
     END IF;
     UPDATE finance.disputes
-       SET status = 'under_review', escalated_at = pg_catalog.now(), updated_at = pg_catalog.now()
+       SET status = 'under_review', escalated_at = pg_catalog.now(),
+           review_by = finance.fn_dispute_review_by(pg_catalog.now()), updated_at = pg_catalog.now()
      WHERE id = v_d.id;
     PERFORM finance.fn_notify_dispute_escalated(v_d.id, v_uid, 'A party escalated the case');
     RETURN pg_catalog.jsonb_build_object('dispute_id', v_d.id, 'status', 'under_review');
@@ -615,6 +635,7 @@ BEGIN
         'respond_by', v_d.respond_by,
         'responded_at', v_d.responded_at,
         'escalated_at', v_d.escalated_at,
+        'review_by', v_d.review_by,
         'resolved_at', v_d.resolved_at,
         'resolution_notes', v_d.resolution_notes,
         'resolved_by_operator', v_d.resolved_by IS NOT NULL,
@@ -652,7 +673,92 @@ END;
 $$;
 -- #endregion
 
--- #region 7. The operator door
+-- #region 7. The operator doors
+-- The operator queue (`/admin/disputes`): every LIVE dispute, or those in one live status, with what a
+-- reviewer triages on — the parties, the money at stake, the sitting, the deadline that applies and
+-- whether the review SLA has passed — oldest-due first (`under_review` by `review_by`, then
+-- `awaiting_response` by `respond_by`, then `open` by when it was raised). `counts` covers the whole
+-- live set, so a filtered read still names every tab. security.is_admin() only: anyone else gets
+-- 42501, which the page answers with a 404 (the desk's existence is not disclosed). At most 200 rows.
+CREATE OR REPLACE FUNCTION finance.list_disputes_for_review(p_status text DEFAULT NULL)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_now timestamptz := pg_catalog.now();
+BEGIN
+    IF auth.uid() IS NULL OR NOT security.is_admin() THEN
+        RAISE EXCEPTION 'Only a platform operator can read the dispute queue' USING ERRCODE = '42501';
+    END IF;
+    IF p_status IS NOT NULL AND p_status NOT IN ('open', 'awaiting_response', 'under_review') THEN
+        RAISE EXCEPTION 'The queue lists live disputes: open, awaiting_response or under_review' USING ERRCODE = '22023';
+    END IF;
+
+    RETURN pg_catalog.jsonb_build_object(
+        'counts', (
+            SELECT pg_catalog.jsonb_build_object(
+                'open', pg_catalog.count(*) FILTER (WHERE d.status = 'open'),
+                'awaiting_response', pg_catalog.count(*) FILTER (WHERE d.status = 'awaiting_response'),
+                'under_review', pg_catalog.count(*) FILTER (WHERE d.status = 'under_review'),
+                'overdue', pg_catalog.count(*) FILTER (WHERE d.status = 'under_review' AND d.review_by <= v_now)
+            )
+              FROM finance.disputes d
+             WHERE d.status IN ('open', 'awaiting_response', 'under_review')
+        ),
+        'items', COALESCE((
+            SELECT pg_catalog.jsonb_agg(q.item ORDER BY q.rank, q.due, q.id)
+              FROM (
+                  SELECT d.id,
+                         CASE d.status WHEN 'under_review' THEN 0 WHEN 'awaiting_response' THEN 1 ELSE 2 END AS rank,
+                         COALESCE(CASE d.status WHEN 'under_review' THEN d.review_by
+                                                WHEN 'awaiting_response' THEN d.respond_by END,
+                                  d.created_at) AS due,
+                         pg_catalog.jsonb_build_object(
+                             'id', d.id,
+                             'status', d.status,
+                             'kind', CASE WHEN d.session_event_id IS NOT NULL THEN 'no_show' ELSE 'general' END,
+                             'reason', d.reason,
+                             'opened_at', d.created_at,
+                             'respond_by', d.respond_by,
+                             'escalated_at', d.escalated_at,
+                             'review_by', d.review_by,
+                             'overdue', d.status = 'under_review' AND d.review_by <= v_now,
+                             'amount_minor', e.amount_cents,
+                             'currency', e.currency,
+                             'project', pg_catalog.jsonb_build_object('slug', p.slug, 'title', p.title),
+                             'sitting', CASE WHEN se.id IS NOT NULL THEN pg_catalog.jsonb_build_object(
+                                 'title', se.title, 'starts_at', se.start_time, 'ends_at', se.end_time) END,
+                             'claimant', pg_catalog.jsonb_build_object(
+                                 'name', NULLIF(pg_catalog.btrim(pg_catalog.concat_ws(' ', cu.first_name, cu.last_name)), ''),
+                                 'handle', cu.username),
+                             'respondent', pg_catalog.jsonb_build_object(
+                                 'name', NULLIF(pg_catalog.btrim(pg_catalog.concat_ws(' ', ou.first_name, ou.last_name)), ''),
+                                 'handle', ou.username),
+                             'statements', (SELECT pg_catalog.count(*) FROM finance.dispute_messages m
+                                             WHERE m.dispute_id = d.id),
+                             'evidence', (SELECT pg_catalog.count(*) FROM finance.dispute_evidence ev
+                                           WHERE ev.dispute_id = d.id)
+                         ) AS item
+                    FROM finance.disputes d
+                    JOIN finance.escrows e ON e.id = d.escrow_id
+                    JOIN projects.project_stages ps ON ps.id = e.project_stage_id
+                    JOIN projects.projects p ON p.id = ps.project_id
+                    LEFT JOIN projects.session_events se ON se.id = d.session_event_id
+                    LEFT JOIN org.users_public cu ON cu.user_id = d.opened_by_profile
+                    LEFT JOIN org.users_public ou ON ou.user_id = p.owner_user_id
+                   WHERE d.status IN ('open', 'awaiting_response', 'under_review')
+                     AND (p_status IS NULL OR d.status::text = p_status)
+                   ORDER BY 2, 3, d.id
+                   LIMIT 200
+              ) q
+        ), '[]'::jsonb)
+    );
+END;
+$$;
+
 -- A platform operator (ops.admin_users, through security.is_admin()) rules on a live case: release,
 -- refund, or a split giving the provider p_payee_share_bp basis points. A ruling needs its reasons
 -- (`resolution_notes`, shown to both parties). Final: the row is terminal afterwards.
@@ -686,7 +792,13 @@ $$;
 -- Every 15 minutes (`finance-dispute-sweep`, 00005060). In one pass, so no case can stall:
 --   (a) a live dispute whose escrow already left `held` by another path is closed as it settled;
 --   (b) an `open` dispute whose sitting has ended is audited (fn_advance_dispute);
---   (c) an `awaiting_response` case past its `respond_by` goes to an auditor — the auto-escalation.
+--   (c) an `awaiting_response` case past its `respond_by` goes to an auditor — the auto-escalation,
+--       which stamps its review SLA (`review_by`);
+--   (d) an `under_review` case past its `review_by` is NOT ruled — the platform never rules on money
+--       without a human (Decision #212(c)). It writes a `warn` row to ops.log_entries
+--       (`client_id = 'dispute:review_overdue:<id>'`, scope `finance.sweep_disputes`) and tells every
+--       operator (`dispute.review_overdue`), at most once a day per case (`review_alerted_at`), until
+--       somebody rules. Nothing else changes and no money moves.
 -- Each case is locked and re-checked by the function it is handed to. Returns the counts.
 CREATE OR REPLACE FUNCTION finance.sweep_disputes(p_now timestamptz DEFAULT now())
 RETURNS jsonb
@@ -699,6 +811,9 @@ DECLARE
     v_closed integer := 0;
     v_audited integer := 0;
     v_escalated integer := 0;
+    v_overdue integer := 0;
+    v_ctx record;
+    v_op uuid;
     r record;
 BEGIN
     FOR r IN
@@ -726,7 +841,8 @@ BEGIN
 
     FOR r IN
         UPDATE finance.disputes
-           SET status = 'under_review', escalated_at = p_now, updated_at = p_now
+           SET status = 'under_review', escalated_at = p_now,
+               review_by = finance.fn_dispute_review_by(p_now), updated_at = p_now
          WHERE status = 'awaiting_response' AND respond_by <= p_now
         RETURNING id
     LOOP
@@ -734,13 +850,52 @@ BEGIN
         v_escalated := v_escalated + 1;
     END LOOP;
 
-    RETURN pg_catalog.jsonb_build_object('closed', v_closed, 'audited', v_audited, 'escalated', v_escalated);
+    FOR r IN
+        UPDATE finance.disputes
+           SET review_alerted_at = p_now
+         WHERE status = 'under_review' AND review_by <= p_now
+           AND (review_alerted_at IS NULL OR review_alerted_at <= p_now - interval '1 day')
+        RETURNING id, review_by, escalated_at
+    LOOP
+        SELECT * INTO v_ctx FROM finance.fn_dispute_context(r.id);
+        INSERT INTO ops.log_entries (client_id, level, message, occurred_at, source, scope, data)
+        VALUES (
+            'dispute:review_overdue:' || r.id::text,
+            'warn',
+            pg_catalog.format('Dispute %s passed its review deadline (%s) without a ruling; its payment stays held until an operator rules.',
+                r.id, r.review_by),
+            p_now,
+            'server',
+            'finance.sweep_disputes',
+            pg_catalog.jsonb_build_object('dispute_id', r.id, 'review_by', r.review_by,
+                'escalated_at', r.escalated_at, 'project_slug', v_ctx.project_slug,
+                'operators', (SELECT pg_catalog.count(*) FROM ops.admin_users))
+        );
+        FOR v_op IN SELECT au.user_id FROM ops.admin_users au ORDER BY au.user_id LOOP
+            PERFORM comms.fn_notify(
+                v_op, 'dispute.review_overdue', 'A dispute is overdue for a ruling',
+                pg_catalog.format('The claim about "%s" passed its review deadline (%s) with no ruling. The payment stays held until an operator rules.',
+                    v_ctx.event_title, pg_catalog.to_char(r.review_by AT TIME ZONE 'UTC', 'DD Mon YYYY HH24:MI "UTC"')),
+                'finance.disputes', r.id, pg_catalog.jsonb_build_object('review_by', r.review_by),
+                NULL, NULL, NULL, NULL, '/admin/disputes'
+            );
+        END LOOP;
+        v_overdue := v_overdue + 1;
+    END LOOP;
+    IF v_overdue > 0 THEN
+        RAISE WARNING 'finance.sweep_disputes: % dispute(s) under review past their review deadline', v_overdue;
+    END IF;
+
+    RETURN pg_catalog.jsonb_build_object('closed', v_closed, 'audited', v_audited, 'escalated', v_escalated,
+        'overdue', v_overdue);
 END;
 $$;
 
 COMMENT ON FUNCTION finance.sweep_disputes(timestamptz) IS
 'The dispute sweep: closes live disputes whose escrow already settled, audits open no-show claims once
-their sitting has ended, and sends awaiting_response cases past respond_by to an auditor (under_review).';
+their sitting has ended, sends awaiting_response cases past respond_by to an auditor (under_review,
+stamping review_by), and alerts ops + the operators about under_review cases past review_by (at most
+once a day per case) — never ruling on them.';
 -- #endregion
 
 -- #region 9. Immutability — a dispute is never deleted, a ruling never rewritten

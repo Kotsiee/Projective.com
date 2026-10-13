@@ -1502,6 +1502,10 @@ $$;
 -- in_progress, submitted, revisions, approved) may be approved, so two approvals, or an approval racing
 -- cancel_stage_fair_exit, pay out once: the second waits on the lock, then finds it paid or cancelled
 -- (Decision #188).
+-- A prepaid escrow nobody has claimed (payee unbound, Decision #197) is never settled as work: a stage
+-- on which nobody was ever hired (no bound escrow, held or released) is refused, and on a stage that
+-- did hire, a still-unclaimed ticket is refunded to its payer and left where it stands, not completed.
+-- released_count and refunded_count report tickets this call paid and refunded (Decision #213).
 CREATE OR REPLACE FUNCTION projects.approve_stage(p_project_id uuid, p_stage_id uuid)
 RETURNS jsonb AS $$
 DECLARE
@@ -1511,7 +1515,12 @@ DECLARE
     t record;
     a record;
     v_released int := 0;
+    v_refunded int := 0;
+    v_refunded_cents bigint := 0;
     v_ids uuid[] := '{}'::uuid[];
+    v_got uuid[];
+    v_unbound uuid[];
+    v_assignees uuid[];
     v_paid bigint := 0;
     v_fee bigint := 0;
     v_splits jsonb;
@@ -1543,27 +1552,57 @@ BEGIN
             USING ERRCODE = 'object_not_in_prerequisite_state';
     END IF;
 
-    -- Settle every ticket holding escrow on this stage through the guarded status path: each lands
+    -- Approval pays whoever was hired. With no bound escrow on the stage — held or already released —
+    -- nobody was hired, and completing its tickets would only hand the prepaid money back.
+    IF NOT EXISTS (
+        SELECT 1 FROM finance.escrows
+         WHERE project_stage_id = p_stage_id AND ticket_id IS NOT NULL AND payee_id IS NOT NULL
+           AND status IN ('held', 'released')
+    ) THEN
+        IF EXISTS (SELECT 1 FROM finance.escrows
+                    WHERE project_stage_id = p_stage_id AND status = 'held' AND payee_id IS NULL) THEN
+            RAISE EXCEPTION 'Nobody has been hired on this stage — its prepaid escrow waits for a freelancer to claim a ticket, so there is no one to pay yet.'
+                USING ERRCODE = 'object_not_in_prerequisite_state';
+        END IF;
+        RAISE EXCEPTION 'No funded (held) escrow to release for this stage.'
+            USING ERRCODE = 'object_not_in_prerequisite_state';
+    END IF;
+
+    -- Read before settlement: a Pipeline ticket advances to its next stage when this one completes, so
+    -- its assignee would no longer be found on this stage afterwards.
+    v_assignees := ARRAY(SELECT DISTINCT tk.current_assignee_id FROM projects.tickets tk
+                          WHERE tk.current_stage_id = p_stage_id AND tk.current_assignee_id IS NOT NULL);
+
+    -- Settle every hired ticket holding escrow on this stage through the guarded status path: each lands
     -- `completed` (or on its next required stage) with payment_status `released`. fn_release_ticket_escrow
     -- still applies the payer's platform fee and routes team payees through fn_split_team_payout.
+    -- A ticket whose held escrow is still unbound goes back to its payer and keeps its status.
     FOR t IN
         SELECT DISTINCT ticket_id
         FROM finance.escrows
         WHERE project_stage_id = p_stage_id AND status = 'held' AND ticket_id IS NOT NULL
         ORDER BY ticket_id
     LOOP
-        v_ids := v_ids || projects.fn_settle_ticket_stage(t.ticket_id, p_stage_id, 'stage_approved');
-        v_released := v_released + 1;
-    END LOOP;
+        v_unbound := ARRAY(SELECT e.id FROM finance.escrows e
+                            WHERE e.ticket_id = t.ticket_id AND e.project_stage_id = p_stage_id
+                              AND e.status = 'held' AND e.payee_id IS NULL);
+        IF cardinality(v_unbound) > 0 THEN
+            PERFORM finance.fn_refund_ticket_escrow(t.ticket_id);
+            v_refunded_cents := v_refunded_cents + COALESCE((
+                SELECT SUM(e.amount_cents) FROM finance.escrows e
+                 WHERE e.id = ANY (v_unbound) AND e.status = 'refunded'), 0);
+            IF EXISTS (SELECT 1 FROM finance.escrows e WHERE e.id = ANY (v_unbound) AND e.status = 'refunded') THEN
+                v_refunded := v_refunded + 1;
+            END IF;
+            CONTINUE;
+        END IF;
 
-    -- Nothing left to hold is fine once acceptances have paid the stage out; a stage nothing was ever
-    -- funded on is still refused.
-    IF v_released = 0 AND NOT EXISTS (
-        SELECT 1 FROM finance.escrows WHERE project_stage_id = p_stage_id AND status = 'released'
-    ) THEN
-        RAISE EXCEPTION 'No funded (held) escrow to release for this stage.'
-            USING ERRCODE = 'object_not_in_prerequisite_state';
-    END IF;
+        v_got := projects.fn_settle_ticket_stage(t.ticket_id, p_stage_id, 'stage_approved');
+        v_ids := v_ids || v_got;
+        IF cardinality(v_got) > 0 THEN
+            v_released := v_released + 1;
+        END IF;
+    END LOOP;
 
     -- This call's releases only: an escrow an earlier acceptance released is not reported again.
     SELECT COALESCE(SUM(GREATEST(amount_cents + COALESCE(deadline_bonus_cents, 0) - platform_fee_cents, 0)), 0),
@@ -1587,11 +1626,10 @@ BEGIN
     SELECT p.slug, p.owner_user_id INTO v_slug, v_owner FROM projects.projects p WHERE p.id = p_project_id;
 
     -- Everyone this approval paid (individual payees and every team-split recipient), plus the stage's
-    -- assignees, whom an earlier acceptance may already have paid.
+    -- assignees as they stood before settlement, whom an earlier acceptance may already have paid.
     PERFORM projects.fn_notify_payees(
         v_ids,
-        ARRAY(SELECT DISTINCT tk.current_assignee_id FROM projects.tickets tk
-               WHERE tk.current_stage_id = p_stage_id AND tk.current_assignee_id IS NOT NULL),
+        v_assignees,
         'stage_approved', 'Stage approved & paid',
         CASE WHEN cardinality(v_ids) > 0
              THEN format('"%s" was approved — your payout has been released.', v_stage_name)
@@ -1608,9 +1646,13 @@ BEGIN
             CASE WHEN v_released > 0
                  THEN format('"%s" is settled — held escrow on %s ticket(s) was released to the freelancers.',
                              v_stage_name, v_released)
-                 ELSE format('"%s" is settled — every ticket on it was already paid on acceptance.', v_stage_name) END,
+                 ELSE format('"%s" is settled — every ticket on it was already paid on acceptance.', v_stage_name) END
+            || CASE WHEN v_refunded > 0
+                    THEN format(' %s prepaid ticket(s) nobody claimed were refunded to your wallet.', v_refunded)
+                    ELSE '' END,
             'project_stages', p_stage_id,
             jsonb_build_object('released_count', v_released, 'total_paid_cents', v_paid, 'fee_cents', v_fee,
+                               'refunded_count', v_refunded, 'refunded_cents', v_refunded_cents,
                                'currency', upper(COALESCE(v_currency, 'USD'))),
             auth.uid(), 'project', p_project_id, NULL, '/projects/' || v_slug
         );
@@ -1653,6 +1695,8 @@ BEGIN
         'released_count', v_released,
         'total_paid_cents', v_paid,
         'fee_cents', v_fee,
+        'refunded_count', v_refunded,
+        'refunded_cents', v_refunded_cents,
         'splits', v_splits,
         'stage_status', 'paid',
         'handover_unlocked', v_unlocked

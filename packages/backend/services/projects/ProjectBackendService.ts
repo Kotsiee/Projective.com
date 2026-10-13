@@ -3256,9 +3256,14 @@ export class ProjectBackendService {
 			actor,
 			input.stageId,
 			(data) =>
-				data.releasedCount > 0
+				(data.releasedCount > 0
 					? "Stage approved — escrow released."
-					: "Stage approved and closed — every ticket was already paid on acceptance.",
+					: "Stage approved and closed — every ticket was already paid on acceptance.") +
+				(data.refundedCount > 0
+					? ` ${data.refundedCount} prepaid ${
+						data.refundedCount === 1 ? "ticket" : "tickets"
+					} nobody claimed went back to your wallet.`
+					: ""),
 			(a) => approveStageRow(a, input),
 			"stage",
 		);
@@ -3271,6 +3276,8 @@ export class ProjectBackendService {
 			releasedCount: 0,
 			totalPaidCents: 0,
 			feeCents: 0,
+			refundedCount: 0,
+			refundedCents: 0,
 			handoverUnlocked: false,
 		}, { message: "Stage approved (simulated — no escrow moved)." });
 	}
@@ -3452,7 +3459,9 @@ export class ProjectBackendService {
 		);
 		if (denied) return denied;
 
-		const listing = await resolveListing(input.serviceId);
+		// One flag decides both halves: the listing is read live exactly when the instantiation is.
+		const live = isProjectsBackendLive();
+		const listing = await resolveListing(input.serviceId, live);
 		if (listing === undefined) {
 			return fail(503, { message: "That service could not be read just now — please try again." });
 		}
@@ -3477,7 +3486,7 @@ export class ProjectBackendService {
 					: "This service is already in your projects.",
 			});
 
-		if (isProjectsBackendLive()) {
+		if (live) {
 			if (!canReadLive(actor)) {
 				return fail(401, { message: "Your session has expired — sign in again to add this." });
 			}

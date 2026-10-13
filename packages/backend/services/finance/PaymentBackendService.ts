@@ -93,6 +93,7 @@ import {
 } from "./stripe-rails.ts";
 import { applyStripePlan, planStripeEvent, syncConnectAccount } from "./stripe-webhook.ts";
 import { planStalePayout } from "./payout-sweep.ts";
+import { chargeScheduledDeposit } from "./scheduled-deposits.ts";
 import { paymentFundingState } from "./funding-state.ts";
 
 /**
@@ -994,36 +995,28 @@ export class PaymentBackendService {
 	/**
 	 * Charge every recurring deposit that is due — run by the scheduler (`POST /api/finance/cron/deposits`).
 	 * Each claimed run is an inbound payment made by the rule's author; its off-session PaymentIntent is
-	 * idempotent on that payment's id and settles through the ordinary webhook. A card the bank refuses
-	 * counts against the rule (three strikes pause it).
+	 * idempotent on that payment's id (`scheduled_deposit:<payment id>`) and settles through the
+	 * ordinary webhook. A card the bank refuses counts against the rule (three strikes pause it). A
+	 * transient failure leaves the run unbound, and `finance.claim_due_deposit_rules` re-offers that SAME
+	 * run on a later sweep (`retried` counts them) — so the period is charged once, never skipped
+	 * (`chargeScheduledDeposit`).
 	 */
 	static async processDueDeposits(
 		limit = 50,
-	): Promise<Result<{ claimed: number; charged: number; refused: number; pending: number }>> {
+	): Promise<
+		Result<{ claimed: number; retried: number; charged: number; refused: number; pending: number }>
+	> {
 		if (!liveSettings()) return notConnected("Recurring deposits aren't connected in this environment.");
 		const claimed = await claimDueDepositRules(limit);
 		const stripe = getStripe();
-		let charged = 0;
-		let refusedCount = 0;
-		let pending = 0;
-		for (const run of claimed) {
-			try {
-				const intent = await createOffSessionPaymentIntent(stripe, run.payment, run.customerRef, run.paymentMethodRef);
-				await bindScheduledPayment(run.payment.id, intent.id, null);
-				charged++;
-			} catch (error) {
-				const failure = classifyStripeError(error);
-				if (failure.kind === "refused") {
-					const intentId = (error as { raw?: { payment_intent?: { id?: string } } })?.raw?.payment_intent?.id ?? null;
-					await bindScheduledPayment(run.payment.id, intentId, failure.code ?? "card refused");
-					refusedCount++;
-				} else {
-					console.error("[payments:deposits]", run.payment.id, failure.kind, failure.message);
-					pending++;
-				}
-			}
-		}
-		return ok({ claimed: claimed.length, charged, refused: refusedCount, pending });
+		const deps = {
+			createIntent: (run: (typeof claimed)[number]) =>
+				createOffSessionPaymentIntent(stripe, run.payment, run.customerRef, run.paymentMethodRef),
+			bind: bindScheduledPayment,
+		};
+		const counts = { charged: 0, refused: 0, pending: 0 };
+		for (const run of claimed) counts[await chargeScheduledDeposit(run, deps)]++;
+		return ok({ claimed: claimed.length, retried: claimed.filter((run) => run.retry).length, ...counts });
 	}
 	// #endregion
 
@@ -1064,7 +1057,9 @@ export class PaymentBackendService {
 	 * else, INCLUDING an event this endpoint ignores or cannot match: acknowledging it is what stops the
 	 * retries, and the claim row keeps it for reconciliation. The one exception is a card settlement,
 	 * acknowledged only once its ledger row exists (Decision #200): one that cannot be credited yet
-	 * released its claim, so it answers 500 and Stripe's retry settles it.
+	 * released its claim, so it answers 500 and Stripe's retry settles it — except a settlement whose
+	 * amount / currency can never match its payment, which is acknowledged into reconciliation (one ops
+	 * row, claim kept, listed by `finance.v_ops_unledgered_payments`) because no retry can change it.
 	 */
 	static async handleStripeWebhook(
 		payload: string,

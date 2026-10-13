@@ -897,7 +897,11 @@ redelivered event returns the first outcome (`fn_stripe_event_replay`) and moves
 `unmatched` event (no row bound to it, or amounts that disagree) is recorded for reconciliation and
 never guessed at — except a card SETTLEMENT, which is acknowledged only with its ledger row
 (Decision #200): an unmatched `payment_intent.succeeded` releases its claim
-(`fn_release_stripe_event`) so Stripe's retry is processed, and the webhook answers 5xx.
+(`fn_release_stripe_event`) so Stripe's retry is processed, and the webhook answers 5xx. The one
+settlement acknowledged WITHOUT a ledger row is a deterministic mismatch (amount / currency that can
+never match the payment): it is completed with `reconciliation = 'settlement_mismatch'`, the webhook
+answers 2xx, and a human reconciles it from `finance.v_ops_unledgered_payments` (see
+`settle_card_payment` below).
 
 ### Event bookkeeping (internal)
 
@@ -997,14 +1001,23 @@ through `finance.fn_ensure_wallet` (owner, payment currency) before the credit; 
 credit that left no ledger row, raises (`PW404` / `PL404`) and rolls the whole call back with its claim.
 A lock or order refused after the credit keeps the credit and sets `status = 'settled_unapplied'` with
 `unapplied_reason`; the payer's notification is titled "Payment received — the funds are in your
-wallet". An `unmatched` settlement — no payment bound to the intent yet (an off-session deposit's
-success can beat `bind_scheduled_payment`), or an amount / currency that does not match — releases
-its claim instead of completing it; a mismatch also writes an `error` row to `ops.log_entries`
-(`scope = 'finance.settle_card_payment'`, the figures in `data`) and a WARNING on every delivery. A
-replayed event answers with the payment's `transaction_id`; a completed claim whose payment has no
-ledger row is released and processed again (the payment's own status is what stops a second credit).
-Every acknowledged outcome carries `transaction_id`, plus `status` and `unapplied_reason`. Proven by
-`supabase/probes/card_settlement_ledger.sql`; failures past this point are listed by
+wallet". A success with no payment bound to the intent YET (an off-session deposit's success can beat
+`bind_scheduled_payment`) is `unmatched` and releases its claim instead of completing it, so the
+webhook answers 5xx and Stripe's retry settles it once the bind lands. A success whose amount /
+currency does NOT match the payment (another currency, or nothing received) is deterministic — every
+redelivery carries the same figures — so it is acknowledged into **reconciliation** instead: the claim
+is COMPLETED with `outcome = 'unmatched'`, `reconciliation = 'settlement_mismatch'`, `payment_id`,
+`transaction_id = NULL`, `amount_received_cents`, `currency_received`; ONE `error` row is written to
+`ops.log_entries` (`scope = 'finance.settle_card_payment'`, `client_id = 'stripe:<evt_id>'`, the
+figures in `data`; guarded so nothing writes it twice) plus a WARNING; nothing is credited and the
+payment stays `processing`; `finance.v_ops_unledgered_payments` lists it as `settlement_mismatch`
+until a human settles or closes the payment. A redelivery of that event replays the reconciliation
+outcome (still `reconciliation = 'settlement_mismatch'`) and writes nothing. A replayed event otherwise
+answers with the payment's `transaction_id`; a completed claim whose payment has no ledger row and
+which is NOT a reconciliation is released and processed again (the payment's own status is what stops
+a second credit). Every other acknowledged outcome carries `transaction_id`, plus `status` and
+`unapplied_reason`. Proven by `supabase/probes/card_settlement_ledger.sql` and
+`supabase/probes/settlement_reconcile_deposit_retry.sql`; failures past this point are listed by
 `finance.v_ops_unledgered_payments`.
 
 #### `finance.record_card_payment_failure(p_event_id, p_provider_ref, p_status, p_reason, p_livemode)` → jsonb
@@ -1190,9 +1203,32 @@ Proven by `supabase/probes/pending_window.sql`.
 - `finance.claim_due_deposit_rules(p_limit)` (processor, the scheduler) — `FOR UPDATE SKIP LOCKED`;
   re-authorises the author AS THEM; records the run as an inbound payment (key =
   `deposit:<rule>:<period>`, so a period is charged once); advances past `now()` — missed periods are
-  SKIPPED, never charged in a burst; a rule whose card, author or authority is gone is paused.
+  SKIPPED, never charged in a burst; a rule whose card, author or authority is gone is paused. Each
+  entry is `{ payment, rule_id, customer_ref, payment_method_ref, retry }`.
+  **Unbound runs are retried, not lost.** It first re-offers (`retry = true`) every scheduled payment
+  an earlier sweep claimed but never bound — `deposit_rule_id` set, `status = 'requires_payment'`,
+  `provider_ref IS NULL` (the processor was unreachable, its answer was lost, or the sweep died
+  between claim and charge) — as the SAME payment, so the fat service re-sends it under the same
+  Stripe idempotency key `scheduled_deposit:<payment id>`: Stripe answers with the intent it already
+  made or makes it now, and the period is charged exactly once instead of disappearing behind the
+  advanced `next_run_at`. `updated_at` is the lease: a run is re-offered only after 15 minutes
+  untouched, and re-offering stamps it (`FOR UPDATE SKIP LOCKED` on the payment row). A run older than
+  23 hours (Stripe keeps a key for 24) is NOT re-sent — that could charge twice — but set `failed`
+  ("could not be reached … within a day") with an `ops.log_entries` `error` row
+  (`scope = 'finance.claim_due_deposit_rules'`, `client_id = 'deposit:<payment id>'`, `reason =
+  'unbound_expired'`) asking a human to check Stripe for an intent with that `projective_payment_id`;
+  no strike is counted. A run whose rule was stopped, or whose card / author / Customer no longer
+  passes, is set `canceled` with the reason and a `warn` row (`reason = 'unbound_canceled'`). Index:
+  `idx_inbound_payments_unbound_deposits` (partial).
+- `finance.fn_deposit_charge_target(p_rule)` (internal, executable by no role) — the rule's
+  re-authorisation shared by both paths above: author checked AS THEM (`add_funds`, card ownership),
+  card `active`, Stripe Customer present. Returns `(customer_ref, payment_method_ref, refusal)`, exactly
+  one of `refusal` or the two refs set.
 - `finance.bind_scheduled_payment(p_payment_id, p_provider_ref, p_error)` (processor) — binds the
-  off-session PaymentIntent, or fails the run; three consecutive failures pause the rule.
+  off-session PaymentIntent, or fails the run; three consecutive failures pause the rule. Only a
+  DETERMINISTIC refusal reaches the error branch (a declined card, `authentication_required`); a
+  transient Stripe / network / idempotency-in-flight error leaves the run unbound for the retry above
+  (`packages/backend/services/finance/scheduled-deposits.ts`).
 
 ### Income Smoother — `finance.set_income_smoother(p_currency, p_target_monthly_cents, p_enrol)` (user)
 
@@ -1227,28 +1263,38 @@ and no function, route or person could close it. The lifecycle is PRODUCT_MANAGE
 business rules are PRODUCT_SPEC §Dispute Resolution (the Evidence Vault, the cooling-off window, the
 auditor, the session attendance audit). Distinct from a card **chargeback** (`finance.chargebacks`,
 above). Grants: `00002510` `#region Disputes`. Params: `dispute_response_hours` (48),
-`dispute_dismiss_presence_pct` (80).
+`dispute_review_hours` (72, the review SLA), `dispute_dismiss_presence_pct` (80).
+
+**The review SLA is a target, never a ruling** (Decision #212(c): the platform does not rule on money
+without a human). Every door into `under_review` stamps `review_by = then + dispute_review_hours`; a
+case past it stays held — the sweep writes an `ops.log_entries` `warn` row and tells every operator
+(`dispute.review_overdue`), at most once a day per case, and moves nothing.
 
 | Function | Door | What it does |
 | :-- | :-- | :-- |
 | `finance.fn_escrow_has_open_dispute(p_escrow_id)` → boolean | internal | THE live-dispute predicate (`open` · `awaiting_response` · `under_review`). Every release path asks it before paying out (`auto_release_session_escrow`'s three paths, the claim, the workspace's `claim_open`). |
 | `finance.fn_dispute_context(p_dispute_id)` → TABLE | internal | The escrow's project, slug, owner (the respondent of record), the claimant and the sitting's title. |
 | `finance.fn_dispute_party(p_dispute_id, p_user_id)` → text | internal | `claimant` (the opener), `respondent` (`projects.fn_is_session_host` — the owner or an active member of the owning team) or NULL. An operator is not a party. |
+| `finance.fn_dispute_review_by(p_from)` → timestamptz | internal | The review SLA a case gets as it enters `under_review`: `p_from + dispute_review_hours` (72). Called by `respond_to_dispute`, `escalate_dispute` and the sweep, so `ck_disputes_review_deadline` holds. Executable by no client role. |
 | `finance.fn_dispute_attendance_audit(p_dispute_id)` → jsonb | internal | The deterministic ruling on the sitting's logs: `pending` (not ended) · `refund` (`fn_session_presence` says `provider_no_show`) · `dismiss` (a tracked room shows the host AND the claimant each in the room ≥ `dispute_dismiss_presence_pct` of the sitting — webhook rows only, so a host's attestation cannot dismiss a claim against them) · `ambiguous`. Time in the room is the row's first-join → last-leave span clipped to the sitting. |
 | `finance.fn_split_seat_escrow(p_escrow_id, p_bp)` → jsonb | internal | Divides one held seat escrow: the payee earns `p_bp` of the principal less the fee on that share (pending credit, `escrow_release`), the payer gets the rest fee-free (`escrow_refund`) — `fn_fair_exit_split`'s arithmetic. Only while `held`. |
 | `finance.fn_settle_dispute(p_dispute_id, p_outcome, p_bp, p_actor, p_notes)` → jsonb | internal | The ONE writer of a `resolved_*` status, under the dispute's then the escrow's row lock. `release` → `fn_release_seat_escrow`, except a whole-cohort seat escrow with sittings still ahead, which stays held for the session sweep (`settlement.deferred`). `refund` → `fn_refund_seat_escrow`. `split` → `fn_split_seat_escrow`. The seat follows through `projects.fn_settle_membership_state`. An escrow already `refunded` / `released` by another path is recorded as it settled (`settlement.by_fact`); a `disputed` (chargeback-frozen) one is refused `PS409`; a non-seat escrow is refused `PS409`. Notifies both parties `dispute.resolved`. `p_actor` NULL = the platform's audit. |
 | `finance.fn_advance_dispute(p_dispute_id)` → `dispute_status` | internal | Moves an `open` case: runs the audit and rules (`refund` / `dismiss`, as the platform) or hands it to the respondent — `awaiting_response`, `respond_by = now() + dispute_response_hours`, `dispute.response_requested` to the owner. A running sitting leaves it `open`. |
-| `finance.respond_to_dispute(p_dispute_id, p_statement, p_file_ids)` → jsonb | user | A party files a statement (1–4,000 chars) with up to ten of their OWN `uploaded`, undeleted `files.items` as evidence (`dispute_messages` + `dispute_evidence`). The respondent's statement on an `awaiting_response` case → `under_review` (`responded_at`, `escalated_at`, `dispute.escalated` to both). Not a party → `P0002`; resolved → `PS409`. |
-| `finance.escalate_dispute(p_dispute_id)` → jsonb | user | Either party sends an `awaiting_response` case to an auditor early. Idempotent on `under_review`; `open` → `PS409` (the audit has not run). |
-| `finance.get_dispute(p_dispute_id)` → jsonb | user | The case as a party or an operator may see it (NULL otherwise): status, role, deadlines, audit, settlement, the money at stake, the sitting, every statement with its files' metadata, and `can_respond` / `can_escalate` / `can_resolve`. |
+| `finance.respond_to_dispute(p_dispute_id, p_statement, p_file_ids)` → jsonb | user | A party files a statement (1–4,000 chars) with up to ten of their OWN `uploaded`, undeleted `files.items` as evidence (`dispute_messages` + `dispute_evidence`). The respondent's statement on an `awaiting_response` case → `under_review` (`responded_at`, `escalated_at`, `review_by`, `dispute.escalated` to both). Not a party → `P0002`; resolved → `PS409`. |
+| `finance.escalate_dispute(p_dispute_id)` → jsonb | user | Either party sends an `awaiting_response` case to an auditor early (stamping `review_by`). Idempotent on `under_review`; `open` → `PS409` (the audit has not run). |
+| `finance.get_dispute(p_dispute_id)` → jsonb | user | The case as a party or an operator may see it (NULL otherwise): status, role, deadlines (`respond_by`, `review_by`), audit, settlement, the money at stake, the sitting, every statement with its files' metadata, and `can_respond` / `can_escalate` / `can_resolve`. |
+| `finance.list_disputes_for_review(p_status)` → jsonb | operator | The operator queue (`/admin/disputes`, `GET /api/finance/disputes`). `security.is_admin()` only, else `42501` (the page answers 404). `{items, counts}`: every live case — or those in one live status (anything else `22023`) — oldest-due first (`under_review` by `review_by`, `awaiting_response` by `respond_by`, `open` by `created_at`), ≤ 200, each with status, kind, reason, `opened_at` / `respond_by` / `escalated_at` / `review_by`, `overdue`, the money held, the project and sitting, the claimant and respondent (name · handle) and the statement / evidence counts; `counts` (`open` · `awaiting_response` · `under_review` · `overdue`) over the whole live set. |
 | `finance.resolve_dispute(p_dispute_id, p_outcome, p_payee_share_bp, p_notes)` → jsonb | operator | `security.is_admin()` only (`ops.admin_users`), else `42501`. `release` · `refund` · `split` (share 1–9,999 bp); reasons (3–2,000 chars) required — they are shown to both parties. Final. |
-| `finance.sweep_disputes(p_now)` → jsonb | scheduler | `finance-dispute-sweep` (`7,22,37,52 * * * *`): (a) closes live disputes whose escrow already settled; (b) audits `open` claims once their sitting ends; (c) auto-escalates `awaiting_response` past `respond_by` → `under_review` (`dispute.escalated`). Returns `{closed, audited, escalated}`. Service role may run it by hand. |
+| `finance.sweep_disputes(p_now)` → jsonb | scheduler | `finance-dispute-sweep` (`7,22,37,52 * * * *`): (a) closes live disputes whose escrow already settled; (b) audits `open` claims once their sitting ends; (c) auto-escalates `awaiting_response` past `respond_by` → `under_review` (`review_by = p_now + dispute_review_hours`, `dispute.escalated`); (d) the review SLA: an `under_review` case past `review_by` is NOT ruled — one `ops.log_entries` `warn` row (`client_id = dispute:review_overdue:<id>`, scope `finance.sweep_disputes`) and `dispute.review_overdue` to every `ops.admin_users` operator, at most once a day per case (`review_alerted_at`), plus a `WARNING`. Returns `{closed, audited, escalated, overdue}`. Service role may run it by hand. |
 | `finance.fn_dispute_records_immutable()` | trigger | `BEFORE UPDATE OR DELETE` on the three dispute tables (+ `BEFORE TRUNCATE` on `disputes`): nothing is deleted, statements and evidence never change, a resolved dispute is final — for every role. |
 | `finance.fn_guard_evidence_file()` | trigger | `BEFORE UPDATE OF deleted_at ON files.items`: a file filed in a LIVE dispute cannot be soft-deleted (`PS409`); after the ruling it is the owner's again. |
 
 Probe: `supabase/probes/dispute_resolution.sql` (59 checks — every audit ruling, the respond →
 review → operator split / refund / release paths, auto-escalation, settled-by-fact, per-sitting
-escrow, evidence access and immutability, the workspace fields, grants).
+escrow, evidence access and immutability, the workspace fields, grants) and
+`supabase/probes/dispute_review_queue.sql` (30 checks — every door into review stamps `review_by`, the
+CHECK, the operator queue's gate / order / filter / counts, the overdue alert that never rules and
+repeats at most daily, grants).
 
 ## Under-18 accounts (Decision #208)
 

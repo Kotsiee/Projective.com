@@ -1,6 +1,10 @@
 import {
 	type DisputeAudit,
 	type DisputeCase,
+	type DisputeQueue,
+	type DisputeQueueItem,
+	type DisputeQueueParty,
+	DisputeQueueStatus,
 	DisputeRole,
 	type DisputeSettlement,
 	DisputeStatus,
@@ -8,9 +12,10 @@ import {
 } from "@projective/types/finance";
 
 /**
- * dispute-model — the pure mapping from `finance.get_dispute` (00001260, Decision #212) onto
- * {@link DisputeCase}. No I/O; pinned by `dispute-model.test.ts`. A row with a status or role this
- * build does not know maps to `null` rather than to a guess.
+ * dispute-model — the pure mappings from `finance.get_dispute` onto {@link DisputeCase} and from
+ * `finance.list_disputes_for_review` onto {@link DisputeQueue} (00001260, Decision #212). No I/O;
+ * pinned by `dispute-model.test.ts`. A row with a status or role this build does not know maps to
+ * `null` (or is dropped from the queue) rather than to a guess.
  */
 
 // #region Raw rows (the SQL jsonb, as written by the function)
@@ -41,6 +46,8 @@ export interface RawDispute {
 	respond_by: string | null;
 	responded_at: string | null;
 	escalated_at: string | null;
+	/** The review SLA (absent from a row read before the column existed). */
+	review_by?: string | null;
 	resolved_at: string | null;
 	resolution_notes: string | null;
 	resolved_by_operator: boolean;
@@ -120,6 +127,7 @@ export function toDisputeCase(raw: RawDispute | null): DisputeCase | null {
 		respondBy: raw.respond_by,
 		respondedAt: raw.responded_at,
 		escalatedAt: raw.escalated_at,
+		reviewBy: raw.review_by ?? null,
 		resolvedAt: raw.resolved_at,
 		resolutionNotes: raw.resolution_notes,
 		resolvedByOperator: !!raw.resolved_by_operator,
@@ -159,6 +167,107 @@ export function toDisputeCase(raw: RawDispute | null): DisputeCase | null {
 		canRespond: !!raw.can_respond,
 		canEscalate: !!raw.can_escalate,
 		canResolve: !!raw.can_resolve,
+	};
+}
+// #endregion
+
+// #region The operator queue
+interface RawParty {
+	name: string | null;
+	handle: string | null;
+}
+
+/** One `finance.list_disputes_for_review` item. */
+export interface RawQueueItem {
+	id: string;
+	status: string;
+	kind: string;
+	reason: string;
+	opened_at: string;
+	respond_by: string | null;
+	escalated_at: string | null;
+	review_by: string | null;
+	overdue: boolean;
+	amount_minor: number;
+	currency: string;
+	project: { slug: string | null; title: string | null } | null;
+	sitting: { title: string; starts_at: string; ends_at: string } | null;
+	claimant: RawParty | null;
+	respondent: RawParty | null;
+	statements: number;
+	evidence: number;
+}
+
+/** `finance.list_disputes_for_review`'s answer. */
+export interface RawQueue {
+	items: RawQueueItem[] | null;
+	counts: {
+		open?: number;
+		awaiting_response?: number;
+		under_review?: number;
+		overdue?: number;
+	} | null;
+}
+
+function partyOf(raw: RawParty | null): DisputeQueueParty {
+	const name = raw?.name?.trim().slice(0, 200) || null;
+	const handle = raw?.handle?.trim().slice(0, 60) || null;
+	return { name, handle };
+}
+
+function count(value: unknown): number {
+	return Math.max(0, int(value));
+}
+
+/** Map one queue row; `null` for a status this build does not list. */
+export function toDisputeQueueItem(raw: RawQueueItem): DisputeQueueItem | null {
+	const status = DisputeQueueStatus.safeParse(raw.status);
+	if (!status.success) return null;
+	const amountMinor = count(raw.amount_minor);
+	return {
+		id: raw.id,
+		status: status.data,
+		kind: raw.kind === "no_show" ? "no_show" : "general",
+		reason: (raw.reason ?? "").slice(0, 500) || "No reason given.",
+		openedAt: raw.opened_at,
+		respondBy: raw.respond_by,
+		escalatedAt: raw.escalated_at,
+		reviewBy: raw.review_by,
+		overdue: status.data === "under_review" && raw.overdue === true,
+		amountMinor,
+		currency: raw.currency,
+		amountLabel: formatMoney(amountMinor, raw.currency),
+		projectSlug: raw.project?.slug ?? "",
+		projectTitle: (raw.project?.title ?? "").slice(0, 200),
+		sitting: raw.sitting
+			? {
+				title: raw.sitting.title.slice(0, 200) || "Session",
+				startsAt: raw.sitting.starts_at,
+				endsAt: raw.sitting.ends_at,
+			}
+			: null,
+		claimant: partyOf(raw.claimant),
+		respondent: partyOf(raw.respondent),
+		statementCount: count(raw.statements),
+		evidenceCount: count(raw.evidence),
+	};
+}
+
+/** Map the queue; unknown rows are dropped, the counts are taken as the database gave them. */
+export function toDisputeQueue(raw: RawQueue | null): DisputeQueue {
+	const items = (raw?.items ?? []).slice(0, 200).flatMap((row) => {
+		const item = toDisputeQueueItem(row);
+		return item ? [item] : [];
+	});
+	const c = raw?.counts ?? {};
+	return {
+		items,
+		counts: {
+			open: count(c.open),
+			awaitingResponse: count(c.awaiting_response),
+			underReview: count(c.under_review),
+			overdue: count(c.overdue),
+		},
 	};
 }
 // #endregion

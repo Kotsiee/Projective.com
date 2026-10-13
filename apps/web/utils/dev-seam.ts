@@ -278,6 +278,16 @@ export type DevAgeRestriction = "auto" | "minor" | "adult";
 export type DevPayoutReadiness = "auto" | "not_ready";
 
 /**
+ * The operator dispute desk (`/admin/disputes`, Decision #212) — a capability only `ops.admin_users`
+ * holds, which no page control grants. `auto` lets the database decide (a non-operator gets the 404);
+ * `queue` renders the desk with sample cases (one per live status plus an overdue one), `empty` with
+ * none. It grants nothing: a ruling on a sample still goes to the database, which refuses it. Reaches
+ * the server through the `pj.dev.operator` cookie, which only a development build reads; the page
+ * reloads to apply it.
+ */
+export type DevOperatorDesk = "auto" | "queue" | "empty";
+
+/**
  * How the `/wallet` hero's live aurora is chosen. `auto` runs the shipping gates (reduced motion, data
  * saver, device memory, core count, page visibility) and the performance watchdog; `static` never
  * mounts the canvas, so the resting CSS gradient is what shows; `animated` skips the hardware and
@@ -423,6 +433,8 @@ export interface DevSeamState {
 	ageRestriction?: DevAgeRestriction;
 	/** The simulated earning gate. Optional like `walletAurora`; absent reads as `auto`. */
 	payoutReadiness?: DevPayoutReadiness;
+	/** The operator-desk preview. Optional like `walletAurora`; absent reads as `auto`. */
+	operatorDesk?: DevOperatorDesk;
 }
 // #endregion
 
@@ -580,6 +592,7 @@ const EMAIL_CONFIRMATIONS: readonly DevEmailConfirmation[] = [
 ];
 const AGE_RESTRICTIONS: readonly DevAgeRestriction[] = ["auto", "minor", "adult"];
 const PAYOUT_READINESS: readonly DevPayoutReadiness[] = ["auto", "not_ready"];
+const OPERATOR_DESKS: readonly DevOperatorDesk[] = ["auto", "queue", "empty"];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */
 function coerce<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -645,6 +658,7 @@ export function readDevSeam(): DevSeamState | null {
 		emailConfirmation: coerce(ds.devEmailConfirmation, EMAIL_CONFIRMATIONS, "auto"),
 		ageRestriction: coerce(ds.devAgeRestriction, AGE_RESTRICTIONS, "auto"),
 		payoutReadiness: coerce(ds.devPayoutReadiness, PAYOUT_READINESS, "auto"),
+		operatorDesk: coerce(ds.devOperatorDesk, OPERATOR_DESKS, "auto"),
 	};
 }
 

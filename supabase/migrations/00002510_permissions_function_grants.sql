@@ -1064,6 +1064,7 @@ GRANT EXECUTE ON FUNCTION finance.bind_scheduled_payment (uuid, text, text) TO s
 
 -- Internal helpers.
 REVOKE ALL ON FUNCTION finance.fn_payout_destination (finance.wallets) FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION finance.fn_deposit_charge_target (finance.deposit_rules) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.fn_min_withdrawal_minor (text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_minor_units_text (bigint, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_escrow_payer_wallet_type (uuid, uuid) FROM PUBLIC, anon, authenticated;
@@ -1734,6 +1735,7 @@ GRANT EXECUTE ON FUNCTION projects.fn_lapse_session_handshakes (timestamptz) TO 
 -- money or skip the party check — reachable only from the doors that call them, as their owner.
 REVOKE ALL ON FUNCTION finance.fn_dispute_context (uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_dispute_party (uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION finance.fn_dispute_review_by (timestamptz) FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION finance.fn_escrow_has_open_dispute (uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_dispute_attendance_audit (uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION finance.fn_split_seat_escrow (uuid, integer) FROM PUBLIC, anon, authenticated;
@@ -1751,6 +1753,9 @@ REVOKE ALL ON FUNCTION finance.get_dispute (uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.get_dispute (uuid) TO authenticated;
 REVOKE ALL ON FUNCTION finance.resolve_dispute (uuid, text, integer, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION finance.resolve_dispute (uuid, text, integer, text) TO authenticated;
+-- The operator queue: signed-in callers reach it, and it refuses anyone but security.is_admin() (42501).
+REVOKE ALL ON FUNCTION finance.list_disputes_for_review (text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION finance.list_disputes_for_review (text) TO authenticated;
 -- The sweep pg_cron runs (as its owner); the service role may run it by hand.
 REVOKE ALL ON FUNCTION finance.sweep_disputes (timestamptz) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION finance.sweep_disputes (timestamptz) TO service_role;
