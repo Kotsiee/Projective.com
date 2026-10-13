@@ -2,8 +2,10 @@
 
 > **Status: WORK ORDERS, not binding.** One self-contained Claude Code prompt for each public or
 > utility surface in the "Public & Utility Routes" brief: `/legal`, `/help`, `/contact`, `/about`,
-> `/changelog`, `/articles` and `/feedback`. Run them **in order** (§0), each in its own fresh
-> session. Paste the standard header (§1) above every prompt.
+> `/changelog`, `/articles` and `/feedback`. It also carries the **landing page track** (L0–L6): a
+> new, deliberately off-system marketing home page at `/` whose hero must search Explore. Run them
+> **in order** (§0), each in its own fresh session. Paste the standard header (§1) above every
+> prompt, and for the landing track, the landing addendum (§2.0) under it.
 >
 > These prompts were written against `main` @ `9ef9785`. Before writing them I read `ROUTING.md`,
 > the `PRODUCT_SPEC.md` sitemap, `packages/types/profile/reserved.ts`, the token sheet
@@ -26,6 +28,13 @@
 | P6 | `/articles` + `/articles/[slug]`              | P0         | Read §0.1 (b) first.                                                                                                                                  |
 | P7 | `/feedback` + global `?feedback=open` overlay | P0         | New schema, moderation and the shell overlay.                                                                                                         |
 | P8 | Integration sweep                             | P1–P7      | Sitemap, robots, footer and megamenu, docs, Playwright smoke.                                                                                         |
+| L0 | Landing: art direction & decisions            | P0         | Choose the layout, style, background and visualizers; log the design-system exemption. Nothing is built until it lands.                               |
+| L1 | Landing: decoupled shell, theme, background   | L0         | Full-bleed route, scoped `lp-` theme, performance budget, WebGL background with fallbacks.                                                            |
+| L2 | Landing: hero + Explore search                | L1         | **The one hard requirement**: the hero searches Explore.                                                                                              |
+| L3 | Landing: visualizer engine + first demos      | L2         | One tabbed stage that swaps simulations, so the page never shows ten widgets at once.                                                                 |
+| L4 | Landing: remaining sections                   | L3, P4     | Comparison, how it works, ways to work, payment protection, live numbers (P4's metrics service), pricing, FAQ, final CTA.                             |
+| L5 | `/features` extension page                    | L3         | The full visualizer catalogue the landing page links into, so the home page stays light.                                                              |
+| L6 | Landing: QA & launch gate                     | L1–L5      | Performance, accessibility, honesty (claims table), leak check, SEO, Playwright.                                                                      |
 
 ### 0.1 Decisions you must make (the relevant prompt stops for each)
 
@@ -37,6 +46,36 @@
 | **d** | The brief's feedback statuses are `Planned`, `In Progress` and `Shipped`. `PRODUCT_MANAGEMENT.md` §3 forbids bespoke statuses.                                                                                                                          | Map them onto the unified machine: `Ready` shows as "Planned", `In Progress` as "In progress", `Complete` as "Shipped", plus `Archived`, and an "Under review" intake state (`Backlog`). Displayed labels differ; the stored state does not. **P7 asks you.**                                                                                             |
 | **e** | **Legal text.** I won't write it as if it were final law.                                                                                                                                                                                               | Every legal document ships with a visible "Draft — pending legal review" banner and `noindex`. You remove both only after a lawyer signs off. Clause **content** is grounded in real product behaviour from `PRODUCT_SPEC.md` (5% fee, Fair Exit tiers, 7-day pending window, 48-day invite cooldown, KYC gates), so a lawyer reviews facts, not fiction. |
 | **f** | **About-page metrics** ("Total Value Protected", take rate, delivery velocity).                                                                                                                                                                         | Show only real aggregates computed server-side, with a minimum-threshold rule: below it the tile is hidden, never padded. Take rate is read from `security.platform_params.platform_fee_bp`. Investors will check these figures.                                                                                                                          |
+
+| **g** | **The landing page breaks the design system on purpose.** Root `CLAUDE.md` §3 makes
+token-only CSS, "no UI-lib deps", the anti-card rules and the `backdrop-filter` limit merge gates. |
+One decision row granting a **scoped exemption**: the `/` and `/features` routes only, under an
+`lp-` CSS namespace with its own palette, type and motion that cannot leak into the app. **Not
+exempt:** accessibility, reduced motion, islands-never-touch-the-DB, thin routes, security, SEO and
+the performance budget. **L0 asks you** to confirm the scope and the dependency policy
+(zero-dependency raw WebGL2 recommended; at most one small, version-pinned WebGL helper if you
+approve it). | | **h** | **Claims on the page.** The landing-page draft states things the code
+doesn't back: "0% escrow capital lost", "assembly under 4 minutes", "Deno/Rust architecture",
+"virus-checked files" (the scanner is still a sniff; wave 8 H3), "cryptographic IP deeds", royalties
+(spec only), tool integrations (connections are refused today), the tax-pot auto-skim (wave 8 F2),
+and competitor fees ("Upwork 10–20%"). | Every claim must be **shipped and true**, or a real live
+number from the metrics service, or labelled "Coming soon". Competitor comparisons cite a current
+public source with a date and go through the legal review in (e). L0 builds a claims table; L6
+checks every sentence against it. | | **i** | **The `⌘K` hint.** `Cmd+K` is reserved for a platform
+command palette that does not exist yet (`shell/core/shortcuts.ts`). | The hero shows the shortcut
+that works today: `/` focuses the hero search, and `Ctrl/Cmd+/` the header search. Show `⌘K` only
+once the palette ships. **L0 asks** whether to build the palette in this track. | | **j** |
+**Vocabulary.** The draft uses "Squads", "micro-agencies", "TVL" and "CREATE taxonomy" in
+user-facing copy. | Plain language for everyone (§2.6 glossary): "ready-made team", "payment
+protection", "money protected so far". Product words (Team, Client, Freelancer) remain the stored
+and spec terms (c). "Escrow" stays in metadata, the FAQ schema and secondary explanatory copy for
+SEO. | | **k** | **Explore deep-link contract.** The draft routes to `/explore?q=&scope=` with
+scopes "Pipelines, One-Offs, Sessions, Squads". | The real contract is `/explore?q=&category=` with
+`category ∈ all, users, freelancers, teams, businesses, services, projects, products, articles`
+(`packages/types/explore/items.ts:31`), built with `explorePath()`
+(`features/marketing/core/megamenu-data.ts:46`). Project types (one-off, pipeline, session) are
+filters inside Explore, not search categories. No decision needed; the prompts use the real
+contract. |
 
 ### 0.2 Repo facts every prompt relies on
 
@@ -900,4 +939,642 @@ TASK: Tie P1–P7 together and prove them.
 5. Lighthouse-style budget check on /articles/[slug] and /help/<article>: CLS < 0.05, no
    render-blocking third-party.
 Report a table: route | a11y issues | CLS | broken assets | docs updated.
+```
+
+---
+
+## 2. Landing page track — reference pack
+
+This section is the **reference pack** that L0–L6 point at. It distils the landing-page conversation
+(layouts, visualizers, backgrounds, styles, references, plain language) and corrects it against the
+codebase. Everything here is an option list; **L0 is where you choose.**
+
+### 2.0 Landing addendum — paste under the standard header for L0–L6
+
+```text
+LANDING TRACK ADDENDUM (applies to L0–L6 only).
+
+This route is a marketing surface that intentionally breaks the app design system, under the scoped
+exemption recorded in decision (g) of documentation/flows/PUBLIC_ROUTES_BUILD_PROMPTS.md §0.1. Read
+§2 of that file (the reference pack) before you start.
+
+Exempt, inside the `lp-` namespace only (apps/web/features/landing/**, the `/` route and the
+`/features` route):
+  - its own palette, type scale, radii, shadows, glass/backdrop-filter, gradients and glows, defined
+    as `--lp-*` custom properties in features/landing/styles/lp-theme.css and scoped to
+    `.lp-root`;
+  - cards, bento grids and decorative containers;
+  - motion beyond the app's spring set (scroll choreography, WebGL, pointer effects);
+  - one approved WebGL helper dependency, ONLY if decision (g) approved it; otherwise raw WebGL2.
+
+Never exempt:
+  - Accessibility: WCAG 2.2 AA contrast on every text-over-effect, full keyboard path, visible
+    focus, ARIA on every interactive demo.
+  - Reduced motion: honour BOTH prefers-reduced-motion and the app's data-motion="reduced" overlay
+    — no WebGL animation, no autoplay, no scroll-jacking, instant state changes.
+  - Islands never touch Supabase; demos are pure simulations over typed fixtures and write nothing.
+  - Thin route, fat service; ServiceResult<T>; Zod at every boundary.
+  - Every claim is true per the claims table (decision h). No fake numbers, logos or testimonials.
+  - SEO: SSR text content, one h1, JSON-LD, meta, and "escrow" kept in metadata and the FAQ schema
+    (decision j).
+  - Performance budget (enforced in L6), mobile mid-tier:
+    * LCP < 2.5s, INP < 200ms, CLS < 0.05;
+    * initial JS ≤ 60 KB gzip excluding the lazily loaded WebGL/demo chunks;
+    * WebGL starts only after first paint and on idle, only when visible, and never under
+      reduced motion or Save-Data or with deviceMemory < 4;
+    * it pauses when offscreen or when the tab is hidden.
+  - No `lp-` class or token may appear outside the exempt paths. Add a unit test that greps for
+    leaks.
+  - Dynamic imagery follows the global asset rules (placehold.co for UI graphics; seeded row URLs
+    or /test_images copies for DB-shaped imagery). No stock photography.
+```
+
+### 2.1 What must be on the page (sections, in priority order)
+
+1. **Hero (mandatory search).**
+   - Plain-language headline and subline.
+   - The **Explore search bar**: a category picker, typeahead, "popular searches" chips, and a
+     submit that routes to `/explore?q=&category=`.
+   - One background visual.
+   - Two calls to action: "Hire a team" and "Offer your skills" (→ `/become-partner`).
+2. **Why it's different.** Old way vs. Projective way: one ready-made team instead of five
+   strangers; fixed stage prices instead of open-ended hourly billing; pay as each stage is
+   approved. Competitor numbers are optional and must be sourced (decision h).
+3. **How it works.** The project journey in 4–6 plain steps: post or pick → fund the stage → team
+   works → you review → you approve and they're paid → they withdraw after 7 days.
+4. **The visualizer engine.** One tabbed interactive stage showing 3–5 demos (§2.3); "See
+   everything" links to `/features`.
+5. **Ways to work.** The three project types in human words: a one-off job, an ongoing pipeline, and
+   a live session. Each links to a pre-filtered Explore search.
+6. **Payment protection.** Money is held until you approve; Fair Exit if work stops; disputes;
+   verified identities before anyone gets paid. "Escrow" appears here as the secondary term.
+7. **Real numbers.** Live figures from the metrics service (P4), hidden below threshold.
+8. **For freelancers and teams.** Earn as a team, automatic splits, payouts after the 7-day window,
+   your work stays yours (IP modes).
+9. **Pricing.** A flat 5% platform fee read from `platform_fee_bp`, plus a small calculator ("on a
+   £2,000 stage you pay £2,000 + 5% fee").
+10. **FAQ.** 6–8 questions with FAQPage JSON-LD; this is where "escrow" earns its SEO.
+11. **Final CTA.** "Hire a team" / "Offer your skills" and a repeat of the search bar.
+
+### 2.2 Layout options (L0 picks one)
+
+| Option                                               | Shape                                                                                                      | Best when                                                               | Risk                                                                                                   |
+| :--------------------------------------------------- | :--------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------- |
+| **A. Search-first** (Airbnb / Linear hybrid)         | Centered headline → large search bar → chips → one live visual under the fold line → stacked sections.     | Search is the main action (it is). Cleanest for non-technical visitors. | Can feel generic unless the visual is strong.                                                          |
+| **B. Bento showcase** (Apple / Vercel)               | Short hero + floating search dock, then an asymmetric bento grid where each cell is a mini demo.           | Showing breadth fast.                                                   | Clutter; many demos fight each other. Keep ≤ 6 cells and ≤ 2 animated at once.                         |
+| **C. Editorial split** (Stripe Press / Mercury)      | A sticky narrative column on the left; on the right, a canvas that changes as you scroll (scrollytelling). | Building trust and explaining money.                                    | Scroll-driven pages are harder on mobile and for accessibility; needs a strong reduced-motion version. |
+| **D. Product-theatre** (Linear / Raycast)            | Hero search over a large, slightly tilted, realistic app mock that animates through a real workflow.       | Proving "this is a real product".                                       | The mock must match the real UI or it reads as fake.                                                   |
+| **E. Chapters** (Arc / Framer)                       | Full-viewport chapters, one idea each, snapping (not jacking) between them, with a progress rail.          | Strong storytelling for investors and press.                            | Long; the search must repeat at the end.                                                               |
+| **F. Search + live marketplace** (Dribbble / Contra) | Hero search, then real live listings (rails from `ExploreBackendService.landing()`) immediately below.     | Proving supply exists.                                                  | Weak or empty data looks bad; needs the seed corpus or real supply.                                    |
+
+**Recommendation:** A with D's product theatre inside the hero, F's live rails as section 5, and the
+tabbed engine (§2.3) as section 4. That gives one search, one hero visual and one interactive stage,
+and pushes depth to `/features`.
+
+### 2.3 Interactive visualizer catalogue — with a truth table
+
+Every demo is a **simulation over typed fixtures** (no API writes). A demo may only show behaviour
+that is **shipped**. Status is from the October 2026 audits
+(`documentation/architecture/MVP_FLOW_AUDIT.md` and the wave-7 verification).
+
+| #   | Visualizer                    | What the visitor does                                                                                                                              | Shows (plain words)                                                   | Status                                                                                                                             |
+| :-- | :---------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- |
+| V1  | **Live board** (kanban)       | Drag a card; an unfunded card is refused ("needs payment first"); approve a card and the next one gets funded (Chain Reaction, #210).              | "Work only starts when it's paid for, and moves on when you approve." | ✅ shipped                                                                                                                         |
+| V2  | **Payment protection slider** | Scrub a £5,000 project across 3 stages: money is held → you approve → the team is paid → 7-day clearing → withdraw. Toggle Fair Exit at 25/50/75%. | "Your money waits safely until you're happy."                         | ✅ shipped (#194, #197, #198, M4)                                                                                                  |
+| V3  | **Timeline** (gantt)          | Zoom months ↔ days; drag a stage; see the dates move.                                                                                              | "See what's happening and when."                                      | ✅ shipped (`packages/ui/gantt`); deadline bonuses exist (`allow_deadline_bonuses`); verify stage dependencies before showing them |
+| V4  | **Booking & rescheduling**    | Pick a slot across two time zones; propose a new time and watch the group vote.                                                                    | "Book time without the back-and-forth."                               | ✅ shipped (scheduling, reschedule rounds, #211); external calendar sync ❌ — don't show                                           |
+| V5  | **Team wallet splits**        | Choose an equal split, a lead-heavy split or a finder's fee; watch a payment divide.                                                               | "Payments split fairly and automatically."                            | ✅ shipped (`fn_team_split_plan`); the tax-pot skim ❌ (wave 8 F2) — "Coming soon" or omit                                         |
+| V6  | **Team room** (messaging)     | A chat where a phone number typed in gets masked; files dropped into the thread; presence dots.                                                    | "Your whole team in one place, and no one can take you off-platform." | ✅ shipped (messaging, `mask_pii` #147); Figma/GitHub embeds ❌                                                                    |
+| V7  | **Files & sharing**           | Drop a file → it's stored, previewed, and shared via an expiring link.                                                                             | "Keep every file together; share safely."                             | ✅ upload, preview and share links; "virus-checked" ❌ until wave 8 H3                                                             |
+| V8  | **Explore matchmaker**        | Type, switch category, see real results update (uses the live suggest API, read-only).                                                             | "Find the right team in seconds."                                     | ✅ shipped (semantic ranking optional, #179)                                                                                       |
+| V9  | **Ways to work**              | Switch One-off / Pipeline / Session and see how the project shape changes.                                                                         | "Pick how you want to work."                                          | ✅ shipped (three archetypes)                                                                                                      |
+| V10 | **Currency view**             | Switch GBP/USD/EUR/JPY on one price; see the rate snapshot.                                                                                        | "Pay in your currency."                                               | ⚠️ partial: `finance.fx_rates` and escrow FX snapshots exist; verify the claim "locked at funding" in code before showing it       |
+| V11 | **Team builder**              | Pick a goal, slot in roles, see an indicative stage budget, then "Find teams like this" → Explore pre-filtered.                                    | "Assemble a team the way you'd build a playlist."                     | ✅ as a demo; budget figures must be labelled "example", not quotes                                                                |
+| V12 | **Disputes & Fair Exit**      | Flip "work stopped halfway" and see the fair split.                                                                                                | "If something goes wrong, there's a fair way out."                    | ✅ shipped (#198, #212)                                                                                                            |
+| V13 | **Products & services shelf** | Hover a service, a product and a session; see what each delivers.                                                                                  | "Buy a fixed service, a ready product or a live session."             | ✅ listing and checkout; digital file delivery ❌ (wave 8 C1) — don't show downloads                                               |
+| V14 | **Blueprints & royalties**    | Turn finished work into a sellable template with a founding-client share.                                                                          | "Turn great work into income."                                        | ❌ spec only (PRODUCT_SPEC §Revenue & Royalties) — `/features` "Coming soon" only                                                  |
+| V15 | **Connected tools**           | Toggle GitHub / Zoom / Calendar on.                                                                                                                | "Plug in the tools you use."                                          | ❌ connections are refused today — omit                                                                                            |
+| V16 | **Verification ladder**       | Step through identity checks before payouts.                                                                                                       | "Everyone who gets paid is verified."                                 | ✅ shipped (Stripe Identity, payout-ready gate #196)                                                                               |
+
+**Progressive disclosure.** The landing page uses **one** stage with 3–5 tabs (recommended: V1 Live
+board · V2 Payment protection · V4 Booking · V5 Team splits, with V8 living in the hero search
+itself). Tabs are URL state (`?demo=board|payments|booking|splits`). Only the active demo's chunk is
+loaded, and a "See everything Projective does →" link goes to `/features`, which hosts the whole
+catalogue (L5). `/about` (P4) keeps the manifesto and the numbers.
+
+### 2.4 Background options (L0 picks one, plus its fallback)
+
+| Option                         | Effect                                                                             | Cost                                                       | Reduced-motion / low-power fallback                                                 |
+| :----------------------------- | :--------------------------------------------------------------------------------- | :--------------------------------------------------------- | :---------------------------------------------------------------------------------- |
+| B1 **Constellation**           | Faint nodes (freelancers) that the cursor gathers into a glowing cluster (a team). | Medium (instanced points + lines)                          | A static SVG constellation.                                                         |
+| B2 **Flowing waves**           | A dark topographic noise mesh that drifts with scroll.                             | Low–medium (one fragment shader)                           | A static CSS gradient-mesh image.                                                   |
+| B3 **Circuit traces**          | An isometric grid whose traces light up in sequence (money moving through stages). | Low (shader or SVG stroke-dash)                            | Static traces, no animation.                                                        |
+| B4 **Glass metaballs**         | Liquid glass blobs that merge as they touch (people forming teams).                | High (raymarch); test on mobile                            | A static blurred-blob image.                                                        |
+| B5 **Particle field**          | Thousands of particles deflected by cursor velocity.                               | Medium–high                                                | Static dots.                                                                        |
+| B6 **Aurora gradient**         | A slow, soft colour field (shader or animated CSS conic gradients).                | Low                                                        | A frozen gradient.                                                                  |
+| B7 **Grid + spotlight**        | A dot or line grid lit by a cursor spotlight (Vercel/Linear style).                | Very low (CSS radial-gradient following a custom property) | No spotlight.                                                                       |
+| B8 **Wavy image displacement** | Hero imagery rippling under the cursor.                                            | Medium                                                     | A static image. Note that no stock photos are allowed, so use product renders only. |
+| B9 **Glow-border components**  | Animated conic-gradient borders on the search bar and cards.                       | Very low                                                   | A static border.                                                                    |
+| B10 **Noise/grain overlay**    | A film-grain texture over everything for a tactile feel.                           | Very low                                                   | Keep it (it's static).                                                              |
+
+**Recommendation:**
+
+- **B7 + B9** for the hero: cheap, crisp, works on every device, and keeps focus on the search bar.
+- **B1** as an opt-in enhancement once the WebGL budget allows, so the "freelancers become a team"
+  metaphor is told by the background itself.
+- **B10** subtly on top.
+
+Avoid B4 and B5 on mobile.
+
+### 2.5 Style directions — top 10 for Projective (L0 picks one, optionally plus a secondary)
+
+| Rank | Direction                                                    | Look                                                                           | Why for Projective                                                                      |
+| :--- | :----------------------------------------------------------- | :----------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------- |
+| 1    | **Dark precision / "dev-tool industrial"** (Linear, Raycast) | Near-black canvas, hairline borders, mono metadata, one or two glowing accents | Signals craft and trust together; the default recommendation.                           |
+| 2    | **Bento modular** (Apple, Vercel)                            | Asymmetric tiles each holding one idea or demo                                 | Mirrors stages and boards; scannable. Pair with #1.                                     |
+| 3    | **Warm fintech editorial** (Mercury, Stripe Press)           | Serif display + sans body, warm stone/charcoal, calm accent inks               | Best for "your money is safe" and for investors; pairs well as the secondary voice.     |
+| 4    | **Swiss / International**                                    | Strict grid, big type, lots of space, no decoration                            | Clarity for non-technical buyers; ages well.                                            |
+| 5    | **Refined glassmorphism**                                    | Frosted layers used sparingly (search dock, demo frame)                        | Matches the "transparent, held safely" metaphor; restrict it to 2–3 surfaces.           |
+| 6    | **Soft 3D / clay** (Family, Framer)                          | Rounded, tactile 3D objects and playful motion                                 | Friendly for "built for everyone"; good for the visualizers.                            |
+| 7    | **Kinetic typography**                                       | Moving, variable-weight headlines that react to the pointer                    | High energy for the hero line; use once.                                                |
+| 8    | **Light airy minimal / "ethereal"**                          | Pale gradients, soft shadows, lots of white                                    | The opposite of #1; approachable. A good light-mode counterpart.                        |
+| 9    | **Human scrapbook accents**                                  | Hand-drawn arrows, sticky-note annotations over product shots                  | Makes demos feel human and explanatory; accents only, never the base.                   |
+| 10   | **Neo-brutalist friendly** (Gumroad-esque)                   | Bold flat colours, thick outlines, chunky buttons                              | Very approachable and memorable for creators; a risk for the high-value business buyer. |
+
+**Avoid as a base:** cyberpunk, Y2K, pixel art, heavy maximalism and full scrapbook. They undercut
+"your money is safe". Neumorphism hurts contrast and accessibility; at most use it for one tactile
+control such as the payment slider. Wabi-sabi and bohemian are off-brand for a payments product.
+
+**Recommended combination:**
+
+- **#1 Dark precision** as the base.
+- **#3 Warm editorial** typography for the trust and payments sections.
+- **#2 Bento** for the `/features` page.
+- **#9 Scrapbook accents** sparingly on the demos.
+
+Give the light-mode version **#8**'s airiness rather than inverting the dark design. Seed accents
+from the real brand pair, `--accent` amber `#D98216` (Decision #157), plus one cool accent picked in
+L0. The Gem's teal `#288690` and emerald `#268C66` are candidates, checked for contrast.
+
+### 2.6 Plain-language glossary (copy rules)
+
+| Internal / spec term                      | Say on the landing page                                                                                                                         | Keep for SEO / secondary                                                                                    |
+| :---------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------- |
+| Escrow                                    | "Payment protection" · "your money is held safely until you approve"                                                                            | "Payment protection (escrow)" in one explainer line, the FAQ, the meta description, and the FAQPage JSON-LD |
+| Release escrow                            | "Pay the team" · "approve and pay"                                                                                                              | —                                                                                                           |
+| Pending window (7 days)                   | "Clears in 7 days"                                                                                                                              | —                                                                                                           |
+| Micro-agency / squad / Team-as-a-Service  | "Ready-made team" · "a team that already works together"                                                                                        | "team-as-a-service" in meta keywords and an H2 subtitle only                                                |
+| Stage                                     | "Step" or "stage" (stage is understood)                                                                                                         | —                                                                                                           |
+| CREATE framework                          | "Create · Run · Teach · Advise · Test · Hand over" as plain categories (note "Educate" → "Teach", "Empower" → "Hand over"), or skip the acronym | "CREATE framework" on `/features`                                                                           |
+| Workload intensity (Wᵢ) / capacity        | "Nobody takes on more than they can handle"                                                                                                     | —                                                                                                           |
+| KYC / KYB                                 | "Everyone who gets paid is ID-verified"                                                                                                         | —                                                                                                           |
+| Fair Exit                                 | "A fair way out if work stops"                                                                                                                  | "Fair Exit" as the feature name                                                                             |
+| Platform fee 5%                           | "A flat 5% fee. No bidding, no surprises."                                                                                                      | —                                                                                                           |
+| TVL                                       | "Money protected so far"                                                                                                                        | —                                                                                                           |
+| Archetypes (one-off / pipeline / session) | "A single job · an ongoing workflow · a live session"                                                                                           | —                                                                                                           |
+
+Rules: a reading age around 12–14; one idea per sentence; no unexplained acronyms; verbs over nouns.
+Every visualizer's caption is under 15 words.
+
+### 2.7 References
+
+**Live sites to study.** Check each is still live before citing it in the L0 board.
+
+| Site                               | Study it for                                                              |
+| :--------------------------------- | :------------------------------------------------------------------------ |
+| linear.app                         | Dark precision, hairlines, product-theatre hero, keyboard-first feel      |
+| stripe.com and stripe.com/payments | Animated gradient canvas, money-flow diagrams, dense but readable type    |
+| vercel.com                         | Grid + spotlight background, bento, glow borders, search-like hero inputs |
+| raycast.com                        | Floating glass command bar, shortcut hints, extension showcases           |
+| airbnb.com                         | The gold standard for a search-first hero with a category picker          |
+| contra.com                         | A freelance marketplace aimed at independents; tone and onboarding        |
+| mercury.com                        | Warm fintech editorial; making money feel safe                            |
+| ramp.com                           | Fintech clarity, live product mocks, calculators                          |
+| cal.com                            | Booking UI showcased on a landing page (relevant to V4)                   |
+| attio.com                          | Data-dense modular product shots                                          |
+| liveblocks.io                      | Multiplayer cursors and live collaboration demos (relevant to V6)         |
+| family.co                          | Soft 3D, delightful spring motion                                         |
+| framer.com                         | Chapters, scroll choreography, kinetic type                               |
+| arc.net                            | Storytelling chapters and personality                                     |
+| notion.com/product/calendar        | Interactive calendar hero (relevant to V4)                                |
+| gumroad.com                        | Approachable neo-brutalist creator tone                                   |
+
+**Dribbble searches:**
+
+- "search hero landing page", "marketplace landing page hero search"
+- "freelance marketplace landing", "team hiring platform landing"
+- "fintech escrow landing page", "payment protection UI"
+- "bento grid landing page dark", "SaaS dark landing page glow"
+- "kanban landing page interactive", "booking calendar landing hero"
+
+**Awwwards searches and categories:**
+
+- Categories: "Business & Corporate", "Web & Interactive", "Technology".
+- Tags: "WebGL", "Scrolling", "Interaction design", "Typography", "Minimal", "Dark".
+- Collections: "Best SaaS websites", "Fintech websites".
+
+**Pinterest boards:**
+
+- "dark SaaS landing page", "bento grid web design", "fintech web design"
+- "glassmorphism UI dark", "editorial web typography"
+- "landing page hero search bar", "product UI mockup perspective"
+- "clay 3D icons UI"
+
+---
+
+## L0 · Landing — art direction & decisions
+
+```text
+TASK: Choose the landing page's direction and record it before anything is built. Produce a written
+direction, not code.
+
+STEP 0 — STOP AND ASK ME, with the options from PUBLIC_ROUTES_BUILD_PROMPTS.md §2 laid out and your
+recommendation first:
+  1. Layout: §2.2 A–F (recommend A + D hero theatre + F rails).
+  2. Style: §2.5 base + secondary (recommend #1 Dark precision + #3 Warm editorial), and the light
+     mode treatment.
+  3. Background: §2.4 primary + fallback (recommend B7 + B9 now, B1 later, B10 subtle).
+  4. Visualizers: which 3–5 go in the landing tab stage (recommend V1, V2, V4, V5; V8 in the hero),
+     and which go to /features only.
+  5. Decision (g): confirm the exemption scope and the dependency policy (raw WebGL2, or one pinned
+     helper).
+  6. Decision (i): build a command palette now (so ⌘K is real), or show `/` only?
+  7. The cool accent colour to pair with amber #D98216.
+
+STEP 1 — after my answers:
+- Write the decision rows (g, h, i, j and the chosen direction) in the newest
+  documentation/reference/decisions/decisions-*.md and index them in README.md.
+- Create documentation/flows/LANDING.md, the landing spec:
+  * the chosen layout as an ASCII wireframe per breakpoint (375 / 768 / 1280 / 1600);
+  * the `--lp-*` token sheet: palette with contrast ratios for every text pairing, type scale,
+    radii, glow and shadow recipes, motion durations and easings;
+  * a section-by-section copy deck written to the §2.6 glossary — headline, subline, CTAs, chips,
+    captions, FAQ. Offer 3 headline options; the plain-language bar is a reading age of 12–14;
+  * the CLAIMS TABLE (decision h): every factual sentence on the page → its proof (file:line, a
+    decision #, or a live metric) or "Coming soon". Delete any claim with no proof.
+  * the visualizer list with its truth-table status (§2.3), and the reduced-motion version of each;
+  * the performance budget from the addendum.
+- Update PRODUCT_SPEC.md "Visual identity" with one line pointing at LANDING.md and the exemption,
+  and DESIGN_SYSTEM.md with a short "Off-system surfaces" note that names the `lp-` namespace and
+  says the app gates still apply everywhere else.
+No code in this prompt.
+```
+
+---
+
+## L1 · Landing — decoupled shell, scoped theme, background
+
+```text
+TASK: Make `/` a full-bleed, off-system surface with its own theme and the chosen background,
+without touching the rest of the app.
+
+1. ROUTE TARGET & SCOPE
+- apps/web/routes/(public)/index.tsx stays the thin controller (it already calls
+  ExploreBackendService.landing() and sets LANDING_META). Change it to render
+  features/landing/LandingPage.tsx instead of features/marketing/components/LandingPage.tsx.
+- apps/web/routes/(public)/_layout.tsx resolves GuestShell/UserShell per auth state (with the
+  AUTH_PATHS exemption). Add a LANDING_PATHS check (`/`, `/features`) that renders a minimal
+  LandingShell instead:
+  * its own floating header: logo, 3–4 links, Sign in / Open app;
+  * the existing PublicFooter, so footer links stay in one place (Decision #13).
+  For a signed-in visitor on `/`, decide with me in L0 whether to show the landing page or redirect
+  to /home. The default is to show the landing page with an "Open app" button; never break
+  /home.
+- The new feature folder is apps/web/features/landing/ with components/ islands/ styles/ core/
+  only. Retire the old marketing landing components (Hero, HowItWorks, Testimonials,
+  OpenProjectsGrid, ProductsMasonry, HeroParticles.island, MagneticField.island) once nothing
+  imports them. Delete them, don't leave them dead (grep first; SiteHeader, PublicFooter,
+  NewsletterForm and SchemaInjector stay).
+
+2. LAYOUT & COMPONENT ARCHITECTURE
+- LandingShell: `.lp-root`, full-bleed. A sticky floating header pill whose glass sits on a
+  ::before (still a good pattern even though it is exempt). A skip link. A <main id="main">.
+- Background island (features/landing/islands/LandingBackground.island.tsx) implements the L0
+  choice. Its contract:
+  * It renders a static fallback (CSS/SVG) on the server — that is the LCP-safe first paint.
+  * On the client, it only upgrades when ALL of these hold: no prefers-reduced-motion, no
+    data-motion="reduced", no Save-Data, deviceMemory ≥ 4 (or unknown on desktop), a WebGL2
+    context is available, and the hero is intersecting.
+  * The upgrade waits for requestIdleCallback after first paint.
+  * It caps devicePixelRatio at 1.5, pauses on visibilitychange and when the hero leaves the
+    viewport, and is destroyed on navigation.
+  * Shaders live in features/landing/core/shaders/*.ts as tagged template strings.
+  * Pointer input uses throttled pointermove and writes a CSS custom property for cheap effects
+    (the B7 spotlight).
+
+3. DESIGN SYSTEM & STYLING DIRECTIVES
+- features/landing/styles/lp-theme.css defines every `--lp-*` token from LANDING.md, scoped to
+  `.lp-root`, with light and dark variants keyed to the app's theme attribute so the visitor's
+  theme choice is respected. Every landing stylesheet uses `--lp-*` (and may read the app's
+  accessibility overlays). No `lp-` selector or token outside features/landing (add a leak test).
+- Motion: define `--lp-dur-*` and easings. Under reduced motion, every transition is instant and no
+  animation runs.
+
+4. DATA CONTRACT & ASSET MOCKING
+- No new data. Keep LandingPayload from ExploreBackendService.landing() flowing to the page (for
+  L2 chips and L4 rails). Seed-shaped imagery comes from payload URLs; decorative graphics use
+  placehold.co until real product renders exist.
+
+5. SEO, PERFORMANCE & ACCESSIBILITY
+- The SSR HTML contains all text (h1, sublines) with no JS dependency. The background is
+  aria-hidden. Add the performance budget check as a script (L6 enforces it), and measure the
+  initial JS here.
+- Docs: ROUTING.md (the LANDING_PATHS shell exemption), DESIGN_SYSTEM "Off-system surfaces",
+  DESIGN_SYSTEM §C.1 (remove the retired marketing components, add LandingShell).
+```
+
+---
+
+## L2 · Landing — hero + Explore search (the hard requirement)
+
+```text
+TASK: Build the hero, whose core is a search bar that searches Explore.
+
+1. ROUTE TARGET & SCOPE
+- features/landing/components/LandingHero.tsx (SSR) plus
+  features/landing/islands/HeroSearch.island.tsx.
+- REUSE, don't rebuild, the existing Explore typeahead plumbing:
+  * the client service ExploreService suggest call (features/explore/core/ExploreService.ts:56,
+    which already takes an AbortSignal);
+  * the suggest controller (features/explore/core/suggest-controller.ts);
+  * the SearchSuggest island patterns;
+  * search history (features/explore/core/search-history.ts).
+  Import across features only through path aliases. If the landing island needs a different look,
+  wrap the logic (headless) and give it lp- styling. Do not fork the logic.
+- APIs: GET /api/explore/suggest?q=&category (existing, Zod SuggestQuerySchema). Submit navigates
+  to explorePath(category, q) → /explore?category=…&q=… — the real contract (decision k). Never
+  invent a `scope` param.
+
+2. LAYOUT & COMPONENT ARCHITECTURE
+- Hero copy from the LANDING.md copy deck: an eyebrow (optional), an h1, a subline, and two CTAs
+  ("Hire a team" → focuses the search or opens /explore; "Offer your skills" → /become-partner).
+- The search bar (centre stage, the largest element after the h1):
+  * Left: a category picker over the real categories: All · Freelancers & teams (`freelancers`;
+    teams fold into it per detail-nav scopeOf) · Services · Projects · Products · Businesses.
+    Human labels; real values.
+  * Centre: the input, with an animated typewriter placeholder cycling 4–6 real example searches
+    (taken from the seed corpus / landing payload, not invented). The placeholder animation is off
+    under reduced motion, and the real placeholder text stays readable for screen readers.
+  * Right: the submit button (the page's single accent primary in this region) with press feedback
+    scale(0.96).
+  * Under it: "Popular:" chips — server-rendered from the landing payload or trending suggest
+    results, so there is no layout flash. Each chip is a real link to explorePath(...).
+  * Suggestions dropdown: grouped results (people/teams, services, projects, products) with
+    avatars or covers from the payload URLs; keyboard navigation (aria-activedescendant); Enter
+    submits; Esc closes; recent searches when empty.
+  * The dropdown overlays without moving the page (absolute positioning, a reserved height for the
+    chips row).
+  * Debounce at 200ms; abort superseded requests; show an inline "No matches — search anyway"
+    row.
+- Shortcuts per decision (i): `/` focuses the hero search (isFocusSearchShortcut), and the visible
+  hint shows `/`. Show ⌘K only if the palette exists.
+- Hero visual per L0 (product theatre or background only). If it is product theatre: a tilted,
+  realistic board mock built from real @projective/ui components rendering fixtures — not a
+  screenshot — which plays V1 in a loop when motion is allowed and is static otherwise.
+- Without JS: the search is a real <form action="/explore" method="get"> with name="q" and
+  name="category", so it works with no hydration.
+
+3. DESIGN SYSTEM & STYLING DIRECTIVES (lp- exemption)
+- The search bar is the hero's focal point:
+  * a pill/rounded container with a B9 glow border;
+  * glass (backdrop-filter on ::before) only if L0 chose it;
+  * focus states unmistakable (a ring at 3:1 against every background state).
+- Type at hero scale from `--lp-*`. Contrast is checked over the background's brightest frame.
+- Mobile: the category picker collapses into a leading icon button opening a sheet; the input stays
+  full-width; chips scroll horizontally with scroll-snap and fade edges.
+
+4. DATA CONTRACT & ASSET MOCKING
+- Chips, typewriter examples and suggestion thumbnails come from LandingPayload and the suggest
+  responses (seeded URLs that originate in /test_images via the seed pipeline). No placehold.co in
+  the search UI, except a neutral fallback avatar (DEFAULT_AVATAR_URL
+  /test_images/profile_1.jpg, already static).
+
+5. SEO, PERFORMANCE & ACCESSIBILITY
+- role="search" form. A visible or visually-hidden <label>. The combobox pattern (role="combobox",
+  aria-expanded, aria-controls, listbox/options).
+- JSON-LD: WebSite with potentialAction SearchAction targeting /explore?q={search_term_string}
+  (sitelinks search box), plus Organization.
+- The hero island is the only JS needed above the fold, ≤ 20 KB gzip.
+- Tests:
+  * Unit: category→URL mapping uses explorePath; typewriter disabled under reduced motion.
+  * Playwright: type → suggestions → Enter lands on /explore with q and category; no-JS form
+    submit works; `/` focuses.
+```
+
+---
+
+## L3 · Landing — visualizer engine + first demos
+
+```text
+TASK: Build the single tabbed "see it in action" stage and the demos chosen in L0 (default V1 Live
+board, V2 Payment protection, V4 Booking, V5 Team splits).
+
+1. ROUTE TARGET & SCOPE
+- features/landing/components/DemoStage.tsx (SSR frame and tabs) plus
+  features/landing/islands/DemoHost.island.tsx, which lazy-loads the active demo via dynamic
+  import().
+- Each demo is one module: features/landing/islands/demos/<Name>.demo.tsx.
+- URL state: ?demo=board|payments|booking|splits (default board). Switching tabs updates the URL
+  with replaceState; deep links open the right tab; no scroll jump.
+- Demos are PURE SIMULATIONS: a reducer over typed fixtures (features/landing/core/demo-fixtures.ts,
+  Zod-validated against the real @projective/types shapes so they stay honest). They make no
+  network calls and no writes.
+
+2. LAYOUT & COMPONENT ARCHITECTURE
+- Stage frame: tabs (tablist with roving tabindex and plain-language labels: "Work board",
+  "Payment protection", "Booking", "Team pay"), a demo viewport with a reserved aspect-ratio (no
+  CLS when demos swap), a one-line caption (< 15 words), and a "Reset" control. "See everything
+  →" goes to /features.
+- Demos, using the REAL @projective/ui components wherever one exists (kanban, gantt, calendar,
+  fields) so the demo looks like the product:
+  * V1 board: columns Ready · Needs payment · In progress · Review · Done. Dragging an unpaid card
+    into In progress is refused with a gentle over-damped shake and "Needs payment first". A "Pay
+    for this step" button funds it. Approving in Review → Done shows the next card getting funded
+    automatically (Chain Reaction, Decision #210) and a "Team paid" moment.
+    Keyboard alternative: card menu → "Move to…".
+  * V2 payment protection: a £5,000, three-stage project; a stepper/scrubber through Held → You
+    approve → Team paid (minus the 5% fee, read from the server-provided bp passed in props) → Clears
+    in 7 days → Withdraw. A Fair Exit toggle at 25/50/75% shows the earned and refunded split
+    (mirrors fn_fair_exit_release, fee on the earned share only).
+  * V4 booking: two time zones side by side; pick a slot; then "Propose a new time" shows 3
+    attendees voting until the majority confirms.
+  * V5 team pay: a payment arriving; switch Equal / Lead-heavy / Finder's fee (the real split_rules
+    names in plain words) and watch the amounts divide, with a vault share and rounding exactly as
+    fn_team_split_plan does. Put the arithmetic in a pure, unit-tested function that mirrors the SQL.
+- Every demo has a static, fully readable reduced-motion version: the same states shown as a
+  labelled sequence of frames, with next/previous buttons.
+
+3. DESIGN SYSTEM & STYLING DIRECTIVES (lp- exemption)
+- The stage is the one big elevated object in its section (glass or solid per L0). Inner demo UI
+  uses the app components and so picks up app tokens. Wrap the demo viewport in a scoped theme
+  bridge so app components render in the landing palette, by mapping the app tokens to `--lp-*`
+  inside `.lp-demo` only.
+- Motion: snappy (150–250ms), over-damped; no bounce. A celebratory moment (a light particle burst
+  on "Team paid") at most once per interaction, never under reduced motion.
+
+4. DATA CONTRACT & ASSET MOCKING
+- Fixture avatars use seeded profile URLs from the landing payload when available, else
+  /test_images/profile_2-6 (copied to apps/web/static/test_images in P0).
+- Ticket covers and file thumbs: placehold.co with labels ("Homepage design", "Logo v2").
+- Money: format with the app's money helper (the existing MoneyView or formatter) in GBP by
+  default. If decision (h) verified it, switch currency from the visitor's preference.
+
+5. SEO, PERFORMANCE & ACCESSIBILITY
+- The tab panel's SSR content is a descriptive paragraph plus an image placeholder per demo
+  (crawlable text). The island hydrates on visible (IntersectionObserver), not on load.
+- Each demo chunk ≤ 35 KB gzip; only the active one loads.
+- Every drag has a keyboard path and live-region announcements ("Card moved to Review").
+- Tests: reducer unit tests per demo (states, refusals, chain reaction, the split math matching
+  the SQL fixtures, Fair Exit tiers). Playwright: deep-link each ?demo=; keyboard-only run-through.
+```
+
+---
+
+## L4 · Landing — remaining sections
+
+```text
+TASK: Build the sections around the hero and the demo stage, per LANDING.md and §2.1.
+
+1. ROUTE TARGET & SCOPE
+- SSR components in features/landing/components/:
+  * WhyDifferent
+  * HowItWorks (new; the old marketing one is retired)
+  * WaysToWork
+  * PaymentProtection
+  * LiveNumbers
+  * ForTeams
+  * Pricing
+  * Faq
+  * FinalCta
+- Islands only where interaction exists: PricingCalculator.island, the optional
+  TeamBuilder.island (V11), and the FAQ needs none (use <details>).
+
+2. LAYOUT & COMPONENT ARCHITECTURE
+- WhyDifferent: an old-way vs. Projective-way split. Competitor figures appear only if decision (h)
+  produced a sourced, dated citation; otherwise compare models ("open-ended hourly billing" vs
+  "fixed price per step"), not companies.
+- HowItWorks: 5–6 numbered steps with small inline illustrations (placehold.co until real art).
+  Scroll-revealed only when motion is allowed.
+- WaysToWork: three tiles — single job, ongoing workflow, live session. Each links to Explore
+  pre-filtered with the real filter params for that archetype (read parseExploreParams; if no
+  archetype filter exists, link the closest category and tell me).
+- PaymentProtection: the trust section — money held until you approve, Fair Exit, disputes, ID
+  verification before payouts, the 7-day clearing. "Escrow" appears once here as "payment
+  protection (escrow)". Link to /legal/escrow-terms (P1) and /help.
+- LiveNumbers: reuse P4's PublicMetricsService (call the service from the route; extend
+  LandingPayload or add a second read in the thin controller). Same threshold-hiding rule. If P4
+  hasn't landed, build the service exactly as P4 specifies.
+- ForTeams: earn as a team, automatic splits, payouts, your IP options (ip_option_mode, in plain
+  words). The CTA "Offer your skills" → /become-partner.
+- Pricing: a flat fee read from security.platform_params.platform_fee_bp via the service (never
+  hard-coded). The calculator takes a stage price → shows what the client pays and what the team
+  receives, with the same truncating rule as SQL (unit-tested against fn_escrow_fee_bp examples).
+- Faq: 6–8 Q&As from LANDING.md, including "Is my money safe? (How escrow works)". FAQPage
+  JSON-LD.
+- FinalCta: headline, the search bar again (the same HeroSearch island, a second instance with its
+  own id), and the two CTAs.
+- Optional V11 TeamBuilder: goal → role slots → an "example budget" (clearly labelled) → "Find
+  teams like this" → explorePath('freelancers', <goal skills>).
+- Rails (layout F, if chosen): live listings from LandingPayload under WaysToWork, rendered with
+  lp-styled cards. Hide the rail entirely when the payload is null or thin (< 4 items).
+
+3. DESIGN SYSTEM & STYLING DIRECTIVES (lp- exemption)
+- One idea per section; generous vertical rhythm; at most two animated things in view at once
+  (count the background and the demo stage).
+- The payments sections lean on the secondary editorial voice chosen in L0.
+
+4. DATA CONTRACT & ASSET MOCKING
+- Live data: LandingPayload (listings) and PublicMetrics (numbers, fee bp). Everything else is
+  copy from LANDING.md.
+- Imagery: listing images come from payload URLs; illustrations and section art use
+  https://placehold.co/{w}x{h}?text=<Label> until real renders replace them (list them for me).
+  No logos of customers we don't have.
+
+5. SEO, PERFORMANCE & ACCESSIBILITY
+- One h1 (the hero); each section an h2 with descriptive text; landmarks per section (aria-labelledby).
+- JSON-LD: FAQPage, and Offer/AggregateOffer only if real.
+- Meta from LANDING.md: the title includes "team" and "payment protection"; the description
+  includes "escrow".
+- Images lazy below the fold with dimensions.
+- Tests: the fee calculator against SQL examples, threshold hiding, and the payload-null rendering
+  path.
+```
+
+---
+
+## L5 · `/features` — the extension page
+
+```text
+TASK: Build /features, the "everything Projective does" page that the landing page links into, so
+the home page stays light.
+
+1. ROUTE TARGET & SCOPE
+- Route: apps/web/routes/(public)/features.tsx, using LandingShell (it is in LANDING_PATHS; same
+  lp- exemption).
+- Add "features" to RESERVED_HANDLES and org.fn_is_reserved_handle (keep
+  workspace.contract.test.ts green).
+- URL state: ?section=<slug> scrolls to and opens a section; each section has an anchor.
+
+2. LAYOUT & COMPONENT ARCHITECTURE
+- A bento grid (style #2) grouped into chapters:
+  * Find & hire: V8 matchmaker, V11 team builder, V13 shelf.
+  * Run the work: V1 board, V3 timeline, V9 ways to work, V6 team room.
+  * Money: V2 protection, V5 team pay, V10 currency (only if verified), V12 Fair Exit.
+  * Trust: V16 verification, V7 files & sharing (no "virus-checked" until H3).
+  * Coming soon: V14 blueprints & royalties, V15 connected tools, the tax pot — static tiles
+    labelled "Coming soon", never interactive.
+- Each tile: a title, a one-line plain description, and a "Try it" that opens that demo in a shared
+  DemoHost overlay (reuse L3's host and demo modules; Dialog from packages/ui/overlay for the
+  frame, styled lp-), plus "Learn more" → the matching /help article (P2).
+- Never more than 2 tiles animate at once; tile previews are static images or posters until the
+  demo opens.
+- The page ends with the same final CTA and search.
+
+3. DESIGN SYSTEM & STYLING DIRECTIVES — as L3/L4. The bento cells use the landing tokens.
+
+4. DATA CONTRACT & ASSET MOCKING — demo fixtures from L3. Tile posters use
+   https://placehold.co/800x500?text=<Feature> until real captures exist (list them).
+
+5. SEO, PERFORMANCE & ACCESSIBILITY
+- Indexable. JSON-LD: WebPage plus ItemList of features, with each feature's description as
+  crawlable SSR text.
+- Demos open in an accessible dialog (focus trap, Esc, focus return).
+- Total initial JS ≤ the landing budget; demo chunks load on "Try it".
+- Docs: the PRODUCT_SPEC sitemap (Public: /features), ROUTING.md, DESIGN_SYSTEM "Off-system
+  surfaces"; link /features from the footer and from /about (P4).
+```
+
+---
+
+## L6 · Landing — QA & launch gate
+
+```text
+TASK: Prove the landing track is fast, accessible, honest and leak-free, and fix what fails.
+
+1. Performance, measured on a throttled mid-tier mobile profile (Playwright + Chrome tracing or a
+   Lighthouse CI run, whichever the repo can host without a new runtime dependency; ask if neither
+   fits):
+   - LCP < 2.5s, INP < 200ms, CLS < 0.05 on `/` and `/features`;
+   - initial JS ≤ 60 KB gzip;
+   - WebGL not started under reduced motion, Save-Data, or a lost context (simulate each).
+2. Accessibility:
+   - axe-core (dev-only dependency, if approved) or a scripted manual pass;
+   - keyboard-only end to end: search → submit, every demo tab and every demo, the FAQ, the CTAs;
+   - contrast of every text over the background's brightest and darkest frames;
+   - both reduced-motion channels;
+   - the dyslexic and high-contrast overlays still apply to landing text.
+3. Honesty: walk the LANDING.md claims table sentence by sentence against the rendered page. Every
+   claim has its proof or the "Coming soon" label, and live numbers hide below threshold. Paste the
+   table into your final message.
+4. Leak check: no `lp-` class or `--lp-*` token outside the exempt paths; the app's routes render
+   byte-identical CSS to before (diff the built CSS for app routes).
+5. SEO:
+   - one h1;
+   - JSON-LD (WebSite + SearchAction, Organization, FAQPage, ItemList) parses;
+   - the meta description contains "escrow";
+   - the sitemap includes / and /features.
+6. Playwright smoke at 375 / 768 / 1280 / 1600, in light and dark: no console errors; no 404 assets
+   (catches bad /test_images paths); the hero search reaches /explore with q and category, both
+   with JS and without.
+Report a table: check | result | evidence | fix commit.
 ```
