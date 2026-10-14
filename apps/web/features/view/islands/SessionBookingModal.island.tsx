@@ -8,7 +8,14 @@ import { DateRail } from "../components/DateRail.tsx";
 import { SlotPicker } from "../components/SlotPicker.tsx";
 import { CtaButton } from "../components/CtaButton.tsx";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
-import { BookingService } from "../core/BookingService.ts";
+import { commitContact, commitSession, readSlots } from "../core/booking-commits.ts";
+import {
+	clearSimulationOutcome,
+	SIMULATED_COMMIT_LABEL,
+	SIMULATED_SETTLED_LABEL,
+	simulating,
+} from "../core/simulation.ts";
+import { SimulationOutcome } from "../components/SimulationNotices.tsx";
 import { announce, closeBookingPanel, currentOffer, openPanel } from "../core/booking-state.ts";
 import type { SlotGrid, SlotPurpose } from "@projective/types/scheduling";
 import { addDaysInZone, firstOpenDay } from "@projective/types/scheduling";
@@ -99,7 +106,7 @@ export default function SessionBookingModal({ offer: ssrOffer }: SessionBookingM
 	async function loadGrid(from?: number | null): Promise<void> {
 		loading.value = true;
 		error.value = null;
-		const res = await BookingService.slots({
+		const res = await readSlots({
 			subjectId: subjectId.value,
 			purpose: purpose.value,
 			timezone: viewerZone(),
@@ -130,7 +137,10 @@ export default function SessionBookingModal({ offer: ssrOffer }: SessionBookingM
 
 	// Reset when the panel closes, so re-opening it is a fresh decision rather than a half-made one.
 	useEffect(() => {
-		if (open.value) return;
+		if (open.value) {
+			clearSimulationOutcome();
+			return;
+		}
 		grid.value = null;
 		windowFrom.value = null;
 		selectedDay.value = null;
@@ -191,7 +201,7 @@ export default function SessionBookingModal({ offer: ssrOffer }: SessionBookingM
 				error.value = "This provider asks what the call is about before confirming.";
 				return false;
 			}
-			const res = await BookingService.contact({
+			const out = await commitContact({
 				kind: "discovery_call",
 				handle: offer.value.contact.handle,
 				subjectId: offer.value.subjectId,
@@ -199,7 +209,10 @@ export default function SessionBookingModal({ offer: ssrOffer }: SessionBookingM
 				callType: callType.value,
 				timezone: viewerZone(),
 				agenda: note.value.trim() || undefined,
-			});
+			}, grid.value?.durationMinutes ?? null);
+			// A simulated request stays open on its outcome: nothing was sent, so nothing closes.
+			if (out.simulated) return true;
+			const res = out.value;
 			if (!res.ok || !res.data) {
 				error.value = res.message ?? "Could not request that call.";
 				// A refusal is usually somebody else taking the slot, so the honest response is a fresh
@@ -214,7 +227,7 @@ export default function SessionBookingModal({ offer: ssrOffer }: SessionBookingM
 			return true;
 		}
 
-		const res = await BookingService.bookSession({
+		const out = await commitSession({
 			subjectId: offer.value.subjectId,
 			format: offer.value.format,
 			slotIds: [...chosen],
@@ -223,6 +236,9 @@ export default function SessionBookingModal({ offer: ssrOffer }: SessionBookingM
 			seats: offer.value.format === "cohort" ? seats.value : 1,
 			answers: {},
 		});
+		// A simulated booking holds nothing and goes nowhere: the modal stays on its outcome.
+		if (out.simulated) return true;
+		const res = out.value;
 		if (!res.ok || !res.data) {
 			error.value = res.message ?? "Could not add that time to your basket.";
 			if (res.errors?.slotId || res.errors?.slotIds) void loadGrid(windowFrom.value);
@@ -240,6 +256,7 @@ export default function SessionBookingModal({ offer: ssrOffer }: SessionBookingM
 
 	const g = grid.value;
 	const call = offer.value.contact.callOffer;
+	const simulated = simulating.value;
 	const bothCallTypes = !!call?.courtesyEnabled && !!call?.paidEnabled;
 	const total = offer.value.sessionCount;
 
@@ -263,8 +280,16 @@ export default function SessionBookingModal({ offer: ssrOffer }: SessionBookingM
 						)}
 					</div>
 					<CtaButton
-						label={isCall.value ? "Request call" : confirmLabel(offer.value)}
-						settledLabel={isCall.value ? "Requested" : "Selected"}
+						label={simulated
+							? SIMULATED_COMMIT_LABEL
+							: isCall.value
+							? "Request call"
+							: confirmLabel(offer.value)}
+						settledLabel={simulated
+							? SIMULATED_SETTLED_LABEL
+							: isCall.value
+							? "Requested"
+							: "Selected"}
 						phase={cta.phase}
 						disabled={selectedSlots.value.length === 0 || loading.value}
 						icon={<Icon name="calendar" size="sm" aria-hidden />}
@@ -368,6 +393,7 @@ export default function SessionBookingModal({ offer: ssrOffer }: SessionBookingM
 				</label>
 
 				{error.value && <p class="sbk__error" role="alert">{error.value}</p>}
+				{simulated && <SimulationOutcome />}
 			</div>
 		</Dialog>
 	);

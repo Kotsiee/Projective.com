@@ -7,7 +7,14 @@ import { MoneyView } from "@projective/ui/display/money";
 import "../styles/service-booking.css";
 import { CtaButton } from "../components/CtaButton.tsx";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
-import { BookingService } from "../core/BookingService.ts";
+import { commitConfigure } from "../core/booking-commits.ts";
+import {
+	clearSimulationOutcome,
+	SIMULATED_COMMIT_LABEL,
+	SIMULATED_SETTLED_LABEL,
+	simulating,
+} from "../core/simulation.ts";
+import { SimulationOutcome } from "../components/SimulationNotices.tsx";
 import { announce, closeBookingPanel, currentOffer, openPanel } from "../core/booking-state.ts";
 import type { StageFundingScope } from "@projective/types/services";
 import type { ServiceBookingOffer } from "@projective/types/services";
@@ -67,7 +74,10 @@ export default function ScopeBriefModal(
 	// attempt. A draft that survives is a feature this surface deliberately does not have: the brief is
 	// short, and resurrecting one written for a different funding scope is worse than retyping it.
 	useEffect(() => {
-		if (open.value) return;
+		if (open.value) {
+			clearSimulationOutcome();
+			return;
+		}
 		requirements.value = "";
 		scope.value = "first_stage";
 		files.value = [];
@@ -88,7 +98,7 @@ export default function ScopeBriefModal(
 		}
 		error.value = null;
 
-		const res = await BookingService.configure({
+		const out = await commitConfigure({
 			subjectId: offer.value.subjectId,
 			format: offer.value.format,
 			requirements: brief,
@@ -106,6 +116,9 @@ export default function ScopeBriefModal(
 			// service modal, so there is nothing structured to send from here.
 			answers: {},
 		});
+		// A simulated brief is staged nowhere and goes nowhere: the modal stays on its outcome.
+		if (out.simulated) return true;
+		const res = out.value;
 		if (!res.ok || !res.data) {
 			error.value = res.message ?? "Could not stage that. Please try again.";
 			return false;
@@ -154,8 +167,8 @@ export default function ScopeBriefModal(
 						<span class="sbk__summarynote">You review everything at checkout before paying.</span>
 					</div>
 					<CtaButton
-						label="Continue"
-						settledLabel="Staged"
+						label={simulating.value ? SIMULATED_COMMIT_LABEL : "Continue"}
+						settledLabel={simulating.value ? SIMULATED_SETTLED_LABEL : "Staged"}
 						phase={cta.phase}
 						disabled={!requirements.value.trim()}
 						icon={<Icon name="arrow-right" size="sm" aria-hidden />}
@@ -277,6 +290,7 @@ export default function ScopeBriefModal(
 				</section>
 
 				{error.value && <p class="sbk__error" role="alert">{error.value}</p>}
+				{simulating.value && <SimulationOutcome />}
 			</div>
 		</Dialog>
 	);

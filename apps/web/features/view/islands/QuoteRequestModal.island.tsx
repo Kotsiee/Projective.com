@@ -6,7 +6,14 @@ import { Icon } from "@projective/ui/icons";
 import "../styles/service-booking.css";
 import { CtaButton } from "../components/CtaButton.tsx";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
-import { BookingService } from "../core/BookingService.ts";
+import { commitContact } from "../core/booking-commits.ts";
+import {
+	clearSimulationOutcome,
+	SIMULATED_COMMIT_LABEL,
+	SIMULATED_SETTLED_LABEL,
+	simulating,
+} from "../core/simulation.ts";
+import { SimulationOutcome } from "../components/SimulationNotices.tsx";
 import { announce, closeBookingPanel, currentOffer, openPanel } from "../core/booking-state.ts";
 import type { ServiceBookingOffer } from "@projective/types/services";
 import { toMinorUnits } from "@projective/types/finance";
@@ -50,7 +57,10 @@ export default function QuoteRequestModal(
 	const cta = useCtaFeedback();
 
 	useEffect(() => {
-		if (open.value) return;
+		if (open.value) {
+			clearSimulationOutcome();
+			return;
+		}
 		scope.value = "";
 		budget.value = "";
 		timeline.value = "";
@@ -84,7 +94,7 @@ export default function QuoteRequestModal(
 		}
 		error.value = null;
 
-		const res = await BookingService.contact({
+		const out = await commitContact({
 			kind: "custom_quote",
 			handle: offer.value.contact.handle,
 			subjectId: offer.value.subjectId,
@@ -93,6 +103,9 @@ export default function QuoteRequestModal(
 			currency: budgetMinor === undefined ? undefined : currency,
 			timeline: timeline.value.trim() || undefined,
 		});
+		// A simulated request stays open on its outcome: nothing was sent, so nothing closes.
+		if (out.simulated) return true;
+		const res = out.value;
 		if (!res.ok || !res.data) {
 			error.value = res.message ?? "Could not send that request.";
 			return false;
@@ -119,8 +132,8 @@ export default function QuoteRequestModal(
 						They reply with a scope and a price. Nothing is committed.
 					</p>
 					<CtaButton
-						label="Send request"
-						settledLabel="Sent"
+						label={simulating.value ? SIMULATED_COMMIT_LABEL : "Send request"}
+						settledLabel={simulating.value ? SIMULATED_SETTLED_LABEL : "Sent"}
 						phase={cta.phase}
 						disabled={!scope.value.trim()}
 						icon={<Icon name="send" size="sm" aria-hidden />}
@@ -183,6 +196,7 @@ export default function QuoteRequestModal(
 				</div>
 
 				{error.value && <p class="sbk__error" role="alert">{error.value}</p>}
+				{simulating.value && <SimulationOutcome />}
 			</div>
 		</Dialog>
 	);

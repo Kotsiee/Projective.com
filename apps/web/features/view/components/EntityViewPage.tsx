@@ -23,6 +23,8 @@ import { StageProgressLedger } from "./StageProgressLedger.tsx";
 import { PreviewNotice, ProjectBody, ProjectHero } from "./project-view-parts.tsx";
 import { BackLink } from "./BackLink.tsx";
 import { RestrictedLaneNotice } from "./RestrictedLaneNotice.tsx";
+import { SimulationBanner } from "./SimulationNotices.tsx";
+import { simulationFactsFor } from "../core/simulation.ts";
 import {
 	MetaLine,
 	PermissionLedger,
@@ -133,6 +135,14 @@ export interface EntityViewPageProps {
 	 * there is nothing to buy, book or apply for, instead of offering it.
 	 */
 	restricted?: boolean;
+	/**
+	 * The owner's buyer simulation (`/catalogue/[id]/simulate`, Decision #217 (j)). The page is the
+	 * one a buyer meets — lane, archetype, CTA and modals all real — led by a banner saying it is a
+	 * preview, and every commit resolves locally with its would-be outcome instead of booking or
+	 * charging anything (`core/simulation.ts`). The recommendation rails are left out: they are other
+	 * listings, and a card pressed inside the framed preview would navigate the frame away from it.
+	 */
+	simulation?: boolean;
 }
 
 export function EntityViewPage(
@@ -146,9 +156,10 @@ export function EntityViewPage(
 		mode = "public",
 		editHref,
 		restricted = false,
+		simulation = false,
 	}: EntityViewPageProps,
 ): JSX.Element {
-	if (!view) return <NotFound ctx={ctx} unavailable={unavailable} />;
+	if (!view) return <NotFound ctx={ctx} unavailable={unavailable} simulation={simulation} />;
 
 	const archetype = resolveArchetype(view);
 
@@ -179,15 +190,23 @@ export function EntityViewPage(
 	const noMedia = scheduled || isProject;
 	const preview = mode === "preview";
 	// A restricted viewer's lane explains instead of transacting; an owner's preview shows applicants.
-	const blocked = restricted && !preview && (!!project || !!offer);
+	// A simulation shows what a buyer meets, and that buyer is an adult whatever the owner's age.
+	const blocked = restricted && !preview && !simulation && (!!project || !!offer);
 	/*
 	 * The rails and reviews, decided once. The archetype says whether this KIND of page carries them;
 	 * the mode says whether this RENDERING does — the owner's preview never does, whatever the archetype.
 	 */
-	const rails = !preview && showsCommercialRails(archetype);
+	const rails = !preview && !simulation && showsCommercialRails(archetype);
+	// The simulation's facts, resolved once and handed to every transactional island, which seed the
+	// commit gate from them (they are separate hydration roots and cannot share a prop).
+	const sim = simulation ? simulationFactsFor(view, offer) : undefined;
 
 	return (
-		<div class="evp" data-archetype={archetype}>
+		<div
+			class="evp"
+			data-archetype={archetype}
+			data-simulation={simulation ? "true" : undefined}
+		>
 			<ViewStyleAnchor />
 
 			<div class={noMedia ? "evp-frame evp-frame--nomedia" : "evp-frame"}>
@@ -205,7 +224,11 @@ export function EntityViewPage(
 				  one control that can drift.
 				*/
 				}
-				{preview ? <PreviewNotice editHref={editHref} /> : <BackLink ctx={ctx} placement="page" />}
+				{simulation
+					? <SimulationBanner />
+					: preview
+					? <PreviewNotice editHref={editHref} />
+					: <BackLink ctx={ctx} placement="page" />}
 
 				{
 					/*
@@ -317,6 +340,7 @@ export function EntityViewPage(
 							authed={authed}
 							ctx={ctx}
 							offer={offer}
+							simulation={sim}
 							stages={view.service?.showcaseStages ? view.service.stages : undefined}
 						/>
 					</aside>
@@ -336,6 +360,7 @@ export function EntityViewPage(
 							entityId={item.id}
 							group={archetype === "cohort"}
 							providerTimezone={schedule?.timezone ?? null}
+							simulation={sim}
 						/>
 					)}
 
@@ -378,6 +403,7 @@ export function EntityViewPage(
 							authed={authed}
 							ctx={ctx}
 							offer={offer}
+							simulation={sim}
 						/>
 					)}
 
@@ -653,8 +679,23 @@ function TeamRoles({ view }: { view: EntityView }): JSX.Element | null {
  * its own call to action.
  */
 function NotFound(
-	{ ctx, unavailable }: { ctx: HrefContext; unavailable: boolean },
+	{ ctx, unavailable, simulation }: { ctx: HrefContext; unavailable: boolean; simulation: boolean },
 ): JSX.Element {
+	// Inside the workspace's Preview frame the way back is the workspace itself, so the simulation's
+	// empty state says what happened and offers no exit that would navigate the frame away.
+	if (simulation) {
+		return (
+			<div class="evp evp--empty">
+				<ViewStyleAnchor />
+				<EmptyState
+					title={unavailable ? "We couldn't build this preview" : "Nothing to preview"}
+					description={unavailable
+						? "The marketplace didn't respond just now. Your listing is safe — the preview reloads after your next save."
+						: "This listing isn't one of yours, or it has gone. Open it from your catalogue to preview it."}
+				/>
+			</div>
+		);
+	}
 	return (
 		<div class="evp evp--empty">
 			<ViewStyleAnchor />

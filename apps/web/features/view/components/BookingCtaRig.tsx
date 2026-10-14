@@ -6,6 +6,9 @@ import { useCtaFeedback } from "../core/cta-feedback.ts";
 import { BookingService } from "../core/BookingService.ts";
 import { announce, applyOffer, currentOffer, openBookingPanel } from "../core/booking-state.ts";
 import ContactPopover from "../islands/ContactPopover.island.tsx";
+import { commitArchiveDraft, commitPipeline } from "../core/booking-commits.ts";
+import { SIMULATED_SETTLED_LABEL, simulating } from "../core/simulation.ts";
+import { SimulationOutcome } from "./SimulationNotices.tsx";
 import type { BookingActionKind, ServiceBookingOffer } from "@projective/types/services";
 
 /**
@@ -97,7 +100,7 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 
 			case "instantiate_pipeline": {
 				if (bouncedGuest()) return false;
-				const res = await BookingService.instantiatePipeline({
+				const out = await commitPipeline({
 					serviceId: offer.value.subjectId,
 					workspaceId: null,
 					/*
@@ -111,6 +114,9 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 					 */
 					idempotencyKey: `${offer.value.subjectId}-${loadNonce()}`,
 				});
+				// A simulated draft is never created, so there is no offer to re-read either.
+				if (out.simulated) return true;
+				const res = out.value;
 				if (!res.ok || !res.data) {
 					error.value = res.message ?? "Could not add that to your projects.";
 					return false;
@@ -147,7 +153,12 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 	async function archiveDraft(): Promise<boolean> {
 		const draft = offer.value.draft;
 		if (!draft) return false;
-		const res = await BookingService.archiveDraft({ projectId: draft.projectId });
+		const out = await commitArchiveDraft({ projectId: draft.projectId });
+		if (out.simulated) {
+			confirmArchive.value = false;
+			return true;
+		}
+		const res = out.value;
 		if (!res.ok) {
 			error.value = res.message ?? "Could not archive that draft.";
 			return false;
@@ -177,7 +188,9 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 					<CtaButton
 						label={cta.primary.label}
 						ariaLabel={cta.primary.ariaLabel}
-						settledLabel={settledLabelFor(cta.primary.kind)}
+						settledLabel={simulating.value
+							? SIMULATED_SETTLED_LABEL
+							: settledLabelFor(cta.primary.kind)}
 						phase={primary.phase}
 						tone="accent"
 						disabled={cta.primary.disabled}
@@ -220,7 +233,7 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 			{cta.secondary?.kind === "add_to_basket" && onAddToBasket && (
 				<CtaButton
 					label={inBasket ? "In basket" : cta.secondary.label}
-					settledLabel="Added"
+					settledLabel={simulating.value ? SIMULATED_SETTLED_LABEL : "Added"}
 					tone="mono"
 					phase={secondary.phase}
 					icon={<Icon name={inBasket ? "check" : "basket"} size="sm" aria-hidden />}
@@ -281,6 +294,9 @@ export function BookingCtaRig(props: BookingCtaRigProps): JSX.Element {
 			<ContactPopover offer={offer.value} variant={layout === "bar" ? "block" : "ghost"} />
 
 			{error.value && <p class="evp-cta__reason" role="alert">{error.value}</p>}
+
+			{/* The owner's buyer simulation: what the last commit would have done, beside the rig. */}
+			{simulating.value && <SimulationOutcome />}
 		</div>
 	);
 }

@@ -3,12 +3,13 @@ import { useEffect } from "preact/hooks";
 import { Icon } from "@projective/ui/icons";
 import { PriceBlock } from "../components/lane-parts.tsx";
 import "../styles/entity-view.css";
-import { basketIds, hydrateBasket, toggleBasket } from "../core/basket-state.ts";
+import { basketIds, hydrateBasket } from "../core/basket-state.ts";
+import { commitBasket, commitBuyNow } from "../core/booking-commits.ts";
+import { seedSimulation, type SimulationFacts } from "../core/simulation.ts";
 import { signInHref } from "../core/view-model.ts";
 import { type EntityArchetype, offerFor } from "../core/entity-archetype.ts";
 import type { HeadlinePrice } from "../core/view-pricing.ts";
 import BuyNowModal from "@web/features/checkout/islands/BuyNowModal.island.tsx";
-import { requestBuyNow } from "@web/features/checkout/core/buy-now-state.ts";
 import { purchasableKindOf } from "@web/features/checkout/core/purchasable.ts";
 import { BookingCtaRig } from "../components/BookingCtaRig.tsx";
 import BookingPanels from "./BookingPanels.island.tsx";
@@ -50,17 +51,24 @@ export interface EntityBuyBarProps {
 	 * primary and then change it under the reader's cursor.
 	 */
 	offer: ServiceBookingOffer;
+	/**
+	 * The owner's buyer simulation (Decision #217 (j)): every commit resolves locally with its
+	 * would-be outcome (`core/simulation.ts`), and the owner's own basket is never read.
+	 */
+	simulation?: SimulationFacts;
 }
 
 export default function EntityBuyBar(
-	{ view, archetype, price, authed, ctx, offer }: EntityBuyBarProps,
+	{ view, archetype, price, authed, ctx, offer, simulation }: EntityBuyBarProps,
 ): JSX.Element {
+	seedSimulation(simulation);
 	const { item } = view;
 	const archetypeOffer = offerFor(archetype);
 	const added = basketIds.value.includes(item.id);
 
+	// A simulation never reads the owner's own basket: what a buyer sees is an empty one.
 	useEffect(() => {
-		hydrateBasket(authed);
+		hydrateBasket(authed && !simulation);
 	}, [authed]);
 
 	const purchaseKind = purchasableKindOf(item);
@@ -78,13 +86,13 @@ export default function EntityBuyBar(
 	 * called it, and got it wrong: on a product the secondary "Add to basket" saw `primary.kind ===
 	 * "buy_now"` and opened instant checkout instead of adding anything.
 	 */
-	function onPrimaryPurchase(): Promise<boolean> {
+	async function onPrimaryPurchase(): Promise<boolean> {
 		if (!authed) {
 			globalThis.location.href = signInHref(item, ctx);
-			return Promise.resolve(false);
+			return false;
 		}
-		if (!purchaseKind) return Promise.resolve(false);
-		requestBuyNow({
+		if (!purchaseKind) return false;
+		const out = await commitBuyNow({
 			itemId: item.id,
 			itemType: purchaseKind,
 			title: item.title,
@@ -92,8 +100,9 @@ export default function EntityBuyBar(
 			signInHref: signInHref(item, ctx),
 		}, authed);
 		// The panel now owns the transaction, so the CTA does not settle: a check mark beside a modal the
-		// buyer has not finished with would confirm something that has not happened.
-		return Promise.resolve(false);
+		// buyer has not finished with would confirm something that has not happened. A simulated
+		// purchase opens no panel and settles in place.
+		return out.simulated;
 	}
 
 	async function onAddToBasket(): Promise<boolean> {
@@ -101,9 +110,10 @@ export default function EntityBuyBar(
 			globalThis.location.href = signInHref(item, ctx);
 			return false;
 		}
-		const res = await toggleBasket(item);
-		announce(res.message);
-		return res.ok;
+		const out = await commitBasket(item);
+		if (out.simulated) return true;
+		announce(out.value.message);
+		return out.value.ok;
 	}
 
 	return (

@@ -18,7 +18,7 @@ import {
 	LaneStages,
 	PriceBlock,
 } from "../components/lane-parts.tsx";
-import { basketIds, hydrateBasket, toggleBasket } from "../core/basket-state.ts";
+import { basketIds, hydrateBasket } from "../core/basket-state.ts";
 import { scrollToId } from "../core/scroll-to.ts";
 import { sellerBadges, signInHref } from "../core/view-model.ts";
 import { savedFlag, savedTypeOf, toggleFlag } from "@features/saved/core/saved-state.ts";
@@ -34,8 +34,9 @@ import {
 	seatCapacityFor,
 } from "../core/entity-archetype.ts";
 import BuyNowModal from "@web/features/checkout/islands/BuyNowModal.island.tsx";
-import { requestBuyNow } from "@web/features/checkout/core/buy-now-state.ts";
 import { purchasableKindOf } from "@web/features/checkout/core/purchasable.ts";
+import { commitBasket, commitBuyNow } from "../core/booking-commits.ts";
+import { commitOrSimulate, seedSimulation, type SimulationFacts } from "../core/simulation.ts";
 import type { EntityView, ProjectStage } from "@projective/types/explore";
 import type { ServiceBookingOffer } from "@projective/types/services";
 import type { HrefContext } from "@features/explore/core/routing.ts";
@@ -96,12 +97,29 @@ export interface EntityLaneProps {
 	 * just of the layout.
 	 */
 	offer: ServiceBookingOffer;
+	/**
+	 * The owner's buyer simulation (Decision #217 (j)): every commit resolves locally with its
+	 * would-be outcome (`core/simulation.ts`), and the owner's own basket is never read.
+	 */
+	simulation?: SimulationFacts;
 }
 
 export default function EntityLane(
-	{ view, archetype, amount, fallback, unit, isFloor, authed, ctx, stages, offer: bookingOffer }:
-		EntityLaneProps,
+	{
+		view,
+		archetype,
+		amount,
+		fallback,
+		unit,
+		isFloor,
+		authed,
+		ctx,
+		stages,
+		offer: bookingOffer,
+		simulation,
+	}: EntityLaneProps,
 ): JSX.Element {
+	seedSimulation(simulation);
 	const { item } = view;
 	const offer = offerFor(archetype);
 	const capacity = seatCapacityFor(view, archetype);
@@ -113,8 +131,9 @@ export default function EntityLane(
 	const status = useSignal("");
 	const added = basketIds.value.includes(item.id);
 
+	// A simulation never reads the owner's own basket: what a buyer sees is an empty one.
 	useEffect(() => {
-		hydrateBasket(authed);
+		hydrateBasket(authed && !simulation);
 	}, [authed]);
 
 	// #region Actions
@@ -123,8 +142,12 @@ export default function EntityLane(
 	}
 
 	/** Open the unified share modal (people on Projective · external apps · copy · the device sheet). */
-	function share(): void {
-		requestShare({ href: globalThis.location?.href ?? "", title: item.title, noun: "listing" });
+	async function share(): Promise<void> {
+		const out = await commitOrSimulate({ kind: "share" }, () => {
+			requestShare({ href: globalThis.location?.href ?? "", title: item.title, noun: "listing" });
+			return Promise.resolve();
+		});
+		if (out.simulated) announce(out.outcome);
 	}
 
 	/** A guest's save is a sign-in first — the save is a claim on their own account. */
@@ -136,13 +159,24 @@ export default function EntityLane(
 
 	/** Save or un-save the listing (a bookmark, Decision #180). */
 	async function save(): Promise<void> {
-		if (!signedIn()) return;
-		const out = await toggleFlag(kind, item.id);
-		if (out.message) announce(out.message);
+		if (!simulation && !signedIn()) return;
+		const out = await commitOrSimulate({ kind: "save" }, () => toggleFlag(kind, item.id));
+		const message = out.simulated ? out.outcome : out.value.message;
+		if (message) announce(message);
+	}
+
+	/** Open the collection picker — in a simulation, state what it would do instead. */
+	async function collect(): Promise<void> {
+		if (!simulation && !signedIn()) return;
+		const out = await commitOrSimulate({ kind: "collection" }, () => {
+			picking.value = true;
+			return Promise.resolve();
+		});
+		if (out.simulated) announce(out.outcome);
 	}
 
 	const menu: LaneMenuItem[] = [
-		{ key: "share", label: "Share listing", icon: "share", onSelect: share },
+		{ key: "share", label: "Share listing", icon: "share", onSelect: () => void share() },
 		{
 			key: "save",
 			label: saved?.value ? "Remove from saved" : "Save",
@@ -153,9 +187,7 @@ export default function EntityLane(
 			key: "collection",
 			label: "Add to collection…",
 			icon: "bookmark",
-			onSelect: () => {
-				if (signedIn()) picking.value = true;
-			},
+			onSelect: () => void collect(),
 		},
 		{
 			key: "scope",
@@ -177,20 +209,21 @@ export default function EntityLane(
 	 *
 	 * TWO functions, one per control — see `EntityBuyBar` for the defect a single shared one caused.
 	 */
-	function onPrimaryPurchase(): Promise<boolean> {
+	async function onPrimaryPurchase(): Promise<boolean> {
 		if (!authed) {
 			globalThis.location.href = signInHref(item, ctx);
-			return Promise.resolve(false);
+			return false;
 		}
-		if (!purchaseKind) return Promise.resolve(false);
-		requestBuyNow({
+		if (!purchaseKind) return false;
+		const out = await commitBuyNow({
 			itemId: item.id,
 			itemType: purchaseKind,
 			title: item.title,
 			sellerName: item.owner.name,
 			signInHref: signInHref(item, ctx),
 		}, authed);
-		return Promise.resolve(false);
+		// A simulated purchase settles in place; a real one hands the transaction to the panel.
+		return out.simulated;
 	}
 
 	async function onAddToBasket(): Promise<boolean> {
@@ -198,10 +231,11 @@ export default function EntityLane(
 			globalThis.location.href = signInHref(item, ctx);
 			return false;
 		}
-		const res = await toggleBasket(item);
-		announceBooking(res.message);
-		announce(res.message);
-		return res.ok;
+		const out = await commitBasket(item);
+		if (out.simulated) return true;
+		announceBooking(out.value.message);
+		announce(out.value.message);
+		return out.value.ok;
 	}
 	// #endregion
 

@@ -4,7 +4,14 @@ import { Popover } from "@projective/ui/feedback";
 import { Avatar } from "@projective/ui/display";
 import { Icon } from "@projective/ui/icons";
 import "../styles/service-booking.css";
-import { BookingService } from "../core/BookingService.ts";
+import { commitContact } from "../core/booking-commits.ts";
+import {
+	clearSimulationOutcome,
+	SIMULATED_COMMIT_LABEL,
+	SIMULATED_SETTLED_LABEL,
+	simulating,
+} from "../core/simulation.ts";
+import { SimulationOutcome } from "../components/SimulationNotices.tsx";
 import { announce, currentOffer, openBookingPanel } from "../core/booking-state.ts";
 import { useCtaFeedback } from "../core/cta-feedback.ts";
 import type { ContactActionKind, ServiceBookingOffer } from "@projective/types/services";
@@ -94,6 +101,7 @@ export default function ContactPopover(
 			case "ask_question":
 				// Stays in the panel: the composer is right here, and closing to reopen something else
 				// would cost the reader the context they pressed from.
+				clearSimulationOutcome();
 				composing.value = true;
 				break;
 		}
@@ -106,12 +114,15 @@ export default function ContactPopover(
 			return false;
 		}
 		error.value = null;
-		const res = await BookingService.contact({
+		const out = await commitContact({
 			kind: "ask_question",
 			handle: contact.value.handle,
 			subjectId: contact.value.subjectId,
 			message,
 		});
+		// A simulated question opens no conversation: the panel stays on its outcome, draft kept.
+		if (out.simulated) return true;
+		const res = out.value;
 		if (!res.ok || !res.data) {
 			// The draft is deliberately KEPT on failure. A composer that eats what somebody typed is
 			// worse than one that refuses to open.
@@ -223,11 +234,14 @@ export default function ContactPopover(
 											{cta.phase === "pending"
 												? "Sending…"
 												: cta.phase === "settled"
-												? "Sent"
+												? simulating.value ? SIMULATED_SETTLED_LABEL : "Sent"
+												: simulating.value
+												? SIMULATED_COMMIT_LABEL
 												: "Send"}
 										</span>
 									</button>
 								</div>
+								{simulating.value && <SimulationOutcome />}
 							</div>
 						)
 						: (

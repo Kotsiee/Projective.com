@@ -6,6 +6,7 @@ import "../styles/entity-view.css";
 import ScheduleView from "@web/features/calendar/islands/ScheduleView.island.tsx";
 import EntityCanvas from "./EntityCanvas.island.tsx";
 import { availabilityMode, setAvailabilityMode } from "../core/view-state.ts";
+import { seedSimulation, type SimulationFacts } from "../core/simulation.ts";
 import type { EntityMedia } from "@projective/types/explore";
 import type { SchedulePage } from "@projective/types/scheduling";
 
@@ -39,12 +40,18 @@ export interface SessionSchedulerStageProps {
 	group?: boolean;
 	/** The provider's IANA zone, as the engine renders it. Disclosed beside the viewer's own. */
 	providerTimezone?: string | null;
+	/**
+	 * The owner's buyer simulation (Decision #217 (j)). The stage commits nothing itself, but it is a
+	 * hydration root of its own, so it arms the commit gate too: whichever region hydrates first does.
+	 */
+	simulation?: SimulationFacts;
 }
 
 export default function SessionSchedulerStage(
-	{ gallery, title, schedule, entityId, group = false, providerTimezone }:
+	{ gallery, title, schedule, entityId, group = false, providerTimezone, simulation }:
 		SessionSchedulerStageProps,
 ): JSX.Element {
+	seedSimulation(simulation);
 	const showCalendar = availabilityMode.value;
 
 	/*

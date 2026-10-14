@@ -859,6 +859,36 @@
 	text-underline-offset: 0.2em;
 }
 
+/* ============================================================================
+ * The owner's buyer simulation (Decision #217 (j)) — the banner in the frame's first row (where Back
+ * sits on the public page) and the would-be outcome a simulated commit resolves to. Both are plain
+ * statements: inline meta text, never boxed (§B.4.2).
+ * ========================================================================== */
+.evp-simbanner {
+	grid-area: back;
+	min-inline-size: 0;
+}
+
+.evp-simoutcome {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--space-2);
+	margin: 0;
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	color: var(--text-secondary);
+}
+
+.evp-simoutcome__icon {
+	flex: none;
+	color: var(--success);
+}
+
+.evp-simoutcome__text {
+	min-inline-size: 0;
+	color: var(--on-surface);
+}
+
 /* The roles a brief is hiring for — one inline metadata line (§B.11.2), at Body size so it reads as
    the section's content rather than as a footnote to it. */
 .evp-roles {
