@@ -93,53 +93,54 @@ See [../security/Functions.md](../security/Functions.md) and
 ## The client pipeline — [`00001170_functions_catalogue.sql`](../../../supabase/migrations/00001170_functions_catalogue.sql) (Decision #217, C5)
 
 One read of everyone buying, asking about or booking the caller's listings: one row per engagement,
-each carrying its **source table's own status**. The pipeline's lanes (`inquiries · active ·
+each carrying its **source table's own status**. The pipeline's lanes
+(`inquiries · active ·
 action_required · closed`) are derived in TypeScript by `laneOf`
 (`packages/types/catalogue/clients.ts`), never stored or returned, so the read invents no statuses
 (root CLAUDE.md §5). Zod: `ClientEngagementRowSchema`, pinned column for column by
 `client-pipeline.contract.test.ts`.
 
-| Function                                                    | Security | Does                                                                                                                                                                                                                                                             |
-| :---------------------------------------------------------- | :------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `get_client_pipeline(p_listing uuid?, p_limit int = 200)`   | INVOKER  | `TABLE(engagement_kind, engagement_id, listing_id, buyer_user_id, buyer_handle, status, opened_at, last_activity_at, amount_minor, currency, next_event_at, action_reasons text[], href)`, newest activity first, `p_limit` clamped to 1–500. `p_listing` NULL is every listing the caller manages. |
-| `fn_manages_listing(p_listing uuid)`                        | DEFINER  | True when the caller may manage the listing: its owner when personal, a holder of `publish_listings` on the owning team when a team's (`org.fn_member_can`, the permission twin). Also the `listing` arm of `analytics.fn_subject_visible`.                            |
-| `fn_candidate_listings(p_listing uuid?)`                    | DEFINER  | The caller's personal listings by owner and their active teams' listings by membership, both by index, so neither reader scans the catalogue; `fn_manages_listing` then decides each.                                                                         |
-| `fn_seller_order_lines(p_listing uuid?)`                    | DEFINER  | The order lines that bought the caller's managed listings, narrowed to the buyer, the order's status, `placed_at` / `updated_at`, the line's total, currency and `scheduled_at`. Never the payment method, card, promo, totals or other sellers' lines. |
+| Function                                                  | Security | Does                                                                                                                                                                                                                                                                                                |
+| :-------------------------------------------------------- | :------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get_client_pipeline(p_listing uuid?, p_limit int = 200)` | INVOKER  | `TABLE(engagement_kind, engagement_id, listing_id, buyer_user_id, buyer_handle, status, opened_at, last_activity_at, amount_minor, currency, next_event_at, action_reasons text[], href)`, newest activity first, `p_limit` clamped to 1–500. `p_listing` NULL is every listing the caller manages. |
+| `fn_manages_listing(p_listing uuid)`                      | DEFINER  | True when the caller may manage the listing: its owner when personal, a holder of `publish_listings` on the owning team when a team's (`org.fn_member_can`, the permission twin). Also the `listing` arm of `analytics.fn_subject_visible`.                                                         |
+| `fn_candidate_listings(p_listing uuid?)`                  | DEFINER  | The caller's personal listings by owner and their active teams' listings by membership, both by index, so neither reader scans the catalogue; `fn_manages_listing` then decides each.                                                                                                               |
+| `fn_seller_order_lines(p_listing uuid?)`                  | DEFINER  | The order lines that bought the caller's managed listings, narrowed to the buyer, the order's status, `placed_at` / `updated_at`, the line's total, currency and `scheduled_at`. Never the payment method, card, promo, totals or other sellers' lines.                                             |
 
 **Arms** (the pipeline is INVOKER, so each answers under the caller's own policies):
 
-| `engagement_kind`  | Source                                                                      | `status` (verbatim)                    | `action_reasons`                                                          | `href`                                                   |
-| :----------------- | :-------------------------------------------------------------------------- | :------------------------------------- | :------------------------------------------------------------------------ | :------------------------------------------------------- |
-| `inquiry`          | `comms.dm_threads` `service_inquiry` with `subject_listing_id`               | the seller's `dm_participants.inbox_folder` | `inquiry_unanswered` — the last message is not the seller's             | `/messages/<thread id>`                                  |
-| `quote`            | `marketplace.quote_requests` on the listing's blueprint                      | `sent · answered · withdrawn`          | `inquiry_unanswered` while `sent`                                         | `/messages/dm-<buyer handle>`                            |
-| `discovery_call`   | `scheduling.discovery_calls.service_blueprint_id`                            | `scheduling.call_status`               | `inquiry_unanswered` while `proposed`; `reschedule_open`                  | `/calendar?event=<event id>`, else the DM                |
-| `order`            | `fn_seller_order_lines` (non-session lines)                                  | `finance.order_status`                 | —                                                                         | `/messages/dm-<buyer handle>`                            |
-| `session_booking`  | `projects.cohort_memberships` on the listing's session engagements          | `active · cancelled · completed`       | `handshake_pending` (round 0 collecting); `reschedule_open`; `dispute_open` | `/calendar?event=<next sitting's event>`, else the project |
-| `pipeline_project` | `projects.projects.source_blueprint_id`, `session_kind = 'none'`             | `project_status`                       | `revision_requested`; `reschedule_open`; `dispute_open`; `submission_pending` (a drafted submission) | `/projects/<prj- slug>`                                   |
+| `engagement_kind`  | Source                                                             | `status` (verbatim)                         | `action_reasons`                                                                                     | `href`                                                     |
+| :----------------- | :----------------------------------------------------------------- | :------------------------------------------ | :--------------------------------------------------------------------------------------------------- | :--------------------------------------------------------- |
+| `inquiry`          | `comms.dm_threads` `service_inquiry` with `subject_listing_id`     | the seller's `dm_participants.inbox_folder` | `inquiry_unanswered` — the last message is not the seller's                                          | `/messages/<thread id>`                                    |
+| `quote`            | `marketplace.quote_requests` on the listing's blueprint            | `sent · answered · withdrawn`               | `inquiry_unanswered` while `sent`                                                                    | `/messages/dm-<buyer handle>`                              |
+| `discovery_call`   | `scheduling.discovery_calls.service_blueprint_id`                  | `scheduling.call_status`                    | `inquiry_unanswered` while `proposed`; `reschedule_open`                                             | `/calendar?event=<event id>`, else the DM                  |
+| `order`            | `fn_seller_order_lines` (non-session lines)                        | `finance.order_status`                      | —                                                                                                    | `/messages/dm-<buyer handle>`                              |
+| `session_booking`  | `projects.cohort_memberships` on the listing's session engagements | `active · cancelled · completed`            | `handshake_pending` (round 0 collecting); `reschedule_open`; `dispute_open`                          | `/calendar?event=<next sitting's event>`, else the project |
+| `pipeline_project` | `projects.projects.source_blueprint_id`, `session_kind = 'none'`   | `project_status`                            | `revision_requested`; `reschedule_open`; `dispute_open`; `submission_pending` (a drafted submission) | `/projects/<prj- slug>`                                    |
 
-`reschedule_open` is an open round (`collecting · awaiting_counterparty · voting`) the seller did not
-open; `dispute_open` a dispute in `open · awaiting_response · under_review` on the engagement's
+`reschedule_open` is an open round (`collecting · awaiting_counterparty · voting`) the seller did
+not open; `dispute_open` a dispute in `open · awaiting_response · under_review` on the engagement's
 escrow. `amount_minor` is the line total (order, session), the quote's budget, the call's fee or the
 project's budget. `next_event_at` is the next scheduled sitting, the pending call or the project's
 next calendar event.
 
 **Why the order arm is a definer.** `finance.orders` / `order_lines` are the buyer's rows
-(`View own orders`), so an INVOKER read would show a seller none of their sales. Ruled 2026-10-14:
-a narrow definer projection (like `get_listing_sales` above), not a seller policy on the buyer's
-whole order row.
+(`View own orders`), so an INVOKER read would show a seller none of their sales. Ruled 2026-10-14: a
+narrow definer projection (like `get_listing_sales` above), not a seller policy on the buyer's whole
+order row.
 
 **What RLS leaves out, by design.** A buyer's instantiated pipeline project is visible only once the
-seller is engaged on it (a participant row or a live stage assignment, `has_project_access`); a quote
-request only to its host. The buyer, though a party to every one of these rows, gets no pipeline for
-the seller's listings: every arm starts from `fn_manages_listing`.
+seller is engaged on it (a participant row or a live stage assignment, `has_project_access`); a
+quote request only to its host. The buyer, though a party to every one of these rows, gets no
+pipeline for the seller's listings: every arm starts from `fn_manages_listing`.
 
-**Grants** (`00002510`, region "Listing analytics and the client pipeline"): all four are `REVOKE`d from
-`public` and `anon` and granted to `authenticated` and `service_role`.
+**Grants** (`00002510`, region "Listing analytics and the client pipeline"): all four are `REVOKE`d
+from `public` and `anon` and granted to `authenticated` and `service_role`.
 
 **Indexes** (`00004012_indexes_catalogue_marketplace.sql`, and the C5 regions of `00004003` /
-`00004005` / `00004007`): listings by owner and owning team, quote requests by blueprint, order lines
-by item, open reschedule rounds, a sitting's calendar mirror, open revision requests. Checked with
-`EXPLAIN` under `enable_seqscan = off` on the seeded database: no arm keeps a sequential scan.
+`00004005` / `00004007`): listings by owner and owning team, quote requests by blueprint, order
+lines by item, open reschedule rounds, a sitting's calendar mirror, open revision requests. Checked
+with `EXPLAIN` under `enable_seqscan = off` on the seeded database: no arm keeps a sequential scan.
 
-Probe: [`supabase/probes/listing_analytics.sql`](../../../supabase/probes/listing_analytics.sql) §5 —
-one row per arm for the seller, none for the buyer or a stranger.
+Probe: [`supabase/probes/listing_analytics.sql`](../../../supabase/probes/listing_analytics.sql) §5
+— one row per arm for the seller, none for the buyer or a stranger.

@@ -18,8 +18,8 @@ append-only sources.
 
   Mirrors `finance.fn_owner_visible`'s posture but covers the broader, non-money subject kinds. The
   `project` / `stage` / `ticket` / `platform` subjects are **admin-only** — project analytics are
-  read through the `projects` domain, not here. A plain team member without `publish_listings`
-  does not see a team listing's analytics (`supabase/probes/listing_analytics.sql` §4b).
+  read through the `projects` domain, not here. A plain team member without `publish_listings` does
+  not see a team listing's analytics (`supabase/probes/listing_analytics.sql` §4b).
 
 ## 📋 Policies
 

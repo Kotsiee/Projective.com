@@ -91,19 +91,19 @@ One row per `(day, metric, subject)`. A new breakdown never needs a new column �
 `sample_count` the rows or people behind it. Zod: `ListingRollupMetric` and
 `LISTING_ROLLUP_DIMENSIONS` (`packages/types/analytics/events.ts`).
 
-| Metric                      | `dimensions`    | Value                                                                                   |
-| :-------------------------- | :-------------- | :-------------------------------------------------------------------------------------- |
-| `listing.impressions`       | —               | `search.interest_events` impressions of the listing's blueprint or product.             |
-| `listing.clicks`            | —               | Its clicks.                                                                             |
-| `listing.views`             | —               | Distinct sessions with a `view` event.                                                  |
-| `listing.checkout_starts`   | —               | `finance.basket_items` added for it.                                                    |
-| `listing.orders`            | —               | Distinct `confirmed` / `invoiced` orders placed that day with a line for it.            |
-| `listing.gross_minor`       | `{currency}`    | Those lines' gross, in minor units, one row per currency.                               |
-| `listing.bookings`          | —               | Cohort memberships joined (session seats booked).                                       |
-| `listing.booking_slot`      | `{dow, hour}`   | Sittings held, by weekday (0 = Sunday) and hour in the seller's timezone.               |
-| `listing.query_impressions` | `{q}`           | Impressions per normalised search query, written only from **5 or more** sessions.      |
-| `listing.query_clicks`      | `{q}`           | Clicks for the same queries.                                                            |
-| `listing.cancellations`     | —               | Refunded or cancelled non-session lines (by the order's last change) + sittings cancelled. |
+| Metric                      | `dimensions`  | Value                                                                                      |
+| :-------------------------- | :------------ | :----------------------------------------------------------------------------------------- |
+| `listing.impressions`       | —             | `search.interest_events` impressions of the listing's blueprint or product.                |
+| `listing.clicks`            | —             | Its clicks.                                                                                |
+| `listing.views`             | —             | Distinct sessions with a `view` event.                                                     |
+| `listing.checkout_starts`   | —             | `finance.basket_items` added for it.                                                       |
+| `listing.orders`            | —             | Distinct `confirmed` / `invoiced` orders placed that day with a line for it.               |
+| `listing.gross_minor`       | `{currency}`  | Those lines' gross, in minor units, one row per currency.                                  |
+| `listing.bookings`          | —             | Cohort memberships joined (session seats booked).                                          |
+| `listing.booking_slot`      | `{dow, hour}` | Sittings held, by weekday (0 = Sunday) and hour in the seller's timezone.                  |
+| `listing.query_impressions` | `{q}`         | Impressions per normalised search query, written only from **5 or more** sessions.         |
+| `listing.query_clicks`      | `{q}`         | Clicks for the same queries.                                                               |
+| `listing.cancellations`     | —             | Refunded or cancelled non-session lines (by the order's last change) + sittings cancelled. |
 
 Nothing buyer-level is stored: a keyword under the 5-session threshold is never written (#217 flag
 k), and the 20-denominator rate rule is applied where rates are derived (`rateOrNull`).

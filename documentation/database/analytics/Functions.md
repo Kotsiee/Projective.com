@@ -40,17 +40,19 @@ Two properties make it safe to call from anywhere:
 ## `analytics.fn_rollup_listings(p_day date) → integer`
 
 Writes one UTC day of listing analytics into `analytics.daily_rollups` (the metric table is in
-[Tables.md](Tables.md)) and returns the rows written. It maps `search.interest_events.entity_id`
-(a blueprint or product id) to its listing through `catalogue.listings`, reads basket lines, order
+[Tables.md](Tables.md)) and returns the rows written. It maps `search.interest_events.entity_id` (a
+blueprint or product id) to its listing through `catalogue.listings`, reads basket lines, order
 lines (`item_id` = the product or blueprint), cohort memberships and sittings, and keys the booking
 heatmap in the seller's timezone: the owning schedule's (`scheduling.schedules`, the team's for a
 team listing), else the owner's profile timezone, else UTC; an unknown zone name falls back to UTC.
 
-- **Idempotent.** An `INSERT … ON CONFLICT (day, metric, subject_kind, subject_id, dimensions) DO
-  UPDATE`, plus a delete of that day's `listing.*` rows the run no longer produces (a refund that
-  lowered a figure to zero), so any re-run leaves the day equal to one fresh computation.
-- **k-anonymity.** `listing.query_impressions` / `listing.query_clicks` exist only for a
-  normalised query (lower-cased, whitespace collapsed) seen in **5 or more** distinct sessions
+- **Idempotent.** An
+  `INSERT … ON CONFLICT (day, metric, subject_kind, subject_id, dimensions) DO
+  UPDATE`, plus a
+  delete of that day's `listing.*` rows the run no longer produces (a refund that lowered a figure
+  to zero), so any re-run leaves the day equal to one fresh computation.
+- **k-anonymity.** `listing.query_impressions` / `listing.query_clicks` exist only for a normalised
+  query (lower-cased, whitespace collapsed) seen in **5 or more** distinct sessions
   (`KEYWORD_MIN_SESSIONS`, pinned to the SQL by `listing-rollups.contract.test.ts`).
 - **Who runs it.** `service_role` only; scheduled as `analytics-listing-rollups`
   (`SELECT analytics.fn_rollup_listings(current_date - 1)`, daily 02:10 UTC, `00005060`).
@@ -58,8 +60,8 @@ team listing), else the owner's profile timezone, else UTC; an unknown zone name
 ## `analytics.fn_backfill_listing_rollups(p_from date, p_to date) → integer`
 
 Runs `fn_rollup_listings` for every day in `[p_from, p_to]`, oldest first, and returns the total
-rows written; refuses an inverted range or one longer than two years (`22023`). `service_role`
-only. Use it after seeding or after a fix to the writer, and to repair a missed nightly run.
+rows written; refuses an inverted range or one longer than two years (`22023`). `service_role` only.
+Use it after seeding or after a fix to the writer, and to repair a missed nightly run.
 
 ---
 
