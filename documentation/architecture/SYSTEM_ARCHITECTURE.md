@@ -2310,6 +2310,15 @@ Deno 2.x provides a hardened environment that we strictly configure through perm
   It is the one sanctioned LOOSENING of the platform policy — every other route may only tighten —
   and is flagged against #126 in Decision #161(D). `x-frame-options: DENY`, `object-src 'none'` and
   `frame-ancestors 'none'` still hold there, which is why a PDF is drawn on a canvas, never framed.
+  The second sanctioned loosening is **`framed`** (Decision #217 (j)): the platform policy with
+  `frame-ancestors 'self'` and nothing else changed. It is sent only by the catalogue's buyer
+  simulation, `/catalogue/[id]/simulate`, on every one of its answers (the 404 too), because the item
+  workspace's Preview tab frames that page. The middleware pairs it with `x-frame-options:
+  SAMEORIGIN` (`frameOptionsFor`), and only when the response's policy is EXACTLY the `framed`
+  header. Every other response, a route-written `frame-ancestors 'self'` included, still gets
+  `DENY`, so a route cannot earn framing by writing a header of its own. Inside the frame, a link
+  that leaves the simulation opens in a new tab (`PreviewFrameBridge`). Every other page still
+  refuses to be framed.
   The streaming proxy's non-inline-safe responses carry their own `default-src 'none'; sandbox`.
 - **Secrets Management:** Sensitive keys (Stripe API, AWS keys) are stored in **Supabase Vault** and
   accessed via environment variables in Edge Functions, never hardcoded in the repository.

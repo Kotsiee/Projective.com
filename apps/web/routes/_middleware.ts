@@ -2,7 +2,7 @@ import { define } from "@web/utils/state.ts";
 import { resolveRequestViewer } from "@web/utils/session.ts";
 import { resolveCurrencyContext, runWithCurrency } from "@web/utils/currency-context.ts";
 import { resolveA11yContext } from "@web/utils/a11y-context.ts";
-import { cspHeaderFor } from "@web/utils/csp.ts";
+import { cspHeaderFor, frameOptionsFor } from "@web/utils/csp.ts";
 
 /**
  * Global middleware — runs for every request. Resolves auth **site-wide** (chrome only) and adds
@@ -17,11 +17,13 @@ import { cspHeaderFor } from "@web/utils/csp.ts";
  * is set here too — see `utils/csp.ts`.
  *
  * **The CSP is a default a route may tighten** (like `referrer-policy`): a route that answers with its
- * own stricter policy keeps it. The one sanctioned loosening is the file inspector's
- * `cspHeaderFor("inspector")` profile (Decision #161(D)). **Of the rest, two are floors; one is a default.** This middleware runs OUTSIDE every route, so its
+ * own stricter policy keeps it. The two sanctioned loosenings are the file inspector's
+ * `cspHeaderFor("inspector")` profile (Decision #161(D)) and the buyer simulation's
+ * `cspHeaderFor("framed")` profile (Decision #217 (j)). **Of the rest, two are floors; one is a default.** This middleware runs OUTSIDE every route, so its
  * post-processing is the last thing to touch the response — a `set` here silently overwrites whatever
  * a route decided. `x-frame-options` and `x-content-type-options` are non-negotiable and are set
- * unconditionally. `referrer-policy` is not: a route whose URL *is* a secret must be able to harden it
+ * unconditionally; `x-frame-options` is `DENY` for every response except one carrying exactly the
+ * `framed` policy, which gets `SAMEORIGIN` so the two framing headers agree (`frameOptionsFor`). `referrer-policy` is not: a route whose URL *is* a secret must be able to harden it
  * to `no-referrer` (the public `/share/[slug]` capability URL does exactly that), and an unconditional
  * `set` would quietly undo it while the route's own code still read as though it had worked. So the
  * platform value is applied only when the response has not already answered for itself — a floor a
@@ -45,7 +47,7 @@ export default define.middleware(async (ctx) => {
 	if (!res.headers.has("content-security-policy")) {
 		res.headers.set("content-security-policy", cspHeaderFor("app"));
 	}
-	res.headers.set("x-frame-options", "DENY");
+	res.headers.set("x-frame-options", frameOptionsFor(res.headers.get("content-security-policy")));
 	res.headers.set("x-content-type-options", "nosniff");
 	if (!res.headers.has("referrer-policy")) {
 		res.headers.set("referrer-policy", "strict-origin-when-cross-origin");

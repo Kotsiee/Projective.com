@@ -33,6 +33,7 @@ import { catalogueLaneFor } from "@web/features/catalogue/core/catalogue-lane-sl
 import { catalogueFooterFor } from "@web/features/catalogue/core/catalogue-footer-slot.tsx";
 import { catalogueHeaderFor } from "@web/features/catalogue/core/catalogue-header-slot.tsx";
 import { cataloguePanelFor } from "@web/features/catalogue/core/catalogue-panel-slot.tsx";
+import { catalogueChromeFor } from "@web/features/catalogue/core/simulate-path.ts";
 import { workspaceLaneFor } from "@web/features/workspaces/core/workspace-lane-slot.tsx";
 import { workspaceHeaderFor } from "@web/features/workspaces/core/workspace-header-slot.tsx";
 import { workspaceFooterFor } from "@web/features/workspaces/core/workspace-footer-slot.tsx";
@@ -281,11 +282,12 @@ async function laneFor(
 
 /**
  * Resolve the shell's chrome density for a request. Composed exactly like the lane and the bands, so
- * the correct chrome ships in the first byte; `full` is the default every surface but the checkout's
- * two committing steps runs in (DESIGN_SYSTEM.md Part D.6).
+ * the correct chrome ships in the first byte; `full` is the default every surface runs in but the
+ * checkout's two committing steps (`focus`) and the catalogue's framed buyer simulation (`bare`)
+ * (DESIGN_SYSTEM.md Part D.6).
  */
 function chromeFor(url: URL): ShellChrome {
-	return checkoutChromeFor(url) ?? "full";
+	return catalogueChromeFor(url) ?? checkoutChromeFor(url) ?? "full";
 }
 
 export default define.page(async function DashboardLayout(ctx) {
@@ -293,39 +295,51 @@ export default define.page(async function DashboardLayout(ctx) {
 	const context = asAuthenticatedContext(ctx.state.userContext);
 	// The acting reader, derived from the session the middleware hydrated — never from the URL.
 	const actor = readActor(ctx);
+	const chrome = chromeFor(ctx.url);
 
 	// Resolved together rather than in series: the four slots are independent, and awaiting each
-	// behind the last would add all four latencies to every dashboard navigation.
-	const [lane, middleNavHeader, middleNavFooter, middleNavPanel] = await Promise.all([
-		laneFor(ctx.url, context, actor, ctx.state),
-		middleNavHeaderFor(ctx.url, context, actor, ctx.state),
-		middleNavFooterFor(ctx.url, context, actor, ctx.state),
-		middleNavPanelFor(ctx.url, context, actor),
-	]);
+	// behind the last would add all four latencies to every dashboard navigation. A `bare` page
+	// renders none of them, so none is read.
+	const [lane, middleNavHeader, middleNavFooter, middleNavPanel] = chrome === "bare"
+		? [null, null, null, null]
+		: await Promise.all([
+			laneFor(ctx.url, context, actor, ctx.state),
+			middleNavHeaderFor(ctx.url, context, actor, ctx.state),
+			middleNavFooterFor(ctx.url, context, actor, ctx.state),
+			middleNavPanelFor(ctx.url, context, actor),
+		]);
 
 	return (
 		<UserShell
 			path={path}
 			context={context}
 			protectedRoute
-			chrome={chromeFor(ctx.url)}
+			chrome={chrome}
 			lane={lane}
 			middleNavHeader={middleNavHeader}
 			middleNavFooter={middleNavFooter}
 			middleNavPanel={middleNavPanel}
 		>
-			{/* Global floating "Pop Out Chat" host — survives navigations, re-seeds from sessionStorage. */}
-			<ChatPopoutHost path={path} />
 			{
-				/* The `?tkv=<ticket-slug>` deep link: one owner of the URL ⇄ ticket-modal relationship on
-			    every dashboard page (the two committing checkout steps opt out by policy, inside it). */
+				/* The floating hosts are the framing page's, never a `bare` page's: a same-origin frame
+				   shares the tab's sessionStorage, so the pop-out chat would re-seed inside the preview. */
 			}
-			<TicketDeepLinkHost authed />
-			{
-				/* DEV-ONLY money-flow debugger — `MoneyFlowMount` returns null in production, so the host,
-			    the popover and its store are tree-shaken out of the shipped bundle. */
-			}
-			<MoneyFlowMount />
+			{chrome === "bare" ? null : (
+				<>
+					{/* Global floating "Pop Out Chat" host — survives navigations, re-seeds from sessionStorage. */}
+					<ChatPopoutHost path={path} />
+					{
+						/* The `?tkv=<ticket-slug>` deep link: one owner of the URL ⇄ ticket-modal relationship on
+					    every dashboard page (the two committing checkout steps opt out by policy, inside it). */
+					}
+					<TicketDeepLinkHost authed />
+					{
+						/* DEV-ONLY money-flow debugger — `MoneyFlowMount` returns null in production, so the host,
+					    the popover and its store are tree-shaken out of the shipped bundle. */
+					}
+					<MoneyFlowMount />
+				</>
+			)}
 			<ctx.Component />
 		</UserShell>
 	);

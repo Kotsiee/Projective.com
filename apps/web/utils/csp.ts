@@ -17,9 +17,12 @@
  * `style` attributes. Moving to a nonce-based policy is a separate change (flagged in Decision #126).
  * Images accept any `https:` origin because profile photos and listing covers come from arbitrary hosts.
  *
- * Two profiles exist (Decision #161(D)): `app`, the platform policy every response gets by default,
- * and `inspector`, the same policy plus `'wasm-unsafe-eval'` (pdf.js decoders, Draco/Basis/meshopt)
- * and `blob:` in `connect-src` (GLB embedded textures) — sent only by the `/inspect/*` page.
+ * Three profiles exist: `app`, the platform policy every response gets by default; `inspector`
+ * (Decision #161(D)), the same policy plus `'wasm-unsafe-eval'` (pdf.js decoders, Draco/Basis/meshopt)
+ * and `blob:` in `connect-src` (GLB embedded textures) — sent only by the `/inspect/*` page; and
+ * `framed` (Decision #217 (j)), the same policy with `frame-ancestors 'self'` — sent only by the
+ * catalogue's buyer simulation (`/catalogue/[id]/simulate`), which the item workspace's Preview tab
+ * frames. The middleware pairs that one profile, and no other, with `x-frame-options: SAMEORIGIN`.
  */
 
 /** Page-scoped loosenings of the platform policy; each is off unless a profile asks for it. */
@@ -28,6 +31,8 @@ export interface CspRelaxations {
 	wasm?: boolean;
 	/** Adds `blob:` to `connect-src`, so a page may `fetch` the blob URLs it minted itself. */
 	blobConnect?: boolean;
+	/** `frame-ancestors 'self'` instead of `'none'`: this origin's own pages may frame the page. */
+	frameSelf?: boolean;
 }
 
 /** What the policy depends on. */
@@ -40,8 +45,11 @@ export interface CspOptions {
 	relax?: CspRelaxations;
 }
 
-/** A named policy: `app` for every page, `inspector` for the shell-free file inspector. */
-export type CspProfile = "app" | "inspector";
+/**
+ * A named policy: `app` for every page, `inspector` for the shell-free file inspector, `framed` for
+ * the one page this origin frames (the catalogue's buyer simulation).
+ */
+export type CspProfile = "app" | "inspector" | "framed";
 
 /** The origin of a URL, or `null` when it is not an http(s) URL. */
 export function originOf(url: string | null | undefined): string | null {
@@ -85,7 +93,7 @@ export function contentSecurityPolicy(options: CspOptions): string {
 		["object-src", ["'none'"]],
 		["base-uri", ["'self'"]],
 		["form-action", ["'self'"]],
-		["frame-ancestors", ["'none'"]],
+		["frame-ancestors", [options.relax?.frameSelf === true ? "'self'" : "'none'"]],
 	];
 	const policy = directives.map(([name, values]) => `${name} ${[...new Set(values)].join(" ")}`);
 	if (!options.dev) policy.push("upgrade-insecure-requests");
@@ -95,7 +103,17 @@ export function contentSecurityPolicy(options: CspOptions): string {
 const PROFILE_RELAXATIONS: Readonly<Record<CspProfile, CspRelaxations>> = {
 	app: {},
 	inspector: { wasm: true, blobConnect: true },
+	framed: { frameSelf: true },
 };
+
+/**
+ * The `x-frame-options` a response is sent with, given the policy it carries. `SAMEORIGIN` only for a
+ * response whose policy is EXACTLY the `framed` profile's — the two headers must agree, and a route
+ * cannot earn the looser one by writing a header of its own — and `DENY` for everything else.
+ */
+export function frameOptionsFor(policy: string | null): "DENY" | "SAMEORIGIN" {
+	return policy !== null && policy === cspHeaderFor("framed") ? "SAMEORIGIN" : "DENY";
+}
 
 const cachedHeaders = new Map<CspProfile, string>();
 

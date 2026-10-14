@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import { contentSecurityPolicy, cspHeaderFor, originOf } from "./csp.ts";
+import { contentSecurityPolicy, cspHeaderFor, frameOptionsFor, originOf } from "./csp.ts";
 
 function directive(policy: string, name: string): string[] {
 	const found = policy.split("; ").find((d) => d.startsWith(`${name} `));
@@ -84,4 +84,21 @@ Deno.test("csp: the inspector profile is the app profile plus wasm and blob: con
 	assertEquals(directive(inspector, "frame-ancestors"), ["'none'"]);
 	assertEquals(directive(inspector, "object-src"), ["'none'"]);
 	assert(!directive(inspector, "script-src").includes("'unsafe-eval'"));
+});
+
+Deno.test("csp: the framed profile differs from the platform policy only in frame-ancestors 'self'", () => {
+	const app = cspHeaderFor("app");
+	const framed = cspHeaderFor("framed");
+	assertEquals(directive(framed, "frame-ancestors"), ["'self'"]);
+	const rest = (policy: string) =>
+		policy.split("; ").filter((d) => !d.startsWith("frame-ancestors "));
+	assertEquals(rest(framed), rest(app));
+});
+
+Deno.test("csp: only the exact framed policy earns x-frame-options SAMEORIGIN", () => {
+	assertEquals(frameOptionsFor(cspHeaderFor("framed")), "SAMEORIGIN");
+	assertEquals(frameOptionsFor(cspHeaderFor("app")), "DENY");
+	assertEquals(frameOptionsFor(cspHeaderFor("inspector")), "DENY");
+	assertEquals(frameOptionsFor(null), "DENY");
+	assertEquals(frameOptionsFor("frame-ancestors 'self'"), "DENY");
 });

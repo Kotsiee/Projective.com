@@ -189,9 +189,35 @@
 
 /* The `:not(:has(.ui-middle-nav))` override in shell-frame.css sets the corner DIRECTLY rather than
    through the variable, so a bare-canvas focus route needs the direct rule too. */
-.ui-app-shell[data-chrome="focus"] .ui-app-shell__content::before {
+.ui-app-shell[data-chrome="focus"] .ui-app-shell__content::before,
+.ui-app-shell[data-chrome="bare"] .ui-app-shell__content::before {
 	border-start-start-radius: 0;
 	border-end-start-radius: 0;
+}
+
+/*
+ * BARE CHROME — a page framed by another surface (the catalogue's buyer simulation, rendered in the
+ * item workspace's Preview `<iframe>`). `AppShell` renders no top bar and no rail, so the only geometry
+ * left to settle is the top bar's height: zeroing `--shell-topbar-h` here re-bases every sticky offset
+ * and frame inset beneath it (the lane, the page canvas, the seam pseudo-elements) onto the frame's own
+ * top edge, rather than leaving a 64px band of nothing above the page.
+ */
+.ui-app-shell[data-chrome="bare"] {
+	--shell-topbar-h: 0px;
+	--shell-frame-inset-block: 0px;
+	--shell-frame-inset-inline: 0px;
+	grid-template-rows: 1fr;
+	grid-template-columns: 1fr;
+	grid-template-areas: "content";
+	background: var(--bg);
+}
+
+.ui-app-shell[data-chrome="bare"] .ui-app-shell__content,
+.ui-app-shell[data-chrome="bare"] .ui-page-canvas {
+	--frame-radius: 0px;
+	--frame-bl-radius: 0px;
+	--shell-frame-inset-inline: 0px;
+	--shell-frame-inset-block: 0px;
 }
 
 /* Mobile viewport isolation (≤ --bp-md): drop the desktop sidebar entirely and strip the gutter that

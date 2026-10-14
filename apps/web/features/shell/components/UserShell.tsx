@@ -104,6 +104,9 @@ export interface UserShellProps {
 	 *
 	 * The mode is resolved per-URL by a slot resolver in the layout, exactly like the lane and the
 	 * bands — so it paints correctly in the first byte with no client flash.
+	 *
+	 * `bare` is for a page another surface frames (the catalogue's buyer simulation, Decision #217
+	 * (j)): everything `focus` withholds, plus the top bar and both bands — only the canvas renders.
 	 */
 	chrome?: ShellChrome;
 	/**
@@ -172,7 +175,10 @@ export function UserShell(
 		children,
 	}: UserShellProps,
 ): JSX.Element {
-	const focus = chrome === "focus";
+	// `bare` (a framed page — the catalogue's buyer simulation) withholds everything `focus` does, and
+	// the bands and the top bar with it: the page is the whole frame.
+	const bare = chrome === "bare";
+	const focus = chrome === "focus" || bare;
 	const canvas = <PageCanvas>{children}{focus ? null : bodyFooter}</PageCanvas>;
 	// In focus mode every navigational exit is withheld, so the lane is not constructed at all — but
 	// the middle-nav FRAME still renders whenever a band was registered, because the checkout stepper
@@ -181,7 +187,7 @@ export function UserShell(
 	// the frame's inline edge (measured: `0px 1265px`, header flush at x=0, zero overflow).
 	const activeLane = focus ? undefined : lane;
 	const activePanel = focus ? undefined : middleNavPanel;
-	const framed = activeLane || middleNavHeader || middleNavFooter;
+	const framed = !bare && (activeLane || middleNavHeader || middleNavFooter);
 	return (
 		<>
 			<AppShell

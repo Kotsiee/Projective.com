@@ -29,6 +29,10 @@ export interface AppShellProps {
 	 * and the caller simply passes no `sidebar` and no lane. Nothing is hidden with `display: none`,
 	 * because chrome that is present-but-invisible still takes part in the frame-inset accumulator and
 	 * still reserves its grid track — which is how a "hidden" 280px lane leaves a 280px hole.
+	 *
+	 * `bare` goes one step further, for a page that is itself framed by another surface (the
+	 * catalogue's buyer simulation inside the item workspace's Preview `<iframe>`): no top bar either,
+	 * so the content is the whole viewport with no rails, no shell bands and no frame seam.
 	 */
 	chrome?: ShellChrome;
 	/**
@@ -43,7 +47,7 @@ export interface AppShellProps {
 }
 
 /** See {@link AppShellProps.chrome}. */
-export type ShellChrome = "full" | "focus";
+export type ShellChrome = "full" | "focus" | "bare";
 
 /**
  * AppShell — the permanent outermost layout (Red zone). Provides the top utility bar and, for the
@@ -66,7 +70,8 @@ export function AppShell(props: AppShellProps): JSX.Element {
 	// persona alone reserved the `sidebar` grid track for a caller that passed no content, leaving a
 	// 64px empty column — and, worse, left `--shell-frame-inset-inline` accounting for a rail that was
 	// not on screen, so the nested frame's fixed corner seam sat 64px inboard of the frame it traces.
-	const showSidebar = persona === "user" && !!sidebar;
+	const bare = chrome === "bare";
+	const showSidebar = persona === "user" && !!sidebar && !bare;
 	return (
 		<div
 			class={cx(
@@ -74,25 +79,29 @@ export function AppShell(props: AppShellProps): JSX.Element {
 				persona === "guest" ? "ui-app-shell--guest" : "ui-app-shell--user",
 				!showSidebar && "ui-app-shell--no-sidebar",
 			)}
-			data-chrome={chrome === "focus" ? "focus" : undefined}
+			data-chrome={chrome === "full" ? undefined : chrome}
 		>
 			{
 				/* Out of flow (`position: fixed`), so it takes no cell of the shell's grid; first in the
 				   DOM, so it is the first Tab stop on the page. */
 			}
-			{skipTo ? <a class="ui-app-shell__skip" href={`#${skipTo}`}>Skip to content</a> : null}
-			<ShellTopBar
-				glass={persona === "guest"}
-				brand={
-					<>
-						{mobileMenu ? <span class="ui-app-shell__mobile-menu">{mobileMenu}</span> : null}
-						{brand}
-					</>
-				}
-				center={search}
-			>
-				{utilityBar}
-			</ShellTopBar>
+			{skipTo && !bare
+				? <a class="ui-app-shell__skip" href={`#${skipTo}`}>Skip to content</a>
+				: null}
+			{bare ? null : (
+				<ShellTopBar
+					glass={persona === "guest"}
+					brand={
+						<>
+							{mobileMenu ? <span class="ui-app-shell__mobile-menu">{mobileMenu}</span> : null}
+							{brand}
+						</>
+					}
+					center={search}
+				>
+					{utilityBar}
+				</ShellTopBar>
+			)}
 			{showSidebar ? <div class="ui-app-shell__sidebar">{sidebar}</div> : null}
 			<div class="ui-app-shell__content">{children}</div>
 		</div>
