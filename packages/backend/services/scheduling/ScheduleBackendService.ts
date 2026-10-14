@@ -34,6 +34,8 @@ import {
 import { type PlanRefusal, planReschedule, planRsvp } from "./coordination-plan.ts";
 import { writeReschedule, writeRsvp } from "./live-coordination-writes.ts";
 import { type Catalog, loadCatalog } from "../explore/live-catalog.ts";
+import { resolveListing } from "../explore/listing-source.ts";
+import type { ExploreItem } from "@projective/types/explore";
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
 import { isBearerAuthorised } from "../../core/bearer.ts";
 import { serverEnv } from "../../core/env.ts";
@@ -240,26 +242,25 @@ export class ScheduleBackendService {
 	): Promise<ServiceResult<{ page: SchedulePage }>> {
 		const catalog = await loadCatalog().catch(() => null);
 		if (!catalog) return scheduleUnavailable();
-		const item = catalog.byId.get(params.entityId);
-		const owner = item ? listingScheduleOwner(catalog, item.id) : null;
-		if (!item || !owner) {
-			return fail(404, { message: `No item found for id "${params.entityId}".` });
-		}
-		const page = await readSchedulePage(owner, {
-			scope: "schedule",
-			title: item.title,
-			subtitle: `With ${item.owner.name}`,
-			ownerHandle: item.owner.handle,
-			viewerCanBook: true,
-			now,
-		}, pageWindow(now));
-		if (page === undefined) return scheduleUnavailable();
-		if (!page) {
-			return fail(404, {
-				message: `${item.owner.name} has not published a schedule for this listing.`,
-			});
-		}
-		return ok({ page });
+		return listingSchedulePage(catalog, catalog.byId.get(params.entityId), params.entityId, now);
+	}
+
+	/**
+	 * The schedule the OWNER's buyer simulation shows on a session listing's scheduler stage (Decision
+	 * #217 (j)): the same public projection a buyer reads, resolved from the listing as its seller
+	 * sees it now, so a draft listing's stage is not empty. A listing that is not the caller's is a
+	 * 404, worded exactly as a missing one.
+	 */
+	static async simulatedEntitySchedule(
+		params: ScheduleParams,
+		owner: ReadActor,
+		now: number = Date.now(),
+	): Promise<ServiceResult<{ page: SchedulePage }>> {
+		if (!canReadLive(owner)) return fail(401, { message: "Sign in to preview your listing." });
+		const resolved = await resolveListing(params.entityId, { as: "owner", actor: owner });
+		if (resolved === undefined) return scheduleUnavailable();
+		if (!resolved) return fail(404, { message: `No item found for id "${params.entityId}".` });
+		return listingSchedulePage(resolved.catalog, resolved.item, params.entityId, now);
 	}
 
 	/**
@@ -568,6 +569,32 @@ function listingScheduleOwner(catalog: Catalog, itemId: string): ScheduleOwner |
 			: { type: "user", id: product.owner_user_id };
 	}
 	return null;
+}
+
+/** The public schedule page of a listing resolved in `catalog`; a 404 when it books into nothing. */
+async function listingSchedulePage(
+	catalog: Catalog,
+	item: ExploreItem | undefined,
+	entityId: string,
+	now: number,
+): Promise<ServiceResult<{ page: SchedulePage }>> {
+	const owner = item ? listingScheduleOwner(catalog, item.id) : null;
+	if (!item || !owner) return fail(404, { message: `No item found for id "${entityId}".` });
+	const page = await readSchedulePage(owner, {
+		scope: "schedule",
+		title: item.title,
+		subtitle: `With ${item.owner.name}`,
+		ownerHandle: item.owner.handle,
+		viewerCanBook: true,
+		now,
+	}, pageWindow(now));
+	if (page === undefined) return scheduleUnavailable();
+	if (!page) {
+		return fail(404, {
+			message: `${item.owner.name} has not published a schedule for this listing.`,
+		});
+	}
+	return ok({ page });
 }
 
 function scheduleUnavailable<T>(): ServiceResult<T> {

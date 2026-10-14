@@ -5,6 +5,8 @@ import type { ServiceBookingOffer } from "@projective/types/services";
 import type { UserContext } from "@projective/types/auth";
 import { bookingActorFromContext } from "./booking-actor.ts";
 import { ANONYMOUS_ACTOR } from "@server/services/booking/BookingBackendService.ts";
+import { ScheduleBackendService } from "@server/services/scheduling/ScheduleBackendService.ts";
+import type { ReadActor } from "@server/services/read-actor.ts";
 import { resolveSchedulePage } from "@web/features/calendar/core/calendar-ssr.ts";
 import { resolveArchetype, showsScheduler } from "./entity-archetype.ts";
 
@@ -62,10 +64,30 @@ export async function resolveEntityCommerce(
 		viewer: SchedulingViewer;
 		/** A restricted (13–17) viewer sees the schedule but cannot book a slot (Decision #192). */
 		restricted?: boolean;
+		/**
+		 * The owner's buyer simulation (`/catalogue/[id]/simulate`, Decision #217 (j)): the real offer
+		 * and schedule, read from the listing as its seller sees it (a draft included), for a signed-in
+		 * first-time buyer — none of the "already in your projects" or sign-in states the owner's own
+		 * session would resolve.
+		 */
+		simulation?: { owner: ReadActor };
 	},
 ): Promise<{ offer: ServiceBookingOffer | null; schedule: SchedulePage | null }> {
 	const archetype = resolveArchetype(view);
 	if (archetype === "project" || archetype === "article") return { offer: null, schedule: null };
+	if (opts.simulation) {
+		const { owner } = opts.simulation;
+		const [offered, scheduled] = await Promise.all([
+			BookingBackendService.simulatedOffer(view.item.id, owner),
+			showsScheduler(archetype)
+				? ScheduleBackendService.simulatedEntitySchedule({ entityId: view.item.id }, owner)
+				: Promise.resolve(null),
+		]);
+		return {
+			offer: offered.ok && offered.data ? offered.data.offer : null,
+			schedule: scheduled?.ok && scheduled.data ? scheduled.data.page : null,
+		};
+	}
 	const [offer, page] = await Promise.all([
 		resolveBookingOffer(view.item.id, opts),
 		showsScheduler(archetype)

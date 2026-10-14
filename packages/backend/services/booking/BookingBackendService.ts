@@ -180,8 +180,15 @@ interface BookableListing {
  * published right now), the catalogue snapshot otherwise (`resolveListing`). A failure the caller
  * returns as-is: `503` when the database could not answer, `404` when there is no such listing.
  */
-async function listingOf<T>(subjectId: string): Promise<BookableListing | ServiceResult<T>> {
-	const resolved = await resolveListing(subjectId);
+async function listingOf<T>(
+	subjectId: string,
+	asOwner?: ReadActor,
+): Promise<BookableListing | ServiceResult<T>> {
+	// The owner's read (the buyer simulation) sees the listing as its seller does — a draft or a
+	// paused listing included — and answers a stranger's id exactly as a missing one.
+	const resolved = asOwner
+		? await resolveListing(subjectId, { as: "owner", actor: asOwner })
+		: await resolveListing(subjectId);
 	if (resolved === undefined) return unavailable<T>();
 	const owner = resolved ? listingOwner(resolved.catalog, resolved.item.id) : null;
 	if (!resolved || !owner) {
@@ -336,7 +343,7 @@ function callDurationFor(offer: PublicCallOffer, callType: "courtesy" | "paid"):
  */
 function contactOfferFor(
 	item: ExploreItem,
-	actor: BookingActor,
+	signedIn: boolean,
 	signInHref: string | null,
 	callOffer: PublicCallOffer | null,
 ): ContactOffer {
@@ -375,8 +382,8 @@ function contactOfferFor(
 		subjectTitle: item.title,
 		actions,
 		callOffer: callOffer ?? undefined,
-		requiresSignIn: actor.userId === null,
-		signInHref: actor.userId === null ? signInHref : null,
+		requiresSignIn: !signedIn,
+		signInHref: signedIn ? null : signInHref,
 	};
 }
 // #endregion
@@ -402,6 +409,91 @@ async function cohortFor(
 }
 // #endregion
 
+// #region Listing slots
+/** The bookable grid of a resolved listing, drawn from its owner's working hours. */
+async function listingSlots(
+	listing: BookableListing,
+	query: SlotQuery,
+): Promise<ServiceResult<{ grid: SlotGrid }>> {
+	const { view, owner } = listing;
+	const format = formatOf(view);
+	if (!isScheduled(format)) {
+		return fail(422, {
+			message: "This listing is not booked from a schedule.",
+			errors: { subjectId: "not_bookable" },
+		});
+	}
+	return ScheduleBackendService.slots(
+		query,
+		gridInputFor(view, format, await cohortFor(view, format, owner)),
+		{ owner: owner.schedule, kind: "working_hours", blueprintId: owner.blueprintId },
+	);
+}
+// #endregion
+
+// #region Offer composition
+/**
+ * Who an offer is composed for. `buyer` is the real viewer (`actor`, possibly a guest); `simulated`
+ * is the owner's buyer simulation (`/catalogue/[id]/simulate`, Decision #217 (j)): a signed-in buyer
+ * with no draft of the listing, so every CTA resolves as it would for a first-time buyer.
+ */
+type OfferAudience = { kind: "buyer"; actor: BookingActor } | { kind: "simulated" };
+
+/** Compose the offer for a resolved listing — the one body both offer entry points share. */
+async function composeOffer(
+	listing: BookableListing,
+	audience: OfferAudience,
+	handle: string | null,
+): Promise<ServiceBookingOffer> {
+	const { item, view, owner } = listing;
+	const format = formatOf(view);
+	const cohort = await cohortFor(view, format, owner);
+	const capacity = cohort?.seats ?? null;
+	const signedIn = audience.kind === "simulated" || audience.actor.userId !== null;
+
+	// A failed read of the call offer leaves the call row out rather than failing the whole page:
+	// the listing is still buyable, and "takes no calls" is the safer thing to show than a row whose
+	// every press would error.
+	const callOffer = (await callOfferOf(owner.schedule)) ?? null;
+	const bookingsOpen = isScheduled(format) ? await publishesSchedule(owner.schedule) : true;
+
+	// The draft that flips "Add to Projects" into "Open Project →". A simulated buyer holds none.
+	const draft = format === "pipeline" && audience.kind === "buyer"
+		? await draftOf(item, owner, audience.actor)
+		: null;
+
+	const signInHref = signInHrefFor(item, handle);
+	return {
+		subjectId: item.id,
+		subjectTitle: item.title,
+		format,
+		cta: resolveCta({
+			format,
+			sessionCount: format === "set_session" ? (view.service?.sessionCount ?? 1) : 1,
+			seatsRemaining: capacity?.remaining ?? null,
+			cohortOpen: format !== "cohort" || cohort !== null,
+			draftHref: draft?.boardHref ?? null,
+			bookingsOpen,
+			scheduleHref: scheduleHrefFor(item, handle),
+		}),
+		contact: contactOfferFor(item, signedIn, signInHref, callOffer),
+		capacity,
+		cohort,
+		draft,
+		sessionCount: format === "set_session" ? (view.service?.sessionCount ?? 1) : 1,
+		durationMinutes: view.service?.bookable ? (view.service.sessionMinutes ?? 60) : null,
+		/*
+		 * Escrow is deliberately narrow. `PRODUCT_SPEC.md` locks escrow-at-checkout to SESSIONS: a
+		 * pipeline ticket escrows when the freelancer claims it, and a digital product has no
+		 * documented escrow at all.
+		 */
+		escrows: isScheduled(format),
+		requiresSignIn: !signedIn,
+		signInHref: signedIn ? null : signInHref,
+	};
+}
+// #endregion
+
 export class BookingBackendService {
 	/**
 	 * The complete offer for one listing and one viewer — the object BOTH transactional regions render.
@@ -417,50 +509,26 @@ export class BookingBackendService {
 	): Promise<ServiceResult<{ offer: ServiceBookingOffer }>> {
 		const listing = await listingOf<{ offer: ServiceBookingOffer }>(subjectId);
 		if (!isListing(listing)) return listing;
-		const { item, view, owner } = listing;
-		const format = formatOf(view);
-		const cohort = await cohortFor(view, format, owner);
-		const capacity = cohort?.seats ?? null;
+		return ok({
+			offer: await composeOffer(listing, { kind: "buyer", actor }, opts.handle ?? null),
+		});
+	}
 
-		// A failed read of the call offer leaves the call row out rather than failing the whole page:
-		// the listing is still buyable, and "takes no calls" is the safer thing to show than a row whose
-		// every press would error.
-		const callOffer = (await callOfferOf(owner.schedule)) ?? null;
-		const bookingsOpen = isScheduled(format) ? await publishesSchedule(owner.schedule) : true;
-
-		// The draft that flips "Add to Projects" into "Open Project →".
-		const draft = format === "pipeline" ? await draftOf(item, owner, actor) : null;
-
-		const signInHref = signInHrefFor(item, opts.handle ?? null);
-		const offer: ServiceBookingOffer = {
-			subjectId: item.id,
-			subjectTitle: item.title,
-			format,
-			cta: resolveCta({
-				format,
-				sessionCount: format === "set_session" ? (view.service?.sessionCount ?? 1) : 1,
-				seatsRemaining: capacity?.remaining ?? null,
-				cohortOpen: format !== "cohort" || cohort !== null,
-				draftHref: draft?.boardHref ?? null,
-				bookingsOpen,
-				scheduleHref: scheduleHrefFor(item, opts.handle ?? null),
-			}),
-			contact: contactOfferFor(item, actor, signInHref, callOffer),
-			capacity,
-			cohort,
-			draft,
-			sessionCount: format === "set_session" ? (view.service?.sessionCount ?? 1) : 1,
-			durationMinutes: view.service?.bookable ? (view.service.sessionMinutes ?? 60) : null,
-			/*
-			 * Escrow is deliberately narrow. `PRODUCT_SPEC.md` locks escrow-at-checkout to SESSIONS: a
-			 * pipeline ticket escrows when the freelancer claims it, and a digital product has no
-			 * documented escrow at all.
-			 */
-			escrows: isScheduled(format),
-			requiresSignIn: actor.userId === null,
-			signInHref: actor.userId === null ? signInHref : null,
-		};
-		return ok({ offer });
+	/**
+	 * The offer the listing's OWNER previews in the buyer simulation (Decision #217 (j)): the real
+	 * offer, resolved from the listing as its seller sees it now (draft and paused included), for a
+	 * signed-in buyer who holds no draft of it — so the owner sees a first-time buyer's CTA rather than
+	 * the "already in your projects" state or the sign-in bounce their own session would earn. A
+	 * listing that is not the caller's is a 404, worded exactly as a missing one.
+	 */
+	static async simulatedOffer(
+		subjectId: string,
+		owner: ReadActor,
+	): Promise<ServiceResult<{ offer: ServiceBookingOffer }>> {
+		if (!canReadLive(owner)) return fail(401, { message: "Sign in to preview your listing." });
+		const listing = await listingOf<{ offer: ServiceBookingOffer }>(subjectId, owner);
+		if (!isListing(listing)) return listing;
+		return ok({ offer: await composeOffer(listing, { kind: "simulated" }, null) });
 	}
 
 	/**
@@ -510,19 +578,24 @@ export class BookingBackendService {
 
 		const listing = await listingOf<{ grid: SlotGrid }>(query.subjectId);
 		if (!isListing(listing)) return listing;
-		const { view, owner } = listing;
-		const format = formatOf(view);
-		if (!isScheduled(format)) {
-			return fail(422, {
-				message: "This listing is not booked from a schedule.",
-				errors: { subjectId: "not_bookable" },
-			});
-		}
-		return ScheduleBackendService.slots(query, gridInputFor(view, format, await cohortFor(view, format, owner)), {
-			owner: owner.schedule,
-			kind: "working_hours",
-			blueprintId: owner.blueprintId,
-		});
+		return listingSlots(listing, query);
+	}
+
+	/**
+	 * The slot grid the OWNER's buyer simulation draws (Decision #217 (j)): the same grid a buyer gets,
+	 * from the listing as its seller sees it now, so a draft session listing's Book modal shows the
+	 * times it would offer once published. A read — nothing is held. A discovery call's grid is the
+	 * provider's public one already, so it is read exactly as a buyer reads it.
+	 */
+	static async simulatedSlots(
+		query: SlotQuery,
+		owner: ReadActor,
+	): Promise<ServiceResult<{ grid: SlotGrid }>> {
+		if (!canReadLive(owner)) return fail(401, { message: "Sign in to preview your listing." });
+		if (query.purpose === "discovery_call") return BookingBackendService.slots(query);
+		const listing = await listingOf<{ grid: SlotGrid }>(query.subjectId, owner);
+		if (!isListing(listing)) return listing;
+		return listingSlots(listing, query);
 	}
 
 	/**
