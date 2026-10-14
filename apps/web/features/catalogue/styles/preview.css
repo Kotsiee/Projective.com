@@ -1,0 +1,154 @@
+/*
+ * cat-preview — the item workspace's Preview tab (plan §4.6 item 3, Decision #217 (j)): the buyer
+ * simulation (`/catalogue/[id]/simulate`) framed at a real device width and scaled to fit.
+ *
+ * The frame is laid out at its true width — 1280px for Desktop (the `--bp-xl` breakpoint), 390 × 844
+ * for Mobile — so the simulated page's own breakpoints apply exactly as they do for a buyer, then the
+ * whole device is scaled down with `transform: scale(var(--cat-preview-scale))`. The scale and the
+ * stage height are written by `PreviewCanvas` from a ResizeObserver (`preview-model.ts#previewScale`).
+ * The outer box is sized to the SCALED device, because a transform does not change layout size.
+ *
+ * The device frame is a solid `--surface-2` bezel around the screen: a region tone, not a border or a
+ * card (§B.4.2), and nothing about it is interactive.
+ */
+.cat-preview {
+	/* Pinned to `preview-model.ts` (MOBILE_BEZEL, DESKTOP_FRAME_WIDTH, MOBILE_VIEWPORT); a test reads both. */
+	--cat-preview-bezel: 12px;
+	--cat-preview-desktop-w: 1280px;
+	--cat-preview-mobile-vw: 390px;
+	--cat-preview-mobile-vh: 844px;
+	--cat-preview-mobile-w: calc(var(--cat-preview-mobile-vw) + 2 * var(--cat-preview-bezel));
+	--cat-preview-mobile-h: calc(var(--cat-preview-mobile-vh) + 2 * var(--cat-preview-bezel));
+	--cat-preview-scale: 1;
+	--cat-preview-h: 36rem;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	min-inline-size: 0;
+}
+
+.cat-preview__bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+}
+
+.cat-preview__open {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding-block: var(--space-1);
+	padding-inline: var(--space-2);
+	border-radius: var(--radius-sm);
+	color: var(--primary);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	text-decoration: none;
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.cat-preview__open:hover {
+	background: var(--surface-2);
+}
+
+.cat-preview__open:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cat-preview__open:active {
+	transform: scale(var(--cat-press-scale));
+	transition-duration: var(--dur-press);
+}
+
+/* The workspace canvas caps its measure for the Edit form; the Preview tab needs the full width to
+   fit a desktop frame, so the cap is lifted for this tab only. */
+.cat-ws__canvas[data-tab="preview"] {
+	max-inline-size: none;
+}
+
+/* The measured stage: the box the device is fitted into. */
+.cat-preview__stage {
+	display: flex;
+	justify-content: center;
+	align-items: flex-start;
+	min-inline-size: 0;
+	block-size: 75dvh;
+	min-block-size: 28rem;
+	overflow: clip;
+}
+
+/* The device's SCALED box — what the layout reserves. */
+.cat-preview__device {
+	flex: none;
+	overflow: clip;
+}
+
+.cat-preview__device--desktop {
+	inline-size: calc(var(--cat-preview-desktop-w) * var(--cat-preview-scale));
+	block-size: var(--cat-preview-h);
+	border-radius: var(--radius-lg);
+	background: var(--bg);
+}
+
+.cat-preview__device--mobile {
+	inline-size: calc(var(--cat-preview-mobile-w) * var(--cat-preview-scale));
+	block-size: calc(var(--cat-preview-mobile-h) * var(--cat-preview-scale));
+}
+
+/* The device at its TRUE size, scaled from its top-left corner into the box above. */
+.cat-preview__shell {
+	transform: scale(var(--cat-preview-scale));
+	transform-origin: 0 0;
+}
+
+.cat-preview__device--desktop .cat-preview__shell {
+	inline-size: var(--cat-preview-desktop-w);
+	block-size: calc(var(--cat-preview-h) / var(--cat-preview-scale));
+}
+
+.cat-preview__device--mobile .cat-preview__shell {
+	inline-size: var(--cat-preview-mobile-w);
+	block-size: var(--cat-preview-mobile-h);
+	padding: var(--cat-preview-bezel);
+	border-radius: var(--radius-container-xl);
+	background: var(--surface-2);
+	box-sizing: border-box;
+}
+
+.cat-preview__frame {
+	display: block;
+	inline-size: 100%;
+	block-size: 100%;
+	border: 0;
+	background: var(--bg);
+}
+
+.cat-preview__device--mobile .cat-preview__frame {
+	inline-size: var(--cat-preview-mobile-vw);
+	block-size: var(--cat-preview-mobile-vh);
+	border-radius: var(--radius-container-lg);
+}
+
+.cat-preview__frame:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cat-preview__open,
+	.cat-preview__open:active {
+		transition: none;
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .cat-preview__open,
+:root[data-motion="reduced"] .cat-preview__open:active {
+	transition: none;
+	transform: none;
+}

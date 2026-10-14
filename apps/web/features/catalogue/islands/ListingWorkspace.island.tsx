@@ -5,6 +5,7 @@ import type { ListingDetail, WorkspaceTab, WorkspaceUrlState } from "../types/ca
 import { EditCanvas } from "../components/edit/EditCanvas.tsx";
 import { ConflictDialog } from "../components/ConflictDialog.tsx";
 import { TabPending } from "../components/TabPending.tsx";
+import { PreviewCanvas } from "../components/preview/PreviewCanvas.tsx";
 import {
 	flushBeacon,
 	hydrateWorkspace,
@@ -75,6 +76,14 @@ export default function ListingWorkspace(props: ListingWorkspaceProps): JSX.Elem
 							listing={listing}
 							restricted={props.restricted}
 							initialSection={generation === 0 ? props.url.section : undefined}
+						/>
+					)
+					: tab === "preview"
+					? (
+						<PreviewCanvas
+							slug={listing.id}
+							title={listing.title}
+							device={workspaceReady.value ? workspaceUrl.value.device : props.url.device}
 						/>
 					)
 					: <TabPending tab={tab} />}
