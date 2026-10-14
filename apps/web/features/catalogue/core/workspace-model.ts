@@ -18,19 +18,21 @@ export type PatchField =
 	| "offer"
 	| "delivery"
 	| "pricing"
+	| "currency"
 	| "intake"
 	| "seo"
 	| "tags";
 
 /**
  * Which fields each section owns. A save sends every field of each section that changed, so a
- * section is always written as one coherent unit. Media and availability have their own routes.
+ * section is always written as one coherent unit — so a currency change always carries the prices
+ * it re-states. Media and availability have their own routes.
  */
 export const SECTION_FIELDS: Readonly<Record<EditSection, readonly PatchField[]>> = {
 	media: [],
 	basics: ["title", "description", "createCategory", "serviceType", "skills"],
 	offer: ["offer", "delivery"],
-	pricing: ["pricing"],
+	pricing: ["pricing", "currency"],
 	availability: [],
 	questions: ["intake"],
 	seo: ["seo", "tags"],

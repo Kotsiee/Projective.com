@@ -1,3 +1,4 @@
+import { hasBeenPublished, type ListingDetail } from "@projective/types/catalogue";
 import {
 	INTAKE_FIELDS_MAX,
 	type IntakeField,
@@ -179,43 +180,14 @@ export function canAddQuestion(fields: readonly IntakeField[]): boolean {
 // #endregion
 
 // #region Publish lock
+export { intakeLockRefusal } from "@projective/types/services";
+
 /**
  * Whether a listing's question ids are fixed: once it has been live, answers are stored under them
- * on every basket line and invitation, so a renamed or removed id would orphan them.
+ * on every basket line and invitation, so a renamed or removed id would orphan them. It stays fixed
+ * after a pause, an archive or a restore to draft, as `save_listing` holds it.
  */
-export function intakeLocked(status: string): boolean {
-	return status !== "draft";
-}
-
-/** The text a locked question may still change: its wording and its options. */
-type LockedEditable = "label" | "hint" | "placeholder" | "options";
-
-function lockedShape(field: IntakeField): Omit<IntakeField, LockedEditable> {
-	const { label: _l, hint: _h, placeholder: _p, options: _o, ...rest } = field;
-	return rest;
-}
-
-function sameJson(a: unknown, b: unknown): boolean {
-	return JSON.stringify(a) === JSON.stringify(b);
-}
-
-/**
- * Why `after` may not replace `before` on a locked listing, or `null` when it may. A published
- * listing's questions keep their ids, order, kinds and every setting; only the wording and the
- * options change.
- */
-export function intakeLockRefusal(
-	before: readonly IntakeField[],
-	after: readonly IntakeField[],
-): string | null {
-	if (before.length !== after.length || before.some((f, i) => f.id !== after[i].id)) {
-		return "Questions can't be added, removed or reordered once the listing has been published.";
-	}
-	for (let i = 0; i < before.length; i++) {
-		if (!sameJson(lockedShape(before[i]), lockedShape(after[i]))) {
-			return "Only a question's wording and options can change once the listing has been published.";
-		}
-	}
-	return null;
+export function intakeLocked(listing: Pick<ListingDetail, "publishedAt">): boolean {
+	return hasBeenPublished(listing);
 }
 // #endregion

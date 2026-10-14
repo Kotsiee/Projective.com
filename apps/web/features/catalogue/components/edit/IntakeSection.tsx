@@ -33,7 +33,7 @@ const LOCK_ID = "cat-intake-lock";
  */
 export function IntakeSection(props: { listing: ListingDetail }): JSX.Element {
 	const { listing } = props;
-	const locked = intakeLocked(listing.status);
+	const locked = intakeLocked(listing);
 	const published = listing.intake;
 	const check = (fields: IntakeField[]): IntakeProblem | null => {
 		const refusal = locked ? intakeLockRefusal(published, fields) : null;

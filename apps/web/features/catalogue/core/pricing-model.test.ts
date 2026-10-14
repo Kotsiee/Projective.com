@@ -2,6 +2,7 @@ import { assertEquals } from "@std/assert";
 import type { ListingPricing } from "@projective/types/catalogue";
 import {
 	askedPrice,
+	currencyOf,
 	minorOf,
 	priceAsk,
 	ticketRange,
@@ -43,6 +44,13 @@ Deno.test("the fixed fee reads 0 as unpriced and clears back to 0", () => {
 
 Deno.test("the pipeline range is half to double the ticket", () => {
 	assertEquals(ticketRange(40_000), { low: 20_000, high: 80_000 });
+});
+
+Deno.test("a picked currency is stored as its upper-case ISO code, or refused", () => {
+	assertEquals(currencyOf("jpy"), "JPY");
+	assertEquals(currencyOf(" EUR "), "EUR");
+	assertEquals(currencyOf("EURO"), null);
+	assertEquals(currencyOf(null), null);
 });
 
 Deno.test("declaring revisions keeps null apart from zero", () => {

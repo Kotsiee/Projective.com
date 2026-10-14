@@ -17,6 +17,13 @@ export function minorOf(whole: number | null, currency: string): number | null {
 export function wholeOf(minor: number | null, currency: string): number | null {
 	return toMajorUnits(minor, currency);
 }
+
+/** A picked currency as the ISO-4217 code a listing stores, or `null` when it is not one. */
+export function currencyOf(code: unknown): string | null {
+	if (typeof code !== "string") return null;
+	const upper = code.trim().toUpperCase();
+	return /^[A-Z]{3}$/.test(upper) ? upper : null;
+}
 // #endregion
 
 // #region Fields

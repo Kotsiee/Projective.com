@@ -192,6 +192,24 @@ Deno.test("the price and revision fields patch the pricing section alone", () =>
 	const draft: ListingDetail = { ...saved, pricing: priced };
 	const patch = buildPatch(draft, diffFields(saved, draft), saved.updatedAt);
 	assert(UpdateListingInputSchema.safeParse(patch).success);
-	assertEquals(Object.keys(patch).sort(), ["expectedUpdatedAt", "id", "pricing"]);
+	assertEquals(Object.keys(patch).sort(), ["currency", "expectedUpdatedAt", "id", "pricing"]);
 	assertEquals([patch.pricing?.amount, patch.pricing?.freeRevisions], [1200, 2]);
+	assertEquals(patch.currency, saved.currency);
+});
+
+Deno.test("a currency change travels with the prices it re-states", () => {
+	const saved = listingFor("one_off", blank("one_off"));
+	const draft: ListingDetail = { ...saved, currency: "JPY" };
+	const patch = buildPatch(draft, diffFields(saved, draft), saved.updatedAt);
+	assertEquals(Object.keys(patch).sort(), ["currency", "expectedUpdatedAt", "id", "pricing"]);
+	assert(UpdateListingInputSchema.safeParse(patch).success);
+	assertEquals(
+		UpdateListingInputSchema.safeParse({
+			id: saved.id,
+			expectedUpdatedAt: saved.updatedAt,
+			currency: "JPY",
+		})
+			.success,
+		false,
+	);
 });

@@ -104,9 +104,8 @@ Deno.test("the publish lock allows wording and option edits only", () => {
 		question("q1"),
 		question("q2", { kind: "radio", options: [{ value: "a", label: "A" }] }),
 	];
-	assert(intakeLocked("published"));
-	assert(intakeLocked("paused"));
-	assert(!intakeLocked("draft"));
+	assert(intakeLocked({ publishedAt: "2026-10-01T09:00:00Z" }));
+	assert(!intakeLocked({ publishedAt: null }));
 
 	const reworded = [
 		{ ...before[0], label: "What's the deadline?", hint: "A date is fine" },
@@ -129,5 +128,18 @@ Deno.test("the publish lock allows wording and option edits only", () => {
 	assertEquals(
 		intakeLockRefusal(before, [{ ...before[0], required: true }, before[1]]),
 		"Only a question's wording and options can change once the listing has been published.",
+	);
+});
+
+Deno.test("the publish lock ignores the key order jsonb stores a question in", () => {
+	const stored = [question("q1", { hint: "A date is fine" })];
+	const reordered = stored.map((f) =>
+		Object.fromEntries(Object.entries(f).reverse()) as unknown as IntakeField
+	);
+	assertEquals(intakeLockRefusal(stored, reordered), null);
+	assertEquals(intakeLockRefusal(stored, [{ ...reordered[0], hint: undefined }]), null);
+	assertEquals(
+		intakeLockRefusal(stored, [{ ...reordered[0], id: "q9" }]),
+		"Questions can't be added, removed or reordered once the listing has been published.",
 	);
 });
