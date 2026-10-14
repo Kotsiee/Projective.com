@@ -32,6 +32,43 @@ export const ListingSeoSchema = z.object({
 export type ListingSeo = z.infer<typeof ListingSeoSchema>;
 // #endregion
 
+// #region Tag suggestions
+/** The most tags one suggestion answer offers. */
+export const TAG_SUGGESTIONS_MAX = 8;
+
+/** `GET /api/search/suggest-tags?q=` — the tag being typed. */
+export const SuggestTagsQuerySchema = z.object({
+	q: z.string().trim().min(1, "Type part of a tag.").max(LISTING_TAG_LENGTH_MAX),
+});
+export type SuggestTagsQuery = z.infer<typeof SuggestTagsQuerySchema>;
+
+/** What the search typeahead found for a query, as far as tags are concerned. */
+export interface TagSuggestionSource {
+	terms: ReadonlyArray<{ label: string }>;
+}
+
+/**
+ * The tags to offer for a typeahead answer: the skills and categories it matched, in its order,
+ * de-duplicated without regard to case, each short enough to be a tag.
+ */
+export function suggestedTags(
+	source: TagSuggestionSource,
+	limit = TAG_SUGGESTIONS_MAX,
+): string[] {
+	const seen = new Set<string>();
+	const tags: string[] = [];
+	for (const { label } of source.terms) {
+		const tag = label.replace(/\s+/g, " ").trim();
+		const key = tag.toLowerCase();
+		if (!tag || tag.length > LISTING_TAG_LENGTH_MAX || seen.has(key)) continue;
+		seen.add(key);
+		tags.push(tag);
+		if (tags.length === limit) break;
+	}
+	return tags;
+}
+// #endregion
+
 // #region SERP snippet
 /** What {@link serpSnippet} renders from. */
 export interface SerpInput {

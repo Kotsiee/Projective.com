@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { kindCopy, type WorkspaceFinance, type WorkspaceKind } from "@projective/types/workspace";
 import { PolicyAmount } from "./PolicyAmount.tsx";
-import { StatTile } from "./StatTile.tsx";
+import { StatTile, StatTileRow } from "@projective/ui/display";
 import { cloneGlyph, WalletGlyph } from "../core/workspace-glyphs.tsx";
 
 /**
@@ -40,7 +40,7 @@ export function FinanceSummary(props: FinanceSummaryProps): JSX.Element {
 
 	return (
 		<div class="wsp-money-mod">
-			<div class="wsp-tiles">
+			<StatTileRow label="Money" class="wsp-tiles">
 				<StatTile
 					label="Available"
 					value={finance.available.display}
@@ -63,7 +63,7 @@ export function FinanceSummary(props: FinanceSummaryProps): JSX.Element {
 						? "Released, inside the clearing window"
 						: "Requests waiting on a decision"}
 				/>
-			</div>
+			</StatTileRow>
 
 			{props.canOpen !== false && (
 				<p class="wsp-moneyhead">

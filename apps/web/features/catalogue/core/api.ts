@@ -26,13 +26,23 @@ export async function getCatalogue<T>(path: string): Promise<CatalogueResult<T>>
 }
 
 /** POST JSON to a catalogue endpoint, folding the response into a soft {@link CatalogueResult}. */
-export async function postCatalogue<T>(
+export function postCatalogue<T>(path: string, payload: unknown): Promise<CatalogueResult<T>> {
+	return sendCatalogue<T>("POST", path, payload);
+}
+
+/** PUT JSON to an endpoint the workspace writes (a whole preset), folded the same way. */
+export function putCatalogue<T>(path: string, payload: unknown): Promise<CatalogueResult<T>> {
+	return sendCatalogue<T>("PUT", path, payload);
+}
+
+async function sendCatalogue<T>(
+	method: "POST" | "PUT",
 	path: string,
 	payload: unknown,
 ): Promise<CatalogueResult<T>> {
 	try {
 		const res = await apiFetch(path, {
-			method: "POST",
+			method,
 			headers: { "content-type": "application/json", accept: "application/json" },
 			body: JSON.stringify(payload),
 		});

@@ -671,12 +671,17 @@ export async function listListings(
 	);
 	const all = [...details.values()].map(summaryOf);
 
-	let items = all.slice();
+	let items = params.createCategory
+		? [...details.values()].filter((d) => d.createCategory === params.createCategory).map(
+			summaryOf,
+		)
+		: all.slice();
 	if (params.type && params.type !== "all") items = items.filter((d) => d.kind === params.type);
 	if (params.status) items = items.filter((d) => d.status === params.status);
 	if (params.model) items = items.filter((d) => d.serviceType === params.model);
 	if (params.needsAttention) items = items.filter((d) => d.needsAttention);
 	if (params.promoted) items = items.filter((d) => d.promoted);
+	if (params.bestSelling) items = items.filter((d) => d.metrics.orders > 0);
 	if (params.search) {
 		const q = params.search.toLowerCase();
 		items = items.filter((d) =>

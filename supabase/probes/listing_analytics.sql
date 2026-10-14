@@ -242,6 +242,28 @@ SELECT pg_temp.ok((SELECT count(*) FROM analytics.daily_rollups r
                                            pg_temp.s('product')::uuid)) = 0,
                   'a stranger reads none');
 RESET ROLE;
+
+SELECT pg_temp.ok(pg_catalog.has_function_privilege('authenticated', 'catalogue.get_listing_rollups(uuid[], date, date)', 'EXECUTE')
+                  AND NOT pg_catalog.has_function_privilege('anon', 'catalogue.get_listing_rollups(uuid[], date, date)', 'EXECUTE'),
+                  'get_listing_rollups: a signed-in caller may call it, a guest may not');
+SELECT pg_temp.act(pg_temp.s('seller')); SET LOCAL ROLE authenticated;
+SELECT pg_temp.ok((SELECT count(*) FROM catalogue.get_listing_rollups(
+                       ARRAY[pg_temp.s('pipeline'), pg_temp.s('grp'), pg_temp.s('product')]::uuid[],
+                       DATE '2024-07-03', DATE '2024-07-03')) = pg_temp.s('total')::bigint,
+                  'get_listing_rollups: the owner reads every row of their listings');
+SELECT pg_temp.ok((SELECT count(*) FROM catalogue.get_listing_rollups(
+                       ARRAY[pg_temp.s('pipeline')]::uuid[], DATE '2024-07-10', DATE '2024-07-20')) = 0,
+                  'get_listing_rollups: a window that misses the day reads nothing');
+SELECT pg_temp.ok((SELECT count(*) FROM catalogue.get_listing_rollups(
+                       ARRAY[pg_temp.s('pipeline')]::uuid[], DATE '2022-01-01', DATE '2024-07-05')) = 0,
+                  'get_listing_rollups: a window over 800 days reads nothing');
+RESET ROLE;
+SELECT pg_temp.act(pg_temp.s('stranger')); SET LOCAL ROLE authenticated;
+SELECT pg_temp.ok((SELECT count(*) FROM catalogue.get_listing_rollups(
+                       ARRAY[pg_temp.s('pipeline'), pg_temp.s('grp'), pg_temp.s('product')]::uuid[],
+                       DATE '2024-07-01', DATE '2024-07-05')) = 0,
+                  'get_listing_rollups: a stranger reads none (INVOKER, the table''s policy decides)');
+RESET ROLE;
 -- #endregion
 
 -- #region 4b. A team listing answers to the team's managers, not to every member

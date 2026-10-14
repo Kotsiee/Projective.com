@@ -16,7 +16,7 @@ import {
 	ledgerKindLabel,
 	periodPhrase,
 } from "../core/wallet-model.ts";
-import { releaseAxis } from "../core/chart-geometry.ts";
+import { timeAxis } from "@projective/ui/display";
 import { FlowAreaChart } from "./FlowAreaChart.tsx";
 
 /** Props for {@link AnalyticsView}. */
@@ -223,7 +223,7 @@ function ReleaseTimeline(
 	}
 	// The axis is measured from the browser's clock, so it is only drawn once the island knows it.
 	const now = mounted ? Date.now() : null;
-	const axis = now !== null ? releaseAxis(items, now, 14, timeZone) : null;
+	const axis = now !== null ? timeAxis(items, now, 14, timeZone) : null;
 	return (
 		<div class="wlt-rel">
 			{axis && axis.placed.length > 0 && (
@@ -242,7 +242,7 @@ function ReleaseTimeline(
 						<span
 							key={p.id}
 							class="wlt-rel__pip"
-							data-state={p.state}
+							data-state={p.item.state}
 							style={styleVars({ "--wlt-x": p.ratio })}
 						/>
 					))}

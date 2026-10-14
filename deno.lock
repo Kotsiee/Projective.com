@@ -1987,6 +1987,8 @@
         "dependencies": [
           "npm:@material/material-color-utilities@0.3",
           "npm:@preact/signals@^2.9.0",
+          "npm:d3-scale@^4.0.2",
+          "npm:d3-shape@^3.2.0",
           "npm:preact@^10.29.0",
           "npm:quill@^2.0.3"
         ]

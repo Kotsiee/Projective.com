@@ -1140,14 +1140,19 @@ nothing until a person asks for review.
 
 The seller-side Catalogue (`/catalogue` + the per-item workspace `/catalogue/[id]`) is the **first
 write-oriented** implementation of the contract, through the same thin/fat split: `CatalogueService`
-(client) → `/api/catalogue/{list,item,create,update,status,media,media/reorder,batch,duplicate}`
+(client) → `/api/catalogue/{list,item,create,update,status,media,media/reorder,media/save,batch,duplicate,skills}`
 (thin: parse + Zod + auth guard, and the age gate on a publish) →
 `services/catalogue/CatalogueBackendService.ts` (fat) → `ServiceResult<T>`. It is **live only**, as
 the signed-in seller: reads under the catalogue policies (`live-catalogue.ts`), writes through the
 `catalogue.*` doors (`live-catalogue-writes.ts`) — `create_listing`, `save_listing` (with
 `expected_updated_at`: a stale save is a `409` whose `details.current` is the listing's current
 `updatedAt`), `apply_listing_media`, `set_listing_status`, `set_listings_status` (one outcome per
-listing) and `duplicate_listing`. A guest gets a `401` and an outage a `503`, never a sample
+listing) and `duplicate_listing`. `update` reads its body as JSON whatever its content type, because
+the workspace flushes unsaved edits with `navigator.sendBeacon` (a `text/plain` Blob) when the page
+is hidden. `media/save` keeps the showcase's existing items by file (emptying a slot or editing its
+alt text, no re-cut) through the same `apply_listing_media` door; `skills` answers `org.skills`
+labels for a typed prefix. The SEO tags typeahead is `GET /api/search/suggest-tags?q=`, a thin
+route over `ExploreBackendService.suggest` that offers the skills and categories it matched as tags. A guest gets a `401` and an outage a `503`, never a sample
 catalogue. Cross-boundary shapes are the Zod SSOT at **`@projective/types/catalogue`**; pricing is
 **not forked** (`ServiceType`, `EntityPricing` and the discovery `ticketPrice`/`sessionPrice`
 fields are reused). A listing's `offer` is mapped to and from its blueprint or product columns in
@@ -1168,11 +1173,55 @@ rendition owned by the surface's owner. The surface's own door then decides, und
 session, whether it may be placed (`org.save_showcase`, `catalogue.apply_listing_media`); a refusal
 retires the rendition.
 
+**The item workspace store.** `/catalogue/[id]`'s islands (lane outline, header band, canvas,
+footer rig, panel) share `features/catalogue/core/workspace-store.ts`, the one network owner for
+the listing. It autosaves 800 ms after the last edit with a **section-scoped** patch (every field of
+each Edit section that changed) against `expectedUpdatedAt`. A `409` is first compared with the
+server's copy: if every patch field still holds what this tab saved or last beaconed, the bump was
+its own (a showcase write or a landed beacon moves `updatedAt` too) and the save is retried
+silently; otherwise the seller chooses Reload theirs or Overwrite with mine. The rules are pure, in
+`workspace-model.ts`.
+
 **The owner's buyer simulation.** `CatalogueBackendService.previewView` composes the same
 `EntityView` `/view/[id]` renders, through the same assembler, from `resolveListing(slug, { as:
 "owner", actor })` (`services/explore/listing-source.ts`): the listing read with the seller's own
 token, draft and paused included. A listing that is not the caller's resolves exactly as a missing
 one (`404`), so the answer never reveals that it exists.
+
+**Analytics and Clients (plan §4.7, §9.2).** Two read-only fat services sit beside it, behind
+`GET /api/catalogue/analytics` and `GET /api/catalogue/clients` · `/api/catalogue/clients/<handle>`
+(thin: auth guard, then `?listing=` (a `svc-`/`prd-` slug, the workspace tab) or `?scope=`
+(`ConsoleScope`, the console view), `?period=` and the dev-axis `?sim=`, each refused with a `422`
+keyed by parameter; the handle is a `ClientKey` with its `@` stripped). Both resolve a scope to the
+seller's listings in one place (`services/catalogue/listing-scope.ts`; a collection scope reads
+`catalogue.collection_listings`), and both keep their arithmetic in a pure module the tests hold
+without a database:
+
+- `CatalogueAnalyticsBackendService.overview` reads `analytics.daily_rollups` under the seller's
+  JWT through the INVOKER `catalogue.get_listing_rollups` (`analytics` is not an exposed schema;
+  the table's own policy still decides), paged past `max_rows`, and assembles tiles (gross, orders, conversion, churn, Standing
+  impact), the revenue series (daily; weekly for `90d` / `12m`), the funnel, the booking heatmap
+  (only when the scope sells sessions, in the seller's timezone), keywords and the console's top
+  listings (`analytics-model.ts`). A rate is `null` below 20 in its denominator and a keyword is
+  listed only from 5 sessions (Decision #217(k)). Gross stays in the one currency it was taken in
+  and is converted through `FxService` into the display currency only when it spans several; a
+  currency with no rate counts as nothing, never 1:1. The window ends on the last rolled-up UTC day
+  (`lastRolledUpDay`: yesterday once the 02:10 job has settled at 02:30 UTC), so today is never in
+  it and the canvas says so. Standing impact (#217(h)) counts the reviews on, and the project
+  stages completed from, listings that carry a CREATE category; with none in scope the tile says so
+  rather than printing 0.
+- `CatalogueClientsBackendService.pipeline` calls `catalogue.get_client_pipeline` once and maps it
+  (`client-pipeline.ts`): rows outside the scope, or with no buyer handle (an order a team placed),
+  are dropped; buyers fold into one card at their most urgent `laneOf` lane; action-required cards
+  lead by severity (`dispute_open` › `revision_requested` › `reschedule_open` › `handshake_pending`
+  › `submission_pending` › `inquiry_unanswered`), then recency. `client` adds the buyer's directory
+  identity, the pair's one DM thread (read, never minted) and their open reschedule rounds through
+  `ScheduleBackendService.openReschedules` (the calendar's own coordination read and privacy
+  projection); a buyer with nothing in scope is a `404`.
+
+Unlike the listing reads, these two have a **fixture path**: with `CATALOGUE_BACKEND_LIVE=false` they
+answer deterministic fixtures for each state of the `catalogueAnalytics` / `clientPipeline` dev axes
+(`?sim=`, ignored live), built over the fixture catalogue and passed through the same pure modules.
 
 Every write drops the public catalogue's cache (`invalidateCatalog`) and re-embeds what it touched
 (`reembedInBackground`); a listing's embedding text includes its search tags and its search-result
@@ -2058,6 +2107,7 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 | `finance-dispute-sweep`           | :07 / :22 / :37 / :52 | `finance.sweep_disputes()`                                           | Finance — platform disputes (`00001260`, Decision #212)  | Each case is locked and re-checked by the function it is handed to: a settled escrow closes its dispute once, an `open` claim is audited once its sitting ends, an `awaiting_response` case past `respond_by` escalates once (`dispute.escalated`, stamping the review SLA `review_by`); an `under_review` case past `review_by` is never ruled — it writes one `ops.log_entries` `warn` row and notifies every operator (`dispute.review_overdue`) at most once a day per case (`review_alerted_at`). |
 | `finance-sweep-stale-payouts`     | every 10 min        | `POST /api/finance/cron/payouts?limit=50` · `FINANCE_CRON_SECRET`      | Finance — `PaymentBackendService.sweepStalePayouts`      | Each payout is leased once per window (`finance.fn_claim_stale_payouts`, `SKIP LOCKED`); every transfer carries its payout's Stripe idempotency key. Seeded only where the claim function exists (Decision #202). |
 | `finance-recurring-deposits`      | hourly :15          | `POST /api/finance/cron/deposits?limit=50` · `FINANCE_CRON_SECRET`     | Finance — `PaymentBackendService.processDueDeposits`     | A period is claimed once (`finance.claim_due_deposit_rules`) and each charge carries a Stripe idempotency key; a run left unbound by a transient failure is re-sent by the next sweep under the same key (≤ 23 h). |
+| `scheduling-availability-horizon` | daily 03:05         | `POST /api/scheduling/cron/horizon?limit=200` · `SCHEDULING_CRON_SECRET` | Scheduling — `ScheduleBackendService.extendHorizons` (#217) | Recompiles each live preset not compiled, or compiled through an earlier date than today + 90 d, over today → today + 120 d; a recompile replaces the window it covers (`replace_preset_occurrences`), so a re-run rewrites the same spans. A failed preset is logged and retried next run. |
 | `account-erasures`                | daily 04:10         | `POST /api/user/cron/erasures?limit=100` · `ACCOUNT_CRON_SECRET`       | Account — `AccountLifecycleBackendService.sweepDue` (#156) | A request completes once; one whose blockers came back is deferred, not forced.                                     |
 | `ops-watch-jobs`                  | every 10 min        | `ops.fn_watch_jobs()`                                                  | Ops — the registry itself                                | `SKIP LOCKED`; a dispatch is settled (and reported) once, a failed run is reported once (keyed by run id).          |
 
@@ -3175,14 +3225,18 @@ FINANCE_CRON_SECRET=XXXX-XXXX
 # Bearer token (≥ 32 characters) the scheduler presents to POST /api/user/cron/erasures, which runs the
 # account and freelancer-profile erasures that have come due (Decision #156); 404 otherwise.
 ACCOUNT_CRON_SECRET=XXXX-XXXX
+# Bearer token (≥ 32 characters) the scheduler presents to POST /api/scheduling/cron/horizon, which
+# recompiles availability presets running short of their occurrence horizon (Decision #217); 404 otherwise.
+SCHEDULING_CRON_SECRET=XXXX-XXXX
 # Scheduled jobs (§Scheduled jobs, Decision #203) — these are SUPABASE VAULT secrets, not app env keys.
-# pg_net reads them inside the database to call the two routes above; set them per environment with
+# pg_net reads them inside the database to call the routes above; set them per environment with
 #   SELECT vault.create_secret('<value>', '<NAME>');   -- vault.update_secret(id, '<value>') to rotate
 # and never in a migration or a seed. Until they exist, each http job skips and logs instead of running.
 #   CRON_APP_URL         the origin the DATABASE reaches the app on (public APP_URL when hosted;
 #                        http://host.docker.internal:<PORT> locally)
 #   FINANCE_CRON_SECRET  the same value as the env key above
 #   ACCOUNT_CRON_SECRET  the same value as the env key above
+#   SCHEDULING_CRON_SECRET  the same value as the env key above
 # Optional, development only: stripe-mock origin; ignored for live keys and under DENO_ENV=production
 # STRIPE_API_BASE=http://localhost:12111
 

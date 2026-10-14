@@ -636,6 +636,22 @@ its owner).
   `compiled_from` / `compiled_through`, so the gate falls back to the weekly bands until the service
   recompiles.
 
+### Callers (`ScheduleBackendService`, C7)
+
+| Door | Called by | As |
+| :-- | :-- | :-- |
+| `save_availability_preset` | `savePreset` (`PUT /api/scheduling/presets`) and `bindListing`'s override fork (`POST /api/catalogue/availability`) | the owner |
+| `archive_availability_preset` | `archivePreset` (`POST /api/scheduling/presets/archive`) | the owner |
+| `replace_preset_occurrences` | `compileOccurrences`: straight after every save and fork, and `extendHorizons` (`POST /api/scheduling/cron/horizon`, job `scheduling-availability-horizon`) | service role |
+| `save_owner_availability` | `savePreset` / `archivePreset` when the default preset changes: its active, open-ended, every-week `add` rules already in force are mirrored into `availability_rules` (calls clipped to working hours). `mirrored.full = false` tells the editor the rest is not mirrored | the owner |
+| `fn_preset_for_blueprint` + the occurrence spans | the session slot grid (`live-slots.ts`), which judges each slot by `fn_band_covers`' own rule (`slot-grid.ts` `gateCovers`); the spans are read with the service client because occurrences carry no `anon` grant | service role |
+
+A compile evaluates the preset in its schedule's zone over today → today + 120 days, with the
+schedule's blackouts cut out. The gate still checks blackouts itself, so a blackout added after a
+compile is honoured at once. A removed blackout leaves its hole in the spans until the next
+recompile. Every rule edit invalidates the window (`trg_invalidate_preset_compilation`); a blackout
+edit does not.
+
 ---
 
 ## Not yet implemented (deferred, deliberately)

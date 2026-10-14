@@ -11,6 +11,7 @@ import {
 	type ListingStatus,
 	type ReorderListingMediaInput,
 	reorderSlots,
+	type SaveListingShowcaseInput,
 	type ServiceType,
 	type SetListingStatusInput,
 	type UpdateListingInput,
@@ -299,6 +300,37 @@ export async function reorderListingMedia(
 	});
 	if (error) return refusalOf(error);
 	return ok(await slotsOf(db, l.id), { message: "Showcase reordered." });
+}
+
+/**
+ * Save the showcase as a whole: the items it keeps, by file, at their positions with their alt
+ * text. An item not listed is emptied from the showcase; a file that is not already in it is refused,
+ * because only {@link applyListingMedia} cuts a new rendition. The door keeps a video out of slot 1.
+ */
+export async function saveListingShowcase(
+	input: SaveListingShowcaseInput,
+	actor: LiveActor,
+): Promise<Result<ListingMediaSlot[]>> {
+	const db = getUserClient(actor.accessToken);
+	const l = await ownedListing(db, input.listingId, actor);
+	if (!l) return notFound();
+	const byFile = new Map((await mediaRows(db, l.id)).map((r) => [r.file_id, r]));
+	const kept: Array<Omit<ListingMediaRow, "listing_id">> = [];
+	for (const [index, keep] of input.slots.entries()) {
+		const row = byFile.get(keep.fileId);
+		if (!row) {
+			const message = "That item isn't in this showcase any more. Reload to see it as saved.";
+			return fail(422, { message, errors: { [`slots.${index}.fileId`]: message } });
+		}
+		kept.push({ ...row, position: keep.position, alt_text: keep.alt });
+	}
+	const slots = kept.sort((a, b) => a.position - b.position).map(slotBody);
+	const { error } = await db.schema("catalogue").rpc("apply_listing_media", {
+		p_listing: l.id,
+		p_slots: slots,
+	});
+	if (error) return refusalOf(error);
+	return ok(await slotsOf(db, l.id), { message: "Showcase saved." });
 }
 // #endregion
 

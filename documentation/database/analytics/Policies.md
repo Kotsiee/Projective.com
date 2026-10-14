@@ -27,7 +27,7 @@ append-only sources.
 | :-------------------------- | :------------------------- | :----------------------------------------------------------------------- |
 | `analytics.event_catalogue` | `Read event catalogue`     | `SELECT` to `authenticated`, `USING (true)` — the vocabulary is public.  |
 | `analytics.events`          | `View own subject events`  | `SELECT` where `analytics.fn_subject_visible(subject_kind, subject_id)`. |
-| `analytics.daily_rollups`   | `View own subject rollups` | `SELECT` where `analytics.fn_subject_visible(subject_kind, subject_id)`. |
+| `analytics.daily_rollups`   | `View own subject rollups` | `SELECT` where `analytics.fn_subject_visible(subject_kind, subject_id)`. `analytics` is not an exposed schema: the catalogue reads listing rows through the INVOKER `catalogue.get_listing_rollups`, so this policy still applies. |
 
 ## 🔑 Grants
 

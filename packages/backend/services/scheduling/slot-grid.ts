@@ -8,8 +8,10 @@ import type {
 	SlotUnavailableReason,
 } from "@projective/types/scheduling";
 import {
+	addDays,
 	addDaysInZone,
 	dayKeyInZone,
+	type IsoDate,
 	zonedMidnight,
 	zonedParts,
 	zoneOffsetMinutes,
@@ -29,7 +31,9 @@ import {
  * A slot the grid offers is a slot `scheduling.fn_call_request_refusal` accepts, because the two apply
  * the same four rules in the same way:
  *
- *  - **inside a band** of the relevant kind, on one local weekday (a band never crosses midnight);
+ *  - **inside a band** of the relevant kind, on one local weekday (a band never crosses midnight) —
+ *    or, for a listing whose preset is compiled over the slot's local dates, **inside one compiled
+ *    occurrence** of that kind ({@link gateCovers}, the mirror of `scheduling.fn_band_covers`);
  *  - **after the notice floor** (`now + min_notice_minutes`) and **before the horizon**
  *    (`now + max_advance_days`);
  *  - **clear of every blackout**, compared on the RAW span — time off is an absolute boundary;
@@ -69,12 +73,25 @@ export interface GridRules {
 	bufferAfterMinutes: number;
 }
 
+/**
+ * A listing's compiled preset (Decision #217 (d)): the occurrence spans of the grid's kind and the
+ * provider-local dates they were compiled over. A slot whose local start AND end dates both fall in
+ * `[from, through]` is judged against the spans; every other slot against the weekly bands.
+ */
+export interface CompiledAvailability {
+	from: IsoDate;
+	through: IsoDate;
+	spans: Span[];
+}
+
 /** A provider's schedule, as read — everything the builder needs that is not about the request. */
 export interface GridSource {
 	/** The provider's IANA zone. */
 	timezone: string;
 	/** The bands of the kind this grid books into (call windows for a call, working hours otherwise). */
 	bands: GridBand[];
+	/** The listing's compiled preset, when its blueprint resolves one that has been compiled. */
+	compiled?: CompiledAvailability | null;
 	blackouts: Span[];
 	/** Occupied time: commitments and calls already requested or confirmed. */
 	busy: Span[];
@@ -128,6 +145,44 @@ function localInstant(dayMidnight: number, minute: number, tz: string): number {
 
 function overlaps(a: Span, b: Span): boolean {
 	return a.start < b.end && a.end > b.start;
+}
+
+function minuteOfDay(instant: number, tz: string): number {
+	const p = zonedParts(instant, tz);
+	return p.hour * 60 + p.minute;
+}
+
+/**
+ * Whether `[start, end)` is inside the provider's availability of the grid's kind — the TypeScript
+ * statement of `scheduling.fn_band_covers`, so the grid never offers a slot the gate refuses.
+ *
+ * Compiled over both of the slot's local dates: inside ONE occurrence span. Otherwise: inside ONE
+ * weekly band of the start's local weekday, where a band running to 24:00 also covers a slot ending
+ * at the next local midnight.
+ */
+export function gateCovers(source: GridSource, start: number, end: number): boolean {
+	const tz = source.timezone;
+	const startDate = dayKeyInZone(start, tz) as IsoDate;
+	const endDate = dayKeyInZone(end, tz) as IsoDate;
+	const compiled = source.compiled;
+	if (compiled && compiled.from <= startDate && compiled.through >= endDate) {
+		return compiled.spans.some((s) => s.start <= start && s.end >= end);
+	}
+	const weekday = zonedParts(start, tz).weekday;
+	const startMinute = minuteOfDay(start, tz);
+	const endMinute = minuteOfDay(end, tz);
+	const endWeekday = zonedParts(end, tz).weekday;
+	return source.bands.some((b) =>
+		b.weekday === weekday && b.startMinute <= startMinute && (
+			(endWeekday === weekday && b.endMinute >= endMinute) ||
+			(b.endMinute === 1440 && endMinute === 0 && endDate === addDays(startDate, 1))
+		)
+	);
+}
+
+function isCompiledDate(source: GridSource, date: string): boolean {
+	const c = source.compiled;
+	return !!c && c.from <= date && c.through >= date;
 }
 // #endregion
 
@@ -224,44 +279,64 @@ export function buildGrid(query: SlotQuery, source: GridSource, request: GridReq
 		const firstProviderDay = zonedMidnight(addDaysInZone(railStart, -1, viewerTz), providerTz);
 		const step = request.durationMinutes + source.rules.bufferBeforeMinutes +
 			source.rules.bufferAfterMinutes;
+		// The open time for the custom-start control: cut around blackouts, split at the viewer's
+		// midnight, bucketed into the viewer's day. Only the shape is published — which minutes are
+		// held stays on the slots.
+		const publishOpen = (window: Span) => {
+			for (const piece of openPieces(window, source.blackouts)) {
+				for (const part of splitAtMidnight(piece, viewerTz)) {
+					if (part.startsAt > horizon) continue;
+					const key = dayKeyInZone(part.startsAt, viewerTz);
+					if (!dayByKey.has(key)) continue;
+					(bands[key] ??= []).push(part);
+				}
+			}
+		};
+		const offer = (start: number) => {
+			const end = start + request.durationMinutes * MIN;
+			if (start > horizon || !gateCovers(source, start, end)) return;
+			const key = dayKeyInZone(start, viewerTz);
+			const day = dayByKey.get(key);
+			if (!day) return;
+			const slot = judgeSlot(source, request, start, end, noticeFloor, horizon);
+			(slots[key] ??= []).push(slot);
+			day.totalCount++;
+			if (slot.available) day.openCount++;
+		};
+
 		for (let i = 0; i < query.days + 2; i++) {
 			const providerDay = addDaysInZone(firstProviderDay, i, providerTz);
+			if (isCompiledDate(source, dayKeyInZone(providerDay, providerTz))) continue;
 			const weekday = zonedParts(providerDay, providerTz).weekday;
 			const dayBands = source.bands
 				.filter((b) => b.weekday === weekday)
 				.sort((a, b) => a.startMinute - b.startMinute);
 
 			for (const band of dayBands) {
-				// The band as open time for the custom-start control: cut around blackouts, split at the
-				// viewer's midnight, bucketed into the viewer's day. Only the shape is published — which
-				// minutes are held stays on the slots.
-				const bandStart = localInstant(providerDay, band.startMinute, providerTz);
-				const bandEnd = localInstant(providerDay, band.endMinute, providerTz);
-				for (const piece of openPieces({ start: bandStart, end: bandEnd }, source.blackouts)) {
-					for (const part of splitAtMidnight(piece, viewerTz)) {
-						if (part.startsAt > horizon) continue;
-						const key = dayKeyInZone(part.startsAt, viewerTz);
-						if (!dayByKey.has(key)) continue;
-						(bands[key] ??= []).push(part);
-					}
-				}
-
+				publishOpen({
+					start: localInstant(providerDay, band.startMinute, providerTz),
+					end: localInstant(providerDay, band.endMinute, providerTz),
+				});
 				for (
 					let m = band.startMinute;
 					m + request.durationMinutes <= band.endMinute;
 					m += step
 				) {
-					const start = localInstant(providerDay, m, providerTz);
-					const end = start + request.durationMinutes * MIN;
-					if (start > horizon) continue;
-					const key = dayKeyInZone(start, viewerTz);
-					const day = dayByKey.get(key);
-					if (!day) continue;
-					const slot = judgeSlot(source, request, start, end, noticeFloor, horizon);
-					(slots[key] ??= []).push(slot);
-					day.totalCount++;
-					if (slot.available) day.openCount++;
+					offer(localInstant(providerDay, m, providerTz));
 				}
+			}
+		}
+
+		const walkEnd = addDaysInZone(firstProviderDay, query.days + 2, providerTz);
+		for (const span of source.compiled?.spans ?? []) {
+			if (span.end <= firstProviderDay || span.start >= walkEnd) continue;
+			publishOpen(span);
+			for (
+				let start = span.start;
+				start + request.durationMinutes * MIN <= span.end;
+				start += step * MIN
+			) {
+				offer(start);
 			}
 		}
 		for (const key of Object.keys(slots)) slots[key].sort((a, b) => a.startsAt - b.startsAt);
@@ -321,7 +396,8 @@ function splitAtMidnight(span: Span, viewerTz: string): OpenBand[] {
 // #region A custom start
 /**
  * Judge a CUSTOM start — a time the cadence did not land on — by the same rules the grid applies:
- * inside one open band, after the notice floor, before the horizon, clear of blackouts, and clear of
+ * inside one open band the gate also covers, after the notice floor, before the horizon, clear of
+ * blackouts, and clear of
  * every commitment with the buffers applied. It is the grid's own "yes"; the database gate re-checks
  * the same four rules on the write.
  */
@@ -335,7 +411,9 @@ export function judgeCustomStart(
 	const grid = buildGrid(query, source, request);
 	const endsAt = startsAt + request.durationMinutes * MIN;
 	const key = dayKeyInZone(startsAt, grid.viewerTimezone);
-	const inBand = (grid.bands[key] ?? []).some((b) => startsAt >= b.startsAt && endsAt <= b.endsAt);
+	const inBand =
+		(grid.bands[key] ?? []).some((b) => startsAt >= b.startsAt && endsAt <= b.endsAt) &&
+		gateCovers(source, startsAt, endsAt);
 	const slot = judgeSlot(
 		source,
 		request,

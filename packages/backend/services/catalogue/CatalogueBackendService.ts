@@ -8,16 +8,19 @@ import type {
 	ListingDetail,
 	ListingMediaSlot,
 	ReorderListingMediaInput,
+	SaveListingShowcaseInput,
 	SetListingStatusInput,
 	UpdateListingInput,
 } from "@projective/types/catalogue";
-import type { EntityView } from "@projective/types/explore";
+import type { EntityView, SkillRef } from "@projective/types/explore";
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { invalidateCatalog } from "../explore/live-catalog.ts";
 import { resolveListing } from "../explore/listing-source.ts";
 import { buildLiveViewPage } from "../explore/live-view.ts";
+import { resolveSkills } from "../explore/skills.ts";
 import { reembedInBackground } from "../search/embedding-sync.ts";
+import { UserBackendService } from "../user/UserBackendService.ts";
 import { listingDetail, listListings } from "./live-catalogue.ts";
 import {
 	applyListingMedia,
@@ -25,9 +28,11 @@ import {
 	createListing,
 	duplicateListing,
 	reorderListingMedia,
+	saveListingShowcase,
 	setListingStatus,
 	updateListing,
 } from "./live-catalogue-writes.ts";
+import { matchSkillLabels } from "./skill-match.ts";
 
 /**
  * CatalogueBackendService — the FAT half of the seller-side Catalogue surface (`/catalogue` +
@@ -157,6 +162,40 @@ export class CatalogueBackendService {
 					"a showcase reorder",
 				),
 		);
+	}
+
+	/**
+	 * Save the showcase as a whole: empty a slot, move items, or edit alt text. Only items already in
+	 * the showcase can be kept; a new one goes through {@link CatalogueBackendService.applyMedia}.
+	 */
+	static saveShowcase(
+		input: SaveListingShowcaseInput,
+		actor: ReadActor,
+	): Promise<Result<ListingMediaSlot[]>> {
+		return guarded(
+			"media-save",
+			actor,
+			async (a) =>
+				afterWrite(
+					await saveListingShowcase(input, a),
+					() => [input.listingId],
+					"a showcase change",
+				),
+		);
+	}
+
+	/**
+	 * The `org.skills` labels matching a typed prefix, as the skill refs a listing stores. Public
+	 * reference data, so no seller session is needed; an unreachable taxonomy is a 503, never an
+	 * invented list.
+	 */
+	static async skills(query: string): Promise<Result<{ skills: SkillRef[] }>> {
+		const taxonomy = await UserBackendService.starterSkills();
+		if (!taxonomy.ok || !taxonomy.data) {
+			return fail(taxonomy.status, { message: taxonomy.message ?? "Skills aren't available." });
+		}
+		const labels = matchSkillLabels(taxonomy.data.skills.map((s) => s.label), query);
+		return ok({ skills: resolveSkills(labels) });
 	}
 
 	/**

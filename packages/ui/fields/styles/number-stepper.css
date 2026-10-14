@@ -1,0 +1,80 @@
+/*
+ * NumberStepper — a `.ui-field` shell holding − · figure · unit · +. The buttons are controls inside
+ * an already-outlined field, so they carry no border of their own; press feedback is `scale()` only.
+ */
+
+.ui-numstep {
+	--numstep-btn: var(--fld-hit);
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding-inline: var(--space-1);
+}
+
+.ui-numstep.ui-field--fluid {
+	display: flex;
+}
+
+.ui-numstep__input {
+	flex: 1 1 4ch;
+	min-inline-size: 4ch;
+	text-align: center;
+	font-variant-numeric: tabular-nums;
+}
+
+.ui-numstep__unit {
+	flex: none;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.ui-numstep__btn {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--numstep-btn);
+	block-size: var(--numstep-btn);
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--on-surface-variant);
+	cursor: pointer;
+	transform: scale(1);
+	transition: background-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.ui-numstep__btn:hover:not(:disabled) {
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+
+.ui-numstep__btn:active:not(:disabled) {
+	transform: scale(var(--btn-press-scale-icon));
+	transition-duration: var(--dur-press);
+}
+
+.ui-numstep__btn:disabled {
+	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
+	cursor: not-allowed;
+}
+
+.ui-numstep__btn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-numstep__btn,
+	.ui-numstep__btn:active:not(:disabled) {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .ui-numstep__btn,
+:root[data-motion="reduced"] .ui-numstep__btn:active:not(:disabled) {
+	transform: none;
+}

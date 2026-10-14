@@ -6,7 +6,7 @@
  */
 import { assertEquals } from "@std/assert";
 import { LISTING_ROLLUP_DIMENSIONS, ListingRollupMetric } from "./events.ts";
-import { KEYWORD_MIN_SESSIONS } from "../catalogue/analytics.ts";
+import { KEYWORD_MIN_SESSIONS, LISTING_ROLLUP_SETTLED_UTC_MINUTE } from "../catalogue/analytics.ts";
 
 const MIGRATION = new URL(
 	"../../../supabase/migrations/00001600_functions_analytics.sql",
@@ -54,4 +54,12 @@ Deno.test("the analytics-listing-rollups job rolls up yesterday", () => {
 	const seed = read(SEED);
 	const row = seed.slice(seed.indexOf("('analytics-listing-rollups'"));
 	assertEquals(row.includes("'SELECT analytics.fn_rollup_listings(current_date - 1);'"), true);
+});
+
+Deno.test("the job runs before the analytics window treats yesterday as rolled up", () => {
+	const seed = read(SEED);
+	const row = seed.slice(seed.indexOf("('analytics-listing-rollups'"));
+	const m = row.match(/'sql', '(\d+) (\d+) \* \* \*'/);
+	const runMinute = m ? Number(m[2]) * 60 + Number(m[1]) : Infinity;
+	assertEquals(runMinute < LISTING_ROLLUP_SETTLED_UTC_MINUTE, true);
 });

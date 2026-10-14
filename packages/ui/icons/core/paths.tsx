@@ -148,6 +148,8 @@ const CONTROLS = {
 	"plus": () => <path d="M12 5v14M5 12h14" />,
 	"minus": () => <path d="M5 12h14" />,
 	"check": () => <path d="M4.5 12.5l5 5 10-11" />,
+	/** An open ring: a step not yet done, beside `check` in a checklist. */
+	"circle": () => <circle cx="12" cy="12" r="7.5" />,
 	"search": () => (
 		<>
 			<circle cx="11" cy="11" r="6.5" />

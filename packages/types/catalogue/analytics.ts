@@ -25,6 +25,53 @@ export function rateOrNull(n: number, d: number): number | null {
 }
 // #endregion
 
+// #region Window
+/**
+ * The UTC minute of the day by which `analytics-listing-rollups` (00005060, `10 2 * * *`) has written
+ * yesterday: its 02:10 start plus a settling allowance. Before it, the newest rolled-up day is the day
+ * before yesterday.
+ */
+export const LISTING_ROLLUP_SETTLED_UTC_MINUTE = 2 * 60 + 30;
+
+const DAY_MS = 86_400_000;
+
+function utcDay(ms: number): string {
+	return new Date(ms).toISOString().slice(0, 10);
+}
+
+/** `YYYY-MM-DD` shifted by whole days. */
+export function shiftDay(day: string, days: number): string {
+	return utcDay(Date.parse(`${day}T00:00:00Z`) + days * DAY_MS);
+}
+
+/** The newest UTC day the daily rollup has written by `now`. Today is never rolled up. */
+export function lastRolledUpDay(now: Date): string {
+	const minute = now.getUTCHours() * 60 + now.getUTCMinutes();
+	const back = minute >= LISTING_ROLLUP_SETTLED_UTC_MINUTE ? 1 : 2;
+	return utcDay(
+		Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - back * DAY_MS,
+	);
+}
+
+/** The days a read covers, inclusive, and how the canvas states them. */
+export const AnalyticsWindowSchema = z.object({
+	from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+	through: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+	/** "Sep 15 – Oct 13 · today not included". */
+	label: z.string().max(80),
+});
+export type AnalyticsWindow = z.infer<typeof AnalyticsWindowSchema>;
+
+/** How the revenue series is bucketed: by day, or by week for the long windows. */
+export const SeriesBucket = z.enum(["day", "week"]);
+export type SeriesBucket = z.infer<typeof SeriesBucket>;
+
+/** `week` for `90d` and `12m`, where a daily line is noise. */
+export function seriesBucketOf(period: AnalyticsPeriod): SeriesBucket {
+	return period === "90d" || period === "12m" ? "week" : "day";
+}
+// #endregion
+
 // #region Scope
 /** What one analytics read covers: the whole (filtered) catalogue, or one listing. */
 export const AnalyticsScope = z.discriminatedUnion("kind", [
@@ -76,7 +123,10 @@ export type MetricTile = z.infer<typeof MetricTileSchema>;
 // #endregion
 
 // #region Series, funnel, heatmap, keywords
-/** One day of a series (`YYYY-MM-DD`, the seller's timezone). */
+/**
+ * One bucket of a series: its first day (`YYYY-MM-DD`, a UTC day, as the rollups are written) and its
+ * total.
+ */
 export const SeriesPointSchema = z.object({
 	date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 	value: z.number(),
@@ -111,6 +161,22 @@ export const KeywordRowSchema = z.object({
 	ctr: z.number().min(0).nullable(),
 });
 export type KeywordRow = z.infer<typeof KeywordRowSchema>;
+
+/** One listing's figures in the console's "Top listings" table. */
+export const TopListingRowSchema = z.object({
+	/** The listing's `svc-`/`prd-` slug; the row links to `/catalogue/<slug>?tab=analytics`. */
+	id: z.string().min(1).max(120),
+	title: z.string().max(200),
+	kind: z.enum(["product", "service"]),
+	/** Gross in the read's currency, whole units. */
+	gross: z.number().min(0),
+	grossDisplay: z.string().max(32),
+	orders: z.number().int().min(0),
+	views: z.number().int().min(0),
+	/** orders ÷ views, `null` below {@link RATE_MIN_DENOMINATOR} views. */
+	conversion: z.number().min(0).nullable(),
+});
+export type TopListingRow = z.infer<typeof TopListingRowSchema>;
 // #endregion
 
 // #region Read model
@@ -120,17 +186,21 @@ export const CatalogueAnalyticsSchema = z.object({
 	period: AnalyticsPeriod,
 	/** The currency gross figures are in. */
 	currency: z.string().regex(/^[A-Z]{3}$/),
-	/** The IANA timezone days and heatmap hours are bucketed in. */
+	/** The seller's IANA timezone, which the heatmap's weekday-hours are in. */
 	timezone: z.string().max(64),
+	window: AnalyticsWindowSchema,
 	tiles: z.array(MetricTileSchema).max(12),
-	/** Daily gross across the window, oldest first. */
+	/** Gross per {@link bucket} across the window, oldest first. */
 	revenue: z.array(SeriesPointSchema).max(366),
+	bucket: SeriesBucket,
 	funnel: z.array(FunnelStepSchema).max(4),
 	/** Empty unless the scope sells sessions. */
 	heatmap: z.array(HeatCellSchema).max(168),
 	keywords: z.array(KeywordRowSchema).max(50),
-	/** ISO timestamp the rollups were last computed. */
-	asOf: z.string(),
+	/** Listings by gross; console scope only, empty for one listing. */
+	topListings: z.array(TopListingRowSchema).max(10),
+	/** The last rolled-up day (`YYYY-MM-DD`, UTC); the window ends here, so today is excluded. */
+	asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 export type CatalogueAnalytics = z.infer<typeof CatalogueAnalyticsSchema>;
 // #endregion

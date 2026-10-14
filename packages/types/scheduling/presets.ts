@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { AvailabilityPresetSchema, AvailabilityRuleDraftSchema } from "./recurrence.ts";
+import type { Issue } from "./evaluate.ts";
+import {
+	type AvailabilityPreset,
+	AvailabilityPresetSchema,
+	AvailabilityRuleDraftSchema,
+} from "./recurrence.ts";
 import { AvailabilityKind, ianaTimezone, PresetScope } from "./rows.ts";
 
 /**
@@ -42,6 +47,32 @@ export type SavePresetInput = z.infer<typeof SavePresetInputSchema>;
 
 /** The preset shape a save returns — the stored row, ids resolved. */
 export const SavedPresetSchema = AvailabilityPresetSchema;
+
+/**
+ * What `PUT /api/scheduling/presets` answers. `issues` are the soft findings the save went ahead
+ * with; `compiled` is `null` when the occurrences could not be written (bookings use the weekly hours
+ * until the horizon job compiles them); `mirrored` is set only for the default preset, `full: false`
+ * meaning the profile's weekly hours carry only the weekly part of it.
+ */
+export interface SavePresetResult {
+	preset: AvailabilityPreset;
+	issues: Issue[];
+	compiled: { spans: number } | null;
+	mirrored: { full: boolean } | null;
+}
+// #endregion
+
+// #region Archive
+/** `POST /api/scheduling/presets/archive`. Presets are archived, never deleted. */
+export const ArchivePresetInputSchema = z.object({
+	id: z.string().min(1).max(64),
+});
+export type ArchivePresetInput = z.infer<typeof ArchivePresetInputSchema>;
+
+/** What an archive answers: the listing slugs that fell back to the default preset. */
+export interface ArchivePresetResult {
+	rebound: string[];
+}
 // #endregion
 
 // #region Bind

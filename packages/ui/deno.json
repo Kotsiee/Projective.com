@@ -31,6 +31,8 @@
 		"preact/jsx-runtime": "npm:preact@^10.29.0/jsx-runtime",
 		"@preact/signals": "npm:@preact/signals@^2.9.0",
 		"@material/material-color-utilities": "npm:@material/material-color-utilities@^0.3.0",
+		"d3-scale": "npm:d3-scale@^4.0.2",
+		"d3-shape": "npm:d3-shape@^3.2.0",
 		"quill": "npm:quill@^2.0.3",
 		"quill/": "npm:/quill@^2.0.3/"
 	},

@@ -1,0 +1,44 @@
+.cat-seo__serp {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	padding: var(--space-4);
+	border-radius: var(--radius-lg);
+	background: var(--surface-1);
+}
+
+.cat-seo__serp-caption {
+	margin-block-end: var(--space-2);
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	font-weight: var(--fw-medium);
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.cat-seo__serp-url {
+	margin: 0;
+	overflow: hidden;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.cat-seo__serp-title {
+	margin: 0;
+	color: var(--primary);
+	font-size: var(--text-md);
+	font-weight: var(--fw-medium);
+	line-height: var(--leading-snug);
+	overflow-wrap: anywhere;
+}
+
+.cat-seo__serp-desc {
+	margin: 0;
+	color: var(--on-surface-variant);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+	overflow-wrap: anywhere;
+}

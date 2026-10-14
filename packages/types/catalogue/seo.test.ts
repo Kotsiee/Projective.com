@@ -4,6 +4,8 @@ import {
 	SERP_DESCRIPTION_MAX,
 	SERP_TITLE_MAX,
 	serpSnippet,
+	suggestedTags,
+	SuggestTagsQuerySchema,
 	truncateWords,
 } from "./seo.ts";
 
@@ -71,4 +73,18 @@ Deno.test("a listing carries at most ten tags of at most forty characters", () =
 	assertEquals(ListingTagsSchema.safeParse(tags(11)).success, false);
 	assertEquals(ListingTagsSchema.safeParse(["x".repeat(41)]).success, false);
 	assertEquals(ListingTagsSchema.safeParse([" "]).success, false);
+});
+
+Deno.test("suggestedTags keeps the typeahead order, once per tag, at tag length", () => {
+	const terms = ["Brand identity", "brand identity", "Logo", "x".repeat(41), "  Motion   design "]
+		.map((label) => ({ label }));
+	assertEquals(suggestedTags({ terms }), ["Brand identity", "Logo", "Motion design"]);
+	assertEquals(suggestedTags({ terms }, 1), ["Brand identity"]);
+	assertEquals(suggestedTags({ terms: [] }), []);
+});
+
+Deno.test("SuggestTagsQuery needs something typed, no longer than a tag", () => {
+	assertEquals(SuggestTagsQuerySchema.safeParse({ q: "bra" }).success, true);
+	assertEquals(SuggestTagsQuerySchema.safeParse({ q: "  " }).success, false);
+	assertEquals(SuggestTagsQuerySchema.safeParse({ q: "x".repeat(41) }).success, false);
 });

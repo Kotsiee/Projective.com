@@ -15,7 +15,7 @@ import { publishDetail } from "../core/workspace-state.ts";
 import { countLabel } from "../core/workspace-model.ts";
 import { EntityMark } from "../components/EntityMark.tsx";
 import { SetupChecklist } from "../components/SetupChecklist.tsx";
-import { StatTile } from "../components/StatTile.tsx";
+import { StatTile, StatTileRow } from "@projective/ui/display";
 import { ProjectList } from "../components/ProjectList.tsx";
 import { ActivityFeed } from "../components/ActivityFeed.tsx";
 import { FinanceSummary } from "../components/FinanceSummary.tsx";
@@ -222,7 +222,7 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 				{/* #region At a glance */}
 				<section class="wsp-band wsp-band--stats" style={next()} aria-label="At a glance">
 					<div class="wsp-band__inner">
-						<div class="wsp-tiles">
+						<StatTileRow label="Workspace figures" class="wsp-tiles">
 							<StatTile
 								label="Members"
 								value={String(members.value.length)}
@@ -244,7 +244,7 @@ export default function WorkspaceOverview(props: WorkspaceOverviewProps): JSX.El
 									caption="Awaiting a reply"
 								/>
 							)}
-						</div>
+						</StatTileRow>
 					</div>
 				</section>
 				{/* #endregion */}

@@ -41,6 +41,10 @@
 export { default as Calendar } from "./islands/Calendar.tsx";
 // #endregion
 
+// #region AvailabilityScheduler (plan §5.4 — rule-based availability editor, engine injected)
+export * from "./islands/availability-scheduler/index.ts";
+// #endregion
+
 // #region Components (composable parts for bespoke layouts)
 export { CalendarHeader } from "./components/CalendarHeader.tsx";
 export type { CalendarHeaderProps } from "./components/CalendarHeader.tsx";

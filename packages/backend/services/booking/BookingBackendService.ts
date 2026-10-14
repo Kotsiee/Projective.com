@@ -521,6 +521,7 @@ export class BookingBackendService {
 		return ScheduleBackendService.slots(query, gridInputFor(view, format, await cohortFor(view, format, owner)), {
 			owner: owner.schedule,
 			kind: "working_hours",
+			blueprintId: owner.blueprintId,
 		});
 	}
 
@@ -599,7 +600,11 @@ export class BookingBackendService {
 			});
 		}
 
-		const target = { owner: owner.schedule, kind: "working_hours" as const };
+		const target = {
+			owner: owner.schedule,
+			kind: "working_hours" as const,
+			blueprintId: owner.blueprintId,
+		};
 		const resolved = [];
 		for (const slotId of wanted) {
 			const check = await ScheduleBackendService.resolveSlot(query, gridInput, target, slotId);

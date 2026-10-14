@@ -29,6 +29,11 @@ export interface TabMenuProps {
 	 * names it in `aria-controls`, completing the WAI-ARIA tabs pattern.
 	 */
 	panelId?: string;
+	/**
+	 * Stable root id. Tab `i` is `${id}-tab-${i}`, so a panel rendered in another hydration root can
+	 * name its tab in `aria-labelledby`. Generated when omitted.
+	 */
+	id?: string;
 	class?: string;
 }
 // #endregion
@@ -60,7 +65,7 @@ export function TabMenu(props: TabMenuProps): JSX.Element {
 	} = props;
 
 	const ctrl = useControllable<number>(activeIndex, 0, onActiveIndexChange);
-	const rootId = useId(undefined, "tabmenu");
+	const rootId = useId(props.id, "tabmenu");
 	const active = ctrl.signal.value;
 	const linkMode = model.some((m) => !!m.url);
 

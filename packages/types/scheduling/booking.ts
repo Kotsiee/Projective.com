@@ -204,16 +204,35 @@ export type SlotQuery = z.infer<typeof SlotQuerySchema>;
  * throws inside a render body removes the picker and everything under it.
  */
 export function dayKeyInZone(instant: number, timeZone: string): string {
+	const fmt = cachedFormatter(dayKeyFormatters, timeZone, {
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+	}, "en-CA");
+	return fmt ? fmt.format(new Date(instant)) : new Date(instant).toISOString().slice(0, 10);
+}
+
+const dayKeyFormatters = new Map<string, Intl.DateTimeFormat | null>();
+const partsFormatters = new Map<string, Intl.DateTimeFormat | null>();
+
+/** One formatter per zone, built once; `null` for a zone the runtime rejects. */
+function cachedFormatter(
+	cache: Map<string, Intl.DateTimeFormat | null>,
+	timeZone: string,
+	options: Intl.DateTimeFormatOptions,
+	locale: string,
+): Intl.DateTimeFormat | null {
+	const hit = cache.get(timeZone);
+	if (hit !== undefined) return hit;
+	let fmt: Intl.DateTimeFormat | null;
 	try {
-		return new Intl.DateTimeFormat("en-CA", {
-			timeZone,
-			year: "numeric",
-			month: "2-digit",
-			day: "2-digit",
-		}).format(new Date(instant));
-	} catch {
-		return new Date(instant).toISOString().slice(0, 10);
+		fmt = new Intl.DateTimeFormat(locale, { ...options, timeZone });
+	} catch (error) {
+		if (!(error instanceof RangeError)) throw error;
+		fmt = null;
 	}
+	cache.set(timeZone, fmt);
+	return fmt;
 }
 
 /** The calendar parts of an instant in a zone — the numeric facts a rail day carries. */
@@ -248,22 +267,17 @@ const WEEKDAY_INDEX: Record<string, number> = {
  * Total: an unknown zone falls back to UTC parts rather than throwing, for the same reason as above.
  */
 export function zonedParts(instant: number, timeZone: string): ZonedDayParts {
-	let parts: Record<string, string> = {};
-	try {
-		const fmt = new Intl.DateTimeFormat("en-US", {
-			timeZone,
-			year: "numeric",
-			month: "2-digit",
-			day: "2-digit",
-			weekday: "short",
-			hour: "2-digit",
-			minute: "2-digit",
-			hourCycle: "h23",
-		});
-		for (const p of fmt.formatToParts(new Date(instant))) parts[p.type] = p.value;
-	} catch {
-		parts = {};
-	}
+	const parts: Record<string, string> = {};
+	const fmt = cachedFormatter(partsFormatters, timeZone, {
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+		weekday: "short",
+		hour: "2-digit",
+		minute: "2-digit",
+		hourCycle: "h23",
+	}, "en-US");
+	if (fmt) { for (const p of fmt.formatToParts(new Date(instant))) parts[p.type] = p.value; }
 	if (!parts.year) {
 		const d = new Date(instant);
 		return {

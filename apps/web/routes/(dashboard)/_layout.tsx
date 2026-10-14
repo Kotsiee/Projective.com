@@ -32,6 +32,7 @@ import { messagesLaneFor } from "@web/features/messaging/core/inbox-slots.tsx";
 import { catalogueLaneFor } from "@web/features/catalogue/core/catalogue-lane-slot.tsx";
 import { catalogueFooterFor } from "@web/features/catalogue/core/catalogue-footer-slot.tsx";
 import { catalogueHeaderFor } from "@web/features/catalogue/core/catalogue-header-slot.tsx";
+import { cataloguePanelFor } from "@web/features/catalogue/core/catalogue-panel-slot.tsx";
 import { workspaceLaneFor } from "@web/features/workspaces/core/workspace-lane-slot.tsx";
 import { workspaceHeaderFor } from "@web/features/workspaces/core/workspace-header-slot.tsx";
 import { workspaceFooterFor } from "@web/features/workspaces/core/workspace-footer-slot.tsx";
@@ -165,9 +166,10 @@ async function middleNavHeaderFor(
 
 /**
  * Resolve the middle-nav frame's right panel: a one-to-one conversation's context panel on its Chat
- * tab, or a project channel's details (Task · Stage · Channel) on its Chat view. Exactly one owns the
- * single panel slot per URL — the two resolvers test disjoint path roots — and every other route
- * registers none, so the frame has no panel column.
+ * tab, a project channel's details (Task · Stage · Channel) on its Chat view, or a catalogue listing's
+ * live card and readiness (or its chosen buyer) in the item workspace. Exactly one owns the single
+ * panel slot per URL — the resolvers test disjoint path roots — and every other route registers none,
+ * so the frame has no panel column.
  */
 async function middleNavPanelFor(
 	url: URL,
@@ -175,7 +177,8 @@ async function middleNavPanelFor(
 	actor: ReadActor,
 ): Promise<ComponentChildren> {
 	return await conversationPanelFor(url, context, actor) ??
-		(await channelPanelFor(url, context, actor));
+		(await channelPanelFor(url, context, actor)) ??
+		(await cataloguePanelFor(url, context, actor));
 }
 
 /**

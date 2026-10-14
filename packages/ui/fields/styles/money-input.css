@@ -1,0 +1,13 @@
+/*
+ * MoneyInput — composes `.ui-field` + `.ui-input` (field.css, input.css). Figures align as they
+ * change, and the currency mark reads as meta beside them.
+ */
+
+.ui-money-input__input {
+	font-variant-numeric: tabular-nums;
+}
+
+.ui-money-input__currency {
+	gap: 0;
+	color: var(--text-secondary);
+}

@@ -1,0 +1,256 @@
+/*
+ * ShowcaseGrid — six 16:10 media slots, slot 1 the cover. Token-only BEM.
+ *
+ * An empty slot is a control, so it may carry a full (dashed) outline (§B.4); a filled slot is a
+ * picture on `--surface-1` and carries none. Replace / Alt text / Remove / Move sit over the picture
+ * on a `--scrim` underlay drawn on `::before` — a mark on arbitrary photography, so no
+ * `backdrop-filter` (§B.4.3 does not sanction one here).
+ */
+
+.ui-showgrid {
+	--showgrid-press-scale: var(--btn-press-scale);
+	--showgrid-press-scale-icon: var(--btn-press-scale-icon);
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: var(--space-3);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+/* Below --bp-md (768px). */
+@media (max-width: 767.98px) {
+	.ui-showgrid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+/* From --bp-lg (1024px) the hero layout gives the cover two columns and two rows. */
+@media (min-width: 1024px) {
+	.ui-showgrid--hero .ui-showgrid__cell[data-primary="true"] {
+		grid-column: span 2;
+		grid-row: span 2;
+	}
+
+	.ui-showgrid--hero .ui-showgrid__cell[data-primary="true"] .ui-showgrid__filled,
+	.ui-showgrid--hero .ui-showgrid__cell[data-primary="true"] .ui-showgrid__empty {
+		flex: 1 1 auto;
+		aspect-ratio: auto;
+		min-block-size: 0;
+	}
+}
+
+.ui-showgrid__cell {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.ui-showgrid__filled,
+.ui-showgrid__empty {
+	position: relative;
+	aspect-ratio: 16 / 10;
+	inline-size: 100%;
+	min-block-size: 0;
+	border-radius: var(--radius-lg);
+	overflow: clip;
+}
+
+.ui-showgrid__filled {
+	background: var(--surface-1);
+	touch-action: none;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.ui-showgrid__empty {
+	display: grid;
+	place-items: center;
+	padding: 0;
+	border: 1px dashed var(--outline-variant, var(--outline));
+	background: var(--surface-2);
+	color: var(--text-secondary);
+	cursor: pointer;
+	transform: scale(1);
+	transition: border-color var(--dur-fast) var(--ease-standard),
+		color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.ui-showgrid__empty:hover:not(:disabled) {
+	border-color: var(--on-surface);
+	color: var(--on-surface);
+}
+
+.ui-showgrid__empty:active:not(:disabled) {
+	transform: scale(var(--showgrid-press-scale));
+	transition-duration: var(--dur-press);
+}
+
+.ui-showgrid__empty:disabled {
+	cursor: not-allowed;
+	color: color-mix(in srgb, var(--text-secondary) var(--fld-disabled-mix), var(--surface-2));
+}
+
+.ui-showgrid__empty:focus-visible,
+.ui-showgrid__action:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/* #region Drag state */
+.ui-showgrid__cell[data-dragging="true"] .ui-showgrid__filled {
+	opacity: var(--fld-disabled-alpha);
+}
+
+.ui-showgrid__cell[data-drop-target] .ui-showgrid__filled {
+	outline: 2px solid var(--primary);
+	outline-offset: 2px;
+}
+
+/* A refused target is told apart by a dashed stroke as well as by hue. */
+.ui-showgrid__cell[data-drop-target="refused"] .ui-showgrid__filled {
+	outline-style: dashed;
+	outline-color: var(--danger);
+	cursor: not-allowed;
+}
+/* #endregion */
+
+.ui-showgrid__mark {
+	position: absolute;
+	inset-block-start: var(--space-2);
+	inset-inline-start: var(--space-2);
+	z-index: 1;
+	display: inline-flex;
+	padding: var(--space-1);
+	border-radius: var(--radius-full);
+	color: var(--on-scrim);
+	isolation: isolate;
+}
+
+.ui-showgrid__mark::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	border-radius: inherit;
+	background: color-mix(in srgb, var(--scrim) var(--scrim-tint-heavy), transparent);
+}
+
+.ui-showgrid__status {
+	position: absolute;
+	inset-inline: 0;
+	inset-block-end: 0;
+	z-index: 1;
+	padding: var(--space-1) var(--space-2);
+	font-size: var(--text-xs);
+	color: var(--on-scrim);
+	isolation: isolate;
+}
+
+.ui-showgrid__status::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background: color-mix(in srgb, var(--scrim) var(--scrim-tint-heavy), transparent);
+}
+
+/* #region Overlay */
+.ui-showgrid__overlay {
+	position: absolute;
+	inset: 0;
+	z-index: 2;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	opacity: 0;
+	isolation: isolate;
+	transition: opacity var(--dur-fast) var(--ease-standard);
+}
+
+.ui-showgrid__overlay::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background: color-mix(in srgb, var(--scrim) var(--scrim-tint), transparent);
+}
+
+.ui-showgrid__filled:hover .ui-showgrid__overlay,
+.ui-showgrid__filled:focus-within .ui-showgrid__overlay,
+.ui-showgrid__cell[data-dragging="true"] .ui-showgrid__overlay {
+	opacity: 1;
+}
+
+@media (hover: none) {
+	.ui-showgrid__overlay {
+		inset: auto 0 0 0;
+		justify-content: flex-end;
+		padding: var(--space-2);
+		opacity: 1;
+	}
+
+	.ui-showgrid__overlay::before {
+		content: none;
+	}
+}
+
+.ui-showgrid__action {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2.25rem;
+	block-size: 2.25rem;
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-full);
+	background: var(--surface);
+	color: var(--on-surface);
+	cursor: pointer;
+	transform: scale(1);
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.ui-showgrid__action[data-move-position] {
+	cursor: grab;
+}
+
+.ui-showgrid__action[aria-pressed="true"] {
+	background: var(--primary);
+	color: var(--on-primary);
+}
+
+.ui-showgrid__action:active {
+	transform: scale(var(--showgrid-press-scale-icon));
+	transition-duration: var(--dur-press);
+}
+/* #endregion */
+
+.ui-showgrid__label {
+	font-size: var(--text-xs);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.ui-showgrid__cell[data-primary="true"] .ui-showgrid__label {
+	color: var(--on-surface);
+	font-weight: var(--fw-medium);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-showgrid__empty,
+	.ui-showgrid__empty:active,
+	.ui-showgrid__action,
+	.ui-showgrid__action:active {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .ui-showgrid__empty,
+:root[data-motion="reduced"] .ui-showgrid__empty:active,
+:root[data-motion="reduced"] .ui-showgrid__action,
+:root[data-motion="reduced"] .ui-showgrid__action:active {
+	transform: none;
+}

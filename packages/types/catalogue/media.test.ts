@@ -6,7 +6,9 @@ import {
 	ListingMediaSlotsSchema,
 	ReorderListingMediaSchema,
 	reorderSlots,
+	SaveListingShowcaseSchema,
 	SHOWCASE_SLOTS,
+	withoutSlot,
 } from "./media.ts";
 
 function slot(position: number, kind: "image" | "video" = "image"): ListingMediaSlot {
@@ -95,4 +97,46 @@ Deno.test("reorderSlots refuses a non-permutation and a video cover", () => {
 	assertEquals(reorderSlots(slots, [1]).ok, false);
 	assertEquals(reorderSlots(slots, [1, 3]).ok, false);
 	assertEquals(reorderSlots(slots, [2, 1]).ok, false);
+});
+
+Deno.test("SaveListingShowcase refuses a repeated position or file", () => {
+	const fileId = crypto.randomUUID();
+	const parse = (slots: unknown[]) =>
+		SaveListingShowcaseSchema.safeParse({ listingId: "svc-23456789ab", slots }).success;
+	assertEquals(parse([]), true);
+	assertEquals(parse([{ position: 1, fileId, alt: "Cover" }]), true);
+	assertEquals(
+		parse([{ position: 1, fileId, alt: "" }, {
+			position: 1,
+			fileId: crypto.randomUUID(),
+			alt: "",
+		}]),
+		false,
+	);
+	assertEquals(parse([{ position: 1, fileId, alt: "" }, { position: 2, fileId, alt: "" }]), false);
+	assertEquals(parse([{ position: 2, fileId, alt: "x".repeat(201) }]), false);
+});
+
+Deno.test("withoutSlot empties a position and leaves the rest where they are", () => {
+	const [a, b, c] = [slot(1), slot(2), slot(4)];
+	assertEquals(withoutSlot([a, b, c], 2).map((s) => [s.fileId, s.position]), [
+		[a.fileId, 1],
+		[c.fileId, 4],
+	]);
+});
+
+Deno.test("withoutSlot promotes the first remaining still into an emptied cover", () => {
+	const [a, v, b, c] = [slot(1), slot(2, "video"), slot(3), slot(5)];
+	assertEquals(withoutSlot([a, v, b, c], 1).map((s) => [s.fileId, s.position]), [
+		[b.fileId, 1],
+		[v.fileId, 2],
+		[c.fileId, 5],
+	]);
+});
+
+Deno.test("withoutSlot leaves a showcase of only videos without a cover", () => {
+	const [a, v] = [slot(1), slot(3, "video")];
+	const next = withoutSlot([a, v], 1);
+	assertEquals(next.map((s) => s.position), [3]);
+	assertEquals(coverOf(next), null);
 });

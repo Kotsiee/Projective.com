@@ -251,6 +251,8 @@ export const CatalogueListParamsSchema = z.object({
 	status: ListingStatus.optional(),
 	/** Restrict services to one delivery model (visible only when Services active). */
 	model: ServiceType.optional(),
+	/** Restrict to one CREATE category (the console's `?category=` facet). */
+	createCategory: CreateCategory.optional(),
 	/** Free-text search over title + category + tags. */
 	search: z.string().max(160).optional(),
 	sort: CatalogueSort.optional(),
@@ -260,6 +262,8 @@ export const CatalogueListParamsSchema = z.object({
 	/** Icon-only quick filters — needs-attention / promoted / best-selling. */
 	needsAttention: z.boolean().optional(),
 	promoted: z.boolean().optional(),
+	/** Only listings that have sold at least once. */
+	bestSelling: z.boolean().optional(),
 	/** Opaque paging cursor (the id of the last item of the previous page). */
 	cursor: z.string().max(120).nullable().optional(),
 	limit: z.number().int().min(1).max(200).optional(),

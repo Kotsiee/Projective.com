@@ -25,7 +25,8 @@ DECLARE
         ARRAY['finance-recurring-deposits',       '15 * * * *'],
         ARRAY['account-erasures',                 '10 4 * * *'],
         ARRAY['ops-watch-jobs',                   '*/10 * * * *'],
-        ARRAY['analytics-listing-rollups',        '10 2 * * *']
+        ARRAY['analytics-listing-rollups',        '10 2 * * *'],
+        ARRAY['scheduling-availability-horizon',  '5 3 * * *']
     ];
     v_missing text[] := ARRAY[]::text[];
     i integer;

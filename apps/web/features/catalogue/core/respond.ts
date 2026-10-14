@@ -31,6 +31,20 @@ export function toFieldErrors(
 	return errors;
 }
 
+/**
+ * A write's JSON body, whatever it was labelled. `navigator.sendBeacon` sends a `text/plain` Blob,
+ * so a body is parsed on its content, never its content type. Unparseable is `null`, which every
+ * schema refuses.
+ */
+export async function readJsonBody(req: Request): Promise<unknown> {
+	const text = await req.text().catch(() => "");
+	try {
+		return JSON.parse(text);
+	} catch {
+		return null;
+	}
+}
+
 /** The 401 a catalogue write answers a signed-out caller with, before its body is even read. */
 export function signedOut(): Response {
 	return Response.json({ ok: false, message: "Sign in to manage your catalogue." }, {

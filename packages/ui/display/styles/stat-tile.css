@@ -1,0 +1,106 @@
+/*
+ * Stat tiles — `ui-stats` (the row) and `ui-stat` (one tile). Token-only BEM.
+ *
+ * Unboxed (§B.4): tiles separate by spacing and one inline hairline per boundary. The label and value
+ * wear text tokens; only the delta and the sparkline carry a hue, and the delta's direction is also
+ * an arrow glyph, so colour never carries it alone. A consumer tunes the register through the
+ * `--ui-stat-*` properties rather than restyling the parts.
+ */
+
+.ui-stats {
+	--ui-stat-min: 11rem;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(var(--ui-stat-min), 1fr));
+	gap: var(--space-5);
+	inline-size: 100%;
+	min-inline-size: 0;
+}
+
+.ui-stat {
+	--ui-stat-value-size: var(--text-3xl);
+	--ui-stat-value-weight: var(--fw-medium);
+	--ui-stat-label-size: var(--text-xs);
+	--ui-stat-meta-size: var(--text-sm);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.ui-stats > .ui-stat + .ui-stat {
+	padding-inline-start: var(--space-5);
+	border-inline-start: var(--hairline);
+}
+
+.ui-stat__label {
+	overflow: hidden;
+	font-size: var(--ui-stat-label-size);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	text-transform: uppercase;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-secondary);
+}
+
+.ui-stat__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-2);
+	min-inline-size: 0;
+}
+
+.ui-stat__value {
+	font-size: var(--ui-stat-value-size);
+	font-weight: var(--ui-stat-value-weight);
+	font-variant-numeric: tabular-nums lining-nums;
+	line-height: var(--leading-tight);
+	color: var(--on-surface);
+}
+
+.ui-stat__icon {
+	display: inline-flex;
+	flex: none;
+	margin-inline-end: var(--space-1);
+	line-height: 0;
+	color: var(--text-secondary);
+}
+
+.ui-stat__delta {
+	display: inline-flex;
+	align-items: baseline;
+	gap: var(--space-1);
+	font-size: var(--ui-stat-meta-size);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+.ui-stat__delta[data-dir="up"] {
+	color: var(--success);
+}
+
+.ui-stat__delta[data-dir="down"] {
+	color: var(--warning);
+}
+
+.ui-stat__caption {
+	margin: 0;
+	font-size: var(--ui-stat-meta-size);
+	color: var(--text-secondary);
+}
+
+/* Below --bp-sm (480px) the row stacks and the boundary hairline turns to the block axis. */
+@media (max-width: 479.98px) {
+	.ui-stats {
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-4);
+	}
+
+	.ui-stats > .ui-stat + .ui-stat {
+		padding-inline-start: 0;
+		padding-block-start: var(--space-4);
+		border-inline-start: none;
+		border-block-start: var(--hairline);
+	}
+}

@@ -594,113 +594,20 @@ here and there must never be one. */
 
 /* #region Stat tiles */
 /*
- * The dataviz stat-tile contract: a tracked micro-label, an auto-compacted value the server already
- * formatted, a signed delta and an accent sparkline. The label and value are TEXT tokens — a tile is
- * not a place to spend chroma, so only the delta and the spark carry a hue.
+ * The shared `ui-stats` / `ui-stat` blocks (@projective/ui/display), set to the console's register:
+ * the micro label, the fluid figure, and the kind accent on the sparkline. Compound selectors, so they
+ * outrank the blocks' own defaults whichever sheet the bundle orders first.
  */
-.wsp-tiles {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(var(--wsp-tile-min), 1fr));
-    gap: var(--space-5);
-    inline-size: 100%;
-    min-inline-size: 0;
+.wsp-tiles.ui-stats {
+    --ui-stat-min: var(--wsp-tile-min);
 }
 
-.wsp-tile {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    min-inline-size: 0;
-}
-
-/* Tiles in a row are separated by a hairline on ONE edge, never boxed. */
-.wsp-tile+.wsp-tile {
-    padding-inline-start: var(--space-5);
-    border-inline-start: var(--hairline);
-}
-
-.wsp-tile__label {
-    font-size: var(--wsp-fs-micro);
-    letter-spacing: var(--wsp-label-track);
-    text-transform: uppercase;
-    font-weight: 600;
-    color: var(--text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.wsp-tile__row {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-2);
-    min-inline-size: 0;
-    flex-wrap: wrap;
-}
-
-.wsp-tile__value {
-    font-size: var(--wsp-fs-figure);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums lining-nums;
-    letter-spacing: var(--wsp-num-track);
-    color: var(--on-surface);
-}
-
-.wsp-tile__vicon {
-    display: inline-flex;
-    flex: none;
-    color: var(--text-secondary);
-    line-height: 0;
-}
-
-.wsp-tile__delta {
-    font-size: var(--wsp-fs-micro);
-    font-variant-numeric: tabular-nums;
-    font-weight: 600;
-    color: var(--text-secondary);
-}
-
-.wsp-tile__delta[data-dir="up"] {
-    color: var(--success);
-}
-
-/* Down is a direction, not a fault. Amber, never red. */
-.wsp-tile__delta[data-dir="down"] {
-    color: var(--warning);
-}
-
-.wsp-tile__delta[data-dir="flat"] {
-    color: var(--text-secondary);
-}
-
-.wsp-tile__caption {
-    margin: 0;
-    font-size: var(--wsp-fs-micro);
-    color: var(--text-secondary);
-}
-
-.wsp-tile__spark {
-    display: block;
-    inline-size: 100%;
-    block-size: 2rem;
-    overflow: visible;
-}
-
-.wsp-tile__spark-line {
-    fill: none;
-    stroke: var(--wsp-kind);
-    stroke-width: 1.5;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-}
-
-.wsp-tile__spark-area {
-    fill: color-mix(in srgb, var(--wsp-kind) var(--tint), transparent);
-    stroke: none;
-}
-
-.wsp-tile__spark-dot {
-    fill: var(--wsp-kind);
+.wsp-tiles .ui-stat.ui-stat {
+    --ui-stat-value-size: var(--wsp-fs-figure);
+    --ui-stat-value-weight: var(--fw-semibold);
+    --ui-stat-label-size: var(--wsp-fs-micro);
+    --ui-stat-meta-size: var(--wsp-fs-micro);
+    --ui-chart-accent: var(--wsp-kind);
 }
 
 /* #endregion */
@@ -1188,22 +1095,16 @@ a.wsp-activity__row:hover {
     }
 
     /* Tiles stack, so the inline hairline becomes a block one. */
-    .wsp-tile+.wsp-tile {
+    .wsp-tiles.ui-stats > .ui-stat + .ui-stat {
         padding-inline-start: 0;
         border-inline-start: none;
         padding-block-start: var(--space-4);
         border-block-start: var(--hairline);
     }
 
-    .wsp-tiles {
+    .wsp-tiles.ui-stats {
         grid-template-columns: minmax(0, 1fr);
         gap: var(--space-4);
-    }
-
-    /* Progress and due date drop below the title rather than crushing it. */
-    .wsp-projects__row {
-        grid-template-columns: auto minmax(0, 1fr);
-        row-gap: var(--space-2);
     }
 
     .wsp-projects__progress,

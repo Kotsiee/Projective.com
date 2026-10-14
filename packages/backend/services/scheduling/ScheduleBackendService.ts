@@ -25,11 +25,30 @@ import { canReadLive, type ReadActor } from "../read-actor.ts";
 import { buildGrid, type GridRequest, judgeCustomStart } from "./slot-grid.ts";
 import { type BandKind, readGridSource, type ScheduleOwner } from "./live-slots.ts";
 import { readSchedulePage } from "./live-schedule-page.ts";
-import { readCalendarEvent, readPersonalCalendar, readProjectCalendar } from "./live-calendar.ts";
+import {
+	readCalendarEvent,
+	readOpenReschedules,
+	readPersonalCalendar,
+	readProjectCalendar,
+} from "./live-calendar.ts";
 import { type PlanRefusal, planReschedule, planRsvp } from "./coordination-plan.ts";
 import { writeReschedule, writeRsvp } from "./live-coordination-writes.ts";
 import { type Catalog, loadCatalog } from "../explore/live-catalog.ts";
-import { getAnonClient } from "../../core/supabase.ts";
+import { getAnonClient, getUserClient } from "../../core/supabase.ts";
+import { isBearerAuthorised } from "../../core/bearer.ts";
+import { serverEnv } from "../../core/env.ts";
+import type {
+	ArchivePresetResult,
+	AvailabilityPreset,
+	BindListingAvailability,
+	SavePresetInput,
+	SavePresetResult,
+} from "@projective/types/scheduling";
+import type { BindListingAvailabilityResult } from "@projective/types/catalogue";
+import { archivePreset, listPresets, type PresetDeps, savePreset } from "./live-presets.ts";
+import { bindListing } from "./live-preset-binding.ts";
+import { compilePreset, extendPresetHorizons, type HorizonOutcome } from "./live-occurrences.ts";
+import { COMPILE_HORIZON_DAYS } from "./preset-model.ts";
 
 /**
  * ScheduleBackendService — the FAT server-side service behind the Calendar & Schedule surfaces: an
@@ -93,6 +112,27 @@ function calendarUnavailable<T>(err: unknown): ServiceResult<T> {
 function projectPage<T extends { events: CalendarEvent[] }>(page: T, viewer: SchedulingViewer): T {
 	return { ...page, events: redactEventsForViewer(page.events, viewer) };
 }
+
+/**
+ * Run a preset operation as the signed-in owner: `401` without a session, `503` when the database
+ * could not answer. Every refusal the doors raise is already a result by the time it gets here.
+ */
+async function asOwner<T>(
+	label: string,
+	actor: ReadActor,
+	deps: Partial<PresetDeps>,
+	run: (actor: ReadActor & { accessToken: string }, deps: PresetDeps) => Promise<ServiceResult<T>>,
+): Promise<ServiceResult<T>> {
+	if (!canReadLive(actor)) return signInRequired("manage your availability");
+	try {
+		return await run(actor, { ...deps, db: deps.db ?? getUserClient(actor.accessToken) });
+	} catch (err) {
+		console.error(`[scheduling:${label}]`, err instanceof Error ? err.message : err);
+		return fail(503, {
+			message: "Your availability could not be saved just now. Please try again.",
+		});
+	}
+}
 // #endregion
 
 export class ScheduleBackendService {
@@ -116,6 +156,25 @@ export class ScheduleBackendService {
 		}
 		if (!page) return fail(404, { message: `No project found for "${params.projectId}".` });
 		return ok({ page: projectPage(page, viewerOf(actor)) });
+	}
+
+	/**
+	 * The events among `eventIds` with a reschedule round still open, each with its proposals, read and
+	 * settled as the calendar reads them and passed through the privacy projection. The catalogue's
+	 * client drawer asks this for a buyer's calls, sittings and project meetings.
+	 */
+	static async openReschedules(
+		eventIds: readonly string[],
+		actor: ReadActor,
+		now: number = Date.now(),
+	): Promise<ServiceResult<{ events: CalendarEvent[] }>> {
+		if (!canReadLive(actor)) return signInRequired("view your calendar");
+		try {
+			const events = await readOpenReschedules(actor, eventIds, now);
+			return ok({ events: redactEventsForViewer(events, viewerOf(actor)) });
+		} catch (err) {
+			return calendarUnavailable(err);
+		}
 	}
 
 	/**
@@ -281,7 +340,9 @@ export class ScheduleBackendService {
 		target: SlotTarget,
 		now: number = Date.now(),
 	): Promise<ServiceResult<{ grid: SlotGrid }>> {
-		const source = await readGridSource(target.owner, target.kind, gridWindow(query, now));
+		const source = await readGridSource(target.owner, target.kind, gridWindow(query, now), {
+			blueprintId: target.blueprintId,
+		});
 		if (!source) return scheduleUnavailable();
 		return ok({ grid: buildGrid(query, source, gridRequest(query, input, now)) });
 	}
@@ -333,7 +394,9 @@ export class ScheduleBackendService {
 		startsAt: number,
 		now: number = Date.now(),
 	): Promise<ServiceResult<{ slot: BookableSlot }>> {
-		const source = await readGridSource(target.owner, target.kind, gridWindow(query, now));
+		const source = await readGridSource(target.owner, target.kind, gridWindow(query, now), {
+			blueprintId: target.blueprintId,
+		});
 		if (!source) return scheduleUnavailable();
 		const resolved = judgeCustomStart(query, source, gridRequest(query, input, now), startsAt);
 		if ("reason" in resolved) {
@@ -344,6 +407,88 @@ export class ScheduleBackendService {
 		}
 		return ok({ slot: resolved.slot });
 	}
+
+	// #region Availability presets (Decision #217)
+	/** The acting owner's live availability presets — library presets first, then service forks. */
+	static presets(
+		actor: ReadActor,
+		deps: Partial<PresetDeps> = {},
+	): Promise<ServiceResult<{ presets: AvailabilityPreset[] }>> {
+		return asOwner("presets", actor, deps, listPresets);
+	}
+
+	/**
+	 * Save a preset (plan §5.6): re-validated with `SavePresetInputSchema` and `validate()` — a hard
+	 * issue is a `422`, soft issues return in `data.issues` — then written, compiled for the booking
+	 * gate, and, when it is the default, mirrored into the weekly bands (`data.mirrored`).
+	 */
+	static savePreset(
+		input: SavePresetInput,
+		actor: ReadActor,
+		deps: Partial<PresetDeps> = {},
+	): Promise<ServiceResult<SavePresetResult>> {
+		return asOwner("save-preset", actor, deps, (a, d) => savePreset(input, a, d));
+	}
+
+	/** Archive a preset; the listings bound to it fall back to the default and come back by slug. */
+	static archivePreset(
+		id: string,
+		actor: ReadActor,
+		deps: Partial<PresetDeps> = {},
+	): Promise<ServiceResult<ArchivePresetResult>> {
+		return asOwner("archive-preset", actor, deps, (a, d) => archivePreset(id, a, d));
+	}
+
+	/**
+	 * Bind a Session or Group Session listing to the default preset, a library preset, or its own
+	 * fork of one (`override`, idempotent: a second override rewrites the same fork).
+	 */
+	static bindListing(
+		input: BindListingAvailability,
+		actor: ReadActor,
+		deps: Partial<PresetDeps> = {},
+	): Promise<ServiceResult<BindListingAvailabilityResult>> {
+		return asOwner("bind-listing", actor, deps, (a, d) => bindListing(input, a, d));
+	}
+
+	/**
+	 * Compile one preset's occurrences over today → today + `horizonDays` in its schedule's zone and
+	 * write them through the service-role door. Service role: no caller identity is involved.
+	 */
+	static async compileOccurrences(
+		presetId: string,
+		horizonDays: number = COMPILE_HORIZON_DAYS,
+		now: number = Date.now(),
+	): Promise<ServiceResult<{ spans: number }>> {
+		try {
+			const outcome = await compilePreset(presetId, { horizonDays, now });
+			return outcome
+				? ok({ spans: outcome.spans })
+				: fail(404, { message: "That preset no longer exists." });
+		} catch (err) {
+			console.error("[scheduling:compile]", err instanceof Error ? err.message : err);
+			return fail(503, { message: "The preset could not be compiled. Please try again." });
+		}
+	}
+
+	/** The horizon job (`scheduling-availability-horizon`): recompile every preset running short. */
+	static async extendHorizons(
+		limit = 200,
+		now: number = Date.now(),
+	): Promise<ServiceResult<HorizonOutcome>> {
+		try {
+			return ok(await extendPresetHorizons({ limit, now }));
+		} catch (err) {
+			console.error("[scheduling:horizon]", err instanceof Error ? err.message : err);
+			return fail(503, { message: "The availability horizon could not be extended." });
+		}
+	}
+
+	/** Whether a request carries the scheduler's bearer token (`SCHEDULING_CRON_SECRET`). */
+	static isCronAuthorised(authorization: string | null): boolean {
+		return isBearerAuthorised(authorization, serverEnv().schedulingCronSecret);
+	}
+	// #endregion
 }
 
 // #region Slot grid plumbing
@@ -361,6 +506,12 @@ export interface SlotGridRequest {
 export interface SlotTarget {
 	owner: ScheduleOwner;
 	kind: BandKind;
+	/**
+	 * The listing's blueprint, when the gate judges this booking against its preset
+	 * (`fn_book_session_slot`). Absent for a discovery call, which stays on the weekly bands
+	 * (Decision #217 (d)).
+	 */
+	blueprintId?: string | null;
 }
 
 function gridRequest(query: SlotQuery, input: SlotGridRequest, now: number): GridRequest {

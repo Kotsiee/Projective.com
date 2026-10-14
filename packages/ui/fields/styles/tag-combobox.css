@@ -1,0 +1,140 @@
+/*
+ * TagCombobox — a `.ui-field` shell holding removable tag tokens and the combobox input, an inline
+ * "7 of 10" count as meta text (not a chip — it cannot be acted on, §B.11), and a body-portalled
+ * suggestion listbox matching every other field panel.
+ */
+
+.ui-tagbox {
+	display: inline-flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.ui-tagbox--fluid {
+	display: flex;
+	inline-size: 100%;
+}
+
+.ui-tagbox__control {
+	flex-wrap: wrap;
+	gap: var(--space-1);
+	block-size: auto;
+	min-block-size: var(--field-height);
+	padding-block: var(--space-1);
+	cursor: text;
+}
+
+.ui-tagbox__tags {
+	display: contents;
+	list-style: none;
+}
+
+.ui-tagbox__token {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding-inline: var(--space-2);
+	block-size: calc(var(--field-height) - var(--space-3));
+	font-size: 0.85em;
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--primary) var(--tint), var(--surface));
+	border-radius: var(--radius-sm);
+}
+
+.ui-tagbox__token-remove {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: 1.15em;
+	block-size: 1.15em;
+	padding: 0;
+	font-size: 1.1em;
+	line-height: 1;
+	color: var(--on-surface-variant);
+	background: transparent;
+	border: none;
+	border-radius: var(--radius-xs);
+	cursor: pointer;
+	transform: scale(1);
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.ui-tagbox__token-remove:hover:not(:disabled) {
+	color: var(--on-surface);
+	background: color-mix(in srgb, var(--on-surface) var(--tint), transparent);
+}
+
+.ui-tagbox__token-remove:active:not(:disabled) {
+	transform: scale(var(--btn-press-scale-icon));
+	transition-duration: var(--dur-press);
+}
+
+.ui-tagbox__token-remove:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.ui-tagbox__input {
+	flex: 1 1 8ch;
+	min-inline-size: 8ch;
+}
+
+.ui-tagbox__count {
+	align-self: flex-end;
+	font-size: var(--text-sm);
+	font-variant-numeric: tabular-nums;
+	color: var(--text-secondary);
+}
+
+/* #region Panel */
+.ui-tagbox__panel {
+	position: fixed;
+	inset-block-start: var(--tagbox-top, 0);
+	left: var(--tagbox-left, 0);
+	inline-size: var(--tagbox-width, auto);
+	z-index: var(--z-portal, var(--z-popover));
+	max-block-size: var(--fld-panel-maxh);
+	min-inline-size: var(--fld-panel-minw);
+	overflow-y: auto;
+	padding-block: var(--space-1);
+	color: var(--on-surface);
+	background: var(--surface);
+	border: var(--fld-bw) solid var(--fld-panel-border);
+	border-radius: var(--fld-panel-radius);
+	box-shadow: var(--elevation-high);
+	visibility: hidden;
+}
+
+.ui-tagbox__panel[data-placement] {
+	visibility: visible;
+}
+
+.ui-tagbox__option {
+	display: flex;
+	align-items: center;
+	min-block-size: var(--fld-opt-h);
+	padding-block: var(--space-2);
+	padding-inline: var(--fld-opt-px);
+	font-size: var(--fld-opt-fs);
+	border-radius: var(--fld-opt-radius);
+	cursor: pointer;
+}
+
+.ui-tagbox__option--active,
+.ui-tagbox__option:hover {
+	background: color-mix(in srgb, var(--on-surface) var(--tint-soft), transparent);
+}
+/* #endregion */
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-tagbox__token-remove,
+	.ui-tagbox__token-remove:active:not(:disabled) {
+		transform: none;
+	}
+}
+
+:root[data-motion="reduced"] .ui-tagbox__token-remove,
+:root[data-motion="reduced"] .ui-tagbox__token-remove:active:not(:disabled) {
+	transform: none;
+}

@@ -1,9 +1,12 @@
 import type { UserContext } from "@projective/types/auth";
+import type { CreateCategory } from "@projective/types/org";
+import { workspaceHref } from "../types/catalogue-types.ts";
 import type {
 	CatalogueSort,
 	CatalogueTypeFilter,
 	ListingDetail,
 	ListingStatus,
+	ServiceType,
 } from "../types/catalogue-types.ts";
 
 /** Whether the acting context can offer/sell (freelancer or a team context) — the seller predicate. */
@@ -19,9 +22,12 @@ export function isSeller(context: UserContext): boolean {
  */
 
 // #region Route hrefs
-/** The manage page for a listing. */
+/** The console canvas's id — the region the header's view tabs control. */
+export const CONSOLE_CANVAS_ID = "cat-canvas";
+
+/** The item workspace for a listing (its default tab). */
 export function listingHref(id: string): string {
-	return `/catalogue/${id}`;
+	return workspaceHref(id, {});
 }
 
 /** The public Entity View for a listing (the "View public page" link). */
@@ -29,14 +35,10 @@ export function publicListingHref(detail: Pick<ListingDetail, "id" | "kind">): s
 	return `/view/${detail.id}?type=${detail.kind === "service" ? "services" : "products"}`;
 }
 
-/** The console URL for a type segment (`?type=` — `all` drops the param). */
-export function segmentHref(type: CatalogueTypeFilter): string {
-	return type === "all" ? "/catalogue" : `/catalogue?type=${type}`;
-}
 // #endregion
 
 // #region Status metadata
-/** A status's display label + tonal key (drives the chip's `data-tone` in `catalogue.css`). */
+/** A status's display label and tonal key (the status chip's `data-tone`). */
 export interface StatusMeta {
 	label: string;
 	tone: "success" | "neutral" | "warning" | "muted";
@@ -56,7 +58,7 @@ export function statusMeta(status: ListingStatus): StatusMeta {
 	}
 }
 
-/** The lane's status sections, in display order. */
+/** The lane's status facet, in display order. */
 export const STATUS_SECTIONS: readonly { status: ListingStatus; label: string }[] = [
 	{ status: "published", label: "Published" },
 	{ status: "draft", label: "Drafts" },
@@ -105,9 +107,42 @@ export const MODEL_OPTIONS: readonly PickOption[] = [
 	{ label: "Group Session", value: "Group Session" },
 ];
 
-/** Singular noun for a kind ("product" / "service"). */
-export function kindNoun(kind: "product" | "service"): string {
-	return kind === "service" ? "service" : "product";
+/** The five delivery models, typed, in menu order. */
+export const SERVICE_MODELS: readonly ServiceType[] = [
+	"Pipeline",
+	"One-Off",
+	"Direct Deliverable",
+	"Session",
+	"Group Session",
+];
+
+/** A CREATE category with the words the console shows for it (PRODUCT_SPEC §The CREATE Framework). */
+export interface CreateCategoryOption {
+	value: CreateCategory;
+	label: string;
+	/** What work in the category looks like. */
+	hint: string;
+}
+
+/** The six CREATE categories, in framework order. */
+export const CREATE_CATEGORY_OPTIONS: readonly CreateCategoryOption[] = [
+	{ value: "create", label: "Create", hint: "Asset generation and production" },
+	{ value: "run", label: "Run", hint: "Operations and maintenance" },
+	{ value: "educate", label: "Educate", hint: "Structured knowledge transfer" },
+	{ value: "advise", label: "Advise", hint: "Strategy and high-level guidance" },
+	{ value: "test", label: "Test", hint: "Validation and quality assurance" },
+	{ value: "empower", label: "Empower", hint: "Handover and client enablement" },
+];
+
+/** The plural noun for a type segment — the console never says "items". */
+export function scopeNoun(type: CatalogueTypeFilter): string {
+	return type === "service" ? "services" : type === "product" ? "products" : "listings";
+}
+
+/** `3 listings` / `1 service`. */
+export function countLabel(n: number, type: CatalogueTypeFilter): string {
+	const noun = scopeNoun(type);
+	return `${n.toLocaleString("en-US")} ${n === 1 ? noun.slice(0, -1) : noun}`;
 }
 
 /** Coerce a raw string to a valid sort key, else `recent`. */
@@ -147,5 +182,28 @@ export function halfOverHalf(trend: readonly number[]): number | null {
 	const later = trend.slice(trend.length - half).reduce((s, n) => s + n, 0);
 	if (earlier <= 0) return null;
 	return Math.round(((later - earlier) / earlier) * 100);
+}
+// #endregion
+
+// #region Grid metrics
+/**
+ * A CSS length a custom property resolved to (`16px`, `7.25rem`), in px. `rem` is resolved against
+ * the root font size; anything else (`em`, a percentage, a `calc()`) is `null`, because it has no px
+ * value without a box to resolve it in.
+ */
+export function cssLengthPx(value: string, rootPx: number): number | null {
+	const m = /^\s*(-?\d*\.?\d+)(px|rem)\s*$/.exec(value);
+	if (!m) return null;
+	const n = Number.parseFloat(m[1]);
+	return m[2] === "rem" ? n * rootPx : n;
+}
+
+/** Height over width for a CSS `aspect-ratio` value (`16 / 10` → 0.625); `null` when unreadable. */
+export function aspectFraction(value: string): number | null {
+	const m = /^\s*(\d*\.?\d+)\s*(?:\/\s*(\d*\.?\d+))?\s*$/.exec(value);
+	if (!m) return null;
+	const w = Number.parseFloat(m[1]);
+	const h = m[2] === undefined ? 1 : Number.parseFloat(m[2]);
+	return w > 0 && h > 0 ? h / w : null;
 }
 // #endregion

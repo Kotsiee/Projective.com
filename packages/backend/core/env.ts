@@ -249,6 +249,13 @@ export interface ServerEnv {
 	 */
 	accountCronSecret: string | undefined;
 	/**
+	 * The bearer token the scheduler presents to `POST /api/scheduling/cron/horizon`, from
+	 * `SCHEDULING_CRON_SECRET`. The route recompiles availability presets running short of their
+	 * occurrence horizon, and like the other cron routes answers 404 to anything else — including every
+	 * request while this is unset or shorter than 32 characters.
+	 */
+	schedulingCronSecret: string | undefined;
+	/**
 	 * The Google Safe Browsing (v4 Lookup) API key a link's reputation is checked against, from
 	 * `LINK_SAFETY_API_KEY`. Server-only. The `XXXX-XXXX` placeholder counts as absent
 	 * (`files/link-reputation.ts`), and an absent key skips the reputation check rather than failing it.
@@ -298,6 +305,7 @@ export function serverEnv(): ServerEnv {
 		stripeConnectWebhookSecret: firstEnv("STRIPE_CONNECT_WEBHOOK_SECRET"),
 		financeCronSecret: firstEnv("FINANCE_CRON_SECRET"),
 		accountCronSecret: firstEnv("ACCOUNT_CRON_SECRET"),
+		schedulingCronSecret: firstEnv("SCHEDULING_CRON_SECRET"),
 		linkSafetyApiKey: firstEnv("LINK_SAFETY_API_KEY"),
 		zoomWebhookSecret: firstEnv("ZOOM_WEBHOOK_SECRET"),
 	};

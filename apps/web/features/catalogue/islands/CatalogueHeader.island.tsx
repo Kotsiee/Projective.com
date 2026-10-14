@@ -1,91 +1,86 @@
 import type { JSX } from "preact";
+import { useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import "../styles/catalogue.css";
+import "../styles/console.css";
 import { InputText } from "@projective/ui/fields";
-import { SearchIcon } from "../components/catalogue-glyphs.tsx";
-import { segmentHref, TYPE_TABS } from "../core/catalogue-model.ts";
+import { Icon } from "@projective/ui/icons";
+import { TabMenu } from "@projective/ui/navigation";
+import { CatalogueRollups } from "../components/CatalogueRollups.tsx";
+import { CONSOLE_CANVAS_ID, countLabel, scopeNoun, TYPE_TABS } from "../core/catalogue-model.ts";
 import {
-	type AnalyticsPeriod,
-	analyticsPeriod,
-	consoleBusy,
-	consoleError,
-	consoleQuery,
-	consoleTotal,
-} from "../core/catalogue-state.ts";
-import type { CatalogueTypeFilter } from "../types/catalogue-types.ts";
+	consoleReady,
+	consoleView,
+	listingsBusy,
+	listingsError,
+	listingsPage,
+	rollups,
+	searchDraft,
+	setConsoleUrl,
+	setSearch,
+	startConsoleSync,
+} from "../core/console-store.ts";
+import type { CatalogueStats, ConsoleUrlState, ConsoleView } from "../types/catalogue-types.ts";
 
 /**
- * CatalogueHeader — the console's middle-nav HEADER band. It owns what the region contract says it
- * owns: **identity** (what you are looking at, and how much of it), and the **global controls** that
- * scope the whole surface — the one search field and the analytics window.
- *
- * Both were previously in the scrolling body: the search inside a `.fx-toolbar` that duplicated the
- * lane's own, and the period switch inside the analytics block. Search now writes the single
- * {@link consoleQuery} signal that the body fetch AND the lane narrow both read, so the two can no
- * longer disagree; the period switch matches `/wallet`, whose header band owns its 30/60/90 range.
- *
- * The count is read, not computed — the body publishes what the server actually returned.
+ * CatalogueHeader — the console's header band: identity (title and how many listings the current
+ * view holds), the one search field, the rollup sentence for the whole catalogue, and the view switch
+ * (Listings · Analytics · Clients) whose tabs control the canvas. Below the mobile breakpoint, where
+ * the lane is hidden, the type segment lands here too. Search writes the URL in place on every
+ * keystroke; the canvas debounces its read.
  */
 
-// #region Props + constants
+// #region Props
 export interface CatalogueHeaderProps {
-	/** The active `?type=` segment — names the scope in the identity block. */
-	type: CatalogueTypeFilter;
-	/** The SSR result count, so the band reports a real number in the first byte. */
+	url: ConsoleUrlState;
+	/** The server's match count, for the first byte. */
 	initialTotal: number;
-	/** The SSR search term (a shared/bookmarked `?search=` URL paints its own query). */
-	initialSearch: string;
+	/** The server's rollups, for the first byte. */
+	initialStats: CatalogueStats;
 }
-
-const PERIODS = ["7d", "30d", "90d"] as const;
 // #endregion
 
-/** The plural noun for a type segment — the console never says "items". */
-function scopeNoun(type: CatalogueTypeFilter): string {
-	return type === "service" ? "services" : type === "product" ? "products" : "listings";
-}
+const VIEWS: readonly ConsoleView[] = ["listings", "analytics", "clients"];
+const VIEW_TABS = [
+	{ key: "listings", label: "Listings" },
+	{ key: "analytics", label: "Analytics" },
+	{ key: "clients", label: "Clients" },
+];
 
 export default function CatalogueHeader(props: CatalogueHeaderProps): JSX.Element {
-	const noun = scopeNoun(props.type);
+	const state = consoleView(props.url);
+	const search = useSignal(props.url.search);
+	const tab = useSignal(VIEWS.indexOf(props.url.view));
 
-	/*
-	 * The field binds STRAIGHT to the shared signal — no local mirror. A mirror would have to be kept
-	 * in sync by hand, and this island re-renders on every `consoleBusy` / `consoleTotal` /
-	 * `consoleError` tick, so a stale mirror resets the input's value out from under whoever is typing.
-	 * One signal, one writer, no synchronisation to get wrong.
-	 */
+	useEffect(() => startConsoleSync(), []);
+
+	useSignalEffect(() => {
+		if (consoleReady.value) search.value = searchDraft.value;
+	});
+
 	useEffect(() => {
-		consoleQuery.value = props.initialSearch;
-		consoleTotal.value = props.initialTotal;
-	}, []);
+		tab.value = VIEWS.indexOf(state.view);
+	}, [state.view]);
 
-	const total = consoleTotal.value;
-	const busy = consoleBusy.value;
-	const failed = consoleError.value !== null;
+	const total = listingsPage.value?.total ?? props.initialTotal;
+	const stats = rollups.value ?? props.initialStats;
+	const noun = scopeNoun(state.type);
+	const count = listingsError.value
+		? "Couldn’t refresh"
+		: listingsBusy.value
+		? `Searching ${noun}…`
+		: countLabel(total, state.type);
 
 	return (
 		<div class="cat-hdr">
 			<div class="cat-hdr__ident">
 				<h1 class="cat-hdr__title">Catalogue</h1>
-				{
-					/*
-					 * The count is the identity's second half: "Catalogue · 16 services" answers both what
-					 * this is and how much of it there is. While a fetch is in flight it says so rather than
-					 * asserting a stale number, and after a failure it refuses to assert one at all.
-					 */
-				}
-				<span class="cat-hdr__count" aria-live="polite">
-					{failed
-						? "Couldn’t refresh"
-						: busy
-						? `Searching ${noun}…`
-						: `${total} ${total === 1 ? noun.replace(/s$/, "") : noun}`}
-				</span>
+				<span class="cat-hdr__count" aria-live="polite">{count}</span>
 			</div>
 
 			<div class="cat-hdr__search">
 				<InputText
-					value={consoleQuery}
+					value={search}
+					onValueChange={setSearch}
 					placeholder={`Search ${noun}`}
 					type="search"
 					variant="bare"
@@ -94,49 +89,41 @@ export default function CatalogueHeader(props: CatalogueHeaderProps): JSX.Elemen
 					aria-label={`Search ${noun}`}
 					start={
 						<span class="cat-hdr__searchicon" aria-hidden="true">
-							<SearchIcon size={16} />
+							<Icon name="search" />
 						</span>
 					}
 				/>
 			</div>
 
-			{
-				/*
-				 * Mobile-only type segment. The lane owns this switch, and the lane is `display: none` below
-				 * the breakpoint — so without a home it is unreachable on a phone. It lands here rather than
-				 * in the footer because three controls will not fit a 390px band, and this band has already
-				 * hidden the page title at that width. It navigates, exactly as the lane's does: `?type=`
-				 * scopes the console body too, and the two roots can only agree on the address.
-				 */
-			}
-			<div class="cat-hdr__types" role="group" aria-label="Catalogue type">
-				{TYPE_TABS.map((t) => (
-					<a
-						key={t.value}
-						class="cat-hdr__type"
-						href={segmentHref(t.value)}
-						data-on={props.type === t.value ? "true" : undefined}
-						aria-current={props.type === t.value ? "true" : undefined}
-					>
-						{t.label}
-					</a>
-				))}
+			<div class="cat-hdr__rollups">
+				<CatalogueRollups stats={stats} />
 			</div>
 
-			<div class="cat-period" role="group" aria-label="Analytics period">
-				{PERIODS.map((p) => (
+			<div class="cat-hdr__types" role="group" aria-label="Catalogue type">
+				{TYPE_TABS.map((t) => (
 					<button
-						key={p}
+						key={t.value}
 						type="button"
-						class="cat-period__btn"
-						data-on={analyticsPeriod.value === p ? "true" : undefined}
-						aria-pressed={analyticsPeriod.value === p}
-						onClick={() => (analyticsPeriod.value = p as AnalyticsPeriod)}
+						class={state.type === t.value ? "cat-hdr__type cat-hdr__type--on" : "cat-hdr__type"}
+						aria-pressed={state.type === t.value}
+						onClick={() => setConsoleUrl({ type: t.value })}
 					>
-						{p}
+						{t.label}
 					</button>
 				))}
 			</div>
+
+			<TabMenu
+				class="cat-hdr__views"
+				model={VIEW_TABS}
+				activeIndex={tab}
+				onActiveIndexChange={(i) => {
+					const view = VIEWS[i];
+					if (view) setConsoleUrl({ view });
+				}}
+				panelId={CONSOLE_CANVAS_ID}
+				aria-label="Catalogue view"
+			/>
 		</div>
 	);
 }

@@ -334,7 +334,7 @@ export function RichTextEditor(props: RichTextEditorProps): JSX.Element {
 			quillRef.current = editor;
 
 			const initial = resolveInitial(value);
-			if (initial) editor.clipboard.dangerouslyPasteHTML(initial);
+			if (initial) editor.setContents(editor.clipboard.convert({ html: initial, text: "" }));
 
 			/*
 			 * Ready is announced by writing the DOM, not by flipping a signal, and that is the same

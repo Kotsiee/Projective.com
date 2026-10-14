@@ -1,9 +1,10 @@
 import type { ComponentChildren } from "preact";
 import type { UserContext } from "@projective/types/auth";
 import type { ReadActor } from "@server/services/read-actor.ts";
-import CatalogueViewControlRig from "../islands/CatalogueViewControlRig.island.tsx";
+import CatalogueFooterRig from "../islands/CatalogueFooterRig.island.tsx";
 import ListingActionRig from "../islands/ListingActionRig.island.tsx";
 import { resolveListing } from "./catalogue-ssr.ts";
+import { isListingSlug, parseConsoleUrl, publishReadiness } from "../types/catalogue-types.ts";
 
 /**
  * catalogue-footer-slot — the SSR-idiomatic resolver for the middle-nav FOOTER band on the Catalogue
@@ -11,7 +12,8 @@ import { resolveListing } from "./catalogue-ssr.ts";
  * per-route body, the `/wallet` shape: a band that exists on one page of a surface and vanishes on the
  * next teaches the user it is decorative, and the actions it should hold end up in the scroll flow.
  *
- *  - `/catalogue` → the {@link CatalogueViewControlRig}: density, sort, and a mobile-only create.
+ *  - `/catalogue` → the {@link CatalogueFooterRig}: density, sort and a mobile-only create, or the
+ *    batch bar while listings are selected.
  *  - `/catalogue/[id]` → the {@link ListingActionRig}: the publish gate and its lifecycle actions,
  *    which used to sit in a `position: static` strip at the top of the editor body.
  *
@@ -26,11 +28,12 @@ export async function catalogueFooterFor(
 	if (segs[0] !== "catalogue") return null;
 
 	if (segs.length >= 2) {
+		if (!isListingSlug(segs[1])) return null;
 		// The same read the page and the header band make — one query through the request memo.
 		const { listing } = await resolveListing(segs[1], url, actor);
 		if (!listing) return null;
-		return <ListingActionRig status={listing.status} />;
+		return <ListingActionRig status={listing.status} missing={publishReadiness(listing).missing} />;
 	}
 
-	return <CatalogueViewControlRig />;
+	return <CatalogueFooterRig url={parseConsoleUrl(url)} />;
 }

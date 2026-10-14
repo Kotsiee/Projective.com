@@ -858,6 +858,33 @@ the caller''s own listings only (owned, or of a team they are an active member o
 window; NULL is all time.';
 -- #endregion
 
+-- #region Listing analytics read
+-- The listing rollups (analytics.fn_rollup_listings) as the catalogue's Analytics read takes them.
+-- `analytics` is not a PostgREST-exposed schema, so this INVOKER door in `catalogue` is the read:
+-- `analytics.daily_rollups`' own policy (fn_subject_visible('listing')) still decides each row, so a
+-- listing the caller may not see answers nothing. Ordered for paging past max_rows.
+CREATE OR REPLACE FUNCTION catalogue.get_listing_rollups(p_listing_ids uuid[], p_from date, p_to date)
+RETURNS TABLE (day date, metric text, subject_id uuid, dimensions jsonb, value numeric, sample_count integer)
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+    SELECT r.day, r.metric, r.subject_id, r.dimensions, r.value, r.sample_count
+      FROM analytics.daily_rollups r
+     WHERE r.subject_kind = 'listing'::analytics.subject_kind
+       AND r.subject_id = ANY (p_listing_ids)
+       AND r.day BETWEEN p_from AND p_to
+       AND p_to - p_from <= 800
+     ORDER BY r.day, r.subject_id, r.metric, r.id
+$$;
+
+COMMENT ON FUNCTION catalogue.get_listing_rollups(uuid[], date, date) IS
+'The listing rollups for the given listings over [p_from, p_to] (at most 800 days), as the caller may
+read them: INVOKER, so analytics.daily_rollups'' policy (fn_subject_visible(''listing'')) decides. The
+read behind the catalogue''s Analytics view and tab, because analytics is not an exposed schema.';
+-- #endregion
+
 -- #region Publish age gate (Decision #190)
 -- A seller under 18 cannot put a listing on sale. Held on the table rather than in set_listing_status
 -- so no write — this door, a direct PATCH, a future one — publishes past it; and as a trigger it can

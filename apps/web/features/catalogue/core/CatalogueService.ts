@@ -1,5 +1,7 @@
 import { getCatalogue, postCatalogue } from "./api.ts";
 import type {
+	BatchInput,
+	BatchOutcome,
 	CatalogueListParams,
 	CataloguePage,
 	CreateListingInput,
@@ -25,12 +27,14 @@ export function buildListQuery(params: CatalogueListParams): string {
 	if (params.type) qs.set("type", params.type);
 	if (params.status) qs.set("status", params.status);
 	if (params.model) qs.set("model", params.model);
+	if (params.createCategory) qs.set("createCategory", params.createCategory);
 	if (params.search) qs.set("search", params.search);
 	if (params.sort) qs.set("sort", params.sort);
 	if (params.dir) qs.set("dir", params.dir);
 	if (params.period) qs.set("period", params.period);
 	if (params.needsAttention) qs.set("attention", "1");
 	if (params.promoted) qs.set("promoted", "1");
+	if (params.bestSelling) qs.set("bestSelling", "1");
 	if (params.cursor) qs.set("cursor", params.cursor);
 	if (params.limit) qs.set("limit", String(params.limit));
 	return qs.toString();
@@ -65,5 +69,15 @@ export const CatalogueService = {
 		status: ListingStatus,
 	): Promise<CatalogueResult<{ listing: ListingDetail }>> {
 		return postCatalogue<{ listing: ListingDetail }>("/api/catalogue/status", { id, status });
+	},
+
+	/** Apply one action to many listings; the answer is one outcome per listing. */
+	batch(input: BatchInput): Promise<CatalogueResult<BatchOutcome[]>> {
+		return postCatalogue<BatchOutcome[]>("/api/catalogue/batch", input);
+	},
+
+	/** Copy a listing as a new draft. */
+	duplicate(id: string): Promise<CatalogueResult<{ listing: ListingDetail }>> {
+		return postCatalogue<{ listing: ListingDetail }>("/api/catalogue/duplicate", { id });
 	},
 };

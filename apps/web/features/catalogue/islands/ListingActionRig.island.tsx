@@ -1,117 +1,108 @@
 import type { JSX } from "preact";
-import { useEffect } from "preact/hooks";
-import "../styles/catalogue.css";
+import { useSignal, useSignalEffect } from "@preact/signals";
+import "../styles/workspace.css";
 import { Button } from "@projective/ui/fields";
-import { Tooltip } from "@projective/ui/feedback";
-import {
-	AlertIcon,
-	ArchiveIcon,
-	CheckIcon,
-	PauseIcon,
-	PublishIcon,
-} from "../components/catalogue-glyphs.tsx";
-import {
-	editorMissing,
-	editorReady,
-	editorStatus,
-	requestStatus,
-} from "../core/catalogue-state.ts";
+import { Icon } from "@projective/ui/icons";
 import type { ListingStatus } from "../types/catalogue-types.ts";
+import {
+	draft,
+	notice,
+	readiness,
+	requestStatus,
+	statusBusy,
+	workspaceReady,
+} from "../core/workspace-store.ts";
+import { readinessSentence } from "../core/workspace-model.ts";
 
-/**
- * ListingActionRig — the manage page's middle-nav FOOTER band, which previously did not exist: the
- * resolver required `segs.length === 1`, so `/catalogue/[id]` rendered bandless in both directions and
- * put Publish, Pause and Archive in a static strip that scrolled away at y = −247.
- *
- * The rig pairs the gate with the action it gates. Publish is disabled until the listing is ready, and
- * the reason travels WITH the disabled control — a disabled button that does not say why is a dead end,
- * and the readiness checklist used to live 447px away in a sticky aside that outlived the button.
- *
- * Dumb: it publishes an intent. Only the body may perform it — the body holds the unsaved draft that
- * Publish has to be judged against, so it flushes the autosave first.
- */
-
+/** Props for {@link ListingActionRig}. */
 export interface ListingActionRigProps {
-	/** The SSR status, so the rig paints the right actions before hydration. */
+	/** The SSR status and what the publish gate found missing, so the rig paints before hydration. */
 	status: ListingStatus;
+	missing: readonly string[];
 }
 
-export default function ListingActionRig(props: ListingActionRigProps): JSX.Element {
-	useEffect(() => {
-		editorStatus.value = props.status;
-	}, []);
+const GATE_ID = "cat-ws-gate";
+const NOTICE_MS = 6_000;
 
-	const status = editorStatus.value ?? props.status;
-	const ready = editorReady.value;
-	const missing = editorMissing.value;
-	const published = status === "published";
+function publishLabel(status: ListingStatus): string {
+	if (status === "archived") return "Restore & publish";
+	if (status === "paused") return "Resume";
+	return "Publish";
+}
+
+/**
+ * ListingActionRig — the workspace's middle-nav FOOTER band: the publish gate as one sentence ("Add
+ * a cover image and set a price to publish."), then the lifecycle actions. Archive and Pause are
+ * neutral outlined utilities; Publish is the teal workflow commit. While the gate is closed,
+ * Publish stays focusable but inert, and its `aria-describedby` points at the sentence saying why.
+ *
+ * Every lifecycle change goes through the store, which saves what the seller typed first. The
+ * outcome of the last change (or showcase write) replaces the sentence for a few seconds.
+ */
+export default function ListingActionRig(props: ListingActionRigProps): JSX.Element {
+	const shown = useSignal<string | null>(null);
+
+	useSignalEffect(() => {
+		const message = notice.value;
+		shown.value = message;
+		if (!message) return;
+		const timer = setTimeout(() => {
+			if (notice.peek() === message) notice.value = null;
+		}, NOTICE_MS);
+		return () => clearTimeout(timer);
+	});
+
+	const ready = workspaceReady.value;
+	const status = (ready ? draft.value?.status : null) ?? props.status;
+	const missing = (ready ? readiness.value?.missing : null) ?? props.missing;
+	const open = missing.length === 0;
+	const busy = statusBusy.value;
+
+	const publish = () => {
+		if (open && !busy) void requestStatus("published");
+	};
 
 	return (
-		<div class="cat-arig">
-			{
-				/*
-				 * The gate reads as one sentence, not a checklist dump: what is missing, in order, inline.
-				 * It carries a glyph as well as a tone, so the state survives a colour-blind overlay.
-				 */
-			}
-			<p class="cat-arig__gate" data-ready={ready ? "true" : undefined} role="status">
-				{ready
-					? (
-						<>
-							<CheckIcon size={15} />
-							<span>Ready to publish</span>
-						</>
-					)
-					: (
-						<>
-							<AlertIcon size={15} />
-							<span>
-								To publish: {missing.length > 0 ? missing.join(" · ") : "add the required details"}
-							</span>
-						</>
-					)}
+		<div class="cat-ws-rig">
+			<p class="cat-ws-rig__gate" id={GATE_ID} data-ready={open ? "true" : undefined}>
+				<Icon name={open ? "check" : "circle"} size="sm" />
+				<span class="cat-ws-rig__sentence">{shown.value ?? readinessSentence(missing)}</span>
 			</p>
+			<span class="ui-visually-hidden" role="status">{shown.value ?? ""}</span>
 
-			<div class="cat-arig__actions">
+			<div class="cat-ws-rig__actions">
 				{status !== "archived" && (
 					<Button
-						variant="text"
 						size="sm"
+						severity="neutral"
+						variant="outlined"
 						label="Archive"
-						icon={<ArchiveIcon />}
-						onClick={() => requestStatus("archived")}
+						loading={busy === "archived"}
+						disabled={busy !== null}
+						onClick={() => void requestStatus("archived")}
 					/>
 				)}
-
-				{published
+				{status === "published"
 					? (
 						<Button
-							variant="outlined"
 							size="sm"
+							severity="neutral"
+							variant="outlined"
 							label="Pause"
-							icon={<PauseIcon />}
-							onClick={() => requestStatus("paused")}
+							loading={busy === "paused"}
+							disabled={busy !== null}
+							onClick={() => void requestStatus("paused")}
 						/>
 					)
 					: (
-						<Tooltip
-							content={ready
-								? "Make this listing public"
-								: `Still needed: ${missing.join(", ") || "required details"}`}
-							placement="top"
-						>
-							<span class="cat-arig__pubwrap">
-								<Button
-									variant="filled"
-									severity="primary"
-									size="sm"
-									label={status === "archived" ? "Restore & publish" : "Publish"}
-									icon={<PublishIcon />}
-									disabled={!ready}
-									onClick={() => requestStatus("published")}
-								/>
-							</span>
-						</Tooltip>
+						<Button
+							size="sm"
+							label={publishLabel(status)}
+							loading={busy === "published"}
+							aria-disabled={!open || busy !== null}
+							aria-describedby={open ? undefined : GATE_ID}
+							onClick={publish}
+						/>
 					)}
 			</div>
 		</div>

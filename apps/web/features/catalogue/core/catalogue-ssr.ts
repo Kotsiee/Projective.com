@@ -1,7 +1,9 @@
 import type { UserContext } from "@projective/types/auth";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import { CatalogueBackendService } from "@server/services/catalogue/CatalogueBackendService.ts";
-import { isSeller, toSort, toTypeFilter } from "./catalogue-model.ts";
+import { isSeller } from "./catalogue-model.ts";
+import { listParamsOf } from "./console-store.ts";
+import { parseConsoleUrl } from "../types/catalogue-types.ts";
 import type {
 	CatalogueListParams,
 	CataloguePage,
@@ -72,27 +74,20 @@ function once<T>(url: URL, key: string, run: () => Promise<T>): Promise<T> {
 
 // #region Params
 /**
- * The console's list params for a URL. The ONE derivation the page and its header band share — the
- * memo keys on the params, so two derivations that differed by a single default would issue two reads
- * of the same question.
+ * The console's list params for a URL — the same derivation the console store refetches with
+ * ({@link listParamsOf}), so the page, the lane and the header band share one read through the memo,
+ * and the first client read after a change asks exactly what the server would have.
  */
 export function consoleParamsOf(url: URL): CatalogueListParams {
-	const search = url.searchParams.get("search") ?? "";
-	return {
-		type: toTypeFilter(url.searchParams.get("type")),
-		sort: toSort(url.searchParams.get("sort")),
-		search: search || undefined,
-		period: "30d",
-	};
+	return listParamsOf(parseConsoleUrl(url));
 }
 
 /**
- * The lane's list params: every status of the active `?type=` segment, newest first, at the largest
- * page the service serves — the lane groups the whole set into status sections, so a first page of the
- * console's size would silently drop the older listings from it.
+ * The outline lane's list params: every listing the seller has, newest first, at the largest page the
+ * service serves, so the workspace's lane can always show the rest of the catalogue.
  */
-export function laneParamsOf(url: URL): CatalogueListParams {
-	return { type: toTypeFilter(url.searchParams.get("type")), sort: "recent", limit: 200 };
+export function outlineParamsOf(): CatalogueListParams {
+	return { type: "all", sort: "recent", limit: 200 };
 }
 // #endregion
 

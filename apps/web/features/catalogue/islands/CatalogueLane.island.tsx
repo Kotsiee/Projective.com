@@ -1,380 +1,376 @@
 import type { JSX, RefObject } from "preact";
-import { useComputed, useSignal } from "@preact/signals";
+import { type Signal, useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
-import "../styles/catalogue.css";
+import "../styles/lane.css";
 import { Popover } from "@projective/ui/feedback";
+import { SortControl } from "@projective/ui/fields";
+import { Icon } from "@projective/ui/icons";
 import {
 	LaneBar,
 	LaneCollapseButton,
+	LaneCreateButton,
 	LaneEmpty,
 	LaneFooter,
 	LaneFooterActions,
 	LaneHead,
-	LaneIconButton,
 	LaneList,
 	LaneSection,
 	LaneSections,
 	LaneTabs,
 	type LaneToggleOption,
 	LaneToggleRow,
+	Menu,
+	type MenuItem,
 } from "@projective/ui/navigation";
 import { SidebarToggleIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { CatalogueRail } from "../components/CatalogueRail.tsx";
 import { CatalogueFilterPanel } from "../components/CatalogueFilterPanel.tsx";
 import { ListingLaneRow } from "../components/ListingLaneRow.tsx";
-import CatalogueCreateModal from "./CatalogueCreateModal.island.tsx";
-import { consoleQuery, openCreate } from "../core/catalogue-state.ts";
-import { listingHref, segmentHref, STATUS_SECTIONS, TYPE_TABS } from "../core/catalogue-model.ts";
+import { TrendIcon } from "../components/catalogue-glyphs.tsx";
+import { listingHref, SERVICE_MODELS, SORT_OPTIONS, TYPE_TABS } from "../core/catalogue-model.ts";
 import {
-	AlertIcon,
-	BoxIcon,
-	PlusIcon,
-	ServiceIcon,
-	SlidersIcon,
-	StarGlyph,
-	TrendIcon,
-} from "../components/catalogue-glyphs.tsx";
-import type {
-	CataloguePage,
-	CatalogueTypeFilter,
-	ListingStatus,
-	ListingSummary,
-	ServiceType,
+	consoleView,
+	listingsPage,
+	openCreate,
+	type QuickFilters,
+	quickFilters,
+	setConsoleUrl,
+	setQuickFilter,
+	startConsoleSync,
+} from "../core/console-store.ts";
+import { laneOutline, type LaneOutlineSection, outlineAnchor } from "../core/lane-outline.ts";
+import { useConsoleSort } from "../hooks/useConsoleSort.ts";
+import {
+	type CatalogueKind,
+	type CatalogueStatusCounts,
+	consoleHref,
+	type ConsoleUrlState,
+	type EditSection,
+	type ListingSummary,
+	type ServiceType,
 } from "../types/catalogue-types.ts";
-import { Icon } from "@projective/ui/icons";
 
 /**
- * CatalogueLane — the `/catalogue` navigation lane. Like `ProjectSidebar`/`MessagesSidebar` it renders
- * BOTH presentations at once and lets CSS reveal exactly one via `.ui-splitter[data-mode="collapsed"]`:
- * an expanded stack (the type switch at the peak · a `ui-lane-bar` Filter popover · a `ui-lane-toggles`
- * quick-filter row · the status-section accordion · the primary `＋ New` popover CTA in the footer) and
- * a collapsed {@link CatalogueRail}. Chrome is composed entirely from the shared
- * `@projective/ui/navigation` lane primitives — so this lane, the `/projects` sidebar, and the
- * `/messages` inbox render ONE control set; parity is structural.
+ * CatalogueLane — the `/catalogue*` navigation lane, in one of two modes.
  *
- * It owns **navigation and scope**, which is the lane's half of the region contract, and nothing else:
- * search belongs to the header band (there is one field for the whole surface, and this list narrows
- * against the same `consoleQuery` the console fetches on), sort and density belong to the footer band.
+ * **Console** (`/catalogue`): the type tabs at the peak, sort, the quick filters, and the facets —
+ * status (presence dots, never counts), delivery model and CREATE category — every one of which
+ * writes the console URL, so the canvas, the header count and a shared link all agree. The footer's
+ * New listing menu opens the quick-create modal in place (`?create=`).
  *
- * THIN: it paints from the SSR page (all statuses for the active `?type=` segment). The type switch is a
- * full navigation (so the console updates too), while the quick/model filters and status grouping are
- * client-side narrows over the loaded set. It mounts the {@link CatalogueCreateModal} (driven by the
- * shared `catalogue-state` signals so the console empty-state and the mobile footer rig open it too).
+ * **Outline** (`/catalogue/[id]`): the current listing pinned, the workspace's "On this page"
+ * sections (published by the workspace through `lane-outline`), and the seller's other listings. Its
+ * New listing menu links to the console's `?create=` deep links.
+ *
+ * Both render the collapsed {@link CatalogueRail} beside the expanded stack and let
+ * `.ui-splitter[data-mode="collapsed"]` reveal one.
  */
 
-// #region Props + constants
-export interface CatalogueLaneProps {
-	initial: CataloguePage;
-	type: CatalogueTypeFilter;
-	seller: boolean;
-	path: string;
+// #region Props
+/** The console lane's server-resolved facts. */
+export interface ConsoleLaneProps {
+	mode: "console";
+	url: ConsoleUrlState;
+	statusCounts: CatalogueStatusCounts;
+	/** The first listings, for the collapsed rail. */
+	recent: ListingSummary[];
 }
 
-const QUICK_TOGGLES: readonly LaneToggleOption<QuickKey>[] = [
-	{ key: "attention", label: "Needs attention", icon: <AlertIcon /> },
-	{ key: "promoted", label: "Promoted", icon: <StarGlyph /> },
-	{ key: "bestSelling", label: "Best-selling", icon: <TrendIcon /> },
-];
-type QuickKey = "attention" | "promoted" | "bestSelling";
+/** The outline lane's server-resolved facts. */
+export interface OutlineLaneProps {
+	mode: "outline";
+	/** The workspace's listing slug. */
+	activeId: string;
+	/** The seller's listings, newest first. */
+	listings: ListingSummary[];
+}
+
+export type CatalogueLaneProps = ConsoleLaneProps | OutlineLaneProps;
+
+interface LaneChrome {
+	collapsed: boolean;
+	onCollapse: (next: boolean) => void;
+}
 // #endregion
 
-/** The active listing id from the pathname (`/catalogue/{id}`), or null. */
-function listingIdFromPath(path: string): string | null {
-	const segs = path.split("/").filter(Boolean);
-	return segs[0] === "catalogue" && segs.length >= 2 ? segs[1] : null;
-}
+const RAIL_RECENT = 8;
+
+const QUICK_TOGGLES: readonly LaneToggleOption<keyof QuickFilters>[] = [
+	{ key: "attention", label: "Needs attention", icon: <Icon name="warning" /> },
+	{ key: "promoted", label: "Promoted", icon: <Icon name="star" /> },
+	{ key: "bestSelling", label: "Best-selling", icon: <TrendIcon /> },
+];
 
 export default function CatalogueLane(props: CatalogueLaneProps): JSX.Element {
-	const activeId = listingIdFromPath(props.path);
-
-	// #region State
-	const listings = useSignal<ListingSummary[]>(props.initial.items);
 	const collapsed = useSignal(false);
-	const attention = useSignal(false);
-	const promoted = useSignal(false);
-	const bestSelling = useSignal(false);
-	const models = useSignal<ServiceType[]>([]);
-	const createOpen = useSignal(false);
-	const filterOpen = useSignal(false);
-	// Published + Drafts open by default; Paused/Archived collapsed.
-	const open = useSignal<Record<ListingStatus, boolean>>({
-		published: true,
-		draft: true,
-		paused: false,
-		archived: false,
-	});
-	// #endregion
 
-	// Seed the collapse toggle from the splitter's persisted density (matches the other lanes).
 	useEffect(() => {
-		try {
-			const el = globalThis.document?.querySelector(".ui-splitter");
-			collapsed.value = (el as HTMLElement | null)?.dataset.mode === "collapsed";
-		} catch { /* no DOM — non-fatal */ }
+		const el = globalThis.document?.querySelector<HTMLElement>(".ui-splitter");
+		collapsed.value = el?.dataset.mode === "collapsed";
 	}, []);
 
-	// #region Derived (apply search + quick + model filters → group by status)
-	const filtered = useComputed<ListingSummary[]>(() => {
-		const ms = new Set(models.value);
-		// The one search term, owned by the header band — see the LaneBar comment below.
-		const q = consoleQuery.value.trim().toLowerCase();
-		return listings.value.filter((l) => {
-			/*
-			 * Match the SAME fields the server matches, not just the title. One search term with two
-			 * different predicates is the old two-search problem wearing a disguise: searching "brand"
-			 * returned two listings in the console and one in this list, because the server also matches
-			 * category and tags. The summary projection carries `category`, so both sides agree on it.
-			 */
-			if (
-				q && !l.title.toLowerCase().includes(q) && !l.category.toLowerCase().includes(q)
-			) return false;
-			if (attention.value && !l.needsAttention) return false;
-			if (promoted.value && !l.promoted) return false;
-			if (bestSelling.value && l.metrics.orders <= 0) return false;
-			if (ms.size > 0 && (l.kind !== "service" || !l.serviceType || !ms.has(l.serviceType))) {
-				return false;
-			}
-			return true;
-		});
-	});
-
-	const grouped = useComputed<Record<ListingStatus, ListingSummary[]>>(() => {
-		const g: Record<ListingStatus, ListingSummary[]> = {
-			published: [],
-			draft: [],
-			paused: [],
-			archived: [],
-		};
-		for (const l of filtered.value) g[l.status].push(l);
-		return g;
-	});
-
-	const activeQuick = useComputed<QuickKey[]>(() => {
-		const keys: QuickKey[] = [];
-		if (attention.value) keys.push("attention");
-		if (promoted.value) keys.push("promoted");
-		if (bestSelling.value) keys.push("bestSelling");
-		return keys;
-	});
-	// #endregion
-
-	function onQuick(key: QuickKey): void {
-		if (key === "attention") attention.value = !attention.value;
-		else if (key === "promoted") promoted.value = !promoted.value;
-		else bestSelling.value = !bestSelling.value;
-	}
-
-	function toggleModel(m: ServiceType): void {
-		const set = new Set(models.value);
-		set.has(m) ? set.delete(m) : set.add(m);
-		models.value = [...set];
-	}
-
-	/** The type switch is a real navigation — the console body is scoped by the same `?type=`. */
-	function onSelectType(type: CatalogueTypeFilter): void {
-		try {
-			globalThis.location.assign(segmentHref(type));
-		} catch { /* SSR / no window — non-fatal */ }
-	}
-
-	function setLaneCollapsed(next: boolean): void {
+	function onCollapse(next: boolean): void {
 		collapsed.value = next;
-		try {
-			globalThis.dispatchEvent(
-				new CustomEvent(MIDDLE_LANE_TOGGLE_EVENT, { detail: { collapsed: next } }),
-			);
-		} catch { /* SSR / no window — non-fatal */ }
+		globalThis.dispatchEvent(
+			new CustomEvent(MIDDLE_LANE_TOGGLE_EVENT, { detail: { collapsed: next } }),
+		);
 	}
 
-	const totalShown = filtered.value.length;
+	const chrome: LaneChrome = { collapsed: collapsed.value, onCollapse };
+	return props.mode === "console"
+		? <ConsoleLane {...props} {...chrome} />
+		: <OutlineLane {...props} {...chrome} />;
+}
+
+// #region Quick create
+/** What a New listing entry does: open the modal in place, or link to the console's deep link. */
+type CreateTarget =
+	| { go: (kind: CatalogueKind, serviceType?: ServiceType) => void }
+	| { href: (kind: CatalogueKind, serviceType?: ServiceType) => string };
+
+function newListingMenu(target: CreateTarget): MenuItem[] {
+	const entry = (
+		key: string,
+		label: string,
+		kind: CatalogueKind,
+		serviceType?: ServiceType,
+	): MenuItem =>
+		"href" in target
+			? { key, label, url: target.href(kind, serviceType) }
+			: { key, label, command: () => target.go(kind, serviceType) };
+	return [
+		entry("product", "New product", "product"),
+		{
+			key: "service",
+			label: "New service",
+			items: SERVICE_MODELS.map((m) => entry(m, m, "service", m)),
+		},
+	];
+}
+
+function QuickCreate({ open, model }: { open: Signal<boolean>; model: MenuItem[] }): JSX.Element {
+	return (
+		<Popover
+			open={open}
+			placement="top-end"
+			avoid={[".ui-app-shell__sidebar"]}
+			allowOverflow={["top"]}
+			class="cat-newmenu-pop"
+			trigger={(api) => (
+				<LaneCreateButton
+					label="New listing"
+					icon={<Icon name="plus" />}
+					triggerRef={api.ref as RefObject<HTMLElement>}
+					ariaHasPopup="menu"
+					ariaExpanded={api.expanded}
+					ariaControls={api.panelId}
+					onClick={api.toggle}
+				/>
+			)}
+		>
+			<Menu model={model} aria-label="New listing" class="cat-newmenu" />
+		</Popover>
+	);
+}
+// #endregion
+
+// #region Console mode
+function ConsoleLane(props: ConsoleLaneProps & LaneChrome): JSX.Element {
+	const menuOpen = useSignal(false);
+
+	useEffect(() => startConsoleSync(), []);
+
+	const state = consoleView(props.url);
+	const page = listingsPage.value;
+	const counts = page?.statusCounts ?? props.statusCounts;
+	const recent = (page?.items ?? props.recent).slice(0, RAIL_RECENT);
+	const quick = quickFilters.value;
+	const activeQuick = QUICK_TOGGLES.map((o) => o.key).filter((k) => quick[k]);
+	const sort = useConsoleSort(state);
+
+	const model = newListingMenu({
+		go: (kind, serviceType) => {
+			menuOpen.value = false;
+			openCreate(kind, serviceType);
+		},
+	});
 
 	return (
 		<div class="cat-lane">
-			{/* Collapsed rail — CSS reveals it only at the narrow density. */}
 			<CatalogueRail
-				recent={listings.value.slice(0, 8)}
-				activeId={activeId}
+				recent={recent}
+				activeId={null}
 				onNew={() => openCreate()}
-				onExpand={() => setLaneCollapsed(false)}
+				onExpand={() => props.onCollapse(false)}
 			/>
 
-			{/* Expanded stack. */}
 			<div class="cat-lane__full">
 				<LaneHead>
-					{
-						/*
-						 * The type switch at the very peak of the lane, the position `/projects` gives its
-						 * Projects | Services strip. It NAVIGATES rather than filtering in place: `?type=` also
-						 * scopes the console body, and the two roots can only agree on the address.
-						 */
-					}
-					<LaneTabs<CatalogueTypeFilter>
+					<LaneTabs
 						label="Catalogue type"
-						value={props.type}
+						value={state.type}
 						options={TYPE_TABS}
-						onSelect={onSelectType}
+						onSelect={(type) => setConsoleUrl({ type })}
 					/>
-
-					{
-						/*
-						 * No search field here. The lane used to carry its own, and the console body carried a
-						 * second one — same word, two regions, two scopes, no shared state — so a term that
-						 * emptied the console left this list showing every listing, side by side, at the same
-						 * moment. There is now ONE search, in the header band, and this list narrows against it.
-						 */
-					}
 					<LaneBar>
-						<Popover
-							open={filterOpen}
-							placement="bottom-end"
-							avoid={[".ui-app-shell__sidebar"]}
-							allowOverflow={["bottom"]}
-							class="cat-filter-pop"
-							trigger={(api) => (
-								<LaneIconButton
-									triggerRef={api.ref as RefObject<HTMLElement>}
-									icon={<SlidersIcon />}
-									label={models.value.length > 0
-										? `Filters (${models.value.length} active)`
-										: "Filters"}
-									tooltip="Filters"
-									active={models.value.length > 0}
-									dot={models.value.length > 0}
-									ariaHasPopup="dialog"
-									ariaExpanded={api.expanded}
-									ariaControls={api.panelId}
-									onClick={api.toggle}
-								/>
-							)}
-						>
-							<CatalogueFilterPanel
-								type={props.type}
-								models={models.value}
-								onToggleModel={toggleModel}
-								onReset={() => (models.value = [])}
-							/>
-						</Popover>
+						<SortControl
+							options={[...SORT_OPTIONS]}
+							value={sort.sort}
+							direction={sort.dir}
+							onValueChange={sort.onSort}
+							onDirectionChange={sort.onDir}
+							size="sm"
+							class="cat-lane__sort"
+							aria-label="Sort listings"
+						/>
 					</LaneBar>
-
 					<LaneToggleRow
 						label="Quick filters"
 						options={QUICK_TOGGLES}
-						active={activeQuick.value}
-						onToggle={onQuick}
+						active={activeQuick}
+						onToggle={(key) => setQuickFilter(key, !quick[key])}
 					/>
 				</LaneHead>
 
-				<LaneList label="Listings">
-					{totalShown === 0
-						? (
-							<LaneEmpty
-								title="No listings match"
-								note="Try clearing a filter, or create your first listing."
-							/>
-						)
-						: (
-							<LaneSections>
-								{STATUS_SECTIONS.map((s) => {
-									const rows = grouped.value[s.status];
-									if (rows.length === 0) return null;
-									return (
-										<LaneSection
-											key={s.status}
-											id={`cat-${s.status}`}
-											icon={<StatusDot status={s.status} />}
-											label={s.label}
-											open={open.value[s.status]}
-											onToggle={() => (open.value = {
-												...open.value,
-												[s.status]: !open.value[s.status],
-											})}
-											hasUnread={s.status === "draft" && rows.some((r) => r.needsAttention)}
-										>
-											{rows.map((l) => (
-												<ListingLaneRow
-													key={l.id}
-													listing={l}
-													href={listingHref(l.id)}
-													active={activeId === l.id}
-												/>
-											))}
-										</LaneSection>
-									);
-								})}
-							</LaneSections>
-						)}
+				<LaneList label="Filters">
+					<CatalogueFilterPanel
+						state={state}
+						statusCounts={counts}
+						onChange={(patch) => setConsoleUrl(patch)}
+					/>
 				</LaneList>
 
 				<LaneFooter>
 					<LaneCollapseButton
-						collapsed={collapsed.value}
+						collapsed={props.collapsed}
 						icon={<SidebarToggleIcon />}
-						onToggle={() => setLaneCollapsed(!collapsed.value)}
+						onToggle={() => props.onCollapse(!props.collapsed)}
 					/>
-
 					<LaneFooterActions>
-						<Popover
-							open={createOpen}
-							placement="top-end"
-							avoid={[".ui-app-shell__sidebar"]}
-							allowOverflow={["top"]}
-							class="cat-newmenu-pop"
-							trigger={(api) => (
-								<button
-									type="button"
-									ref={api.ref as RefObject<HTMLButtonElement>}
-									class="cat-lane__newbtn"
-									aria-haspopup="menu"
-									aria-expanded={api.expanded}
-									aria-controls={api.panelId}
-									onClick={api.toggle}
-								>
-									<span class="cat-lane__newicon" aria-hidden="true">
-										<PlusIcon size={18} />
-									</span>
-									<span class="cat-lane__newlabel">New listing</span>
-									<Icon name="chevron-down" class="cat-lane__newcaret" />
-								</button>
-							)}
-						>
-							<div class="cat-newmenu" role="menu">
-								<button
-									type="button"
-									role="menuitem"
-									class="cat-newmenu__item"
-									onClick={() => {
-										createOpen.value = false;
-										openCreate("product");
-									}}
-								>
-									<BoxIcon size={18} /> New product
-								</button>
-								<button
-									type="button"
-									role="menuitem"
-									class="cat-newmenu__item"
-									onClick={() => {
-										createOpen.value = false;
-										openCreate("service", "One-Off");
-									}}
-								>
-									<ServiceIcon size={18} /> New service
-								</button>
-							</div>
-						</Popover>
+						<QuickCreate open={menuOpen} model={model} />
 					</LaneFooterActions>
 				</LaneFooter>
 			</div>
-
-			<CatalogueCreateModal />
 		</div>
 	);
 }
+// #endregion
 
-// #region Local bits
-/** A small tonal dot glyph for a status section header. */
-function StatusDot({ status }: { status: ListingStatus }): JSX.Element {
-	return <span class="cat-secdot" data-status={status} aria-hidden="true" />;
+// #region Outline mode
+function OutlineRow(
+	{ section, active, onSelect }: {
+		section: LaneOutlineSection;
+		active: boolean;
+		onSelect?: (id: EditSection) => void;
+	},
+): JSX.Element {
+	const cls = active ? "cat-outline__row cat-outline__row--active" : "cat-outline__row";
+	if (onSelect) {
+		return (
+			<button
+				type="button"
+				class={cls}
+				aria-current={active ? "location" : undefined}
+				onClick={() => onSelect(section.id)}
+			>
+				{section.label}
+			</button>
+		);
+	}
+	return (
+		<a
+			class={cls}
+			href={`#${outlineAnchor(section.id)}`}
+			aria-current={active ? "location" : undefined}
+		>
+			{section.label}
+		</a>
+	);
+}
+
+function OutlineLane(props: OutlineLaneProps & LaneChrome): JSX.Element {
+	const menuOpen = useSignal(false);
+	const open = useSignal({ page: true, listings: true });
+	const outline = laneOutline.value;
+	const current = props.listings.find((l) => l.id === props.activeId) ?? null;
+	const others = props.listings.filter((l) => l.id !== props.activeId);
+	const model = newListingMenu({
+		href: (kind, serviceType) =>
+			consoleHref({ createOpen: true, createKind: kind, createModel: serviceType }),
+	});
+
+	return (
+		<div class="cat-lane">
+			<CatalogueRail
+				recent={props.listings.slice(0, RAIL_RECENT)}
+				activeId={props.activeId}
+				newHref={consoleHref({ createOpen: true })}
+				onExpand={() => props.onCollapse(false)}
+			/>
+
+			<div class="cat-lane__full">
+				<LaneHead>
+					<a class="cat-lane__back" href="/catalogue">
+						<Icon name="arrow-left" /> Catalogue
+					</a>
+				</LaneHead>
+
+				<LaneList label="Listings">
+					{current && (
+						<div class="cat-lane__pinned">
+							<ListingLaneRow listing={current} href={listingHref(current.id)} active />
+						</div>
+					)}
+					<LaneSections>
+						{outline && outline.sections.length > 0 && (
+							<LaneSection
+								id="cat-outline"
+								icon={<Icon name="list" />}
+								label="On this page"
+								open={open.value.page}
+								onToggle={() => (open.value = { ...open.value, page: !open.value.page })}
+							>
+								<nav class="cat-outline" aria-label="On this page">
+									{outline.sections.map((s) => (
+										<OutlineRow
+											key={s.id}
+											section={s}
+											active={outline.active === s.id}
+											onSelect={outline.onSelect}
+										/>
+									))}
+								</nav>
+							</LaneSection>
+						)}
+						<LaneSection
+							id="cat-listings"
+							icon={<Icon name="catalogue" />}
+							label="Your listings"
+							open={open.value.listings}
+							onToggle={() => (open.value = { ...open.value, listings: !open.value.listings })}
+						>
+							{others.length === 0
+								? <LaneEmpty title="No other listings" />
+								: others.map((l) => (
+									<ListingLaneRow key={l.id} listing={l} href={listingHref(l.id)} active={false} />
+								))}
+						</LaneSection>
+					</LaneSections>
+				</LaneList>
+
+				<LaneFooter>
+					<LaneCollapseButton
+						collapsed={props.collapsed}
+						icon={<SidebarToggleIcon />}
+						onToggle={() => props.onCollapse(!props.collapsed)}
+					/>
+					<LaneFooterActions>
+						<QuickCreate open={menuOpen} model={model} />
+					</LaneFooterActions>
+				</LaneFooter>
+			</div>
+		</div>
+	);
 }
 // #endregion

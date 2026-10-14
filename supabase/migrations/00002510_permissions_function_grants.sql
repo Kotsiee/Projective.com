@@ -1531,6 +1531,10 @@ REVOKE ALL ON FUNCTION catalogue.get_listing_sales(uuid[], timestamptz) FROM pub
 
 GRANT EXECUTE ON FUNCTION catalogue.get_listing_sales(uuid[], timestamptz) TO authenticated, service_role;
 
+REVOKE ALL ON FUNCTION catalogue.get_listing_rollups(uuid[], date, date) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION catalogue.get_listing_rollups(uuid[], date, date) TO authenticated, service_role;
+
 -- The catalogue rebuild's doors (Decision #217): the showcase, the batch status action and duplicate.
 -- INVOKER like the doors above, so the owner policies stay the gate. `fn_listing_file_ok` is the
 -- file-ownership predicate those doors and save_listing call as the caller.

@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "supabaseClient";
-import { getAnonClient } from "../../core/supabase.ts";
+import type { IsoDate } from "@projective/types/scheduling";
+import { getAnonClient, getServiceClient } from "../../core/supabase.ts";
 import {
+	type CompiledAvailability,
 	DEFAULT_GRID_RULES,
 	type GridBand,
 	type GridRules,
@@ -20,6 +22,11 @@ import {
  * Returns `undefined` only when the database could not answer — never an empty schedule dressed up
  * as the provider's. An unpublished (or absent) schedule is a real answer: a CLOSED source with the
  * reason the picker prints.
+ *
+ * A booking FOR A LISTING also carries the listing's compiled preset (Decision #217 (d)) when its
+ * blueprint resolves one — the same `scheduling.fn_preset_for_blueprint` the gate asks. Occurrences
+ * carry no anon grant, so those spans are read through the service client; what they disclose is the
+ * shape of the published schedule's open time, as the bands are.
  */
 
 // #region Owner
@@ -66,7 +73,62 @@ function spanOf(row: SpanRow): Span {
 }
 // #endregion
 
+// #region Compiled preset
+interface PresetWindowRow {
+	compiled_from: string | null;
+	compiled_through: string | null;
+}
+
+/**
+ * The compiled occurrences of the preset a blueprint books against, of one kind, over `window`.
+ * `null` when the blueprint resolves no preset or it is not compiled — the weekly bands decide, as in
+ * the gate. Throws when the database could not answer.
+ */
+export async function readCompiledAvailability(
+	blueprintId: string,
+	kind: BandKind,
+	window: { from: number; to: number },
+	db: SupabaseClient = getServiceClient(),
+): Promise<CompiledAvailability | null> {
+	const resolved = await db.schema("scheduling").rpc("fn_preset_for_blueprint", {
+		p_blueprint: blueprintId,
+	});
+	if (resolved.error) throw new Error(`fn_preset_for_blueprint failed: ${resolved.error.message}`);
+	const presetId = resolved.data as string | null;
+	if (!presetId) return null;
+
+	const preset = await db.schema("scheduling").from("availability_presets")
+		.select("compiled_from, compiled_through")
+		.eq("id", presetId)
+		.maybeSingle();
+	if (preset.error) throw new Error(`availability_presets read failed: ${preset.error.message}`);
+	const row = preset.data as PresetWindowRow | null;
+	if (!row?.compiled_from || !row.compiled_through) return null;
+
+	const spans = await db.schema("scheduling").from("availability_occurrences")
+		.select("starts_at, ends_at")
+		.eq("preset_id", presetId)
+		.eq("kind", kind)
+		.lt("starts_at", new Date(window.to).toISOString())
+		.gt("ends_at", new Date(window.from).toISOString());
+	if (spans.error) throw new Error(`availability_occurrences read failed: ${spans.error.message}`);
+	return {
+		from: row.compiled_from as IsoDate,
+		through: row.compiled_through as IsoDate,
+		spans: ((spans.data ?? []) as SpanRow[]).map(spanOf),
+	};
+}
+// #endregion
+
 // #region The read
+/** Where {@link readGridSource} reads from. */
+export interface GridSourceOptions {
+	/** The listing's blueprint, for a booking the gate judges against its preset. */
+	blueprintId?: string | null;
+	client?: SupabaseClient;
+	compiledClient?: SupabaseClient;
+}
+
 /**
  * The grid source for an owner's schedule, over the window `[from, to)` (epoch ms). The caller sizes
  * the window to the rail it is about to draw; free/busy is clamped to 120 days by the database.
@@ -75,8 +137,9 @@ export async function readGridSource(
 	owner: ScheduleOwner,
 	kind: BandKind,
 	window: { from: number; to: number },
-	client: SupabaseClient = getAnonClient(),
+	options: GridSourceOptions = {},
 ): Promise<GridSource | undefined> {
+	const client = options.client ?? getAnonClient();
 	try {
 		const schedule = await client.schema("scheduling").from("schedules")
 			.select("id, timezone, is_published")
@@ -121,9 +184,13 @@ export async function readGridSource(
 				bufferAfterMinutes: g.buffer_after_minutes,
 			}
 			: DEFAULT_GRID_RULES;
+		const compiled = options.blueprintId
+			? await readCompiledAvailability(options.blueprintId, kind, window, options.compiledClient)
+			: null;
 
 		return {
 			timezone: row.timezone,
+			compiled,
 			bands: ((bands.data ?? []) as BandRow[]).map((b): GridBand => ({
 				weekday: b.weekday,
 				startMinute: b.start_minute,

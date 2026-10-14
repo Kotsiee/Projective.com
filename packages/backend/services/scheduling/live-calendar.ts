@@ -1572,3 +1572,30 @@ export async function readCalendarEvent(
 	};
 }
 // #endregion
+
+// #region Open negotiations
+const OPEN_ROUND: ReadonlySet<string> = new Set(["collecting", "awaiting_counterparty", "voting"]);
+
+/**
+ * The events among `eventIds` whose latest reschedule round still asks something of somebody, as
+ * the reader may read them and settled exactly as the calendar settles them (a vote that has carried
+ * is recorded first, so it never reads as open). Ids that are not events, or not the reader's to see,
+ * are simply absent.
+ */
+export async function readOpenReschedules(
+	actor: ReadActor & { accessToken: string },
+	eventIds: readonly string[],
+	now: number,
+): Promise<CalendarEvent[]> {
+	const ids = [...new Set(eventIds.filter((id) => UUID_RE.test(id)))];
+	if (ids.length === 0) return [];
+	const rows = await readEventsByIds(actor, ids);
+	if (rows.length === 0) return [];
+	const tz = await readerZone(actor, await readOwnSchedule(actor));
+	let assembled = await assemble(actor, rows, tz, now);
+	if (assembled.raced) {
+		assembled = await assemble(actor, await readEventsByIds(actor, ids), tz, now);
+	}
+	return assembled.events.filter((e) => !!e.reschedule && OPEN_ROUND.has(e.reschedule.status));
+}
+// #endregion

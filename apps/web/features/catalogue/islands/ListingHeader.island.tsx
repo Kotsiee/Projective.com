@@ -1,68 +1,189 @@
 import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
-import "../styles/catalogue.css";
+import { useSignal, useSignalEffect } from "@preact/signals";
+import "../styles/workspace.css";
 import { Icon } from "@projective/ui/icons";
-import { statusMeta } from "../core/catalogue-model.ts";
-import { editorSaveState, editorStatus, editorTitle } from "../core/catalogue-state.ts";
-import type { ListingStatus } from "../types/catalogue-types.ts";
+import { Button } from "@projective/ui/fields";
+import { Tag } from "@projective/ui/display";
+import { TabMenu, useMediaQuery } from "@projective/ui/navigation";
+import {
+	consoleHref,
+	type ListingStatus,
+	type WorkspaceUrlState,
+} from "../types/catalogue-types.ts";
+import { type StatusMeta, statusMeta } from "../core/catalogue-model.ts";
+import { WorkspaceService } from "../core/WorkspaceService.ts";
+import {
+	conflictPrompt,
+	draft,
+	retry,
+	savedAt,
+	saveState,
+	setWorkspaceUrl,
+	startWorkspaceSync,
+	workspaceReady,
+	workspaceUrl,
+} from "../core/workspace-store.ts";
+import {
+	INSPECTOR_ID,
+	saveLabel,
+	type SaveState,
+	TAB_LABELS,
+	WORKSPACE_PANEL_ID,
+	WORKSPACE_TABS,
+	WORKSPACE_TABS_ID,
+	workspacePanelOf,
+} from "../core/workspace-model.ts";
+import {
+	CONTEXT_PANEL_INFLOW_QUERY,
+	contextDrawerOpen,
+	contextPanelDocked,
+	toggleContextPanel,
+} from "@web/features/shell/core/context-panel-state.ts";
 
-/**
- * ListingHeader — the manage page's middle-nav HEADER band: back · live title · status chip · autosave
- * state. All four were previously in `.cat-editor__bar`, a `position: static` strip at the top of a
- * 1264px scrolling body — so on a form of any length the seller lost their status, their save
- * indicator and their way back at the same moment. An autosave signal that scrolls out of view is not
- * a signal, which is the whole reason this band exists.
- *
- * Dumb: it renders the signals the editor body publishes. The SSR props seed the first paint so the
- * band is correct before hydration.
- */
-
+/** Props for {@link ListingHeader}. */
 export interface ListingHeaderProps {
-	/** The listing's SSR title + status, so the band paints correctly in the first byte. */
+	/** The listing's slug (its address). */
+	slug: string;
+	/** The SSR title and status, so the band paints correctly in the first byte. */
 	title: string;
 	status: ListingStatus;
+	/** The workspace URL state the server resolved. */
+	url: WorkspaceUrlState;
 }
 
-const SAVE_COPY: Record<"saved" | "saving" | "unsaved", string> = {
-	saved: "All changes saved",
-	saving: "Saving…",
-	unsaved: "Unsaved changes",
+/** What a screen reader hears when the save state changes; typing itself is not announced. */
+const ANNOUNCE: Readonly<Record<SaveState, string>> = {
+	saved: "Saved",
+	dirty: "",
+	saving: "Saving",
+	error: "Couldn't save",
+	conflict: "This listing changed somewhere else",
 };
 
+const TICK_MS = 5_000;
+
+const TONE_SEVERITY: Readonly<Record<StatusMeta["tone"], "success" | "secondary" | "warning">> = {
+	success: "success",
+	neutral: "secondary",
+	warning: "warning",
+	muted: "secondary",
+};
+
+/**
+ * ListingHeader — the workspace's middle-nav HEADER band: the way back to the console, the
+ * listing's live title, its lifecycle status (a permitted status container), the save state as meta
+ * text ("Saved · 2s ago", "Saving…", "Couldn't save" with Retry), the Edit · Preview · Analytics ·
+ * Clients tab strip (Clients carries the count of buyers waiting on the seller), and the Card
+ * button that shows the live card and readiness panel (a drawer below 1280px).
+ *
+ * The tabs are a WAI-ARIA tablist whose one panel is the canvas in another hydration root;
+ * switching pushes a history entry, so Back returns to the previous tab.
+ */
 export default function ListingHeader(props: ListingHeaderProps): JSX.Element {
+	const now = useSignal(Date.now());
+	const waiting = useSignal(0);
+	const tabIndex = useSignal(Math.max(0, WORKSPACE_TABS.indexOf(props.url.tab)));
+	const docked = useMediaQuery(CONTEXT_PANEL_INFLOW_QUERY);
+
 	useEffect(() => {
-		editorTitle.value = props.title;
-		editorStatus.value = props.status;
+		startWorkspaceSync();
+		const tick = setInterval(() => (now.value = Date.now()), TICK_MS);
+		void WorkspaceService.clients(props.slug).then((res) => {
+			if (res.ok && res.data) waiting.value = res.data.counts.action_required;
+		});
+		return () => clearInterval(tick);
 	}, []);
 
-	// Fall back to the SSR props until the body island has published (one frame), so no flash of empty.
-	const title = editorTitle.value || props.title;
-	const status = editorStatus.value ?? props.status;
-	const meta = statusMeta(status);
-	const save = editorSaveState.value;
+	useSignalEffect(() => {
+		if (!workspaceReady.value) return;
+		const index = WORKSPACE_TABS.indexOf(workspaceUrl.value.tab);
+		if (index >= 0 && index !== tabIndex.peek()) tabIndex.value = index;
+	});
+
+	const ready = workspaceReady.value;
+	const live = ready ? draft.value : null;
+	const title = live?.title ?? props.title;
+	const meta = statusMeta(live?.status ?? props.status);
+	const url = ready ? workspaceUrl.value : props.url;
+	const state = ready ? saveState.value : "saved";
+	const label = saveLabel(state, savedAt.value, now.value);
+	const inspector = workspacePanelOf(url) === "inspector";
+	const panelOpen = docked ? contextPanelDocked.value : contextDrawerOpen.value;
+
+	const model = WORKSPACE_TABS.map((tab) => ({
+		key: tab,
+		label: TAB_LABELS[tab],
+		badge: tab === "clients" && waiting.value > 0 ? waiting.value : undefined,
+	}));
 
 	return (
-		<div class="cat-lhdr">
-			<a class="cat-lhdr__back" href="/catalogue">
+		<header class="cat-ws-head">
+			<a class="cat-ws-head__back" href={consoleHref({})}>
 				<Icon name="chevron-left" />
-				<span>Catalogue</span>
+				<span class="cat-ws-head__back-label">Catalogue</span>
 			</a>
 
-			<h1 class="cat-lhdr__title" title={title}>{title || "Untitled listing"}</h1>
+			<div class="cat-ws-head__id">
+				<h1 class="cat-ws-head__title" title={title}>{title || "Untitled listing"}</h1>
+				<p class="cat-ws-head__meta">
+					<Tag
+						class="cat-ws-head__status"
+						value={meta.label}
+						severity={TONE_SEVERITY[meta.tone]}
+						variant="subtle"
+					/>
+					<span class="cat-ws-head__save" data-state={state} aria-hidden="true">
+						{label.text}
+					</span>
+					{label.retry && (
+						<button
+							type="button"
+							class="cat-ws-head__link"
+							onClick={() => void retry()}
+						>
+							Retry
+						</button>
+					)}
+					{state === "conflict" && (
+						<button
+							type="button"
+							class="cat-ws-head__link"
+							onClick={() => (conflictPrompt.value = true)}
+						>
+							Resolve
+						</button>
+					)}
+				</p>
+				<span class="ui-visually-hidden" role="status">{ANNOUNCE[state]}</span>
+			</div>
 
-			<span class="cat-chip" data-tone={meta.tone}>{meta.label}</span>
+			<TabMenu
+				id={WORKSPACE_TABS_ID}
+				class="cat-ws-head__tabs"
+				model={model}
+				activeIndex={tabIndex}
+				onActiveIndexChange={(i) => {
+					const tab = WORKSPACE_TABS[i];
+					if (tab) setWorkspaceUrl({ tab }, "push");
+				}}
+				panelId={WORKSPACE_PANEL_ID}
+				aria-label="Listing workspace"
+			/>
 
-			{
-				/*
-				 * The save state carries its meaning three ways, never colour alone: a word, a tone, and a
-				 * mark whose shape differs per state (a spinner ring while saving, a tick when settled, a
-				 * dot while dirty).
-				 */
-			}
-			<span class="cat-lhdr__save" data-state={save} role="status">
-				<span class="cat-lhdr__savemark" aria-hidden="true" data-state={save} />
-				{SAVE_COPY[save]}
-			</span>
-		</div>
+			{inspector && (
+				<Button
+					class="cat-ws-head__card"
+					size="sm"
+					severity="neutral"
+					variant="outlined"
+					label="Card"
+					icon={<Icon name="panel-right" />}
+					aria-expanded={panelOpen}
+					aria-controls={docked ? INSPECTOR_ID : undefined}
+					onClick={toggleContextPanel}
+				/>
+			)}
+		</header>
 	);
 }

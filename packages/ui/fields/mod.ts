@@ -105,6 +105,26 @@ export {
 	snapToStep,
 	stepDecimals,
 } from "./core/number-field.ts";
+export { MoneyInput, type MoneyInputProps } from "./islands/MoneyInput.tsx";
+export {
+	clampMinor,
+	type CurrencyAdornment,
+	currencyAdornment,
+	formatMoneyInput,
+	type NumberSeparators,
+	numberSeparators,
+	parseMoneyInput,
+} from "./core/money-input.ts";
+export { NumberStepper, type NumberStepperProps } from "./islands/NumberStepper.tsx";
+export { settleStepper, type StepperBounds, stepperKey } from "./core/number-stepper.ts";
+export { DurationPicker, type DurationPickerProps } from "./islands/DurationPicker.tsx";
+export {
+	DURATION_CUSTOM,
+	DURATION_CUSTOM_KEY,
+	DURATION_PRESETS,
+	durationLabel,
+	durationSegment,
+} from "./core/duration.ts";
 export { useHoldRepeat } from "./hooks/useHoldRepeat.ts";
 export type { HoldRepeat, HoldRepeatOptions } from "./hooks/useHoldRepeat.ts";
 export { useScrub } from "./hooks/useScrub.ts";
@@ -167,6 +187,17 @@ export {
 	type Suggestion,
 } from "./islands/AutoComplete.tsx";
 export { Chips, type ChipsProps } from "./islands/Chips.tsx";
+export { TagCombobox, type TagComboboxProps } from "./islands/TagCombobox.tsx";
+export {
+	hasTag,
+	initialTagCombo,
+	normaliseTag,
+	reduceTagCombo,
+	type TagComboAction,
+	type TagComboResult,
+	type TagComboState,
+	tagCount,
+} from "./core/tag-combobox.ts";
 export {
 	type TreeNode,
 	TreeSelect,

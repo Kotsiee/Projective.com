@@ -114,6 +114,59 @@ export const ReorderListingMediaSchema = z.object({
 		}),
 });
 export type ReorderListingMediaInput = z.infer<typeof ReorderListingMediaSchema>;
+
+/** One item a whole-showcase save keeps: which file, where, and how it is described. */
+export const ShowcaseKeepSchema = z.object({
+	position: ListingMediaPosition,
+	fileId: z.string().uuid(),
+	alt: z.string().max(200),
+});
+export type ShowcaseKeep = z.infer<typeof ShowcaseKeepSchema>;
+
+/**
+ * Save a listing's showcase as a whole (`POST /api/catalogue/media/save`): every item it keeps, by
+ * file, at its position and with its alt text. An item left out is emptied from the showcase (the
+ * file stays in the library). Nothing new is placed here; a new item is cut by
+ * {@link ApplyListingMediaSchema}.
+ */
+export const SaveListingShowcaseSchema = z.object({
+	listingId: z.string().min(1).max(120),
+	slots: z.array(ShowcaseKeepSchema).max(SHOWCASE_SLOTS).superRefine((slots, ctx) => {
+		uniquePositions(slots.map((s) => s.position), ctx);
+		const files = new Set<string>();
+		slots.forEach((slot, index) => {
+			if (files.has(slot.fileId)) {
+				ctx.addIssue({
+					code: "custom",
+					message: "A file can fill only one slot.",
+					path: [index, "fileId"],
+				});
+			}
+			files.add(slot.fileId);
+		});
+	}),
+});
+export type SaveListingShowcaseInput = z.infer<typeof SaveListingShowcaseSchema>;
+// #endregion
+
+// #region Emptying a slot
+/**
+ * The showcase with one position emptied. Emptying the cover promotes the first remaining still into
+ * slot 1 and leaves its old position empty, so a listing keeps a cover while it still has a picture.
+ * A showcase left with only videos has no cover, and the publish gate says so.
+ */
+export function withoutSlot<T extends Pick<ListingMediaSlot, "position" | "kind">>(
+	slots: readonly T[],
+	position: number,
+): T[] {
+	const rest = slots.filter((s) => s.position !== position);
+	if (position !== 1) return rest;
+	const promoted =
+		rest.filter((s) => s.kind === "image").sort((a, b) => a.position - b.position)[0];
+	if (!promoted) return rest;
+	return rest.map((s) => (s === promoted ? { ...s, position: 1 } : s))
+		.sort((a, b) => a.position - b.position);
+}
 // #endregion
 
 // #region Reorder

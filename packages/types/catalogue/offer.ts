@@ -6,6 +6,7 @@ import {
 } from "../explore/stored.ts";
 import { MeetingProvider } from "../scheduling/meeting.ts";
 import { AvailabilityBindingMode } from "../scheduling/presets.ts";
+import type { AvailabilityPreset } from "../scheduling/recurrence.ts";
 
 /**
  * catalogue.offer — what a listing actually sells, per form archetype (plan §7.1).
@@ -197,4 +198,13 @@ export const ListingAvailabilityBindingSchema = z.object({
 	path: ["presetId"],
 });
 export type ListingAvailabilityBinding = z.infer<typeof ListingAvailabilityBindingSchema>;
+
+/**
+ * What `POST /api/catalogue/availability` answers: the listing's binding as now stored, and the
+ * preset it resolves to (`null` when the schedule has no default yet).
+ */
+export interface BindListingAvailabilityResult {
+	binding: ListingAvailabilityBinding | null;
+	preset: AvailabilityPreset | null;
+}
 // #endregion

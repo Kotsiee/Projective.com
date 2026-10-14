@@ -168,10 +168,14 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		label: "Seller catalogue",
 		gate: "CATALOGUE_BACKEND_LIVE",
 		liveImplemented: true,
-		modules: ["services/catalogue/catalogue-fixtures.ts"],
+		modules: [
+			"services/catalogue/catalogue-fixtures.ts",
+			"services/catalogue/analytics-fixtures.ts",
+			"services/catalogue/clients-fixtures.ts",
+		],
 		schemas: ["catalogue", "marketplace"],
 		description:
-			"LIVE. The seller's own listings read under the catalogue policies (live-catalogue); sales from catalogue.get_listing_sales; writes through catalogue.create_listing / save_listing / apply_listing_media / set_listing_status / set_listings_status / duplicate_listing, which keep each listing and its product or service blueprint in step. There is no fixture branch: catalogue-fixtures.ts holds stored rows for the tests that hold the console and discovery to one card mapping.",
+			"LIVE. The seller's own listings read under the catalogue policies (live-catalogue); sales from catalogue.get_listing_sales; writes through catalogue.create_listing / save_listing / apply_listing_media / set_listing_status / set_listings_status / duplicate_listing, which keep each listing and its product or service blueprint in step. The listing reads and writes have no fixture branch: catalogue-fixtures.ts holds stored rows for the tests that hold the console and discovery to one card mapping. The Analytics and Clients reads (CatalogueAnalyticsBackendService / CatalogueClientsBackendService) read analytics.daily_rollups and catalogue.get_client_pipeline live, and with the gate off answer deterministic fixtures per catalogueAnalytics / clientPipeline dev-axis state (analytics-fixtures.ts, clients-fixtures.ts).",
 	},
 	newsletter: {
 		domain: "newsletter",

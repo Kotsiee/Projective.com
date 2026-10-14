@@ -80,3 +80,12 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
         'SELECT analytics.fn_rollup_listings(current_date - 1);', NULL, NULL,
         'Writes yesterday''s (UTC) listing analytics into analytics.daily_rollups: impressions, clicks, views, checkout starts, orders, gross per currency, bookings, the booking heatmap, keywords from 5+ sessions and cancellations (Decision #217).')
 ON CONFLICT (name) DO NOTHING;
+
+-- Availability presets (Decision #217 (d)). The TypeScript evaluator is the only thing that knows what
+-- a rule means, so the nightly extension of each preset's 120-day occurrence horizon runs in the app:
+-- an http job on its own secret. A preset that misses a night is still compiled 90 days ahead.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('scheduling-availability-horizon', 'http', '5 3 * * *',
+        NULL, '/api/scheduling/cron/horizon?limit=200', 'SCHEDULING_CRON_SECRET',
+        'Recompiles every live availability preset not compiled, or compiled through an earlier date than today + 90 days, over today to today + 120 days (ScheduleBackendService.extendHorizons).')
+ON CONFLICT (name) DO NOTHING;

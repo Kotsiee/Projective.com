@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ImagePlaceholderSchema } from "../files/metadata.ts";
+import { EventRescheduleSchema } from "../scheduling/coordination.ts";
 import { ClientKey } from "./url.ts";
 
 /**
@@ -130,6 +131,31 @@ export function clientLaneOf(engagements: readonly ClientEngagement[]): ClientLa
 	const lanes = new Set(engagements.map(laneOf));
 	return LANE_URGENCY.find((lane) => lanes.has(lane)) ?? "closed";
 }
+
+/** The lanes in board order, most urgent first. */
+export const LANE_ORDER: readonly ClientLane[] = LANE_URGENCY;
+
+/** Action reasons, most severe first: money at stake, then work, then time, then words. */
+export const ACTION_SEVERITY: readonly ActionReason[] = [
+	"dispute_open",
+	"revision_requested",
+	"reschedule_open",
+	"handshake_pending",
+	"submission_pending",
+	"inquiry_unanswered",
+];
+
+/**
+ * The rank of the most severe reason among engagements (0 = `dispute_open`), or
+ * `ACTION_SEVERITY.length` when none waits on the seller.
+ */
+export function severityRank(engagements: readonly ClientEngagement[]): number {
+	let rank = ACTION_SEVERITY.length;
+	for (const e of engagements) {
+		for (const reason of e.actionReasons) rank = Math.min(rank, ACTION_SEVERITY.indexOf(reason));
+	}
+	return rank;
+}
 // #endregion
 
 // #region Read models
@@ -161,4 +187,26 @@ export const ClientPipelineSchema = z.object({
 	hasMore: z.boolean(),
 });
 export type ClientPipeline = z.infer<typeof ClientPipelineSchema>;
+
+/** A calendar event of the buyer's being renegotiated, with its open round and proposals. */
+export const ClientRescheduleSchema = z.object({
+	eventId: z.string().uuid(),
+	title: z.string().max(200),
+	/** The event's current start, epoch ms (UTC). */
+	start: z.number().int(),
+	href: z.string().max(600),
+	reschedule: EventRescheduleSchema,
+});
+export type ClientReschedule = z.infer<typeof ClientRescheduleSchema>;
+
+/** The client drawer: one buyer, their engagements in scope, the inline thread and open rounds. */
+export const ClientDetailSchema = ClientSummarySchema.extend({
+	/**
+	 * The seller's one DM thread with the buyer (unified messaging keeps one per pair), `null` until
+	 * either of them writes; the drawer then opens `/messages/dm-<handle>`, which mints it.
+	 */
+	threadId: z.string().uuid().nullable(),
+	reschedules: z.array(ClientRescheduleSchema).max(20),
+});
+export type ClientDetail = z.infer<typeof ClientDetailSchema>;
 // #endregion

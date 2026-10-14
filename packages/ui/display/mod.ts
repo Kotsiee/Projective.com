@@ -5,7 +5,8 @@
  * (Table, TreeTable, Tree, DataView, VirtualScroller, Scroller) that virtualize rows via
  * `@projective/ui/hooks/useVirtualScroll` and scroll within their own container OR the window;
  * hierarchical + temporal views (OrgChart, Timeline); media (Image, Galleria, Carousel, GMap,
- * AudioVisualizer, VideoPlayer, ProgressiveImage); and
+ * AudioVisualizer, VideoPlayer, ProgressiveImage, ShowcaseGrid); charts (AreaChart, FunnelChart,
+ * HeatmapGrid, Sparkline, StatTile — SVG escalating to Canvas2D by density); and
  * content atoms (Card, Badge, Tag, Avatar, AvatarGroup, Chip, List, ListItem, Accordion).
  *
  * Styling contract: Pure CSS + strict BEM, token-only. Interactive pieces are islands; atoms are
@@ -99,6 +100,71 @@ export {
 	seekValueText,
 } from "./core/video.ts";
 export type { ControlsVisibilityInput } from "./core/video.ts";
+export { ShowcaseGrid } from "./islands/ShowcaseGrid.tsx";
+export type { ShowcaseGridProps } from "./islands/ShowcaseGrid.tsx";
+export {
+	addPositions,
+	emptyPositions,
+	filledPositions,
+	legalMove,
+	moveSlots,
+	nextMoveTarget,
+	refusalMessage,
+	reorderedPositions,
+	SHOWCASE_GRID_SLOTS,
+} from "./core/showcase.ts";
+export type {
+	ShowcaseGridSlot,
+	ShowcaseMoveRefusal,
+	ShowcaseMoveVerdict,
+	ShowcasePlaceholder,
+} from "./core/showcase.ts";
+// #endregion
+
+// #region Charts (SVG → Canvas2D by density, #217(m) / §C.5)
+export { AreaChart } from "./charts/AreaChart.tsx";
+export type { AreaChartProps, AreaChartSeries } from "./charts/AreaChart.tsx";
+export { FunnelChart } from "./charts/FunnelChart.tsx";
+export type { FunnelChartProps } from "./charts/FunnelChart.tsx";
+export { HeatmapGrid } from "./charts/HeatmapGrid.tsx";
+export type { HeatmapGridProps } from "./charts/HeatmapGrid.tsx";
+export { Sparkline } from "./charts/Sparkline.tsx";
+export type { SparklineProps } from "./charts/Sparkline.tsx";
+export { StatTile, StatTileRow } from "./charts/StatTile.tsx";
+export type { StatTileProps, StatTileRowProps } from "./charts/StatTile.tsx";
+export {
+	areaGeometry,
+	CHART_VIEW,
+	chartTier,
+	compactCount,
+	compactMoney,
+	DEFAULT_TIER_POLICY,
+	deltaDirection,
+	funnelGeometry,
+	HEAT_STEPS,
+	heatSteps,
+	nearestIndex,
+	percentLabel,
+	SPARK_VIEW,
+	sparkGeometry,
+	stepCell,
+	stepIndex,
+	timeAxis,
+} from "./charts/geometry.ts";
+export type {
+	AreaGeometry,
+	AreaSeriesGeometry,
+	AreaSeriesInput,
+	AxisTick,
+	ChartTier,
+	ChartTierPolicy,
+	DeltaDirection,
+	FunnelStep,
+	FunnelStepInput,
+	PlacedItem,
+	SparkGeometry,
+	TimeAxis,
+} from "./charts/geometry.ts";
 // #endregion
 
 // #region Content atoms
