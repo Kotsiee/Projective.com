@@ -8,6 +8,8 @@
 >
 > **C0 is a gate.** It logs Decision #217 and stops for your rulings on flags **a–m**. Any later
 > prompt whose flag you ruled differently must follow your ruling, not the text written here.
+> **Ruled 2026-10-14:** #217 is RESOLVED, and every flag was accepted except **m**, where charts
+> escalate SVG → Canvas2D by density. C9 has been updated to match.
 
 ---
 
@@ -629,8 +631,10 @@ order; `client()` refuses a handle with no engagement in scope (404); route cont
 3. **Charts** in `packages/ui/display/charts/`: `geometry.ts` (moved from the wallet and
    generalised), `AreaChart.tsx`, `FunnelChart.tsx`, `HeatmapGrid.tsx`, `Sparkline.tsx` and
    `StatTile.tsx`, with CSS `charts.css` (block `ui-chart`) and a `ui-stat` block.
-   - Use `d3-scale` / `d3-shape` only (they are already in `deno.json`). Use SVG; colours via
-     `currentColor` and CSS custom properties.
+   - Use `d3-scale` / `d3-shape` only (they are already in `deno.json`) and no chart library. Render
+     SVG at low density, with colours via `currentColor` and CSS custom properties. Switch to native
+     Canvas2D when the entity count or measured frame budget calls for it (#217(m), §C.5). Canvas
+     colours resolve through the `theme-bridge`, so a theme change recolours the chart.
    - Every chart: a `<figure role="group">` with a `<figcaption>`, a visually hidden data `<table>`,
      and a keyboard-focusable plot. ←/→ move the focused point and announce it through
      `aria-live`. Reduced motion means no tweening.
@@ -648,7 +652,7 @@ order; `client()` refuses a handle with no engagement in scope (404); route cont
      suggestions from an injected `suggest(q): Promise<string[]>`, `max`, and an inline count
      "7 of 10" as `--text-secondary` meta, not a chip).
 5. **Roster:** add rows for every component above to `DESIGN_SYSTEM.md` §C.1, and update §C.5 to say
-   the SVG tier has shipped.
+   the SVG and Canvas2D tiers have shipped.
 
 **Tests:** pure tests for the geometry and scale helpers; `ShowcaseGrid` reorder-legality tests
 (pure `legalMove(slots, from, to)`); `MoneyInput` parse and format round-trip over locales en-GB,

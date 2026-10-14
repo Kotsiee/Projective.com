@@ -12,7 +12,7 @@ the three subject tables and INSERT/UPDATE/DELETE on the child tables to `authen
 | `listings`             | `status = 'published'` to `anon` + `authenticated`; the owner (or an active member of the owning team) sees their own drafts, paused and archived rows. | INSERT / UPDATE by the owner, in their own name (`owner_user_id = auth.uid()` in every `WITH CHECK`), and a team-owned row only as an active team member. **No DELETE** — archive by status. |
 | `products`             | Public when a PUBLISHED listing offers it (an `EXISTS` on `listings`); owners see their own.     | Same as listings.                                                                              |
 | `articles`             | `status = 'published'`; authors see their own.                                                   | Same as listings.                                                                              |
-| `listing_media`, `listing_skills`, `listing_tags`, `listing_availability` | Visible exactly when their listing is — an `EXISTS` on `listings`, whose own policy applies inside the subquery. | The listing's owner manages them (`FOR ALL` with a matching `WITH CHECK`). |
+| `listing_media`, `listing_skills`, `listing_tags` | Visible exactly when their listing is — an `EXISTS` on `listings`, whose own policy applies inside the subquery. | The listing's owner manages them (`FOR ALL` with a matching `WITH CHECK`). |
 | `collections`, `collection_listings` | Owner only — there is no status saying a collection is public.                   | Owner only.                                                                                    |
 
 Team membership reuses `org.is_active_team_member`, the helper every other team-scoped policy keys
@@ -21,13 +21,16 @@ on.
 ## The console writes through functions that run under these policies
 
 The seller console does not write these tables row by row: `catalogue.create_listing`,
-`save_listing` and `set_listing_status` ([Functions.md](Functions.md)) change a listing and its
-product or service blueprint in one transaction. They are `SECURITY INVOKER`, so the policies above
-remain the gate — the functions add the rules a row-level policy cannot express (a service needs a
-freelancer profile; a listing publishes only with a title, a price and an image) and check each
-subject UPDATE's row count, because an UPDATE RLS refuses matches nothing rather than raising. The
-one definer, `get_listing_sales`, reads the buyers' order lines for the caller's own listings only.
-All four are `EXECUTE`-granted to `authenticated` and `service_role`, never `anon`.
+`save_listing`, `set_listing_status` / `set_listings_status`, `apply_listing_media` and
+`duplicate_listing` ([Functions.md](Functions.md)) change a listing and its product or service
+blueprint in one transaction. They are `SECURITY INVOKER`, so the policies above remain the gate —
+the functions add the rules a row-level policy cannot express (a service needs a freelancer profile;
+a listing publishes only with a title, a price and a slot-1 image; a showcase file must be the
+seller's) and check each subject UPDATE's row count, because an UPDATE RLS refuses matches nothing
+rather than raising. The one definer, `get_listing_sales`, reads the buyers' order lines for the
+caller's own listings only. All are `EXECUTE`-granted to `authenticated` and `service_role`, never
+`anon`. The tag cap (`trg_listing_tags_max`) is a definer trigger, so a direct INSERT under the
+owner policy is held to it too.
 
 ## Derived columns are not the owner's to write
 

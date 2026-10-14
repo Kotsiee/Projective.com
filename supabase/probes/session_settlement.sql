@@ -49,6 +49,16 @@ BEGIN
     UPDATE marketplace.service_blueprints SET session_price_cents = 16000, session_minutes = 45, session_count = 6,
            currency = 'USD'
      WHERE id = v_block;
+    -- The first sitting must fall inside the provider's hours (Decision #217 (d)). The times below are
+    -- arbitrary, so each listing's preset is compiled as open around the clock for the probe's window.
+    UPDATE scheduling.availability_presets
+       SET compiled_from = CURRENT_DATE - 2, compiled_through = CURRENT_DATE + 400
+     WHERE id IN (scheduling.fn_preset_for_blueprint(v_one), scheduling.fn_preset_for_blueprint(v_block));
+    INSERT INTO scheduling.availability_occurrences (preset_id, kind, starts_at, ends_at)
+    SELECT DISTINCT pid, 'working_hours'::scheduling.availability_kind, now() - interval '2 days', now() + interval '400 days'
+      FROM unnest(ARRAY[scheduling.fn_preset_for_blueprint(v_one), scheduling.fn_preset_for_blueprint(v_block)]) AS pid
+     WHERE pid IS NOT NULL
+    ON CONFLICT DO NOTHING;
 
     SELECT w.owner_id, w.owner_type, w.balance_cents INTO v_buyer, v_wtype, v_bal
       FROM finance.wallets w

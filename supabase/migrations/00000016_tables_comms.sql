@@ -140,11 +140,18 @@ CREATE TABLE comms.dm_threads (
     -- comms.set_group_photo (no client UPDATE policy). NULL for a DM — its picture is the
     -- counterparty's own, which a copy here would let go stale — and for a group that has none.
     photo_file_id uuid REFERENCES files.items (id) ON DELETE SET NULL,
+    -- The listing a service inquiry was opened from (Decision #217(g)), so a seller can answer "new
+    -- inquiries for this item". Only a `service_inquiry` carries one. Its FK is in 00000033, because
+    -- `catalogue.listings` is created after this file.
+    subject_listing_id uuid,
     created_by_user_id uuid NOT NULL,
     created_at timestamp
     with
         time zone NOT NULL DEFAULT now(),
         CONSTRAINT dm_threads_pkey PRIMARY KEY (id),
+        CONSTRAINT ck_dm_threads_subject_inquiry CHECK (
+            subject_listing_id IS NULL OR kind = 'service_inquiry'
+        ),
         CONSTRAINT dm_threads_created_by_user_id_fkey FOREIGN KEY (created_by_user_id) REFERENCES org.users_public (user_id)
 );
 

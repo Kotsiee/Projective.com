@@ -55,7 +55,7 @@ export async function embeddingTargets(
 	for (const item of items) {
 		const entity = catalog.entityById.get(item.id);
 		if (!entity) continue;
-		const text = embeddingTextOf(item);
+		const text = embeddingTextOf(item, catalog.listingTermsById.get(item.id));
 		targets.push({
 			itemId: item.id,
 			entity,

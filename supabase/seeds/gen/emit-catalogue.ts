@@ -62,9 +62,11 @@ const DELIVERY_MODEL_PRICING: Record<string, string> = {
 };
 
 /**
- * The gallery a listing opens with: its own cover first, then other pictures by the SAME owner — the
+ * The showcase a listing opens with: its own cover first, then other pictures by the SAME owner — the
  * owner's banner and the covers of their other listings. Never someone else's work: a gallery that
  * borrowed another seller's image would be showing a buyer something this seller did not make.
+ * Every frame is a seeded `files.items` image, and there are never more than the six showcase slots
+ * `catalogue.listing_media` allows (Decision #217(e)).
  */
 function galleryOf(world: World, handle: string, cover: Asset | undefined): Asset[] {
 	const owner = ownerOf(world, handle);
@@ -323,14 +325,14 @@ export function emitCatalogue(world: World): string {
 	const tagRows: string[][] = [];
 
 	const addGallery = (listingId: string, handle: string, cover: Asset | undefined, title: string) => {
-		galleryOf(world, handle, cover).forEach((asset, position) => {
+		galleryOf(world, handle, cover).forEach((asset, index) => {
 			mediaRows.push([
 				id(uuidFor("listing_media", `${listingId}:${asset.id}`)),
 				id(listingId),
 				id(asset.id),
-				"NULL",
-				q(position === 0 ? title : `${title} — view ${position + 1}`),
-				String(position),
+				"'image'",
+				q(index === 0 ? title : `${title} — view ${index + 1}`),
+				String(index + 1),
 			]);
 		});
 	};
@@ -445,7 +447,7 @@ export function emitCatalogue(world: World): string {
 	out.push(
 		insert(
 			"catalogue.listing_media",
-			["id", "listing_id", "file_id", "url", "alt_text", "position"],
+			["id", "listing_id", "file_id", "kind", "alt_text", "position"],
 			mediaRows,
 			"(id)",
 		),

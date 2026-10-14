@@ -11,6 +11,7 @@ export function toCatalogueResponse<T>(result: ServiceResult<T>): Response {
 		ok: result.ok,
 		message: result.message,
 		errors: result.errors,
+		details: result.details,
 		data: result.data,
 	};
 	return Response.json(body, { status: result.status });
@@ -28,4 +29,19 @@ export function toFieldErrors(
 		if (!errors[key]) errors[key] = issue.message;
 	}
 	return errors;
+}
+
+/** The 401 a catalogue write answers a signed-out caller with, before its body is even read. */
+export function signedOut(): Response {
+	return Response.json({ ok: false, message: "Sign in to manage your catalogue." }, {
+		status: 401,
+	});
+}
+
+/** The 422 a catalogue write answers a body its schema refuses with, keyed by field path. */
+export function invalid(
+	error: Parameters<typeof toFieldErrors>[0],
+	message = "Check the highlighted fields.",
+): Response {
+	return Response.json({ ok: false, message, errors: toFieldErrors(error) }, { status: 422 });
 }

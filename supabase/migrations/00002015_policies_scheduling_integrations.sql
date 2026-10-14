@@ -53,6 +53,45 @@ WITH
         scheduling.fn_can_manage_schedule (schedule_id)
     );
 
+-- --- availability presets & recurrence (Decision #217) ---
+-- A preset is the owner's working draft of their availability, not a published fact: only the
+-- schedule's managers read or write a preset, its rules and its bands. Visitors see the RESULT through
+-- the booking grid. The rule and band policies reach the schedule through the definer helpers
+-- fn_preset_schedule / fn_rule_schedule (00001510 §10), so they do not depend on the caller being
+-- able to read the parent row. There is no DELETE grant on presets (00002520): they are archived.
+
+CREATE POLICY "Manage availability presets" ON scheduling.availability_presets FOR ALL TO authenticated USING (
+    scheduling.fn_can_manage_schedule (schedule_id)
+)
+WITH
+    CHECK (
+        scheduling.fn_can_manage_schedule (schedule_id)
+    );
+
+CREATE POLICY "Manage recurrence rules" ON scheduling.recurrence_rules FOR ALL TO authenticated USING (
+    scheduling.fn_can_manage_schedule (scheduling.fn_preset_schedule (preset_id))
+)
+WITH
+    CHECK (
+        scheduling.fn_can_manage_schedule (scheduling.fn_preset_schedule (preset_id))
+    );
+
+CREATE POLICY "Manage recurrence rule bands" ON scheduling.recurrence_rule_bands FOR ALL TO authenticated USING (
+    scheduling.fn_can_manage_schedule (scheduling.fn_rule_schedule (rule_id))
+)
+WITH
+    CHECK (
+        scheduling.fn_can_manage_schedule (scheduling.fn_rule_schedule (rule_id))
+    );
+
+-- Read-only to the schedule's own side. NO client write policy: the spans are written only by
+-- scheduling.replace_preset_occurrences, a service-role definer — a client able to write a span
+-- could open hours its owner never set to every buyer of the service.
+CREATE POLICY "View availability occurrences" ON scheduling.availability_occurrences FOR
+SELECT TO authenticated USING (
+        scheduling.fn_can_view_schedule (scheduling.fn_preset_schedule (preset_id))
+    );
+
 
 -- --- integrations: connectors ---
 -- The provider catalogue and the extension-point / scope catalogues are public reference data.

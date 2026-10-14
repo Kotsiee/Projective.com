@@ -139,7 +139,7 @@ WITH
 -- #endregion
 
 
--- #region Listing children — media, skills, tags, availability
+-- #region Listing children — media, skills, tags
 
 CREATE POLICY "Listing media follows its listing" ON catalogue.listing_media FOR
 SELECT TO anon, authenticated USING (
@@ -227,36 +227,6 @@ WITH
             FROM catalogue.listings l
             WHERE
                 l.id = listing_tags.listing_id
-                AND l.owner_user_id = auth.uid ()
-        )
-    );
-
-CREATE POLICY "Listing availability follows its listing" ON catalogue.listing_availability FOR
-SELECT TO anon, authenticated USING (
-        EXISTS (
-            SELECT 1
-            FROM catalogue.listings l
-            WHERE
-                l.id = listing_availability.listing_id
-        )
-    );
-
-CREATE POLICY "Owners manage their listing availability" ON catalogue.listing_availability FOR ALL TO authenticated USING (
-    EXISTS (
-        SELECT 1
-        FROM catalogue.listings l
-        WHERE
-            l.id = listing_availability.listing_id
-            AND l.owner_user_id = auth.uid ()
-    )
-)
-WITH
-    CHECK (
-        EXISTS (
-            SELECT 1
-            FROM catalogue.listings l
-            WHERE
-                l.id = listing_availability.listing_id
                 AND l.owner_user_id = auth.uid ()
         )
     );

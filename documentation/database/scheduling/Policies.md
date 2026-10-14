@@ -14,6 +14,9 @@ order to book them — so the model is **shape is public, content is not**.
 | **Event party**         | Seated on the event, or its creator (coordination also admits whoever manages its schedule)     | That event's row, its room (`get_event_rooms`), its roster, negotiation, log and attachments                                                                         |
 | **Call party**          | The two people on a `discovery_calls` row (+ admins)                                            | That call, its attendance log, its audit trail                                                                                                                        |
 
+Availability presets, their rules and bands are **managers only**, and compiled occurrences are
+read by the owner side (Decision #217, below). Neither is visitor-readable.
+
 A discovery call is **never** readable by `anon` — there is deliberately no visitor policy on
 `discovery_calls`, `call_attendance`, or `call_audit`. Since 2026-09-28 the same holds for
 `scheduling.events` and `blackout_dates` rows: a visitor's whole view of a schedule is two definer
@@ -250,6 +253,41 @@ Both triggers **skip enforcement when `auth.uid()` is NULL** — a service-role 
 sweep, backfill) owns the rules in its own layer. The triggers guard the _client_ path.
 
 See [Functions.md](Functions.md) for the gate itself.
+
+## 🧩 Availability presets & recurrence (`00002015`, Decision #217)
+
+A preset is the owner's **working draft** of their availability, not a published fact. Visitors see
+its result through the booking grid, never the rules. So none of the four tables has an `anon`
+policy, and only the schedule's **managers** read or write presets, rules and bands:
+
+```sql
+CREATE POLICY "Manage availability presets" ON scheduling.availability_presets FOR ALL TO authenticated
+USING (scheduling.fn_can_manage_schedule (schedule_id)) WITH CHECK (scheduling.fn_can_manage_schedule (schedule_id));
+
+CREATE POLICY "Manage recurrence rules" ON scheduling.recurrence_rules FOR ALL TO authenticated
+USING (scheduling.fn_can_manage_schedule (scheduling.fn_preset_schedule (preset_id))) WITH CHECK (…same…);
+
+CREATE POLICY "Manage recurrence rule bands" ON scheduling.recurrence_rule_bands FOR ALL TO authenticated
+USING (scheduling.fn_can_manage_schedule (scheduling.fn_rule_schedule (rule_id))) WITH CHECK (…same…);
+
+CREATE POLICY "View availability occurrences" ON scheduling.availability_occurrences FOR SELECT TO authenticated
+USING (scheduling.fn_can_view_schedule (scheduling.fn_preset_schedule (preset_id)));
+```
+
+- **`fn_preset_schedule` / `fn_rule_schedule`** are definer helpers ([Functions.md](Functions.md)
+  §10). Through them, a rule's or band's policy reaches the schedule without depending on the
+  caller being able to read the parent row.
+- **No client write policy on `availability_occurrences`.** The spans are written only by
+  `replace_preset_occurrences`, a service-role definer. A client able to write a span could open
+  hours its owner never set to every buyer of the service, because the booking gate trusts the spans.
+- **Column grants narrow the preset further (`00002520`).** `authenticated` may INSERT
+  `schedule_id, scope, blueprint_id, name, description, is_default` and UPDATE only `name`,
+  `description`, `is_default`. The compiled window is stamped by the occurrence door. Archiving goes
+  through `archive_availability_preset`, which unbinds the services first. There is **no DELETE**:
+  presets are archived. Rules and bands carry full DML, since `save_availability_preset` (an
+  invoker) replaces them wholesale.
+- **Minors.** RLS cannot read a date of birth, so the restriction is the definer trigger
+  `trg_preset_guard` (`PM403`), not a policy.
 
 ## ⚠️ Still open (2026-09-28)
 

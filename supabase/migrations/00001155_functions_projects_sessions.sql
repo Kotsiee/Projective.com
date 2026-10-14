@@ -554,6 +554,10 @@ $$;
 --     time. A round still open at its deadline lapses and the provisional time stands — exactly what
 --     `lapsed` already means (projects.fn_lapse_session_handshakes, which also reminds the provider
 --     once, 24 hours before the earliest deadline).
+-- The buyer must be an adult (Decision #208), and the first sitting must sit inside the provider's
+-- working hours — the listing's compiled availability preset when there is one, else the weekly bands
+-- (scheduling.fn_band_covers with the blueprint, Decision #217 (d)); the pencilled-in later sittings
+-- are agreed through their handshakes instead.
 -- The first sitting's time is re-tested against the provider's calendar under a lock on it, so two
 -- buyers paying for the same slot at once queue here and the second is refused (and charged nothing —
 -- the whole order rolls back) rather than both being seated.
@@ -611,6 +615,7 @@ BEGIN
         RAISE EXCEPTION 'The time you picked has passed — pick a new one; nothing was charged'
             USING ERRCODE = 'PC409';
     END IF;
+    PERFORM org.fn_assert_adult(p_buyer);
     SELECT * INTO v_bp FROM marketplace.service_blueprints WHERE id = p_blueprint_id;
     IF NOT FOUND OR NOT v_bp.is_published
        OR v_bp.delivery_model <> 'session'::marketplace.service_delivery_model THEN
@@ -627,6 +632,11 @@ BEGIN
     v_schedule := projects.fn_session_host_schedule(v_project.id);
     IF v_schedule IS NOT NULL THEN
         PERFORM 1 FROM scheduling.schedules WHERE id = v_schedule FOR UPDATE;
+        IF NOT scheduling.fn_band_covers(v_schedule, 'working_hours'::scheduling.availability_kind,
+               p_starts_at, p_starts_at + pg_catalog.make_interval(mins => v_minutes), p_blueprint_id) THEN
+            RAISE EXCEPTION 'That time is outside the provider''s hours — pick another; nothing was charged'
+                USING ERRCODE = 'PS409';
+        END IF;
         IF scheduling.fn_has_conflicting_event(v_schedule, p_starts_at, p_starts_at + pg_catalog.make_interval(mins => v_minutes))
            OR scheduling.fn_is_blacked_out(v_schedule, p_starts_at, p_starts_at + pg_catalog.make_interval(mins => v_minutes)) THEN
             RAISE EXCEPTION 'That time was just taken — pick another; nothing was charged' USING ERRCODE = 'PS409';
@@ -744,7 +754,8 @@ engagement, write the sittings (the first at the picked time, the rest provision
 escrow per sitting from the paying wallet, mirror each sitting onto the provider''s calendar, and for a
 block open a 1-on-1 reschedule round on each provisional sitting due set_session_schedule_hours after
 payment (Decision #211). Refusals roll the whole order back: 22023 · PU422 own session / payer · PF402 ·
-PC409 time passed or listing gone · PS409 the time was taken.';
+PC409 time passed or listing gone · PM403 the buyer is under 18 · PS409 the time was taken or is
+outside the provider''s working hours (the listing''s compiled preset, else the weekly bands).';
 -- #endregion
 
 -- #region 5. Cancel a seat — the late-cancel rule

@@ -1,3 +1,9 @@
+import { icsEscape, icsFold } from "../finance/order.ts";
+import { addDays, type DateRange, eachDate, type IsoDate, zonedSpan } from "./civil.ts";
+import { layerBandsFor, occursOn, type PresetLike, unionBands } from "./evaluate.ts";
+import { type Band, compileRecurrence } from "./recurrence.ts";
+import type { AvailabilityKind } from "./rows.ts";
+import { expandRRule, serialiseRRule } from "./rrule.ts";
 import type { CalendarEvent, CalendarEventKind } from "./scheduling.ts";
 
 /**
@@ -28,6 +34,9 @@ import type { CalendarEvent, CalendarEventKind } from "./scheduling.ts";
  * Malformed input is REFUSED rather than quietly yielding nothing: a file with no calendar in it, or
  * one whose every entry is unusable, throws {@link IcsParseError}. Silently importing zero events
  * looks identical to importing an empty calendar, and the reader cannot tell which happened.
+ *
+ * The module also holds one WRITER with no reader counterpart: {@link toVAvailability}, an
+ * availability preset exported as an RFC 7953 `VAVAILABILITY` (plan §5.3).
  */
 
 // #region Limits
@@ -606,5 +615,121 @@ export function icsEventsToCalendarEvents(
 		if (event.description) item.description = event.description.slice(0, 8000);
 		return item;
 	});
+}
+// #endregion
+
+// #region Availability export
+/** How {@link toVAvailability} renders a preset. */
+export interface VAvailabilityOptions {
+	/** The layer exported. Defaults to `working_hours`; `call_window` exports the bookable windows. */
+	layer?: AvailabilityKind;
+	/** `DTSTAMP`, ISO. Defaults to midnight UTC of `range.from`, so equal inputs give equal bytes. */
+	stampIso?: string;
+	/** The component `UID`. Defaults to `availability`. */
+	uid?: string;
+	/** The `SUMMARY`. Defaults to `Availability`. */
+	name?: string;
+}
+
+function icsUtc(ms: number): string {
+	return new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+}
+
+function icsLocal(date: IsoDate, minute: number): string {
+	const day = minute >= 1440 ? addDays(date, 1) : date;
+	const m = minute % 1440;
+	const hh = String(Math.floor(m / 60)).padStart(2, "0");
+	const mm = String(m % 60).padStart(2, "0");
+	return `${day.replaceAll("-", "")}T${hh}${mm}00`;
+}
+
+function sameBands(a: readonly Band[], b: readonly Band[]): boolean {
+	return a.length === b.length && a.every((x, i) => x.start === b[i].start && x.end === b[i].end);
+}
+
+/**
+ * One preset layer as an RFC 7953 `VAVAILABILITY` calendar (plan §5.3 export), bounded to `range`.
+ *
+ * Each `add` rule's band is one `AVAILABLE` carrying the rule's RRULE (`UNTIL` as the UTC instant of
+ * its last start, as RFC 5545 requires beside a zoned `DTSTART`). Every date inside `range` where
+ * `replace`, `subtract` or the call clip changes the naive union of those bands is then emitted
+ * EVALUATED: an `EXDATE` on each recurring instance of that date plus one plain `AVAILABLE` per
+ * final band, so a consumer that knows nothing of precedence still sees the evaluator's result.
+ * Times carry the preset's IANA `TZID`; no `VTIMEZONE` is embedded.
+ */
+export function toVAvailability(
+	preset: PresetLike,
+	range: DateRange,
+	options: VAvailabilityOptions = {},
+): string {
+	const layer = options.layer ?? "working_hours";
+	const tz = preset.timezone;
+	const stamp = icsUtc(
+		options.stampIso ? Date.parse(options.stampIso) : Date.parse(`${range.from}T00:00:00Z`),
+	);
+	const adds = preset.rules.filter((r) => r.active && r.layer === layer && r.effect === "add");
+
+	const changed = eachDate(range.from, range.to).filter((date) => {
+		const naive = unionBands(...adds.filter((r) => occursOn(r, date)).map((r) => r.bands));
+		return !sameBands(naive, layerBandsFor(preset, date, layer));
+	});
+
+	const lines = [
+		"BEGIN:VCALENDAR",
+		"VERSION:2.0",
+		"PRODID:-//Projective//Availability//EN",
+		"CALSCALE:GREGORIAN",
+		"BEGIN:VAVAILABILITY",
+		`UID:${icsEscape(options.uid ?? "availability")}`,
+		`DTSTAMP:${stamp}`,
+		`SUMMARY:${icsEscape(options.name ?? "Availability")}`,
+		`DTSTART;TZID=${tz}:${icsLocal(range.from, 0)}`,
+		`DTEND;TZID=${tz}:${icsLocal(range.to, 1440)}`,
+	];
+
+	for (const rule of adds) {
+		const compiled = compileRecurrence(rule);
+		if (!compiled.ok) continue;
+		const parts = compiled.value;
+		const [first] = expandRRule(parts, rule.startsOn, { from: rule.startsOn, to: range.to }, 1);
+		if (!first) continue;
+		const once = rule.pattern.type === "once";
+		const exdates = changed.filter((date) => occursOn(rule, date));
+		if (once && exdates.length) continue;
+		unionBands(rule.bands).forEach((band, i) => {
+			lines.push("BEGIN:AVAILABLE", `UID:${icsEscape(`${rule.id}-${i}`)}`, `DTSTAMP:${stamp}`);
+			lines.push(
+				`DTSTART;TZID=${tz}:${icsLocal(first, band.start)}`,
+				`DTEND;TZID=${tz}:${icsLocal(first, band.end)}`,
+			);
+			if (!once) {
+				const until = parts.until
+					? `;UNTIL=${icsUtc(zonedSpan(parts.until, band.start, band.start, tz).startsAt)}`
+					: "";
+				lines.push(`RRULE:${serialiseRRule({ ...parts, until: undefined })}${until}`);
+				if (exdates.length) {
+					lines.push(`EXDATE;TZID=${tz}:${exdates.map((d) => icsLocal(d, band.start)).join(",")}`);
+				}
+			}
+			if (rule.label) lines.push(`SUMMARY:${icsEscape(rule.label)}`);
+			lines.push("END:AVAILABLE");
+		});
+	}
+
+	for (const date of changed) {
+		layerBandsFor(preset, date, layer).forEach((band, i) => {
+			lines.push(
+				"BEGIN:AVAILABLE",
+				`UID:${date}-${i}-evaluated`,
+				`DTSTAMP:${stamp}`,
+				`DTSTART;TZID=${tz}:${icsLocal(date, band.start)}`,
+				`DTEND;TZID=${tz}:${icsLocal(date, band.end)}`,
+				"END:AVAILABLE",
+			);
+		});
+	}
+
+	lines.push("END:VAVAILABILITY", "END:VCALENDAR");
+	return lines.map(icsFold).join("\r\n") + "\r\n";
 }
 // #endregion

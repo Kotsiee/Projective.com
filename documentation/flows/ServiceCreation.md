@@ -1,5 +1,12 @@
 # Service Creation — the seller-side write contract
 
+> **Catalogue rebuild — in progress (2026-10-14).** `/catalogue` and `/catalogue/[id]` are being
+> torn down and rebuilt under Decision #217 (RESOLVED). The plan is in
+> [`CATALOGUE_REBUILD.md`](CATALOGUE_REBUILD.md) and the work orders are in
+> [`CATALOGUE_REBUILD_BUILD_PROMPTS.md`](CATALOGUE_REBUILD_BUILD_PROMPTS.md). The editor notes below
+> describe the catalogue before the rebuild. This document is brought up to date when the rebuild
+> lands (C17).
+
 What the **service-creation pages** (the catalogue console at `/catalogue` and `/catalogue/[id]`, plus
 the seller's booking settings) must write so that the buyer-side flows shipped by Decision #108 —
 the profile's Hire menu, the Service Detail and Project Assignment modals, the Consultation modal and
@@ -22,7 +29,8 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
 > `marketplace.archive_service_draft`. Both services now resolve the listing they act on through
 > `resolveListing` (`packages/backend/services/explore/listing-source.ts`). With
 > `EXPLORE_BACKEND_LIVE` on, that is a fresh read of the published listing, blueprint, gallery and
-> skills, not the shared catalogue snapshot. The snapshot (and, with `PROJECTS_BACKEND_LIVE` off,
+> skills, not the shared catalogue snapshot. (`resolveListing(slug, { as: "owner", actor })` is the
+> seller's own read of the same listing, draft included, for the workspace's buyer simulation.) The snapshot (and, with `PROJECTS_BACKEND_LIVE` off,
 > the in-memory draft store) remains only behind the `*_BACKEND_LIVE=false` seam. Verified by
 > `supabase/probes/service_instantiation.sql`, which runs 32 checks in a rolled-back transaction.
 > **Applied to the shared local DB by the 2026-10-13 reset.** The probe also passes 32/32 against

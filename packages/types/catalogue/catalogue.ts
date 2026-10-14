@@ -2,6 +2,11 @@ import { z } from "zod";
 import { ExploreOwnerSchema, ServiceType, SkillRefSchema } from "../explore/items.ts";
 import { EntityPricingSchema } from "../explore/view.ts";
 import { INTAKE_FIELDS_MAX, IntakeFieldSchema } from "../services/intake.ts";
+import { CreateCategory } from "../org/standing.ts";
+import { formArchetypeOf } from "./archetype.ts";
+import { coverOf, ListingMediaSlotsSchema } from "./media.ts";
+import { ListingAvailabilityBindingSchema, ListingOfferSchema } from "./offer.ts";
+import { ListingSeoSchema, ListingTagsSchema } from "./seo.ts";
 
 // Re-export the reused delivery-model enum so `@projective/types/catalogue` is self-sufficient for the
 // service delivery model (the catalogue reuses `ServiceType` verbatim — never forked).
@@ -72,6 +77,25 @@ export type CataloguePeriod = z.infer<typeof CataloguePeriod>;
 export function periodDays(period: CataloguePeriod): number {
 	return period === "7d" ? 7 : period === "90d" ? 90 : 30;
 }
+
+/** The analytics window: every {@link CataloguePeriod} plus a trailing twelve months. */
+export const AnalyticsPeriod = z.enum([...CataloguePeriod.options, "12m"]);
+export type AnalyticsPeriod = z.infer<typeof AnalyticsPeriod>;
+
+/** The days an {@link AnalyticsPeriod} spans. */
+export function analyticsPeriodDays(period: AnalyticsPeriod): number {
+	return period === "12m" ? 365 : periodDays(period);
+}
+
+/**
+ * The direction a sort key reads most naturally in first. Magnitudes open at their largest (newest,
+ * best-selling, most-viewed, highest-rated); a name and a lifecycle read forwards.
+ */
+export function defaultSortDir(sort: CatalogueSort): CatalogueSortDir {
+	return sort === "recent" || sort === "best-selling" || sort === "views" || sort === "rating"
+		? "desc"
+		: "asc";
+}
 // #endregion
 
 // #region Metrics (light inline analytics)
@@ -128,6 +152,8 @@ export const ListingSummarySchema = z.object({
 	metrics: ListingMetricsSchema,
 	/** ISO last-edited timestamp — the default `recent` sort key. */
 	updatedAt: z.string(),
+	/** ISO time the listing first went live, else when it was created — the discovery "Newest" key. */
+	listedAt: z.string().optional(),
 	/** Pre-formatted last-edited label ("Edited 2 days ago"). */
 	updatedLabel: z.string().max(40),
 	/** Whether the listing carries a promoted/sponsored placement. */
@@ -171,29 +197,12 @@ export const ListingPricingSchema = z.object({
 export type ListingPricing = z.infer<typeof ListingPricingSchema>;
 
 /**
- * A lightweight weekly availability window for Session / Group Session listings — the seat/slot rhythm
- * the manage-page calendar panel edits. Deliberately shallow (a timezone + offered weekdays + working
- * hours + a note); the full recurring-slot machinery is the scheduling domain's concern (Decision #37).
- */
-export const ListingAvailabilitySchema = z.object({
-	/** IANA timezone the hours are expressed in. */
-	timezone: z.string().max(64),
-	/** Offered weekdays (0 = Sunday … 6 = Saturday). */
-	weekdays: z.array(z.number().int().min(0).max(6)).max(7),
-	/** Working-hours window (24h) the slots fall within. */
-	startHour: z.number().int().min(0).max(23),
-	endHour: z.number().int().min(0).max(23),
-	/** A free-text scheduling note ("Booked in 60-min blocks · 48h notice"). */
-	note: z.string().max(400),
-});
-export type ListingAvailability = z.infer<typeof ListingAvailabilitySchema>;
-
-/**
- * A single listing's full editable detail — the summary plus the deep body the manage page edits: the
- * rich description, media gallery, taxonomy (category + skills + tags), the pricing config, session
- * availability, and collection membership. `owner` is resolved for the live preview card (which renders
- * the REAL `ServiceCard`/`ProductCard`). It is the READ projection the editor seeds from and the WRITE
- * target updates fold into.
+ * A single listing's full editable detail — the summary plus the deep body the item workspace edits:
+ * the rich description, the six-slot media showcase, taxonomy (CREATE category + skills + search
+ * tags), the pricing config, the archetype's offer, SEO overrides, the session availability binding,
+ * and collection membership. `owner` is resolved for the live card (the REAL `ServiceCard` /
+ * `ProductCard`). It is the READ projection the workspace seeds from and the WRITE target updates
+ * fold into; `updatedAt` doubles as the optimistic-concurrency token an update echoes back.
  */
 export const ListingDetailSchema = ListingSummarySchema.extend({
 	/** The owner attribution the live preview card renders (resolved server-side). */
@@ -202,16 +211,22 @@ export const ListingDetailSchema = ListingSummarySchema.extend({
 	description: z.string().max(20000),
 	/** Plain-text description snippet (the card/summary blurb + SEO). */
 	descriptionText: z.string().max(4000),
-	/** Media asset URLs (the gallery; `media[0]` is the cover). */
-	media: z.array(z.string().max(600)).max(24),
+	/** The media showcase: up to six file-backed slots, slot 1 the cover still. */
+	media: ListingMediaSlotsSchema,
 	skills: z.array(SkillRefSchema).max(24),
-	/** Free-text keywords/tags. */
-	tags: z.array(z.string().max(40)).max(24),
+	/** Search tags (indexed for search and embeddings). */
+	tags: ListingTagsSchema,
+	/** The listing's CREATE category (`org.create_category`); `null` until chosen. */
+	createCategory: CreateCategory.nullable(),
 	pricing: ListingPricingSchema,
 	/** Turnaround / delivery label ("5-day delivery", "60-minute session"). */
 	delivery: z.string().max(120),
-	/** Session availability (Session / Group Session only); `null` otherwise. */
-	availability: ListingAvailabilitySchema.nullable(),
+	/** What is sold, shaped by the listing's form archetype. */
+	offer: ListingOfferSchema,
+	/** Search-result overrides; empty fields fall back to the title and description. */
+	seo: ListingSeoSchema,
+	/** Which availability preset bookings use (Session / Group Session only); `null` otherwise. */
+	availabilityBinding: ListingAvailabilityBindingSchema.nullable(),
 	/** Collections/bundles this listing belongs to (names). */
 	collections: z.array(z.string().max(80)).max(24),
 	/**
@@ -221,6 +236,8 @@ export const ListingDetailSchema = ListingSummarySchema.extend({
 	 * every booking write by `intakeRefusal`. A product carries none.
 	 */
 	intake: z.array(IntakeFieldSchema).max(INTAKE_FIELDS_MAX).default([]),
+	/** A product's masonry cell weight on discovery (`catalogue.products.span`); 1 for a service. */
+	span: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(1),
 });
 export type ListingDetail = z.infer<typeof ListingDetailSchema>;
 // #endregion
@@ -305,26 +322,37 @@ export const CreateListingInputSchema = z.object({
 	kind: CatalogueKind,
 	/** Required for services; omitted for products. */
 	serviceType: ServiceType.optional(),
+	/** The CREATE category, when chosen up front. */
+	createCategory: CreateCategory.optional(),
+	/** The ISO-4217 currency to price in; the seller's default when omitted. */
+	currency: z.string().regex(/^[A-Z]{3}$/).optional(),
 }).refine((v) => v.kind !== "service" || !!v.serviceType, {
 	message: "Pick a delivery model.",
 	path: ["serviceType"],
 });
 export type CreateListingInput = z.infer<typeof CreateListingInputSchema>;
 
-/** The Update-Listing payload — a partial patch over the editable body (every field optional but `id`). */
+/**
+ * The Update-Listing payload — a partial patch over the editable body (every field optional but `id`
+ * and `expectedUpdatedAt`). Media and the availability binding are not here: each has its own route.
+ * `expectedUpdatedAt` is the `updatedAt` the editor last read; a stale one is refused (409) rather
+ * than silently overwriting another tab's save.
+ */
 export const UpdateListingInputSchema = z.object({
 	id: z.string().min(1).max(120),
+	expectedUpdatedAt: z.string().min(1).max(40),
 	title: z.string().min(1).max(200).optional(),
 	category: z.string().max(80).optional(),
+	createCategory: CreateCategory.nullable().optional(),
 	serviceType: ServiceType.optional(),
 	description: z.string().max(20000).optional(),
 	descriptionText: z.string().max(4000).optional(),
-	media: z.array(z.string().max(600)).max(24).optional(),
 	skills: z.array(SkillRefSchema).max(24).optional(),
-	tags: z.array(z.string().max(40)).max(24).optional(),
+	tags: ListingTagsSchema.optional(),
 	pricing: ListingPricingSchema.optional(),
 	delivery: z.string().max(120).optional(),
-	availability: ListingAvailabilitySchema.nullable().optional(),
+	offer: ListingOfferSchema.optional(),
+	seo: ListingSeoSchema.optional(),
 	collections: z.array(z.string().max(80)).max(24).optional(),
 	/** The intake field list, replaced wholesale (order is meaning). */
 	intake: z.array(IntakeFieldSchema).max(INTAKE_FIELDS_MAX).optional(),
@@ -343,6 +371,12 @@ export const PublishListingInputSchema = z.object({
 	id: z.string().min(1).max(120),
 });
 export type PublishListingInput = z.infer<typeof PublishListingInputSchema>;
+
+/** The Duplicate payload (`POST /api/catalogue/duplicate`) — the listing to copy as a new draft. */
+export const DuplicateListingInputSchema = z.object({
+	id: z.string().min(1).max(120),
+});
+export type DuplicateListingInput = z.infer<typeof DuplicateListingInputSchema>;
 // #endregion
 
 // #region Pure helpers (shared client + server — no fork)
@@ -409,24 +443,49 @@ export function resolveListingPricing(
 /** The outcome of the publish-gate check — what (if anything) still blocks going live. */
 export interface PublishReadiness {
 	ready: boolean;
-	/** Human labels of what is missing (e.g. `["a price", "at least one image"]`). */
+	/** Short imperatives naming what is missing, in page order (`["Add a cover image", "Set a price"]`). */
 	missing: string[];
 }
 
+/** Facts the gate needs that a {@link ListingDetail} does not carry. */
+export interface PublishReadinessContext {
+	/**
+	 * Bookable windows the bound availability preset yields in the next 30 days. `undefined` when not
+	 * evaluated (the client before a preview), which skips that check rather than failing it.
+	 */
+	upcomingWindows?: number;
+}
+
 /**
- * The publish gate — a listing may go live only with a title, a price, and at least one media item.
- * Shared by the client (to disable/enable the Publish action + explain what is missing) and the server
- * (defence in depth in {@link CatalogueBackendService.setStatus}). Mirrors the purchasing-gate
- * discipline used elsewhere.
+ * The publish gate. A listing goes live only with a title (which the SEO title falls back to), a
+ * still in cover slot 1, a price the card can show, and its archetype's minimum: a Pipeline needs a
+ * stage, and a Session or Group Session needs availability with a window in the next 30 days.
+ * Shared by the client (to explain what is missing) and the server (defence in depth on every
+ * status write).
  */
-export function publishReadiness(detail: ListingDetail): PublishReadiness {
+export function publishReadiness(
+	detail: ListingDetail,
+	context: PublishReadinessContext = {},
+): PublishReadiness {
 	const missing: string[] = [];
-	if (!detail.title.trim()) missing.push("a title");
-	const hasPrice = detail.pricing.amount > 0 ||
-		(detail.pricing.ticketPrice ?? 0) > 0 ||
-		(detail.pricing.sessionPrice ?? 0) > 0;
-	if (!hasPrice) missing.push("a price");
-	if (detail.media.length < 1) missing.push("at least one image");
+	const archetype = formArchetypeOf(detail.kind, detail.serviceType);
+	if (!coverOf(detail.media)) missing.push("Add a cover image");
+	if (!detail.title.trim()) missing.push("Add a title");
+	if (detail.kind === "service" && !detail.serviceType) missing.push("Choose a delivery model");
+	const price = resolveListingPricing({
+		kind: detail.kind,
+		serviceType: detail.serviceType,
+		pricing: detail.pricing,
+		currency: detail.currency,
+	});
+	if (price.mode === "quote") missing.push("Set a price");
+	const stages = detail.offer.archetype === "pipeline" ? detail.offer.stages : [];
+	if (archetype === "pipeline" && stages.length === 0) missing.push("Add at least one stage");
+	if (archetype === "session" || archetype === "cohort") {
+		const noWindows = context.upcomingWindows === 0;
+		if (!detail.availabilityBinding) missing.push("Choose availability");
+		else if (noWindows) missing.push("Open a bookable time in the next 30 days");
+	}
 	return { ready: missing.length === 0, missing };
 }
 // #endregion

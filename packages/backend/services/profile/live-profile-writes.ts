@@ -6,26 +6,18 @@ import type {
 	SaveShowcase,
 	ShowcaseSlot,
 } from "@projective/types/profile";
-import {
-	ASSET_METADATA_VERSION,
-	type AssetMetadata,
-	type ImagePlaceholder as ProfileImagePlaceholder,
-	INITIAL_CROP,
-	type RenditionPurpose,
-	renditionLocation,
-	SNIFF_BYTES,
-	sniffBytes,
-	unsupportedReason,
-	VARIANT_TIERS,
-	variantObjectPath,
-	type VariantTier,
-} from "@projective/types/files";
+import type { ImagePlaceholder as ProfileImagePlaceholder } from "@projective/types/files";
 import { fail, type FieldErrors, ok, type ServiceResult } from "../ServiceResult.ts";
-import { getServiceClient, getUserClient } from "../../core/supabase.ts";
-import { downloadObject, removeObjects, uploadObject } from "../../core/storage-signed.ts";
+import { getUserClient } from "../../core/supabase.ts";
 import { canReadLive, type ReadActor } from "../read-actor.ts";
-import { MediaPipeline, MediaRejectedError, MediaUnavailableError } from "../media/pipeline.ts";
-import { type LibrarySource, readLibrarySource } from "../media/library.ts";
+import { MediaRejectedError, MediaUnavailableError } from "../media/pipeline.ts";
+import { readLibrarySource } from "../media/library.ts";
+import {
+	cutShowcaseRendition,
+	type Rendition,
+	retireRendition,
+	writeRendition,
+} from "../media/showcase-rendition.ts";
 import { mediaPlaceholder, mediaUrl, parseMediaRef } from "../files/public-media.ts";
 import { showcaseSlotsOf } from "./live-profile.ts";
 
@@ -40,9 +32,10 @@ import { showcaseSlotsOf } from "./live-profile.ts";
  * {@link refusalFrom}.
  *
  * Media is the one two-stage write. The pipeline (service role) cuts a public RENDITION from one of
- * the caller's own library assets and records it; only then does the definer RPC — under the
- * caller's session — decide whether that rendition may go on this profile. If it refuses, the
- * rendition is retired again, so a refused write never leaves a public object behind.
+ * the caller's own library assets and records it (`media/showcase-rendition.ts`, shared with the
+ * listing showcase); only then does the definer RPC — under the caller's session — decide whether
+ * that rendition may go on this profile. If it refuses, the rendition is retired again, so a refused
+ * write never leaves a public object behind.
  */
 
 // #region Types
@@ -222,179 +215,6 @@ export async function readMediaState(
 
 // #endregion
 
-// #region Renditions
-
-/**
- * A rendition written to storage + its row, which can be retired again if the profile refuses it.
- * Exported with {@link writeRendition} / {@link retireRendition} for the other square pictures cut
- * the same way (a group conversation's photo, `messaging/live-group-photo.ts`).
- */
-export interface Rendition {
-	id: string;
-	bucket: "avatars" | "showcase";
-	paths: string[];
-}
-
-/** Retire a rendition the profile would not take: soft-delete its row, remove its objects. */
-export async function retireRendition(rendition: Rendition): Promise<void> {
-	try {
-		await getServiceClient().schema("files").from("items")
-			.update({ deleted_at: new Date().toISOString() })
-			.eq("id", rendition.id);
-	} catch { /* the row stays; it references objects about to be removed and lists nowhere */ }
-	await removeObjects(rendition.bucket, rendition.paths);
-}
-
-/** The display name a rendition row carries in the owner's history. */
-function renditionName(purpose: RenditionPurpose, position: number | undefined): string {
-	return purpose === "avatar" ? "Profile photo" : `Showcase slot ${position ?? 1}`;
-}
-
-/**
- * Cut and store a rendition of `source` for `purpose`. Stills are re-drawn by the pipeline (crop
- * clamped against the decoded pixels, re-encoded WebP, no EXIF); a video is published as uploaded
- * with the poster tiers the library already holds for it. `displayName` overrides the name the row
- * carries in the owner's history (default: "Profile photo" / "Showcase slot N").
- */
-export async function writeRendition(
-	owner: ProfileOwner,
-	actor: ReadActor & { accessToken: string },
-	source: LibrarySource,
-	input: ApplyMedia,
-	displayName?: string,
-): Promise<Rendition> {
-	const purpose: RenditionPurpose = input.target;
-	const bucket = purpose === "avatar" ? "avatars" as const : "showcase" as const;
-	const id = crypto.randomUUID();
-	const rendition: Rendition = { id, bucket, paths: [] };
-	const service = getServiceClient();
-
-	try {
-		const bytes = await downloadObject(source.bucket, source.path);
-		if (!bytes) throw new MediaUnavailableError("That file couldn't be read. Try another.");
-
-		let fullPath: string;
-		let mime: string;
-		let size: number;
-		let metadata: AssetMetadata;
-		const variants: Array<{ tier: VariantTier; path: string; width: number; height: number; size: number }> = [];
-
-		if (source.kind === "image") {
-			const sniffed = sniffBytes(bytes.subarray(0, SNIFF_BYTES));
-			const reason = unsupportedReason(sniffed, false);
-			if (reason || !sniffed) throw new MediaRejectedError(reason ?? "That file can't be used here.");
-			const result = await MediaPipeline.run({
-				kind: "render",
-				bytes,
-				mime: sniffed.mime,
-				purpose,
-				crop: input.crop ?? INITIAL_CROP,
-			});
-			if (!result.full) throw new MediaUnavailableError("The picture couldn't be processed.");
-			const location = renditionLocation(bucket, owner.id, id, "full.webp");
-			fullPath = location.path;
-			mime = "image/webp";
-			size = result.full.bytes.byteLength;
-			if (!await uploadObject(bucket, fullPath, result.full.bytes, mime, { immutable: true })) {
-				throw new MediaUnavailableError("The picture couldn't be stored.");
-			}
-			rendition.paths.push(fullPath);
-			for (const tier of VARIANT_TIERS) {
-				const t = result.tiers[tier];
-				const tierPath = variantObjectPath(fullPath, tier);
-				if (!await uploadObject(bucket, tierPath, t.bytes, "image/webp", { immutable: true })) {
-					throw new MediaUnavailableError("The picture couldn't be stored.");
-				}
-				rendition.paths.push(tierPath);
-				variants.push({ tier, path: tierPath, width: t.width, height: t.height, size: t.bytes.byteLength });
-			}
-			metadata = {
-				version: ASSET_METADATA_VERSION as 1,
-				source: "server",
-				extractedAt: new Date().toISOString(),
-				media: {
-					kind: "image",
-					width: result.full.width,
-					height: result.full.height,
-					aspectRatio: Math.round((result.full.width / result.full.height) * 10_000) / 10_000,
-					blurhash: result.blurhash,
-					colors: result.colors,
-					animated: false,
-					vector: false,
-					hasAlpha: result.source.hasAlpha,
-				},
-				notes: [],
-			};
-		} else {
-			const ext = source.mimeType === "video/webm" ? "webm" : source.mimeType === "video/quicktime" ? "mov" : "mp4";
-			const location = renditionLocation(bucket, owner.id, id, `video.${ext}`);
-			fullPath = location.path;
-			mime = source.mimeType;
-			size = bytes.byteLength;
-			if (!await uploadObject(bucket, fullPath, bytes, mime, { immutable: true })) {
-				throw new MediaUnavailableError("The video couldn't be stored.");
-			}
-			rendition.paths.push(fullPath);
-			// The poster stills travel with it: the library's tiers, copied into the public bucket.
-			for (const tier of VARIANT_TIERS) {
-				const t = source.tiers[tier];
-				if (!t) continue;
-				const posterBytes = await downloadObject(t.bucket, t.path);
-				if (!posterBytes) continue;
-				const tierPath = variantObjectPath(fullPath, tier);
-				if (!await uploadObject(bucket, tierPath, posterBytes, "image/webp", { immutable: true })) {
-					throw new MediaUnavailableError("The video's poster couldn't be stored.");
-				}
-				rendition.paths.push(tierPath);
-				variants.push({ tier, path: tierPath, width: t.width, height: t.height, size: posterBytes.byteLength });
-			}
-			metadata = source.metadata as AssetMetadata;
-		}
-
-		const inserted = await service.schema("files").from("items").insert({
-			id,
-			owner_user_id: owner.type === "user" ? owner.id : actor.userId,
-			owner_type: owner.type,
-			owner_entity_id: owner.type === "user" ? null : owner.id,
-			bucket_id: bucket,
-			storage_path: fullPath,
-			display_name: displayName ?? renditionName(purpose, input.position),
-			original_name: source.name,
-			mime_type: mime,
-			size_bytes: size,
-			category: mime.startsWith("video/") ? "Video" : "Image",
-			metadata,
-			status: "uploaded",
-			visibility: "public",
-			source: "supabase",
-			purpose,
-			derived_from_id: source.id,
-		});
-		if (inserted.error) throw new MediaUnavailableError("The picture couldn't be recorded.");
-		if (variants.length > 0) {
-			const tiers = await service.schema("files").from("item_variants").insert(
-				variants.map((v) => ({
-					item_id: id,
-					tier: v.tier,
-					bucket_id: bucket,
-					storage_path: v.path,
-					mime_type: "image/webp",
-					width: v.width,
-					height: v.height,
-					size_bytes: v.size,
-				})),
-			);
-			if (tiers.error) throw new MediaUnavailableError("The picture couldn't be recorded.");
-		}
-		return rendition;
-	} catch (error) {
-		await retireRendition(rendition);
-		throw error;
-	}
-}
-
-// #endregion
-
 // #region Apply media
 
 /**
@@ -418,24 +238,28 @@ export async function applyProfileMedia(
 	if (source.kind === "video" && input.target === "avatar") {
 		return fail(422, { message: "A profile photo has to be a still image.", errors: { sourceAssetId: "video" } });
 	}
-	if (source.kind === "video" && input.position === 1) {
-		return fail(422, {
-			message: "The first slot is your profile's thumbnail and has to be a still image.",
-			errors: { position: "video_primary" },
-		});
-	}
 
 	const client = getUserClient(actor.accessToken);
 	let rendition: Rendition;
-	try {
-		rendition = await writeRendition(owner, actor, source, input);
-	} catch (error) {
-		if (error instanceof MediaRejectedError) {
-			return fail(422, { message: error.message, errors: { sourceAssetId: "unsupported" } });
+	if (input.target === "avatar") {
+		try {
+			rendition = await writeRendition(owner, actor, source, input);
+		} catch (error) {
+			if (error instanceof MediaRejectedError) {
+				return fail(422, { message: error.message, errors: { sourceAssetId: "unsupported" } });
+			}
+			return fail(503, {
+				message: error instanceof MediaUnavailableError ? error.message : UNAVAILABLE,
+			});
 		}
-		return fail(503, {
-			message: error instanceof MediaUnavailableError ? error.message : UNAVAILABLE,
+	} else {
+		const cut = await cutShowcaseRendition(input.sourceAssetId, input.crop, actor, {
+			owner,
+			position: input.position ?? 1,
+			stillOnly: "The first slot is your profile's thumbnail and has to be a still image.",
 		});
+		if (!cut.ok || !cut.data) return fail(cut.status, { message: cut.message, errors: cut.errors });
+		rendition = cut.data.rendition;
 	}
 
 	try {

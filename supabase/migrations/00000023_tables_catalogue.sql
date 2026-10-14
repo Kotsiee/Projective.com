@@ -1,8 +1,9 @@
 -- =============================================================================================
 -- 00000023_tables_catalogue.sql — catalogue schema tables (Category 0).
 --
--- The seller's PUBLICATION layer: one row per thing a seller has listed for sale, plus the gallery,
--- taxonomy, availability and collections the `/catalogue` console edits. It is the backing schema for
+-- The seller's PUBLICATION layer: one row per thing a seller has listed for sale, plus the showcase,
+-- taxonomy and collections the `/catalogue` console edits. A session's availability is not here: it
+-- is a `scheduling.availability_presets` binding on the service blueprint (Decision #217(c)). It is the backing schema for
 -- `@projective/types/catalogue`, whose Zod SSOT, deterministic fixtures and full two-page console all
 -- shipped with no tables at all.
 --
@@ -82,8 +83,8 @@ CREATE TABLE catalogue.products (
     price_cents bigint NOT NULL DEFAULT 0 CHECK (price_cents >= 0),
     currency text NOT NULL DEFAULT 'USD'::text CHECK (currency ~ '^[A-Z]{3}$'),
 
-    -- Licence terms the /view product template renders as its permission ledger.
-    licence text NOT NULL DEFAULT 'standard'::text,
+    -- Licence terms the /view product template renders as its permission ledger (Decision #217(i)).
+    licence catalogue.product_licence NOT NULL DEFAULT 'personal'::catalogue.product_licence,
     attribution_required boolean NOT NULL DEFAULT false,
     -- Deliverable manifest: [{ name, mime, size_bytes }]. jsonb rather than a child table because it is
     -- authored by the seller as one document, read back whole, and never queried by member.
@@ -187,6 +188,13 @@ CREATE TABLE catalogue.listings (
     -- Turnaround / delivery label ("5-day delivery", "60-minute session").
     delivery_label text NOT NULL DEFAULT ''::text,
 
+    -- Search presentation (Decision #217). NULL means the card falls back to the title and the
+    -- description; the lengths are what a search result shows before it truncates.
+    seo_title varchar(70),
+    seo_description varchar(160),
+    -- The CREATE category the listing counts towards in the seller's Standing; NULL until chosen.
+    create_category org.create_category,
+
     -- Pricing config, mirroring @projective/types/catalogue ListingPricingSchema field for field.
     -- `amount_cents` is the fixed engagement fee; `ticket_price_cents` the per-ticket standard for a
     -- Pipeline (the card renders a 0.5x-2.0x range around it); `session_price_cents` the per-slot fee.
@@ -236,25 +244,30 @@ CREATE TABLE catalogue.listings (
 );
 -- #endregion
 
--- #region Listing media, taxonomy and availability
--- The ordered gallery. `position` 0 is the cover, which is why ordering is stored rather than left to
--- insertion order: the seller reorders the gallery in the editor and the first image becomes the card
--- thumbnail everywhere, so "which one is the cover" is data, not an artefact of write sequence.
+-- #region Listing media and taxonomy
+-- The six-slot showcase (Decision #217(e)). Slot 1 is the cover: always an image, and mirrored onto
+-- `service_blueprints.cover_file_id` by `catalogue.apply_listing_media`, so the card, the hero and the
+-- booking surfaces show the same picture. Slots 2–6 may hold video. Every slot is a managed file, never
+-- a URL, so quarantine, MIME sniffing and renditions apply to everything a buyer sees.
 CREATE TABLE catalogue.listing_media (
     id uuid NOT NULL DEFAULT gen_random_uuid(),
     listing_id uuid NOT NULL,
-    -- Either a managed asset or an external URL. Both are real: the editor's Asset Picker attaches a
-    -- files.items row, while a seeded or imported listing may only have a URL.
-    file_id uuid,
-    url text,
-    alt_text text NOT NULL DEFAULT ''::text,
-    position integer NOT NULL DEFAULT 0 CHECK (position >= 0),
+    file_id uuid NOT NULL,
+    kind text NOT NULL DEFAULT 'image'::text CHECK (kind IN ('image', 'video')),
+    -- The showcase cut the card and hero render. NULL until one is cut; readers then use `file_id`.
+    rendition_file_id uuid,
+    -- A video slot's still frame. NULL for an image.
+    poster_file_id uuid,
+    alt_text text NOT NULL DEFAULT ''::text CHECK (char_length(alt_text) <= 200),
+    position smallint NOT NULL CHECK (position BETWEEN 1 AND 6),
     created_at timestamptz NOT NULL DEFAULT now(),
 
     CONSTRAINT listing_media_pkey PRIMARY KEY (id),
     CONSTRAINT listing_media_listing_fkey FOREIGN KEY (listing_id) REFERENCES catalogue.listings(id) ON DELETE CASCADE,
     CONSTRAINT listing_media_file_fkey FOREIGN KEY (file_id) REFERENCES files.items(id) ON DELETE CASCADE,
-    CONSTRAINT listing_media_has_source CHECK (file_id IS NOT NULL OR url IS NOT NULL),
+    CONSTRAINT listing_media_rendition_fkey FOREIGN KEY (rendition_file_id) REFERENCES files.items(id) ON DELETE SET NULL,
+    CONSTRAINT listing_media_poster_fkey FOREIGN KEY (poster_file_id) REFERENCES files.items(id) ON DELETE SET NULL,
+    CONSTRAINT ck_listing_media_cover_is_image CHECK (position <> 1 OR kind = 'image'),
     -- DEFERRABLE because reordering a gallery swaps positions within one transaction, and a
     -- non-deferrable unique index would reject the intermediate state of every swap.
     CONSTRAINT uq_listing_media_position UNIQUE (listing_id, position) DEFERRABLE INITIALLY DEFERRED
@@ -272,7 +285,8 @@ CREATE TABLE catalogue.listing_skills (
 
 -- Free-text keywords. Deliberately NOT folded into listing_skills: a skill is a controlled term the
 -- marketplace matches supply to demand on, a tag is whatever the seller typed. One table for both
--- would let an arbitrary string enter the matching vocabulary.
+-- would let an arbitrary string enter the matching vocabulary. At most 10 per listing
+-- (`catalogue.trg_listing_tags_max`, Decision #217(f)); they feed the search fts at weight B.
 CREATE TABLE catalogue.listing_tags (
     listing_id uuid NOT NULL,
     tag text NOT NULL CHECK (char_length(tag) BETWEEN 1 AND 40),
@@ -280,24 +294,6 @@ CREATE TABLE catalogue.listing_tags (
     CONSTRAINT listing_tags_listing_fkey FOREIGN KEY (listing_id) REFERENCES catalogue.listings(id) ON DELETE CASCADE
 );
 
--- The lightweight weekly window a Session / Group Session listing offers. Deliberately shallow — the
--- full recurring-slot machinery is the `scheduling` schema's concern (Decision #37) and this must not
--- become a second copy of it that can disagree with the calendar the buyer actually books against.
-CREATE TABLE catalogue.listing_availability (
-    listing_id uuid NOT NULL,
-    timezone text NOT NULL DEFAULT 'UTC'::text,
-    -- 0 = Sunday .. 6 = Saturday.
-    weekdays smallint[] NOT NULL DEFAULT '{}'::smallint[],
-    start_hour smallint NOT NULL DEFAULT 9 CHECK (start_hour BETWEEN 0 AND 23),
-    end_hour smallint NOT NULL DEFAULT 17 CHECK (end_hour BETWEEN 0 AND 23),
-    note text NOT NULL DEFAULT ''::text,
-
-    CONSTRAINT listing_availability_pkey PRIMARY KEY (listing_id),
-    CONSTRAINT listing_availability_listing_fkey FOREIGN KEY (listing_id) REFERENCES catalogue.listings(id) ON DELETE CASCADE,
-    -- Mirrors the scheduling schema's deliberate simplification (Decision #56(f)): a window may not
-    -- cross local midnight, so 23:00-01:00 is expressed as two rows rather than one wrapping one.
-    CONSTRAINT listing_availability_window CHECK (end_hour > start_hour)
-);
 -- #endregion
 
 -- #region Collections

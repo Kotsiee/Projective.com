@@ -158,7 +158,9 @@ COMMENT ON FUNCTION marketplace.get_service_draft (uuid) IS
 --   1. `projects.projects` — owner `auth.uid()`, personal workspace, `format = 'pipeline'`,
 --      `status = 'draft'`, `visibility = 'unlisted'`, `source_blueprint_id`, the listing's brief and
 --      currency;
---   2. one `projects.project_stages` row per `stage_template` entry, in order — name, brief (as
+--   2. one `projects.project_stages` row per `stage_template` entry, in order, each with its start
+--      trigger (`startTrigger` / `lagDays` / `chainReaction` → `start_trigger_type`, the previous stage
+--      as `start_dependency_stage_id`, `start_dependency_lag_days`, `chain_reaction`) — name, brief (as
 --      HTML), deliverables as the stage's default checklist and its milestone line, skills (resolved
 --      to `org.skills` slugs where a label matches), and `unit_price_cents` = the stage's own STANDARD
 --      price, else the listing's `ticket_price_cents`, else NULL ("priced on scope" — never a guessed
@@ -235,6 +237,12 @@ DECLARE
     v_deliverables text[];
     v_tasks jsonb;
     v_checklist jsonb;
+    v_prev_stage_id uuid;
+    v_trigger text;
+    v_trigger_type start_trigger_type;
+    v_dependency uuid;
+    v_lag integer;
+    v_chain boolean;
 BEGIN
     -- #region Identity and the request
     IF v_owner IS NULL THEN
@@ -403,9 +411,31 @@ BEGIN
             FROM pg_catalog.unnest(v_deliverables) WITH ORDINALITY AS u (d, n)
         ) i;
 
+        -- When the stage starts, as the seller authored it (Decision #217, plan §8), mapped exactly as
+        -- `stageTriggerToDb` maps it: the first stage has nothing before it and starts with the project;
+        -- `after_previous` depends on the previous stage, `fixed_offset` does too and adds `lagDays`.
+        -- A missing or unknown trigger reads as the SSOT default, `after_previous`.
+        v_trigger := COALESCE(v_stage->>'startTrigger', 'after_previous');
+        IF v_ord = 1 OR v_trigger = 'on_project_start' THEN
+            v_trigger_type := 'on_project_start';
+            v_dependency := NULL;
+            v_lag := 0;
+        ELSE
+            v_trigger_type := 'dependent_on_stage';
+            v_dependency := v_prev_stage_id;
+            v_lag := CASE
+                WHEN v_trigger = 'fixed_offset' AND jsonb_typeof(v_stage->'lagDays') = 'number'
+                THEN LEAST(GREATEST(pg_catalog.trunc((v_stage->>'lagDays')::numeric)::integer, 0), 90)
+                ELSE 0
+            END;
+        END IF;
+        v_chain := CASE WHEN jsonb_typeof(v_stage->'chainReaction') = 'boolean'
+            THEN (v_stage->>'chainReaction')::boolean ELSE true END;
+
         INSERT INTO projects.project_stages (
             id, project_id, name, description, description_text, sort_order,
-            unit_price_cents, milestone, file_upload_required, default_tasks, skills
+            unit_price_cents, milestone, file_upload_required, default_tasks, skills,
+            start_trigger_type, start_dependency_stage_id, start_dependency_lag_days, chain_reaction
         ) VALUES (
             v_stage_id, v_project_id, v_stage_name,
             pg_catalog.jsonb_build_object('html', v_stage_html), v_stage_text,
@@ -428,7 +458,8 @@ BEGIN
                 WHERE pg_catalog.btrim(l) <> ''
                 ORDER BY n
                 LIMIT 12
-            )
+            ),
+            v_trigger_type, v_dependency, v_lag, v_chain
         );
 
         INSERT INTO projects.tickets (
@@ -445,6 +476,7 @@ BEGIN
         );
 
         PERFORM comms.get_or_create_project_channel(v_project_id, v_stage_id, v_stage_name);
+        v_prev_stage_id := v_stage_id;
     END LOOP;
 
     PERFORM comms.get_or_create_project_channel(v_project_id, NULL, 'Discussion');

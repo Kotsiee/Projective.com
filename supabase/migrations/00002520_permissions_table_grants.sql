@@ -128,10 +128,10 @@ GRANT SELECT (project_id, title, fts, industry_category_id, status, target_start
     updated_at)
     ON search.projects_index TO anon, authenticated;
 
-GRANT SELECT (service_id, title, fts, is_public, rating_average, rating_count, updated_at)
+GRANT SELECT (service_id, title, tags, fts, is_public, rating_average, rating_count, updated_at)
     ON search.services_index TO anon, authenticated;
 
-GRANT SELECT (entity_type, entity_id, title, fts, is_public, updated_at)
+GRANT SELECT (entity_type, entity_id, title, tags, fts, is_public, updated_at)
     ON search.catalogue_index TO anon, authenticated;
 
 GRANT SELECT (id, user_id, search_query, filters_applied, created_at, entity_type, duration_ms,
@@ -349,6 +349,40 @@ GRANT ALL ON TABLE scheduling.schedules TO service_role;
 GRANT ALL ON TABLE scheduling.availability_rules TO service_role;
 
 GRANT ALL ON TABLE scheduling.blackout_dates TO service_role;
+
+-- Availability presets (Decision #217). Column-level on the preset: a client names, describes and
+-- defaults a preset, but never stamps its compiled window (replace_preset_occurrences does) nor
+-- archives it outside archive_availability_preset (which unbinds the services first). No DELETE —
+-- presets are archived. Rules and bands are replaced wholesale by save_availability_preset (an
+-- invoker), hence DELETE on those. Occurrences are read-only to the client.
+GRANT SELECT ON TABLE scheduling.availability_presets TO authenticated;
+
+GRANT INSERT (schedule_id, scope, blueprint_id, name, description, is_default)
+ON TABLE scheduling.availability_presets TO authenticated;
+
+GRANT UPDATE (name, description, is_default) ON TABLE scheduling.availability_presets TO authenticated;
+
+GRANT
+SELECT,
+INSERT,
+UPDATE,
+DELETE ON TABLE scheduling.recurrence_rules TO authenticated;
+
+GRANT
+SELECT,
+INSERT,
+UPDATE,
+DELETE ON TABLE scheduling.recurrence_rule_bands TO authenticated;
+
+GRANT SELECT ON TABLE scheduling.availability_occurrences TO authenticated;
+
+GRANT ALL ON TABLE scheduling.availability_presets TO service_role;
+
+GRANT ALL ON TABLE scheduling.recurrence_rules TO service_role;
+
+GRANT ALL ON TABLE scheduling.recurrence_rule_bands TO service_role;
+
+GRANT ALL ON TABLE scheduling.availability_occurrences TO service_role;
 
 
 -- --- integrations: connectors ---
@@ -680,7 +714,6 @@ GRANT INSERT, UPDATE ON catalogue.listings, catalogue.products, catalogue.articl
 GRANT INSERT, UPDATE, DELETE ON catalogue.listing_media,
 catalogue.listing_skills,
 catalogue.listing_tags,
-catalogue.listing_availability,
 catalogue.collections,
 catalogue.collection_listings TO authenticated;
 

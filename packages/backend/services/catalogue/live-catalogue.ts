@@ -4,8 +4,9 @@ import {
 	type CataloguePage,
 	type CataloguePeriod,
 	type CatalogueStats,
-	type CreateListingInput,
-	type ListingAvailability,
+	coverOf,
+	formArchetypeOf,
+	type ListingAvailabilityBinding,
 	type ListingDetail,
 	type ListingMetrics,
 	type ListingPricing,
@@ -16,40 +17,51 @@ import {
 	publishReadiness,
 	resolveListingPricing,
 	type ServiceType,
-	type SetListingStatusInput,
-	type UpdateListingInput,
 } from "@projective/types/catalogue";
 import type { ExploreOwner, SkillRef } from "@projective/types/explore";
-import { IntakeFieldSchema, type IntakeField } from "@projective/types/services";
-import { flattenRichText } from "@projective/types/richtext";
-import { PLATFORM_BASE_CURRENCY, toMajorUnits, toMinorUnits } from "@projective/types/finance";
-import { AGE_RESTRICTED, isAgeRestricted } from "../../core/age-gate.ts";
+import type { MediaRef } from "@projective/types/files";
+import { CreateCategory } from "@projective/types/org";
+import { IntakeFieldSchema } from "@projective/types/services";
+import { PLATFORM_BASE_CURRENCY, toMajorUnits } from "@projective/types/finance";
 import { getAnonClient, getUserClient } from "../../core/supabase.ts";
-import { parsePublicObjectUrl, publicObjectUrl } from "../../core/storage-url.ts";
+import { publicObjectUrl } from "../../core/storage-url.ts";
 import { resolveSkill } from "../explore/skills.ts";
+import { fetchPublicMedia } from "../files/public-media.ts";
 import { projectorFor } from "../finance/commerce-money.ts";
 import { FxService } from "../finance/FxService.ts";
-import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
 import type { ReadActor } from "../read-actor.ts";
+import {
+	LISTING_MEDIA_COLUMNS,
+	listingMediaFileIds,
+	type ListingMediaRow,
+	listingMediaSlots,
+	mediaRowsByListing,
+} from "./listing-media.ts";
+import {
+	type OfferBlueprintColumns,
+	offerFromBlueprint,
+	offerFromProduct,
+	type OfferProductColumns,
+} from "./offer-columns.ts";
+import { ownsListing } from "./ownership.ts";
 
 /**
- * live-catalogue — the seller console's reads and writes, as the signed-in seller.
+ * live-catalogue — the seller console's READS, as the signed-in seller.
  *
  * Reads go through the seller's own client, so the catalogue policies decide what they see: their own
  * listings in every state, and nothing of anyone else's that is not published. Sales come from
  * `catalogue.get_listing_sales`, the one definer, which answers only for the caller's own listings.
- * Writes go through the three `catalogue.*` doors, which keep a listing and its product or service
- * blueprint in step in one transaction.
+ * The writes are `live-catalogue-writes.ts`.
  *
  * A listing's ADDRESS is its subject's slug — `svc-…` for a service, `prd-…` for a product — the same
  * one its public `/view/[id]` page answers to, so the console and the storefront name a listing the
- * same way.
+ * same way. Every row is mapped by the pure {@link projectDetail}, the function the card-fidelity
+ * contract holds against the explore assembler.
  */
 
-type Result<T> = ServiceResult<T>;
-
 // #region Rows
-interface ListingRow {
+/** A `catalogue.listings` row as the console selects it. */
+export interface CatalogueListingRow {
 	id: string;
 	owner_user_id: string;
 	owner_team_id: string | null;
@@ -71,24 +83,41 @@ interface ListingRow {
 	extra_revision_price_cents: number | null;
 	promoted: boolean;
 	view_count: number;
+	seo_title: string | null;
+	seo_description: string | null;
+	create_category: string | null;
+	published_at: string | null;
+	created_at: string;
 	updated_at: string;
 }
 
-interface SubjectRow {
+/** A service blueprint as the console selects it. */
+export interface CatalogueBlueprintRow extends OfferBlueprintColumns {
 	id: string;
 	slug: string;
 	rating_average: number | string | null;
 	rating_count: number | null;
-	delivery_model?: string;
-	intake_fields?: unknown;
+	delivery_model: string;
+	intake_fields: unknown;
+	availability_preset_id: string | null;
 }
 
-interface MediaRow {
-	listing_id: string;
-	file_id: string | null;
-	url: string | null;
-	position: number;
+/** A product as the console selects it. */
+export interface CatalogueProductRow extends OfferProductColumns {
+	id: string;
+	slug: string;
+	rating_average: number | string | null;
+	rating_count: number | null;
+	span: number;
 }
+
+/** The columns {@link CatalogueListingRow} selects. */
+export const LISTING_COLUMNS =
+	"id, owner_user_id, owner_team_id, kind, status, service_blueprint_id, product_id, title, description, description_text, category, delivery_label, amount_cents, ticket_price_cents, session_price_cents, seats_per_session, currency, free_revisions, extra_revision_price_cents, promoted, view_count, seo_title, seo_description, create_category, published_at, created_at, updated_at";
+const BLUEPRINT_COLUMNS =
+	"id, slug, rating_average, rating_count, delivery_model, intake_fields, stage_template, team_roles, deliverables, turnaround_days, session_minutes, session_count, meeting_provider, max_seats_per_cohort, allow_continuous_enrollment, availability_preset_id";
+const PRODUCT_COLUMNS =
+	"id, slug, rating_average, rating_count, span, format, licence, attribution_required, file_manifest";
 
 interface SalesRow {
 	listing_id: string;
@@ -98,16 +127,14 @@ interface SalesRow {
 	week_start: string;
 }
 
-const LISTING_COLUMNS =
-	"id, owner_user_id, owner_team_id, kind, status, service_blueprint_id, product_id, title, description, description_text, category, delivery_label, amount_cents, ticket_price_cents, session_price_cents, seats_per_session, currency, free_revisions, extra_revision_price_cents, promoted, view_count, updated_at";
-
 /** The most listings one seller's console reads at once. */
 const SCOPE_WINDOW = 500;
 const DAY = 86_400_000;
 // #endregion
 
 // #region Vocabulary
-const MODEL_TO_DB: Record<ServiceType, string> = {
+/** The database spelling of each delivery model. */
+export const MODEL_TO_DB: Record<ServiceType, string> = {
 	"Pipeline": "pipeline",
 	"One-Off": "one_off",
 	"Direct Deliverable": "direct_deliverable",
@@ -126,6 +153,11 @@ function toWhole(minor: number | null | undefined, currency: string): number {
 
 function toWholeOrNull(minor: number | null | undefined, currency: string): number | null {
 	return minor === null || minor === undefined ? null : toWhole(minor, currency);
+}
+
+function num(value: number | string | null | undefined): number {
+	const n = typeof value === "string" ? Number(value) : value ?? 0;
+	return Number.isFinite(n) ? n : 0;
 }
 
 /** `Edited today` / `Edited 3 days ago` / `Edited 2 weeks ago`. */
@@ -153,25 +185,14 @@ function compactMoney(whole: number, currency: string): string {
 	}
 }
 
-function refuse<T>(status: number, message: string, errors?: Record<string, string>): Result<T> {
-	return fail(status, { message, errors }) as Result<T>;
-}
-
-/** HTTP status for a refusal from the catalogue doors. */
-function statusFor(code: string | undefined): number {
-	switch (code) {
-		case "42501":
-			return 403;
-		case "PB404":
-			return 404;
-		case "PG422":
-		case "22023":
-		case "23514":
-		case "22P02":
-			return 422;
-		default:
-			return 503;
-	}
+/** Normalise the numeric columns PostgREST may send as strings, and the currency's case. */
+export function normaliseListing(l: CatalogueListingRow): CatalogueListingRow {
+	return {
+		...l,
+		amount_cents: Number(l.amount_cents) || 0,
+		view_count: Number(l.view_count) || 0,
+		currency: (l.currency ?? "USD").toUpperCase(),
+	};
 }
 // #endregion
 
@@ -190,88 +211,243 @@ function scopeOf(actor: ReadActor): Scope {
 }
 // #endregion
 
+// #region Projection
+/** Everything one listing's detail is mapped from — every read already made. */
+export interface DetailInputs {
+	listing: CatalogueListingRow;
+	blueprint?: CatalogueBlueprintRow;
+	product?: CatalogueProductRow;
+	media: readonly ListingMediaRow[];
+	refs: ReadonlyMap<string, MediaRef>;
+	owner: ExploreOwner;
+	metrics: ListingMetrics;
+	skills?: SkillRef[];
+	tags?: string[];
+	collections?: string[];
+	binding?: ListingAvailabilityBinding | null;
+}
+
+function pricingOf(l: CatalogueListingRow): ListingPricing {
+	return {
+		amount: toWhole(l.amount_cents, l.currency),
+		ticketPrice: toWholeOrNull(l.ticket_price_cents, l.currency),
+		sessionPrice: toWholeOrNull(l.session_price_cents, l.currency),
+		seatsPerSession: l.seats_per_session,
+		freeRevisions: l.free_revisions,
+		extraRevisionPrice: toWholeOrNull(l.extra_revision_price_cents, l.currency),
+	};
+}
+
+function spanOf(span: number | undefined): 1 | 2 | 3 {
+	return !span || span <= 1 ? 1 : span >= 3 ? 3 : 2;
+}
+
+/**
+ * One listing's full editable detail from its rows. Pure. The summary fields (`cover`, `price`,
+ * `needsAttention`) are derived from the same projection, so the console row and the workspace never
+ * disagree about a listing.
+ */
+export function projectDetail(input: DetailInputs): ListingDetail {
+	const l = input.listing;
+	const serviceType = l.kind === "service"
+		? DB_TO_MODEL[input.blueprint?.delivery_model ?? ""] ?? "One-Off"
+		: null;
+	const archetype = formArchetypeOf(l.kind, serviceType);
+	const pricing = pricingOf(l);
+	const media = listingMediaSlots(input.media, input.refs);
+	const offer = archetype === "product"
+		? offerFromProduct(
+			input.product ??
+				{ format: "download", licence: "personal", attribution_required: false, file_manifest: [] },
+		)
+		: offerFromBlueprint(archetype, input.blueprint ?? EMPTY_BLUEPRINT);
+	const intake = IntakeFieldSchema.array().safeParse(input.blueprint?.intake_fields ?? []);
+	const createCategory = CreateCategory.safeParse(l.create_category);
+
+	const detail: ListingDetail = {
+		id: (input.blueprint ?? input.product)?.slug ?? l.id,
+		ownerId: input.owner.handle,
+		kind: l.kind,
+		serviceType,
+		title: l.title,
+		category: l.category,
+		status: l.status,
+		currency: l.currency,
+		cover: coverOf(media)?.thumb ?? null,
+		price: resolveListingPricing({ kind: l.kind, serviceType, pricing, currency: l.currency }),
+		metrics: input.metrics,
+		updatedAt: new Date(l.updated_at).toISOString(),
+		listedAt: l.published_at ?? l.created_at,
+		updatedLabel: editedLabel(l.updated_at),
+		promoted: l.promoted,
+		needsAttention: false,
+		owner: input.owner,
+		description: l.description?.html ?? "",
+		descriptionText: l.description_text,
+		media,
+		skills: input.skills ?? [],
+		tags: input.tags ?? [],
+		createCategory: createCategory.success ? createCategory.data : null,
+		pricing,
+		delivery: l.delivery_label,
+		offer,
+		seo: { seoTitle: l.seo_title ?? "", seoDescription: l.seo_description ?? "" },
+		availabilityBinding: archetype === "session" || archetype === "cohort"
+			? input.binding ?? null
+			: null,
+		collections: input.collections ?? [],
+		intake: l.kind === "service" && intake.success ? intake.data : [],
+		span: l.kind === "product" ? spanOf(input.product?.span) : 1,
+	};
+	const live = detail.status === "draft" || detail.status === "published";
+	return { ...detail, needsAttention: live && !publishReadiness(detail).ready };
+}
+
+const EMPTY_BLUEPRINT: OfferBlueprintColumns = {
+	stage_template: [],
+	team_roles: [],
+	deliverables: [],
+	turnaround_days: null,
+	session_minutes: null,
+	session_count: null,
+	meeting_provider: null,
+	max_seats_per_cohort: null,
+	allow_continuous_enrollment: null,
+};
+
+/** The console row of a detail. */
+export function summaryOf(detail: ListingDetail): ListingSummary {
+	return {
+		id: detail.id,
+		ownerId: detail.ownerId,
+		kind: detail.kind,
+		serviceType: detail.serviceType,
+		title: detail.title,
+		category: detail.category,
+		status: detail.status,
+		currency: detail.currency,
+		cover: detail.cover,
+		price: detail.price,
+		metrics: detail.metrics,
+		updatedAt: detail.updatedAt,
+		listedAt: detail.listedAt,
+		updatedLabel: detail.updatedLabel,
+		promoted: detail.promoted,
+		needsAttention: detail.needsAttention,
+	};
+}
+// #endregion
+
 // #region Reads
 interface Loaded {
-	listings: ListingRow[];
-	subjects: Map<string, SubjectRow>;
-	media: Map<string, MediaRow[]>;
-	fileUrls: Map<string, string>;
+	listings: CatalogueListingRow[];
+	blueprints: Map<string, CatalogueBlueprintRow>;
+	products: Map<string, CatalogueProductRow>;
+	media: Map<string, ListingMediaRow[]>;
+	refs: Map<string, MediaRef>;
+	bindings: Map<string, ListingAvailabilityBinding>;
 }
 
-async function loadScope(db: SupabaseClient, scope: Scope, only?: string[]): Promise<Loaded> {
+async function loadScope(db: SupabaseClient, scope: Scope): Promise<Loaded> {
 	let q = db.schema("catalogue").from("listings").select(LISTING_COLUMNS);
-	q = scope.teamId ? q.eq("owner_team_id", scope.teamId) : q.eq("owner_user_id", scope.userId).is("owner_team_id", null);
-	if (only) q = q.in("id", only);
+	q = scope.teamId
+		? q.eq("owner_team_id", scope.teamId)
+		: q.eq("owner_user_id", scope.userId).is("owner_team_id", null);
 	const { data, error } = await q.order("updated_at", { ascending: false }).limit(SCOPE_WINDOW);
 	if (error) throw new Error(`catalogue.listings read failed: ${error.message}`);
-	const listings = ((data ?? []) as ListingRow[]).map((l) => ({
-		...l,
-		amount_cents: Number(l.amount_cents) || 0,
-		view_count: Number(l.view_count) || 0,
-		currency: (l.currency ?? "USD").toUpperCase(),
-	}));
-	return await withChildren(db, listings);
+	return await withChildren(db, ((data ?? []) as CatalogueListingRow[]).map(normaliseListing));
 }
 
-async function withChildren(db: SupabaseClient, listings: ListingRow[]): Promise<Loaded> {
+async function withChildren(db: SupabaseClient, listings: CatalogueListingRow[]): Promise<Loaded> {
 	const bpIds = listings.flatMap((l) => l.service_blueprint_id ? [l.service_blueprint_id] : []);
 	const prodIds = listings.flatMap((l) => l.product_id ? [l.product_id] : []);
 	const ids = listings.map((l) => l.id);
 	const [bps, prods, media] = await Promise.all([
 		bpIds.length
-			? db.schema("marketplace").from("service_blueprints")
-				.select("id, slug, rating_average, rating_count, delivery_model, intake_fields").in("id", bpIds)
+			? db.schema("marketplace").from("service_blueprints").select(BLUEPRINT_COLUMNS).in(
+				"id",
+				bpIds,
+			)
 			: Promise.resolve({ data: [], error: null }),
 		prodIds.length
-			? db.schema("catalogue").from("products").select("id, slug, rating_average, rating_count").in("id", prodIds)
+			? db.schema("catalogue").from("products").select(PRODUCT_COLUMNS).in("id", prodIds)
 			: Promise.resolve({ data: [], error: null }),
 		ids.length
-			? db.schema("catalogue").from("listing_media").select("listing_id, file_id, url, position").in("listing_id", ids)
+			? db.schema("catalogue").from("listing_media").select(LISTING_MEDIA_COLUMNS).in(
+				"listing_id",
+				ids,
+			)
 			: Promise.resolve({ data: [], error: null }),
 	]);
-	if (bps.error) throw new Error(`marketplace.service_blueprints read failed: ${bps.error.message}`);
+	if (bps.error) {
+		throw new Error(`marketplace.service_blueprints read failed: ${bps.error.message}`);
+	}
 	if (prods.error) throw new Error(`catalogue.products read failed: ${prods.error.message}`);
 	if (media.error) throw new Error(`catalogue.listing_media read failed: ${media.error.message}`);
 
-	const subjects = new Map<string, SubjectRow>();
-	for (const s of [...(bps.data ?? []), ...(prods.data ?? [])] as SubjectRow[]) subjects.set(s.id, s);
+	const blueprints = new Map(((bps.data ?? []) as CatalogueBlueprintRow[]).map((b) => [b.id, b]));
+	const mediaRows = (media.data ?? []) as ListingMediaRow[];
+	const [refs, bindings] = await Promise.all([
+		fetchPublicMedia(db, listingMediaFileIds(mediaRows)),
+		bindingsFor(db, [...blueprints.values()]),
+	]);
+	return {
+		listings,
+		blueprints,
+		products: new Map(((prods.data ?? []) as CatalogueProductRow[]).map((p) => [p.id, p])),
+		media: mediaRowsByListing(mediaRows),
+		refs,
+		bindings,
+	};
+}
 
-	const byListing = new Map<string, MediaRow[]>();
-	for (const m of (media.data ?? []) as MediaRow[]) {
-		const list = byListing.get(m.listing_id) ?? [];
-		list.push(m);
-		byListing.set(m.listing_id, list);
+/**
+ * The availability each booked-time blueprint uses: its bound preset, or its owner schedule's default
+ * (`scheduling.fn_preset_for_blueprint`, the gate's own resolver). A blueprint with neither has no
+ * binding, which the publish gate reports as "Choose availability".
+ */
+async function bindingsFor(
+	db: SupabaseClient,
+	blueprints: readonly CatalogueBlueprintRow[],
+): Promise<Map<string, ListingAvailabilityBinding>> {
+	const timed = blueprints.filter((b) =>
+		b.delivery_model === "session" || b.delivery_model === "group_session"
+	);
+	const out = new Map<string, ListingAvailabilityBinding>();
+	if (timed.length === 0) return out;
+	const resolved = await Promise.all(timed.map(async (b) => {
+		const { data, error } = await db.schema("scheduling").rpc("fn_preset_for_blueprint", {
+			p_blueprint: b.id,
+		});
+		if (error) throw new Error(`scheduling.fn_preset_for_blueprint failed: ${error.message}`);
+		return { blueprint: b, presetId: (data as string | null) ?? null };
+	}));
+	const presetIds = [...new Set(resolved.flatMap((r) => r.presetId ? [r.presetId] : []))];
+	if (presetIds.length === 0) return out;
+	const { data, error } = await db.schema("scheduling").from("availability_presets")
+		.select("id, name, scope").in("id", presetIds);
+	if (error) throw new Error(`scheduling.availability_presets read failed: ${error.message}`);
+	const presets = new Map(
+		((data ?? []) as Array<{ id: string; name: string; scope: string }>).map((p) => [p.id, p]),
+	);
+	for (const { blueprint, presetId } of resolved) {
+		const preset = presetId ? presets.get(presetId) : undefined;
+		if (!preset) continue;
+		const bound = blueprint.availability_preset_id === preset.id;
+		out.set(blueprint.id, {
+			mode: !bound ? "default" : preset.scope === "service" ? "override" : "preset",
+			presetId: bound ? preset.id : null,
+			presetName: preset.name.slice(0, 60),
+		});
 	}
-	for (const list of byListing.values()) list.sort((a, b) => a.position - b.position);
-
-	// Gallery files are the seller's own, readable under their policies; only a PUBLIC one has a URL
-	// a buyer could load, so a private file shows as absent rather than as a link that 404s.
-	const fileIds = [...new Set([...byListing.values()].flat().flatMap((m) => m.file_id ? [m.file_id] : []))];
-	const fileUrls = new Map<string, string>();
-	if (fileIds.length) {
-		const { data: files, error: filesError } = await db.schema("files").from("items")
-			.select("id, bucket_id, storage_path").in("id", fileIds);
-		if (filesError) throw new Error(`files.items read failed: ${filesError.message}`);
-		for (const f of (files ?? []) as Array<{ id: string; bucket_id: string; storage_path: string }>) {
-			const url = publicObjectUrl(f.bucket_id, f.storage_path);
-			if (url) fileUrls.set(f.id, url);
-		}
-	}
-	return { listings, subjects, media: byListing, fileUrls };
+	return out;
 }
 
-function subjectOf(loaded: Loaded, l: ListingRow): SubjectRow | undefined {
-	return loaded.subjects.get((l.service_blueprint_id ?? l.product_id) as string);
-}
-
-function galleryOf(loaded: Loaded, l: ListingRow): string[] {
-	return (loaded.media.get(l.id) ?? []).flatMap((m) => {
-		const src = m.file_id ? loaded.fileUrls.get(m.file_id) : m.url;
-		return src ? [src] : [];
-	});
-}
-
-async function salesFor(db: SupabaseClient, ids: string[], since: string | null): Promise<SalesRow[]> {
+async function salesFor(
+	db: SupabaseClient,
+	ids: string[],
+	since: string | null,
+): Promise<SalesRow[]> {
 	if (ids.length === 0) return [];
 	const { data, error } = await db.schema("catalogue").rpc("get_listing_sales", {
 		p_listing_ids: ids,
@@ -285,28 +461,14 @@ async function salesFor(db: SupabaseClient, ids: string[], since: string | null)
 		currency: (r.currency ?? "USD").toUpperCase(),
 	}));
 }
-// #endregion
 
-// #region Projection
-function pricingOf(l: ListingRow): ListingPricing {
-	return {
-		amount: toWhole(l.amount_cents, l.currency),
-		ticketPrice: toWholeOrNull(l.ticket_price_cents, l.currency),
-		sessionPrice: toWholeOrNull(l.session_price_cents, l.currency),
-		seatsPerSession: l.seats_per_session,
-		freeRevisions: l.free_revisions,
-		extraRevisionPrice: toWholeOrNull(l.extra_revision_price_cents, l.currency),
-	};
-}
-
-function serviceTypeOf(loaded: Loaded, l: ListingRow): ServiceType | null {
-	if (l.kind !== "service") return null;
-	return DB_TO_MODEL[subjectOf(loaded, l)?.delivery_model ?? ""] ?? "One-Off";
-}
-
-function metricsOf(
-	loaded: Loaded,
-	l: ListingRow,
+/**
+ * A listing's light metrics: its own view counter, its sales (converted into the listing's currency)
+ * and its subject's review average, rounded to one decimal as the card prints it.
+ */
+export function metricsOf(
+	l: CatalogueListingRow,
+	subject: { rating_average: number | string | null; rating_count: number | null } | undefined,
 	sales: readonly SalesRow[],
 	convert: (minor: number, from: string, to: string) => number,
 ): ListingMetrics {
@@ -317,54 +479,41 @@ function metricsOf(
 		orders += s.orders;
 		revenueMinor += convert(s.revenue_minor, s.currency, l.currency);
 	}
-	const subject = subjectOf(loaded, l);
 	const revenue = toWhole(revenueMinor, l.currency);
 	return {
 		views: l.view_count,
 		orders,
 		revenue,
 		revenueLabel: money(revenue, l.currency),
-		avgRating: Math.round((Number(subject?.rating_average) || 0) * 10) / 10,
+		avgRating: Math.round(num(subject?.rating_average) * 10) / 10,
 		ratingCount: Number(subject?.rating_count) || 0,
 		trend: [],
 	};
 }
 
-/** Whether a listing wants its seller's eye: a draft that cannot publish, or a live one missing a gate. */
-function needsAttention(detail: Pick<ListingDetail, "status" | "title" | "pricing" | "media">): boolean {
-	if (detail.status === "draft" || detail.status === "published") {
-		return !publishReadiness(detail as ListingDetail).ready;
-	}
-	return false;
-}
-
-function summaryOf(
+function detailOf(
 	loaded: Loaded,
-	l: ListingRow,
+	l: CatalogueListingRow,
 	owner: ExploreOwner,
 	sales: readonly SalesRow[],
 	convert: (minor: number, from: string, to: string) => number,
-): ListingSummary {
-	const serviceType = serviceTypeOf(loaded, l);
-	const pricing = pricingOf(l);
-	const media = galleryOf(loaded, l);
-	return {
-		id: subjectOf(loaded, l)?.slug ?? l.id,
-		ownerId: owner.handle,
-		kind: l.kind,
-		serviceType,
-		title: l.title,
-		category: l.category,
-		status: l.status,
-		currency: l.currency,
-		cover: media[0] ?? null,
-		price: resolveListingPricing({ kind: l.kind, serviceType, pricing, currency: l.currency }),
-		metrics: metricsOf(loaded, l, sales, convert),
-		updatedAt: new Date(l.updated_at).toISOString(),
-		updatedLabel: editedLabel(l.updated_at),
-		promoted: l.promoted,
-		needsAttention: needsAttention({ status: l.status, title: l.title, pricing, media }),
-	};
+	children: Pick<DetailInputs, "skills" | "tags" | "collections"> = {},
+): ListingDetail {
+	const blueprint = l.service_blueprint_id
+		? loaded.blueprints.get(l.service_blueprint_id)
+		: undefined;
+	const product = l.product_id ? loaded.products.get(l.product_id) : undefined;
+	return projectDetail({
+		listing: l,
+		blueprint,
+		product,
+		media: loaded.media.get(l.id) ?? [],
+		refs: loaded.refs,
+		owner,
+		metrics: metricsOf(l, blueprint ?? product, sales, convert),
+		binding: blueprint ? loaded.bindings.get(blueprint.id) ?? null : null,
+		...children,
+	});
 }
 
 /** The owner a console listing credits: its team when team-owned, else the seller themselves. */
@@ -398,7 +547,7 @@ async function ownerFor(scope: Scope): Promise<ExploreOwner> {
  * rare, and not worth a rates read on every console load.
  */
 async function converter(
-	listings: readonly ListingRow[],
+	listings: readonly CatalogueListingRow[],
 	sales: readonly SalesRow[],
 ): Promise<(minor: number, from: string, to: string) => number> {
 	const currencyOf = new Map(listings.map((l) => [l.id, l.currency]));
@@ -417,7 +566,11 @@ function priceValue(s: ListingSummary): number {
 	return s.price.min ?? (Number(String(s.price.display).replace(/[^0-9.]/g, "")) || 0);
 }
 
-function ascCompare(sort: CatalogueListParams["sort"], a: ListingSummary, b: ListingSummary): number {
+function ascCompare(
+	sort: CatalogueListParams["sort"],
+	a: ListingSummary,
+	b: ListingSummary,
+): number {
 	switch (sort) {
 		case "title":
 			return a.title.localeCompare(b.title, "en", { numeric: true, sensitivity: "base" });
@@ -444,8 +597,8 @@ function ascCompare(sort: CatalogueListParams["sort"], a: ListingSummary, b: Lis
  */
 async function statsFor(
 	db: SupabaseClient,
-	live: ListingRow[],
-	loaded: Loaded,
+	live: CatalogueListingRow[],
+	details: ReadonlyMap<string, ListingDetail>,
 	period: CataloguePeriod,
 	display: string,
 ): Promise<CatalogueStats> {
@@ -453,8 +606,6 @@ async function statsFor(
 	const since = new Date(Date.now() - days * DAY);
 	const window = await salesFor(db, live.map((l) => l.id), since.toISOString());
 	const currencies = new Set(window.map((s) => s.currency));
-	// One currency sold in: report in it, unconverted. None yet: the seller's own pricing currency. Several:
-	// the viewer's display currency, converted — the only case in which a rate touches the figure.
 	const target = currencies.size === 1
 		? [...currencies][0]
 		: currencies.size === 0
@@ -464,7 +615,8 @@ async function statsFor(
 	if (currencies.size > 1) {
 		const table = await FxService.rates(PLATFORM_BASE_CURRENCY);
 		const projector = projectorFor(target, table);
-		convertTo = (minor, from) => projector.canConvert(from) ? projector.convertMinor(minor, from) : 0;
+		convertTo = (minor, from) =>
+			projector.canConvert(from) ? projector.convertMinor(minor, from) : 0;
 	}
 
 	let orders = 0;
@@ -483,11 +635,10 @@ async function statsFor(
 	let ratingSum = 0;
 	let ratingWeight = 0;
 	for (const l of live) {
-		const subject = subjectOf(loaded, l);
-		const count = Number(subject?.rating_count) || 0;
-		if (count > 0) {
-			ratingSum += (Number(subject?.rating_average) || 0) * count;
-			ratingWeight += count;
+		const metrics = details.get(l.id)?.metrics;
+		if (metrics && metrics.ratingCount > 0) {
+			ratingSum += metrics.avgRating * metrics.ratingCount;
+			ratingWeight += metrics.ratingCount;
 		}
 	}
 	const revenue = toWhole(revenueMinor, target);
@@ -515,7 +666,10 @@ export async function listListings(
 	const [loaded, owner] = await Promise.all([loadScope(db, scope), ownerFor(scope)]);
 	const allTime = await salesFor(db, loaded.listings.map((l) => l.id), null);
 	const convert = await converter(loaded.listings, allTime);
-	const all = loaded.listings.map((l) => summaryOf(loaded, l, owner, allTime, convert));
+	const details = new Map(
+		loaded.listings.map((l) => [l.id, detailOf(loaded, l, owner, allTime, convert)] as const),
+	);
+	const all = [...details.values()].map(summaryOf);
 
 	let items = all.slice();
 	if (params.type && params.type !== "all") items = items.filter((d) => d.kind === params.type);
@@ -525,7 +679,9 @@ export async function listListings(
 	if (params.promoted) items = items.filter((d) => d.promoted);
 	if (params.search) {
 		const q = params.search.toLowerCase();
-		items = items.filter((d) => d.title.toLowerCase().includes(q) || d.category.toLowerCase().includes(q));
+		items = items.filter((d) =>
+			d.title.toLowerCase().includes(q) || d.category.toLowerCase().includes(q)
+		);
 	}
 
 	const sort = params.sort ?? "recent";
@@ -557,7 +713,7 @@ export async function listListings(
 		nextCursor: start + limit < total ? pageItems[pageItems.length - 1]?.id ?? null : null,
 		total,
 		statusCounts: counts,
-		stats: await statsFor(db, live, loaded, params.period ?? "30d", display),
+		stats: await statsFor(db, live, details, params.period ?? "30d", display),
 		viewerId: owner.handle,
 	};
 }
@@ -565,53 +721,68 @@ export async function listListings(
 
 // #region Detail
 /** The listing row a console address (`svc-…` / `prd-…`) names, if the caller can see it. */
-async function listingBySlug(db: SupabaseClient, slug: string): Promise<ListingRow | null> {
+export async function listingBySlug(
+	db: SupabaseClient,
+	slug: string,
+): Promise<CatalogueListingRow | null> {
 	const isService = slug.startsWith("svc-");
 	const isProduct = slug.startsWith("prd-");
 	if (!isService && !isProduct) return null;
-	const { data: subject, error } = await (isService
-		? db.schema("marketplace").from("service_blueprints").select("id").eq("slug", slug).maybeSingle()
-		: db.schema("catalogue").from("products").select("id").eq("slug", slug).maybeSingle());
+	const { data: subject, error } =
+		await (isService
+			? db.schema("marketplace").from("service_blueprints").select("id").eq("slug", slug)
+				.maybeSingle()
+			: db.schema("catalogue").from("products").select("id").eq("slug", slug).maybeSingle());
 	if (error) throw new Error(`listing subject read failed: ${error.message}`);
 	if (!subject) return null;
-	const { data, error: listingError } = await db.schema("catalogue").from("listings").select(LISTING_COLUMNS)
+	const { data, error: listingError } = await db.schema("catalogue").from("listings").select(
+		LISTING_COLUMNS,
+	)
 		.eq(isService ? "service_blueprint_id" : "product_id", (subject as { id: string }).id)
 		.maybeSingle();
 	if (listingError) throw new Error(`catalogue.listings read failed: ${listingError.message}`);
-	if (!data) return null;
-	const l = data as ListingRow;
-	return { ...l, amount_cents: Number(l.amount_cents) || 0, view_count: Number(l.view_count) || 0, currency: (l.currency ?? "USD").toUpperCase() };
+	return data ? normaliseListing(data as CatalogueListingRow) : null;
 }
 
-/** A console listing is the caller's own (or their team's); anybody else's is not theirs to manage. */
-function ownsListing(l: ListingRow, actor: ReadActor): boolean {
-	if (l.owner_team_id) return actor.contextType === "team" ? actor.contextId === l.owner_team_id : l.owner_user_id === actor.userId;
-	return l.owner_user_id === actor.userId;
+/** The caller's own listing a console address names, or `null` — a stranger's is not theirs to manage. */
+export async function ownedListing(
+	db: SupabaseClient,
+	slug: string,
+	actor: ReadActor,
+): Promise<CatalogueListingRow | null> {
+	const l = await listingBySlug(db, slug);
+	return l && ownsListing(l, actor) ? l : null;
 }
 
 /** One listing's full editable detail, or `null` when it is not the caller's to manage. */
-export async function listingDetail(slug: string, actor: ReadActor & { accessToken: string }): Promise<ListingDetail | null> {
+export async function listingDetail(
+	slug: string,
+	actor: ReadActor & { accessToken: string },
+): Promise<ListingDetail | null> {
 	const db = getUserClient(actor.accessToken);
-	const l = await listingBySlug(db, slug);
-	if (!l || !ownsListing(l, actor)) return null;
+	const l = await ownedListing(db, slug, actor);
+	if (!l) return null;
 
 	const scope: Scope = { userId: l.owner_user_id, teamId: l.owner_team_id };
-	const [loaded, owner, skills, tags, availability, collections, sales] = await Promise.all([
+	const [loaded, owner, skills, tags, collections, sales] = await Promise.all([
 		withChildren(db, [l]),
 		ownerFor(scope),
 		db.schema("catalogue").from("listing_skills").select("skill_id").eq("listing_id", l.id),
 		db.schema("catalogue").from("listing_tags").select("tag").eq("listing_id", l.id),
-		db.schema("catalogue").from("listing_availability")
-			.select("timezone, weekdays, start_hour, end_hour, note").eq("listing_id", l.id).maybeSingle(),
-		db.schema("catalogue").from("collection_listings").select("collection_id").eq("listing_id", l.id),
+		db.schema("catalogue").from("collection_listings").select("collection_id").eq(
+			"listing_id",
+			l.id,
+		),
 		salesFor(db, [l.id], null),
 	]);
-	for (const r of [skills, tags, availability, collections]) {
+	for (const r of [skills, tags, collections]) {
 		if (r.error) throw new Error(`listing detail read failed: ${r.error.message}`);
 	}
 
 	const skillIds = ((skills.data ?? []) as Array<{ skill_id: string }>).map((s) => s.skill_id);
-	const collectionIds = ((collections.data ?? []) as Array<{ collection_id: string }>).map((c) => c.collection_id);
+	const collectionIds = ((collections.data ?? []) as Array<{ collection_id: string }>).map((c) =>
+		c.collection_id
+	);
 	const [skillRows, collectionRows] = await Promise.all([
 		skillIds.length
 			? db.schema("org").from("skills").select("id, label").in("id", skillIds)
@@ -620,182 +791,22 @@ export async function listingDetail(slug: string, actor: ReadActor & { accessTok
 			? db.schema("catalogue").from("collections").select("id, name").in("id", collectionIds)
 			: Promise.resolve({ data: [], error: null }),
 	]);
+	if (skillRows.error) throw new Error(`org.skills read failed: ${skillRows.error.message}`);
+	if (collectionRows.error) {
+		throw new Error(`catalogue.collections read failed: ${collectionRows.error.message}`);
+	}
 
 	const convert = await converter([l], sales);
-	const summary = summaryOf(loaded, l, owner, sales, convert);
-	const subject = subjectOf(loaded, l);
-	const avail = availability.data as
-		| { timezone: string; weekdays: number[]; start_hour: number; end_hour: number; note: string }
-		| null;
-	const intake = IntakeFieldSchema.array().safeParse(subject?.intake_fields ?? []);
-	const skillRefs: SkillRef[] = ((skillRows.data ?? []) as Array<{ label: string }>).map((s) => resolveSkill(s.label));
-
-	return {
-		...summary,
-		owner,
-		description: l.description?.html ?? "",
-		descriptionText: l.description_text,
-		media: galleryOf(loaded, l),
-		skills: skillRefs,
+	const labelById = new Map(
+		((skillRows.data ?? []) as Array<{ id: string; label: string }>).map((s) => [s.id, s.label]),
+	);
+	return detailOf(loaded, l, owner, sales, convert, {
+		skills: skillIds.flatMap((id) => {
+			const label = labelById.get(id);
+			return label ? [resolveSkill(label)] : [];
+		}),
 		tags: ((tags.data ?? []) as Array<{ tag: string }>).map((t) => t.tag),
-		pricing: pricingOf(l),
-		delivery: l.delivery_label,
-		availability: avail
-			? {
-				timezone: avail.timezone,
-				weekdays: avail.weekdays ?? [],
-				startHour: avail.start_hour,
-				endHour: avail.end_hour,
-				note: avail.note ?? "",
-			}
-			: null,
 		collections: ((collectionRows.data ?? []) as Array<{ name: string }>).map((c) => c.name),
-		intake: l.kind === "service" && intake.success ? intake.data : [],
-	};
-}
-// #endregion
-
-// #region Writes
-/** The PostgREST error a door raised, as a refusal with its own sentence. */
-function refusalOf<T>(error: { code?: string; message: string; details?: string | null }): Result<T> {
-	if (isAgeRestricted(error)) return refuse(AGE_RESTRICTED.status, AGE_RESTRICTED.message);
-	const status = statusFor(error.code);
-	const message = error.message.replace(/\s+/g, " ").trim().slice(0, 200) || "That didn't save.";
-	if (error.code === "PG422") {
-		return refuse(422, message, { publish: (error.details ?? "").split("|").filter(Boolean).join(", ") });
-	}
-	if (status === 503) throw new Error(message);
-	return refuse(status, message);
-}
-
-/** Create a draft listing and route to its manage page. */
-export async function createListing(
-	input: CreateListingInput,
-	actor: ReadActor & { accessToken: string },
-): Promise<Result<{ listing: ListingDetail }>> {
-	const db = getUserClient(actor.accessToken);
-	const scope = scopeOf(actor);
-	const { data, error } = await db.schema("catalogue").rpc("create_listing", {
-		p_kind: input.kind,
-		p_title: input.title,
-		p_delivery_model: input.kind === "service" && input.serviceType ? MODEL_TO_DB[input.serviceType] : null,
-		p_team: scope.teamId,
 	});
-	if (error) return refusalOf(error);
-	const slug = (data as { slug?: string } | null)?.slug;
-	const listing = slug ? await listingDetail(slug, actor) : null;
-	if (!listing) throw new Error("The new listing could not be read back.");
-	return ok({ listing }, { status: 201, message: "Draft created." }) as Result<{ listing: ListingDetail }>;
-}
-
-/**
- * Resolve the editor's gallery (URLs, as the page shows them) back to stored references: a public
- * object of this project becomes its `files.items` row, anything else stays a link.
- */
-async function mediaEntries(db: SupabaseClient, urls: readonly string[]): Promise<Array<{ file_id?: string; url?: string }>> {
-	const parsed = urls.map((url) => ({ url, ref: parsePublicObjectUrl(url) }));
-	const byObject = new Map<string, string>();
-	const refs = parsed.flatMap((p) => p.ref ? [p.ref] : []);
-	for (const bucket of new Set(refs.map((r) => r.bucket))) {
-		const paths = refs.filter((r) => r.bucket === bucket).map((r) => r.path);
-		const { data, error } = await db.schema("files").from("items")
-			.select("id, bucket_id, storage_path").eq("bucket_id", bucket).in("storage_path", paths).is("deleted_at", null);
-		if (error) throw new Error(`files.items read failed: ${error.message}`);
-		for (const f of (data ?? []) as Array<{ id: string; bucket_id: string; storage_path: string }>) {
-			byObject.set(`${f.bucket_id}/${f.storage_path}`, f.id);
-		}
-	}
-	return parsed.map((p) => {
-		const id = p.ref ? byObject.get(`${p.ref.bucket}/${p.ref.path}`) : undefined;
-		return id ? { file_id: id } : { url: p.url };
-	});
-}
-
-/** Apply an editor patch to a listing (and its product or blueprint), then read it back. */
-export async function updateListing(
-	patch: UpdateListingInput,
-	actor: ReadActor & { accessToken: string },
-): Promise<Result<{ listing: ListingDetail }>> {
-	const db = getUserClient(actor.accessToken);
-	const l = await listingBySlug(db, patch.id);
-	if (!l || !ownsListing(l, actor)) return refuse(404, "No such listing.");
-	const currency = l.currency;
-	const minor = (whole: number | null | undefined) => whole === null || whole === undefined ? null : toMinorUnits(whole, currency);
-
-	const body: Record<string, unknown> = {};
-	if (patch.title !== undefined) body.title = patch.title;
-	if (patch.category !== undefined) body.category = patch.category;
-	if (patch.description !== undefined) {
-		body.description_html = patch.description;
-		// The searchable twin is derived here from the HTML, never taken on trust from the page.
-		body.description_text = flattenRichText(patch.description).slice(0, 4000);
-	} else if (patch.descriptionText !== undefined) {
-		body.description_text = patch.descriptionText;
-	}
-	if (patch.delivery !== undefined) body.delivery_label = patch.delivery;
-	if (patch.pricing !== undefined) {
-		body.amount_cents = minor(patch.pricing.amount) ?? 0;
-		body.ticket_price_cents = minor(patch.pricing.ticketPrice);
-		body.session_price_cents = minor(patch.pricing.sessionPrice);
-		body.seats_per_session = patch.pricing.seatsPerSession;
-		body.free_revisions = patch.pricing.freeRevisions;
-		body.extra_revision_price_cents = minor(patch.pricing.extraRevisionPrice);
-	}
-	if (patch.serviceType !== undefined && l.kind === "service") body.delivery_model = MODEL_TO_DB[patch.serviceType];
-	if (patch.intake !== undefined && l.kind === "service") body.intake = patch.intake as IntakeField[];
-	if (patch.media !== undefined) body.media = await mediaEntries(db, patch.media);
-	if (patch.skills !== undefined) body.skills = patch.skills.map((s) => s.label);
-	if (patch.tags !== undefined) body.tags = patch.tags;
-	if (patch.collections !== undefined) body.collections = patch.collections;
-	if (patch.availability !== undefined) {
-		body.availability = patch.availability === null ? null : availabilityBody(patch.availability);
-	}
-
-	const { error } = await db.schema("catalogue").rpc("save_listing", { p_listing: l.id, p_patch: body });
-	if (error) return refusalOf(error);
-	const listing = await listingDetail(patch.id, actor);
-	if (!listing) throw new Error("The saved listing could not be read back.");
-	return ok({ listing }, { message: "Saved." }) as Result<{ listing: ListingDetail }>;
-}
-
-function availabilityBody(a: ListingAvailability) {
-	return {
-		timezone: a.timezone,
-		weekdays: a.weekdays,
-		start_hour: a.startHour,
-		end_hour: a.endHour,
-		note: a.note,
-	};
-}
-
-/** Move a listing through its lifecycle; publishing passes the gate server-side. */
-export async function setListingStatus(
-	input: SetListingStatusInput,
-	actor: ReadActor & { accessToken: string },
-): Promise<Result<{ listing: ListingDetail }>> {
-	const db = getUserClient(actor.accessToken);
-	const l = await listingBySlug(db, input.id);
-	if (!l || !ownsListing(l, actor)) return refuse(404, "No such listing.");
-	const { error } = await db.schema("catalogue").rpc("set_listing_status", {
-		p_listing: l.id,
-		p_status: input.status,
-	});
-	if (error) return refusalOf(error);
-	const listing = await listingDetail(input.id, actor);
-	if (!listing) throw new Error("The listing could not be read back.");
-	return ok({ listing }, { message: statusMessage(input.status) }) as Result<{ listing: ListingDetail }>;
-}
-
-function statusMessage(status: ListingStatus): string {
-	switch (status) {
-		case "published":
-			return "Listing published.";
-		case "paused":
-			return "Listing paused.";
-		case "archived":
-			return "Listing archived.";
-		case "draft":
-			return "Listing moved to drafts.";
-	}
 }
 // #endregion

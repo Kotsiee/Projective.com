@@ -63,7 +63,7 @@ no write.
 | :------------ | :---------------------------------------------------------------------------------------------------------------------- |
 | `user_id`     | The signed-in reader, NULL for a guest.                                                                                 |
 | `session_id`  | Anonymous per-tab key (`sessionStorage` `pj.session.explore.discoverySession`). Joins one browsing session's events.    |
-| `event_type`  | `impression` · `click` · `rail_depth` from the tracker. `search` · `save` · `hire` · `apply` · `message` are reserved.  |
+| `event_type`  | `impression` · `click` · `rail_depth` from the tracker; `view` — a listing page view (Decision #217(k): one per session per listing per day, aggregates only). `search` · `save` · `hire` · `apply` · `message` are reserved.  |
 | `entity_id`   | The listing/profile **uuid**. Cards carry public slugs/handles; the service resolves them against the cached public catalogue and **drops** any id the catalogue does not hold. NULL for `rail_depth`. |
 | `entity_type` | `service` · `product` · `article` · `project` · `user` · `freelancer` · `team` · `business`, taken from the catalogue, never from the client. NULL for `rail_depth`. |
 | `query`       | The results page's active `?q=` when the event happened.                                                                |
@@ -150,10 +150,19 @@ key REFERENCES `marketplace.service_blueprints`.
 | `entity_type` | `product` · `article` (CHECK).                                                            |
 | `entity_id`   | `catalogue.products.id` / `catalogue.articles.id` — the ids discovery's entity vocabulary uses. |
 | `title`       | A product's LISTING title (what its card shows); an article's own.                        |
-| `fts`         | `tsvector` of the title, the description or summary, and the category or topic.          |
+| `tags`        | `text[] NOT NULL DEFAULT '{}'`: a product listing's `catalogue.listing_tags` (Decision #217(f)); empty for an article. GIN `idx_catalogue_tags`. |
+| `fts`         | A product: `search.fn_listing_fts` — the title at weight A, the tags at B, the description and category at C. An article: the title, summary and topic, unweighted. |
 | `is_public`   | The source is `published` — a product's listing, an article itself.                      |
 | `updated_at`  | The last sync.                                                                            |
 
-Kept by `search.sync_product_listing_to_index` (on `catalogue.listings`, product rows) and
-`search.sync_article_to_index` (on `catalogue.articles`), both definers; `seeds/09_search.sql`
-backstops the seed. Plus the embedding columns above.
+Kept by `search.sync_product_listing_to_index` (on `catalogue.listings`, product rows),
+`search.sync_article_to_index` (on `catalogue.articles`) and `search.fn_listing_tags_touch` (on
+`catalogue.listing_tags`), all definers; `seeds/09_search.sql` backstops the seed. Plus the embedding
+columns above.
+
+## `search.services_index` — tags (Decision #217(f))
+
+`tags text[] NOT NULL DEFAULT '{}'` carries the service listing's `catalogue.listing_tags` (GIN
+`idx_services_tags`, `00004004`), and `fts` is `search.fn_listing_fts` over the blueprint title (A),
+those tags (B) and the description (C). Kept by `search.sync_service_to_index` and, on a tag change,
+`search.fn_listing_tags_touch`.

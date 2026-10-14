@@ -1138,34 +1138,49 @@ nothing until a person asks for review.
 
 ### Catalogue services (the first WRITE surface)
 
-The seller-side Catalogue (`/catalogue` + the per-item manage page `/catalogue/[id]`) is the **first
-write-oriented** implementation of the contract — every prior read is now joined by create / update
-/ publish mutations, all still through the same thin/fat split: `CatalogueService` (client) →
-`/api/catalogue/{list,item,create,update,status}` (thin) →
-`services/catalogue/CatalogueBackendService.ts` (fat) → `ServiceResult<T>`. Reads are GETs; the
-mutations are JSON POSTs the fat service applies. Cross-boundary shapes — the listing LIST +
-editable detail projections, the light analytics (`ListingMetrics`/`CatalogueStats`), and the
-`CreateListingInput`/`UpdateListingInput`/`SetListingStatusInput` payloads — are the Zod SSOT at
-**`@projective/types/catalogue`**; pricing is **not forked** (the service delivery model reuses
-`ServiceType`, the display projection reuses `EntityPricing`, the per-unit prices reuse the
-discovery `ticketPrice`/`sessionPrice` fields). Stub-first behind **`CATALOGUE_BACKEND_LIVE`**
-(default off, gated by `isCatalogueBackendLive()`); the fat service DERIVES the seller catalogue
-deterministically from the discovery corpus (re-owned to a fixed acting seller) so a listing agrees
-with the `ServiceCard`/`ProductCard`/`/view/[id]` it links to, and — because this is the first write
-surface — seeds those listings into an **in-module session store** so the create→edit→publish flow
-is fully exercisable with the gate off (`createListing` mints an optimistic draft, `updateListing`
-merges a patch, `setListingStatus` runs the publish gate). It grants **no persistence** (the store
-is per-process). Seller-ness is **not a hard server-side redirect**: the client-side **Dev Context
-Switcher** must be able to flip an authed dev to a seller persona at runtime, and the server never
-sees that override — so the surface is authed-reachable (the `(dashboard)` middleware bounces
-guests; no route gates on `isFreelancer`, per Decisions #14/#16/#48), seller-ness lives in the
-dev-seam-reactive sidebar chrome, and the deferred `catalogue.*` RLS + mutation policies are the
-real access gate. The publish gate (`publishReadiness`: title + a price + ≥1 media) IS enforced both
-client-side (to enable/explain the Publish action) and server-side (defence in depth). The
-**deferred live path** is the RLS-scoped `catalogue.*` tables + mutation policies (no DB migration
-in this pass — the catalogue is a read+write projection over fixtures, like `detail`/`messages`/
-`files`); it slots in behind the same gate with zero shape churn. Full feature detail is logged in
-the root `CLAUDE.md` §8 Decision #53.
+The seller-side Catalogue (`/catalogue` + the per-item workspace `/catalogue/[id]`) is the **first
+write-oriented** implementation of the contract, through the same thin/fat split: `CatalogueService`
+(client) → `/api/catalogue/{list,item,create,update,status,media,media/reorder,batch,duplicate}`
+(thin: parse + Zod + auth guard, and the age gate on a publish) →
+`services/catalogue/CatalogueBackendService.ts` (fat) → `ServiceResult<T>`. It is **live only**, as
+the signed-in seller: reads under the catalogue policies (`live-catalogue.ts`), writes through the
+`catalogue.*` doors (`live-catalogue-writes.ts`) — `create_listing`, `save_listing` (with
+`expected_updated_at`: a stale save is a `409` whose `details.current` is the listing's current
+`updatedAt`), `apply_listing_media`, `set_listing_status`, `set_listings_status` (one outcome per
+listing) and `duplicate_listing`. A guest gets a `401` and an outage a `503`, never a sample
+catalogue. Cross-boundary shapes are the Zod SSOT at **`@projective/types/catalogue`**; pricing is
+**not forked** (`ServiceType`, `EntityPricing` and the discovery `ticketPrice`/`sessionPrice`
+fields are reused). A listing's `offer` is mapped to and from its blueprint or product columns in
+one module (`offer-columns.ts`), so a field cannot be written under one name and read under another.
+
+**One card mapping (Decision #217, plan §4.6).** The discovery card a listing renders as is built by
+the pure `listingCardItem(source)` (`@projective/types/explore/listing-card.ts`), which both the
+explore assembler (`live-catalog.ts#assemble`, from rows) and the workspace's live card (from the
+edited `ListingDetail`, which satisfies `ListingCardSource` as it is) call. A contract test holds
+the two row mappings to the same item for every fixture listing
+(`services/catalogue/card-fidelity.test.ts`). The showcase rows are mapped to slots once, too
+(`services/catalogue/listing-media.ts`): a slot is drawn from its public 16:10 rendition.
+
+**Showcase renditions.** The profile showcase and the listing showcase share one cut,
+`services/media/showcase-rendition.ts#cutShowcaseRendition`: the caller's library asset is re-read
+under their session, slot 1 takes a still only, and the pipeline (service role) writes a public
+rendition owned by the surface's owner. The surface's own door then decides, under the caller's
+session, whether it may be placed (`org.save_showcase`, `catalogue.apply_listing_media`); a refusal
+retires the rendition.
+
+**The owner's buyer simulation.** `CatalogueBackendService.previewView` composes the same
+`EntityView` `/view/[id]` renders, through the same assembler, from `resolveListing(slug, { as:
+"owner", actor })` (`services/explore/listing-source.ts`): the listing read with the seller's own
+token, draft and paused included. A listing that is not the caller's resolves exactly as a missing
+one (`404`), so the answer never reveals that it exists.
+
+Every write drops the public catalogue's cache (`invalidateCatalog`) and re-embeds what it touched
+(`reembedInBackground`); a listing's embedding text includes its search tags and its search-result
+description (`core/embedding-text.ts`). Seller-ness is **not a hard server-side redirect**: the Dev
+Context Switcher must be able to flip an authed dev to a seller persona at runtime, so no route
+gates on `isFreelancer` (Decisions #14/#16/#48) and RLS plus the doors are the real access gate. The
+publish gate (`publishReadiness`) is enforced client-side (to explain the Publish action) and in the
+database. Feature history: Decisions #53 and #217.
 
 **`WalletBackendService`** (`services/finance/`) is the context-scoped Wallet & Finance surface
 (`/wallet` — one command-centre page and its action dialogs) — the 14th thin/fat read and the finance domain's first
@@ -2033,6 +2048,7 @@ UPDATE ops.scheduled_jobs SET enabled = false WHERE name = 'account-erasures';  
 
 | Job                               | Cadence (UTC)       | Runs                                                                   | Owner                                                    | Idempotency                                                                                                         |
 | :-------------------------------- | :------------------ | :--------------------------------------------------------------------- | :------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------ |
+| `analytics-listing-rollups`       | daily 02:10         | `analytics.fn_rollup_listings(current_date - 1)`                       | Catalogue — listing analytics (`00001600`, Decision #218) | Upserts the day on the rollup key and deletes the day's listing rows it no longer produces, so a re-run (or `analytics.fn_backfill_listing_rollups`) rewrites the day to one fresh computation. |
 | `finance-billing-cycle`           | daily 02:20         | `finance.fn_run_billing_cycle()`                                       | Finance — billing (`00001250`)                           | One invoice per business per billing day and one statement per wallet per month; a missed day is caught up, a re-run adds nothing. |
 | `archive-stale-service-drafts`    | daily 03:10         | `projects.fn_archive_stale_service_drafts()`                           | Projects — service pipeline (`00001130`)                 | Archives only `draft` rows still idle with no funded stage; never deletes.                                         |
 | `finance-reconcile-wallets`       | daily 03:40         | `finance.fn_reconcile_wallets()`                                       | Finance — ledger (Decision #186)                         | Read-only on finance; a persisting drift is re-reported each run (one ops row per drifted wallet).                  |

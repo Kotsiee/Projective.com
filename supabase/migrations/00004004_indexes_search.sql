@@ -9,6 +9,8 @@ CREATE INDEX idx_services_vector ON search.services_index USING hnsw (embedding 
 CREATE INDEX idx_services_fts ON search.services_index USING GIN (fts);
 CREATE INDEX idx_catalogue_vector ON search.catalogue_index USING hnsw (embedding vector_ip_ops);
 CREATE INDEX idx_catalogue_fts ON search.catalogue_index USING GIN (fts);
+CREATE INDEX idx_services_tags ON search.services_index USING GIN (tags);
+CREATE INDEX idx_catalogue_tags ON search.catalogue_index USING GIN (tags);
 CREATE INDEX idx_user_affinity ON search.user_affinity (user_id, affinity_score DESC);
 CREATE INDEX idx_query_logs_string ON search.query_logs (search_query);
 

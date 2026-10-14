@@ -99,3 +99,39 @@ CREATE OR REPLACE TRIGGER trg_call_settings_age_gate
     FOR EACH ROW EXECUTE FUNCTION scheduling.trg_schedule_age_gate ();
 -- #endregion
 
+-- #region Availability presets & recurrence (Decision #217, 00001510 §10)
+CREATE OR REPLACE TRIGGER trg_availability_presets_touch
+    BEFORE UPDATE ON scheduling.availability_presets
+    FOR EACH ROW EXECUTE FUNCTION scheduling.fn_touch_updated_at ();
+
+CREATE OR REPLACE TRIGGER trg_recurrence_rules_touch
+    BEFORE UPDATE ON scheduling.recurrence_rules
+    FOR EACH ROW EXECUTE FUNCTION scheduling.fn_touch_updated_at ();
+
+-- No preset for a minor, and a service fork names a service sold from its schedule.
+CREATE OR REPLACE TRIGGER trg_preset_guard
+    BEFORE INSERT OR UPDATE ON scheduling.availability_presets
+    FOR EACH ROW EXECUTE FUNCTION scheduling.trg_preset_guard ();
+
+-- A blueprint binds only a live preset of its owner's schedule (the CHECK half of the 00000031 FK).
+CREATE OR REPLACE TRIGGER trg_blueprint_preset_binding
+    BEFORE INSERT OR UPDATE OF availability_preset_id, owner_team_id, freelancer_profile_id
+    ON marketplace.service_blueprints
+    FOR EACH ROW EXECUTE FUNCTION scheduling.trg_blueprint_preset_binding ();
+
+-- A rule, a band or the schedule's zone changing makes the compiled spans stale.
+CREATE OR REPLACE TRIGGER trg_recurrence_rules_invalidate
+    AFTER INSERT OR UPDATE OR DELETE ON scheduling.recurrence_rules
+    FOR EACH ROW EXECUTE FUNCTION scheduling.trg_invalidate_preset_compilation ();
+
+CREATE OR REPLACE TRIGGER trg_recurrence_rule_bands_invalidate
+    AFTER INSERT OR UPDATE OR DELETE ON scheduling.recurrence_rule_bands
+    FOR EACH ROW EXECUTE FUNCTION scheduling.trg_invalidate_preset_compilation ();
+
+CREATE OR REPLACE TRIGGER trg_schedule_timezone_invalidates_presets
+    AFTER UPDATE OF timezone ON scheduling.schedules
+    FOR EACH ROW
+    WHEN (NEW.timezone IS DISTINCT FROM OLD.timezone)
+    EXECUTE FUNCTION scheduling.trg_invalidate_preset_compilation ();
+-- #endregion
+

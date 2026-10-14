@@ -168,10 +168,10 @@ export const MOCK_REGISTRY: Readonly<Record<MockDomain, MockDomainInfo>> = Objec
 		label: "Seller catalogue",
 		gate: "CATALOGUE_BACKEND_LIVE",
 		liveImplemented: true,
-		modules: [],
+		modules: ["services/catalogue/catalogue-fixtures.ts"],
 		schemas: ["catalogue", "marketplace"],
 		description:
-			"LIVE. The seller's own listings read under the catalogue policies (live-catalogue); sales from catalogue.get_listing_sales; create/update/publish through catalogue.create_listing / save_listing / set_listing_status, which keep each listing and its product or service blueprint in step in one transaction.",
+			"LIVE. The seller's own listings read under the catalogue policies (live-catalogue); sales from catalogue.get_listing_sales; writes through catalogue.create_listing / save_listing / apply_listing_media / set_listing_status / set_listings_status / duplicate_listing, which keep each listing and its product or service blueprint in step. There is no fixture branch: catalogue-fixtures.ts holds stored rows for the tests that hold the console and discovery to one card mapping.",
 	},
 	newsletter: {
 		domain: "newsletter",

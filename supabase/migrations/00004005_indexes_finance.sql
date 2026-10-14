@@ -155,3 +155,15 @@ CREATE INDEX IF NOT EXISTS idx_payouts_pending_initiated
     ON finance.payouts (initiated_at) WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS idx_payouts_bank_payout_ref
     ON finance.payouts (bank_payout_ref) WHERE bank_payout_ref IS NOT NULL;
+
+-- #region Listing analytics and the client pipeline (Decision #217)
+-- The lines that bought a listing (fn_seller_order_lines, fn_rollup_listings) are found by the
+-- polymorphic item they bought.
+CREATE INDEX IF NOT EXISTS idx_order_lines_item
+    ON finance.order_lines (item_id, item_type);
+-- The daily listing rollup reads one UTC day of orders (placed, or last changed for refunds) and of
+-- basket additions.
+CREATE INDEX IF NOT EXISTS idx_orders_placed_at ON finance.orders (placed_at);
+CREATE INDEX IF NOT EXISTS idx_orders_updated_at ON finance.orders (updated_at);
+CREATE INDEX IF NOT EXISTS idx_basket_items_created_at ON finance.basket_items (created_at);
+-- #endregion

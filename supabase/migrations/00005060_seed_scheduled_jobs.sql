@@ -72,3 +72,11 @@ INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name
         'SELECT projects.fn_lapse_session_handshakes();', NULL, NULL,
         'Set-session scheduling handshakes: one reminder 24h before a booking''s earliest deadline, then each handshake still open at its deadline (set_session_schedule_hours) lapses — the pencilled-in sitting time stands and both people are told.')
 ON CONFLICT (name) DO NOTHING;
+
+-- Listing analytics (Decision #217). Writes yesterday's UTC listing rollups; a SQL job, so it needs no
+-- secret. A late or missed run is repaired by `analytics.fn_backfill_listing_rollups`.
+INSERT INTO ops.scheduled_jobs (name, kind, schedule, command, path, secret_name, description) VALUES
+    ('analytics-listing-rollups', 'sql', '10 2 * * *',
+        'SELECT analytics.fn_rollup_listings(current_date - 1);', NULL, NULL,
+        'Writes yesterday''s (UTC) listing analytics into analytics.daily_rollups: impressions, clicks, views, checkout starts, orders, gross per currency, bookings, the booking heatmap, keywords from 5+ sessions and cancellations (Decision #217).')
+ON CONFLICT (name) DO NOTHING;

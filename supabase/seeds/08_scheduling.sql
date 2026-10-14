@@ -1,5 +1,5 @@
 -- =============================================================================================
--- 08_scheduling.sql — schedules, bands, blackouts, call settings, commitments, discovery calls
+-- 08_scheduling.sql — schedules, bands, blackouts, call settings, commitments, discovery calls, availability presets
 --
 -- GENERATED FILE — do not edit by hand. Regenerate with:
 --   deno run --allow-read --allow-write --allow-env supabase/seeds/generate.ts
@@ -220,4 +220,82 @@ VALUES
   ('7e77b040-57ab-4229-a774-2066a4d25df7', '27f86bef-39c4-4148-a49d-b74d530c614e', 'rsvp', '9e4c0d6c-1b26-48ff-ae0f-1202ebcf5a3d', 'Marked Going', NULL, '4920996d-59db-4c7a-a8aa-0f7bde7eab18', now() - interval '40 hours')
 ON CONFLICT (id) DO NOTHING;
 
--- scheduling: 10 schedules, 65 bands, 4 calls, 6 project meetings.
+INSERT INTO scheduling.availability_presets (id, schedule_id, scope, name, description, is_default)
+VALUES
+  ('3dd54050-7793-4267-a15a-72aae46ab579', '75d05796-1a22-4a0b-a5d6-be2ce79100a9', 'library'::scheduling.preset_scope, 'General Freelancer Availability', 'Monday to Friday, 09:00–17:30, with calls mid-morning and mid-afternoon.', true),
+  ('001b6cad-1042-4f82-ad62-1a0f621a1734', '1ccb25d3-184b-487e-a81c-7e11db9a9404', 'library'::scheduling.preset_scope, 'General Freelancer Availability', 'Monday to Friday, 09:00–17:30, with calls mid-morning and mid-afternoon.', true),
+  ('bb41ce1e-8e10-410f-ae9f-52c8194f2e29', 'c1e31a5c-c862-4feb-a217-8a4237a5a4d9', 'library'::scheduling.preset_scope, 'General Freelancer Availability', 'Monday to Friday, 09:00–17:30, with calls mid-morning and mid-afternoon.', true),
+  ('1d66364f-dc1a-455a-aa99-1b99cf95af7c', 'f403d885-6327-4a7e-a146-470bcb49c40c', 'library'::scheduling.preset_scope, 'General Freelancer Availability', 'Monday to Friday, 09:00–17:30, with calls mid-morning and mid-afternoon.', true),
+  ('962612da-7581-488f-ad6b-f36c1caf4ac1', 'c20bf810-20fd-4efb-aa6b-b64ec6dd8871', 'library'::scheduling.preset_scope, 'General Freelancer Availability', 'Monday to Friday, 09:00–17:30, with calls mid-morning and mid-afternoon.', true),
+  ('957ccd48-9018-4381-a5ed-11b6a1b24e57', '868e608a-b2cf-445d-a665-110c9b029627', 'library'::scheduling.preset_scope, 'General Freelancer Availability', 'Monday to Friday, 09:00–17:30, with calls mid-morning and mid-afternoon.', true),
+  ('651f62d1-ebe2-40d2-a225-e0fbca232d64', '11922877-8757-4806-a855-57dd4fd44294', 'library'::scheduling.preset_scope, 'General Freelancer Availability', 'Monday to Friday, 09:00–17:30, with calls mid-morning and mid-afternoon.', true),
+  ('4cea3b46-6733-4c87-a95f-1888d404dd61', '679905ac-0aa6-4cf3-ad70-02aa6e825291', 'library'::scheduling.preset_scope, 'General Freelancer Availability', 'Monday to Friday, 09:00–17:30, with calls mid-morning and mid-afternoon.', true),
+  ('eb3894ab-acf3-44cc-ab0c-b2512466b412', '4b8eb94d-ee54-4300-aab0-de4745bb12c2', 'library'::scheduling.preset_scope, 'General Freelancer Availability', 'Monday to Friday, 09:00–17:30, with calls mid-morning and mid-afternoon.', true),
+  ('68ae26c9-61a0-482c-a641-8bfba7d41d2e', 'b4df1c6f-f2d2-45a8-a060-0b0d4251925e', 'library'::scheduling.preset_scope, 'General Freelancer Availability', 'Monday to Friday, 09:00–17:30, with calls mid-morning and mid-afternoon.', true)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO scheduling.recurrence_rules (id, preset_id, kind, effect, rrule, starts_on, ends_on, priority, unless_weekdays, label, is_active, position)
+VALUES
+  ('52750492-32a5-451b-a297-05d4fa50efbd', '3dd54050-7793-4267-a15a-72aae46ab579', 'working_hours'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekdays', true, 0),
+  ('de1bb8ec-fac4-412b-ae7b-386a291584d9', '3dd54050-7793-4267-a15a-72aae46ab579', 'call_window'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekday calls', true, 1),
+  ('4aa568ad-73b8-4138-ad6d-5acf4d6f7472', '001b6cad-1042-4f82-ad62-1a0f621a1734', 'working_hours'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekdays', true, 0),
+  ('9ee60589-2337-45f6-a372-3ca71658a84c', '001b6cad-1042-4f82-ad62-1a0f621a1734', 'call_window'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekday calls', true, 1),
+  ('4d7006fc-6c0a-402b-aa22-b1ded19a1b75', 'bb41ce1e-8e10-410f-ae9f-52c8194f2e29', 'working_hours'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekdays', true, 0),
+  ('65c78d42-a0ad-4fbb-a933-a44091ecb1c1', 'bb41ce1e-8e10-410f-ae9f-52c8194f2e29', 'call_window'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekday calls', true, 1),
+  ('b0e313a3-811a-4d90-a649-0c2d7185b1da', '1d66364f-dc1a-455a-aa99-1b99cf95af7c', 'working_hours'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekdays', true, 0),
+  ('b7ec0c83-f238-4b9e-a180-68090dcdce84', '1d66364f-dc1a-455a-aa99-1b99cf95af7c', 'call_window'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekday calls', true, 1),
+  ('aa2d26b8-1c44-42b3-ad2c-8c827ed733f5', '962612da-7581-488f-ad6b-f36c1caf4ac1', 'working_hours'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekdays', true, 0),
+  ('5c8c5e76-cd21-4593-ad3c-d3dcc91a4341', '962612da-7581-488f-ad6b-f36c1caf4ac1', 'call_window'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekday calls', true, 1),
+  ('9d8b9c66-59f4-4d1d-ad3a-235cd2a181c3', '957ccd48-9018-4381-a5ed-11b6a1b24e57', 'working_hours'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekdays', true, 0),
+  ('169accb8-406e-48b9-a7a4-5522b92d6d23', '957ccd48-9018-4381-a5ed-11b6a1b24e57', 'call_window'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekday calls', true, 1),
+  ('41072981-7cc1-4948-a3ea-61cb1d4aff02', '651f62d1-ebe2-40d2-a225-e0fbca232d64', 'working_hours'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekdays', true, 0),
+  ('2827fc65-774b-4f06-aabb-0bdb4d2b135c', '651f62d1-ebe2-40d2-a225-e0fbca232d64', 'call_window'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekday calls', true, 1),
+  ('c2e4eecc-8d65-45d3-ab93-f9c66a4d9fdd', '4cea3b46-6733-4c87-a95f-1888d404dd61', 'working_hours'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekdays', true, 0),
+  ('48e83452-b420-4c33-adc4-9c9853de6279', '4cea3b46-6733-4c87-a95f-1888d404dd61', 'call_window'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekday calls', true, 1),
+  ('634b318b-46d2-4dd2-aa42-b791bccc8df0', 'eb3894ab-acf3-44cc-ab0c-b2512466b412', 'working_hours'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekdays', true, 0),
+  ('7be9fe9b-343f-4a2c-afe3-547588445e7e', 'eb3894ab-acf3-44cc-ab0c-b2512466b412', 'call_window'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekday calls', true, 1),
+  ('1910ea91-d1f5-4056-a9a2-87434bc0c990', '68ae26c9-61a0-482c-a641-8bfba7d41d2e', 'working_hours'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekdays', true, 0),
+  ('1e7d9d75-688e-4d28-afc9-15a3f5383f9e', '68ae26c9-61a0-482c-a641-8bfba7d41d2e', 'call_window'::scheduling.availability_kind, 'add'::scheduling.rule_effect, 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', '2026-01-05', NULL, 50, '{}'::smallint[], 'Weekday calls', true, 1)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO scheduling.recurrence_rule_bands (rule_id, position, start_minute, end_minute)
+VALUES
+  ('52750492-32a5-451b-a297-05d4fa50efbd', 0, 540, 1050),
+  ('de1bb8ec-fac4-412b-ae7b-386a291584d9', 0, 600, 720),
+  ('de1bb8ec-fac4-412b-ae7b-386a291584d9', 1, 840, 960),
+  ('4aa568ad-73b8-4138-ad6d-5acf4d6f7472', 0, 540, 1050),
+  ('9ee60589-2337-45f6-a372-3ca71658a84c', 0, 600, 720),
+  ('9ee60589-2337-45f6-a372-3ca71658a84c', 1, 840, 960),
+  ('4d7006fc-6c0a-402b-aa22-b1ded19a1b75', 0, 540, 1050),
+  ('65c78d42-a0ad-4fbb-a933-a44091ecb1c1', 0, 600, 720),
+  ('65c78d42-a0ad-4fbb-a933-a44091ecb1c1', 1, 840, 960),
+  ('b0e313a3-811a-4d90-a649-0c2d7185b1da', 0, 540, 1050),
+  ('b7ec0c83-f238-4b9e-a180-68090dcdce84', 0, 600, 720),
+  ('b7ec0c83-f238-4b9e-a180-68090dcdce84', 1, 840, 960),
+  ('aa2d26b8-1c44-42b3-ad2c-8c827ed733f5', 0, 540, 1050),
+  ('5c8c5e76-cd21-4593-ad3c-d3dcc91a4341', 0, 600, 720),
+  ('5c8c5e76-cd21-4593-ad3c-d3dcc91a4341', 1, 840, 960),
+  ('9d8b9c66-59f4-4d1d-ad3a-235cd2a181c3', 0, 540, 1050),
+  ('169accb8-406e-48b9-a7a4-5522b92d6d23', 0, 600, 720),
+  ('169accb8-406e-48b9-a7a4-5522b92d6d23', 1, 840, 960),
+  ('41072981-7cc1-4948-a3ea-61cb1d4aff02', 0, 540, 1050),
+  ('2827fc65-774b-4f06-aabb-0bdb4d2b135c', 0, 600, 720),
+  ('2827fc65-774b-4f06-aabb-0bdb4d2b135c', 1, 840, 960),
+  ('c2e4eecc-8d65-45d3-ab93-f9c66a4d9fdd', 0, 540, 1050),
+  ('48e83452-b420-4c33-adc4-9c9853de6279', 0, 600, 720),
+  ('48e83452-b420-4c33-adc4-9c9853de6279', 1, 840, 960),
+  ('634b318b-46d2-4dd2-aa42-b791bccc8df0', 0, 540, 1050),
+  ('7be9fe9b-343f-4a2c-afe3-547588445e7e', 0, 600, 720),
+  ('7be9fe9b-343f-4a2c-afe3-547588445e7e', 1, 840, 960),
+  ('1910ea91-d1f5-4056-a9a2-87434bc0c990', 0, 540, 1050),
+  ('1e7d9d75-688e-4d28-afc9-15a3f5383f9e', 0, 600, 720),
+  ('1e7d9d75-688e-4d28-afc9-15a3f5383f9e', 1, 840, 960)
+ON CONFLICT (rule_id, position) DO NOTHING;
+
+UPDATE marketplace.service_blueprints SET availability_preset_id = '68ae26c9-61a0-482c-a641-8bfba7d41d2e' WHERE id = 'eaff7484-81fb-46d3-adb1-42da56453eb9';
+
+UPDATE marketplace.service_blueprints SET availability_preset_id = '68ae26c9-61a0-482c-a641-8bfba7d41d2e' WHERE id = 'f882f878-11fa-4489-a8fa-f3f24055f2cb';
+
+UPDATE marketplace.service_blueprints SET availability_preset_id = '3dd54050-7793-4267-a15a-72aae46ab579' WHERE id = '40d68e27-474f-4b56-a37e-1605cbc3fdb4';
+
+-- scheduling: 10 schedules, 65 bands, 4 calls, 6 project meetings, 10 presets, 3 bound services.

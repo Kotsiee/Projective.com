@@ -497,3 +497,95 @@ CREATE TABLE scheduling.call_audit (
     detail text,
     created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- ---------------------------------------------------------------------------------------------
+-- Availability presets & recurrence (Decision #217 (c)/(d), CATALOGUE_REBUILD.md §5).
+--
+-- A preset is a named rule set under the owner's ONE schedule; a blueprint binds one through
+-- marketplace.service_blueprints.availability_preset_id (FK in 00000031 — the two tables reference
+-- each other). A preset has no time zone of its own: it is evaluated in its schedule's.
+--
+-- The rules are authored and evaluated in TypeScript (@projective/types/scheduling evaluate.ts), the
+-- one evaluator. The database never expands an RRULE: the service compiles each preset into
+-- availability_occurrences over a rolling horizon through a service-role door, and the booking gate
+-- reads those spans. compiled_from / compiled_through are the preset-local dates that compilation
+-- covers; NULL means not compiled, and the gate falls back to the weekly bands.
+-- ---------------------------------------------------------------------------------------------
+
+CREATE TABLE scheduling.availability_presets (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    schedule_id uuid NOT NULL REFERENCES scheduling.schedules (id) ON DELETE CASCADE,
+    scope scheduling.preset_scope NOT NULL DEFAULT 'library',
+    -- The service a fork belongs to. CASCADE because a fork means nothing without its service, and
+    -- SET NULL would break ck_preset_scope_blueprint.
+    blueprint_id uuid REFERENCES marketplace.service_blueprints (id) ON DELETE CASCADE,
+    name text NOT NULL CHECK (char_length(btrim(name)) BETWEEN 1 AND 60),
+    description text NOT NULL DEFAULT '' CHECK (char_length(description) <= 200),
+    is_default boolean NOT NULL DEFAULT false,
+    compiled_from date,
+    compiled_through date,
+    -- Presets are archived, never deleted (root CLAUDE.md §5).
+    archived_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_preset_scope_blueprint CHECK ((scope = 'service') = (blueprint_id IS NOT NULL)),
+    CONSTRAINT ck_preset_default_is_library CHECK (NOT is_default OR scope = 'library'),
+    CONSTRAINT ck_preset_compiled_window CHECK (
+        (compiled_from IS NULL AND compiled_through IS NULL)
+        OR (compiled_from IS NOT NULL AND compiled_through IS NOT NULL AND compiled_through >= compiled_from)
+    )
+);
+
+-- One authored rule: its recurrence as a normalised RFC 5545 RRULE (DTSTART carried as starts_on),
+-- what it does to the day (effect), and its bands (recurrence_rule_bands). Only the shape is checked
+-- here — the TypeScript parser is the authority on what the RRULE means (Decision #217 (d)).
+CREATE TABLE scheduling.recurrence_rules (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid (),
+    preset_id uuid NOT NULL REFERENCES scheduling.availability_presets (id) ON DELETE CASCADE,
+    kind scheduling.availability_kind NOT NULL DEFAULT 'working_hours',
+    effect scheduling.rule_effect NOT NULL DEFAULT 'add',
+    rrule text NOT NULL CHECK (char_length(rrule) <= 400 AND rrule ~ '^FREQ='),
+    starts_on date NOT NULL,
+    -- UNTIL, inclusive; NULL runs open-ended.
+    ends_on date,
+    -- Breaks ties between `replace` rules occurring on one date (plan §5.2 step 2).
+    priority smallint NOT NULL DEFAULT 50 CHECK (priority BETWEEN 0 AND 99),
+    -- The authored "unless it is …" condition, 0 = Sunday … 6 = Saturday. Already compiled into the
+    -- RRULE's BYDAY; kept so the editor can show the condition it was written as.
+    unless_weekdays smallint[] NOT NULL DEFAULT '{}' CHECK (
+        cardinality(unless_weekdays) <= 6
+        AND unless_weekdays <@ ARRAY[0, 1, 2, 3, 4, 5, 6]::smallint[]
+    ),
+    label text NOT NULL DEFAULT '' CHECK (char_length(label) <= 80),
+    is_active boolean NOT NULL DEFAULT true,
+    position smallint NOT NULL DEFAULT 0 CHECK (position BETWEEN 0 AND 63),
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT ck_recurrence_rule_range CHECK (ends_on IS NULL OR ends_on >= starts_on)
+);
+
+-- Up to six bands per rule (a split shift is one rule). The same span CHECK as availability_rules:
+-- a band never crosses local midnight. No bands on a `subtract` rule removes the whole day.
+CREATE TABLE scheduling.recurrence_rule_bands (
+    rule_id uuid NOT NULL REFERENCES scheduling.recurrence_rules (id) ON DELETE CASCADE,
+    position smallint NOT NULL CHECK (position BETWEEN 0 AND 5),
+    start_minute integer NOT NULL CHECK (start_minute BETWEEN 0 AND 1440),
+    end_minute integer NOT NULL CHECK (end_minute BETWEEN 0 AND 1440),
+    CONSTRAINT recurrence_rule_bands_pkey PRIMARY KEY (rule_id, position),
+    CONSTRAINT ck_recurrence_rule_band_span CHECK (end_minute > start_minute)
+);
+
+-- A preset's compiled availability: absolute spans per layer, as the evaluator returned them. The
+-- evaluator merges touching spans of a layer (across midnight too), so a layer's spans never share a
+-- start and the primary key doubles as the gate's lookup index. Written only by
+-- scheduling.replace_preset_occurrences (service role); there is no client write path.
+CREATE TABLE scheduling.availability_occurrences (
+    preset_id uuid NOT NULL REFERENCES scheduling.availability_presets (id) ON DELETE CASCADE,
+    kind scheduling.availability_kind NOT NULL,
+    starts_at timestamptz NOT NULL,
+    ends_at timestamptz NOT NULL,
+    -- The rules that produced the span (the day's `add` rules, or the `replace` rule that won it).
+    rule_ids uuid[] NOT NULL DEFAULT '{}',
+    CONSTRAINT availability_occurrences_pkey PRIMARY KEY (preset_id, kind, starts_at),
+    CONSTRAINT ck_occurrence_span CHECK (ends_at > starts_at)
+);

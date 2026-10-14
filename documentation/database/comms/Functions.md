@@ -210,7 +210,7 @@ block or roll back the transaction that emitted the notification.
 | `comms.has_channel_access(uuid)`           | 0311      | Channel membership predicate used by RLS. |
 | `comms.get_stage_channels(uuid)`           | 0311      | Channels visible for a stage. Skips an archived stage or room and never provisions a Session's stage rooms (Decision #163). |
 | `comms.get_or_create_project_channel(...)` | 0112      | Idempotent project-channel provisioning.  |
-| `comms.get_or_create_dm_thread(...)`       | 0113      | Idempotent DM-thread provisioning. Excludes `group` threads since Decision #102 — a group holding both people is not their DM. |
+| `comms.get_or_create_dm_thread(target_user_id, p_subject_listing DEFAULT NULL)` | 0113      | Idempotent DM-thread provisioning. Excludes `group` threads since Decision #102 — a group holding both people is not their DM. With `p_subject_listing` (Decision #217(g)) the listing must be PUBLISHED and owned by the recipient (`22023` otherwise); a thread this call opens is a `service_inquiry` with that `subject_listing_id`, an existing inquiry without a subject gains it, and a thread already under way keeps its kind (one record per pair). |
 
 ## Group conversations (`00001300`, Decision #102)
 
@@ -241,7 +241,8 @@ is not `kind = 'group'`, and `22023` unless the file is a processed public rendi
 deleted) — the same proof `org.set_profile_avatar` demands, so a client cannot point a thread at
 somebody else's file. The photo it replaces is soft-deleted. Returns `{ ok, file_id, previous }`.
 The rendition itself is cut server-side from the caller's library still
-(`packages/backend/services/messaging/live-group-photo.ts`, reusing the profile's `writeRendition`).
+(`packages/backend/services/messaging/live-group-photo.ts`, reusing `writeRendition` from
+`packages/backend/services/media/showcase-rendition.ts`).
 
 **Verified by execution** inside `BEGIN … ROLLBACK` as real roles: a member sets their own file and
 replaces it (previous soft-deleted); another member clears it; somebody else's file, a DM and a

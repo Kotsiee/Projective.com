@@ -4,7 +4,7 @@ import type { ReadActor } from "../read-actor.ts";
 import { publicObjectUrl } from "../../core/storage-url.ts";
 import { readLibrarySource } from "../media/library.ts";
 import { MediaRejectedError, MediaUnavailableError } from "../media/pipeline.ts";
-import { type Rendition, retireRendition, writeRendition } from "../profile/live-profile-writes.ts";
+import { type Rendition, retireRendition, writeRendition } from "../media/showcase-rendition.ts";
 import { refusalFrom, type WriteOutcome, type WriteRefusal } from "../projects/live-writes.ts";
 import { UUID_RE } from "../projects/live-support.ts";
 import { commsClient } from "./live-queries.ts";
@@ -63,7 +63,7 @@ export async function renderGroupPhoto(
 			{ type: "user", id: actor.userId },
 			actor,
 			source,
-			{ target: "avatar", sourceAssetId: input.sourceAssetId, crop: input.crop },
+			{ target: "avatar", crop: input.crop },
 			"Group photo",
 		);
 		return { data: { rendition, url: renditionUrl(rendition) } };

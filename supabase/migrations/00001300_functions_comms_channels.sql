@@ -3,8 +3,13 @@
 -- Consolidated verbatim from: 0113_get_or_create_dm_thread.sql, 0311_e7_private_channels_pii_handover.sql
 -- ============================================================================
 
+-- `p_subject_listing` (Decision #217(g)): the listing a buyer pressed Contact on. A thread this call
+-- OPENS then becomes a `service_inquiry` about that listing; an existing service inquiry without a
+-- subject gains it. A thread already under way between the pair keeps its kind — unified messaging
+-- keeps one record per pair, and a DM cannot carry a subject (`ck_dm_threads_subject_inquiry`).
 CREATE OR REPLACE FUNCTION comms.get_or_create_dm_thread(
-    target_user_id uuid
+    target_user_id uuid,
+    p_subject_listing uuid DEFAULT NULL
 ) RETURNS uuid
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -14,7 +19,17 @@ DECLARE
     v_current_user_id uuid := auth.uid();
     v_thread_id uuid;
 BEGIN
-    
+    -- The subject must be a live listing the recipient sells; otherwise a thread could claim to be
+    -- about a listing that has nothing to do with them.
+    IF p_subject_listing IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM catalogue.listings l
+         WHERE l.id = p_subject_listing
+           AND l.owner_user_id = target_user_id
+           AND l.status = 'published'::catalogue.listing_status
+    ) THEN
+        RAISE EXCEPTION 'That listing is not on sale from this person' USING ERRCODE = '22023';
+    END IF;
+
     -- A GROUP that happens to contain both people is not their DM: the join alone would return
     -- it (nothing requires the thread to hold ONLY these two), so a "message this person" from a
     -- profile would land in a group chat everyone else can read. A service inquiry IS the pair's
@@ -28,12 +43,20 @@ BEGIN
     LIMIT 1;
 
     IF v_thread_id IS NOT NULL THEN
+        IF p_subject_listing IS NOT NULL THEN
+            UPDATE comms.dm_threads t
+               SET subject_listing_id = p_subject_listing
+             WHERE t.id = v_thread_id AND t.kind = 'service_inquiry' AND t.subject_listing_id IS NULL;
+        END IF;
         RETURN v_thread_id;
     END IF;
 
-    
-    INSERT INTO comms.dm_threads (created_by_user_id)
-    VALUES (v_current_user_id)
+    INSERT INTO comms.dm_threads (created_by_user_id, kind, subject_listing_id)
+    VALUES (
+        v_current_user_id,
+        CASE WHEN p_subject_listing IS NULL THEN 'dm' ELSE 'service_inquiry' END::comms.conversation_kind,
+        p_subject_listing
+    )
     RETURNING id INTO v_thread_id;
 
     

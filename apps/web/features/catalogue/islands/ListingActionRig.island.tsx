@@ -66,9 +66,7 @@ export default function ListingActionRig(props: ListingActionRigProps): JSX.Elem
 						<>
 							<AlertIcon size={15} />
 							<span>
-								Add {missing.length > 0 ? missing.join(", ").toLowerCase() : "the required details"}
-								{" "}
-								to publish
+								To publish: {missing.length > 0 ? missing.join(" · ") : "add the required details"}
 							</span>
 						</>
 					)}

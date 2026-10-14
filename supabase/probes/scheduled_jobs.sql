@@ -24,7 +24,8 @@ DECLARE
         ARRAY['auto-release-session-escrow',      '*/15 * * * *'],
         ARRAY['finance-recurring-deposits',       '15 * * * *'],
         ARRAY['account-erasures',                 '10 4 * * *'],
-        ARRAY['ops-watch-jobs',                   '*/10 * * * *']
+        ARRAY['ops-watch-jobs',                   '*/10 * * * *'],
+        ARRAY['analytics-listing-rollups',        '10 2 * * *']
     ];
     v_missing text[] := ARRAY[]::text[];
     i integer;

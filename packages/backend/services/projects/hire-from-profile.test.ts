@@ -115,8 +115,11 @@ function primePipelineListing(): void {
 			free_revisions: 2,
 			extra_revision_price_cents: null,
 			promoted: false,
+			seo_description: null,
+			status: "published",
 			published_at: "2026-09-01T00:00:00Z",
 			created_at: "2026-09-01T00:00:00Z",
+			updated_at: "2026-09-01T00:00:00Z",
 		}],
 		blueprints: [{
 			id: blueprint,

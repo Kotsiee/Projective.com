@@ -74,7 +74,8 @@ export interface CorpusProduct {
 	files: Array<{ name: string; label: string; extension: string; bytes: number }>;
 	specs: Array<{ label: string; value: string }>;
 	compatibility: Array<{ app: string; versions: string }>;
-	licence: "standard" | "extended";
+	/** `catalogue.product_licence` (Decision #217(i)). */
+	licence: "personal" | "commercial" | "extended";
 	attributionRequired: boolean;
 }
 
@@ -1359,7 +1360,7 @@ export const PRODUCTS: CorpusProduct[] = [
 				"versions": "2022 and later",
 			},
 		],
-		"licence": "standard",
+		"licence": "personal",
 		"attributionRequired": true,
 	},
 	{
@@ -1430,7 +1431,7 @@ export const PRODUCTS: CorpusProduct[] = [
 				"versions": "2022 and later",
 			},
 		],
-		"licence": "standard",
+		"licence": "personal",
 		"attributionRequired": true,
 	},
 	{
@@ -1629,7 +1630,7 @@ export const PRODUCTS: CorpusProduct[] = [
 				"versions": "2 and later",
 			},
 		],
-		"licence": "standard",
+		"licence": "personal",
 		"attributionRequired": true,
 	},
 	{
@@ -1700,7 +1701,7 @@ export const PRODUCTS: CorpusProduct[] = [
 				"versions": "5.1 - 5.4",
 			},
 		],
-		"licence": "standard",
+		"licence": "personal",
 		"attributionRequired": true,
 	},
 	{

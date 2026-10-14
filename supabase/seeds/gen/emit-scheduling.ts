@@ -1,6 +1,6 @@
 /**
  * emit-scheduling.ts — `08_scheduling.sql`: every published schedule, its weekly bands, blackouts,
- * call settings and platforms, the commitments already on it, and the discovery calls in flight.
+ * call settings and platforms, the commitments already on it, the discovery calls in flight, and the default availability preset
  *
  * Runs after identities, entities, listings and projects (a schedule is owned by a person or a team,
  * and a call may be about a listing). Nothing later depends on it, so it sorts after `08_comms.sql`
@@ -12,7 +12,13 @@
  * reads the way a real one would.
  */
 
-import { RESCHEDULE_LOCKOUT_HOURS, VOTE_RESOLUTION_LEAD_HOURS } from "@projective/types/scheduling";
+import {
+	draftToRRule,
+	RESCHEDULE_LOCKOUT_HOURS,
+	SCHEDULE_TEMPLATES,
+	VOTE_RESOLUTION_LEAD_HOURS,
+} from "@projective/types/scheduling";
+import { SERVICES } from "./corpus.ts";
 import { HEADER, id, insert, localAt, minutesOf, num, q, uuidFor } from "./sql.ts";
 import { type Lookup, party, persona, type World } from "./resolve.ts";
 import {
@@ -87,7 +93,7 @@ function at(tz: string, slot: WeekSlot, plusMinutes = 0): string {
 export function emitScheduling(world: World): string {
 	const out: string[] = [
 		HEADER(
-			"08_scheduling.sql — schedules, bands, blackouts, call settings, commitments, discovery calls",
+			"08_scheduling.sql — schedules, bands, blackouts, call settings, commitments, discovery calls, availability presets",
 			"Generated from supabase/seeds/gen/schedules.ts. Times are wall-clock times in each owner's zone, placed relative to the current week.",
 		),
 	];
@@ -307,12 +313,123 @@ export function emitScheduling(world: World): string {
 
 	out.push(emitProjectMeetings(world));
 
+	const presets = emitPresets(world, resolved);
+	out.push(presets.sql);
+
 	// A trailing marker, so a partial run is visible in the reset log.
 	out.push(
-		`-- scheduling: ${resolved.length} schedules, ${bandRows.length} bands, ${callRows.length} calls, ${PROJECT_MEETINGS.length} project meetings.\n`,
+		`-- scheduling: ${resolved.length} schedules, ${bandRows.length} bands, ${callRows.length} calls, ${PROJECT_MEETINGS.length} project meetings, ${presets.presets} presets, ${presets.bound} bound services.\n`,
 	);
 	return out.join("\n");
 }
+
+// #region Availability presets
+/**
+ * One default library preset per seeded schedule, copied from the "general" template of
+ * `SCHEDULE_TEMPLATES` (the same constant the editor's preset bar loads), and every Session and Group
+ * Session blueprint bound to its owner's preset. Not compiled: `compiled_from` / `compiled_through`
+ * stay NULL, so the booking gate keeps reading the weekly bands above until the scheduling service
+ * compiles occurrences (Decision #217 (d)).
+ */
+function emitPresets(
+	world: World,
+	resolved: ResolvedSchedule[],
+): { sql: string; presets: number; bound: number } {
+	const template = SCHEDULE_TEMPLATES.find((t) => t.key === "general");
+	if (!template) throw new Error("schedules: SCHEDULE_TEMPLATES has no general template");
+
+	const presetRows: string[][] = [];
+	const ruleRows: string[][] = [];
+	const bandRows: string[][] = [];
+	const presetByOwner = new Map<string, string>();
+	for (const r of resolved) {
+		const presetId = uuidFor("availability-preset", r.spec.owner);
+		presetByOwner.set(r.spec.owner, presetId);
+		presetRows.push([
+			id(presetId),
+			id(r.scheduleId),
+			`'library'::scheduling.preset_scope`,
+			q(template.name),
+			q(template.description),
+			"true",
+		]);
+		template.rules.forEach((rule, position) => {
+			const ruleId = uuidFor("recurrence-rule", `${r.spec.owner}:${rule.id}`);
+			ruleRows.push([
+				id(ruleId),
+				id(presetId),
+				`${q(rule.layer)}::scheduling.availability_kind`,
+				`${q(rule.effect)}::scheduling.rule_effect`,
+				q(draftToRRule(rule)),
+				q(rule.startsOn),
+				q(rule.endsOn),
+				String(rule.priority),
+				`'{${rule.condition.unlessWeekdays.join(",")}}'::smallint[]`,
+				q(rule.label),
+				rule.active ? "true" : "false",
+				String(position),
+			]);
+			rule.bands.forEach((band, bandPosition) => {
+				bandRows.push([id(ruleId), String(bandPosition), String(band.start), String(band.end)]);
+			});
+		});
+	}
+
+	const bindings: Array<[string, string]> = [];
+	for (const s of SERVICES) {
+		if (s.model !== "session" && s.model !== "group_session") continue;
+		const principal = world.principals.get(s.owner);
+		if (!principal) throw new Error(`schedules: no principal owns "${s.owner}"`);
+		const ownerKey = principal.entityKey ??
+			[...world.personas.values()].find((p) => p.userId === principal.accountUserId)?.key;
+		const presetId = ownerKey ? presetByOwner.get(ownerKey) : undefined;
+		if (!presetId) {
+			throw new Error(
+				`schedules: ${s.key} is a session listing but its owner publishes no schedule to bind`,
+			);
+		}
+		bindings.push([world.serviceId(s.key), presetId]);
+	}
+
+	const sql = [
+		insert(
+			"scheduling.availability_presets",
+			["id", "schedule_id", "scope", "name", "description", "is_default"],
+			presetRows,
+		),
+		insert(
+			"scheduling.recurrence_rules",
+			[
+				"id",
+				"preset_id",
+				"kind",
+				"effect",
+				"rrule",
+				"starts_on",
+				"ends_on",
+				"priority",
+				"unless_weekdays",
+				"label",
+				"is_active",
+				"position",
+			],
+			ruleRows,
+		),
+		insert(
+			"scheduling.recurrence_rule_bands",
+			["rule_id", "position", "start_minute", "end_minute"],
+			bandRows,
+			"(rule_id, position)",
+		),
+		...bindings.map(([blueprintId, presetId]) =>
+			`UPDATE marketplace.service_blueprints SET availability_preset_id = ${
+				id(presetId)
+			} WHERE id = ${id(blueprintId)};\n`
+		),
+	].join("\n");
+	return { sql, presets: presetRows.length, bound: bindings.length };
+}
+// #endregion
 
 // #region Project meetings
 const WEEKDAY_NAME = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;

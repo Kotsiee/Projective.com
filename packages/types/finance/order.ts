@@ -392,7 +392,7 @@ export function calendarLinksFor(
  * backslashes those replacements just introduced, and the entry would render with visible `\n`
  * sequences in the description.
  */
-function icsEscape(value: string): string {
+export function icsEscape(value: string): string {
 	return value
 		.replace(/\\/g, "\\\\")
 		.replace(/;/g, "\\;")
@@ -407,7 +407,7 @@ function icsEscape(value: string): string {
  * short line, so this only ever matters on long descriptions — which is exactly where an unfolded
  * line silently truncates in some desktop clients.
  */
-function icsFold(line: string): string {
+export function icsFold(line: string): string {
 	if (line.length <= 75) return line;
 	const parts: string[] = [line.slice(0, 75)];
 	for (let i = 75; i < line.length; i += 74) parts.push(" " + line.slice(i, i + 74));

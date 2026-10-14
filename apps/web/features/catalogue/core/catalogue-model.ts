@@ -1,6 +1,4 @@
-import type { ProductItem, ServiceItem } from "@projective/types/explore";
 import type { UserContext } from "@projective/types/auth";
-import { toMinorUnits } from "@projective/types/finance";
 import type {
 	CatalogueSort,
 	CatalogueTypeFilter,
@@ -15,9 +13,9 @@ export function isSeller(context: UserContext): boolean {
 
 /**
  * catalogue-model — the pure, presentation-agnostic helpers the Catalogue islands share: route hrefs,
- * status metadata, the type/sort/model option vocabularies, and the live-preview item builder that
- * reconstructs a discovery {@link ServiceItem}/{@link ProductItem} from an edited listing so the manage
- * page can render the REAL `ServiceCard`/`ProductCard`. No state, no DOM — safe to import anywhere.
+ * status metadata and the type/sort/model option vocabularies. The live card is drawn from
+ * `listingCardItem` (`@projective/types/explore`), the mapping discovery itself uses. No state, no
+ * DOM — safe to import anywhere.
  */
 
 // #region Route hrefs
@@ -126,15 +124,7 @@ export function toSort(raw: string | null): CatalogueSort {
 	return ok.includes(raw as CatalogueSort) ? (raw as CatalogueSort) : "recent";
 }
 
-/**
- * The direction a sort key reads most naturally in first. Magnitudes open at their largest (newest,
- * best-selling, most-viewed, highest-rated); a name and a lifecycle read forwards.
- */
-export function defaultSortDir(sort: CatalogueSort): "asc" | "desc" {
-	return sort === "recent" || sort === "best-selling" || sort === "views" || sort === "rating"
-		? "desc"
-		: "asc";
-}
+export { defaultSortDir } from "../types/catalogue-types.ts";
 
 /** Coerce a raw string to a valid type segment, else `all`. */
 export function toTypeFilter(raw: string | null): CatalogueTypeFilter {
@@ -157,68 +147,5 @@ export function halfOverHalf(trend: readonly number[]): number | null {
 	const later = trend.slice(trend.length - half).reduce((s, n) => s + n, 0);
 	if (earlier <= 0) return null;
 	return Math.round(((later - earlier) / earlier) * 100);
-}
-// #endregion
-
-// #region Live-preview item builder
-/**
- * Reconstruct a discovery {@link ServiceItem}/{@link ProductItem} from an edited listing so the manage
- * page can render the REAL explore card. The card reads only a handful of fields (title, owner, media,
- * the pricing pair, delivery, category, serviceType) — the rest are inert placeholders required by the
- * discovery schema (`skills`/`summary`/`createdAt`). The pricing display string is the already-resolved
- * projection (`detail.price.display`), so the card's fixed-price fallback matches the console + `/view`.
- *
- * The listing's `currency` and its fixed price as integer minor units travel too: the cards render
- * money through `MoneyView` from those two fields, and without them a pound or euro listing previewed
- * as dollars — the card's own default — while the console beside it said otherwise.
- */
-export function buildPreviewItem(detail: ListingDetail): ServiceItem | ProductItem {
-	const currency = detail.currency;
-	const priceMinor = detail.pricing.amount > 0
-		? toMinorUnits(detail.pricing.amount, currency) ?? undefined
-		: undefined;
-	const rating = detail.metrics.avgRating > 0
-		? { asHelper: { value: detail.metrics.avgRating, count: detail.metrics.ratingCount } }
-		: undefined;
-	const cover = detail.media[0];
-	if (detail.kind === "service") {
-		return {
-			id: detail.id,
-			type: "services",
-			title: detail.title || "Untitled service",
-			owner: detail.owner,
-			skills: detail.skills,
-			summary: detail.descriptionText,
-			media: cover,
-			sponsored: detail.promoted,
-			createdAt: detail.updatedAt,
-			price: detail.price.display,
-			delivery: detail.delivery || "Delivery TBD",
-			category: detail.category,
-			serviceType: detail.serviceType ?? "One-Off",
-			ticketPrice: detail.pricing.ticketPrice ?? undefined,
-			sessionPrice: detail.pricing.sessionPrice ?? undefined,
-			priceMinor,
-			currency,
-			rating,
-		};
-	}
-	return {
-		id: detail.id,
-		type: "products",
-		title: detail.title || "Untitled product",
-		owner: detail.owner,
-		skills: detail.skills,
-		summary: detail.descriptionText,
-		media: cover,
-		sponsored: detail.promoted,
-		createdAt: detail.updatedAt,
-		price: detail.price.display,
-		category: detail.category || "product",
-		span: 2,
-		priceMinor,
-		currency,
-		rating,
-	};
 }
 // #endregion

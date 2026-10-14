@@ -38,10 +38,27 @@ declaration here and costs nothing — neither function is used in an index.)
 
 ## 3. Coverage & conflict predicates
 
-### `scheduling.fn_band_covers(schedule, kind, starts_at, ends_at) → boolean`
+### `scheduling.fn_band_covers(schedule, kind, starts_at, ends_at, blueprint? = NULL) → boolean`
 
-Is the whole span inside **one** active weekly band of that kind? Resolves the schedule's own
-timezone, then compares local weekday + minute-of-day at both edges.
+**The preset branch (Decision #217 (d)).** With a `blueprint` whose effective preset
+(`fn_preset_for_blueprint`, §10) has been compiled over the span's dates
+(`compiled_from <= local date of starts_at` and `compiled_through >= local date of ends_at`, both in
+the schedule's zone), coverage means "inside **one** `availability_occurrences` span of that layer"
+(`fn_occurrence_covers`). Every other case uses the weekly answer below: no blueprint, no preset, a
+preset not compiled yet, a slot past the horizon, or a preset whose rules changed since it was
+compiled. A compiled span may cross midnight; a weekly band may not. Now plpgsql (it was SQL); the
+4-argument call sites (`fn_call_window_covers`, the comms out-of-hours auto-reply) resolve to it
+unchanged.
+
+**Callers that pass a blueprint:** `projects.fn_book_session_slot` (#211) tests the FIRST sitting
+against `working_hours` with the listing's blueprint and refuses `PS409` ("outside the provider's
+hours"). The pencilled-in later sittings are agreed through their handshakes. **Discovery calls do
+not pass one:** ruling (d) keeps discovery calls and `/[handle]/availability` on the weekly bands,
+so `request_discovery_call` → `fn_call_request_refusal` → `fn_call_window_covers` is unchanged, even
+for a call booked about a listing.
+
+**The weekly answer.** Is the whole span inside **one** active weekly band of that kind? Resolves the
+schedule's own timezone, then compares local weekday + minute-of-day at both edges.
 
 > ⚠️ **Known bound.** Because `end_minute > start_minute` is a table constraint, a band cannot cross
 > local midnight — so neither can a call booked against one. A provider taking calls 23:00–01:00
@@ -533,6 +550,94 @@ start would rewrite the instant the decision was taken.
 
 ---
 
+## 10. Availability presets & recurrence (`00001510` §10, Decision #217)
+
+The database stores rules and compiled spans and lets the gate read the spans. It never expands an
+RRULE: `@projective/types/scheduling` `evaluate.ts` is the one evaluator. See
+[Tables.md](Tables.md) §4 for the model and the horizon.
+
+### `scheduling.save_availability_preset(schedule, preset jsonb) → uuid`
+
+The preset editor's one write, in one transaction. **`SECURITY INVOKER`**, like
+`save_owner_availability`: the preset, rule and band policies (`fn_can_manage_schedule`) decide who
+may write, and the explicit check up front only names the refusal. Granted to `authenticated` and
+`service_role`.
+
+| Payload key          | Effect                                                                                                                                                                                       |
+| :------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                 | Absent creates. Present updates that live preset on this schedule, which keeps its `scope` and service (`scope: a saved preset keeps its scope and service`).                                 |
+| `name` `description` | 1–60 characters (a live library name is unique per schedule, case-insensitively) · up to 200.                                                                                               |
+| `scope` `blueprint_id` | `library` (default) with no service, or `service` with the blueprint being forked for.                                                                                                     |
+| `is_default`         | `true` moves the default here. A library preset saved onto a schedule with no default becomes it. A default is moved, never cleared: `false` on the current default leaves it the default.   |
+| `rules`              | **Replaces** the rules and bands: at most 64 rules, each `{id?, kind, effect, rrule, starts_on, ends_on?, priority?, unless_weekdays?, label?, is_active?, bands: [{start_minute, end_minute}]}` with at most 6 bands. A uuid `id` is kept; anything else is minted. |
+
+The RRULE is checked for shape only (`FREQ=` prefix, ≤ 400 characters). The service re-validated it
+with the TypeScript parser, the authority on its meaning (flag d). Refusals: `42501`
+(`auth: sign in to edit availability`, `schedule: you cannot edit this schedule`), `22023` with a
+`<field>: <reason>` message for the input, and **`PM403`** for a restricted caller. That last one is
+raised by `trg_preset_guard` on the preset write, before any rule is touched (below). The rule writes
+mark the preset not compiled (`trg_invalidate_preset_compilation`). The service compiles it straight
+after.
+
+### `scheduling.archive_availability_preset(preset) → uuid[]`
+
+Presets are archived, never deleted. Sets `archived_at`, NULLs `availability_preset_id` on every
+bound blueprint (each falls back to the schedule's default), and returns their ids so the caller can
+name the services that moved. Archiving the default hands the default to the most recently edited
+live library preset. **The default cannot be archived while it is the only library preset**
+(`22023`). Idempotent: an archived preset returns `{}`. **`SECURITY DEFINER`**, because unbinding
+writes `marketplace.service_blueprints`, whose policies are not the schedule's. The authority is
+`fn_can_manage_schedule` on the preset's schedule (`42501`). A call without `auth.uid()` can only
+be the service role (the grants). `P0002` for an unknown id.
+
+### `scheduling.replace_preset_occurrences(preset, from, to, spans jsonb) → integer`
+
+The compiler's door (`ScheduleBackendService.compileOccurrences`, C7). **`SECURITY DEFINER`, EXECUTE
+granted to `service_role` only**: there is no client write path to `availability_occurrences`. It
+replaces every occurrence of the preset overlapping `[from, to)` with `spans`, where each element is
+an `OccurrenceSpanSchema` (`{kind, startsAt, endsAt, ruleIds}`). It then stamps the compiled window:
+the preset-local dates wholly inside `[from, to)`, joined to the previous window when the two touch
+(a horizon extension) and replacing it otherwise. It checks only what the database can know: each
+span is a layer, ends after it starts, lies inside the window (≤ 400 days, ≤ 10,000 spans), and
+names only this preset's rules (`22023`). Whether the spans are right is the evaluator's word.
+Returns the number of spans written.
+
+### `scheduling.fn_preset_for_blueprint(blueprint) → uuid`
+
+The preset a blueprint's bookings are judged against: the bound preset, else the owner schedule's
+live default, else NULL. An archived preset never answers. Between an individual's two possible
+schedules, the `freelancer` one wins, as in `projects.fn_session_host_schedule`. Granted to every
+client role, like `fn_band_covers`.
+
+### `scheduling.fn_occurrence_covers(preset, kind, from, to) → boolean`
+
+Is the span inside one compiled occurrence of that layer? It does not ask whether the preset was
+compiled over the span; `fn_band_covers` asks that first. Service role only (the gate calls it as
+its owner).
+
+### Helpers and triggers
+
+- **`fn_preset_schedule(preset)` · `fn_rule_schedule(rule)` → uuid**: the parent schedule, as
+  definers, so the rule, band and occurrence policies can ask `fn_can_manage_schedule` /
+  `fn_can_view_schedule` about a parent row the caller might not read. Granted to `authenticated`.
+- **`fn_is_owner_schedule(schedule, owner_team, owner_person)`**: is this the schedule a blueprint
+  with these owner columns books into (the team's, else the seller's `user` / `freelancer` one)?
+- **`trg_preset_guard()`**: `trg_preset_guard` BEFORE INSERT OR UPDATE on `availability_presets`.
+  It raises `PM403` (`scheduling: availability presets unlock at 18`) when the caller, or the
+  person who owns the schedule, is restricted. That is the same `org.fn_is_minor` predicate
+  `trg_schedule_age_gate` uses (Decision #208), and it holds for a direct table write too. It
+  raises `23514` when a fork names a service not sold from this schedule.
+- **`trg_blueprint_preset_binding()`**: `trg_blueprint_preset_binding` BEFORE INSERT OR UPDATE OF
+  `availability_preset_id`, `owner_team_id`, `freelancer_profile_id` on
+  `marketplace.service_blueprints`, the CHECK half of the `00000031` FK. It raises `23514` when the
+  bound preset is archived, sits on another schedule, or is another service's fork.
+- **`trg_invalidate_preset_compilation()`**: AFTER any write to `recurrence_rules` /
+  `recurrence_rule_bands` and AFTER UPDATE OF `timezone` on `schedules`. It NULLs
+  `compiled_from` / `compiled_through`, so the gate falls back to the weekly bands until the service
+  recompiles.
+
+---
+
 ## Not yet implemented (deferred, deliberately)
 
 - **Discovery-call management RPCs** — confirming, declining, rescheduling, cancelling, and
@@ -564,4 +669,7 @@ A restricted (13–17) account schedules nothing with other people. `scheduling.
 (`00001860`) — refuses a minor's person schedule being published or taking calls (`PM403`); the
 tables are written directly under RLS (`save_owner_availability` is an invoker), hence the trigger.
 `fn_schedule_is_public` never answers true for a minor's schedule, and `request_discovery_call`
-asserts the requester is an adult. A minor's private calendar is untouched.
+asserts the requester is an adult. A minor's private calendar is untouched. Since Decision #217 a
+minor also holds no availability preset (`trg_preset_guard`, §10), and
+`projects.fn_book_session_slot` asserts the buyer is an adult itself, not only through
+`place_wallet_order`.

@@ -25,6 +25,11 @@
  * - {@link ./ics.ts} — the iCalendar (RFC 5545) READER, the exact inverse of the writer in
  *   `@projective/types/finance` `order.ts`. Pure: no clock, no IO, so the fat service and the
  *   browser call one implementation and a `.ics` import cannot be parsed two different ways.
+ * - {@link ./civil.ts}, {@link ./rrule.ts}, {@link ./recurrence.ts}, {@link ./evaluate.ts} — the
+ *   availability RECURRENCE ENGINE (Decision #217 (d)): timezone-free civil dates, an RFC 5545 RRULE
+ *   subset, the authored rule/preset shapes and the one pure evaluator that compiles a preset into
+ *   absolute spans. {@link ./describe.ts} words a rule, {@link ./templates.ts} holds the starting
+ *   presets and {@link ./presets.ts} the save / bind / occurrence payloads.
  *
  * ⚠️ **`coordination.ts` and `meeting.ts` have no tables yet.** They are read+write PROJECTIONS the
  * fat `ScheduleBackendService` derives from fixtures (and mutates in a per-process session store),
@@ -44,3 +49,10 @@ export * from "./calls.ts";
 export * from "./booking.ts";
 export * from "./ics.ts";
 export * from "./owner-availability.ts";
+export * from "./civil.ts";
+export * from "./rrule.ts";
+export * from "./recurrence.ts";
+export * from "./evaluate.ts";
+export * from "./describe.ts";
+export * from "./templates.ts";
+export * from "./presets.ts";

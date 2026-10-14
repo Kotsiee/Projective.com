@@ -216,8 +216,11 @@ function primeServices(): void {
 			free_revisions: null,
 			extra_revision_price_cents: null,
 			promoted: false,
+			seo_description: null,
+			status: "published" as const,
 			published_at: "2026-09-01T00:00:00Z",
 			created_at: "2026-09-01T00:00:00Z",
+			updated_at: "2026-09-01T00:00:00Z",
 		})),
 		blueprints: rows.map(({ it, n }) => ({
 			id: `00000000-0000-4000-8000-00000000b00${n}`,

@@ -20,6 +20,14 @@ import { z } from "zod";
 
 // #region Service stage template
 
+/**
+ * When a stage starts, as the seller states it. `after_previous` waits for the previous stage;
+ * `fixed_offset` waits for it and then `lagDays` more. `catalogue.save_listing` refuses any other
+ * value, and `marketplace.instantiate_service_blueprint` maps it onto `project_stages`.
+ */
+export const StartTrigger = z.enum(["on_project_start", "after_previous", "fixed_offset"]);
+export type StartTrigger = z.infer<typeof StartTrigger>;
+
 /** One stage of a Pipeline / One-Off service (`service_blueprints.stage_template`). */
 export const BlueprintStageSchema = z.object({
 	name: z.string().trim().min(1).max(80),
@@ -36,6 +44,12 @@ export const BlueprintStageSchema = z.object({
 	priceCents: z.number().int().min(0).optional(),
 	/** Skill LABELS as the seller wrote them. */
 	skills: z.array(z.string().trim().min(1).max(60)).max(12).default([]),
+	/** When the stage starts. Ignored for the first stage, which always starts with the project. */
+	startTrigger: StartTrigger.default("after_previous"),
+	/** Days to wait after the previous stage; meaningful for `fixed_offset` only. */
+	lagDays: z.number().int().min(0).max(90).default(0),
+	/** Whether finishing this stage starts its dependants automatically (`project_stages.chain_reaction`). */
+	chainReaction: z.boolean().default(true),
 });
 export type BlueprintStage = z.infer<typeof BlueprintStageSchema>;
 
@@ -149,8 +163,9 @@ export type ProductLicenceKey = z.infer<typeof ProductLicenceKey>;
 
 /**
  * The terms of a licence — PLATFORM POLICY, not seller copy. A licence is a term of the sale, so
- * what "standard" permits has to mean the same thing on every product, in every seller's shop; the
- * seller chooses WHICH licence, never what it says.
+ * what "commercial" permits has to mean the same thing on every product, in every seller's shop; the
+ * seller chooses WHICH licence (`catalogue.product_licence`: personal · commercial · extended), never
+ * what it says.
  *
  * Stated as explicit allowed/denied permissions rather than a list of only the permitted things: an
  * omitted permission reads as an oversight, a denied one reads as a term. Every row is phrased as a
@@ -165,14 +180,21 @@ export function licenceTerms(
 	attributionRequired: boolean,
 ): { name: string; summary: string; permissions: Array<{ label: string; allowed: boolean }> } {
 	const extended = key === "extended";
+	const commercial = extended || key === "commercial";
 	return {
-		name: extended ? "Extended commercial licence" : "Standard commercial licence",
+		name: extended
+			? "Extended commercial licence"
+			: commercial
+			? "Standard commercial licence"
+			: "Personal licence",
 		summary: extended
 			? "Use in unlimited commercial projects, including work delivered to your own clients and products offered for resale."
-			: "Use in your own commercial projects. Redistributing the source files, and reselling this as a competing product, are not permitted.",
+			: commercial
+			? "Use in your own commercial projects. Redistributing the source files, and reselling this as a competing product, are not permitted."
+			: "Use in your own non-commercial projects. Commercial use, redistributing the source files and reselling this are not permitted.",
 		permissions: [
 			{ label: "Personal use", allowed: true },
-			{ label: "Commercial use", allowed: true },
+			{ label: "Commercial use", allowed: commercial },
 			{ label: "Use in client deliverables", allowed: extended },
 			{ label: "Modify and adapt", allowed: true },
 			{ label: "Redistribute source files", allowed: false },

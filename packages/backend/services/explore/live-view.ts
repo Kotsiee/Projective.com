@@ -125,10 +125,10 @@ function galleryOf(catalog: Catalog, item: ExploreItem): EntityMedia[] {
 	return frames.map((f, i) => ({
 		src: f.src,
 		placeholder: f.placeholder,
-		thumb: f.src,
+		thumb: f.thumb,
 		thumbPlaceholder: f.placeholder,
 		alt: f.alt || `${item.title} — view ${i + 1}`,
-		kind: "image" as const,
+		kind: f.kind,
 	}));
 }
 
@@ -714,7 +714,7 @@ function productViewFor(
 		}),
 	);
 	const payloadBytes = files.reduce((sum, f) => sum + f.bytes, 0);
-	const cover = catalog.galleryById.get(item.id)?.[0];
+	const cover = catalog.galleryById.get(item.id)?.find((m) => m.kind === "image");
 	return {
 		format,
 		formatLabel: FORMAT_LABEL[format],

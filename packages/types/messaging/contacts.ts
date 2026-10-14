@@ -381,6 +381,15 @@ export const CreateConversationSchema = z.object({
 	message: z.string().trim().max(4000).optional(),
 	/** A group's photo, applied once the group exists. Ignored for a DM (its picture is the person). */
 	photo: GroupPhotoInputSchema.optional(),
+	/**
+	 * The listing a buyer pressed Contact on (`comms.dm_threads.subject_listing_id`, Decision #217(g)).
+	 * Single-contact only: a thread it opens becomes a `service_inquiry` about that listing, which must
+	 * be published by the contact (`comms.get_or_create_dm_thread`, 22023 otherwise).
+	 */
+	subjectListingId: z.string().uuid().optional(),
+}).refine((c) => c.subjectListingId === undefined || c.contactIds.length === 1, {
+	message: "An inquiry about a listing goes to its seller alone.",
+	path: ["subjectListingId"],
 });
 export type CreateConversation = z.infer<typeof CreateConversationSchema>;
 

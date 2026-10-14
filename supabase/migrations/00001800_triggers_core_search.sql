@@ -31,6 +31,14 @@ FOR EACH ROW EXECUTE FUNCTION search.sync_product_listing_to_index();
 CREATE TRIGGER trg_sync_article_search AFTER INSERT OR UPDATE ON catalogue.articles
 FOR EACH ROW EXECUTE FUNCTION search.sync_article_to_index();
 
+-- #region Listing tags (Decision #217(f)) — at most 10, and every change re-syncs the index row
+CREATE TRIGGER trg_listing_tags_max BEFORE INSERT ON catalogue.listing_tags
+FOR EACH ROW EXECUTE FUNCTION catalogue.trg_listing_tags_max();
+
+CREATE TRIGGER trg_listing_tags_touch AFTER INSERT OR UPDATE OR DELETE ON catalogue.listing_tags
+FOR EACH ROW EXECUTE FUNCTION search.fn_listing_tags_touch();
+-- #endregion
+
 CREATE TRIGGER trg_update_ratings
 AFTER INSERT OR UPDATE OR DELETE ON reviews.entity_reviews
 FOR EACH ROW EXECUTE FUNCTION reviews.recalculate_entity_rating();

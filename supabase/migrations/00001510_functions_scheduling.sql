@@ -592,26 +592,50 @@ AS $$
     SELECT EXTRACT(DOW FROM (p_at AT TIME ZONE p_tz))::smallint;
 $$;
 
--- Is the whole span inside ONE active weekly band of the given kind?
+-- Is the whole span inside the owner's availability of the given kind?
 --
--- ⚠️ Known bound: because `end_minute > start_minute` is a table constraint, a band cannot cross
--- local midnight, and therefore neither can a call booked against one. A provider who takes calls
--- from 23:00 to 01:00 must express it as two bands and the call must fit inside one of them. This
--- is a deliberate simplification, not an oversight — modelling midnight-spanning bands would make
--- every downstream free/busy query materially harder for a case no fixture needs yet.
+-- With a blueprint whose resolved preset (fn_preset_for_blueprint) has been compiled over the span's
+-- local dates, the answer is "inside ONE compiled occurrence of that layer" (Decision #217 (d)). In
+-- every other case — no blueprint, no preset, a preset not compiled yet, a span outside the compiled
+-- window — it is "inside ONE active weekly band of that kind", as it always was.
+--
+-- ⚠️ Known bound (weekly branch): because `end_minute > start_minute` is a table constraint, a band
+-- cannot cross local midnight, and therefore neither can a call booked against one. A provider who
+-- takes calls from 23:00 to 01:00 must express it as two bands and the call must fit inside one of
+-- them. This is a deliberate simplification, not an oversight — modelling midnight-spanning bands
+-- would make every downstream free/busy query materially harder for a case no fixture needs yet.
+-- Compiled occurrences have no such bound: the evaluator joins touching spans across midnight.
 CREATE OR REPLACE FUNCTION scheduling.fn_band_covers(
     p_schedule uuid,
     p_kind scheduling.availability_kind,
     p_starts_at timestamptz,
-    p_ends_at timestamptz
+    p_ends_at timestamptz,
+    p_blueprint uuid DEFAULT NULL
 )
 RETURNS boolean
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = scheduling, public
 AS $$
-    SELECT EXISTS (
+DECLARE
+    v_preset uuid;
+BEGIN
+    IF p_blueprint IS NOT NULL THEN
+        v_preset := scheduling.fn_preset_for_blueprint (p_blueprint);
+        IF v_preset IS NOT NULL AND EXISTS (
+            SELECT 1
+              FROM scheduling.availability_presets p
+              JOIN scheduling.schedules s ON s.id = p.schedule_id
+             WHERE p.id = v_preset
+               AND p.compiled_from <= (p_starts_at AT TIME ZONE s.timezone)::date
+               AND p.compiled_through >= (p_ends_at AT TIME ZONE s.timezone)::date
+        ) THEN
+            RETURN scheduling.fn_occurrence_covers (v_preset, p_kind, p_starts_at, p_ends_at);
+        END IF;
+    END IF;
+
+    RETURN EXISTS (
         SELECT 1
         FROM scheduling.availability_rules r
         JOIN scheduling.schedules s ON s.id = r.schedule_id
@@ -631,6 +655,7 @@ AS $$
                   AND (p_ends_at AT TIME ZONE s.timezone)::date = (p_starts_at AT TIME ZONE s.timezone)::date + 1)
           )
     );
+END;
 $$;
 
 -- Convenience wrapper: is this span inside a declared CALL WINDOW?
@@ -1228,6 +1253,639 @@ BEGIN
     END IF;
 
     RETURN jsonb_build_object('ok', true, 'schedule_id', v_schedule);
+END;
+$$;
+-- #endregion
+
+-- #region 10. Availability presets & recurrence (Decision #217)
+-- Named rule sets under the owner's schedule (00000022). The TypeScript evaluator
+-- (@projective/types/scheduling evaluate.ts) is the only thing that knows what a rule MEANS; nothing
+-- here parses an RRULE. The database stores the rules, stores the spans the service compiled from
+-- them, and lets the booking gate read those spans (fn_band_covers, §2).
+
+-- The schedule a preset / a rule belongs to. SECURITY DEFINER so the policies on rules, bands and
+-- occurrences can hand fn_can_manage_schedule / fn_can_view_schedule a parent the caller may not
+-- be able to read itself (00002015).
+CREATE OR REPLACE FUNCTION scheduling.fn_preset_schedule(p_preset uuid)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT p.schedule_id FROM scheduling.availability_presets p WHERE p.id = p_preset;
+$$;
+
+CREATE OR REPLACE FUNCTION scheduling.fn_rule_schedule(p_rule uuid)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT p.schedule_id
+      FROM scheduling.recurrence_rules r
+      JOIN scheduling.availability_presets p ON p.id = r.preset_id
+     WHERE r.id = p_rule;
+$$;
+
+-- Is this the schedule a blueprint with this owner books into — its team's when team-owned, else
+-- its seller's own (an individual's `user` or `freelancer` schedule)? Takes the owner columns rather
+-- than a blueprint id so a BEFORE trigger can ask about the row being written.
+CREATE OR REPLACE FUNCTION scheduling.fn_is_owner_schedule(
+    p_schedule uuid, p_owner_team uuid, p_owner_person uuid
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT EXISTS (
+        SELECT 1
+          FROM scheduling.schedules s
+         WHERE s.id = p_schedule
+           AND (
+               (p_owner_team IS NOT NULL
+                AND s.owner_type = 'team'::scheduling.owner_type AND s.owner_id = p_owner_team)
+               OR (p_owner_team IS NULL
+                   AND s.owner_type IN ('user'::scheduling.owner_type, 'freelancer'::scheduling.owner_type)
+                   AND s.owner_id = p_owner_person)
+           )
+    );
+$$;
+
+-- The preset a blueprint's bookings are judged against: its bound preset, else its owner schedule's
+-- default, else NULL (no preset — the weekly bands decide). An archived preset never answers, so a
+-- binding that outlived its preset falls back to the default exactly as a NULL binding does. Between
+-- an individual's two possible schedules the `freelancer` one wins, as in
+-- projects.fn_session_host_schedule.
+CREATE OR REPLACE FUNCTION scheduling.fn_preset_for_blueprint(p_blueprint uuid)
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE(
+        (SELECT p.id
+           FROM marketplace.service_blueprints b
+           JOIN scheduling.availability_presets p ON p.id = b.availability_preset_id
+          WHERE b.id = p_blueprint
+            AND p.archived_at IS NULL),
+        (SELECT p.id
+           FROM marketplace.service_blueprints b
+           JOIN scheduling.schedules s
+             ON scheduling.fn_is_owner_schedule (s.id, b.owner_team_id, b.freelancer_profile_id)
+           JOIN scheduling.availability_presets p
+             ON p.schedule_id = s.id AND p.is_default AND p.archived_at IS NULL
+          WHERE b.id = p_blueprint
+          ORDER BY (s.owner_type = 'freelancer'::scheduling.owner_type) DESC
+          LIMIT 1)
+    );
+$$;
+
+-- Is the whole span inside ONE compiled occurrence of that layer? Says nothing about whether the
+-- preset was compiled over the span — fn_band_covers asks that first.
+CREATE OR REPLACE FUNCTION scheduling.fn_occurrence_covers(
+    p_preset uuid,
+    p_kind scheduling.availability_kind,
+    p_from timestamptz,
+    p_to timestamptz
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT EXISTS (
+        SELECT 1
+          FROM scheduling.availability_occurrences o
+         WHERE o.preset_id = p_preset
+           AND o.kind = p_kind
+           AND o.starts_at <= p_from
+           AND o.ends_at >= p_to
+    );
+$$;
+
+-- BEFORE INSERT OR UPDATE on availability_presets. Two rules the table cannot state:
+--   * a restricted (13–17) caller, or a minor's own schedule, holds no preset — the same
+--     org.fn_is_minor predicate trg_schedule_age_gate uses (Decision #208). This is how
+--     save_availability_preset (an invoker) refuses a minor, and it holds for a direct table write too;
+--   * a service fork names a blueprint sold from this schedule.
+-- SECURITY DEFINER: org.fn_is_minor reads a stored date of birth and is service-role only.
+CREATE OR REPLACE FUNCTION scheduling.trg_preset_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_type scheduling.owner_type;
+    v_owner uuid;
+BEGIN
+    SELECT s.owner_type, s.owner_id INTO v_type, v_owner
+      FROM scheduling.schedules s WHERE s.id = NEW.schedule_id;
+    IF org.fn_is_minor(auth.uid())
+       OR (v_type IN ('user'::scheduling.owner_type, 'freelancer'::scheduling.owner_type) AND org.fn_is_minor(v_owner)) THEN
+        RAISE EXCEPTION 'scheduling: availability presets unlock at 18' USING ERRCODE = 'PM403';
+    END IF;
+    IF NEW.blueprint_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1
+          FROM marketplace.service_blueprints b
+         WHERE b.id = NEW.blueprint_id
+           AND scheduling.fn_is_owner_schedule (NEW.schedule_id, b.owner_team_id, b.freelancer_profile_id)
+    ) THEN
+        RAISE EXCEPTION 'blueprint_id: that service is not sold from this schedule' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+-- BEFORE INSERT OR UPDATE OF availability_preset_id, owner_team_id, freelancer_profile_id on
+-- marketplace.service_blueprints (the CHECK half of the FK in 00000031): a bound preset is live, sits
+-- on the blueprint owner's schedule, and — when it is a service fork — is THIS blueprint's fork. A
+-- dangling id is left to the FK itself.
+CREATE OR REPLACE FUNCTION scheduling.trg_blueprint_preset_binding()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_preset scheduling.availability_presets;
+BEGIN
+    IF NEW.availability_preset_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+    SELECT * INTO v_preset FROM scheduling.availability_presets p WHERE p.id = NEW.availability_preset_id;
+    IF NOT FOUND THEN
+        RETURN NEW;
+    END IF;
+    IF v_preset.archived_at IS NOT NULL THEN
+        RAISE EXCEPTION 'availability_preset_id: that preset is archived' USING ERRCODE = '23514';
+    END IF;
+    IF NOT scheduling.fn_is_owner_schedule (v_preset.schedule_id, NEW.owner_team_id, NEW.freelancer_profile_id) THEN
+        RAISE EXCEPTION 'availability_preset_id: that preset belongs to another schedule' USING ERRCODE = '23514';
+    END IF;
+    IF v_preset.scope = 'service'::scheduling.preset_scope AND v_preset.blueprint_id IS DISTINCT FROM NEW.id THEN
+        RAISE EXCEPTION 'availability_preset_id: that preset is another service''s' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+-- AFTER a write to recurrence_rules / recurrence_rule_bands, or AFTER UPDATE OF timezone on
+-- schedules: the compiled spans no longer describe the rules (or the zone they were placed in), so
+-- the preset is marked not compiled and the gate falls back to the weekly bands until the service
+-- recompiles. Definer: compiled_from / compiled_through carry no client UPDATE grant (00002520).
+CREATE OR REPLACE FUNCTION scheduling.trg_invalidate_preset_compilation()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_preset uuid;
+BEGIN
+    IF TG_TABLE_NAME = 'schedules' THEN
+        UPDATE scheduling.availability_presets p
+           SET compiled_from = NULL, compiled_through = NULL
+         WHERE p.schedule_id = NEW.id AND p.compiled_through IS NOT NULL;
+        RETURN NULL;
+    END IF;
+
+    IF TG_TABLE_NAME = 'recurrence_rules' THEN
+        v_preset := CASE WHEN TG_OP = 'DELETE' THEN OLD.preset_id ELSE NEW.preset_id END;
+    ELSE
+        SELECT r.preset_id INTO v_preset
+          FROM scheduling.recurrence_rules r
+         WHERE r.id = CASE WHEN TG_OP = 'DELETE' THEN OLD.rule_id ELSE NEW.rule_id END;
+    END IF;
+
+    UPDATE scheduling.availability_presets p
+       SET compiled_from = NULL, compiled_through = NULL
+     WHERE p.id = v_preset AND p.compiled_through IS NOT NULL;
+    RETURN NULL;
+END;
+$$;
+
+-- scheduling.save_availability_preset — the preset editor's one write, in one transaction.
+--
+-- SECURITY INVOKER, like save_owner_availability: the preset, rule and band policies
+-- (fn_can_manage_schedule, 00002015) decide who may write; the explicit check up front turns a silent
+-- zero-row write into a named refusal. A restricted caller is refused by trg_preset_guard (PM403) on
+-- the preset write, before any rule is touched.
+--
+-- Payload (snake_case, mapped from @projective/types/scheduling SavePresetInputSchema by the service):
+--   { id?, name, description?, is_default?, scope?, blueprint_id?, rules: [{ id?, kind, effect,
+--     rrule, starts_on, ends_on?, priority?, unless_weekdays?, label?, is_active?,
+--     bands: [{ start_minute, end_minute }] }] }
+-- `id` absent creates; present updates that live preset, which keeps its scope and service. `rules`
+-- REPLACES the preset's rules and bands (a rule's uuid `id` is kept, anything else is minted). Only
+-- the RRULE's shape is checked — at most 400 characters, starting `FREQ=`; the TypeScript parser
+-- re-validated it before the call and is the authority on its meaning (Decision #217 (d)).
+--
+-- The single default: saving with `is_default` moves the default here; a library preset saved onto a
+-- schedule with no default becomes it. A default is moved, never cleared — saving the default with
+-- `is_default: false` leaves it the default.
+--
+-- Errors are SQLSTATE 42501 for the caller and 22023 with `<field>: <reason>` for the input.
+CREATE OR REPLACE FUNCTION scheduling.save_availability_preset(p_schedule uuid, p_preset jsonb)
+RETURNS uuid
+LANGUAGE plpgsql
+VOLATILE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uuid_re constant text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+    v_date_re constant text := '^[0-9]{4}-[0-9]{2}-[0-9]{2}$';
+    v_in jsonb := COALESCE(p_preset, '{}'::jsonb);
+    v_id uuid;
+    v_name text := btrim(COALESCE(p_preset ->> 'name', ''));
+    v_description text := COALESCE(p_preset ->> 'description', '');
+    v_scope text := COALESCE(NULLIF(p_preset ->> 'scope', ''), 'library');
+    v_blueprint_text text := NULLIF(p_preset ->> 'blueprint_id', '');
+    v_blueprint uuid;
+    v_default boolean;
+    v_rules jsonb := COALESCE(p_preset -> 'rules', '[]'::jsonb);
+    v_existing scheduling.availability_presets;
+    v_rule jsonb;
+    v_band jsonb;
+    v_rule_id uuid;
+    v_starts date;
+    v_ends date;
+    v_bands jsonb;
+    v_unless smallint[];
+    v_i integer := 0;
+    v_j integer;
+BEGIN
+    IF auth.uid () IS NULL THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'auth: sign in to edit availability';
+    END IF;
+    IF NOT scheduling.fn_can_manage_schedule (p_schedule) THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'schedule: you cannot edit this schedule';
+    END IF;
+
+    -- #region Validate the preset
+    IF jsonb_typeof(v_in) <> 'object' THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'preset: expected an object';
+    END IF;
+    IF char_length(v_name) NOT BETWEEN 1 AND 60 THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'name: give the preset a name of up to 60 characters';
+    END IF;
+    IF char_length(v_description) > 200 THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'description: up to 200 characters';
+    END IF;
+    IF v_scope NOT IN ('library', 'service') THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'scope: library or service';
+    END IF;
+    IF (v_scope = 'service') <> (v_blueprint_text IS NOT NULL)
+       OR (v_blueprint_text IS NOT NULL AND v_blueprint_text !~ v_uuid_re) THEN
+        RAISE EXCEPTION USING ERRCODE = '22023',
+            MESSAGE = 'blueprint_id: a service preset belongs to exactly one service; a library preset to none';
+    END IF;
+    v_blueprint := v_blueprint_text::uuid;
+    IF COALESCE(p_preset ->> 'is_default', 'false') NOT IN ('true', 'false') THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'is_default: true or false';
+    END IF;
+    v_default := (COALESCE(p_preset ->> 'is_default', 'false'))::boolean;
+    IF v_default AND v_scope <> 'library' THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'is_default: only a library preset can be the default';
+    END IF;
+    IF jsonb_typeof(v_rules) <> 'array' OR jsonb_array_length(v_rules) > 64 THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'rules: up to 64 rules';
+    END IF;
+    IF NULLIF(v_in ->> 'id', '') IS NOT NULL THEN
+        IF (v_in ->> 'id') !~ v_uuid_re THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'id: not a preset id';
+        END IF;
+        v_id := (v_in ->> 'id')::uuid;
+    END IF;
+    IF v_scope = 'library' AND EXISTS (
+        SELECT 1
+          FROM scheduling.availability_presets p
+         WHERE p.schedule_id = p_schedule
+           AND p.scope = 'library'::scheduling.preset_scope
+           AND p.archived_at IS NULL
+           AND lower(p.name) = lower(v_name)
+           AND p.id IS DISTINCT FROM v_id
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'name: another preset in this library has that name';
+    END IF;
+    -- #endregion
+
+    -- #region Write the preset
+    IF v_id IS NOT NULL THEN
+        SELECT * INTO v_existing
+          FROM scheduling.availability_presets p
+         WHERE p.id = v_id AND p.schedule_id = p_schedule
+           FOR UPDATE;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'id: that preset is not on this schedule';
+        END IF;
+        IF v_existing.archived_at IS NOT NULL THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'id: that preset is archived';
+        END IF;
+        IF v_existing.scope::text <> v_scope OR v_existing.blueprint_id IS DISTINCT FROM v_blueprint THEN
+            RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'scope: a saved preset keeps its scope and service';
+        END IF;
+        UPDATE scheduling.availability_presets p
+           SET name = v_name, description = v_description
+         WHERE p.id = v_existing.id
+        RETURNING p.id INTO v_id;
+    ELSE
+        INSERT INTO scheduling.availability_presets (schedule_id, scope, blueprint_id, name, description)
+        VALUES (p_schedule, v_scope::scheduling.preset_scope, v_blueprint, v_name, v_description)
+        RETURNING id INTO v_id;
+    END IF;
+
+    IF v_default THEN
+        UPDATE scheduling.availability_presets p
+           SET is_default = false
+         WHERE p.schedule_id = p_schedule AND p.is_default AND p.id <> v_id;
+        UPDATE scheduling.availability_presets p SET is_default = true WHERE p.id = v_id AND NOT p.is_default;
+    ELSIF v_scope = 'library' AND NOT EXISTS (
+        SELECT 1 FROM scheduling.availability_presets p
+         WHERE p.schedule_id = p_schedule AND p.is_default AND p.archived_at IS NULL
+    ) THEN
+        UPDATE scheduling.availability_presets p SET is_default = true WHERE p.id = v_id;
+    END IF;
+    -- #endregion
+
+    -- #region Replace the rules
+    DELETE FROM scheduling.recurrence_rules r WHERE r.preset_id = v_id;
+
+    FOR v_rule IN SELECT value FROM jsonb_array_elements(v_rules) LOOP
+        IF jsonb_typeof(v_rule) <> 'object'
+           OR COALESCE(v_rule ->> 'kind', '') NOT IN ('working_hours', 'call_window')
+           OR COALESCE(v_rule ->> 'effect', '') NOT IN ('add', 'replace', 'subtract') THEN
+            RAISE EXCEPTION USING ERRCODE = '22023',
+                MESSAGE = format('rules.%s: a rule needs a layer and an effect', v_i);
+        END IF;
+        IF char_length(COALESCE(v_rule ->> 'rrule', '')) > 400 OR COALESCE(v_rule ->> 'rrule', '') !~ '^FREQ=' THEN
+            RAISE EXCEPTION USING ERRCODE = '22023',
+                MESSAGE = format('rules.%s.rrule: a recurrence starts with FREQ= and is at most 400 characters', v_i);
+        END IF;
+        IF COALESCE(v_rule ->> 'starts_on', '') !~ v_date_re
+           OR (NULLIF(v_rule ->> 'ends_on', '') IS NOT NULL AND (v_rule ->> 'ends_on') !~ v_date_re) THEN
+            RAISE EXCEPTION USING ERRCODE = '22023',
+                MESSAGE = format('rules.%s.starts_on: dates are YYYY-MM-DD', v_i);
+        END IF;
+        v_starts := (v_rule ->> 'starts_on')::date;
+        v_ends := NULLIF(v_rule ->> 'ends_on', '')::date;
+        IF v_ends IS NOT NULL AND v_ends < v_starts THEN
+            RAISE EXCEPTION USING ERRCODE = '22023',
+                MESSAGE = format('rules.%s.ends_on: a rule ends on or after it starts', v_i);
+        END IF;
+        IF COALESCE(v_rule ->> 'priority', '50') !~ '^[0-9]{1,2}$' THEN
+            RAISE EXCEPTION USING ERRCODE = '22023',
+                MESSAGE = format('rules.%s.priority: 0 to 99', v_i);
+        END IF;
+        IF char_length(COALESCE(v_rule ->> 'label', '')) > 80 THEN
+            RAISE EXCEPTION USING ERRCODE = '22023',
+                MESSAGE = format('rules.%s.label: up to 80 characters', v_i);
+        END IF;
+        IF COALESCE(v_rule ->> 'is_active', 'true') NOT IN ('true', 'false') THEN
+            RAISE EXCEPTION USING ERRCODE = '22023',
+                MESSAGE = format('rules.%s.is_active: true or false', v_i);
+        END IF;
+        IF jsonb_typeof(COALESCE(v_rule -> 'unless_weekdays', '[]'::jsonb)) <> 'array'
+           OR jsonb_array_length(COALESCE(v_rule -> 'unless_weekdays', '[]'::jsonb)) > 6
+           OR EXISTS (
+               SELECT 1 FROM jsonb_array_elements_text(COALESCE(v_rule -> 'unless_weekdays', '[]'::jsonb)) d
+                WHERE d !~ '^[0-6]$'
+           ) THEN
+            RAISE EXCEPTION USING ERRCODE = '22023',
+                MESSAGE = format('rules.%s.unless_weekdays: up to six weekdays, 0 (Sunday) to 6', v_i);
+        END IF;
+        SELECT COALESCE(array_agg(d::smallint ORDER BY d::smallint), '{}')
+          INTO v_unless
+          FROM (SELECT DISTINCT d FROM jsonb_array_elements_text(COALESCE(v_rule -> 'unless_weekdays', '[]'::jsonb)) d) x;
+
+        v_bands := COALESCE(v_rule -> 'bands', '[]'::jsonb);
+        IF jsonb_typeof(v_bands) <> 'array' OR jsonb_array_length(v_bands) > 6 THEN
+            RAISE EXCEPTION USING ERRCODE = '22023',
+                MESSAGE = format('rules.%s.bands: up to six bands per rule', v_i);
+        END IF;
+
+        v_rule_id := CASE WHEN COALESCE(v_rule ->> 'id', '') ~ v_uuid_re THEN (v_rule ->> 'id')::uuid END;
+        INSERT INTO scheduling.recurrence_rules (
+            id, preset_id, kind, effect, rrule, starts_on, ends_on, priority, unless_weekdays, label,
+            is_active, position
+        ) VALUES (
+            COALESCE(v_rule_id, gen_random_uuid()),
+            v_id,
+            (v_rule ->> 'kind')::scheduling.availability_kind,
+            (v_rule ->> 'effect')::scheduling.rule_effect,
+            v_rule ->> 'rrule',
+            v_starts,
+            v_ends,
+            COALESCE(v_rule ->> 'priority', '50')::smallint,
+            v_unless,
+            COALESCE(v_rule ->> 'label', ''),
+            COALESCE(v_rule ->> 'is_active', 'true')::boolean,
+            v_i
+        )
+        RETURNING id INTO v_rule_id;
+
+        v_j := 0;
+        FOR v_band IN SELECT value FROM jsonb_array_elements(v_bands) LOOP
+            IF COALESCE(v_band ->> 'start_minute', '') !~ '^[0-9]{1,4}$'
+               OR COALESCE(v_band ->> 'end_minute', '') !~ '^[0-9]{1,4}$'
+               OR (v_band ->> 'start_minute')::integer > 1439
+               OR (v_band ->> 'end_minute')::integer > 1440
+               OR (v_band ->> 'end_minute')::integer <= (v_band ->> 'start_minute')::integer THEN
+                RAISE EXCEPTION USING ERRCODE = '22023',
+                    MESSAGE = format('rules.%s.bands.%s: a band ends after it starts, within one day', v_i, v_j);
+            END IF;
+            INSERT INTO scheduling.recurrence_rule_bands (rule_id, position, start_minute, end_minute)
+            VALUES (v_rule_id, v_j, (v_band ->> 'start_minute')::integer, (v_band ->> 'end_minute')::integer);
+            v_j := v_j + 1;
+        END LOOP;
+
+        v_i := v_i + 1;
+    END LOOP;
+    -- #endregion
+
+    RETURN v_id;
+END;
+$$;
+
+-- scheduling.archive_availability_preset — presets are archived, never deleted. Every blueprint bound
+-- to the preset is unbound (it falls back to the schedule's default) and its id returned, so the
+-- caller can name the services that moved. Archiving the default hands the default to the most
+-- recently edited live library preset; the default cannot be archived while it is the only one.
+--
+-- SECURITY DEFINER: unbinding writes marketplace.service_blueprints, whose own write policies are not
+-- the schedule's. The authority is fn_can_manage_schedule on the preset's schedule; a call with no
+-- auth.uid() can only come from the service role (the grants in 00002510). Idempotent: an archived
+-- preset returns an empty array.
+CREATE OR REPLACE FUNCTION scheduling.archive_availability_preset(p_preset uuid)
+RETURNS uuid[]
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_preset scheduling.availability_presets;
+    v_next uuid;
+    v_unbound uuid[];
+BEGIN
+    SELECT * INTO v_preset FROM scheduling.availability_presets p WHERE p.id = p_preset FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'preset: no such preset';
+    END IF;
+    IF auth.uid () IS NOT NULL AND NOT scheduling.fn_can_manage_schedule (v_preset.schedule_id) THEN
+        RAISE EXCEPTION USING ERRCODE = '42501', MESSAGE = 'schedule: you cannot edit this schedule';
+    END IF;
+    IF v_preset.archived_at IS NOT NULL THEN
+        RETURN '{}'::uuid[];
+    END IF;
+
+    IF v_preset.is_default THEN
+        SELECT p.id INTO v_next
+          FROM scheduling.availability_presets p
+         WHERE p.schedule_id = v_preset.schedule_id
+           AND p.scope = 'library'::scheduling.preset_scope
+           AND p.archived_at IS NULL
+           AND p.id <> p_preset
+         ORDER BY p.updated_at DESC, p.id
+         LIMIT 1;
+        IF v_next IS NULL THEN
+            RAISE EXCEPTION USING ERRCODE = '22023',
+                MESSAGE = 'preset: the default preset cannot be archived while it is the only one';
+        END IF;
+    END IF;
+
+    WITH unbound AS (
+        UPDATE marketplace.service_blueprints b
+           SET availability_preset_id = NULL
+         WHERE b.availability_preset_id = p_preset
+        RETURNING b.id
+    )
+    SELECT COALESCE(array_agg(u.id ORDER BY u.id), '{}'::uuid[]) INTO v_unbound FROM unbound u;
+
+    UPDATE scheduling.availability_presets p
+       SET archived_at = now(), is_default = false
+     WHERE p.id = p_preset;
+    IF v_next IS NOT NULL THEN
+        UPDATE scheduling.availability_presets p SET is_default = true WHERE p.id = v_next;
+    END IF;
+
+    RETURN v_unbound;
+END;
+$$;
+
+-- scheduling.replace_preset_occurrences — the service-role door the compiler writes through
+-- (ScheduleBackendService.compileOccurrences, plan §5.6). Replaces every occurrence of the preset that
+-- overlaps [p_from, p_to) with p_spans — OccurrenceSpanSchema elements: { kind, startsAt, endsAt,
+-- ruleIds } — and stamps the compiled window: the preset-local dates wholly inside [p_from, p_to),
+-- joined to the previous window when the two touch (a horizon extension), else replacing it.
+--
+-- Checks only what the database can know: each span is a layer, ends after it starts, lies inside the
+-- window, and names only this preset's rules. Whether the spans are RIGHT is the evaluator's word.
+-- SECURITY DEFINER and executable by service_role alone (00002510): there is no client write path to
+-- availability_occurrences. Returns the number of spans written.
+CREATE OR REPLACE FUNCTION scheduling.replace_preset_occurrences(
+    p_preset uuid,
+    p_from timestamptz,
+    p_to timestamptz,
+    p_spans jsonb
+)
+RETURNS integer
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_tz text;
+    v_cf date;
+    v_ct date;
+    v_from date;
+    v_through date;
+    v_count integer;
+BEGIN
+    IF p_from IS NULL OR p_to IS NULL OR p_to <= p_from OR p_to - p_from > interval '400 days' THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'window: a compile window ends after it starts, within 400 days';
+    END IF;
+    IF p_spans IS NULL OR jsonb_typeof(p_spans) <> 'array' OR jsonb_array_length(p_spans) > 10000 THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'spans: expected an array of at most 10000 spans';
+    END IF;
+
+    SELECT s.timezone, p.compiled_from, p.compiled_through INTO v_tz, v_cf, v_ct
+      FROM scheduling.availability_presets p
+      JOIN scheduling.schedules s ON s.id = p.schedule_id
+     WHERE p.id = p_preset AND p.archived_at IS NULL
+       FOR UPDATE OF p;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION USING ERRCODE = 'P0002', MESSAGE = 'preset: no live preset to compile';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+          FROM jsonb_array_elements(p_spans) e
+         WHERE jsonb_typeof(e) <> 'object'
+            OR COALESCE(e ->> 'kind', '') NOT IN ('working_hours', 'call_window')
+            OR jsonb_typeof(e -> 'startsAt') IS DISTINCT FROM 'string'
+            OR jsonb_typeof(e -> 'endsAt') IS DISTINCT FROM 'string'
+            OR jsonb_typeof(COALESCE(e -> 'ruleIds', '[]'::jsonb)) <> 'array'
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'spans: each span needs kind, startsAt, endsAt and ruleIds';
+    END IF;
+    IF EXISTS (
+        SELECT 1
+          FROM jsonb_array_elements(p_spans) e
+         WHERE (e ->> 'endsAt')::timestamptz <= (e ->> 'startsAt')::timestamptz
+            OR (e ->> 'startsAt')::timestamptz < p_from
+            OR (e ->> 'endsAt')::timestamptz > p_to
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'spans: each span ends after it starts, inside the window';
+    END IF;
+
+    DELETE FROM scheduling.availability_occurrences o
+     WHERE o.preset_id = p_preset AND o.starts_at < p_to AND o.ends_at > p_from;
+
+    INSERT INTO scheduling.availability_occurrences (preset_id, kind, starts_at, ends_at, rule_ids)
+    SELECT p_preset,
+           (e ->> 'kind')::scheduling.availability_kind,
+           (e ->> 'startsAt')::timestamptz,
+           (e ->> 'endsAt')::timestamptz,
+           ARRAY(SELECT r::uuid FROM jsonb_array_elements_text(COALESCE(e -> 'ruleIds', '[]'::jsonb)) r)
+      FROM jsonb_array_elements(p_spans) e;
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+
+    IF EXISTS (
+        SELECT 1
+          FROM scheduling.availability_occurrences o
+          CROSS JOIN LATERAL unnest(o.rule_ids) AS rid
+         WHERE o.preset_id = p_preset
+           AND o.starts_at >= p_from AND o.ends_at <= p_to
+           AND NOT EXISTS (
+               SELECT 1 FROM scheduling.recurrence_rules r WHERE r.id = rid AND r.preset_id = p_preset
+           )
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE = '22023', MESSAGE = 'spans: a span names a rule of another preset';
+    END IF;
+
+    v_from := (p_from AT TIME ZONE v_tz)::date
+        + CASE WHEN (p_from AT TIME ZONE v_tz)::time = time '00:00' THEN 0 ELSE 1 END;
+    v_through := (p_to AT TIME ZONE v_tz)::date - 1;
+    IF v_through >= v_from THEN
+        IF v_cf IS NOT NULL AND v_from <= v_ct + 1 AND v_through >= v_cf - 1 THEN
+            v_from := LEAST(v_from, v_cf);
+            v_through := GREATEST(v_through, v_ct);
+        END IF;
+        UPDATE scheduling.availability_presets p
+           SET compiled_from = v_from, compiled_through = v_through
+         WHERE p.id = p_preset;
+    END IF;
+
+    RETURN v_count;
 END;
 $$;
 -- #endregion

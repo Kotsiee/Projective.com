@@ -91,6 +91,24 @@ Deno.test("embeddingTextOf — a service reads type · title · category · skil
 	);
 });
 
+Deno.test("embeddingTextOf — a listing's tags and search description join its text, once each", () => {
+	assertEquals(
+		embeddingTextOf(SERVICE, {
+			tags: ["Rebrand", "rebrand ", " logos"],
+			seoDescription: "Logo, palette and type in one week.",
+		}),
+		"Service: Brand identity sprint · Category: branding · Skills: Brand identity, Logo design · " +
+			"Tags: Rebrand, logos · A one-week sprint: logo, palette and type. · " +
+			"Logo, palette and type in one week. · Model: One-Off · Delivery: 7-day delivery",
+	);
+	// A search description that repeats the summary adds nothing; no terms leave the text unchanged.
+	const summary = "A one-week sprint: logo, palette and type.";
+	assertEquals(
+		embeddingTextOf(SERVICE, { tags: [], seoDescription: summary }),
+		embeddingTextOf(SERVICE),
+	);
+});
+
 Deno.test("embeddingTextOf — each type gets its own label and only the fields it has", () => {
 	assertEquals(
 		embeddingTextOf(PRODUCT),

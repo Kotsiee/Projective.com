@@ -517,7 +517,8 @@ EXECUTE ON FUNCTION scheduling.fn_band_covers (
     uuid,
     scheduling.availability_kind,
     timestamptz,
-    timestamptz
+    timestamptz,
+    uuid
 ) TO anon,
 authenticated;
 
@@ -1505,11 +1506,11 @@ service_role;
 -- The seller console's write doors (00001170). INVOKER: the catalogue and marketplace policies are the
 -- gate, so a caller can only ever create, edit or publish their own listing. The sales read is a
 -- definer scoped to the caller's own listings inside its WHERE.
-REVOKE ALL ON FUNCTION catalogue.create_listing (text, text, text, uuid)
+REVOKE ALL ON FUNCTION catalogue.create_listing (text, text, text, uuid, text, text)
 FROM public, anon;
 
 GRANT
-EXECUTE ON FUNCTION catalogue.create_listing (text, text, text, uuid) TO authenticated,
+EXECUTE ON FUNCTION catalogue.create_listing (text, text, text, uuid, text, text) TO authenticated,
 service_role;
 
 REVOKE ALL ON FUNCTION catalogue.save_listing (uuid, jsonb)
@@ -1529,6 +1530,25 @@ service_role;
 REVOKE ALL ON FUNCTION catalogue.get_listing_sales(uuid[], timestamptz) FROM public, anon;
 
 GRANT EXECUTE ON FUNCTION catalogue.get_listing_sales(uuid[], timestamptz) TO authenticated, service_role;
+
+-- The catalogue rebuild's doors (Decision #217): the showcase, the batch status action and duplicate.
+-- INVOKER like the doors above, so the owner policies stay the gate. `fn_listing_file_ok` is the
+-- file-ownership predicate those doors and save_listing call as the caller.
+REVOKE ALL ON FUNCTION catalogue.apply_listing_media (uuid, jsonb) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION catalogue.apply_listing_media (uuid, jsonb) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION catalogue.set_listings_status (uuid[], text) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION catalogue.set_listings_status (uuid[], text) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION catalogue.duplicate_listing (uuid) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION catalogue.duplicate_listing (uuid) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION catalogue.fn_listing_file_ok (uuid, uuid, text) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION catalogue.fn_listing_file_ok (uuid, uuid, text) TO authenticated, service_role;
 
 -- --- the Project Details sidebar's Teams group (00001100: get_viewer_hired_teams) ---
 --
@@ -1640,6 +1660,39 @@ REVOKE ALL ON FUNCTION scheduling.fn_guard_rostered_event () FROM PUBLIC, anon, 
 REVOKE ALL ON FUNCTION scheduling.fn_event_has_roster (uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION scheduling.fn_event_has_roster (uuid) TO authenticated, service_role;
 REVOKE ALL ON FUNCTION scheduling.fn_check_schedule_timezone () FROM PUBLIC, anon, authenticated;
+-- #endregion
+
+-- #region Availability presets & recurrence (00001510 §10, Decision #217)
+-- The two editor doors need a signed-in caller (save is an invoker under the preset policies; archive
+-- a definer that checks fn_can_manage_schedule itself). The occurrence door is the service role's
+-- alone: a client able to write spans could open hours its owner never set. The parent-schedule
+-- helpers are policy expressions on rules, bands and occurrences, so `authenticated` runs them; they
+-- answer only "which schedule", never what is on it. fn_preset_for_blueprint resolves a public
+-- listing's preset, like fn_band_covers answers for any schedule. The rest is internal to the gate
+-- and the triggers.
+REVOKE ALL ON FUNCTION scheduling.save_availability_preset (uuid, jsonb) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION scheduling.save_availability_preset (uuid, jsonb) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION scheduling.archive_availability_preset (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION scheduling.archive_availability_preset (uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION scheduling.replace_preset_occurrences (uuid, timestamptz, timestamptz, jsonb)
+FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION scheduling.replace_preset_occurrences (uuid, timestamptz, timestamptz, jsonb)
+TO service_role;
+REVOKE ALL ON FUNCTION scheduling.fn_preset_schedule (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION scheduling.fn_preset_schedule (uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION scheduling.fn_rule_schedule (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION scheduling.fn_rule_schedule (uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION scheduling.fn_preset_for_blueprint (uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION scheduling.fn_preset_for_blueprint (uuid) TO anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION scheduling.fn_occurrence_covers (uuid, scheduling.availability_kind, timestamptz, timestamptz)
+FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION scheduling.fn_occurrence_covers (uuid, scheduling.availability_kind, timestamptz, timestamptz)
+TO service_role;
+REVOKE ALL ON FUNCTION scheduling.fn_is_owner_schedule (uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION scheduling.fn_is_owner_schedule (uuid, uuid, uuid) TO service_role;
+REVOKE ALL ON FUNCTION scheduling.trg_preset_guard () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.trg_blueprint_preset_binding () FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION scheduling.trg_invalidate_preset_compilation () FROM PUBLIC, anon, authenticated;
 -- #endregion
 
 -- #region Email addresses (00001050, 2026-10-06)
@@ -1792,4 +1845,23 @@ REVOKE ALL ON FUNCTION marketplace.instantiate_service_blueprint (uuid, jsonb, t
 GRANT EXECUTE ON FUNCTION marketplace.instantiate_service_blueprint (uuid, jsonb, text, text, text) TO authenticated, service_role;
 REVOKE ALL ON FUNCTION marketplace.archive_service_draft (text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION marketplace.archive_service_draft (text, text) TO authenticated, service_role;
+-- #endregion
+
+-- #region Listing analytics and the client pipeline (Decision #217, C5)
+-- The rollup writer and its backfill read every seller's interest, basket and order rows: the service
+-- role and the job only. The pipeline is INVOKER and answers under the caller's own policies; its three
+-- definer helpers answer only about listings the caller manages, so a signed-in caller may run them
+-- and a guest may not.
+REVOKE ALL ON FUNCTION analytics.fn_rollup_listings (date) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION analytics.fn_rollup_listings (date) TO service_role;
+REVOKE ALL ON FUNCTION analytics.fn_backfill_listing_rollups (date, date) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION analytics.fn_backfill_listing_rollups (date, date) TO service_role;
+REVOKE ALL ON FUNCTION catalogue.fn_manages_listing (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION catalogue.fn_manages_listing (uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION catalogue.fn_candidate_listings (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION catalogue.fn_candidate_listings (uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION catalogue.fn_seller_order_lines (uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION catalogue.fn_seller_order_lines (uuid) TO authenticated, service_role;
+REVOKE ALL ON FUNCTION catalogue.get_client_pipeline (uuid, integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION catalogue.get_client_pipeline (uuid, integer) TO authenticated, service_role;
 -- #endregion

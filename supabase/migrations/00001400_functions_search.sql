@@ -128,18 +128,88 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, search, org;
 
-CREATE OR REPLACE FUNCTION search.sync_service_to_index() RETURNS TRIGGER AS $$
+-- #region Listing fts (Decision #217(f))
+-- The one fts recipe for a listing's index row: the title at weight A, the seller's tags at B and the
+-- body at C, so a tag match outranks a passing mention in the description but never the title.
+CREATE OR REPLACE FUNCTION search.fn_listing_fts(p_title text, p_tags text[], p_body text)
+RETURNS tsvector
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT pg_catalog.setweight(pg_catalog.to_tsvector('english'::regconfig, COALESCE(p_title, '')), 'A')
+        || pg_catalog.setweight(pg_catalog.to_tsvector('english'::regconfig,
+               pg_catalog.array_to_string(COALESCE(p_tags, '{}'::text[]), ' ')), 'B')
+        || pg_catalog.setweight(pg_catalog.to_tsvector('english'::regconfig, COALESCE(p_body, '')), 'C')
+$$;
+
+-- A listing's tags in a stable order, so an unchanged set never rewrites its index row differently.
+CREATE OR REPLACE FUNCTION search.fn_listing_tags(p_listing uuid)
+RETURNS text[]
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT COALESCE(pg_catalog.array_agg(t.tag ORDER BY pg_catalog.lower(t.tag)), '{}'::text[])
+      FROM catalogue.listing_tags t
+     WHERE t.listing_id = p_listing
+$$;
+
+-- A tag change re-syncs the listing's index row (`trg_listing_tags_touch`, 00001800): the tags live
+-- on `catalogue.listing_tags`, so neither the blueprint nor the listing trigger sees them change.
+CREATE OR REPLACE FUNCTION search.fn_listing_tags_touch()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_listing catalogue.listings;
+    v_tags text[];
 BEGIN
+    SELECT * INTO v_listing FROM catalogue.listings l
+     WHERE l.id = CASE TG_OP WHEN 'DELETE' THEN OLD.listing_id ELSE NEW.listing_id END;
+    IF NOT FOUND THEN
+        RETURN NULL;
+    END IF;
+    v_tags := search.fn_listing_tags(v_listing.id);
+    IF v_listing.kind = 'service'::catalogue.listing_kind THEN
+        UPDATE search.services_index si
+           SET tags = v_tags, fts = search.fn_listing_fts(b.title, v_tags, b.description_text), updated_at = pg_catalog.now()
+          FROM marketplace.service_blueprints b
+         WHERE b.id = v_listing.service_blueprint_id AND si.service_id = b.id;
+    ELSE
+        UPDATE search.catalogue_index ci
+           SET tags = v_tags,
+               fts = search.fn_listing_fts(v_listing.title, v_tags, v_listing.description_text || ' ' || v_listing.category),
+               updated_at = pg_catalog.now()
+         WHERE ci.entity_type = 'product' AND ci.entity_id = v_listing.product_id;
+    END IF;
+    RETURN NULL;
+END;
+$$;
+-- #endregion
+
+CREATE OR REPLACE FUNCTION search.sync_service_to_index() RETURNS TRIGGER AS $$
+DECLARE
+    v_tags text[];
+BEGIN
+    v_tags := COALESCE((
+        SELECT pg_catalog.array_agg(t.tag ORDER BY pg_catalog.lower(t.tag))
+          FROM catalogue.listing_tags t
+          JOIN catalogue.listings l ON l.id = t.listing_id
+         WHERE l.service_blueprint_id = NEW.id
+    ), '{}'::text[]);
     INSERT INTO search.services_index (
-        service_id, title, fts, is_public, 
+        service_id, title, tags, fts, is_public,
         rating_average, rating_count, updated_at
     )
     VALUES (
-        NEW.id, NEW.title, to_tsvector('english', NEW.title || ' ' || coalesce(NEW.description_text, '')),
+        NEW.id, NEW.title, v_tags, search.fn_listing_fts(NEW.title, v_tags, NEW.description_text),
         NEW.is_published, NEW.rating_average, NEW.rating_count, now()
     )
     ON CONFLICT (service_id) DO UPDATE SET
-        title = EXCLUDED.title, fts = EXCLUDED.fts, is_public = EXCLUDED.is_public,
+        title = EXCLUDED.title, tags = EXCLUDED.tags, fts = EXCLUDED.fts, is_public = EXCLUDED.is_public,
         rating_average = EXCLUDED.rating_average, rating_count = EXCLUDED.rating_count,
         updated_at = now();
     RETURN NEW;
@@ -157,18 +227,21 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, search, catalogue
 AS $$
+DECLARE
+    v_tags text[];
 BEGIN
     IF NEW.kind <> 'product' OR NEW.product_id IS NULL THEN
         RETURN NEW;
     END IF;
-    INSERT INTO search.catalogue_index (entity_type, entity_id, title, fts, is_public, updated_at)
+    v_tags := search.fn_listing_tags(NEW.id);
+    INSERT INTO search.catalogue_index (entity_type, entity_id, title, tags, fts, is_public, updated_at)
     VALUES (
-        'product', NEW.product_id, NEW.title,
-        to_tsvector('english', NEW.title || ' ' || coalesce(NEW.description_text, '') || ' ' || coalesce(NEW.category, '')),
+        'product', NEW.product_id, NEW.title, v_tags,
+        search.fn_listing_fts(NEW.title, v_tags, coalesce(NEW.description_text, '') || ' ' || coalesce(NEW.category, '')),
         NEW.status = 'published', now()
     )
     ON CONFLICT (entity_type, entity_id) DO UPDATE SET
-        title = EXCLUDED.title, fts = EXCLUDED.fts, is_public = EXCLUDED.is_public, updated_at = now();
+        title = EXCLUDED.title, tags = EXCLUDED.tags, fts = EXCLUDED.fts, is_public = EXCLUDED.is_public, updated_at = now();
     RETURN NEW;
 END;
 $$;

@@ -28,6 +28,7 @@ edit is searchable without a rebuild.
 | `search.sync_service_to_index`    | `marketplace.service_blueprints` | `search.services_index` |
 | `search.sync_product_listing_to_index` | `catalogue.listings` (product rows) | `search.catalogue_index` |
 | `search.sync_article_to_index`    | `catalogue.articles`      | `search.catalogue_index` |
+| `search.fn_listing_tags_touch`    | `catalogue.listing_tags` (`trg_listing_tags_touch`, INSERT/UPDATE/DELETE) | the listing's `services_index` or `catalogue_index` row (`tags`, `fts`) |
 
 Each is an upsert keyed on the source id, so re-running one is idempotent and a row can never be
 duplicated by a second write.
@@ -172,6 +173,18 @@ the wire and a public page needs no service-role read (Decision #178(b)). The en
 public; it is always excluded from its own answer; the answer is empty while it has no vector.
 Caller: the `/view` "Similar" rail (`semanticSimilarTo`, `packages/backend/services/explore/live-view.ts`),
 which also excludes everything the item's owner published.
+
+### Listing fts and tags (Decision #217(f))
+
+`search.fn_listing_fts(p_title, p_tags, p_body) → tsvector` (IMMUTABLE) is the one recipe for a
+listing's index row: the title at weight A, the seller's tags at B, the body at C, so a tag match
+outranks a passing mention in the description but never the title. `search.fn_listing_tags(p_listing)`
+returns a listing's tags in a stable (case-insensitive) order. `sync_service_to_index` and
+`sync_product_listing_to_index` write both `tags` and that `fts`; `search.fn_listing_tags_touch`
+(definer, `trg_listing_tags_touch` in `00001800`) re-syncs the row when only the tags change, since
+neither the blueprint nor the listing trigger sees `catalogue.listing_tags`. The embedding input text
+is the backend's (`embedding-text.ts`) and is not changed by these; it reads the same tags, and the
+listing's `seo_description`, from the discovery load (`ListingSearchTerms`).
 
 ### `search.sync_product_listing_to_index` · `search.sync_article_to_index`
 

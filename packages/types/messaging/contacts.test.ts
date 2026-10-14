@@ -186,6 +186,15 @@ Deno.test("a create needs at least one contact and trims its optional text", () 
 	assertEquals(parsed.message, "hi");
 });
 
+Deno.test("an inquiry about a listing goes to one contact, by listing uuid", () => {
+	const listing = "2a178edd-ae09-4fc4-ab47-e61bbfbfcfc2";
+	const ok = (contactIds: string[], subjectListingId: string) =>
+		CreateConversationSchema.safeParse({ contactIds, subjectListingId }).success;
+	assert(ok(["mara"], listing));
+	assert(!ok(["mara", "juno"], listing));
+	assert(!ok(["mara"], "svc-abc"));
+});
+
 Deno.test("contact ids are de-duplicated in order, blanks dropped", () => {
 	assertEquals(uniqueContactIds(["a", " b ", "a", "", "c", "b"]), ["a", "b", "c"]);
 });

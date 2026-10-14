@@ -11,23 +11,36 @@ import {
 	scoreItem,
 } from "./ranking.ts";
 import { workloadPercent } from "../workspace/mappers.ts";
-import type {
-	ArticleItem,
-	DiscoveryEntityKind,
-	DualRating,
-	ExploreItem,
-	ExploreOwner,
-	ProductItem,
-	ProfileItem,
-	ProjectItem,
-	RankingWeightRow,
-	ServiceItem,
-	ServiceType,
-	SkillRef,
-	TrendingEntityRow,
+import {
+	type ArticleItem,
+	type DiscoveryEntityKind,
+	displayPrice,
+	type DualRating,
+	type ExploreItem,
+	type ExploreOwner,
+	listingCardItem,
+	type ListingCardSource,
+	type ProductItem,
+	type ProfileItem,
+	type ProjectItem,
+	type RankingWeightRow,
+	type ServiceItem,
+	type ServiceType,
+	type SkillRef,
+	type TrendingEntityRow,
 } from "@projective/types/explore";
-import type { ImagePlaceholder } from "@projective/types/files";
-import { currencyExponent, toMajorUnits } from "@projective/types/finance";
+import type { ImagePlaceholder, MediaRef } from "@projective/types/files";
+import { toMajorUnits } from "@projective/types/finance";
+import { fetchPublicMedia } from "../files/public-media.ts";
+import {
+	LISTING_MEDIA_COLUMNS,
+	listingMediaFileIds,
+	type ListingMediaRow,
+	listingMediaSlots,
+	mediaRowsByListing,
+} from "../catalogue/listing-media.ts";
+
+export { displayPrice } from "@projective/types/explore";
 
 /**
  * live-catalog — the discovery corpus, read from Postgres.
@@ -150,8 +163,22 @@ interface ListingRow {
 	free_revisions: number | null;
 	extra_revision_price_cents: number | null;
 	promoted: boolean;
+	seo_description: string | null;
+	status: "draft" | "published" | "paused" | "archived";
 	published_at: string | null;
 	created_at: string;
+	updated_at: string;
+}
+
+/**
+ * A single-listing read made AS ITS OWNER: their token, so RLS shows them their own draft or paused
+ * listing, and `owns` decides that this listing is theirs to see before anything maps.
+ */
+export interface OwnerRead {
+	accessToken: string;
+	owns(listing: { owner_user_id: string; owner_team_id: string | null }): boolean;
+	/** The session client to read with; defaults to one bound to `accessToken` (a test passes a stub). */
+	client?: SupabaseClient;
 }
 
 /** The blueprint columns every discovery surface and the view page read. */
@@ -272,12 +299,10 @@ export interface OpenSeatRow {
 	status: string | null;
 }
 
-interface MediaRow {
+/** One search tag of a listing (`catalogue.listing_tags`). */
+export interface ListingTagRow {
 	listing_id: string;
-	file_id: string | null;
-	url: string | null;
-	alt_text: string;
-	position: number;
+	tag: string;
 }
 
 /** The stored-object facts an image URL and its placeholder are built from. */
@@ -315,11 +340,22 @@ export interface PenaltyRow {
 
 /** One gallery frame of a listing, resolved to a URL. */
 export interface CatalogMedia {
+	/** The full view: an image's large tier, or the video itself. */
 	src: string;
+	/** The tile still: an image's small tier, or a video's poster. */
+	thumb: string;
+	kind: "image" | "video";
 	alt: string;
 	placeholder?: ImagePlaceholder;
 	width: number | null;
 	height: number | null;
+}
+
+/** What a listing is FOUND by beyond its card: its search tags and its search-result description. */
+export interface ListingSearchTerms {
+	tags: string[];
+	/** The seller's search-result description; empty when they kept the fallback. */
+	seoDescription: string;
 }
 
 /** The database entity behind a discovery item, in the discovery-signal vocabulary (views, saves). */
@@ -371,6 +407,8 @@ export interface Catalog {
 	galleryById: Map<string, CatalogMedia[]>;
 	/** Item id → the catalogue listing id behind it (services and products). */
 	listingIdById: Map<string, string>;
+	/** Item id → the listing's search terms (services and products), for the embedding text. */
+	listingTermsById: Map<string, ListingSearchTerms>;
 	/** Owner `@handle` → the profile row (for seller facts on the view page). */
 	profileByHandle: Map<string, ProfileRow>;
 	/** Entity id (user / team / business uuid) → the profile row (review authors, project clients). */
@@ -489,12 +527,11 @@ const OPEN_SEAT_COLUMNS =
  * select the same columns.
  */
 const LISTING_COLUMNS =
-	"id, owner_user_id, owner_team_id, kind, service_blueprint_id, product_id, title, description_text, category, delivery_label, amount_cents, currency, ticket_price_cents, session_price_cents, seats_per_session, free_revisions, extra_revision_price_cents, promoted, published_at, created_at";
+	"id, owner_user_id, owner_team_id, kind, service_blueprint_id, product_id, title, description_text, category, delivery_label, amount_cents, currency, ticket_price_cents, session_price_cents, seats_per_session, free_revisions, extra_revision_price_cents, promoted, seo_description, status, published_at, created_at, updated_at";
 const BLUEPRINT_COLUMNS =
 	"id, slug, owner_type, owner_team_id, freelancer_profile_id, delivery_model, price_cents, ticket_price_cents, session_price_cents, currency, free_revisions, extra_revision_price_cents, max_seats_per_cohort, intake_fields, stage_template, team_roles, deliverables, session_minutes, session_count, rating_average, rating_count";
 const PRODUCT_COLUMNS =
 	"id, slug, owner_user_id, owner_team_id, format, category, price_cents, currency, licence, attribution_required, file_manifest, compatibility, specs, span, rating_average, rating_count";
-const MEDIA_COLUMNS = "listing_id, file_id, url, alt_text, position";
 const FILE_COLUMNS = "id, bucket_id, storage_path, metadata";
 
 /** Throw a load failure with the table named, so a broken policy is diagnosable from the log. */
@@ -596,63 +633,69 @@ async function readCatalog(): Promise<Catalog> {
 	const listingIds = listings.map((l) => l.id);
 	const projectIds = projects.map((p) => p.id);
 
-	const [blueprints, products, media, listingSkills, stages, requiredSkills] = await Promise.all([
-		byIds<BlueprintRow>(
-			db,
-			"marketplace",
-			"service_blueprints",
-			BLUEPRINT_COLUMNS,
-			"id",
-			blueprintIds,
-		),
-		byIds<ProductRow>(
-			db,
-			"catalogue",
-			"products",
-			PRODUCT_COLUMNS,
-			"id",
-			productIds,
-		),
-		byIds<MediaRow>(
-			db,
-			"catalogue",
-			"listing_media",
-			MEDIA_COLUMNS,
-			"listing_id",
-			listingIds,
-		),
-		byIds<{ listing_id: string; skill_id: string }>(
-			db,
-			"catalogue",
-			"listing_skills",
-			"listing_id, skill_id",
-			"listing_id",
-			listingIds,
-		),
-		byIds<StageRow>(
-			db,
-			"projects",
-			"project_stages",
-			STAGE_COLUMNS,
-			"project_id",
-			projectIds,
-		),
-		byIds<{ project_id: string; skill_id: string }>(
-			db,
-			"projects",
-			"project_required_skills",
-			"project_id, skill_id",
-			"project_id",
-			projectIds,
-		),
-	]);
+	const [blueprints, products, media, listingSkills, stages, requiredSkills, listingTags] =
+		await Promise.all([
+			byIds<BlueprintRow>(
+				db,
+				"marketplace",
+				"service_blueprints",
+				BLUEPRINT_COLUMNS,
+				"id",
+				blueprintIds,
+			),
+			byIds<ProductRow>(
+				db,
+				"catalogue",
+				"products",
+				PRODUCT_COLUMNS,
+				"id",
+				productIds,
+			),
+			byIds<ListingMediaRow>(
+				db,
+				"catalogue",
+				"listing_media",
+				LISTING_MEDIA_COLUMNS,
+				"listing_id",
+				listingIds,
+			),
+			byIds<{ listing_id: string; skill_id: string }>(
+				db,
+				"catalogue",
+				"listing_skills",
+				"listing_id, skill_id",
+				"listing_id",
+				listingIds,
+			),
+			byIds<StageRow>(
+				db,
+				"projects",
+				"project_stages",
+				STAGE_COLUMNS,
+				"project_id",
+				projectIds,
+			),
+			byIds<{ project_id: string; skill_id: string }>(
+				db,
+				"projects",
+				"project_required_skills",
+				"project_id, skill_id",
+				"project_id",
+				projectIds,
+			),
+			byIds<ListingTagRow>(
+				db,
+				"catalogue",
+				"listing_tags",
+				"listing_id, tag",
+				"listing_id",
+				listingIds,
+			),
+		]);
 
 	const stageIds = stages.map((s) => s.id);
-	const fileIds = [
-		...media.map((m) => m.file_id).filter((x): x is string => !!x),
-		...articles.map((a) => a.cover_file_id).filter((x): x is string => !!x),
-	];
-	const [roles, seats, files] = await Promise.all([
+	const fileIds = articles.map((a) => a.cover_file_id).filter((x): x is string => !!x);
+	const [roles, seats, files, mediaRefs] = await Promise.all([
 		byIds<StaffingRoleRow>(
 			db,
 			"projects",
@@ -670,6 +713,7 @@ async function readCatalog(): Promise<Catalog> {
 			stageIds,
 		),
 		byIds<FileRow>(db, "files", "items", FILE_COLUMNS, "id", fileIds),
+		fetchPublicMedia(db, listingMediaFileIds(media)),
 	]);
 
 	return assemble({
@@ -683,8 +727,10 @@ async function readCatalog(): Promise<Catalog> {
 		roles,
 		seats,
 		media,
+		mediaRefs,
 		files,
 		listingSkills,
+		listingTags,
 		requiredSkills,
 		skillRows,
 		placements,
@@ -800,11 +846,19 @@ export async function readProjectPreview(
  *
  * Never merged into the shared snapshot: the overlay is a per-request copy of the maps the view
  * composer and the booking service read. `null` when the id names no published listing.
+ *
+ * With `asOwner` the read is the seller's PREVIEW of their own listing instead: their token, any
+ * status but archived, and `null` — never a refusal that would confirm the listing exists — when it
+ * is not theirs.
  */
-export async function readListing(itemId: string, catalog: Catalog): Promise<Catalog | null> {
+export async function readListing(
+	itemId: string,
+	catalog: Catalog,
+	asOwner?: OwnerRead,
+): Promise<Catalog | null> {
 	const kind = itemId.startsWith("svc-") ? "service" : itemId.startsWith("prd-") ? "product" : null;
 	if (!kind) return null;
-	const db = getAnonClient();
+	const db = asOwner ? asOwner.client ?? getUserClient(asOwner.accessToken) : getAnonClient();
 
 	let blueprint: BlueprintRow | null = null;
 	let product: ProductRow | null = null;
@@ -822,17 +876,20 @@ export async function readListing(itemId: string, catalog: Catalog): Promise<Cat
 	const subjectId = blueprint?.id ?? product?.id;
 	if (!subjectId) return null;
 
-	const { data: listingData, error: listingError } = await db.schema("catalogue").from("listings")
+	let listingQuery = db.schema("catalogue").from("listings")
 		.select(LISTING_COLUMNS)
-		.eq(kind === "service" ? "service_blueprint_id" : "product_id", subjectId)
-		.eq("status", "published")
-		.limit(1);
+		.eq(kind === "service" ? "service_blueprint_id" : "product_id", subjectId);
+	if (!asOwner) listingQuery = listingQuery.eq("status", "published");
+	const { data: listingData, error: listingError } = await listingQuery.limit(1);
 	if (listingError) fail("catalogue.listings", listingError.message);
 	const listing = ((listingData ?? []) as ListingRow[])[0];
 	if (!listing) return null;
+	if (asOwner && (listing.status === "archived" || !asOwner.owns(listing))) return null;
 
-	const [media, listingSkills, skillsRes] = await Promise.all([
-		byIds<MediaRow>(db, "catalogue", "listing_media", MEDIA_COLUMNS, "listing_id", [listing.id]),
+	const [media, listingSkills, listingTags, skillsRes] = await Promise.all([
+		byIds<ListingMediaRow>(db, "catalogue", "listing_media", LISTING_MEDIA_COLUMNS, "listing_id", [
+			listing.id,
+		]),
 		byIds<{ listing_id: string; skill_id: string }>(
 			db,
 			"catalogue",
@@ -841,17 +898,13 @@ export async function readListing(itemId: string, catalog: Catalog): Promise<Cat
 			"listing_id",
 			[listing.id],
 		),
+		byIds<ListingTagRow>(db, "catalogue", "listing_tags", "listing_id, tag", "listing_id", [
+			listing.id,
+		]),
 		db.schema("org").from("skills").select("id, slug, label"),
 	]);
 	if (skillsRes.error) fail("org.skills", skillsRes.error.message);
-	const files = await byIds<FileRow>(
-		db,
-		"files",
-		"items",
-		FILE_COLUMNS,
-		"id",
-		media.map((m) => m.file_id).filter((x): x is string => !!x),
-	);
+	const mediaRefs = await fetchPublicMedia(db, listingMediaFileIds(media));
 
 	const single = assemble({
 		profiles: [...catalog.profileById.values()],
@@ -864,8 +917,10 @@ export async function readListing(itemId: string, catalog: Catalog): Promise<Cat
 		roles: [],
 		seats: [],
 		media,
-		files,
+		mediaRefs,
+		files: [],
 		listingSkills,
+		listingTags,
 		requiredSkills: [],
 		skillRows: (skillsRes.data ?? []) as Array<{ id: string; slug: string; label: string }>,
 		placements: [],
@@ -888,6 +943,10 @@ export async function readListing(itemId: string, catalog: Catalog): Promise<Cat
 			: catalog.productBySlug,
 		galleryById: new Map(catalog.galleryById).set(item.id, single.galleryById.get(item.id) ?? []),
 		listingIdById: new Map(catalog.listingIdById).set(item.id, listing.id),
+		listingTermsById: new Map(catalog.listingTermsById).set(
+			item.id,
+			single.listingTermsById.get(item.id) ?? { tags: [], seoDescription: "" },
+		),
 	};
 }
 
@@ -909,27 +968,6 @@ function major(cents: number | null | undefined, currency: string): number | und
 	return cents === null || cents === undefined
 		? undefined
 		: toMajorUnits(cents, currency) ?? undefined;
-}
-
-/**
- * A money figure as the legacy display string (`$4,800`, `$99.50`). Whole amounts drop the decimals —
- * the way every price in the corpus has always read — and fractional ones keep them. Presentation for
- * surfaces not yet on `MoneyView`; the structured `priceMinor` + `currency` travel beside it.
- */
-export function displayPrice(cents: number, currency: string): string {
-	const exponent = currencyExponent(currency);
-	const whole = cents % 10 ** exponent === 0;
-	const amount = toMajorUnits(cents, currency) ?? 0;
-	try {
-		return new Intl.NumberFormat("en-US", {
-			style: "currency",
-			currency,
-			minimumFractionDigits: whole ? 0 : exponent,
-			maximumFractionDigits: whole ? 0 : exponent,
-		}).format(amount);
-	} catch {
-		return `${amount.toFixed(whole ? 0 : exponent)} ${currency}`;
-	}
 }
 
 /** The placeholder a stored image's metadata carries, when extraction recorded one. */
@@ -979,9 +1017,9 @@ function dualRating(p: ProfileRow): DualRating | undefined {
 	return rating.asHelper || rating.asClient ? rating : undefined;
 }
 
-/** A helper-track rating from a subject's own denormalised average (blueprint / product). */
-function helperRating(avg: number | string | null, count: number | null): DualRating | undefined {
-	return (count ?? 0) > 0 ? { asHelper: { value: num(avg), count: count ?? 0 } } : undefined;
+/** A product's stored masonry weight, clamped to the three the card draws. */
+function spanOf(span: number): 1 | 2 | 3 {
+	return span >= 3 ? 3 : span <= 1 ? 1 : 2;
 }
 
 /** Workload band copy — the same thresholds the discovery card's meter uses. */
@@ -1024,9 +1062,14 @@ interface Inputs {
 	stages: StageRow[];
 	roles: StaffingRoleRow[];
 	seats: OpenSeatRow[];
-	media: MediaRow[];
+	media: ListingMediaRow[];
+	/** `files.get_public_media` for the media rows' files; absent = no listing picture is public. */
+	mediaRefs?: ReadonlyMap<string, MediaRef>;
+	/** Article cover files. */
 	files: FileRow[];
 	listingSkills: Array<{ listing_id: string; skill_id: string }>;
+	/** Search tags; absent = no listing has any. */
+	listingTags?: ListingTagRow[];
 	requiredSkills: Array<{ project_id: string; skill_id: string }>;
 	skillRows: Array<{ id: string; slug: string; label: string }>;
 	placements: PlacementRow[];
@@ -1066,28 +1109,19 @@ export function assemble(input: Inputs): Catalog {
 
 	const galleryById = new Map<string, CatalogMedia[]>();
 	const listingIdById = new Map<string, string>();
-	const mediaByListing = new Map<string, MediaRow[]>();
-	for (const m of input.media) {
-		const list = mediaByListing.get(m.listing_id) ?? [];
-		list.push(m);
-		mediaByListing.set(m.listing_id, list);
+	const listingTermsById = new Map<string, ListingSearchTerms>();
+	const tagsByListing = new Map<string, string[]>();
+	for (const t of input.listingTags ?? []) {
+		const list = tagsByListing.get(t.listing_id) ?? [];
+		list.push(t.tag);
+		tagsByListing.set(t.listing_id, list);
 	}
-	const galleryOf = (listingId: string): CatalogMedia[] =>
-		(mediaByListing.get(listingId) ?? [])
-			.sort((a, b) => a.position - b.position)
-			.flatMap((m) => {
-				const file = m.file_id ? fileById.get(m.file_id) : undefined;
-				const src = file ? urlOf(file) : m.url ?? "";
-				if (!src) return [];
-				const dims = dimensionsOf(file);
-				return [{
-					src,
-					alt: m.alt_text,
-					placeholder: placeholderOf(file),
-					width: dims?.width ?? null,
-					height: dims?.height ?? null,
-				}];
-			});
+	const termsOf = (l: ListingRow): ListingSearchTerms => ({
+		tags: tagsByListing.get(l.id) ?? [],
+		seoDescription: l.seo_description ?? "",
+	});
+	const mediaByListing = mediaRowsByListing(input.media);
+	const mediaRefs = input.mediaRefs ?? new Map<string, MediaRef>();
 
 	const skillsByListing = new Map<string, SkillRef[]>();
 	for (const ls of input.listingSkills) {
@@ -1107,56 +1141,71 @@ export function assemble(input: Inputs): Catalog {
 	const serviceCurrenciesByOwner = new Map<string, Set<string>>();
 	const productCountByOwner = new Map<string, number>();
 	const highlightsByOwner = new Map<string, string[]>();
+	const highlight = (ownerKey: string, src: string | undefined) => {
+		if (!src) return;
+		const list = highlightsByOwner.get(ownerKey) ?? [];
+		if (list.length < 3) list.push(src);
+		highlightsByOwner.set(ownerKey, list);
+	};
 
 	for (const l of input.listings) {
 		const owner = ownerOf(l.owner_user_id, l.owner_team_id);
 		if (!owner) continue;
-		const gallery = galleryOf(l.id);
-		const cover = gallery[0];
-		const common = {
-			title: l.title,
+		const slots = listingMediaSlots(mediaByListing.get(l.id) ?? [], mediaRefs);
+		const gallery: CatalogMedia[] = slots.map((s) => ({
+			src: s.src,
+			thumb: s.thumb,
+			kind: s.kind,
+			alt: s.alt,
+			placeholder: s.placeholder,
+			width: s.width ?? null,
+			height: s.height ?? null,
+		}));
+		const source = {
 			owner,
 			skills: skillsByListing.get(l.id) ?? [],
-			summary: l.description_text,
-			media: cover?.src,
-			mediaPlaceholder: cover?.placeholder,
-			createdAt: l.published_at ?? l.created_at,
+			descriptionText: l.description_text,
+			media: slots,
+			delivery: l.delivery_label,
+			updatedAt: l.updated_at,
+			listedAt: l.published_at ?? l.created_at,
 		};
 		const ownerKey = owner.handle;
-		if (cover) {
-			const list = highlightsByOwner.get(ownerKey) ?? [];
-			if (list.length < 3) list.push(cover.src);
-			highlightsByOwner.set(ownerKey, list);
-		}
 
 		if (l.kind === "service" && l.service_blueprint_id) {
 			const bp = blueprintById.get(l.service_blueprint_id);
 			if (!bp) continue;
 			const serviceType = SERVICE_TYPE[bp.delivery_model];
-			const item: ServiceItem = {
-				...common,
-				id: bp.slug,
-				type: "services",
-				price: displayPrice(l.amount_cents, l.currency),
-				delivery: l.delivery_label,
-				category: l.category,
-				serviceType,
-				ticketPrice: major(bp.ticket_price_cents ?? l.ticket_price_cents, l.currency),
-				sessionPrice: major(bp.session_price_cents ?? l.session_price_cents, l.currency),
-				freeRevisions: bp.free_revisions ?? l.free_revisions ?? undefined,
-				extraRevisionPrice: major(
-					bp.extra_revision_price_cents ?? l.extra_revision_price_cents,
-					l.currency,
-				),
-				priceMinor: l.amount_cents,
-				currency: l.currency,
-				rating: helperRating(bp.rating_average, bp.rating_count),
-				sponsored: l.promoted && sponsoredSubjects.has(bp.id),
-			};
+			const item = listingCardItem(
+				{
+					...source,
+					id: bp.slug,
+					kind: "service",
+					serviceType,
+					title: l.title,
+					category: l.category,
+					currency: l.currency,
+					pricing: {
+						amount: major(l.amount_cents, l.currency) ?? 0,
+						ticketPrice: major(bp.ticket_price_cents ?? l.ticket_price_cents, l.currency) ?? null,
+						sessionPrice: major(bp.session_price_cents ?? l.session_price_cents, l.currency) ??
+							null,
+						freeRevisions: bp.free_revisions ?? l.free_revisions,
+						extraRevisionPrice:
+							major(bp.extra_revision_price_cents ?? l.extra_revision_price_cents, l.currency) ??
+								null,
+					},
+					metrics: { avgRating: num(bp.rating_average), ratingCount: bp.rating_count ?? 0 },
+					promoted: l.promoted && sponsoredSubjects.has(bp.id),
+				} satisfies ListingCardSource,
+			);
+			if (item.type !== "services") continue;
+			highlight(ownerKey, item.media);
 			services.push(item);
 			blueprintBySlug.set(item.id, bp);
 			galleryById.set(item.id, gallery);
 			listingIdById.set(item.id, l.id);
+			listingTermsById.set(item.id, termsOf(l));
 			const unit = serviceType === "Pipeline"
 				? item.ticketPrice
 				: serviceType === "Session" || serviceType === "Group Session"
@@ -1173,30 +1222,34 @@ export function assemble(input: Inputs): Catalog {
 		} else if (l.kind === "product" && l.product_id) {
 			const pr = productById.get(l.product_id);
 			if (!pr) continue;
-			const dims = cover ? { width: cover.width, height: cover.height } : null;
-			const item: ProductItem = {
-				...common,
-				id: pr.slug,
-				type: "products",
-				price: displayPrice(pr.price_cents, pr.currency),
-				category: pr.category,
-				span: Math.min(3, Math.max(1, pr.span)) as 1 | 2 | 3,
-				mediaMeta: dims?.width && dims.height
-					? {
-						width: dims.width,
-						height: dims.height,
-						aspectRatio: Math.round((dims.width / dims.height) * 10_000) / 10_000,
-					}
-					: undefined,
-				priceMinor: pr.price_cents,
-				currency: pr.currency,
-				rating: helperRating(pr.rating_average, pr.rating_count),
-				sponsored: l.promoted && sponsoredSubjects.has(pr.id),
-			};
+			const item = listingCardItem(
+				{
+					...source,
+					id: pr.slug,
+					kind: "product",
+					serviceType: null,
+					title: l.title,
+					category: pr.category,
+					currency: pr.currency,
+					pricing: {
+						amount: major(pr.price_cents, pr.currency) ?? 0,
+						ticketPrice: null,
+						sessionPrice: null,
+						freeRevisions: null,
+						extraRevisionPrice: null,
+					},
+					metrics: { avgRating: num(pr.rating_average), ratingCount: pr.rating_count ?? 0 },
+					promoted: l.promoted && sponsoredSubjects.has(pr.id),
+					span: spanOf(pr.span),
+				} satisfies ListingCardSource,
+			);
+			if (item.type !== "products") continue;
+			highlight(ownerKey, item.media);
 			products.push(item);
 			productBySlug.set(item.id, pr);
 			galleryById.set(item.id, gallery);
 			listingIdById.set(item.id, l.id);
+			listingTermsById.set(item.id, termsOf(l));
 			productCountByOwner.set(ownerKey, (productCountByOwner.get(ownerKey) ?? 0) + 1);
 		}
 	}
@@ -1229,6 +1282,8 @@ export function assemble(input: Inputs): Catalog {
 			const dims = dimensionsOf(coverFile);
 			galleryById.set(item.id, [{
 				src: cover,
+				thumb: cover,
+				kind: "image",
 				alt: a.title,
 				placeholder: placeholderOf(coverFile),
 				width: dims?.width ?? null,
@@ -1429,6 +1484,7 @@ export function assemble(input: Inputs): Catalog {
 		projectBySlug,
 		galleryById,
 		listingIdById,
+		listingTermsById,
 		profileByHandle,
 		profileById,
 		sponsoredSubjects,

@@ -124,3 +124,8 @@ CREATE INDEX IF NOT EXISTS idx_lesson_progress_user ON projects.lesson_progress 
 CREATE INDEX IF NOT EXISTS idx_service_instantiations_blueprint
     ON projects.service_instantiations (blueprint_id)
     WHERE blueprint_id IS NOT NULL;
+
+-- The client pipeline's "revision requested" reason (Decision #217): the open rounds on a stage.
+CREATE INDEX IF NOT EXISTS idx_stage_revision_requests_open
+    ON projects.stage_revision_requests (project_stage_id)
+    WHERE status = 'open';

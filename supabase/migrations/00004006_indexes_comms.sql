@@ -134,3 +134,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_channel_suppressions_active
 CREATE INDEX IF NOT EXISTS idx_channel_suppressions_user
     ON comms.channel_suppressions (user_id)
     WHERE lifted_at IS NULL;
+-- "New inquiries for this item" (Decision #217(g)).
+CREATE INDEX IF NOT EXISTS idx_dm_threads_subject_listing
+    ON comms.dm_threads (subject_listing_id)
+    WHERE subject_listing_id IS NOT NULL;

@@ -47,6 +47,8 @@ export const CatalogueIndexRowSchema = z.object({
 	entity_type: CatalogueIndexEntityType,
 	entity_id: z.string().uuid(),
 	title: z.string(),
+	/** A product listing's tags (`catalogue.listing_tags`, at most 10); empty for an article. */
+	tags: z.array(z.string()),
 	is_public: z.boolean(),
 	updated_at: z.string().nullable(),
 });

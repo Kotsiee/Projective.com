@@ -53,6 +53,7 @@ CREATE TABLE search.projects_index (
 CREATE TABLE search.services_index (
     service_id uuid PRIMARY KEY REFERENCES marketplace.service_blueprints (id) ON DELETE CASCADE,
     title text NOT NULL,
+    tags text[] NOT NULL DEFAULT '{}'::text[],
     fts tsvector,
     embedding vector(1024),
     embedding_model text,
@@ -72,6 +73,7 @@ CREATE TABLE search.catalogue_index (
     entity_type text NOT NULL CHECK (entity_type IN ('product', 'article')),
     entity_id uuid NOT NULL,
     title text NOT NULL,
+    tags text[] NOT NULL DEFAULT '{}'::text[],
     fts tsvector,
     embedding vector(1024),
     embedding_model text,
@@ -131,7 +133,7 @@ CREATE TABLE search.interest_events (
   session_id   text,                                                          -- anonymous session key
   -- 'rail_depth' is the one event with no entity: how far a reader scrolled one discovery rail.
   event_type   text NOT NULL CHECK (event_type IN
-                 ('impression','click','search','save','hire','apply','message','rail_depth')),
+                 ('impression','click','search','save','hire','apply','message','rail_depth','view')),
   entity_id    uuid,
   entity_type  text,        -- 'service' | 'product' | 'article' | 'project' | 'user' | 'freelancer' | 'team' | 'business'
   query        text,

@@ -117,6 +117,47 @@ export const DailyRollupSchema = z.object({
 export type DailyRollup = z.infer<typeof DailyRollupSchema>;
 // #endregion
 
+// #region Listing rollups
+/**
+ * The metrics `analytics.fn_rollup_listings` writes as `subject_kind = 'listing'` rollups, one UTC day
+ * per run (job `analytics-listing-rollups`, Decision #217). `value` is the figure and `sampleCount`
+ * the rows or people behind it.
+ */
+export const ListingRollupMetric = z.enum([
+	"listing.impressions",
+	"listing.clicks",
+	"listing.views",
+	"listing.checkout_starts",
+	"listing.orders",
+	"listing.gross_minor",
+	"listing.bookings",
+	"listing.booking_slot",
+	"listing.query_impressions",
+	"listing.query_clicks",
+	"listing.cancellations",
+]);
+export type ListingRollupMetric = z.infer<typeof ListingRollupMetric>;
+
+/**
+ * The `dimensions` keys each listing metric is broken down by; a metric with none carries `{}`.
+ * `booking_slot` is keyed in the seller's timezone (`dow` 0 = Sunday); the two query metrics are
+ * written only for a query seen in 5 or more distinct sessions (`KEYWORD_MIN_SESSIONS`).
+ */
+export const LISTING_ROLLUP_DIMENSIONS: Readonly<Record<ListingRollupMetric, readonly string[]>> = {
+	"listing.impressions": [],
+	"listing.clicks": [],
+	"listing.views": [],
+	"listing.checkout_starts": [],
+	"listing.orders": [],
+	"listing.gross_minor": ["currency"],
+	"listing.bookings": [],
+	"listing.booking_slot": ["dow", "hour"],
+	"listing.query_impressions": ["q"],
+	"listing.query_clicks": ["q"],
+	"listing.cancellations": [],
+};
+// #endregion
+
 // #region RPC input
 /**
  * Input to `analytics.fn_emit`. The actor is resolved server-side from the session — a client-supplied

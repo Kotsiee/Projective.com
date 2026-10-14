@@ -226,3 +226,92 @@ export const CreateSchedulingEventSchema = z.object({
 });
 export type CreateSchedulingEvent = z.infer<typeof CreateSchedulingEventSchema>;
 // #endregion
+
+// #region Availability presets & recurrence (Decision #217)
+/** `scheduling.rule_effect` — what a rule does to its day: add bands, replace the day's, or remove. */
+export const RuleEffect = z.enum(["add", "replace", "subtract"]);
+export type RuleEffect = z.infer<typeof RuleEffect>;
+
+/** `scheduling.preset_scope` — a schedule's shared `library` preset, or one service's fork. */
+export const PresetScope = z.enum(["library", "service"]);
+export type PresetScope = z.infer<typeof PresetScope>;
+
+/** A preset-local civil date as PostgREST returns a `date` column. */
+const civilDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a date as YYYY-MM-DD.");
+
+/**
+ * A row of `scheduling.availability_presets` — a named rule set under the owner's schedule. It has
+ * no zone of its own: its rules are evaluated in the schedule's. `compiledFrom` / `compiledThrough`
+ * are the local dates `availabilityOccurrences` covers; both `null` means not compiled, and the
+ * booking gate reads the weekly bands instead.
+ */
+export const AvailabilityPresetRowSchema = z.object({
+	id: uuid,
+	scheduleId: uuid,
+	scope: PresetScope,
+	/** The service a `service` fork belongs to; `null` for a library preset. */
+	blueprintId: uuid.nullable(),
+	name: z.string().min(1).max(60),
+	description: z.string().max(200),
+	/** At most one live default per schedule (a partial unique index). */
+	isDefault: z.boolean(),
+	compiledFrom: civilDate.nullable(),
+	compiledThrough: civilDate.nullable(),
+	archivedAt: timestamp.nullable(),
+	createdAt: timestamp,
+	updatedAt: timestamp,
+}).refine((p) => (p.scope === "service") === (p.blueprintId !== null), {
+	message: "A service preset belongs to exactly one service; a library preset to none.",
+	path: ["blueprintId"],
+});
+export type AvailabilityPresetRow = z.infer<typeof AvailabilityPresetRowSchema>;
+
+/**
+ * A row of `scheduling.recurrence_rules`. `rrule` is the normalised RFC 5545 rule (DTSTART carried
+ * as `startsOn`); the database checks only its shape, `recurrence.ts` is the authority on its meaning.
+ */
+export const RecurrenceRuleRowSchema = z.object({
+	id: uuid,
+	presetId: uuid,
+	kind: AvailabilityKind,
+	effect: RuleEffect,
+	rrule: z.string().max(400).regex(/^FREQ=/, "A recurrence starts with FREQ=."),
+	startsOn: civilDate,
+	/** UNTIL, inclusive; `null` runs open-ended. */
+	endsOn: civilDate.nullable(),
+	priority: z.number().int().min(0).max(99),
+	/** The authored "unless it is …" weekdays, 0 = Sunday … 6 = Saturday. */
+	unlessWeekdays: z.array(z.number().int().min(0).max(6)).max(6),
+	label: z.string().max(80),
+	isActive: z.boolean(),
+	position: z.number().int().min(0).max(63),
+	createdAt: timestamp,
+	updatedAt: timestamp,
+});
+export type RecurrenceRuleRow = z.infer<typeof RecurrenceRuleRowSchema>;
+
+/** A row of `scheduling.recurrence_rule_bands` — up to six per rule; never crosses local midnight. */
+export const RecurrenceRuleBandRowSchema = z.object({
+	ruleId: uuid,
+	position: z.number().int().min(0).max(5),
+	startMinute: z.number().int().min(0).max(1440),
+	endMinute: z.number().int().min(0).max(1440),
+}).refine((b) => b.endMinute > b.startMinute, {
+	message: "A band must end after it starts.",
+	path: ["endMinute"],
+});
+export type RecurrenceRuleBandRow = z.infer<typeof RecurrenceRuleBandRowSchema>;
+
+/**
+ * A row of `scheduling.availability_occurrences` — one compiled span of a preset's layer, written
+ * only by the service-role door `scheduling.replace_preset_occurrences`.
+ */
+export const AvailabilityOccurrenceRowSchema = z.object({
+	presetId: uuid,
+	kind: AvailabilityKind,
+	startsAt: timestamp,
+	endsAt: timestamp,
+	ruleIds: z.array(uuid),
+});
+export type AvailabilityOccurrenceRow = z.infer<typeof AvailabilityOccurrenceRowSchema>;
+// #endregion

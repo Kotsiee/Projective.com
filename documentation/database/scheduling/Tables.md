@@ -5,7 +5,8 @@ call, and the pre-engagement **discovery call** itself. Added 2026-07-24 by migr
 `20260724100000` (schema + availability), `20260724102000` (events) and `20260724103000` (discovery
 calls).
 
-> **Zod SSOT:** `packages/types/scheduling/rows.ts` mirrors the availability/event rows and
+> **Zod SSOT:** `packages/types/scheduling/rows.ts` mirrors the availability/event rows (and, since
+> Decision #217, the preset, rule, band and occurrence rows) and
 > `packages/types/scheduling/calls.ts` the call rows; `packages/types/scheduling/scheduling.ts`
 > remains the READ PROJECTION the calendar engine renders. **Additive Rule:** this schema is new —
 > nothing existing was altered (root `CLAUDE.md` §1). This file documents the **real migrated schema
@@ -352,6 +353,115 @@ reschedule lives, since it has no status of its own.
 
 ---
 
+## 4. Presets & recurrence (`00000022`, FK in `00000031`, Decision #217)
+
+The weekly bands above (`availability_rules`) say "Mondays 09:00–17:00". A seller with more than one
+rhythm, such as split shifts, a fortnightly Saturday, "the 2nd Tuesday", "skip the 12th unless it's a
+Thursday" or a different pattern for one service, needs **named rule sets**. These are
+`availability_presets`, under the owner's one schedule (`UNIQUE (owner_type, owner_id)` is
+unchanged), each holding RFC 5545 recurrence rules with up to six bands apiece.
+
+### The TypeScript evaluator is the authority
+
+A rule's meaning lives in **one** place: `@projective/types/scheduling` (`rrule.ts` parses and
+serialises the RFC 5545 subset, `recurrence.ts` compiles an authored draft to an RRULE, and
+`evaluate.ts` turns a preset into absolute spans per local date: add, then replace by priority, then
+subtract, then call windows clipped to working hours, then blackouts). The database **never expands
+an RRULE**. A second implementation in SQL would drift from the first. So:
+
+- **`recurrence_rules.rrule`** stores the normalised rule. The database checks only its shape
+  (`FREQ=` prefix, at most 400 characters). The service re-validates every rule with the TypeScript
+  parser before `scheduling.save_availability_preset` stores it (Decision #217 flag (d)).
+- **`availability_occurrences`** stores what the evaluator produced: absolute `timestamptz` spans per
+  layer. The scheduling service compiles a preset after every save and writes the spans through the
+  service-role door `scheduling.replace_preset_occurrences` ([Functions.md](Functions.md) §10).
+- **The booking gate reads the spans, not the rules.** `fn_band_covers` with a blueprint answers from
+  the occurrences when the blueprint's preset has been compiled over the slot's dates, and from the
+  weekly bands otherwise ([Functions.md](Functions.md) §3).
+
+### The horizon
+
+Compilation covers a rolling window, from today to **+120 days**. `compiled_from` and
+`compiled_through` are the preset-local dates the spans cover. Both are NULL until the first
+compile, and they are reset to NULL whenever a rule, a band or the schedule's time zone changes
+(`trg_invalidate_preset_compilation`), because the old spans no longer describe the rules. A nightly
+job (`scheduling-availability-horizon`, 03:05 UTC, #203 registry; owned by the service layer, C7)
+recompiles any preset whose `compiled_through` falls before today + 90 days. A slot outside the
+compiled window (not compiled yet, past the horizon, or invalidated and awaiting recompile) falls
+back to the weekly bands. It is never refused only because the compile has not caught up.
+
+**Discovery calls and `/[handle]/availability` stay on the weekly bands** (ruling (d)). The default
+preset's weekly-expressible rules are mirrored into `availability_rules` by the service when it is
+saved. Retiring the weekly model is a follow-up.
+
+### `scheduling.availability_presets`
+
+| Column                              | Type                      | Notes                                                                                                                                                                         |
+| :---------------------------------- | :------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                                | uuid                      | PK.                                                                                                                                                                           |
+| `schedule_id`                       | uuid                      | FK → `schedules` (CASCADE). The preset is evaluated in **this schedule's** time zone; it has none of its own.                                                                 |
+| `scope`                             | `scheduling.preset_scope` | `library` (shared; edits flow to every bound service) or `service` (a fork for one service). Default `library`.                                                               |
+| `blueprint_id`                      | uuid                      | FK → `marketplace.service_blueprints` (CASCADE): the service a fork belongs to. `CHECK (scope = 'service') = (blueprint_id IS NOT NULL)`; `trg_preset_guard` requires a service sold from this schedule. |
+| `name` · `description`              | text                      | 1–60 characters (trimmed) · up to 200.                                                                                                                                        |
+| `is_default`                        | boolean                   | `CHECK (NOT is_default OR scope = 'library')`. At most one live default per schedule (`uq_availability_presets_one_default`, `00004007`).                                      |
+| `compiled_from` · `compiled_through` | date                      | The compiled window (both NULL, or both set with `through >= from`). Written only by `replace_preset_occurrences`; a client holds no UPDATE grant on them.                    |
+| `archived_at`                       | timestamptz               | Presets are archived, never deleted (no DELETE grant).                                                                                                                       |
+| `created_at` · `updated_at`         | timestamptz               | `trg_availability_presets_touch`.                                                                                                                                             |
+
+A live library preset's name is unique per schedule, case-insensitively
+(`uq_availability_presets_library_name`). A fork may carry its origin's name.
+
+### `scheduling.recurrence_rules`
+
+| Column                      | Type                           | Notes                                                                                                         |
+| :-------------------------- | :----------------------------- | :------------------------------------------------------------------------------------------------------------ |
+| `id` · `preset_id`          | uuid                           | PK · FK → `availability_presets` (CASCADE).                                                                   |
+| `kind`                      | `scheduling.availability_kind` | The layer: `working_hours` or `call_window`.                                                                  |
+| `effect`                    | `scheduling.rule_effect`       | `add` · `replace` (the day's bands become this rule's) · `subtract` (no bands = the whole day off).           |
+| `rrule`                     | text                           | Normalised RRULE, DTSTART carried as `starts_on`. `CHECK` length ≤ 400 and `~ '^FREQ='` (shape only).          |
+| `starts_on` · `ends_on`     | date                           | DTSTART (fixes bi-weekly parity) · UNTIL, inclusive, NULL open-ended. `CHECK ends_on >= starts_on`.           |
+| `priority`                  | smallint                       | 0–99, default 50. Breaks ties between `replace` rules on one date.                                             |
+| `unless_weekdays`           | smallint[]                     | The authored "unless it is …" weekdays (0 = Sunday), at most six. Already compiled into the RRULE's `BYDAY`.   |
+| `label` · `is_active`       | text · boolean                 | Up to 80 characters · soft-disable.                                                                            |
+| `position`                  | smallint                       | 0–63: the rule's order in the editor (64 rules per preset at most).                                           |
+| `created_at` · `updated_at` | timestamptz                    | `trg_recurrence_rules_touch`.                                                                                 |
+
+### `scheduling.recurrence_rule_bands`
+
+`(rule_id, position)` PK, `position` 0–5 (six bands per rule), `start_minute` · `end_minute` in
+minutes from local midnight with the same span CHECK as `availability_rules`: a band never crosses
+midnight. FK → `recurrence_rules` (CASCADE).
+
+### `scheduling.availability_occurrences`
+
+| Column                  | Type                           | Notes                                                                                  |
+| :---------------------- | :----------------------------- | :------------------------------------------------------------------------------------- |
+| `preset_id`             | uuid                           | FK → `availability_presets` (CASCADE).                                                 |
+| `kind`                  | `scheduling.availability_kind` | The layer.                                                                             |
+| `starts_at` · `ends_at` | timestamptz                    | `CHECK ends_at > starts_at`. The evaluator joins touching spans, across midnight too. |
+| `rule_ids`              | uuid[]                         | The rules that produced the span; checked to be this preset's on write.               |
+| PK                      | —                              | `(preset_id, kind, starts_at)`, which is also the gate's lookup.                       |
+
+Read-only to the client (the schedule's own side reads it); written only by
+`replace_preset_occurrences`.
+
+### Binding a service: `marketplace.service_blueprints.availability_preset_id`
+
+The column lives on the blueprint (`00000014`). Its FK →
+`availability_presets` `ON DELETE SET NULL` is in `00000031`, because the two tables reference each
+other. **NULL means the schedule's default preset.** `trg_blueprint_preset_binding` adds what an FK
+cannot say: the bound preset is live (not archived), sits on the blueprint owner's schedule (the
+team's for a team listing, else the seller's own `user` or `freelancer` schedule), and, when it is a
+`service` fork, is this blueprint's. `scheduling.fn_preset_for_blueprint` resolves the effective
+preset: the bound one, else the default, else NULL.
+
+**Seeds.** Every seeded schedule has one default library preset copied from the "general" template
+of `SCHEDULE_TEMPLATES` (generated by `supabase/seeds/gen/emit-scheduling.ts`, never hand-copied),
+and every seeded Session and Group Session blueprint is bound to its owner's. None is compiled, so
+the gate reads the seeded weekly bands until the scheduling service compiles them.
+
+---
+
 ## Enums added
 
 ```sql
@@ -363,6 +473,8 @@ CREATE TYPE scheduling.call_type         AS ENUM ('courtesy', 'paid');
 CREATE TYPE scheduling.call_status       AS ENUM ('proposed','confirmed','declined','cancelled','completed','no_show','expired');
 CREATE TYPE scheduling.call_party        AS ENUM ('host', 'requester', 'both');
 CREATE TYPE scheduling.call_action       AS ENUM ('requested','confirmed','declined','rescheduled','cancelled','completed','marked_no_show','expired','link_generated','reminder_sent');
+CREATE TYPE scheduling.rule_effect       AS ENUM ('add', 'replace', 'subtract');   -- Decision #217
+CREATE TYPE scheduling.preset_scope      AS ENUM ('library', 'service');           -- Decision #217
 ```
 
 See [Policies.md](Policies.md) for RLS and [Functions.md](Functions.md) for the booking gate.

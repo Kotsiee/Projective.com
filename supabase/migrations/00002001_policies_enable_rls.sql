@@ -398,6 +398,16 @@ ALTER TABLE scheduling.availability_rules ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE scheduling.blackout_dates ENABLE ROW LEVEL SECURITY;
 
+-- Availability presets & recurrence (Decision #217): the schedule's managers only; the compiled
+-- occurrences are read by the schedule's own side and written by the service role alone.
+ALTER TABLE scheduling.availability_presets ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE scheduling.recurrence_rules ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE scheduling.recurrence_rule_bands ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE scheduling.availability_occurrences ENABLE ROW LEVEL SECURITY;
+
 
 -- --- integrations: connectors + plugin ecosystem ---
 -- Every integrations table is RLS-on. The operational/secret tables (connection_secrets,
@@ -600,8 +610,6 @@ ALTER TABLE catalogue.listing_media ENABLE ROW LEVEL SECURITY;
 ALTER TABLE catalogue.listing_skills ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE catalogue.listing_tags ENABLE ROW LEVEL SECURITY;
-
-ALTER TABLE catalogue.listing_availability ENABLE ROW LEVEL SECURITY;
 
 ALTER TABLE catalogue.collections ENABLE ROW LEVEL SECURITY;
 

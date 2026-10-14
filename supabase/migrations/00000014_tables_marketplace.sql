@@ -99,8 +99,11 @@ CREATE TABLE marketplace.service_blueprints (
     -- THE STAGE TEMPLATE a Pipeline or One-Off service is delivered through — the showcase the /view
     -- service template renders and the stages "Add to projects" instantiates (Decision #80). An
     -- ORDERED array of `BlueprintStage` objects (`@projective/types/explore` `stored.ts` — name,
-    -- description, deliverables, turnaround, the stage's price in minor units, skill labels), owned by
-    -- that Zod SSOT and validated by every reader.
+    -- description, deliverables, turnaround, the stage's price in minor units, skill labels, and when
+    -- the stage starts: `startTrigger` on_project_start · after_previous · fixed_offset, `lagDays`
+    -- 0–90, `chainReaction`), owned by that Zod SSOT and validated by every reader.
+    -- `catalogue.save_listing` checks each element's shape on the way in, and
+    -- `marketplace.instantiate_service_blueprint` maps the trigger fields onto `project_stages`.
     --
     -- A jsonb DOCUMENT, not a child table, for the reason `intake_fields` is one: the seller authors
     -- the sequence as one unit and every reader takes it whole. Empty is meaningful — a Direct
@@ -121,6 +124,18 @@ CREATE TABLE marketplace.service_blueprints (
     -- instead of assuming an hour.
     session_minutes integer CHECK (session_minutes IS NULL OR session_minutes BETWEEN 5 AND 600),
     session_count integer CHECK (session_count IS NULL OR session_count BETWEEN 1 AND 52),
+    -- A One-Off's delivery time in days, as the seller commits to it (Decision #217). NULL until stated.
+    turnaround_days smallint CHECK (turnaround_days IS NULL OR turnaround_days BETWEEN 1 AND 90),
+    -- The room provider a Session or Group Session books into. NULL defers to the seller's connected
+    -- default (`scheduling.fn_conferencing_provider`). The same set as `scheduling.events`.
+    meeting_provider text CHECK (
+        meeting_provider IS NULL
+        OR meeting_provider IN ('google', 'outlook', 'zoom', 'microsoft_teams', 'discord', 'custom')
+    ),
+    -- The availability preset a Session books against (Decision #217(c)); NULL means the owner
+    -- schedule's default. Its FK is in 00000031, because `scheduling.availability_presets` is created
+    -- after this file.
+    availability_preset_id uuid,
     is_published boolean NOT NULL DEFAULT false,
     rating_average numeric(3,2) DEFAULT 0.0,
     rating_count integer DEFAULT 0,

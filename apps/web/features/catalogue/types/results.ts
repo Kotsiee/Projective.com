@@ -12,6 +12,8 @@ export interface CatalogueResult<T> {
 	message?: string;
 	/** Field-keyed validation errors, when the route rejected the payload. */
 	errors?: Record<string, string>;
+	/** Structured facts about a failure — a stale save's `current` stamp, for one. */
+	details?: Record<string, string | number | boolean | null>;
 	/** The success payload; present when `ok`. */
 	data?: T;
 }

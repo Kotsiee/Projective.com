@@ -255,6 +255,7 @@ Containers for 1:1 or group conversations separate from project work.
 | `title`              | text                     | A group's name; NULL for a DM (the counterparty's own name is the title). |
 | `photo_file_id`      | uuid                     | FK → `files.items.id` `ON DELETE SET NULL`. A **group's** own photo — a processed public `avatars` rendition, written only through `comms.set_group_photo` (no client `UPDATE` policy). NULL for a DM (its picture is the counterparty's) and for a group with none; the inbox then paints the group fallback. |
 | `created_by_user_id` | uuid                     | The starter. The inbox LIST shows an empty thread to its starter only (everyone else once it holds a message). |
+| `subject_listing_id` | uuid                     | The listing a service inquiry was opened from (Decision #217(g)) — "new inquiries for this item". FK → `catalogue.listings.id` `ON DELETE SET NULL`, added in the trailing `00000033_tables_fk_comms_catalogue.sql` (the listings table is created after this file). `ck_dm_threads_subject_inquiry`: only a `service_inquiry` carries one. Written by `comms.get_or_create_dm_thread(…, p_subject_listing)`. Partial index `idx_dm_threads_subject_listing`. |
 
 ### `comms.dm_participants`
 

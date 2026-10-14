@@ -6,14 +6,16 @@ import type { ExploreItem } from "@projective/types/explore";
  * Pure and deterministic: the same item always yields the same text, so the backfill and the
  * post-commit re-embed agree, and the SHA-256 of the text decides whether a stored vector is still
  * current. The text is built from the public catalogue projection (`ExploreItem`) — exactly what a
- * visitor can read — in one order: type label · title · category · skills · summary, plus the
- * delivery model and window for a service.
+ * visitor can read — in one order: type label · title · category · skills · tags · summary · search
+ * description, plus the delivery model and window for a service. Tags and the search description are
+ * a listing's {@link EmbeddingTerms} (Decision #217(f)); every other item has none.
  */
 
 // #region Limits
 const MAX_SUMMARY_CHARS = 1200;
 const MAX_TEXT_CHARS = 2000;
 const MAX_SKILLS = 12;
+const MAX_TAGS = 10;
 const DOCUMENT_PROMPT_TOKENS = 8;
 // #endregion
 
@@ -58,15 +60,39 @@ function skillsOf(item: ExploreItem): string[] {
 	return out;
 }
 
-/** The text `item` is embedded from. */
-export function embeddingTextOf(item: ExploreItem): string {
+/** What a listing is found by beyond its card: its search tags and search-result description. */
+export interface EmbeddingTerms {
+	tags: readonly string[];
+	seoDescription: string;
+}
+
+function tagsOf(terms: EmbeddingTerms | undefined): string[] {
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const raw of terms?.tags ?? []) {
+		const tag = clean(raw);
+		const key = tag.toLowerCase();
+		if (!tag || seen.has(key)) continue;
+		seen.add(key);
+		out.push(tag);
+		if (out.length === MAX_TAGS) break;
+	}
+	return out;
+}
+
+/** The text `item` is embedded from, with a listing's search terms when it has them. */
+export function embeddingTextOf(item: ExploreItem, terms?: EmbeddingTerms): string {
 	const parts = [`${TYPE_LABEL[item.type]}: ${clean(item.title)}`];
 	const category = categoryOf(item);
 	if (category) parts.push(`Category: ${category}`);
 	const skills = skillsOf(item);
 	if (skills.length > 0) parts.push(`Skills: ${skills.join(", ")}`);
+	const tags = tagsOf(terms);
+	if (tags.length > 0) parts.push(`Tags: ${tags.join(", ")}`);
 	const summary = clip(clean(item.summary), MAX_SUMMARY_CHARS);
 	if (summary) parts.push(summary);
+	const seo = clean(terms?.seoDescription);
+	if (seo && seo !== summary) parts.push(seo);
 	if (item.type === "services") {
 		parts.push(`Model: ${item.serviceType}`);
 		const delivery = clean(item.delivery);

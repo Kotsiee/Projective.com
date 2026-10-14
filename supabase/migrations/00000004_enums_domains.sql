@@ -202,6 +202,13 @@ CREATE TYPE scheduling.call_action AS ENUM (
     'requested', 'confirmed', 'declined', 'rescheduled', 'cancelled',
     'completed', 'marked_no_show', 'expired', 'link_generated', 'reminder_sent'
 );
+
+-- `rule_effect` — mirrors @projective/types/scheduling RuleEffect: how a recurrence rule combines
+-- with the others occurring on the same local date (plan §5.2, Decision #217).
+CREATE TYPE scheduling.rule_effect AS ENUM ('add', 'replace', 'subtract');
+
+-- `preset_scope` — a schedule's shared `library` preset, or a `service` fork owned by one blueprint.
+CREATE TYPE scheduling.preset_scope AS ENUM ('library', 'service');
 -- #endregion
 
 -- #region integrations
@@ -406,6 +413,11 @@ CREATE TYPE catalogue.listing_status AS ENUM ('draft', 'published', 'paused', 'a
 CREATE TYPE catalogue.product_format AS ENUM (
     'download', 'template', 'preset', 'font', 'course', 'ebook', 'source_code', 'bundle'
 );
+
+-- `product_licence` — the terms a digital product is sold under (Decision #217(i)). Mirrors
+-- @projective/types/catalogue ListingLicence member for member. It was free text defaulting to
+-- 'standard', which named no terms a buyer could read; the old 'standard' rows became 'personal'.
+CREATE TYPE catalogue.product_licence AS ENUM ('personal', 'commercial', 'extended');
 -- #endregion
 
 -- #region Cross-domain enums added with the catalogue / coordination / workspace tables
