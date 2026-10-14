@@ -364,8 +364,13 @@ export const UpdateListingInputSchema = z.object({
 	offer: ListingOfferSchema.optional(),
 	seo: ListingSeoSchema.optional(),
 	collections: z.array(z.string().max(80)).max(24).optional(),
+	/** The ISO-4217 currency to price in; refused once the listing has been published. */
+	currency: z.string().regex(/^[A-Z]{3}$/).optional(),
 	/** The intake field list, replaced wholesale (order is meaning). */
 	intake: z.array(IntakeFieldSchema).max(INTAKE_FIELDS_MAX).optional(),
+}).refine((p) => p.currency === undefined || p.pricing !== undefined, {
+	message: "A currency change carries the prices it re-states.",
+	path: ["pricing"],
 });
 export type UpdateListingInput = z.infer<typeof UpdateListingInputSchema>;
 
@@ -375,13 +380,8 @@ export const SetListingStatusInputSchema = z.object({
 	status: ListingStatus,
 });
 export type SetListingStatusInput = z.infer<typeof SetListingStatusInputSchema>;
-	/** The ISO-4217 currency to price in; refused once the listing has been published. */
-	currency: z.string().regex(/^[A-Z]{3}$/).optional(),
 
 /** The Publish payload (a Set-Status to `published`, isolated so the publish gate is explicit). */
-}).refine((p) => p.currency === undefined || p.pricing !== undefined, {
-	message: "A currency change carries the prices it re-states.",
-	path: ["pricing"],
 export const PublishListingInputSchema = z.object({
 	id: z.string().min(1).max(120),
 });
@@ -472,6 +472,16 @@ export interface PublishReadinessContext {
 }
 
 /**
+ * Whether a listing has ever been live. From then on its currency is fixed (orders, payouts and
+ * analytics are recorded in it) and its buyer questions keep their ids, order and kinds (answers are
+ * stored under them), even after it is paused, archived or restored to draft. `save_listing` holds
+ * the same line on `published_at`.
+ */
+export function hasBeenPublished(listing: Pick<ListingDetail, "publishedAt">): boolean {
+	return listing.publishedAt !== null;
+}
+
+/**
  * The publish gate. A listing goes live only with a title (which the SEO title falls back to), a
  * still in cover slot 1, a price the card can show, and its archetype's minimum: a Pipeline needs a
  * stage, and a Session or Group Session needs availability with a window in the next 30 days.
@@ -482,16 +492,6 @@ export function publishReadiness(
 	detail: ListingDetail,
 	context: PublishReadinessContext = {},
 ): PublishReadiness {
-/**
- * Whether a listing has ever been live. From then on its currency is fixed (orders, payouts and
- * analytics are recorded in it) and its buyer questions keep their ids, order and kinds (answers are
- * stored under them), even after it is paused, archived or restored to draft. `save_listing` holds
- * the same line on `published_at`.
- */
-export function hasBeenPublished(listing: Pick<ListingDetail, "publishedAt">): boolean {
-	return listing.publishedAt !== null;
-}
-
 	const missing: string[] = [];
 	const archetype = formArchetypeOf(detail.kind, detail.serviceType);
 	if (!coverOf(detail.media)) missing.push("Add a cover image");
