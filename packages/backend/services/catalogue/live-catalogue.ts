@@ -284,6 +284,7 @@ export function projectDetail(input: DetailInputs): ListingDetail {
 		owner: input.owner,
 		description: l.description?.html ?? "",
 		descriptionText: l.description_text,
+		publishedAt: l.published_at,
 		media,
 		skills: input.skills ?? [],
 		tags: input.tags ?? [],

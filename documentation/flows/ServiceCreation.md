@@ -58,9 +58,16 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
 - **Live write:** `UPDATE marketplace.service_blueprints SET intake_fields = $1 WHERE id = $2` under
   the owner's RLS (`"Owners manage own blueprints"`). The `catalogue.listings` row points at the
   blueprint and restates nothing, so there is exactly one column to write.
-- **Renaming a field id** after a listing has sold orphans the stored `answers` under the old id on
-  every basket line and invitation; the editor should treat an id as immutable once the listing has
-  been published and only allow label/option edits.
+- **Field ids are immutable once the listing has been published.** Renaming one after a listing has
+  sold would orphan the stored `answers` under the old id on every basket line and invitation. "Has
+  been published" means `catalogue.listings.published_at` is set (`ListingDetail.publishedAt`,
+  `hasBeenPublished`), which outlives a pause, an archive and a restore to draft. From then on:
+  - The builder lets only the wording (label, hint, placeholder) and the options change, and says why.
+    The pure guard is `intakeLockRefusal` (`@projective/types/services`).
+  - `catalogue.save_listing` refuses any change to the questions' ids, order or kinds with 22023
+    `DETAIL = 'intake'` (probe `supabase/probes/catalogue_publish_locks.sql`).
+  - The same instant fixes the listing's currency, which a never-published draft may still change in
+    Pricing.
 
 ### 1.2 Hire intake editor (seller settings)
 

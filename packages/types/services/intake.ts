@@ -369,3 +369,42 @@ export function intakeAnswerText(field: IntakeField, answer: IntakeAnswer): stri
 	return labelOf(answer);
 }
 // #endregion
+
+// #region The publish lock
+/** What a published listing's question may still change: its wording and its options. */
+type LockedEditable = "label" | "hint" | "placeholder" | "options";
+
+function lockedShape(field: IntakeField): Omit<IntakeField, LockedEditable> {
+	const { label: _l, hint: _h, placeholder: _p, options: _o, ...rest } = field;
+	return rest;
+}
+
+/** Equal field by field, whatever order the keys arrived in (jsonb stores them re-ordered). */
+function sameShape(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+	const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])]
+		.filter((k) => a[k] !== undefined || b[k] !== undefined);
+	return keys.every((k) => JSON.stringify(a[k]) === JSON.stringify(b[k]));
+}
+
+/**
+ * Why `after` may not replace `before` once the listing has been published, or `null` when it may
+ * (ServiceCreation.md §1.1). Buyers' answers are stored under each question's id on every basket line
+ * and invitation, so the questions keep their ids, order, kinds and every setting; only the wording
+ * and the options change. The workspace's Buyer questions builder runs it before a save, and
+ * `catalogue.save_listing` holds the id, order and kind half of it on `published_at`.
+ */
+export function intakeLockRefusal(
+	before: readonly IntakeField[],
+	after: readonly IntakeField[],
+): string | null {
+	if (before.length !== after.length || before.some((f, i) => f.id !== after[i].id)) {
+		return "Questions can't be added, removed or reordered once the listing has been published.";
+	}
+	for (let i = 0; i < before.length; i++) {
+		if (!sameShape(lockedShape(before[i]), lockedShape(after[i]))) {
+			return "Only a question's wording and options can change once the listing has been published.";
+		}
+	}
+	return null;
+}
+// #endregion

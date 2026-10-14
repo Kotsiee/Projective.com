@@ -101,17 +101,20 @@ export interface PatchTarget {
 
 /**
  * The `catalogue.save_listing` patch for an editor patch. Only the keys the patch carries travel, so a
- * partial autosave cannot clear what it did not send. Prices go as minor units in the listing's own
- * currency, the plain-text description is derived from the HTML here rather than taken on trust, and
+ * partial autosave cannot clear what it did not send. Prices go as minor units in the currency the
+ * listing is priced in after this save (a never-published draft may change it in the same patch), the
+ * plain-text description is derived from the HTML here rather than taken on trust, and
  * `expected_updated_at` makes the save refuse (PC409) when another tab saved first.
  */
 export function savePatchBody(
 	patch: UpdateListingInput,
 	target: PatchTarget,
 ): Record<string, unknown> {
+	const currency = patch.currency ?? target.currency;
 	const minor = (whole: number | null | undefined) =>
-		whole === null || whole === undefined ? null : toMinorUnits(whole, target.currency);
+		whole === null || whole === undefined ? null : toMinorUnits(whole, currency);
 	const body: Record<string, unknown> = { expected_updated_at: patch.expectedUpdatedAt };
+	if (patch.currency !== undefined) body.currency = patch.currency;
 	if (patch.title !== undefined) body.title = patch.title;
 	if (patch.category !== undefined) body.category = patch.category;
 	if (patch.description !== undefined) {

@@ -221,8 +221,9 @@ $$;
 --   listing    title · category · description_html · description_text · delivery_label ·
 --              amount_cents · ticket_price_cents · session_price_cents · seats_per_session ·
 --              free_revisions · extra_revision_price_cents · seo_title · seo_description ·
---              create_category
---   service    delivery_model (while a draft) · intake · stage_template · team_roles · deliverables ·
+--              create_category · currency (until first published)
+--   service    delivery_model (while a draft) · intake (ids and kinds fixed once first published) ·
+--              stage_template · team_roles · deliverables ·
 --              turnaround_days · session_minutes · session_count · meeting_provider ·
 --              max_seats_per_cohort · allow_continuous_enrollment
 --   product    format · licence · attribution_required · file_manifest
@@ -369,6 +370,44 @@ BEGIN
             USING ERRCODE = '22023', DETAIL = 'delivery_model';
     END IF;
 
+    -- The currency is the seller's to choose until the listing first goes live; from then on orders,
+    -- payouts and analytics are recorded in it. Keyed on published_at, which outlives a return to draft.
+    IF v_patch ? 'currency' THEN
+        IF pg_catalog.upper(COALESCE(v_patch ->> 'currency', '')) !~ '^[A-Z]{3}$' THEN
+            RAISE EXCEPTION 'A currency is a three-letter ISO code' USING ERRCODE = '22023', DETAIL = 'currency';
+        END IF;
+        IF v_row.published_at IS NOT NULL AND pg_catalog.upper(v_patch ->> 'currency') <> v_row.currency THEN
+            RAISE EXCEPTION 'A listing keeps its currency once it has been published' USING ERRCODE = '22023',
+                DETAIL = 'currency';
+        END IF;
+    END IF;
+
+    -- Once a listing has been live, buyers' answers are stored under its question ids (basket lines,
+    -- invitations), so the questions keep their ids, order and kinds; only wording and options change
+    -- (ServiceCreation.md §1.1). Keyed on published_at, so a listing restored to draft stays locked.
+    IF v_patch ? 'intake' THEN
+        v_doc := COALESCE(v_patch -> 'intake', '[]'::jsonb);
+        IF pg_catalog.jsonb_typeof(v_doc) <> 'array' THEN
+            RAISE EXCEPTION 'Buyer questions are a list' USING ERRCODE = '22023', DETAIL = 'intake';
+        END IF;
+        IF v_row.published_at IS NOT NULL AND (
+            SELECT COALESCE(pg_catalog.jsonb_agg(
+                       pg_catalog.jsonb_build_array(f.value ->> 'id', f.value ->> 'kind') ORDER BY f.n), '[]'::jsonb)
+              FROM pg_catalog.jsonb_array_elements(v_doc) WITH ORDINALITY AS f (value, n)
+        ) IS DISTINCT FROM (
+            SELECT COALESCE(pg_catalog.jsonb_agg(
+                       pg_catalog.jsonb_build_array(f.value ->> 'id', f.value ->> 'kind') ORDER BY f.n), '[]'::jsonb)
+              FROM marketplace.service_blueprints b
+             CROSS JOIN LATERAL pg_catalog.jsonb_array_elements(
+                   CASE WHEN pg_catalog.jsonb_typeof(b.intake_fields) = 'array' THEN b.intake_fields ELSE '[]'::jsonb END
+               ) WITH ORDINALITY AS f (value, n)
+             WHERE b.id = v_row.service_blueprint_id
+        ) THEN
+            RAISE EXCEPTION 'A published listing keeps its questions; only their wording and options can change'
+                USING ERRCODE = '22023', DETAIL = 'intake';
+        END IF;
+    END IF;
+
     IF v_patch ? 'stage_template' THEN
         v_doc := COALESCE(v_patch -> 'stage_template', '[]'::jsonb);
         IF pg_catalog.jsonb_typeof(v_doc) <> 'array' OR pg_catalog.jsonb_array_length(v_doc) > 12 THEN
@@ -455,6 +494,8 @@ BEGIN
             THEN NULLIF(pg_catalog.btrim(COALESCE(v_patch ->> 'seo_description', '')), '') ELSE l.seo_description END,
         create_category = CASE WHEN v_patch ? 'create_category'
             THEN (v_patch ->> 'create_category')::org.create_category ELSE l.create_category END,
+        currency = CASE WHEN v_patch ? 'currency'
+            THEN pg_catalog.upper(v_patch ->> 'currency') ELSE l.currency END,
         updated_at = pg_catalog.now()
     WHERE l.id = p_listing;
 
@@ -591,8 +632,9 @@ COMMENT ON FUNCTION catalogue.save_listing(uuid, jsonb) IS
 seller who created it. Only keys present in the patch change; children (skills, tags, collections) are
 replaced whole when present; `offer` and `seo` envelopes are decoded onto the flat keys. Returns
 { listing_id, updated_at }. Refusals: 42501 not the seller / a file that is not theirs / the subject
-could not be updated · 22023 malformed patch (DETAIL names the key) · PB404 no such listing · PC409
-expected_updated_at is stale (DETAIL stale:<current updated_at>) · PG422 more than 10 tags.';
+could not be updated · 22023 malformed patch, a changed currency or question id/kind/order after first
+publish (DETAIL names the key) · PB404 no such listing · PC409 expected_updated_at is stale (DETAIL
+stale:<current updated_at>) · PG422 more than 10 tags.';
 -- #endregion
 
 -- #region Tag cap (Decision #217(f))

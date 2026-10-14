@@ -34,9 +34,15 @@ Recognised `save_listing` keys (Decision #217):
 - **Listing:** `title` · `category` · `description_html` · `description_text` · `delivery_label` ·
   `amount_cents` · `ticket_price_cents` · `session_price_cents` · `seats_per_session` ·
   `free_revisions` · `extra_revision_price_cents` · `seo_title` · `seo_description` (blank → NULL) ·
-  `create_category`.
+  `create_category` · `currency` (an ISO-4217 code, upper-cased, mirrored onto the subject; changeable
+  only while `published_at` is NULL, i.e. the listing has never been live — after that a different
+  code is `22023` DETAIL `currency`. The service sends it with the prices it re-states, in its minor
+  units).
 - **Service** (refused on a product, `22023` DETAIL `kind`): `delivery_model` (only while the listing
-  is a **draft** — a live listing is archived and recreated instead) · `intake` · `stage_template`
+  is a **draft** — a live listing is archived and recreated instead) · `intake` (a list; once
+  `published_at` is set — even back in draft — the questions' ids, order and kinds must match the
+  stored `intake_fields`, else `22023` DETAIL `intake`; wording and options may change,
+  `ServiceCreation.md` §1.1) · `stage_template`
   (≤ 12; each element a name of 1–80, ≤ 12 deliverables, `startTrigger` ∈ `on_project_start` ·
   `after_previous` · `fixed_offset`, `lagDays` an integer 0–90, `chainReaction` boolean) ·
   `team_roles` (≤ 12, a name and a headcount of 1–20) · `deliverables` (≤ 24 lines of ≤ 140) ·
@@ -62,7 +68,7 @@ The retired `media` and `availability` keys are no longer read.
 | SQLSTATE | Meaning                                                                                      | HTTP |
 | :------- | :------------------------------------------------------------------------------------------- | :--- |
 | `42501`  | Not signed in; not the seller who created the listing; not a freelancer (services); not a member of the team; the subject could not be updated with the listing; a showcase or attachment file that is not the caller's (or not of its kind). | 403  |
-| `22023`  | A malformed request — a blank title, an unknown kind, status, delivery model or currency, a malformed stage / role / scope / manifest / showcase, an offer for the wrong archetype, product keys on a service (or the reverse), a delivery-model change on a live listing, a batch of more than 100. `DETAIL` names the key (`stage_template.2`, `slots.0`, …). | 422  |
+| `22023`  | A malformed request — a blank title, an unknown kind, status, delivery model or currency, a malformed stage / role / scope / manifest / showcase, an offer for the wrong archetype, product keys on a service (or the reverse), a delivery-model change on a live listing, a currency change or a question id / order / kind change on a listing that has been published, a batch of more than 100. `DETAIL` names the key (`stage_template.2`, `slots.0`, …). | 422  |
 | `PB404`  | No such listing (or one RLS hides from the caller).                                          | 404  |
 | `PC409`  | `save_listing`'s `expected_updated_at` is stale; `DETAIL` `stale:<current updated_at>`.     | 409  |
 | `PG422`  | The publish gate. `DETAIL` lists what is missing, separated by `\|` (`a price\|a cover image\|at least one stage`), which the console names back to the seller. Also the 11th tag (`DETAIL` `tags_max`). | 422  |

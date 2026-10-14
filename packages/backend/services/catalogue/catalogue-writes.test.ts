@@ -280,6 +280,36 @@ Deno.test("offer — Session ↔ Group Session travels as the delivery model; no
 	assertEquals("delivery_model" in same, false);
 });
 
+Deno.test("update patch — a currency change prices in the new currency's minor units", () => {
+	const pricing = {
+		amount: 5000,
+		ticketPrice: null,
+		sessionPrice: null,
+		seatsPerSession: null,
+		freeRevisions: null,
+		extraRevisionPrice: 12.5,
+	};
+	const toJpy = savePatchBody(
+		{
+			id: "prd-dashkit001",
+			expectedUpdatedAt: "2026-09-14T10:15:30.123Z",
+			currency: "JPY",
+			pricing,
+		},
+		{ kind: "product", currency: "USD", archetype: "product" },
+	);
+	assertEquals([toJpy.currency, toJpy.amount_cents, toJpy.extra_revision_price_cents], [
+		"JPY",
+		5000,
+		13,
+	]);
+	const kept = savePatchBody(
+		{ id: "prd-dashkit001", expectedUpdatedAt: "2026-09-14T10:15:30.123Z", pricing },
+		{ kind: "product", currency: "USD", archetype: "product" },
+	);
+	assertEquals(["currency" in kept, kept.amount_cents], [false, 500_000]);
+});
+
 Deno.test("update patch — only sent keys travel; SEO and prices use the door's names and units", () => {
 	const body = savePatchBody(
 		{

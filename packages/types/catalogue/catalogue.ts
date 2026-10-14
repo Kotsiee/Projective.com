@@ -238,6 +238,12 @@ export const ListingDetailSchema = ListingSummarySchema.extend({
 	intake: z.array(IntakeFieldSchema).max(INTAKE_FIELDS_MAX).default([]),
 	/** A product's masonry cell weight on discovery (`catalogue.products.span`); 1 for a service. */
 	span: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(1),
+	/**
+	 * When the listing first went live, kept through a pause, an archive and a restore to draft;
+	 * `null` while it never has. Once set, the currency and the buyer questions' ids are fixed
+	 * ({@link hasBeenPublished}).
+	 */
+	publishedAt: z.string().nullable().default(null),
 });
 export type ListingDetail = z.infer<typeof ListingDetailSchema>;
 // #endregion
@@ -369,8 +375,13 @@ export const SetListingStatusInputSchema = z.object({
 	status: ListingStatus,
 });
 export type SetListingStatusInput = z.infer<typeof SetListingStatusInputSchema>;
+	/** The ISO-4217 currency to price in; refused once the listing has been published. */
+	currency: z.string().regex(/^[A-Z]{3}$/).optional(),
 
 /** The Publish payload (a Set-Status to `published`, isolated so the publish gate is explicit). */
+}).refine((p) => p.currency === undefined || p.pricing !== undefined, {
+	message: "A currency change carries the prices it re-states.",
+	path: ["pricing"],
 export const PublishListingInputSchema = z.object({
 	id: z.string().min(1).max(120),
 });
@@ -471,6 +482,16 @@ export function publishReadiness(
 	detail: ListingDetail,
 	context: PublishReadinessContext = {},
 ): PublishReadiness {
+/**
+ * Whether a listing has ever been live. From then on its currency is fixed (orders, payouts and
+ * analytics are recorded in it) and its buyer questions keep their ids, order and kinds (answers are
+ * stored under them), even after it is paused, archived or restored to draft. `save_listing` holds
+ * the same line on `published_at`.
+ */
+export function hasBeenPublished(listing: Pick<ListingDetail, "publishedAt">): boolean {
+	return listing.publishedAt !== null;
+}
+
 	const missing: string[] = [];
 	const archetype = formArchetypeOf(detail.kind, detail.serviceType);
 	if (!coverOf(detail.media)) missing.push("Add a cover image");
