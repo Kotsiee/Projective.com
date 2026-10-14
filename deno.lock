@@ -87,6 +87,7 @@
     "npm:omggif@^1.0.10": "1.0.10",
     "npm:pdfjs-dist@6.3.289": "6.3.289",
     "npm:pixi.js@^8.17.1": "8.19.0",
+    "npm:playwright-core@1.56.1": "1.56.1",
     "npm:preact-render-to-string@6": "6.7.0_preact@10.29.4",
     "npm:preact-render-to-string@6.7.0": "6.7.0_preact@10.29.4",
     "npm:preact-render-to-string@^6.6.2": "6.7.0_preact@10.29.4",
@@ -1616,6 +1617,10 @@
         "parse-svg-path",
         "tiny-lru"
       ]
+    },
+    "playwright-core@1.56.1": {
+      "integrity": "sha512-hutraynyn31F+Bifme+Ps9Vq59hKuUCz7H1kDOcBs+2oGguKkWTU50bBWrtz34OUWmIwpBTWDxaRPXrIXkgvmQ==",
+      "bin": true
     },
     "postcss@8.5.16": {
       "integrity": "sha512-vuwillviilfKZsg0VGj5R/YwwcHx4SLsIOI/7K6mQkWx+l5cUHTjj5g0AasTBcyXsbfTgrwsUNmVUb5xVwyPwg==",

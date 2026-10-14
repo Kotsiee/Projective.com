@@ -6,7 +6,9 @@ import "../styles/listing-card.css";
 import "../styles/listing-table.css";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
 import { ListingsCanvas } from "../components/listings/ListingsCanvas.tsx";
-import { ViewPlaceholder } from "../components/ConsoleStates.tsx";
+import { ClientsCanvas } from "../components/clients/ClientsCanvas.tsx";
+import { AnalyticsCanvas } from "../components/analytics/AnalyticsCanvas.tsx";
+import { consoleAnalyticsTarget } from "../core/analytics-view.ts";
 import CatalogueCreateModal from "./CatalogueCreateModal.island.tsx";
 import { CONSOLE_CANVAS_ID } from "../core/catalogue-model.ts";
 import { catalogueZoom } from "../core/view-state.ts";
@@ -27,7 +29,12 @@ import {
 	startConsoleSync,
 } from "../core/console-store.ts";
 import { reloadListings } from "../core/console-actions.ts";
-import type { CataloguePage, ConsoleUrlState, ConsoleView } from "../types/catalogue-types.ts";
+import {
+	type CataloguePage,
+	consoleHref,
+	type ConsoleUrlState,
+	type ConsoleView,
+} from "../types/catalogue-types.ts";
 
 /**
  * CatalogueConsole — the `/catalogue` canvas: a router over the console views (`?view=listings |
@@ -138,7 +145,27 @@ export default function CatalogueConsole(props: CatalogueConsoleProps): JSX.Elem
 		>
 			{state.view === "listings"
 				? <ListingsCanvas state={state} page={page} error={error} />
-				: <ViewPlaceholder view={state.view} onBack={() => setConsoleUrl({ view: "listings" })} />}
+				: state.view === "analytics"
+				? (
+					<AnalyticsCanvas
+						target={consoleAnalyticsTarget(state)}
+						period={state.period}
+						onPeriod={(period) => setConsoleUrl({ period })}
+						idBase="cat-an-console"
+					/>
+				)
+				: (
+					<ClientsCanvas
+						surface="console"
+						scope={{ filter: state.scope }}
+						chosen={state.client}
+						hrefFor={(client) => consoleHref({ ...state, client })}
+						emptyAction={{
+							label: "Back to listings",
+							onPress: () => setConsoleUrl({ view: "listings" }),
+						}}
+					/>
+				)}
 			<CatalogueCreateModal defaultCurrency={props.defaultCurrency} />
 		</div>
 	);

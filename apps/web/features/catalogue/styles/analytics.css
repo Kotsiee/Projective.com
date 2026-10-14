@@ -1,0 +1,247 @@
+/* #region Canvas */
+/* The analytics canvas (plan §4.7): regions separated by spacing alone on --bg, never boxed; only the
+   chart plots sit on --surface-1. Its layout answers to its own width (the console canvas and the
+   workspace tab are different widths at the same viewport), so it is a container, not a media query. */
+.cat-an {
+	container: cat-an / inline-size;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-7);
+	min-inline-size: 0;
+	padding: var(--space-5) var(--space-6) var(--space-8);
+	background: var(--bg);
+}
+
+.cat-an__bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3) var(--space-5);
+}
+
+.cat-an__asof {
+	margin: 0;
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.cat-an__error {
+	max-inline-size: var(--measure);
+}
+/* #endregion */
+
+/* #region Figures */
+.cat-an__figures {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.cat-an__tile {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.cat-an__tile[data-sufficient="false"] .ui-stat__value {
+	font-size: var(--text-lg);
+	color: var(--text-secondary);
+}
+
+.cat-an__why {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-1);
+	padding: 0;
+	border: 0;
+	border-radius: var(--radius-sm);
+	background: none;
+	font: inherit;
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+	cursor: help;
+	transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.cat-an__why:hover {
+	color: var(--on-surface);
+}
+
+.cat-an__why:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cat-an__churn {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-2);
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.cat-an__churn-label {
+	font-weight: var(--fw-medium);
+	color: var(--on-surface);
+}
+
+.cat-an__figure {
+	font-variant-numeric: tabular-nums;
+}
+
+.cat-an__dot {
+	color: var(--text-secondary);
+}
+/* #endregion */
+
+/* #region Regions */
+.cat-an__regions {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: var(--space-8) var(--space-7);
+}
+
+.cat-an__region {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	min-inline-size: 0;
+}
+
+.cat-an__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-1) var(--space-3);
+}
+
+.cat-an__title {
+	margin: 0;
+	font-size: var(--text-xs);
+	font-weight: var(--fw-semibold);
+	letter-spacing: var(--tracking-wide);
+	line-height: var(--leading-snug);
+	text-transform: uppercase;
+	color: var(--text-secondary);
+}
+
+.cat-an__meta {
+	font-size: var(--text-xs);
+	color: var(--text-secondary);
+	font-variant-numeric: tabular-nums;
+}
+
+.cat-an__plot .ui-chart__plot {
+	background: var(--surface-1);
+}
+
+.cat-an__heat {
+	min-inline-size: 0;
+	overflow-x: auto;
+}
+
+.cat-an__empty {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-base);
+	line-height: var(--leading-relaxed);
+	color: var(--on-surface);
+	font-variant-numeric: tabular-nums;
+}
+
+.cat-an__note {
+	margin: 0;
+	max-inline-size: var(--measure);
+	font-size: var(--text-sm);
+	color: var(--text-secondary);
+}
+
+.cat-an__num {
+	font-variant-numeric: tabular-nums;
+}
+
+.cat-an__link {
+	border-radius: var(--radius-sm);
+	color: var(--on-surface);
+	text-decoration: underline;
+	text-decoration-color: var(--border-subtle);
+	text-underline-offset: 0.2em;
+}
+
+.cat-an__link:hover {
+	text-decoration-color: currentColor;
+}
+
+.cat-an__link:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+/* Two columns once the canvas itself is wide enough; revenue, top listings and a keyword table with no
+   heatmap beside it take the full row. */
+@container cat-an (min-width: 56rem) {
+	.cat-an__regions {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.cat-an__region[data-wide="true"] {
+		grid-column: 1 / -1;
+	}
+}
+/* #endregion */
+
+/* #region Skeleton */
+.cat-an__skeleton {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-7);
+}
+
+.cat-an__skeleton-tiles {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+	gap: var(--space-5);
+}
+
+.cat-an__skeleton-tile,
+.cat-an__skeleton-region {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.cat-an__skeleton-plot {
+	block-size: 12rem;
+}
+/* #endregion */
+
+/* #region Small screens */
+/* Below --bp-md (768px) the canvas keeps the shell's own gutter. */
+@media (max-width: 767.98px) {
+	.cat-an {
+		padding-inline: var(--space-4);
+	}
+}
+/* #endregion */
+
+/* #region Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+	.cat-an__why {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .cat-an__why {
+	transition: none;
+}
+/* #endregion */

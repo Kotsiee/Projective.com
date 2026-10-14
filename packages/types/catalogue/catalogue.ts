@@ -263,8 +263,8 @@ export const CatalogueListParamsSchema = z.object({
 	search: z.string().max(160).optional(),
 	sort: CatalogueSort.optional(),
 	dir: CatalogueSortDir.optional(),
-	/** The window the KPI strip's sales figures cover (default `30d`). */
-	period: CataloguePeriod.optional(),
+	/** The window the header rollups cover (default `30d`) — the Analytics canvas's own window. */
+	period: AnalyticsPeriod.optional(),
 	/** Icon-only quick filters — needs-attention / promoted / best-selling. */
 	needsAttention: z.boolean().optional(),
 	promoted: z.boolean().optional(),
@@ -276,7 +276,13 @@ export const CatalogueListParamsSchema = z.object({
 });
 export type CatalogueListParams = z.infer<typeof CatalogueListParamsSchema>;
 
-/** The rolled-up KPI figures for the console analytics strip (over the WHOLE catalogue, not the page). */
+/**
+ * The console header's rollup sentence (`CatalogueRollups`), over the WHOLE catalogue in the active
+ * type segment, not the page. The sales figures are NOT a second definition: they are the gross,
+ * orders and conversion tiles of the Analytics read (`CatalogueAnalyticsBackendService`) for the same
+ * scope and window, copied by `headlineOf` — the same rollups, the same window ending on the last
+ * rolled-up day (today excluded), the same `rateOrNull` threshold.
+ */
 export const CatalogueStatsSchema = z.object({
 	/** Published (live) listings. */
 	activeListings: z.number().int().min(0),
@@ -284,16 +290,21 @@ export const CatalogueStatsSchema = z.object({
 	totalListings: z.number().int().min(0),
 	/** Lifetime views across the listings (a counter — never a windowed figure). */
 	views: z.number().int().min(0),
-	/** The window {@link orders}, {@link revenue} and {@link trend} were counted over. */
-	period: CataloguePeriod.default("30d"),
-	/** Completed orders and bookings inside the window. */
+	/** The window {@link orders}, {@link revenue} and {@link conversion} were counted over. */
+	period: AnalyticsPeriod.default("30d"),
+	/** The last rolled-up day (`YYYY-MM-DD`, UTC) the window ends on; `null` before any read. */
+	asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().default(null),
+	/** The Orders tile: orders and bookings inside the window. */
 	orders: z.number().int().min(0),
-	/** Their gross in the viewer's display currency (whole units) — converted only when mixed. */
+	/** The Gross volume tile, whole units of the read's currency. */
 	revenue: z.number().min(0),
-	revenueLabel: z.string().max(24),
+	/** The Gross volume tile's figure as printed ("$4,820"). */
+	revenueLabel: z.string().max(32),
+	/** The Gross volume tile's signed % change against the previous window; `null` with no base. */
+	revenueChange: z.number().nullable().default(null),
+	/** The Conversion tile: orders ÷ views, `null` below `RATE_MIN_DENOMINATOR` views. */
+	conversion: z.number().min(0).nullable().default(null),
 	avgRating: z.number().min(0).max(5),
-	/** Weekly gross across the window, oldest first (whole units) — the delta beside the revenue tile. */
-	trend: z.array(z.number()).max(24),
 });
 export type CatalogueStats = z.infer<typeof CatalogueStatsSchema>;
 

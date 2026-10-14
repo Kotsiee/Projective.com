@@ -1,11 +1,9 @@
 import { batch, computed, signal } from "@preact/signals";
 import {
-	type AnalyticsPeriod,
 	type BatchOutcome,
 	type CatalogueKind,
 	type CatalogueListParams,
 	type CataloguePage,
-	type CataloguePeriod,
 	CONSOLE_DEFAULTS,
 	consoleHref,
 	type ConsoleUrlState,
@@ -104,11 +102,6 @@ export const NO_QUICK_FILTERS: Readonly<QuickFilters> = {
 /** How many listings one console page fetches. */
 export const LISTINGS_PAGE_SIZE = 60;
 
-/** The sales window the listings read rolls up over; the list read counts at most a quarter. */
-export function listPeriodOf(period: AnalyticsPeriod): CataloguePeriod {
-	return period === "12m" ? "90d" : period;
-}
-
 /** The `/api/catalogue/list` params a console state and its quick filters ask for. */
 export function listParamsOf(
 	state: ConsoleUrlState,
@@ -123,7 +116,7 @@ export function listParamsOf(
 		search: state.search || undefined,
 		sort: state.sort,
 		dir: state.dir,
-		period: listPeriodOf(state.period),
+		period: state.period,
 		needsAttention: quick.attention || undefined,
 		promoted: quick.promoted || undefined,
 		bestSelling: quick.bestSelling || undefined,

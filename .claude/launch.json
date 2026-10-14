@@ -202,6 +202,16 @@
 			"port": 13210
 		},
 		{
+			"name": "web-catalogue-e2e",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:CATALOGUE_BACKEND_LIVE = 'false'; $env:PORT = '13217'; deno task dev --port 13217 --strictPort"
+			],
+			"port": 13217
+		},
+		{
 			"name": "web-disputes",
 			"runtimeExecutable": "powershell",
 			"runtimeArgs": [
@@ -210,6 +220,46 @@
 				"$line = Get-Content .env | Select-String \"^SUPABASE_SERVICE_ROLE_KEY=\"; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split(\"=\", 2)[1].Trim([char]34) }; $env:PORT = \"13011\"; deno task dev --port 13011 --strictPort"
 			],
 			"port": 13011
+		},
+		{
+			"name": "web-catalogue-edit",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13213'; deno task dev --port 13213 --strictPort"
+			],
+			"port": 13213
+		},
+		{
+			"name": "web-analytics",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13215'; deno task dev --port 13215 --strictPort"
+			],
+			"port": 13215
+		},
+		{
+			"name": "web-clients",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13219'; deno task dev --port 13219 --strictPort"
+			],
+			"port": 13219
+		},
+		{
+			"name": "web-preview",
+			"runtimeExecutable": "powershell",
+			"runtimeArgs": [
+				"-NoProfile",
+				"-Command",
+				"$line = Get-Content .env | Select-String '^SUPABASE_SERVICE_ROLE_KEY='; if ($line) { $env:SUPABASE_SERVICE_ROLE_KEY = $line.ToString().Split('=', 2)[1].Trim('\"') }; $env:PORT = '13214'; deno task dev --port 13214 --strictPort"
+			],
+			"port": 13214
 		}
 	]
 }

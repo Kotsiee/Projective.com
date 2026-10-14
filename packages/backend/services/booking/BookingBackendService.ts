@@ -23,6 +23,7 @@ import type {
 	SlotQuery,
 } from "@projective/types/scheduling";
 import type { AddBasketItem, PurchasableItemKind } from "@projective/types/finance";
+import type { CreateConversation } from "@projective/types/messaging";
 import type { EntityView, ExploreItem } from "@projective/types/explore";
 import { resolveListing } from "../explore/listing-source.ts";
 import type { Catalog } from "../explore/live-catalog.ts";
@@ -111,6 +112,8 @@ interface ListingOwner {
 	accountUserId: string;
 	/** The blueprint behind a service listing; `null` for a product. */
 	blueprintId: string | null;
+	/** The `catalogue.listings` row behind the item, which an inquiry names as its subject. */
+	listingId: string | null;
 }
 
 /**
@@ -118,6 +121,7 @@ interface ListingOwner {
  * same rows its page composes from, so the owner a question reaches is the owner the page named.
  */
 function listingOwner(catalog: Catalog, itemId: string): ListingOwner | null {
+	const listingId = catalog.listingIdById.get(itemId) ?? null;
 	const blueprint = catalog.blueprintBySlug.get(itemId);
 	if (blueprint) {
 		return {
@@ -126,6 +130,7 @@ function listingOwner(catalog: Catalog, itemId: string): ListingOwner | null {
 				: { type: "user", id: blueprint.freelancer_profile_id },
 			accountUserId: blueprint.freelancer_profile_id,
 			blueprintId: blueprint.id,
+			listingId,
 		};
 	}
 	const product = catalog.productBySlug.get(itemId);
@@ -136,6 +141,7 @@ function listingOwner(catalog: Catalog, itemId: string): ListingOwner | null {
 				: { type: "user", id: product.owner_user_id },
 			accountUserId: product.owner_user_id,
 			blueprintId: null,
+			listingId,
 		};
 	}
 	return null;
@@ -1088,6 +1094,23 @@ function refused<T>(code: string): ServiceResult<T> {
 	});
 }
 
+const LISTING_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The conversation a question opens: to the accountable person, about the listing the buyer pressed
+ * Contact on (Decision #217(g)), so the thread lands in that listing's client pipeline as an inquiry.
+ * A catalogue that carries no listing row for the item asks without a subject rather than inventing
+ * one.
+ */
+export function inquiryConversation(
+	owner: Pick<ListingOwner, "accountUserId" | "listingId">,
+	message: string,
+): CreateConversation {
+	return owner.listingId && LISTING_UUID.test(owner.listingId)
+		? { contactIds: [owner.accountUserId], message, subjectListingId: owner.listingId }
+		: { contactIds: [owner.accountUserId], message };
+}
+
 /**
  * Ask the listing's owner a question — a real conversation with the message posted in the same act,
  * so a thread is never created while the question is lost.
@@ -1108,7 +1131,7 @@ async function askQuestion(
 	}
 
 	const created = await MessagingBackendService.createConversation(
-		{ contactIds: [owner.accountUserId], message: input.message },
+		inquiryConversation(owner, input.message),
 		readerOf(actor),
 	);
 	if (!created.ok || !created.data) {

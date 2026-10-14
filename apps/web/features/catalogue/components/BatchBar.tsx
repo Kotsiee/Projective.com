@@ -3,7 +3,6 @@ import { useSignal } from "@preact/signals";
 import { Popover } from "@projective/ui/feedback";
 import { Button, InputText } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
-import { PublishIcon } from "./catalogue-glyphs.tsx";
 import { batchState, type BatchVerb, clearSelection, selection } from "../core/console-store.ts";
 import { runBatch } from "../core/console-actions.ts";
 import type { BatchAction } from "../types/catalogue-types.ts";
@@ -49,7 +48,7 @@ export function BatchBar(): JSX.Element {
 				<Button
 					size="sm"
 					label="Publish"
-					icon={<PublishIcon />}
+					icon={<Icon name="upload" />}
 					loading={busy(PUBLISH)}
 					disabled={run.running}
 					onClick={() => start({ action: "status", status: "published" }, PUBLISH)}

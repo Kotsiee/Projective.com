@@ -83,6 +83,7 @@ One row per `(day, metric, subject)`. A new breakdown never needs a new column â
 | `dimensions`   | jsonb                    | Optional breakdown (plan code, entitlement key, rung, CREATE category). |
 | `value`        | numeric(18,4)            | The aggregate.                                                          |
 | `sample_count` | integer                  | Rows behind the aggregate.                                              |
+| `computed_at`  | timestamptz              | When the row was last written; a rollup re-run restamps it.             |
 | UNIQUE         | â€”                        | `(day, metric, subject_kind, subject_id, dimensions)`.                  |
 
 **Rollups are now written** for listings (Decision #217, C5). `analytics.fn_rollup_listings(day)`

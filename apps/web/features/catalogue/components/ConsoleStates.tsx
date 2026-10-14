@@ -6,7 +6,7 @@ import type { CatalogueTypeFilter } from "../types/catalogue-types.ts";
 /**
  * ConsoleStates — the console canvas's non-list states: loading (shaped like what is arriving), a
  * failed read (named, with the recovery, and saying plainly when the list on screen is stale), an
- * empty catalogue or an empty filter, and the Analytics and Clients views until they are built.
+ * empty catalogue or an empty filter.
  * Every state ends in a control: a state that names a next step must let the reader take it.
  */
 
@@ -85,38 +85,6 @@ export function ConsoleEmpty(
 			<button type="button" class="cat-state__cta cat-state__cta--primary" onClick={onCreate}>
 				<Icon name="plus" /> New {noun.slice(0, -1)}
 			</button>
-		</div>
-	);
-}
-
-const PLACEHOLDER = {
-	analytics: {
-		icon: "analytics",
-		title: "Catalogue analytics are on their way",
-		note:
-			"This view will chart views, conversion and revenue across your listings. Until then, the summary above covers this window's sales.",
-	},
-	clients: {
-		icon: "members",
-		title: "Your client pipeline is on its way",
-		note:
-			"This view will gather every inquiry, booking and order for your listings. Until then, find them in Messages, Projects and Calendar.",
-	},
-} as const;
-
-/** The Analytics or Clients view before it is built. */
-export function ViewPlaceholder(
-	{ view, onBack }: { view: "analytics" | "clients"; onBack: () => void },
-): JSX.Element {
-	const copy = PLACEHOLDER[view];
-	return (
-		<div class="cat-state" role="status">
-			<span class="cat-state__glyph" aria-hidden="true">
-				<Icon name={copy.icon} size="lg" />
-			</span>
-			<p class="cat-state__title">{copy.title}</p>
-			<p class="cat-state__note">{copy.note}</p>
-			<button type="button" class="cat-state__cta" onClick={onBack}>Back to listings</button>
 		</div>
 	);
 }

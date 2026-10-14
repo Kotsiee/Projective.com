@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ImagePlaceholderSchema } from "../files/metadata.ts";
 import { EventRescheduleSchema } from "../scheduling/coordination.ts";
+import { CalendarEventSchema } from "../scheduling/scheduling.ts";
 import { ClientKey } from "./url.ts";
 
 /**
@@ -196,6 +197,12 @@ export const ClientRescheduleSchema = z.object({
 	start: z.number().int(),
 	href: z.string().max(600),
 	reschedule: EventRescheduleSchema,
+	/**
+	 * The whole event as the seller's calendar projects it (roster with the viewer's own seat), so the
+	 * drawer reasons about the round with the calendar's own `rescheduleView` and posts through the
+	 * same `/api/scheduling/reschedule` door rather than a second copy of either.
+	 */
+	event: CalendarEventSchema,
 });
 export type ClientReschedule = z.infer<typeof ClientRescheduleSchema>;
 

@@ -1210,6 +1210,22 @@ without a database:
   it and the canvas says so. Standing impact (#217(h)) counts the reviews on, and the project
   stages completed from, listings that carry a CREATE category; with none in scope the tile says so
   rather than printing 0.
+- **The console header's rollups are the same tiles, not a second count.** `CataloguePage.stats`
+  (the `CatalogueRollups` sentence) takes its gross volume, change, orders and conversion from
+  `live-catalogue-analytics.ts#liveHeadline`: the same scope resolution, rollups read, window and
+  pure `buildAnalytics` as `overview`, copied out of the tiles by `analytics-model.ts#headlineOf`.
+  Its scope is the lane's type segment (`all` / `product` / `service`), which is also what the
+  console's Analytics view covers unless an explicit `?scope=` (a delivery model or a collection)
+  narrows it. The list read accepts every `AnalyticsPeriod`, `12m` included, so a period chosen on
+  the Analytics view moves the header with it. Only what is live and the average review are counted
+  by the list read itself. `analytics-headline.test.ts` holds the agreement on the pure copy and on
+  the live read over a stub database.
+- **The canvas** (`features/catalogue/components/analytics/AnalyticsCanvas.tsx`, shared by the
+  console's `?view=analytics` and the workspace's `?tab=analytics`) fetches `/api/catalogue/analytics`
+  after first paint, through the pure view-model `core/analytics-view.ts`. While a read is in flight
+  it shows skeletons, and a failed read shows its reason and a Retry. It never shows zeros or the
+  previous window's figures. A tile below its threshold prints "Not enough data yet", with the
+  threshold in a tooltip. A funnel whose first step is under 20 is printed as counts, not drawn.
 - `CatalogueClientsBackendService.pipeline` calls `catalogue.get_client_pipeline` once and maps it
   (`client-pipeline.ts`): rows outside the scope, or with no buyer handle (an order a team placed),
   are dropped; buyers fold into one card at their most urgent `laneOf` lane; action-required cards

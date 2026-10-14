@@ -119,6 +119,20 @@ function rpcRefusal(message: string, code?: string): WriteRefusal {
 
 // #region Create
 /**
+ * The `comms.get_or_create_dm_thread` arguments for a one-to-one conversation: the other person, and
+ * the listing a buyer pressed Contact on when there is one (Decision #217(g)), which makes a thread
+ * it opens a `service_inquiry` in that listing's client pipeline.
+ */
+export function dmThreadArgs(
+	targetUserId: string,
+	input: Pick<CreateConversation, "subjectListingId">,
+): { target_user_id: string; p_subject_listing?: string } {
+	return input.subjectListingId
+		? { target_user_id: targetUserId, p_subject_listing: input.subjectListingId }
+		: { target_user_id: targetUserId };
+}
+
+/**
  * Start a conversation. Returns `null` only when the ids resolve to nobody at all — the caller
  * maps that to a 404-shaped "no such person", which is what a picker id that names no row is.
  */
@@ -152,7 +166,12 @@ export async function createLiveConversation(
 		created = true;
 	} else {
 		const before = now;
-		const res = await db.rpc("get_or_create_dm_thread", { target_user_id: members[0] });
+		let res = await db.rpc("get_or_create_dm_thread", dmThreadArgs(members[0], input));
+		// A listing that stopped selling between the page and the press must not cost the question:
+		// the pair's thread opens without the subject instead.
+		if (res.error?.code === "22023" && input.subjectListingId) {
+			res = await db.rpc("get_or_create_dm_thread", { target_user_id: members[0] });
+		}
 		if (res.error) return { refusal: rpcRefusal(res.error.message, res.error.code) };
 		const id = res.data as unknown;
 		if (typeof id !== "string" || !UUID_RE.test(id)) {

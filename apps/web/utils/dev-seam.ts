@@ -288,6 +288,29 @@ export type DevPayoutReadiness = "auto" | "not_ready";
 export type DevOperatorDesk = "auto" | "queue" | "empty";
 
 /**
+ * The catalogue's Analytics read (plan §10): `auto` answers the fixture's rich default, `empty` no
+ * events at all, `sparse` a trickle under the sufficiency thresholds ("Not enough data yet"), `rich`
+ * a full year. Honoured only by the fixture path (`CATALOGUE_BACKEND_LIVE` off), which reads it as the
+ * `?sim=` the island appends to `/api/catalogue/analytics`; live reads ignore it.
+ */
+export type DevCatalogueAnalytics = "auto" | "empty" | "sparse" | "rich";
+
+/**
+ * The catalogue's client pipeline (plan §10): `auto` answers the fixture's busy default, `empty` no
+ * buyers, `action_required` buyers waiting on the seller, `busy` every lane populated. Honoured only by
+ * the fixture path, as the `?sim=` the island appends to `/api/catalogue/clients`.
+ */
+export type DevClientPipeline = "auto" | "empty" | "action_required" | "busy";
+
+/**
+ * A simulated availability conflict for the listing workspace (plan §10): `call_outside_work` adds the
+ * scheduler's call-outside-working-hours warning to `Issues`; `empty_horizon` acts as if nothing were
+ * bookable in the next 30 days, so `Issues` warns and the publish readiness blocks. Client-only: a save
+ * still meets the real gate.
+ */
+export type DevAvailabilityConflict = "auto" | "call_outside_work" | "empty_horizon";
+
+/**
  * How the `/wallet` hero's live aurora is chosen. `auto` runs the shipping gates (reduced motion, data
  * saver, device memory, core count, page visibility) and the performance watchdog; `static` never
  * mounts the canvas, so the resting CSS gradient is what shows; `animated` skips the hardware and
@@ -435,6 +458,12 @@ export interface DevSeamState {
 	payoutReadiness?: DevPayoutReadiness;
 	/** The operator-desk preview. Optional like `walletAurora`; absent reads as `auto`. */
 	operatorDesk?: DevOperatorDesk;
+	/** The simulated catalogue analytics. Optional like `walletAurora`; absent reads as `auto`. */
+	catalogueAnalytics?: DevCatalogueAnalytics;
+	/** The simulated client pipeline. Optional like `walletAurora`; absent reads as `auto`. */
+	clientPipeline?: DevClientPipeline;
+	/** The simulated availability conflict. Optional like `walletAurora`; absent reads as `auto`. */
+	availabilityConflict?: DevAvailabilityConflict;
 }
 // #endregion
 
@@ -593,6 +622,13 @@ const EMAIL_CONFIRMATIONS: readonly DevEmailConfirmation[] = [
 const AGE_RESTRICTIONS: readonly DevAgeRestriction[] = ["auto", "minor", "adult"];
 const PAYOUT_READINESS: readonly DevPayoutReadiness[] = ["auto", "not_ready"];
 const OPERATOR_DESKS: readonly DevOperatorDesk[] = ["auto", "queue", "empty"];
+const CATALOGUE_ANALYTICS: readonly DevCatalogueAnalytics[] = ["auto", "empty", "sparse", "rich"];
+const CLIENT_PIPELINES: readonly DevClientPipeline[] = ["auto", "empty", "action_required", "busy"];
+const AVAILABILITY_CONFLICTS: readonly DevAvailabilityConflict[] = [
+	"auto",
+	"call_outside_work",
+	"empty_horizon",
+];
 
 /** Coerce a raw attribute value against an allowed set, falling back when absent/unknown. */
 function coerce<T extends string>(raw: string | undefined, allowed: readonly T[], fallback: T): T {
@@ -659,7 +695,21 @@ export function readDevSeam(): DevSeamState | null {
 		ageRestriction: coerce(ds.devAgeRestriction, AGE_RESTRICTIONS, "auto"),
 		payoutReadiness: coerce(ds.devPayoutReadiness, PAYOUT_READINESS, "auto"),
 		operatorDesk: coerce(ds.devOperatorDesk, OPERATOR_DESKS, "auto"),
+		catalogueAnalytics: coerce(ds.devCatalogueAnalytics, CATALOGUE_ANALYTICS, "auto"),
+		clientPipeline: coerce(ds.devClientPipeline, CLIENT_PIPELINES, "auto"),
+		availabilityConflict: coerce(ds.devAvailabilityConflict, AVAILABILITY_CONFLICTS, "auto"),
 	};
+}
+
+/**
+ * The `?sim=` value a catalogue read carries for its dev axis (the Analytics fetch passes
+ * `catalogueAnalytics`, the Clients fetches `clientPipeline`), or `null` when no override is active or
+ * the axis is `auto`, so the parameter is omitted and the fixture's default answers. Always `null` in
+ * production, where the seam is never written.
+ */
+export function catalogueSim(axis: "catalogueAnalytics" | "clientPipeline"): string | null {
+	const value = readDevSeam()?.[axis];
+	return value && value !== "auto" ? value : null;
 }
 
 /**

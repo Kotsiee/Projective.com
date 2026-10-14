@@ -1,0 +1,170 @@
+/*
+ * client-drawer.css — the client drawer (`.cat-cdrawer`): the docked middle-nav panel body
+ * (`.cat-cdrawer-panel`) from 1280px and the right-hand slide-over (`.cat-cdrawer-sheet`) below it.
+ * Sections are separated by spacing and one hairline, never boxed; the embedded thread is the reused
+ * `.pop-chat`, given a bounded band so its list scrolls and its composer stays at the foot.
+ * Token-only, strict BEM.
+ */
+
+.cat-cdrawer-panel {
+	display: flex;
+	flex-direction: column;
+	block-size: 100%;
+	min-block-size: 0;
+	overflow-y: auto;
+}
+
+.cat-cdrawer {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+	padding: var(--space-4);
+}
+
+.cat-cdrawer__head {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr) auto;
+	align-items: start;
+	gap: var(--space-3);
+}
+
+.cat-cdrawer__id {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-inline-size: 0;
+}
+
+.cat-cdrawer__name {
+	margin: 0;
+	overflow: hidden;
+	color: var(--on-surface);
+	font-size: var(--text-lg);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-tight);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.cat-cdrawer__meta {
+	display: flex;
+	flex-wrap: wrap;
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	line-height: var(--leading-normal);
+}
+
+.cat-cdrawer__meta-part + .cat-cdrawer__meta-part::before {
+	content: "·";
+	padding-inline: var(--space-1);
+}
+
+.cat-cdrawer__gross {
+	font-variant-numeric: tabular-nums;
+}
+
+.cat-cdrawer__link {
+	align-self: flex-start;
+	border-radius: var(--radius-sm);
+	color: var(--primary);
+	font-size: var(--text-sm);
+	text-underline-offset: 0.15em;
+}
+
+.cat-cdrawer__link:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring-shadow);
+}
+
+.cat-cdrawer__sec {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	padding-block-start: var(--space-4);
+	border-block-start: var(--hairline);
+}
+
+.cat-cdrawer__sec-head {
+	margin: 0;
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-tight);
+}
+
+.cat-cdrawer__text,
+.cat-cdrawer__state {
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-sm);
+	line-height: var(--leading-normal);
+}
+
+.cat-cdrawer__state {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--space-2);
+}
+
+.cat-cdrawer__refusal {
+	margin: 0;
+	color: var(--danger);
+	font-size: var(--text-sm);
+}
+
+.cat-cdrawer__list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.cat-cdrawer__eng {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.cat-cdrawer__eng-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: var(--space-2);
+	margin: 0;
+}
+
+.cat-cdrawer__eng-kind {
+	color: var(--on-surface);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+}
+
+.cat-cdrawer__thread {
+	display: flex;
+	flex-direction: column;
+	block-size: min(24rem, 55dvh);
+	min-block-size: 16rem;
+	border-radius: var(--radius-base);
+	background: var(--surface-1);
+	overflow: hidden;
+}
+
+.cat-cdrawer__round {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.cat-cdrawer__round-title {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: var(--space-2);
+	margin: 0;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+}

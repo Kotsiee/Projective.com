@@ -4,6 +4,7 @@ import {
 	type AnalyticsScope,
 	type AnalyticsWindow,
 	type CatalogueAnalytics,
+	type CatalogueStats,
 	type FunnelStep,
 	type HeatCell,
 	KEYWORD_MIN_SESSIONS,
@@ -424,6 +425,35 @@ export function buildAnalytics(input: AnalyticsInputs): CatalogueAnalytics {
 		keywords: keywordsFor(rows, windows.current),
 		topListings,
 		asOf: windows.current.through,
+	};
+}
+// #endregion
+
+// #region Headline
+/** The sales half of the console header's rollups ({@link CatalogueStats}). */
+export type AnalyticsHeadline = Pick<
+	CatalogueStats,
+	"period" | "asOf" | "orders" | "revenue" | "revenueLabel" | "revenueChange" | "conversion"
+>;
+
+/**
+ * The header rollups' sales figures, copied from an analytics read's own tiles rather than counted
+ * again, so the header and the Analytics canvas can never disagree on the window, the currency or the
+ * conversion threshold. Pure.
+ */
+export function headlineOf(analytics: CatalogueAnalytics): AnalyticsHeadline {
+	const tile = (key: MetricKey) => analytics.tiles.find((t) => t.key === key);
+	const gross = tile("gross");
+	const orders = tile("orders");
+	const conversion = tile("conversion");
+	return {
+		period: analytics.period,
+		asOf: analytics.asOf,
+		orders: Math.max(0, Math.round(orders?.value ?? 0)),
+		revenue: Math.max(0, gross?.value ?? 0),
+		revenueLabel: gross?.display ?? "",
+		revenueChange: gross?.delta?.change ?? null,
+		conversion: conversion?.sufficient ? conversion.value : null,
 	};
 }
 // #endregion

@@ -1,10 +1,17 @@
 import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import "../styles/workspace.css";
-import type { ListingDetail, WorkspaceTab, WorkspaceUrlState } from "../types/catalogue-types.ts";
+import {
+	type ListingDetail,
+	workspaceHref,
+	type WorkspaceTab,
+	type WorkspaceUrlState,
+} from "../types/catalogue-types.ts";
 import { EditCanvas } from "../components/edit/EditCanvas.tsx";
 import { ConflictDialog } from "../components/ConflictDialog.tsx";
 import { TabPending } from "../components/TabPending.tsx";
+import { ClientsCanvas } from "../components/clients/ClientsCanvas.tsx";
+import { AnalyticsCanvas } from "../components/analytics/AnalyticsCanvas.tsx";
 import { PreviewCanvas } from "../components/preview/PreviewCanvas.tsx";
 import {
 	flushBeacon,
@@ -12,6 +19,7 @@ import {
 	liveListing,
 	resume,
 	revision,
+	setWorkspaceUrl,
 	startWorkspaceSync,
 	workspaceReady,
 	workspaceUrl,
@@ -84,6 +92,28 @@ export default function ListingWorkspace(props: ListingWorkspaceProps): JSX.Elem
 							slug={listing.id}
 							title={listing.title}
 							device={workspaceReady.value ? workspaceUrl.value.device : props.url.device}
+						/>
+					)
+					: tab === "analytics"
+					? (
+						<AnalyticsCanvas
+							target={{ kind: "listing", slug: listing.id }}
+							period={workspaceReady.value ? workspaceUrl.value.period : props.url.period}
+							onPeriod={(period) => setWorkspaceUrl({ period }, "push")}
+							idBase="cat-an-listing"
+						/>
+					)
+					: tab === "clients"
+					? (
+						<ClientsCanvas
+							surface="workspace"
+							scope={{ listing: listing.id }}
+							chosen={workspaceReady.value ? workspaceUrl.value.client : props.url.client}
+							hrefFor={(client) => workspaceHref(listing.id, { tab: "clients", client })}
+							emptyAction={{
+								label: "Back to Edit",
+								onPress: () => setWorkspaceUrl({ tab: "edit" }, "push"),
+							}}
 						/>
 					)
 					: <TabPending tab={tab} />}

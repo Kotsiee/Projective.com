@@ -1345,10 +1345,12 @@ definition; the moment there are two, neither is primary and the user reads a fo
 each get one. It does **not** count a `filled` button that is mutually exclusive with another by
 render condition (a Publish that swaps to a Pause is one button in two states, not two buttons).
 
-**Right** — `apps/web/features/catalogue/islands/ListingEditor.island.tsx:245-271`: a status rig of
-three actions where exactly one is `filled` (Publish, and it is `disabled` until `publishReadiness`
-clears), Pause is `outlined`, Archive is `text`. The hierarchy is legible at a glance and survives
-translation, because it is carried by weight rather than by word length.
+**Right** — `apps/web/features/catalogue/islands/ListingActionRig.island.tsx:73-107`: the listing
+workspace's status rig, where exactly one action is `filled` (Publish, `aria-disabled` and described
+by the gate sentence until `publishReadiness` clears) and Archive is neutral `outlined`. On a
+published listing Publish swaps to an `outlined` Pause, so the rig holds one fill in either state.
+The hierarchy is legible at a glance and survives translation, because it is carried by weight
+rather than by word length.
 
 **Right** — `apps/web/features/workspaces/components/InviteQueue.tsx:147-236`: four repeated row
 actions all `text` (severity distinguishing accept from the rest), and the one utility action

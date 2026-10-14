@@ -3,6 +3,7 @@ import {
 	type AnalyticsPeriod,
 	type AnalyticsScope,
 	type CatalogueAnalytics,
+	type ConsoleScope,
 	lastRolledUpDay,
 	shiftDay,
 } from "@projective/types/catalogue";
@@ -12,8 +13,10 @@ import { projectorFor } from "../finance/commerce-money.ts";
 import { FxService } from "../finance/FxService.ts";
 import type { ReadActor } from "../read-actor.ts";
 import {
+	type AnalyticsHeadline,
 	type AnalyticsWindows,
 	buildAnalytics,
+	headlineOf,
 	type MinorConverter,
 	reportingCurrency,
 	type RollupRow,
@@ -233,5 +236,40 @@ export async function liveOverview(
 		display,
 		convert: mixed ? await converterFor() : null,
 	});
+}
+
+/**
+ * The console header's sales rollups for a console scope: the gross, orders and conversion tiles of
+ * the SAME assembly {@link liveOverview} runs, over the same rollups and window. Standing and the
+ * heatmap's zone feed none of those tiles, so they are not read.
+ */
+export async function liveHeadline(
+	db: SupabaseClient,
+	actor: Pick<ReadActor, "userId" | "contextType" | "contextId">,
+	filter: ConsoleScope,
+	period: AnalyticsPeriod,
+	display: string,
+	now: Date,
+): Promise<AnalyticsHeadline> {
+	const listings = await resolveConsoleScope(
+		db,
+		actor,
+		await loadScopedListings(db, actor),
+		filter,
+	);
+	const windows = windowsFor(period, lastRolledUpDay(now));
+	const rows = await readRollups(db, listings.map((l) => l.id), windows);
+	const { mixed } = reportingCurrency(rows, listings, display);
+	return headlineOf(buildAnalytics({
+		scope: { kind: "catalogue", filter },
+		period,
+		listings,
+		rows,
+		windows,
+		standing: null,
+		timezone: FALLBACK_TZ,
+		display,
+		convert: mixed ? await converterFor() : null,
+	}));
 }
 // #endregion

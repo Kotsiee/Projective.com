@@ -4,7 +4,8 @@ import { Dialog } from "@projective/ui/feedback";
 import { Button } from "@projective/ui/fields";
 import { dateInZone } from "@projective/types/scheduling";
 import type { ListingDetail } from "../../../types/catalogue-types.ts";
-import { SCHEDULER_TEMPLATES, schedulerEngine } from "../../../core/scheduler-engine.ts";
+import { SCHEDULER_TEMPLATES } from "../../../core/scheduler-engine.ts";
+import { workspaceSchedulerEngine } from "../../../core/availability-conflict-store.ts";
 import {
 	bindingView,
 	libraryPresets,
@@ -88,7 +89,7 @@ export function AvailabilityEditorDialog(props: { listing: ListingDetail }): JSX
 				<AvailabilityScheduler.Root
 					value={value}
 					onChange={(next) => (working.value = next)}
-					engine={schedulerEngine}
+					engine={workspaceSchedulerEngine}
 					today={dateInZone(Date.now(), value.timezone)}
 					label={`Availability for ${listing.title}`}
 				>

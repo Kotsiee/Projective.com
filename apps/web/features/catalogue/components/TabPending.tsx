@@ -4,8 +4,7 @@ import type { WorkspaceTab } from "../types/catalogue-types.ts";
 import { setWorkspaceUrl } from "../core/workspace-store.ts";
 import { TAB_LABELS } from "../core/workspace-model.ts";
 
-const COPY: Readonly<Record<Exclude<WorkspaceTab, "edit" | "preview">, string>> = {
-	analytics: "This listing's analytics aren't available here yet.",
+const COPY: Readonly<Record<Exclude<WorkspaceTab, "edit" | "analytics" | "preview">, string>> = {
 	clients: "This listing's clients aren't listed here yet.",
 };
 
@@ -14,7 +13,7 @@ const COPY: Readonly<Record<Exclude<WorkspaceTab, "edit" | "preview">, string>> 
  * back to Edit. Plain text on the canvas, never a boxed empty state.
  */
 export function TabPending(
-	props: { tab: Exclude<WorkspaceTab, "edit" | "preview"> },
+	props: { tab: Exclude<WorkspaceTab, "edit" | "analytics" | "preview"> },
 ): JSX.Element {
 	return (
 		<div class="cat-ws__pending">

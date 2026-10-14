@@ -12,7 +12,7 @@ import type {
 } from "../types/catalogue-types.ts";
 import { LiveCardPreview } from "../components/inspector/LiveCardPreview.tsx";
 import { ReadinessList } from "../components/inspector/ReadinessList.tsx";
-import { ClientPending } from "../components/inspector/ClientPending.tsx";
+import ClientDrawer from "./ClientDrawer.island.tsx";
 import {
 	cardItem,
 	draft,
@@ -31,6 +31,8 @@ import {
 
 /** Props for {@link ListingInspector}. */
 export interface ListingInspectorProps {
+	/** The listing's slug, which scopes the client drawer to this listing's buyers. */
+	slug: string;
 	kind: CatalogueKind;
 	/** The delivery model, which decides the archetype's own publish requirements. */
 	serviceType: ServiceType | null;
@@ -43,7 +45,8 @@ export interface ListingInspectorProps {
 
 /**
  * ListingInspector — the workspace's middle-nav PANEL: on Edit, the live card (the real feed card,
- * redrawn on every keystroke) and the publish checklist; with `?client=`, the chosen buyer. From
+ * redrawn on every keystroke) and the publish checklist; with `?client=`, the client drawer for the
+ * chosen buyer (which brings its own docked body and slide-over). From
  * 1280px it docks in the frame and the header's Card button opens and closes it; below that the
  * same body slides over in a drawer. On a tab with no panel (Analytics, or Clients with nobody
  * chosen) it folds the docked column away for this page, and gives it back when the seller returns.
@@ -76,7 +79,6 @@ export default function ListingInspector(props: ListingInspectorProps): JSX.Elem
 	const serviceType = (ready ? draft.value?.serviceType : undefined) ?? props.serviceType;
 
 	const body = (scope: string) => {
-		if (panel === "client" && url.client) return <ClientPending client={url.client} />;
 		if (panel !== "inspector") return null;
 		return (
 			<div class="cat-ws-inspector__body">
@@ -90,12 +92,16 @@ export default function ListingInspector(props: ListingInspectorProps): JSX.Elem
 		);
 	};
 
+	if (panel === "client" && url.client) {
+		return <ClientDrawer surface="workspace" scope={{ listing: props.slug }} client={url.client} />;
+	}
+
 	return (
 		<>
 			<aside
 				id={INSPECTOR_ID}
 				class="cat-ws-inspector"
-				aria-label={panel === "client" ? "Client" : "Listing card"}
+				aria-label="Listing card"
 			>
 				{body("docked")}
 			</aside>
@@ -103,7 +109,7 @@ export default function ListingInspector(props: ListingInspectorProps): JSX.Elem
 				<Drawer
 					visible={contextDrawerOpen}
 					position="right"
-					header={panel === "client" ? "Client" : "Listing card"}
+					header="Listing card"
 					size="min(24rem, 100vw)"
 					class="cat-ws-inspector-drawer"
 				>

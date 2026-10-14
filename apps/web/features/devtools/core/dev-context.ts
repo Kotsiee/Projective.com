@@ -54,6 +54,9 @@ import {
 	type DevAgeRestriction,
 	type DevPayoutReadiness,
 	type DevOperatorDesk,
+	type DevCatalogueAnalytics,
+	type DevClientPipeline,
+	type DevAvailabilityConflict,
 	type DevSeamRole,
 	type DevServiceType,
 	type DevSessionBookingStatus,
@@ -114,6 +117,9 @@ export type {
 	DevAgeRestriction,
 	DevPayoutReadiness,
 	DevOperatorDesk,
+	DevCatalogueAnalytics,
+	DevClientPipeline,
+	DevAvailabilityConflict,
 };
 
 /** The full override set. `enabled` is the master switch — when off, {@link applyDevContext} is a pass-through. */
@@ -352,6 +358,23 @@ export interface DevOverrides {
 	 * ruling still goes to the database. Server-side, through the `pj.dev.operator` cookie.
 	 */
 	operatorDesk: DevOperatorDesk;
+	/**
+	 * The catalogue's Analytics fixture (plan §10): the fixture default, no events, a trickle under
+	 * the sufficiency thresholds, or a full year. Reaches the fixture path as the `?sim=` the
+	 * Analytics fetch appends; live reads ignore it.
+	 */
+	catalogueAnalytics: DevCatalogueAnalytics;
+	/**
+	 * The catalogue's client-pipeline fixture (plan §10): the fixture default, no buyers, buyers
+	 * waiting on the seller, or every lane populated. Reaches the fixture path as `?sim=`.
+	 */
+	clientPipeline: DevClientPipeline;
+	/**
+	 * A simulated availability conflict in the listing workspace (plan §10): a call window outside
+	 * working hours, or nothing bookable in the next 30 days. Drives the scheduler's `Issues` and the
+	 * publish readiness on the client; a save still meets the real gate.
+	 */
+	availabilityConflict: DevAvailabilityConflict;
 }
 
 /** Selectable option metadata for the switcher UI. */
@@ -409,6 +432,9 @@ export const DEV_DEFAULTS: DevOverrides = {
 	ageRestriction: "auto",
 	payoutReadiness: "auto",
 	operatorDesk: "auto",
+	catalogueAnalytics: "auto",
+	clientPipeline: "auto",
+	availabilityConflict: "auto",
 };
 
 /** Account-type options in display order. */
@@ -733,6 +759,29 @@ export const DEV_OPERATOR_DESKS: ReadonlyArray<DevOption<DevOperatorDesk>> = [
 	{ value: "empty", label: "Empty queue" },
 ];
 
+/** Catalogue Analytics fixture shapes (plan §10). `Fixture` keeps the fixture's rich default. */
+export const DEV_CATALOGUE_ANALYTICS: ReadonlyArray<DevOption<DevCatalogueAnalytics>> = [
+	{ value: "auto", label: "Fixture" },
+	{ value: "empty", label: "Empty" },
+	{ value: "sparse", label: "Sparse" },
+	{ value: "rich", label: "Rich" },
+];
+
+/** Client-pipeline fixture shapes (plan §10). `Fixture` keeps the fixture's busy default. */
+export const DEV_CLIENT_PIPELINES: ReadonlyArray<DevOption<DevClientPipeline>> = [
+	{ value: "auto", label: "Fixture" },
+	{ value: "empty", label: "Empty" },
+	{ value: "action_required", label: "Needs you" },
+	{ value: "busy", label: "Busy" },
+];
+
+/** Availability conflicts (plan §10). `Real` lets the scheduler's own validation decide. */
+export const DEV_AVAILABILITY_CONFLICTS: ReadonlyArray<DevOption<DevAvailabilityConflict>> = [
+	{ value: "auto", label: "Real" },
+	{ value: "call_outside_work", label: "Call outside work" },
+	{ value: "empty_horizon", label: "Empty 30 days" },
+];
+
 // #endregion
 
 // #region Store
@@ -854,6 +903,14 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devPayoutReadiness;
 		if (next.operatorDesk !== "auto") root.dataset.devOperatorDesk = next.operatorDesk;
 		else delete root.dataset.devOperatorDesk;
+		if (next.catalogueAnalytics !== "auto") {
+			root.dataset.devCatalogueAnalytics = next.catalogueAnalytics;
+		} else delete root.dataset.devCatalogueAnalytics;
+		if (next.clientPipeline !== "auto") root.dataset.devClientPipeline = next.clientPipeline;
+		else delete root.dataset.devClientPipeline;
+		if (next.availabilityConflict !== "auto") {
+			root.dataset.devAvailabilityConflict = next.availabilityConflict;
+		} else delete root.dataset.devAvailabilityConflict;
 		root.dataset.devDirection = next.layoutDirection;
 		// Flip the document `dir` so the whole app's RtL/LtR mirroring is verifiable at runtime — logical
 		// properties everywhere mean the shell and every surface mirror to the opposite edge.
@@ -904,6 +961,9 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devAgeRestriction;
 		delete root.dataset.devPayoutReadiness;
 		delete root.dataset.devOperatorDesk;
+		delete root.dataset.devCatalogueAnalytics;
+		delete root.dataset.devClientPipeline;
+		delete root.dataset.devAvailabilityConflict;
 		delete root.dataset.devDirection;
 		// Restore the document's natural direction (the pref-driven default, LtR here).
 		root.removeAttribute("dir");

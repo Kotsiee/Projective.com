@@ -6,6 +6,7 @@ import { WalletBackendService } from "@server/services/finance/WalletBackendServ
 import {
 	defaultPeriodFor,
 	type FlowPeriod,
+	LEDGER_PAGE,
 	type LedgerFilters,
 	ledgerFiltersFrom,
 	ledgerParamsOf,
@@ -29,9 +30,6 @@ import type {
 
 /** A read's projection, or the reason it could not be produced. */
 export type WalletRead<T> = { ok: true; data: T } | { ok: false; message: string };
-
-/** Ledger lines fetched per page. */
-export const LEDGER_PAGE = 40;
 
 /**
  * Everything a wallet page paints in its first byte. The overview is required; each other part is its

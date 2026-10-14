@@ -1,6 +1,6 @@
 import { define } from "@web/utils/state.ts";
 import { asAuthenticatedContext } from "@projective/types/auth";
-import { CataloguePeriod } from "@projective/types/catalogue";
+import { AnalyticsPeriod } from "@projective/types/catalogue";
 import { readActor } from "@web/utils/api-session.ts";
 import { toCatalogueResponse } from "@features/catalogue/core/respond.ts";
 import { toSort, toTypeFilter } from "@features/catalogue/core/catalogue-model.ts";
@@ -22,7 +22,7 @@ export const handler = define.handlers({
 	async GET(ctx) {
 		const context = asAuthenticatedContext(ctx.state.userContext);
 		const sp = ctx.url.searchParams;
-		const period = CataloguePeriod.safeParse(sp.get("period"));
+		const period = AnalyticsPeriod.safeParse(sp.get("period"));
 		const statusRaw = sp.get("status");
 		const modelRaw = sp.get("model");
 		const limitRaw = sp.get("limit");

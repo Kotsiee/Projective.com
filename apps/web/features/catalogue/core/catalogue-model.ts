@@ -167,24 +167,6 @@ export function toTypeFilter(raw: string | null): CatalogueTypeFilter {
 }
 // #endregion
 
-// #region KPI trend
-/**
- * The signed change between the earlier and the later half of a window's weekly series, or `null`
- * when there is no base to compare against — fewer than two weeks, or nothing in the earlier half. A
- * rise from zero has no percentage, and inventing one (dividing by 1 instead) is how a seller's first
- * sale came to read as a 49,900% jump. An odd-length series leaves its middle week out of both halves
- * rather than counting it twice.
- */
-export function halfOverHalf(trend: readonly number[]): number | null {
-	const half = Math.floor(trend.length / 2);
-	if (half < 1) return null;
-	const earlier = trend.slice(0, half).reduce((s, n) => s + n, 0);
-	const later = trend.slice(trend.length - half).reduce((s, n) => s + n, 0);
-	if (earlier <= 0) return null;
-	return Math.round(((later - earlier) / earlier) * 100);
-}
-// #endregion
-
 // #region Grid metrics
 /**
  * A CSS length a custom property resolved to (`16px`, `7.25rem`), in px. `rem` is resolved against

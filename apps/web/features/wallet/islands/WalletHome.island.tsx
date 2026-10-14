@@ -6,7 +6,8 @@ import { displayCurrency as storeCurrency } from "@projective/ui/display/money";
 import { Icon } from "@projective/ui/icons";
 import { useOfflineStall } from "@web/utils/use-offline-stall.ts";
 import { type WalletContext, WalletService } from "../core/WalletService.ts";
-import { LEDGER_PAGE, type WalletHomeData, type WalletRead } from "../core/wallet-ssr.ts";
+// Types only: `wallet-ssr` imports the fat service, which must never enter the client bundle.
+import type { WalletHomeData, WalletRead } from "../core/wallet-ssr.ts";
 import {
 	mergeLedger,
 	resolveAction,
@@ -19,6 +20,7 @@ import {
 	defaultPeriodFor,
 	type FlowPeriod,
 	hasInvoices,
+	LEDGER_PAGE,
 	ledgerFiltered,
 	type LedgerFilters as Filters,
 	ledgerFiltersFrom,

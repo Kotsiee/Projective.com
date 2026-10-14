@@ -1,11 +1,11 @@
 # Service Creation — the seller-side write contract
 
-> **Catalogue rebuild — in progress (2026-10-14).** `/catalogue` and `/catalogue/[id]` are being
-> torn down and rebuilt under Decision #217 (RESOLVED). The plan is in
-> [`CATALOGUE_REBUILD.md`](CATALOGUE_REBUILD.md) and the work orders are in
+> **Catalogue rebuild — landed (Decision #217, 2026-10-14).** `/catalogue` is the seller console and
+> `/catalogue/[id]` the per-listing workspace (Edit · Preview · Analytics · Clients), built from
+> [`CATALOGUE_REBUILD.md`](CATALOGUE_REBUILD.md) by the work orders in
 > [`CATALOGUE_REBUILD_BUILD_PROMPTS.md`](CATALOGUE_REBUILD_BUILD_PROMPTS.md). The editor notes below
-> describe the catalogue before the rebuild. This document is brought up to date when the rebuild
-> lands (C17).
+> describe that workspace: §1.1 is built, §1.4 records the per-listing provider and availability
+> bindings, and §1.2 / §1.3 (the seller-level settings) remain open.
 
 What the **service-creation pages** (the catalogue console at `/catalogue` and `/catalogue/[id]`, plus
 the seller's booking settings) must write so that the buyer-side flows shipped by Decision #108 —
@@ -14,9 +14,9 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
 
 > **Status (2026-09-19).** Every column and table below **exists** in the consolidated schema and was
 > verified by execution (`supabase db reset` + probes inside `BEGIN … ROLLBACK`; see root
-> `CLAUDE.md` §8 Decision #109). The **editors** that fill them do not: the catalogue editor
-> (`ListingEditor.island.tsx`) has no intake section, no hire-intake settings surface exists, and no
-> call-platform picker exists. The reads are wired and fixture-backed behind the existing gates
+> `CLAUDE.md` §8 Decision #109). At the time the **editors** that fill them did not exist. Since the
+> catalogue rebuild (2026-10-14) the listing intake editor does (§1.1); no hire-intake settings
+> surface and no call-platform picker exists yet. The reads are wired and fixture-backed behind the existing gates
 > (`CATALOGUE_BACKEND_LIVE` · `PROFILE_BACKEND_LIVE` · `EXPLORE_BACKEND_LIVE`), so the day an editor
 > writes a row, the buyer surfaces show it with no shape change.
 >
@@ -47,9 +47,12 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
 | Consultation modal → the platform selector             | The ordered allow-list of conferencing providers            | `scheduling.call_platforms` (one row per provider)           | `CallPlatformSchema` · `UpdateCallPlatformsSchema`                           |
 | Hire menu → listings with price, rating, thumbnail     | Publish the listing                                         | `service_blueprints.is_published` + `catalogue.listings`      | `SetListingStatusInput` (pre-existing)                                       |
 
-### 1.1 Intake editor (catalogue console)
+### 1.1 Intake editor (catalogue console) — BUILT (Decision #217)
 
-- **Where:** a new "Questions for the buyer" section on `/catalogue/[id]` (`ListingEditor`). It
+- **Where:** the "Questions for the buyer" Edit section of a service's workspace,
+  `/catalogue/[id]?tab=edit&section=questions` (`components/edit/IntakeSection.tsx`, its builder
+  under `components/edit/intake/`, the pure rules in `core/intake-model.ts`). It is offered for every
+  service archetype and never for a product (`sectionsFor`, `@projective/types/catalogue`). It
   edits `ListingDetail.intake` and sends it wholesale through `POST /api/catalogue/update` as
   `UpdateListingInput.intake` — **order is meaning**, so the patch is the whole list, never a diff.
 - **Validation:** `IntakeFieldSchema` at the route (Zod) and `intakeRefusal`'s inverse on the
@@ -92,6 +95,25 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
   `user_connections` with `conferencing`, ordered by `position`; an empty list means every connected
   provider. The booking write refuses a platform outside that set (`platform_not_offered`).
 
+### 1.4 Per-listing provider and availability (catalogue workspace) — BUILT (Decision #217)
+
+- **Room provider.** A Session or Group Session names the room it books into in its Offer section
+  (`components/edit/offer/ConferencingSelect.tsx`): `ListingOffer.meetingProvider`, written to
+  `marketplace.service_blueprints.meeting_provider` through `offer-columns.ts`. `null` defers to the
+  seller's connected default (`integrations.fn_conferencing_provider`). **Stored, not yet consumed:**
+  nothing that creates a booked session's room reads the listing's choice today (§4, item 5).
+- **Availability binding.** A Session or Group Session books against one availability preset
+  (Decision #217(c)), chosen in the Availability section (`components/edit/AvailabilitySection.tsx`,
+  the rule editor `AvailabilityScheduler` in a dialog): the schedule's default (`mode: "default"`,
+  `service_blueprints.availability_preset_id` NULL), a library preset (`"preset"`), or a copy forked
+  for this listing alone (`"override"`). It is written through `POST /api/catalogue/availability` →
+  `ScheduleBackendService.bindListing` (`ListingAvailabilityBindingSchema` /
+  `BindListingAvailabilitySchema`); a trigger refuses binding an archived preset or one from another
+  schedule. The session booking gate reads the bound preset's compiled occurrences, and publishing
+  needs at least one bookable window in the next 30 days. Archiving a preset unbinds its listings
+  back to the default (`scheduling.archive_availability_preset`, `PRODUCT_MANAGEMENT.md` §3.5).
+  The retired `catalogue.listing_availability` weekly table is gone.
+
 ## 2. What the BUYER-side services write (already shaped, stub-first)
 
 | Flow                                   | Write                                                                                                           | Live status                                                                                                                                  |
@@ -129,3 +151,7 @@ the `/view/[id]` Contact menu — read real data instead of fixtures.
    whether the funding step (or the hire) should enforce them. (c) The seller cannot read the
    instantiation's answers yet (`service_instantiations` RLS is owner-only). (d) A team or business
    workspace is refused (`workspaceId` → 422); only a personal workspace instantiates.
+5. **The listing's room provider is not read at booking (Decision #217, §1.4).** A seller can pick a
+   provider per Session listing and it is stored, but the session room is still created on the
+   seller's connected default. Wire `service_blueprints.meeting_provider` into the room creation, or
+   hide the picker until it is.

@@ -11,6 +11,7 @@ import { LocalKeys } from "@web/utils/storage-keys.ts";
 import { EventModal } from "../components/EventModal.tsx";
 import { renderCalendarSource } from "../components/provider-marks.tsx";
 import { blankEvent, type EventMode, eventStack } from "../core/event-view.ts";
+import { deepLinkedEvent, EVENT_PARAM, withoutEventParam } from "../core/event-deep-link.ts";
 import {
 	type DevSeamState,
 	type EventAccess,
@@ -136,6 +137,12 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 		apply();
 		// An agenda the server could not paint gets one retry on mount.
 		if (!props.initial) void load();
+		// `?event=<id>` opens that occurrence, on its week, when it is on the agenda.
+		const linked = deepLinkedEvent(globalThis.location?.search ?? "", events.peek());
+		if (linked) {
+			calendarFocus.value = linked.start;
+			eventStack.open("event", linked.id, { mode: "view" });
+		}
 		return subscribeDevSeam(apply);
 	}, []);
 
@@ -198,6 +205,10 @@ export default function CalendarWorkspace(props: CalendarWorkspaceProps): JSX.El
 	function close(): void {
 		eventStack.close();
 		draft.value = null;
+		const loc = globalThis.location;
+		if (loc && new URLSearchParams(loc.search).has(EVENT_PARAM)) {
+			history.replaceState(history.state, "", withoutEventParam(loc.pathname, loc.search));
+		}
 	}
 
 	/*

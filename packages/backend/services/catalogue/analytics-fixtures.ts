@@ -5,14 +5,17 @@ import {
 	lastRolledUpDay,
 	shiftDay,
 } from "@projective/types/catalogue";
+import type { FxRateTable } from "@projective/types/finance";
 import {
 	buildAnalytics,
+	type MinorConverter,
 	type RollupRow,
 	type StandingCounts,
 	windowsFor,
 } from "./analytics-model.ts";
 import { FIXTURE_LISTINGS } from "./catalogue-fixtures.ts";
 import { filterByScope, type ScopedListing } from "./listing-scope.ts";
+import { projectorFor } from "../finance/commerce-money.ts";
 
 /**
  * analytics-fixtures — the Analytics read with `CATALOGUE_BACKEND_LIVE=false`.
@@ -182,7 +185,26 @@ export function fixtureOverview(
 		standing: listings.some((l) => l.createCategory) ? STANDING[state] : null,
 		timezone: "Europe/London",
 		display,
-		convert: null,
+		convert: fixtureConverter,
 	});
 }
+
+/**
+ * Fixed reference rates for the fixture catalogue's currencies (USD base), so a mixed-currency
+ * fixture read converts every listing's gross the way the live read does through `FxService`, and
+ * stays deterministic. A currency outside the table converts to `null`, as an unknown one does live.
+ */
+const FIXTURE_RATES: FxRateTable = {
+	base: "USD",
+	rates: { USD: 1, GBP: 0.79, EUR: 0.92, JPY: 150 },
+	asOf: "2026-01-01T00:00:00.000Z",
+	provider: "seed",
+	stale: false,
+};
+
+/** The fixture read's converter: the live converter's shape over {@link FIXTURE_RATES}. */
+export const fixtureConverter: MinorConverter = (minor, from, to) => {
+	const projector = projectorFor(to, FIXTURE_RATES);
+	return projector.canConvert(from) ? projector.convertMinor(minor, from) : null;
+};
 // #endregion

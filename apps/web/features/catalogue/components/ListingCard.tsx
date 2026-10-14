@@ -4,7 +4,6 @@ import { Popover, Tooltip } from "@projective/ui/feedback";
 import { Icon, type IconName } from "@projective/ui/icons";
 import { statusMeta } from "../core/catalogue-model.ts";
 import type { ListingAction } from "../core/console-actions.ts";
-import { PublishIcon } from "./catalogue-glyphs.tsx";
 import type { ListingSummary } from "../types/catalogue-types.ts";
 
 /**
@@ -136,13 +135,7 @@ export function ListingCard(props: ListingCardProps): JSX.Element {
 					{listing.status === "published"
 						? <MenuItem icon="pause" label="Pause" onClick={() => dispatch("pause")} />
 						: listing.status !== "archived"
-						? (
-							<MenuItem
-								glyph={<PublishIcon />}
-								label="Publish"
-								onClick={() => dispatch("publish")}
-							/>
-						)
+						? <MenuItem icon="upload" label="Publish" onClick={() => dispatch("publish")} />
 						: (
 							<MenuItem
 								icon="history"
@@ -165,14 +158,13 @@ export function ListingCard(props: ListingCardProps): JSX.Element {
 }
 
 interface MenuItemProps {
-	icon?: IconName;
-	glyph?: JSX.Element;
+	icon: IconName;
 	label: string;
 	danger?: boolean;
 	onClick: () => void;
 }
 
-function MenuItem({ icon, glyph, label, danger, onClick }: MenuItemProps): JSX.Element {
+function MenuItem({ icon, label, danger, onClick }: MenuItemProps): JSX.Element {
 	return (
 		<button
 			type="button"
@@ -180,7 +172,9 @@ function MenuItem({ icon, glyph, label, danger, onClick }: MenuItemProps): JSX.E
 			class={danger ? "cat-menu__item cat-menu__item--danger" : "cat-menu__item"}
 			onClick={onClick}
 		>
-			<span class="cat-menu__icon" aria-hidden="true">{icon ? <Icon name={icon} /> : glyph}</span>
+			<span class="cat-menu__icon" aria-hidden="true">
+				<Icon name={icon} />
+			</span>
 			{label}
 		</button>
 	);

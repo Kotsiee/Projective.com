@@ -72,9 +72,11 @@ function discoverFeatureIslands(): string[] {
 					includeDirs: false,
 				})
 			) {
+				// A test colocated beside its island (`islands/…/*.test.ts`) is never an island: as an
+				// entry it drags `@std/assert` into the client graph and fails the build.
 				if (
-					entry.path.includes("/islands/") ||
-					entry.path.includes("\\islands\\")
+					(entry.path.includes("/islands/") || entry.path.includes("\\islands\\")) &&
+					!/\.test\.[jt]sx?$/.test(entry.path)
 				) {
 					// Convert absolute system path (POSIX or Windows) into a file:/// URL
 					const fileUrl = pathToFileURL(entry.path).href;

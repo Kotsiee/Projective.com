@@ -27,6 +27,11 @@ import {
 	presets,
 	presetsError,
 } from "../../core/availability-store.ts";
+import { conflictWindows } from "../../core/availability-conflict.ts";
+import {
+	availabilityConflict,
+	watchAvailabilityConflict,
+} from "../../core/availability-conflict-store.ts";
 import { EditSectionFrame } from "./EditSectionFrame.tsx";
 import { UpcomingStrip } from "./availability/UpcomingStrip.tsx";
 import { AvailabilityEditorDialog } from "./availability/AvailabilityEditorDialog.tsx";
@@ -60,11 +65,14 @@ export function AvailabilitySection(
 		if (!props.restricted && presets.peek() === null) void loadPresets();
 	}, []);
 
+	useEffect(() => watchAvailabilityConflict(), []);
+
 	useSignalEffect(() => {
 		const preset = boundPreset.value;
-		upcomingWindows.value = preset
-			? upcomingWindowCount(preset, dateInZone(Date.now(), preset.timezone))
-			: undefined;
+		upcomingWindows.value = conflictWindows(
+			availabilityConflict.value,
+			preset ? upcomingWindowCount(preset, dateInZone(Date.now(), preset.timezone)) : undefined,
+		);
 	});
 
 	if (props.restricted) {

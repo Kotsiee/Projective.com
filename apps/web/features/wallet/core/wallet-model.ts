@@ -244,6 +244,9 @@ export function toFlowPeriod(
 // #endregion
 
 // #region Ledger filters
+/** Ledger lines fetched per page — by the SSR read and by the island's Load more alike. */
+export const LEDGER_PAGE = 40;
+
 /** The direction toggle as the page's URL names it. */
 export type LedgerDirection = "all" | "in" | "out";
 

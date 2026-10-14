@@ -1,9 +1,10 @@
 import type { SupabaseClient } from "supabaseClient";
 import {
+	type AnalyticsPeriod,
 	type CatalogueListParams,
 	type CataloguePage,
-	type CataloguePeriod,
 	type CatalogueStats,
+	type CatalogueTypeFilter,
 	coverOf,
 	formArchetypeOf,
 	type ListingAvailabilityBinding,
@@ -13,7 +14,6 @@ import {
 	type ListingStatus,
 	type ListingSummary,
 	money,
-	periodDays,
 	publishReadiness,
 	resolveListingPricing,
 	type ServiceType,
@@ -44,6 +44,7 @@ import {
 	type OfferProductColumns,
 } from "./offer-columns.ts";
 import { ownsListing } from "./ownership.ts";
+import { liveHeadline } from "./live-catalogue-analytics.ts";
 
 /**
  * live-catalogue — the seller console's READS, as the signed-in seller.
@@ -170,21 +171,6 @@ function editedLabel(iso: string, now = Date.now()): string {
 	return weeks <= 1 ? "Edited last week" : `Edited ${weeks} weeks ago`;
 }
 
-/** A compact money label (`$12.9K`) above ten thousand, the whole figure below it. */
-function compactMoney(whole: number, currency: string): string {
-	if (whole < 10_000) return money(whole, currency);
-	try {
-		return new Intl.NumberFormat("en-US", {
-			style: "currency",
-			currency,
-			notation: "compact",
-			maximumFractionDigits: 1,
-		}).format(whole);
-	} catch {
-		return money(whole, currency);
-	}
-}
-
 /** Normalise the numeric columns PostgREST may send as strings, and the currency's case. */
 export function normaliseListing(l: CatalogueListingRow): CatalogueListingRow {
 	return {
@@ -284,7 +270,6 @@ export function projectDetail(input: DetailInputs): ListingDetail {
 		owner: input.owner,
 		description: l.description?.html ?? "",
 		descriptionText: l.description_text,
-		publishedAt: l.published_at,
 		media,
 		skills: input.skills ?? [],
 		tags: input.tags ?? [],
@@ -299,6 +284,7 @@ export function projectDetail(input: DetailInputs): ListingDetail {
 		collections: input.collections ?? [],
 		intake: l.kind === "service" && intake.success ? intake.data : [],
 		span: l.kind === "product" ? spanOf(input.product?.span) : 1,
+		publishedAt: l.published_at,
 	};
 	const live = detail.status === "draft" || detail.status === "published";
 	return { ...detail, needsAttention: live && !publishReadiness(detail).ready };
@@ -592,47 +578,21 @@ function ascCompare(
 }
 
 /**
- * The KPI strip, counted over the chosen window across the seller's non-archived listings in the
- * active type segment. Revenue is shown in the single currency the sales were made in; only when a
- * seller has sold in several is it converted, into the viewer's display currency.
+ * The header rollups, over the seller's listings in the active type segment. The sales figures are the
+ * Analytics read's own tiles for that scope and window ({@link liveHeadline}), so the header and the
+ * Analytics canvas count the same rollups over the same days; what is live and the average review are
+ * counted here, over the non-archived listings.
  */
 async function statsFor(
 	db: SupabaseClient,
+	actor: ReadActor,
 	live: CatalogueListingRow[],
 	details: ReadonlyMap<string, ListingDetail>,
-	period: CataloguePeriod,
+	type: CatalogueTypeFilter,
+	period: AnalyticsPeriod,
 	display: string,
 ): Promise<CatalogueStats> {
-	const days = periodDays(period);
-	const since = new Date(Date.now() - days * DAY);
-	const window = await salesFor(db, live.map((l) => l.id), since.toISOString());
-	const currencies = new Set(window.map((s) => s.currency));
-	const target = currencies.size === 1
-		? [...currencies][0]
-		: currencies.size === 0
-		? live[0]?.currency ?? display
-		: display;
-	let convertTo = (minor: number, _from: string) => minor;
-	if (currencies.size > 1) {
-		const table = await FxService.rates(PLATFORM_BASE_CURRENCY);
-		const projector = projectorFor(target, table);
-		convertTo = (minor, from) =>
-			projector.canConvert(from) ? projector.convertMinor(minor, from) : 0;
-	}
-
-	let orders = 0;
-	let revenueMinor = 0;
-	const weeks = Math.max(1, Math.ceil(days / 7));
-	const trendMinor = new Array<number>(weeks).fill(0);
-	for (const s of window) {
-		orders += s.orders;
-		const minor = convertTo(s.revenue_minor, s.currency);
-		revenueMinor += minor;
-		const age = Math.floor((Date.now() - Date.parse(s.week_start)) / (7 * DAY));
-		const bucket = weeks - 1 - Math.min(weeks - 1, Math.max(0, age));
-		trendMinor[bucket] += minor;
-	}
-
+	const headline = await liveHeadline(db, actor, type, period, display, new Date());
 	let ratingSum = 0;
 	let ratingWeight = 0;
 	for (const l of live) {
@@ -642,17 +602,12 @@ async function statsFor(
 			ratingWeight += metrics.ratingCount;
 		}
 	}
-	const revenue = toWhole(revenueMinor, target);
 	return {
+		...headline,
 		activeListings: live.filter((l) => l.status === "published").length,
 		totalListings: live.length,
 		views: live.reduce((sum, l) => sum + l.view_count, 0),
-		period,
-		orders,
-		revenue,
-		revenueLabel: compactMoney(revenue, target),
 		avgRating: ratingWeight > 0 ? Math.round((ratingSum / ratingWeight) * 10) / 10 : 0,
-		trend: trendMinor.map((m) => toWhole(m, target)),
 	};
 }
 
@@ -719,7 +674,15 @@ export async function listListings(
 		nextCursor: start + limit < total ? pageItems[pageItems.length - 1]?.id ?? null : null,
 		total,
 		statusCounts: counts,
-		stats: await statsFor(db, live, details, params.period ?? "30d", display),
+		stats: await statsFor(
+			db,
+			actor,
+			live,
+			details,
+			params.type ?? "all",
+			params.period ?? "30d",
+			display,
+		),
 		viewerId: owner.handle,
 	};
 }

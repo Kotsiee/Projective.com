@@ -200,6 +200,7 @@ async function openRounds(
 				start: e.start,
 				href: `/calendar?event=${e.id}`,
 				reschedule: e.reschedule,
+				event: e,
 			}]
 			: []
 	)

@@ -1,28 +1,25 @@
 import type { JSX } from "preact";
 import { Icon } from "@projective/ui/icons";
-import { halfOverHalf } from "../core/catalogue-model.ts";
-import type { CataloguePeriod, CatalogueStats } from "../types/catalogue-types.ts";
+import { deltaLabel, percentLabel, periodPhrase } from "../core/analytics-view.ts";
+import type { CatalogueStats } from "../types/catalogue-types.ts";
 
 /**
  * CatalogueRollups — the header band's one-line summary of the whole catalogue, as inline middot
- * text rather than tiles (the tiles belong to the Analytics view): revenue for the window the server
- * counted, with its direction as an arrow and a word, then orders and bookings, what is live, and the
- * average review. Figures are `tabular-nums`, and colour never carries the direction alone.
+ * text rather than tiles (the tiles belong to the Analytics view). The sales figures ARE those tiles:
+ * gross volume with its change on the previous window, orders and conversion, copied from the same
+ * analytics read for the same window, so the header never disagrees with the canvas below it. Then
+ * what is live and the average review. Figures are `tabular-nums`; a direction is an arrow and a word,
+ * never colour alone; a conversion below its threshold is left out of the sentence, not printed as 0%.
  */
 
-const PERIOD_LABEL: Record<CataloguePeriod, string> = {
-	"7d": "7 days",
-	"30d": "30 days",
-	"90d": "90 days",
-};
-
-function Delta({ delta }: { delta: number }): JSX.Element {
-	const dir = delta > 0 ? "up" : delta < 0 ? "down" : "flat";
+function Delta({ change }: { change: number }): JSX.Element {
+	const dir = change > 0 ? "up" : change < 0 ? "down" : "flat";
 	const icon = dir === "up" ? "arrow-up" : dir === "down" ? "arrow-down" : "minus";
+	const amount = (deltaLabel(Math.abs(change)) ?? "").replace(/^\+/, "");
 	return (
 		<span class={`cat-rollups__delta cat-rollups__delta--${dir}`}>
 			<Icon name={icon} />
-			<span>{dir === "flat" ? "level" : `${dir} ${Math.abs(delta)}%`}</span>
+			<span>{dir === "flat" ? "level" : `${dir} ${amount}`}</span>
 		</span>
 	);
 }
@@ -38,16 +35,18 @@ export interface CatalogueRollupsProps {
 
 /** The catalogue's rollup sentence. */
 export function CatalogueRollups({ stats }: CatalogueRollupsProps): JSX.Element {
-	const delta = halfOverHalf(stats.trend);
+	const sold = stats.revenue > 0 || stats.orders > 0;
 	const items: { key: string; node: JSX.Element }[] = [
 		{
 			key: "revenue",
-			node: (
-				<>
-					<Figure value={stats.revenueLabel || "Nothing sold"} /> in {PERIOD_LABEL[stats.period]}
-					{delta !== null && <Delta delta={delta} />}
-				</>
-			),
+			node: sold
+				? (
+					<>
+						<Figure value={stats.revenueLabel} /> over {periodPhrase(stats.period)}
+						{stats.revenueChange !== null && <Delta change={stats.revenueChange} />}
+					</>
+				)
+				: <>Nothing sold over {periodPhrase(stats.period)}</>,
 		},
 		{
 			key: "orders",
@@ -58,6 +57,16 @@ export function CatalogueRollups({ stats }: CatalogueRollupsProps): JSX.Element 
 				</>
 			),
 		},
+		...(stats.conversion !== null
+			? [{
+				key: "conversion",
+				node: (
+					<>
+						<Figure value={percentLabel(stats.conversion)} /> conversion
+					</>
+				),
+			}]
+			: []),
 		{
 			key: "live",
 			node: (

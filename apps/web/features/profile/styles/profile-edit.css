@@ -474,32 +474,22 @@
 /* #region Motion */
 @media (prefers-reduced-motion: reduce) {
     .pf-ownernav__link,
-    .pf-ownernav__link:active,
-    .pf-showgrid__empty,
-    .pf-showgrid__empty:active,
-    .pf-showgrid__action,
-    .pf-showgrid__action:active {
+    .pf-ownernav__link:active {
         transform: none;
         transition: none;
     }
 
-    .pf-showgrid__overlay,
     .pf-edit__caret {
         transition: none;
     }
 }
 
 :root[data-motion="reduced"] .pf-ownernav__link,
-:root[data-motion="reduced"] .pf-ownernav__link:active,
-:root[data-motion="reduced"] .pf-showgrid__empty,
-:root[data-motion="reduced"] .pf-showgrid__empty:active,
-:root[data-motion="reduced"] .pf-showgrid__action,
-:root[data-motion="reduced"] .pf-showgrid__action:active {
+:root[data-motion="reduced"] .pf-ownernav__link:active {
     transform: none;
     transition: none;
 }
 
-:root[data-motion="reduced"] .pf-showgrid__overlay,
 :root[data-motion="reduced"] .pf-edit__caret {
     transition: none;
 }

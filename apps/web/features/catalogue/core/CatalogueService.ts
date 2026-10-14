@@ -2,6 +2,7 @@ import { getCatalogue, postCatalogue } from "./api.ts";
 import type {
 	BatchInput,
 	BatchOutcome,
+	CatalogueAnalytics,
 	CatalogueListParams,
 	CataloguePage,
 	CreateListingInput,
@@ -45,6 +46,11 @@ export const CatalogueService = {
 	list(params: CatalogueListParams): Promise<CatalogueResult<{ page: CataloguePage }>> {
 		const qs = buildListQuery(params);
 		return getCatalogue<{ page: CataloguePage }>(`/api/catalogue/list${qs ? `?${qs}` : ""}`);
+	},
+
+	/** Fetch the analytics read for a console scope or one listing (`query` from `analyticsQuery`). */
+	analytics(query: string): Promise<CatalogueResult<CatalogueAnalytics>> {
+		return getCatalogue<CatalogueAnalytics>(`/api/catalogue/analytics${query ? `?${query}` : ""}`);
 	},
 
 	/** Fetch one listing's full editable detail. */

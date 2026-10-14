@@ -29,6 +29,9 @@ import {
 	DEV_AGE_RESTRICTIONS,
 	DEV_PAYOUT_READINESS,
 	DEV_OPERATOR_DESKS,
+	DEV_CATALOGUE_ANALYTICS,
+	DEV_CLIENT_PIPELINES,
+	DEV_AVAILABILITY_CONFLICTS,
 	DEV_EMBEDDINGS,
 	DEV_ROLES,
 	DEV_SAVED,
@@ -468,6 +471,42 @@ export function DevContextPanel(props: DevContextPanelProps): JSX.Element {
 						value={o.micPermission}
 						disabled={!o.enabled}
 						onChange={(micPermission) => patchDevContext({ micPermission })}
+					/>
+				</Field>
+
+				<div class="dev-ctx__grouphead">Catalogue</div>
+
+				{
+					/* The two fixture reads answer `?sim=` only while CATALOGUE_BACKEND_LIVE is off; the
+				    availability conflict is client-only and never reaches the save gate. */
+				}
+				<Field label="Analytics" hint="fixture shape">
+					<Segment
+						name="Catalogue analytics"
+						options={DEV_CATALOGUE_ANALYTICS}
+						value={o.catalogueAnalytics}
+						disabled={!o.enabled}
+						onChange={(catalogueAnalytics) => patchDevContext({ catalogueAnalytics })}
+					/>
+				</Field>
+
+				<Field label="Client pipeline" hint="fixture lanes">
+					<Segment
+						name="Client pipeline"
+						options={DEV_CLIENT_PIPELINES}
+						value={o.clientPipeline}
+						disabled={!o.enabled}
+						onChange={(clientPipeline) => patchDevContext({ clientPipeline })}
+					/>
+				</Field>
+
+				<Field label="Availability" hint="Issues · readiness">
+					<Segment
+						name="Availability conflict"
+						options={DEV_AVAILABILITY_CONFLICTS}
+						value={o.availabilityConflict}
+						disabled={!o.enabled}
+						onChange={(availabilityConflict) => patchDevContext({ availabilityConflict })}
 					/>
 				</Field>
 
