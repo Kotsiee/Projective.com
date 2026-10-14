@@ -946,6 +946,7 @@ All of these are thin: parse, Zod, auth guard, service, then `toCatalogueRespons
 | `GET /api/catalogue/clients?listing=&scope=` · `GET /api/catalogue/clients/[handle]` | `pipeline` · `client` | — |
 | `GET/PUT /api/scheduling/presets` · `POST /api/scheduling/presets/archive` | presets | **Refused for 13–17-year-olds** (#208). |
 | `POST /api/catalogue/availability` | `bindListing` | — |
+| `GET /api/catalogue/simulate/slots` | `BookingBackendService.simulatedSlots` | The buyer simulation's slot grid, read as the owner (C14; Decision #217 (j)). A read; the simulation commits nothing. |
 | `POST /api/scheduling/cron/horizon` | `extendHorizons` | Vault bearer only. |
 
 ---
