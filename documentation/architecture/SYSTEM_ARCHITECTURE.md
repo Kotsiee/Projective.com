@@ -826,8 +826,11 @@ breaker or an empty bucket refuses without touching the network (`reason: "circu
 `"budget"`), cache hits are still served, and the search ranks heuristically; the breaker logs once
 when it opens and once when it closes instead of once per request. The document path keeps retrying
 429s and is not guarded by either. Vectors are
-written by `deno task embeddings:backfill` and re-embedded fire-and-forget after a committed listing,
-profile, project or workspace write (`services/search/embedding-sync.ts`); both skip an item whose
+written by `deno task embeddings:backfill` and re-embedded after committed listing, profile, project
+or workspace writes (`services/search/embedding-sync.ts`): the re-embeds are queued and run as one
+sync once 30 s pass with no further write (`REEMBED_SETTLE_MS`), one run per item at a time, so an
+autosaving edit session embeds its final text once; a queue lost with its isolate is caught up by the
+hash check and the backfill. Both skip an item whose
 stored text hash and model still match, and both write through the service-role-only
 `search.fn_set_embedding`. Each sync chunk is one Voyage request (planned under `DOCUMENT_BATCH`'s
 input and token ceilings), so a refused request never discards vectors already billed. In development
