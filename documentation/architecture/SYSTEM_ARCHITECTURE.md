@@ -804,7 +804,10 @@ TTL query cache), asks `search.fn_nearest` for the category's nearest public ent
 `services/explore/semantic.ts` re-ranks the JS candidate set on the default sort through
 `SEMANTIC_BLEND_WEIGHT` and adds up to 12 high-similarity neighbours that pass the same facets; the
 `/view` "Similar" rail reads `search.fn_nearest_to_entity` (the item's stored vector, its owner's
-items excluded) and keeps the heuristic rail when there is no vector. Any Voyage or database failure
+items excluded) and keeps the heuristic rail when there is no vector. A search's non-empty resolved
+neighbours are kept per isolate for 60 s (an LRU of 256 keyed by normalised query and category,
+`services/explore/similarity-cache.ts`), so a later page of the same search never repeats
+`search.fn_nearest`. Any Voyage or database failure
 falls back to the heuristic for that request with one `[embeddings]` server-log line. A query that,
 once normalised, is shorter than 3 characters or has no letter ranks heuristically and never calls
 Voyage. Vectors are

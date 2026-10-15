@@ -18,7 +18,6 @@ import {
 	normaliseQuery,
 	reportEmbeddingFallback,
 } from "../search/EmbeddingBackendService.ts";
-import { nearestTo } from "../search/embedding-index.ts";
 import { getResults, groupResults, rankRecommended, relatedSearches } from "./query.ts";
 import {
 	nearestKindsFor,
@@ -27,6 +26,7 @@ import {
 	type SemanticSimilarity,
 	similarityFrom,
 } from "./semantic.ts";
+import { similarityCache, similarityCacheKey, similarityDeps } from "./similarity-cache.ts";
 import { suggestFrom } from "./suggest.ts";
 import { NO_PERSONAL_RAILS, personalRails, topicsOf, trendingRail } from "./personalise.ts";
 import { ownHandlesOf, readViewerSignals } from "./viewer-signals.ts";
@@ -128,15 +128,27 @@ async function querySimilarity(
 ): Promise<{ similarity: SemanticSimilarity; vector: number[] } | null> {
 	// Too short or letterless to mean anything to a vector: heuristic by design, not a fallback.
 	if (!isEmbeddableQuery(normaliseQuery(params.q))) return null;
+	// A later page of the same search reuses the first page's neighbours (see ./similarity-cache.ts).
+	const cacheKey = similarityCacheKey(params);
+	const cached = similarityCache.get(cacheKey);
+	if (cached) return cached;
 	try {
 		const embedded = await EmbeddingBackendService.embedQuery(params.q);
 		if (!embedded.ok || !embedded.data) {
 			reportEmbeddingFallback("search", embedded.message ?? "no query vector");
 			return null;
 		}
-		const rows = await nearestTo(embedded.data, nearestKindsFor(params.category), [], SEMANTIC_POOL);
+		const rows = await similarityDeps().nearestTo(
+			embedded.data,
+			nearestKindsFor(params.category),
+			[],
+			SEMANTIC_POOL,
+		);
 		const similarity = similarityFrom(rows, (kind, id) => catalog.itemIdByEntity.get(entityKey(kind, id)));
-		return similarity.size > 0 ? { similarity, vector: embedded.data } : null;
+		if (similarity.size === 0) return null;
+		const found = { similarity, vector: embedded.data };
+		similarityCache.set(cacheKey, found);
+		return found;
 	} catch (error) {
 		reportEmbeddingFallback("search", error);
 		return null;

@@ -1,7 +1,9 @@
 import { assert, assertEquals } from "@std/assert";
 import {
+	type DiscoveryEntityKind,
 	EMBEDDING_DIMENSIONS,
 	type ExploreParams,
+	type NearestEntityRow,
 	type ServiceItem,
 } from "@projective/types/explore";
 import {
@@ -15,6 +17,11 @@ import { getResults } from "./query.ts";
 import { assemble, type CatalogInputs, primeCatalogForTesting } from "./live-catalog.ts";
 import { ExploreBackendService } from "./ExploreBackendService.ts";
 import { setEmbeddingDepsForTesting } from "../search/EmbeddingBackendService.ts";
+import {
+	setSimilarityDepsForTesting,
+	SIMILARITY_CACHE_TTL_MS,
+	SimilarityCache,
+} from "./similarity-cache.ts";
 
 // #region Fixtures
 const OWNER_A = { handle: "@ana", name: "Ana", avatar: "", kind: "freelancer" as const };
@@ -354,5 +361,154 @@ Deno.test("search — a database failure after a good query vector falls back to
 		setEmbeddingDepsForTesting(null);
 		primeCatalogForTesting(null);
 	}
+});
+// #endregion
+
+// #region Similarity cache — one fn_nearest per search, not per page
+/** A Voyage stub that always answers with the same unit vector. */
+function vectorDeps(): void {
+	const vector = Array.from({ length: EMBEDDING_DIMENSIONS }, (_, i) => (i === 0 ? 1 : 0));
+	setEmbeddingDepsForTesting({
+		fetch: () =>
+			Promise.resolve(
+				Response.json({ data: [{ embedding: vector, index: 0 }], usage: { total_tokens: 1 } }),
+			),
+		apiKey: () => "pa-test",
+	});
+}
+
+/** A `fn_nearest` stub that counts its calls and finds `svc-logo` (blueprint 1). */
+function countingNearest(clock: { now: number }, rows: NearestEntityRow[] = [LOGO_ROW]) {
+	const calls: Array<DiscoveryEntityKind[] | null> = [];
+	setSimilarityDepsForTesting({
+		nearestTo: (_vector, types) => {
+			calls.push(types ? [...types] : null);
+			return Promise.resolve(rows);
+		},
+		now: () => clock.now,
+	});
+	return calls;
+}
+
+const LOGO_ROW: NearestEntityRow = {
+	entity_type: "service_blueprint",
+	entity_id: "00000000-0000-4000-8000-00000000b001",
+	score: 0.4,
+};
+
+function resetSimilarityTest(): void {
+	setSimilarityDepsForTesting(null);
+	setEmbeddingDepsForTesting(null);
+	primeCatalogForTesting(null);
+}
+
+Deno.test("similarity cache — a later page reuses the first page's neighbours", async () => {
+	primeServices();
+	vectorDeps();
+	const calls = countingNearest({ now: 0 });
+	try {
+		const first = await ExploreBackendService.search({
+			params: params("logo"),
+			semantic: true,
+			limit: 1,
+		});
+		const next = await ExploreBackendService.search({
+			params: params("Logo!"),
+			semantic: true,
+			offset: 1,
+			limit: 1,
+		});
+		assert(first.ok && first.data && next.ok && next.data);
+		assertEquals([first.ranking, next.ranking], ["semantic", "semantic"]);
+		assertEquals(calls.length, 1, "one fn_nearest for both pages");
+	} finally {
+		resetSimilarityTest();
+	}
+});
+
+Deno.test("similarity cache — another category is another lookup", async () => {
+	primeServices();
+	vectorDeps();
+	const calls = countingNearest({ now: 0 });
+	try {
+		await ExploreBackendService.search({ params: params("logo"), semantic: true });
+		await ExploreBackendService.search({
+			params: params("logo", { category: "all" }),
+			semantic: true,
+		});
+		await ExploreBackendService.search({
+			params: params("logo", { category: "all" }),
+			semantic: true,
+		});
+		assertEquals(calls, [["service_blueprint"], null]);
+	} finally {
+		resetSimilarityTest();
+	}
+});
+
+Deno.test("similarity cache — an entry expires after its TTL", async () => {
+	primeServices();
+	vectorDeps();
+	const clock = { now: 0 };
+	const calls = countingNearest(clock);
+	try {
+		await ExploreBackendService.search({ params: params("logo"), semantic: true });
+		clock.now = SIMILARITY_CACHE_TTL_MS - 1;
+		await ExploreBackendService.search({ params: params("logo"), semantic: true, offset: 1 });
+		assertEquals(calls.length, 1, "still fresh a millisecond before the TTL");
+		clock.now = SIMILARITY_CACHE_TTL_MS;
+		await ExploreBackendService.search({ params: params("logo"), semantic: true, offset: 1 });
+		assertEquals(calls.length, 2);
+	} finally {
+		resetSimilarityTest();
+	}
+});
+
+Deno.test("similarity cache — an empty neighbourhood or a failure is never remembered", async () => {
+	primeServices();
+	vectorDeps();
+	const empty = countingNearest({ now: 0 }, []);
+	try {
+		await ExploreBackendService.search({ params: params("logo"), semantic: true });
+		await ExploreBackendService.search({ params: params("logo"), semantic: true });
+		assertEquals(empty.length, 2);
+		let failures = 0;
+		setSimilarityDepsForTesting({
+			nearestTo: () => {
+				failures++;
+				return Promise.reject(new Error("search.fn_nearest failed — down"));
+			},
+		});
+		await withQuietWarnings(async () => {
+			const a = await ExploreBackendService.search({ params: params("logo"), semantic: true });
+			const b = await ExploreBackendService.search({ params: params("logo"), semantic: true });
+			assertEquals([a.ranking, b.ranking], ["heuristic", "heuristic"]);
+		});
+		assertEquals(failures, 2);
+	} finally {
+		resetSimilarityTest();
+	}
+});
+
+Deno.test("SimilarityCache — bounded LRU: reading refreshes recency, the oldest is evicted", () => {
+	const cache = new SimilarityCache(2, 1_000, () => 0);
+	const entry = (score: number) => ({
+		similarity: new Map([["svc-logo", score]]),
+		vector: [score],
+	});
+	cache.set("a", entry(0.1));
+	cache.set("b", entry(0.2));
+	assert(cache.get("a"));
+	cache.set("c", entry(0.3));
+	assertEquals([cache.get("a")?.vector, cache.get("b"), cache.get("c")?.vector], [
+		[0.1],
+		undefined,
+		[0.3],
+	]);
+	cache.set("d", { similarity: new Map(), vector: [1] });
+	assertEquals(cache.get("d"), undefined, "an empty map is not stored");
+	const served = cache.get("a");
+	served?.vector.push(9);
+	assertEquals(cache.get("a")?.vector, [0.1], "a caller cannot mutate a cached vector");
 });
 // #endregion
