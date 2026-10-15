@@ -8,6 +8,7 @@ import {
 import { EMBEDDING_DIMENSIONS, EMBEDDING_MODEL } from "@projective/types/explore";
 import {
 	EmbeddingBackendService,
+	embeddingBreakerState,
 	isEmbeddableQuery,
 	kvQueryVectorStore,
 	MIN_QUERY_CHARS,
@@ -613,6 +614,245 @@ Deno.test("syncEmbeddings — a refused write counts the rest of its chunk and e
 	} finally {
 		setEmbeddingDepsForTesting(null);
 		setEmbeddingSyncDepsForTesting(null);
+	}
+});
+// #endregion
+
+// #region Query breaker
+function down(): Response {
+	return new Response(JSON.stringify({ detail: "Service Unavailable" }), { status: 503 });
+}
+
+function limited(seconds: number): () => Response {
+	return () =>
+		new Response(JSON.stringify({ detail: "Rate limit exceeded" }), {
+			status: 429,
+			headers: { "retry-after": String(seconds) },
+		});
+}
+
+/** Capture the `[embeddings]` transition lines instead of printing them. */
+function captureLogs(): { lines: string[]; restore: () => void } {
+	const lines: string[] = [];
+	const { warn, info } = console;
+	console.warn = (...args: unknown[]) => lines.push(args.join(" "));
+	console.info = (...args: unknown[]) => lines.push(args.join(" "));
+	return {
+		lines,
+		restore: () => {
+			console.warn = warn;
+			console.info = info;
+		},
+	};
+}
+
+const CLOSED = { open: false, until: null, failures: 0 };
+
+Deno.test("voyageEmbed — retryRateLimited: false returns a 429 at once, carrying its Retry-After", async () => {
+	const sleeps: number[] = [];
+	const { fetch, calls } = scripted([limited(60), (c) => okResponse(c.body.input)]);
+	const out = await voyageEmbed(
+		["a"],
+		"query",
+		{ ...POLICY, retryRateLimited: false },
+		deps(fetch, sleeps),
+	);
+	assert(!out.ok);
+	assertEquals(out.reason, "rate_limited");
+	assertEquals(out.attempts, 1);
+	assertEquals(out.retryAfterMs, 60_000);
+	assertEquals(calls.length, 1);
+	assertEquals(sleeps, []);
+});
+
+Deno.test("query breaker — three failed calls open it; cache hits are still served; one trial closes it", async () => {
+	const clock = { t: 0 };
+	const voyage = { up: true };
+	const { fetch, calls } = scripted([(c) => voyage.up ? okResponse(c.body.input) : down()]);
+	setEmbeddingDepsForTesting(deps(fetch, [], clock));
+	const logs = captureLogs();
+	try {
+		assert((await EmbeddingBackendService.embedQuery("brand identity")).ok);
+		voyage.up = false;
+		for (const q of ["logo design", "web design", "copywriting"]) {
+			assertEquals((await EmbeddingBackendService.embedQuery(q)).details?.reason, "upstream");
+		}
+		assertEquals(calls.length, 1 + 3 * (MAX_RETRIES + 1));
+		const state = embeddingBreakerState();
+		assert(state.open);
+		assertEquals(state.failures, 3);
+		assertEquals(state.until, clock.t + 30_000);
+		assertEquals(logs.lines.length, 1, "one line for the transition, none per request");
+		assertStringIncludes(logs.lines[0], "voyage-4 query breaker open for 30s — upstream");
+
+		const fetched = calls.length;
+		const refused = await EmbeddingBackendService.embedQuery("motion graphics");
+		assertFalse(refused.ok);
+		assertEquals(refused.status, 503);
+		assertEquals(refused.details?.reason, "circuit_open");
+		assert(
+			(await EmbeddingBackendService.embedQuery("Brand Identity")).ok,
+			"a memory hit is served while open",
+		);
+		assertEquals(calls.length, fetched, "neither touched the network");
+
+		clock.t = state.until ?? 0;
+		voyage.up = true;
+		assert((await EmbeddingBackendService.embedQuery("motion graphics")).ok);
+		assertEquals(calls.length, fetched + 1, "one trial call");
+		assertEquals(embeddingBreakerState(), CLOSED);
+		assertEquals(logs.lines.at(-1), "[embeddings] voyage-4 query breaker closed");
+	} finally {
+		logs.restore();
+		setEmbeddingDepsForTesting(null);
+	}
+});
+
+Deno.test("query breaker — one trial at a time, and a failed trial re-opens it", async () => {
+	const clock = { t: 0 };
+	const gate: { hold: boolean; release?: (res: Response) => void } = { hold: false };
+	const { fetch, calls } = scripted([
+		() => gate.hold ? new Promise<Response>((resolve) => gate.release = resolve) : down(),
+	]);
+	setEmbeddingDepsForTesting(deps(fetch, [], clock));
+	const logs = captureLogs();
+	try {
+		for (const q of ["logo design", "web design", "copywriting"]) {
+			await EmbeddingBackendService.embedQuery(q);
+		}
+		clock.t = embeddingBreakerState().until ?? 0;
+		gate.hold = true;
+		const trial = EmbeddingBackendService.embedQuery("motion graphics");
+		const fetched = calls.length;
+		assertEquals(
+			(await EmbeddingBackendService.embedQuery("brand identity")).details?.reason,
+			"circuit_open",
+			"a second call waits out the trial",
+		);
+		gate.hold = false;
+		gate.release?.(down());
+		assertFalse((await trial).ok);
+		assertEquals(calls.length, fetched + MAX_RETRIES, "the trial's own retries, nothing else");
+		const state = embeddingBreakerState();
+		assert(state.open);
+		assertEquals(state.until, clock.t + 30_000);
+		assertEquals(logs.lines.length, 2);
+	} finally {
+		logs.restore();
+		setEmbeddingDepsForTesting(null);
+	}
+});
+
+Deno.test("query breaker — a 429 is not retried, and a Retry-After past the cooldown holds it open that long", async () => {
+	const clock = { t: 0 };
+	const sleeps: number[] = [];
+	const { fetch, calls } = scripted([limited(60)]);
+	setEmbeddingDepsForTesting(deps(fetch, sleeps, clock));
+	const logs = captureLogs();
+	try {
+		for (const [n, q] of ["logo design", "web design", "copywriting"].entries()) {
+			const out = await EmbeddingBackendService.embedQuery(q);
+			assertEquals(out.status, 429);
+			assertEquals(out.details?.attempts, 1);
+			assertEquals(calls.length, n + 1, "no retry attempt");
+		}
+		assertEquals(sleeps, []);
+		const state = embeddingBreakerState();
+		assert(state.open);
+		assertEquals(state.until, 60_000);
+		assertStringIncludes(logs.lines[0], "voyage-4 query breaker open for 60s — rate_limited");
+		clock.t = 59_999;
+		assertEquals(
+			(await EmbeddingBackendService.embedQuery("motion graphics")).details?.reason,
+			"circuit_open",
+		);
+		assertEquals(calls.length, 3);
+		clock.t = 60_000;
+		await EmbeddingBackendService.embedQuery("motion graphics");
+		assertEquals(calls.length, 4, "the trial goes out once Retry-After has passed");
+	} finally {
+		logs.restore();
+		setEmbeddingDepsForTesting(null);
+	}
+});
+
+Deno.test("query breaker — a Retry-After holds it open for at most five minutes", async () => {
+	const { fetch } = scripted([limited(3_600)]);
+	setEmbeddingDepsForTesting(deps(fetch));
+	const logs = captureLogs();
+	try {
+		for (const q of ["logo design", "web design", "copywriting"]) {
+			await EmbeddingBackendService.embedQuery(q);
+		}
+		assertEquals(embeddingBreakerState().until, 5 * 60 * 1000);
+	} finally {
+		logs.restore();
+		setEmbeddingDepsForTesting(null);
+	}
+});
+
+Deno.test("query breaker — a refusal, a malformed answer or a missing key never trips it", async () => {
+	const { fetch, calls } = scripted([
+		() => new Response(JSON.stringify({ detail: "bad input" }), { status: 400 }),
+	]);
+	setEmbeddingDepsForTesting(deps(fetch));
+	try {
+		for (const q of ["logo design", "web design", "copywriting", "motion graphics"]) {
+			assertEquals((await EmbeddingBackendService.embedQuery(q)).details?.reason, "rejected");
+		}
+		assertEquals(calls.length, 4);
+		assertEquals(embeddingBreakerState(), CLOSED);
+	} finally {
+		setEmbeddingDepsForTesting(null);
+	}
+});
+
+Deno.test("query budget — a burst of 20 cache misses per isolate, then 5 a second", async () => {
+	const clock = { t: 0 };
+	const { fetch, calls } = scripted([(c) => okResponse(c.body.input)]);
+	setEmbeddingDepsForTesting(deps(fetch, [], clock));
+	try {
+		const queries = Array.from({ length: 21 }, (_, n) => `query number ${n}`);
+		const results = await Promise.all(
+			queries.map((q) => EmbeddingBackendService.embedQuery(q)),
+		);
+		assertEquals(results.filter((r) => r.ok).length, 20);
+		assertEquals(results[20].status, 503);
+		assertEquals(results[20].details?.reason, "budget");
+		assertEquals(calls.length, 20, "the 21st never fetched");
+		assert((await EmbeddingBackendService.embedQuery("query number 0")).ok, "a hit spends nothing");
+		assertEquals(calls.length, 20);
+
+		clock.t += 200;
+		assert((await EmbeddingBackendService.embedQuery("refilled one")).ok);
+		assertEquals(
+			(await EmbeddingBackendService.embedQuery("refilled two")).details?.reason,
+			"budget",
+		);
+		clock.t += 1_000;
+		for (const n of [1, 2, 3, 4, 5]) {
+			assert((await EmbeddingBackendService.embedQuery(`a second later ${n}`)).ok);
+		}
+		assertEquals(
+			(await EmbeddingBackendService.embedQuery("a second later 6")).details?.reason,
+			"budget",
+		);
+		assertEquals(calls.length, 26);
+		assertEquals(embeddingBreakerState(), CLOSED, "a spent budget is not a Voyage failure");
+	} finally {
+		setEmbeddingDepsForTesting(null);
+	}
+});
+
+Deno.test("embedDocuments — still retries a 429, and never trips the query breaker", async () => {
+	const { fetch, calls } = scripted([limited(1), limited(1), (c) => okResponse(c.body.input)]);
+	setEmbeddingDepsForTesting(deps(fetch));
+	try {
+		assert((await EmbeddingBackendService.embedDocuments(["a listing"])).ok);
+		assertEquals(calls.length, 3);
+		assertEquals(embeddingBreakerState(), CLOSED);
+	} finally {
+		setEmbeddingDepsForTesting(null);
 	}
 });
 // #endregion

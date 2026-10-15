@@ -9,6 +9,7 @@ import {
 	type VoyageCallPolicy,
 	type VoyageDeps,
 	voyageEmbed,
+	type VoyageFailureReason,
 	type VoyageOutcome,
 } from "./voyage-client.ts";
 
@@ -35,6 +36,7 @@ const QUERY_POLICY: VoyageCallPolicy = {
 	deadlineMs: 3_000,
 	baseBackoffMs: 150,
 	maxBackoffMs: 600,
+	retryRateLimited: false,
 };
 const DOCUMENT_POLICY: VoyageCallPolicy = {
 	timeoutMs: 30_000,
@@ -257,6 +259,8 @@ export function setEmbeddingDepsForTesting(
 	queryCache.clear();
 	inflight.clear();
 	tokensUsed = 0;
+	breaker = { failures: 0, openUntil: null, trialInFlight: false };
+	bucket = { tokens: QUERY_BUCKET.capacity, at: null };
 }
 
 function failure<T>(outcome: Extract<VoyageOutcome, { ok: false }>): ServiceResult<T> {
@@ -303,12 +307,127 @@ async function resolveQuery(
 			return ok(stored);
 		}
 	}
+	const admitted = admitQueryCall();
+	if ("refusal" in admitted) return admitted.refusal;
 	const outcome = await voyageEmbed([key], "query", QUERY_POLICY, deps);
+	settleQueryCall(outcome, admitted.trial);
 	if (!outcome.ok) return failure<number[]>(outcome);
 	tokensUsed += outcome.tokens;
 	queryCache.set(key, outcome.vectors[0]);
 	if (store && storeKey) store.set(storeKey, outcome.vectors[0]).catch(() => {});
 	return ok(outcome.vectors[0]);
+}
+// #endregion
+
+// #region Query breaker
+/** Consecutive transient query-call failures that open the breaker. */
+const BREAKER_THRESHOLD = 3;
+/** How long an open breaker refuses query calls, unless the tripping 429's `Retry-After` is longer. */
+const BREAKER_COOLDOWN_MS = 30_000;
+/** The longest a `Retry-After` may hold the breaker open. */
+const BREAKER_MAX_COOLDOWN_MS = 5 * 60 * 1000;
+/** Cache-miss query calls per isolate: a burst of `capacity`, refilled at `refillPerSec`. */
+const QUERY_BUCKET = { capacity: 20, refillPerSec: 5 };
+/** Failures that say nothing about Voyage's health — they neither count toward nor reset the breaker. */
+const NON_TRANSIENT: ReadonlySet<VoyageFailureReason> = new Set([
+	"rejected",
+	"invalid_response",
+	"unconfigured",
+]);
+
+interface BreakerState {
+	failures: number;
+	/** When the open breaker lets its trial call through; `null` while closed. */
+	openUntil: number | null;
+	trialInFlight: boolean;
+}
+
+let breaker: BreakerState = { failures: 0, openUntil: null, trialInFlight: false };
+let bucket: { tokens: number; at: number | null } = { tokens: QUERY_BUCKET.capacity, at: null };
+
+/** Whether a cache-miss query may call Voyage now: closed, the one half-open trial, or open. */
+function breakerAdmits(now: number): "closed" | "trial" | "open" {
+	if (breaker.openUntil === null) return "closed";
+	return now < breaker.openUntil || breaker.trialInFlight ? "open" : "trial";
+}
+
+/** Take one token from the query bucket, refilled for the time since the last take; `false` when empty. */
+function takeQueryToken(now: number): boolean {
+	const elapsedSec = bucket.at === null ? 0 : Math.max(0, now - bucket.at) / 1000;
+	bucket.tokens = Math.min(
+		QUERY_BUCKET.capacity,
+		bucket.tokens + elapsedSec * QUERY_BUCKET.refillPerSec,
+	);
+	bucket.at = now;
+	if (bucket.tokens < 1) return false;
+	bucket.tokens -= 1;
+	return true;
+}
+
+/**
+ * Admit one cache-miss query call, or refuse it with a 503 without touching the network: the breaker
+ * first (`reason: "circuit_open"`), then the budget (`reason: "budget"`).
+ */
+function admitQueryCall(): { trial: boolean } | { refusal: ServiceResult<number[]> } {
+	const now = deps.now();
+	const state = breakerAdmits(now);
+	if (state === "open") {
+		return {
+			refusal: fail(503, {
+				message: "voyage-4 query breaker is open.",
+				details: {
+					reason: "circuit_open",
+					retryAt: new Date(breaker.openUntil ?? now).toISOString(),
+				},
+			}),
+		};
+	}
+	if (!takeQueryToken(now)) {
+		return {
+			refusal: fail(503, {
+				message: "The voyage-4 query budget for this isolate is spent.",
+				details: { reason: "budget" },
+			}),
+		};
+	}
+	if (state === "trial") breaker.trialInFlight = true;
+	return { trial: state === "trial" };
+}
+
+/** Record a query call's outcome: a success closes the breaker; a transient failure may (re-)open it. */
+function settleQueryCall(outcome: VoyageOutcome, trial: boolean): void {
+	if (trial) breaker.trialInFlight = false;
+	if (outcome.ok) {
+		const wasOpen = breaker.openUntil !== null;
+		breaker = { failures: 0, openUntil: null, trialInFlight: false };
+		if (wasOpen) console.info("[embeddings] voyage-4 query breaker closed");
+		return;
+	}
+	if (NON_TRANSIENT.has(outcome.reason)) return;
+	breaker.failures++;
+	// A call admitted before the breaker opened cannot extend it; only the trial or the threshold opens it.
+	if (!trial && (breaker.openUntil !== null || breaker.failures < BREAKER_THRESHOLD)) return;
+	const cooldown = Math.min(
+		Math.max(BREAKER_COOLDOWN_MS, outcome.retryAfterMs ?? 0),
+		BREAKER_MAX_COOLDOWN_MS,
+	);
+	breaker.openUntil = deps.now() + cooldown;
+	console.warn(
+		`[embeddings] voyage-4 query breaker open for ${Math.ceil(cooldown / 1000)}s — ` +
+			`${outcome.reason}: ${outcome.detail}`,
+	);
+}
+
+/**
+ * The query breaker as it stands: whether it refuses calls now, when its trial call may go out
+ * (`null` while closed) and the consecutive transient failures counted. For tests and diagnostics.
+ */
+export function embeddingBreakerState(): { open: boolean; until: number | null; failures: number } {
+	return {
+		open: breakerAdmits(deps.now()) === "open",
+		until: breaker.openUntil,
+		failures: breaker.failures,
+	};
 }
 // #endregion
 
@@ -340,6 +459,9 @@ export class EmbeddingBackendService {
 	 * when it can be. Concurrent requests for the same normalised query share one store read and one
 	 * call; a failure is never cached in either layer. A query that
 	 * fails {@link isEmbeddableQuery} is refused with a 422 (`reason: "not_embeddable"`) before any call.
+	 * A cache miss then passes the query breaker and the per-isolate budget (`#region Query breaker`);
+	 * either refuses with a 503 (`reason: "circuit_open"` / `"budget"`) without calling Voyage, while
+	 * cache hits are served regardless.
 	 */
 	static embedQuery(text: string): Promise<ServiceResult<number[]>> {
 		const key = normaliseQuery(text);

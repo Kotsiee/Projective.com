@@ -799,9 +799,9 @@ dimensions, unit length — inner product ranks as cosine) behind one switch, `i
 (`on` | `off`), which the routes forward only under `IS_DEV` and the gate honours only under
 `DENO_ENV=development`. Off, discovery is byte-for-byte the heuristic path and nothing calls Voyage.
 On, `ExploreBackendService.search` embeds the query (`services/search/EmbeddingBackendService.ts`:
-plain `fetch`, batching, a timeout and a deadline, at most two retries on 429 / 5xx / network, a two-level
-query cache keyed by the normalised query: a per-isolate LRU of 512 entries for 6 hours, then Deno KV
-shared by every isolate for 7 days under
+plain `fetch`, batching, a timeout and a deadline, at most two retries on 5xx / network — and on 429
+for documents only — and a two-level query cache keyed by the normalised query: a per-isolate LRU of
+512 entries for 6 hours, then Deno KV shared by every isolate for 7 days under
 `["cache", "embeddings", EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, "query", sha256Hex(normalised)]`, the
 vector stored as its 4,096 `Float32Array` bytes, so a model or width change starts a fresh namespace
 and raw search text never reaches a key; a KV read slower than 50 ms, a failed read or a value of the
@@ -817,7 +817,15 @@ neighbours are kept per isolate for 60 s (an LRU of 256 keyed by normalised quer
 `search.fn_nearest`. Any Voyage or database failure
 falls back to the heuristic for that request with one `[embeddings]` server-log line. A query that,
 once normalised, is shorter than 3 characters or has no letter ranks heuristically and never calls
-Voyage. Vectors are
+Voyage. A cache-miss query call is guarded twice per isolate. A query 429 is not retried; it is
+returned at once with its `Retry-After`. A circuit breaker opens after 3 consecutive transient
+failures (anything but a refusal, a malformed answer or a missing key) for 30 s, or for the tripping
+429's `Retry-After` when longer (at most 5 minutes), then lets one trial call through: success closes
+it, failure re-opens it. A token bucket allows a burst of 20 calls, refilled at 5 a second. An open
+breaker or an empty bucket refuses without touching the network (`reason: "circuit_open"` /
+`"budget"`), cache hits are still served, and the search ranks heuristically; the breaker logs once
+when it opens and once when it closes instead of once per request. The document path keeps retrying
+429s and is not guarded by either. Vectors are
 written by `deno task embeddings:backfill` and re-embedded fire-and-forget after a committed listing,
 profile, project or workspace write (`services/search/embedding-sync.ts`); both skip an item whose
 stored text hash and model still match, and both write through the service-role-only

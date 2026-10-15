@@ -54,6 +54,12 @@ export interface VoyageCallPolicy {
 	deadlineMs: number;
 	baseBackoffMs: number;
 	maxBackoffMs: number;
+	/**
+	 * Whether a 429 is retried within the call (default `true`). `false` returns it at once, with the
+	 * server's `Retry-After` on the outcome, so a caller with its own breaker does not press on a limit
+	 * that has just refused it.
+	 */
+	retryRateLimited?: boolean;
 }
 
 /** What the transport needs from the world — injectable, so tests never touch the network or a clock. */
@@ -77,10 +83,20 @@ export type VoyageFailureReason =
 	| "rejected"
 	| "invalid_response";
 
-/** The outcome of {@link voyageEmbed}: unit vectors in input order and the billed tokens, or a reason. */
+/**
+ * The outcome of {@link voyageEmbed}: unit vectors in input order and the billed tokens, or a reason —
+ * with the server's `Retry-After`, in milliseconds, when a 429 carried one.
+ */
 export type VoyageOutcome =
 	| { ok: true; vectors: number[][]; tokens: number; attempts: number }
-	| { ok: false; reason: VoyageFailureReason; status?: number; detail: string; attempts: number };
+	| {
+		ok: false;
+		reason: VoyageFailureReason;
+		status?: number;
+		detail: string;
+		attempts: number;
+		retryAfterMs?: number;
+	};
 // #endregion
 
 // #region Batching
@@ -246,7 +262,8 @@ async function attempt(
  * Embed `texts` with voyage-4 as `inputType`, always sending `input_type` and `output_dimension`.
  * Returns unit-length vectors in input order. Retries a 429, a 5xx, a timeout or a network error at
  * most {@link MAX_RETRIES} times, with exponential backoff and jitter (or the server's `Retry-After`),
- * and never starts an attempt past `policy.deadlineMs`. Never throws.
+ * and never starts an attempt past `policy.deadlineMs`; with `policy.retryRateLimited: false` a 429 is
+ * returned after its first attempt. Never throws.
  */
 export async function voyageEmbed(
 	texts: readonly string[],
@@ -270,12 +287,21 @@ export async function voyageEmbed(
 		if (result.ok) return { ...result, attempts };
 		last = result;
 		if (!result.retryable || n === MAX_RETRIES) break;
+		if (result.reason === "rate_limited" && policy.retryRateLimited === false) break;
 		const backoff = Math.min(policy.baseBackoffMs * 2 ** n, policy.maxBackoffMs) *
 			(0.5 + deps.random() / 2);
 		const wait = Math.min(result.retryAfterMs ?? backoff, policy.maxBackoffMs);
 		if (deps.now() - started + wait >= policy.deadlineMs) break;
 		await deps.sleep(wait);
 	}
-	return { ok: false, reason: last.reason, status: last.status, detail: last.detail, attempts };
+	const failed: VoyageOutcome = {
+		ok: false,
+		reason: last.reason,
+		status: last.status,
+		detail: last.detail,
+		attempts,
+	};
+	if (last.retryAfterMs !== undefined) failed.retryAfterMs = last.retryAfterMs;
+	return failed;
 }
 // #endregion

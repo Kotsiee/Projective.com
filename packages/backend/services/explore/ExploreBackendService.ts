@@ -135,7 +135,11 @@ async function querySimilarity(
 	try {
 		const embedded = await EmbeddingBackendService.embedQuery(params.q);
 		if (!embedded.ok || !embedded.data) {
-			reportEmbeddingFallback("search", embedded.message ?? "no query vector");
+			// An open breaker or a spent budget already logged its transition; one line per request is noise.
+			const reason = embedded.details?.reason;
+			if (reason !== "circuit_open" && reason !== "budget") {
+				reportEmbeddingFallback("search", embedded.message ?? "no query vector");
+			}
 			return null;
 		}
 		const rows = await similarityDeps().nearestTo(
