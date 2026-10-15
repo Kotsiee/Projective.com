@@ -18,12 +18,20 @@ import {
 	setEmbeddingDepsForTesting,
 } from "./EmbeddingBackendService.ts";
 import {
+	DOCUMENT_BATCH,
 	embeddingsUrlFor,
 	MAX_RETRIES,
 	planBatches,
 	type VoyageDeps,
 	voyageEmbed,
 } from "./voyage-client.ts";
+import {
+	type EmbeddingTarget,
+	setEmbeddingSyncDepsForTesting,
+	syncEmbeddings,
+} from "./embedding-sync.ts";
+import { estimateEmbeddingTokens } from "../../core/embedding-text.ts";
+import type { CatalogEntity } from "../explore/live-catalog.ts";
 
 const KEY = "pa-test-secret-key-1234567890";
 
@@ -499,6 +507,112 @@ Deno.test("kvQueryVectorStore — a read that hangs past 50 ms is a miss, and th
 		assertEquals(hung.sets.length, 1, "the fresh vector is still written back");
 	} finally {
 		setEmbeddingDepsForTesting(null);
+	}
+});
+// #endregion
+
+// #region syncEmbeddings
+function syncTarget(n: number, chars: number): EmbeddingTarget {
+	const text = `listing ${n} `.padEnd(chars, "x");
+	return {
+		itemId: `item-${n}`,
+		entity: { kind: "product", id: `00000000-0000-4000-8000-${String(n).padStart(12, "0")}` },
+		text,
+		hash: `hash-${n}`,
+		tokens: estimateEmbeddingTokens(text),
+	};
+}
+
+/** Every target stale, every write recorded; `failOnWrite` makes that write (1-based) throw. */
+function stubIndex(failOnWrite?: number): { written: string[] } {
+	const written: string[] = [];
+	setEmbeddingSyncDepsForTesting({
+		readEmbeddingStates: () => Promise.resolve(new Map()),
+		writeEmbedding: (entity: CatalogEntity) => {
+			if (written.length + 1 === failOnWrite) {
+				return Promise.reject(new Error("search.fn_set_embedding failed — boom"));
+			}
+			written.push(entity.id);
+			return Promise.resolve(true);
+		},
+	});
+	return { written };
+}
+
+Deno.test("syncEmbeddings — one Voyage request per chunk, so a failed request keeps the chunks before it", async () => {
+	const targets = Array.from({ length: 6 }, (_, n) => syncTarget(n, 14_000));
+	const plan = planBatches(targets.map((t) => t.tokens), DOCUMENT_BATCH);
+	assertEquals(
+		plan.map((b) => b.length),
+		[2, 2, 2],
+		"two ~3,500-token texts per 8,000-token batch",
+	);
+	const { fetch, calls } = scripted([
+		(c) => okResponse(c.body.input, 5),
+		() => new Response(JSON.stringify({ detail: "bad input" }), { status: 400 }),
+		(c) => okResponse(c.body.input, 5),
+	]);
+	setEmbeddingDepsForTesting(deps(fetch));
+	const { written } = stubIndex();
+	try {
+		const report = await syncEmbeddings(targets, { chunkSize: 64 });
+		assertEquals(calls.length, 2, "the third chunk is never sent");
+		assertEquals(calls[0].body.input, [targets[0].text, targets[1].text]);
+		assertEquals(written, [targets[0].entity.id, targets[1].entity.id]);
+		assertEquals(report.embedded, 2);
+		assertEquals(report.failed, 4);
+		assertEquals(report.tokens, 5);
+		assertFalse(report.retryable, "a 400 is not worth waiting out");
+		assertStringIncludes(report.error ?? "", "rejected");
+	} finally {
+		setEmbeddingDepsForTesting(null);
+		setEmbeddingSyncDepsForTesting(null);
+	}
+});
+
+Deno.test("syncEmbeddings — the happy path embeds everything, one fetch per planned batch", async () => {
+	const targets = [
+		...Array.from({ length: 140 }, (_, n) => syncTarget(n, 40)),
+		...Array.from({ length: 3 }, (_, n) => syncTarget(140 + n, 20_000)),
+	];
+	const { fetch, calls } = scripted([(c) => okResponse(c.body.input, 3)]);
+	setEmbeddingDepsForTesting(deps(fetch));
+	const { written } = stubIndex();
+	const chunks: number[] = [];
+	try {
+		const report = await syncEmbeddings(targets, {
+			chunkSize: 64,
+			onChunk: (r) => chunks.push(r.embedded),
+		});
+		const plan = planBatches(targets.map((t) => t.tokens), { ...DOCUMENT_BATCH, maxInputs: 64 });
+		assertEquals(calls.map((c) => c.body.input.length), plan.map((b) => b.length));
+		assertEquals(calls.map((c) => c.body.input.length), [64, 64, 13, 1, 1]);
+		assertEquals(written.length, targets.length);
+		assertEquals(report.embedded, targets.length);
+		assertEquals(report.failed, 0);
+		assertEquals(report.tokens, 3 * calls.length);
+		assertEquals(chunks, [64, 128, 141, 142, 143]);
+	} finally {
+		setEmbeddingDepsForTesting(null);
+		setEmbeddingSyncDepsForTesting(null);
+	}
+});
+
+Deno.test("syncEmbeddings — a refused write counts the rest of its chunk and every later one as failed", async () => {
+	const targets = Array.from({ length: 10 }, (_, n) => syncTarget(n, 40));
+	const { fetch, calls } = scripted([(c) => okResponse(c.body.input)]);
+	setEmbeddingDepsForTesting(deps(fetch));
+	const { written } = stubIndex(6);
+	try {
+		const report = await syncEmbeddings(targets, { chunkSize: 4 });
+		assertEquals(calls.length, 2);
+		assertEquals(written.length, 5);
+		assertEquals(report.embedded, 5);
+		assertEquals(report.failed, 5);
+		assertStringIncludes(report.error ?? "", "fn_set_embedding");
+	} finally {
+		setEmbeddingDepsForTesting(null);
+		setEmbeddingSyncDepsForTesting(null);
 	}
 });
 // #endregion

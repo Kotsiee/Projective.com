@@ -821,8 +821,10 @@ Voyage. Vectors are
 written by `deno task embeddings:backfill` and re-embedded fire-and-forget after a committed listing,
 profile, project or workspace write (`services/search/embedding-sync.ts`); both skip an item whose
 stored text hash and model still match, and both write through the service-role-only
-`search.fn_set_embedding`. In development `/explore`, the `/view` pages and every `/api/explore/*`
-response carry `x-discovery-ranking: semantic | heuristic`, and the switcher shows the effective state
+`search.fn_set_embedding`. Each sync chunk is one Voyage request (planned under `DOCUMENT_BATCH`'s
+input and token ceilings), so a refused request never discards vectors already billed. In development
+`/explore`, the `/view` pages and every `/api/explore/*` response carry
+`x-discovery-ranking: semantic | heuristic`, and the switcher shows the effective state
 (`GET /api/explore/ranking`, 404 in production). Home personalisation and user vectors are the
 separate ranking-v1 task.
 
