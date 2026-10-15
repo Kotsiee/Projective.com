@@ -40,6 +40,11 @@ const DOCUMENT_POLICY: VoyageCallPolicy = {
 const QUERY_CACHE_MAX_ENTRIES = 512;
 const QUERY_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const MAX_QUERY_CHARS = 512;
+/**
+ * The shortest normalised query worth a Voyage call. Anything shorter — or with no letter in it — ranks
+ * heuristically: "a", "!!" or "123" carry no meaning a vector could add.
+ */
+export const MIN_QUERY_CHARS = 3;
 // #endregion
 
 // #region Query cache
@@ -95,9 +100,29 @@ export class QueryVectorCache {
 	}
 }
 
-/** The cache key — and the text sent — for a search: NFKC, whitespace collapsed, lower-cased, capped. */
+/**
+ * The cache key — and the text sent — for a search: NFKC, whitespace collapsed, lower-cased, leading
+ * non-alphanumerics and trailing punctuation stripped (a trailing `+` or `#` stays, so `c++` and `c#`
+ * survive), capped. "Logo design!" and "logo design?" are one key.
+ */
 export function normaliseQuery(text: string): string {
-	return text.normalize("NFKC").replace(/\s+/g, " ").trim().toLowerCase().slice(0, MAX_QUERY_CHARS);
+	return text.normalize("NFKC")
+		.replace(/\s+/g, " ")
+		.trim()
+		.toLowerCase()
+		.replace(/^[^\p{L}\p{N}]+/u, "")
+		.replace(/[^\p{L}\p{N}+#]+$/u, "")
+		.slice(0, MAX_QUERY_CHARS)
+		.trim();
+}
+
+/**
+ * Whether a normalised query (see {@link normaliseQuery}) is worth embedding: at least
+ * {@link MIN_QUERY_CHARS} characters and at least one letter. A query that is not ranks heuristically
+ * and never calls Voyage.
+ */
+export function isEmbeddableQuery(normalised: string): boolean {
+	return normalised.length >= MIN_QUERY_CHARS && /\p{L}/u.test(normalised);
 }
 // #endregion
 
@@ -175,12 +200,16 @@ export class EmbeddingBackendService {
 
 	/**
 	 * Embed a search (`input_type: "query"`), served from the query cache when it can be. Concurrent
-	 * requests for the same normalised query share one call; a failure is never cached.
+	 * requests for the same normalised query share one call; a failure is never cached. A query that
+	 * fails {@link isEmbeddableQuery} is refused with a 422 (`reason: "not_embeddable"`) before any call.
 	 */
 	static embedQuery(text: string): Promise<ServiceResult<number[]>> {
 		const key = normaliseQuery(text);
-		if (!key) {
-			return Promise.resolve(fail(422, { message: "An empty query has nothing to embed." }));
+		if (!isEmbeddableQuery(key)) {
+			return Promise.resolve(fail(422, {
+				message: `A query needs at least ${MIN_QUERY_CHARS} characters and a letter to embed.`,
+				details: { reason: "not_embeddable" },
+			}));
 		}
 		const cached = queryCache.get(key);
 		if (cached) return Promise.resolve(ok(cached));

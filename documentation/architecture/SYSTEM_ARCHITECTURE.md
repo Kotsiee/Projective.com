@@ -805,7 +805,9 @@ TTL query cache), asks `search.fn_nearest` for the category's nearest public ent
 `SEMANTIC_BLEND_WEIGHT` and adds up to 12 high-similarity neighbours that pass the same facets; the
 `/view` "Similar" rail reads `search.fn_nearest_to_entity` (the item's stored vector, its owner's
 items excluded) and keeps the heuristic rail when there is no vector. Any Voyage or database failure
-falls back to the heuristic for that request with one `[embeddings]` server-log line. Vectors are
+falls back to the heuristic for that request with one `[embeddings]` server-log line. A query that,
+once normalised, is shorter than 3 characters or has no letter ranks heuristically and never calls
+Voyage. Vectors are
 written by `deno task embeddings:backfill` and re-embedded fire-and-forget after a committed listing,
 profile, project or workspace write (`services/search/embedding-sync.ts`); both skip an item whose
 stored text hash and model still match, and both write through the service-role-only

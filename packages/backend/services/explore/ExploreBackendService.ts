@@ -12,7 +12,12 @@ import { publicObjectUrl } from "../../core/storage-url.ts";
 import { buildLiveViewPage, composeViewPage, NO_REVIEWS, semanticSimilarTo } from "./live-view.ts";
 import { ANONYMOUS_READER, canReadLive, type ReadActor } from "../read-actor.ts";
 import { logDiscoveryQuery } from "../search/query-log.ts";
-import { EmbeddingBackendService, reportEmbeddingFallback } from "../search/EmbeddingBackendService.ts";
+import {
+	EmbeddingBackendService,
+	isEmbeddableQuery,
+	normaliseQuery,
+	reportEmbeddingFallback,
+} from "../search/EmbeddingBackendService.ts";
 import { nearestTo } from "../search/embedding-index.ts";
 import { getResults, groupResults, rankRecommended, relatedSearches } from "./query.ts";
 import {
@@ -121,6 +126,8 @@ async function querySimilarity(
 	catalog: Catalog,
 	params: ExploreParams,
 ): Promise<{ similarity: SemanticSimilarity; vector: number[] } | null> {
+	// Too short or letterless to mean anything to a vector: heuristic by design, not a fallback.
+	if (!isEmbeddableQuery(normaliseQuery(params.q))) return null;
 	try {
 		const embedded = await EmbeddingBackendService.embedQuery(params.q);
 		if (!embedded.ok || !embedded.data) {

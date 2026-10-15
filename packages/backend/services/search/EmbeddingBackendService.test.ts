@@ -8,6 +8,8 @@ import {
 import { EMBEDDING_DIMENSIONS } from "@projective/types/explore";
 import {
 	EmbeddingBackendService,
+	isEmbeddableQuery,
+	MIN_QUERY_CHARS,
 	normaliseQuery,
 	QueryVectorCache,
 	setEmbeddingDepsForTesting,
@@ -287,4 +289,49 @@ Deno.test("normaliseQuery — one key for one meaning", () => {
 	assertEquals(normaliseQuery("  Brnd\tIdentity  "), "brnd identity");
 	assertEquals(normaliseQuery("ＬＯＧＯ"), "logo");
 	assertEquals(normaliseQuery("   "), "");
+	assertEquals(normaliseQuery("Logo Design!"), "logo design");
+	assertEquals(normaliseQuery("logo design?"), "logo design");
+	assertEquals(normaliseQuery("  ¿c++? "), "c++");
+	assertEquals(normaliseQuery("c#."), "c#");
+	assertEquals(normaliseQuery("Café"), "café");
+	assertEquals(normaliseQuery("ｌｏｇｏ　ｄｅｓｉｇｎ！"), "logo design");
+	assertEquals(normaliseQuery("x".repeat(600)).length, 512);
+});
+
+Deno.test("isEmbeddableQuery — three characters and a letter", () => {
+	assertFalse(isEmbeddableQuery(normaliseQuery("a")));
+	assertFalse(isEmbeddableQuery(normaliseQuery("ab")));
+	assertFalse(isEmbeddableQuery(normaliseQuery("!!")));
+	assertFalse(isEmbeddableQuery(normaliseQuery("123")));
+	assertFalse(isEmbeddableQuery(normaliseQuery("3d")));
+	assert(isEmbeddableQuery(normaliseQuery("abc")));
+	assert(isEmbeddableQuery(normaliseQuery("c++")));
+	assertEquals(MIN_QUERY_CHARS, 3);
+});
+
+Deno.test("embedQuery — a query that is not embeddable never calls out", async () => {
+	const { fetch, calls } = scripted([(c) => okResponse(c.body.input)]);
+	setEmbeddingDepsForTesting(deps(fetch));
+	try {
+		const out = await EmbeddingBackendService.embedQuery("!!");
+		assertFalse(out.ok);
+		assertEquals(out.status, 422);
+		assertEquals(out.details?.reason, "not_embeddable");
+		assertEquals(calls.length, 0);
+	} finally {
+		setEmbeddingDepsForTesting(null);
+	}
+});
+
+Deno.test("embedQuery — trailing punctuation shares the cache entry", async () => {
+	const { fetch, calls } = scripted([(c) => okResponse(c.body.input)]);
+	setEmbeddingDepsForTesting(deps(fetch));
+	try {
+		assert((await EmbeddingBackendService.embedQuery("logo design!")).ok);
+		assert((await EmbeddingBackendService.embedQuery("logo design")).ok);
+		assertEquals(calls.length, 1, "the second search is a cache hit");
+		assertEquals(calls[0].body.input, ["logo design"]);
+	} finally {
+		setEmbeddingDepsForTesting(null);
+	}
 });
