@@ -1,6 +1,8 @@
 import { fail, ok, type ServiceResult } from "../ServiceResult.ts";
+import { EMBEDDING_DIMENSIONS, EMBEDDING_MODEL } from "@projective/types/explore";
 import { serverEnv } from "../../core/env.ts";
-import { estimateEmbeddingTokens } from "../../core/embedding-text.ts";
+import { embeddingHashOf, estimateEmbeddingTokens } from "../../core/embedding-text.ts";
+import { openSharedKv } from "../../core/kv.ts";
 import {
 	DOCUMENT_BATCH,
 	planBatches,
@@ -15,8 +17,11 @@ import {
  *
  * `embedDocuments` turns listing, profile and project texts (`core/embedding-text.ts`) into the vectors
  * the backfill and the post-commit re-embed store; `embedQuery` turns a search into the vector
- * `search.fn_nearest` ranks against, through a process-wide LRU + TTL cache keyed by the normalised
- * query, so a popular search costs one call per process and a concurrent burst of it costs one too.
+ * `search.fn_nearest` ranks against, through two cache layers keyed by the normalised query: a
+ * per-isolate LRU + TTL cache (512 entries, 6 hours), then a {@link QueryVectorStore} in Deno KV
+ * shared by every isolate (7 days), so a popular search costs one call per deployment rather than one
+ * per cold isolate, and a concurrent burst of it costs one call and one KV read. KV is optional:
+ * without `--unstable-kv` only the in-memory layer runs, and a slow or failing store is a miss.
  *
  * Server-only. It holds `VOYAGE_API_KEY` (through `voyage-client.ts`) and is never imported by an
  * island; islands reach discovery through `/api/explore/*`. Nothing here decides WHETHER to embed —
@@ -126,6 +131,96 @@ export function isEmbeddableQuery(normalised: string): boolean {
 }
 // #endregion
 
+// #region Query store
+/** How long a query vector lives in the shared store. */
+const QUERY_KV_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** How long a store read may take before it counts as a miss, so a slow KV never slows a search. */
+const QUERY_KV_TIMEOUT_MS = 50;
+
+/**
+ * The second, cross-isolate layer of the query cache. Neither method throws: `get` answers `null` on
+ * a miss, an error or a timeout, and `set` swallows its own failures, so the store can only ever save
+ * a Voyage call, never cost a search.
+ */
+export interface QueryVectorStore {
+	/** The stored vector for `key`, or `null` on a miss, an error or a timeout. */
+	get(key: Deno.KvKey): Promise<number[] | null>;
+	/** Store `vector` under `key`. Resolves even when the write fails. */
+	set(key: Deno.KvKey, vector: readonly number[]): Promise<void>;
+}
+
+/**
+ * The store key for a normalised query (see {@link normaliseQuery}). The model and the width are part
+ * of the key, so a model or dimension change starts a fresh namespace instead of serving vectors from
+ * another space; the query itself appears only as its SHA-256 digest, never as raw search text.
+ */
+export async function queryCacheKey(normalised: string): Promise<Deno.KvKey> {
+	return [
+		"cache",
+		"embeddings",
+		EMBEDDING_MODEL,
+		EMBEDDING_DIMENSIONS,
+		"query",
+		await embeddingHashOf(normalised),
+	];
+}
+
+/** A vector as KV holds it: its `Float32Array` bytes (Voyage's own precision, 4,096 bytes). */
+function encodeVector(vector: readonly number[]): Uint8Array {
+	return new Uint8Array(Float32Array.from(vector).buffer);
+}
+
+/** A stored value back as a vector, or `null` for anything that is not exactly one finite vector. */
+function decodeVector(value: unknown): number[] | null {
+	if (!(value instanceof Uint8Array) || value.byteLength !== EMBEDDING_DIMENSIONS * 4) return null;
+	const vector = Array.from(new Float32Array(value.slice().buffer));
+	return vector.every(Number.isFinite) ? vector : null;
+}
+
+/** `promise`, or `null` once `ms` pass first. The timer is always cleared. */
+async function withinMs<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			promise,
+			new Promise<null>((resolve) => timer = setTimeout(() => resolve(null), ms)),
+		]);
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+/**
+ * A {@link QueryVectorStore} over Deno KV, opened through `open` on first use (`null` = no KV, every
+ * read a miss, every write a no-op). Entries expire after 7 days; a read slower than
+ * {@link QUERY_KV_TIMEOUT_MS}, a failed read and a value of the wrong shape are all misses.
+ */
+export function kvQueryVectorStore(open: () => Promise<Deno.Kv | null>): QueryVectorStore {
+	const kv = () => open().catch(() => null);
+	return {
+		async get(key) {
+			try {
+				const read = async () => {
+					const handle = await kv();
+					return handle ? decodeVector((await handle.get(key)).value) : null;
+				};
+				return await withinMs(read().catch(() => null), QUERY_KV_TIMEOUT_MS);
+			} catch {
+				return null;
+			}
+		},
+		async set(key, vector) {
+			try {
+				const handle = await kv();
+				await handle?.set(key, encodeVector(vector), { expireIn: QUERY_KV_TTL_MS });
+			} catch {
+				// The in-memory layer already holds it; a failed write costs other isolates a call.
+			}
+		},
+	};
+}
+// #endregion
+
 // #region State
 const DEFAULT_DEPS: VoyageDeps = {
 	fetch: (input, init) => fetch(input, init),
@@ -136,7 +231,10 @@ const DEFAULT_DEPS: VoyageDeps = {
 	apiBase: () => serverEnv().voyageApiBase,
 };
 
+const DEFAULT_QUERY_STORE: QueryVectorStore = kvQueryVectorStore(openSharedKv);
+
 let deps: VoyageDeps = DEFAULT_DEPS;
+let queryStore: QueryVectorStore | null = DEFAULT_QUERY_STORE;
 const queryCache = new QueryVectorCache(
 	QUERY_CACHE_MAX_ENTRIES,
 	QUERY_CACHE_TTL_MS,
@@ -147,10 +245,15 @@ let tokensUsed = 0;
 
 /**
  * Swap the transport's dependencies — a stubbed `fetch`, an instant `sleep`, a fixed key — and reset the
- * cache and counters. `null` restores the real ones. For unit tests only.
+ * cache and counters. `null` restores the real ones. The query store is `store` when one is passed;
+ * otherwise stubbed deps run with no store at all and `null` restores the KV store. For unit tests only.
  */
-export function setEmbeddingDepsForTesting(next: Partial<VoyageDeps> | null): void {
+export function setEmbeddingDepsForTesting(
+	next: Partial<VoyageDeps> | null,
+	store?: QueryVectorStore | null,
+): void {
 	deps = next ? { ...DEFAULT_DEPS, ...next } : DEFAULT_DEPS;
+	queryStore = store !== undefined ? store : next ? null : DEFAULT_QUERY_STORE;
 	queryCache.clear();
 	inflight.clear();
 	tokensUsed = 0;
@@ -172,6 +275,40 @@ function failure<T>(outcome: Extract<VoyageOutcome, { ok: false }>): ServiceResu
 			upstreamStatus: outcome.status ?? null,
 		},
 	});
+}
+
+/** The stored vector, or `null`: a store that throws or rejects despite its contract is a miss. */
+async function readStored(store: QueryVectorStore, key: Deno.KvKey): Promise<number[] | null> {
+	try {
+		return await store.get(key);
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The second half of {@link EmbeddingBackendService.embedQuery}, behind the in-memory cache and the
+ * in-flight map: the shared store, then Voyage. A store hit fills the in-memory cache and costs no
+ * tokens; a Voyage vector is written to both layers, the store fire-and-forget; a failure to neither.
+ */
+async function resolveQuery(
+	key: string,
+	store: QueryVectorStore | null,
+): Promise<ServiceResult<number[]>> {
+	const storeKey = store ? await queryCacheKey(key).catch(() => null) : null;
+	if (store && storeKey) {
+		const stored = await readStored(store, storeKey);
+		if (stored) {
+			queryCache.set(key, stored);
+			return ok(stored);
+		}
+	}
+	const outcome = await voyageEmbed([key], "query", QUERY_POLICY, deps);
+	if (!outcome.ok) return failure<number[]>(outcome);
+	tokensUsed += outcome.tokens;
+	queryCache.set(key, outcome.vectors[0]);
+	if (store && storeKey) store.set(storeKey, outcome.vectors[0]).catch(() => {});
+	return ok(outcome.vectors[0]);
 }
 // #endregion
 
@@ -199,8 +336,9 @@ export class EmbeddingBackendService {
 	}
 
 	/**
-	 * Embed a search (`input_type: "query"`), served from the query cache when it can be. Concurrent
-	 * requests for the same normalised query share one call; a failure is never cached. A query that
+	 * Embed a search (`input_type: "query"`), served from the in-memory cache, then the shared store,
+	 * when it can be. Concurrent requests for the same normalised query share one store read and one
+	 * call; a failure is never cached in either layer. A query that
 	 * fails {@link isEmbeddableQuery} is refused with a 422 (`reason: "not_embeddable"`) before any call.
 	 */
 	static embedQuery(text: string): Promise<ServiceResult<number[]>> {
@@ -215,12 +353,7 @@ export class EmbeddingBackendService {
 		if (cached) return Promise.resolve(ok(cached));
 		const pending = inflight.get(key);
 		if (pending) return pending;
-		const call = voyageEmbed([key], "query", QUERY_POLICY, deps).then((outcome) => {
-			if (!outcome.ok) return failure<number[]>(outcome);
-			tokensUsed += outcome.tokens;
-			queryCache.set(key, outcome.vectors[0]);
-			return ok(outcome.vectors[0]);
-		}).finally(() => inflight.delete(key));
+		const call = resolveQuery(key, queryStore).finally(() => inflight.delete(key));
 		inflight.set(key, call);
 		return call;
 	}

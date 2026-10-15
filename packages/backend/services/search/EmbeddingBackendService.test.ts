@@ -5,13 +5,16 @@ import {
 	assertFalse,
 	assertStringIncludes,
 } from "@std/assert";
-import { EMBEDDING_DIMENSIONS } from "@projective/types/explore";
+import { EMBEDDING_DIMENSIONS, EMBEDDING_MODEL } from "@projective/types/explore";
 import {
 	EmbeddingBackendService,
 	isEmbeddableQuery,
+	kvQueryVectorStore,
 	MIN_QUERY_CHARS,
 	normaliseQuery,
+	queryCacheKey,
 	QueryVectorCache,
+	type QueryVectorStore,
 	setEmbeddingDepsForTesting,
 } from "./EmbeddingBackendService.ts";
 import {
@@ -335,3 +338,167 @@ Deno.test("embedQuery — trailing punctuation shares the cache entry", async ()
 		setEmbeddingDepsForTesting(null);
 	}
 });
+
+// #region Query store
+/** An in-memory {@link QueryVectorStore} that records every read and write. */
+function memoryStore(): QueryVectorStore & {
+	gets: Deno.KvKey[];
+	sets: Array<{ key: Deno.KvKey; vector: number[] }>;
+	entries: Map<string, number[]>;
+} {
+	const entries = new Map<string, number[]>();
+	const gets: Deno.KvKey[] = [];
+	const sets: Array<{ key: Deno.KvKey; vector: number[] }> = [];
+	return {
+		entries,
+		gets,
+		sets,
+		get(key) {
+			gets.push(key);
+			return Promise.resolve(entries.get(JSON.stringify(key)) ?? null);
+		},
+		set(key, vector) {
+			sets.push({ key, vector: [...vector] });
+			entries.set(JSON.stringify(key), [...vector]);
+			return Promise.resolve();
+		},
+	};
+}
+
+/** Just enough of `Deno.Kv` for {@link kvQueryVectorStore}: `get` answers `read(key)`. */
+function fakeKv(read: (key: Deno.KvKey) => Promise<unknown>): {
+	kv: Deno.Kv;
+	sets: Array<{ key: Deno.KvKey; value: unknown; options?: { expireIn?: number } }>;
+} {
+	const sets: Array<{ key: Deno.KvKey; value: unknown; options?: { expireIn?: number } }> = [];
+	const kv = {
+		get: async (key: Deno.KvKey) => {
+			const value = await read(key);
+			return { key, value, versionstamp: value === null ? null : "1" };
+		},
+		set: (key: Deno.KvKey, value: unknown, options?: { expireIn?: number }) => {
+			sets.push({ key, value, options });
+			return Promise.resolve({ ok: true, versionstamp: "1" });
+		},
+	};
+	return { kv: kv as unknown as Deno.Kv, sets };
+}
+
+Deno.test("queryCacheKey — model and width namespaced, the query only as its digest", async () => {
+	const key = await queryCacheKey("logo design");
+	assertEquals(key.length, 6);
+	assertEquals(key.slice(0, 5), [
+		"cache",
+		"embeddings",
+		EMBEDDING_MODEL,
+		EMBEDDING_DIMENSIONS,
+		"query",
+	]);
+	assert(/^[0-9a-f]{64}$/.test(String(key[5])), "a SHA-256 hex digest");
+	assertFalse(key.some((part) => String(part).includes("logo")), "no raw search text");
+	assertEquals(await queryCacheKey("logo design"), key);
+	assert((await queryCacheKey("brand identity"))[5] !== key[5]);
+});
+
+Deno.test("embedQuery — a store hit never calls Voyage and costs no tokens", async () => {
+	const { fetch, calls } = scripted([(c) => okResponse(c.body.input)]);
+	const store = memoryStore();
+	await store.set(await queryCacheKey("brand identity"), vec(3, 1));
+	store.sets.length = 0;
+	setEmbeddingDepsForTesting(deps(fetch), store);
+	try {
+		const out = await EmbeddingBackendService.embedQuery("Brand Identity!");
+		assert(out.ok && out.data);
+		assertEquals(out.data, vec(3, 1));
+		assertEquals(calls.length, 0);
+		assertEquals(EmbeddingBackendService.tokensUsed(), 0);
+		assert((await EmbeddingBackendService.embedQuery("brand identity")).ok);
+		assertEquals(store.gets.length, 1, "the second search is an in-memory hit");
+		assertEquals(store.sets.length, 0);
+	} finally {
+		setEmbeddingDepsForTesting(null);
+	}
+});
+
+Deno.test("embedQuery — a store miss calls Voyage once and stores the vector; failures are never stored", async () => {
+	let down = true;
+	const { fetch, calls } = scripted([
+		(c) => down ? new Response("down", { status: 500 }) : okResponse(c.body.input, 4),
+	]);
+	const store = memoryStore();
+	setEmbeddingDepsForTesting(deps(fetch), store);
+	try {
+		assertFalse((await EmbeddingBackendService.embedQuery("logo design")).ok);
+		assertEquals(store.sets.length, 0, "a failure is not stored");
+		down = false;
+		const failedCalls = calls.length;
+		const [a, b] = await Promise.all([
+			EmbeddingBackendService.embedQuery("logo design"),
+			EmbeddingBackendService.embedQuery("Logo  Design"),
+		]);
+		assert(a.ok && b.ok);
+		assertEquals(calls.length, failedCalls + 1);
+		assertEquals(store.gets.length, 2, "one read per resolution, shared by the concurrent pair");
+		assertEquals(store.sets.length, 1);
+		assertEquals(store.sets[0].key, await queryCacheKey("logo design"));
+		assertEquals(store.sets[0].vector.length, EMBEDDING_DIMENSIONS);
+		assertEquals(EmbeddingBackendService.tokensUsed(), 4);
+	} finally {
+		setEmbeddingDepsForTesting(null);
+	}
+});
+
+Deno.test("kvQueryVectorStore — round-trips Float32 bytes with a 7-day expiry", async () => {
+	const held = new Map<string, unknown>();
+	const { kv, sets } = fakeKv((key) => Promise.resolve(held.get(JSON.stringify(key)) ?? null));
+	const store = kvQueryVectorStore(() => Promise.resolve(kv));
+	const key = await queryCacheKey("logo design");
+	const vector = vec(5, 0.1);
+	await store.set(key, vector);
+	assertEquals(sets.length, 1);
+	assert(sets[0].value instanceof Uint8Array);
+	assertEquals((sets[0].value as Uint8Array).byteLength, 4_096);
+	assertEquals(sets[0].options?.expireIn, 7 * 24 * 60 * 60 * 1000);
+	held.set(JSON.stringify(key), sets[0].value);
+	const read = await store.get(key);
+	assert(read);
+	assertEquals(read, Array.from(Float32Array.from(vector)));
+});
+
+Deno.test("kvQueryVectorStore — a wrong-length value, a failed read and no KV are all misses", async () => {
+	const key = await queryCacheKey("logo design");
+	const short = fakeKv(() => Promise.resolve(new Uint8Array(4 * 512)));
+	assertEquals(await kvQueryVectorStore(() => Promise.resolve(short.kv)).get(key), null);
+	const broken = fakeKv(() => Promise.reject(new Error("kv down")));
+	assertEquals(await kvQueryVectorStore(() => Promise.resolve(broken.kv)).get(key), null);
+	const none = kvQueryVectorStore(() => Promise.resolve(null));
+	assertEquals(await none.get(key), null);
+	await none.set(key, vec(0));
+
+	const { fetch, calls } = scripted([(c) => okResponse(c.body.input)]);
+	setEmbeddingDepsForTesting(deps(fetch), kvQueryVectorStore(() => Promise.resolve(short.kv)));
+	try {
+		assert((await EmbeddingBackendService.embedQuery("logo design")).ok);
+		assertEquals(calls.length, 1, "a corrupt stored value falls through to Voyage");
+	} finally {
+		setEmbeddingDepsForTesting(null);
+	}
+});
+
+Deno.test("kvQueryVectorStore — a read that hangs past 50 ms is a miss, and the search still embeds", async () => {
+	const hung = fakeKv(() => new Promise<never>(() => {}));
+	const { fetch, calls } = scripted([(c) => okResponse(c.body.input)]);
+	setEmbeddingDepsForTesting(deps(fetch), kvQueryVectorStore(() => Promise.resolve(hung.kv)));
+	try {
+		const started = performance.now();
+		const out = await EmbeddingBackendService.embedQuery("logo design");
+		assert(out.ok);
+		assertEquals(calls.length, 1);
+		assert(performance.now() - started >= 45, "it waited for the timeout, not the read");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assertEquals(hung.sets.length, 1, "the fresh vector is still written back");
+	} finally {
+		setEmbeddingDepsForTesting(null);
+	}
+});
+// #endregion

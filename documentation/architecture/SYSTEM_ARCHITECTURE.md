@@ -799,8 +799,15 @@ dimensions, unit length — inner product ranks as cosine) behind one switch, `i
 (`on` | `off`), which the routes forward only under `IS_DEV` and the gate honours only under
 `DENO_ENV=development`. Off, discovery is byte-for-byte the heuristic path and nothing calls Voyage.
 On, `ExploreBackendService.search` embeds the query (`services/search/EmbeddingBackendService.ts`:
-plain `fetch`, batching, a timeout and a deadline, at most two retries on 429 / 5xx / network, an LRU +
-TTL query cache), asks `search.fn_nearest` for the category's nearest public entities, and the pure
+plain `fetch`, batching, a timeout and a deadline, at most two retries on 429 / 5xx / network, a two-level
+query cache keyed by the normalised query: a per-isolate LRU of 512 entries for 6 hours, then Deno KV
+shared by every isolate for 7 days under
+`["cache", "embeddings", EMBEDDING_MODEL, EMBEDDING_DIMENSIONS, "query", sha256Hex(normalised)]`, the
+vector stored as its 4,096 `Float32Array` bytes, so a model or width change starts a fresh namespace
+and raw search text never reaches a key; a KV read slower than 50 ms, a failed read or a value of the
+wrong length is a miss, a KV hit fills the memory layer and bills no tokens, a fresh vector is written
+to both (KV fire-and-forget) and a failure to neither; KV is optional — without `--unstable-kv`
+`core/kv.ts`'s `openSharedKv` answers `null` and only the in-memory layer runs), asks `search.fn_nearest` for the category's nearest public entities, and the pure
 `services/explore/semantic.ts` re-ranks the JS candidate set on the default sort through
 `SEMANTIC_BLEND_WEIGHT` and adds up to 12 high-similarity neighbours that pass the same facets; the
 `/view` "Similar" rail reads `search.fn_nearest_to_entity` (the item's stored vector, its owner's

@@ -8,6 +8,7 @@ import {
 	resolveRate,
 	toDisplayCurrency,
 } from "@projective/types/finance";
+import { openSharedKv } from "../../core/kv.ts";
 import { getAnonClient, isSupabaseConfigured } from "../../core/supabase.ts";
 
 /**
@@ -67,25 +68,6 @@ interface CacheEntry {
 /** Per-isolate fallback cache, used whenever Deno KV is unavailable. */
 const memoryCache = new Map<string, CacheEntry>();
 
-/**
- * The lazily-opened KV handle. `undefined` = not attempted yet; `null` = attempted and unavailable
- * (so we never retry an open that already failed, which would cost a syscall on every request).
- */
-let kvHandle: Deno.Kv | null | undefined;
-
-/** Open Deno KV once, tolerating every reason it might not exist. Never throws. */
-async function openKv(): Promise<Deno.Kv | null> {
-	if (kvHandle !== undefined) return kvHandle;
-	try {
-		// `Deno.openKv` is unstable-gated; on a runtime without it the property is simply absent.
-		const open = (Deno as { openKv?: () => Promise<Deno.Kv> }).openKv;
-		kvHandle = typeof open === "function" ? await open.call(Deno) : null;
-	} catch {
-		kvHandle = null;
-	}
-	return kvHandle;
-}
-
 /** Whether a cache entry is still inside the TTL. */
 function fresh(entry: CacheEntry, now: number): boolean {
 	return now - entry.cachedAt < CACHE_TTL_MS;
@@ -93,7 +75,7 @@ function fresh(entry: CacheEntry, now: number): boolean {
 
 /** Read a cached table for `base` from KV, then memory. Returns `null` on a miss or any failure. */
 async function readCache(base: string, now: number): Promise<FxRateTable | null> {
-	const kv = await openKv();
+	const kv = await openSharedKv();
 	if (kv) {
 		try {
 			const hit = await kv.get<CacheEntry>([...KV_PREFIX, base]);
@@ -110,7 +92,7 @@ async function readCache(base: string, now: number): Promise<FxRateTable | null>
 async function writeCache(base: string, table: FxRateTable, now: number): Promise<void> {
 	const entry: CacheEntry = { table, cachedAt: now };
 	memoryCache.set(base, entry);
-	const kv = await openKv();
+	const kv = await openSharedKv();
 	if (!kv) return;
 	try {
 		await kv.set([...KV_PREFIX, base], entry, { expireIn: CACHE_TTL_MS });
@@ -355,7 +337,7 @@ export class FxService {
 	/** Drop every cached table. For tests and for an operational rate-refresh hook. */
 	static async invalidate(): Promise<void> {
 		memoryCache.clear();
-		const kv = await openKv();
+		const kv = await openSharedKv();
 		if (!kv) return;
 		try {
 			for await (const entry of kv.list({ prefix: [...KV_PREFIX] })) await kv.delete(entry.key);
