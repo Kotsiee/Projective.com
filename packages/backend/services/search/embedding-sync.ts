@@ -28,10 +28,6 @@ import { DOCUMENT_BATCH, planBatches } from "./voyage-client.ts";
  * still match, embed the rest one Voyage request per chunk and store them through `search.fn_set_embedding`. A draft or a
  * paused listing is not in the catalogue, so it is never embedded; its index row is hidden by the
  * index's own visibility flag.
- *
- * Post-commit re-embeds are queued, not run per write: they gather until `REEMBED_SETTLE_MS` pass
- * with no further write, then run as one sync, and an item is in one run at a time. A queue lost with
- * its isolate is caught up by the hash check — the next re-embed of that item, or the backfill.
  */
 
 // #region Targets
@@ -190,121 +186,32 @@ export async function syncEmbeddings(
 // #endregion
 
 // #region After a write
-/** How long the writes must stay quiet before the queued re-embeds run — one autosaving edit session, one run. */
-export const REEMBED_SETTLE_MS = 30_000;
-
-/** What the re-embed queue needs from the outside — injectable, so tests never wait or embed. */
-export interface ReembedDeps {
-	isLive: () => boolean;
-	run: (itemIds: readonly string[]) => Promise<EmbeddingSyncReport>;
-	/** Arm a timer; the returned function cancels it. */
-	setTimer: (fn: () => void, ms: number) => () => void;
-}
-
-const DEFAULT_REEMBED_DEPS: ReembedDeps = {
-	isLive: () => isEmbeddingsLive(),
-	run: reembed,
-	setTimer: (fn, ms) => {
-		const id = setTimeout(fn, ms);
-		return () => clearTimeout(id);
-	},
-};
-
-let reembedDeps: ReembedDeps = DEFAULT_REEMBED_DEPS;
-/** Each queued item id with the write reasons that queued it. */
-const queued = new Map<string, Set<string>>();
-/** Item ids inside a run now — never in two runs at once. */
-const running = new Set<string>();
-let cancelTimer: (() => void) | undefined;
-
 /**
- * Queue a re-embed of the catalogue items `itemIds` (slugs or handles) after a committed write.
+ * Re-embed the catalogue items `itemIds` (slugs or handles) after a committed write — fire-and-forget.
  *
- * A no-op unless `EMBEDDINGS_ENABLED` holds (no request, so no development override). Every call adds
- * its ids to one queue and re-arms one trailing timer, so the run starts `REEMBED_SETTLE_MS` after the
- * last write: a seller's autosaves while editing a live listing cost one catalogue reload and one
- * embedding of the final text, not one per intermediate save. An item is in one run at a time; an id
- * queued again while its run is in flight waits for the next one. The catalogue is reloaded first, so
- * the text is the one last written; an item that is not public is skipped. A failure is logged once
- * and never reaches the write: the vector stays as it was. A queue lost with its isolate (a restart
- * inside the window) is caught up by the hash check — `deno task embeddings:backfill` embeds every
- * item whose stored hash no longer matches its text.
+ * A no-op unless `EMBEDDINGS_ENABLED` holds (no request, so no development override). The catalogue
+ * is reloaded first, so the text is the one just written; an item that is not public is skipped. A
+ * failure is logged once and never reaches the write: the vector stays as it was, and the backfill
+ * catches it up by its hash.
  */
 export function reembedInBackground(itemIds: readonly string[], reason: string): void {
-	if (itemIds.length === 0 || !reembedDeps.isLive()) return;
-	for (const id of itemIds) {
-		const reasons = queued.get(id) ?? new Set<string>();
-		reasons.add(reason);
-		queued.set(id, reasons);
-	}
-	armReembedTimer();
-}
-
-function armReembedTimer(): void {
-	cancelTimer?.();
-	cancelTimer = reembedDeps.setTimer(() => {
-		cancelTimer = undefined;
-		void runQueuedReembeds();
-	}, REEMBED_SETTLE_MS);
-}
-
-/** Run every queued id that is not already running, as one sync; `null` when there was none or it threw. */
-async function runQueuedReembeds(): Promise<EmbeddingSyncReport | null> {
-	const batch = [...queued.keys()].filter((id) => !running.has(id));
-	if (batch.length === 0) return null;
-	const reasons = new Set<string>();
-	for (const id of batch) {
-		for (const reason of queued.get(id) ?? []) reasons.add(reason);
-		queued.delete(id);
-		running.add(id);
-	}
-	const reason = [...reasons].join(", ");
-	try {
-		const report = await reembedDeps.run(batch);
+	if (itemIds.length === 0 || !isEmbeddingsLive()) return;
+	reembed(itemIds).then((report) => {
 		if (report.error) {
 			console.warn(`[embeddings] re-embed after ${reason} incomplete — ${report.error}`);
 		}
-		return report;
-	} catch (error) {
+	}).catch((error) => {
 		console.warn(
 			`[embeddings] re-embed after ${reason} failed — ${
 				error instanceof Error ? error.message : String(error)
 			}`,
 		);
-		return null;
-	} finally {
-		for (const id of batch) running.delete(id);
-		if (queued.size > 0) armReembedTimer();
-	}
+	});
 }
 
 async function reembed(itemIds: readonly string[]): Promise<EmbeddingSyncReport> {
 	invalidateCatalog();
 	const targets = await embeddingTargets(await loadCatalog(), itemIds);
 	return syncEmbeddings(targets);
-}
-
-/** Cancel the timer and run the queued re-embeds now. For unit tests only. */
-export function flushReembedsForTesting(): Promise<EmbeddingSyncReport | null> {
-	cancelTimer?.();
-	cancelTimer = undefined;
-	return runQueuedReembeds();
-}
-
-/** Cancel the timer and forget every queued and running id. For unit tests only. */
-export function resetReembedQueueForTesting(): void {
-	cancelTimer?.();
-	cancelTimer = undefined;
-	queued.clear();
-	running.clear();
-}
-
-/**
- * Swap the queue's gate, run and timers for stubs and reset the queue; `null` restores the real ones.
- * For unit tests only.
- */
-export function setReembedDepsForTesting(next: Partial<ReembedDeps> | null): void {
-	resetReembedQueueForTesting();
-	reembedDeps = next ? { ...DEFAULT_REEMBED_DEPS, ...next } : DEFAULT_REEMBED_DEPS;
 }
 // #endregion
