@@ -3,22 +3,16 @@ import { type Signal, useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
 import "../styles/lane.css";
 import { Popover } from "@projective/ui/feedback";
-import { SortControl } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import {
-	LaneBar,
 	LaneCollapseButton,
 	LaneCreateButton,
 	LaneEmpty,
 	LaneFooter,
 	LaneFooterActions,
-	LaneHead,
 	LaneList,
 	LaneSection,
 	LaneSections,
-	LaneTabs,
-	type LaneToggleOption,
-	LaneToggleRow,
 	Menu,
 	type MenuItem,
 } from "@projective/ui/navigation";
@@ -27,21 +21,20 @@ import { MIDDLE_LANE_TOGGLE_EVENT } from "@web/utils/lane-events.ts";
 import { CatalogueRail } from "../components/CatalogueRail.tsx";
 import { CatalogueFilterPanel } from "../components/CatalogueFilterPanel.tsx";
 import { ListingLaneRow } from "../components/ListingLaneRow.tsx";
-import { TrendIcon } from "../components/catalogue-glyphs.tsx";
-import { listingHref, SERVICE_MODELS, SORT_OPTIONS, TYPE_TABS } from "../core/catalogue-model.ts";
+import { listingHref, SERVICE_MODELS } from "../core/catalogue-model.ts";
 import {
+	clearQuickFilters,
 	consoleView,
 	listingsPage,
 	openCreate,
-	type QuickFilters,
 	quickFilters,
 	setConsoleUrl,
 	setQuickFilter,
 	startConsoleSync,
 } from "../core/console-store.ts";
 import { laneOutline, type LaneOutlineSection, outlineAnchor } from "../core/lane-outline.ts";
-import { useConsoleSort } from "../hooks/useConsoleSort.ts";
 import {
+	type CatalogueFacetCounts,
 	type CatalogueKind,
 	type CatalogueStatusCounts,
 	consoleHref,
@@ -54,14 +47,16 @@ import {
 /**
  * CatalogueLane — the `/catalogue*` navigation lane, in one of two modes.
  *
- * **Console** (`/catalogue`): the type tabs at the peak, sort, the quick filters, and the facets —
- * status (presence dots, never counts), delivery model and CREATE category — every one of which
- * writes the console URL, so the canvas, the header count and a shared link all agree. The footer's
- * New listing menu opens the quick-create modal in place (`?create=`).
+ * **Console** (`/catalogue`): the facets — status, highlights, delivery model and CREATE category,
+ * each row with its count, status / model / category multi-select — every one of which writes the
+ * console URL (highlights the console store), so the canvas, the toolbar count and a shared link all
+ * agree. The type, search and sort live in the canvas's sticky toolbar, never here (Decision #221).
+ * The footer's New listing menu opens the quick-create modal in place (`?create=`).
  *
- * **Outline** (`/catalogue/[id]`): the current listing pinned, the workspace's "On this page"
- * sections (published by the workspace through `lane-outline`), and the seller's other listings. Its
- * New listing menu links to the console's `?create=` deep links.
+ * **Outline** (`/catalogue/[id]`): a head row with Back to the console (the `/projects/[slug]` lane
+ * head's shape), the workspace's "On this page" sections (published by the workspace through
+ * `lane-outline`), and every one of the seller's listings in one section, the current one marked.
+ * Its New listing menu links to the console's `?create=` deep links.
  *
  * Both render the collapsed {@link CatalogueRail} beside the expanded stack and let
  * `.ui-splitter[data-mode="collapsed"]` reveal one.
@@ -73,6 +68,7 @@ export interface ConsoleLaneProps {
 	mode: "console";
 	url: ConsoleUrlState;
 	statusCounts: CatalogueStatusCounts;
+	facetCounts: CatalogueFacetCounts;
 	/** The first listings, for the collapsed rail. */
 	recent: ListingSummary[];
 }
@@ -95,12 +91,6 @@ interface LaneChrome {
 // #endregion
 
 const RAIL_RECENT = 8;
-
-const QUICK_TOGGLES: readonly LaneToggleOption<keyof QuickFilters>[] = [
-	{ key: "attention", label: "Needs attention", icon: <Icon name="warning" /> },
-	{ key: "promoted", label: "Promoted", icon: <Icon name="star" /> },
-	{ key: "bestSelling", label: "Best-selling", icon: <TrendIcon /> },
-];
 
 export default function CatalogueLane(props: CatalogueLaneProps): JSX.Element {
 	const collapsed = useSignal(false);
@@ -184,10 +174,8 @@ function ConsoleLane(props: ConsoleLaneProps & LaneChrome): JSX.Element {
 	const state = consoleView(props.url);
 	const page = listingsPage.value;
 	const counts = page?.statusCounts ?? props.statusCounts;
+	const facets = page?.facetCounts ?? props.facetCounts;
 	const recent = (page?.items ?? props.recent).slice(0, RAIL_RECENT);
-	const quick = quickFilters.value;
-	const activeQuick = QUICK_TOGGLES.map((o) => o.key).filter((k) => quick[k]);
-	const sort = useConsoleSort(state);
 
 	const model = newListingMenu({
 		go: (kind, serviceType) => {
@@ -206,38 +194,15 @@ function ConsoleLane(props: ConsoleLaneProps & LaneChrome): JSX.Element {
 			/>
 
 			<div class="cat-lane__full">
-				<LaneHead>
-					<LaneTabs
-						label="Catalogue type"
-						value={state.type}
-						options={TYPE_TABS}
-						onSelect={(type) => setConsoleUrl({ type })}
-					/>
-					<LaneBar>
-						<SortControl
-							options={[...SORT_OPTIONS]}
-							value={sort.sort}
-							direction={sort.dir}
-							onValueChange={sort.onSort}
-							onDirectionChange={sort.onDir}
-							size="sm"
-							class="cat-lane__sort"
-							aria-label="Sort listings"
-						/>
-					</LaneBar>
-					<LaneToggleRow
-						label="Quick filters"
-						options={QUICK_TOGGLES}
-						active={activeQuick}
-						onToggle={(key) => setQuickFilter(key, !quick[key])}
-					/>
-				</LaneHead>
-
 				<LaneList label="Filters">
 					<CatalogueFilterPanel
 						state={state}
 						statusCounts={counts}
+						facetCounts={facets}
+						highlights={quickFilters.value}
 						onChange={(patch) => setConsoleUrl(patch)}
+						onHighlight={setQuickFilter}
+						onClearHighlights={clearQuickFilters}
 					/>
 				</LaneList>
 
@@ -293,8 +258,6 @@ function OutlineLane(props: OutlineLaneProps & LaneChrome): JSX.Element {
 	const menuOpen = useSignal(false);
 	const open = useSignal({ page: true, listings: true });
 	const outline = laneOutline.value;
-	const current = props.listings.find((l) => l.id === props.activeId) ?? null;
-	const others = props.listings.filter((l) => l.id !== props.activeId);
 	const model = newListingMenu({
 		href: (kind, serviceType) =>
 			consoleHref({ createOpen: true, createKind: kind, createModel: serviceType }),
@@ -310,18 +273,16 @@ function OutlineLane(props: OutlineLaneProps & LaneChrome): JSX.Element {
 			/>
 
 			<div class="cat-lane__full">
-				<LaneHead>
-					<a class="cat-lane__back" href="/catalogue">
-						<Icon name="arrow-left" /> Catalogue
+				<div class="cat-lane__head">
+					<a class="cat-lane__back" href={consoleHref({})} aria-label="Back to catalogue">
+						<span class="cat-lane__back-icon" aria-hidden="true">
+							<Icon name="arrow-left" />
+						</span>
+						<span class="cat-lane__back-label">Back</span>
 					</a>
-				</LaneHead>
+				</div>
 
 				<LaneList label="Listings">
-					{current && (
-						<div class="cat-lane__pinned">
-							<ListingLaneRow listing={current} href={listingHref(current.id)} active />
-						</div>
-					)}
 					<LaneSections>
 						{outline && outline.sections.length > 0 && (
 							<LaneSection
@@ -350,10 +311,15 @@ function OutlineLane(props: OutlineLaneProps & LaneChrome): JSX.Element {
 							open={open.value.listings}
 							onToggle={() => (open.value = { ...open.value, listings: !open.value.listings })}
 						>
-							{others.length === 0
-								? <LaneEmpty title="No other listings" />
-								: others.map((l) => (
-									<ListingLaneRow key={l.id} listing={l} href={listingHref(l.id)} active={false} />
+							{props.listings.length === 0
+								? <LaneEmpty title="No listings yet" />
+								: props.listings.map((l) => (
+									<ListingLaneRow
+										key={l.id}
+										listing={l}
+										href={listingHref(l.id)}
+										active={l.id === props.activeId}
+									/>
 								))}
 						</LaneSection>
 					</LaneSections>

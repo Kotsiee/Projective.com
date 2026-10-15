@@ -2,7 +2,7 @@ import { assertEquals } from "@std/assert";
 import { assertSpyCalls, stub } from "@std/testing/mock";
 import { fail, ok } from "@server/services/ServiceResult.ts";
 import { CatalogueBackendService } from "@server/services/catalogue/CatalogueBackendService.ts";
-import type { CataloguePage } from "@projective/types/catalogue";
+import { type CataloguePage, EMPTY_FACET_COUNTS } from "@projective/types/catalogue";
 import { handler as workspace } from "./workspace-handler.ts";
 import { handler as consoleRoute } from "./console-handler.ts";
 
@@ -48,6 +48,7 @@ const EMPTY_PAGE: CataloguePage = {
 	nextCursor: null,
 	total: 0,
 	statusCounts: { draft: 0, published: 0, paused: 0, archived: 0 },
+	facetCounts: EMPTY_FACET_COUNTS,
 	stats: {
 		activeListings: 0,
 		totalListings: 0,

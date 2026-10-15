@@ -1301,7 +1301,7 @@
 
 .tkv-subs__grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(var(--tkv-col), 1fr));
+	grid-template-columns: repeat(auto-fill, min(var(--tkv-col), 100%));
 	gap: var(--space-3);
 }
 

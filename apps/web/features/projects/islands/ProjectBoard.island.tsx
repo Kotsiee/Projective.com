@@ -8,7 +8,6 @@ import "../styles/ticket-view.css";
 // their carrier here (shared CSS only reaches a page through an island bundle — Decision #39). The
 // rich-text editor's own sheet rides along with the component itself.
 import "../styles/file-explorer.css";
-import "../styles/file-table.css";
 // The ticket view mounts the SAME submission tree, cards and file cards `/submissions` does, so it
 // needs their stylesheets. Shared `@projective/ui` CSS only reaches a page through an island bundle
 // (root CLAUDE.md §8 Decision #39), and this island is the ticket surface's only carrier.

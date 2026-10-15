@@ -67,11 +67,12 @@ export const CONSOLE_SEARCH_MAX = 160;
 export interface ConsoleUrlState {
 	view: ConsoleView;
 	type: CatalogueTypeFilter;
-	status?: ListingStatus;
-	/** Delivery-model facet (`?model=<delivery slug>`). */
-	model?: ServiceType;
-	/** CREATE-category facet (`?category=`). */
-	create?: CreateCategory;
+	/** Lifecycle facet (`?status=draft,paused`), canonical order; never empty. */
+	status: ListingStatus[];
+	/** Delivery-model facet (`?model=<delivery slug>,…`); empty = every model. */
+	model: ServiceType[];
+	/** CREATE-category facet (`?category=`); empty = every category. */
+	create: CreateCategory[];
 	sort: CatalogueSort;
 	dir: CatalogueSortDir;
 	search: string;
@@ -87,10 +88,16 @@ export interface ConsoleUrlState {
 	createModel?: ServiceType;
 }
 
+/** The statuses the console opens on: everything but `archived`. */
+export const DEFAULT_CONSOLE_STATUSES: readonly ListingStatus[] = ["draft", "published", "paused"];
+
 /** The console state with nothing chosen. */
 export const CONSOLE_DEFAULTS: Readonly<ConsoleUrlState> = {
 	view: "listings",
 	type: "all",
+	status: [...DEFAULT_CONSOLE_STATUSES],
+	model: [],
+	create: [],
 	sort: "recent",
 	dir: defaultSortDir("recent"),
 	search: "",
@@ -108,6 +115,35 @@ function pick<T>(schema: z.ZodType<T>, raw: string | null): T | undefined {
 function modelFromSlug(raw: string | null): ServiceType | undefined {
 	const model = pick(DeliveryModel, raw);
 	return model ? serviceTypeOf(model) : undefined;
+}
+
+/** `values` deduplicated and in `order`, dropping anything `order` does not hold. */
+export function canonicalSet<T>(order: readonly T[], values: Iterable<T>): T[] {
+	const held = new Set(values);
+	return order.filter((v) => held.has(v));
+}
+
+function pickList<T>(
+	order: readonly T[],
+	raw: string | null,
+	read: (s: string) => T | undefined,
+): T[] {
+	if (!raw) return [];
+	const picked = raw.split(",").map((s) => read(s.trim())).filter((v): v is T => v !== undefined);
+	return canonicalSet(order, picked);
+}
+
+/** A status set in canonical order; an empty one is the default set. */
+export function normaliseStatuses(values: Iterable<ListingStatus>): ListingStatus[] {
+	const set = canonicalSet(ListingStatus.options, values);
+	return set.length ? set : [...DEFAULT_CONSOLE_STATUSES];
+}
+
+/** Whether a status set is the one the console opens on. */
+export function isDefaultStatuses(values: readonly ListingStatus[]): boolean {
+	const set = normaliseStatuses(values);
+	return set.length === DEFAULT_CONSOLE_STATUSES.length &&
+		set.every((s, i) => s === DEFAULT_CONSOLE_STATUSES[i]);
 }
 
 interface CreateSeed {
@@ -153,21 +189,20 @@ export function parseConsoleUrl(url: URL): ConsoleUrlState {
 		search: normaliseSearch(q.get("search")),
 		period: pick(AnalyticsPeriod, q.get("period")) ?? CONSOLE_DEFAULTS.period,
 		scope: pick(ConsoleScope, q.get("scope")) ?? CONSOLE_DEFAULTS.scope,
+		status: normaliseStatuses(
+			pickList(ListingStatus.options, q.get("status"), (s) => pick(ListingStatus, s)),
+		),
+		model: pickList(ServiceType.options, q.get("model"), modelFromSlug),
+		create: pickList(CreateCategory.options, q.get("category"), (s) => pick(CreateCategory, s)),
 		...parseCreate(q.get("create")),
 	};
-	const status = pick(ListingStatus, q.get("status"));
-	if (status) state.status = status;
-	const model = modelFromSlug(q.get("model"));
-	if (model) state.model = model;
-	const create = pick(CreateCategory, q.get("category"));
-	if (create) state.create = create;
 	const client = pick(ClientKey, q.get("client"));
 	if (client) state.client = client;
 	return state;
 }
 
 function encode(value: string): string {
-	return encodeURIComponent(value).replace(/%3A/gi, ":").replace(/%40/g, "@");
+	return encodeURIComponent(value).replace(/%3A/gi, ":").replace(/%40/g, "@").replace(/%2C/gi, ",");
 }
 
 function query(pairs: ReadonlyArray<readonly [string, string | null | undefined]>): string {
@@ -188,12 +223,15 @@ export function consoleHref(state: Partial<ConsoleUrlState>): string {
 	const scope = state.scope ?? CONSOLE_DEFAULTS.scope;
 	const period = state.period ?? CONSOLE_DEFAULTS.period;
 	const search = normaliseSearch(state.search);
+	const status = normaliseStatuses(state.status ?? []);
+	const models = canonicalSet(ServiceType.options, state.model ?? []);
+	const creates = canonicalSet(CreateCategory.options, state.create ?? []);
 	return "/catalogue" + query([
 		["view", view === CONSOLE_DEFAULTS.view ? null : view],
 		["type", type === CONSOLE_DEFAULTS.type ? null : type],
-		["status", state.status],
-		["model", state.model ? deliveryModelOf(state.model) : null],
-		["category", state.create],
+		["status", isDefaultStatuses(status) ? null : status.join(",")],
+		["model", models.map(deliveryModelOf).join(",")],
+		["category", creates.join(",")],
 		["scope", scope === CONSOLE_DEFAULTS.scope ? null : scope],
 		["search", search],
 		["sort", sort === CONSOLE_DEFAULTS.sort ? null : sort],

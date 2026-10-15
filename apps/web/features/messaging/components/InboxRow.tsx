@@ -1,4 +1,5 @@
 import type { JSX } from "preact";
+import { useRef } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import { Avatar } from "@projective/ui/display";
 import { MessagingIcon } from "./messaging-glyphs.tsx";
@@ -33,17 +34,21 @@ export interface InboxRowProps {
 	onMove: (id: string, folder: InboxFolder) => void;
 	onToggleMute: (id: string) => void;
 	onDelete: (id: string) => void;
+	/** Told whether the menu's Copy link reached the clipboard. */
+	onCopied?: (ok: boolean) => void;
 }
 // #endregion
 
 export function InboxRow(props: InboxRowProps): JSX.Element {
 	const { conversation: c, href, active, compact } = props;
 	const menuOpen = useSignal(false);
+	const rowRef = useRef<HTMLDivElement>(null);
 	const context = contextLabel(c);
 	const { speaker, body } = splitPreview(c.preview);
 
 	return (
 		<div
+			ref={rowRef}
 			class="inbox-row"
 			data-active={active ? "true" : undefined}
 			data-unread={c.unread ? "true" : undefined}
@@ -99,10 +104,13 @@ export function InboxRow(props: InboxRowProps): JSX.Element {
 				conversation={c}
 				open={menuOpen}
 				triggerClass="inbox-row__menu"
+				href={href}
+				surface={rowRef}
 				onToggleStar={props.onToggleStar}
 				onToggleMute={props.onToggleMute}
 				onMove={props.onMove}
 				onDelete={props.onDelete}
+				onCopied={props.onCopied}
 			/>
 		</div>
 	);

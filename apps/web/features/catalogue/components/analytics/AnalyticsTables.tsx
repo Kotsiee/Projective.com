@@ -1,23 +1,41 @@
 import type { JSX } from "preact";
-import { Table, type TableColumn } from "@projective/ui/display";
+import { type DataColumn, DataTable } from "@projective/ui/display";
 import { KEYWORD_NOTE, type KeywordView, type TopListingView } from "../../core/analytics-view.ts";
 
 /**
  * AnalyticsTables — the two tables on the analytics canvas: the searches a listing appeared in
  * (query · impressions · CTR), and, in console scope, the top listings, each linking to its own
- * Analytics tab. A CTR below its threshold prints a dash with the reason spoken, never 0%.
+ * Analytics tab. A CTR below its threshold prints a dash with the reason spoken, never 0%. Figures
+ * arrive formatted, so only the text columns sort.
  */
 
-const KEYWORD_COLUMNS: TableColumn<KeywordView>[] = [
-	{ field: "query", header: "Search" },
-	{ field: "impressions", header: "Impressions", align: "end", class: "cat-an__num" },
+const figure = <T,>(id: string, header: string, value: (row: T) => string): DataColumn<T> => ({
+	id,
+	header,
+	type: "custom",
+	align: "end",
+	width: 128,
+	render: (row) => <span class="ui-dt__num">{value(row)}</span>,
+});
+
+const KEYWORD_COLUMNS: readonly DataColumn<KeywordView>[] = [
 	{
-		field: "ctr",
+		id: "query",
+		header: "Search",
+		type: "text",
+		fill: true,
+		minWidth: 180,
+		value: (row) => row.query,
+	},
+	figure<KeywordView>("impressions", "Impressions", (row) => row.impressions),
+	{
+		id: "ctr",
 		header: "Click-through",
+		type: "custom",
 		align: "end",
-		class: "cat-an__num",
-		body: (row) =>
-			row.ctrSufficient ? row.ctr : (
+		width: 128,
+		render: (row) =>
+			row.ctrSufficient ? <span class="ui-dt__num">{row.ctr}</span> : (
 				<span>
 					<span aria-hidden="true">{row.ctr}</span>
 					<span class="ui-visually-hidden">Not enough impressions yet</span>
@@ -38,22 +56,33 @@ export function KeywordTable({ rows }: { rows: readonly KeywordView[] }): JSX.El
 	}
 	return (
 		<>
-			<Table value={[...rows]} columns={KEYWORD_COLUMNS} dataKey="query" />
+			<DataTable
+				rows={rows}
+				rowKey={(row) => row.query}
+				columns={KEYWORD_COLUMNS}
+				aria-label="Searches you appeared in"
+				virtualize={false}
+				columnChooser={false}
+				reorderable={false}
+			/>
 			<p class="cat-an__note">{KEYWORD_NOTE}</p>
 		</>
 	);
 }
 
-const TOP_COLUMNS: TableColumn<TopListingView>[] = [
+const TOP_COLUMNS: readonly DataColumn<TopListingView>[] = [
 	{
-		field: "title",
+		id: "title",
 		header: "Listing",
-		body: (row) => <a class="cat-an__link" href={row.href}>{row.title}</a>,
+		type: "text",
+		fill: true,
+		minWidth: 200,
+		value: (row) => row.title,
 	},
-	{ field: "gross", header: "Gross", align: "end", class: "cat-an__num" },
-	{ field: "orders", header: "Orders", align: "end", class: "cat-an__num" },
-	{ field: "views", header: "Views", align: "end", class: "cat-an__num" },
-	{ field: "conversion", header: "Conversion", align: "end", class: "cat-an__num" },
+	figure<TopListingView>("gross", "Gross", (row) => row.gross),
+	figure<TopListingView>("orders", "Orders", (row) => row.orders),
+	figure<TopListingView>("views", "Views", (row) => row.views),
+	figure<TopListingView>("conversion", "Conversion", (row) => row.conversion),
 ];
 
 /** The console's "Top listings". */
@@ -61,5 +90,16 @@ export function TopListingsTable({ rows }: { rows: readonly TopListingView[] }):
 	if (rows.length === 0) {
 		return <p class="cat-an__empty">No listing has been viewed or sold in this window yet.</p>;
 	}
-	return <Table value={[...rows]} columns={TOP_COLUMNS} dataKey="id" />;
+	return (
+		<DataTable
+			rows={rows}
+			rowKey={(row) => row.id}
+			columns={TOP_COLUMNS}
+			aria-label="Top listings"
+			rowHref={(row) => row.href}
+			virtualize={false}
+			columnChooser={false}
+			reorderable={false}
+		/>
+	);
 }

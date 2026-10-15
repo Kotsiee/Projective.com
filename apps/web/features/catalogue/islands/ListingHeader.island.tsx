@@ -2,15 +2,12 @@ import type { JSX } from "preact";
 import { useEffect } from "preact/hooks";
 import { useSignal, useSignalEffect } from "@preact/signals";
 import "../styles/workspace.css";
+import "../styles/header-band.css";
 import { Icon } from "@projective/ui/icons";
-import { Button } from "@projective/ui/fields";
 import { Tag } from "@projective/ui/display";
+import { Tooltip } from "@projective/ui/feedback";
 import { TabMenu, useMediaQuery } from "@projective/ui/navigation";
-import {
-	consoleHref,
-	type ListingStatus,
-	type WorkspaceUrlState,
-} from "../types/catalogue-types.ts";
+import type { ListingStatus, WorkspaceUrlState } from "../types/catalogue-types.ts";
 import { type StatusMeta, statusMeta } from "../core/catalogue-model.ts";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import {
@@ -71,11 +68,13 @@ const TONE_SEVERITY: Readonly<Record<StatusMeta["tone"], "success" | "secondary"
 };
 
 /**
- * ListingHeader — the workspace's middle-nav HEADER band: the way back to the console, the
- * listing's live title, its lifecycle status (a permitted status container), the save state as meta
- * text ("Saved · 2s ago", "Saving…", "Couldn't save" with Retry), the Edit · Preview · Analytics ·
- * Clients tab strip (Clients carries the count of buyers waiting on the seller), and the Card
- * button that shows the live card and readiness panel (a drawer below 1280px).
+ * ListingHeader — the workspace's middle-nav HEADER band, laid out like the console's
+ * ({@link CatalogueHeader}) and the channel headers: at the start the identity block — the listing's
+ * live title over a meta line of its slug, its lifecycle status
+ * (a permitted status container) and the save state ("Saved · 2s ago", "Saving…", "Couldn't save"
+ * with Retry); the Edit · Preview · Analytics · Clients tab strip centred (Clients carries the count
+ * of buyers waiting on the seller); and at the end the icon-only Card toggle that shows the live card
+ * and readiness panel (a drawer below 1280px). The way back to the console is the lane head's.
  *
  * The tabs are a WAI-ARIA tablist whose one panel is the canvas in another hydration root;
  * switching pushes a history entry, so Back returns to the previous tab.
@@ -118,49 +117,49 @@ export default function ListingHeader(props: ListingHeaderProps): JSX.Element {
 	}));
 
 	return (
-		<header class="cat-ws-head">
-			<a class="cat-ws-head__back" href={consoleHref({})}>
-				<Icon name="chevron-left" />
-				<span class="cat-ws-head__back-label">Catalogue</span>
-			</a>
-
-			<div class="cat-ws-head__id">
-				<h1 class="cat-ws-head__title" title={title}>{title || "Untitled listing"}</h1>
-				<p class="cat-ws-head__meta">
-					<Tag
-						class="cat-ws-head__status"
-						value={meta.label}
-						severity={TONE_SEVERITY[meta.tone]}
-						variant="subtle"
-					/>
-					<span class="cat-ws-head__save" data-state={state} aria-hidden="true">
-						{label.text}
-					</span>
-					{label.retry && (
-						<button
-							type="button"
-							class="cat-ws-head__link"
-							onClick={() => void retry()}
-						>
-							Retry
-						</button>
-					)}
-					{state === "conflict" && (
-						<button
-							type="button"
-							class="cat-ws-head__link"
-							onClick={() => (conflictPrompt.value = true)}
-						>
-							Resolve
-						</button>
-					)}
-				</p>
-				<span class="ui-visually-hidden" role="status">{ANNOUNCE[state]}</span>
+		<header class="cat-band cat-ws-head">
+			<div class="cat-band__start">
+				<div class="cat-band__idblock">
+					<h1 class="cat-band__title" title={title}>{title || "Untitled listing"}</h1>
+					<div class="cat-band__meta">
+						<span class="cat-ws-head__id">{props.slug}</span>
+						<span class="cat-band__sep" aria-hidden="true">·</span>
+						<Tag
+							class="cat-ws-head__status"
+							value={meta.label}
+							severity={TONE_SEVERITY[meta.tone]}
+							variant="subtle"
+						/>
+						<span class="cat-band__sep cat-ws-head__savesep" aria-hidden="true">·</span>
+						<span class="cat-ws-head__save" data-state={state} aria-hidden="true">
+							{label.text}
+						</span>
+						{label.retry && (
+							<button
+								type="button"
+								class="cat-ws-head__link"
+								onClick={() => void retry()}
+							>
+								Retry
+							</button>
+						)}
+						{state === "conflict" && (
+							<button
+								type="button"
+								class="cat-ws-head__link"
+								onClick={() => (conflictPrompt.value = true)}
+							>
+								Resolve
+							</button>
+						)}
+					</div>
+					<span class="ui-visually-hidden" role="status">{ANNOUNCE[state]}</span>
+				</div>
 			</div>
 
 			<TabMenu
 				id={WORKSPACE_TABS_ID}
-				class="cat-ws-head__tabs"
+				class="cat-band__tabs"
 				model={model}
 				activeIndex={tabIndex}
 				onActiveIndexChange={(i) => {
@@ -171,19 +170,26 @@ export default function ListingHeader(props: ListingHeaderProps): JSX.Element {
 				aria-label="Listing workspace"
 			/>
 
-			{inspector && (
-				<Button
-					class="cat-ws-head__card"
-					size="sm"
-					severity="neutral"
-					variant="outlined"
-					label="Card"
-					icon={<Icon name="panel-right" />}
-					aria-expanded={panelOpen}
-					aria-controls={docked ? INSPECTOR_ID : undefined}
-					onClick={toggleContextPanel}
-				/>
-			)}
+			<div class="cat-band__end">
+				{inspector && (
+					<Tooltip
+						content={panelOpen ? "Hide listing card" : "Show listing card"}
+						placement="bottom"
+					>
+						<button
+							type="button"
+							class="cat-band__action cat-ws-head__card"
+							data-on={panelOpen ? "true" : undefined}
+							aria-label="Listing card"
+							aria-expanded={panelOpen}
+							aria-controls={docked ? INSPECTOR_ID : undefined}
+							onClick={toggleContextPanel}
+						>
+							<Icon name="panel-right" />
+						</button>
+					</Tooltip>
+				)}
+			</div>
 		</header>
 	);
 }

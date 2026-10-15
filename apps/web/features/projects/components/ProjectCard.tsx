@@ -1,18 +1,11 @@
-import type { JSX, RefObject, VNode } from "preact";
-import { useSignal } from "@preact/signals";
+import type { JSX, RefObject } from "preact";
+import { useRef } from "preact/hooks";
 import { requestShare } from "@web/features/share/core/share-request.ts";
 import { Avatar } from "@projective/ui/display";
-import { Popover, Tooltip } from "@projective/ui/feedback";
+import { Tooltip } from "@projective/ui/feedback";
+import { ActionMenu, composeMenu, linkActionItems, type MenuItem } from "@projective/ui/navigation";
 import { StatusIcon } from "./StatusIcon.tsx";
-import {
-	ArchiveIcon,
-	ExternalLinkIcon,
-	KebabIcon,
-	OwnerRoleIcon,
-	ShareIcon,
-	StarIcon,
-	WorkerRoleIcon,
-} from "./glyphs.tsx";
+import { KebabIcon, OwnerRoleIcon, StarIcon, WorkerRoleIcon } from "./glyphs.tsx";
 import { isOwnerRole } from "../types/projects-types.ts";
 import type { ProjectStatus, ProjectSummary } from "../types/projects-types.ts";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
@@ -47,34 +40,18 @@ const RESTED = new Set<ProjectStatus>(["completed", "cancelled"]);
 // #endregion
 
 // #region Kebab menu
-/** One row in the per-card action menu. `danger` styles the destructive Archive action. */
-interface CardMenuItem {
-	action: CardMenuAction;
-	label: string;
-	icon: VNode;
-	danger?: boolean;
-	/** Offered only to an authority role (owner/client/admin) — the archive is theirs to make. */
-	ownerOnly?: boolean;
-}
-
 /**
  * The actions offered by the kebab menu — only actions that DO something (root CLAUDE.md §3.11).
  * Report and Leave are absent rather than inert: neither has a backend or a product rule yet, and a
- * menu row that closes the menu and changes nothing is a control that lies.
+ * menu row that closes the menu and changes nothing is a control that lies. Open, Open in new tab,
+ * Copy link and Share resolve inside the card; Archive is the one action routed to the parent.
  */
-export type CardMenuAction = "open" | "share" | "archive";
-
-const MENU_ITEMS: readonly CardMenuItem[] = [
-	{ action: "open", label: "Open in new tab", icon: ExternalLinkIcon },
-	{ action: "share", label: "Share", icon: ShareIcon },
-	{ action: "archive", label: "Archive project", icon: ArchiveIcon, danger: true, ownerOnly: true },
-];
+export type CardMenuAction = "archive";
 
 /**
  * Higher-level layout zone the kebab menu must never slide under. A `bottom-end` menu triggered near
  * the far edge of the narrow middle-nav lane would otherwise clamp only to the viewport and overlap
- * the primary site sidebar; passed to the {@link Popover} edge-detection so the panel shifts clear
- * (re-measured live, so a collapsed/expanded rail stays honoured).
+ * the primary site sidebar (re-measured live, so a collapsed/expanded rail stays honoured).
  */
 const SHELL_AVOID = [".ui-app-shell__sidebar"] as const;
 // #endregion
@@ -87,12 +64,14 @@ export interface ProjectCardProps {
 	onToggleStar: (id: string) => void;
 	/** A kebab-menu action was picked (archive is routed to the parent, which confirms and writes). */
 	onMenuAction?: (id: string, action: CardMenuAction) => void;
+	/** Told whether Copy link reached the clipboard. */
+	onCopied?: (ok: boolean) => void;
 }
 
 export function ProjectCard(
-	{ item, active, onToggleStar, onMenuAction }: ProjectCardProps,
+	{ item, active, onToggleStar, onMenuAction, onCopied }: ProjectCardProps,
 ): JSX.Element {
-	const menuOpen = useSignal(false);
+	const cardRef = useRef<HTMLDivElement>(null);
 
 	// The counterparty is the meaningful "other side" of the engagement (the client to a freelancer,
 	// the provider to a client) — the card's primary identity; fall back to the owner when absent.
@@ -123,21 +102,29 @@ export function ProjectCard(
 	const isShared = item.scopeType !== "personal";
 	const hasFooter = isShared || Boolean(item.activity);
 
-	function handleMenu(action: CardMenuAction): void {
-		menuOpen.value = false;
-		if (action === "open") {
-			globalThis.open?.(href, "_blank", "noopener");
-			return;
-		}
-		if (action === "share") {
-			requestShare({ href, title: item.title, noun: "project" });
-			return;
-		}
-		onMenuAction?.(item.id, action);
-	}
+	const ownerRows: MenuItem[] = isOwner
+		? [{
+			key: "archive",
+			label: "Archive project",
+			icon: "archive-box",
+			danger: true,
+			command: () => onMenuAction?.(item.id, "archive"),
+		}]
+		: [];
+	const menu = composeMenu(
+		linkActionItems({
+			href,
+			title: item.title,
+			include: ["open", "open-new-tab", "copy-link", "share"],
+			onShare: () => requestShare({ href, title: item.title, noun: "project" }),
+			onCopied,
+		}),
+		ownerRows,
+	);
 
 	return (
 		<div
+			ref={cardRef}
 			class="proj-card"
 			data-active={active ? "true" : undefined}
 			data-status={item.status}
@@ -197,12 +184,12 @@ export function ProjectCard(
 						{StarIcon}
 					</button>
 
-					<Popover
-						open={menuOpen}
+					<ActionMenu
+						model={menu}
+						surface={cardRef}
 						placement="bottom-end"
 						avoid={SHELL_AVOID}
-						allowOverflow={["bottom"]}
-						class="proj-cardmenu-pop"
+						aria-label={`Actions for ${item.title}`}
 						trigger={(api) => (
 							<button
 								type="button"
@@ -218,23 +205,7 @@ export function ProjectCard(
 								{KebabIcon}
 							</button>
 						)}
-					>
-						<div class="proj-cardmenu" role="menu" aria-label={`Actions for ${item.title}`}>
-							{MENU_ITEMS.filter((mi) => !mi.ownerOnly || isOwner).map((mi) => (
-								<button
-									key={mi.action}
-									type="button"
-									role="menuitem"
-									class="proj-cardmenu__item"
-									data-danger={mi.danger ? "true" : undefined}
-									onClick={() => handleMenu(mi.action)}
-								>
-									<span class="proj-cardmenu__icon" aria-hidden="true">{mi.icon}</span>
-									<span class="proj-cardmenu__label">{mi.label}</span>
-								</button>
-							))}
-						</div>
-					</Popover>
+					/>
 				</div>
 			</div>
 

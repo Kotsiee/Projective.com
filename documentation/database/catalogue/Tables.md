@@ -72,7 +72,7 @@ carrying a product id (or neither) unrepresentable.
 | Column                                         | Notes                                                                              |
 | :--------------------------------------------- | :--------------------------------------------------------------------------------- |
 | `kind`                                         | `catalogue.listing_kind`: `product` · `service`.                                   |
-| `status` / `published_at`                      | `catalogue.listing_status`: `draft` · `published` · `paused` · `archived`. Published ⇒ `published_at` set. Nothing is hard-deleted; archiving is a status. |
+| `status` / `published_at`                      | `catalogue.listing_status`: `draft` · `published` · `paused` · `archived`. Published ⇒ `published_at` set. Archiving is a status; the only hard delete is `catalogue.delete_listing`, for a listing no buyer has engaged with (Decision #221). |
 | `service_blueprint_id` / `product_id`          | Exactly one, matching `kind`.                                                      |
 | `title`, `description(_text)`, `category`, `delivery_label` |                                                                       |
 | `seo_title` varchar(70), `seo_description` varchar(160) | Search-result overrides (Decision #217). NULL falls back to the title and description. |

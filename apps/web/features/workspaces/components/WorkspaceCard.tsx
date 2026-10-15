@@ -1,19 +1,17 @@
 import type { JSX, RefObject } from "preact";
-import { useSignal } from "@preact/signals";
-import { Popover, Tooltip } from "@projective/ui/feedback";
+import { useRef } from "preact/hooks";
+import { Tooltip } from "@projective/ui/feedback";
+import {
+	ActionMenu,
+	composeMenu,
+	type ContextSurfaceSource,
+	linkActionItems,
+	type MenuItem,
+} from "@projective/ui/navigation";
 import { styleVars } from "@ui/core/style.ts";
 import { kindCopy, roleLabel, type WorkspaceSummary } from "@projective/types/workspace";
 import { initialsOf } from "../core/workspace-model.ts";
-import {
-	ArchiveGlyph,
-	cloneGlyph,
-	ExitGlyph,
-	KebabGlyph,
-	LinkGlyph,
-	ProfileGlyph,
-	SwitchGlyph,
-	WalletGlyph,
-} from "../core/workspace-glyphs.tsx";
+import { cloneGlyph, KebabGlyph } from "../core/workspace-glyphs.tsx";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
@@ -65,9 +63,11 @@ export function WorkspaceCard(props: WorkspaceCardProps): JSX.Element {
 	const stats = summary.stats.slice(0, 3);
 	const hidden = Math.max(0, summary.memberCount - summary.faces.length);
 	const unfinished = summary.setupProgress < 1;
+	const cardRef = useRef<HTMLElement>(null);
 
 	return (
 		<article
+			ref={cardRef}
 			class="wsp-card"
 			role="listitem"
 			data-kind={summary.kind}
@@ -123,7 +123,13 @@ export function WorkspaceCard(props: WorkspaceCardProps): JSX.Element {
 							</span>
 						)}
 					<StateDots summary={summary} />
-					<WorkspaceKebab summary={summary} href={href} busy={busy} onAction={onAction} />
+					<WorkspaceKebab
+						summary={summary}
+						href={href}
+						busy={busy}
+						onAction={onAction}
+						surface={cardRef}
+					/>
 				</div>
 			</div>
 
@@ -286,32 +292,116 @@ function MemberStack(
 export interface WorkspaceKebabProps extends WorkspaceCardProps {
 	/** Anchor the panel to the block-end edge on a row rather than a card. */
 	placement?: "bottom-end" | "bottom-start";
+	/** The card or row this menu belongs to; right-click on it opens the same rows at the pointer. */
+	surface?: ContextSurfaceSource;
+}
+
+const MENU_AVOID = [".ui-app-shell__sidebar", ".ui-middle-nav__lane"] as const;
+
+function linkRows(summary: WorkspaceSummary, href: string, copyLink: () => void): MenuItem[] {
+	return linkActionItems({
+		href,
+		title: summary.name,
+		include: ["open", "open-new-tab", "copy-link"],
+	}).map((row) => {
+		if (row.key === "link-open") return { ...row, label: "Open console" };
+		if (row.key === "link-copy") return { ...row, command: copyLink };
+		return row;
+	});
+}
+
+function actingRow(
+	summary: WorkspaceSummary,
+	busy: boolean,
+	dispatch: (action: WorkspaceCardAction) => void,
+): MenuItem {
+	const busyReason = "A switch is already in progress.";
+	if (summary.isActing) {
+		return {
+			key: "exit",
+			label: "Return to acting personally",
+			icon: "logout",
+			disabled: busy,
+			disabledReason: busyReason,
+			command: () => dispatch("exit"),
+		};
+	}
+	const archived = summary.status === "archived";
+	return {
+		key: "act",
+		label: `Act as this ${kindCopy(summary.kind).noun}`,
+		icon: "switch",
+		hint: "Everything you do is attributed to it",
+		disabled: busy || archived,
+		disabledReason: archived ? "Restore it before acting as it." : busyReason,
+		command: () => dispatch("act"),
+	};
+}
+
+function ownerRows(
+	summary: WorkspaceSummary,
+	dispatch: (action: WorkspaceCardAction) => void,
+): MenuItem[] {
+	if (!summary.isOwner) return [];
+	return summary.status === "archived"
+		? [{ key: "restore", label: "Restore", icon: "history", command: () => dispatch("restore") }]
+		: [{
+			key: "archive",
+			label: "Archive",
+			icon: "archive-box",
+			hint: "Hidden from your roster; restorable",
+			command: () => dispatch("archive"),
+		}];
+}
+
+/**
+ * An entity's menu rows: the console link rows, acting as it, its public profile and money, and the
+ * owner's archive or restore. The card's kebab and the compact table's row actions both render this.
+ */
+export function workspaceMenu(
+	summary: WorkspaceSummary,
+	href: string,
+	busy: boolean,
+	onAction: (action: WorkspaceCardAction, summary: WorkspaceSummary) => void,
+): MenuItem[] {
+	const copy = kindCopy(summary.kind);
+	const dispatch = (action: WorkspaceCardAction) => onAction(action, summary);
+	return composeMenu(
+		linkRows(summary, href, () => dispatch("copy")),
+		[actingRow(summary, busy, dispatch)],
+		[
+			{ key: "profile", label: "Public profile", icon: "user", command: () => dispatch("profile") },
+			{
+				key: "wallet",
+				label: `Open the ${copy.moneyNoun}`,
+				icon: "wallet",
+				command: () => dispatch("wallet"),
+			},
+		],
+		ownerRows(summary, dispatch),
+	);
 }
 
 /**
  * The per-entity action menu, shared verbatim by the card and the compact view so the two presentations
- * can never drift into offering different actions for the same entity.
+ * can never drift into offering different actions for the same entity. Right-clicking the `surface`
+ * opens the same rows at the pointer.
  *
- * `avoid` keeps the panel clear of the middle-nav lane: the roster body sits directly beside it, and a
- * `bottom-end` panel near the inline-start edge of the region would otherwise clamp to the viewport and
- * slide underneath the rail (Decision #19).
+ * Archiving is offered only to an owner, and only ever as "archive" — nothing on this surface
+ * hard-deletes (root CLAUDE.md §5). `avoid` keeps the panel clear of the middle-nav lane the roster
+ * body sits beside (Decision #19).
  */
 export function WorkspaceKebab(props: WorkspaceKebabProps): JSX.Element {
-	const { summary, href, busy, onAction, placement = "bottom-end" } = props;
-	const open = useSignal(false);
-	const copy = kindCopy(summary.kind);
-
-	function dispatch(action: WorkspaceCardAction): void {
-		open.value = false;
-		onAction(action, summary);
-	}
+	const { summary, href, busy = false, onAction, surface, placement = "bottom-end" } = props;
+	const model = workspaceMenu(summary, href, busy, onAction);
 
 	return (
-		<Popover
-			open={open}
+		<ActionMenu
+			model={model}
+			surface={surface}
 			placement={placement}
-			avoid={[".ui-app-shell__sidebar", ".ui-middle-nav__lane"]}
-			class="wsp-menu"
+			avoid={MENU_AVOID}
+			aria-label={`Actions for ${summary.name}`}
 			trigger={(api) => (
 				<button
 					type="button"
@@ -326,101 +416,7 @@ export function WorkspaceKebab(props: WorkspaceKebabProps): JSX.Element {
 					{cloneGlyph(KebabGlyph)}
 				</button>
 			)}
-		>
-			<div class="wsp-menu__list" role="menu">
-				{summary.isActing
-					? (
-						<MenuItem
-							glyph={cloneGlyph(ExitGlyph)}
-							label="Return to acting personally"
-							disabled={busy}
-							onClick={() => dispatch("exit")}
-						/>
-					)
-					: (
-						<MenuItem
-							glyph={cloneGlyph(SwitchGlyph)}
-							label={`Act as this ${copy.noun}`}
-							note="Everything you do is attributed to it"
-							disabled={busy || summary.status === "archived"}
-							onClick={() => dispatch("act")}
-						/>
-					)}
-				<div class="wsp-menu__sep" role="separator" />
-				<MenuItem
-					glyph={cloneGlyph(ProfileGlyph)}
-					label="Public profile"
-					onClick={() => dispatch("profile")}
-				/>
-				<MenuItem
-					glyph={cloneGlyph(WalletGlyph)}
-					label={`Open the ${copy.moneyNoun}`}
-					onClick={() => dispatch("wallet")}
-				/>
-				<MenuItem
-					glyph={cloneGlyph(LinkGlyph)}
-					label="Copy link"
-					onClick={() => dispatch("copy")}
-				/>
-				{
-					/*
-					 * Archiving is offered only to an owner, and only ever as "archive" — nothing on this
-					 * surface hard-deletes, so the reversible word is the honest one (root CLAUDE.md §5).
-					 */
-				}
-				{summary.isOwner && (
-					<>
-						<div class="wsp-menu__sep" role="separator" />
-						{summary.status === "archived"
-							? (
-								<MenuItem
-									glyph={cloneGlyph(ArchiveGlyph)}
-									label="Restore"
-									onClick={() => dispatch("restore")}
-								/>
-							)
-							: (
-								<MenuItem
-									glyph={cloneGlyph(ArchiveGlyph)}
-									label="Archive"
-									note="Hidden from your roster; restorable"
-									onClick={() => dispatch("archive")}
-								/>
-							)}
-					</>
-				)}
-				<a class="wsp-menu__item" role="menuitem" href={href}>
-					<span class="wsp-menu__icon" aria-hidden="true">{cloneGlyph(LinkGlyph)}</span>
-					<span class="wsp-menu__label">Open console</span>
-				</a>
-			</div>
-		</Popover>
-	);
-}
-
-function MenuItem(
-	{ glyph, label, note, disabled, onClick }: {
-		glyph: JSX.Element;
-		label: string;
-		note?: string;
-		disabled?: boolean;
-		onClick: () => void;
-	},
-): JSX.Element {
-	return (
-		<button
-			type="button"
-			role="menuitem"
-			class="wsp-menu__item"
-			disabled={disabled}
-			onClick={onClick}
-		>
-			<span class="wsp-menu__icon" aria-hidden="true">{glyph}</span>
-			<span class="wsp-menu__label">
-				{label}
-				{note && <span class="wsp-menu__note">{note}</span>}
-			</span>
-		</button>
+		/>
 	);
 }
 // #endregion

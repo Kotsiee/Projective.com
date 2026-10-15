@@ -32,3 +32,7 @@
 		)
 	);
 }
+
+.ui-grid--auto.ui-grid--exact {
+	grid-template-columns: repeat(auto-fill, min(var(--grid-min, 16rem), 100%));
+}

@@ -3,33 +3,59 @@ import { useSignal } from "@preact/signals";
 import { Popover } from "@projective/ui/feedback";
 import { Button, InputText } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
-import { batchState, type BatchVerb, clearSelection, selection } from "../core/console-store.ts";
+import {
+	batchState,
+	type BatchVerb,
+	clearSelection,
+	listingsPage,
+	selection,
+} from "../core/console-store.ts";
 import { runBatch } from "../core/console-actions.ts";
 import type { BatchAction } from "../types/catalogue-types.ts";
+import { ListingRemovalDialog, type RemovalKind } from "./ListingRemovalDialog.tsx";
 
 /**
  * BatchBar — the footer band while listings are selected: how many, then the actions that apply to
  * all of them. Publish is the workflow commit (filled primary); Pause and Archive are neutral
- * utilities; Add to collection asks for the collection's name in a popover; Duplicate and Clear are
- * quiet. A run reports per listing above the canvas (`BatchReport`).
+ * utilities; Delete appears while any selected listing has no buyer history, and both removals
+ * confirm first, worded for what each does; Add to collection asks for the collection's name in a
+ * popover; Duplicate and Clear are quiet. A run reports per listing above the canvas (`BatchReport`).
  */
 
 const PUBLISH: BatchVerb = { base: "publish", past: "published" };
 const PAUSE: BatchVerb = { base: "pause", past: "paused" };
 const ARCHIVE: BatchVerb = { base: "archive", past: "archived" };
 const DUPLICATE: BatchVerb = { base: "duplicate", past: "duplicated" };
+const DELETE: BatchVerb = { base: "delete", past: "deleted" };
 const COLLECTION_ID = "cat-batch-collection";
 const COLLECTION_MAX = 80;
 
 export function BatchBar(): JSX.Element {
 	const collectionOpen = useSignal(false);
 	const collection = useSignal("");
+	const removal = useSignal<RemovalKind | null>(null);
+	const confirming = useSignal(false);
 	const count = selection.value.size;
+	const deletable =
+		(listingsPage.value?.items ?? []).filter((l) => l.deletable && selection.value.has(l.id))
+			.length;
 	const run = batchState.value;
 	const busy = (verb: BatchVerb) => run.running && run.verb?.base === verb.base;
 
 	function start(action: BatchAction, verb: BatchVerb): void {
 		void runBatch(action, verb);
+	}
+
+	function confirm(kind: RemovalKind): void {
+		removal.value = kind;
+		confirming.value = true;
+	}
+
+	function runRemoval(): void {
+		const kind = removal.peek();
+		removal.value = null;
+		if (kind === "delete") start({ action: "delete" }, DELETE);
+		else if (kind === "archive") start({ action: "status", status: "archived" }, ARCHIVE);
 	}
 
 	function addToCollection(e: JSX.TargetedEvent<HTMLFormElement>): void {
@@ -71,8 +97,20 @@ export function BatchBar(): JSX.Element {
 					icon={<Icon name="archive-box" />}
 					loading={busy(ARCHIVE)}
 					disabled={run.running}
-					onClick={() => start({ action: "status", status: "archived" }, ARCHIVE)}
+					onClick={() => confirm("archive")}
 				/>
+				{deletable > 0 && (
+					<Button
+						size="sm"
+						severity="danger"
+						variant="outlined"
+						label="Delete"
+						icon={<Icon name="trash" />}
+						loading={busy(DELETE)}
+						disabled={run.running}
+						onClick={() => confirm("delete")}
+					/>
+				)}
 				<Popover
 					open={collectionOpen}
 					placement="top-start"
@@ -131,6 +169,20 @@ export function BatchBar(): JSX.Element {
 					onClick={clearSelection}
 				/>
 			</div>
+			{removal.value && (
+				<ListingRemovalDialog
+					visible={confirming}
+					kind={removal.value}
+					subject={removal.value === "delete" ? countOf(deletable) : countOf(count)}
+					skipped={removal.value === "delete" ? count - deletable : 0}
+					onConfirm={runRemoval}
+					onCancel={() => (removal.value = null)}
+				/>
+			)}
 		</div>
 	);
+}
+
+function countOf(n: number): string {
+	return n === 1 ? "1 listing" : `${n} listings`;
 }

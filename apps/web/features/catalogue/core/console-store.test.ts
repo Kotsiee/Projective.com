@@ -3,6 +3,7 @@ import {
 	CONSOLE_DEFAULTS,
 	consoleHref,
 	type ConsoleUrlState,
+	EMPTY_FACET_COUNTS,
 	parseConsoleUrl,
 } from "../types/catalogue-types.ts";
 import type { CataloguePage, ListingSummary } from "../types/catalogue-types.ts";
@@ -44,10 +45,10 @@ Deno.test("a new sort key opens in its natural direction; a named direction is k
 });
 
 Deno.test("a product scope drops the delivery-model facet", () => {
-	const modelled = mergeConsoleUrl(BASE, { model: "Pipeline" });
-	assertEquals(modelled.model, "Pipeline");
-	assertEquals(mergeConsoleUrl(modelled, { type: "product" }).model, undefined);
-	assertEquals(mergeConsoleUrl(modelled, { type: "service" }).model, "Pipeline");
+	const modelled = mergeConsoleUrl(BASE, { model: ["Pipeline", "Session"] });
+	assertEquals(modelled.model, ["Pipeline", "Session"]);
+	assertEquals(mergeConsoleUrl(modelled, { type: "product" }).model, []);
+	assertEquals(mergeConsoleUrl(modelled, { type: "service" }).model, ["Pipeline", "Session"]);
 });
 
 Deno.test("the client drawer exists only on the clients view", () => {
@@ -73,19 +74,28 @@ Deno.test("closing the create modal drops its seed", () => {
 });
 
 Deno.test("clearing a facet removes it from the address", () => {
-	const faceted = mergeConsoleUrl(BASE, { status: "draft", create: "educate" });
-	assertEquals(consoleHref(faceted), "/catalogue?status=draft&category=educate");
+	const faceted = mergeConsoleUrl(BASE, { status: ["draft", "archived"], create: ["educate"] });
+	assertEquals(consoleHref(faceted), "/catalogue?status=draft,archived&category=educate");
 	assertEquals(
-		consoleHref(mergeConsoleUrl(faceted, { status: undefined })),
+		consoleHref(mergeConsoleUrl(faceted, { status: [] })),
 		"/catalogue?category=educate",
 	);
+	assertEquals(
+		consoleHref(mergeConsoleUrl(faceted, { create: [] })),
+		"/catalogue?status=draft,archived",
+	);
+});
+
+Deno.test("the console opens on every status but Archived", () => {
+	assertEquals(BASE.status, ["draft", "published", "paused"]);
+	assertEquals(listParamsOf(BASE).status, ["draft", "published", "paused"]);
 });
 
 Deno.test("a merged state is canonical: its own href parses back to it", () => {
 	const patches: Partial<ConsoleUrlState>[] = [
 		{ view: "analytics", period: "12m" },
-		{ type: "service", model: "Group Session", status: "paused", sort: "price" },
-		{ search: "  brand sprint  ", create: "advise", scope: "collection:starter-kits" },
+		{ type: "service", model: ["Group Session"], status: ["paused", "draft"], sort: "price" },
+		{ search: "  brand sprint  ", create: ["advise", "run"], scope: "collection:starter-kits" },
 		{ view: "clients", client: "@ada_lin", dir: "asc" },
 	];
 	for (const patch of patches) {
@@ -96,7 +106,7 @@ Deno.test("a merged state is canonical: its own href parses back to it", () => {
 });
 
 Deno.test("the address keeps parameters the console does not own", () => {
-	const state = mergeConsoleUrl(BASE, { status: "draft" });
+	const state = mergeConsoleUrl(BASE, { status: ["draft"] });
 	assertEquals(
 		consoleLocation(state, "?status=published&tkv=tkt-23456789ab"),
 		"/catalogue?status=draft&tkv=tkt-23456789ab",
@@ -110,9 +120,9 @@ Deno.test("the address keeps parameters the console does not own", () => {
 Deno.test("list params follow the URL and the quick filters", () => {
 	const state = mergeConsoleUrl(BASE, {
 		type: "service",
-		model: "Pipeline",
-		create: "run",
-		status: "published",
+		model: ["Pipeline"],
+		create: ["run"],
+		status: ["published"],
 		search: "logo",
 		sort: "price",
 		period: "12m",
@@ -121,9 +131,9 @@ Deno.test("list params follow the URL and the quick filters", () => {
 		listParamsOf(state, { attention: true, promoted: false, bestSelling: true }, "svc-x"),
 		{
 			type: "service",
-			status: "published",
-			model: "Pipeline",
-			createCategory: "run",
+			status: ["published"],
+			model: ["Pipeline"],
+			createCategory: ["run"],
 			search: "logo",
 			sort: "price",
 			dir: "asc",
@@ -142,7 +152,7 @@ Deno.test("the read key ignores what does not change the listings read", () => {
 	const key = listQueryKey(BASE);
 	assertEquals(listQueryKey(mergeConsoleUrl(BASE, { view: "analytics" })), key);
 	assertEquals(listQueryKey(mergeConsoleUrl(BASE, { createOpen: true })), key);
-	assertNotEquals(listQueryKey(mergeConsoleUrl(BASE, { status: "draft" })), key);
+	assertNotEquals(listQueryKey(mergeConsoleUrl(BASE, { status: ["draft"] })), key);
 	assertNotEquals(listQueryKey(BASE, { ...NO_QUICK_FILTERS, promoted: true }), key);
 });
 // #endregion
@@ -226,6 +236,7 @@ function listing(id: string): ListingSummary {
 		updatedLabel: "Edited today",
 		promoted: false,
 		needsAttention: false,
+		deletable: false,
 	};
 }
 
@@ -236,6 +247,7 @@ function page(ids: readonly string[]): CataloguePage {
 		nextCursor: null,
 		total: ids.length,
 		statusCounts: { draft: ids.length, published: 0, paused: 0, archived: 0 },
+		facetCounts: EMPTY_FACET_COUNTS,
 		stats: {
 			activeListings: 0,
 			totalListings: ids.length,

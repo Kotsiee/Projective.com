@@ -3,7 +3,7 @@
  *
  * Cross-cutting primitives (`TreeNode`, `SortState`, `SortDir`, `FilterMatchMode`, `FilterConstraint`,
  * `LazyLoadEvent`, `MenuItem`) live in the package-shared `../../types/mod.ts`. Only the column
- * descriptor shared by the tabular collections (`Table`, `TreeTable`) is defined here.
+ * descriptor of `TreeTable` is defined here; `DataTable`'s contract lives in `./data-table.ts`.
  */
 import type { JSX, VNode } from "preact";
 import type { FilterMatchMode } from "../../types/mod.ts";
@@ -13,7 +13,7 @@ import type { FilterMatchMode } from "../../types/mod.ts";
 export type ColumnAlign = "start" | "center" | "end";
 
 /**
- * Declarative column descriptor for {@link Table} and {@link TreeTable}. `field` is the row property
+ * Declarative column descriptor for {@link TreeTable}. `field` is the row property
  * read for value/sort/filter; every capability (sort, filter, resize, reorder, freeze) is opt-in per
  * column so a table only pays for what it enables. `body` overrides the default text projection with
  * a custom cell renderer.

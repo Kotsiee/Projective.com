@@ -105,18 +105,22 @@
 .cat-card__select {
 	position: absolute;
 	z-index: 2;
-	inset-block-start: var(--space-2);
-	inset-inline-start: var(--space-2);
+	inset-block-start: var(--space-1);
+	inset-inline-start: var(--space-1);
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	inline-size: var(--icon-xl);
 	block-size: var(--icon-xl);
-	border-radius: var(--radius-sm);
-	background: var(--chip-on-media);
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
 	opacity: 0;
 	cursor: pointer;
-	transition: opacity var(--dur-fast) var(--ease-standard);
+	transition:
+		opacity var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
 }
 
 .cat-card:hover .cat-card__select,
@@ -125,23 +129,25 @@
 	opacity: 1;
 }
 
+.cat-card__select:focus-visible {
+	outline: none;
+	box-shadow: none;
+}
+
+.cat-card__select:hover .ui-selection-check,
+.cat-card__select:focus-visible .ui-selection-check {
+	border-color: var(--on-surface);
+}
+
+.cat-card__select[aria-checked="true"]:hover .ui-selection-check,
+.cat-card__select[aria-checked="true"]:focus-visible .ui-selection-check {
+	border-color: var(--primary);
+}
+
 @media (hover: none) {
 	.cat-card__select {
 		opacity: 1;
 	}
-}
-
-.cat-card__check {
-	inline-size: var(--icon-sm);
-	block-size: var(--icon-sm);
-	margin: 0;
-	accent-color: var(--primary);
-	cursor: pointer;
-}
-
-.cat-card__check:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring-shadow);
 }
 
 .cat-card__body {
@@ -241,68 +247,24 @@
 	box-shadow: var(--focus-ring-shadow);
 }
 
-.cat-card__kebab:active {
+.cat-card__kebab:active,
+.cat-card__select:active {
 	transform: scale(var(--cat-press-scale));
 	transition-duration: var(--dur-press);
-}
-
-.cat-menu {
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-px);
-	min-inline-size: 11rem;
-}
-
-.cat-menu__item {
-	display: inline-flex;
-	align-items: center;
-	gap: var(--space-2);
-	padding: var(--space-2) var(--space-3);
-	border: none;
-	border-radius: var(--radius-base);
-	background: transparent;
-	color: var(--on-surface);
-	font: inherit;
-	font-size: var(--text-sm);
-	text-align: start;
-	cursor: pointer;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.cat-menu__item:hover {
-	background: var(--surface-2);
-}
-
-.cat-menu__item:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring-shadow);
-}
-
-.cat-menu__item--danger,
-.cat-menu__item--danger .cat-menu__icon {
-	color: var(--danger);
-}
-
-.cat-menu__icon {
-	display: inline-flex;
-	color: var(--text-secondary);
-}
-
-.cat-menu__sep {
-	margin-block: var(--space-1);
-	border-block-start: var(--hairline);
 }
 
 @media (prefers-reduced-motion: reduce) {
 	.cat-card:hover .cat-card__img,
 	.cat-card:focus-within .cat-card__img,
-	.cat-card__kebab:active {
+	.cat-card__kebab:active,
+	.cat-card__select:active {
 		transform: none;
 	}
 }
 
 :root[data-motion="reduced"] .cat-card:hover .cat-card__img,
 :root[data-motion="reduced"] .cat-card:focus-within .cat-card__img,
-:root[data-motion="reduced"] .cat-card__kebab:active {
+:root[data-motion="reduced"] .cat-card__kebab:active,
+:root[data-motion="reduced"] .cat-card__select:active {
 	transform: none;
 }

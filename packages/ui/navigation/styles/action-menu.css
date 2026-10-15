@@ -23,6 +23,15 @@
 	animation: ui-action-menu-enter var(--dur-fast) var(--spring-standard);
 }
 
+.ui-action-menu__point {
+	position: fixed;
+	inset-block-start: var(--point-y, 0);
+	left: var(--point-x, 0);
+	inline-size: 0;
+	block-size: 0;
+	pointer-events: none;
+}
+
 .ui-action-menu--sub {
 	animation-name: ui-action-menu-enter-sub;
 }

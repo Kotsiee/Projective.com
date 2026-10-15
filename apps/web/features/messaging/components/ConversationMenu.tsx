@@ -1,13 +1,22 @@
 import type { JSX, RefObject } from "preact";
 import type { Signal } from "@preact/signals";
-import { Popover } from "@projective/ui/feedback";
-import { MessagingIcon, type MessagingIconName } from "./messaging-glyphs.tsx";
+import type { IconName } from "@projective/ui/icons";
+import {
+	ActionMenu,
+	type ActionMenuProps,
+	composeMenu,
+	linkActionItems,
+	type MenuItem,
+} from "@projective/ui/navigation";
+import { MessagingIcon } from "./messaging-glyphs.tsx";
 import type { ConversationSummary, InboxFolder } from "../types/messaging-types.ts";
 
 /**
  * ConversationMenu — the overflow (`…`) trigger and the conversation-state menu it opens, shared by the
  * lane row ({@link ConversationRow}) and the phone inbox row ({@link InboxRow}) so both offer the same
- * actions in the same order: Favourite · Mute · the folder moves the row's folder allows · Delete.
+ * actions in the same order: Open · Open in new tab · Copy link (when the row has an href) · Favourite ·
+ * Mute · the folder moves the row's folder allows · Delete. Right-clicking the row's `surface` opens
+ * the same rows at the pointer.
  */
 
 // #region Props
@@ -17,44 +26,93 @@ export interface ConversationMenuProps {
 	open: Signal<boolean>;
 	/** The trigger's class — each row positions its trigger in its own layout. */
 	triggerClass: string;
+	/** The conversation's canonical href; omitted, the menu offers no link rows. */
+	href?: string;
+	/** The row element; right-click, the ContextMenu key and Shift+F10 on it open this menu. */
+	surface?: ActionMenuProps["surface"];
 	onToggleStar: (id: string) => void;
 	onMove: (id: string, folder: InboxFolder) => void;
 	onDelete: (id: string) => void;
 	/** Omitted where the row does not offer muting. */
 	onToggleMute?: (id: string) => void;
+	/** Told whether Copy link reached the clipboard. */
+	onCopied?: (ok: boolean) => void;
 }
 // #endregion
 
 interface FolderMove {
 	to: InboxFolder;
 	label: string;
-	icon: MessagingIconName;
+	icon: IconName;
 }
 
 const SHELL_AVOID = [".ui-app-shell__sidebar"] as const;
 
 /** The folder moves a conversation in `folder` offers, in menu order. */
 export function folderMoves(folder: InboxFolder): FolderMove[] {
-	if (folder === "archived") return [{ to: "primary", label: "Unarchive", icon: "unarchive" }];
-	const archive: FolderMove = { to: "archived", label: "Archive", icon: "archive" };
+	if (folder === "archived") return [{ to: "primary", label: "Unarchive", icon: "inbox" }];
+	const archive: FolderMove = { to: "archived", label: "Archive", icon: "archive-box" };
 	return folder === "requests"
 		? [{ to: "primary", label: "Move to Primary", icon: "inbox" }, archive]
 		: [archive];
 }
 
+function stateRows(props: ConversationMenuProps): MenuItem[] {
+	const { conversation: c, onToggleMute } = props;
+	const rows: MenuItem[] = [{
+		key: "star",
+		label: c.starred ? "Remove favourite" : "Favourite",
+		icon: "star",
+		command: () => props.onToggleStar(c.id),
+	}];
+	if (onToggleMute) {
+		rows.push({
+			key: "mute",
+			label: c.muted ? "Unmute" : "Mute notifications",
+			icon: c.muted ? "bell" : "bell-off",
+			command: () => onToggleMute(c.id),
+		});
+	}
+	for (const move of folderMoves(c.folder)) {
+		rows.push({
+			key: `move-${move.to}`,
+			label: move.label,
+			icon: move.icon,
+			command: () => props.onMove(c.id, move.to),
+		});
+	}
+	rows.push({
+		key: "delete",
+		label: "Delete conversation",
+		icon: "trash",
+		danger: true,
+		command: () => props.onDelete(c.id),
+	});
+	return rows;
+}
+
 export function ConversationMenu(props: ConversationMenuProps): JSX.Element {
-	const { conversation: c, open } = props;
-	const run = (action: () => void) => () => {
-		action();
-		open.value = false;
-	};
+	const { conversation: c, href } = props;
+	const model = composeMenu(
+		href
+			? linkActionItems({
+				href,
+				title: c.title,
+				include: ["open", "open-new-tab", "copy-link"],
+				onCopied: props.onCopied,
+			})
+			: [],
+		stateRows(props),
+	);
 
 	return (
-		<Popover
-			open={open}
+		<ActionMenu
+			model={model}
+			open={props.open}
+			surface={props.surface}
 			placement="bottom-end"
-			class="conv-menu-pop"
 			avoid={SHELL_AVOID}
+			aria-label={`Actions for ${c.title}`}
 			trigger={(api) => (
 				<button
 					type="button"
@@ -70,61 +128,6 @@ export function ConversationMenu(props: ConversationMenuProps): JSX.Element {
 					<MessagingIcon name="meatball" />
 				</button>
 			)}
-		>
-			<div class="conv-menu" role="menu" aria-label={`Actions for ${c.title}`}>
-				<button
-					type="button"
-					role="menuitemcheckbox"
-					aria-checked={c.starred}
-					class="conv-menu__item"
-					onClick={run(() => props.onToggleStar(c.id))}
-				>
-					<span class="conv-menu__icon" aria-hidden="true">
-						<MessagingIcon name="star" />
-					</span>
-					<span>{c.starred ? "Remove favourite" : "Favourite"}</span>
-				</button>
-				{props.onToggleMute && (
-					<button
-						type="button"
-						role="menuitemcheckbox"
-						aria-checked={c.muted}
-						class="conv-menu__item"
-						onClick={run(() => props.onToggleMute?.(c.id))}
-					>
-						<span class="conv-menu__icon" aria-hidden="true">
-							<MessagingIcon name="mute" />
-						</span>
-						<span>{c.muted ? "Unmute" : "Mute notifications"}</span>
-					</button>
-				)}
-				{folderMoves(c.folder).map((move) => (
-					<button
-						key={move.to}
-						type="button"
-						role="menuitem"
-						class="conv-menu__item"
-						onClick={run(() => props.onMove(c.id, move.to))}
-					>
-						<span class="conv-menu__icon" aria-hidden="true">
-							<MessagingIcon name={move.icon} />
-						</span>
-						<span>{move.label}</span>
-					</button>
-				))}
-				<button
-					type="button"
-					role="menuitem"
-					class="conv-menu__item"
-					data-danger="true"
-					onClick={run(() => props.onDelete(c.id))}
-				>
-					<span class="conv-menu__icon" aria-hidden="true">
-						<MessagingIcon name="trash" />
-					</span>
-					<span>Delete conversation</span>
-				</button>
-			</div>
-		</Popover>
+		/>
 	);
 }

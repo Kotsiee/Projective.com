@@ -9,7 +9,6 @@ import "../../styles/board.css";
 import "../../styles/ticket-pipeline.css";
 import "../../styles/ticket-view.css";
 import "../../styles/file-explorer.css";
-import "../../styles/file-table.css";
 import "../../styles/submission-explorer.css";
 import "../../styles/submission-card.css";
 import "../../styles/file-card.css";

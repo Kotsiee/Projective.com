@@ -1,0 +1,57 @@
+.ui-selection-check {
+	--sc-size: 1.25rem;
+
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	inline-size: var(--sc-size);
+	block-size: var(--sc-size);
+	color: var(--on-primary);
+	background: var(--surface);
+	border: 1.5px solid var(--outline);
+	border-radius: var(--radius-full);
+	transition:
+		background-color var(--dur-fast) var(--ease-standard),
+		border-color var(--dur-fast) var(--ease-standard);
+}
+
+.ui-selection-check--sm {
+	--sc-size: 1rem;
+}
+
+.ui-selection-check__tick {
+	inline-size: 72%;
+	block-size: 72%;
+	opacity: 0;
+	transform: scale(0.6);
+	transition:
+		opacity var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.ui-selection-check[data-checked="true"] {
+	background: var(--primary);
+	border-color: var(--primary);
+}
+
+.ui-selection-check[data-checked="true"] .ui-selection-check__tick {
+	opacity: 1;
+	transform: none;
+}
+
+:root[data-contrast="high"] .ui-selection-check {
+	border-width: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ui-selection-check,
+	.ui-selection-check__tick {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .ui-selection-check,
+:root[data-motion="reduced"] .ui-selection-check__tick {
+	transition: none;
+}

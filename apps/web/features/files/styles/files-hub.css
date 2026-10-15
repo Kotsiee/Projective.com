@@ -3,7 +3,7 @@
  *
  * Everything here dresses a REUSED component rather than replacing one: the asset cell is
  * `.fx-card` (file-card.css), the folder cell is `.subm-card` (submission-card.css), the list is
- * `.fx-table` (file-table.css) and the preview is `.fx-modal` (attachment-modal.css). This sheet adds
+ * `DataTable` (`@projective/ui/display`) and the preview is `.fx-modal` (attachment-modal.css). This sheet adds
  * only what the hub introduces — the source/privacy overlay marks, the drag grip, the quota meter, the
  * breadcrumb bar, the tree's read-only lock, the Inspect pane and the workspace's own states.
  *

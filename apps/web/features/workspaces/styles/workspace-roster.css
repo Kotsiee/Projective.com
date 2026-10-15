@@ -589,88 +589,8 @@ index, and it disappears at 100% — a completed checklist is noise. */
 /* #endregion */
 
 /* #region The compact table view */
-/*
- * A dense alternative for somebody who belongs to a dozen entities. The wrapper is the ONLY scroller,
- * so the page body never scrolls horizontally.
- */
-.wsp-rtable {
-	inline-size: 100%;
-	min-inline-size: 0;
-	overflow-x: auto;
-}
-
-.wsp-rtable__grid {
-	display: flex;
-	flex-direction: column;
-	min-inline-size: 44rem;
-}
-
-.wsp-rtable__head {
-	display: grid;
-	grid-template-columns: minmax(0, 3fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto;
-	align-items: center;
-	gap: var(--space-3);
-	padding-inline: var(--space-3);
-	padding-block: var(--space-2);
-	border-block-end: var(--hairline);
-	position: sticky;
-	inset-block-start: 0;
-	z-index: var(--z-raised);
-	background: var(--surface);
-}
-
-.wsp-rtable__th {
-	font-size: var(--wsp-fs-micro);
-	letter-spacing: var(--wsp-label-track);
-	text-transform: uppercase;
-	font-weight: 600;
-	color: var(--text-secondary);
-}
-
-.wsp-rtable__th[data-align="end"] {
-	text-align: end;
-}
-
-.wsp-rtable__row {
-	display: grid;
-	grid-template-columns: minmax(0, 3fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto;
-	align-items: center;
-	gap: var(--space-3);
-	min-block-size: var(--wsp-rowh);
-	padding-inline: var(--space-3);
-	border-block-end: var(--hairline);
-	color: inherit;
-	text-decoration: none;
-	transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.wsp-rtable__row:hover {
-	background: var(--surface-1);
-}
-
-.wsp-rtable__row:focus-visible {
-	outline: none;
-}
-
-.wsp-rtable__row[data-acting="true"] {
-	background: var(--wsp-acting-tint);
-	box-shadow: inset var(--wsp-acting-line-h) 0 0 0 var(--wsp-acting);
-}
-
-.wsp-rtable__cell {
-	min-inline-size: 0;
-	font-size: var(--wsp-fs-body);
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.wsp-rtable__cell[data-align="end"] {
-	text-align: end;
-}
-
-.wsp-rtable__cell--muted {
-	color: var(--text-secondary);
+.wsp-rtable .ui-dt__row[data-state="acting"] {
+	--dt-row-bg: var(--wsp-acting-tint);
 }
 
 .wsp-rtable__ident {
@@ -703,35 +623,6 @@ index, and it disappears at 100% — a completed checklist is noise. */
 	white-space: nowrap;
 }
 
-/*
- * The compact view is rendered BY the library `Table` (sorting, sticky header, `aria-sort`, the shared
- * column-track model), so the block above supplies only the identity fragments its cell templates
- * compose. What the primitive brings that this surface cannot keep is its own container: `.ui-table`
- * draws a four-sided border, a radius and an opaque fill, and a boxed collection floating inside a
- * full-bleed band is exactly the separation §B.4 forbids on non-interactive content. Depth here is
- * tonal, so the box is dissolved and the header keeps the band's own step.
- *
- * The selectors are COMPOUND (`0,2,0`) on purpose — a bare `.wsp-rtable` would tie with `.ui-table`
- * and be decided by bundle order, which is the failure the card grid above documents.
- */
-.wsp-rtable.ui-table {
-	border: none;
-	border-radius: 0;
-	background: transparent;
-}
-
-.wsp-rtable.ui-table .ui-table__thead {
-	background: var(--surface);
-}
-
-/*
- * Acting: a single tonal step and nothing else. The row already carries the acting CHIP in its
- * identity cell, and the surface's rule is one loud channel per element — an edge line here would be
- * the second, and would have to be a physical inline offset that mirrors wrongly under `dir="rtl"`.
- */
-.wsp-rtable__acting {
-	background: var(--wsp-acting-tint);
-}
 /* #endregion */
 
 /* #region First-run empty state */

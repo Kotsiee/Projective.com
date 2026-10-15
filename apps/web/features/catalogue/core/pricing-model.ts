@@ -1,21 +1,16 @@
-import { toMajorUnits, toMinorUnits } from "@projective/types/finance";
+import { toMinorUnits } from "@projective/types/finance";
 import type { FormArchetype, ListingPricing } from "@projective/types/catalogue";
 
 /**
  * pricing-model — the pure rules under the Pricing section and the revision fields. A listing's
- * pricing is stored in whole units of its currency while every money control works in minor units,
- * so the conversion happens here, at the edge, exponent-aware (a JPY figure has no minor digits).
+ * pricing is stored in whole units of its currency, the units its money fields edit; the ticket range
+ * is worked in minor units, converted here, exponent-aware (a JPY figure has no minor digits).
  */
 
 // #region Units
-/** A stored whole-unit price as the minor units a `MoneyInput` holds. */
+/** A stored whole-unit price in minor units. */
 export function minorOf(whole: number | null, currency: string): number | null {
 	return toMinorUnits(whole, currency);
-}
-
-/** A `MoneyInput`'s minor units as the whole-unit price the listing stores. */
-export function wholeOf(minor: number | null, currency: string): number | null {
-	return toMajorUnits(minor, currency);
 }
 
 /** A picked currency as the ISO-4217 code a listing stores, or `null` when it is not one. */

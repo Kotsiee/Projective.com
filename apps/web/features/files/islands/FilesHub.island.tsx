@@ -10,13 +10,12 @@ import { useEffect, useRef } from "preact/hooks";
  * rather than relying on the component's own import being collected from somewhere it is not.
  */
 import "@web/features/projects/styles/file-card.css";
-import "@web/features/projects/styles/file-table.css";
 import "@web/features/projects/styles/submission-card.css";
 import "@web/features/projects/styles/attachment-modal.css";
 import "../styles/files-hub.css";
 // #endregion
 
-import type { Signal } from "@preact/signals";
+import type { ReadonlySignal } from "@preact/signals";
 import { VirtualGrid } from "@projective/ui/display";
 import { Splitter, SplitterPanel } from "@projective/ui/layout";
 import { Button } from "@projective/ui/fields";
@@ -35,7 +34,7 @@ import {
 import { FileTable } from "@web/features/projects/components/FileTable.tsx";
 import { SubmissionNodeList } from "@web/features/projects/components/SubmissionNodeList.tsx";
 import { AttachmentPreviewModal } from "@web/features/projects/components/AttachmentPreviewModal.tsx";
-import { filesZoom, gridColWidth, viewMode, zoom } from "@web/features/projects/core/view-state.ts";
+import { filesZoom, gridColWidth, viewMode, displayZoom } from "@web/features/projects/core/view-state.ts";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
 
 import {
@@ -55,6 +54,7 @@ import { assetHref, shapeFolderAsNode } from "../core/asset-model.ts";
 import {
 	appendPage,
 	applyError,
+	anchorId,
 	applyPage,
 	beginLoad,
 	channelId,
@@ -63,6 +63,7 @@ import {
 	crumbs,
 	currentPath,
 	currentScope,
+	DEFAULT_SORT,
 	error,
 	filesCommit,
 	folders,
@@ -114,8 +115,8 @@ import { starFile } from "@features/files/core/star-file.ts";
  *
  * The zoom store is the File Explorer's (`projects/core/view-state.ts`, `LocalKeys.FILES_ZOOM`), so the
  * footer rig, this workspace and every other `/files` surface move together. One continuous zoom drives
- * grid-below-centre and list-above-centre — hence no grid/list toggle button — and `Ctrl`+wheel over
- * the workspace nudges it (default-prevented so the browser never page-zooms instead).
+ * list-below-centre and grid-above-centre, and `Ctrl`+wheel anywhere over the content viewport nudges
+ * it (default-prevented so the browser never page-zooms instead).
  *
  * ## One grid holds folders AND files
  *
@@ -280,9 +281,11 @@ interface WorkspaceProps {
 	cells: Cell[];
 	assets: AssetItem[];
 	folderList: AssetFolder[];
-	tableSortKey: Signal<string>;
-	tableSortDir: Signal<FileSortDir>;
+	sortKey: ReadonlySignal<string>;
+	sortDir: ReadonlySignal<FileSortDir>;
 	onSort: (key: FileSortKey) => void;
+	selection: readonly string[];
+	onSelectionChange: (ids: string[]) => void;
 	onSelect: (asset: AssetItem, activation: AssetActivation) => void;
 	onPreview: (asset: AssetItem) => void;
 	onOpenRaw: (asset: AssetItem) => void;
@@ -304,7 +307,8 @@ function Workspace(p: WorkspaceProps): JSX.Element {
 		return (
 			<VirtualGrid
 				items={p.cells}
-				minColWidth={gridColWidth(zoom.value)}
+				minColWidth={gridColWidth(displayZoom.value)}
+				fit="exact"
 				rowHeight={(w) => w + CARD_META + GRID_GAP}
 				gap={GRID_GAP}
 				useWindow
@@ -336,6 +340,8 @@ function Workspace(p: WorkspaceProps): JSX.Element {
 				? (
 					<SubmissionNodeList
 						nodes={p.folderList.map((folder) => shapeFolderAsNode(folder))}
+						header={false}
+						aria-label="Folders"
 						onOpen={(node) => {
 							const folder = p.folderList.find((f) => f.name === node.segment);
 							if (folder) p.onOpenFolder(folder);
@@ -345,9 +351,12 @@ function Workspace(p: WorkspaceProps): JSX.Element {
 				: null}
 			<FileTable
 				items={p.assets}
-				sortKey={p.tableSortKey}
-				sortDir={p.tableSortDir}
+				sortKey={p.sortKey}
+				sortDir={p.sortDir}
 				onSort={p.onSort}
+				selection={p.selection}
+				onSelectionChange={p.onSelectionChange}
+				selectionAnchor={anchorId}
 				onOpen={p.onPreview}
 				onReachEnd={p.onReachEnd}
 				loading={p.busy}
@@ -367,21 +376,6 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 	const busy = useSignal(false);
 	/** A tail page is loading — distinct from `loading`, which replaces the contents. */
 	const loadingMore = useSignal(false);
-
-	/**
-	 * The table's sort mirrors.
-	 *
-	 * `FileTable` takes `Signal<string>`, and `files-state` holds the canonical `Signal<FileSortKey>`;
-	 * `Signal<T>` is invariant, so the state signal cannot be passed directly. These mirrors are kept in
-	 * step with the canonical pair below, never written independently.
-	 *
-	 * **Deliberate divergence from the projects explorer:** that surface cycles a column asc → desc →
-	 * NONE by clearing the key. The shared `files-state` contract types `sortKey` as a non-nullable
-	 * `FileSortKey`, so "no column" is not expressible there — and inventing a local third state would
-	 * mean the header band and the body disagreed about what is sorted. The hub cycles asc ⇄ desc.
-	 */
-	const tableSortKey = useSignal<string>("date");
-	const tableSortDir = useSignal<FileSortDir>("desc");
 
 	/**
 	 * A failure that happened while APPENDING a page.
@@ -501,6 +495,13 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 		inspectId.value = selection.value.includes(asset.id) ? asset.id : null;
 	}
 
+	/** List-view selection: the table applies the gestures; Inspect follows a single selected asset. */
+	function onTableSelection(ids: string[]): void {
+		selection.value = ids;
+		const inspected = inspectId.value;
+		inspectId.value = ids.length === 1 ? ids[0] : inspected && ids.includes(inspected) ? inspected : null;
+	}
+
 	/**
 	 * Middle click — open the asset in a new tab: a stored file in the inspector, a link or external
 	 * file at its own address. `noopener` so the opened page cannot reach back.
@@ -577,15 +578,24 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 	// #endregion
 
 	// #region Sort
+	/**
+	 * Header clicks cycle a column asc → desc → the default order (newest first), which is what "no
+	 * sort" means on the other file surfaces. The default is itself a sort, so on Date the cycle
+	 * steps from the default to ascending instead of standing still.
+	 */
 	function applySort(key: FileSortKey): void {
-		if (sortKey.value === key) {
-			sortDir.value = sortDir.value === "asc" ? "desc" : "asc";
-		} else {
+		const atDefault = sortKey.value === DEFAULT_SORT.key && sortDir.value === DEFAULT_SORT.dir;
+		if (sortKey.value !== key) {
 			sortKey.value = key;
 			sortDir.value = "asc";
+		} else if (sortDir.value === "asc") {
+			sortDir.value = "desc";
+		} else if (atDefault) {
+			sortDir.value = "asc";
+		} else {
+			sortKey.value = DEFAULT_SORT.key;
+			sortDir.value = DEFAULT_SORT.dir;
 		}
-		tableSortKey.value = sortKey.value;
-		tableSortDir.value = sortDir.value;
 		void reload();
 	}
 	// #endregion
@@ -615,8 +625,6 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 		tree.value = initialTree;
 		applyPage({ ...initial, tree: initialTree });
 		if (props.initialError) applyError(props.initialError);
-		tableSortKey.value = sortKey.value;
-		tableSortDir.value = sortDir.value;
 
 		// Every other region asks for a read through here, so there is one fetch path.
 		filesCommit.value = () => void reload();
@@ -740,9 +748,11 @@ export default function FilesHub(props: FilesHubProps): JSX.Element {
 				cells={cells}
 				assets={items.value}
 				folderList={folders.value}
-				tableSortKey={tableSortKey}
-				tableSortDir={tableSortDir}
+				sortKey={sortKey}
+				sortDir={sortDir}
 				onSort={applySort}
+				selection={selection.value}
+				onSelectionChange={onTableSelection}
 				onSelect={onSelect}
 				onPreview={(asset) => (previewId.value = asset.id)}
 				onOpenRaw={openRaw}

@@ -61,7 +61,7 @@ export function mergeConsoleUrl(
 	if (patch.sort && patch.sort !== current.sort && !("dir" in patch)) {
 		next.dir = defaultSortDir(patch.sort);
 	}
-	if (next.type === "product") next.model = undefined;
+	if (next.type === "product") next.model = [];
 	if (next.view !== "clients") next.client = undefined;
 	if (!next.createOpen) {
 		next.createKind = undefined;
@@ -110,9 +110,9 @@ export function listParamsOf(
 ): CatalogueListParams {
 	return {
 		type: state.type,
-		status: state.status,
-		model: state.model,
-		createCategory: state.create,
+		status: [...state.status],
+		model: state.model.length ? [...state.model] : undefined,
+		createCategory: state.create.length ? [...state.create] : undefined,
 		search: state.search || undefined,
 		sort: state.sort,
 		dir: state.dir,
@@ -357,6 +357,11 @@ export function setSearch(value: string): void {
 /** Engage or release one quick filter. */
 export function setQuickFilter(key: keyof QuickFilters, on: boolean): void {
 	quickFilters.value = { ...quickFilters.peek(), [key]: on };
+}
+
+/** Release every quick filter in one write. */
+export function clearQuickFilters(): void {
+	quickFilters.value = { ...NO_QUICK_FILTERS };
 }
 
 function applySelection(action: SelectionAction): void {

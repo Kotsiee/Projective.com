@@ -1,17 +1,16 @@
 import type { JSX, VNode } from "preact";
 import "../styles/view-zoom-rig.css";
-import { ZoomSlider } from "@projective/ui/fields";
+import { Button, ZoomSlider } from "@projective/ui/fields";
 import type { ZoomStore } from "@web/utils/zoom-store.ts";
 
 /**
  * ViewZoomRig — the ONE view-control rig every zoom-driven workspace mounts in the middle-nav FOOTER
- * band (`ui-middle-nav__footer`): a NON-interactive current-view glyph, then the minus button · a thin
- * segmented track with a centred transition marker · the plus button (the reusable `@projective/ui`
- * {@link ZoomSlider}).
+ * band (`ui-middle-nav__footer`): a list ⇄ grid mode toggle, then the shared `@projective/ui`
+ * {@link ZoomSlider} (zoom-out lens · muted track with a centred transition marker · zoom-in lens).
  *
- * The leading glyph is deliberately **not** a toggle: crossing the centre marker is what transitions
- * list ⇄ grid, so a button beside the slider would offer a second, competing way to do the same thing.
- * It is a read-out, marked `aria-hidden` — the slider itself carries the accessible name.
+ * The toggle and the slider are one control over one value (Decision #223): pressing the mode button
+ * mirrors the zoom to the same relative density in the other half, so the handle jumps across the
+ * centre marker and the slider never contradicts the view.
  *
  * It is a plain component rather than an island because each surface owns its own hydration root (its
  * rig island imports its own feature stylesheet and its own {@link ZoomStore}); the markup, the
@@ -41,12 +40,21 @@ export function ViewZoomRig(props: ViewZoomRigProps): JSX.Element {
 
 	return (
 		<div class={props.class ? `ui-viewrig ${props.class}` : "ui-viewrig"}>
-			<span class="ui-viewrig__mode" data-mode={mode} aria-hidden="true">
-				{mode === "grid" ? props.gridIcon : props.listIcon}
-			</span>
+			<Button
+				iconOnly
+				rounded
+				size="sm"
+				variant="text"
+				severity="secondary"
+				class="ui-viewrig__mode ui-hit"
+				data-mode={mode}
+				icon={mode === "grid" ? props.gridIcon : props.listIcon}
+				aria-label={mode === "grid" ? "Switch to list view" : "Switch to grid view"}
+				onClick={store.toggleViewMode}
+			/>
 			<ZoomSlider
 				value={store.zoom}
-				onValueChange={store.setZoom}
+				onValueChange={(v, source) => store.setZoom(v, source === "drag" ? "instant" : "animate")}
 				min={store.ZOOM_MIN}
 				max={store.ZOOM_MAX}
 				step={store.ZOOM_STEP}

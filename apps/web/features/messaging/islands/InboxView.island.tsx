@@ -396,6 +396,9 @@ export default function InboxView(props: InboxViewProps): JSX.Element {
 									onMove={(id, to) => void move(id, to)}
 									onToggleMute={toggleMute}
 									onDelete={del}
+									onCopied={(ok) => {
+										said.value = ok ? "Link copied" : "Couldn't copy the link";
+									}}
 								/>
 							))}
 						</div>

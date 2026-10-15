@@ -302,5 +302,6 @@ export {
 
 // #region Status marks (the §A.5 icon channel — a state never rides on hue alone)
 export { AlertMark, BusyMark, CheckMark, FieldMark, GateMark } from "./components/field-marks.tsx";
+export { SelectionCheck, type SelectionCheckProps } from "./components/SelectionCheck.tsx";
 export { statusMark } from "./core/field.ts";
 // #endregion

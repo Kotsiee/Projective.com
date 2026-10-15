@@ -250,7 +250,8 @@
 	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
 }
 
-.pf-media__slider {
+.pf-media__zoom {
+	inline-size: 100%;
 	min-inline-size: 0;
 }
 
@@ -272,14 +273,6 @@
 
 .pf-media__value--scrub[data-disabled="true"] {
 	cursor: default;
-}
-
-.pf-media__stepped {
-	display: grid;
-	grid-template-columns: auto minmax(0, 1fr) auto;
-	align-items: center;
-	gap: var(--space-1);
-	min-inline-size: 0;
 }
 
 .pf-media__readout {

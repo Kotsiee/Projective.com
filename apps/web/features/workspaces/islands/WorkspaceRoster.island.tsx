@@ -18,7 +18,7 @@ import {
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import { useContextSwitch } from "../core/useContextSwitch.ts";
 import { openCreate, rosterView } from "../core/workspace-state.ts";
-import { gridColWidth, workspaceZoom, zoom } from "../core/view-state.ts";
+import { gridColWidth, workspaceZoom, displayZoom } from "../core/view-state.ts";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
 import {
 	countLabel,
@@ -499,7 +499,8 @@ function RosterBody(
 			class="wsp-grid"
 			role="list"
 			aria-label={label}
-			minChildWidth={`${gridColWidth(zoom.value)}px`}
+			minChildWidth={`${gridColWidth(displayZoom.value)}px`}
+			fit="exact"
 			maxCols={4}
 			gap={4}
 		>

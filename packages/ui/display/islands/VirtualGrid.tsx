@@ -1,22 +1,33 @@
 import type { JSX, VNode } from "preact";
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import "../styles/virtual-grid.css";
 import { useVirtualScroll } from "../../hooks/useVirtualScroll.ts";
 import { cx } from "../../core/cx.ts";
+import { prefersJumpToFinal } from "../../core/motion.ts";
 import { styleVars } from "../../core/style.ts";
 
 /**
- * VirtualGrid — a windowed, infinite-scroll GRID of stretch-to-fill cells. `useVirtualScroll` is
- * strictly 1D, so this composes it as a "1D-by-row window": it measures its own inline width (a
- * ResizeObserver), derives `columns = floor((width + gap) / (minColWidth + gap))`, virtualizes the ROW
- * count (`ceil(items / columns)`), and renders each in-window row as an absolutely-positioned CSS grid
- * slice of `columns` equal (`1fr`) cells. Only the visible rows (+ overscan) are ever in the DOM, so a
- * corpus of thousands of cards scrolls at 60fps. Scrolls in the window (`useWindow`) or its own
- * container (`scrollHeight`). Infinite scroll fires `onReachEnd` near the tail (append → the row count
- * grows → the trigger re-arms).
+ * How a {@link VirtualGrid} sizes its cells: `"stretch"` packs `minColWidth` columns and grows them
+ * to fill the row; `"exact"` renders every cell at exactly `minColWidth` (capped at the viewport),
+ * so a zoom-driven width scales the cards continuously instead of in column-count jumps.
+ */
+export type VirtualGridFit = "stretch" | "exact";
+
+/**
+ * VirtualGrid — a windowed, infinite-scroll GRID. `useVirtualScroll` is strictly 1D, so this composes
+ * it as a "1D-by-row window": it measures its own inline width (a ResizeObserver), derives
+ * `columns = floor((width + gap) / (minColWidth + gap))`, virtualizes the ROW count
+ * (`ceil(items / columns)`), and places each in-window cell absolutely with a `transform`. Only the
+ * visible rows (+ overscan) are ever in the DOM, so a corpus of thousands of cards scrolls at 60fps.
+ * Scrolls in the window (`useWindow`) or its own container (`scrollHeight`). Infinite scroll fires
+ * `onReachEnd` near the tail.
  *
- * Because cells stretch, their width is uniform per layout but varies with the container — so
+ * Cells are keyed by item, not by row, so a card keeps its element when the column count changes:
+ * the reflow glides each card from where it was to where it now sits (a transform-only FLIP on the
+ * motion tokens, skipped under reduced motion), and the item at the top of the viewport stays put
+ * while the rows rescale.
+ *
  * `rowHeight` may be a **function of the computed cell width**, letting a square/aspect grid keep its
  * rows sized to the live cell width while virtualization stays exact (all rows share one height).
  *
@@ -27,10 +38,12 @@ export interface VirtualGridProps<T> {
 	items: T[];
 	/** Renders one cell. */
 	itemTemplate: (item: T, ctx: { index: number }) => VNode;
-	/** Minimum cell width (px); columns pack to `floor((width + gap) / (minColWidth + gap))`. */
+	/** Cell width (px): the column floor under `"stretch"`, the exact width under `"exact"`. */
 	minColWidth: number;
+	/** How cells fill the row (default `"stretch"`). */
+	fit?: VirtualGridFit;
 	/**
-	 * Row height (px), or a function of the computed (stretched) cell width — e.g.
+	 * Row height (px), or a function of the computed cell width — e.g.
 	 * `(w) => w + FOOTER` for a square thumbnail card with a fixed-height caption footer.
 	 */
 	rowHeight: number | ((cellWidth: number) => number);
@@ -47,7 +60,7 @@ export interface VirtualGridProps<T> {
 	/** Tail loading affordance. */
 	loading?: boolean;
 	loadingTemplate?: () => VNode;
-	/** Stable per-item key for the row cache (defaults to index). */
+	/** Stable per-item key for the cell cache (defaults to index). */
 	getItemKey?: (item: T, index: number) => string | number;
 	/** Rendered when `items` is empty. */
 	emptyTemplate?: () => VNode;
@@ -55,11 +68,40 @@ export interface VirtualGridProps<T> {
 	class?: string;
 }
 
+interface GridGeometry {
+	columns: number;
+	cellWidth: number;
+	rowHeight: number;
+	gap: number;
+}
+
+const cellX = (index: number, g: GridGeometry) => (index % g.columns) * (g.cellWidth + g.gap);
+const cellY = (index: number, g: GridGeometry) => Math.floor(index / g.columns) * g.rowHeight;
+
+function motionReduced(): boolean {
+	return prefersJumpToFinal() || document.documentElement.dataset.motion === "reduced";
+}
+
+function readTimeToken(el: Element, name: string): number {
+	const raw = getComputedStyle(el).getPropertyValue(name).trim();
+	const n = parseFloat(raw);
+	if (!Number.isFinite(n)) return 0;
+	return raw.endsWith("ms") ? n : n * 1000;
+}
+
+function currentTranslate(el: HTMLElement): { x: number; y: number } | null {
+	const t = getComputedStyle(el).transform;
+	if (!t || t === "none") return null;
+	const m = new DOMMatrixReadOnly(t);
+	return { x: m.m41, y: m.m42 };
+}
+
 export function VirtualGrid<T>(props: VirtualGridProps<T>): JSX.Element {
 	const {
 		items,
 		itemTemplate,
 		minColWidth,
+		fit = "stretch",
 		rowHeight,
 		gap = 16,
 		useWindow = false,
@@ -75,8 +117,8 @@ export function VirtualGrid<T>(props: VirtualGridProps<T>): JSX.Element {
 	} = props;
 
 	const viewportRef = useRef<HTMLDivElement>(null);
-	// The measured inline width of the viewport → the live column count.
 	const width = useSignal(0);
+	const geometry = useRef<GridGeometry | null>(null);
 
 	useEffect(() => {
 		const el = viewportRef.current;
@@ -90,11 +132,12 @@ export function VirtualGrid<T>(props: VirtualGridProps<T>): JSX.Element {
 		return () => ro.disconnect();
 	}, []);
 
-	const columns = Math.max(1, Math.floor((width.value + gap) / (minColWidth + gap)) || 1);
+	const w = width.value;
+	const exact = fit === "exact";
+	const target = exact && w > 0 ? Math.min(minColWidth, w) : minColWidth;
+	const columns = Math.max(1, Math.floor((w + gap) / (target + gap)) || 1);
 	const rowCount = Math.ceil(items.length / columns);
-	// The stretched cell width for the current layout (all cells in all rows share it), so a square
-	// card's row height is exact and virtualization stays uniform.
-	const cellWidth = columns > 0 ? (width.value - (columns - 1) * gap) / columns : minColWidth;
+	const cellWidth = exact ? target : (w - (columns - 1) * gap) / columns;
 	const resolvedRowHeight = typeof rowHeight === "function" ? rowHeight(cellWidth) : rowHeight;
 
 	const v = useVirtualScroll({
@@ -112,7 +155,60 @@ export function VirtualGrid<T>(props: VirtualGridProps<T>): JSX.Element {
 			: undefined,
 	});
 
+	useLayoutEffect(() => {
+		const el = viewportRef.current;
+		if (!el) return;
+		const prev = geometry.current;
+		const listTop = useWindow ? el.getBoundingClientRect().top + globalThis.scrollY : 0;
+		const readScroll = () => useWindow ? globalThis.scrollY - listTop : el.scrollTop;
+		const before = readScroll();
+		const next: GridGeometry = { columns, cellWidth, rowHeight: resolvedRowHeight, gap };
+		geometry.current = next;
+		if (!prev || w <= 0 || prev.rowHeight <= 0 || resolvedRowHeight <= 0) return;
+		const reflowed = prev.columns !== columns;
+		if (!reflowed && prev.rowHeight === resolvedRowHeight && prev.cellWidth === cellWidth) return;
+
+		let after = before;
+		if (before > 0) {
+			const rowPos = before / prev.rowHeight;
+			const firstRow = Math.floor(rowPos);
+			const anchored = (Math.floor((firstRow * prev.columns) / columns) + rowPos - firstRow) *
+				resolvedRowHeight;
+			if (Math.abs(anchored - before) >= 0.5) {
+				if (useWindow) globalThis.scrollTo(globalThis.scrollX, listTop + anchored);
+				else el.scrollTop = anchored;
+				after = readScroll();
+			}
+		}
+
+		if (!reflowed || motionReduced()) return;
+		const duration = readTimeToken(el, "--dur-medium");
+		if (duration <= 0) return;
+		const easing = getComputedStyle(el).getPropertyValue("--ease-standard").trim() || "ease";
+		const dir = getComputedStyle(el).direction === "rtl" ? -1 : 1;
+		const shift = after - before;
+		for (const cell of el.querySelectorAll<HTMLElement>(".ui-vgrid__cell")) {
+			const index = Number(cell.dataset.index);
+			if (!Number.isFinite(index)) continue;
+			const live = cell.getAnimations().length > 0 ? currentTranslate(cell) : null;
+			for (const a of cell.getAnimations()) a.cancel();
+			const fromX = live ? live.x : cellX(index, prev) * dir;
+			const fromY = (live ? live.y : cellY(index, prev)) + shift;
+			const toX = cellX(index, next) * dir;
+			const toY = cellY(index, next);
+			if (Math.abs(fromX - toX) < 0.5 && Math.abs(fromY - toY) < 0.5) continue;
+			cell.animate(
+				[
+					{ transform: `translate(${fromX}px, ${fromY}px)` },
+					{ transform: `translate(${toX}px, ${toY}px)` },
+				],
+				{ duration, easing },
+			);
+		}
+	}, [columns, cellWidth, resolvedRowHeight, gap, w]);
+
 	const isEmpty = items.length === 0;
+	const cellHeight = Math.max(0, resolvedRowHeight - gap);
 
 	return (
 		<div
@@ -126,7 +222,8 @@ export function VirtualGrid<T>(props: VirtualGridProps<T>): JSX.Element {
 			aria-label={ariaLabel}
 			style={styleVars({
 				"--vgrid-gap": `${gap}px`,
-				"--vgrid-cols": String(columns),
+				"--vgrid-cell-w": `${cellWidth}px`,
+				"--vgrid-cell-h": `${cellHeight}px`,
 				"--vgrid-scroll-h": scrollHeight !== undefined
 					? (typeof scrollHeight === "number" ? `${scrollHeight}px` : scrollHeight)
 					: undefined,
@@ -136,30 +233,25 @@ export function VirtualGrid<T>(props: VirtualGridProps<T>): JSX.Element {
 				? (emptyTemplate ? emptyTemplate() : null)
 				: (
 					<div class="ui-vgrid__sizer" style={styleVars({ "--vgrid-total": `${v.totalSize}px` })}>
-						{v.virtualItems.map((row) => {
+						{v.virtualItems.flatMap((row) => {
 							const start = row.index * columns;
-							const slice = items.slice(start, start + columns);
-							return (
-								// Rows are a UNIFORM computed height (no `measureElement`): measuring would cache
-								// an early zero-width row height and then override the correct itemSize after the
-								// container measures — leaving rows short while cards overflow. `itemSize` is
-								// authoritative for a fixed-size grid.
-								<div
-									key={row.index}
-									class="ui-vgrid__row"
-									style={styleVars({ "--v-start": `${row.start}px`, "--v-size": `${row.size}px` })}
-								>
-									{slice.map((item, i) => (
-										<div
-											key={getItemKey ? getItemKey(item, start + i) : start + i}
-											class="ui-vgrid__cell"
-											role="listitem"
-										>
-											{itemTemplate(item, { index: start + i })}
-										</div>
-									))}
-								</div>
-							);
+							return items.slice(start, start + columns).map((item, i) => {
+								const index = start + i;
+								return (
+									<div
+										key={getItemKey ? getItemKey(item, index) : index}
+										class="ui-vgrid__cell"
+										role="listitem"
+										data-index={index}
+										style={styleVars({
+											"--c-x": `${i * (cellWidth + gap)}px`,
+											"--c-y": `${row.start}px`,
+										})}
+									>
+										{itemTemplate(item, { index })}
+									</div>
+								);
+							});
 						})}
 					</div>
 				)}

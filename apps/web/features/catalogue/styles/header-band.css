@@ -1,0 +1,216 @@
+.cat-band {
+	container: cat-band / inline-size;
+	display: flex;
+	align-items: stretch;
+	gap: var(--space-3);
+	inline-size: 100%;
+	min-inline-size: 0;
+	block-size: var(--shell-midnav-header-h);
+	padding-inline: var(--space-4);
+}
+
+.cat-band__start,
+.cat-band__end {
+	flex: 1 1 0;
+	min-inline-size: 0;
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+
+.cat-band__end {
+	justify-content: flex-end;
+	gap: var(--space-1);
+}
+
+.cat-band__idblock {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: var(--space-px);
+	min-inline-size: 0;
+}
+
+.cat-band__title {
+	margin: 0;
+	overflow: hidden;
+	color: var(--on-surface);
+	font-size: var(--text-base);
+	font-weight: var(--fw-semibold);
+	line-height: var(--leading-tight);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.cat-band__meta {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-inline-size: 0;
+	margin: 0;
+	overflow: hidden;
+	color: var(--text-secondary);
+	font-size: var(--text-xs);
+	line-height: var(--leading-tight);
+	white-space: nowrap;
+}
+
+.cat-band__sep {
+	flex: none;
+}
+
+.cat-band__action {
+	--cat-press-scale: var(--btn-press-scale);
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	inline-size: 2rem;
+	block-size: 2rem;
+	padding: 0;
+	border: none;
+	border-radius: var(--radius-full);
+	background: transparent;
+	color: var(--text-secondary);
+	font-size: var(--icon-md);
+	text-decoration: none;
+	cursor: pointer;
+	transition:
+		color var(--dur-fast) var(--ease-standard),
+		background-color var(--dur-fast) var(--ease-standard),
+		transform var(--dur-fast) var(--ease-standard);
+}
+
+.cat-band__action:hover,
+.cat-band__action:focus-visible {
+	outline: none;
+	box-shadow: none;
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.cat-band__action[data-on="true"] {
+	color: var(--on-surface);
+	background: var(--surface-2);
+}
+
+.cat-band__action[data-on="true"] :is(svg, path) {
+	fill: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.cat-band__action:active {
+	transform: scale(var(--cat-press-scale));
+	transition-duration: var(--dur-press);
+}
+
+.cat-band__tabs.ui-tabmenu {
+	flex: 0 1 auto;
+	min-inline-size: 0;
+	align-self: stretch;
+	border-block-end: none;
+}
+
+.cat-band__tabs .ui-tabmenu__scroll {
+	margin-block-end: -1px;
+	padding-block-end: 1px;
+}
+
+.cat-band__tabs .ui-tabmenu__list {
+	block-size: 100%;
+	gap: var(--space-4);
+}
+
+.cat-band__tabs .ui-tabmenu__ink {
+	display: none;
+}
+
+.cat-band__tabs .ui-tabmenu__tab {
+	position: relative;
+	block-size: 100%;
+	padding: 0 var(--space-1);
+	font-size: var(--text-sm);
+	font-weight: var(--fw-medium);
+	letter-spacing: 0;
+}
+
+.cat-band__tabs .ui-tabmenu__tab--active {
+	color: var(--primary);
+	font-weight: var(--fw-medium);
+}
+
+.cat-band__tabs .ui-tabmenu__tab::after {
+	content: "";
+	position: absolute;
+	inset-inline: 0;
+	inset-block-end: -1px;
+	block-size: 2px;
+	border-radius: 2px 2px 0 0;
+	background: var(--outline);
+	transform: scaleX(0);
+	transform-origin: center;
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+
+.cat-band__tabs .ui-tabmenu__tab:hover::after {
+	transform: scaleX(1);
+}
+
+.cat-band__tabs .ui-tabmenu__tab--active::after,
+.cat-band__tabs .ui-tabmenu__tab--active:hover::after {
+	background: var(--primary);
+	transform: scaleX(1);
+}
+
+.cat-band__tabs .ui-tabmenu__chevron {
+	background: transparent;
+}
+
+@container cat-band (max-width: 48rem) {
+	.cat-band__start {
+		flex: 0 1 auto;
+	}
+
+	.cat-band__end {
+		flex: 0 1 auto;
+	}
+
+	.cat-band__tabs.ui-tabmenu {
+		flex: 1 1 auto;
+		min-inline-size: 7rem;
+	}
+}
+
+@container cat-band (max-width: 36rem) {
+	.cat-band__meta {
+		display: none;
+	}
+
+	.cat-band__tabs .ui-tabmenu__list {
+		gap: var(--space-3);
+	}
+}
+
+@media (max-width: 767.98px) {
+	.cat-band {
+		gap: var(--space-2);
+		padding-inline: var(--space-3);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.cat-band__action:active {
+		transform: none;
+	}
+
+	.cat-band__tabs .ui-tabmenu__tab::after {
+		transition: none;
+	}
+}
+
+:root[data-motion="reduced"] .cat-band__action:active {
+	transform: none;
+}
+
+:root[data-motion="reduced"] .cat-band__tabs .ui-tabmenu__tab::after {
+	transition: none;
+}

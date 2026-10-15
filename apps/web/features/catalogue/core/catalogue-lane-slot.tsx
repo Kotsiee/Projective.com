@@ -8,7 +8,7 @@ import { parseConsoleUrl } from "../types/catalogue-types.ts";
 /**
  * catalogue-lane-slot — the middle-nav lane on any `/catalogue*` route, in the mode the path asks
  * for (plan §6.3): the console's facets on `/catalogue`, read through the same memoised query as the
- * page so the status presence dots describe the first byte; the outline on `/catalogue/[id]`, with
+ * page so the facet counts describe the first byte; the outline on `/catalogue/[id]`, with
  * every listing the seller has. Returns `null` off `/catalogue`. Server-only.
  *
  * A lane whose read failed still renders — it is the way to the other listings and to New listing,
@@ -33,6 +33,7 @@ export async function catalogueLaneFor(
 			mode="console"
 			url={parseConsoleUrl(url)}
 			statusCounts={page.statusCounts}
+			facetCounts={page.facetCounts}
 			recent={page.items.slice(0, 8)}
 		/>
 	);

@@ -335,29 +335,8 @@ export function minorUnit(currency: string): number {
 	return 1 / 10 ** currencyExponent(currency);
 }
 
-/**
- * The shared `NumberInput` configuration for a MONEY field on this form.
- *
- * Three decisions, each of which would otherwise be re-made nine times and drift:
- *
- *  - **The leading adornment is the currency's own symbol**, which `NumberInput` derives from the
- *    code, and it is the ONLY place the currency appears — the box holds the bare figure, so there
- *    is nothing to type around and no second symbol to disagree with the first.
- *  - **Coarser travel** (`3` px per unit rather than the default `6`), because these fields run from
- *    a two-figure role bonus to a six-figure budget. A scrub is the coarse approach; the exact figure
- *    is still typed, and typing is never snapped to the step grid.
- *  - **Whole units by default, pennies on Ctrl.** `step: 1` is what a stepper press, an arrow or a
- *    wheel notch moves; holding Ctrl (or Cmd) switches every one of them — and the scrub — to
- *    `precisionStep`, which is the currency's own minor unit. So the steppers stay useful on a
- *    £250,000 budget without giving up the ability to land on £120.45.
- */
-export const MONEY_FIELD = {
-	mode: "currency",
-	step: 1,
-	min: 0,
-	enableIconScrub: true,
-	scrubPixelsPerStep: 3,
-} as const;
+/** The app-wide money field preset, re-exported for this form's many money fields. */
+export { MONEY_FIELD } from "@web/utils/money-field.ts";
 
 /**
  * The shared configuration for a WHOLE-NUMBER field — a seat count, a role headcount, a lag in days.

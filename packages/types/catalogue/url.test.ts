@@ -15,7 +15,9 @@ import {
 	consoleHref,
 	type ConsoleUrlState,
 	ConsoleView,
+	isDefaultStatuses,
 	isListingSlug,
+	normaliseStatuses,
 	parseConsoleUrl,
 	parseWorkspaceUrl,
 	PreviewDevice,
@@ -45,6 +47,10 @@ function maybe<T>(next: () => number, value: () => T): T | undefined {
 	return next() < 0.5 ? value() : undefined;
 }
 
+function subset<T>(next: () => number, options: readonly T[]): T[] {
+	return options.filter(() => next() < 0.4);
+}
+
 const SCOPES = [
 	"all",
 	"product",
@@ -67,13 +73,10 @@ function consoleState(next: () => number): ConsoleUrlState {
 		period: oneOf(next, AnalyticsPeriod.options),
 		scope: oneOf(next, SCOPES),
 		createOpen: next() < 0.5,
+		status: normaliseStatuses(subset(next, ListingStatus.options)),
+		model: subset(next, ServiceType.options),
+		create: subset(next, CreateCategory.options),
 	};
-	const status = maybe(next, () => oneOf(next, ListingStatus.options));
-	if (status) state.status = status;
-	const model = maybe(next, () => oneOf(next, ServiceType.options));
-	if (model) state.model = model;
-	const create = maybe(next, () => oneOf(next, CreateCategory.options));
-	if (create) state.create = create;
 	const client = maybe(next, () => oneOf(next, CLIENTS));
 	if (client) state.client = client;
 	if (state.createOpen) {
@@ -166,6 +169,9 @@ Deno.test("an empty URL parses to the defaults", () => {
 	assertEquals(parseConsoleUrl(url), {
 		view: "listings",
 		type: "all",
+		status: ["draft", "published", "paused"],
+		model: [],
+		create: [],
 		sort: "recent",
 		dir: "desc",
 		search: "",
@@ -225,16 +231,40 @@ Deno.test("consoleHref emits params in canonical order and omits defaults", () =
 			sort: "title",
 			search: "brand kit",
 			scope: "model:session",
-			create: "educate",
-			model: "Direct Deliverable",
-			status: "draft",
+			create: ["test", "educate"],
+			model: ["Session", "Direct Deliverable"],
+			status: ["archived", "draft"],
 			type: "service",
 			view: "clients",
 		}),
-		"/catalogue?view=clients&type=service&status=draft&model=direct_deliverable&category=educate" +
+		"/catalogue?view=clients&type=service&status=draft,archived" +
+			"&model=direct_deliverable,session&category=educate,test" +
 			"&scope=model:session&search=brand%20kit&sort=title&dir=desc&period=90d&client=@maris" +
 			"&create=service:group_session",
 	);
+});
+
+Deno.test("the status facet opens on everything but Archived, and that set is omitted", () => {
+	const at = (q: string) => parseConsoleUrl(new URL(`https://projective.test/catalogue?${q}`));
+	assertEquals(at("").status, ["draft", "published", "paused"]);
+	assertEquals(at("status=draft").status, ["draft"]);
+	assertEquals(at("status=archived,draft,bogus,draft").status, ["draft", "archived"]);
+	assertEquals(at("status=bogus").status, ["draft", "published", "paused"]);
+	assertEquals(consoleHref({ status: ["paused", "published", "draft"] }), "/catalogue");
+	assertEquals(consoleHref({ status: [] }), "/catalogue");
+	assertEquals(
+		consoleHref({ status: ["draft", "published", "paused", "archived"] }),
+		"/catalogue?status=draft,published,paused,archived",
+	);
+	assertEquals(isDefaultStatuses(["published", "paused", "draft"]), true);
+	assertEquals(isDefaultStatuses(["published"]), false);
+});
+
+Deno.test("the model and category facets read a list and drop what they do not know", () => {
+	const at = (q: string) => parseConsoleUrl(new URL(`https://projective.test/catalogue?${q}`));
+	assertEquals(at("model=session,pipeline,nope").model, ["Pipeline", "Session"]);
+	assertEquals(at("category=test,educate,x").create, ["educate", "test"]);
+	assertEquals(at("model=").model, []);
 });
 
 Deno.test("?create= opens the modal and seeds the kind and model", () => {

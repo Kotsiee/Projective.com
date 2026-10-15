@@ -302,61 +302,6 @@
     transform: none;
 }
 
-/* Row menu (independent from the projects message-action `.msg-menu`). */
-.conv-menu {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-inline-size: 12rem;
-}
-
-.conv-menu__item {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    font-family: var(--font-sans);
-    font-size: var(--text-md);
-    color: var(--on-surface);
-    background: transparent;
-    border: none;
-    border-radius: var(--radius-base);
-    cursor: pointer;
-    text-align: start;
-    transition: background-color var(--dur-fast) var(--ease-standard);
-}
-
-.conv-menu__item:hover {
-    background: var(--surface-2);
-}
-
-.conv-menu__item:focus-visible {
-    outline: none;
-    box-shadow: none;
-}
-
-.conv-menu__item[data-danger="true"] {
-    color: var(--danger);
-}
-
-.conv-menu__item[data-danger="true"]:hover {
-    background: color-mix(in srgb, var(--danger) var(--tint), transparent);
-}
-
-.conv-menu__icon {
-    display: inline-flex;
-    color: var(--text-secondary);
-}
-
-.conv-menu__item[data-danger="true"] .conv-menu__icon {
-    color: var(--danger);
-}
-
-.conv-menu__icon svg {
-    inline-size: var(--icon-sm);
-    block-size: var(--icon-sm);
-}
-
 /* #endregion */
 
 /* #region Collapsed rail */
@@ -716,15 +661,9 @@
 /*
  * #region Class hooks that shipped with no rule
  *
- * `msg-set`, `msg-newconv` and `conv-menu-pop` were applied in the TSX and matched NOTHING anywhere
- * in the repo — dead hooks that read as styled but were not. `conv-menu-pop` is the one that mattered:
- * its sibling `.msg-filter-pop` sizes its popover and `.chan-menu-pop` sizes the channel one, so the
- * conversation kebab menu was the only menu on the surface with no width contract of its own.
+ * `msg-set` and `msg-newconv` were applied in the TSX and matched NOTHING anywhere in the repo —
+ * dead hooks that read as styled but were not.
  */
-.conv-menu-pop {
-    min-inline-size: 13rem;
-}
-
 .msg-set,
 .msg-newconv {
     --dialog-body-gap: var(--space-4);

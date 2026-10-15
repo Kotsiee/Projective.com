@@ -12,7 +12,7 @@ import type {
 	FileSortDir,
 	FileSortKey,
 } from "../../../types/projects-types.ts";
-import { filesZoom, gridColWidth, viewMode, zoom } from "../../../core/view-state.ts";
+import { filesZoom, gridColWidth, viewMode, displayZoom } from "../../../core/view-state.ts";
 import { FileCard } from "../../FileCard.tsx";
 import { FileTable } from "../../FileTable.tsx";
 import { GridIcon, ListIcon } from "../../file-glyphs.tsx";
@@ -27,7 +27,6 @@ import { useFileTiles } from "../../../hooks/useFileTiles.ts";
 // This tab mounts the `/files` cards, table and empty state, so it carries their sheets — see the note
 // in `TicketView` for why a component and not its host island is the right carrier.
 import "../../../styles/file-explorer.css";
-import "../../../styles/file-table.css";
 import "../../../styles/file-card.css";
 
 /**
@@ -204,7 +203,7 @@ export function TicketAttachmentsTab(props: TicketAttachmentsTabProps): JSX.Elem
 					)
 					: viewMode.value === "grid"
 					? (
-						<div class="tkv-subs__grid" style={`--tkv-col:${gridColWidth(zoom.value)}px`}>
+						<div class="tkv-subs__grid" style={`--tkv-col:${gridColWidth(displayZoom.value)}px`}>
 							{items.map((f) => (
 								<FileCard
 									key={f.id}

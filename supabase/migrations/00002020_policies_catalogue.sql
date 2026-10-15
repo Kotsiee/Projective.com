@@ -14,6 +14,8 @@
 --              every WITH CHECK), so a row can never be created in, or moved into, somebody else's
 --              name. There is deliberately no DELETE on the three subject tables: nothing on this
 --              platform is hard-deleted (root CLAUDE.md §5) — a listing is archived by its status.
+--              The one exception, a listing no buyer has engaged with, goes through the
+--              `catalogue.delete_listing` definer (00001170, Decision #221), never a policy.
 --   * CHILD ROWS (media, skills, tags, availability) are visible exactly when their listing is, by
 --              delegating to the listing's own policy through an EXISTS — RLS applies inside the
 --              subquery, so the rule is stated once rather than restated per child.

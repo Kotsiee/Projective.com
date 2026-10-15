@@ -33,7 +33,7 @@
    pitch exactly `cellWidth + meta + gap`. The trailing gap matches the sizer's final row padding. */
 .pj-skel__grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(var(--pj-skel-col, 10rem), 1fr));
+	grid-template-columns: repeat(auto-fill, min(var(--pj-skel-col, 10rem), 100%));
 	gap: var(--pj-skel-gap, 16px);
 	padding-block-end: var(--pj-skel-gap, 16px);
 }

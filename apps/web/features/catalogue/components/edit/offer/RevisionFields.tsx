@@ -1,8 +1,9 @@
 import type { JSX } from "preact";
-import { MoneyInput, NumberStepper, ToggleSwitch } from "@projective/ui/fields";
+import { NumberInput, NumberStepper, ToggleSwitch } from "@projective/ui/fields";
+import { MONEY_FIELD, moneyDigits } from "@web/utils/money-field.ts";
 import type { ListingDetail } from "../../../types/catalogue-types.ts";
 import { draft, edit } from "../../../core/workspace-store.ts";
-import { minorOf, wholeOf, withRevisionsDeclared } from "../../../core/pricing-model.ts";
+import { withRevisionsDeclared } from "../../../core/pricing-model.ts";
 
 const FREE_ID = "cat-offer-rev-free";
 const FREE_HINT_ID = "cat-offer-rev-free-hint";
@@ -58,16 +59,13 @@ export function RevisionFields(props: { listing: ListingDetail; perStage: boolea
 			</div>
 			<div class="cat-sec__field">
 				<label class="cat-sec__label" for={EXTRA_ID}>Each extra round</label>
-				<MoneyInput
+				<NumberInput
+					{...MONEY_FIELD}
+					{...moneyDigits(listing.currency)}
 					id={EXTRA_ID}
-					value={minorOf(pricing.extraRevisionPrice, listing.currency)}
-					onValueChange={(minor) =>
-						editPricing({
-							...current(),
-							extraRevisionPrice: wholeOf(minor, listing.currency),
-						})}
-					currency={listing.currency}
-					min={0}
+					value={pricing.extraRevisionPrice}
+					onValueChange={(next: number | null) =>
+						editPricing({ ...current(), extraRevisionPrice: next })}
 					placeholder="Not priced"
 					aria-describedby={EXTRA_HINT_ID}
 				/>

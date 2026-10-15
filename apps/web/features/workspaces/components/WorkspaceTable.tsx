@@ -1,23 +1,17 @@
 import type { JSX } from "preact";
-import { Table, type TableColumn } from "@projective/ui/display";
+import { useMemo } from "preact/hooks";
+import { type DataColumn, DataTable } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
 import { kindCopy, roleLabel, type WorkspaceSummary } from "@projective/types/workspace";
 import { initialsOf } from "../core/workspace-model.ts";
-import { type WorkspaceCardAction, WorkspaceKebab } from "./WorkspaceCard.tsx";
+import { type WorkspaceCardAction, workspaceMenu } from "./WorkspaceCard.tsx";
 
 /**
  * WorkspaceTable — the roster's compact view, for somebody who belongs to a dozen entities and wants to
- * scan them rather than look at them.
- *
- * Built on the library `Table`, which already owns everything a collection needs and this surface must
- * not re-implement: the shared column-track model that keeps header and body cells aligned, click- and
- * keyboard-sortable headers with `aria-sort`, a sticky header, and `role="table"` semantics. What the
- * feature supplies is the projection — the identity cell, the iconographic state, and the same kebab the
- * card uses, so the two presentations can never offer different actions for the same entity.
- *
- * The entity NAME is the link, not the row: the primitive's rows are `role="row"` divs and wrapping one
- * in an anchor is illegal, but a real anchor in the identity cell is better anyway — middle-click and
- * Cmd-click work, and a row-wide click target would swallow the kebab.
+ * scan them rather than look at them, as a `DataTable` preset: identity · your role · members · the
+ * kind's headline figure · state. Each row opens the entity's console, and carries the card's own menu
+ * (`workspaceMenu`) on a kebab and on right-click, so the two presentations can never offer different
+ * actions for the same entity.
  *
  * Dumb: no fetching, no permission decisions, no arithmetic. `stats[0]` is a server-formatted string
  * (root CLAUDE.md §12) and is rendered verbatim.
@@ -38,108 +32,104 @@ export interface WorkspaceTableProps {
 }
 // #endregion
 
-// #region Table
-export function WorkspaceTable(props: WorkspaceTableProps): JSX.Element {
-	const { items, hrefFor, busy, label, onAction } = props;
+// #region Columns
+/**
+ * The money column's header, taken from the rows themselves rather than hard-coded per kind.
+ *
+ * The server chose the stat labels for this kind ("Earned 30d" · "Spent 30d"), so reading one back is
+ * the only way the column heading cannot disagree with the figures under it.
+ */
+function headerFor(items: readonly WorkspaceSummary[]): string {
+	for (const item of items) {
+		const label = item.stats[2]?.label ?? item.stats[0]?.label;
+		if (label) return label;
+	}
+	return "Activity";
+}
 
-	const columns: TableColumn<WorkspaceSummary>[] = [
+function columnsFor(moneyHeader: string): DataColumn<WorkspaceSummary>[] {
+	return [
 		{
-			field: "name",
+			id: "name",
 			header: "Name",
-			sortable: true,
-			width: "minmax(14rem, 3fr)",
-			body: (row) => <IdentityCell summary={row} href={hrefFor(row)} />,
+			type: "custom",
+			fill: true,
+			minWidth: 224,
+			pinned: true,
+			render: (row) => <IdentityCell summary={row} />,
+			sortValue: (row) => row.name,
+			searchText: (row) => `${row.name} @${row.handle}`,
 		},
 		{
-			field: "role",
+			// Not sortable: a role is a word, and ordering admin · lead · member · owner alphabetically
+			// would present a wrong order as authority.
+			id: "role",
 			header: "Your role",
-			// Deliberately NOT sortable. The primitive sorts by the raw field value, which for a role is a
-			// string — so it would order admin · lead · member · owner alphabetically and present that as
-			// authority. A wrong order that looks meaningful is worse than no sort on this column.
-			width: "minmax(8rem, 1fr)",
-			body: (row) => (
-				<>
-					<span class="wsp-chip" data-tone={row.isOwner ? undefined : "muted"}>
-						{roleLabel(row.role)}
-					</span>
-					{
-						/*
-						 * The QUIET acting chip here, not the loud one the card carries: the row already carries
-						 * the acting tonal step, and the surface allows exactly one loud channel per element.
-						 */
-					}
-					{row.isActing && (
-						<span class="wsp-actingchip wsp-actingchip--quiet">
-							<span class="wsp-actingchip__dot" aria-hidden="true" />
-							Acting
-						</span>
-					)}
-				</>
-			),
+			type: "custom",
+			width: 168,
+			priority: 2,
+			render: (row) => <RoleCell summary={row} />,
 		},
 		{
-			field: "memberCount",
+			id: "members",
 			header: "Members",
-			sortable: true,
-			align: "end",
-			width: "minmax(6rem, 1fr)",
-			body: (row) => <span class="wsp-num">{row.memberCount}</span>,
+			type: "number",
+			width: 112,
+			priority: 1,
+			value: (row) => row.memberCount,
 		},
 		{
 			// The kind's headline figure — earnings for a team, spend for a business — already formatted.
-			field: "stats",
-			header: headerFor(items),
-			width: "minmax(7rem, 1fr)",
+			id: "stats",
+			header: moneyHeader,
+			type: "text",
+			sortKey: null,
 			align: "end",
-			body: (row) => (
-				<span class="wsp-money wsp-money--body">
-					{row.stats[2]?.value ?? row.stats[0]?.value ?? "—"}
-				</span>
-			),
+			width: 136,
+			priority: 3,
+			value: (row) => row.stats[2]?.value ?? row.stats[0]?.value ?? null,
 		},
 		{
-			field: "status",
+			id: "status",
 			header: "State",
-			sortable: true,
-			width: "minmax(5rem, auto)",
-			body: (row) => <StateCell summary={row} />,
-		},
-		{
-			field: "id",
-			header: "",
-			width: "auto",
-			align: "end",
-			body: (row) => (
-				<WorkspaceKebab
-					summary={row}
-					href={hrefFor(row)}
-					busy={busy}
-					onAction={onAction}
-					placement="bottom-end"
-				/>
-			),
+			type: "custom",
+			width: 104,
+			render: (row) => <StateCell summary={row} />,
+			sortValue: (row) => row.status,
 		},
 	];
+}
+// #endregion
+
+// #region Table
+export function WorkspaceTable(props: WorkspaceTableProps): JSX.Element {
+	const { items, hrefFor, busy = false, label, onAction } = props;
+	const moneyHeader = headerFor(items);
+	const columns = useMemo(() => columnsFor(moneyHeader), [moneyHeader]);
 
 	return (
-		<Table<WorkspaceSummary>
+		<DataTable
 			class="wsp-rtable"
-			value={items}
+			rows={items}
+			rowKey={(row) => row.id}
+			rowLabel={(row) => row.name}
 			columns={columns}
-			dataKey={(row) => row.id}
-			multiSort={false}
 			aria-label={label}
-			rowClass={(row) => row.isActing ? "wsp-rtable__acting" : undefined}
+			multiSort={false}
+			rowHref={hrefFor}
+			rowActions={(row) => workspaceMenu(row, hrefFor(row), busy, onAction)}
+			rowState={(row) => (row.isActing ? "acting" : null)}
+			rowHeight={60}
+			virtualize={false}
+			columnChooser={false}
 		/>
 	);
 }
 // #endregion
 
 // #region Cells
-/** Mark, name (the link), and the handle beneath it. */
-function IdentityCell(
-	{ summary, href }: { summary: WorkspaceSummary; href: string },
-): JSX.Element {
+/** Mark, name, the handle beneath it, and the new-activity pulse. */
+function IdentityCell({ summary }: { summary: WorkspaceSummary }): JSX.Element {
 	return (
 		<span class="wsp-rtable__ident" data-kind={summary.kind}>
 			<span class="wsp-mark wsp-mark--sm" aria-hidden="true">
@@ -148,7 +138,7 @@ function IdentityCell(
 					: <span class="wsp-mark__initial">{initialsOf(summary.name, summary.handle)}</span>}
 			</span>
 			<span class="wsp-rtable__name">
-				<a class="wsp-rtable__name-text" href={href}>{summary.name}</a>
+				<span class="wsp-rtable__name-text">{summary.name}</span>
 				<span class="wsp-rtable__sub">@{summary.handle}</span>
 			</span>
 			{summary.hasUpdate && (
@@ -157,6 +147,23 @@ function IdentityCell(
 				</Tooltip>
 			)}
 		</span>
+	);
+}
+
+/** The viewer's role, and the quiet acting chip (the row already carries the acting tonal step). */
+function RoleCell({ summary }: { summary: WorkspaceSummary }): JSX.Element {
+	return (
+		<>
+			<span class="wsp-chip" data-tone={summary.isOwner ? undefined : "muted"}>
+				{roleLabel(summary.role)}
+			</span>
+			{summary.isActing && (
+				<span class="wsp-actingchip wsp-actingchip--quiet">
+					<span class="wsp-actingchip__dot" aria-hidden="true" />
+					Acting
+				</span>
+			)}
+		</>
 	);
 }
 
@@ -199,21 +206,5 @@ function StateCell({ summary }: { summary: WorkspaceSummary }): JSX.Element {
 			)}
 		</>
 	);
-}
-// #endregion
-
-// #region Helpers
-/**
- * The money column's header, taken from the rows themselves rather than hard-coded per kind.
- *
- * The server chose the stat labels for this kind ("Earned 30d" · "Spent 30d"), so reading one back is
- * the only way the column heading cannot disagree with the figures under it.
- */
-function headerFor(items: readonly WorkspaceSummary[]): string {
-	for (const item of items) {
-		const label = item.stats[2]?.label ?? item.stats[0]?.label;
-		if (label) return label;
-	}
-	return "Activity";
 }
 // #endregion

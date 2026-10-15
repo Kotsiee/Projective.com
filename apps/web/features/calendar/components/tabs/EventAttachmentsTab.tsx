@@ -10,13 +10,12 @@ import type { CalendarEvent } from "@projective/types/scheduling";
 import { FileCard } from "@features/projects/components/FileCard.tsx";
 import { FileTable } from "@features/projects/components/FileTable.tsx";
 import { GridIcon, ListIcon } from "@features/projects/components/file-glyphs.tsx";
-import { filesZoom, gridColWidth, viewMode, zoom } from "@features/projects/core/view-state.ts";
+import { filesZoom, gridColWidth, viewMode, displayZoom } from "@features/projects/core/view-state.ts";
 
 // This tab mounts the `/files` cards, table and empty state, so it carries their sheets — a component
 // and not its host island is the right carrier (root CLAUDE.md §8 Decision #39: shared CSS reaches a
 // page only through an island's module graph, and this modal is opened from more than one island).
 import "@features/projects/styles/file-explorer.css";
-import "@features/projects/styles/file-table.css";
 import "@features/projects/styles/file-card.css";
 
 /**
@@ -161,7 +160,7 @@ export function EventAttachmentsTab(props: EventAttachmentsTabProps): JSX.Elemen
 					)
 					: viewMode.value === "grid"
 					? (
-						<div class="evm-files__grid" style={`--evm-col:${gridColWidth(zoom.value)}px`}>
+						<div class="evm-files__grid" style={`--evm-col:${gridColWidth(displayZoom.value)}px`}>
 							{items.map((f) => <FileCard key={f.id} file={f} onOpen={() => openAsset(f)} />)}
 						</div>
 					)

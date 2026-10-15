@@ -758,6 +758,58 @@ const CANVAS = {
 } as const;
 // #endregion
 
+// #region CREATE framework categories
+/**
+ * The six CREATE categories (PRODUCT_SPEC §The CREATE Framework). Each is prefixed `category-` so a
+ * category is never confused with the verb it is named after (`category-create` is not `plus`).
+ */
+const CREATE_FRAMEWORK = {
+	/** Create — asset production: a pen nib. */
+	"category-create": () => (
+		<>
+			<path d="M12 3.5 17.5 9 12 20.5 6.5 9z" />
+			<path d="M12 20.5v-7" />
+			<circle cx="12" cy="11.5" r="1.8" />
+		</>
+	),
+	/** Run — operations and upkeep: a loop around a play mark. */
+	"category-run": () => (
+		<>
+			<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 3.8v3.2h-3.2" />
+			<path d="M10.5 9.5v5l4-2.5z" />
+		</>
+	),
+	/** Educate — knowledge transfer: a mortarboard. */
+	"category-educate": () => (
+		<>
+			<path d="M2.5 9 12 4.5 21.5 9 12 13.5z" />
+			<path d="M6.5 11.2v4.3c0 1.4 2.5 3 5.5 3s5.5-1.6 5.5-3v-4.3M21.5 9v5" />
+		</>
+	),
+	/** Advise — guidance: a signpost pointing both ways. */
+	"category-advise": () => (
+		<>
+			<path d="M12 3v18" />
+			<path d="M5 5.5h11l2.5 2.5-2.5 2.5H5zM19 12.5H8l-2.5 2.5L8 17.5h11z" />
+		</>
+	),
+	/** Test — validation: a flask with a fill line. */
+	"category-test": () => (
+		<>
+			<path d="M9.5 3.5h5M10.5 3.5v5.2L5.2 18a1.7 1.7 0 0 0 1.5 2.5h10.6a1.7 1.7 0 0 0 1.5-2.5l-5.3-9.3V3.5" />
+			<path d="M7.6 14.5h8.8" />
+		</>
+	),
+	/** Empower — handover: a key. */
+	"category-empower": () => (
+		<>
+			<circle cx="8" cy="16" r="4" />
+			<path d="M10.9 13.1 19.5 4.5M16.5 7.5l2 2M14.3 9.7l1.5 1.5" />
+		</>
+	),
+} as const;
+// #endregion
+
 /**
  * The complete registry, flattened.
  *
@@ -774,6 +826,7 @@ export const ICON_PATHS = {
 	...PEOPLE,
 	...OBJECTS,
 	...CANVAS,
+	...CREATE_FRAMEWORK,
 } as const satisfies Record<string, () => VNode>;
 
 /** Every canonical glyph name. Adding a glyph widens this union automatically. */

@@ -1,7 +1,7 @@
 /*
  * File Explorer view-control rig.
  *
- * The rig's layout, its non-interactive mode glyph and the slider's width cap now live in the SHARED
+ * The rig's layout, its mode toggle and the slider's width cap now live in the SHARED
  * sheet (`features/shell/styles/view-zoom-rig.css`, `.ui-viewrig`), so every zoom-driven surface —
  * files, submissions, catalogue, wallet and the workspace roster — measures identically. `.fx-rig`
  * survives only as this feature's scoped hook. Token-only.

@@ -8,7 +8,12 @@ import { RESTRICTED_REFUSAL } from "@projective/types/auth";
 import { assemble, primeCatalogForTesting } from "../explore/live-catalog.ts";
 import { resolveListing } from "../explore/listing-source.ts";
 import { CatalogueBackendService } from "./CatalogueBackendService.ts";
-import { batchOutcomes, LISTING_CONFLICT_MESSAGE, refusalOf } from "./catalogue-refusals.ts";
+import {
+	batchOutcomes,
+	HISTORY_REFUSAL,
+	LISTING_CONFLICT_MESSAGE,
+	refusalOf,
+} from "./catalogue-refusals.ts";
 import {
 	FIXTURE_LISTINGS,
 	FIXTURE_PROFILES,
@@ -179,6 +184,57 @@ Deno.test("batch — one outcome per listing, in the order sent, strangers' list
 		p_listings: [a.listing.id, b.listing.id],
 		p_status: "published",
 	});
+});
+
+Deno.test("batch delete — one delete_listing per owned listing, never a status write", async () => {
+	const [a, b] = [FIXTURE_LISTINGS[0], FIXTURE_LISTINGS[3]];
+	const { client, calls } = stubCatalogueClient({
+		tables: {
+			service_blueprints: [a.blueprint, b.blueprint],
+			products: [],
+			listings: [a.listing, b.listing],
+		},
+		rpc: { delete_listing: { listing_id: a.listing.id, kind: "service" } },
+	});
+	const result = await batchListings(
+		{ ids: ["svc-brandpipe01", "svc-reviewcall"], action: "delete" },
+		SELLER,
+		client,
+	);
+	assertEquals(result.data, [
+		{ id: "svc-brandpipe01", ok: true },
+		{ id: "svc-reviewcall", ok: true },
+	]);
+	assertEquals(
+		calls.filter((c) => c.name === "delete_listing").map((c) => c.args),
+		[{ p_listing: a.listing.id }, { p_listing: b.listing.id }],
+	);
+	assertEquals(calls.some((c) => c.name === "set_listings_status"), false);
+});
+
+Deno.test("batch delete — a listing with buyer history is refused and told to archive", async () => {
+	const a = FIXTURE_LISTINGS[0];
+	const { client } = stubCatalogueClient({
+		tables: { service_blueprints: [a.blueprint], products: [], listings: [a.listing] },
+		rpcErrors: {
+			delete_listing: { code: "PE409", message: "This listing has buyer history", details: "3" },
+		},
+	});
+	const result = await batchListings(
+		{ ids: ["svc-brandpipe01"], action: "delete" },
+		SELLER,
+		client,
+	);
+	assertEquals(result.data, [
+		{ id: "svc-brandpipe01", ok: false, code: "PE409", message: HISTORY_REFUSAL },
+	]);
+});
+
+Deno.test("delete — buyer history is a 409 with the archive-instead sentence", () => {
+	const result = refusalOf({ code: "PE409", message: "raw", details: "2" });
+	assertEquals(result.ok, false);
+	assertEquals(result.status, 409);
+	assertEquals(result.message, HISTORY_REFUSAL);
 });
 
 Deno.test("batch — an age-gated row says why, in the platform's own words", () => {

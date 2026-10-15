@@ -147,6 +147,30 @@
 	overflow-x: auto;
 }
 
+.cat-an__frame {
+	position: relative;
+	min-inline-size: 0;
+}
+
+.cat-an__overlay {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: var(--space-4);
+	pointer-events: none;
+}
+
+.cat-an__overlay-notice.ui-inline-notice {
+	flex-wrap: nowrap;
+	max-inline-size: min(100%, 28rem);
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius-base);
+	background: var(--surface-1);
+	text-align: center;
+}
+
 .cat-an__empty {
 	display: flex;
 	flex-direction: column;

@@ -22,7 +22,7 @@ const store = createZoomStore({
 	listRow: { min: 52, max: 76 },
 });
 
-export const { zoom, viewMode, gridColWidth, listRowHeight } = store;
+export const { zoom, displayZoom, viewMode, gridColWidth, listRowHeight } = store;
 
 /** The whole store, for the shared `ViewZoomRig` / `useCtrlWheelZoom`, which take it as one value. */
 export const membersZoom = store;

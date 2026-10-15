@@ -18,3 +18,8 @@ CREATE INDEX IF NOT EXISTS idx_listings_owner_team
 CREATE INDEX IF NOT EXISTS idx_quote_requests_blueprint
     ON marketplace.quote_requests (blueprint_id, created_at DESC);
 -- #endregion
+
+-- #region marketplace.promoted_placements — a listing's paid history (catalogue.fn_listing_engagements)
+CREATE INDEX IF NOT EXISTS idx_promoted_placements_entity
+    ON marketplace.promoted_placements (entity_type, entity_id);
+-- #endregion

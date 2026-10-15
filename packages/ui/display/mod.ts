@@ -2,7 +2,7 @@
  * @projective/ui/display — data & content display.
  *
  * Roster (DESIGN_SYSTEM.md §C.1, expanded for PrimeNG parity): high-performance collections
- * (Table, TreeTable, Tree, DataView, VirtualScroller, Scroller) that virtualize rows via
+ * (DataTable, TreeTable, Tree, DataView, VirtualScroller, Scroller) that virtualize rows via
  * `@projective/ui/hooks/useVirtualScroll` and scroll within their own container OR the window;
  * hierarchical + temporal views (OrgChart, Timeline); media (Image, Galleria, Carousel, GMap,
  * AudioVisualizer, VideoPlayer, ProgressiveImage, ShowcaseGrid); charts (AreaChart, FunnelChart,
@@ -14,8 +14,35 @@
  */
 
 // #region Collections
-export { Table } from "./islands/Table.tsx";
-export type { TableProps, TableSelectionMode } from "./islands/Table.tsx";
+export { DataTable } from "./islands/DataTable.tsx";
+export type { DataTableProps, DataTableScroll } from "./islands/DataTable.tsx";
+export type {
+	CellImagePlaceholder,
+	ColumnFilterSpec,
+	ColumnFilterState,
+	ColumnFilterValue,
+	ColumnLayout,
+	DataColumn,
+	DataColumnAlign,
+	DataColumnBase,
+	DataColumnType,
+	DataSort,
+	DataSortDir,
+	DateFormat,
+	FileCellValue,
+	FilterOption,
+	ImageCellValue,
+	MoneyCellValue,
+	MoneyFlow,
+	NumberFormat,
+	PersonCellValue,
+	RatingCellValue,
+	SelectionMode,
+	SortCycle,
+	StatusCellValue,
+} from "./types/data-table.ts";
+export { formatBytes, formatDate, formatDuration, formatNumber, formatRelative } from "./core/table-format.ts";
+export { headerCheckState, pruneSelection } from "./core/table-selection.ts";
 export { TreeTable } from "./islands/TreeTable.tsx";
 export type { TreeTableProps } from "./islands/TreeTable.tsx";
 export { Tree } from "./islands/Tree.tsx";

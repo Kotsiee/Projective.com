@@ -521,6 +521,9 @@ export default function MessagesSidebar(props: MessagesSidebarProps): JSX.Elemen
 									onToggleStar={toggleStar}
 									onMove={(id, to) => void move(id, to)}
 									onDelete={del}
+									onCopied={(ok) => {
+										said.value = ok ? "Link copied" : "Couldn't copy the link";
+									}}
 								/>
 							))
 						)}

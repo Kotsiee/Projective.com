@@ -3,31 +3,50 @@ import { useRef } from "preact/hooks";
 import "../styles/zoom-slider.css";
 import { cx } from "../../core/cx.ts";
 import { styleVars } from "../../core/style.ts";
+import { Icon } from "../../icons/mod.ts";
+import { Button } from "../components/Button.tsx";
 import { useControllable } from "../hooks/useControllable.ts";
+import { useHoldRepeat } from "../hooks/useHoldRepeat.ts";
 import type { Bindable, FieldSize } from "../types/mod.ts";
 
 /**
- * ZoomSlider — a compact zoom control: a minus button, a thin track with evenly-spaced segment
- * markers and a distinct centered transition marker, a draggable handle, and a plus button. Built for
- * a view-density rig where crossing the centre marker flips a workspace between two presentations
- * (e.g. list ⇄ grid) and the value within each half scales the density. Signal-first (`Bindable`):
- * pass a `Signal` so a `Ctrl`+wheel handler elsewhere and this slider drive one shared value.
+ * What moved a {@link ZoomSlider}: `"drag"` follows the pointer 1:1 and should land at once; `"step"`
+ * is a discrete jump (± button, held button, Arrow / Page / Home / End) and may be eased.
+ */
+export type ZoomChangeSource = "drag" | "step";
+
+/**
+ * ZoomSlider — the ONE zoom control on the platform: a zoom-out lens button, a muted track (no
+ * progress fill) with optional segment markers and an optional centre transition marker, a neutral
+ * draggable handle, and a zoom-in lens button. The buttons are ghost circles that step once on a
+ * press and repeat while held (`useHoldRepeat`), stopping at a bound or on release; a held `Ctrl` /
+ * `Cmd` at press asks for a fine step.
+ *
+ * Signal-first (`Bindable`): pass a `Signal` so a `Ctrl`+wheel handler elsewhere and this slider
+ * drive one shared value. A surface whose step is not linear in the slider value (a logarithmic
+ * viewer zoom, a snapped crop zoom) passes {@link ZoomSliderProps.onStep} and keeps its own maths.
  *
  * `role="slider"` with full `aria-valuemin/max/now` + Arrow/Home/End/PageUp/Down keyboard; the track
- * is pointer-draggable (1:1, capture-based). Token-only, reduced-motion aware. Dumb island.
+ * is pointer-draggable (1:1, capture-based) and steps on `Ctrl` / `Cmd` + wheel while hovered.
+ * Token-only, reduced-motion aware. Dumb island.
  */
 export interface ZoomSliderProps {
 	/** Current zoom (raw = uncontrolled; `Signal` = controlled). */
 	value?: Bindable<number>;
-	onValueChange?: (value: number) => void;
+	onValueChange?: (value: number, source: ZoomChangeSource) => void;
 	min?: number;
 	max?: number;
 	/** Step for the ± buttons + Arrow keys (default `(max - min) / 10`). */
 	step?: number;
-	/** Number of segments the track is divided into → `segments + 1` tick markers (default `8`). */
+	/** Segments the track is divided into → `segments + 1` markers; `0` draws none (default `8`). */
 	segments?: number;
-	/** Position of the distinct centre "transition" marker (default the midpoint). */
-	center?: number;
+	/** Position of the distinct centre "transition" marker; `null` draws none (default the midpoint). */
+	center?: number | null;
+	/**
+	 * Replaces the ± button step. Answers whether the value moved, so a held button stops at a bound.
+	 * `fine` is true while `Ctrl` / `Cmd` was held at press.
+	 */
+	onStep?: (direction: 1 | -1, fine: boolean) => boolean;
 	size?: FieldSize;
 	/** Block interaction; removes the track and both buttons from the tab order. */
 	disabled?: boolean;
@@ -44,16 +63,39 @@ export interface ZoomSliderProps {
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-const MinusGlyph = (
-	<svg viewBox="0 0 16 16" width="15" height="15" fill="none" aria-hidden="true">
-		<path d="M3.5 8h9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
-	</svg>
-);
-const PlusGlyph = (
-	<svg viewBox="0 0 16 16" width="15" height="15" fill="none" aria-hidden="true">
-		<path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
-	</svg>
-);
+const FINE_DIVISOR = 5;
+
+interface ZoomStepButtonProps {
+	direction: 1 | -1;
+	disabled: boolean;
+	onStep: (direction: 1 | -1, fine: boolean) => boolean;
+}
+
+function ZoomStepButton({ direction, disabled, onStep }: ZoomStepButtonProps): JSX.Element {
+	const hold = useHoldRepeat({
+		disabled,
+		onTick: (initiator) => onStep(direction, initiator.ctrlKey || initiator.metaKey),
+	});
+	const label = direction > 0 ? "Zoom in" : "Zoom out";
+	return (
+		<Button
+			iconOnly
+			rounded
+			size="sm"
+			variant="text"
+			severity="secondary"
+			class="ui-zoom__btn ui-hit"
+			icon={<Icon name={direction > 0 ? "zoom-in" : "zoom-out"} size="sm" />}
+			aria-label={label}
+			disabled={disabled}
+			data-holding={hold.holding.value ? "true" : undefined}
+			{...hold.handlers}
+			onClick={(e: JSX.TargetedMouseEvent<HTMLButtonElement>) => {
+				if (e.detail === 0) onStep(direction, e.ctrlKey || e.metaKey);
+			}}
+		/>
+	);
+}
 
 export function ZoomSlider(props: ZoomSliderProps): JSX.Element {
 	const {
@@ -64,6 +106,7 @@ export function ZoomSlider(props: ZoomSliderProps): JSX.Element {
 		step = (max - min) / 10,
 		segments = 8,
 		center = (min + max) / 2,
+		onStep,
 		size = "sm",
 		disabled,
 		readOnly,
@@ -75,12 +118,29 @@ export function ZoomSlider(props: ZoomSliderProps): JSX.Element {
 	/** Disabled blocks everything; read-only blocks the write but keeps focus and announcement. */
 	const locked = Boolean(disabled || readOnly);
 
-	const ctrl = useControllable<number>(value, clamp((min + max) / 2, min, max), onValueChange);
+	const source = useRef<ZoomChangeSource>("step");
+	const ctrl = useControllable<number>(
+		value,
+		clamp((min + max) / 2, min, max),
+		onValueChange ? (next) => onValueChange(next, source.current) : undefined,
+	);
 	const trackRef = useRef<HTMLDivElement>(null);
 	const dragging = useRef(false);
 
 	const v = clamp(ctrl.signal.value, min, max);
 	const pct = (n: number) => ((clamp(n, min, max) - min) / (max - min)) * 100;
+
+	const write = (next: number, from: ZoomChangeSource) => {
+		source.current = from;
+		ctrl.set(clamp(next, min, max));
+	};
+
+	const stepBy = (direction: 1 | -1, fine: boolean): boolean => {
+		if (onStep) return onStep(direction, fine);
+		const before = clamp(ctrl.signal.peek(), min, max);
+		write(before + direction * (fine ? step / FINE_DIVISOR : step), "step");
+		return clamp(ctrl.signal.peek(), min, max) !== before;
+	};
 
 	const setFromClientX = (clientX: number) => {
 		const el = trackRef.current;
@@ -88,13 +148,13 @@ export function ZoomSlider(props: ZoomSliderProps): JSX.Element {
 		const rect = el.getBoundingClientRect();
 		if (rect.width <= 0) return;
 		const ratio = clamp((clientX - rect.left) / rect.width, 0, 1);
-		ctrl.set(min + ratio * (max - min));
+		write(min + ratio * (max - min), "drag");
 	};
 
 	const onPointerDown = (e: JSX.TargetedPointerEvent<HTMLDivElement>) => {
-		if (locked) return;
+		if (locked || e.button !== 0) return;
 		dragging.current = true;
-		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		e.currentTarget.setPointerCapture(e.pointerId);
 		setFromClientX(e.clientX);
 	};
 	const onPointerMove = (e: JSX.TargetedPointerEvent<HTMLDivElement>) => {
@@ -104,7 +164,15 @@ export function ZoomSlider(props: ZoomSliderProps): JSX.Element {
 	const onPointerUp = (e: JSX.TargetedPointerEvent<HTMLDivElement>) => {
 		if (!dragging.current) return;
 		dragging.current = false;
-		(e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+		if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+			e.currentTarget.releasePointerCapture(e.pointerId);
+		}
+	};
+
+	const onWheel = (e: JSX.TargetedWheelEvent<HTMLDivElement>) => {
+		if (locked || !(e.ctrlKey || e.metaKey) || e.deltaY === 0) return;
+		e.preventDefault();
+		stepBy(e.deltaY < 0 ? 1 : -1, false);
 	};
 
 	const onKeyDown = (e: JSX.TargetedKeyboardEvent<HTMLDivElement>) => {
@@ -118,10 +186,12 @@ export function ZoomSlider(props: ZoomSliderProps): JSX.Element {
 		else if (e.key === "End") next = max;
 		if (next === null) return;
 		e.preventDefault();
-		ctrl.set(clamp(next, min, max));
+		write(next, "step");
 	};
 
-	const ticks = Array.from({ length: segments + 1 }, (_, i) => (i / segments) * 100);
+	const ticks = segments > 0
+		? Array.from({ length: segments + 1 }, (_, i) => (i / segments) * 100)
+		: [];
 
 	return (
 		<div
@@ -133,15 +203,7 @@ export function ZoomSlider(props: ZoomSliderProps): JSX.Element {
 				className,
 			)}
 		>
-			<button
-				type="button"
-				class="ui-zoom__btn ui-hit"
-				aria-label="Zoom out"
-				disabled={locked}
-				onClick={() => ctrl.set(clamp(v - step, min, max))}
-			>
-				{MinusGlyph}
-			</button>
+			<ZoomStepButton direction={-1} disabled={locked || v <= min} onStep={stepBy} />
 
 			<div
 				ref={trackRef}
@@ -159,24 +221,29 @@ export function ZoomSlider(props: ZoomSliderProps): JSX.Element {
 				onPointerDown={onPointerDown}
 				onPointerMove={onPointerMove}
 				onPointerUp={onPointerUp}
+				onPointerCancel={onPointerUp}
+				onWheel={onWheel}
 				onKeyDown={onKeyDown}
 			>
 				<div class="ui-zoom__rail" aria-hidden="true" />
-				<div
-					class="ui-zoom__fill"
-					style={styleVars({ "--zoom-pct": `${pct(v)}%` })}
-					aria-hidden="true"
-				/>
-				<div class="ui-zoom__ticks" aria-hidden="true">
-					{ticks.map((t, i) => (
-						<span key={i} class="ui-zoom__tick" style={styleVars({ "--tick": `${t}%` })} />
-					))}
-				</div>
-				<span
-					class="ui-zoom__center"
-					style={styleVars({ "--tick": `${pct(center)}%` })}
-					aria-hidden="true"
-				/>
+				{ticks.length > 0
+					? (
+						<div class="ui-zoom__ticks" aria-hidden="true">
+							{ticks.map((t, i) => (
+								<span key={i} class="ui-zoom__tick" style={styleVars({ "--tick": `${t}%` })} />
+							))}
+						</div>
+					)
+					: null}
+				{center !== null
+					? (
+						<span
+							class="ui-zoom__center"
+							style={styleVars({ "--tick": `${pct(center)}%` })}
+							aria-hidden="true"
+						/>
+					)
+					: null}
 				<span
 					class="ui-zoom__handle"
 					style={styleVars({ "--zoom-pct": `${pct(v)}%` })}
@@ -184,15 +251,7 @@ export function ZoomSlider(props: ZoomSliderProps): JSX.Element {
 				/>
 			</div>
 
-			<button
-				type="button"
-				class="ui-zoom__btn ui-hit"
-				aria-label="Zoom in"
-				disabled={locked}
-				onClick={() => ctrl.set(clamp(v + step, min, max))}
-			>
-				{PlusGlyph}
-			</button>
+			<ZoomStepButton direction={1} disabled={locked || v >= max} onStep={stepBy} />
 		</div>
 	);
 }

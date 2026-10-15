@@ -1,15 +1,10 @@
-/*
- * ZoomSlider — ± buttons flanking a thin segmented track with a distinct centre transition marker.
- * Token-only; the track sits on a hairline rail, the fill + handle use the primary accent, the centre
- * marker is a taller emphasized tick. Compact enterprise footprint.
- */
 .ui-zoom {
 	--zoom-h: 1.75rem;
-	--zoom-track-h: 4px;
+	--zoom-track-h: 2px;
 	--zoom-handle: 0.75rem;
 	display: inline-flex;
 	align-items: center;
-	gap: var(--space-2);
+	gap: var(--space-1);
 	block-size: var(--zoom-h);
 	color: var(--on-surface);
 }
@@ -22,10 +17,6 @@
 	--zoom-handle: 0.875rem;
 }
 
-/*
- * Disabled / read-only. The control had neither, so a rig that could not zoom had no way to say so.
- * Fades ink and border only (never the box), per the shared field disabled contract.
- */
 .ui-zoom--disabled {
 	color: color-mix(in srgb, var(--on-surface) var(--fld-disabled-mix), var(--surface));
 	cursor: not-allowed;
@@ -34,42 +25,19 @@
 .ui-zoom--readonly .ui-zoom__track {
 	cursor: default;
 }
-.ui-zoom--disabled .ui-zoom__fill,
 .ui-zoom--disabled .ui-zoom__handle {
-	background: color-mix(in srgb, var(--primary) var(--fld-disabled-mix), var(--surface));
+	background: color-mix(in srgb, var(--text-secondary) var(--fld-disabled-mix), var(--surface));
 }
 
-.ui-zoom__btn {
-	position: relative;
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	inline-size: var(--zoom-h);
-	block-size: var(--zoom-h);
-	padding: 0;
-	border: none;
-	border-radius: var(--radius-sm);
-	background: transparent;
+.ui-button.ui-zoom__btn {
+	flex: none;
 	color: var(--text-secondary);
-	cursor: pointer;
-	transition:
-		background-color var(--dur-fast) var(--ease-standard),
-		color var(--dur-fast) var(--ease-standard);
 }
-.ui-zoom__btn:disabled {
-	color: color-mix(in srgb, var(--text-secondary) var(--fld-disabled-mix), var(--surface));
-	cursor: not-allowed;
-}
-.ui-zoom__btn:hover:not(:disabled) {
-	background: color-mix(in srgb, var(--on-surface) var(--tint-subtle), transparent);
+.ui-button.ui-zoom__btn:hover:not(:disabled),
+.ui-button.ui-zoom__btn[data-holding="true"] {
 	color: var(--on-surface);
 }
-.ui-zoom__btn:focus-visible {
-	outline: none;
-	box-shadow: none;
-}
 
-/* The draggable track. A minimum width keeps the segments legible; it may grow to fill. */
 .ui-zoom__track {
 	position: relative;
 	flex: 1 1 auto;
@@ -92,18 +60,9 @@
 	inset-inline: 0;
 	block-size: var(--zoom-track-h);
 	border-radius: var(--radius-full);
-	background: color-mix(in srgb, var(--outline) 30%, transparent);
-}
-.ui-zoom__fill {
-	position: absolute;
-	inset-inline-start: 0;
-	inline-size: var(--zoom-pct, 50%);
-	block-size: var(--zoom-track-h);
-	border-radius: var(--radius-full);
-	background: color-mix(in srgb, var(--primary) 70%, transparent);
+	background: color-mix(in srgb, var(--outline) 28%, transparent);
 }
 
-/* Evenly-spaced segment markers sitting on the rail. */
 .ui-zoom__ticks {
 	position: absolute;
 	inset-inline: 0;
@@ -114,22 +73,21 @@
 	inset-inline-start: var(--tick, 0);
 	inset-block-start: 50%;
 	transform: translate(-50%, -50%);
-	inline-size: 2px;
-	block-size: 8px;
+	inline-size: 1px;
+	block-size: 6px;
 	border-radius: var(--radius-full);
-	background: color-mix(in srgb, var(--outline) 55%, transparent);
+	background: color-mix(in srgb, var(--outline) 45%, transparent);
 }
 
-/* The distinct centre transition marker — taller + accented. */
 .ui-zoom__center {
 	position: absolute;
 	inset-inline-start: var(--tick, 50%);
 	inset-block-start: 50%;
 	transform: translate(-50%, -50%);
 	inline-size: 2px;
-	block-size: 14px;
+	block-size: 12px;
 	border-radius: var(--radius-full);
-	background: color-mix(in srgb, var(--on-surface) 55%, transparent);
+	background: color-mix(in srgb, var(--text-secondary) 70%, transparent);
 }
 
 .ui-zoom__handle {
@@ -140,15 +98,26 @@
 	inline-size: var(--zoom-handle);
 	block-size: var(--zoom-handle);
 	border-radius: var(--radius-full);
-	background: var(--primary);
+	background: var(--on-surface);
 	border: 2px solid var(--surface);
 	box-shadow: var(--elevation-low);
-	transition: box-shadow var(--dur-fast) var(--ease-standard);
+	transition: transform var(--dur-fast) var(--ease-standard);
+}
+.ui-zoom__track:active .ui-zoom__handle {
+	transform: translate(-50%, -50%) scale(1.15);
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.ui-zoom__btn,
 	.ui-zoom__handle {
 		transition: none;
 	}
+	.ui-zoom__track:active .ui-zoom__handle {
+		transform: translate(-50%, -50%);
+	}
+}
+:root[data-motion="reduced"] .ui-zoom__handle {
+	transition: none;
+}
+:root[data-motion="reduced"] .ui-zoom__track:active .ui-zoom__handle {
+	transform: translate(-50%, -50%);
 }

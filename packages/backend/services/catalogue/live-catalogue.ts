@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "supabaseClient";
 import {
 	type AnalyticsPeriod,
+	type CatalogueFacetCounts,
 	type CatalogueListParams,
 	type CataloguePage,
 	type CatalogueStats,
@@ -251,6 +252,7 @@ export function projectDetail(input: DetailInputs): ListingDetail {
 	const createCategory = CreateCategory.safeParse(l.create_category);
 
 	const detail: ListingDetail = {
+		deletable: false,
 		id: (input.blueprint ?? input.product)?.slug ?? l.id,
 		ownerId: input.owner.handle,
 		kind: l.kind,
@@ -321,7 +323,31 @@ export function summaryOf(detail: ListingDetail): ListingSummary {
 		updatedLabel: detail.updatedLabel,
 		promoted: detail.promoted,
 		needsAttention: detail.needsAttention,
+		deletable: false,
 	};
+}
+
+/** The listing ids among `ids` the viewer may hard-delete: created by them, never engaged with. */
+async function deletableIds(db: SupabaseClient, ids: readonly string[]): Promise<Set<string>> {
+	if (ids.length === 0) return new Set();
+	const { data, error } = await db.schema("catalogue").rpc("get_listing_engagement", {
+		p_listings: ids,
+	});
+	if (error) throw new Error(`catalogue.get_listing_engagement failed: ${error.message}`);
+	return new Set(
+		((data ?? []) as Array<{ listing_id: string; engagements: number }>)
+			.filter((r) => r.engagements === 0)
+			.map((r) => r.listing_id),
+	);
+}
+
+async function withDeletable(
+	db: SupabaseClient,
+	items: ListingSummary[],
+	uuidBySlug: ReadonlyMap<string, string>,
+): Promise<ListingSummary[]> {
+	const free = await deletableIds(db, items.flatMap((i) => uuidBySlug.get(i.id) ?? []));
+	return items.map((i) => ({ ...i, deletable: free.has(uuidBySlug.get(i.id) ?? "") }));
 }
 // #endregion
 
@@ -611,6 +637,24 @@ async function statsFor(
 	};
 }
 
+function facetCountsOf(listings: readonly ListingDetail[]): CatalogueFacetCounts {
+	const out: CatalogueFacetCounts = {
+		model: {},
+		create: {},
+		needsAttention: 0,
+		promoted: 0,
+		bestSelling: 0,
+	};
+	for (const d of listings) {
+		if (d.serviceType) out.model[d.serviceType] = (out.model[d.serviceType] ?? 0) + 1;
+		if (d.createCategory) out.create[d.createCategory] = (out.create[d.createCategory] ?? 0) + 1;
+		if (d.needsAttention) out.needsAttention++;
+		if (d.promoted) out.promoted++;
+		if (d.metrics.orders > 0) out.bestSelling++;
+	}
+	return out;
+}
+
 /** A filtered, sorted, paged page of the acting seller's listings, with the KPI roll-up. */
 export async function listListings(
 	params: CatalogueListParams,
@@ -627,14 +671,19 @@ export async function listListings(
 	);
 	const all = [...details.values()].map(summaryOf);
 
-	let items = params.createCategory
-		? [...details.values()].filter((d) => d.createCategory === params.createCategory).map(
+	const creates = new Set(params.createCategory ?? []);
+	let items = creates.size
+		? [...details.values()].filter((d) => d.createCategory && creates.has(d.createCategory)).map(
 			summaryOf,
 		)
 		: all.slice();
 	if (params.type && params.type !== "all") items = items.filter((d) => d.kind === params.type);
-	if (params.status) items = items.filter((d) => d.status === params.status);
-	if (params.model) items = items.filter((d) => d.serviceType === params.model);
+	const statuses = new Set(params.status ?? []);
+	if (statuses.size) items = items.filter((d) => statuses.has(d.status));
+	const models = new Set(params.model ?? []);
+	if (models.size) {
+		items = items.filter((d) => d.serviceType !== null && models.has(d.serviceType));
+	}
 	if (params.needsAttention) items = items.filter((d) => d.needsAttention);
 	if (params.promoted) items = items.filter((d) => d.promoted);
 	if (params.bestSelling) items = items.filter((d) => d.metrics.orders > 0);
@@ -660,10 +709,12 @@ export async function listListings(
 		const at = items.findIndex((d) => d.id === params.cursor);
 		start = at >= 0 ? at + 1 : 0;
 	}
-	const pageItems = items.slice(start, start + limit);
+	const uuidBySlug = new Map([...details].map(([uuid, d]) => [d.id, uuid] as const));
+	const pageItems = await withDeletable(db, items.slice(start, start + limit), uuidBySlug);
 
 	const counts = { draft: 0, published: 0, paused: 0, archived: 0 };
 	for (const d of all) counts[d.status]++;
+	const facetCounts = facetCountsOf([...details.values()]);
 
 	const live = loaded.listings.filter((l) =>
 		l.status !== "archived" && (!params.type || params.type === "all" || l.kind === params.type)
@@ -674,6 +725,7 @@ export async function listListings(
 		nextCursor: start + limit < total ? pageItems[pageItems.length - 1]?.id ?? null : null,
 		total,
 		statusCounts: counts,
+		facetCounts,
 		stats: await statsFor(
 			db,
 			actor,
@@ -765,11 +817,11 @@ export async function listingDetail(
 		throw new Error(`catalogue.collections read failed: ${collectionRows.error.message}`);
 	}
 
-	const convert = await converter([l], sales);
+	const [convert, free] = await Promise.all([converter([l], sales), deletableIds(db, [l.id])]);
 	const labelById = new Map(
 		((skillRows.data ?? []) as Array<{ id: string; label: string }>).map((s) => [s.id, s.label]),
 	);
-	return detailOf(loaded, l, owner, sales, convert, {
+	const detail = detailOf(loaded, l, owner, sales, convert, {
 		skills: skillIds.flatMap((id) => {
 			const label = labelById.get(id);
 			return label ? [resolveSkill(label)] : [];
@@ -777,5 +829,6 @@ export async function listingDetail(
 		tags: ((tags.data ?? []) as Array<{ tag: string }>).map((t) => t.tag),
 		collections: ((collectionRows.data ?? []) as Array<{ name: string }>).map((c) => c.name),
 	});
+	return { ...detail, deletable: free.has(l.id) };
 }
 // #endregion

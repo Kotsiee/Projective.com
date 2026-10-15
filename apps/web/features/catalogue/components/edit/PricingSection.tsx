@@ -1,12 +1,13 @@
 import type { JSX } from "preact";
 import "../../styles/offer.css";
-import { CurrencySelect, MoneyInput } from "@projective/ui/fields";
+import { CurrencySelect, NumberInput } from "@projective/ui/fields";
 import { DISPLAY_CURRENCIES, formatMoney } from "@projective/types/finance";
 import {
 	formArchetypeOf,
 	hasBeenPublished,
 	resolveListingPricing,
 } from "@projective/types/catalogue";
+import { MONEY_FIELD, moneyDigits } from "@web/utils/money-field.ts";
 import type { ListingDetail } from "../../types/catalogue-types.ts";
 import { draft, edit } from "../../core/workspace-store.ts";
 import {
@@ -15,7 +16,6 @@ import {
 	minorOf,
 	priceAsk,
 	ticketRange,
-	wholeOf,
 	withAskedPrice,
 } from "../../core/pricing-model.ts";
 import { EditSectionFrame } from "./EditSectionFrame.tsx";
@@ -50,20 +50,16 @@ export function PricingSection(props: { listing: ListingDetail }): JSX.Element {
 		<EditSectionFrame section="pricing" intro="What buyers pay, as the card and the page show it.">
 			<div class="cat-sec__field">
 				<label class="cat-sec__label" for={PRICE_ID}>{ask.label}</label>
-				<MoneyInput
+				<NumberInput
+					{...MONEY_FIELD}
+					{...moneyDigits(listing.currency)}
 					id={PRICE_ID}
-					value={minor}
-					onValueChange={(next) =>
+					value={asked}
+					onValueChange={(next: number | null) =>
 						edit(
 							"pricing",
-							withAskedPrice(
-								draft.peek()?.pricing ?? listing.pricing,
-								ask.field,
-								wholeOf(next, listing.currency),
-							),
+							withAskedPrice(draft.peek()?.pricing ?? listing.pricing, ask.field, next),
 						)}
-					currency={listing.currency}
-					min={0}
 					placeholder="Set a price"
 					status={asked === null ? "gate" : "default"}
 					aria-describedby={`${PRICE_HINT_ID} ${CURRENCY_HINT_ID}`}

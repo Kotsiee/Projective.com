@@ -17,6 +17,8 @@ export const BatchActionSchema = z.discriminatedUnion("action", [
 	z.object({ action: z.literal("status"), status: ListingStatus }),
 	z.object({ action: z.literal("collection"), name: z.string().trim().min(1).max(80) }),
 	z.object({ action: z.literal("duplicate") }),
+	/** A hard delete, refused per listing for any with buyer history (Decision #221). */
+	z.object({ action: z.literal("delete") }),
 ]);
 export type BatchAction = z.infer<typeof BatchActionSchema>;
 

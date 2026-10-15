@@ -220,6 +220,10 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 		toast.show({ severity, summary, life: severity === "danger" ? 6000 : 3000 });
 	}
 
+	function onLinkCopied(ok: boolean): void {
+		notify(ok ? "success" : "danger", ok ? "Link copied" : "Couldn't copy the link");
+	}
+
 	/** Apply a param change: sync the URL (shareable) then fetch. */
 	function apply(next: ProjectFeedParams, cache = true): void {
 		const path = serializeProjectParams(next);
@@ -361,9 +365,7 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 		if (out.message) notify(out.ok ? "success" : "danger", out.message);
 	}
 
-	function onMenuAction(id: string, action: CardMenuAction): void {
-		// Open and Share resolve inside the card; Archive is the one action that writes.
-		if (action !== "archive") return;
+	function onMenuAction(id: string, _action: CardMenuAction): void {
 		const item = payload.value.items.find((r) => r.id === id);
 		if (!item) return;
 		archiveTarget.value = item;
@@ -536,6 +538,7 @@ export default function ProjectsLane(props: ProjectsLaneProps): JSX.Element {
 							active={isActiveCard(item.slug)}
 							onToggleStar={onToggleStar}
 							onMenuAction={onMenuAction}
+							onCopied={onLinkCopied}
 						/>
 					))}
 			</LaneList>

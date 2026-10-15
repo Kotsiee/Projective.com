@@ -3,7 +3,9 @@ import { useSignal, useSignalEffect } from "@preact/signals";
 import "../styles/workspace.css";
 import { Button } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
-import type { ListingStatus } from "../types/catalogue-types.ts";
+import { consoleHref, type ListingStatus } from "../types/catalogue-types.ts";
+import { ListingRemovalDialog, type RemovalKind } from "../components/ListingRemovalDialog.tsx";
+import { CatalogueService } from "../core/CatalogueService.ts";
 import {
 	draft,
 	notice,
@@ -16,9 +18,13 @@ import { readinessSentence } from "../core/workspace-model.ts";
 
 /** Props for {@link ListingActionRig}. */
 export interface ListingActionRigProps {
+	/** The listing's slug. */
+	slug: string;
 	/** The SSR status and what the publish gate found missing, so the rig paints before hydration. */
 	status: ListingStatus;
 	missing: readonly string[];
+	/** Whether the seller may hard-delete it: no buyer has engaged with it (Decision #221). */
+	deletable: boolean;
 }
 
 const GATE_ID = "cat-ws-gate";
@@ -33,14 +39,43 @@ function publishLabel(status: ListingStatus): string {
 /**
  * ListingActionRig — the workspace's middle-nav FOOTER band: the publish gate as one sentence ("Add
  * a cover image and set a price to publish."), then the lifecycle actions. Archive and Pause are
- * neutral outlined utilities; Publish is the teal workflow commit. While the gate is closed,
- * Publish stays focusable but inert, and its `aria-describedby` points at the sentence saying why.
+ * neutral outlined utilities; Delete — offered only while no buyer has engaged with the listing — is
+ * a quiet danger action; both removals confirm first, worded for what each does. Publish is the teal
+ * workflow commit. While the gate is closed, Publish stays focusable but inert, and its
+ * `aria-describedby` points at the sentence saying why.
  *
  * Every lifecycle change goes through the store, which saves what the seller typed first. The
- * outcome of the last change (or showcase write) replaces the sentence for a few seconds.
+ * outcome of the last change (or showcase write) replaces the sentence for a few seconds. A delete
+ * leaves for the console.
  */
 export default function ListingActionRig(props: ListingActionRigProps): JSX.Element {
 	const shown = useSignal<string | null>(null);
+	const removal = useSignal<RemovalKind | null>(null);
+	const confirming = useSignal(false);
+	const deleting = useSignal(false);
+
+	function confirm(kind: RemovalKind): void {
+		removal.value = kind;
+		confirming.value = true;
+	}
+
+	async function runRemoval(): Promise<void> {
+		const kind = removal.peek();
+		removal.value = null;
+		if (kind === "archive") {
+			await requestStatus("archived");
+			return;
+		}
+		if (kind !== "delete") return;
+		deleting.value = true;
+		const res = await CatalogueService.remove(props.slug);
+		if (res.ok) {
+			globalThis.location.assign(consoleHref({}));
+			return;
+		}
+		deleting.value = false;
+		notice.value = res.message ?? "Couldn't delete the listing.";
+	}
 
 	useSignalEffect(() => {
 		const message = notice.value;
@@ -71,6 +106,18 @@ export default function ListingActionRig(props: ListingActionRigProps): JSX.Elem
 			<span class="ui-visually-hidden" role="status">{shown.value ?? ""}</span>
 
 			<div class="cat-ws-rig__actions">
+				{props.deletable && (
+					<Button
+						size="sm"
+						variant="text"
+						severity="danger"
+						label="Delete"
+						icon={<Icon name="trash" />}
+						loading={deleting.value}
+						disabled={busy !== null || deleting.value}
+						onClick={() => confirm("delete")}
+					/>
+				)}
 				{status !== "archived" && (
 					<Button
 						size="sm"
@@ -78,8 +125,8 @@ export default function ListingActionRig(props: ListingActionRigProps): JSX.Elem
 						variant="outlined"
 						label="Archive"
 						loading={busy === "archived"}
-						disabled={busy !== null}
-						onClick={() => void requestStatus("archived")}
+						disabled={busy !== null || deleting.value}
+						onClick={() => confirm("archive")}
 					/>
 				)}
 				{status === "published"
@@ -105,6 +152,15 @@ export default function ListingActionRig(props: ListingActionRigProps): JSX.Elem
 						/>
 					)}
 			</div>
+			{removal.value && (
+				<ListingRemovalDialog
+					visible={confirming}
+					kind={removal.value}
+					subject={`“${draft.value?.title ?? "this listing"}”`}
+					onConfirm={() => void runRemoval()}
+					onCancel={() => (removal.value = null)}
+				/>
+			)}
 		</div>
 	);
 }

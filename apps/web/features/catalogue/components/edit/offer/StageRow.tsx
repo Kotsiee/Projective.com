@@ -2,14 +2,15 @@ import type { JSX } from "preact";
 import { useSortable } from "@projective/ui/dnd";
 import {
 	InputText,
-	MoneyInput,
+	NumberInput,
 	NumberStepper,
 	Select,
 	Textarea,
 	ToggleSwitch,
 } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
-import { formatMoney } from "@projective/types/finance";
+import { MONEY_FIELD, moneyDigits } from "@web/utils/money-field.ts";
+import { formatMoney, toMajorUnits, toMinorUnits } from "@projective/types/finance";
 import { StartTrigger } from "@projective/types/catalogue";
 import type { Milestone } from "../../../types/catalogue-types.ts";
 import { STAGE_LIST_MAX, TRIGGER_OPTIONS } from "../../../core/offer-model.ts";
@@ -121,12 +122,13 @@ export function StageRow(props: StageRowProps): JSX.Element {
 			<div class="cat-offer__row">
 				<div class="cat-sec__field">
 					<label class="cat-sec__label" for={`${base}-price`}>Ticket price</label>
-					<MoneyInput
+					<NumberInput
+						{...MONEY_FIELD}
+						{...moneyDigits(currency)}
 						id={`${base}-price`}
-						value={stage.priceCents ?? null}
-						onValueChange={(minor) => props.onPatch({ priceCents: minor ?? undefined })}
-						currency={currency}
-						min={0}
+						value={toMajorUnits(stage.priceCents ?? null, currency)}
+						onValueChange={(next: number | null) =>
+							props.onPatch({ priceCents: toMinorUnits(next, currency) ?? undefined })}
 						placeholder={props.baselineMinor === null
 							? "Not priced"
 							: formatMoney(props.baselineMinor, currency)}

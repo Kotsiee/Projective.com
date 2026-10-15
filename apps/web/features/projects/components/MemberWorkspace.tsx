@@ -3,7 +3,7 @@ import type { Signal } from "@preact/signals";
 import { styleVars } from "@ui/core/style.ts";
 import type { MemberInvite, MemberRequest, ProjectMemberRow } from "../types/projects-types.ts";
 import type { MemberContext, MemberSection } from "../core/member-sections.ts";
-import { gridColWidth, listRowHeight, viewMode, zoom } from "../core/member-view-state.ts";
+import { gridColWidth, listRowHeight, viewMode, displayZoom } from "../core/member-view-state.ts";
 import { InviteCard, RequestCard, RosterCard } from "./MemberSectionCards.tsx";
 import { InvitesTable, MembersTable, RequestsTable } from "./MemberTable.tsx";
 
@@ -81,8 +81,8 @@ function Empty(p: MemberWorkspaceProps): JSX.Element {
 export function MemberWorkspace(p: MemberWorkspaceProps): JSX.Element {
 	const grid = viewMode.value === "grid";
 	const sort = { sortKey: p.sortKey, sortDir: p.sortDir, onSort: p.onSort };
-	const rowHeight = listRowHeight(zoom.value);
-	const gridStyle = styleVars({ "--mem-col": `${gridColWidth(zoom.value)}px` });
+	const rowHeight = listRowHeight(displayZoom.value);
+	const gridStyle = styleVars({ "--mem-col": `${gridColWidth(displayZoom.value)}px` });
 
 	if (p.section === "requests") {
 		if (p.requests.length === 0) return <Empty {...p} />;

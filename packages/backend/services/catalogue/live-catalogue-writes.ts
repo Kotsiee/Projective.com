@@ -368,6 +368,24 @@ export async function setListingStatus(
 }
 // #endregion
 
+// #region Delete
+/**
+ * Hard-delete a listing nobody has engaged with, and its product or service (`catalogue.delete_listing`,
+ * Decision #221). A listing with buyer history is refused 409 — archiving is the way out for it.
+ */
+export async function deleteListing(
+	slug: string,
+	actor: LiveActor,
+): Promise<Result<{ id: string }>> {
+	const db = getUserClient(actor.accessToken);
+	const l = await ownedListing(db, slug, actor);
+	if (!l) return notFound();
+	const { error } = await db.schema("catalogue").rpc("delete_listing", { p_listing: l.id });
+	if (error) return refusalOf(error);
+	return ok({ id: slug }, { message: "Listing deleted." });
+}
+// #endregion
+
 // #region Duplicate
 /** Copy a listing as a new draft (media by file id, the same subject terms) and read the copy back. */
 export async function duplicateListing(
@@ -479,6 +497,8 @@ export async function batchListings(
 	for (const listingId of listingIds) {
 		const { error } = input.action === "duplicate"
 			? await db.schema("catalogue").rpc("duplicate_listing", { p_listing: listingId })
+			: input.action === "delete"
+			? await db.schema("catalogue").rpc("delete_listing", { p_listing: listingId })
 			: await db.schema("catalogue").rpc("save_listing", {
 				p_listing: listingId,
 				p_patch: { collections: [...new Set([...await collectionsOf(db, listingId), input.name])] },

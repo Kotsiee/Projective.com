@@ -1,83 +1,110 @@
 import type { JSX } from "preact";
+import { type DataColumn, DataTable } from "@projective/ui/display";
+import type { Severity } from "@projective/ui/fields";
 import type { SubmissionTreeNode } from "../types/projects-types.ts";
 import { nodeKindLabel, statusLabel, statusTone } from "../core/submission-model.ts";
 import { FolderGlyph, StageGlyph, SubmissionStatusIcon, UnitGlyph } from "./submission-glyphs.tsx";
 import { UserAvatar } from "@web/components/UserAvatar.tsx";
 
 /**
- * SubmissionNodeList — the LIST-mode presentation of the current node's child nodes (Freelancers /
- * Submissions), the row counterpart to {@link FreelancerCard}/{@link SubmissionCard}. Each row is an
- * interactive button (a leading avatar for a submitter, else a kind glyph; name · sublabel · muted
- * count) that drills into the node. §B.4: transparent rows with a hover tint + a single bottom
- * hairline, no boxing. Token-only.
+ * SubmissionNodeList — the LIST-mode presentation of the current node's child nodes (stages,
+ * freelancers, submissions, folders), the row counterpart to {@link FreelancerCard}/
+ * {@link SubmissionCard}, as a `DataTable` preset: Name (avatar or kind glyph, with the kind or
+ * status beneath) · Status · Contents. A row drills into its node.
  */
 export interface SubmissionNodeListProps {
 	nodes: SubmissionTreeNode[];
 	onOpen: (node: SubmissionTreeNode) => void;
+	/** `false` drops the header row, for folder rows listed above a file table. */
+	header?: boolean;
+	"aria-label"?: string;
 }
 
-function RowGlyph({ node }: { node: SubmissionTreeNode }): JSX.Element {
+const TONE_SEVERITY: Record<ReturnType<typeof statusTone>, Severity> = {
+	warning: "warning",
+	danger: "danger",
+	success: "success",
+	muted: "secondary",
+};
+
+function itemCount(node: SubmissionTreeNode): number {
+	return node.children.length > 0 ? node.children.length : node.fileCount;
+}
+
+function countLabel(node: SubmissionTreeNode): string {
+	const n = itemCount(node);
+	const noun = node.children.length > 0 ? "item" : "file";
+	return `${n} ${noun}${n === 1 ? "" : "s"}`;
+}
+
+function NodeLead({ node }: { node: SubmissionTreeNode }): JSX.Element {
+	if (node.kind === "submitter") {
+		return <UserAvatar image={node.avatar ?? undefined} label={node.label} size={28} alt="" />;
+	}
 	if (node.kind === "stage") return <StageGlyph size={18} />;
 	if (node.kind === "unit") return <UnitGlyph size={18} />;
 	return <FolderGlyph size={18} />;
 }
 
-export function SubmissionNodeList({ nodes, onOpen }: SubmissionNodeListProps): JSX.Element {
+const NODE_COLUMNS: readonly DataColumn<SubmissionTreeNode>[] = [
+	{
+		id: "name",
+		header: "Name",
+		type: "text",
+		fill: true,
+		minWidth: 200,
+		pinned: true,
+		value: (node) => node.label,
+		secondary: (node) =>
+			node.kind === "unit"
+				? (node.status ? statusLabel(node.status) : nodeKindLabel(node.kind))
+				: (node.sublabel ?? nodeKindLabel(node.kind)),
+		lead: (node) => <NodeLead node={node} />,
+	},
+	{
+		id: "status",
+		header: "Status",
+		type: "status",
+		width: 168,
+		priority: 1,
+		value: (node) =>
+			node.kind === "unit" && node.status
+				? {
+					label: statusLabel(node.status),
+					tone: TONE_SEVERITY[statusTone(node.status)],
+					icon: <SubmissionStatusIcon status={node.status} size={14} />,
+				}
+				: null,
+	},
+	{
+		id: "contents",
+		header: "Contents",
+		type: "custom",
+		align: "end",
+		width: 120,
+		render: (node) => <span class="ui-dt__num">{countLabel(node)}</span>,
+		sortValue: itemCount,
+	},
+];
+
+const COLUMNS_WITHOUT_STATUS = NODE_COLUMNS.filter((column) => column.id !== "status");
+
+export function SubmissionNodeList(props: SubmissionNodeListProps): JSX.Element {
+	const hasStatus = props.nodes.some((node) => node.kind === "unit" && node.status);
+	const columns = hasStatus ? NODE_COLUMNS : COLUMNS_WITHOUT_STATUS;
 	return (
-		<div class="subm-nodelist" role="list" aria-label="Submissions">
-			{nodes.map((node) => {
-				const children = node.children.length;
-				const count = children > 0
-					? `${children} item${children === 1 ? "" : "s"}`
-					: `${node.fileCount} file${node.fileCount === 1 ? "" : "s"}`;
-				const sub = node.kind === "unit"
-					? (node.status ? statusLabel(node.status) : nodeKindLabel(node.kind))
-					: (node.sublabel ?? nodeKindLabel(node.kind));
-				return (
-					<button
-						key={node.segment}
-						type="button"
-						class="subm-noderow"
-						role="listitem"
-						data-kind={node.kind}
-						onClick={() => onOpen(node)}
-						aria-label={`${node.label} — ${sub}, ${count}`}
-					>
-						<span class="subm-noderow__lead" aria-hidden="true">
-							{node.kind === "submitter"
-								? (
-									<UserAvatar
-										image={node.avatar ?? undefined}
-										label={node.label}
-										size={28}
-										alt=""
-									/>
-								)
-								: (
-									<span class="subm-noderow__glyph">
-										<RowGlyph node={node} />
-									</span>
-								)}
-						</span>
-						<span class="subm-noderow__id">
-							<span class="subm-noderow__name" title={node.label}>{node.label}</span>
-							<span class="subm-noderow__sub">{sub}</span>
-						</span>
-						{node.kind === "unit" && node.status
-							? (
-								<span
-									class="subm-noderow__status"
-									data-tone={statusTone(node.status)}
-									aria-hidden="true"
-								>
-									<SubmissionStatusIcon status={node.status} size={16} />
-								</span>
-							)
-							: null}
-						<span class="subm-noderow__count">{count}</span>
-					</button>
-				);
-			})}
-		</div>
+		<DataTable
+			rows={props.nodes}
+			rowKey={(node) => node.segment}
+			rowLabel={(node) => node.label}
+			columns={columns}
+			aria-label={props["aria-label"] ?? "Submissions"}
+			header={props.header}
+			onRowActivate={(node) => props.onOpen(node)}
+			rowHeight={56}
+			virtualize={false}
+			columnChooser={false}
+			reorderable={false}
+		/>
 	);
 }

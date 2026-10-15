@@ -6,7 +6,6 @@ import {
 	minorOf,
 	priceAsk,
 	ticketRange,
-	wholeOf,
 	withAskedPrice,
 	withRevisionsDeclared,
 } from "./pricing-model.ts";
@@ -23,8 +22,7 @@ const PRICING: ListingPricing = {
 Deno.test("units convert at the currency's exponent", () => {
 	assertEquals(minorOf(12.5, "GBP"), 1250);
 	assertEquals(minorOf(5000, "JPY"), 5000);
-	assertEquals(wholeOf(1250, "GBP"), 12.5);
-	assertEquals(wholeOf(null, "GBP"), null);
+	assertEquals(minorOf(null, "GBP"), null);
 });
 
 Deno.test("each archetype asks for its own price", () => {

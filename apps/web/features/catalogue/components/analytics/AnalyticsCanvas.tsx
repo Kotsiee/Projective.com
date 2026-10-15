@@ -5,6 +5,7 @@ import "../../styles/analytics.css";
 import { AreaChart, FunnelChart, HeatmapGrid } from "@projective/ui/display";
 import { SelectButton } from "@projective/ui/fields";
 import { InlineNotice } from "@projective/ui/feedback";
+import { Icon } from "@projective/ui/icons";
 import { catalogueSim, subscribeDevSeam } from "@web/utils/dev-seam.ts";
 import { CatalogueService } from "../../core/CatalogueService.ts";
 import {
@@ -44,8 +45,9 @@ import { AnalyticsSkeleton } from "./AnalyticsSkeleton.tsx";
  * It reads `/api/catalogue/analytics` itself after first paint (the SSR stays light). While a read is
  * in flight it shows skeletons; a failed read shows why and a Retry, and NEVER the previous window's
  * figures or zeros — "nothing happened" is a claim about the seller's business, and a false one when
- * the truth is that it could not be read. Regions are separated by spacing on `--bg`; only the chart
- * plots sit on `--surface-1`.
+ * the truth is that it could not be read. A read that DID succeed with nothing in it still draws every
+ * chart — axes, gridlines and a zero baseline — with a centred notice saying why it is flat. Regions
+ * are separated by spacing on `--bg`; only the chart plots sit on `--surface-1`.
  */
 
 // #region State
@@ -81,6 +83,28 @@ function Region(props: {
 }
 // #endregion
 
+// #region Plot frame
+/** A chart with, when it has nothing to show, a centred notice over its empty scaffold. */
+function PlotFrame(
+	{ empty, heat, children }: { empty: string | null; heat?: boolean; children: ComponentChildren },
+): JSX.Element {
+	return (
+		<div class="cat-an__frame" data-empty={empty ? "true" : undefined}>
+			<div class={heat ? "cat-an__heat" : "cat-an__plot"}>{children}</div>
+			{empty && (
+				<div class="cat-an__overlay">
+					<InlineNotice
+						class="cat-an__overlay-notice"
+						icon={<Icon name="info" />}
+						text={empty}
+					/>
+				</div>
+			)}
+		</div>
+	);
+}
+// #endregion
+
 // #region Body
 function AnalyticsBody(
 	{ data, idBase }: { data: CatalogueAnalytics; idBase: string },
@@ -97,6 +121,7 @@ function AnalyticsBody(
 		)
 		: [];
 	const id = (name: string) => `${idBase}-${name}`;
+	const span = periodPhrase(data.period);
 
 	return (
 		<>
@@ -108,44 +133,42 @@ function AnalyticsBody(
 					meta={`${data.window.label} · ${data.currency}`}
 					wide
 				>
-					{revenue.any
-						? (
-							<div class="cat-an__plot">
-								<AreaChart
-									caption={`Gross volume per ${data.bucket}, ${data.window.label}`}
-									captionHidden
-									labels={revenue.labels}
-									bucketName={(_, i) => revenue.names[i]}
-									bucketHeader={data.bucket === "week" ? "Week" : "Day"}
-									series={[{ id: "gross", label: "Gross volume", values: revenue.values }]}
-									formatValue={(v) => money(v, data.currency)}
-									formatTick={(v) => moneyTick(v, data.currency)}
-									hint="Use the arrow keys to move between buckets"
-								/>
-							</div>
-						)
-						: (
-							<p class="cat-an__empty">
-								Nothing sold in the last {periodPhrase(data.period)}.
-							</p>
-						)}
+					<PlotFrame
+						empty={revenue.any
+							? null
+							: `No sales in the last ${span}. This chart fills in as orders arrive.`}
+					>
+						<AreaChart
+							caption={`Gross volume per ${data.bucket}, ${data.window.label}`}
+							captionHidden
+							labels={revenue.labels}
+							bucketName={(_, i) => revenue.names[i]}
+							bucketHeader={data.bucket === "week" ? "Week" : "Day"}
+							series={[{ id: "gross", label: "Gross volume", values: revenue.values }]}
+							formatValue={(v) => money(v, data.currency)}
+							formatTick={(v) => moneyTick(v, data.currency)}
+							hint="Use the arrow keys to move between buckets"
+						/>
+					</PlotFrame>
 				</Region>
 
 				<Region id={id("funnel")} title="From impression to order">
-					{funnel.sufficient
+					{funnel.sufficient || !funnel.any
 						? (
-							<div class="cat-an__plot">
+							<PlotFrame
+								empty={funnel.any ? null : `No impressions in the last ${span}.`}
+							>
 								<FunnelChart
 									caption="Impressions, views, checkout starts and orders"
 									captionHidden
 									steps={funnel.steps}
 									formatValue={countLabel}
 								/>
-							</div>
+							</PlotFrame>
 						)
 						: (
 							<p class="cat-an__empty">
-								{funnel.any ? funnelSentence(funnel) : "No impressions in this window yet."}
+								{funnelSentence(funnel)}
 								<span class="cat-an__note">{RATE_MIN_FUNNEL_NOTE}</span>
 							</p>
 						)}
@@ -159,22 +182,21 @@ function AnalyticsBody(
 							? `Busiest ${heat.peak.day} ${heat.peak.hour} · ${data.timezone}`
 							: data.timezone}
 					>
-						{heat.total > 0
-							? (
-								<div class="cat-an__heat">
-									<HeatmapGrid
-										caption={`Booked session starts by weekday and hour, ${data.timezone}`}
-										captionHidden
-										rows={heat.rows}
-										columns={heat.columns}
-										values={heat.values}
-										columnLabelEvery={3}
-										formatValue={(v) => `${countLabel(v)} ${v === 1 ? "booking" : "bookings"}`}
-										rowHeader="Day"
-									/>
-								</div>
-							)
-							: <p class="cat-an__empty">No sessions were booked in this window.</p>}
+						<PlotFrame
+							heat
+							empty={heat.total > 0 ? null : `No sessions booked in the last ${span}.`}
+						>
+							<HeatmapGrid
+								caption={`Booked session starts by weekday and hour, ${data.timezone}`}
+								captionHidden
+								rows={heat.rows}
+								columns={heat.columns}
+								values={heat.values}
+								columnLabelEvery={3}
+								formatValue={(v) => `${countLabel(v)} ${v === 1 ? "booking" : "bookings"}`}
+								rowHeader="Day"
+							/>
+						</PlotFrame>
 					</Region>
 				)}
 

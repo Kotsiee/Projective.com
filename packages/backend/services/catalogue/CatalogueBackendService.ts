@@ -26,6 +26,7 @@ import {
 	applyListingMedia,
 	batchListings,
 	createListing,
+	deleteListing,
 	duplicateListing,
 	reorderListingMedia,
 	saveListingShowcase,
@@ -228,6 +229,19 @@ export class CatalogueBackendService {
 					(outcomes) => outcomes.filter((o) => o.ok).map((o) => o.id),
 					"a batch change",
 				),
+		);
+	}
+
+	/**
+	 * Hard-delete a listing no buyer has engaged with, and its product or service (Decision #221). One
+	 * with history answers 409: it can only be archived ({@link setStatus}). Nothing is re-embedded —
+	 * the subject is gone with its search row.
+	 */
+	static remove(id: string, actor: ReadActor): Promise<Result<{ id: string }>> {
+		return guarded(
+			"delete",
+			actor,
+			async (a) => afterWrite(await deleteListing(id, a), () => [], "a delete"),
 		);
 	}
 

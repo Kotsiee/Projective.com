@@ -5,7 +5,7 @@ import { VirtualGrid } from "@projective/ui/display";
 import { ListingCard } from "../ListingCard.tsx";
 import { ConsoleSkeleton } from "../ConsoleStates.tsx";
 import { aspectFraction, cssLengthPx, listingHref } from "../../core/catalogue-model.ts";
-import { gridColWidth, zoom } from "../../core/view-state.ts";
+import { gridColWidth, displayZoom } from "../../core/view-state.ts";
 import type { ListingAction } from "../../core/console-actions.ts";
 import type { ListingSummary } from "../../types/catalogue-types.ts";
 
@@ -71,7 +71,8 @@ export function ListingsGrid(props: ListingsGridProps): JSX.Element {
 				? (
 					<VirtualGrid
 						items={props.items}
-						minColWidth={gridColWidth(zoom.value)}
+						minColWidth={gridColWidth(displayZoom.value)}
+						fit="exact"
 						rowHeight={(w) => Math.round(w * m.media + m.body + m.gap)}
 						gap={m.gap}
 						useWindow

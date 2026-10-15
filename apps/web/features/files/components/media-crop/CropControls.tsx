@@ -1,16 +1,15 @@
 import type { JSX } from "preact";
 import { useSignal, useSignalEffect } from "@preact/signals";
-import { Button, Slider } from "@projective/ui/fields";
+import { Button, ZoomSlider } from "@projective/ui/fields";
 import { Tooltip } from "@projective/ui/feedback";
 import { Icon } from "@projective/ui/icons";
 import { CROP_ZOOM_MAX, CROP_ZOOM_MIN, INITIAL_CROP } from "@projective/types/files";
 import type { MediaPickState } from "../../hooks/use-media-pick.ts";
-import { HoldStepButton } from "./HoldStepButton.tsx";
 import { RotationRuler } from "./RotationRuler.tsx";
 import { ScrubValue } from "./ScrubValue.tsx";
 
 /**
- * CropControls — the bar beneath the crop stage: zoom (− slider + and a scrubbable readout), the
+ * CropControls — the bar beneath the crop stage: zoom (the shared `ZoomSlider` and a scrubbable readout), the
  * infinite rotation ruler (with its own scrubbable readout) and an icon-only Reset that restores
  * 1.0×, 0° and the centred picture. Always rendered, so the stage never shifts; every control is
  * disabled until a still is loaded.
@@ -56,34 +55,21 @@ export function CropControls({ state, disabled }: CropControlsProps): JSX.Elemen
 		<div class="pf-media__controls" data-disabled={disabled ? "true" : undefined}>
 			<div class="pf-media__row">
 				<span class="pf-media__label">Zoom</span>
-				<div class="pf-media__stepped">
-					<HoldStepButton
-						icon="minus"
-						label="Zoom out"
-						disabled={disabled || zoom <= CROP_ZOOM_MIN}
-						onStep={(fine) => stepZoom(-1, fine)}
-					/>
-					<Slider
-						size="sm"
-						class="pf-media__slider"
-						value={zoomCtl}
-						min={CROP_ZOOM_MIN}
-						max={CROP_ZOOM_MAX}
-						step={0.01}
-						disabled={disabled}
-						aria-label="Zoom"
-						formatValue={(v) => `${v.toFixed(2)}×`}
-						onValueChange={(v) => {
-							if (typeof v === "number") state.update({ zoom: v });
-						}}
-					/>
-					<HoldStepButton
-						icon="plus"
-						label="Zoom in"
-						disabled={disabled || zoom >= CROP_ZOOM_MAX}
-						onStep={(fine) => stepZoom(1, fine)}
-					/>
-				</div>
+				<ZoomSlider
+					size="sm"
+					class="pf-media__zoom"
+					value={zoomCtl}
+					min={CROP_ZOOM_MIN}
+					max={CROP_ZOOM_MAX}
+					step={ZOOM_STEP}
+					segments={0}
+					center={null}
+					disabled={disabled}
+					aria-label="Zoom"
+					formatValue={(v) => `${v.toFixed(2)}×`}
+					onStep={stepZoom}
+					onValueChange={(v) => state.update({ zoom: v })}
+				/>
 				<ScrubValue
 					value={zoom}
 					step={0.01}

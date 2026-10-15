@@ -9,14 +9,13 @@ import { ListingsGrid } from "./ListingsGrid.tsx";
 import { ListingsTable } from "./ListingsTable.tsx";
 import { viewMode } from "../../core/view-state.ts";
 import {
-	clearSelection,
 	listingsBusy,
 	listingsError,
 	NO_QUICK_FILTERS,
 	openCreate,
 	quickFilters,
-	selectAll,
 	selection,
+	selectionAnchor,
 	setConsoleUrl,
 	toggleSelect,
 } from "../../core/console-store.ts";
@@ -27,11 +26,16 @@ import {
 	reloadListings,
 	runListingAction,
 } from "../../core/console-actions.ts";
-import type {
-	CataloguePage,
-	CatalogueSort,
-	ConsoleUrlState,
-	ListingSummary,
+import { ListingRemovalDialog, type RemovalKind } from "../ListingRemovalDialog.tsx";
+import {
+	type CataloguePage,
+	type CatalogueSort,
+	CONSOLE_DEFAULTS,
+	type ConsoleUrlState,
+	defaultSortDir,
+	DEFAULT_CONSOLE_STATUSES,
+	isDefaultStatuses,
+	type ListingSummary,
 } from "../../types/catalogue-types.ts";
 
 /**
@@ -49,12 +53,19 @@ export interface ListingsCanvasProps {
 
 function isFiltered(state: ConsoleUrlState): boolean {
 	const quick = quickFilters.value;
-	return !!(state.search || state.status || state.model || state.create) ||
-		quick.attention || quick.promoted || quick.bestSelling;
+	return !!state.search || !isDefaultStatuses(state.status) || state.model.length > 0 ||
+		state.create.length > 0 || quick.attention || quick.promoted || quick.bestSelling;
+}
+
+interface PendingRemoval {
+	kind: RemovalKind;
+	listing: ListingSummary;
 }
 
 export function ListingsCanvas({ state, page, error }: ListingsCanvasProps): JSX.Element {
 	const notice = useSignal<string | null>(null);
+	const pending = useSignal<PendingRemoval | null>(null);
+	const confirming = useSignal(false);
 	const stall = useOfflineStall(loadMore);
 
 	async function loadMore(): Promise<void> {
@@ -63,6 +74,21 @@ export function ListingsCanvas({ state, page, error }: ListingsCanvasProps): JSX
 		if (result !== "loaded" && result !== "failed") return;
 		if (stall.settle(result === "loaded")) return;
 		if (result === "failed") listingsError.value = "Couldn't load more listings.";
+	}
+
+	function requestAction(action: ListingAction, listing: ListingSummary): void {
+		if (action === "archive" || action === "delete") {
+			pending.value = { kind: action, listing };
+			confirming.value = true;
+			return;
+		}
+		void onAction(action, listing);
+	}
+
+	function confirmRemoval(): void {
+		const removal = pending.peek();
+		pending.value = null;
+		if (removal) void onAction(removal.kind, removal.listing);
 	}
 
 	async function onAction(action: ListingAction, listing: ListingSummary): Promise<void> {
@@ -77,14 +103,21 @@ export function ListingsCanvas({ state, page, error }: ListingsCanvasProps): JSX
 		toggleSelect(listing.id, range);
 	}
 
+	/**
+	 * Header clicks cycle a column from its natural direction, to the reverse, to the console's
+	 * default order (recently edited), which is what "no sort" means on the other tables. The default
+	 * is itself a column, so on Edited the cycle simply flips.
+	 */
 	function onSort(key: CatalogueSort): void {
-		if (key === state.sort) setConsoleUrl({ dir: state.dir === "asc" ? "desc" : "asc" });
-		else setConsoleUrl({ sort: key });
+		if (key !== state.sort) setConsoleUrl({ sort: key });
+		else if (state.dir === defaultSortDir(key) || key === CONSOLE_DEFAULTS.sort) {
+			setConsoleUrl({ dir: state.dir === "asc" ? "desc" : "asc" });
+		} else setConsoleUrl({ sort: CONSOLE_DEFAULTS.sort, dir: CONSOLE_DEFAULTS.dir });
 	}
 
 	function clearFilters(): void {
 		quickFilters.value = { ...NO_QUICK_FILTERS };
-		setConsoleUrl({ search: "", status: undefined, model: undefined, create: undefined });
+		setConsoleUrl({ search: "", status: [...DEFAULT_CONSOLE_STATUSES], model: [], create: [] });
 	}
 
 	const busy = listingsBusy.value;
@@ -110,7 +143,7 @@ export function ListingsCanvas({ state, page, error }: ListingsCanvasProps): JSX
 				selected={selection.value}
 				loading={listingsLoadingMore.value}
 				onSelect={onSelect}
-				onAction={(action, listing) => void onAction(action, listing)}
+				onAction={requestAction}
 				onReachEnd={() => void loadMore()}
 			/>
 		);
@@ -120,11 +153,12 @@ export function ListingsCanvas({ state, page, error }: ListingsCanvasProps): JSX
 				items={items}
 				sort={state.sort}
 				dir={state.dir}
-				selected={selection.value}
+				selection={selection}
+				selectionAnchor={selectionAnchor}
 				onSort={onSort}
-				onSelect={onSelect}
-				onSelectAll={(on) => (on ? selectAll() : clearSelection())}
+				onAction={requestAction}
 				onReachEnd={() => void loadMore()}
+				loading={listingsLoadingMore.value}
 			/>
 		);
 	}
@@ -159,6 +193,15 @@ export function ListingsCanvas({ state, page, error }: ListingsCanvasProps): JSX
 					actionLabel="Retry"
 					onAction={stall.retry}
 					busy={stall.retrying.value}
+				/>
+			)}
+			{pending.value && (
+				<ListingRemovalDialog
+					visible={confirming}
+					kind={pending.value.kind}
+					subject={`“${pending.value.listing.title}”`}
+					onConfirm={confirmRemoval}
+					onCancel={() => (pending.value = null)}
 				/>
 			)}
 		</div>

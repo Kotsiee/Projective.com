@@ -12,7 +12,6 @@ import { useEffect, useRef } from "preact/hooks";
  * appears on a failure or an empty result is exactly the one that would otherwise ship unstyled.
  */
 import "@web/features/projects/styles/file-card.css";
-import "@web/features/projects/styles/file-table.css";
 import "@web/features/projects/styles/submission-card.css";
 import "@web/features/projects/styles/attachment-modal.css";
 import "../styles/files-hub.css";

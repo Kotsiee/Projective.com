@@ -1,7 +1,15 @@
 import type { JSX, RefObject } from "preact";
+import { useRef } from "preact/hooks";
 import type { AvatarSize } from "@projective/ui/display";
-import { Popover, Tooltip } from "@projective/ui/feedback";
+import { Tooltip } from "@projective/ui/feedback";
 import { Checkbox } from "@projective/ui/fields";
+import {
+	ActionMenu,
+	composeMenu,
+	type ContextSurfaceSource,
+	linkActionItems,
+	type MenuItem,
+} from "@projective/ui/navigation";
 import { styleVars } from "@ui/core/style.ts";
 import {
 	capabilitiesForKind,
@@ -215,24 +223,6 @@ export function ResendIcon(): JSX.Element {
 	);
 }
 
-/** A speech bubble — message this person. */
-export function MessageIcon(): JSX.Element {
-	return (
-		<Svg>
-			<path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4A1.5 1.5 0 0 1 4 14.5z" />
-		</Svg>
-	);
-}
-
-/** A crown — ownership, and the transfer of it. */
-export function CrownIcon(): JSX.Element {
-	return (
-		<Svg>
-			<path d="M4 17.5h16M4.5 6.5l3.5 4L12 4.5l4 6 3.5-4-1.5 9.5h-13z" />
-		</Svg>
-	);
-}
-
 /** A duplicate — copy a preset's bundle into an editable custom role. */
 export function DuplicateIcon(): JSX.Element {
 	return (
@@ -249,15 +239,6 @@ export function EditIcon(): JSX.Element {
 		<Svg>
 			<path d="M4 20h4l10-10-4-4L4 16z" />
 			<path d="M13.5 6.5l4 4" />
-		</Svg>
-	);
-}
-
-/** A bin — retire a custom role. */
-export function TrashIcon(): JSX.Element {
-	return (
-		<Svg>
-			<path d="M5 7.5h14M9.5 7.5V5.5h5v2M6.5 7.5l1 12h9l1-12" />
 		</Svg>
 	);
 }
@@ -566,30 +547,103 @@ export function manageBlockedReason(
 		: "You need a higher role than theirs to change their membership.";
 }
 
+const MENU_AVOID = [".ui-app-shell__sidebar", ".ui-middle-nav__lane"] as const;
+
+/** Props for {@link MemberActionsMenu}. */
+export interface MemberActionsMenuProps {
+	member: WorkspaceMember;
+	guards: MemberGuards;
+	onAction: (action: MemberAction, member: WorkspaceMember) => void;
+	/** The card or row this menu belongs to; right-click on it opens the same rows at the pointer. */
+	surface?: ContextSurfaceSource;
+	class?: string;
+}
+
+/** A member's menu rows, shared by the card's kebab and the table's row actions. */
+export function memberMenuRows(
+	member: WorkspaceMember,
+	guards: MemberGuards,
+	onAction: (action: MemberAction, member: WorkspaceMember) => void,
+): MenuItem[] {
+	const reason = manageBlockedReason(member, guards);
+	const terminal: MenuItem = guards.lastOwner
+		? {
+			key: "transfer",
+			label: "Transfer ownership…",
+			icon: "keystone-check",
+			hint: member.isSelf ? "Hand the owner seat to another member." : undefined,
+			disabled: !member.isSelf,
+			disabledReason: `Only ${member.name} can hand ownership over.`,
+			command: () => onAction("transfer", member),
+		}
+		: member.isSelf
+		? {
+			key: "leave",
+			label: "Leave",
+			icon: "logout",
+			danger: true,
+			hint: "Your work stays on record; nothing is deleted.",
+			command: () => onAction("leave", member),
+		}
+		: {
+			key: "remove",
+			label: "Remove",
+			icon: "user-minus",
+			danger: true,
+			disabled: reason !== null,
+			disabledReason: reason ?? undefined,
+			command: () => onAction("remove", member),
+		};
+
+	const own: MenuItem[] = [
+		{
+			key: "open",
+			label: "Role and permissions",
+			icon: "shield-check",
+			command: () => onAction("open", member),
+		},
+		{
+			key: "message",
+			label: "Message",
+			icon: "message",
+			command: () => onAction("message", member),
+		},
+		{
+			key: "profile",
+			label: "View profile",
+			icon: "user",
+			command: () => onAction("profile", member),
+		},
+		terminal,
+	];
+	const links = member.handle
+		? linkActionItems({
+			href: memberProfileHref(member.handle),
+			title: member.name,
+			include: ["open-new-tab", "copy-link"],
+		})
+		: [];
+	return composeMenu(links, own);
+}
+
 /**
- * The row's action menu.
+ * The row's action menu, opened from its kebab or by right-clicking the `surface` it belongs to.
  *
  * Every gated item stays **visible and disabled with its reason in a tooltip** rather than vanishing: a
  * control that disappears teaches nothing, and on a permission surface the reader's next question is
  * always "why can't I?". The owner's row offers the ownership transfer instead of Remove — to the owner
  * themselves, since only they can hand the seat over — and the viewer's own row offers Leave.
  */
-export function MemberActionsMenu(props: {
-	member: WorkspaceMember;
-	guards: MemberGuards;
-	onAction: (action: MemberAction, member: WorkspaceMember) => void;
-	class?: string;
-}): JSX.Element {
-	const { member, guards, onAction, class: className } = props;
-	const reason = manageBlockedReason(member, guards);
-	const transferReason = member.isSelf
-		? "Hand the owner seat to another member."
-		: `Only ${member.name} can hand ownership over.`;
+export function MemberActionsMenu(props: MemberActionsMenuProps): JSX.Element {
+	const { member, guards, onAction, surface, class: className } = props;
 
 	return (
-		<Popover
+		<ActionMenu
+			model={memberMenuRows(member, guards, onAction)}
+			surface={surface}
 			placement="bottom-end"
-			avoid={[".ui-app-shell__sidebar", ".ui-middle-nav__lane"]}
+			avoid={MENU_AVOID}
+			aria-label={`Actions for ${member.name}`}
 			trigger={(api) => (
 				<Tooltip content={`Actions for ${member.name}`}>
 					<button
@@ -609,92 +663,7 @@ export function MemberActionsMenu(props: {
 					</button>
 				</Tooltip>
 			)}
-		>
-			<div class="wsp-menu" role="menu" aria-label={`Actions for ${member.name}`}>
-				<button
-					type="button"
-					role="menuitem"
-					class="wsp-menu__item"
-					onClick={() => onAction("open", member)}
-				>
-					<PermissionsIcon />
-					Role and permissions
-				</button>
-				<button
-					type="button"
-					role="menuitem"
-					class="wsp-menu__item"
-					onClick={() => onAction("message", member)}
-				>
-					<MessageIcon />
-					Message
-				</button>
-				<button
-					type="button"
-					role="menuitem"
-					class="wsp-menu__item"
-					onClick={() => onAction("profile", member)}
-				>
-					<PersonAvatarlessProfileIcon />
-					View profile
-				</button>
-				{guards.lastOwner
-					? (
-						<Tooltip content={transferReason}>
-							<button
-								type="button"
-								role="menuitem"
-								class="wsp-menu__item"
-								disabled={!member.isSelf}
-								onClick={() => onAction("transfer", member)}
-							>
-								<CrownIcon />
-								Transfer ownership…
-							</button>
-						</Tooltip>
-					)
-					: member.isSelf
-					? (
-						<Tooltip content="Leave — your work stays on record; nothing is deleted.">
-							<button
-								type="button"
-								role="menuitem"
-								class="wsp-menu__item"
-								data-variant="danger"
-								onClick={() => onAction("leave", member)}
-							>
-								<TrashIcon />
-								Leave
-							</button>
-						</Tooltip>
-					)
-					: (
-						<Tooltip content={reason ?? `Remove ${member.name} from the entity.`}>
-							<button
-								type="button"
-								role="menuitem"
-								class="wsp-menu__item"
-								data-variant="danger"
-								disabled={!guards.manageable}
-								onClick={() => onAction("remove", member)}
-							>
-								<TrashIcon />
-								Remove
-							</button>
-						</Tooltip>
-					)}
-			</div>
-		</Popover>
-	);
-}
-
-/** A person outline — "view profile", distinct from the avatar it sits beside. */
-function PersonAvatarlessProfileIcon(): JSX.Element {
-	return (
-		<Svg>
-			<circle cx="12" cy="8.5" r="3.6" />
-			<path d="M5.5 20a6.5 6.5 0 0 1 13 0" />
-		</Svg>
+		/>
 	);
 }
 // #endregion
@@ -733,9 +702,11 @@ export function MemberCard(props: MemberCardProps): JSX.Element {
 	const { member, kind, roles, facets, guards, selected, onSelect, onAction, referenceYear } =
 		props;
 	const role = roleNameOf(member, roles);
+	const cardRef = useRef<HTMLElement>(null);
 
 	return (
 		<article
+			ref={cardRef}
 			class="wsp-mcard"
 			data-self={member.isSelf ? "true" : undefined}
 			data-state={member.state !== "active" ? member.state : undefined}
@@ -778,7 +749,12 @@ export function MemberCard(props: MemberCardProps): JSX.Element {
 							<PermissionsIcon />
 						</button>
 					</Tooltip>
-					<MemberActionsMenu member={member} guards={guards} onAction={onAction} />
+					<MemberActionsMenu
+						member={member}
+						guards={guards}
+						onAction={onAction}
+						surface={cardRef}
+					/>
 				</div>
 			</div>
 

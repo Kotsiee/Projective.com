@@ -3,7 +3,7 @@ import type { ReadActor } from "@server/services/read-actor.ts";
 import { CatalogueBackendService } from "@server/services/catalogue/CatalogueBackendService.ts";
 import { isSeller } from "./catalogue-model.ts";
 import { listParamsOf } from "./console-store.ts";
-import { parseConsoleUrl } from "../types/catalogue-types.ts";
+import { EMPTY_FACET_COUNTS, parseConsoleUrl } from "../types/catalogue-types.ts";
 import type {
 	CatalogueListParams,
 	CataloguePage,
@@ -36,6 +36,7 @@ const EMPTY_PAGE: CataloguePage = {
 	nextCursor: null,
 	total: 0,
 	statusCounts: { draft: 0, published: 0, paused: 0, archived: 0 },
+	facetCounts: EMPTY_FACET_COUNTS,
 	stats: {
 		activeListings: 0,
 		totalListings: 0,

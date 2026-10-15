@@ -7,7 +7,6 @@ import "../styles/submission-explorer.css";
 import "../styles/submission-review.css";
 import "../styles/submission-actions.css";
 import "../styles/file-card.css";
-import "../styles/file-table.css";
 import "../styles/submission-card.css";
 import "../styles/attachment-modal.css";
 import { VirtualGrid } from "@projective/ui/display";
@@ -81,7 +80,7 @@ import {
 	listRowHeight,
 	listShowsThumbnails,
 	viewMode,
-	zoom,
+	displayZoom,
 } from "../core/view-state.ts";
 import { ProjectSkeleton, useSkeletonDelay } from "../components/ProjectSkeletons.tsx";
 import { FileCard } from "../components/FileCard.tsx";
@@ -193,7 +192,7 @@ function workspaceSkeleton(p: WorkspaceViewProps): JSX.Element {
 				shape="grid"
 				label="Loading submissions…"
 				count={p.skeletonCount}
-				colWidth={gridColWidth(zoom.value)}
+				colWidth={gridColWidth(displayZoom.value)}
 				gap={GRID_GAP}
 				metaHeight={CARD_META}
 			/>
@@ -209,8 +208,8 @@ function workspaceSkeleton(p: WorkspaceViewProps): JSX.Element {
 			shape="list"
 			label="Loading submissions…"
 			count={p.skeletonCount}
-			rowHeight={listRowHeight(zoom.value)}
-			thumbnails={listShowsThumbnails(zoom.value)}
+			rowHeight={listRowHeight(displayZoom.value)}
+			thumbnails={listShowsThumbnails(displayZoom.value)}
 		/>
 	);
 }
@@ -236,7 +235,8 @@ function WorkspaceView(p: WorkspaceViewProps): JSX.Element {
 			return (
 				<VirtualGrid
 					items={p.nodes}
-					minColWidth={gridColWidth(zoom.value)}
+					minColWidth={gridColWidth(displayZoom.value)}
+					fit="exact"
 					rowHeight={(w) => w + CARD_META + GRID_GAP}
 					gap={GRID_GAP}
 					useWindow
@@ -267,7 +267,8 @@ function WorkspaceView(p: WorkspaceViewProps): JSX.Element {
 		return (
 			<VirtualGrid
 				items={p.items}
-				minColWidth={gridColWidth(zoom.value)}
+				minColWidth={gridColWidth(displayZoom.value)}
+				fit="exact"
 				rowHeight={(w) => w + CARD_META + GRID_GAP}
 				gap={GRID_GAP}
 				useWindow

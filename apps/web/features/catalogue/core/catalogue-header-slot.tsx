@@ -13,7 +13,7 @@ import { isListingSlug, parseConsoleUrl, parseWorkspaceUrl } from "../types/cata
  * scope controls into the scrolling body.
  *
  * It claims BOTH routes, because both have an identity worth pinning: the console shows what you are
- * looking at, the one search field, the rollups and the view switch; the manage page shows which listing
+ * looking at, the rollups and the view switch; the manage page shows which listing
  * you are editing, its status and whether your work is saved.
  *
  * The console's read is the SAME read the page makes ({@link consoleParamsOf}), so the request memo
@@ -46,13 +46,7 @@ export async function catalogueHeaderFor(
 		);
 	}
 
-	// The console: identity, search, the rollups and the view switch, from the page's own read.
+	// The console: identity, the rollups and the view switch, from the page's own read.
 	const { page } = await resolveCataloguePage(context, url, actor, consoleParamsOf(url));
-	return (
-		<CatalogueHeader
-			url={parseConsoleUrl(url)}
-			initialTotal={page.total}
-			initialStats={page.stats}
-		/>
-	);
+	return <CatalogueHeader url={parseConsoleUrl(url)} initialStats={page.stats} />;
 }

@@ -160,6 +160,11 @@ export const ListingSummarySchema = z.object({
 	promoted: z.boolean(),
 	/** Whether the listing needs the seller's attention (idle draft / missing media / etc.). */
 	needsAttention: z.boolean(),
+	/**
+	 * Whether the viewer may hard-delete it: they created it and no buyer has engaged with it
+	 * (`catalogue.get_listing_engagement`, Decision #221). Otherwise it can only be archived.
+	 */
+	deletable: z.boolean().default(false),
 });
 export type ListingSummary = z.infer<typeof ListingSummarySchema>;
 // #endregion
@@ -253,12 +258,12 @@ export type ListingDetail = z.infer<typeof ListingDetailSchema>;
 export const CatalogueListParamsSchema = z.object({
 	/** Type segment — `all` (default) / `product` / `service`. */
 	type: CatalogueTypeFilter.optional(),
-	/** Restrict to one lifecycle state (the lane's status sections). */
-	status: ListingStatus.optional(),
-	/** Restrict services to one delivery model (visible only when Services active). */
-	model: ServiceType.optional(),
-	/** Restrict to one CREATE category (the console's `?category=` facet). */
-	createCategory: CreateCategory.optional(),
+	/** Restrict to these lifecycle states (the lane's status facet); absent or empty = every state. */
+	status: z.array(ListingStatus).max(ListingStatus.options.length).optional(),
+	/** Restrict services to these delivery models; absent or empty = every model. */
+	model: z.array(ServiceType).max(ServiceType.options.length).optional(),
+	/** Restrict to these CREATE categories (the console's `?category=` facet). */
+	createCategory: z.array(CreateCategory).max(CreateCategory.options.length).optional(),
 	/** Free-text search over title + category + tags. */
 	search: z.string().max(160).optional(),
 	sort: CatalogueSort.optional(),
@@ -308,7 +313,7 @@ export const CatalogueStatsSchema = z.object({
 });
 export type CatalogueStats = z.infer<typeof CatalogueStatsSchema>;
 
-/** Per-status presence — drives the lane section pulsing dots (never a count, §B.6/§D.1). */
+/** Listings per lifecycle status across the whole catalogue — the lane's status facet counts. */
 export const CatalogueStatusCountsSchema = z.object({
 	draft: z.number().int().min(0),
 	published: z.number().int().min(0),
@@ -317,7 +322,31 @@ export const CatalogueStatusCountsSchema = z.object({
 });
 export type CatalogueStatusCounts = z.infer<typeof CatalogueStatusCountsSchema>;
 
-/** A page of listings plus the rolled-up stats + per-status presence + acting-seller identity. */
+const FacetCount = z.number().int().min(0);
+
+/**
+ * Listings per delivery model, CREATE category and highlight across the whole catalogue — the lane's
+ * remaining facet counts. An absent key is zero.
+ */
+export const CatalogueFacetCountsSchema = z.object({
+	model: z.partialRecord(ServiceType, FacetCount).default({}),
+	create: z.partialRecord(CreateCategory, FacetCount).default({}),
+	needsAttention: FacetCount.default(0),
+	promoted: FacetCount.default(0),
+	bestSelling: FacetCount.default(0),
+});
+export type CatalogueFacetCounts = z.infer<typeof CatalogueFacetCountsSchema>;
+
+/** No listings in any facet. */
+export const EMPTY_FACET_COUNTS: CatalogueFacetCounts = {
+	model: {},
+	create: {},
+	needsAttention: 0,
+	promoted: 0,
+	bestSelling: 0,
+};
+
+/** A page of listings plus the rolled-up stats + facet counts + acting-seller identity. */
 export const CataloguePageSchema = z.object({
 	items: z.array(ListingSummarySchema),
 	hasMore: z.boolean(),
@@ -325,6 +354,7 @@ export const CataloguePageSchema = z.object({
 	/** Total matched across all pages (drives the "N listings" caption). */
 	total: z.number().int().min(0),
 	statusCounts: CatalogueStatusCountsSchema,
+	facetCounts: CatalogueFacetCountsSchema.default(EMPTY_FACET_COUNTS),
 	stats: CatalogueStatsSchema,
 	/** The acting seller's `@handle` — the eventual RLS subject; chrome-only today. */
 	viewerId: z.string().max(40),

@@ -78,6 +78,15 @@ export { PanelMenu, type PanelMenuProps } from "./islands/PanelMenu.tsx";
 export { SlideMenu, type SlideMenuProps } from "./islands/SlideMenu.tsx";
 export { ContextMenu, type ContextMenuProps } from "./islands/ContextMenu.tsx";
 export { ActionMenu, type ActionMenuProps } from "./islands/ActionMenu.tsx";
+export type { ContextSurfaceSource } from "./core/context-surface.ts";
+export {
+	absoluteHref,
+	composeMenu,
+	copyLink,
+	type LinkAction,
+	linkActionItems,
+	type LinkActionsInput,
+} from "./core/link-actions.ts";
 export type { MenuItem, MenuItemCommandEvent } from "../types/mod.ts";
 // #endregion
 

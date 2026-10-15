@@ -7,7 +7,6 @@ import "../styles/ticket-view.css";
 // The ticket modal's Attachments + Submissions tabs mount the `/files` + `/submissions` components,
 // whose sheets otherwise ride only those islands (the island-carrier rule, Decision #39).
 import "../styles/file-explorer.css";
-import "../styles/file-table.css";
 import "../styles/submission-explorer.css";
 import "../styles/submission-card.css";
 import "../styles/file-card.css";

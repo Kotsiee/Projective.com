@@ -112,11 +112,17 @@ export const total = signal(0);
 /** Free-text filename match. */
 export const query = signal("");
 
+/** The order the library opens in, and what clearing a column sort returns to. */
+export const DEFAULT_SORT: { readonly key: FileSortKey; readonly dir: FileSortDir } = {
+	key: "date",
+	dir: "desc",
+};
+
 /** The property the grid ⁄ table is ordered on. */
-export const sortKey = signal<FileSortKey>("date");
+export const sortKey = signal<FileSortKey>(DEFAULT_SORT.key);
 
 /** Sort direction. */
-export const sortDir = signal<FileSortDir>("desc");
+export const sortDir = signal<FileSortDir>(DEFAULT_SORT.dir);
 
 /** Restrict to these kinds; empty = every kind. */
 export const kindFilter = signal<FileKind[]>([]);

@@ -3,10 +3,10 @@ import { batch, useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import "../styles/console.css";
 import "../styles/listing-card.css";
-import "../styles/listing-table.css";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
 import { ListingsCanvas } from "../components/listings/ListingsCanvas.tsx";
 import { ClientsCanvas } from "../components/clients/ClientsCanvas.tsx";
+import { CatalogueToolbar } from "../components/CatalogueToolbar.tsx";
 import { AnalyticsCanvas } from "../components/analytics/AnalyticsCanvas.tsx";
 import { consoleAnalyticsTarget } from "../core/analytics-view.ts";
 import CatalogueCreateModal from "./CatalogueCreateModal.island.tsx";
@@ -37,8 +37,9 @@ import {
 } from "../types/catalogue-types.ts";
 
 /**
- * CatalogueConsole — the `/catalogue` canvas: a router over the console views (`?view=listings |
- * analytics | clients`), labelled as the panel the header's view tabs control.
+ * CatalogueConsole — the `/catalogue` canvas: the sticky {@link CatalogueToolbar}, then a router over
+ * the console views (`?view=listings | analytics | clients`), labelled as the panel the header's view
+ * tabs control.
  *
  * It owns the listings read. The server's first page arrives as props and seeds the console store;
  * from then on any change to what the URL or the quick filters ask for re-reads — at once for a
@@ -143,6 +144,7 @@ export default function CatalogueConsole(props: CatalogueConsoleProps): JSX.Elem
 			role="tabpanel"
 			aria-label={VIEW_LABEL[state.view]}
 		>
+			<CatalogueToolbar state={state} initialTotal={props.initial.total} />
 			{state.view === "listings"
 				? <ListingsCanvas state={state} page={page} error={error} />
 				: state.view === "analytics"

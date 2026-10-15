@@ -1106,6 +1106,173 @@ the seller''s collections as a new DRAFT with a freshly minted slug and "(copy)"
 created it. Returns { listing_id, slug }. Refusals: 42501 not the seller · PB404 no such listing.';
 -- #endregion
 
+-- #region Delete (Decision #221)
+-- How much buyer history a listing has: every row another person holds against it or its subject —
+-- inquiry threads, quote requests, discovery calls, projects instantiated from the blueprint and the
+-- requests that started them, waitlist places, basket and order lines, reviews and paid placements.
+-- Zero is the ONLY state a listing may be hard-deleted from (the #163 carve-out from root §5, applied
+-- to listings); anything else is archived. A definer because most of those rows are the buyer's and
+-- invisible to the seller under RLS; it reveals a count, never a row. Internal — not granted.
+CREATE OR REPLACE FUNCTION catalogue.fn_listing_engagements(p_listing uuid)
+RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE((
+        SELECT (
+            (SELECT count(*) FROM comms.dm_threads t WHERE t.subject_listing_id = l.id)
+            + CASE WHEN l.kind = 'service' THEN
+                (SELECT count(*) FROM marketplace.quote_requests q
+                  WHERE q.blueprint_id = l.service_blueprint_id)
+              + (SELECT count(*) FROM scheduling.discovery_calls d
+                  WHERE d.service_blueprint_id = l.service_blueprint_id)
+              + (SELECT count(*) FROM projects.projects p
+                  WHERE p.source_blueprint_id = l.service_blueprint_id)
+              + (SELECT count(*) FROM projects.service_instantiations i
+                  WHERE i.blueprint_id = l.service_blueprint_id)
+              + (SELECT count(*) FROM projects.waitlists w
+                  WHERE w.service_blueprint_id = l.service_blueprint_id)
+              + (SELECT count(*) FROM finance.order_lines ol
+                  WHERE ol.item_id = l.service_blueprint_id
+                    AND ol.item_type IN ('service_ticket', 'one_off_service', 'single_service_task',
+                                         'service_session', 'set_session', 'course_group_session'))
+              + (SELECT count(*) FROM finance.basket_items bi
+                  WHERE bi.item_id = l.service_blueprint_id
+                    AND bi.item_type IN ('service_ticket', 'one_off_service', 'single_service_task',
+                                         'service_session', 'set_session', 'course_group_session'))
+              + (SELECT count(*) FROM reviews.entity_reviews r
+                  WHERE r.target_entity_id = l.service_blueprint_id
+                    AND r.target_entity_type = 'service_blueprint')
+              + (SELECT count(*) FROM marketplace.promoted_placements pp
+                  WHERE pp.entity_type = 'service' AND pp.entity_id = l.service_blueprint_id)
+            ELSE
+                (SELECT count(*) FROM finance.order_lines ol
+                  WHERE ol.item_id = l.product_id AND ol.item_type = 'digital_product')
+              + (SELECT count(*) FROM finance.basket_items bi
+                  WHERE bi.item_id = l.product_id AND bi.item_type = 'digital_product')
+              + (SELECT count(*) FROM reviews.entity_reviews r
+                  WHERE r.target_entity_id = l.product_id AND r.target_entity_type = 'product')
+              + (SELECT count(*) FROM marketplace.promoted_placements pp
+                  WHERE pp.entity_type = 'product' AND pp.entity_id = l.product_id)
+            END
+        )::integer
+          FROM catalogue.listings l
+         WHERE l.id = p_listing
+    ), 0);
+$$;
+
+COMMENT ON FUNCTION catalogue.fn_listing_engagements(uuid) IS
+'The number of buyer-held rows against a listing or its subject (inquiries, quotes, discovery calls,
+instantiated projects and their requests, waitlist places, basket and order lines, reviews, paid
+placements). Zero = deletable. Internal to catalogue.get_listing_engagement / delete_listing.';
+
+-- The console's read of which listings may be deleted: the engagement count of each listing in
+-- `p_listings` that the caller created (the same rule as the status and delete doors); listings they
+-- did not create are left out, so an absent row means "archive only".
+CREATE OR REPLACE FUNCTION catalogue.get_listing_engagement(p_listings uuid[])
+RETURNS TABLE (listing_id uuid, engagements integer)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF auth.uid () IS NULL THEN
+        RAISE EXCEPTION 'Sign in to read your listings' USING ERRCODE = '42501';
+    END IF;
+    IF pg_catalog.cardinality(p_listings) > 200 THEN
+        RAISE EXCEPTION 'At most 200 listings at a time' USING ERRCODE = '22023', DETAIL = 'listings';
+    END IF;
+    RETURN QUERY
+        SELECT l.id, catalogue.fn_listing_engagements (l.id)
+          FROM catalogue.listings l
+         WHERE l.id = ANY (p_listings)
+           AND l.owner_user_id = auth.uid ();
+END;
+$$;
+
+COMMENT ON FUNCTION catalogue.get_listing_engagement(uuid[]) IS
+'Engagement counts for up to 200 listings the caller created ({ listing_id, engagements }); others are
+omitted. Refusals: 42501 signed out · 22023 more than 200 ids.';
+
+-- Hard-delete a listing that has never been engaged with, as the seller who created it: its media,
+-- skills, tags and collection memberships go with it (FK cascade), and so does its subject — the
+-- product or service blueprint was minted for it alone (create_listing / duplicate_listing), so
+-- leaving it would orphan a slug, a search row and a rating. Saves and recent views of the subject are
+-- removed, because both lists render what they point at. Analytics rows (rollups, interest events)
+-- stay: they are soft references no read resolves once the listing is gone. A listing with any history
+-- is refused PE409 and must be archived instead.
+CREATE OR REPLACE FUNCTION catalogue.delete_listing(p_listing uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+VOLATILE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_uid uuid := auth.uid ();
+    v_row catalogue.listings;
+    v_subject uuid;
+    v_engagements integer;
+BEGIN
+    IF v_uid IS NULL THEN
+        RAISE EXCEPTION 'Sign in to delete a listing' USING ERRCODE = '42501';
+    END IF;
+
+    SELECT * INTO v_row FROM catalogue.listings WHERE id = p_listing FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'That listing no longer exists' USING ERRCODE = 'PB404';
+    END IF;
+    IF v_row.owner_user_id <> v_uid THEN
+        RAISE EXCEPTION 'Only the seller who created this listing can delete it' USING ERRCODE = '42501';
+    END IF;
+
+    -- #region Lock the subject, then count
+    IF v_row.kind = 'service' THEN
+        v_subject := v_row.service_blueprint_id;
+        PERFORM 1 FROM marketplace.service_blueprints b WHERE b.id = v_subject FOR UPDATE;
+    ELSE
+        v_subject := v_row.product_id;
+        PERFORM 1 FROM catalogue.products p WHERE p.id = v_subject FOR UPDATE;
+    END IF;
+
+    v_engagements := catalogue.fn_listing_engagements (p_listing);
+    IF v_engagements > 0 THEN
+        RAISE EXCEPTION 'This listing has buyer history, so it can only be archived'
+            USING ERRCODE = 'PE409', DETAIL = v_engagements::text;
+    END IF;
+    -- #endregion
+
+    -- #region Remove
+    DELETE FROM org.user_bookmarks ub
+     WHERE ub.entity_id = v_subject
+       AND ub.entity_type = (CASE WHEN v_row.kind = 'service' THEN 'service_blueprint' ELSE 'product' END)::org.bookmark_entity_type;
+    DELETE FROM org.recent_views rv
+     WHERE rv.entity_id = v_subject
+       AND rv.entity_type = CASE WHEN v_row.kind = 'service' THEN 'service_blueprint' ELSE 'product' END;
+
+    DELETE FROM catalogue.listings l WHERE l.id = p_listing;
+
+    IF v_row.kind = 'service' THEN
+        DELETE FROM marketplace.service_blueprints b WHERE b.id = v_subject;
+    ELSE
+        DELETE FROM search.catalogue_index ci WHERE ci.entity_type = 'product' AND ci.entity_id = v_subject;
+        DELETE FROM catalogue.products p WHERE p.id = v_subject;
+    END IF;
+    -- #endregion
+
+    RETURN pg_catalog.jsonb_build_object('listing_id', p_listing, 'kind', v_row.kind);
+END;
+$$;
+
+COMMENT ON FUNCTION catalogue.delete_listing(uuid) IS
+'Hard-delete a listing with no buyer history, and its product or service blueprint, as the seller who
+created it (Decision #221). Returns { listing_id, kind }. Refusals: 42501 signed out / not the seller ·
+PB404 no such listing · PE409 the listing has buyer history (DETAIL = the count) — archive it instead.';
+-- #endregion
+
 -- #region Client pipeline (Decision #217, C5)
 -- May the caller manage this listing — and so read who is buying it? A personal listing answers to its
 -- owner; a team listing to whoever holds `publish_listings` on that team (the owner, admin and lead

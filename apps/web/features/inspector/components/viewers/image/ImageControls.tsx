@@ -1,5 +1,5 @@
 import type { JSX } from "preact";
-import { Button } from "@projective/ui/fields";
+import { Button, ZoomSlider } from "@projective/ui/fields";
 import { Icon } from "@projective/ui/icons";
 import {
 	ToolButton,
@@ -8,7 +8,6 @@ import {
 	type ToolChoiceOption,
 	ToolGroup,
 	ToolReadout,
-	ToolSlider,
 	ToolToggle,
 } from "../../controls/mod.ts";
 import {
@@ -45,38 +44,30 @@ export function ImageControls({ tools }: ViewerProps<ImageTools>): JSX.Element {
 		<>
 			<ToolGroup title="Zoom">
 				<div class="ins-image-tools__zoom">
-					<ToolButtonGroup label="Zoom">
-						<ToolButton
-							icon="zoom-out"
-							label="Zoom out"
-							shortcut="-"
-							disabled={!ready || view.zoom <= limits.min * 1.0001}
-							onClick={() => tools.zoomStep(-1)}
-						/>
-						<ToolButton
-							icon="zoom-in"
-							label="Zoom in"
-							shortcut="+"
-							disabled={!ready || view.zoom >= limits.max * 0.9999}
-							onClick={() => tools.zoomStep(1)}
-						/>
-					</ToolButtonGroup>
+					<ZoomSlider
+						class="ins-image-tools__slider"
+						value={tools.zoomSlider}
+						min={0}
+						max={ZOOM_SLIDER_STEPS}
+						step={ZOOM_SLIDER_STEPS / 50}
+						segments={0}
+						center={null}
+						disabled={!ready}
+						aria-label="Zoom level"
+						formatValue={(position) =>
+							zoomPercent(
+								position === sliderPosition(view.zoom, limits)
+									? view.zoom
+									: sliderZoom(position, limits),
+							)}
+						onStep={(direction) => {
+							const before = tools.view.peek().zoom;
+							tools.zoomStep(direction);
+							return tools.view.peek().zoom !== before;
+						}}
+					/>
 					<ToolReadout value={zoomPercent(view.zoom)} label="Zoom" />
 				</div>
-				<ToolSlider
-					label="Zoom level"
-					value={tools.zoomSlider}
-					min={0}
-					max={ZOOM_SLIDER_STEPS}
-					step={1}
-					formatValue={(position) =>
-						zoomPercent(
-							position === sliderPosition(view.zoom, limits)
-								? view.zoom
-								: sliderZoom(position, limits),
-						)}
-					disabled={!ready}
-				/>
 				<div class="ins-image-tools__presets" role="group" aria-label="Zoom presets">
 					<Button
 						size="sm"

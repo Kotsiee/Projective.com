@@ -1,6 +1,8 @@
+import { useRef } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import { Icon } from "@projective/ui/icons";
 import { Tooltip } from "@projective/ui/feedback";
+import { ActionMenu, linkActionItems } from "@projective/ui/navigation";
 import type { ExploreEntity } from "@projective/types/explore";
 import { Button } from "@ui/fields/components/Button.tsx";
 import { requestShare } from "@web/features/share/core/share-request.ts";
@@ -21,7 +23,9 @@ import { savedFlag, savedTypeOf, toggleFlag } from "@features/saved/core/saved-s
  * with no backend and are gone (UI gate 11, as Decision #140); hiring into a project lives on the
  * profile's own Add-to-project flow.
  *
- * The cluster is revealed on card hover/focus via CSS. Dumb island: it fetches internal routes only.
+ * The cluster is revealed on card hover/focus via CSS. Right-clicking anywhere on the card opens the
+ * same Share · Save beside Open · Open in new tab · Copy link (Decision #222); there is no kebab, so
+ * the menu has no trigger of its own. Dumb island: it fetches internal routes only.
  */
 export default function CardActions(
 	{ title, href, id, type, authed = false }: {
@@ -54,9 +58,24 @@ export default function CardActions(
 
 	const signIn = `/login?redirectTo=${encodeURIComponent(href)}`;
 	const on = saved?.value === true;
+	const root = useRef<HTMLDivElement>(null);
+	const menu = linkActionItems({
+		href,
+		title,
+		onShare: share,
+		save: saved ? { saved: on, onToggle: () => void save() } : undefined,
+		onCopied: (ok) => {
+			status.value = ok ? "Link copied" : "Couldn't copy the link";
+		},
+	});
 
 	return (
-		<div class="ex-actions" data-stop>
+		<div class="ex-actions" data-stop ref={root}>
+			<ActionMenu
+				model={menu}
+				surface={() => root.current?.closest<HTMLElement>(".ex-card") ?? null}
+				aria-label={`Actions for ${title}`}
+			/>
 			<Tooltip content="Share">
 				<Button
 					type="button"

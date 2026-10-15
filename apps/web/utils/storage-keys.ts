@@ -250,7 +250,7 @@ export const LocalKeys = {
 	 * card/thumbnail size. Shared cross-island (the footer View Control Rig ↔ the explorer body).
 	 */
 	FILES_ZOOM: "pj.local.files.zoom",
-	/** Persisted File Explorer table column widths — a single JSON `Record<columnKey, px>` map. */
+	/** The file tables' column arrangement (DataTable `ColumnLayout`: order, widths, hidden). */
 	FILES_COLUMNS: "pj.local.files.columns",
 	/** Whether the file inspector's details panel is open on desktop (`"1"`|`"0"`). */
 	INSPECTOR_PANEL_OPEN: "pj.local.inspector.panelOpen",
@@ -262,6 +262,8 @@ export const LocalKeys = {
 	 * so the seller's catalogue density is independent of their file density.
 	 */
 	CATALOGUE_ZOOM: "pj.local.catalogue.zoom",
+	/** The catalogue list's column arrangement (DataTable `ColumnLayout`: order, widths, hidden). */
+	CATALOGUE_COLUMNS: "pj.local.catalogue.columns",
 	/**
 	 * The workspace console's zoom-driven view density (a `0`–`1` float) — the same list⇄grid model as
 	 * the File Explorer, shared cross-island (the footer rig ↔ the roster / people body). One key across

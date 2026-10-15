@@ -197,44 +197,58 @@ These need no ruling, because they follow existing rules:
 
 ```
 ┌ Lane ─────────────┬ Header band ──────────────────────────────────────────┬ Panel ─────────┐
-│ ⟨Products|Services│ Catalogue · 14 listings                 [Search…]     │ (docked ≥1280) │
-│  |All⟩ (LaneTabs) │ $4,820 last 30d ▲12% · 6 active tickets · 3.4% conv.  │ Client drawer  │
-│ Status ● Draft    │ · ★4.8 (32)          ⟨Listings|Analytics|Clients⟩     │ when ?client=  │
-│        ● Live …   ├───────────────────────────────────────────────────────┤                │
-│ Model  ▢ Pipeline │ Main canvas: ?view=listings → grid/table               │                │
-│ CREATE ▢ Create…  │              ?view=analytics → AnalyticsCanvas         │                │
-│ ⚑ Needs attention │              ?view=clients → ClientPipelineBoard       │                │
-│ Sort ▾            ├───────────────────────────────────────────────────────┤                │
-│ [+ New ▾]         │ Footer: zoom · sort  ⇄  batch bar (n selected)        │                │
+│ STATUS            │ Catalogue           ⟨Listings|Analytics|   $4,820 ▲12%  │ (docked ≥1280) │
+│  ◉ Published    9 │ 9 of 14 live · 4.8   Clients⟩    Gross · 30 days  …  │ Client drawer  │
+│  ✎ Drafts       2 ├───────────────────────────────────────────────────────┤ when ?client=  │
+│  ⏸ Paused       1 │ ⟪All ▾⟫ [Search…] 12 listings      ⟨Sort⟩ [+ New]    │                │
+│  ▣ Archived     2 │ ↑ sticky .fx-toolbar                                   │                │
+│ HIGHLIGHTS …      │ Main canvas: ?view=listings → grid/table               │                │
+│ DELIVERY MODEL …  │              ?view=analytics → AnalyticsCanvas         │                │
+│ CREATE CATEGORY … ├───────────────────────────────────────────────────────┤                │
+│ ◫  [+ New ▾]      │ Footer: zoom  ⇄  batch bar (n selected)                │                │
 └───────────────────┴───────────────────────────────────────────────────────┴────────────────┘
 ```
 
-- **Lane.**
-  - Type `LaneTabs`.
-  - Status sections with presence dots (never counts, §B.6).
-  - Facets for delivery model and CREATE category (`org.create_category`), plus needs-attention,
-    promoted and best-selling toggles.
-  - Sort.
-  - The quick-create menu in the lane footer.
-- **Header band.**
-  - Title and count.
-  - Search.
-  - The rollup line (`CatalogueRollups`): revenue velocity (window gross with its delta), active
-    client tickets, conversion rate and review sentiment. It is inline middot text with
-    `tabular-nums`, **not** tiles; the tiles live in the Analytics view.
-  - The view switch (`TabMenu`).
+- **Lane** (Decision #221: no head; the type moved to the toolbar).
+  - Collapsible facet sections in the section-header register: Status, Highlights (needs
+    attention, promoted, best-selling), Delivery model (services only) and CREATE category
+    (`org.create_category`). Each row is its glyph (the CREATE glyphs are the `category-*`
+    icons), its label, its count as plain `tabular-nums` meta text (Decision #220 — the §B.6.2
+    facet exception, from `CataloguePage.facetCounts`) and a `SelectionCheck` while on.
+  - Status, Delivery model and CREATE category are **multi-select** on the file explorer's model
+    (`core/facet-select.ts`): a press selects only that row (pressed again, the facet returns to its
+    default), Ctrl/Cmd toggles one row, Shift selects the run from the last row pressed,
+    Ctrl/Cmd+Shift adds that run. Status opens on Published · Drafts · Paused (Archived off);
+    its header action is Reset, the others' Clear. Highlights combine as before.
+  - The collapse toggle and the quick-create menu in the lane footer.
+- **Header band** (`.cat-band`, shared with the workspace): identity at the start, the view
+  switch centred, the sales figures at the end.
+  - Title over the catalogue's health (`CatalogueHealth`): "9 of 14 live · Rated 4.8", inline
+    middot meta text.
+  - The view switch (`TabMenu`, centred, 2px `::after` underline on the band's hairline).
+  - `CatalogueSales`: gross volume over the window (with its change), orders and conversion, each
+    a `tabular-nums` figure over its label, unboxed (a `<dl>`, never tiles — the tiles live in the
+    Analytics view). Below a 64rem band only gross stays; below 48rem the group goes.
+- **Toolbar** (`CatalogueToolbar`, the shared sticky `.fx-toolbar` of the File, Submissions and
+  Members explorers, pinned under the band): the type as a bare `Select` (every view); on Listings
+  also search, the match count (`aria-live`), and the sort; New listing below `--bp-md`.
 - **Canvas.** `?view=listings|analytics|clients`.
-- **Footer band.** Zoom and sort. While a selection exists it becomes the batch bar: Publish,
-  Pause, Archive, Add to collection, Duplicate, and Clear.
+- **Footer band.** Zoom. While a selection exists it becomes the batch bar: Publish, Pause,
+  Archive, Delete (while any selected listing has no buyer history), Add to collection, Duplicate,
+  and Clear. Archive and Delete confirm first (`ListingRemovalDialog`), each worded for what it does.
+- **Removal** (Decision #221). Archive is a status and always available; Delete is
+  `DELETE /api/catalogue/item?id=` → `catalogue.delete_listing`, offered (card menu, batch bar,
+  workspace rig) only when `ListingSummary.deletable` — the viewer created it and
+  `catalogue.get_listing_engagement` counts no buyer history — and refused `409` otherwise.
 - **Panel.** The client drawer (`?client=@handle`) on `view=clients`. Nothing on the other views.
 
 ### 3.2 `/catalogue/[id]`: item workspace
 
 ```
 ┌ Lane ─────────────┬ Header band ─────────────────────────────────────────┬ Panel ──────────┐
-│ ← Catalogue       │ ← Brand identity sprint   [Live]   Saved · 2s ago    │ Edit tab:       │
-│ (listing list,    │ ⟨Edit | Preview | Analytics | Clients ·2⟩            │  Live card      │
-│  current pinned)  ├──────────────────────────────────────────────────────┤  (real          │
+│ ← Back            │ Brand identity sprint                           (◫)  │ Edit tab:       │
+│ (every listing,   │ svc-… · [Live] · Saved   ⟨Edit|Preview|Analytics|…⟩  │  Live card      │
+│  current marked)  ├──────────────────────────────────────────────────────┤  (real          │
 │ ── On this page ─ │ Edit: [Media showcase 3×2, slot 1 = cover]           │   ServiceCard)  │
 │ Media             │       Basics · Offer (archetype) · Pricing ·         │  Readiness ✓✓✗  │
 │ Basics            │       Availability · Buyer questions · SEO & reach   │ Clients tab:    │
@@ -248,7 +262,7 @@ These need no ruling, because they follow existing rules:
 | :-- | :-- | :-- |
 | `edit` | Media showcase first, then archetype-driven sections (§4.3). | Live feed card and publish-readiness list. |
 | `preview` | `<iframe src="/catalogue/[id]/simulate?device=">` with a device toggle. | None; the canvas takes the full width. |
-| `analytics` | Per-item tiles, funnel, revenue area, keyword table, booking heatmap (sessions), churn. | None. |
+| `analytics` | Per-item tiles, funnel, revenue area, keyword table, booking heatmap (sessions), churn. An empty window still draws every chart (axes, gridlines, zero baseline) under a centred `InlineNotice`; a failed read never does (Decision #220). | None. |
 | `clients` | This listing's pipeline lanes. | Client drawer (`?client=@handle`). |
 
 ---
@@ -288,14 +302,14 @@ features/catalogue/
       edit/offer/PipelineOffer.tsx                  StageBlueprintEditor (sequence · price · roles · trigger)
       edit/offer/SessionOffer.tsx                   FormatToggle (solo|cohort) · DurationPicker · count · seats · provider
       edit/offer/TeamRolesEditor.tsx                Direct Deliverable only
-      edit/PricingSection.tsx                       archetype-aware money fields (MoneyInput)
+      edit/PricingSection.tsx                       archetype-aware money fields (NumberInput + MONEY_FIELD)
       edit/AvailabilitySection.tsx                  PresetBinding + <AvailabilityScheduler/> (sessions only)
       edit/IntakeSection.tsx                        IntakeBuilder (≤12, ids immutable after publish)
       edit/SeoSection.tsx                           SerpPreview · meta title/description · TagCombobox (≤10)
     preview/PreviewCanvas.tsx                       device toggle + iframe + reload-on-saved
     analytics/AnalyticsCanvas.tsx (shared)
     clients/ClientPipelineBoard.tsx (shared)
-  islands/ListingHeader.island.tsx                  title · status · TabMenu · save state · "Card" drawer btn (<1280)
+  islands/ListingHeader.island.tsx                  title · slug · status · save state · centred TabMenu · Card icon toggle
   islands/ListingActionRig.island.tsx               readiness sentence · lifecycle actions
   islands/ListingInspector.island.tsx               panel body: LiveCardPreview + ReadinessList | ClientDrawer
 ```
@@ -331,8 +345,10 @@ Section-level UX rules:
 - **Unboxed rows.** The scope checklist is a list of `Icon('check')` rows with inline edit,
   drag-reorder through `@projective/ui/dnd`, and Enter to add a row below. Milestones and stages
   render as a numbered `Timeline` with inline fields. Only interactive controls carry borders.
-- **`MoneyInput`.** Every money field takes minor units, uses the listing currency and has a
-  `tabular-nums` field adornment. No raw `type="number"`.
+- **Money fields.** Every money field is the project setup form's: `NumberInput` with the app-wide
+  `MONEY_FIELD` preset and `moneyDigits(currency)` (`apps/web/utils/money-field.ts`) — the
+  currency symbol as the leading adornment, steppers and icon scrub by whole units, Ctrl for the
+  currency's minor unit — in the listing currency, in major units. No raw `type="number"`.
 - **Changing the delivery model** is allowed only while the listing is a draft. Afterwards, Basics
   shows the model as text with an "Archive & recreate" explanation, because a model change on a
   live listing would orphan bookings.
@@ -401,7 +417,7 @@ export interface ShowcaseGridProps {
 
 | Control | Home | Notes |
 | :-- | :-- | :-- |
-| `MoneyInput` | `@projective/ui/fields` | Minor units in and out, currency adornment, locale grouping on blur, `inputmode="decimal"`. |
+| `MoneyInput` | `@projective/ui/fields` | Minor units in and out, currency adornment, locale grouping on blur, `inputmode="decimal"`. No longer used by the catalogue: its money fields are `NumberInput` + `MONEY_FIELD`, the same as project setup. |
 | `DurationPicker` | `@projective/ui/fields` | `SelectButton` preset (15, 30, 45, 60, 90) plus a "Custom" stepper (5–600). |
 | `NumberStepper` | `@projective/ui/fields` | − / + buttons with `role="spinbutton"`. Arrow keys step by 1, PageUp / PageDown by 10, Home / End go to the bounds. |
 | `TagCombobox` | `@projective/ui/fields` | ARIA 1.2 combobox with a chip list and `max`. Suggestions are injected (`/api/search/suggest-tags`). Enter or comma commits, Backspace removes the last chip. |
@@ -463,7 +479,7 @@ Each new `@projective/ui` component lands with its `DESIGN_SYSTEM.md` §C.1 rost
   percentage.
 - `HeatmapGrid` (7 × 24): ramp on `--primary` tint steps, plus a pattern overlay under the
   colour-blind overlay.
-- A keyword `Table`.
+- A keyword `DataTable`.
 - Each chart renders SVG at low density and switches to Canvas2D when its entity count or measured
   frame budget calls for it (flag **m**, §C.5). Either renderer meets the same figure, caption,
   hidden-table and keyboard contract.
@@ -771,7 +787,10 @@ export const ConsoleScope = z.union([
 ]);
 export const ClientKey = z.string().regex(/^@[a-z0-9_]{2,30}$/);   // a buyer handle — never a uuid (#88)
 
-export interface ConsoleUrlState { view; type; status?; model?; create?: CreateCategory; sort; dir; search; period; scope; client?; createOpen: boolean }
+// The facets are lists (Decision #221): `?status=draft,paused` · `?model=pipeline,session` ·
+// `?category=educate,test`, canonical order, unknown values dropped. `status` is never empty and
+// defaults to draft · published · paused (Archived off), a default the href omits.
+export interface ConsoleUrlState { view; type; status: ListingStatus[]; model: ServiceType[]; create: CreateCategory[]; sort; dir; search; period; scope; client?; createOpen: boolean }
 export interface WorkspaceUrlState { tab; section?; device; period; client? }
 export function parseConsoleUrl(url: URL): ConsoleUrlState;          // total: bad values → defaults
 export function consoleHref(state: Partial<ConsoleUrlState>): string; // canonical param order, defaults omitted

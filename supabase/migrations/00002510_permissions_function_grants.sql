@@ -1554,6 +1554,20 @@ REVOKE ALL ON FUNCTION catalogue.fn_listing_file_ok (uuid, uuid, text) FROM publ
 
 GRANT EXECUTE ON FUNCTION catalogue.fn_listing_file_ok (uuid, uuid, text) TO authenticated, service_role;
 
+-- The no-history hard delete and its engagement read (Decision #221). The count itself is internal:
+-- only the two definers that gate it on the caller call it.
+REVOKE ALL ON FUNCTION catalogue.fn_listing_engagements (uuid) FROM public, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION catalogue.fn_listing_engagements (uuid) TO service_role;
+
+REVOKE ALL ON FUNCTION catalogue.get_listing_engagement (uuid[]) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION catalogue.get_listing_engagement (uuid[]) TO authenticated, service_role;
+
+REVOKE ALL ON FUNCTION catalogue.delete_listing (uuid) FROM public, anon;
+
+GRANT EXECUTE ON FUNCTION catalogue.delete_listing (uuid) TO authenticated, service_role;
+
 -- --- the Project Details sidebar's Teams group (00001100: get_viewer_hired_teams) ---
 --
 -- Answers only about the caller's own team memberships, so it needs a signed-in caller; a guest has

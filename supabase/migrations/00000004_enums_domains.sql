@@ -403,7 +403,8 @@ CREATE TYPE catalogue.listing_kind AS ENUM ('product', 'service');
 -- exactly and in the same order.
 --
 -- `archived` is a VISIBILITY state of one listing, not a delete: root CLAUDE.md §5 says nothing is
--- ever hard-deleted, and `paused` is deliberately distinct from it — paused means the seller intends
+-- hard-deleted (the one exception, a listing no buyer has engaged with, is `catalogue.delete_listing`,
+-- Decision #221), and `paused` is deliberately distinct from it — paused means the seller intends
 -- to return, archived means they do not. Collapsing them would lose the only signal that separates a
 -- seasonal listing from an abandoned one.
 CREATE TYPE catalogue.listing_status AS ENUM ('draft', 'published', 'paused', 'archived');

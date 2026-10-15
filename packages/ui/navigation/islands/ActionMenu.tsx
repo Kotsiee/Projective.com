@@ -1,5 +1,5 @@
-import type { ComponentChildren, JSX, VNode } from "preact";
-import { useEffect, useRef } from "preact/hooks";
+import type { ComponentChildren, JSX, RefObject, VNode } from "preact";
+import { useEffect, useMemo, useRef } from "preact/hooks";
 import { useSignal } from "@preact/signals";
 import "../styles/action-menu.css";
 import { cx } from "../../core/cx.ts";
@@ -40,14 +40,30 @@ import {
 	actionMenuRowId,
 	ActionMenuRows,
 } from "../components/ActionMenuRows.tsx";
+import {
+	type ContextPoint,
+	type ContextSurfaceSource,
+	isContextMenuKey,
+	KEYBOARD_CONTEXT_WINDOW_MS,
+	resolveSurface,
+	shouldOpenContextMenu,
+} from "../core/context-surface.ts";
 
 // #region Props
 /** Props for {@link ActionMenu}. */
 export interface ActionMenuProps {
 	/** Rows; any row with `items` cascades into a flyout submenu, to any depth. */
 	model: MenuItem[];
-	/** Render-prop for the trigger — the same contract as `Popover`. Attach `api.ref` to a native element. */
-	trigger: (api: PopoverTriggerApi) => VNode;
+	/**
+	 * Render-prop for the trigger — the same contract as `Popover`. Attach `api.ref` to a native element.
+	 * Omit it for a surface that has no kebab but still opens this menu on right-click.
+	 */
+	trigger?: (api: PopoverTriggerApi) => VNode;
+	/**
+	 * The card or list item this menu belongs to. Right-click, the ContextMenu key and Shift+F10 on it
+	 * open the same rows at the pointer (or under the focused element), instead of the browser's menu.
+	 */
+	surface?: ContextSurfaceSource;
 	/** Accessible name of the root `role="menu"`. */
 	"aria-label": string;
 	/** Root panel placement; flips on overflow (default `bottom-end`). */
@@ -80,7 +96,21 @@ interface FlyoutProps {
 	onPointerMove: (e: JSX.TargetedPointerEvent<HTMLDivElement>) => void;
 	onPointerDown: (e: JSX.TargetedPointerEvent<HTMLDivElement>) => void;
 	onPointerEnter: (e: JSX.TargetedPointerEvent<HTMLDivElement>) => void;
+	onContextMenu: (e: JSX.TargetedMouseEvent<HTMLDivElement>) => void;
 	children: ComponentChildren;
+}
+
+const EDITABLE = "input, textarea, select, [contenteditable]:not([contenteditable='false'])";
+
+function selectingWithin(surface: HTMLElement): boolean {
+	const selection = globalThis.getSelection?.();
+	if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false;
+	return surface.contains(selection.getRangeAt(0).commonAncestorContainer);
+}
+
+function keepInsideMenu(e: JSX.TargetedMouseEvent<HTMLDivElement>): void {
+	e.preventDefault();
+	e.stopPropagation();
 }
 
 function floatVars(floating: FloatingState | null, zIndex: number) {
@@ -130,6 +160,7 @@ function ActionMenuFlyout(props: FlyoutProps): JSX.Element {
 				onPointerMove={props.onPointerMove}
 				onPointerDown={props.onPointerDown}
 				onPointerEnter={props.onPointerEnter}
+				onContextMenu={props.onContextMenu}
 			>
 				{props.children}
 			</div>
@@ -153,6 +184,12 @@ function ActionMenuFlyout(props: FlyoutProps): JSX.Element {
  * with aim tolerance; touch taps toggle them. A terminal row runs its `command`, closes the tree and
  * returns focus to the trigger.
  *
+ * Given a `surface` (the card or list item), the same rows open on right-click at the pointer, and on
+ * the ContextMenu key or Shift+F10 under the focused element — one menu per entity, whichever way it
+ * is asked for. The browser keeps the event in editable text, over a selection, on Shift+right-click
+ * and when an inner surface already took it; a right-click inside the open menu never reaches the
+ * browser's menu. Focus returns to whatever held it before the right-click.
+ *
  * @example
  * ```tsx
  * <ActionMenu
@@ -174,6 +211,7 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 	const {
 		model,
 		trigger,
+		surface,
 		placement = "bottom-end",
 		avoid,
 		open,
@@ -191,6 +229,17 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 	const hover = useRef<HoverState>({ trail: [], timer: undefined, pending: null, row: null });
 	const typeahead = useRef<TypeaheadState>({ buffer: "", at: 0 });
 	const pointerType = useRef<string>("mouse");
+	const point = useSignal<ContextPoint | null>(null);
+	const pointRef = useRef<HTMLSpanElement>(null);
+	const returnFocus = useRef<HTMLElement | null>(null);
+	const anchorRef = useMemo<RefObject<HTMLElement>>(
+		() => ({
+			get current() {
+				return point.peek() ? pointRef.current : triggerRef.current;
+			},
+		}),
+		[],
+	);
 
 	const tree = resolveLevels(model, path.value);
 	const levelId = (depth: number, p: MenuPath = tree.path): string =>
@@ -199,12 +248,21 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 		typeof document === "undefined"
 			? null
 			: document.getElementById(actionMenuRowId(levelId(depth, path.peek()), index));
-	const rtl = isOpen && typeof getComputedStyle === "function" && triggerRef.current
-		? getComputedStyle(triggerRef.current).direction === "rtl"
+	const directionSource = triggerRef.current ?? resolveSurface(surface);
+	const rtl = isOpen && typeof getComputedStyle === "function" && directionSource
+		? getComputedStyle(directionSource).direction === "rtl"
 		: false;
 
 	const stack = useOverlayStack({ active: isOpen, layer: "popover" });
-	const floating = useFloating({ open: isOpen, triggerRef, panelRef, placement, avoid });
+	const atPoint = point.value !== null;
+	const floating = useFloating({
+		open: isOpen,
+		triggerRef: anchorRef,
+		panelRef,
+		placement: atPoint ? (rtl ? "bottom-end" : "bottom-start") : placement,
+		offset: atPoint ? 2 : undefined,
+		avoid,
+	});
 
 	// #region Open / close
 	const clearHover = () => {
@@ -214,12 +272,25 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 		h.pending = null;
 	};
 
+	const focusReturnTarget = (): HTMLElement | null => {
+		const prior = returnFocus.current;
+		if (point.peek() && prior?.isConnected) return prior;
+		return triggerRef.current;
+	};
+
 	const closeAll = (restoreFocus: boolean) => {
 		clearHover();
 		hover.current.row = null;
 		if (path.peek().length > 0) path.value = [];
+		const target = restoreFocus ? focusReturnTarget() : null;
 		if (ctrl.get()) ctrl.set(false);
-		if (restoreFocus) triggerRef.current?.focus();
+		point.value = null;
+		target?.focus();
+	};
+
+	const openFromTrigger = () => {
+		point.value = null;
+		ctrl.set(true);
 	};
 
 	const setPath = (next: MenuPath) => {
@@ -234,7 +305,7 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 		setTimeout(() => {
 			const active = document.activeElement;
 			const free = !active || active === document.body || active === triggerRef.current ||
-				withinTree(active);
+				withinTree(active) || !!resolveSurface(surface)?.contains(active);
 			if (free) rowEl(depth, index)?.focus();
 		}, 0);
 	};
@@ -283,6 +354,78 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 	}, [isOpen]);
 
 	useEffect(() => () => clearHover(), []);
+	// #endregion
+
+	// #region Context surface
+	const openAt = (at: ContextPoint) => {
+		const active = document.activeElement;
+		returnFocus.current = active instanceof HTMLElement && active !== document.body ? active : null;
+		const show = () => {
+			point.value = at;
+			ctrl.set(true);
+		};
+		if (!ctrl.get()) {
+			show();
+			return;
+		}
+		closeAll(false);
+		setTimeout(show, 0);
+	};
+
+	const surfaceLive = useRef({ openAt, model });
+	surfaceLive.current = { openAt, model };
+	const boundSurface = useRef<{ el: HTMLElement; unbind: () => void } | null>(null);
+
+	useEffect(() => {
+		const el = resolveSurface(surface);
+		if (boundSurface.current?.el === el) return;
+		boundSurface.current?.unbind();
+		boundSurface.current = null;
+		if (!el) return;
+
+		let keyboardAt = Number.NEGATIVE_INFINITY;
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (isContextMenuKey(e.key, e.shiftKey)) keyboardAt = e.timeStamp;
+		};
+		const onContextMenu = (e: MouseEvent) => {
+			if (surfaceLive.current.model.length === 0) return;
+			const keyboard = e.timeStamp - keyboardAt < KEYBOARD_CONTEXT_WINDOW_MS;
+			const target = e.target instanceof Element ? e.target : null;
+			const open = shouldOpenContextMenu({
+				handled: e.defaultPrevented,
+				keyboard,
+				shiftKey: e.shiftKey,
+				editable: !!target?.closest(EDITABLE),
+				selecting: !keyboard && selectingWithin(el),
+			});
+			if (!open) return;
+			e.preventDefault();
+			keyboardAt = Number.NEGATIVE_INFINITY;
+			if (!keyboard) {
+				surfaceLive.current.openAt({ x: e.clientX, y: e.clientY });
+				return;
+			}
+			const focused = document.activeElement;
+			const box = (focused instanceof HTMLElement && el.contains(focused) ? focused : el)
+				.getBoundingClientRect();
+			surfaceLive.current.openAt({ x: box.left, y: box.bottom });
+		};
+
+		el.addEventListener("keydown", onKeyDown);
+		el.addEventListener("contextmenu", onContextMenu);
+		boundSurface.current = {
+			el,
+			unbind: () => {
+				el.removeEventListener("keydown", onKeyDown);
+				el.removeEventListener("contextmenu", onContextMenu);
+			},
+		};
+	});
+
+	useEffect(() => () => {
+		boundSurface.current?.unbind();
+		boundSurface.current = null;
+	}, []);
 	// #endregion
 
 	// #region Activation
@@ -480,13 +623,14 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 			const pending = hover.current.pending;
 			if (e.pointerType === "mouse" && pending && pending.depth < depth) clearHover();
 		},
+		onContextMenu: keepInsideMenu,
 	});
 	// #endregion
 
 	const api: PopoverTriggerApi = {
 		ref: triggerRef,
-		toggle: () => (ctrl.get() ? closeAll(false) : ctrl.set(true)),
-		open: () => ctrl.set(true),
+		toggle: () => (ctrl.get() ? closeAll(false) : openFromTrigger()),
+		open: openFromTrigger,
 		close: () => closeAll(false),
 		expanded: isOpen,
 		panelId: levelId(0),
@@ -507,9 +651,20 @@ export function ActionMenu(props: ActionMenuProps): JSX.Element {
 
 	return (
 		<>
-			{trigger(api)}
+			{trigger?.(api)}
 			{isOpen && (
 				<BodyPortal>
+					{point.value && (
+						<span
+							ref={pointRef}
+							class="ui-action-menu__point"
+							aria-hidden="true"
+							style={styleVars({
+								"--point-x": `${point.value.x}px`,
+								"--point-y": `${point.value.y}px`,
+							})}
+						/>
+					)}
 					<div
 						ref={panelRef}
 						id={levelId(0)}

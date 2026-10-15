@@ -1,6 +1,7 @@
 import type { JSX } from "preact";
+import { useMemo } from "preact/hooks";
+import { type DataColumn, DataTable } from "@projective/ui/display";
 import { Tooltip } from "@projective/ui/feedback";
-import { Checkbox } from "@projective/ui/fields";
 import {
 	CAPABILITY_LABEL,
 	type PermissionFacet,
@@ -12,8 +13,8 @@ import {
 	availabilityPhrase,
 	isConsequential,
 	type MemberAction,
-	MemberActionsMenu,
 	type MemberGuards,
+	memberMenuRows,
 	memberProfileHref,
 	MembershipDot,
 	OverrideChip,
@@ -25,19 +26,10 @@ import {
 
 /**
  * MemberTable — the roster at table density: the same people as the cards, read for comparison rather
- * than for identity.
- *
- * Five columns, one per question a reader brings to a roster — who they are, what role they hold, how
- * their effective permissions differ from it, how loaded they are, and what can be done about it. The
- * wrapper is the ONLY horizontal scroller (the page body must never scroll sideways) and the identity
- * column is sticky, because a permission row read across five columns is useless the moment the name
- * slides out of view.
- *
- * **Semantics:** `role="table"` over real rows and cells, not a grid. A grid would promise per-cell
- * arrow-key navigation, which this table does not implement and does not need — that contract belongs to
- * the roles matrix, where two axes genuinely have to be traversed. Each row is nonetheless directly
- * operable: `Enter`/`Space` opens the member drawer, and every control inside a row stops propagation so
- * ticking a checkbox never doubles as activating the row.
+ * than for identity, as a `DataTable` preset. Five columns, one per question a reader brings to a
+ * roster — who they are, what role they hold, how their effective permissions differ from it, how
+ * loaded they are, and what can be done about it. The identity column stays pinned while the table
+ * scrolls sideways; a row opens the member drawer; the card's menu rides on a kebab and right-click.
  */
 
 // #region Props
@@ -106,143 +98,147 @@ function PermissionSummary(props: { facets: readonly PermissionFacet[] }): JSX.E
 }
 // #endregion
 
+// #region Cells
+function IdentityCell({ member }: { member: WorkspaceMember }): JSX.Element {
+	return (
+		<div class="wsp-mtable__ident">
+			<Tooltip content={`${member.name} — ${availabilityPhrase(member.availability)}`}>
+				<span class="wsp-mcard__avatarwrap">
+					<PersonAvatar member={member} size="sm" />
+					<span class="wsp-mcard__avail" data-avail={member.availability} aria-hidden="true" />
+				</span>
+			</Tooltip>
+			<span class="wsp-mtable__name">
+				<span class="wsp-mtable__name-text">{member.name}</span>
+				<a class="wsp-mtable__sub" href={memberProfileHref(member.handle)}>{`@${member.handle}`}</a>
+			</span>
+		</div>
+	);
+}
+
+function RoleCell(
+	{ member, role, referenceYear }: {
+		member: WorkspaceMember;
+		role: string;
+		referenceYear?: number;
+	},
+): JSX.Element {
+	return (
+		<span class="wsp-mtable__name">
+			<span class="wsp-mtable__name-text">
+				{role}
+				<MembershipDot state={member.state} />
+			</span>
+			<span class="wsp-mtable__sub wsp-num">{shortDate(member.joinedAt, referenceYear)}</span>
+		</span>
+	);
+}
+// #endregion
+
 // #region Table
 /** The roster, at table density. */
 export function MemberTable(props: MemberTableProps): JSX.Element {
-	const {
-		members,
-		roles,
-		facetsById,
-		guardsById,
-		selected,
-		onSelect,
-		onSelectAll,
-		onAction,
-		referenceYear,
-	} = props;
+	const { members, roles, facetsById, guardsById, selected, onSelect, onSelectAll, onAction } =
+		props;
+	const { referenceYear } = props;
 
-	const allSelected = members.length > 0 && members.every((m) => selected?.has(m.id));
+	const columns = useMemo<DataColumn<WorkspaceMember>[]>(() => [
+		{
+			id: "member",
+			header: "Member",
+			type: "custom",
+			fill: true,
+			minWidth: 224,
+			pinned: true,
+			render: (member) => <IdentityCell member={member} />,
+			sortValue: (member) => member.name,
+			searchText: (member) => `${member.name} @${member.handle}`,
+		},
+		{
+			id: "role",
+			header: "Role",
+			type: "custom",
+			width: 176,
+			render: (member) => (
+				<RoleCell member={member} role={roleNameOf(member, roles)} referenceYear={referenceYear} />
+			),
+			sortValue: (member) => roleNameOf(member, roles),
+		},
+		{
+			id: "permissions",
+			header: "Permissions",
+			type: "custom",
+			width: 208,
+			priority: 2,
+			render: (member) => <PermissionSummary facets={facetsById[member.id] ?? []} />,
+		},
+		{
+			id: "workload",
+			header: "Workload",
+			type: "custom",
+			width: 152,
+			priority: 1,
+			render: (member) => <WorkloadMeter workload={member.workload} />,
+		},
+		{
+			id: "access",
+			header: "Role and permissions",
+			headerHidden: true,
+			type: "custom",
+			align: "end",
+			width: 56,
+			resizable: false,
+			reorderable: false,
+			render: (member) => (
+				<Tooltip content={`Role and permissions for ${member.name}`}>
+					<button
+						type="button"
+						class="wsp-mcard__kebab"
+						aria-label={`Role and permissions for ${member.name}`}
+						onClick={() => onAction("open", member)}
+					>
+						<PermissionsIcon />
+					</button>
+				</Tooltip>
+			),
+		},
+	], [roles, facetsById, referenceYear, onAction]);
+
+	const selectable = Boolean(onSelect && onSelectAll);
+	const onSelectionChange = (next: ReadonlySet<string>) => {
+		if (!onSelect || !onSelectAll) return;
+		if (next.size === 0) return onSelectAll(false);
+		if (members.every((m) => next.has(m.id))) return onSelectAll(true);
+		for (const member of members) {
+			const was = selected?.has(member.id) ?? false;
+			const now = next.has(member.id);
+			if (was !== now) onSelect(member.id, now);
+		}
+	};
 
 	return (
-		<div class="wsp-mtable" tabIndex={0} role="region" aria-label="Members table">
-			<div class="wsp-mtable__grid" role="table" aria-rowcount={members.length + 1}>
-				<div class="wsp-mtable__head" role="row" aria-rowindex={1}>
-					<div class="wsp-mtable__th" role="columnheader">
-						{onSelect && onSelectAll && (
-							<Checkbox
-								value={allSelected}
-								onValueChange={(next) => onSelectAll(next)}
-								aria-label={allSelected ? "Clear selection" : "Select every member shown"}
-							/>
-						)}
-						Member
-					</div>
-					<div class="wsp-mtable__th" role="columnheader">Role</div>
-					<div class="wsp-mtable__th" role="columnheader">Permissions</div>
-					<div class="wsp-mtable__th" role="columnheader">Workload</div>
-					<div class="wsp-mtable__th" role="columnheader" data-align="end">
-						<span class="ui-visually-hidden">Actions</span>
-					</div>
-				</div>
-
-				{members.map((member, index) => {
-					const role = roleNameOf(member, roles);
-					const facets = facetsById[member.id] ?? [];
-					const guards = guardsById[member.id] ?? { manageable: false, lastOwner: false };
-					const isSelected = selected?.has(member.id) ?? false;
-
-					return (
-						<div
-							key={member.id}
-							class="wsp-mtable__row"
-							role="row"
-							aria-rowindex={index + 2}
-							tabIndex={0}
-							data-self={member.isSelf ? "true" : undefined}
-							onClick={() => onAction("open", member)}
-							onKeyDown={(event) => {
-								if (event.key === "Enter" || event.key === " ") {
-									event.preventDefault();
-									onAction("open", member);
-								}
-							}}
-						>
-							<div class="wsp-mtable__cell" role="cell">
-								<div class="wsp-mtable__ident">
-									{onSelect && (
-										<span onClick={(event) => event.stopPropagation()}>
-											<Checkbox
-												value={isSelected}
-												onValueChange={(next) => onSelect(member.id, next)}
-												aria-label={`Select ${member.name}`}
-											/>
-										</span>
-									)}
-									<Tooltip
-										content={`${member.name} — ${availabilityPhrase(member.availability)}`}
-									>
-										<span class="wsp-mcard__avatarwrap">
-											<PersonAvatar member={member} size="sm" />
-											<span
-												class="wsp-mcard__avail"
-												data-avail={member.availability}
-												aria-hidden="true"
-											/>
-										</span>
-									</Tooltip>
-									<span class="wsp-mtable__name">
-										<span class="wsp-mtable__name-text">{member.name}</span>
-										<a
-											class="wsp-mtable__sub"
-											href={memberProfileHref(member.handle)}
-											onClick={(event) => event.stopPropagation()}
-										>
-											{`@${member.handle}`}
-										</a>
-									</span>
-								</div>
-							</div>
-
-							<div class="wsp-mtable__cell" role="cell">
-								<span class="wsp-mtable__name">
-									<span class="wsp-mtable__name-text">
-										{role}
-										<MembershipDot state={member.state} />
-									</span>
-									<span class="wsp-mtable__sub wsp-num">
-										{shortDate(member.joinedAt, referenceYear)}
-									</span>
-								</span>
-							</div>
-
-							<div class="wsp-mtable__cell" role="cell">
-								<PermissionSummary facets={facets} />
-							</div>
-
-							<div class="wsp-mtable__cell" role="cell">
-								<WorkloadMeter workload={member.workload} />
-							</div>
-
-							<div class="wsp-mtable__cell" role="cell" data-align="end">
-								<div class="wsp-mtable__actions" onClick={(e) => e.stopPropagation()}>
-									<Tooltip content={`Role and permissions for ${member.name}`}>
-										<button
-											type="button"
-											class="wsp-mcard__kebab"
-											aria-label={`Role and permissions for ${member.name}`}
-											onClick={() => onAction("open", member)}
-										>
-											<PermissionsIcon />
-										</button>
-									</Tooltip>
-									<MemberActionsMenu member={member} guards={guards} onAction={onAction} />
-								</div>
-							</div>
-						</div>
-					);
-				})}
-			</div>
-		</div>
+		<DataTable
+			class="wsp-mtable"
+			rows={members}
+			rowKey={(member) => member.id}
+			rowLabel={(member) => member.name}
+			columns={columns}
+			aria-label="Members table"
+			selectionMode={selectable ? "multiple" : "none"}
+			selection={selectable ? selected ?? new Set() : undefined}
+			onSelectionChange={selectable ? onSelectionChange : undefined}
+			onRowActivate={(member) => onAction("open", member)}
+			rowActions={(member) =>
+				memberMenuRows(
+					member,
+					guardsById[member.id] ?? { manageable: false, lastOwner: false },
+					onAction,
+				)}
+			rowState={(member) => (member.isSelf ? "self" : null)}
+			rowHeight={64}
+			virtualize={false}
+			columnChooser={false}
+		/>
 	);
 }
 // #endregion

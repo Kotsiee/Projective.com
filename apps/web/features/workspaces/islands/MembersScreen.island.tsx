@@ -20,7 +20,7 @@ import {
 } from "@projective/types/workspace";
 import { WorkspaceService } from "../core/WorkspaceService.ts";
 import { membersView, openInvite, publishDetail } from "../core/workspace-state.ts";
-import { gridColWidth, workspaceZoom, zoom } from "../core/view-state.ts";
+import { gridColWidth, workspaceZoom, displayZoom } from "../core/view-state.ts";
 import { useCtrlWheelZoom } from "@web/features/shell/hooks/useCtrlWheelZoom.ts";
 import {
 	filterMembers,
@@ -335,7 +335,8 @@ export default function MembersScreen(props: MembersScreenProps): JSX.Element {
 											: membersView.value === "cards"
 											? (
 												<Grid
-													minChildWidth={`${gridColWidth(zoom.value)}px`}
+													minChildWidth={`${gridColWidth(displayZoom.value)}px`}
+													fit="exact"
 													maxCols={4}
 													gap="var(--space-4)"
 												>

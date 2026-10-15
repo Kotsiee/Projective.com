@@ -5,8 +5,8 @@ import { createZoomStore } from "@web/utils/zoom-store.ts";
  * File Explorer view-state — this surface's instance of the shared cross-island density model
  * (`@web/utils/zoom-store.ts`). The footer **View Control Rig** and the explorer **body** are separate
  * islands; they coordinate through these module-level signals. A single continuous `zoom` (0–1) drives
- * BOTH the list⇄grid switch (a centre threshold) AND the density within each view — so there is
- * deliberately **no** grid/list toggle button: crossing the centre marker transitions the workspace.
+ * BOTH the list⇄grid switch (a centre threshold) AND the density within each view; crossing the
+ * centre marker, or pressing the rig's mode button (Decision #223), transitions the workspace.
  *
  * Only the ramps are local: file cards are thumbnail-led, so they start narrower than a listing card
  * and a table row stays tight enough to scan a long directory.
@@ -29,6 +29,8 @@ export const {
 	ZOOM_STEP,
 	ZOOM_WHEEL_STEP,
 	zoom,
+	displayZoom,
+	toggleViewMode,
 	viewMode,
 	restoreZoom,
 	setZoom,

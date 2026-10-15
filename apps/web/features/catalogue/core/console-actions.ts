@@ -119,7 +119,8 @@ export type ListingAction =
 	| "publish"
 	| "pause"
 	| "archive"
-	| "restore";
+	| "restore"
+	| "delete";
 
 /** What the canvas does after a card action: say something, go somewhere, or open a new tab. */
 export interface ActionOutcome {
@@ -146,6 +147,15 @@ export async function runListingAction(
 		const res = await CatalogueService.duplicate(listing.id);
 		if (res.ok && res.data) return { navigate: workspaceHref(res.data.listing.id, {}) };
 		return { notice: res.message ?? "Couldn't duplicate the listing." };
+	}
+	if (action === "delete") {
+		const res = await CatalogueService.remove(listing.id);
+		await reloadListings();
+		return {
+			notice: res.ok
+				? `“${listing.title}” deleted.`
+				: res.message ?? "Couldn't delete the listing.",
+		};
 	}
 	const status = STATUS_FOR[action];
 	if (!status) return {};

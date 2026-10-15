@@ -1,12 +1,12 @@
-/*
- * VirtualGrid — a windowed grid. The viewport hosts a full-extent sizer; only in-window rows mount,
- * each an absolutely-positioned CSS grid slice. No border on the viewport (§B.4) — the gap is the only
- * separation. The global custom scrollbar applies automatically in own-container mode.
- */
 .ui-vgrid {
+	--vgrid-dir: 1;
 	position: relative;
 	inline-size: 100%;
 	min-inline-size: 0;
+	overflow-anchor: none;
+}
+.ui-vgrid:dir(rtl) {
+	--vgrid-dir: -1;
 }
 .ui-vgrid--own {
 	block-size: var(--vgrid-scroll-h, 100%);
@@ -21,26 +21,25 @@
 	position: relative;
 	inline-size: 100%;
 	block-size: var(--vgrid-total, 0);
-}
-
-.ui-vgrid__row {
-	position: absolute;
-	inset-inline: 0;
-	inset-block-start: var(--v-start, 0);
-	block-size: var(--v-size, auto);
-	box-sizing: border-box;
-	padding-block-end: var(--vgrid-gap, 16px);
-	display: grid;
-	grid-template-columns: repeat(var(--vgrid-cols, 1), minmax(0, 1fr));
-	gap: var(--vgrid-gap, 16px);
+	overflow-anchor: none;
 }
 
 .ui-vgrid__cell {
+	position: absolute;
+	inset-block-start: 0;
+	inset-inline-start: 0;
+	box-sizing: border-box;
+	inline-size: var(--vgrid-cell-w, 100%);
+	block-size: var(--vgrid-cell-h, auto);
 	min-inline-size: 0;
-	block-size: 100%;
+	transform: translate(calc(var(--c-x, 0px) * var(--vgrid-dir)), var(--c-y, 0px));
+	overflow-anchor: none;
+}
+.ui-vgrid__cell:hover,
+.ui-vgrid__cell:focus-within {
+	z-index: 1;
 }
 
-/* Tail loading affordance — a centered muted spinner. */
 .ui-vgrid__loader {
 	display: flex;
 	align-items: center;

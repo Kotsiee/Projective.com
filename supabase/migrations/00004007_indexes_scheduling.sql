@@ -19,6 +19,8 @@ CREATE INDEX IF NOT EXISTS idx_discovery_calls_schedule_window ON scheduling.dis
     confirmed_start,
     confirmed_end
 );
+CREATE INDEX IF NOT EXISTS idx_discovery_calls_blueprint ON scheduling.discovery_calls (service_blueprint_id)
+    WHERE service_blueprint_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_call_attendance_call ON scheduling.call_attendance (call_id, joined_at);
 CREATE INDEX IF NOT EXISTS idx_call_audit_call ON scheduling.call_audit (call_id, created_at);
 

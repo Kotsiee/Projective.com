@@ -19,6 +19,12 @@ export interface GridProps extends Omit<HTMLAttributes<HTMLElement>, "style" | "
 	 * cards never over-narrow into a cramped many-column row. Pure CSS (RAM formula) — no measurement.
 	 */
 	maxCols?: number;
+	/**
+	 * `"stretch"` (default) grows auto-fit tracks to fill the row; `"exact"` keeps every track at
+	 * exactly `minChildWidth` (capped at the container, `maxCols` ignored), so a zoom-driven width
+	 * scales cards continuously instead of in column-count jumps.
+	 */
+	fit?: "stretch" | "exact";
 	/** Gap between cells. */
 	gap?: Space;
 	align?: GridPlacement;
@@ -34,6 +40,7 @@ export function Grid(props: GridProps): JSX.Element {
 		cols,
 		minChildWidth,
 		maxCols,
+		fit = "stretch",
 		gap,
 		align,
 		justify,
@@ -43,7 +50,8 @@ export function Grid(props: GridProps): JSX.Element {
 		...rest
 	} = props;
 	const auto = minChildWidth !== undefined;
-	const capped = auto && maxCols !== undefined;
+	const exact = auto && fit === "exact";
+	const capped = auto && !exact && maxCols !== undefined;
 	const vars: Record<string, string | number | undefined> = {
 		"--grid-gap": space(gap),
 		"--grid-align": align,
@@ -59,6 +67,7 @@ export function Grid(props: GridProps): JSX.Element {
 				"ui-grid",
 				auto && "ui-grid--auto",
 				capped && "ui-grid--capped",
+				exact && "ui-grid--exact",
 				className as string,
 			)}
 			style={styleVars(vars, style)}

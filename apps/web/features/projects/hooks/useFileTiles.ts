@@ -44,7 +44,7 @@ export interface FileTiles {
 // #endregion
 
 // #region Helpers
-const TILE_SELECTOR = ".fx-card, .fx-row";
+const TILE_SELECTOR = ".fx-card, .ui-dt__row[data-key]";
 const FOCUS_WATCHDOG_MS = 160;
 
 function tilesIn(container: HTMLElement | null): HTMLElement[] {
@@ -125,13 +125,15 @@ export function useFileTiles(
 	useFileTriggerFocus(frame, (trigger) => {
 		const index = files.findIndex((f) => f.id === trigger);
 		if (index < 0) return locateTrigger?.(trigger) ?? null;
-		return tilesIn(containerRef.current)[index] ?? null;
+		const tiles = tilesIn(containerRef.current);
+		return tiles.find((tile) => tile.dataset.key === trigger) ?? tiles[index] ?? null;
 	});
 
 	const tileFile = (target: EventTarget | null): AssetItem | null => {
 		if (!(target instanceof Element)) return null;
 		const tile = target.closest<HTMLElement>(TILE_SELECTOR);
 		if (!tile) return null;
+		if (tile.dataset.key) return files.find((f) => f.id === tile.dataset.key) ?? null;
 		const index = tilesIn(containerRef.current).indexOf(tile);
 		return index < 0 ? null : files[index] ?? null;
 	};

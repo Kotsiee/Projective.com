@@ -12,7 +12,7 @@ import type {
 	SubmissionTreeNode,
 	TicketStageRef,
 } from "../../../types/projects-types.ts";
-import { filesZoom, gridColWidth, viewMode, zoom } from "../../../core/view-state.ts";
+import { filesZoom, gridColWidth, viewMode, displayZoom } from "../../../core/view-state.ts";
 import {
 	childrenAtPath,
 	filesAtPath,
@@ -209,7 +209,7 @@ export function TicketSubmissionsTab(props: TicketSubmissionsTabProps): JSX.Elem
 									? (
 										<div
 											class="tkv-subs__grid"
-											style={`--tkv-col:${gridColWidth(zoom.value)}px`}
+											style={`--tkv-col:${gridColWidth(displayZoom.value)}px`}
 										>
 											{children.map((n) =>
 												n.kind === "submitter"
@@ -222,7 +222,7 @@ export function TicketSubmissionsTab(props: TicketSubmissionsTabProps): JSX.Elem
 								: files.length === 0
 								? <p class="tkv-empty tkv-empty--inline">This submission has no files.</p>
 								: (
-									<div class="tkv-subs__grid" style={`--tkv-col:${gridColWidth(zoom.value)}px`}>
+									<div class="tkv-subs__grid" style={`--tkv-col:${gridColWidth(displayZoom.value)}px`}>
 										{files.map((f) => (
 											<FileCard
 												key={f.id}

@@ -34,6 +34,8 @@ export const {
 	ZOOM_STEP,
 	ZOOM_WHEEL_STEP,
 	zoom,
+	displayZoom,
+	toggleViewMode,
 	viewMode,
 	restoreZoom,
 	setZoom,

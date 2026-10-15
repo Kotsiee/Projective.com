@@ -40,6 +40,11 @@ interface LevelProps {
 }
 // #endregion
 
+function keepInsideMenu(e: JSX.TargetedMouseEvent<HTMLDivElement>): void {
+	e.preventDefault();
+	e.stopPropagation();
+}
+
 // #region Cascading level
 /** One level of the context menu; children fly out to the right (`useFloating`). Mirrors TieredMenu. */
 function CtxLevel(props: LevelProps): VNode {
@@ -225,6 +230,7 @@ function CtxFlyout(props: {
 			id={props.id}
 			ref={panelRef}
 			class="ui-contextmenu__panel ui-contextmenu__panel--sub"
+			onContextMenu={keepInsideMenu}
 			style={floating
 				? styleVars({ "--float-top": `${floating.top}px`, "--float-left": `${floating.left}px` })
 				: undefined}
@@ -268,6 +274,7 @@ export function ContextMenu(props: ContextMenuProps): JSX.Element {
 		if (!el) return;
 		const onCtx = (ev: Event) => {
 			const e = ev as MouseEvent;
+			if (e.defaultPrevented) return;
 			e.preventDefault();
 			pos.value = { x: e.clientX, y: e.clientY };
 			open.value = true;
@@ -306,6 +313,7 @@ export function ContextMenu(props: ContextMenuProps): JSX.Element {
 						id={rootId}
 						ref={panelRef}
 						class={cx("ui-contextmenu__panel", className)}
+						onContextMenu={keepInsideMenu}
 						style={styleVars({
 							"--float-top": `${pos.value.y}px`,
 							"--float-left": `${pos.value.x}px`,

@@ -35,16 +35,23 @@ export function putCatalogue<T>(path: string, payload: unknown): Promise<Catalog
 	return sendCatalogue<T>("PUT", path, payload);
 }
 
+/** DELETE a catalogue resource (no body), folded the same way. */
+export function deleteCatalogue<T>(path: string): Promise<CatalogueResult<T>> {
+	return sendCatalogue<T>("DELETE", path, undefined);
+}
+
 async function sendCatalogue<T>(
-	method: "POST" | "PUT",
+	method: "POST" | "PUT" | "DELETE",
 	path: string,
 	payload: unknown,
 ): Promise<CatalogueResult<T>> {
 	try {
 		const res = await apiFetch(path, {
 			method,
-			headers: { "content-type": "application/json", accept: "application/json" },
-			body: JSON.stringify(payload),
+			headers: payload === undefined
+				? { accept: "application/json" }
+				: { "content-type": "application/json", accept: "application/json" },
+			body: payload === undefined ? undefined : JSON.stringify(payload),
 		});
 		const body = await res.json().catch(() => null);
 		if (body && typeof body.ok === "boolean") return body as CatalogueResult<T>;

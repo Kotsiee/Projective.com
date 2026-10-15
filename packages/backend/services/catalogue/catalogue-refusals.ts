@@ -22,10 +22,14 @@ export interface DoorError {
 /** The sentence a stale save is answered with. */
 export const LISTING_CONFLICT_MESSAGE = "This listing changed in another tab.";
 
+/** The sentence a delete of a listing with buyer history is answered with. */
+export const HISTORY_REFUSAL = "Buyers have engaged with this listing, so it can only be archived.";
+
 const PUBLISH_GATE = "PG422";
 const STALE = "PC409";
 const NOT_FOUND = "PB404";
 const NOT_ALLOWED = "42501";
+const HAS_HISTORY = "PE409";
 const INVALID = new Set(["22023", "23514", "23505", "22P02"]);
 
 /** `stage_template.2` → `stageTemplate.2`: the DETAIL's key, as a field path. */
@@ -72,6 +76,8 @@ export function refusalOf<T>(error: DoorError): ServiceResult<T> {
 			return fail(404, { message: "No such listing." });
 		case NOT_ALLOWED:
 			return fail(403, { message });
+		case HAS_HISTORY:
+			return fail(409, { message: HISTORY_REFUSAL });
 	}
 	if (error.code && INVALID.has(error.code)) {
 		return fail(422, {
@@ -103,6 +109,8 @@ function batchMessage(row: BatchRow): string {
 		}
 		case "PM403":
 			return RESTRICTED_REFUSAL;
+		case HAS_HISTORY:
+			return HISTORY_REFUSAL;
 		case NOT_ALLOWED:
 			return "You can't change this listing.";
 		case NOT_FOUND:

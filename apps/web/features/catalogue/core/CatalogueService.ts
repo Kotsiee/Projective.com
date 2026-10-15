@@ -1,4 +1,4 @@
-import { getCatalogue, postCatalogue } from "./api.ts";
+import { deleteCatalogue, getCatalogue, postCatalogue } from "./api.ts";
 import type {
 	BatchInput,
 	BatchOutcome,
@@ -26,9 +26,9 @@ import type { CatalogueResult } from "../types/results.ts";
 export function buildListQuery(params: CatalogueListParams): string {
 	const qs = new URLSearchParams();
 	if (params.type) qs.set("type", params.type);
-	if (params.status) qs.set("status", params.status);
-	if (params.model) qs.set("model", params.model);
-	if (params.createCategory) qs.set("createCategory", params.createCategory);
+	for (const status of params.status ?? []) qs.append("status", status);
+	for (const model of params.model ?? []) qs.append("model", model);
+	for (const create of params.createCategory ?? []) qs.append("createCategory", create);
 	if (params.search) qs.set("search", params.search);
 	if (params.sort) qs.set("sort", params.sort);
 	if (params.dir) qs.set("dir", params.dir);
@@ -75,6 +75,15 @@ export const CatalogueService = {
 		status: ListingStatus,
 	): Promise<CatalogueResult<{ listing: ListingDetail }>> {
 		return postCatalogue<{ listing: ListingDetail }>("/api/catalogue/status", { id, status });
+	},
+
+	/**
+	 * Hard-delete a listing with no buyer history (`DELETE /api/catalogue/item`). Archiving is a status
+	 * change ({@link setStatus}); the two never share a request.
+	 */
+	remove(id: string): Promise<CatalogueResult<{ id: string }>> {
+		const qs = new URLSearchParams({ id });
+		return deleteCatalogue<{ id: string }>(`/api/catalogue/item?${qs.toString()}`);
 	},
 
 	/** Apply one action to many listings; the answer is one outcome per listing. */
