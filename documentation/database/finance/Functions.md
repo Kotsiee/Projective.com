@@ -151,7 +151,7 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   (`org.is_team_lead`), else empty. Called by `projects.apply_to_seat` · `apply_to_project` ·
   `redeem_invite_link` · `assign_from_application` · `fn_apply_invitation_decision` (freelancer
   role) · `fn_assign_ticket_core` · `org.create_workspace` (team) · `org.respond_to_workspace_invitation`
-  (team). No client grant.
+  (team) · `org.transfer_workspace_ownership` (team successor, HINT `other`). No client grant.
 - **`finance.fn_team_shareholders(team)`** → setof uuid (`00001210` §5) — the people
   `fn_team_split_plan` would pay: active members with `percent_bp > 0` (none under
   `benevolent_dictator`) plus the `finders_fee` finder. No client grant.

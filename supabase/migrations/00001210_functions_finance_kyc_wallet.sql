@@ -11,7 +11,7 @@
 -- finance.fn_assert_payout_ready — apply_to_seat · apply_to_project · redeem_invite_link ·
 -- assign_from_application · fn_apply_invitation_decision · fn_assign_ticket_core (claim, manual pin,
 -- round-robin, parallel stream) · org.create_workspace (team) · org.respond_to_workspace_invitation
--- (team). Withdrawing earnings from a `user` or `team` wallet needs it too (finance.begin_payout).
+-- (team) · org.transfer_workspace_ownership (team successor). Withdrawing earnings from a `user` or `team` wallet needs it too (finance.begin_payout).
 
 -- A freelancer may earn (land a gig / join a team) only when KYC-verified AND payout-ready.
 CREATE OR REPLACE FUNCTION finance.fn_freelancer_payout_ready(p_user uuid)

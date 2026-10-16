@@ -628,11 +628,24 @@ spend and a removed member kept `withdraw`. It is now a **projection** of the wo
 
 - **`fn_vault_capabilities_for(kind, entity, user)`** — the table above; `'{}'` for anyone who is not
   an active member (their row is KEPT, inert, never deleted).
-- **`fn_sync_vault_permissions(kind, entity, user = NULL)`** — rewrites the projection for one member
-  (or, with `NULL`, every member) across every wallet the entity holds; an upsert that only touches a
-  row whose capabilities changed. Called by every RPC below that changes who holds what, and by the
-  `finance.wallets` insert trigger (`finance.fn_sync_vault_on_wallet`), so a wallet opened in a new
-  currency is governed from birth.
+- **`fn_sync_vault_permissions(kind, entity, user = NULL)`** — rewrites the projection for one
+  member (or, with `NULL`, every member) across every wallet the entity holds; an upsert that only
+  touches a row whose capabilities changed. Called by every RPC below that changes who holds what,
+  and by the `finance.wallets` insert trigger (`finance.fn_sync_vault_on_wallet`), so a wallet
+  opened in a new currency is governed from birth. It is the ONLY writer of
+  `finance.vault_permissions`.
+- **`fn_trg_sync_vault_member()` / `fn_trg_sync_vault_role()`** — the backstop (Decision #226 (e)),
+  four `AFTER … FOR EACH ROW` triggers bound in `00001895`, so a write path that forgets the
+  explicit call cannot leave a stale grant (a revoked `withdraw_funds` still projecting `withdraw`):
+  - `trg_team_members_sync_vault` / `trg_business_members_sync_vault` — on `INSERT`, and on an
+    `UPDATE OF` `role_id`, `status`, `granted_capabilities` or `revoked_capabilities`, of the member
+    table; re-projects that member.
+  - `trg_team_roles_sync_vault` / `trg_business_roles_sync_vault` — on an `UPDATE OF` `capabilities`
+    or `base_preset` of the role table; re-projects every ACTIVE holder of the role.
+
+  The RPCs keep their explicit calls; a trigger that finds the projection already matching writes
+  nothing (the upsert's `IS DISTINCT FROM` guard). A member who leaves is rewritten to `'{}'`, never
+  deleted. Probe: `supabase/probes/vault_sync_backstop.sql`.
 - **`fn_set_member_capability(kind, member, cap, want)`** — moves a member's override so their
   EFFECTIVE set does or does not hold `cap`, as the smallest honest override (a grant only when the
   role lacks it, a revocation only when the role has it). The spend-policy editor and the member
@@ -781,11 +794,16 @@ namespace under a `pg_advisory_xact_lock` on the handle.
 
 - **`transfer_workspace_ownership(kind, entity, successor_member, leave = false) → {id, owner_user_id}`**
   — `authenticated`, the current owner only. Exactly one owner (product decision 2026-09-28). The
-  successor must be another ACTIVE member. Order is load-bearing: `owner_user_id` moves FIRST (so the
-  row-level check sees the new owner), the outgoing owner is re-seated to the **Admin** preset (or, with
-  `leave`, to Admin and `left` in the same transaction, a team stake rebalanced), and only then the
-  successor takes the owner seat with cleared overrides — the one-owner partial index is not
-  deferrable. Both vault projections re-synced; `{kind}.ownership_transferred` notified.
+  successor must be another ACTIVE member. A **team** successor must also pass
+  `fn_assert_team_persona` (a freelancer account, not an operator — Decision #228 (A)) and then
+  `finance.fn_assert_payout_ready('freelancer', successor)` (Decision #196), both `PK403` before
+  anything moves: the team's withdrawer and its verification follow the owner (§16). A business
+  transfer is not gated. Probe: `supabase/probes/ownership_transfer_gate.sql`. Order is
+  load-bearing: `owner_user_id` moves FIRST (so the row-level check sees the new owner), the
+  outgoing owner is re-seated to the **Admin** preset (or, with `leave`, to Admin and `left` in the
+  same transaction, a team stake rebalanced), and only then the successor takes the owner seat with
+  cleared overrides — the one-owner partial index is not deferrable. Both vault projections
+  re-synced; `{kind}.ownership_transferred` notified.
 
 ### §15 — Custom roles
 
