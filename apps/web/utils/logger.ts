@@ -21,6 +21,7 @@
 
 import type { LogEntry, LogLevel } from "@projective/types/logging";
 import { IS_DEV } from "./dev.ts";
+import { redactSecrets, redactUrl } from "./redact.ts";
 import { LocalKeys, readStored, removeStored, writeStored } from "./storage-keys.ts";
 
 // #region Constants
@@ -161,17 +162,23 @@ export class Logger {
 		this.emit("error", message, { data: normalizeData(data) });
 	}
 
-	/** A network request/response trace (dev-only inspector data; discarded in production). */
+	/**
+	 * A network request/response trace (dev-only inspector data; discarded in production). Secret-named
+	 * body keys and URL query params (passwords, tokens, client secrets, OTP codes) are replaced with
+	 * `"[redacted]"` before the entry reaches the console, the history or the storage cache.
+	 */
 	network(entry: NetworkLog): void {
+		if (!IS_DEV) return;
+		const url = redactUrl(entry.url);
 		const label = entry.message ??
-			`${entry.method} ${shortenUrl(entry.url)}${entry.status ? ` → ${entry.status}` : ""}`;
+			`${entry.method} ${shortenUrl(url)}${entry.status ? ` → ${entry.status}` : ""}`;
 		this.emit("network", label, {
 			method: entry.method,
-			url: entry.url,
+			url,
 			status: entry.status,
 			durationMs: entry.durationMs,
-			request: capPayload(entry.request),
-			response: capPayload(entry.response),
+			request: capPayload(redactSecrets(entry.request)),
+			response: capPayload(redactSecrets(entry.response)),
 		});
 	}
 
@@ -224,7 +231,8 @@ export class Logger {
 	// #region Interceptors (dev-only)
 	/**
 	 * Wrap `globalThis.fetch` so every request is auto-logged as a `network` entry (method, URL, status,
-	 * duration, and — best-effort — JSON request/response bodies). Returns an uninstall fn. Entirely a
+	 * duration, and — best-effort — JSON request/response bodies, secrets redacted by {@link network}).
+	 * Returns an uninstall fn. Entirely a
 	 * no-op in production (the body is guarded by {@link IS_DEV} and eliminated). Idempotent.
 	 */
 	installNetworkCapture(): () => void {
@@ -268,7 +276,7 @@ export class Logger {
 					status: 0,
 					durationMs,
 					request,
-					message: `${method} ${shortenUrl(url)} → network error`,
+					message: `${method} ${shortenUrl(redactUrl(url))} → network error`,
 				});
 				throw err;
 			}

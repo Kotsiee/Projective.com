@@ -2344,7 +2344,10 @@ Deno 2.x provides a hardened environment that we strictly configure through perm
   import it silently blocked every local storage image). **`'unsafe-inline'` remains on `script-src`
   and `style-src`** (Fresh 2's inline bootstrap and the theme pre-paint carry no nonce; the design
   system writes custom properties through `style`); a nonce-based policy is a separate change
-  (§8 Decision #126). The header is cached per **profile** (`cspHeaderFor(profile)`): `app` is the
+  (§8 Decision #126). There is **no `'unsafe-eval'`**: the client entry's first import
+  (`utils/zod-jitless.ts`) puts Zod 4 in `jitless` mode, because its `new Function` eval probe — run
+  as the first `z.object` is built — otherwise reported a `securitypolicyviolation` on every hydrated
+  page. The header is cached per **profile** (`cspHeaderFor(profile)`): `app` is the
   policy above, set by the middleware; **`inspector`** is the same policy plus `'wasm-unsafe-eval'` in
   `script-src` (WebAssembly compilation only — pdf.js image decoders, Draco / Basis / meshopt — never
   JS `eval`) and `blob:` in `connect-src` (a GLB's embedded textures), and nothing else. Only the
