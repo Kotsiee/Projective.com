@@ -1,14 +1,14 @@
 import type { JSX } from "preact";
-import {
-	type WorkspaceDetail,
-	workspaceHref,
-	type WorkspaceKind,
-	type WorkspaceRoster as RosterPage,
+import type {
+	WorkspaceDetail,
+	WorkspaceKind,
+	WorkspaceRoster as RosterPage,
 } from "@projective/types/workspace";
 import type { ReadActor } from "@server/services/read-actor.ts";
 import type { BusinessBillingView } from "@projective/types/finance";
 import { BillingBackendService } from "@server/services/finance/BillingBackendService.ts";
-import { isModuleKey, type ModuleKey } from "./module-registry.tsx";
+import type { ModuleKey } from "./module-registry.tsx";
+import { type ConsoleRedirect, routeConsole, toRosterNotice } from "./console-route.ts";
 import { resolveRoster, resolveWorkspaceConsole } from "./workspace-ssr.ts";
 import { toModuleTab, toRosterTab } from "./workspace-model.ts";
 import WorkspaceRoster from "../islands/WorkspaceRoster.island.tsx";
@@ -38,20 +38,11 @@ export interface ConsoleData {
 }
 
 /**
- * What a console route resolved to.
- *
- *   - `data` — render exactly what was asked for.
- *   - `redirect` — the canonical address differs from the one requested: a REAL module the viewer may
- *     not open (so they land on the one they can, instead of being told they do not belong in their own
- *     workspace), or an entity addressed by its row id or a differently-cased handle (so every console
- *     has exactly one address, its `@handle`).
- *   - `missing` — an unregistered segment, an unknown entity, or one the viewer is not a member of; a bad
- *     link should look broken rather than silently resolve somewhere plausible.
+ * What a console route resolved to: `data` to render exactly what was asked for, or one of the
+ * {@link ConsoleRedirect} outcomes (`canonical` 308 · `redirect` / `missing` / `unavailable` 303) the
+ * handler answers with `consoleResponse` — see `console-route.ts` for when each applies.
  */
-export type ConsoleOutcome =
-	| { kind: "data"; data: ConsoleData }
-	| { kind: "redirect"; to: string }
-	| { kind: "missing" };
+export type ConsoleOutcome = { kind: "data"; data: ConsoleData } | ConsoleRedirect;
 
 /** The roster index body, for `/teams` and `/businesses` (and their `create` deep links). */
 export async function rosterBody(
@@ -78,6 +69,7 @@ export async function rosterBody(
 			initialError={read.ok ? null : read.message}
 			initialTab={toRosterTab(url.searchParams.get("tab"))}
 			initialSearch={url.searchParams.get("q") ?? ""}
+			initialNotice={toRosterNotice(url.searchParams.get("notice"))}
 			autoCreate={autoCreate}
 		/>
 	);
@@ -91,18 +83,17 @@ export async function consoleOutcome(
 	url: URL,
 	actor: ReadActor,
 ): Promise<ConsoleOutcome> {
-	if (!isModuleKey(rawModule)) return { kind: "missing" };
+	const route = await routeConsole(
+		kind,
+		ref,
+		rawModule,
+		url,
+		(module) => resolveWorkspaceConsole(kind, ref, module, actor, url),
+	);
+	if (route.kind !== "render") return route;
 
-	const bootstrap = await resolveWorkspaceConsole(kind, ref, rawModule as ModuleKey, actor, url);
-	if (!bootstrap) return { kind: "missing" };
-
+	const bootstrap = route.resolved;
 	const { workspace } = bootstrap;
-	if (bootstrap.redirectedFrom || ref !== workspace.handle) {
-		const to = workspaceHref(kind, workspace.handle, bootstrap.activeModule);
-		// A module redirect drops `?view=` (it belonged to the module the viewer cannot open); a pure
-		// canonicalisation keeps the query, so a shared link to a sub-view survives the move to the handle.
-		return { kind: "redirect", to: bootstrap.redirectedFrom ? to : `${to}${url.search}` };
-	}
 
 	const billing = kind === "business" && bootstrap.activeModule === "billing"
 		? (await BillingBackendService.view(workspace.id, actor)).data ?? null

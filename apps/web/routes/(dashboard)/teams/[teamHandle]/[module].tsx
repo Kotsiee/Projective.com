@@ -1,8 +1,8 @@
 import { page } from "fresh";
 import { define } from "@web/utils/state.ts";
 import { readActor } from "@web/utils/api-session.ts";
-import { workspaceHref } from "@projective/types/workspace";
 import { consoleOutcome } from "@features/workspaces/core/workspace-route.tsx";
+import { consoleResponse } from "@features/workspaces/core/console-route.ts";
 import { ModuleScreen } from "@features/workspaces/components/ModuleScreen.tsx";
 
 /**
@@ -26,15 +26,7 @@ export const handler = define.handlers({
 			readActor(ctx),
 		);
 
-		if (outcome.kind === "redirect") {
-			return new Response(null, { status: 303, headers: { location: outcome.to } });
-		}
-		if (outcome.kind === "missing") {
-			return new Response(null, {
-				status: 303,
-				headers: { location: workspaceHref("team", encodeURIComponent(ctx.params.teamHandle)) },
-			});
-		}
+		if (outcome.kind !== "data") return consoleResponse(outcome);
 
 		ctx.state.title = `${outcome.data.workspace.name} · Team`;
 		return page(outcome.data);
