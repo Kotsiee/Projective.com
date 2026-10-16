@@ -675,8 +675,22 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   Member). Internal.
 - **`fn_refresh_membership_flags(user)`** — keeps `users_public.has_team` / `has_business` true to
   ACTIVE membership. Internal.
+- **`fn_assert_team_persona(user) → void`** — Teams are freelancer-only (Decision #228 (A)). Passes
+  only a user with an `org.freelancer_profiles` row (the row `finance.fn_freelancer_payout_ready`
+  reads) **and** `users_public.is_freelancer` (a scheduled freelancer removal keeps the row but drops
+  the persona, and that account is a client) **and** `is_operator IS NOT TRUE`. Otherwise raises
+  `PK403`, MESSAGE `persona_not_freelancer: Teams are for freelancer accounts` (the caller) or
+  `persona_not_freelancer: only freelancer accounts can join a team` (someone else), HINT `self` /
+  `other`, DETAIL `client` / `operator`. Called **before** the earning gate so the refusal names the
+  real reason, at four sites: `create_workspace` (`team`), `invite_workspace_member` (a `team`
+  invitee named by handle; an email invitee is asked at accept), `respond_to_workspace_invitation`
+  (accepting a `team`'s) and `transfer_workspace_ownership` (a `team` successor, §14). Business kinds
+  are never asked. Internal (no client grant; `org` is deny-by-default). The API maps it to a `403`
+  with `details.reason = 'persona'` (`packages/backend/core/team-persona-gate.ts`). Probe:
+  `supabase/probes/teams_persona_gate.sql`.
 - **`create_workspace(kind, name, handle) → {id, kind, handle}`** — `authenticated`. A `team` needs
-  its creator payout-ready (`finance.fn_assert_payout_ready`, `PK403 payout_not_ready`, Decision #196). The ONE create
+  its creator to pass `fn_assert_team_persona` (`PK403 persona_not_freelancer`, Decision #228 (A)) and
+  then be payout-ready (`finance.fn_assert_payout_ready`, `PK403 payout_not_ready`, Decision #196). The ONE create
   door. Requires a `users_public` row; name 2–80; the handle passes `fn_handle_refusal` under the
   advisory lock; the plan's `teams_owned` / `businesses_owned` entitlement (`fn_effective_limit` vs
   `fn_footprint_usage`) → `55000` when full. In one transaction: the entity row at **`draft`**, the
@@ -709,7 +723,8 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   needs `invite_members`. Exactly one of `handle` / `email`; the entity must not be archived; the role
   must be a live role of THIS entity, never owner-ranked ("ownership moves only by transfer"), and —
   because offering a role is granting it (`mayGrant`) — carry nothing the caller lacks. A handle must
-  resolve, not be the caller, not already be a member; an email must look like one (≤ 160). Seat
+  resolve, not be the caller, not already be a member, and for a `team` pass `fn_assert_team_persona`
+  (HINT `other`); an email must look like one (≤ 160) and is persona-checked only at accept. Seat
   cap checked. Inserts `pending` with a fresh 48-hex token and **`expires_at = now() + 14 days`**; a
   second pending offer collides on the partial unique index → `23505` ("they already have a pending
   invitation"). Notifies a platform invitee with `{kind}.invite`. Audits `{kind}.member_invited`.
@@ -717,7 +732,9 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   their **VERIFIED** `org.user_emails` (never an unverified one — registering someone else's address
   must not intercept their invitations). Internal.
 - **`respond_to_workspace_invitation(invitation, accept) → {status, kind, id, handle?, member_id?}`**
-  (accepting a TEAM invitation needs the invitee payout-ready — `PK403 payout_not_ready`, Decision #196)
+  (accepting a TEAM invitation needs the invitee to pass `fn_assert_team_persona` — `PK403
+  persona_not_freelancer`, Decision #228 (A) — and then be payout-ready — `PK403 payout_not_ready`,
+  Decision #196; declining is never gated)
   — `authenticated`, invitee only (anyone else gets `P0002`). Refuses an answered (`55000`) or expired
   (`55000`) invitation. Decline → `declined` + `responded_at`. Accept additionally refuses an archived
   entity, an account with no profile, and an archived role; re-checks the seat cap (the invitation

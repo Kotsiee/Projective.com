@@ -1,5 +1,6 @@
 import type { JSX, VNode } from "preact";
 import { IconShell } from "@projective/ui/icons";
+import type { IconName } from "./nav-icon-names.ts";
 
 /**
  * nav-icons — the shell's inline SVG glyph set. `@projective/ui` is deliberately icon-library
@@ -9,40 +10,7 @@ import { IconShell } from "@projective/ui/icons";
  */
 
 // #region Names
-/** Every glyph the navigation shell can render. */
-export type IconName =
-	| "home"
-	| "explore"
-	| "messages"
-	| "projects"
-	| "services"
-	| "teams"
-	| "business"
-	| "dashboard"
-	| "analytics"
-	| "wallet"
-	| "settings"
-	| "create"
-	| "notifications"
-	| "basket"
-	| "search"
-	| "chevron"
-	| "sidebar"
-	| "product"
-	| "article"
-	| "user"
-	| "logout"
-	| "briefcase"
-	| "calendar"
-	| "files"
-	| "switch"
-	| "check"
-	| "arrowLeft"
-	| "sun"
-	| "moon"
-	| "monitor"
-	| "clock"
-	| "saved";
+export type { IconName } from "./nav-icon-names.ts";
 // #endregion
 
 const PATHS: Record<IconName, VNode> = {

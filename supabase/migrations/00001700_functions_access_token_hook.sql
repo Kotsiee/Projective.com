@@ -209,6 +209,9 @@ BEGIN
       'handle', v_handle,
       'isClient', v_ctx_is_client,
       'isFreelancer', v_ctx_is_freelancer,
+      -- Operator mode (org.users_public.is_operator): a freelancer acting as a client. Stamped on its
+      -- own because `isClient` cannot say why — the Teams persona gate needs the reason (Decision #228).
+      'isOperator', v_is_operator,
       'onboarded', v_onboarded,
       'isRestricted', v_restricted,
       'displayCurrency', v_display_currency,

@@ -160,7 +160,9 @@ Teams on Projective exist to eliminate the legal and financial friction of colla
   is visible only when the active persona is a Freelancer profile, and is never surfaced to a
   Client/Business persona. `/teams*`, the Create Team action and every team write are
   freelancer-only: client and operator (`org.users_public.is_operator = true`) accounts are refused
-  in the app **and** the database (Decision #228 (A)).
+  in the app **and** the database (Decision #228 (A)). A member acting as a team keeps its console
+  whatever their personal persona; anyone else who types a `/teams` address is sent to `/home`, which
+  says why. A Business stays open to any adult account.
 - **Additive, Unlockable Personas:** A user's persona is not fixed at signup. Someone who onboarded
   as a Client/Operator can unlock a Freelancer profile at any time from the **Become a Partner**
   conversion page (`/become-partner`) — the freelancer suite layers on top of the same identity and

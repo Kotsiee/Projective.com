@@ -4,8 +4,14 @@ import { ensureSession, renewSession } from "@web/utils/session.ts";
 import { decodeAccessClaims, resolveTokenContext } from "@web/utils/user-context.ts";
 import { resolveOnboardingBounce } from "@features/auth/core/auth-routing.ts";
 import { oauthPrefillFromClaims } from "@features/auth/core/oauth.ts";
-import { isRestrictedPath, RESTRICTED_FALLBACK_PATH } from "@features/shell/core/restricted-surfaces.ts";
+import {
+	isRestrictedPath,
+	isTeamsPath,
+	RESTRICTED_FALLBACK_PATH,
+	TEAMS_PERSONA_FALLBACK,
+} from "@features/shell/core/restricted-surfaces.ts";
 import { isRestrictedRequest } from "@web/utils/age-gate.ts";
+import { mayUseTeamsRequest } from "@web/utils/operator-mode.ts";
 
 /**
  * Dashboard auth guard — scoped to the authenticated app (route group `(dashboard)`).
@@ -33,7 +39,8 @@ import { isRestrictedRequest } from "@web/utils/age-gate.ts";
  * {@link resolveOnboardingBounce} for which accounts are sent back and which are deliberately not.
  *
  * **3. May this account see the page?** A restricted (13–17) account is sent home from every
- * surface {@link isRestrictedPath} names.
+ * surface {@link isRestrictedPath} names. Then `/teams*` is freelancer-only (Decision #228 (A)): a
+ * client or an operator-mode account not acting as a team is sent home with `?notice=teams-freelancer`.
  *
  * Every gate reads the token and nothing else, so the common request stays network-free; the one
  * renewal each can trigger fires only on a request that would otherwise be answered wrongly.
@@ -113,6 +120,18 @@ export default define.middleware(async (ctx) => {
 		const res = new Response(null, {
 			status: 303,
 			headers: { location: new URL(RESTRICTED_FALLBACK_PATH, ctx.url).href },
+		});
+		for (const cookie of setCookies) res.headers.append("set-cookie", cookie);
+		return res;
+	}
+
+	// Teams are the freelancer side of the market (Decision #228 (A)). The chrome never links a client
+	// or an operator here; a typed URL is sent home with the reason, and the database refuses every team
+	// write on its own (`org.fn_assert_team_persona`).
+	if (isTeamsPath(ctx.url.pathname) && !mayUseTeamsRequest(ctx.req, ctx.state.userContext)) {
+		const res = new Response(null, {
+			status: 303,
+			headers: { location: new URL(TEAMS_PERSONA_FALLBACK, ctx.url).href },
 		});
 		for (const cookie of setCookies) res.headers.append("set-cookie", cookie);
 		return res;

@@ -15,6 +15,7 @@ import { Button } from "@projective/ui/fields";
 import { cycleThemePreference, type ThemePreference, themePreference } from "@projective/ui/system";
 import { type IconName, NavIcon } from "@web/features/shell/core/nav-icons.tsx";
 import { createMenuOptions, profileLinks } from "@web/features/shell/core/actions-model.ts";
+import { canUseTeams } from "@web/features/shell/core/restricted-surfaces.ts";
 import {
 	type ActingEnterprise,
 	roleLabel as workspaceRoleLabel,
@@ -625,9 +626,9 @@ export default function UserActions(
 	const contextView = (onNavigate: () => void): JSX.Element => {
 		const switching = contextSwitch.switching.value;
 		const enterpriseList = enterprises.value;
-		// Teams are the freelancer side of the platform (PRODUCT_SPEC §Freelancer-Only Space), gated
-		// exactly as the sidebar gates its Teams entry.
-		const showTeams = !restricted && (effCtx.isFreelancer || effCtx.contextType === "team");
+		// Teams are the freelancer side of the platform (Decision #228 (A)), gated by the one predicate
+		// the sidebar, the Create menu and the dashboard guard read.
+		const showTeams = canUseTeams(effCtx);
 		const canCreateTeam = showTeams && effCtx.contextType !== "enterprise";
 		const canCreateBusiness = !restricted && effCtx.isFreelancer;
 

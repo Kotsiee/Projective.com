@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
-import { GUEST_CONTEXT, PERSONAL_MEMBER_CONTEXT } from "@projective/types/auth";
+import { GUEST_CONTEXT, PERSONAL_MEMBER_CONTEXT, type UserContext } from "@projective/types/auth";
 import { isExploreSurface, isForeignProfilePath } from "./explore-surface.ts";
+import { globalNav } from "./nav-model.ts";
 
 const me = { ...PERSONAL_MEMBER_CONTEXT, handle: "@juno" };
 
@@ -46,5 +47,22 @@ Deno.test("isExploreSurface — a context with no handle reads every profile as 
 	// The rail gates a GUEST itself (`isAuthed &&`); the predicate answers for the handle it is given.
 	assertEquals(isExploreSurface("/explore", GUEST_CONTEXT), true);
 	assertEquals(isExploreSurface("/@kenji", GUEST_CONTEXT), true);
+});
+// #endregion
+
+// #region Teams persona (Decision #228 (A))
+const freelancer = { ...PERSONAL_MEMBER_CONTEXT, isClient: false, isFreelancer: true };
+const hasTeams = (ctx: UserContext): boolean =>
+	globalNav("/home", ctx).some((i) => i.key === "teams");
+
+Deno.test("globalNav — the Teams entry is the freelancer's, not the client's or the operator's", () => {
+	assertEquals(hasTeams(freelancer), true);
+	assertEquals(hasTeams(PERSONAL_MEMBER_CONTEXT), false);
+	assertEquals(hasTeams({ ...freelancer, isClient: true, isOperator: true }), false);
+});
+
+Deno.test("globalNav — a member acting as a team keeps Teams; a minor never sees it", () => {
+	assertEquals(hasTeams({ ...freelancer, contextType: "team", isOperator: true }), true);
+	assertEquals(hasTeams({ ...freelancer, restricted: true }), false);
 });
 // #endregion

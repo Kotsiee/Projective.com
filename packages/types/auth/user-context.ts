@@ -56,6 +56,13 @@ export const UserContextSchema = z.object({
 	isClient: z.boolean(),
 	/** Whether the actor can offer/sell services (freelancer/seller capability). */
 	isFreelancer: z.boolean(),
+	/**
+	 * Operator mode (`org.users_public.is_operator`): a freelancer acting as a client. It is what makes
+	 * an `isFreelancer` account also `isClient`, and what keeps it out of Teams (Decision #228 (A)).
+	 * Only an explicit claim sets it, so a token minted before the claim existed reads `false`; the
+	 * database's `org.fn_assert_team_persona` refuses an operator whatever this says.
+	 */
+	isOperator: z.boolean(),
 	/** The acting handle (`@handle`), when resolved — drives switcher + profile links. */
 	handle: z.string().max(40).nullable(),
 	/**
@@ -152,6 +159,8 @@ export interface ActiveContextClaim {
 	handle?: string;
 	isClient?: boolean;
 	isFreelancer?: boolean;
+	/** `org.users_public.is_operator` at mint time — see {@link UserContextSchema.shape.isOperator}. */
+	isOperator?: boolean;
 	/**
 	 * `true` when `org.users_public` holds a row for this user, `false` when the hook looked and found
 	 * none. **Absent means unknown**, and unknown resolves to onboarded — see
@@ -177,6 +186,7 @@ export const GUEST_CONTEXT: UserContext = Object.freeze({
 	role: "guest",
 	isClient: false,
 	isFreelancer: false,
+	isOperator: false,
 	// A guest has no identity to be onboarded, and nothing gates on this outside the authenticated
 	// app -- `true` keeps the flag meaning "no unfinished onboarding is known", never "unknown".
 	onboarded: true,
@@ -199,6 +209,7 @@ export const PERSONAL_MEMBER_CONTEXT: UserContext = Object.freeze({
 	role: "member",
 	isClient: true,
 	isFreelancer: false,
+	isOperator: false,
 	// The opaque-cookie fallback learned nothing about a profile, so it must not assert one is
 	// missing -- unknown resolves to onboarded, exactly as an absent claim does.
 	onboarded: true,
@@ -288,6 +299,7 @@ export function resolveUserContext(claims: AccessTokenClaims | null | undefined)
 	const isClient = typeof active.isClient === "boolean"
 		? active.isClient || isEnterprise
 		: isEnterprise || objective === "client" || !isFreelancer;
+	const isOperator = active.isOperator === true && !isEnterprise;
 
 	const handle = str(active.handle) ?? str(user.username) ?? null;
 
@@ -311,6 +323,7 @@ export function resolveUserContext(claims: AccessTokenClaims | null | undefined)
 		role,
 		isClient,
 		isFreelancer,
+		isOperator,
 		onboarded,
 		restricted,
 		handle,
@@ -319,5 +332,26 @@ export function resolveUserContext(claims: AccessTokenClaims | null | undefined)
 		locale,
 		dateFormat,
 	};
+}
+// #endregion
+
+// #region Dev override
+/**
+ * The Dev Context Switcher's operator-mode override: `on` acts as a freelancer in operator mode, so the
+ * dashboard guard refuses `/teams` and the team create route answers the persona 403; `off` skips both
+ * mirrors for a real operator, so the database's own refusal is what answers. Absent = the token's
+ * `isOperator` claim. Honoured in development only; the database never reads it.
+ */
+export type OperatorModeOverride = "on" | "off";
+
+/** The cookie that carries {@link OperatorModeOverride} (`pj.dev.operator` is the dispute desk's). */
+export const OPERATOR_MODE_OVERRIDE_COOKIE = "pj.dev.operator-mode";
+
+/** Read the override from a cookie value; anything unrecognised means "no override". */
+export function parseOperatorModeOverride(
+	raw: string | null | undefined,
+): OperatorModeOverride | null {
+	const value = raw?.trim();
+	return value === "on" || value === "off" ? value : null;
 }
 // #endregion

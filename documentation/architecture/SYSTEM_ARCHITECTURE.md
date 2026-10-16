@@ -2461,6 +2461,20 @@ PostgreSQL RLS.
   form's own copy; a client-sent `restricted` flag is stripped and never read. The Dev Context
   Switcher's **Age** axis drives the mirror through the `pj.dev.age` cookie, honoured only when
   `DENO_ENV` is `development`.
+- **Teams are freelancer-only (Decision #228 (A)).** One predicate, `canUseTeams`
+  (`apps/web/features/shell/core/restricted-surfaces.ts`): a freelancer outside operator mode, or a
+  member acting as a team, never a restricted account. It gates the Teams rail entry (`globalNav`),
+  Create Team (`createMenuOptions`), the account popover's Teams section, and `/teams*` in the
+  `(dashboard)` guard, which sends a refused request `303` to `/home?notice=teams-freelancer` (the
+  restricted-surface fallback; `ProjectNoticeHost` on `/home` says it once). It reads
+  `UserContext.isOperator`, which the access-token hook stamps from `users_public.is_operator`. The
+  database refuses on its own: `org.fn_assert_team_persona` (`PK403 persona_not_freelancer`) in
+  `create_workspace`, `invite_workspace_member` (by handle), `respond_to_workspace_invitation` and
+  `transfer_workspace_ownership`, ahead of the earning gate; the workspace `refusalFrom` maps it to a
+  `403` with `details.reason = 'persona'` (`packages/backend/core/team-persona-gate.ts`). The Dev
+  Context Switcher's **Operator mode** axis (`data-dev-operator`) drives the chrome live and the guard
+  plus the team create route's mirror through the `pj.dev.operator-mode` cookie, honoured only when
+  `DENO_ENV` is `development`.
 - **Restricted accounts see only what they can use (Decision #192).** Ages are counted on today's date
   in the person's own IANA zone — `computeAge(dob, timeZone)` in `@projective/types/auth` and
   `org.fn_age_years(dob, zone)` in Postgres apply one rule; the join form sends the browser's zone,

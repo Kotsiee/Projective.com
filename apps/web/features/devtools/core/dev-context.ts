@@ -22,7 +22,7 @@ import type { ProjectAccess, ProjectStatus } from "@projective/types/projects";
 import { encodeLandingSim, LANDING_SIM_COOKIE } from "@features/projects/core/landing-sim.ts";
 import { DISCOVERY_SIM_COOKIE, encodeDiscoverySim } from "@features/explore/core/discovery-sim.ts";
 import { EMBEDDINGS_OVERRIDE_COOKIE } from "@projective/types/explore";
-import { AGE_OVERRIDE_COOKIE } from "@projective/types/auth";
+import { AGE_OVERRIDE_COOKIE, OPERATOR_MODE_OVERRIDE_COOKIE } from "@projective/types/auth";
 import { OPERATOR_DESK_OVERRIDE_COOKIE, PAYOUT_OVERRIDE_COOKIE } from "@projective/types/finance";
 import { logger } from "@web/utils/logger.ts";
 import { readStored, removeStored, SessionKeys, writeStored } from "@web/utils/storage-keys.ts";
@@ -53,6 +53,7 @@ import {
 	type DevEmailConfirmation,
 	type DevAgeRestriction,
 	type DevPayoutReadiness,
+	type DevOperatorMode,
 	type DevOperatorDesk,
 	type DevCatalogueAnalytics,
 	type DevClientPipeline,
@@ -116,6 +117,7 @@ export type {
 	DevEmailConfirmation,
 	DevAgeRestriction,
 	DevPayoutReadiness,
+	DevOperatorMode,
 	DevOperatorDesk,
 	DevCatalogueAnalytics,
 	DevClientPipeline,
@@ -353,6 +355,13 @@ export interface DevOverrides {
 	 */
 	payoutReadiness: DevPayoutReadiness;
 	/**
+	 * Operator mode (Decision #228 (A)): follow the token's `isOperator` claim, act as a freelancer in
+	 * operator mode (Teams leave the chrome, `/teams*` is sent home, team create answers the persona
+	 * 403), or skip those mirrors so a real operator meets the database's own refusal. Server-side,
+	 * through the `pj.dev.operator-mode` cookie.
+	 */
+	operatorMode: DevOperatorMode;
+	/**
 	 * The operator dispute desk (Decision #212): let the database decide who is an operator, or render
 	 * `/admin/disputes` with sample cases (`queue`) or none (`empty`) for anyone. Grants nothing — a
 	 * ruling still goes to the database. Server-side, through the `pj.dev.operator` cookie.
@@ -431,6 +440,7 @@ export const DEV_DEFAULTS: DevOverrides = {
 	emailConfirmation: "auto",
 	ageRestriction: "auto",
 	payoutReadiness: "auto",
+	operatorMode: "auto",
 	operatorDesk: "auto",
 	catalogueAnalytics: "auto",
 	clientPipeline: "auto",
@@ -752,6 +762,13 @@ export const DEV_PAYOUT_READINESS: ReadonlyArray<DevOption<DevPayoutReadiness>> 
 	{ value: "not_ready", label: "Not ready" },
 ];
 
+/** Operator-mode positions (Decision #228 (A)). `Token` follows the session's `isOperator` claim. */
+export const DEV_OPERATOR_MODES: ReadonlyArray<DevOption<DevOperatorMode>> = [
+	{ value: "auto", label: "Token" },
+	{ value: "on", label: "Operator mode" },
+	{ value: "off", label: "Off" },
+];
+
 /** Operator-desk previews (Decision #212). `Database` lets `security.is_admin()` decide. */
 export const DEV_OPERATOR_DESKS: ReadonlyArray<DevOption<DevOperatorDesk>> = [
 	{ value: "auto", label: "Database" },
@@ -901,6 +918,8 @@ function reflect(next: DevOverrides): void {
 		else delete root.dataset.devAgeRestriction;
 		if (next.payoutReadiness !== "auto") root.dataset.devPayoutReadiness = next.payoutReadiness;
 		else delete root.dataset.devPayoutReadiness;
+		if (next.operatorMode !== "auto") root.dataset.devOperator = next.operatorMode;
+		else delete root.dataset.devOperator;
 		if (next.operatorDesk !== "auto") root.dataset.devOperatorDesk = next.operatorDesk;
 		else delete root.dataset.devOperatorDesk;
 		if (next.catalogueAnalytics !== "auto") {
@@ -960,6 +979,7 @@ function reflect(next: DevOverrides): void {
 		delete root.dataset.devEmailConfirmation;
 		delete root.dataset.devAgeRestriction;
 		delete root.dataset.devPayoutReadiness;
+		delete root.dataset.devOperator;
 		delete root.dataset.devOperatorDesk;
 		delete root.dataset.devCatalogueAnalytics;
 		delete root.dataset.devClientPipeline;
@@ -973,6 +993,7 @@ function reflect(next: DevOverrides): void {
 	writeEmbeddingsCookie(next);
 	writeAgeCookie(next);
 	writePayoutCookie(next);
+	writeOperatorModeCookie(next);
 	writeOperatorDeskCookie(next);
 	globalThis.dispatchEvent?.(new CustomEvent(DEV_SEAM_EVENT, { detail: next }));
 }
@@ -991,6 +1012,13 @@ function writePayoutCookie(next: DevOverrides): void {
 	document.cookie = next.enabled && next.payoutReadiness !== "auto"
 		? `${PAYOUT_OVERRIDE_COOKIE}=${next.payoutReadiness}; path=/; samesite=lax`
 		: `${PAYOUT_OVERRIDE_COOKIE}=; path=/; max-age=0; samesite=lax`;
+}
+
+/** Mirror the operator-mode axis into `pj.dev.operator-mode` — the dashboard guard's and team create's. */
+function writeOperatorModeCookie(next: DevOverrides): void {
+	document.cookie = next.enabled && next.operatorMode !== "auto"
+		? `${OPERATOR_MODE_OVERRIDE_COOKIE}=${next.operatorMode}; path=/; samesite=lax`
+		: `${OPERATOR_MODE_OVERRIDE_COOKIE}=; path=/; max-age=0; samesite=lax`;
 }
 
 /** Mirror the operator-desk axis into `pj.dev.operator` — the only channel `/admin/disputes` reads. */
@@ -1108,8 +1136,17 @@ export function applyDevContext(base: UserContext): UserContext {
 	// agree — notably a **business is buyer-only** (`isFreelancer: false`, Decisions #9/#10/#16).
 	const { isClient, isFreelancer } = personaCapabilities(o.accountType);
 	const restricted = o.ageRestriction === "auto" ? base.restricted : o.ageRestriction === "minor";
+	const isOperator = o.operatorMode === "auto" ? base.isOperator : o.operatorMode === "on";
 
-	return { ...base, contextType, role, isClient, isFreelancer, restricted };
+	return {
+		...base,
+		contextType,
+		role,
+		isClient: isClient || isOperator,
+		isFreelancer,
+		isOperator,
+		restricted,
+	};
 }
 
 /** The ownership override (`true`/`false`) when simulation is on, else `null` (defer to the real value). */

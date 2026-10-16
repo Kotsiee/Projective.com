@@ -66,7 +66,7 @@ the token's claims:
 1. **Raw top-level claims** — `active_profile_type`, `active_profile_id`, `active_team_id`,
    `active_enterprise_id` — the exact keys `security.current_context()` reads for RLS.
 2. **`app_metadata.active_context`** — the resolved presentation object
-   `{ type, id, role, handle, isClient, isFreelancer, onboarded, isRestricted, displayCurrency, locale }` the web
+   `{ type, id, role, handle, isClient, isFreelancer, isOperator, onboarded, isRestricted, displayCurrency, locale }` the web
    app decodes for chrome (`@projective/types/auth` `ActiveContextClaim` / `resolveUserContext`).
    `type` is the four-context matrix (`personal` | `team` | `business` | `enterprise`); `role`
    is `admin` for the owner and admin presets (the member row's derived `role`, maintained by
@@ -102,6 +102,13 @@ the token's claims:
 > `false` for a profile-less account. Derived from `users_public.dob` on every mint, so it clears at
 > the first refresh after the 18th birthday. Chrome only, like the rest: `resolveUserContext` reads
 > only an explicit `true`, and `org.fn_assert_adult` (`PM403`) is what refuses in every buy/sell door.
+
+> **`isOperator` — operator mode (Decision #228 (A)).** `org.users_public.is_operator` at mint time.
+> `isClient` alone cannot say why a freelancer is acting as a client, and the Teams persona rule needs
+> the reason: `/teams*`, the Create Team action and the Teams rail entry are hidden from an operator
+> who is not acting as a team (`canUseTeams`, `apps/web/features/shell/core/restricted-surfaces.ts`).
+> Chrome only: `resolveUserContext` reads only an explicit `true` (never in an enterprise context),
+> and `org.fn_assert_team_persona` (`PK403`) is what refuses.
 
 > **Presentation, never settlement.** `displayCurrency` selects a **formatting** target only. Every
 > stored amount keeps its origin `(amount_minor, currency)`, and every settlement reproduces the
