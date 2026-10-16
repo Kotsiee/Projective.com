@@ -1313,7 +1313,12 @@ other commits in tier 2 — is open as Decision #157 flag (j); the docs follow t
 - the DM context drawer's **Fund escrow & confirm seat** — both the `fund_escrow` link and the
   `confirm_seat` Button;
 - the project board footer's **Checkout N** pill (`.brd-rig__action--accent`, a feature-local
-  control whose hover and press blend toward `--on-scrim` by `--tint-soft` / `--tint`, B.12.4).
+  control whose hover and press blend toward `--on-scrim` by `--tint-soft` / `--tint`, B.12.4);
+- Settings → Verification & payouts' **Set up payouts** / **Continue setup** — the start of the
+  personal Connect account money is transferred to, and only while it is the page's one next step
+  (`nextVerificationStep`); otherwise, and as **Update payout details** on a verified account, it
+  is tier 4. This widens the tier-1 test above by owner ruling (Decision #225): the identity check
+  and a business's KYB on the same page stay tier 3.
 
 **Commits that stay tier 3 — the "never borrowed" sentence, worked.** Wallet configuration commits
 (the payout schedule, recurring-deposit setup, spend request, income smoother, Save card), the

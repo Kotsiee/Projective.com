@@ -172,7 +172,7 @@ export function ConnectedAccountsBlock(props: ConnectedAccountsBlockProps): JSX.
 											: offered
 											? (
 												<a
-													class="ui-button ui-button--primary ui-button--outlined ui-button--size-sm"
+													class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm"
 													href={SettingsService.connectIdentityHref(provider)}
 												>
 													<span class="ui-button__label">Connect</span>

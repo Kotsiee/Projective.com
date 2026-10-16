@@ -2810,6 +2810,10 @@ incorrect API flows.
   well-formed key → else 503) → **record the request** through a user door (authorised by
   `auth.uid()`; the escrow amount is computed by the database) → call Stripe with an
   `Idempotency-Key` derived from that row → **bind** the Stripe object to the row, write-once.
+- **Identity and payout verdicts are processor-only.** `apply_identity_event` (claimed as
+  `stripe:<evt_id>`) and `sync_payout_account` are the only writers of a case's decision, a payout
+  account's status and the profile's `kyc_status` / `kyc_verified_at` / `payout_ready` cache; a
+  verified case never regresses. Proven by `supabase/probes/identity_payout_doors.sql`.
 - **Only the webhook settles.** A card payment becomes money only on the signature-verified
   `payment_intent.succeeded`, which credits the wallet (`topup`) and — for an escrow lock — runs
   `projects.fund_stage` **as the payer who authorised it** (`request.jwt.claim.sub` set to the row's

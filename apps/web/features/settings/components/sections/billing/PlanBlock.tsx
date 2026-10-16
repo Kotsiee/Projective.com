@@ -1,7 +1,7 @@
 import type { JSX } from "preact";
 import { InlineNotice } from "@projective/ui/feedback";
 import { type CurrentPlan, formatMoney, type PlanOffer } from "@projective/types/finance";
-import { SettingsBlock } from "../../SettingsParts.tsx";
+import { SettingsBlock, StatusMark } from "../../SettingsParts.tsx";
 import { longDate } from "../../../core/settings-dates.ts";
 
 /** Props for {@link PlanBlock}. */
@@ -90,7 +90,9 @@ export function PlanBlock(props: PlanBlockProps): JSX.Element {
 										<div class="stg-plans__main">
 											<span class="stg-plans__name">
 												{offer.label}
-												{current ? <span class="stg-pill stg-pill--primary">Current</span> : null}
+												{current
+													? <StatusMark tone="neutral" glyph="check" label="Current" />
+													: null}
 											</span>
 											{offer.pricingNote
 												? <span class="stg-plans__note">{offer.pricingNote}</span>

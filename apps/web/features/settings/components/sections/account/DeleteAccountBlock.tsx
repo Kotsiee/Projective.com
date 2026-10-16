@@ -63,6 +63,7 @@ export function DeleteAccountBlock(props: DeleteAccountBlockProps): JSX.Element 
 						}. Your profile is hidden until then.`}
 						control={
 							<Button
+								severity="neutral"
 								variant="outlined"
 								size="sm"
 								label="Keep my account"

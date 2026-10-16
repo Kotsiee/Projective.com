@@ -339,25 +339,42 @@
 }
 /* #endregion */
 
-/* #region Lifecycle statuses (the only pills) */
-.stg-pill {
+/* #region Status marks — a state as inline Meta text with a glyph; settings ships no pills (§B.11) */
+.stg-mark {
 	display: inline-flex;
 	align-items: center;
-	padding: var(--space-px) var(--space-2);
-	border-radius: var(--radius-full);
-	background: var(--surface-2);
-	font-size: var(--text-xs);
+	gap: var(--space-1);
+	font-size: var(--text-sm);
 	font-weight: var(--fw-medium);
 	line-height: var(--leading-snug);
 	color: var(--on-surface);
+	white-space: nowrap;
 }
 
-.stg-pill--primary {
-	background: color-mix(in srgb, var(--primary) var(--tint), var(--surface));
+.stg-mark__glyph {
+	display: inline-flex;
+	line-height: 0;
+	color: var(--text-secondary);
 }
 
-.stg-pill--pending {
-	background: color-mix(in srgb, var(--warning) var(--tint), var(--surface));
+.stg-mark[data-tone="neutral"] {
+	color: var(--text-secondary);
+}
+
+.stg-mark[data-tone="success"] .stg-mark__glyph {
+	color: var(--success);
+}
+
+.stg-mark[data-tone="info"] .stg-mark__glyph {
+	color: var(--info);
+}
+
+.stg-mark[data-tone="warning"] .stg-mark__glyph {
+	color: var(--warning);
+}
+
+.stg-mark[data-tone="danger"] .stg-mark__glyph {
+	color: var(--danger);
 }
 /* #endregion */
 

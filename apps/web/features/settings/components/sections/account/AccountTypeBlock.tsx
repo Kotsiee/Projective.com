@@ -77,6 +77,7 @@ export function AccountTypeBlock(props: AccountTypeBlockProps): JSX.Element {
 				}. Your listings are paused until then.`}
 				control={
 					<Button
+						severity="neutral"
 						variant="outlined"
 						size="sm"
 						label="Keep my freelancer profile"
@@ -111,7 +112,7 @@ export function AccountTypeBlock(props: AccountTypeBlockProps): JSX.Element {
 				description="You hire on Projective. Become a freelancer to offer your skills too."
 				control={
 					<a
-						class="ui-button ui-button--primary ui-button--outlined ui-button--size-sm"
+						class="ui-button ui-button--neutral ui-button--outlined ui-button--size-sm"
 						href="/become-partner"
 					>
 						<span class="ui-button__label">Become a freelancer</span>

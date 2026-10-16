@@ -101,7 +101,6 @@ export function HandleBlock(props: HandleBlockProps): JSX.Element {
 						<Button
 							type="submit"
 							label={lastChange ? "Change and lock" : "Change handle"}
-							severity={lastChange ? "warning" : "primary"}
 							loading={busy.value}
 							disabled={locked || !changed}
 						/>

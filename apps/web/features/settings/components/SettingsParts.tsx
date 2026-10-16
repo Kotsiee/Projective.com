@@ -3,8 +3,10 @@ import type { ComponentChildren } from "preact";
 import { useContext, useLayoutEffect } from "preact/hooks";
 import { type Signal, useSignal } from "@preact/signals";
 import { Button } from "@projective/ui/fields";
-import { Icon } from "@projective/ui/icons";
+import { Icon, type IconName } from "@projective/ui/icons";
 import { InlineNotice } from "@projective/ui/feedback";
+import { VerificationStampBadge } from "@projective/ui/display";
+import type { EarnedVerificationStamp } from "@projective/types/org";
 import { anchorId, type SettingsSectionKey } from "../core/settings-registry.ts";
 import { readStored, SessionKeys, writeStored } from "@web/utils/storage-keys.ts";
 
@@ -210,6 +212,47 @@ export function SaveStatus(props: { state: SaveState; class?: string }): JSX.Ele
 				: null}
 			{text}
 		</p>
+	);
+}
+
+/** The tone of a {@link StatusMark}: a role colour on the glyph, never the only channel. */
+export type MarkTone = "success" | "info" | "warning" | "danger" | "neutral";
+
+const MARK_GLYPH: Readonly<Record<MarkTone, IconName>> = {
+	success: "success",
+	info: "hourglass",
+	warning: "warning",
+	danger: "error",
+	neutral: "circle",
+};
+
+/**
+ * A state as inline Meta text with a glyph (DESIGN_SYSTEM §B.11.2) — never a pill, because nothing
+ * here is clicked. The glyph changes SHAPE per tone, so the word and the silhouette both carry the
+ * state under every colour-vision overlay. An earned verification shows its crest
+ * (`VerificationStampBadge`, §B.7.8) in the glyph's place — decorative, because the word beside it
+ * already names the claim.
+ */
+export function StatusMark(
+	props: {
+		tone: MarkTone;
+		label: string;
+		glyph?: IconName;
+		stamp?: EarnedVerificationStamp;
+		class?: string;
+	},
+): JSX.Element {
+	return (
+		<span class={`stg-mark${props.class ? ` ${props.class}` : ""}`} data-tone={props.tone}>
+			{props.stamp
+				? <VerificationStampBadge stamp={props.stamp} size="xs" mode="decorative" />
+				: (
+					<span class="stg-mark__glyph" aria-hidden="true">
+						<Icon name={props.glyph ?? MARK_GLYPH[props.tone]} size="xs" />
+					</span>
+				)}
+			<span>{props.label}</span>
+		</span>
 	);
 }
 // #endregion

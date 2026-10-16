@@ -5,7 +5,13 @@ import { Button, InputText } from "@projective/ui/fields";
 import { InlineNotice } from "@projective/ui/feedback";
 import type { EmailDeliveryOutcome, EmailVerifyOutcome, UserEmail } from "@projective/types/org";
 import { MAX_USER_EMAILS } from "@projective/types/org";
-import { IDLE, type SaveState, SaveStatus, SettingsBlock } from "../../SettingsParts.tsx";
+import {
+	IDLE,
+	type SaveState,
+	SaveStatus,
+	SettingsBlock,
+	StatusMark,
+} from "../../SettingsParts.tsx";
 import { SettingsService } from "../../../core/SettingsService.ts";
 
 // #region Copy
@@ -141,10 +147,12 @@ export function EmailsBlock(props: EmailsBlockProps): JSX.Element {
 								<div class="stg-emails__main">
 									<span class="stg-emails__address">{e.email}</span>
 									<span class="stg-emails__meta">
-										{e.isPrimary ? <span class="stg-pill stg-pill--primary">Primary</span> : null}
+										{e.isPrimary
+											? <StatusMark tone="neutral" glyph="check" label="Primary" />
+											: null}
 										{e.verifiedAt
-											? <span class="stg-pill">Verified</span>
-											: <span class="stg-pill stg-pill--pending">Unverified</span>}
+											? <StatusMark tone="success" label="Verified" />
+											: <StatusMark tone="warning" label="Unverified" />}
 										{e.isSignIn ? <span class="stg-emails__sign">Signs you in</span> : null}
 									</span>
 								</div>

@@ -11,7 +11,7 @@ import type {
 } from "@projective/types/workspace";
 import { WorkspaceService } from "@features/workspaces/core/WorkspaceService.ts";
 import { useContextSwitch } from "@features/workspaces/core/useContextSwitch.ts";
-import { OutLink, SaveStatus, SectionHead, SettingsBlock } from "../SettingsParts.tsx";
+import { OutLink, SaveStatus, SectionHead, SettingsBlock, StatusMark } from "../SettingsParts.tsx";
 import { sectionEntries, sectionMeta } from "../../core/settings-registry.ts";
 
 /**
@@ -97,9 +97,10 @@ export function WorkspacesSection(props: WorkspacesSectionProps): JSX.Element {
 					<a class="stg-ws__name" href={row.href}>{row.name}</a>
 					<span class="stg-ws__meta">{row.meta}</span>
 				</div>
-				{acting ? <span class="stg-pill stg-pill--primary">Acting as</span> : (
+				{acting ? <StatusMark tone="neutral" glyph="check" label="Acting as" /> : (
 					<Button
 						size="sm"
+						severity="neutral"
 						variant="outlined"
 						label="Act as"
 						aria-label={`Act as ${row.name}`}

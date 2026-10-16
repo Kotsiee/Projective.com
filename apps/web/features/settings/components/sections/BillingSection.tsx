@@ -12,6 +12,7 @@ import {
 	SaveStatus,
 	SectionHead,
 	SettingsBlock,
+	StatusMark,
 } from "../SettingsParts.tsx";
 import { sectionMeta } from "../../core/settings-registry.ts";
 import type { SettingsSectionDataOf } from "@projective/types/settings";
@@ -124,7 +125,9 @@ export function BillingSection(props: BillingSectionProps): JSX.Element {
 										<div class="stg-cards__main">
 											<span class="stg-cards__name">{cardName(card)}</span>
 											<span class="stg-cards__meta">
-												{isDefault ? <span class="stg-pill stg-pill--primary">Default</span> : null}
+												{isDefault
+													? <StatusMark tone="neutral" glyph="check" label="Default" />
+													: null}
 												{exp.text
 													? (
 														<span class={exp.expired ? "stg-cards__expired" : undefined}>

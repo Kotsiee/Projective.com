@@ -481,6 +481,7 @@ export function NotificationsSection(props: NotificationsSectionProps): JSX.Elem
 					control={snoozeActive
 						? (
 							<Button
+								severity="neutral"
 								variant="outlined"
 								size="sm"
 								label="Resume now"

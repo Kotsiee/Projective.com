@@ -39,6 +39,7 @@ export function PasswordBlock(props: PasswordBlockProps): JSX.Element {
 					: "Your sign-in address couldn't be read, so a link can't be sent from here."}
 				control={
 					<Button
+						severity="neutral"
 						variant="outlined"
 						size="sm"
 						label="Email me a link"
