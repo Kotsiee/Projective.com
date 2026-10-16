@@ -1121,7 +1121,8 @@ $$;
 -- #region 11. Lifecycle — draft → active → archived (nothing is hard-deleted)
 -- Publishing needs `manage_settings`; archiving or restoring needs `archive_entity`. An entity with
 -- money in flight is not archived: a held escrow owed to (team) or funded by (business) the entity,
--- or a live stage assignment, would otherwise be stranded against something that says it is gone.
+-- a held escrow for a team's assigned stage that is unbound or bound to a member, or a live stage
+-- assignment, would otherwise be stranded against something that says it is gone.
 CREATE OR REPLACE FUNCTION org.set_workspace_status(p_kind text, p_id uuid, p_status text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1164,10 +1165,25 @@ BEGIN
     END IF;
 
     IF p_status = 'archived' THEN
+        -- A team's money in flight is wider than what names it as payee: a held escrow on a stage the
+        -- team is (or was, to completion) assigned to is the team's work while it is not bound yet
+        -- (Decision #197's prepaid escrow) or bound to one of its members (the team-seat payee rule can
+        -- bind a member's claim to that member). A non-member's escrow on a shared stage is theirs, and
+        -- a stage the team handed back (released · cancelled · declined) is its next assignee's.
         IF EXISTS (
             SELECT 1 FROM finance.escrows e
              WHERE e.status = 'held'
                AND ((p_kind = 'team' AND e.payee_type = 'team' AND e.payee_id = p_id)
+                 OR (p_kind = 'team'
+                     AND (e.payee_id IS NULL
+                          OR (e.payee_type = 'freelancer' AND EXISTS (
+                                SELECT 1 FROM org.team_members tm
+                                 WHERE tm.team_id = p_id AND tm.user_id = e.payee_id)))
+                     AND EXISTS (
+                        SELECT 1 FROM projects.stage_assignments sa
+                         WHERE sa.project_stage_id = e.project_stage_id
+                           AND sa.team_id = p_id
+                           AND sa.status NOT IN ('declined', 'cancelled', 'released')))
                  OR (p_kind = 'business' AND e.payer_business_id = p_id))
         ) THEN
             RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'status: money is held in escrow for this ' || p_kind || ' — let it release first';

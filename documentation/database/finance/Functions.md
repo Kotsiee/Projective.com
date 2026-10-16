@@ -48,6 +48,18 @@ All functions are `SECURITY DEFINER` with a pinned `search_path` unless noted.
   the rest, and whatever does not divide (or is unallocated) is dust to the vault. No active rule =
   co-op with no vault cut. Returns `{payout_minor, rule_type, vault_bp, finder_user_id, finder_minor,
   vault_minor, members:[{member_user_id, percent_bp, amount_minor}], dust_minor, vault_total_minor}`.
+  **Invariants** (property-tested by `supabase/probes/team_split_properties.sql` over 600 generated
+  cases — 2–15 members, stakes totalling 10000 bp, payouts 1–10⁹ minor units, every template; TEAMS_AUDIT
+  B9): with `payout` the released gross less its platform fee, Σ member `amount_minor` + `finder_minor`
+  + `vault_total_minor` = `payout` **exactly**; `pool = payout − finder_minor − vault_minor` and each
+  member cut = ⌊pool × `percent_bp` / 10000⌋, listed by `percent_bp` desc then member id; `dust_minor`
+  = pool − Σ member cuts ∈ [0, members with a stake) and is added to `vault_total_minor`
+  (= `vault_minor` + `dust_minor`); `benevolent_dictator` cuts no member and the vault takes all of
+  `payout`; the same inputs — however the stakes were written — give the same plan, and the preview
+  and the release credits agree with it to the minor unit. This **money** remainder (dust → the Team
+  Vault) is distinct from the **stake** remainder of a departure rebalance, which goes to the largest
+  absorber (`org.fn_rebalance_departed_stake`, `database/org/Functions.md`): stakes must total 10000 bp
+  and the vault holds no stake (`finance-model.md` §14).
 - **`finance.fn_split_team_payout(escrow_id, team_id, payout, currency, reason = 'escrow_release')`**
   — pays a team's released escrow out by `fn_team_split_plan`. Every member share and the finder's cut
   is a real credit to the person's real wallet (`fn_person_wallet_type` + `fn_ensure_wallet`), a

@@ -350,6 +350,44 @@ Deno.test("projectedShare floors exactly as fn_team_split_plan does", () => {
 	assertEquals(projectedShare(1000, 20_000), 1000);
 });
 
+/** mulberry32 — seeded, so a failing case reproduces from the seed. */
+function mulberry32(seed: number): () => number {
+	let a = seed >>> 0;
+	return () => {
+		a = (a + 0x6d2b79f5) >>> 0;
+		let t = a;
+		t = Math.imul(t ^ (t >>> 15), t | 1);
+		t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+	};
+}
+
+Deno.test("projectedShare: over 500 seeded pools and stake sets, every cut is ⌊pool·bp/10000⌋ and the dust is under one unit a stake", () => {
+	const next = mulberry32(20_261_016);
+	const int = (min: number, max: number) => min + Math.floor(next() * (max - min + 1));
+	for (let c = 0; c < 500; c++) {
+		const pool = next() < 0.5
+			? int(0, 1_000_000_000)
+			: Math.floor(Math.exp(next() * Math.log(1_000_000_000)));
+		const weights = Array.from(
+			{ length: int(2, 15) },
+			(_, i) => i > 0 && next() < 0.1 ? 0 : int(1, 1000),
+		);
+		const total = weights.reduce((a, b) => a + b, 0);
+		const stakes = weights.map((w) => Math.floor((10_000 * w) / total));
+		stakes[weights.findIndex((w) => w > 0)] += 10_000 - stakes.reduce((a, b) => a + b, 0);
+		const label = `case ${c}: pool ${pool}, stakes ${stakes.join(",")}`;
+
+		const cuts = stakes.map((bp) => projectedShare(pool, bp));
+		cuts.forEach((cut, i) =>
+			assertEquals(BigInt(cut), (BigInt(pool) * BigInt(stakes[i])) / 10_000n, label)
+		);
+		const dust = pool - cuts.reduce((a, b) => a + b, 0);
+		const staked = stakes.filter((bp) => bp > 0).length;
+		assertEquals(dust >= 0 && dust < staked, true, `${label}: dust ${dust} outside [0, ${staked})`);
+	}
+});
+
 // #endregion
 
 // #region Spend

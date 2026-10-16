@@ -397,6 +397,16 @@ Governs shared wallets (Business / Team / Enterprise).
   remainder split) · **Benevolent Dictator** (100% to Team Vault). **Deterministic remainder
   rounding:** after integer division, any leftover minor unit(s) go to the **Team Vault**, so a
   split always sums back to the released total (the ledger nets to zero).
+- **Two remainder rules — money and stake — kept apart on purpose:**
+  - **Money dust → the Team Vault.** A release divides minor units: every cut is floored, and the
+    leftover (under one minor unit per staked member) is credited to the vault with its cut
+    (`finance.fn_team_split_plan`). The same inputs always give the same ledger, and member credits +
+    finder's fee + vault = the release less the platform fee, exactly.
+  - **Stake remainder → the largest absorber.** When a member leaves, their basis points are
+    redistributed across the remaining (unheld) stakes and the rounding remainder goes to the member
+    absorbing the most (`org.fn_rebalance_departed_stake`). It cannot go to the vault: stakes must
+    total 10000 bp and the vault holds no stake — its share is the rule's `vault_bp`, taken off the
+    top before stakes divide the rest.
 
 ---
 

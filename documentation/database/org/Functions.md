@@ -719,7 +719,13 @@ namespace under a `pg_advisory_xact_lock` on the handle.
   (`draft → active`) needs `manage_settings`; archiving or restoring (to or from `archived`) needs
   `archive_entity`. A published entity never goes back to `draft`. **Archive is refused (`55000`)**
   while an escrow is `held` owed to the team (`payee_type = 'team'`) or funded by the business
-  (`payer_business_id`), or while a team holds a live `projects.stage_assignments` row on an
+  (`payer_business_id`); for a team, also while a `held` escrow on a stage the team is assigned to
+  (`projects.stage_assignments.team_id`, joined on `escrows.project_stage_id`, assignment not
+  `declined`/`cancelled`/`released`) is **unbound** (a Decision #197 prepaid ticket escrow) or bound
+  to one of its **members** (`payee_type = 'freelancer'`, the team-seat payee rule of #197 flag (b)) —
+  the same `55000` "money is held in escrow" refusal (TEAMS_AUDIT S3; probe
+  `supabase/probes/team_archive_escrow_guard.sql`); a non-member's escrow on a shared stage does not
+  block. It is also refused while a team holds a live `projects.stage_assignments` row on an
   `active`/`on_hold` project. Audits `{kind}.status_changed`.
 - **`update_workspace(kind, id, patch) → {id}`** — `authenticated`, needs `edit_profile`. Patch keys
   `name` (2–80) and `headline` (≤ 160, refused as `tagline:`). Pictures move through the media
